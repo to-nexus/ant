@@ -49,16 +49,11 @@ Create `projects/<project-name>/config.json`:
 # 1. Generate Design
 pnpm tsx src/index.ts arch-design projects/cross-ramp/feature-ui-1.2.0/prd/spec.md
 
-# 2. (Optional) Design Directive
-# Option A: Use directive file
-cat > projects/cross-ramp/feature-ui-1.2.0/directives/design-directive-1.md << EOF
+# 2. (Optional) Add Design Directive
+cat > projects/cross-ramp/feature-ui-1.2.0/directives/design/directive-1.md << EOF
 - Use Zustand for state management
 - Prefer functional components
 EOF
-pnpm tsx src/index.ts feedback projects/cross-ramp/feature-ui-1.2.0
-
-# Option B: Use stdin
-echo "Use Zustand for state management" | pnpm tsx src/index.ts feedback projects/cross-ramp/feature-ui-1.2.0
 
 # 3. Generate Code (with learning & report)
 pnpm tsx src/index.ts arch-code projects/cross-ramp/feature-ui-1.2.0
@@ -78,14 +73,27 @@ EOF
 pnpm tsx src/index.ts arch-code projects/cross-ramp/feature-ui-1.2.0
 # → Automatically reads directives, regenerates code, learns new principles, creates new report
 
-# 6. (Optional) More iterations
-cat > projects/cross-ramp/feature-ui-1.2.0/directives/code-directive-2.md << EOF
+# 6. (Optional) Learn from codebase
+cat > projects/cross-ramp/feature-ui-1.2.0/directives/learn/directive-1.md << EOF
+- target: /path/to/repo/src/components
+- focus: 컴포넌트 구조와 상태 관리 패턴 분석
+- aspects:
+  - 컴포넌트 분리 기준
+  - 상태 관리 방식
+  - 성능 최적화 패턴
+EOF
+
+pnpm tsx src/index.ts arch-learn projects/cross-ramp/feature-ui-1.2.0
+# → Analyzes target code, extracts principles, stores in ChromaDB
+
+# 7. (Optional) More iterations
+cat > projects/cross-ramp/feature-ui-1.2.0/directives/code/directive-2.md << EOF
 - Improve error messages
 EOF
 
 pnpm tsx src/index.ts arch-code projects/cross-ramp/feature-ui-1.2.0
 
-# 7. Final commit
+# 8. Final commit
 cd /path/to/target-repo
 git commit -m "feat: implement feature"
 git push origin feature/feature-ui-1.2.0

@@ -1,0 +1,55 @@
+import { storeMemory } from "../../memory/chroma";
+import { CodebaseNode, BranchMetadata } from "./types";
+
+export async function storeCodebase(
+  nodes: CodebaseNode[], 
+  metadata: BranchMetadata,
+  project: string
+): Promise<void> {
+  const chunks = nodes.map(node => ({
+    content: JSON.stringify({
+      imports: node.imports,
+      exports: node.exports
+    }),
+    metadata: {
+      ...metadata,
+      path: node.path,
+      type: "codebase_structure"
+    }
+  }));
+
+  await storeMemory(chunks, project);
+}
+
+export async function storeLearnings(
+  learnings: string,
+  project: string,
+  feature: string
+): Promise<void> {
+  await storeMemory(learnings, project, {
+    type: "learning",
+    project,
+    feature,
+    timestamp: new Date().toISOString()
+  });
+}
+
+export function logStoredData(
+  metadata: BranchMetadata,
+  nodes: CodebaseNode[],
+  learnings?: string
+): void {
+  console.log("\n📚 Stored in ChromaDB:");
+  console.log("=".repeat(80));
+  console.log("Codebase Metadata:", JSON.stringify(metadata, null, 2));
+  console.log("\nFiles analyzed:");
+  nodes.forEach(node => {
+    console.log(`\n📄 ${node.path}`);
+    console.log(`   Imports (${node.imports.length}): ${node.imports.join(", ")}`);
+    console.log(`   Exports (${node.exports.length}): ${node.exports.join(", ")}`);
+  });
+  if (learnings) {
+    console.log("\nLearnings:", learnings);
+  }
+  console.log("=".repeat(80));
+}

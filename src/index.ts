@@ -26,7 +26,6 @@ if (!mode || !inputPath) {
   console.error("Modes:");
   console.error("  arch-design     - PRD → System design document");
   console.error("  arch-code       - Design doc → Code (staged, with learning & report)");
-  console.error("  feedback        - Design directive → ChromaDB");
   console.error("  review          - Code review");
   console.error("");
   console.error("Options:");
@@ -40,9 +39,6 @@ if (!mode || !inputPath) {
   console.error("  pnpm tsx src/index.ts arch-code projects/cross-ramp/feature-ui-1.2.0");
   console.error("  pnpm tsx src/index.ts arch-code projects/cross-ramp/feature-ui-1.2.0 --directive  # with latest code-directive");
   console.error("");
-  console.error("  # Process design directive");
-  console.error("  pnpm tsx src/index.ts feedback projects/cross-ramp/feature-ui-1.2.0 --directive");
-  console.error("  echo 'Use Zustand' | pnpm tsx src/index.ts feedback projects/cross-ramp/feature-ui-1.2.0");
   console.error("");
   console.error("Note: arch-code ALWAYS learns and generates reports");
   process.exit(1);
@@ -58,8 +54,39 @@ function detectProject(inputPath: string): string {
   return "default";
 }
 
-// Auto-detect design file if inputPath is a directory
-function resolveInputFile(inputPath: string): string {
+// 디렉티브 파일 찾기 헬퍼 함수
+function findLatestDirective(dirPath: string): string | null {
+  if (!fs.existsSync(dirPath)) {
+    return null;
+  }
+
+  const files = fs.readdirSync(dirPath);
+  
+  // 1. directive-N.md 파일 찾기 (가장 높은 번호)
+  const numberedFiles = files
+    .filter(f => f.startsWith("directive-") && f.endsWith(".md"))
+    .map(f => {
+      const match = f.match(/directive-(\d+)\.md$/);
+      return match ? { name: f, number: parseInt(match[1]) } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => b!.number - a!.number);
+
+  if (numberedFiles.length > 0) {
+    return path.join(dirPath, numberedFiles[0]!.name);
+  }
+
+  // 2. directive.md 찾기
+  const defaultFile = files.find(f => f === "directive.md");
+  if (defaultFile) {
+    return path.join(dirPath, defaultFile);
+  }
+
+  return null;
+}
+
+// Auto-detect input file based on mode
+function resolveInputFile(inputPath: string, mode: string): string {
   const stats = fs.statSync(inputPath);
   
   if (stats.isFile()) {
@@ -67,26 +94,71 @@ function resolveInputFile(inputPath: string): string {
   }
   
   if (stats.isDirectory()) {
-    // Look for generated/design/design-*.md files
-    const designDir = path.join(inputPath, "generated", "design");
-    
-    if (!fs.existsSync(designDir)) {
-      throw new Error(`No generated/design/ directory found in: ${inputPath}`);
+    switch (mode) {
+      case 'arch-learn': {
+        const learnDir = path.join(inputPath, "directives", "learn");
+        const directiveFile = findLatestDirective(learnDir);
+        
+        if (!directiveFile) {
+          throw new Error(`No directive files found in: ${learnDir}\nCreate either directive.md or directive-N.md`);
+        }
+        
+        console.log(`📄 Using learn directive: ${directiveFile}`);
+        return directiveFile;
+      }
+      
+      case 'arch-code': {
+        // code 모드는 design 문서를 기본으로 사용하고, 디렉티브가 있으면 추가로 적용
+        const designDir = path.join(inputPath, "generated", "design");
+        if (!fs.existsSync(designDir)) {
+          throw new Error(`No generated/design/ directory found in: ${inputPath}`);
+        }
+        
+        const files = fs.readdirSync(designDir);
+        const designFiles = files
+          .filter(f => f.startsWith("design-") && f.endsWith(".md"))
+          .sort()
+          .reverse();
+        
+        if (designFiles.length === 0) {
+          throw new Error(`No design-*.md files found in: ${designDir}`);
+        }
+        
+        const latestDesign = path.join(designDir, designFiles[0]);
+        console.log(`📄 Using design file: ${latestDesign}`);
+        
+        // code 디렉티브 확인 (있으면 로그만)
+        const codeDir = path.join(inputPath, "directives", "code");
+        const directiveFile = findLatestDirective(codeDir);
+        if (directiveFile) {
+          console.log(`📄 Found code directive: ${directiveFile}`);
+        }
+        
+        return latestDesign;
+      }
+      
+      default: {
+        // arch-design 등 다른 모드는 generated/design/ 찾기
+        const designDir = path.join(inputPath, "generated", "design");
+        if (!fs.existsSync(designDir)) {
+          throw new Error(`No generated/design/ directory found in: ${inputPath}`);
+        }
+        
+        const files = fs.readdirSync(designDir);
+        const designFiles = files
+          .filter(f => f.startsWith("design-") && f.endsWith(".md"))
+          .sort()
+          .reverse();
+        
+        if (designFiles.length === 0) {
+          throw new Error(`No design-*.md files found in: ${designDir}`);
+        }
+        
+        const latestDesign = path.join(designDir, designFiles[0]);
+        console.log(`📄 Using design file: ${latestDesign}`);
+        return latestDesign;
+      }
     }
-    
-    const files = fs.readdirSync(designDir);
-    const designFiles = files
-      .filter(f => f.startsWith("design-") && f.endsWith(".md"))
-      .sort()
-      .reverse(); // Latest first (timestamp in filename)
-    
-    if (designFiles.length === 0) {
-      throw new Error(`No design-*.md files found in: ${designDir}`);
-    }
-    
-    const latestDesign = path.join(designDir, designFiles[0]);
-    console.log(`📄 Auto-detected design file: ${latestDesign}`);
-    return latestDesign;
   }
   
   throw new Error(`Invalid input path: ${inputPath}`);
@@ -121,72 +193,14 @@ function resolveLatestDesignDirective(inputPath: string): string | null {
 }
 
 const project = detectProject(inputPath);
-const resolvedFile = resolveInputFile(inputPath);
+const resolvedFile = resolveInputFile(inputPath, mode);
 let input = fs.readFileSync(resolvedFile, "utf-8");
 
 console.log(`🎯 Project: ${project}`);
 console.log(`📂 Input: ${resolvedFile}`);
 
-// Handle --directive option for design review
-if (mode === "feedback") {
-  if (hasDirective) {
-    let directiveFile: string | null;
-    
-    if (directiveFilePath) {
-      // Use specified directive file
-      if (!fs.existsSync(directiveFilePath)) {
-        console.error(`❌ Directive file not found: ${directiveFilePath}`);
-        process.exit(1);
-      }
-      directiveFile = directiveFilePath;
-      console.log(`📋 Using specified design directive file: ${directiveFile}`);
-    } else {
-      // Auto-detect latest design directive file
-      directiveFile = resolveLatestDesignDirective(inputPath);
-      
-      if (!directiveFile) {
-        console.error(`❌ No design-directive-*.md files found in: ${path.join(inputPath, "directives")}`);
-        console.error(`💡 Create a directive file: projects/<project>/<feature>/directives/design-directive-1.md`);
-        process.exit(1);
-      }
-    }
-    
-    const directiveText = fs.readFileSync(directiveFile, "utf-8");
-    console.log(`📋 Design directive: ${directiveText.substring(0, 100)}...`);
-    console.log("");
-    
-    runPipeline({ 
-      type: "feedback" as any, 
-      input: directiveText, 
-      project, 
-      inputFile: resolvedFile 
-    })
-      .then((result) => console.log("\n--- AI OUTPUT ---\n", JSON.stringify(result, null, 2)))
-      .catch(console.error);
-  } else {
-    // Read from stdin
-    console.log("📋 Reading design directive from stdin...");
-    const stdinBuffer = fs.readFileSync(0, "utf-8");
-    const directiveText = stdinBuffer.trim();
-    
-    if (!directiveText) {
-      console.error("❌ No directive provided via stdin");
-      process.exit(1);
-    }
-    
-    console.log(`📋 Directive: ${directiveText.substring(0, 100)}...`);
-    console.log("");
-    
-    runPipeline({ 
-      type: "feedback" as any, 
-      input: directiveText, 
-      project, 
-      inputFile: resolvedFile 
-    })
-      .then((result) => console.log("\n--- AI OUTPUT ---\n", JSON.stringify(result, null, 2)))
-      .catch(console.error);
-  }
-} else {
+// Run pipeline
+{
   console.log("");
   
   runPipeline({ type: mode as any, input, project, inputFile: resolvedFile })

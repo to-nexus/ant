@@ -1,20 +1,17 @@
 import { reviewerAgent } from "./agents/reviewer";
-import { architectAgent } from "./agents/architect";
+import { architectAgent } from "./agents/architect/index";
 import { plannerAgent } from "./agents/planner";
 import { docAgent } from "./agents/doc";
-import { feedbackAgent } from "./agents/feedback";
 
 export async function runPipeline({
   type,
   input,
   project,
-  mode,
   inputFile
 }: {
-  type: "review" | "arch-design" | "arch-code" | "feedback" | "plan" | "doc";
+  type: "review" | "arch-design" | "arch-code" | "arch-learn" | "plan" | "doc";
   input: string;
   project?: string;
-  mode?: 'design' | 'code';
   inputFile?: string;
 }) {
   switch (type) {
@@ -24,9 +21,8 @@ export async function runPipeline({
       return await architectAgent(input, project || "default", 'design', inputFile);
     case "arch-code":
       return await architectAgent(input, project || "default", 'code', inputFile);
-    case "feedback":
-      if (!inputFile) throw new Error("Design file path required for feedback");
-      return await feedbackAgent(inputFile, input, project || "default", false);
+    case "arch-learn":
+      return await architectAgent(input, project || "default", 'learn', inputFile);
     case "plan": {
       const [issues, commits] = input.split("===COMMITS===");
       return await plannerAgent(issues, commits);
