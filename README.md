@@ -1,6 +1,6 @@
-# AI Dev Agents
+# AI Dev Framework
 
-AI-powered development agents for automated architecture design, code generation, and review.
+AI-powered development framework for automated architecture design, code generation, and iterative refinement.
 
 ### Author: Harvey(probe@to.nexus)
 
