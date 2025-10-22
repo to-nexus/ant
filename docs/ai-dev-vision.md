@@ -8,43 +8,26 @@
 
 ## 1. Executive Summary
 
-AI가 개발자의 보조 도구를 넘어,  
-**조직 단위로 학습하고 협업하는 개발 주체**로 진화하고 있다.  
+본 문서의 목적은 개발조직을  
+**AI를 활용하는 조직**에서 **AI와 함께 학습하고 성장하는 조직(AI-Native Organization)** 으로 전환하는 것이다.  
+AI를 단순한 보조 도구가 아닌,  
+**조직 단위로 학습하고 협업하는 개발 주체**로 발전시키는 것을 목표로 한다.
 
-현재 대부분의 개발조직은 Cursor, Claude Code, GitHub Copilot 등  
-**ephemeral AI-assisted development** 환경을 사용한다 —  
-이는 단기적 생산성은 높지만,  
-AI가 기억하지 못하고 학습하지 못하는 구조적 한계를 가진다.  
+현재 우리의 개발조직은 Cursor, Claude Code, GitHub Copilot 등  
+**Ephemeral AI-Assisted Development** 환경을 사용하고 있다.  
+이 방식은 단기적 생산성 향상에는 효과적이지만,  
+AI가 맥락을 기억하지 못하고 학습하지 못하기 때문에  
+조직 차원의 품질 향상과 지식 축적에는 한계가 있다.
 
 이에 따라 본 문서는,  
-기존 보조형 구조를 유지하면서도 **조직형 지속학습 프레임워크(AI-Driven Framework)** 를 도입하는  
-미래 지향적 개발조직의 전환 로드맵을 제시한다.
-
----
-
-# 🧠 AI Development Framework  
-*From AI-Assisted to AI-Driven Engineering*  
-
-**Author:** Jung Woojun (probe@to.nexus)  
-**Date:** 2025-10-21  
-
----
-
-## 1. Executive Summary
-
-현재 대부분의 개발조직은 Cursor, Claude Code, GitHub Copilot 같은 **AI 보조형 개발환경(AI-Assisted)** 을 사용한다.  
-이 환경은 즉각적인 생산성은 높지만, **AI가 기억하지 못하고 학습하지 못한다**는 구조적 한계를 가진다.  
-
-본 문서는 이러한 한계를 넘어  
-**AI가 학습하고 협업하는 지속형 개발조직(AI-Driven Development)** 으로의 전환 방향을 제시한다.  
-이 프레임워크는 개인 보조 수준의 AI 사용을 넘어,  
-조직 단위로 지속적 학습과 자동화를 수행하는 **AI 개발 생태계**를 구축하는 것을 목표로 한다.
+기존 보조형 환경을 유지하되 **지속형 학습 기반 프레임워크(AI-Driven Framework)** 를 병행 도입하여  
+조직 전체의 개발 프로세스를 지능화하는 **전환 로드맵**을 제시한다.
 
 ---
 
 ## 2. Current State — AI-Assisted Development
 
-현재 개발조직은 AI를 개인 코딩 보조로 사용하고 있다.
+현재 개발조직은 AI를 개인 코딩(또는 문서작성, 자료조사 등) 보조로 사용하고 있다.
 
 | 특징 | 설명 |
 |------|------|
