@@ -9,7 +9,7 @@
 | 항목 | **AI-Assisted Personal Tool** | **AI-Driven Engineering Framework** |
 |------|-------------------------------|------------------------------------|
 | **정의** | 개인 IDE/CLI 내에서 AI를 보조로 활용 | AI가 팀 단위로 개발 사이클 전체를 수행 |
-| **구조** | 단일 모델 기반 (Claude Code, Cursor 등) | 다중 역할형 Agent 기반 (Planner, Architect, Coder, Reviewer, Doc) |
+| **구조** | 단일 모델 기반 (Claude Code, Cursor 등) | 다중 역할형 Agent 기반 (Planner, Architect, Reviewer, Doc) |
 | **작동 방식** | 사용자가 명령 → AI가 수행 | AI가 스스로 계획 → 실행 → 검증 |
 | **결과물** | 코드 diff, 설명, commit | 코드, PR, 리뷰, 문서, 설계 등 완결된 산출물 |
 | **지향점** | AI = 개인의 도우미 | AI = 개발조직의 구성원 |
@@ -31,18 +31,16 @@ flowchart LR
   subgraph B["AI-Driven Engineering Framework"]
     B1["Planner Agent"]
     B2["Architect Agent"]
-    B3["Coder Agent"]
-    B4["Reviewer Agent"]
-    B5["Doc Agent"]
-    B6["Vector Memory (ChromaDB)"]
-    B7["Git / CI Integration"]
+    B3["Reviewer Agent"]
+    B4["Doc Agent"]
+    B5["Vector Memory (ChromaDB)"]
+    B6["Git / CI Integration"]
     B1 --> B2
     B2 --> B3
     B3 --> B4
-    B4 --> B5
+    B2 --> B5
     B2 --> B6
-    B3 --> B7
-    B4 --> B7
+    B3 --> B6
   end
 ```
 
@@ -55,7 +53,7 @@ flowchart LR
 | **주체** | 인간이 명령을 내림 | AI가 자율적으로 실행 |
 | **지식 저장소** | 로컬 설정파일 (`CLAUDE.md`) | Vector Memory (Chroma) |
 | **맥락 유지** | 세션 단위 | 장기 프로젝트 단위 |
-| **협업 방식** | 단일 모델 | 다중 Agent 협력 |
+| **협업 방식** | 단일 모델 | 전문화된 Agent 협력 (Architect = 설계+구현) |
 | **결과 단위** | 명령 결과 (diff, commit) | 완성된 기능/PR/문서 |
 | **운영 범위** | 개인 IDE 중심 | 조직·프로젝트 중심 |
 
@@ -89,8 +87,7 @@ AI Framework의 에이전트는 “어떤 일을 수행하라”는 **실행 단
 | 단계 | **Personal Tool** | **Framework** |
 |------|-------------------|---------------|
 | 기능 요청 | 사용자가 명령 (`claude fix`) | Planner가 목표 분석 |
-| 설계 | AI가 단순 코드 제안 | Architect가 설계 구조 생성 |
-| 구현 | 사용자 수동 적용 | Coder가 코드 생성·커밋 |
+| 설계/구현 | AI가 단순 코드 제안 | Architect가 설계 및 코드 생성·커밋 |
 | 검토 | AI가 diff 설명 | Reviewer가 자동 리뷰 후 피드백 |
 | 문서화 | 없음 | Doc Agent가 문서 자동 생성 |
 
@@ -106,7 +103,7 @@ AI Framework의 에이전트는 “어떤 일을 수행하라”는 **실행 단
 | **OpenDevin** | OSS | Devin 오픈소스 버전, multi-agent 구조 |
 | **SWE-Agent** | Meta/CMU | 코드 이해·테스트 자동화 집중 |
 | **AutoDev** | Builder.io 등 | 사내 CI/CD·Jira 통합형 DevOps AI |
-| **현재 시스템** | 내부형 AI Engineering OS | Planner/Architect/Coder/Reviewer/Doc 구조로 개발 자동화 수행 |
+| **현재 시스템** | 내부형 AI Engineering OS | Planner/Architect/Reviewer/Doc 구조로 개발 자동화 수행 (Architect = 설계+구현) |
 
 📌 **요약:**  
 > Personal Tool은 **IDE 보조 AI**,  
@@ -120,10 +117,11 @@ AI Framework의 에이전트는 “어떤 일을 수행하라”는 **실행 단
 |------|--------------------------|--------------------------------|
 | **저장 형태** | Markdown 텍스트 (`CLAUDE.md`) | 임베딩 벡터 |
 | **검색 방식** | 단순 문자열 포함 | 의미 유사도(Semantic Similarity) |
-| **작성 주체** | 사용자가 CLI로 직접 저장 | Agent가 자동 기록 |
-| **맥락 반영 방식** | 파일 전체를 prompt에 삽입 | 필요한 문맥만 검색 후 주입 |
-| **지속성** | 프로젝트 단위 | 장기·조직 단위 |
-| **역할** | Prompt context 저장 | 실제 지식 기반(Knowledge Base) |
+| **작성 주체** | 사용자가 CLI로 직접 저장 | Agent가 자동 기록 및 업데이트 |
+| **맥락 반영 방식** | 파일 전체를 prompt에 삽입 | 의미 기반 검색으로 관련 문맥만 주입 |
+| **지속성** | 프로젝트 단위 | 장기·조직 단위 (버전 관리 가능) |
+| **역할** | Prompt context 저장 | 실제 지식 기반(Knowledge Base) + 의사결정 기록 |
+| **활용도** | 단순 참조용 | Agent 간 지식 공유 및 학습 |
 
 📌 **요약:**  
 > Claude Code의 “메모리”는 설정 파일 기반의 수동 컨텍스트이고,  
