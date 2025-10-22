@@ -1,0 +1,3 @@
+- apps/ramp/app/catalog/layout.tsx와 page.tsx를 말했는데 루트에서 catalog 폴더를 만든건 너의 잘못이다.
+- 모노레포를 감안해서 내 명령을 수행해라.
+- 잘못 작업된것을 판단해서 재작업해라.
