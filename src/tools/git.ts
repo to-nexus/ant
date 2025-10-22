@@ -25,6 +25,22 @@ export async function getGitInstance(project: string, config: any) {
   }
 }
 
+export async function getCurrentBranch(git: any): Promise<string> {
+  const result = await git.branch();
+  return result.current;
+}
+
+export async function getLatestCommit(git: any): Promise<{ hash: string; date: string }> {
+  const log = await git.log({ maxCount: 1 });
+  if (log.latest) {
+    return {
+      hash: log.latest.hash,
+      date: log.latest.date
+    };
+  }
+  throw new Error("No commits found");
+}
+
 export async function createBranch(git: any, branch: string, base: string) {
   await git.fetch();
   

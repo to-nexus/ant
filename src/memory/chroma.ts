@@ -45,9 +45,9 @@ export async function queryMemory(query: string, namespace: string): Promise<str
 }
 
 export async function storeMemory(
-  document: string,
-  metadata: Record<string, any>,
-  namespace: string
+  document: string | Array<{ content: string; metadata: Record<string, any> }>,
+  namespace: string,
+  metadata?: Record<string, any>
 ): Promise<void> {
   try {
     const collection = await client.getOrCreateCollection({
@@ -57,11 +57,19 @@ export async function storeMemory(
     
     const id = `${namespace}-${Date.now()}-${Math.random().toString(36).substring(7)}`;
     
-    await collection.add({
-      documents: [document],
-      metadatas: [metadata],
-      ids: [id]
-    });
+    if (Array.isArray(document)) {
+      await collection.add({
+        documents: document.map(d => d.content),
+        metadatas: document.map(d => d.metadata),
+        ids: document.map(() => `${namespace}-${Date.now()}-${Math.random().toString(36).substring(7)}`)
+      });
+    } else {
+      await collection.add({
+        documents: [document],
+        metadatas: [metadata || {}],
+        ids: [id]
+      });
+    }
     
     console.log(`✅ Memory stored in ChromaDB collection: ${namespace}`);
   } catch (error) {
