@@ -112,9 +112,9 @@ AI Framework는 단순한 프롬프트 집합이 아니라 **실제로 코드로
 ### 5.3 Framework 작동 흐름
 
 ```
-Planner → Architect → Coder → Reviewer → Doc
-             ↓             ↓         ↓
-        Vector Memory   Git Repo   CI/PR
+Planner → Architect → Reviewer → Doc
+             ↓          ↓        ↓
+        Vector Memory  Git Repo  CI/PR
 ```
 
 1. **Planner**  
@@ -123,17 +123,15 @@ Planner → Architect → Coder → Reviewer → Doc
      사람이 “무엇을 만들 것인가”를 AI가 이해할 수 있도록 변환하는 입력 자료다.*
 
 2. **Architect**  
-   - 설계 방향, 기술스택, 구조 설계 및 초기 코드 스켈레톤 생성  
-
-3. **Coder**  
+   - 설계 방향, 기술스택, 구조 설계 및 초기 코드 스켈레톤 생성
    - 실제 코드 작성 및 브랜치 커밋  
    - OpenAI GPT, Claude 등 외부 언어모델 호출을 통해 구현  
-
-4. **Reviewer**  
+   
+3. **Reviewer**  
    - 코드 리뷰 및 자동 수정 제안  
    - 품질, 보안, 일관성 검증 수행  
 
-5. **Doc**  
+4. **Doc**  
    - 개발 과정 및 결과를 문서화 (README, API 문서 등)  
    - 모든 결과를 Vector Memory에 저장  
 
