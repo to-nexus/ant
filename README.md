@@ -55,7 +55,7 @@ cat > projects/cross-ramp/feature-ui-1.2.0/directives/design-directive-1.md << E
 - Use Zustand for state management
 - Prefer functional components
 EOF
-pnpm tsx src/index.ts feedback projects/cross-ramp/feature-ui-1.2.0 --directive
+pnpm tsx src/index.ts feedback projects/cross-ramp/feature-ui-1.2.0
 
 # Option B: Use stdin
 echo "Use Zustand for state management" | pnpm tsx src/index.ts feedback projects/cross-ramp/feature-ui-1.2.0
@@ -75,15 +75,15 @@ cat > projects/cross-ramp/feature-ui-1.2.0/directives/code-directive-1.md << EOF
 - Use more descriptive function names
 EOF
 
-pnpm tsx src/index.ts arch-code projects/cross-ramp/feature-ui-1.2.0 --directive
-# → Reads directive, regenerates code, learns new principles, creates new report
+pnpm tsx src/index.ts arch-code projects/cross-ramp/feature-ui-1.2.0
+# → Automatically reads directives, regenerates code, learns new principles, creates new report
 
 # 6. (Optional) More iterations
 cat > projects/cross-ramp/feature-ui-1.2.0/directives/code-directive-2.md << EOF
 - Improve error messages
 EOF
 
-pnpm tsx src/index.ts arch-code projects/cross-ramp/feature-ui-1.2.0 --directive
+pnpm tsx src/index.ts arch-code projects/cross-ramp/feature-ui-1.2.0
 
 # 7. Final commit
 cd /path/to/target-repo
@@ -94,20 +94,29 @@ git push origin feature/feature-ui-1.2.0
 **Auto-detection:**
 - Project: `projects/cross-ramp/...` → `cross-ramp`
 - Design: Latest `generated/design/design-*.md`
-- Code Directive: Latest `directives/code-directive-N.md` by number (with `--directive`)
+- Code Directive: Latest `directives/code-directive-N.md` by number (automatically detected)
 - Branch: Reused if exists
 
-**Directive file naming:**
-- Design directive: `design-directive-1.md`, `design-directive-2.md`, ...
-- Code directive: `code-directive-1.md`, `code-directive-2.md`, ...
-- Higher number = latest
+**Directive Structure:**
+```
+directives/
+├── code/              # Code generation/modification directives
+│   └── directive-N.md
+├── design/            # Design-related directives
+│   └── directive-N.md
+└── learn/            # Learning directives
+    └── directive-N.md
+```
+
+Higher number (N) = latest version
 
 ### Commands
 
 | Command | Description |
 |---------|-------------|
 | `arch-design` | PRD → System design document |
-| `arch-code [--directive]` | Design → Code (modified, not staged) + Learning + Report<br>※ `--directive`: Apply latest code-directive-N.md |
+| `arch-code` | Design → Code (modified, not staged) + Learning + Report |
+| `arch-learn` | Analyze and learn from target codebase |
 | `feedback` | Design directive → ChromaDB |
 | `review` | Code review |
 
@@ -129,10 +138,15 @@ projects/<project>/<feature>/
 │   └── spec.md                          # Input PRD
 ├── generated/
 │   ├── design/
-│   │   └── design-<project>-*.md       # Generated design documents
+│   │   └── design-<project>-*.md        # Generated design documents
 │   └── reports/
-│       └── code-generation-report-*.md # AI thinking process & learnings
+│       ├── code-generation-report-*.md   # Code generation process & learnings
+│       └── learning-report-*.md          # Codebase analysis results
 └── directives/
-    ├── design-directive-N.md            # Human directives on design
-    └── code-directive-N.md              # Human directives on code (HIGHEST PRIORITY)
+    ├── code/                            # Code generation directives
+    │   └── directive-N.md
+    ├── design/                          # Design directives
+    │   └── directive-N.md
+    └── learn/                           # Learning directives
+        └── directive-N.md                # Learning targets and aspects
 ```
