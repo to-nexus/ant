@@ -1,17 +1,13 @@
-import { ChatAnthropic } from "@langchain/anthropic";
 import { HumanMessage } from "@langchain/core/messages";
 import { getGitInstance, getCurrentBranch, getLatestCommit } from "../../../tools/git";
 import { CodebaseAnalyzer } from "../analyzer/CodebaseAnalyzer";
 import { storeCodebase, storeLearnings, logStoredData } from "../storage";
 import { getDirectivePath, readDirective, generateReport } from "../utils";
 import { DIRECTIVE_TYPES, ProjectContext, ArchitectResult } from "../types";
+import { createModel } from "../model";
 
-const model = new ChatAnthropic({
-  anthropicApiKey: process.env.ANTHROPIC_API_KEY,
-  model: "claude-3-haiku-20240307",
-  temperature: 0.2,
-  maxTokens: 4000
-});
+const modelInfo = createModel('architect');
+const model = modelInfo.model;
 
 export async function handleLearnMode(context: ProjectContext): Promise<ArchitectResult> {
   console.log("\n" + "=".repeat(80));
@@ -75,6 +71,12 @@ Format your response as clear, categorized bullet points that can be stored as a
 **Branch:** ${branchName}
 **Commit:** ${commit.hash}
 **Date:** ${new Date().toISOString()}
+
+## AI Model Used
+- Provider: ${modelInfo.provider}
+- Model: ${modelInfo.modelName}
+- Temperature: ${modelInfo.temperature}
+- Max Tokens: ${modelInfo.maxTokens}
 
 ## Directive
 ${directive}

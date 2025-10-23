@@ -1,15 +1,13 @@
-import { ChatAnthropic } from "@langchain/anthropic";
 import { HumanMessage } from "@langchain/core/messages";
+import { createModel } from "./architect/model";
 
 /**
  * DocAgent:
  * Generates API or technical documentation updates
  * based on code changes (diffs).
  */
-const model = new ChatAnthropic({
-  anthropicApiKey: process.env.ANTHROPIC_API_KEY,
-  modelName: "claude-3-5-sonnet"
-});
+const modelInfo = createModel('doc');
+const model = modelInfo.model;
 
 export async function docAgent(diff: string) {
   const prompt = `
