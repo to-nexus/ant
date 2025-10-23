@@ -1,15 +1,12 @@
-import { ChatOpenAI } from "@langchain/openai";
+import { createModel } from "./architect/model";
 
 /**
  * PlannerAgent:
  * Summarizes project progress, issues, and next steps
  * using issue tracker data and commit logs.
  */
-const model = new ChatOpenAI({
-  openAIApiKey: process.env.OPENAI_API_KEY,
-  modelName: "gpt-4o",
-  temperature: 0.2
-});
+const modelInfo = createModel('planner');
+const model = modelInfo.model;
 
 export async function plannerAgent(issues: string, commits: string) {
   const prompt = `

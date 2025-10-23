@@ -1,17 +1,13 @@
-import { ChatAnthropic } from "@langchain/anthropic";
 import { HumanMessage } from "@langchain/core/messages";
 import { DIRECTIVE_TYPES, ProjectContext, ArchitectResult } from "../types";
 import { getDirectivePath, readDirective, findLatestDesign, generateReport } from "../utils";
 import { storeLearnings } from "../storage";
+import { createModel } from "../model";
 import * as path from "path";
 import * as fs from "fs";
 
-const model = new ChatAnthropic({
-  anthropicApiKey: process.env.ANTHROPIC_API_KEY!,
-  modelName: "claude-3-haiku-20240307",
-  temperature: 0.2,
-  maxTokens: 4000
-});
+const modelInfo = createModel('architect');
+const model = modelInfo.model;
 
 export async function handleDesignMode(context: ProjectContext, spec: string): Promise<ArchitectResult> {
   console.log("\n" + "=".repeat(80));
@@ -209,6 +205,12 @@ Output in clear, categorized bullet points.
   console.log("=".repeat(80));
   console.log("Design document + extracted learnings");
   console.log("=".repeat(80));
+
+  console.log(`\n🤖 AI Model Used:`);
+  console.log(`   Provider: ${modelInfo.provider}`);
+  console.log(`   Model: ${modelInfo.modelName}`);
+  console.log(`   Temperature: ${modelInfo.temperature}`);
+  console.log(`   Max Tokens: ${modelInfo.maxTokens}`);
 
   console.log(`\n✅ Design document saved: ${designFilePath}`);
   console.log(`📝 Review the design and run 'arch-code' mode when ready.`);

@@ -17,17 +17,59 @@ pnpm install
 Create `.env` file:
 
 ```bash
+# Global AI Model Configuration (모든 에이전트 기본값)
+AI_MODEL_PROVIDER=openai        # 'openai' or 'anthropic'
+AI_MODEL_NAME=gpt-4o            # Optional, uses defaults if not set
+
+# Agent별 개별 설정 (선택사항)
+ARCHITECT_MODEL_PROVIDER=openai
+ARCHITECT_MODEL_NAME=gpt-4o
+ARCHITECT_MODEL_MAX_TOKENS=16000
+
+REVIEWER_MODEL_PROVIDER=anthropic
+REVIEWER_MODEL_NAME=claude-3-haiku-20240307
+
+PLANNER_MODEL_PROVIDER=openai
+PLANNER_MODEL_NAME=gpt-4o
+
+DOC_MODEL_PROVIDER=anthropic
+DOC_MODEL_NAME=claude-3-haiku-20240307
+
+# API Keys
 OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
 GIT_TOKEN=ghp_...
+
+# Vector Database
 CHROMA_URL=http://localhost:8000
+EMBEDDER_URL=http://localhost:8001
 ```
 
-### 3. ChromaDB (Docker)
+**Model Options:**
+- OpenAI: `gpt-4o`, `gpt-4-turbo`, `gpt-3.5-turbo`
+- Anthropic: `claude-3-opus-20240229`, `claude-3-sonnet-20240229`, `claude-3-haiku-20240307`
+
+**Default Models:**
+- OpenAI: `gpt-4o` (16,000 tokens)
+- Anthropic: `claude-3-haiku-20240307` (4,000 tokens)
+
+**Agent별 설정 우선순위:**
+1. `{AGENT}_MODEL_PROVIDER` (예: `ARCHITECT_MODEL_PROVIDER`)
+2. `AI_MODEL_PROVIDER` (전역 설정)
+3. 기본값 (`openai`)
+
+### 3. Vector Database (Docker)
+
+Start ChromaDB and Embedding Server:
 
 ```bash
-docker run -d -p 8000:8000 chromadb/chroma
+cd vector-memory
+docker-compose up -d
 ```
+
+This starts:
+- ChromaDB on port 8000
+- Embedding server (all-MiniLM-L6-v2) on port 8001
 
 ### 4. Project Configuration
 

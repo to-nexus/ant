@@ -45,3 +45,9 @@ pnpm-debug.log*
 chroma_data/
 vector-memory/chroma-data/
 
+# Generated files (keep folders, ignore contents)
+projects/**/generated/design/*.md
+projects/**/generated/reports/*.md
+!projects/**/generated/design/.gitkeep
+!projects/**/generated/reports/.gitkeep
+

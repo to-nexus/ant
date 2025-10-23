@@ -1,11 +1,9 @@
-import { ChatAnthropic } from "@langchain/anthropic";
 import { HumanMessage } from "@langchain/core/messages";
 import { queryMemory } from "../memory";
+import { createModel } from "./architect/model";
 
-const model = new ChatAnthropic({
-  anthropicApiKey: process.env.ANTHROPIC_API_KEY,
-  modelName: "claude-3-5-sonnet"
-});
+const modelInfo = createModel('reviewer');
+const model = modelInfo.model;
 
 export async function reviewerAgent(prDiff: string, project: string) {
   const context = await queryMemory("code review guidelines", project);
