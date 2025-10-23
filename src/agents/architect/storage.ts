@@ -1,4 +1,4 @@
-import { storeMemory } from "../../memory/chroma";
+import { storeMemory } from "../../memory/index";
 import { CodebaseNode, BranchMetadata } from "./types";
 
 export async function storeCodebase(
@@ -8,8 +8,10 @@ export async function storeCodebase(
 ): Promise<void> {
   const chunks = nodes.map(node => ({
     content: JSON.stringify({
+      path: node.path,
       imports: node.imports,
-      exports: node.exports
+      exports: node.exports,
+      type: "codebase_structure"
     }),
     metadata: {
       ...metadata,
@@ -18,7 +20,7 @@ export async function storeCodebase(
     }
   }));
 
-  await storeMemory(chunks, project);
+  await storeMemory(chunks, project, { type: "batch_store", timestamp: new Date().toISOString() });
 }
 
 export async function storeLearnings(

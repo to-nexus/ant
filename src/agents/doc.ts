@@ -1,4 +1,5 @@
 import { ChatAnthropic } from "@langchain/anthropic";
+import { HumanMessage } from "@langchain/core/messages";
 
 /**
  * DocAgent:
@@ -21,6 +22,8 @@ Code diff:
 ---
 ${diff}
   `;
-  const response = await model.invoke([{ role: "user", content: prompt }]);
-  return response.content;
+  const response = await model.invoke([new HumanMessage(prompt)]);
+  return typeof response.content === 'string' 
+    ? response.content 
+    : JSON.stringify(response.content);
 }
