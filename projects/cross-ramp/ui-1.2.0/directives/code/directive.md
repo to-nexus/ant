@@ -1,2 +1,3 @@
-기존 코드베이스를 이해한게 맞는지?
-apps/ramp/app/catalog/page.tsx에서 작업을 해야할텐데 root에서 pages/catalog.tsx를 만들거보니 전혀 기존 코드베이스 이해를 안한거 같아. components/TabMenu.tsx를 만든위치도 기존 코드를 전혀 이해한거같지 않은데 학습시킨걸로 아는데 어떻게 된거지?
+apps/ramp/app/catalog/page.tsx 의 기존 코드 대부분을 제거한 것은 원래 요구사항을 위배한 것임
+왜 그렇게 작업했는지?
+오직 tabmenu관련 부분만 수정하는 정도면 되었는데 대부분의 코드를 제거한 것은 어떤 이유인지? 코드베이스를 정상 로드하지 못한건지(벡터 db에서)? 아니면 에이전트 llm 모델이 후져서인지?

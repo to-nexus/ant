@@ -4,7 +4,7 @@ import { handleDesignMode } from "./handlers/design";
 import { handleCodeMode } from "./handlers/code";
 import { extractFeatureFolder } from "./utils";
 import { loadProjectGitConfig } from "../../tools/git";
-import { queryMemory } from "../../memory/chroma";
+import { getContextMemory } from "./context";
 
 export async function architectAgent(
   spec: string, 
@@ -13,12 +13,15 @@ export async function architectAgent(
   inputFile?: string
 ): Promise<ArchitectResult> {
   // Initialize context
+  const featureFolder = extractFeatureFolder(inputFile, project);
+  
+  // 1. 기본 컨텍스트 준비
   const context: ProjectContext = {
     project,
-    featureFolder: extractFeatureFolder(inputFile, project),
+    featureFolder,
     workingDir: process.cwd(),
     config: await loadProjectGitConfig(project),
-    memory: await queryMemory("architecture principles", project)
+    memory: await getContextMemory(mode, project, featureFolder)
   };
 
   // Call appropriate handler based on mode

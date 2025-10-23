@@ -1,4 +1,5 @@
 import { ChatAnthropic } from "@langchain/anthropic";
+import { HumanMessage } from "@langchain/core/messages";
 import * as path from "path";
 import * as fs from "fs";
 import { getGitInstance, createBranch } from "../../../tools/git";
@@ -7,8 +8,8 @@ import { getDirectivePath, readDirective, findLatestDesign, generateReport } fro
 import { storeLearnings } from "../storage";
 
 const model = new ChatAnthropic({
-  anthropicApiKey: process.env.ANTHROPIC_API_KEY,
-  model: "claude-3-haiku-20240307",
+  anthropicApiKey: process.env.ANTHROPIC_API_KEY!,
+  modelName: "claude-3-haiku-20240307",
   temperature: 0.2,
   maxTokens: 4000
 });
@@ -62,8 +63,10 @@ Provide a brief analysis:
 
 Keep it concise (3-5 sentences).`;
 
-    const analysisResponse = await model.invoke([{ role: "user", content: analysisPrompt }]);
-    directiveAnalysis = analysisResponse.content as string;
+    const analysisResponse = await model.invoke([new HumanMessage(analysisPrompt)]);
+    directiveAnalysis = typeof analysisResponse.content === 'string' 
+      ? analysisResponse.content 
+      : JSON.stringify(analysisResponse.content);
     
     console.log("\n🤖 AI Understanding:");
     console.log("-".repeat(80));
@@ -71,9 +74,51 @@ Keep it concise (3-5 sentences).`;
     console.log("-".repeat(80) + "\n");
   }
 
-  // 3. 상황별 프롬프트 구성
-  let prompt = "";
+  // 3. 컨텍스트 우선순위에 따라 프롬프트 구성
+  let contextDescription = "";
   
+  // 1. 최신 디렉티브 (최우선)
+  if (directive) {
+    contextDescription = `
+HIGHEST PRIORITY - Latest Directive:
+This directive contains the most recent requirements and feedback that MUST be addressed.
+${directive}
+
+Your analysis of the requirements:
+${directiveAnalysis}
+`;
+  }
+
+  // 2. 변경된 파일들 (AI의 이전 작업)
+  if (hasChanges) {
+    contextDescription += `
+CURRENT CHANGES (Your Previous Work):
+These are your previous implementation attempts that need to be reviewed/corrected.
+${changes}
+`;
+  }
+
+  // 3. 디자인 문서
+  contextDescription += `
+DESIGN DOCUMENT:
+Follow these architectural decisions and patterns.
+${latestDesign}
+`;
+
+  // 4. PRD
+  contextDescription += `
+REQUIREMENTS (PRD):
+${spec}
+`;
+
+  // 5. 코드베이스 컨텍스트 (RAG)
+  contextDescription += `
+CODEBASE CONTEXT (via RAG):
+Use these patterns and structures as reference.
+${context.memory}
+`;
+
+  let prompt = "";
   if (directive && hasChanges) {
     // Case 1: 디렉티브 있고 changes 있음 → 이전 AI 작업에 대한 피드백
     prompt = `
@@ -94,12 +139,8 @@ ${directive}
 Your analysis of what went wrong:
 ${directiveAnalysis}
 
-Context for maintaining overall coherence:
-Latest Design Document:
-${latestDesign}
-
-Original PRD:
-${spec}
+Context (in priority order):
+${contextDescription}
 
 Your task:
 1. This is a REVISION task - your previous implementation had issues that need to be fixed
@@ -123,12 +164,8 @@ ${directive}
 Your analysis of the requirements:
 ${directiveAnalysis}
 
-Context for implementation:
-Latest Design Document:
-${latestDesign}
-
-Original PRD:
-${spec}
+Context (in priority order):
+${contextDescription}
 
 Your task:
 1. Implement the code according to the directive's requirements (HIGHEST PRIORITY)
@@ -140,11 +177,8 @@ Your task:
     prompt = `
 You are implementing code based on the design document.
 
-Latest Design Document:
-${latestDesign}
-
-Original PRD:
-${spec}
+Context (in priority order):
+${contextDescription}
 
 Your task:
 1. Implement the code exactly as specified in the design document
@@ -181,8 +215,36 @@ Requirements:
   console.log(`  ${hasChanges ? '✅' : '⚠️'} Previous Changes: ${hasChanges ? 'Found' : 'None'}`);
   console.log("\n🤖 Generating code...\n");
   
-  const response = await model.invoke([{ role: "user", content: prompt }]);
-  const output = response.content as string;
+  // AI 사고 과정을 먼저 출력
+  const thinkingPrompt = `${prompt}
+
+**IMPORTANT: Before generating code, explain your thinking process:**
+1. What changes are you planning to make and why?
+2. How does this address the requirements/directive?
+3. What are the key decisions you're making?
+4. Any concerns or trade-offs?
+
+Format:
+=== THINKING ===
+[Your thought process here]
+=== END THINKING ===
+
+Then generate the code files as instructed.`;
+
+  const response = await model.invoke([new HumanMessage(thinkingPrompt)]);
+  const output = typeof response.content === 'string' 
+    ? response.content 
+    : JSON.stringify(response.content);
+
+  // Extract and display thinking process
+  const thinkingMatch = output.match(/=== THINKING ===\n([\s\S]*?)\n=== END THINKING ===/);
+  if (thinkingMatch) {
+    console.log("\n💭 AI's Thinking Process:");
+    console.log("=".repeat(80));
+    console.log(thinkingMatch[1].trim());
+    console.log("=".repeat(80));
+    console.log();
+  }
 
   // Parse multi-file output
   const fileRegex = /=== FILE: (.+?) ===\n([\s\S]*?)\n=== END FILE ===/g;
@@ -260,8 +322,10 @@ What patterns, conventions, or principles should be remembered? Focus on:
 Output in concise bullet points.
 `;
 
-  const learningResponse = await model.invoke([{ role: "user", content: learningPrompt }]);
-  const learnings = learningResponse.content as string;
+  const learningResponse = await model.invoke([new HumanMessage(learningPrompt)]);
+  const learnings = typeof learningResponse.content === 'string' 
+    ? learningResponse.content 
+    : JSON.stringify(learningResponse.content);
 
   // Store learnings in ChromaDB
   await storeLearnings(learnings, context.project, context.featureFolder);
@@ -279,7 +343,10 @@ Output in concise bullet points.
 - Code Directive: ${directive ? 'Yes' : 'No'}
 - Previous Changes: ${hasChanges ? 'Yes' : 'No'}
 
-## Generated Files (${files.length})
+${thinkingMatch ? `## AI's Thinking Process
+${thinkingMatch[1].trim()}
+
+` : ''}## Generated Files (${files.length})
 ${files.map(f => `- ${f.path}`).join('\n')}
 
 ## Deleted Files (${filesToDelete.length})

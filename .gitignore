@@ -40,7 +40,8 @@ pnpm-debug.log*
 *.temp
 .cache/
 
-# ChromaDB data (if running locally without Docker)
+# ChromaDB data
 .chroma/
 chroma_data/
+vector-memory/chroma-data/
 

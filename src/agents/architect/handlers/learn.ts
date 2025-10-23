@@ -1,4 +1,5 @@
 import { ChatAnthropic } from "@langchain/anthropic";
+import { HumanMessage } from "@langchain/core/messages";
 import { getGitInstance, getCurrentBranch, getLatestCommit } from "../../../tools/git";
 import { CodebaseAnalyzer } from "../analyzer/CodebaseAnalyzer";
 import { storeCodebase, storeLearnings, logStoredData } from "../storage";
@@ -59,7 +60,7 @@ Extract key patterns, principles, and architectural decisions that should be rem
 Format your response as clear, categorized bullet points that can be stored as architectural principles.
 `;
 
-  const response = await model.invoke([{ role: "user", content: learningPrompt }]);
+  const response = await model.invoke([new HumanMessage(learningPrompt)]);
   const learnings = response.content as string;
 
   // 5. 학습 내용 저장
