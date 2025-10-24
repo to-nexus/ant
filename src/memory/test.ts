@@ -1,4 +1,4 @@
-import { storeMemory, queryMemory } from './index';
+import { storeMemory, queryMemory } from './';
 
 async function testMemory() {
   // 1. 단일 문자열 저장 테스트

@@ -2,7 +2,7 @@ import { HumanMessage } from "@langchain/core/messages";
 import { DIRECTIVE_TYPES, ProjectContext, ArchitectResult } from "../types";
 import { getDirectivePath, readDirective, findLatestDesign, generateReport } from "../utils";
 import { storeLearnings } from "../storage";
-import { createModel } from "../model";
+import { createModel } from "../llm/createModel";
 import * as path from "path";
 import * as fs from "fs";
 

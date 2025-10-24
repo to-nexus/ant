@@ -9,14 +9,12 @@ export const DIRECTIVE_TYPES = {
 export type DirectiveType = typeof DIRECTIVE_TYPES[keyof typeof DIRECTIVE_TYPES];
 export type AgentMode = 'design' | 'code' | 'learn';
 
-// 비 TypeScript 파일을 위한 구조
 export interface FileStructure {
   kind: 'file';
   fileName: string;
   content: string;
 }
 
-// 코드베이스 노드 타입
 export interface CodebaseNode {
   path: string;
   imports: string[];

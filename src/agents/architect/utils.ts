@@ -27,21 +27,19 @@ export function getDirectivePath(context: ProjectContext, type: DirectiveType): 
 export function readDirective(directivesPath: string, type: DirectiveType): string | null {
   if (!fs.existsSync(directivesPath)) return null;
 
-  // 1. directive-N.md 파일 찾기 (가장 높은 번호)
   const files = fs.readdirSync(directivesPath)
     .filter(f => f.startsWith("directive-") && f.endsWith(".md"))
     .map(f => {
       const match = f.match(/directive-(\d+)\.md$/);
       return match ? { name: f, number: parseInt(match[1]) } : null;
     })
-    .filter(Boolean)
-    .sort((a, b) => b!.number - a!.number);
+    .filter((item): item is {name: string, number: number } => item !== null)
+    .sort((a, b) => b.number - a.number);
 
   if (files.length > 0) {
-    return fs.readFileSync(path.join(directivesPath, files[0]!.name), "utf8");
+    return fs.readFileSync(path.join(directivesPath, files[0].name), "utf8");
   }
 
-  // 2. directive.md 찾기
   const defaultFile = path.join(directivesPath, "directive.md");
   if (fs.existsSync(defaultFile)) {
     return fs.readFileSync(defaultFile, "utf8");

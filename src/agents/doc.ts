@@ -1,5 +1,5 @@
 import { HumanMessage } from "@langchain/core/messages";
-import { createModel } from "./architect/model";
+import { createModel } from "./architect/llm/createModel";
 
 /**
  * DocAgent:

@@ -1,4 +1,4 @@
-import { createModel } from "./architect/model";
+import { createModel } from "./architect/llm/createModel";
 
 /**
  * PlannerAgent:

@@ -25,6 +25,12 @@ const DEFAULT_CONFIGS: Record<ModelProvider, Omit<ModelConfig, 'provider'>> = {
   }
 };
 
+const AGENT_SPECIFIC_CONFIGS: Partial<Record<AgentType, Partial<ModelConfig>>> = {
+  architect: {
+    temperature: 0.1  // Lower for more consistent, focused output
+  }
+};
+
 export interface ModelInfo {
   model: BaseChatModel;
   provider: ModelProvider;
@@ -34,24 +40,26 @@ export interface ModelInfo {
 }
 
 export function createModel(agentType?: AgentType, config?: Partial<ModelConfig>): ModelInfo {
-  // Agent별 환경 변수 확인 (예: ARCHITECT_MODEL_PROVIDER)
   const agentPrefix = agentType ? `${agentType.toUpperCase()}_` : '';
   
   const provider = config?.provider || 
     (process.env[`${agentPrefix}MODEL_PROVIDER`] as ModelProvider) ||
-    (process.env.AI_MODEL_PROVIDER as ModelProvider)
+    (process.env.AI_MODEL_PROVIDER as ModelProvider);
     
   const defaults = DEFAULT_CONFIGS[provider];
-  
+  const agentSpecific = agentType ? AGENT_SPECIFIC_CONFIGS[agentType] : {};
+
   const finalConfig = {
     modelName: config?.modelName || 
       process.env[`${agentPrefix}MODEL_NAME`] ||
       process.env.AI_MODEL_NAME || 
       defaults.modelName,
     temperature: config?.temperature ?? 
-      (process.env[`${agentPrefix}MODEL_TEMPERATURE`] ? parseFloat(process.env[`${agentPrefix}MODEL_TEMPERATURE`]!) : defaults.temperature),
+      (process.env[`${agentPrefix}MODEL_TEMPERATURE`] ? parseFloat(process.env[`${agentPrefix}MODEL_TEMPERATURE`]!) : 
+      (agentSpecific?.temperature ?? defaults.temperature)),
     maxTokens: config?.maxTokens ?? 
-      (process.env[`${agentPrefix}MODEL_MAX_TOKENS`] ? parseInt(process.env[`${agentPrefix}MODEL_MAX_TOKENS`]!) : defaults.maxTokens)
+      (process.env[`${agentPrefix}MODEL_MAX_TOKENS`] ? parseInt(process.env[`${agentPrefix}MODEL_MAX_TOKENS`]!) : 
+      (agentSpecific?.maxTokens ?? defaults.maxTokens))
   };
 
   let model: BaseChatModel;
@@ -65,7 +73,6 @@ export function createModel(agentType?: AgentType, config?: Partial<ModelConfig>
         maxTokens: finalConfig.maxTokens
       });
       break;
-    
     case 'openai':
       model = new ChatOpenAI({
         openAIApiKey: process.env.OPENAI_API_KEY,
@@ -74,7 +81,6 @@ export function createModel(agentType?: AgentType, config?: Partial<ModelConfig>
         maxTokens: finalConfig.maxTokens
       });
       break;
-    
     default:
       throw new Error(`Unsupported model provider: ${provider}`);
   }
@@ -87,4 +93,3 @@ export function createModel(agentType?: AgentType, config?: Partial<ModelConfig>
     maxTokens: finalConfig.maxTokens!
   };
 }
-

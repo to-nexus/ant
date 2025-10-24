@@ -15,8 +15,6 @@ const client = new ChromaClient({
   ssl: url.protocol === "https:"
 });
 
-// Simple embedding function that just passes through
-// Server will handle actual embedding with default model
 // Custom embedding server (all-MiniLM-L6-v2)
 class CustomEmbeddingFunction {
   private embedUrl: string;
@@ -74,13 +72,11 @@ export async function storeMemory(
   metadata?: Record<string, any>
 ): Promise<void> {
   try {
-    // 1. 컬렉션 생성 또는 가져오기
     const collection = await client.getOrCreateCollection({
       name: namespace,
       embeddingFunction: embedder
     });
     
-    // 2. 데이터 준비
     let documents: string[];
     let metadatas: Record<string, any>[];
     let ids: string[];
@@ -95,14 +91,12 @@ export async function storeMemory(
       ids = [`${namespace}-${Date.now()}-${Math.random().toString(36).substring(7)}`];
     }
 
-    // 3. 데이터 저장
     await collection.add({
       documents,
       metadatas,
       ids
     });
 
-    // 4. 컬렉션 정보 출력
     const count = await collection.count();
     console.log(`✅ Memory stored in ChromaDB:`,
       `\n   Collection: ${namespace}`,
@@ -111,7 +105,6 @@ export async function storeMemory(
       `\n   First document preview: ${documents[0].substring(0, 100)}...`
     );
 
-    // 5. 디스크 사용량 확인 (선택적)
     try {
       const stats = await client.heartbeat();
       console.log(`   ChromaDB stats:`, stats);
@@ -127,6 +120,6 @@ export async function storeMemory(
         name: error.name
       });
     }
-    throw error;  // 에러를 상위로 전파하여 실패를 명확히 함
+    throw error;
   }
 }
