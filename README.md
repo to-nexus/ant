@@ -85,6 +85,31 @@ Create `projects/<project-name>/config.json`:
 
 ## Usage
 
+### Architect Quickstart (Primary)
+
+```bash
+# 1) Generate/refresh design from PRD
+pnpm tsx src/index.ts arch-design projects/<project>/<feature>/prd/spec.md
+
+# 2) Generate code from latest design (+ optional directive)
+pnpm tsx src/index.ts arch-code projects/<project>/<feature>
+
+# 3) Review
+# - Inspect changes in the target repo via `git diff`
+# - Read report: projects/<project>/<feature>/generated/reports/code-generation-report-*.md
+```
+
+Key behaviors (Architect):
+- Plan → Code two-phase flow using the latest design.
+- Uses COMPLETE HEAD originals as the modification base (no truncation).
+- Minimal-change invariant: preserve structure/logic; style-only edits don’t refactor logic.
+- Strict output rules: pure code (no backticks/markdown), actual paths, COMPLETE files (no ellipsis).
+- Type-safety defaults: guard possibly-undefined (e.g., `projectId ?? ''`, `language ?? 'en'`), consistent null→undefined.
+- Required integrations auto-inferred from design/plan and enforced with a guided retry.
+- Excessive deletion or skipped code triggers a single stricter regeneration.
+
+See detailed architecture: docs/project-architecture.md
+
 ### Workflow
 
 ```bash
@@ -107,7 +132,7 @@ git diff
 # Check: projects/cross-ramp/feature-ui-1.2.0/generated/reports/code-generation-report-*.md
 
 # 5. (Optional) Create directive file and regenerate
-cat > projects/cross-ramp/feature-ui-1.2.0/directives/code-directive-1.md << EOF
+cat > projects/cross-ramp/feature-ui-1.2.0/directives/code/directive-1.md << EOF
 - Add error handling for all async operations
 - Use more descriptive function names
 EOF
@@ -144,7 +169,7 @@ git push origin feature/feature-ui-1.2.0
 **Auto-detection:**
 - Project: `projects/cross-ramp/...` → `cross-ramp`
 - Design: Latest `generated/design/design-*.md`
-- Code Directive: Latest `directives/code-directive-N.md` by number (automatically detected)
+- Code Directive: Latest `directives/code/directive-N.md` by number (automatically detected)
 - Branch: Reused if exists
 
 **Directive Structure:**
@@ -159,6 +184,17 @@ directives/
 ```
 
 Higher number (N) = latest version
+
+### Recent Updates (Architect Agent)
+- Uses COMPLETE original files from HEAD (no truncation) as the modification base.
+- Two-phase flow in arch-code: Plan (with latest design) → Implementation.
+- Directive is treated as incremental changes; prior integrations aren’t rolled back.
+- Strict output rules: pure code (no backticks), actual paths, COMPLETE files (no ellipsis).
+- Minimal-change invariant: preserve structure/logic; style-only edits don’t refactor logic.
+- Type safety: guard possibly-undefined (e.g., projectId ?? '', language ?? 'en'); consistent null→undefined boundary.
+- Required integrations auto-inferred from design/plan; enforced post-generation with one guided retry.
+- Output validation: detects excessive deletions or skipped code and retries once with stricter instructions.
+- Architect model tuned for consistency (lower temperature by default).
 
 ### Commands
 
@@ -200,3 +236,11 @@ projects/<project>/<feature>/
     └── learn/                           # Learning directives
         └── directive-N.md                # Learning targets and aspects
 ```
+
+### Vector Memory (Embeddings + ChromaDB)
+- Bring up services: `cd vector-memory && docker-compose up -d`
+- Configure via `.env`:
+  - `CHROMA_URL` (default http://localhost:8000)
+  - `EMBEDDER_URL` (default http://localhost:8001)
+- Architect stores learnings after each arch-code run; other agents can query memory for context.
+- Details: docs/project-architecture.md#11-embeddings--vector-db-chromadb

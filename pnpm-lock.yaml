@@ -14,6 +14,9 @@ importers:
       '@langchain/core':
         specifier: ^1.0.1
         version: 1.0.1(openai@6.5.0(zod@4.1.12))
+      '@langchain/langgraph':
+        specifier: ^1.0.1
+        version: 1.0.1(@langchain/core@1.0.1(openai@6.5.0(zod@4.1.12)))(zod@4.1.12)
       '@langchain/openai':
         specifier: ^1.0.0
         version: 1.0.0(@langchain/core@1.0.1(openai@6.5.0(zod@4.1.12)))
@@ -32,9 +35,6 @@ importers:
       langchain:
         specifier: ^1.0.1
         version: 1.0.1(@langchain/core@1.0.1(openai@6.5.0(zod@4.1.12)))(openai@6.5.0(zod@4.1.12))
-      langgraph.git:
-        specifier: github:langchain-ai/langgraph
-        version: langgraph@https://codeload.github.com/langchain-ai/langgraph/tar.gz/d298b489b477b6b6d479faf80b20aeba89a96ba5
       openai:
         specifier: ^6.5.0
         version: 6.5.0(zod@4.1.12)
@@ -262,8 +262,8 @@ packages:
       react-dom:
         optional: true
 
-  '@langchain/langgraph@1.0.0':
-    resolution: {integrity: sha512-2k7Thk5qH0zMhP+sbNKwQZl6zSwxKtrsFmHGOEvUUMjH6Rb9n5IMxoF5WTJlP/CGMO9ulI+5UefNz3rOfjuPBg==}
+  '@langchain/langgraph@1.0.1':
+    resolution: {integrity: sha512-7y8OTDLrHrpJ55Y5x7c7zU2BbqNllXwxM106Xrd+NaQB5CpEb4hbUfIwe4XmhhscKPwvhXAq3tjeUxw9MCiurQ==}
     engines: {node: '>=18'}
     peerDependencies:
       '@langchain/core': ^1.0.1
@@ -462,10 +462,6 @@ packages:
     engines: {node: '>=20'}
     peerDependencies:
       '@langchain/core': ^1.0.0
-
-  langgraph@https://codeload.github.com/langchain-ai/langgraph/tar.gz/d298b489b477b6b6d479faf80b20aeba89a96ba5:
-    resolution: {tarball: https://codeload.github.com/langchain-ai/langgraph/tar.gz/d298b489b477b6b6d479faf80b20aeba89a96ba5}
-    version: 0.0.0
 
   langsmith@0.3.74:
     resolution: {integrity: sha512-ZuW3Qawz8w88XcuCRH91yTp6lsdGuwzRqZ5J0Hf5q/AjMz7DwcSv0MkE6V5W+8hFMI850QZN2Wlxwm3R9lHlZg==}
@@ -708,7 +704,7 @@ snapshots:
     optionalDependencies:
       '@langchain/core': 1.0.1(openai@6.5.0(zod@4.1.12))
 
-  '@langchain/langgraph@1.0.0(@langchain/core@1.0.1(openai@6.5.0(zod@4.1.12)))(zod@4.1.12)':
+  '@langchain/langgraph@1.0.1(@langchain/core@1.0.1(openai@6.5.0(zod@4.1.12)))(zod@4.1.12)':
     dependencies:
       '@langchain/core': 1.0.1(openai@6.5.0(zod@4.1.12))
       '@langchain/langgraph-checkpoint': 1.0.0(@langchain/core@1.0.1(openai@6.5.0(zod@4.1.12)))
@@ -914,7 +910,7 @@ snapshots:
   langchain@1.0.1(@langchain/core@1.0.1(openai@6.5.0(zod@4.1.12)))(openai@6.5.0(zod@4.1.12)):
     dependencies:
       '@langchain/core': 1.0.1(openai@6.5.0(zod@4.1.12))
-      '@langchain/langgraph': 1.0.0(@langchain/core@1.0.1(openai@6.5.0(zod@4.1.12)))(zod@4.1.12)
+      '@langchain/langgraph': 1.0.1(@langchain/core@1.0.1(openai@6.5.0(zod@4.1.12)))(zod@4.1.12)
       '@langchain/langgraph-checkpoint': 1.0.0(@langchain/core@1.0.1(openai@6.5.0(zod@4.1.12)))
       uuid: 10.0.0
       zod: 4.1.12
@@ -928,8 +924,6 @@ snapshots:
       - react
       - react-dom
       - zod-to-json-schema
-
-  langgraph@https://codeload.github.com/langchain-ai/langgraph/tar.gz/d298b489b477b6b6d479faf80b20aeba89a96ba5: {}
 
   langsmith@0.3.74(openai@6.5.0(zod@4.1.12)):
     dependencies:

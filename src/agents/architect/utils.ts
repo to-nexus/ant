@@ -91,3 +91,37 @@ export function generateReport(
   
   return reportFile;
 }
+
+export function extractRequiredIntegrationsFromDesign(designMarkdown: string, planMarkdown?: string): string[] {
+  const names = new Set<string>();
+  const sources = [designMarkdown || '', planMarkdown || ''];
+
+  for (const src of sources) {
+    // 1) Backticked identifiers like `TabMenu`, `ErrorBoundary`, `SessionProvider`
+    const tickRe = /`([A-Z][A-Za-z0-9]+(?:Provider|Context|Hook)?)`/g;
+    let m: RegExpExecArray | null;
+    while ((m = tickRe.exec(src)) !== null) {
+      names.add(m[1]);
+    }
+
+    // 2) JSX-like usage e.g., <TabMenu ...>, <SessionProvider>
+    const jsxRe = /<([A-Z][A-Za-z0-9]+)\b/g;
+    while ((m = jsxRe.exec(src)) !== null) {
+      names.add(m[1]);
+    }
+
+    // 3) Import mentions e.g., import { TabMenu } from '...'; import SessionProvider from '...'
+    const impRe = /import\s+(?:\{\s*)?([A-Z][A-Za-z0-9]+)(?:\s*,\s*[A-Z][A-Za-z0-9]+)*\s*(?:\}|)\s*from\s*['"][^'"]+['"]/g;
+    while ((m = impRe.exec(src)) !== null) {
+      names.add(m[1]);
+    }
+
+    // 4) Bullet or directive style mentions like: - Use TabMenu component
+    const bulletRe = /\bUse\s+([A-Z][A-Za-z0-9]+)\s+(?:component|provider|hook)\b/gi;
+    while ((m = bulletRe.exec(src)) !== null) {
+      names.add(m[1]);
+    }
+  }
+
+  return Array.from(names);
+}

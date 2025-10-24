@@ -112,6 +112,21 @@ RULE 6: Self-Verification
   □ Addressed directive if one exists
   □ Import paths are valid
   □ All code and comments are in English
+
+RULE 7: Type Safety & Null Handling (STRICT)
+- Treat possibly undefined inputs with defaults or guards (e.g., projectId ?? '', language ?? 'en')
+- Use explicit types; avoid implicit any
+- Prefer guard clauses or early returns for invalid inputs
+- null vs undefined policy:
+  - Use undefined at boundaries for React props and optional fields
+  - Convert null to undefined where needed (e.g., const value: T | undefined = maybeNull ?? undefined)
+  - Keep this consistent across files and functions
+- Ensure no TypeScript errors (assume strict mode)
+
+RULE 8: Style-Only Changes Preserve Structure
+- If the task is primarily styling (e.g., TabMenu UI), DO NOT change logic/state/data hooks
+- Keep imports, state, effects, providers, and layout structure unchanged
+- Only adjust classes/style-related props and minimal glue code needed to integrate components
 </critical_rules>
 
 <common_mistakes_to_avoid>
@@ -538,6 +553,17 @@ DESIGN CONFORMANCE CHECKS:
 □ Used components/patterns specified in DESIGN DOCUMENT
 □ Code structure matches DESIGN DOCUMENT conventions
 □ If DIRECTIVE changed requirements, I still followed DESIGN's architectural patterns
+
+TYPE & RUNTIME CHECKS:
+□ No TypeScript errors (mentally verify strict typing)
+□ No implicit any introduced
+□ All possibly-undefined values are guarded or defaulted (e.g., projectId, language)
+□ Null vs undefined handled consistently (convert null → undefined at boundaries)
+
+STYLE-ONLY CHANGE CHECKS (if applicable):
+□ No removal of existing imports/state/effects/providers unrelated to style
+□ No logic refactors; only className/styles/glue code adjusted
+□ Component integration preserves previous behavior
 
 If ANY checkbox is unchecked, FIX IT before outputting.
 </self_verification>
