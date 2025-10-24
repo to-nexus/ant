@@ -1,6 +1,6 @@
 # AI Development Framework — 프로젝트 개요 및 개발 로드맵
 
-**작성자:** 정우준  
+**작성자:** 정우준
 **일자:** 2025-10-24  
 **프로젝트:** AI-Driven Development Framework (Architect Agent PoC)
 
@@ -161,7 +161,7 @@ AI를 단순한 코딩 도우미가 아닌,
 
 | 순서 | 개발 모듈 | 일정 | 상태 | 비고 |
 |------|------------|------|------|------|
-| 1 | Framework Core Skeleton | 2025 Q4 | 진행 중 | 시스템 기반 구조 확립 |
+| 1 | Framework Core Skeleton | 2025 Q4 | 시작 | 시스템 기반 구조 확립 |
 | 2 | Prompt Engine | 2025 Q4 | 예정 | 프롬프트 표준화 및 모델 제어 |
 | 3 | Agent Workflow Graph | 2025 Q4 | 예정 | LangGraph 기반 워크플로우 구성 |
 | 4 | Validation & Guardrail Engine | 2025 Q4 | 예정 | 출력 검증 및 자동 재시도 로직 |
