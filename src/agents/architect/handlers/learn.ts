@@ -4,7 +4,7 @@ import { CodebaseAnalyzer } from "../analyzer/CodebaseAnalyzer";
 import { storeCodebase, storeLearnings, logStoredData } from "../storage";
 import { getDirectivePath, readDirective, generateReport } from "../utils";
 import { DIRECTIVE_TYPES, ProjectContext, ArchitectResult } from "../types";
-import { createModel } from "../model";
+import { createModel } from "../llm/createModel";
 
 const modelInfo = createModel('architect');
 const model = modelInfo.model;

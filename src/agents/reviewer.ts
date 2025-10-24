@@ -1,6 +1,6 @@
 import { HumanMessage } from "@langchain/core/messages";
 import { queryMemory } from "../memory";
-import { createModel } from "./architect/model";
+import { createModel } from "./architect/llm/createModel";
 
 const modelInfo = createModel('reviewer');
 const model = modelInfo.model;

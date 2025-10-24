@@ -44,17 +44,14 @@ export async function getLatestCommit(git: any): Promise<{ hash: string; date: s
 export async function createBranch(git: any, branch: string, base: string) {
   await git.fetch();
   
-  // Check if branch already exists locally or remotely
   const branches = await git.branch();
   const localExists = branches.all.includes(branch);
   const remoteExists = branches.all.includes(`remotes/origin/${branch}`);
   
   if (localExists || remoteExists) {
-    // Branch exists, just checkout
     console.log(`📌 Branch '${branch}' already exists, checking out...`);
     await git.checkout(branch);
   } else {
-    // Create new branch
     console.log(`🌿 Creating new branch '${branch}' from origin/${base}...`);
     await git.checkoutBranch(branch, `origin/${base}`);
   }
@@ -91,4 +88,52 @@ export async function openPullRequest(config: any, branch: string, title: string
     base: config.branchBase || GIT_DEFAULT_BASE,
     body
   });
+}
+
+/**
+ * Get list of changed files (unstaged and staged)
+ */
+export async function getChangedFiles(git: any): Promise<string[]> {
+  const status = await git.status();
+  const files = new Set<string>();
+  
+  // Add modified files
+  status.modified.forEach((f: string) => files.add(f));
+  status.created.forEach((f: string) => files.add(f));
+  status.deleted.forEach((f: string) => files.add(f));
+  status.renamed.forEach((r: any) => files.add(r.to));
+  
+  return Array.from(files);
+}
+
+/**
+ * Get file content from HEAD (last commit)
+ * Returns null if file doesn't exist in HEAD (new file)
+ */
+export async function getFileFromHead(git: any, filePath: string): Promise<string | null> {
+  try {
+    const content = await git.show([`HEAD:${filePath}`]);
+    return content;
+  } catch (error) {
+    // File doesn't exist in HEAD (newly created file)
+    return null;
+  }
+}
+
+/**
+ * Get file content from working directory
+ */
+export async function getFileFromWorkingDir(git: any, filePath: string): Promise<string | null> {
+  try {
+    const baseDir = await git.revparse(['--show-toplevel']);
+    const fullPath = path.join(baseDir.trim(), filePath);
+    
+    if (!fs.existsSync(fullPath)) {
+      return null;
+    }
+    
+    return fs.readFileSync(fullPath, 'utf-8');
+  } catch (error) {
+    return null;
+  }
 }
