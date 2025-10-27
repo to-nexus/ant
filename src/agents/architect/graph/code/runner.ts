@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { ArchitectGraphState } from "../state";
 import { buildCodeGraph } from "./graph";
-import { createBranch, getGitInstance } from "../../../../tools/git";
+import { SimpleGitAdapter } from "../../../../periphery/adapters/git/SimpleGitAdapter";
 import { report } from "../nodes/report";
 
 export async function runCodeGraph(initial: ArchitectGraphState) {
@@ -10,11 +10,15 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
   const result = await (app as any).invoke(initial as any);
   const state = result as ArchitectGraphState;
 
-  const git = await getGitInstance(state.context.project, state.context.config);
+  const gitPort = new SimpleGitAdapter(state.context.project, state.context.config);
+  const git = await (gitPort as any)["ensure"]?.() || await (gitPort as any).git || await (async () => {
+    // fallback to instance via adapter private ensure
+    return (gitPort as any);
+  })();
   const branch = state.context.featureFolder
     ? `feature/${state.context.featureFolder}`
     : `feature/${state.context.project}-arch-${Date.now()}`;
-  await createBranch(git, branch, state.context.config.branchBase);
+  await gitPort.createBranch(branch, state.context.config.branchBase);
 
   const baseDir = await git.revparse(['--show-toplevel']);
   for (const f of state.files) {

@@ -1,6 +1,6 @@
 import * as path from "path";
 import * as fs from "fs";
-import { DirectiveType, DIRECTIVE_TYPES, ProjectContext } from "./types";
+import { ProjectContext, DirectiveType } from "./types";
 
 export function extractFeatureFolder(inputFile: string | undefined, project: string): string {
   if (!inputFile) return "";
@@ -37,12 +37,14 @@ export function readDirective(directivesPath: string, type: DirectiveType): stri
     .sort((a, b) => b.number - a.number);
 
   if (files.length > 0) {
-    return fs.readFileSync(path.join(directivesPath, files[0].name), "utf8");
+    const content = fs.readFileSync(path.join(directivesPath, files[0].name), "utf8").trim();
+    return content.length > 0 ? content : null;
   }
 
   const defaultFile = path.join(directivesPath, "directive.md");
   if (fs.existsSync(defaultFile)) {
-    return fs.readFileSync(defaultFile, "utf8");
+    const content = fs.readFileSync(defaultFile, "utf8").trim();
+    return content.length > 0 ? content : null;
   }
 
   return null;
@@ -90,38 +92,4 @@ export function generateReport(
   fs.writeFileSync(reportFile, content, "utf8");
   
   return reportFile;
-}
-
-export function extractRequiredIntegrationsFromDesign(designMarkdown: string, planMarkdown?: string): string[] {
-  const names = new Set<string>();
-  const sources = [designMarkdown || '', planMarkdown || ''];
-
-  for (const src of sources) {
-    // 1) Backticked identifiers like `TabMenu`, `ErrorBoundary`, `SessionProvider`
-    const tickRe = /`([A-Z][A-Za-z0-9]+(?:Provider|Context|Hook)?)`/g;
-    let m: RegExpExecArray | null;
-    while ((m = tickRe.exec(src)) !== null) {
-      names.add(m[1]);
-    }
-
-    // 2) JSX-like usage e.g., <TabMenu ...>, <SessionProvider>
-    const jsxRe = /<([A-Z][A-Za-z0-9]+)\b/g;
-    while ((m = jsxRe.exec(src)) !== null) {
-      names.add(m[1]);
-    }
-
-    // 3) Import mentions e.g., import { TabMenu } from '...'; import SessionProvider from '...'
-    const impRe = /import\s+(?:\{\s*)?([A-Z][A-Za-z0-9]+)(?:\s*,\s*[A-Z][A-Za-z0-9]+)*\s*(?:\}|)\s*from\s*['"][^'"]+['"]/g;
-    while ((m = impRe.exec(src)) !== null) {
-      names.add(m[1]);
-    }
-
-    // 4) Bullet or directive style mentions like: - Use TabMenu component
-    const bulletRe = /\bUse\s+([A-Z][A-Za-z0-9]+)\s+(?:component|provider|hook)\b/gi;
-    while ((m = bulletRe.exec(src)) !== null) {
-      names.add(m[1]);
-    }
-  }
-
-  return Array.from(names);
 }

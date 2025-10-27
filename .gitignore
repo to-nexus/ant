@@ -51,3 +51,6 @@ projects/**/generated/reports/*.md
 !projects/**/generated/design/.gitkeep
 !projects/**/generated/reports/.gitkeep
 
+# Vector memory binaries
+/src/periphery/integrations/vector-memory/chroma-data/
+

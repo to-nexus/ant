@@ -1,19 +1,24 @@
 import { ProjectContext, AgentMode, ArchitectResult } from "./types";
 import { extractFeatureFolder } from "./utils";
-import { loadProjectGitConfig } from "../../tools/git";
-import { getContextMemory } from "./context";
+import { loadProjectConfig } from "../../core/config";
+import { retrieve } from "./memoryService";
+import { MemoryPort, LLMClient } from "../../core/ports";
 import { runCodeGraph } from "./graph/code/runner";
-import { ArchitectGraphState } from "./graph/state";
+import { ArchitectGraphState } from "./graph/code/state";
 import { runDesignGraph } from "./graph/design/runner";
 import { DesignGraphState } from "./graph/design/state";
 import { runLearnGraph } from "./graph/learn/runner";
 import { LearnGraphState } from "./graph/learn/state";
+import { FilePromptAdapter } from "../../periphery/adapters/prompt/FilePromptAdapter";
+import { PromptRenderer } from "../../periphery/adapters/prompt/PromptRenderer";
+import { ArchitectPromptor } from "./prompt/ArchitectPromptor";
 
 export async function architectAgent(
   spec: string, 
   project: string,
   mode: AgentMode = 'design',
-  inputFile?: string
+  inputFile?: string,
+  deps?: { memory?: MemoryPort; llm?: LLMClient }
 ): Promise<ArchitectResult> {
   // Initialize context
   const featureFolder = extractFeatureFolder(inputFile, project);
@@ -23,8 +28,8 @@ export async function architectAgent(
     project,
     featureFolder,
     workingDir: process.cwd(),
-    config: await loadProjectGitConfig(project),
-    memory: await getContextMemory(mode, project, featureFolder)
+    config: await loadProjectConfig(project),
+    memory: await retrieve(mode, project, featureFolder, deps?.memory ? { memory: deps.memory } : undefined)
   };
 
   // Call appropriate handler based on mode
@@ -62,9 +67,19 @@ export async function architectAgent(
       };
     case 'code':
       // Run via code graph
+      // Initialize prompt engine components
+      const promptLoader = new FilePromptAdapter();
+      const promptRenderer = new PromptRenderer();
+      const promptor = new ArchitectPromptor(promptLoader, promptRenderer);
+      
       const initial: ArchitectGraphState = {
         context,
         spec,
+        deps: { 
+          memory: deps?.memory, 
+          llm: deps?.llm,
+          promptor
+        },
         latestDesign: "",
         directive: "",
         originalFilesBlock: "",
