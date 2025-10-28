@@ -12,7 +12,7 @@ export interface TaskInputs {
 
 /**
  * ArchitectPromptor - High-level prompt composition for architect agent
- * Orchestrates modular templates from templates/ directory
+ * Orchestrates modular prompts from prompts/ directory
  */
 export class ArchitectPromptor {
   private systemPromptCache: string | null = null;
