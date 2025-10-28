@@ -1,0 +1,73 @@
+{
+  "common": {
+    "format": {
+      "output": "Always use markdown for documentation",
+      "code": "Never use markdown code fences for actual file output",
+      "structure": "Maintain consistent indentation and formatting"
+    },
+    "prohibited": [
+      "Do not use ellipsis (...) or placeholder comments",
+      "Do not skip code sections with '// ... rest of code'",
+      "Do not use 'TODO' or 'FIXME' in production code",
+      "Never output incomplete files"
+    ],
+    "quality": [
+      "Always include complete imports",
+      "Always include all type definitions",
+      "Verify all paths and references are correct",
+      "Ensure no unused imports or variables"
+    ]
+  },
+  "code": {
+    "plan": {
+      "rules": [
+        "Break down tasks into clear, atomic steps",
+        "Identify dependencies between files",
+        "Consider edge cases and error handling",
+        "Estimate complexity and risks"
+      ]
+    },
+    "execute": {
+      "rules": [
+        "Follow the plan exactly",
+        "Write production-ready code only",
+        "Include comprehensive error handling",
+        "Add inline comments for complex logic only"
+      ],
+      "validation": [
+        "Check: All imports are valid",
+        "Check: No syntax errors",
+        "Check: Types are correct (TypeScript)",
+        "Check: No hardcoded values that should be configurable"
+      ]
+    }
+  },
+  "design": {
+    "plan": {
+      "rules": [
+        "Consider all stakeholders",
+        "Identify technical constraints",
+        "Evaluate architectural patterns",
+        "Consider scalability and maintainability"
+      ]
+    },
+    "execute": {
+      "rules": [
+        "Use clear section headings",
+        "Include diagrams where helpful (mermaid)",
+        "Define all interfaces and contracts",
+        "Specify data flow and state management"
+      ]
+    }
+  },
+  "strict_mode": {
+    "enabled_for": ["code"],
+    "rules": [
+      "CRITICAL: Never use placeholder ellipsis",
+      "CRITICAL: Output must be byte-for-byte correct",
+      "CRITICAL: All files must be complete",
+      "CRITICAL: No 'will be implemented later' statements"
+    ]
+  }
+}
+

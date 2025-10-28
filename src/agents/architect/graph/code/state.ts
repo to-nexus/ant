@@ -1,6 +1,6 @@
 import { ProjectContext, CodeMode } from "../../types";
 import { GitPort, MemoryPort, LLMClient, CodebaseAnalyzerPort, CodebaseProfile } from "../../../../core/ports";
-import { ArchitectPromptor } from "../../prompt/ArchitectPromptor";
+import { PromptEngine } from "../../../../core/prompt/engine";
 
 export interface IntegrationRequirement {
   name: string;
@@ -23,7 +23,7 @@ export interface ArchitectGraphState {
     git?: GitPort; 
     memory?: MemoryPort; 
     llm?: LLMClient;
-    promptor?: ArchitectPromptor;
+    promptEngine?: PromptEngine;
     analyzer?: CodebaseAnalyzerPort;
   };
   gitPort?: GitPort;  // For runner to use after graph execution

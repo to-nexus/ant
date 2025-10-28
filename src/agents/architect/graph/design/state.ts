@@ -1,13 +1,13 @@
 import { ProjectContext } from "../../types";
 import { LLMClient } from "../../../../core/ports";
-import { ArchitectPromptor } from "../../prompt/ArchitectPromptor";
+import { PromptEngine } from "../../../../core/prompt/engine";
 
 export interface DesignGraphState {
   context: ProjectContext;
   spec: string;
   deps?: {
     llm?: LLMClient;
-    promptor?: ArchitectPromptor;
+    promptEngine?: PromptEngine;
   };
 
   previousDesign: string;
