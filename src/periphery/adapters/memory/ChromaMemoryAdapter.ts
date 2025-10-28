@@ -1,4 +1,4 @@
-import { MemoryPort } from "../../../core/ports";
+import { MemoryPort, QueryOptions, QueryResult } from "../../../core/ports";
 import { ChromaClient } from "chromadb";
 
 class CustomEmbeddingFunction {
@@ -37,10 +37,42 @@ export class ChromaMemoryAdapter implements MemoryPort {
     const ids = documents.map(() => `${namespace}-${Date.now()}-${Math.random().toString(36).substring(7)}`);
     await collection.add({ documents: docs, metadatas, ids });
   }
-  async query(query: string, namespace: string, k = 5): Promise<string[]> {
+  
+  async query(query: string, namespace: string, options?: QueryOptions): Promise<QueryResult[]> {
     const collection = await client.getOrCreateCollection({ name: namespace, embeddingFunction: embedder });
-    const results = await collection.query({ queryTexts: [query], nResults: k });
+    
+    const k = options?.k || 5;
+    const where = options?.where;
+    const minScore = options?.minScore || 0;
+    
+    // Query with metadata filtering
+    const results = await collection.query({ 
+      queryTexts: [query], 
+      nResults: k,
+      where: where as any  // ChromaDB where clause
+    });
+    
     const documents = results.documents?.[0] || [];
-    return documents.filter((doc): doc is string => typeof doc === "string");
+    const distances = results.distances?.[0] || [];
+    const metadatas = results.metadatas?.[0] || [];
+    
+    // Convert distance to similarity score (cosine distance -> similarity)
+    // ChromaDB returns L2 distance, convert to similarity: 1 / (1 + distance)
+    const queryResults: QueryResult[] = documents
+      .map((doc, i) => {
+        if (typeof doc !== 'string') return null;
+        
+        const distance = distances[i] || 0;
+        const score = 1 / (1 + distance);  // Normalize to 0-1
+        
+        return {
+          content: doc,
+          score,
+          metadata: (metadatas[i] as Record<string, any>) || {}
+        };
+      })
+      .filter((result): result is QueryResult => result !== null && result.score >= minScore);
+    
+    return queryResults;
   }
 }
