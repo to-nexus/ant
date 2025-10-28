@@ -1,4 +1,4 @@
-import { PromptPort } from "../../../core/ports";
+import { PromptPort, ProfilePort, CodebaseProfile } from "../../../core/ports";
 import { ProjectContext } from "../types";
 
 export interface TaskInputs {
@@ -13,11 +13,15 @@ export interface TaskInputs {
 /**
  * ArchitectPromptor - High-level prompt composition for architect agent
  * Orchestrates modular prompts from prompts/ directory
+ * Dynamically injects language/framework profiles when detected
  */
 export class ArchitectPromptor {
   private systemPromptCache: Record<string, string> = {};
 
-  constructor(private promptPort: PromptPort) {}
+  constructor(
+    private promptPort: PromptPort,
+    private profilePort?: ProfilePort
+  ) {}
 
   /**
    * Load and cache system prompt per task (code/design/learn),
@@ -47,6 +51,35 @@ export class ArchitectPromptor {
   private truncate(content: string, maxLength: number): string {
     if (content.length <= maxLength) return content;
     return `${content.substring(0, maxLength)}...\n[truncated]`;
+  }
+
+  /**
+   * Helper: Build profile section from detected codebase profile
+   */
+  private async buildProfileSection(profile?: CodebaseProfile | null): Promise<string> {
+    if (!this.profilePort || !profile) {
+      return '';
+    }
+
+    const sections: string[] = [];
+
+    // Load language profile
+    if (profile.language) {
+      const languageProfile = await this.profilePort.loadLanguage(profile.language);
+      if (languageProfile) {
+        sections.push(`<language_profile language="${profile.language}">\n${languageProfile}\n</language_profile>`);
+      }
+    }
+
+    // Load framework profile
+    if (profile.framework) {
+      const frameworkProfile = await this.profilePort.loadFramework(profile.framework);
+      if (frameworkProfile) {
+        sections.push(`<framework_profile framework="${profile.framework}">\n${frameworkProfile}\n</framework_profile>`);
+      }
+    }
+
+    return sections.length > 0 ? `\n\n${sections.join('\n\n')}\n\n` : '';
   }
 
   /**
@@ -115,16 +148,18 @@ export class ArchitectPromptor {
   }
 
   /**
-   * Build execute phase prompt for a task by composing: system + {task}/phases/execute/* + examples
+   * Build execute phase prompt for a task by composing: system + profiles + {task}/phases/execute/* + examples
    */
   async buildExecutePrompt(
     task: "code" | "design" | "learn",
     context: ProjectContext,
     inputs: TaskInputs,
     plan: string,
-    mode?: string
+    mode?: string,
+    codebaseProfile?: CodebaseProfile | null
   ): Promise<string> {
     const system = await this.getSystemPrompt(task);
+    const profileSection = await this.buildProfileSection(codebaseProfile);
     const hasOriginalFiles = Boolean(inputs.originalFiles?.length);
     const basePrefix = `${task}/base`;
     const execPrefix = `${task}/phases/execute`;
@@ -174,8 +209,8 @@ export class ArchitectPromptor {
     // Load examples
     const examples = await this.promptPort.render(`${basePrefix}/examples`, {});
 
-    // Compose
-    return `${system}\n\n${renderedCodeBase}\n\n${renderedCodeRules}\n\n${examples}`;
+    // Compose: system + profiles + base + rules + examples
+    return `${system}${profileSection}\n\n${renderedCodeBase}\n\n${renderedCodeRules}\n\n${examples}`;
   }
 
   /**

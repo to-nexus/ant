@@ -2,7 +2,7 @@ import { ProjectContext, AgentTask, CodeMode, ArchitectResult } from "./types";
 import { extractFeatureFolder } from "./utils";
 import { retrieve } from "./memory";
 import { inferCodeMode } from "./modeInference";
-import { MemoryPort, LLMClient, PromptPort, GitPort, ConfigPort } from "../../core/ports";
+import { MemoryPort, LLMClient, PromptPort, GitPort, ConfigPort, CodebaseAnalyzerPort, ProfilePort } from "../../core/ports";
 import { runCodeGraph } from "./graph/code/runner";
 import { ArchitectGraphState } from "./graph/code/state";
 import { runDesignGraph } from "./graph/design/runner";
@@ -16,7 +16,15 @@ export async function architectAgent(
   project: string,
   task: AgentTask = 'design',
   inputFile?: string,
-  deps?: { memory?: MemoryPort; llm?: LLMClient; promptPort?: PromptPort; git?: GitPort; config?: ConfigPort },
+  deps?: { 
+    memory?: MemoryPort; 
+    llm?: LLMClient; 
+    promptPort?: PromptPort; 
+    profilePort?: ProfilePort;
+    analyzer?: CodebaseAnalyzerPort;
+    git?: GitPort; 
+    config?: ConfigPort;
+  },
   codeMode?: CodeMode
 ): Promise<ArchitectResult> {
   // Initialize context
@@ -58,7 +66,7 @@ export async function architectAgent(
       if (!deps?.promptPort) {
         throw new Error("PromptPort not provided for design generation");
       }
-      const designPromptor = new ArchitectPromptor(deps.promptPort);
+      const designPromptor = new ArchitectPromptor(deps.promptPort, deps.profilePort);
 
       const dInitial: DesignGraphState = {
         context,
@@ -85,7 +93,7 @@ export async function architectAgent(
       if (!deps?.promptPort) {
         throw new Error("PromptPort not provided for code generation");
       }
-      const promptor = new ArchitectPromptor(deps.promptPort);
+      const promptor = new ArchitectPromptor(deps.promptPort, deps.profilePort);
       
       const initial: ArchitectGraphState = {
         context,
@@ -94,6 +102,7 @@ export async function architectAgent(
           memory: deps?.memory, 
           llm: deps?.llm,
           promptor,
+          analyzer: deps?.analyzer,
           git: deps?.git
         },
         gitPort: deps?.git,
@@ -108,7 +117,8 @@ export async function architectAgent(
         requiredIntegrations: [],
         retries: 0,
         maxRetries: 1,
-        codeMode: codeMode // Will be inferred in graph nodes
+        codeMode: codeMode, // Will be inferred in graph nodes
+        codebaseProfile: null  // Will be detected in resolve node
       };
       const result = await runCodeGraph(initial);
       return {

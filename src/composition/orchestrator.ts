@@ -5,6 +5,8 @@ import { docAgent } from "../agents/doc";
 import { ChromaMemoryAdapter } from "../periphery/adapters/memory/ChromaMemoryAdapter";
 import { GenericLLMClient } from "../periphery/adapters/llm/GenericLLMClient";
 import { FilePromptAdapter } from "../periphery/adapters/prompt/FilePromptAdapter";
+import { FileProfileAdapter } from "../periphery/adapters/profile/FileProfileAdapter";
+import { CodebaseAnalyzer } from "../periphery/adapters/analyzer/CodebaseAnalyzer";
 import { SimpleGitAdapter } from "../periphery/adapters/git/SimpleGitAdapter";
 import { FileConfigAdapter } from "../periphery/adapters/config/FileConfigAdapter";
 
@@ -38,22 +40,24 @@ export async function orchestrator(params: {
       const memory = new ChromaMemoryAdapter();
       const llm = new GenericLLMClient('architect');
       const promptPort = new FilePromptAdapter();
+      const profilePort = new FileProfileAdapter();
       const config = new FileConfigAdapter();
-      return await architectAgent(input, project || "default", 'design', inputFile, { memory, llm, promptPort, config });
+      return await architectAgent(input, project || "default", 'design', inputFile, { memory, llm, promptPort, profilePort, config });
     }
     
     case "arch-code": {
       const memory = new ChromaMemoryAdapter();
       const llm = new GenericLLMClient('architect');
       const promptPort = new FilePromptAdapter();
+      const profilePort = new FileProfileAdapter();
+      const analyzer = new CodebaseAnalyzer();
       const config = new FileConfigAdapter();
       const configData = await config.load(project || "default");
       const git = new SimpleGitAdapter(project || "default", configData);
       
-      // TODO: Infer code mode from input (directive analysis)
-      const codeMode = undefined; // Will be inferred in future step
+      const codeMode = undefined; // Will be inferred in graph nodes
       
-      return await architectAgent(input, project || "default", 'code', inputFile, { memory, llm, promptPort, git, config }, codeMode);
+      return await architectAgent(input, project || "default", 'code', inputFile, { memory, llm, promptPort, profilePort, analyzer, git, config }, codeMode);
     }
     
     case "arch-learn": {
