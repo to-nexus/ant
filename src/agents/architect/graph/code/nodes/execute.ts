@@ -29,7 +29,7 @@ export async function execute(
       prdSpec: state.spec || null,
       memory: state.context.memory || null,
     };
-    finalPrompt = await promptor.buildExecutePrompt("code", state.context, inputs, state.planText, state.codeMode || 'edit');
+    finalPrompt = await promptor.buildExecutePrompt("code", state.context, inputs, state.planText, state.codeMode || 'edit', state.codebaseProfile);
   }
 
   const raw = await llm.invoke([{ role: 'user', content: finalPrompt }]);

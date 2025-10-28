@@ -10,4 +10,6 @@ export * from "./prompt";
 export * from "./reporter";
 export * from "./validation";
 export * from "./config";
+export * from "./analyzer";
+export * from "./profile";
 

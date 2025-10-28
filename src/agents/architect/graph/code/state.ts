@@ -1,5 +1,5 @@
 import { ProjectContext, CodeMode } from "../../types";
-import { GitPort, MemoryPort, LLMClient } from "../../../../core/ports";
+import { GitPort, MemoryPort, LLMClient, CodebaseAnalyzerPort, CodebaseProfile } from "../../../../core/ports";
 import { ArchitectPromptor } from "../../prompt/ArchitectPromptor";
 
 export interface IntegrationRequirement {
@@ -24,9 +24,11 @@ export interface ArchitectGraphState {
     memory?: MemoryPort; 
     llm?: LLMClient;
     promptor?: ArchitectPromptor;
+    analyzer?: CodebaseAnalyzerPort;
   };
   gitPort?: GitPort;  // For runner to use after graph execution
   codeMode?: CodeMode;  // Inferred or explicit mode for code generation
+  codebaseProfile?: CodebaseProfile | null;  // Detected language/framework profile
 
   latestDesign: string;
   directive: string;

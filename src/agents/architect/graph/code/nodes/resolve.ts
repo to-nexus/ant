@@ -6,6 +6,7 @@ import { ArchitectGraphState } from "../state";
  * - Latest design document (optional - not required for small changes)
  * - Code directive (if exists)
  * - Original files from HEAD (git)
+ * - Codebase profile (language/framework detection)
  * 
  * Strategy:
  * - Large/new features: Require design doc (from design task)
@@ -25,7 +26,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     throw new Error(
       "No design document or directive found.\n" +
       "For new features: Run arch-design first.\n" +
-      "For modifications: Provide a directive in workspace/{project}/{feature}/inputs/code/directive.md"
+      "For modifications: Provide a directive in workspace/{project}/{feature}/inputs/directives/code/directive.md"
     );
   }
 
@@ -50,11 +51,26 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     }
   }
 
+  // Analyze codebase to detect language and framework
+  let codebaseProfile = null;
+  const analyzer = state.deps?.analyzer;
+  
+  if (originalFilesBlock && analyzer) {
+    try {
+      codebaseProfile = await analyzer.analyze(originalFilesBlock, context.workingDir);
+      console.log(`📊 Detected codebase: ${codebaseProfile.language}${codebaseProfile.framework ? ` + ${codebaseProfile.framework}` : ''}`);
+    } catch (error) {
+      console.warn('Failed to analyze codebase:', error);
+      // Continue without profile (graceful degradation)
+    }
+  }
+
   return {
     ...state,
     latestDesign,
     directive,
     originalFilesBlock,
+    codebaseProfile,
   };
 }
 
