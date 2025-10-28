@@ -1,0 +1,3 @@
+🧠 MEMORY:
+{{content}}
+
