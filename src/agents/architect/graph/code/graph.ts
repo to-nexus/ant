@@ -1,6 +1,6 @@
 import { StateGraph } from "@langchain/langgraph";
 import { ArchitectGraphState } from "./state";
-import { resolve, plan, execute, validate } from "./nodes/index";
+import { resolve, plan, execute, validate, learn } from "./nodes/index";
 
 export function buildCodeGraph() {
   const graph = new StateGraph<ArchitectGraphState>({} as any);
@@ -9,6 +9,7 @@ export function buildCodeGraph() {
   graph.addNode("plan", plan as any);
   graph.addNode("execute", execute as any);
   graph.addNode("validate", validate as any);
+  graph.addNode("learn", learn as any);
   graph.addNode(
     "enforce",
     (async (s: any) => {
@@ -30,12 +31,13 @@ export function buildCodeGraph() {
         s.retries += 1;
         return "enforce";
       }
-      return "__end__";
+      return "learn";  // ✅ Success → Extract learnings
     }) as any,
-    { enforce: "enforce", __end__: "__end__" } as any
+    { enforce: "enforce", learn: "learn" } as any
   );
 
   graph.addEdge("enforce" as any, "execute" as any);
+  graph.addEdge("learn" as any, "__end__" as any);
   
   return (graph as any).compile();
 }

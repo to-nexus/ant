@@ -15,5 +15,8 @@ export interface DesignGraphState {
 
   planText: string;
   designMarkdown: string;
+  
+  // Results after saving (populated by learn node)
   designFilePath?: string;
+  learnings?: string;
 }

@@ -47,4 +47,11 @@ export interface ArchitectGraphState {
 
   retries: number;
   maxRetries: number;
+  
+  // Learning data extracted from execution
+  learnings?: string;
+  
+  // Results after saving (populated by learn node)
+  branch?: string;
+  filesWritten?: number;
 }
