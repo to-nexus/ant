@@ -1,5 +1,5 @@
 import { ProjectContext } from "../../types";
-import { LLMClient, ChunkPort } from "../../../../core/ports";
+import { LLMClient, ChunkPort, SessionPort } from "../../../../core/ports";
 import { PromptEngine } from "../../../../core/prompt/engine";
 
 export interface DesignGraphState {
@@ -9,6 +9,7 @@ export interface DesignGraphState {
     llm?: LLMClient;
     promptEngine?: PromptEngine;
     chunk?: ChunkPort;
+    session?: SessionPort;
   };
 
   previousDesign: string;

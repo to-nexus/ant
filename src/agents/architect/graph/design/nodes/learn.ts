@@ -1,15 +1,17 @@
 import * as fs from "fs";
 import * as path from "path";
 import { DesignGraphState } from "../state";
+import { SessionTurn } from "../../../../../core/types";
 
 /**
  * Learn node - Complete workflow finalization:
  * 1. Extract learnings from design
  * 2. Save design document to file
  * 3. Chunk and store learnings to memory
+ * 4. Save turn to session file
  * 
  * This is the final node that performs all side effects.
- * Depends on ChunkPort (injected via deps) - follows hexagonal architecture.
+ * Depends on ChunkPort and SessionPort (injected via deps) - follows hexagonal architecture.
  */
 export async function learn(state: DesignGraphState): Promise<DesignGraphState> {
   // 1. Extract learnings
@@ -18,10 +20,10 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   // 2. Save design document to file
   const designDir = path.join(
     state.context.workingDir,
-    "projects",
+    "workspace",
     state.context.project,
     state.context.featureFolder || "default",
-    "generated",
+    "outputs",
     "design"
   );
   fs.mkdirSync(designDir, { recursive: true });
@@ -33,7 +35,60 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   fs.writeFileSync(designFilePath, state.designMarkdown, "utf8");
   console.log(`📝 Design saved: ${designFilePath}`);
   
-  // 3. Chunk and store learnings to memory
+  // 3. Save turn to session file first (to get sessionId and turnId)
+  let sessionId: string | undefined;
+  let turnId: number | undefined;
+  
+  if (state.deps?.session) {
+    const decisions = extractDesignDecisions(state).split('\n').filter(d => d.trim());
+    
+    // Load session to get sessionId
+    const session = await state.deps.session.load(
+      state.context.project,
+      state.context.featureFolder || 'default'
+    );
+    sessionId = session.sessionId;
+    
+    const turn: SessionTurn = {
+      turnId: 0, // Will be set by adapter
+      task: 'design',
+      timestamp: new Date().toISOString(),
+      input: state.spec,
+      output: {
+        designPath: designFilePath,
+        planText: state.planText,
+        decisions: decisions
+      }
+    };
+    
+    await state.deps.session.addTurn(
+      state.context.project,
+      state.context.featureFolder || 'default',
+      turn
+    );
+    
+    // Get the turnId that was assigned
+    const updatedSession = await state.deps.session.load(
+      state.context.project,
+      state.context.featureFolder || 'default'
+    );
+    turnId = updatedSession.turns[updatedSession.turns.length - 1]?.turnId;
+    
+    // Update artifacts
+    await state.deps.session.updateArtifacts(
+      state.context.project,
+      state.context.featureFolder || 'default',
+      {
+        latestDesign: designFilePath,
+        latestPlan: state.planText,
+        keyDecisions: decisions
+      }
+    );
+    
+    console.log(`💾 Session turn saved to workspace/${state.context.project}/${state.context.featureFolder || 'default'}/session.json`);
+  }
+  
+  // 4. Chunk and store learnings to memory with session tracking
   if (state.context.memory && state.deps?.chunk) {
     // Process through chunking pipeline (via ChunkPort)
     const result = await state.deps.chunk.process({
@@ -45,7 +100,10 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
         task: 'design',
         project: state.context.project,
         feature: state.context.featureFolder || 'default',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        // 🔗 Session tracking for traceability
+        sessionId: sessionId,
+        turnId: turnId
       }
     });
     
@@ -63,6 +121,9 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     }
     
     console.log(`✅ ${result.chunks.length} learning chunks stored to memory`);
+    if (sessionId && turnId) {
+      console.log(`🔗 Linked to session: ${sessionId}, turn: ${turnId}`);
+    }
   }
   
   return { ...state, designFilePath, learnings };

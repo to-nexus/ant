@@ -1,7 +1,8 @@
 import { ProjectContext, AgentTask, CodeMode, ArchitectResult } from "./types";
 import { extractFeatureFolder } from "./utils";
 import { retrieve } from "./memory";
-import { MemoryPort, LLMClient, PromptPort, GitPort, ConfigPort, CodebaseAnalyzerPort, ProfilePort } from "../../core/ports";
+import { formatSessionContext } from "./session-formatter";
+import { MemoryPort, LLMClient, PromptPort, GitPort, ConfigPort, CodebaseAnalyzerPort, ProfilePort, SessionPort, ChunkPort } from "../../core/ports";
 import { runCodeGraph } from "./graph/code/runner";
 import { ArchitectGraphState } from "./graph/code/state";
 import { runDesignGraph } from "./graph/design/runner";
@@ -23,24 +24,50 @@ export async function architectAgent(
     analyzer?: CodebaseAnalyzerPort;
     git?: GitPort; 
     config?: ConfigPort;
+    chunk?: ChunkPort;
+    session?: SessionPort;
   },
   codeMode?: CodeMode
 ): Promise<ArchitectResult> {
   // Initialize context
   const featureFolder = extractFeatureFolder(inputFile, project);
   
-  // 1. 기본 컨텍스트 준비
+  // 1. Load config
   if (!deps?.config) {
     throw new Error("ConfigPort not provided");
   }
   const config = await deps.config.load(project);
   
+  // 2. Retrieve long-term knowledge from Vector DB
+  console.log(`🔍 Retrieving vector memory for ${task}...`);
+  const vectorMemory = await retrieve(task, project, featureFolder, deps?.memory ? { memory: deps.memory } : undefined);
+  
+  // 3. Load short-term context from Session
+  let sessionHistory = "";
+  if (deps?.session && featureFolder) {
+    try {
+      console.log(`📖 Loading session history for feature: ${featureFolder}...`);
+      const session = await deps.session.load(project, featureFolder);
+      if (session.turns.length > 0) {
+        sessionHistory = formatSessionContext(session);
+        console.log(`✅ Loaded ${session.turns.length} previous turn(s)`);
+      } else {
+        console.log(`ℹ️  This is the first turn in this feature`);
+      }
+    } catch (error) {
+      console.warn(`⚠️  Could not load session history:`, error);
+      // Continue without session history (graceful degradation)
+    }
+  }
+  
+  // 4. Create ProjectContext with both Vector and Session
   const context: ProjectContext = {
     project,
     featureFolder,
     workingDir: process.cwd(),
     config,
-    memory: await retrieve(task, project, featureFolder, deps?.memory ? { memory: deps.memory } : undefined)
+    memory: vectorMemory,           // Long-term knowledge
+    sessionHistory: sessionHistory  // Short-term context
   };
 
   // Call appropriate handler based on task
@@ -86,7 +113,9 @@ export async function architectAgent(
         spec,
         deps: {
           llm: deps?.llm,
-          promptEngine: designEngine
+          promptEngine: designEngine,
+          chunk: deps?.chunk,
+          session: deps?.session
         },
         previousDesign: "",
         directive: "",
@@ -129,7 +158,9 @@ export async function architectAgent(
           llm: deps?.llm,
           promptEngine: codeEngine,
           analyzer: deps?.analyzer,
-          git: deps?.git
+          git: deps?.git,
+          chunk: deps?.chunk,
+          session: deps?.session
         },
         gitPort: deps?.git,
         latestDesign: "",

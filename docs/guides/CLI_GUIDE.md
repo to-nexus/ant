@@ -1,327 +1,283 @@
-# AI Dev Framework - CLI 가이드
+# CLI Usage Guide
 
-## 📦 설치 및 설정
+## Overview
 
+AI Dev Framework provides a structured CLI for running AI agents on your codebase.
+
+**Command Structure:**
 ```bash
-# 의존성 설치
-npm install
-
-# 환경변수 설정 (.env)
-ANTHROPIC_API_KEY=your-key-here
+aidev <agent> <task> [options] <input>
 ```
 
 ---
 
-## 🚀 빠른 시작
+## Quick Start
 
-### 1. Workspace 생성
+### 1. Architecture Design
+Generate design from PRD:
 ```bash
-npm run init:workspace my-app
+aidev architect design workspace/my-app/auth/inputs/directives/design/directive.md
 ```
 
-**생성되는 구조:**
-```
-workspace/my-app/
-├── common/
-│   ├── inputs/directives/learn/
-│   └── outputs/
-│       ├── memory/
-│       └── reports/
-├── config.json
-└── README.md
+Short form:
+```bash
+aidev arch design workspace/my-app/auth/inputs/directives/design/directive.md
 ```
 
-**config.json 내용:**
-```json
-{
-  "projectName": "my-app",
-  "branchBase": "main",
-  "autoLearn": true,
-  "llmProvider": "anthropic",
-  "llmModel": "claude-3-5-sonnet-20241022"
-}
+### 2. Code Generation
+Generate code from design:
+```bash
+aidev architect code workspace/my-app/auth/
+```
+
+With edit mode:
+```bash
+aidev architect code workspace/my-app/auth/ --mode edit
+```
+
+### 3. Learning
+Learn from repository patterns:
+```bash
+aidev architect learn workspace/my-app/common/inputs/directives/learn/directive.md
+```
+
+### 4. Code Review
+Review code changes:
+```bash
+aidev review workspace/my-app/auth/ --pr 123
+```
+
+### 5. Project Planning
+Create project plan:
+```bash
+aidev plan workspace/my-app/project-requirements.md
+```
+
+### 6. Documentation
+Generate documentation:
+```bash
+aidev doc workspace/my-app/
 ```
 
 ---
 
-### 2. Feature 생성
+## Agents
+
+### Architect (`architect`, `arch`)
+Architecture design and code generation
+
+**Tasks:**
+- `design` - Generate architecture design from PRD
+- `code` - Generate code from design document
+- `learn` - Learn repository patterns and conventions
+
+**Options:**
+- `--mode <mode>` - Code generation mode (code task only)
+  - `generate` (default) - Generate new code
+  - `edit` - Edit existing code
+  - `refactor` - Refactor existing code
+- `--project <name>` - Override auto-detected project
+
+**Examples:**
 ```bash
-npm run init:feature my-app ui-1.0.0
-```
+# Design
+aidev arch design workspace/my-app/auth/inputs/directives/design/directive.md
 
-**생성되는 구조:**
-```
-workspace/my-app/ui-1.0.0/
-├── inputs/
-│   ├── sources/
-│   │   └── prd.md          # PRD 템플릿
-│   └── directives/
-│       ├── design/
-│       ├── code/
-│       └── learn/
-└── outputs/
-    ├── design/
-    ├── code/
-    ├── reports/
-    └── memory/
-```
+# Code generation
+aidev arch code workspace/my-app/auth/
+aidev arch code workspace/my-app/auth/ --mode edit
 
-**PRD 템플릿이 자동 생성됨:**
-- 개요, 목표, 사용자 스토리
-- 기능/비기능 요구사항
-- 디자인 참조, 기술 제약사항
-- 성공 지표
-
----
-
-### 3. PRD 작성
-```bash
-# 생성된 PRD 템플릿 편집
-vi workspace/my-app/ui-1.0.0/inputs/sources/prd.md
-
-# (선택) Figma 링크 추가
-echo "https://figma.com/..." > workspace/my-app/ui-1.0.0/inputs/sources/figma-link.txt
-
-# (선택) 와이어프레임 추가
-mkdir -p workspace/my-app/ui-1.0.0/inputs/sources/wireframes
-cp ~/Downloads/home.png workspace/my-app/ui-1.0.0/inputs/sources/wireframes/
+# Learning
+aidev arch learn workspace/my-app/common/inputs/directives/learn/directive.md
 ```
 
 ---
 
-### 4. Design 생성
+### Reviewer (`review`, `reviewer`)
+Code review and quality checks
+
+**Options:**
+- `--pr <number>` - Pull request number to review
+- `--project <name>` - Override auto-detected project
+
+**Examples:**
 ```bash
-npm run dev arch-design workspace/my-app/ui-1.0.0
-```
+# Review directory
+aidev review workspace/my-app/auth/
 
-**입력:**
-- `inputs/sources/prd.md`
-- `inputs/sources/figma-link.txt` (선택)
-- `inputs/sources/wireframes/` (선택)
-
-**출력:**
-- `outputs/design/design-{timestamp}.md`
-
----
-
-### 5. Code 생성
-```bash
-npm run dev arch-code workspace/my-app/ui-1.0.0
-```
-
-**입력:**
-- `outputs/design/design-xxx.md` (최신)
-- `inputs/sources/prd.md` (참고)
-
-**출력:**
-- 실제 코드 파일 (git branch에 커밋)
-- `outputs/code/manifest-{timestamp}.json`
-- `outputs/reports/report-{timestamp}.md`
-- `outputs/memory/code-context-{timestamp}.txt` (자동 학습)
-
----
-
-### 6. 피드백 적용
-
-#### Design 피드백
-```bash
-# directive 작성
-echo "Tab UI를 Material Design으로 변경해줘" > \
-  workspace/my-app/ui-1.0.0/inputs/directives/design/directive.md
-
-# design 재생성
-npm run dev arch-design workspace/my-app/ui-1.0.0
-```
-
-#### Code 수정
-```bash
-# directive 작성
-echo "Fix button color bug in Header.tsx" > \
-  workspace/my-app/ui-1.0.0/inputs/directives/code/directive.md
-
-# code 재생성
-npm run dev arch-code workspace/my-app/ui-1.0.0
+# Review PR
+aidev review workspace/my-app/auth/ --pr 123
 ```
 
 ---
 
-### 7. 명시적 학습 (선택)
+### Planner (`plan`, `planner`)
+Project planning and sprint breakdown
+
+**Options:**
+- `--project <name>` - Override auto-detected project
+
+**Examples:**
 ```bash
-# learn directive 작성
-echo "전체 코드베이스를 학습해라" > \
-  workspace/my-app/ui-1.0.0/inputs/directives/learn/directive.md
-
-# learn 실행
-npm run dev arch-learn workspace/my-app/ui-1.0.0
+aidev plan workspace/my-app/project-requirements.md
 ```
 
 ---
 
-## 📋 명령어 레퍼런스
+### Doc (`doc`)
+Documentation generation and updates
 
-### 초기화 명령
+**Options:**
+- `--project <name>` - Override auto-detected project
 
-| 명령 | 설명 | 예시 |
-|------|------|------|
-| `npm run init:workspace <name>` | 새 workspace 생성 | `npm run init:workspace my-app` |
-| `npm run init:feature <workspace> <name>` | 새 feature 생성 | `npm run init:feature my-app ui-1.0.0` |
-
-### 개발 명령
-
-| 명령 | 설명 | 입력 | 출력 |
-|------|------|------|------|
-| `npm run dev arch-design <path>` | Design 생성 | PRD + sources | design doc |
-| `npm run dev arch-code <path>` | Code 생성 | design + PRD | code + report |
-| `npm run dev arch-learn <path>` | 명시적 학습 | codebase | memory |
-
----
-
-## 📁 디렉토리 구조 상세
-
-```
-workspace/
-└── {project}/                      # 예: my-app
-    ├── common/                     # 공통 리소스
-    │   ├── inputs/
-    │   │   └── directives/learn/   # 공통 학습 지시
-    │   └── outputs/
-    │       ├── memory/             # 공통 학습 결과
-    │       └── reports/            # 공통 보고서
-    ├── {feature}/                  # 예: ui-1.0.0
-    │   ├── inputs/
-    │   │   ├── sources/            # ⭐ 공통 소스 (모든 task 공유)
-    │   │   │   ├── prd.md          # 필수
-    │   │   │   ├── figma-link.txt  # 선택
-    │   │   │   ├── figma-export.json
-    │   │   │   └── wireframes/     # 선택
-    │   │   └── directives/         # ⭐ task별 지시사항
-    │   │       ├── design/
-    │   │       │   ├── directive.md
-    │   │       │   └── directive-001.md
-    │   │       ├── code/
-    │   │       │   ├── directive.md
-    │   │       │   └── directive-001.md
-    │   │       └── learn/
-    │   │           └── directive.md
-    │   └── outputs/                # task별 결과물
-    │       ├── design/
-    │       │   └── design-{timestamp}.md
-    │       ├── code/
-    │       │   └── manifest-{timestamp}.json
-    │       ├── reports/
-    │       │   └── report-{timestamp}.md
-    │       └── memory/
-    │           └── {task}-context-{timestamp}.txt
-    └── config.json
-```
-
----
-
-## 💡 워크플로우 예시
-
-### 예시 1: 완전 신규 프로젝트
-
+**Examples:**
 ```bash
-# 1. Workspace 생성
-npm run init:workspace blog-platform
-
-# 2. Feature 생성
-npm run init:feature blog-platform web-1.0.0
-
-# 3. PRD 작성
-vi workspace/blog-platform/web-1.0.0/inputs/sources/prd.md
-
-# 4. Design 생성
-npm run dev arch-design workspace/blog-platform/web-1.0.0
-
-# 5. Design 검토 및 피드백
-vi workspace/blog-platform/web-1.0.0/outputs/design/design-xxx.md
-echo "Add authentication section" > \
-  workspace/blog-platform/web-1.0.0/inputs/directives/design/directive.md
-
-# 6. Design 재생성
-npm run dev arch-design workspace/blog-platform/web-1.0.0
-
-# 7. Code 생성
-npm run dev arch-code workspace/blog-platform/web-1.0.0
-
-# 8. Git 확인
-git diff
-git add .
-git commit -m "feat: initial blog platform implementation"
+aidev doc workspace/my-app/
 ```
 
 ---
 
-### 예시 2: 기존 프로젝트에 기능 추가
+## Input Resolution
 
-```bash
-# 1. 새 Feature 생성
-npm run init:feature blog-platform comments-1.0.0
+The CLI automatically resolves input files based on the task:
 
-# 2. PRD 작성
-vi workspace/blog-platform/comments-1.0.0/inputs/sources/prd.md
+### Design Task
+**Input:** Directive file
+```
+workspace/project/feature/inputs/directives/design/
+├── directive.md        ← Used if no numbered files
+└── directive-N.md      ← Highest N is used
+```
 
-# 3. Design → Code
-npm run dev arch-design workspace/blog-platform/comments-1.0.0
-npm run dev arch-code workspace/blog-platform/comments-1.0.0
+### Code Task
+**Input:** Latest design document
+```
+workspace/project/feature/outputs/design/
+└── design-*.md         ← Latest is automatically selected
+```
+
+Optional code directive:
+```
+workspace/project/feature/inputs/directives/code/
+└── directive.md        ← Applied if exists
+```
+
+### Learn Task
+**Input:** Learn directive
+```
+workspace/project/common/inputs/directives/learn/
+└── directive.md
 ```
 
 ---
 
-### 예시 3: 버그 수정
+## Project Auto-Detection
 
+The CLI automatically detects the project name from the path:
+```
+workspace/my-app/...  → Project: my-app
+workspace/cross-ramp/... → Project: cross-ramp
+```
+
+Override with `--project`:
 ```bash
-# 1. Code directive 작성
-echo "Fix login button color issue" > \
-  workspace/blog-platform/web-1.0.0/inputs/directives/code/directive-001.md
-
-# 2. Code 재생성
-npm run dev arch-code workspace/blog-platform/web-1.0.0
-
-# 3. 확인 및 커밋
-git diff
-git commit -am "fix: login button color"
+aidev arch design workspace/my-app/auth/directive.md --project custom-name
 ```
 
 ---
 
-## 🎯 핵심 원칙
+## Code Generation Modes
 
-1. **workspace (단수)** - 하나의 작업공간
-2. **sources는 공유** - design & code가 함께 사용
-3. **directives는 분리** - 각 task의 지시사항만
-4. **자동 학습** - code task 후 자동으로 memory 저장
-5. **명시적 학습** - learn task로 추가 학습 가능
+Use `--mode` with the `code` task:
+
+### Generate (default)
+Create new files from scratch:
+```bash
+aidev arch code workspace/my-app/auth/
+```
+
+### Edit
+Modify existing files:
+```bash
+aidev arch code workspace/my-app/auth/ --mode edit
+```
+
+### Refactor
+Refactor existing code:
+```bash
+aidev arch code workspace/my-app/auth/ --mode refactor
+```
 
 ---
 
-## ❓ 문제 해결
+## Development Mode
 
-### Workspace가 없다는 에러
+During development, use `npm run dev`:
 ```bash
-❌ Workspace not found: workspace/my-app
-   Run: npm run init:workspace my-app
-```
-→ 먼저 workspace를 생성하세요.
+# Old style (still works)
+npm run dev arch-design workspace/my-app/auth/directive.md
 
-### Feature가 이미 있다는 에러
-```bash
-❌ Feature already exists: workspace/my-app/ui-1.0.0
+# New style (recommended)
+npm run dev arch design workspace/my-app/auth/directive.md
 ```
-→ 다른 이름을 사용하거나 기존 feature를 삭제하세요.
-
-### PRD를 찾을 수 없다는 에러
-```bash
-❌ prd.md not found in source directory
-```
-→ `inputs/sources/prd.md` 파일을 작성하세요.
 
 ---
 
-## 🔍 더 보기
+## Global Installation (Future)
 
-- [WORKSPACE_STRUCTURE.md](./WORKSPACE_STRUCTURE.md) - 디렉토리 구조 상세
-- [WORKFLOW_GUIDE_v2.md](./WORKFLOW_GUIDE_v2.md) - 워크플로우 가이드
-- [architecture-design.md](./docs/architecture-design.md) - 아키텍처 설계
+After building and publishing:
+```bash
+npm install -g ai-dev-framework
+aidev arch design workspace/my-app/auth/directive.md
+```
 
+---
+
+## Help
+
+Show help for any command:
+```bash
+aidev --help
+aidev architect --help
+aidev arch design --help
+```
+
+---
+
+## Examples
+
+### Full Workflow
+```bash
+# 1. Learn from existing codebase
+aidev arch learn workspace/my-app/common/inputs/directives/learn/directive.md
+
+# 2. Design new feature
+aidev arch design workspace/my-app/auth/inputs/directives/design/directive.md
+
+# 3. Generate code
+aidev arch code workspace/my-app/auth/
+
+# 4. Review changes
+aidev review workspace/my-app/auth/
+
+# 5. Update documentation
+aidev doc workspace/my-app/
+```
+
+### Multiple Features
+```bash
+# Design all features
+aidev arch design workspace/my-app/auth/inputs/directives/design/directive.md
+aidev arch design workspace/my-app/payment/inputs/directives/design/directive.md
+aidev arch design workspace/my-app/notifications/inputs/directives/design/directive.md
+
+# Generate code for all
+aidev arch code workspace/my-app/auth/
+aidev arch code workspace/my-app/payment/
+aidev arch code workspace/my-app/notifications/
+```
+
+---
+
+**Version:** 1.0.0  
+**Last Updated:** 2025-10-28

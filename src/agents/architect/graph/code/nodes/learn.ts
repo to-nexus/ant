@@ -1,15 +1,17 @@
 import * as fs from "fs";
 import * as path from "path";
 import { ArchitectGraphState } from "../state";
+import { SessionTurn } from "../../../../../core/types";
 
 /**
  * Learn node - Complete workflow finalization:
  * 1. Extract learnings from execution
  * 2. Save generated files to repository
  * 3. Chunk and store learnings to memory
+ * 4. Save turn to session file
  * 
  * This is the final node that performs all side effects.
- * Depends on ChunkPort (injected via deps) - follows hexagonal architecture.
+ * Depends on ChunkPort and SessionPort (injected via deps) - follows hexagonal architecture.
  */
 export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   // 1. Extract learnings
@@ -37,7 +39,57 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     console.log(`✏️  Modified: ${f.path}`);
   }
   
-  // 3. Chunk and store learnings to memory
+  // 3. Save turn to session file first (to get sessionId and turnId)
+  let sessionId: string | undefined;
+  let turnId: number | undefined;
+  
+  if (state.deps?.session) {
+    // Load session to get sessionId
+    const session = await state.deps.session.load(
+      state.context.project,
+      state.context.featureFolder || 'default'
+    );
+    sessionId = session.sessionId;
+    
+    const turn: SessionTurn = {
+      turnId: 0, // Will be set by adapter
+      task: 'code',
+      timestamp: new Date().toISOString(),
+      input: state.spec,
+      output: {
+        branch: branch,
+        filesWritten: filesWritten,
+        files: state.files.map(f => f.path),
+        modifications: state.files.filter(f => state.originalFilesBlock.includes(f.path)).map(f => f.path)
+      }
+    };
+    
+    await state.deps.session.addTurn(
+      state.context.project,
+      state.context.featureFolder || 'default',
+      turn
+    );
+    
+    // Get the turnId that was assigned
+    const updatedSession = await state.deps.session.load(
+      state.context.project,
+      state.context.featureFolder || 'default'
+    );
+    turnId = updatedSession.turns[updatedSession.turns.length - 1]?.turnId;
+    
+    // Update artifacts
+    await state.deps.session.updateArtifacts(
+      state.context.project,
+      state.context.featureFolder || 'default',
+      {
+        activeBranch: branch
+      }
+    );
+    
+    console.log(`💾 Session turn saved to workspace/${state.context.project}/${state.context.featureFolder || 'default'}/session.json`);
+  }
+  
+  // 4. Chunk and store learnings to memory with session tracking
   if (state.deps?.memory && state.deps?.chunk) {
     // Process through chunking pipeline (via ChunkPort)
     const result = await state.deps.chunk.process({
@@ -49,7 +101,10 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
         task: 'code',
         project: state.context.project,
         feature: state.context.featureFolder || 'default',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        // 🔗 Session tracking for traceability
+        sessionId: sessionId,
+        turnId: turnId
       }
     });
     
@@ -66,6 +121,9 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     }
     
     console.log(`✅ ${result.chunks.length} learning chunks stored to memory`);
+    if (sessionId && turnId) {
+      console.log(`🔗 Linked to session: ${sessionId}, turn: ${turnId}`);
+    }
   }
   
   return { ...state, learnings, branch, filesWritten };

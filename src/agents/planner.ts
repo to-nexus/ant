@@ -1,13 +1,56 @@
 import { LLMClient } from "../core/ports";
+import { executeSimpleAgent, AgentDeps } from "./common/workflow";
 
 /**
- * PlannerAgent:
- * Summarizes project progress, issues, and next steps
- * using issue tracker data and commit logs.
+ * Planner Agent Input
  */
-export async function plannerAgent(issues: string, commits: string, deps: { llm: LLMClient }) {
-  const prompt = `
+export interface PlannerInput {
+  issues: string;
+  commits: string;
+}
+
+/**
+ * Planner Agent
+ * 
+ * Summarizes project progress and plans next steps:
+ * - Analyzes issue tracker data
+ * - Reviews commit history
+ * - Identifies risks and blockers
+ * - Suggests priorities
+ * 
+ * Current Status: 🚧 Simplified implementation
+ * TODO: Implement full graph structure with:
+ *   - resolve: Load sprint context
+ *   - analyze: Analyze progress and velocity
+ *   - prioritize: Rank tasks by importance
+ *   - schedule: Create sprint plan
+ *   - learn: Store planning patterns
+ * 
+ * @param input - Issues and commits
+ * @param project - Project name
+ * @param deps - Dependencies (memory, llm)
+ * @returns Sprint plan
+ */
+export async function plannerAgent(
+  input: PlannerInput,
+  project: string,
+  deps: AgentDeps & { llm: LLMClient }
+) {
+  return await executeSimpleAgent({
+    agentType: 'plan',
+    project,
+    input,
+    deps,
+    execute: async (input, context, deps) => {
+      const { llm } = deps as { llm: LLMClient };
+      
+      const prompt = `
 You are an AI sprint planner.
+
+Project: ${project}
+
+${context.memory ? `Relevant context:\n${context.memory}\n` : ''}
+
 Given the current issue list and commit logs,
 summarize the sprint status including:
 - Completed tasks
@@ -16,11 +59,14 @@ summarize the sprint status including:
 - Next actions
 
 Issues:
-${issues}
+${input.issues}
 
 Commits:
-${commits}
-  `;
-  const response = await deps.llm.invoke([{ role: "user", content: prompt }]);
-  return response;
+${input.commits}
+      `;
+      
+      const response = await llm.invoke([{ role: "user", content: prompt }]);
+      return response;
+    }
+  });
 }
