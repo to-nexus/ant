@@ -1,19 +1,57 @@
-import { HumanMessage } from "@langchain/core/messages";
-import { MemoryPort, LLMClient } from "../core/ports";
+import { LLMClient } from "../core/ports";
+import { executeSimpleAgent, AgentDeps } from "./common/workflow";
 
-export async function reviewerAgent(prDiff: string, project: string, deps: { memory: MemoryPort; llm: LLMClient }) {
-  const results = await deps.memory.query("code review guidelines", project, { k: 5 });
-  const context = results.map(r => r.content).join("\n\n");
-  const prompt = `
+/**
+ * Reviewer Agent
+ * 
+ * Reviews code changes (PR diffs) and provides feedback on:
+ * - Code quality issues
+ * - Security vulnerabilities
+ * - Performance concerns
+ * - Style violations
+ * - Best practices
+ * 
+ * Current Status: 🚧 Simplified implementation
+ * TODO: Implement full graph structure with:
+ *   - resolve: Load PR context
+ *   - analyze: Deep code analysis
+ *   - suggest: Generate improvements
+ *   - validate: Check review quality
+ *   - learn: Store review patterns
+ * 
+ * @param prDiff - Pull request diff to review
+ * @param project - Project name
+ * @param deps - Dependencies (memory, llm)
+ * @returns Review feedback
+ */
+export async function reviewerAgent(
+  prDiff: string,
+  project: string,
+  deps: AgentDeps & { llm: LLMClient }
+) {
+  return await executeSimpleAgent({
+    agentType: 'review',
+    project,
+    input: prDiff,
+    deps,
+    execute: async (input, context, deps) => {
+      const { llm } = deps as { llm: LLMClient };
+      
+      const prompt = `
 You are a senior software reviewer.
+
 Project: ${project}
-Relevant context:
-${context}
+
+${context.memory ? `Relevant context:\n${context.memory}\n` : ''}
 
 Review the following PR diff and summarize risks, improvements, and style issues.
+
 ---
-${prDiff}
-  `;
-  const response = await deps.llm.invoke([{ role: "user", content: prompt }]);
-  return response;
+${input}
+      `;
+      
+      const response = await llm.invoke([{ role: "user", content: prompt }]);
+      return response;
+    }
+  });
 }

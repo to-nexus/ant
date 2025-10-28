@@ -1,5 +1,5 @@
 import { ProjectContext, CodeMode } from "../../types";
-import { GitPort, MemoryPort, LLMClient, CodebaseAnalyzerPort, CodebaseProfile, ChunkPort } from "../../../../core/ports";
+import { GitPort, MemoryPort, LLMClient, CodebaseAnalyzerPort, CodebaseProfile, ChunkPort, SessionPort } from "../../../../core/ports";
 import { PromptEngine } from "../../../../core/prompt/engine";
 
 export interface IntegrationRequirement {
@@ -26,6 +26,7 @@ export interface ArchitectGraphState {
     promptEngine?: PromptEngine;
     analyzer?: CodebaseAnalyzerPort;
     chunk?: ChunkPort;
+    session?: SessionPort;
   };
   gitPort?: GitPort;  // For runner to use after graph execution
   codeMode?: CodeMode;  // Inferred or explicit mode for code generation

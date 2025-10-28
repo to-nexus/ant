@@ -3,9 +3,14 @@
   "version": "1.0.0",
   "description": "AI-powered development framework for automated architecture design, code generation, and iterative refinement",
   "main": "index.js",
+  "bin": {
+    "aidev": "./dist/index.js"
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "tsx src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
     "init:workspace": "tsx src/cli/init-cli.ts workspace",
     "init:feature": "tsx src/cli/init-cli.ts feature"
   },
@@ -20,10 +25,12 @@
     "@octokit/rest": "^22.0.0",
     "anthropic": "^0.0.0",
     "chromadb": "^3.0.17",
+    "commander": "^14.0.2",
     "dotenv": "^17.2.3",
     "langchain": "^1.0.1",
     "openai": "^6.5.0",
-    "simple-git": "^3.28.0"
+    "simple-git": "^3.28.0",
+    "zod": "^4.1.12"
   },
   "devDependencies": {
     "@types/node": "^24.8.1",

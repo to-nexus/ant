@@ -16,8 +16,9 @@ export interface AssembledContext {
   originalFiles?: string;
   currentCode?: string;
   
-  // Metadata
-  memory?: string;
+  // Memory
+  memory?: string;              // Vector memory (long-term knowledge)
+  sessionHistory?: string;      // Session history (short-term context)
   codebaseProfile?: CodebaseProfile | null;
   
   // Statistics
@@ -26,6 +27,7 @@ export interface AssembledContext {
     hasDesign: boolean;
     hasOriginalFiles: boolean;
     hasMemory: boolean;
+    hasSessionHistory: boolean;
     codebaseDetected: boolean;
   };
 }
@@ -82,12 +84,16 @@ export class ContextAssembler {
     // 3. Load vector memory (from context)
     assembled.memory = context.memory || undefined;
     
-    // 4. Generate statistics
+    // 4. Load session history (from context)
+    assembled.sessionHistory = context.sessionHistory || undefined;
+    
+    // 5. Generate statistics
     const stats = {
       hasDirective: Boolean(assembled.directive),
       hasDesign: Boolean(assembled.designDoc || assembled.previousDesign),
       hasOriginalFiles: Boolean(assembled.originalFiles),
       hasMemory: Boolean(assembled.memory),
+      hasSessionHistory: Boolean(assembled.sessionHistory),
       codebaseDetected: Boolean(assembled.codebaseProfile)
     };
     

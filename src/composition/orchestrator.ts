@@ -9,6 +9,9 @@ import { FileProfileAdapter } from "../periphery/adapters/profile/FileProfileAda
 import { CodebaseAnalyzer } from "../periphery/adapters/analyzer/CodebaseAnalyzer";
 import { SimpleGitAdapter } from "../periphery/adapters/git/SimpleGitAdapter";
 import { FileConfigAdapter } from "../periphery/adapters/config/FileConfigAdapter";
+import { FileSessionAdapter } from "../periphery/adapters/session/FileSessionAdapter";
+import { ChunkAdapter } from "../periphery/adapters/chunk/ChunkingAdapter";
+import * as path from "path";
 
 /**
  * Orchestrator: Composition Root
@@ -25,8 +28,9 @@ export async function orchestrator(params: {
   input: string;
   project?: string;
   inputFile?: string;
+  codeMode?: 'generate' | 'edit' | 'refactor' | 'explain';
 }) {
-  const { type, input, project, inputFile } = params;
+  const { type, input, project, inputFile, codeMode } = params;
 
   switch (type) {
     case "review": {
@@ -42,7 +46,10 @@ export async function orchestrator(params: {
       const promptPort = new FilePromptAdapter();
       const profilePort = new FileProfileAdapter();
       const config = new FileConfigAdapter();
-      return await architectAgent(input, project || "default", 'design', inputFile, { memory, llm, promptPort, profilePort, config });
+      const chunk = new ChunkAdapter();
+      const workspaceRoot = path.join(process.cwd(), "workspace");
+      const session = new FileSessionAdapter(workspaceRoot);
+      return await architectAgent(input, project || "default", 'design', inputFile, { memory, llm, promptPort, profilePort, config, chunk, session });
     }
     
     case "arch-code": {
@@ -52,12 +59,15 @@ export async function orchestrator(params: {
       const profilePort = new FileProfileAdapter();
       const analyzer = new CodebaseAnalyzer();
       const config = new FileConfigAdapter();
+      const chunk = new ChunkAdapter();
       const configData = await config.load(project || "default");
       const git = new SimpleGitAdapter(project || "default", configData);
+      const workspaceRoot = path.join(process.cwd(), "workspace");
+      const session = new FileSessionAdapter(workspaceRoot);
       
       const codeMode = undefined; // Will be inferred in graph nodes
       
-      return await architectAgent(input, project || "default", 'code', inputFile, { memory, llm, promptPort, profilePort, analyzer, git, config }, codeMode);
+      return await architectAgent(input, project || "default", 'code', inputFile, { memory, llm, promptPort, profilePort, analyzer, git, config, chunk, session }, codeMode);
     }
     
     case "arch-learn": {
@@ -69,13 +79,15 @@ export async function orchestrator(params: {
     
     case "plan": {
       const [issues, commits] = input.split("===COMMITS===");
+      const memory = new ChromaMemoryAdapter();
       const llm = new GenericLLMClient('planner');
-      return await plannerAgent(issues, commits, { llm });
+      return await plannerAgent({ issues, commits }, project || "default", { memory, llm });
     }
     
     case "doc": {
+      const memory = new ChromaMemoryAdapter();
       const llm = new GenericLLMClient('doc');
-      return await docAgent(input, { llm });
+      return await docAgent(input, project || "default", { memory, llm });
     }
     
     default:
