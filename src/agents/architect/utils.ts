@@ -1,6 +1,6 @@
 import * as path from "path";
 import * as fs from "fs";
-import { ProjectContext, DirectiveType } from "./types";
+import { ProjectContext, DirectiveType, AgentTask } from "./types";
 
 export function extractFeatureFolder(inputFile: string | undefined, project: string): string {
   if (!inputFile) return "";
@@ -13,6 +13,50 @@ export function extractFeatureFolder(inputFile: string | undefined, project: str
   return "";
 }
 
+/**
+ * Get directive for a specific task
+ * Priority: directive.md > directive-nnn.md (latest)
+ */
+export function getDirective(context: ProjectContext, task: AgentTask): string | null {
+  const directiveDir = path.join(
+    context.workingDir,
+    "workspace",
+    context.project,
+    context.featureFolder,
+    "inputs/directives",
+    task
+  );
+
+  if (!fs.existsSync(directiveDir)) {
+    return null;
+  }
+
+  // 1. Check directive.md (default)
+  const defaultPath = path.join(directiveDir, "directive.md");
+  if (fs.existsSync(defaultPath)) {
+    const content = fs.readFileSync(defaultPath, "utf8").trim();
+    return content.length > 0 ? content : null;
+  }
+
+  // 2. Find latest directive-nnn.md
+  const files = fs.readdirSync(directiveDir)
+    .filter(f => /^directive-\d+\.md$/.test(f))
+    .map(f => {
+      const match = f.match(/^directive-(\d+)\.md$/);
+      return match ? { name: f, number: parseInt(match[1]) } : null;
+    })
+    .filter((item): item is { name: string; number: number } => item !== null)
+    .sort((a, b) => b.number - a.number);
+
+  if (files.length > 0) {
+    const content = fs.readFileSync(path.join(directiveDir, files[0].name), "utf8").trim();
+    return content.length > 0 ? content : null;
+  }
+
+  return null;
+}
+
+// Legacy support - will be removed after migration
 export function getDirectivePath(context: ProjectContext, type: DirectiveType): string {
   return path.join(
     context.workingDir,
@@ -50,14 +94,71 @@ export function readDirective(directivesPath: string, type: DirectiveType): stri
   return null;
 }
 
+/**
+ * Get source materials (PRD + all resources)
+ * Shared by all tasks (design, code, learn)
+ */
+export function getSource(context: ProjectContext): {
+  prd: string;
+  figmaLink?: string;
+  figmaData?: any;
+  wireframes?: string[];
+  [key: string]: any;
+} {
+  const sourceDir = path.join(
+    context.workingDir,
+    "workspace",
+    context.project,
+    context.featureFolder,
+    "inputs/sources"
+  );
+
+  if (!fs.existsSync(sourceDir)) {
+    throw new Error(`Source directory not found: ${sourceDir}`);
+  }
+
+  // prd.md is required
+  const prdPath = path.join(sourceDir, "prd.md");
+  if (!fs.existsSync(prdPath)) {
+    throw new Error("prd.md not found in source directory");
+  }
+  const prd = fs.readFileSync(prdPath, "utf8");
+
+  const result: any = { prd };
+
+  // Optional: Figma link
+  const figmaPath = path.join(sourceDir, "figma-link.txt");
+  if (fs.existsSync(figmaPath)) {
+    result.figmaLink = fs.readFileSync(figmaPath, "utf8").trim();
+  }
+
+  // Optional: Figma export
+  const figmaExportPath = path.join(sourceDir, "figma-export.json");
+  if (fs.existsSync(figmaExportPath)) {
+    result.figmaData = JSON.parse(fs.readFileSync(figmaExportPath, "utf8"));
+  }
+
+  // Optional: Wireframes
+  const wireframesDir = path.join(sourceDir, "wireframes");
+  if (fs.existsSync(wireframesDir)) {
+    result.wireframes = fs.readdirSync(wireframesDir)
+      .filter(f => /\.(png|jpg|jpeg|svg|gif)$/i.test(f))
+      .map(f => path.join(wireframesDir, f));
+  }
+
+  return result;
+}
+
+/**
+ * Find latest design document
+ */
 export function findLatestDesign(context: ProjectContext): string {
   const designPath = path.join(
     context.workingDir,
-    "projects",
+    "workspace",
     context.project,
     context.featureFolder || "default",
-    "generated",
-    "design"
+    "outputs/design"
   );
   
   if (!fs.existsSync(designPath)) return "";
@@ -72,6 +173,9 @@ export function findLatestDesign(context: ProjectContext): string {
   return fs.readFileSync(path.join(designPath, designFiles[0]), "utf8");
 }
 
+/**
+ * Generate and save report
+ */
 export function generateReport(
   type: string,
   context: ProjectContext,
@@ -80,11 +184,10 @@ export function generateReport(
 ): string {
   const reportDir = path.join(
     context.workingDir,
-    "projects",
+    "workspace",
     context.project,
     context.featureFolder || "default",
-    "generated",
-    "reports"
+    "outputs/reports"
   );
   fs.mkdirSync(reportDir, { recursive: true });
   

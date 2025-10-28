@@ -5,7 +5,12 @@ export const DIRECTIVE_TYPES = {
 } as const;
 
 export type DirectiveType = typeof DIRECTIVE_TYPES[keyof typeof DIRECTIVE_TYPES];
-export type AgentMode = 'design' | 'code' | 'learn';
+
+// Task: What to produce (design doc, code, or learning data)
+export type AgentTask = 'design' | 'code' | 'learn';
+
+// Mode: How to perform the task (for code task)
+export type CodeMode = 'generate' | 'edit' | 'refactor' | 'explain';
 
 export interface ProjectContext {
   project: string;
@@ -17,7 +22,7 @@ export interface ProjectContext {
 
 export interface ArchitectResult {
   success: boolean;
-  mode: AgentMode;
+  task: AgentTask;
   reportFile: string;
   filesAnalyzed?: number;
   message: string;

@@ -1,4 +1,4 @@
-import { AgentMode } from "../types";
+import { AgentTask } from "../types";
 import { MemoryPort } from "../../../core/ports";
 import { getDesignQueries, getCodeQueries, getFeatureQueries, CategoryKey } from "./queries";
 
@@ -11,16 +11,16 @@ type SectionKey =
   | "🎯 Feature-Specific Context";
 
 /**
- * Retrieve relevant context from vector memory based on agent mode
+ * Retrieve relevant context from vector memory based on agent task
  * 
- * @param mode - Agent mode (design, code, or learn)
+ * @param task - Agent task (design, code, or learn)
  * @param project - Project name
  * @param feature - Optional feature name for feature-specific context
  * @param deps - Optional memory port dependency
  * @returns Formatted context string with categorized memory results
  */
 export async function retrieve(
-  mode: AgentMode,
+  task: AgentTask,
   project: string,
   feature?: string,
   deps?: { memory: MemoryPort }
@@ -28,7 +28,7 @@ export async function retrieve(
   const memory = deps?.memory;
   if (!memory) return "";
 
-  const queries = mode === 'design' ? getDesignQueries(project) : getCodeQueries(project);
+  const queries = task === 'design' ? getDesignQueries(project) : getCodeQueries(project);
   const sections = {
     "📚 Previous Learnings": [] as string[],
     "🏗️ Architecture & Design": [] as string[],

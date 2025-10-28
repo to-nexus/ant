@@ -37,8 +37,9 @@ export async function orchestrator(params: {
     case "arch-design": {
       const memory = new ChromaMemoryAdapter();
       const llm = new GenericLLMClient('architect');
+      const promptPort = new FilePromptAdapter();
       const config = new FileConfigAdapter();
-      return await architectAgent(input, project || "default", 'design', inputFile, { memory, llm, config });
+      return await architectAgent(input, project || "default", 'design', inputFile, { memory, llm, promptPort, config });
     }
     
     case "arch-code": {
@@ -48,7 +49,11 @@ export async function orchestrator(params: {
       const config = new FileConfigAdapter();
       const configData = await config.load(project || "default");
       const git = new SimpleGitAdapter(project || "default", configData);
-      return await architectAgent(input, project || "default", 'code', inputFile, { memory, llm, promptPort, git, config });
+      
+      // TODO: Infer code mode from input (directive analysis)
+      const codeMode = undefined; // Will be inferred in future step
+      
+      return await architectAgent(input, project || "default", 'code', inputFile, { memory, llm, promptPort, git, config }, codeMode);
     }
     
     case "arch-learn": {
