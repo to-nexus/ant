@@ -1,4 +1,4 @@
-# AI Dev Framework - 작업 워크플로우 가이드 (v2)
+# ANT (AI-Native Transformation) - 작업 워크플로우 가이드 (v2)
 
 ## 🎯 핵심 개념 정리
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-AI Dev Framework provides a structured CLI for running AI agents on your codebase.
+ANT (AI-Native Transformation) provides a structured CLI for running AI agents on your codebase.
 
 **Command Structure:**
 ```bash
@@ -227,7 +227,7 @@ npm run dev arch design workspace/my-app/auth/directive.md
 
 After building and publishing:
 ```bash
-npm install -g ai-dev-framework
+npm install -g ant
 aidev arch design workspace/my-app/auth/directive.md
 ```
 

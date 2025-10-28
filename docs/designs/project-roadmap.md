@@ -1,8 +1,8 @@
-# AI Development Framework — 프로젝트 개요 및 개발 로드맵
+# ANT (AI-Native Transformation) — 프로젝트 개요 및 개발 로드맵
 
 **작성자:** 정우준  
-**최종 업데이트:** 2025-10-27  
-**프로젝트:** AI-Driven Development Framework (Architect Agent)
+**최종 업데이트:** 2025-10-28  
+**프로젝트:** ANT (AI-Native Transformation) - Architect Agent
 
 ---
 

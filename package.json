@@ -1,7 +1,7 @@
 {
-  "name": "ai-dev-framework",
+  "name": "ant",
   "version": "1.0.0",
-  "description": "AI-powered development framework for automated architecture design, code generation, and iterative refinement",
+  "description": "ANT (AI-Native Transformation) - AI-native development framework for automated architecture design, code generation, and iterative refinement",
   "main": "index.js",
   "bin": {
     "aidev": "./dist/index.js"
