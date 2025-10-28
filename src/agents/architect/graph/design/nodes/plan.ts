@@ -1,9 +1,10 @@
-import { HumanMessage } from "@langchain/core/messages";
-import { GenericLLMClient } from "../../../../../periphery/adapters/llm/GenericLLMClient";
 import { DesignGraphState } from "../state";
 
 export async function plan(state: DesignGraphState) {
-  const model = new GenericLLMClient('architect');
+  const model = state.deps?.llm;
+  if (!model) {
+    throw new Error("LLMClient not provided in design graph state");
+  }
   let directiveAnalysis = '';
   if (state.directive) {
     const analysisPrompt = `You are analyzing a human directive for system design.\n\nDirective:\n${state.directive}\n\nProvide a brief analysis (3-5 sentences): key requirements, patterns, constraints, assumptions.`;

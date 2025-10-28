@@ -4,6 +4,9 @@ import { plannerAgent } from "../agents/planner";
 import { docAgent } from "../agents/doc";
 import { ChromaMemoryAdapter } from "../periphery/adapters/memory/ChromaMemoryAdapter";
 import { GenericLLMClient } from "../periphery/adapters/llm/GenericLLMClient";
+import { FilePromptAdapter } from "../periphery/adapters/prompt/FilePromptAdapter";
+import { SimpleGitAdapter } from "../periphery/adapters/git/SimpleGitAdapter";
+import { FileConfigAdapter } from "../periphery/adapters/config/FileConfigAdapter";
 
 /**
  * Orchestrator: Composition Root
@@ -27,25 +30,32 @@ export async function orchestrator(params: {
     case "review": {
       const memory = new ChromaMemoryAdapter();
       const llm = new GenericLLMClient('reviewer');
+      const config = new FileConfigAdapter();
       return await reviewerAgent(input, project || "default", { memory, llm });
     }
     
     case "arch-design": {
       const memory = new ChromaMemoryAdapter();
       const llm = new GenericLLMClient('architect');
-      return await architectAgent(input, project || "default", 'design', inputFile, { memory });
+      const config = new FileConfigAdapter();
+      return await architectAgent(input, project || "default", 'design', inputFile, { memory, llm, config });
     }
     
     case "arch-code": {
       const memory = new ChromaMemoryAdapter();
       const llm = new GenericLLMClient('architect');
-      return await architectAgent(input, project || "default", 'code', inputFile, { memory });
+      const promptPort = new FilePromptAdapter();
+      const config = new FileConfigAdapter();
+      const configData = await config.load(project || "default");
+      const git = new SimpleGitAdapter(project || "default", configData);
+      return await architectAgent(input, project || "default", 'code', inputFile, { memory, llm, promptPort, git, config });
     }
     
     case "arch-learn": {
       const memory = new ChromaMemoryAdapter();
       const llm = new GenericLLMClient('architect');
-      return await architectAgent(input, project || "default", 'learn', inputFile, { memory });
+      const config = new FileConfigAdapter();
+      return await architectAgent(input, project || "default", 'learn', inputFile, { memory, llm, config });
     }
     
     case "plan": {

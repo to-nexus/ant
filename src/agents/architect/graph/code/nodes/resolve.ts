@@ -1,6 +1,5 @@
 import { getDirectivePath, readDirective, findLatestDesign } from "../../../utils";
-import { loadProjectConfig } from "../../../../../core/config";
-import { ArchitectGraphState } from "../../state";
+import { ArchitectGraphState } from "../state";
 
 /**
  * Resolve inputs for code generation:
@@ -10,9 +9,6 @@ import { ArchitectGraphState } from "../../state";
  */
 export async function resolve(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   const { context } = state;
-  
-  // Ensure config present
-  context.config = context.config || await loadProjectConfig(context.project);
 
   const latestDesign = findLatestDesign(context);
   if (!latestDesign) {

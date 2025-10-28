@@ -9,4 +9,5 @@ export * from "./git";
 export * from "./prompt";
 export * from "./reporter";
 export * from "./validation";
+export * from "./config";
 

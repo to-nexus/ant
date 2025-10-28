@@ -1,6 +1,6 @@
 import { LLMClient } from "../../../../../core/ports";
 import { ArchitectPromptor } from "../../../prompt/ArchitectPromptor";
-import { ArchitectGraphState } from "../../state";
+import { ArchitectGraphState } from "../state";
 
 export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   const llm = state.deps?.llm as LLMClient;

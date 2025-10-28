@@ -25,6 +25,7 @@ export interface ArchitectGraphState {
     llm?: LLMClient;
     promptor?: ArchitectPromptor;
   };
+  gitPort?: GitPort;  // For runner to use after graph execution
 
   latestDesign: string;
   directive: string;

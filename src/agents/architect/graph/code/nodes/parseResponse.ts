@@ -1,4 +1,4 @@
-import { GeneratedFile } from "../../state";
+import { GeneratedFile } from "../state";
 
 /**
  * Parse LLM response to extract files and response section

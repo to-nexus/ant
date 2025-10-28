@@ -1,15 +1,13 @@
 import { ProjectContext, AgentMode, ArchitectResult } from "./types";
 import { extractFeatureFolder } from "./utils";
-import { loadProjectConfig } from "../../core/config";
-import { retrieve } from "./memoryService";
-import { MemoryPort, LLMClient } from "../../core/ports";
+import { retrieve } from "./memory";
+import { MemoryPort, LLMClient, PromptPort, GitPort, ConfigPort } from "../../core/ports";
 import { runCodeGraph } from "./graph/code/runner";
 import { ArchitectGraphState } from "./graph/code/state";
 import { runDesignGraph } from "./graph/design/runner";
 import { DesignGraphState } from "./graph/design/state";
 import { runLearnGraph } from "./graph/learn/runner";
 import { LearnGraphState } from "./graph/learn/state";
-import { FilePromptAdapter } from "../../periphery/adapters/prompt/FilePromptAdapter";
 import { ArchitectPromptor } from "./prompt/ArchitectPromptor";
 
 export async function architectAgent(
@@ -17,17 +15,22 @@ export async function architectAgent(
   project: string,
   mode: AgentMode = 'design',
   inputFile?: string,
-  deps?: { memory?: MemoryPort; llm?: LLMClient }
+  deps?: { memory?: MemoryPort; llm?: LLMClient; promptPort?: PromptPort; git?: GitPort; config?: ConfigPort }
 ): Promise<ArchitectResult> {
   // Initialize context
   const featureFolder = extractFeatureFolder(inputFile, project);
   
   // 1. 기본 컨텍스트 준비
+  if (!deps?.config) {
+    throw new Error("ConfigPort not provided");
+  }
+  const config = await deps.config.load(project);
+  
   const context: ProjectContext = {
     project,
     featureFolder,
     workingDir: process.cwd(),
-    config: await loadProjectConfig(project),
+    config,
     memory: await retrieve(mode, project, featureFolder, deps?.memory ? { memory: deps.memory } : undefined)
   };
 
@@ -53,6 +56,9 @@ export async function architectAgent(
       const dInitial: DesignGraphState = {
         context,
         spec,
+        deps: {
+          llm: deps?.llm
+        },
         previousDesign: "",
         directive: "",
         designMarkdown: ""
@@ -67,8 +73,10 @@ export async function architectAgent(
     case 'code':
       // Run via code graph
       // Initialize prompt engine components
-      const promptPort = new FilePromptAdapter();
-      const promptor = new ArchitectPromptor(promptPort);
+      if (!deps?.promptPort) {
+        throw new Error("PromptPort not provided for code generation");
+      }
+      const promptor = new ArchitectPromptor(deps.promptPort);
       
       const initial: ArchitectGraphState = {
         context,
@@ -76,8 +84,10 @@ export async function architectAgent(
         deps: { 
           memory: deps?.memory, 
           llm: deps?.llm,
-          promptor
+          promptor,
+          git: deps?.git
         },
+        gitPort: deps?.git,
         latestDesign: "",
         directive: "",
         originalFilesBlock: "",
