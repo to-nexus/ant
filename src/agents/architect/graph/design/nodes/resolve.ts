@@ -1,10 +1,23 @@
-import { HumanMessage } from "@langchain/core/messages";
-import { getDirectivePath, readDirective, findLatestDesign } from "../../../utils";
+import { getDirective, getSource, findLatestDesign } from "../../../utils";
 import { DesignGraphState } from "../state";
 
 export async function resolve(state: DesignGraphState) {
-  const previousDesign = findLatestDesign(state.context);
-  const directivePath = getDirectivePath(state.context, 'design');
-  const directive = readDirective(directivePath, 'design') || '';
-  return { previousDesign, directive };
+  const { context } = state;
+
+  // Load source materials (PRD + resources)
+  const source = getSource(context);
+  const spec = source.prd;
+
+  // Load directive (optional)
+  const directive = getDirective(context, 'design') || "";
+
+  // Load previous design (optional)
+  const previousDesign = findLatestDesign(context) || "";
+
+  return {
+    ...state,
+    spec,
+    directive,
+    previousDesign
+  };
 }

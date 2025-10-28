@@ -1,0 +1,34 @@
+# skeleton - Product Requirements
+
+## Overview
+Describe the feature and its purpose.
+
+## Goals
+- Goal 1
+- Goal 2
+
+## User Stories
+- As a [user type], I want [goal] so that [benefit]
+
+## Requirements
+
+### Functional Requirements
+1. Requirement 1
+2. Requirement 2
+
+### Non-Functional Requirements
+- Performance: 
+- Security: 
+- Accessibility: 
+
+## Design References
+- Figma: (add link in inputs/sources/figma-link.txt)
+- Wireframes: (add images in inputs/sources/wireframes/)
+
+## Technical Constraints
+- Technology stack: 
+- Dependencies: 
+
+## Success Metrics
+- Metric 1:
+- Metric 2:

@@ -1,4 +1,4 @@
-import { ProjectContext } from "../../types";
+import { ProjectContext, CodeMode } from "../../types";
 import { GitPort, MemoryPort, LLMClient } from "../../../../core/ports";
 import { ArchitectPromptor } from "../../prompt/ArchitectPromptor";
 
@@ -26,6 +26,7 @@ export interface ArchitectGraphState {
     promptor?: ArchitectPromptor;
   };
   gitPort?: GitPort;  // For runner to use after graph execution
+  codeMode?: CodeMode;  // Inferred or explicit mode for code generation
 
   latestDesign: string;
   directive: string;

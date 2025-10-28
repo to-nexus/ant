@@ -4,10 +4,10 @@ import { ArchitectGraphState } from "../state";
 import { parseResponse } from "./parseResponse";
 
 /**
- * Implementation node - generates code using LLM
+ * Execute node - generates code using LLM
  * Can be used for initial generation or enforcement (with reasonHeader)
  */
-export async function implement(
+export async function execute(
   state: ArchitectGraphState, 
   reasonHeader?: string
 ): Promise<ArchitectGraphState> {
@@ -29,7 +29,7 @@ export async function implement(
       prdSpec: state.spec || null,
       memory: state.context.memory || null,
     };
-    finalPrompt = await promptor.buildUniversalCodePrompt(state.context, inputs, state.planText);
+    finalPrompt = await promptor.buildExecutePrompt("code", state.context, inputs, state.planText, state.codeMode || 'edit');
   }
 
   const raw = await llm.invoke([{ role: 'user', content: finalPrompt }]);
