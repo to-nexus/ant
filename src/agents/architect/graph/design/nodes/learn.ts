@@ -1,15 +1,15 @@
 import * as fs from "fs";
 import * as path from "path";
 import { DesignGraphState } from "../state";
-import { storeLearnings } from "../../../memory/storage";
 
 /**
  * Learn node - Complete workflow finalization:
  * 1. Extract learnings from design
  * 2. Save design document to file
- * 3. Store learnings to memory
+ * 3. Chunk and store learnings to memory
  * 
  * This is the final node that performs all side effects.
+ * Depends on ChunkPort (injected via deps) - follows hexagonal architecture.
  */
 export async function learn(state: DesignGraphState): Promise<DesignGraphState> {
   // 1. Extract learnings
@@ -33,15 +33,36 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   fs.writeFileSync(designFilePath, state.designMarkdown, "utf8");
   console.log(`📝 Design saved: ${designFilePath}`);
   
-  // 3. Store learnings to memory
-  if (state.deps?.llm && state.context.memory) {
-    await storeLearnings(
-      learnings,
-      state.context.project,
-      state.context.featureFolder || "default",
-      { memory: state.context.memory as any }
-    );
-    console.log(`📚 Design learnings stored to memory`);
+  // 3. Chunk and store learnings to memory
+  if (state.context.memory && state.deps?.chunk) {
+    // Process through chunking pipeline (via ChunkPort)
+    const result = await state.deps.chunk.process({
+      source: 'design-learning',
+      sourceType: 'text',
+      content: learnings,
+      metadata: {
+        type: 'learning',
+        task: 'design',
+        project: state.context.project,
+        feature: state.context.featureFolder || 'default',
+        timestamp: new Date().toISOString()
+      }
+    });
+    
+    console.log(`📚 Chunked into ${result.chunks.length} pieces (avg ${result.stats.avgTokens} tokens)`);
+    
+    // Store each chunk to memory
+    const memory = state.context.memory as any;
+    for (const chunk of result.chunks) {
+      await memory.store([
+        {
+          content: chunk.text,
+          metadata: chunk.metadata
+        }
+      ], state.context.project);
+    }
+    
+    console.log(`✅ ${result.chunks.length} learning chunks stored to memory`);
   }
   
   return { ...state, designFilePath, learnings };

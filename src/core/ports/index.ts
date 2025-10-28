@@ -12,4 +12,5 @@ export * from "./validation";
 export * from "./config";
 export * from "./analyzer";
 export * from "./profile";
+export * from "./chunk";
 
