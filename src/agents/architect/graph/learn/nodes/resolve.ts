@@ -12,7 +12,7 @@ function extractPaths(spec: string): string[] {
   return Array.from(new Set(paths));
 }
 
-export async function resolve(state: LearnGraphState): Promise<LearnGraphState> {
+export async function resolve(state: LearnGraphState): Promise<Partial<LearnGraphState>> {
   const base = state.context.workingDir;
   const targets = extractPaths(state.spec);
   const texts: string[] = [];
@@ -41,5 +41,5 @@ export async function resolve(state: LearnGraphState): Promise<LearnGraphState> 
     texts.push(state.spec);
   }
 
-  return { ...state, targets, texts };
+  return { targets, texts };
 }

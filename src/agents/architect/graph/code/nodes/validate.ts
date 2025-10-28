@@ -1,5 +1,4 @@
-import { ArchitectGraphState } from "../../state";
-import { loadProjectConfig } from "../../../../../core/config";
+import { ArchitectGraphState } from "../state";
 
 /**
  * Validate generated code against guardrails:
@@ -10,7 +9,7 @@ export async function validate(state: ArchitectGraphState): Promise<ArchitectGra
   const violations: string[] = [];
   const forbiddenEllipsis = /\.{3}|\/\/\s*\.\.\.|\{\s*\/\*.*\.\.\..*\*\/\s*\}/s;
 
-  const config = state.context.config || await loadProjectConfig(state.context.project);
+  const config = state.context.config;
   const git = state.deps?.git ? state.deps.git : null as any;
 
   for (const f of state.files) {

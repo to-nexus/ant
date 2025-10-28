@@ -1,5 +1,5 @@
 import { StateGraph } from "@langchain/langgraph";
-import { ArchitectGraphState } from "../state";
+import { ArchitectGraphState } from "./state";
 import { resolve, plan, implement, validate } from "./nodes/index";
 
 export function buildCodeGraph() {
