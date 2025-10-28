@@ -1,7 +1,6 @@
 import { ProjectContext, AgentTask, CodeMode, ArchitectResult } from "./types";
 import { extractFeatureFolder } from "./utils";
 import { retrieve } from "./memory";
-import { inferCodeMode } from "./modeInference";
 import { MemoryPort, LLMClient, PromptPort, GitPort, ConfigPort, CodebaseAnalyzerPort, ProfilePort } from "../../core/ports";
 import { runCodeGraph } from "./graph/code/runner";
 import { ArchitectGraphState } from "./graph/code/state";
@@ -9,7 +8,7 @@ import { runDesignGraph } from "./graph/design/runner";
 import { DesignGraphState } from "./graph/design/state";
 import { runLearnGraph } from "./graph/learn/runner";
 import { LearnGraphState } from "./graph/learn/state";
-import { ArchitectPromptor } from "./prompt/ArchitectPromptor";
+import { PromptEngine } from "../../core/prompt/engine";
 
 export async function architectAgent(
   spec: string, 
@@ -66,14 +65,28 @@ export async function architectAgent(
       if (!deps?.promptPort) {
         throw new Error("PromptPort not provided for design generation");
       }
-      const designPromptor = new ArchitectPromptor(deps.promptPort, deps.profilePort);
+      const designEngine = new PromptEngine({
+        promptPort: deps.promptPort,
+        profilePort: deps.profilePort,
+        analyzer: deps.analyzer,
+        git: deps.git,
+        memory: deps.memory,
+        contextLoader: async (task, ctx) => {
+          const { getDirective, getSource, findLatestDesign } = await import('./utils');
+          return {
+            directive: getDirective(ctx, task) || undefined,
+            previousDesign: findLatestDesign(ctx) || undefined,
+            prdSpec: getSource(ctx).prd || undefined
+          };
+        }
+      });
 
       const dInitial: DesignGraphState = {
         context,
         spec,
         deps: {
           llm: deps?.llm,
-          promptor: designPromptor
+          promptEngine: designEngine
         },
         previousDesign: "",
         directive: "",
@@ -89,11 +102,24 @@ export async function architectAgent(
       };
     case 'code':
       // Run via code graph
-      // Initialize prompt engine components
+      // Initialize prompt engine
       if (!deps?.promptPort) {
         throw new Error("PromptPort not provided for code generation");
       }
-      const promptor = new ArchitectPromptor(deps.promptPort, deps.profilePort);
+      const codeEngine = new PromptEngine({
+        promptPort: deps.promptPort,
+        profilePort: deps.profilePort,
+        analyzer: deps.analyzer,
+        git: deps.git,
+        memory: deps.memory,
+        contextLoader: async (task, ctx) => {
+          const { getDirective, findLatestDesign } = await import('./utils');
+          return {
+            directive: getDirective(ctx, task) || undefined,
+            designDoc: findLatestDesign(ctx) || undefined
+          };
+        }
+      });
       
       const initial: ArchitectGraphState = {
         context,
@@ -101,7 +127,7 @@ export async function architectAgent(
         deps: { 
           memory: deps?.memory, 
           llm: deps?.llm,
-          promptor,
+          promptEngine: codeEngine,
           analyzer: deps?.analyzer,
           git: deps?.git
         },

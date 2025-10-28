@@ -5,9 +5,11 @@ import { PromptPort } from "../../../core/ports";
 /**
  * FilePromptAdapter - File system implementation of PromptPort
  * Loads template files and renders with variable substitution
+ * 
+ * Templates are stored in src/core/prompt/templates/ (domain knowledge)
  */
 export class FilePromptAdapter implements PromptPort {
-  constructor(private baseDir = join(process.cwd(), "src", "agents", "architect", "prompts")) {}
+  constructor(private baseDir = join(process.cwd(), "src", "core", "prompt", "templates")) {}
   
   async render(templateName: string, vars: Record<string, any>): Promise<string> {
     // 1. Load template from file

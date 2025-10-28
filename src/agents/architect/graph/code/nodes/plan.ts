@@ -1,30 +1,35 @@
 import { LLMClient } from "../../../../../core/ports";
-import { ArchitectPromptor } from "../../../prompt/ArchitectPromptor";
 import { ArchitectGraphState } from "../state";
-import { inferCodeMode } from "../../../modeInference";
+import { PromptEngine } from "../../../../../core/prompt/engine";
 
 export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   const llm = state.deps?.llm as LLMClient;
-  const promptor = state.deps?.promptor as ArchitectPromptor;
+  const engine = state.deps?.promptEngine as PromptEngine;
 
-  // Infer code mode if not provided
-  const codeMode = state.codeMode || inferCodeMode(
-    state.directive,
-    Boolean(state.originalFilesBlock)
-  );
-
-  const inputs = {
-    directive: state.directive || null,
-    currentCode: null,
-    originalFiles: state.originalFilesBlock || null,
-    designDoc: state.latestDesign || null,
-    prdSpec: state.spec || null,
-    memory: state.context.memory || null,
+  const artifacts = {
+    directive: state.directive || undefined,
+    designDoc: state.latestDesign || undefined,
+    prdSpec: state.spec || undefined,
+    originalFiles: state.originalFilesBlock || undefined,
+    currentCode: undefined
   };
 
-  const planPrompt = await promptor.buildPlanPrompt("code", state.context, inputs, codeMode);
-  const resp = await llm.invoke([{ role: 'user', content: planPrompt }]);
+  // Build prompt using PromptEngine
+  const result = await engine.buildPlanPrompt(
+    "code",
+    state.context,
+    artifacts,
+    state.codeMode
+  );
+
+  // Invoke LLM with formatted prompt
+  const resp = await llm.invoke(result.formatted.messages);
   const planText = resp;
+
+  // Update code mode from mode config
+  const codeMode = result.modeConfig.mode;
+
+  console.log(`⏱️  Prompt build time: ${result.metadata.buildTime}ms`);
 
   return { ...state, planText, codeMode };
 }

@@ -1,19 +1,29 @@
 import { DesignGraphState } from "../state";
 import { LLMClient } from "../../../../../core/ports";
-import { ArchitectPromptor } from "../../../prompt/ArchitectPromptor";
+import { PromptEngine } from "../../../../../core/prompt/engine";
 
 export async function plan(state: DesignGraphState) {
   const llm = state.deps?.llm as LLMClient;
-  const promptor = state.deps?.promptor as ArchitectPromptor;
+  const engine = state.deps?.promptEngine as PromptEngine;
 
-  const inputs = {
-    directive: state.directive || null,
-    previousDesign: state.previousDesign || null,
-    prdSpec: state.spec || null,
+  const artifacts = {
+    directive: state.directive || undefined,
+    designDoc: undefined,
+    prdSpec: state.spec || undefined,
+    originalFiles: undefined,
+    currentCode: undefined
   };
 
-  const planPrompt = await promptor.buildDesignPlanPrompt(state.context, inputs);
-  const planText = await llm.invoke([{ role: 'user', content: planPrompt }]);
+  // Build prompt using PromptEngine
+  const result = await engine.buildPlanPrompt(
+    "design",
+    state.context,
+    artifacts
+  );
+
+  const planText = await llm.invoke(result.formatted.messages);
+
+  console.log(`⏱️  Prompt build time: ${result.metadata.buildTime}ms`);
 
   return { planText };
 }

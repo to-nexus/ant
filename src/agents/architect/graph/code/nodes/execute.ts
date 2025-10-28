@@ -1,7 +1,7 @@
 import { LLMClient } from "../../../../../core/ports";
-import { ArchitectPromptor } from "../../../prompt/ArchitectPromptor";
 import { ArchitectGraphState } from "../state";
 import { parseResponse } from "./parseResponse";
+import { PromptEngine } from "../../../../../core/prompt/engine";
 
 /**
  * Execute node - generates code using LLM
@@ -12,32 +12,61 @@ export async function execute(
   reasonHeader?: string
 ): Promise<ArchitectGraphState> {
   const llm = state.deps?.llm as LLMClient;
-  const promptor = state.deps?.promptor as ArchitectPromptor;
+  const engine = state.deps?.promptEngine as PromptEngine;
   
-  let finalPrompt: string;
+  let formatted;
+  let buildResult;
   
   if (reasonHeader) {
-    // Enforcement mode: prepend violation message to existing prompt
-    finalPrompt = `${reasonHeader}\n\n${state.codePrompt}`;
+    // Enforcement mode: use previous build result with violation message
+    // Note: We need to store previous build result in state for this to work properly
+    // For now, rebuild with enforcement
+    const artifacts = {
+      directive: state.directive || undefined,
+      designDoc: state.latestDesign || undefined,
+      prdSpec: state.spec || undefined,
+      originalFiles: state.originalFilesBlock || undefined,
+      currentCode: undefined
+    };
+    
+    buildResult = await engine.buildExecutePrompt(
+      "code",
+      state.context,
+      artifacts,
+      state.planText,
+      state.codeMode
+    );
+    
+    formatted = engine.buildEnforcementPrompt(buildResult, reasonHeader);
   } else {
     // Initial generation mode: build fresh prompt
-    const inputs = {
-      directive: state.directive || null,
-      currentCode: null,
-      originalFiles: state.originalFilesBlock || null,
-      designDoc: state.latestDesign || null,
-      prdSpec: state.spec || null,
-      memory: state.context.memory || null,
+    const artifacts = {
+      directive: state.directive || undefined,
+      designDoc: state.latestDesign || undefined,
+      prdSpec: state.spec || undefined,
+      originalFiles: state.originalFilesBlock || undefined,
+      currentCode: undefined
     };
-    finalPrompt = await promptor.buildExecutePrompt("code", state.context, inputs, state.planText, state.codeMode || 'edit', state.codebaseProfile);
+    
+    buildResult = await engine.buildExecutePrompt(
+      "code",
+      state.context,
+      artifacts,
+      state.planText,
+      state.codeMode
+    );
+    
+    formatted = buildResult.formatted;
+    
+    console.log(`⏱️  Prompt build time: ${buildResult.metadata.buildTime}ms`);
   }
 
-  const raw = await llm.invoke([{ role: 'user', content: finalPrompt }]);
+  const raw = await llm.invoke(formatted.messages);
   const { responseSection, files, filesToDelete } = parseResponse(raw);
 
   return { 
     ...state, 
-    codePrompt: reasonHeader ? state.codePrompt : finalPrompt,
+    codePrompt: engine.extractPromptText(buildResult),
     rawResponse: raw, 
     responseSection, 
     files, 
