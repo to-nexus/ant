@@ -1,6 +1,6 @@
 # Architecture Implementation - Technical Details
 
-**AI Dev Framework - Architect Agent**  
+**ANT (AI-Native Transformation) - Architect Agent**  
 **Version**: 1.0  
 **Date**: 2025-10-27
 

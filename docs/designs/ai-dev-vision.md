@@ -1,8 +1,9 @@
-# AI Development Framework
-*From AI-Assisted to AI-Driven Engineering*  
+# ANT (AI-Native Transformation)
+*From AI-Assisted to AI-Native Engineering*  
 
 **Author:** Woojune Chung (probe@to.nexus)  
 **Date:** 2025-10-21  
+**Updated:** 2025-10-28  
 
 ---
 

@@ -1,6 +1,7 @@
-# 🤖 AI-Assisted Personal Tool vs AI-Driven Engineering Framework  
+# 🤖 AI-Assisted Personal Tool vs AI-Native Engineering Framework  
 **Author:** Woojune Chung (probe@to.nexus)  
 **Date:** 2025-10-21  
+**Updated:** 2025-10-28  
 
 ---
 
