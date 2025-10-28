@@ -6,7 +6,7 @@ import { Loader, Splitter, Cleaner, Annotator } from "../../../core/chunk/pipeli
 
 // Import implementations
 import { TextLoader, FileLoader } from "./loaders";
-import { MarkdownSplitter } from "./splitters";
+import { MarkdownSplitter, CodeSplitter } from "./splitters";
 import { MarkdownCleaner, PlainCleaner } from "./cleaners";
 import { DefaultAnnotator } from "./annotators";
 
@@ -27,11 +27,13 @@ export class ChunkAdapter implements ChunkPort {
     // Initialize splitters
     const splitters = new Map<string, Splitter>();
     splitters.set('markdown', new MarkdownSplitter());
+    splitters.set('code', new CodeSplitter());  // AST-based code splitting
     splitters.set('plain', new MarkdownSplitter()); // Fallback
     
     // Initialize cleaners
     const cleaners = new Map<string, Cleaner>();
     cleaners.set('markdown', new MarkdownCleaner());
+    cleaners.set('code', new PlainCleaner());  // Code uses plain cleaner
     cleaners.set('plain', new PlainCleaner());
     
     // Initialize annotator
