@@ -20,11 +20,11 @@ export class ArchitectPromptor {
   constructor(private promptPort: PromptPort) {}
 
   /**
-   * Load and cache system prompt (shared between plan and code phases)
+   * Load and cache system prompt (shared between plan and execute phases)
    */
   private async getSystemPrompt(): Promise<string> {
     if (!this.systemPromptCache) {
-      this.systemPromptCache = await this.promptPort.render("common/system", {});
+      this.systemPromptCache = await this.promptPort.render("code/base/system", {});
     }
     return this.systemPromptCache;
   }
@@ -49,7 +49,7 @@ export class ArchitectPromptor {
   }
 
   /**
-   * Build plan phase prompt by composing: system + phases/plan/base + phases/plan/rules
+   * Build plan phase prompt by composing: system + code/phases/plan/base + code/phases/plan/rules
    */
   async buildUniversalPlanPrompt(context: ProjectContext, inputs: TaskInputs): Promise<string> {
     const system = await this.getSystemPrompt();
@@ -58,56 +58,56 @@ export class ArchitectPromptor {
     // Build dynamic injections
     const injections = {
       hasOriginalFilesWarning: await this.buildInjection(
-        "phases/plan/injections/modification-warning",
+        "code/phases/plan/injections/modification-warning",
         hasOriginalFiles
       ),
       directiveSection: await this.buildInjection(
-        "common/injections/directive",
+        "code/base/injections/directive",
         Boolean(inputs.directive),
         { content: inputs.directive }
       ),
       originalFilesSection: await this.buildInjection(
-        "common/injections/original-files",
+        "code/base/injections/original-files",
         hasOriginalFiles,
         { files: inputs.originalFiles }
       ),
       currentCodeSection: await this.buildInjection(
-        "common/injections/current-code",
+        "code/base/injections/current-code",
         Boolean(inputs.currentCode),
         { content: this.truncate(inputs.currentCode || '', 1000) }
       ),
       designDocSection: await this.buildInjection(
-        "common/injections/design-doc",
+        "code/base/injections/design-doc",
         Boolean(inputs.designDoc),
         { content: this.truncate(inputs.designDoc || '', 800) }
       ),
       prdSpecSection: await this.buildInjection(
-        "common/injections/prd-spec",
+        "code/base/injections/prd-spec",
         Boolean(inputs.prdSpec),
         { content: this.truncate(inputs.prdSpec || '', 800) }
       ),
       memorySection: await this.buildInjection(
-        "common/injections/memory",
+        "code/base/injections/memory",
         Boolean(inputs.memory),
         { content: this.truncate(inputs.memory || '', 500) }
       )
     };
 
-    // Render phases/plan/base with injections
-    const renderedPlanBase = await this.promptPort.render("phases/plan/base", {
+    // Render code/phases/plan/base with injections
+    const renderedPlanBase = await this.promptPort.render("code/phases/plan/base", {
       project: context.project,
       ...injections
     });
 
-    // Load phases/plan/rules
-    const planRules = await this.promptPort.render("phases/plan/rules", {});
+    // Load code/phases/plan/rules
+    const planRules = await this.promptPort.render("code/phases/plan/rules", {});
 
     // Compose
     return `${system}\n\n${renderedPlanBase}\n\n${planRules}`;
   }
 
   /**
-   * Build code phase prompt by composing: system + phases/code/base + phases/code/rules + examples
+   * Build execute phase prompt by composing: system + code/phases/execute/base + code/phases/execute/rules + examples
    */
   async buildUniversalCodePrompt(context: ProjectContext, inputs: TaskInputs, plan: string): Promise<string> {
     const system = await this.getSystemPrompt();
@@ -119,44 +119,44 @@ export class ArchitectPromptor {
         ? 'MODIFICATION MODE: Copy original, then modify'
         : 'CREATION MODE: Build from scratch',
       originalFilesWarning: await this.buildInjection(
-        "phases/code/injections/modification-details",
+        "code/phases/execute/injections/modification-details",
         hasOriginalFiles,
         { files: inputs.originalFiles }
       ),
       preOutputCheck: await this.buildInjection(
-        "phases/code/injections/pre-output-check",
+        "code/phases/execute/injections/pre-output-check",
         hasOriginalFiles
       ),
       directiveSection: await this.buildInjection(
-        "common/injections/directive",
+        "code/base/injections/directive",
         Boolean(inputs.directive),
         { content: inputs.directive }
       ),
       currentCodeSection: await this.buildInjection(
-        "common/injections/current-code",
+        "code/base/injections/current-code",
         !hasOriginalFiles && Boolean(inputs.currentCode),
         { content: this.truncate(inputs.currentCode || '', 500) }
       )
     };
 
-    // Render phases/code/base with injections
-    const renderedCodeBase = await this.promptPort.render("phases/code/base", {
+    // Render code/phases/execute/base with injections
+    const renderedCodeBase = await this.promptPort.render("code/phases/execute/base", {
       project: context.project,
       plan,
       ...injections
     });
 
-    // Render phases/code/rules with response injection
+    // Render code/phases/execute/rules with response injection
     const responseSection = await this.buildInjection(
-      "phases/code/injections/response",
+      "code/phases/execute/injections/response",
       Boolean(inputs.directive)
     );
-    const renderedCodeRules = await this.promptPort.render("phases/code/rules", {
+    const renderedCodeRules = await this.promptPort.render("code/phases/execute/rules", {
       responseSection
     });
 
     // Load examples
-    const examples = await this.promptPort.render("common/examples", {});
+    const examples = await this.promptPort.render("code/base/examples", {});
 
     // Compose
     return `${system}\n\n${renderedCodeBase}\n\n${renderedCodeRules}\n\n${examples}`;
