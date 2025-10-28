@@ -12,7 +12,7 @@ export interface TaskInputs {
 
 /**
  * ArchitectPromptor - High-level prompt composition for architect agent
- * Orchestrates 6 modular templates: system, plan-base, plan-rules, code-base, code-rules, examples
+ * Orchestrates modular templates from templates/ directory
  */
 export class ArchitectPromptor {
   private systemPromptCache: string | null = null;
@@ -24,148 +24,141 @@ export class ArchitectPromptor {
    */
   private async getSystemPrompt(): Promise<string> {
     if (!this.systemPromptCache) {
-      this.systemPromptCache = await this.promptPort.render("system", {});
+      this.systemPromptCache = await this.promptPort.render("common/system", {});
     }
     return this.systemPromptCache;
   }
 
   /**
-   * Build plan phase prompt by composing: system + plan-base + plan-rules
+   * Helper: Load an injection template conditionally
+   */
+  private async buildInjection(
+    templatePath: string, 
+    condition: boolean, 
+    vars: Record<string, any> = {}
+  ): Promise<string> {
+    return condition ? await this.promptPort.render(templatePath, vars) : '';
+  }
+
+  /**
+   * Helper: Truncate content with ellipsis
+   */
+  private truncate(content: string, maxLength: number): string {
+    if (content.length <= maxLength) return content;
+    return `${content.substring(0, maxLength)}...\n[truncated]`;
+  }
+
+  /**
+   * Build plan phase prompt by composing: system + phases/plan/base + phases/plan/rules
    */
   async buildUniversalPlanPrompt(context: ProjectContext, inputs: TaskInputs): Promise<string> {
     const system = await this.getSystemPrompt();
-    const hasOriginalFiles = inputs.originalFiles && inputs.originalFiles.length > 0;
-    
-    // Render plan-base with dynamic sections
-    const renderedPlanBase = await this.promptPort.render("plan-base", {
+    const hasOriginalFiles = Boolean(inputs.originalFiles?.length);
+
+    // Build dynamic injections
+    const injections = {
+      hasOriginalFilesWarning: await this.buildInjection(
+        "phases/plan/injections/modification-warning",
+        hasOriginalFiles
+      ),
+      directiveSection: await this.buildInjection(
+        "common/injections/directive",
+        Boolean(inputs.directive),
+        { content: inputs.directive }
+      ),
+      originalFilesSection: await this.buildInjection(
+        "common/injections/original-files",
+        hasOriginalFiles,
+        { files: inputs.originalFiles }
+      ),
+      currentCodeSection: await this.buildInjection(
+        "common/injections/current-code",
+        Boolean(inputs.currentCode),
+        { content: this.truncate(inputs.currentCode || '', 1000) }
+      ),
+      designDocSection: await this.buildInjection(
+        "common/injections/design-doc",
+        Boolean(inputs.designDoc),
+        { content: this.truncate(inputs.designDoc || '', 800) }
+      ),
+      prdSpecSection: await this.buildInjection(
+        "common/injections/prd-spec",
+        Boolean(inputs.prdSpec),
+        { content: this.truncate(inputs.prdSpec || '', 800) }
+      ),
+      memorySection: await this.buildInjection(
+        "common/injections/memory",
+        Boolean(inputs.memory),
+        { content: this.truncate(inputs.memory || '', 500) }
+      )
+    };
+
+    // Render phases/plan/base with injections
+    const renderedPlanBase = await this.promptPort.render("phases/plan/base", {
       project: context.project,
-      
-      hasOriginalFilesWarning: hasOriginalFiles 
-        ? `
-⚠️  CRITICAL: ORIGINAL FILES PROVIDED BELOW ⚠️
-You are MODIFYING existing files, NOT creating new ones!
-Your output MUST preserve all existing code and only add/change what's needed.
-` 
-        : '',
-      
-      directiveSection: inputs.directive 
-        ? `📋 DIRECTIVE (User Feedback/Request):\n${inputs.directive}\n`
-        : '',
-      
-      originalFilesSection: inputs.originalFiles
-        ? `
-📄 ORIGINAL FILES (COMPLETE - from HEAD/last commit):
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${inputs.originalFiles}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚠️  These are the COMPLETE files. Copy them as your BASE for modifications.
-`
-        : '',
-      
-      currentCodeSection: inputs.currentCode
-        ? `💻 CURRENT CHANGES (Git Diff):\n${inputs.currentCode.substring(0, 1000)}${inputs.currentCode.length > 1000 ? '...\n[truncated]' : ''}\n`
-        : '',
-      
-      designDocSection: inputs.designDoc
-        ? `📐 DESIGN DOCUMENT:\n${inputs.designDoc.substring(0, 800)}...\n`
-        : '',
-      
-      prdSpecSection: inputs.prdSpec
-        ? `📝 PRD/SPEC:\n${inputs.prdSpec.substring(0, 800)}...\n`
-        : '',
-      
-      memorySection: inputs.memory
-        ? `🧠 MEMORY:\n${inputs.memory.substring(0, 500)}...\n`
-        : ''
+      ...injections
     });
 
-    // Load plan-rules (no variables to render)
-    const planRules = await this.promptPort.render("plan-rules", {});
+    // Load phases/plan/rules
+    const planRules = await this.promptPort.render("phases/plan/rules", {});
 
-    // Compose: system + rendered plan-base + plan-rules
+    // Compose
     return `${system}\n\n${renderedPlanBase}\n\n${planRules}`;
   }
 
   /**
-   * Build code phase prompt by composing: system + code-base + code-rules + examples
+   * Build code phase prompt by composing: system + phases/code/base + phases/code/rules + examples
    */
   async buildUniversalCodePrompt(context: ProjectContext, inputs: TaskInputs, plan: string): Promise<string> {
     const system = await this.getSystemPrompt();
-    const hasOriginalFiles = inputs.originalFiles && inputs.originalFiles.length > 0;
-    
-    // Render code-base with dynamic sections
-    const renderedCodeBase = await this.promptPort.render("code-base", {
-      project: context.project,
-      plan,
-      
+    const hasOriginalFiles = Boolean(inputs.originalFiles?.length);
+
+    // Build dynamic injections
+    const injections = {
       modificationMode: hasOriginalFiles 
         ? 'MODIFICATION MODE: Copy original, then modify'
         : 'CREATION MODE: Build from scratch',
-      
-      originalFilesWarning: hasOriginalFiles
-        ? `
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚠️  CRITICAL: YOU ARE MODIFYING EXISTING FILES ⚠️
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      originalFilesWarning: await this.buildInjection(
+        "phases/code/injections/modification-details",
+        hasOriginalFiles,
+        { files: inputs.originalFiles }
+      ),
+      preOutputCheck: await this.buildInjection(
+        "phases/code/injections/pre-output-check",
+        hasOriginalFiles
+      ),
+      directiveSection: await this.buildInjection(
+        "common/injections/directive",
+        Boolean(inputs.directive),
+        { content: inputs.directive }
+      ),
+      currentCodeSection: await this.buildInjection(
+        "common/injections/current-code",
+        !hasOriginalFiles && Boolean(inputs.currentCode),
+        { content: this.truncate(inputs.currentCode || '', 500) }
+      )
+    };
 
-ORIGINAL FILES (COMPLETE):
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${inputs.originalFiles}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-MANDATORY INSTRUCTIONS FOR MODIFYING EXISTING FILES:
-1. COPY the ENTIRE original file content as your starting point
-2. Add/modify ONLY the specific lines needed for your task
-3. Keep ALL existing imports, state, hooks, effects, logic, JSX
-4. DO NOT simplify, DO NOT delete unrelated code
-5. If original = 200 lines, output should be ~205 lines (NOT 20 lines!)
-`
-        : '',
-      
-      preOutputCheck: hasOriginalFiles
-        ? `
-YOU ARE MODIFYING EXISTING FILES!
-
-Before writing ANY code, answer these questions:
-Q1: Did I see the ORIGINAL FILES above? (They're shown in full)
-Q2: How many lines is the original file? (Count them)
-Q3: Am I about to output a similar number of lines?
-Q4: Did I copy the ENTIRE original file as my base?
-
-If answer to ANY question is "NO", STOP and go back to read ORIGINAL FILES.
-
-PROCESS:
-1. Read ORIGINAL FILES completely
-2. Copy ALL content as starting point
-3. Add/modify ONLY what's needed
-4. Verify line count is similar (200 → ~205, NOT 20)
-`
-        : '',
-      
-      directiveSection: inputs.directive
-        ? `📋 DIRECTIVE: ${inputs.directive}\n`
-        : '',
-      
-      currentCodeSection: !hasOriginalFiles && inputs.currentCode
-        ? `💻 CURRENT CHANGES: ${inputs.currentCode.substring(0, 500)}...\n`
-        : ''
+    // Render phases/code/base with injections
+    const renderedCodeBase = await this.promptPort.render("phases/code/base", {
+      project: context.project,
+      plan,
+      ...injections
     });
 
-    // Render code-rules with response section
-    const renderedCodeRules = await this.promptPort.render("code-rules", {
-      responseSection: inputs.directive
-        ? `=== RESPONSE ===
-[Your response to the directive]
-=== END RESPONSE ===
-
-`
-        : ''
+    // Render phases/code/rules with response injection
+    const responseSection = await this.buildInjection(
+      "phases/code/injections/response",
+      Boolean(inputs.directive)
+    );
+    const renderedCodeRules = await this.promptPort.render("phases/code/rules", {
+      responseSection
     });
 
-    // Load examples (no variables to render)
-    const examples = await this.promptPort.render("examples", {});
+    // Load examples
+    const examples = await this.promptPort.render("common/examples", {});
 
-    // Compose: system + rendered code-base + rendered code-rules + examples
+    // Compose
     return `${system}\n\n${renderedCodeBase}\n\n${renderedCodeRules}\n\n${examples}`;
   }
 }
