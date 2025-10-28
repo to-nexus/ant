@@ -10,7 +10,6 @@ import { DesignGraphState } from "./graph/design/state";
 import { runLearnGraph } from "./graph/learn/runner";
 import { LearnGraphState } from "./graph/learn/state";
 import { FilePromptAdapter } from "../../periphery/adapters/prompt/FilePromptAdapter";
-import { PromptRenderer } from "../../periphery/adapters/prompt/PromptRenderer";
 import { ArchitectPromptor } from "./prompt/ArchitectPromptor";
 
 export async function architectAgent(
@@ -68,9 +67,8 @@ export async function architectAgent(
     case 'code':
       // Run via code graph
       // Initialize prompt engine components
-      const promptLoader = new FilePromptAdapter();
-      const promptRenderer = new PromptRenderer();
-      const promptor = new ArchitectPromptor(promptLoader, promptRenderer);
+      const promptPort = new FilePromptAdapter();
+      const promptor = new ArchitectPromptor(promptPort);
       
       const initial: ArchitectGraphState = {
         context,

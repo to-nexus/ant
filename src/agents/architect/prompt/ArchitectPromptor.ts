@@ -1,5 +1,4 @@
-import { PromptLoader } from "../../../core/ports";
-import { PromptRenderer } from "../../../periphery/adapters/prompt/PromptRenderer";
+import { PromptPort } from "../../../core/ports";
 import { ProjectContext } from "../types";
 
 export interface TaskInputs {
@@ -18,17 +17,14 @@ export interface TaskInputs {
 export class ArchitectPromptor {
   private systemPromptCache: string | null = null;
 
-  constructor(
-    private loader: PromptLoader,
-    private renderer: PromptRenderer
-  ) {}
+  constructor(private promptPort: PromptPort) {}
 
   /**
    * Load and cache system prompt (shared between plan and code phases)
    */
   private async getSystemPrompt(): Promise<string> {
     if (!this.systemPromptCache) {
-      this.systemPromptCache = await this.loader.load("system");
+      this.systemPromptCache = await this.promptPort.render("system", {});
     }
     return this.systemPromptCache;
   }
@@ -37,16 +33,11 @@ export class ArchitectPromptor {
    * Build plan phase prompt by composing: system + plan-base + plan-rules
    */
   async buildUniversalPlanPrompt(context: ProjectContext, inputs: TaskInputs): Promise<string> {
-    const [system, planBase, planRules] = await Promise.all([
-      this.getSystemPrompt(),
-      this.loader.load("plan-base"),
-      this.loader.load("plan-rules")
-    ]);
-
+    const system = await this.getSystemPrompt();
     const hasOriginalFiles = inputs.originalFiles && inputs.originalFiles.length > 0;
     
-    // First render plan-base with dynamic sections
-    const renderedPlanBase = this.renderer.render(planBase, {
+    // Render plan-base with dynamic sections
+    const renderedPlanBase = await this.promptPort.render("plan-base", {
       project: context.project,
       
       hasOriginalFilesWarning: hasOriginalFiles 
@@ -88,6 +79,9 @@ ${inputs.originalFiles}
         : ''
     });
 
+    // Load plan-rules (no variables to render)
+    const planRules = await this.promptPort.render("plan-rules", {});
+
     // Compose: system + rendered plan-base + plan-rules
     return `${system}\n\n${renderedPlanBase}\n\n${planRules}`;
   }
@@ -96,17 +90,11 @@ ${inputs.originalFiles}
    * Build code phase prompt by composing: system + code-base + code-rules + examples
    */
   async buildUniversalCodePrompt(context: ProjectContext, inputs: TaskInputs, plan: string): Promise<string> {
-    const [system, codeBase, codeRules, examples] = await Promise.all([
-      this.getSystemPrompt(),
-      this.loader.load("code-base"),
-      this.loader.load("code-rules"),
-      this.loader.load("examples")
-    ]);
-
+    const system = await this.getSystemPrompt();
     const hasOriginalFiles = inputs.originalFiles && inputs.originalFiles.length > 0;
     
-    // First render code-base with dynamic sections
-    const renderedCodeBase = this.renderer.render(codeBase, {
+    // Render code-base with dynamic sections
+    const renderedCodeBase = await this.promptPort.render("code-base", {
       project: context.project,
       plan,
       
@@ -164,7 +152,7 @@ PROCESS:
     });
 
     // Render code-rules with response section
-    const renderedCodeRules = this.renderer.render(codeRules, {
+    const renderedCodeRules = await this.promptPort.render("code-rules", {
       responseSection: inputs.directive
         ? `=== RESPONSE ===
 [Your response to the directive]
@@ -173,6 +161,9 @@ PROCESS:
 `
         : ''
     });
+
+    // Load examples (no variables to render)
+    const examples = await this.promptPort.render("examples", {});
 
     // Compose: system + rendered code-base + rendered code-rules + examples
     return `${system}\n\n${renderedCodeBase}\n\n${renderedCodeRules}\n\n${examples}`;
