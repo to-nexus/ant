@@ -24,3 +24,18 @@ export {
   WorkSizeEstimator,
   WorkSizeEstimation
 } from "./WorkSizeEstimator";
+
+export {
+  ImportGraphAnalyzer,
+  ImportRelation,
+  ImportNode
+} from "./ImportGraphAnalyzer";
+
+export {
+  ASTAnalyzer,
+  SymbolLocation
+} from "./ASTAnalyzer";
+
+export {
+  CodebaseCache
+} from "./CodebaseCache";
