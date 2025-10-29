@@ -1,5 +1,5 @@
 import { GitPort } from "../../../core/ports";
-import { getGitInstance, createBranch, getChangedFiles, getFileFromHead } from "./gitUtils";
+import { getGitInstance, createBranch, getChangedFiles, getFileFromHead, resolveLocalPath } from "./gitUtils";
 
 export class SimpleGitAdapter implements GitPort {
   private git: any;
@@ -19,6 +19,12 @@ export class SimpleGitAdapter implements GitPort {
 
   async getRepoRoot(): Promise<string> {
     await this.ensure();
+    
+    // For local repos, use resolved localPath
+    if (this.config.repoType === "local") {
+      return resolveLocalPath(this.config.localPath, this.project);
+    }
+    
     return (await this.git.revparse(["--show-toplevel"]))?.trim();
   }
 

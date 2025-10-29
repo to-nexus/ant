@@ -52,7 +52,23 @@ export async function execute(
     console.log(`⏱️  Prompt build time: ${buildResult.metadata.buildTime}ms`);
   }
 
-  const raw = await llm.invoke(formatted.messages);
+  // Generate code with streaming
+  let raw = '';
+  
+  console.log('\n💻 Generating code...\n');
+  
+  if (llm.stream) {
+    // Use streaming if available
+    for await (const chunk of llm.stream(formatted.messages)) {
+      process.stdout.write(chunk);
+      raw += chunk;
+    }
+    console.log('\n');
+  } else {
+    // Fallback to regular invoke
+    raw = await llm.invoke(formatted.messages);
+  }
+  
   const { responseSection, files, filesToDelete } = parseResponse(raw);
 
   return {

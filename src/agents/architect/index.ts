@@ -46,11 +46,25 @@ export async function architectAgent(
   }
   const config = await deps.config.load(project);
   
-  // 2. Retrieve long-term knowledge from Vector DB
+  // 2. Determine working directory (actual code repository path)
+  let workingDir = process.cwd(); // Default fallback
+  
+  if (deps?.git) {
+    try {
+      // Get the actual repository root from git adapter
+      // This will resolve localPath correctly for local repos
+      workingDir = await deps.git.getRepoRoot();
+    } catch (error) {
+      console.warn(`⚠️  Could not determine working directory from git:`, error);
+      // Fall back to process.cwd()
+    }
+  }
+  
+  // 3. Retrieve long-term knowledge from Vector DB
   console.log(`🔍 Retrieving vector memory for ${task}...`);
   const vectorMemory = await retrieve(task, project, featureFolder, deps?.memory ? { memory: deps.memory } : undefined);
   
-  // 3. Load short-term context from Session
+  // 4. Load short-term context from Session
   let sessionHistory = "";
   if (deps?.session && featureFolder) {
     try {
@@ -68,11 +82,11 @@ export async function architectAgent(
     }
   }
   
-  // 4. Create ProjectContext with both Vector and Session
+  // 5. Create ProjectContext with both Vector and Session
   const context: ProjectContext & { enableEvaluation?: boolean } = {
     project,
     featureFolder,
-    workingDir: process.cwd(),
+    workingDir,  // Now uses resolved repository path
     config,
     memory: vectorMemory,           // Long-term knowledge
     sessionHistory: sessionHistory,  // Short-term context

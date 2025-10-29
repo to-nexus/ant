@@ -54,11 +54,21 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     );
     sessionId = session.sessionId;
     
+    // Create input summary (design doc reference)
+    const inputSummary = state.design 
+      ? `Design: ${state.design.substring(0, 150)}...`
+      : `Spec: ${state.spec.substring(0, 150)}...`;
+    
     const turn: SessionTurn = {
       turnId: 0, // Will be set by adapter
       task: 'code',
       timestamp: new Date().toISOString(),
-      input: state.spec,
+      input: {
+        type: 'design',
+        source: state.design ? 'outputs/design/[latest]' : 'directive',
+        summary: inputSummary.substring(0, 200),
+        size: state.design?.length || state.spec.length,
+      },
       output: {
         branch: branch,
         filesWritten: filesWritten,
@@ -89,7 +99,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       }
     );
     
-    console.log(`💾 Session turn saved to workspace/${state.context.project}/${state.context.featureFolder || 'default'}/session.json`);
+    console.log(`💾 Session turn saved to workspace/${state.context.project}/${state.context.featureFolder || 'default'}/outputs/session.json`);
   }
   
   // 4. Chunk and store learnings to memory with session tracking

@@ -15,7 +15,7 @@ export function initWorkspace(workspaceName: string): void {
   // Create workspace structure
   fs.mkdirSync(workspaceDir, { recursive: true });
   fs.mkdirSync(path.join(workspaceDir, "common/inputs/directives/learn"), { recursive: true });
-  fs.mkdirSync(path.join(workspaceDir, "common/outputs/memory"), { recursive: true });
+  // Common outputs directory (no need for memory subdirectory)
   fs.mkdirSync(path.join(workspaceDir, "common/outputs/reports"), { recursive: true });
 
   // Create config.json
@@ -119,9 +119,11 @@ export function initFeature(workspaceName: string, featureName: string): void {
   fs.mkdirSync(path.join(featureDir, "inputs/directives/code"), { recursive: true });
   fs.mkdirSync(path.join(featureDir, "inputs/directives/learn"), { recursive: true });
   fs.mkdirSync(path.join(featureDir, "outputs/design"), { recursive: true });
-  fs.mkdirSync(path.join(featureDir, "outputs/code"), { recursive: true });
   fs.mkdirSync(path.join(featureDir, "outputs/reports"), { recursive: true });
-  fs.mkdirSync(path.join(featureDir, "outputs/memory"), { recursive: true });
+  fs.mkdirSync(path.join(featureDir, "outputs/eval"), { recursive: true });
+  // NOTE: outputs/code and outputs/memory are NOT created
+  //       - Code goes directly to repository (config.localPath)
+  //       - Memory uses ChromaDB vector database
 
   // Create PRD template
   const prdTemplate = `# ${featureName} - Product Requirements
@@ -186,9 +188,9 @@ Describe the feature and its purpose.
   // Create .gitkeep for output directories
   const outputDirs = [
     "outputs/design",
-    "outputs/code",
     "outputs/reports",
-    "outputs/memory"
+    "outputs/eval"
+    // NOTE: outputs/code is NOT needed - generated code goes directly to repo
   ];
   
   outputDirs.forEach(dir => {
@@ -207,9 +209,9 @@ Describe the feature and its purpose.
   console.log(`  - inputs/directives/code/`);
   console.log(`  - inputs/directives/learn/`);
   console.log(`  - outputs/design/`);
-  console.log(`  - outputs/code/`);
   console.log(`  - outputs/reports/`);
-  console.log(`  - outputs/memory/`);
+  console.log(`  - outputs/eval/`);
+  console.log(`  - outputs/session.json (auto-generated)`);
   console.log("");
   console.log("🚀 Next steps:");
   console.log(`  1. Edit inputs/sources/prd.md`);

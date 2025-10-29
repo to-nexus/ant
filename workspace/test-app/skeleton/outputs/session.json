@@ -1,0 +1,65 @@
+{
+  "sessionId": "9e07ea4d-6604-4ff8-9e36-aded93572de8",
+  "project": "test-app",
+  "feature": "skeleton",
+  "createdAt": "2025-10-29T07:16:17.834Z",
+  "updatedAt": "2025-10-29T07:45:31.824Z",
+  "turns": [
+    {
+      "turnId": 1,
+      "task": "design",
+      "timestamp": "2025-10-29T07:16:17.834Z",
+      "input": {
+        "type": "file",
+        "source": "inputs/sources/prd.md",
+        "summary": "# 코인 시세 모니터링 서비스\n\n## Overview\n실시간 암호화폐 시세를 확인할 수 있는 웹 서비스입니다. 사용자는 주요 코인의 현재가, 24시간 변동률, 거래량 등을 한눈에 확인할 수 있습니다.\n\n## Goals\n- 주요 암호화폐의 실시간 시세 정보 제공\n- 직관적이고 빠른 사용자 경험\n- 모바일/데스크톱 모두에서 최적화된 UI\n\n## User ...",
+        "size": 1694
+      },
+      "output": {
+        "designPath": "workspace/test-app/skeleton/outputs/design/design-test-app-1761722177831.md",
+        "planSummary": "# System Design Document: 코인 시세 모니터링 서비스\n\n## 1. Architecture Overview...",
+        "decisionCount": 3
+      }
+    },
+    {
+      "turnId": 2,
+      "task": "design",
+      "timestamp": "2025-10-29T07:30:23.988Z",
+      "input": {
+        "type": "file",
+        "source": "inputs/sources/prd.md",
+        "summary": "# 코인 시세 모니터링 서비스\n\n## Overview\n실시간 암호화폐 시세를 확인할 수 있는 웹 서비스입니다. 사용자는 주요 코인의 현재가, 24시간 변동률, 거래량 등을 한눈에 확인할 수 있습니다.\n\n## Goals\n- 주요 암호화폐의 실시간 시세 정보 제공\n- 직관적이고 빠른 사용자 경험\n- 모바일/데스크톱 모두에서 최적화된 UI\n\n## User ...",
+        "size": 1694
+      },
+      "output": {
+        "designPath": "workspace/test-app/skeleton/outputs/design/design-test-app-1761723023984.md",
+        "planSummary": "# System Design Document: Crypto Price Monitoring Service\n\n## 1. ARCHITECTURE OVERVIEW...",
+        "decisionCount": 3
+      }
+    },
+    {
+      "turnId": 3,
+      "task": "design",
+      "timestamp": "2025-10-29T07:45:31.821Z",
+      "input": {
+        "type": "file",
+        "source": "inputs/sources/prd.md",
+        "summary": "# 코인 시세 모니터링 서비스\n\n## Overview\n실시간 암호화폐 시세를 확인할 수 있는 웹 서비스입니다. 사용자는 주요 코인의 현재가, 24시간 변동률, 거래량 등을 한눈에 확인할 수 있습니다.\n\n## Goals\n- 주요 암호화폐의 실시간 시세 정보 제공\n- 직관적이고 빠른 사용자 경험\n- 모바일/데스크톱 모두에서 최적화된 UI\n\n## User ...",
+        "size": 1694
+      },
+      "output": {
+        "designPath": "workspace/test-app/skeleton/outputs/design/design-test-app-1761723931819.md",
+        "planSummary": "# System Design Document: Crypto Price Monitoring Service\n\n## 1. ARCHITECTURE OVERVIEW...",
+        "decisionCount": 3
+      }
+    }
+  ],
+  "artifacts": {
+    "latestDesign": "workspace/test-app/skeleton/outputs/design/design-test-app-1761723931819.md",
+    "keyDecisions": [
+      "- **Technology**: Stack",
+      "- **Architecture**: Overview",
+      "- **Database**: - Apply theme class to document root"
+    ]
+  }
+}

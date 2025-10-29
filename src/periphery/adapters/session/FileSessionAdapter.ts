@@ -11,7 +11,7 @@ import { randomUUID } from "crypto";
  * Implements SessionPort using JSON files in the workspace directory.
  * 
  * File structure:
- * workspace/{project}/{feature}/session.json
+ * workspace/{project}/{feature}/outputs/session.json
  * 
  * Benefits:
  * - Human-readable JSON format
@@ -31,14 +31,14 @@ export class FileSessionAdapter implements SessionPort {
    * Get the session file path
    */
   private getSessionPath(project: string, feature: string): string {
-    return path.join(this.workspaceRoot, project, feature, "session.json");
+    return path.join(this.workspaceRoot, project, feature, "outputs", "session.json");
   }
   
   /**
    * Ensure the session directory exists
    */
   private async ensureDirectory(project: string, feature: string): Promise<void> {
-    const sessionDir = path.join(this.workspaceRoot, project, feature);
+    const sessionDir = path.join(this.workspaceRoot, project, feature, "outputs");
     await fs.mkdir(sessionDir, { recursive: true });
   }
   

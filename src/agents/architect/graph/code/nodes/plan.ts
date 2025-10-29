@@ -27,15 +27,26 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     state.codeMode
   );
 
-  // Invoke LLM with formatted prompt
-  const resp = await llm.invoke(result.formatted.messages);
-  const planText = resp;
-
-  // Update code mode from mode config
-  const codeMode = result.modeConfig.mode;
-
+  // Invoke LLM with streaming
+  let planText = '';
+  
   console.log(`⏱️  Prompt build time: ${result.metadata.buildTime}ms`);
-  console.log(`🎯 Inferred mode: ${codeMode}`);
+  console.log(`🎯 Inferred mode: ${result.modeConfig.mode}`);
+  console.log('\n📝 Generating plan...\n');
+  
+  if (llm.stream) {
+    // Use streaming if available
+    for await (const chunk of llm.stream(result.formatted.messages)) {
+      process.stdout.write(chunk);
+      planText += chunk;
+    }
+    console.log('\n');
+  } else {
+    // Fallback to regular invoke
+    planText = await llm.invoke(result.formatted.messages);
+  }
+
+  const codeMode = result.modeConfig.mode;
 
   return { ...state, planText, codeMode };
 }

@@ -4,7 +4,16 @@ import { resolve } from "./nodes/resolve";
 import { store } from "./nodes/store";
 
 export function buildLearnGraph() {
-  const graph = new StateGraph<LearnGraphState>({} as any);
+  const graph = new StateGraph<LearnGraphState>({
+    channels: {
+      context: null as any,
+      spec: null as any,
+      deps: null as any,
+      targets: null as any,
+      learnings: null as any,
+      reportFilePath: null as any,
+    } as any,
+  } as any);
   
   graph.addNode("resolve", resolve as any);
   graph.addNode("store", store as any);
