@@ -1,6 +1,7 @@
 import { getDirective, getSource, findLatestDesign } from "../../../utils";
 import { DesignGraphState } from "../state";
 import { CodebaseRetriever } from "../../../../../core/codebase/CodebaseRetriever";
+import * as path from "path";
 
 /**
  * Design Resolve Node
@@ -16,13 +17,42 @@ import { CodebaseRetriever } from "../../../../../core/codebase/CodebaseRetrieve
  * - Uses GitPort for file operations
  */
 export async function resolve(state: DesignGraphState): Promise<DesignGraphState> {
-  const { context, designMode } = state;
+  const { designMode } = state;
+  const context = state.context; // Use directly from state
   const retriever = new CodebaseRetriever();
   
   // Get GitPort for file operations
   const gitPort = state.deps?.git;
   if (!gitPort) {
     throw new Error("GitPort not provided for file operations");
+  }
+
+  // 0. Validate workspace exists
+  const workspacePath = path.join("workspace", context.project);
+  const workspaceExists = await gitPort.fileExists(workspacePath);
+  
+  if (!workspaceExists) {
+    throw new Error(
+      `Workspace not found: ${workspacePath}\n\n` +
+      `Please create workspace first:\n` +
+      `  npm run init:workspace ${context.project}\n\n` +
+      `Then prepare your inputs in:\n` +
+      `  workspace/${context.project}/${context.featureFolder}/inputs/`
+    );
+  }
+
+  // Validate feature exists
+  const featurePath = path.join("workspace", context.project, context.featureFolder);
+  const featureExists = await gitPort.fileExists(featurePath);
+  
+  if (!featureExists) {
+    throw new Error(
+      `Feature directory not found: ${featurePath}\n\n` +
+      `Please create feature first:\n` +
+      `  npm run init:feature ${context.project} ${context.featureFolder}\n\n` +
+      `Then prepare your inputs in:\n` +
+      `  workspace/${context.project}/${context.featureFolder}/inputs/`
+    );
   }
 
   // 1. Load PRD (optional)
@@ -56,7 +86,7 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
       context.workingDir,
       {
         git: state.deps?.git,
-        vectorDB: state.deps?.memory
+        vectorDB: undefined  // Design mode doesn't use vector DB for retrieval
       },
       {
         maxTokens: 80000,  // ~60KB (smaller for design)

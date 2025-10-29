@@ -5,6 +5,9 @@
  * These types are fundamental to the domain logic.
  */
 
+// Re-export workspace types
+export * from './types/workspace';
+
 /**
  * Agent task types
  * Defines what kind of work an agent performs

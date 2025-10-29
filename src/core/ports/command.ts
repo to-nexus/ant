@@ -1,0 +1,40 @@
+/**
+ * Command Port
+ * Interface for executing shell commands
+ * 
+ * Used for:
+ * - Package installation (npm/pnpm/yarn install)
+ * - Git initialization
+ * - Build/test commands (future)
+ */
+
+export interface CommandResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  success: boolean;
+}
+
+export interface CommandOptions {
+  cwd?: string;           // Working directory
+  timeout?: number;       // Timeout in ms (default: 5 minutes)
+  env?: Record<string, string>;  // Environment variables
+}
+
+export interface CommandPort {
+  /**
+   * Execute a command and return the result
+   */
+  execute(command: string, options?: CommandOptions): Promise<CommandResult>;
+  
+  /**
+   * Check if a command is allowed to run (security)
+   */
+  isAllowed(command: string): boolean;
+  
+  /**
+   * Detect package manager in a directory
+   */
+  detectPackageManager(cwd: string): Promise<'npm' | 'pnpm' | 'yarn' | null>;
+}
+
