@@ -17,18 +17,17 @@ export async function execute(
   let formatted;
   let buildResult;
   
+  // Prepare artifacts (using new unified names)
+  const artifacts = {
+    directive: state.directive,
+    designDoc: state.design,         // Map to old name
+    prdSpec: state.prd,
+    currentCode: state.code,         // Map to old name
+    originalFiles: state.codeHead,   // Map to old name
+  };
+  
   if (reasonHeader) {
-    // Enforcement mode: use previous build result with violation message
-    // Note: We need to store previous build result in state for this to work properly
-    // For now, rebuild with enforcement
-    const artifacts = {
-      directive: state.directive || undefined,
-      designDoc: state.latestDesign || undefined,
-      prdSpec: state.spec || undefined,
-      originalFiles: state.originalFilesBlock || undefined,
-      currentCode: undefined
-    };
-    
+    // Enforcement mode: rebuild with violation message
     buildResult = await engine.buildExecutePrompt(
       "code",
       state.context,
@@ -40,14 +39,6 @@ export async function execute(
     formatted = engine.buildEnforcementPrompt(buildResult, reasonHeader);
   } else {
     // Initial generation mode: build fresh prompt
-    const artifacts = {
-      directive: state.directive || undefined,
-      designDoc: state.latestDesign || undefined,
-      prdSpec: state.spec || undefined,
-      originalFiles: state.originalFilesBlock || undefined,
-      currentCode: undefined
-    };
-    
     buildResult = await engine.buildExecutePrompt(
       "code",
       state.context,
@@ -64,13 +55,11 @@ export async function execute(
   const raw = await llm.invoke(formatted.messages);
   const { responseSection, files, filesToDelete } = parseResponse(raw);
 
-  return { 
-    ...state, 
-    codePrompt: engine.extractPromptText(buildResult),
-    rawResponse: raw, 
-    responseSection, 
-    files, 
-    filesToDelete 
+  return {
+    ...state,
+    rawResponse: raw,
+    responseSection,
+    files,
+    filesToDelete
   };
 }
-

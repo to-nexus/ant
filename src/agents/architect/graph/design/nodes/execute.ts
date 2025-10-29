@@ -2,16 +2,22 @@ import { DesignGraphState } from "../state";
 import { LLMClient } from "../../../../../core/ports";
 import { PromptEngine } from "../../../../../core/prompt/engine";
 
+/**
+ * Execute Node
+ * Generate design document based on plan
+ */
 export async function execute(state: DesignGraphState) {
   const llm = state.deps?.llm as LLMClient;
   const engine = state.deps?.promptEngine as PromptEngine;
 
+  // Prepare artifacts (using new unified names)
   const artifacts = {
-    directive: state.directive || undefined,
-    designDoc: undefined,
-    prdSpec: state.spec || undefined,
-    originalFiles: undefined,
-    currentCode: undefined
+    directive: state.directive,
+    designDoc: undefined,              // Design doesn't use design as input
+    prdSpec: state.prd,               // PRD
+    previousDesign: state.design,     // Previous design
+    currentCode: state.code,          // Codebase (for evolution/refactor)
+    originalFiles: undefined,         // Design doesn't use git HEAD
   };
 
   // Build prompt using PromptEngine
@@ -26,6 +32,5 @@ export async function execute(state: DesignGraphState) {
 
   console.log(`⏱️  Prompt build time: ${result.metadata.buildTime}ms`);
 
-  return { designMarkdown };
+  return { ...state, designMarkdown };
 }
-

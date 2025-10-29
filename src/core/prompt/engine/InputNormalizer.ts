@@ -8,7 +8,7 @@ export interface NormalizedPromptInput {
   goal: string;                    // User's primary intent/goal
   task: AgentTask;                 // design, code, learn
   phase: "plan" | "execute";       // Current phase in workflow
-  mode?: CodeMode;                 // generate, edit, refactor, explain (code only)
+  mode?: CodeMode;                 // generate, refactor, explain (code only)
   
   artifacts: {
     directive?: string;            // User instruction

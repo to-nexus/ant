@@ -3,33 +3,81 @@ import { CodeMode } from "./types";
 /**
  * Mode Inference
  * 
- * Automatically infers code generation mode based on directive content and context.
- * This is a core utility used by the prompt engine.
+ * Automatically infers code generation mode based on available context:
+ * - Directive (primary)
+ * - Design document (secondary)
+ * - Git changes (tertiary)
  */
+export interface ModeInferenceContext {
+  directive?: string | null;
+  designDoc?: string | null;
+  hasGitChanges?: boolean;
+  hasExistingCode?: boolean;
+}
 
 /**
- * Infer code mode from directive and context
+ * Infer code mode from available context
  * 
  * Priority:
  * 1. Explicit keywords in directive
- * 2. Presence of original files
- * 3. Default to 'edit'
+ * 2. Keywords in design doc (if no directive)
+ * 3. Git changes presence
+ * 4. Default based on context
  */
 export function inferCodeMode(
-  directive?: string | null,
-  hasOriginalFiles?: boolean
+  context: string | ModeInferenceContext,
+  hasOriginalFiles?: boolean  // Kept for backwards compatibility
 ): CodeMode {
-  if (!directive) {
-    // No directive: assume editing existing code or generating new
-    return hasOriginalFiles ? 'edit' : 'generate';
+  // Handle backwards compatibility (single string)
+  if (typeof context === 'string' || context === null || context === undefined) {
+    return inferFromText(context);
   }
 
-  const lower = directive.toLowerCase();
+  // New approach: comprehensive context
+  const { directive, designDoc, hasGitChanges, hasExistingCode } = context;
+
+  // 1. Check directive first (highest priority)
+  if (directive) {
+    const modeFromDirective = inferFromText(directive);
+    if (modeFromDirective !== 'generate') {
+      return modeFromDirective;  // explain or refactor explicitly mentioned
+    }
+  }
+
+  // 2. Check design doc if no clear directive
+  if (!directive && designDoc) {
+    const modeFromDesign = inferFromText(designDoc);
+    if (modeFromDesign !== 'generate') {
+      return modeFromDesign;
+    }
+  }
+
+  // 3. Use context signals
+  // If git changes exist → likely refactor/modification
+  if (hasGitChanges) {
+    return 'refactor';
+  }
+
+  // 4. Default logic
+  // If existing code but no git changes → new feature (generate)
+  // If no existing code → new project (generate)
+  return 'generate';
+}
+
+/**
+ * Infer mode from a single text string
+ */
+function inferFromText(text?: string | null): CodeMode {
+  if (!text) {
+    return 'generate';
+  }
+
+  const lower = text.toLowerCase();
 
   // 1. Check for "explain" keywords
   const explainKeywords = [
     'explain', 'describe', 'what does', 'how does', 'why does',
-    '설명해', '어떻게', '왜', '무엇을', '어떤'
+    'analyze', 'show me', 'walk through', 'tell me about'
   ];
   if (explainKeywords.some(kw => lower.includes(kw))) {
     return 'explain';
@@ -38,21 +86,12 @@ export function inferCodeMode(
   // 2. Check for "refactor" keywords
   const refactorKeywords = [
     'refactor', 'restructure', 'reorganize', 'clean up', 'improve structure',
-    '리팩토링', '리팩터링', '개선', '정리', '구조 변경'
+    'migrate', 'update all', 'change all', 'rename all', 'move all'
   ];
   if (refactorKeywords.some(kw => lower.includes(kw))) {
     return 'refactor';
   }
 
-  // 3. Check for "generate" keywords
-  const generateKeywords = [
-    'create', 'add new', 'implement new', 'build new', 'generate',
-    '새로 만들', '새로운', '추가해', '생성'
-  ];
-  if (generateKeywords.some(kw => lower.includes(kw))) {
-    return 'generate';
-  }
-
-  // 4. Default: edit (most common case)
-  return 'edit';
+  // 3. Default: generate
+  return 'generate';
 }

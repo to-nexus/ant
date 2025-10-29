@@ -69,10 +69,11 @@ export class PromptEngine {
     context: ProjectContext,
     artifacts: {
       directive?: string;
-      designDoc?: string;
+      designDoc?: string;       // For code task: design document
+      previousDesign?: string;  // For design task: previous design
       prdSpec?: string;
-      originalFiles?: string;
-      currentCode?: string;
+      originalFiles?: string;   // Git HEAD version (for comparison)
+      currentCode?: string;     // Working tree code
     },
     mode?: CodeMode
   ): Promise<PromptBuildResult> {
@@ -148,10 +149,11 @@ export class PromptEngine {
     context: ProjectContext,
     artifacts: {
       directive?: string;
-      designDoc?: string;
+      designDoc?: string;       // For code task: design document
+      previousDesign?: string;  // For design task: previous design
       prdSpec?: string;
-      originalFiles?: string;
-      currentCode?: string;
+      originalFiles?: string;   // Git HEAD version (for comparison)
+      currentCode?: string;     // Working tree code
     },
     plan: string,
     mode?: CodeMode

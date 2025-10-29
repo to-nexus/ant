@@ -10,7 +10,7 @@ import { orchestrator } from '../composition/orchestrator';
  * 
  * Examples:
  *   aidev architect design workspace/project/feature/directive.md
- *   aidev architect code workspace/project/feature/ --mode edit
+ *   aidev architect code workspace/project/feature/ --mode refactor
  *   aidev arch learn workspace/project/common/directive.md
  *   aidev reviewer --pr 123
  */
@@ -39,7 +39,7 @@ architect
 architect
   .command('code <input>')
   .description('Generate code from design document')
-  .option('--mode <mode>', 'Code generation mode (generate|edit|refactor)', 'generate')
+  .option('--mode <mode>', 'Code generation mode (generate|refactor|explain)', 'generate')
   .option('--project <name>', 'Override auto-detected project name')
   .action(async (input: string, options: any) => {
     await runArchitect('code', input, options);
@@ -105,13 +105,14 @@ async function runArchitect(task: 'design' | 'code' | 'learn', inputPath: string
     }
     console.log('');
     
-    // Run orchestrator
+    // Run orchestrator with new agent/task structure
     const result = await orchestrator({
-      type: mode as any,
+      agent: 'architect',
+      task: task,
       input,
       project,
       inputFile: resolvedFile,
-      codeMode: options.mode
+      mode: options.mode
     });
     
     console.log('\n✅ Task completed successfully!');
@@ -136,9 +137,8 @@ async function runReviewer(inputPath: string, options: any) {
     }
     console.log('');
     
-    // TODO: Implement reviewer logic
     const result = await orchestrator({
-      type: 'review' as any,
+      agent: 'reviewer',
       input: inputPath,
       project,
       inputFile: inputPath
@@ -164,9 +164,8 @@ async function runPlanner(inputPath: string, options: any) {
     console.log(`🏗️  Project: ${project}`);
     console.log('');
     
-    // TODO: Implement planner logic
     const result = await orchestrator({
-      type: 'plan' as any,
+      agent: 'planner',
       input,
       project,
       inputFile: inputPath
@@ -192,9 +191,8 @@ async function runDoc(inputPath: string, options: any) {
     console.log(`🏗️  Project: ${project}`);
     console.log('');
     
-    // TODO: Implement doc logic
     const result = await orchestrator({
-      type: 'doc' as any,
+      agent: 'doc',
       input,
       project,
       inputFile: inputPath

@@ -1,23 +1,94 @@
 import { getDirective, getSource, findLatestDesign } from "../../../utils";
 import { DesignGraphState } from "../state";
+import { CodebaseRetriever } from "../../../../../core/codebase/CodebaseRetriever";
 
-export async function resolve(state: DesignGraphState) {
-  const { context } = state;
+/**
+ * Design Resolve Node
+ * 
+ * Strategy: Load based on design mode
+ * - greenfield: PRD only (no codebase)
+ * - evolution: PRD + current codebase (Phase 1: CodebaseRetriever)
+ * - refactor: Current codebase + previous design (Phase 1: CodebaseRetriever)
+ * 
+ * Always load directive if available
+ */
+export async function resolve(state: DesignGraphState): Promise<DesignGraphState> {
+  const { context, designMode } = state;
+  const retriever = new CodebaseRetriever();
 
-  // Load source materials (PRD + resources)
-  const source = getSource(context);
-  const spec = source.prd;
+  // 1. Load PRD (optional)
+  let prd: string | undefined;
+  try {
+    const source = getSource(context);
+    prd = source?.prd || undefined;
+  } catch (error) {
+    // PRD not found - might be refactor mode without PRD
+    prd = undefined;
+  }
 
-  // Load directive (optional)
-  const directive = getDirective(context, 'design') || "";
+  // 2. Load directive (optional)
+  const directive = getDirective(context, 'design') || undefined;
 
-  // Load previous design (optional)
-  const previousDesign = findLatestDesign(context) || "";
+  // 3. Load previous design (optional)
+  const design = findLatestDesign(context) || undefined;
+
+  // 4. Load codebase (conditional on mode - Phase 1: CodebaseRetriever)
+  let code: string | undefined;
+  let codeHead: string | undefined;
+  let profile = undefined;
+  
+  const needsCodebase = designMode === 'evolution' || designMode === 'refactor';
+  
+  if (needsCodebase) {
+    console.log(`🔍 Retrieving codebase for ${designMode} mode...`);
+    
+    const codeContext = await retriever.retrieve(
+      directive || design || prd || "",
+      context.workingDir,
+      {
+        git: state.deps?.git,
+        vectorDB: state.deps?.memory
+      },
+      {
+        maxTokens: 80000,  // ~60KB (smaller for design)
+        maxFiles: 25,
+        exclude: ['test', 'tests', '__tests__', '*.test.*', '*.spec.*']
+      }
+    );
+    
+    console.log(`✅ Strategy: ${codeContext.strategy}, Files: ${codeContext.stats.filesLoaded}, Tokens: ~${codeContext.stats.estimatedTokens}`);
+    
+    code = codeContext.code;
+    codeHead = codeContext.codeHead;
+    
+    // Analyze codebase
+    const analyzer = state.deps?.analyzer;
+    if (code && analyzer) {
+      try {
+        profile = await analyzer.analyze(code, context.workingDir);
+        console.log(`📊 Detected: ${profile.language}${profile.framework ? ` + ${profile.framework}` : ''}`);
+      } catch (error) {
+        console.warn('⚠️  Failed to analyze codebase:', error);
+      }
+    }
+  }
+
+  // Validation based on mode
+  if (designMode === 'greenfield' && !prd) {
+    throw new Error("Greenfield mode requires PRD document");
+  }
+  
+  if (designMode === 'refactor' && !code) {
+    throw new Error("Refactor mode requires existing codebase");
+  }
 
   return {
     ...state,
-    spec,
+    prd,
     directive,
-    previousDesign
+    design,
+    code,
+    codeHead,
+    profile,
   };
 }
