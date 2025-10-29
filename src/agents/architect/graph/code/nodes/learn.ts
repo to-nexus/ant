@@ -3,29 +3,31 @@ import { ArchitectGraphState } from "../state";
 import { SessionTurn } from "../../../../../core/types";
 
 /**
- * Learn node - Complete workflow finalization:
+ * Learn node - Learning artifacts finalization:
  * 1. Extract learnings from execution
- * 2. Save generated files to repository
- * 3. Chunk and store learnings to memory
- * 4. Save turn to session file
+ * 2. Store learnings to vector DB (for future retrieval)
+ * 3. Save turn to session file (for context continuity)
  * 
- * This is the final node that performs all side effects.
- * Depends on GitPort, ChunkPort, and SessionPort (injected via deps) - follows hexagonal architecture.
+ * NOTE: File saving happens in postProcess node (before dynamic validation)
+ * This node focuses purely on learning/metadata artifacts.
  * 
  * ✅ Hexagonal Architecture Compliance:
- * - Uses GitPort for file operations (not fs directly)
+ * - Uses GitPort for branch management (not fs directly)
  * - Uses SessionPort for session persistence
  * - Uses ChunkPort for chunking operations
+ * - Uses MemoryPort for vector DB storage
  * - No direct infrastructure dependencies
  */
 export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   // 1. Extract learnings
   const learnings = extractCodeLearnings(state);
   
-  // 2. Save files to repository via GitPort (Hexagonal Architecture)
+  // Note: Files are already written to disk in postProcess node
+  // This node focuses on learning artifacts: vector DB + session storage
+  
   const gitPort = state.gitPort || state.deps?.git;
   if (!gitPort) {
-    throw new Error("GitPort not provided for file saving");
+    throw new Error("GitPort not provided for branch management");
   }
   
   const branch = state.context.featureFolder
@@ -33,14 +35,13 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     : `feature/${state.context.project}-arch-${Date.now()}`;
   await gitPort.createBranch(branch, state.context.config.branchBase);
   
-  let filesWritten = 0;
-  
-  // Use GitPort.writeFile() instead of fs (Hexagonal Architecture)
+  // Log files that were written in postProcess
+  console.log(`\n📌 Branch '${branch}' ready with ${state.files.length} files`);
   for (const f of state.files) {
-    await gitPort.writeFile(f.path, f.content);
-    filesWritten++;
     console.log(`✏️  Modified: ${f.path}`);
   }
+  
+  const filesWritten = state.files.length;
   
   // 3. Save turn to session file first (to get sessionId and turnId)
   let sessionId: string | undefined;
@@ -104,38 +105,43 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   
   // 4. Chunk and store learnings to memory with session tracking
   if (state.deps?.memory && state.deps?.chunk) {
-    // Process through chunking pipeline (via ChunkPort)
-    const result = await state.deps.chunk.process({
-      source: 'code-learning',
-      sourceType: 'text',
-      content: learnings,
-      metadata: {
-        type: 'learning',
-        task: 'code',
-        project: state.context.project,
-        feature: state.context.featureFolder || 'default',
-        timestamp: new Date().toISOString(),
-        // 🔗 Session tracking for traceability
-        sessionId: sessionId,
-        turnId: turnId
-      }
-    });
-    
-    console.log(`📚 Chunked into ${result.chunks.length} pieces (avg ${result.stats.avgTokens} tokens)`);
-    
-    // Store each chunk to memory
-    for (const chunk of result.chunks) {
-      await state.deps.memory.store([
-        {
-          content: chunk.text,
-          metadata: chunk.metadata
+    try {
+      // Process through chunking pipeline (via ChunkPort)
+      const result = await state.deps.chunk.process({
+        source: 'code-learning',
+        sourceType: 'text',
+        content: learnings,
+        metadata: {
+          type: 'learning',
+          task: 'code',
+          project: state.context.project,
+          feature: state.context.featureFolder || 'default',
+          timestamp: new Date().toISOString(),
+          // 🔗 Session tracking for traceability
+          sessionId: sessionId,
+          turnId: turnId
         }
-      ], state.context.project);
-    }
-    
-    console.log(`✅ ${result.chunks.length} learning chunks stored to memory`);
-    if (sessionId && turnId) {
-      console.log(`🔗 Linked to session: ${sessionId}, turn: ${turnId}`);
+      });
+      
+      console.log(`📚 Chunked into ${result.chunks.length} pieces (avg ${result.stats.avgTokens} tokens)`);
+      
+      // ✅ BATCH STORE: Convert all chunks to documents and store in ONE call
+      const documents = result.chunks.map(chunk => ({
+        content: chunk.text,
+        metadata: chunk.metadata
+      }));
+      
+      // Single batch store operation (reduces HTTP overhead and memory pressure)
+      await state.deps.memory.store(documents, state.context.project);
+      
+      console.log(`✅ ${result.chunks.length} learning chunks stored to memory (batch)`);
+      if (sessionId && turnId) {
+        console.log(`🔗 Linked to session: ${sessionId}, turn: ${turnId}`);
+      }
+    } catch (error) {
+      // Non-fatal: log error but don't fail the entire workflow
+      console.error('⚠️  Failed to store learnings to memory:', error instanceof Error ? error.message : error);
+      console.log('   Continuing without memory storage...');
     }
   }
   
@@ -171,23 +177,34 @@ function extractCodeLearnings(state: ArchitectGraphState): string {
     }
   }
   
-  // 3. Implementation Plan
+  // 3. Implementation Plan (summarized to reduce memory)
   if (state.planText) {
-    sections.push(`\n## Implementation Plan`);
-    sections.push(state.planText);
+    sections.push(`\n## Implementation Plan Summary`);
+    // Extract key points from plan (first 1000 chars or THINKING section only)
+    const thinkingMatch = state.planText.match(/=== THINKING ===([\s\S]*?)=== END THINKING ===/);
+    if (thinkingMatch) {
+      const thinking = thinkingMatch[1].trim();
+      sections.push(thinking.substring(0, 1500) + (thinking.length > 1500 ? '...' : ''));
+    } else {
+      sections.push(state.planText.substring(0, 1000) + (state.planText.length > 1000 ? '...' : ''));
+    }
   }
   
-  // 4. Design Context
+  // 4. Design Context (keep minimal reference)
   if (state.design) {
     sections.push(`\n## Design Reference`);
-    const designSummary = state.design.substring(0, 500);
-    sections.push(designSummary + (state.design.length > 500 ? '...' : ''));
+    const designSummary = state.design.substring(0, 300);
+    sections.push(designSummary + (state.design.length > 300 ? '...\n[Full design available in session artifacts]' : ''));
   }
   
-  // 5. Directive Applied
+  // 5. Directive Applied (summarized if too long)
   if (state.directive) {
     sections.push(`\n## Directive Applied`);
-    sections.push(state.directive);
+    if (state.directive.length > 2000) {
+      sections.push(state.directive.substring(0, 2000) + '\n...\n[Full directive available in session artifacts]');
+    } else {
+      sections.push(state.directive);
+    }
   }
   
   // 6. Files Generated

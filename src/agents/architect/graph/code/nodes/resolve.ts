@@ -75,7 +75,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   }
 
   // 3. Retrieve relevant codebase (Phase 1: Smart Retrieval)
-  console.log(`🔍 Retrieving relevant codebase...`);
+  console.log(`📋 Retrieving relevant codebase...`);
   
   const codeContext = await retriever.retrieve(
     directive || design || "",

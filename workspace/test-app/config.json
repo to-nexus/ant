@@ -3,5 +3,6 @@
   "repoType": "local",
   "localPath": "../test-app",
   "branchBase": "main",
-  "autoLearn": true
+  "autoLearn": true,
+  "strictValidation": true
 }

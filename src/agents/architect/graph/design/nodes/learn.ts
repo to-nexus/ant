@@ -111,39 +111,44 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   
   // 4. Chunk and store learnings to memory with session tracking
   if (state.context.memory && state.deps?.chunk) {
-    // Process through chunking pipeline (via ChunkPort)
-    const result = await state.deps.chunk.process({
-      source: 'design-learning',
-      sourceType: 'text',
-      content: learnings,
-      metadata: {
-        type: 'learning',
-        task: 'design',
-        project: state.context.project,
-        feature: state.context.featureFolder || 'default',
-        timestamp: new Date().toISOString(),
-        // 🔗 Session tracking for traceability
-        sessionId: sessionId,
-        turnId: turnId
-      }
-    });
-    
-    console.log(`📚 Chunked into ${result.chunks.length} pieces (avg ${result.stats.avgTokens} tokens)`);
-    
-    // Store each chunk to memory
-    const memory = state.context.memory as any;
-    for (const chunk of result.chunks) {
-      await memory.store([
-        {
-          content: chunk.text,
-          metadata: chunk.metadata
+    try {
+      // Process through chunking pipeline (via ChunkPort)
+      const result = await state.deps.chunk.process({
+        source: 'design-learning',
+        sourceType: 'text',
+        content: learnings,
+        metadata: {
+          type: 'learning',
+          task: 'design',
+          project: state.context.project,
+          feature: state.context.featureFolder || 'default',
+          timestamp: new Date().toISOString(),
+          // 🔗 Session tracking for traceability
+          sessionId: sessionId,
+          turnId: turnId
         }
-      ], state.context.project);
-    }
-    
-    console.log(`✅ ${result.chunks.length} learning chunks stored to memory`);
-    if (sessionId && turnId) {
-      console.log(`🔗 Linked to session: ${sessionId}, turn: ${turnId}`);
+      });
+      
+      console.log(`📚 Chunked into ${result.chunks.length} pieces (avg ${result.stats.avgTokens} tokens)`);
+      
+      // ✅ BATCH STORE: Convert all chunks to documents and store in ONE call
+      const documents = result.chunks.map(chunk => ({
+        content: chunk.text,
+        metadata: chunk.metadata
+      }));
+      
+      // Single batch store operation (reduces HTTP overhead and memory pressure)
+      const memory = state.context.memory as any;
+      await memory.store(documents, state.context.project);
+      
+      console.log(`✅ ${result.chunks.length} learning chunks stored to memory (batch)`);
+      if (sessionId && turnId) {
+        console.log(`🔗 Linked to session: ${sessionId}, turn: ${turnId}`);
+      }
+    } catch (error) {
+      // Non-fatal: log error but don't fail the entire workflow
+      console.error('⚠️  Failed to store learnings to memory:', error instanceof Error ? error.message : error);
+      console.log('   Continuing without memory storage...');
     }
   }
   
@@ -162,23 +167,34 @@ function extractDesignLearnings(state: DesignGraphState): string {
   sections.push(`**Feature**: ${state.context.featureFolder || 'main'}`);
   sections.push(`**Timestamp**: ${new Date().toISOString()}`);
   
-  // 2. Design Plan
+  // 2. Design Plan (summarized to reduce memory)
   if (state.planText) {
-    sections.push(`\n## Design Approach`);
-    sections.push(state.planText);
+    sections.push(`\n## Design Approach Summary`);
+    // Extract key points from plan (THINKING section only)
+    const thinkingMatch = state.planText.match(/=== THINKING ===([\s\S]*?)=== END THINKING ===/);
+    if (thinkingMatch) {
+      const thinking = thinkingMatch[1].trim();
+      sections.push(thinking.substring(0, 1500) + (thinking.length > 1500 ? '...' : ''));
+    } else {
+      sections.push(state.planText.substring(0, 1000) + (state.planText.length > 1000 ? '...' : ''));
+    }
   }
   
-  // 3. Previous Design Context
+  // 3. Previous Design Context (keep minimal reference)
   if (state.design) {
     sections.push(`\n## Previous Design Reference`);
-    const summary = state.design.substring(0, 500);
-    sections.push(summary + (state.design.length > 500 ? '...' : ''));
+    const summary = state.design.substring(0, 300);
+    sections.push(summary + (state.design.length > 300 ? '...\n[Full previous design available in session artifacts]' : ''));
   }
   
-  // 4. Directive Applied
+  // 4. Directive Applied (summarized if too long)
   if (state.directive) {
     sections.push(`\n## Directive Applied`);
-    sections.push(state.directive);
+    if (state.directive.length > 2000) {
+      sections.push(state.directive.substring(0, 2000) + '\n...\n[Full directive available in session artifacts]');
+    } else {
+      sections.push(state.directive);
+    }
   }
   
   // 5. Design Summary

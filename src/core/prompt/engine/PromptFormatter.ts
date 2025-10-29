@@ -95,14 +95,90 @@ export class PromptFormatter {
   
   /**
    * Format for enforcement/retry (with violation message)
+   * 
+   * CRITICAL: DO NOT include original directive in enforcement!
+   * - LLM should ONLY fix validation errors
+   * - NOT repeat the original task
    */
   formatEnforcement(
     originalPrompt: string,
     violationMessage: string,
     modeConfig: PromptModeConfig
   ): FormattedPrompt {
-    // Prepend violation message to prompt
-    const enforcementPrompt = `${violationMessage}\n\n${originalPrompt}`;
+    // ✅ Ensure violationMessage is a string (defensive)
+    let errorText: string;
+    if (typeof violationMessage === 'string') {
+      errorText = violationMessage;
+    } else {
+      // Try JSON.stringify with circular reference handling
+      try {
+        errorText = JSON.stringify(violationMessage, null, 2);
+      } catch (circularError) {
+        console.error('⚠️  Warning: Converting circular structure, using fallback');
+        // Fallback: use toString() or describe the type
+        const vm: any = violationMessage;
+        if (vm && typeof vm.toString === 'function') {
+          errorText = vm.toString();
+        } else {
+          errorText = `[${typeof violationMessage}] ${String(violationMessage)}`;
+        }
+      }
+    }
+    
+    // ❌ OLD: Prepend violation message to original prompt (causes repetition)
+    // const enforcementPrompt = `${violationMessage}\n\n${originalPrompt}`;
+    
+    // ✅ NEW: Create focused enforcement prompt WITHOUT original directive
+    const enforcementPrompt = `${errorText}
+
+🚨 CRITICAL INSTRUCTIONS - READ CAREFULLY:
+
+1. FIX ONLY THE ABOVE VALIDATION ERRORS
+   - DO NOT regenerate or repeat the original implementation
+   - ONLY modify the files necessary to fix these specific errors
+
+2. FOCUS ON ROOT CAUSES:
+   - Missing @types/* packages → Add to package.json devDependencies  
+   - TypeScript config errors → Update tsconfig.json
+   - Import/module errors → Fix import paths or file names
+   - Build configuration errors → Update config files
+
+3. FILE FORMAT (MANDATORY):
+   ⚠️  YOU MUST USE THIS EXACT FORMAT:
+   
+   === FILE: path/to/file.ext ===
+   [complete file content here]
+   === END FILE ===
+
+4. ❌ FORBIDDEN - DO NOT USE:
+   - NO markdown code blocks (NO \`\`\`tsx, \`\`\`typescript, \`\`\`json, etc.)
+   - NO markdown headers (NO ### FILE:, ## FILE:, etc.)
+   - NO explanatory text before/after files
+   - NO ellipsis (...) or placeholder comments
+   
+5. EXAMPLE OF CORRECT FORMAT:
+   
+   === FILE: package.json ===
+   {
+     "name": "test-app",
+     "dependencies": {
+       "react": "^18.3.1"
+     },
+     "devDependencies": {
+       "@types/react": "^18.0.0",
+       "@types/node": "^20.0.0",
+       "typescript": "^5.0.0"
+     }
+   }
+   === END FILE ===
+
+6. GENERATE COMPLETE FILES:
+   - Include ALL content, NO shortcuts
+   - Every file must be complete and valid
+   - Check for missing dependencies carefully
+
+START YOUR RESPONSE WITH THE FIRST FILE (=== FILE: ...)`;
+
     
     // Use slightly higher temperature for retry
     const adjustedConfig = {
