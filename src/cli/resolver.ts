@@ -134,36 +134,50 @@ export function resolveInputFile(inputPath: string, task: 'design' | 'code' | 'l
       }
       
       case 'code': {
-        // Code task: look for latest design document
+        // Code task: look for design document (preferred) or directive (fallback)
+        
+        // 1. Try to find design document
         const designDir = path.join(inputPath, "outputs", "design");
-        if (!fs.existsSync(designDir)) {
-          throw new Error(
-            `No outputs/design/ directory found in: ${inputPath}\n` +
-            `Run 'architect design' first to generate design document.`
-          );
+        if (fs.existsSync(designDir)) {
+          const files = fs.readdirSync(designDir);
+          const designFiles = files
+            .filter(f => f.startsWith("design-") && f.endsWith(".md"))
+            .sort()
+            .reverse();
+          
+          if (designFiles.length > 0) {
+            const latestDesign = path.join(designDir, designFiles[0]);
+            console.log(`📄 Using design file: ${latestDesign}`);
+            
+            // Optional: check for code directive
+            const codeDir = path.join(inputPath, "inputs", "directives", "code");
+            const directiveFile = findLatestDirective(codeDir);
+            if (directiveFile) {
+              console.log(`📄 Found code directive: ${directiveFile}`);
+            }
+            
+            return latestDesign;
+          }
         }
         
-        const files = fs.readdirSync(designDir);
-        const designFiles = files
-          .filter(f => f.startsWith("design-") && f.endsWith(".md"))
-          .sort()
-          .reverse();
-        
-        if (designFiles.length === 0) {
-          throw new Error(`No design-*.md files found in: ${designDir}`);
-        }
-        
-        const latestDesign = path.join(designDir, designFiles[0]);
-        console.log(`📄 Using design file: ${latestDesign}`);
-        
-        // Optional: check for code directive
+        // 2. No design found, look for code directive
         const codeDir = path.join(inputPath, "inputs", "directives", "code");
         const directiveFile = findLatestDirective(codeDir);
         if (directiveFile) {
-          console.log(`📄 Found code directive: ${directiveFile}`);
+          console.log(`📄 Using code directive: ${directiveFile}`);
+          return directiveFile;
         }
         
-        return latestDesign;
+        // 3. Neither found - error
+        throw new Error(
+          `No design document or directive found for code task.\n` +
+          `Expected:\n` +
+          `  - Design file in ${designDir}\n` +
+          `  OR\n` +
+          `  - Directive in ${codeDir}\n\n` +
+          `For new features: Run 'architect design' first.\n` +
+          `For modifications: Create directive.md in inputs/directives/code/`
+        );
       }
       
       case 'learn': {

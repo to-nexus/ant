@@ -77,18 +77,24 @@ export async function getLatestCommit(git: any): Promise<{ hash: string; date: s
 }
 
 export async function createBranch(git: any, branch: string, base: string) {
-  await git.fetch();
+  // 1. Check if there are any commits
+  const log = await git.log({ maxCount: 1 }).catch(() => null);
   
+  if (!log || !log.latest) {
+    // No commits yet - create initial commit
+    console.log('📝 Creating initial commit...');
+    await git.commit('Initial commit', {'--allow-empty': null});
+  }
+  
+  // 2. Create or checkout branch (local only, no origin dependency)
   const branches = await git.branch();
-  const localExists = branches.all.includes(branch);
-  const remoteExists = branches.all.includes(`remotes/origin/${branch}`);
   
-  if (localExists || remoteExists) {
+  if (branches.all.includes(branch)) {
     console.log(`📌 Branch '${branch}' already exists, checking out...`);
     await git.checkout(branch);
   } else {
-    console.log(`🌿 Creating new branch '${branch}' from origin/${base}...`);
-    await git.checkoutBranch(branch, `origin/${base}`);
+    console.log(`🌿 Creating local branch '${branch}'...`);
+    await git.checkoutLocalBranch(branch);
   }
 }
 
