@@ -130,6 +130,11 @@ export class ModeController {
       injections.push(`${basePrefix}/memory`);
     }
     
+    // Session history (short-term context about recent work)
+    if (context.stats.hasSessionHistory) {
+      injections.push(`${basePrefix}/session-history`);
+    }
+    
     if (context.designDoc) {
       injections.push(`${basePrefix}/design-doc`);
     }
@@ -147,11 +152,24 @@ export class ModeController {
     }
     
     // Phase-specific injections
-    if (phase === 'plan' && context.stats.hasOriginalFiles) {
-      injections.push(`${phasePrefix}/modification-warning`);
+    if (phase === 'plan') {
+      // New project setup warning
+      if (!context.stats.hasOriginalFiles && task === 'code') {
+        injections.push(`${phasePrefix}/new-project-warning`);
+      }
+      
+      // Modification warning for existing code
+      if (context.stats.hasOriginalFiles) {
+        injections.push(`${phasePrefix}/modification-warning`);
+      }
     }
     
     if (phase === 'execute') {
+      // New project setup injection (highest priority for new projects)
+      if (!context.stats.hasOriginalFiles && task === 'code') {
+        injections.push(`${phasePrefix}/new-project-setup`);
+      }
+      
       if (context.stats.hasOriginalFiles) {
         injections.push(`${phasePrefix}/modification-details`);
         injections.push(`${phasePrefix}/pre-output-check`);
