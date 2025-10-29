@@ -16,29 +16,29 @@ aidev <agent> <task> [options] <input>
 ### 1. Architecture Design
 Generate design from PRD:
 ```bash
-aidev architect design workspace/my-app/auth/inputs/directives/design/directive.md
-```
-
-Short form:
-```bash
 aidev arch design workspace/my-app/auth/inputs/directives/design/directive.md
 ```
 
-### 2. Code Generation
-Generate code from design:
+Full form:
 ```bash
-aidev architect code workspace/my-app/auth/
+aidev architect design workspace/my-app/auth/inputs/directives/design/directive.md
 ```
 
-With edit mode:
+### 2. Code Generation
+Generate code from design (auto-detects mode and batch processing):
 ```bash
-aidev architect code workspace/my-app/auth/ --mode edit
+aidev arch code workspace/my-app/auth/
+```
+
+Explicit mode:
+```bash
+aidev arch code workspace/my-app/auth/ --mode refactor
 ```
 
 ### 3. Learning
 Learn from repository patterns:
 ```bash
-aidev architect learn workspace/my-app/common/inputs/directives/learn/directive.md
+aidev arch learn workspace/my-app/common/inputs/directives/learn/directive.md
 ```
 
 ### 4. Code Review
@@ -63,19 +63,19 @@ aidev doc workspace/my-app/
 
 ## Agents
 
-### Architect (`architect`, `arch`)
+### Architect (`arch`, `architect`)
 Architecture design and code generation
 
 **Tasks:**
 - `design` - Generate architecture design from PRD
-- `code` - Generate code from design document
+- `code` - Generate code from design document (auto-detects mode and batch processing)
 - `learn` - Learn repository patterns and conventions
 
 **Options:**
-- `--mode <mode>` - Code generation mode (code task only)
-  - `generate` (default) - Generate new code
-  - `edit` - Edit existing code
+- `--mode <mode>` - Code generation mode (optional, auto-inferred if not provided)
+  - `generate` - Generate new code
   - `refactor` - Refactor existing code
+  - `explain` - Explain code behavior
 - `--project <name>` - Override auto-detected project
 
 **Examples:**
@@ -83,9 +83,11 @@ Architecture design and code generation
 # Design
 aidev arch design workspace/my-app/auth/inputs/directives/design/directive.md
 
-# Code generation
+# Code generation (mode auto-inferred from directive)
 aidev arch code workspace/my-app/auth/
-aidev arch code workspace/my-app/auth/ --mode edit
+
+# Explicit mode
+aidev arch code workspace/my-app/auth/ --mode refactor
 
 # Learning
 aidev arch learn workspace/my-app/common/inputs/directives/learn/directive.md
@@ -188,24 +190,70 @@ aidev arch design workspace/my-app/auth/directive.md --project custom-name
 
 ## Code Generation Modes
 
-Use `--mode` with the `code` task:
+The `code` task **automatically infers the mode** from your directive. You can override with `--mode`.
+
+### Mode Inference Priority
+1. **Directive keywords** (highest priority)
+   - "explain", "describe" → `explain` mode
+   - "refactor", "restructure", "migrate" → `refactor` mode
+   - Default → `generate` mode
+2. **Design document** (if no directive)
+3. **Git changes** (if present → `refactor`)
 
 ### Generate (default)
-Create new files from scratch:
+Create new code or add features:
 ```bash
 aidev arch code workspace/my-app/auth/
-```
-
-### Edit
-Modify existing files:
-```bash
-aidev arch code workspace/my-app/auth/ --mode edit
+# Directive: "Add user authentication with JWT"
+# → Mode: generate (auto-inferred)
 ```
 
 ### Refactor
-Refactor existing code:
+Refactor or modify existing code:
 ```bash
+aidev arch code workspace/my-app/auth/
+# Directive: "Refactor all API routes to use new error handler"
+# → Mode: refactor (auto-inferred)
+
+# Or explicit:
 aidev arch code workspace/my-app/auth/ --mode refactor
+```
+
+### Explain
+Analyze and explain code:
+```bash
+aidev arch code workspace/my-app/auth/
+# Directive: "Explain how the authentication flow works"
+# → Mode: explain (auto-inferred)
+```
+
+---
+
+## Automatic Batch Processing
+
+For large-scale refactoring, the system **automatically detects** when to use batch processing:
+
+### Normal Processing
+- Small, focused changes (< 40 files, < 150K tokens)
+- Git-based modifications
+- Single LLM call with full context
+
+### Batch Processing (Auto-Enabled)
+- Large refactoring (≥ 40 files or ≥ 150K tokens)
+- Global changes ("update all", "migrate all")
+- Processed in chunks with per-batch validation
+
+**Examples:**
+```bash
+# Small change → Normal processing
+aidev arch code workspace/my-app/auth/
+# Directive: "Add logout endpoint"
+# → Normal mode (auto-detected)
+
+# Large refactoring → Batch processing
+aidev arch code workspace/my-app/
+# Directive: "Refactor all API routes to use async/await"
+# → Batch mode (auto-detected)
 ```
 
 ---
@@ -279,5 +327,28 @@ aidev arch code workspace/my-app/notifications/
 
 ---
 
+## Advanced Features
+
+### Smart Mode Inference
+The system analyzes your directive to determine the best mode:
+- Keywords in directive (primary)
+- Design document content (secondary)
+- Git change detection (tertiary)
+
+### Intelligent Batch Selection
+Work size is estimated before execution:
+- File count estimation
+- Token count estimation
+- Global refactor detection
+- Automatic strategy selection
+
+### Context Loading Strategy
+Three-stage fallback for code loading:
+1. **Git diff** - Fast, focused on changes
+2. **Vector DB** - Semantic search for relevant code
+3. **Keyword** - Fallback text search
+
+---
+
 **Version:** 1.0.0  
-**Last Updated:** 2025-10-28
+**Last Updated:** 2025-10-29

@@ -15,7 +15,44 @@ export type AgentTask = 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';
  * Code generation modes
  * Defines how code generation should be performed
  */
-export type CodeMode = 'generate' | 'edit' | 'refactor' | 'explain';
+export type CodeMode = 'generate' | 'refactor' | 'explain';
+
+/**
+ * Design modes
+ * Defines the nature of the design task
+ */
+export type DesignMode = 'greenfield' | 'evolution' | 'refactor';
+
+/**
+ * Codebase profile
+ * Detected language and framework information
+ */
+export interface CodebaseProfile {
+  language: string;
+  framework?: string;
+  version?: string;
+  packageManager?: string;
+  [key: string]: any;
+}
+
+/**
+ * Task artifacts
+ * Common input materials for both design and code tasks
+ * All fields are optional - resolve nodes load what's available
+ */
+export interface TaskArtifacts {
+  // Documents
+  prd?: string;           // PRD document (product requirements)
+  directive?: string;     // User instruction (current work directive)
+  design?: string;        // Latest design document (from previous turn)
+  
+  // Code
+  code?: string;          // Current codebase (working tree)
+  codeHead?: string;      // Git HEAD version (for comparison)
+  
+  // Analysis
+  profile?: CodebaseProfile;  // Detected language/framework
+}
 
 /**
  * Project context

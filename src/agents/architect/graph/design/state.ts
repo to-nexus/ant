@@ -1,24 +1,42 @@
-import { ProjectContext } from "../../types";
-import { LLMClient, ChunkPort, SessionPort } from "../../../../core/ports";
+import { ProjectContext, DesignMode, CodebaseProfile, TaskArtifacts } from "../../../../core/types";
+import { LLMClient, ChunkPort, SessionPort, GitPort, CodebaseAnalyzerPort } from "../../../../core/ports";
 import { PromptEngine } from "../../../../core/prompt/engine";
 
-export interface DesignGraphState {
+/**
+ * Design Task State
+ * State for design generation graph (greenfield/evolution/refactor)
+ * 
+ * Inherits TaskArtifacts which provides:
+ * - prd: PRD document
+ * - directive: User instruction
+ * - design: Previous design document
+ * - code: Current codebase (for evolution/refactor)
+ * - codeHead: Git HEAD version (not used in design)
+ * - profile: Codebase profile (language/framework)
+ */
+export interface DesignGraphState extends TaskArtifacts {
+  // Context
   context: ProjectContext;
-  spec: string;
+  spec: string;  // CLI input or PRD path
+  
+  // Dependencies
   deps?: {
     llm?: LLMClient;
     promptEngine?: PromptEngine;
     chunk?: ChunkPort;
     session?: SessionPort;
+    git?: GitPort;
+    analyzer?: CodebaseAnalyzerPort;
   };
 
-  previousDesign: string;
-  directive: string;
+  // Mode (explicit or inferred)
+  designMode?: DesignMode;  // greenfield / evolution / refactor
 
+  // Execution
   planText: string;
   designMarkdown: string;
   
-  // Results after saving (populated by learn node)
+  // Results (populated by learn node)
   designFilePath?: string;
   learnings?: string;
 }

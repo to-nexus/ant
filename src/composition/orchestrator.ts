@@ -19,79 +19,98 @@ import * as path from "path";
  * Responsibilities:
  * 1. Instantiate adapters (periphery implementations)
  * 2. Inject dependencies into agents
- * 3. Route commands to appropriate agents
+ * 3. Route commands: agent → task → mode (hierarchical)
  * 
  * This is the only place where concrete implementations are wired together.
  */
 export async function orchestrator(params: {
-  type: "review" | "arch-design" | "arch-code" | "arch-learn" | "plan" | "doc";
+  agent: "architect" | "reviewer" | "planner" | "doc";
+  task?: "design" | "code" | "learn" | "review" | "plan" | "doc";
   input: string;
   project?: string;
   inputFile?: string;
-  codeMode?: 'generate' | 'edit' | 'refactor' | 'explain';
+  mode?: 'generate' | 'refactor' | 'explain';
 }) {
-  const { type, input, project, inputFile, codeMode } = params;
+  const { agent, task, input, project, inputFile, mode } = params;
 
-  switch (type) {
-    case "review": {
+  switch (agent) {
+    case "architect": {
+      if (!task || !['design', 'code', 'learn'].includes(task)) {
+        throw new Error(`Architect agent requires task: 'design', 'code', or 'learn'`);
+      }
+
+      // Common dependencies for architect
+      const memory = new ChromaMemoryAdapter();
+      const llm = new GenericLLMClient('architect');
+      const config = new FileConfigAdapter();
+
+      if (task === 'learn') {
+        // Learn task: minimal dependencies
+        return await architectAgent(input, project || "default", 'learn', inputFile, { memory, llm, config });
+      }
+
+      // Design and Code tasks: full dependencies
+      const promptPort = new FilePromptAdapter();
+      const profilePort = new FileProfileAdapter();
+      const chunk = new ChunkAdapter();
+      const workspaceRoot = path.join(process.cwd(), "workspace");
+      const session = new FileSessionAdapter(workspaceRoot);
+
+      if (task === 'design') {
+        const analyzer = new CodebaseAnalyzer();
+        const configData = await config.load(project || "default");
+        const git = new SimpleGitAdapter(project || "default", configData);
+        
+        return await architectAgent(
+          input, 
+          project || "default", 
+          'design', 
+          inputFile, 
+          { memory, llm, promptPort, profilePort, config, chunk, session, git, analyzer }
+        );
+      }
+
+      if (task === 'code') {
+        const analyzer = new CodebaseAnalyzer();
+        const configData = await config.load(project || "default");
+        const git = new SimpleGitAdapter(project || "default", configData);
+        
+        // Mode will be inferred or auto-determined in architect agent
+        return await architectAgent(
+          input, 
+          project || "default", 
+          'code', 
+          inputFile, 
+          { memory, llm, promptPort, profilePort, analyzer, git, config, chunk, session },
+          mode  // Can be undefined (auto-infer) or explicit
+        );
+      }
+
+      throw new Error(`Unknown architect task: ${task}`);
+    }
+
+    case "reviewer": {
       const memory = new ChromaMemoryAdapter();
       const llm = new GenericLLMClient('reviewer');
       const config = new FileConfigAdapter();
       return await reviewerAgent(input, project || "default", { memory, llm });
     }
-    
-    case "arch-design": {
-      const memory = new ChromaMemoryAdapter();
-      const llm = new GenericLLMClient('architect');
-      const promptPort = new FilePromptAdapter();
-      const profilePort = new FileProfileAdapter();
-      const config = new FileConfigAdapter();
-      const chunk = new ChunkAdapter();
-      const workspaceRoot = path.join(process.cwd(), "workspace");
-      const session = new FileSessionAdapter(workspaceRoot);
-      return await architectAgent(input, project || "default", 'design', inputFile, { memory, llm, promptPort, profilePort, config, chunk, session });
-    }
-    
-    case "arch-code": {
-      const memory = new ChromaMemoryAdapter();
-      const llm = new GenericLLMClient('architect');
-      const promptPort = new FilePromptAdapter();
-      const profilePort = new FileProfileAdapter();
-      const analyzer = new CodebaseAnalyzer();
-      const config = new FileConfigAdapter();
-      const chunk = new ChunkAdapter();
-      const configData = await config.load(project || "default");
-      const git = new SimpleGitAdapter(project || "default", configData);
-      const workspaceRoot = path.join(process.cwd(), "workspace");
-      const session = new FileSessionAdapter(workspaceRoot);
-      
-      const codeMode = undefined; // Will be inferred in graph nodes
-      
-      return await architectAgent(input, project || "default", 'code', inputFile, { memory, llm, promptPort, profilePort, analyzer, git, config, chunk, session }, codeMode);
-    }
-    
-    case "arch-learn": {
-      const memory = new ChromaMemoryAdapter();
-      const llm = new GenericLLMClient('architect');
-      const config = new FileConfigAdapter();
-      return await architectAgent(input, project || "default", 'learn', inputFile, { memory, llm, config });
-    }
-    
-    case "plan": {
+
+    case "planner": {
       const [issues, commits] = input.split("===COMMITS===");
       const memory = new ChromaMemoryAdapter();
       const llm = new GenericLLMClient('planner');
       return await plannerAgent({ issues, commits }, project || "default", { memory, llm });
     }
-    
+
     case "doc": {
       const memory = new ChromaMemoryAdapter();
       const llm = new GenericLLMClient('doc');
       return await docAgent(input, project || "default", { memory, llm });
     }
-    
+
     default:
-      throw new Error(`Unknown agent type: ${type}`);
+      throw new Error(`Unknown agent: ${agent}`);
   }
 }
 

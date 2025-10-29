@@ -1,5 +1,5 @@
-import { ProjectContext, AgentTask } from "../../types";
-import { CodebaseAnalyzerPort, GitPort, MemoryPort, CodebaseProfile } from "../../ports";
+import { ProjectContext, AgentTask, CodebaseProfile } from "../../types";
+import { CodebaseAnalyzerPort, GitPort, MemoryPort } from "../../ports";
 
 /**
  * Assembled context from all sources
@@ -8,13 +8,13 @@ import { CodebaseAnalyzerPort, GitPort, MemoryPort, CodebaseProfile } from "../.
 export interface AssembledContext {
   // Documents
   directive?: string;
-  designDoc?: string;
+  designDoc?: string;         // For code task
+  previousDesign?: string;    // For design task
   prdSpec?: string;
-  previousDesign?: string;     // For design task
   
   // Code
-  originalFiles?: string;
-  currentCode?: string;
+  originalFiles?: string;     // Git HEAD version (for comparison)
+  currentCode?: string;       // Working tree code
   
   // Memory
   memory?: string;              // Vector memory (long-term knowledge)
@@ -26,6 +26,7 @@ export interface AssembledContext {
     hasDirective: boolean;
     hasDesign: boolean;
     hasOriginalFiles: boolean;
+    hasCurrentCode: boolean;
     hasMemory: boolean;
     hasSessionHistory: boolean;
     codebaseDetected: boolean;
@@ -92,6 +93,7 @@ export class ContextAssembler {
       hasDirective: Boolean(assembled.directive),
       hasDesign: Boolean(assembled.designDoc || assembled.previousDesign),
       hasOriginalFiles: Boolean(assembled.originalFiles),
+      hasCurrentCode: Boolean(assembled.currentCode),
       hasMemory: Boolean(assembled.memory),
       hasSessionHistory: Boolean(assembled.sessionHistory),
       codebaseDetected: Boolean(assembled.codebaseProfile)

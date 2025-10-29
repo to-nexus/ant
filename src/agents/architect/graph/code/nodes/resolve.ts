@@ -1,76 +1,79 @@
 import { getDirective, findLatestDesign } from "../../../utils";
 import { ArchitectGraphState } from "../state";
+import { CodebaseRetriever } from "../../../../../core/codebase/CodebaseRetriever";
 
 /**
- * Resolve inputs for code generation:
- * - Latest design document (optional - not required for small changes)
- * - Code directive (if exists)
- * - Original files from HEAD (git)
- * - Codebase profile (language/framework detection)
+ * Code Resolve Node
+ * 
+ * Phase 1: CodebaseRetriever 사용
+ * - Vector DB 기반 관련 코드 검색
+ * - Git diff 통합
+ * - 토큰 효율적
  * 
  * Strategy:
- * - Large/new features: Require design doc (from design task)
- * - Small changes/fixes: Directive only (design doc optional)
+ * 1. Git diff 있으면 → Git 기반
+ * 2. Vector DB 있으면 → Vector 검색
+ * 3. Fallback → Keyword 검색
+ * 
+ * Validation: Must have either design doc OR directive
  */
 export async function resolve(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   const { context } = state;
+  const retriever = new CodebaseRetriever();
 
-  // Try to find design document (optional)
-  const latestDesign = findLatestDesign(context) || "";
+  // 1. Load design document (optional)
+  const design = findLatestDesign(context) || undefined;
 
-  // Load directive (optional)
-  const directive = getDirective(context, 'code') || "";
+  // 2. Load directive (optional)
+  const directive = getDirective(context, 'code') || undefined;
   
   // Validate: Must have either design doc OR directive
-  if (!latestDesign && !directive) {
+  if (!design && !directive) {
     throw new Error(
       "No design document or directive found.\n" +
       "For new features: Run arch-design first.\n" +
-      "For modifications: Provide a directive in workspace/{project}/{feature}/inputs/directives/code/directive.md"
+      "For modifications: Provide directive in workspace/{project}/{feature}/inputs/directives/code/directive.md"
     );
   }
 
-  // Get original files from HEAD if working tree has changes
-  const git = state.deps?.git ? state.deps.git : null as any;
-  const changes = await git.diff();
-  let originalFilesBlock = "";
+  // 3. Retrieve relevant codebase (Phase 1: Smart Retrieval)
+  console.log(`🔍 Retrieving relevant codebase...`);
   
-  if (changes.length > 0) {
-    const changedFiles = await (await git.status()).files.map((f: any) => f.path);
-    const originals: Array<{ path: string; content: string }> = [];
-    
-    for (const p of changedFiles) {
-      const content = await git.show([`HEAD:${p}`]).catch(() => null);
-      if (content !== null) {
-        originals.push({ path: p, content });
-      }
+  const codeContext = await retriever.retrieve(
+    directive || design || "",
+    context.workingDir,
+    {
+      git: state.deps?.git,
+      vectorDB: state.deps?.memory
+    },
+    {
+      maxTokens: 100000,  // ~75KB
+      maxFiles: 30,
+      exclude: ['test', 'tests', '__tests__', '*.test.*', '*.spec.*']
     }
-    
-    if (originals.length) {
-      originalFilesBlock = originals.map(f => `FILE: ${f.path}\n${f.content}`).join("\n\n---\n\n");
-    }
-  }
+  );
 
-  // Analyze codebase to detect language and framework
-  let codebaseProfile = null;
+  console.log(`✅ Strategy: ${codeContext.strategy}, Files: ${codeContext.stats.filesLoaded}, Tokens: ~${codeContext.stats.estimatedTokens}`);
+
+  // 4. Analyze codebase profile
+  let profile = undefined;
   const analyzer = state.deps?.analyzer;
   
-  if (originalFilesBlock && analyzer) {
+  if (codeContext.code && analyzer) {
     try {
-      codebaseProfile = await analyzer.analyze(originalFilesBlock, context.workingDir);
-      console.log(`📊 Detected codebase: ${codebaseProfile.language}${codebaseProfile.framework ? ` + ${codebaseProfile.framework}` : ''}`);
+      profile = await analyzer.analyze(codeContext.code, context.workingDir);
+      console.log(`📊 Detected: ${profile.language}${profile.framework ? ` + ${profile.framework}` : ''}`);
     } catch (error) {
-      console.warn('Failed to analyze codebase:', error);
-      // Continue without profile (graceful degradation)
+      console.warn('⚠️  Failed to analyze codebase:', error);
     }
   }
 
   return {
     ...state,
-    latestDesign,
     directive,
-    originalFilesBlock,
-    codebaseProfile,
+    design,
+    code: codeContext.code,
+    codeHead: codeContext.codeHead,
+    profile,
   };
 }
-

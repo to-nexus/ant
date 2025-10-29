@@ -32,6 +32,12 @@ export class SimpleGitAdapter implements GitPort {
     return await getChangedFiles(this.git);
   }
 
+  async hasChanges(): Promise<boolean> {
+    await this.ensure();
+    const changed = await getChangedFiles(this.git);
+    return changed.length > 0;
+  }
+
   async getHeadFile(path: string): Promise<string | null> {
     await this.ensure();
     return await getFileFromHead(this.git, path);
@@ -46,4 +52,23 @@ export class SimpleGitAdapter implements GitPort {
     fs.mkdirSync(p.dirname(full), { recursive: true });
     fs.writeFileSync(full, content, "utf8");
   }
+
+  // Legacy compatibility methods
+  async diff(): Promise<string[]> {
+    return await this.getChangedFiles();
+  }
+
+  async show(args: string[]): Promise<string> {
+    await this.ensure();
+    const result = await this.git.show(args);
+    return result || "";
+  }
+
+  async status(): Promise<{ files: Array<{ path: string }> }> {
+    const changed = await this.getChangedFiles();
+    return {
+      files: changed.map(path => ({ path }))
+    };
+  }
 }
+

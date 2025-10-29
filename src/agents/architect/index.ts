@@ -3,7 +3,7 @@ import { extractFeatureFolder } from "./utils";
 import { retrieve } from "./memory";
 import { formatSessionContext } from "./session-formatter";
 import { MemoryPort, LLMClient, PromptPort, GitPort, ConfigPort, CodebaseAnalyzerPort, ProfilePort, SessionPort, ChunkPort } from "../../core/ports";
-import { runCodeGraph } from "./graph/code/runner";
+import { runCodeGraph, runBatchCodeGraph } from "./graph/code/runner";
 import { ArchitectGraphState } from "./graph/code/state";
 import { runDesignGraph } from "./graph/design/runner";
 import { DesignGraphState } from "./graph/design/state";
@@ -27,7 +27,13 @@ export async function architectAgent(
     chunk?: ChunkPort;
     session?: SessionPort;
   },
-  codeMode?: CodeMode
+  codeMode?: CodeMode,
+  batchOptions?: {
+    batchSize?: number;
+    maxBatches?: number;
+    stopOnError?: boolean;
+    maxRetries?: number;
+  }
 ): Promise<ArchitectResult> {
   // Initialize context
   const featureFolder = extractFeatureFolder(inputFile, project);
@@ -115,10 +121,10 @@ export async function architectAgent(
           llm: deps?.llm,
           promptEngine: designEngine,
           chunk: deps?.chunk,
-          session: deps?.session
+          session: deps?.session,
+          git: deps?.git,
+          analyzer: deps?.analyzer
         },
-        previousDesign: "",
-        directive: "",
         planText: "",
         designMarkdown: ""
       };
@@ -130,63 +136,153 @@ export async function architectAgent(
         message: `Design document created at ${d.designFilePath}. Review and approve before generating code.`
       };
     case 'code':
-      // Run via code graph
-      // Initialize prompt engine
+      // Run via code graph (auto-detect batch vs normal)
       if (!deps?.promptPort) {
         throw new Error("PromptPort not provided for code generation");
       }
-      const codeEngine = new PromptEngine({
-        promptPort: deps.promptPort,
-        profilePort: deps.profilePort,
-        analyzer: deps.analyzer,
-        git: deps.git,
-        memory: deps.memory,
-        contextLoader: async (task, ctx) => {
-          const { getDirective, findLatestDesign } = await import('./utils');
-          return {
-            directive: getDirective(ctx, task) || undefined,
-            designDoc: findLatestDesign(ctx) || undefined
-          };
-        }
-      });
+
+      // === Infer code mode if not explicitly provided ===
+      let inferredMode = codeMode;
+      if (!inferredMode) {
+        const { inferCodeMode } = await import('../../core/modeInference');
+        const { getDirective, findLatestDesign } = await import('./utils');
+        
+        const directive = getDirective(context, 'code');
+        const designDoc = findLatestDesign(context);
+        const hasGitChanges = deps?.git ? await deps.git.hasChanges() : false;
+        
+        inferredMode = inferCodeMode({
+          directive,
+          designDoc,
+          hasGitChanges,
+          hasExistingCode: true  // We're in a project, so code exists
+        });
+        
+        console.log(`🎯 Code mode inferred: ${inferredMode}`);
+      } else {
+        console.log(`🎯 Code mode (explicit): ${inferredMode}`);
+      }
+
+      // === Auto-detect batch vs normal processing ===
+      const { WorkSizeEstimator } = await import('../../core/codebase');
+      const estimator = new WorkSizeEstimator();
       
-      const initial: ArchitectGraphState = {
-        context,
+      console.log('📊 Analyzing work size...');
+      const estimation = await estimator.estimate(
         spec,
-        deps: { 
-          memory: deps?.memory, 
-          llm: deps?.llm,
-          promptEngine: codeEngine,
-          analyzer: deps?.analyzer,
-          git: deps?.git,
-          chunk: deps?.chunk,
-          session: deps?.session
-        },
-        gitPort: deps?.git,
-        latestDesign: "",
-        directive: "",
-        originalFilesBlock: "",
-        planText: "",
-        codePrompt: "",
-        rawResponse: "",
-        files: [],
-        filesToDelete: [],
-        requiredIntegrations: [],
-        retries: 0,
-        maxRetries: 1,
-        codeMode: codeMode, // Will be inferred in graph nodes
-        codebaseProfile: null  // Will be detected in resolve node
-      };
-      const result = await runCodeGraph(initial);
-      return {
-        success: true,
-        task: 'code',
-        reportFile: result.reportFile,
-        filesAnalyzed: result.filesChanged,
-        message: result.filesChanged > 0
-          ? `${result.filesChanged} files changed. Review with 'git diff' and commit when ready.`
-          : `No code changes generated. See report for plan and learnings.`
-      };
+        context.workingDir,
+        deps?.git
+      );
+
+      console.log(`   Estimated: ~${estimation.estimatedFiles} files, ~${Math.ceil(estimation.estimatedTokens / 1000)}K tokens`);
+      console.log(`   Decision: ${estimation.reason}`);
+
+      if (estimation.needsBatch) {
+        // === Batch Processing Mode ===
+        console.log('📦 Using batch processing mode\n');
+        
+        const batchEngine = new PromptEngine({
+          promptPort: deps.promptPort,
+          profilePort: deps.profilePort,
+          analyzer: deps.analyzer,
+          git: deps.git,
+          memory: deps.memory,
+          contextLoader: async (task, ctx) => {
+            const { getDirective, findLatestDesign } = await import('./utils');
+            return {
+              directive: getDirective(ctx, task) || undefined,
+              designDoc: findLatestDesign(ctx) || undefined
+            };
+          }
+        });
+        
+        const batchInitial: ArchitectGraphState = {
+          context,
+          spec,
+          deps: { 
+            memory: deps?.memory, 
+            llm: deps?.llm,
+            promptEngine: batchEngine,
+            analyzer: deps?.analyzer,
+            git: deps?.git,
+            chunk: deps?.chunk,
+            session: deps?.session
+          },
+          gitPort: deps?.git,
+          planText: "",
+          codePrompt: "",
+          rawResponse: "",
+          files: [],
+          filesToDelete: [],
+          requiredIntegrations: [],
+          retries: 0,
+          maxRetries: 1,
+          codeMode: 'refactor', // Batch is always refactor
+        };
+        
+        const batchResult = await runBatchCodeGraph(spec, batchInitial, batchOptions);
+        
+        return {
+          success: batchResult.failCount === 0,
+          task: 'code',
+          reportFile: '',
+          filesAnalyzed: batchResult.totalFilesModified,
+          message: `Batch processing complete: ${batchResult.successCount}/${batchResult.totalBatches} batches succeeded, ${batchResult.totalFilesModified} files modified.`
+        };
+      } else {
+        // === Normal Processing Mode ===
+        console.log('⚡ Using normal processing mode\n');
+        
+        const codeEngine = new PromptEngine({
+          promptPort: deps.promptPort,
+          profilePort: deps.profilePort,
+          analyzer: deps.analyzer,
+          git: deps.git,
+          memory: deps.memory,
+          contextLoader: async (task, ctx) => {
+            const { getDirective, findLatestDesign } = await import('./utils');
+            return {
+              directive: getDirective(ctx, task) || undefined,
+              designDoc: findLatestDesign(ctx) || undefined
+            };
+          }
+        });
+        
+        const initial: ArchitectGraphState = {
+          context,
+          spec,
+          deps: { 
+            memory: deps?.memory, 
+            llm: deps?.llm,
+            promptEngine: codeEngine,
+            analyzer: deps?.analyzer,
+            git: deps?.git,
+            chunk: deps?.chunk,
+            session: deps?.session
+          },
+          gitPort: deps?.git,
+          planText: "",
+          codePrompt: "",
+          rawResponse: "",
+          files: [],
+          filesToDelete: [],
+          requiredIntegrations: [],
+          retries: 0,
+          maxRetries: 1,
+          codeMode: codeMode, // Will be inferred in graph nodes
+        };
+        const result = await runCodeGraph(initial);
+        return {
+          success: true,
+          task: 'code',
+          reportFile: result.reportFile,
+          filesAnalyzed: result.filesChanged,
+          message: result.filesChanged > 0
+            ? `${result.filesChanged} files changed. Review with 'git diff' and commit when ready.`
+            : `No code changes generated. See report for plan and learnings.`
+        };
+      }
+    
     default:
       throw new Error(`Unknown task: ${task}`);
   }
