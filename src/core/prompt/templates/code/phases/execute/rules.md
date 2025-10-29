@@ -103,8 +103,6 @@ YOU MUST:
 ✅ Write EVERY line of JSX
 ✅ Output COMPLETE, runnable files
 
-{{responseSection}}
-
 === FILE: [actual/file/path.tsx] ===
 [COMPLETE file - write EVERY line, not "// ... rest ..."]
 === END FILE ===

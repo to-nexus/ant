@@ -7,12 +7,6 @@ PROJECT: {{project}}
 YOUR PLAN (from Phase 1):
 {{plan}}
 
-{{originalFilesWarning}}
-
-CONTEXT:
-{{directiveSection}}
-{{currentCodeSection}}
-
 KEY WORKING PRINCIPLES:
 1. Priority: DIRECTIVE (what) → DESIGN DOC (how) → ORIGINAL FILES (base)
 2. {{modificationMode}}
@@ -35,9 +29,6 @@ Step 2: IMPLEMENT EXACTLY AS PLANNED
 → Follow your plan from Phase 1
 → Stay focused on the primary task
 → Don't add unplanned features
-
-Step 2.5: MANDATORY PRE-OUTPUT CHECK
-{{preOutputCheck}}
 
 FORBIDDEN: Do NOT use these patterns:
 ❌ "// ... all other imports ..."
