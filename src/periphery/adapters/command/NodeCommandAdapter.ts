@@ -19,6 +19,7 @@ const execAsync = promisify(exec);
 export class NodeCommandAdapter implements CommandPort {
   private readonly ALLOWED_COMMANDS = [
     'npm',
+    'npx',    // ✅ Added for running tools like tsc, eslint
     'pnpm',
     'yarn',
     'git',

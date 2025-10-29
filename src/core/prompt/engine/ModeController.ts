@@ -165,6 +165,11 @@ export class ModeController {
     }
     
     if (phase === 'execute') {
+      // Runtime error fix detection (highest priority if directive contains error messages)
+      if (context.directive && this.containsRuntimeError(context.directive)) {
+        injections.push(`${phasePrefix}/runtime-error-fix`);
+      }
+      
       // New project setup injection (highest priority for new projects)
       if (!context.stats.hasOriginalFiles && task === 'code') {
         injections.push(`${phasePrefix}/new-project-setup`);
@@ -181,6 +186,47 @@ export class ModeController {
     }
     
     return injections;
+  }
+  
+  /**
+   * Detect if directive contains runtime error messages or execution feedback
+   */
+  private containsRuntimeError(directive: string): boolean {
+    const errorPatterns = [
+      // Error types
+      /Error:/i,
+      /TypeError/i,
+      /ReferenceError/i,
+      /SyntaxError/i,
+      /RangeError/i,
+      /ELIFECYCLE/i,
+      /npm ERR!/i,
+      
+      // Stack traces
+      /\s+at\s+\S+\s+\(/i,  // "at functionName (file.js:10:5)"
+      /node_modules/i,
+      
+      // Common error keywords
+      /failed to/i,
+      /cannot find/i,
+      /undefined is not/i,
+      /unexpected token/i,
+      /module not found/i,
+      /command failed/i,
+      /compilation error/i,
+      
+      // Terminal output patterns
+      /\$ npm run/i,
+      /\$ node /i,
+      /Process exited with code/i,
+      
+      // Test failures
+      /test.*failed/i,
+      /assertion.*failed/i,
+      /expected.*but got/i
+    ];
+    
+    return errorPatterns.some(pattern => pattern.test(directive));
   }
   
   /**

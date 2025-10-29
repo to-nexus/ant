@@ -1,10 +1,12 @@
 /**
  * Post-Process Node
  * 
- * Handles post-generation tasks:
+ * Handles post-generation tasks BEFORE dynamic validation:
+ * 0. Write generated files to disk (CRITICAL: must happen before validation)
  * 1. Package installation (if package.json changed)
  * 2. Git initialization (if new project)
- * 3. Other setup tasks
+ * 
+ * This ensures dynamicValidate can check actual files on disk.
  * 
  * ✅ Hexagonal Architecture Compliance:
  * - Uses CommandPort for command execution
@@ -43,6 +45,17 @@ export async function postProcess(state: ArchitectGraphState): Promise<Architect
   console.log(`\n🔧 Post-processing in: ${resolvedPath}\n`);
 
   try {
+    // 0. CRITICAL: Write files to disk BEFORE validation/installation
+    // This ensures dynamicValidate can actually check the files
+    console.log(`📝 Writing ${state.files.length} files to disk...`);
+    
+    for (const file of state.files) {
+      await gitPort.writeFile(file.path, file.content);
+      console.log(`   ✓ ${file.path}`);
+    }
+    
+    console.log(`✅ All files written to disk\n`);
+
     // 1. Check if package.json was generated or modified
     const hasPackageJson = state.files.some(f => 
       f.path.endsWith('package.json')

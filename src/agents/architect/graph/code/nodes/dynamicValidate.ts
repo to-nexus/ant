@@ -33,16 +33,17 @@ export interface DynamicValidationResult {
  * 
  * Only runs if:
  * 1. CommandPort is available
- * 2. Config has strictValidation enabled (or --strict flag)
+ * 2. Config has strictValidation enabled (DEFAULT: true, disable with strictValidation: false)
  * 3. Target repository exists
  */
 export async function dynamicValidate(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   const commandPort = state.deps?.command;
   const gitPort = state.deps?.git;
 
-  // Skip if not enabled
-  if (!state.context.config?.strictValidation) {
-    console.log('⚠️  Dynamic validation disabled (enable with strictValidation: true in config)');
+  // Skip if explicitly disabled (default is enabled)
+  const strictValidation = state.context.config?.strictValidation ?? true;  // ✅ Default: true
+  if (strictValidation === false) {
+    console.log('⚠️  Dynamic validation disabled (set strictValidation: true in config to enable)');
     return state;
   }
 
@@ -65,7 +66,7 @@ export async function dynamicValidate(state: ArchitectGraphState): Promise<Archi
     ? config.localPath
     : p.resolve(repoRoot, config.localPath);
 
-  console.log(`\n🔍 Running dynamic validation in: ${resolvedPath}\n`);
+  console.log(`\n📋 Running dynamic validation in: ${resolvedPath}\n`);
 
   const result: DynamicValidationResult = {
     passed: true,
@@ -92,9 +93,14 @@ export async function dynamicValidate(state: ArchitectGraphState): Promise<Archi
 
       if (!typeCheckResult.success) {
         result.passed = false;
-        result.typeErrors = parseTypeScriptErrors(typeCheckResult.stderr);
+        // ✅ TypeScript outputs errors to STDOUT, not stderr!
+        const errorOutput = typeCheckResult.stdout || typeCheckResult.stderr;
+        result.typeErrors = parseTypeScriptErrors(errorOutput);
         console.error('❌ Type check failed:');
-        result.typeErrors.forEach(err => console.error(`   ${err}`));
+        result.typeErrors.slice(0, 10).forEach(err => console.error(`   ${err}`));
+        if (result.typeErrors.length > 10) {
+          console.error(`   ... and ${result.typeErrors.length - 10} more errors`);
+        }
       } else {
         console.log('✅ Type check passed');
       }
@@ -108,7 +114,7 @@ export async function dynamicValidate(state: ArchitectGraphState): Promise<Archi
     );
 
     if (hasESLint) {
-      console.log('🔍 Running ESLint...');
+      console.log('📋 Running ESLint...');
       
       const lintResult = await commandPort.execute('npx eslint . --ext .ts,.tsx,.js,.jsx', {
         cwd: resolvedPath,
@@ -150,9 +156,14 @@ export async function dynamicValidate(state: ArchitectGraphState): Promise<Archi
 
             if (!buildResult.success) {
               result.passed = false;
-              result.buildErrors = parseBuildErrors(buildResult.stderr);
+              // ✅ Build tools may output errors to stdout or stderr
+              const errorOutput = buildResult.stderr || buildResult.stdout;
+              result.buildErrors = parseBuildErrors(errorOutput);
               console.error('❌ Build failed:');
-              result.buildErrors.slice(0, 5).forEach(err => console.error(`   ${err}`));
+              result.buildErrors.slice(0, 10).forEach(err => console.error(`   ${err}`));
+              if (result.buildErrors.length > 10) {
+                console.error(`   ... and ${result.buildErrors.length - 10} more errors`);
+              }
             } else {
               console.log('✅ Build passed');
             }
@@ -271,7 +282,7 @@ function formatValidationErrors(result: DynamicValidationResult): string[] {
   }
   
   if (result.lintErrors && result.lintErrors.length > 0) {
-    lines.push('🔍 Lint Errors:');
+    lines.push('📋 Lint Errors:');
     result.lintErrors.slice(0, 5).forEach(err => lines.push(`  - ${err}`));
     if (result.lintErrors.length > 5) {
       lines.push(`  ... and ${result.lintErrors.length - 5} more`);

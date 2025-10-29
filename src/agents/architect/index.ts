@@ -250,8 +250,9 @@ export async function architectAgent(
           files: [],
           filesToDelete: [],
           requiredIntegrations: [],
+          violations: [],  // ✅ Initialize violations array
           retries: 0,
-          maxRetries: 1,
+          maxRetries: 3,  // ✅ Allow multiple retries for dependency fixes
           codeMode: 'refactor', // Batch is always refactor
         };
         
@@ -309,8 +310,9 @@ export async function architectAgent(
           files: [],
           filesToDelete: [],
           requiredIntegrations: [],
+          violations: [],  // ✅ Initialize violations array
           retries: 0,
-          maxRetries: 1,
+          maxRetries: 3,  // ✅ Allow multiple retries for dependency fixes
           codeMode: codeMode, // Will be inferred in graph nodes
         };
         const result = await runCodeGraph(initial);

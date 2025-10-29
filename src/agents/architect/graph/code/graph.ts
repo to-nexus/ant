@@ -39,6 +39,7 @@ export function buildCodeGraph() {
       retries: null as any,
       maxRetries: null as any,
       dynamicValidationResult: null as any,
+      enforcementReason: null as any,  // ✅ For enforce → execute communication
       
       // Evaluation & Learning
       evaluationReport: null as any,
@@ -62,14 +63,50 @@ export function buildCodeGraph() {
   graph.addNode(
     "enforce",
     (async (s: any) => {
-      const reasonHeader = "VIOLATION DETECTED\nRegenerate COMPLETE files. Preserve originals. No ellipsis. Minimal changes only.";
-      return execute(s as ArchitectGraphState, reasonHeader);
+      const state = s as ArchitectGraphState;
+      
+      // Convert violations to string safely
+      let actualErrors = 'Validation failed';
+      if (state.violations && Array.isArray(state.violations) && state.violations.length > 0) {
+        actualErrors = state.violations
+          .map((v: any) => {
+            if (typeof v === 'string') return v;
+            
+            // Try JSON.stringify with circular reference handling
+            try {
+              return JSON.stringify(v, null, 2);
+            } catch (circularError) {
+              if (v && typeof v.toString === 'function') {
+                return v.toString();
+              }
+              return `[${typeof v}] ${String(v)}`;
+            }
+          })
+          .join('\n\n');
+      }
+      
+      // If no files generated, add helpful message
+      if (!state.files || state.files.length === 0) {
+        if (actualErrors === 'Validation failed') {
+          actualErrors = `❌ No files were generated. Please create the necessary files based on the design document and directive.`;
+        } else {
+          actualErrors = `❌ No files were generated.\n\n${actualErrors}`;
+        }
+      }
+      
+      const reasonHeader = actualErrors;
+      
+      return {
+        ...state,
+        enforcementReason: reasonHeader
+      };
     }) as any
   );
 
   graph.addEdge("__start__" as any, "resolve" as any);
   graph.addEdge("resolve" as any, "plan" as any);
   graph.addEdge("plan" as any, "execute" as any);
+  
   graph.addEdge("execute" as any, "validate" as any);
 
   // Static validation first
