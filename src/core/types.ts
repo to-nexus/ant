@@ -70,14 +70,29 @@ export interface ProjectContext {
 }
 
 /**
+ * Session Turn Input
+ * Stores metadata about input rather than full content to avoid duplication
+ */
+export interface SessionTurnInput {
+  type: 'text' | 'file' | 'directive' | 'design';
+  source?: string;        // File path (e.g., "inputs/sources/prd.md")
+  summary: string;        // Brief summary (200 chars max)
+  hash?: string;          // Content hash for change detection
+  size?: number;          // Content size in bytes
+}
+
+/**
  * Session Turn
  * Represents a single turn in the conversation/workflow
+ * 
+ * ⚠️ Breaking change: `input` is now structured metadata, not full content
+ * This saves tokens and avoids duplication with source files
  */
 export interface SessionTurn {
   turnId: number;
   task: AgentTask;
   timestamp: string;
-  input: string;
+  input: SessionTurnInput;
   output: SessionTurnOutput;
   reference?: {
     turnId: number;
@@ -87,12 +102,15 @@ export interface SessionTurn {
 /**
  * Session Turn Output
  * Contains the results of a turn execution
+ * 
+ * ⚠️ Design: planText removed to avoid duplication with design file
+ * ⚠️ Decisions simplified to avoid storing verbose lists
  */
 export interface SessionTurnOutput {
   // Design task outputs
   designPath?: string;
-  planText?: string;
-  decisions?: string[];
+  planSummary?: string;      // NEW: Brief summary instead of full planText
+  decisionCount?: number;    // NEW: Count instead of full list
   
   // Code task outputs
   branch?: string;
@@ -109,12 +127,14 @@ export interface SessionTurnOutput {
 /**
  * Session Artifacts
  * Contains references to key artifacts in the session
+ * 
+ * ⚠️ Breaking change: Removed latestPlan to avoid duplication
+ * Plan is accessible via latestDesign file reference
  */
 export interface SessionArtifacts {
-  latestDesign?: string;
-  latestPlan?: string;
+  latestDesign?: string;        // Path to latest design doc (contains full plan)
   activeBranch?: string;
-  keyDecisions?: string[];
+  keyDecisions?: string[];      // Only high-level decisions, not verbose
   [key: string]: any;
 }
 

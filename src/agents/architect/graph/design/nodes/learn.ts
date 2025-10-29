@@ -57,15 +57,29 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     );
     sessionId = session.sessionId;
     
+    // Create input summary (truncate PRD to 200 chars)
+    const inputSummary = state.spec.length > 200 
+      ? state.spec.substring(0, 197) + '...' 
+      : state.spec;
+    
+    // Create plan summary (first 3 lines)
+    const planLines = state.planText.split('\n');
+    const planSummary = planLines.slice(0, 3).join('\n') + (planLines.length > 3 ? '...' : '');
+    
     const turn: SessionTurn = {
       turnId: 0, // Will be set by adapter
       task: 'design',
       timestamp: new Date().toISOString(),
-      input: state.spec,
+      input: {
+        type: 'file',
+        source: 'inputs/sources/prd.md',  // Reference to source file
+        summary: inputSummary,
+        size: state.spec.length,
+      },
       output: {
         designPath: designFilePath,
-        planText: state.planText,
-        decisions: decisions
+        planSummary: planSummary.substring(0, 300),  // Brief summary only
+        decisionCount: decisions.length
       }
     };
     
@@ -82,18 +96,17 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     );
     turnId = updatedSession.turns[updatedSession.turns.length - 1]?.turnId;
     
-    // Update artifacts
+    // Update artifacts (no latestPlan to avoid duplication)
     await state.deps.session.updateArtifacts(
       state.context.project,
       state.context.featureFolder || 'default',
       {
         latestDesign: designFilePath,
-        latestPlan: state.planText,
-        keyDecisions: decisions
+        keyDecisions: decisions.slice(0, 5)  // Only top 5 decisions
       }
     );
     
-    console.log(`💾 Session turn saved to workspace/${state.context.project}/${state.context.featureFolder || 'default'}/session.json`);
+        console.log(`💾 Session turn saved to workspace/${state.context.project}/${state.context.featureFolder || 'default'}/outputs/session.json`);
   }
   
   // 4. Chunk and store learnings to memory with session tracking

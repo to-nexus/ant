@@ -28,9 +28,23 @@ export async function execute(state: DesignGraphState) {
     state.planText
   );
 
-  const designMarkdown = await llm.invoke(result.formatted.messages);
-
+  // Generate design with streaming
+  let designMarkdown = '';
+  
   console.log(`⏱️  Prompt build time: ${result.metadata.buildTime}ms`);
+  console.log('\n📐 Generating design document...\n');
+  
+  if (llm.stream) {
+    // Use streaming if available
+    for await (const chunk of llm.stream(result.formatted.messages)) {
+      process.stdout.write(chunk);
+      designMarkdown += chunk;
+    }
+    console.log('\n');
+  } else {
+    // Fallback to regular invoke
+    designMarkdown = await llm.invoke(result.formatted.messages);
+  }
 
   return { ...state, designMarkdown };
 }

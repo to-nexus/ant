@@ -29,10 +29,15 @@ Total Turns: ${session.turns.length}
   // All turns (전체 히스토리가 맥락으로 중요)
   // Note: TemplateComposer에서 truncate(2000)으로 토큰 제한 적용됨
   for (const turn of session.turns) {
+    // Format input metadata (saves tokens by not including full content)
+    const inputLine = turn.input.source 
+      ? `Input: ${turn.input.summary}\nSource: ${turn.input.source}`
+      : `Input: ${turn.input.summary}`;
+    
     sections.push(`
 ━━━ Turn ${turn.turnId} (${turn.task}) ━━━
 Time: ${new Date(turn.timestamp).toLocaleString()}
-Input: ${turn.input}
+${inputLine}
 
 Output:
 ${formatTurnOutput(turn.output)}
@@ -72,16 +77,11 @@ function formatTurnOutput(output: SessionTurnOutput): string {
   if (output.designPath) {
     lines.push(`  📄 Design: ${output.designPath}`);
   }
-  if (output.planText) {
-    // Truncate long plans
-    const plan = output.planText.length > 300 
-      ? output.planText.substring(0, 300) + '...'
-      : output.planText;
-    lines.push(`  📋 Plan: ${plan}`);
+  if (output.planSummary) {
+    lines.push(`  📋 Plan: ${output.planSummary}`);
   }
-  if (output.decisions && output.decisions.length > 0) {
-    lines.push(`  ✅ Decisions:`);
-    output.decisions.forEach(d => lines.push(`     ${d}`));
+  if (output.decisionCount !== undefined) {
+    lines.push(`  ✅ Decisions: ${output.decisionCount} made`);
   }
   
   // Code outputs

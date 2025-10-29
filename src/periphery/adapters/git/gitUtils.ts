@@ -14,19 +14,41 @@ export async function loadProjectGitConfig(project: string) {
   return JSON.parse(fs.readFileSync(configPath, "utf8"));
 }
 
+/**
+ * Resolve localPath to absolute path
+ * - If absolute path: use as-is
+ * - If relative path: resolve from ant project root (process.cwd())
+ */
+export function resolveLocalPath(localPath: string, project: string): string {
+  if (path.isAbsolute(localPath)) {
+    return localPath;
+  }
+  
+  // Relative path: resolve from ant project root
+  // Example: "../test-app" → /Users/probe/dev/ant/../test-app → /Users/probe/dev/test-app
+  return path.resolve(process.cwd(), localPath);
+}
+
 export async function getGitInstance(project: string, config: any) {
   if (config.repoType === "local") {
-    const localPath = config.localPath;
+    // Resolve localPath to absolute path
+    const localPath = resolveLocalPath(config.localPath, project);
+    
+    console.log(`📂 Working directory: ${localPath}`);
     
     // Ensure localPath directory exists
     if (!fs.existsSync(localPath)) {
       console.log(`📁 Creating local repository directory: ${localPath}`);
       fs.mkdirSync(localPath, { recursive: true });
-      
-      // Initialize as git repository
+    }
+    
+    // Check if git repository is initialized
+    const gitDir = path.join(localPath, '.git');
+    if (!fs.existsSync(gitDir)) {
+      console.log(`🔧 Initializing git repository: ${localPath}`);
       const git = simpleGit(localPath);
       await git.init();
-      console.log(`✅ Initialized git repository: ${localPath}`);
+      console.log(`✅ Git repository initialized`);
     }
     
     return simpleGit(localPath);

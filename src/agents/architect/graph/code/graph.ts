@@ -3,7 +3,53 @@ import { ArchitectGraphState } from "./state";
 import { resolve, plan, execute, validate, dynamicValidate, evaluate, postProcess, learn } from "./nodes/index";
 
 export function buildCodeGraph() {
-  const graph = new StateGraph<ArchitectGraphState>({} as any);
+  const graph = new StateGraph<ArchitectGraphState>({
+    channels: {
+      // Context & Input
+      context: null as any,
+      spec: null as any,
+      
+      // Dependencies
+      deps: null as any,
+      gitPort: null as any,
+      
+      // Mode
+      codeMode: null as any,
+      
+      // Artifacts (from TaskArtifacts)
+      prd: null as any,
+      directive: null as any,
+      design: null as any,
+      code: null as any,
+      codeHead: null as any,
+      profile: null as any,
+      
+      // Execution
+      planText: null as any,
+      codePrompt: null as any,
+      rawResponse: null as any,
+      responseSection: null as any,
+      files: null as any,
+      filesToDelete: null as any,
+      modifications: null as any,
+      
+      // Integrations & Validation
+      requiredIntegrations: null as any,
+      violations: null as any,
+      retries: null as any,
+      maxRetries: null as any,
+      dynamicValidationResult: null as any,
+      
+      // Evaluation & Learning
+      evaluationReport: null as any,
+      learnings: null as any,
+      
+      // Results
+      branch: null as any,
+      filesWritten: null as any,
+      reportFile: null as any,
+    } as any,
+  } as any);
   
   graph.addNode("resolve", resolve as any);
   graph.addNode("plan", plan as any);

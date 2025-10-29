@@ -71,4 +71,15 @@ export class GenericLLMClient implements LLMClient {
     const resp = await this.model.invoke(messages.map(m => new HumanMessage(m.content)));
     return typeof (resp as any).content === 'string' ? (resp as any).content : JSON.stringify((resp as any).content);
   }
+
+  async *stream(messages: Array<{ role: string; content: string }>): AsyncIterable<string> {
+    const stream = await this.model.stream(messages.map(m => new HumanMessage(m.content)));
+    
+    for await (const chunk of stream) {
+      const content = (chunk as any).content;
+      if (typeof content === 'string') {
+        yield content;
+      }
+    }
+  }
 }

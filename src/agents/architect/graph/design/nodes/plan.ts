@@ -27,10 +27,24 @@ export async function plan(state: DesignGraphState) {
     artifacts
   );
 
-  const planText = await llm.invoke(result.formatted.messages);
-
+  // Generate plan with streaming
+  let planText = '';
+  
   console.log(`⏱️  Prompt build time: ${result.metadata.buildTime}ms`);
   console.log(`🎯 Design mode: ${state.designMode || 'auto'}`);
+  console.log('\n📝 Generating design plan...\n');
+  
+  if (llm.stream) {
+    // Use streaming if available
+    for await (const chunk of llm.stream(result.formatted.messages)) {
+      process.stdout.write(chunk);
+      planText += chunk;
+    }
+    console.log('\n');
+  } else {
+    // Fallback to regular invoke
+    planText = await llm.invoke(result.formatted.messages);
+  }
 
   return { ...state, planText };
 }

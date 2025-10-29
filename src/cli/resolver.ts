@@ -88,7 +88,7 @@ export function resolveInputFile(inputPath: string, task: 'design' | 'code' | 'l
         if (fs.existsSync(sourcesDir)) {
           const files = fs.readdirSync(sourcesDir);
           const mdFiles = files
-            .filter(f => f.endsWith('.md'))
+            .filter(f => f.endsWith('.md') && !f.endsWith('.tmp.md')) // Exclude temporary files
             .sort(); // Alphabetical order for consistency
           
           if (mdFiles.length > 0) {

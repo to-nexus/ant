@@ -1,41 +1,53 @@
 # test-app
 
-## Workspace Structure
+Test workspace for ANT framework development and validation.
+
+## Structure
 
 ```
 test-app/
 ├── common/
+│   ├── inputs/directives/learn/
+│   └── outputs/reports/
+├── {feature}/              # Created with: npm run init:feature
 │   ├── inputs/
-│   │   └── directives/learn/
+│   │   ├── sources/        # PRD, Figma links, wireframes
+│   │   └── directives/     # design, code, learn, eval
 │   └── outputs/
-│       ├── memory/
-│       └── reports/
-├── {feature}/              # Add features with: npm run init:feature
-│   ├── inputs/
-│   │   ├── sources/
-│   │   └── directives/
-│   └── outputs/
+│       ├── design/         # Generated design documents
+│       ├── reports/        # Execution reports
+│       ├── eval/           # Evaluation reports (with --eval)
+│       └── session.json    # Session history (1.4KB optimized)
 └── config.json
+
+Note: Generated code is written directly to repository (config.localPath),
+      NOT to workspace/outputs/code. This enables Git workflow integration.
 ```
 
 ## Quick Start
 
-1. Create a feature:
 ```bash
-npm run init:feature test-app ui-1.0.0
+# 1. Create feature
+npm run init:feature test-app feature-name
+
+# 2. Write PRD
+vim workspace/test-app/feature-name/inputs/sources/prd.md
+
+# 3. Generate design
+npm run dev architect design workspace/test-app/feature-name
+
+# 4. Generate code
+npm run dev architect code workspace/test-app/feature-name
+
+# 5. Generate code with evaluation
+npm run dev architect code workspace/test-app/feature-name --eval
 ```
 
-2. Add PRD:
-```bash
-# Edit workspace/test-app/ui-1.0.0/inputs/sources/prd.md
-```
+## Configuration
 
-3. Generate design:
-```bash
-npm run dev architect design workspace/test-app/ui-1.0.0
-```
-
-4. Generate code:
-```bash
-npm run dev architect code workspace/test-app/ui-1.0.0
-```
+See `config.json` for workspace settings:
+- `repoType`: local | remote
+- `localPath`: Target directory for generated code
+- `branchBase`: Base branch for feature branches
+- `strictValidation`: Enable build/lint/test validation
+- `runTests`: Run tests during validation

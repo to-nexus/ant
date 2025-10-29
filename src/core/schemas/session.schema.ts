@@ -12,13 +12,24 @@ import { z } from "zod";
  */
 
 /**
+ * SessionTurnInput Schema
+ */
+export const SessionTurnInputSchema = z.object({
+  type: z.enum(['text', 'file', 'directive', 'design']),
+  source: z.string().optional(),
+  summary: z.string().max(200),
+  hash: z.string().optional(),
+  size: z.number().optional(),
+});
+
+/**
  * SessionTurnOutput Schema
  */
 export const SessionTurnOutputSchema = z.object({
   // Design task outputs
   designPath: z.string().optional(),
-  planText: z.string().optional(),
-  decisions: z.array(z.string()).optional(),
+  planSummary: z.string().optional(),    // Summary instead of full plan
+  decisionCount: z.number().optional(),  // Count instead of full list
   
   // Code task outputs
   branch: z.string().optional(),
@@ -38,7 +49,7 @@ export const SessionTurnSchema = z.object({
   turnId: z.number().int().positive(),
   task: z.enum(['design', 'code', 'learn', 'review', 'plan', 'doc']),
   timestamp: z.string().datetime(),
-  input: z.string(),
+  input: SessionTurnInputSchema,
   output: SessionTurnOutputSchema,
   reference: z.object({
     turnId: z.number().int().positive()
@@ -50,7 +61,6 @@ export const SessionTurnSchema = z.object({
  */
 export const SessionArtifactsSchema = z.object({
   latestDesign: z.string().optional(),
-  latestPlan: z.string().optional(),
   activeBranch: z.string().optional(),
   keyDecisions: z.array(z.string()).optional(),
 }).passthrough(); // Allow additional properties
@@ -74,6 +84,7 @@ export const SessionSchema = z.object({
  */
 export type SessionZod = z.infer<typeof SessionSchema>;
 export type SessionTurnZod = z.infer<typeof SessionTurnSchema>;
+export type SessionTurnInputZod = z.infer<typeof SessionTurnInputSchema>;
 export type SessionTurnOutputZod = z.infer<typeof SessionTurnOutputSchema>;
 export type SessionArtifactsZod = z.infer<typeof SessionArtifactsSchema>;
 
