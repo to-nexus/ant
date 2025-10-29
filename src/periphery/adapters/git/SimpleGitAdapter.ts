@@ -44,20 +44,40 @@ export class SimpleGitAdapter implements GitPort {
   }
 
   async writeFile(path: string, content: string): Promise<void> {
-    await this.ensure();
-    const root = await this.getRepoRoot();
     const fs = await import("fs");
     const p = await import("path");
+    
+    // For workspace paths, write directly from process.cwd()
+    if (path.startsWith('workspace/')) {
+      const full = p.join(process.cwd(), path);
+      fs.mkdirSync(p.dirname(full), { recursive: true });
+      fs.writeFileSync(full, content, "utf8");
+      return;
+    }
+    
+    await this.ensure();
+    const root = await this.getRepoRoot();
     const full = p.join(root, path);
     fs.mkdirSync(p.dirname(full), { recursive: true });
     fs.writeFileSync(full, content, "utf8");
   }
 
   async readFile(path: string): Promise<string | null> {
-    await this.ensure();
-    const root = await this.getRepoRoot();
     const fs = await import("fs");
     const p = await import("path");
+    
+    // For workspace paths, read directly from process.cwd()
+    if (path.startsWith('workspace/')) {
+      const full = p.join(process.cwd(), path);
+      try {
+        return fs.readFileSync(full, "utf8");
+      } catch {
+        return null;
+      }
+    }
+    
+    await this.ensure();
+    const root = await this.getRepoRoot();
     const full = p.join(root, path);
     
     try {
@@ -68,20 +88,42 @@ export class SimpleGitAdapter implements GitPort {
   }
 
   async fileExists(path: string): Promise<boolean> {
-    await this.ensure();
-    const root = await this.getRepoRoot();
     const fs = await import("fs");
     const p = await import("path");
+    
+    // For workspace paths, check directly from process.cwd()
+    if (path.startsWith('workspace/')) {
+      const full = p.join(process.cwd(), path);
+      return fs.existsSync(full);
+    }
+    
+    await this.ensure();
+    const root = await this.getRepoRoot();
     const full = p.join(root, path);
     
     return fs.existsSync(full);
   }
 
   async readDirectory(path: string): Promise<Array<{ name: string; isDirectory: boolean }>> {
-    await this.ensure();
-    const root = await this.getRepoRoot();
     const fs = await import("fs");
     const p = await import("path");
+    
+    // For workspace paths, read directly from process.cwd()
+    if (path.startsWith('workspace/')) {
+      const full = p.join(process.cwd(), path);
+      try {
+        const entries = fs.readdirSync(full, { withFileTypes: true });
+        return entries.map(entry => ({
+          name: entry.name,
+          isDirectory: entry.isDirectory()
+        }));
+      } catch {
+        return [];
+      }
+    }
+    
+    await this.ensure();
+    const root = await this.getRepoRoot();
     const full = p.join(root, path);
     
     try {
@@ -96,10 +138,18 @@ export class SimpleGitAdapter implements GitPort {
   }
 
   async createDirectory(path: string): Promise<void> {
-    await this.ensure();
-    const root = await this.getRepoRoot();
     const fs = await import("fs");
     const p = await import("path");
+    
+    // For workspace paths, create directly from process.cwd()
+    if (path.startsWith('workspace/')) {
+      const full = p.join(process.cwd(), path);
+      fs.mkdirSync(full, { recursive: true });
+      return;
+    }
+    
+    await this.ensure();
+    const root = await this.getRepoRoot();
     const full = p.join(root, path);
     
     fs.mkdirSync(full, { recursive: true });

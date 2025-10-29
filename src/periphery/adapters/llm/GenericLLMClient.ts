@@ -30,14 +30,22 @@ function resolveMaxTokens(agentType?: string, fallback = 4000): number {
   return fallback;
 }
 
+export interface LLMConfig {
+  llmProvider?: string;
+  llmModel?: string;
+  temperature?: number;
+  maxTokens?: number;
+}
+
 export class GenericLLMClient implements LLMClient {
   private model: BaseChatModel;
 
-  constructor(private agentType?: string, providerOverride?: ModelProvider) {
-    const provider = resolveProvider(agentType, providerOverride);
-    const modelName = resolveModelName(provider, agentType);
-    const temperature = resolveTemperature(agentType);
-    const maxTokens = resolveMaxTokens(agentType, provider === 'openai' ? 16000 : 4000);
+  constructor(private agentType?: string, providerOverride?: ModelProvider, config?: LLMConfig) {
+    // Priority: config > providerOverride > env vars
+    const provider = (config?.llmProvider as ModelProvider) || resolveProvider(agentType, providerOverride);
+    const modelName = config?.llmModel || resolveModelName(provider, agentType);
+    const temperature = config?.temperature ?? resolveTemperature(agentType);
+    const maxTokens = config?.maxTokens ?? resolveMaxTokens(agentType, provider === 'openai' ? 16000 : 4000);
 
     switch (provider) {
       case 'anthropic':

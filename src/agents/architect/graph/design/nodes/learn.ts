@@ -156,10 +156,10 @@ function extractDesignLearnings(state: DesignGraphState): string {
   }
   
   // 3. Previous Design Context
-  if (state.previousDesign) {
+  if (state.design) {
     sections.push(`\n## Previous Design Reference`);
-    const summary = state.previousDesign.substring(0, 500);
-    sections.push(summary + (state.previousDesign.length > 500 ? '...' : ''));
+    const summary = state.design.substring(0, 500);
+    sections.push(summary + (state.design.length > 500 ? '...' : ''));
   }
   
   // 4. Directive Applied

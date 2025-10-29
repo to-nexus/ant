@@ -21,6 +21,7 @@ import * as path from "path";
 
 export interface DynamicValidationResult {
   passed: boolean;
+  errors: string[];  // Required, aggregated from all error types
   buildErrors?: string[];
   lintErrors?: string[];
   typeErrors?: string[];
@@ -68,6 +69,7 @@ export async function dynamicValidate(state: ArchitectGraphState): Promise<Archi
 
   const result: DynamicValidationResult = {
     passed: true,
+    errors: [],
     buildErrors: [],
     lintErrors: [],
     typeErrors: [],

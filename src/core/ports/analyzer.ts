@@ -3,16 +3,7 @@
  * Interface for detecting language, framework, and conventions from source code
  */
 
-export interface CodebaseProfile {
-  language: string;           // 'typescript', 'javascript', 'golang'
-  framework?: string;          // 'react', 'nextjs', 'react-native', 'gin'
-  version?: string;            // Detected version (e.g., '18.2.0')
-  packageManager?: string;     // 'npm', 'pnpm', 'yarn', 'go'
-  conventions?: {
-    naming?: 'camelCase' | 'snake_case' | 'PascalCase';
-    imports?: 'esm' | 'commonjs';
-  };
-}
+import { CodebaseProfile } from '../types';
 
 export interface CodebaseAnalyzerPort {
   /**

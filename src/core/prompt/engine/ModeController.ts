@@ -57,7 +57,7 @@ export class ModeController {
     // Infer code mode if not provided
     let mode: CodeMode | undefined = explicitMode;
     
-    if (task === 'code' && !mode) {
+    if (task === 'code' && !mode && context.directive) {
       mode = inferCodeMode(
         context.directive,
         context.stats.hasOriginalFiles

@@ -3,14 +3,23 @@ import path from "path";
 
 /**
  * Auto-detect project name from path
- * Example: projects/cross-ramp/... → cross-ramp
+ * Example: workspace/test-app/... → test-app
  */
 export function detectProject(inputPath: string): string {
   const parts = inputPath.split(path.sep);
+  
+  // Look for workspace/project-name pattern
+  const workspaceIdx = parts.indexOf("workspace");
+  if (workspaceIdx >= 0 && workspaceIdx + 1 < parts.length) {
+    return parts[workspaceIdx + 1];
+  }
+  
+  // Legacy: projects/project-name pattern
   const projectsIdx = parts.indexOf("projects");
   if (projectsIdx >= 0 && projectsIdx + 1 < parts.length) {
     return parts[projectsIdx + 1];
   }
+  
   return "default";
 }
 
@@ -58,12 +67,12 @@ export function findLatestDirective(dirPath: string): string | null {
 }
 
 /**
- * Resolve input file based on mode
- * - For arch-learn: finds learn directive
- * - For arch-code: finds latest design + optional code directive
- * - For others: finds latest design
+ * Resolve input file based on task
+ * - For design: finds PRD in inputs/sources/prd.md
+ * - For code: finds latest design + optional code directive
+ * - For learn: finds learn directive
  */
-export function resolveInputFile(inputPath: string, mode: string): string {
+export function resolveInputFile(inputPath: string, task: 'design' | 'code' | 'learn'): string {
   const stats = fs.statSync(inputPath);
   
   if (stats.isFile()) {
@@ -71,23 +80,67 @@ export function resolveInputFile(inputPath: string, mode: string): string {
   }
   
   if (stats.isDirectory()) {
-    switch (mode) {
-      case 'arch-learn': {
-        const learnDir = path.join(inputPath, "directives", "learn");
-        const directiveFile = findLatestDirective(learnDir);
+    switch (task) {
+      case 'design': {
+        // Design task: automatically find and combine ALL PRD files in sources/
+        const sourcesDir = path.join(inputPath, "inputs", "sources");
         
-        if (!directiveFile) {
-          throw new Error(`No directive files found in: ${learnDir}\nCreate either directive.md or directive-N.md`);
+        if (fs.existsSync(sourcesDir)) {
+          const files = fs.readdirSync(sourcesDir);
+          const mdFiles = files
+            .filter(f => f.endsWith('.md'))
+            .sort(); // Alphabetical order for consistency
+          
+          if (mdFiles.length > 0) {
+            // Create a temporary combined PRD file
+            const combinedContent: string[] = [];
+            
+            for (const mdFile of mdFiles) {
+              const filePath = path.join(sourcesDir, mdFile);
+              const content = fs.readFileSync(filePath, 'utf-8');
+              
+              // Add file header for multi-file PRDs
+              if (mdFiles.length > 1) {
+                combinedContent.push(`\n<!-- Source: ${mdFile} -->\n`);
+              }
+              combinedContent.push(content.trim());
+            }
+            
+            // Write to temporary combined file
+            const tmpFile = path.join(sourcesDir, '.combined-prd.tmp.md');
+            fs.writeFileSync(tmpFile, combinedContent.join('\n\n'));
+            
+            console.log(`📄 Using ${mdFiles.length} PRD file(s):`);
+            mdFiles.forEach(f => console.log(`   - ${f}`));
+            
+            return tmpFile;
+          }
         }
         
-        console.log(`📄 Using learn directive: ${directiveFile}`);
-        return directiveFile;
+        // If no PRD files, check for design directive
+        const designDirPath = path.join(inputPath, "inputs", "directives", "design");
+        const directiveFile = findLatestDirective(designDirPath);
+        if (directiveFile) {
+          console.log(`📄 Using design directive: ${directiveFile}`);
+          return directiveFile;
+        }
+        
+        throw new Error(
+          `No input found for design task in: ${inputPath}\n` +
+          `Expected:\n` +
+          `  - At least one .md file in ${path.join(inputPath, "inputs/sources/")}\n` +
+          `  - OR a directive in ${path.join(inputPath, "inputs/directives/design/")}`
+        );
       }
       
-      case 'arch-code': {
-        const designDir = path.join(inputPath, "generated", "design");
+      case 'code': {
+        // Code task: look for latest design document
+        const designDir = path.join(inputPath, "outputs", "design");
         if (!fs.existsSync(designDir)) {
-          throw new Error(`No generated/design/ directory found in: ${inputPath}`);
+          throw new Error(
+            `No outputs/design/ directory found in: ${inputPath}\n` +
+            `Run 'architect design' first to generate design document.`
+          );
         }
         
         const files = fs.readdirSync(designDir);
@@ -103,7 +156,8 @@ export function resolveInputFile(inputPath: string, mode: string): string {
         const latestDesign = path.join(designDir, designFiles[0]);
         console.log(`📄 Using design file: ${latestDesign}`);
         
-        const codeDir = path.join(inputPath, "directives", "code");
+        // Optional: check for code directive
+        const codeDir = path.join(inputPath, "inputs", "directives", "code");
         const directiveFile = findLatestDirective(codeDir);
         if (directiveFile) {
           console.log(`📄 Found code directive: ${directiveFile}`);
@@ -112,26 +166,24 @@ export function resolveInputFile(inputPath: string, mode: string): string {
         return latestDesign;
       }
       
-      default: {
-        const designDir = path.join(inputPath, "generated", "design");
-        if (!fs.existsSync(designDir)) {
-          throw new Error(`No generated/design/ directory found in: ${inputPath}`);
+      case 'learn': {
+        // Learn task: find learn directive
+        const learnDir = path.join(inputPath, "inputs", "directives", "learn");
+        const directiveFile = findLatestDirective(learnDir);
+        
+        if (!directiveFile) {
+          throw new Error(
+            `No directive files found in: ${learnDir}\n` +
+            `Create either directive.md or directive-N.md`
+          );
         }
         
-        const files = fs.readdirSync(designDir);
-        const designFiles = files
-          .filter(f => f.startsWith("design-") && f.endsWith(".md"))
-          .sort()
-          .reverse();
-        
-        if (designFiles.length === 0) {
-          throw new Error(`No design-*.md files found in: ${designDir}`);
-        }
-        
-        const latestDesign = path.join(designDir, designFiles[0]);
-        console.log(`📄 Using design file: ${latestDesign}`);
-        return latestDesign;
+        console.log(`📄 Using learn directive: ${directiveFile}`);
+        return directiveFile;
       }
+      
+      default:
+        throw new Error(`Unknown task: ${task}`);
     }
   }
   

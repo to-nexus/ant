@@ -67,12 +67,12 @@ npm run init:feature ${workspaceName} ui-1.0.0
 
 3. Generate design:
 \`\`\`bash
-npm run dev arch-design workspace/${workspaceName}/ui-1.0.0
+npm run dev architect design workspace/${workspaceName}/ui-1.0.0
 \`\`\`
 
 4. Generate code:
 \`\`\`bash
-npm run dev arch-code workspace/${workspaceName}/ui-1.0.0
+npm run dev architect code workspace/${workspaceName}/ui-1.0.0
 \`\`\`
 `;
   fs.writeFileSync(
@@ -215,6 +215,6 @@ Describe the feature and its purpose.
   console.log(`  1. Edit inputs/sources/prd.md`);
   console.log(`  2. Add Figma link: echo "URL" > inputs/sources/figma-link.txt`);
   console.log(`  3. Add wireframes to inputs/sources/wireframes/`);
-  console.log(`  4. Generate design: npm run dev arch-design workspace/${workspaceName}/${featureName}`);
+  console.log(`  4. Generate design: npm run dev architect design workspace/${workspaceName}/${featureName}`);
 }
 

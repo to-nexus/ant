@@ -43,8 +43,13 @@ export async function orchestrator(params: {
 
       // Common dependencies for architect
       const memory = new ChromaMemoryAdapter();
-      const llm = new GenericLLMClient('architect');
       const config = new FileConfigAdapter();
+      
+      // LLM is configured via environment variables (AI_MODEL_PROVIDER, AI_MODEL_NAME, etc.)
+      const llm = new GenericLLMClient('architect');
+      
+      // Load project config for git/repo settings
+      const configData = await config.load(project || "default");
 
       if (task === 'learn') {
         // Learn task: minimal dependencies
@@ -60,7 +65,6 @@ export async function orchestrator(params: {
 
       if (task === 'design') {
         const analyzer = new CodebaseAnalyzer();
-        const configData = await config.load(project || "default");
         const git = new SimpleGitAdapter(project || "default", configData);
         
         return await architectAgent(
@@ -74,7 +78,6 @@ export async function orchestrator(params: {
 
       if (task === 'code') {
         const analyzer = new CodebaseAnalyzer();
-        const configData = await config.load(project || "default");
         const git = new SimpleGitAdapter(project || "default", configData);
         const command = new NodeCommandAdapter();
         
@@ -96,7 +99,6 @@ export async function orchestrator(params: {
     case "reviewer": {
       const memory = new ChromaMemoryAdapter();
       const llm = new GenericLLMClient('reviewer');
-      const config = new FileConfigAdapter();
       return await reviewerAgent(input, project || "default", { memory, llm });
     }
 

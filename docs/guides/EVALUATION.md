@@ -6,10 +6,10 @@
 
 ```bash
 # 코드 생성 + 평가
-npm run dev arch-code workspace/myapp/feature/ --eval
+npm run dev architect code workspace/myapp/feature/ --eval
 
 # 평가 없이 코드만 생성
-npm run dev arch-code workspace/myapp/feature/
+npm run dev architect code workspace/myapp/feature/
 ```
 
 ## Workflow

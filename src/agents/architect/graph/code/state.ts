@@ -67,6 +67,12 @@ export interface ArchitectGraphState extends TaskArtifacts {
   retries: number;
   maxRetries: number;
   
+  // Dynamic Validation
+  dynamicValidationResult?: {
+    passed: boolean;
+    errors: string[];
+  };
+  
   // Evaluation
   evaluationReport?: any;
   

@@ -263,7 +263,7 @@ aidev arch code workspace/my-app/
 During development, use `npm run dev`:
 ```bash
 # Old style (still works)
-npm run dev arch-design workspace/my-app/auth/directive.md
+npm run dev architect design workspace/my-app/auth/directive.md
 
 # New style (recommended)
 npm run dev arch design workspace/my-app/auth/directive.md

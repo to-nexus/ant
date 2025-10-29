@@ -10,7 +10,7 @@ workspace 구조가 없어도 자동으로 생성됩니다!
 
 ```bash
 # 1. 바로 코드 생성 시작
-npm run dev arch-code workspace/test-app/my-feature/
+npm run dev architect code workspace/test-app/my-feature/
 
 # 시스템이 자동으로:
 # - workspace/test-app/ 생성
@@ -27,7 +27,7 @@ npm run dev arch-code workspace/test-app/my-feature/
    Edit: workspace/test-app/my-feature/inputs/sources/prd.md
 
 ⚠️  No design document or directive found.
-   Edit the PRD template and run arch-design first.
+   Edit the PRD template and run 'architect design' first.
 ```
 
 ### 다음 단계
@@ -36,10 +36,10 @@ npm run dev arch-code workspace/test-app/my-feature/
 vim workspace/test-app/my-feature/inputs/sources/prd.md
 
 # 3. 디자인 생성
-npm run dev arch-design workspace/test-app/my-feature/
+npm run dev architect design workspace/test-app/my-feature/
 
 # 4. 코드 생성
-npm run dev arch-code workspace/test-app/my-feature/ --eval
+npm run dev architect code workspace/test-app/my-feature/ --eval
 ```
 
 ---
@@ -59,10 +59,10 @@ npm run init:feature test-app my-feature
 vim workspace/test-app/my-feature/inputs/sources/prd.md
 
 # 4. 디자인 생성
-npm run dev arch-design workspace/test-app/my-feature/
+npm run dev architect design workspace/test-app/my-feature/
 
 # 5. 코드 생성
-npm run dev arch-code workspace/test-app/my-feature/ --eval
+npm run dev architect code workspace/test-app/my-feature/ --eval
 ```
 
 ---
@@ -108,7 +108,7 @@ workspace/test-app/
 
 ```bash
 # 1. 자동 초기화 + 디자인
-npm run dev arch-design workspace/myapp/feature1/
+npm run dev architect design workspace/myapp/feature1/
 
 # 📁 Creating workspace: myapp
 # 📁 Creating feature: feature1
@@ -119,10 +119,10 @@ npm run dev arch-design workspace/myapp/feature1/
 vim workspace/myapp/feature1/inputs/sources/prd.md
 
 # 3. 다시 디자인
-npm run dev arch-design workspace/myapp/feature1/
+npm run dev architect design workspace/myapp/feature1/
 
 # 4. 코드 생성 + 평가
-npm run dev arch-code workspace/myapp/feature1/ --eval
+npm run dev architect code workspace/myapp/feature1/ --eval
 
 # 5. Git 커밋
 cd /path/to/your/repo
@@ -139,7 +139,7 @@ echo "Fix button color bug in Header.tsx" > \
   workspace/myapp/feature1/inputs/directives/code/directive.md
 
 # 2. 코드 생성
-npm run dev arch-code workspace/myapp/feature1/ --eval
+npm run dev architect code workspace/myapp/feature1/ --eval
 
 # 3. 확인
 git diff
@@ -196,25 +196,25 @@ Describe the feature and its purpose.
 
 ```bash
 # 한 줄로 시작
-npm run dev arch-design workspace/todo-app/basic-crud/
+npm run dev architect design workspace/todo-app/basic-crud/
 
 # PRD 작성 후
-npm run dev arch-design workspace/todo-app/basic-crud/
-npm run dev arch-code workspace/todo-app/basic-crud/ --eval
+npm run dev architect design workspace/todo-app/basic-crud/
+npm run dev architect code workspace/todo-app/basic-crud/ --eval
 ```
 
 ### 예제 2: E-commerce
 
 ```bash
 # 여러 feature 동시 진행
-npm run dev arch-design workspace/ecommerce/product-catalog/
-npm run dev arch-design workspace/ecommerce/shopping-cart/
-npm run dev arch-design workspace/ecommerce/checkout/
+npm run dev architect design workspace/ecommerce/product-catalog/
+npm run dev architect design workspace/ecommerce/shopping-cart/
+npm run dev architect design workspace/ecommerce/checkout/
 
 # 각각 PRD 작성 후 코드 생성
-npm run dev arch-code workspace/ecommerce/product-catalog/ --eval
-npm run dev arch-code workspace/ecommerce/shopping-cart/ --eval
-npm run dev arch-code workspace/ecommerce/checkout/ --eval
+npm run dev architect code workspace/ecommerce/product-catalog/ --eval
+npm run dev architect code workspace/ecommerce/shopping-cart/ --eval
+npm run dev architect code workspace/ecommerce/checkout/ --eval
 ```
 
 ---
@@ -224,9 +224,9 @@ npm run dev arch-code workspace/ecommerce/checkout/ --eval
 ### 1. 빠른 프로토타입
 ```bash
 # workspace 이름만 바꿔서 여러 실험
-npm run dev arch-design workspace/experiment1/feature/
-npm run dev arch-design workspace/experiment2/feature/
-npm run dev arch-design workspace/experiment3/feature/
+npm run dev architect design workspace/experiment1/feature/
+npm run dev architect design workspace/experiment2/feature/
+npm run dev architect design workspace/experiment3/feature/
 ```
 
 ### 2. Feature 이름 규칙

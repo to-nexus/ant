@@ -1,4 +1,5 @@
-import { PromptPort, ProfilePort, CodebaseProfile } from "../../ports";
+import { PromptPort, ProfilePort } from "../../ports";
+import { CodebaseProfile } from "../../types";
 import { ProjectContext } from "../../types";
 import { PromptModeConfig } from "./ModeController";
 import { AssembledContext } from "./ContextAssembler";
