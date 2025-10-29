@@ -226,3 +226,131 @@ npm run dev arch-code projects/my-app/ui-1.0.0
 - refactor: 구조 개선
 - explain: 분석만
 
+---
+
+## 🔬 Code Evaluation (Optional)
+
+코드 생성 후 품질을 자동으로 분석합니다.
+
+### 사용법
+
+```bash
+# --eval 플래그로 평가 활성화
+npm run dev arch-code workspace/myapp/feature/ --eval
+```
+
+### Workflow 통합
+
+```
+resolve → plan → execute → validate → evaluate → learn
+                                          ↓
+                                    (--eval 플래그 시)
+                                    품질 분석 + 리포트
+```
+
+**Evaluate 노드**:
+- `--eval` 플래그 **없으면**: 즉시 스킵 (no-op)
+- `--eval` 플래그 **있으면**: 분석 실행
+
+### 측정 메트릭
+
+| 메트릭 | 설명 | 기준 |
+|-------|------|------|
+| **Lines of Code** | 총 라인 수 (논리적 라인) | - |
+| **Cyclomatic Complexity** | 코드 복잡도 | 1-10: Simple<br>11-20: Moderate<br>21+: Complex |
+| **Maintainability Index** | 유지보수성 점수 (0-100) | 85-100: Excellent<br>70-84: Good<br>50-69: Moderate<br>0-49: Poor |
+| **Comment Density** | 주석 비율 (%) | 10-30%: Optimal<br>5-10%: Acceptable |
+
+### 출력 구조
+
+```
+workspace/myapp/feature/
+├── inputs/directives/eval/
+│   ├── tests.json                # 요구사항 체크리스트
+│   └── quality-thresholds.json   # 품질 기준 (선택)
+└── outputs/eval/
+    ├── report.json               # 구조화된 리포트
+    └── report.md                 # 사람이 읽기 쉬운 리포트
+
+Note: 생성된 코드는 저장소에 직접 작성됨 (src/, lib/ 등)
+```
+
+### tests.json 예시
+
+```json
+{
+  "name": "feature-evaluation",
+  "tasks": [
+    {
+      "id": "req-1",
+      "description": "사용자 인증 기능 구현"
+    },
+    {
+      "id": "req-2",
+      "description": "JWT 토큰 발급 및 검증"
+    }
+  ]
+}
+```
+
+### quality-thresholds.json 예시
+
+```json
+{
+  "minMaintainabilityIndex": 70,
+  "maxComplexity": 20,
+  "enforceOnFail": false
+}
+```
+
+### Console 출력 예시
+
+```
+🔬 Evaluating generated code...
+
+═══════════════════════════════════════════════════════════
+📊 EVALUATION SUMMARY
+═══════════════════════════════════════════════════════════
+
+📈 Code Metrics:
+   Files:           5
+   Total Lines:     342
+   Complexity:      8.2
+   Maintainability: 75.3/100
+   Quality:         GOOD
+
+💡 Recommendations:
+   ✅ 코드 품질이 우수합니다!
+
+📋 Requirements (3 items):
+   Please verify manually in the report
+
+═══════════════════════════════════════════════════════════
+
+📄 Evaluation report saved: workspace/myapp/feature/outputs/eval/report.md
+```
+
+### 특징
+
+- ✅ **간단한 정적 분석**: 외부 도구 없이 동작
+- ✅ **빠른 실행**: VM 실행 없이 메트릭만 계산
+- ✅ **선택적**: `--eval` 플래그로 제어
+- ✅ **확장 가능**: 품질 기준 커스터마이징 가능
+
+### 제한사항
+
+**실제 테스트는 실행하지 않음**:
+- 정적 분석만 수행 (복잡도, 유지보수성)
+- 기능 테스트는 사용자가 직접 실행
+
+```bash
+# 기능 테스트는 수동으로
+cd workspace/myapp/feature
+npm test
+```
+
+**이유**: 
+- 의존성 설치, 빌드, 환경 설정 필요
+- 복잡하고 느리며 자주 실패
+- 단순한 메트릭이 더 실용적
+

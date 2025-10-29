@@ -1,4 +1,3 @@
-import * as fs from "fs";
 import * as path from "path";
 import { ArchitectGraphState } from "../state";
 import { SessionTurn } from "../../../../../core/types";
@@ -11,13 +10,19 @@ import { SessionTurn } from "../../../../../core/types";
  * 4. Save turn to session file
  * 
  * This is the final node that performs all side effects.
- * Depends on ChunkPort and SessionPort (injected via deps) - follows hexagonal architecture.
+ * Depends on GitPort, ChunkPort, and SessionPort (injected via deps) - follows hexagonal architecture.
+ * 
+ * ✅ Hexagonal Architecture Compliance:
+ * - Uses GitPort for file operations (not fs directly)
+ * - Uses SessionPort for session persistence
+ * - Uses ChunkPort for chunking operations
+ * - No direct infrastructure dependencies
  */
 export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   // 1. Extract learnings
   const learnings = extractCodeLearnings(state);
   
-  // 2. Save files to repository
+  // 2. Save files to repository via GitPort (Hexagonal Architecture)
   const gitPort = state.gitPort || state.deps?.git;
   if (!gitPort) {
     throw new Error("GitPort not provided for file saving");
@@ -28,13 +33,11 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     : `feature/${state.context.project}-arch-${Date.now()}`;
   await gitPort.createBranch(branch, state.context.config.branchBase);
   
-  const repoRoot = await gitPort.getRepoRoot();
   let filesWritten = 0;
   
+  // Use GitPort.writeFile() instead of fs (Hexagonal Architecture)
   for (const f of state.files) {
-    const fullPath = path.join(repoRoot, f.path);
-    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-    fs.writeFileSync(fullPath, f.content, "utf8");
+    await gitPort.writeFile(f.path, f.content);
     filesWritten++;
     console.log(`✏️  Modified: ${f.path}`);
   }
@@ -60,7 +63,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
         branch: branch,
         filesWritten: filesWritten,
         files: state.files.map(f => f.path),
-        modifications: state.files.filter(f => state.originalFilesBlock.includes(f.path)).map(f => f.path)
+        modifications: state.codeHead ? state.files.map(f => f.path) : []
       }
     };
     
@@ -143,18 +146,18 @@ function extractCodeLearnings(state: ArchitectGraphState): string {
   sections.push(`**Timestamp**: ${new Date().toISOString()}`);
   
   // 2. Codebase Profile
-  if (state.codebaseProfile) {
+  if (state.profile) {
     sections.push(`\n## Codebase Profile`);
-    sections.push(`**Language**: ${state.codebaseProfile.language}`);
-    sections.push(`**Framework**: ${state.codebaseProfile.framework || 'N/A'}`);
-    if (state.codebaseProfile.version) {
-      sections.push(`**Version**: ${state.codebaseProfile.version}`);
+    sections.push(`**Language**: ${state.profile.language}`);
+    sections.push(`**Framework**: ${state.profile.framework || 'N/A'}`);
+    if (state.profile.version) {
+      sections.push(`**Version**: ${state.profile.version}`);
     }
-    if (state.codebaseProfile.packageManager) {
-      sections.push(`**Package Manager**: ${state.codebaseProfile.packageManager}`);
+    if (state.profile.packageManager) {
+      sections.push(`**Package Manager**: ${state.profile.packageManager}`);
     }
-    if (state.codebaseProfile.conventions) {
-      sections.push(`**Conventions**: ${JSON.stringify(state.codebaseProfile.conventions)}`);
+    if (state.profile.conventions) {
+      sections.push(`**Conventions**: ${JSON.stringify(state.profile.conventions)}`);
     }
   }
   
@@ -165,10 +168,10 @@ function extractCodeLearnings(state: ArchitectGraphState): string {
   }
   
   // 4. Design Context
-  if (state.latestDesign) {
+  if (state.design) {
     sections.push(`\n## Design Reference`);
-    const designSummary = state.latestDesign.substring(0, 500);
-    sections.push(designSummary + (state.latestDesign.length > 500 ? '...' : ''));
+    const designSummary = state.design.substring(0, 500);
+    sections.push(designSummary + (state.design.length > 500 ? '...' : ''));
   }
   
   // 5. Directive Applied
@@ -233,8 +236,9 @@ function extractPatterns(state: ArchitectGraphState): string {
   }
   
   // Pattern 2: File operations
-  const creates = state.files.filter(f => !state.originalFilesBlock.includes(f.path));
-  const modifies = state.files.filter(f => state.originalFilesBlock.includes(f.path));
+  // Note: Without tracking original file list, assume all are modifications if codeHead exists
+  const creates = state.codeHead ? [] : state.files;
+  const modifies = state.codeHead ? state.files : [];
   
   if (creates.length > 0) {
     patterns.push(`- **New Files**: ${creates.length} created`);
@@ -247,8 +251,8 @@ function extractPatterns(state: ArchitectGraphState): string {
   }
   
   // Pattern 3: Codebase conventions
-  if (state.codebaseProfile?.conventions) {
-    const convs = state.codebaseProfile.conventions;
+  if (state.profile?.conventions) {
+    const convs = state.profile.conventions;
     if (convs.naming) {
       patterns.push(`- **Naming Convention**: ${convs.naming}`);
     }

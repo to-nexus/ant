@@ -13,6 +13,7 @@ Research framework for automated software development using AI agents. Implement
 - `reviewer` - Code review and analysis
 - `planner` - Project planning and breakdown
 - `doc` - Documentation generation
+- `evaluator` - Code quality evaluation and benchmarking
 
 **Core Features:**
 - Hexagonal architecture (ports & adapters)
@@ -114,6 +115,23 @@ npm run init:workspace
 
 ---
 
+## 🚀 Quick Start
+
+### 1. 데모로 전체 워크플로우 체험 (5분)
+
+```bash
+# PRD → Design → Code → Eval 전체 플로우
+npm run dev -- arch design workspace/demo-app/features/todo-list/
+npm run dev -- arch code workspace/demo-app/features/todo-list/ --eval
+
+# 결과 확인
+cat workspace/demo-app/features/todo-list/outputs/eval/report.md
+```
+
+자세한 내용: [workspace/demo-app/README.md](workspace/demo-app/README.md)
+
+---
+
 ## Usage
 
 ### CLI Structure
@@ -130,6 +148,9 @@ npm run dev -- arch design workspace/project/feature/inputs/directives/design/di
 
 # Code generation from design
 npm run dev -- arch code workspace/project/feature/
+
+# Code generation with automatic evaluation
+npm run dev -- arch code workspace/project/feature/ --eval
 
 # Code with edit mode
 npm run dev -- arch code workspace/project/feature/ --mode edit
@@ -164,6 +185,45 @@ resolve → plan → execute → validate
                          ↓
                        learn
 ```
+
+### Evaluator Agent
+
+**Purpose:** Quantitatively measure AI-generated code quality
+
+**Evaluation Metrics:**
+- **Functional Correctness**: Test pass rate, pass@k
+- **Code Quality**: Maintainability Index (MI), Cyclomatic Complexity
+- **Lint Analysis**: Error/warning counts
+- **Performance**: Execution time
+
+**Usage:**
+
+```bash
+# Auto-evaluate after code generation
+npm run dev -- arch code workspace/project/feature/ --eval
+
+# Manual evaluation
+npm run dev -- eval workspace/project/feature/inputs/directives/eval/tests.json
+
+# Benchmark evaluation
+npm run dev -- eval datasets/samples/simple-eval.json --quality --verbose
+```
+
+**Workspace Structure:**
+```
+workspace/project/feature/
+  ├── inputs/directives/eval/
+  │   ├── tests.json                # Requirements checklist
+  │   └── quality-thresholds.json   # Quality criteria (optional)
+  └── outputs/eval/
+      ├── report.md                 # Markdown report
+      └── report.json               # JSON report
+
+Note: Generated code is written directly to the repository (e.g., src/, lib/),
+      not to workspace/outputs/code/.
+```
+
+**Details:** See [Code Evaluation section in WORKFLOW_GUIDE.md](docs/guides/WORKFLOW_GUIDE.md#-code-evaluation-optional)
 
 ---
 
@@ -280,12 +340,15 @@ workspace/
         directives/
           design/directive.md
           code/directive.md
+          eval/tests.json           # Evaluation tests (optional)
         sources/prd.md
       outputs/
         design/design-*.md
-        code/
-        reports/
-      session.json       ← Session history
+        eval/report.md              # Evaluation reports (if --eval used)
+      session.json                  # Session history
+
+Note: Generated code is written to the repository root (e.g., src/, lib/),
+      not to workspace/outputs/code/.
 ```
 
 **Auto-detection:**

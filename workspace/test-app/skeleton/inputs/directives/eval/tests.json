@@ -1,0 +1,30 @@
+{
+  "name": "test-app-skeleton-eval",
+  "description": "Evaluation tests for test-app skeleton feature",
+  "type": "codegen",
+  "language": "typescript",
+  "tasks": [
+    {
+      "id": "component-test-1",
+      "description": "Generated component should render correctly",
+      "prompt": "Test that the generated component renders without errors",
+      "testCases": [
+        {
+          "id": "test-render",
+          "description": "Component renders successfully",
+          "assertions": [
+            "// Add your test assertions here",
+            "// Example: expect(component).toBeDefined()"
+          ],
+          "timeout": 5000
+        }
+      ],
+      "metadata": {
+        "difficulty": "medium",
+        "tags": ["component", "render"],
+        "source": "project"
+      }
+    }
+  ]
+}
+

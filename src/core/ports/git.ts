@@ -1,17 +1,27 @@
 /**
  * Git Port
- * Interface for Git operations
+ * Interface for Git operations and file system access
+ * 
+ * Note: Includes file system operations to maintain Hexagonal Architecture
+ * (Application layer should not depend on Node.js 'fs' module directly)
  */
 
 export interface GitPort {
+  // Git operations
   getRepoRoot(): Promise<string>;
   createBranch(name: string, base: string): Promise<void>;
   getChangedFiles(): Promise<string[]>;
   hasChanges(): Promise<boolean>;  // Check if working tree has changes
   getHeadFile(path: string): Promise<string | null>;
-  writeFile(path: string, content: string): Promise<void>;
   diff(): Promise<string[]>;  // Legacy compatibility
   show(args: string[]): Promise<string>;  // Legacy compatibility
   status(): Promise<{ files: Array<{ path: string }> }>;  // Legacy compatibility
+  
+  // File system operations (Hexagonal Architecture compliance)
+  writeFile(path: string, content: string): Promise<void>;
+  readFile(path: string): Promise<string | null>;
+  fileExists(path: string): Promise<boolean>;
+  readDirectory(path: string): Promise<Array<{ name: string; isDirectory: boolean }>>;
+  createDirectory(path: string): Promise<void>;
 }
 

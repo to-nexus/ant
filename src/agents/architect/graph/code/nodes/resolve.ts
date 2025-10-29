@@ -16,16 +16,25 @@ import { CodebaseRetriever } from "../../../../../core/codebase/CodebaseRetrieve
  * 3. Fallback → Keyword 검색
  * 
  * Validation: Must have either design doc OR directive
+ * 
+ * ✅ Hexagonal Architecture Compliance:
+ * - Uses GitPort for file operations
  */
 export async function resolve(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   const { context } = state;
   const retriever = new CodebaseRetriever();
+  
+  // Get GitPort for file operations
+  const gitPort = state.deps?.git;
+  if (!gitPort) {
+    throw new Error("GitPort not provided for file operations");
+  }
 
   // 1. Load design document (optional)
-  const design = findLatestDesign(context) || undefined;
+  const design = await findLatestDesign(context, gitPort) || undefined;
 
   // 2. Load directive (optional)
-  const directive = getDirective(context, 'code') || undefined;
+  const directive = await getDirective(context, 'code', gitPort) || undefined;
   
   // Validate: Must have either design doc OR directive
   if (!design && !directive) {

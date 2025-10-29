@@ -53,6 +53,58 @@ export class SimpleGitAdapter implements GitPort {
     fs.writeFileSync(full, content, "utf8");
   }
 
+  async readFile(path: string): Promise<string | null> {
+    await this.ensure();
+    const root = await this.getRepoRoot();
+    const fs = await import("fs");
+    const p = await import("path");
+    const full = p.join(root, path);
+    
+    try {
+      return fs.readFileSync(full, "utf8");
+    } catch {
+      return null;
+    }
+  }
+
+  async fileExists(path: string): Promise<boolean> {
+    await this.ensure();
+    const root = await this.getRepoRoot();
+    const fs = await import("fs");
+    const p = await import("path");
+    const full = p.join(root, path);
+    
+    return fs.existsSync(full);
+  }
+
+  async readDirectory(path: string): Promise<Array<{ name: string; isDirectory: boolean }>> {
+    await this.ensure();
+    const root = await this.getRepoRoot();
+    const fs = await import("fs");
+    const p = await import("path");
+    const full = p.join(root, path);
+    
+    try {
+      const entries = fs.readdirSync(full, { withFileTypes: true });
+      return entries.map(entry => ({
+        name: entry.name,
+        isDirectory: entry.isDirectory()
+      }));
+    } catch {
+      return [];
+    }
+  }
+
+  async createDirectory(path: string): Promise<void> {
+    await this.ensure();
+    const root = await this.getRepoRoot();
+    const fs = await import("fs");
+    const p = await import("path");
+    const full = p.join(root, path);
+    
+    fs.mkdirSync(full, { recursive: true });
+  }
+
   // Legacy compatibility methods
   async diff(): Promise<string[]> {
     return await this.getChangedFiles();

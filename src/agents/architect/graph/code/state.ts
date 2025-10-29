@@ -32,7 +32,7 @@ export interface ValidationResult {
  */
 export interface ArchitectGraphState extends TaskArtifacts {
   // Context
-  context: ProjectContext;
+  context: ProjectContext & { enableEvaluation?: boolean };
   spec: string;  // CLI input
   
   // Dependencies
@@ -57,12 +57,16 @@ export interface ArchitectGraphState extends TaskArtifacts {
   responseSection?: string | null;
   files: GeneratedFile[];
   filesToDelete: string[];
+  modifications?: any[];  // For evaluation
 
   requiredIntegrations: IntegrationRequirement[];
   violations?: string[];
 
   retries: number;
   maxRetries: number;
+  
+  // Evaluation
+  evaluationReport?: any;
   
   // Learning
   learnings?: string;
