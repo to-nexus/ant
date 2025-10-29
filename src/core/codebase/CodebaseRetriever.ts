@@ -1,6 +1,9 @@
 import * as fs from "fs";
 import * as path from "path";
 import { GitPort, MemoryPort } from "../ports";
+import { ImportGraphAnalyzer } from "./ImportGraphAnalyzer";
+import { ASTAnalyzer } from "./ASTAnalyzer";
+import { CodebaseCache } from "./CodebaseCache";
 
 /**
  * Retrieve options
@@ -10,6 +13,9 @@ export interface RetrieveOptions {
   maxFiles?: number;        // Max number of files (default: 30)
   exclude?: string[];       // Patterns to exclude
   includeContext?: boolean; // Include surrounding files (default: true)
+  useAST?: boolean;         // Use AST analysis for precise file finding (default: true)
+  useImportGraph?: boolean; // Use import graph for related files (default: true)
+  cache?: CodebaseCache;    // Optional cache instance
 }
 
 /**
@@ -78,6 +84,9 @@ export class CodebaseRetriever {
     'yarn.lock',
     'pnpm-lock.yaml'
   ];
+  
+  private importGraph: ImportGraphAnalyzer | null = null;
+  private astAnalyzer: ASTAnalyzer = new ASTAnalyzer();
 
   /**
    * Main retrieval method
@@ -95,6 +104,31 @@ export class CodebaseRetriever {
     const maxTokens = options.maxTokens || 100000;  // ~75KB
     const maxFiles = options.maxFiles || 30;
     const exclude = [...this.defaultExclude, ...(options.exclude || [])];
+    const useAST = options.useAST ?? true;
+    const useImportGraph = options.useImportGraph ?? true;
+    const cache = options.cache;
+
+    // Check cache first
+    if (cache) {
+      const cacheKey = CodebaseCache.generateKey(directive, workingDir, { maxTokens, maxFiles, exclude });
+      const cached = cache.get(cacheKey);
+      
+      if (cached) {
+        console.log('💾 Cache hit! Using cached result');
+        return cached;
+      }
+    }
+
+    // Initialize import graph if needed
+    if (useImportGraph && deps.git) {
+      try {
+        await this.initializeImportGraph(workingDir);
+      } catch (error) {
+        console.warn('Failed to initialize import graph:', error);
+      }
+    }
+
+    let result: CodeContext;
 
     // Strategy 1: Git diff (if changes exist)
     if (deps.git) {
@@ -102,11 +136,19 @@ export class CodebaseRetriever {
         directive,
         workingDir,
         deps.git,
-        { maxTokens, maxFiles, exclude }
+        { maxTokens, maxFiles, exclude, useImportGraph }
       );
       if (gitResult) {
-        console.log('📝 Using git diff strategy');
-        return gitResult;
+        console.log('📝 Using git diff strategy' + (useImportGraph ? ' + import graph' : ''));
+        result = gitResult;
+        
+        // Cache result
+        if (cache) {
+          const cacheKey = CodebaseCache.generateKey(directive, workingDir, { maxTokens, maxFiles, exclude });
+          cache.set(cacheKey, result);
+        }
+        
+        return result;
       }
     }
 
@@ -120,17 +162,33 @@ export class CodebaseRetriever {
       );
       if (vectorResult) {
         console.log('🔍 Using vector search strategy');
-        return vectorResult;
+        result = vectorResult;
+        
+        // Cache result
+        if (cache) {
+          const cacheKey = CodebaseCache.generateKey(directive, workingDir, { maxTokens, maxFiles, exclude });
+          cache.set(cacheKey, result);
+        }
+        
+        return result;
       }
     }
 
     // Strategy 3: Keyword fallback
     console.log('⚡ Using keyword fallback strategy');
-    return await this.keywordStrategy(
+    result = await this.keywordStrategy(
       directive,
       workingDir,
       { maxTokens, maxFiles, exclude }
     );
+    
+    // Cache result
+    if (cache) {
+      const cacheKey = CodebaseCache.generateKey(directive, workingDir, { maxTokens, maxFiles, exclude });
+      cache.set(cacheKey, result);
+    }
+    
+    return result;
   }
 
 
@@ -142,7 +200,7 @@ export class CodebaseRetriever {
     directive: string,
     workingDir: string,
     git: GitPort,
-    options: Required<Pick<RetrieveOptions, 'maxTokens' | 'maxFiles' | 'exclude'>>
+    options: Required<Pick<RetrieveOptions, 'maxTokens' | 'maxFiles' | 'exclude'>> & { useImportGraph?: boolean }
   ): Promise<CodeContext | null> {
     try {
       const hasChanges = await git.hasChanges();
@@ -155,13 +213,26 @@ export class CodebaseRetriever {
         return null;
       }
 
-      // Load changed files + related files
-      const targetFiles = await this.expandWithRelated(
-        changedFiles,
-        workingDir,
-        directive,
-        options.maxFiles
-      );
+      // Expand with import graph if available
+      let targetFiles = changedFiles.map(f => path.join(workingDir, f));
+      
+      if (options.useImportGraph && this.importGraph) {
+        console.log('🔗 Expanding files using import graph...');
+        targetFiles = this.importGraph.getRelatedFiles(targetFiles, {
+          depth: 2,
+          includeImporters: true,
+          includeImportees: true
+        });
+        console.log(`   ${changedFiles.length} → ${targetFiles.length} files (with dependencies)`);
+      } else {
+        // Fallback to keyword expansion
+        targetFiles = await this.expandWithRelated(
+          changedFiles,
+          workingDir,
+          directive,
+          options.maxFiles
+        );
+      }
 
       // Load working tree
       const code = await this.loadFiles(targetFiles, workingDir, options.maxTokens);
@@ -508,13 +579,14 @@ export class CodebaseRetriever {
     const maxBatches = options.maxBatches || 20;
     const maxTokensPerBatch = options.maxTokensPerBatch || 20000;
     const exclude = [...this.defaultExclude, ...(options.exclude || [])];
+    const strategy = options.strategy || 'ast';  // Default to AST for batch processing
 
     // 1. Find all affected files
     const affectedFiles = await this.findAffectedFiles(
       directive,
       workingDir,
       exclude,
-      options.strategy || 'grep'
+      strategy
     );
 
     if (affectedFiles.length === 0) {
@@ -577,15 +649,27 @@ export class CodebaseRetriever {
     strategy: 'ast' | 'grep'
   ): Promise<string[]> {
     if (strategy === 'ast') {
-      // TODO: AST-based analysis (future)
-      console.log('AST-based analysis not implemented, falling back to grep');
+      console.log('🔍 Using AST analysis to find affected files...');
+      try {
+        const affectedFiles = await this.astAnalyzer.getAffectedFiles(directive, workingDir);
+        console.log(`   Found ${affectedFiles.length} files via AST`);
+        
+        if (affectedFiles.length > 0) {
+          return affectedFiles;
+        }
+        
+        console.log('   AST found no files, falling back to grep');
+      } catch (error) {
+        console.warn('   AST analysis failed, falling back to grep:', error);
+      }
     }
 
     // Grep-based: keyword search
+    console.log('🔍 Using keyword search to find affected files...');
     const keywords = this.extractKeywords(directive);
     const allSourceFiles = this.findAllSourceFiles(workingDir, exclude);
 
-    return allSourceFiles.filter(file => {
+    const matched = allSourceFiles.filter(file => {
       try {
         const content = fs.readFileSync(file, 'utf8');
         const lower = content.toLowerCase();
@@ -594,6 +678,19 @@ export class CodebaseRetriever {
         return false;
       }
     });
+    
+    console.log(`   Found ${matched.length} files via keyword search`);
+    return matched;
+  }
+
+  /**
+   * Initialize import graph (call before using git strategy with import graph)
+   */
+  async initializeImportGraph(workingDir: string): Promise<void> {
+    if (!this.importGraph) {
+      this.importGraph = new ImportGraphAnalyzer();
+      await this.importGraph.buildGraph(workingDir);
+    }
   }
 
 }
