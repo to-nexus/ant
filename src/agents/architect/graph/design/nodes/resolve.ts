@@ -11,15 +11,24 @@ import { CodebaseRetriever } from "../../../../../core/codebase/CodebaseRetrieve
  * - refactor: Current codebase + previous design (Phase 1: CodebaseRetriever)
  * 
  * Always load directive if available
+ * 
+ * ✅ Hexagonal Architecture Compliance:
+ * - Uses GitPort for file operations
  */
 export async function resolve(state: DesignGraphState): Promise<DesignGraphState> {
   const { context, designMode } = state;
   const retriever = new CodebaseRetriever();
+  
+  // Get GitPort for file operations
+  const gitPort = state.deps?.git;
+  if (!gitPort) {
+    throw new Error("GitPort not provided for file operations");
+  }
 
   // 1. Load PRD (optional)
   let prd: string | undefined;
   try {
-    const source = getSource(context);
+    const source = await getSource(context, gitPort);
     prd = source?.prd || undefined;
   } catch (error) {
     // PRD not found - might be refactor mode without PRD
@@ -27,10 +36,10 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
   }
 
   // 2. Load directive (optional)
-  const directive = getDirective(context, 'design') || undefined;
+  const directive = await getDirective(context, 'design', gitPort) || undefined;
 
   // 3. Load previous design (optional)
-  const design = findLatestDesign(context) || undefined;
+  const design = await findLatestDesign(context, gitPort) || undefined;
 
   // 4. Load codebase (conditional on mode - Phase 1: CodebaseRetriever)
   let code: string | undefined;

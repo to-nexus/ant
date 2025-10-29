@@ -28,6 +28,7 @@ export async function architectAgent(
     session?: SessionPort;
   },
   codeMode?: CodeMode,
+  enableEvaluation?: boolean,
   batchOptions?: {
     batchSize?: number;
     maxBatches?: number;
@@ -67,13 +68,14 @@ export async function architectAgent(
   }
   
   // 4. Create ProjectContext with both Vector and Session
-  const context: ProjectContext = {
+  const context: ProjectContext & { enableEvaluation?: boolean } = {
     project,
     featureFolder,
     workingDir: process.cwd(),
     config,
     memory: vectorMemory,           // Long-term knowledge
-    sessionHistory: sessionHistory  // Short-term context
+    sessionHistory: sessionHistory,  // Short-term context
+    enableEvaluation                 // Evaluation flag
   };
 
   // Call appropriate handler based on task

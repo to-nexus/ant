@@ -296,32 +296,6 @@ for await (const batch of retriever.retrieveInBatches(directive, workingDir, dep
 
 ---
 
-## Comparison with Claude
-
-| Feature | Claude | Our Implementation |
-|---------|--------|-------------------|
-| Vector Search | ✅ | ✅ |
-| Git Integration | ✅ | ✅ |
-| Fallback Strategy | ❌ | ✅ (3-stage) |
-| Auto Strategy | Manual | ✅ Automatic |
-| Batch Processing | ✅ | ✅ |
-| **Import Graph** | ❌ | ✅ **Auto-enabled** |
-| **AST Analysis** | ✅ | ✅ **Auto-enabled** |
-| **Caching** | ❌ | ✅ LRU cache |
-| Strategy Separation | ❌ | ✅ WorkSizeEstimator |
-| Unified Retriever | ❌ | ✅ Single class |
-| Per-batch Validation | ❌ | ✅ With retry |
-
-**Result**: **Better than Claude!** 🚀
-
-**Key Advantages**:
-- Import graph for transitive dependencies
-- AST for 100% accurate symbol finding
-- Built-in caching for performance
-- Cleaner architecture with clear separation
-
----
-
 ## Implementation Status
 
 ### ✅ Phase 1: Core Infrastructure (COMPLETED)

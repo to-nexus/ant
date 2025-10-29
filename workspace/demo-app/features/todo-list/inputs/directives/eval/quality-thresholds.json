@@ -1,0 +1,9 @@
+{
+  "minPassRate": 0.8,
+  "minMaintainabilityIndex": 70,
+  "maxComplexity": 10,
+  "maxLintErrors": 0,
+  "maxLintWarnings": 5,
+  "enforceOnFail": false
+}
+

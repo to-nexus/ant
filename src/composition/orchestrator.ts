@@ -30,8 +30,9 @@ export async function orchestrator(params: {
   project?: string;
   inputFile?: string;
   mode?: 'generate' | 'refactor' | 'explain';
+  enableEvaluation?: boolean;
 }) {
-  const { agent, task, input, project, inputFile, mode } = params;
+  const { agent, task, input, project, inputFile, mode, enableEvaluation } = params;
 
   switch (agent) {
     case "architect": {
@@ -82,7 +83,8 @@ export async function orchestrator(params: {
           'code', 
           inputFile, 
           { memory, llm, promptPort, profilePort, analyzer, git, config, chunk, session },
-          mode  // Can be undefined (auto-infer) or explicit
+          mode,  // Can be undefined (auto-infer) or explicit
+          enableEvaluation  // Pass evaluation flag
         );
       }
 
@@ -108,6 +110,7 @@ export async function orchestrator(params: {
       const llm = new GenericLLMClient('doc');
       return await docAgent(input, project || "default", { memory, llm });
     }
+
 
     default:
       throw new Error(`Unknown agent: ${agent}`);

@@ -40,18 +40,23 @@ export async function runBatchCodeGraph(
 ): Promise<BatchRunResult> {
   const llm = initial.deps?.llm as LLMClient;
   const promptEngine = initial.deps?.promptEngine as PromptEngine;
+  const gitPort = initial.deps?.git || initial.gitPort;
 
   if (!llm || !promptEngine) {
     throw new Error("LLM and PromptEngine are required for batch processing");
   }
+  
+  if (!gitPort) {
+    throw new Error("GitPort is required for batch processing");
+  }
 
-  const runner = new BatchCodeRunner(llm, promptEngine);
+  const runner = new BatchCodeRunner(llm, promptEngine, gitPort);
 
   return await runner.run(
     directive,
     initial.context,
     {
-      git: initial.deps?.git,
+      git: gitPort,
       vectorDB: initial.deps?.memory
     },
     options

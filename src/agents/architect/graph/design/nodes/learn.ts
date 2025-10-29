@@ -1,4 +1,3 @@
-import * as fs from "fs";
 import * as path from "path";
 import { DesignGraphState } from "../state";
 import { SessionTurn } from "../../../../../core/types";
@@ -11,28 +10,37 @@ import { SessionTurn } from "../../../../../core/types";
  * 4. Save turn to session file
  * 
  * This is the final node that performs all side effects.
- * Depends on ChunkPort and SessionPort (injected via deps) - follows hexagonal architecture.
+ * Depends on GitPort, ChunkPort and SessionPort (injected via deps) - follows hexagonal architecture.
+ * 
+ * ✅ Hexagonal Architecture Compliance:
+ * - Uses GitPort for file operations (not fs directly)
+ * - No direct infrastructure dependencies
  */
 export async function learn(state: DesignGraphState): Promise<DesignGraphState> {
+  // Get GitPort for file operations
+  const gitPort = state.deps?.git;
+  if (!gitPort) {
+    throw new Error("GitPort not provided for file saving");
+  }
+  
   // 1. Extract learnings
   const learnings = extractDesignLearnings(state);
   
   // 2. Save design document to file
   const designDir = path.join(
-    state.context.workingDir,
     "workspace",
     state.context.project,
     state.context.featureFolder || "default",
     "outputs",
     "design"
   );
-  fs.mkdirSync(designDir, { recursive: true });
+  await gitPort.createDirectory(designDir);
   
   const designFilePath = path.join(
     designDir, 
     `design-${state.context.project}-${Date.now()}.md`
   );
-  fs.writeFileSync(designFilePath, state.designMarkdown, "utf8");
+  await gitPort.writeFile(designFilePath, state.designMarkdown);
   console.log(`📝 Design saved: ${designFilePath}`);
   
   // 3. Save turn to session file first (to get sessionId and turnId)

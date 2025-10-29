@@ -41,6 +41,7 @@ architect
   .description('Generate code from design document')
   .option('--mode <mode>', 'Code generation mode (generate|refactor|explain)', 'generate')
   .option('--project <name>', 'Override auto-detected project name')
+  .option('--eval', 'Run evaluation after code generation')
   .action(async (input: string, options: any) => {
     await runArchitect('code', input, options);
   });
@@ -83,6 +84,9 @@ program
     await runDoc(input, options);
   });
 
+// Evaluation is integrated into architect workflow via --eval flag
+// No separate eval command needed
+
 /**
  * Run architect agent
  */
@@ -112,7 +116,8 @@ async function runArchitect(task: 'design' | 'code' | 'learn', inputPath: string
       input,
       project,
       inputFile: resolvedFile,
-      mode: options.mode
+      mode: options.mode,
+      enableEvaluation: task === 'code' && options.eval  // Pass eval flag
     });
     
     console.log('\n✅ Task completed successfully!');
@@ -205,6 +210,9 @@ async function runDoc(inputPath: string, options: any) {
     process.exit(1);
   }
 }
+
+// Evaluation is now integrated into Architect workflow
+// No separate evaluation command needed
 
 export { program };
 
