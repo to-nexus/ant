@@ -109,26 +109,52 @@ EOF
 cd src/periphery/integrations/vector-memory
 docker-compose up -d
 
-# Initialize workspace
-npm run init:workspace
+# Create workspace
+npm run init:workspace my-project
+npm run init:feature my-project feature1
 ```
 
 ---
 
 ## 🚀 Quick Start
 
-### 1. 데모로 전체 워크플로우 체험 (5분)
+### 1. 새 프로젝트 시작
 
 ```bash
-# PRD → Design → Code → Eval 전체 플로우
-npm run dev -- arch design workspace/demo-app/features/todo-list/
-npm run dev -- arch code workspace/demo-app/features/todo-list/ --eval
+# 1. Workspace 생성
+npm run init:workspace my-app
+
+# 2. Feature 생성
+npm run init:feature my-app auth-feature
+
+# 3. PRD 작성
+vim workspace/my-app/auth-feature/inputs/sources/prd.md
+
+# 4. Design 생성
+npm run dev -- architect design workspace/my-app/auth-feature/
+
+# 5. Code 생성 + 평가
+npm run dev -- architect code workspace/my-app/auth-feature/ --eval
+
+# 6. 결과 확인
+cat workspace/my-app/auth-feature/outputs/eval/report.md
+```
+
+### 2. 데모로 전체 워크플로우 체험
+
+```bash
+# PRD → Design → Code → Eval 전체 플로우 (이미 준비됨)
+npm run dev -- architect design workspace/demo-app/features/todo-list/
+npm run dev -- architect code workspace/demo-app/features/todo-list/ --eval
 
 # 결과 확인
 cat workspace/demo-app/features/todo-list/outputs/eval/report.md
 ```
 
-자세한 내용: [workspace/demo-app/README.md](workspace/demo-app/README.md)
+자세한 내용: 
+- [Quick Start Guide](docs/guides/QUICK_START.md)
+- [Workflow Flow](docs/guides/WORKFLOW_FLOW.md)
+- [Demo App](workspace/demo-app/README.md)
 
 ---
 
@@ -143,14 +169,18 @@ npm run dev -- <agent> <task> [options] <input>
 ### Examples
 
 ```bash
+# Create workspace and feature first
+npm run init:workspace my-app
+npm run init:feature my-app auth-feature
+
 # Architecture design from PRD
-npm run dev -- arch design workspace/project/feature/inputs/directives/design/directive.md
+npm run dev -- architect design workspace/my-app/auth-feature/
 
 # Code generation from design
-npm run dev -- arch code workspace/project/feature/
+npm run dev -- architect code workspace/my-app/auth-feature/
 
 # Code generation with automatic evaluation
-npm run dev -- arch code workspace/project/feature/ --eval
+npm run dev -- architect code workspace/my-app/auth-feature/ --eval
 
 # Code with edit mode
 npm run dev -- arch code workspace/project/feature/ --mode edit
@@ -179,34 +209,34 @@ npm run dev -- plan workspace/project/requirements.md
 
 **Workflow (Code Task):**
 ```
-resolve → plan → execute → validate
-                    ↑         ↓
-                    └─ enforce (if violations, retry < 3)
-                         ↓
-                       learn
+resolve → plan → execute → validate → postProcess → dynamicValidate → evaluate → learn
+                              ↓                          ↓
+                           enforce ←──────────────────────┘
+                           (if violations, retry)
 ```
 
-### Evaluator Agent
+자세한 흐름: [Workflow Flow Guide](docs/guides/WORKFLOW_FLOW.md)
+
+### Code Evaluation
 
 **Purpose:** Quantitatively measure AI-generated code quality
 
-**Evaluation Metrics:**
-- **Functional Correctness**: Test pass rate, pass@k
-- **Code Quality**: Maintainability Index (MI), Cyclomatic Complexity
-- **Lint Analysis**: Error/warning counts
-- **Performance**: Execution time
+**Evaluation Types:**
+- **Static Analysis**: Lines of code, complexity, maintainability index
+- **Dynamic Validation** (optional): Build, lint, type check, tests
 
 **Usage:**
 
 ```bash
 # Auto-evaluate after code generation
-npm run dev -- arch code workspace/project/feature/ --eval
+npm run dev -- architect code workspace/project/feature/ --eval
 
-# Manual evaluation
-npm run dev -- eval workspace/project/feature/inputs/directives/eval/tests.json
-
-# Benchmark evaluation
-npm run dev -- eval datasets/samples/simple-eval.json --quality --verbose
+# Enable strict validation (build/lint/test)
+# Set in workspace/project/config.json:
+{
+  "strictValidation": true,
+  "runTests": false
+}
 ```
 
 **Workspace Structure:**
@@ -223,7 +253,7 @@ Note: Generated code is written directly to the repository (e.g., src/, lib/),
       not to workspace/outputs/code/.
 ```
 
-**Details:** See [Code Evaluation section in WORKFLOW_GUIDE.md](docs/guides/WORKFLOW_GUIDE.md#-code-evaluation-optional)
+**Details:** See [Evaluation Guide](docs/guides/EVALUATION.md)
 
 ---
 

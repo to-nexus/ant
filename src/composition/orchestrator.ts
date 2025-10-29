@@ -11,6 +11,7 @@ import { SimpleGitAdapter } from "../periphery/adapters/git/SimpleGitAdapter";
 import { FileConfigAdapter } from "../periphery/adapters/config/FileConfigAdapter";
 import { FileSessionAdapter } from "../periphery/adapters/session/FileSessionAdapter";
 import { ChunkAdapter } from "../periphery/adapters/chunk/ChunkingAdapter";
+import { NodeCommandAdapter } from "../periphery/adapters/command/NodeCommandAdapter";
 import * as path from "path";
 
 /**
@@ -75,6 +76,7 @@ export async function orchestrator(params: {
         const analyzer = new CodebaseAnalyzer();
         const configData = await config.load(project || "default");
         const git = new SimpleGitAdapter(project || "default", configData);
+        const command = new NodeCommandAdapter();
         
         // Mode will be inferred or auto-determined in architect agent
         return await architectAgent(
@@ -82,7 +84,7 @@ export async function orchestrator(params: {
           project || "default", 
           'code', 
           inputFile, 
-          { memory, llm, promptPort, profilePort, analyzer, git, config, chunk, session },
+          { memory, llm, promptPort, profilePort, analyzer, git, config, chunk, session, command },
           mode,  // Can be undefined (auto-infer) or explicit
           enableEvaluation  // Pass evaluation flag
         );

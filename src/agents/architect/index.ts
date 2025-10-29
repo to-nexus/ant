@@ -2,7 +2,7 @@ import { ProjectContext, AgentTask, CodeMode, ArchitectResult } from "./types";
 import { extractFeatureFolder } from "./utils";
 import { retrieve } from "./memory";
 import { formatSessionContext } from "./session-formatter";
-import { MemoryPort, LLMClient, PromptPort, GitPort, ConfigPort, CodebaseAnalyzerPort, ProfilePort, SessionPort, ChunkPort } from "../../core/ports";
+import { MemoryPort, LLMClient, PromptPort, GitPort, ConfigPort, CodebaseAnalyzerPort, ProfilePort, SessionPort, ChunkPort, CommandPort } from "../../core/ports";
 import { runCodeGraph, runBatchCodeGraph } from "./graph/code/runner";
 import { ArchitectGraphState } from "./graph/code/state";
 import { runDesignGraph } from "./graph/design/runner";
@@ -26,6 +26,7 @@ export async function architectAgent(
     config?: ConfigPort;
     chunk?: ChunkPort;
     session?: SessionPort;
+    command?: CommandPort;
   },
   codeMode?: CodeMode,
   enableEvaluation?: boolean,
@@ -108,10 +109,17 @@ export async function architectAgent(
         memory: deps.memory,
         contextLoader: async (task, ctx) => {
           const { getDirective, getSource, findLatestDesign } = await import('./utils');
+          const gitPort = deps.git;
+          if (!gitPort) return {};
+          
+          const directive = await getDirective(ctx, task, gitPort);
+          const previousDesign = await findLatestDesign(ctx, gitPort);
+          const source = await getSource(ctx, gitPort);
+          
           return {
-            directive: getDirective(ctx, task) || undefined,
-            previousDesign: findLatestDesign(ctx) || undefined,
-            prdSpec: getSource(ctx).prd || undefined
+            directive: directive || undefined,
+            previousDesign: previousDesign || undefined,
+            prdSpec: source?.prd || undefined
           };
         }
       });
@@ -149,9 +157,14 @@ export async function architectAgent(
         const { inferCodeMode } = await import('../../core/modeInference');
         const { getDirective, findLatestDesign } = await import('./utils');
         
-        const directive = getDirective(context, 'code');
-        const designDoc = findLatestDesign(context);
-        const hasGitChanges = deps?.git ? await deps.git.hasChanges() : false;
+        const gitPort = deps?.git;
+        if (!gitPort) {
+          throw new Error("GitPort not provided for code mode inference");
+        }
+        
+        const directive = await getDirective(context, 'code', gitPort);
+        const designDoc = await findLatestDesign(context, gitPort);
+        const hasGitChanges = await gitPort.hasChanges();
         
         inferredMode = inferCodeMode({
           directive,
@@ -191,9 +204,15 @@ export async function architectAgent(
           memory: deps.memory,
           contextLoader: async (task, ctx) => {
             const { getDirective, findLatestDesign } = await import('./utils');
+            const gitPort = deps.git;
+            if (!gitPort) return {};
+            
+            const directive = await getDirective(ctx, task, gitPort);
+            const designDoc = await findLatestDesign(ctx, gitPort);
+            
             return {
-              directive: getDirective(ctx, task) || undefined,
-              designDoc: findLatestDesign(ctx) || undefined
+              directive: directive || undefined,
+              designDoc: designDoc || undefined
             };
           }
         });
@@ -243,9 +262,15 @@ export async function architectAgent(
           memory: deps.memory,
           contextLoader: async (task, ctx) => {
             const { getDirective, findLatestDesign } = await import('./utils');
+            const gitPort = deps.git;
+            if (!gitPort) return {};
+            
+            const directive = await getDirective(ctx, task, gitPort);
+            const designDoc = await findLatestDesign(ctx, gitPort);
+            
             return {
-              directive: getDirective(ctx, task) || undefined,
-              designDoc: findLatestDesign(ctx) || undefined
+              directive: directive || undefined,
+              designDoc: designDoc || undefined
             };
           }
         });
@@ -260,7 +285,8 @@ export async function architectAgent(
             analyzer: deps?.analyzer,
             git: deps?.git,
             chunk: deps?.chunk,
-            session: deps?.session
+            session: deps?.session,
+            command: deps?.command
           },
           gitPort: deps?.git,
           planText: "",

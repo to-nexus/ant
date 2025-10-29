@@ -1,6 +1,7 @@
 import { getDirective, findLatestDesign } from "../../../utils";
 import { ArchitectGraphState } from "../state";
 import { CodebaseRetriever } from "../../../../../core/codebase/CodebaseRetriever";
+import * as path from "path";
 
 /**
  * Code Resolve Node
@@ -28,6 +29,34 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   const gitPort = state.deps?.git;
   if (!gitPort) {
     throw new Error("GitPort not provided for file operations");
+  }
+
+  // 0. Validate workspace exists
+  const workspacePath = path.join("workspace", context.project);
+  const workspaceExists = await gitPort.fileExists(workspacePath);
+  
+  if (!workspaceExists) {
+    throw new Error(
+      `Workspace not found: ${workspacePath}\n\n` +
+      `Please create workspace first:\n` +
+      `  npm run init:workspace ${context.project}\n\n` +
+      `Then prepare your inputs in:\n` +
+      `  workspace/${context.project}/${context.featureFolder}/inputs/`
+    );
+  }
+
+  // Validate feature exists
+  const featurePath = path.join("workspace", context.project, context.featureFolder);
+  const featureExists = await gitPort.fileExists(featurePath);
+  
+  if (!featureExists) {
+    throw new Error(
+      `Feature directory not found: ${featurePath}\n\n` +
+      `Please create feature first:\n` +
+      `  npm run init:feature ${context.project} ${context.featureFolder}\n\n` +
+      `Then prepare your inputs in:\n` +
+      `  workspace/${context.project}/${context.featureFolder}/inputs/`
+    );
   }
 
   // 1. Load design document (optional)

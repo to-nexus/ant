@@ -1,6 +1,7 @@
-import { ProjectContext, DesignMode, CodebaseProfile, TaskArtifacts } from "../../../../core/types";
+import { DesignMode, CodebaseProfile, TaskArtifacts } from "../../../../core/types";
 import { LLMClient, ChunkPort, SessionPort, GitPort, CodebaseAnalyzerPort } from "../../../../core/ports";
 import { PromptEngine } from "../../../../core/prompt/engine";
+import { ProjectContext } from "../../types";
 
 /**
  * Design Task State

@@ -1,5 +1,7 @@
 {
   "projectName": "test-app",
+  "repoType": "local",
+  "localPath": "../test-app",
   "branchBase": "main",
   "autoLearn": true,
   "llmProvider": "anthropic",

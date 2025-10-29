@@ -1,6 +1,7 @@
-import { ProjectContext, CodeMode, CodebaseProfile, TaskArtifacts } from "../../../../core/types";
-import { GitPort, MemoryPort, LLMClient, CodebaseAnalyzerPort, ChunkPort, SessionPort } from "../../../../core/ports";
+import { CodeMode, CodebaseProfile, TaskArtifacts } from "../../../../core/types";
+import { GitPort, MemoryPort, LLMClient, CodebaseAnalyzerPort, ChunkPort, SessionPort, CommandPort } from "../../../../core/ports";
 import { PromptEngine } from "../../../../core/prompt/engine";
+import { ProjectContext } from "../../types";
 
 export interface IntegrationRequirement {
   name: string;
@@ -44,6 +45,7 @@ export interface ArchitectGraphState extends TaskArtifacts {
     analyzer?: CodebaseAnalyzerPort;
     chunk?: ChunkPort;
     session?: SessionPort;
+    command?: CommandPort;
   };
   gitPort?: GitPort;  // For runner to use after graph execution
   
