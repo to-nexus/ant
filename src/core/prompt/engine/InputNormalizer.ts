@@ -160,7 +160,7 @@ export class InputNormalizer {
       if (!artifacts.designDoc && !artifacts.directive) {
         throw new Error(
           "Code task requires either design document or directive.\n" +
-          "Run arch-design first or provide a directive."
+          "Run 'architect design' first or provide a directive."
         );
       }
     }

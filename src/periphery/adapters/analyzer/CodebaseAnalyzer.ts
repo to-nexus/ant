@@ -1,6 +1,7 @@
 import { promises as fs } from "fs";
 import { join } from "path";
-import { CodebaseAnalyzerPort, CodebaseProfile } from "../../../core/ports";
+import { CodebaseAnalyzerPort } from "../../../core/ports";
+import { CodebaseProfile } from "../../../core/types";
 
 /**
  * CodebaseAnalyzer - Detects language and framework from source code

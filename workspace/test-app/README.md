@@ -32,10 +32,10 @@ npm run init:feature test-app ui-1.0.0
 
 3. Generate design:
 ```bash
-npm run dev arch-design workspace/test-app/ui-1.0.0
+npm run dev architect design workspace/test-app/ui-1.0.0
 ```
 
 4. Generate code:
 ```bash
-npm run dev arch-code workspace/test-app/ui-1.0.0
+npm run dev architect code workspace/test-app/ui-1.0.0
 ```

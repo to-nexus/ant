@@ -442,7 +442,7 @@ Framework: Next.js
 
 ```
 T0: 사용자 실행
-    npm run arch-design workspace/my-app/auth/inputs/directives/design/directive.md
+    npm run architect design workspace/my-app/auth/inputs/directives/design/directive.md
 
 T1: Orchestrator
     └─ FileSessionAdapter, ChunkAdapter, ChromaMemoryAdapter 생성

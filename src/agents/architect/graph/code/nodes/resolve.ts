@@ -67,11 +67,11 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   
   // Validate: Must have either design doc OR directive
   if (!design && !directive) {
-    throw new Error(
-      "No design document or directive found.\n" +
-      "For new features: Run arch-design first.\n" +
-      "For modifications: Provide directive in workspace/{project}/{feature}/inputs/directives/code/directive.md"
-    );
+        throw new Error(
+          "No design document or directive found.\n" +
+          "For new features: Run 'architect design' first.\n" +
+          "For modifications: Provide directive in workspace/{project}/{feature}/inputs/directives/code/directive.md"
+        );
   }
 
   // 3. Retrieve relevant codebase (Phase 1: Smart Retrieval)

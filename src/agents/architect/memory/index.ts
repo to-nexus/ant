@@ -50,8 +50,7 @@ export async function retrieve(
         const queryResults = await memory.query(query, project, {
           k: 10,  // Get more results for reranking
           where: { 
-            type: 'learning',
-            task: task === 'design' ? 'design' : 'code'
+            type: 'learning'
           },
           minScore: 0.5  // Filter low-quality results
         });
@@ -100,7 +99,6 @@ export async function retrieve(
         const queryResults = await memory.query(query, project, {
           k: 10,
           where: { 
-            feature: feature,
             type: 'learning'
           },
           minScore: 0.5

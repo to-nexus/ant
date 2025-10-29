@@ -37,7 +37,9 @@ export class PolicyInjector {
   
   constructor() {
     // Load ruleset from JSON
-    const rulesetPath = path.join(__dirname, "..", "policies", "prompts", "ruleset.json");
+    // PolicyInjector is in src/core/prompt/engine/
+    // ruleset.json is in src/core/policies/prompts/
+    const rulesetPath = path.join(__dirname, "../..", "policies", "prompts", "ruleset.json");
     this.ruleset = JSON.parse(fs.readFileSync(rulesetPath, "utf8"));
   }
   

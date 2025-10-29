@@ -95,9 +95,8 @@ async function runArchitect(task: 'design' | 'code' | 'learn', inputPath: string
     // Resolve project
     const project = options.project || detectProject(inputPath);
     
-    // Resolve input file
-    const mode = `arch-${task}`;
-    const resolvedFile = resolveInputFile(inputPath, mode);
+    // Resolve input file based on task
+    const resolvedFile = resolveInputFile(inputPath, task);
     const input = fs.readFileSync(resolvedFile, 'utf-8');
     
     console.log(`🎯 Agent: Architect`);

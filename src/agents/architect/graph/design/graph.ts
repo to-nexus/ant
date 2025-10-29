@@ -8,12 +8,29 @@ import { learn } from "./nodes/learn";
 export function buildDesignGraph() {
   const graph = new StateGraph<DesignGraphState>({
     channels: {
+      // Context & Input
       context: null as any,
       spec: null as any,
-      previousDesign: null as any,
+      
+      // Dependencies (MUST be in channels to be passed between nodes!)
+      deps: null as any,
+      
+      // Mode
+      designMode: null as any,
+      
+      // Artifacts (from TaskArtifacts)
+      prd: null as any,
       directive: null as any,
+      design: null as any,
+      code: null as any,
+      codeHead: null as any,
+      profile: null as any,
+      
+      // Execution
       planText: null as any,
       designMarkdown: null as any,
+      
+      // Results
       designFilePath: null as any,
       learnings: null as any,
     } as any,

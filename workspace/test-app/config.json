@@ -3,7 +3,5 @@
   "repoType": "local",
   "localPath": "../test-app",
   "branchBase": "main",
-  "autoLearn": true,
-  "llmProvider": "anthropic",
-  "llmModel": "claude-3-5-sonnet-20241022"
+  "autoLearn": true
 }

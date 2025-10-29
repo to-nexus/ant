@@ -9,14 +9,27 @@ const GIT_DEFAULT_OWNER = process.env.GIT_DEFAULT_OWNER;
 const GIT_DEFAULT_BASE = process.env.GIT_DEFAULT_BASE || "main";
 
 export async function loadProjectGitConfig(project: string) {
-  const configPath = path.join(process.cwd(), "projects", project, "config.json");
+  const configPath = path.join(process.cwd(), "workspace", project, "config.json");
   if (!fs.existsSync(configPath)) throw new Error(`No config.json for project: ${project}`);
   return JSON.parse(fs.readFileSync(configPath, "utf8"));
 }
 
 export async function getGitInstance(project: string, config: any) {
   if (config.repoType === "local") {
-    return simpleGit(config.localPath);
+    const localPath = config.localPath;
+    
+    // Ensure localPath directory exists
+    if (!fs.existsSync(localPath)) {
+      console.log(`📁 Creating local repository directory: ${localPath}`);
+      fs.mkdirSync(localPath, { recursive: true });
+      
+      // Initialize as git repository
+      const git = simpleGit(localPath);
+      await git.init();
+      console.log(`✅ Initialized git repository: ${localPath}`);
+    }
+    
+    return simpleGit(localPath);
   } else {
     const tmpDir = path.join(os.tmpdir(), `${project}-${Date.now()}`);
     const git = simpleGit();

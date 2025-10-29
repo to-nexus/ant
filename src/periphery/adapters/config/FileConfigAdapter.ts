@@ -8,9 +8,9 @@ import { ConfigPort } from "../../../core/ports";
  */
 export class FileConfigAdapter implements ConfigPort {
   async load(project: string): Promise<any> {
-    const configPath = path.join(process.cwd(), "projects", project, "config.json");
+    const configPath = path.join(process.cwd(), "workspace", project, "config.json");
     if (!fs.existsSync(configPath)) {
-      throw new Error(`No config.json for project: ${project}`);
+      throw new Error(`No config.json for project: ${project}\nExpected at: ${configPath}`);
     }
     return JSON.parse(fs.readFileSync(configPath, "utf8"));
   }
