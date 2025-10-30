@@ -3,19 +3,29 @@
     "format": {
       "output": "Always use markdown for documentation",
       "code": "Never use markdown code fences for actual file output",
-      "structure": "Maintain consistent indentation and formatting"
+      "structure": "Maintain consistent indentation and formatting",
+      "json": "CRITICAL: JSON files MUST NOT contain comments - use pure JSON only"
     },
     "prohibited": [
       "Do not use ellipsis (...) or placeholder comments",
       "Do not skip code sections with '// ... rest of code'",
       "Do not use 'TODO' or 'FIXME' in production code",
-      "Never output incomplete files"
+      "Never output incomplete files",
+      "NEVER add comments to JSON files (package.json, tsconfig.json, etc.)",
+      "NEVER use // or /* */ in JSON - it will cause parsing errors"
     ],
     "quality": [
       "Always include complete imports",
       "Always include all type definitions",
       "Verify all paths and references are correct",
       "Ensure no unused imports or variables"
+    ],
+    "dependencies": [
+      "When adding npm packages, ALWAYS check for peer dependencies",
+      "Example: @vitejs/plugin-react requires react AND react-dom",
+      "Example: TypeScript packages often need @types/* packages",
+      "Check package documentation for required peer dependencies",
+      "Include ALL dependencies in package.json, not just the main one"
     ]
   },
   "code": {
@@ -38,7 +48,15 @@
         "Check: All imports are valid",
         "Check: No syntax errors",
         "Check: Types are correct (TypeScript)",
-        "Check: No hardcoded values that should be configurable"
+        "Check: No hardcoded values that should be configurable",
+        "Check: JSON files have NO comments",
+        "Check: All peer dependencies are included in package.json"
+      ],
+      "missing_files": [
+        "If build error mentions missing file (e.g., index.html): CREATE the file",
+        "DO NOT just change configuration to avoid the error",
+        "Missing entry files are CRITICAL - create them immediately",
+        "Example: Vite projects REQUIRE index.html - create it, don't remove it from config"
       ]
     }
   },
@@ -66,7 +84,10 @@
       "CRITICAL: Never use placeholder ellipsis",
       "CRITICAL: Output must be byte-for-byte correct",
       "CRITICAL: All files must be complete",
-      "CRITICAL: No 'will be implemented later' statements"
+      "CRITICAL: No 'will be implemented later' statements",
+      "CRITICAL: JSON files must be pure JSON (no comments)",
+      "CRITICAL: Missing files must be CREATED, not worked around",
+      "CRITICAL: Check ALL peer dependencies when adding npm packages"
     ]
   }
 }

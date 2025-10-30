@@ -13,19 +13,36 @@ import { ErrorSubtask, ErrorCategory } from "../state";
 
 /**
  * Analyze violations and create prioritized subtasks
+ * @param violations - Array of error messages
+ * @param excludeCategories - Categories that have been successfully resolved
  */
-export function analyzeErrors(violations: string[]): ErrorSubtask[] {
+export function analyzeErrors(
+  violations: string[], 
+  excludeCategories: ErrorCategory[] = []
+): ErrorSubtask[] {
   if (!violations || violations.length === 0) {
     return [];
   }
 
   // Group errors by category
   const categorized = new Map<ErrorCategory, string[]>();
+  let excludedCount = 0;
   
   for (const violation of violations) {
     const category = categorizeError(violation);
+    
+    // Skip categories that have been resolved
+    if (excludeCategories.includes(category)) {
+      excludedCount++;
+      continue;
+    }
+    
     const existing = categorized.get(category) || [];
     categorized.set(category, [...existing, violation]);
+  }
+
+  if (excludedCount > 0) {
+    console.log(`   ✅ Excluded ${excludedCount} error(s) from resolved categories: ${excludeCategories.join(', ')}`);
   }
 
   // Convert to subtasks with priorities
@@ -194,5 +211,67 @@ export function hasSubtaskProgress(
   
   // Progress if error count decreased
   return currentCount < previousCount;
+}
+
+/**
+ * Check which categories have been completely resolved
+ * Returns categories with 0 remaining errors
+ * 
+ * IMPORTANT: We are CONSERVATIVE about marking categories as resolved.
+ * Only mark as resolved if we actively worked on that category and now it has no errors.
+ * Don't mark as resolved just because errors haven't appeared yet.
+ */
+export function getResolvedCategories(
+  violations: string[],
+  existingResolved: ErrorCategory[] = [],
+  previousViolations: string[] = []
+): ErrorCategory[] {
+  // Start with already resolved categories
+  const resolved: ErrorCategory[] = [...existingResolved];
+  
+  // Check if any previously resolved category has new errors
+  // If so, remove from resolved list (regression)
+  const regressedCategories = resolved.filter(category => {
+    return violations.some(v => categorizeError(v) === category);
+  });
+  
+  if (regressedCategories.length > 0) {
+    console.log(`   ⚠️  Regression detected in: ${regressedCategories.join(', ')}`);
+    return resolved.filter(c => !regressedCategories.includes(c));
+  }
+  
+  // Only mark NEW categories as resolved if:
+  // 1. They had errors before (we were working on them)
+  // 2. They have NO errors now (we fixed them)
+  const allCategories: ErrorCategory[] = [
+    'missing_files',
+    'missing_deps', 
+    'config_errors',
+    'import_errors',
+    'syntax_errors',
+    'type_errors',
+    'other'
+  ];
+  
+  for (const category of allCategories) {
+    // Skip if already resolved
+    if (resolved.includes(category)) {
+      continue;
+    }
+    
+    // Check if this category HAD errors before
+    const hadErrors = previousViolations.some(v => categorizeError(v) === category);
+    
+    // Check if this category has errors NOW
+    const hasErrors = violations.some(v => categorizeError(v) === category);
+    
+    // Only mark as resolved if we fixed something (had errors → no errors)
+    // DON'T mark as resolved if we never had errors (they might appear later!)
+    if (hadErrors && !hasErrors) {
+      resolved.push(category);
+    }
+  }
+  
+  return resolved;
 }
 
