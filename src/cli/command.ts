@@ -1,7 +1,9 @@
 import { Command } from 'commander';
 import fs from 'fs';
+import path from 'path';
 import { detectProject, resolveInputFile } from './resolver';
 import { orchestrator } from '../composition/orchestrator';
+import { TaskLogger } from './logger';
 
 /**
  * CLI Command Structure
@@ -91,6 +93,8 @@ program
  * Run architect agent
  */
 async function runArchitect(task: 'design' | 'code' | 'learn', inputPath: string, options: any) {
+  let logger: TaskLogger | null = null;
+  
   try {
     // Resolve project
     const project = options.project || detectProject(inputPath);
@@ -98,6 +102,16 @@ async function runArchitect(task: 'design' | 'code' | 'learn', inputPath: string
     // Resolve input file based on task
     const resolvedFile = resolveInputFile(inputPath, task);
     const input = fs.readFileSync(resolvedFile, 'utf-8');
+    
+    // Determine output directory for logs
+    // resolvedFile is like: workspace/test-app/skeleton/inputs/directives/code/directive.md
+    // We want: workspace/test-app/skeleton/outputs/reports
+    const featureDir = path.dirname(path.dirname(path.dirname(resolvedFile))); // Go up 3 levels
+    const outputDir = path.join(featureDir, 'outputs', 'reports');
+    
+    // Start logging
+    logger = new TaskLogger(outputDir, `architect-${task}`);
+    logger.start();
     
     console.log(`🎯 Agent: Architect`);
     console.log(`📋 Task: ${task}`);
@@ -121,8 +135,19 @@ async function runArchitect(task: 'design' | 'code' | 'learn', inputPath: string
     
     console.log('\n✅ Task completed successfully!');
     console.log('\n--- Result ---\n', JSON.stringify(result, null, 2));
+    
+    // Stop logging
+    if (logger) {
+      logger.stop();
+    }
   } catch (error: any) {
     console.error('\n❌ Error:', error.message);
+    
+    // Stop logging on error
+    if (logger) {
+      logger.stop();
+    }
+    
     process.exit(1);
   }
 }

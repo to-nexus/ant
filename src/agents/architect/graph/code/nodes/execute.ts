@@ -10,14 +10,9 @@ import { PromptEngine } from "../../../../../core/prompt/engine";
 export async function execute(
   state: ArchitectGraphState
 ): Promise<ArchitectGraphState> {
-  const reasonHeader = (state as any).enforcementReason;
-  
   try {
     const llm = state.deps?.llm as LLMClient;
     const engine = state.deps?.promptEngine as PromptEngine;
-  
-  let formatted;
-  let buildResult;
   
   // Prepare artifacts (using new unified names)
   const artifacts = {
@@ -28,69 +23,18 @@ export async function execute(
     originalFiles: state.codeHead,   // Map to old name
   };
   
-  if (reasonHeader) {
-    // Enforcement mode: rebuild with violation message
-    console.log('\n🔴 ENFORCEMENT MODE - Fixing validation errors\n');
-    
-    let errorText: string = '';
-    if (typeof reasonHeader === 'string') {
-      errorText = reasonHeader;
-    } else {
-      try {
-        errorText = JSON.stringify(reasonHeader, null, 2);
-      } catch (circularError) {
-        const rh: any = reasonHeader;
-        if (rh && typeof rh.toString === 'function') {
-          errorText = rh.toString();
-        } else {
-          errorText = `[${typeof reasonHeader}] ${String(reasonHeader)}`;
-        }
-      }
-    }
-    
-    // Load package.json for dependency/type errors
-    if (errorText.includes('Could not find a declaration file') || 
-        errorText.includes('Cannot find module') ||
-        errorText.includes('@types/')) {
-      try {
-        const fs = await import('fs/promises');
-        const path = await import('path');
-        const pkgPath = path.join(state.context.workingDir, 'package.json');
-        const pkgContent = await fs.readFile(pkgPath, 'utf-8');
-        
-        if (!artifacts.currentCode?.includes('"name":') || 
-            !artifacts.currentCode?.includes('"dependencies":')) {
-          artifacts.currentCode = (artifacts.currentCode || '') + 
-            `\n\n=== package.json ===\n${pkgContent}\n`;
-        }
-      } catch (error: any) {
-        console.warn('⚠️  Could not load package.json:', error.message);
-      }
-    }
-    
-    buildResult = await engine.buildExecutePrompt(
-      "code",
-      state.context,
-      artifacts,
-      state.planText,
-      state.codeMode
-    );
-    
-    formatted = engine.buildEnforcementPrompt(buildResult, errorText);
-  } else {
-    // Initial generation mode: build fresh prompt
-    buildResult = await engine.buildExecutePrompt(
-      "code",
-      state.context,
-      artifacts,
-      state.planText,
-      state.codeMode
-    );
-    
-    formatted = buildResult.formatted;
-    
-    console.log(`⏱️  Prompt build time: ${buildResult.metadata.buildTime}ms`);
-  }
+  // Build prompt using PromptEngine
+  const buildResult = await engine.buildExecutePrompt(
+    "code",
+    state.context,
+    artifacts,
+    state.planText,
+    state.codeMode
+  );
+  
+  const formatted = buildResult.formatted;
+  
+  console.log(`⏱️  Prompt build time: ${buildResult.metadata.buildTime}ms`);
 
   // Generate code with streaming
   let raw = '';

@@ -20,6 +20,7 @@ import * as path from "path";
 export async function postProcess(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   const commandPort = state.deps?.command;
   const gitPort = state.deps?.git;
+  const violations: string[] = [];
 
   // Skip if no command port (optional dependency)
   if (!commandPort || !gitPort) {
@@ -88,6 +89,14 @@ export async function postProcess(state: ArchitectGraphState): Promise<Architect
           } else {
             console.error('❌ Dependency installation failed:');
             console.error(result.stderr);
+            
+            // ✅ Add to violations so LLM can see and fix
+            const errorMessage = `📦 DEPENDENCY INSTALLATION FAILED:\n${result.stderr}\n\n` +
+              `🔧 REQUIRED ACTION:\n` +
+              `- Check package.json for incorrect package versions\n` +
+              `- Verify all package names and versions exist in npm registry\n` +
+              `- Fix version numbers to match available versions`;
+            violations.push(errorMessage);
           }
         } else {
           console.log('⚠️  Could not detect package manager');
@@ -122,9 +131,13 @@ export async function postProcess(state: ArchitectGraphState): Promise<Architect
 
   } catch (error: any) {
     console.error('⚠️  Post-process error:', error.message);
-    // Don't fail the entire workflow if post-process fails
+    violations.push(`Post-process error: ${error.message}`);
   }
 
-  return state;
+  // ✅ Return with violations if any
+  return {
+    ...state,
+    violations: [...(state.violations || []), ...violations]
+  };
 }
 

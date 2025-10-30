@@ -257,13 +257,69 @@ function parseLintErrors(stdout: string): string[] {
 }
 
 /**
- * Parse build errors
+ * Parse build errors and enhance with actionable messages
  */
 function parseBuildErrors(stderr: string): string[] {
   const lines = stderr.split('\n');
-  return lines
+  const errors: string[] = [];
+  
+  // Check for missing entry module (common in Vite projects)
+  const entryModuleMatch = stderr.match(/Could not resolve entry module ["'](.+?)["']/);
+  if (entryModuleMatch) {
+    const missingFile = entryModuleMatch[1];
+    errors.push(`⚠️ MISSING REQUIRED FILE: ${missingFile}`);
+    errors.push('');
+    errors.push(`This file does not exist in the project root.`);
+    
+    // Provide specific guidance for index.html (Vite entry point)
+    if (missingFile.includes('index.html')) {
+      errors.push('Vite projects REQUIRE index.html as the entry point.');
+      errors.push('');
+      errors.push('🔧 YOU MUST CREATE THIS FILE with content like:');
+      errors.push('```html');
+      errors.push('<!DOCTYPE html>');
+      errors.push('<html lang="en">');
+      errors.push('  <head>');
+      errors.push('    <meta charset="UTF-8" />');
+      errors.push('    <meta name="viewport" content="width=device-width, initial-scale=1.0" />');
+      errors.push('    <title>App</title>');
+      errors.push('  </head>');
+      errors.push('  <body>');
+      errors.push('    <div id="root"></div>');
+      errors.push('    <script type="module" src="/src/index.tsx"></script>');
+      errors.push('  </body>');
+      errors.push('</html>');
+      errors.push('```');
+    } else {
+      errors.push(`🔧 YOU MUST CREATE THIS FILE: ${missingFile}`);
+    }
+    errors.push('');
+    errors.push('⚠️ Do NOT just change the configuration - CREATE THE MISSING FILE!');
+    errors.push('');
+  }
+  
+  // Check for other missing module errors
+  const moduleNotFoundMatch = stderr.match(/Cannot find module ["'](.+?)["']/);
+  if (moduleNotFoundMatch) {
+    const missingModule = moduleNotFoundMatch[1];
+    errors.push(`⚠️ MISSING MODULE: ${missingModule}`);
+    errors.push('');
+    errors.push('This could be:');
+    errors.push('1. A missing npm package - add it to package.json dependencies');
+    errors.push('2. A missing source file - create the file');
+    errors.push('3. An incorrect import path - fix the import statement');
+    errors.push('');
+  }
+  
+  // Add original error output (filtered)
+  const filteredLines = lines
     .filter(line => line.trim().length > 0)
+    .filter(line => !line.includes('deprecated')) // Skip deprecation warnings
     .map(line => line.trim());
+  
+  errors.push(...filteredLines);
+  
+  return errors;
 }
 
 /**
