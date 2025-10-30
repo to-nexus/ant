@@ -26,6 +26,14 @@ export type ErrorCategory =
   | 'syntax_errors'       // Syntax errors
   | 'other';              // Uncategorized
 
+export interface AttemptHistory {
+  attemptNumber: number;           // Which attempt this was (1, 2, 3...)
+  filesGenerated: string[];        // List of files created/modified
+  keyChanges: string[];            // Human-readable summary of changes
+  subtaskName?: string;            // Which subtask this was for (if any)
+  errorsAttemptedToFix: string[];  // Which errors this attempt tried to fix
+}
+
 export interface GeneratedFile {
   path: string;
   content: string;
@@ -89,10 +97,14 @@ export interface ArchitectGraphState extends TaskArtifacts {
   lastViolations?: string[];  // Previous violations to detect progress
   previousFileCount?: number; // Previous file count to detect new files
   
+  // Attempt history (to prevent repeating same mistakes)
+  previousAttempts?: AttemptHistory[];  // History of what we tried before
+  
   // Task Decomposition (Divide & Conquer)
   currentSubtask?: ErrorSubtask;      // Current focused subtask
   remainingSubtasks?: ErrorSubtask[]; // Queue of remaining subtasks
   completedSubtasks?: string[];       // Names of completed subtasks
+  resolvedCategories?: ErrorCategory[]; // Categories with 0 errors (successfully resolved)
   subtaskIndex: number;               // Current subtask index (for display)
   totalSubtasks: number;              // Total number of subtasks
   

@@ -45,10 +45,14 @@ export function buildCodeGraph() {
       lastViolations: null as any,
       previousFileCount: null as any,
       
+      // Attempt history
+      previousAttempts: null as any,
+      
       // Task Decomposition
       currentSubtask: null as any,
       remainingSubtasks: null as any,
       completedSubtasks: null as any,
+      resolvedCategories: null as any,
       subtaskIndex: null as any,
       totalSubtasks: null as any,
       

@@ -124,14 +124,17 @@ export async function dynamicValidate(state: ArchitectGraphState): Promise<Archi
       if (!lintResult.success) {
         result.passed = false;
         result.lintErrors = parseLintErrors(lintResult.stdout);
-        console.error('❌ Lint failed:');
+        console.error('⚠️  Lint failed (non-blocking):');
         result.lintErrors.slice(0, 10).forEach(err => console.error(`   ${err}`));
         if (result.lintErrors.length > 10) {
           console.error(`   ... and ${result.lintErrors.length - 10} more errors`);
         }
+        console.log('   ℹ️  Lint errors have LOW priority - fix build/deps/types first');
       } else {
         console.log('✅ Lint passed');
       }
+    } else {
+      console.log('ℹ️  ESLint not configured, skipping lint check');
     }
 
     // 3. Build (package.json scripts)
@@ -338,7 +341,7 @@ function formatValidationErrors(result: DynamicValidationResult): string[] {
   }
   
   if (result.lintErrors && result.lintErrors.length > 0) {
-    lines.push('📋 Lint Errors:');
+    lines.push('📋 Lint Errors (LOW PRIORITY - Fix after build/deps/types):');
     result.lintErrors.slice(0, 5).forEach(err => lines.push(`  - ${err}`));
     if (result.lintErrors.length > 5) {
       lines.push(`  ... and ${result.lintErrors.length - 5} more`);

@@ -1,7 +1,57 @@
 import { LLMClient } from "../../../../../core/ports";
-import { ArchitectGraphState } from "../state";
+import { ArchitectGraphState, AttemptHistory } from "../state";
 import { parseResponse } from "./parseResponse";
 import { PromptEngine } from "../../../../../core/prompt/engine";
+
+/**
+ * Extract key changes from generated files
+ * Focus on package.json changes and new file types
+ */
+function extractKeyChanges(files: Array<{ path: string; content: string }>): string[] {
+  const changes: string[] = [];
+  
+  for (const file of files) {
+    // Package.json changes - very important!
+    if (file.path.includes('package.json')) {
+      try {
+        const pkg = JSON.parse(file.content);
+        
+        if (pkg.dependencies) {
+          const deps = Object.keys(pkg.dependencies);
+          if (deps.length > 0) {
+            changes.push(`Added dependencies: ${deps.join(', ')}`);
+          }
+        }
+        
+        if (pkg.devDependencies) {
+          const devDeps = Object.keys(pkg.devDependencies);
+          if (devDeps.length > 0) {
+            changes.push(`Added devDependencies: ${devDeps.join(', ')}`);
+          }
+        }
+      } catch {
+        changes.push('Modified package.json');
+      }
+    }
+    
+    // Config files
+    else if (file.path.includes('tsconfig.json')) {
+      changes.push('Created/modified tsconfig.json');
+    }
+    else if (file.path.includes('vite.config')) {
+      changes.push('Created/modified vite.config');
+    }
+    else if (file.path.endsWith('.html')) {
+      changes.push(`Created HTML entry: ${file.path}`);
+    }
+    // Component/source files
+    else if (file.path.match(/\.(tsx?|jsx?)$/)) {
+      changes.push(`Created component: ${file.path}`);
+    }
+  }
+  
+  return changes;
+}
 
 /**
  * Execute node - generates code using LLM
@@ -65,12 +115,35 @@ export async function execute(
   
     const { responseSection, files, filesToDelete } = parseResponse(raw);
 
+    // Record this attempt for learning
+    const filesGenerated = files.map(f => f.path);
+    const keyChanges = extractKeyChanges(files);
+    
+    const currentAttempt: AttemptHistory = {
+      attemptNumber: (state.previousAttempts?.length || 0) + 1,
+      filesGenerated,
+      keyChanges,
+      subtaskName: state.currentSubtask?.name,
+      errorsAttemptedToFix: state.currentSubtask?.errors || state.violations || []
+    };
+    
+    // Add to history
+    const previousAttempts = [...(state.previousAttempts || []), currentAttempt];
+    
+    console.log(`\n📝 Attempt #${currentAttempt.attemptNumber} recorded:`);
+    console.log(`   Files: ${filesGenerated.length}`);
+    console.log(`   Changes: ${keyChanges.length}`);
+    if (keyChanges.length > 0) {
+      keyChanges.forEach(change => console.log(`      - ${change}`));
+    }
+
     return {
       ...state,
       rawResponse: raw,
       responseSection,
       files,
-      filesToDelete
+      filesToDelete,
+      previousAttempts
     };
   } catch (error) {
     console.error('❌ [Execute] CRITICAL ERROR:', error);
