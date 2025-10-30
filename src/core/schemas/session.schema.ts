@@ -66,6 +66,23 @@ export const SessionArtifactsSchema = z.object({
 }).passthrough(); // Allow additional properties
 
 /**
+ * SessionState Schema
+ * ✅ Execution state for resuming after recursion limit
+ */
+export const SessionStateSchema = z.object({
+  taskQueue: z.array(z.any()).optional(),
+  currentTask: z.any().optional(),
+  completedTasks: z.array(z.string()).optional(),
+  retries: z.number().optional(),
+  maxRetries: z.number().optional(),
+  previousAttempts: z.array(z.any()).optional(),
+  enforcementHistory: z.array(z.any()).optional(),
+  lastViolations: z.array(z.any()).optional(),
+  previousFileCount: z.number().optional(),
+  resolvedCategories: z.array(z.string()).optional(),
+}).passthrough(); // Allow additional fields for flexibility
+
+/**
  * Session Schema
  */
 export const SessionSchema = z.object({
@@ -75,7 +92,8 @@ export const SessionSchema = z.object({
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   turns: z.array(SessionTurnSchema),
-  artifacts: SessionArtifactsSchema
+  artifacts: SessionArtifactsSchema,
+  state: SessionStateSchema.optional(),  // ✅ Added for resuming
 });
 
 /**

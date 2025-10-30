@@ -26,6 +26,28 @@ function formatPreviousAttempts(attempts: AttemptHistory[]): string {
     
     if (attempt.filesGenerated.length > 0) {
       lines.push(`**Files created:** ${attempt.filesGenerated.join(', ')}`);
+      
+      // ⭐ Show file path pattern for consistency
+      if (attempt.filesGenerated.length > 0) {
+        const firstFile = attempt.filesGenerated[0];
+        lines.push(`**📁 Path pattern used:** \`${firstFile}\``);
+        if (firstFile.includes('/')) {
+          const pathPrefix = firstFile.substring(0, firstFile.lastIndexOf('/') + 1);
+          lines.push(`**⚠️ YOU MUST USE THE SAME PATH PREFIX: \`${pathPrefix}\` for ALL files!**`);
+        }
+      }
+    }
+    
+    // ⭐ CRITICAL: Show what errors occurred after this attempt!
+    if (attempt.errorsAttemptedToFix && attempt.errorsAttemptedToFix.length > 0) {
+      lines.push('**❌ ERRORS THAT OCCURRED:**');
+      attempt.errorsAttemptedToFix.slice(0, 5).forEach(error => {
+        lines.push(`  - ${error}`);
+      });
+      if (attempt.errorsAttemptedToFix.length > 5) {
+        lines.push(`  - ... and ${attempt.errorsAttemptedToFix.length - 5} more errors`);
+      }
+      lines.push('**⚠️ DO NOT REPEAT THIS APPROACH!**');
     }
     
     return lines.join('\n');
@@ -160,14 +182,15 @@ Return JSON ONLY:
 }
 
 PRIORITY GUIDE for error tasks (USE THESE EXACT VALUES):
-- Missing entry files (index.html): ${TASK_PRIORITIES.ERROR_MISSING_ENTRY} (ERROR_MISSING_ENTRY)
+LOWER NUMBER = HIGHER PRIORITY (executes first)
+- Missing entry files (index.html): ${TASK_PRIORITIES.ERROR_MISSING_ENTRY} (ERROR_MISSING_ENTRY) ← MOST CRITICAL
 - Missing dependencies: ${TASK_PRIORITIES.ERROR_MISSING_DEPS} (ERROR_MISSING_DEPS)
 - Config errors: ${TASK_PRIORITIES.ERROR_CONFIG} (ERROR_CONFIG)
 - Type errors: ${TASK_PRIORITIES.ERROR_TYPE} (ERROR_TYPE)
 - Import errors: ${TASK_PRIORITIES.ERROR_IMPORT} (ERROR_IMPORT)
 - Build errors: ${TASK_PRIORITIES.ERROR_BUILD} (ERROR_BUILD)
 - Syntax errors: ${TASK_PRIORITIES.ERROR_SYNTAX} (ERROR_SYNTAX)
-- Lint errors: ${TASK_PRIORITIES.ERROR_LINT} (ERROR_LINT)
+- Lint errors: ${TASK_PRIORITIES.ERROR_LINT} (ERROR_LINT) ← LEAST CRITICAL
 
 RULES:
 - If action is "retry", newTasks can be empty

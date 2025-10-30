@@ -139,6 +139,33 @@ export interface SessionArtifacts {
 }
 
 /**
+ * Session State Snapshot
+ * Stores execution state for resuming after recursion limit
+ * 
+ * This enables continuing from the exact point where execution stopped,
+ * without re-decomposing tasks or losing progress.
+ */
+export interface SessionState {
+  // Task Queue State
+  taskQueue?: any[];              // Remaining tasks (Task[] from state.ts)
+  currentTask?: any;              // Currently executing task (Task from state.ts)
+  completedTasks?: string[];      // IDs of completed tasks
+  
+  // Retry State
+  retries?: number;               // Current retry count
+  maxRetries?: number;            // Maximum retry limit
+  
+  // History
+  previousAttempts?: any[];       // Previous attempt history
+  enforcementHistory?: any[];     // Enforcement feedback history
+  lastViolations?: any[];         // Last validation violations
+  
+  // Progress Tracking
+  previousFileCount?: number;     // File count from previous attempt
+  resolvedCategories?: string[]; // Error categories resolved
+}
+
+/**
  * Session
  * Represents a feature development session with full context
  */
@@ -150,5 +177,6 @@ export interface Session {
   updatedAt: string;
   turns: SessionTurn[];
   artifacts: SessionArtifacts;
+  state?: SessionState;  // ✅ Execution state snapshot for resuming
 }
 

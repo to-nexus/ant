@@ -91,16 +91,32 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     );
     turnId = updatedSession.turns[updatedSession.turns.length - 1]?.turnId;
     
-    // Update artifacts
+    // Update artifacts and save state snapshot for resuming
     await state.deps.session.updateArtifacts(
       state.context.project,
       state.context.featureFolder || 'default',
       {
-        activeBranch: branch
+        activeBranch: branch,
+        // ✅ Save execution state snapshot for resuming after recursion limit
+        state: {
+          taskQueue: state.taskQueue?.getAll() || [],
+          currentTask: state.currentTask,
+          completedTasks: state.completedTasks || [],
+          retries: state.retries,
+          maxRetries: state.maxRetries,
+          previousAttempts: state.previousAttempts || [],
+          enforcementHistory: state.enforcementHistory || [],
+          lastViolations: state.lastViolations || [],
+          previousFileCount: state.previousFileCount,
+          resolvedCategories: state.resolvedCategories || [],
+        }
       }
     );
     
     console.log(`💾 Session turn saved to workspace/${state.context.project}/${state.context.featureFolder || 'default'}/outputs/session.json`);
+    if (state.taskQueue && !state.taskQueue.isEmpty()) {
+      console.log(`💾 State snapshot saved: ${state.completedTasks?.length || 0} completed, ${state.taskQueue.size()} remaining`);
+    }
   }
   
   // 4. Chunk and store learnings to memory with session tracking

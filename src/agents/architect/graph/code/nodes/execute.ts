@@ -124,8 +124,9 @@ export async function execute(
       filesGenerated,
       keyChanges,
       subtaskName: state.currentTask?.name,
+      // Use lastViolations (from previous attempt) not current violations (not set yet)
       errorsAttemptedToFix: state.currentTask?.errors || 
-        (state.violations?.map(v => v.message) || [])
+        (state.lastViolations?.map(v => v.message) || [])
     };
     
     // Add to history

@@ -144,25 +144,25 @@ A pattern where the agent:
 
 **Key Point**: This runs ONCE at the beginning. All feature tasks are created here.
 
-**Task Priority Rules**:
+**Task Priority Rules** (Lower number = higher priority):
 ```typescript
 TASK_PRIORITIES = {
-  // Feature Tasks (200-299)
-  FEATURE_CRITICAL: 280,
-  FEATURE_IMPORTANT: 250,
-  FEATURE_NORMAL: 220,
-  FEATURE_NICE_TO_HAVE: 200,
-  
-  // Error Tasks (1-100)
-  ERROR_MISSING_ENTRY: 95,      // index.html etc
-  ERROR_MISSING_DEPS: 90,       // npm packages
-  ERROR_CONFIG: 80,             // tsconfig.json
-  ERROR_TYPE: 70,               // TypeScript errors
-  ERROR_IMPORT: 65,             // Import errors
-  ERROR_BUILD: 60,              // Build errors
+  // Error Tasks (10-99) - execute first (lower = more critical)
+  ERROR_MISSING_ENTRY: 10,      // index.html etc (MOST CRITICAL)
+  ERROR_MISSING_DEPS: 15,       // npm packages
+  ERROR_CONFIG: 20,             // tsconfig.json
+  ERROR_TYPE: 30,               // TypeScript errors
+  ERROR_IMPORT: 35,             // Import errors
+  ERROR_BUILD: 40,              // Build errors
   ERROR_SYNTAX: 50,             // Syntax errors
-  ERROR_LINT: 30,               // Lint errors
-  ERROR_OTHER: 20,              // Misc
+  ERROR_LINT: 70,               // Lint errors
+  ERROR_OTHER: 80,              // Misc
+  
+  // Feature Tasks (200-299) - execute after errors (lower = more important)
+  FEATURE_CRITICAL: 200,        // Most important features
+  FEATURE_IMPORTANT: 220,
+  FEATURE_NORMAL: 250,
+  FEATURE_NICE_TO_HAVE: 280,    // Least important features
 }
 ```
 
