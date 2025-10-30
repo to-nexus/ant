@@ -225,7 +225,11 @@ function extractCodeLearnings(state: ArchitectGraphState): string {
   if (state.violations && state.violations.length > 0) {
     sections.push(`\n## Quality Issues Encountered`);
     for (const v of state.violations) {
-      sections.push(`- ${v}`);
+      // Handle structured Violation objects
+      const violationText = typeof v === 'string' 
+        ? v 
+        : `[${v.severity}] ${v.type}: ${v.message}${v.file ? ` (${v.file})` : ''}`;
+      sections.push(`- ${violationText}`);
     }
     sections.push(`\n**Retries**: ${state.retries}/${state.maxRetries}`);
     if (state.retries > 0) {

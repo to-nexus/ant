@@ -15,7 +15,7 @@
  * - Uses GitPort for file operations
  */
 
-import { ArchitectGraphState } from "../state";
+import { ArchitectGraphState, Violation } from "../state";
 import { CommandPort, GitPort } from "../../../../../core/ports";
 import * as path from "path";
 
@@ -206,15 +206,12 @@ export async function dynamicValidate(state: ArchitectGraphState): Promise<Archi
   if (!result.passed) {
     const violations = state.violations || [];
     
-    const errorSummary = [
-      '🔴 DYNAMIC VALIDATION FAILED',
-      '',
-      ...formatValidationErrors(result),
-    ].join('\n');
+    // ✅ Convert dynamic validation errors to structured violations
+    const newViolations = convertToStructuredViolations(result);
 
     return {
       ...state,
-      violations: [...violations, errorSummary],
+      violations: [...violations, ...newViolations],
       dynamicValidationResult: result,
     };
   }
@@ -225,6 +222,91 @@ export async function dynamicValidate(state: ArchitectGraphState): Promise<Archi
     ...state,
     dynamicValidationResult: result,
   };
+}
+
+/**
+ * Convert dynamic validation errors to structured violations
+ */
+function convertToStructuredViolations(result: DynamicValidationResult): Violation[] {
+  const violations: Violation[] = [];
+  
+  // Build errors (highest priority - often missing files or deps)
+  if (result.buildErrors && result.buildErrors.length > 0) {
+    for (const error of result.buildErrors) {
+      // Check for missing entry file
+      if (error.includes('MISSING REQUIRED FILE') || error.includes('Could not resolve entry module')) {
+        const fileMatch = error.match(/index\.html|main\.tsx?|main\.jsx?|index\.tsx?|index\.jsx?/);
+        violations.push({
+          type: 'missing_file',
+          severity: 'critical',
+          file: fileMatch ? fileMatch[0] : 'entry file',
+          message: error,
+          suggestedFix: 'Create the missing entry file',
+          isRetryable: false  // ✅ 재시도로 안됨 - task decomposition 필요
+        });
+      }
+      // Check for missing module/dependency
+      else if (error.includes('Cannot find module') || error.includes('MISSING MODULE')) {
+        const moduleMatch = error.match(/["'](.+?)["']/);
+        violations.push({
+          type: 'missing_dependency',
+          severity: 'critical',
+          module: moduleMatch ? moduleMatch[1] : 'unknown',
+          message: error,
+          suggestedFix: 'Install missing dependency or create missing file',
+          isRetryable: false  // ✅ 재시도로 안됨 - task decomposition 필요
+        });
+      }
+      // Other build errors
+      else {
+        violations.push({
+          type: 'build_error',
+          severity: 'major',
+          message: error,
+          suggestedFix: 'Fix build configuration or code',
+          isRetryable: false
+        });
+      }
+    }
+  }
+  
+  // Type errors
+  if (result.typeErrors && result.typeErrors.length > 0) {
+    // Group type errors into one violation
+    violations.push({
+      type: 'type_error',
+      severity: 'major',
+      message: `TypeScript type errors (${result.typeErrors.length} total):\n${result.typeErrors.slice(0, 5).join('\n')}${result.typeErrors.length > 5 ? `\n... and ${result.typeErrors.length - 5} more` : ''}`,
+      suggestedFix: 'Fix type errors in code',
+      isRetryable: true  // ✅ 타입 에러는 재시도로 해결 가능
+    });
+  }
+  
+  // Import errors (from type errors or build errors)
+  const importErrors = [...(result.typeErrors || []), ...(result.buildErrors || [])]
+    .filter(e => e.includes("Cannot find module") || e.includes("Module not found"));
+  if (importErrors.length > 0) {
+    violations.push({
+      type: 'import_error',
+      severity: 'major',
+      message: `Import errors (${importErrors.length} total):\n${importErrors.slice(0, 3).join('\n')}`,
+      suggestedFix: 'Fix import paths or install missing dependencies',
+      isRetryable: false
+    });
+  }
+  
+  // Lint errors (lowest priority)
+  if (result.lintErrors && result.lintErrors.length > 0) {
+    violations.push({
+      type: 'lint_error',
+      severity: 'minor',
+      message: `ESLint errors (${result.lintErrors.length} total) - LOW PRIORITY`,
+      suggestedFix: 'Fix lint errors (but prioritize build/type errors first)',
+      isRetryable: true
+    });
+  }
+  
+  return violations;
 }
 
 /**

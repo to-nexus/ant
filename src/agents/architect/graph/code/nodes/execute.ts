@@ -1,5 +1,5 @@
 import { LLMClient } from "../../../../../core/ports";
-import { ArchitectGraphState, AttemptHistory } from "../state";
+import { ArchitectGraphState, AttemptHistory, Violation } from "../state";
 import { parseResponse } from "./parseResponse";
 import { PromptEngine } from "../../../../../core/prompt/engine";
 
@@ -123,8 +123,9 @@ export async function execute(
       attemptNumber: (state.previousAttempts?.length || 0) + 1,
       filesGenerated,
       keyChanges,
-      subtaskName: state.currentSubtask?.name,
-      errorsAttemptedToFix: state.currentSubtask?.errors || state.violations || []
+      subtaskName: state.currentTask?.name,
+      errorsAttemptedToFix: state.currentTask?.errors || 
+        (state.violations?.map(v => v.message) || [])
     };
     
     // Add to history
@@ -151,11 +152,19 @@ export async function execute(
     console.error('❌ [Execute] Error details:', error instanceof Error ? error.message : String(error));
     
     // Return state with empty files to trigger validation failure
+    const executeError: Violation = {
+      type: 'other',
+      severity: 'critical',
+      message: `Execute error: ${error instanceof Error ? error.message : String(error)}`,
+      suggestedFix: 'Check LLM response parsing or connection',
+      isRetryable: true
+    };
+    
     return {
       ...state,
       files: [],
       filesToDelete: [],
-      violations: [...(state.violations || []), `Execute error: ${error instanceof Error ? error.message : String(error)}`]
+      violations: [...(state.violations || []), executeError]
     };
   }
 }

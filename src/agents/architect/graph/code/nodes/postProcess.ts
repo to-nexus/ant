@@ -13,14 +13,14 @@
  * - Uses GitPort for file operations
  */
 
-import { ArchitectGraphState } from "../state";
+import { ArchitectGraphState, Violation } from "../state";
 import { CommandPort, GitPort } from "../../../../../core/ports";
 import * as path from "path";
 
 export async function postProcess(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   const commandPort = state.deps?.command;
   const gitPort = state.deps?.git;
-  const violations: string[] = [];
+  const violations: Violation[] = [];
 
   // Skip if no command port (optional dependency)
   if (!commandPort || !gitPort) {
@@ -91,12 +91,13 @@ export async function postProcess(state: ArchitectGraphState): Promise<Architect
             console.error(result.stderr);
             
             // ✅ Add to violations so LLM can see and fix
-            const errorMessage = `📦 DEPENDENCY INSTALLATION FAILED:\n${result.stderr}\n\n` +
-              `🔧 REQUIRED ACTION:\n` +
-              `- Check package.json for incorrect package versions\n` +
-              `- Verify all package names and versions exist in npm registry\n` +
-              `- Fix version numbers to match available versions`;
-            violations.push(errorMessage);
+            violations.push({
+              type: 'missing_dependency',
+              severity: 'critical',
+              message: `Dependency installation failed:\n${result.stderr}`,
+              suggestedFix: 'Check package.json for incorrect package versions or missing packages',
+              isRetryable: false  // Needs fixing package.json
+            });
           }
         } else {
           console.log('⚠️  Could not detect package manager');
@@ -131,7 +132,13 @@ export async function postProcess(state: ArchitectGraphState): Promise<Architect
 
   } catch (error: any) {
     console.error('⚠️  Post-process error:', error.message);
-    violations.push(`Post-process error: ${error.message}`);
+    violations.push({
+      type: 'other',
+      severity: 'major',
+      message: `Post-process error: ${error.message}`,
+      suggestedFix: 'Check file system permissions or command execution',
+      isRetryable: false
+    });
   }
 
   // ✅ Return with violations if any

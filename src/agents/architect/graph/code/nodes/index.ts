@@ -1,4 +1,5 @@
 export { resolve } from "./resolve";
+export { decompose } from "./decompose";
 export { plan } from "./plan";
 export { execute } from "./execute";
 export { validate } from "./validate";
