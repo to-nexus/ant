@@ -254,6 +254,8 @@ export async function architectAgent(
           retries: 0,
           maxRetries: 3,  // ✅ Allow multiple retries for dependency fixes
           codeMode: 'refactor', // Batch is always refactor
+          subtaskIndex: 0,  // Backward compatibility
+          totalSubtasks: 0,  // Backward compatibility
         };
         
         const batchResult = await runBatchCodeGraph(spec, batchInitial, batchOptions);
@@ -314,6 +316,8 @@ export async function architectAgent(
           retries: 0,
           maxRetries: 3,  // ✅ Allow multiple retries for dependency fixes
           codeMode: codeMode, // Will be inferred in graph nodes
+          subtaskIndex: 0,  // Backward compatibility
+          totalSubtasks: 0,  // Backward compatibility
         };
         const result = await runCodeGraph(initial);
         return {
