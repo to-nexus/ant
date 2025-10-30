@@ -56,7 +56,6 @@ export class GenericLLMClient implements LLMClient {
           modelName,
           temperature,
           maxTokens,
-          timeout,
         });
         break;
       case 'openai':
