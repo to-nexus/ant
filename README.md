@@ -6,10 +6,10 @@ AI-native development framework implementing hexagonal architecture with LangGra
 
 ## Overview
 
-Research framework for automated software development using AI agents. Implements a dual-memory system (vector + session), graph-based workflows with validation/retry mechanisms, and a 6-layer prompt engineering pipeline.
+Internal framework for automated software development using AI agents. Implements a dual-memory system (vector + session), graph-based workflows with intelligent error resolution, and a 6-layer prompt engineering pipeline.
 
 **Primary Agents:**
-- `architect` - Design generation and code implementation
+- `architect` - Design generation and autonomous code implementation with build error resolution
 - `reviewer` - Code review and analysis
 - `planner` - Project planning and breakdown
 - `doc` - Documentation generation
@@ -18,9 +18,11 @@ Research framework for automated software development using AI agents. Implement
 **Core Features:**
 - Hexagonal architecture (ports & adapters)
 - Dual memory: Vector DB (ChromaDB) + Session files (JSON)
-- LangGraph workflow orchestration
+- LangGraph workflow orchestration with dynamic error recovery
 - 6-layer prompt engineering system
-- Validation with automatic retry (enforce loop)
+- Autonomous build error resolution with LLM-driven subtask management
+- Dynamic validation (build, lint, type check)
+- Attempt history tracking for learning from failures
 - Session-based context tracking with traceability
 
 ---
@@ -199,7 +201,7 @@ npm run dev -- plan workspace/project/requirements.md
 
 **Tasks:**
 - `design` - PRD/directive → Design document
-- `code` - Design → Code files (with validation loop)
+- `code` - Design → Code files (with intelligent error resolution)
 - `learn` - Code analysis → Vector storage
 
 **Code Generation Modes:**
@@ -207,15 +209,53 @@ npm run dev -- plan workspace/project/requirements.md
 - `edit` - Modify existing files (uses Git HEAD)
 - `refactor` - Restructure code
 
-**Workflow (Code Task):**
+**Workflow (Code Task with Divide & Conquer):**
 ```
-resolve → plan → execute → validate → postProcess → dynamicValidate → evaluate → learn
-                              ↓                          ↓
-                           enforce ←──────────────────────┘
-                           (if violations, retry)
+┌─────────────────────────────────────────────────────────┐
+│ 1. INITIALIZATION & DECOMPOSITION                      │
+│    resolve → plan (LLM decomposes spec into subtasks)  │
+│              ↓                                          │
+│    Creates: [Feature 1], [Feature 2], [Feature N]      │
+└─────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────┐
+│ 2. DIVIDE & CONQUER (Loop over subtasks)               │
+│                                                         │
+│  [Subtask K] plan → execute → validate → postProcess   │
+│               ↑         ↑         ↓           ↓         │
+│               └─────────┴──────enforce   dynamicValidate│
+│                       (retry)                ↓          │
+│                                              │          │
+│  Success? ─→ Next subtask ──────────────────┘          │
+│  Failed?  ─→ Skip to next (if max retries reached)     │
+└─────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────┐
+│ 3. FINALIZATION                                         │
+│    evaluate → learn → END                               │
+└─────────────────────────────────────────────────────────┘
+
+Validation Split:
+- validate (static): Fast checks (ellipsis, deletion ratio)
+- postProcess: npm install (needed for build)
+- dynamicValidate: Real build/lint/type check
 ```
 
-자세한 흐름: [Workflow Flow Guide](docs/guides/WORKFLOW_FLOW.md)
+**Intelligent Error Resolution with Dual-Track Subtask System:**
+- **Dual-Track Subtasks**: 
+  - **Feature Subtasks** (priority 200-299): Original goals from spec, persistent across retries
+  - **Error Subtasks** (priority 1-100): Temporary blockers, removed when resolved
+- **LLM-Driven Management**: AI analyzes spec + errors, creates/updates both types of subtasks
+- **Automatic Prioritization**: Error subtasks interrupt features when needed, then resume features after fixing
+- **Attempt History Tracking**: Records each attempt to prevent repeated mistakes
+- **Spec Persistence**: Original requirements remain visible through all error-fixing cycles
+- **Progress Detection**: Resets retry counter when progress is detected
+
+**Priority System:**
+- Features: 200-299 (user value)
+- Errors: Missing files (95-100) > Dependencies (85-94) > Config (75-84) > Types (50-74) > Lint (20-30)
+
+Detailed flow: [Workflow Guide](docs/guides/WORKFLOW_FLOW.md)
 
 ### Code Evaluation
 
