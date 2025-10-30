@@ -9,10 +9,15 @@ import { PromptEngine } from "../../../../core/prompt/engine";
  * 
  * Responsibility: Execute the graph and return results
  * All side effects (file saving, memory storage) are handled inside the graph
+ * 
+ * ✅ RecursionLimit: Set to 50 to allow more complex workflows
+ * If limit is reached, execution state is saved and can be resumed on next run
  */
 export async function runCodeGraph(initial: ArchitectGraphState) {
   const app = buildCodeGraph();
-  const state = await (app as any).invoke(initial as any) as ArchitectGraphState;
+  const state = await (app as any).invoke(initial as any, {
+    recursionLimit: 50,  // ✅ Increased from default 25 to allow complex workflows
+  }) as ArchitectGraphState;
 
   // Return results (all saving was done in learn node)
   return { 

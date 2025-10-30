@@ -137,14 +137,28 @@ export class FileSessionAdapter implements SessionPort {
   
   /**
    * Update session artifacts
+   * 
+   * ✅ ENHANCED: Also handles 'state' field for resuming after recursion limit
+   * If artifacts contains 'state', it will be saved to session.state
    */
   async updateArtifacts(
     project: string,
     feature: string,
-    artifacts: Partial<SessionArtifacts>
+    artifacts: Partial<SessionArtifacts> & { state?: any }
   ): Promise<void> {
     const session = await this.load(project, feature);
-    session.artifacts = { ...session.artifacts, ...artifacts };
+    
+    // Extract state if provided (it's not part of artifacts, but a top-level session field)
+    const { state, ...actualArtifacts } = artifacts as any;
+    
+    // Update artifacts
+    session.artifacts = { ...session.artifacts, ...actualArtifacts };
+    
+    // ✅ Update state if provided (for resuming after recursion limit)
+    if (state !== undefined) {
+      session.state = state;
+    }
+    
     await this.save(session);
   }
   
