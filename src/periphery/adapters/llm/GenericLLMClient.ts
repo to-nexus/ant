@@ -35,6 +35,7 @@ export interface LLMConfig {
   llmModel?: string;
   temperature?: number;
   maxTokens?: number;
+  timeout?: number;  // Timeout in milliseconds (default: 180000 = 3 minutes)
 }
 
 export class GenericLLMClient implements LLMClient {
@@ -46,6 +47,7 @@ export class GenericLLMClient implements LLMClient {
     const modelName = config?.llmModel || resolveModelName(provider, agentType);
     const temperature = config?.temperature ?? resolveTemperature(agentType);
     const maxTokens = config?.maxTokens ?? resolveMaxTokens(agentType, provider === 'openai' ? 16000 : 4000);
+    const timeout = config?.timeout ?? 180000; // Default: 3 minutes
 
     switch (provider) {
       case 'anthropic':
@@ -54,6 +56,7 @@ export class GenericLLMClient implements LLMClient {
           modelName,
           temperature,
           maxTokens,
+          timeout,
         });
         break;
       case 'openai':
@@ -63,6 +66,7 @@ export class GenericLLMClient implements LLMClient {
           modelName,
           temperature,
           maxTokens,
+          timeout,
         });
     }
   }

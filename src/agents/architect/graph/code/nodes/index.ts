@@ -3,6 +3,7 @@ export { plan } from "./plan";
 export { execute } from "./execute";
 export { validate } from "./validate";
 export { dynamicValidate } from "./dynamicValidate";
+export { enforce } from "./enforce";
 export { evaluate } from "./evaluate";
 export { postProcess } from "./postProcess";
 export { learn } from "./learn";

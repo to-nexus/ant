@@ -9,6 +9,23 @@ export interface IntegrationRequirement {
   description?: string;
 }
 
+export interface ErrorSubtask {
+  name: string;               // e.g., "Missing Entry Files"
+  priority: number;           // Higher = more critical
+  errors: string[];           // List of error messages in this category
+  description: string;        // What needs to be done
+  category: ErrorCategory;    // Type of errors
+}
+
+export type ErrorCategory = 
+  | 'missing_files'       // Missing required files (index.html, etc)
+  | 'missing_deps'        // Missing npm packages
+  | 'type_errors'         // TypeScript type errors
+  | 'config_errors'       // Configuration issues
+  | 'import_errors'       // Import path errors
+  | 'syntax_errors'       // Syntax errors
+  | 'other';              // Uncategorized
+
 export interface GeneratedFile {
   path: string;
   content: string;
@@ -66,6 +83,18 @@ export interface ArchitectGraphState extends TaskArtifacts {
 
   retries: number;
   maxRetries: number;
+  enforcementReason?: string | null;  // Validation errors passed from enforce to plan
+  
+  // Progress tracking (for smart retry reset)
+  lastViolations?: string[];  // Previous violations to detect progress
+  previousFileCount?: number; // Previous file count to detect new files
+  
+  // Task Decomposition (Divide & Conquer)
+  currentSubtask?: ErrorSubtask;      // Current focused subtask
+  remainingSubtasks?: ErrorSubtask[]; // Queue of remaining subtasks
+  completedSubtasks?: string[];       // Names of completed subtasks
+  subtaskIndex: number;               // Current subtask index (for display)
+  totalSubtasks: number;              // Total number of subtasks
   
   // Dynamic Validation
   dynamicValidationResult?: {
