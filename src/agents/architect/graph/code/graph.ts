@@ -176,5 +176,7 @@ export function buildCodeGraph() {
   graph.addEdge("evaluate" as any, "learn" as any);
   graph.addEdge("learn" as any, "__end__" as any);
   
+  // Note: Using manual checkpoint saves instead of LangGraph's built-in checkpointer
+  // because it requires thread_id management which complicates the API
   return (graph as any).compile();
 }

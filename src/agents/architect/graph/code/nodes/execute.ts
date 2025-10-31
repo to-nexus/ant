@@ -197,7 +197,7 @@ ${previousAttemptsText}
       keyChanges.forEach(change => console.log(`      - ${change}`));
     }
 
-    return {
+    const updatedState = {
       ...state,
       rawResponse: raw,
       responseSection,
@@ -205,6 +205,12 @@ ${previousAttemptsText}
       filesToDelete,
       previousAttempts
     };
+    
+    // ✅ Save checkpoint after code generation (in case recursion limit hits during postProcess)
+    const { saveCheckpoint } = await import('./checkpoint');
+    await saveCheckpoint(updatedState);
+    
+    return updatedState;
   } catch (error) {
     console.error('\n❌ ═══════════════════════════════════════════════════════════════');
     console.error('❌ [Execute] CRITICAL ERROR - LLM API CALL FAILED');

@@ -19,15 +19,48 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
   
   try {
     state = await (app as any).invoke(initial as any, {
-      recursionLimit: 25,  // ✅ Faster failure detection
+      recursionLimit: 3,  // 🧪 Testing checkpoint restoration (normally 25)
     }) as ArchitectGraphState;
   } catch (error: any) {
     // ✅ CRITICAL: Recursion limit or other errors
     console.log(`\n⚠️  Execution interrupted: ${error.message}\n`);
     
-    // Get the last state from error if available
+    // ✅ Try to restore state from last checkpoint
     if (error.state) {
       state = error.state;
+    } else if (initial.deps?.session && error.message.includes('Recursion limit')) {
+      // LangGraph recursion limit doesn't provide state in error
+      // So we restore from the last saved checkpoint
+      console.log('📥 Restoring state from last checkpoint...');
+      try {
+        const session = await initial.deps.session.load(
+          initial.context.project,
+          initial.context.featureFolder || 'default'
+        );
+        
+        if (session.state && session.state.taskQueue) {
+          console.log(`   ✅ Restored ${session.state.taskQueue.length} tasks from checkpoint`);
+          // Reconstruct TaskQueue from saved array
+          const { TaskQueue } = await import('./state');
+          const taskQueue = new TaskQueue();
+          session.state.taskQueue.forEach((task: any) => taskQueue.push(task));
+          
+          state = {
+            ...initial,
+            taskQueue,
+            completedTasks: session.state.completedTasks || [],
+            retries: session.state.retries || 0,
+            maxRetries: session.state.maxRetries || 3,
+            previousAttempts: session.state.previousAttempts || [],
+            enforcementHistory: session.state.enforcementHistory || [],
+            lastViolations: session.state.lastViolations || [],
+            previousFileCount: session.state.previousFileCount,
+            resolvedCategories: (session.state.resolvedCategories || []) as any,
+          };
+        }
+      } catch (restoreError) {
+        console.warn('⚠️  Failed to restore from checkpoint:', restoreError);
+      }
     }
     
     // ✅ Force learn node execution for cleanup & learning
