@@ -314,6 +314,53 @@ RULES:
     
     // If this is a retry of the SAME task, add retry context
     let promptMessages = result.formatted.messages;
+    
+    // ✅ SETUP TASK: Add special instructions for config-only generation
+    if (nextTask.type === 'setup') {
+      const setupContext = `
+🔧 SETUP TASK - CONFIGURATION FILES ONLY
+
+⚠️  CRITICAL INSTRUCTIONS:
+1. Generate ONLY configuration files (NO application code yet):
+   - package.json (with ALL dependencies - don't leave anything for later!)
+   - tsconfig.json / go.mod / pyproject.toml (language config)
+   - Build tool config (vite.config.ts, webpack.config.js, etc.)
+   - Linting config (.eslintrc.json, .prettierrc, etc.)
+   - .gitignore, README.md
+   
+2. DO NOT generate application code files:
+   - ❌ NO src/main.tsx, src/App.tsx, etc.
+   - ❌ NO components, services, or business logic
+   - ✅ ONLY configuration and project setup files
+
+3. Include ALL dependencies in package.json:
+   - Main dependencies (react, express, etc.)
+   - Dev dependencies (@types/*, build tools, linters)
+   - Peer dependencies (if needed)
+   - Don't defer any dependencies to later tasks
+
+4. Generate index.html if it's a web project entry point
+
+Why? This allows us to:
+- Install dependencies first
+- Validate configuration before writing code
+- Fix any config issues early
+- Ensure proper development environment setup
+
+FOCUS: Project foundation and tooling setup ONLY.
+`;
+      
+      promptMessages = result.formatted.messages.map((msg, idx) => {
+        if (idx === promptMessages.length - 1 && msg.role === 'user') {
+          return {
+            ...msg,
+            content: setupContext + '\n\n' + msg.content
+          };
+        }
+        return msg;
+      });
+    }
+    
     if (isRetry && enforcementReason && !shouldClearEnforcement) {
       const previousAttemptsText = formatPreviousAttempts(state.previousAttempts || []);
       
@@ -328,13 +375,19 @@ ${Array.from(state.featureTasks.values()).map(f =>
       const taskContext = `
 🎯 CURRENT TASK (${state.taskQueue?.size() || 0} tasks remaining after this):
   Name: ${nextTask.name}
-  Type: ${nextTask.type} ${nextTask.type === 'feature' ? '(Implement this feature)' : '(Fix errors to unblock)'}
+  Type: ${nextTask.type} ${
+    nextTask.type === 'setup' ? '(Config files only)' :
+    nextTask.type === 'feature' ? '(Implement this feature)' : 
+    '(Fix errors to unblock)'
+  }
   Description: ${nextTask.description}
   ${nextTask.errors ? `Errors to fix: ${nextTask.errors.length}` : ''}
 
-${nextTask.type === 'error' ? 
-  '⚠️ This is a BLOCKER task - fix quickly and correctly to resume feature implementation!' : 
-  '🎯 Focus on implementing this feature properly!'}
+${
+  nextTask.type === 'setup' ? '🔧 Generate configuration files ONLY (no application code)!' :
+  nextTask.type === 'error' ? '⚠️ This is a BLOCKER task - fix quickly and correctly to resume feature implementation!' : 
+  '🎯 Focus on implementing this feature properly!'
+}
 `;
       
       const retryContext = `
