@@ -7,6 +7,25 @@ PROJECT: {{project}}
 YOUR PLAN (from Phase 1):
 {{plan}}
 
+{{#if currentTask}}
+🎯 YOUR SPECIFIC TASK (Focus on THIS ONLY!)
+────────────────────────────────────────────────────────────────────────────────
+**Task Name**: {{currentTask.name}}
+**Task Type**: {{currentTask.type}}
+**Description**: {{currentTask.description}}
+
+⚠️  CRITICAL INSTRUCTIONS:
+- Work on THIS SPECIFIC TASK ONLY - do not implement other features
+- Do not try to implement the entire project
+- Focus only on what is needed for THIS ONE TASK
+- Other tasks will be handled in separate iterations
+
+If this task is "Implement Task Input Component" → Create ONLY TaskInput component
+If this task is "Implement Task Item Component" → Create ONLY TaskItem component
+Do NOT create the entire application in one task!
+────────────────────────────────────────────────────────────────────────────────
+{{/if}}
+
 KEY WORKING PRINCIPLES:
 1. Priority: DIRECTIVE (what) → DESIGN DOC (how) → ORIGINAL FILES (base)
 2. {{modificationMode}}
