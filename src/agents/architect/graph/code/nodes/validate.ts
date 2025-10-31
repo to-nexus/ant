@@ -17,8 +17,46 @@ export async function validate(state: ArchitectGraphState): Promise<ArchitectGra
   const config = state.context.config;
   const git = state.deps?.git ? state.deps.git : null as any;
 
-  // Check if no files generated
+  // ✅ IMPROVED: Check if no files generated
+  // But don't fail immediately - check if files already exist in working directory
   if (!state.files || state.files.length === 0) {
+    // Check if this is a verification/completion task where files might already exist
+    const gitPort = state.deps?.git;
+    if (gitPort) {
+      try {
+        const p = await import('path');
+        const repoRoot = await gitPort.getRepoRoot();
+        const workDir = state.context.workDir || '.';
+        const resolvedPath = p.resolve(repoRoot, workDir);
+        
+        // Check if source files already exist in working directory
+        const commonSourceDirs = ['src', 'lib', 'app', 'components'];
+        const commonSourceExts = ['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs', '.java'];
+        
+        let hasExistingSourceFiles = false;
+        for (const dir of commonSourceDirs) {
+          const dirPath = p.join(workDir, dir);
+          const exists = await gitPort.fileExists(dirPath);
+          if (exists) {
+            // Directory exists, assume it has source files
+            hasExistingSourceFiles = true;
+            break;
+          }
+        }
+        
+        if (hasExistingSourceFiles) {
+          // Files already exist, LLM determined no changes needed
+          // Continue to runtimeValidate to check if there are actual errors
+          console.log('ℹ️  No files generated, but source files already exist - proceeding to validation');
+          return { ...state, violations };
+        }
+      } catch (error) {
+        // If check fails, fall through to original logic
+        console.warn('⚠️  Failed to check existing files:', error);
+      }
+    }
+    
+    // Original logic: no files generated and none exist
     violations.push({
       type: 'no_files',
       severity: 'critical',

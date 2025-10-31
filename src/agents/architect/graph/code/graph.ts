@@ -1,6 +1,6 @@
 import { StateGraph } from "@langchain/langgraph";
 import { ArchitectGraphState } from "./state";
-import { resolve, decompose, plan, execute, validate, runtimeValidate, enforce, evaluate, postProcess, learn } from "./nodes/index";
+import { resolve, decompose, plan, execute, writeFiles, validate, installDeps, runtimeValidate, enforce, evaluate, learn } from "./nodes/index";
 
 export function buildCodeGraph() {
   const graph = new StateGraph<ArchitectGraphState>({
@@ -73,11 +73,12 @@ export function buildCodeGraph() {
   graph.addNode("decompose", decompose as any);  // NEW: Meta-level task decomposition
   graph.addNode("plan", plan as any);
   graph.addNode("execute", execute as any);
+  graph.addNode("writeFiles", writeFiles as any);  // ✅ Write files immediately
   graph.addNode("validate", validate as any);
+  graph.addNode("installDeps", installDeps as any);  // ✅ Install after validation
   graph.addNode("runtimeValidate", runtimeValidate as any);
   graph.addNode("enforce", enforce as any);
   graph.addNode("evaluate", evaluate as any);
-  graph.addNode("postProcess", postProcess as any);
   graph.addNode("learn", learn as any);
 
   graph.addEdge("__start__" as any, "resolve" as any);
@@ -85,9 +86,13 @@ export function buildCodeGraph() {
   graph.addEdge("decompose" as any, "plan" as any);     // decompose → plan (first task)
   graph.addEdge("plan" as any, "execute" as any);
   
-  graph.addEdge("execute" as any, "validate" as any);
+  // ✅ CRITICAL: Write files immediately after execute
+  graph.addEdge("execute" as any, "writeFiles" as any);
+  
+  // ✅ Validate after files are written
+  graph.addEdge("writeFiles" as any, "validate" as any);
 
-  // Static validation first
+  // Static validation (ellipsis, excessive deletion)
   graph.addConditionalEdges(
     "validate" as any,
     ((s: ArchitectGraphState) => {
@@ -95,13 +100,13 @@ export function buildCodeGraph() {
       if (hasViolations) {
         return "enforce";
       }
-      return "postProcess";  // ✅ Static validation passed → Install dependencies first
+      return "installDeps";  // ✅ Static validation passed → Install dependencies
     }) as any,
-    { enforce: "enforce", postProcess: "postProcess" } as any
+    { enforce: "enforce", installDeps: "installDeps" } as any
   );
 
   // After installing dependencies, run runtime validation
-  graph.addEdge("postProcess" as any, "runtimeValidate" as any);
+  graph.addEdge("installDeps" as any, "runtimeValidate" as any);
 
   // Runtime validation (build/lint/test) - now with dependencies installed
   graph.addConditionalEdges(
@@ -135,6 +140,17 @@ export function buildCodeGraph() {
               s.taskQueue.removeType('error');
             }
           }
+        }
+        
+        // ✅ Check task completion limit (prevent infinite loops in testing)
+        const maxTasksPerRun = 3; // Test mode: complete 3 tasks per run
+        const completedCount = s.completedTasks?.length || 0;
+        
+        if (completedCount >= maxTasksPerRun) {
+          console.log(`\n⏸️  Task limit reached (${completedCount}/${maxTasksPerRun} tasks completed)`);
+          console.log(`📊 Progress saved to checkpoint`);
+          console.log(`💡 Run the same command again to resume from checkpoint\n`);
+          return "evaluate";  // ← Stop and save progress
         }
         
         // Check if there are more tasks in queue

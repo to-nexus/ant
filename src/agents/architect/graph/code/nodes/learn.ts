@@ -9,7 +9,7 @@ import { errorStatsCollector, formatStatistics } from "./diagnostics/errorStats"
  * 2. Store learnings to vector DB (for future retrieval)
  * 3. Save turn to session file (for context continuity)
  * 
- * NOTE: File saving happens in postProcess node (before dynamic validation)
+ * NOTE: File saving happens in writeFiles node (before validation)
  * This node focuses purely on learning/metadata artifacts.
  * 
  * ✅ Hexagonal Architecture Compliance:
@@ -23,7 +23,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   // 1. Extract learnings
   const learnings = extractCodeLearnings(state);
   
-  // Note: Files are already written to disk in postProcess node
+  // Note: Files are already written to disk in writeFiles node
   // This node focuses on learning artifacts: vector DB + session storage
   
   const gitPort = state.gitPort || state.deps?.git;
@@ -36,7 +36,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     : `feature/${state.context.project}-arch-${Date.now()}`;
   await gitPort.createBranch(branch, state.context.config.branchBase);
   
-  // Log files that were written in postProcess
+  // Log files that were written in writeFiles
   console.log(`\n📌 Branch '${branch}' ready with ${state.files.length} files`);
   for (const f of state.files) {
     console.log(`✏️  Modified: ${f.path}`);

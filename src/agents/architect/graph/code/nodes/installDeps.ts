@@ -1,12 +1,12 @@
 /**
- * Post-Process Node
+ * Install Dependencies Node
  * 
- * Handles post-generation tasks BEFORE dynamic validation:
- * 0. Write generated files to disk (CRITICAL: must happen before validation)
+ * Handles post-validation tasks:
  * 1. Package installation (if package.json changed)
  * 2. Git initialization (if new project)
  * 
- * This ensures dynamicValidate can check actual files on disk.
+ * This runs AFTER validation to ensure we don't install dependencies
+ * for invalid code (ellipsis, excessive deletion, etc.)
  * 
  * ✅ Hexagonal Architecture Compliance:
  * - Uses CommandPort for command execution
@@ -14,35 +14,22 @@
  */
 
 import { ArchitectGraphState, Violation } from "../state";
-import { CommandPort, GitPort } from "../../../../../core/ports";
-import * as path from "path";
 
-/**
- * Format file size in human-readable format
- */
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
-}
-
-export async function postProcess(state: ArchitectGraphState): Promise<ArchitectGraphState> {
+export async function installDeps(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   const commandPort = state.deps?.command;
   const gitPort = state.deps?.git;
   const violations: Violation[] = [];
 
   // Skip if no command port (optional dependency)
   if (!commandPort || !gitPort) {
-    console.log('⚠️  CommandPort not available, skipping post-process');
+    console.log('⚠️  CommandPort not available, skipping dependency installation');
     return state;
   }
 
   // Get target directory from config
   const config = state.context.config;
   if (!config || config.repoType !== 'local' || !config.localPath) {
-    console.log('⚠️  No local repository path configured, skipping post-process');
+    console.log('⚠️  No local repository path configured, skipping dependency installation');
     return state;
   }
 
@@ -54,81 +41,7 @@ export async function postProcess(state: ArchitectGraphState): Promise<Architect
     ? config.localPath
     : p.resolve(repoRoot, config.localPath);
 
-  console.log(`\n🔧 Post-processing in: ${resolvedPath}\n`);
-
   try {
-    // 0. CRITICAL: Write files to disk BEFORE validation/installation
-    // This ensures dynamicValidate can actually check the files
-    console.log(`\n${'='.repeat(80)}`);
-    console.log(`📝 FILE OPERATIONS REPORT`);
-    console.log(`${'='.repeat(80)}\n`);
-    
-    // Track file statistics
-    let newFiles = 0;
-    let modifiedFiles = 0;
-    let totalSize = 0;
-    
-    for (const file of state.files) {
-      const filePath = p.join(resolvedPath, file.path);
-      const relPath = p.relative(repoRoot, filePath);
-      
-      // Check if file exists (to determine if new or modified)
-      const exists = await gitPort.fileExists(relPath);
-      const operation = exists ? '📝 MODIFIED' : '✨ CREATED';
-      
-      if (exists) {
-        modifiedFiles++;
-      } else {
-        newFiles++;
-      }
-      
-      // Calculate file size
-      const sizeInBytes = Buffer.byteLength(file.content, 'utf8');
-      totalSize += sizeInBytes;
-      const sizeStr = formatFileSize(sizeInBytes);
-      
-      // Count lines
-      const lines = file.content.split('\n').length;
-      
-      // Write file
-      await gitPort.writeFile(file.path, file.content);
-      
-      // Print detailed report
-      console.log(`${operation}  ${file.path}`);
-      console.log(`           Size: ${sizeStr.padEnd(10)} Lines: ${lines}`);
-    }
-    
-    // Handle file deletions if any
-    const filesToDelete = state.filesToDelete || [];
-    if (filesToDelete.length > 0) {
-      console.log(`\n🗑️  DELETED FILES:\n`);
-      for (const deletePath of filesToDelete) {
-        const filePath = p.join(resolvedPath, deletePath);
-        const relPath = p.relative(repoRoot, filePath);
-        
-        // Check if file exists before deleting
-        const exists = await gitPort.fileExists(relPath);
-        if (exists) {
-          // TODO: Implement delete via GitPort
-          console.log(`🗑️  DELETED   ${deletePath}`);
-        } else {
-          console.log(`⚠️  SKIP      ${deletePath} (not found)`);
-        }
-      }
-    }
-    
-    // Summary
-    console.log(`\n${'─'.repeat(80)}`);
-    console.log(`📊 SUMMARY:`);
-    console.log(`   ✨ New files:      ${newFiles}`);
-    console.log(`   📝 Modified files: ${modifiedFiles}`);
-    if (filesToDelete.length > 0) {
-      console.log(`   🗑️  Deleted files:  ${filesToDelete.length}`);
-    }
-    console.log(`   📦 Total files:    ${state.files.length}`);
-    console.log(`   💾 Total size:     ${formatFileSize(totalSize)}`);
-    console.log(`${'='.repeat(80)}\n`);
-
     // 1. Check if package.json was generated or modified
     const hasPackageJson = state.files.some(f => 
       f.path.endsWith('package.json')
@@ -300,11 +213,11 @@ Please check:
     }
 
   } catch (error: any) {
-    console.error('⚠️  Post-process error:', error.message);
+    console.error('⚠️  Dependency installation error:', error.message);
     violations.push({
       type: 'other',
       severity: 'major',
-      message: `Post-process error: ${error.message}`,
+      message: `Dependency installation error: ${error.message}`,
       suggestedFix: 'Check file system permissions or command execution',
       isRetryable: false
     });
