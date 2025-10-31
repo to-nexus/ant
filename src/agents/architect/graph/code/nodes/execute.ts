@@ -86,6 +86,58 @@ export async function execute(
   
   console.log(`⏱️  Prompt build time: ${buildResult.metadata.buildTime}ms`);
 
+  // ===== ADD RETRY CONTEXT IF THIS IS A RETRY =====
+  let promptMessages = formatted.messages;
+  const isRetry = Boolean(state.enforcementReason);
+  
+  if (isRetry && state.enforcementReason) {
+    console.log('⚠️  Adding retry context with error feedback...\n');
+    // Format previous attempts
+    const previousAttemptsText = state.previousAttempts?.map(attempt => {
+      const lines = [`\n### Attempt #${attempt.attemptNumber}`];
+      if (attempt.keyChanges.length > 0) {
+        lines.push('**Changes:** ' + attempt.keyChanges.join(', '));
+      }
+      if (attempt.filesGenerated.length > 0) {
+        lines.push('**Files:** ' + attempt.filesGenerated.join(', '));
+      }
+      if (attempt.errorsAttemptedToFix && attempt.errorsAttemptedToFix.length > 0) {
+        lines.push('**❌ ERRORS:**');
+        attempt.errorsAttemptedToFix.slice(0, 3).forEach(err => lines.push(`  - ${err}`));
+      }
+      return lines.join('\n');
+    }).join('\n') || 'No previous attempts.';
+    
+    const retryContext = `
+🔴 PREVIOUS ATTEMPT FAILED - FIX THESE ERRORS:
+
+${state.enforcementReason}
+
+📝 PREVIOUS ATTEMPTS (${state.previousAttempts?.length || 0} attempts):
+${previousAttemptsText}
+
+⚠️ CRITICAL INSTRUCTIONS:
+1. READ THE ERRORS ABOVE CAREFULLY
+2. DO NOT REPEAT THE SAME APPROACH
+3. GENERATE ALL REQUIRED FILES (including any missing files mentioned in errors)
+4. If error says "Cannot resolve entry index.html" → CREATE index.html in root
+5. If error says "Module not found" → CREATE the missing file or install the package
+
+📋 NOW GENERATE THE CODE WITH ALL REQUIRED FILES:
+`;
+    
+    // Add retry context to the last user message
+    promptMessages = formatted.messages.map((msg, idx) => {
+      if (idx === formatted.messages.length - 1 && msg.role === 'user') {
+        return {
+          ...msg,
+          content: retryContext + '\n\n' + msg.content
+        };
+      }
+      return msg;
+    });
+  }
+
   // Generate code with streaming
   let raw = '';
   
@@ -93,7 +145,7 @@ export async function execute(
   
     if (llm.stream) {
     // Use streaming if available
-    for await (const chunk of llm.stream(formatted.messages)) {
+    for await (const chunk of llm.stream(promptMessages)) {
       process.stdout.write(chunk);
       // Force flush for real-time output
       try {
@@ -110,7 +162,7 @@ export async function execute(
     console.log('\n');
   } else {
     // Fallback to regular invoke
-    raw = await llm.invoke(formatted.messages);
+    raw = await llm.invoke(promptMessages);
   }
   
     const { responseSection, files, filesToDelete } = parseResponse(raw);

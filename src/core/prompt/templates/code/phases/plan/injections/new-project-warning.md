@@ -9,10 +9,23 @@ YOUR PLAN STRUCTURE MUST BE:
 
 **PHASE 1: Project Setup (Configuration Files)**
    Step 1: Extract technology stack from DESIGN DOCUMENT
-   Step 2: Generate package.json with ALL dependencies
-   Step 3: Generate build tool config (vite.config.ts / next.config.js)
-   Step 4: Generate TypeScript config (if applicable)
-   Step 5: Generate style config (tailwind.config.js, etc.)
+   Step 2: Generate dependency file
+      • TypeScript/JavaScript: package.json
+      • Go: go.mod
+      • Python: requirements.txt or pyproject.toml
+      • Rust: Cargo.toml
+   Step 3: Generate language configuration (if needed)
+      • TypeScript: tsconfig.json
+      • Python: pyproject.toml or setup.py
+      • Go: N/A (go.mod covers this)
+   Step 4: Generate build tool config
+      • Vite: vite.config.ts
+      • Next.js: next.config.js
+      • Go: Makefile (optional)
+   Step 5: Generate style/lint config (if applicable)
+      • TypeScript: tailwind.config.js, .eslintrc
+      • Go: .golangci.yml
+      • Python: .pylintrc, pyproject.toml [tool.black]
    Step 6: Generate .gitignore and README.md
 
 **PHASE 2: Application Code**
@@ -45,24 +58,48 @@ Before planning, READ these sections in DESIGN DOCUMENT:
 YOUR PLAN MUST START WITH:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+Example for TypeScript project:
 "Step 1: Generate package.json
 - Extract dependencies from design: [list them]
-- Add scripts based on build tool: [dev, build, start]
+- Add scripts: dev, build, start
 
-Step 2: Generate tsconfig.json (if TypeScript)
+Step 2: Generate tsconfig.json
 - Configure paths, strict mode
 
-..."
+Step 3: Generate vite.config.ts..."
+
+Example for Go project:
+"Step 1: Generate go.mod
+- Set module path
+- Add required dependencies
+
+Step 2: Create project structure
+- cmd/, internal/, pkg/ directories
+
+Step 3: Generate Makefile..."
+
+Example for Python project:
+"Step 1: Generate pyproject.toml
+- Add dependencies
+- Configure tools (black, pytest)
+
+Step 2: Create project structure
+- src/, tests/ directories
+
+Step 3: Setup virtual environment..."
 
 WHY THIS MATTERS:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 After code generation, the system will:
 1. Save all files
-2. Run: npm install (installs packages from package.json)
-3. User runs: npm run dev (starts the project)
+2. Install dependencies:
+   • TypeScript/JS: npm install (from package.json)
+   • Go: go mod download (from go.mod)
+   • Python: pip install (from requirements.txt/pyproject.toml)
+3. User runs dev command to start the project
 
-If package.json is missing → npm install FAILS → Project is BROKEN
+If dependency file is missing → Install FAILS → Project is BROKEN
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

@@ -172,7 +172,13 @@ export class ModeController {
       
       // New project setup injection (highest priority for new projects)
       if (!context.stats.hasOriginalFiles && task === 'code') {
-        injections.push(`${phasePrefix}/new-project-setup`);
+        // General setup guide (language-agnostic)
+        injections.push(`${phasePrefix}/new-project-setup-general`);
+        
+        // Language-specific setup details
+        const language = this.detectLanguage(context);
+        const languageConfigPath = `${task}/languages/${language}/setup/config`;
+        injections.push(languageConfigPath);
       }
       
       if (context.stats.hasOriginalFiles) {
@@ -186,6 +192,53 @@ export class ModeController {
     }
     
     return injections;
+  }
+  
+  /**
+   * Detect project language from codebase profile or design document
+   */
+  private detectLanguage(context: AssembledContext): string {
+    // 1. Try to get from codebase profile (existing projects)
+    if (context.codebaseProfile?.language) {
+      const lang = context.codebaseProfile.language.toLowerCase();
+      // Map known languages
+      if (lang.includes('typescript') || lang.includes('javascript')) return 'typescript';
+      if (lang.includes('go') || lang.includes('golang')) return 'golang';
+      if (lang.includes('python')) return 'python';
+      if (lang.includes('rust')) return 'rust';
+      if (lang.includes('java')) return 'java';
+    }
+    
+    // 2. Try to detect from design document (new projects)
+    if (context.designDoc) {
+      const doc = context.designDoc.toLowerCase();
+      
+      // Check for language keywords in order of specificity
+      if (doc.includes('typescript') || doc.includes('tsconfig') || doc.includes('@types/')) {
+        return 'typescript';
+      }
+      if (doc.includes('golang') || doc.includes('go.mod') || doc.includes('go 1.')) {
+        return 'golang';
+      }
+      if (doc.includes('python') || doc.includes('pyproject.toml') || doc.includes('requirements.txt') || doc.includes('fastapi') || doc.includes('django')) {
+        return 'python';
+      }
+      if (doc.includes('rust') || doc.includes('cargo.toml')) {
+        return 'rust';
+      }
+      if (doc.includes('java') || doc.includes('maven') || doc.includes('gradle')) {
+        return 'java';
+      }
+      
+      // Check for framework indicators
+      if (doc.includes('react') || doc.includes('vue') || doc.includes('next.js') || doc.includes('vite')) {
+        return 'typescript';  // Most modern frameworks use TS
+      }
+    }
+    
+    // 3. Default to TypeScript (most common in current projects)
+    console.log('[ModeController] Could not detect language, defaulting to TypeScript');
+    return 'typescript';
   }
   
   /**

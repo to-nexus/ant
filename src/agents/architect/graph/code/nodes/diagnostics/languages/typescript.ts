@@ -91,6 +91,67 @@ export const TYPESCRIPT_PATTERNS: ErrorPattern[] = [
   // DEPENDENCY LAYER - LLM이 수정 가능
   // ========================================
   
+  // MISSING TYPE DECLARATIONS (@types/xxx)
+  {
+    layer: ErrorLayer.DEPENDENCY,
+    patterns: [
+      /Could not find a declaration file for module ['"]([^'"]+)['"]/,
+      /Try `npm i --save-dev @types\/([^`]+)`/
+    ],
+    severity: 'major',
+    canLLMFix: true,
+    diagnosis: (match) => {
+      const moduleName = match[1];
+      const typesPackage = `@types/${moduleName.replace(/[\/\\]/g, '__')}`;
+      
+      return {
+        type: 'missing_dependency',
+        layer: ErrorLayer.DEPENDENCY,
+        message: `Missing type declarations: ${typesPackage}`,
+        rootCause: `TypeScript declaration file for "${moduleName}" is not installed`,
+        suggestedActions: [
+          `Install type declarations: npm install -D ${typesPackage}`,
+          `Add to package.json devDependencies: "${typesPackage}": "latest"`,
+          `Run: npm install`
+        ],
+        isRetryable: true,
+        canLLMFix: true,
+        severity: 'major'
+      };
+    }
+  },
+  
+  // TYPESCRIPT MODULE RESOLUTION CONFIG ERROR
+  {
+    layer: ErrorLayer.CONFIGURATION,
+    patterns: [
+      /Cannot find module ['"]([^'"]+)['"].*Did you mean to set the 'moduleResolution' option to ['"]?(\w+)['"]?/,
+      /Did you mean to set the 'moduleResolution' option/
+    ],
+    severity: 'major',
+    canLLMFix: true,
+    diagnosis: (match) => {
+      const moduleName = match[1] || 'modules';
+      const suggestedResolution = match[2] || 'node';
+      
+      return {
+        type: 'config_error',
+        layer: ErrorLayer.CONFIGURATION,
+        message: `TypeScript moduleResolution not configured`,
+        rootCause: `tsconfig.json is missing "moduleResolution" setting, preventing module imports from being resolved`,
+        suggestedActions: [
+          `Add to tsconfig.json compilerOptions: "moduleResolution": "node"`,
+          `Or use: "moduleResolution": "${suggestedResolution}"`,
+          `Ensure @types packages are installed if needed`,
+          `Common fix: Set both "module": "ESNext" and "moduleResolution": "node"`
+        ],
+        isRetryable: true,
+        canLLMFix: true,
+        severity: 'major'
+      };
+    }
+  },
+  
   // LOCAL FILE IMPORTS (./path or ../path)
   {
     layer: ErrorLayer.CODE,

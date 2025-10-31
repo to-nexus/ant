@@ -74,21 +74,33 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   const enforcementReason = state.enforcementReason;
   const isRetry = Boolean(enforcementReason);
   
-  // ===== POP NEXT TASK FROM QUEUE =====
-  let nextTask = state.taskQueue?.pop();
+  // ===== DETERMINE WHICH TASK TO EXECUTE =====
+  let nextTask: Task | undefined;
   
-  if (!nextTask) {
-    console.log('✅ Task queue is empty!');
-    return state;
+  if (isRetry && state.currentTask) {
+    // ✅ RETRY: Use the same task that failed
+    nextTask = state.currentTask;
+    console.log(`\n🔄 Retrying failed task: ${nextTask.name}`);
+    console.log(`   Type: ${nextTask.type}, Priority: ${nextTask.priority}`);
+    console.log(`   Violations: ${state.violations?.length || 0}`);
+    console.log(`   Queue size: ${state.taskQueue?.size() || 0} remaining\n`);
+  } else {
+    // ✅ NEW TASK: Pop from queue
+    nextTask = state.taskQueue?.pop();
+    
+    if (!nextTask) {
+      console.log('✅ Task queue is empty!');
+      return state;
+    }
+    
+    console.log(`\n🎯 Next task from queue: ${nextTask.name}`);
+    console.log(`   Type: ${nextTask.type}, Priority: ${nextTask.priority}`);
+    console.log(`   Queue size: ${state.taskQueue?.size() || 0} remaining\n`);
   }
-  
-  console.log(`\n🎯 Next task from queue: ${nextTask.name}`);
-  console.log(`   Type: ${nextTask.type}, Priority: ${nextTask.priority}`);
-  console.log(`   Queue size: ${state.taskQueue?.size() || 0} remaining\n`);
   
   // ===== HANDLE ERRORS: Analyze & Add Error Tasks =====
   if (isRetry && state.violations && state.violations.length > 0) {
-    console.log(`🔄 Task "${state.currentTask?.name}" failed, analyzing errors...\n`);
+    console.log(`🔍 Analyzing errors from failed attempt...\n`);
     
     const violations = state.violations;
     
@@ -102,12 +114,11 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     
     if (allRetryable && !hasBlockingErrors) {
       console.log('✅ All errors are retryable (ellipsis, etc.) - will regenerate\n');
-      // Just retry, no need to ask LLM
+      // ⚠️ DO NOT clear enforcementReason! Execute node needs it!
       return {
         ...state,
         currentTask: nextTask,
-        retries: 0,
-        enforcementReason: null
+        // Keep enforcementReason for Execute node!
       };
     }
     
@@ -268,6 +279,14 @@ RULES:
     return state;
   }
   
+  // ===== CHECK IF TASK CHANGED (e.g. switched to error task) =====
+  const taskChanged = !isRetry || (state.currentTask?.id !== nextTask.id);
+  const shouldClearEnforcement = taskChanged && isRetry;
+  
+  if (shouldClearEnforcement) {
+    console.log('⚠️  Task switched - clearing enforcement context for new task\n');
+  }
+  
   // ===== GENERATE EXECUTION PLAN FOR CURRENT TASK =====
   
   // Prepare artifacts
@@ -293,9 +312,9 @@ RULES:
     console.log(`⏱️  Prompt build time: ${result.metadata.buildTime}ms`);
     console.log(`🎯 Inferred mode: ${result.modeConfig.mode}`);
     
-    // If this is a retry, add retry context
+    // If this is a retry of the SAME task, add retry context
     let promptMessages = result.formatted.messages;
-    if (isRetry && enforcementReason) {
+    if (isRetry && enforcementReason && !shouldClearEnforcement) {
       const previousAttemptsText = formatPreviousAttempts(state.previousAttempts || []);
       
       // Format feature tasks reminder
@@ -379,8 +398,8 @@ ${nextTask.type === 'error' ?
       currentTask: nextTask,
       planText,
       codeMode,
-      retries: 0,  // Reset for new task
-      enforcementReason: null
+      retries: shouldClearEnforcement ? 0 : state.retries,  // Reset only if new task
+      enforcementReason: shouldClearEnforcement ? null : state.enforcementReason  // Clear only if new task
     };
   } catch (error) {
     console.error('\n❌ ═══════════════════════════════════════════════════════════════');

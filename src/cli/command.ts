@@ -136,16 +136,16 @@ async function runArchitect(task: 'design' | 'code' | 'learn', inputPath: string
     console.log('\n✅ Task completed successfully!');
     console.log('\n--- Result ---\n', JSON.stringify(result, null, 2));
     
-    // Stop logging
+    // Stop logging and wait for stream to finish
     if (logger) {
-      logger.stop();
+      await logger.stopAsync();
     }
   } catch (error: any) {
     console.error('\n❌ Error:', error.message);
     
-    // Stop logging on error
+    // Stop logging on error and wait for stream to finish
     if (logger) {
-      logger.stop();
+      await logger.stopAsync();
     }
     
     process.exit(1);
