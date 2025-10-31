@@ -1,171 +1,136 @@
-# CLI Usage Guide
+# CLI Guide
 
-## Overview
+## Command Structure
 
-ANT (AI-Native Transformation) provides a structured CLI for running AI agents on your codebase.
-
-**Command Structure:**
 ```bash
-aidev <agent> <task> [options] <input>
+npm run dev -- <agent> <task> [options] <input>
 ```
-
----
-
-## Quick Start
-
-### 1. Architecture Design
-Generate design from PRD:
-```bash
-aidev arch design workspace/my-app/auth/inputs/directives/design/directive.md
-```
-
-Full form:
-```bash
-aidev architect design workspace/my-app/auth/inputs/directives/design/directive.md
-```
-
-### 2. Code Generation
-Generate code from design (auto-detects mode and batch processing):
-```bash
-aidev arch code workspace/my-app/auth/
-```
-
-Explicit mode:
-```bash
-aidev arch code workspace/my-app/auth/ --mode refactor
-```
-
-### 3. Learning
-Learn from repository patterns:
-```bash
-aidev arch learn workspace/my-app/common/inputs/directives/learn/directive.md
-```
-
-### 4. Code Review
-Review code changes:
-```bash
-aidev review workspace/my-app/auth/ --pr 123
-```
-
-### 5. Project Planning
-Create project plan:
-```bash
-aidev plan workspace/my-app/project-requirements.md
-```
-
-### 6. Documentation
-Generate documentation:
-```bash
-aidev doc workspace/my-app/
-```
-
----
 
 ## Agents
 
-### Architect (`arch`, `architect`)
-Architecture design and code generation
+### architect (`arch`)
+
+Design and code generation with autonomous error resolution.
 
 **Tasks:**
 - `design` - Generate architecture design from PRD
-- `code` - Generate code from design document (auto-detects mode and batch processing)
-- `learn` - Learn repository patterns and conventions
+- `code` - Generate code from design (auto-detects mode)
+- `learn` - Learn repository patterns
 
 **Options:**
-- `--mode <mode>` - Code generation mode (optional, auto-inferred if not provided)
-  - `generate` - Generate new code
-  - `refactor` - Refactor existing code
-  - `explain` - Explain code behavior
+- `--mode <mode>` - Code generation mode (optional, auto-inferred)
+  - `generate` - Create new code
+  - `edit` - Modify existing code
+  - `refactor` - Restructure code
+- `--eval` - Run evaluation after code generation
 - `--project <name>` - Override auto-detected project
 
 **Examples:**
-```bash
-# Design
-aidev arch design workspace/my-app/auth/inputs/directives/design/directive.md
 
-# Code generation (mode auto-inferred from directive)
-aidev arch code workspace/my-app/auth/
+```bash
+# Design from PRD
+npm run dev -- arch design workspace/my-app/auth/
+
+# Code generation (mode auto-inferred)
+npm run dev -- arch code workspace/my-app/auth/
+
+# Code with evaluation
+npm run dev -- arch code workspace/my-app/auth/ --eval
 
 # Explicit mode
-aidev arch code workspace/my-app/auth/ --mode refactor
+npm run dev -- arch code workspace/my-app/auth/ --mode refactor
 
-# Learning
-aidev arch learn workspace/my-app/common/inputs/directives/learn/directive.md
+# Learn from codebase
+npm run dev -- arch learn workspace/my-app/common/inputs/directives/learn/directive.md
 ```
 
 ---
 
-### Reviewer (`review`, `reviewer`)
-Code review and quality checks
+### reviewer (`review`)
+
+Code review and quality analysis.
 
 **Options:**
-- `--pr <number>` - Pull request number to review
-- `--project <name>` - Override auto-detected project
+- `--pr <number>` - Pull request number
+- `--project <name>` - Override project
 
 **Examples:**
+
 ```bash
 # Review directory
-aidev review workspace/my-app/auth/
+npm run dev -- review workspace/my-app/auth/
 
 # Review PR
-aidev review workspace/my-app/auth/ --pr 123
+npm run dev -- review workspace/my-app/auth/ --pr 123
 ```
 
 ---
 
-### Planner (`plan`, `planner`)
-Project planning and sprint breakdown
+### planner (`plan`)
 
-**Options:**
-- `--project <name>` - Override auto-detected project
+Project planning and sprint breakdown.
 
 **Examples:**
+
 ```bash
-aidev plan workspace/my-app/project-requirements.md
+npm run dev -- plan workspace/my-app/requirements.md
 ```
 
 ---
 
-### Doc (`doc`)
-Documentation generation and updates
+### doc
 
-**Options:**
-- `--project <name>` - Override auto-detected project
+Documentation generation.
 
 **Examples:**
+
 ```bash
-aidev doc workspace/my-app/
+npm run dev -- doc workspace/my-app/
 ```
 
 ---
 
 ## Input Resolution
 
-The CLI automatically resolves input files based on the task:
+CLI automatically resolves input files based on task type.
 
 ### Design Task
-**Input:** Directive file
+
+Uses PRD from `inputs/sources/prd.md`:
+
+```
+workspace/project/feature/inputs/sources/
+└── prd.md
+```
+
+Optional directive from `inputs/directives/design/`:
+
 ```
 workspace/project/feature/inputs/directives/design/
 ├── directive.md        ← Used if no numbered files
-└── directive-N.md      ← Highest N is used
+└── directive-N.md      ← Highest N used
 ```
 
 ### Code Task
-**Input:** Latest design document
+
+Uses latest design document from `outputs/design/`:
+
 ```
 workspace/project/feature/outputs/design/
-└── design-*.md         ← Latest is automatically selected
+└── design-*.md         ← Latest selected automatically
 ```
 
-Optional code directive:
+Optional code directive from `inputs/directives/code/`:
+
 ```
 workspace/project/feature/inputs/directives/code/
-└── directive.md        ← Applied if exists
+└── directive.md
 ```
 
 ### Learn Task
-**Input:** Learn directive
+
+Uses learn directive:
+
 ```
 workspace/project/common/inputs/directives/learn/
 └── directive.md
@@ -175,180 +140,265 @@ workspace/project/common/inputs/directives/learn/
 
 ## Project Auto-Detection
 
-The CLI automatically detects the project name from the path:
+Project name extracted from path:
+
 ```
-workspace/my-app/...  → Project: my-app
-workspace/cross-ramp/... → Project: cross-ramp
+workspace/my-app/...       → Project: my-app
+workspace/cross-ramp/...   → Project: cross-ramp
 ```
 
 Override with `--project`:
+
 ```bash
-aidev arch design workspace/my-app/auth/directive.md --project custom-name
+npm run dev -- arch design workspace/my-app/auth/ --project custom-name
 ```
 
 ---
 
 ## Code Generation Modes
 
-The `code` task **automatically infers the mode** from your directive. You can override with `--mode`.
+Mode is **automatically inferred** from directive keywords. Override with `--mode`.
 
 ### Mode Inference Priority
-1. **Directive keywords** (highest priority)
-   - "explain", "describe" → `explain` mode
-   - "refactor", "restructure", "migrate" → `refactor` mode
-   - Default → `generate` mode
+
+1. **Directive keywords** (highest)
+   - "explain", "describe" → `explain`
+   - "refactor", "restructure", "migrate" → `refactor`
+   - Default → `generate`
 2. **Design document** (if no directive)
 3. **Git changes** (if present → `refactor`)
 
 ### Generate (default)
+
 Create new code or add features:
+
 ```bash
-aidev arch code workspace/my-app/auth/
-# Directive: "Add user authentication with JWT"
+npm run dev -- arch code workspace/my-app/auth/
+# Directive: "Add JWT authentication"
 # → Mode: generate (auto-inferred)
 ```
 
-### Refactor
-Refactor or modify existing code:
-```bash
-aidev arch code workspace/my-app/auth/
-# Directive: "Refactor all API routes to use new error handler"
-# → Mode: refactor (auto-inferred)
+### Edit
 
-# Or explicit:
-aidev arch code workspace/my-app/auth/ --mode refactor
+Modify existing code:
+
+```bash
+npm run dev -- arch code workspace/my-app/auth/
+# Directive: "Refactor error handling in auth routes"
+# → Mode: refactor (auto-inferred)
 ```
 
 ### Explain
-Analyze and explain code:
+
+Analyze and explain:
+
 ```bash
-aidev arch code workspace/my-app/auth/
-# Directive: "Explain how the authentication flow works"
+npm run dev -- arch code workspace/my-app/auth/
+# Directive: "Explain authentication flow"
 # → Mode: explain (auto-inferred)
 ```
 
 ---
 
-## Automatic Batch Processing
+## Workspace Structure
 
-For large-scale refactoring, the system **automatically detects** when to use batch processing:
+```
+workspace/
+  project/
+    config.json
+    feature/
+      inputs/
+        directives/
+          design/directive.md
+          code/directive.md
+        sources/prd.md
+      outputs/
+        design/design-*.md
+        reports/architect-code-*.log
+        eval/report.md         # If --eval used
+      session.json
+```
 
-### Normal Processing
-- Small, focused changes (< 40 files, < 150K tokens)
-- Git-based modifications
-- Single LLM call with full context
+Generated code written to repository root (`src/`, `lib/`), not `workspace/outputs/`.
 
-### Batch Processing (Auto-Enabled)
-- Large refactoring (≥ 40 files or ≥ 150K tokens)
-- Global changes ("update all", "migrate all")
-- Processed in chunks with per-batch validation
+---
 
-**Examples:**
+## Configuration
+
+### Workspace Config (`workspace/project/config.json`)
+
+```json
+{
+  "projectName": "my-app",
+  "branchBase": "main",
+  "autoLearn": true,
+  "strictValidation": true,
+  "runTests": false,
+  "llmProvider": "anthropic",
+  "llmModel": "claude-3-5-sonnet-20241022"
+}
+```
+
+### Environment Variables
+
 ```bash
-# Small change → Normal processing
-aidev arch code workspace/my-app/auth/
-# Directive: "Add logout endpoint"
-# → Normal mode (auto-detected)
+# LLM API keys
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
 
-# Large refactoring → Batch processing
-aidev arch code workspace/my-app/
-# Directive: "Refactor all API routes to use async/await"
-# → Batch mode (auto-detected)
+# Vector DB
+CHROMA_URL=http://localhost:8000
+
+# Optional
+NODE_ENV=development
 ```
 
 ---
 
-## Development Mode
+## Output Files
 
-During development, use `npm run dev`:
-```bash
-# Old style (still works)
-npm run dev architect design workspace/my-app/auth/directive.md
+### Design Task
 
-# New style (recommended)
-npm run dev arch design workspace/my-app/auth/directive.md
+```
+workspace/project/feature/outputs/design/
+└── design-project-<timestamp>.md
+```
+
+### Code Task
+
+Generated files written to repository:
+```
+src/
+lib/
+app/
+components/
+...
+```
+
+Session saved:
+```
+workspace/project/feature/session.json
+```
+
+Report:
+```
+workspace/project/feature/outputs/reports/
+└── architect-code-<timestamp>.log
+```
+
+Evaluation (if `--eval`):
+```
+workspace/project/feature/outputs/eval/
+├── report.md
+└── report.json
 ```
 
 ---
 
-## Global Installation (Future)
+## Full Workflow Example
 
-After building and publishing:
 ```bash
-npm install -g ant
-aidev arch design workspace/my-app/auth/directive.md
+# 1. Initialize (auto-created if not exists)
+npm run dev -- arch design workspace/my-app/auth/
+
+# 2. Edit PRD
+vim workspace/my-app/auth/inputs/sources/prd.md
+
+# 3. Generate design
+npm run dev -- arch design workspace/my-app/auth/
+
+# 4. Generate code
+npm run dev -- arch code workspace/my-app/auth/ --eval
+
+# 5. Check results
+cat workspace/my-app/auth/outputs/reports/architect-code-*.log
+cat workspace/my-app/auth/outputs/eval/report.md
+
+# 6. Review generated code
+git diff
+
+# 7. Continue if interrupted (resumes from checkpoint)
+npm run dev -- arch code workspace/my-app/auth/
+```
+
+---
+
+## Resuming After Interruption
+
+If execution is interrupted (recursion limit, error, Ctrl+C), state is saved to `session.json`. 
+
+**Resume**:
+```bash
+# Run same command again
+npm run dev -- arch code workspace/my-app/auth/
+```
+
+System will:
+1. Load state from checkpoint
+2. Restore task queue
+3. Continue from last completed task
+
+**Clear and restart**:
+```bash
+rm workspace/my-app/auth/session.json
+npm run dev -- arch code workspace/my-app/auth/
+```
+
+---
+
+## Troubleshooting
+
+### No design document found
+
+**Error**: `⚠️ No design document or directive found`
+
+**Solution**: Run design task first or check paths:
+```bash
+npm run dev -- arch design workspace/my-app/auth/
+ls workspace/my-app/auth/outputs/design/
+```
+
+### Project not detected
+
+**Error**: `Failed to detect project`
+
+**Solution**: Ensure path starts with `workspace/`:
+```bash
+# Bad
+npm run dev -- arch code my-app/auth/
+
+# Good
+npm run dev -- arch code workspace/my-app/auth/
+```
+
+### ChromaDB connection failed
+
+**Error**: `Failed to connect to vector database`
+
+**Solution**: Start ChromaDB:
+```bash
+cd src/periphery/integrations/vector-memory
+docker-compose up -d
+```
+
+### Session corrupted
+
+**Error**: `Failed to load session`
+
+**Solution**: Delete and restart:
+```bash
+rm workspace/my-app/auth/session.json
+npm run dev -- arch code workspace/my-app/auth/
 ```
 
 ---
 
 ## Help
 
-Show help for any command:
+Show help:
+
 ```bash
-aidev --help
-aidev architect --help
-aidev arch design --help
+npm run dev -- --help
+npm run dev -- architect --help
+npm run dev -- arch design --help
 ```
-
----
-
-## Examples
-
-### Full Workflow
-```bash
-# 1. Learn from existing codebase
-aidev arch learn workspace/my-app/common/inputs/directives/learn/directive.md
-
-# 2. Design new feature
-aidev arch design workspace/my-app/auth/inputs/directives/design/directive.md
-
-# 3. Generate code
-aidev arch code workspace/my-app/auth/
-
-# 4. Review changes
-aidev review workspace/my-app/auth/
-
-# 5. Update documentation
-aidev doc workspace/my-app/
-```
-
-### Multiple Features
-```bash
-# Design all features
-aidev arch design workspace/my-app/auth/inputs/directives/design/directive.md
-aidev arch design workspace/my-app/payment/inputs/directives/design/directive.md
-aidev arch design workspace/my-app/notifications/inputs/directives/design/directive.md
-
-# Generate code for all
-aidev arch code workspace/my-app/auth/
-aidev arch code workspace/my-app/payment/
-aidev arch code workspace/my-app/notifications/
-```
-
----
-
-## Advanced Features
-
-### Smart Mode Inference
-The system analyzes your directive to determine the best mode:
-- Keywords in directive (primary)
-- Design document content (secondary)
-- Git change detection (tertiary)
-
-### Intelligent Batch Selection
-Work size is estimated before execution:
-- File count estimation
-- Token count estimation
-- Global refactor detection
-- Automatic strategy selection
-
-### Context Loading Strategy
-Three-stage fallback for code loading:
-1. **Git diff** - Fast, focused on changes
-2. **Vector DB** - Semantic search for relevant code
-3. **Keyword** - Fallback text search
-
----
-
-**Version:** 1.0.0  
-**Last Updated:** 2025-10-29

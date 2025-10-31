@@ -1,41 +1,27 @@
 # ANT (AI-Native Transformation)
 
-AI-native development framework implementing hexagonal architecture with LangGraph-based agent orchestration.
-
----
+AI-driven code generation framework with autonomous error resolution.
 
 ## Overview
 
-Internal framework for automated software development using AI agents. Implements a dual-memory system (vector + session), graph-based workflows with intelligent error resolution, and a 6-layer prompt engineering pipeline.
-
-**Primary Agents:**
-- `architect` - Design generation and autonomous code implementation with build error resolution
-- `reviewer` - Code review and analysis
-- `planner` - Project planning and breakdown
-- `doc` - Documentation generation
-- `evaluator` - Code quality evaluation and benchmarking
-
-**Core Features:**
+Internal framework for automated software development using LLM agents. Core features:
 - Hexagonal architecture (ports & adapters)
-- Dual memory: Vector DB (ChromaDB) + Session files (JSON)
-- LangGraph workflow orchestration with dynamic error recovery
-- 6-layer prompt engineering system
-- Autonomous build error resolution with LLM-driven subtask management
+- LangGraph workflow orchestration
+- Dual memory (ChromaDB vector + JSON session)
+- Task-based error resolution with retry strategies
 - Dynamic validation (build, lint, type check)
-- Attempt history tracking for learning from failures
-- Session-based context tracking with traceability
-
----
+- Session-based checkpointing for interruption recovery
 
 ## Architecture
 
-### Hexagonal (Ports & Adapters)
+### Dependency Structure
 
 ```
 core/              Domain logic, interfaces (ports)
   ├─ ports/        Interface definitions
   ├─ types.ts      Core types
-  └─ policies/     Rules and validation
+  ├─ policies/     Rules and validation
+  └─ prompt/       6-layer prompt engineering
 
 agents/            Business logic using ports
   └─ architect/    
@@ -44,46 +30,26 @@ agents/            Business logic using ports
 
 periphery/         Port implementations (adapters)
   └─ adapters/     
-      ├─ llm/      GenericLLMClient
-      ├─ memory/   ChromaMemoryAdapter
+      ├─ llm/      GenericLLMClient (OpenAI/Anthropic)
+      ├─ memory/   ChromaMemoryAdapter (ChromaDB)
+      ├─ git/      SimpleGitAdapter
       └─ session/  FileSessionAdapter
-
-composition/       Dependency injection
-  └─ orchestrator.ts
 ```
 
-**Dependency flow:** `agents → core ← periphery`
-
-### Agent Workflow Pattern
-
-All agents follow this common structure:
-
-```
-1. Load Vector Memory    - retrieve() from ChromaDB
-2. Load Session History  - session.load() from JSON
-3. Create Context        - ProjectContext { memory, sessionHistory, ... }
-4. Execute Graph
-   ├─ resolve   - Load input files
-   ├─ plan      - Generate execution plan
-   ├─ execute   - Run LLM generation
-   ├─ validate  - Check output (code only)
-   └─ learn     - Store to vector + session
-```
+Dependency flow: `agents → core ← periphery`
 
 ### Prompt Engineering (6 Layers)
 
 ```typescript
 PromptEngine.buildExecutePrompt() {
   1. InputNormalizer    - Standardize inputs
-  2. ContextAssembler   - Aggregate all context sources
+  2. ContextAssembler   - Aggregate context sources
   3. ModeController     - Select templates & config
-  4. TemplateComposer   - Build prompt from templates
-  5. PolicyInjector     - Inject guardrails & rules
+  4. TemplateComposer   - Build from templates (Handlebars)
+  5. PolicyInjector     - Inject guardrails
   6. PromptFormatter    - Format for LLM API
 }
 ```
-
----
 
 ## Installation
 
@@ -100,65 +66,20 @@ PromptEngine.buildExecutePrompt() {
 # Install dependencies
 pnpm install
 
-# Environment variables
+# Environment
 cat > .env << EOF
 OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
 CHROMA_URL=http://localhost:8000
 EOF
 
-# Start vector DB
+# Start ChromaDB
 cd src/periphery/integrations/vector-memory
 docker-compose up -d
 
-# Create workspace
-npm run init:workspace my-project
-npm run init:feature my-project feature1
+# Build
+npm run build
 ```
-
----
-
-## 🚀 Quick Start
-
-### 1. 새 프로젝트 시작
-
-```bash
-# 1. Workspace 생성
-npm run init:workspace my-app
-
-# 2. Feature 생성
-npm run init:feature my-app auth-feature
-
-# 3. PRD 작성
-vim workspace/my-app/auth-feature/inputs/sources/prd.md
-
-# 4. Design 생성
-npm run dev -- architect design workspace/my-app/auth-feature/
-
-# 5. Code 생성 + 평가
-npm run dev -- architect code workspace/my-app/auth-feature/ --eval
-
-# 6. 결과 확인
-cat workspace/my-app/auth-feature/outputs/eval/report.md
-```
-
-### 2. 데모로 전체 워크플로우 체험
-
-```bash
-# PRD → Design → Code → Eval 전체 플로우 (이미 준비됨)
-npm run dev -- architect design workspace/demo-app/features/todo-list/
-npm run dev -- architect code workspace/demo-app/features/todo-list/ --eval
-
-# 결과 확인
-cat workspace/demo-app/features/todo-list/outputs/eval/report.md
-```
-
-자세한 내용: 
-- [Quick Start Guide](docs/guides/QUICK_START.md)
-- [Workflow Flow](docs/guides/WORKFLOW_FLOW.md)
-- [Demo App](workspace/demo-app/README.md)
-
----
 
 ## Usage
 
@@ -168,134 +89,63 @@ cat workspace/demo-app/features/todo-list/outputs/eval/report.md
 npm run dev -- <agent> <task> [options] <input>
 ```
 
-### Examples
-
-```bash
-# Create workspace and feature first
-npm run init:workspace my-app
-npm run init:feature my-app auth-feature
-
-# Architecture design from PRD
-npm run dev -- architect design workspace/my-app/auth-feature/
-
-# Code generation from design
-npm run dev -- architect code workspace/my-app/auth-feature/
-
-# Code generation with automatic evaluation
-npm run dev -- architect code workspace/my-app/auth-feature/ --eval
-
-# Code with edit mode
-npm run dev -- arch code workspace/project/feature/ --mode edit
-
-# Learn from existing code
-npm run dev -- arch learn workspace/project/common/inputs/directives/learn/directive.md
-
-# Code review
-npm run dev -- review workspace/project/feature/
-
-# Project planning
-npm run dev -- plan workspace/project/requirements.md
-```
-
 ### Architect Agent
 
+Primary agent for design and code generation.
+
 **Tasks:**
-- `design` - PRD/directive → Design document
-- `code` - Design → Code files (with intelligent error resolution)
+- `design` - PRD → Design document
+- `code` - Design → Code files (with error resolution)
 - `learn` - Code analysis → Vector storage
 
-**Code Generation Modes:**
-- `generate` (default) - Create new files
-- `edit` - Modify existing files (uses Git HEAD)
-- `refactor` - Restructure code
+**Code Task Workflow:**
 
-**Workflow (Code Task with Divide & Conquer):**
 ```
-┌─────────────────────────────────────────────────────────┐
-│ 1. INITIALIZATION & DECOMPOSITION                      │
-│    resolve → plan (LLM decomposes spec into subtasks)  │
-│              ↓                                          │
-│    Creates: [Feature 1], [Feature 2], [Feature N]      │
-└─────────────────────────────────────────────────────────┘
-                          ↓
-┌─────────────────────────────────────────────────────────┐
-│ 2. DIVIDE & CONQUER (Loop over subtasks)               │
-│                                                         │
-│  [Subtask K] plan → execute → validate → postProcess   │
-│               ↑         ↑         ↓           ↓         │
-│               └─────────┴──────enforce   dynamicValidate│
-│                       (retry)                ↓          │
-│                                              │          │
-│  Success? ─→ Next subtask ──────────────────┘          │
-│  Failed?  ─→ Skip to next (if max retries reached)     │
-└─────────────────────────────────────────────────────────┘
-                          ↓
-┌─────────────────────────────────────────────────────────┐
-│ 3. FINALIZATION                                         │
-│    evaluate → learn → END                               │
-└─────────────────────────────────────────────────────────┘
-
-Validation Split:
-- validate (static): Fast checks (ellipsis, deletion ratio)
-- postProcess: npm install (needed for build)
-- dynamicValidate: Real build/lint/type check
+resolve → decompose → [Task Loop] → evaluate → learn
+                         ↓
+           ┌─────────────┴─────────────┐
+           │ plan → execute → writeFiles →
+           │ validate → installDeps →
+           │ runtimeValidate
+           │   ↓ (if errors)
+           │ enforce → plan (retry)
+           └─────────────┬─────────────┘
+                         ↓
+                    (next task)
 ```
 
-**Intelligent Error Resolution with Dual-Track Subtask System:**
-- **Dual-Track Subtasks**: 
-  - **Feature Subtasks** (priority 200-299): Original goals from spec, persistent across retries
-  - **Error Subtasks** (priority 1-100): Temporary blockers, removed when resolved
-- **LLM-Driven Management**: AI analyzes spec + errors, creates/updates both types of subtasks
-- **Automatic Prioritization**: Error subtasks interrupt features when needed, then resume features after fixing
-- **Attempt History Tracking**: Records each attempt to prevent repeated mistakes
-- **Spec Persistence**: Original requirements remain visible through all error-fixing cycles
-- **Progress Detection**: Resets retry counter when progress is detected
+**Key Features:**
+- **Task Decomposition**: LLM breaks spec into executable tasks
+- **Priority Queue**: Setup (100+), Errors (1-99), Features (200-299)
+- **Checkpointing**: State saved after plan/execute/validate
+- **Recursion Limit Handling**: Auto-resume from last checkpoint
+- **Language-Specific Validation**: Setup tasks skip TypeScript checks
+- **Diagnostics System**: Structured error analysis and fix suggestions
 
-**Priority System:**
-- Features: 200-299 (user value)
-- Errors: Missing files (95-100) > Dependencies (85-94) > Config (75-84) > Types (50-74) > Lint (20-30)
-
-Detailed flow: [Workflow Guide](docs/guides/WORKFLOW_FLOW.md)
-
-### Code Evaluation
-
-**Purpose:** Quantitatively measure AI-generated code quality
-
-**Evaluation Types:**
-- **Static Analysis**: Lines of code, complexity, maintainability index
-- **Dynamic Validation** (optional): Build, lint, type check, tests
-
-**Usage:**
+**Examples:**
 
 ```bash
-# Auto-evaluate after code generation
-npm run dev -- architect code workspace/project/feature/ --eval
+# Create workspace (auto-initialized)
+npm run dev -- architect design workspace/my-app/auth/
 
-# Enable strict validation (build/lint/test)
-# Set in workspace/project/config.json:
-{
-  "strictValidation": true,
-  "runTests": false
-}
+# Edit PRD
+vim workspace/my-app/auth/inputs/sources/prd.md
+
+# Generate design
+npm run dev -- architect design workspace/my-app/auth/
+
+# Generate code
+npm run dev -- architect code workspace/my-app/auth/
+
+# Generate code with evaluation
+npm run dev -- architect code workspace/my-app/auth/ --eval
 ```
 
-**Workspace Structure:**
-```
-workspace/project/feature/
-  ├── inputs/directives/eval/
-  │   ├── tests.json                # Requirements checklist
-  │   └── quality-thresholds.json   # Quality criteria (optional)
-  └── outputs/eval/
-      ├── report.md                 # Markdown report
-      └── report.json               # JSON report
+### Code Generation Modes
 
-Note: Generated code is written directly to the repository (e.g., src/, lib/),
-      not to workspace/outputs/code/.
-```
-
-**Details:** See [Evaluation Guide](docs/guides/EVALUATION.md)
-
----
+- `generate` (default) - Create new files
+- `edit` - Modify existing files (uses Git diff)
+- `refactor` - Restructure code
 
 ## Memory System
 
@@ -304,100 +154,72 @@ Note: Generated code is written directly to the repository (e.g., src/, lib/),
 | Type | Scope | Storage | Content | Loaded |
 |------|-------|---------|---------|--------|
 | Vector | Cross-feature | ChromaDB | Patterns, learnings, decisions | Before graph |
-| Session | Feature-specific | JSON file | Turn history, artifacts | Before graph |
+| Session | Feature-specific | JSON file | Turn history, state, artifacts | Before graph |
 
 ### Storage Flow
 
 ```typescript
-// Turn execution
-architectAgent() {
-  // Load memories (before graph)
-  const memory = await retrieve(task, project, feature);
-  const session = await sessionPort.load(project, feature);
-  
-  // Create context
-  const context = { 
-    project, 
-    memory,              // Vector content (string)
-    sessionHistory       // Session formatted (string)
-  };
-  
-  // Execute graph
-  const result = await runCodeGraph(context);
-  
-  // Store in learn node (after graph)
-  await sessionPort.addTurn(project, feature, turn);
-  await memoryPort.store(chunks, metadata);
-}
+// Load memories before graph execution
+const memory = await retrieve(task, project, feature);
+const session = await sessionPort.load(project, feature);
+
+// Execute graph with context
+const result = await runCodeGraph({ memory, session, ... });
+
+// Store learnings in learn node
+await sessionPort.addTurn(project, feature, turn);
+await memoryPort.store(chunks, metadata);
 ```
 
-### Session Tracking
+### Checkpointing
 
-Each turn stored with:
-```json
-{
-  "sessionId": "uuid-v4",
-  "turnId": 1,
-  "task": "code",
-  "input": "user request",
-  "output": {
-    "files": ["path/to/file.ts"],
-    "decisions": ["decision text"]
-  }
-}
-```
+State is saved at critical points:
+- After `plan`: Task plan generated
+- After `execute`: Files generated by LLM
+- After `runtimeValidate`: Validation complete
 
-Vector learnings include `sessionId` and `turnId` for traceability.
+If recursion limit is hit, state is restored from last checkpoint on next run.
 
----
+## Validation System
 
-## Quality Control
+Code generation only (Design has no validation).
 
-### Validation System
+### Static Validation (validate node)
 
-**Code generation only** (Design has no validation)
+Fast checks:
+- Ellipsis patterns (`...`)
+- Excessive deletion (< 70% of original)
+- No files generated
 
+### Dynamic Validation (runtimeValidate node)
+
+Real execution:
+- TypeScript type-check (`tsc --noEmit`)
+- ESLint (if configured)
+- Build (`npm run build`)
+- Dependency installation verification
+
+**Setup Task Exception**: Setup tasks (config files) skip TypeScript/build checks, only validate JSON syntax.
+
+### Diagnostics System
+
+Language-specific error analysis:
+- TypeScript: TS error codes, import resolution
+- ESLint: Ignores build artifacts (dist/), focuses on source
+- npm: Detects missing dependencies, NODE_ENV issues
+- Vite/Webpack: Detects missing entry files, config errors
+
+Structured violations:
 ```typescript
-// validate node
-validate(state) {
-  violations = []
-  
-  // Check 1: Ellipsis patterns
-  if (/\.{3}|\/\/\s*\.\.\./.test(code)) {
-    violations.push("contains ellipsis")
-  }
-  
-  // Check 2: Excessive deletion
-  if (newLines < origLines * 0.7) {
-    violations.push("excessive deletion")
-  }
-  
-  return { ...state, violations }
-}
-
-// Conditional edge
-if (violations && retries < 3) {
-  return "enforce"  // Retry with stronger warning
-} else {
-  return "learn"    // Success or max retries
+interface Violation {
+  type: ViolationType;
+  severity: 'critical' | 'major' | 'minor';
+  message: string;
+  file?: string;
+  suggestedFix?: string;
+  isRetryable?: boolean;  // Key for retry logic
 }
 ```
-
-### Guardrails
-
-**Two-stage prevention:**
-
-1. **Prompt-level** (PolicyInjector)
-   - Injects rules into prompt
-   - Warns LLM about prohibited patterns
-   - Not enforceable (LLM may ignore)
-
-2. **Validation-level** (Validate node)
-   - Pattern matching on output
-   - Hard enforcement via retry
-   - Up to 3 attempts
-
----
 
 ## Project Structure
 
@@ -410,43 +232,14 @@ workspace/
         directives/
           design/directive.md
           code/directive.md
-          eval/tests.json           # Evaluation tests (optional)
         sources/prd.md
       outputs/
         design/design-*.md
-        eval/report.md              # Evaluation reports (if --eval used)
-      session.json                  # Session history
-
-Note: Generated code is written to the repository root (e.g., src/, lib/),
-      not to workspace/outputs/code/.
+        reports/architect-code-*.log
+      session.json
 ```
 
-**Auto-detection:**
-- Project: from path `workspace/{project}/...`
-- Design: latest `outputs/design/design-*.md`
-- Directive: latest `inputs/directives/{task}/directive-N.md`
-
----
-
-## Context Assembly
-
-LLM prompt components:
-
-| Level | Element | Source | Load Time |
-|-------|---------|--------|-----------|
-| Context | memory | Vector DB | Before graph |
-| Context | sessionHistory | Session file | Before graph |
-| Context | config | Config file | Before graph |
-| Resolved | directive | File system | Resolve node |
-| Resolved | spec | File system | Resolve node |
-| Resolved | previousDesign | File system | Resolve node |
-| Resolved | originalFiles | Git HEAD | Resolve node |
-| Assembled | codebaseProfile | Runtime | ContextAssembler |
-| Template | system | Template file | TemplateComposer |
-| Template | rules | Template file | TemplateComposer |
-| Policy | guardrails | Policy code | PolicyInjector |
-
----
+Generated code is written to repository root (e.g., `src/`, `lib/`), not `workspace/outputs/`.
 
 ## Code Structure
 
@@ -454,86 +247,71 @@ LLM prompt components:
 src/
 ├── agents/
 │   ├── architect/
-│   │   ├── index.ts              Entry point
 │   │   ├── graph/
-│   │   │   ├── design/           Design graph (no validation)
-│   │   │   ├── code/             Code graph (with validation)
-│   │   │   └── learn/            Learning graph
-│   │   ├── memory/
-│   │   │   ├── index.ts          retrieve()
-│   │   │   └── queries.ts        Query configs
-│   │   └── session-formatter.ts  Format session for prompts
+│   │   │   └── code/
+│   │   │       ├── nodes/
+│   │   │       │   ├── resolve.ts
+│   │   │       │   ├── decompose.ts
+│   │   │       │   ├── plan.ts
+│   │   │       │   ├── execute.ts
+│   │   │       │   ├── writeFiles.ts       # ✅ Write files to disk
+│   │   │       │   ├── validate.ts         # Static checks
+│   │   │       │   ├── installDeps.ts      # npm install
+│   │   │       │   ├── runtimeValidate.ts  # Build/lint
+│   │   │       │   ├── enforce.ts
+│   │   │       │   ├── evaluate.ts
+│   │   │       │   ├── learn.ts
+│   │   │       │   ├── checkpoint.ts       # Save state
+│   │   │       │   └── diagnostics/        # Error analysis
+│   │   │       ├── graph.ts
+│   │   │       ├── state.ts
+│   │   │       └── runner.ts
+│   │   └── memory/
 │   ├── reviewer.ts
 │   ├── planner.ts
 │   └── doc.ts
 │
 ├── core/
-│   ├── ports/                    Interface definitions
-│   │   ├── llm.ts
-│   │   ├── memory.ts
-│   │   ├── session.ts
-│   │   ├── chunk.ts
-│   │   └── ...
+│   ├── ports/
 │   ├── prompt/
-│   │   ├── engine/               6-layer system
-│   │   │   ├── PromptEngine.ts
-│   │   │   ├── InputNormalizer.ts
-│   │   │   ├── ContextAssembler.ts
-│   │   │   ├── ModeController.ts
-│   │   │   ├── TemplateComposer.ts
-│   │   │   ├── PolicyInjector.ts
-│   │   │   └── PromptFormatter.ts
-│   │   └── templates/            Prompt templates
+│   │   ├── engine/
+│   │   └── templates/
+│   │       └── code/
+│   │           ├── phases/
+│   │           │   ├── plan/
+│   │           │   └── execute/
+│   │           └── languages/
+│   │               ├── typescript/
+│   │               │   └── setup/constraints.md
+│   │               ├── golang/
+│   │               └── python/
 │   ├── chunk/
-│   │   ├── ChunkEngine.ts
-│   │   └── rerank/MMRReranker.ts
+│   ├── codebase/
 │   ├── policies/
-│   │   ├── validations.ts        Validation rules
-│   │   └── prompts/ruleset.json  Policy definitions
-│   ├── types.ts
-│   └── schemas/                  Zod schemas
-│       └── session.schema.ts
+│   └── schemas/
 │
 ├── periphery/
 │   ├── adapters/
-│   │   ├── llm/GenericLLMClient.ts
-│   │   ├── memory/ChromaMemoryAdapter.ts
-│   │   ├── session/FileSessionAdapter.ts
-│   │   ├── chunk/ChunkingAdapter.ts
-│   │   ├── git/SimpleGitAdapter.ts
-│   │   └── ...
 │   └── integrations/
-│       └── vector-memory/
-│           ├── docker-compose.yml
-│           └── chroma-data/
 │
 ├── composition/
-│   └── orchestrator.ts           Wire dependencies
+│   └── orchestrator.ts
 │
 └── cli/
-    ├── command.ts                Commander.js
-    ├── parser.ts
-    └── resolver.ts
 ```
-
----
 
 ## Development
 
-### Type Checking
+### Build
+
+```bash
+npm run build
+```
+
+### Type Check
 
 ```bash
 npx tsc --noEmit
-```
-
-### Running
-
-```bash
-# Development mode
-npm run dev -- arch design workspace/project/feature/directive.md
-
-# Build
-npm run build
 ```
 
 ### Adding New Agent
@@ -544,36 +322,24 @@ npm run build
 4. Wire in `composition/orchestrator.ts`
 5. Add CLI command in `cli/command.ts`
 
----
-
 ## Documentation
 
-- [Architecture Design](docs/designs/architecture-design.md) - Conceptual overview
-- [Architecture Implementation](docs/designs/architecture-implementation.md) - Technical details
-- [Workflow Context Loading](docs/designs/WORKFLOW_CONTEXT_LOADING.md) - Context flow
-- [CLI Guide](docs/guides/CLI_GUIDE.md) - CLI usage
-- [Project Roadmap](docs/designs/project-roadmap.md) - Development plan
-
----
+- [Architecture](docs/designs/ARCHITECTURE.md) - System architecture
+- [Workflow](docs/designs/ARCHITECT_CODE_TASK_WORKFLOW.md) - Code task workflow
+- [CLI Guide](docs/guides/CLI_GUIDE.md) - Command-line usage
+- [Quick Start](docs/guides/QUICK_START.md) - Getting started
 
 ## Tech Stack
 
 - **Runtime**: Node.js 18+, TypeScript
 - **Orchestration**: LangGraph (@langchain/langgraph)
-- **LLM**: OpenAI / Anthropic (via @langchain)
+- **LLM**: OpenAI / Anthropic
 - **Vector DB**: ChromaDB
+- **Template**: Handlebars
 - **Validation**: Zod
 - **CLI**: Commander.js
 - **Git**: simple-git
 
----
-
 ## License
 
 ISC
-
----
-
-**Version**: 1.0.0  
-**Status**: Research/Internal Use  
-**Last Updated**: 2025-10-28

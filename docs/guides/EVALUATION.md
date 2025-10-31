@@ -1,74 +1,35 @@
 # Code Evaluation
 
-코드 생성 후 품질을 자동으로 분석하는 옵션 기능입니다.
+Optional quality analysis after code generation.
 
-## Quick Start
+## Usage
 
 ```bash
-# 코드 생성 + 평가
-npm run dev architect code workspace/myapp/feature/ --eval
+# Generate code with evaluation
+npm run dev -- arch code workspace/myapp/feature/ --eval
 
-# 평가 없이 코드만 생성
-npm run dev architect code workspace/myapp/feature/
+# Generate code without evaluation
+npm run dev -- arch code workspace/myapp/feature/
 ```
 
 ## Workflow
 
 ```
-resolve → plan → execute → validate → evaluate → learn
-                                          ↓
-                                    --eval 플래그 시:
-                                    - 코드 메트릭 분석
-                                    - 품질 리포트 생성
-                                    - 요구사항 체크리스트
+resolve → decompose → plan → execute → 
+writeFiles → validate → installDeps → 
+runtimeValidate → evaluate → learn
+                      ↓
+                (if --eval flag)
 ```
 
 ## Metrics
 
-| 메트릭 | 설명 | 범위 |
-|-------|------|------|
-| Lines of Code | 총 라인 수 (논리적) | - |
-| Cyclomatic Complexity | 코드 복잡도 | 1-10 (Simple), 11-20 (Moderate), 21+ (Complex) |
-| Maintainability Index | 유지보수성 | 0-100 (85+: Excellent, 70-84: Good, 50-69: Moderate) |
-| Comment Density | 주석 비율 | 10-30% (Optimal) |
-
-## Configuration
-
-### Directory Structure
-
-```
-workspace/myapp/feature/
-├── inputs/directives/eval/
-│   ├── tests.json                # 요구사항 체크리스트 (선택)
-│   └── quality-thresholds.json   # 품질 기준 (선택)
-└── outputs/eval/
-    ├── report.json               # JSON 리포트
-    └── report.md                 # Markdown 리포트
-```
-
-### tests.json
-
-```json
-{
-  "name": "feature-evaluation",
-  "tasks": [
-    {
-      "id": "req-1",
-      "description": "사용자 인증 기능 구현"
-    }
-  ]
-}
-```
-
-### quality-thresholds.json
-
-```json
-{
-  "minMaintainabilityIndex": 70,
-  "maxComplexity": 20,
-  "enforceOnFail": false
-}
-```
+| Metric | Description | Range |
+|--------|-------------|-------|
+| Lines of Code | Total logical lines | - |
+| Cyclomatic Complexity | Code complexity | 1-10 (Simple), 11-20 (Moderate), 21+ (Complex) |
+| Maintainability Index | Maintainability score | 0-100 (85+: Excellent, 70-84: Good, 50-69: Moderate) |
+| Comment Density | Comment ratio | 10-30% (Optimal) |
 
 ## Output
 
@@ -89,20 +50,25 @@ workspace/myapp/feature/
    Quality:         GOOD
 
 💡 Recommendations:
-   ✅ 코드 품질이 우수합니다!
-
-📋 Requirements (3 items):
-   Please verify manually in the report
+   ✅ Code quality is excellent!
 
 ═══════════════════════════════════════════════════════════
 ```
 
-### report.md
+### Report Files
+
+```
+workspace/myapp/feature/outputs/eval/
+├── report.json     # JSON report
+└── report.md       # Markdown report
+```
+
+### report.md Example
 
 ```markdown
 # Code Evaluation Report
 
-**Generated**: 2025-10-29 14:30:00
+**Generated**: 2025-10-31
 
 ## Summary
 
@@ -114,47 +80,65 @@ workspace/myapp/feature/
 
 ## Recommendations
 
-✅ 코드 품질이 우수합니다!
-
-## Requirements Checklist
-
-- [ ] **req-1**: 사용자 인증 기능 구현
+✅ Code quality is excellent!
 
 ## File Details
 
 ### src/components/UserAuth.tsx
-- Lines: 89 (논리적: 75)
+- Lines: 89 (logical: 75)
 - Complexity: 7
 - Maintainability: 78.5/100
 - Comment Density: 12.3%
 ```
 
+## Configuration
+
+Optional evaluation config:
+
+```
+workspace/myapp/feature/inputs/directives/eval/
+├── tests.json                # Requirements checklist (optional)
+└── quality-thresholds.json   # Quality criteria (optional)
+```
+
+### tests.json
+
+```json
+{
+  "name": "feature-evaluation",
+  "tasks": [
+    {
+      "id": "req-1",
+      "description": "User authentication implemented"
+    }
+  ]
+}
+```
+
+### quality-thresholds.json
+
+```json
+{
+  "minMaintainabilityIndex": 70,
+  "maxComplexity": 20,
+  "enforceOnFail": false
+}
+```
+
 ## Implementation
 
-### Architecture
-
-**Evaluation은 Architect workflow의 일부**:
+### Node Structure
 
 ```typescript
-// src/agents/architect/graph/code/graph.ts
-graph.addEdge("validate", "evaluate");
-graph.addEdge("evaluate", "learn");
-
 // src/agents/architect/graph/code/nodes/evaluate.ts
 export async function evaluate(state: ArchitectGraphState) {
-  // Skip if not enabled
+  // Skip if --eval flag not provided
   if (!context.enableEvaluation) {
     return state;  // No-op
   }
   
-  // Analyze code from state.files
-  const generatedFiles = state.files.map(f => ({
-    path: f.path,
-    content: f.content
-  }));
-  
-  // Calculate metrics
-  const metrics = analyzeFiles(generatedFiles);
+  // Analyze generated files
+  const metrics = analyzeFiles(state.files);
   
   // Generate report
   const report = createReport(metrics);
@@ -166,14 +150,14 @@ export async function evaluate(state: ArchitectGraphState) {
 }
 ```
 
-### Code Metrics
+### Metrics Calculation
 
 ```typescript
-// src/agents/architect/utils/codeMetrics.ts
-
 // Lines of code
 function countLines(code: string): number {
-  return code.split('\n').length;
+  return code.split('\n').filter(line => 
+    line.trim() && !line.trim().startsWith('//')
+  ).length;
 }
 
 // Cyclomatic complexity
@@ -194,37 +178,38 @@ function estimateMaintainabilityIndex(code: string): number {
 
 ## Features
 
-✅ **간단한 정적 분석**
-- 외부 의존성 없음
-- 빠른 실행
-- 모든 언어 지원
+✅ **Simple static analysis**
+- No external dependencies
+- Fast execution
+- Language agnostic
 
-✅ **선택적 실행**
-- `--eval` 플래그로 제어
-- 플래그 없으면 스킵 (no-op)
+✅ **Optional execution**
+- Controlled by `--eval` flag
+- No performance impact when disabled
 
-✅ **확장 가능**
-- 품질 기준 커스터마이징
-- 요구사항 체크리스트
+✅ **Extensible**
+- Custom quality thresholds
+- Requirements checklist
 
 ## Limitations
 
-❌ **실제 테스트 실행 안함**
+**Does not run actual tests**
 
-**이유**:
-1. 의존성 설치 필요 (npm install)
-2. 빌드 필요 (TypeScript → JavaScript)
-3. 환경 설정 필요 (React 렌더링)
-4. 복잡하고 느리며 자주 실패
+Reasons:
+1. Requires dependency installation (`npm install`)
+2. Requires build (`tsc`)
+3. Requires environment setup (React rendering)
+4. Complex, slow, and often fails
 
-**대안**:
-- 간단한 정적 분석 (복잡도, MI)
-- 요구사항 체크리스트 (수동 확인)
-- 사용자가 직접 테스트 실행
+Alternative:
+- Simple static analysis (complexity, MI)
+- Requirements checklist (manual verification)
+- User runs tests manually
 
 ```bash
-# 기능 테스트는 수동으로
-cd workspace/myapp/feature
+# Run tests manually
+cd /path/to/generated/code
+npm install
 npm test
 ```
 
@@ -232,31 +217,26 @@ npm test
 
 ### Why Simple Static Analysis?
 
-**Before (복잡한 방식)**:
-- ❌ VM에서 코드 실행
-- ❌ ESLint/Prettier 의존성
-- ❌ 테스트 프레임워크 실행
-- ❌ 복잡하고 자주 실패
+**Complex approach** (not used):
+- ❌ Run code in VM
+- ❌ ESLint/Prettier dependencies
+- ❌ Test framework execution
+- ❌ Complex and unreliable
 
-**After (단순한 방식)**:
-- ✅ 정적 분석만
-- ✅ 의존성 없음
-- ✅ 빠르고 안정적
-- ✅ 실용적
+**Simple approach** (current):
+- ✅ Static analysis only
+- ✅ No dependencies
+- ✅ Fast and stable
+- ✅ Practical
 
 ### Why Integrated in Workflow?
 
-**Before (별도 Agent)**:
-- ❌ `Evaluator Agent` (별도 agent)
-- ❌ 코드를 다시 생성해서 테스트
-- ❌ `aidev eval` 명령 필요
+**Separate agent** (not used):
+- ❌ `Evaluator Agent` (separate agent)
+- ❌ Regenerate code for testing
+- ❌ Requires `aidev eval` command
 
-**After (Workflow 통합)**:
-- ✅ Architect workflow에 통합
-- ✅ 생성된 코드를 바로 분석
-- ✅ `--eval` 플래그만 사용
-
----
-
-**더 자세한 워크플로우는 [WORKFLOW_GUIDE.md](guides/WORKFLOW_GUIDE.md)를 참고하세요.**
-
+**Workflow integration** (current):
+- ✅ Integrated in Architect workflow
+- ✅ Analyzes generated code immediately
+- ✅ Simple `--eval` flag
