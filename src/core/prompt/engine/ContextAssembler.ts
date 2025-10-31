@@ -16,6 +16,13 @@ export interface AssembledContext {
   originalFiles?: string;     // Git HEAD version (for comparison)
   currentCode?: string;       // Working tree code
   
+  // Task Context
+  currentTask?: {             // Current task being executed
+    name: string;
+    type: string;
+    description: string;
+  };
+  
   // Memory
   memory?: string;              // Vector memory (long-term knowledge)
   sessionHistory?: string;      // Session history (short-term context)
@@ -49,6 +56,7 @@ export class ContextAssembler {
    * Assemble all context for a given task
    * 
    * @param loader - Optional loader function for task-specific documents
+   * @param artifacts - Pre-loaded artifacts (directive, currentCode, etc.)
    */
   async assemble(
     task: AgentTask,
@@ -58,9 +66,31 @@ export class ContextAssembler {
       memory?: MemoryPort;
       analyzer?: CodebaseAnalyzerPort;
     },
-    loader?: (task: AgentTask, context: any) => Promise<Partial<AssembledContext>>
+    loader?: (task: AgentTask, context: any) => Promise<Partial<AssembledContext>>,
+    artifacts?: {
+      directive?: string;
+      designDoc?: string;
+      prdSpec?: string;
+      originalFiles?: string;
+      currentCode?: string;
+      currentTask?: {
+        name: string;
+        type: string;
+        description: string;
+      };
+    }
   ): Promise<AssembledContext> {
     const assembled: Partial<AssembledContext> = {};
+    
+    // 0. Add pre-loaded artifacts if provided
+    if (artifacts) {
+      assembled.directive = artifacts.directive;
+      assembled.designDoc = artifacts.designDoc;
+      assembled.prdSpec = artifacts.prdSpec;
+      assembled.currentCode = artifacts.currentCode;  // ✅ Include currentCode!
+      assembled.currentTask = artifacts.currentTask;  // ✅ Include current task!
+      // Note: originalFiles from artifacts will be overridden by git if available
+    }
     
     // 1. Load task-specific documents using provided loader
     if (loader) {

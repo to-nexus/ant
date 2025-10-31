@@ -60,7 +60,8 @@ export class TemplateComposer {
         modificationMode: assembled.stats.hasOriginalFiles
           ? 'MODIFICATION MODE: Copy original, then modify'
           : 'CREATION MODE: Build from scratch',
-        currentCode: assembled.currentCode || ''  // ✅ Pass currentCode to template
+        currentCode: assembled.currentCode || '',  // ✅ Pass currentCode to template
+        currentTask: assembled.currentTask || null  // ✅ Pass current task info
       }
     );
     

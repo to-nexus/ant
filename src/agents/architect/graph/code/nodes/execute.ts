@@ -71,6 +71,11 @@ export async function execute(
     prdSpec: state.prd,
     currentCode: state.code,         // Map to old name
     originalFiles: state.codeHead,   // Map to old name
+    currentTask: state.currentTask ? {  // ✅ Pass current task info
+      name: state.currentTask.name,
+      type: state.currentTask.type,
+      description: state.currentTask.description
+    } : undefined
   };
   
   // Build prompt using PromptEngine with taskType
