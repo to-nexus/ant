@@ -84,11 +84,38 @@ REQUIRED OUTPUT FORMAT:
 **Success Criteria:**
 - [How to verify correctness]
 
-**Files to Modify:**
+**Files to Create/Modify:**
 - [actual/file/path.tsx]: [what changes]
 - [actual/file/path2.tsx]: [what changes]
 
 CRITICAL: Use ACTUAL file paths from ORIGINAL FILES or DESIGN DOCUMENT.
 NEVER use placeholder paths like "path/to/file.tsx".
 === END THINKING ===
+
+================================================================================
+RESPONSE
+================================================================================
+
+[Your execution plan summary - max 5-7 sentences explaining what you will implement and how]
+
+⚠️  CRITICAL REMINDER:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🚫 DO NOT OUTPUT ANY CODE OR FILE CONTENT IN THIS PHASE!
+
+Your response should ONLY contain:
+✅ === THINKING === section (analysis and plan)
+✅ RESPONSE section (brief summary)
+
+❌ DO NOT include:
+- <file path="...">...</file> blocks
+- === FILE: ... === blocks  
+- <file_path>...</file_path> blocks
+- Any actual code implementation
+- Configuration file contents
+- Component implementations
+
+The IMPLEMENTATION phase will handle actual code generation.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

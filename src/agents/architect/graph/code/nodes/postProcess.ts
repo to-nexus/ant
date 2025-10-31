@@ -148,7 +148,14 @@ export async function postProcess(state: ArchitectGraphState): Promise<Architect
         if (pm) {
           console.log(`📦 Installing dependencies with ${pm}...`);
           
-          const result = await commandPort.execute(`${pm} install`, {
+          // ✅ CRITICAL FIX: Always use --include=dev if NODE_ENV=production
+          let installCommand = `${pm} install`;
+          if (process.env.NODE_ENV === 'production') {
+            console.warn('⚠️  NODE_ENV=production detected - forcing devDependencies installation');
+            installCommand = `${pm} install --include=dev`;
+          }
+          
+          const result = await commandPort.execute(installCommand, {
             cwd: resolvedPath,
             timeout: 10 * 60 * 1000, // 10 minutes for install
           });
@@ -180,13 +187,11 @@ export async function postProcess(state: ArchitectGraphState): Promise<Architect
               console.warn('\n⚠️  WARNING: Detected potential devDependencies installation issue');
               console.warn(`   NODE_ENV: ${process.env.NODE_ENV || 'not set'}`);
               
-              // Verify TypeScript installation
-              const verifyTsc = await commandPort.execute('npx tsc --version', {
-                cwd: resolvedPath,
-                timeout: 30000
-              });
+              // ✅ CRITICAL FIX: Check if TypeScript exists in LOCAL node_modules (not global)
+              const tscPath = p.join(resolvedPath, 'node_modules', 'typescript');
+              const tscExists = await gitPort.fileExists(p.relative(repoRoot, tscPath));
               
-              if (!verifyTsc.success) {
+              if (!tscExists) {
                 console.error('❌ CRITICAL: TypeScript not found after npm install');
                 console.log('🔧 AUTOMATIC FIX: Running npm install --include=dev\n');
                 
@@ -205,14 +210,12 @@ export async function postProcess(state: ArchitectGraphState): Promise<Architect
                     console.log(lines.slice(-5).join('\n'));
                   }
                   
-                  // Verify TypeScript again
-                  const verifyAgain = await commandPort.execute('npx tsc --version', {
-                    cwd: resolvedPath,
-                    timeout: 30000
-                  });
+                  // Verify TypeScript again in LOCAL node_modules
+                  const tscPathAgain = p.join(resolvedPath, 'node_modules', 'typescript');
+                  const tscExistsAgain = await gitPort.fileExists(p.relative(repoRoot, tscPathAgain));
                   
-                  if (verifyAgain.success) {
-                    console.log(`\n✅ TypeScript successfully installed: ${verifyAgain.stdout.trim()}`);
+                  if (tscExistsAgain) {
+                    console.log('\n✅ TypeScript successfully installed in local node_modules');
                     console.log('✅ Environment issue automatically resolved!\n');
                   } else {
                     // Still failed - deeper issue
@@ -248,7 +251,7 @@ Please check:
                   });
                 }
               } else {
-                console.log('✅ TypeScript verified: ' + verifyTsc.stdout.trim());
+                console.log('✅ TypeScript found in local node_modules');
               }
             }
             

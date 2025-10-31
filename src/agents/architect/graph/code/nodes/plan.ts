@@ -318,36 +318,54 @@ RULES:
     // ✅ SETUP TASK: Add special instructions for config-only generation
     if (nextTask.type === 'setup') {
       const setupContext = `
-🔧 SETUP TASK - CONFIGURATION FILES ONLY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔧 SETUP TASK - CONFIGURATION FILES **ONLY**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-⚠️  CRITICAL INSTRUCTIONS:
-1. Generate ONLY configuration files (NO application code yet):
-   - package.json (with ALL dependencies - don't leave anything for later!)
-   - tsconfig.json / go.mod / pyproject.toml (language config)
-   - Build tool config (vite.config.ts, webpack.config.js, etc.)
-   - Linting config (.eslintrc.json, .prettierrc, etc.)
-   - .gitignore, README.md
-   
-2. DO NOT generate application code files:
-   - ❌ NO src/main.tsx, src/App.tsx, etc.
-   - ❌ NO components, services, or business logic
-   - ✅ ONLY configuration and project setup files
+⛔ **CRITICAL CONSTRAINT - YOU WILL BE PENALIZED FOR VIOLATIONS** ⛔
 
-3. Include ALL dependencies in package.json:
-   - Main dependencies (react, express, etc.)
-   - Dev dependencies (@types/*, build tools, linters)
-   - Peer dependencies (if needed)
-   - Don't defer any dependencies to later tasks
+This is a TWO-PHASE process:
+• PHASE 1 (THIS TASK): Configuration files ONLY
+• PHASE 2 (NEXT TASK): Application code
 
-4. Generate index.html if it's a web project entry point
+📋 **ALLOWED FILES (Configuration & Setup ONLY):**
+✅ package.json (with ALL dependencies)
+✅ tsconfig.json, tsconfig.*.json
+✅ vite.config.ts / webpack.config.js / rollup.config.js
+✅ tailwind.config.js, postcss.config.js
+✅ .eslintrc.json, .prettierrc, .editorconfig
+✅ .gitignore, .env.example
+✅ README.md, LICENSE
+✅ index.html (ONLY if it's the HTML entry point)
 
-Why? This allows us to:
-- Install dependencies first
-- Validate configuration before writing code
-- Fix any config issues early
-- Ensure proper development environment setup
+🚫 **FORBIDDEN FILES (Application Code - DO NOT GENERATE):**
+❌ src/* (ALL files in src directory)
+❌ app/* (ALL files in app directory)
+❌ lib/* (ALL files in lib directory)
+❌ components/* (ALL files in components directory)
+❌ Any .tsx, .jsx files (except *.config.tsx)
+❌ main.tsx, App.tsx, index.tsx
+❌ Any business logic or component files
 
-FOCUS: Project foundation and tooling setup ONLY.
+⚠️  **VALIDATION CHECK:**
+Before outputting, verify EACH file:
+• Does the path start with "src/"? → ❌ DELETE IT!
+• Does the path start with "app/"? → ❌ DELETE IT!
+• Is it a component/logic file? → ❌ DELETE IT!
+• Is it a configuration file? → ✅ KEEP IT!
+
+📌 **WHY THIS CONSTRAINT:**
+1. Dependencies must be installed FIRST
+2. Configuration must be validated BEFORE code
+3. Application code will be generated in the NEXT task
+4. This ensures a clean, working environment
+
+🎯 **YOUR TASK:**
+Generate ONLY the project foundation files listed above.
+The next task will handle all application code.
+
+⛔ **REMINDER: YOU WILL BE PENALIZED IF YOU GENERATE ANY src/* FILES** ⛔
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 `;
       
       promptMessages = result.formatted.messages.map((msg, idx) => {

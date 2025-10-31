@@ -78,7 +78,60 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
 
   console.log(`\n📋 Running runtime validation in: ${resolvedPath}\n`);
 
-  // ✅ Detect project type first
+  // ✅ CRITICAL: Setup Task uses lightweight validation only
+  const isSetupTask = state.currentTask?.type === 'setup';
+  if (isSetupTask) {
+    console.log('⚙️  Setup Task detected - using lightweight validation');
+    console.log('   ✅ Configuration files syntax check');
+    console.log('   ⏭️  Skipping: TypeScript compilation');
+    console.log('   ⏭️  Skipping: Build execution');
+    console.log('   ⏭️  Skipping: Lint checks\n');
+    
+    // Lightweight validation: Just check if config files are valid JSON
+    const configFiles = ['package.json', 'tsconfig.json'];
+    const errors: string[] = [];
+    
+    for (const file of configFiles) {
+      const filePath = p.join(resolvedPath, file);
+      const exists = await gitPort.fileExists(p.relative(repoRoot, filePath));
+      
+      if (exists && file.endsWith('.json')) {
+        try {
+          const content = await gitPort.readFile(p.relative(repoRoot, filePath));
+          if (!content) {
+            errors.push(`${file} is empty`);
+            console.error(`   ❌ ${file} - empty file`);
+            continue;
+          }
+          JSON.parse(content);
+          console.log(`   ✅ ${file} - valid JSON`);
+        } catch (e) {
+          const error = `Invalid JSON in ${file}: ${e instanceof Error ? e.message : String(e)}`;
+          errors.push(error);
+          console.error(`   ❌ ${file} - ${error}`);
+        }
+      }
+    }
+    
+    if (errors.length > 0) {
+      console.log('\n⚠️  Configuration file errors found\n');
+      return {
+        ...state,
+        violations: errors.map(error => ({
+          type: 'config_error',
+          severity: 'major',
+          message: error,
+          suggestedFix: 'Fix JSON syntax in configuration files',
+          isRetryable: true
+        }))
+      };
+    }
+    
+    console.log('\n✅ All configuration files are valid!\n');
+    return state;
+  }
+
+  // ✅ Detect project type first (for non-setup tasks)
   const projectDetection = await detectProject(resolvedPath, gitPort);
   console.log(`🔍 Detected: ${projectDetection.language} + ${projectDetection.buildTool} (${projectDetection.packageManager})`);
 
