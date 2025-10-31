@@ -14,6 +14,8 @@ import { GeneratedFile } from "../state";
  * 1. === FILE: path === ... === END FILE ===
  * 2. <file path="...">...</file>
  * 3. <file_path>...</file_path><file_code>...</file_code>
+ * 4. ### FILE: path (or ### path) followed by ```code block```
+ * 5. #### path followed by ```code block```
  * 
  * Also handles:
  * - <code_output> wrapper
@@ -68,6 +70,22 @@ const FILE_PARSERS: FileParser[] = [
   {
     name: 'Path+Code Format',
     regex: /<file_path>(.+?)<\/file_path>\s*<file_code>([\s\S]*?)<\/file_code>/g,
+    extractPath: (m) => m[1].trim(),
+    extractContent: (m) => m[2].trim(),
+  },
+  {
+    name: 'Markdown Header H3 + Code Block',
+    // Matches: ### FILE: path or ### path
+    // Followed by optional language identifier and code block
+    regex: /###\s*(?:FILE:\s*)?(.+?)\s*\n```[\w]*\s*\n([\s\S]*?)\n```/g,
+    extractPath: (m) => m[1].trim(),
+    extractContent: (m) => m[2].trim(),
+  },
+  {
+    name: 'Markdown Header H4 + Code Block',
+    // Matches: #### path
+    // Followed by optional language identifier and code block
+    regex: /####\s+(.+?)\s*\n```[\w]*\s*\n([\s\S]*?)\n```/g,
     extractPath: (m) => m[1].trim(),
     extractContent: (m) => m[2].trim(),
   },
