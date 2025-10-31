@@ -2,6 +2,23 @@
 
 AI-driven code generation framework with autonomous error resolution.
 
+## Monorepo Structure
+
+```
+ant/
+├── packages/
+│   ├── ant-cli/              # CLI tool (main)
+│   │   ├── src/
+│   │   ├── dist/
+│   │   └── package.json
+│   └── ant-ui/               # Web UI (monitoring)
+│       ├── src/
+│       └── package.json
+├── workspace/                # Projects
+├── docs/                     # Documentation
+└── package.json              # Root workspace
+```
+
 ## Overview
 
 Internal framework for automated software development using LLM agents. Core features:
@@ -11,45 +28,6 @@ Internal framework for automated software development using LLM agents. Core fea
 - Task-based error resolution with retry strategies
 - Dynamic validation (build, lint, type check)
 - Session-based checkpointing for interruption recovery
-
-## Architecture
-
-### Dependency Structure
-
-```
-core/              Domain logic, interfaces (ports)
-  ├─ ports/        Interface definitions
-  ├─ types.ts      Core types
-  ├─ policies/     Rules and validation
-  └─ prompt/       6-layer prompt engineering
-
-agents/            Business logic using ports
-  └─ architect/    
-      ├─ graph/    LangGraph workflows
-      └─ memory/   Vector query service
-
-periphery/         Port implementations (adapters)
-  └─ adapters/     
-      ├─ llm/      GenericLLMClient (OpenAI/Anthropic)
-      ├─ memory/   ChromaMemoryAdapter (ChromaDB)
-      ├─ git/      SimpleGitAdapter
-      └─ session/  FileSessionAdapter
-```
-
-Dependency flow: `agents → core ← periphery`
-
-### Prompt Engineering (6 Layers)
-
-```typescript
-PromptEngine.buildExecutePrompt() {
-  1. InputNormalizer    - Standardize inputs
-  2. ContextAssembler   - Aggregate context sources
-  3. ModeController     - Select templates & config
-  4. TemplateComposer   - Build from templates (Handlebars)
-  5. PolicyInjector     - Inject guardrails
-  6. PromptFormatter    - Format for LLM API
-}
-```
 
 ## Installation
 
@@ -74,31 +52,79 @@ CHROMA_URL=http://localhost:8000
 EOF
 
 # Start ChromaDB
-cd src/periphery/integrations/vector-memory
+cd packages/ant-cli/src/periphery/integrations/vector-memory
 docker-compose up -d
+cd ../../../../../..
 
 # Build
-npm run build
+pnpm build
 ```
 
 ## Usage
 
-### CLI Structure
+### CLI Commands
 
 ```bash
-npm run dev -- <agent> <task> [options] <input>
+# Architecture design
+pnpm dev arch design workspace/my-app/feature/
+
+# Code generation
+pnpm dev arch code workspace/my-app/feature/
+
+# Code with evaluation
+pnpm dev arch code workspace/my-app/feature/ --eval
 ```
 
-### Architect Agent
+### Web UI (Development)
 
-Primary agent for design and code generation.
+```bash
+# Start UI dev server
+pnpm dev:ui
 
-**Tasks:**
-- `design` - PRD → Design document
-- `code` - Design → Code files (with error resolution)
-- `learn` - Code analysis → Vector storage
+# Access at http://localhost:3000
+```
 
-**Code Task Workflow:**
+## Architecture
+
+### CLI Package (@ant/cli)
+
+```
+packages/ant-cli/src/
+├── agents/           # Business logic
+│   └── architect/
+│       ├── graph/    # LangGraph workflows
+│       └── memory/   # Vector query
+├── core/             # Domain logic
+│   ├── ports/        # Interfaces
+│   ├── types.ts
+│   ├── policies/
+│   └── prompt/       # 6-layer prompt engineering
+└── periphery/        # Infrastructure
+    └── adapters/
+        ├── llm/
+        ├── memory/
+        ├── git/
+        └── session/
+```
+
+Dependency flow: `agents → core ← periphery`
+
+### UI Package (@ant/ui)
+
+```
+packages/ant-ui/src/
+├── components/       # React components
+├── repositories/     # Data access (file watcher / API)
+├── services/         # CLI command execution
+└── App.tsx
+```
+
+UI imports types directly from `@ant/cli`:
+```typescript
+import { Task, Session, Violation } from '@ant/cli/src/agents/architect/graph/code/state';
+```
+
+## Code Task Workflow
 
 ```
 resolve → decompose → [Task Loop] → evaluate → learn
@@ -115,212 +141,38 @@ resolve → decompose → [Task Loop] → evaluate → learn
 ```
 
 **Key Features:**
-- **Task Decomposition**: LLM breaks spec into executable tasks
-- **Priority Queue**: Setup (100+), Errors (1-99), Features (200-299)
-- **Checkpointing**: State saved after plan/execute/validate
-- **Recursion Limit Handling**: Auto-resume from last checkpoint
-- **Language-Specific Validation**: Setup tasks skip TypeScript checks
-- **Diagnostics System**: Structured error analysis and fix suggestions
-
-**Examples:**
-
-```bash
-# Create workspace (auto-initialized)
-npm run dev -- architect design workspace/my-app/auth/
-
-# Edit PRD
-vim workspace/my-app/auth/inputs/sources/prd.md
-
-# Generate design
-npm run dev -- architect design workspace/my-app/auth/
-
-# Generate code
-npm run dev -- architect code workspace/my-app/auth/
-
-# Generate code with evaluation
-npm run dev -- architect code workspace/my-app/auth/ --eval
-```
-
-### Code Generation Modes
-
-- `generate` (default) - Create new files
-- `edit` - Modify existing files (uses Git diff)
-- `refactor` - Restructure code
-
-## Memory System
-
-### Dual Memory Architecture
-
-| Type | Scope | Storage | Content | Loaded |
-|------|-------|---------|---------|--------|
-| Vector | Cross-feature | ChromaDB | Patterns, learnings, decisions | Before graph |
-| Session | Feature-specific | JSON file | Turn history, state, artifacts | Before graph |
-
-### Storage Flow
-
-```typescript
-// Load memories before graph execution
-const memory = await retrieve(task, project, feature);
-const session = await sessionPort.load(project, feature);
-
-// Execute graph with context
-const result = await runCodeGraph({ memory, session, ... });
-
-// Store learnings in learn node
-await sessionPort.addTurn(project, feature, turn);
-await memoryPort.store(chunks, metadata);
-```
-
-### Checkpointing
-
-State is saved at critical points:
-- After `plan`: Task plan generated
-- After `execute`: Files generated by LLM
-- After `runtimeValidate`: Validation complete
-
-If recursion limit is hit, state is restored from last checkpoint on next run.
-
-## Validation System
-
-Code generation only (Design has no validation).
-
-### Static Validation (validate node)
-
-Fast checks:
-- Ellipsis patterns (`...`)
-- Excessive deletion (< 70% of original)
-- No files generated
-
-### Dynamic Validation (runtimeValidate node)
-
-Real execution:
-- TypeScript type-check (`tsc --noEmit`)
-- ESLint (if configured)
-- Build (`npm run build`)
-- Dependency installation verification
-
-**Setup Task Exception**: Setup tasks (config files) skip TypeScript/build checks, only validate JSON syntax.
-
-### Diagnostics System
-
-Language-specific error analysis:
-- TypeScript: TS error codes, import resolution
-- ESLint: Ignores build artifacts (dist/), focuses on source
-- npm: Detects missing dependencies, NODE_ENV issues
-- Vite/Webpack: Detects missing entry files, config errors
-
-Structured violations:
-```typescript
-interface Violation {
-  type: ViolationType;
-  severity: 'critical' | 'major' | 'minor';
-  message: string;
-  file?: string;
-  suggestedFix?: string;
-  isRetryable?: boolean;  // Key for retry logic
-}
-```
-
-## Project Structure
-
-```
-workspace/
-  project/
-    config.json
-    feature/
-      inputs/
-        directives/
-          design/directive.md
-          code/directive.md
-        sources/prd.md
-      outputs/
-        design/design-*.md
-        reports/architect-code-*.log
-      session.json
-```
-
-Generated code is written to repository root (e.g., `src/`, `lib/`), not `workspace/outputs/`.
-
-## Code Structure
-
-```
-src/
-├── agents/
-│   ├── architect/
-│   │   ├── graph/
-│   │   │   └── code/
-│   │   │       ├── nodes/
-│   │   │       │   ├── resolve.ts
-│   │   │       │   ├── decompose.ts
-│   │   │       │   ├── plan.ts
-│   │   │       │   ├── execute.ts
-│   │   │       │   ├── writeFiles.ts       # ✅ Write files to disk
-│   │   │       │   ├── validate.ts         # Static checks
-│   │   │       │   ├── installDeps.ts      # npm install
-│   │   │       │   ├── runtimeValidate.ts  # Build/lint
-│   │   │       │   ├── enforce.ts
-│   │   │       │   ├── evaluate.ts
-│   │   │       │   ├── learn.ts
-│   │   │       │   ├── checkpoint.ts       # Save state
-│   │   │       │   └── diagnostics/        # Error analysis
-│   │   │       ├── graph.ts
-│   │   │       ├── state.ts
-│   │   │       └── runner.ts
-│   │   └── memory/
-│   ├── reviewer.ts
-│   ├── planner.ts
-│   └── doc.ts
-│
-├── core/
-│   ├── ports/
-│   ├── prompt/
-│   │   ├── engine/
-│   │   └── templates/
-│   │       └── code/
-│   │           ├── phases/
-│   │           │   ├── plan/
-│   │           │   └── execute/
-│   │           └── languages/
-│   │               ├── typescript/
-│   │               │   └── setup/constraints.md
-│   │               ├── golang/
-│   │               └── python/
-│   ├── chunk/
-│   ├── codebase/
-│   ├── policies/
-│   └── schemas/
-│
-├── periphery/
-│   ├── adapters/
-│   └── integrations/
-│
-├── composition/
-│   └── orchestrator.ts
-│
-└── cli/
-```
+- Task decomposition with priority queue
+- Checkpointing (after plan/execute/validate)
+- Recursion limit handling with auto-resume
+- Language-specific validation
+- Diagnostics system
 
 ## Development
 
-### Build
+### Build All
 
 ```bash
-npm run build
+pnpm build
+```
+
+### Build CLI Only
+
+```bash
+pnpm build:cli
+```
+
+### Build UI Only
+
+```bash
+pnpm build:ui
 ```
 
 ### Type Check
 
 ```bash
+cd packages/ant-cli
 npx tsc --noEmit
 ```
-
-### Adding New Agent
-
-1. Define port interfaces in `core/ports/`
-2. Implement agent logic in `agents/`
-3. Create adapter in `periphery/adapters/`
-4. Wire in `composition/orchestrator.ts`
-5. Add CLI command in `cli/command.ts`
 
 ## Documentation
 
@@ -328,10 +180,12 @@ npx tsc --noEmit
 - [Workflow](docs/designs/ARCHITECT_CODE_TASK_WORKFLOW.md) - Code task workflow
 - [CLI Guide](docs/guides/CLI_GUIDE.md) - Command-line usage
 - [Quick Start](docs/guides/QUICK_START.md) - Getting started
+- [Evaluation](docs/guides/EVALUATION.md) - Code evaluation
 
 ## Tech Stack
 
 - **Runtime**: Node.js 18+, TypeScript
+- **Package Manager**: pnpm workspaces
 - **Orchestration**: LangGraph (@langchain/langgraph)
 - **LLM**: OpenAI / Anthropic
 - **Vector DB**: ChromaDB
@@ -339,6 +193,7 @@ npx tsc --noEmit
 - **Validation**: Zod
 - **CLI**: Commander.js
 - **Git**: simple-git
+- **UI**: React + Vite
 
 ## License
 

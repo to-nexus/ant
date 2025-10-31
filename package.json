@@ -1,42 +1,21 @@
 {
-  "name": "ant",
+  "name": "ant-monorepo",
   "version": "1.0.0",
-  "description": "ANT (AI-Native Transformation) - AI-native development framework for automated architecture design, code generation, and iterative refinement",
-  "main": "index.js",
-  "bin": {
-    "aidev": "./dist/index.js"
-  },
+  "private": true,
+  "description": "ANT (AI-Native Transformation) - Monorepo",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "tsx src/index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "init:workspace": "tsx src/cli/init-cli.ts workspace",
-    "init:feature": "tsx src/cli/init-cli.ts feature"
+    "dev": "pnpm --filter @ant/cli dev",
+    "build": "pnpm -r build",
+    "build:cli": "pnpm --filter @ant/cli build",
+    "build:ui": "pnpm --filter @ant/ui build",
+    "dev:ui": "pnpm --filter @ant/ui dev",
+    "init:workspace": "pnpm --filter @ant/cli init:workspace",
+    "init:feature": "pnpm --filter @ant/cli init:feature"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "dependencies": {
-    "@langchain/anthropic": "^1.0.0",
-    "@langchain/core": "^1.0.1",
-    "@langchain/langgraph": "^1.0.1",
-    "@langchain/openai": "^1.0.0",
-    "@octokit/rest": "^22.0.0",
-    "anthropic": "^0.0.0",
-    "chromadb": "^3.0.17",
-    "commander": "^14.0.2",
-    "dotenv": "^17.2.3",
-    "handlebars": "^4.7.8",
-    "langchain": "^1.0.1",
-    "openai": "^6.5.0",
-    "simple-git": "^3.28.0",
-    "zod": "^4.1.12"
-  },
   "devDependencies": {
-    "@types/handlebars": "^4.1.0",
-    "@types/node": "^24.8.1",
-    "tsx": "^4.20.6",
     "typescript": "^5.9.3"
   }
 }

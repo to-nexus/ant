@@ -1,0 +1,42 @@
+{
+  "name": "@ant/cli",
+  "version": "1.0.0",
+  "description": "ANT CLI - AI-native development framework",
+  "main": "dist/index.js",
+  "bin": {
+    "aidev": "./dist/index.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "tsx src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "init:workspace": "tsx src/cli/init-cli.ts workspace",
+    "init:feature": "tsx src/cli/init-cli.ts feature"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@langchain/anthropic": "^1.0.0",
+    "@langchain/core": "^1.0.1",
+    "@langchain/langgraph": "^1.0.1",
+    "@langchain/openai": "^1.0.0",
+    "@octokit/rest": "^22.0.0",
+    "anthropic": "^0.0.0",
+    "chromadb": "^3.0.17",
+    "commander": "^14.0.2",
+    "dotenv": "^17.2.3",
+    "handlebars": "^4.7.8",
+    "langchain": "^1.0.1",
+    "openai": "^6.5.0",
+    "simple-git": "^3.28.0",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/handlebars": "^4.1.0",
+    "@types/node": "^24.8.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}
