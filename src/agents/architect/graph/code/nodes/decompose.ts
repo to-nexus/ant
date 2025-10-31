@@ -108,73 +108,110 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   
   // Check if this is a new project (no existing code)
   const isNewProject = !state.code || state.code.trim().length === 0;
+  const hasExistingCode = Boolean(state.code && state.code.trim().length > 0);
   
   const prompt = `You are analyzing a software specification to break it into executable tasks.
 
 SPECIFICATION:
 ${spec}
 
-${isNewProject ? `
-🆕 THIS IS A NEW PROJECT (no existing codebase detected)
+${hasExistingCode ? `
+📂 EXISTING CODEBASE DETECTED
 
-CRITICAL: You MUST create a SETUP task first!
+Current code structure:
+${state.code ? state.code.split('\n').slice(0, 20).join('\n') + '\n...' : '(empty)'}
+` : `
+🆕 NEW PROJECT (no existing codebase)
+`}
 
-Return JSON with this structure:
+⚙️  SETUP TASK DECISION:
+
+Analyze the specification and decide if a SETUP task is needed.
+
+**When to create a SETUP task (priority 100):**
+
+1. **New Project**: No existing code → ALWAYS need setup
+   - Example: Generate package.json, tsconfig.json, vite.config.ts, etc.
+
+2. **New Infrastructure**: Adding new tools/frameworks to existing project
+   - Adding Docker: Dockerfile, docker-compose.yml
+   - Adding Testing: jest.config.js, vitest.config.ts
+   - Adding CI/CD: .github/workflows/, .gitlab-ci.yml
+   - Adding Storybook: .storybook/ config
+   - Changing build tools: webpack → vite (new configs)
+
+3. **New Language/Runtime**: Adding different tech stack
+   - Adding Rust to Node project: Cargo.toml
+   - Adding Python service: requirements.txt, pyproject.toml
+   - Adding Go service: go.mod
+
+4. **Major Configuration Changes**:
+   - Switching package managers: npm → pnpm (pnpm-workspace.yaml)
+   - Adding monorepo structure: lerna.json, turbo.json
+   - Major dependency upgrades requiring config changes
+
+**When NOT to create a SETUP task:**
+- Simple bug fixes
+- Feature additions using existing infrastructure
+- Code refactoring
+- UI changes
+- Business logic updates
+
+**If SETUP is needed, return:**
 {
   "tasks": [
       {
-        "id": "setup-project-config",
-        "name": "Setup Project Configuration",
+        "id": "setup-[descriptive-name]",
+        "name": "Setup [What You're Setting Up]",
         "type": "setup",
         "priority": 100,
-        "description": "Generate package.json, tsconfig.json/go.mod/pyproject.toml, build tool config (vite.config.ts/etc), .gitignore, README.md, and install dependencies. This establishes the foundation before any code is written."
+        "description": "Generate [specific config files]. Example: Dockerfile, docker-compose.yml, .dockerignore for Docker support"
       },
       ... then feature tasks (priority 200+) ...
   ]
 }
 
-The setup task should:
-- Generate ALL configuration files (package.json, language config, build config)
-- Include ALL dependencies in package.json (don't leave anything for later)
-- Set up linting (.eslintrc, .prettierrc, etc.)
-- Create project structure docs (README.md)
-` : ''}
-
 YOUR TASK:
 Break this specification into a prioritized list of implementation tasks.
 
 GUIDELINES:
-1. **${isNewProject ? 'Setup Task (priority 100):' : ''}**
-${isNewProject ? '   - REQUIRED for new projects\n   - Generate ALL config files at once\n   - Priority MUST be 100 (executes before everything)\n   \n2. **' : '1. **'}Feature Tasks** (priority 200-299):
+1. **Setup Task (priority 100)** - OPTIONAL, create only if needed:
+   - Analyze spec: Does it require NEW configuration files?
+   - If yes: Create setup task describing WHAT configs to generate
+   - If no: Skip to feature tasks
+   - Setup task should ONLY generate config files (NO application code)
+   
+2. **Feature Tasks** (priority 200-299):
    - Extract from the specification
    - Each task should be a meaningful, user-facing feature
    - Focus on WHAT to build, not HOW (that comes later)
    - Examples: "Implement User Authentication", "Build Todo CRUD API"
    
-${isNewProject ? '3' : '2'}. **Task Granularity**:
+3. **Task Granularity**:
    - Not too large: Each task should be independently implementable
    - Not too small: Avoid micro-tasks like "Create one file"
    - Good size: A feature that delivers value (e.g., "Login system")
    
-${isNewProject ? '4' : '3'}. **Priority Guide** (LOWER NUMBER = HIGHER PRIORITY):
-   ${isNewProject ? '- Setup: 100 (FIRST - config files)\n   ' : ''}- Critical features: 200-219 (execute ${isNewProject ? 'after setup' : 'first'})
+4. **Priority Guide** (LOWER NUMBER = HIGHER PRIORITY):
+   - Setup: 100 (FIRST - if needed for config files)
+   - Critical features: 200-219 (execute after setup if present)
    - Important features: 220-249
    - Nice-to-have features: 250-279 (execute last)
    
-${isNewProject ? '5' : '4'}. **Dependencies**:
+5. **Dependencies**:
    - Order tasks by dependency (foundational features first)
    - But don't worry too much - errors will be handled dynamically
 
 Return JSON ONLY (no explanation):
 {
   "tasks": [
-      ${isNewProject ? `{
-        "id": "setup-project-config",
-        "name": "Setup Project Configuration", 
+      {
+        "id": "setup-docker",
+        "name": "Setup Docker Configuration",
         "type": "setup",
         "priority": 100,
-        "description": "Generate all config files and install dependencies"
-      },` : ''}
+        "description": "Generate Dockerfile, docker-compose.yml, .dockerignore"
+      },
       {
         "id": "auth-impl",
         "name": "Implement User Authentication System",
@@ -186,8 +223,11 @@ Return JSON ONLY (no explanation):
 }
 
 IMPORTANT:
-- ${isNewProject ? 'NEW PROJECT: Setup task is MANDATORY (priority 100)\n- ' : ''}If the spec only mentions "build a React app" with no specific features → ${isNewProject ? 'still include setup task, but' : ''} return empty array for features
-- Focus on USER-FACING features, not infrastructure (build setup is handled by setup task)
+- **Decide intelligently**: Create setup task ONLY if spec requires new configuration
+- If NEW PROJECT: Setup task is typically needed (but analyze the spec!)
+- If EXISTING PROJECT: Setup task only if adding new tools/infrastructure
+- If the spec only mentions "build a React app" with no specific features → return setup task + empty array for features
+- Focus on USER-FACING features, not infrastructure (infrastructure = setup task)
 - Each task must have unique id (kebab-case)`;
 
   try {
