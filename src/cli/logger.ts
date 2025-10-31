@@ -97,14 +97,42 @@ export class TaskLogger {
    * Stop intercepting and restore original functions
    */
   stop() {
+    // First restore original functions
     console.log = this.originalConsoleLog;
     console.error = this.originalConsoleError;
     console.warn = this.originalConsoleWarn;
     process.stdout.write = this.originalStdoutWrite;
     
+    // Force flush before ending
+    // @ts-ignore - _handle is internal Node.js API
+    if (typeof process.stdout._handle?.flush === 'function') {
+      // @ts-ignore
+      process.stdout._handle.flush();
+    }
+    
+    // End stream synchronously
     this.stream.end();
     
     this.originalConsoleLog(`\n📝 Log saved to: ${this.logFile}`);
+  }
+  
+  /**
+   * Stop intercepting and wait for stream to finish (async version)
+   */
+  async stopAsync(): Promise<void> {
+    return new Promise((resolve) => {
+      // First restore original functions
+      console.log = this.originalConsoleLog;
+      console.error = this.originalConsoleError;
+      console.warn = this.originalConsoleWarn;
+      process.stdout.write = this.originalStdoutWrite;
+      
+      // End stream and wait for finish
+      this.stream.end(() => {
+        this.originalConsoleLog(`\n📝 Log saved to: ${this.logFile}`);
+        resolve();
+      });
+    });
   }
   
   /**

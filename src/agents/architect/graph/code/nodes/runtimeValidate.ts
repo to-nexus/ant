@@ -384,78 +384,94 @@ function convertDiagnosesToViolations(result: RuntimeValidationResult): Violatio
     }
   }
   
-  // ✅ Fallback: Convert old-style errors to violations (for backwards compatibility)
-  else {
-    // Build errors (highest priority - often missing files or deps)
-    if (result.buildErrors && result.buildErrors.length > 0) {
-      for (const error of result.buildErrors) {
-        // Check for missing entry file
-        if (error.includes('MISSING REQUIRED FILE') || error.includes('Could not resolve entry module')) {
-          const fileMatch = error.match(/index\.html|main\.tsx?|main\.jsx?|index\.tsx?|index\.jsx?/);
-          violations.push({
-            type: 'missing_file',
-            severity: 'critical',
-            file: fileMatch ? fileMatch[0] : 'entry file',
-            message: error,
-            suggestedFix: 'Create the missing entry file',
-            isRetryable: false
-          });
-        }
-        // Check for missing module/dependency
-        else if (error.includes('Cannot find module') || error.includes('MISSING MODULE')) {
-          const moduleMatch = error.match(/["'](.+?)["']/);
-          violations.push({
-            type: 'missing_dependency',
-            severity: 'critical',
-            module: moduleMatch ? moduleMatch[1] : 'unknown',
-            message: error,
-            suggestedFix: 'Install missing dependency or create missing file',
-            isRetryable: false
-          });
-        }
-        // Other build errors
-        else {
-          violations.push({
-            type: 'build_error',
-            severity: 'major',
-            message: error,
-            suggestedFix: 'Fix build configuration or code',
-            isRetryable: false
-          });
-        }
+  // ⚠️ CRITICAL: ALWAYS check buildErrors/typeErrors/lintErrors
+  // Even if we have diagnoses, some errors might not have diagnosis patterns yet
+  // (e.g. PostCSS config errors, new error types)
+  
+  // Track which errors are already covered by diagnoses to avoid duplicates
+  const diagnosedMessages = new Set(
+    result.diagnoses?.map(d => d.message) || []
+  );
+  
+  // Build errors (highest priority - often missing files or deps)
+  if (result.buildErrors && result.buildErrors.length > 0) {
+    for (const error of result.buildErrors) {
+      // Skip if already covered by diagnosis
+      if (diagnosedMessages.has(error)) continue;
+      
+      // Check for missing entry file
+      if (error.includes('MISSING REQUIRED FILE') || error.includes('Could not resolve entry module')) {
+        const fileMatch = error.match(/index\.html|main\.tsx?|main\.jsx?|index\.tsx?|index\.jsx?/);
+        violations.push({
+          type: 'missing_file',
+          severity: 'critical',
+          file: fileMatch ? fileMatch[0] : 'entry file',
+          message: error,
+          suggestedFix: 'Create the missing entry file',
+          isRetryable: false
+        });
+      }
+      // Check for missing module/dependency
+      else if (error.includes('Cannot find module') || error.includes('MISSING MODULE')) {
+        const moduleMatch = error.match(/["'](.+?)["']/);
+        violations.push({
+          type: 'missing_dependency',
+          severity: 'critical',
+          module: moduleMatch ? moduleMatch[1] : 'unknown',
+          message: error,
+          suggestedFix: 'Install missing dependency or create missing file',
+          isRetryable: false
+        });
+      }
+      // Other build errors
+      else {
+        violations.push({
+          type: 'build_error',
+          severity: 'major',
+          message: error,
+          suggestedFix: 'Fix build configuration or code',
+          isRetryable: true  // ✅ Make it retryable so LLM can try to fix
+        });
       }
     }
-    
-    // Type errors
-    if (result.typeErrors && result.typeErrors.length > 0) {
+  }
+  
+  // Type errors (only if not already covered by diagnoses)
+  if (result.typeErrors && result.typeErrors.length > 0) {
+    const uncoveredTypeErrors = result.typeErrors.filter(e => !diagnosedMessages.has(e));
+    if (uncoveredTypeErrors.length > 0) {
       violations.push({
         type: 'type_error',
         severity: 'major',
-        message: `TypeScript type errors (${result.typeErrors.length} total):\n${result.typeErrors.slice(0, 5).join('\n')}${result.typeErrors.length > 5 ? `\n... and ${result.typeErrors.length - 5} more` : ''}`,
+        message: `TypeScript type errors (${uncoveredTypeErrors.length} total):\n${uncoveredTypeErrors.slice(0, 5).join('\n')}${uncoveredTypeErrors.length > 5 ? `\n... and ${uncoveredTypeErrors.length - 5} more` : ''}`,
         suggestedFix: 'Fix type errors in code',
         isRetryable: true
       });
     }
-    
-    // Import errors (from type errors or build errors)
-    const importErrors = [...(result.typeErrors || []), ...(result.buildErrors || [])]
-      .filter(e => e.includes("Cannot find module") || e.includes("Module not found"));
-    if (importErrors.length > 0) {
-      violations.push({
-        type: 'import_error',
-        severity: 'major',
-        message: `Import errors (${importErrors.length} total):\n${importErrors.slice(0, 3).join('\n')}`,
-        suggestedFix: 'Fix import paths or install missing dependencies',
-        isRetryable: false
-      });
-    }
-    
-    // Lint errors (lowest priority)
-    if (result.lintErrors && result.lintErrors.length > 0) {
+  }
+  
+  // Import errors (from type errors or build errors)
+  const importErrors = [...(result.typeErrors || []), ...(result.buildErrors || [])]
+    .filter(e => e.includes("Cannot find module") || e.includes("Module not found"))
+    .filter(e => !diagnosedMessages.has(e));
+  if (importErrors.length > 0) {
+    violations.push({
+      type: 'import_error',
+      severity: 'major',
+      message: `Import errors (${importErrors.length} total):\n${importErrors.slice(0, 3).join('\n')}`,
+      suggestedFix: 'Fix import paths or install missing dependencies',
+      isRetryable: false
+    });
+  }
+  
+  // Lint errors (lowest priority, only if not already covered)
+  if (result.lintErrors && result.lintErrors.length > 0) {
+    const uncoveredLintErrors = result.lintErrors.filter(e => !diagnosedMessages.has(e));
+    if (uncoveredLintErrors.length > 0) {
       violations.push({
         type: 'lint_error',
         severity: 'minor',
-        message: `ESLint errors (${result.lintErrors.length} total) - LOW PRIORITY`,
+        message: `ESLint errors (${uncoveredLintErrors.length} total) - LOW PRIORITY`,
         suggestedFix: 'Fix lint errors (but prioritize build/type errors first)',
         isRetryable: true
       });
