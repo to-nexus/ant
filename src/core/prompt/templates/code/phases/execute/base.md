@@ -12,6 +12,27 @@ KEY WORKING PRINCIPLES:
 2. {{modificationMode}}
 3. Write COMPLETE files - NEVER use "// ..." to skip code
 
+⚠️  CRITICAL: EXISTING FILES IN WORKING DIRECTORY
+{{#if currentCode}}
+The following files ALREADY EXIST in the working directory:
+
+{{currentCode}}
+
+**RULES FOR EXISTING FILES:**
+- ✅ DO: Modify existing files ONLY if needed for current task
+- ❌ DON'T: Regenerate/recreate files that already exist unchanged
+- ✅ DO: Import from and reference existing files
+- ❌ DON'T: Output configuration files (package.json, tsconfig.json, etc.) unless they need changes
+- ✅ FOCUS: Generate ONLY the NEW files needed for this task
+
+**Example:**
+If package.json, tsconfig.json already exist and don't need changes → DON'T output them
+If you need to add a new dependency → Output modified package.json
+If creating new component → Output only the NEW component file
+{{else}}
+No existing files detected - this is a fresh project setup.
+{{/if}}
+
 ================================================================================
 EXECUTION PROTOCOL
 ================================================================================

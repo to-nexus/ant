@@ -287,6 +287,63 @@ RULES:
     console.log('⚠️  Task switched - clearing enforcement context for new task\n');
   }
   
+  // ===== RELOAD CODE IF NOT SETUP TASK =====
+  // ✅ CRITICAL: Reload working directory code for feature/error tasks
+  // Setup task has no files yet, but feature tasks need to see what was created
+  let currentCode = state.code;
+  
+  if (nextTask.type !== 'setup') {
+    console.log(`📂 Reloading current codebase for task: ${nextTask.name}`);
+    
+    const gitPort = state.deps?.git;
+    if (!gitPort) {
+      throw new Error("GitPort not provided for file operations");
+    }
+    
+    // ✅ Load ALL existing files (we're in early stage, files are few)
+    // This ensures LLM sees what's already created and doesn't regenerate
+    try {
+      // Get all files, excluding build artifacts and dependencies
+      const allFiles = await gitPort.listFiles('', [
+        'node_modules',
+        'dist',
+        'build',
+        'package-lock.json',
+        'yarn.lock',
+        'pnpm-lock.yaml',
+        '.git',
+        '*.test.ts',
+        '*.test.tsx',
+        '*.spec.ts',
+        '*.spec.tsx'
+      ]);
+      
+      // Load all files into a formatted string
+      const fileContents: string[] = [];
+      let totalTokens = 0;
+      
+      for (const file of allFiles.slice(0, 50)) {  // Max 50 files
+        try {
+          const content = await gitPort.readFile(file);
+          if (content && content.length > 0) {
+            fileContents.push(`=== ${file} ===\n${content}\n`);
+            totalTokens += Math.ceil(content.length / 4);
+            
+            if (totalTokens > 100000) break;  // Token limit
+          }
+        } catch (error) {
+          // Skip files that can't be read
+        }
+      }
+      
+      currentCode = fileContents.join('\n');
+      console.log(`   ✅ Loaded ${fileContents.length} files (~${totalTokens} tokens)`);
+    } catch (error) {
+      console.warn(`⚠️  Could not load files: ${error}`);
+      currentCode = state.code;  // Fallback to original
+    }
+  }
+  
   // ===== GENERATE EXECUTION PLAN FOR CURRENT TASK =====
   
   // Prepare artifacts
@@ -294,17 +351,18 @@ RULES:
     directive: state.directive,
     designDoc: state.design,
     prdSpec: state.prd,
-    currentCode: state.code,
+    currentCode: currentCode,  // ✅ Use reloaded code
     originalFiles: state.codeHead,
   };
 
   try {
-    // Build prompt using PromptEngine
+    // Build prompt using PromptEngine with taskType
     const result = await engine.buildPlanPrompt(
       "code",
       state.context,
       artifacts,
-      state.codeMode
+      state.codeMode,
+      nextTask.type  // Pass taskType to engine for language-specific constraints
     );
 
     let planText = '';
@@ -314,70 +372,6 @@ RULES:
     
     // If this is a retry of the SAME task, add retry context
     let promptMessages = result.formatted.messages;
-    
-    // ✅ SETUP TASK: Add special instructions for config-only generation
-    if (nextTask.type === 'setup') {
-      const setupContext = `
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🔧 SETUP TASK - CONFIGURATION FILES **ONLY**
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-⛔ **CRITICAL CONSTRAINT - YOU WILL BE PENALIZED FOR VIOLATIONS** ⛔
-
-This is a TWO-PHASE process:
-• PHASE 1 (THIS TASK): Configuration files ONLY
-• PHASE 2 (NEXT TASK): Application code
-
-📋 **ALLOWED FILES (Configuration & Setup ONLY):**
-✅ package.json (with ALL dependencies)
-✅ tsconfig.json, tsconfig.*.json
-✅ vite.config.ts / webpack.config.js / rollup.config.js
-✅ tailwind.config.js, postcss.config.js
-✅ .eslintrc.json, .prettierrc, .editorconfig
-✅ .gitignore, .env.example
-✅ README.md, LICENSE
-✅ index.html (ONLY if it's the HTML entry point)
-
-🚫 **FORBIDDEN FILES (Application Code - DO NOT GENERATE):**
-❌ src/* (ALL files in src directory)
-❌ app/* (ALL files in app directory)
-❌ lib/* (ALL files in lib directory)
-❌ components/* (ALL files in components directory)
-❌ Any .tsx, .jsx files (except *.config.tsx)
-❌ main.tsx, App.tsx, index.tsx
-❌ Any business logic or component files
-
-⚠️  **VALIDATION CHECK:**
-Before outputting, verify EACH file:
-• Does the path start with "src/"? → ❌ DELETE IT!
-• Does the path start with "app/"? → ❌ DELETE IT!
-• Is it a component/logic file? → ❌ DELETE IT!
-• Is it a configuration file? → ✅ KEEP IT!
-
-📌 **WHY THIS CONSTRAINT:**
-1. Dependencies must be installed FIRST
-2. Configuration must be validated BEFORE code
-3. Application code will be generated in the NEXT task
-4. This ensures a clean, working environment
-
-🎯 **YOUR TASK:**
-Generate ONLY the project foundation files listed above.
-The next task will handle all application code.
-
-⛔ **REMINDER: YOU WILL BE PENALIZED IF YOU GENERATE ANY src/* FILES** ⛔
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-`;
-      
-      promptMessages = result.formatted.messages.map((msg, idx) => {
-        if (idx === promptMessages.length - 1 && msg.role === 'user') {
-          return {
-            ...msg,
-            content: setupContext + '\n\n' + msg.content
-          };
-        }
-        return msg;
-      });
-    }
     
     if (isRetry && enforcementReason && !shouldClearEnforcement) {
       const previousAttemptsText = formatPreviousAttempts(state.previousAttempts || []);
@@ -469,6 +463,7 @@ ${nextTask.type === 'error' ?
       currentTask: nextTask,
       planText,
       codeMode,
+      code: currentCode,  // ✅ Update state with reloaded files
       retries: shouldClearEnforcement ? 0 : state.retries,  // Reset only if new task
       enforcementReason: shouldClearEnforcement ? null : state.enforcementReason  // Clear only if new task
     };

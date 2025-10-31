@@ -50,6 +50,13 @@ export class FileSessionAdapter implements SessionPort {
     
     try {
       const content = await fs.readFile(sessionPath, "utf-8");
+      
+      // ✅ Handle empty file (0 bytes) - treat as new session
+      if (!content || content.trim() === "") {
+        console.log(`📝 Empty session file detected, creating new session`);
+        return this.createNewSession(project, feature);
+      }
+      
       const rawData = JSON.parse(content);
       
       // Validate and parse with zod
@@ -73,6 +80,14 @@ export class FileSessionAdapter implements SessionPort {
       if (error.code === "ENOENT") {
         return this.createNewSession(project, feature);
       }
+      
+      // ✅ Handle JSON parse errors - treat as corrupted
+      if (error instanceof SyntaxError) {
+        console.warn(`⚠️  Session file has invalid JSON: ${sessionPath}`);
+        console.warn(`Error: ${error.message}`);
+        return this.createNewSession(project, feature);
+      }
+      
       throw error;
     }
   }

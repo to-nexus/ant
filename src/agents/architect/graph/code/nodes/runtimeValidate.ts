@@ -412,10 +412,55 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
 
   console.log('\n✅ All dynamic validations passed!\n');
   
+  // ✅ CHECKPOINT: Save state after validation (success/failure)
+  // This allows resuming from this point if recursion limit is hit
+  await saveCheckpoint(state);
+  
   return {
     ...state,
     runtimeValidationResult: result,
   };
+}
+
+/**
+ * Save checkpoint for resuming after interruption
+ * 
+ * Saves current progress:
+ * - Task queue (remaining tasks)
+ * - Completed tasks
+ * - Retry count
+ * - Previous attempts
+ * - Enforcement history
+ */
+async function saveCheckpoint(state: ArchitectGraphState): Promise<void> {
+  if (!state.deps?.session) {
+    return; // No session port available
+  }
+  
+  try {
+    await state.deps.session.updateArtifacts(
+      state.context.project,
+      state.context.featureFolder || 'default',
+      {
+        state: {
+          taskQueue: state.taskQueue?.getAll() || [],
+          completedTasks: state.completedTasks || [],
+          retries: state.retries || 0,
+          maxRetries: state.maxRetries || 3,
+          previousAttempts: state.previousAttempts || [],
+          enforcementHistory: state.enforcementHistory || [],
+          lastViolations: state.lastViolations || [],
+          previousFileCount: state.previousFileCount,
+          resolvedCategories: state.resolvedCategories || [],
+        }
+      }
+    );
+    
+    // Don't log on every checkpoint (too noisy)
+    // console.log(`💾 Checkpoint saved`);
+  } catch (error) {
+    console.warn(`⚠️  Failed to save checkpoint: ${error}`);
+  }
 }
 
 /**

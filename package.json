@@ -27,12 +27,14 @@
     "chromadb": "^3.0.17",
     "commander": "^14.0.2",
     "dotenv": "^17.2.3",
+    "handlebars": "^4.7.8",
     "langchain": "^1.0.1",
     "openai": "^6.5.0",
     "simple-git": "^3.28.0",
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@types/handlebars": "^4.1.0",
     "@types/node": "^24.8.1",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3"

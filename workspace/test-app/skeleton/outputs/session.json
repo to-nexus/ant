@@ -1,0 +1,107 @@
+{
+  "sessionId": "020277e8-d336-4d78-be9c-e1b493ae36ee",
+  "project": "test-app",
+  "feature": "skeleton",
+  "createdAt": "2025-10-31T08:44:06.954Z",
+  "updatedAt": "2025-10-31T08:51:50.651Z",
+  "turns": [
+    {
+      "turnId": 1,
+      "task": "code",
+      "timestamp": "2025-10-31T08:45:21.777Z",
+      "input": {
+        "type": "design",
+        "source": "directive",
+        "summary": "Spec: ```markdown\n# System Design Document: Simple Tasks\n\n## 1. Architecture Overview\n\n### High-Level Architecture\n\nThe Simple Tasks application is a web-ba...",
+        "size": 4134
+      },
+      "output": {
+        "branch": "feature/skeleton",
+        "filesWritten": 0,
+        "files": [],
+        "modifications": []
+      }
+    },
+    {
+      "turnId": 2,
+      "task": "code",
+      "timestamp": "2025-10-31T08:46:43.547Z",
+      "input": {
+        "type": "design",
+        "source": "directive",
+        "summary": "Spec: ```markdown\n# System Design Document: Simple Tasks\n\n## 1. Architecture Overview\n\n### High-Level Architecture\n\nThe Simple Tasks application is a web-ba...",
+        "size": 4134
+      },
+      "output": {
+        "branch": "feature/skeleton",
+        "filesWritten": 0,
+        "files": [],
+        "modifications": []
+      }
+    },
+    {
+      "turnId": 3,
+      "task": "code",
+      "timestamp": "2025-10-31T08:51:50.648Z",
+      "input": {
+        "type": "design",
+        "source": "directive",
+        "summary": "Spec: ```markdown\n# System Design Document: Simple Tasks\n\n## 1. Architecture Overview\n\n### High-Level Architecture\n\nThe Simple Tasks application is a web-ba...",
+        "size": 4134
+      },
+      "output": {
+        "branch": "feature/skeleton",
+        "filesWritten": 0,
+        "files": [],
+        "modifications": []
+      }
+    }
+  ],
+  "artifacts": {
+    "activeBranch": "feature/skeleton",
+    "errorStatistics": {
+      "totalErrors": 3,
+      "errorsByType": {
+        "missing_file": 2,
+        "type_error": 1
+      },
+      "errorsByLayer": {
+        "environment": 0,
+        "toolchain": 0,
+        "dependency": 0,
+        "configuration": 0,
+        "code": 3,
+        "build": 0
+      },
+      "errorsBySeverity": {
+        "critical": 0,
+        "major": 3,
+        "minor": 0
+      },
+      "mostCommonErrors": [
+        {
+          "type": "missing_file",
+          "count": 2,
+          "avgResolutionAttempts": 0
+        },
+        {
+          "type": "type_error",
+          "count": 1,
+          "avgResolutionAttempts": 0
+        }
+      ],
+      "avgResolutionTime": 0,
+      "resolutionSuccessRate": 0
+    }
+  },
+  "state": {
+    "taskQueue": [],
+    "completedTasks": [],
+    "retries": 0,
+    "maxRetries": 3,
+    "previousAttempts": [],
+    "enforcementHistory": [],
+    "lastViolations": [],
+    "resolvedCategories": []
+  }
+}
