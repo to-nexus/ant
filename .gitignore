@@ -11,6 +11,8 @@ node_modules/
 dist/
 build/
 *.js.map
+packages/*/dist/
+packages/*/build/
 
 # IDE
 .vscode/
@@ -52,5 +54,4 @@ projects/**/generated/reports/*.md
 !projects/**/generated/reports/.gitkeep
 
 # Vector memory binaries
-/src/periphery/integrations/vector-memory/chroma-data/
-
+/packages/ant-cli/src/periphery/integrations/vector-memory/chroma-data/
