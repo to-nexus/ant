@@ -38,6 +38,7 @@ export type ViolationType =
   | 'build_error'           // 빌드 에러
   | 'lint_error'            // Lint 에러
   | 'config_error'          // 설정 파일 에러
+  | 'environment_issue'     // 환경 설정 문제 (NODE_ENV, PATH 등)
   | 'no_files'              // 파일 생성 안 됨
   | 'other';                // 기타
 
@@ -232,8 +233,8 @@ export interface ArchitectGraphState extends TaskArtifacts {
   subtaskIndex: number;               // Current subtask index (for display)
   totalSubtasks: number;              // Total number of subtasks
   
-  // Dynamic Validation
-  dynamicValidationResult?: {
+  // Runtime Validation
+  runtimeValidationResult?: {
     passed: boolean;
     errors: string[];
   };

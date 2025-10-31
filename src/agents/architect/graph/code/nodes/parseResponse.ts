@@ -1,52 +1,238 @@
 import { GeneratedFile } from "../state";
 
 /**
- * Parse LLM response to extract files and response section
+ * ============================================================================
+ * LLM Response Parser
+ * ============================================================================
+ * 
+ * Parses LLM-generated responses to extract:
+ * - Response section (explanatory text)
+ * - Generated files (code content)
+ * - Files to delete
+ * 
+ * Supports multiple file format conventions:
+ * 1. === FILE: path === ... === END FILE ===
+ * 2. <file path="...">...</file>
+ * 3. <file_path>...</file_path><file_code>...</file_code>
+ * 
+ * Also handles:
+ * - <code_output> wrapper
+ * - Markdown code fences (```language)
+ * - Duplicate file prevention
  */
-export function parseResponse(raw: string): {
+
+// ============================================================================
+// Types
+// ============================================================================
+
+interface ParseResult {
   responseSection: string | null;
   files: GeneratedFile[];
   filesToDelete: string[];
-} {
-  const responseRegex = /=== RESPONSE ===\n([\s\S]*?)\n=== END RESPONSE ===/;
-  const fileRegex = /=== FILE: (.+?) ===\n([\s\S]*?)\n=== END FILE ===/g;
-  const deleteRegex = /=== DELETE: (.+?) ===/g;
-
-  const responseMatch = responseRegex.exec(raw);
-  const responseSection = responseMatch ? responseMatch[1].trim() : null;
-
-  const files: GeneratedFile[] = [];
-  const filesToDelete: string[] = [];
-  let m: RegExpExecArray | null;
-
-  while ((m = fileRegex.exec(raw)) !== null) {
-    const filePath = m[1].trim();
-    let fileContent = m[2].trim();
-    
-    // ✅ Strip any accidental markdown code fences (at start/end)
-    fileContent = fileContent.replace(/^```[\w]*\s*\n/, '').replace(/\n```\s*$/, '');
-    
-    // ✅ Also handle if the entire file is wrapped in markdown
-    if (fileContent.startsWith('```')) {
-      const lines = fileContent.split('\n');
-      // Remove first line if it's a code fence
-      if (lines[0].match(/^```[\w]*$/)) {
-        lines.shift();
-      }
-      // Remove last line if it's a code fence
-      if (lines.length > 0 && lines[lines.length - 1].match(/^```\s*$/)) {
-        lines.pop();
-      }
-      fileContent = lines.join('\n').trim();
-    }
-    
-    files.push({ path: filePath, content: fileContent });
-  }
-  
-  while ((m = deleteRegex.exec(raw)) !== null) {
-    filesToDelete.push(m[1].trim());
-  }
-
-  return { responseSection, files, filesToDelete };
 }
 
+interface FileParser {
+  name: string;
+  regex: RegExp;
+  extractPath: (match: RegExpExecArray) => string;
+  extractContent: (match: RegExpExecArray) => string;
+}
+
+interface DeleteParser {
+  name: string;
+  regex: RegExp;
+  extractPath: (match: RegExpExecArray) => string;
+}
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+const RESPONSE_SECTION_REGEX = /=== RESPONSE ===\n([\s\S]*?)\n=== END RESPONSE ===/;
+const CODE_OUTPUT_WRAPPER_REGEX = /<code_output>([\s\S]*?)<\/code_output>/;
+
+// File format parsers (order matters: later parsers override earlier ones)
+const FILE_PARSERS: FileParser[] = [
+  {
+    name: 'Standard Format',
+    regex: /=== FILE: (.+?) ===\n([\s\S]*?)\n=== END FILE ===/g,
+    extractPath: (m) => m[1].trim(),
+    extractContent: (m) => m[2].trim(),
+  },
+  {
+    name: 'XML Format',
+    regex: /<file path="([^"]+)">\s*([\s\S]*?)\s*<\/file>/g,
+    extractPath: (m) => m[1].trim(),
+    extractContent: (m) => m[2].trim(),
+  },
+  {
+    name: 'Path+Code Format',
+    regex: /<file_path>(.+?)<\/file_path>\s*<file_code>([\s\S]*?)<\/file_code>/g,
+    extractPath: (m) => m[1].trim(),
+    extractContent: (m) => m[2].trim(),
+  },
+];
+
+// Delete format parsers
+const DELETE_PARSERS: DeleteParser[] = [
+  {
+    name: 'Standard Format',
+    regex: /=== DELETE: (.+?) ===/g,
+    extractPath: (m) => m[1].trim(),
+  },
+  {
+    name: 'XML Format',
+    regex: /<delete path="([^"]+)"\s*\/>/g,
+    extractPath: (m) => m[1].trim(),
+  },
+];
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+/**
+ * Removes markdown code fences from content
+ * Handles both inline fences (```language) and multiline wrapping
+ */
+function cleanMarkdownFences(content: string): string {
+  let cleaned = content;
+  
+  // Remove start/end fences
+  cleaned = cleaned.replace(/^```[\w]*\s*\n/, '').replace(/\n```\s*$/, '');
+  
+  // Handle fully wrapped content
+  if (cleaned.startsWith('```')) {
+    const lines = cleaned.split('\n');
+    
+    // Remove opening fence
+    if (lines[0].match(/^```[\w]*$/)) {
+      lines.shift();
+    }
+    
+    // Remove closing fence
+    if (lines.length > 0 && lines[lines.length - 1].match(/^```\s*$/)) {
+      lines.pop();
+    }
+    
+    cleaned = lines.join('\n').trim();
+  }
+  
+  return cleaned;
+}
+
+/**
+ * Extracts content from <code_output> wrapper if present
+ */
+function unwrapCodeOutput(raw: string): string {
+  const match = raw.match(CODE_OUTPUT_WRAPPER_REGEX);
+  return match ? match[1] : raw;
+}
+
+/**
+ * Extracts response section (explanatory text) from content
+ */
+function extractResponseSection(content: string): string | null {
+  const match = RESPONSE_SECTION_REGEX.exec(content);
+  return match ? match[1].trim() : null;
+}
+
+/**
+ * Parses files using all registered file parsers
+ * Later parsers override earlier ones for duplicate paths
+ */
+function parseFiles(content: string): Map<string, GeneratedFile> {
+  const fileMap = new Map<string, GeneratedFile>();
+  
+  for (const parser of FILE_PARSERS) {
+    let match: RegExpExecArray | null;
+    
+    while ((match = parser.regex.exec(content)) !== null) {
+      const filePath = parser.extractPath(match);
+      const rawContent = parser.extractContent(match);
+      const cleanedContent = cleanMarkdownFences(rawContent);
+      
+      fileMap.set(filePath, {
+        path: filePath,
+        content: cleanedContent,
+      });
+    }
+  }
+  
+  return fileMap;
+}
+
+/**
+ * Parses file deletion directives using all registered delete parsers
+ */
+function parseDeletes(content: string): string[] {
+  const deletePaths: string[] = [];
+  
+  for (const parser of DELETE_PARSERS) {
+    let match: RegExpExecArray | null;
+    
+    while ((match = parser.regex.exec(content)) !== null) {
+      const filePath = parser.extractPath(match);
+      deletePaths.push(filePath);
+    }
+  }
+  
+  return deletePaths;
+}
+
+// ============================================================================
+// Main Export
+// ============================================================================
+
+/**
+ * Parses LLM response to extract structured data
+ * 
+ * @param raw - Raw LLM response text
+ * @returns Parsed result containing response section, files, and deletes
+ * 
+ * @example
+ * ```typescript
+ * const result = parseResponse(llmOutput);
+ * console.log(`Found ${result.files.length} files`);
+ * console.log(`Found ${result.filesToDelete.length} deletes`);
+ * ```
+ */
+export function parseResponse(raw: string): ParseResult {
+  // 1. Unwrap code output wrapper if present
+  const content = unwrapCodeOutput(raw);
+  
+  // 2. Extract response section
+  const responseSection = extractResponseSection(content);
+  
+  // 3. Parse all files (using Map to prevent duplicates)
+  const fileMap = parseFiles(content);
+  
+  // 4. Parse all delete directives
+  const filesToDelete = parseDeletes(content);
+  
+  // 5. Return structured result
+  return {
+    responseSection,
+    files: Array.from(fileMap.values()),
+    filesToDelete,
+  };
+}
+
+// ============================================================================
+// Debug Helper (for development/testing)
+// ============================================================================
+
+/**
+ * Returns parser statistics for debugging
+ * @internal
+ */
+export function getParserInfo() {
+  return {
+    fileParsers: FILE_PARSERS.map(p => p.name),
+    deleteParsers: DELETE_PARSERS.map(p => p.name),
+    supportedFormats: {
+      files: FILE_PARSERS.length,
+      deletes: DELETE_PARSERS.length,
+    },
+  };
+}
