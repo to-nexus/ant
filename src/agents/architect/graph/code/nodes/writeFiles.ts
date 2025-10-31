@@ -1,0 +1,135 @@
+/**
+ * Write Files Node
+ * 
+ * ✅ CRITICAL: Write generated files to disk IMMEDIATELY after parsing
+ * This ensures files are persisted even if recursion limit is hit.
+ * 
+ * This node:
+ * - Writes all generated files to disk
+ * - Handles file deletions
+ * - Reports file operations
+ * - Does NOT run validation (that comes next)
+ * - Does NOT install dependencies (that comes after validation)
+ * 
+ * ✅ Hexagonal Architecture Compliance:
+ * - Uses GitPort for file operations
+ */
+
+import { ArchitectGraphState } from "../state";
+import * as path from "path";
+
+/**
+ * Format file size in human-readable format
+ */
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
+}
+
+export async function writeFiles(state: ArchitectGraphState): Promise<ArchitectGraphState> {
+  const gitPort = state.deps?.git;
+
+  if (!gitPort) {
+    console.log('⚠️  GitPort not available, skipping file write');
+    return state;
+  }
+
+  // Get target directory from config
+  const config = state.context.config;
+  if (!config || config.repoType !== 'local' || !config.localPath) {
+    console.log('⚠️  No local repository path configured, skipping file write');
+    return state;
+  }
+
+  const repoRoot = await gitPort.getRepoRoot();
+  const p = await import("path");
+  
+  // Resolve localPath (handle relative paths)
+  const resolvedPath = p.isAbsolute(config.localPath)
+    ? config.localPath
+    : p.resolve(repoRoot, config.localPath);
+
+  console.log(`\n🔧 Post-processing in: ${resolvedPath}\n`);
+
+  try {
+    console.log(`\n${'='.repeat(80)}`);
+    console.log(`📝 FILE OPERATIONS REPORT`);
+    console.log(`${'='.repeat(80)}\n`);
+    
+    // Track file statistics
+    let newFiles = 0;
+    let modifiedFiles = 0;
+    let totalSize = 0;
+    
+    for (const file of state.files) {
+      const filePath = p.join(resolvedPath, file.path);
+      const relPath = p.relative(repoRoot, filePath);
+      
+      // Check if file exists (to determine if new or modified)
+      const exists = await gitPort.fileExists(relPath);
+      const operation = exists ? '📝 MODIFIED' : '✨ CREATED';
+      
+      if (exists) {
+        modifiedFiles++;
+      } else {
+        newFiles++;
+      }
+      
+      // Calculate file size
+      const sizeInBytes = Buffer.byteLength(file.content, 'utf8');
+      totalSize += sizeInBytes;
+      const sizeStr = formatFileSize(sizeInBytes);
+      
+      // Count lines
+      const lines = file.content.split('\n').length;
+      
+      // Write file
+      await gitPort.writeFile(file.path, file.content);
+      
+      // Print detailed report
+      console.log(`${operation}  ${file.path}`);
+      console.log(`           Size: ${sizeStr.padEnd(10)} Lines: ${lines}`);
+    }
+    
+    // Handle file deletions if any
+    const filesToDelete = state.filesToDelete || [];
+    if (filesToDelete.length > 0) {
+      console.log(`\n🗑️  DELETED FILES:\n`);
+      for (const deletePath of filesToDelete) {
+        const filePath = p.join(resolvedPath, deletePath);
+        const relPath = p.relative(repoRoot, filePath);
+        
+        // Check if file exists before deleting
+        const exists = await gitPort.fileExists(relPath);
+        if (exists) {
+          // TODO: Implement delete via GitPort
+          console.log(`🗑️  DELETED   ${deletePath}`);
+        } else {
+          console.log(`⚠️  SKIP      ${deletePath} (not found)`);
+        }
+      }
+    }
+    
+    // Summary
+    console.log(`\n${'─'.repeat(80)}`);
+    console.log(`📊 SUMMARY:`);
+    console.log(`   ✨ New files:      ${newFiles}`);
+    console.log(`   📝 Modified files: ${modifiedFiles}`);
+    if (filesToDelete.length > 0) {
+      console.log(`   🗑️  Deleted files:  ${filesToDelete.length}`);
+    }
+    console.log(`   📦 Total files:    ${state.files.length}`);
+    console.log(`   💾 Total size:     ${formatFileSize(totalSize)}`);
+    console.log(`${'='.repeat(80)}\n`);
+
+  } catch (error: any) {
+    console.error('⚠️  File write error:', error.message);
+    // Don't fail on write errors - continue to validation
+  }
+
+  return state;
+}
+

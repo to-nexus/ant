@@ -16,10 +16,11 @@ import { PromptEngine } from "../../../../core/prompt/engine";
 export async function runCodeGraph(initial: ArchitectGraphState) {
   const app = buildCodeGraph();
   let state: ArchitectGraphState = initial;
+  let isRecursionLimit = false;
   
   try {
     state = await (app as any).invoke(initial as any, {
-      recursionLimit: 3,  // 🧪 Testing checkpoint restoration (normally 25)
+      recursionLimit: 25,
     }) as ArchitectGraphState;
   } catch (error: any) {
     // ✅ CRITICAL: Recursion limit or other errors
@@ -73,6 +74,7 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
       throw error;
     }
     
+    isRecursionLimit = true;
     console.log(`\n⏸️  Session paused due to recursion limit`);
     console.log(`📊 Progress saved:`);
     console.log(`   ✅ ${state.completedTasks?.length || 0} tasks completed`);
@@ -81,10 +83,20 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
   }
 
   // Return results (all saving was done in learn node)
+  const filesGenerated = state.filesWritten || 0;
+  const tasksRemaining = state.taskQueue?.size() || 0;
+  
+  let reportMessage = `Generated ${filesGenerated} files on branch ${state.branch || 'none'}`;
+  if (isRecursionLimit && tasksRemaining > 0) {
+    reportMessage += ` (paused: ${tasksRemaining} tasks remaining due to recursion limit)`;
+  }
+  
   return { 
     branch: state.branch!, 
-    reportFile: `Generated ${state.filesWritten || 0} files on branch ${state.branch || 'none'}`,
-    filesChanged: state.filesWritten || 0
+    reportFile: reportMessage,
+    filesChanged: filesGenerated,
+    pausedDueToLimit: isRecursionLimit,
+    tasksRemaining: tasksRemaining
   };
 }
 

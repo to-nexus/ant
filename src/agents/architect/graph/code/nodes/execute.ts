@@ -206,7 +206,7 @@ ${previousAttemptsText}
       previousAttempts
     };
     
-    // ✅ Save checkpoint after code generation (in case recursion limit hits during postProcess)
+    // ✅ Save checkpoint after code generation (in case recursion limit hits during writeFiles)
     const { saveCheckpoint } = await import('./checkpoint');
     await saveCheckpoint(updatedState);
     
