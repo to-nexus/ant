@@ -241,40 +241,70 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
       });
 
       if (!lintResult.success) {
-        result.passed = false;
+        // ⚠️  Check if errors are in build artifacts (configuration issue)
+        const isBuildArtifactError = /\/(dist|build|node_modules|\.next|\.nuxt|out)\//i.test(lintResult.stdout);
         
-        // ✅ Use diagnostics system
-        const diagnosis = diagnoseError(lintResult.stdout, {
-          command: 'npx eslint',
-          workDir: resolvedPath,
-          output: lintResult.stdout,
-          projectDetection,
-        });
-        
-        if (diagnosis) {
-          result.diagnoses!.push(diagnosis);
+        if (isBuildArtifactError) {
+          console.error('⚠️  ESLint Configuration Error Detected!');
+          console.error('   ESLint is checking build artifacts (dist/, node_modules/, etc.)');
+          console.error('   This indicates missing ignorePatterns in .eslintrc.json');
           
-          // ✅ Record error statistics
-          errorStatsCollector.recordError(diagnosis, {
+          // Create a configuration-specific diagnosis
+          const configDiagnosis: DiagnosisResult = {
+            type: 'lint_error',
+            layer: ErrorLayer.CONFIGURATION,
+            severity: 'critical',
+            message: 'ESLint is checking build artifacts instead of source code. Add ignorePatterns to .eslintrc.json',
+            rootCause: 'Missing ignorePatterns in .eslintrc.json configuration',
+            suggestedActions: [
+              'Add ignorePatterns to .eslintrc.json: ["dist", "build", "node_modules", "*.config.*"]',
+              'Or create .eslintignore file with: dist/\\nbuild/\\nnode_modules/\\n*.config.*'
+            ],
+            isRetryable: true,
+            canLLMFix: true,
+          };
+          
+          result.diagnoses!.push(configDiagnosis);
+          result.lintErrors = [configDiagnosis.message];
+          result.passed = false;
+          
+          console.error(`   💡 Fix: ${configDiagnosis.suggestedActions[0]}`);
+        } else {
+          result.passed = false;
+          
+          // ✅ Use diagnostics system for actual code errors
+          const diagnosis = diagnoseError(lintResult.stdout, {
             command: 'npx eslint',
             workDir: resolvedPath,
-            language: projectDetection.language,
-            buildTool: projectDetection.buildTool,
-            packageManager: projectDetection.packageManager,
+            output: lintResult.stdout,
+            projectDetection,
           });
           
-          result.lintErrors = [diagnosis.message];
-        } else {
-          // Fallback to old parsing
-          result.lintErrors = parseLintErrors(lintResult.stdout);
+          if (diagnosis) {
+            result.diagnoses!.push(diagnosis);
+            
+            // ✅ Record error statistics
+            errorStatsCollector.recordError(diagnosis, {
+              command: 'npx eslint',
+              workDir: resolvedPath,
+              language: projectDetection.language,
+              buildTool: projectDetection.buildTool,
+              packageManager: projectDetection.packageManager,
+            });
+            
+            result.lintErrors = [diagnosis.message];
+          } else {
+            // Fallback to old parsing
+            result.lintErrors = parseLintErrors(lintResult.stdout);
+          }
+          
+          console.error('⚠️  Lint failed (non-blocking):');
+          result.lintErrors!.slice(0, 10).forEach(err => console.error(`   ${err}`));
+          if (result.lintErrors!.length > 10) {
+            console.error(`   ... and ${result.lintErrors!.length - 10} more errors`);
+          }
+          console.log('   ℹ️  Lint errors have LOW priority - fix build/deps/types first');
         }
-        
-        console.error('⚠️  Lint failed (non-blocking):');
-        result.lintErrors!.slice(0, 10).forEach(err => console.error(`   ${err}`));
-        if (result.lintErrors!.length > 10) {
-          console.error(`   ... and ${result.lintErrors!.length - 10} more errors`);
-        }
-        console.log('   ℹ️  Lint errors have LOW priority - fix build/deps/types first');
       } else {
         console.log('✅ Lint passed');
       }

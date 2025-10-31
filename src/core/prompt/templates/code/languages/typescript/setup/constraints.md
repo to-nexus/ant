@@ -29,6 +29,9 @@ Application code will be generated in PHASE 2 (next task).
 
 **Linting & Formatting:**
 - .eslintrc.json, .eslintrc.js, .eslintrc.cjs
+  ⚠️  CRITICAL: MUST include `ignorePatterns: ["dist", "build", "node_modules", "*.config.*"]`
+  ⚠️  Without ignorePatterns, ESLint will check build artifacts and cause errors!
+- .eslintignore (alternative to ignorePatterns)
 - .prettierrc, .prettierrc.json
 - .editorconfig
 
