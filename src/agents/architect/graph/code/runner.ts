@@ -11,19 +11,47 @@ import { PromptEngine } from "../../../../core/prompt/engine";
  * All side effects (file saving, memory storage) are handled inside the graph
  * 
  * ✅ RecursionLimit: Set to 25 for faster failure detection
- * If limit is reached, execution state is saved and can be resumed on next run
+ * ✅ Learn node is ALWAYS executed on exit (success/error/recursion limit)
  */
 export async function runCodeGraph(initial: ArchitectGraphState) {
   const app = buildCodeGraph();
-  const state = await (app as any).invoke(initial as any, {
-    recursionLimit: 25,  // ✅ Faster failure detection
-  }) as ArchitectGraphState;
+  let state: ArchitectGraphState = initial;
+  
+  try {
+    state = await (app as any).invoke(initial as any, {
+      recursionLimit: 25,  // ✅ Faster failure detection
+    }) as ArchitectGraphState;
+  } catch (error: any) {
+    // ✅ CRITICAL: Recursion limit or other errors
+    console.log(`\n⚠️  Execution interrupted: ${error.message}\n`);
+    
+    // Get the last state from error if available
+    if (error.state) {
+      state = error.state;
+    }
+    
+    // ✅ Force learn node execution for cleanup & learning
+    console.log('🧠 Running learn node for cleanup and state saving...\n');
+    const { learn } = await import('./nodes/index');
+    state = await learn(state);
+    
+    // Re-throw if not recursion limit
+    if (!error.message.includes('Recursion limit')) {
+      throw error;
+    }
+    
+    console.log(`\n⏸️  Session paused due to recursion limit`);
+    console.log(`📊 Progress saved:`);
+    console.log(`   ✅ ${state.completedTasks?.length || 0} tasks completed`);
+    console.log(`   ⏳ ${state.taskQueue?.size() || 0} tasks remaining`);
+    console.log(`\n💡 Run the same command again to resume from checkpoint\n`);
+  }
 
   // Return results (all saving was done in learn node)
   return { 
     branch: state.branch!, 
-    reportFile: `Generated ${state.filesWritten} files on branch ${state.branch}`,
-    filesChanged: state.filesWritten!
+    reportFile: `Generated ${state.filesWritten || 0} files on branch ${state.branch || 'none'}`,
+    filesChanged: state.filesWritten || 0
   };
 }
 

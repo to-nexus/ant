@@ -73,13 +73,14 @@ export async function execute(
     originalFiles: state.codeHead,   // Map to old name
   };
   
-  // Build prompt using PromptEngine
+  // Build prompt using PromptEngine with taskType
   const buildResult = await engine.buildExecutePrompt(
     "code",
     state.context,
     artifacts,
     state.planText,
-    state.codeMode
+    state.codeMode,
+    state.currentTask?.type  // Pass taskType for language-specific constraints
   );
   
   const formatted = buildResult.formatted;

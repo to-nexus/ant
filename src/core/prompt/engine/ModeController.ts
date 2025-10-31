@@ -52,7 +52,8 @@ export class ModeController {
     task: AgentTask,
     phase: "plan" | "execute",
     context: AssembledContext,
-    explicitMode?: CodeMode
+    explicitMode?: CodeMode,
+    taskType?: string  // 'setup' | 'feature' | 'error'
   ): PromptModeConfig {
     // Infer code mode if not provided
     let mode: CodeMode | undefined = explicitMode;
@@ -65,7 +66,7 @@ export class ModeController {
     }
     
     // Build mode config based on task and phase
-    return this.buildModeConfig(task, phase, mode, context);
+    return this.buildModeConfig(task, phase, mode, context, taskType);
   }
   
   /**
@@ -75,7 +76,8 @@ export class ModeController {
     task: AgentTask,
     phase: "plan" | "execute",
     mode: CodeMode | undefined,
-    context: AssembledContext
+    context: AssembledContext,
+    taskType?: string
   ): PromptModeConfig {
     // Template paths
     const basePrefix = `${task}/base`;
@@ -85,7 +87,7 @@ export class ModeController {
     const templates = {
       base: `${phasePrefix}/base`,
       rules: `${phasePrefix}/rules`,
-      injections: this.selectInjections(task, phase, context)
+      injections: this.selectInjections(task, phase, context, taskType)
     };
     
     // LLM parameters based on task
@@ -115,11 +117,20 @@ export class ModeController {
   private selectInjections(
     task: AgentTask,
     phase: "plan" | "execute",
-    context: AssembledContext
+    context: AssembledContext,
+    taskType?: string
   ): string[] {
     const basePrefix = `${task}/base/injections`;
     const phasePrefix = `${task}/phases/${phase}/injections`;
     const injections: string[] = [];
+    
+    // ✅ SETUP TASK: Add language-specific setup constraints
+    if (taskType === 'setup') {
+      const language = this.detectLanguage(context);
+      if (language) {
+        injections.push(`${task}/languages/${language}/setup/constraints`);
+      }
+    }
     
     // Base injections (common to task)
     if (context.stats.hasDirective) {

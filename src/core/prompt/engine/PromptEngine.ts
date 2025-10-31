@@ -75,7 +75,8 @@ export class PromptEngine {
       originalFiles?: string;   // Git HEAD version (for comparison)
       currentCode?: string;     // Working tree code
     },
-    mode?: CodeMode
+    mode?: CodeMode,
+    taskType?: string  // 'setup' | 'feature' | 'error' for code tasks
   ): Promise<PromptBuildResult> {
     const startTime = Date.now();
     
@@ -103,7 +104,8 @@ export class PromptEngine {
       task,
       "plan",
       assembled,
-      mode
+      mode,
+      taskType
     );
     
     // Layer 4: Compose prompt from templates
@@ -156,7 +158,8 @@ export class PromptEngine {
       currentCode?: string;     // Working tree code
     },
     plan: string,
-    mode?: CodeMode
+    mode?: CodeMode,
+    taskType?: string  // 'setup' | 'feature' | 'error' for code tasks
   ): Promise<PromptBuildResult> {
     const startTime = Date.now();
     
@@ -185,7 +188,8 @@ export class PromptEngine {
       task,
       "execute",
       assembled,
-      mode
+      mode,
+      taskType
     );
     
     // Layer 4: Compose prompt from templates (with plan)

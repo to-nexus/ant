@@ -23,5 +23,13 @@ export interface GitPort {
   fileExists(path: string): Promise<boolean>;
   readDirectory(path: string): Promise<Array<{ name: string; isDirectory: boolean }>>;
   createDirectory(path: string): Promise<void>;
+  
+  /**
+   * List all files in directory recursively
+   * @param path - Directory path (relative to repo root)
+   * @param exclude - Glob patterns to exclude (e.g., ['node_modules', '*.test.ts'])
+   * @returns Array of file paths relative to repo root
+   */
+  listFiles(path: string, exclude?: string[]): Promise<string[]>;
 }
 

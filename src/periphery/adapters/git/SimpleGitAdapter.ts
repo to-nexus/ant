@@ -161,6 +161,54 @@ export class SimpleGitAdapter implements GitPort {
     fs.mkdirSync(full, { recursive: true });
   }
 
+  /**
+   * List all files in directory recursively
+   */
+  async listFiles(path: string, exclude: string[] = []): Promise<string[]> {
+    const fs = await import("fs");
+    const p = await import("path");
+    
+    await this.ensure();
+    const root = await this.getRepoRoot();
+    const targetDir = p.join(root, path);
+    
+    const results: string[] = [];
+    
+    const walk = async (dir: string): Promise<void> => {
+      try {
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        
+        for (const entry of entries) {
+          const fullPath = p.join(dir, entry.name);
+          const relativePath = p.relative(root, fullPath);
+          
+          // Check if excluded
+          const isExcluded = exclude.some(pattern => {
+            if (pattern.includes('*')) {
+              // Simple glob matching
+              const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+              return regex.test(relativePath) || regex.test(entry.name);
+            }
+            return relativePath.includes(pattern) || entry.name === pattern;
+          });
+          
+          if (isExcluded) continue;
+          
+          if (entry.isDirectory()) {
+            await walk(fullPath);
+          } else if (entry.isFile()) {
+            results.push(relativePath);
+          }
+        }
+      } catch (error) {
+        // Skip directories that can't be read
+      }
+    };
+    
+    await walk(targetDir);
+    return results;
+  }
+
   // Legacy compatibility methods
   async diff(): Promise<string[]> {
     return await this.getChangedFiles();
