@@ -353,6 +353,11 @@ RULES:
     prdSpec: state.prd,
     currentCode: currentCode,  // ✅ Use reloaded code
     originalFiles: state.codeHead,
+    currentTask: nextTask ? {  // ✅ Pass current task info
+      name: nextTask.name,
+      type: nextTask.type,
+      description: nextTask.description
+    } : undefined
   };
 
   try {

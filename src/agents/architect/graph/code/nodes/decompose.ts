@@ -222,13 +222,32 @@ Return JSON ONLY (no explanation):
   ]
 }
 
+⚠️  CRITICAL: FINAL VERIFICATION TASK
+
+**ALWAYS add a final verification task at the end** (lowest priority):
+- Type: "feature" (not a special type, just a regular feature task)
+- Priority: 900+ (runs last)
+- Purpose: Verify ALL requirements from the spec are met
+- Check for missing components, incomplete features, gaps in implementation
+- Ensure the ENTIRE goal of the specification is achieved
+
+Example verification task:
+{
+  "id": "final-verification",
+  "name": "Final Integration & Verification",
+  "type": "feature",
+  "priority": 999,
+  "description": "Verify all features from specification are fully implemented: [list key features]. Check for missing components, incomplete functionality, or gaps. Ensure the complete application works as intended."
+}
+
 IMPORTANT:
 - **Decide intelligently**: Create setup task ONLY if spec requires new configuration
 - If NEW PROJECT: Setup task is typically needed (but analyze the spec!)
 - If EXISTING PROJECT: Setup task only if adding new tools/infrastructure
 - If the spec only mentions "build a React app" with no specific features → return setup task + empty array for features
 - Focus on USER-FACING features, not infrastructure (infrastructure = setup task)
-- Each task must have unique id (kebab-case)`;
+- Each task must have unique id (kebab-case)
+- **ALWAYS include the final verification task as the last task**`;
 
   try {
     const response = await llm.invoke([{ role: 'user', content: prompt }]);

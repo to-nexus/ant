@@ -74,6 +74,11 @@ export class PromptEngine {
       prdSpec?: string;
       originalFiles?: string;   // Git HEAD version (for comparison)
       currentCode?: string;     // Working tree code
+      currentTask?: {           // Current task being executed
+        name: string;
+        type: string;
+        description: string;
+      };
     },
     mode?: CodeMode,
     taskType?: string  // 'setup' | 'feature' | 'error' for code tasks
@@ -96,7 +101,8 @@ export class PromptEngine {
         git: this.deps.git,
         analyzer: this.deps.analyzer
       },
-      this.deps.contextLoader
+      this.deps.contextLoader,
+      artifacts  // ✅ Pass artifacts to assembler!
     );
     
     // Layer 3: Determine mode configuration
@@ -156,6 +162,11 @@ export class PromptEngine {
       prdSpec?: string;
       originalFiles?: string;   // Git HEAD version (for comparison)
       currentCode?: string;     // Working tree code
+      currentTask?: {           // Current task being executed
+        name: string;
+        type: string;
+        description: string;
+      };
     },
     plan: string,
     mode?: CodeMode,
@@ -180,7 +191,8 @@ export class PromptEngine {
         git: this.deps.git,
         analyzer: this.deps.analyzer
       },
-      this.deps.contextLoader
+      this.deps.contextLoader,
+      artifacts  // ✅ Pass artifacts to assembler!
     );
     
     // Layer 3: Determine mode configuration
