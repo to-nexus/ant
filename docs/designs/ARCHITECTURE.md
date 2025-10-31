@@ -1,8 +1,6 @@
 # Architecture
 
-ANT (AI-Native Transformation) follows **Hexagonal Architecture** (Ports and Adapters) to achieve clean separation between business logic and infrastructure.
-
----
+Hexagonal architecture with ports and adapters pattern for clean separation between business logic and infrastructure.
 
 ## Architectural Style
 
@@ -26,13 +24,11 @@ ANT (AI-Native Transformation) follows **Hexagonal Architecture** (Ports and Ada
         └──────────┘
 ```
 
-**Key Principles**:
-- **Domain Independence**: Business logic has no infrastructure dependencies
-- **Dependency Inversion**: High-level modules depend on abstractions
-- **Interface Segregation**: Ports are minimal and focused
-- **Testability**: All dependencies are mockable via ports
-
----
+**Principles**:
+- Domain independence: Business logic has no infrastructure dependencies
+- Dependency inversion: High-level modules depend on abstractions
+- Interface segregation: Ports are minimal and focused
+- Testability: All dependencies mockable via ports
 
 ## Dependency Direction
 
@@ -50,14 +46,12 @@ ANT (AI-Native Transformation) follows **Hexagonal Architecture** (Ports and Ada
 ```
 
 **Rules**:
-- ✅ `core/` depends on nothing (pure interfaces and policies)
-- ✅ `agents/` depends only on `core/` (uses ports)
-- ✅ `periphery/` depends only on `core/` (implements ports)
-- ✅ `composition/` wires everything together
+- `core/` depends on nothing (pure interfaces and policies)
+- `agents/` depends only on `core/` (uses ports)
+- `periphery/` depends only on `core/` (implements ports)
+- `composition/` wires everything together
 
----
-
-## Repository Structure
+## Directory Structure
 
 ```
 src/
@@ -72,27 +66,70 @@ src/
 │
 ├── core/                           Domain core
 │   ├── ports/                      Interface definitions
-│   │   ├── index.ts
 │   │   ├── llm.ts
 │   │   ├── memory.ts
 │   │   ├── git.ts
+│   │   ├── session.ts
+│   │   ├── command.ts
 │   │   └── ...
 │   ├── types.ts                    Core types
 │   ├── policies/                   Centralized policies
 │   │   ├── retrieval.ts
 │   │   └── validations.ts
 │   ├── chunk/                      Chunking engine
+│   │   ├── ChunkEngine.ts
+│   │   └── rerank/MMRReranker.ts
 │   ├── codebase/                   Codebase analysis
+│   │   ├── CodebaseRetriever.ts
+│   │   ├── ImportGraphAnalyzer.ts
+│   │   └── ASTAnalyzer.ts
 │   └── prompt/                     Prompt engine
+│       ├── engine/
+│       │   ├── PromptEngine.ts
+│       │   ├── InputNormalizer.ts
+│       │   ├── ContextAssembler.ts
+│       │   ├── ModeController.ts
+│       │   ├── TemplateComposer.ts
+│       │   ├── PolicyInjector.ts
+│       │   └── PromptFormatter.ts
+│       └── templates/
+│           └── code/
+│               ├── phases/
+│               │   ├── plan/base.md
+│               │   └── execute/base.md
+│               └── languages/
+│                   ├── typescript/
+│                   │   └── setup/constraints.md
+│                   ├── golang/
+│                   └── python/
 │
 ├── agents/                         Application layer
 │   ├── architect/                  Architect agent
 │   │   ├── index.ts                Entry point
 │   │   ├── types.ts                Agent types
 │   │   ├── graph/                  LangGraph workflows
-│   │   │   ├── code/               Code generation
-│   │   │   ├── design/             Design generation
-│   │   │   └── learn/              Learning extraction
+│   │   │   └── code/               Code generation
+│   │   │       ├── nodes/
+│   │   │       │   ├── resolve.ts
+│   │   │       │   ├── decompose.ts
+│   │   │       │   ├── plan.ts
+│   │   │       │   ├── execute.ts
+│   │   │       │   ├── writeFiles.ts
+│   │   │       │   ├── validate.ts
+│   │   │       │   ├── installDeps.ts
+│   │   │       │   ├── runtimeValidate.ts
+│   │   │       │   ├── enforce.ts
+│   │   │       │   ├── evaluate.ts
+│   │   │       │   ├── learn.ts
+│   │   │       │   ├── checkpoint.ts
+│   │   │       │   └── diagnostics/
+│   │   │       │       ├── languages/
+│   │   │       │       ├── packageManagers/
+│   │   │       │       ├── buildTools/
+│   │   │       │       └── linters/
+│   │   │       ├── graph.ts
+│   │   │       ├── state.ts
+│   │   │       └── runner.ts
 │   │   ├── memory/                 Memory service
 │   │   └── utils/                  Agent utilities
 │   ├── planner.ts                  Planner agent
@@ -104,8 +141,7 @@ src/
     │   ├── llm/
     │   │   └── GenericLLMClient.ts
     │   ├── memory/
-    │   │   ├── ChromaMemoryAdapter.ts
-    │   │   └── Retriever.ts
+    │   │   └── ChromaMemoryAdapter.ts
     │   ├── git/
     │   │   └── SimpleGitAdapter.ts
     │   ├── command/
@@ -118,41 +154,31 @@ src/
     │   │   └── FilePromptAdapter.ts
     │   ├── session/
     │   │   └── FileSessionAdapter.ts
-    │   ├── reporting/
-    │   │   └── FileReporter.ts
     │   └── validation/
     │       └── ValidationEngine.ts
     │
-    ├── integrations/               External services
-    │   └── vector-memory/
-    │       ├── docker-compose.yml
-    │       └── embedder/
-    │
-    └── profiles/                   Language/framework profiles
-        ├── languages/
-        └── frameworks/
+    └── integrations/               External services
+        └── vector-memory/
+            ├── docker-compose.yml
+            └── embedder/
 ```
-
----
 
 ## Core Ports
 
-All ports are defined in `src/core/ports/`:
+All ports defined in `src/core/ports/`:
 
 | Port | Purpose | Implementation |
 |------|---------|----------------|
 | `LLMClient` | LLM interaction | `GenericLLMClient` (OpenAI/Anthropic) |
 | `MemoryPort` | Vector database | `ChromaMemoryAdapter` (ChromaDB) |
-| `GitPort` | Git operations | `SimpleGitAdapter` (simple-git) |
+| `GitPort` | Git + file operations | `SimpleGitAdapter` (simple-git + fs) |
 | `CommandPort` | Shell commands | `NodeCommandAdapter` (child_process) |
 | `ChunkPort` | Text chunking | `ChunkingAdapter` (custom) |
 | `ConfigPort` | Configuration | `FileConfigAdapter` (JSON files) |
-| `PromptPort` | Prompt loading | `FilePromptAdapter` (file system) |
+| `PromptPort` | Prompt loading | `FilePromptAdapter` (Handlebars) |
 | `SessionPort` | Session management | `FileSessionAdapter` (JSON files) |
 | `ReporterPort` | Report generation | `FileReporter` (Markdown) |
 | `ValidationPort` | Code validation | `ValidationEngine` (custom) |
-
----
 
 ## Design Patterns
 
@@ -194,21 +220,9 @@ export async function retrieve(
 }
 ```
 
-**Wiring (Composition Root)**:
-```typescript
-// src/composition/orchestrator.ts
-const memory = new ChromaMemoryAdapter();
-const llm = new GenericLLMClient();
-
-await architectAgent(spec, project, mode, {
-  memory,
-  llm
-});
-```
-
 ### 2. Dependency Injection
 
-All dependencies are injected via parameters:
+All dependencies injected via parameters:
 
 ```typescript
 export async function architectAgent(
@@ -219,7 +233,8 @@ export async function architectAgent(
     memory?: MemoryPort;
     llm?: LLMClient;
     git?: GitPort;
-    // ... other ports
+    session?: SessionPort;
+    command?: CommandPort;
   }
 ) {
   // Use injected dependencies
@@ -228,7 +243,7 @@ export async function architectAgent(
 
 ### 3. Composition Root
 
-Single place for all dependency wiring (`src/composition/orchestrator.ts`):
+Single place for dependency wiring (`src/composition/orchestrator.ts`):
 
 ```typescript
 export async function orchestrate(args: ParsedArgs) {
@@ -236,16 +251,16 @@ export async function orchestrate(args: ParsedArgs) {
   const memory = new ChromaMemoryAdapter();
   const llm = new GenericLLMClient();
   const git = new SimpleGitAdapter();
-  // ...
+  const session = new FileSessionAdapter();
+  const command = new NodeCommandAdapter();
   
   // Wire dependencies
-  const deps = { memory, llm, git, ... };
+  const deps = { memory, llm, git, session, command };
   
   // Route to agent
   if (args.agent === 'architect') {
     return await architectAgent(args.spec, args.project, args.mode, deps);
   }
-  // ...
 }
 ```
 
@@ -256,7 +271,7 @@ Each workflow defines its own state interface:
 ```typescript
 // src/agents/architect/graph/code/state.ts
 export interface ArchitectGraphState {
-  // Input
+  // Context & Input
   context: ProjectContext;
   spec: string;
   
@@ -271,12 +286,18 @@ export interface ArchitectGraphState {
   files: GeneratedFile[];
   violations?: Violation[];
   
+  // Task Queue
+  taskQueue: TaskQueue;
+  currentTask?: Task;
+  completedTasks: string[];
+  
   // Dependencies (injected)
   deps?: {
     llm?: LLMClient;
     memory?: MemoryPort;
     git?: GitPort;
-    // ...
+    session?: SessionPort;
+    command?: CommandPort;
   };
 }
 ```
@@ -287,41 +308,46 @@ Nodes return partial updates:
 export async function plan(
   state: ArchitectGraphState
 ): Promise<Partial<ArchitectGraphState>> {
-  const llm = state.deps?.llm;
-  const planText = await llm.invoke(...);
-  
-  return { planText }; // Only update planText
+  const planText = await state.deps?.llm.invoke(...);
+  await saveCheckpoint(state);
+  return { planText };
 }
 ```
-
----
-
-## Workflows
-
-### Architect Agent Workflows
-
-1. **Design**: `resolve → plan → save`
-2. **Code**: `resolve → decompose → plan → execute → validate → postProcess → dynamicValidate`
-3. **Learn**: `resolve → extract → store`
-
-See [ARCHITECT_CODE_TASK_WORKFLOW.md](designs/ARCHITECT_CODE_TASK_WORKFLOW.md) for detailed code workflow documentation.
-
----
 
 ## Key Modules
 
 ### Prompt Engine (`src/core/prompt/engine/`)
 
-Modular prompt composition system:
+6-layer modular prompt composition:
 
 ```
 PromptEngine
 ├── InputNormalizer    Normalize input formats
-├── ContextAssembler   Gather required artifacts
-├── TemplateComposer   Load and compose templates
-├── PolicyInjector     Inject retrieval policies
-├── PromptFormatter    Format for LLM
+├── ContextAssembler   Gather artifacts
+├── TemplateComposer   Load and compose templates (Handlebars)
+├── PolicyInjector     Inject guardrails
+├── PromptFormatter    Format for LLM API
 └── ModeController     Handle mode-specific logic
+```
+
+### Template System
+
+**Handlebars-based** for conditional logic:
+
+```handlebars
+{{#if currentCode}}
+⚠️ EXISTING FILES (DO NOT REGENERATE):
+{{#each currentCode}}
+- {{this.path}}
+{{/each}}
+{{/if}}
+
+{{#if currentTask}}
+🎯 CURRENT TASK:
+**Name**: {{currentTask.name}}
+**Type**: {{currentTask.type}}
+**Description**: {{currentTask.description}}
+{{/if}}
 ```
 
 ### Chunk Engine (`src/core/chunk/`)
@@ -339,7 +365,7 @@ ChunkEngine
 
 ### Codebase Retriever (`src/core/codebase/`)
 
-Intelligent codebase context retrieval:
+Intelligent context retrieval:
 
 ```
 CodebaseRetriever
@@ -348,8 +374,6 @@ CodebaseRetriever
 ├── WorkSizeEstimator      Estimate implementation size
 └── CodebaseCache          Cache parsed results
 ```
-
----
 
 ## Naming Conventions
 
@@ -365,8 +389,6 @@ CodebaseRetriever
 ### Exports
 - **Named exports** preferred: `export function architectAgent(...)`
 - **Default exports** avoided (better refactoring support)
-
----
 
 ## Development Guidelines
 
@@ -417,19 +439,10 @@ graph.addNode("newNode", newNode);
 graph.addEdge("prevNode", "newNode");
 ```
 
-### Adding a New Adapter
-
-1. Implement port interface
-2. Add to `src/periphery/adapters/`
-3. Instantiate in composition root
-4. Inject via `deps` parameter
-
----
-
 ## Quality Attributes
 
 ### Testability
-- All dependencies are mockable via ports
+- All dependencies mockable via ports
 - Business logic is pure (no side effects)
 - Easy to write unit tests
 
@@ -448,8 +461,6 @@ graph.addEdge("prevNode", "newNode");
 - Parallel development (teams work on different layers)
 - Independent testing
 
----
-
 ## Architecture Compliance
 
 ### Hexagonal Architecture Checklist
@@ -459,7 +470,7 @@ graph.addEdge("prevNode", "newNode");
 - ✅ All external I/O via ports
 - ✅ Adapters implement ports
 - ✅ Composition root wires dependencies
-- ✅ Business logic is testable in isolation
+- ✅ Business logic testable in isolation
 
 ### SOLID Principles
 
@@ -468,13 +479,3 @@ graph.addEdge("prevNode", "newNode");
 - ✅ **Liskov Substitution**: Adapters are interchangeable
 - ✅ **Interface Segregation**: Ports are minimal and focused
 - ✅ **Dependency Inversion**: Depend on abstractions, not concretions
-
----
-
-## Related Documentation
-
-- [ARCHITECT_CODE_TASK_WORKFLOW.md](designs/ARCHITECT_CODE_TASK_WORKFLOW.md) - Code generation workflow
-- [CLI_GUIDE.md](guides/CLI_GUIDE.md) - Command-line usage
-- [QUICK_START.md](guides/QUICK_START.md) - Getting started guide
-- [HEXAGONAL_ARCHITECTURE_SUMMARY.md](audits/HEXAGONAL_ARCHITECTURE_SUMMARY.md) - Architecture audit
-

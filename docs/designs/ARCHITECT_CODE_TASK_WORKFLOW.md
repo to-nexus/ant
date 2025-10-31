@@ -1,884 +1,788 @@
-# Architect Agent: Code Task Complete Workflow
+# Architect Code Task Workflow
 
-**Date**: 2025-10-30  
-**Version**: 3.0 (Self-Healing Planner Pattern with Task Queue)
-
----
+Technical documentation for the code generation workflow.
 
 ## Overview
 
-Complete workflow showing **Self-Healing Planner** pattern:
-1. **Decompose**: Meta-level planning (spec → tasks)
-2. **Plan**: Task-level planning + dynamic queue management
-3. **Execute**: Code generation
-4. **Validate**: Static (fast) + Dynamic (build/lint)
-5. **Enforce**: Error analysis + learning feedback
-6. **Self-Healing**: Automatic error categorization and retry strategy
+LangGraph-based workflow that decomposes specifications into tasks, generates code, validates output, and resolves errors through structured retry strategies.
 
----
-
-## What is Self-Healing Planner?
-
-A pattern where the agent:
-- 🔄 **Learns from failures**: Structured error tracking
-- 🧠 **Adapts strategy**: Decides between retry vs task decomposition
-- 📊 **Prioritizes intelligently**: Blocking errors first, features second
-- 💾 **Remembers patterns**: Saves enforcement feedback for future learning
-
-### Key Principles
-
-| Principle | Implementation |
-|-----------|----------------|
-| **Iterative Refinement** | Retry with previous context + feedback |
-| **Self-Diagnosis** | LLM analyzes violation types and severity |
-| **Task Decomposition** | Creates sub-tasks when retry won't work |
-| **Priority Scheduling** | Fixed priority rules (errors: 1-100, features: 200-299) |
-| **Stateful Retry** | Session-based context + enforcement history |
-
----
-
-## High-Level Flow
+## Graph Structure
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ 1. RESOLVE: Load inputs & analyze codebase                 │
-└─────────────────────────────────────────────────────────────┘
-                          ↓
-┌─────────────────────────────────────────────────────────────┐
-│ 2. DECOMPOSE: Meta-level planning (ONCE)                   │
-│    Spec → Feature Tasks (priority queue)                   │
-└─────────────────────────────────────────────────────────────┘
-                          ↓
-┌─────────────────────────────────────────────────────────────┐
-│ 3. TASK LOOP (Self-Healing)                                │
-│    ┌──────────────────────────────────────┐               │
-│    │ Pop task from queue                  │               │
-│    │  ↓                                    │               │
-│    │ PLAN: Generate execution plan        │               │
-│    │  ↓                                    │               │
-│    │ EXECUTE: Generate code               │               │
-│    │  ↓                                    │               │
-│    │ VALIDATE (static): Check patterns    │               │
-│    │  ↓                                    │               │
-│    │ POSTPROCESS: Install deps & write    │               │
-│    │  ↓                                    │               │
-│    │ DYNAMICVALIDATE: Build & lint        │               │
-│    │  ↓                                    │               │
-│    │ If ❌ violations:                    │               │
-│    │   → ENFORCE: Analyze errors          │               │
-│    │   → Check isRetryable flag           │               │
-│    │   → PLAN: Decide strategy            │               │
-│    │      • Retry (if minor errors)       │               │
-│    │      • Add error tasks (if blocking) │               │
-│    │   → Back to PLAN                     │               │
-│    │                                        │               │
-│    │ If ✅ success:                       │               │
-│    │   → Mark task completed              │               │
-│    │   → Next task                        │               │
-│    └──────────────────────────────────────┘               │
-│                                                             │
-│    Until: Queue empty OR max retries                       │
-└─────────────────────────────────────────────────────────────┘
-                          ↓
-┌─────────────────────────────────────────────────────────────┐
-│ 4. EVALUATE & LEARN                                         │
-│    Quality metrics → Branch → Vector DB storage            │
-└─────────────────────────────────────────────────────────────┘
+resolve → decompose → [Task Loop] → evaluate → learn
+                         ↓
+           ┌─────────────┴─────────────┐
+           │ plan → execute → writeFiles →
+           │ validate → installDeps →
+           │ runtimeValidate
+           │   ↓ (if errors)
+           │ enforce → plan (retry)
+           └─────────────┬─────────────┘
+                         ↓
+                    (next task or done)
 ```
 
----
+## Node Descriptions
 
-## Detailed Node-by-Node Flow
+### resolve
 
-### Stage 1: Resolve (Initialization)
+**Purpose**: Load inputs and analyze codebase
 
-```
-┌──────────┐
-│ resolve  │  Load all inputs and prepare context
-└──────────┘
-    │
-    ├─ Load: PRD, Design, Directive
-    ├─ Retrieve: Relevant codebase via CodebaseRetriever
-    ├─ Analyze: Project profile (language/framework)
-    └─ Output: { prd, design, directive, code, codeHead, profile }
-```
-
-**Purpose**: Gather all necessary context for planning  
-**Duration**: ~5-10 seconds (vector search + file loading)
-
----
-
-### Stage 2: Decompose (Meta-Level Planning)
-
-```
-┌────────────┐
-│ decompose  │  Break specification into executable tasks (ONCE)
-└────────────┘
-    │
-    ├─ Input: { prd, design, directive }
-    │
-    ├─ LLM Task: Analyze requirements → Create feature tasks
-    │   │
-    │   └─ Returns: Task[]
-    │       [
-    │         {
-    │           "id": "auth-impl",
-    │           "name": "Implement User Authentication",
-    │           "type": "feature",
-    │           "priority": 250,
-    │           "description": "Login, signup, JWT, protected routes"
-    │         },
-    │         {
-    │           "id": "todo-crud",
-    │           "name": "Build Todo CRUD API",
-    │           "type": "feature",
-    │           "priority": 240,
-    │           "description": "CRUD operations for todo items"
-    │         }
-    │       ]
-    │
-    ├─ Create: TaskQueue (priority-sorted)
-    ├─ Store: featureTasks Map (for completion tracking)
-    └─ Output: { taskQueue, featureTasks, completedTasks: [] }
-```
-
-**Key Point**: This runs ONCE at the beginning. All feature tasks are created here.
-
-**Task Priority Rules** (Lower number = higher priority):
 ```typescript
-TASK_PRIORITIES = {
-  // Error Tasks (10-99) - execute first (lower = more critical)
-  ERROR_MISSING_ENTRY: 10,      // index.html etc (MOST CRITICAL)
-  ERROR_MISSING_DEPS: 15,       // npm packages
-  ERROR_CONFIG: 20,             // tsconfig.json
-  ERROR_TYPE: 30,               // TypeScript errors
-  ERROR_IMPORT: 35,             // Import errors
-  ERROR_BUILD: 40,              // Build errors
-  ERROR_SYNTAX: 50,             // Syntax errors
-  ERROR_LINT: 70,               // Lint errors
-  ERROR_OTHER: 80,              // Misc
+resolve(state) {
+  // Load artifacts
+  const prd = await loadPRD();
+  const design = await loadDesign();
+  const directive = await loadDirective();
   
-  // Feature Tasks (200-299) - execute after errors (lower = more important)
-  FEATURE_CRITICAL: 200,        // Most important features
-  FEATURE_IMPORTANT: 220,
-  FEATURE_NORMAL: 250,
-  FEATURE_NICE_TO_HAVE: 280,    // Least important features
+  // Load codebase via CodebaseRetriever
+  const code = await retriever.retrieve(context);
+  
+  // Analyze project profile
+  const profile = await analyzer.analyze(code);
+  
+  return { prd, design, directive, code, profile };
 }
 ```
 
+**Output**: All necessary context for planning
+
 ---
 
-### Stage 3: Task Loop (Self-Healing Pattern)
+### decompose
 
-#### Node 1: Plan (Task-Level Planning)
+**Purpose**: Break spec into executable tasks (runs once)
 
-```
-┌──────┐
-│ plan │  Generate execution plan for current task
-└──────┘
-    │
-    ├─ Pop next task from queue (highest priority)
-    │
-    ├─ If retry (has violations):
-    │   │
-    │   ├─ Check Retry Heuristic:
-    │   │   │
-    │   │   ├─ All violations.isRetryable === true?
-    │   │   │   → Simple retry (no LLM call)
-    │   │   │
-    │   │   └─ Has blocking errors (missing_dependency, missing_file)?
-    │   │       → Call LLM for error analysis
-    │   │
-    │   └─ LLM Decision:
-    │       {
-    │         "action": "add_tasks" | "retry",
-    │         "reason": "...",
-    │         "newTasks": [
-    │           {
-    │             "id": "fix-deps-1",
-    │             "name": "Install Missing Dependencies",
-    │             "type": "error",
-    │             "priority": 90,
-    │             "description": "Install react, react-dom, etc",
-    │             "errors": ["Cannot find module 'react'", ...]
-    │           }
-    │         ]
-    │       }
-    │
-    ├─ If action === "add_tasks":
-    │   ├─ Add error tasks to queue (high priority)
-    │   ├─ Re-queue current task
-    │   └─ Pop again (now error task comes first)
-    │
-    ├─ Generate Execution Plan:
-    │   │
-    │   └─ LLM Input:
-    │       - Current task description
-    │       - Feature tasks status (for context)
-    │       - Queue status
-    │       - Previous violations (if retry)
-    │       - Previous attempts history
-    │       - PRD/Design/Directive
-    │       - Current codebase
-    │
-    └─ Output: { planText, currentTask, retries: 0 }
-```
-
-**Retry Heuristic Logic**:
 ```typescript
-// Check if all errors are retryable
-const allRetryable = violations.every(v => v.isRetryable === true);
-const hasBlockingErrors = violations.some(v => 
-  v.type === 'missing_dependency' || 
-  v.type === 'missing_file' || 
-  v.type === 'config_error'
-);
-
-if (allRetryable && !hasBlockingErrors) {
-  // Just retry - no need to call LLM
-  return { currentTask: nextTask, retries: 0 };
-} else {
-  // Need LLM to analyze and decide strategy
-  // ... (call LLM for error analysis)
+decompose(state) {
+  // Check session for existing tasks
+  const session = await deps.session.load(project, feature);
+  if (session.state?.taskQueue) {
+    // Resume from checkpoint
+    return { taskQueue, completedTasks };
+  }
+  
+  // LLM decomposes spec → tasks
+  const tasks = await llm.invoke({
+    spec: { prd, design, directive },
+    instruction: "Break into tasks with priorities"
+  });
+  
+  // Create priority queue
+  const taskQueue = new TaskQueue();
+  tasks.forEach(t => taskQueue.push(t));
+  
+  // Add final verification task
+  taskQueue.push({
+    id: "final-verification",
+    type: "feature",
+    priority: 999,
+    description: "Verify all requirements met"
+  });
+  
+  return { taskQueue, completedTasks: [] };
 }
 ```
 
----
+**Output**: Priority-sorted task queue
 
-#### Node 2: Execute (Code Generation)
-
-```
-┌─────────┐
-│ execute │  Generate code based on plan
-└─────────┘
-    │
-    ├─ LLM Input:
-    │   - Execution plan (from plan node)
-    │   - Current task description
-    │   - Codebase context
-    │   - Profile (language/framework conventions)
-    │
-    ├─ LLM Generates:
-    │   - New files
-    │   - Modified files
-    │   - Files to delete
-    │
-    ├─ Parse Response:
-    │   └─ Extract files from markdown blocks
-    │
-    ├─ Record Attempt:
-    │   {
-    │     attemptNumber: N,
-    │     filesGenerated: ["auth.ts", "api.ts"],
-    │     keyChanges: ["Added dependencies: react, express"],
-    │     subtaskName: "Implement Auth",
-    │     errorsAttemptedToFix: [...]
-    │   }
-    │
-    └─ Output: { files, filesToDelete, previousAttempts }
-```
+**Task Priorities** (lower = higher priority):
+- Setup: 100-149 (config files)
+- Errors: 1-99 (blocking issues)
+- Features: 200-299 (user requirements)
 
 ---
 
-#### Node 3: Validate (Static Checks)
+### plan
 
-```
-┌──────────┐
-│ validate │  Fast static validation (no build)
-└──────────┘
-    │
-    ├─ Check 1: Files generated?
-    │   └─ If no files → Violation { type: 'no_files', isRetryable: true }
-    │
-    ├─ Check 2: Ellipsis patterns (...)
-    │   └─ If found → Violation { type: 'ellipsis', isRetryable: true }
-    │
-    ├─ Check 3: Excessive deletion (< 70% of original)
-    │   └─ If found → Violation { type: 'excessive_deletion', isRetryable: true }
-    │
-    └─ Output: { violations: Violation[] }
-```
+**Purpose**: Generate execution plan for current task
 
-**Violation Structure**:
 ```typescript
-interface Violation {
-  type: ViolationType;           // error category
-  severity: 'critical' | 'major' | 'minor';
-  message: string;
-  file?: string;
-  suggestedFix?: string;
-  isRetryable?: boolean;         // 🔑 KEY for retry heuristic
-  module?: string;
+plan(state) {
+  // Pop next task from queue
+  const nextTask = state.taskQueue.peek();
+  if (!nextTask) {
+    return { /* queue empty */ };
+  }
+  
+  // For non-setup tasks, reload codebase
+  let currentCode = state.code;
+  if (nextTask.type !== 'setup') {
+    currentCode = await gitPort.listFiles(workDir, {
+      exclude: ['node_modules', 'dist', '.git', '*.test.*']
+    });
+  }
+  
+  // Generate plan
+  const planText = await engine.buildPlanPrompt({
+    task: nextTask,
+    code: currentCode,
+    spec: { prd, design, directive },
+    violations: state.violations  // Previous errors if retry
+  });
+  
+  // Save checkpoint
+  await saveCheckpoint(state);
+  
+  return { 
+    currentTask: nextTask, 
+    planText, 
+    code: currentCode,
+    retries: 0  // Reset for new task
+  };
+}
+```
+
+**Checkpoint**: Saved after plan generation
+
+---
+
+### execute
+
+**Purpose**: Generate code from plan
+
+```typescript
+execute(state) {
+  // Build prompt with plan + context
+  const codePrompt = await engine.buildExecutePrompt({
+    plan: state.planText,
+    task: state.currentTask,
+    code: state.code,
+    profile: state.profile
+  });
+  
+  // LLM generates code
+  const raw = await llm.invoke(codePrompt);
+  
+  // Parse files from response
+  const files = parseResponse(raw);
+  
+  // Record attempt
+  const attempt = {
+    attemptNumber: state.previousAttempts.length + 1,
+    filesGenerated: files.map(f => f.path),
+    taskName: state.currentTask.name
+  };
+  
+  // Save checkpoint
+  await saveCheckpoint(state);
+  
+  return { 
+    rawResponse: raw, 
+    files, 
+    previousAttempts: [...state.previousAttempts, attempt]
+  };
+}
+```
+
+**Checkpoint**: Saved after code generation
+
+---
+
+### writeFiles
+
+**Purpose**: Write files to disk immediately
+
+```typescript
+writeFiles(state) {
+  const workDir = state.context.workDir || '.';
+  
+  for (const file of state.files) {
+    const fullPath = path.join(workDir, file.path);
+    await gitPort.writeFile(fullPath, file.content);
+  }
+  
+  // Delete requested files
+  for (const path of state.filesToDelete || []) {
+    await gitPort.deleteFile(path);
+  }
+  
+  return { /* no state changes */ };
+}
+```
+
+**Critical**: Files written before any validation to ensure LLM output is persisted even if recursion limit hits.
+
+---
+
+### validate
+
+**Purpose**: Fast static checks
+
+```typescript
+validate(state) {
+  const violations = [];
+  
+  // Check 1: No files generated?
+  if (!state.files || state.files.length === 0) {
+    // Check if source files already exist
+    const hasExistingFiles = await checkSourceFiles(workDir);
+    if (!hasExistingFiles) {
+      violations.push({
+        type: 'no_files',
+        severity: 'critical',
+        message: 'No files generated',
+        isRetryable: true
+      });
+    }
+  }
+  
+  // Check 2: Ellipsis patterns
+  for (const file of state.files) {
+    if (/\.{3}|\/\/\s*\.\.\./.test(file.content)) {
+      violations.push({
+        type: 'ellipsis',
+        severity: 'major',
+        file: file.path,
+        message: 'Contains ellipsis placeholder',
+        isRetryable: true
+      });
+    }
+  }
+  
+  // Check 3: Excessive deletion
+  if (state.code && state.files.length < state.code.length * 0.7) {
+    violations.push({
+      type: 'excessive_deletion',
+      severity: 'critical',
+      message: 'Deleted >30% of original code',
+      isRetryable: true
+    });
+  }
+  
+  return { violations };
 }
 ```
 
 **Decision**:
 - If violations → `enforce`
-- If OK → `postProcess` (install deps)
+- If OK → `installDeps`
 
 ---
 
-#### Node 4: PostProcess (Dependency Installation)
+### installDeps
 
-```
-┌──────────────┐
-│ postProcess  │  Write files + Install dependencies
-└──────────────┘
-    │
-    ├─ 1. Write all files to disk
-    │   └─ Required for dynamicValidate to check
-    │
-    ├─ 2. If package.json changed:
-    │   │
-    │   ├─ Detect package manager (npm/pnpm/yarn)
-    │   └─ Run: npm install
-    │       │
-    │       ├─ Success → Continue
-    │       │
-    │       └─ Failure → Violation
-    │           {
-    │             type: 'missing_dependency',
-    │             severity: 'critical',
-    │             message: "Dependency install failed...",
-    │             isRetryable: false  // Needs package.json fix
-    │           }
-    │
-    └─ Output: { violations (if any) }
-```
+**Purpose**: Install dependencies
 
----
-
-#### Node 5: DynamicValidate (Build & Lint)
-
-```
-┌─────────────────┐
-│ dynamicValidate │  Run actual build/lint/type-check
-└─────────────────┘
-    │
-    ├─ 1. TypeScript type-check (tsc --noEmit)
-    │   └─ Failures → Violation { type: 'type_error', isRetryable: true }
-    │
-    ├─ 2. ESLint (if configured)
-    │   └─ Failures → Violation { type: 'lint_error', severity: 'minor', isRetryable: true }
-    │
-    ├─ 3. Build (npm run build)
-    │   │
-    │   ├─ Missing entry file (index.html) → Violation
-    │   │   {
-    │   │     type: 'missing_file',
-    │   │     severity: 'critical',
-    │   │     file: 'index.html',
-    │   │     suggestedFix: 'Create the missing entry file',
-    │   │     isRetryable: false  // Needs file creation
-    │   │   }
-    │   │
-    │   ├─ Missing module (react) → Violation
-    │   │   {
-    │   │     type: 'missing_dependency',
-    │   │     severity: 'critical',
-    │   │     module: 'react',
-    │   │     suggestedFix: 'Install missing dependency',
-    │   │     isRetryable: false  // Needs package.json update
-    │   │   }
-    │   │
-    │   └─ Other build errors → Violation
-    │       { type: 'build_error', isRetryable: false }
-    │
-    └─ Output: { violations: Violation[], dynamicValidationResult }
-```
-
-**Decision Logic**:
 ```typescript
-if (no violations) {
-  // ✅ Task succeeded!
-  if (currentTask.type === 'feature') {
-    // Mark feature as completed
-    featureTasks.get(currentTask.id).completed = true;
-  } else if (currentTask.type === 'error') {
-    // Remove all error tasks (errors resolved)
-    taskQueue.removeType('error');
+installDeps(state) {
+  const violations = [];
+  
+  // Check if package.json changed
+  const pkgJsonChanged = state.files.some(f => 
+    f.path.endsWith('package.json')
+  );
+  
+  if (pkgJsonChanged) {
+    // Detect package manager
+    const pm = detectPackageManager(workDir);
+    
+    // Run install
+    const result = await command.execute(`${pm} install`, {
+      cwd: workDir,
+      env: { ...process.env, NODE_ENV: 'development' }
+    });
+    
+    if (result.exitCode !== 0) {
+      violations.push({
+        type: 'missing_dependency',
+        severity: 'critical',
+        message: `Dependency install failed: ${result.stderr}`,
+        isRetryable: false  // Needs package.json fix
+      });
+    }
   }
   
-  if (taskQueue.isEmpty()) {
-    return "evaluate";  // All done!
-  } else {
-    return "plan";  // Next task
-  }
-} else if (retries < maxRetries) {
-  return "enforce";  // Try to fix
-} else if (!taskQueue.isEmpty()) {
-  // Skip this task, try next
-  return "plan";
-} else {
-  return "evaluate";  // Give up
+  return { violations };
 }
 ```
 
 ---
 
-#### Node 6: Enforce (Error Analysis & Learning)
+### runtimeValidate
 
-```
-┌─────────┐
-│ enforce │  Analyze violations & save feedback
-└─────────┘
-    │
-    ├─ 1. Format violations for LLM
-    │   │
-    │   └─ Example:
-    │       1. [CRITICAL] missing_file: index.html does not exist
-    │          File: index.html
-    │          💡 Suggested Fix: Create the missing entry file
-    │          ♻️  Retryable: NO (needs task decomposition)
-    │       
-    │       2. [MAJOR] type_error: TypeScript errors (12 total)
-    │          💡 Suggested Fix: Fix type errors in code
-    │          ♻️  Retryable: YES
-    │
-    ├─ 2. Check Retry Heuristic
-    │   │
-    │   └─ All retryable?
-    │       - YES → Simple feedback
-    │       - NO → Needs error analysis in Plan node
-    │
-    ├─ 3. Save Enforcement Feedback (for learning)
-    │   {
-    │     taskId: "auth-impl",
-    │     taskName: "Implement Auth",
-    │     attemptNumber: 2,
-    │     violations: [Violation, ...],
-    │     enforcementReason: "...",
-    │     fixStrategy: "retry" | "add_tasks" | "skip",
-    │     addedTasks: [Task, ...],  // If add_tasks
-    │     timestamp: 1234567890
-    │   }
-    │
-    ├─ 4. Increment retries
-    │
-    └─ Output: 
-        { 
-          enforcementReason: formatted_violations,
-          retries: N+1,
-          enforcementHistory: [..., newFeedback]
+**Purpose**: Build, lint, type-check
+
+```typescript
+runtimeValidate(state) {
+  const violations = [];
+  
+  // Skip for setup tasks (config-only)
+  if (state.currentTask.type === 'setup') {
+    // Only validate JSON syntax
+    for (const file of state.files) {
+      if (file.path.endsWith('.json')) {
+        try {
+          JSON.parse(file.content);
+        } catch (e) {
+          violations.push({
+            type: 'syntax_error',
+            severity: 'critical',
+            file: file.path,
+            message: `Invalid JSON: ${e.message}`,
+            isRetryable: true
+          });
         }
-        → Go to Plan node (for strategy decision)
+      }
+    }
+    
+    // Save checkpoint
+    await saveCheckpoint(state);
+    
+    return { violations };
+  }
+  
+  // TypeScript check
+  const tscResult = await command.execute('npx tsc --noEmit');
+  if (tscResult.exitCode !== 0) {
+    const diagnosis = await diagnostics.analyzeTypeScript(tscResult.stderr);
+    violations.push(...diagnosis);
+  }
+  
+  // ESLint check
+  const lintResult = await command.execute('npm run lint');
+  if (lintResult.exitCode !== 0) {
+    // Check if linting build artifacts
+    if (/\/(dist|build)\//.test(lintResult.stdout)) {
+      violations.push({
+        type: 'config_error',
+        severity: 'critical',
+        message: 'ESLint checking build artifacts. Add ignorePatterns to .eslintrc.json',
+        isRetryable: false
+      });
+    } else {
+      const diagnosis = await diagnostics.analyzeESLint(lintResult.stdout);
+      violations.push(...diagnosis);
+    }
+  }
+  
+  // Build check
+  const buildResult = await command.execute('npm run build');
+  if (buildResult.exitCode !== 0) {
+    const diagnosis = await diagnostics.analyzeBuild(buildResult.stderr);
+    violations.push(...diagnosis);
+  }
+  
+  // Save checkpoint
+  await saveCheckpoint(state);
+  
+  return { violations };
+}
 ```
 
-**Enforcement Feedback** is stored for:
-1. Vector DB learning (pattern matching)
-2. Future error detection
-3. Debugging and analysis
+**Checkpoint**: Saved after validation complete
+
+**Decision**:
+```typescript
+if (no violations) {
+  // Task succeeded
+  if (currentTask.type === 'feature') {
+    state.completedTasks.push(currentTask.id);
+  } else if (currentTask.type === 'error') {
+    // Remove all error tasks (errors resolved)
+    state.taskQueue.removeType('error');
+  }
+  
+  // Pop completed task
+  state.taskQueue.pop();
+  
+  if (taskQueue.isEmpty()) {
+    return "evaluate";  // All done
+  } else {
+    return "plan";  // Next task
+  }
+} else if (retries < maxRetries) {
+  return "enforce";  // Try to fix
+} else {
+  // Max retries reached, skip task
+  state.taskQueue.pop();
+  if (taskQueue.isEmpty()) {
+    return "evaluate";
+  } else {
+    return "plan";
+  }
+}
+```
 
 ---
 
-### Stage 4: Finalization
+### enforce
 
-#### Node 7: Evaluate (Code Quality)
+**Purpose**: Analyze violations and prepare retry
 
+```typescript
+enforce(state) {
+  // Format violations
+  const formatted = violations.map((v, i) => 
+    `${i+1}. [${v.severity.toUpperCase()}] ${v.type}: ${v.message}
+       File: ${v.file || 'N/A'}
+       💡 Fix: ${v.suggestedFix || 'See error message'}
+       ♻️  Retryable: ${v.isRetryable ? 'YES' : 'NO'}`
+  ).join('\n\n');
+  
+  // Save feedback for learning
+  const feedback = {
+    taskId: state.currentTask.id,
+    taskName: state.currentTask.name,
+    attemptNumber: state.retries + 1,
+    violations,
+    enforcementReason: formatted,
+    timestamp: Date.now()
+  };
+  
+  return {
+    enforcementReason: formatted,
+    retries: state.retries + 1,
+    enforcementHistory: [...state.enforcementHistory, feedback]
+  };
+}
 ```
-┌──────────┐
-│ evaluate │  Analyze code quality metrics
-└──────────┘
-    │
-    ├─ Analyze: Complexity, maintainability, comment density
-    ├─ Generate: Recommendations
-    ├─ Check: Quality thresholds (if configured)
-    └─ Save: Report to workspace/outputs/eval/
+
+**Output**: Formatted error context for next `plan` call
+
+---
+
+### evaluate
+
+**Purpose**: Analyze code quality
+
+```typescript
+evaluate(state) {
+  // Only if --eval flag
+  if (!state.context.config.autoEval) {
+    return { /* skip */ };
+  }
+  
+  // Analyze metrics
+  const metrics = await evaluator.analyze(state.files);
+  
+  // Generate report
+  const report = formatReport(metrics);
+  
+  // Save report
+  await reporter.save(report, 'outputs/eval/report.md');
+  
+  return { evaluationReport: report };
+}
 ```
 
 ---
 
-#### Node 8: Learn (Knowledge Storage)
+### learn
 
-```
-┌────────┐
-│ learn  │  Store learnings + create branch
-└────────┘
-    │
-    ├─ 1. Extract learnings:
-    │   - Context (project, feature, mode)
-    │   - Codebase profile
-    │   - Implementation plan summary
-    │   - Files generated
-    │   - Violations encountered
-    │   - Enforcement feedback history
-    │   - Quality metrics
-    │
-    ├─ 2. Create Git branch
-    │   └─ feature/{project}-{timestamp}
-    │
-    ├─ 3. Save session turn
-    │   └─ workspace/{project}/outputs/session.json
-    │
-    ├─ 4. Chunk and store to Vector DB
-    │   └─ Linked to session (for traceability)
-    │
-    └─ Output: { learnings, branch, filesWritten }
+**Purpose**: Store learnings and create branch
+
+```typescript
+learn(state) {
+  // Extract learnings
+  const learnings = {
+    context: { project, feature, mode },
+    profile: state.profile,
+    plan: state.planText,
+    filesGenerated: state.files.map(f => f.path),
+    violations: state.enforcementHistory,
+    metrics: state.evaluationReport
+  };
+  
+  // Create Git branch
+  const branch = `feature/${project}-${feature}`;
+  await gitPort.createBranch(branch);
+  
+  // Save session turn
+  await session.addTurn(project, feature, {
+    task: 'code',
+    input: { prd, design, directive },
+    output: learnings,
+    state: {
+      taskQueue: state.taskQueue.getAll(),
+      completedTasks: state.completedTasks,
+      retries: state.retries
+    }
+  });
+  
+  // Chunk and store to vector DB
+  const chunks = await chunk.process(learnings);
+  await memory.store(chunks, project);
+  
+  return { 
+    learnings, 
+    branch, 
+    filesWritten: state.files.length 
+  };
+}
 ```
 
 ---
 
 ## Task Queue Management
 
-### Initial State (After Decompose)
+### Priority Rules
 
 ```typescript
-taskQueue: [
-  { id: "auth-impl", name: "Implement Auth", type: "feature", priority: 250 },
-  { id: "todo-crud", name: "Todo CRUD", type: "feature", priority: 240 }
-]
-
-featureTasks: Map {
-  "auth-impl" => { ..., completed: false },
-  "todo-crud" => { ..., completed: false }
-}
+export const TASK_PRIORITIES = {
+  SETUP_PROJECT: 100,           // Config files
+  
+  ERROR_MISSING_ENTRY: 10,      // index.html
+  ERROR_MISSING_DEPS: 15,       // package.json deps
+  ERROR_CONFIG: 20,             // tsconfig.json
+  ERROR_TYPE: 30,               // TypeScript errors
+  ERROR_IMPORT: 35,             // Import errors
+  ERROR_BUILD: 40,              // Build errors
+  ERROR_SYNTAX: 50,             // Syntax errors
+  ERROR_LINT: 70,               // Lint errors
+  ERROR_OTHER: 80,              // Other
+  
+  FEATURE_CRITICAL: 200,
+  FEATURE_IMPORTANT: 220,
+  FEATURE_NORMAL: 250,
+  FEATURE_NICE_TO_HAVE: 280,
+};
 ```
 
-### After First Task Fails (Missing Deps)
+### Example Flow
 
 ```typescript
-// Plan node adds error tasks
+// Initial decompose
 taskQueue: [
-  { id: "fix-deps-1", name: "Install Dependencies", type: "error", priority: 90 },
-  { id: "auth-impl", name: "Implement Auth", type: "feature", priority: 250 },
-  { id: "todo-crud", name: "Todo CRUD", type: "feature", priority: 240 }
+  { id: "setup", type: "setup", priority: 100 },
+  { id: "auth", type: "feature", priority: 200 },
+  { id: "api", type: "feature", priority: 220 }
 ]
 
-// Error task is now first (higher priority)
-```
-
-### After Error Task Completes
-
-```typescript
-// dynamicValidate removes ALL error tasks
+// After setup task fails (missing deps)
 taskQueue: [
-  { id: "auth-impl", name: "Implement Auth", type: "feature", priority: 250 },
-  { id: "todo-crud", name: "Todo CRUD", type: "feature", priority: 240 }
+  { id: "fix-deps", type: "error", priority: 15 },  // Added by plan node
+  { id: "setup", type: "setup", priority: 100 },    // Re-queued
+  { id: "auth", type: "feature", priority: 200 },
+  { id: "api", type: "feature", priority: 220 }
 ]
 
-// Resume feature tasks
-```
-
-### Completion Tracking
-
-```typescript
-completedTasks: ["fix-deps-1", "auth-impl"]
-
-featureTasks: Map {
-  "auth-impl" => { ..., completed: true },   // ✅
-  "todo-crud" => { ..., completed: false }   // ⏳
-}
+// After error task succeeds
+taskQueue: [
+  { id: "setup", type: "setup", priority: 100 },
+  { id: "auth", type: "feature", priority: 200 },
+  { id: "api", type: "feature", priority: 220 }
+]
+// Note: All error tasks removed when any error task succeeds
 ```
 
 ---
 
-## Key Improvements from Previous Version
+## Checkpointing
 
-| Aspect | v2.0 (Dual-Track) | v3.0 (Self-Healing) |
-|--------|-------------------|---------------------|
-| **Error Structure** | `string[]` | `Violation[]` (typed) |
-| **Retry Logic** | Fixed retries | Smart heuristic (`isRetryable`) |
-| **Task Decomposition** | Manual in Plan node | Separate Decompose node |
-| **Learning** | Basic attempt history | Enforcement feedback with strategy |
-| **Priority** | Ad-hoc | Fixed rules (`TASK_PRIORITIES`) |
-| **Error Analysis** | Every failure | Only for blocking errors |
-| **Pattern Name** | Dual-Track Subtask | Self-Healing Planner |
+State is saved at three critical points:
 
----
+1. **After plan**: Task plan generated, currentCode loaded
+2. **After execute**: Files generated by LLM (critical!)
+3. **After runtimeValidate**: Validation complete
 
-## Example Execution Trace
+### Checkpoint Structure
 
-### Scenario: Build React Todo App
+```typescript
+checkpoint = {
+  taskQueue: Task[],
+  completedTasks: string[],
+  retries: number,
+  maxRetries: number,
+  previousAttempts: Attempt[],
+  enforcementHistory: Feedback[],
+  lastViolations: Violation[],
+  previousFileCount: number,
+  resolvedCategories: string[]
+}
+```
 
-#### 1. Decompose Output
-```json
-{
-  "tasks": [
-    {
-      "id": "setup-project",
-      "name": "Setup Project Structure",
-      "type": "feature",
-      "priority": 280,
-      "description": "Vite + React + TypeScript setup"
-    },
-    {
-      "id": "todo-ui",
-      "name": "Build Todo UI",
-      "type": "feature",
-      "priority": 250
+### Recursion Limit Handling
+
+```typescript
+runner.ts:
+  try {
+    state = await app.invoke(initial, { recursionLimit: 25 });
+  } catch (error) {
+    if (error.message.includes('Recursion limit')) {
+      // Restore from checkpoint
+      const session = await sessionPort.load(project, feature);
+      const taskQueue = new TaskQueue();
+      session.state.taskQueue.forEach(t => taskQueue.push(t));
+      
+      // Force learn node execution
+      state = await learn({ ...initial, taskQueue, ... });
+      
+      // Report paused state
+      console.log(`⏸️  Paused: ${taskQueue.size()} tasks remaining`);
     }
-  ]
-}
-```
-
-#### 2. First Task: "Setup Project Structure"
-
-**Plan → Execute → Validate (✅) → PostProcess → DynamicValidate**
-
-DynamicValidate fails:
-```typescript
-violations: [
-  {
-    type: 'missing_file',
-    severity: 'critical',
-    file: 'index.html',
-    message: 'Could not resolve entry module "index.html"',
-    suggestedFix: 'Create the missing entry file',
-    isRetryable: false  // ← Blocking error
   }
-]
 ```
-
-**Enforce → Plan (Error Analysis)**
-
-Plan node checks retry heuristic:
-```typescript
-const hasBlockingErrors = true;  // missing_file
-// → Call LLM for analysis
-```
-
-LLM Decision:
-```json
-{
-  "action": "add_tasks",
-  "reason": "Missing critical entry file - needs separate task",
-  "newTasks": [
-    {
-      "id": "fix-entry-1",
-      "name": "Create Missing index.html",
-      "type": "error",
-      "priority": 95,
-      "description": "Create Vite entry file with React root",
-      "errors": ["Could not resolve entry module 'index.html'"]
-    }
-  ]
-}
-```
-
-Queue updates:
-```typescript
-// Before
-taskQueue: [
-  "setup-project" (250),
-  "todo-ui" (250)
-]
-
-// After
-taskQueue: [
-  "fix-entry-1" (95),      // ← Added, highest priority!
-  "setup-project" (250),   // ← Re-queued
-  "todo-ui" (250)
-]
-```
-
-#### 3. Second Iteration: "Create Missing index.html"
-
-**Plan → Execute → Validate (✅) → PostProcess → DynamicValidate (✅)**
-
-Task completes! Queue updated:
-```typescript
-// Error task done → Remove ALL error tasks
-taskQueue: [
-  "setup-project" (250),
-  "todo-ui" (250)
-]
-
-completedTasks: ["fix-entry-1"]
-```
-
-#### 4. Third Iteration: "Setup Project Structure" (Retry)
-
-**Plan → Execute → Validate (✅) → PostProcess → DynamicValidate (✅)**
-
-Task completes! Feature marked:
-```typescript
-featureTasks: Map {
-  "setup-project" => { completed: true },  // ✅
-  "todo-ui" => { completed: false }
-}
-
-completedTasks: ["fix-entry-1", "setup-project"]
-```
-
-#### 5. Fourth Iteration: "Build Todo UI"
-
-**Plan → Execute → Validate (✅) → PostProcess → DynamicValidate**
-
-Minor type errors:
-```typescript
-violations: [
-  {
-    type: 'type_error',
-    severity: 'major',
-    message: 'TypeScript errors (3 total)...',
-    isRetryable: true  // ← Retryable!
-  }
-]
-```
-
-**Enforce → Plan (Retry Heuristic)**
-
-```typescript
-const allRetryable = true;
-const hasBlockingErrors = false;
-// → Simple retry (no LLM call)
-```
-
-**Plan → Execute → ... → DynamicValidate (✅)**
-
-All done! Queue empty → Evaluate → Learn
 
 ---
 
-## Enforcement Feedback Example
+## Language-Specific Features
 
-After completion, `enforcementHistory` contains:
-```typescript
-[
-  {
-    taskId: "setup-project",
-    taskName: "Setup Project Structure",
-    attemptNumber: 1,
-    violations: [
-      { type: 'missing_file', severity: 'critical', ... }
-    ],
-    enforcementReason: "Missing critical entry file",
-    fixStrategy: "add_tasks",
-    addedTasks: [
-      { id: "fix-entry-1", name: "Create index.html", ... }
-    ],
-    timestamp: 1730280000000
-  },
-  {
-    taskId: "todo-ui",
-    taskName: "Build Todo UI",
-    attemptNumber: 1,
-    violations: [
-      { type: 'type_error', severity: 'major', ... }
-    ],
-    enforcementReason: "TypeScript type errors",
-    fixStrategy: "retry",
-    timestamp: 1730280120000
-  }
-]
+### Setup Task Constraints
+
+Setup tasks (config files) have language-specific constraints injected dynamically:
+
+**TypeScript** (`templates/code/languages/typescript/setup/constraints.md`):
+```markdown
+SETUP TASK - Configuration Files ONLY
+
+Allowed:
+- package.json, tsconfig.json, vite.config.ts
+- .eslintrc.json (MUST include ignorePatterns)
+- tailwind.config.js, postcss.config.js
+- index.html, .gitignore, README.md
+
+Forbidden:
+- src/*, app/*, lib/*, components/*
+- Any .tsx, .jsx files
 ```
 
-This history is:
-1. Stored in session
-2. Saved to Vector DB (for pattern learning)
-3. Used for future error detection
+Injected via:
+```typescript
+ModeController.selectInjections(taskType) {
+  if (taskType === 'setup') {
+    const lang = detectLanguage(context);
+    return [`code/languages/${lang}/setup/constraints`];
+  }
+  return [];
+}
+```
+
+### Validation Strategies
+
+**Setup Tasks**:
+- JSON syntax validation only
+- Skip TypeScript checks (no src/ files yet)
+- Skip build (no code to build)
+
+**Feature Tasks**:
+- Full TypeScript type-check
+- ESLint
+- Build verification
+- Dependency check
 
 ---
 
-## Benefits of Self-Healing Pattern
+## Error Handling
 
-### 1. **Reduced LLM Calls**
-- Retry heuristic avoids calling LLM for trivial errors (ellipsis, minor types)
-- Cost savings: ~30-40% fewer calls
+### Violation Structure
 
-### 2. **Smarter Error Handling**
-- Structured violations enable pattern matching
-- Can learn "missing index.html in Vite projects" pattern
+```typescript
+interface Violation {
+  type: ViolationType;
+  severity: 'critical' | 'major' | 'minor';
+  message: string;
+  file?: string;
+  suggestedFix?: string;
+  isRetryable?: boolean;  // Key for retry decision
+  module?: string;
+}
+```
 
-### 3. **Stable Priority Management**
-- Fixed rules prevent queue explosion
-- Blocking errors always handled first
+### Retry Decision Logic
 
-### 4. **Complete Traceability**
-- Enforcement feedback tracks every decision
-- Can replay failures for debugging
+```typescript
+const allRetryable = violations.every(v => v.isRetryable === true);
+const hasBlockingErrors = violations.some(v => 
+  v.type === 'missing_dependency' || 
+  v.type === 'missing_file' ||
+  v.type === 'config_error'
+);
 
-### 5. **Incremental Improvement**
-- Vector DB accumulates patterns over time
-- Future projects benefit from past learnings
+if (allRetryable && !hasBlockingErrors) {
+  // Simple retry
+  return plan(state);
+} else {
+  // LLM analyzes errors and decides strategy
+  const decision = await llm.invoke({
+    violations,
+    context,
+    instruction: "Decide: retry or add error tasks?"
+  });
+  
+  if (decision.action === 'add_tasks') {
+    decision.newTasks.forEach(t => taskQueue.push(t));
+  }
+  
+  return plan(state);
+}
+```
 
 ---
 
 ## Configuration
 
-### Task Priorities
+### Workspace Config (`workspace/project/config.json`)
 
-Defined in `src/agents/architect/graph/code/state.ts`:
-```typescript
-export const TASK_PRIORITIES = {
-  FEATURE_CRITICAL: 280,
-  FEATURE_IMPORTANT: 250,
-  FEATURE_NORMAL: 220,
-  FEATURE_NICE_TO_HAVE: 200,
-  
-  ERROR_MISSING_ENTRY: 95,
-  ERROR_MISSING_DEPS: 90,
-  ERROR_CONFIG: 80,
-  ERROR_TYPE: 70,
-  ERROR_IMPORT: 65,
-  ERROR_BUILD: 60,
-  ERROR_SYNTAX: 50,
-  ERROR_LINT: 30,
-  ERROR_OTHER: 20,
-};
+```json
+{
+  "projectName": "my-app",
+  "branchBase": "main",
+  "autoLearn": true,
+  "strictValidation": true,
+  "runTests": false,
+  "llmProvider": "anthropic",
+  "llmModel": "claude-3-5-sonnet-20241022"
+}
 ```
 
-### Max Retries
+### Graph Config
 
-Default: 3 per task  
-Can be configured in workspace config.
+- **recursionLimit**: 25 (in runner.ts)
+- **maxRetries**: 3 per task (in state.ts)
 
-### Validation
+---
 
-- Static validation: Always enabled
-- Dynamic validation: Enabled by default (`strictValidation: true`)
-- Disable: Set `strictValidation: false` in config
+## Performance
+
+### Token Usage
+
+**Typical Task**:
+- Plan: ~8K tokens
+- Execute: ~12K tokens
+- Retry: +6K tokens per attempt
+
+**Optimizations**:
+- Checkpoint system avoids re-running entire graph
+- Language-specific validation skips unnecessary checks
+- Retry heuristic reduces LLM calls for simple errors
+
+### Execution Time
+
+**Setup Task**: ~30s
+- Plan: 3s
+- Execute: 8s
+- Validate: 1s
+- InstallDeps: 15s
+- RuntimeValidate: 3s
+
+**Feature Task**: ~45s
+- Plan: 5s
+- Execute: 12s
+- Validate: 1s
+- InstallDeps: 2s (if cached)
+- RuntimeValidate: 25s (build + lint + types)
 
 ---
 
 ## Troubleshooting
 
-### Issue: Task keeps retrying same error
+### Files not saved despite LLM generation
 
-**Cause**: LLM not generating correct fix  
-**Solution**: Check `enforcementHistory` to see what was tried. May need better prompt or manual intervention.
+**Cause**: Recursion limit hit before `writeFiles` node  
+**Solution**: `writeFiles` now runs immediately after `execute` (before validation)
 
-### Issue: Queue grows infinitely
+### Setup task generating src/ files
 
-**Cause**: LLM creating too many error tasks  
-**Solution**: Check `TASK_PRIORITIES`. Ensure error tasks have priority < 100.
+**Cause**: Validation forcing LLM to create files to pass TypeScript checks  
+**Solution**: Setup tasks now skip TypeScript/build checks, only validate JSON syntax
 
-### Issue: Build fails but no error task created
+### Session not resuming after interruption
 
-**Cause**: `isRetryable` incorrectly set to `true`  
-**Solution**: Review `dynamicValidate.ts` violation generation logic.
+**Cause**: State not saved when recursion limit hit  
+**Solution**: Checkpointing system + forced `learn` node execution in runner.ts
 
----
+### ESLint errors in dist/ folder
 
-## Comparison to Industry Systems
-
-| System | Pattern | Similar To Ours? |
-|--------|---------|------------------|
-| **Claude Projects** | Retry + dependency suggestion | ✅ Very similar |
-| **SWE-Agent** | plan → edit → test → replan loop | ✅ Same structure |
-| **Devin** | Queue + retry chain | ✅ Queue-based |
-| **AutoGPT** | Task decomposition + queue | ✅ Task queue |
-
-Our implementation is a **production-ready version** of patterns used by leading AI coding systems.
-
----
-
-## Future Enhancements
-
-1. **Pattern Library**: Pre-built error patterns (e.g., "Vite needs index.html")
-2. **Parallel Tasks**: Execute independent tasks simultaneously
-3. **Cost Tracking**: Monitor LLM token usage per task
-4. **Confidence Scores**: LLM provides confidence for retry decisions
-5. **Rollback**: Undo task if quality degrades
-
----
-
-## Conclusion
-
-The **Self-Healing Planner Pattern** provides:
-- ✅ Systematic error handling
-- ✅ Cost-effective retries
-- ✅ Learning from failures
-- ✅ Production-grade stability
-
-This is the foundation for a truly autonomous code generation system.
+**Cause**: .eslintrc.json missing `ignorePatterns`  
+**Solution**: Setup task constraints now mandate `ignorePatterns` in ESLint config
