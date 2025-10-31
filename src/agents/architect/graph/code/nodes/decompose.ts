@@ -106,58 +106,88 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   
   const spec = specParts.join('\n\n---\n\n');
   
+  // Check if this is a new project (no existing code)
+  const isNewProject = !state.code || state.code.trim().length === 0;
+  
   const prompt = `You are analyzing a software specification to break it into executable tasks.
 
 SPECIFICATION:
 ${spec}
 
+${isNewProject ? `
+🆕 THIS IS A NEW PROJECT (no existing codebase detected)
+
+CRITICAL: You MUST create a SETUP task first!
+
+Return JSON with this structure:
+{
+  "tasks": [
+      {
+        "id": "setup-project-config",
+        "name": "Setup Project Configuration",
+        "type": "setup",
+        "priority": 100,
+        "description": "Generate package.json, tsconfig.json/go.mod/pyproject.toml, build tool config (vite.config.ts/etc), .gitignore, README.md, and install dependencies. This establishes the foundation before any code is written."
+      },
+      ... then feature tasks (priority 200+) ...
+  ]
+}
+
+The setup task should:
+- Generate ALL configuration files (package.json, language config, build config)
+- Include ALL dependencies in package.json (don't leave anything for later)
+- Set up linting (.eslintrc, .prettierrc, etc.)
+- Create project structure docs (README.md)
+` : ''}
+
 YOUR TASK:
 Break this specification into a prioritized list of implementation tasks.
 
 GUIDELINES:
-1. **Feature Tasks** (priority 200-299):
+1. **${isNewProject ? 'Setup Task (priority 100):' : ''}**
+${isNewProject ? '   - REQUIRED for new projects\n   - Generate ALL config files at once\n   - Priority MUST be 100 (executes before everything)\n   \n2. **' : '1. **'}Feature Tasks** (priority 200-299):
    - Extract from the specification
    - Each task should be a meaningful, user-facing feature
    - Focus on WHAT to build, not HOW (that comes later)
    - Examples: "Implement User Authentication", "Build Todo CRUD API"
    
-2. **Task Granularity**:
+${isNewProject ? '3' : '2'}. **Task Granularity**:
    - Not too large: Each task should be independently implementable
    - Not too small: Avoid micro-tasks like "Create one file"
    - Good size: A feature that delivers value (e.g., "Login system")
    
-3. **Priority Guide** (LOWER NUMBER = HIGHER PRIORITY):
-   - Critical features: 200-219 (execute first)
+${isNewProject ? '4' : '3'}. **Priority Guide** (LOWER NUMBER = HIGHER PRIORITY):
+   ${isNewProject ? '- Setup: 100 (FIRST - config files)\n   ' : ''}- Critical features: 200-219 (execute ${isNewProject ? 'after setup' : 'first'})
    - Important features: 220-249
    - Nice-to-have features: 250-279 (execute last)
    
-4. **Dependencies**:
+${isNewProject ? '5' : '4'}. **Dependencies**:
    - Order tasks by dependency (foundational features first)
    - But don't worry too much - errors will be handled dynamically
 
 Return JSON ONLY (no explanation):
 {
   "tasks": [
+      ${isNewProject ? `{
+        "id": "setup-project-config",
+        "name": "Setup Project Configuration", 
+        "type": "setup",
+        "priority": 100,
+        "description": "Generate all config files and install dependencies"
+      },` : ''}
       {
         "id": "auth-impl",
         "name": "Implement User Authentication System",
         "type": "feature",
         "priority": 200,
         "description": "Create login, signup, JWT token handling, protected routes"
-      },
-      {
-        "id": "todo-crud",
-        "name": "Build Todo CRUD Operations",
-        "type": "feature",
-        "priority": 210,
-        "description": "Implement create, read, update, delete operations for todo items"
       }
   ]
 }
 
 IMPORTANT:
-- If the spec only mentions "build a React app" with no specific features → return empty array
-- Focus on USER-FACING features, not infrastructure (build setup, etc.)
+- ${isNewProject ? 'NEW PROJECT: Setup task is MANDATORY (priority 100)\n- ' : ''}If the spec only mentions "build a React app" with no specific features → ${isNewProject ? 'still include setup task, but' : ''} return empty array for features
+- Focus on USER-FACING features, not infrastructure (build setup is handled by setup task)
 - Each task must have unique id (kebab-case)`;
 
   try {

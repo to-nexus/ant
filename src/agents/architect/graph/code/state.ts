@@ -48,6 +48,9 @@ export type ViolationType =
  * Error tasks (10-99) always execute before feature tasks (200-299)
  */
 export const TASK_PRIORITIES = {
+  // Setup Tasks (100-149) - project initialization
+  SETUP_PROJECT: 100,           // Config files, package.json, tsconfig.json (최우선!)
+  
   // Error Tasks (10-99) - lower number = more critical
   ERROR_MISSING_ENTRY: 10,      // index.html 같은 entry 파일 (가장 중요)
   ERROR_MISSING_DEPS: 15,       // package 의존성
@@ -67,14 +70,14 @@ export const TASK_PRIORITIES = {
 } as const;
 
 export interface Task {
-  id: string;                 // Unique identifier (e.g., "auth-impl", "fix-deps-1")
-  name: string;               // e.g., "Implement Authentication" or "Fix Missing Dependencies"
-  type: 'feature' | 'error';  // feature = from spec (persistent), error = from violations (temporary)
-  priority: number;           // Lower = more critical (errors: 1-100 execute first, features: 200-299 execute after)
-  description: string;        // What needs to be done
-  errors?: string[];          // List of error messages (for error tasks)
-  category?: ErrorCategory;   // Type of errors (for error tasks)
-  completed?: boolean;        // Whether this task is done
+  id: string;                      // Unique identifier (e.g., "auth-impl", "fix-deps-1")
+  name: string;                    // e.g., "Implement Authentication" or "Fix Missing Dependencies"
+  type: 'setup' | 'feature' | 'error';  // setup = config (priority 100+), feature = from spec (200+), error = from violations (1-99)
+  priority: number;                // Lower = more critical (setup: 100+, errors: 1-99, features: 200-299)
+  description: string;             // What needs to be done
+  errors?: string[];               // List of error messages (for error tasks)
+  category?: ErrorCategory;        // Type of errors (for error tasks)
+  completed?: boolean;             // Whether this task is done
 }
 
 export class TaskQueue {
