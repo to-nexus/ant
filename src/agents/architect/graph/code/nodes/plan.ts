@@ -463,7 +463,7 @@ ${nextTask.type === 'error' ?
 
     console.log('\n✅ Plan generation complete');
     
-    return { 
+    const updatedState = { 
       ...state,
       currentTask: nextTask,
       planText,
@@ -472,6 +472,12 @@ ${nextTask.type === 'error' ?
       retries: shouldClearEnforcement ? 0 : state.retries,  // Reset only if new task
       enforcementReason: shouldClearEnforcement ? null : state.enforcementReason  // Clear only if new task
     };
+    
+    // ✅ Save checkpoint after planning (in case recursion limit hits during execute)
+    const { saveCheckpoint } = await import('./checkpoint');
+    await saveCheckpoint(updatedState);
+    
+    return updatedState;
   } catch (error) {
     console.error('\n❌ ═══════════════════════════════════════════════════════════════');
     console.error('❌ [Plan] CRITICAL ERROR - LLM API CALL FAILED');
