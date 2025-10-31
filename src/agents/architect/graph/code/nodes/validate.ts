@@ -10,7 +10,9 @@ import { ArchitectGraphState, Violation } from "../state";
  */
 export async function validate(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   const violations: Violation[] = [];
-  const forbiddenEllipsis = /\.{3}|\/\/\s*\.\.\.|\{\s*\/\*.*\.\.\..*\*\/\s*\}/s;
+  // ✅ Only detect ellipsis in comments or standalone (not in strings)
+  // Matches: // ..., /* ... */, or standalone ... (with whitespace around it)
+  const forbiddenEllipsis = /\/\/\s*\.\.\.|\{\s*\/\*.*\.\.\..*\*\/\s*\}|^\s*\.\.\.|\s+\.\.\.\s*$/m;
 
   const config = state.context.config;
   const git = state.deps?.git ? state.deps.git : null as any;
@@ -28,8 +30,11 @@ export async function validate(state: ArchitectGraphState): Promise<ArchitectGra
   }
 
   for (const f of state.files) {
-    // Check for forbidden ellipsis patterns
-    if (forbiddenEllipsis.test(f.content)) {
+    // ✅ Only check ellipsis in source code files (not documentation)
+    const isSourceCode = /\.(ts|tsx|js|jsx|py|java|go|rs|cpp|c|h)$/i.test(f.path);
+    
+    // Check for forbidden ellipsis patterns (only in source code)
+    if (isSourceCode && forbiddenEllipsis.test(f.content)) {
       violations.push({
         type: 'ellipsis',
         severity: 'major',

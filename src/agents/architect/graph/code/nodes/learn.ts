@@ -1,6 +1,7 @@
 import * as path from "path";
 import { ArchitectGraphState } from "../state";
 import { SessionTurn } from "../../../../../core/types";
+import { errorStatsCollector, formatStatistics } from "./diagnostics/errorStats";
 
 /**
  * Learn node - Learning artifacts finalization:
@@ -91,12 +92,18 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     );
     turnId = updatedSession.turns[updatedSession.turns.length - 1]?.turnId;
     
+    // ✅ Get error statistics
+    const errorStats = errorStatsCollector.getStatistics();
+    console.log('\n' + formatStatistics(errorStats) + '\n');
+    
     // Update artifacts and save state snapshot for resuming
     await state.deps.session.updateArtifacts(
       state.context.project,
       state.context.featureFolder || 'default',
       {
         activeBranch: branch,
+        // ✅ Save error statistics
+        errorStatistics: errorStats,
         // ✅ Save execution state snapshot for resuming after recursion limit
         state: {
           taskQueue: state.taskQueue?.getAll() || [],

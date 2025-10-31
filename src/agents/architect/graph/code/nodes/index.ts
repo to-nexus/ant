@@ -3,7 +3,7 @@ export { decompose } from "./decompose";
 export { plan } from "./plan";
 export { execute } from "./execute";
 export { validate } from "./validate";
-export { dynamicValidate } from "./dynamicValidate";
+export { runtimeValidate } from "./runtimeValidate";
 export { enforce } from "./enforce";
 export { evaluate } from "./evaluate";
 export { postProcess } from "./postProcess";

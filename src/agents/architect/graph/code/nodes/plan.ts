@@ -383,7 +383,62 @@ ${nextTask.type === 'error' ?
       enforcementReason: null
     };
   } catch (error) {
-    console.error('❌ [Plan] Error occurred:', error);
+    console.error('\n❌ ═══════════════════════════════════════════════════════════════');
+    console.error('❌ [Plan] CRITICAL ERROR - LLM API CALL FAILED');
+    console.error('❌ ═══════════════════════════════════════════════════════════════\n');
+    
+    // Extract detailed error information (same logic as execute.ts)
+    if (error && typeof error === 'object') {
+      const apiError = error as any;
+      
+      if (apiError.error?.type) {
+        const errorType = apiError.error.type;
+        const errorMessage = apiError.error.message || 'Unknown error';
+        
+        switch (apiError.error.type) {
+          case 'rate_limit_error':
+            console.error('🚨 ERROR TYPE: RATE LIMIT EXCEEDED');
+            console.error('📊 You have exceeded the API rate limit');
+            console.error('⏰ Please wait 1-2 minutes and re-run. The agent will resume from the last checkpoint.\n');
+            break;
+            
+          case 'overloaded':
+            console.error('🚨 ERROR TYPE: API OVERLOADED');
+            console.error('⚡ The API service is currently overloaded');
+            console.error('⏰ Please wait 30-60 seconds and re-run. The agent will resume from the last checkpoint.\n');
+            break;
+            
+          case 'insufficient_quota':
+          case 'insufficient_funds':
+            console.error('🚨 ERROR TYPE: INSUFFICIENT API QUOTA/CREDITS');
+            console.error('💳 Your API account has insufficient credits');
+            console.error('🔗 Please add credits to your Anthropic API account.\n');
+            break;
+            
+          case 'invalid_api_key':
+          case 'authentication_error':
+            console.error('🚨 ERROR TYPE: AUTHENTICATION FAILED');
+            console.error('🔑 API key is invalid or missing');
+            console.error('⚙️  Please check your ANTHROPIC_API_KEY environment variable.\n');
+            break;
+            
+          case 'api_error':
+          default:
+            console.error('🚨 ERROR TYPE: API ERROR');
+            console.error(`📝 Message: ${errorMessage}\n`);
+            break;
+        }
+        
+        console.error('❌ Full error details:', JSON.stringify(error, null, 2));
+      } else if (error instanceof Error) {
+        console.error('🚨 ERROR TYPE: EXECUTION ERROR');
+        console.error(`📝 Message: ${error.message}\n`);
+        console.error('❌ Stack trace:', error.stack);
+      }
+    }
+    
+    console.error('❌ ═══════════════════════════════════════════════════════════════\n');
+    
     throw error;
   }
 }

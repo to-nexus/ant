@@ -148,17 +148,96 @@ export async function execute(
       previousAttempts
     };
   } catch (error) {
-    console.error('❌ [Execute] CRITICAL ERROR:', error);
-    console.error('❌ [Execute] Error type:', typeof error);
-    console.error('❌ [Execute] Error details:', error instanceof Error ? error.message : String(error));
+    console.error('\n❌ ═══════════════════════════════════════════════════════════════');
+    console.error('❌ [Execute] CRITICAL ERROR - LLM API CALL FAILED');
+    console.error('❌ ═══════════════════════════════════════════════════════════════\n');
+    
+    // Extract detailed error information
+    let errorType = 'unknown';
+    let errorMessage = 'Unknown error';
+    let suggestedFix = 'Check LLM configuration and connection';
+    let isRetryable = true;
+    
+    // Check if it's an API error with structured format
+    if (error && typeof error === 'object') {
+      const apiError = error as any;
+      
+      // Anthropic API error format: { type: "error", error: { type: "...", message: "..." } }
+      if (apiError.error?.type) {
+        errorType = apiError.error.type;
+        errorMessage = apiError.error.message || errorMessage;
+        
+        switch (apiError.error.type) {
+          case 'rate_limit_error':
+            console.error('🚨 ERROR TYPE: RATE LIMIT EXCEEDED');
+            console.error('📊 You have exceeded the API rate limit');
+            console.error('⏰ Please wait a few moments and try again\n');
+            suggestedFix = 'Wait 1-2 minutes and re-run the task. The agent will resume from the last checkpoint.';
+            isRetryable = false; // User needs to wait
+            break;
+            
+          case 'overloaded':
+            console.error('🚨 ERROR TYPE: API OVERLOADED');
+            console.error('⚡ The API service is currently overloaded');
+            console.error('⏰ Please wait and try again\n');
+            suggestedFix = 'Wait 30-60 seconds and re-run the task. The agent will resume from the last checkpoint.';
+            isRetryable = false; // User needs to wait
+            break;
+            
+          case 'insufficient_quota':
+          case 'insufficient_funds':
+            console.error('🚨 ERROR TYPE: INSUFFICIENT API QUOTA/CREDITS');
+            console.error('💳 Your API account has insufficient credits');
+            console.error('🔗 Please add credits to your API account\n');
+            suggestedFix = 'Add credits to your Anthropic API account and re-run the task.';
+            isRetryable = false; // User needs to add credits
+            break;
+            
+          case 'invalid_api_key':
+          case 'authentication_error':
+            console.error('🚨 ERROR TYPE: AUTHENTICATION FAILED');
+            console.error('🔑 API key is invalid or missing');
+            console.error('⚙️  Please check your ANTHROPIC_API_KEY environment variable\n');
+            suggestedFix = 'Set valid ANTHROPIC_API_KEY in your environment and re-run.';
+            isRetryable = false; // User needs to fix API key
+            break;
+            
+          case 'api_error':
+          default:
+            console.error('🚨 ERROR TYPE: API ERROR');
+            console.error(`📝 Message: ${errorMessage}\n`);
+            suggestedFix = 'Check API status and try again. The agent will resume from the last checkpoint.';
+            isRetryable = false;
+            break;
+        }
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+        console.error('🚨 ERROR TYPE: EXECUTION ERROR');
+        console.error(`📝 Message: ${errorMessage}\n`);
+        
+        // Check for common network errors
+        if (errorMessage.includes('ECONNREFUSED') || errorMessage.includes('ETIMEDOUT')) {
+          console.error('🌐 Network connection issue detected');
+          suggestedFix = 'Check your internet connection and API endpoint availability.';
+          isRetryable = false;
+        } else if (errorMessage.includes('timeout')) {
+          console.error('⏰ Request timeout detected');
+          suggestedFix = 'The request took too long. Try again or check API service status.';
+          isRetryable = false;
+        }
+      }
+    }
+    
+    console.error('❌ Full error details:', JSON.stringify(error, null, 2));
+    console.error('❌ ═══════════════════════════════════════════════════════════════\n');
     
     // Return state with empty files to trigger validation failure
     const executeError: Violation = {
       type: 'other',
       severity: 'critical',
-      message: `Execute error: ${error instanceof Error ? error.message : String(error)}`,
-      suggestedFix: 'Check LLM response parsing or connection',
-      isRetryable: true
+      message: `LLM API Error [${errorType}]: ${errorMessage}`,
+      suggestedFix,
+      isRetryable
     };
     
     return {

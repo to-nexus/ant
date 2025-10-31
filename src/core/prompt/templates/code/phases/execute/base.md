@@ -70,41 +70,50 @@ import react from '@vitejs/plugin-react';  // ← Need this in package.json!
 
 Step 4: FILE PATH RULES - CRITICAL
 
-⚠️  FILE PATHS MUST BE CONSISTENT ACROSS ALL FILES!
+⚠️  USE REPOSITORY-RELATIVE PATHS ONLY!
 
-**If you're generating config files for a project, use the SAME path prefix for ALL files:**
+**CRITICAL: File paths must be relative to the TARGET REPOSITORY ROOT, NOT the workspace directory!**
 
-✅ CORRECT - Consistent paths:
+The system writes files to the TARGET REPOSITORY configured in config.json (e.g., /Users/probe/dev/test-app).
+You must provide paths relative to THAT repository, NOT relative to the workspace folder structure.
+
+✅ CORRECT - Repository-relative paths:
 ```
-=== FILE: workspace/test-app/package.json ===
-...
+=== FILE: package.json ===
+{
+  "name": "test-app",
+  "version": "1.0.0"
+}
 === END FILE ===
 
-=== FILE: workspace/test-app/tsconfig.json ===
-...
+=== FILE: src/components/Header.tsx ===
+import React from 'react';
+export function Header() { ... }
 === END FILE ===
 
-=== FILE: workspace/test-app/vite.config.ts ===
-...
+=== FILE: vite.config.ts ===
+import { defineConfig } from 'vite';
+export default defineConfig({ ... });
 === END FILE ===
 ```
 
-❌ WRONG - Inconsistent paths (mixing prefixes):
+❌ WRONG - Including workspace path in file names:
 ```
-=== FILE: workspace/test-app/package.json ===  ← Has prefix
+=== FILE: workspace/test-app/package.json ===  ← WRONG! Don't include workspace path!
 ...
 === END FILE ===
 
-=== FILE: tsconfig.json ===  ← Missing prefix! WRONG!
+=== FILE: /Users/probe/dev/test-app/src/Header.tsx ===  ← WRONG! Don't use absolute paths!
 ...
 === END FILE ===
 ```
 
 **Rules:**
-1. If your FIRST file uses `workspace/test-app/`, ALL files MUST use it
-2. If your FIRST file uses just `src/`, ALL files MUST use just `src/`
-3. NEVER mix different path styles in the same response
-4. Check the PREVIOUS ATTEMPTS to see what path style was used before
+1. **ALWAYS use paths relative to the target repository root**
+2. **NEVER include "workspace/" prefix in file paths**
+3. **NEVER use absolute paths** (e.g., /Users/probe/...)
+4. Examples: `package.json`, `src/App.tsx`, `public/index.html`
+5. The file writer handles the actual disk location automatically
 
 Step 5: OUTPUT FORMAT - CRITICAL RULES
 

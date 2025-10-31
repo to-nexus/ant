@@ -1,6 +1,6 @@
 import { StateGraph } from "@langchain/langgraph";
 import { ArchitectGraphState } from "./state";
-import { resolve, decompose, plan, execute, validate, dynamicValidate, enforce, evaluate, postProcess, learn } from "./nodes/index";
+import { resolve, decompose, plan, execute, validate, runtimeValidate, enforce, evaluate, postProcess, learn } from "./nodes/index";
 
 export function buildCodeGraph() {
   const graph = new StateGraph<ArchitectGraphState>({
@@ -38,7 +38,7 @@ export function buildCodeGraph() {
       violations: null as any,
       retries: null as any,
       maxRetries: null as any,
-      dynamicValidationResult: null as any,
+      runtimeValidationResult: null as any,
       enforcementReason: null as any,  // ✅ For enforce → plan communication
       
       // Progress tracking
@@ -74,7 +74,7 @@ export function buildCodeGraph() {
   graph.addNode("plan", plan as any);
   graph.addNode("execute", execute as any);
   graph.addNode("validate", validate as any);
-  graph.addNode("dynamicValidate", dynamicValidate as any);
+  graph.addNode("runtimeValidate", runtimeValidate as any);
   graph.addNode("enforce", enforce as any);
   graph.addNode("evaluate", evaluate as any);
   graph.addNode("postProcess", postProcess as any);
@@ -100,12 +100,12 @@ export function buildCodeGraph() {
     { enforce: "enforce", postProcess: "postProcess" } as any
   );
 
-  // After installing dependencies, run dynamic validation
-  graph.addEdge("postProcess" as any, "dynamicValidate" as any);
+  // After installing dependencies, run runtime validation
+  graph.addEdge("postProcess" as any, "runtimeValidate" as any);
 
-  // Dynamic validation (build/lint/test) - now with dependencies installed
+  // Runtime validation (build/lint/test) - now with dependencies installed
   graph.addConditionalEdges(
-    "dynamicValidate" as any,
+    "runtimeValidate" as any,
     ((s: ArchitectGraphState) => {
       const hasViolations = (s.violations && s.violations.length > 0);
       
