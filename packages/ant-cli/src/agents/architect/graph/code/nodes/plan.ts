@@ -168,8 +168,9 @@ YOUR DECISION:
 Analyze these errors and decide:
 
 **Option A: ADD ERROR TASKS** (if errors block progress)
-- Create high-priority error-fix tasks
-- These will be executed BEFORE continuing other tasks
+- Create error-fix tasks with priority 900+
+- ⚠️ NEW POLICY: Error tasks run AFTER all feature tasks complete
+- This allows all features to be implemented first, then errors fixed in batch
 - Example: Missing deps, missing entry files
 
 **Option B: RETRY CURRENT TASK** (if errors are minor)
@@ -185,7 +186,7 @@ Return JSON ONLY:
       "id": "fix-deps-1",
       "name": "Fix Missing Dependencies",
       "type": "error",
-      "priority": 90,
+      "priority": ${TASK_PRIORITIES.ERROR_MISSING_DEPS},
       "description": "Install react, react-dom, and peer dependencies",
       "errors": ["Cannot find module 'react'", ...]
     }
@@ -193,7 +194,8 @@ Return JSON ONLY:
 }
 
 PRIORITY GUIDE for error tasks (USE THESE EXACT VALUES):
-LOWER NUMBER = HIGHER PRIORITY (executes first)
+⚠️  NEW POLICY: Error tasks (900+) run AFTER all feature tasks (200-899)
+LOWER NUMBER = HIGHER PRIORITY (executes first within error tasks)
 - Missing entry files (index.html): ${TASK_PRIORITIES.ERROR_MISSING_ENTRY} (ERROR_MISSING_ENTRY) ← MOST CRITICAL
 - Missing dependencies: ${TASK_PRIORITIES.ERROR_MISSING_DEPS} (ERROR_MISSING_DEPS)
 - Config errors: ${TASK_PRIORITIES.ERROR_CONFIG} (ERROR_CONFIG)
@@ -207,7 +209,8 @@ RULES:
 - If action is "retry", newTasks can be empty
 - Error task IDs must be unique (add counter if needed)
 - Don't create tasks for trivial issues (ellipsis - just retry those)
-- Use exact priority values from guide above`;
+- Use exact priority values from guide above
+- Remember: Error tasks now run AFTER features (deferred error fixing)`;
 
     try {
       const response = await llm.invoke([{ role: 'user', content: errorAnalysisPrompt }]);

@@ -10,9 +10,15 @@ import { ArchitectGraphState, Violation } from "../state";
  */
 export async function validate(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   const violations: Violation[] = [];
-  // ✅ Only detect ellipsis in comments or standalone (not in strings)
-  // Matches: // ..., /* ... */, or standalone ... (with whitespace around it)
-  const forbiddenEllipsis = /\/\/\s*\.\.\.|\{\s*\/\*.*\.\.\..*\*\/\s*\}|^\s*\.\.\.|\s+\.\.\.\s*$/m;
+  // ✅ Only detect ellipsis in comments or standalone (not spread/rest operators)
+  // Matches:
+  //   - // ... or /* ... */ (comments)
+  //   - Standalone ... without identifier (line has only "...")
+  // Allows:
+  //   - ...rest, ...args, ...props (spread/rest operators)
+  //   - { ...obj } (object spread)
+  //   - [...arr] (array spread)
+  const forbiddenEllipsis = /\/\/\s*\.{3}|\/\*\s*\.{3}\s*\*\/|^\s*\.{3}\s*$/m;
 
   const config = state.context.config;
   const git = state.deps?.git ? state.deps.git : null as any;

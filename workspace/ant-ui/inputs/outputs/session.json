@@ -1,0 +1,33 @@
+{
+  "sessionId": "aa8778bf-862c-41c2-8ec8-69a9df41cc6a",
+  "project": "ant-ui",
+  "feature": "inputs",
+  "createdAt": "2025-11-01T03:47:10.234Z",
+  "updatedAt": "2025-11-01T03:47:10.238Z",
+  "turns": [
+    {
+      "turnId": 1,
+      "task": "design",
+      "timestamp": "2025-11-01T03:47:10.234Z",
+      "input": {
+        "type": "file",
+        "source": "inputs/sources/prd.md",
+        "summary": "# ANT UI - Product Requirements Document\n\n## Overview\n\n**Desktop application** that monitors and controls ANT CLI agents running on the **same machine**. Visualizes workflow execution, task queues,...",
+        "size": 14779
+      },
+      "output": {
+        "designPath": "workspace/ant-ui/inputs/outputs/design/design-ant-ui-1761968830232.md",
+        "planSummary": "# System Design Document: ant-ui\n\n## 1. Architecture Overview...",
+        "decisionCount": 3
+      }
+    }
+  ],
+  "artifacts": {
+    "latestDesign": "workspace/ant-ui/inputs/outputs/design/design-ant-ui-1761968830232.md",
+    "keyDecisions": [
+      "- **Technology**: Stack",
+      "- **Architecture**: Overview",
+      "- **Database**: switching"
+    ]
+  }
+}

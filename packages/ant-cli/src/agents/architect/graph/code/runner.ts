@@ -1,8 +1,5 @@
 import { ArchitectGraphState } from "./state";
 import { buildCodeGraph } from "./graph";
-import { BatchCodeRunner, BatchRunResult } from "./BatchCodeRunner";
-import { LLMClient } from "../../../../core/ports";
-import { PromptEngine } from "../../../../core/prompt/engine";
 
 /**
  * Code Graph Runner
@@ -98,45 +95,4 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
     pausedDueToLimit: isRecursionLimit,
     tasksRemaining: tasksRemaining
   };
-}
-
-/**
- * Batch Code Runner
- * 
- * For large-scale refactoring with per-batch validation
- * Processes codebase in chunks, validating each batch independently
- */
-export async function runBatchCodeGraph(
-  directive: string,
-  initial: ArchitectGraphState,
-  options: {
-    batchSize?: number;
-    maxBatches?: number;
-    stopOnError?: boolean;
-    maxRetries?: number;
-  } = {}
-): Promise<BatchRunResult> {
-  const llm = initial.deps?.llm as LLMClient;
-  const promptEngine = initial.deps?.promptEngine as PromptEngine;
-  const gitPort = initial.deps?.git || initial.gitPort;
-
-  if (!llm || !promptEngine) {
-    throw new Error("LLM and PromptEngine are required for batch processing");
-  }
-  
-  if (!gitPort) {
-    throw new Error("GitPort is required for batch processing");
-  }
-
-  const runner = new BatchCodeRunner(llm, promptEngine, gitPort);
-
-  return await runner.run(
-    directive,
-    initial.context,
-    {
-      git: gitPort,
-      vectorDB: initial.deps?.memory
-    },
-    options
-  );
 }

@@ -38,7 +38,12 @@ export class WorkSizeEstimator {
   ];
 
   /**
-   * Estimate work size to decide execution strategy
+   * ✅ SIMPLIFIED: Estimate work size for informational purposes only
+   * 
+   * Decision: ALL work uses Task Queue Mode with LLM-delegated validation
+   * - LLM decides which tasks need validation and which can be batched
+   * - No more automatic Batch Mode based on keywords
+   * - Simpler, more consistent, more flexible
    */
   async estimate(
     directive: string,
@@ -57,8 +62,8 @@ export class WorkSizeEstimator {
             return {
               estimatedTokens: changedFiles.length * 2000,
               estimatedFiles: changedFiles.length,
-              needsBatch: false,
-              reason: 'Git changes detected, small focused modification'
+              needsBatch: false,  // ✅ ALWAYS false - no more Batch Mode
+              reason: 'Git changes detected, focused modification'
             };
           }
         }
@@ -71,42 +76,25 @@ export class WorkSizeEstimator {
     const allSourceFiles = this.findAllSourceFiles(workingDir, exclude);
     const totalFiles = allSourceFiles.length;
 
-    // 3. Analyze directive for scope
+    // 3. Simple estimation for logging purposes
     const keywords = this.extractKeywords(directive);
-    const isGlobalRefactor = this.detectGlobalRefactor(directive);
-
-    if (isGlobalRefactor) {
-      const estimatedAffectedFiles = Math.min(totalFiles, Math.ceil(totalFiles * 0.7));
-      return {
-        estimatedTokens: estimatedAffectedFiles * 2000,
-        estimatedFiles: estimatedAffectedFiles,
-        needsBatch: estimatedAffectedFiles > 30,
-        reason: 'Global refactoring detected, affects many files'
-      };
-    }
-
-    // 4. Targeted work: estimate based on keyword matches
     const matchingFiles = allSourceFiles.filter(file => {
       const content = this.readFileSafely(file);
       return keywords.some(kw => content.toLowerCase().includes(kw.toLowerCase()));
     });
 
-    const estimatedFiles = Math.min(matchingFiles.length || 10, totalFiles);
+    const estimatedFiles = matchingFiles.length || Math.min(50, totalFiles || 50);
     const estimatedTokens = estimatedFiles * 2000;
 
-    // 5. Thresholds
-    const BATCH_TOKEN_THRESHOLD = 150000;
-    const BATCH_FILE_THRESHOLD = 40;
-
+    // 4. ✅ ALWAYS return needsBatch: false
+    //    Let LLM handle validation strategy through Task decomposition
     return {
       estimatedTokens,
       estimatedFiles,
-      needsBatch: estimatedTokens > BATCH_TOKEN_THRESHOLD || estimatedFiles > BATCH_FILE_THRESHOLD,
-      reason: estimatedFiles > BATCH_FILE_THRESHOLD
-        ? `Large scope: ~${estimatedFiles} files affected`
-        : estimatedTokens > BATCH_TOKEN_THRESHOLD
-        ? `Large context: ~${Math.ceil(estimatedTokens / 1000)}K tokens`
-        : 'Normal scope, fits in single context'
+      needsBatch: false,  // ✅ UNIFIED: Always use Task Queue Mode
+      reason: totalFiles < 30
+        ? 'New project - using task-based generation'
+        : `Existing codebase (~${totalFiles} files) - using task-based modification`
     };
   }
 

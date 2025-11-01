@@ -2,7 +2,7 @@
 PHASE 2: IMPLEMENTATION
 ================================================================================
 
-PROJECT: {{project}}
+PROJECT: {{project}} 
 
 YOUR PLAN (from Phase 1):
 {{plan}}
@@ -38,16 +38,42 @@ The following files ALREADY EXIST in the working directory:
 {{currentCode}}
 
 **RULES FOR EXISTING FILES:**
-- ✅ DO: Modify existing files ONLY if needed for current task
-- ❌ DON'T: Regenerate/recreate files that already exist unchanged
-- ✅ DO: Import from and reference existing files
-- ❌ DON'T: Output configuration files (package.json, tsconfig.json, etc.) unless they need changes
-- ✅ FOCUS: Generate ONLY the NEW files needed for this task
 
-**Example:**
-If package.json, tsconfig.json already exist and don't need changes → DON'T output them
-If you need to add a new dependency → Output modified package.json
-If creating new component → Output only the NEW component file
+**1. Configuration Files (package.json, tsconfig.json, vite.config.ts, etc.)**
+- ✅ DO: MODIFY (add/update) if needed for this task
+- ❌ DON'T: Regenerate the ENTIRE file from scratch
+- ✅ PRESERVE: All existing content and add only what's needed
+- ❌ DON'T: Remove existing dependencies/config that other tasks added
+
+**Example - CORRECT (Modifying package.json):**
+```json
+{
+  "dependencies": {
+    "react": "^18.2.0",           // ← Existing (preserve)
+    "react-dom": "^18.2.0",       // ← Existing (preserve)
+    "@radix-ui/react-dialog": "^1.0.5"  // ← NEW (add for this task)
+  }
+}
+```
+
+**Example - WRONG (Regenerating from scratch):**
+```json
+{
+  "dependencies": {
+    "@radix-ui/react-dialog": "^1.0.5"  // ❌ Lost react, react-dom!
+  }
+}
+```
+
+**2. Source Files (src/*)**
+- ✅ DO: Create NEW files for this task
+- ✅ DO: Modify existing files if this task requires changes
+- ❌ DON'T: Recreate files that already exist and don't need changes
+- ✅ DO: Import from and reference existing files
+
+**3. General Rule:**
+- ✅ FOCUS: Generate ONLY the files that THIS TASK needs to create/modify
+- ❌ DON'T: Output files that already exist unchanged
 {{else}}
 No existing files detected - this is a fresh project setup.
 {{/if}}

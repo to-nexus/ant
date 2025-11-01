@@ -49,6 +49,20 @@ export interface RuntimeValidationResult {
 export async function runtimeValidate(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   const commandPort = state.deps?.command;
   const gitPort = state.deps?.git;
+  const currentTask = state.currentTask;
+
+  // ✅ CHECK VALIDATION STRATEGY (LLM decision)
+  if (currentTask && currentTask.validationRequired === false) {
+    console.log(`\n⏭️  Skipping validation (LLM decision)`);
+    console.log(`   Task: ${currentTask.name}`);
+    console.log(`   Rationale: ${currentTask.validationRationale || 'Not provided'}\n`);
+    
+    // Save checkpoint before moving to next task
+    const { saveCheckpoint } = await import('./checkpoint');
+    await saveCheckpoint(state);
+    
+    return state;
+  }
 
   // Skip if explicitly disabled (default is enabled)
   const strictValidation = state.context.config?.strictValidation ?? true;  // ✅ Default: true
@@ -76,12 +90,19 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
     ? config.localPath
     : p.resolve(repoRoot, config.localPath);
 
-  console.log(`\n📋 Running runtime validation in: ${resolvedPath}\n`);
+  // ✅ DETERMINE VALIDATION TYPE (LLM decision or fallback)
+  const validationType = currentTask?.validationType || 
+    (currentTask?.type === 'setup' ? 'static' : 'runtime');
+  
+  console.log(`\n📋 Running ${validationType} validation in: ${resolvedPath}`);
+  if (currentTask?.validationRationale) {
+    console.log(`   💡 Rationale: ${currentTask.validationRationale}`);
+  }
+  console.log('');
 
-  // ✅ CRITICAL: Setup Task uses lightweight validation only
-  const isSetupTask = state.currentTask?.type === 'setup';
-  if (isSetupTask) {
-    console.log('⚙️  Setup Task detected - using lightweight validation');
+  // ✅ STATIC VALIDATION: Syntax check only (for config files, setup tasks)
+  if (validationType === 'static') {
+    console.log('⚡ Static validation mode (fast)');
     console.log('   ✅ Configuration files syntax check');
     console.log('   ⏭️  Skipping: TypeScript compilation');
     console.log('   ⏭️  Skipping: Build execution');
@@ -128,10 +149,21 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
     }
     
     console.log('\n✅ All configuration files are valid!\n');
+    
+    // Save checkpoint after static validation
+    const { saveCheckpoint } = await import('./checkpoint');
+    await saveCheckpoint(state);
+    
     return state;
   }
 
-  // ✅ Detect project type first (for non-setup tasks)
+  // ✅ RUNTIME VALIDATION: Full validation (TypeScript + Build + Lint)
+  console.log('🔍 Runtime validation mode (full)');
+  console.log('   ✅ TypeScript type check');
+  console.log('   ✅ Build execution');
+  console.log('   ✅ Lint checks\n');
+
+  // ✅ Detect project type first
   const projectDetection = await detectProject(resolvedPath, gitPort);
   console.log(`🔍 Detected: ${projectDetection.language} + ${projectDetection.buildTool} (${projectDetection.packageManager})`);
 
@@ -530,11 +562,25 @@ function convertDiagnosesToViolations(result: RuntimeValidationResult): Violatio
   if (result.typeErrors && result.typeErrors.length > 0) {
     const uncoveredTypeErrors = result.typeErrors.filter(e => !diagnosedMessages.has(e));
     if (uncoveredTypeErrors.length > 0) {
+      // ✅ Extract file names from TypeScript errors
+      const filesWithErrors = new Set<string>();
+      uncoveredTypeErrors.forEach(error => {
+        // Parse: "src/path/file.ts(line,col): error TS1234: message"
+        const fileMatch = error.match(/^(.+?)\(\d+,\d+\):/);
+        if (fileMatch) {
+          filesWithErrors.add(fileMatch[1]);
+        }
+      });
+      
+      const filesList = Array.from(filesWithErrors).join(', ');
+      const filesContext = filesList ? `\n\n🎯 Files requiring fixes: ${filesList}` : '';
+      
       violations.push({
         type: 'type_error',
         severity: 'major',
-        message: `TypeScript type errors (${uncoveredTypeErrors.length} total):\n${uncoveredTypeErrors.slice(0, 5).join('\n')}${uncoveredTypeErrors.length > 5 ? `\n... and ${uncoveredTypeErrors.length - 5} more` : ''}`,
-        suggestedFix: 'Fix type errors in code',
+        message: `TypeScript type errors (${uncoveredTypeErrors.length} total):\n${uncoveredTypeErrors.slice(0, 5).join('\n')}${uncoveredTypeErrors.length > 5 ? `\n... and ${uncoveredTypeErrors.length - 5} more` : ''}${filesContext}`,
+        file: filesWithErrors.size === 1 ? Array.from(filesWithErrors)[0] : undefined,
+        suggestedFix: `Fix type errors in: ${filesList || 'code'}`,
         isRetryable: true
       });
     }
