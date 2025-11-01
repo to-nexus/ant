@@ -142,17 +142,6 @@ export function buildCodeGraph() {
           }
         }
         
-        // ✅ Check task completion limit (prevent infinite loops in testing)
-        const maxTasksPerRun = 3; // Test mode: complete 3 tasks per run
-        const completedCount = s.completedTasks?.length || 0;
-        
-        if (completedCount >= maxTasksPerRun) {
-          console.log(`\n⏸️  Task limit reached (${completedCount}/${maxTasksPerRun} tasks completed)`);
-          console.log(`📊 Progress saved to checkpoint`);
-          console.log(`💡 Run the same command again to resume from checkpoint\n`);
-          return "evaluate";  // ← Stop and save progress
-        }
-        
         // Check if there are more tasks in queue
         if (s.taskQueue && !s.taskQueue.isEmpty()) {
           console.log(`📋 Moving to next task (${s.taskQueue.size()} remaining)\n`);

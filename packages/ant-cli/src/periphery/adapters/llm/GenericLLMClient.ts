@@ -24,7 +24,7 @@ function resolveTemperature(agentType?: string, fallback = 0.2): number {
   return fallback;
 }
 
-function resolveMaxTokens(agentType?: string, fallback = 4000): number {
+function resolveMaxTokens(agentType?: string, fallback = 16000): number {
   const prefix = agentType ? `${agentType.toUpperCase()}_` : '';
   if (process.env[`${prefix}MODEL_MAX_TOKENS`]) return parseInt(process.env[`${prefix}MODEL_MAX_TOKENS`]!);
   return fallback;
@@ -46,7 +46,7 @@ export class GenericLLMClient implements LLMClient {
     const provider = (config?.llmProvider as ModelProvider) || resolveProvider(agentType, providerOverride);
     const modelName = config?.llmModel || resolveModelName(provider, agentType);
     const temperature = config?.temperature ?? resolveTemperature(agentType);
-    const maxTokens = config?.maxTokens ?? resolveMaxTokens(agentType, provider === 'openai' ? 16000 : 4000);
+    const maxTokens = config?.maxTokens ?? resolveMaxTokens(agentType, 16000);
     const timeout = config?.timeout ?? 180000; // Default: 3 minutes
 
     switch (provider) {
@@ -84,5 +84,26 @@ export class GenericLLMClient implements LLMClient {
         yield content;
       }
     }
+  }
+
+  async invokeStructured<T = any>(
+    messages: Array<{ role: string; content: string }>,
+    schema: Record<string, any>,
+    schemaName: string
+  ): Promise<T> {
+    // Use LangChain's withStructuredOutput for both Anthropic and OpenAI
+    // This handles the provider-specific implementation automatically:
+    // - Anthropic: tool use
+    // - OpenAI: response_format with json_schema
+    const structuredModel = this.model.withStructuredOutput(schema, {
+      name: schemaName,
+      includeRaw: false
+    });
+    
+    const result = await structuredModel.invoke(
+      messages.map(m => new HumanMessage(m.content))
+    );
+    
+    return result as T;
   }
 }

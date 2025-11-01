@@ -4,6 +4,8 @@
 
 Web-based monitoring and control interface for ANT (AI-Native Transformation) CLI agents. Provides real-time visualization of LangGraph workflows, task queue management, and interactive command execution replacing CLI commands with UI interactions.
 
+**Deployment Model**: Single-machine deployment (CLI and UI run on the same machine, no network required)
+
 ## Goals
 
 ### Primary Goals

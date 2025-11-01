@@ -109,178 +109,98 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // Check if this is a new project (no existing code)
   const isNewProject = !state.code || state.code.trim().length === 0;
   const hasExistingCode = Boolean(state.code && state.code.trim().length > 0);
+  const codePreview = state.code ? state.code.split('\n').slice(0, 20).join('\n') + '\n...' : '(empty)';
   
-  const prompt = `You are analyzing a software specification to break it into executable tasks.
+  // Load prompt templates
+  const promptEngine = state.deps?.promptEngine;
+  if (!promptEngine) {
+    throw new Error('PromptEngine not available');
+  }
+  
+  // Use FilePromptAdapter directly for decompose templates
+  const FilePromptAdapter = await import('../../../../../periphery/adapters/prompt/FilePromptAdapter');
+  const promptAdapter = new FilePromptAdapter.FilePromptAdapter();
+  
+  // Render templates with variables
+  const basePrompt = await promptAdapter.render('code/phases/decompose/base', {
+    spec,
+    hasExistingCode,
+    codePreview
+  });
+  
+  const validationStrategy = await promptAdapter.render('code/phases/decompose/injections/validation-strategy', {});
+  const rules = await promptAdapter.render('code/phases/decompose/rules', {});
+  
+  const prompt = `${basePrompt}
 
-SPECIFICATION:
-${spec}
+${validationStrategy}
 
-${hasExistingCode ? `
-📂 EXISTING CODEBASE DETECTED
-
-Current code structure:
-${state.code ? state.code.split('\n').slice(0, 20).join('\n') + '\n...' : '(empty)'}
-` : `
-🆕 NEW PROJECT (no existing codebase)
-`}
-
-⚙️  SETUP TASK DECISION:
-
-Analyze the specification and decide if a SETUP task is needed.
-
-**When to create a SETUP task (priority 100):**
-
-1. **New Project**: No existing code → ALWAYS need setup
-   - Example: Generate package.json, tsconfig.json, vite.config.ts, etc.
-
-2. **New Infrastructure**: Adding new tools/frameworks to existing project
-   - Adding Docker: Dockerfile, docker-compose.yml
-   - Adding Testing: jest.config.js, vitest.config.ts
-   - Adding CI/CD: .github/workflows/, .gitlab-ci.yml
-   - Adding Storybook: .storybook/ config
-   - Changing build tools: webpack → vite (new configs)
-
-3. **New Language/Runtime**: Adding different tech stack
-   - Adding Rust to Node project: Cargo.toml
-   - Adding Python service: requirements.txt, pyproject.toml
-   - Adding Go service: go.mod
-
-4. **Major Configuration Changes**:
-   - Switching package managers: npm → pnpm (pnpm-workspace.yaml)
-   - Adding monorepo structure: lerna.json, turbo.json
-   - Major dependency upgrades requiring config changes
-
-**When NOT to create a SETUP task:**
-- Simple bug fixes
-- Feature additions using existing infrastructure
-- Code refactoring
-- UI changes
-- Business logic updates
-
-**If SETUP is needed, return:**
-{
-  "tasks": [
-      {
-        "id": "setup-[descriptive-name]",
-        "name": "Setup [What You're Setting Up]",
-        "type": "setup",
-        "priority": 100,
-        "description": "Generate [specific config files]. Example: Dockerfile, docker-compose.yml, .dockerignore for Docker support"
-      },
-      ... then feature tasks (priority 200+) ...
-  ]
-}
-
-YOUR TASK:
-Break this specification into a prioritized list of implementation tasks.
-
-GUIDELINES:
-1. **Setup Task (priority 100)** - OPTIONAL, create only if needed:
-   - Analyze spec: Does it require NEW configuration files?
-   - If yes: Create setup task describing WHAT configs to generate
-   - If no: Skip to feature tasks
-   - Setup task should ONLY generate config files (NO application code)
-   
-2. **Feature Tasks** (priority 200-299):
-   - Extract from the specification
-   - Each task should be a meaningful, user-facing feature
-   - Focus on WHAT to build, not HOW (that comes later)
-   - Examples: "Implement User Authentication", "Build Todo CRUD API"
-   
-3. **Task Granularity**:
-   - Not too large: Each task should be independently implementable
-   - Not too small: Avoid micro-tasks like "Create one file"
-   - Good size: A feature that delivers value (e.g., "Login system")
-   
-4. **Priority Guide** (LOWER NUMBER = HIGHER PRIORITY):
-   - Setup: 100 (FIRST - if needed for config files)
-   - Critical features: 200-219 (execute after setup if present)
-   - Important features: 220-249
-   - Nice-to-have features: 250-279 (execute last)
-   
-5. **Dependencies**:
-   - Order tasks by dependency (foundational features first)
-   - But don't worry too much - errors will be handled dynamically
-
-Return JSON ONLY (no explanation):
-{
-  "tasks": [
-      {
-        "id": "setup-docker",
-        "name": "Setup Docker Configuration",
-        "type": "setup",
-        "priority": 100,
-        "description": "Generate Dockerfile, docker-compose.yml, .dockerignore"
-      },
-      {
-        "id": "auth-impl",
-        "name": "Implement User Authentication System",
-        "type": "feature",
-        "priority": 200,
-        "description": "Create login, signup, JWT token handling, protected routes"
-      }
-  ]
-}
-
-⚠️  CRITICAL: FINAL VERIFICATION TASK
-
-**ALWAYS add a final verification task at the end** (lowest priority):
-- Type: "feature" (not a special type, just a regular feature task)
-- Priority: 900+ (runs last)
-- Purpose: Verify ALL requirements from the spec are met
-- Check for missing components, incomplete features, gaps in implementation
-- Ensure the ENTIRE goal of the specification is achieved
-
-Example verification task:
-{
-  "id": "final-verification",
-  "name": "Final Integration & Verification",
-  "type": "feature",
-  "priority": 999,
-  "description": "Verify all features from specification are fully implemented: [list key features]. Check for missing components, incomplete functionality, or gaps. Ensure the complete application works as intended."
-}
-
-IMPORTANT:
-- **Decide intelligently**: Create setup task ONLY if spec requires new configuration
-- If NEW PROJECT: Setup task is typically needed (but analyze the spec!)
-- If EXISTING PROJECT: Setup task only if adding new tools/infrastructure
-- If the spec only mentions "build a React app" with no specific features → return setup task + empty array for features
-- Focus on USER-FACING features, not infrastructure (infrastructure = setup task)
-- Each task must have unique id (kebab-case)
-- **ALWAYS include the final verification task as the last task**`;
+${rules}`;
 
   try {
-    const response = await llm.invoke([{ role: 'user', content: prompt }]);
+    // Define JSON schema for task decomposition
+    const taskSchema = {
+      type: "object",
+      properties: {
+        tasks: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              id: {
+                type: "string",
+                description: "Unique task identifier in kebab-case"
+              },
+              name: {
+                type: "string",
+                description: "Human-readable task name"
+              },
+              type: {
+                type: "string",
+                enum: ["setup", "feature", "error"],
+                description: "Task type: setup (config files), feature (implementation), or error (bug fix)"
+              },
+              priority: {
+                type: "number",
+                description: "Priority number (lower = higher priority). Setup: 100, Features: 200-999"
+              },
+              description: {
+                type: "string",
+                description: "Detailed task description"
+              },
+              dependencies: {
+                type: "array",
+                items: { type: "string" },
+                description: "Optional array of task IDs this task depends on"
+              },
+              validationRequired: {
+                type: "boolean",
+                description: "Whether this task requires validation after completion. Use true for critical tasks, false for batch intermediate tasks"
+              },
+              validationType: {
+                type: "string",
+                enum: ["none", "static", "runtime"],
+                description: "Type of validation: none (skip all), static (syntax/config only), runtime (full: tsc + build + lint)"
+              },
+              validationRationale: {
+                type: "string",
+                description: "Brief explanation for the validation decision (e.g., 'Config files need syntax check', 'Batch component, validate at end')"
+              }
+            },
+            required: ["id", "name", "type", "priority", "description", "validationRequired", "validationType"]
+          }
+        }
+      },
+      required: ["tasks"]
+    };
     
-    // Extract JSON from response
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      console.log('⚠️  LLM response had no JSON, creating default task');
-      
-      const taskQueue = new TaskQueue();
-      const defaultTask: Task = {
-        id: 'impl-default',
-        name: 'Implement Requirements',
-        type: 'feature',
-        priority: 220,
-        description: 'Implement based on specification',
-        completed: false
-      };
-      
-      taskQueue.push(defaultTask);
-      
-      const featureTasks = new Map<string, Task>();
-      featureTasks.set(defaultTask.id, defaultTask);
-      
-      return {
-        ...state,
-        taskQueue,
-        featureTasks,
-        completedTasks: []
-      };
-    }
+    // Use structured output to guarantee valid JSON
+    const result = await llm.invokeStructured<{ tasks: Task[] }>(
+      [{ role: 'user', content: prompt }],
+      taskSchema,
+      'task_decomposition'
+    );
     
-    const result = JSON.parse(jsonMatch[0]);
     const tasks: Task[] = result.tasks || [];
     
     if (tasks.length === 0) {

@@ -45,39 +45,47 @@ export type ViolationType =
 /**
  * Task Priority Mapping - 우선순위 상수
  * Lower number = higher priority (executed first)
- * Error tasks (10-99) always execute before feature tasks (200-299)
+ * NEW POLICY: Features first, then errors (defer error fixing until all features are implemented)
  */
 export const TASK_PRIORITIES = {
   // Setup Tasks (100-149) - project initialization
   SETUP_PROJECT: 100,           // Config files, package.json, tsconfig.json (최우선!)
   
-  // Error Tasks (10-99) - lower number = more critical
-  ERROR_MISSING_ENTRY: 10,      // index.html 같은 entry 파일 (가장 중요)
-  ERROR_MISSING_DEPS: 15,       // package 의존성
-  ERROR_CONFIG: 20,             // tsconfig.json 등
-  ERROR_TYPE: 30,               // TypeScript 타입 에러
-  ERROR_IMPORT: 35,             // Import 에러
-  ERROR_BUILD: 40,              // 빌드 에러
-  ERROR_SYNTAX: 50,             // 문법 에러
-  ERROR_LINT: 70,               // Lint 에러
-  ERROR_OTHER: 80,              // 기타
-  
-  // Feature Tasks (200-299) - execute after all errors resolved
+  // Feature Tasks (200-899) - implement all features first
   FEATURE_CRITICAL: 200,        // 가장 중요한 기능
   FEATURE_IMPORTANT: 220,
   FEATURE_NORMAL: 250,
   FEATURE_NICE_TO_HAVE: 280,    // 가장 덜 중요한 기능
+  
+  // Error Tasks (900-999) - fix errors after all features are implemented
+  ERROR_MISSING_ENTRY: 900,     // index.html 같은 entry 파일 (가장 중요)
+  ERROR_MISSING_DEPS: 905,      // package 의존성
+  ERROR_CONFIG: 910,            // tsconfig.json 등
+  ERROR_TYPE: 920,              // TypeScript 타입 에러
+  ERROR_IMPORT: 925,            // Import 에러
+  ERROR_BUILD: 930,             // 빌드 에러
+  ERROR_SYNTAX: 940,            // 문법 에러
+  ERROR_LINT: 960,              // Lint 에러
+  ERROR_OTHER: 980,             // 기타
+  
+  // Final Verification (1000) - after everything is complete
+  FINAL_VERIFICATION: 1000,     // 최종 검증
 } as const;
 
 export interface Task {
   id: string;                      // Unique identifier (e.g., "auth-impl", "fix-deps-1")
   name: string;                    // e.g., "Implement Authentication" or "Fix Missing Dependencies"
-  type: 'setup' | 'feature' | 'error';  // setup = config (priority 100+), feature = from spec (200+), error = from violations (1-99)
-  priority: number;                // Lower = more critical (setup: 100+, errors: 1-99, features: 200-299)
+  type: 'setup' | 'feature' | 'error';  // setup = config (priority 100+), feature = from spec (200-899), error = from violations (900-999)
+  priority: number;                // Lower = more critical (setup: 100+, features: 200-899, errors: 900-999, final: 1000)
   description: string;             // What needs to be done
   errors?: string[];               // List of error messages (for error tasks)
   category?: ErrorCategory;        // Type of errors (for error tasks)
   completed?: boolean;             // Whether this task is done
+  
+  // Validation Strategy (LLM decides)
+  validationRequired?: boolean;    // Whether this task requires validation after completion
+  validationType?: 'none' | 'static' | 'runtime';  // Type of validation: none (skip), static (syntax only), runtime (full)
+  validationRationale?: string;    // Reasoning for validation decision
 }
 
 export class TaskQueue {
