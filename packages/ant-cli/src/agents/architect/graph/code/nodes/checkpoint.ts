@@ -36,6 +36,7 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
           lastViolations: state.lastViolations || [],
           previousFileCount: state.previousFileCount,
           resolvedCategories: state.resolvedCategories || [],
+          planText: state.planText,  // ✅ Save plan for reuse on resume
         }
       }
     );

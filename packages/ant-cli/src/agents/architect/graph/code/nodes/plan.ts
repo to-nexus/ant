@@ -84,6 +84,15 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     console.log(`\n🔄 Retrying failed task: ${nextTask.name}`);
     console.log(`   Retries: ${state.retries}/${state.maxRetries}`);
     console.log(`   Violations: ${state.violations?.length || 0}\n`);
+    
+    // ✅ OPTIMIZATION: If retrying with existing plan, reuse it (skip LLM call)
+    if (state.planText && !enforcementReason) {
+      console.log(`⚡ Reusing existing plan from previous attempt\n`);
+      return {
+        ...state,
+        currentTask: nextTask,
+      };
+    }
   } else {
     // ✅ NEW TASK: Pop from queue
     // Save queue size BEFORE pop for accurate total count

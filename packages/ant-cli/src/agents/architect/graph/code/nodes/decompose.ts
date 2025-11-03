@@ -178,6 +178,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           lastViolations: session.state.lastViolations || [],
           previousFileCount: session.state.previousFileCount,
           resolvedCategories: (session.state.resolvedCategories || []) as any,
+          planText: session.state.planText || '',  // ✅ Restore plan to skip LLM call on resume
         };
         }  // End of else block (normal resume)
       }  // End of if (session.state && taskQueue)

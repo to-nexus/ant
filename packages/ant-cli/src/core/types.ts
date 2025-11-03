@@ -163,6 +163,9 @@ export interface SessionState {
   // Progress Tracking
   previousFileCount?: number;     // File count from previous attempt
   resolvedCategories?: string[]; // Error categories resolved
+  
+  // Execution Context (for resume optimization)
+  planText?: string;              // ✅ Cached plan to skip LLM call on resume
 }
 
 /**
