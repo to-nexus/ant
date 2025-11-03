@@ -133,7 +133,21 @@ async function runArchitect(task: 'design' | 'code' | 'learn', inputPath: string
       enableEvaluation: task === 'code' && options.eval  // Pass eval flag
     });
     
-    console.log('\n✅ Task completed successfully!');
+    // ✅ Display result based on status (type guard for ArchitectResult)
+    if (typeof result !== 'string' && 'success' in result) {
+      if (result.status === 'paused' && result.tasksRemaining) {
+        console.log('\n⏸️  Task paused due to recursion limit');
+        console.log(`📊 Progress: ${result.tasksRemaining} tasks remaining`);
+        console.log('💡 Run the same command again to resume\n');
+      } else if (result.success) {
+        console.log('\n✅ Task completed successfully!');
+      } else {
+        console.log('\n⚠️  Task completed with issues');
+      }
+    } else {
+      console.log('\n✅ Task completed successfully!');
+    }
+    
     console.log('\n--- Result ---\n', JSON.stringify(result, null, 2));
     
     // Stop logging and wait for stream to finish

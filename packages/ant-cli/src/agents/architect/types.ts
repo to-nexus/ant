@@ -20,8 +20,11 @@ export interface ProjectContext extends CoreProjectContext {
 
 export interface ArchitectResult {
   success: boolean;
+  status?: 'success' | 'paused' | 'partial';  // ✅ Explicit status for better clarity
   task: AgentTask;
   reportFile: string;
   filesAnalyzed?: number;
+  tasksRemaining?: number;  // ✅ For paused state
+  pausedDueToLimit?: boolean;  // ✅ Recursion limit indicator
   message: string;
 }
