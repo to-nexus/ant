@@ -15,4 +15,5 @@ export * from "./profile";
 export * from "./chunk";
 export * from "./session";
 export * from "./command";
+export * from "./http";
 

@@ -9,8 +9,10 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "tsx src/index.ts",
+    "dev:server": "tsx src/composition/server.ts",
     "build": "tsc && cp -r src/core/prompt/templates dist/core/prompt/ && cp -r src/periphery/profiles dist/periphery/",
     "start": "node dist/index.js",
+    "start:server": "node dist/composition/server.js",
     "init:workspace": "tsx src/cli/init-cli.ts workspace",
     "init:feature": "tsx src/cli/init-cli.ts feature"
   },
@@ -26,7 +28,9 @@
     "anthropic": "^0.0.0",
     "chromadb": "^3.0.17",
     "commander": "^14.0.2",
+    "cors": "^2.8.5",
     "dotenv": "^17.2.3",
+    "express": "^5.1.0",
     "handlebars": "^4.7.8",
     "langchain": "^1.0.1",
     "openai": "^6.5.0",
@@ -34,6 +38,8 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.5",
     "@types/handlebars": "^4.1.0",
     "@types/node": "^24.8.1",
     "tsx": "^4.20.6",
