@@ -63,6 +63,7 @@ export async function evaluate(state: ArchitectGraphState): Promise<Partial<Arch
       return {
         ...state,
         evaluationReport: report,
+        shouldEvaluate: false,  // ✅ Reset routing flag
       };
     }
     
@@ -105,6 +106,7 @@ export async function evaluate(state: ArchitectGraphState): Promise<Partial<Arch
       retries: 0,
       violations: [],
       enforcementReason: undefined,
+      shouldEvaluate: false,  // ✅ CRITICAL: Reset routing flag
     };
   }
   
@@ -118,7 +120,10 @@ export async function evaluate(state: ArchitectGraphState): Promise<Partial<Arch
   const gitPort = state.gitPort || state.deps?.git;
   if (!gitPort) {
     console.warn('⚠️  GitPort not available, skipping evaluation');
-    return state;
+    return {
+      ...state,
+      shouldEvaluate: false,  // ✅ Reset routing flag
+    };
   }
 
   console.log('🔬 Evaluating generated code...\n');
@@ -132,7 +137,10 @@ export async function evaluate(state: ArchitectGraphState): Promise<Partial<Arch
     
     if (generatedFiles.length === 0) {
       console.log('⚠️  No files to evaluate');
-      return state;
+      return {
+        ...state,
+        shouldEvaluate: false,  // ✅ Reset routing flag
+      };
     }
 
     // Analyze code metrics
@@ -172,10 +180,14 @@ export async function evaluate(state: ArchitectGraphState): Promise<Partial<Arch
     return {
       ...state,
       evaluationReport: report,
+      shouldEvaluate: false,  // ✅ Reset routing flag
     };
   } catch (error: any) {
     console.error('⚠️  Evaluation failed:', error.message);
-    return state;
+    return {
+      ...state,
+      shouldEvaluate: false,  // ✅ Reset routing flag
+    };
   }
 }
 

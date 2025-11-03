@@ -132,16 +132,35 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     
     console.log(`\n📊 Task Progress:`);
     console.log(`   Overall: ${completedCount}/${totalTasks} (${Math.round(completedCount / totalTasks * 100)}%)`);
-    console.log(`   Setup:   ${tasksByType.setup === 0 ? '✅' : '⬜'} ${tasksByType.setup} remaining`);
-    console.log(`   Feature: ${tasksByType.feature === 0 ? '✅' : '⬜'} ${tasksByType.feature} remaining`);
-    console.log(`   Error:   ${tasksByType.error === 0 ? '✅' : '⚠️ '} ${tasksByType.error} remaining`);
-    console.log(`   Final:   ${tasksByType.final === 0 ? '✅' : '⬜'} ${tasksByType.final} remaining`);
+    console.log(`   Setup:   ${tasksByType.setup === 0 ? '✅' : '⬜'} ${tasksByType.setup} total (incl. current)`);
+    console.log(`   Feature: ${tasksByType.feature === 0 ? '✅' : '⬜'} ${tasksByType.feature} total (incl. current)`);
+    console.log(`   Error:   ${tasksByType.error === 0 ? '✅' : '⚠️ '} ${tasksByType.error} total (incl. current)`);
+    console.log(`   Final:   ${tasksByType.final === 0 ? '✅' : '⬜'} ${tasksByType.final} total (incl. current)`);
+    
+    // ✅ Show remaining tasks (current + queue)
     console.log(``);
-    console.log(`🎯 Next task: ${nextTask.name} (${nextTask.type.toUpperCase()})`);
+    console.log(`📋 Remaining tasks (${remainingBeforePop}):`);
+    console.log(`   → [P${nextTask.priority}] ${nextTask.name} (${nextTask.type}) ← Starting now`);
+    
+    const queueTasks = state.taskQueue?.getAll() || [];
+    const maxToShow = 5;  // Show first 5 tasks
+    queueTasks.slice(0, maxToShow).forEach((task, idx) => {
+      console.log(`   ${idx + 2}. [P${task.priority}] ${task.name} (${task.type})`);
+    });
+    if (queueTasks.length > maxToShow) {
+      console.log(`   ... and ${queueTasks.length - maxToShow} more`);
+    }
+    
+    console.log(``);
+    console.log(`🚀 Starting task: "${nextTask.name}"`);
+    console.log(`   Type: ${nextTask.type.toUpperCase()}`);
     console.log(`   Priority: P${nextTask.priority}\n`);
   }
   
   // ===== CHECK RETRY LIMIT (Priority Check) =====
+  // ⚠️  NOTE: Final Task (priority=1000) never reaches here!
+  //     Final Task is handled in Line 289-314 (HANDLE ERRORS block)
+  //     and immediately goes to evaluate without retry.
   if (isRetry && state.retries >= state.maxRetries) {
     console.log(`\n⚠️  ═══════════════════════════════════════════════════════════`);
     console.log(`⚠️  Task "${nextTask.name}" EXHAUSTED RETRIES (${state.retries}/${state.maxRetries})`);
@@ -248,7 +267,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       };
     }
     
-    // ✅ Final Task는 Line 280에서 이미 처리됨 (retry 안함)
+    // ✅ Final Task는 Line 289-314에서 처리됨 (retry 안함, 바로 evaluate로)
     // 여기 도달하면 Setup/Feature/Error task임
   }
   
@@ -258,7 +277,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     
     const violations = state.violations;
     
-    // ✅ CRITICAL: Final Task는 retry 안함 - 바로 evaluate로!
+    // ✅ CRITICAL: Final Task는 retry 안함 - 바로 evaluate로! (retry 횟수 무관)
     if (nextTask.priority === 1000) {
       console.log(`⚠️  Final Verification failed with ${violations.length} violation(s)`);
       console.log(`   → Moving to evaluate to create error tasks (NO RETRY)\n`);
@@ -278,11 +297,15 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       console.log(`💾 Checkpoint saved (Final Task deferred)\n`);
       
       // ✅ Signal graph to go to evaluate (Error tasks 생성)
-      return {
+      const evaluateState = {
         ...checkpointState,
         shouldEvaluate: true,  // ✅ Graph will route to evaluate instead of execute
       };
+      console.log(`🔀 Plan returning with shouldEvaluate=true (will route to evaluate)\n`);
+      return evaluateState;
     }
+    
+    // 여기 도달하면 Setup/Feature/Error task의 retry 가능한 에러임
     
     // ✅ 모든 에러가 retryable인 경우만 재시도
     const allRetryable = violations.every(v => v.isRetryable === true);
