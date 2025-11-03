@@ -1,5 +1,43 @@
 # ANT UI - Product Requirements Document
 
+---
+
+## 🚨 CRITICAL ARCHITECTURE CONSTRAINTS 🚨
+
+### ❌ DO NOT CREATE THESE (ABSOLUTELY FORBIDDEN):
+
+1. **❌ NO BACKEND SERVER OF ANY KIND**
+   - ❌ NO Express/Koa/Fastify server
+   - ❌ NO HTTP server (`http.createServer()`)
+   - ❌ NO backend code in `src/backend/`, `src/api/`, `src/server/`
+   - ❌ NO API routes, controllers, middleware
+   - ❌ NO backend service layer
+
+2. **❌ NO NETWORK/API LAYER**
+   - ❌ NO WebSocket server (`ws`, `socket.io`)
+   - ❌ NO REST API endpoints
+   - ❌ NO GraphQL server
+   - ❌ NO HTTP client libraries (axios, fetch for API calls)
+   - ❌ NO API clients
+
+3. **❌ NO BACKEND ARCHITECTURE PATTERNS**
+   - ❌ NO repository pattern for backend
+   - ❌ NO backend services
+   - ❌ NO API layer
+
+### ✅ ONLY THESE ARE ALLOWED:
+
+**This is a FRONTEND-ONLY application that uses Node.js APIs for local file access.**
+
+1. **✅ React Frontend** (`src/components/`, `src/App.tsx`)
+2. **✅ Direct File System Access** (Node.js `fs`, `fs/promises` for reading/writing local files)
+3. **✅ File Watching** (`chokidar` for watching `session.json` changes)
+4. **✅ Process Spawning** (Node.js `child_process.spawn` for running CLI)
+5. **✅ Frontend State Management** (Zustand for UI state)
+6. **✅ Frontend UI Components** (shadcn/ui, Tailwind CSS)
+
+---
+
 ## Overview
 
 **Desktop application** that monitors and controls ANT CLI agents running on the **same machine**. Visualizes workflow execution, task queues, and output by directly reading files that ANT CLI writes.

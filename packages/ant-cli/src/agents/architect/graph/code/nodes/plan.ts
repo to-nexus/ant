@@ -63,9 +63,10 @@ function formatPreviousAttempts(attempts: AttemptHistory[]): string {
  * Also handles dynamic task queue management when errors occur
  * 
  * Responsibilities:
- * 1. Pop next task from queue
- * 2. If retry with errors: Analyze and potentially add error tasks to queue
- * 3. Generate execution plan for current task
+ * 1. Check retry limit - if exceeded, create error task and move on
+ * 2. Pop next task from queue
+ * 3. If retry with errors: Analyze and potentially add error tasks to queue
+ * 4. Generate execution plan for current task
  */
 export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   const llm = state.deps?.llm as LLMClient;
@@ -82,6 +83,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     nextTask = state.currentTask;
     console.log(`\n🔄 Retrying failed task: ${nextTask.name}`);
     console.log(`   Type: ${nextTask.type}, Priority: ${nextTask.priority}`);
+    console.log(`   Retries: ${state.retries}/${state.maxRetries}`);
     console.log(`   Violations: ${state.violations?.length || 0}`);
     console.log(`   Queue size: ${state.taskQueue?.size() || 0} remaining\n`);
   } else {
@@ -96,6 +98,82 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     console.log(`\n🎯 Next task from queue: ${nextTask.name}`);
     console.log(`   Type: ${nextTask.type}, Priority: ${nextTask.priority}`);
     console.log(`   Queue size: ${state.taskQueue?.size() || 0} remaining\n`);
+  }
+  
+  // ===== CHECK RETRY LIMIT (Priority Check) =====
+  if (isRetry && state.retries >= state.maxRetries) {
+    console.log(`\n⚠️  ═══════════════════════════════════════════════════════════`);
+    console.log(`⚠️  Task "${nextTask.name}" EXHAUSTED RETRIES (${state.retries}/${state.maxRetries})`);
+    console.log(`⚠️  ═══════════════════════════════════════════════════════════\n`);
+    
+    // Format violations for error task
+    const violations = state.violations || [];
+    const violationsText = violations.map((v, idx) => {
+      const parts = [`${idx + 1}. [${v.severity}] ${v.type}: ${v.message}`];
+      if (v.file) parts.push(`   File: ${v.file}`);
+      if (v.module) parts.push(`   Module: ${v.module}`);
+      if (v.suggestedFix) parts.push(`   Suggested: ${v.suggestedFix}`);
+      return parts.join('\n');
+    }).join('\n\n');
+    
+    // 1. Create error task from violations
+    if (violations.length > 0) {
+      const errorTask: Task = {
+        id: `error-${nextTask.id}-${Date.now()}`,
+        name: `Fix Errors: ${nextTask.name}`,
+        type: 'error',
+        priority: TASK_PRIORITIES.ERROR_TYPE,  // Default to type errors
+        description: `Fix validation errors from "${nextTask.name}":\n\n${violationsText}`,
+        errors: violations.map(v => v.message),
+        validationRequired: true,
+        validationType: 'runtime',
+      };
+      
+      state.taskQueue?.push(errorTask);
+      console.log(`📝 Created error task: "${errorTask.name}" (P${errorTask.priority})`);
+      console.log(`   This error task will run AFTER all feature tasks\n`);
+    }
+    
+    // 2. Mark feature task as complete (with errors deferred)
+    if (nextTask.type === 'feature' && state.featureTasks) {
+      const feature = state.featureTasks.get(nextTask.id);
+      if (feature) {
+        feature.completed = true;
+        console.log(`✅ Marked feature task as complete (errors deferred to error task)`);
+      }
+    }
+    
+    // 3. Add to completed tasks
+    state.completedTasks = state.completedTasks || [];
+    if (!state.completedTasks.includes(nextTask.id)) {
+      state.completedTasks.push(nextTask.id);
+    }
+    
+    console.log(`⏭️  Moving to next task in queue...\n`);
+    
+    // 4. Clear enforcement state and pop next task
+    const newNextTask = state.taskQueue?.pop();
+    if (!newNextTask) {
+      console.log('✅ Task queue is empty!');
+      return {
+        ...state,
+        enforcementReason: undefined,
+        violations: [],
+        retries: 0,
+      };
+    }
+    
+    console.log(`🎯 Next task: ${newNextTask.name} (P${newNextTask.priority})\n`);
+    nextTask = newNextTask;
+    
+    // Clear enforcement state for new task
+    return {
+      ...state,
+      currentTask: nextTask,
+      enforcementReason: undefined,
+      violations: [],
+      retries: 0,
+    };
   }
   
   // ===== HANDLE ERRORS: Analyze & Add Error Tasks =====
@@ -122,159 +200,101 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       };
     }
     
-    console.log('⚠️  Blocking errors detected - analyzing for task decomposition...\n');
+    console.log('⚠️  Blocking errors detected - creating error task and deferring...\n');
     
-    // Format violations for LLM
+    // Format violations for error task
     const violationsText = violations.map((v, idx) => {
-      const parts = [
-        `${idx + 1}. [${v.severity}] ${v.type}: ${v.message}`
-      ];
+      const parts = [`${idx + 1}. [${v.severity}] ${v.type}: ${v.message}`];
       if (v.file) parts.push(`   File: ${v.file}`);
       if (v.module) parts.push(`   Module: ${v.module}`);
       if (v.suggestedFix) parts.push(`   Suggested: ${v.suggestedFix}`);
       return parts.join('\n');
     }).join('\n\n');
     
-    const attemptsText = formatPreviousAttempts(state.previousAttempts || []);
-    
-    // Format current queue status
-    const queueStatus = state.taskQueue?.getAll().map(t => 
-      `[P${t.priority}] ${t.name} (${t.type})`
-    ).join('\n') || '(empty)';
-    
-    // Format feature tasks status
-    const featureStatus = Array.from(state.featureTasks?.values() || []).map(f =>
-      `${f.completed ? '✅' : '⏳'} ${f.name}`
-    ).join('\n') || '(none)';
-    
-    const errorAnalysisPrompt = `You are analyzing a failed task to decide next actions.
-
-FAILED TASK: ${state.currentTask?.name} (${state.currentTask?.type})
-DESCRIPTION: ${state.currentTask?.description}
-
-ERRORS (${state.violations.length} total):
-${violationsText}
-
-PREVIOUS ATTEMPTS:
-${attemptsText}
-
-CURRENT QUEUE:
-${queueStatus}
-
-ORIGINAL FEATURE TASKS:
-${featureStatus}
-
-YOUR DECISION:
-Analyze these errors and decide:
-
-**Option A: ADD ERROR TASKS** (if errors block progress)
-- Create error-fix tasks with priority 900+
-- ⚠️ NEW POLICY: Error tasks run AFTER all feature tasks complete
-- This allows all features to be implemented first, then errors fixed in batch
-- Example: Missing deps, missing entry files
-
-**Option B: RETRY CURRENT TASK** (if errors are minor)
-- Just regenerate code with better instructions
-- Example: Code has ellipsis, minor type errors
-
-Return JSON ONLY:
-{
-  "action": "add_tasks" | "retry",
-  "reason": "One sentence why",
-  "newTasks": [
-    {
-      "id": "fix-deps-1",
-      "name": "Fix Missing Dependencies",
-      "type": "error",
-      "priority": ${TASK_PRIORITIES.ERROR_MISSING_DEPS},
-      "description": "Install react, react-dom, and peer dependencies",
-      "errors": ["Cannot find module 'react'", ...]
+    // Determine error priority based on violation types
+    let errorPriority: number = TASK_PRIORITIES.ERROR_OTHER;
+    if (violations.some(v => v.type === 'missing_file')) {
+      errorPriority = TASK_PRIORITIES.ERROR_MISSING_ENTRY;
+    } else if (violations.some(v => v.type === 'missing_dependency')) {
+      errorPriority = TASK_PRIORITIES.ERROR_MISSING_DEPS;
+    } else if (violations.some(v => v.type === 'config_error')) {
+      errorPriority = TASK_PRIORITIES.ERROR_CONFIG;
+    } else if (violations.some(v => v.type === 'type_error')) {
+      errorPriority = TASK_PRIORITIES.ERROR_TYPE;
+    } else if (violations.some(v => v.type === 'import_error')) {
+      errorPriority = TASK_PRIORITIES.ERROR_IMPORT;
+    } else if (violations.some(v => v.type === 'build_error')) {
+      errorPriority = TASK_PRIORITIES.ERROR_BUILD;
+    } else if (violations.some(v => v.type === 'syntax_error')) {
+      errorPriority = TASK_PRIORITIES.ERROR_SYNTAX;
+    } else if (violations.some(v => v.type === 'lint_error')) {
+      errorPriority = TASK_PRIORITIES.ERROR_LINT;
     }
-  ]
-}
-
-PRIORITY GUIDE for error tasks (USE THESE EXACT VALUES):
-⚠️  NEW POLICY: Error tasks (900+) run AFTER all feature tasks (200-899)
-LOWER NUMBER = HIGHER PRIORITY (executes first within error tasks)
-- Missing entry files (index.html): ${TASK_PRIORITIES.ERROR_MISSING_ENTRY} (ERROR_MISSING_ENTRY) ← MOST CRITICAL
-- Missing dependencies: ${TASK_PRIORITIES.ERROR_MISSING_DEPS} (ERROR_MISSING_DEPS)
-- Config errors: ${TASK_PRIORITIES.ERROR_CONFIG} (ERROR_CONFIG)
-- Type errors: ${TASK_PRIORITIES.ERROR_TYPE} (ERROR_TYPE)
-- Import errors: ${TASK_PRIORITIES.ERROR_IMPORT} (ERROR_IMPORT)
-- Build errors: ${TASK_PRIORITIES.ERROR_BUILD} (ERROR_BUILD)
-- Syntax errors: ${TASK_PRIORITIES.ERROR_SYNTAX} (ERROR_SYNTAX)
-- Lint errors: ${TASK_PRIORITIES.ERROR_LINT} (ERROR_LINT) ← LEAST CRITICAL
-
-RULES:
-- If action is "retry", newTasks can be empty
-- Error task IDs must be unique (add counter if needed)
-- Don't create tasks for trivial issues (ellipsis - just retry those)
-- Use exact priority values from guide above
-- Remember: Error tasks now run AFTER features (deferred error fixing)`;
-
-    try {
-      const response = await llm.invoke([{ role: 'user', content: errorAnalysisPrompt }]);
-      
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        console.log('⚠️  No JSON in response, will retry current task\n');
-        
-        // Update enforcement feedback
-        if (state.enforcementHistory && state.enforcementHistory.length > 0) {
-          const lastFeedback = state.enforcementHistory[state.enforcementHistory.length - 1];
-          lastFeedback.fixStrategy = 'retry';
-        }
-      } else {
-        const decision = JSON.parse(jsonMatch[0]);
-        
-        if (decision.action === 'add_tasks' && decision.newTasks && decision.newTasks.length > 0) {
-          console.log(`\n📌 Adding ${decision.newTasks.length} error tasks to queue:`);
-          console.log(`   Reason: ${decision.reason}\n`);
+    
+    // 1. Create error task immediately
+    const errorTask: Task = {
+      id: `error-${nextTask.id}-${Date.now()}`,
+      name: `Fix Errors: ${nextTask.name}`,
+      type: 'error',
+      priority: errorPriority,
+      description: `Fix blocking errors from "${nextTask.name}":\n\n${violationsText}`,
+      errors: violations.map(v => v.message),
+      validationRequired: true,
+      validationType: 'runtime',
+    };
+    
+    state.taskQueue?.push(errorTask);
+    console.log(`📝 Created error task: "${errorTask.name}" (P${errorTask.priority})`);
+    console.log(`   Priority: ${errorPriority} (Error tasks run AFTER all feature tasks)`);
+    console.log(`   Violations: ${violations.length}`);
+    
+    // 2. Mark feature task as complete (with errors deferred)
+    if (nextTask.type === 'feature' && state.featureTasks) {
+      const feature = state.featureTasks.get(nextTask.id);
+      if (feature) {
+        feature.completed = true;
+        console.log(`   ✅ Marked feature task as complete (errors deferred)`);
+      }
+    }
+    
+    // 3. Add to completed tasks
+    state.completedTasks = state.completedTasks || [];
+    if (!state.completedTasks.includes(nextTask.id)) {
+      state.completedTasks.push(nextTask.id);
+    }
           
-          // Add new error tasks
-          decision.newTasks.forEach((task: Task) => {
-            console.log(`   + [P${task.priority}] ${task.name}`);
-            state.taskQueue?.push(task);
-          });
-          
-          // Update enforcement feedback with added tasks
+    // 4. Update enforcement feedback
           if (state.enforcementHistory && state.enforcementHistory.length > 0) {
             const lastFeedback = state.enforcementHistory[state.enforcementHistory.length - 1];
             lastFeedback.fixStrategy = 'add_tasks';
-            lastFeedback.addedTasks = decision.newTasks;
+      lastFeedback.addedTasks = [errorTask];
           }
           
-          // Re-add current task (will be retried later)
-          console.log(`   + [P${nextTask.priority}] ${nextTask.name} (re-queued for later)\n`);
-          state.taskQueue?.push(nextTask);
+    console.log(`⏭️  Moving to next feature task...\n`);
           
-          // Pop again (highest priority task)
-          nextTask = state.taskQueue?.pop();
-          
-          if (nextTask) {
-            console.log(`🎯 Now executing: ${nextTask.name} (priority: ${nextTask.priority})\n`);
-          }
-        } else {
-          console.log(`\n🔄 Retrying current task: ${nextTask.name}`);
-          console.log(`   Reason: ${decision.reason}\n`);
-          
-          // Update enforcement feedback
-          if (state.enforcementHistory && state.enforcementHistory.length > 0) {
-            const lastFeedback = state.enforcementHistory[state.enforcementHistory.length - 1];
-            lastFeedback.fixStrategy = 'retry';
-          }
-        }
-      }
-    } catch (error) {
-      console.error('❌ Failed to analyze errors:', error);
-      console.log('⚠️  Falling back to retry current task\n');
-      
-      // Update enforcement feedback
-      if (state.enforcementHistory && state.enforcementHistory.length > 0) {
-        const lastFeedback = state.enforcementHistory[state.enforcementHistory.length - 1];
-        lastFeedback.fixStrategy = 'retry';
-      }
+    // 5. Pop next task (should be next feature task)
+    const newNextTask = state.taskQueue?.pop();
+    if (!newNextTask) {
+      console.log('✅ Task queue is empty!');
+      return {
+        ...state,
+        enforcementReason: undefined,
+        violations: [],
+        retries: 0,
+      };
     }
+    
+    console.log(`🎯 Next task: ${newNextTask.name} (P${newNextTask.priority})\n`);
+    nextTask = newNextTask;
+      
+    // Clear enforcement state for new task
+    return {
+      ...state,
+      currentTask: nextTask,
+      enforcementReason: undefined,
+      violations: [],
+      retries: 0,
+    };
   }
   
   if (!nextTask) {
@@ -293,9 +313,16 @@ RULES:
   // ===== RELOAD CODE IF NOT SETUP TASK =====
   // ✅ CRITICAL: Reload working directory code for feature/error tasks
   // Setup task has no files yet, but feature tasks need to see what was created
+  // 
+  // ✅ OPTIMIZATION: Skip reload if resuming from session
+  // - Decompose already reloaded code from disk when restoring session
+  // - This prevents duplicate file loading and ensures consistency
   let currentCode = state.code;
   
-  if (nextTask.type !== 'setup') {
+  const isResuming = Boolean(state.completedTasks && state.completedTasks.length > 0);
+  const shouldReload = nextTask.type !== 'setup' && !isResuming;
+  
+  if (shouldReload) {
     console.log(`📂 Reloading current codebase for task: ${nextTask.name}`);
     
     const gitPort = state.deps?.git;
@@ -345,6 +372,8 @@ RULES:
       console.warn(`⚠️  Could not load files: ${error}`);
       currentCode = state.code;  // Fallback to original
     }
+  } else if (isResuming) {
+    console.log(`⚡ Using code loaded by decompose (resume mode)\n`);
   }
   
   // ===== GENERATE EXECUTION PLAN FOR CURRENT TASK =====

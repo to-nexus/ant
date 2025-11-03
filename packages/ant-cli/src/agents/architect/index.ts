@@ -200,65 +200,65 @@ export async function architectAgent(
       console.log(`   Estimated: ~${estimation.estimatedFiles} files, ~${Math.ceil(estimation.estimatedTokens / 1000)}K tokens`);
       console.log(`   Decision: ${estimation.reason}`);
       console.log('⚡ Using task queue mode\n');
-      
-      const codeEngine = new PromptEngine({
-        promptPort: deps.promptPort,
-        profilePort: deps.profilePort,
-        analyzer: deps.analyzer,
-        git: deps.git,
-        memory: deps.memory,
-        contextLoader: async (task, ctx) => {
-          const { getDirective, findLatestDesign } = await import('./utils');
-          const gitPort = deps.git;
-          if (!gitPort) return {};
-          
-          const directive = await getDirective(ctx, task, gitPort);
-          const designDoc = await findLatestDesign(ctx, gitPort);
-          
-          return {
-            directive: directive || undefined,
-            designDoc: designDoc || undefined
-          };
-        }
-      });
-      
-      const initial: ArchitectGraphState = {
-        context,
-        spec,
-        deps: { 
-          memory: deps?.memory, 
-          llm: deps?.llm,
-          promptEngine: codeEngine,
-          analyzer: deps?.analyzer,
-          git: deps?.git,
-          chunk: deps?.chunk,
-          session: deps?.session,
-          command: deps?.command
-        },
-        gitPort: deps?.git,
-        planText: "",
-        codePrompt: "",
-        rawResponse: "",
-        files: [],
-        filesToDelete: [],
-        requiredIntegrations: [],
-        violations: [],  // ✅ Initialize violations array
-        retries: 0,
-        maxRetries: 3,  // ✅ Allow multiple retries for dependency fixes
-        codeMode: codeMode, // Will be inferred in graph nodes
-        subtaskIndex: 0,  // Backward compatibility
-        totalSubtasks: 0,  // Backward compatibility
-      };
-      const result = await runCodeGraph(initial);
-      return {
-        success: true,
-        task: 'code',
-        reportFile: result.reportFile,
-        filesAnalyzed: result.filesChanged,
-        message: result.filesChanged > 0
-          ? `${result.filesChanged} files changed. Review with 'git diff' and commit when ready.`
-          : `No code changes generated. See report for plan and learnings.`
-      };
+        
+        const codeEngine = new PromptEngine({
+          promptPort: deps.promptPort,
+          profilePort: deps.profilePort,
+          analyzer: deps.analyzer,
+          git: deps.git,
+          memory: deps.memory,
+          contextLoader: async (task, ctx) => {
+            const { getDirective, findLatestDesign } = await import('./utils');
+            const gitPort = deps.git;
+            if (!gitPort) return {};
+            
+            const directive = await getDirective(ctx, task, gitPort);
+            const designDoc = await findLatestDesign(ctx, gitPort);
+            
+            return {
+              directive: directive || undefined,
+              designDoc: designDoc || undefined
+            };
+          }
+        });
+        
+        const initial: ArchitectGraphState = {
+          context,
+          spec,
+          deps: { 
+            memory: deps?.memory, 
+            llm: deps?.llm,
+            promptEngine: codeEngine,
+            analyzer: deps?.analyzer,
+            git: deps?.git,
+            chunk: deps?.chunk,
+            session: deps?.session,
+            command: deps?.command
+          },
+          gitPort: deps?.git,
+          planText: "",
+          codePrompt: "",
+          rawResponse: "",
+          files: [],
+          filesToDelete: [],
+          requiredIntegrations: [],
+          violations: [],  // ✅ Initialize violations array
+          retries: 0,
+          maxRetries: 3,  // ✅ Allow multiple retries for dependency fixes
+          codeMode: codeMode, // Will be inferred in graph nodes
+          subtaskIndex: 0,  // Backward compatibility
+          totalSubtasks: 0,  // Backward compatibility
+        };
+        const result = await runCodeGraph(initial);
+        return {
+          success: true,
+          task: 'code',
+          reportFile: result.reportFile,
+          filesAnalyzed: result.filesChanged,
+          message: result.filesChanged > 0
+            ? `${result.filesChanged} files changed. Review with 'git diff' and commit when ready.`
+            : `No code changes generated. See report for plan and learnings.`
+        };
     
     default:
       throw new Error(`Unknown task: ${task}`);

@@ -10,7 +10,7 @@ LangGraph-based workflow that decomposes specifications into tasks, generates co
 
 ```
 resolve → decompose → [Task Loop] → evaluate → learn
-                         ↓
+                          ↓
            ┌─────────────┴─────────────┐
            │ plan → execute → writeFiles →
            │ validate → installDeps →
@@ -18,7 +18,7 @@ resolve → decompose → [Task Loop] → evaluate → learn
            │   ↓ (if errors)
            │ enforce → plan (retry)
            └─────────────┬─────────────┘
-                         ↓
+                          ↓
                     (next task or done)
 ```
 
@@ -676,7 +676,7 @@ interface Violation {
   suggestedFix?: string;
   isRetryable?: boolean;  // Key for retry decision
   module?: string;
-}
+  }
 ```
 
 ### Retry Decision Logic

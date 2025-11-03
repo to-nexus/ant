@@ -29,6 +29,77 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       if (session.state && session.state.taskQueue && session.state.taskQueue.length > 0) {
         console.log('\n🔄 Resuming from previous session...\n');
         
+        // ✅ CRITICAL: Reload codebase from actual disk to detect file deletions
+        const gitPort = state.deps?.git;
+        let reloadedCode = state.code;
+        let shouldResetAndDecompose = false;  // Flag to trigger decomposition
+        
+        if (gitPort) {
+          console.log('📂 Reloading current codebase from disk...');
+          
+          try {
+            const allFiles = await gitPort.listFiles('', [
+              'node_modules', 'dist', 'build', 'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', '.git',
+              '*.test.ts', '*.test.tsx', '*.spec.ts', '*.spec.tsx'
+            ]);
+            
+            const fileContents: string[] = [];
+            let totalTokens = 0;
+            
+            for (const file of allFiles.slice(0, 50)) {
+              try {
+                const content = await gitPort.readFile(file);
+                if (content && content.length > 0) {
+                  fileContents.push(`=== ${file} ===\n${content}\n`);
+                  totalTokens += Math.ceil(content.length / 4);
+                  if (totalTokens > 100000) break;
+                }
+              } catch (error) {
+                // Skip files that can't be read
+              }
+            }
+            
+            reloadedCode = fileContents.join('\n');
+            console.log(`   ✅ Reloaded ${fileContents.length} files (~${totalTokens} tokens) from disk\n`);
+            
+            // ✅ Detect full project deletion (not partial edits)
+            const hasCompletedTasks = session.state.completedTasks && session.state.completedTasks.length > 0;
+            const hasNoFiles = fileContents.length === 0;
+            
+            if (hasCompletedTasks && hasNoFiles) {
+              // 🚨 All files deleted - reset and decompose
+              console.log('⚠️  All project files have been deleted');
+              console.log(`   Session shows ${session.state.completedTasks?.length || 0} completed task(s) but 0 files exist`);
+              console.log('🔄 Treating as NEW PROJECT - will decompose into tasks\n');
+              
+              // Set flag and reset state
+              shouldResetAndDecompose = true;
+              state = {
+                ...state,
+                code: "",
+                completedTasks: [],
+                retries: 0,
+                previousAttempts: [],
+                enforcementHistory: [],
+                lastViolations: [],
+                previousFileCount: 0,
+                resolvedCategories: []
+              };
+            } else {
+              // Normal resume - update code
+              state = { ...state, code: reloadedCode };
+            }
+          } catch (error) {
+            console.warn(`⚠️  Could not reload files: ${error}`);
+          }
+        }
+        
+        // If reset detected, skip queue restoration and fall through to decomposition
+        if (shouldResetAndDecompose) {
+          // Fall through to line 71 (decomposition logic)
+        } else {
+          // Normal resume - restore queue and return
+        
         // Restore TaskQueue from saved state
         const taskQueue = new TaskQueue();
         session.state.taskQueue.forEach((task: Task) => {
@@ -43,11 +114,9 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           }
         });
         
-        console.log(`📊 Restored state:`);
+        console.log(`📊 Resuming existing project:`);
         console.log(`   ✅ ${session.state.completedTasks?.length || 0} tasks completed`);
-        console.log(`   ⏳ ${taskQueue.size()} tasks remaining`);
-        console.log(`   🔁 Retry count: ${session.state.retries || 0}/${session.state.maxRetries || 3}`);
-        console.log('');
+        console.log(`   ⏳ ${taskQueue.size()} tasks remaining\n`);
         
         return {
           ...state,
@@ -62,13 +131,15 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           previousFileCount: session.state.previousFileCount,
           resolvedCategories: (session.state.resolvedCategories || []) as any,
         };
-      }
+        }  // End of else block (normal resume)
+      }  // End of if (session.state && taskQueue)
     } catch (error) {
       console.log('⚠️  Could not load previous session state, starting fresh');
     }
   }
   
-  console.log('\n🎯 Decomposing task into executable queue...\n');
+  // Starting fresh - no session or session was reset
+  console.log('🆕 Starting new project - decomposing into tasks...\n');
   
   // Prepare spec
   const specParts = [

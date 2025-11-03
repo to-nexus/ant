@@ -154,22 +154,16 @@ export function buildCodeGraph() {
       
       // Has violations - check if we should continue trying
       
-      // If within retry limit for current task, retry
+      // ✅ CRITICAL: Let plan node handle retry limit check
+      // Plan node will create error task and move to next task if retry limit exceeded
       if (s.retries < s.maxRetries) {
         return "enforce";
       }
       
-      // Exceeded retries for current task
-      // Check if there are more tasks to try
-      if (s.taskQueue && !s.taskQueue.isEmpty()) {
-        console.log(`⚠️  Task "${s.currentTask?.name}" exhausted retries`);
-        console.log(`⏭️  Skipping to next task (${s.taskQueue.size()} remaining)\n`);
-        return "plan";  // ← Skip to next task
-      }
-      
-      // No more tasks, give up
-      console.log(`❌ All tasks exhausted, proceeding to evaluation`);
-      return "evaluate";
+      // Exceeded retries - plan node will handle this
+      console.log(`⚠️  Task "${s.currentTask?.name}" exhausted retries (${s.retries}/${s.maxRetries})`);
+      console.log(`   Plan node will create error task and move to next task\n`);
+      return "enforce";  // ← Let plan handle retry limit logic
     }) as any,
     { enforce: "enforce", evaluate: "evaluate", plan: "plan" } as any
   );
