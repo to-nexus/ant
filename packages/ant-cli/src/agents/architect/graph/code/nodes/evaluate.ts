@@ -10,7 +10,7 @@
  */
 
 import * as path from 'path';
-import { ArchitectGraphState } from '../state';
+import { ArchitectGraphState, Task } from '../state';
 import { analyzeFiles, categorizeQuality, generateRecommendations, AggregateMetrics } from '../../../utils/codeMetrics';
 import { GitPort } from '../../../../../core/ports';
 
@@ -33,19 +33,86 @@ export interface RequirementChecklistItem {
 /**
  * Evaluate generated code
  * 
- * This node runs after code generation to:
- * 1. Analyze code quality (complexity, maintainability)
- * 2. Generate evaluation report
- * 3. Check quality thresholds (if defined)
+ * This node runs after all tasks are completed to:
+ * 1. Run comprehensive runtime validation (Final Verification)
+ * 2. If errors found, create Error Tasks dynamically
+ * 3. If no errors, analyze code quality and generate report
  */
 export async function evaluate(state: ArchitectGraphState): Promise<Partial<ArchitectGraphState>> {
+  console.log(`\n═══════════════════════════════════════════════════`);
+  console.log(`🔍 FINAL VERIFICATION & EVALUATION`);
+  console.log(`═══════════════════════════════════════════════════\n`);
+  
+  // ✅ 1. Run comprehensive runtime validation
+  console.log(`📋 Running comprehensive validation...\n`);
+  
+  const validationResult = await runComprehensiveValidation(state);
+  
+  // ✅ 2. If errors found, create Error Tasks dynamically
+  if (validationResult.violations && validationResult.violations.length > 0) {
+    console.log(`⚠️  Found ${validationResult.violations.length} error(s) during final verification\n`);
+    
+    // Prevent infinite loop
+    const finalRetryCount = state.finalRetryCount || 0;
+    if (finalRetryCount >= 3) {
+      console.log(`⚠️  Final Verification failed ${finalRetryCount} times`);
+      console.log(`   Stopping to prevent infinite loop - reporting unresolved errors\n`);
+      
+      // Generate failure report
+      const report = await generateFailureReport(state, validationResult.violations);
+      return {
+        ...state,
+        evaluationReport: report,
+      };
+    }
+    
+    state.finalRetryCount = finalRetryCount + 1;
+    console.log(`🔄 Final Verification attempt ${state.finalRetryCount}/3\n`);
+    
+    // Group errors by type
+    const errorGroups = groupViolationsByType(validationResult.violations);
+    
+    console.log(`📝 Creating ${errorGroups.length} error task(s):\n`);
+    
+    // Create Error Task for each error group
+    errorGroups.forEach((group, idx) => {
+      const errorPriority = getErrorPriorityByType(group.type);
+      
+      const { Task, TASK_PRIORITIES } = require('../state');
+      const errorTask = {
+        id: `error-final-${group.type}-${Date.now()}-${idx}`,
+        name: `Fix ${group.type.replace(/_/g, ' ').toUpperCase()} Errors`,
+        type: 'error' as const,
+        priority: errorPriority,
+        description: formatErrorDescription(group.violations),
+        errors: group.violations.map((v: any) => v.message),
+        validationRequired: true,
+        validationType: 'runtime' as const,
+      };
+      
+      state.taskQueue?.push(errorTask);
+      console.log(`   ${idx + 1}. "${errorTask.name}" (P${errorTask.priority}) - ${group.violations.length} error(s)`);
+    });
+    
+    console.log(`\n⏭️  Moving to error resolution phase...\n`);
+    
+    // Move to next Error Task
+    const nextErrorTask = state.taskQueue?.pop();
+    
+    return {
+      ...state,
+      currentTask: nextErrorTask,
+      retries: 0,
+      violations: [],
+      enforcementReason: undefined,
+    };
+  }
+  
+  // ✅ 3. No errors - generate success report
+  console.log(`\n✅ Final Verification PASSED - No errors detected!\n`);
+  
   const { modifications, context } = state;
   const project = context.project;
-
-  // Skip if evaluation not enabled
-  if (!context.enableEvaluation) {
-    return state;
-  }
 
   // Get GitPort for file operations (Hexagonal Architecture)
   const gitPort = state.gitPort || state.deps?.git;
@@ -54,10 +121,10 @@ export async function evaluate(state: ArchitectGraphState): Promise<Partial<Arch
     return state;
   }
 
-  console.log('\n🔬 Evaluating generated code...\n');
+  console.log('🔬 Evaluating generated code...\n');
 
   try {
-    // 1. Collect generated files from state (not from disk)
+    // Collect generated files from state (not from disk)
     const generatedFiles = state.files.map(f => ({
       path: f.path,
       content: f.content
@@ -68,20 +135,20 @@ export async function evaluate(state: ArchitectGraphState): Promise<Partial<Arch
       return state;
     }
 
-    // 2. Analyze code metrics
+    // Analyze code metrics
     const metrics = analyzeFiles(generatedFiles);
     
-    // 3. Load requirements (if available)
+    // Load requirements (if available)
     const requirements = await loadRequirements(project, gitPort);
 
-    // 4. Generate recommendations
+    // Generate recommendations
     const allRecommendations = new Set<string>();
     for (const fileMetric of metrics.fileMetrics) {
       const recs = generateRecommendations(fileMetric.metrics);
       recs.forEach(r => allRecommendations.add(r));
     }
 
-    // 5. Create report
+    // Create report
     const report: EvaluationReport = {
       timestamp: new Date().toISOString(),
       filesGenerated: metrics.totalFiles,
@@ -92,14 +159,14 @@ export async function evaluate(state: ArchitectGraphState): Promise<Partial<Arch
       requirements,
     };
 
-    // 6. Save report
+    // Save report
     const reportPath = await saveReport(project, report, gitPort);
     console.log(`📄 Evaluation report saved: ${reportPath}`);
 
-    // 7. Print summary
+    // Print summary
     printSummary(report);
 
-    // 8. Check quality thresholds
+    // Check quality thresholds
     await checkQualityThresholds(project, report, gitPort);
 
     return {
@@ -303,5 +370,121 @@ async function checkQualityThresholds(project: string, report: EvaluationReport,
   } catch (error) {
     // Ignore errors in threshold checking
   }
+}
+
+/**
+ * Run comprehensive runtime validation
+ */
+async function runComprehensiveValidation(state: ArchitectGraphState) {
+  // Force runtime validation
+  const tempState: ArchitectGraphState = {
+    ...state,
+    currentTask: {
+      id: state.currentTask?.id || 'final-verification',
+      name: state.currentTask?.name || 'Final Verification',
+      type: state.currentTask?.type || 'feature',
+      priority: state.currentTask?.priority || 1000,
+      description: state.currentTask?.description || 'Final comprehensive validation',
+      validationType: 'runtime',
+      validationRequired: true,
+    } as Task,
+  };
+  
+  // Import and run runtimeValidate
+  const { runtimeValidate } = await import('./runtimeValidate');
+  const result = await runtimeValidate(tempState);
+  
+  return {
+    violations: result.violations || [],
+  };
+}
+
+/**
+ * Group violations by type
+ */
+function groupViolationsByType(violations: any[]): Array<{type: string, violations: any[]}> {
+  const groups = new Map<string, any[]>();
+  
+  violations.forEach(v => {
+    const type = v.type || 'other';
+    if (!groups.has(type)) {
+      groups.set(type, []);
+    }
+    groups.get(type)!.push(v);
+  });
+  
+  return Array.from(groups.entries()).map(([type, violations]) => ({
+    type,
+    violations
+  }));
+}
+
+/**
+ * Get error priority by violation type
+ */
+function getErrorPriorityByType(type: string): number {
+  const { TASK_PRIORITIES } = require('../state');
+  
+  const priorityMap: Record<string, number> = {
+    'missing_file': TASK_PRIORITIES.ERROR_MISSING_ENTRY,
+    'missing_dependency': TASK_PRIORITIES.ERROR_MISSING_DEPS,
+    'config_error': TASK_PRIORITIES.ERROR_CONFIG,
+    'type_error': TASK_PRIORITIES.ERROR_TYPE,
+    'import_error': TASK_PRIORITIES.ERROR_IMPORT,
+    'build_error': TASK_PRIORITIES.ERROR_BUILD,
+    'syntax_error': TASK_PRIORITIES.ERROR_SYNTAX,
+    'lint_error': TASK_PRIORITIES.ERROR_LINT,
+  };
+  
+  return priorityMap[type] || TASK_PRIORITIES.ERROR_OTHER;
+}
+
+/**
+ * Format error description for Error Task
+ */
+function formatErrorDescription(violations: any[]): string {
+  return violations.map((v, idx) => {
+    const parts = [`${idx + 1}. [${v.severity}] ${v.type}: ${v.message}`];
+    if (v.file) parts.push(`   File: ${v.file}`);
+    if (v.module) parts.push(`   Module: ${v.module}`);
+    if (v.suggestedFix) parts.push(`   Suggested: ${v.suggestedFix}`);
+    return parts.join('\n');
+  }).join('\n\n');
+}
+
+/**
+ * Generate failure report when Final Verification fails multiple times
+ */
+async function generateFailureReport(state: ArchitectGraphState, violations: any[]): Promise<EvaluationReport> {
+  const { context } = state;
+  const project = context.project;
+  
+  // Create a minimal report with error information
+  const report: EvaluationReport = {
+    timestamp: new Date().toISOString(),
+    filesGenerated: state.files?.length || 0,
+    totalLines: 0,
+    metrics: {
+      totalFiles: 0,
+      totalLines: 0,
+      avgComplexity: 0,
+      avgMaintainability: 0,
+      fileMetrics: [],
+    },
+    quality: 'FAILED',
+    recommendations: [
+      `⚠️ Final Verification failed after 3 attempts`,
+      `🔍 ${violations.length} unresolved error(s)`,
+      ...violations.slice(0, 5).map((v, idx) => 
+        `${idx + 1}. [${v.type}] ${v.message}`
+      ),
+    ],
+  };
+  
+  console.log('\n❌ FINAL VERIFICATION FAILED');
+  console.log(`   Unresolved errors: ${violations.length}`);
+  console.log(`   Please review the violations and try again\n`);
+  
+  return report;
 }
 

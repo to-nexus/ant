@@ -236,6 +236,26 @@ export interface ArchitectGraphState extends TaskArtifacts {
   completedTasks?: string[];          // Task IDs that finished successfully
   resolvedCategories?: ErrorCategory[]; // Categories with 0 errors (successfully resolved)
   
+  // ✅ Failed Tasks (deferred to Final Verification)
+  failedTasks?: Array<{
+    taskId: string;
+    taskName: string;
+    taskType: 'setup' | 'feature';
+    priority: number;
+    violations: Violation[];
+    timestamp: string;
+  }>;
+  
+  // ✅ Unresolved Errors (Error Tasks that failed after max retries)
+  unresolvedErrors?: Array<{
+    taskId: string;
+    taskName: string;
+    violations: Violation[];
+  }>;
+  
+  // ✅ Final Verification Retry Count (prevent infinite loop)
+  finalRetryCount?: number;
+  
   // Backward compatibility (deprecated)
   featureSubtasks?: Subtask[];        // @deprecated Use featureTasks
   currentSubtask?: Subtask;           // @deprecated Use currentTask

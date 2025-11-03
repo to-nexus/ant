@@ -1,5 +1,5 @@
 import { StateGraph } from "@langchain/langgraph";
-import { ArchitectGraphState } from "./state";
+import { ArchitectGraphState, TASK_PRIORITIES } from "./state";
 import { resolve, decompose, plan, execute, writeFiles, validate, installDeps, runtimeValidate, enforce, evaluate, learn } from "./nodes/index";
 
 export function buildCodeGraph() {
@@ -132,22 +132,34 @@ export function buildCodeGraph() {
             }
           }
           
-          // If error task completed, remove all error tasks from queue
+          // ✅ If error task completed, remove all error tasks and re-add Final Verification
           if (s.currentTask.type === 'error' && s.taskQueue) {
             const errorCount = s.taskQueue.getAll().filter(t => t.type === 'error').length;
             if (errorCount > 0) {
               console.log(`🧹 Removing ${errorCount} error task(s) from queue (errors resolved)`);
               s.taskQueue.removeType('error');
+              
+              // ✅ Re-add Final Verification to confirm all errors are resolved
+              const finalTask = {
+                id: `final-verification-recheck-${Date.now()}`,
+                name: 'Final Verification (Recheck)',
+                type: 'feature' as const,
+                priority: TASK_PRIORITIES.FINAL_VERIFICATION,
+                description: 'Re-verify all errors are resolved after error fixes',
+                validationRequired: true,
+                validationType: 'runtime' as const,
+              };
+              s.taskQueue.push(finalTask);
+              console.log(`📋 Re-added Final Verification to confirm all errors resolved\n`);
             }
           }
         }
         
         // Check if there are more tasks in queue
         if (s.taskQueue && !s.taskQueue.isEmpty()) {
-          console.log(`📋 Moving to next task (${s.taskQueue.size()} remaining)\n`);
           return "plan";  // ← Next task
         } else {
-          console.log(`✅ All tasks completed!`);
+          console.log(`\n✅ All tasks completed!`);
           return "evaluate";  // ← All done
         }
       }
