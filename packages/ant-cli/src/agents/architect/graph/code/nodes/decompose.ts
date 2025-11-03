@@ -26,7 +26,10 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         state.context.featureFolder || 'default'
       );
       
-      if (session.state && session.state.taskQueue && session.state.taskQueue.length > 0) {
+      // ✅ Resume if: taskQueue has tasks OR currentTask exists (task in progress)
+      if (session.state && 
+          session.state.taskQueue && 
+          (session.state.taskQueue.length > 0 || session.state.currentTask)) {
         console.log('\n🔄 Resuming from previous session...\n');
         
         // ✅ CRITICAL: Reload codebase from actual disk to detect file deletions
@@ -114,7 +117,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           }
         });
         
-        // Calculate task type breakdown
+        // Calculate task type breakdown (including currentTask if exists)
         const tasksByType = {
           setup: 0,
           feature: 0,
@@ -122,6 +125,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           final: 0
         };
         
+        // Count tasks in queue
         taskQueue.getAll().forEach(task => {
           if (task.priority === 1000) {
             tasksByType.final++;
@@ -134,8 +138,23 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           }
         });
         
+        // Add currentTask to count (if it exists - task in progress)
+        if (session.state.currentTask) {
+          const currentTask = session.state.currentTask;
+          if (currentTask.priority === 1000) {
+            tasksByType.final++;
+          } else if (currentTask.type === 'error') {
+            tasksByType.error++;
+          } else if (currentTask.type === 'setup') {
+            tasksByType.setup++;
+          } else if (currentTask.type === 'feature') {
+            tasksByType.feature++;
+          }
+        }
+        
         const completedCount = session.state.completedTasks?.length || 0;
-        const totalTasks = completedCount + taskQueue.size();
+        const inProgressCount = session.state.currentTask ? 1 : 0;
+        const totalTasks = completedCount + taskQueue.size() + inProgressCount;
         
         console.log(`📊 Resuming existing project:`);
         console.log(`   Progress: ${completedCount}/${totalTasks} tasks (${Math.round(completedCount / totalTasks * 100)}%)`);
@@ -150,6 +169,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           ...state,
           taskQueue,
           featureTasks,
+          currentTask: session.state.currentTask,  // ✅ Restore currentTask (in-progress task)
           completedTasks: session.state.completedTasks || [],
           retries: session.state.retries || 0,
           maxRetries: session.state.maxRetries || 3,
