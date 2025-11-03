@@ -84,7 +84,19 @@ export function buildCodeGraph() {
   graph.addEdge("__start__" as any, "resolve" as any);
   graph.addEdge("resolve" as any, "decompose" as any);  // resolve → decompose
   graph.addEdge("decompose" as any, "plan" as any);     // decompose → plan (first task)
-  graph.addEdge("plan" as any, "execute" as any);
+  
+  // ✅ Plan node can route to execute OR evaluate (for Final Verification failures)
+  graph.addConditionalEdges(
+    "plan" as any,
+    (s: ArchitectGraphState) => {
+      // If plan node signals to go to evaluate (Final Verification failure case)
+      if (s.shouldEvaluate) {
+        return "evaluate";
+      }
+      return "execute";
+    },
+    { execute: "execute", evaluate: "evaluate" } as any
+  );
   
   // ✅ CRITICAL: Write files immediately after execute
   graph.addEdge("execute" as any, "writeFiles" as any);
@@ -132,25 +144,32 @@ export function buildCodeGraph() {
             }
           }
           
-          // ✅ If error task completed, remove all error tasks and re-add Final Verification
+          // ✅ If error task completed, remove remaining error tasks (likely auto-resolved)
           if (s.currentTask.type === 'error' && s.taskQueue) {
             const errorCount = s.taskQueue.getAll().filter(t => t.type === 'error').length;
             if (errorCount > 0) {
-              console.log(`🧹 Removing ${errorCount} error task(s) from queue (errors resolved)`);
+              console.log(`🧹 Removing ${errorCount} remaining error task(s) from queue (likely auto-resolved)`);
               s.taskQueue.removeType('error');
               
-              // ✅ Re-add Final Verification to confirm all errors are resolved
-              const finalTask = {
-                id: `final-verification-recheck-${Date.now()}`,
-                name: 'Final Verification (Recheck)',
-                type: 'feature' as const,
-                priority: TASK_PRIORITIES.FINAL_VERIFICATION,
-                description: 'Re-verify all errors are resolved after error fixes',
-                validationRequired: true,
-                validationType: 'runtime' as const,
-              };
-              s.taskQueue.push(finalTask);
-              console.log(`📋 Re-added Final Verification to confirm all errors resolved\n`);
+              // ✅ Check if Final Verification already exists in queue
+              const hasFinalTask = s.taskQueue.getAll().some(t => t.priority === TASK_PRIORITIES.FINAL_VERIFICATION);
+              
+              if (!hasFinalTask) {
+                // Only add if not already in queue (e.g., dynamic error tasks case)
+                const finalTask = {
+                  id: `final-verification-recheck-${Date.now()}`,
+                  name: 'Final Verification (Recheck)',
+                  type: 'feature' as const,
+                  priority: TASK_PRIORITIES.FINAL_VERIFICATION,
+                  description: 'Re-verify all errors are resolved after error fixes',
+                  validationRequired: true,
+                  validationType: 'runtime' as const,
+                };
+                s.taskQueue.push(finalTask);
+                console.log(`📋 Re-added Final Verification to confirm all errors resolved\n`);
+              } else {
+                console.log(`📋 Final Verification already in queue - will execute after error tasks\n`);
+              }
             }
           }
         }

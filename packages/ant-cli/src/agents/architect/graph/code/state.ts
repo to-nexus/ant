@@ -256,6 +256,9 @@ export interface ArchitectGraphState extends TaskArtifacts {
   // ✅ Final Verification Retry Count (prevent infinite loop)
   finalRetryCount?: number;
   
+  // ✅ Routing signal (for graph conditional edges)
+  shouldEvaluate?: boolean;  // Signal from plan node to skip execute and go to evaluate
+  
   // Backward compatibility (deprecated)
   featureSubtasks?: Subtask[];        // @deprecated Use featureTasks
   currentSubtask?: Subtask;           // @deprecated Use currentTask

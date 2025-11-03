@@ -72,16 +72,32 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
     }
     
     isRecursionLimit = true;
+    
+    // ✅ Calculate remaining tasks (including currentTask if exists)
+    const queueSize = state.taskQueue?.size() || 0;
+    const currentTaskCount = state.currentTask ? 1 : 0;
+    const remainingTasks = queueSize + currentTaskCount;
+    
     console.log(`\n⏸️  Session paused due to recursion limit`);
     console.log(`📊 Progress saved:`);
     console.log(`   ✅ ${state.completedTasks?.length || 0} tasks completed`);
-    console.log(`   ⏳ ${state.taskQueue?.size() || 0} tasks remaining`);
+    console.log(`   ⏳ ${remainingTasks} tasks remaining`);
+    if (state.currentTask) {
+      console.log(`      └─ 1 in progress: "${state.currentTask.name}"`);
+    }
+    if (queueSize > 0) {
+      console.log(`      └─ ${queueSize} in queue`);
+    }
     console.log(`\n💡 Run the same command again to resume from checkpoint\n`);
   }
 
   // Return results (all saving was done in learn node)
   const filesGenerated = state.filesWritten || 0;
-  const tasksRemaining = state.taskQueue?.size() || 0;
+  
+  // ✅ Calculate remaining tasks (including currentTask if exists)
+  const queueSize = state.taskQueue?.size() || 0;
+  const currentTaskCount = state.currentTask ? 1 : 0;
+  const tasksRemaining = queueSize + currentTaskCount;
   
   let reportMessage = `Generated ${filesGenerated} files on branch ${state.branch || 'none'}`;
   if (isRecursionLimit && tasksRemaining > 0) {
