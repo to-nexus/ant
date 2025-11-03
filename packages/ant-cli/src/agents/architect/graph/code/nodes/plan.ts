@@ -247,6 +247,28 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         retries: 0,
       };
     }
+    
+    // ✅ Final Verification 실패 → Error tasks 생성하고 Final Task는 보류
+    // Final Task는 priority 1000이므로 여기서는 priority로 판단
+    if (nextTask.priority === 1000) {
+      console.log(`⚠️  Final Verification failed after ${state.maxRetries} retries`);
+      console.log(`   Violations: ${violations.length}`);
+      console.log(`   → Will create error tasks and defer Final Task\n`);
+      
+      // ✅ Final Task를 다시 큐에 넣음 (완료 처리 안함!)
+      console.log(`📋 Re-adding Final Task to queue (will retry after error tasks)\n`);
+      state.taskQueue?.push(nextTask);
+      
+      // ✅ Signal graph to go to evaluate (Error tasks 생성)
+      return {
+        ...state,
+        enforcementReason: undefined,
+        // violations는 유지 (evaluate에서 사용)
+        retries: 0,
+        currentTask: undefined,  // currentTask 초기화 (evaluate에서 새로 설정)
+        shouldEvaluate: true,  // ✅ Graph will route to evaluate instead of execute
+      };
+    }
   }
   
   // ===== HANDLE ERRORS: Analyze & Add Error Tasks =====
@@ -488,7 +510,8 @@ ${nextTask.type === 'error' ?
       codeMode,
       code: currentCode,  // ✅ Update state with reloaded files
       retries: shouldClearEnforcement ? 0 : state.retries,  // Reset only if new task
-      enforcementReason: shouldClearEnforcement ? null : state.enforcementReason  // Clear only if new task
+      enforcementReason: shouldClearEnforcement ? null : state.enforcementReason,  // Clear only if new task
+      shouldEvaluate: false,  // ✅ Normal path: go to execute
     };
     
     // ✅ Save checkpoint after planning (in case recursion limit hits during execute)
