@@ -287,22 +287,33 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     
     if (allRetryable && !hasBlockingErrors) {
       console.log('✅ All errors are retryable (ellipsis, etc.) - will regenerate\n');
-      // ⚠️ DO NOT clear enforcementReason! Execute node needs it!
-      return {
+      
+      const retryState = {
         ...state,
         currentTask: nextTask,
         // Keep enforcementReason for Execute node!
       };
+      
+      // ✅ CRITICAL: Save checkpoint before retry (for recursion limit recovery)
+      const { saveCheckpoint } = await import('./checkpoint');
+      await saveCheckpoint(retryState);
+      
+      return retryState;
     }
     
     // ✅ Blocking error도 더 이상 즉시 Error Task 생성 안함
     console.log('⚠️  Blocking errors detected - will be deferred to Final Verification\n');
     
-    // 그냥 재시도 (maxRetries에 도달하면 위의 retry limit 로직에서 처리)
-    return {
+    const retryState = {
       ...state,
       currentTask: nextTask,
     };
+    
+    // ✅ CRITICAL: Save checkpoint before retry (for recursion limit recovery)
+    const { saveCheckpoint } = await import('./checkpoint');
+    await saveCheckpoint(retryState);
+    
+    return retryState;
   }
   
   if (!nextTask) {
