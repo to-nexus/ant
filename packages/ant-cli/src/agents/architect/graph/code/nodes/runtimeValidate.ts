@@ -90,13 +90,26 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
     ? config.localPath
     : p.resolve(repoRoot, config.localPath);
 
-  // ✅ DETERMINE VALIDATION TYPE (LLM decision or fallback)
-  const validationType = currentTask?.validationType || 
-    (currentTask?.type === 'setup' ? 'static' : 'runtime');
+  // ✅ FORCE VALIDATION TYPE BY TASK TYPE (ignore LLM decision for consistency)
+  let validationType: 'static' | 'runtime';
+  
+  if (currentTask?.type === 'setup') {
+    validationType = 'static';  // Setup: config files only → static
+  } else if (currentTask?.type === 'feature') {
+    validationType = 'static';  // Feature: defer full validation to Final → static
+  } else if (currentTask?.type === 'error') {
+    validationType = 'runtime';  // Error: must verify fix works → runtime
+  } else if (currentTask?.priority === 1000) {
+    validationType = 'runtime';  // Final Verification: comprehensive check → runtime
+  } else {
+    // Fallback: runtime for safety
+    validationType = 'runtime';
+  }
   
   console.log(`\n📋 Running ${validationType} validation in: ${resolvedPath}`);
+  console.log(`   🔒 Policy: ${currentTask?.type || 'unknown'} tasks → ${validationType} validation`);
   if (currentTask?.validationRationale) {
-    console.log(`   💡 Rationale: ${currentTask.validationRationale}`);
+    console.log(`   💡 LLM Rationale (overridden): ${currentTask.validationRationale}`);
   }
   console.log('');
 
