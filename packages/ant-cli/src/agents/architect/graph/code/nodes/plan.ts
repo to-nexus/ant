@@ -248,27 +248,8 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       };
     }
     
-    // ✅ Final Verification 실패 → Error tasks 생성하고 Final Task는 보류
-    // Final Task는 priority 1000이므로 여기서는 priority로 판단
-    if (nextTask.priority === 1000) {
-      console.log(`⚠️  Final Verification failed after ${state.maxRetries} retries`);
-      console.log(`   Violations: ${violations.length}`);
-      console.log(`   → Will create error tasks and defer Final Task\n`);
-      
-      // ✅ Final Task를 다시 큐에 넣음 (완료 처리 안함!)
-      console.log(`📋 Re-adding Final Task to queue (will retry after error tasks)\n`);
-      state.taskQueue?.push(nextTask);
-      
-      // ✅ Signal graph to go to evaluate (Error tasks 생성)
-      return {
-        ...state,
-        enforcementReason: undefined,
-        // violations는 유지 (evaluate에서 사용)
-        retries: 0,
-        currentTask: undefined,  // currentTask 초기화 (evaluate에서 새로 설정)
-        shouldEvaluate: true,  // ✅ Graph will route to evaluate instead of execute
-      };
-    }
+    // ✅ Final Task는 Line 280에서 이미 처리됨 (retry 안함)
+    // 여기 도달하면 Setup/Feature/Error task임
   }
   
   // ===== HANDLE ERRORS: Analyze & Add Error Tasks =====
@@ -276,6 +257,32 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     console.log(`🔍 Analyzing errors from failed attempt...\n`);
     
     const violations = state.violations;
+    
+    // ✅ CRITICAL: Final Task는 retry 안함 - 바로 evaluate로!
+    if (nextTask.priority === 1000) {
+      console.log(`⚠️  Final Verification failed with ${violations.length} violation(s)`);
+      console.log(`   → Moving to evaluate to create error tasks (NO RETRY)\n`);
+      
+      // ✅ Final Task를 다시 큐에 넣음 (완료 처리 안함!)
+      console.log(`📋 Re-adding Final Task to queue (will retry after error tasks)\n`);
+      state.taskQueue?.push(nextTask);
+      
+      // ✅ Save checkpoint with currentTask in queue
+      const checkpointState = {
+        ...state,
+        currentTask: undefined,  // Clear currentTask (it's back in queue)
+        retries: 0,
+      };
+      const { saveCheckpoint } = await import('./checkpoint');
+      await saveCheckpoint(checkpointState);
+      console.log(`💾 Checkpoint saved (Final Task deferred)\n`);
+      
+      // ✅ Signal graph to go to evaluate (Error tasks 생성)
+      return {
+        ...checkpointState,
+        shouldEvaluate: true,  // ✅ Graph will route to evaluate instead of execute
+      };
+    }
     
     // ✅ 모든 에러가 retryable인 경우만 재시도
     const allRetryable = violations.every(v => v.isRetryable === true);
@@ -291,12 +298,14 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       const retryState = {
         ...state,
         currentTask: nextTask,
+        shouldEvaluate: false,  // ✅ CRITICAL: Reset - go to execute, not evaluate
         // Keep enforcementReason for Execute node!
       };
       
       // ✅ CRITICAL: Save checkpoint before retry (for recursion limit recovery)
       const { saveCheckpoint } = await import('./checkpoint');
       await saveCheckpoint(retryState);
+      console.log(`💾 Checkpoint saved (retry ${state.retries + 1})\n`);
       
       return retryState;
     }
@@ -307,11 +316,13 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     const retryState = {
       ...state,
       currentTask: nextTask,
+      shouldEvaluate: false,  // ✅ CRITICAL: Reset - go to execute, not evaluate
     };
     
     // ✅ CRITICAL: Save checkpoint before retry (for recursion limit recovery)
     const { saveCheckpoint } = await import('./checkpoint');
     await saveCheckpoint(retryState);
+    console.log(`💾 Checkpoint saved (blocking errors, retry ${state.retries + 1})\n`);
     
     return retryState;
   }
@@ -522,7 +533,7 @@ ${nextTask.type === 'error' ?
       code: currentCode,  // ✅ Update state with reloaded files
       retries: shouldClearEnforcement ? 0 : state.retries,  // Reset only if new task
       enforcementReason: shouldClearEnforcement ? null : state.enforcementReason,  // Clear only if new task
-      shouldEvaluate: false,  // ✅ Normal path: go to execute
+      shouldEvaluate: false,  // ✅ CRITICAL: Normal path - go to execute, not evaluate
     };
     
     // ✅ Save checkpoint after planning (in case recursion limit hits during execute)
