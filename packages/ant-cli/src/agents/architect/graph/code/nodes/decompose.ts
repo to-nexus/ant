@@ -114,9 +114,37 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           }
         });
         
+        // Calculate task type breakdown
+        const tasksByType = {
+          setup: 0,
+          feature: 0,
+          error: 0,
+          final: 0
+        };
+        
+        taskQueue.getAll().forEach(task => {
+          if (task.priority === 1000) {
+            tasksByType.final++;
+          } else if (task.type === 'error') {
+            tasksByType.error++;
+          } else if (task.type === 'setup') {
+            tasksByType.setup++;
+          } else if (task.type === 'feature') {
+            tasksByType.feature++;
+          }
+        });
+        
+        const completedCount = session.state.completedTasks?.length || 0;
+        const totalTasks = completedCount + taskQueue.size();
+        
         console.log(`📊 Resuming existing project:`);
-        console.log(`   ✅ ${session.state.completedTasks?.length || 0} tasks completed`);
-        console.log(`   ⏳ ${taskQueue.size()} tasks remaining\n`);
+        console.log(`   Progress: ${completedCount}/${totalTasks} tasks (${Math.round(completedCount / totalTasks * 100)}%)`);
+        console.log(`   `);
+        console.log(`   Setup:   ${tasksByType.setup === 0 ? '✅' : '⬜'} ${tasksByType.setup} remaining`);
+        console.log(`   Feature: ${tasksByType.feature === 0 ? '✅' : '⬜'} ${tasksByType.feature} remaining`);
+        console.log(`   Error:   ${tasksByType.error === 0 ? '✅' : '⚠️ '} ${tasksByType.error} remaining`);
+        console.log(`   Final:   ${tasksByType.final === 0 ? '✅' : '⬜'} ${tasksByType.final} remaining`);
+        console.log(``);
         
         return {
           ...state,
