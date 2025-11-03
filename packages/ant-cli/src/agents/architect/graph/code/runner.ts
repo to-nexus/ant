@@ -7,7 +7,7 @@ import { buildCodeGraph } from "./graph";
  * Responsibility: Execute the graph and return results
  * All side effects (file saving, memory storage) are handled inside the graph
  * 
- * ✅ RecursionLimit: Set to 50 for ~5 tasks per run
+ * ✅ RecursionLimit: Configurable via RECURSION_LIMIT env var (default: 50)
  * ✅ Learn node is ALWAYS executed on exit (success/error/recursion limit)
  */
 export async function runCodeGraph(initial: ArchitectGraphState) {
@@ -15,9 +15,21 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
   let state: ArchitectGraphState = initial;
   let isRecursionLimit = false;
   
+  // ✅ Configurable recursion limit via environment variable
+  const recursionLimit = parseInt(process.env.RECURSION_LIMIT || '50', 10);
+  
+  // Validate and log
+  if (isNaN(recursionLimit) || recursionLimit < 10) {
+    console.warn(`⚠️  Invalid RECURSION_LIMIT: ${process.env.RECURSION_LIMIT}, using default: 50`);
+  } else if (recursionLimit !== 50) {
+    console.log(`⚙️  Recursion limit: ${recursionLimit} (from RECURSION_LIMIT env var)\n`);
+  }
+  
+  const finalLimit = isNaN(recursionLimit) || recursionLimit < 10 ? 50 : recursionLimit;
+  
   try {
     state = await (app as any).invoke(initial as any, {
-      recursionLimit: 50,
+      recursionLimit: finalLimit,
     }) as ArchitectGraphState;
   } catch (error: any) {
     // ✅ CRITICAL: Recursion limit or other errors

@@ -251,7 +251,21 @@ CHROMA_URL=http://localhost:8000
 
 # Optional
 NODE_ENV=development
+
+# Recursion Limit (default: 50)
+# Controls maximum graph execution steps before pause
+# Higher values = more tasks per run, but may hit API rate limits
+RECURSION_LIMIT=50
 ```
+
+**Recursion Limit Configuration:**
+- **Default**: 50 (recommended for most cases)
+- **Minimum**: 10 (enforced for safety)
+- **Suggested values**:
+  - `25-50`: Standard tasks (balanced)
+  - `100-200`: Large projects (requires higher API limits)
+  - `10-20`: Testing/debugging
+- When limit is reached, session is saved and can be resumed with the same command
 
 ---
 
