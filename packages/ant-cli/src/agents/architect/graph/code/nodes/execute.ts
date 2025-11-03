@@ -98,6 +98,22 @@ export async function execute(
   
   if (isRetry && state.enforcementReason) {
     console.log('⚠️  Adding retry context with error feedback...\n');
+    
+    // ✅ 이미 시도한 작업들을 명확히 정리
+    const alreadyAppliedChanges: string[] = [];
+    const alreadyCreatedFiles: Set<string> = new Set();
+    
+    state.previousAttempts?.forEach(attempt => {
+      attempt.keyChanges.forEach(change => {
+        if (!alreadyAppliedChanges.includes(change)) {
+          alreadyAppliedChanges.push(change);
+        }
+      });
+      attempt.filesGenerated.forEach(file => {
+        alreadyCreatedFiles.add(file);
+      });
+    });
+    
     // Format previous attempts
     const previousAttemptsText = state.previousAttempts?.map(attempt => {
       const lines = [`\n### Attempt #${attempt.attemptNumber}`];
@@ -122,23 +138,30 @@ ${state.enforcementReason}
 📝 PREVIOUS ATTEMPTS (${state.previousAttempts?.length || 0} attempts):
 ${previousAttemptsText}
 
+⚠️ ALREADY APPLIED (DO NOT REPEAT THESE):
+${alreadyAppliedChanges.length > 0 ? alreadyAppliedChanges.map(c => `  ✓ ${c}`).join('\n') : '  (None)'}
+
+📂 FILES ALREADY CREATED/MODIFIED:
+${alreadyCreatedFiles.size > 0 ? Array.from(alreadyCreatedFiles).map(f => `  ✓ ${f}`).join('\n') : '  (None)'}
+
 ⚠️ CRITICAL INSTRUCTIONS FOR RETRY:
 1. READ THE ERRORS ABOVE CAREFULLY
-2. DO NOT REPEAT THE SAME APPROACH
+2. DO NOT REPEAT THE SAME APPROACH OR CHANGES LISTED ABOVE
 3. **ONLY OUTPUT FILES THAT NEED TO BE FIXED OR ADDED**
-   - If error is in package.json → Only output package.json
+   - If error is in package.json BUT it's already modified → Try a DIFFERENT fix
    - If error is in specific .ts file → Only output that .ts file
    - If missing file → Only output the missing file
 4. DO NOT RE-GENERATE FILES THAT ARE WORKING CORRECTLY
-5. If error says "Cannot resolve entry index.html" → CREATE index.html in root
-6. If error says "Module not found" → CREATE the missing file or install the package
+5. DO NOT RE-APPLY CHANGES ALREADY LISTED IN "ALREADY APPLIED" SECTION
+6. Think of NEW APPROACHES, not the same solutions that already failed
 
 📋 OUTPUT FORMAT:
 - **MINIMAL APPROACH**: Only output files that directly fix the errors above
 - **NO REDUNDANCY**: Do not include files that were generated correctly in previous attempts
-- **FOCUS**: Fix the specific violations - nothing more
+- **NEW STRATEGY**: Try a different approach than what was already attempted
+- **FOCUS**: Fix the specific violations with fresh thinking
 
-📋 NOW GENERATE ONLY THE FILES NEEDED TO FIX THE ERRORS:
+📋 NOW GENERATE ONLY THE FILES NEEDED TO FIX THE ERRORS (WITH NEW APPROACH):
 `;
     
     // Add retry context to the last user message

@@ -26,6 +26,7 @@ import {
   ProjectDetection 
 } from "./diagnostics";
 import { errorStatsCollector } from "./diagnostics/errorStats";
+import { ErrorParserFactory, ParsedError } from "./diagnostics/parsers";
 
 export interface RuntimeValidationResult {
   passed: boolean;
@@ -211,7 +212,17 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
         // ✅ TypeScript outputs errors to STDOUT, not stderr!
         const errorOutput = typeCheckResult.stdout || typeCheckResult.stderr;
         
-        // ✅ Use diagnostics system
+        // ✅ Use new TypeScript parser
+        const parser = ErrorParserFactory.create('typescript', {
+          projectRoot: resolvedPath,
+          maxErrors: 50
+        });
+        const parsedErrors = parser.parse(errorOutput);
+        
+        // Convert parsed errors to formatted strings
+        result.typeErrors = parser.format(parsedErrors);
+        
+        // ✅ Use diagnostics system for legacy support
         const diagnosis = diagnoseError(errorOutput, {
           command: 'npx tsc --noEmit',
           workDir: resolvedPath,
@@ -254,11 +265,6 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
               runtimeValidationResult: result,
             };
           }
-          
-          result.typeErrors = [diagnosis.message];
-        } else {
-          // Fallback to old parsing
-          result.typeErrors = parseTypeScriptErrors(errorOutput);
         }
         
         console.error('❌ Type check failed:');
@@ -337,12 +343,15 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
               buildTool: projectDetection.buildTool,
               packageManager: projectDetection.packageManager,
             });
-            
-            result.lintErrors = [diagnosis.message];
-          } else {
-            // Fallback to old parsing
-            result.lintErrors = parseLintErrors(lintResult.stdout);
           }
+          
+          // ✅ Use new ESLint parser
+          const lintParser = ErrorParserFactory.create('eslint', {
+            projectRoot: resolvedPath,
+            maxErrors: 50
+          });
+          const parsedLintErrors = lintParser.parse(lintResult.stdout);
+          result.lintErrors = lintParser.format(parsedLintErrors);
           
           console.error('⚠️  Lint failed (non-blocking):');
           result.lintErrors!.slice(0, 10).forEach(err => console.error(`   ${err}`));
@@ -425,12 +434,15 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
                     runtimeValidationResult: result,
                   };
                 }
-                
-                result.buildErrors = [diagnosis.message];
-              } else {
-                // Fallback to old parsing
-                result.buildErrors = parseBuildErrors(errorOutput);
               }
+              
+              // ✅ Use new Vite parser for build errors
+              const buildParser = ErrorParserFactory.create('vite', {
+                projectRoot: resolvedPath,
+                maxErrors: 50
+              });
+              const parsedBuildErrors = buildParser.parse(errorOutput);
+              result.buildErrors = buildParser.format(parsedBuildErrors);
               
               console.error('❌ Build failed:');
               result.buildErrors!.slice(0, 10).forEach(err => console.error(`   ${err}`));
