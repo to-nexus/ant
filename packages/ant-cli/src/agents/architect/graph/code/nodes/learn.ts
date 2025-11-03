@@ -5,9 +5,10 @@ import { errorStatsCollector, formatStatistics } from "./diagnostics/errorStats"
 
 /**
  * Learn node - Learning artifacts finalization:
- * 1. Extract learnings from execution
- * 2. Store learnings to vector DB (for future retrieval)
- * 3. Save turn to session file (for context continuity)
+ * 1. Generate quality evaluation report (if enabled)
+ * 2. Extract learnings from execution
+ * 3. Store learnings to vector DB (for future retrieval)
+ * 4. Save turn to session file (for context continuity)
  * 
  * NOTE: File saving happens in writeFiles node (before validation)
  * This node focuses purely on learning/metadata artifacts.
@@ -20,6 +21,22 @@ import { errorStatsCollector, formatStatistics } from "./diagnostics/errorStats"
  * - No direct infrastructure dependencies
  */
 export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphState> {
+  // 0. Generate quality evaluation report (optional, if files were generated)
+  if (state.files && state.files.length > 0) {
+    try {
+      const gitPort = state.gitPort || state.deps?.git;
+      if (gitPort) {
+        const { generateQualityReport } = await import('./utils/qualityReport');
+        const report = await generateQualityReport(state, gitPort);
+        if (report) {
+          state.evaluationReport = report;
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️  Quality report generation failed:', error);
+    }
+  }
+  
   // 1. Extract learnings
   const learnings = extractCodeLearnings(state);
   

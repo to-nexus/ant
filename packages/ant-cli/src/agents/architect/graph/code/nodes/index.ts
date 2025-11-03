@@ -7,5 +7,4 @@ export { validate } from "./validate";
 export { installDeps } from "./installDeps";
 export { runtimeValidate } from "./runtimeValidate";
 export { enforce } from "./enforce";
-export { evaluate } from "./evaluate";
 export { learn } from "./learn";

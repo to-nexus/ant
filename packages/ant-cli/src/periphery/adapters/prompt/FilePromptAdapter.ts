@@ -1,13 +1,21 @@
 import { promises as fs } from "fs";
-import { join } from "path";
+import { join, dirname } from "path";
 import Handlebars from "handlebars";
 import { PromptPort } from "../../../core/ports";
+
+// ✅ Register helpers once (top-level, not per render call)
+Handlebars.registerHelper("eq", (a, b) => a === b);
+Handlebars.registerHelper("ne", (a, b) => a !== b);
+Handlebars.registerHelper("and", (a, b) => a && b);
+Handlebars.registerHelper("or", (a, b) => a || b);
 
 /**
  * FilePromptAdapter - File system implementation of PromptPort
  * Loads template files and renders with Handlebars template engine
  * 
- * Templates are stored in src/core/prompt/templates/ (domain knowledge)
+ * Templates are stored relative to this file's location:
+ * - Development (src/): ../../../core/prompt/templates
+ * - Production (dist/): ../../../core/prompt/templates (same relative path)
  * 
  * Supports:
  * - Variable substitution: {{variableName}}
@@ -15,7 +23,12 @@ import { PromptPort } from "../../../core/ports";
  * - Iteration: {{#each array}}...{{/each}}
  */
 export class FilePromptAdapter implements PromptPort {
-  constructor(private baseDir = join(process.cwd(), "src", "core", "prompt", "templates")) {}
+  constructor(
+    // ✅ Use __dirname for correct path resolution in both src/ and dist/
+    // __dirname points to the directory of THIS file (adapters/prompt/)
+    // Templates are at: ../../../core/prompt/templates (relative to this file)
+    private baseDir = join(__dirname, "../../../core/prompt/templates")
+  ) {}
   
   async render(templateName: string, vars: Record<string, any>): Promise<string> {
     // 1. Load template from file
