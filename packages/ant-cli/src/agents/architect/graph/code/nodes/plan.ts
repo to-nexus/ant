@@ -86,6 +86,8 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     console.log(`   Violations: ${state.violations?.length || 0}\n`);
   } else {
     // ✅ NEW TASK: Pop from queue
+    // Save queue size BEFORE pop for accurate total count
+    const remainingBeforePop = state.taskQueue?.size() || 0;
     nextTask = state.taskQueue?.pop();
     
     if (!nextTask) {
@@ -93,7 +95,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       return state;
     }
     
-    // Calculate task type breakdown
+    // Calculate task type breakdown (including current task being executed)
     const tasksByType = {
       setup: 0,
       feature: 0,
@@ -101,6 +103,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       final: 0
     };
     
+    // Count remaining tasks in queue
     state.taskQueue?.getAll().forEach(task => {
       if (task.priority === 1000) {
         tasksByType.final++;
@@ -113,9 +116,19 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       }
     });
     
+    // Add current task (just popped) to count
+    if (nextTask.priority === 1000) {
+      tasksByType.final++;
+    } else if (nextTask.type === 'error') {
+      tasksByType.error++;
+    } else if (nextTask.type === 'setup') {
+      tasksByType.setup++;
+    } else if (nextTask.type === 'feature') {
+      tasksByType.feature++;
+    }
+    
     const completedCount = state.completedTasks?.length || 0;
-    const remainingCount = state.taskQueue?.size() || 0;
-    const totalTasks = completedCount + remainingCount;
+    const totalTasks = completedCount + remainingBeforePop;  // Use size before pop
     
     console.log(`\n📊 Task Progress:`);
     console.log(`   Overall: ${completedCount}/${totalTasks} (${Math.round(completedCount / totalTasks * 100)}%)`);

@@ -93,14 +93,15 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
   // ✅ FORCE VALIDATION TYPE BY TASK TYPE (ignore LLM decision for consistency)
   let validationType: 'static' | 'runtime';
   
-  if (currentTask?.type === 'setup') {
+  // ✅ Check priority first (Final Verification = P1000)
+  if (currentTask?.priority === 1000) {
+    validationType = 'runtime';  // Final Verification: comprehensive check → runtime
+  } else if (currentTask?.type === 'setup') {
     validationType = 'static';  // Setup: config files only → static
   } else if (currentTask?.type === 'feature') {
     validationType = 'static';  // Feature: defer full validation to Final → static
   } else if (currentTask?.type === 'error') {
     validationType = 'runtime';  // Error: must verify fix works → runtime
-  } else if (currentTask?.priority === 1000) {
-    validationType = 'runtime';  // Final Verification: comprehensive check → runtime
   } else {
     // Fallback: runtime for safety
     validationType = 'runtime';
