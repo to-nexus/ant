@@ -1,0 +1,48 @@
+{
+  "timestamp": "2025-11-03T11:41:46.539Z",
+  "filesGenerated": 3,
+  "totalLines": 149,
+  "metrics": {
+    "totalFiles": 3,
+    "totalLines": 149,
+    "avgComplexity": 3.7,
+    "avgMaintainability": 18.7,
+    "fileMetrics": [
+      {
+        "path": "src/store/useLogStore.ts",
+        "metrics": {
+          "linesOfCode": 19,
+          "logicalLines": 16,
+          "complexity": 1,
+          "maintainabilityIndex": 12.5,
+          "commentDensity": 0
+        }
+      },
+      {
+        "path": "src/lib/store.ts",
+        "metrics": {
+          "linesOfCode": 65,
+          "logicalLines": 54,
+          "complexity": 2,
+          "maintainabilityIndex": 22.6,
+          "commentDensity": 0
+        }
+      },
+      {
+        "path": "src/lib/cli.ts",
+        "metrics": {
+          "linesOfCode": 65,
+          "logicalLines": 56,
+          "complexity": 8,
+          "maintainabilityIndex": 21,
+          "commentDensity": 0
+        }
+      }
+    ]
+  },
+  "quality": "poor",
+  "recommendations": [
+    "코드 유지보수성 개선 필요: 함수를 더 작은 단위로 분리하세요",
+    "주석이 부족합니다: 복잡한 로직에 설명을 추가하세요"
+  ]
+}

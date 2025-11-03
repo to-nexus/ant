@@ -154,8 +154,6 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   }
   
   // ===== CHECK RETRY LIMIT (Priority Check) =====
-  // ⚠️  NOTE: Final Task (priority=1000) is handled in HANDLE ERRORS block (Line 289+)
-  //     and creates error tasks WITHOUT retry.
   if (isRetry && state.retries >= state.maxRetries) {
     console.log(`\n⚠️  ═══════════════════════════════════════════════════════════`);
     console.log(`⚠️  Task "${nextTask.name}" EXHAUSTED RETRIES (${state.retries}/${state.maxRetries})`);
@@ -163,149 +161,15 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     
     const violations = state.violations || [];
     
-    // ✅ Setup/Feature 실패 → 에러 태스크 즉시 생성 및 완료 처리
-    if (nextTask.type === 'setup' || nextTask.type === 'feature') {
-      // Create error tasks from violations
-      if (violations.length > 0) {
-        const errorGroups = groupViolationsByType(violations);
-        console.log(`📝 Creating ${errorGroups.length} error task(s) from ${violations.length} violation(s):\n`);
-        
-        errorGroups.forEach((group, idx) => {
-          const errorPriority = getErrorPriorityByType(group.type);
-          const errorTask: Task = {
-            id: `error-${nextTask.id}-${group.type}-${Date.now()}-${idx}`,
-            name: `Fix ${group.type.replace(/_/g, ' ').toUpperCase()} Errors`,
-            type: 'error',
-            priority: errorPriority,
-            description: formatErrorDescription(group.violations),
-            errors: group.violations.map((v: any) => v.message),
-            validationRequired: true,
-            validationType: 'runtime',
-          };
-          state.taskQueue?.push(errorTask);
-          console.log(`   ${idx + 1}. "${errorTask.name}" (P${errorTask.priority}) - ${group.violations.length} error(s)`);
-        });
-        console.log('');
-      }
-      
-      // 실패 정보 저장
-      state.failedTasks = state.failedTasks || [];
-      state.failedTasks.push({
-        taskId: nextTask.id,
-        taskName: nextTask.name,
-        taskType: nextTask.type,
-        priority: nextTask.priority,
-        violations: violations,
-        timestamp: new Date().toISOString()
-      });
-      
-      // Feature task면 featureTasks에서도 완료 처리
-      if (nextTask.type === 'feature' && state.featureTasks) {
-        const feature = state.featureTasks.get(nextTask.id);
-        if (feature) {
-          feature.completed = true;
-        }
-      }
-      
-      // completedTasks에 추가
-      state.completedTasks = state.completedTasks || [];
-      if (!state.completedTasks.includes(nextTask.id)) {
-        state.completedTasks.push(nextTask.id);
-      }
-      
-      console.log(`✅ Task "${nextTask.name}" marked as completed (with errors deferred to error tasks)\n`);
-      console.log(`⏭️  Moving to next task in queue...\n`);
-      
-      // 다음 태스크로
-      const newNextTask = state.taskQueue?.pop();
-      if (!newNextTask) {
-        console.log('✅ Task queue is empty!');
-        return {
-          ...state,
-          enforcementReason: undefined,
-          violations: [],
-          retries: 0,
-        };
-      }
-      
-      console.log(`🎯 Next task: ${newNextTask.name} (P${newNextTask.priority})\n`);
-      
-      return {
-        ...state,
-        currentTask: newNextTask,
-        enforcementReason: undefined,
-        violations: [],
-        retries: 0,
-      };
-    }
-    
-    // ✅ Error Task 실패 → Skip (무한 루프 방지)
-    if (nextTask.type === 'error') {
-      console.log(`⚠️  Error task "${nextTask.name}" failed after ${state.maxRetries} retries`);
-      console.log(`   Skipping to avoid infinite loop - will be reported as unresolved\n`);
-      
-      // 미해결 에러로 기록
-      state.unresolvedErrors = state.unresolvedErrors || [];
-      state.unresolvedErrors.push({
-        taskId: nextTask.id,
-        taskName: nextTask.name,
-        violations: violations,
-      });
-      
-      // completedTasks에 추가
-      state.completedTasks = state.completedTasks || [];
-      if (!state.completedTasks.includes(nextTask.id)) {
-        state.completedTasks.push(nextTask.id);
-      }
-      
-      console.log(`⏭️  Moving to next task in queue...\n`);
-      
-      // 다음 태스크로
-      const newNextTask = state.taskQueue?.pop();
-      if (!newNextTask) {
-        console.log('✅ Task queue is empty!');
-        return {
-          ...state,
-          enforcementReason: undefined,
-          violations: [],
-          retries: 0,
-        };
-      }
-      
-      console.log(`🎯 Next task: ${newNextTask.name} (P${newNextTask.priority})\n`);
-      
-      return {
-        ...state,
-        currentTask: newNextTask,
-        enforcementReason: undefined,
-        violations: [],
-        retries: 0,
-      };
-    }
-    
-    // ✅ Final Task는 Line 289-314에서 처리됨 (retry 안함, 바로 evaluate로)
-    // 여기 도달하면 Setup/Feature/Error task임
-  }
-  
-  // ===== HANDLE ERRORS: Analyze & Add Error Tasks =====
-  if (isRetry && state.violations && state.violations.length > 0) {
-    console.log(`🔍 Analyzing errors from failed attempt...\n`);
-    
-    const violations = state.violations;
-    
-    // ✅ CRITICAL: Final Task (priority=1000) - NO RETRY, create error tasks immediately
-    if (nextTask.priority === 1000) {
-      console.log(`⚠️  Final Verification failed with ${violations.length} violation(s)`);
-      console.log(`   → Creating error tasks immediately (NO RETRY)\n`);
-      
-      // Create error tasks from violations
+    // Create error tasks from violations
+    if (violations.length > 0) {
       const errorGroups = groupViolationsByType(violations);
-      console.log(`📝 Creating ${errorGroups.length} error task(s):\n`);
+      console.log(`📝 Creating ${errorGroups.length} error task(s) from ${violations.length} violation(s):\n`);
       
       errorGroups.forEach((group, idx) => {
         const errorPriority = getErrorPriorityByType(group.type);
         const errorTask: Task = {
-          id: `error-final-${group.type}-${Date.now()}-${idx}`,
+          id: `error-${nextTask.id}-${group.type}-${Date.now()}-${idx}`,
           name: `Fix ${group.type.replace(/_/g, ' ').toUpperCase()} Errors`,
           type: 'error',
           priority: errorPriority,
@@ -318,38 +182,106 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         console.log(`   ${idx + 1}. "${errorTask.name}" (P${errorTask.priority}) - ${group.violations.length} error(s)`);
       });
       console.log('');
-      
-      // ✅ Final Task를 다시 큐에 넣음 (완료 처리 안함!)
-      console.log(`📋 Re-adding Final Task to queue (will retry after error tasks)\n`);
-      state.taskQueue?.push(nextTask);
-      
-      // ✅ Save checkpoint with currentTask in queue
-      const checkpointState = {
-        ...state,
-        currentTask: undefined,  // Clear currentTask (it's back in queue)
-        retries: 0,
-        violations: [],
-        enforcementReason: undefined,
-      };
-      const { saveCheckpoint } = await import('./checkpoint');
-      await saveCheckpoint(checkpointState);
-      console.log(`💾 Checkpoint saved (Final Task deferred)\n`);
-      
-      // Move to next task (error task)
-      const nextErrorTask = state.taskQueue?.pop();
-      if (!nextErrorTask) {
-        console.log('✅ Task queue is empty!');
-        return checkpointState;
+    }
+    
+    // ✅ Task 유형별 처리
+    if (nextTask.type === 'setup' || nextTask.type === 'feature') {
+      // Setup/Feature → 실패 정보 저장 후 완료 처리
+      // ✅ 단, Final Task (P1000)는 deferred 처리
+      if (nextTask.priority === 1000) {
+        // Final task → Deferred (큐 뒤로, retry count 초기화)
+        console.log(`📋 Deferring Final Task "${nextTask.name}" (will retry after error tasks with fresh retry count)\n`);
+        
+        // ✅ Retry count는 큐에서 다시 꺼낼 때 초기화됨
+        const deferredTask = { ...nextTask };
+        state.taskQueue?.push(deferredTask);
+      } else {
+        // 일반 Setup/Feature → 완료 처리
+        state.failedTasks = state.failedTasks || [];
+        state.failedTasks.push({
+          taskId: nextTask.id,
+          taskName: nextTask.name,
+          taskType: nextTask.type,
+          priority: nextTask.priority,
+          violations: violations,
+          timestamp: new Date().toISOString()
+        });
+        
+        // Feature task면 featureTasks에서도 완료 처리
+        if (nextTask.type === 'feature' && state.featureTasks) {
+          const feature = state.featureTasks.get(nextTask.id);
+          if (feature) {
+            feature.completed = true;
+          }
+        }
+        
+        // completedTasks에 추가
+        state.completedTasks = state.completedTasks || [];
+        if (!state.completedTasks.includes(nextTask.id)) {
+          state.completedTasks.push(nextTask.id);
+        }
+        
+        console.log(`✅ Task "${nextTask.name}" marked as completed (with errors deferred to error tasks)\n`);
       }
       
-      console.log(`🎯 Next task: ${nextErrorTask.name} (P${nextErrorTask.priority})\n`);
+    } else if (nextTask.type === 'error') {
+      // Error task → Deferred (큐 뒤로, priority 조정, retry count 초기화)
+      console.log(`📋 Deferring Error Task "${nextTask.name}"\n`);
+      
+      // ✅ Priority 조정: 현재 큐의 max priority (Final 제외) + 1
+      const allTasks = state.taskQueue?.getAll() || [];
+      const nonFinalTasks = allTasks.filter((t: Task) => t.priority < 1000);
+      
+      if (nonFinalTasks.length > 0) {
+        const maxPriority = Math.max(...nonFinalTasks.map((t: Task) => t.priority));
+        const newPriority = maxPriority + 1;
+        console.log(`   Adjusting priority: ${nextTask.priority} → ${newPriority} (after other tasks)\n`);
+        
+        const deferredTask = { ...nextTask, priority: newPriority };
+        state.taskQueue?.push(deferredTask);
+      } else {
+        // 유일한 task → 즉시 재삽입 (retry=0)
+        console.log(`   Only task remaining - retrying immediately with fresh retry count\n`);
+        const deferredTask = { ...nextTask };
+        state.taskQueue?.push(deferredTask);
+      }
+    }
+    
+    console.log(`⏭️  Moving to next task in queue...\n`);
+    
+    // 다음 태스크로
+    const newNextTask = state.taskQueue?.pop();
+    if (!newNextTask) {
+      console.log('✅ Task queue is empty!');
       return {
-        ...checkpointState,
-        currentTask: nextErrorTask,
+        ...state,
+        currentTask: undefined,
+        enforcementReason: undefined,
+        violations: [],
+        retries: 0,
       };
     }
     
-    // 여기 도달하면 Setup/Feature/Error task의 retry 가능한 에러임
+    // ✅ 일관된 task 시작 로그 형식
+    console.log(``);
+    console.log(`🚀 Starting task: "${newNextTask.name}"`);
+    console.log(`   Type: ${newNextTask.type.toUpperCase()}`);
+    console.log(`   Priority: P${newNextTask.priority}\n`);
+    
+    return {
+      ...state,
+      currentTask: newNextTask,
+      enforcementReason: undefined,
+      violations: [],
+      retries: 0,
+    };
+  }
+  
+  // ===== HANDLE ERRORS: Analyze & Add Error Tasks =====
+  if (isRetry && state.violations && state.violations.length > 0) {
+    console.log(`🔍 Analyzing errors from failed attempt...\n`);
+    
+    const violations = state.violations;
     
     // ✅ 모든 에러가 retryable인 경우만 재시도
     const allRetryable = violations.every(v => v.isRetryable === true);

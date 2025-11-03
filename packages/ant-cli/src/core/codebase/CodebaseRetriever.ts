@@ -320,7 +320,15 @@ export class CodebaseRetriever {
 
     // Sort by relevance and take top N
     const sorted = this.sortByRelevance(matchedFiles, keywords);
-    const targetFiles = sorted.slice(0, options.maxFiles);
+    let targetFiles = sorted.slice(0, options.maxFiles);
+
+    // ✅ FALLBACK: If no files matched (e.g., non-English directive or no keywords),
+    // load all source files up to maxFiles limit
+    if (targetFiles.length === 0) {
+      console.log('⚠️  No keyword matches found - loading all source files as fallback');
+      const allFiles = this.findAllSourceFiles(workingDir, options.exclude);
+      targetFiles = allFiles.slice(0, options.maxFiles);
+    }
 
     // Load files
     const code = await this.loadFiles(targetFiles, workingDir, options.maxTokens);

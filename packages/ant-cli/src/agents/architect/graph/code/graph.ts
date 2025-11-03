@@ -1,6 +1,70 @@
 import { StateGraph } from "@langchain/langgraph";
-import { ArchitectGraphState, TASK_PRIORITIES } from "./state";
+import { ArchitectGraphState, TASK_PRIORITIES, Task } from "./state";
 import { resolve, decompose, plan, execute, writeFiles, validate, installDeps, runtimeValidate, enforce, learn } from "./nodes/index";
+
+/**
+ * Node that handles task completion logic and state mutations.
+ * This MUST be a node (not a router) because it mutates state.
+ */
+async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<ArchitectGraphState>> {
+  const hasViolations = (state.violations && state.violations.length > 0);
+  
+  if (!hasViolations && state.currentTask) {
+    // ✅ Task succeeded - mark as completed
+    console.log(`✅ Task "${state.currentTask.name}" completed!`);
+    
+    const completedTasks = state.completedTasks || [];
+    completedTasks.push(state.currentTask.id);
+    
+    // If feature task, mark in featureTasks map
+    if (state.currentTask.type === 'feature' && state.featureTasks) {
+      const feature = state.featureTasks.get(state.currentTask.id);
+      if (feature) {
+        feature.completed = true;
+      }
+    }
+    
+    // If error task completed, remove remaining error tasks (likely auto-resolved)
+    if (state.currentTask.type === 'error' && state.taskQueue) {
+      const errorCount = state.taskQueue.getAll().filter((t: Task) => t.type === 'error').length;
+      if (errorCount > 0) {
+        console.log(`🧹 Removing ${errorCount} remaining error task(s) from queue (likely auto-resolved)`);
+        state.taskQueue.removeType('error');
+        
+        // Check if Final Verification already exists in queue
+        const hasFinalTask = state.taskQueue.getAll().some((t: Task) => t.priority === TASK_PRIORITIES.FINAL_VERIFICATION);
+        
+        if (!hasFinalTask) {
+          const finalTask: Task = {
+            id: `final-verification-recheck-${Date.now()}`,
+            name: 'Final Verification (Recheck)',
+            type: 'feature' as const,
+            priority: TASK_PRIORITIES.FINAL_VERIFICATION,
+            description: 'Re-verify all errors are resolved after error fixes',
+            validationRequired: true,
+            validationType: 'runtime' as const,
+          };
+          state.taskQueue.push(finalTask);
+          console.log(`📋 Re-added Final Verification to confirm all errors resolved\n`);
+        } else {
+          console.log(`📋 Final Verification already in queue - will execute after error tasks\n`);
+        }
+      }
+    }
+    
+    // ✅ CRITICAL: Clear currentTask and retries before moving to next task
+    return {
+      completedTasks,
+      currentTask: undefined,
+      retries: 0,
+      violations: [],
+      enforcementReason: undefined,
+    };
+  }
+  
+  // Task failed or has violations - no state changes needed
+  return {};
+}
 
 export function buildCodeGraph() {
   const graph = new StateGraph<ArchitectGraphState>({
@@ -81,6 +145,7 @@ export function buildCodeGraph() {
   graph.addNode("validate", validate as any);
   graph.addNode("installDeps", installDeps as any);  // ✅ Install after validation
   graph.addNode("runtimeValidate", runtimeValidate as any);
+  graph.addNode("checkTaskStatus", checkTaskStatus as any);  // ✅ NEW: Handle task completion logic
   graph.addNode("enforce", enforce as any);
   graph.addNode("learn", learn as any);
 
@@ -101,7 +166,8 @@ export function buildCodeGraph() {
   graph.addConditionalEdges(
     "validate" as any,
     ((s: ArchitectGraphState) => {
-      const hasViolations = (s.violations && s.violations.length > 0) || !s.files.length;
+      // ✅ Only check violations array (validate node handles no_files violation internally)
+      const hasViolations = s.violations && s.violations.length > 0;
       if (hasViolations) {
         return "enforce";
       }
@@ -113,83 +179,31 @@ export function buildCodeGraph() {
   // After installing dependencies, run runtime validation
   graph.addEdge("installDeps" as any, "runtimeValidate" as any);
 
-  // Runtime validation (build/lint/test) - now with dependencies installed
+  // After runtime validation, check task status (moved from router to node for state mutation)
+  graph.addEdge("runtimeValidate" as any, "checkTaskStatus" as any);
+
+  // Route based on task completion status
   graph.addConditionalEdges(
-    "runtimeValidate" as any,
+    "checkTaskStatus" as any,
     ((s: ArchitectGraphState) => {
       const hasViolations = (s.violations && s.violations.length > 0);
       
       if (!hasViolations) {
-        // ✅ Current task succeeded!
-        
-        // Mark task as completed
-        if (s.currentTask) {
-          console.log(`✅ Task "${s.currentTask.name}" completed!`);
-          
-          s.completedTasks = s.completedTasks || [];
-          s.completedTasks.push(s.currentTask.id);
-          
-          // If feature task, mark in featureTasks map
-          if (s.currentTask.type === 'feature' && s.featureTasks) {
-            const feature = s.featureTasks.get(s.currentTask.id);
-            if (feature) {
-              feature.completed = true;
-            }
-          }
-          
-          // ✅ If error task completed, remove remaining error tasks (likely auto-resolved)
-          if (s.currentTask.type === 'error' && s.taskQueue) {
-            const errorCount = s.taskQueue.getAll().filter(t => t.type === 'error').length;
-            if (errorCount > 0) {
-              console.log(`🧹 Removing ${errorCount} remaining error task(s) from queue (likely auto-resolved)`);
-              s.taskQueue.removeType('error');
-              
-              // ✅ Check if Final Verification already exists in queue
-              const hasFinalTask = s.taskQueue.getAll().some(t => t.priority === TASK_PRIORITIES.FINAL_VERIFICATION);
-              
-              if (!hasFinalTask) {
-                // Only add if not already in queue (e.g., dynamic error tasks case)
-                const finalTask = {
-                  id: `final-verification-recheck-${Date.now()}`,
-                  name: 'Final Verification (Recheck)',
-                  type: 'feature' as const,
-                  priority: TASK_PRIORITIES.FINAL_VERIFICATION,
-                  description: 'Re-verify all errors are resolved after error fixes',
-                  validationRequired: true,
-                  validationType: 'runtime' as const,
-                };
-                s.taskQueue.push(finalTask);
-                console.log(`📋 Re-added Final Verification to confirm all errors resolved\n`);
-              } else {
-                console.log(`📋 Final Verification already in queue - will execute after error tasks\n`);
-              }
-            }
-          }
-        }
-        
-        // Check if there are more tasks in queue
+        // Task succeeded - check if more tasks exist
         if (s.taskQueue && !s.taskQueue.isEmpty()) {
-          // ✅ CRITICAL: Clear currentTask and retries before moving to next task
-          s.currentTask = undefined;
-          s.retries = 0;
-          s.violations = [];
-          s.enforcementReason = undefined;
           return "plan";  // ← Next task
         } else {
           console.log(`\n✅ All tasks completed!`);
-          return "learn";  // ← All done, skip evaluate, go directly to learn
+          return "learn";  // ← All done
         }
       }
       
-      // Has violations - check if we should continue trying
-      
-      // ✅ CRITICAL: Let plan node handle retry limit check
-      // Plan node will create error task and move to next task if retry limit exceeded
+      // Has violations - check if we should retry
       if (s.retries < s.maxRetries) {
         return "enforce";
       }
       
-      // Exceeded retries - plan node will handle this
+      // Exceeded retries
       console.log(`⚠️  Task "${s.currentTask?.name}" exhausted retries (${s.retries}/${s.maxRetries})`);
       console.log(`   Plan node will create error task and move to next task\n`);
       return "enforce";  // ← Let plan handle retry limit logic

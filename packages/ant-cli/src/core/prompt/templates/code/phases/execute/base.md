@@ -15,50 +15,55 @@ YOUR PLAN (from Phase 1):
 **Description**: {{currentTask.description}}
 
 {{#if (eq currentTask.name "Final Integration & Verification")}}
-🚨 CRITICAL: THIS IS A VERIFICATION TASK, NOT AN IMPLEMENTATION TASK!
+🚨 CRITICAL: THIS IS A FINAL BUILD VERIFICATION & FIX TASK!
 ────────────────────────────────────────────────────────────────────────────────
 
-**YOUR ROLE**: You are a TESTER/VERIFIER, not a developer!
+**YOUR ROLE**: Final verification + minimal fixes to ensure build success
 
-**WHAT YOU MUST DO**:
-✅ Verify that the build succeeds (`npm run build` or equivalent)
-✅ Check that all required features are implemented
-✅ Confirm that TypeScript compilation has no errors
-✅ Validate that linting passes (if configured)
+**PRIMARY GOAL**: Make the build succeed with minimal necessary changes
+
+**WHAT YOU CAN DO**:
+✅ Make MINIMAL code changes to fix build errors
+✅ Fill in empty/stub implementations that prevent build
+✅ Fix import errors, missing exports
+✅ Add minimal type definitions to resolve type errors
+✅ Complete incomplete implementations (e.g., empty function bodies)
 
 **WHAT YOU MUST NOT DO**:
-❌ DO NOT CREATE ANY NEW FILES (no test files, no documentation files, no verification checklists)
-❌ DO NOT IMPLEMENT ANY NEW FEATURES
-❌ DO NOT ADD TEST CODE
-❌ DO NOT CREATE VERIFICATION_CHECKLIST.md or similar documentation
-❌ DO NOT WRITE ANY CODE AT ALL
+❌ DO NOT write test files or test code
+❌ DO NOT write documentation (README, CHANGELOG, etc.)
+❌ DO NOT add features beyond what's needed for build
+❌ DO NOT create verification checklists or similar docs
+❌ DO NOT make major refactoring changes
 
-**IF ERRORS ARE FOUND**:
-- Identify the specific files with errors
-- Report the errors clearly
-- The system will create separate error-fixing tasks for you
-- DO NOT ATTEMPT TO FIX ERRORS YOURSELF in this task
+**MINIMAL CHANGES PRINCIPLE**:
+- Change ONLY what's necessary for build success
+- Do NOT re-write working code
+- Do NOT add "nice-to-have" features
+- Keep changes surgical and targeted
 
-**IF BUILD IS SUCCESSFUL**:
-- Simply report success
-- List what was verified
-- Output ZERO FILES (empty file list)
+**IF NO ERRORS FOUND**:
+- Output ZERO FILES (build already works!)
+- Report success in RESPONSE section
+
+**IF ERRORS FOUND**:
+- Fix ONLY the specific errors preventing build
+- Output ONLY the files that need changes
+- Keep changes minimal
 
 **RESPONSE FORMAT**:
 ```
 === THINKING ===
-(Your analysis of the verification results)
+(Analyze build state, identify specific errors if any)
 === END THINKING ===
 
 === RESPONSE ===
-✅ Build successful! All TypeScript compilation passed.
-✅ All 6 MVP requirements verified.
-✅ No linting errors detected.
-
-Verification complete - project is ready for deployment.
+Build Status: [Success/Errors Found]
+(If errors: List specific errors and your fix strategy)
+(If success: Confirmation message)
 === END RESPONSE ===
 
-(NO FILES SECTION - Do not create any files!)
+(Files section: ONLY if fixes needed, otherwise EMPTY)
 ```
 
 ────────────────────────────────────────────────────────────────────────────────
