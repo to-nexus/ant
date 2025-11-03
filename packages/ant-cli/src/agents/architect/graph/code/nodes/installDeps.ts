@@ -48,7 +48,7 @@ export async function installDeps(state: ArchitectGraphState): Promise<Architect
     );
 
     if (hasPackageJson) {
-      console.log('📦 Detected package.json changes');
+      console.log('📦 Detected package.json changes in current task');
       
       // Check if package.json exists in target directory
       const pkgJsonPath = p.join(resolvedPath, 'package.json');
@@ -185,6 +185,14 @@ Please check:
           console.log('⚠️  Could not detect package manager');
         }
       }
+    } else if (state.currentTask?.type === 'feature') {
+      // ✅ OPTIMIZATION: Skip install for feature tasks that don't modify package.json
+      console.log('⏭️  Skipping dependency installation (package.json unchanged)');
+      console.log(`   Task: ${state.currentTask.name}`);
+      console.log(`   Type: ${state.currentTask.type}`);
+      console.log(`   Rationale: Feature tasks only need install if dependencies change\n`);
+    } else {
+      console.log('⏭️  No package.json changes detected');
     }
 
     // 2. Check if Git repository needs initialization

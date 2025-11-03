@@ -139,6 +139,109 @@ GUIDELINES:
    - Order tasks by dependency (foundational features first)
    - But don't worry too much - errors will be handled dynamically
 
+---
+
+## 🔍 VALIDATION STRATEGY
+
+**For each task, you MUST decide the validation approach.**
+
+### **Validation Types:**
+
+1. **`static`** - Fast syntax/structure checks only (~1-5 seconds)
+   - Checks: ellipsis in code, excessive deletion, file creation
+   - No TypeScript compilation, no build, no lint
+   - Use for: Setup tasks, intermediate feature tasks
+
+2. **`runtime`** - Full build/compile/lint validation (~30-120 seconds)
+   - Runs: `tsc`, `npm run build`, `eslint`
+   - Verifies: actual compilation, type correctness, lint rules
+   - Use for: Error tasks, final verification
+
+### **Strategy Guide:**
+
+#### **Setup Tasks (type: 'setup')**
+```json
+{
+  "type": "setup",
+  "validationRequired": true,
+  "validationType": "static",
+  "validationRationale": "Config files only - syntax check sufficient, runtime deferred"
+}
+```
+**Why**: Config files don't need full build. Install happens after this task anyway.
+
+#### **Feature Tasks (type: 'feature')** - MOST IMPORTANT!
+```json
+{
+  "type": "feature",
+  "validationRequired": true,
+  "validationType": "static",
+  "validationRationale": "Intermediate feature - defer runtime validation to error tasks for speed"
+}
+```
+**Why**: 
+- ⚡ **10-100x faster**: Complete all features quickly
+- 🎯 **Focus on implementation**: Don't get stuck fixing errors mid-flow
+- 🔄 **Errors handled later**: Error tasks will fix all issues with full validation
+
+**Exception** - Last feature task before error tasks:
+```json
+{
+  "id": "implement-final-feature",
+  "type": "feature",
+  "validationType": "runtime",  // ← Full check before error tasks
+  "validationRationale": "Last feature - full validation before moving to error fixes"
+}
+```
+
+#### **Error Tasks (type: 'error')** - Created automatically
+```json
+{
+  "type": "error",
+  "validationRequired": true,
+  "validationType": "runtime",
+  "validationRationale": "Need to verify fixes actually resolve build/type/lint errors"
+}
+```
+**Why**: Error tasks MUST verify fixes work with full build/lint.
+
+#### **Final Verification (priority: 1000)**
+```json
+{
+  "id": "final-verification",
+  "type": "feature",
+  "priority": 1000,
+  "validationRequired": true,
+  "validationType": "runtime",
+  "validationRationale": "Final comprehensive validation of entire application"
+}
+```
+**Why**: Last gate before completion - must verify everything works.
+
+### **Expected Flow:**
+
+```
+Setup Task (static) → ⚡ fast
+  ↓
+Feature 1 (static) → ⚡ fast
+Feature 2 (static) → ⚡ fast
+Feature 3 (static) → ⚡ fast
+...
+Feature N (static) → ⚡ fast
+  ↓
+[Features complete, now check for errors]
+  ↓
+Error Task 1 (runtime) → 🔍 full validation
+Error Task 2 (runtime) → 🔍 full validation
+...
+  ↓
+Final Verification (runtime) → 🔍 full validation
+```
+
+**Result**: Fast feature implementation + thorough error checking = Best of both worlds!
+
+---
+
 ⚠️  CRITICAL: FINAL VERIFICATION TASK
 
 **ALWAYS add a final verification task at the end** (lowest priority):

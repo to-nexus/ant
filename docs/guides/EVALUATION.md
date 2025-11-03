@@ -18,7 +18,7 @@ npm run dev -- arch code workspace/myapp/feature/
 resolve → decompose → plan → execute → 
 writeFiles → validate → installDeps → 
 runtimeValidate → evaluate → learn
-                      ↓
+                                          ↓
                 (if --eval flag)
 ```
 
