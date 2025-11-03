@@ -1,40 +1,40 @@
 {
-  "timestamp": "2025-11-03T11:41:46.539Z",
+  "timestamp": "2025-11-03T12:13:13.650Z",
   "filesGenerated": 3,
-  "totalLines": 149,
+  "totalLines": 371,
   "metrics": {
     "totalFiles": 3,
-    "totalLines": 149,
-    "avgComplexity": 3.7,
-    "avgMaintainability": 18.7,
+    "totalLines": 371,
+    "avgComplexity": 15,
+    "avgMaintainability": 25.5,
     "fileMetrics": [
       {
-        "path": "src/store/useLogStore.ts",
+        "path": "src/lib/api.ts",
         "metrics": {
-          "linesOfCode": 19,
-          "logicalLines": 16,
-          "complexity": 1,
-          "maintainabilityIndex": 12.5,
-          "commentDensity": 0
-        }
-      },
-      {
-        "path": "src/lib/store.ts",
-        "metrics": {
-          "linesOfCode": 65,
-          "logicalLines": 54,
-          "complexity": 2,
-          "maintainabilityIndex": 22.6,
-          "commentDensity": 0
+          "linesOfCode": 125,
+          "logicalLines": 101,
+          "complexity": 19,
+          "maintainabilityIndex": 23.6,
+          "commentDensity": 0.9803921568627451
         }
       },
       {
         "path": "src/lib/cli.ts",
         "metrics": {
-          "linesOfCode": 65,
-          "logicalLines": 56,
-          "complexity": 8,
-          "maintainabilityIndex": 21,
+          "linesOfCode": 117,
+          "logicalLines": 99,
+          "complexity": 14,
+          "maintainabilityIndex": 25.3,
+          "commentDensity": 0
+        }
+      },
+      {
+        "path": "src/App.tsx",
+        "metrics": {
+          "linesOfCode": 129,
+          "logicalLines": 111,
+          "complexity": 12,
+          "maintainabilityIndex": 27.7,
           "commentDensity": 0
         }
       }
@@ -43,6 +43,7 @@
   "quality": "poor",
   "recommendations": [
     "코드 유지보수성 개선 필요: 함수를 더 작은 단위로 분리하세요",
+    "복잡도가 다소 높습니다: 함수 분리를 고려하세요",
     "주석이 부족합니다: 복잡한 로직에 설명을 추가하세요"
   ]
 }
