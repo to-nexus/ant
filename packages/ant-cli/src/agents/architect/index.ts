@@ -250,11 +250,25 @@ export async function architectAgent(
           totalSubtasks: 0,  // Backward compatibility
         };
         const result = await runCodeGraph(initial);
+        
+        // ✅ Determine status based on execution result
+        let status: 'success' | 'paused' | 'partial';
+        if (result.pausedDueToLimit && result.tasksRemaining > 0) {
+          status = 'paused';  // Recursion limit hit, tasks remaining
+        } else if (result.pausedDueToLimit && result.tasksRemaining === 0) {
+          status = 'success';  // Recursion limit but all tasks completed
+        } else {
+          status = 'success';  // Normal completion
+        }
+        
         return {
-          success: true,
+          success: status === 'success',
+          status: status,  // ✅ Add explicit status field
           task: 'code',
           reportFile: result.reportFile,
           filesAnalyzed: result.filesChanged,
+          tasksRemaining: result.tasksRemaining,
+          pausedDueToLimit: result.pausedDueToLimit,
           message: result.filesChanged > 0
             ? `${result.filesChanged} files changed. Review with 'git diff' and commit when ready.`
             : `No code changes generated. See report for plan and learnings.`
