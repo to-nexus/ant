@@ -121,9 +121,25 @@ The following files ALREADY EXIST in the working directory:
 - ❌ DON'T: Recreate files that already exist and don't need changes
 - ✅ DO: Import from and reference existing files
 
-**3. General Rule:**
+**3. Documentation/Static Files (README, HTML, etc.)**
+
+❌ **NEVER REGENERATE THESE FILES** (unless explicitly required by task):
+- `README.md` - Project documentation
+- `index.html` - HTML entry point
+- `.gitignore` - VCS configuration
+- `LICENSE` - Legal documentation
+
+✅ **ONLY regenerate if:**
+- Task name explicitly mentions updating these files (e.g., "Update README")
+- These files are MISSING and this is a setup/initialization task
+- Critical error in these files that blocks the project
+
+🎯 **Why**: These files are project-wide documentation. Each feature task should NOT "improve" or "update" them with task-specific details.
+
+**4. General Rule:**
 - ✅ FOCUS: Generate ONLY the files that THIS TASK needs to create/modify
 - ❌ DON'T: Output files that already exist unchanged
+- ❌ DON'T: "Improve" documentation files unless that's your explicit task
 {{else}}
 No existing files detected - this is a fresh project setup.
 {{/if}}

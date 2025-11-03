@@ -1,6 +1,6 @@
 import { StateGraph } from "@langchain/langgraph";
 import { ArchitectGraphState, TASK_PRIORITIES } from "./state";
-import { resolve, decompose, plan, execute, writeFiles, validate, installDeps, runtimeValidate, enforce, evaluate, learn } from "./nodes/index";
+import { resolve, decompose, plan, execute, writeFiles, validate, installDeps, runtimeValidate, enforce, learn } from "./nodes/index";
 
 export function buildCodeGraph() {
   const graph = new StateGraph<ArchitectGraphState>({
@@ -61,8 +61,6 @@ export function buildCodeGraph() {
       // Error Handling & Final Verification
       failedTasks: null as any,
       unresolvedErrors: null as any,
-      finalRetryCount: null as any,
-      shouldEvaluate: null as any,  // ✅ Routing signal for plan → evaluate
       
       // Evaluation & Learning
       evaluationReport: null as any,
@@ -84,27 +82,14 @@ export function buildCodeGraph() {
   graph.addNode("installDeps", installDeps as any);  // ✅ Install after validation
   graph.addNode("runtimeValidate", runtimeValidate as any);
   graph.addNode("enforce", enforce as any);
-  graph.addNode("evaluate", evaluate as any);
   graph.addNode("learn", learn as any);
 
   graph.addEdge("__start__" as any, "resolve" as any);
   graph.addEdge("resolve" as any, "decompose" as any);  // resolve → decompose
   graph.addEdge("decompose" as any, "plan" as any);     // decompose → plan (first task)
   
-  // ✅ Plan node can route to execute OR evaluate (for Final Verification failures)
-  graph.addConditionalEdges(
-    "plan" as any,
-    (s: ArchitectGraphState) => {
-      // If plan node signals to go to evaluate (Final Verification failure case)
-      if (s.shouldEvaluate) {
-        console.log(`🔀 Routing: plan → evaluate (shouldEvaluate=${s.shouldEvaluate})\n`);
-        return "evaluate";
-      }
-      console.log(`🔀 Routing: plan → execute (shouldEvaluate=${s.shouldEvaluate})\n`);
-      return "execute";
-    },
-    { execute: "execute", evaluate: "evaluate" } as any
-  );
+  // ✅ Plan always goes to execute
+  graph.addEdge("plan" as any, "execute" as any);
   
   // ✅ CRITICAL: Write files immediately after execute
   graph.addEdge("execute" as any, "writeFiles" as any);
@@ -192,7 +177,7 @@ export function buildCodeGraph() {
           return "plan";  // ← Next task
         } else {
           console.log(`\n✅ All tasks completed!`);
-          return "evaluate";  // ← All done
+          return "learn";  // ← All done, skip evaluate, go directly to learn
         }
       }
       
@@ -209,29 +194,14 @@ export function buildCodeGraph() {
       console.log(`   Plan node will create error task and move to next task\n`);
       return "enforce";  // ← Let plan handle retry limit logic
     }) as any,
-    { enforce: "enforce", evaluate: "evaluate", plan: "plan" } as any
+    { enforce: "enforce", learn: "learn", plan: "plan" } as any
   );
 
   // ✅ KEY CHANGE: Enforce → Plan (not Execute)
   // This allows the agent to re-analyze the problem and create a better strategy
   graph.addEdge("enforce" as any, "plan" as any);
   
-  // ✅ Evaluate node can route to plan (error tasks created) or learn (all done)
-  graph.addConditionalEdges(
-    "evaluate" as any,
-    (s: ArchitectGraphState) => {
-      // If evaluate created error tasks and set currentTask, go to plan
-      if (s.currentTask && s.currentTask.type === 'error') {
-        console.log(`🔀 Routing: evaluate → plan (error task created: "${s.currentTask.name}")\n`);
-        return "plan";
-      }
-      // Otherwise, all done - go to learn
-      console.log(`🔀 Routing: evaluate → learn (all tasks completed)\n`);
-      return "learn";
-    },
-    { plan: "plan", learn: "learn" } as any
-  );
-  
+  // ✅ Learn is final node
   graph.addEdge("learn" as any, "__end__" as any);
   
   // Note: Using manual checkpoint saves instead of LangGraph's built-in checkpointer

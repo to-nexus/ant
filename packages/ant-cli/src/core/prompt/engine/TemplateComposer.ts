@@ -235,7 +235,8 @@ export class TemplateComposer {
     try {
       return await this.promptPort.render(templatePath, vars);
     } catch (error) {
-      console.warn(`[TemplateComposer] Failed to load template: ${templatePath}`);
+      console.error(`[TemplateComposer] Failed to load template: ${templatePath}`);
+      console.error(`[TemplateComposer] Error details:`, error);
       return '';
     }
   }

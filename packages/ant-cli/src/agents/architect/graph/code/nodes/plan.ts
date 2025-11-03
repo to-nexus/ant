@@ -143,13 +143,9 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     console.log(`   → [P${nextTask.priority}] ${nextTask.name} (${nextTask.type}) ← Starting now`);
     
     const queueTasks = state.taskQueue?.getAll() || [];
-    const maxToShow = 5;  // Show first 5 tasks
-    queueTasks.slice(0, maxToShow).forEach((task, idx) => {
+    queueTasks.forEach((task, idx) => {
       console.log(`   ${idx + 2}. [P${task.priority}] ${task.name} (${task.type})`);
     });
-    if (queueTasks.length > maxToShow) {
-      console.log(`   ... and ${queueTasks.length - maxToShow} more`);
-    }
     
     console.log(``);
     console.log(`🚀 Starting task: "${nextTask.name}"`);
@@ -158,9 +154,8 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   }
   
   // ===== CHECK RETRY LIMIT (Priority Check) =====
-  // ⚠️  NOTE: Final Task (priority=1000) never reaches here!
-  //     Final Task is handled in Line 289-314 (HANDLE ERRORS block)
-  //     and immediately goes to evaluate without retry.
+  // ⚠️  NOTE: Final Task (priority=1000) is handled in HANDLE ERRORS block (Line 289+)
+  //     and creates error tasks WITHOUT retry.
   if (isRetry && state.retries >= state.maxRetries) {
     console.log(`\n⚠️  ═══════════════════════════════════════════════════════════`);
     console.log(`⚠️  Task "${nextTask.name}" EXHAUSTED RETRIES (${state.retries}/${state.maxRetries})`);
@@ -168,10 +163,30 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     
     const violations = state.violations || [];
     
-    // ✅ Setup/Feature 실패 → 기록만, Error Task 생성 안함 (Final Verification까지 defer)
+    // ✅ Setup/Feature 실패 → 에러 태스크 즉시 생성 및 완료 처리
     if (nextTask.type === 'setup' || nextTask.type === 'feature') {
-      console.log(`📝 Recording ${violations.length} error(s) for Final Verification`);
-      console.log(`   Task will be marked complete, errors deferred to Final Verification\n`);
+      // Create error tasks from violations
+      if (violations.length > 0) {
+        const errorGroups = groupViolationsByType(violations);
+        console.log(`📝 Creating ${errorGroups.length} error task(s) from ${violations.length} violation(s):\n`);
+        
+        errorGroups.forEach((group, idx) => {
+          const errorPriority = getErrorPriorityByType(group.type);
+          const errorTask: Task = {
+            id: `error-${nextTask.id}-${group.type}-${Date.now()}-${idx}`,
+            name: `Fix ${group.type.replace(/_/g, ' ').toUpperCase()} Errors`,
+            type: 'error',
+            priority: errorPriority,
+            description: formatErrorDescription(group.violations),
+            errors: group.violations.map((v: any) => v.message),
+            validationRequired: true,
+            validationType: 'runtime',
+          };
+          state.taskQueue?.push(errorTask);
+          console.log(`   ${idx + 1}. "${errorTask.name}" (P${errorTask.priority}) - ${group.violations.length} error(s)`);
+        });
+        console.log('');
+      }
       
       // 실패 정보 저장
       state.failedTasks = state.failedTasks || [];
@@ -198,6 +213,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         state.completedTasks.push(nextTask.id);
       }
       
+      console.log(`✅ Task "${nextTask.name}" marked as completed (with errors deferred to error tasks)\n`);
       console.log(`⏭️  Moving to next task in queue...\n`);
       
       // 다음 태스크로
@@ -277,10 +293,31 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     
     const violations = state.violations;
     
-    // ✅ CRITICAL: Final Task는 retry 안함 - 바로 evaluate로! (retry 횟수 무관)
+    // ✅ CRITICAL: Final Task (priority=1000) - NO RETRY, create error tasks immediately
     if (nextTask.priority === 1000) {
       console.log(`⚠️  Final Verification failed with ${violations.length} violation(s)`);
-      console.log(`   → Moving to evaluate to create error tasks (NO RETRY)\n`);
+      console.log(`   → Creating error tasks immediately (NO RETRY)\n`);
+      
+      // Create error tasks from violations
+      const errorGroups = groupViolationsByType(violations);
+      console.log(`📝 Creating ${errorGroups.length} error task(s):\n`);
+      
+      errorGroups.forEach((group, idx) => {
+        const errorPriority = getErrorPriorityByType(group.type);
+        const errorTask: Task = {
+          id: `error-final-${group.type}-${Date.now()}-${idx}`,
+          name: `Fix ${group.type.replace(/_/g, ' ').toUpperCase()} Errors`,
+          type: 'error',
+          priority: errorPriority,
+          description: formatErrorDescription(group.violations),
+          errors: group.violations.map((v: any) => v.message),
+          validationRequired: true,
+          validationType: 'runtime',
+        };
+        state.taskQueue?.push(errorTask);
+        console.log(`   ${idx + 1}. "${errorTask.name}" (P${errorTask.priority}) - ${group.violations.length} error(s)`);
+      });
+      console.log('');
       
       // ✅ Final Task를 다시 큐에 넣음 (완료 처리 안함!)
       console.log(`📋 Re-adding Final Task to queue (will retry after error tasks)\n`);
@@ -291,18 +328,25 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         ...state,
         currentTask: undefined,  // Clear currentTask (it's back in queue)
         retries: 0,
+        violations: [],
+        enforcementReason: undefined,
       };
       const { saveCheckpoint } = await import('./checkpoint');
       await saveCheckpoint(checkpointState);
       console.log(`💾 Checkpoint saved (Final Task deferred)\n`);
       
-      // ✅ Signal graph to go to evaluate (Error tasks 생성)
-      const evaluateState = {
+      // Move to next task (error task)
+      const nextErrorTask = state.taskQueue?.pop();
+      if (!nextErrorTask) {
+        console.log('✅ Task queue is empty!');
+        return checkpointState;
+      }
+      
+      console.log(`🎯 Next task: ${nextErrorTask.name} (P${nextErrorTask.priority})\n`);
+      return {
         ...checkpointState,
-        shouldEvaluate: true,  // ✅ Graph will route to evaluate instead of execute
+        currentTask: nextErrorTask,
       };
-      console.log(`🔀 Plan returning with shouldEvaluate=true (will route to evaluate)\n`);
-      return evaluateState;
     }
     
     // 여기 도달하면 Setup/Feature/Error task의 retry 가능한 에러임
@@ -321,7 +365,6 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       const retryState = {
         ...state,
         currentTask: nextTask,
-        shouldEvaluate: false,  // ✅ CRITICAL: Reset - go to execute, not evaluate
         // Keep enforcementReason for Execute node!
       };
       
@@ -339,7 +382,6 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     const retryState = {
       ...state,
       currentTask: nextTask,
-      shouldEvaluate: false,  // ✅ CRITICAL: Reset - go to execute, not evaluate
     };
     
     // ✅ CRITICAL: Save checkpoint before retry (for recursion limit recovery)
@@ -556,7 +598,6 @@ ${nextTask.type === 'error' ?
       code: currentCode,  // ✅ Update state with reloaded files
       retries: shouldClearEnforcement ? 0 : state.retries,  // Reset only if new task
       enforcementReason: shouldClearEnforcement ? null : state.enforcementReason,  // Clear only if new task
-      shouldEvaluate: false,  // ✅ CRITICAL: Normal path - go to execute, not evaluate
     };
     
     // ✅ Save checkpoint after planning (in case recursion limit hits during execute)
@@ -623,4 +664,60 @@ ${nextTask.type === 'error' ?
     
     throw error;
   }
+}
+
+/**
+ * Utility functions for error task creation
+ * (Imported from evaluate.ts to avoid circular dependencies)
+ */
+
+/**
+ * Group violations by type
+ */
+function groupViolationsByType(violations: any[]): Array<{type: string, violations: any[]}> {
+  const groups = new Map<string, any[]>();
+  
+  violations.forEach(v => {
+    const type = v.type || 'other';
+    if (!groups.has(type)) {
+      groups.set(type, []);
+    }
+    groups.get(type)!.push(v);
+  });
+  
+  return Array.from(groups.entries()).map(([type, violations]) => ({
+    type,
+    violations
+  }));
+}
+
+/**
+ * Get error priority by violation type
+ */
+function getErrorPriorityByType(type: string): number {
+  const priorityMap: Record<string, number> = {
+    'missing_file': TASK_PRIORITIES.ERROR_MISSING_ENTRY,
+    'missing_dependency': TASK_PRIORITIES.ERROR_MISSING_DEPS,
+    'config_error': TASK_PRIORITIES.ERROR_CONFIG,
+    'type_error': TASK_PRIORITIES.ERROR_TYPE,
+    'import_error': TASK_PRIORITIES.ERROR_IMPORT,
+    'build_error': TASK_PRIORITIES.ERROR_BUILD,
+    'syntax_error': TASK_PRIORITIES.ERROR_SYNTAX,
+    'lint_error': TASK_PRIORITIES.ERROR_LINT,
+  };
+  
+  return priorityMap[type] || TASK_PRIORITIES.ERROR_OTHER;
+}
+
+/**
+ * Format error description for Error Task
+ */
+function formatErrorDescription(violations: any[]): string {
+  return violations.map((v, idx) => {
+    const parts = [`${idx + 1}. [${v.severity}] ${v.type}: ${v.message}`];
+    if (v.file) parts.push(`   File: ${v.file}`);
+    if (v.module) parts.push(`   Module: ${v.module}`);
+    if (v.suggestedFix) parts.push(`   Suggested: ${v.suggestedFix}`);
+    return parts.join('\n');
+  }).join('\n\n');
 }
