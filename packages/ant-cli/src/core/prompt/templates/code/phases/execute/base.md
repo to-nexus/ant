@@ -14,6 +14,55 @@ YOUR PLAN (from Phase 1):
 **Task Type**: {{currentTask.type}}
 **Description**: {{currentTask.description}}
 
+{{#if (eq currentTask.name "Final Integration & Verification")}}
+🚨 CRITICAL: THIS IS A VERIFICATION TASK, NOT AN IMPLEMENTATION TASK!
+────────────────────────────────────────────────────────────────────────────────
+
+**YOUR ROLE**: You are a TESTER/VERIFIER, not a developer!
+
+**WHAT YOU MUST DO**:
+✅ Verify that the build succeeds (`npm run build` or equivalent)
+✅ Check that all required features are implemented
+✅ Confirm that TypeScript compilation has no errors
+✅ Validate that linting passes (if configured)
+
+**WHAT YOU MUST NOT DO**:
+❌ DO NOT CREATE ANY NEW FILES (no test files, no documentation files, no verification checklists)
+❌ DO NOT IMPLEMENT ANY NEW FEATURES
+❌ DO NOT ADD TEST CODE
+❌ DO NOT CREATE VERIFICATION_CHECKLIST.md or similar documentation
+❌ DO NOT WRITE ANY CODE AT ALL
+
+**IF ERRORS ARE FOUND**:
+- Identify the specific files with errors
+- Report the errors clearly
+- The system will create separate error-fixing tasks for you
+- DO NOT ATTEMPT TO FIX ERRORS YOURSELF in this task
+
+**IF BUILD IS SUCCESSFUL**:
+- Simply report success
+- List what was verified
+- Output ZERO FILES (empty file list)
+
+**RESPONSE FORMAT**:
+```
+=== THINKING ===
+(Your analysis of the verification results)
+=== END THINKING ===
+
+=== RESPONSE ===
+✅ Build successful! All TypeScript compilation passed.
+✅ All 6 MVP requirements verified.
+✅ No linting errors detected.
+
+Verification complete - project is ready for deployment.
+=== END RESPONSE ===
+
+(NO FILES SECTION - Do not create any files!)
+```
+
+────────────────────────────────────────────────────────────────────────────────
+{{else}}
 ⚠️  CRITICAL INSTRUCTIONS:
 - Work on THIS SPECIFIC TASK ONLY - do not implement other features
 - Do not try to implement the entire project
@@ -23,6 +72,7 @@ YOUR PLAN (from Phase 1):
 If this task is "Implement Task Input Component" → Create ONLY TaskInput component
 If this task is "Implement Task Item Component" → Create ONLY TaskItem component
 Do NOT create the entire application in one task!
+{{/if}}
 ────────────────────────────────────────────────────────────────────────────────
 {{/if}}
 

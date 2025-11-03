@@ -122,14 +122,23 @@ ${state.enforcementReason}
 📝 PREVIOUS ATTEMPTS (${state.previousAttempts?.length || 0} attempts):
 ${previousAttemptsText}
 
-⚠️ CRITICAL INSTRUCTIONS:
+⚠️ CRITICAL INSTRUCTIONS FOR RETRY:
 1. READ THE ERRORS ABOVE CAREFULLY
 2. DO NOT REPEAT THE SAME APPROACH
-3. GENERATE ALL REQUIRED FILES (including any missing files mentioned in errors)
-4. If error says "Cannot resolve entry index.html" → CREATE index.html in root
-5. If error says "Module not found" → CREATE the missing file or install the package
+3. **ONLY OUTPUT FILES THAT NEED TO BE FIXED OR ADDED**
+   - If error is in package.json → Only output package.json
+   - If error is in specific .ts file → Only output that .ts file
+   - If missing file → Only output the missing file
+4. DO NOT RE-GENERATE FILES THAT ARE WORKING CORRECTLY
+5. If error says "Cannot resolve entry index.html" → CREATE index.html in root
+6. If error says "Module not found" → CREATE the missing file or install the package
 
-📋 NOW GENERATE THE CODE WITH ALL REQUIRED FILES:
+📋 OUTPUT FORMAT:
+- **MINIMAL APPROACH**: Only output files that directly fix the errors above
+- **NO REDUNDANCY**: Do not include files that were generated correctly in previous attempts
+- **FOCUS**: Fix the specific violations - nothing more
+
+📋 NOW GENERATE ONLY THE FILES NEEDED TO FIX THE ERRORS:
 `;
     
     // Add retry context to the last user message

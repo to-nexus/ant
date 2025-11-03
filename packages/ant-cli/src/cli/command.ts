@@ -145,7 +145,7 @@ async function runArchitect(task: 'design' | 'code' | 'learn', inputPath: string
         console.log('\n⚠️  Task completed with issues');
       }
     } else {
-      console.log('\n✅ Task completed successfully!');
+    console.log('\n✅ Task completed successfully!');
     }
     
     console.log('\n--- Result ---\n', JSON.stringify(result, null, 2));

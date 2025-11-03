@@ -58,6 +58,12 @@ export function buildCodeGraph() {
       completedTasks: null as any,
       resolvedCategories: null as any,
       
+      // Error Handling & Final Verification
+      failedTasks: null as any,
+      unresolvedErrors: null as any,
+      finalRetryCount: null as any,
+      shouldEvaluate: null as any,  // ✅ Routing signal for plan → evaluate
+      
       // Evaluation & Learning
       evaluationReport: null as any,
       learnings: null as any,
@@ -91,8 +97,10 @@ export function buildCodeGraph() {
     (s: ArchitectGraphState) => {
       // If plan node signals to go to evaluate (Final Verification failure case)
       if (s.shouldEvaluate) {
+        console.log(`🔀 Routing: plan → evaluate (shouldEvaluate=${s.shouldEvaluate})\n`);
         return "evaluate";
       }
+      console.log(`🔀 Routing: plan → execute (shouldEvaluate=${s.shouldEvaluate})\n`);
       return "execute";
     },
     { execute: "execute", evaluate: "evaluate" } as any
@@ -176,6 +184,11 @@ export function buildCodeGraph() {
         
         // Check if there are more tasks in queue
         if (s.taskQueue && !s.taskQueue.isEmpty()) {
+          // ✅ CRITICAL: Clear currentTask and retries before moving to next task
+          s.currentTask = undefined;
+          s.retries = 0;
+          s.violations = [];
+          s.enforcementReason = undefined;
           return "plan";  // ← Next task
         } else {
           console.log(`\n✅ All tasks completed!`);
@@ -203,7 +216,22 @@ export function buildCodeGraph() {
   // This allows the agent to re-analyze the problem and create a better strategy
   graph.addEdge("enforce" as any, "plan" as any);
   
-  graph.addEdge("evaluate" as any, "learn" as any);
+  // ✅ Evaluate node can route to plan (error tasks created) or learn (all done)
+  graph.addConditionalEdges(
+    "evaluate" as any,
+    (s: ArchitectGraphState) => {
+      // If evaluate created error tasks and set currentTask, go to plan
+      if (s.currentTask && s.currentTask.type === 'error') {
+        console.log(`🔀 Routing: evaluate → plan (error task created: "${s.currentTask.name}")\n`);
+        return "plan";
+      }
+      // Otherwise, all done - go to learn
+      console.log(`🔀 Routing: evaluate → learn (all tasks completed)\n`);
+      return "learn";
+    },
+    { plan: "plan", learn: "learn" } as any
+  );
+  
   graph.addEdge("learn" as any, "__end__" as any);
   
   // Note: Using manual checkpoint saves instead of LangGraph's built-in checkpointer

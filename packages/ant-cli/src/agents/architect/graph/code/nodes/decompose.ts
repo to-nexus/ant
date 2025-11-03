@@ -286,7 +286,7 @@ ${rules}`;
               description: {
                 type: "string",
                 description: "Detailed task description"
-              },
+      },
               dependencies: {
                 type: "array",
                 items: { type: "string" },
