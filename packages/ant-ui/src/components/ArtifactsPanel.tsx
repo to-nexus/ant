@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useStore } from '@/lib/store';
-import { fetchFileContent, saveFileContent, createFile, uploadFiles, createDirectory, deleteFileOrDirectory, FileNode } from '@/lib/api';
+import { createFile, uploadFiles, createDirectory, deleteFileOrDirectory, FileNode } from '@/lib/api';
 import { Card, CardHeader, CardTitle, CardContent } from '@/ui/card';
 import { Button } from '@/ui/button';
-import { Package } from 'lucide-react';
 
 interface DirectoryViewProps {
   title: string;
@@ -36,13 +35,19 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
     const isExpanded = expandedDirs.has(node.path);
     const isSelected = node.type === 'file' && selectedFile === node.path;
     const isCreatingInThisDir = showCreateForm === node.path;
+    const isDirectory = node.type === 'directory';
 
     return (
       <div key={node.path}>
         <div
           className={`
-            flex items-center justify-between group py-1 px-2 rounded
-            ${isSelected ? 'bg-primary/20 font-medium' : 'hover:bg-muted/50'}
+            flex items-center justify-between group py-1.5 px-2 rounded transition-colors
+            ${isSelected 
+              ? 'bg-blue-100 border-l-2 border-blue-500 font-medium text-blue-900' 
+              : isDirectory && isExpanded
+                ? 'bg-gray-50 hover:bg-gray-100'
+                : 'hover:bg-gray-100'
+            }
           `}
           style={{ paddingLeft: `${currentLevel * 12 + 8}px` }}
         >
@@ -52,7 +57,12 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
               if (node.type === 'directory') {
                 toggleDirectory(node.path);
               } else {
-                onFileSelect(node.path);
+                // Toggle file selection - deselect if already selected
+                if (selectedFile === node.path) {
+                  onFileSelect('');
+                } else {
+                  onFileSelect(node.path);
+                }
               }
             }}
           >
@@ -223,47 +233,27 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
   return (
     <div>
       <h4 className="font-medium text-sm mb-2 text-gray-700">{title}</h4>
-      <div className="border rounded-lg p-2 bg-gray-50/50 max-h-48 overflow-y-auto">
+      <div className="border rounded-lg p-2 bg-gray-50/50">
         {nodes.map((node) => renderNode(node, 0))}
       </div>
     </div>
   );
 }
 
-export function FeatureDetails() {
+export function ArtifactsPanel() {
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);
   const selectedFile = useStore((state) => state.selectedFile);
   const fileTree = useStore((state) => state.fileTree);
-  const setFileTree = useStore((state) => state.setFileTree);
   const selectFile = useStore((state) => state.selectFile);
   const refreshFileTree = useStore((state) => state.refreshFileTree);
-  
-  const [loading] = useState(false);
-  const [fileContent, setFileContent] = useState('');
-  const [editedContent, setEditedContent] = useState('');
-  const [hasChanges, setHasChanges] = useState(false);
-  const [saving, setSaving] = useState(false);
 
+  // Refresh file tree when project or feature changes
   useEffect(() => {
-    if (!selectedProject || !selectedFeature) {
-      setFileTree([]);
-      return;
+    if (selectedProject && selectedFeature) {
+      refreshFileTree();
     }
-
-    refreshFileTree();
-  }, [selectedProject, selectedFeature]);
-
-  useEffect(() => {
-    if (!selectedProject || !selectedFeature || !selectedFile) {
-      setFileContent('');
-      setEditedContent('');
-      setHasChanges(false);
-      return;
-    }
-
-    loadFileContent();
-  }, [selectedProject, selectedFeature, selectedFile]);
+  }, [selectedProject, selectedFeature, refreshFileTree]);
 
   const handleCreateFile = async (dirPath: string, fileName: string) => {
     if (!selectedProject || !selectedFeature) return;
@@ -271,7 +261,7 @@ export function FeatureDetails() {
     try {
       const fullPath = `${dirPath}/${fileName}`;
       await createFile(selectedProject, selectedFeature, fullPath, '');
-      await refreshFileTree(); // Refresh the tree
+      await refreshFileTree();
     } catch (error) {
       console.error('Failed to create file:', error);
       alert('Failed to create file');
@@ -284,7 +274,7 @@ export function FeatureDetails() {
     try {
       const fullPath = `${dirPath}/${dirName}`;
       await createDirectory(selectedProject, selectedFeature, fullPath);
-      await refreshFileTree(); // Refresh the tree
+      await refreshFileTree();
     } catch (error) {
       console.error('Failed to create directory:', error);
       alert('Failed to create directory');
@@ -296,13 +286,9 @@ export function FeatureDetails() {
     
     try {
       await deleteFileOrDirectory(selectedProject, selectedFeature, itemPath);
-      await refreshFileTree(); // Refresh the tree
-      // If the deleted item was selected, clear the selection
+      await refreshFileTree();
       if (selectedFile === itemPath) {
         selectFile('');
-        setFileContent('');
-        setEditedContent('');
-        setHasChanges(false);
       }
     } catch (error) {
       console.error('Failed to delete item:', error);
@@ -315,62 +301,16 @@ export function FeatureDetails() {
     
     try {
       await uploadFiles(selectedProject, selectedFeature, dirPath, files);
-      await refreshFileTree(); // Refresh the tree
+      await refreshFileTree();
     } catch (error) {
       console.error('Failed to upload files:', error);
       alert('Failed to upload files. Note: File upload is not fully implemented yet.');
     }
   };
 
-  const loadFileContent = async () => {
-    if (!selectedProject || !selectedFeature || !selectedFile) return;
-    
-    try {
-      const content = await fetchFileContent(selectedProject, selectedFeature, selectedFile);
-      setFileContent(content.content);
-      setEditedContent(content.content);
-      setHasChanges(false);
-    } catch (error) {
-      console.error('Failed to load file content:', error);
-    }
-  };
-
-  const handleSave = async () => {
-    if (!selectedProject || !selectedFeature || !selectedFile) return;
-    
-    try {
-      setSaving(true);
-      await saveFileContent(selectedProject, selectedFeature, selectedFile, editedContent);
-      setFileContent(editedContent);
-      setHasChanges(false);
-    } catch (error) {
-      console.error('Failed to save file:', error);
-      alert('Failed to save file');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleContentChange = (newContent: string) => {
-    setEditedContent(newContent);
-    setHasChanges(newContent !== fileContent);
-  };
-
+  // Don't show if no feature is selected
   if (!selectedProject || !selectedFeature) {
-    return (
-      <div className="space-y-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Feature Details</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-sm text-muted-foreground">
-              Select a project and feature to view details
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
+    return null;
   }
 
   // Separate inputs and outputs
@@ -378,90 +318,32 @@ export function FeatureDetails() {
   const outputsNodes = fileTree.find(node => node.name === 'outputs')?.children || [];
 
   return (
-    <div className="space-y-4">
-      {/* File Tree */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Package className="h-5 w-5" />
-            Artifacts
-          </CardTitle>
-          <div className="text-xs text-muted-foreground">
-            {selectedProject} / {selectedFeature}
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {loading ? (
-            <div className="text-sm text-muted-foreground">Loading...</div>
-          ) : (
-            <>
-              <DirectoryView
-                title="📝 Inputs"
-                nodes={inputsNodes}
-                onFileSelect={selectFile}
-                selectedFile={selectedFile}
-                onCreateFile={handleCreateFile}
-                onCreateDirectory={handleCreateDirectory}
-                onUploadFiles={handleUploadFiles}
-                onDelete={handleDelete}
-              />
-              <DirectoryView
-                title="📄 Outputs"
-                nodes={outputsNodes}
-                onFileSelect={selectFile}
-                selectedFile={selectedFile}
-                onCreateFile={handleCreateFile}
-                onCreateDirectory={handleCreateDirectory}
-                onUploadFiles={handleUploadFiles}
-                onDelete={handleDelete}
-              />
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* File Editor */}
-      {selectedFile && (
-        <Card className="flex-1">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-lg">File Editor</CardTitle>
-                <div className="text-xs text-muted-foreground mt-1">
-                  {selectedFile}
-                  {hasChanges && <span className="text-orange-500 ml-2">● Modified</span>}
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={loadFileContent}
-                  disabled={loading || saving || !hasChanges}
-                >
-                  Revert
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={handleSave}
-                  disabled={loading || saving || !hasChanges}
-                >
-                  {saving ? 'Saving...' : 'Save'}
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <textarea
-              value={editedContent}
-              onChange={(e) => handleContentChange(e.target.value)}
-              className="w-full h-64 p-3 font-mono text-sm border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary"
-              placeholder="File content..."
-              spellCheck={false}
-            />
-          </CardContent>
-        </Card>
-      )}
-    </div>
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">📦 Artifacts</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <DirectoryView
+          title="📝 Inputs"
+          nodes={inputsNodes}
+          onFileSelect={selectFile}
+          selectedFile={selectedFile}
+          onCreateFile={handleCreateFile}
+          onCreateDirectory={handleCreateDirectory}
+          onUploadFiles={handleUploadFiles}
+          onDelete={handleDelete}
+        />
+        <DirectoryView
+          title="📄 Outputs"
+          nodes={outputsNodes}
+          onFileSelect={selectFile}
+          selectedFile={selectedFile}
+          onCreateFile={handleCreateFile}
+          onCreateDirectory={handleCreateDirectory}
+          onUploadFiles={handleUploadFiles}
+          onDelete={handleDelete}
+        />
+      </CardContent>
+    </Card>
   );
 }

@@ -33,6 +33,7 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort {
   private tasks: Map<string, TaskStatus> = new Map();
   private logs: Map<string, LogEntry[]> = new Map();
   private logStreams: Map<string, Set<(log: LogEntry) => void>> = new Map();
+  private abortControllers: Map<string, AbortController> = new Map();
   
   constructor() {
     this.app = express();
@@ -115,6 +116,28 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort {
         res.status(500).json({ error: error.message });
       }
     });
+
+    // Delete a project
+    this.app.delete('/api/projects/:id', async (req: Request, res: Response) => {
+      try {
+        const projectId = req.params.id;
+        const projectPath = path.join(this.WORKSPACE_ROOT, projectId);
+        
+        // Check if project exists
+        try {
+          await fs.promises.access(projectPath);
+        } catch (error: any) {
+          return res.status(404).json({ error: 'Project not found' });
+        }
+        
+        // Delete project directory recursively
+        await fs.promises.rm(projectPath, { recursive: true, force: true });
+        
+        res.json({ success: true, message: `Project ${projectId} deleted` });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    });
     
     // Get session for a project
     this.app.get('/api/projects/:id/session', async (req: Request, res: Response) => {
@@ -190,6 +213,7 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort {
         // Create feature directory structure
         await fs.promises.mkdir(path.join(featurePath, 'inputs/directives/code'), { recursive: true });
         await fs.promises.mkdir(path.join(featurePath, 'inputs/directives/design'), { recursive: true });
+        await fs.promises.mkdir(path.join(featurePath, 'inputs/directives/learn'), { recursive: true });
         await fs.promises.mkdir(path.join(featurePath, 'inputs/sources'), { recursive: true });
         await fs.promises.mkdir(path.join(featurePath, 'outputs/design'), { recursive: true });
         await fs.promises.mkdir(path.join(featurePath, 'outputs/reports'), { recursive: true });
@@ -202,6 +226,23 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort {
         await fs.promises.writeFile(
           path.join(featurePath, 'inputs/directives/design/directive.md'),
           '# Design Directive\n\nDescribe the design requirements here.\n'
+        );
+        await fs.promises.writeFile(
+          path.join(featurePath, 'inputs/directives/learn/directive.md'),
+          '# Learn Directive\n\nDescribe what you want to learn here.\n'
+        );
+        
+        // Create empty session.json
+        const defaultSession = {
+          id: `session-${Date.now()}`,
+          featureName,
+          createdAt: new Date().toISOString(),
+          tasks: [],
+          status: "created"
+        };
+        await fs.promises.writeFile(
+          path.join(featurePath, 'outputs/session.json'),
+          JSON.stringify(defaultSession, null, 2)
         );
         
         res.json({ success: true, featureName, path: featurePath });
@@ -546,6 +587,33 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort {
         res.end();
       });
     });
+
+    // Abort/Stop task
+    this.app.post('/api/tasks/:taskId/stop', (req: Request, res: Response) => {
+      const taskId = req.params.taskId;
+      const abortController = this.abortControllers.get(taskId);
+      
+      if (!abortController) {
+        res.status(404).json({ error: 'Task not found or not running' });
+        return;
+      }
+      
+      // Abort the task
+      abortController.abort();
+      
+      // Update task status
+      const status = this.tasks.get(taskId);
+      if (status && status.status === 'running') {
+        status.status = 'failed';
+        status.completedAt = new Date().toISOString();
+        status.error = 'Task aborted by user';
+      }
+      
+      // Clean up
+      this.abortControllers.delete(taskId);
+      
+      res.json({ success: true, message: 'Task stopped' });
+    });
   }
   
   // TaskExecutionPort implementation
@@ -560,11 +628,15 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort {
     });
     this.logs.set(taskId, []);
     
+    // Create abort controller for this task
+    const abortController = new AbortController();
+    this.abortControllers.set(taskId, abortController);
+    
     // Start task execution (non-blocking)
-    this.runTask(taskId, params).catch(error => {
+    this.runTask(taskId, params, abortController.signal).catch(error => {
       console.error(`Task ${taskId} failed:`, error);
     });
-    
+
     return {
       taskId,
       success: true,
@@ -572,7 +644,7 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort {
     };
   }
   
-  private async runTask(taskId: string, params: ExecuteTaskParams): Promise<void> {
+  private async runTask(taskId: string, params: ExecuteTaskParams, abortSignal?: AbortSignal): Promise<void> {
     // Update status to running
     const status = this.tasks.get(taskId)!;
     status.status = 'running';
@@ -607,8 +679,18 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort {
     console.error = (...args: any[]) => captureLog('stderr', ...args);
     
     try {
+      // Check if task was aborted before starting
+      if (abortSignal?.aborted) {
+        throw new Error('Task was aborted before execution');
+      }
+      
       // Read input file
       const input = await fs.promises.readFile(params.inputFile, 'utf-8');
+      
+      // Check if task was aborted after reading input
+      if (abortSignal?.aborted) {
+        throw new Error('Task was aborted during input processing');
+      }
       
       // Execute via orchestrator (existing business logic)
       await orchestrator({
@@ -627,12 +709,19 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort {
       
       captureLog('stdout', '\n✅ Task completed successfully!');
     } catch (error: any) {
+      // Check if this was an abort
+      const isAborted = abortSignal?.aborted || error.message.includes('aborted');
+      
       // Mark as failed
       status.status = 'failed';
       status.completedAt = new Date().toISOString();
       status.error = error.message;
       
-      captureLog('stderr', `\n❌ Task failed: ${error.message}`);
+      if (isAborted) {
+        captureLog('stderr', '\n🛑 Task was stopped by user');
+      } else {
+        captureLog('stderr', `\n❌ Task failed: ${error.message}`);
+      }
     } finally {
       // Restore console
       console.log = originalLog;

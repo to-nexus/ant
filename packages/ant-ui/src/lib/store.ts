@@ -5,6 +5,7 @@ import { Feature, FileNode, FileContent } from '@/lib/api';
 import { subscribeToLogs } from '@/lib/api';
 
 interface StoreState {
+  projects: string[];
   selectedProject: string | undefined;
   selectedFeature: string | undefined;
   selectedFile: string | undefined;
@@ -19,11 +20,17 @@ interface StoreState {
 }
 
 interface StoreActions {
+  setProjects: (projects: string[]) => void;
+  fetchProjects: () => Promise<void>;
   selectProject: (projectId: string) => void;
+  setSelectedProject: (projectId: string | undefined) => void;
   selectFeature: (featureName: string) => void;
+  setSelectedFeature: (featureName: string | undefined) => void;
+  fetchFeatures: () => Promise<void>;
   selectFile: (filePath: string) => void;
   setFeatures: (features: Feature[]) => void;
   setFileTree: (tree: FileNode[]) => void;
+  refreshFileTree: () => Promise<void>;
   setFileContent: (content: FileContent | undefined) => void;
   setSession: (session: Session | undefined) => void;
   addLog: (log: LogEntry) => void;
@@ -40,6 +47,7 @@ type Store = StoreState & StoreActions;
 const MAX_LOGS = 500;
 
 export const useStore = create<Store>((set, get) => ({
+  projects: [],
   selectedProject: undefined,
   selectedFeature: undefined,
   selectedFile: undefined,
@@ -52,6 +60,21 @@ export const useStore = create<Store>((set, get) => ({
   activeTasks: new Map<string, EventSource>(),
   connectionStatus: 'disconnected',
 
+  setProjects: (projects: string[]) => {
+    set({ projects });
+  },
+
+  fetchProjects: async () => {
+    try {
+      const { listProjects } = await import('@/lib/projects');
+      const projectList = await listProjects();
+      set({ projects: projectList });
+    } catch (error) {
+      console.error('Failed to fetch projects:', error);
+      set({ projects: [] });
+    }
+  },
+
   selectProject: (projectId: string) => {
     set({ 
       selectedProject: projectId,
@@ -61,14 +84,64 @@ export const useStore = create<Store>((set, get) => ({
       fileTree: [],
       fileContent: undefined,
     });
+    // Auto-fetch features when project is selected
+    get().fetchFeatures();
+  },
+
+  setSelectedProject: (projectId: string | undefined) => {
+    if (!projectId) {
+      set({ 
+        selectedProject: undefined,
+        selectedFeature: undefined,
+        selectedFile: undefined,
+        features: [],
+        fileTree: [],
+        fileContent: undefined,
+      });
+    } else {
+      set({ 
+        selectedProject: projectId,
+        selectedFeature: undefined,
+        selectedFile: undefined,
+        features: [],
+        fileTree: [],
+        fileContent: undefined,
+      });
+      // Auto-fetch features when project is selected
+      get().fetchFeatures();
+    }
   },
 
   selectFeature: (featureName: string) => {
     set({ 
       selectedFeature: featureName,
       selectedFile: undefined,
+      fileTree: [],
       fileContent: undefined,
     });
+  },
+
+  setSelectedFeature: (featureName: string | undefined) => {
+    set({ 
+      selectedFeature: featureName,
+      selectedFile: undefined,
+      fileTree: [],
+      fileContent: undefined,
+    });
+  },
+
+  fetchFeatures: async () => {
+    const { selectedProject } = get();
+    if (!selectedProject) return;
+    
+    try {
+      const { fetchFeatures: apiFetchFeatures } = await import('@/lib/api');
+      const featureList = await apiFetchFeatures(selectedProject);
+      set({ features: featureList });
+    } catch (error) {
+      console.error('Failed to fetch features:', error);
+      set({ features: [] });
+    }
   },
 
   selectFile: (filePath: string) => {
@@ -81,6 +154,21 @@ export const useStore = create<Store>((set, get) => ({
 
   setFileTree: (tree: FileNode[]) => {
     set({ fileTree: tree });
+  },
+
+  refreshFileTree: async () => {
+    const state = get();
+    const { selectedProject, selectedFeature } = state;
+    
+    if (!selectedProject || !selectedFeature) return;
+    
+    try {
+      const { fetchFileTree } = await import('@/lib/api');
+      const tree = await fetchFileTree(selectedProject, selectedFeature);
+      set({ fileTree: tree });
+    } catch (error) {
+      console.error('Failed to refresh file tree:', error);
+    }
   },
 
   setFileContent: (content: FileContent | undefined) => {

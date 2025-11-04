@@ -1,24 +1,33 @@
 import { useState, useEffect } from 'react';
 import Header from './components/Header';
 import { ProjectDropdown } from './components/ProjectDropdown';
-import { FeatureList } from './components/FeatureList';
+import { FeatureDropdown } from './components/FeatureDropdown';
+import { ArtifactsPanel } from './components/ArtifactsPanel';
 import { TaskQueue } from './components/TaskQueue';
 import { TerminalOutput } from './components/TerminalOutput';
-import { FeatureDetails } from './components/FeatureDetails';
-import { listProjects } from './lib/projects';
+import { FileEditorPanel } from './components/FileEditorPanel';
 import { checkHealth } from './lib/api';
 import { executeCodeTask, TaskExecution } from './lib/cli';
 import { useStore } from './lib/store';
 
 function App() {
-  const [projects, setProjects] = useState<string[]>([]);
   const [currentTask, setCurrentTask] = useState<TaskExecution | null>(null);
+  const [isEditorOpen, setIsEditorOpen] = useState(true);
   const selectedProject = useStore((state) => state.selectedProject);
+  const selectedFile = useStore((state) => state.selectedFile);
   const isRunning = useStore((state) => state.isRunning);
-  const connectionStatus = useStore((state) => state.connectionStatus);
-  const selectProject = useStore((state) => state.selectProject);
   const setRunning = useStore((state) => state.setRunning);
   const setConnectionStatus = useStore((state) => state.setConnectionStatus);
+  const refreshFileTree = useStore((state) => state.refreshFileTree);
+  const fetchProjects = useStore((state) => state.fetchProjects);
+  const setProjects = useStore((state) => state.setProjects);
+
+  // Auto-open editor when a file is selected
+  useEffect(() => {
+    if (selectedFile) {
+      setIsEditorOpen(true);
+    }
+  }, [selectedFile]);
 
   useEffect(() => {
     async function checkConnectionAndLoadProjects() {
@@ -35,9 +44,7 @@ function App() {
         }
         
         console.log('[App] Health check passed, loading projects...');
-        const projectList = await listProjects();
-        console.log('[App] Projects loaded:', projectList);
-        setProjects(projectList);
+        await fetchProjects();
         setConnectionStatus('connected');
       } catch (error) {
         console.error('Failed to check health or load projects:', error);
@@ -47,20 +54,7 @@ function App() {
     }
 
     checkConnectionAndLoadProjects();
-  }, [setConnectionStatus]);
-
-  const loadProjects = async () => {
-    try {
-      const projectList = await listProjects();
-      setProjects(projectList);
-    } catch (error) {
-      console.error('Failed to load projects:', error);
-    }
-  };
-
-  const handleProjectSelect = (projectId: string) => {
-    selectProject(projectId);
-  };
+  }, [setConnectionStatus, fetchProjects, setProjects]);
 
   const handleRunTask = (agent: string, task: string) => {
     if (isRunning || !selectedProject) {
@@ -82,6 +76,8 @@ function App() {
       taskExecution.on('exit', (code: number | null, _signal: string | null) => {
         setRunning(false);
         setCurrentTask(null);
+        // Refresh file tree after task completion
+        refreshFileTree();
         if (code !== 0) {
           console.error(`Task execution failed with code: ${code}`);
         }
@@ -93,51 +89,60 @@ function App() {
     }
   };
 
-  const handleStopTask = () => {
+  const handleStopTask = async () => {
     if (currentTask) {
-      currentTask.kill();
-      setRunning(false);
-      setCurrentTask(null);
+      try {
+        await currentTask.kill();
+      } catch (error) {
+        console.error('Failed to stop task:', error);
+      } finally {
+        setRunning(false);
+        setCurrentTask(null);
+      }
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="h-screen bg-gray-50 flex flex-col">
       <Header onRunTask={handleRunTask} onStopTask={handleStopTask} isRunning={isRunning} />
       
-      {/* 3-column grid layout */}
-      <div className="flex-1 grid grid-cols-12 gap-0 pt-16">
-        {/* Left Column: Projects & Features */}
-        <aside className="col-span-3 bg-white border-r border-gray-200 overflow-y-auto p-4 space-y-4">
-          <ProjectDropdown
-            projects={projects}
-            selected={selectedProject}
-            onSelect={handleProjectSelect}
-            onProjectCreated={loadProjects}
-          />
-          <FeatureList />
+      {/* Flexible layout with fixed Explorer width */}
+      <div className="flex-1 flex gap-0 pt-16" style={{ height: '100vh' }}>
+        {/* Left Column: Explorer (Fixed width 320px) */}
+        <aside className="w-80 bg-white border-r border-gray-200 flex flex-col h-full">
+          <div className="sticky top-0 z-10 bg-white p-4 border-b border-gray-200 flex items-center justify-between h-14">
+            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Explorer</h2>
+            {selectedFile && (
+              <button
+                onClick={() => setIsEditorOpen(!isEditorOpen)}
+                className={`text-xs px-3 py-1.5 rounded transition-colors font-medium ${
+                  isEditorOpen 
+                    ? 'bg-blue-500 text-white hover:bg-blue-600' 
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+                title={isEditorOpen ? 'Hide Editor' : 'Show Editor'}
+              >
+                Editor
+              </button>
+            )}
+          </div>
+          <div className="flex-1 p-4 space-y-4 overflow-y-auto">
+            <ProjectDropdown />
+            <FeatureDropdown />
+            <ArtifactsPanel />
+          </div>
         </aside>
 
-        {/* Middle Column: Session & Task Queue & Terminal */}
-        <main className="col-span-6 bg-gray-50 overflow-y-auto p-4 space-y-4">
-          {connectionStatus !== 'connected' && connectionStatus !== 'disconnected' && (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-              <div className="flex items-center space-x-2">
-                <span className="text-yellow-600 font-medium">
-                  {connectionStatus === 'error' ? '⚠️ Connection Error' : '🔄 Connecting...'}
-                </span>
-              </div>
-            </div>
-          )}
-          
+        {/* File Editor (Fixed width 400px, next to Explorer) */}
+        {selectedFile && isEditorOpen && (
+          <FileEditorPanel onClose={() => setIsEditorOpen(false)} />
+        )}
+
+        {/* Main Column: Task Queue & Terminal (Flexible) */}
+        <main className="flex-1 bg-gray-50 overflow-y-auto p-4 space-y-4">
           <TaskQueue />
           <TerminalOutput />
         </main>
-
-        {/* Right Column: Feature Details */}
-        <aside className="col-span-3 bg-white border-l border-gray-200 overflow-y-auto p-4">
-          <FeatureDetails />
-        </aside>
       </div>
     </div>
   );
