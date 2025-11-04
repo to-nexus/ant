@@ -35,6 +35,25 @@ export interface TaskResult {
   data?: any;
 }
 
+export interface Feature {
+  name: string;
+  path: string;
+  createdAt?: string;
+}
+
+export interface FileNode {
+  name: string;
+  path: string;
+  type: 'file' | 'directory';
+  children?: FileNode[];
+}
+
+export interface FileContent {
+  path: string;
+  content: string;
+  mimeType?: string;
+}
+
 /**
  * Task Execution Port
  * 

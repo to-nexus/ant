@@ -14,7 +14,7 @@ import { ExpressServerAdapter } from "../periphery/adapters/http/ExpressServerAd
  * via CLI (src/index.ts) or HTTP (this file).
  */
 
-const DEFAULT_PORT = 3001;
+const DEFAULT_PORT = 4100;
 
 async function main() {
   const port = process.env.PORT ? parseInt(process.env.PORT) : DEFAULT_PORT;

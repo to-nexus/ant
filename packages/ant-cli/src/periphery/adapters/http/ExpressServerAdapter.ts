@@ -26,6 +26,9 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort {
   private server: any;
   private running: boolean = false;
   
+  // Workspace root path - relative to packages/ant-cli directory
+  private readonly WORKSPACE_ROOT = path.join(process.cwd(), '../../workspace');
+  
   // Task tracking
   private tasks: Map<string, TaskStatus> = new Map();
   private logs: Map<string, LogEntry[]> = new Map();
@@ -40,12 +43,6 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort {
   private setupMiddleware(): void {
     this.app.use(cors());
     this.app.use(express.json());
-    
-    // Request logging
-    this.app.use((req, _res, next) => {
-      console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
-      next();
-    });
   }
   
   private setupRoutes(): void {
@@ -57,20 +54,63 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort {
     // List projects
     this.app.get('/api/projects', async (_req: Request, res: Response) => {
       try {
-        const workspaceRoot = path.join(process.cwd(), 'workspace');
-        const projects = await fs.promises.readdir(workspaceRoot);
+        const projects = await fs.promises.readdir(this.WORKSPACE_ROOT);
         
         // Filter out hidden files and get only directories
         const projectDirs = await Promise.all(
           projects
             .filter(p => !p.startsWith('.'))
             .map(async (p) => {
-              const stat = await fs.promises.stat(path.join(workspaceRoot, p));
+              const stat = await fs.promises.stat(path.join(this.WORKSPACE_ROOT, p));
               return stat.isDirectory() ? p : null;
             })
         );
         
         res.json(projectDirs.filter(Boolean));
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // Create a new project
+    this.app.post('/api/projects', async (req: Request, res: Response) => {
+      try {
+        const { id } = req.body;
+        
+        if (!id || typeof id !== 'string') {
+          return res.status(400).json({ error: 'Project ID is required and must be a string' });
+        }
+
+        // Validate project ID (no special characters except hyphens and underscores)
+        if (!/^[a-zA-Z0-9_-]+$/.test(id)) {
+          return res.status(400).json({ error: 'Project ID can only contain letters, numbers, hyphens, and underscores' });
+        }
+        
+        const projectPath = path.join(this.WORKSPACE_ROOT, id);
+        
+        // Check if project already exists
+        try {
+          await fs.promises.access(projectPath);
+          return res.status(409).json({ error: 'Project already exists' });
+        } catch (error: any) {
+          // Project doesn't exist, which is what we want
+        }
+        
+        // Create project directory structure
+        await fs.promises.mkdir(projectPath, { recursive: true });
+        
+        // Create basic project structure
+        const configPath = path.join(projectPath, 'config.json');
+        const defaultConfig = {
+          name: id,
+          createdAt: new Date().toISOString(),
+          description: `Project ${id}`,
+          features: []
+        };
+        
+        await fs.promises.writeFile(configPath, JSON.stringify(defaultConfig, null, 2));
+        
+        res.json({ success: true, id });
       } catch (error: any) {
         res.status(500).json({ error: error.message });
       }
@@ -81,8 +121,7 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort {
       try {
         const projectId = req.params.id;
         const sessionPath = path.join(
-          process.cwd(),
-          'workspace',
+          this.WORKSPACE_ROOT,
           projectId,
           'skeleton/outputs/session.json'
         );
@@ -104,6 +143,332 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort {
       }
     });
     
+    // Get features for a project
+    this.app.get('/api/projects/:id/features', async (req: Request, res: Response) => {
+      try {
+        const projectId = req.params.id;
+        const projectPath = path.join(this.WORKSPACE_ROOT, projectId);
+        
+        // Check if project exists
+        const exists = await fs.promises.access(projectPath)
+          .then(() => true)
+          .catch(() => false);
+        
+        if (!exists) {
+          res.status(404).json({ error: 'Project not found' });
+          return;
+        }
+        
+        // List all directories in project (each is a feature)
+        const entries = await fs.promises.readdir(projectPath, { withFileTypes: true });
+        const features = entries
+          .filter(entry => entry.isDirectory())
+          .map(entry => ({
+            name: entry.name,
+            path: path.join(projectPath, entry.name)
+          }));
+        
+        res.json(features);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+    
+    // Create a new feature
+    this.app.post('/api/projects/:id/features', async (req: Request, res: Response) => {
+      try {
+        const projectId = req.params.id;
+        const { featureName } = req.body;
+        
+        if (!featureName) {
+          res.status(400).json({ error: 'featureName is required' });
+          return;
+        }
+        
+        const featurePath = path.join(this.WORKSPACE_ROOT, projectId, featureName);
+        
+        // Create feature directory structure
+        await fs.promises.mkdir(path.join(featurePath, 'inputs/directives/code'), { recursive: true });
+        await fs.promises.mkdir(path.join(featurePath, 'inputs/directives/design'), { recursive: true });
+        await fs.promises.mkdir(path.join(featurePath, 'inputs/sources'), { recursive: true });
+        await fs.promises.mkdir(path.join(featurePath, 'outputs/design'), { recursive: true });
+        await fs.promises.mkdir(path.join(featurePath, 'outputs/reports'), { recursive: true });
+        
+        // Create empty directive.md files
+        await fs.promises.writeFile(
+          path.join(featurePath, 'inputs/directives/code/directive.md'),
+          '# Code Directive\n\nDescribe what you want to build here.\n'
+        );
+        await fs.promises.writeFile(
+          path.join(featurePath, 'inputs/directives/design/directive.md'),
+          '# Design Directive\n\nDescribe the design requirements here.\n'
+        );
+        
+        res.json({ success: true, featureName, path: featurePath });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+    
+    // Delete a feature
+    this.app.delete('/api/projects/:id/features/:feature', async (req: Request, res: Response) => {
+      try {
+        const projectId = req.params.id;
+        const featureName = req.params.feature;
+        
+        const featurePath = path.join(this.WORKSPACE_ROOT, projectId, featureName);
+        
+        // Check if feature exists
+        const exists = await fs.promises.access(featurePath)
+          .then(() => true)
+          .catch(() => false);
+        
+        if (!exists) {
+          res.status(404).json({ error: 'Feature not found' });
+          return;
+        }
+        
+        // Delete feature directory recursively
+        await fs.promises.rm(featurePath, { recursive: true, force: true });
+        
+        res.json({ success: true, message: `Feature ${featureName} deleted` });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+    
+    // Get session for a specific feature
+    this.app.get('/api/projects/:id/features/:feature/session', async (req: Request, res: Response) => {
+      try {
+        const projectId = req.params.id;
+        const featureName = req.params.feature;
+        const sessionPath = path.join(
+          this.WORKSPACE_ROOT,
+          projectId,
+          featureName,
+          'outputs/session.json'
+        );
+        
+        // Check if session file exists
+        const exists = await fs.promises.access(sessionPath)
+          .then(() => true)
+          .catch(() => false);
+        
+        if (!exists) {
+          res.json(null);
+          return;
+        }
+        
+        try {
+          const sessionData = await fs.promises.readFile(sessionPath, 'utf-8');
+          const parsedData = JSON.parse(sessionData);
+          res.json(parsedData);
+        } catch (parseError) {
+          res.status(500).json({ error: 'Invalid JSON in session file' });
+        }
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+    
+    // Get file tree for a feature
+    this.app.get('/api/projects/:id/features/:feature/files', async (req: Request, res: Response) => {
+      try {
+        const projectId = req.params.id;
+        const featureName = req.params.feature;
+        const featurePath = path.join(this.WORKSPACE_ROOT, projectId, featureName);
+        
+        const buildFileTree = async (dirPath: string, relativePath: string = ''): Promise<any[]> => {
+          const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+          const nodes = await Promise.all(
+            entries.map(async (entry) => {
+              const fullPath = path.join(dirPath, entry.name);
+              const relPath = path.join(relativePath, entry.name);
+              
+              if (entry.isDirectory()) {
+                const children = await buildFileTree(fullPath, relPath);
+                return {
+                  name: entry.name,
+                  path: relPath,
+                  type: 'directory',
+                  children
+                };
+              } else {
+                return {
+                  name: entry.name,
+                  path: relPath,
+                  type: 'file'
+                };
+              }
+            })
+          );
+          return nodes;
+        };
+        
+        const tree = await buildFileTree(featurePath);
+        res.json(tree);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+    
+    // Get file content (using regex pattern for catch-all)
+    this.app.get(/^\/api\/projects\/([^\/]+)\/features\/([^\/]+)\/files\/(.+)$/, async (req: Request, res: Response) => {
+      try {
+        const projectId = req.params[0];
+        const featureName = req.params[1];
+        const filePath = req.params[2];
+        
+        if (!filePath) {
+          res.status(400).json({ error: 'File path is required' });
+          return;
+        }
+        
+        const fullPath = path.join(
+          this.WORKSPACE_ROOT,
+          projectId,
+          featureName,
+          filePath
+        );
+        
+        // Check if file exists
+        const exists = await fs.promises.access(fullPath)
+          .then(() => true)
+          .catch(() => false);
+        
+        if (!exists) {
+          res.status(404).json({ error: 'File not found' });
+          return;
+        }
+        
+        const stats = await fs.promises.stat(fullPath);
+        if (stats.isDirectory()) {
+          res.status(400).json({ error: 'Path is a directory, not a file' });
+          return;
+        }
+        
+        const content = await fs.promises.readFile(fullPath, 'utf-8');
+        res.json({ path: filePath, content });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+    
+    // Update file content (using regex pattern for catch-all)
+    this.app.put(/^\/api\/projects\/([^\/]+)\/features\/([^\/]+)\/files\/(.+)$/, async (req: Request, res: Response) => {
+      try {
+        const projectId = req.params[0];
+        const featureName = req.params[1];
+        const filePath = req.params[2];
+        const { content } = req.body;
+        
+        if (!filePath) {
+          res.status(400).json({ error: 'File path is required' });
+          return;
+        }
+        
+        if (content === undefined) {
+          res.status(400).json({ error: 'content is required' });
+          return;
+        }
+        
+        const fullPath = path.join(
+          this.WORKSPACE_ROOT,
+          projectId,
+          featureName,
+          filePath
+        );
+        
+        // Create directory if it doesn't exist
+        await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
+        
+        // Write file
+        await fs.promises.writeFile(fullPath, content, 'utf-8');
+        
+        res.json({ success: true, path: filePath });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // Upload files to a feature directory
+    this.app.post('/api/projects/:id/features/:feature/upload', async (req: Request, res: Response) => {
+      try {
+        const projectId = req.params.id;
+        const featureName = req.params.feature;
+        
+        // For now, this is a placeholder. In a real implementation, you would:
+        // 1. Use multer or similar middleware for file uploads
+        // 2. Process the files from req.files
+        // 3. Save them to the appropriate directory
+        
+        res.status(501).json({ 
+          error: 'File upload not yet implemented. Use file creation for text files.' 
+        });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // Create directory in a feature
+    this.app.post('/api/projects/:id/features/:feature/directory', async (req: Request, res: Response) => {
+      try {
+        const projectId = req.params.id;
+        const featureName = req.params.feature;
+        const { path: dirPath } = req.body;
+        
+        if (!dirPath) {
+          return res.status(400).json({ error: 'Directory path is required' });
+        }
+        
+        const projectPath = path.join(this.WORKSPACE_ROOT, projectId);
+        const fullPath = path.join(projectPath, dirPath);
+        
+        // Create directory recursively
+        await fs.promises.mkdir(fullPath, { recursive: true });
+        
+        res.json({ success: true, path: dirPath });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // Delete file or directory in a feature
+    this.app.delete('/api/projects/:id/features/:feature/item', async (req: Request, res: Response) => {
+      try {
+        const projectId = req.params.id;
+        const featureName = req.params.feature;
+        const { path: itemPath } = req.body;
+        
+        if (!itemPath) {
+          return res.status(400).json({ error: 'Item path is required' });
+        }
+        
+        // Build full path: workspace/project/feature/itemPath
+        const featurePath = path.join(this.WORKSPACE_ROOT, projectId, featureName);
+        const fullPath = path.join(featurePath, itemPath);
+        
+        // Check if path exists
+        const stats = await fs.promises.stat(fullPath);
+        
+        if (stats.isDirectory()) {
+          // Remove directory recursively
+          await fs.promises.rm(fullPath, { recursive: true, force: true });
+        } else {
+          // Remove file
+          await fs.promises.unlink(fullPath);
+        }
+        
+        res.json({ success: true, path: itemPath });
+      } catch (error: any) {
+        if (error.code === 'ENOENT') {
+          res.status(404).json({ error: 'File or directory not found' });
+        } else {
+          res.status(500).json({ error: error.message });
+        }
+      }
+    });
+    
     // Execute task
     this.app.post('/api/projects/:id/execute', async (req: Request, res: Response) => {
       try {
@@ -115,8 +480,7 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort {
           task,
           project: projectId,
           inputFile: path.join(
-            process.cwd(),
-            'workspace',
+            this.WORKSPACE_ROOT,
             projectId,
             'skeleton/inputs/directives/code/directive.md'
           ),
