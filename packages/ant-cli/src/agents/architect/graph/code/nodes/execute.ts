@@ -181,21 +181,55 @@ ${alreadyCreatedFiles.size > 0 ? Array.from(alreadyCreatedFiles).map(f => `  ✓
   
   console.log('\n💻 Generating code...\n');
   
-    if (llm.stream) {
+  // Track if we're inside a file block to suppress verbose output
+  let insideFileBlock = false;
+  let currentFilePath = '';
+  let accumulatedChunk = '';
+  
+  if (llm.stream) {
     // Use streaming if available
     for await (const chunk of llm.stream(promptMessages)) {
-      process.stdout.write(chunk);
-      // Force flush for real-time output
-      try {
-        // @ts-ignore - _handle is internal Node.js API
-        if (typeof process.stdout._handle?.flush === 'function') {
-          // @ts-ignore
-          process.stdout._handle.flush();
-        }
-      } catch {
-        // Ignore flush errors
+      // Accumulate chunks to detect file markers
+      accumulatedChunk += chunk;
+      
+      // Detect file start markers (common patterns in LLM responses)
+      const fileStartMatch = accumulatedChunk.match(/```(?:typescript|javascript|tsx|jsx|json|html|css|md|yaml|yml)\n.*?\/([^\n]+)\n/i);
+      if (fileStartMatch && !insideFileBlock) {
+        insideFileBlock = true;
+        currentFilePath = fileStartMatch[1];
+        process.stdout.write(`\n📝 Generating file: ${currentFilePath}...\n`);
+        accumulatedChunk = '';
       }
+      
+      // Detect file end marker
+      if (accumulatedChunk.includes('```') && insideFileBlock && accumulatedChunk.split('```').length > 2) {
+        insideFileBlock = false;
+        process.stdout.write(`✓ ${currentFilePath} complete\n`);
+        currentFilePath = '';
+        accumulatedChunk = '';
+      }
+      
+      // Only show non-file content (explanations, reasoning, etc.)
+      if (!insideFileBlock) {
+        process.stdout.write(chunk);
+        // Force flush for real-time output
+        try {
+          // @ts-ignore - _handle is internal Node.js API
+          if (typeof process.stdout._handle?.flush === 'function') {
+            // @ts-ignore
+            process.stdout._handle.flush();
+          }
+        } catch {
+          // Ignore flush errors
+        }
+      }
+      
       raw += chunk;
+      
+      // Keep only last 500 chars in accumulated chunk to detect markers
+      if (accumulatedChunk.length > 500) {
+        accumulatedChunk = accumulatedChunk.slice(-500);
+      }
     }
     console.log('\n');
   } else {

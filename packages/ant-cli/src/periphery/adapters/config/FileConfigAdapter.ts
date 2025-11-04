@@ -8,7 +8,9 @@ import { ConfigPort } from "../../../core/ports";
  */
 export class FileConfigAdapter implements ConfigPort {
   async load(project: string): Promise<any> {
-    const configPath = path.join(process.cwd(), "workspace", project, "config.json");
+    // workspace is at project root (../../workspace from packages/ant-cli)
+    const workspaceRoot = path.join(process.cwd(), "../../workspace");
+    const configPath = path.join(workspaceRoot, project, "config.json");
     if (!fs.existsSync(configPath)) {
       throw new Error(`No config.json for project: ${project}\nExpected at: ${configPath}`);
     }

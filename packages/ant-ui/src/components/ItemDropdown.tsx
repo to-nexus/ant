@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ChevronDown, LucideIcon } from 'lucide-react';
+import { ChevronDown, LucideIcon, Settings } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/ui/card';
 import { Button } from '@/ui/button';
 import { CreateItemForm } from './CreateItemForm';
@@ -22,6 +22,7 @@ interface ItemDropdownProps {
     onCancel: () => void;
     placeholder: string;
   }) => React.ReactNode;
+  onSettingsClick?: () => void;
 }
 
 export function ItemDropdown({
@@ -37,6 +38,7 @@ export function ItemDropdown({
   placeholder = 'Select an item...',
   inputPlaceholder = 'Item name...',
   renderCreateForm,
+  onSettingsClick,
 }: ItemDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -202,23 +204,40 @@ export function ItemDropdown({
         <div className="relative" ref={dropdownRef}>
           <Button
             variant="outline"
-            className="w-full justify-between"
+            className="w-full !justify-start text-left pr-10"
             onClick={() => setIsOpen(!isOpen)}
           >
             <span className="truncate">
               {selectedItem || placeholder}
             </span>
+          </Button>
+          
+          {/* Right side icons container */}
+          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 pointer-events-none">
+            {/* Settings button - only show when item is selected and callback is provided */}
+            {selectedItem && onSettingsClick && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSettingsClick();
+                }}
+                className="p-1 hover:bg-gray-100 rounded transition-colors pointer-events-auto"
+                title="Settings"
+              >
+                <Settings className="h-4 w-4 text-gray-600 hover:text-gray-800" />
+              </button>
+            )}
             <ChevronDown 
               className={`h-4 w-4 transition-transform ${isOpen ? 'transform rotate-180' : ''}`} 
             />
-          </Button>
+          </div>
           
           {isOpen && (
             <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-10 max-h-48 overflow-y-auto">
               {items.map((item) => (
                 <div
                   key={item.name}
-                  className={`flex items-center justify-between px-3 py-2 hover:bg-gray-50 transition-colors first:rounded-t-md last:rounded-b-md ${
+                  className={`flex items-center justify-between px-3 py-2 hover:bg-gray-50 transition-colors ${
                     selectedItem === item.name ? 'bg-primary-50 text-primary-600 font-medium' : 'text-gray-700'
                   }`}
                 >

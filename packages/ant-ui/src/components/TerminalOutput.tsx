@@ -64,14 +64,14 @@ export function TerminalOutput() {
   const getLogTypeColor = (type: string): string => {
     switch (type) {
       case 'error':
-        return 'text-red-400';
+        return 'text-red-600';
       case 'stderr':
-        return 'text-yellow-400';
+        return 'text-orange-600';
       case 'info':
-        return 'text-blue-400';
+        return 'text-blue-600';
       case 'stdout':
       default:
-        return 'text-green-400';
+        return 'text-gray-700';
     }
   };
 
@@ -111,19 +111,19 @@ export function TerminalOutput() {
       <CardContent className="p-0">
         <div
           ref={scrollRef}
-          className="bg-gray-900 text-green-400 font-mono overflow-y-auto p-4 rounded-b-lg border-l-4 border-green-500 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800"
+          className="bg-gray-50 text-gray-800 font-mono overflow-y-auto p-4 rounded-b-lg border-l-4 border-amber-400 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100"
           style={{ height: `${height}px` }}
         >
           {logs.length === 0 ? (
-            <div className="text-gray-500 text-center py-8">
+            <div className="text-gray-400 text-center py-8">
               <div className="text-2xl mb-2">📟</div>
               <div>No logs yet...</div>
               <div className="text-xs mt-1">Execute a task to see output here</div>
             </div>
           ) : (
             logs.map((log, index) => (
-              <div key={index} className="mb-1 leading-tight hover:bg-gray-800 px-1 py-0.5 rounded">
-                <span className="text-gray-500 text-xs">{formatTimestamp(log.timestamp)}</span>
+              <div key={index} className="mb-1 leading-tight hover:bg-gray-100 px-1 py-0.5 rounded">
+                <span className="text-gray-400 text-xs">{formatTimestamp(log.timestamp)}</span>
                 {' '}
                 <span className={`${getLogTypeColor(log.type)} text-xs font-bold`}>
                   {getLogTypeIndicator(log.type)}

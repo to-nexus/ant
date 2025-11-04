@@ -60,7 +60,8 @@ export async function orchestrator(params: {
       const promptPort = new FilePromptAdapter();
       const profilePort = new FileProfileAdapter();
       const chunk = new ChunkAdapter();
-      const workspaceRoot = path.join(process.cwd(), "workspace");
+      // workspace is at project root (../../workspace from packages/ant-cli)
+      const workspaceRoot = path.join(process.cwd(), "../../workspace");
       const session = new FileSessionAdapter(workspaceRoot);
 
       if (task === 'design') {

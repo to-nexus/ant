@@ -5,7 +5,8 @@ import * as path from "path";
  * Initialize a new workspace with boilerplate structure
  */
 export function initWorkspace(workspaceName: string): void {
-  const workspaceDir = path.join(process.cwd(), "workspace", workspaceName);
+  // workspace is at project root (../../workspace from packages/ant-cli)
+  const workspaceDir = path.join(process.cwd(), "../../workspace", workspaceName);
 
   if (fs.existsSync(workspaceDir)) {
     console.error(`❌ Workspace already exists: ${workspaceDir}`);
@@ -97,7 +98,8 @@ npm run dev architect code workspace/${workspaceName}/ui-1.0.0
  * Initialize a new feature in an existing workspace
  */
 export function initFeature(workspaceName: string, featureName: string): void {
-  const workspaceDir = path.join(process.cwd(), "workspace", workspaceName);
+  // workspace is at project root (../../workspace from packages/ant-cli)
+  const workspaceDir = path.join(process.cwd(), "../../workspace", workspaceName);
   const featureDir = path.join(workspaceDir, featureName);
 
   // Validate workspace exists

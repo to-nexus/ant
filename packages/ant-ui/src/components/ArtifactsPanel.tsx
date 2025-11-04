@@ -145,7 +145,7 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
                 }}
                 title={`Delete ${node.type}`}
               >
-                ❌
+                🗑️
               </Button>
             )}
           </div>

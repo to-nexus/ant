@@ -15,6 +15,7 @@ export interface TaskExecution {
   eventSource: EventSource;
   kill: (signal?: string) => Promise<boolean>;
   on: (event: 'exit', listener: (code: number | null, signal: string | null) => void) => TaskExecution;
+  onTaskIdReady?: (callback: (taskId: string) => void) => void;
 }
 
 export function executeCodeTask(options: ExecuteCodeTaskOptions = {}): TaskExecution {
@@ -31,6 +32,7 @@ export function executeCodeTask(options: ExecuteCodeTaskOptions = {}): TaskExecu
   let eventSource: EventSource | null = null;
   let taskId = '';
   let exitListener: ((code: number | null, signal: string | null) => void) | null = null;
+  let taskIdReadyCallback: ((taskId: string) => void) | null = null;
   
   const taskExecution: TaskExecution = {
     taskId: '',
@@ -60,6 +62,14 @@ export function executeCodeTask(options: ExecuteCodeTaskOptions = {}): TaskExecu
         exitListener = listener;
       }
       return taskExecution;
+    },
+    // Add method to set callback for when taskId is ready
+    onTaskIdReady: (callback: (taskId: string) => void) => {
+      taskIdReadyCallback = callback;
+      if (taskId) {
+        // If taskId is already available, call immediately
+        callback(taskId);
+      }
     }
   };
   
@@ -74,8 +84,33 @@ export function executeCodeTask(options: ExecuteCodeTaskOptions = {}): TaskExecu
       taskId = response.taskId;
       taskExecution.taskId = taskId;
       
+      // Notify that taskId is ready
+      if (taskIdReadyCallback) {
+        taskIdReadyCallback(taskId);
+      }
+      
       // SSE 연결 - 실제 작업 로그만 스트리밍
       eventSource = subscribeToLogs(taskId, (log) => {
+        // Check for completion markers
+        if (log.message === '__TASK_COMPLETED__') {
+          // Task completed successfully
+          eventSource?.close();
+          if (exitListener) {
+            exitListener(0, null);
+          }
+          return;
+        }
+        
+        if (log.message === '__TASK_FAILED__') {
+          // Task failed
+          eventSource?.close();
+          if (exitListener) {
+            exitListener(1, null);
+          }
+          return;
+        }
+        
+        // Normal log message
         store.addLog(log);
       });
       

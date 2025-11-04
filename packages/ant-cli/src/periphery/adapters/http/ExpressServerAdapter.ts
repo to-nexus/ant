@@ -1,5 +1,6 @@
 import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
+import { spawn, ChildProcess } from 'child_process';
 import { 
   HttpServerPort, 
   TaskExecutionPort, 
@@ -8,7 +9,6 @@ import {
   TaskStatus, 
   LogEntry 
 } from '../../../core/ports/http';
-import { orchestrator } from '../../../composition/orchestrator';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -33,7 +33,12 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort {
   private tasks: Map<string, TaskStatus> = new Map();
   private logs: Map<string, LogEntry[]> = new Map();
   private logStreams: Map<string, Set<(log: LogEntry) => void>> = new Map();
-  private abortControllers: Map<string, AbortController> = new Map();
+  private sseResponses: Map<string, Set<Response>> = new Map(); // Store SSE response objects
+  private childProcesses: Map<string, ChildProcess> = new Map();
+  
+  // Real-time queue tracking
+  private taskQueues: Map<string, any[]> = new Map();
+  private currentTasks: Map<string, any> = new Map();
   
   constructor() {
     this.app = express();
@@ -134,6 +139,61 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort {
         await fs.promises.rm(projectPath, { recursive: true, force: true });
         
         res.json({ success: true, message: `Project ${projectId} deleted` });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+    
+    // Get project config
+    this.app.get('/api/projects/:id/config', async (req: Request, res: Response) => {
+      try {
+        const projectId = req.params.id;
+        const configPath = path.join(this.WORKSPACE_ROOT, projectId, 'config.json');
+        
+        console.log('[API] GET /api/projects/:id/config');
+        console.log('  Project ID:', projectId);
+        console.log('  WORKSPACE_ROOT:', this.WORKSPACE_ROOT);
+        console.log('  Config path:', configPath);
+        
+        // Check if config exists
+        try {
+          await fs.promises.access(configPath);
+          console.log('  ✓ Config file exists');
+        } catch (error: any) {
+          console.log('  ✗ Config file not found');
+          return res.status(404).json({ error: 'Config file not found' });
+        }
+        
+        const configData = await fs.promises.readFile(configPath, 'utf-8');
+        const config = JSON.parse(configData);
+        console.log('  ✓ Config loaded successfully');
+        res.json(config);
+      } catch (error: any) {
+        console.error('  ✗ Error loading config:', error.message);
+        res.status(500).json({ error: error.message });
+      }
+    });
+    
+    // Update project config
+    this.app.put('/api/projects/:id/config', async (req: Request, res: Response) => {
+      try {
+        const projectId = req.params.id;
+        const configPath = path.join(this.WORKSPACE_ROOT, projectId, 'config.json');
+        const config = req.body;
+        
+        // Validate required fields
+        if (!config.projectName || !config.branchBase) {
+          return res.status(400).json({ error: 'Missing required fields: projectName, branchBase' });
+        }
+        
+        // Write config file
+        await fs.promises.writeFile(
+          configPath,
+          JSON.stringify(config, null, 2),
+          'utf-8'
+        );
+        
+        res.json({ success: true, message: 'Config updated successfully' });
       } catch (error: any) {
         res.status(500).json({ error: error.message });
       }
@@ -514,7 +574,7 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort {
     this.app.post('/api/projects/:id/execute', async (req: Request, res: Response) => {
       try {
         const projectId = req.params.id;
-        const { task, agent = 'architect', mode, enableEvaluation } = req.body;
+        const { task, agent = 'architect', enableEvaluation } = req.body;
         
         const params: ExecuteTaskParams = {
           agent: agent || 'architect',
@@ -525,7 +585,7 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort {
             projectId,
             'skeleton/inputs/directives/code/directive.md'
           ),
-          mode,
+          // mode is auto-inferred by architect, don't pass it
           enableEvaluation
         };
         
@@ -556,6 +616,20 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort {
       res.json(logs);
     });
     
+    // Get real-time queue status
+    this.app.get('/api/tasks/:taskId/queue', (req: Request, res: Response) => {
+      const taskId = req.params.taskId;
+      
+      const queue = this.taskQueues.get(taskId) || [];
+      const currentTask = this.currentTasks.get(taskId) || null;
+      
+      res.json({
+        currentTask,
+        queue,
+        totalRemaining: queue.length
+      });
+    });
+    
     // Stream logs (SSE)
     this.app.get('/api/tasks/:taskId/stream', (req: Request, res: Response) => {
       const taskId = req.params.taskId;
@@ -581,9 +655,16 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort {
       }
       this.logStreams.get(taskId)!.add(listener);
       
+      // Store SSE response for later closing
+      if (!this.sseResponses.has(taskId)) {
+        this.sseResponses.set(taskId, new Set());
+      }
+      this.sseResponses.get(taskId)!.add(res);
+      
       // Clean up on disconnect
       req.on('close', () => {
         this.logStreams.get(taskId)?.delete(listener);
+        this.sseResponses.get(taskId)?.delete(res);
         res.end();
       });
     });
@@ -591,26 +672,37 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort {
     // Abort/Stop task
     this.app.post('/api/tasks/:taskId/stop', (req: Request, res: Response) => {
       const taskId = req.params.taskId;
-      const abortController = this.abortControllers.get(taskId);
+      const childProcess = this.childProcesses.get(taskId);
       
-      if (!abortController) {
+      if (!childProcess) {
         res.status(404).json({ error: 'Task not found or not running' });
         return;
       }
       
-      // Abort the task
-      abortController.abort();
+      console.log(`[Server] Stopping task ${taskId}, PID: ${childProcess.pid}`);
+      
+      // Kill the process
+      childProcess.kill('SIGTERM');
       
       // Update task status
       const status = this.tasks.get(taskId);
       if (status && status.status === 'running') {
         status.status = 'failed';
         status.completedAt = new Date().toISOString();
-        status.error = 'Task aborted by user';
+        status.error = 'Task stopped by user';
+        
+        // Add log entry
+        const logEntry: LogEntry = {
+          type: 'stderr',
+          message: '\n🛑 Task stopped by user',
+          timestamp: new Date().toISOString()
+        };
+        this.logs.get(taskId)?.push(logEntry);
+        this.logStreams.get(taskId)?.forEach(listener => listener(logEntry));
       }
       
       // Clean up
-      this.abortControllers.delete(taskId);
+      this.childProcesses.delete(taskId);
       
       res.json({ success: true, message: 'Task stopped' });
     });
@@ -628,12 +720,8 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort {
     });
     this.logs.set(taskId, []);
     
-    // Create abort controller for this task
-    const abortController = new AbortController();
-    this.abortControllers.set(taskId, abortController);
-    
-    // Start task execution (non-blocking)
-    this.runTask(taskId, params, abortController.signal).catch(error => {
+    // Start task execution in child process (non-blocking)
+    this.runTask(taskId, params).catch(error => {
       console.error(`Task ${taskId} failed:`, error);
     });
 
@@ -644,88 +732,209 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort {
     };
   }
   
-  private async runTask(taskId: string, params: ExecuteTaskParams, abortSignal?: AbortSignal): Promise<void> {
+  private async runTask(taskId: string, params: ExecuteTaskParams): Promise<void> {
     // Update status to running
     const status = this.tasks.get(taskId)!;
     status.status = 'running';
     
-    // Hook console.log to capture logs
-    const originalLog = console.log;
-    const originalError = console.error;
-    
-    const captureLog = (type: 'stdout' | 'stderr', ...args: any[]) => {
-      const message = args.join(' ');
-      const logEntry: LogEntry = {
-        type,
-        message,
-        timestamp: new Date().toISOString()
-      };
-      
-      // Store log
-      this.logs.get(taskId)!.push(logEntry);
-      
-      // Notify listeners
-      this.logStreams.get(taskId)?.forEach(listener => listener(logEntry));
-      
-      // Also output to original console
-      if (type === 'stderr') {
-        originalError(...args);
-      } else {
-        originalLog(...args);
-      }
-    };
-    
-    console.log = (...args: any[]) => captureLog('stdout', ...args);
-    console.error = (...args: any[]) => captureLog('stderr', ...args);
-    
     try {
-      // Check if task was aborted before starting
-      if (abortSignal?.aborted) {
-        throw new Error('Task was aborted before execution');
+      // Build ant CLI command - use commander structure: aidev <agent> <task> <input>
+      const antCliSrc = path.join(process.cwd(), 'src/index.ts');
+      const args = [
+        antCliSrc,
+        params.agent,      // e.g., 'architect'
+        params.task        // e.g., 'code'
+      ];
+      
+      // Add input file as positional argument
+      if (params.inputFile) {
+        args.push(params.inputFile);
       }
       
-      // Read input file
-      const input = await fs.promises.readFile(params.inputFile, 'utf-8');
-      
-      // Check if task was aborted after reading input
-      if (abortSignal?.aborted) {
-        throw new Error('Task was aborted during input processing');
+      // Add options (only for tasks that support them)
+      // Mode is auto-inferred by architect, don't pass it unless explicitly needed
+      // Only 'code' task supports --mode option, but it's optional
+      if (params.mode && params.task === 'code') {
+        args.push('--mode', params.mode);
       }
       
-      // Execute via orchestrator (existing business logic)
-      await orchestrator({
-        agent: params.agent,
-        task: params.task,
-        input,
-        project: params.project,
-        inputFile: params.inputFile,
-        mode: params.mode,
-        enableEvaluation: params.enableEvaluation
+      if (params.project) {
+        args.push('--project', params.project);
+      }
+      
+      if (params.enableEvaluation && params.task === 'code') {
+        args.push('--eval');
+      }
+      
+      console.log(`[Server] Starting task ${taskId}: tsx ${args.join(' ')}`);
+      
+      // Spawn child process using tsx
+      const childProcess = spawn('npx', ['tsx', ...args], {
+        cwd: process.cwd(),
+        env: { ...process.env },
+        stdio: ['ignore', 'pipe', 'pipe']
       });
       
-      // Mark as completed
-      status.status = 'completed';
-      status.completedAt = new Date().toISOString();
+      this.childProcesses.set(taskId, childProcess);
       
-      captureLog('stdout', '\n✅ Task completed successfully!');
+      // Line buffering for stdout/stderr
+      let stdoutBuffer = '';
+      let stderrBuffer = '';
+      
+      const flushBuffer = (buffer: string, type: 'stdout' | 'stderr') => {
+        if (!buffer) return;
+        
+        // Parse queue information from stdout
+        if (type === 'stdout') {
+          this.parseQueueInfo(buffer, taskId);
+        }
+        
+        const logEntry: LogEntry = {
+          type,
+          message: buffer,
+          timestamp: new Date().toISOString()
+        };
+        
+        // Store log
+        this.logs.get(taskId)!.push(logEntry);
+        
+        // Notify listeners
+        this.logStreams.get(taskId)?.forEach(listener => listener(logEntry));
+        
+        // Also output to server console
+        if (type === 'stdout') {
+          process.stdout.write(buffer);
+        } else {
+          process.stderr.write(buffer);
+        }
+      };
+      
+      // Capture stdout with line buffering
+      childProcess.stdout?.on('data', (data: Buffer) => {
+        stdoutBuffer += data.toString();
+        
+        // Send complete lines
+        let newlineIndex;
+        while ((newlineIndex = stdoutBuffer.indexOf('\n')) !== -1) {
+          const line = stdoutBuffer.substring(0, newlineIndex + 1);
+          stdoutBuffer = stdoutBuffer.substring(newlineIndex + 1);
+          flushBuffer(line, 'stdout');
+        }
+      });
+      
+      // Capture stderr with line buffering
+      childProcess.stderr?.on('data', (data: Buffer) => {
+        stderrBuffer += data.toString();
+        
+        // Send complete lines
+        let newlineIndex;
+        while ((newlineIndex = stderrBuffer.indexOf('\n')) !== -1) {
+          const line = stderrBuffer.substring(0, newlineIndex + 1);
+          stderrBuffer = stderrBuffer.substring(newlineIndex + 1);
+          flushBuffer(line, 'stderr');
+        }
+      });
+      
+      // Wait for process to complete
+      await new Promise<void>((resolve, reject) => {
+        childProcess.on('exit', (code, signal) => {
+          this.childProcesses.delete(taskId);
+          
+          // Flush any remaining buffered output
+          if (stdoutBuffer) {
+            flushBuffer(stdoutBuffer, 'stdout');
+            stdoutBuffer = '';
+          }
+          if (stderrBuffer) {
+            flushBuffer(stderrBuffer, 'stderr');
+            stderrBuffer = '';
+          }
+          
+          if (code === 0) {
+            // Mark as completed
+            status.status = 'completed';
+            status.completedAt = new Date().toISOString();
+            
+            const logEntry: LogEntry = {
+              type: 'stdout',
+              message: '\n✅ Task completed successfully!',
+              timestamp: new Date().toISOString()
+            };
+            this.logs.get(taskId)!.push(logEntry);
+            this.logStreams.get(taskId)?.forEach(listener => listener(logEntry));
+            
+            // Send completion event and close stream
+            this.logStreams.get(taskId)?.forEach(listener => {
+              // Send a special completion marker
+              const completionMarker: LogEntry = {
+                type: 'stdout',
+                message: '__TASK_COMPLETED__',
+                timestamp: new Date().toISOString()
+              };
+              listener(completionMarker);
+            });
+            
+            // Close all SSE connections for this task
+            this.sseResponses.get(taskId)?.forEach(res => {
+              res.end();
+            });
+            this.sseResponses.delete(taskId);
+            
+            resolve();
+          } else {
+            // Mark as failed
+            status.status = 'failed';
+            status.completedAt = new Date().toISOString();
+            status.error = signal ? `Killed by ${signal}` : `Exit code: ${code}`;
+            
+            const logEntry: LogEntry = {
+              type: 'stderr',
+              message: signal 
+                ? `\n🛑 Task stopped by user (${signal})`
+                : `\n❌ Task failed with exit code ${code}`,
+              timestamp: new Date().toISOString()
+            };
+            this.logs.get(taskId)!.push(logEntry);
+            this.logStreams.get(taskId)?.forEach(listener => listener(logEntry));
+            
+            // Send failure event and close stream
+            this.logStreams.get(taskId)?.forEach(listener => {
+              const failureMarker: LogEntry = {
+                type: 'stderr',
+                message: '__TASK_FAILED__',
+                timestamp: new Date().toISOString()
+              };
+              listener(failureMarker);
+            });
+            
+            // Close all SSE connections for this task
+            this.sseResponses.get(taskId)?.forEach(res => {
+              res.end();
+            });
+            this.sseResponses.delete(taskId);
+            
+            reject(new Error(status.error));
+          }
+        });
+        
+        childProcess.on('error', (error) => {
+          this.childProcesses.delete(taskId);
+          reject(error);
+        });
+      });
     } catch (error: any) {
-      // Check if this was an abort
-      const isAborted = abortSignal?.aborted || error.message.includes('aborted');
-      
       // Mark as failed
       status.status = 'failed';
       status.completedAt = new Date().toISOString();
       status.error = error.message;
       
-      if (isAborted) {
-        captureLog('stderr', '\n🛑 Task was stopped by user');
-      } else {
-        captureLog('stderr', `\n❌ Task failed: ${error.message}`);
-      }
-    } finally {
-      // Restore console
-      console.log = originalLog;
-      console.error = originalError;
+      const logEntry: LogEntry = {
+        type: 'stderr',
+        message: `\n❌ Task failed: ${error.message}`,
+        timestamp: new Date().toISOString()
+      };
+      this.logs.get(taskId)!.push(logEntry);
+      this.logStreams.get(taskId)?.forEach(listener => listener(logEntry));
     }
   }
   
@@ -743,6 +952,57 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort {
     
     // For new logs, would need to implement a proper queue/event system
     // This is a simplified version
+  }
+  
+  /**
+   * Parse queue information from stdout lines
+   * Extracts current task and queue state from various log patterns
+   */
+  private parseQueueInfo(line: string, taskId: string): void {
+    // Pattern 1: "📋 Current Task: [name] (type: [type])"
+    const currentTaskMatch = line.match(/📋 Current Task:\s*(.+?)\s*\(type:\s*(\w+)\)/);
+    if (currentTaskMatch) {
+      const [, name, type] = currentTaskMatch;
+      this.currentTasks.set(taskId, {
+        name: name.trim(),
+        type: type.trim(),
+        status: 'running'
+      });
+      console.log(`[Queue Parse] Current task set: ${name.trim()} (${type.trim()})`);
+      return;
+    }
+    
+    // Pattern 2: "📋 Remaining tasks (N):"
+    const remainingTasksMatch = line.match(/📋 Remaining tasks \((\d+)\):/);
+    if (remainingTasksMatch) {
+      // Clear queue to rebuild from scratch
+      this.taskQueues.set(taskId, []);
+      console.log(`[Queue Parse] Starting queue rebuild, ${remainingTasksMatch[1]} tasks`);
+      return;
+    }
+    
+    // Pattern 3: "   N. [PN] task-name (type)" - queue items
+    const queueItemMatch = line.match(/^\s+\d+\.\s+\[P\d+\]\s+(.+?)\s+\((\w+)\)/);
+    if (queueItemMatch) {
+      const [, name, type] = queueItemMatch;
+      const currentQueue = this.taskQueues.get(taskId) || [];
+      currentQueue.push({
+        name: name.trim(),
+        type: type.trim(),
+        status: 'pending'
+      });
+      this.taskQueues.set(taskId, currentQueue);
+      console.log(`[Queue Parse] Added queue item: ${name.trim()} (${type.trim()})`);
+      return;
+    }
+    
+    // Pattern 4: "✅ Task queue is empty!"
+    if (line.includes('Task queue is empty')) {
+      this.taskQueues.set(taskId, []);
+      this.currentTasks.delete(taskId);
+      console.log(`[Queue Parse] Queue emptied`);
+      return;
+    }
   }
   
   getLogs(taskId: string): LogEntry[] {
