@@ -1,0 +1,6 @@
+cd packages/ant-ui
+pnpm build
+# Output: dist/ folder
+
+# Preview production build
+pnpm preview
