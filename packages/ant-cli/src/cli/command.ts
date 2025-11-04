@@ -106,7 +106,7 @@ async function runArchitect(task: 'design' | 'code' | 'learn', inputPath: string
     // Determine output directory for logs
     // resolvedFile is like: workspace/test-app/skeleton/inputs/directives/code/directive.md
     // We want: workspace/test-app/skeleton/outputs/reports
-    const featureDir = path.dirname(path.dirname(path.dirname(resolvedFile))); // Go up 3 levels
+    const featureDir = path.dirname(path.dirname(path.dirname(path.dirname(resolvedFile)))); // Go up 4 levels (from directive.md -> code -> directives -> inputs -> skeleton)
     const outputDir = path.join(featureDir, 'outputs', 'reports');
     
     // Start logging

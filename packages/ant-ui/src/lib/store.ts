@@ -15,8 +15,14 @@ interface StoreState {
   session: Session | undefined;
   logs: LogEntry[];
   isRunning: boolean;
+  currentTaskId: string | undefined;
   activeTasks: Map<string, EventSource>;
   connectionStatus: 'connected' | 'disconnected' | 'error';
+  showConfigEditor: boolean;
+  showFileEditor: boolean;
+  taskStartTime: number | undefined;
+  elapsedTime: number;
+  currentMode: 'generate' | 'refactor' | 'explain' | undefined;
 }
 
 interface StoreActions {
@@ -34,17 +40,45 @@ interface StoreActions {
   setFileContent: (content: FileContent | undefined) => void;
   setSession: (session: Session | undefined) => void;
   addLog: (log: LogEntry) => void;
-  setRunning: (isRunning: boolean) => void;
+  setRunning: (isRunning: boolean, taskId?: string, mode?: 'generate' | 'refactor' | 'explain') => void;
   clearLogs: () => void;
   reset: () => void;
   startLogStream: (taskId: string) => void;
   stopLogStream: (taskId: string) => void;
   setConnectionStatus: (status: 'connected' | 'disconnected' | 'error') => void;
+  setShowConfigEditor: (show: boolean) => void;
+  setShowFileEditor: (show: boolean) => void;
 }
 
 type Store = StoreState & StoreActions;
 
 const MAX_LOGS = 500;
+
+// LocalStorage keys
+const STORAGE_KEYS = {
+  RUNNING_TASK: 'ant-ui:running-task',
+  TASK_START_TIME: 'ant-ui:task-start-time',
+  TASK_MODE: 'ant-ui:task-mode',
+  SELECTED_PROJECT: 'ant-ui:selected-project',
+  SELECTED_FEATURE: 'ant-ui:selected-feature',
+};
+
+// Helper functions for localStorage
+const saveToStorage = (key: string, value: any) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (error) {
+    console.error('Failed to save to localStorage:', error);
+  }
+};
+
+const removeFromStorage = (key: string) => {
+  try {
+    localStorage.removeItem(key);
+  } catch (error) {
+    console.error('Failed to remove from localStorage:', error);
+  }
+};
 
 export const useStore = create<Store>((set, get) => ({
   projects: [],
@@ -57,8 +91,14 @@ export const useStore = create<Store>((set, get) => ({
   session: undefined,
   logs: [],
   isRunning: false,
+  currentTaskId: undefined,
   activeTasks: new Map<string, EventSource>(),
   connectionStatus: 'disconnected',
+  showConfigEditor: false,
+  showFileEditor: false,
+  taskStartTime: undefined,
+  elapsedTime: 0,
+  currentMode: undefined,
 
   setProjects: (projects: string[]) => {
     set({ projects });
@@ -84,6 +124,11 @@ export const useStore = create<Store>((set, get) => ({
       fileTree: [],
       fileContent: undefined,
     });
+    
+    // Save to localStorage
+    saveToStorage(STORAGE_KEYS.SELECTED_PROJECT, projectId);
+    removeFromStorage(STORAGE_KEYS.SELECTED_FEATURE); // Clear feature when project changes
+    
     // Auto-fetch features when project is selected
     get().fetchFeatures();
   },
@@ -119,6 +164,9 @@ export const useStore = create<Store>((set, get) => ({
       fileTree: [],
       fileContent: undefined,
     });
+    
+    // Save to localStorage
+    saveToStorage(STORAGE_KEYS.SELECTED_FEATURE, featureName);
   },
 
   setSelectedFeature: (featureName: string | undefined) => {
@@ -128,6 +176,33 @@ export const useStore = create<Store>((set, get) => ({
       fileTree: [],
       fileContent: undefined,
     });
+    
+    // Save to localStorage
+    if (featureName) {
+      saveToStorage(STORAGE_KEYS.SELECTED_FEATURE, featureName);
+    } else {
+      removeFromStorage(STORAGE_KEYS.SELECTED_FEATURE);
+    }
+    
+    // Load session.json when feature is selected
+    if (featureName) {
+      const { selectedProject } = get();
+      if (selectedProject) {
+        // Load session asynchronously
+        (async () => {
+          try {
+            const { fetchFeatureSession } = await import('@/lib/api');
+            const session = await fetchFeatureSession(selectedProject, featureName);
+            set({ session: session || undefined });
+          } catch (error) {
+            console.error('Failed to load session:', error);
+            set({ session: undefined });
+          }
+        })();
+      }
+    } else {
+      set({ session: undefined });
+    }
   },
 
   fetchFeatures: async () => {
@@ -194,8 +269,29 @@ export const useStore = create<Store>((set, get) => ({
     });
   },
 
-  setRunning: (isRunning: boolean) => {
-    set({ isRunning });
+  setRunning: (isRunning: boolean, taskId?: string, mode?: 'generate' | 'refactor' | 'explain') => {
+    const startTime = isRunning ? Date.now() : undefined;
+    
+    set({ 
+      isRunning,
+      currentTaskId: isRunning ? taskId : undefined,
+      taskStartTime: startTime,
+      elapsedTime: isRunning ? 0 : get().elapsedTime,
+      currentMode: isRunning ? mode : undefined
+    });
+
+    // Persist to localStorage
+    if (isRunning && taskId) {
+      saveToStorage(STORAGE_KEYS.RUNNING_TASK, taskId);
+      saveToStorage(STORAGE_KEYS.TASK_START_TIME, startTime);
+      if (mode) {
+        saveToStorage(STORAGE_KEYS.TASK_MODE, mode);
+      }
+    } else {
+      removeFromStorage(STORAGE_KEYS.RUNNING_TASK);
+      removeFromStorage(STORAGE_KEYS.TASK_START_TIME);
+      removeFromStorage(STORAGE_KEYS.TASK_MODE);
+    }
   },
 
   clearLogs: () => {
@@ -256,6 +352,14 @@ export const useStore = create<Store>((set, get) => ({
 
   setConnectionStatus: (status: 'connected' | 'disconnected' | 'error') => {
     set({ connectionStatus: status });
+  },
+
+  setShowConfigEditor: (show: boolean) => {
+    set({ showConfigEditor: show });
+  },
+
+  setShowFileEditor: (show: boolean) => {
+    set({ showFileEditor: show });
   },
 
   reset: () => {

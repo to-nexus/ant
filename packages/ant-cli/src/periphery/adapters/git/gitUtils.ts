@@ -9,19 +9,30 @@ const GIT_DEFAULT_OWNER = process.env.GIT_DEFAULT_OWNER;
 const GIT_DEFAULT_BASE = process.env.GIT_DEFAULT_BASE || "main";
 
 export async function loadProjectGitConfig(project: string) {
-  const configPath = path.join(process.cwd(), "workspace", project, "config.json");
-  if (!fs.existsSync(configPath)) throw new Error(`No config.json for project: ${project}`);
+  // workspace is at project root (../../workspace from packages/ant-cli)
+  const workspaceRoot = path.join(process.cwd(), "../../workspace");
+  const configPath = path.join(workspaceRoot, project, "config.json");
+  if (!fs.existsSync(configPath)) {
+    throw new Error(`No config.json for project: ${project}\nExpected at: ${configPath}`);
+  }
   return JSON.parse(fs.readFileSync(configPath, "utf8"));
 }
 
 /**
  * Resolve localPath to absolute path
  * - If absolute path: use as-is
+ * - If starts with ~: expand to home directory
  * - If relative path: resolve from ant project root (process.cwd())
  */
 export function resolveLocalPath(localPath: string, project: string): string {
   if (path.isAbsolute(localPath)) {
     return localPath;
+  }
+  
+  // Handle tilde (~) expansion
+  if (localPath.startsWith('~/')) {
+    const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+    return path.join(homeDir, localPath.slice(2));
   }
   
   // Relative path: resolve from ant project root

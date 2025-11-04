@@ -51,7 +51,7 @@ export async function generateQualityReport(
     const metrics = analyzeFiles(generatedFiles);
     
     // Load requirements (if available)
-    const requirements = await loadRequirements(state.context.project, gitPort);
+    const requirements = await loadRequirements(state.context.project, state.context.featureFolder, gitPort);
 
     // Generate recommendations
     const allRecommendations = new Set<string>();
@@ -72,14 +72,14 @@ export async function generateQualityReport(
     };
 
     // Save report
-    const reportPath = await saveReport(state.context.project, report, gitPort);
+    const reportPath = await saveReport(state.context.project, state.context.featureFolder, report, gitPort);
     console.log(`📄 Evaluation report saved: ${reportPath}`);
 
     // Print summary
     printSummary(report);
 
     // Check quality thresholds
-    await checkQualityThresholds(state.context.project, report, gitPort);
+    await checkQualityThresholds(state.context.project, state.context.featureFolder, report, gitPort);
 
     return report;
   } catch (error: any) {
@@ -91,9 +91,9 @@ export async function generateQualityReport(
 /**
  * Load requirements checklist from eval directive
  */
-async function loadRequirements(project: string, gitPort: GitPort): Promise<RequirementChecklistItem[] | undefined> {
+async function loadRequirements(project: string, featureFolder: string, gitPort: GitPort): Promise<RequirementChecklistItem[] | undefined> {
   try {
-    const testsPath = path.join('workspace', project, 'inputs/directives/eval/tests.json');
+    const testsPath = path.join('workspace', project, featureFolder, 'inputs/directives/eval/tests.json');
 
     const exists = await gitPort.fileExists(testsPath);
     if (!exists) {
@@ -121,8 +121,8 @@ async function loadRequirements(project: string, gitPort: GitPort): Promise<Requ
 /**
  * Save evaluation report
  */
-async function saveReport(project: string, report: EvaluationReport, gitPort: GitPort): Promise<string> {
-  const outputDir = path.join('workspace', project, 'outputs/eval');
+async function saveReport(project: string, featureFolder: string, report: EvaluationReport, gitPort: GitPort): Promise<string> {
+  const outputDir = path.join('workspace', project, featureFolder, 'outputs/eval');
   
   // Create directory if needed
   await gitPort.createDirectory(outputDir);
@@ -222,9 +222,9 @@ function printSummary(report: EvaluationReport): void {
 /**
  * Check quality thresholds
  */
-async function checkQualityThresholds(project: string, report: EvaluationReport, gitPort: GitPort): Promise<void> {
+async function checkQualityThresholds(project: string, featureFolder: string, report: EvaluationReport, gitPort: GitPort): Promise<void> {
   try {
-    const thresholdsPath = path.join('workspace', project, 'inputs/directives/eval/quality-thresholds.json');
+    const thresholdsPath = path.join('workspace', project, featureFolder, 'inputs/directives/eval/quality-thresholds.json');
 
     const exists = await gitPort.fileExists(thresholdsPath);
     if (!exists) {

@@ -1,5 +1,9 @@
 import { GitPort } from "../../../core/ports";
 import { getGitInstance, createBranch, getChangedFiles, getFileFromHead, resolveLocalPath } from "./gitUtils";
+import * as path from "path";
+
+// Workspace is at project root (../../workspace from packages/ant-cli)
+const WORKSPACE_ROOT = path.join(process.cwd(), "../../workspace");
 
 export class SimpleGitAdapter implements GitPort {
   private git: any;
@@ -53,9 +57,10 @@ export class SimpleGitAdapter implements GitPort {
     const fs = await import("fs");
     const p = await import("path");
     
-    // For workspace paths, write directly from process.cwd()
+    // For workspace paths, write to workspace root
     if (path.startsWith('workspace/')) {
-      const full = p.join(process.cwd(), path);
+      const relativePath = path.substring('workspace/'.length);
+      const full = p.join(WORKSPACE_ROOT, relativePath);
       fs.mkdirSync(p.dirname(full), { recursive: true });
       fs.writeFileSync(full, content, "utf8");
       return;
@@ -72,9 +77,10 @@ export class SimpleGitAdapter implements GitPort {
     const fs = await import("fs");
     const p = await import("path");
     
-    // For workspace paths, read directly from process.cwd()
+    // For workspace paths, read from workspace root
     if (path.startsWith('workspace/')) {
-      const full = p.join(process.cwd(), path);
+      const relativePath = path.substring('workspace/'.length);
+      const full = p.join(WORKSPACE_ROOT, relativePath);
       try {
         return fs.readFileSync(full, "utf8");
       } catch {
@@ -97,9 +103,10 @@ export class SimpleGitAdapter implements GitPort {
     const fs = await import("fs");
     const p = await import("path");
     
-    // For workspace paths, check directly from process.cwd()
+    // For workspace paths, check in workspace root
     if (path.startsWith('workspace/')) {
-      const full = p.join(process.cwd(), path);
+      const relativePath = path.substring('workspace/'.length);
+      const full = p.join(WORKSPACE_ROOT, relativePath);
       return fs.existsSync(full);
     }
     
@@ -114,9 +121,10 @@ export class SimpleGitAdapter implements GitPort {
     const fs = await import("fs");
     const p = await import("path");
     
-    // For workspace paths, read directly from process.cwd()
+    // For workspace paths, read from workspace root
     if (path.startsWith('workspace/')) {
-      const full = p.join(process.cwd(), path);
+      const relativePath = path.substring('workspace/'.length);
+      const full = p.join(WORKSPACE_ROOT, relativePath);
       try {
         const entries = fs.readdirSync(full, { withFileTypes: true });
         return entries.map(entry => ({
@@ -147,9 +155,10 @@ export class SimpleGitAdapter implements GitPort {
     const fs = await import("fs");
     const p = await import("path");
     
-    // For workspace paths, create directly from process.cwd()
+    // For workspace paths, create in workspace root
     if (path.startsWith('workspace/')) {
-      const full = p.join(process.cwd(), path);
+      const relativePath = path.substring('workspace/'.length);
+      const full = p.join(WORKSPACE_ROOT, relativePath);
       fs.mkdirSync(full, { recursive: true });
       return;
     }

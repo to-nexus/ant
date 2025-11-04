@@ -160,6 +160,9 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     console.log(`🚀 Starting task: "${nextTask.name}"`);
     console.log(`   Type: ${nextTask.type.toUpperCase()}`);
     console.log(`   Priority: P${nextTask.priority}\n`);
+    
+    // ✅ Output current task info for real-time tracking
+    console.log(`📋 Current Task: ${nextTask.name} (type: ${nextTask.type})`);
   }
   
   // ===== CHECK RETRY LIMIT (Priority Check) =====

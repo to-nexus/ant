@@ -197,6 +197,36 @@ export async function stopTask(taskId: string): Promise<void> {
   }
 }
 
+export interface QueueStatus {
+  currentTask: {
+    name: string;
+    type: string;
+    status: string;
+  } | null;
+  queue: Array<{
+    name: string;
+    type: string;
+    status: string;
+  }>;
+  totalRemaining: number;
+}
+
+export async function fetchQueueStatus(taskId: string): Promise<QueueStatus> {
+  try {
+    const response = await fetch(`${API_BASE}/tasks/${encodeURIComponent(taskId)}/queue`);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch queue status: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error fetching queue status:', error);
+    throw error;
+  }
+}
+
 export function subscribeToLogs(taskId: string, onLog: (log: LogEntry) => void): EventSource {
   const eventSource = new EventSource(`${API_BASE}/tasks/${encodeURIComponent(taskId)}/stream`);
   
@@ -484,6 +514,95 @@ export async function createDirectory(
     }
   } catch (error) {
     console.error('Error creating directory:', error);
+    throw error;
+  }
+}
+
+// Config types
+export interface ProjectConfig {
+  projectName: string;
+  repoType?: 'local' | 'github';
+  localPath?: string;
+  githubRepo?: string;
+  branchBase: string;
+  autoLearn: boolean;
+  strictValidation?: boolean;
+  llmProvider?: string;
+  llmModel?: string;
+}
+
+// Fetch project config
+export async function fetchProjectConfig(projectId: string): Promise<ProjectConfig | null> {
+  try {
+    const response = await fetch(
+      `${API_BASE}/projects/${encodeURIComponent(projectId)}/config`
+    );
+    
+    if (response.status === 404) {
+      return null; // Config doesn't exist
+    }
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch config: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching config:', error);
+    throw error;
+  }
+}
+
+// Create project config with defaults
+export async function createProjectConfig(projectId: string): Promise<ProjectConfig> {
+  const defaultConfig: ProjectConfig = {
+    projectName: projectId,
+    branchBase: 'main',
+    autoLearn: true,
+  };
+  
+  try {
+    const response = await fetch(
+      `${API_BASE}/projects/${encodeURIComponent(projectId)}/config`,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(defaultConfig),
+      }
+    );
+    
+    if (!response.ok) {
+      throw new Error(`Failed to create config: ${response.statusText}`);
+    }
+    
+    return defaultConfig;
+  } catch (error) {
+    console.error('Error creating config:', error);
+    throw error;
+  }
+}
+
+// Update project config
+export async function updateProjectConfig(projectId: string, config: ProjectConfig): Promise<void> {
+  try {
+    const response = await fetch(
+      `${API_BASE}/projects/${encodeURIComponent(projectId)}/config`,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(config),
+      }
+    );
+    
+    if (!response.ok) {
+      throw new Error(`Failed to update config: ${response.statusText}`);
+    }
+  } catch (error) {
+    console.error('Error updating config:', error);
     throw error;
   }
 }

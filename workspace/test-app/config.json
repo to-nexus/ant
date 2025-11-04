@@ -1,8 +1,7 @@
 {
   "projectName": "test-app",
-  "repoType": "local",
-  "localPath": "/Users/probe/dev/test-app",
   "branchBase": "main",
   "autoLearn": true,
-  "strictValidation": true
+  "repoType": "local",
+  "localPath": "~/dev/test-app"
 }

@@ -389,8 +389,10 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
 
             if (!buildResult.success) {
               result.passed = false;
-              // ✅ Build tools may output errors to stdout or stderr
-              const errorOutput = buildResult.stderr || buildResult.stdout;
+              // ✅ Build tools may output errors to stdout or stderr - combine both
+              const errorOutput = [buildResult.stderr, buildResult.stdout]
+                .filter(s => s && s.trim().length > 0)
+                .join('\n\n');
               
               // ✅ Use diagnostics system
               const diagnosis = diagnoseError(errorOutput, {
@@ -444,10 +446,20 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
               const parsedBuildErrors = buildParser.parse(errorOutput);
               result.buildErrors = buildParser.format(parsedBuildErrors);
               
+              // ⚠️ CRITICAL: If parser failed to extract errors, use raw output
+              if (result.buildErrors.length === 0 && errorOutput && errorOutput.trim().length > 0) {
+                console.warn('⚠️  Build error parser returned no errors, using raw output');
+                result.buildErrors = [errorOutput];
+              }
+              
               console.error('❌ Build failed:');
-              result.buildErrors!.slice(0, 10).forEach(err => console.error(`   ${err}`));
-              if (result.buildErrors!.length > 10) {
-                console.error(`   ... and ${result.buildErrors!.length - 10} more errors`);
+              if (result.buildErrors && result.buildErrors.length > 0) {
+                result.buildErrors!.slice(0, 10).forEach(err => console.error(`   ${err}`));
+                if (result.buildErrors!.length > 10) {
+                  console.error(`   ... and ${result.buildErrors!.length - 10} more errors`);
+                }
+              } else {
+                console.error('   (No specific error messages captured)');
               }
             } else {
               console.log('✅ Build passed');
@@ -490,6 +502,37 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
     
     // ✅ Convert diagnostics to structured violations
     const newViolations = convertDiagnosesToViolations(result);
+    
+    // ⚠️ CRITICAL SAFETY CHECK: If build/type/lint failed but no violations were created,
+    // add a generic violation to prevent silent failures
+    if (newViolations.length === 0) {
+      console.warn('⚠️  Validation failed but no violations were generated - adding generic violation');
+      
+      let errorMessage = 'Validation failed but specific errors could not be parsed';
+      const errorSources: string[] = [];
+      
+      if (result.buildErrors && result.buildErrors.length > 0) {
+        errorSources.push(`Build errors: ${result.buildErrors.length}`);
+      }
+      if (result.typeErrors && result.typeErrors.length > 0) {
+        errorSources.push(`Type errors: ${result.typeErrors.length}`);
+      }
+      if (result.lintErrors && result.lintErrors.length > 0) {
+        errorSources.push(`Lint errors: ${result.lintErrors.length}`);
+      }
+      
+      if (errorSources.length > 0) {
+        errorMessage = `Validation failed: ${errorSources.join(', ')}`;
+      }
+      
+      newViolations.push({
+        type: 'build_error',
+        severity: 'critical',
+        message: errorMessage,
+        suggestedFix: 'Review build output and fix configuration or code issues',
+        isRetryable: true
+      });
+    }
 
     return {
       ...state,

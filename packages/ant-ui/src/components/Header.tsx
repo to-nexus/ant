@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/ui/button';
-import { Play, Square, ChevronDown } from 'lucide-react';
+import { Play, Square } from 'lucide-react';
 import { ConnectionStatus } from './ConnectionStatus';
 import { useStore } from '@/lib/store';
 
@@ -12,6 +12,7 @@ export interface HeaderProps {
 
 export function Header({ onRunTask, onStopTask, isRunning }: HeaderProps) {
   const connectionStatus = useStore((state) => state.connectionStatus);
+  const isDisconnected = connectionStatus !== 'connected';
   const [selectedAgent, setSelectedAgent] = useState<'architect' | 'reviewer' | 'planner' | 'doc'>('architect');
   const [selectedTask, setSelectedTask] = useState<'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc'>('code');
   const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
@@ -79,7 +80,7 @@ export function Header({ onRunTask, onStopTask, isRunning }: HeaderProps) {
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-200 shadow-sm">
-      <div className="container mx-auto px-4 py-3">
+      <div className="px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <h1 className="text-xl font-semibold text-gray-900">ANT Workspace</h1>
@@ -88,19 +89,18 @@ export function Header({ onRunTask, onStopTask, isRunning }: HeaderProps) {
           <div className="flex items-center space-x-3">
             <ConnectionStatus status={connectionStatus} />
             
+            <div className="w-px h-6 bg-gray-300"></div>
+            
             {/* Agent Selection */}
             <div className="flex items-center space-x-2">
               <label className="text-sm font-medium text-gray-700">Agent</label>
               <div ref={agentRef} className="relative">
                 <button
-                  onClick={() => !isRunning && setAgentDropdownOpen(!agentDropdownOpen)}
-                  disabled={isRunning}
-                  className="px-3 py-1.5 border border-gray-300 rounded-md text-sm bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 min-w-[100px]"
+                  onClick={() => !isRunning && !isDisconnected && setAgentDropdownOpen(!agentDropdownOpen)}
+                  disabled={isRunning || isDisconnected}
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm font-medium bg-gray-100 hover:bg-gray-200 active:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow min-w-[100px]"
                 >
-                  <span className="flex-1 text-left">
-                    {agents.find(a => a.value === selectedAgent)?.label}
-                  </span>
-                  <ChevronDown className="w-4 h-4" />
+                  {agents.find(a => a.value === selectedAgent)?.label}
                 </button>
                 {agentDropdownOpen && (
                   <div className="absolute top-full mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg z-50">
@@ -125,14 +125,11 @@ export function Header({ onRunTask, onStopTask, isRunning }: HeaderProps) {
               <label className="text-sm font-medium text-gray-700">Task</label>
               <div ref={taskRef} className="relative">
                 <button
-                  onClick={() => !isRunning && setTaskDropdownOpen(!taskDropdownOpen)}
-                  disabled={isRunning}
-                  className="px-3 py-1.5 border border-gray-300 rounded-md text-sm bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 min-w-[100px]"
+                  onClick={() => !isRunning && !isDisconnected && setTaskDropdownOpen(!taskDropdownOpen)}
+                  disabled={isRunning || isDisconnected}
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm font-medium bg-gray-100 hover:bg-gray-200 active:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow min-w-[100px]"
                 >
-                  <span className="flex-1 text-left">
-                    {tasks[selectedAgent]?.find(t => t.value === selectedTask)?.label}
-                  </span>
-                  <ChevronDown className="w-4 h-4" />
+                  {tasks[selectedAgent]?.find(t => t.value === selectedTask)?.label}
                 </button>
                 {taskDropdownOpen && (
                   <div className="absolute top-full mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg z-50">
@@ -154,7 +151,7 @@ export function Header({ onRunTask, onStopTask, isRunning }: HeaderProps) {
             
             <Button
               onClick={handleRun}
-              disabled={isRunning}
+              disabled={isRunning || isDisconnected}
               variant="default"
               size="default"
               className="flex items-center space-x-2"
@@ -165,7 +162,7 @@ export function Header({ onRunTask, onStopTask, isRunning }: HeaderProps) {
             
             <Button
               onClick={onStopTask}
-              disabled={!isRunning}
+              disabled={!isRunning || isDisconnected}
               variant="outline"
               size="default"
               className="flex items-center space-x-2"
