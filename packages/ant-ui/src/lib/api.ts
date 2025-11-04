@@ -108,6 +108,23 @@ export async function createProject(projectId: string): Promise<void> {
   }
 }
 
+export async function deleteProject(projectId: string): Promise<void> {
+  try {
+    const url = `${API_BASE}/projects/${encodeURIComponent(projectId)}`;
+    const response = await fetch(url, {
+      method: 'DELETE',
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || `Failed to delete project: ${response.statusText}`);
+    }
+  } catch (error) {
+    console.error('Error deleting project:', error);
+    throw error;
+  }
+}
+
 export async function fetchSession(projectId: string): Promise<Session | null> {
   try {
     const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/session`);
@@ -155,6 +172,27 @@ export async function executeTask(params: ExecuteTaskParams): Promise<{ taskId: 
     return data;
   } catch (error) {
     console.error('Error executing task:', error);
+    throw error;
+  }
+}
+
+export async function stopTask(taskId: string): Promise<void> {
+  try {
+    const response = await fetch(`${API_BASE}/tasks/${encodeURIComponent(taskId)}/stop`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to stop task: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error stopping task:', error);
     throw error;
   }
 }

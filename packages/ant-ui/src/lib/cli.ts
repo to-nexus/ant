@@ -1,4 +1,4 @@
-import { executeTask, subscribeToLogs } from '@/lib/api';
+import { executeTask, subscribeToLogs, stopTask } from '@/lib/api';
 import { useStore } from '@/lib/store';
 
 export interface ExecuteCodeTaskOptions {
@@ -13,7 +13,7 @@ export interface ExecuteCodeTaskOptions {
 export interface TaskExecution {
   taskId: string;
   eventSource: EventSource;
-  kill: (signal?: string) => boolean;
+  kill: (signal?: string) => Promise<boolean>;
   on: (event: 'exit', listener: (code: number | null, signal: string | null) => void) => TaskExecution;
 }
 
@@ -35,12 +35,22 @@ export function executeCodeTask(options: ExecuteCodeTaskOptions = {}): TaskExecu
   const taskExecution: TaskExecution = {
     taskId: '',
     eventSource: null as unknown as EventSource,
-    kill: (_signal?: string) => {
-      if (eventSource) {
-        eventSource.close();
-        
-        if (exitListener) {
-          exitListener(0, null);
+    kill: async (_signal?: string) => {
+      try {
+        // Stop the task on the server first
+        if (taskId) {
+          await stopTask(taskId);
+        }
+      } catch (error) {
+        console.error('Error stopping task on server:', error);
+      } finally {
+        // Always close the event source and notify listener
+        if (eventSource) {
+          eventSource.close();
+          
+          if (exitListener) {
+            exitListener(0, 'SIGTERM');
+          }
         }
       }
       return true;
