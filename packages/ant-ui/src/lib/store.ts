@@ -143,6 +143,8 @@ export const useStore = create<Store>((set, get) => ({
         fileTree: [],
         fileContent: undefined,
       });
+      removeFromStorage(STORAGE_KEYS.SELECTED_PROJECT);
+      removeFromStorage(STORAGE_KEYS.SELECTED_FEATURE);
     } else {
       set({ 
         selectedProject: projectId,
@@ -152,6 +154,8 @@ export const useStore = create<Store>((set, get) => ({
         fileTree: [],
         fileContent: undefined,
       });
+      saveToStorage(STORAGE_KEYS.SELECTED_PROJECT, projectId);
+      removeFromStorage(STORAGE_KEYS.SELECTED_FEATURE);
       // Auto-fetch features when project is selected
       get().fetchFeatures();
     }
