@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '@/lib/store';
-import { Card, CardHeader, CardTitle, CardContent } from '@/ui/card';
+import { ChevronUp, ChevronDown, X } from 'lucide-react';
 
-export function TerminalOutput() {
+/**
+ * TerminalFooter - Expandable terminal output footer
+ */
+export function TerminalFooter() {
   const logs = useStore((state) => state.logs);
   const clearLogs = useStore((state) => state.clearLogs);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [height, setHeight] = useState(350); // Increased default height
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [height, setHeight] = useState(400);
   const [isResizing, setIsResizing] = useState(false);
 
   useEffect(() => {
@@ -15,12 +19,16 @@ export function TerminalOutput() {
     }
   }, [logs]);
 
-  // Handle mouse resize
+  // ✅ REMOVED: Auto-expand when logs arrive
+  // Users should manually expand/collapse terminal to keep their preferred state
+
+  // Handle mouse resize when expanded
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizing) return;
+      if (!isResizing || !isExpanded) return;
       
-      const newHeight = Math.max(150, Math.min(1000, height + e.movementY));
+      // Resize from top (inverted movement)
+      const newHeight = Math.max(200, Math.min(800, height - e.movementY));
       setHeight(newHeight);
     };
 
@@ -44,7 +52,7 @@ export function TerminalOutput() {
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
-  }, [isResizing, height]);
+  }, [isResizing, height, isExpanded]);
 
   const getLogTypeIndicator = (type: string): string => {
     switch (type) {
@@ -90,64 +98,79 @@ export function TerminalOutput() {
   };
 
   return (
-    <Card className="relative">
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between">
-          <span>🖥️ Terminal Output</span>
-          <div className="flex items-center gap-2">
+    <div className="relative bg-white border-t-2 border-gray-300 shadow-lg shrink-0">
+      {/* Resize handle (only when expanded) */}
+      {isExpanded && (
+        <div
+          className={`h-1 bg-gradient-to-r from-blue-200 to-blue-300 hover:from-blue-400 hover:to-blue-500 cursor-ns-resize transition-all duration-200 ${
+            isResizing ? 'from-blue-500 to-blue-600' : ''
+          }`}
+          onMouseDown={() => setIsResizing(true)}
+          title="Drag to resize terminal height"
+        />
+      )}
+      
+      {/* Header Bar (Always Visible) */}
+      <div className="bg-gray-50 border-b border-gray-200 px-4 py-2 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
+          >
+            {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+            <span>🖥️ Terminal Output</span>
+          </button>
+          <span className="text-xs text-gray-500 bg-gray-200 px-2 py-0.5 rounded-full">
+            {logs.length > 500 ? '500+' : logs.length} logs
+          </span>
+          {isExpanded && (
+            <span className="text-xs text-gray-400">
+              {height}px
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {logs.length > 0 && (
             <button
               onClick={clearLogs}
-              className="text-xs px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+              className="text-xs px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 transition-colors flex items-center gap-1"
               title="Clear all logs"
             >
+              <X className="w-3 h-3" />
               Clear
             </button>
-            <span className="text-xs text-gray-500">
-              Height: {height}px | Logs: {logs.length}
-            </span>
-          </div>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="p-0">
+          )}
+        </div>
+      </div>
+
+      {/* Terminal Content (Expandable) - Light Mode */}
+      {isExpanded && (
         <div
           ref={scrollRef}
-          className="bg-gray-50 text-gray-800 font-mono overflow-y-auto p-4 rounded-b-lg border-l-4 border-amber-400 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100"
+          className="bg-gray-50 text-gray-900 font-mono text-sm overflow-y-auto p-4 border-t border-gray-200"
           style={{ height: `${height}px` }}
         >
           {logs.length === 0 ? (
-            <div className="text-gray-400 text-center py-8">
+            <div className="text-gray-500 text-center py-8">
               <div className="text-2xl mb-2">📟</div>
               <div>No logs yet...</div>
               <div className="text-xs mt-1">Execute a task to see output here</div>
             </div>
           ) : (
             logs.map((log, index) => (
-              <div key={index} className="mb-1 leading-tight hover:bg-gray-100 px-1 py-0.5 rounded">
+              <div key={index} className="mb-1 leading-relaxed hover:bg-gray-100 px-2 py-1 rounded">
                 <span className="text-gray-400 text-xs">{formatTimestamp(log.timestamp)}</span>
                 {' '}
                 <span className={`${getLogTypeColor(log.type)} text-xs font-bold`}>
                   {getLogTypeIndicator(log.type)}
                 </span>
                 {' '}
-                <span className={getLogTypeColor(log.type)}>{log.message}</span>
+                <span className="text-gray-800">{log.message}</span>
               </div>
             ))
           )}
         </div>
-        
-        {/* Resize handle */}
-        <div
-          className={`h-3 bg-gradient-to-r from-gray-200 to-gray-300 hover:from-blue-300 hover:to-blue-400 cursor-ns-resize transition-all duration-200 ${
-            isResizing ? 'from-blue-400 to-blue-500' : ''
-          }`}
-          onMouseDown={() => setIsResizing(true)}
-          title="Drag to resize terminal height"
-        >
-          <div className="h-full flex items-center justify-center">
-            <div className="w-12 h-1 bg-gray-500 rounded-full opacity-60"></div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+      )}
+    </div>
   );
 }

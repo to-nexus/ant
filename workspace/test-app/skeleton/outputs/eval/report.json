@@ -1,0 +1,38 @@
+{
+  "timestamp": "2025-11-04T10:00:45.346Z",
+  "filesGenerated": 2,
+  "totalLines": 127,
+  "metrics": {
+    "totalFiles": 2,
+    "totalLines": 127,
+    "avgComplexity": 6,
+    "avgMaintainability": 20.6,
+    "fileMetrics": [
+      {
+        "path": "src/components/TaskFilter.tsx",
+        "metrics": {
+          "linesOfCode": 32,
+          "logicalLines": 29,
+          "complexity": 2,
+          "maintainabilityIndex": 16.6,
+          "commentDensity": 0
+        }
+      },
+      {
+        "path": "src/App.tsx",
+        "metrics": {
+          "linesOfCode": 95,
+          "logicalLines": 81,
+          "complexity": 10,
+          "maintainabilityIndex": 24.5,
+          "commentDensity": 0
+        }
+      }
+    ]
+  },
+  "quality": "poor",
+  "recommendations": [
+    "코드 유지보수성 개선 필요: 함수를 더 작은 단위로 분리하세요",
+    "주석이 부족합니다: 복잡한 로직에 설명을 추가하세요"
+  ]
+}

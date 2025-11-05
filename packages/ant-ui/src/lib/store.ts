@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import { Session } from '@/types/session';
 import { LogEntry } from '@/types/log';
-import { Feature, FileNode, FileContent } from '@/lib/api';
+import { Feature, FileNode, FileContent, DevServerStatus } from '@/lib/api';
 import { subscribeToLogs } from '@/lib/api';
+import { TaskExecution } from '@/lib/cli';
 
 interface StoreState {
   projects: string[];
@@ -16,6 +17,7 @@ interface StoreState {
   logs: LogEntry[];
   isRunning: boolean;
   currentTaskId: string | undefined;
+  currentTask: TaskExecution | null;
   activeTasks: Map<string, EventSource>;
   connectionStatus: 'connected' | 'disconnected' | 'error';
   showConfigEditor: boolean;
@@ -23,6 +25,7 @@ interface StoreState {
   taskStartTime: number | undefined;
   elapsedTime: number;
   currentMode: 'generate' | 'refactor' | 'explain' | undefined;
+  devServerStatus: DevServerStatus | undefined;
 }
 
 interface StoreActions {
@@ -41,6 +44,7 @@ interface StoreActions {
   setSession: (session: Session | undefined) => void;
   addLog: (log: LogEntry) => void;
   setRunning: (isRunning: boolean, taskId?: string, mode?: 'generate' | 'refactor' | 'explain') => void;
+  setCurrentTask: (task: TaskExecution | null) => void;
   clearLogs: () => void;
   reset: () => void;
   startLogStream: (taskId: string) => void;
@@ -48,6 +52,8 @@ interface StoreActions {
   setConnectionStatus: (status: 'connected' | 'disconnected' | 'error') => void;
   setShowConfigEditor: (show: boolean) => void;
   setShowFileEditor: (show: boolean) => void;
+  setDevServerStatus: (status: DevServerStatus | undefined) => void;
+  refreshDevServerStatus: () => Promise<void>;
 }
 
 type Store = StoreState & StoreActions;
@@ -92,6 +98,7 @@ export const useStore = create<Store>((set, get) => ({
   logs: [],
   isRunning: false,
   currentTaskId: undefined,
+  currentTask: null,
   activeTasks: new Map<string, EventSource>(),
   connectionStatus: 'disconnected',
   showConfigEditor: false,
@@ -99,6 +106,7 @@ export const useStore = create<Store>((set, get) => ({
   taskStartTime: undefined,
   elapsedTime: 0,
   currentMode: undefined,
+  devServerStatus: undefined,
 
   setProjects: (projects: string[]) => {
     set({ projects });
@@ -298,6 +306,10 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
+  setCurrentTask: (task: TaskExecution | null) => {
+    set({ currentTask: task });
+  },
+
   clearLogs: () => {
     set({ logs: [] });
   },
@@ -364,6 +376,24 @@ export const useStore = create<Store>((set, get) => ({
 
   setShowFileEditor: (show: boolean) => {
     set({ showFileEditor: show });
+  },
+
+  setDevServerStatus: (status: DevServerStatus | undefined) => {
+    set({ devServerStatus: status });
+  },
+
+  refreshDevServerStatus: async () => {
+    const { selectedProject } = get();
+    if (!selectedProject) return;
+    
+    try {
+      const { getDevServerStatus } = await import('@/lib/api');
+      const status = await getDevServerStatus(selectedProject);
+      set({ devServerStatus: status });
+    } catch (error) {
+      console.error('Failed to refresh dev server status:', error);
+      set({ devServerStatus: undefined });
+    }
   },
 
   reset: () => {

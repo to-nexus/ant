@@ -149,7 +149,8 @@ export interface SessionState {
   // Task Queue State
   taskQueue?: any[];              // Remaining tasks (Task[] from state.ts)
   currentTask?: any;              // Currently executing task (Task from state.ts)
-  completedTasks?: string[];      // IDs of completed tasks
+  completedTasks?: string[];      // IDs of completed tasks (for backward compatibility)
+  completedTasksDetails?: any[];  // ✅ NEW: Full task objects of completed tasks
   
   // Retry State
   retries?: number;               // Current retry count
@@ -166,6 +167,14 @@ export interface SessionState {
   
   // Execution Context (for resume optimization)
   planText?: string;              // ✅ Cached plan to skip LLM call on resume
+  
+  // Pause State (for recursion limit)
+  pausedDueToLimit?: boolean;     // ✅ Indicates if paused due to recursion limit
+  tasksRemaining?: number;        // ✅ Number of tasks remaining when paused
+  
+  // Recursion Tracking
+  recursionCount?: number;        // ✅ Current recursion iteration count
+  recursionLimit?: number;        // ✅ Maximum recursion limit
 }
 
 /**

@@ -12,6 +12,7 @@ import { FileConfigAdapter } from "../periphery/adapters/config/FileConfigAdapte
 import { FileSessionAdapter } from "../periphery/adapters/session/FileSessionAdapter";
 import { ChunkAdapter } from "../periphery/adapters/chunk/ChunkingAdapter";
 import { NodeCommandAdapter } from "../periphery/adapters/command/NodeCommandAdapter";
+import { TaskQueueUpdatePort } from "../core/ports";
 import * as path from "path";
 
 /**
@@ -32,8 +33,9 @@ export async function orchestrator(params: {
   inputFile?: string;
   mode?: 'generate' | 'refactor' | 'explain';
   enableEvaluation?: boolean;
+  taskId?: string;  // ✅ For real-time Kanban tracking
 }) {
-  const { agent, task, input, project, inputFile, mode, enableEvaluation } = params;
+  const { agent, task, input, project, inputFile, mode, enableEvaluation, taskId } = params;
 
   switch (agent) {
     case "architect": {
@@ -73,7 +75,10 @@ export async function orchestrator(params: {
           project || "default", 
           'design', 
           inputFile, 
-          { memory, llm, promptPort, profilePort, config, chunk, session, git, analyzer }
+          { memory, llm, promptPort, profilePort, config, chunk, session, git, analyzer },
+          undefined,  // codeMode
+          undefined,  // enableEvaluation
+          taskId      // ✅ Pass taskId for real-time Kanban
         );
       }
 
@@ -82,15 +87,31 @@ export async function orchestrator(params: {
         const git = new SimpleGitAdapter(project || "default", configData);
         const command = new NodeCommandAdapter();
         
+        // ✅ Get ExpressServerAdapter instance for real-time updates
+        let kanbanUpdate: TaskQueueUpdatePort | undefined = undefined;
+        let fileTreeUpdate: import('../core/ports').FileTreeUpdatePort | undefined = undefined;
+        try {
+          const { ExpressServerAdapter } = await import('../periphery/adapters/http/ExpressServerAdapter');
+          const instance = ExpressServerAdapter.getInstance();
+          kanbanUpdate = instance || undefined;  // Convert null to undefined
+          fileTreeUpdate = instance || undefined;  // Same instance implements both ports
+          if (kanbanUpdate) {
+            console.log('✅ Real-time updates enabled (Kanban + File Tree)');
+          }
+        } catch (error) {
+          console.log('ℹ️  Real-time updates disabled (server not running)');
+        }
+        
         // Mode will be inferred or auto-determined in architect agent
         return await architectAgent(
           input, 
           project || "default", 
           'code', 
           inputFile, 
-          { memory, llm, promptPort, profilePort, analyzer, git, config, chunk, session, command },
-          mode,  // Can be undefined (auto-infer) or explicit
-          enableEvaluation  // Pass evaluation flag
+          { memory, llm, promptPort, profilePort, analyzer, git, config, chunk, session, command, kanbanUpdate, fileTreeUpdate },
+          mode,              // Can be undefined (auto-infer) or explicit
+          enableEvaluation,  // Pass evaluation flag
+          taskId             // ✅ Pass taskId for real-time updates
         );
       }
 

@@ -17,6 +17,7 @@
 
 import { ArchitectGraphState } from "../state";
 import * as path from "path";
+import { resolveLocalPath } from "../../../../../periphery/adapters/git/gitUtils";
 
 /**
  * Format file size in human-readable format
@@ -47,10 +48,8 @@ export async function writeFiles(state: ArchitectGraphState): Promise<ArchitectG
   const repoRoot = await gitPort.getRepoRoot();
   const p = await import("path");
   
-  // Resolve localPath (handle relative paths)
-  const resolvedPath = p.isAbsolute(config.localPath)
-    ? config.localPath
-    : p.resolve(repoRoot, config.localPath);
+  // ✅ Use resolveLocalPath to properly handle tilde (~) expansion
+  const resolvedPath = resolveLocalPath(config.localPath, state.context.project);
 
   console.log(`\n🔧 Post-processing in: ${resolvedPath}\n`);
 
@@ -124,6 +123,13 @@ export async function writeFiles(state: ArchitectGraphState): Promise<ArchitectG
     console.log(`   📦 Total files:    ${state.files.length}`);
     console.log(`   💾 Total size:     ${formatFileSize(totalSize)}`);
     console.log(`${'='.repeat(80)}\n`);
+    
+    // ✅ Notify file tree update for real-time UI refresh
+    if (state.deps?.fileTreeUpdate && state.context.project && state.context.featureFolder) {
+      const featureName = path.basename(state.context.featureFolder);
+      state.deps.fileTreeUpdate.notifyFileTreeUpdate(state.context.project, featureName);
+      console.log(`📡 File tree update notification sent to UI\n`);
+    }
 
   } catch (error: any) {
     console.error('⚠️  File write error:', error.message);

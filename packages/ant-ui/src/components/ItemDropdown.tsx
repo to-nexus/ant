@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ChevronDown, LucideIcon, Settings } from 'lucide-react';
+import { ChevronDown, LucideIcon, Settings, Play, Square } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/ui/card';
 import { Button } from '@/ui/button';
 import { CreateItemForm } from './CreateItemForm';
@@ -23,6 +23,9 @@ interface ItemDropdownProps {
     placeholder: string;
   }) => React.ReactNode;
   onSettingsClick?: () => void;
+  onPlayClick?: () => void;
+  onStopClick?: () => void;
+  isPlaying?: boolean;
 }
 
 export function ItemDropdown({
@@ -39,6 +42,9 @@ export function ItemDropdown({
   inputPlaceholder = 'Item name...',
   renderCreateForm,
   onSettingsClick,
+  onPlayClick,
+  onStopClick,
+  isPlaying = false,
 }: ItemDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -214,6 +220,36 @@ export function ItemDropdown({
           
           {/* Right side icons container */}
           <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 pointer-events-none">
+            {/* Play/Stop button - only show when item is selected and callback is provided */}
+            {selectedItem && (onPlayClick || onStopClick) && (
+              <button
+                onClick={(e) => {
+                  console.log('[ItemDropdown] Play/Stop button clicked');
+                  console.log('[ItemDropdown] isPlaying:', isPlaying);
+                  console.log('[ItemDropdown] onPlayClick:', !!onPlayClick);
+                  console.log('[ItemDropdown] onStopClick:', !!onStopClick);
+                  
+                  e.stopPropagation();
+                  if (isPlaying && onStopClick) {
+                    console.log('[ItemDropdown] Calling onStopClick');
+                    onStopClick();
+                  } else if (!isPlaying && onPlayClick) {
+                    console.log('[ItemDropdown] Calling onPlayClick');
+                    onPlayClick();
+                  }
+                }}
+                className={`p-1 hover:bg-gray-100 rounded transition-colors pointer-events-auto ${
+                  isPlaying ? 'text-red-600 hover:text-red-800' : 'text-green-600 hover:text-green-800'
+                }`}
+                title={isPlaying ? 'Stop dev server' : 'Start dev server'}
+              >
+                {isPlaying ? (
+                  <Square className="h-4 w-4" />
+                ) : (
+                  <Play className="h-4 w-4" />
+                )}
+              </button>
+            )}
             {/* Settings button - only show when item is selected and callback is provided */}
             {selectedItem && onSettingsClick && (
               <button

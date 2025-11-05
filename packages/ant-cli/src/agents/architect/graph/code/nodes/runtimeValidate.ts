@@ -27,6 +27,7 @@ import {
 } from "./diagnostics";
 import { errorStatsCollector } from "./diagnostics/errorStats";
 import { ErrorParserFactory, ParsedError } from "./diagnostics/parsers";
+import { resolveLocalPath } from "../../../../../periphery/adapters/git/gitUtils";
 
 export interface RuntimeValidationResult {
   passed: boolean;
@@ -87,9 +88,8 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
 
   const repoRoot = await gitPort.getRepoRoot();
   const p = await import("path");
-  const resolvedPath = p.isAbsolute(config.localPath)
-    ? config.localPath
-    : p.resolve(repoRoot, config.localPath);
+  // ✅ Use resolveLocalPath to properly handle tilde (~) expansion
+  const resolvedPath = resolveLocalPath(config.localPath, state.context.project);
 
   // ✅ FORCE VALIDATION TYPE BY TASK TYPE (ignore LLM decision for consistency)
   let validationType: 'static' | 'runtime';

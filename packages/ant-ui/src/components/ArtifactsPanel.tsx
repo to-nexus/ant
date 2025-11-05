@@ -246,7 +246,9 @@ export function ArtifactsPanel() {
   const selectedFile = useStore((state) => state.selectedFile);
   const fileTree = useStore((state) => state.fileTree);
   const selectFile = useStore((state) => state.selectFile);
+  const setShowFileEditor = useStore((state) => state.setShowFileEditor);
   const refreshFileTree = useStore((state) => state.refreshFileTree);
+  const setFileTree = useStore((state) => state.setFileTree);
 
   // Refresh file tree when project or feature changes
   useEffect(() => {
@@ -254,6 +256,43 @@ export function ArtifactsPanel() {
       refreshFileTree();
     }
   }, [selectedProject, selectedFeature, refreshFileTree]);
+
+  // ✅ SSE connection for real-time file tree updates
+  useEffect(() => {
+    if (!selectedProject || !selectedFeature) {
+      return;
+    }
+
+    const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4100/api';
+    const eventSource = new EventSource(
+      `${API_BASE}/projects/${selectedProject}/features/${selectedFeature}/files/stream`
+    );
+
+    console.log(`[FileTree SSE] Connecting to ${selectedProject}/${selectedFeature}`);
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        console.log('[FileTree SSE] Received update:', data.type);
+        
+        if (data.type === 'initial' || data.type === 'update') {
+          setFileTree(data.fileTree);
+        }
+      } catch (error) {
+        console.error('[FileTree SSE] Failed to parse data:', error);
+      }
+    };
+
+    eventSource.onerror = (error) => {
+      console.log('[FileTree SSE] Connection error, but keeping connection alive');
+      // ✅ DON'T close the connection! SSE will auto-reconnect
+    };
+
+    return () => {
+      console.log('[FileTree SSE] Disconnecting');
+      eventSource.close();
+    };
+  }, [selectedProject, selectedFeature, setFileTree]);
 
   const handleCreateFile = async (dirPath: string, fileName: string) => {
     if (!selectedProject || !selectedFeature) return;
@@ -289,6 +328,7 @@ export function ArtifactsPanel() {
       await refreshFileTree();
       if (selectedFile === itemPath) {
         selectFile('');
+        setShowFileEditor(false);
       }
     } catch (error) {
       console.error('Failed to delete item:', error);

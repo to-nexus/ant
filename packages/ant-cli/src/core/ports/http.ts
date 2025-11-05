@@ -23,6 +23,7 @@ export interface ExecuteTaskParams {
   agent: 'architect' | 'reviewer' | 'planner' | 'doc';
   task: 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';
   project: string;
+  feature?: string;  // ✅ Feature name for Kanban tracking
   inputFile: string;
   mode?: 'generate' | 'refactor' | 'explain';
   enableEvaluation?: boolean;

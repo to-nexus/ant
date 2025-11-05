@@ -3,6 +3,7 @@ import { useStore } from '@/lib/store';
 
 export interface ExecuteCodeTaskOptions {
   projectId?: string;
+  featureName?: string;  // Which feature to execute for
   task?: 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';
   agent?: 'architect' | 'reviewer' | 'planner' | 'doc';
   mode?: 'generate' | 'refactor' | 'explain';
@@ -21,6 +22,7 @@ export interface TaskExecution {
 export function executeCodeTask(options: ExecuteCodeTaskOptions = {}): TaskExecution {
   const { 
     projectId = '', 
+    featureName = 'skeleton',  // Default to skeleton
     task = 'code',
     agent = 'architect',
     mode = 'generate',
@@ -75,6 +77,7 @@ export function executeCodeTask(options: ExecuteCodeTaskOptions = {}): TaskExecu
   
   executeTask({
     projectId,
+    featureName,
     task,
     agent,
     mode,

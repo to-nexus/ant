@@ -165,12 +165,13 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         console.log(`   Final:   ${tasksByType.final === 0 ? '✅' : '⬜'} ${tasksByType.final} remaining`);
         console.log(``);
         
-        return {
+        const resumedState = {
           ...state,
           taskQueue,
           featureTasks,
           currentTask: session.state.currentTask,  // ✅ Restore currentTask (in-progress task)
           completedTasks: session.state.completedTasks || [],
+          completedTasksDetails: session.state.completedTasksDetails || [],  // ✅ Restore full details
           retries: session.state.retries || 0,
           maxRetries: session.state.maxRetries || 3,
           previousAttempts: session.state.previousAttempts || [],
@@ -179,7 +180,42 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           previousFileCount: session.state.previousFileCount,
           resolvedCategories: (session.state.resolvedCategories || []) as any,
           planText: session.state.planText || '',  // ✅ Restore plan to skip LLM call on resume
+          _httpTaskId: state._httpTaskId  // ✅ Explicitly preserve taskId for next node
         };
+        
+        // ✅ Update live snapshot for seamless UI transition (Port or HTTP fallback)
+        if (state._httpTaskId) {
+          const completedTasks = resumedState.completedTasksDetails || [];
+          const queueTasks = taskQueue.getAll();
+          
+          if (state.deps?.kanbanUpdate) {
+            // In-process: use injected port
+            state.deps.kanbanUpdate.updateTaskQueue(
+              state._httpTaskId,
+              resumedState.currentTask || null,
+              queueTasks,
+              completedTasks
+            );
+            console.log(`🔄 [Decompose Resume] Live snapshot updated via PORT (${taskQueue.size()} tasks, current: ${resumedState.currentTask?.name || 'none'})\n`);
+          } else {
+            // Child process: HTTP API fallback
+            const serverPort = process.env.ANT_SERVER_PORT || '4100';
+            fetch(`http://localhost:${serverPort}/api/internal/task-queue`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                taskId: state._httpTaskId,
+                currentTask: resumedState.currentTask || null,
+                queue: queueTasks,
+                completedTasks: completedTasks
+              })
+            }).then(() => {
+              console.log(`🔄 [Decompose Resume] Live snapshot updated via HTTP (${taskQueue.size()} tasks, current: ${resumedState.currentTask?.name || 'none'})\n`);
+            }).catch(err => console.log(`⚠️  [Decompose Resume] HTTP update failed:`, err.message));
+          }
+        }
+        
+        return resumedState;
         }  // End of else block (normal resume)
       }  // End of if (session.state && taskQueue)
     } catch (error) {
@@ -216,12 +252,58 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     const featureTasks = new Map<string, Task>();
     featureTasks.set(defaultTask.id, defaultTask);
     
-    return {
+    const newState = {
       ...state,
       taskQueue,
       featureTasks,
-      completedTasks: []
+      completedTasks: [],
+      _httpTaskId: state._httpTaskId  // ✅ Explicitly preserve taskId for next node
     };
+    
+    // ✅ Save checkpoint for default task
+    if (state.deps?.session && state.context.featureFolder) {
+      try {
+        const { saveCheckpoint } = await import('./checkpoint');
+        await saveCheckpoint(newState);
+        console.log(`💾 [Decompose Default] Checkpoint saved (1 default task)\n`);
+      } catch (error) {
+        console.warn(`⚠️  [Decompose] Failed to save checkpoint:`, error);
+      }
+    }
+    
+    // ✅ Update live snapshot (Port or HTTP fallback)
+    if (state._httpTaskId) {
+      const completedTasks = state.completedTasksDetails || [];
+      const queueTasks = taskQueue.getAll();
+      
+      if (state.deps?.kanbanUpdate) {
+        // In-process: use injected port
+        state.deps.kanbanUpdate.updateTaskQueue(
+          state._httpTaskId,
+          null,
+          queueTasks,
+          completedTasks
+        );
+        console.log(`🎬 [Decompose Default] Live snapshot updated via PORT (1 default task)\n`);
+      } else {
+        // Child process: HTTP API fallback
+        const serverPort = process.env.ANT_SERVER_PORT || '4100';
+        fetch(`http://localhost:${serverPort}/api/internal/task-queue`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            taskId: state._httpTaskId,
+            currentTask: null,
+            queue: queueTasks,
+            completedTasks: completedTasks
+          })
+        }).then(() => {
+          console.log(`🎬 [Decompose Default] Live snapshot updated via HTTP (1 default task)\n`);
+        }).catch(err => console.log(`⚠️  [Decompose Default] HTTP update failed:`, err.message));
+      }
+    }
+    
+    return newState;
   }
   
   const spec = specParts.join('\n\n---\n\n');
@@ -341,12 +423,58 @@ ${rules}`;
       const featureTasks = new Map<string, Task>();
       featureTasks.set(defaultTask.id, defaultTask);
       
-      return {
+      const newState = {
         ...state,
         taskQueue,
         featureTasks,
-        completedTasks: []
+        completedTasks: [],
+        _httpTaskId: state._httpTaskId  // ✅ Explicitly preserve taskId for next node
       };
+      
+      // ✅ Save checkpoint for default task
+      if (state.deps?.session && state.context.featureFolder) {
+        try {
+          const { saveCheckpoint } = await import('./checkpoint');
+          await saveCheckpoint(newState);
+          console.log(`💾 [Decompose EmptyResult] Checkpoint saved (1 default task)\n`);
+        } catch (error) {
+          console.warn(`⚠️  [Decompose] Failed to save checkpoint:`, error);
+        }
+      }
+      
+      // ✅ Update live snapshot (Port or HTTP fallback)
+      if (state._httpTaskId) {
+        const completedTasks = state.completedTasksDetails || [];
+        const queueTasks = taskQueue.getAll();
+        
+        if (state.deps?.kanbanUpdate) {
+          // In-process: use injected port
+          state.deps.kanbanUpdate.updateTaskQueue(
+            state._httpTaskId,
+            null,
+            queueTasks,
+            completedTasks
+          );
+          console.log(`🎬 [Decompose EmptyResult] Live snapshot updated via PORT (1 default task)\n`);
+        } else {
+          // Child process: HTTP API fallback
+          const serverPort = process.env.ANT_SERVER_PORT || '4100';
+          fetch(`http://localhost:${serverPort}/api/internal/task-queue`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              taskId: state._httpTaskId,
+              currentTask: null,
+              queue: queueTasks,
+              completedTasks: completedTasks
+            })
+          }).then(() => {
+            console.log(`🎬 [Decompose EmptyResult] Live snapshot updated via HTTP (1 default task)\n`);
+          }).catch(err => console.log(`⚠️  [Decompose EmptyResult] HTTP update failed:`, err.message));
+        }
+      }
+      
+      return newState;
     }
     
     // Create task queue
@@ -373,12 +501,61 @@ ${rules}`;
     });
     console.log('');
     
-    return {
+    const newState = {
       ...state,
       taskQueue,
       featureTasks,
-      completedTasks: []
+      completedTasks: [],
+      _httpTaskId: state._httpTaskId  // ✅ Explicitly preserve taskId for next node
     };
+    
+    // ✅ CRITICAL: Save checkpoint immediately after decompose
+    // This triggers file watcher → SSE broadcast → UI update
+    if (state.deps?.session && state.context.featureFolder) {
+      try {
+        const { saveCheckpoint } = await import('./checkpoint');
+        await saveCheckpoint(newState);
+        console.log(`💾 [Decompose] Checkpoint saved (${taskQueue.size()} tasks)\n`);
+      } catch (error) {
+        console.warn(`⚠️  [Decompose] Failed to save checkpoint:`, error);
+      }
+    }
+    
+    // ✅ Update live task queue snapshot (Port or HTTP fallback for child process)
+    if (state._httpTaskId) {
+      const completedTasks = state.completedTasksDetails || [];
+      const queueTasks = taskQueue.getAll();
+      
+      if (state.deps?.kanbanUpdate) {
+        // In-process: use injected port
+        state.deps.kanbanUpdate.updateTaskQueue(
+          state._httpTaskId,
+          null,
+          queueTasks,
+          completedTasks
+        );
+        console.log(`🎬 [Decompose] Task queue ready! Sent ${taskQueue.size()} tasks to Kanban board via PORT\n`);
+      } else {
+        // Child process: HTTP API fallback
+        const serverPort = process.env.ANT_SERVER_PORT || '4100';
+        fetch(`http://localhost:${serverPort}/api/internal/task-queue`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            taskId: state._httpTaskId,
+            currentTask: null,
+            queue: queueTasks,
+            completedTasks: completedTasks
+          })
+        }).then(() => {
+          console.log(`🎬 [Decompose] Task queue ready! Sent ${taskQueue.size()} tasks to Kanban board via HTTP\n`);
+        }).catch(err => console.log(`⚠️  [Decompose] HTTP update failed:`, err.message));
+      }
+    } else {
+      console.log(`⚠️  [Decompose] Live update SKIPPED - no taskId available\n`);
+    }
+    
+    return newState;
     
   } catch (error) {
     console.error('❌ Failed to decompose tasks:', error);
@@ -399,12 +576,58 @@ ${rules}`;
     const featureTasks = new Map<string, Task>();
     featureTasks.set(defaultTask.id, defaultTask);
     
-    return {
+    const newState = {
       ...state,
       taskQueue,
       featureTasks,
-      completedTasks: []
+      completedTasks: [],
+      _httpTaskId: state._httpTaskId  // ✅ Explicitly preserve taskId for next node
     };
+    
+    // ✅ Save checkpoint for fallback task
+    if (state.deps?.session && state.context.featureFolder) {
+      try {
+        const { saveCheckpoint } = await import('./checkpoint');
+        await saveCheckpoint(newState);
+        console.log(`💾 [Decompose Error] Checkpoint saved (1 fallback task)\n`);
+      } catch (saveError) {
+        console.warn(`⚠️  [Decompose] Failed to save checkpoint:`, saveError);
+      }
+    }
+    
+    // ✅ Update live snapshot (Port or HTTP fallback)
+    if (state._httpTaskId) {
+      const completedTasks = state.completedTasksDetails || [];
+      const queueTasks = taskQueue.getAll();
+      
+      if (state.deps?.kanbanUpdate) {
+        // In-process: use injected port
+        state.deps.kanbanUpdate.updateTaskQueue(
+          state._httpTaskId,
+          null,
+          queueTasks,
+          completedTasks
+        );
+        console.log(`🎬 [Decompose Error] Live snapshot updated via PORT (1 fallback task)\n`);
+      } else {
+        // Child process: HTTP API fallback
+        const serverPort = process.env.ANT_SERVER_PORT || '4100';
+        fetch(`http://localhost:${serverPort}/api/internal/task-queue`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            taskId: state._httpTaskId,
+            currentTask: null,
+            queue: queueTasks,
+            completedTasks: completedTasks
+          })
+        }).then(() => {
+          console.log(`🎬 [Decompose Error] Live snapshot updated via HTTP (1 fallback task)\n`);
+        }).catch(err => console.log(`⚠️  [Decompose Error] HTTP update failed:`, err.message));
+      }
+    }
+    
+    return newState;
   }
 }
 
