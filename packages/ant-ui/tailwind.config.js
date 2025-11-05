@@ -18,6 +18,20 @@ export default {
           800: '#075985',
           900: '#0c4a6e'
         }
+      },
+      keyframes: {
+        wiggle: {
+          '0%, 100%': { transform: 'rotate(-10deg)' },
+          '50%': { transform: 'rotate(10deg)' }
+        },
+        gradient: {
+          '0%': { backgroundPosition: '0% 50%' },
+          '50%': { backgroundPosition: '100% 50%' },
+          '100%': { backgroundPosition: '0% 50%' }
+        }
+      },
+      animation: {
+        gradient: 'gradient 2s ease infinite'
       }
     }
   },

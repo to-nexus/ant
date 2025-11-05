@@ -1,5 +1,5 @@
 import { LLMClient } from "../../../../../core/ports";
-import { ArchitectGraphState, AttemptHistory, Violation } from "../state";
+import { ArchitectGraphState, AttemptHistory, Violation, TaskTimingHelper } from "../state";
 import { parseResponse } from "./parseResponse";
 import { PromptEngine } from "../../../../../core/prompt/engine";
 
@@ -64,6 +64,16 @@ export async function execute(
     const llm = state.deps?.llm as LLMClient;
     const engine = state.deps?.promptEngine as PromptEngine;
   
+  // ✨ Start timing for current task
+  let currentTask = state.currentTask;
+  if (currentTask && !currentTask.timing?.startedAt) {
+    console.log(`⏱️  Starting timer for task: ${currentTask.name}`);
+    currentTask = TaskTimingHelper.startTask(currentTask);
+  } else if (currentTask?.timing?.pausedAt) {
+    console.log(`⏱️  Resuming timer for task: ${currentTask.name}`);
+    currentTask = TaskTimingHelper.startTask(currentTask); // Resumes and accumulates pause duration
+  }
+  
   // Prepare artifacts (using new unified names)
   const artifacts = {
     directive: state.directive,
@@ -71,10 +81,10 @@ export async function execute(
     prdSpec: state.prd,
     currentCode: state.code,         // Map to old name
     originalFiles: state.codeHead,   // Map to old name
-    currentTask: state.currentTask ? {  // ✅ Pass current task info
-      name: state.currentTask.name,
-      type: state.currentTask.type,
-      description: state.currentTask.description
+    currentTask: currentTask ? {  // ✅ Pass current task info (with timing)
+      name: currentTask.name,
+      type: currentTask.type,
+      description: currentTask.description
     } : undefined
   };
   
@@ -91,6 +101,26 @@ export async function execute(
   const formatted = buildResult.formatted;
   
   console.log(`⏱️  Prompt build time: ${buildResult.metadata.buildTime}ms`);
+
+  // ===== COLLECT FILES FROM PREVIOUS COMPLETED TASKS =====
+  const filesFromCompletedTasks: Set<string> = new Set();
+  
+  // Collect files from current task's previous attempts
+  // These are files we already generated in earlier attempts of THIS task
+  state.previousAttempts?.forEach(attempt => {
+    attempt.filesGenerated.forEach(file => {
+      filesFromCompletedTasks.add(file);
+    });
+  });
+  
+  // ⚠️ Note: We don't have perfect tracking of which files were created by which completed task
+  // This is a limitation of the current architecture. We can improve this later by:
+  // 1. Adding `filesGenerated?: string[]` to Task interface
+  // 2. Storing files when task completes in checkTaskStatus
+  // 3. Using that info here
+  //
+  // For now, we rely on the task description to be specific enough that LLM
+  // naturally focuses on its assigned scope.
 
   // ===== ADD RETRY CONTEXT IF THIS IS A RETRY =====
   let promptMessages = formatted.messages;
@@ -170,6 +200,72 @@ ${alreadyCreatedFiles.size > 0 ? Array.from(alreadyCreatedFiles).map(f => `  ✓
         return {
           ...msg,
           content: retryContext + '\n\n' + msg.content
+        };
+      }
+      return msg;
+    });
+  } else if (state.completedTasksDetails && state.completedTasksDetails.length > 0) {
+    // ===== ADD SCOPE-LIMITING CONTEXT FOR SUBTASKS =====
+    const completedTaskCount = state.completedTasksDetails.length;
+    const currentTaskName = state.currentTask?.name || 'Current Task';
+    const currentTaskDesc = state.currentTask?.description || '';
+    
+    console.log(`📋 Adding scope-limiting context (${completedTaskCount} tasks already completed)...\n`);
+    
+    // Show previously completed tasks for context
+    const completedTasksList = state.completedTasksDetails
+      .slice(-5)  // Show last 5 completed tasks
+      .map(t => `  ✅ ${t.name}`)
+      .join('\n');
+    
+    const scopeLimitingContext = `
+🎯 TASK EXECUTION CONTEXT:
+You are working on a ${state.totalSubtasks > 1 ? 'MULTI-TASK PROJECT' : 'project'} where work is divided into separate, focused tasks.
+
+📊 PROJECT PROGRESS:
+- Total tasks: ${state.totalSubtasks || 'N/A'}
+- Completed: ${completedTaskCount}
+- Current task: "${currentTaskName}"
+
+${completedTaskCount > 0 ? `📝 RECENTLY COMPLETED TASKS:\n${completedTasksList}\n` : ''}
+
+⚠️ CRITICAL: TASK SCOPE LIMITATION
+1. **YOUR CURRENT TASK**: "${currentTaskName}"
+   ${currentTaskDesc ? `   Description: ${currentTaskDesc}` : ''}
+   
+2. **FOCUS ONLY ON THIS TASK**
+   - Other tasks have already handled their responsibilities
+   - Do NOT regenerate files from completed tasks
+   - Do NOT duplicate work that was already done
+   
+3. **MINIMAL OUTPUT RULE**
+   - Only generate files that are DIRECTLY REQUIRED for your current task
+   - If your task is about routing → Only output routing-related files
+   - If your task is about styling → Only output CSS/style files
+   - If your task is about a specific feature → Only output files for that feature
+   
+4. **COMMON FILES TO AVOID REGENERATING**
+   - package.json (unless your task explicitly requires dependency changes)
+   - tsconfig.json, vite.config.ts (unless your task is about build configuration)
+   - README.md (unless your task is about documentation)
+   - index.html (unless your task is about the HTML entry point)
+   - Core application files (App.tsx, main.tsx) unless they are the focus of your task
+
+5. **WHEN TO MODIFY EXISTING FILES**
+   Only modify an existing file if:
+   - Your task description explicitly mentions that file
+   - The file is directly related to your task scope
+   - You need to integrate your new code with existing code
+
+📋 GENERATE ONLY THE FILES REQUIRED FOR YOUR CURRENT TASK:
+`;
+    
+    // Add scope-limiting context to the last user message
+    promptMessages = formatted.messages.map((msg, idx) => {
+      if (idx === formatted.messages.length - 1 && msg.role === 'user') {
+        return {
+          ...msg,
+          content: scopeLimitingContext + '\n\n' + msg.content
         };
       }
       return msg;
@@ -265,11 +361,13 @@ ${alreadyCreatedFiles.size > 0 ? Array.from(alreadyCreatedFiles).map(f => `  ✓
 
     const updatedState = {
       ...state,
+      currentTask, // ✨ Updated with timing info
       rawResponse: raw,
       responseSection,
       files,
       filesToDelete,
-      previousAttempts
+      previousAttempts,
+      completedTasksDetails: state.completedTasksDetails || [],  // ✅ Preserve completed tasks
     };
     
     // ✅ Save checkpoint after code generation (in case recursion limit hits during writeFiles)

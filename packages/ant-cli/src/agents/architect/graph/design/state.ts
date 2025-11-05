@@ -1,5 +1,5 @@
 import { DesignMode, CodebaseProfile, TaskArtifacts } from "../../../../core/types";
-import { LLMClient, ChunkPort, SessionPort, GitPort, CodebaseAnalyzerPort } from "../../../../core/ports";
+import { LLMClient, ChunkPort, SessionPort, GitPort, CodebaseAnalyzerPort, MemoryPort } from "../../../../core/ports";
 import { PromptEngine } from "../../../../core/prompt/engine";
 import { ProjectContext } from "../../types";
 
@@ -28,6 +28,7 @@ export interface DesignGraphState extends TaskArtifacts {
     session?: SessionPort;
     git?: GitPort;
     analyzer?: CodebaseAnalyzerPort;
+    memory?: MemoryPort;  // ✅ IMPROVEMENT: Add MemoryPort for vector DB retrieval
   };
 
   // Mode (explicit or inferred)

@@ -16,4 +16,6 @@ export * from "./chunk";
 export * from "./session";
 export * from "./command";
 export * from "./http";
+export * from "./kanban";
+export * from "./fileTree";
 

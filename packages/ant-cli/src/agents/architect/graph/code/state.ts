@@ -1,5 +1,5 @@
 import { CodeMode, CodebaseProfile, TaskArtifacts } from "../../../../core/types";
-import { GitPort, MemoryPort, LLMClient, CodebaseAnalyzerPort, ChunkPort, SessionPort, CommandPort } from "../../../../core/ports";
+import { GitPort, MemoryPort, LLMClient, CodebaseAnalyzerPort, ChunkPort, SessionPort, CommandPort, TaskQueueUpdatePort } from "../../../../core/ports";
 import { PromptEngine } from "../../../../core/prompt/engine";
 import { ProjectContext } from "../../types";
 
@@ -72,6 +72,19 @@ export const TASK_PRIORITIES = {
   FINAL_VERIFICATION: 1000,     // 최종 검증
 } as const;
 
+/**
+ * Task Timing Information
+ * Tracks execution time for each task
+ */
+export interface TaskTiming {
+  startedAt?: string;              // ISO timestamp when task started
+  completedAt?: string;            // ISO timestamp when task completed
+  pausedAt?: string;               // When paused (recursion limit, etc.)
+  resumedAt?: string;              // When resumed
+  totalPausedDuration: number;     // Total paused time in milliseconds
+  elapsedTime?: number;            // Total elapsed time in milliseconds (excluding paused time)
+}
+
 export interface Task {
   id: string;                      // Unique identifier (e.g., "auth-impl", "fix-deps-1")
   name: string;                    // e.g., "Implement Authentication" or "Fix Missing Dependencies"
@@ -81,6 +94,8 @@ export interface Task {
   errors?: string[];               // List of error messages (for error tasks)
   category?: ErrorCategory;        // Type of errors (for error tasks)
   completed?: boolean;             // Whether this task is done
+  interrupted?: boolean;           // Whether this task was interrupted (stopped manually)
+  timing?: TaskTiming;             // ✨ NEW: Task timing information
   
   // Validation Strategy (LLM decides)
   validationRequired?: boolean;    // Whether this task requires validation after completion
@@ -197,6 +212,8 @@ export interface ArchitectGraphState extends TaskArtifacts {
     chunk?: ChunkPort;
     session?: SessionPort;
     command?: CommandPort;
+    kanbanUpdate?: TaskQueueUpdatePort;  // ✅ For real-time Kanban updates
+    fileTreeUpdate?: import('../../../../core/ports').FileTreeUpdatePort;  // ✅ For real-time file tree updates
   };
   gitPort?: GitPort;  // For runner to use after graph execution
   
@@ -234,6 +251,7 @@ export interface ArchitectGraphState extends TaskArtifacts {
   currentTask?: Task;                 // Currently executing task
   featureTasks?: Map<string, Task>;   // Original feature tasks (for tracking completion)
   completedTasks?: string[];          // Task IDs that finished successfully
+  completedTasksDetails?: Task[];     // ✅ NEW: Full task objects of completed tasks (with timing, etc.)
   resolvedCategories?: ErrorCategory[]; // Categories with 0 errors (successfully resolved)
   
   // ✅ Failed Tasks (deferred to Final Verification)
@@ -277,4 +295,128 @@ export interface ArchitectGraphState extends TaskArtifacts {
   branch?: string;
   filesWritten?: number;
   reportFile?: string;
+  
+  // ✅ Real-time Kanban tracking (internal, not persisted)
+  _httpTaskId?: string;  // HTTP task ID for live updates
+  
+  // ✅ Recursion tracking
+  recursionCount?: number;  // Current iteration count
+  recursionLimit?: number;  // Maximum allowed iterations
+}
+
+/**
+ * Task Timing Helper Functions
+ */
+export class TaskTimingHelper {
+  /**
+   * Start timing for a task
+   */
+  static startTask(task: Task): Task {
+    const now = new Date().toISOString();
+    
+    if (!task.timing) {
+      // First time starting
+      return {
+        ...task,
+        timing: {
+          startedAt: now,
+          totalPausedDuration: 0
+        }
+      };
+    }
+    
+    // Resuming from pause
+    if (task.timing.pausedAt) {
+      const pausedDuration = new Date().getTime() - new Date(task.timing.pausedAt).getTime();
+      return {
+        ...task,
+        timing: {
+          ...task.timing,
+          resumedAt: now,
+          totalPausedDuration: task.timing.totalPausedDuration + pausedDuration,
+          pausedAt: undefined
+        }
+      };
+    }
+    
+    return task;
+  }
+  
+  /**
+   * Pause timing for a task (recursion limit, etc.)
+   */
+  static pauseTask(task: Task): Task {
+    if (!task.timing) {
+      console.warn('[TaskTiming] Cannot pause task without timing info');
+      return task;
+    }
+    
+    return {
+      ...task,
+      timing: {
+        ...task.timing,
+        pausedAt: new Date().toISOString()
+      }
+    };
+  }
+  
+  /**
+   * Complete timing for a task
+   */
+  static completeTask(task: Task): Task {
+    if (!task.timing?.startedAt) {
+      console.warn('[TaskTiming] Cannot complete task without start time');
+      return { ...task, completed: true };
+    }
+    
+    const completedAt = new Date().toISOString();
+    const totalTime = new Date(completedAt).getTime() - new Date(task.timing.startedAt).getTime();
+    const elapsedTime = totalTime - task.timing.totalPausedDuration;
+    
+    return {
+      ...task,
+      completed: true,
+      timing: {
+        ...task.timing,
+        completedAt,
+        elapsedTime
+      }
+    };
+  }
+  
+  /**
+   * Get current elapsed time for a running task
+   */
+  static getCurrentElapsedTime(task: Task): number | null {
+    if (!task.timing?.startedAt) {
+      return null;
+    }
+    
+    // If paused, calculate up to pause time
+    if (task.timing.pausedAt) {
+      const totalTime = new Date(task.timing.pausedAt).getTime() - new Date(task.timing.startedAt).getTime();
+      return totalTime - task.timing.totalPausedDuration;
+    }
+    
+    // If running, calculate up to now
+    const totalTime = new Date().getTime() - new Date(task.timing.startedAt).getTime();
+    return totalTime - task.timing.totalPausedDuration;
+  }
+  
+  /**
+   * Format elapsed time as human-readable string
+   */
+  static formatElapsedTime(milliseconds: number): string {
+    const seconds = Math.floor(milliseconds / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    
+    if (hours > 0) {
+      return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
+    }
+    if (minutes > 0) {
+      return `${minutes}m ${seconds % 60}s`;
+    }
+    return `${seconds}s`;
+  }
 }

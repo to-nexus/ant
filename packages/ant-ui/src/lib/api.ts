@@ -10,6 +10,7 @@ console.log('[API] Environment variables:', import.meta.env);
 
 export interface ExecuteTaskParams {
   projectId: string;
+  featureName?: string;  // Optional: if not provided, uses 'skeleton'
   task?: 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';
   agent?: 'architect' | 'reviewer' | 'planner' | 'doc';
   mode?: 'generate' | 'refactor' | 'explain';
@@ -42,10 +43,29 @@ export interface FileContent {
   content: string;
 }
 
+export interface AgentTask {
+  value: string;
+  label: string;
+}
+
+export interface Agent {
+  value: string;
+  label: string;
+  enabled: boolean;
+  tasks: AgentTask[];
+}
+
+export interface DevServerStatus {
+  running: boolean;
+  port: number | null;
+  url: string | null;
+  logs: LogEntry[];
+}
+
 // Health check function to verify API connection
 export async function checkHealth(): Promise<boolean> {
   try {
-    const url = `${API_BASE.replace('/api', '')}/health`;
+    const url = `${API_BASE}/health`;
     const response = await fetch(url, {
       method: 'GET',
       headers: {
@@ -83,6 +103,22 @@ export async function fetchProjects(): Promise<string[]> {
     return data;
   } catch (error) {
     console.error('Error fetching projects:', error);
+    throw error;
+  }
+}
+
+export async function fetchAgents(): Promise<Agent[]> {
+  try {
+    const url = `${API_BASE}/agents`;
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch agents: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching agents:', error);
     throw error;
   }
 }
@@ -147,7 +183,14 @@ export async function fetchSession(projectId: string): Promise<Session | null> {
 
 export async function executeTask(params: ExecuteTaskParams): Promise<{ taskId: string }> {
   try {
-    const { projectId, task = 'code', agent, mode = 'generate', language = 'en' } = params;
+    const { 
+      projectId, 
+      featureName = 'skeleton',  // Default to skeleton for backward compatibility
+      task = 'code', 
+      agent, 
+      mode = 'generate', 
+      language = 'en' 
+    } = params;
     
     const requestBody = {
       task,
@@ -156,7 +199,12 @@ export async function executeTask(params: ExecuteTaskParams): Promise<{ taskId: 
       language,
     };
     
-    const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/execute`, {
+    // Use feature-specific endpoint if feature provided
+    const endpoint = featureName 
+      ? `${API_BASE}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/execute`
+      : `${API_BASE}/projects/${encodeURIComponent(projectId)}/execute`;
+    
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -176,13 +224,14 @@ export async function executeTask(params: ExecuteTaskParams): Promise<{ taskId: 
   }
 }
 
-export async function stopTask(taskId: string): Promise<void> {
+export async function stopTask(taskId: string, projectId?: string, featureName?: string): Promise<void> {
   try {
     const response = await fetch(`${API_BASE}/tasks/${encodeURIComponent(taskId)}/stop`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify({ projectId, featureName }),  // ✅ Send project info
     });
     
     if (!response.ok) {
@@ -202,13 +251,30 @@ export interface QueueStatus {
     name: string;
     type: string;
     status: string;
+    timing?: {
+      startedAt?: string;
+      completedAt?: string;
+      pausedAt?: string;
+      resumedAt?: string;
+      totalPausedDuration: number;
+      elapsedTime?: number;
+    };
   } | null;
   queue: Array<{
     name: string;
     type: string;
     status: string;
+    timing?: {
+      startedAt?: string;
+      completedAt?: string;
+      pausedAt?: string;
+      resumedAt?: string;
+      totalPausedDuration: number;
+      elapsedTime?: number;
+    };
   }>;
   totalRemaining: number;
+  estimatingMessage?: string | null;
 }
 
 export async function fetchQueueStatus(taskId: string): Promise<QueueStatus> {
@@ -334,6 +400,65 @@ export async function fetchFeatureSession(projectId: string, featureName: string
   } catch (error) {
     console.error('Error fetching feature session:', error);
     throw error;
+  }
+}
+
+// ========================================
+// 📊 KANBAN API - Complete View Model
+// ========================================
+export interface KanbanTask {
+  id: string;
+  name: string;
+  type: 'setup' | 'feature' | 'integration' | 'unknown';
+  description?: string;
+  priority?: number;
+  status?: 'todo' | 'in-progress' | 'completed';
+  completed?: boolean;
+  timing?: {
+    startedAt?: string;
+    completedAt?: string;
+    pausedAt?: string;
+    resumedAt?: string;
+    totalPausedDuration: number;
+    elapsedTime?: number;
+  };
+}
+
+export interface KanbanData {
+  todo: KanbanTask[];
+  inProgress: KanbanTask | null;
+  completed: KanbanTask[];
+  isEstimating?: boolean;  // Task running but no queue data yet
+  dataSource?: 'live' | 'session' | 'estimating';  // Where the data comes from
+  pausedDueToLimit?: boolean;  // ✅ Indicates if paused due to recursion limit
+  tasksRemaining?: number;  // ✅ Number of tasks remaining when paused
+  recursionCount?: number;  // ✅ Current recursion iteration
+  recursionLimit?: number;  // ✅ Maximum recursion limit
+}
+
+/**
+ * Fetch complete Kanban board data for a feature
+ * Returns ready-to-render data (no client-side merging needed)
+ */
+export async function fetchKanbanData(projectId: string, featureName: string): Promise<KanbanData> {
+  try {
+    const url = `${API_BASE}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/kanban`;
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch kanban data: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error fetching kanban data:', error);
+    // Return empty kanban on error
+    return {
+      todo: [],
+      inProgress: null,
+      completed: []
+    };
   }
 }
 
@@ -603,6 +728,66 @@ export async function updateProjectConfig(projectId: string, config: ProjectConf
     }
   } catch (error) {
     console.error('Error updating config:', error);
+    throw error;
+  }
+}
+
+// Dev server management
+export async function startDevServer(projectId: string): Promise<{ success: boolean; message: string; script: string }> {
+  try {
+    const response = await fetch(
+      `${API_BASE}/projects/${encodeURIComponent(projectId)}/dev/start`,
+      {
+        method: 'POST',
+      }
+    );
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || `Failed to start dev server: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error starting dev server:', error);
+    throw error;
+  }
+}
+
+export async function stopDevServer(projectId: string): Promise<{ success: boolean; message: string }> {
+  try {
+    const response = await fetch(
+      `${API_BASE}/projects/${encodeURIComponent(projectId)}/dev/stop`,
+      {
+        method: 'POST',
+      }
+    );
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || `Failed to stop dev server: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error stopping dev server:', error);
+    throw error;
+  }
+}
+
+export async function getDevServerStatus(projectId: string): Promise<DevServerStatus> {
+  try {
+    const response = await fetch(
+      `${API_BASE}/projects/${encodeURIComponent(projectId)}/dev/status`
+    );
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get dev server status: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error getting dev server status:', error);
     throw error;
   }
 }

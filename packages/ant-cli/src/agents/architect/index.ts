@@ -2,7 +2,7 @@ import { ProjectContext, AgentTask, CodeMode, ArchitectResult } from "./types";
 import { extractFeatureFolder } from "./utils";
 import { retrieve } from "./memory";
 import { formatSessionContext } from "./session-formatter";
-import { MemoryPort, LLMClient, PromptPort, GitPort, ConfigPort, CodebaseAnalyzerPort, ProfilePort, SessionPort, ChunkPort, CommandPort } from "../../core/ports";
+import { MemoryPort, LLMClient, PromptPort, GitPort, ConfigPort, CodebaseAnalyzerPort, ProfilePort, SessionPort, ChunkPort, CommandPort, TaskQueueUpdatePort } from "../../core/ports";
 import { runCodeGraph } from "./graph/code/runner";
 import { ArchitectGraphState } from "./graph/code/state";
 import { runDesignGraph } from "./graph/design/runner";
@@ -27,9 +27,12 @@ export async function architectAgent(
     chunk?: ChunkPort;
     session?: SessionPort;
     command?: CommandPort;
+    kanbanUpdate?: TaskQueueUpdatePort;  // ✅ For real-time Kanban updates
+    fileTreeUpdate?: import('../../core/ports').FileTreeUpdatePort;  // ✅ For real-time file tree updates
   },
   codeMode?: CodeMode,
-  enableEvaluation?: boolean
+  enableEvaluation?: boolean,
+  taskId?: string  // ✅ For real-time tracking
 ): Promise<ArchitectResult> {
   // Initialize context
   const featureFolder = extractFeatureFolder(inputFile, project);
@@ -97,6 +100,11 @@ export async function architectAgent(
         targets: [],
         texts: []
       };
+      
+      console.log('\n🚀 Starting task: "Learn and Store Knowledge"');
+      console.log('   Type: LEARN');
+      console.log('');
+      
       const l = await runLearnGraph(lInitial);
       return {
         success: true,
@@ -141,11 +149,17 @@ export async function architectAgent(
           chunk: deps?.chunk,
           session: deps?.session,
           git: deps?.git,
-          analyzer: deps?.analyzer
+          analyzer: deps?.analyzer,
+          memory: deps?.memory  // ✅ IMPROVEMENT: Pass MemoryPort to design graph
         },
         planText: "",
         designMarkdown: ""
       };
+      
+      console.log('\n🚀 Starting task: "Generate Design Document"');
+      console.log('   Type: DESIGN');
+      console.log('');
+      
       const d = await runDesignGraph(dInitial);
       return {
         success: true,
@@ -222,6 +236,15 @@ export async function architectAgent(
           }
         });
         
+        // ✅ Resolve taskId: orchestrator param > env var (child process) > undefined
+        const resolvedTaskId = taskId || process.env.ANT_TASK_ID;
+        
+        console.log(`🔍 [architectAgent] Task ID resolution:`);
+        console.log(`   taskId param:`, taskId || 'undefined');
+        console.log(`   process.env.ANT_TASK_ID:`, process.env.ANT_TASK_ID || 'undefined');
+        console.log(`   resolvedTaskId:`, resolvedTaskId || 'undefined');
+        console.log(`   kanbanUpdate available:`, !!deps?.kanbanUpdate);
+        
         const initial: ArchitectGraphState = {
           context,
           spec,
@@ -233,7 +256,9 @@ export async function architectAgent(
             git: deps?.git,
             chunk: deps?.chunk,
             session: deps?.session,
-            command: deps?.command
+            command: deps?.command,
+            kanbanUpdate: deps?.kanbanUpdate,  // ✅ Pass Kanban update port (undefined in child process)
+            fileTreeUpdate: deps?.fileTreeUpdate  // ✅ Pass file tree update port (undefined in child process)
           },
           gitPort: deps?.git,
           planText: "",
@@ -245,10 +270,12 @@ export async function architectAgent(
           violations: [],  // ✅ Initialize violations array
           retries: 0,
           maxRetries: 3,  // ✅ Allow multiple retries for dependency fixes
-          codeMode: codeMode, // Will be inferred in graph nodes
-          subtaskIndex: 0,  // Backward compatibility
-          totalSubtasks: 0,  // Backward compatibility
-        };
+                completedTasksDetails: [],  // ✅ Initialize completedTasksDetails
+                codeMode: codeMode, // Will be inferred in graph nodes
+                subtaskIndex: 0,  // Backward compatibility
+                totalSubtasks: 0,  // Backward compatibility
+                _httpTaskId: resolvedTaskId  // ✅ For real-time Kanban tracking
+              };
         const result = await runCodeGraph(initial);
         
         // ✅ Determine status based on execution result

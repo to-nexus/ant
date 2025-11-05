@@ -12,6 +12,7 @@ export type TaskType =
 
 export interface Task {
   id: string;
+  name?: string; // Optional: descriptive name (id is used as fallback)
   type: TaskType;
   description: string;
   status: TaskStatus;
@@ -24,7 +25,16 @@ export interface Task {
   blockedReason?: string;
   notes?: string;
   tags?: string[];
-  priority?: 'low' | 'medium' | 'high' | 'critical';
+  priority?: 'low' | 'medium' | 'high' | 'critical' | number;
+  timing?: {
+    startedAt?: string;
+    completedAt?: string;
+    pausedAt?: string;
+    resumedAt?: string;
+    totalPausedDuration: number;
+    elapsedTime?: number;
+  };
+  completed?: boolean;
 }
 
 export type SessionStatus = 'active' | 'paused' | 'completed' | 'cancelled';
@@ -32,12 +42,17 @@ export type SessionStatus = 'active' | 'paused' | 'completed' | 'cancelled';
 export interface SessionState {
   taskQueue: Task[];
   completedTasks: string[];
+  completedTasksDetails?: Task[]; // ✅ NEW: Full task objects with timing
   retries?: number;
   maxRetries?: number;
   previousAttempts?: any[];
   enforcementHistory?: any[];
   lastViolations?: any[];
   resolvedCategories?: any[];
+  pausedDueToLimit?: boolean; // ✅ Indicates if paused due to recursion limit
+  tasksRemaining?: number; // ✅ Number of tasks remaining when paused
+  recursionCount?: number; // ✅ Current recursion iteration count
+  recursionLimit?: number; // ✅ Maximum recursion limit
 }
 
 export interface Session {

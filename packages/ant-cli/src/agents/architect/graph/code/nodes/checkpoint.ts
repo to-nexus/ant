@@ -20,29 +20,48 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
     return; // No session port available
   }
   
+  console.log(`[saveCheckpoint] 💾 Saving checkpoint:`, {
+    completedTasksCount: state.completedTasks?.length ?? 0,
+    completedTasksDetailsCount: state.completedTasksDetails?.length ?? 0,
+    completedTasksDetailsIds: state.completedTasksDetails?.map(t => t.id) ?? [],
+    currentTask: state.currentTask?.name,
+    queueSize: state.taskQueue?.size() ?? 0
+  });
+  
   try {
+    // ✅ Build state object, conditionally include currentTask
+    const sessionState: any = {
+      taskQueue: state.taskQueue?.getAll() || [],
+      completedTasks: state.completedTasks || [],
+      completedTasksDetails: state.completedTasksDetails || [], // ✅ NEW: Save full task details
+      retries: state.retries || 0,
+      maxRetries: state.maxRetries || 3,
+      previousAttempts: state.previousAttempts || [],
+      enforcementHistory: state.enforcementHistory || [],
+      lastViolations: state.lastViolations || [],
+      previousFileCount: state.previousFileCount,
+      resolvedCategories: state.resolvedCategories || [],
+      planText: state.planText,  // ✅ Save plan for reuse on resume
+      pausedDueToLimit: (state as any).pausedDueToLimit,  // ✅ Save pause state for recursion limit
+      tasksRemaining: (state as any).tasksRemaining,  // ✅ Save remaining tasks count
+      recursionCount: state.recursionCount,  // ✅ Save current recursion count
+      recursionLimit: state.recursionLimit,  // ✅ Save recursion limit
+    };
+    
+    // ✅ Only include currentTask if it exists
+    if (state.currentTask) {
+      sessionState.currentTask = state.currentTask;
+    }
+    
     await state.deps.session.updateArtifacts(
       state.context.project,
       state.context.featureFolder || 'default',
       {
-        state: {
-          taskQueue: state.taskQueue?.getAll() || [],
-          currentTask: state.currentTask,
-          completedTasks: state.completedTasks || [],
-          retries: state.retries || 0,
-          maxRetries: state.maxRetries || 3,
-          previousAttempts: state.previousAttempts || [],
-          enforcementHistory: state.enforcementHistory || [],
-          lastViolations: state.lastViolations || [],
-          previousFileCount: state.previousFileCount,
-          resolvedCategories: state.resolvedCategories || [],
-          planText: state.planText,  // ✅ Save plan for reuse on resume
-        }
+        state: sessionState
       }
     );
     
-    // Don't log on every checkpoint (too noisy)
-    // console.log(`💾 Checkpoint saved`);
+    console.log(`[saveCheckpoint] ✅ Checkpoint saved successfully (paused: ${!!(state as any).pausedDueToLimit}, recursion: ${state.recursionCount}/${state.recursionLimit})`);
   } catch (error) {
     console.warn(`⚠️  Failed to save checkpoint: ${error}`);
   }

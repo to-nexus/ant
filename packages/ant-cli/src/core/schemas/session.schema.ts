@@ -73,6 +73,7 @@ export const SessionStateSchema = z.object({
   taskQueue: z.array(z.any()).optional(),
   currentTask: z.any().optional(),
   completedTasks: z.array(z.string()).optional(),
+  completedTasksDetails: z.array(z.any()).optional(), // ✅ NEW: Full task objects
   retries: z.number().optional(),
   maxRetries: z.number().optional(),
   previousAttempts: z.array(z.any()).optional(),

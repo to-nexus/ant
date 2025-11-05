@@ -86,7 +86,7 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
       context.workingDir,
       {
         git: state.deps?.git,
-        vectorDB: undefined  // Design mode doesn't use vector DB for retrieval
+        vectorDB: state.deps?.memory  // ✅ IMPROVEMENT: Enable Vector DB for design too
       },
       {
         maxTokens: 80000,  // ~60KB (smaller for design)

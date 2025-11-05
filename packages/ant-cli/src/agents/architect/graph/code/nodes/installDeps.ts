@@ -14,6 +14,7 @@
  */
 
 import { ArchitectGraphState, Violation } from "../state";
+import { resolveLocalPath } from "../../../../../periphery/adapters/git/gitUtils";
 
 export async function installDeps(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   const commandPort = state.deps?.command;
@@ -36,10 +37,8 @@ export async function installDeps(state: ArchitectGraphState): Promise<Architect
   const repoRoot = await gitPort.getRepoRoot();
   const p = await import("path");
   
-  // Resolve localPath (handle relative paths)
-  const resolvedPath = p.isAbsolute(config.localPath)
-    ? config.localPath
-    : p.resolve(repoRoot, config.localPath);
+  // ✅ Use resolveLocalPath to properly handle tilde (~) expansion
+  const resolvedPath = resolveLocalPath(config.localPath, state.context.project);
 
   try {
     // 1. Check if package.json was generated or modified

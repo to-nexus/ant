@@ -69,6 +69,14 @@ function formatPreviousAttempts(attempts: AttemptHistory[]): string {
  * 4. Generate execution plan for current task
  */
 export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphState> {
+  // ✅ Increment recursion count (track iteration)
+  const recursionCount = (state.recursionCount || 0) + 1;
+  state.recursionCount = recursionCount;
+  
+  console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+  console.log(`🧭 PLAN NODE (Iteration ${recursionCount}/${state.recursionLimit || 50})`);
+  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+  
   const llm = state.deps?.llm as LLMClient;
   const engine = state.deps?.promptEngine as PromptEngine;
 
@@ -150,19 +158,68 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     console.log(``);
     console.log(`📋 Remaining tasks (${remainingBeforePop}):`);
     console.log(`   → [P${nextTask.priority}] ${nextTask.name} (${nextTask.type}) ← Starting now`);
+    console.log(`      ${nextTask.description || 'No description'}`);
     
     const queueTasks = state.taskQueue?.getAll() || [];
     queueTasks.forEach((task, idx) => {
       console.log(`   ${idx + 2}. [P${task.priority}] ${task.name} (${task.type})`);
+      console.log(`      ${task.description || 'No description'}`);
     });
     
     console.log(``);
     console.log(`🚀 Starting task: "${nextTask.name}"`);
     console.log(`   Type: ${nextTask.type.toUpperCase()}`);
-    console.log(`   Priority: P${nextTask.priority}\n`);
+    console.log(`   Priority: P${nextTask.priority}`);
+    console.log(`   Description: ${nextTask.description || 'No description'}\n`);
     
     // ✅ Output current task info for real-time tracking
     console.log(`📋 Current Task: ${nextTask.name} (type: ${nextTask.type})`);
+    
+    // ✅ Update live task queue snapshot (Port or HTTP fallback for child process)
+    console.log(`\n🔍 [Plan] Checking live update conditions:`);
+    console.log(`   state.deps?.kanbanUpdate:`, !!state.deps?.kanbanUpdate);
+    console.log(`   state._httpTaskId:`, state._httpTaskId || 'undefined');
+    console.log(`   process.env.ANT_TASK_ID:`, process.env.ANT_TASK_ID || 'undefined');
+    
+    if (state._httpTaskId) {
+      const completedTasksDetails = state.completedTasksDetails || [];
+      
+      console.log(`\n🔥 [Plan] Updating live Kanban with new task`);
+      console.log(`   New task: ${nextTask.name}`);
+      console.log(`   Queue remaining: ${queueTasks.length}`);
+      console.log(`   Completed: ${completedTasksDetails.length}`);
+      
+      if (state.deps?.kanbanUpdate) {
+        // In-process: use injected port
+        console.log(`   Method: Direct port call\n`);
+        state.deps.kanbanUpdate.updateTaskQueue(
+          state._httpTaskId,
+          nextTask,
+          queueTasks,
+          completedTasksDetails,
+          recursionCount,
+          state.recursionLimit || 50
+        );
+      } else {
+        // Child process: HTTP API fallback
+        console.log(`   Method: HTTP API fallback\n`);
+        const serverPort = process.env.ANT_SERVER_PORT || '4100';
+        fetch(`http://localhost:${serverPort}/api/internal/task-queue`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            taskId: state._httpTaskId,
+            currentTask: nextTask,
+            queue: queueTasks,
+            completedTasks: completedTasksDetails,
+            recursionCount: recursionCount,
+            recursionLimit: state.recursionLimit || 50
+          })
+        }).catch(err => console.log(`⚠️  [Plan] HTTP update failed:`, err.message));
+      }
+    } else {
+      console.log(`⚠️  [Plan] Live update SKIPPED - no taskId available\n`);
+    }
   }
   
   // ===== CHECK RETRY LIMIT (Priority Check) =====
@@ -227,13 +284,42 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
           }
         }
         
-        // completedTasks에 추가
+        // completedTasks에 추가 (IDs only)
         state.completedTasks = state.completedTasks || [];
         if (!state.completedTasks.includes(nextTask.id)) {
           state.completedTasks.push(nextTask.id);
         }
         
+        // ✅ CRITICAL: completedTasksDetails에도 추가 (full task details)
+        state.completedTasksDetails = state.completedTasksDetails || [];
+        if (!state.completedTasksDetails.find(t => t.id === nextTask.id)) {
+          state.completedTasksDetails.push(nextTask);
+        }
+        
         console.log(`✅ Task "${nextTask.name}" marked as completed (with errors deferred to error tasks)\n`);
+        
+        // ✅ CRITICAL: Save checkpoint immediately so completed task is not lost
+        const { saveCheckpoint } = await import('./checkpoint');
+        await saveCheckpoint(state);
+        
+        // ✅ Update live snapshot via injected port (Hexagonal Architecture compliant)
+        if (state.deps?.kanbanUpdate && state._httpTaskId) {
+          const queueTasks = state.taskQueue?.getAll() || [];
+          const completedTasksDetails = state.completedTasksDetails || [];
+          
+          console.log(`\n🔥 [Plan - Retry Limit] Updating live Kanban after marking task as completed`);
+          console.log(`   Failed task: ${nextTask.name}`);
+          console.log(`   Total completed: ${completedTasksDetails.length}\n`);
+          
+          state.deps.kanbanUpdate.updateTaskQueue(
+            state._httpTaskId,
+            undefined,
+            queueTasks,
+            completedTasksDetails,
+            recursionCount,
+            state.recursionLimit || 50
+          );
+        }
       }
       
     } else if (nextTask.type === 'error') {
@@ -309,6 +395,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       const retryState = {
         ...state,
         currentTask: nextTask,
+        completedTasksDetails: state.completedTasksDetails || [],  // ✅ Preserve completed tasks
         // Keep enforcementReason for Execute node!
       };
       
@@ -326,6 +413,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     const retryState = {
       ...state,
       currentTask: nextTask,
+      completedTasksDetails: state.completedTasksDetails || [],  // ✅ Preserve completed tasks
     };
     
     // ✅ CRITICAL: Save checkpoint before retry (for recursion limit recovery)
@@ -542,6 +630,9 @@ ${nextTask.type === 'error' ?
       code: currentCode,  // ✅ Update state with reloaded files
       retries: shouldClearEnforcement ? 0 : state.retries,  // Reset only if new task
       enforcementReason: shouldClearEnforcement ? null : state.enforcementReason,  // Clear only if new task
+      completedTasksDetails: state.completedTasksDetails || [],  // ✅ CRITICAL: Preserve completedTasksDetails from checkTaskStatus
+      recursionCount: recursionCount,  // ✅ CRITICAL: Propagate recursion count
+      recursionLimit: state.recursionLimit,  // ✅ CRITICAL: Propagate recursion limit
     };
     
     // ✅ Save checkpoint after planning (in case recursion limit hits during execute)

@@ -1,6 +1,7 @@
 import { StateGraph } from "@langchain/langgraph";
-import { ArchitectGraphState, TASK_PRIORITIES, Task } from "./state";
+import { ArchitectGraphState, TASK_PRIORITIES, Task, TaskTimingHelper } from "./state";
 import { resolve, decompose, plan, execute, writeFiles, validate, installDeps, runtimeValidate, enforce, learn } from "./nodes/index";
+import { saveCheckpoint } from "./nodes/checkpoint";
 
 /**
  * Node that handles task completion logic and state mutations.
@@ -10,15 +11,36 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
   const hasViolations = (state.violations && state.violations.length > 0);
   
   if (!hasViolations && state.currentTask) {
-    // ✅ Task succeeded - mark as completed
-    console.log(`✅ Task "${state.currentTask.name}" completed!`);
+    // ✅ Task succeeded - mark as completed and record timing
+    const completedTask = TaskTimingHelper.completeTask(state.currentTask);
     
+    if (completedTask.timing?.elapsedTime) {
+      const formattedTime = TaskTimingHelper.formatElapsedTime(completedTask.timing.elapsedTime);
+      console.log(`✅ Task "${completedTask.name}" completed in ${formattedTime}!`);
+    } else {
+      console.log(`✅ Task "${completedTask.name}" completed!`);
+    }
+    
+    // Update completedTasks (IDs only - for backward compatibility)
     const completedTasks = state.completedTasks || [];
-    completedTasks.push(state.currentTask.id);
+    completedTasks.push(completedTask.id);
+    
+    // ✅ NEW: Store full task details in completedTasksDetails
+    const completedTasksDetails = state.completedTasksDetails || [];
+    completedTasksDetails.push(completedTask);
+    
+    console.log(`[checkTaskStatus] 💾 Saving completed task to completedTasksDetails:`, {
+      taskId: completedTask.id,
+      taskName: completedTask.name,
+      hasTiming: !!completedTask.timing,
+      hasDescription: !!completedTask.description,
+      totalCompletedTasksDetails: completedTasksDetails.length,
+      completedTasksDetailsIds: completedTasksDetails.map(t => t.id)
+    });
     
     // If feature task, mark in featureTasks map
-    if (state.currentTask.type === 'feature' && state.featureTasks) {
-      const feature = state.featureTasks.get(state.currentTask.id);
+    if (completedTask.type === 'feature' && state.featureTasks) {
+      const feature = state.featureTasks.get(completedTask.id);
       if (feature) {
         feature.completed = true;
       }
@@ -52,18 +74,56 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       }
     }
     
-    // ✅ CRITICAL: Clear currentTask and retries before moving to next task
-    return {
+    // ✅ CRITICAL: Update state with completedTasksDetails
+    const updatedState = {
+      ...state,
       completedTasks,
+      completedTasksDetails, // ✅ NEW: Add full task details to state
       currentTask: undefined,
       retries: 0,
       violations: [],
       enforcementReason: undefined,
     };
+    
+    // ✅ CRITICAL: Save checkpoint with updated completedTasksDetails
+    await saveCheckpoint(updatedState);
+    
+    // ✅ Update live snapshot via injected port (Hexagonal Architecture compliant)
+    if (state.deps?.kanbanUpdate && state._httpTaskId) {
+      const queueTasks = updatedState.taskQueue?.getAll() || [];
+      
+      console.log(`\n🔥 [checkTaskStatus] Updating live Kanban after task completion`);
+      console.log(`   Completed task: ${completedTask.name}`);
+      console.log(`   Total completed: ${completedTasksDetails.length}`);
+      console.log(`   Queue remaining: ${queueTasks.length}\n`);
+      
+      state.deps.kanbanUpdate.updateTaskQueue(
+        state._httpTaskId,
+        undefined,  // currentTask is now undefined (just completed)
+        queueTasks,
+        completedTasksDetails,
+        state.recursionCount,
+        state.recursionLimit
+      );
+    }
+    
+    return {
+      completedTasks,
+      completedTasksDetails,
+      currentTask: undefined,
+      retries: 0,
+      violations: [],
+      enforcementReason: undefined,
+      recursionCount: state.recursionCount,  // ✅ Propagate recursion count
+      recursionLimit: state.recursionLimit,  // ✅ Propagate recursion limit
+    };
   }
   
-  // Task failed or has violations - no state changes needed
-  return {};
+  // Task failed or has violations - propagate recursion tracking
+  return {
+    recursionCount: state.recursionCount,  // ✅ Propagate recursion count
+    recursionLimit: state.recursionLimit,  // ✅ Propagate recursion limit
+  };
 }
 
 export function buildCodeGraph() {
@@ -120,6 +180,7 @@ export function buildCodeGraph() {
       currentTask: null as any,
       featureTasks: null as any,
       completedTasks: null as any,
+      completedTasksDetails: null as any,  // ✅ Full task objects for completed tasks
       resolvedCategories: null as any,
       
       // Error Handling & Final Verification
@@ -134,6 +195,13 @@ export function buildCodeGraph() {
       branch: null as any,
       filesWritten: null as any,
       reportFile: null as any,
+      
+      // Real-time Kanban tracking
+      _httpTaskId: null as any,  // ✅ HTTP task ID for live updates
+      
+      // Recursion tracking
+      recursionCount: null as any,  // ✅ Current iteration count
+      recursionLimit: null as any,  // ✅ Maximum allowed iterations
     } as any,
   } as any);
   

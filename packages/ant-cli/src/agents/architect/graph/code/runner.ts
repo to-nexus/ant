@@ -15,17 +15,27 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
   let state: ArchitectGraphState = initial;
   let isRecursionLimit = false;
   
-  // ✅ Configurable recursion limit via environment variable
-  const recursionLimit = parseInt(process.env.RECURSION_LIMIT || '50', 10);
+  // ✅ Configurable recursion limit via environment variable (minimum: 5)
+  const MINIMUM_RECURSION_LIMIT = 5;
+  const DEFAULT_RECURSION_LIMIT = 50;
+  const recursionLimit = parseInt(process.env.RECURSION_LIMIT || String(DEFAULT_RECURSION_LIMIT), 10);
   
   // Validate and log
-  if (isNaN(recursionLimit) || recursionLimit < 10) {
-    console.warn(`⚠️  Invalid RECURSION_LIMIT: ${process.env.RECURSION_LIMIT}, using default: 50`);
-  } else if (recursionLimit !== 50) {
+  let finalLimit: number;
+  if (isNaN(recursionLimit) || recursionLimit < 1) {
+    console.warn(`⚠️  Invalid RECURSION_LIMIT: ${process.env.RECURSION_LIMIT}, using default: ${DEFAULT_RECURSION_LIMIT}`);
+    finalLimit = DEFAULT_RECURSION_LIMIT;
+  } else if (recursionLimit < MINIMUM_RECURSION_LIMIT) {
+    console.warn(`⚠️  RECURSION_LIMIT (${recursionLimit}) is below minimum (${MINIMUM_RECURSION_LIMIT}), using minimum`);
+    finalLimit = MINIMUM_RECURSION_LIMIT;
+  } else {
     console.log(`⚙️  Recursion limit: ${recursionLimit} (from RECURSION_LIMIT env var)\n`);
+    finalLimit = recursionLimit;
   }
   
-  const finalLimit = isNaN(recursionLimit) || recursionLimit < 10 ? 50 : recursionLimit;
+  // ✅ Initialize recursion tracking in state
+  initial.recursionLimit = finalLimit;
+  initial.recursionCount = 0;
   
   try {
     state = await (app as any).invoke(initial as any, {
@@ -58,7 +68,9 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
           state = {
             ...initial,
             taskQueue,
+            currentTask: session.state.currentTask,  // ✅ CRITICAL: Restore currentTask (will be moved to queue below)
             completedTasks: session.state.completedTasks || [],
+            completedTasksDetails: session.state.completedTasksDetails || [], // ✅ NEW: Restore full task details
             retries: session.state.retries || 0,
             maxRetries: session.state.maxRetries || 3,
             previousAttempts: session.state.previousAttempts || [],
@@ -66,17 +78,14 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
             lastViolations: session.state.lastViolations || [],
             previousFileCount: session.state.previousFileCount,
             resolvedCategories: (session.state.resolvedCategories || []) as any,
+            recursionCount: session.state.recursionCount || 0,  // ✅ CRITICAL: Restore recursion count
+            recursionLimit: session.state.recursionLimit || finalLimit,  // ✅ CRITICAL: Restore recursion limit
           };
         }
       } catch (restoreError) {
         console.warn('⚠️  Failed to restore from checkpoint:', restoreError);
       }
     }
-    
-    // ✅ Force learn node execution for cleanup & learning
-    console.log('🧠 Running learn node for cleanup and state saving...\n');
-    const { learn } = await import('./nodes/index');
-    state = await learn(state);
     
     // Re-throw if not recursion limit
     if (!error.message.includes('Recursion limit')) {
@@ -89,6 +98,52 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
     const queueSize = state.taskQueue?.size() || 0;
     const currentTaskCount = state.currentTask ? 1 : 0;
     const remainingTasks = queueSize + currentTaskCount;
+    
+    // ✅ CRITICAL: Move currentTask back to queue FIRST (before learn node)
+    // This ensures state is correct even if learn node fails
+    if (state.currentTask && state.taskQueue) {
+      console.log(`📥 Moving current task "${state.currentTask.name}" back to front of queue`);
+      // Create a new task queue with currentTask at the front
+      const { TaskQueue } = await import('./state');
+      const newQueue = new TaskQueue();
+      newQueue.push(state.currentTask);
+      // ✅ Filter out duplicate task IDs to prevent duplicates
+      state.taskQueue.getAll().forEach((task: any) => {
+        if (task.id !== state.currentTask!.id) {
+          newQueue.push(task);
+        }
+      });
+      state.taskQueue = newQueue;
+      state.currentTask = undefined; // Clear current task
+      console.log(`  ✅ Queue now has ${newQueue.size()} tasks`);
+    }
+    
+    // ✅ CRITICAL: Save pause state BEFORE learn node (learn node can fail)
+    if (state.deps?.session && state.context.featureFolder) {
+      try {
+        const { saveCheckpoint } = await import('./nodes/checkpoint');
+        // ✅ Explicitly set currentTask to undefined (it's been moved to queue)
+        state.currentTask = undefined;
+        const pausedState = {
+          ...state,
+          pausedDueToLimit: true,
+          tasksRemaining: remainingTasks
+        };
+        await saveCheckpoint(pausedState);
+        console.log(`💾 Pause state saved to session`);
+      } catch (saveError) {
+        console.warn(`⚠️  Failed to save pause state:`, saveError);
+      }
+    }
+    
+    // ✅ Try to run learn node for cleanup (optional, can fail safely)
+    try {
+      console.log('🧠 Running learn node for cleanup and learning...\n');
+      const { learn } = await import('./nodes/index');
+      state = await learn(state);
+    } catch (learnError) {
+      console.warn('⚠️  Learn node failed (non-critical):', learnError);
+    }
     
     console.log(`\n⏸️  Session paused due to recursion limit`);
     console.log(`📊 Progress saved:`);
