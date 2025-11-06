@@ -1,5 +1,6 @@
 {
   "projectName": "test-app",
   "branchBase": "main",
-  "autoLearn": true
+  "autoLearn": true,
+  "localPath": "~/dev/test-app"
 }

@@ -26,6 +26,7 @@ export function KanbanBoard() {
   const setRunning = useStore((state) => state.setRunning);
   const setCurrentTask = useStore((state) => state.setCurrentTask);
   const setSession = useStore((state) => state.setSession);
+  const splitLayout = useStore((state) => state.splitLayout);
   
   const [kanbanData, setKanbanData] = useState<KanbanData>({
     todo: [],
@@ -254,6 +255,7 @@ export function KanbanBoard() {
           completedTasks={kanbanData.completed}
           newlyCompletedIds={newlyCompletedIds}
           newlyInProgressId={newlyInProgressId}
+          splitLayout={splitLayout}
           onShineComplete={(taskId) => {
             setNewlyCompletedIds(prev => {
               const next = new Set(prev);

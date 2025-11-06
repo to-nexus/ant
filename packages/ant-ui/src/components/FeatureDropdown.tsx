@@ -17,21 +17,6 @@ export function FeatureDropdown() {
   } = useStore();
   const [showStatusPanel, setShowStatusPanel] = useState(false);
   const [serverStarted, setServerStarted] = useState(false);
-  const [hasOpenedBrowser, setHasOpenedBrowser] = useState(false);
-
-  // Auto-open browser when URL becomes available
-  useEffect(() => {
-    if (devServerStatus?.running && devServerStatus.url && !hasOpenedBrowser) {
-      console.log('[FeatureDropdown] Auto-opening browser:', devServerStatus.url);
-      window.open(devServerStatus.url, '_blank');
-      setHasOpenedBrowser(true);
-    }
-    
-    // Reset when server stops
-    if (!devServerStatus?.running) {
-      setHasOpenedBrowser(false);
-    }
-  }, [devServerStatus, hasOpenedBrowser]);
 
   // SSE connection for dev server status
   useEffect(() => {
@@ -183,29 +168,17 @@ export function FeatureDropdown() {
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                   <span className="text-sm font-medium text-green-900">Dev Server Running</span>
-                  {devServerStatus.port && (
-                    <span className="text-xs text-green-700">Port {devServerStatus.port}</span>
-                  )}
                 </div>
-                <div className="flex items-center gap-2">
-                  {devServerStatus.url && (
-                    <button
-                      onClick={() => window.open(devServerStatus.url!, '_blank')}
-                      className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition-colors flex items-center gap-1"
-                      title="Open in new tab"
-                    >
-                      <ExternalLink size={12} />
-                      Open
-                    </button>
-                  )}
+                {devServerStatus.url && (
                   <button
-                    onClick={() => setShowStatusPanel(false)}
-                    className="p-1 text-green-600 hover:text-green-800 rounded hover:bg-green-100 transition-colors"
-                    title="Close"
+                    onClick={() => window.open(devServerStatus.url!, '_blank')}
+                    className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition-colors flex items-center gap-1"
+                    title="Open in new tab"
                   >
-                    <X size={14} />
+                    <ExternalLink size={12} />
+                    Open
                   </button>
-                </div>
+                )}
               </div>
             </div>
           )}

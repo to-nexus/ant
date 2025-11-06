@@ -1,67 +1,83 @@
-import { ReactNode } from 'react';
+import { ReactNode, ComponentType } from 'react';
 import { borderColors, cn } from '@/lib/design-system';
 
-interface BarProps {
+/**
+ * Base Bar Props
+ * All Bar components must extend from this interface
+ */
+export interface BaseBarProps {
   /**
-   * Left side content (title, icon, buttons)
-   */
-  left: ReactNode;
-  
-  /**
-   * Right side content (actions, badges, info)
-   */
-  right?: ReactNode;
-  
-  /**
-   * Additional CSS classes
+   * Additional CSS classes for customization
    */
   className?: string;
 }
 
 /**
- * Bar - Base component for all bar-style headers/footers
+ * Internal Bar render props (used by base implementation)
+ */
+interface BarRenderProps {
+  left: ReactNode;
+  right?: ReactNode;
+  className?: string;
+}
+
+/**
+ * Bar - Abstract Base Component
  * 
- * Provides consistent styling across:
+ * OOP-style base class for all bar-style headers/footers.
+ * Provides consistent styling and layout structure.
+ * 
+ * Extended by:
  * - ExplorerBar (top of Explorer)
- * - MainPanelBar (top of MainPanel)
+ * - MainPanelBar (top of MainPanel)  
  * - TerminalBar (header section)
- * - Future bars
  * 
- * Design:
+ * Design System:
  * - Fixed height (h-10)
  * - Consistent padding (px-4)
  * - Consistent text size (text-sm)
  * - Consistent background/border
  * - Left/right content areas
+ * 
+ * Usage Pattern (OOP-style):
+ * 1. Define a component that extends BaseBarProps
+ * 2. Call renderBar() with left/right content
+ * 3. Base styling is automatically applied
  */
-export function Bar({ left, right, className = '' }: BarProps) {
-  return (
-    <div 
-      className={cn(
-        // Layout
-        'flex items-center justify-between shrink-0',
-        // Spacing
-        'h-10 px-4',
-        // Background & Border
-        'bg-gray-50 dark:bg-gray-900',
-        'border-b',
-        borderColors.default,
-        // Additional classes
-        className
-      )}
-    >
-      {/* Left content */}
-      <div className="flex items-center gap-3 text-sm">
-        {left}
-      </div>
-      
-      {/* Right content */}
-      {right && (
-        <div className="flex items-center gap-2 text-sm">
-          {right}
+export const Bar = {
+  /**
+   * Render base bar structure (protected method)
+   * Only called by extending components
+   */
+  render({ left, right, className = '' }: BarRenderProps) {
+    return (
+      <div 
+        className={cn(
+          // Layout
+          'flex items-center justify-between shrink-0',
+          // Spacing
+          'h-10 px-4',
+          // Background & Border
+          'bg-gray-50 dark:bg-gray-900',
+          'border-b',
+          borderColors.default,
+          // Additional classes
+          className
+        )}
+      >
+        {/* Left content area */}
+        <div className="flex items-center gap-3 text-sm">
+          {left}
         </div>
-      )}
-    </div>
-  );
-}
+        
+        {/* Right content area */}
+        {right && (
+          <div className="flex items-center gap-2 text-sm">
+            {right}
+          </div>
+        )}
+      </div>
+    );
+  }
+};
 
