@@ -167,6 +167,13 @@ export function TaskCard({
             )}
           </div>
           
+          {/* Active Node/Actor Indicator - Only for in-progress */}
+          {status === 'in-progress' && (
+            <div className={showExpandButton ? 'ml-0' : 'ml-12'}>
+              <ActiveNodeIndicator />
+            </div>
+          )}
+          
           {/* Expanded content - NOT clickable (allows text selection) */}
           {expanded && hasDescription && (
             <div 

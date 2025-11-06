@@ -2,6 +2,7 @@ import { Badge } from '@/ui/badge';
 import { TaskCard } from '../TaskCard';
 import { motion, LayoutGroup } from 'framer-motion';
 import { UnifiedTask } from '@/types/task';
+import { ActiveNodeIndicator } from './ActiveNodeIndicator';
 
 interface KanbanColumnsProps {
   todoTasks: UnifiedTask[];
@@ -82,7 +83,7 @@ export function KanbanColumns({
               {inProgressTask ? 1 : 0}
             </Badge>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-3">
             {inProgressTask && (
               <motion.div
                 key={inProgressTask.id || inProgressTask.name}
@@ -112,6 +113,9 @@ export function KanbanColumns({
                 No task in progress
               </div>
             )}
+            
+            {/* Active Node/Actor Indicator - Below the card */}
+            <ActiveNodeIndicator />
           </div>
         </div>
 

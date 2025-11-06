@@ -10,6 +10,7 @@ import { Handle, Position } from 'reactflow';
 import { NodeType, NodeImportance } from '@/types/workflow';
 import { useStore } from '@/lib/store';
 import { cn } from '@/lib/design-system';
+import { getActorInfoList } from '@/lib/actor-utils';
 
 interface NodeData {
   label: string;
@@ -17,6 +18,8 @@ interface NodeData {
   importance: NodeImportance;
   isActive?: boolean;
   nodeType: NodeType;
+  actors?: string[];  // Actor IDs
+  isExpanded?: boolean;  // 확장 상태
 }
 
 interface WorkflowNodeProps {
@@ -41,48 +44,116 @@ const NODE_COLORS_DARK: Record<NodeType, string> = {
   [NodeType.END]: 'dark:bg-red-900 dark:border-red-400 dark:text-red-100'
 };
 
-// 중요도별 크기
-const NODE_SIZES: Record<NodeImportance, { width: number; height: number; fontSize: string; fontWeight: string; borderWidth: number }> = {
-  [NodeImportance.CRITICAL]: {
-    width: 200,
-    height: 80,
-    fontSize: '16px',
-    fontWeight: 'bold',
-    borderWidth: 3
-  },
-  [NodeImportance.MAJOR]: {
+// 노드 크기
+const NODE_SIZE = {
+  collapsed: {
     width: 160,
     height: 64,
     fontSize: '14px',
     fontWeight: '600',
     borderWidth: 2
   },
-  [NodeImportance.MINOR]: {
-    width: 120,
-    height: 48,
-    fontSize: '12px',
-    fontWeight: 'normal',
-    borderWidth: 1
+  expanded: {
+    width: 360,
+    fontSize: '14px',
+    fontWeight: '600',
+    borderWidth: 3
   }
 };
 
 export const WorkflowNode = memo(({ data }: WorkflowNodeProps) => {
   const theme = useStore(state => state.theme);
   const splitLayout = useStore(state => state.splitLayout);
-  const size = NODE_SIZES[data.importance];
+  const isExpanded = data.isExpanded || false;
+  const size = isExpanded ? NODE_SIZE.expanded : NODE_SIZE.collapsed;
   const colorClass = `${NODE_COLORS_LIGHT[data.nodeType]} ${NODE_COLORS_DARK[data.nodeType]}`;
   
+  const actorInfoList = getActorInfoList(data.actors || []);
+  
   // 화면 분할 방향에 따라 Handle 위치 변경
-  // horizontal (좌우 분할) → 워크플로우 세로 (TB) → Top/Bottom handles
-  // vertical (상하 분할) → 워크플로우 가로 (LR) → Left/Right handles
   const targetPosition = splitLayout === 'horizontal' ? Position.Top : Position.Left;
   const sourcePosition = splitLayout === 'horizontal' ? Position.Bottom : Position.Right;
   
+  if (isExpanded) {
+    // 확장된 상태
+    return (
+      <div
+        className={cn(
+          'workflow-node rounded-lg border transition-all duration-300 relative',
+          colorClass,
+          'shadow-xl',
+          data.isActive && 'ring-4 ring-green-500 ring-opacity-50'
+        )}
+        style={{
+          width: size.width,
+          borderWidth: size.borderWidth,
+          zIndex: 1000  // 최상위 depth
+        }}
+      >
+        <Handle 
+          type="target" 
+          position={targetPosition}
+          className="!bg-gray-400 dark:!bg-gray-600"
+        />
+        
+        {/* Expanded Content */}
+        <div className="p-4 space-y-3">
+          {/* Title */}
+          <div className="text-center">
+            <div 
+              className="font-semibold"
+              style={{ fontSize: size.fontSize }}
+            >
+              {data.label}
+            </div>
+            {data.isActive && (
+              <div className="mt-1 text-xs text-green-600 dark:text-green-400 font-bold animate-pulse">
+                ● Active
+              </div>
+            )}
+          </div>
+          
+          {/* Description */}
+          {data.description && (
+            <div className="text-xs opacity-80 leading-relaxed">
+              {data.description}
+            </div>
+          )}
+          
+          {/* Linked Actors */}
+          {actorInfoList.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-xs font-semibold opacity-70">Linked Actors:</div>
+              <div className="flex flex-wrap gap-2">
+                {actorInfoList.map((actor) => (
+                  <div 
+                    key={actor.id}
+                    className="text-xs px-2 py-1 rounded bg-black/5 dark:bg-white/5 flex items-center gap-1.5"
+                  >
+                    <span>{actor.icon}</span>
+                    <span className="font-medium">{actor.displayName}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+        
+        <Handle 
+          type="source" 
+          position={sourcePosition}
+          className="!bg-gray-400 dark:!bg-gray-600"
+        />
+      </div>
+    );
+  }
+  
+  // 접힌 상태 (기본)
   return (
     <div
       className={cn(
-        'workflow-node rounded-lg flex flex-col items-center justify-center',
-        'border transition-all duration-200',
+        'workflow-node rounded-lg flex flex-col items-center justify-center relative',
+        'border transition-all duration-200 cursor-pointer hover:shadow-lg',
         colorClass,
         data.isActive && 'ring-4 ring-green-500 ring-opacity-50 shadow-lg shadow-green-500/50'
       )}
@@ -90,6 +161,7 @@ export const WorkflowNode = memo(({ data }: WorkflowNodeProps) => {
         width: size.width,
         height: size.height,
         borderWidth: data.isActive ? 3 : size.borderWidth,
+        zIndex: 1  // 기본 z-index, 확장 시 1000으로 변경
       }}
     >
       <Handle 
@@ -113,15 +185,6 @@ export const WorkflowNode = memo(({ data }: WorkflowNodeProps) => {
         {data.isActive && (
           <div className="mt-1 text-xs text-green-600 dark:text-green-400 font-bold animate-pulse">
             ● Active
-          </div>
-        )}
-        
-        {data.description && !data.isActive && (
-          <div 
-            className="mt-0.5 text-xs opacity-70 truncate"
-            title={data.description}
-          >
-            {data.description}
           </div>
         )}
       </div>

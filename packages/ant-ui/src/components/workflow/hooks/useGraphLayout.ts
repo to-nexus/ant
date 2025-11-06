@@ -10,11 +10,33 @@ import dagre from 'dagre';
 import { WorkflowGraphMetadata, WorkflowRealtimeState, NodeImportance } from '@/types/workflow';
 import { useStore } from '@/lib/store';
 
+// Edge 스타일 헬퍼
+const getEdgeStyle = (edgeType: string, isActive: boolean, theme: 'light' | 'dark') => {
+  const baseStroke = theme === 'dark' ? '#64748b' : '#475569'; // slate-500/700
+  const errorStroke = theme === 'dark' ? '#ef4444' : '#dc2626'; // red-500/600
+  const loopStroke = theme === 'dark' ? '#8b5cf6' : '#7c3aed'; // violet-500/600
+  const activeStroke = '#10b981'; // emerald-500
+  
+  return {
+    strokeWidth: isActive ? 3 : 2,
+    stroke: edgeType === 'error' ? errorStroke : 
+            edgeType === 'loop' ? loopStroke :
+            isActive ? activeStroke : baseStroke
+  };
+};
+
+const getEdgeLabelStyle = (theme: 'light' | 'dark') => ({
+  fill: theme === 'dark' ? '#f1f5f9' : '#1e293b', // slate-100/800
+  fontWeight: 500,
+  fontSize: 11
+});
+
 export function useGraphLayout(
   metadata: WorkflowGraphMetadata | null,
   realtimeState: WorkflowRealtimeState | null
 ) {
   const splitLayout = useStore(state => state.splitLayout);
+  const theme = useStore(state => state.theme);
   
   return useMemo(() => {
     if (!metadata) {
@@ -50,7 +72,9 @@ export function useGraphLayout(
       data: {
         label: actor.label,
         actorType: actor.type,
-        icon: actor.icon
+        actorId: actor.id,  // 실제 정보 조회용
+        icon: actor.icon,
+        isActive: realtimeState?.activeActors?.includes(actor.id) || false
       },
       position: { x: 0, y: 0 }
     }));
@@ -58,46 +82,62 @@ export function useGraphLayout(
     const rfNodes = [...workflowNodes, ...actorNodes];
     
     // 3. Workflow 엣지 변환
-    const workflowEdges: Edge[] = metadata.edges.map(edge => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      type: edge.type === 'conditional' || edge.type === 'loop' ? 'smoothstep' : 'default',
-      label: edge.label,
-      animated: realtimeState?.previousNode === edge.source && 
-                realtimeState?.currentNode === edge.target,
-      style: {
-        strokeWidth: 2,
-        stroke: edge.type === 'error' ? '#ef4444' : 
-                edge.type === 'loop' ? '#8b5cf6' :
-                '#94a3b8'
-      },
-      markerEnd: {
-        type: 'arrowclosed',
-        color: edge.type === 'error' ? '#ef4444' : 
-               edge.type === 'loop' ? '#8b5cf6' :
-               '#94a3b8'
-      }
-    }));
+    const workflowEdges: Edge[] = metadata.edges.map(edge => {
+      const isActive = realtimeState?.previousNode === edge.source && 
+                       realtimeState?.currentNode === edge.target;
+      const edgeStyle = getEdgeStyle(edge.type, isActive, theme);
+      
+      return {
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        type: edge.type === 'conditional' || edge.type === 'loop' ? 'smoothstep' : 'default',
+        label: edge.label,
+        animated: isActive,
+        style: edgeStyle,
+        labelStyle: getEdgeLabelStyle(theme),
+        labelBgStyle: { 
+          fill: theme === 'dark' ? '#1e293b' : '#ffffff', 
+          fillOpacity: 0.95,
+          stroke: theme === 'dark' ? '#334155' : '#cbd5e1',
+          strokeWidth: 1
+        },
+        labelBgPadding: [6, 8] as [number, number],
+        labelBgBorderRadius: 4,
+        markerEnd: {
+          type: 'arrowclosed',
+          color: edgeStyle.stroke
+        }
+      };
+    });
     
     // 4. 노드-Actor 연결 엣지 생성
     const actorEdges: Edge[] = [];
     metadata.nodes.forEach(node => {
       node.interactsWithActors.forEach(actorId => {
+        // 현재 노드가 활성화되고 Actor가 활성화되어 있으면 animated
+        const isActiveInteraction = 
+          realtimeState?.currentNode === node.id && 
+          realtimeState?.activeActors?.includes(actorId);
+        
+        const actorStroke = isActiveInteraction 
+          ? '#10b981' 
+          : theme === 'dark' ? '#64748b' : '#64748b';
+        
         actorEdges.push({
           id: `${node.id}-to-actor-${actorId}`,
           source: node.id,
           target: `actor-${actorId}`,
           type: 'straight',
-          animated: false,
+          animated: isActiveInteraction,
           style: {
-            strokeWidth: 1,
-            stroke: '#cbd5e1',
+            strokeWidth: isActiveInteraction ? 2 : 1.5,
+            stroke: actorStroke,
             strokeDasharray: '5,5'
           },
           markerEnd: {
             type: 'arrow',
-            color: '#cbd5e1'
+            color: actorStroke
           }
         });
       });
@@ -123,9 +163,9 @@ export function useGraphLayout(
         width = 100;
         height = 100;
       } else {
-        // Workflow 노드는 중요도별 크기
-        width = getNodeWidth(node.data.importance);
-        height = getNodeHeight(node.data.importance);
+        // Workflow 노드는 모두 동일 크기
+        width = NODE_WIDTH;
+        height = NODE_HEIGHT;
       }
       dagreGraph.setNode(node.id, { width, height });
     });
@@ -147,8 +187,8 @@ export function useGraphLayout(
         width = 100;
         height = 100;
       } else {
-        width = getNodeWidth(node.data.importance);
-        height = getNodeHeight(node.data.importance);
+        width = NODE_WIDTH;
+        height = NODE_HEIGHT;
       }
       
       return {
@@ -163,30 +203,12 @@ export function useGraphLayout(
     console.log('[useGraphLayout] Layout complete:', layoutedNodes.length, 'nodes positioned');
     
     return { nodes: layoutedNodes, edges: rfEdges };
-  }, [metadata, realtimeState, splitLayout]);
+  }, [metadata, realtimeState, splitLayout, theme]);
 }
 
 /**
- * 노드 중요도별 너비 반환
+ * 모든 노드 동일 크기
  */
-function getNodeWidth(importance: NodeImportance): number {
-  switch (importance) {
-    case NodeImportance.CRITICAL: return 200;
-    case NodeImportance.MAJOR: return 160;
-    case NodeImportance.MINOR: return 120;
-    default: return 160;
-  }
-}
-
-/**
- * 노드 중요도별 높이 반환
- */
-function getNodeHeight(importance: NodeImportance): number {
-  switch (importance) {
-    case NodeImportance.CRITICAL: return 80;
-    case NodeImportance.MAJOR: return 64;
-    case NodeImportance.MINOR: return 48;
-    default: return 64;
-  }
-}
+const NODE_WIDTH = 160;
+const NODE_HEIGHT = 64;
 

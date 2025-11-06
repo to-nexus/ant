@@ -12,7 +12,8 @@ import ReactFlow, {
   Controls,
   MiniMap,
   BackgroundVariant,
-  NodeTypes
+  NodeTypes,
+  Node as RFNode
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useStore } from '@/lib/store';
@@ -44,10 +45,26 @@ export function WorkflowVisualization() {
   const realtimeState = useWorkflowState(currentJob?.jobId);
   
   // 3. ReactFlow 노드/엣지 변환 + 레이아웃
-  const { nodes, edges } = useGraphLayout(metadata, realtimeState);
+  const { nodes: baseNodes, edges } = useGraphLayout(metadata, realtimeState);
   
   // ReactFlow instance for fitView
   const [reactFlowInstance, setReactFlowInstance] = React.useState<any>(null);
+  
+  // Expanded node/actor state
+  const [expandedNodeId, setExpandedNodeId] = React.useState<string | null>(null);
+  
+  // 4. 확장 상태를 노드 데이터에 추가 + z-index 설정
+  const nodes = React.useMemo(() => 
+    baseNodes.map(node => ({
+      ...node,
+      data: {
+        ...node.data,
+        isExpanded: node.id === expandedNodeId
+      },
+      zIndex: node.id === expandedNodeId ? 1000 : 1  // ReactFlow 노드 래퍼의 z-index
+    })),
+    [baseNodes, expandedNodeId]
+  );
   
   // 메타데이터 로드 완료 or 레이아웃 변경시 fitView 자동 실행
   React.useEffect(() => {
@@ -70,6 +87,12 @@ export function WorkflowVisualization() {
   
   const onInit = useCallback((instance: any) => {
     setReactFlowInstance(instance);
+  }, []);
+  
+  // 노드/Actor 클릭 핸들러 (확장/축소 토글)
+  const onNodeClick = useCallback((_event: React.MouseEvent, node: RFNode) => {
+    // 같은 노드/Actor를 다시 클릭하면 축소, 다른 것을 클릭하면 확장
+    setExpandedNodeId(prev => prev === node.id ? null : node.id);
   }, []);
   
   // 로딩 상태
@@ -119,28 +142,29 @@ export function WorkflowVisualization() {
   }
   
   return (
-    <div className="workflow-visualization h-full w-full">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onInit={onInit}
-        fitView
-        attributionPosition="bottom-left"
-        minZoom={0.1}
-        maxZoom={2}
-        defaultEdgeOptions={{
-          animated: false,
-          style: { strokeWidth: 2 }
-        }}
-      >
+    <div className="workflow-visualization h-full w-full bg-gray-50 dark:bg-gray-900">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onNodeClick={onNodeClick}
+          onInit={onInit}
+          fitView
+          attributionPosition="bottom-left"
+          minZoom={0.1}
+          maxZoom={2}
+          defaultEdgeOptions={{
+            animated: false,
+            style: { strokeWidth: 2 }
+          }}
+        >
         <Background 
           variant={BackgroundVariant.Dots}
           gap={16}
           size={1}
-          color={theme === 'dark' ? '#374151' : '#e5e7eb'}
+          color={theme === 'dark' ? '#374151' : '#cbd5e1'}
         />
         <Controls 
           className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg"

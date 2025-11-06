@@ -115,7 +115,7 @@ export function GlobalNavBar({ onRunTask, onStopTask, isRunning }: GlobalNavBarP
   const isStopDisabled = !isRunning || isDisconnected || !hasValidSelection;
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 bg-white dark:bg-gray-800 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 dark:border-gray-700 shadow-sm transition-colors">
+    <header className="fixed top-0 left-0 right-0 z-50 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-sm transition-colors">
       <div className="px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
@@ -166,7 +166,7 @@ export function GlobalNavBar({ onRunTask, onStopTask, isRunning }: GlobalNavBarP
                     : capitalize(agents.find(a => a.value === selectedAgent)?.label || 'No agents')}
                 </button>
                 {agentDropdownOpen && !isLoadingAgents && agents.length > 0 && (
-                  <div className="absolute top-full mt-1 w-full bg-white dark:bg-gray-800 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg z-50">
+                  <div className="absolute top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg z-50">
                     {agents.map((agent) => (
                       <button
                         key={agent.value}
@@ -202,7 +202,7 @@ export function GlobalNavBar({ onRunTask, onStopTask, isRunning }: GlobalNavBarP
                   {capitalize(workTypes.find(t => t.value === selectedWorkType)?.label || '')}
                 </button>
                 {workTypeDropdownOpen && (
-                  <div className="absolute top-full mt-1 w-full bg-white dark:bg-gray-800 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg z-50">
+                  <div className="absolute top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg z-50">
                     {workTypes.map((workType) => (
                       <button
                         key={workType.value}
