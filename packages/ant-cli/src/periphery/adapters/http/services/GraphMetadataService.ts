@@ -58,8 +58,14 @@ const COMMON_ACTORS = {
   fileSystem: {
     id: 'file-system',
     type: ActorType.FILE_SYSTEM,
-    label: 'File System',
+    label: 'Workspace Files',
     icon: '📁'
+  },
+  codeRepo: {
+    id: 'code-repo',
+    type: ActorType.CODE_REPO,
+    label: 'Code Repository',
+    icon: '💻'
   },
   tool: {
     id: 'tool',
@@ -75,8 +81,8 @@ const COMMON_ACTORS = {
 const ACTOR_MAPPINGS: Record<string, { actors: string[]; description?: string }> = {
   // Architect Code
   'architect:code:resolve': {
-    actors: [COMMON_ACTORS.fileSystem.id, COMMON_ACTORS.localStorage.id],
-    description: 'Load context and resolve dependencies'
+    actors: [COMMON_ACTORS.fileSystem.id, COMMON_ACTORS.vectorDb.id, COMMON_ACTORS.localStorage.id],
+    description: 'Load context and resolve dependencies via RAG'
   },
   'architect:code:plan': {
     actors: [COMMON_ACTORS.llm.id],
@@ -91,12 +97,20 @@ const ACTOR_MAPPINGS: Record<string, { actors: string[]; description?: string }>
     description: 'Generate code for current task'
   },
   'architect:code:writeFiles': {
-    actors: [COMMON_ACTORS.fileSystem.id],
-    description: 'Write generated code to disk'
+    actors: [COMMON_ACTORS.codeRepo.id, COMMON_ACTORS.fileSystem.id],
+    description: 'Write generated code to repository'
   },
   'architect:code:validate': {
-    actors: [COMMON_ACTORS.fileSystem.id, COMMON_ACTORS.tool.id],
+    actors: [COMMON_ACTORS.codeRepo.id, COMMON_ACTORS.tool.id],
     description: 'Check code quality'
+  },
+  'architect:code:installDeps': {
+    actors: [COMMON_ACTORS.codeRepo.id, COMMON_ACTORS.tool.id],
+    description: 'Install dependencies'
+  },
+  'architect:code:runtimeValidate': {
+    actors: [COMMON_ACTORS.codeRepo.id, COMMON_ACTORS.tool.id],
+    description: 'Run tests and build'
   },
   'architect:code:enforce': {
     actors: [COMMON_ACTORS.llm.id],
@@ -113,8 +127,8 @@ const ACTOR_MAPPINGS: Record<string, { actors: string[]; description?: string }>
   
   // Architect Design
   'architect:design:resolve': {
-    actors: [COMMON_ACTORS.localStorage.id],
-    description: 'Load context and artifacts'
+    actors: [COMMON_ACTORS.vectorDb.id, COMMON_ACTORS.localStorage.id],
+    description: 'Load context and artifacts via RAG'
   },
   'architect:design:plan': {
     actors: [COMMON_ACTORS.llm.id],

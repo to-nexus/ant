@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
+import multer from 'multer';
 import { ProjectService } from '../services';
 
 /**
@@ -13,6 +14,14 @@ export function createProjectRoutes(deps: {
   fileTreeSSE?: Map<string, Set<Response>>;
 }): Router {
   const router = Router();
+  
+  // Configure multer for file uploads (use memory storage)
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+      fileSize: 50 * 1024 * 1024, // 50MB max file size
+    },
+  });
   
   // Health check
   router.get('/health', (_req: Request, res: Response) => {
@@ -491,12 +500,55 @@ export function createProjectRoutes(deps: {
   });
 
   // Upload files to a feature directory
-  router.post('/projects/:id/features/:feature/upload', async (req: Request, res: Response) => {
+  router.post('/projects/:id/features/:feature/upload', upload.array('files'), async (req: Request, res: Response) => {
     try {
-      res.status(501).json({ 
-        error: 'File upload not yet implemented. Use file creation for text files.' 
+      const projectId = req.params.id;
+      const featureName = req.params.feature;
+      const dirPath = req.body.dirPath || '';
+      const files = req.files as Express.Multer.File[];
+      
+      if (!files || files.length === 0) {
+        res.status(400).json({ error: 'No files provided' });
+        return;
+      }
+      
+      // Base directory for uploads
+      const baseDir = path.join(
+        deps.workspaceRoot,
+        projectId,
+        featureName,
+        dirPath
+      );
+      
+      // Ensure directory exists
+      await fs.promises.mkdir(baseDir, { recursive: true });
+      
+      // Write all uploaded files
+      const uploadedFiles: string[] = [];
+      for (const file of files) {
+        const filePath = path.join(baseDir, file.originalname);
+        await fs.promises.writeFile(filePath, file.buffer);
+        uploadedFiles.push(file.originalname);
+      }
+      
+      // Broadcast file tree update via SSE
+      if (deps.fileTreeSSE) {
+        const key = `${projectId}/${featureName}`;
+        const clients = deps.fileTreeSSE.get(key);
+        if (clients) {
+          clients.forEach(client => {
+            client.write(`data: ${JSON.stringify({ type: 'update' })}\n\n`);
+          });
+        }
+      }
+      
+      res.json({ 
+        success: true, 
+        uploadedFiles,
+        count: uploadedFiles.length 
       });
     } catch (error: any) {
+      console.error('[Upload] Error:', error);
       res.status(500).json({ error: error.message });
     }
   });

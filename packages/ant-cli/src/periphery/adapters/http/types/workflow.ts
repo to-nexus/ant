@@ -30,7 +30,8 @@ export enum ActorType {
   EMBEDDING = 'embedding',        // Embedding Model
   VECTOR_DB = 'vector-db',        // Vector Database
   LOCAL_STORAGE = 'local-storage', // Session 저장
-  FILE_SYSTEM = 'file-system',    // 파일 읽기/쓰기
+  FILE_SYSTEM = 'file-system',    // Workspace 파일 읽기/쓰기
+  CODE_REPO = 'code-repo',        // 실제 코드 저장소
   TOOL = 'tool'                   // 기타 도구
 }
 
