@@ -32,6 +32,7 @@ export class KanbanService {
   /**
    * Update task queue snapshot (called by orchestrator during execution)
    * This provides real-time queue data without parsing logs
+   * Note: Broadcasting is now handled by SSEBroadcastService through ExpressServerAdapter
    */
   updateTaskQueue(
     taskId: string, 
@@ -54,9 +55,6 @@ export class KanbanService {
     } else {
       console.log(`[Task Queue] 🔄 Updated snapshot for ${taskId}: current="${currentTask?.name}", queue=${queue.length}, recursion=${recursionCount}/${recursionLimit}`);
     }
-    
-    // Broadcast update to Kanban SSE clients
-    this.broadcastKanbanForTask(taskId);
   }
   
   /**
@@ -119,89 +117,51 @@ export class KanbanService {
     }
   }
   
-  /**
-   * Broadcast Kanban update for a specific task
-   */
-  private broadcastKanbanForTask(taskId: string): void {
-    const mapping = this.taskToProject.get(taskId);
-    if (!mapping) {
-      return;
-    }
-    
-    const { projectId, featureName } = mapping;
-    const key = `${projectId}/${featureName}`;
-    const clients = this.kanbanSSE.get(key);
-    
-    if (!clients || clients.size === 0) {
-      return;
-    }
-    
-    // Get Kanban data
-    this.getKanbanData(projectId, featureName, taskId).then(data => {
-      const message = `data: ${JSON.stringify(data)}\n\n`;
-      
-      clients.forEach(res => {
-        try {
-          res.write(message);
-        } catch (error) {
-          console.error(`[Kanban SSE] Error sending to client:`, error);
-          clients.delete(res);
-        }
-      });
-    }).catch(error => {
-      console.error(`[Kanban SSE] Error getting Kanban data:`, error);
-    });
-  }
+  // Note: Broadcast methods are removed as they are now handled by SSEBroadcastService
   
   /**
-   * Broadcast Kanban update to all clients for a project/feature
+   * Get Kanban data with hybrid strategy
+   * 
+   * Data Source Priority:
+   * 1. Live snapshot (real-time memory state from running job)
+   * 2. Estimating state (job running but no data yet)
+   * 3. Session file (persistent state for completed/paused jobs)
    */
-  async broadcastKanban(projectId: string, featureName: string, activeTaskId?: string): Promise<void> {
-    const key = `${projectId}/${featureName}`;
-    const clients = this.kanbanSSE.get(key);
-    
-    if (!clients || clients.size === 0) {
-      return;
-    }
-    
-    const data = await this.getKanbanData(projectId, featureName, activeTaskId);
-    const message = `data: ${JSON.stringify(data)}\n\n`;
-    
-    clients.forEach(res => {
-      try {
-        res.write(message);
-      } catch (error) {
-        console.error(`[Kanban SSE] Error sending to client:`, error);
-        clients.delete(res);
-      }
-    });
-  }
-  
-  /**
-   * Get Kanban data with hybrid strategy: live snapshot > session fallback
-   */
-  private async getKanbanData(
+  async getKanbanData(
     projectId: string,
     featureName: string,
-    activeTaskId?: string
+    jobToProject?: Map<string, { projectId: string; featureName: string }>,
+    jobs?: Map<string, any>,
+    taskQueueSnapshots?: Map<string, any>
   ): Promise<any> {
-    // Priority 1: Live snapshot (real-time memory state)
-    if (activeTaskId) {
-      const liveSnapshot = this.taskQueueSnapshots.get(activeTaskId);
-      if (liveSnapshot) {
-        console.log(`[Kanban] Using live snapshot for ${activeTaskId}`);
-        return {
-          currentTask: liveSnapshot.currentTask,
-          taskQueue: liveSnapshot.queue,
-          completedTasks: [], // Will be loaded from session
-          source: 'live',
-          recursionCount: liveSnapshot.recursionCount || 0,
-          recursionLimit: liveSnapshot.recursionLimit || 50
-        };
+    // Use provided data sources or fall back to service's own
+    const snapshots = taskQueueSnapshots || this.taskQueueSnapshots;
+    
+    // 1. Find active jobId for this project/feature
+    let activeJobId: string | null = null;
+    if (jobToProject && jobs) {
+      for (const [jobId, mapping] of jobToProject.entries()) {
+        if (mapping.projectId === projectId && mapping.featureName === featureName) {
+          const jobStatus = jobs.get(jobId);
+          // Check for both 'pending' and 'running' states
+          if (jobStatus && (jobStatus.status === 'running' || jobStatus.status === 'pending')) {
+            activeJobId = jobId;
+            break;
+          }
+        }
       }
     }
     
-    // Priority 2: Session file (persistent state)
+    // 2. Try to get LIVE data from memory snapshot
+    let liveSnapshot = null;
+    if (activeJobId) {
+      liveSnapshot = snapshots.get(activeJobId);
+      console.log(`  🔍 Looking for live snapshot with jobId: ${activeJobId}`);
+      console.log(`  📊 Available snapshots:`, Array.from(snapshots.keys()));
+      console.log(`  ${liveSnapshot ? '✅ FOUND' : '❌ NOT FOUND'}`);
+    }
+    
+    // 3. Get SESSION data from file
     const sessionPath = path.join(
       this.workspaceRoot,
       projectId,
@@ -209,55 +169,114 @@ export class KanbanService {
       'outputs/session.json'
     );
     
+    let sessionData: any = null;
     try {
       if (fs.existsSync(sessionPath)) {
-        const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
-        const state = sessionData.state || {};
-        
-        console.log(`[Kanban] Using session data for ${projectId}/${featureName}`);
-        console.log(`[Kanban] Session pausedDueToLimit:`, state.pausedDueToLimit);
-        console.log(`[Kanban] Session tasksRemaining:`, state.tasksRemaining);
-        console.log(`[Kanban] Session recursionCount:`, state.recursionCount);
-        console.log(`[Kanban] Session recursionLimit:`, state.recursionLimit);
-        return {
-          currentTask: state.currentTask || null,
-          taskQueue: state.taskQueue || [],
-          completedTasks: state.completedTasksDetails || [],
-          source: 'session',
-          pausedDueToLimit: state.pausedDueToLimit || false,
-          tasksRemaining: state.tasksRemaining || 0,
-          recursionCount: state.recursionCount,
-          recursionLimit: state.recursionLimit
-        };
+        sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
       }
     } catch (error) {
       console.error(`[Kanban] Error reading session file:`, error);
     }
     
-    // Priority 3: Empty state (task not started or no data yet)
-    console.log(`[Kanban] No data available for ${projectId}/${featureName}`);
-    return {
-      currentTask: null,
-      taskQueue: [],
-      completedTasks: [],
-      source: 'empty',
-      estimating: activeTaskId ? true : false // If task is running but no data, it's estimating
-    };
-  }
-  
-  /**
-   * Get Kanban data for HTTP endpoint
-   */
-  async getKanbanDataForEndpoint(projectId: string, featureName: string): Promise<any> {
-    // Find active task for this project/feature
-    let activeTaskId: string | undefined;
-    for (const [taskId, mapping] of this.taskToProject.entries()) {
-      if (mapping.projectId === projectId && mapping.featureName === featureName) {
-        activeTaskId = taskId;
-        break;
-      }
+    const sessionState = sessionData?.state || {};
+    const sessionTaskQueue = sessionState.taskQueue || [];
+    const completedTaskIds = sessionState.completedTasks || [];
+    const completedTasksDetails = sessionState.completedTasksDetails || [];
+    const currentTask = sessionState.currentTask || null;
+    
+    // 4. Determine state and build Kanban data
+    
+    // ✅ DEBUG: Log ALL decision factors with snapshot details
+    console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    console.log(`[Kanban] 🔍 Data source decision for ${projectId}/${featureName}:`);
+    console.log(`  📌 Active Job:`, activeJobId || 'NONE');
+    console.log(`  💾 Live Snapshot:`, !!liveSnapshot ? 'EXISTS' : 'NONE');
+    if (liveSnapshot) {
+      console.log(`     - Current Task:`, liveSnapshot.currentTask?.name || 'null');
+      console.log(`     - Queue Length:`, liveSnapshot.queue?.length || 0);
+      console.log(`     - Queue Tasks:`, liveSnapshot.queue?.map((t: any) => t.name).join(', ') || 'empty');
+    }
+    console.log(`  📄 Session Data:`);
+    console.log(`     - Queue Length:`, sessionTaskQueue.length);
+    console.log(`     - Current Task:`, currentTask?.name || 'null');
+    console.log(`     - Completed Count:`, completedTasksDetails.length);
+    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+    
+    // Priority 1: LIVE DATA (most recent, real-time)
+    if (activeJobId && liveSnapshot) {
+      console.log(`[Kanban] ✅ Using LIVE DATA for ${projectId}/${featureName}`);
+      console.log(`         Queue: ${liveSnapshot.queue?.length || 0} tasks, Current: ${liveSnapshot.currentTask?.name || 'none'}`);
+      console.log(`         Completed (live): ${liveSnapshot.completedTasks?.length || 0}\n`);
+      
+      // Use completed tasks from LIVE snapshot (not session!)
+      const liveCompletedTasks = liveSnapshot.completedTasks || [];
+      
+      return {
+        todo: liveSnapshot.queue || [],
+        inProgress: liveSnapshot.currentTask || null,
+        completed: liveCompletedTasks.map((detail: any) => ({
+          ...detail,
+          status: 'completed',
+          completed: true
+        })),
+        isEstimating: false,
+        dataSource: 'live',
+        recursionCount: liveSnapshot.recursionCount,
+        recursionLimit: liveSnapshot.recursionLimit,
+        pausedDueToLimit: sessionState.pausedDueToLimit || false,  // From session (live doesn't track pause state)
+        tasksRemaining: sessionState.tasksRemaining || 0
+      };
     }
     
-    return this.getKanbanData(projectId, featureName, activeTaskId);
+    // Priority 2: ESTIMATING (job running but no data yet)
+    if (activeJobId && !liveSnapshot && sessionTaskQueue.length === 0 && !currentTask) {
+      console.log(`[Kanban] ✓ Job running, ESTIMATING for ${projectId}/${featureName}`);
+      
+      // Read recursion limit from session or environment variable
+      const MINIMUM_RECURSION_LIMIT = 5;
+      const DEFAULT_RECURSION_LIMIT = 50;
+      const envLimit = parseInt(process.env.RECURSION_LIMIT || String(DEFAULT_RECURSION_LIMIT), 10);
+      const finalLimit = isNaN(envLimit) || envLimit < 1 
+        ? DEFAULT_RECURSION_LIMIT 
+        : envLimit < MINIMUM_RECURSION_LIMIT 
+          ? MINIMUM_RECURSION_LIMIT 
+          : envLimit;
+      
+      return {
+        todo: [],
+        inProgress: null,
+        completed: completedTasksDetails.map((detail: any) => ({
+          ...detail,
+          status: 'completed',
+          completed: true
+        })),
+        isEstimating: true,
+        dataSource: 'estimating',
+        recursionCount: sessionState.recursionCount || 0,
+        recursionLimit: sessionState.recursionLimit || finalLimit
+      };
+    }
+    
+    // Priority 3: SESSION DATA (job running but live data not ready yet, OR job completed)
+    console.log(`[Kanban] ✓ Using SESSION data for ${projectId}/${featureName} (${activeJobId ? 'transitioning to live' : 'static'})`);
+    
+    return {
+      todo: sessionTaskQueue.filter((task: any) => 
+        !completedTaskIds.includes(task.id) && 
+        (!currentTask || currentTask.id !== task.id)
+      ),
+      inProgress: currentTask,
+      completed: completedTasksDetails.map((detail: any) => ({
+        ...detail,
+        status: 'completed',
+        completed: true
+      })),
+      isEstimating: false,
+      dataSource: 'session',
+      pausedDueToLimit: sessionState.pausedDueToLimit || false,
+      tasksRemaining: sessionState.tasksRemaining || 0,
+      recursionCount: sessionState.recursionCount,
+      recursionLimit: sessionState.recursionLimit
+    };
   }
 }

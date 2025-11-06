@@ -17,14 +17,14 @@ const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4100/api';
  * Architecture:
  * - Backend provides complete, ready-to-render data via SSE stream
  * - Frontend receives real-time updates (no polling!)
- * - Instant updates when queue changes, task starts/completes
+ * - Instant updates when queue changes, or when Task Board tasks start/complete
  */
 export function KanbanBoard() {
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);
   const isRunning = useStore((state) => state.isRunning);
   const setRunning = useStore((state) => state.setRunning);
-  const setCurrentTask = useStore((state) => state.setCurrentTask);
+  const setCurrentJob = useStore((state) => state.setCurrentJob);
   const setSession = useStore((state) => state.setSession);
   const splitLayout = useStore((state) => state.splitLayout);
   
@@ -58,7 +58,7 @@ export function KanbanBoard() {
         );
         if (response.ok && isMounted) {
           const data = await response.json();
-          console.log('[Kanban] Loaded session data (task not running)');
+          console.log('[Kanban] Loaded session data (agent job not running)');
           setKanbanData(data);
         }
       } catch (error) {
@@ -132,7 +132,7 @@ export function KanbanBoard() {
     }
   }, [kanbanData.inProgress, previousInProgressId]);
 
-  // Detect task completion/stop
+  // Detect agent job completion/stop
   useEffect(() => {
     const currentDataSource = kanbanData.dataSource;
     
@@ -154,10 +154,10 @@ export function KanbanBoard() {
     setRunning(true, undefined, 'generate');
     
     try {
-      const { executeCodeTask } = await import('@/lib/cli');
+      const { executeCodeJob } = await import('@/lib/cli');
       const { fetchFeatureSession } = await import('@/lib/api');
       
-      const taskExecution = executeCodeTask({
+      const taskExecution = executeCodeJob({
         projectId: selectedProject,
         featureName: selectedFeature,
         task: 'code',
@@ -166,7 +166,7 @@ export function KanbanBoard() {
         language: 'en',
       });
       
-      setCurrentTask(taskExecution);
+      setCurrentJob(taskExecution);
       
       if (taskExecution.onTaskIdReady) {
         taskExecution.onTaskIdReady((taskId) => {
@@ -178,7 +178,7 @@ export function KanbanBoard() {
       taskExecution.on('exit', async (code, _signal) => {
         console.log(`[KanbanBoard] Task exited with code ${code}`);
         setRunning(false);
-        setCurrentTask(null);
+        setCurrentJob(null);
         
         if (selectedProject && selectedFeature) {
           try {
@@ -194,7 +194,7 @@ export function KanbanBoard() {
     } catch (error) {
       console.error('[KanbanBoard] Failed to resume task:', error);
       setRunning(false);
-      setCurrentTask(null);
+      setCurrentJob(null);
       alert('Failed to resume task. Please try again.');
     }
   };
@@ -210,7 +210,7 @@ export function KanbanBoard() {
           {selectedProject && selectedFeature ? (
             <div>
               <div className="mb-2">📋 No tasks yet.</div>
-              <div className="text-xs">Run a task to start generating the task queue.</div>
+              <div className="text-xs">Run an agent job to start generating the task queue.</div>
             </div>
           ) : (
             <div className="text-gray-500 dark:text-gray-400">

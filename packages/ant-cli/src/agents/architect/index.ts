@@ -237,11 +237,11 @@ export async function architectAgent(
         });
         
         // ✅ Resolve taskId: orchestrator param > env var (child process) > undefined
-        const resolvedTaskId = taskId || process.env.ANT_TASK_ID;
+        const resolvedTaskId = taskId || process.env.ANT_JOB_ID;
         
         console.log(`🔍 [architectAgent] Task ID resolution:`);
         console.log(`   taskId param:`, taskId || 'undefined');
-        console.log(`   process.env.ANT_TASK_ID:`, process.env.ANT_TASK_ID || 'undefined');
+        console.log(`   process.env.ANT_JOB_ID:`, process.env.ANT_JOB_ID || 'undefined');
         console.log(`   resolvedTaskId:`, resolvedTaskId || 'undefined');
         console.log(`   kanbanUpdate available:`, !!deps?.kanbanUpdate);
         

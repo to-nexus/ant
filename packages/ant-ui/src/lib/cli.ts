@@ -1,25 +1,25 @@
-import { executeTask, subscribeToLogs, stopTask } from '@/lib/api';
+import { executeJob, subscribeToLogs, stopJob } from '@/lib/api';
 import { useStore } from '@/lib/store';
 
-export interface ExecuteCodeTaskOptions {
+export interface ExecuteCodeJobOptions {
   projectId?: string;
   featureName?: string;  // Which feature to execute for
-  task?: 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';
+  task?: 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';  // Note: 'task' here means agent's work type
   agent?: 'architect' | 'reviewer' | 'planner' | 'doc';
   mode?: 'generate' | 'refactor' | 'explain';
   language?: string;
   cwd?: string;
 }
 
-export interface TaskExecution {
-  taskId: string;
+export interface JobExecution {
+  jobId: string;
   eventSource: EventSource;
   kill: (signal?: string) => Promise<boolean>;
-  on: (event: 'exit', listener: (code: number | null, signal: string | null) => void) => TaskExecution;
-  onTaskIdReady?: (callback: (taskId: string) => void) => void;
+  on: (event: 'exit', listener: (code: number | null, signal: string | null) => void) => JobExecution;
+  onJobIdReady?: (callback: (jobId: string) => void) => void;
 }
 
-export function executeCodeTask(options: ExecuteCodeTaskOptions = {}): TaskExecution {
+export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecution {
   const { 
     projectId = '', 
     featureName = 'skeleton',  // Default to skeleton
@@ -32,18 +32,18 @@ export function executeCodeTask(options: ExecuteCodeTaskOptions = {}): TaskExecu
   const store = useStore.getState();
   
   let eventSource: EventSource | null = null;
-  let taskId = '';
+  let jobId = '';
   let exitListener: ((code: number | null, signal: string | null) => void) | null = null;
-  let taskIdReadyCallback: ((taskId: string) => void) | null = null;
+  let jobIdReadyCallback: ((jobId: string) => void) | null = null;
   
-  const taskExecution: TaskExecution = {
-    taskId: '',
+  const taskExecution: JobExecution = {
+    jobId: '',
     eventSource: null as unknown as EventSource,
     kill: async (_signal?: string) => {
       try {
         // Stop the task on the server first
-        if (taskId) {
-          await stopTask(taskId);
+        if (jobId) {
+          await stopTask(jobId);
         }
       } catch (error) {
         console.error('Error stopping task on server:', error);
@@ -65,12 +65,12 @@ export function executeCodeTask(options: ExecuteCodeTaskOptions = {}): TaskExecu
       }
       return taskExecution;
     },
-    // Add method to set callback for when taskId is ready
-    onTaskIdReady: (callback: (taskId: string) => void) => {
-      taskIdReadyCallback = callback;
-      if (taskId) {
-        // If taskId is already available, call immediately
-        callback(taskId);
+    // Add method to set callback for when jobId is ready
+    onTaskIdReady: (callback: (jobId: string) => void) => {
+      jobIdReadyCallback = callback;
+      if (jobId) {
+        // If jobId is already available, call immediately
+        callback(jobId);
       }
     }
   };
@@ -84,16 +84,16 @@ export function executeCodeTask(options: ExecuteCodeTaskOptions = {}): TaskExecu
     language,
   })
     .then((response) => {
-      taskId = response.taskId;
-      taskExecution.taskId = taskId;
+      jobId = response.jobId;
+      taskExecution.jobId = jobId;
       
-      // Notify that taskId is ready
-      if (taskIdReadyCallback) {
-        taskIdReadyCallback(taskId);
+      // Notify that jobId is ready
+      if (jobIdReadyCallback) {
+        jobIdReadyCallback(jobId);
       }
       
       // SSE 연결 - 실제 작업 로그만 스트리밍
-      eventSource = subscribeToLogs(taskId, (log) => {
+      eventSource = subscribeToLogs(jobId, (log) => {
         // Check for completion markers
         if (log.message === '__TASK_COMPLETED__') {
           // Task completed successfully

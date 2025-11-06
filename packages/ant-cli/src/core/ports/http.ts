@@ -11,17 +11,17 @@ export interface LogEntry {
   timestamp: string;
 }
 
-export interface TaskStatus {
-  taskId: string;
+export interface JobStatus {
+  jobId: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
   startedAt?: string;
   completedAt?: string;
   error?: string;
 }
 
-export interface ExecuteTaskParams {
+export interface ExecuteJobParams {
   agent: 'architect' | 'reviewer' | 'planner' | 'doc';
-  task: 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';
+  task: 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';  // Note: 'task' here means agent's work type, not Task Board task
   project: string;
   feature?: string;  // ✅ Feature name for Kanban tracking
   inputFile: string;
@@ -29,8 +29,8 @@ export interface ExecuteTaskParams {
   enableEvaluation?: boolean;
 }
 
-export interface TaskResult {
-  taskId: string;
+export interface JobResult {
+  jobId: string;
   success: boolean;
   message?: string;
   data?: any;
@@ -56,33 +56,35 @@ export interface FileContent {
 }
 
 /**
- * Task Execution Port
+ * Job Execution Port
  * 
- * Abstraction for executing tasks and streaming logs.
+ * Abstraction for executing agent jobs and streaming logs.
  * Implementations can use different execution strategies (sync, async, queued).
+ * 
+ * Note: "Job" refers to an agent execution instance, not Task Board tasks.
  */
-export interface TaskExecutionPort {
+export interface JobExecutionPort {
   /**
-   * Execute a task asynchronously
-   * Returns immediately with a taskId for tracking
+   * Execute an agent job asynchronously
+   * Returns immediately with a jobId for tracking
    */
-  executeTask(params: ExecuteTaskParams): Promise<TaskResult>;
+  executeJob(params: ExecuteJobParams): Promise<JobResult>;
   
   /**
-   * Get current status of a task
+   * Get current status of a job
    */
-  getTaskStatus(taskId: string): TaskStatus | undefined;
+  getJobStatus(jobId: string): JobStatus | undefined;
   
   /**
-   * Stream logs for a specific task
+   * Stream logs for a specific job
    * Returns an async iterator for real-time log streaming
    */
-  streamLogs(taskId: string): AsyncIterableIterator<LogEntry>;
+  streamLogs(jobId: string): AsyncIterableIterator<LogEntry>;
   
   /**
-   * Get all logs for a completed task
+   * Get all logs for a completed job
    */
-  getLogs(taskId: string): LogEntry[];
+  getLogs(jobId: string): LogEntry[];
 }
 
 /**

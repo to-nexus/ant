@@ -1,8 +1,8 @@
 import { spawn, ChildProcess } from 'child_process';
 import { 
-  ExecuteTaskParams, 
-  TaskResult, 
-  TaskStatus, 
+  ExecuteJobParams, 
+  JobResult, 
+  JobStatus, 
   LogEntry 
 } from '../../../../core/ports/http';
 import * as path from 'path';
@@ -10,79 +10,81 @@ import * as path from 'path';
 /**
  * TaskExecutionService
  * 
- * Manages task execution via child processes.
+ * Manages agent job execution via child processes.
  * Handles process spawning, log streaming, and lifecycle management.
+ * 
+ * Note: "Job" refers to an agent execution instance, not Task Board tasks.
  */
 export class TaskExecutionService {
-  // Task tracking
-  private tasks: Map<string, TaskStatus> = new Map();
+  // Job tracking (agent execution instances)
+  private jobs: Map<string, JobStatus> = new Map();
   private logs: Map<string, LogEntry[]> = new Map();
   private logStreams: Map<string, Set<(log: LogEntry) => void>> = new Map();
   private childProcesses: Map<string, ChildProcess> = new Map();
   
-  // Current taskId being executed (for CLI subprocess to access)
-  private currentTaskId: string | null = null;
+  // Current jobId being executed (for CLI subprocess to access)
+  private currentJobId: string | null = null;
   
   // Callbacks
-  private onTaskStatusChange?: (taskId: string, status: TaskStatus) => void;
-  private onLogEntry?: (taskId: string, log: LogEntry) => void;
+  private onJobStatusChange?: (jobId: string, status: JobStatus) => void;
+  private onLogEntry?: (jobId: string, log: LogEntry) => void;
   
   constructor(callbacks?: {
-    onTaskStatusChange?: (taskId: string, status: TaskStatus) => void;
-    onLogEntry?: (taskId: string, log: LogEntry) => void;
+    onJobStatusChange?: (jobId: string, status: JobStatus) => void;
+    onLogEntry?: (jobId: string, log: LogEntry) => void;
   }) {
-    this.onTaskStatusChange = callbacks?.onTaskStatusChange;
+    this.onJobStatusChange = callbacks?.onJobStatusChange;
     this.onLogEntry = callbacks?.onLogEntry;
   }
   
   /**
-   * Get current task ID (for CLI subprocess)
+   * Get current job ID (for CLI subprocess)
    */
-  getCurrentTaskId(): string | null {
-    return this.currentTaskId;
+  getCurrentJobId(): string | null {
+    return this.currentJobId;
   }
   
   /**
-   * Execute a task asynchronously
+   * Execute an agent job asynchronously
    */
-  async executeTask(params: ExecuteTaskParams): Promise<TaskResult> {
-    const taskId = `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  async executeJob(params: ExecuteJobParams): Promise<JobResult> {
+    const jobId = `job-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
-    // Initialize task tracking
-    const taskStatus: TaskStatus = {
-      taskId,
+    // Initialize job tracking
+    const jobStatus: JobStatus = {
+      jobId,
       status: 'pending',
       startedAt: new Date().toISOString()
     };
     
-    this.tasks.set(taskId, taskStatus);
-    this.logs.set(taskId, []);
+    this.jobs.set(jobId, jobStatus);
+    this.logs.set(jobId, []);
     
     // Notify status change
-    this.onTaskStatusChange?.(taskId, taskStatus);
+    this.onJobStatusChange?.(jobId, jobStatus);
     
-    // Start task execution in child process (non-blocking)
-    this.runTask(taskId, params).catch(error => {
-      console.error(`Task ${taskId} failed:`, error);
+    // Start job execution in child process (non-blocking)
+    this.runJob(jobId, params).catch(error => {
+      console.error(`Job ${jobId} failed:`, error);
     });
 
     return {
-      taskId,
+      jobId,
       success: true,
-      message: 'Task started'
+      message: 'Job started'
     };
   }
   
   /**
    * Run task in child process
    */
-  private async runTask(taskId: string, params: ExecuteTaskParams): Promise<void> {
-    const status = this.tasks.get(taskId)!;
+  private async runJob(jobId: string, params: ExecuteJobParams): Promise<void> {
+    const status = this.jobs.get(jobId)!;
     status.status = 'running';
-    this.onTaskStatusChange?.(taskId, status);
+    this.onJobStatusChange?.(jobId, status);
     
-    // Set current taskId for CLI subprocess to access
-    this.currentTaskId = taskId;
+    // Set current jobId for CLI subprocess to access
+    this.currentJobId = jobId;
     
     try {
       // Build ant CLI command - use commander structure: aidev <agent> <task> <input>
@@ -111,7 +113,7 @@ export class TaskExecutionService {
         args.push('--eval');
       }
       
-      console.log(`[Task Execution] Starting task ${taskId}: tsx ${args.join(' ')}`);
+      console.log(`[Job Execution] Starting job ${jobId}: tsx ${args.join(' ')}`);
       
       // Spawn child process using tsx
       const childProcess = spawn('npx', ['tsx', ...args], {
@@ -120,7 +122,7 @@ export class TaskExecutionService {
         stdio: ['ignore', 'pipe', 'pipe']
       });
       
-      this.childProcesses.set(taskId, childProcess);
+      this.childProcesses.set(jobId, childProcess);
       
       // Line buffering for stdout/stderr
       let stdoutBuffer = '';
@@ -136,11 +138,11 @@ export class TaskExecutionService {
         };
         
         // Store log
-        this.logs.get(taskId)!.push(logEntry);
+        this.logs.get(jobId)!.push(logEntry);
         
         // Notify listeners
-        this.logStreams.get(taskId)?.forEach(listener => listener(logEntry));
-        this.onLogEntry?.(taskId, logEntry);
+        this.logStreams.get(jobId)?.forEach(listener => listener(logEntry));
+        this.onLogEntry?.(jobId, logEntry);
         
         // Also output to server console
         if (type === 'stdout') {
@@ -179,7 +181,7 @@ export class TaskExecutionService {
       // Wait for process to complete
       await new Promise<void>((resolve, reject) => {
         childProcess.on('exit', (code, signal) => {
-          this.childProcesses.delete(taskId);
+          this.childProcesses.delete(jobId);
           
           // Flush any remaining buffered output
           if (stdoutBuffer) {
@@ -195,24 +197,24 @@ export class TaskExecutionService {
             // Mark as completed
             status.status = 'completed';
             status.completedAt = new Date().toISOString();
-            this.onTaskStatusChange?.(taskId, status);
+            this.onJobStatusChange?.(jobId, status);
             
             const logEntry: LogEntry = {
               type: 'stdout',
-              message: '\n✅ Task completed successfully!',
+              message: '\n✅ Job completed successfully!',
               timestamp: new Date().toISOString()
             };
-            this.logs.get(taskId)!.push(logEntry);
-            this.logStreams.get(taskId)?.forEach(listener => listener(logEntry));
-            this.onLogEntry?.(taskId, logEntry);
+            this.logs.get(jobId)!.push(logEntry);
+            this.logStreams.get(jobId)?.forEach(listener => listener(logEntry));
+            this.onLogEntry?.(jobId, logEntry);
             
             // Send completion marker
             const completionMarker: LogEntry = {
               type: 'stdout',
-              message: '__TASK_COMPLETED__',
+              message: '__JOB_COMPLETED__',
               timestamp: new Date().toISOString()
             };
-            this.logStreams.get(taskId)?.forEach(listener => listener(completionMarker));
+            this.logStreams.get(jobId)?.forEach(listener => listener(completionMarker));
             
             resolve();
           } else {
@@ -220,33 +222,33 @@ export class TaskExecutionService {
             status.status = 'failed';
             status.completedAt = new Date().toISOString();
             status.error = signal ? `Killed by ${signal}` : `Exit code: ${code}`;
-            this.onTaskStatusChange?.(taskId, status);
+            this.onJobStatusChange?.(jobId, status);
             
             const logEntry: LogEntry = {
               type: 'stderr',
               message: signal 
-                ? `\n🛑 Task stopped by user (${signal})`
-                : `\n❌ Task failed with exit code ${code}`,
+                ? `\n🛑 Job stopped by user (${signal})`
+                : `\n❌ Job failed with exit code ${code}`,
               timestamp: new Date().toISOString()
             };
-            this.logs.get(taskId)!.push(logEntry);
-            this.logStreams.get(taskId)?.forEach(listener => listener(logEntry));
-            this.onLogEntry?.(taskId, logEntry);
+            this.logs.get(jobId)!.push(logEntry);
+            this.logStreams.get(jobId)?.forEach(listener => listener(logEntry));
+            this.onLogEntry?.(jobId, logEntry);
             
             // Send failure marker
             const failureMarker: LogEntry = {
               type: 'stderr',
-              message: '__TASK_FAILED__',
+              message: '__JOB_FAILED__',
               timestamp: new Date().toISOString()
             };
-            this.logStreams.get(taskId)?.forEach(listener => listener(failureMarker));
+            this.logStreams.get(jobId)?.forEach(listener => listener(failureMarker));
             
             reject(new Error(status.error));
           }
         });
         
         childProcess.on('error', (error) => {
-          this.childProcesses.delete(taskId);
+          this.childProcesses.delete(jobId);
           reject(error);
         });
       });
@@ -255,43 +257,43 @@ export class TaskExecutionService {
       status.status = 'failed';
       status.completedAt = new Date().toISOString();
       status.error = error.message;
-      this.onTaskStatusChange?.(taskId, status);
+      this.onJobStatusChange?.(jobId, status);
       
       const logEntry: LogEntry = {
         type: 'stderr',
         message: `\n❌ Task failed: ${error.message}`,
         timestamp: new Date().toISOString()
       };
-      this.logs.get(taskId)!.push(logEntry);
-      this.logStreams.get(taskId)?.forEach(listener => listener(logEntry));
-      this.onLogEntry?.(taskId, logEntry);
+      this.logs.get(jobId)!.push(logEntry);
+      this.logStreams.get(jobId)?.forEach(listener => listener(logEntry));
+      this.onLogEntry?.(jobId, logEntry);
     } finally {
-      // Clear current taskId
-      if (this.currentTaskId === taskId) {
-        this.currentTaskId = null;
+      // Clear current jobId
+      if (this.currentJobId === jobId) {
+        this.currentJobId = null;
       }
     }
   }
   
   /**
-   * Get task status
+   * Get job status
    */
-  getTaskStatus(taskId: string): TaskStatus | undefined {
-    return this.tasks.get(taskId);
+  getJobStatus(jobId: string): JobStatus | undefined {
+    return this.jobs.get(jobId);
   }
   
   /**
-   * Get all logs for a task
+   * Get all logs for a job
    */
-  getLogs(taskId: string): LogEntry[] {
-    return this.logs.get(taskId) || [];
+  getLogs(jobId: string): LogEntry[] {
+    return this.logs.get(jobId) || [];
   }
   
   /**
-   * Stream logs for a specific task
+   * Stream logs for a specific job
    */
-  async *streamLogs(taskId: string): AsyncIterableIterator<LogEntry> {
-    const logs = this.logs.get(taskId) || [];
+  async *streamLogs(jobId: string): AsyncIterableIterator<LogEntry> {
+    const logs = this.logs.get(jobId) || [];
     
     // Yield existing logs
     for (const log of logs) {
@@ -302,25 +304,25 @@ export class TaskExecutionService {
   /**
    * Add log stream listener
    */
-  addLogListener(taskId: string, listener: (log: LogEntry) => void): void {
-    if (!this.logStreams.has(taskId)) {
-      this.logStreams.set(taskId, new Set());
+  addLogListener(jobId: string, listener: (log: LogEntry) => void): void {
+    if (!this.logStreams.has(jobId)) {
+      this.logStreams.set(jobId, new Set());
     }
-    this.logStreams.get(taskId)!.add(listener);
+    this.logStreams.get(jobId)!.add(listener);
   }
   
   /**
    * Remove log stream listener
    */
-  removeLogListener(taskId: string, listener: (log: LogEntry) => void): void {
-    this.logStreams.get(taskId)?.delete(listener);
+  removeLogListener(jobId: string, listener: (log: LogEntry) => void): void {
+    this.logStreams.get(jobId)?.delete(listener);
   }
   
   /**
-   * Stop a running task
+   * Stop a running job
    */
-  stopTask(taskId: string): boolean {
-    const childProcess = this.childProcesses.get(taskId);
+  stopJob(jobId: string): boolean {
+    const childProcess = this.childProcesses.get(jobId);
     if (childProcess) {
       childProcess.kill('SIGTERM');
       return true;
@@ -329,10 +331,10 @@ export class TaskExecutionService {
   }
   
   /**
-   * Cleanup task resources
+   * Cleanup job resources
    */
-  cleanupTask(taskId: string): void {
-    this.logStreams.delete(taskId);
+  cleanupJob(jobId: string): void {
+    this.logStreams.delete(jobId);
     // Keep logs and status for history
   }
 }

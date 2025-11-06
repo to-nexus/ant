@@ -1,16 +1,15 @@
 import { Router, Request, Response } from 'express';
 import { LogEntry } from '../../../../core/ports/http';
+import { DevServerService } from '../services/DevServerService';
+import { ProjectService } from '../services/ProjectService';
 
 /**
  * Dev server routes
  * Handles development server management (start, stop, status, logs)
  */
 export function createDevServerRoutes(deps: {
-  getProjectConfig: (projectId: string) => Promise<any>;
-  resolveLocalPath: (localPath: string) => string;
-  startDevServer: (projectId: string, localPath: string) => Promise<any>;
-  stopDevServer: (projectId: string) => any;
-  getDevServerStatus: (projectId: string) => any;
+  projectService: ProjectService;
+  devServerService: DevServerService;
   devServerSSE: Map<string, Set<Response>>;
   broadcastDevServerStatus: (projectId: string) => void;
 }): Router {
@@ -20,7 +19,7 @@ export function createDevServerRoutes(deps: {
   router.post('/projects/:id/dev/start', async (req: Request, res: Response) => {
     try {
       const projectId = req.params.id;
-      const config = await deps.getProjectConfig(projectId);
+      const config = await deps.projectService.getProjectConfig(projectId);
       
       if (!config?.localPath) {
         res.status(400).json({ error: 'Project localPath not configured' });
@@ -28,10 +27,10 @@ export function createDevServerRoutes(deps: {
       }
       
       // Resolve local path
-      const localPath = deps.resolveLocalPath(config.localPath);
+      const localPath = deps.projectService.resolveLocalPath(config.localPath);
       
       // Start dev server
-      const result = await deps.startDevServer(projectId, localPath);
+      const result = await deps.devServerService.startDevServer(projectId, localPath);
       
       if (result.success) {
         res.json(result);
@@ -47,7 +46,7 @@ export function createDevServerRoutes(deps: {
   router.post('/projects/:id/dev/stop', (req: Request, res: Response) => {
     try {
       const projectId = req.params.id;
-      const result = deps.stopDevServer(projectId);
+      const result = deps.devServerService.stopDevServer(projectId);
       
       if (result.success) {
         // Broadcast server stopped
@@ -65,11 +64,19 @@ export function createDevServerRoutes(deps: {
   router.get('/projects/:id/dev/status', (req: Request, res: Response) => {
     try {
       const projectId = req.params.id;
-      const status = deps.getDevServerStatus(projectId);
+      const status = deps.devServerService.getDevServerStatus(projectId);
+      const logs = deps.devServerService.getDevServerLogs(projectId);
       
-      console.log(`[DevServer] Status check for ${projectId}: running=${status.running}, port=${status.port}`);
+      const fullStatus = {
+        running: status.running,
+        port: status.port || null,
+        url: status.port ? `http://localhost:${status.port}` : null,
+        logs: logs.slice(-50) // Last 50 logs
+      };
       
-      res.json(status);
+      console.log(`[DevServer] Status check for ${projectId}: running=${fullStatus.running}, port=${fullStatus.port}`);
+      
+      res.json(fullStatus);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -94,8 +101,17 @@ export function createDevServerRoutes(deps: {
     console.log(`[DevServer] SSE client connected for ${projectId}`);
     
     // Send initial status
-    const status = deps.getDevServerStatus(projectId);
-    res.write(`data: ${JSON.stringify(status)}\n\n`);
+    const status = deps.devServerService.getDevServerStatus(projectId);
+    const logs = deps.devServerService.getDevServerLogs(projectId);
+    
+    const fullStatus = {
+      running: status.running,
+      port: status.port || null,
+      url: status.port ? `http://localhost:${status.port}` : null,
+      logs: logs.slice(-50)
+    };
+    
+    res.write(`data: ${JSON.stringify(fullStatus)}\n\n`);
     
     // Handle client disconnect
     req.on('close', () => {

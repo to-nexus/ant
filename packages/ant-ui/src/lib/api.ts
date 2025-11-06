@@ -8,17 +8,17 @@ const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4100/api';
 console.log('[API] API_BASE:', API_BASE);
 console.log('[API] Environment variables:', import.meta.env);
 
-export interface ExecuteTaskParams {
+export interface ExecuteJobParams {
   projectId: string;
   featureName?: string;  // Optional: if not provided, uses 'skeleton'
-  task?: 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';
+  task?: 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';  // Note: 'task' here means agent's work type
   agent?: 'architect' | 'reviewer' | 'planner' | 'doc';
   mode?: 'generate' | 'refactor' | 'explain';
   language?: string;
 }
 
-export interface TaskStatus {
-  taskId: string;
+export interface JobStatus {
+  jobId: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
   startedAt?: string;
   completedAt?: string;
@@ -181,7 +181,7 @@ export async function fetchSession(projectId: string): Promise<Session | null> {
   }
 }
 
-export async function executeTask(params: ExecuteTaskParams): Promise<{ taskId: string }> {
+export async function executeJob(params: ExecuteJobParams): Promise<{ jobId: string }> {
   try {
     const { 
       projectId, 
@@ -224,9 +224,9 @@ export async function executeTask(params: ExecuteTaskParams): Promise<{ taskId: 
   }
 }
 
-export async function stopTask(taskId: string, projectId?: string, featureName?: string): Promise<void> {
+export async function stopJob(jobId: string, projectId?: string, featureName?: string): Promise<void> {
   try {
-    const response = await fetch(`${API_BASE}/tasks/${encodeURIComponent(taskId)}/stop`, {
+    const response = await fetch(`${API_BASE}/jobs/${encodeURIComponent(jobId)}/stop`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -277,9 +277,9 @@ export interface QueueStatus {
   estimatingMessage?: string | null;
 }
 
-export async function fetchQueueStatus(taskId: string): Promise<QueueStatus> {
+export async function fetchQueueStatus(jobId: string): Promise<QueueStatus> {
   try {
-    const response = await fetch(`${API_BASE}/tasks/${encodeURIComponent(taskId)}/queue`);
+    const response = await fetch(`${API_BASE}/tasks/${encodeURIComponent(jobId)}/queue`);
     
     if (!response.ok) {
       throw new Error(`Failed to fetch queue status: ${response.statusText}`);
@@ -293,8 +293,8 @@ export async function fetchQueueStatus(taskId: string): Promise<QueueStatus> {
   }
 }
 
-export function subscribeToLogs(taskId: string, onLog: (log: LogEntry) => void): EventSource {
-  const eventSource = new EventSource(`${API_BASE}/tasks/${encodeURIComponent(taskId)}/stream`);
+export function subscribeToLogs(jobId: string, onLog: (log: LogEntry) => void): EventSource {
+  const eventSource = new EventSource(`${API_BASE}/tasks/${encodeURIComponent(jobId)}/stream`);
   
   eventSource.onmessage = (event) => {
     try {
@@ -313,9 +313,9 @@ export function subscribeToLogs(taskId: string, onLog: (log: LogEntry) => void):
   return eventSource;
 }
 
-export async function fetchTaskStatus(taskId: string): Promise<TaskStatus> {
+export async function fetchJobStatus(jobId: string): Promise<JobStatus> {
   try {
-    const response = await fetch(`${API_BASE}/tasks/${encodeURIComponent(taskId)}/status`);
+    const response = await fetch(`${API_BASE}/tasks/${encodeURIComponent(jobId)}/status`);
     
     if (!response.ok) {
       throw new Error(`Failed to fetch task status: ${response.statusText}`);

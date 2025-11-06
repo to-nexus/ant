@@ -179,7 +179,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     console.log(`\n🔍 [Plan] Checking live update conditions:`);
     console.log(`   state.deps?.kanbanUpdate:`, !!state.deps?.kanbanUpdate);
     console.log(`   state._httpTaskId:`, state._httpTaskId || 'undefined');
-    console.log(`   process.env.ANT_TASK_ID:`, process.env.ANT_TASK_ID || 'undefined');
+    console.log(`   process.env.ANT_JOB_ID:`, process.env.ANT_JOB_ID || 'undefined');
     
     if (state._httpTaskId) {
       const completedTasksDetails = state.completedTasksDetails || [];

@@ -13,7 +13,7 @@ import { Columns, Rows } from 'lucide-react';
  * - Selected project
  * - Selected feature
  * - Current mode (generate/fix/etc)
- * - Task ID (when running)
+ * - Job ID (when agent job is running)
  * - Layout toggle buttons (horizontal/vertical split)
  * 
  * Similar to status bars in IDEs (VS Code, IntelliJ)
@@ -21,7 +21,7 @@ import { Columns, Rows } from 'lucide-react';
 export function MainPanelBar(props: BaseBarProps = {}) {
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);
-  const currentTaskId = useStore((state) => state.currentTaskId);
+  const currentJobId = useStore((state) => state.currentJobId);
   const currentMode = useStore((state) => state.currentMode);
   const splitLayout = useStore((state) => state.splitLayout);
   const toggleSplitLayout = useStore((state) => state.toggleSplitLayout);
@@ -84,12 +84,12 @@ export function MainPanelBar(props: BaseBarProps = {}) {
             </button>
           </div>
 
-          {/* Task ID */}
-          {currentTaskId && (
+          {/* Job ID */}
+          {currentJobId && (
             <div className="flex items-center gap-2 border-l pl-3 border-gray-300 dark:border-gray-600">
-              <span className={textColors.tertiary}>Task ID:</span>
+              <span className={textColors.tertiary}>Job ID:</span>
               <span className={cn(textColors.secondary, 'font-mono text-xs')}>
-                {currentTaskId}
+                {currentJobId}
               </span>
             </div>
           )}

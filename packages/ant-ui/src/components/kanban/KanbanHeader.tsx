@@ -1,8 +1,14 @@
-import { Badge } from '@/ui/badge';
+import { StatusChip, ChipVariant } from '../StatusChip';
 
 interface DataSourceIndicatorProps {
   dataSource?: string;
 }
+
+const DATA_SOURCE_VARIANTS: Record<string, { variant: ChipVariant; label: string }> = {
+  live: { variant: 'live', label: 'Real-time' },
+  session: { variant: 'session', label: 'Session File' },
+  estimating: { variant: 'estimating', label: 'Estimating' }
+};
 
 /**
  * DataSourceIndicator - 타이틀 옆에 표시될 데이터 소스 인디케이터
@@ -10,36 +16,10 @@ interface DataSourceIndicatorProps {
 export function DataSourceIndicator({ dataSource }: DataSourceIndicatorProps) {
   if (!dataSource) return null;
 
-  return (
-    <div className="flex items-center gap-2 px-2 h-7 rounded-md bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700">
-      <div className="flex items-center gap-1.5">
-        {dataSource === 'live' && (
-          <>
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-            </span>
-            <span className="text-xs font-medium text-green-600 dark:text-green-400 leading-none">Real-time</span>
-          </>
-        )}
-        {dataSource === 'session' && (
-          <>
-            <span className="inline-flex h-2 w-2 rounded-full bg-gray-400 dark:bg-gray-500"></span>
-            <span className="text-xs font-medium text-gray-600 dark:text-gray-400 leading-none">Session File</span>
-          </>
-        )}
-        {dataSource === 'estimating' && (
-          <>
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
-            </span>
-            <span className="text-xs font-medium text-blue-600 dark:text-blue-400 leading-none">Estimating</span>
-          </>
-        )}
-      </div>
-    </div>
-  );
+  const config = DATA_SOURCE_VARIANTS[dataSource];
+  if (!config) return null;
+
+  return <StatusChip variant={config.variant} label={config.label} />;
 }
 
 interface GaugesGroupProps {
