@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/ui/button';
-import { Play, Square, Sun, Moon } from 'lucide-react';
+import { Play, Square, Sun, Moon, Monitor, Cloud } from 'lucide-react';
 import { ConnectionStatus } from './ConnectionStatus';
 import { useStore } from '@/lib/store';
 import { fetchAgents, Agent } from '@/lib/api';
@@ -39,6 +39,11 @@ export function GlobalNavBar({ onRunTask, onStopTask, isRunning }: GlobalNavBarP
   const [isLoadingAgents, setIsLoadingAgents] = useState(true);
   const agentRef = useRef<HTMLDivElement>(null);
   const workTypeRef = useRef<HTMLDivElement>(null);
+  
+  // Deployment mode state
+  const [deploymentMode, setDeploymentMode] = useState<'local' | 'cloud'>('local');
+  const [showLocalTooltip, setShowLocalTooltip] = useState(false);
+  const [showCloudTooltip, setShowCloudTooltip] = useState(false);
 
   // Fetch agents from API when connected
   useEffect(() => {
@@ -64,7 +69,7 @@ export function GlobalNavBar({ onRunTask, onStopTask, isRunning }: GlobalNavBarP
 
   const workTypes = agents.find(a => a.value === selectedAgent)?.tasks || [];
 
-  // Close dropdowns when clicking outside
+  // Close dropdowns and tooltips when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (agentRef.current && !agentRef.current.contains(event.target as Node)) {
@@ -72,6 +77,12 @@ export function GlobalNavBar({ onRunTask, onStopTask, isRunning }: GlobalNavBarP
       }
       if (workTypeRef.current && !workTypeRef.current.contains(event.target as Node)) {
         setWorkTypeDropdownOpen(false);
+      }
+      // Close tooltips when clicking anywhere
+      const target = event.target as HTMLElement;
+      if (!target.closest('.deployment-mode-selector')) {
+        setShowLocalTooltip(false);
+        setShowCloudTooltip(false);
       }
     }
 
@@ -119,60 +130,114 @@ export function GlobalNavBar({ onRunTask, onStopTask, isRunning }: GlobalNavBarP
       <div className="px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            {/* Logo Icon */}
-            <div className="relative">
-              {/* Light Mode: Dark Ant with Circuit */}
-              <svg 
-                className="w-7 h-7 block dark:hidden" 
-                viewBox="0 0 24 24" 
-                fill="none" 
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                {/* Ant Body */}
-                <ellipse cx="12" cy="14" rx="3" ry="4" fill="#1f2937" />
-                <circle cx="12" cy="8" r="2.5" fill="#1f2937" />
-                <circle cx="12" cy="18" r="1.5" fill="#1f2937" />
-                
-                {/* Antennae */}
-                <path d="M10.5 6.5 L9 4 M13.5 6.5 L15 4" stroke="#1f2937" strokeWidth="1" strokeLinecap="round" />
-                
-                {/* Legs */}
-                <path d="M9 12 L6 14 M9 14 L6 16 M9 16 L7 18" stroke="#1f2937" strokeWidth="1" strokeLinecap="round" />
-                <path d="M15 12 L18 14 M15 14 L18 16 M15 16 L17 18" stroke="#1f2937" strokeWidth="1" strokeLinecap="round" />
-                
-                {/* Circuit Pattern */}
-                <circle cx="12" cy="14" r="1" fill="#3b82f6" opacity="0.6" />
-                <path d="M12 13 L12 11 L14 11" stroke="#3b82f6" strokeWidth="0.5" opacity="0.6" />
-                <circle cx="14" cy="11" r="0.5" fill="#3b82f6" opacity="0.6" />
-              </svg>
+            {/* AI Logo - Simple & Modern */}
+            <svg 
+              className="w-8 h-8" 
+              viewBox="0 0 32 32" 
+              fill="none" 
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              {/* Neural Network Pattern */}
+              <defs>
+                <linearGradient id="gradient1" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" className="[stop-color:#3b82f6]" />
+                  <stop offset="100%" className="[stop-color:#8b5cf6]" />
+                </linearGradient>
+              </defs>
               
-              {/* Dark Mode: Light Ant with Circuit */}
-              <svg 
-                className="w-7 h-7 hidden dark:block" 
-                viewBox="0 0 24 24" 
-                fill="none" 
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                {/* Ant Body */}
-                <ellipse cx="12" cy="14" rx="3" ry="4" fill="#f9fafb" />
-                <circle cx="12" cy="8" r="2.5" fill="#f9fafb" />
-                <circle cx="12" cy="18" r="1.5" fill="#f9fafb" />
-                
-                {/* Antennae */}
-                <path d="M10.5 6.5 L9 4 M13.5 6.5 L15 4" stroke="#f9fafb" strokeWidth="1" strokeLinecap="round" />
-                
-                {/* Legs */}
-                <path d="M9 12 L6 14 M9 14 L6 16 M9 16 L7 18" stroke="#f9fafb" strokeWidth="1" strokeLinecap="round" />
-                <path d="M15 12 L18 14 M15 14 L18 16 M15 16 L17 18" stroke="#f9fafb" strokeWidth="1" strokeLinecap="round" />
-                
-                {/* Circuit Pattern */}
-                <circle cx="12" cy="14" r="1" fill="#60a5fa" opacity="0.8" />
-                <path d="M12 13 L12 11 L14 11" stroke="#60a5fa" strokeWidth="0.5" opacity="0.8" />
-                <circle cx="14" cy="11" r="0.5" fill="#60a5fa" opacity="0.8" />
-              </svg>
-            </div>
+              {/* Center Core */}
+              <circle cx="16" cy="16" r="4" fill="url(#gradient1)" />
+              
+              {/* Outer Nodes */}
+              <circle cx="8" cy="8" r="2.5" className="fill-blue-500 dark:fill-blue-400" opacity="0.8" />
+              <circle cx="24" cy="8" r="2.5" className="fill-blue-500 dark:fill-blue-400" opacity="0.8" />
+              <circle cx="8" cy="24" r="2.5" className="fill-purple-500 dark:fill-purple-400" opacity="0.8" />
+              <circle cx="24" cy="24" r="2.5" className="fill-purple-500 dark:fill-purple-400" opacity="0.8" />
+              
+              {/* Connection Lines */}
+              <path d="M9.5 9.5 L12.5 12.5" className="stroke-blue-500 dark:stroke-blue-400" strokeWidth="1.5" strokeLinecap="round" opacity="0.4" />
+              <path d="M22.5 9.5 L19.5 12.5" className="stroke-blue-500 dark:stroke-blue-400" strokeWidth="1.5" strokeLinecap="round" opacity="0.4" />
+              <path d="M9.5 22.5 L12.5 19.5" className="stroke-purple-500 dark:stroke-purple-400" strokeWidth="1.5" strokeLinecap="round" opacity="0.4" />
+              <path d="M22.5 22.5 L19.5 19.5" className="stroke-purple-500 dark:stroke-purple-400" strokeWidth="1.5" strokeLinecap="round" opacity="0.4" />
+              
+              {/* Center Glow Effect */}
+              <circle cx="16" cy="16" r="6" className="stroke-blue-400 dark:stroke-blue-300" strokeWidth="0.5" opacity="0.2" fill="none" />
+            </svg>
             
-            <h1 className="text-xl font-semibold text-gray-900 dark:text-white">ANT Works</h1>
+            <h1 className="text-xl font-display font-bold text-gray-900 dark:text-white tracking-tight">ANT Works</h1>
+            
+            {/* Deployment Mode Selector */}
+            <div className="deployment-mode-selector flex items-center gap-1 ml-4 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
+              {/* Local Button */}
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    // Already selected, toggle tooltip
+                    setShowLocalTooltip(!showLocalTooltip);
+                    setShowCloudTooltip(false);
+                  }}
+                  className={`
+                    px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5
+                    ${deploymentMode === 'local'
+                      ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-white shadow-md border border-blue-200 dark:border-transparent'
+                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 opacity-60'
+                    }
+                  `}
+                >
+                  <Monitor className="w-3.5 h-3.5" />
+                  Local
+                </button>
+                
+                {/* Local Tooltip */}
+                {showLocalTooltip && (
+                  <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 z-50 w-64">
+                    <div className="bg-gray-900 dark:bg-gray-700 text-white text-xs px-3 py-2 rounded-md shadow-lg">
+                      <div className="font-semibold mb-1">Local Mode</div>
+                      <div className="text-gray-300 dark:text-gray-400">
+                        Work on your local machine. All results are stored locally.
+                      </div>
+                      {/* Arrow */}
+                      <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 dark:bg-gray-700 rotate-45"></div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              {/* Cloud Button */}
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    // Show tooltip but don't change selection
+                    setShowCloudTooltip(!showCloudTooltip);
+                    setShowLocalTooltip(false);
+                  }}
+                  className={`
+                    px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5
+                    text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 cursor-pointer opacity-60 hover:opacity-80
+                  `}
+                >
+                  <Cloud className="w-3.5 h-3.5" />
+                  Cloud
+                </button>
+                
+                {/* Cloud Tooltip */}
+                {showCloudTooltip && (
+                  <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 z-50 w-64">
+                    <div className="bg-gray-900 dark:bg-gray-700 text-white text-xs px-3 py-2 rounded-md shadow-lg">
+                      <div className="font-semibold mb-1">Cloud Mode</div>
+                      <div className="text-gray-300 dark:text-gray-400 mb-1">
+                        Work on remote machines. All results are stored remotely.
+                      </div>
+                      <div className="text-yellow-400 dark:text-yellow-300 font-medium">
+                        ⚠️ Currently in development
+                      </div>
+                      {/* Arrow */}
+                      <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 dark:bg-gray-700 rotate-45"></div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
           
           <div className="flex items-center space-x-3">

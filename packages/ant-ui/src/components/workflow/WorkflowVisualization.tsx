@@ -7,10 +7,10 @@
 
 import { useCallback } from 'react';
 import * as React from 'react';
+import './workflow-controls.css';
 import ReactFlow, {
   Background,
   Controls,
-  MiniMap,
   BackgroundVariant,
   NodeTypes,
   Node as RFNode
@@ -32,13 +32,15 @@ const nodeTypes: NodeTypes = {
 };
 
 export function WorkflowVisualization() {
+  const selectedProject = useStore(state => state.selectedProject);
+  const selectedFeature = useStore(state => state.selectedFeature);
   const selectedAgent = useStore(state => state.selectedAgent);
   const selectedWorkType = useStore(state => state.selectedWorkType);
   const currentJob = useStore(state => state.currentJob);
   const theme = useStore(state => state.theme);
   const splitLayout = useStore(state => state.splitLayout);
   
-  // 1. 정적 그래프 메타데이터 로드
+  // 1. 정적 그래프 메타데이터 로드 (Hooks는 항상 호출되어야 함)
   const { metadata, loading, error } = useGraphMetadata(selectedAgent, selectedWorkType);
   
   // 2. 실시간 상태 구독 (Job 실행 중일 때)
@@ -94,6 +96,27 @@ export function WorkflowVisualization() {
     // 같은 노드/Actor를 다시 클릭하면 축소, 다른 것을 클릭하면 확장
     setExpandedNodeId(prev => prev === node.id ? null : node.id);
   }, []);
+  
+  // ========================================
+  // 조건부 렌더링 (모든 Hooks 호출 후)
+  // ========================================
+  
+  // Workspace & Feature 선택 필수 체크
+  if (!selectedProject || !selectedFeature) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center max-w-md">
+          <div className="text-gray-400 dark:text-gray-600 text-6xl mb-4">🔄</div>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+            No Workspace or Feature Selected
+          </h3>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Select a workspace and feature to view the agent workflow graph.
+          </p>
+        </div>
+      </div>
+    );
+  }
   
   // 로딩 상태
   if (loading) {
@@ -167,21 +190,8 @@ export function WorkflowVisualization() {
           color={theme === 'dark' ? '#374151' : '#cbd5e1'}
         />
         <Controls 
-          className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg"
-        />
-        <MiniMap 
-          nodeColor={(node) => {
-            if (node.data.isActive) return '#10b981'; // green-500
-            switch (node.type) {
-              case NodeType.ENTRY: return '#22c55e';    // green
-              case NodeType.PROCESS: return '#3b82f6';  // blue
-              case NodeType.DECISION: return '#eab308'; // yellow
-              case NodeType.CHECKPOINT: return '#a855f7'; // purple
-              case NodeType.END: return '#ef4444';      // red
-              default: return '#94a3b8';                // gray
-            }
-          }}
-          className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg"
+          showInteractive={false}
+          className="workflow-controls"
         />
       </ReactFlow>
     </div>
