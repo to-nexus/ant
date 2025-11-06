@@ -19,13 +19,15 @@ import {
   SessionService, 
   DevServerService, 
   ProjectService,
-  SSEBroadcastService
+  SSEBroadcastService,
+  GraphMetadataService
 } from './services';
 import {
   createJobRoutes,
   createKanbanRoutes,
   createDevServerRoutes,
-  createProjectRoutes
+  createProjectRoutes,
+  createWorkflowRoutes
 } from './routes';
 
 /**
@@ -54,6 +56,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   private devServerService: DevServerService;
   private projectService: ProjectService;
   private sseBroadcastService: SSEBroadcastService;
+  private graphMetadataService: GraphMetadataService;
   
   // Job tracking (agent execution instances)
   private jobs: Map<string, JobStatus> = new Map();
@@ -251,6 +254,9 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       }
     });
     
+    // Initialize graph metadata service for workflow visualization
+    this.graphMetadataService = new GraphMetadataService();
+    
     this.setupMiddleware();
     this.setupRoutes();
     
@@ -308,6 +314,12 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       broadcastDevServerStatus: this.sseBroadcastService.broadcastDevServerStatus.bind(this.sseBroadcastService)
     });
     this.app.use('/api', devServerRoutes);
+    
+    // Workflow routes (LangGraph visualization)
+    const workflowRoutes = createWorkflowRoutes({
+      graphMetadataService: this.graphMetadataService
+    });
+    this.app.use('/api', workflowRoutes);
     
     // Job execution routes
     const jobRoutes = createJobRoutes({
