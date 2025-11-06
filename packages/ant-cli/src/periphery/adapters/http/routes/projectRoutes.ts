@@ -125,10 +125,15 @@ export function createProjectRoutes(deps: {
       const projectId = req.params.id;
       const config = req.body;
       await deps.projectService.updateProjectConfig(projectId, config);
-      res.json({ success: true, message: 'Config updated successfully' });
+      
+      // Return the saved config for immediate UI update
+      const savedConfig = await deps.projectService.getProjectConfig(projectId);
+      res.json(savedConfig);
     } catch (error: any) {
       if (error.message.includes('Missing required fields')) {
         res.status(400).json({ error: error.message });
+      } else if (error.message === 'Config file not found') {
+        res.status(404).json({ error: error.message });
       } else {
         res.status(500).json({ error: error.message });
       }

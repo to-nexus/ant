@@ -38,6 +38,18 @@ export class ProjectService {
   }
   
   /**
+   * Sanitize project ID to valid project name (alphanumeric + hyphens)
+   */
+  private sanitizeProjectName(projectId: string): string {
+    return projectId
+      .toLowerCase()
+      .replace(/\s+/g, '-')           // spaces → hyphens
+      .replace(/[^a-z0-9-]/g, '')     // remove non-alphanumeric except hyphens
+      .replace(/-+/g, '-')            // multiple hyphens → single hyphen
+      .replace(/^-+|-+$/g, '');       // trim leading/trailing hyphens
+  }
+
+  /**
    * Create a new project
    */
   async createProject(id: string): Promise<void> {
@@ -62,13 +74,17 @@ export class ProjectService {
     // Create project directory structure
     await fs.promises.mkdir(projectPath, { recursive: true });
     
-    // Create basic project structure
+    // Sanitize project name for repo path
+    const sanitizedName = this.sanitizeProjectName(id);
+    
+    // Create config with proper defaults
     const configPath = path.join(projectPath, 'config.json');
     const defaultConfig = {
-      name: id,
-      createdAt: new Date().toISOString(),
-      description: `Project ${id}`,
-      features: []
+      projectName: sanitizedName,
+      repoType: 'local',
+      localPath: `~/dev/${sanitizedName}`,
+      branchBase: 'main',
+      autoLearn: true
     };
     
     await fs.promises.writeFile(configPath, JSON.stringify(defaultConfig, null, 2));

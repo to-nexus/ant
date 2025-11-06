@@ -55,20 +55,33 @@ export default {
           }
         },
         
-        // Semantic UI Colors
+        // Semantic UI Colors (GitHub/VS Code inspired)
         ui: {
           bg: {
-            primary: {
-              light: '#ffffff',
-              dark: '#111827'      // gray-900
+            // App 최하위 배경 (body)
+            base: {
+              light: '#f6f8fa',    // 약간 회색빛 (GitHub style)
+              dark: '#0d1117'      // 매우 어두운 회색
             },
+            // 메인 카드/패널 배경 (MainPanel boards)
+            primary: {
+              light: '#ffffff',    // 순백 (카드처럼 떠보이게)
+              dark: '#161b22'      // dark gray-900
+            },
+            // 사이드바/보조 영역 (Explorer)
             secondary: {
-              light: '#f9fafb',    // gray-50
+              light: '#f8f9fa',    // 조금 더 밝은 회색
               dark: '#1f2937'      // gray-800
             },
+            // 중첩된 요소 (Explorer 내부)
             tertiary: {
-              light: '#f3f4f6',    // gray-100
+              light: '#ffffff',    // 순백
               dark: '#374151'      // gray-700
+            },
+            // 호버/활성 상태
+            hover: {
+              light: '#f3f4f6',    // gray-100
+              dark: '#30363d'      // 약간 밝은 회색
             }
           },
           text: {
@@ -90,9 +103,20 @@ export default {
             }
           },
           border: {
-            light: '#e5e7eb',      // gray-200
-            dark: '#374151'        // gray-700
+            subtle: {
+              light: '#e5e7eb',    // gray-200 - 미묘한 경계선
+              dark: '#30363d'      // 어두운 회색
+            },
+            normal: {
+              light: '#d1d5db',    // gray-300 - 일반 경계선
+              dark: '#374151'      // gray-700
+            },
+            emphasis: {
+              light: '#9ca3af',    // gray-400 - 강조 경계선
+              dark: '#4b5563'      // gray-600
+            }
           },
+          // Legacy support
           border_strong: {
             light: '#d1d5db',      // gray-300
             dark: '#4b5563'        // gray-600

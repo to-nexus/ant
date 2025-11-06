@@ -7,6 +7,7 @@
 
 import { memo } from 'react';
 import { Handle, Position } from 'reactflow';
+import { Settings } from 'lucide-react';
 import { NodeType, NodeImportance } from '@/types/workflow';
 import { useStore } from '@/lib/store';
 import { cn } from '@/lib/design-system';
@@ -107,8 +108,11 @@ export const WorkflowNode = memo(({ data }: WorkflowNodeProps) => {
               {data.label}
             </div>
             {data.isActive && (
-              <div className="mt-1 text-xs text-green-600 dark:text-green-400 font-bold animate-pulse">
-                ● Active
+              <div className="mt-2 flex items-center gap-2">
+                <Settings className="w-4 h-4 text-green-600 dark:text-green-400 animate-spin" />
+                <span className="text-xs text-green-600 dark:text-green-400 font-bold">
+                  Active
+                </span>
               </div>
             )}
           </div>
@@ -183,8 +187,11 @@ export const WorkflowNode = memo(({ data }: WorkflowNodeProps) => {
         </div>
         
         {data.isActive && (
-          <div className="mt-1 text-xs text-green-600 dark:text-green-400 font-bold animate-pulse">
-            ● Active
+          <div className="mt-2 flex items-center gap-1.5">
+            <Settings className="w-4 h-4 text-green-600 dark:text-green-400 animate-spin" />
+            <span className="text-xs text-green-600 dark:text-green-400 font-bold">
+              Active
+            </span>
           </div>
         )}
       </div>

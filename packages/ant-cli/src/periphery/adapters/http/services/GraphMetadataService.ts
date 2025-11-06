@@ -1,17 +1,14 @@
 /**
  * GraphMetadataService
  * 
- * LangGraph 구조를 분석하여 시각화 메타데이터 추출
+ * LangGraph 구조를 런타임에 분석하여 시각화 메타데이터 추출
+ * 
+ * Phase 2: 실제 Graph 인스턴스 분석 (Dynamic)
  * 
  * 책임:
- * - Agent-Job 조합의 그래프 구조 추출
+ * - Agent-Job 조합의 실제 그래프 구조 추출
  * - 노드 중요도 자동 분류
  * - 외부 Actor 식별
- * 
- * 개선사항:
- * - 공통 Actor 정의 추출
- * - Helper 메서드로 중복 제거
- * - 타입 안정성 강화
  */
 
 import {
@@ -25,13 +22,13 @@ import {
   ActorType
 } from '../types/workflow';
 
+// 실제 Graph 빌더 함수들을 직접 import
+import { buildCodeGraph } from '../../../../agents/architect/graph/code/graph';
+import { buildDesignGraph } from '../../../../agents/architect/graph/design/graph';
+import { buildLearnGraph } from '../../../../agents/architect/graph/learn/graph';
+
 /**
- * 공통 Actor 정의 (모든 Agent에서 재사용)
- * 
- * 중립적인 표현 사용:
- * - LLM API (실제: Claude Sonnet 4.0 - 상세정보창에서 표시)
- * - Embedding Model (실제: text-embedding-3-small - 상세정보창에서 표시)
- * - Vector DB (실제: Chroma - 상세정보창에서 표시)
+ * 공통 Actor 정의
  */
 const COMMON_ACTORS = {
   llm: {
@@ -72,34 +69,278 @@ const COMMON_ACTORS = {
   }
 } as const;
 
+/**
+ * Actor 매핑 (실제 Port 사용 기반)
+ */
+const ACTOR_MAPPINGS: Record<string, { actors: string[]; description?: string }> = {
+  // Architect Code
+  'architect:code:resolve': {
+    actors: [COMMON_ACTORS.fileSystem.id, COMMON_ACTORS.localStorage.id],
+    description: 'Load context and resolve dependencies'
+  },
+  'architect:code:plan': {
+    actors: [COMMON_ACTORS.llm.id],
+    description: 'Create implementation plan'
+  },
+  'architect:code:decompose': {
+    actors: [COMMON_ACTORS.llm.id],
+    description: 'Break down into tasks'
+  },
+  'architect:code:execute': {
+    actors: [COMMON_ACTORS.llm.id],
+    description: 'Generate code for current task'
+  },
+  'architect:code:writeFiles': {
+    actors: [COMMON_ACTORS.fileSystem.id],
+    description: 'Write generated code to disk'
+  },
+  'architect:code:validate': {
+    actors: [COMMON_ACTORS.fileSystem.id, COMMON_ACTORS.tool.id],
+    description: 'Check code quality'
+  },
+  'architect:code:enforce': {
+    actors: [COMMON_ACTORS.llm.id],
+    description: 'Fix violations'
+  },
+  'architect:code:checkTaskStatus': {
+    actors: [],
+    description: 'Check if more tasks remain'
+  },
+  'architect:code:learn': {
+    actors: [COMMON_ACTORS.embedding.id, COMMON_ACTORS.localStorage.id],
+    description: 'Store learnings to memory'
+  },
+  
+  // Architect Design
+  'architect:design:resolve': {
+    actors: [COMMON_ACTORS.localStorage.id],
+    description: 'Load context and artifacts'
+  },
+  'architect:design:plan': {
+    actors: [COMMON_ACTORS.llm.id],
+    description: 'Create design plan'
+  },
+  'architect:design:execute': {
+    actors: [COMMON_ACTORS.llm.id, COMMON_ACTORS.fileSystem.id],
+    description: 'Generate design document'
+  },
+  'architect:design:learn': {
+    actors: [COMMON_ACTORS.embedding.id, COMMON_ACTORS.localStorage.id],
+    description: 'Store learnings'
+  },
+  
+  // Architect Learn
+  'architect:learn:resolve': {
+    actors: [COMMON_ACTORS.fileSystem.id],
+    description: 'Identify learning targets'
+  },
+  'architect:learn:store': {
+    actors: [COMMON_ACTORS.embedding.id],
+    description: 'Store learnings in vector DB'
+  }
+};
+
 export class GraphMetadataService {
   
   /**
    * Agent-Job 조합에 대한 그래프 메타데이터 추출
    * 
-   * Phase 1: 하드코딩된 메타데이터 반환 (POC)
-   * Phase 2: 실제 코드 분석으로 전환
+   * Phase 2: 실제 Graph 인스턴스에서 동적 추출
    */
   async extractGraphMetadata(agent: string, job: string): Promise<WorkflowGraphMetadata> {
-    
-    // Phase 1: 하드코딩된 메타데이터
-    const metadataKey = `${agent}:${job}`;
-    
-    switch (metadataKey) {
-      case 'architect:code':
-        return this.getArchitectCodeMetadata();
-      case 'architect:design':
-        return this.getArchitectDesignMetadata();
-      case 'architect:learn':
-        return this.getArchitectLearnMetadata();
-      default:
-        console.warn(`[GraphMetadataService] No metadata found for ${agent}/${job}`);
+    try {
+      // 1. Graph 빌더 함수 가져오기
+      const graphBuilder = this.getGraphBuilder(agent, job);
+      if (!graphBuilder) {
+        console.warn(`[GraphMetadataService] No graph builder for ${agent}/${job}`);
         return this.getEmptyMetadata(agent, job);
+      }
+      
+      // 2. Graph 인스턴스 생성
+      const compiledGraph = graphBuilder();
+      
+      // 3. Graph 구조 분석
+      const { nodes, edges } = this.analyzeGraphStructure(compiledGraph, agent, job);
+      
+      // 4. Actor 수집
+      const actorSet = new Set<string>();
+      for (const node of nodes) {
+        for (const actorId of node.interactsWithActors) {
+          actorSet.add(actorId);
+        }
+      }
+      
+      const actors = Array.from(actorSet)
+        .map(id => {
+          const actor = Object.values(COMMON_ACTORS).find(a => a.id === id);
+          return actor || null;
+        })
+        .filter(Boolean) as ExternalActor[];
+      
+      // 5. Entry/End 노드 식별
+      const entryNode = nodes.find(n => n.type === NodeType.ENTRY)?.id || nodes[0]?.id || '__start__';
+      const endNodes = nodes.filter(n => n.type === NodeType.END).map(n => n.id);
+      
+      return {
+        agent,
+        job,
+        nodes,
+        edges,
+        actors,
+        entryNode,
+        endNodes: endNodes.length > 0 ? endNodes : [nodes[nodes.length - 1]?.id].filter(Boolean)
+      };
+    } catch (error) {
+      console.error(`[GraphMetadataService] Failed to extract metadata for ${agent}/${job}:`, error);
+      return this.getEmptyMetadata(agent, job);
     }
   }
   
   /**
-   * 빈 메타데이터 반환 (fallback)
+   * Graph 빌더 함수 반환
+   */
+  private getGraphBuilder(agent: string, job: string): (() => any) | null {
+    const key = `${agent}:${job}`;
+    
+    switch (key) {
+      case 'architect:code':
+        return buildCodeGraph;
+      case 'architect:design':
+        return buildDesignGraph;
+      case 'architect:learn':
+        return buildLearnGraph;
+      default:
+        return null;
+    }
+  }
+  
+  /**
+   * Graph 구조 분석
+   * 
+   * LangGraph의 compiled graph는 다음 구조를 가짐:
+   * - nodes: Map<string, Function>
+   * - edges: Array<[source, target]> 또는 내부 구조
+   */
+  private analyzeGraphStructure(
+    compiledGraph: any,
+    agent: string,
+    job: string
+  ): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
+    const nodes: WorkflowNode[] = [];
+    const edges: WorkflowEdge[] = [];
+    
+    try {
+      // LangGraph의 내부 구조 탐색
+      // StateGraph가 compile되면 CompiledStateGraph가 반환됨
+      const graphNodes = compiledGraph.nodes || compiledGraph._nodes || new Map();
+      
+      // 노드 추출
+      const nodeEntries = graphNodes instanceof Map ? Array.from(graphNodes.keys()) : Object.keys(graphNodes);
+      
+      for (const nodeId of nodeEntries) {
+        if (nodeId === '__start__' || nodeId === '__end__') continue;
+        
+        const nodeType = this.inferNodeType(nodeId, job);
+        const importance = this.inferNodeImportance(nodeId);
+        
+        // Actor 매핑 조회
+        const mappingKey = `${agent}:${job}:${nodeId}`;
+        const mapping = ACTOR_MAPPINGS[mappingKey];
+        
+        nodes.push({
+          id: nodeId,
+          type: nodeType,
+          label: this.formatLabel(nodeId),
+          description: mapping?.description,
+          importance,
+          interactsWithActors: mapping?.actors || []
+        });
+      }
+      
+      // 엣지 추출 시도
+      // LangGraph는 내부적으로 엣지 정보를 다양한 방식으로 저장
+      const edgesList = this.extractEdges(compiledGraph, nodeEntries);
+      edges.push(...edgesList);
+      
+    } catch (error) {
+      console.warn('[GraphMetadataService] Graph structure analysis failed:', error);
+    }
+    
+    return { nodes, edges };
+  }
+  
+  /**
+   * 엣지 추출
+   */
+  private extractEdges(compiledGraph: any, nodeIds: string[]): WorkflowEdge[] {
+    const edges: WorkflowEdge[] = [];
+    
+    try {
+      // 방법 1: _edges 배열
+      if (Array.isArray(compiledGraph._edges)) {
+        for (const edge of compiledGraph._edges) {
+          if (Array.isArray(edge) && edge.length >= 2) {
+            const [source, target] = edge;
+            edges.push({
+              id: `${source}_to_${target}`,
+              source,
+              target,
+              type: EdgeType.NORMAL
+            });
+          }
+        }
+      }
+      
+      // 방법 2: channels를 통한 연결 추론
+      if (edges.length === 0 && nodeIds.length > 1) {
+        // 순차적 연결 추론 (fallback)
+        for (let i = 0; i < nodeIds.length - 1; i++) {
+          edges.push({
+            id: `${nodeIds[i]}_to_${nodeIds[i + 1]}`,
+            source: nodeIds[i],
+            target: nodeIds[i + 1],
+            type: EdgeType.NORMAL
+          });
+        }
+      }
+    } catch (error) {
+      console.warn('[GraphMetadataService] Edge extraction failed:', error);
+    }
+    
+    return edges;
+  }
+  
+  /**
+   * 노드 타입 추론
+   */
+  private inferNodeType(nodeId: string, job: string): NodeType {
+    if (nodeId === 'resolve') return NodeType.ENTRY;
+    if (nodeId === 'learn' || nodeId === 'store') return NodeType.END;
+    if (nodeId === 'decompose' || nodeId === 'validate' || nodeId.includes('check')) return NodeType.DECISION;
+    return NodeType.PROCESS;
+  }
+  
+  /**
+   * 노드 중요도 추론
+   */
+  private inferNodeImportance(nodeId: string): NodeImportance {
+    if (/^(resolve|decompose|execute|store)$/i.test(nodeId)) return NodeImportance.CRITICAL;
+    if (/^(plan|learn|validate|enforce)$/i.test(nodeId)) return NodeImportance.MAJOR;
+    return NodeImportance.MINOR;
+  }
+  
+  /**
+   * 라벨 포맷팅
+   */
+  private formatLabel(id: string): string {
+    return id
+      .replace(/([A-Z])/g, ' $1')
+      .replace(/^./, str => str.toUpperCase())
+      .trim();
+  }
+  
+  /**
+   * 빈 메타데이터 반환
    */
   private getEmptyMetadata(agent: string, job: string): WorkflowGraphMetadata {
     return {
@@ -110,259 +351,6 @@ export class GraphMetadataService {
       actors: [],
       entryNode: '__start__',
       endNodes: []
-    };
-  }
-  
-  /**
-   * 노드 생성 헬퍼
-   */
-  private createNode(
-    id: string,
-    type: NodeType,
-    label: string,
-    options: {
-      description?: string;
-      importance?: NodeImportance;
-      actors?: string[];
-    } = {}
-  ): WorkflowNode {
-    return {
-      id,
-      type,
-      label,
-      description: options.description,
-      importance: options.importance || NodeImportance.MAJOR,
-      interactsWithActors: options.actors || []
-    };
-  }
-  
-  /**
-   * 엣지 생성 헬퍼
-   */
-  private createEdge(
-    source: string,
-    target: string,
-    type: EdgeType = EdgeType.NORMAL,
-    label?: string
-  ): WorkflowEdge {
-    return {
-      id: `${source}_to_${target}`,
-      source,
-      target,
-      type,
-      label
-    };
-  }
-  
-  /**
-   * Architect Code Job 메타데이터
-   * 
-   * 실제 packages/ant-cli/src/agents/architect/graph/code/graph.ts 구조 기반
-   */
-  private getArchitectCodeMetadata(): WorkflowGraphMetadata {
-    const nodes: WorkflowNode[] = [
-      // Entry
-      this.createNode('resolve', NodeType.ENTRY, 'Resolve', {
-        description: 'Load context and artifacts',
-        importance: NodeImportance.CRITICAL,
-        actors: [COMMON_ACTORS.localStorage.id]
-      }),
-      
-      // Core workflow
-      this.createNode('decompose', NodeType.PROCESS, 'Decompose', {
-        description: 'Break down spec into tasks',
-        importance: NodeImportance.CRITICAL,
-        actors: [COMMON_ACTORS.llm.id, COMMON_ACTORS.localStorage.id]
-      }),
-      this.createNode('plan', NodeType.PROCESS, 'Plan', {
-        description: 'Create execution plan for current task',
-        importance: NodeImportance.CRITICAL,
-        actors: [COMMON_ACTORS.llm.id, COMMON_ACTORS.embedding.id, COMMON_ACTORS.vectorDb.id]
-      }),
-      this.createNode('execute', NodeType.PROCESS, 'Execute', {
-        description: 'Generate code based on plan',
-        importance: NodeImportance.CRITICAL,
-        actors: [COMMON_ACTORS.llm.id]
-      }),
-      this.createNode('writeFiles', NodeType.PROCESS, 'Write Files', {
-        description: 'Write generated code to filesystem',
-        importance: NodeImportance.MAJOR,
-        actors: [COMMON_ACTORS.fileSystem.id]
-      }),
-      
-      // Validation chain
-      this.createNode('validate', NodeType.DECISION, 'Validate', {
-        description: 'Static validation (ellipsis, excessive deletion)',
-        importance: NodeImportance.MAJOR
-      }),
-      this.createNode('installDeps', NodeType.PROCESS, 'Install Dependencies', {
-        description: 'Install required packages',
-        importance: NodeImportance.MAJOR,
-        actors: [COMMON_ACTORS.tool.id]
-      }),
-      this.createNode('runtimeValidate', NodeType.DECISION, 'Runtime Validate', {
-        description: 'Build and test code',
-        importance: NodeImportance.MAJOR,
-        actors: [COMMON_ACTORS.tool.id]
-      }),
-      
-      // Error handling
-      this.createNode('enforce', NodeType.PROCESS, 'Enforce', {
-        description: 'Handle validation errors',
-        importance: NodeImportance.MAJOR
-      }),
-      
-      // Task management
-      this.createNode('checkTaskStatus', NodeType.DECISION, 'Check Task Status', {
-        description: 'Determine next task or completion',
-        importance: NodeImportance.CRITICAL,
-        actors: [COMMON_ACTORS.localStorage.id]
-      }),
-      
-      // End
-      this.createNode('learn', NodeType.END, 'Learn', {
-        description: 'Store learnings and finalize',
-        importance: NodeImportance.CRITICAL,
-        actors: [COMMON_ACTORS.embedding.id, COMMON_ACTORS.vectorDb.id, COMMON_ACTORS.localStorage.id]
-      })
-    ];
-    
-    const edges: WorkflowEdge[] = [
-      // Main flow
-      this.createEdge('__start__', 'resolve'),
-      this.createEdge('resolve', 'decompose'),
-      this.createEdge('decompose', 'plan'),
-      this.createEdge('plan', 'execute'),
-      this.createEdge('execute', 'writeFiles'),
-      this.createEdge('writeFiles', 'validate'),
-      
-      // Validation branches
-      this.createEdge('validate', 'enforce', EdgeType.CONDITIONAL, 'has violations'),
-      this.createEdge('validate', 'installDeps', EdgeType.CONDITIONAL, 'valid'),
-      this.createEdge('installDeps', 'runtimeValidate'),
-      
-      // Runtime validation branches
-      this.createEdge('runtimeValidate', 'enforce', EdgeType.CONDITIONAL, 'has errors'),
-      this.createEdge('runtimeValidate', 'checkTaskStatus', EdgeType.CONDITIONAL, 'passed'),
-      
-      // Retry loop
-      this.createEdge('enforce', 'plan', EdgeType.LOOP, 'retry'),
-      
-      // Task completion branches
-      this.createEdge('checkTaskStatus', 'plan', EdgeType.LOOP, 'next task'),
-      this.createEdge('checkTaskStatus', 'learn', EdgeType.CONDITIONAL, 'all done')
-    ];
-    
-    const actors: ExternalActor[] = [
-      COMMON_ACTORS.llm,
-      COMMON_ACTORS.embedding,
-      COMMON_ACTORS.vectorDb,
-      COMMON_ACTORS.localStorage,
-      COMMON_ACTORS.fileSystem,
-      COMMON_ACTORS.tool
-    ];
-    
-    return {
-      agent: 'architect',
-      job: 'code',
-      nodes,
-      edges,
-      actors,
-      entryNode: 'resolve',
-      endNodes: ['learn']
-    };
-  }
-  
-  /**
-   * Architect Design Job 메타데이터
-   * 
-   * 실제 packages/ant-cli/src/agents/architect/graph/design/graph.ts 구조 기반
-   */
-  private getArchitectDesignMetadata(): WorkflowGraphMetadata {
-    const nodes: WorkflowNode[] = [
-      this.createNode('resolve', NodeType.ENTRY, 'Resolve', {
-        description: 'Load context and artifacts',
-        importance: NodeImportance.CRITICAL,
-        actors: [COMMON_ACTORS.localStorage.id]
-      }),
-      this.createNode('plan', NodeType.PROCESS, 'Plan', {
-        description: 'Create design plan',
-        importance: NodeImportance.MAJOR,
-        actors: [COMMON_ACTORS.llm.id]
-      }),
-      this.createNode('execute', NodeType.PROCESS, 'Execute', {
-        description: 'Generate design document',
-        importance: NodeImportance.CRITICAL,
-        actors: [COMMON_ACTORS.llm.id, COMMON_ACTORS.fileSystem.id]
-      }),
-      this.createNode('learn', NodeType.END, 'Learn', {
-        description: 'Store learnings',
-        importance: NodeImportance.MAJOR,
-        actors: [COMMON_ACTORS.vectorDb.id]
-      })
-    ];
-    
-    const edges: WorkflowEdge[] = [
-      this.createEdge('__start__', 'resolve'),
-      this.createEdge('resolve', 'plan'),
-      this.createEdge('plan', 'execute'),
-      this.createEdge('execute', 'learn')
-    ];
-    
-    const actors: ExternalActor[] = [
-      COMMON_ACTORS.llm,
-      COMMON_ACTORS.vectorDb,
-      COMMON_ACTORS.localStorage,
-      COMMON_ACTORS.fileSystem
-    ];
-    
-    return {
-      agent: 'architect',
-      job: 'design',
-      nodes,
-      edges,
-      actors,
-      entryNode: 'resolve',
-      endNodes: ['learn']
-    };
-  }
-  
-  /**
-   * Architect Learn Job 메타데이터
-   * 
-   * 실제 packages/ant-cli/src/agents/architect/graph/learn/graph.ts 구조 기반
-   */
-  private getArchitectLearnMetadata(): WorkflowGraphMetadata {
-    const nodes: WorkflowNode[] = [
-      this.createNode('resolve', NodeType.ENTRY, 'Resolve', {
-        description: 'Identify learning targets',
-        importance: NodeImportance.MAJOR
-      }),
-      this.createNode('store', NodeType.END, 'Store', {
-        description: 'Store learnings in vector DB',
-        importance: NodeImportance.CRITICAL,
-        actors: [COMMON_ACTORS.vectorDb.id, COMMON_ACTORS.fileSystem.id]
-      })
-    ];
-    
-    const edges: WorkflowEdge[] = [
-      this.createEdge('__start__', 'resolve'),
-      this.createEdge('resolve', 'store')
-    ];
-    
-    const actors: ExternalActor[] = [
-      COMMON_ACTORS.vectorDb,
-      COMMON_ACTORS.fileSystem
-    ];
-    
-    return {
-      agent: 'architect',
-      job: 'learn',
-      nodes,
-      edges,
-      actors,
-      entryNode: 'resolve',
-      endNodes: ['store']
     };
   }
 }

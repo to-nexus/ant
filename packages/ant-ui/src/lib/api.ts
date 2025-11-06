@@ -678,10 +678,24 @@ export async function fetchProjectConfig(projectId: string): Promise<ProjectConf
   }
 }
 
+// Sanitize workspace ID to valid project name (alphanumeric + hyphens)
+function sanitizeProjectName(workspaceId: string): string {
+  return workspaceId
+    .toLowerCase()
+    .replace(/\s+/g, '-')           // spaces → hyphens
+    .replace(/[^a-z0-9-]/g, '')     // remove non-alphanumeric except hyphens
+    .replace(/-+/g, '-')            // multiple hyphens → single hyphen
+    .replace(/^-+|-+$/g, '');       // trim leading/trailing hyphens
+}
+
 // Create project config with defaults
 export async function createProjectConfig(projectId: string): Promise<ProjectConfig> {
+  const sanitizedName = sanitizeProjectName(projectId);
+  
   const defaultConfig: ProjectConfig = {
-    projectName: projectId,
+    projectName: sanitizedName,
+    repoType: 'local',
+    localPath: `~/dev/${sanitizedName}`,
     branchBase: 'main',
     autoLearn: true,
   };
@@ -710,7 +724,7 @@ export async function createProjectConfig(projectId: string): Promise<ProjectCon
 }
 
 // Update project config
-export async function updateProjectConfig(projectId: string, config: ProjectConfig): Promise<void> {
+export async function updateProjectConfig(projectId: string, config: ProjectConfig): Promise<ProjectConfig> {
   try {
     const response = await fetch(
       `${API_BASE}/projects/${encodeURIComponent(projectId)}/config`,
@@ -726,6 +740,9 @@ export async function updateProjectConfig(projectId: string, config: ProjectConf
     if (!response.ok) {
       throw new Error(`Failed to update config: ${response.statusText}`);
     }
+    
+    // Backend now returns the saved config
+    return await response.json();
   } catch (error) {
     console.error('Error updating config:', error);
     throw error;

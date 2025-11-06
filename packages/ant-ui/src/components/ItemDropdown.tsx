@@ -242,7 +242,7 @@ export function ItemDropdown({
                     onPlayClick();
                   }
                 }}
-                className={`p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors pointer-events-auto ${
+                className={`p-1 hover:bg-gray-50 dark:hover:bg-[#30363d] rounded transition-colors pointer-events-auto ${
                   isPlaying 
                     ? 'text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300' 
                     : 'text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300'
@@ -263,7 +263,7 @@ export function ItemDropdown({
                   e.stopPropagation();
                   onSettingsClick();
                 }}
-                className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors pointer-events-auto"
+                className="p-1 hover:bg-gray-50 dark:hover:bg-[#30363d] rounded transition-colors pointer-events-auto"
                 title="Settings"
               >
                 <Settings className="h-4 w-4 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200" />
@@ -279,11 +279,11 @@ export function ItemDropdown({
           </div>
           
           {isOpen && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-10 max-h-48 overflow-y-auto">
+            <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-[#30363d] rounded-md shadow-lg z-10 max-h-48 overflow-y-auto">
               {items.map((item) => (
                 <div
                   key={item.name}
-                  className={`flex items-center justify-between px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
+                  className={`flex items-center justify-between px-3 py-2 hover:bg-gray-50 dark:hover:bg-[#30363d] transition-colors ${
                     selectedItem === item.name 
                       ? 'bg-primary-50 dark:bg-primary-900 text-primary-600 dark:text-primary-300 font-medium' 
                       : 'text-gray-700 dark:text-gray-300'

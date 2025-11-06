@@ -5,8 +5,9 @@
  * 워크플로우 노드와 다른 디자인으로 구분
  */
 
-import { memo } from 'react';
+import React, { memo } from 'react';
 import { Handle, Position } from 'reactflow';
+import { Settings } from 'lucide-react';
 import { ActorType } from '@/types/workflow';
 import { useStore } from '@/lib/store';
 import { cn } from '@/lib/design-system';
@@ -27,28 +28,27 @@ interface ActorNodeProps {
 
 // Actor 타입별 색상 (라이트 모드)
 const ACTOR_COLORS_LIGHT: Record<ActorType, string> = {
-  [ActorType.LLM]: 'bg-purple-50 border-purple-400 text-purple-900',
-  [ActorType.EMBEDDING]: 'bg-indigo-50 border-indigo-400 text-indigo-900',
-  [ActorType.VECTOR_DB]: 'bg-cyan-50 border-cyan-400 text-cyan-900',
-  [ActorType.LOCAL_STORAGE]: 'bg-amber-50 border-amber-400 text-amber-900',
-  [ActorType.FILE_SYSTEM]: 'bg-lime-50 border-lime-400 text-lime-900',
-  [ActorType.TOOL]: 'bg-orange-50 border-orange-400 text-orange-900'
+  [ActorType.LLM]: 'bg-purple-50 dark:bg-purple-900/20 border-purple-300 dark:border-purple-700',
+  [ActorType.VECTOR_DB]: 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700',
+  [ActorType.LOCAL_STORAGE]: 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700',
+  [ActorType.FILE_SYSTEM]: 'bg-orange-50 dark:bg-orange-900/20 border-orange-300 dark:border-orange-700',
+  [ActorType.TOOL]: 'bg-gray-50 dark:bg-gray-900/20 border-gray-300 dark:border-gray-700',
+  [ActorType.EMBEDDING]: 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-300 dark:border-indigo-700',
 };
 
 // Actor 타입별 색상 (다크 모드)
 const ACTOR_COLORS_DARK: Record<ActorType, string> = {
-  [ActorType.LLM]: 'dark:bg-purple-950 dark:border-purple-500 dark:text-purple-100',
-  [ActorType.EMBEDDING]: 'dark:bg-indigo-950 dark:border-indigo-500 dark:text-indigo-100',
-  [ActorType.VECTOR_DB]: 'dark:bg-cyan-950 dark:border-cyan-500 dark:text-cyan-100',
-  [ActorType.LOCAL_STORAGE]: 'dark:bg-amber-950 dark:border-amber-500 dark:text-amber-100',
-  [ActorType.FILE_SYSTEM]: 'dark:bg-lime-950 dark:border-lime-500 dark:text-lime-100',
-  [ActorType.TOOL]: 'dark:bg-orange-950 dark:border-orange-500 dark:text-orange-100'
+  [ActorType.LLM]: 'dark:bg-purple-900/20 dark:border-purple-700',
+  [ActorType.VECTOR_DB]: 'dark:bg-blue-900/20 dark:border-blue-700',
+  [ActorType.LOCAL_STORAGE]: 'dark:bg-green-900/20 dark:border-green-700',
+  [ActorType.FILE_SYSTEM]: 'dark:bg-orange-900/20 dark:border-orange-700',
+  [ActorType.TOOL]: 'dark:bg-gray-900/20 dark:border-gray-700',
+  [ActorType.EMBEDDING]: 'dark:bg-indigo-900/20 dark:border-indigo-700',
 };
 
 export const ActorNode = memo(({ data }: ActorNodeProps) => {
-  const theme = useStore(state => state.theme);
-  const splitLayout = useStore(state => state.splitLayout);
-  const isExpanded = data.isExpanded || false;
+  const { theme, splitLayout } = useStore();
+  const [isExpanded, setIsExpanded] = React.useState(data.isExpanded || false);
   
   // Actor 정보 조회
   const actorInfo = data.actorId ? getActorInfo(data.actorId) : null;
@@ -80,6 +80,7 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
             borderBottomRightRadius: '50% / 40%',
             zIndex: 1000  // 최상위 depth
           }}
+          onClick={() => setIsExpanded(false)}
         >
           <Handle type="target" position={Position.Left} className="!bg-gray-400 dark:!bg-gray-600" />
           <Handle type="source" position={Position.Right} className="!bg-gray-400 dark:!bg-gray-600" />
@@ -98,9 +99,16 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
           />
           
           <div className="space-y-3 pt-8 w-full">
-            {/* Title */}
+            {/* Title with Gear Icon */}
             <div className="text-center">
-              <div className="text-3xl mb-2">{actorInfo.icon}</div>
+              <div className="text-3xl mb-2 relative inline-block">
+                {actorInfo.icon}
+                {data.isActive && (
+                  <div className="absolute -top-1 -right-1">
+                    <Settings className="w-5 h-5 text-green-500 animate-spin" />
+                  </div>
+                )}
+              </div>
               <div className="font-semibold text-sm">{actorInfo.displayName}</div>
             </div>
             
@@ -139,17 +147,25 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
           borderRadius: '32px',  // 아주 둥근 모서리
           zIndex: 1000  // 최상위 depth
         }}
+        onClick={() => setIsExpanded(false)}
       >
         <Handle type="target" position={Position.Left} className="!bg-gray-400 dark:!bg-gray-600" />
         <Handle type="source" position={Position.Right} className="!bg-gray-400 dark:!bg-gray-600" />
-        
+
         <div className="space-y-3">
-          {/* Title */}
+          {/* Title with Gear Icon */}
           <div className="text-center">
-            <div className="text-3xl mb-2">{actorInfo.icon}</div>
+            <div className="text-3xl mb-2 relative inline-block">
+              {actorInfo.icon}
+              {data.isActive && (
+                <div className="absolute -top-1 -right-1">
+                  <Settings className="w-5 h-5 text-green-500 animate-spin" />
+                </div>
+              )}
+            </div>
             <div className="font-semibold text-sm">{actorInfo.displayName}</div>
           </div>
-          
+
           {/* Details */}
           <div className="space-y-2 text-xs">
             <div>
@@ -172,31 +188,30 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
     );
   }
   
+  // 접힌 상태 (기본) - DB 모양
   if (isDatabase) {
     return (
       <div
         className={cn(
           'actor-node flex flex-col items-center justify-center relative cursor-pointer',
-          'border-2 border-dashed transition-all duration-200 shadow-md hover:shadow-lg',
+          'border-2 border-dashed transition-all duration-200 hover:shadow-lg',
           colorClass,
           data.isActive && 'ring-4 ring-green-500 ring-opacity-50 shadow-lg shadow-green-500/50 animate-pulse'
         )}
         style={{
-          width: 100,
-          height: 100,
+          width: 120,
+          height: 80,
           borderRadius: '50% / 10%',
           borderBottomLeftRadius: '50% / 40%',
           borderBottomRightRadius: '50% / 40%',
-          zIndex: isExpanded ? 1000 : 1
+          zIndex: 1
         }}
+        onClick={() => setIsExpanded(true)}
       >
-        <Handle 
-          type="target" 
-          position={targetPosition}
-          className="!bg-gray-400 dark:!bg-gray-600 !border-2 !border-white dark:!border-gray-800"
-        />
+        <Handle type="target" position={targetPosition} className="!bg-gray-400 dark:!bg-gray-600" />
+        <Handle type="source" position={Position.Right} className="!bg-gray-400 dark:!bg-gray-600" />
         
-        {/* Top ellipse */}
+        {/* Top ellipse (compact) */}
         <div 
           className={cn(
             'absolute top-0 left-0 right-0 border-2 border-dashed',
@@ -209,60 +224,53 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
           }}
         />
         
-        <div className="text-center px-2 pt-3">
-          {data.icon && (
-            <div className="text-2xl mb-1">{data.icon}</div>
+        <div className="text-2xl mb-1 relative inline-block">
+          {data.icon || actorInfo?.icon}
+          {data.isActive && (
+            <div className="absolute -top-0.5 -right-0.5">
+              <Settings className="w-4 h-4 text-green-500 animate-spin" />
+            </div>
           )}
-          <div 
-            className="text-xs font-semibold leading-tight"
-            style={{ 
-              fontSize: '11px',
-            }}
-          >
-            {data.label}
-          </div>
+        </div>
+        <div className="text-xs font-medium text-center px-2 leading-tight">
+          {data.label}
         </div>
       </div>
     );
   }
   
-  // 기타 Actor는 원형
+  // 접힌 상태 (기본) - 원형
   return (
     <div
       className={cn(
-        'actor-node rounded-full flex items-center justify-center cursor-pointer',
-        'border-2 border-dashed transition-all duration-200 shadow-md hover:shadow-lg',
+        'actor-node rounded-full flex flex-col items-center justify-center relative',
+        'border-2 transition-all duration-200 cursor-pointer hover:shadow-lg',
         colorClass,
         data.isActive && 'ring-4 ring-green-500 ring-opacity-50 shadow-lg shadow-green-500/50 animate-pulse'
       )}
       style={{
         width: 100,
         height: 100,
-        zIndex: isExpanded ? 1000 : 1
+        zIndex: 1
       }}
+      onClick={() => setIsExpanded(true)}
     >
-      <Handle 
-        type="target" 
-        position={targetPosition}
-        className="!bg-gray-400 dark:!bg-gray-600 !border-2 !border-white dark:!border-gray-800"
-      />
+      <Handle type="target" position={targetPosition} className="!bg-gray-400 dark:!bg-gray-600" />
+      <Handle type="source" position={Position.Right} className="!bg-gray-400 dark:!bg-gray-600" />
       
-      <div className="text-center px-2">
-        {data.icon && (
-          <div className="text-2xl mb-1">{data.icon}</div>
+      <div className="text-2xl mb-1 relative inline-block">
+        {data.icon || actorInfo?.icon}
+        {data.isActive && (
+          <div className="absolute -top-0.5 -right-0.5">
+            <Settings className="w-4 h-4 text-green-500 animate-spin" />
+          </div>
         )}
-        <div 
-          className="text-xs font-semibold leading-tight"
-          style={{ 
-            fontSize: '11px',
-          }}
-        >
-          {data.label}
-        </div>
+      </div>
+      <div className="text-xs font-medium text-center px-2 leading-tight">
+        {data.label}
       </div>
     </div>
   );
 });
 
 ActorNode.displayName = 'ActorNode';
-
