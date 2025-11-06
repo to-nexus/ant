@@ -9,6 +9,7 @@ interface KanbanColumnsProps {
   completedTasks: UnifiedTask[];
   newlyCompletedIds: Set<string>;
   newlyInProgressId: string | null;
+  splitLayout: 'horizontal' | 'vertical';
   onShineComplete: (taskId: string) => void;
   onInProgressAnimationComplete: () => void;
 }
@@ -16,6 +17,10 @@ interface KanbanColumnsProps {
 /**
  * KanbanColumns - Three column layout (To Do, In Progress, Completed)
  * Handles task card rendering with animations
+ * 
+ * Layout:
+ * - Horizontal split (left/right): Columns arranged vertically (flex-col)
+ * - Vertical split (top/bottom): Columns arranged horizontally (grid-cols-3)
  */
 export function KanbanColumns({
   todoTasks,
@@ -23,12 +28,17 @@ export function KanbanColumns({
   completedTasks,
   newlyCompletedIds,
   newlyInProgressId,
+  splitLayout,
   onShineComplete,
   onInProgressAnimationComplete
 }: KanbanColumnsProps) {
+  // Horizontal split: vertical column layout (flex-col)
+  // Vertical split: horizontal column layout (grid-cols-3)
+  const isHorizontalSplit = splitLayout === 'horizontal';
+  
   return (
     <LayoutGroup>
-      <div className="grid grid-cols-3 gap-4 pt-4">
+      <div className={isHorizontalSplit ? "flex flex-col gap-4 pt-4" : "grid grid-cols-3 gap-4 pt-4"}>
         {/* TO DO Column */}
         <div className="space-y-3">
           <div className="flex items-center gap-2 mb-3">

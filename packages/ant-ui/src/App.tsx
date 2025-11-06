@@ -408,9 +408,9 @@ function App() {
             className="bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden transition-colors shrink-0 relative"
             style={{ width: `${explorerWidth}px` }}
           >
-            {/* Explorer Bar */}
-            <Bar
-              left={
+            {/* Explorer Bar - Extends Base Bar */}
+            {Bar.render({
+              left: (
                 <>
                   <button
                     onClick={() => {
@@ -423,9 +423,8 @@ function App() {
                   </button>
                   <span className="text-gray-700 dark:text-gray-200 font-medium">📁 Explorer</span>
                 </>
-              }
-              right={
-                selectedFile ? (
+              ),
+              right: selectedFile ? (
                   <button
                     onClick={() => setShowFileEditor(!showFileEditor)}
                     className={`text-xs px-2 py-1 rounded transition-colors ${
@@ -438,8 +437,7 @@ function App() {
                     Editor
                   </button>
                 ) : undefined
-              }
-            />
+            })}
             
             <div className="flex-1 px-3 py-3 space-y-3 overflow-y-auto">
               {connectionStatus === 'connected' ? (

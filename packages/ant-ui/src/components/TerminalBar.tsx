@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '@/lib/store';
 import { ChevronUp, ChevronDown, X } from 'lucide-react';
-import { Bar } from './Bar';
+import { Bar, BaseBarProps } from './Bar';
 
 /**
- * TerminalBar - Expandable terminal output bar
+ * TerminalBar - Extends Bar
+ * 
+ * Expandable terminal output bar with extended functionality.
+ * Inherits base styling from Bar and adds terminal-specific features.
  * 
  * Features:
  * - Collapsible/expandable terminal output
@@ -13,7 +16,7 @@ import { Bar } from './Bar';
  * - Log type indicators (INFO, OUT, ERR, ERROR)
  * - Clear logs functionality
  */
-export function TerminalBar() {
+export function TerminalBar(props: BaseBarProps = {}) {
   const logs = useStore((state) => state.logs);
   const clearLogs = useStore((state) => state.clearLogs);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -120,9 +123,9 @@ export function TerminalBar() {
         />
       )}
       
-      {/* Header Bar (Always Visible) */}
-      <Bar
-        left={
+      {/* Header Bar (Always Visible) - Extends Base Bar */}
+      {Bar.render({
+        left: (
           <>
             <button
               onClick={() => setIsExpanded(!isExpanded)}
@@ -140,9 +143,8 @@ export function TerminalBar() {
               </span>
             )}
           </>
-        }
-        right={
-          logs.length > 0 ? (
+        ),
+        right: logs.length > 0 ? (
             <button
               onClick={clearLogs}
               className="text-xs px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 transition-colors flex items-center gap-1"
@@ -151,9 +153,9 @@ export function TerminalBar() {
               <X className="w-3 h-3" />
               Clear
             </button>
-          ) : undefined
-        }
-      />
+          ) : undefined,
+        className: props.className
+      })}
 
       {/* Terminal Content (Expandable) - Light Mode */}
       {isExpanded && (

@@ -1,10 +1,13 @@
 import { useStore } from '@/lib/store';
 import { textColors, cn } from '@/lib/design-system';
-import { Bar } from './Bar';
+import { Bar, BaseBarProps } from './Bar';
 import { Columns, Rows } from 'lucide-react';
 
 /**
- * MainPanelBar - Status bar at the top of MainPanel
+ * MainPanelBar - Extends Bar
+ * 
+ * Status bar at the top of MainPanel.
+ * Inherits base styling from Bar and adds specific functionality.
  * 
  * Displays current context information:
  * - Selected project
@@ -15,7 +18,7 @@ import { Columns, Rows } from 'lucide-react';
  * 
  * Similar to status bars in IDEs (VS Code, IntelliJ)
  */
-export function MainPanelBar() {
+export function MainPanelBar(props: BaseBarProps = {}) {
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);
   const currentTaskId = useStore((state) => state.currentTaskId);
@@ -23,9 +26,9 @@ export function MainPanelBar() {
   const splitLayout = useStore((state) => state.splitLayout);
   const toggleSplitLayout = useStore((state) => state.toggleSplitLayout);
 
-  return (
-    <Bar
-      left={
+  // Render using base Bar
+  return Bar.render({
+    left: (
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <span className={textColors.tertiary}>Project:</span>
@@ -50,8 +53,8 @@ export function MainPanelBar() {
             </div>
           )}
         </div>
-      }
-      right={
+      ),
+    right: (
         <div className="flex items-center gap-3">
           {/* Layout Toggle Buttons */}
           <div className="flex items-center gap-1 border-l pl-3 border-gray-300 dark:border-gray-600">
@@ -91,8 +94,8 @@ export function MainPanelBar() {
             </div>
           )}
         </div>
-      }
-    />
-  );
+      ),
+    className: props.className
+  });
 }
 
