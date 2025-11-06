@@ -3,21 +3,23 @@ import { Session } from '@/types/session';
 import { LogEntry } from '@/types/log';
 import { Feature, FileNode, FileContent, DevServerStatus } from '@/lib/api';
 import { subscribeToLogs } from '@/lib/api';
-import { TaskExecution } from '@/lib/cli';
+import { JobExecution } from '@/lib/cli';
 
 interface StoreState {
   projects: string[];
   selectedProject: string | undefined;
   selectedFeature: string | undefined;
   selectedFile: string | undefined;
+  selectedAgent: string;  // GNB에서 선택된 Agent
+  selectedWorkType: string;  // GNB에서 선택된 Work Type (code/design/etc)
   features: Feature[];
   fileTree: FileNode[];
   fileContent: FileContent | undefined;
   session: Session | undefined;
   logs: LogEntry[];
   isRunning: boolean;
-  currentTaskId: string | undefined;
-  currentTask: TaskExecution | null;
+  currentJobId: string | undefined;
+  currentJob: JobExecution | null;
   activeTasks: Map<string, EventSource>;
   connectionStatus: 'connected' | 'disconnected' | 'error';
   showConfigEditor: boolean;
@@ -37,6 +39,8 @@ interface StoreActions {
   setSelectedProject: (projectId: string | undefined) => void;
   selectFeature: (featureName: string) => void;
   setSelectedFeature: (featureName: string | undefined) => void;
+  setSelectedAgent: (agent: string) => void;
+  setSelectedWorkType: (workType: string) => void;
   fetchFeatures: () => Promise<void>;
   selectFile: (filePath: string) => void;
   setFeatures: (features: Feature[]) => void;
@@ -46,7 +50,7 @@ interface StoreActions {
   setSession: (session: Session | undefined) => void;
   addLog: (log: LogEntry) => void;
   setRunning: (isRunning: boolean, taskId?: string, mode?: 'generate' | 'refactor' | 'explain') => void;
-  setCurrentTask: (task: TaskExecution | null) => void;
+  setCurrentJob: (job: JobExecution | null) => void;
   clearLogs: () => void;
   reset: () => void;
   startLogStream: (taskId: string) => void;
@@ -128,14 +132,16 @@ export const useStore = create<Store>((set, get) => ({
   selectedProject: undefined,
   selectedFeature: undefined,
   selectedFile: undefined,
+  selectedAgent: 'architect',  // 기본값: architect
+  selectedWorkType: 'code',    // 기본값: code
   features: [],
   fileTree: [],
   fileContent: undefined,
   session: undefined,
   logs: [],
   isRunning: false,
-  currentTaskId: undefined,
-  currentTask: null,
+  currentJobId: undefined,
+  currentJob: null,
   activeTasks: new Map<string, EventSource>(),
   connectionStatus: 'disconnected',
   showConfigEditor: false,
@@ -256,6 +262,14 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
+  setSelectedAgent: (agent: string) => {
+    set({ selectedAgent: agent });
+  },
+
+  setSelectedWorkType: (workType: string) => {
+    set({ selectedWorkType: workType });
+  },
+
   fetchFeatures: async () => {
     const { selectedProject } = get();
     if (!selectedProject) return;
@@ -320,20 +334,20 @@ export const useStore = create<Store>((set, get) => ({
     });
   },
 
-  setRunning: (isRunning: boolean, taskId?: string, mode?: 'generate' | 'refactor' | 'explain') => {
+  setRunning: (isRunning: boolean, jobId?: string, mode?: 'generate' | 'refactor' | 'explain') => {
     const startTime = isRunning ? Date.now() : undefined;
     
     set({ 
       isRunning,
-      currentTaskId: isRunning ? taskId : undefined,
+      currentJobId: isRunning ? jobId : undefined,
       taskStartTime: startTime,
       elapsedTime: isRunning ? 0 : get().elapsedTime,
       currentMode: isRunning ? mode : undefined
     });
 
     // Persist to localStorage
-    if (isRunning && taskId) {
-      saveToStorage(STORAGE_KEYS.RUNNING_TASK, taskId);
+    if (isRunning && jobId) {
+      saveToStorage(STORAGE_KEYS.RUNNING_TASK, jobId);
       saveToStorage(STORAGE_KEYS.TASK_START_TIME, startTime);
       if (mode) {
         saveToStorage(STORAGE_KEYS.TASK_MODE, mode);
@@ -345,8 +359,8 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
-  setCurrentTask: (task: TaskExecution | null) => {
-    set({ currentTask: task });
+  setCurrentJob: (job: JobExecution | null) => {
+    set({ currentJob: job });
   },
 
   clearLogs: () => {

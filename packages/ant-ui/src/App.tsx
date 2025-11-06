@@ -12,8 +12,8 @@ import { SplitLayout } from './components/SplitLayout';
 import { Bar } from './components/Bar';
 import { FileEditorPanel } from './components/FileEditorPanel';
 import { ConfigEditor } from './components/ConfigEditor';
-import { checkHealth, fetchProjectConfig, updateProjectConfig, ProjectConfig, fetchFeatureSession, stopTask } from './lib/api';
-import { executeCodeTask } from './lib/cli';
+import { checkHealth, fetchProjectConfig, updateProjectConfig, ProjectConfig, fetchFeatureSession, stopJob } from './lib/api';
+import { executeCodeJob } from './lib/cli';
 import { useStore } from './lib/store';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -31,9 +31,9 @@ function App() {
   const selectedFeature = useStore((state) => state.selectedFeature);
   const selectedFile = useStore((state) => state.selectedFile);
   const isRunning = useStore((state) => state.isRunning);
-  const taskId = useStore((state) => state.currentTaskId);
-  const currentTask = useStore((state) => state.currentTask);
-  const setCurrentTask = useStore((state) => state.setCurrentTask);
+  const taskId = useStore((state) => state.currentJobId);
+  const currentJob = useStore((state) => state.currentJob);
+  const setCurrentJob = useStore((state) => state.setCurrentJob);
   const setRunning = useStore((state) => state.setRunning);
   const setConnectionStatus = useStore((state) => state.setConnectionStatus);
   const connectionStatus = useStore((state) => state.connectionStatus);
@@ -308,7 +308,7 @@ function App() {
     setRunning(true, undefined, 'generate'); // Default mode
 
     try {
-      const taskExecution = executeCodeTask({
+      const taskExecution = executeCodeJob({
         projectId: selectedProject,
         featureName: selectedFeature,  // Pass selected feature
         task: task as any,
@@ -317,7 +317,7 @@ function App() {
         language: 'en',
       });
 
-      setCurrentTask(taskExecution);
+      setCurrentJob(taskExecution);
 
       // Update with actual taskId once server responds
       if (taskExecution.onTaskIdReady) {
@@ -330,7 +330,7 @@ function App() {
       taskExecution.on('exit', (code: number | null, _signal: string | null) => {
         console.log('[App] Task exit:', code);
         setRunning(false);
-        setCurrentTask(null);
+        setCurrentJob(null);
         
         // Reload session after task completion to get updated data
         if (selectedProject && selectedFeature) {
@@ -354,33 +354,33 @@ function App() {
     } catch (error) {
       console.error('Failed to execute task:', error);
       setRunning(false);
-      setCurrentTask(null);
+      setCurrentJob(null);
     }
   };
 
   const handleStopTask = async () => {
-    console.log('[App] Stopping task...', { hasCurrentTask: !!currentTask, taskId, selectedProject, selectedFeature });
+    console.log('[App] Stopping task...', { hasCurrentTask: !!currentJob, taskId, selectedProject, selectedFeature });
     
     try {
-      // Method 1: If we have the currentTask object (direct execution)
-      if (currentTask) {
-        console.log('[App] Stopping via currentTask.kill()');
-        await currentTask.kill();
+      // Method 1: If we have the currentJob object (direct execution)
+      if (currentJob) {
+        console.log('[App] Stopping via currentJob.kill()');
+        await currentJob.kill();
       }
       // Method 2: If we only have taskId (e.g., after page refresh)
       else if (taskId) {
         console.log('[App] Stopping via API (taskId:', taskId, ')');
         // ✅ Pass projectId and featureName for proper cleanup
-        await stopTask(taskId, selectedProject || undefined, selectedFeature || undefined);
+        await stopJob(taskId, selectedProject || undefined, selectedFeature || undefined);
       } else {
-        console.warn('[App] No task to stop (no currentTask or taskId)');
+        console.warn('[App] No task to stop (no currentJob or taskId)');
       }
     } catch (error) {
       console.error('[App] Failed to stop task:', error);
     } finally {
       // Always clean up state
       setRunning(false);
-      setCurrentTask(null);
+      setCurrentJob(null);
       
       // Reload session after stopping
       if (selectedProject && selectedFeature) {

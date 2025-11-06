@@ -3,10 +3,10 @@ import cors from 'cors';
 import { ChildProcess } from 'child_process';
 import { 
   HttpServerPort, 
-  TaskExecutionPort, 
-  ExecuteTaskParams, 
-  TaskResult, 
-  TaskStatus, 
+  JobExecutionPort, 
+  ExecuteJobParams, 
+  JobResult, 
+  JobStatus, 
   LogEntry,
   TaskQueueUpdatePort,
   FileTreeUpdatePort
@@ -18,10 +18,11 @@ import {
   TaskExecutionService, 
   SessionService, 
   DevServerService, 
-  ProjectService 
+  ProjectService,
+  SSEBroadcastService
 } from './services';
 import {
-  createTaskRoutes,
+  createJobRoutes,
   createKanbanRoutes,
   createDevServerRoutes,
   createProjectRoutes
@@ -31,11 +32,11 @@ import {
  * ExpressServerAdapter
  * 
  * Hexagonal Architecture - Adapter Layer
- * Implements HttpServerPort and TaskExecutionPort using Express framework.
+ * Implements HttpServerPort and JobExecutionPort using Express framework.
  * 
  * Coordinates services and routes, delegating business logic to service layer.
  */
-export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort, TaskQueueUpdatePort, FileTreeUpdatePort {
+export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, TaskQueueUpdatePort, FileTreeUpdatePort {
   private app: Express;
   private server: any;
   private running: boolean = false;
@@ -52,16 +53,17 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort, 
   private sessionService: SessionService;
   private devServerService: DevServerService;
   private projectService: ProjectService;
+  private sseBroadcastService: SSEBroadcastService;
   
-  // Task tracking (maintained for compatibility and coordination)
-  private tasks: Map<string, TaskStatus> = new Map();
+  // Job tracking (agent execution instances)
+  private jobs: Map<string, JobStatus> = new Map();
   private logs: Map<string, LogEntry[]> = new Map();
   private logStreams: Map<string, Set<(log: LogEntry) => void>> = new Map();
   private sseResponses: Map<string, Set<Response>> = new Map();
   private childProcesses: Map<string, ChildProcess> = new Map();
-  private currentTaskId: string | null = null;
+  private currentJobId: string | null = null;
   
-  // Kanban tracking (maintained for coordination between services)
+  // Kanban tracking (Task Board tasks - maintained for coordination between services)
   private taskQueueSnapshots: Map<string, { 
     currentTask: any; 
     queue: any[];
@@ -69,33 +71,27 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort, 
     recursionCount?: number;  // ✅ Current recursion iteration
     recursionLimit?: number;  // ✅ Maximum recursion limit
   }> = new Map();
-  private taskToProject: Map<string, { projectId: string; featureName: string }> = new Map();
-  private kanbanSSE: Map<string, Set<Response>> = new Map();
-  
-  // File tree SSE
-  private fileTreeSSE: Map<string, Set<Response>> = new Map();
-  
-  // Dev server SSE
-  private devServerSSE: Map<string, Set<Response>> = new Map();
+  private jobToProject: Map<string, { projectId: string; featureName: string }> = new Map();
   
   /**
-   * Get current task ID (for CLI subprocess)
+   * Get current job ID (for CLI subprocess)
    * First tries environment variable, then falls back to instance
    */
-  static getCurrentTaskId(): string | null {
+  static getCurrentJobId(): string | null {
     // ✅ Priority 1: Environment variable (for child processes)
-    if (process.env.ANT_TASK_ID) {
-      return process.env.ANT_TASK_ID;
+    if (process.env.ANT_JOB_ID) {
+      return process.env.ANT_JOB_ID;
     }
     // Priority 2: Instance (for parent process)
-    return ExpressServerAdapter.instance?.currentTaskId || null;
+    return ExpressServerAdapter.instance?.currentJobId || null;
   }
   
   /**
    * Update task queue snapshot (called by orchestrator during execution)
+   * Note: This manages Task Board tasks, not job execution
    */
   updateTaskQueue(
-    taskId: string, 
+    jobId: string, 
     currentTask: any, 
     queue: any[], 
     completedTasks?: any[],
@@ -103,7 +99,7 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort, 
     recursionLimit?: number
   ): void {
     console.log(`\n🔥🔥🔥 [updateTaskQueue] CALLED 🔥🔥🔥`);
-    console.log(`  Task ID: ${taskId}`);
+    console.log(`  Job ID: ${jobId}`);
     console.log(`  Current Task:`, currentTask?.name || 'null');
     console.log(`  Queue Length:`, queue?.length || 0);
     console.log(`  Queue Tasks:`, queue?.map((t: any) => t.name).join(', ') || 'empty');
@@ -111,13 +107,13 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort, 
     console.log(`  Recursion: ${recursionCount || 0}/${recursionLimit || 50}`);
     
     // ✅ CRITICAL: Preserve existing completed tasks if not provided
-    const existingSnapshot = this.taskQueueSnapshots.get(taskId);
+    const existingSnapshot = this.taskQueueSnapshots.get(jobId);
     const finalCompletedTasks = completedTasks !== undefined 
       ? completedTasks 
       : (existingSnapshot?.completedTasks || []);
     
     // Update local snapshot for coordination
-    this.taskQueueSnapshots.set(taskId, { 
+    this.taskQueueSnapshots.set(jobId, { 
       currentTask, 
       queue,
       completedTasks: finalCompletedTasks,
@@ -127,24 +123,24 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort, 
     console.log(`  ✅ Saved to taskQueueSnapshots (including ${finalCompletedTasks.length} completed)`);
     console.log(`  📊 Total snapshots in memory:`, this.taskQueueSnapshots.size);
     
-    // ✅ Broadcast immediately to Kanban clients
-    const mapping = this.taskToProject.get(taskId);
+    // ✅ Broadcast immediately to Kanban clients via SSE service
+    const mapping = this.jobToProject.get(jobId);
     if (mapping) {
       console.log(`  📡 Broadcasting to: ${mapping.projectId}/${mapping.featureName}\n`);
-      this.broadcastKanbanUpdate(mapping.projectId, mapping.featureName);
+      this.sseBroadcastService.broadcastKanbanUpdate(mapping.projectId, mapping.featureName);
     } else {
-      console.log(`  ⚠️  No mapping found for taskId: ${taskId}\n`);
+      console.log(`  ⚠️  No mapping found for jobId: ${jobId}\n`);
     }
   }
   
   /**
-   * Clean up task state when stopped (called when task is terminated)
+   * Clean up job state when stopped (called when job is terminated)
    */
-  async cleanupTaskState(taskId: string, projectId?: string, featureName?: string): Promise<void> {
-    console.log(`\n🧹 [cleanupTaskState] Cleaning up task ${taskId}`);
+  async cleanupJobState(jobId: string, projectId?: string, featureName?: string): Promise<void> {
+    console.log(`\n🧹 [cleanupJobState] Cleaning up job ${jobId}`);
     
     // Get mapping before deletion (from Map or from parameters)
-    let mapping = this.taskToProject.get(taskId);
+    let mapping = this.jobToProject.get(jobId);
     
     // ✅ If mapping not found in Map (e.g., after page refresh), use provided parameters
     if (!mapping && projectId && featureName) {
@@ -153,14 +149,14 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort, 
     }
     
     // Get current snapshot to return in-progress task to queue
-    const snapshot = this.taskQueueSnapshots.get(taskId);
+    const snapshot = this.taskQueueSnapshots.get(jobId);
     
     // Clear live data
-    this.taskQueueSnapshots.delete(taskId);
-    this.taskToProject.delete(taskId);
+    this.taskQueueSnapshots.delete(jobId);
+    this.jobToProject.delete(jobId);
     
-    if (this.currentTaskId === taskId) {
-      this.currentTaskId = null;
+    if (this.currentJobId === jobId) {
+      this.currentJobId = null;
     }
     
     console.log(`  ✅ Cleared live snapshots and mappings`);
@@ -208,14 +204,14 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort, 
           console.log(`  ℹ️  No in-progress task to return to queue\n`);
         }
           
-        // Broadcast final update to switch to session data
-        this.broadcastKanbanUpdate(mapping.projectId, mapping.featureName);
+        // Broadcast final update to switch to session data via SSE service
+        this.sseBroadcastService.broadcastKanbanUpdate(mapping.projectId, mapping.featureName);
       }
     } catch (error) {
       console.log(`  ⚠️  Failed to update session file:`, error);
     }
   } else {
-    console.log(`  ℹ️  No mapping found for taskId ${taskId}\n`);
+    console.log(`  ℹ️  No mapping found for jobId ${jobId}\n`);
   }
   }
   
@@ -225,26 +221,35 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort, 
     // Initialize services
     this.kanbanService = new KanbanService(this.WORKSPACE_ROOT);
     this.taskExecutionService = new TaskExecutionService({
-      onTaskStatusChange: (taskId, status) => {
-        this.tasks.set(taskId, status);
+      onJobStatusChange: (jobId, status) => {
+        this.jobs.set(jobId, status);
       },
-      onLogEntry: (taskId, log) => {
-        const logs = this.logs.get(taskId) || [];
+      onLogEntry: (jobId, log) => {
+        const logs = this.logs.get(jobId) || [];
         logs.push(log);
-        this.logs.set(taskId, logs);
-      }
-    });
-    this.sessionService = new SessionService(this.WORKSPACE_ROOT, {
-      onSessionChange: (projectId, featureName) => {
-        this.broadcastKanbanUpdate(projectId, featureName);
-      }
-    });
-    this.devServerService = new DevServerService({
-      onStatusChange: (projectId) => {
-        this.broadcastDevServerStatus(projectId);
+        this.logs.set(jobId, logs);
       }
     });
     this.projectService = new ProjectService(this.WORKSPACE_ROOT);
+    this.devServerService = new DevServerService({
+      onStatusChange: (projectId) => {
+        this.sseBroadcastService.broadcastDevServerStatus(projectId);
+      }
+    });
+    
+    // Initialize SSE broadcast service (requires other services to be initialized first)
+    this.sseBroadcastService = new SSEBroadcastService(
+      this.kanbanService,
+      this.devServerService,
+      this.projectService
+    );
+    
+    // Initialize session service with SSE callback
+    this.sessionService = new SessionService(this.WORKSPACE_ROOT, {
+      onSessionChange: (projectId, featureName) => {
+        this.sseBroadcastService.broadcastKanbanUpdate(projectId, featureName);
+      }
+    });
     
     this.setupMiddleware();
     this.setupRoutes();
@@ -280,102 +285,101 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort, 
     const projectRoutes = createProjectRoutes({
       projectService: this.projectService,
       workspaceRoot: this.WORKSPACE_ROOT,
-      fileTreeSSE: this.fileTreeSSE
+      fileTreeSSE: this.sseBroadcastService.getFileTreeSSE()
     });
     this.app.use('/api', projectRoutes);
     
     // Kanban routes
     const kanbanRoutes = createKanbanRoutes({
-      getKanbanData: this.getKanbanData.bind(this),
-      kanbanSSE: this.kanbanSSE,
-      taskToProject: this.taskToProject,
+      kanbanService: this.kanbanService,
+      kanbanSSE: this.sseBroadcastService.getKanbanSSE(),
+      jobToProject: this.jobToProject,
+      jobs: this.jobs,
+      taskQueueSnapshots: this.taskQueueSnapshots,
       watchSessionFile: this.watchSessionFile.bind(this)
     });
     this.app.use('/api', kanbanRoutes);
     
     // Dev server routes
     const devServerRoutes = createDevServerRoutes({
-      getProjectConfig: this.getProjectConfig.bind(this),
-      resolveLocalPath: this.projectService.resolveLocalPath.bind(this.projectService),
-      startDevServer: this.devServerService.startDevServer.bind(this.devServerService),
-      stopDevServer: this.devServerService.stopDevServer.bind(this.devServerService),
-      getDevServerStatus: this.getDevServerStatus.bind(this),
-      devServerSSE: this.devServerSSE,
-      broadcastDevServerStatus: this.broadcastDevServerStatus.bind(this)
+      projectService: this.projectService,
+      devServerService: this.devServerService,
+      devServerSSE: this.sseBroadcastService.getDevServerSSE(),
+      broadcastDevServerStatus: this.sseBroadcastService.broadcastDevServerStatus.bind(this.sseBroadcastService)
     });
     this.app.use('/api', devServerRoutes);
     
-    // Task execution routes
-    const taskRoutes = createTaskRoutes({
+    // Job execution routes
+    const jobRoutes = createJobRoutes({
       workspaceRoot: this.WORKSPACE_ROOT,
-      executeTask: this.executeTask.bind(this),
-      getTaskStatus: this.getTaskStatus.bind(this),
+      executeJob: this.executeJob.bind(this),
+      getJobStatus: this.getJobStatus.bind(this),
       getLogs: this.getLogs.bind(this),
       logStreams: this.logStreams,
       sseResponses: this.sseResponses,
       logs: this.logs,
       childProcesses: this.childProcesses,
-      tasks: this.tasks,
-      cleanupTaskState: this.cleanupTaskState.bind(this)  // ✅ Add cleanup method
+      jobs: this.jobs,
+      cleanupJobState: this.cleanupJobState.bind(this)
     });
-    this.app.use('/api', taskRoutes);
+    this.app.use('/api', jobRoutes);
   }
   
   // =====================================
-  // TaskExecutionPort implementation
+  // JobExecutionPort implementation
   // =====================================
   
-  async executeTask(params: ExecuteTaskParams): Promise<TaskResult> {
-    const taskId = `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  async executeJob(params: ExecuteJobParams): Promise<JobResult> {
+    const jobId = `job-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
-    // Initialize task tracking
-    this.tasks.set(taskId, {
-      taskId,
+    // Initialize job tracking
+    this.jobs.set(jobId, {
+      jobId,
       status: 'pending',
       startedAt: new Date().toISOString()
     });
-    this.logs.set(taskId, []);
+    this.logs.set(jobId, []);
     
     // ✅ Validate required feature parameter
     if (!params.feature) {
-      throw new Error('Feature name is required for task execution');
+      throw new Error('Feature name is required for job execution');
     }
     
     const projectId = params.project;
     const featureName = params.feature;
     
-    // Map taskId to project/feature for Kanban tracking
-    this.taskToProject.set(taskId, { projectId, featureName });
+    // Map jobId to project/feature for Kanban tracking
+    this.jobToProject.set(jobId, { projectId, featureName });
     
-    console.log(`[executeTask] Task ${taskId} mapped to ${projectId}/${featureName}`);
+    console.log(`[executeJob] Job ${jobId} mapped to ${projectId}/${featureName}`);
     
     // Start session file watcher for real-time Kanban updates
-    this.watchSessionFile(taskId, projectId, featureName);
+    this.watchSessionFile(jobId, projectId, featureName);
     
-    // ✅ CRITICAL: Broadcast immediately to show "estimating" state
-    // This ensures UI updates INSTANTLY when task starts, even before decompose
-    console.log(`[executeTask] 🎬 Broadcasting initial "estimating" state for ${projectId}/${featureName}`);
-    this.broadcastKanbanUpdate(projectId, featureName);
+    // ✅ CRITICAL: Broadcast immediately to show "estimating" state via SSE service
+    // This ensures UI updates INSTANTLY when job starts, even before decompose
+    console.log(`[executeJob] 🎬 Broadcasting initial "estimating" state for ${projectId}/${featureName}`);
+    this.sseBroadcastService.broadcastKanbanUpdate(projectId, featureName);
     
-    // Start task execution in child process (non-blocking)
-    this.runTask(taskId, params).catch(error => {
-      console.error(`Task ${taskId} failed:`, error);
+    // Start job execution in child process (non-blocking)
+    this.runJob(jobId, params).catch(error => {
+      console.error(`Job ${jobId} failed:`, error);
     });
 
     return {
-      taskId,
+      jobId,
       success: true,
-      message: 'Task started'
+      message: 'Job started'
     };
   }
   
   /**
-   * Run task in child process
+   * Run job in child process
    */
-  private async runTask(taskId: string, params: ExecuteTaskParams): Promise<void> {
-    const status = this.tasks.get(taskId)!;
+  private async runJob(jobId: string, params: ExecuteJobParams): Promise<void> {
+    const status = this.jobs.get(jobId)!;
     status.status = 'running';
-    this.currentTaskId = taskId;
+    this.currentJobId = jobId;
     
     try {
       // Build ant CLI command
@@ -402,20 +406,20 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort, 
         args.push('--eval');
       }
       
-      console.log(`[Task Execution] Starting task ${taskId}: tsx ${args.join(' ')}`);
+      console.log(`[Job Execution] Starting job ${jobId}: tsx ${args.join(' ')}`);
       
       const { spawn } = await import('child_process');
       const childProcess = spawn('npx', ['tsx', ...args], {
         cwd: process.cwd(),
         env: { 
           ...process.env,
-          ANT_TASK_ID: taskId,  // ✅ Pass taskId via environment variable
+          ANT_JOB_ID: jobId,  // ✅ Pass jobId via environment variable
           ANT_SERVER_PORT: '4100'  // ✅ Pass server port for HTTP updates
         },
         stdio: ['ignore', 'pipe', 'pipe']
       });
       
-      this.childProcesses.set(taskId, childProcess);
+      this.childProcesses.set(jobId, childProcess);
       
       // Line buffering for stdout/stderr
       let stdoutBuffer = '';
@@ -430,8 +434,8 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort, 
           timestamp: new Date().toISOString()
         };
         
-        this.logs.get(taskId)!.push(logEntry);
-        this.logStreams.get(taskId)?.forEach(listener => listener(logEntry));
+        this.logs.get(jobId)!.push(logEntry);
+        this.logStreams.get(jobId)?.forEach(listener => listener(logEntry));
         
         if (type === 'stdout') {
           process.stdout.write(buffer);
@@ -462,7 +466,7 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort, 
       
       await new Promise<void>((resolve, reject) => {
         childProcess.on('exit', async (code, signal) => {
-          this.childProcesses.delete(taskId);
+          this.childProcesses.delete(jobId);
           
           if (stdoutBuffer) flushBuffer(stdoutBuffer, 'stdout');
           if (stderrBuffer) flushBuffer(stderrBuffer, 'stderr');
@@ -473,14 +477,14 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort, 
             
             const logEntry: LogEntry = {
               type: 'stdout',
-              message: '\n✅ Task completed successfully!',
+              message: '\n✅ Job completed successfully!',
               timestamp: new Date().toISOString()
             };
-            this.logs.get(taskId)!.push(logEntry);
-            this.logStreams.get(taskId)?.forEach(listener => listener(logEntry));
+            this.logs.get(jobId)!.push(logEntry);
+            this.logStreams.get(jobId)?.forEach(listener => listener(logEntry));
             
-            // ✅ Clean up task state (clear live snapshots, update UI)
-            await this.cleanupTaskState(taskId);
+            // ✅ Clean up job state (clear live snapshots, update UI)
+            await this.cleanupJobState(jobId);
             
             resolve();
           } else {
@@ -491,23 +495,23 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort, 
             const logEntry: LogEntry = {
               type: 'stderr',
               message: signal 
-                ? `\n🛑 Task stopped by user (${signal})`
-                : `\n❌ Task failed with exit code ${code}`,
+                ? `\n🛑 Job stopped by user (${signal})`
+                : `\n❌ Job failed with exit code ${code}`,
               timestamp: new Date().toISOString()
             };
-            this.logs.get(taskId)!.push(logEntry);
-            this.logStreams.get(taskId)?.forEach(listener => listener(logEntry));
+            this.logs.get(jobId)!.push(logEntry);
+            this.logStreams.get(jobId)?.forEach(listener => listener(logEntry));
             
-            // ✅ CRITICAL: Clean up task state even on failure (recursion limit, errors)
+            // ✅ CRITICAL: Clean up job state even on failure (recursion limit, errors)
             // This moves currentTask back to queue and broadcasts to UI
-            await this.cleanupTaskState(taskId);
+            await this.cleanupJobState(jobId);
             
             reject(new Error(status.error));
           }
         });
         
         childProcess.on('error', (error) => {
-          this.childProcesses.delete(taskId);
+          this.childProcesses.delete(jobId);
           reject(error);
         });
       });
@@ -518,28 +522,28 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort, 
       
       const logEntry: LogEntry = {
         type: 'stderr',
-        message: `\n❌ Task failed: ${error.message}`,
+        message: `\n❌ Job failed: ${error.message}`,
         timestamp: new Date().toISOString()
       };
-      this.logs.get(taskId)!.push(logEntry);
-      this.logStreams.get(taskId)?.forEach(listener => listener(logEntry));
+      this.logs.get(jobId)!.push(logEntry);
+      this.logStreams.get(jobId)?.forEach(listener => listener(logEntry));
     } finally {
-      if (this.currentTaskId === taskId) {
-        this.currentTaskId = null;
+      if (this.currentJobId === jobId) {
+        this.currentJobId = null;
       }
     }
   }
   
-  getTaskStatus(taskId: string): TaskStatus | undefined {
-    return this.tasks.get(taskId);
+  getJobStatus(jobId: string): JobStatus | undefined {
+    return this.jobs.get(jobId);
   }
   
-  getLogs(taskId: string): LogEntry[] {
-    return this.logs.get(taskId) || [];
+  getLogs(jobId: string): LogEntry[] {
+    return this.logs.get(jobId) || [];
   }
   
-  async *streamLogs(taskId: string): AsyncIterableIterator<LogEntry> {
-    const logs = this.logs.get(taskId) || [];
+  async *streamLogs(jobId: string): AsyncIterableIterator<LogEntry> {
+    const logs = this.logs.get(jobId) || [];
     
     // Yield existing logs
     for (const log of logs) {
@@ -554,10 +558,10 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort, 
   /**
    * Watch session file for changes
    */
-  private watchSessionFile(taskId: string, projectId: string, featureName: string): void {
+  private watchSessionFile(jobId: string, projectId: string, featureName: string): void {
     const key = `${projectId}/${featureName}`;
     const sseClientChecker = () => {
-      const clients = this.kanbanSSE.get(key);
+      const clients = this.sseBroadcastService.getKanbanSSE().get(key);
       return clients ? clients.size > 0 : false;
     };
     
@@ -565,276 +569,11 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort, 
   }
   
   /**
-   * Get Kanban data with hybrid strategy
-   * 
-   * Data Source Priority:
-   * 1. Live snapshot (real-time memory state from running task)
-   * 2. Estimating state (task running but no data yet)
-   * 3. Session file (persistent state for completed/paused tasks)
-   */
-  private async getKanbanData(projectId: string, featureName: string): Promise<any> {
-    // 1. Find active taskId for this project/feature
-    let activeTaskId: string | null = null;
-    for (const [taskId, mapping] of this.taskToProject.entries()) {
-      if (mapping.projectId === projectId && mapping.featureName === featureName) {
-        const taskStatus = this.tasks.get(taskId);
-        // ✅ Check for both 'pending' and 'running' states
-        if (taskStatus && (taskStatus.status === 'running' || taskStatus.status === 'pending')) {
-          activeTaskId = taskId;
-          break;
-        }
-      }
-    }
-    
-    // 2. Try to get LIVE data from memory snapshot
-    let liveSnapshot = null;
-    if (activeTaskId) {
-      liveSnapshot = this.taskQueueSnapshots.get(activeTaskId);
-      console.log(`  🔍 Looking for live snapshot with taskId: ${activeTaskId}`);
-      console.log(`  📊 Available snapshots:`, Array.from(this.taskQueueSnapshots.keys()));
-      console.log(`  ${liveSnapshot ? '✅ FOUND' : '❌ NOT FOUND'}`);
-    }
-    
-    // 3. Get SESSION data from file
-    const sessionData = await this.sessionService.readSessionData(projectId, featureName);
-    const sessionState = sessionData?.state || {};
-    const sessionTaskQueue = sessionState.taskQueue || [];
-    const completedTaskIds = sessionState.completedTasks || [];
-    const completedTasksDetails = sessionState.completedTasksDetails || [];
-    const currentTask = sessionState.currentTask || null;
-    
-    // 4. Determine state and build Kanban data
-    
-    // ✅ DEBUG: Log ALL decision factors with snapshot details
-    console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-    console.log(`[Kanban] 🔍 Data source decision for ${projectId}/${featureName}:`);
-    console.log(`  📌 Active Task:`, activeTaskId || 'NONE');
-    console.log(`  💾 Live Snapshot:`, !!liveSnapshot ? 'EXISTS' : 'NONE');
-    if (liveSnapshot) {
-      console.log(`     - Current Task:`, liveSnapshot.currentTask?.name || 'null');
-      console.log(`     - Queue Length:`, liveSnapshot.queue?.length || 0);
-      console.log(`     - Queue Tasks:`, liveSnapshot.queue?.map((t: any) => t.name).join(', ') || 'empty');
-    }
-    console.log(`  📄 Session Data:`);
-    console.log(`     - Queue Length:`, sessionTaskQueue.length);
-    console.log(`     - Current Task:`, currentTask?.name || 'null');
-    console.log(`     - Completed Count:`, completedTasksDetails.length);
-    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
-    
-    // Priority 1: LIVE DATA (most recent, real-time)
-    // ✅ Changed: Accept live snapshot if it EXISTS, even if queue/currentTask are empty
-    // This ensures we use live data as soon as orchestrator starts updating
-    if (activeTaskId && liveSnapshot) {
-      console.log(`[Kanban] ✅ Using LIVE DATA for ${projectId}/${featureName}`);
-      console.log(`         Queue: ${liveSnapshot.queue?.length || 0} tasks, Current: ${liveSnapshot.currentTask?.name || 'none'}`);
-      console.log(`         Completed (live): ${liveSnapshot.completedTasks?.length || 0}\n`);
-      
-      // ✅ Use completed tasks from LIVE snapshot (not session!)
-      const liveCompletedTasks = liveSnapshot.completedTasks || [];
-      
-      return {
-        todo: liveSnapshot.queue || [],
-        inProgress: liveSnapshot.currentTask || null,
-        completed: liveCompletedTasks.map((detail: any) => ({
-          ...detail,
-          status: 'completed',
-          completed: true
-        })),
-        isEstimating: false,
-        dataSource: 'live',
-        recursionCount: liveSnapshot.recursionCount,
-        recursionLimit: liveSnapshot.recursionLimit,
-        pausedDueToLimit: sessionState.pausedDueToLimit || false,  // From session (live doesn't track pause state)
-        tasksRemaining: sessionState.tasksRemaining || 0
-      };
-    }
-    
-    // Priority 2: ESTIMATING (task running but no data yet)
-    if (activeTaskId && !liveSnapshot && sessionTaskQueue.length === 0 && !currentTask) {
-      console.log(`[Kanban] ✓ Task running, ESTIMATING for ${projectId}/${featureName}`);
-      
-      // ✅ Read recursion limit from session or environment variable
-      const MINIMUM_RECURSION_LIMIT = 5;
-      const DEFAULT_RECURSION_LIMIT = 50;
-      const envLimit = parseInt(process.env.RECURSION_LIMIT || String(DEFAULT_RECURSION_LIMIT), 10);
-      const finalLimit = isNaN(envLimit) || envLimit < 1 
-        ? DEFAULT_RECURSION_LIMIT 
-        : envLimit < MINIMUM_RECURSION_LIMIT 
-          ? MINIMUM_RECURSION_LIMIT 
-          : envLimit;
-      
-      return {
-        todo: [],
-        inProgress: null,
-        completed: completedTasksDetails.map((detail: any) => ({
-          ...detail,
-          status: 'completed',
-          completed: true
-        })),
-        isEstimating: true,
-        dataSource: 'estimating',
-        recursionCount: sessionState.recursionCount || 0,  // ✅ Include recursion from session
-        recursionLimit: sessionState.recursionLimit || finalLimit  // ✅ Include limit from session or env
-      };
-    }
-    
-    // Priority 3: SESSION DATA (task running but live data not ready yet, OR task completed)
-    console.log(`[Kanban] ✓ Using SESSION data for ${projectId}/${featureName} (${activeTaskId ? 'transitioning to live' : 'static'})`);
-    
-    return {
-      todo: sessionTaskQueue.filter((task: any) => 
-        !completedTaskIds.includes(task.id) && 
-        (!currentTask || currentTask.id !== task.id)
-      ),
-      inProgress: currentTask,
-      completed: completedTasksDetails.map((detail: any) => ({
-        ...detail,
-        status: 'completed',
-        completed: true
-      })),
-      isEstimating: false,
-      dataSource: 'session',
-      pausedDueToLimit: sessionState.pausedDueToLimit || false,  // ✅ Include pause info
-      tasksRemaining: sessionState.tasksRemaining || 0,
-      recursionCount: sessionState.recursionCount,  // ✅ Include recursion count from session
-      recursionLimit: sessionState.recursionLimit  // ✅ Include recursion limit from session
-    };
-  }
-  
-  /**
-   * Broadcast Kanban update to SSE clients
-   */
-  private broadcastKanbanUpdate(projectId: string, featureName: string): void {
-    const key = `${projectId}/${featureName}`;
-    const clients = this.kanbanSSE.get(key);
-    
-    if (!clients || clients.size === 0) {
-      return;
-    }
-    
-    this.getKanbanData(projectId, featureName).then(data => {
-      const message = `data: ${JSON.stringify(data)}\n\n`;
-      
-      clients.forEach(res => {
-        try {
-          res.write(message);
-        } catch (error) {
-          console.error(`[Kanban SSE] Error sending to client:`, error);
-          clients.delete(res);
-        }
-      });
-    }).catch(error => {
-      console.error(`[Kanban SSE] Error getting Kanban data:`, error);
-    });
-  }
-  
-  /**
    * Notify file tree update (implements FileTreeUpdatePort)
    */
   notifyFileTreeUpdate(projectId: string, featureName: string): void {
     console.log(`📡 [FileTree] Notifying update for ${projectId}/${featureName}`);
-    this.broadcastFileTreeUpdate(projectId, featureName);
-  }
-  
-  /**
-   * Broadcast file tree update to SSE clients
-   */
-  private async broadcastFileTreeUpdate(projectId: string, featureName: string): Promise<void> {
-    const key = `${projectId}/${featureName}`;
-    const clients = this.fileTreeSSE.get(key);
-    
-    if (!clients || clients.size === 0) {
-      console.log(`  ℹ️  No file tree SSE clients for ${key}`);
-      return;
-    }
-    
-    try {
-      // Fetch updated file tree
-      const featurePath = path.join(this.WORKSPACE_ROOT, projectId, featureName);
-      
-      const buildFileTree = async (dirPath: string, relativePath: string = ''): Promise<any[]> => {
-        const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
-        const nodes = await Promise.all(
-          entries.map(async (entry) => {
-            const fullPath = path.join(dirPath, entry.name);
-            const relPath = path.join(relativePath, entry.name);
-            
-            if (entry.isDirectory()) {
-              const children = await buildFileTree(fullPath, relPath);
-              return {
-                name: entry.name,
-                path: relPath,
-                type: 'directory',
-                children
-              };
-            } else {
-              return {
-                name: entry.name,
-                path: relPath,
-                type: 'file'
-              };
-            }
-          })
-        );
-        return nodes;
-      };
-      
-      const fileTree = await buildFileTree(featurePath);
-      const message = `data: ${JSON.stringify({ type: 'update', fileTree })}\n\n`;
-      
-      console.log(`  📡 Broadcasting to ${clients.size} client(s)`);
-      
-      clients.forEach(res => {
-        try {
-          res.write(message);
-        } catch (error) {
-          console.error(`[FileTree SSE] Error sending to client:`, error);
-          clients.delete(res);
-        }
-      });
-    } catch (error) {
-      console.error(`[FileTree SSE] Error getting file tree:`, error);
-    }
-  }
-  
-  // =====================================
-  // Dev server related methods
-  // =====================================
-  
-  private async getProjectConfig(projectId: string): Promise<any> {
-    return this.projectService.getProjectConfig(projectId);
-  }
-  
-  private getDevServerStatus(projectId: string): any {
-    const status = this.devServerService.getDevServerStatus(projectId);
-    const logs = this.devServerService.getDevServerLogs(projectId);
-    
-    return {
-      running: status.running,
-      port: status.port || null,
-      url: status.port ? `http://localhost:${status.port}` : null,
-      logs: logs.slice(-50) // Last 50 logs
-    };
-  }
-  
-  private broadcastDevServerStatus(projectId: string): void {
-    const clients = this.devServerSSE.get(projectId);
-    
-    if (!clients || clients.size === 0) {
-      return;
-    }
-    
-    const status = this.getDevServerStatus(projectId);
-    const message = `data: ${JSON.stringify(status)}\n\n`;
-    
-    clients.forEach(res => {
-      try {
-        res.write(message);
-      } catch (error) {
-        console.error(`[DevServer SSE] Error sending to client:`, error);
-        clients.delete(res);
-      }
-    });
+    this.sseBroadcastService.broadcastFileTreeUpdate(projectId, featureName);
   }
   
   // =====================================
@@ -860,29 +599,6 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort, 
   async stop(): Promise<void> {
     return new Promise((resolve) => {
       if (this.server) {
-        // Close all SSE connections
-        this.kanbanSSE.forEach((clients) => {
-          clients.forEach(res => {
-            try {
-              res.end();
-            } catch (err) {
-              // Ignore errors from already closed connections
-            }
-          });
-        });
-        this.kanbanSSE.clear();
-        
-        this.devServerSSE.forEach((clients) => {
-          clients.forEach(res => {
-            try {
-              res.end();
-            } catch (err) {
-              // Ignore errors
-            }
-          });
-        });
-        this.devServerSSE.clear();
-        
         // Stop all child processes
         this.childProcesses.forEach((proc) => {
           proc.kill('SIGTERM');
@@ -892,6 +608,7 @@ export class ExpressServerAdapter implements HttpServerPort, TaskExecutionPort, 
         // Cleanup services
         this.sessionService.cleanup();
         this.devServerService.cleanup();
+        this.sseBroadcastService.cleanup(); // Cleanup all SSE connections
         
         this.server.close(() => {
           this.running = false;

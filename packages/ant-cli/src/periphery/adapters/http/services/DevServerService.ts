@@ -108,11 +108,15 @@ export class DevServerService {
     console.log(`[DevServer] Starting dev server for ${projectId} at ${localPath}`);
     console.log(`[DevServer] Running command: ${command} ${args.join(' ')}`);
     
-    // Start dev server
+    // Start dev server with BROWSER=none to prevent auto-opening
     const devProcess = spawn(command, args, {
       cwd: localPath,
       shell: true,
-      env: { ...process.env }
+      env: { 
+        ...process.env,
+        BROWSER: 'none',  // Prevent Vite/CRA from auto-opening browser
+        OPEN: 'false'     // Alternative env var for some dev servers
+      }
     });
     
     this.devServers.set(projectId, devProcess);

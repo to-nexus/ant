@@ -1,22 +1,22 @@
 import { Router, Request, Response } from 'express';
 import * as path from 'path';
-import { ExecuteTaskParams, LogEntry } from '../../../../core/ports/http';
+import { ExecuteJobParams, LogEntry } from '../../../../core/ports/http';
 
 /**
- * Task execution routes
- * Handles task execution, status, logs, and control endpoints
+ * Job execution routes
+ * Handles agent job execution, status, logs, and control endpoints
  */
-export function createTaskRoutes(deps: {
+export function createJobRoutes(deps: {
   workspaceRoot: string;
-  executeTask: (params: ExecuteTaskParams) => Promise<any>;
-  getTaskStatus: (taskId: string) => any;
-  getLogs: (taskId: string) => LogEntry[];
+  executeJob: (params: ExecuteJobParams) => Promise<any>;
+  getJobStatus: (jobId: string) => any;
+  getLogs: (jobId: string) => LogEntry[];
   logStreams: Map<string, Set<(log: LogEntry) => void>>;
   sseResponses: Map<string, Set<Response>>;
   logs: Map<string, LogEntry[]>;
   childProcesses: Map<string, any>;
-  tasks: Map<string, any>;
-  cleanupTaskState: (taskId: string, projectId?: string, featureName?: string) => Promise<void>;  // ✅ Add cleanup method
+  jobs: Map<string, any>;
+  cleanupJobState: (jobId: string, projectId?: string, featureName?: string) => Promise<void>;
 }): Router {
   const router = Router();
   
@@ -27,7 +27,7 @@ export function createTaskRoutes(deps: {
       const featureName = req.params.feature;
       const { task, agent = 'architect', enableEvaluation } = req.body;
       
-      const params: ExecuteTaskParams = {
+      const params: ExecuteJobParams = {
         agent: agent || 'architect',
         task,
         project: projectId,
@@ -41,7 +41,7 @@ export function createTaskRoutes(deps: {
         enableEvaluation
       };
       
-      const result = await deps.executeTask(params);
+      const result = await deps.executeJob(params);
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -54,7 +54,7 @@ export function createTaskRoutes(deps: {
       const projectId = req.params.id;
       const { task, agent = 'architect', enableEvaluation } = req.body;
       
-      const params: ExecuteTaskParams = {
+      const params: ExecuteJobParams = {
         agent: agent || 'architect',
         task,
         project: projectId,
@@ -67,7 +67,7 @@ export function createTaskRoutes(deps: {
         enableEvaluation
       };
       
-      const result = await deps.executeTask(params);
+      const result = await deps.executeJob(params);
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -75,9 +75,9 @@ export function createTaskRoutes(deps: {
   });
   
   // Get task status
-  router.get('/tasks/:taskId/status', (req: Request, res: Response) => {
-    const taskId = req.params.taskId;
-    const status = deps.getTaskStatus(taskId);
+  router.get('/jobs/:jobId/status', (req: Request, res: Response) => {
+    const jobId = req.params.jobId;
+    const status = deps.getJobStatus(jobId);
     
     if (!status) {
       res.status(404).json({ error: 'Task not found' });
@@ -88,15 +88,15 @@ export function createTaskRoutes(deps: {
   });
   
   // Get task logs (all at once)
-  router.get('/tasks/:taskId/logs', (req: Request, res: Response) => {
-    const taskId = req.params.taskId;
-    const logs = deps.getLogs(taskId);
+  router.get('/jobs/:jobId/logs', (req: Request, res: Response) => {
+    const jobId = req.params.jobId;
+    const logs = deps.getLogs(jobId);
     res.json(logs);
   });
   
   // Stream logs (SSE)
-  router.get('/tasks/:taskId/stream', (req: Request, res: Response) => {
-    const taskId = req.params.taskId;
+  router.get('/jobs/:jobId/stream', (req: Request, res: Response) => {
+    const jobId = req.params.jobId;
     
     // Set SSE headers
     res.setHeader('Content-Type', 'text/event-stream');
@@ -104,7 +104,7 @@ export function createTaskRoutes(deps: {
     res.setHeader('Connection', 'keep-alive');
     
     // Send existing logs
-    const existingLogs = deps.logs.get(taskId) || [];
+    const existingLogs = deps.logs.get(jobId) || [];
     existingLogs.forEach(log => {
       res.write(`data: ${JSON.stringify(log)}\n\n`);
     });
@@ -114,40 +114,40 @@ export function createTaskRoutes(deps: {
       res.write(`data: ${JSON.stringify(log)}\n\n`);
     };
     
-    if (!deps.logStreams.has(taskId)) {
-      deps.logStreams.set(taskId, new Set());
+    if (!deps.logStreams.has(jobId)) {
+      deps.logStreams.set(jobId, new Set());
     }
-    deps.logStreams.get(taskId)!.add(listener);
+    deps.logStreams.get(jobId)!.add(listener);
     
     // Store SSE response for later closing
-    if (!deps.sseResponses.has(taskId)) {
-      deps.sseResponses.set(taskId, new Set());
+    if (!deps.sseResponses.has(jobId)) {
+      deps.sseResponses.set(jobId, new Set());
     }
-    deps.sseResponses.get(taskId)!.add(res);
+    deps.sseResponses.get(jobId)!.add(res);
     
     // Clean up on disconnect
     req.on('close', () => {
-      deps.logStreams.get(taskId)?.delete(listener);
-      deps.sseResponses.get(taskId)?.delete(res);
+      deps.logStreams.get(jobId)?.delete(listener);
+      deps.sseResponses.get(jobId)?.delete(res);
       res.end();
     });
   });
 
   // Stop task
-  router.post('/tasks/:taskId/stop', async (req: Request, res: Response) => {
-    const taskId = req.params.taskId;
+  router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
+    const jobId = req.params.jobId;
     const { projectId, featureName } = req.body;  // ✅ Accept project info from frontend
-    const childProcess = deps.childProcesses.get(taskId);
+    const childProcess = deps.childProcesses.get(jobId);
     
-    console.log(`[Server] Stop request for task ${taskId}, project: ${projectId}/${featureName}, has childProcess: ${!!childProcess}`);
+    console.log(`[Server] Stop request for task ${jobId}, project: ${projectId}/${featureName}, has childProcess: ${!!childProcess}`);
     
     // Kill the process if it exists
     if (childProcess) {
-      console.log(`[Server] Stopping task ${taskId}, PID: ${childProcess.pid}`);
+      console.log(`[Server] Stopping task ${jobId}, PID: ${childProcess.pid}`);
       childProcess.kill('SIGTERM');
       
       // Update task status
-      const status = deps.tasks.get(taskId);
+      const status = deps.jobs.get(jobId);
       if (status && status.status === 'running') {
         status.status = 'failed';
         status.completedAt = new Date().toISOString();
@@ -159,17 +159,17 @@ export function createTaskRoutes(deps: {
           message: '\n🛑 Task stopped by user',
           timestamp: new Date().toISOString()
         };
-        deps.logs.get(taskId)?.push(logEntry);
-        deps.logStreams.get(taskId)?.forEach(listener => listener(logEntry));
+        deps.logs.get(jobId)?.push(logEntry);
+        deps.logStreams.get(jobId)?.forEach(listener => listener(logEntry));
       }
       
       // Clean up child process
-      deps.childProcesses.delete(taskId);
+      deps.childProcesses.delete(jobId);
     }
     
     // ✅ ALWAYS clean up task state (live snapshots, return in-progress to queue)
     // This is important even if childProcess doesn't exist (e.g., after page refresh)
-    await deps.cleanupTaskState(taskId, projectId, featureName);
+    await deps.cleanupJobState(jobId, projectId, featureName);
     
     res.json({ success: true, message: 'Task stopped' });
   });

@@ -4,9 +4,10 @@ import { Play, Square, Sun, Moon } from 'lucide-react';
 import { ConnectionStatus } from './ConnectionStatus';
 import { useStore } from '@/lib/store';
 import { fetchAgents, Agent } from '@/lib/api';
+import { capitalize } from '@/lib/text-utils';
 
 export interface GlobalNavBarProps {
-  onRunTask: (agent: string, task: string) => void;
+  onRunTask: (agent: string, task: string) => void;  // 'task' here refers to agent's work type (code/design/etc), not to be confused with Task Board tasks
   onStopTask: () => void;
   isRunning: boolean;
 }
@@ -18,8 +19,8 @@ export interface GlobalNavBarProps {
  * - App branding
  * - Theme toggle
  * - Connection status
- * - Agent/Task selection
- * - Run/Stop buttons
+ * - Agent selection and work type selection (code/design/etc)
+ * - Run/Stop buttons for agent jobs
  */
 export function GlobalNavBar({ onRunTask, onStopTask, isRunning }: GlobalNavBarProps) {
   const connectionStatus = useStore((state) => state.connectionStatus);
@@ -27,15 +28,17 @@ export function GlobalNavBar({ onRunTask, onStopTask, isRunning }: GlobalNavBarP
   const selectedFeature = useStore((state) => state.selectedFeature);
   const theme = useStore((state) => state.theme);
   const toggleTheme = useStore((state) => state.toggleTheme);
+  const selectedAgent = useStore((state) => state.selectedAgent);
+  const selectedWorkType = useStore((state) => state.selectedWorkType);
+  const setSelectedAgent = useStore((state) => state.setSelectedAgent);
+  const setSelectedWorkType = useStore((state) => state.setSelectedWorkType);
   const isDisconnected = connectionStatus !== 'connected';
-  const [selectedAgent, setSelectedAgent] = useState<string>('architect');
-  const [selectedTask, setSelectedTask] = useState<string>('code');
   const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
-  const [taskDropdownOpen, setTaskDropdownOpen] = useState(false);
+  const [workTypeDropdownOpen, setWorkTypeDropdownOpen] = useState(false);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [isLoadingAgents, setIsLoadingAgents] = useState(true);
   const agentRef = useRef<HTMLDivElement>(null);
-  const taskRef = useRef<HTMLDivElement>(null);
+  const workTypeRef = useRef<HTMLDivElement>(null);
 
   // Fetch agents from API when connected
   useEffect(() => {
@@ -59,7 +62,7 @@ export function GlobalNavBar({ onRunTask, onStopTask, isRunning }: GlobalNavBarP
     loadAgents();
   }, [connectionStatus]);
 
-  const tasks = agents.find(a => a.value === selectedAgent)?.tasks || [];
+  const workTypes = agents.find(a => a.value === selectedAgent)?.tasks || [];
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -67,8 +70,8 @@ export function GlobalNavBar({ onRunTask, onStopTask, isRunning }: GlobalNavBarP
       if (agentRef.current && !agentRef.current.contains(event.target as Node)) {
         setAgentDropdownOpen(false);
       }
-      if (taskRef.current && !taskRef.current.contains(event.target as Node)) {
-        setTaskDropdownOpen(false);
+      if (workTypeRef.current && !workTypeRef.current.contains(event.target as Node)) {
+        setWorkTypeDropdownOpen(false);
       }
     }
 
@@ -79,34 +82,34 @@ export function GlobalNavBar({ onRunTask, onStopTask, isRunning }: GlobalNavBarP
   const handleAgentChange = (agent: string) => {
     setSelectedAgent(agent);
     setAgentDropdownOpen(false);
-    // Reset task to first available task for this agent
+    // Reset work type to first available for this agent
     const agentData = agents.find(a => a.value === agent);
-    const firstTask = agentData?.tasks?.[0]?.value;
-    if (firstTask) {
-      setSelectedTask(firstTask);
+    const firstWorkType = agentData?.tasks?.[0]?.value;
+    if (firstWorkType) {
+      setSelectedWorkType(firstWorkType);
     }
   };
 
-  const handleTaskChange = (task: string) => {
-    setSelectedTask(task);
-    setTaskDropdownOpen(false);
+  const handleWorkTypeChange = (workType: string) => {
+    setSelectedWorkType(workType);
+    setWorkTypeDropdownOpen(false);
   };
 
   const handleRun = () => {
-    onRunTask(selectedAgent, selectedTask);
+    onRunTask(selectedAgent, selectedWorkType);
   };
 
   // Validation: Project and feature must be selected
   const hasValidSelection = Boolean(selectedProject && selectedFeature);
 
   // Run button disabled when:
-  // - Task is already running
+  // - Agent job is already running
   // - Server disconnected
   // - Project/feature not selected
   const isRunDisabled = isRunning || isDisconnected || !hasValidSelection;
 
   // Stop button disabled when:
-  // - No task is running
+  // - No agent job is running
   // - Server disconnected
   // - Project/feature not selected (for safety)
   const isStopDisabled = !isRunning || isDisconnected || !hasValidSelection;
@@ -160,7 +163,7 @@ export function GlobalNavBar({ onRunTask, onStopTask, isRunning }: GlobalNavBarP
                 >
                   {isLoadingAgents 
                     ? 'Loading...' 
-                    : agents.find(a => a.value === selectedAgent)?.label || 'No agents'}
+                    : capitalize(agents.find(a => a.value === selectedAgent)?.label || 'No agents')}
                 </button>
                 {agentDropdownOpen && !isLoadingAgents && agents.length > 0 && (
                   <div className="absolute top-full mt-1 w-full bg-white dark:bg-gray-800 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg z-50">
@@ -187,30 +190,30 @@ export function GlobalNavBar({ onRunTask, onStopTask, isRunning }: GlobalNavBarP
               </div>
             </div>
 
-            {/* Task Selection */}
+            {/* Job Type (Work Type) Selection */}
             <div className="flex items-center space-x-2">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 dark:text-gray-300">Task</label>
-              <div ref={taskRef} className="relative">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 dark:text-gray-300">Job</label>
+              <div ref={workTypeRef} className="relative">
                 <button
-                  onClick={() => !isRunning && !isDisconnected && setTaskDropdownOpen(!taskDropdownOpen)}
+                  onClick={() => !isRunning && !isDisconnected && setWorkTypeDropdownOpen(!workTypeDropdownOpen)}
                   disabled={isRunning || isDisconnected}
                   className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700 active:bg-gray-300 dark:active:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow min-w-[100px]"
                 >
-                  {tasks.find(t => t.value === selectedTask)?.label}
+                  {capitalize(workTypes.find(t => t.value === selectedWorkType)?.label || '')}
                 </button>
-                {taskDropdownOpen && (
+                {workTypeDropdownOpen && (
                   <div className="absolute top-full mt-1 w-full bg-white dark:bg-gray-800 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg z-50">
-                    {tasks.map((task) => (
+                    {workTypes.map((workType) => (
                       <button
-                        key={task.value}
-                        onClick={() => handleTaskChange(task.value)}
+                        key={workType.value}
+                        onClick={() => handleWorkTypeChange(workType.value)}
                         className={`w-full px-3 py-2 text-left text-sm first:rounded-t-md last:rounded-b-md ${
-                          selectedTask === task.value 
+                          selectedWorkType === workType.value 
                             ? 'bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-200 font-medium' 
                             : 'text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700'
                         }`}
                       >
-                        {task.label}
+                        {workType.label}
                       </button>
                     ))}
                   </div>
