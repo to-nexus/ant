@@ -16,6 +16,7 @@ export function AgentWorkflowBoard() {
   const selectedAgent = useStore((state) => state.selectedAgent);
   const selectedWorkType = useStore((state) => state.selectedWorkType);
   const currentJob = useStore((state) => state.currentJob);
+  const isRunning = useStore((state) => state.isRunning);
   
   // Job ID from running job
   const jobId = currentJob?.jobId;
@@ -42,6 +43,11 @@ export function AgentWorkflowBoard() {
               label={`ID: ${formatJobId(jobId)}`}
             />
           )}
+          {/* Show Status (Running / Idle) */}
+          <StatusChip 
+            variant={isRunning ? "live" : "session"} 
+            label={isRunning ? "Running" : "Idle"}
+          />
         </div>
       }
     >

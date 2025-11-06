@@ -5,10 +5,12 @@
 
 // Background Colors
 export const bgColors = {
-  primary: 'bg-white dark:bg-gray-900',
-  secondary: 'bg-gray-50 dark:bg-gray-800',
-  tertiary: 'bg-gray-100 dark:bg-gray-700',
-  card: 'bg-white dark:bg-gray-800',
+  primary: 'bg-gray-50 dark:bg-gray-900',      // 메인 배경 (라이트모드: 아주 연한 회색)
+  secondary: 'bg-gray-100 dark:bg-gray-800',   // 보조 배경
+  tertiary: 'bg-gray-200 dark:bg-gray-700',    // 3차 배경
+  card: 'bg-white dark:bg-gray-800',            // 카드 배경
+  panel: 'bg-gray-50 dark:bg-gray-850',         // 패널 배경
+  container: 'bg-white dark:bg-gray-800',       // 컨테이너 배경
 } as const;
 
 // Text Colors

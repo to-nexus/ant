@@ -10,9 +10,11 @@
 
 import { Router, Request, Response } from 'express';
 import { GraphMetadataService } from '../services/GraphMetadataService';
+import { WorkflowStateService } from '../services/WorkflowStateService';
 
 export function createWorkflowRoutes(deps: {
   graphMetadataService: GraphMetadataService;
+  workflowStateService: WorkflowStateService;
 }): Router {
   const router = Router();
   
@@ -57,35 +59,79 @@ export function createWorkflowRoutes(deps: {
   });
   
   /**
+   * GET /api/jobs/:jobId/workflow/state
+   * 
+   * Job의 워크플로우 상태 조회 (REST API)
+   * 
+   * Parameters:
+   * - jobId: string (Job ID)
+   * 
+   * Response:
+   * - 200: WorkflowRealtimeState
+   * - 404: Job state not found
+   */
+  router.get('/jobs/:jobId/workflow/state', (req: Request, res: Response) => {
+    const { jobId } = req.params;
+    
+    console.log(`[WorkflowRoutes] Fetching workflow state for job ${jobId}`);
+    
+    const state = deps.workflowStateService.getState(jobId);
+    
+    if (!state) {
+      res.status(404).json({
+        error: 'Workflow state not found',
+        message: `No workflow state available for job '${jobId}'`
+      });
+      return;
+    }
+    
+    // Set을 Array로 변환하여 JSON 직렬화
+    const serializedState = {
+      ...state,
+      activeActors: Array.from(state.activeActors)
+    };
+    
+    res.json(serializedState);
+  });
+  
+  /**
    * GET /api/jobs/:jobId/workflow/stream
    * 
    * 실시간 워크플로우 상태 스트림 (SSE)
-   * 
-   * Phase 2에서 구현 예정
    * 
    * Parameters:
    * - jobId: string (실행 중인 Job ID)
    * 
    * Response:
    * - text/event-stream
-   * - 404: Job not found
    */
   router.get('/jobs/:jobId/workflow/stream', (req: Request, res: Response) => {
     const { jobId } = req.params;
     
-    // Phase 2: SSE 구현
+    console.log(`[WorkflowRoutes] SSE stream requested for job ${jobId}`);
+    
+    // SSE 헤더 설정
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // Nginx 버퍼링 방지
     
-    console.log(`[WorkflowRoutes] SSE stream requested for job ${jobId} (Phase 2 - not implemented yet)`);
+    // 클라이언트 등록 (현재 상태 즉시 전송 포함)
+    deps.workflowStateService.addClient(jobId, res);
     
-    // 현재는 빈 스트림 반환
-    res.write(': Phase 2 - Real-time state stream not implemented yet\n\n');
+    // Keep-alive ping (30초마다)
+    const pingInterval = setInterval(() => {
+      try {
+        res.write(': ping\n\n');
+      } catch (err) {
+        clearInterval(pingInterval);
+      }
+    }, 30000);
     
+    // 연결 종료시 정리
     req.on('close', () => {
+      clearInterval(pingInterval);
       console.log(`[WorkflowRoutes] SSE connection closed for job ${jobId}`);
-      res.end();
     });
   });
   

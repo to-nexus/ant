@@ -75,7 +75,10 @@ export interface WorkflowRealtimeState {
   currentNode: string | null;
   previousNode: string | null;
   startedAt: string;
+  endedAt?: string;  // Job 종료 시간
+  isCompleted: boolean;  // Job 완료 여부
   nodeHistory: NodeHistoryEntry[];
+  activeActors: string[];  // 현재 통신 중인 Actor IDs
 }
 
 export interface NodeHistoryEntry {

@@ -5,3 +5,4 @@ export { DevServerService } from './DevServerService';
 export { ProjectService } from './ProjectService';
 export { SSEBroadcastService } from './SSEBroadcastService';
 export { GraphMetadataService } from './GraphMetadataService';
+export { WorkflowStateService } from './WorkflowStateService';

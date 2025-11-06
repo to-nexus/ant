@@ -22,6 +22,11 @@ export default {
           950: '#082f49'
         },
         
+        // Extended Gray Palette
+        gray: {
+          850: '#1a202c'  // gray-850 (between 800 and 900)
+        },
+        
         // Semantic Colors for Task Status
         status: {
           todo: {

@@ -27,18 +27,29 @@ import {
 
 /**
  * 공통 Actor 정의 (모든 Agent에서 재사용)
+ * 
+ * 중립적인 표현 사용:
+ * - LLM API (실제: Claude Sonnet 4.0 - 상세정보창에서 표시)
+ * - Embedding Model (실제: text-embedding-3-small - 상세정보창에서 표시)
+ * - Vector DB (실제: Chroma - 상세정보창에서 표시)
  */
 const COMMON_ACTORS = {
   llm: {
     id: 'llm',
     type: ActorType.LLM,
-    label: 'Claude API',
+    label: 'LLM API',
     icon: '🤖'
+  },
+  embedding: {
+    id: 'embedding-model',
+    type: ActorType.EMBEDDING,
+    label: 'Embedding Model',
+    icon: '🧠'
   },
   vectorDb: {
     id: 'vector-db',
     type: ActorType.VECTOR_DB,
-    label: 'Vector Store',
+    label: 'Vector DB',
     icon: '🗄️'
   },
   localStorage: {
@@ -167,7 +178,7 @@ export class GraphMetadataService {
       this.createNode('plan', NodeType.PROCESS, 'Plan', {
         description: 'Create execution plan for current task',
         importance: NodeImportance.CRITICAL,
-        actors: [COMMON_ACTORS.llm.id, COMMON_ACTORS.vectorDb.id]
+        actors: [COMMON_ACTORS.llm.id, COMMON_ACTORS.embedding.id, COMMON_ACTORS.vectorDb.id]
       }),
       this.createNode('execute', NodeType.PROCESS, 'Execute', {
         description: 'Generate code based on plan',
@@ -213,7 +224,7 @@ export class GraphMetadataService {
       this.createNode('learn', NodeType.END, 'Learn', {
         description: 'Store learnings and finalize',
         importance: NodeImportance.CRITICAL,
-        actors: [COMMON_ACTORS.vectorDb.id, COMMON_ACTORS.localStorage.id]
+        actors: [COMMON_ACTORS.embedding.id, COMMON_ACTORS.vectorDb.id, COMMON_ACTORS.localStorage.id]
       })
     ];
     
@@ -245,6 +256,7 @@ export class GraphMetadataService {
     
     const actors: ExternalActor[] = [
       COMMON_ACTORS.llm,
+      COMMON_ACTORS.embedding,
       COMMON_ACTORS.vectorDb,
       COMMON_ACTORS.localStorage,
       COMMON_ACTORS.fileSystem,

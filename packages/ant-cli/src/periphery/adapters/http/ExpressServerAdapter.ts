@@ -9,7 +9,8 @@ import {
   JobStatus, 
   LogEntry,
   TaskQueueUpdatePort,
-  FileTreeUpdatePort
+  FileTreeUpdatePort,
+  WorkflowStateUpdatePort
 } from '../../../core/ports';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -20,7 +21,8 @@ import {
   DevServerService, 
   ProjectService,
   SSEBroadcastService,
-  GraphMetadataService
+  GraphMetadataService,
+  WorkflowStateService
 } from './services';
 import {
   createJobRoutes,
@@ -38,7 +40,7 @@ import {
  * 
  * Coordinates services and routes, delegating business logic to service layer.
  */
-export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, TaskQueueUpdatePort, FileTreeUpdatePort {
+export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, TaskQueueUpdatePort, FileTreeUpdatePort, WorkflowStateUpdatePort {
   private app: Express;
   private server: any;
   private running: boolean = false;
@@ -57,6 +59,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   private projectService: ProjectService;
   private sseBroadcastService: SSEBroadcastService;
   private graphMetadataService: GraphMetadataService;
+  private workflowStateService: WorkflowStateService;
   
   // Job tracking (agent execution instances)
   private jobs: Map<string, JobStatus> = new Map();
@@ -257,6 +260,9 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     // Initialize graph metadata service for workflow visualization
     this.graphMetadataService = new GraphMetadataService();
     
+    // Initialize workflow state service for real-time workflow tracking
+    this.workflowStateService = new WorkflowStateService();
+    
     this.setupMiddleware();
     this.setupRoutes();
     
@@ -317,7 +323,8 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     
     // Workflow routes (LangGraph visualization)
     const workflowRoutes = createWorkflowRoutes({
-      graphMetadataService: this.graphMetadataService
+      graphMetadataService: this.graphMetadataService,
+      workflowStateService: this.workflowStateService
     });
     this.app.use('/api', workflowRoutes);
     
@@ -586,6 +593,52 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   notifyFileTreeUpdate(projectId: string, featureName: string): void {
     console.log(`📡 [FileTree] Notifying update for ${projectId}/${featureName}`);
     this.sseBroadcastService.broadcastFileTreeUpdate(projectId, featureName);
+  }
+  
+  // =====================================
+  // WorkflowStateUpdatePort implementation
+  // =====================================
+  
+  /**
+   * Start workflow tracking for a job
+   */
+  startJob(jobId: string): void {
+    this.workflowStateService.startJob(jobId);
+  }
+  
+  /**
+   * Track node entry
+   */
+  enterNode(jobId: string, nodeId: string): void {
+    this.workflowStateService.enterNode(jobId, nodeId);
+  }
+  
+  /**
+   * Track node exit
+   */
+  exitNode(jobId: string, nodeId: string): void {
+    this.workflowStateService.exitNode(jobId, nodeId);
+  }
+  
+  /**
+   * Track actor interaction start
+   */
+  startActorInteraction(jobId: string, actorId: string): void {
+    this.workflowStateService.startActorInteraction(jobId, actorId);
+  }
+  
+  /**
+   * Track actor interaction end
+   */
+  endActorInteraction(jobId: string, actorId: string): void {
+    this.workflowStateService.endActorInteraction(jobId, actorId);
+  }
+  
+  /**
+   * End workflow tracking for a job
+   */
+  endJob(jobId: string): void {
+    this.workflowStateService.endJob(jobId);
   }
   
   // =====================================

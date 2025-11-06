@@ -15,6 +15,7 @@ export function useWorkflowState(jobId: string | undefined) {
   
   useEffect(() => {
     if (!jobId) {
+      // jobId가 없으면 상태 초기화
       setState(null);
       return;
     }
@@ -36,14 +37,21 @@ export function useWorkflowState(jobId: string | undefined) {
       }
     };
     
+    eventSource.addEventListener('end', () => {
+      console.log(`[useWorkflowState] Job ${jobId} ended, preserving last state`);
+      // 연결은 종료되지만 마지막 상태는 유지
+      eventSource.close();
+    });
+    
     eventSource.onerror = (error) => {
       console.error('[useWorkflowState] SSE error:', error);
-      // Phase 1에서는 에러 무시 (placeholder endpoint)
+      // 연결이 끊어져도 마지막 상태는 유지
     };
     
     return () => {
-      console.log(`[useWorkflowState] Closing SSE for job ${jobId}`);
+      console.log(`[useWorkflowState] Cleaning up SSE for job ${jobId}`);
       eventSource.close();
+      // cleanup 시에도 상태는 유지 (jobId 변경으로 새 상태가 로드될 예정)
     };
   }, [jobId]);
   
