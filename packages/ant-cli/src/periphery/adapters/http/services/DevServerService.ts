@@ -69,32 +69,26 @@ export class DevServerService {
       // Use npm/pnpm/yarn run dev
       command = 'npm';
       args = ['run', 'dev'];
-      console.log(`[DevServer] Using npm run dev script: ${packageJson.scripts.dev}`);
     } else if (packageJson.scripts?.start) {
       // Fallback to start script
       command = 'npm';
       args = ['run', 'start'];
-      console.log(`[DevServer] Using npm run start script: ${packageJson.scripts.start}`);
     } else if (packageJson.devDependencies?.vite || packageJson.dependencies?.vite) {
       // Direct vite command
       command = 'npx';
       args = ['vite'];
-      console.log(`[DevServer] Using direct vite command`);
     } else if (packageJson.devDependencies?.['@vitejs/plugin-react'] || packageJson.dependencies?.['@vitejs/plugin-react']) {
       // Vite React project
       command = 'npx';
       args = ['vite'];
-      console.log(`[DevServer] Detected Vite React project, using npx vite`);
     } else if (packageJson.devDependencies?.['next'] || packageJson.dependencies?.['next']) {
       // Next.js project
       command = 'npx';
       args = ['next', 'dev'];
-      console.log(`[DevServer] Detected Next.js project, using npx next dev`);
     } else if (packageJson.devDependencies?.['react-scripts']) {
       // Create React App
       command = 'npx';
       args = ['react-scripts', 'start'];
-      console.log(`[DevServer] Detected CRA project, using npx react-scripts start`);
     } else {
       return { 
         success: false,
@@ -105,8 +99,6 @@ export class DevServerService {
     // Clear previous logs
     this.devServerLogs.set(projectId, []);
     
-    console.log(`[DevServer] Starting dev server for ${projectId} at ${localPath}`);
-    console.log(`[DevServer] Running command: ${command} ${args.join(' ')}`);
     
     // Start dev server with BROWSER=none to prevent auto-opening
     const devProcess = spawn(command, args, {
@@ -122,7 +114,6 @@ export class DevServerService {
     this.devServers.set(projectId, devProcess);
     
     // Log when process starts
-    console.log(`[DevServer] Process spawned with PID: ${devProcess.pid}`);
     
     // Capture stdout
     devProcess.stdout?.on('data', (data: Buffer) => {
@@ -153,7 +144,6 @@ export class DevServerService {
           const match = message.match(pattern);
           if (match) {
             const port = parseInt(match[1]);
-            console.log(`[DevServer] Detected port ${port} for project ${projectId}`);
             this.devServerPorts.set(projectId, port);
             // Broadcast port detected
             this.onStatusChange?.(projectId);
@@ -169,7 +159,6 @@ export class DevServerService {
     // Capture stderr
     devProcess.stderr?.on('data', (data: Buffer) => {
       const message = data.toString();
-      console.log(`[DevServer] STDERR for ${projectId}:`, message);
       
       const log: LogEntry = {
         timestamp: new Date().toISOString(),
@@ -187,7 +176,6 @@ export class DevServerService {
     
     // Handle process exit
     devProcess.on('exit', (code, signal) => {
-      console.log(`[DevServer] Process exited for ${projectId} with code ${code} signal ${signal}`);
       
       const log: LogEntry = {
         timestamp: new Date().toISOString(),
@@ -245,13 +233,11 @@ export class DevServerService {
       return { success: false, error: 'Dev server not running' };
     }
     
-    console.log(`[DevServer] Stopping dev server for ${projectId}`);
     devProcess.kill('SIGTERM');
     
     // Add a timeout to force kill if graceful shutdown fails
     setTimeout(() => {
       if (this.devServers.has(projectId)) {
-        console.log(`[DevServer] Force killing dev server for ${projectId}`);
         devProcess.kill('SIGKILL');
       }
     }, 5000);
@@ -292,7 +278,6 @@ export class DevServerService {
       this.devServerSSE.set(projectId, new Set());
     }
     this.devServerSSE.get(projectId)!.add(res);
-    console.log(`[DevServer SSE] Client connected for ${projectId}`);
   }
   
   /**
@@ -334,7 +319,6 @@ export class DevServerService {
    */
   cleanup(): void {
     for (const [projectId, devProcess] of this.devServers.entries()) {
-      console.log(`[DevServer] Cleaning up dev server for ${projectId}`);
       devProcess.kill('SIGTERM');
     }
     this.devServers.clear();

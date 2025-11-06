@@ -105,7 +105,6 @@ export class SSEBroadcastService {
     const clients = this.fileTreeSSE.get(key);
     
     if (!clients || clients.size === 0) {
-      console.log(`  ℹ️  No file tree SSE clients for ${key}`);
       return;
     }
     
@@ -114,7 +113,6 @@ export class SSEBroadcastService {
       const fileTree = await this.projectService.getFileTree(projectId, featureName);
       const message = `data: ${JSON.stringify({ type: 'update', fileTree })}\n\n`;
       
-      console.log(`  📡 Broadcasting to ${clients.size} client(s)`);
       
       clients.forEach(res => {
         try {

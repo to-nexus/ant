@@ -41,7 +41,6 @@ export class SessionService {
     
     // Don't create duplicate watchers
     if (this.sessionWatchers.has(key)) {
-      console.log(`[Session Watcher] Already watching ${key}`);
       return;
     }
     
@@ -49,7 +48,6 @@ export class SessionService {
     let lastSize = 0;
     let fileExisted = false;
     
-    console.log(`[Session Watcher] Started watching ${key}`);
     
     // Poll session file every 500ms
     const intervalId = setInterval(async () => {
@@ -61,7 +59,6 @@ export class SessionService {
         // File exists now
         if (!fileExisted) {
           // File was created
-          console.log(`[Session Watcher] File created for ${key}`);
           fileExisted = true;
           lastModified = mtime;
           lastSize = size;
@@ -73,11 +70,8 @@ export class SessionService {
           lastSize = size;
           
           if (sizeChanged && size === 0) {
-            console.log(`[Session Watcher] File emptied for ${key}`);
           } else if (sizeChanged) {
-            console.log(`[Session Watcher] File size changed for ${key} (${size} bytes)`);
           } else {
-            console.log(`[Session Watcher] Detected update for ${key}`);
           }
           
           this.onSessionChange?.(projectId, featureName);
@@ -87,7 +81,6 @@ export class SessionService {
         if (error.code === 'ENOENT') {
           if (fileExisted) {
             // File was deleted!
-            console.log(`[Session Watcher] File deleted for ${key}`);
             fileExisted = false;
             lastModified = 0;
             lastSize = 0;
@@ -99,7 +92,6 @@ export class SessionService {
       // Keep watching even if task is completed (for paused/resumed tasks)
       // Only stop if no SSE clients are connected
       if (!sseClientChecker()) {
-        console.log(`[Session Watcher] No SSE clients for ${key}, stopping watcher`);
         clearInterval(intervalId);
         this.sessionWatchers.delete(key);
       }
@@ -117,7 +109,6 @@ export class SessionService {
     if (intervalId) {
       clearInterval(intervalId);
       this.sessionWatchers.delete(key);
-      console.log(`[Session Watcher] Stopped watching ${key}`);
     }
   }
   
@@ -169,7 +160,6 @@ export class SessionService {
   cleanup(): void {
     for (const [key, intervalId] of this.sessionWatchers.entries()) {
       clearInterval(intervalId);
-      console.log(`[Session Watcher] Stopped watching ${key}`);
     }
     this.sessionWatchers.clear();
   }

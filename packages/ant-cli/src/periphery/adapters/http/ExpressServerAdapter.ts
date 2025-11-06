@@ -104,13 +104,6 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     recursionCount?: number,
     recursionLimit?: number
   ): void {
-    console.log(`\n🔥🔥🔥 [updateTaskQueue] CALLED 🔥🔥🔥`);
-    console.log(`  Job ID: ${jobId}`);
-    console.log(`  Current Task:`, currentTask?.name || 'null');
-    console.log(`  Queue Length:`, queue?.length || 0);
-    console.log(`  Queue Tasks:`, queue?.map((t: any) => t.name).join(', ') || 'empty');
-    console.log(`  Completed Tasks:`, completedTasks?.length || 0);
-    console.log(`  Recursion: ${recursionCount || 0}/${recursionLimit || 50}`);
     
     // ✅ CRITICAL: Preserve existing completed tasks if not provided
     const existingSnapshot = this.taskQueueSnapshots.get(jobId);
@@ -126,16 +119,12 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       recursionCount: recursionCount || existingSnapshot?.recursionCount || 0,
       recursionLimit: recursionLimit || existingSnapshot?.recursionLimit || 50
     });
-    console.log(`  ✅ Saved to taskQueueSnapshots (including ${finalCompletedTasks.length} completed)`);
-    console.log(`  📊 Total snapshots in memory:`, this.taskQueueSnapshots.size);
     
     // ✅ Broadcast immediately to Kanban clients via SSE service
     const mapping = this.jobToProject.get(jobId);
     if (mapping) {
-      console.log(`  📡 Broadcasting to: ${mapping.projectId}/${mapping.featureName}\n`);
       this.sseBroadcastService.broadcastKanbanUpdate(mapping.projectId, mapping.featureName);
     } else {
-      console.log(`  ⚠️  No mapping found for jobId: ${jobId}\n`);
     }
   }
   
@@ -143,7 +132,6 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
    * Clean up job state when stopped (called when job is terminated)
    */
   async cleanupJobState(jobId: string, projectId?: string, featureName?: string): Promise<void> {
-    console.log(`\n🧹 [cleanupJobState] Cleaning up job ${jobId}`);
     
     // Get mapping before deletion (from Map or from parameters)
     let mapping = this.jobToProject.get(jobId);
@@ -151,7 +139,6 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     // ✅ If mapping not found in Map (e.g., after page refresh), use provided parameters
     if (!mapping && projectId && featureName) {
       mapping = { projectId, featureName };
-      console.log(`  ℹ️  Using provided project info: ${projectId}/${featureName}`);
     }
     
     // Get current snapshot to return in-progress task to queue
@@ -165,7 +152,6 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       this.currentJobId = null;
     }
     
-    console.log(`  ✅ Cleared live snapshots and mappings`);
     
   // ✅ Move in-progress task back to queue in session file
   if (mapping) {
@@ -204,20 +190,15 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
           // Write updated session
           await fs.promises.writeFile(sessionPath, JSON.stringify(sessionData, null, 2), 'utf-8');
           
-          console.log(`  ✅ Returned in-progress task "${taskToReturn.name}" to queue (marked as interrupted)`);
-          console.log(`  📊 Queue now has ${updatedQueue.length} tasks\n`);
         } else {
-          console.log(`  ℹ️  No in-progress task to return to queue\n`);
         }
           
         // Broadcast final update to switch to session data via SSE service
         this.sseBroadcastService.broadcastKanbanUpdate(mapping.projectId, mapping.featureName);
       }
     } catch (error) {
-      console.log(`  ⚠️  Failed to update session file:`, error);
     }
   } else {
-    console.log(`  ℹ️  No mapping found for jobId ${jobId}\n`);
   }
   }
   
@@ -370,14 +351,12 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     // Map jobId to project/feature for Kanban tracking
     this.jobToProject.set(jobId, { projectId, featureName });
     
-    console.log(`[executeJob] Job ${jobId} mapped to ${projectId}/${featureName}`);
     
     // Start session file watcher for real-time Kanban updates
     this.watchSessionFile(jobId, projectId, featureName);
     
     // ✅ CRITICAL: Broadcast immediately to show "estimating" state via SSE service
     // This ensures UI updates INSTANTLY when job starts, even before decompose
-    console.log(`[executeJob] 🎬 Broadcasting initial "estimating" state for ${projectId}/${featureName}`);
     this.sseBroadcastService.broadcastKanbanUpdate(projectId, featureName);
     
     // Start job execution in child process (non-blocking)
@@ -425,7 +404,6 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         args.push('--eval');
       }
       
-      console.log(`[Job Execution] Starting job ${jobId}: tsx ${args.join(' ')}`);
       
       const { spawn } = await import('child_process');
       const childProcess = spawn('npx', ['tsx', ...args], {
@@ -591,7 +569,6 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
    * Notify file tree update (implements FileTreeUpdatePort)
    */
   notifyFileTreeUpdate(projectId: string, featureName: string): void {
-    console.log(`📡 [FileTree] Notifying update for ${projectId}/${featureName}`);
     this.sseBroadcastService.broadcastFileTreeUpdate(projectId, featureName);
   }
   
@@ -650,9 +627,6 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       try {
         this.server = this.app.listen(port, () => {
           this.running = true;
-          console.log(`🚀 ANT Server running on http://localhost:${port}`);
-          console.log(`📊 Health check: http://localhost:${port}/health`);
-          console.log(`📚 API documentation: http://localhost:${port}/api`);
           resolve();
         });
       } catch (error) {
@@ -677,7 +651,6 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         
         this.server.close(() => {
           this.running = false;
-          console.log('🛑 ANT Server stopped');
           resolve();
         });
       } else {

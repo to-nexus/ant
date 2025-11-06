@@ -20,8 +20,6 @@ export function useWorkflowState(jobId: string | undefined) {
       return;
     }
     
-    console.log(`[useWorkflowState] Connecting SSE for job ${jobId}`);
-    
     // Phase 2: SSE 구현
     const eventSource = new EventSource(
       `${API_BASE}/jobs/${jobId}/workflow/stream`
@@ -30,7 +28,6 @@ export function useWorkflowState(jobId: string | undefined) {
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        console.log(`[useWorkflowState] Received state:`, data);
         setState(data);
       } catch (err) {
         console.error('[useWorkflowState] Failed to parse SSE data:', err);
@@ -38,7 +35,6 @@ export function useWorkflowState(jobId: string | undefined) {
     };
     
     eventSource.addEventListener('end', () => {
-      console.log(`[useWorkflowState] Job ${jobId} ended, preserving last state`);
       // 연결은 종료되지만 마지막 상태는 유지
       eventSource.close();
     });
@@ -49,7 +45,6 @@ export function useWorkflowState(jobId: string | undefined) {
     };
     
     return () => {
-      console.log(`[useWorkflowState] Cleaning up SSE for job ${jobId}`);
       eventSource.close();
       // cleanup 시에도 상태는 유지 (jobId 변경으로 새 상태가 로드될 예정)
     };
