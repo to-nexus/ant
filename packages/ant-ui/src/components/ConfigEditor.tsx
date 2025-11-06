@@ -218,7 +218,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
               className="w-4 h-4 text-blue-600 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500 dark:focus:ring-blue-400 dark:bg-gray-700"
             />
             <span className="text-sm text-gray-600 dark:text-gray-300">
-              {value ? 'Enabled' : 'Disabled'}
+              Enabled
             </span>
           </label>
         )}

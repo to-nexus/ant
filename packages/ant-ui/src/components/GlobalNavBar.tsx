@@ -115,10 +115,63 @@ export function GlobalNavBar({ onRunTask, onStopTask, isRunning }: GlobalNavBarP
   const isStopDisabled = !isRunning || isDisconnected || !hasValidSelection;
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-sm transition-colors">
+    <header className="fixed top-0 left-0 right-0 z-50 bg-gray-50 dark:bg-[#0d1117] border-b border-gray-300 dark:border-[#30363d] shadow-md transition-colors">
       <div className="px-4 py-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-3">
+            {/* Logo Icon */}
+            <div className="relative">
+              {/* Light Mode: Dark Ant with Circuit */}
+              <svg 
+                className="w-7 h-7 block dark:hidden" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                {/* Ant Body */}
+                <ellipse cx="12" cy="14" rx="3" ry="4" fill="#1f2937" />
+                <circle cx="12" cy="8" r="2.5" fill="#1f2937" />
+                <circle cx="12" cy="18" r="1.5" fill="#1f2937" />
+                
+                {/* Antennae */}
+                <path d="M10.5 6.5 L9 4 M13.5 6.5 L15 4" stroke="#1f2937" strokeWidth="1" strokeLinecap="round" />
+                
+                {/* Legs */}
+                <path d="M9 12 L6 14 M9 14 L6 16 M9 16 L7 18" stroke="#1f2937" strokeWidth="1" strokeLinecap="round" />
+                <path d="M15 12 L18 14 M15 14 L18 16 M15 16 L17 18" stroke="#1f2937" strokeWidth="1" strokeLinecap="round" />
+                
+                {/* Circuit Pattern */}
+                <circle cx="12" cy="14" r="1" fill="#3b82f6" opacity="0.6" />
+                <path d="M12 13 L12 11 L14 11" stroke="#3b82f6" strokeWidth="0.5" opacity="0.6" />
+                <circle cx="14" cy="11" r="0.5" fill="#3b82f6" opacity="0.6" />
+              </svg>
+              
+              {/* Dark Mode: Light Ant with Circuit */}
+              <svg 
+                className="w-7 h-7 hidden dark:block" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                {/* Ant Body */}
+                <ellipse cx="12" cy="14" rx="3" ry="4" fill="#f9fafb" />
+                <circle cx="12" cy="8" r="2.5" fill="#f9fafb" />
+                <circle cx="12" cy="18" r="1.5" fill="#f9fafb" />
+                
+                {/* Antennae */}
+                <path d="M10.5 6.5 L9 4 M13.5 6.5 L15 4" stroke="#f9fafb" strokeWidth="1" strokeLinecap="round" />
+                
+                {/* Legs */}
+                <path d="M9 12 L6 14 M9 14 L6 16 M9 16 L7 18" stroke="#f9fafb" strokeWidth="1" strokeLinecap="round" />
+                <path d="M15 12 L18 14 M15 14 L18 16 M15 16 L17 18" stroke="#f9fafb" strokeWidth="1" strokeLinecap="round" />
+                
+                {/* Circuit Pattern */}
+                <circle cx="12" cy="14" r="1" fill="#60a5fa" opacity="0.8" />
+                <path d="M12 13 L12 11 L14 11" stroke="#60a5fa" strokeWidth="0.5" opacity="0.8" />
+                <circle cx="14" cy="11" r="0.5" fill="#60a5fa" opacity="0.8" />
+              </svg>
+            </div>
+            
             <h1 className="text-xl font-semibold text-gray-900 dark:text-white">ANT Works</h1>
           </div>
           

@@ -57,10 +57,9 @@ export const Bar = {
           'flex items-center justify-between shrink-0',
           // Spacing
           'h-10 px-4',
-          // Background & Border
-          'bg-gray-50 dark:bg-gray-900',
-          'border-b',
-          borderColors.default,
+          // Background & Border (더 짙은 회색)
+          'bg-gray-200 dark:bg-[#0d1117]',
+          'border-b border-gray-300 dark:border-[#30363d]',
           // Additional classes
           className
         )}

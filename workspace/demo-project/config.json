@@ -1,7 +1,7 @@
 {
-  "projectName": "coin-watcher",
+  "projectName": "demo-project",
   "repoType": "local",
-  "localPath": "~/dev/coin-watcher",
+  "localPath": "~/dev/demo-project",
   "branchBase": "main",
   "autoLearn": true
 }

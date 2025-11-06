@@ -47,6 +47,8 @@ export function ProjectDropdown() {
       try {
         await createProjectConfig(selectedProject);
         setConfigExists(true);
+        // Wait a moment for the backend to write the file
+        await new Promise(resolve => setTimeout(resolve, 100));
       } catch (error) {
         console.error('Failed to create config:', error);
         alert('Failed to create configuration. Please try again.');

@@ -119,12 +119,10 @@ function App() {
     if (!selectedProject) return;
 
     try {
-      await updateProjectConfig(selectedProject, config);
-      // Don't close the config editor after saving
-      // Reload config to sync with saved state
-      const updatedConfig = await fetchProjectConfig(selectedProject);
-      if (updatedConfig) {
-        setConfigData(updatedConfig);
+      // Backend now returns the saved config directly
+      const savedConfig = await updateProjectConfig(selectedProject, config);
+      if (savedConfig) {
+        setConfigData(savedConfig);
       }
       alert('Configuration saved successfully!');
     } catch (error) {
@@ -397,7 +395,7 @@ function App() {
   };
 
   return (
-    <div className="h-screen bg-gray-50 dark:bg-gray-900 flex flex-col transition-colors">
+    <div className="h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-colors">
       <GlobalNavBar onRunTask={handleRunTask} onStopTask={handleStopTask} isRunning={isRunning} />
       
       {/* Main Layout - Always visible (with top padding for fixed header) */}
@@ -405,7 +403,7 @@ function App() {
         {/* Left Column: Explorer (Collapsible, Resizable) */}
         {!isExplorerCollapsed && (
           <aside 
-            className="bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden transition-colors shrink-0 relative"
+            className="bg-white dark:bg-[#161b22] border-r border-gray-200 dark:border-[#30363d] flex flex-col overflow-hidden transition-colors shrink-0 relative shadow-sm"
             style={{ width: `${explorerWidth}px` }}
           >
             {/* Explorer Bar - Extends Base Bar */}
@@ -467,13 +465,13 @@ function App() {
         
         {/* Collapsed Explorer Button */}
         {isExplorerCollapsed && (
-          <div className="w-10 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col items-center shrink-0 transition-colors">
+          <div className="w-10 bg-white dark:bg-[#161b22] border-r border-gray-200 dark:border-[#30363d] flex flex-col items-center shrink-0 transition-colors shadow-sm">
             <button
               onClick={() => {
                 setIsExplorerCollapsed(false);
                 setExplorerWidth(320); // 권장 사이즈로 리셋
               }}
-              className="h-10 w-10 flex items-center justify-center border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+              className="h-10 w-10 flex items-center justify-center border-b border-gray-200 dark:border-[#30363d] bg-gray-50 dark:bg-[#0d1117] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
               title="Expand Explorer"
             >
               <ChevronRight className="w-4 h-4" />
@@ -483,7 +481,7 @@ function App() {
 
         {/* Right Panel: Config and/or File Editor */}
         {(showConfigEditor || showFileEditor) && connectionStatus === 'connected' && (
-          <div className="w-96 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden transition-colors">
+          <div className="w-96 bg-white dark:bg-[#161b22] border-r border-gray-200 dark:border-[#30363d] flex flex-col overflow-hidden transition-colors shadow-sm">
               {/* Config Editor */}
               {showConfigEditor && configData && !isLoadingConfig && (
                 <div className={showFileEditor ? 'h-1/2 border-b border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col' : 'flex-1 overflow-hidden flex flex-col'}>

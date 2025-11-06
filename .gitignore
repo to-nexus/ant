@@ -55,3 +55,8 @@ projects/**/generated/reports/*.md
 
 # Vector memory binaries
 /packages/ant-cli/src/periphery/integrations/vector-memory/chroma-data/
+
+# Workspace directory (keep only demo project)
+workspace/*
+!workspace/.gitkeep
+!workspace/demo-project/
