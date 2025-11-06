@@ -81,7 +81,6 @@ export class GraphMetadataService {
    * Phase 2: 실제 코드 분석으로 전환
    */
   async extractGraphMetadata(agent: string, job: string): Promise<WorkflowGraphMetadata> {
-    console.log(`[GraphMetadataService] Extracting metadata for ${agent}/${job}`);
     
     // Phase 1: 하드코딩된 메타데이터
     const metadataKey = `${agent}:${job}`;

@@ -48,8 +48,6 @@ export function useGraphLayout(
     // vertical (상하 분할) → 워크플로우는 가로로 (LR)
     const rankdir = splitLayout === 'horizontal' ? 'TB' : 'LR';
     
-    console.log('[useGraphLayout] Computing layout for', metadata.nodes.length, 'workflow nodes +', metadata.actors.length, 'actors', `(direction: ${rankdir})`);
-    
     // 1. Workflow 노드를 ReactFlow 노드로 변환
     const workflowNodes: Node[] = metadata.nodes.map(node => ({
       id: node.id,
@@ -199,8 +197,6 @@ export function useGraphLayout(
         },
       };
     });
-    
-    console.log('[useGraphLayout] Layout complete:', layoutedNodes.length, 'nodes positioned');
     
     return { nodes: layoutedNodes, edges: rfEdges };
   }, [metadata, realtimeState, splitLayout, theme]);

@@ -113,7 +113,6 @@ export class TaskExecutionService {
         args.push('--eval');
       }
       
-      console.log(`[Job Execution] Starting job ${jobId}: tsx ${args.join(' ')}`);
       
       // Spawn child process using tsx
       const childProcess = spawn('npx', ['tsx', ...args], {

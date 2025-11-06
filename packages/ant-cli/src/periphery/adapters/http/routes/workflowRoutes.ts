@@ -36,7 +36,6 @@ export function createWorkflowRoutes(deps: {
     try {
       const { agent, job } = req.params;
       
-      console.log(`[WorkflowRoutes] Fetching graph metadata for ${agent}/${job}`);
       
       const metadata = await deps.graphMetadataService.extractGraphMetadata(agent, job);
       
@@ -73,7 +72,6 @@ export function createWorkflowRoutes(deps: {
   router.get('/jobs/:jobId/workflow/state', (req: Request, res: Response) => {
     const { jobId } = req.params;
     
-    console.log(`[WorkflowRoutes] Fetching workflow state for job ${jobId}`);
     
     const state = deps.workflowStateService.getState(jobId);
     
@@ -108,7 +106,6 @@ export function createWorkflowRoutes(deps: {
   router.get('/jobs/:jobId/workflow/stream', (req: Request, res: Response) => {
     const { jobId } = req.params;
     
-    console.log(`[WorkflowRoutes] SSE stream requested for job ${jobId}`);
     
     // SSE 헤더 설정
     res.setHeader('Content-Type', 'text/event-stream');
@@ -131,7 +128,6 @@ export function createWorkflowRoutes(deps: {
     // 연결 종료시 정리
     req.on('close', () => {
       clearInterval(pingInterval);
-      console.log(`[WorkflowRoutes] SSE connection closed for job ${jobId}`);
     });
   });
   

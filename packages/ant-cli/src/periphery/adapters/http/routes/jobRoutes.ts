@@ -139,11 +139,9 @@ export function createJobRoutes(deps: {
     const { projectId, featureName } = req.body;  // ✅ Accept project info from frontend
     const childProcess = deps.childProcesses.get(jobId);
     
-    console.log(`[Server] Stop request for task ${jobId}, project: ${projectId}/${featureName}, has childProcess: ${!!childProcess}`);
     
     // Kill the process if it exists
     if (childProcess) {
-      console.log(`[Server] Stopping task ${jobId}, PID: ${childProcess.pid}`);
       childProcess.kill('SIGTERM');
       
       // Update task status

@@ -60,9 +60,7 @@ export function createKanbanRoutes(deps: {
     deps.kanbanSSE.get(key)!.add(res);
     
     if (activeTaskId) {
-      console.log(`[Kanban SSE] Client connected for ${key} (active task: ${activeTaskId})`);
     } else {
-      console.log(`[Kanban SSE] Client connected for ${key} (no active task, watching session file)`);
       // Start watching session file even when no task is running
       deps.watchSessionFile('', projectId, featureName);
     }
@@ -83,7 +81,6 @@ export function createKanbanRoutes(deps: {
     
     // Handle client disconnect
     req.on('close', () => {
-      console.log(`[Kanban SSE] Client disconnected for ${key}`);
       const clients = deps.kanbanSSE.get(key);
       if (clients) {
         clients.delete(res);

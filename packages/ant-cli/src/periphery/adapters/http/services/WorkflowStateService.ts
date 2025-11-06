@@ -40,7 +40,6 @@ export class WorkflowStateService {
    * Job 시작 (초기 상태 생성)
    */
   startJob(jobId: string): void {
-    console.log(`[WorkflowStateService] Starting job ${jobId}`);
     
     this.states.set(jobId, {
       jobId,
@@ -64,7 +63,6 @@ export class WorkflowStateService {
       return this.enterNode(jobId, nodeId);
     }
     
-    console.log(`[WorkflowStateService] Job ${jobId}: Entering node ${nodeId}`);
     
     // 이전 노드 종료 처리
     if (state.currentNode) {
@@ -95,7 +93,6 @@ export class WorkflowStateService {
     const state = this.states.get(jobId);
     if (!state) return;
     
-    console.log(`[WorkflowStateService] Job ${jobId}: Exiting node ${nodeId}`);
     
     // 현재 노드의 히스토리 엔트리 찾아서 종료 시간 기록
     const lastEntry = state.nodeHistory[state.nodeHistory.length - 1];
@@ -116,7 +113,6 @@ export class WorkflowStateService {
     const state = this.states.get(jobId);
     if (!state) return;
     
-    console.log(`[WorkflowStateService] Job ${jobId}: Actor ${actorId} interaction started`);
     state.activeActors.add(actorId);
     this.broadcast(jobId);
   }
@@ -128,7 +124,6 @@ export class WorkflowStateService {
     const state = this.states.get(jobId);
     if (!state) return;
     
-    console.log(`[WorkflowStateService] Job ${jobId}: Actor ${actorId} interaction ended`);
     state.activeActors.delete(actorId);
     this.broadcast(jobId);
   }
@@ -137,8 +132,6 @@ export class WorkflowStateService {
    * Job 종료 (상태 보존)
    */
   endJob(jobId: string): void {
-    console.log(`[WorkflowStateService] Ending job ${jobId}`);
-    
     // 마지막 노드 종료 처리
     const state = this.states.get(jobId);
     if (state) {
@@ -172,7 +165,6 @@ export class WorkflowStateService {
     
     // 상태는 삭제하지 않고 보존 (UI에서 마지막 상태 조회 가능)
     // 메모리 관리를 위해 주기적으로 오래된 상태는 정리될 수 있음
-    console.log(`[WorkflowStateService] Job ${jobId} state preserved for historical view`);
   }
   
   /**
@@ -184,7 +176,6 @@ export class WorkflowStateService {
     }
     this.clients.get(jobId)!.add(res);
     
-    console.log(`[WorkflowStateService] Client added for job ${jobId} (total: ${this.clients.get(jobId)!.size})`);
     
     // 현재 상태 즉시 전송
     const state = this.states.get(jobId);
@@ -197,7 +188,6 @@ export class WorkflowStateService {
       const clients = this.clients.get(jobId);
       if (clients) {
         clients.delete(res);
-        console.log(`[WorkflowStateService] Client removed for job ${jobId} (remaining: ${clients.size})`);
         if (clients.size === 0) {
           this.clients.delete(jobId);
         }
@@ -222,7 +212,6 @@ export class WorkflowStateService {
     const clients = this.clients.get(jobId);
     if (!clients || clients.size === 0) return;
     
-    console.log(`[WorkflowStateService] Broadcasting state for job ${jobId} to ${clients.size} clients`);
     
     clients.forEach(res => {
       this.sendToClient(res, state);

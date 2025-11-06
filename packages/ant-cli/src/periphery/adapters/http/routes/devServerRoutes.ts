@@ -74,7 +74,6 @@ export function createDevServerRoutes(deps: {
         logs: logs.slice(-50) // Last 50 logs
       };
       
-      console.log(`[DevServer] Status check for ${projectId}: running=${fullStatus.running}, port=${fullStatus.port}`);
       
       res.json(fullStatus);
     } catch (error: any) {
@@ -98,7 +97,6 @@ export function createDevServerRoutes(deps: {
     }
     deps.devServerSSE.get(projectId)!.add(res);
     
-    console.log(`[DevServer] SSE client connected for ${projectId}`);
     
     // Send initial status
     const status = deps.devServerService.getDevServerStatus(projectId);
@@ -115,7 +113,6 @@ export function createDevServerRoutes(deps: {
     
     // Handle client disconnect
     req.on('close', () => {
-      console.log(`[DevServer] SSE client disconnected for ${projectId}`);
       const clients = deps.devServerSSE.get(projectId);
       if (clients) {
         clients.delete(res);

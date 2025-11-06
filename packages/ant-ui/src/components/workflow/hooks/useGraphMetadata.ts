@@ -25,8 +25,6 @@ export function useGraphMetadata(agent: string, job: string) {
       setError(null);
       
       try {
-        console.log(`[useGraphMetadata] Fetching metadata for ${agent}/${job}`);
-        
         const response = await fetch(
           `${API_BASE}/agents/${agent}/jobs/${job}/graph-metadata`
         );
@@ -36,7 +34,6 @@ export function useGraphMetadata(agent: string, job: string) {
         }
         
         const data = await response.json();
-        console.log(`[useGraphMetadata] Loaded ${data.nodes?.length || 0} nodes`);
         setMetadata(data);
       } catch (err) {
         console.error('[useGraphMetadata] Error:', err);

@@ -17,6 +17,7 @@ export function FeatureDropdown() {
   } = useStore();
   const [showStatusPanel, setShowStatusPanel] = useState(false);
   const [serverStarted, setServerStarted] = useState(false);
+  const [isInitialMount, setIsInitialMount] = useState(true);
 
   // Auto-show status panel when dev server is running (including after refresh)
   useEffect(() => {
@@ -26,20 +27,15 @@ export function FeatureDropdown() {
     }
   }, [devServerStatus?.running]);
 
-  // SSE connection for dev server status
+  // Initial status check on mount (페이지 새로고침 시에도 실행)
   useEffect(() => {
-    if (!selectedProject) {
-      setDevServerStatus(undefined);
-      return;
-    }
-
-    console.log('[FeatureDropdown] Setting up SSE for project:', selectedProject);
+    if (!selectedProject || !isInitialMount) return;
     
-    // Initial status check
+    setIsInitialMount(false);
+    
     const checkInitialStatus = async () => {
       try {
         const status = await getDevServerStatus(selectedProject);
-        console.log('[FeatureDropdown] Initial dev server status:', status);
         setDevServerStatus(status);
       } catch (error) {
         console.error('[FeatureDropdown] Failed to get initial status:', error);
@@ -47,6 +43,14 @@ export function FeatureDropdown() {
     };
     
     checkInitialStatus();
+  }, [selectedProject, isInitialMount, setDevServerStatus]);
+
+  // SSE connection for dev server status
+  useEffect(() => {
+    if (!selectedProject) {
+      setDevServerStatus(undefined);
+      return;
+    }
     
     // Setup SSE connection
     const eventSource = new EventSource(
@@ -56,11 +60,6 @@ export function FeatureDropdown() {
     eventSource.onmessage = (event) => {
       try {
         const status = JSON.parse(event.data);
-        console.log('[FeatureDropdown] SSE received:', {
-          running: status.running,
-          port: status.port,
-          logsCount: status.logs?.length || 0
-        });
         
         // Log errors if server stopped unexpectedly
         if (!status.running && status.logs && status.logs.length > 0) {
@@ -84,22 +83,15 @@ export function FeatureDropdown() {
     };
     
     return () => {
-      console.log('[FeatureDropdown] Closing SSE connection');
       eventSource.close();
     };
-  }, [selectedProject]); // ✅ Remove setDevServerStatus from deps (it's stable)
+  }, [selectedProject, setDevServerStatus]);
 
   const handleStartDevServer = async () => {
-    console.log('[FeatureDropdown] handleStartDevServer called');
-    console.log('[FeatureDropdown] selectedProject:', selectedProject);
-    
     if (!selectedProject) return;
     
     try {
-      console.log('[FeatureDropdown] Calling startDevServer API...');
-      const result = await startDevServer(selectedProject);
-      console.log('[FeatureDropdown] Start dev server result:', result);
-      
+      await startDevServer(selectedProject);
       setServerStarted(true);
       setShowStatusPanel(true);
       

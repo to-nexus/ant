@@ -356,7 +356,6 @@ export function createProjectRoutes(deps: {
     }
     deps.fileTreeSSE.get(key)!.add(res);
     
-    console.log(`[FileTree SSE] Client connected for ${key}`);
     
     // Send initial data (current file tree)
     try {
@@ -397,7 +396,6 @@ export function createProjectRoutes(deps: {
     
     // Handle client disconnect
     req.on('close', () => {
-      console.log(`[FileTree SSE] Client disconnected for ${key}`);
       const clients = deps.fileTreeSSE!.get(key);
       if (clients) {
         clients.delete(res);
