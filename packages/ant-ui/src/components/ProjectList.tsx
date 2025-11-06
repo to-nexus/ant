@@ -27,7 +27,7 @@ export default function ProjectList({ projects, selected, onSelect }: ProjectLis
           }`}
           onClick={() => onSelect(projectId)}
         >
-          <div className="font-medium text-gray-900">{projectId}</div>
+          <div className="font-medium text-gray-900 dark:text-white">{projectId}</div>
         </Card>
       ))}
     </div>

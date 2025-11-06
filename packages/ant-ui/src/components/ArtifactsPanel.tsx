@@ -3,6 +3,7 @@ import { useStore } from '@/lib/store';
 import { createFile, uploadFiles, createDirectory, deleteFileOrDirectory, FileNode } from '@/lib/api';
 import { Card, CardHeader, CardTitle, CardContent } from '@/ui/card';
 import { Button } from '@/ui/button';
+import { textColors, bgColors, cn } from '@/lib/design-system';
 
 interface DirectoryViewProps {
   title: string;
@@ -40,15 +41,14 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
     return (
       <div key={node.path}>
         <div
-          className={`
-            flex items-center justify-between group py-1.5 px-2 rounded transition-colors
-            ${isSelected 
-              ? 'bg-blue-100 border-l-2 border-blue-500 font-medium text-blue-900' 
+          className={cn(
+            'flex items-center justify-between group py-1.5 px-2 rounded transition-colors',
+            isSelected 
+              ? 'bg-blue-100 dark:bg-blue-900 border-l-2 border-blue-500 dark:border-blue-400 font-medium text-blue-900 dark:text-blue-100' 
               : isDirectory && isExpanded
-                ? 'bg-gray-50 hover:bg-gray-100'
-                : 'hover:bg-gray-100'
-            }
-          `}
+                ? 'bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700'
+                : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+          )}
           style={{ paddingLeft: `${currentLevel * 12 + 8}px` }}
         >
           <div 
@@ -72,7 +72,7 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
             {node.type === 'file' && (
               <span className="text-xs">📄</span>
             )}
-            <span className="text-sm">{node.name}</span>
+            <span className={cn('text-sm', textColors.primary)}>{node.name}</span>
           </div>
           
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -81,7 +81,7 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-6 w-6 p-0 text-gray-600 hover:text-blue-600 hover:bg-blue-50"
+                  className="h-6 w-6 p-0 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950"
                   onClick={(e) => {
                     e.stopPropagation();
                     setCreateType('file');
@@ -95,7 +95,7 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-6 w-6 p-0 text-gray-600 hover:text-purple-600 hover:bg-purple-50"
+                  className="h-6 w-6 p-0 text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950"
                   onClick={(e) => {
                     e.stopPropagation();
                     setCreateType('directory');
@@ -121,7 +121,7 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-6 w-6 p-0 text-gray-600 hover:text-green-600 hover:bg-green-50"
+                  className="h-6 w-6 p-0 text-gray-600 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-950"
                   onClick={(e) => {
                     e.stopPropagation();
                     document.getElementById(`upload-${node.path}`)?.click();
@@ -136,7 +136,7 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
               <Button
                 size="sm"
                 variant="ghost"
-                className="h-6 w-6 p-0 text-gray-600 hover:text-red-600 hover:bg-red-50"
+                className="h-6 w-6 p-0 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950"
                 onClick={(e) => {
                   e.stopPropagation();
                   if (confirm(`Delete ${node.type} "${node.name}"?`)) {
@@ -154,7 +154,7 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
         {isCreatingInThisDir && (
           <div className="mt-1 mb-2" style={{ paddingLeft: `${(currentLevel + 1) * 12 + 8}px` }}>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500">
+              <span className={cn('text-xs', textColors.tertiary)}>
                 {createType === 'directory' ? '📁' : '📄'}
               </span>
               <input
@@ -177,13 +177,13 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
                     setNewFileName('');
                   }
                 }}
-                className="flex-1 px-2 py-1 text-xs border rounded"
+                className="flex-1 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 autoFocus
               />
               <Button
                 size="sm"
                 variant="ghost"
-                className="h-6 w-6 p-0 text-green-600"
+                className="h-6 w-6 p-0 text-green-600 dark:text-green-400"
                 onClick={() => {
                   if (newFileName.trim()) {
                     if (createType === 'directory') {
@@ -201,7 +201,7 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
               <Button
                 size="sm"
                 variant="ghost"
-                className="h-6 w-6 p-0 text-red-600"
+                className="h-6 w-6 p-0 text-red-600 dark:text-red-400"
                 onClick={() => {
                   setShowCreateForm(null);
                   setNewFileName('');
@@ -224,7 +224,7 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
 
   if (nodes.length === 0) {
     return (
-      <div className="text-sm text-muted-foreground p-4">
+      <div className={cn('text-sm p-4', textColors.tertiary)}>
         No files in {title.toLowerCase()}
       </div>
     );
@@ -232,8 +232,8 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
 
   return (
     <div>
-      <h4 className="font-medium text-sm mb-2 text-gray-700">{title}</h4>
-      <div className="border rounded-lg p-2 bg-gray-50/50">
+      <h4 className="font-medium text-sm mb-2 text-gray-700 dark:text-gray-300">{title}</h4>
+      <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-2 bg-gray-50 dark:bg-gray-900/50">
         {nodes.map((node) => renderNode(node, 0))}
       </div>
     </div>

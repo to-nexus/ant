@@ -200,7 +200,7 @@ export function KanbanBoard() {
           <div className="flex items-center gap-3">
             <CardTitle>📋 Task Board</CardTitle>
             {kanbanData.dataSource && (
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-gray-50 border border-gray-200">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700">
                 <span className="text-xs text-gray-600 font-medium">Data Source:</span>
                 <div className="flex items-center gap-1.5">
                   {kanbanData.dataSource === 'live' ? (
@@ -228,11 +228,11 @@ export function KanbanBoard() {
           </div>
           <div className="flex items-center gap-3">
             {/* Recursion Limit with Progress Bar - Always visible */}
-            <div className="relative px-3 py-1.5 rounded-md bg-purple-50 border-2 border-purple-300 min-w-[140px]">
+            <div className="relative px-3 py-1.5 rounded-md bg-purple-50 dark:bg-purple-950/30 border-2 border-purple-300 dark:border-purple-800 min-w-[140px]">
               {/* Background Progress Bar */}
               <div className="absolute inset-0 rounded-md overflow-hidden">
                 <div 
-                  className="h-full bg-purple-300 border-r-2 border-purple-400 transition-all duration-500 ease-out"
+                  className="h-full bg-purple-300 dark:bg-purple-800/50 border-r-2 border-purple-400 dark:border-purple-700 transition-all duration-500 ease-out"
                   style={{ 
                     width: `${kanbanData.recursionLimit 
                       ? Math.min(((kanbanData.recursionCount || 0) / kanbanData.recursionLimit) * 100, 100) 
@@ -242,24 +242,24 @@ export function KanbanBoard() {
               </div>
               {/* Text */}
               <div className="relative z-10 flex items-center justify-center gap-1.5">
-                <span className="text-xs text-purple-700 font-semibold">
+                <span className="text-xs text-purple-700 dark:text-purple-300 font-semibold">
                   {kanbanData.recursionCount || 0}/{kanbanData.recursionLimit || 50} Recursion
                 </span>
               </div>
             </div>
             
             {/* Tasks with Progress Bar */}
-            <div className="relative px-3 py-1.5 rounded-md bg-green-50 border-2 border-green-300 min-w-[140px]">
+            <div className="relative px-3 py-1.5 rounded-md bg-green-50 dark:bg-green-950/30 border-2 border-green-300 dark:border-green-800 min-w-[140px]">
               {/* Background Progress Bar */}
               <div className="absolute inset-0 rounded-md overflow-hidden">
                 <div 
-                  className="h-full bg-green-300 border-r-2 border-green-400 transition-all duration-500 ease-out"
+                  className="h-full bg-green-300 dark:bg-green-800/50 border-r-2 border-green-400 dark:border-green-700 transition-all duration-500 ease-out"
                   style={{ width: `${totalTasks > 0 ? Math.min((kanbanData.completed.length / totalTasks) * 100, 100) : 0}%` }}
                 />
               </div>
               {/* Text */}
               <div className="relative z-10 flex items-center justify-center gap-1.5">
-                <span className="text-xs text-green-700 font-semibold">
+                <span className="text-xs text-green-700 dark:text-green-300 font-semibold">
                   {kanbanData.completed.length}/{totalTasks} Tasks
                 </span>
               </div>
@@ -267,17 +267,17 @@ export function KanbanBoard() {
           </div>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="bg-white dark:bg-gray-800 dark:bg-gray-800">
         {/* Paused State: Show resume prompt (only when NOT running) */}
         {kanbanData.pausedDueToLimit && !kanbanData.isEstimating && !isRunning ? (
-          <div className="mb-4 p-6 bg-orange-50 border-2 border-orange-300 rounded-lg">
+          <div className="mb-4 p-6 bg-orange-50 dark:bg-orange-950 border-2 border-orange-300 dark:border-orange-700 rounded-lg">
             <div className="flex items-start gap-4">
               <div className="text-3xl">⏸️</div>
               <div className="flex-1">
-                <div className="font-semibold text-lg text-orange-900 mb-2">
+                <div className="font-semibold text-lg text-orange-900 dark:text-orange-200 mb-2">
                   Task paused due to recursion limit
                 </div>
-                <div className="text-sm text-orange-800 mb-4">
+                <div className="text-sm text-orange-800 dark:text-orange-300 mb-4">
                   {kanbanData.tasksRemaining} task{kanbanData.tasksRemaining !== 1 ? 's' : ''} remaining. 
                   The agent will continue from where it left off.
                 </div>
@@ -362,11 +362,11 @@ export function KanbanBoard() {
           </div>
         ) : (
           <LayoutGroup>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-3 gap-4 pt-4">
           {/* TO DO Column */}
           <div className="space-y-3">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-sm">📝 To Do</h3>
+              <h3 className="font-semibold text-sm text-gray-900 dark:text-white">📝 To Do</h3>
               <Badge variant="secondary" className="text-xs">
                 {kanbanData.todo.length}
               </Badge>
@@ -403,7 +403,7 @@ export function KanbanBoard() {
           {/* IN PROGRESS Column */}
           <div className="space-y-3">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-sm">🚀 In Progress</h3>
+              <h3 className="font-semibold text-sm text-gray-900 dark:text-white">🚀 In Progress</h3>
               <Badge variant="secondary" className="text-xs">
                 {kanbanData.inProgress ? 1 : 0}
               </Badge>
@@ -449,7 +449,7 @@ export function KanbanBoard() {
           {/* COMPLETED Column */}
           <div className="space-y-3">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-sm">✅ Completed</h3>
+              <h3 className="font-semibold text-sm text-gray-900 dark:text-white">✅ Completed</h3>
               <Badge variant="secondary" className="text-xs">
                 {kanbanData.completed.length}
               </Badge>

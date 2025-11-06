@@ -72,14 +72,14 @@ export function TerminalFooter() {
   const getLogTypeColor = (type: string): string => {
     switch (type) {
       case 'error':
-        return 'text-red-600';
+        return 'text-red-600 dark:text-red-400';
       case 'stderr':
-        return 'text-orange-600';
+        return 'text-orange-600 dark:text-orange-400';
       case 'info':
-        return 'text-blue-600';
+        return 'text-blue-600 dark:text-blue-400';
       case 'stdout':
       default:
-        return 'text-gray-700';
+        return 'text-gray-700 dark:text-gray-300';
     }
   };
 
@@ -98,12 +98,14 @@ export function TerminalFooter() {
   };
 
   return (
-    <div className="relative bg-white border-t-2 border-gray-300 shadow-lg shrink-0">
+    <div className="relative bg-white dark:bg-gray-800 border-t-2 border-gray-300 dark:border-gray-700 shadow-lg shrink-0">
       {/* Resize handle (only when expanded) */}
       {isExpanded && (
         <div
-          className={`h-1 bg-gradient-to-r from-blue-200 to-blue-300 hover:from-blue-400 hover:to-blue-500 cursor-ns-resize transition-all duration-200 ${
-            isResizing ? 'from-blue-500 to-blue-600' : ''
+          className={`h-1 cursor-ns-resize transition-all duration-200 ${
+            isResizing 
+              ? 'bg-gradient-to-r from-blue-500 to-blue-600 dark:from-blue-700 dark:to-blue-800' 
+              : 'bg-gradient-to-r from-blue-200 to-blue-300 dark:from-gray-700 dark:to-gray-600 hover:from-blue-400 hover:to-blue-500 dark:hover:from-gray-600 dark:hover:to-gray-500'
           }`}
           onMouseDown={() => setIsResizing(true)}
           title="Drag to resize terminal height"
@@ -111,20 +113,20 @@ export function TerminalFooter() {
       )}
       
       {/* Header Bar (Always Visible) */}
-      <div className="bg-gray-50 border-b border-gray-200 px-4 py-2 flex items-center justify-between">
+      <div className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-4 py-2 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
+            className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
           >
             {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
             <span>🖥️ Terminal Output</span>
           </button>
-          <span className="text-xs text-gray-500 bg-gray-200 px-2 py-0.5 rounded-full">
+          <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded-full">
             {logs.length > 500 ? '500+' : logs.length} logs
           </span>
           {isExpanded && (
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-gray-400 dark:text-gray-500">
               {height}px
             </span>
           )}
@@ -147,25 +149,25 @@ export function TerminalFooter() {
       {isExpanded && (
         <div
           ref={scrollRef}
-          className="bg-gray-50 text-gray-900 font-mono text-sm overflow-y-auto p-4 border-t border-gray-200"
+          className="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white font-mono text-sm overflow-y-auto p-4 border-t border-gray-200 dark:border-gray-700"
           style={{ height: `${height}px` }}
         >
           {logs.length === 0 ? (
-            <div className="text-gray-500 text-center py-8">
+            <div className="text-gray-500 dark:text-gray-400 text-center py-8">
               <div className="text-2xl mb-2">📟</div>
               <div>No logs yet...</div>
               <div className="text-xs mt-1">Execute a task to see output here</div>
             </div>
           ) : (
             logs.map((log, index) => (
-              <div key={index} className="mb-1 leading-relaxed hover:bg-gray-100 px-2 py-1 rounded">
-                <span className="text-gray-400 text-xs">{formatTimestamp(log.timestamp)}</span>
+              <div key={index} className="mb-1 leading-relaxed hover:bg-gray-100 dark:hover:bg-gray-800 px-2 py-1 rounded">
+                <span className="text-gray-400 dark:text-gray-500 text-xs">{formatTimestamp(log.timestamp)}</span>
                 {' '}
                 <span className={`${getLogTypeColor(log.type)} text-xs font-bold`}>
                   {getLogTypeIndicator(log.type)}
                 </span>
                 {' '}
-                <span className="text-gray-800">{log.message}</span>
+                <span className="text-gray-800 dark:text-gray-200">{log.message}</span>
               </div>
             ))
           )}

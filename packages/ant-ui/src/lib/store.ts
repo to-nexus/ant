@@ -26,6 +26,7 @@ interface StoreState {
   elapsedTime: number;
   currentMode: 'generate' | 'refactor' | 'explain' | undefined;
   devServerStatus: DevServerStatus | undefined;
+  theme: 'light' | 'dark';
 }
 
 interface StoreActions {
@@ -54,6 +55,8 @@ interface StoreActions {
   setShowFileEditor: (show: boolean) => void;
   setDevServerStatus: (status: DevServerStatus | undefined) => void;
   refreshDevServerStatus: () => Promise<void>;
+  toggleTheme: () => void;
+  setTheme: (theme: 'light' | 'dark') => void;
 }
 
 type Store = StoreState & StoreActions;
@@ -67,6 +70,7 @@ const STORAGE_KEYS = {
   TASK_MODE: 'ant-ui:task-mode',
   SELECTED_PROJECT: 'ant-ui:selected-project',
   SELECTED_FEATURE: 'ant-ui:selected-feature',
+  THEME: 'ant-ui:theme',
 };
 
 // Helper functions for localStorage
@@ -83,6 +87,36 @@ const removeFromStorage = (key: string) => {
     localStorage.removeItem(key);
   } catch (error) {
     console.error('Failed to remove from localStorage:', error);
+  }
+};
+
+// Helper to get initial theme from localStorage or system preference
+const getInitialTheme = (): 'light' | 'dark' => {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEYS.THEME);
+    if (stored === 'light' || stored === 'dark') {
+      return stored;
+    }
+  } catch (error) {
+    console.error('Failed to read theme from localStorage:', error);
+  }
+  
+  // Fallback to system preference
+  if (typeof window !== 'undefined' && window.matchMedia) {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  
+  return 'light';
+};
+
+// Apply theme to document
+const applyTheme = (theme: 'light' | 'dark') => {
+  if (typeof document !== 'undefined') {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
   }
 };
 
@@ -107,6 +141,7 @@ export const useStore = create<Store>((set, get) => ({
   elapsedTime: 0,
   currentMode: undefined,
   devServerStatus: undefined,
+  theme: getInitialTheme(),
 
   setProjects: (projects: string[]) => {
     set({ projects });
@@ -412,4 +447,21 @@ export const useStore = create<Store>((set, get) => ({
       connectionStatus: 'disconnected',
     });
   },
+
+  toggleTheme: () => {
+    const current = get().theme;
+    const newTheme = current === 'light' ? 'dark' : 'light';
+    set({ theme: newTheme });
+    saveToStorage(STORAGE_KEYS.THEME, newTheme);
+    applyTheme(newTheme);
+  },
+
+  setTheme: (theme: 'light' | 'dark') => {
+    set({ theme });
+    saveToStorage(STORAGE_KEYS.THEME, theme);
+    applyTheme(theme);
+  },
 }));
+
+// Apply initial theme on load
+applyTheme(getInitialTheme());

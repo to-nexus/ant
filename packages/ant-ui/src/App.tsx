@@ -347,26 +347,26 @@ function App() {
   };
 
   return (
-    <div className="h-screen bg-gray-50 flex flex-col">
+    <div className="h-screen bg-gray-50 dark:bg-gray-900 flex flex-col transition-colors">
       <Header onRunTask={handleRunTask} onStopTask={handleStopTask} isRunning={isRunning} />
       
       {/* Main Layout - Always visible (with top padding for fixed header) */}
       <div className="flex-1 flex gap-0 overflow-hidden pt-16">
         {/* Left Column: Explorer (Collapsible) */}
         {!isExplorerCollapsed && (
-          <aside className="w-80 bg-white border-r border-gray-200 flex flex-col overflow-hidden">
+          <aside className="w-80 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden transition-colors">
             {/* Explorer Header (Footer-style) */}
-            <div className="border-b border-gray-200 bg-gray-50 px-4 py-2 shrink-0">
+            <div className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 px-4 py-2 shrink-0">
               <div className="flex items-center justify-between text-sm">
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setIsExplorerCollapsed(true)}
-                    className="text-gray-500 hover:text-gray-700 transition-colors p-1"
+                    className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors p-1"
                     title="Collapse Explorer"
                   >
                     <ChevronLeft className="w-4 h-4" />
                   </button>
-                  <span className="text-gray-700 font-medium">📁 Explorer</span>
+                  <span className="text-gray-700 dark:text-gray-200 font-medium">📁 Explorer</span>
                 </div>
                 {selectedFile && (
                   <button
@@ -374,7 +374,7 @@ function App() {
                     className={`text-xs px-2 py-1 rounded transition-colors ${
                       showFileEditor 
                         ? 'bg-blue-500 text-white hover:bg-blue-600' 
-                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600'
                     }`}
                     title="Toggle Editor"
                   >
@@ -392,7 +392,7 @@ function App() {
                   <ArtifactsPanel />
                 </>
               ) : (
-                <div className="text-center text-gray-400 mt-8">
+                <div className="text-center text-gray-400 dark:text-gray-500 mt-8">
                   <div className="text-4xl mb-2">🔌</div>
                   <div className="text-sm">{connectionStatus === 'error' ? 'Disconnected' : 'Connecting...'}</div>
                 </div>
@@ -403,12 +403,12 @@ function App() {
         
         {/* Collapsed Explorer Button */}
         {isExplorerCollapsed && (
-          <div className="w-12 bg-white border-r border-gray-200 flex flex-col shrink-0">
+          <div className="w-12 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col shrink-0 transition-colors">
             {/* Match the header height of expanded explorer */}
-            <div className="border-b border-gray-200 bg-gray-50 px-2 py-2 shrink-0 flex items-center justify-center">
+            <div className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 px-2 py-2 shrink-0 flex items-center justify-center">
               <button
                 onClick={() => setIsExplorerCollapsed(false)}
-                className="text-gray-500 hover:text-gray-700 transition-colors p-1"
+                className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors p-1"
                 title="Expand Explorer"
               >
                 <ChevronRight className="w-4 h-4" />
@@ -419,10 +419,10 @@ function App() {
 
         {/* Right Panel: Config and/or File Editor */}
         {(showConfigEditor || showFileEditor) && connectionStatus === 'connected' && (
-          <div className="w-96 bg-white border-r border-gray-200 flex flex-col overflow-hidden">
+          <div className="w-96 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden transition-colors">
               {/* Config Editor */}
               {showConfigEditor && configData && !isLoadingConfig && (
-                <div className={showFileEditor ? 'h-1/2 border-b border-gray-200 overflow-hidden flex flex-col' : 'flex-1 overflow-hidden flex flex-col'}>
+                <div className={showFileEditor ? 'h-1/2 border-b border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col' : 'flex-1 overflow-hidden flex flex-col'}>
                   <ConfigEditor
                     config={configData}
                     onSave={handleSaveConfig}
@@ -432,8 +432,8 @@ function App() {
               )}
               
               {showConfigEditor && isLoadingConfig && (
-                <div className={showFileEditor ? 'h-1/2 border-b border-gray-200 flex items-center justify-center' : 'flex-1 flex items-center justify-center'}>
-                  <div className="text-gray-500">Loading configuration...</div>
+                <div className={showFileEditor ? 'h-1/2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-center' : 'flex-1 flex items-center justify-center'}>
+                  <div className="text-gray-500 dark:text-gray-400">Loading configuration...</div>
                 </div>
               )}
 
@@ -447,7 +447,7 @@ function App() {
           )}
 
           {/* Main Column: Task Board + Footers */}
-          <main className="flex-1 bg-gray-50 flex flex-col overflow-hidden">
+          <main className="flex-1 bg-gray-50 dark:bg-gray-900 flex flex-col overflow-hidden transition-colors">
             <div className="flex-1 overflow-y-auto p-4">
               {connectionStatus === 'connected' ? (
                 <KanbanBoard />
@@ -455,17 +455,17 @@ function App() {
                 <div className="flex items-center justify-center h-full">
                   <div className="text-center">
                     <div className="text-6xl mb-4">🔌</div>
-                    <h2 className="text-2xl font-semibold text-gray-700 mb-2">
+                    <h2 className="text-2xl font-semibold text-gray-700 dark:text-gray-200 mb-2">
                       {connectionStatus === 'error' ? 'Connection Failed' : 'Connecting...'}
                     </h2>
-                    <p className="text-gray-500">
+                    <p className="text-gray-500 dark:text-gray-400">
                       {connectionStatus === 'error' 
                         ? 'Unable to connect to ANT server. Please make sure the server is running.' 
                         : 'Connecting to ANT server...'}
                     </p>
                     {connectionStatus === 'error' && (
-                      <p className="text-sm text-gray-400 mt-4">
-                        Run <code className="bg-gray-200 px-2 py-1 rounded">pnpm dev:cli</code> to start the server
+                      <p className="text-sm text-gray-400 dark:text-gray-500 mt-4">
+                        Run <code className="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-2 py-1 rounded">pnpm dev:cli</code> to start the server
                       </p>
                     )}
                   </div>

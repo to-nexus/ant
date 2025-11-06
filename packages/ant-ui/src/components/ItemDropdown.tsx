@@ -3,6 +3,7 @@ import { ChevronDown, LucideIcon, Settings, Play, Square } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/ui/card';
 import { Button } from '@/ui/button';
 import { CreateItemForm } from './CreateItemForm';
+import { textColors, cn } from '@/lib/design-system';
 
 interface ItemDropdownProps {
   title: string;
@@ -153,7 +154,7 @@ export function ItemDropdown({
             />
           )}
           {!isCreating && (
-            <div className="p-4 text-center text-gray-500">
+            <div className={cn('p-4 text-center', textColors.tertiary)}>
               No {title.toLowerCase()} found
             </div>
           )}
@@ -238,8 +239,10 @@ export function ItemDropdown({
                     onPlayClick();
                   }
                 }}
-                className={`p-1 hover:bg-gray-100 rounded transition-colors pointer-events-auto ${
-                  isPlaying ? 'text-red-600 hover:text-red-800' : 'text-green-600 hover:text-green-800'
+                className={`p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors pointer-events-auto ${
+                  isPlaying 
+                    ? 'text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300' 
+                    : 'text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300'
                 }`}
                 title={isPlaying ? 'Stop dev server' : 'Start dev server'}
               >
@@ -257,24 +260,30 @@ export function ItemDropdown({
                   e.stopPropagation();
                   onSettingsClick();
                 }}
-                className="p-1 hover:bg-gray-100 rounded transition-colors pointer-events-auto"
+                className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors pointer-events-auto"
                 title="Settings"
               >
-                <Settings className="h-4 w-4 text-gray-600 hover:text-gray-800" />
+                <Settings className="h-4 w-4 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200" />
               </button>
             )}
             <ChevronDown 
-              className={`h-4 w-4 transition-transform ${isOpen ? 'transform rotate-180' : ''}`} 
+              className={cn(
+                'h-4 w-4 transition-transform',
+                textColors.secondary,
+                isOpen ? 'transform rotate-180' : ''
+              )} 
             />
           </div>
           
           {isOpen && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-10 max-h-48 overflow-y-auto">
+            <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-10 max-h-48 overflow-y-auto">
               {items.map((item) => (
                 <div
                   key={item.name}
-                  className={`flex items-center justify-between px-3 py-2 hover:bg-gray-50 transition-colors ${
-                    selectedItem === item.name ? 'bg-primary-50 text-primary-600 font-medium' : 'text-gray-700'
+                  className={`flex items-center justify-between px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
+                    selectedItem === item.name 
+                      ? 'bg-primary-50 dark:bg-primary-900 text-primary-600 dark:text-primary-300 font-medium' 
+                      : 'text-gray-700 dark:text-gray-300'
                   }`}
                 >
                   <button
@@ -288,7 +297,7 @@ export function ItemDropdown({
                   </button>
                   {onDelete && (
                     <button
-                      className="ml-2 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded"
+                      className="ml-2 text-xs text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-950 px-2 py-1 rounded"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleDelete(item.name);
