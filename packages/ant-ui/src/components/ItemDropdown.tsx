@@ -280,6 +280,26 @@ export function ItemDropdown({
           
           {isOpen && (
             <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-[#30363d] rounded-md shadow-lg z-10 max-h-48 overflow-y-auto">
+              {/* Deselect option at the top */}
+              <div
+                className={`flex items-center px-3 py-2 hover:bg-gray-50 dark:hover:bg-[#30363d] transition-colors border-b border-gray-200 dark:border-[#30363d] ${
+                  !selectedItem 
+                    ? 'bg-primary-50 dark:bg-primary-900 text-primary-600 dark:text-primary-300 font-medium' 
+                    : 'text-gray-500 dark:text-gray-500 italic'
+                }`}
+              >
+                <button
+                  className="flex-1 text-left"
+                  onClick={() => {
+                    onSelect('');
+                    setIsOpen(false);
+                  }}
+                >
+                  {placeholder}
+                </button>
+              </div>
+              
+              {/* Existing items */}
               {items.map((item) => (
                 <div
                   key={item.name}

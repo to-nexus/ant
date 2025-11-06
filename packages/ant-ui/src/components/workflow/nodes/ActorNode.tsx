@@ -109,11 +109,11 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
                   </div>
                 )}
               </div>
-              <div className="font-semibold text-sm">{actorInfo.displayName}</div>
+              <div className="font-semibold text-sm text-gray-900 dark:text-white">{actorInfo.displayName}</div>
             </div>
             
             {/* Details */}
-            <div className="space-y-2 text-xs">
+            <div className="space-y-2 text-xs text-gray-800 dark:text-gray-200">
               <div>
                 <div className="font-semibold opacity-70 mb-1">Provider:</div>
                 <div className="opacity-90">{actorInfo.provider}</div>
@@ -163,11 +163,11 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
                 </div>
               )}
             </div>
-            <div className="font-semibold text-sm">{actorInfo.displayName}</div>
+            <div className="font-semibold text-sm text-gray-900 dark:text-white">{actorInfo.displayName}</div>
           </div>
 
           {/* Details */}
-          <div className="space-y-2 text-xs">
+          <div className="space-y-2 text-xs text-gray-800 dark:text-gray-200">
             <div>
               <div className="font-semibold opacity-70 mb-1">Provider:</div>
               <div className="opacity-90">{actorInfo.provider}</div>
@@ -232,7 +232,7 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
             </div>
           )}
         </div>
-        <div className="text-xs font-medium text-center px-2 leading-tight">
+        <div className="text-xs font-medium text-center px-2 leading-tight text-gray-900 dark:text-white">
           {data.label}
         </div>
       </div>
@@ -266,7 +266,7 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
           </div>
         )}
       </div>
-      <div className="text-xs font-medium text-center px-2 leading-tight">
+      <div className="text-xs font-medium text-center px-2 leading-tight text-gray-900 dark:text-white">
         {data.label}
       </div>
     </div>

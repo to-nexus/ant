@@ -206,17 +206,16 @@ export function KanbanBoard() {
   if (!selectedProject || !selectedFeature) {
     return (
       <BoardContainer title="📋 Task Board">
-        <div className="text-center py-12">
-          {selectedProject && selectedFeature ? (
-            <div>
-              <div className="mb-2">📋 No tasks yet.</div>
-              <div className="text-xs">Run an agent job to start generating the task queue.</div>
-            </div>
-          ) : (
-            <div className="text-gray-500 dark:text-gray-400">
-              Select a project and feature to view tasks
-            </div>
-          )}
+        <div className="flex items-center justify-center h-full">
+          <div className="text-center max-w-md">
+            <div className="text-gray-400 dark:text-gray-600 text-6xl mb-4">📋</div>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+              No Workspace or Feature Selected
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Select a workspace and feature to view tasks.
+            </p>
+          </div>
         </div>
       </BoardContainer>
     );

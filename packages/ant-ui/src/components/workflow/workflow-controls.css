@@ -1,0 +1,64 @@
+/* Workflow Controls Customization */
+
+/* ReactFlow Attribution 제거 */
+.react-flow__attribution {
+  display: none !important;
+}
+
+/* 컨테이너 배경 제거 */
+.workflow-controls {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* 각 버튼을 독립적인 둥근 버튼으로 */
+.workflow-controls button {
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 50% !important;
+  margin: 0 0 8px 0 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+  transition: all 0.2s ease !important;
+}
+
+/* Light mode 버튼 스타일 */
+.workflow-controls button {
+  background: white !important;
+  border: 1px solid #e5e7eb !important;
+  color: #374151 !important;
+}
+
+.workflow-controls button:hover {
+  background: #f3f4f6 !important;
+  border-color: #d1d5db !important;
+  transform: scale(1.05) !important;
+}
+
+/* Dark mode 버튼 스타일 */
+.dark .workflow-controls button {
+  background: #1f2937 !important;
+  border: 1px solid #374151 !important;
+  color: #f9fafb !important;
+}
+
+.dark .workflow-controls button:hover {
+  background: #374151 !important;
+  border-color: #4b5563 !important;
+}
+
+/* 버튼 아이콘 색상 */
+.workflow-controls button svg {
+  fill: currentColor !important;
+}
+
+/* Disabled 버튼 */
+.workflow-controls button:disabled {
+  opacity: 0.4 !important;
+  cursor: not-allowed !important;
+}
+
+.workflow-controls button:disabled:hover {
+  transform: none !important;
+}
+
