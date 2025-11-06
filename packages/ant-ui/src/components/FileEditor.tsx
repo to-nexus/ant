@@ -116,7 +116,12 @@ export function FileEditor() {
           <textarea
             value={editedContent}
             onChange={(e) => handleContentChange(e.target.value)}
-            className="flex-1 w-full p-3 font-mono text-sm border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+            className="flex-1 w-full p-3 font-mono text-sm border rounded-lg resize-none 
+              bg-white dark:bg-gray-800 
+              text-gray-900 dark:text-white
+              border-gray-300 dark:border-gray-600
+              focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400
+              placeholder:text-gray-400 dark:placeholder:text-gray-500"
             placeholder="File content..."
             spellCheck={false}
           />

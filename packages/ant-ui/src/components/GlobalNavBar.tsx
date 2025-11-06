@@ -5,13 +5,23 @@ import { ConnectionStatus } from './ConnectionStatus';
 import { useStore } from '@/lib/store';
 import { fetchAgents, Agent } from '@/lib/api';
 
-export interface HeaderProps {
+export interface GlobalNavBarProps {
   onRunTask: (agent: string, task: string) => void;
   onStopTask: () => void;
   isRunning: boolean;
 }
 
-export function Header({ onRunTask, onStopTask, isRunning }: HeaderProps) {
+/**
+ * GlobalNavBar - Top-level navigation bar
+ * 
+ * Contains:
+ * - App branding
+ * - Theme toggle
+ * - Connection status
+ * - Agent/Task selection
+ * - Run/Stop buttons
+ */
+export function GlobalNavBar({ onRunTask, onStopTask, isRunning }: GlobalNavBarProps) {
   const connectionStatus = useStore((state) => state.connectionStatus);
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);
@@ -40,7 +50,7 @@ export function Header({ onRunTask, onStopTask, isRunning }: HeaderProps) {
         const agentsData = await fetchAgents();
         setAgents(agentsData);
       } catch (error) {
-        console.error('[Header] Failed to load agents:', error);
+        console.error('[GlobalNavBar] Failed to load agents:', error);
         setAgents([]);
       } finally {
         setIsLoadingAgents(false);
@@ -106,7 +116,7 @@ export function Header({ onRunTask, onStopTask, isRunning }: HeaderProps) {
       <div className="px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <h1 className="text-xl font-semibold text-gray-900 dark:text-white">ANT Workspace</h1>
+            <h1 className="text-xl font-semibold text-gray-900 dark:text-white">ANT Works</h1>
           </div>
           
           <div className="flex items-center space-x-3">
@@ -252,4 +262,3 @@ export function Header({ onRunTask, onStopTask, isRunning }: HeaderProps) {
   );
 }
 
-export default Header;

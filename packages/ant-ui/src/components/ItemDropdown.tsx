@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 import { ChevronDown, LucideIcon, Settings, Play, Square } from 'lucide-react';
-import { Card, CardHeader, CardTitle, CardContent } from '@/ui/card';
 import { Button } from '@/ui/button';
 import { CreateItemForm } from './CreateItemForm';
 import { textColors, cn } from '@/lib/design-system';
@@ -110,68 +109,14 @@ export function ItemDropdown({
 
   if (items.length === 0) {
     return (
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              {Icon && <Icon className="h-5 w-5" />}
-              {emoji && <span>{emoji}</span>}
-              {title}
-            </CardTitle>
-            {!isCreating && (
-              <Button 
-                size="sm" 
-                onClick={handleOpenCreate}
-              >
-                + New
-              </Button>
-            )}
-            {isCreating && (
-              <Button 
-                size="sm"
-                variant="outline"
-                onClick={handleCloseCreate}
-              >
-                Cancel
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          {renderCreateForm ? (
-            renderCreateForm({
-              isOpen: isCreating,
-              onSubmit: handleCreate,
-              onCancel: handleCancelCreate,
-              placeholder: inputPlaceholder,
-            })
-          ) : (
-            <CreateItemForm
-              placeholder={inputPlaceholder}
-              onSubmit={handleCreate}
-              onCancel={handleCancelCreate}
-              isOpen={isCreating}
-            />
-          )}
-          {!isCreating && (
-            <div className={cn('p-4 text-center', textColors.tertiary)}>
-              No {title.toLowerCase()} found
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <Card>
-      <CardHeader>
+      <div className="space-y-2">
+        {/* Header */}
         <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            {Icon && <Icon className="h-5 w-5" />}
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+            {Icon && <Icon className="h-4 w-4" />}
             {emoji && <span>{emoji}</span>}
             {title}
-          </CardTitle>
+          </h3>
           {!isCreating && (
             <Button 
               size="sm" 
@@ -190,8 +135,64 @@ export function ItemDropdown({
             </Button>
           )}
         </div>
-      </CardHeader>
-      <CardContent>
+
+        {/* Content */}
+        <div>
+          {renderCreateForm ? (
+            renderCreateForm({
+              isOpen: isCreating,
+              onSubmit: handleCreate,
+              onCancel: handleCancelCreate,
+              placeholder: inputPlaceholder,
+            })
+          ) : (
+            <CreateItemForm
+              placeholder={inputPlaceholder}
+              onSubmit={handleCreate}
+              onCancel={handleCancelCreate}
+              isOpen={isCreating}
+            />
+          )}
+          {!isCreating && (
+            <div className={cn('p-3 text-center text-sm', textColors.tertiary)}>
+              No {title.toLowerCase()} found
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+          {Icon && <Icon className="h-4 w-4" />}
+          {emoji && <span>{emoji}</span>}
+          {title}
+        </h3>
+        {!isCreating && (
+          <Button 
+            size="sm" 
+            onClick={handleOpenCreate}
+          >
+            + New
+          </Button>
+        )}
+        {isCreating && (
+          <Button 
+            size="sm"
+            variant="outline"
+            onClick={handleCloseCreate}
+          >
+            Cancel
+          </Button>
+        )}
+      </div>
+
+      {/* Content */}
+      <div>
         {renderCreateForm ? (
           renderCreateForm({
             isOpen: isCreating,
@@ -312,7 +313,7 @@ export function ItemDropdown({
             </div>
           )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

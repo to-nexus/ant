@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
+import { Package } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { createFile, uploadFiles, createDirectory, deleteFileOrDirectory, FileNode } from '@/lib/api';
-import { Card, CardHeader, CardTitle, CardContent } from '@/ui/card';
 import { Button } from '@/ui/button';
 import { textColors, bgColors, cn } from '@/lib/design-system';
 
@@ -232,7 +232,7 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
 
   return (
     <div>
-      <h4 className="font-medium text-sm mb-2 text-gray-700 dark:text-gray-300">{title}</h4>
+      <h4 className="font-medium text-sm mb-2 text-gray-700 dark:text-gray-300 text-center">{title}</h4>
       <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-2 bg-gray-50 dark:bg-gray-900/50">
         {nodes.map((node) => renderNode(node, 0))}
       </div>
@@ -358,13 +358,14 @@ export function ArtifactsPanel() {
   const outputsNodes = fileTree.find(node => node.name === 'outputs')?.children || [];
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">📦 Artifacts</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <div className="space-y-3">
+      <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+        <Package className="h-4 w-4" />
+        Artifacts
+      </h3>
+      <div className="space-y-3">
         <DirectoryView
-          title="📝 Inputs"
+          title="Inputs"
           nodes={inputsNodes}
           onFileSelect={selectFile}
           selectedFile={selectedFile}
@@ -374,7 +375,7 @@ export function ArtifactsPanel() {
           onDelete={handleDelete}
         />
         <DirectoryView
-          title="📄 Outputs"
+          title="Outputs"
           nodes={outputsNodes}
           onFileSelect={selectFile}
           selectedFile={selectedFile}
@@ -383,7 +384,7 @@ export function ArtifactsPanel() {
           onUploadFiles={handleUploadFiles}
           onDelete={handleDelete}
         />
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

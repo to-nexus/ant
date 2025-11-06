@@ -1,0 +1,98 @@
+import { useStore } from '@/lib/store';
+import { textColors, cn } from '@/lib/design-system';
+import { Bar } from './Bar';
+import { Columns, Rows } from 'lucide-react';
+
+/**
+ * MainPanelBar - Status bar at the top of MainPanel
+ * 
+ * Displays current context information:
+ * - Selected project
+ * - Selected feature
+ * - Current mode (generate/fix/etc)
+ * - Task ID (when running)
+ * - Layout toggle buttons (horizontal/vertical split)
+ * 
+ * Similar to status bars in IDEs (VS Code, IntelliJ)
+ */
+export function MainPanelBar() {
+  const selectedProject = useStore((state) => state.selectedProject);
+  const selectedFeature = useStore((state) => state.selectedFeature);
+  const currentTaskId = useStore((state) => state.currentTaskId);
+  const currentMode = useStore((state) => state.currentMode);
+  const splitLayout = useStore((state) => state.splitLayout);
+  const toggleSplitLayout = useStore((state) => state.toggleSplitLayout);
+
+  return (
+    <Bar
+      left={
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className={textColors.tertiary}>Project:</span>
+            <span className={cn(textColors.secondary, 'font-medium')}>
+              {selectedProject || 'None'}
+            </span>
+          </div>
+          {selectedFeature && (
+            <div className="flex items-center gap-2">
+              <span className={textColors.tertiary}>Feature:</span>
+              <span className={cn(textColors.secondary, 'font-medium')}>
+                {selectedFeature}
+              </span>
+            </div>
+          )}
+          {currentMode && (
+            <div className="flex items-center gap-2">
+              <span className={textColors.tertiary}>Mode:</span>
+              <span className={cn(textColors.secondary, 'font-medium capitalize')}>
+                {currentMode}
+              </span>
+            </div>
+          )}
+        </div>
+      }
+      right={
+        <div className="flex items-center gap-3">
+          {/* Layout Toggle Buttons */}
+          <div className="flex items-center gap-1 border-l pl-3 border-gray-300 dark:border-gray-600">
+            <button
+              onClick={() => toggleSplitLayout('horizontal')}
+              className={cn(
+                'p-1.5 rounded transition-colors',
+                splitLayout === 'horizontal'
+                  ? 'bg-blue-500 text-white'
+                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+              )}
+              title="Horizontal Split (Left/Right)"
+            >
+              <Columns className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => toggleSplitLayout('vertical')}
+              className={cn(
+                'p-1.5 rounded transition-colors',
+                splitLayout === 'vertical'
+                  ? 'bg-blue-500 text-white'
+                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+              )}
+              title="Vertical Split (Top/Bottom)"
+            >
+              <Rows className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Task ID */}
+          {currentTaskId && (
+            <div className="flex items-center gap-2 border-l pl-3 border-gray-300 dark:border-gray-600">
+              <span className={textColors.tertiary}>Task ID:</span>
+              <span className={cn(textColors.secondary, 'font-mono text-xs')}>
+                {currentTaskId}
+              </span>
+            </div>
+          )}
+        </div>
+      }
+    />
+  );
+}
+
