@@ -132,7 +132,18 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
                 </Button>
               </>
             )}
-            {onDelete && (
+            {/* 삭제 버튼: inputs, outputs의 직계 자식 디렉토리는 삭제 불가 */}
+            {onDelete && (() => {
+              // inputs 또는 outputs의 직계 자식 디렉토리인지 확인
+              const pathParts = node.path.split('/');
+              const isDirectChildDir = 
+                node.type === 'directory' && 
+                pathParts.length === 2 && 
+                (pathParts[0] === 'inputs' || pathParts[0] === 'outputs');
+              
+              // 직계 자식 디렉토리가 아닌 경우에만 삭제 버튼 표시
+              return !isDirectChildDir;
+            })() && (
               <Button
                 size="sm"
                 variant="ghost"

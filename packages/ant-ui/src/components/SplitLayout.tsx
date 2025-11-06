@@ -56,8 +56,10 @@ export function SplitLayout({
   const isHorizontal = direction === 'horizontal';
   
   // 각 보드의 최소 너비/높이
-  // Task Board 헤더 기준: 타이틀(100px) + Data Source(170px) + Recursion(120px) + Tasks(120px) + gaps + padding
-  const MIN_BOARD_SIZE = 600; // 600px (헤더 모든 요소가 보이는 크기)
+  // 좌우 분할(horizontal): Task Board 헤더 모든 요소가 보이는 크기 (600px)
+  // 상하 분할(vertical): 헤더 높이만 (50px)
+  const MIN_BOARD_WIDTH = 600; // 헤더 모든 요소가 보이는 너비
+  const MIN_BOARD_HEIGHT = 40; // 헤더 높이만 (Bar h-10 + padding + border)
 
   // Handle mouse resize
   useEffect(() => {
@@ -81,9 +83,13 @@ export function SplitLayout({
       // Apply min/max constraints
       const containerSize = isHorizontal ? rect.width : rect.height;
       
-      // 동적으로 최소 크기 계산 (작은 화면 대응)
-      // 화면이 작으면 MIN_BOARD_SIZE 대신 더 작은 값 사용
-      const effectiveMinSize = Math.min(MIN_BOARD_SIZE, containerSize * 0.3); // 최소 30%
+      // 동적으로 최소 크기 계산 (분할 방향에 따라 다름)
+      // 좌우 분할: MIN_BOARD_WIDTH 사용, 작은 화면 대응
+      // 상하 분할: MIN_BOARD_HEIGHT 사용 (헤더 높이만)
+      const minBoardSize = isHorizontal ? MIN_BOARD_WIDTH : MIN_BOARD_HEIGHT;
+      const effectiveMinSize = isHorizontal 
+        ? Math.min(minBoardSize, containerSize * 0.3) // 좌우: 최소 30%
+        : minBoardSize; // 상하: 고정 헤더 높이
       
       const minRatio = effectiveMinSize / containerSize;
       const maxRatio = 1 - minRatio;
