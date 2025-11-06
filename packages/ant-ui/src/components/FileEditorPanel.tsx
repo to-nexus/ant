@@ -99,19 +99,24 @@ export function FileEditorPanel({ onClose }: FileEditorPanelProps) {
       {/* Content */}
       <div className="flex-1 flex flex-col overflow-hidden pt-4">
         {loading ? (
-          <div className="text-sm text-muted-foreground p-4">Loading...</div>
+          <div className="text-sm text-gray-500 dark:text-gray-400 p-4">Loading...</div>
         ) : (
           <>
             <textarea
               value={editedContent}
               onChange={(e) => handleContentChange(e.target.value)}
-              className="flex-1 w-full p-3 font-mono text-sm border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary overflow-y-auto"
+              className="flex-1 w-full p-3 font-mono text-sm border rounded-lg resize-none overflow-y-auto
+                bg-white dark:bg-gray-800 
+                text-gray-900 dark:text-white
+                border-gray-300 dark:border-gray-600
+                focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400
+                placeholder:text-gray-400 dark:placeholder:text-gray-500"
               placeholder="File content..."
               spellCheck={false}
             />
             
             {/* Action buttons at the bottom */}
-            <div className="flex gap-2 justify-end mt-3 pt-3 border-t flex-shrink-0">
+            <div className="flex gap-2 justify-end mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
               <Button
                 size="sm"
                 variant="outline"

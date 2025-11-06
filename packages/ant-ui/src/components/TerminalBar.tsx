@@ -1,11 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '@/lib/store';
 import { ChevronUp, ChevronDown, X } from 'lucide-react';
+import { Bar } from './Bar';
 
 /**
- * TerminalFooter - Expandable terminal output footer
+ * TerminalBar - Expandable terminal output bar
+ * 
+ * Features:
+ * - Collapsible/expandable terminal output
+ * - Resizable height
+ * - Auto-scroll to latest logs
+ * - Log type indicators (INFO, OUT, ERR, ERROR)
+ * - Clear logs functionality
  */
-export function TerminalFooter() {
+export function TerminalBar() {
   const logs = useStore((state) => state.logs);
   const clearLogs = useStore((state) => state.clearLogs);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -113,26 +121,28 @@ export function TerminalFooter() {
       )}
       
       {/* Header Bar (Always Visible) */}
-      <div className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-4 py-2 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
-          >
-            {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
-            <span>🖥️ Terminal Output</span>
-          </button>
-          <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded-full">
-            {logs.length > 500 ? '500+' : logs.length} logs
-          </span>
-          {isExpanded && (
-            <span className="text-xs text-gray-400 dark:text-gray-500">
-              {height}px
+      <Bar
+        left={
+          <>
+            <button
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="flex items-center gap-2 font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+            >
+              {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+              <span>🖥️ Terminal Output</span>
+            </button>
+            <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded-full">
+              {logs.length > 500 ? '500+' : logs.length} logs
             </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {logs.length > 0 && (
+            {isExpanded && (
+              <span className="text-xs text-gray-400 dark:text-gray-500">
+                {height}px
+              </span>
+            )}
+          </>
+        }
+        right={
+          logs.length > 0 ? (
             <button
               onClick={clearLogs}
               className="text-xs px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 transition-colors flex items-center gap-1"
@@ -141,9 +151,9 @@ export function TerminalFooter() {
               <X className="w-3 h-3" />
               Clear
             </button>
-          )}
-        </div>
-      </div>
+          ) : undefined
+        }
+      />
 
       {/* Terminal Content (Expandable) - Light Mode */}
       {isExpanded && (
@@ -176,3 +186,4 @@ export function TerminalFooter() {
     </div>
   );
 }
+

@@ -1,13 +1,17 @@
 import { useState, useEffect } from 'react';
-import Header from './components/Header';
+import { GlobalNavBar } from './components/GlobalNavBar';
 import { ProjectDropdown } from './components/ProjectDropdown';
 import { FeatureDropdown } from './components/FeatureDropdown';
 import { ArtifactsPanel } from './components/ArtifactsPanel';
-import { KanbanBoard } from './components/KanbanBoard';
-import { TerminalFooter } from './components/TerminalFooter';
+import { KanbanBoard } from './components/kanban';
+import { AgentWorkflowBoard } from './components/workflow';
+import { MainPanel } from './components/MainPanel';
+import { MainPanelBar } from './components/MainPanelBar';
+import { TerminalBar } from './components/TerminalBar';
+import { SplitLayout } from './components/SplitLayout';
+import { Bar } from './components/Bar';
 import { FileEditorPanel } from './components/FileEditorPanel';
 import { ConfigEditor } from './components/ConfigEditor';
-import { InfoFooter } from './components/InfoFooter';
 import { checkHealth, fetchProjectConfig, updateProjectConfig, ProjectConfig, fetchFeatureSession, stopTask } from './lib/api';
 import { executeCodeTask } from './lib/cli';
 import { useStore } from './lib/store';
@@ -17,6 +21,11 @@ function App() {
   const [configData, setConfigData] = useState<ProjectConfig | null>(null);
   const [isLoadingConfig, setIsLoadingConfig] = useState(false);
   const [isExplorerCollapsed, setIsExplorerCollapsed] = useState(false);
+  const [explorerWidth, setExplorerWidth] = useState(320); // 80 * 4 = 320px (w-80)
+  const [isResizingExplorer, setIsResizingExplorer] = useState(false);
+
+  const MIN_EXPLORER_WIDTH = 200; // 최소 너비
+  const MAX_EXPLORER_WIDTH = 600; // 최대 너비
   
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);
@@ -36,6 +45,7 @@ function App() {
   const setShowConfigEditor = useStore((state) => state.setShowConfigEditor);
   const setShowFileEditor = useStore((state) => state.setShowFileEditor);
   const setSession = useStore((state) => state.setSession);
+  const splitLayout = useStore((state) => state.splitLayout);
 
   // Load session when project/feature changes (but not during task execution)
   useEffect(() => {
@@ -249,6 +259,46 @@ function App() {
     };
   }, [setConnectionStatus, fetchProjects, setProjects]);
 
+  // Explorer resize handler
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizingExplorer) return;
+
+      const newWidth = e.clientX;
+      
+      // 최소 너비보다 작으면 접기
+      if (newWidth < MIN_EXPLORER_WIDTH) {
+        setIsExplorerCollapsed(true);
+        setIsResizingExplorer(false);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        return;
+      }
+
+      // 최대 너비 제한
+      const constrainedWidth = Math.min(newWidth, MAX_EXPLORER_WIDTH);
+      setExplorerWidth(constrainedWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingExplorer(false);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    if (isResizingExplorer) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'ew-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizingExplorer, MIN_EXPLORER_WIDTH, MAX_EXPLORER_WIDTH]);
+
   const handleRunTask = (agent: string, task: string) => {
     if (isRunning || !selectedProject) {
       return;
@@ -348,27 +398,34 @@ function App() {
 
   return (
     <div className="h-screen bg-gray-50 dark:bg-gray-900 flex flex-col transition-colors">
-      <Header onRunTask={handleRunTask} onStopTask={handleStopTask} isRunning={isRunning} />
+      <GlobalNavBar onRunTask={handleRunTask} onStopTask={handleStopTask} isRunning={isRunning} />
       
       {/* Main Layout - Always visible (with top padding for fixed header) */}
       <div className="flex-1 flex gap-0 overflow-hidden pt-16">
-        {/* Left Column: Explorer (Collapsible) */}
+        {/* Left Column: Explorer (Collapsible, Resizable) */}
         {!isExplorerCollapsed && (
-          <aside className="w-80 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden transition-colors">
-            {/* Explorer Header (Footer-style) */}
-            <div className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 px-4 py-2 shrink-0">
-              <div className="flex items-center justify-between text-sm">
-                <div className="flex items-center gap-2">
+          <aside 
+            className="bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden transition-colors shrink-0 relative"
+            style={{ width: `${explorerWidth}px` }}
+          >
+            {/* Explorer Bar */}
+            <Bar
+              left={
+                <>
                   <button
-                    onClick={() => setIsExplorerCollapsed(true)}
-                    className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors p-1"
+                    onClick={() => {
+                      setIsExplorerCollapsed(true);
+                    }}
+                    className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors flex items-center justify-center w-10 h-10 -ml-4 -my-4"
                     title="Collapse Explorer"
                   >
                     <ChevronLeft className="w-4 h-4" />
                   </button>
                   <span className="text-gray-700 dark:text-gray-200 font-medium">📁 Explorer</span>
-                </div>
-                {selectedFile && (
+                </>
+              }
+              right={
+                selectedFile ? (
                   <button
                     onClick={() => setShowFileEditor(!showFileEditor)}
                     className={`text-xs px-2 py-1 rounded transition-colors ${
@@ -380,11 +437,11 @@ function App() {
                   >
                     Editor
                   </button>
-                )}
-              </div>
-            </div>
+                ) : undefined
+              }
+            />
             
-            <div className="flex-1 p-4 space-y-4 overflow-y-auto">
+            <div className="flex-1 px-3 py-3 space-y-3 overflow-y-auto">
               {connectionStatus === 'connected' ? (
                 <>
                   <ProjectDropdown />
@@ -398,22 +455,31 @@ function App() {
                 </div>
               )}
             </div>
+
+            {/* Resize Handle */}
+            <div
+              className="absolute right-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-blue-400 dark:hover:bg-blue-500 transition-colors"
+              style={{
+                backgroundColor: isResizingExplorer ? '#3b82f6' : 'transparent'
+              }}
+              onMouseDown={() => setIsResizingExplorer(true)}
+            />
           </aside>
         )}
         
         {/* Collapsed Explorer Button */}
         {isExplorerCollapsed && (
-          <div className="w-12 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col shrink-0 transition-colors">
-            {/* Match the header height of expanded explorer */}
-            <div className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 px-2 py-2 shrink-0 flex items-center justify-center">
-              <button
-                onClick={() => setIsExplorerCollapsed(false)}
-                className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors p-1"
-                title="Expand Explorer"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
+          <div className="w-10 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col items-center shrink-0 transition-colors">
+            <button
+              onClick={() => {
+                setIsExplorerCollapsed(false);
+                setExplorerWidth(320); // 권장 사이즈로 리셋
+              }}
+              className="h-10 w-10 flex items-center justify-center border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+              title="Expand Explorer"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
         )}
 
@@ -446,37 +512,39 @@ function App() {
             </div>
           )}
 
-          {/* Main Column: Task Board + Footers */}
-          <main className="flex-1 bg-gray-50 dark:bg-gray-900 flex flex-col overflow-hidden transition-colors">
-            <div className="flex-1 overflow-y-auto p-4">
-              {connectionStatus === 'connected' ? (
-                <KanbanBoard />
-              ) : (
-                <div className="flex items-center justify-center h-full">
-                  <div className="text-center">
-                    <div className="text-6xl mb-4">🔌</div>
-                    <h2 className="text-2xl font-semibold text-gray-700 dark:text-gray-200 mb-2">
-                      {connectionStatus === 'error' ? 'Connection Failed' : 'Connecting...'}
-                    </h2>
-                    <p className="text-gray-500 dark:text-gray-400">
-                      {connectionStatus === 'error' 
-                        ? 'Unable to connect to ANT server. Please make sure the server is running.' 
-                        : 'Connecting to ANT server...'}
+          {/* MainPanel: Central viewport for boards and visualizations */}
+          <MainPanel
+            headerBar={<MainPanelBar />}
+            footer={<TerminalBar />}
+          >
+            {connectionStatus === 'connected' ? (
+              // Always split layout view (vertical or horizontal)
+              <SplitLayout
+                direction={splitLayout}
+                first={<KanbanBoard />}
+                second={<AgentWorkflowBoard />}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <div className="text-6xl mb-4">🔌</div>
+                  <h2 className="text-2xl font-semibold text-gray-700 dark:text-gray-200 mb-2">
+                    {connectionStatus === 'error' ? 'Connection Failed' : 'Connecting...'}
+                  </h2>
+                  <p className="text-gray-500 dark:text-gray-400">
+                    {connectionStatus === 'error' 
+                      ? 'Unable to connect to ANT server. Please make sure the server is running.' 
+                      : 'Connecting to ANT server...'}
+                  </p>
+                  {connectionStatus === 'error' && (
+                    <p className="text-sm text-gray-400 dark:text-gray-500 mt-4">
+                      Run <code className="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-2 py-1 rounded">pnpm dev:cli</code> to start the server
                     </p>
-                    {connectionStatus === 'error' && (
-                      <p className="text-sm text-gray-400 dark:text-gray-500 mt-4">
-                        Run <code className="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-2 py-1 rounded">pnpm dev:cli</code> to start the server
-                      </p>
-                    )}
-                  </div>
+                  )}
                 </div>
-              )}
-            </div>
-            {/* Terminal Footer - Expandable terminal output */}
-            <TerminalFooter />
-            {/* Info Footer - Task information */}
-            <InfoFooter />
-          </main>
+              </div>
+            )}
+          </MainPanel>
         </div>
     </div>
   );

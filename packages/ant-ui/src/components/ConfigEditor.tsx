@@ -155,12 +155,12 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
             {field.required && <span className="text-red-500 ml-1">*</span>}
           </label>
           {!field.required && (
-            <span className="text-xs text-gray-400">Optional</span>
+            <span className="text-xs text-gray-400 dark:text-gray-500">Optional</span>
           )}
         </div>
         
         {field.description && (
-          <p className="text-xs text-gray-500">{field.description}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">{field.description}</p>
         )}
         
         {field.type === 'text' && (
@@ -168,9 +168,16 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
             type="text"
             value={value as string || ''}
             onChange={(e) => handleChange(field.key, e.target.value)}
-            className={`w-full px-3 py-2 border rounded-md text-sm ${
-              hasError ? 'border-red-500' : 'border-gray-300'
-            } focus:outline-none focus:ring-2 focus:ring-blue-500`}
+            className={`w-full px-3 py-2 border rounded-md text-sm 
+              bg-white dark:bg-gray-800 
+              text-gray-900 dark:text-white
+              ${
+                hasError 
+                  ? 'border-red-500 dark:border-red-400' 
+                  : 'border-gray-300 dark:border-gray-600'
+              } 
+              focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400
+              placeholder:text-gray-400 dark:placeholder:text-gray-500`}
             placeholder={
               field.key === 'localPath' 
                 ? '~/dev/my-repo or ../my-repo or /absolute/path' 
@@ -183,9 +190,15 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
           <select
             value={value as string || ''}
             onChange={(e) => handleChange(field.key, e.target.value || undefined)}
-            className={`w-full px-3 py-2 border rounded-md text-sm ${
-              hasError ? 'border-red-500' : 'border-gray-300'
-            } focus:outline-none focus:ring-2 focus:ring-blue-500`}
+            className={`w-full px-3 py-2 border rounded-md text-sm 
+              bg-white dark:bg-gray-800 
+              text-gray-900 dark:text-white
+              ${
+                hasError 
+                  ? 'border-red-500 dark:border-red-400' 
+                  : 'border-gray-300 dark:border-gray-600'
+              } 
+              focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400`}
           >
             <option value="">-- Select --</option>
             {field.options?.map(option => (
@@ -202,9 +215,9 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
               type="checkbox"
               checked={value as boolean || false}
               onChange={(e) => handleChange(field.key, e.target.checked)}
-              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              className="w-4 h-4 text-blue-600 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500 dark:focus:ring-blue-400 dark:bg-gray-700"
             />
-            <span className="text-sm text-gray-600">
+            <span className="text-sm text-gray-600 dark:text-gray-300">
               {value ? 'Enabled' : 'Disabled'}
             </span>
           </label>
@@ -219,9 +232,9 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
 
   return (
     <div className="h-full overflow-hidden flex flex-col bg-white dark:bg-gray-800">
-      <div className="border-b bg-gray-50 dark:bg-gray-900 p-4">
+      <div className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold flex items-center gap-2">
+          <h3 className="text-lg font-semibold flex items-center gap-2 text-gray-900 dark:text-white">
             <span>⚙️</span>
             <span>Configuration</span>
           </h3>

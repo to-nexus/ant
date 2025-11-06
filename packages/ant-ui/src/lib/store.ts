@@ -27,6 +27,7 @@ interface StoreState {
   currentMode: 'generate' | 'refactor' | 'explain' | undefined;
   devServerStatus: DevServerStatus | undefined;
   theme: 'light' | 'dark';
+  splitLayout: 'horizontal' | 'vertical';
 }
 
 interface StoreActions {
@@ -57,6 +58,8 @@ interface StoreActions {
   refreshDevServerStatus: () => Promise<void>;
   toggleTheme: () => void;
   setTheme: (theme: 'light' | 'dark') => void;
+  setSplitLayout: (layout: 'none' | 'horizontal' | 'vertical') => void;
+  toggleSplitLayout: (layout: 'horizontal' | 'vertical') => void;
 }
 
 type Store = StoreState & StoreActions;
@@ -142,6 +145,7 @@ export const useStore = create<Store>((set, get) => ({
   currentMode: undefined,
   devServerStatus: undefined,
   theme: getInitialTheme(),
+  splitLayout: 'vertical',
 
   setProjects: (projects: string[]) => {
     set({ projects });
@@ -460,6 +464,15 @@ export const useStore = create<Store>((set, get) => ({
     set({ theme });
     saveToStorage(STORAGE_KEYS.THEME, theme);
     applyTheme(theme);
+  },
+
+  setSplitLayout: (layout: 'horizontal' | 'vertical') => {
+    set({ splitLayout: layout });
+  },
+
+  toggleSplitLayout: (layout: 'horizontal' | 'vertical') => {
+    // Always set the selected layout (no 'none' state)
+    set({ splitLayout: layout });
   },
 }));
 

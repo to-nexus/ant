@@ -1,5 +1,3 @@
-import { Card } from '@/ui';
-
 interface ProjectListProps {
   projects: string[];
   selected: string | undefined;
@@ -9,26 +7,26 @@ interface ProjectListProps {
 export default function ProjectList({ projects, selected, onSelect }: ProjectListProps) {
   if (projects.length === 0) {
     return (
-      <div className="p-4 text-center text-gray-500">
+      <div className="p-3 text-center text-sm text-gray-500 dark:text-gray-400">
         No projects found
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-2 p-4">
+    <div className="flex flex-col gap-1.5">
       {projects.map((projectId) => (
-        <Card
+        <div
           key={projectId}
-          className={`p-4 cursor-pointer transition-colors hover:bg-gray-50 ${
+          className={`px-3 py-2 cursor-pointer transition-colors rounded-md text-sm font-medium ${
             selected === projectId
-              ? 'border-primary-500 bg-primary-50 shadow-md'
-              : 'border-gray-200'
+              ? 'bg-blue-100 dark:bg-blue-900 text-blue-900 dark:text-blue-100 border-l-2 border-blue-500 dark:border-blue-400'
+              : 'text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700'
           }`}
           onClick={() => onSelect(projectId)}
         >
-          <div className="font-medium text-gray-900 dark:text-white">{projectId}</div>
-        </Card>
+          {projectId}
+        </div>
       ))}
     </div>
   );

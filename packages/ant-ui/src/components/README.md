@@ -1,251 +1,310 @@
-# 공통 컴포넌트 사용 가이드
+# ANT UI Components Architecture
 
-## CreateItemForm
+## 📐 Layout Structure
 
-새 아이템(워크스페이스, 피처 등)을 생성하기 위한 입력 폼 컴포넌트입니다.
-
-### 기본 사용법
-
-```tsx
-import { CreateItemForm } from './CreateItemForm';
-
-function MyComponent() {
-  const [isOpen, setIsOpen] = useState(false);
-
-  const handleSubmit = async (name: string) => {
-    await createItem(name);
-  };
-
-  const handleCancel = () => {
-    setIsOpen(false);
-  };
-
-  return (
-    <CreateItemForm
-      placeholder="Enter item name..."
-      onSubmit={handleSubmit}
-      onCancel={handleCancel}
-      isOpen={isOpen}
-    />
-  );
-}
+### Vertical Split (Default - 상하 분할)
+**기본 레이아웃**: 항상 2개의 보드를 상하로 표시
+```
+┌─────────────────────────────────────────────────────────┐
+│                   GlobalNavBar                          │
+├──────────┬─────────────────────────┬────────────────────┤
+│          │  ┌──────────────────┐   │                    │
+│ Explorer │  │  MainPanelBar    │   │ Config/File Editor │
+│          │  ├──────────────────┤   │   (optional)       │
+│          │  │  KanbanBoard     │   │                    │
+│          │  │  (scroll)        │   │                    │
+│          │  ├─── resizer ──────┤   │                    │
+│          │  │ WorkflowBoard    │   │                    │
+│          │  │  (scroll)        │   │                    │
+│          │  ├──────────────────┤   │                    │
+│          │  │  TerminalBar     │   │                    │
+│          │  └──────────────────┘   │                    │
+└──────────┴─────────────────────────┴────────────────────┘
 ```
 
-### Props
-
-- `placeholder`: string - 입력 필드의 플레이스홀더 텍스트
-- `onSubmit`: (name: string) => Promise<void> - 생성 버튼 클릭 시 호출되는 함수
-- `onCancel`: () => void - 취소 버튼 클릭 시 호출되는 함수
-- `isOpen`: boolean - 폼의 표시 여부
-
-### 특징
-
-- **자동 외부 클릭 감지**: 폼 외부를 클릭하면 자동으로 닫힙니다
-- **키보드 단축키**: 
-  - Enter: 제출
-  - Escape: 취소
-- **자동 포커스**: 폼이 열리면 입력 필드에 자동 포커스
-- **상태 초기화**: 폼이 닫힐 때 입력값 자동 초기화
-- **로딩 상태**: 제출 중에는 버튼 비활성화
-
-## ItemDropdown
-
-아이템 목록을 드롭다운으로 표시하고 선택/생성/삭제할 수 있는 공통 컴포넌트입니다.
-
-### 기본 사용법
-
-```tsx
-import { Folder } from 'lucide-react';
-import { ItemDropdown } from './ItemDropdown';
-
-function ProjectDropdown() {
-  const projects = ['project1', 'project2'];
-  const [selected, setSelected] = useState<string>();
-
-  const handleCreate = async (name: string) => {
-    await createProject(name);
-  };
-
-  const handleDelete = async (name: string) => {
-    await deleteProject(name);
-  };
-
-  const items = projects.map(p => ({ name: p }));
-
-  return (
-    <ItemDropdown
-      title="Workspace"
-      icon={Folder}
-      items={items}
-      selectedItem={selected}
-      onSelect={setSelected}
-      onCreate={handleCreate}
-      onDelete={handleDelete}
-      onItemCreated={() => fetchProjects()}
-      placeholder="Select a workspace..."
-      inputPlaceholder="Workspace name..."
-    />
-  );
-}
+### Horizontal Split (좌우 분할)
+**토글 옵션**: 2개의 보드를 좌우로 표시
+```
+┌─────────────────────────────────────────────────────────┐
+│                   GlobalNavBar                          │
+├──────────┬─────────────────────────┬────────────────────┤
+│          │  ┌──────────────────┐   │                    │
+│ Explorer │  │  MainPanelBar    │   │ Config/File Editor │
+│          │  ├─────────┬────────┤   │   (optional)       │
+│          │  │ Kanban  │Workflw │   │                    │
+│          │  │ Board   │Board   │   │                    │
+│          │  │(scroll) │(scroll)│   │                    │
+│          │  ├─────────┴────────┤   │                    │
+│          │  │  TerminalBar     │   │                    │
+│          │  └──────────────────┘   │                    │
+└──────────┴─────────────────────────┴────────────────────┘
 ```
 
-### 커스텀 입력 폼 사용
+## 🎯 Core Components
 
-`renderCreateForm` prop을 사용하여 커스텀 입력 폼을 제공할 수 있습니다:
+### Bar (Base Component)
+**Base component for all bar-style headers**
 
-```tsx
-import { ItemDropdown } from './ItemDropdown';
-import { CreateItemForm } from './CreateItemForm';
-
-function CustomDropdown() {
-  return (
-    <ItemDropdown
-      title="Custom Items"
-      items={items}
-      selectedItem={selected}
-      onSelect={setSelected}
-      onCreate={handleCreate}
-      renderCreateForm={({ isOpen, onSubmit, onCancel, placeholder }) => (
-        <div>
-          {/* 커스텀 폼 UI */}
-          <CreateItemForm
-            placeholder={placeholder}
-            onSubmit={onSubmit}
-            onCancel={onCancel}
-            isOpen={isOpen}
-          />
-          {/* 추가적인 커스텀 요소 */}
-          {isOpen && <div className="text-xs text-gray-500 mt-2">추가 안내 메시지</div>}
-        </div>
-      )}
-    />
-  );
-}
-```
-
-### Props
-
-- `title`: string - 드롭다운 제목
-- `icon?`: LucideIcon - 제목 옆에 표시할 아이콘
-- `emoji?`: string - 제목 옆에 표시할 이모지
-- `items`: Array<{ name: string; path?: string }> - 아이템 목록
-- `selectedItem`: string | undefined - 현재 선택된 아이템
-- `onSelect`: (itemName: string) => void - 아이템 선택 시 호출
-- `onCreate`: (itemName: string) => Promise<void> - 아이템 생성 시 호출
-- `onDelete?`: (itemName: string) => Promise<void> - 아이템 삭제 시 호출 (선택사항)
-- `onItemCreated?`: () => void - 아이템 생성 후 호출 (목록 새로고침 등)
-- `placeholder?`: string - 드롭다운 플레이스홀더 (기본값: "Select an item...")
-- `inputPlaceholder?`: string - 입력 필드 플레이스홀더 (기본값: "Item name...")
-- `renderCreateForm?`: (props) => React.ReactNode - 커스텀 입력 폼 렌더러
-
-### 특징
-
-- **빈 목록 처리**: 아이템이 없을 때 자동으로 메시지 표시
-- **삭제 확인**: 삭제 버튼 클릭 시 확인 다이얼로그 표시
-- **외부 클릭 감지**: 드롭다운/폼 외부 클릭 시 자동으로 닫힘
-- **선택 강조**: 선택된 아이템 시각적 강조
-- **확장 가능**: `renderCreateForm`으로 입력 폼 커스터마이징 가능
-
-## Cancel 버튼 버그 해결
-
-이전에 발생했던 "Cancel 버튼을 눌러도 다시 열리는" 버그는 다음과 같이 해결되었습니다:
-
-1. **이벤트 전파 방지**: `e.stopPropagation()` 사용
-2. **독립적인 폼 컴포넌트**: CreateItemForm을 별도 컴포넌트로 분리
-3. **외부 클릭 감지 개선**: 타이머를 사용하여 버튼 클릭과 외부 클릭 이벤트 분리
-4. **명확한 상태 관리**: isOpen 상태를 부모에서 관리하고 자식에게 전달
-
-## 예제: ProjectDropdown
+- Provides consistent styling across all bars
+- Fixed height: `h-10`
+- Consistent padding: `px-4`
+- Consistent text size: `text-sm`
+- Consistent background/border colors
+- Left/right content areas
 
 ```tsx
-import { Folder } from 'lucide-react';
-import { useStore } from '../lib/store';
-import { createProject, deleteProject } from '../lib/api';
-import { ItemDropdown } from './ItemDropdown';
-
-export function ProjectDropdown() {
-  const { projects, selectedProject, setSelectedProject, fetchProjects } = useStore();
-
-  const handleCreateProject = async (projectName: string) => {
-    await createProject(projectName);
-  };
-
-  const handleDeleteProject = async (projectName: string) => {
-    await deleteProject(projectName);
-  };
-
-  const projectItems = projects.map((p: string) => ({ name: p }));
-
-  return (
-    <ItemDropdown
-      title="Workspace"
-      icon={Folder}
-      items={projectItems}
-      selectedItem={selectedProject}
-      onSelect={setSelectedProject}
-      onCreate={handleCreateProject}
-      onDelete={handleDeleteProject}
-      onItemCreated={fetchProjects}
-      placeholder="Select a workspace..."
-      inputPlaceholder="Workspace name..."
-    />
-  );
-}
+<Bar
+  left={<span>Title</span>}
+  right={<button>Action</button>}
+/>
 ```
 
-## 예제: FeatureDropdown
+**Used by:**
+- `ExplorerBar` (top of Explorer)
+- `MainPanelBar` (top of MainPanel)
+- `TerminalBar` (header section)
+
+---
+
+### GlobalNavBar
+**Top-level navigation bar**
+
+- Location: Fixed at top of screen
+- **Note**: GNB는 일반 Bar가 아닌 독립적인 네비게이션 바입니다
+- Responsibilities:
+  - App branding (ANT Works)
+  - Theme toggle (light/dark mode)
+  - Connection status
+  - Agent/Task selection
+  - Run/Stop buttons
+- Always visible across all views
 
 ```tsx
-import { GitBranch } from 'lucide-react';
-import { useStore } from '../lib/store';
-import { createFeature, deleteFeature } from '../lib/api';
-import { ItemDropdown } from './ItemDropdown';
-
-export function FeatureDropdown() {
-  const { 
-    features, 
-    selectedProject, 
-    selectedFeature, 
-    setSelectedFeature, 
-    fetchFeatures,
-    refreshFileTree
-  } = useStore();
-
-  const handleCreateFeature = async (featureName: string) => {
-    if (!selectedProject) {
-      throw new Error('No project selected');
-    }
-    await createFeature(selectedProject, featureName);
-    await refreshFileTree();
-  };
-
-  const handleDeleteFeature = async (featureName: string) => {
-    if (!selectedProject) {
-      throw new Error('No project selected');
-    }
-    await deleteFeature(selectedProject, featureName);
-    await refreshFileTree();
-  };
-
-  const featureItems = features.map((f) => ({ name: f.name, path: f.path }));
-
-  if (!selectedProject) {
-    return null;
-  }
-
-  return (
-    <ItemDropdown
-      title="Features"
-      icon={GitBranch}
-      items={featureItems}
-      selectedItem={selectedFeature}
-      onSelect={setSelectedFeature}
-      onCreate={handleCreateFeature}
-      onDelete={handleDeleteFeature}
-      onItemCreated={fetchFeatures}
-      placeholder="Select a feature..."
-      inputPlaceholder="Feature name..."
-    />
-  );
-}
+<GlobalNavBar 
+  onRunTask={handleRunTask}
+  onStopTask={handleStopTask}
+  isRunning={isRunning}
+/>
 ```
+
+### MainPanel
+**Primary viewport for board-style visualizations**
+
+- Location: Center column between Explorer and side panels
+- **Always displays split layout** (no single board mode)
+- Responsibilities:
+  - Display status bar at top (MainPanelBar)
+  - Display split board content (Kanban + Workflow)
+  - Manage independent scrolling per board
+  - Contain terminal bar at bottom (TerminalBar)
+- **Default**: Vertical split (top/bottom)
+- **Options**: Toggle to horizontal split (left/right)
+
+```tsx
+<MainPanel
+  headerBar={<MainPanelBar />}
+  footer={<TerminalBar />}
+>
+  <SplitLayout
+    direction="vertical"
+    first={<KanbanBoard />}
+    second={<AgentWorkflowBoard />}
+  />
+</MainPanel>
+```
+
+### MainPanelBar
+**Status bar at top of MainPanel**
+
+- Location: Top of MainPanel (like VS Code status bar)
+- Displays:
+  - Current context (project, feature, mode, task ID)
+  - **Layout toggle buttons** (horizontal/vertical split)
+- Features:
+  - **Vertical (상하) button**: Top/bottom split (default)
+  - **Horizontal (좌우) button**: Left/right split
+  - Click to switch between layouts (always split, no single view)
+- Similar to IDE status bars
+
+```tsx
+<MainPanelBar />
+```
+
+### TerminalBar
+**Expandable terminal output bar**
+
+- Location: Bottom of MainPanel
+- Features:
+  - Collapsible/expandable output
+  - Resizable height
+  - Auto-scroll to latest logs
+  - Log type indicators (INFO, OUT, ERR, ERROR)
+  - Clear logs functionality
+
+```tsx
+<TerminalBar />
+```
+
+### SplitLayout
+**Resizable split pane layout**
+
+- Supports horizontal (left/right) or vertical (top/bottom) split
+- Draggable resizer with visual feedback
+- Minimum size constraints (default: 50px - compact header only)
+- Independent scrolling for each panel
+- Customizable initial ratio (default: 0.5)
+
+```tsx
+<SplitLayout
+  direction="vertical"
+  initialRatio={0.5}
+  minSize={50}
+  first={<KanbanBoard />}
+  second={<AgentWorkflowBoard />}
+/>
+```
+
+---
+
+### BoardContainer
+**Minimal base wrapper for board-style components**
+
+**Design Philosophy:**
+- No wrapper padding or card borders (efficient space usage)
+- Compact sticky header (matches gauge height ~36px)
+- Screen split background serves as the container
+- Maximum content area for visualization
+
+**Features:**
+- Compact header: `px-4 py-2`, `text-sm` title
+- Scrollable content with minimal padding
+- Dark mode support
+- Used by KanbanBoard, AgentWorkflowBoard
+
+```tsx
+<BoardContainer 
+  title="📋 Task Board"
+  headerActions={<KanbanHeader />}
+>
+  {children}
+</BoardContainer>
+```
+
+---
+
+### AgentWorkflowBoard
+**Agent workflow visualization board (Placeholder)**
+
+- Displays agent execution flow
+- Real-time node states and transitions
+- Interactive node inspection (future)
+- Uses BoardContainer for consistent styling
+
+```tsx
+<AgentWorkflowBoard />
+```
+
+## 📂 Component Organization
+
+```
+components/
+├── GlobalNavBar.tsx          # Top navigation bar (독립적)
+├── Bar.tsx                   # Base component for all bars ⭐
+├── MainPanel.tsx             # Central viewport (supports split)
+├── MainPanelBar.tsx          # Status bar + layout toggles
+├── TerminalBar.tsx           # Terminal output bar
+├── SplitLayout.tsx           # Resizable split pane ⭐
+├── BoardContainer.tsx        # Base board wrapper
+├── kanban/                   # Kanban Board (Task management)
+│   ├── KanbanBoard.tsx
+│   ├── KanbanHeader.tsx
+│   ├── KanbanColumns.tsx
+│   └── ...
+├── workflow/                 # Workflow Board (Agent visualization)
+│   ├── AgentWorkflowBoard.tsx
+│   └── README.md
+└── ...
+```
+
+## 🏷️ Terminology
+
+### "Bar" Components
+특정 영역의 상단 또는 하단에 위치하며 제목, 액션, 상태 정보를 표시하는 영역입니다.
+
+#### Base Component
+- **Bar**: 모든 bar의 공통 base component (높이, 패딩, 텍스트 스타일 통일)
+
+#### Application Bars
+- **GlobalNavBar**: 앱 최상위 네비게이션 바 (독립적, Bar를 사용하지 않음)
+- **ExplorerBar**: Explorer 상단 바 (Bar 사용)
+- **MainPanelBar**: MainPanel 상단의 상태 표시 바 (Bar 사용)
+- **TerminalBar**: MainPanel 하단의 터미널 출력 바 (Bar 사용)
+
+#### 설계 원칙
+- 모든 일반 Bar는 `Bar` base component를 사용하여 **일관된 높이와 스타일** 유지
+- GlobalNavBar는 앱 수준의 특수한 네비게이션이므로 독립적으로 설계
+
+이는 IDE에서 일반적으로 사용되는 용어입니다:
+- VS Code: Activity Bar, Status Bar, Side Bar
+- IntelliJ: Navigation Bar, Status Bar, Tool Window Bar
+
+## 🔮 Future Extensions
+
+### WorkflowBoard (planned)
+```tsx
+<MainPanel 
+  headerBar={<MainPanelBar />}
+  footer={<TerminalBar />}
+>
+  <BoardContainer 
+    title="🔄 Workflow"
+    headerActions={<WorkflowHeader />}
+  >
+    <WorkflowNodes />
+    <WorkflowEdges />
+  </BoardContainer>
+</MainPanel>
+```
+
+### Dashboard (planned)
+```tsx
+<MainPanel 
+  headerBar={<MainPanelBar />}
+  footer={<TerminalBar />}
+>
+  <BoardContainer title="📊 Dashboard">
+    <MetricsGrid />
+    <ChartViews />
+  </BoardContainer>
+</MainPanel>
+```
+
+## 🎨 Design Principles
+
+1. **Bar base component** = Single source of truth for all bar styling
+   - 일관된 높이 (`h-10`)
+   - 일관된 패딩 (`px-4`)
+   - 일관된 텍스트 크기 (`text-sm`)
+2. **MainPanel** = Always split layout
+   - **No single board view** (항상 2개 보드 표시)
+   - Default: Vertical (상하) split
+   - Toggle: Horizontal (좌우) split
+   - Resizable panels (drag divider)
+3. **SplitLayout** = IDE-style split pane
+   - Draggable resizer with visual feedback
+   - Independent scrolling per panel
+   - Minimum size constraints (50px - compact header only)
+   - 1:1 default ratio (adjustable)
+4. **BoardContainer** = Minimal wrapper (no padding/borders, compact header)
+5. **Board equality** = KanbanBoard와 AgentWorkflowBoard는 동일한 위계
+6. **Feature folders** = Self-contained board implementations (kanban/, workflow/)
+7. **Composition** = Mix and match components
+
+## 📖 Related Documentation
+
+- `/components/kanban/README.md` - Kanban Board details
+- `/components/workflow/README.md` - Agent Workflow Board details
+- `/components/BoardContainer.tsx` - Base container API
+- `/components/SplitLayout.tsx` - Split pane implementation
+- `/lib/design-system.ts` - Theme colors and semantic colors
+- `/lib/store.ts` - Global state management (includes splitLayout state)
