@@ -49,11 +49,19 @@ const ACTOR_INFO_MAP: Record<string, ActorInfo> = {
   },
   'file-system': {
     id: 'file-system',
-    displayName: 'File System',
+    displayName: 'Workspace Files',
     provider: 'Node.js',
     model: 'FS API',
-    details: './workspace/{project}/{feature}/',
+    details: './workspace/{project}/{feature}/outputs/',
     icon: '📁'
+  },
+  'code-repo': {
+    id: 'code-repo',
+    displayName: 'Code Repository',
+    provider: 'Git',
+    model: 'Local Repository',
+    details: '~/dev/{project}',
+    icon: '💻'
   },
   'tool': {
     id: 'tool',

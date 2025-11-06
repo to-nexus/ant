@@ -31,6 +31,7 @@ export enum ActorType {
   VECTOR_DB = 'vector-db',
   LOCAL_STORAGE = 'local-storage',
   FILE_SYSTEM = 'file-system',
+  CODE_REPO = 'code-repo',
   TOOL = 'tool'
 }
 

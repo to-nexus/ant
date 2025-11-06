@@ -32,6 +32,7 @@ const ACTOR_COLORS_LIGHT: Record<ActorType, string> = {
   [ActorType.VECTOR_DB]: 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700',
   [ActorType.LOCAL_STORAGE]: 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700',
   [ActorType.FILE_SYSTEM]: 'bg-orange-50 dark:bg-orange-900/20 border-orange-300 dark:border-orange-700',
+  [ActorType.CODE_REPO]: 'bg-cyan-50 dark:bg-cyan-900/20 border-cyan-300 dark:border-cyan-700',
   [ActorType.TOOL]: 'bg-gray-50 dark:bg-gray-900/20 border-gray-300 dark:border-gray-700',
   [ActorType.EMBEDDING]: 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-300 dark:border-indigo-700',
 };
@@ -42,16 +43,47 @@ const ACTOR_COLORS_DARK: Record<ActorType, string> = {
   [ActorType.VECTOR_DB]: 'dark:bg-blue-900/20 dark:border-blue-700',
   [ActorType.LOCAL_STORAGE]: 'dark:bg-green-900/20 dark:border-green-700',
   [ActorType.FILE_SYSTEM]: 'dark:bg-orange-900/20 dark:border-orange-700',
+  [ActorType.CODE_REPO]: 'dark:bg-cyan-900/20 dark:border-cyan-700',
   [ActorType.TOOL]: 'dark:bg-gray-900/20 dark:border-gray-700',
   [ActorType.EMBEDDING]: 'dark:bg-indigo-900/20 dark:border-indigo-700',
 };
 
 export const ActorNode = memo(({ data }: ActorNodeProps) => {
-  const { theme, splitLayout } = useStore();
+  const { theme, splitLayout, selectedProject, selectedFeature } = useStore();
   const [isExpanded, setIsExpanded] = React.useState(data.isExpanded || false);
   
   // Actor 정보 조회
-  const actorInfo = data.actorId ? getActorInfo(data.actorId) : null;
+  const baseActorInfo = data.actorId ? getActorInfo(data.actorId) : null;
+  
+  // 실제 경로로 details 동적 생성
+  const actorInfo = React.useMemo(() => {
+    if (!baseActorInfo) return null;
+    
+    // local-storage와 file-system의 경우 실제 경로로 치환
+    if (data.actorId === 'local-storage' && selectedProject && selectedFeature) {
+      return {
+        ...baseActorInfo,
+        details: `./workspace/${selectedProject}/${selectedFeature}/outputs/session.json`
+      };
+    }
+    
+    if (data.actorId === 'file-system' && selectedProject && selectedFeature) {
+      return {
+        ...baseActorInfo,
+        details: `./workspace/${selectedProject}/${selectedFeature}/outputs/`
+      };
+    }
+    
+    if (data.actorId === 'code-repo' && selectedProject && selectedFeature) {
+      // TODO: config에서 localPath 가져오기 (지금은 placeholder)
+      return {
+        ...baseActorInfo,
+        details: `~/dev/${selectedProject}` // config.localPath
+      };
+    }
+    
+    return baseActorInfo;
+  }, [baseActorInfo, data.actorId, selectedProject, selectedFeature]);
   
   const colorClass = `${ACTOR_COLORS_LIGHT[data.actorType]} ${ACTOR_COLORS_DARK[data.actorType]}`;
   
