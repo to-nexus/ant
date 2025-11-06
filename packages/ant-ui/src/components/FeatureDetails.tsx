@@ -222,8 +222,8 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
 
   return (
     <div>
-      <h4 className="font-medium text-sm mb-2 text-gray-700">{title}</h4>
-      <div className="border rounded-lg p-2 bg-gray-50/50 max-h-48 overflow-y-auto">
+      <h4 className="font-medium text-sm mb-2 text-gray-700 dark:text-gray-300">{title}</h4>
+      <div className="border rounded-lg p-2 bg-gray-50 dark:bg-gray-900/50 max-h-48 overflow-y-auto">
         {nodes.map((node) => renderNode(node, 0))}
       </div>
     </div>

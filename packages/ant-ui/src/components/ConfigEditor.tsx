@@ -150,7 +150,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
     return (
       <div key={field.key} className="space-y-2">
         <div className="flex items-center justify-between">
-          <label className="text-sm font-medium text-gray-700">
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
             {field.label}
             {field.required && <span className="text-red-500 ml-1">*</span>}
           </label>
@@ -218,8 +218,8 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   };
 
   return (
-    <div className="h-full overflow-hidden flex flex-col bg-white">
-      <div className="border-b bg-gray-50 p-4">
+    <div className="h-full overflow-hidden flex flex-col bg-white dark:bg-gray-800">
+      <div className="border-b bg-gray-50 dark:bg-gray-900 p-4">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold flex items-center gap-2">
             <span>⚙️</span>

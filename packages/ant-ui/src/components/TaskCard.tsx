@@ -4,6 +4,7 @@ import { TaskTimer } from './TaskTimer';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { UnifiedTask } from '@/types/task';
 import { useStore } from '@/lib/store';
+import { statusColors, badgeColors, cn } from '@/lib/design-system';
 
 interface TaskCardProps {
   task: UnifiedTask;
@@ -29,32 +30,14 @@ export function TaskCard({
   const expanded = onToggleExpand !== undefined ? isExpanded : localExpanded;
   const toggleExpand = onToggleExpand || (() => setLocalExpanded(!localExpanded));
   
-  // Color scheme based on status
-  const colorSchemes = {
-    'todo': {
-      border: 'border-blue-200',
-      bg: 'bg-blue-50/50',
-      badgeBg: 'bg-blue-100',
-      textPrimary: 'text-blue-900',
-      textSecondary: 'text-blue-700',
-    },
-    'in-progress': {
-      border: 'border-orange-400',
-      bg: 'bg-orange-50',
-      badgeBg: 'bg-orange-200 border-orange-400',
-      textPrimary: 'text-orange-900',
-      textSecondary: 'text-orange-700',
-    },
-    'completed': {
-      border: 'border-green-200',
-      bg: 'bg-green-50/50',
-      badgeBg: 'bg-green-100',
-      textPrimary: 'text-green-900',
-      textSecondary: 'text-green-700',
-    }
-  };
+  // Map status to design system colors
+  const statusMap = {
+    'todo': 'todo',
+    'in-progress': 'progress',
+    'completed': 'completed'
+  } as const;
   
-  const colors = colorSchemes[status];
+  const colors = statusColors[statusMap[status]];
   const hasDescription = task.description && task.description.trim() !== '';
   // Show expand button for all statuses if there's description (not just in-progress)
   const showExpandButton = hasDescription;
@@ -73,40 +56,39 @@ export function TaskCard({
   // ✅ Determine display type: Priority 1000 = Final Verification
   const displayType = task.priority === 1000 ? 'final' : task.type;
   
-  // Type color mapping
-  const typeColors: Record<string, string> = {
-    'feature': 'bg-blue-500 text-white',
-    'setup': 'bg-purple-500 text-white',
-    'error': 'bg-red-500 text-white',
-    'final': 'bg-green-600 text-white',
-    'implementation': 'bg-indigo-500 text-white',
-    'testing': 'bg-yellow-500 text-white',
-    'documentation': 'bg-gray-500 text-white',
-    'review': 'bg-pink-500 text-white',
-    'deployment': 'bg-teal-500 text-white',
-    'bugfix': 'bg-orange-500 text-white',
-    'refactor': 'bg-cyan-500 text-white',
+  // Type badge styling
+  const typeBadgeMap: Record<string, {color: string, label: string}> = {
+    'feature': { color: badgeColors.feature, label: 'FEATURE' },
+    'setup': { color: badgeColors.setup, label: '⚙️ SETUP' },
+    'error': { color: badgeColors.error, label: '🔧 ERROR' },
+    'final': { color: badgeColors.final, label: '🎯 FINAL' },
+    'implementation': { color: 'bg-indigo-500 dark:bg-indigo-600 text-white', label: 'IMPL' },
+    'testing': { color: 'bg-yellow-500 dark:bg-yellow-600 text-white', label: 'TEST' },
+    'documentation': { color: 'bg-gray-500 dark:bg-gray-600 text-white', label: 'DOCS' },
+    'review': { color: 'bg-pink-500 dark:bg-pink-600 text-white', label: 'REVIEW' },
+    'deployment': { color: 'bg-teal-500 dark:bg-teal-600 text-white', label: 'DEPLOY' },
+    'bugfix': { color: 'bg-orange-500 dark:bg-orange-600 text-white', label: 'FIX' },
+    'refactor': { color: 'bg-cyan-500 dark:bg-cyan-600 text-white', label: 'REFACTOR' },
   };
   
-  // Type display mapping
-  const typeLabels: Record<string, string> = {
-    'final': '🎯 FINAL',
-    'setup': '⚙️ SETUP',
-    'error': '🔧 ERROR',
-    'feature': 'FEATURE',
+  const typeBadge = typeBadgeMap[displayType.toLowerCase()] || { 
+    color: 'bg-gray-400 dark:bg-gray-600 text-white', 
+    label: displayType.toUpperCase() 
   };
-  
-  const typeColor = typeColors[displayType.toLowerCase()] || 'bg-gray-400 text-white';
-  const typeLabel = typeLabels[displayType.toLowerCase()] || displayType.toUpperCase();
   
   return (
     <div 
-      className={`p-3 rounded-lg border ${status === 'in-progress' ? 'border-2' : ''} ${colors.border} ${colors.bg}`}
+      className={cn(
+        'p-3 rounded-lg border transition-colors',
+        status === 'in-progress' ? 'border-2' : '',
+        colors.border,
+        colors.bg
+      )}
     >
       <div className="flex items-start gap-2">
         {showExpandButton && (
           <button
-            className="mt-0.5 text-gray-500 hover:text-gray-700 transition-colors"
+            className="mt-0.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
             onClick={(e) => {
               e.stopPropagation();
               toggleExpand();
@@ -128,7 +110,12 @@ export function TaskCard({
           >
             {/* Priority Badge - Only for to-do */}
             {status === 'todo' && task.priority !== undefined && (
-              <Badge variant="outline" className={`${colors.badgeBg} flex-shrink-0`}>
+              <Badge variant="outline" className={cn(
+                'flex-shrink-0',
+                'bg-blue-100 dark:bg-blue-900',
+                'text-blue-900 dark:text-blue-100',
+                'border-blue-300 dark:border-blue-700'
+              )}>
                 {typeof task.priority === 'number' 
                   ? `P${task.priority}` 
                   : task.priority.toUpperCase()}
@@ -137,26 +124,35 @@ export function TaskCard({
             
             {/* Interrupted Badge - Only for to-do tasks that were interrupted */}
             {status === 'todo' && task.interrupted && (
-              <Badge variant="outline" className="bg-orange-100 border-orange-400 text-orange-800 flex-shrink-0 flex items-center gap-1">
+              <Badge variant="outline" className={cn(
+                'flex-shrink-0 flex items-center gap-1',
+                'bg-orange-100 dark:bg-orange-950',
+                'border-orange-400 dark:border-orange-700',
+                'text-orange-800 dark:text-orange-200'
+              )}>
                 <span>⏸️</span>
                 <span className="font-semibold">Interrupted</span>
               </Badge>
             )}
             
             {/* Task Name (no ID shown) */}
-            <span className={`text-sm font-medium ${colors.textPrimary} flex-1 min-w-0`}>
+            <span className={cn('text-sm font-medium flex-1 min-w-0', colors.text.primary)}>
               {task.name}
             </span>
             
             {/* Type Badge */}
-            <Badge className={`${typeColor} text-xs flex-shrink-0`}>
-              {typeLabel}
+            <Badge className={cn(typeBadge.color, 'text-xs flex-shrink-0')}>
+              {typeBadge.label}
             </Badge>
           </div>
           
           {/* Timing Info - Show for in-progress and completed */}
           <div 
-            className={`text-xs ${colors.textSecondary} ${showExpandButton ? 'ml-0 cursor-pointer' : 'ml-12'}`}
+            className={cn(
+              'text-xs',
+              colors.text.secondary,
+              showExpandButton ? 'ml-0 cursor-pointer' : 'ml-12'
+            )}
             onClick={showExpandButton ? toggleExpand : undefined}
           >
             {status === 'in-progress' && (
@@ -174,7 +170,13 @@ export function TaskCard({
           {/* Expanded content - NOT clickable (allows text selection) */}
           {expanded && hasDescription && (
             <div 
-              className={`mt-2 p-2 rounded border ${colors.border} bg-white/50 text-xs ${colors.textSecondary} ${showExpandButton ? 'ml-0' : 'ml-12'} select-text`}
+              className={cn(
+                'mt-2 p-2 rounded border text-xs select-text',
+                colors.border,
+                'bg-white/50 dark:bg-gray-900/50',
+                colors.text.secondary,
+                showExpandButton ? 'ml-0' : 'ml-12'
+              )}
               onClick={(e) => e.stopPropagation()}
             >
               {task.description}

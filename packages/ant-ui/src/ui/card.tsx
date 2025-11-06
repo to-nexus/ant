@@ -5,7 +5,7 @@ const Card = React.forwardRef<
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => {
   const combinedClassName = [
-    'rounded-lg border bg-card text-card-foreground shadow-sm',
+    'rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm',
     className,
   ]
     .filter(Boolean)
@@ -47,7 +47,7 @@ const CardTitle = React.forwardRef<
   React.HTMLAttributes<HTMLHeadingElement>
 >(({ className, ...props }, ref) => {
   const combinedClassName = [
-    'text-2xl font-semibold leading-none tracking-tight',
+    'text-2xl font-semibold leading-none tracking-tight text-gray-900 dark:text-white',
     className,
   ]
     .filter(Boolean)

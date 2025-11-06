@@ -67,15 +67,15 @@ export function FileEditorPanel({ onClose }: FileEditorPanelProps) {
   };
 
   return (
-    <div className="w-96 bg-white border-r border-gray-200 p-4 flex flex-col h-full">
+    <div className="w-96 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 p-4 flex flex-col h-full">
       {/* Header */}
-      <div className="pb-3 flex-shrink-0 border-b border-gray-200">
+      <div className="pb-3 flex-shrink-0 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center gap-2">
           {/* Close button on the left */}
           {onClose && (
             <button
               onClick={onClose}
-              className="text-gray-500 hover:text-gray-700 hover:bg-gray-100 p-1.5 rounded transition-colors flex-shrink-0"
+              className="text-gray-500 hover:text-gray-700 dark:text-gray-300 hover:bg-gray-100 p-1.5 rounded transition-colors flex-shrink-0"
               title="Hide Editor"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -86,7 +86,7 @@ export function FileEditorPanel({ onClose }: FileEditorPanelProps) {
           
           {/* File path - takes full width */}
           <div className="flex-1 min-w-0">
-            <div className="text-sm text-gray-700 truncate" title={selectedFile}>
+            <div className="text-sm text-gray-700 dark:text-gray-300 truncate" title={selectedFile}>
               {selectedFile}
             </div>
             {hasChanges && (
