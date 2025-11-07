@@ -7,23 +7,11 @@ import { PromptEngine } from "../../../../../core/prompt/engine";
  * Generate design plan based on artifacts
  */
 export async function plan(state: DesignGraphState) {
-  // ✅ Workflow instrumentation: Enter node
-  // ✅ CRITICAL: await to ensure workflow SSE is sent before kanban update
-  if (state.deps?.workflowUpdate && state._httpTaskId) {
-    const taskInfo = state.currentTask ? {
-      id: state.currentTask.id,
-      name: state.currentTask.name,
-      type: state.currentTask.type,
-      description: state.currentTask.description,
-      priority: state.currentTask.priority
-    } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'plan', taskInfo);
-  }
-  
   const llm = state.deps?.llm as LLMClient;
   const engine = state.deps?.promptEngine as PromptEngine;
 
-  // ✅ Get next task from queue (if using task-based design)
+  // ✅ CRITICAL: Get next task BEFORE enterNode
+  // This ensures enterNode is called with correct taskInfo
   let currentTask = state.currentTask;
   
   if (state.taskQueue && !currentTask) {
@@ -38,13 +26,23 @@ export async function plan(state: DesignGraphState) {
       const { TaskTimingHelper } = await import('../../code/state');
       console.log(`⏱️  Starting timer for task: ${currentTask.name}`);
       currentTask = TaskTimingHelper.startTask(currentTask);
-      
-      // ✅ DON'T update Kanban here!
-      // checkTaskCompletion will update to next task after animation completes
     } else {
       console.log('⚠️  No task to execute');
       return state;
     }
+  }
+  
+  // ✅ Workflow instrumentation: Enter node AFTER currentTask is set
+  // ✅ CRITICAL: await to ensure workflow SSE is sent before continuing
+  if (state.deps?.workflowUpdate && state._httpTaskId) {
+    const taskInfo = currentTask ? {
+      id: currentTask.id,
+      name: currentTask.name,
+      type: currentTask.type,
+      description: currentTask.description,
+      priority: currentTask.priority
+    } : undefined;
+    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'plan', taskInfo);
   }
 
   // Prepare artifacts (using new unified names)

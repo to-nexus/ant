@@ -17,6 +17,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useStore } from '@/lib/store';
 import { KanbanData } from '@/lib/api';
+import { waitForTaskQueueDrain, waitForAllQueueDrain } from '@/components/workflow/hooks/useWorkflowState';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4100/api';
 
@@ -36,6 +37,7 @@ export function useKanbanSSE() {
   });
   
   const isRunningRef = useRef(isRunning);
+  const currentInProgressIdRef = useRef<string | undefined>(undefined); // ✅ Track current task
   
   useEffect(() => {
     isRunningRef.current = isRunning;
@@ -53,18 +55,22 @@ export function useKanbanSSE() {
       `${API_BASE}/projects/${selectedProject}/features/${selectedFeature}/kanban/stream`
     );
     
-    eventSource.onmessage = (event) => {
+    eventSource.onmessage = async (event) => {  // ✅ Make async!
       try {
         const data: KanbanData = JSON.parse(event.data);
         const previousRunning = isRunningRef.current;
         const activeJobId = data.activeJobId;
         const dataSource = data.dataSource;
+        const newInProgressId = data.inProgress?.id;
+        const currentInProgressId = currentInProgressIdRef.current;
         
         console.log('[useKanbanSSE] Received:', {
           dataSource,
           activeJobId,
           isRunning: previousRunning,
-          isStopping
+          isStopping,
+          currentInProgress: currentInProgressId,
+          newInProgress: newInProgressId
         });
         
         // ✅ Job state synchronization
@@ -86,7 +92,52 @@ export function useKanbanSSE() {
           setRunning(false);
         }
         
-        // ✅ Update Kanban data
+        // ✅ CRITICAL: Wait for workflow animations BEFORE updating Kanban
+        const isTaskChange = newInProgressId !== currentInProgressId;
+        const hasCurrentTask = currentInProgressId !== undefined;
+        
+        if (isTaskChange && hasCurrentTask) {
+          console.log(`[useKanbanSSE] ⏸️  Task change: ${currentInProgressId} → ${newInProgressId}`);
+          console.log(`[useKanbanSSE] ⏳ Waiting for workflow animations to complete...`);
+          
+          await waitForTaskQueueDrain(currentInProgressId);
+          
+          console.log(`[useKanbanSSE] ✅ Workflow animations complete for ${currentInProgressId}`);
+          
+          // ⏱️ CRITICAL: Wait for React render cycle to complete
+          // This ensures workflow UI updates are visible before Kanban updates
+          await new Promise<void>(resolve => {
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                setTimeout(resolve, 0); // Yield to event loop
+              });
+            });
+          });
+          console.log(`[useKanbanSSE] 🎨 Render cycle complete`);
+        }
+        
+        // Handle final completion (inProgress → null)
+        if (currentInProgressId && !newInProgressId) {
+          console.log(`[useKanbanSSE] ⏸️  All tasks completing`);
+          console.log(`[useKanbanSSE] ⏳ Waiting for all workflow nodes (including learn)...`);
+          
+          await waitForAllQueueDrain();
+          
+          console.log(`[useKanbanSSE] ✅ All workflow complete`);
+          
+          // ⏱️ Wait for final render
+          await new Promise<void>(resolve => {
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                setTimeout(resolve, 0);
+              });
+            });
+          });
+          console.log(`[useKanbanSSE] 🎨 Final render cycle complete`);
+        }
+        
+        // ✅ Update Kanban data AFTER workflow animations AND render cycles
+        currentInProgressIdRef.current = newInProgressId;
         setKanbanData(data);
         
       } catch (error) {
