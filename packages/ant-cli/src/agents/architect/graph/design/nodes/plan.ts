@@ -26,6 +26,11 @@ export async function plan(state: DesignGraphState) {
       console.log(`   Priority: ${nextTask.priority}`);
       console.log(`   Description: ${nextTask.description}\n`);
       
+      // ✨ Start timing for the task
+      const { TaskTimingHelper } = await import('../../code/state');
+      console.log(`⏱️  Starting timer for task: ${currentTask.name}`);
+      currentTask = TaskTimingHelper.startTask(currentTask);
+      
       // ✅ Update live Kanban snapshot
       if (state.deps?.kanbanUpdate && state._httpTaskId) {
         const queueTasks = state.taskQueue.getAll();

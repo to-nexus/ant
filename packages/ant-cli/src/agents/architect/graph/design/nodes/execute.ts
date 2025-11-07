@@ -23,6 +23,11 @@ export async function execute(state: DesignGraphState) {
     previousDesign: state.design,     // Previous design
     currentCode: state.code,          // Codebase (for evolution/refactor)
     originalFiles: undefined,         // Design doesn't use git HEAD
+    currentTask: state.currentTask ? {  // ✅ Pass current task info
+      name: state.currentTask.name,
+      type: state.currentTask.type,
+      description: state.currentTask.description
+    } : undefined
   };
 
   // Build prompt using PromptEngine
@@ -56,15 +61,19 @@ export async function execute(state: DesignGraphState) {
   let completedTasksDetails = state.completedTasksDetails || [];
   
   if (state.currentTask) {
-    const completedTask = {
-      ...state.currentTask,
-      completed: true
-    };
+    // ✨ Complete task with timing
+    const { TaskTimingHelper } = await import('../../code/state');
+    const completedTask = TaskTimingHelper.completeTask(state.currentTask);
+    
+    if (completedTask.timing?.elapsedTime) {
+      const formattedTime = TaskTimingHelper.formatElapsedTime(completedTask.timing.elapsedTime);
+      console.log(`✅ Task "${completedTask.name}" completed in ${formattedTime}!`);
+    } else {
+      console.log(`✅ Task "${completedTask.name}" completed!`);
+    }
     
     completedTasks.push(completedTask.id);
     completedTasksDetails.push(completedTask);
-    
-    console.log(`✅ Task "${completedTask.name}" completed!`);
     
     // ✅ Update live Kanban snapshot
     if (state.deps?.kanbanUpdate && state._httpTaskId && state.taskQueue) {
