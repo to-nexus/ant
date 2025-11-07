@@ -23,7 +23,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'decompose', taskInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'decompose', taskInfo);
   }
   
   const llm = state.deps?.llm as LLMClient;
@@ -255,9 +255,21 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
       console.log(`      Priority: ${task.priority}\n`);
     });
     
+    // ✅ CRITICAL: Pop first task and set as currentTask immediately
+    const firstTask = taskQueue.pop();
+    if (!firstTask) {
+      throw new Error('No tasks in queue after decompose');
+    }
+    
+    // ✨ Start timing for the first task
+    const { TaskTimingHelper } = await import('../../code/state');
+    console.log(`⏱️  Starting timer for first task: ${firstTask.name}`);
+    const currentTask = TaskTimingHelper.startTask(firstTask);
+    
     const newState = {
       ...state,
       taskQueue,
+      currentTask, // ✅ Set first task as current
       completedTasks: [],
       _httpTaskId: state._httpTaskId
     };
@@ -283,19 +295,21 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
       }
     }
     
-    // ✅ Update live snapshot via kanbanUpdate port
+    // ✅ Update live snapshot with FIRST TASK as current
+    // Kanban SSE will be queued on frontend and processed after workflow SSE
     console.log(`\n🔍 [Design Decompose] Kanban update check:`);
     console.log(`   _httpTaskId: ${state._httpTaskId || 'undefined'}`);
     console.log(`   kanbanUpdate exists: ${!!state.deps?.kanbanUpdate}`);
+    console.log(`   First task: ${currentTask.name}`);
     
     if (state._httpTaskId && state.deps?.kanbanUpdate) {
       state.deps.kanbanUpdate.updateTaskQueue(
         state._httpTaskId,
-        null,
+        currentTask, // ✅ Set first task as In Progress
         taskQueue.getAll(),
         []
       );
-      console.log(`   ✅ Live snapshot updated (${taskQueue.size()} tasks)\n`);
+      console.log(`   ✅ Kanban SSE sent - First task "${currentTask.name}" → In Progress\n`);
     } else {
       console.log(`   ❌ Skipping Kanban update (missing httpTaskId or kanbanUpdate port)\n`);
     }

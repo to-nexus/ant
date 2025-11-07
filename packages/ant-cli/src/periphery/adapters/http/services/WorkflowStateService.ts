@@ -26,16 +26,26 @@ export interface TaskInfo {
   priority?: number;
 }
 
+export interface LLMInfo {
+  provider: string;   // 'anthropic' | 'openai'
+  model: string;      // 실제 모델명 (e.g., 'claude-haiku-4-5', 'gpt-4o')
+}
+
 export interface WorkflowRealtimeState {
   jobId: string;
   currentNode: string | null;
   previousNode: string | null;
   currentTask: TaskInfo | null;  // ✅ 현재 실행 중인 태스크
+  llmInfo: LLMInfo | null;       // ✅ 실제 사용 중인 LLM 정보
   startedAt: string;
   endedAt?: string;  // Job 종료 시간
   isCompleted: boolean;  // Job 완료 여부
   nodeHistory: NodeHistoryEntry[];
   activeActors: Set<string>;  // 현재 통신 중인 Actor IDs
+  
+  // ✅ Kanban info (piggybacked on workflow SSE for atomic updates)
+  kanbanCurrentTask?: TaskInfo | null;  // In-progress task for Kanban
+  kanbanUpdate?: boolean;  // Flag to indicate Kanban should update
 }
 
 export class WorkflowStateService {
@@ -48,14 +58,18 @@ export class WorkflowStateService {
   /**
    * Job 시작 (초기 상태 생성)
    */
-  startJob(jobId: string): void {
+  startJob(jobId: string, llmInfo?: LLMInfo): void {
     console.log(`\n🚀 [WorkflowStateService] startJob called for ${jobId}`);
+    if (llmInfo) {
+      console.log(`   🤖 LLM: ${llmInfo.provider} / ${llmInfo.model}`);
+    }
     
     this.states.set(jobId, {
       jobId,
       currentNode: null,
       previousNode: null,
       currentTask: null,  // ✅ Initialize task info
+      llmInfo: llmInfo || null,  // ✅ Store actual LLM info
       startedAt: new Date().toISOString(),
       isCompleted: false,
       nodeHistory: [],
@@ -66,12 +80,28 @@ export class WorkflowStateService {
   }
   
   /**
-   * 노드 진입 기록
+   * LLM 정보 업데이트 (첫 번째 노드 진입시)
    */
-  enterNode(jobId: string, nodeId: string, taskInfo?: TaskInfo): void {
+  updateLLMInfo(jobId: string, llmInfo: LLMInfo): void {
+    const state = this.states.get(jobId);
+    if (state && !state.llmInfo) {
+      console.log(`\n🤖 [WorkflowStateService] Updating LLM info for ${jobId}:`, llmInfo);
+      state.llmInfo = llmInfo;
+      this.broadcast(jobId);
+    }
+  }
+  
+  /**
+   * 노드 진입 기록
+   * ✅ Returns Promise to ensure broadcast completes before caller continues
+   */
+  async enterNode(jobId: string, nodeId: string, taskInfo?: TaskInfo, llmInfo?: LLMInfo): Promise<void> {
     console.log(`\n🔵 [WorkflowStateService] enterNode: ${nodeId} (job: ${jobId})`);
     if (taskInfo) {
       console.log(`   📋 Task: ${taskInfo.name}`);
+    }
+    if (llmInfo) {
+      console.log(`   🤖 LLM: ${llmInfo.provider} / ${llmInfo.model}`);
     }
     
     const state = this.states.get(jobId);
@@ -85,6 +115,12 @@ export class WorkflowStateService {
     if (taskInfo) {
       state.currentTask = taskInfo;
       console.log(`   ✅ Updated currentTask: ${taskInfo.name}`);
+    }
+    
+    // ✅ Update LLM info if provided (첫 번째 노드에서만)
+    if (llmInfo && !state.llmInfo) {
+      state.llmInfo = llmInfo;
+      console.log(`   ✅ Updated LLM info: ${llmInfo.provider} / ${llmInfo.model}`);
     }
     
     // 이전 노드 종료 처리
@@ -109,8 +145,13 @@ export class WorkflowStateService {
     console.log(`   ✅ Current node updated: ${nodeId}`);
     console.log(`   📊 Total clients: ${this.clients.get(jobId)?.size || 0}`);
     
-    // 브로드캐스트
+    // ✅ CRITICAL: Broadcast synchronously (writes to buffer)
+    // TCP guarantees order, so this SSE will arrive before any subsequent SSE
     this.broadcast(jobId);
+    
+    // ✅ Add small delay to ensure buffer is flushed
+    // This guarantees workflow SSE is sent before caller continues
+    await new Promise(resolve => setImmediate(resolve));
   }
   
   /**

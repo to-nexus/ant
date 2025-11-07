@@ -12,6 +12,7 @@ import { learn } from "./nodes/learn";
  */
 async function checkTaskCompletion(state: DesignGraphState): Promise<Partial<DesignGraphState>> {
   // ✅ Workflow instrumentation: Enter node
+  // ✅ CRITICAL: await to ensure workflow SSE is sent before continuing
   if (state.deps?.workflowUpdate && state._httpTaskId) {
     const taskInfo = state.currentTask ? {
       id: state.currentTask.id,
@@ -20,17 +21,44 @@ async function checkTaskCompletion(state: DesignGraphState): Promise<Partial<Des
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'checkTaskCompletion', taskInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'checkTaskCompletion', taskInfo);
+  }
+  
+  // ✅ CRITICAL: Update Kanban to next task AFTER checkTaskCompletion SSE sent
+  // This ensures frontend sees checkTaskCompletion animation before Kanban switches
+  if (state._httpTaskId && state.taskQueue) {
+    const allTasks = state.taskQueue.getAll();
+    const completedTasksDetails = state.completedTasksDetails || [];
+    const nextTask = state.taskQueue.peek(); // ✅ Use peek() for correct next task
+    
+    // ✅ CRITICAL: Remove nextTask from queue display (it's now in progress)
+    const remainingQueue = nextTask ? allTasks.filter(t => t.id !== nextTask.id) : allTasks;
+    
+    console.log(`\n🔥 [checkTaskCompletion] Updating Kanban → next task`);
+    console.log(`   Current: ${state.currentTask?.name}`);
+    console.log(`   Next: ${nextTask?.name || 'none (learn)'}`);
+    console.log(`   Remaining in queue: ${remainingQueue.length}`);
+    
+    if (state.deps?.kanbanUpdate) {
+      state.deps.kanbanUpdate.updateTaskQueue(
+        state._httpTaskId,
+        nextTask || null,
+        remainingQueue,  // ✅ Exclude nextTask from queue
+        completedTasksDetails
+      );
+    }
   }
   
   // If there are more tasks in queue, continue to next task
   if (state.taskQueue && !state.taskQueue.isEmpty()) {
     console.log(`\n📋 ${state.taskQueue.size()} task(s) remaining, continuing...\n`);
-    return state;
+    // ✅ CRITICAL: Clear currentTask so plan will pop next task
+    return { ...state, currentTask: undefined };
   }
   
   console.log(`\n✅ All design tasks completed!\n`);
-  return state;
+  // ✅ CRITICAL: Clear currentTask for final state
+  return { ...state, currentTask: undefined };
 }
 
 export function buildDesignGraph() {

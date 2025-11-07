@@ -89,6 +89,10 @@ export interface WorkflowRealtimeState {
   isCompleted: boolean;  // Job 완료 여부
   nodeHistory: NodeHistoryEntry[];
   activeActors: string[];  // 현재 통신 중인 Actor IDs
+  
+  // ✅ Kanban info (piggybacked on workflow SSE for atomic updates)
+  kanbanCurrentTask?: TaskInfo | null;  // In-progress task for Kanban
+  kanbanUpdate?: boolean;  // Flag to indicate Kanban should update
 }
 
 export interface NodeHistoryEntry {

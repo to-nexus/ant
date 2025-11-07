@@ -21,21 +21,23 @@ import { WorkflowRealtimeState } from '@/types/workflow';
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4100/api';
 
 // 노드별 최소 표시 시간 (ms)
+// ✅ 모든 노드를 사용자가 인식할 수 있도록 충분한 시간 확보
 const NODE_MIN_DISPLAY_TIME: Record<string, number> = {
-  resolve: 800,        // 코드베이스 분석 (충분히 김)
-  decompose: 500,      // 태스크 분해
-  plan: 0,             // LLM 호출 (이미 충분히 김)
-  execute: 0,          // LLM 호출 (이미 충분히 김)
-  writeFiles: 600,     // 파일 쓰기 (빠름 → 연출 필요)
-  validate: 400,       // 정적 검증 (빠름 → 연출 필요)
-  installDeps: 0,      // 의존성 설치 (실제로 느림)
-  runtimeValidate: 0,  // 런타임 검증 (실제로 느림)
-  checkTaskStatus: 300,// 상태 체크 (빠름 → 연출 필요)
+  resolve: 800,        // 코드베이스 분석
+  decompose: 600,      // 태스크 분해
+  plan: 700,           // ✅ 계획 수립 (연출 필요)
+  execute: 800,        // ✅ 코드 생성 (가장 중요 → 충분한 시간)
+  writeFiles: 600,     // 파일 쓰기
+  validate: 500,       // 정적 검증
+  installDeps: 700,    // 의존성 설치
+  runtimeValidate: 600,// 런타임 검증
+  checkTaskCompletion: 600, // ✅ 태스크 완료 체크 (design job) - 단순 체크이므로 짧게
+  checkTaskStatus: 400,// 상태 체크
   enforce: 500,        // 규칙 적용
-  learn: 600,          // 학습 저장
+  learn: 800,          // ✅ 학습 저장 (마지막 노드 → 충분한 시간)
 };
 
-const DEFAULT_MIN_DISPLAY_TIME = 500; // 기본값
+const DEFAULT_MIN_DISPLAY_TIME = 600; // ✅ 기본값 상향 (500 → 600)
 
 interface WorkflowStateWithQueue {
   rawState: WorkflowRealtimeState | null;      // 실제 서버 상태
@@ -55,8 +57,9 @@ let globalNodeQueue: QueuedNode[] = [];
 let globalProcessing = false;
 let globalDisplayStartTime = 0;
 let globalCurrentTimer: ReturnType<typeof setTimeout> | null = null;
+let globalCleanupTimer: ReturnType<typeof setTimeout> | null = null;  // ✅ Cleanup 타이머 관리
+let globalDisplayedState: WorkflowRealtimeState | null = null;  // ✅ Global displayed state
 const globalQueueCallbacks: Set<() => void> = new Set();
-const taskDrainCallbacks: Map<string, () => void> = new Map();
 
 // 큐 변경 알림
 function notifyQueueChange() {
@@ -78,7 +81,49 @@ export function clearGlobalQueue(): void {
     globalCurrentTimer = null;
   }
   
+  if (globalCleanupTimer) {
+    clearTimeout(globalCleanupTimer);
+    globalCleanupTimer = null;
+  }
+  
   notifyQueueChange();
+}
+
+/**
+ * ✅ 전체 큐가 완전히 비어있을 때까지 대기 (learn 노드 포함)
+ * 모든 태스크 완료 시 사용
+ */
+export function waitForAllQueueDrain(): Promise<void> {
+  // 큐도 비어있고 연출 중인 것도 없어야 함
+  const hasAnyNodes = globalNodeQueue.length > 0;
+  const isDisplaying = globalDisplayedState !== null;
+  
+  if (!hasAnyNodes && !isDisplaying) {
+    console.log(`[waitForAllQueueDrain] Queue already empty, resolving immediately`);
+    return Promise.resolve();
+  }
+  
+  console.log(`[waitForAllQueueDrain] Waiting for ALL nodes to drain (queue: ${globalNodeQueue.length}, displaying: ${isDisplaying})`);
+  
+  return new Promise((resolve) => {
+    const checkInterval = setInterval(() => {
+      const stillHasNodes = globalNodeQueue.length > 0;
+      const stillDisplaying = globalDisplayedState !== null;
+      
+      if (!stillHasNodes && !stillDisplaying) {
+        console.log(`[waitForAllQueueDrain] All nodes drained, resolving`);
+        clearInterval(checkInterval);
+        resolve();
+      }
+    }, 50);
+    
+    // 최대 5초 타임아웃
+    setTimeout(() => {
+      console.warn(`[waitForAllQueueDrain] Timeout, forcing resolve`);
+      clearInterval(checkInterval);
+      resolve();
+    }, 5000);
+  });
 }
 
 /**
@@ -90,33 +135,43 @@ export function waitForTaskQueueDrain(taskId: string | undefined): Promise<void>
     return Promise.resolve();
   }
   
-  // 해당 태스크의 노드가 큐에 없으면 즉시 완료
-  const hasTaskNodes = globalNodeQueue.some(node => node.taskId === taskId);
-  if (!hasTaskNodes) {
-    console.log(`[waitForTaskQueueDrain] Task ${taskId} has no pending nodes, resolving immediately`);
-    return Promise.resolve();
-  }
-  
-  console.log(`[waitForTaskQueueDrain] Waiting for task ${taskId} to drain from queue`);
-  
   return new Promise((resolve) => {
-    // 큐가 업데이트될 때마다 체크
+    let hasSeenTask = false; // ✅ Track if we've seen the task at all
+    let checkCount = 0;
+    const maxChecks = 200; // 10초 (50ms * 200)
+    
     const checkInterval = setInterval(() => {
-      const stillHasNodes = globalNodeQueue.some(node => node.taskId === taskId);
+      checkCount++;
+      const stillInQueue = globalNodeQueue.some(node => node.taskId === taskId);
+      const stillDisplaying = globalDisplayedState?.currentTask?.id === taskId;
       
-      if (!stillHasNodes) {
-        console.log(`[waitForTaskQueueDrain] Task ${taskId} queue drained, resolving`);
+      // ✅ Track if we've ever seen this task
+      if (stillInQueue || stillDisplaying) {
+        if (!hasSeenTask) {
+          console.log(`[waitForTaskQueueDrain] Task ${taskId} detected (inQueue: ${stillInQueue}, displaying: ${stillDisplaying})`);
+          hasSeenTask = true;
+        }
+      }
+      
+      // ✅ Only resolve if:
+      // 1. We've seen the task AND it's now gone, OR
+      // 2. We've waited at least 500ms and still haven't seen it (SSE might not come)
+      const waited500ms = checkCount >= 10; // 50ms * 10 = 500ms
+      
+      if (hasSeenTask && !stillInQueue && !stillDisplaying) {
+        console.log(`[waitForTaskQueueDrain] Task ${taskId} fully drained after ${checkCount * 50}ms`);
+        clearInterval(checkInterval);
+        resolve();
+      } else if (!hasSeenTask && waited500ms) {
+        console.warn(`[waitForTaskQueueDrain] Task ${taskId} not found after 500ms, assuming complete`);
+        clearInterval(checkInterval);
+        resolve();
+      } else if (checkCount >= maxChecks) {
+        console.warn(`[waitForTaskQueueDrain] Timeout waiting for task ${taskId} (seen: ${hasSeenTask})`);
         clearInterval(checkInterval);
         resolve();
       }
-    }, 100); // 100ms마다 체크
-    
-    // 최대 10초 타임아웃
-    setTimeout(() => {
-      console.warn(`[waitForTaskQueueDrain] Timeout waiting for task ${taskId}, forcing resolve`);
-      clearInterval(checkInterval);
-      resolve();
-    }, 10000);
+    }, 50);
   });
 }
 
@@ -126,6 +181,7 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
   const [queueLength, setQueueLength] = useState(globalNodeQueue.length);
   const currentJobIdRef = useRef<string | undefined>(jobId);
   const rawStateRef = useRef<WorkflowRealtimeState | null>(null);
+  const displayedStateRef = useRef<WorkflowRealtimeState | null>(null);  // ✅ displayedState ref
   const jobEndedRef = useRef(false);  // ✅ NEW: 'end' 이벤트 수신 여부
   
   // jobId 변경 추적
@@ -137,6 +193,12 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
   useEffect(() => {
     rawStateRef.current = rawState;
   }, [rawState]);
+  
+  // displayedState를 ref와 global state에 동기화
+  useEffect(() => {
+    displayedStateRef.current = displayedState;
+    globalDisplayedState = displayedState; // ✅ Sync to global for waitForAllQueueDrain
+  }, [displayedState]);
   
   // ✅ 글로벌 큐 변경 구독
   useEffect(() => {
@@ -154,7 +216,7 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
       
       // ✅ 글로벌 타이머 취소 (진행 중인 연출 중단하지 않음)
       // 단, rawState는 초기화
-      jobEndedRef.current = false;
+      // ✅ CRITICAL: jobEndedRef는 초기화하지 않음! (learn 노드 cleanup을 위해 유지)
       setRawState(null);
       setDisplayedState(null);
       return;
@@ -178,6 +240,41 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
           nodeHistory: data.nodeHistory?.length || 0,
           activeActors: data.activeActors?.length || 0
         });
+        
+        // ✅ CRITICAL: Add to queue IMMEDIATELY in SSE handler
+        // This prevents race condition where rapid SSE updates skip nodes
+        if (data.currentNode) {
+          const newNode = data.currentNode;
+          const newTaskId = data.currentTask?.id;
+          
+          // Check duplicates in queue
+          const isDuplicate = globalNodeQueue.some(item => 
+            item.nodeId === newNode && item.taskId === newTaskId
+          );
+          
+          if (!isDuplicate) {
+            // Check if already displaying
+            const currentDisplayed = displayedStateRef.current?.currentNode;
+            const currentDisplayedTask = displayedStateRef.current?.currentTask?.id;
+            
+            if (!(newNode === currentDisplayed && newTaskId === currentDisplayedTask)) {
+              console.log(`[useWorkflowState] 📥 Queuing node immediately: ${newNode}`);
+              if (data.currentTask) {
+                console.log(`   📋 Task: ${data.currentTask.name} (ID: ${data.currentTask.id})`);
+              }
+              
+              globalNodeQueue.push({
+                nodeId: newNode,
+                state: data,
+                taskId: newTaskId,
+                taskName: data.currentTask?.name,
+                timestamp: Date.now()
+              });
+              notifyQueueChange();
+            }
+          }
+        }
+        
         setRawState(data);
       } catch (err) {
         console.error('[useWorkflowState] Failed to parse SSE data:', err);
@@ -194,8 +291,12 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
       jobEndedRef.current = true;
       eventSource.close();
       
-      // ✅ rawState를 null로 만들어 새 노드가 큐에 추가되는 것 방지
-      setRawState(null);
+      // ✅ RACE CONDITION FIX: 마지막 노드 상태 업데이트를 받을 시간을 줌
+      // learn 노드 같은 마지막 노드의 상태가 'end' 이벤트보다 늦게 도착할 수 있음
+      setTimeout(() => {
+        console.log('[useWorkflowState] 🔒 Blocking new node additions (after grace period)');
+        setRawState(null);
+      }, 500);  // 500ms 유예 기간
     });
     
     eventSource.onerror = (error) => {
@@ -209,7 +310,7 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
       
       // ✅ 연출 개선: 타이머 취소 안함, 큐 유지 (글로벌이므로)
       // → 이전 Task의 노드들을 모두 소비한 후에 새 Task로 전환
-      jobEndedRef.current = false;  // ✅ Reset
+      // ✅ CRITICAL: jobEndedRef는 초기화하지 않음! (learn 노드 cleanup을 위해 유지)
       
       // ✅ rawState만 null로 (새 노드 추가 차단), 큐는 글로벌이므로 유지
       setRawState(null);
@@ -218,32 +319,8 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
     };
   }, [jobId]);
   
-  // ✅ 새 노드 감지 → 글로벌 큐에 추가
-  useEffect(() => {
-    if (!rawState?.currentNode) return;
-    
-    const newNode = rawState.currentNode;
-    const currentDisplayedNode = displayedState?.currentNode;
-    
-    // 이미 표시 중이면 무시
-    if (newNode === currentDisplayedNode) return;
-    
-    // 글로벌 큐에 이미 있으면 무시
-    if (globalNodeQueue.some(item => item.nodeId === newNode)) return;
-    
-    console.log(`[useWorkflowState] 📥 Queuing node to global queue: ${newNode}`);
-    if (rawState.currentTask) {
-      console.log(`   📋 Task: ${rawState.currentTask.name}`);
-    }
-    globalNodeQueue.push({
-      nodeId: newNode,
-      state: rawState,
-      taskId: rawState.currentTask?.id,
-      taskName: rawState.currentTask?.name,
-      timestamp: Date.now()
-    });
-    notifyQueueChange();
-  }, [rawState?.currentNode, displayedState?.currentNode]);
+  // ✅ 노드 감지는 이제 SSE 핸들러에서 직접 처리
+  // (React batching으로 인한 스킵 방지)
   
   // ✅ 글로벌 큐 처리
   useEffect(() => {
@@ -309,12 +386,31 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
       notifyQueueChange();
       
       // ✅ CRITICAL: 큐가 비었고 job이 종료되었으면 cleanup
+      // jobEndedRef는 SSE 'end' 이벤트에서 설정되며, jobId가 사라져도 유지됨
       if (globalNodeQueue.length === 0 && jobEndedRef.current) {
-        console.log('[useWorkflowState] ✅ Global queue drained after job end, clearing state');
-        setTimeout(() => {
+        console.log('[useWorkflowState] ✅ Global queue drained after job end, scheduling cleanup');
+        
+        // ✅ 기존 cleanup 타이머가 있으면 취소
+        if (globalCleanupTimer) {
+          console.log('[useWorkflowState] ⚠️  Cancelling previous cleanup timer');
+          clearTimeout(globalCleanupTimer);
+          globalCleanupTimer = null;
+        }
+        
+        // ✅ 마지막 노드의 최소 표시 시간 보장
+        const lastNodeDisplayTime = NODE_MIN_DISPLAY_TIME[nextNode] || DEFAULT_MIN_DISPLAY_TIME;
+        const elapsedSinceDisplay = Date.now() - globalDisplayStartTime;
+        const remainingTime = Math.max(0, lastNodeDisplayTime - elapsedSinceDisplay);
+        
+        console.log(`[useWorkflowState] ⏳ Waiting ${remainingTime}ms before cleanup (node: ${nextNode}, min: ${lastNodeDisplayTime}ms)`);
+        
+        globalCleanupTimer = setTimeout(() => {
+          console.log('[useWorkflowState] 🏁 Executing cleanup after last node');
           setDisplayedState(null);
-          console.log('[useWorkflowState] 🏁 Cleanup complete');
-        }, 500);  // 마지막 노드가 잠깐 표시될 시간을 줌
+          globalDisplayedState = null; // ✅ Global state도 clear
+          globalCleanupTimer = null;
+          console.log('[useWorkflowState] ✅ Cleanup complete');
+        }, remainingTime);
       }
       
       globalProcessing = false;

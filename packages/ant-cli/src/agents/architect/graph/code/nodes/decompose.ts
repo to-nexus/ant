@@ -16,7 +16,9 @@ import { ArchitectGraphState, Task, TaskQueue } from "../state";
  * 4. Store feature tasks for completion tracking
  */
 export async function decompose(state: ArchitectGraphState): Promise<ArchitectGraphState> {
-  // ✅ Workflow instrumentation: Enter node
+  const llm = state.deps?.llm as LLMClient;
+  
+  // ✅ Workflow instrumentation: Enter node with LLM info
   if (state.deps?.workflowUpdate && state._httpTaskId) {
     const taskInfo = state.currentTask ? {
       id: state.currentTask.id,
@@ -25,10 +27,15 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'decompose', taskInfo);
+    
+    // ✅ Extract LLM info from GenericLLMClient
+    const llmInfo = (llm as any)?.provider && (llm as any)?.modelName ? {
+      provider: (llm as any).provider,
+      model: (llm as any).modelName
+    } : undefined;
+    
+    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'decompose', taskInfo, llmInfo);
   }
-  
-  const llm = state.deps?.llm as LLMClient;
   
   // ✅ CRITICAL: Load session FIRST to get completedTasksDetails before signaling
   let preloadedCompletedTasks: any[] = [];
