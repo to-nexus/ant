@@ -21,6 +21,21 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     state.deps.workflowUpdate.enterNode(state._httpTaskId, 'decompose');
   }
   
+  // ✅ CRITICAL: Send "estimating started" signal to Kanban FIRST
+  // This ensures frontend receives isEstimating: true before task queue arrives
+  if (state._httpTaskId && state.deps?.kanbanUpdate) {
+    console.log(`\n🎬 [Code Decompose] Signaling estimating started...`);
+    state.deps.kanbanUpdate.updateTaskQueue(
+      state._httpTaskId,
+      null,    // no currentTask yet
+      [],      // no tasks yet
+      [],      // no completed yet
+      0,       // recursionCount
+      undefined // recursionLimit
+    );
+    console.log(`   ✅ Estimating signal sent\n`);
+  }
+  
   const llm = state.deps?.llm as LLMClient;
   
   // ✅ RESUME: Check if we have previous state to restore

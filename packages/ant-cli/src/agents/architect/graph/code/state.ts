@@ -303,6 +303,9 @@ export interface ArchitectGraphState extends TaskArtifacts {
   // ✅ Recursion tracking
   recursionCount?: number;  // Current iteration count
   recursionLimit?: number;  // Maximum allowed iterations
+  
+  // ✅ Interruption tracking
+  interruption?: import('../../../../core/types').InterruptionDetails;  // Details about why and how the job was interrupted
 }
 
 /**

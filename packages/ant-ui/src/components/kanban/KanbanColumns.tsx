@@ -100,18 +100,11 @@ export function KanbanColumns({
                     key={taskId}
                     layoutId={`task-${taskId}`}  // ✅ Critical: enables shared layout animations
                     layout
-                    initial={isNewlyInProgress ? { opacity: 0 } : false}
-                    animate={{ opacity: 1 }}
                     transition={{ 
                       layout: {
                         type: "spring",
                         stiffness: 500,
-                        damping: 35,
-                        delay: isNewlyInProgress ? 0.4 : 0  // ✅ Delay for newly in-progress
-                      },
-                      opacity: {
-                        duration: 0.3,
-                        delay: isNewlyInProgress ? 0.4 : 0
+                        damping: 35
                       }
                     }}
                     onAnimationComplete={() => {
@@ -120,7 +113,11 @@ export function KanbanColumns({
                       }
                     }}
                   >
-                    <TaskCard task={inProgressTask} status="in-progress" />
+                    {/* ✅ Keep "todo" style during animation, then switch to "in-progress" */}
+                    <TaskCard 
+                      task={inProgressTask} 
+                      status={isNewlyInProgress ? "todo" : "in-progress"}
+                    />
                   </motion.div>
                   
                   {/* ✅ Active Node/Actor Indicator - Below the in-progress card */}
@@ -154,15 +151,12 @@ export function KanbanColumns({
                   key={taskId}
                   layoutId={`task-${taskId}`}  // ✅ Critical: enables shared layout animations
                   layout
-                  initial={isNewlyCompleted ? { opacity: 0 } : false}
-                  animate={{ opacity: 1 }}
                   transition={{ 
                     layout: {
                       type: "spring",
                       stiffness: 500,
                       damping: 35
-                    },
-                    opacity: { duration: 0.2 }
+                    }
                   }}
                   className="relative"
                   style={{ isolation: 'isolate' }}
@@ -215,7 +209,11 @@ export function KanbanColumns({
                     </>
                   )}
                   <div className="relative z-10">
-                    <TaskCard task={task} status="completed" />
+                    {/* ✅ Keep "in-progress" style during animation, then switch to "completed" */}
+                    <TaskCard 
+                      task={task} 
+                      status={isNewlyCompleted ? "in-progress" : "completed"}
+                    />
                   </div>
                 </motion.div>
               );

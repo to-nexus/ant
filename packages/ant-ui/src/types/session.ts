@@ -129,9 +129,6 @@ export interface SessionStateContext {
     timestamp: string;
   }>;
 }
-  description?: string;
-  goals?: string[];
-}
 
 export interface SessionStateContext {
   currentTaskId?: string;

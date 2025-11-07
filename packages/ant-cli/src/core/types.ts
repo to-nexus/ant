@@ -215,26 +215,3 @@ export interface Session {
   state?: SessionState;  // ✅ Execution state snapshot for resuming
 }
 
-
-  interruption?: InterruptionDetails;  // Details about why and how the job was interrupted
-  
-  // Recursion Tracking
-  recursionCount?: number;        // Current recursion iteration count
-  recursionLimit?: number;        // Maximum recursion limit
-}
-
-/**
- * Session
- * Represents a feature development session with full context
- */
-export interface Session {
-  sessionId: string;  // Unique session identifier (UUID)
-  project: string;
-  feature: string;
-  createdAt: string;
-  updatedAt: string;
-  turns: SessionTurn[];
-  artifacts: SessionArtifacts;
-  state?: SessionState;  // ✅ Execution state snapshot for resuming
-}
-

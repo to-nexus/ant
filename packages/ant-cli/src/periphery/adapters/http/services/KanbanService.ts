@@ -204,14 +204,46 @@ export class KanbanService {
     
     // Priority 1: LIVE DATA (most recent, real-time)
     if (activeJobId && liveSnapshot) {
-      console.log(`\n🔴 [KanbanService] LIVE DATA returned\n`);
-      
-      // Use completed tasks from LIVE snapshot (not session!)
+      const liveQueue = liveSnapshot.queue || [];
+      const liveCurrentTask = liveSnapshot.currentTask || null;
       const liveCompletedTasks = liveSnapshot.completedTasks || [];
       
+      // ✅ SPECIAL CASE: Empty snapshot = "estimating started" signal
+      // If queue is empty, no current task, and no completed tasks → still estimating
+      if (liveQueue.length === 0 && !liveCurrentTask && liveCompletedTasks.length === 0) {
+        console.log(`\n🎬 [KanbanService] ESTIMATING STARTED (empty live snapshot)\n`);
+        
+        // Read recursion limit from session or environment variable
+        const MINIMUM_RECURSION_LIMIT = 5;
+        const DEFAULT_RECURSION_LIMIT = 50;
+        const envLimit = parseInt(process.env.RECURSION_LIMIT || String(DEFAULT_RECURSION_LIMIT), 10);
+        const finalLimit = isNaN(envLimit) || envLimit < 1 
+          ? DEFAULT_RECURSION_LIMIT 
+          : envLimit < MINIMUM_RECURSION_LIMIT 
+            ? MINIMUM_RECURSION_LIMIT 
+            : envLimit;
+        
+        return {
+          todo: sessionTaskQueue,
+          inProgress: null,
+          completed: completedTasksDetails.map((detail: any) => ({
+            ...detail,
+            status: 'completed',
+            completed: true
+          })),
+          isEstimating: true,
+          dataSource: 'estimating',
+          activeJobId,
+          recursionCount: sessionState.recursionCount || 0,
+          recursionLimit: sessionState.recursionLimit || finalLimit
+        };
+      }
+      
+      console.log(`\n🔴 [KanbanService] LIVE DATA returned\n`);
+      
       return {
-        todo: liveSnapshot.queue || [],
-        inProgress: liveSnapshot.currentTask || null,
+        todo: liveQueue,
+        inProgress: liveCurrentTask,
         completed: liveCompletedTasks.map((detail: any) => ({
           ...detail,
           status: 'completed',
@@ -246,20 +278,21 @@ export class KanbanService {
           ? MINIMUM_RECURSION_LIMIT 
           : envLimit;
       
-      return {
-        todo: [],
-        inProgress: null,
-        completed: completedTasksDetails.map((detail: any) => ({
-          ...detail,
-          status: 'completed',
-          completed: true
-        })),
-        isEstimating: true,
-        dataSource: 'estimating',
-        activeJobId,  // ✅ Pass job ID to UI for state restoration
-        recursionCount: sessionState.recursionCount || 0,
-        recursionLimit: sessionState.recursionLimit || finalLimit
-      };
+        return {
+          // FIX: estimating 상태에서도 sessionTaskQueue를 todo로 내려줌
+          todo: sessionTaskQueue,
+          inProgress: null,
+          completed: completedTasksDetails.map((detail: any) => ({
+            ...detail,
+            status: 'completed',
+            completed: true
+          })),
+          isEstimating: true,
+          dataSource: 'estimating',
+          activeJobId,  // ✅ Pass job ID to UI for state restoration
+          recursionCount: sessionState.recursionCount || 0,
+          recursionLimit: sessionState.recursionLimit || finalLimit
+        };
     }
     
     // Priority 3: SESSION DATA (job running but live data not ready yet, OR job completed)
