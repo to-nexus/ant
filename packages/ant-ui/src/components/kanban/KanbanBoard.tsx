@@ -47,6 +47,7 @@ export function KanbanBoard() {
   const [previousPolicyRunning, setPreviousPolicyRunning] = useState(false);
   const [shouldDelayFirstTask, setShouldDelayFirstTask] = useState(false);
   const shouldDelayFirstTaskRef = useRef(false);  // ✅ Sync flag to prevent race conditions
+  const animationTimeoutRef = useRef<number | null>(null);  // ✅ Track animation timeout
   
   // ✅ Track dismissed interrupts (user chose to ignore)
   const [dismissedInterruptJobId, setDismissedInterruptJobId] = useState<string | null>(null);
@@ -209,6 +210,13 @@ export function KanbanBoard() {
             console.log('[Kanban SSE] 🎬 Triggering To Do → In Progress animation (1200ms delay)');
             console.log('[Kanban SSE] First task:', { taskName: data.inProgress?.name });
             
+            // ✅ Cancel any pending animation timeout to prevent stale data
+            if (animationTimeoutRef.current) {
+              console.log('[Kanban SSE] ⏹️  Canceling previous animation timeout');
+              clearTimeout(animationTimeoutRef.current);
+              animationTimeoutRef.current = null;
+            }
+            
             // Clear the flag (animation happens only once)
             setShouldDelayFirstTask(false);
             shouldDelayFirstTaskRef.current = false;  // ✅ Sync clear
@@ -231,11 +239,19 @@ export function KanbanBoard() {
             });
             
             // Apply after delay (longer delay to make To Do state visible)
-            setTimeout(() => {
+            animationTimeoutRef.current = setTimeout(() => {
               console.log('[Kanban SSE] ✅ Applying delayed transition to In Progress');
               setKanbanData(data);
+              animationTimeoutRef.current = null;  // ✅ Clear ref after execution
             }, 1200);
           } else {
+            // ✅ Cancel any pending animation timeout before normal update
+            if (animationTimeoutRef.current) {
+              console.log('[Kanban SSE] ⏹️  Canceling previous animation timeout (normal update)');
+              clearTimeout(animationTimeoutRef.current);
+              animationTimeoutRef.current = null;
+            }
+            
             console.log('[Kanban SSE] 📊 Normal update (no animation)');
             setKanbanData(data);
           }
@@ -256,6 +272,11 @@ export function KanbanBoard() {
       if (eventSource) {
         eventSource.close();
         console.log('[Kanban] SSE connection closed');
+      }
+      // ✅ Cancel any pending animation timeout on unmount
+      if (animationTimeoutRef.current) {
+        clearTimeout(animationTimeoutRef.current);
+        animationTimeoutRef.current = null;
       }
     };
   }, [selectedProject, selectedFeature]);
