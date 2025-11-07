@@ -118,29 +118,48 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
       console.log(`  ✅ Queue now has ${newQueue.size()} tasks`);
     }
     
+    // ✅ Create interruption details for recursion limit (before checkpoint)
+    const interruption = {
+      reason: 'recursion_limit' as const,
+      message: `Task paused: Reached recursion limit (${finalLimit} iterations)`,
+      timestamp: new Date().toISOString(),
+      canResume: true,
+      metadata: {
+        recursionCount: state.recursionCount || 0,
+        recursionLimit: finalLimit,
+        tasksRemaining: remainingTasks
+      }
+    };
+    
     // ✅ CRITICAL: Save pause state BEFORE learn node (learn node can fail)
     if (state.deps?.session && state.context.featureFolder) {
       try {
         const { saveCheckpoint } = await import('./nodes/checkpoint');
         // ✅ Explicitly set currentTask to undefined (it's been moved to queue)
         state.currentTask = undefined;
+        
         const pausedState = {
           ...state,
-          pausedDueToLimit: true,
-          tasksRemaining: remainingTasks
+          interruption
         };
         await saveCheckpoint(pausedState);
-        console.log(`💾 Pause state saved to session`);
+        console.log(`💾 Pause state saved to session (recursion limit)`);
       } catch (saveError) {
         console.warn(`⚠️  Failed to save pause state:`, saveError);
       }
     }
+    
+    // ✅ CRITICAL: Preserve interruption before learn node (learn may overwrite state)
+    const savedInterruption = interruption;
     
     // ✅ Try to run learn node for cleanup (optional, can fail safely)
     try {
       console.log('🧠 Running learn node for cleanup and learning...\n');
       const { learn } = await import('./nodes/index');
       state = await learn(state);
+      
+      // ✅ CRITICAL: Restore interruption after learn node
+      (state as any).interruption = savedInterruption;
     } catch (learnError) {
       console.warn('⚠️  Learn node failed (non-critical):', learnError);
     }
@@ -175,7 +194,6 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
     branch: state.branch!, 
     reportFile: reportMessage,
     filesChanged: filesGenerated,
-    pausedDueToLimit: isRecursionLimit,
-    tasksRemaining: tasksRemaining
+    interruption: isRecursionLimit ? state.interruption : undefined
   };
 }

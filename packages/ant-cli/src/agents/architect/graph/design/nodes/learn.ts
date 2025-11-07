@@ -17,6 +17,11 @@ import { SessionTurn } from "../../../../../core/types";
  * - No direct infrastructure dependencies
  */
 export async function learn(state: DesignGraphState): Promise<DesignGraphState> {
+  // ✅ Workflow instrumentation: Enter node
+  if (state.deps?.workflowUpdate && state._httpTaskId) {
+    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'learn');
+  }
+  
   // Get GitPort for file operations
   const gitPort = state.deps?.git;
   if (!gitPort) {
@@ -96,13 +101,26 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     );
     turnId = updatedSession.turns[updatedSession.turns.length - 1]?.turnId;
     
+    // ✅ Load existing session to preserve interruption details and other state
+    const existingSession = await state.deps.session.load(
+      state.context.project,
+      state.context.featureFolder || 'default'
+    );
+
     // Update artifacts (no latestPlan to avoid duplication)
     await state.deps.session.updateArtifacts(
       state.context.project,
       state.context.featureFolder || 'default',
       {
         latestDesign: designFilePath,
-        keyDecisions: decisions.slice(0, 5)  // Only top 5 decisions
+        keyDecisions: decisions.slice(0, 5),  // Only top 5 decisions
+        state: {
+          taskQueue: state.taskQueue?.getAll() || [],
+          currentTask: state.currentTask,
+          completedTasks: state.completedTasks || [],
+          completedTasksDetails: state.completedTasksDetails || [],  // ✅ Preserve completed task details
+          interruption: existingSession.state?.interruption  // ✅ Preserve interruption details
+        }
       }
     );
     

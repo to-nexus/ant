@@ -17,6 +17,11 @@ import { ArchitectGraphState, Violation } from "../state";
 import { resolveLocalPath } from "../../../../../periphery/adapters/git/gitUtils";
 
 export async function installDeps(state: ArchitectGraphState): Promise<ArchitectGraphState> {
+  // ✅ Workflow instrumentation: Enter node
+  if (state.deps?.workflowUpdate && state._httpTaskId) {
+    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'installDeps');
+  }
+  
   const commandPort = state.deps?.command;
   const gitPort = state.deps?.git;
   const violations: Violation[] = [];

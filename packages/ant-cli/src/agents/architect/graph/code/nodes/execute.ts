@@ -60,6 +60,11 @@ function extractKeyChanges(files: Array<{ path: string; content: string }>): str
 export async function execute(
   state: ArchitectGraphState
 ): Promise<ArchitectGraphState> {
+  // ✅ Workflow instrumentation: Enter node
+  if (state.deps?.workflowUpdate && state._httpTaskId) {
+    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'execute');
+  }
+  
   try {
     const llm = state.deps?.llm as LLMClient;
     const engine = state.deps?.promptEngine as PromptEngine;

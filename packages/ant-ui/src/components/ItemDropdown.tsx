@@ -26,6 +26,8 @@ interface ItemDropdownProps {
   onPlayClick?: () => void;
   onStopClick?: () => void;
   isPlaying?: boolean;
+  disabled?: boolean;  // ✅ 작업 진행 중 선택 변경 불가
+  disabledReason?: string;  // ✅ 비활성화 이유 (tooltip)
 }
 
 export function ItemDropdown({
@@ -45,6 +47,8 @@ export function ItemDropdown({
   onPlayClick,
   onStopClick,
   isPlaying = false,
+  disabled = false,
+  disabledReason,
 }: ItemDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -215,7 +219,9 @@ export function ItemDropdown({
           <Button
             variant="outline"
             className="w-full !justify-start text-left pr-10"
-            onClick={() => setIsOpen(!isOpen)}
+            onClick={() => !disabled && setIsOpen(!isOpen)}
+            disabled={disabled}
+            title={disabled ? disabledReason : undefined}
           >
             <span className="truncate">
               {selectedItem || placeholder}
@@ -261,10 +267,13 @@ export function ItemDropdown({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  onSettingsClick();
+                  if (!disabled) {
+                    onSettingsClick();
+                  }
                 }}
-                className="p-1 hover:bg-gray-50 dark:hover:bg-[#30363d] rounded transition-colors pointer-events-auto"
-                title="Settings"
+                disabled={disabled}
+                className="p-1 hover:bg-gray-50 dark:hover:bg-[#30363d] rounded transition-colors pointer-events-auto disabled:opacity-50 disabled:cursor-not-allowed"
+                title={disabled ? disabledReason : "Settings"}
               >
                 <Settings className="h-4 w-4 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200" />
               </button>

@@ -430,10 +430,13 @@ export interface KanbanData {
   completed: KanbanTask[];
   isEstimating?: boolean;  // Task running but no queue data yet
   dataSource?: 'live' | 'session' | 'estimating';  // Where the data comes from
-  pausedDueToLimit?: boolean;  // ✅ Indicates if paused due to recursion limit
-  tasksRemaining?: number;  // ✅ Number of tasks remaining when paused
-  recursionCount?: number;  // ✅ Current recursion iteration
-  recursionLimit?: number;  // ✅ Maximum recursion limit
+  
+  // ✅ Unified interruption state
+  interruption?: import('@/types/session').InterruptionDetails;
+  
+  // Recursion Tracking
+  recursionCount?: number;
+  recursionLimit?: number;
 }
 
 /**

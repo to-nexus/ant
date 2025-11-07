@@ -38,6 +38,19 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       completedTasksDetailsIds: completedTasksDetails.map(t => t.id)
     });
     
+    // ✅ CRITICAL: Save checkpoint after completing a task
+    // This ensures completedTasksDetails is persisted to session
+    const { saveCheckpoint } = await import('./nodes/checkpoint');
+    const stateWithCompletedTask = {
+      ...state,
+      completedTasks,
+      completedTasksDetails,
+      currentTask: undefined
+    };
+    
+    await saveCheckpoint(stateWithCompletedTask);
+    console.log(`[checkTaskStatus] ✅ Checkpoint saved with completedTasksDetails (${completedTasksDetails.length} tasks)`);
+    
     // If feature task, mark in featureTasks map
     if (completedTask.type === 'feature' && state.featureTasks) {
       const feature = state.featureTasks.get(completedTask.id);

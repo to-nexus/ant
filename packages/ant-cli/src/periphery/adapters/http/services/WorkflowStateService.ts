@@ -222,11 +222,20 @@ export class WorkflowStateService {
    */
   private broadcast(jobId: string): void {
     const state = this.states.get(jobId);
-    if (!state) return;
+    if (!state) {
+      console.log(`   ⚠️ [WorkflowStateService] No state to broadcast for job ${jobId}`);
+      return;
+    }
     
     const clients = this.clients.get(jobId);
-    if (!clients || clients.size === 0) return;
+    if (!clients || clients.size === 0) {
+      console.log(`   ⚠️ [WorkflowStateService] No clients to broadcast to for job ${jobId}`);
+      return;
+    }
     
+    console.log(`   📡 [WorkflowStateService] Broadcasting to ${clients.size} client(s)`);
+    console.log(`      Current node: ${state.currentNode || 'null'}`);
+    console.log(`      Active actors: ${state.activeActors.size}`);
     
     clients.forEach(res => {
       this.sendToClient(res, state);

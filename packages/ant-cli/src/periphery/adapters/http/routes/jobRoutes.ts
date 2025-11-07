@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import * as path from 'path';
 import { ExecuteJobParams, LogEntry } from '../../../../core/ports/http';
+import type { InterruptionDetails } from '../../../../core/types';
 
 /**
  * Job execution routes
@@ -16,7 +17,7 @@ export function createJobRoutes(deps: {
   logs: Map<string, LogEntry[]>;
   childProcesses: Map<string, any>;
   jobs: Map<string, any>;
-  cleanupJobState: (jobId: string, projectId?: string, featureName?: string) => Promise<void>;
+  cleanupJobState: (jobId: string, projectId?: string, featureName?: string, interruptionReason?: InterruptionDetails) => Promise<void>;
 }): Router {
   const router = Router();
   
@@ -212,7 +213,19 @@ export function createJobRoutes(deps: {
     // ✅ ALWAYS clean up task state (live snapshots, return in-progress to queue)
     // This is important even if childProcess doesn't exist (e.g., after page refresh)
     console.log(`   🧹 Cleaning up job state...`);
-    await deps.cleanupJobState(jobId, projectId, featureName);
+    
+    // ✅ Create interruption details for user stop
+    const interruption: InterruptionDetails = {
+      reason: 'user_stopped',
+      message: 'Task stopped by user',
+      timestamp: new Date().toISOString(),
+      canResume: true,
+      metadata: {
+        stoppedBy: 'user_action'
+      }
+    };
+    
+    await deps.cleanupJobState(jobId, projectId, featureName, interruption);
     console.log(`   ✅ Job state cleaned up\n`);
     
     res.json({ success: true, message: 'Task stopped' });

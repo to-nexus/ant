@@ -25,6 +25,8 @@ async function main() {
   try {
     // Start server
     await server.start(port);
+    console.log(`\n✅ Server listening on http://localhost:${port}`);
+    console.log(`📡 Ready to accept requests\n`);
     
     // Graceful shutdown
     process.on('SIGINT', async () => {

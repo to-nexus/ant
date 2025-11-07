@@ -13,7 +13,7 @@ export interface LogEntry {
 
 export interface JobStatus {
   jobId: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'paused';  // ✅ Added 'paused' for recursion limit / interruptions
   startedAt?: string;
   completedAt?: string;
   error?: string;

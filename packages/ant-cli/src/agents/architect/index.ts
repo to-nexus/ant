@@ -29,6 +29,7 @@ export async function architectAgent(
     command?: CommandPort;
     kanbanUpdate?: TaskQueueUpdatePort;  // ✅ For real-time Kanban updates
     fileTreeUpdate?: import('../../core/ports').FileTreeUpdatePort;  // ✅ For real-time file tree updates
+    workflowUpdate?: import('../../core/ports/workflow').WorkflowStateUpdatePort;  // ✅ For real-time workflow tracking
   },
   codeMode?: CodeMode,
   enableEvaluation?: boolean,
@@ -150,10 +151,14 @@ export async function architectAgent(
           session: deps?.session,
           git: deps?.git,
           analyzer: deps?.analyzer,
-          memory: deps?.memory  // ✅ IMPROVEMENT: Pass MemoryPort to design graph
+          memory: deps?.memory,
+          kanbanUpdate: deps?.kanbanUpdate,      // ✅ NEW: For real-time Kanban updates
+          fileTreeUpdate: deps?.fileTreeUpdate,  // ✅ NEW: For real-time file tree updates
+          workflowUpdate: deps?.workflowUpdate   // ✅ NEW: For real-time workflow tracking
         },
         planText: "",
-        designMarkdown: ""
+        designMarkdown: "",
+        _httpTaskId: taskId || process.env.ANT_JOB_ID  // ✅ NEW: For tracking in UI
       };
       
       console.log('\n🚀 Starting task: "Generate Design Document"');
@@ -280,12 +285,15 @@ export async function architectAgent(
               };
         const result = await runCodeGraph(initial);
         
-        // ✅ Determine status based on execution result
+        // ✅ Determine status based on execution result (using unified interruption)
+        const hasInterruption = !!result.interruption;
+        const tasksRemaining = result.interruption?.metadata?.tasksRemaining || 0;
+        
         let status: 'success' | 'paused' | 'partial';
-        if (result.pausedDueToLimit && result.tasksRemaining > 0) {
-          status = 'paused';  // Recursion limit hit, tasks remaining
-        } else if (result.pausedDueToLimit && result.tasksRemaining === 0) {
-          status = 'success';  // Recursion limit but all tasks completed
+        if (hasInterruption && tasksRemaining > 0) {
+          status = 'paused';  // Interrupted with tasks remaining
+        } else if (hasInterruption && tasksRemaining === 0) {
+          status = 'success';  // Interrupted but all tasks completed
         } else {
           status = 'success';  // Normal completion
         }
@@ -296,8 +304,7 @@ export async function architectAgent(
           task: 'code',
           reportFile: result.reportFile,
           filesAnalyzed: result.filesChanged,
-          tasksRemaining: result.tasksRemaining,
-          pausedDueToLimit: result.pausedDueToLimit,
+          interruption: result.interruption,  // ✅ Return interruption details
           message: result.filesChanged > 0
             ? `${result.filesChanged} files changed. Review with 'git diff' and commit when ready.`
             : `No code changes generated. See report for plan and learnings.`

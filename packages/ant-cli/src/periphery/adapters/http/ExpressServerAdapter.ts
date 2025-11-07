@@ -12,6 +12,7 @@ import {
   FileTreeUpdatePort,
   WorkflowStateUpdatePort
 } from '../../../core/ports';
+import type { InterruptionDetails } from '../../../core/types';
 import * as fs from 'fs';
 import * as path from 'path';
 import { 
@@ -136,8 +137,15 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   
   /**
    * Clean up job state when stopped (called when job is terminated)
+   * 
+   * @param interruptionReason - Optional interruption details to save to session
    */
-  async cleanupJobState(jobId: string, projectId?: string, featureName?: string): Promise<void> {
+  async cleanupJobState(
+    jobId: string, 
+    projectId?: string, 
+    featureName?: string,
+    interruptionReason?: InterruptionDetails
+  ): Promise<void> {
     console.log(`\n🧹 [ExpressServerAdapter] cleanupJobState called for ${jobId}`);
     
     // Get mapping before deletion (from Map or from parameters)
@@ -199,15 +207,41 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
             ...filteredQueue
           ];
           
-          sessionData.state.taskQueue = updatedQueue;
-          delete sessionData.state.currentTask;  // ✅ Remove currentTask completely
+          // ✅ CRITICAL: Only update taskQueue, preserve ALL other fields
+          // This includes pausedDueToLimit, tasksRemaining, completedTasksDetails, etc.
+          sessionData.state = {
+            ...sessionData.state,  // ✅ Preserve all existing fields
+            taskQueue: updatedQueue,
+            currentTask: undefined  // Remove currentTask
+          };
           
-          // Write updated session
-          await fs.promises.writeFile(sessionPath, JSON.stringify(sessionData, null, 2), 'utf-8');
-          
+          console.log(`   ✅ Moved interrupted task back to queue: "${interruptedTask.name}"`);
         } else {
           console.log(`   ℹ️  No currentTask to return (already completed or not started)`);
+          
+          // ✅ Even if no task to return, preserve all state fields
+          sessionData.state = {
+            ...sessionData.state
+          };
         }
+        
+        // ✅ NEW: Save interruption details if provided
+        if (interruptionReason) {
+          sessionData.state.interruption = interruptionReason;
+          console.log(`   ✅ Saved interruption reason: ${interruptionReason.reason}`);
+        }
+        
+        // ✅ Log preserved state for debugging
+        console.log(`   ✅ Preserving state:`, {
+          hasInterruption: !!sessionData.state.interruption,
+          interruptionReason: sessionData.state.interruption?.reason,
+          recursionCount: sessionData.state.recursionCount,
+          recursionLimit: sessionData.state.recursionLimit,
+          completedTasksDetailsCount: sessionData.state.completedTasksDetails?.length || 0
+        });
+        
+        // Write updated session (preserving ALL fields including pausedDueToLimit, completedTasksDetails)
+        await fs.promises.writeFile(sessionPath, JSON.stringify(sessionData, null, 2), 'utf-8')
           
         // ✅ Broadcast final update to switch to session data via SSE service
         console.log(`   📡 Broadcasting Kanban update (job stopped)...`);
@@ -227,9 +261,11 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   }
   
   constructor() {
+    console.log('🔧 Initializing ExpressServerAdapter...');
     this.app = express();
     
     // Initialize services
+    console.log('   📦 Creating KanbanService...');
     this.kanbanService = new KanbanService(this.WORKSPACE_ROOT);
     this.taskExecutionService = new TaskExecutionService({
       onJobStatusChange: (jobId, status) => {
@@ -258,6 +294,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     // Initialize session service with SSE callback
     this.sessionService = new SessionService(this.WORKSPACE_ROOT, {
       onSessionChange: (projectId, featureName) => {
+        // ✅ Broadcast Kanban update when session changes
         this.sseBroadcastService.broadcastKanbanUpdate(
           projectId, 
           featureName,
@@ -265,20 +302,29 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
           this.jobs,
           this.taskQueueSnapshots
         );
+        
+        // ✅ Broadcast file tree update when session file is created/modified
+        // This ensures the frontend sees session.json appear in the output tree
+        this.sseBroadcastService.broadcastFileTreeUpdate(projectId, featureName);
       }
     });
     
     // Initialize graph metadata service for workflow visualization
+    console.log('   📊 Creating GraphMetadataService...');
     this.graphMetadataService = new GraphMetadataService();
     
     // Initialize workflow state service for real-time workflow tracking
+    console.log('   🔄 Creating WorkflowStateService...');
     this.workflowStateService = new WorkflowStateService();
     
+    console.log('   ⚙️  Setting up middleware...');
     this.setupMiddleware();
+    console.log('   🛣️  Setting up routes...');
     this.setupRoutes();
     
     // Set singleton instance
     ExpressServerAdapter.instance = this;
+    console.log('✅ ExpressServerAdapter initialized successfully\n');
   }
   
   /**
@@ -525,19 +571,73 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
           if (stderrBuffer) flushBuffer(stderrBuffer, 'stderr');
           
           if (code === 0) {
-            status.status = 'completed';
-            status.completedAt = new Date().toISOString();
+            // ✅ CRITICAL: Check session for interruption details (recursion limit, etc.)
+            // Even with exit code 0, the task may be paused/interrupted
+            const mapping = this.jobToProject.get(jobId);
+            let interruption: InterruptionDetails | undefined;
             
-            const logEntry: LogEntry = {
-              type: 'stdout',
-              message: '\n✅ Job completed successfully!',
-              timestamp: new Date().toISOString()
-            };
-            this.logs.get(jobId)!.push(logEntry);
-            this.logStreams.get(jobId)?.forEach(listener => listener(logEntry));
+            if (mapping) {
+              try {
+                const sessionData = await this.sessionService.readSessionData(mapping.projectId, mapping.featureName);
+                if (sessionData?.state?.interruption) {
+                  const sessionInterruption = sessionData.state.interruption;
+                  interruption = sessionInterruption;
+                  console.log(`   ⏸️  Session has interruption: ${sessionInterruption.reason}`);
+                  
+                  // Update status to 'paused' instead of 'completed'
+                  status.status = 'paused';
+                  status.completedAt = new Date().toISOString();
+                  
+                  const logEntry: LogEntry = {
+                    type: 'stdout',
+                    message: `\n⏸️  Job paused: ${sessionInterruption.message}`,
+                    timestamp: new Date().toISOString()
+                  };
+                  this.logs.get(jobId)!.push(logEntry);
+                  this.logStreams.get(jobId)?.forEach(listener => listener(logEntry));
+                } else {
+                  // True completion (no interruption)
+                  status.status = 'completed';
+                  status.completedAt = new Date().toISOString();
+                  
+                  const logEntry: LogEntry = {
+                    type: 'stdout',
+                    message: '\n✅ Job completed successfully!',
+                    timestamp: new Date().toISOString()
+                  };
+                  this.logs.get(jobId)!.push(logEntry);
+                  this.logStreams.get(jobId)?.forEach(listener => listener(logEntry));
+                }
+              } catch (error) {
+                console.warn(`   ⚠️  Failed to read session for interruption check:`, error);
+                // Fallback to completed
+                status.status = 'completed';
+                status.completedAt = new Date().toISOString();
+                
+                const logEntry: LogEntry = {
+                  type: 'stdout',
+                  message: '\n✅ Job completed successfully!',
+                  timestamp: new Date().toISOString()
+                };
+                this.logs.get(jobId)!.push(logEntry);
+                this.logStreams.get(jobId)?.forEach(listener => listener(logEntry));
+              }
+            } else {
+              // No mapping, assume completed
+              status.status = 'completed';
+              status.completedAt = new Date().toISOString();
+              
+              const logEntry: LogEntry = {
+                type: 'stdout',
+                message: '\n✅ Job completed successfully!',
+                timestamp: new Date().toISOString()
+              };
+              this.logs.get(jobId)!.push(logEntry);
+              this.logStreams.get(jobId)?.forEach(listener => listener(logEntry));
+            }
             
-            // ✅ Clean up job state (clear live snapshots, update UI)
-            await this.cleanupJobState(jobId);
+            // ✅ Clean up job state (pass interruption if exists)
+            await this.cleanupJobState(jobId, undefined, undefined, interruption);
             
             resolve();
           } else {
@@ -555,16 +655,87 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
             this.logs.get(jobId)!.push(logEntry);
             this.logStreams.get(jobId)?.forEach(listener => listener(logEntry));
             
+            // ✅ Analyze logs to determine interruption reason
+            let interruption: InterruptionDetails | undefined;
+            
+            if (!signal) {
+              // Get all stderr logs for analysis
+              const allLogs = this.logs.get(jobId) || [];
+              const stderrLogs = allLogs
+                .filter(log => log.type === 'stderr')
+                .map(log => log.message)
+                .join('\n');
+              
+              // Check for API errors (LLM API failures)
+              const apiErrorMatch = stderrLogs.match(/404.*?model.*?not.*?found|overloaded_error|rate_limit_error|invalid_api_key|authentication_error/i);
+              const modelNotFoundMatch = stderrLogs.match(/model:\s*([^\s"]+)/i);
+              
+              if (apiErrorMatch) {
+                const modelName = modelNotFoundMatch ? modelNotFoundMatch[1] : 'unknown';
+                interruption = {
+                  reason: 'api_error',
+                  message: `LLM API error: Model not found or unavailable (${modelName})`,
+                  timestamp: new Date().toISOString(),
+                  canResume: true,
+                  metadata: {
+                    errorType: 'model_not_found',
+                    modelName: modelName,
+                    exitCode: code
+                  }
+                };
+              } else {
+                // Generic process crash
+                interruption = {
+                  reason: 'process_crash',
+                  message: `Process crashed with exit code ${code}`,
+                  timestamp: new Date().toISOString(),
+                  canResume: true,
+                  metadata: {
+                    exitCode: code,
+                    signal: signal
+                  }
+                };
+              }
+            }
+            // Don't save interruption for user stops (already handled in jobRoutes)
+            
             // ✅ CRITICAL: Clean up job state even on failure (recursion limit, errors)
             // This moves currentTask back to queue and broadcasts to UI
-            await this.cleanupJobState(jobId);
+            await this.cleanupJobState(jobId, undefined, undefined, interruption);
             
             reject(new Error(status.error));
           }
         });
         
-        childProcess.on('error', (error) => {
+        childProcess.on('error', async (error) => {
           this.childProcesses.delete(jobId);
+          
+          status.status = 'failed';
+          status.completedAt = new Date().toISOString();
+          status.error = error.message;
+          
+          const logEntry: LogEntry = {
+            type: 'stderr',
+            message: `\n❌ Process error: ${error.message}`,
+            timestamp: new Date().toISOString()
+          };
+          this.logs.get(jobId)!.push(logEntry);
+          this.logStreams.get(jobId)?.forEach(listener => listener(logEntry));
+          
+          // ✅ Create interruption details for process error
+          const interruption: InterruptionDetails = {
+            reason: 'process_crash',
+            message: `Process error: ${error.message}`,
+            timestamp: new Date().toISOString(),
+            canResume: true,
+            metadata: {
+              errorType: 'process_error',
+              errorMessage: error.message
+            }
+          };
+          
+          await this.cleanupJobState(jobId, undefined, undefined, interruption);
+          
           reject(error);
         });
       });
@@ -580,6 +751,21 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       };
       this.logs.get(jobId)!.push(logEntry);
       this.logStreams.get(jobId)?.forEach(listener => listener(logEntry));
+      
+      // ✅ Create interruption details for job startup/execution failure
+      const interruption: InterruptionDetails = {
+        reason: 'unknown',
+        message: `Job execution failed: ${error.message}`,
+        timestamp: new Date().toISOString(),
+        canResume: true,
+        metadata: {
+          errorType: 'execution_failure',
+          errorMessage: error.message,
+          stack: error.stack
+        }
+      };
+      
+      await this.cleanupJobState(jobId, undefined, undefined, interruption);
     } finally {
       if (this.currentJobId === jobId) {
         this.currentJobId = null;
@@ -643,6 +829,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
    * Track node entry
    */
   enterNode(jobId: string, nodeId: string): void {
+    console.log(`\n🎯 [ExpressServerAdapter] enterNode called: ${nodeId} (job: ${jobId})`);
     this.workflowStateService.enterNode(jobId, nodeId);
   }
   

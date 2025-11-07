@@ -95,32 +95,37 @@ export function KanbanColumns({
               const isNewlyInProgress = newlyInProgressId === taskId;
               
               return (
-                <motion.div
-                  key={taskId}
-                  layoutId={`task-${taskId}`}  // ✅ Critical: enables shared layout animations
-                  layout
-                  initial={isNewlyInProgress ? { opacity: 0 } : false}
-                  animate={{ opacity: 1 }}
-                  transition={{ 
-                    layout: {
-                      type: "spring",
-                      stiffness: 500,
-                      damping: 35,
-                      delay: isNewlyInProgress ? 0.4 : 0  // ✅ Delay for newly in-progress
-                    },
-                    opacity: {
-                      duration: 0.3,
-                      delay: isNewlyInProgress ? 0.4 : 0
-                    }
-                  }}
-                  onAnimationComplete={() => {
-                    if (isNewlyInProgress) {
-                      onInProgressAnimationComplete();
-                    }
-                  }}
-                >
-                  <TaskCard task={inProgressTask} status="in-progress" />
-                </motion.div>
+                <div key="in-progress-with-indicator" className="space-y-2">
+                  <motion.div
+                    key={taskId}
+                    layoutId={`task-${taskId}`}  // ✅ Critical: enables shared layout animations
+                    layout
+                    initial={isNewlyInProgress ? { opacity: 0 } : false}
+                    animate={{ opacity: 1 }}
+                    transition={{ 
+                      layout: {
+                        type: "spring",
+                        stiffness: 500,
+                        damping: 35,
+                        delay: isNewlyInProgress ? 0.4 : 0  // ✅ Delay for newly in-progress
+                      },
+                      opacity: {
+                        duration: 0.3,
+                        delay: isNewlyInProgress ? 0.4 : 0
+                      }
+                    }}
+                    onAnimationComplete={() => {
+                      if (isNewlyInProgress) {
+                        onInProgressAnimationComplete();
+                      }
+                    }}
+                  >
+                    <TaskCard task={inProgressTask} status="in-progress" />
+                  </motion.div>
+                  
+                  {/* ✅ Active Node/Actor Indicator - Below the in-progress card */}
+                  <ActiveNodeIndicator />
+                </div>
               );
             })()}
             {!inProgressTask && (
@@ -128,9 +133,6 @@ export function KanbanColumns({
                 No task in progress
               </div>
             )}
-            
-            {/* Active Node/Actor Indicator - Below the card */}
-            <ActiveNodeIndicator />
           </div>
         </div>
 

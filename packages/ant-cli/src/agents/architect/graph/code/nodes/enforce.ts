@@ -47,6 +47,11 @@ function areViolationsRetryable(violations: Violation[]): boolean {
 }
 
 export async function enforce(state: ArchitectGraphState): Promise<ArchitectGraphState> {
+  // ✅ Workflow instrumentation: Enter node
+  if (state.deps?.workflowUpdate && state._httpTaskId) {
+    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'enforce');
+  }
+  
   const violations = state.violations || [];
   
   console.log(`\n⚠️  ENFORCEMENT triggered (retry ${state.retries + 1}/${state.maxRetries})\n`);

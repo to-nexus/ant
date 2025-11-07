@@ -131,6 +131,80 @@ export function createWorkflowRoutes(deps: {
     });
   });
   
+  /**
+   * POST /api/jobs/:jobId/workflow/update
+   * 
+   * 워크플로우 상태 업데이트 (자식 프로세스에서 호출)
+   * 
+   * Parameters:
+   * - jobId: string (Job ID)
+   * 
+   * Body:
+   * - action: 'enterNode' | 'exitNode' | 'startActor' | 'endActor' | 'endJob'
+   * - nodeId?: string (for enterNode/exitNode)
+   * - actorId?: string (for startActor/endActor)
+   * 
+   * Response:
+   * - 200: { success: true }
+   * - 400: { error: 'Invalid action' }
+   */
+  router.post('/jobs/:jobId/workflow/update', (req: Request, res: Response) => {
+    const { jobId } = req.params;
+    const { action, nodeId, actorId } = req.body;
+    
+    try {
+      switch (action) {
+        case 'enterNode':
+          if (!nodeId) {
+            res.status(400).json({ error: 'nodeId required for enterNode' });
+            return;
+          }
+          deps.workflowStateService.enterNode(jobId, nodeId);
+          break;
+        
+        case 'exitNode':
+          if (!nodeId) {
+            res.status(400).json({ error: 'nodeId required for exitNode' });
+            return;
+          }
+          deps.workflowStateService.exitNode(jobId, nodeId);
+          break;
+        
+        case 'startActor':
+          if (!actorId) {
+            res.status(400).json({ error: 'actorId required for startActor' });
+            return;
+          }
+          deps.workflowStateService.startActorInteraction(jobId, actorId);
+          break;
+        
+        case 'endActor':
+          if (!actorId) {
+            res.status(400).json({ error: 'actorId required for endActor' });
+            return;
+          }
+          deps.workflowStateService.endActorInteraction(jobId, actorId);
+          break;
+        
+        case 'endJob':
+          deps.workflowStateService.endJob(jobId);
+          break;
+        
+        default:
+          res.status(400).json({ error: 'Invalid action' });
+          return;
+      }
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('[WorkflowRoutes] Error updating workflow state:', error);
+      res.status(500).json({
+        error: 'Internal server error',
+        message: error.message
+      });
+    }
+  });
+  
   return router;
 }
 

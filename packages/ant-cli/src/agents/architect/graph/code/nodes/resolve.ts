@@ -22,6 +22,18 @@ import * as path from "path";
  * - Uses GitPort for file operations
  */
 export async function resolve(state: ArchitectGraphState): Promise<ArchitectGraphState> {
+  // ✅ Workflow instrumentation: Enter node
+  console.log(`\n🔍 [resolve] Checking workflow tracking:`);
+  console.log(`   workflowUpdate exists: ${!!state.deps?.workflowUpdate}`);
+  console.log(`   _httpTaskId: ${state._httpTaskId || 'undefined'}`);
+  
+  if (state.deps?.workflowUpdate && state._httpTaskId) {
+    console.log(`   ✅ Calling workflowUpdate.enterNode('${state._httpTaskId}', 'resolve')`);
+    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'resolve');
+  } else {
+    console.log(`   ❌ Skipping workflow tracking (missing workflowUpdate or _httpTaskId)`);
+  }
+  
   const { context } = state;
   const retriever = new CodebaseRetriever();
   

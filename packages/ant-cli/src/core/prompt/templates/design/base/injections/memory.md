@@ -1,7 +1,8 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-📋 DIRECTIVE (User Instructions):
+📚 RELEVANT KNOWLEDGE FROM VECTOR DB:
 
-{{directiveSection}}
+{{memory}}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+

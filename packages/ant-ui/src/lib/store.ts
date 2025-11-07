@@ -65,7 +65,6 @@ interface StoreActions {
   refreshDevServerStatus: () => Promise<void>;
   toggleTheme: () => void;
   setTheme: (theme: 'light' | 'dark') => void;
-  setSplitLayout: (layout: 'none' | 'horizontal' | 'vertical') => void;
   toggleSplitLayout: (layout: 'horizontal' | 'vertical') => void;
 }
 
@@ -495,10 +494,6 @@ export const useStore = create<Store>((set, get) => ({
     set({ theme });
     saveToStorage(STORAGE_KEYS.THEME, theme);
     applyTheme(theme);
-  },
-
-  setSplitLayout: (layout: 'horizontal' | 'vertical') => {
-    set({ splitLayout: layout });
   },
 
   toggleSplitLayout: (layout: 'horizontal' | 'vertical') => {

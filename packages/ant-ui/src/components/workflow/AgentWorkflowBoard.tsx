@@ -1,7 +1,7 @@
 import { BoardContainer } from '../BoardContainer';
 import { StatusChip } from '../StatusChip';
 import { useStore } from '@/lib/store';
-import { capitalize, formatJobId } from '@/lib/text-utils';
+import { capitalize } from '@/lib/text-utils';
 import { WorkflowVisualization } from './WorkflowVisualization';
 
 /**
@@ -15,11 +15,7 @@ import { WorkflowVisualization } from './WorkflowVisualization';
 export function AgentWorkflowBoard() {
   const selectedAgent = useStore((state) => state.selectedAgent);
   const selectedWorkType = useStore((state) => state.selectedWorkType);
-  const currentJob = useStore((state) => state.currentJob);
   const isRunning = useStore((state) => state.isRunning);
-  
-  // Job ID from running job
-  const jobId = currentJob?.jobId;
 
   return (
     <BoardContainer
@@ -29,21 +25,16 @@ export function AgentWorkflowBoard() {
           {/* Always show selected agent */}
           <StatusChip 
             variant="info" 
-            label={`Agent: ${capitalize(selectedAgent)}`} 
+            label={`Agent: ${capitalize(selectedAgent)}`}
+            hideDot
           />
           {/* Always show selected work type (job) */}
           <StatusChip 
             variant="success" 
-            label={`Job: ${capitalize(selectedWorkType)}`} 
+            label={`Job: ${capitalize(selectedWorkType)}`}
+            hideDot
           />
-          {/* Show Job ID when running */}
-          {jobId && (
-            <StatusChip 
-              variant="neutral" 
-              label={`ID: ${formatJobId(jobId)}`}
-            />
-          )}
-          {/* Show Status (Running / Idle) */}
+          {/* Show Status (Running / Idle) - dot 표시 필요 */}
           <StatusChip 
             variant={isRunning ? "live" : "session"} 
             label={isRunning ? "Running" : "Idle"}

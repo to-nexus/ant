@@ -1,3 +1,7 @@
-📝 PRD/SPECIFICATION:
-{{content}}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+📄 PRODUCT REQUIREMENTS DOCUMENT (PRD):
+
+{{prdSpecSection}}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -139,8 +139,32 @@ export interface SessionArtifacts {
 }
 
 /**
+ * Interruption Reason
+ * Categorizes why a job was interrupted
+ */
+export type InterruptionReason = 
+  | 'recursion_limit'      // Hit recursion limit
+  | 'user_stopped'         // User clicked Stop button
+  | 'api_error'            // LLM API error (overloaded, rate limit, etc.)
+  | 'process_crash'        // Child process crashed unexpectedly
+  | 'timeout'              // Job timeout
+  | 'unknown';             // Unknown reason
+
+/**
+ * Interruption Details
+ * Provides context about the interruption
+ */
+export interface InterruptionDetails {
+  reason: InterruptionReason;
+  message: string;          // Human-readable message
+  timestamp: string;        // ISO timestamp
+  canResume: boolean;       // Whether the job can be resumed
+  metadata?: Record<string, any>;  // Additional context (e.g., error type, recursion count)
+}
+
+/**
  * Session State Snapshot
- * Stores execution state for resuming after recursion limit
+ * Stores execution state for resuming after interruption
  * 
  * This enables continuing from the exact point where execution stopped,
  * without re-decomposing tasks or losing progress.
@@ -166,15 +190,37 @@ export interface SessionState {
   resolvedCategories?: string[]; // Error categories resolved
   
   // Execution Context (for resume optimization)
-  planText?: string;              // ✅ Cached plan to skip LLM call on resume
+  planText?: string;              // Cached plan to skip LLM call on resume
   
-  // Pause State (for recursion limit)
-  pausedDueToLimit?: boolean;     // ✅ Indicates if paused due to recursion limit
-  tasksRemaining?: number;        // ✅ Number of tasks remaining when paused
+  // ✅ Unified Interruption State
+  interruption?: InterruptionDetails;  // Details about why and how the job was interrupted
   
   // Recursion Tracking
-  recursionCount?: number;        // ✅ Current recursion iteration count
-  recursionLimit?: number;        // ✅ Maximum recursion limit
+  recursionCount?: number;        // Current recursion iteration count
+  recursionLimit?: number;        // Maximum recursion limit
+}
+
+/**
+ * Session
+ * Represents a feature development session with full context
+ */
+export interface Session {
+  sessionId: string;  // Unique session identifier (UUID)
+  project: string;
+  feature: string;
+  createdAt: string;
+  updatedAt: string;
+  turns: SessionTurn[];
+  artifacts: SessionArtifacts;
+  state?: SessionState;  // ✅ Execution state snapshot for resuming
+}
+
+
+  interruption?: InterruptionDetails;  // Details about why and how the job was interrupted
+  
+  // Recursion Tracking
+  recursionCount?: number;        // Current recursion iteration count
+  recursionLimit?: number;        // Maximum recursion limit
 }
 
 /**

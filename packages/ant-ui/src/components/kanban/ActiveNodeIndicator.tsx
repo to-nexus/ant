@@ -7,16 +7,23 @@
 
 import { useWorkflowState } from '../workflow/hooks';
 import { useStore } from '@/lib/store';
+import { useUIActionPolicy } from '@/hooks/useUIActionPolicy';
 
 export function ActiveNodeIndicator() {
-  const currentJob = useStore(state => state.currentJob);
-  const isRunning = useStore(state => state.isRunning);
+  const currentJobId = useStore(state => state.currentJobId);
+  const userStoppedJobId = useStore(state => state.userStoppedJobId);
   
-  // 실시간 워크플로우 상태 구독
-  const workflowState = useWorkflowState(currentJob?.jobId);
+  // ✅ UI 정책 시스템 사용
+  const policy = useUIActionPolicy();
   
-  // Job이 실행 중이 아니거나 워크플로우 상태가 없으면 표시 안 함
-  if (!isRunning || !workflowState || !workflowState.currentNode) {
+  // ✅ CRITICAL: Don't subscribe if user stopped this job
+  const shouldSubscribe = currentJobId && currentJobId !== userStoppedJobId;
+  
+  // 실시간 워크플로우 상태 구독 (큐를 통해 표시되는 상태)
+  const { displayedState } = useWorkflowState(shouldSubscribe ? currentJobId : undefined);
+  
+  // ✅ UI 정책에 따라 표시 여부 결정
+  if (!policy.shouldShowWorkflowIndicators || !displayedState || !displayedState.currentNode) {
     return null;
   }
   
@@ -43,12 +50,12 @@ export function ActiveNodeIndicator() {
             </span>
           </div>
           <span className="text-xs text-blue-600 dark:text-blue-400 font-semibold">
-            {formatNodeName(workflowState.currentNode)}
+            {formatNodeName(displayedState.currentNode)}
           </span>
         </div>
         
         {/* Active Actors */}
-        {workflowState.activeActors && workflowState.activeActors.length > 0 && (
+        {displayedState.activeActors && displayedState.activeActors.length > 0 && (
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5">
               <div className="relative flex h-2 w-2">
@@ -60,7 +67,7 @@ export function ActiveNodeIndicator() {
               </span>
             </div>
             <span className="text-xs text-purple-600 dark:text-purple-400 font-semibold">
-              {workflowState.activeActors.map(formatNodeName).join(', ')}
+              {displayedState.activeActors.map(formatNodeName).join(', ')}
             </span>
           </div>
         )}

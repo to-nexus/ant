@@ -42,11 +42,14 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       previousFileCount: state.previousFileCount,
       resolvedCategories: state.resolvedCategories || [],
       planText: state.planText,  // ✅ Save plan for reuse on resume
-      pausedDueToLimit: (state as any).pausedDueToLimit,  // ✅ Save pause state for recursion limit
-      tasksRemaining: (state as any).tasksRemaining,  // ✅ Save remaining tasks count
       recursionCount: state.recursionCount,  // ✅ Save current recursion count
       recursionLimit: state.recursionLimit,  // ✅ Save recursion limit
     };
+    
+    // ✅ Include interruption details if present
+    if ((state as any).interruption) {
+      (sessionState as any).interruption = (state as any).interruption;
+    }
     
     // ✅ Only include currentTask if it exists
     if (state.currentTask) {
@@ -61,7 +64,8 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       }
     );
     
-    console.log(`[saveCheckpoint] ✅ Checkpoint saved successfully (paused: ${!!(state as any).pausedDueToLimit}, recursion: ${state.recursionCount}/${state.recursionLimit})`);
+    const hasInterruption = !!(state as any).interruption;
+    console.log(`[saveCheckpoint] ✅ Checkpoint saved successfully (interrupted: ${hasInterruption}, recursion: ${state.recursionCount}/${state.recursionLimit})`);
   } catch (error) {
     console.warn(`⚠️  Failed to save checkpoint: ${error}`);
   }

@@ -12,7 +12,8 @@ import { FileConfigAdapter } from "../periphery/adapters/config/FileConfigAdapte
 import { FileSessionAdapter } from "../periphery/adapters/session/FileSessionAdapter";
 import { ChunkAdapter } from "../periphery/adapters/chunk/ChunkingAdapter";
 import { NodeCommandAdapter } from "../periphery/adapters/command/NodeCommandAdapter";
-import { TaskQueueUpdatePort } from "../core/ports";
+import { TaskQueueUpdatePort, FileTreeUpdatePort } from "../core/ports";
+import { WorkflowStateUpdatePort } from "../core/ports/workflow";
 import * as path from "path";
 
 /**
@@ -47,11 +48,15 @@ export async function orchestrator(params: {
       const memory = new ChromaMemoryAdapter();
       const config = new FileConfigAdapter();
       
-      // LLM is configured via environment variables (AI_MODEL_PROVIDER, AI_MODEL_NAME, etc.)
-      const llm = new GenericLLMClient('architect');
-      
-      // Load project config for git/repo settings
+      // Load project config for git/repo and LLM settings
       const configData = await config.load(project || "default");
+      
+      // LLM configuration priority: workspace config > environment variables
+      // Environment variables: ARCHITECT_MODEL_PROVIDER, ARCHITECT_MODEL_NAME, AI_MODEL_PROVIDER, AI_MODEL_NAME
+      const llm = new GenericLLMClient('architect', undefined, {
+        llmProvider: configData.llmProvider,
+        llmModel: configData.llmModel
+      });
 
       if (task === 'learn') {
         // Learn task: minimal dependencies
@@ -70,12 +75,40 @@ export async function orchestrator(params: {
         const analyzer = new CodebaseAnalyzer();
         const git = new SimpleGitAdapter(project || "default", configData);
         
+        // ✅ Get ExpressServerAdapter instance for real-time updates
+        let kanbanUpdate: TaskQueueUpdatePort | undefined = undefined;
+        let fileTreeUpdate: FileTreeUpdatePort | undefined = undefined;
+        let workflowUpdate: WorkflowStateUpdatePort | undefined = undefined;
+        
+        try {
+          const { ExpressServerAdapter } = await import('../periphery/adapters/http/ExpressServerAdapter');
+          const instance = ExpressServerAdapter.getInstance();
+          
+          if (instance) {
+            // 부모 프로세스 (서버 실행 중): 직접 참조 사용
+            kanbanUpdate = instance;
+            fileTreeUpdate = instance;
+            workflowUpdate = instance;
+            console.log('✅ Real-time updates enabled (Direct - Kanban + File Tree + Workflow) [Design]');
+          } else if (process.env.ANT_SERVER_PORT) {
+            // 자식 프로세스: HTTP 클라이언트 사용
+            const { WorkflowHttpClient, KanbanHttpClient } = await import('../periphery/adapters/http/clients');
+            kanbanUpdate = new KanbanHttpClient(process.env.ANT_SERVER_PORT);
+            workflowUpdate = new WorkflowHttpClient(process.env.ANT_SERVER_PORT);
+            console.log('✅ Real-time updates enabled (HTTP - Kanban + Workflow) [Design]');
+          } else {
+            console.log('ℹ️  Real-time updates disabled (no server instance or port) [Design]');
+          }
+        } catch (error) {
+          console.log('ℹ️  Real-time updates disabled (server not running) [Design]');
+        }
+        
         return await architectAgent(
           input, 
           project || "default", 
           'design', 
           inputFile, 
-          { memory, llm, promptPort, profilePort, config, chunk, session, git, analyzer },
+          { memory, llm, promptPort, profilePort, config, chunk, session, git, analyzer, kanbanUpdate, fileTreeUpdate, workflowUpdate },
           undefined,  // codeMode
           undefined,  // enableEvaluation
           taskId      // ✅ Pass taskId for real-time Kanban
@@ -89,16 +122,27 @@ export async function orchestrator(params: {
         
         // ✅ Get ExpressServerAdapter instance for real-time updates
         let kanbanUpdate: TaskQueueUpdatePort | undefined = undefined;
-        let fileTreeUpdate: import('../core/ports').FileTreeUpdatePort | undefined = undefined;
-        let workflowUpdate: import('../core/ports').WorkflowStateUpdatePort | undefined = undefined;
+        let fileTreeUpdate: FileTreeUpdatePort | undefined = undefined;
+        let workflowUpdate: WorkflowStateUpdatePort | undefined = undefined;
+        
         try {
           const { ExpressServerAdapter } = await import('../periphery/adapters/http/ExpressServerAdapter');
           const instance = ExpressServerAdapter.getInstance();
-          kanbanUpdate = instance || undefined;  // Convert null to undefined
-          fileTreeUpdate = instance || undefined;  // Same instance implements both ports
-          workflowUpdate = instance || undefined;  // Same instance implements WorkflowStateUpdatePort
-          if (kanbanUpdate) {
-            console.log('✅ Real-time updates enabled (Kanban + File Tree + Workflow)');
+          
+          if (instance) {
+            // 부모 프로세스 (서버 실행 중): 직접 참조 사용
+            kanbanUpdate = instance;
+            fileTreeUpdate = instance;
+            workflowUpdate = instance;
+            console.log('✅ Real-time updates enabled (Direct - Kanban + File Tree + Workflow)');
+          } else if (process.env.ANT_SERVER_PORT) {
+            // 자식 프로세스: HTTP 클라이언트 사용
+            const { WorkflowHttpClient, KanbanHttpClient } = await import('../periphery/adapters/http/clients');
+            kanbanUpdate = new KanbanHttpClient(process.env.ANT_SERVER_PORT);
+            workflowUpdate = new WorkflowHttpClient(process.env.ANT_SERVER_PORT);
+            console.log('✅ Real-time updates enabled (HTTP - Kanban + Workflow)');
+          } else {
+            console.log('ℹ️  Real-time updates disabled (no server instance or port)');
           }
         } catch (error) {
           console.log('ℹ️  Real-time updates disabled (server not running)');
@@ -122,20 +166,35 @@ export async function orchestrator(params: {
 
     case "reviewer": {
       const memory = new ChromaMemoryAdapter();
-      const llm = new GenericLLMClient('reviewer');
+      const config = new FileConfigAdapter();
+      const configData = await config.load(project || "default");
+      const llm = new GenericLLMClient('reviewer', undefined, {
+        llmProvider: configData.llmProvider,
+        llmModel: configData.llmModel
+      });
       return await reviewerAgent(input, project || "default", { memory, llm });
     }
 
     case "planner": {
       const [issues, commits] = input.split("===COMMITS===");
       const memory = new ChromaMemoryAdapter();
-      const llm = new GenericLLMClient('planner');
+      const config = new FileConfigAdapter();
+      const configData = await config.load(project || "default");
+      const llm = new GenericLLMClient('planner', undefined, {
+        llmProvider: configData.llmProvider,
+        llmModel: configData.llmModel
+      });
       return await plannerAgent({ issues, commits }, project || "default", { memory, llm });
     }
 
     case "doc": {
       const memory = new ChromaMemoryAdapter();
-      const llm = new GenericLLMClient('doc');
+      const config = new FileConfigAdapter();
+      const configData = await config.load(project || "default");
+      const llm = new GenericLLMClient('doc', undefined, {
+        llmProvider: configData.llmProvider,
+        llmModel: configData.llmModel
+      });
       return await docAgent(input, project || "default", { memory, llm });
     }
 

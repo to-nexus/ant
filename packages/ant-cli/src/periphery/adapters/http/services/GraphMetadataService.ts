@@ -130,6 +130,10 @@ const ACTOR_MAPPINGS: Record<string, { actors: string[]; description?: string }>
     actors: [COMMON_ACTORS.vectorDb.id, COMMON_ACTORS.localStorage.id],
     description: 'Load context and artifacts via RAG'
   },
+  'architect:design:decompose': {
+    actors: [COMMON_ACTORS.llm.id],
+    description: 'Break down design requirements into tasks'
+  },
   'architect:design:plan': {
     actors: [COMMON_ACTORS.llm.id],
     description: 'Create design plan'
@@ -305,7 +309,31 @@ export class GraphMetadataService {
         }
       }
       
-      // 방법 2: channels를 통한 연결 추론
+      // ✅ 방법 2: _compiled 내부의 branches 확인 (conditional edges)
+      if (compiledGraph._compiled?.branches) {
+        const branches = compiledGraph._compiled.branches;
+        for (const [sourceNode, branchInfo] of Object.entries(branches)) {
+          if (typeof branchInfo === 'object' && branchInfo && 'branches' in branchInfo) {
+            // conditional edge의 모든 가능한 target을 edges로 추가
+            const branchTargets = (branchInfo as any).branches;
+            if (typeof branchTargets === 'object') {
+              for (const [condition, target] of Object.entries(branchTargets)) {
+                if (typeof target === 'string' && target !== '__end__') {
+                  edges.push({
+                    id: `${sourceNode}_to_${target}`,
+                    source: sourceNode,
+                    target,
+                    type: EdgeType.CONDITIONAL,
+                    label: condition !== 'default' ? condition : undefined
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      // 방법 3: channels를 통한 연결 추론 (fallback)
       if (edges.length === 0 && nodeIds.length > 1) {
         // 순차적 연결 추론 (fallback)
         for (let i = 0; i < nodeIds.length - 1; i++) {

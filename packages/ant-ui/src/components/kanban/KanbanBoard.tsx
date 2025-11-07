@@ -1,5 +1,6 @@
 import { useStore } from '@/lib/store';
 import { useEffect, useState } from 'react';
+import { useUIActionPolicy } from '@/hooks/useUIActionPolicy';
 import { KanbanData } from '@/lib/api';
 import { BoardContainer } from '../BoardContainer';
 import { DataSourceIndicator, GaugesGroup } from './KanbanHeader';
@@ -22,13 +23,13 @@ const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4100/api';
 export function KanbanBoard() {
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);
-  const isRunning = useStore((state) => state.isRunning);
-  const isStopping = useStore((state) => state.isStopping);
-  const userStoppedJobId = useStore((state) => state.userStoppedJobId);
   const setRunning = useStore((state) => state.setRunning);
   const setCurrentJob = useStore((state) => state.setCurrentJob);
   const setSession = useStore((state) => state.setSession);
   const splitLayout = useStore((state) => state.splitLayout);
+  
+  // ✅ UI Action Policy (provides isRunning, isStopping, etc.)
+  const policy = useUIActionPolicy();
   
   const [kanbanData, setKanbanData] = useState<KanbanData>({
     todo: [],
@@ -41,13 +42,27 @@ export function KanbanBoard() {
   const [previousCompletedIds, setPreviousCompletedIds] = useState<Set<string>>(new Set());
   const [newlyInProgressId, setNewlyInProgressId] = useState<string | null>(null);
   const [previousInProgressId, setPreviousInProgressId] = useState<string | null>(null);
-  const [previousDataSource, setPreviousDataSource] = useState<string | undefined>(undefined);
+  
+  // ✅ Track estimating state for To Do → In Progress animation
+  const [previousEstimating, setPreviousEstimating] = useState(false);
+  
+  // ✅ Track dismissed interrupts (user chose to ignore)
+  const [dismissedInterruptJobId, setDismissedInterruptJobId] = useState<string | null>(null);
+  
+  // ✅ Reset dismissed state when interruption changes (new job/interrupt)
+  useEffect(() => {
+    if (kanbanData.interruption?.timestamp && 
+        dismissedInterruptJobId !== kanbanData.interruption.timestamp) {
+      // New interruption appeared, clear the dismissed state
+      setDismissedInterruptJobId(null);
+    }
+  }, [kanbanData.interruption?.timestamp, dismissedInterruptJobId]);
 
   // ✅ CRITICAL: Optimistic update on stop
   // When user clicks Stop, immediately update kanbanData to "stopped" state
   // Server SSE will overwrite with actual data when it arrives
   useEffect(() => {
-    if (isStopping) {
+    if (policy.isStopping) {
       console.log('[KanbanBoard] 🛑 Optimistic update: forcing stopped state');
       setKanbanData(prev => ({
         ...prev,
@@ -56,7 +71,7 @@ export function KanbanBoard() {
         activeJobId: undefined
       }));
     }
-  }, [isStopping]);
+  }, [policy.isStopping]);
 
   // SSE connection for real-time updates
   useEffect(() => {
@@ -102,6 +117,8 @@ export function KanbanBoard() {
             todoCount: data.todo?.length ?? 0,
             hasInProgress: !!data.inProgress,
             completedCount: data.completed?.length ?? 0,
+            hasInterruption: !!data.interruption,
+            interruptionReason: data.interruption?.reason,
             isEstimating: data.isEstimating,
             dataSource: dataSource,
             activeJobId: activeJobId,
@@ -137,7 +154,7 @@ export function KanbanBoard() {
       }
     };
 
-    eventSource.onerror = (error) => {
+    eventSource.onerror = (_error) => {
       console.log('[Kanban SSE] Connection error, but keeping connection alive for session file updates');
     };
 
@@ -178,61 +195,23 @@ export function KanbanBoard() {
       setPreviousInProgressId(currentInProgressId);
     }
   }, [kanbanData.inProgress, previousInProgressId]);
-
-  // Detect agent job start/completion/stop
+  
+  // ✅ Track estimating state changes
   useEffect(() => {
-    const currentDataSource = kanbanData.dataSource;
-    const activeJobId = (kanbanData as any).activeJobId;  // Job ID from server
+    const isEstimating = kanbanData.isEstimating;
     
-    // ✅ CRITICAL: Skip ALL auto-restore logic during stop process
-    // BUT still update previousDataSource to prevent repeated triggers
-    if (isStopping) {
-      console.log('[KanbanBoard] ⏸️  Skipping all auto-restore logic (stopping in progress)');
-      setPreviousDataSource(currentDataSource);
-      return;
+    if (isEstimating !== previousEstimating) {
+      console.log('[KanbanBoard] Estimating state changed:', {
+        from: previousEstimating,
+        to: isEstimating
+      });
+      setPreviousEstimating(!!isEstimating);
     }
-    
-    // ✅ Job started (detected via server state)
-    // Only restore if:
-    // - dataSource is NOT 'session' (to prevent restoring stopped jobs)
-    // - NOT currently stopping (prevent restore right after stop)
-    // - NOT a job that user explicitly stopped (prevent restore after user Stop)
-    if ((currentDataSource === 'live' || currentDataSource === 'estimating') && 
-        !isRunning && 
-        !isStopping && 
-        activeJobId &&
-        activeJobId !== userStoppedJobId) {  // ✅ CRITICAL: Don't restore jobs user stopped
-      console.log('[KanbanBoard] ✅ Job detected via server, restoring UI state');
-      console.log('   activeJobId:', activeJobId);
-      console.log('   dataSource:', currentDataSource);
-      
-      // Restore running state
-      setRunning(true, activeJobId, 'generate');
-      
-      // Reconnect Log SSE
-      const { startLogStream } = useStore.getState();
-      startLogStream(activeJobId);
-      
-      console.log('[KanbanBoard] UI state restored from server');
-    } else if (activeJobId === userStoppedJobId) {
-      console.log('[KanbanBoard] 🚫 Skipping restore - user explicitly stopped this job:', activeJobId);
-    }
-    
-    // ✅ Job ended (live→session transition OR no activeJobId)
-    if (isRunning && !isStopping && (
-      // Case 1: Transition from live/estimating to session
-      ((previousDataSource === 'live' || previousDataSource === 'estimating') && currentDataSource === 'session') ||
-      // Case 2: No activeJobId anymore (job was deleted)
-      (!activeJobId && currentDataSource === 'session')
-    )) {
-      console.log('[KanbanBoard] Task ended detected, clearing UI state');
-      console.log('   Reason:', !activeJobId ? 'No activeJobId' : 'dataSource changed to session');
-      setRunning(false);
-      setCurrentJob(null);  // ✅ Also clear currentJob
-    }
-    
-    setPreviousDataSource(currentDataSource);
-  }, [kanbanData.dataSource, (kanbanData as any).activeJobId, previousDataSource, isRunning, isStopping, userStoppedJobId, setRunning, setCurrentJob]);
+  }, [kanbanData.isEstimating, previousEstimating]);
+
+  // Note: Job state synchronization (start/stop detection) is now handled
+  // by useJobStateSync hook in App.tsx (see App.tsx:33)
+  // KanbanBoard is purely a display component for kanban data
 
   // Handle Resume Task
   const handleResumeTask = async () => {
@@ -286,6 +265,14 @@ export function KanbanBoard() {
       alert('Failed to resume job. Please try again.');
     }
   };
+  
+  // ✅ Handler for dismissing the interrupt UI
+  const handleDismissInterrupt = () => {
+    console.log('[KanbanBoard] User dismissed interrupt UI');
+    // Track the job ID or timestamp to prevent showing it again
+    const jobIdOrTimestamp = kanbanData.interruption?.timestamp || Date.now().toString();
+    setDismissedInterruptJobId(jobIdOrTimestamp);
+  };
 
   // Calculate totals
   const totalTasks = kanbanData.todo.length + (kanbanData.inProgress ? 1 : 0) + kanbanData.completed.length;
@@ -309,13 +296,33 @@ export function KanbanBoard() {
     );
   }
 
+  // ✅ UI Policy: Interrupt UI 표시 여부 (Policy + KanbanData 조건 + Dismissed 체크)
+  const shouldShowInterruptUI = 
+    policy.shouldShowInterruptUI &&  // Policy: !isRunning && !isStopping
+    !kanbanData.isEstimating &&      // Not estimating
+    !!kanbanData.interruption &&     // Has interruption data
+    dismissedInterruptJobId !== kanbanData.interruption.timestamp; // Not dismissed
+  
+  // Debug logging
+  if (kanbanData.interruption) {
+    console.log('[KanbanBoard] Interruption detected:', {
+      hasInterruption: !!kanbanData.interruption,
+      interruptionReason: kanbanData.interruption.reason,
+      isEstimating: kanbanData.isEstimating,
+      policyAllows: policy.shouldShowInterruptUI,
+      isRunning: policy.isRunning,
+      isStopping: policy.isStopping,
+      shouldShowUI: shouldShowInterruptUI
+    });
+  }
+  
   return (
     <BoardContainer 
       title="📋 Task Board"
       titleActions={
         <DataSourceIndicator 
           dataSource={kanbanData.dataSource} 
-          isStopping={isStopping}  // ✅ 즉각적인 피드백
+          isStopping={policy.isStopping}  // ✅ UI Policy
         />
       }
       headerActions={
@@ -327,17 +334,18 @@ export function KanbanBoard() {
         />
       }
     >
-      {/* Paused State: Show resume prompt (only when NOT running) */}
-      {kanbanData.pausedDueToLimit && !kanbanData.isEstimating && !isRunning && (
+      {/* Interrupted State: Show resume prompt for all interruption reasons (only when NOT running) */}
+      {shouldShowInterruptUI && kanbanData.interruption && (
         <KanbanPausedPrompt
-          tasksRemaining={kanbanData.tasksRemaining || 0}
+          interruption={kanbanData.interruption}
           onResume={handleResumeTask}
+          onDismiss={handleDismissInterrupt}
         />
       )}
 
       {/* Estimating State: Show only banner, hide columns */}
-      {/* ✅ 즉각적인 피드백: isStopping이면 Estimating 표시 안 함 */}
-      {kanbanData.isEstimating && !isStopping ? (
+      {/* ✅ UI Policy: isStopping이면 Estimating 표시 안 함 */}
+      {kanbanData.isEstimating && !policy.isStopping ? (
         <KanbanEstimating />
       ) : (
         <KanbanColumns

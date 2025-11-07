@@ -1,7 +1,11 @@
 import { DesignMode, CodebaseProfile, TaskArtifacts } from "../../../../core/types";
-import { LLMClient, ChunkPort, SessionPort, GitPort, CodebaseAnalyzerPort, MemoryPort } from "../../../../core/ports";
+import { LLMClient, ChunkPort, SessionPort, GitPort, CodebaseAnalyzerPort, MemoryPort, TaskQueueUpdatePort } from "../../../../core/ports";
 import { PromptEngine } from "../../../../core/prompt/engine";
 import { ProjectContext } from "../../types";
+import { Task, TaskQueue } from "../code/state";  // ✅ Reuse Task and TaskQueue from code
+
+// ✅ Re-export Task and TaskQueue for use in design nodes
+export { Task, TaskQueue } from "../code/state";
 
 /**
  * Design Task State
@@ -28,11 +32,20 @@ export interface DesignGraphState extends TaskArtifacts {
     session?: SessionPort;
     git?: GitPort;
     analyzer?: CodebaseAnalyzerPort;
-    memory?: MemoryPort;  // ✅ IMPROVEMENT: Add MemoryPort for vector DB retrieval
+    memory?: MemoryPort;
+    kanbanUpdate?: TaskQueueUpdatePort;  // ✅ For real-time Kanban updates
+    fileTreeUpdate?: import('../../../../core/ports').FileTreeUpdatePort;
+    workflowUpdate?: import('../../../../core/ports/workflow').WorkflowStateUpdatePort;
   };
 
   // Mode (explicit or inferred)
   designMode?: DesignMode;  // greenfield / evolution / refactor
+
+  // ✅ NEW: Task Queue (for task breakdown like code)
+  taskQueue?: TaskQueue;
+  currentTask?: Task;
+  completedTasks?: string[];  // Task IDs
+  completedTasksDetails?: Task[];  // Full task details for resume
 
   // Execution
   planText: string;
@@ -41,4 +54,7 @@ export interface DesignGraphState extends TaskArtifacts {
   // Results (populated by learn node)
   designFilePath?: string;
   learnings?: string;
+  
+  // ✅ For tracking in UI
+  _httpTaskId?: string;
 }
