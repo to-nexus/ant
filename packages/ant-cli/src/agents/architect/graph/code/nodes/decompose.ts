@@ -21,30 +21,22 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     state.deps.workflowUpdate.enterNode(state._httpTaskId, 'decompose');
   }
   
-  // ✅ CRITICAL: Send "estimating started" signal to Kanban FIRST
-  // This ensures frontend receives isEstimating: true before task queue arrives
-  if (state._httpTaskId && state.deps?.kanbanUpdate) {
-    console.log(`\n🎬 [Code Decompose] Signaling estimating started...`);
-    state.deps.kanbanUpdate.updateTaskQueue(
-      state._httpTaskId,
-      null,    // no currentTask yet
-      [],      // no tasks yet
-      [],      // no completed yet
-      0,       // recursionCount
-      undefined // recursionLimit
-    );
-    console.log(`   ✅ Estimating signal sent\n`);
-  }
-  
   const llm = state.deps?.llm as LLMClient;
   
-  // ✅ RESUME: Check if we have previous state to restore
+  // ✅ CRITICAL: Load session FIRST to get completedTasksDetails before signaling
+  let preloadedCompletedTasks: any[] = [];
   if (state.deps?.session) {
     try {
       const session = await state.deps.session.load(
         state.context.project,
         state.context.featureFolder || 'default'
       );
+      
+      // ✅ Extract completed tasks for "estimating started" signal
+      if (session.state?.completedTasksDetails) {
+        preloadedCompletedTasks = session.state.completedTasksDetails;
+        console.log(`\n📦 Preloaded ${preloadedCompletedTasks.length} completed tasks from session\n`);
+      }
       
       // ✅ Resume if: taskQueue has tasks OR currentTask exists (task in progress)
       if (session.state && 
@@ -241,6 +233,22 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     } catch (error) {
       console.log('⚠️  Could not load previous session state, starting fresh');
     }
+  }
+  
+  // ✅ NOW send "estimating started" signal with preloaded completed tasks
+  if (state._httpTaskId && state.deps?.kanbanUpdate) {
+    console.log(`\n🎬 [Code Decompose] Signaling estimating started...`);
+    console.log(`   Preserving ${preloadedCompletedTasks.length} completed tasks`);
+    
+    state.deps.kanbanUpdate.updateTaskQueue(
+      state._httpTaskId,
+      null,    // no currentTask yet
+      [],      // no tasks yet
+      preloadedCompletedTasks,  // ✅ Use preloaded completed tasks
+      0,       // recursionCount
+      undefined // recursionLimit
+    );
+    console.log(`   ✅ Estimating signal sent\n`);
   }
   
   // Starting fresh - no session or session was reset
