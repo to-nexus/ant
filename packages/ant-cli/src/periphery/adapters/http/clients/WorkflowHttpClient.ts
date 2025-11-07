@@ -23,7 +23,7 @@
  * - Fail-safe: Non-blocking, logs warnings on failure
  */
 
-import { WorkflowStateUpdatePort } from '../../../../core/ports/workflow';
+import { WorkflowStateUpdatePort, TaskInfo } from '../../../../core/ports/workflow';
 
 /**
  * HTTP client for workflow state updates
@@ -51,8 +51,8 @@ export class WorkflowHttpClient implements WorkflowStateUpdatePort {
    * Track node entry
    * Notifies parent server that agent entered a graph node
    */
-  enterNode(jobId: string, nodeId: string): void {
-    this.sendUpdate(jobId, 'enterNode', { nodeId })
+  enterNode(jobId: string, nodeId: string, taskInfo?: TaskInfo): void {
+    this.sendUpdate(jobId, 'enterNode', { nodeId, taskInfo })
       .catch(err => {
         console.warn(`[WorkflowHttpClient] Failed to track enterNode (${nodeId}):`, err.message);
       });
@@ -140,9 +140,9 @@ export class WorkflowHttpClient implements WorkflowStateUpdatePort {
    * Get fetch polyfill for older Node versions
    * @private
    */
-  private getFetchPolyfill(): typeof fetch {
+  private getFetchPolyfill(): (url: string, options?: any) => Promise<Response> {
     // Use http module as fallback
-    return async (url: string, options: any) => {
+    return async (url: string, options: any = {}) => {
       const http = await import('http');
       const urlParsed = new URL(url);
       

@@ -18,10 +18,19 @@ export interface NodeHistoryEntry {
   duration?: number;  // ms
 }
 
+export interface TaskInfo {
+  id?: string;
+  name: string;
+  type?: string;
+  description?: string;
+  priority?: number;
+}
+
 export interface WorkflowRealtimeState {
   jobId: string;
   currentNode: string | null;
   previousNode: string | null;
+  currentTask: TaskInfo | null;  // ✅ 현재 실행 중인 태스크
   startedAt: string;
   endedAt?: string;  // Job 종료 시간
   isCompleted: boolean;  // Job 완료 여부
@@ -46,6 +55,7 @@ export class WorkflowStateService {
       jobId,
       currentNode: null,
       previousNode: null,
+      currentTask: null,  // ✅ Initialize task info
       startedAt: new Date().toISOString(),
       isCompleted: false,
       nodeHistory: [],
@@ -58,14 +68,23 @@ export class WorkflowStateService {
   /**
    * 노드 진입 기록
    */
-  enterNode(jobId: string, nodeId: string): void {
+  enterNode(jobId: string, nodeId: string, taskInfo?: TaskInfo): void {
     console.log(`\n🔵 [WorkflowStateService] enterNode: ${nodeId} (job: ${jobId})`);
+    if (taskInfo) {
+      console.log(`   📋 Task: ${taskInfo.name}`);
+    }
     
     const state = this.states.get(jobId);
     if (!state) {
       console.warn(`   ⚠️ Job ${jobId} not found, creating...`);
       this.startJob(jobId);
-      return this.enterNode(jobId, nodeId);
+      return this.enterNode(jobId, nodeId, taskInfo);
+    }
+    
+    // ✅ Update current task if provided
+    if (taskInfo) {
+      state.currentTask = taskInfo;
+      console.log(`   ✅ Updated currentTask: ${taskInfo.name}`);
     }
     
     // 이전 노드 종료 처리

@@ -1,8 +1,14 @@
 import { BoardContainer } from '../BoardContainer';
 import { StatusChip } from '../StatusChip';
 import { useStore } from '@/lib/store';
+import { useUIActionPolicy } from '@/hooks/useUIActionPolicy';
+import { WorkflowRealtimeState } from '@/types/workflow';
 import { capitalize } from '@/lib/text-utils';
 import { WorkflowVisualization } from './WorkflowVisualization';
+
+interface AgentWorkflowBoardProps {
+  workflowState: WorkflowRealtimeState | null;  // ✅ App에서 전달받음 (job 단위 SSE)
+}
 
 /**
  * AgentWorkflowBoard - Agent workflow visualization board
@@ -12,10 +18,12 @@ import { WorkflowVisualization } from './WorkflowVisualization';
  * - Node states and transitions
  * - Real-time progress
  */
-export function AgentWorkflowBoard() {
+export function AgentWorkflowBoard({ workflowState }: AgentWorkflowBoardProps) {
   const selectedAgent = useStore((state) => state.selectedAgent);
   const selectedWorkType = useStore((state) => state.selectedWorkType);
-  const isRunning = useStore((state) => state.isRunning);
+  
+  // ✅ UI Policy 시스템 사용
+  const policy = useUIActionPolicy();
 
   return (
     <BoardContainer
@@ -35,14 +43,15 @@ export function AgentWorkflowBoard() {
             hideDot
           />
           {/* Show Status (Running / Idle) - dot 표시 필요 */}
+          {/* ✅ UI Policy 준수 */}
           <StatusChip 
-            variant={isRunning ? "live" : "session"} 
-            label={isRunning ? "Running" : "Idle"}
+            variant={policy.isRunning ? "live" : "session"} 
+            label={policy.isRunning ? "Running" : "Idle"}
           />
         </div>
       }
     >
-      <WorkflowVisualization />
+      <WorkflowVisualization workflowState={workflowState} />
     </BoardContainer>
   );
 }

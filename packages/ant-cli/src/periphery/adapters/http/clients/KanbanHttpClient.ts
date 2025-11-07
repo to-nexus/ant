@@ -106,9 +106,9 @@ export class KanbanHttpClient implements TaskQueueUpdatePort {
    * Get fetch polyfill for older Node versions
    * @private
    */
-  private getFetchPolyfill(): typeof fetch {
+  private getFetchPolyfill(): (url: string, options?: any) => Promise<Response> {
     // Use http module as fallback
-    return async (url: string, options: any) => {
+    return async (url: string, options: any = {}) => {
       const http = await import('http');
       const urlParsed = new URL(url);
       

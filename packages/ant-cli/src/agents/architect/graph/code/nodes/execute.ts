@@ -60,9 +60,16 @@ function extractKeyChanges(files: Array<{ path: string; content: string }>): str
 export async function execute(
   state: ArchitectGraphState
 ): Promise<ArchitectGraphState> {
-  // ✅ Workflow instrumentation: Enter node
+  // ✅ Workflow instrumentation: Enter node with current task info
   if (state.deps?.workflowUpdate && state._httpTaskId) {
-    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'execute');
+    const taskInfo = state.currentTask ? {
+      id: state.currentTask.id,
+      name: state.currentTask.name,
+      type: state.currentTask.type,
+      description: state.currentTask.description,
+      priority: state.currentTask.priority
+    } : undefined;
+    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'execute', taskInfo);
   }
   
   try {

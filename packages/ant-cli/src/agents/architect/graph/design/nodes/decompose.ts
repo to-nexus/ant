@@ -16,7 +16,14 @@ import { DesignGraphState, Task, TaskQueue } from "../state";
 export async function decompose(state: DesignGraphState): Promise<DesignGraphState> {
   // ✅ Workflow instrumentation: Enter node
   if (state.deps?.workflowUpdate && state._httpTaskId) {
-    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'decompose');
+    const taskInfo = state.currentTask ? {
+      id: state.currentTask.id,
+      name: state.currentTask.name,
+      type: state.currentTask.type,
+      description: state.currentTask.description,
+      priority: state.currentTask.priority
+    } : undefined;
+    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'decompose', taskInfo);
   }
   
   const llm = state.deps?.llm as LLMClient;
@@ -259,8 +266,17 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     // This triggers file watcher → SSE broadcast → UI update
     if (state.deps?.session && state.context.featureFolder) {
       try {
-        const { saveCheckpoint } = await import('../../code/nodes/checkpoint');
-        await saveCheckpoint(newState);
+        await state.deps.session.updateArtifacts(
+          state.context.project,
+          state.context.featureFolder,
+          {
+            state: {
+              taskQueue: taskQueue.getAll(),
+              completedTasks: [],
+              completedTasksDetails: []
+            }
+          }
+        );
         console.log(`💾 [Design Decompose] Checkpoint saved (${taskQueue.size()} tasks)\n`);
       } catch (error) {
         console.warn(`⚠️  [Design Decompose] Failed to save checkpoint:`, error);
@@ -312,8 +328,17 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     // ✅ CRITICAL: Save checkpoint for fallback too
     if (state.deps?.session && state.context.featureFolder) {
       try {
-        const { saveCheckpoint } = await import('../../code/nodes/checkpoint');
-        await saveCheckpoint(newState);
+        await state.deps.session.updateArtifacts(
+          state.context.project,
+          state.context.featureFolder,
+          {
+            state: {
+              taskQueue: taskQueue.getAll(),
+              completedTasks: [],
+              completedTasksDetails: []
+            }
+          }
+        );
         console.log(`💾 [Design Decompose Fallback] Checkpoint saved (1 task)\n`);
       } catch (error) {
         console.warn(`⚠️  [Design Decompose Fallback] Failed to save checkpoint:`, error);

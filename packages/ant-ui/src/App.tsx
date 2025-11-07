@@ -15,7 +15,8 @@ import { ConfigEditor } from './components/ConfigEditor';
 import { checkHealth, fetchProjectConfig, updateProjectConfig, ProjectConfig, fetchFeatureSession, stopJob } from './lib/api';
 import { executeCodeJob } from './lib/cli';
 import { useStore } from './lib/store';
-import { useJobStateSync } from './hooks/useJobStateSync';
+import { useKanbanSSE } from './hooks/useKanbanSSE';
+import { useWorkflowSSE } from './components/workflow/hooks';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 function App() {
@@ -28,16 +29,21 @@ function App() {
   const MIN_EXPLORER_WIDTH = 200; // 최소 너비
   const MAX_EXPLORER_WIDTH = 600; // 최대 너비
   
-  // ✅ Job state synchronization (via Kanban SSE monitoring)
-  // Detects job start/end from server and syncs UI state
-  useJobStateSync();
-  
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);
   const selectedFile = useStore((state) => state.selectedFile);
   const isRunning = useStore((state) => state.isRunning);
   const isStopping = useStore((state) => state.isStopping);
-  const taskId = useStore((state) => state.currentJobId);
+  const currentJobId = useStore((state) => state.currentJobId);
+  const userStoppedJobId = useStore((state) => state.userStoppedJobId);
+  
+  // ✅ Single Kanban SSE connection (project/feature 단위)
+  const { kanbanData } = useKanbanSSE();
+  
+  // ✅ Single Workflow SSE connection (job 단위)
+  const shouldSubscribeWorkflow = currentJobId && currentJobId !== userStoppedJobId;
+  const { displayedState: workflowState } = useWorkflowSSE(shouldSubscribeWorkflow ? currentJobId : undefined);
+  
   const currentJob = useStore((state) => state.currentJob);
   const setCurrentJob = useStore((state) => state.setCurrentJob);
   const setRunning = useStore((state) => state.setRunning);
@@ -422,7 +428,7 @@ function App() {
   const handleStopTask = async () => {
     console.log('[App] Stopping task...', { 
       hasCurrentTask: !!currentJob, 
-      currentJobId: taskId,
+      currentJobId: currentJobId,
       isRunning,
       selectedProject, 
       selectedFeature 
@@ -434,9 +440,9 @@ function App() {
     
     // ✅ CRITICAL: Mark this job as explicitly stopped by user
     // This prevents auto-restore from server SSE events
-    if (taskId) {
-      console.log(`[App] 🚫 Marking job ${taskId} as user-stopped (no auto-restore)`);
-      useStore.setState({ userStoppedJobId: taskId });
+    if (currentJobId) {
+      console.log(`[App] 🚫 Marking job ${currentJobId} as user-stopped (no auto-restore)`);
+      useStore.setState({ userStoppedJobId: currentJobId });
     }
     
     // ✅ Send stop request to server and wait for confirmation
@@ -447,15 +453,15 @@ function App() {
         await currentJob.kill();
         console.log('[App] ✅ Server confirmed stop (Method 1)');
       }
-      // Method 2: If we only have taskId (e.g., after page refresh)
-      else if (taskId) {
-        console.log('[App] Method 2: Stopping via API (taskId:', taskId, ')');
+      // Method 2: If we only have currentJobId (e.g., after page refresh)
+      else if (currentJobId) {
+        console.log('[App] Method 2: Stopping via API (currentJobId:', currentJobId, ')');
         // ✅ Pass projectId and featureName for proper cleanup
-        await stopJob(taskId, selectedProject || undefined, selectedFeature || undefined);
+        await stopJob(currentJobId, selectedProject || undefined, selectedFeature || undefined);
         console.log('[App] ✅ Server confirmed stop (Method 2)');
       } else {
-        console.warn('[App] ⚠️ No task to stop (no currentJob or taskId)');
-        console.warn('[App] State:', { currentJob: !!currentJob, taskId, selectedProject, selectedFeature });
+        console.warn('[App] ⚠️ No task to stop (no currentJob or currentJobId)');
+        console.warn('[App] State:', { currentJob: !!currentJob, currentJobId, selectedProject, selectedFeature });
       }
       
       // ✅ Now update UI after server confirmation
@@ -610,8 +616,8 @@ function App() {
               // Always split layout view (vertical or horizontal)
               <SplitLayout
                 direction={splitLayout}
-                first={<KanbanBoard />}
-                second={<AgentWorkflowBoard />}
+                first={<KanbanBoard kanbanData={kanbanData} workflowState={workflowState} />}
+                second={<AgentWorkflowBoard workflowState={workflowState} />}
               />
             ) : (
               <div className="flex items-center justify-center h-full">

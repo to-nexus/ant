@@ -150,7 +150,7 @@ export function createWorkflowRoutes(deps: {
    */
   router.post('/jobs/:jobId/workflow/update', (req: Request, res: Response) => {
     const { jobId } = req.params;
-    const { action, nodeId, actorId } = req.body;
+    const { action, nodeId, actorId, taskInfo } = req.body;
     
     try {
       switch (action) {
@@ -159,7 +159,7 @@ export function createWorkflowRoutes(deps: {
             res.status(400).json({ error: 'nodeId required for enterNode' });
             return;
           }
-          deps.workflowStateService.enterNode(jobId, nodeId);
+          deps.workflowStateService.enterNode(jobId, nodeId, taskInfo);
           break;
         
         case 'exitNode':

@@ -29,7 +29,14 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   
   if (state.deps?.workflowUpdate && state._httpTaskId) {
     console.log(`   ✅ Calling workflowUpdate.enterNode('${state._httpTaskId}', 'resolve')`);
-    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'resolve');
+    const taskInfo = state.currentTask ? {
+      id: state.currentTask.id,
+      name: state.currentTask.name,
+      type: state.currentTask.type,
+      description: state.currentTask.description,
+      priority: state.currentTask.priority
+    } : undefined;
+    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'resolve', taskInfo);
   } else {
     console.log(`   ❌ Skipping workflow tracking (missing workflowUpdate or _httpTaskId)`);
   }

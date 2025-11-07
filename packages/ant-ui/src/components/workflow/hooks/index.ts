@@ -1,4 +1,7 @@
 export { useGraphMetadata } from './useGraphMetadata';
-export { useWorkflowState } from './useWorkflowState';
+export { useWorkflowSSE } from './useWorkflowState';
 export { useGraphLayout } from './useGraphLayout';
+
+// Re-export utilities
+export { waitForTaskQueueDrain, clearGlobalQueue } from './useWorkflowState';
 

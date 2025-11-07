@@ -9,7 +9,14 @@ import { PromptEngine } from "../../../../../core/prompt/engine";
 export async function execute(state: DesignGraphState) {
   // ✅ Workflow instrumentation: Enter node
   if (state.deps?.workflowUpdate && state._httpTaskId) {
-    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'execute');
+    const taskInfo = state.currentTask ? {
+      id: state.currentTask.id,
+      name: state.currentTask.name,
+      type: state.currentTask.type,
+      description: state.currentTask.description,
+      priority: state.currentTask.priority
+    } : undefined;
+    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'execute', taskInfo);
   }
   
   const llm = state.deps?.llm as LLMClient;
@@ -76,20 +83,49 @@ export async function execute(state: DesignGraphState) {
     completedTasksDetails.push(completedTask);
     
     // ✅ Update live Kanban snapshot
-    if (state.deps?.kanbanUpdate && state._httpTaskId && state.taskQueue) {
+    if (state._httpTaskId && state.taskQueue) {
       const queueTasks = state.taskQueue.getAll();
       
       console.log(`\n🔥 [Design Execute] Updating Kanban - task completed`);
       console.log(`   Completed task: ${completedTask.name}`);
       console.log(`   Total completed: ${completedTasksDetails.length}`);
-      console.log(`   Queue remaining: ${queueTasks.length}\n`);
+      console.log(`   Queue remaining: ${queueTasks.length}`);
       
-      state.deps.kanbanUpdate.updateTaskQueue(
-        state._httpTaskId,
-        undefined,  // currentTask is now undefined (just completed)
-        queueTasks,
-        completedTasksDetails
-      );
+      if (state.deps?.kanbanUpdate) {
+        // In-process: use injected port
+        console.log(`   Method: Direct port call\n`);
+        state.deps.kanbanUpdate.updateTaskQueue(
+          state._httpTaskId,
+          undefined,  // currentTask is now undefined (just completed)
+          queueTasks,
+          completedTasksDetails
+        );
+      } else {
+        // Child process: HTTP API fallback
+        console.log(`   Method: HTTP API fallback\n`);
+        const serverPort = process.env.ANT_SERVER_PORT || '4100';
+        try {
+          // ✅ CRITICAL: await fetch to ensure update is sent before continuing
+          const response = await fetch(`http://localhost:${serverPort}/api/internal/task-queue`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              taskId: state._httpTaskId,
+              currentTask: undefined,
+              queue: queueTasks,
+              completedTasks: completedTasksDetails
+            })
+          });
+          
+          if (response.ok) {
+            console.log(`   ✅ HTTP update successful\n`);
+          } else {
+            console.log(`   ⚠️  HTTP update failed: ${response.status} ${response.statusText}\n`);
+          }
+        } catch (err: any) {
+          console.log(`   ⚠️  HTTP update error: ${err.message}\n`);
+        }
+      }
     }
   }
 

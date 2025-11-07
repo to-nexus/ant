@@ -19,7 +19,14 @@ import { resolveLocalPath } from "../../../../../periphery/adapters/git/gitUtils
 export async function installDeps(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   // ✅ Workflow instrumentation: Enter node
   if (state.deps?.workflowUpdate && state._httpTaskId) {
-    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'installDeps');
+    const taskInfo = state.currentTask ? {
+      id: state.currentTask.id,
+      name: state.currentTask.name,
+      type: state.currentTask.type,
+      description: state.currentTask.description,
+      priority: state.currentTask.priority
+    } : undefined;
+    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'installDeps', taskInfo);
   }
   
   const commandPort = state.deps?.command;
