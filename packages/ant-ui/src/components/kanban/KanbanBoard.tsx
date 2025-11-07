@@ -1,5 +1,5 @@
 import { useStore } from '@/lib/store';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useUIActionPolicy } from '@/hooks/useUIActionPolicy';
 import { KanbanData } from '@/lib/api';
 import { BoardContainer } from '../BoardContainer';
@@ -43,8 +43,10 @@ export function KanbanBoard() {
   const [newlyInProgressId, setNewlyInProgressId] = useState<string | null>(null);
   const [previousInProgressId, setPreviousInProgressId] = useState<string | null>(null);
   
-  // ✅ Track estimating state for To Do → In Progress animation
-  const [previousEstimating, setPreviousEstimating] = useState(false);
+  // ✅ Track UI Policy state for animation triggers
+  const [previousPolicyRunning, setPreviousPolicyRunning] = useState(false);
+  const [shouldDelayFirstTask, setShouldDelayFirstTask] = useState(false);
+  const shouldDelayFirstTaskRef = useRef(false);  // ✅ Sync flag to prevent race conditions
   
   // ✅ Track dismissed interrupts (user chose to ignore)
   const [dismissedInterruptJobId, setDismissedInterruptJobId] = useState<string | null>(null);
@@ -72,6 +74,19 @@ export function KanbanBoard() {
       }));
     }
   }, [policy.isStopping]);
+
+  // ✅ Detect job start: policy.isRunning: false → true
+  // When user clicks Run, prepare for To Do → In Progress animation
+  useEffect(() => {
+    if (policy.isRunning && !previousPolicyRunning) {
+      console.log('[KanbanBoard] 🚀 Job started (policy.isRunning: false → true)');
+      console.log('[KanbanBoard] 🎬 Preparing for To Do → In Progress animation');
+      setShouldDelayFirstTask(true);
+      shouldDelayFirstTaskRef.current = true;  // ✅ Sync update
+    }
+    setPreviousPolicyRunning(policy.isRunning);
+  }, [policy.isRunning, previousPolicyRunning]);
+
 
   // SSE connection for real-time updates
   useEffect(() => {
@@ -147,7 +162,83 @@ export function KanbanBoard() {
           }
           
           // Rule 3: Accept all other data
-          setKanbanData(data);
+          
+          // ✅ Estimating 상태 진입: 애니메이션 플래그 설정
+          if (data.isEstimating) {
+            console.log('[Kanban SSE] 📊 Estimating state detected');
+            console.log('[Kanban SSE] Current shouldDelayFirstTask (state):', shouldDelayFirstTask);
+            console.log('[Kanban SSE] Current shouldDelayFirstTaskRef:', shouldDelayFirstTaskRef.current);
+            
+            // ✅ Estimating 진입 시 애니메이션 플래그 설정 (처음 한 번만)
+            // Use ref to check to avoid race conditions with async setState
+            if (!shouldDelayFirstTaskRef.current && !kanbanData.isEstimating) {
+              console.log('[Kanban SSE] 🎬 Setting shouldDelayFirstTask = true (estimating started)');
+              setShouldDelayFirstTask(true);
+              shouldDelayFirstTaskRef.current = true;  // ✅ Sync update
+            }
+            
+            setKanbanData(data);
+            return;
+          }
+          
+          // ✅ TRANSITION ANIMATION: To Do → In Progress
+          // Trigger conditions:
+          // 1. shouldDelayFirstTask flag is set (Run 버튼 클릭)
+          // 2. New in-progress task appeared (!kanbanData.inProgress && data.inProgress)
+          // 3. First task (no completed tasks yet)
+          const nowHasInProgress = data.inProgress && !kanbanData.inProgress;
+          const isFirstTask = data.completed.length === 0;
+          const shouldAnimate = shouldDelayFirstTaskRef.current && nowHasInProgress && isFirstTask;  // ✅ Use ref for sync check
+          
+          console.log('[Kanban SSE] 🔍 Animation check:', {
+            'shouldDelayFirstTask (state)': shouldDelayFirstTask,
+            'shouldDelayFirstTaskRef': shouldDelayFirstTaskRef.current,
+            nowHasInProgress,
+            isFirstTask,
+            shouldAnimate,
+            'data.inProgress': data.inProgress?.name,
+            'kanbanData.inProgress': kanbanData.inProgress?.name,
+            'data.completed.length': data.completed.length,
+            'data.isEstimating': data.isEstimating,
+            'kanbanData.isEstimating': kanbanData.isEstimating,
+            'data.todo.length': data.todo?.length,
+            'kanbanData.todo.length': kanbanData.todo?.length
+          });
+          
+          if (shouldAnimate) {
+            console.log('[Kanban SSE] 🎬 Triggering To Do → In Progress animation (1200ms delay)');
+            console.log('[Kanban SSE] First task:', { taskName: data.inProgress?.name });
+            
+            // Clear the flag (animation happens only once)
+            setShouldDelayFirstTask(false);
+            shouldDelayFirstTaskRef.current = false;  // ✅ Sync clear
+            
+            // Show To Do state first (without in-progress)
+            const todoWithFirstTask = [...(data.todo || [])];
+            if (data.inProgress) {
+              todoWithFirstTask.push(data.inProgress);
+            }
+            
+            console.log('[Kanban SSE] 📝 Temporarily showing task in To Do:', {
+              todoCount: todoWithFirstTask.length,
+              taskName: data.inProgress?.name
+            });
+            
+            setKanbanData({
+              ...data,
+              inProgress: null,
+              todo: todoWithFirstTask
+            });
+            
+            // Apply after delay (longer delay to make To Do state visible)
+            setTimeout(() => {
+              console.log('[Kanban SSE] ✅ Applying delayed transition to In Progress');
+              setKanbanData(data);
+            }, 1200);
+          } else {
+            console.log('[Kanban SSE] 📊 Normal update (no animation)');
+            setKanbanData(data);
+          }
         }
       } catch (error) {
         console.error('[Kanban SSE] Failed to parse data:', error);
@@ -196,18 +287,6 @@ export function KanbanBoard() {
     }
   }, [kanbanData.inProgress, previousInProgressId]);
   
-  // ✅ Track estimating state changes
-  useEffect(() => {
-    const isEstimating = kanbanData.isEstimating;
-    
-    if (isEstimating !== previousEstimating) {
-      console.log('[KanbanBoard] Estimating state changed:', {
-        from: previousEstimating,
-        to: isEstimating
-      });
-      setPreviousEstimating(!!isEstimating);
-    }
-  }, [kanbanData.isEstimating, previousEstimating]);
 
   // Note: Job state synchronization (start/stop detection) is now handled
   // by useJobStateSync hook in App.tsx (see App.tsx:33)

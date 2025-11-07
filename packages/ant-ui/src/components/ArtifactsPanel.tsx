@@ -3,7 +3,7 @@ import { Package } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { createFile, uploadFiles, createDirectory, deleteFileOrDirectory, FileNode } from '@/lib/api';
 import { Button } from '@/ui/button';
-import { textColors, bgColors, cn } from '@/lib/design-system';
+import { textColors, cn } from '@/lib/design-system';
 import { useUIActionPolicy } from '@/hooks/useUIActionPolicy';
 
 interface DirectoryViewProps {
@@ -298,7 +298,7 @@ export function ArtifactsPanel() {
       }
     };
 
-    eventSource.onerror = (error) => {
+    eventSource.onerror = () => {
       console.log('[FileTree SSE] Connection error, but keeping connection alive');
       // ✅ DON'T close the connection! SSE will auto-reconnect
     };

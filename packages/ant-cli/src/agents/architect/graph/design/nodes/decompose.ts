@@ -19,6 +19,21 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     state.deps.workflowUpdate.enterNode(state._httpTaskId, 'decompose');
   }
   
+  // ✅ CRITICAL: Send "estimating started" signal to Kanban FIRST
+  // This ensures frontend receives isEstimating: true before task queue arrives
+  if (state._httpTaskId && state.deps?.kanbanUpdate) {
+    console.log(`\n🎬 [Design Decompose] Signaling estimating started...`);
+    state.deps.kanbanUpdate.updateTaskQueue(
+      state._httpTaskId,
+      null,    // no currentTask yet
+      [],      // no tasks yet
+      [],      // no completed yet
+      0,       // recursionCount
+      undefined // recursionLimit
+    );
+    console.log(`   ✅ Estimating signal sent\n`);
+  }
+  
   const llm = state.deps?.llm as LLMClient;
   
   // ✅ RESUME: Check if we have previous state to restore
@@ -232,6 +247,18 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
       _httpTaskId: state._httpTaskId
     };
     
+    // ✅ CRITICAL: Save checkpoint immediately after decompose (like code job)
+    // This triggers file watcher → SSE broadcast → UI update
+    if (state.deps?.session && state.context.featureFolder) {
+      try {
+        const { saveCheckpoint } = await import('../../code/nodes/checkpoint');
+        await saveCheckpoint(newState);
+        console.log(`💾 [Design Decompose] Checkpoint saved (${taskQueue.size()} tasks)\n`);
+      } catch (error) {
+        console.warn(`⚠️  [Design Decompose] Failed to save checkpoint:`, error);
+      }
+    }
+    
     // ✅ Update live snapshot via kanbanUpdate port
     console.log(`\n🔍 [Design Decompose] Kanban update check:`);
     console.log(`   _httpTaskId: ${state._httpTaskId || 'undefined'}`);
@@ -273,6 +300,17 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
       completedTasks: [],
       _httpTaskId: state._httpTaskId
     };
+    
+    // ✅ CRITICAL: Save checkpoint for fallback too
+    if (state.deps?.session && state.context.featureFolder) {
+      try {
+        const { saveCheckpoint } = await import('../../code/nodes/checkpoint');
+        await saveCheckpoint(newState);
+        console.log(`💾 [Design Decompose Fallback] Checkpoint saved (1 task)\n`);
+      } catch (error) {
+        console.warn(`⚠️  [Design Decompose Fallback] Failed to save checkpoint:`, error);
+      }
+    }
     
     // ✅ Update live snapshot
     console.log(`\n🔍 [Design Decompose Fallback] Kanban update check:`);
