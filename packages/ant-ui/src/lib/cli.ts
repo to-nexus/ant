@@ -16,7 +16,7 @@ export interface JobExecution {
   eventSource: EventSource;
   kill: (signal?: string) => Promise<boolean>;
   on: (event: 'exit', listener: (code: number | null, signal: string | null) => void) => JobExecution;
-  onJobIdReady?: (callback: (jobId: string) => void) => void;
+  onJobIdReady: (callback: (jobId: string) => void) => void;
 }
 
 export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecution {
@@ -36,17 +36,17 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
   let exitListener: ((code: number | null, signal: string | null) => void) | null = null;
   let jobIdReadyCallback: ((jobId: string) => void) | null = null;
   
-  const taskExecution: JobExecution = {
+  const jobExecution: JobExecution = {
     jobId: '',
     eventSource: null as unknown as EventSource,
     kill: async (_signal?: string) => {
       try {
-        // Stop the task on the server first
+        // Stop the job on the server first
         if (jobId) {
-          await stopTask(jobId);
+          await stopJob(jobId);
         }
       } catch (error) {
-        console.error('Error stopping task on server:', error);
+        console.error('Error stopping job on server:', error);
       } finally {
         // Always close the event source and notify listener
         if (eventSource) {
@@ -63,10 +63,10 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
       if (event === 'exit') {
         exitListener = listener;
       }
-      return taskExecution;
+      return jobExecution;
     },
     // Add method to set callback for when jobId is ready
-    onTaskIdReady: (callback: (jobId: string) => void) => {
+    onJobIdReady: (callback: (jobId: string) => void) => {
       jobIdReadyCallback = callback;
       if (jobId) {
         // If jobId is already available, call immediately
@@ -75,7 +75,9 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
     }
   };
   
-  executeTask({
+  console.log('[cli.ts] executeCodeJob called with:', { projectId, featureName, task, agent, mode, language });
+  
+  executeJob({
     projectId,
     featureName,
     task,
@@ -84,19 +86,24 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
     language,
   })
     .then((response) => {
+      console.log('[cli.ts] executeJob response:', response);
       jobId = response.jobId;
-      taskExecution.jobId = jobId;
+      jobExecution.jobId = jobId;
       
       // Notify that jobId is ready
       if (jobIdReadyCallback) {
+        console.log('[cli.ts] Calling jobIdReadyCallback with jobId:', jobId);
         jobIdReadyCallback(jobId);
+      } else {
+        console.warn('[cli.ts] jobIdReadyCallback is not set!');
       }
       
       // SSE 연결 - 실제 작업 로그만 스트리밍
+      console.log('[cli.ts] Subscribing to logs for jobId:', jobId);
       eventSource = subscribeToLogs(jobId, (log) => {
         // Check for completion markers
-        if (log.message === '__TASK_COMPLETED__') {
-          // Task completed successfully
+        if (log.message === '__JOB_COMPLETED__') {
+          // Job completed successfully
           eventSource?.close();
           if (exitListener) {
             exitListener(0, null);
@@ -104,8 +111,8 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
           return;
         }
         
-        if (log.message === '__TASK_FAILED__') {
-          // Task failed
+        if (log.message === '__JOB_FAILED__') {
+          // Job failed
           eventSource?.close();
           if (exitListener) {
             exitListener(1, null);
@@ -117,7 +124,7 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
         store.addLog(log);
       });
       
-      taskExecution.eventSource = eventSource;
+      jobExecution.eventSource = eventSource;
       
       eventSource.addEventListener('error', () => {
         store.addLog({
@@ -140,7 +147,7 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
     .catch((error) => {
       store.addLog({
         type: 'error',
-        message: `Failed to start task: ${error.message}`,
+        message: `Failed to start job: ${error.message}`,
         timestamp: new Date().toISOString(),
       });
       
@@ -149,5 +156,5 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
       }
     });
   
-  return taskExecution;
+  return jobExecution;
 }

@@ -65,10 +65,13 @@ export class FileSessionAdapter implements SessionPort {
         console.warn(`⚠️  Session file validation failed: ${sessionPath}`);
         console.warn(`Creating new session due to invalid format`);
         
-        // Backup corrupted file
-        const backupPath = `${sessionPath}.corrupted.${Date.now()}`;
-        await fs.copyFile(sessionPath, backupPath);
-        console.warn(`Corrupted file backed up to: ${backupPath}`);
+        // Delete corrupted file (no backup needed)
+        try {
+          await fs.unlink(sessionPath);
+          console.log(`🗑️  Removed corrupted session file`);
+        } catch (unlinkError) {
+          // Ignore if file doesn't exist
+        }
         
         // Return new session
         return this.createNewSession(project, feature);

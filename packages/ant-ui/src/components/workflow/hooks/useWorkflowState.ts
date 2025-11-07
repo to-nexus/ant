@@ -15,10 +15,13 @@ export function useWorkflowState(jobId: string | undefined) {
   
   useEffect(() => {
     if (!jobId) {
-      // jobId가 없으면 상태 초기화
+      // ✅ jobId가 없으면 즉시 상태 초기화 (Stop 시 즉각 반영)
+      console.log('[useWorkflowState] Clearing state (no jobId)');
       setState(null);
       return;
     }
+    
+    console.log('[useWorkflowState] Subscribing to job:', jobId);
     
     // Phase 2: SSE 구현
     const eventSource = new EventSource(
@@ -28,6 +31,10 @@ export function useWorkflowState(jobId: string | undefined) {
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
+        console.log('[useWorkflowState] Received state update:', {
+          currentNode: data.currentNode,
+          isCompleted: data.isCompleted
+        });
         setState(data);
       } catch (err) {
         console.error('[useWorkflowState] Failed to parse SSE data:', err);
@@ -35,6 +42,7 @@ export function useWorkflowState(jobId: string | undefined) {
     };
     
     eventSource.addEventListener('end', () => {
+      console.log('[useWorkflowState] SSE connection ended');
       // 연결은 종료되지만 마지막 상태는 유지
       eventSource.close();
     });
@@ -45,8 +53,10 @@ export function useWorkflowState(jobId: string | undefined) {
     };
     
     return () => {
+      console.log('[useWorkflowState] Cleanup - closing SSE connection');
       eventSource.close();
-      // cleanup 시에도 상태는 유지 (jobId 변경으로 새 상태가 로드될 예정)
+      // ✅ CRITICAL: Cleanup 시 상태도 초기화 (Stop 시 즉각 반영)
+      setState(null);
     };
   }, [jobId]);
   

@@ -27,6 +27,10 @@ export function createJobRoutes(deps: {
       const featureName = req.params.feature;
       const { task, agent = 'architect', enableEvaluation } = req.body;
       
+      console.log(`\n📨 [JobRoute] POST /projects/${projectId}/features/${featureName}/execute`);
+      console.log(`   Agent: ${agent}, Task: ${task}`);
+      console.log(`   Body:`, req.body);
+      
       const params: ExecuteJobParams = {
         agent: agent || 'architect',
         task,
@@ -41,9 +45,12 @@ export function createJobRoutes(deps: {
         enableEvaluation
       };
       
+      console.log(`   📦 Calling deps.executeJob with params:`, params);
       const result = await deps.executeJob(params);
+      console.log(`   ✅ Result:`, result);
       res.json(result);
     } catch (error: any) {
+      console.error(`   ❌ Error:`, error.message);
       res.status(500).json({ error: error.message });
     }
   });
@@ -139,10 +146,44 @@ export function createJobRoutes(deps: {
     const { projectId, featureName } = req.body;  // ✅ Accept project info from frontend
     const childProcess = deps.childProcesses.get(jobId);
     
+    console.log(`\n🛑 [JobRoute] Stopping job ${jobId}`);
+    console.log(`   childProcesses size:`, deps.childProcesses.size);
+    console.log(`   childProcess found:`, !!childProcess);
+    console.log(`   childProcess PID:`, childProcess?.pid);
     
     // Kill the process if it exists
-    if (childProcess) {
-      childProcess.kill('SIGTERM');
+    if (childProcess && childProcess.pid) {
+      try {
+        const pid = childProcess.pid;
+        console.log(`   Killing process ${pid}...`);
+        
+        // ✅ Try graceful kill first
+        childProcess.kill('SIGTERM');
+        console.log(`   ✅ SIGTERM sent to process ${pid}`);
+        
+        // ✅ Forcefully kill immediately (don't wait - tsx processes often ignore SIGTERM)
+        setTimeout(() => {
+          try {
+            // Check if still alive
+            process.kill(pid, 0);  // Signal 0 checks if process exists
+            console.log(`   ⚠️ Process still alive, sending SIGKILL to ${pid}...`);
+            process.kill(pid, 'SIGKILL');
+            console.log(`   ✅ SIGKILL sent to process ${pid}`);
+          } catch (checkErr: any) {
+            if (checkErr.code === 'ESRCH') {
+              console.log(`   ℹ️  Process ${pid} already dead`);
+            } else {
+              console.log(`   ℹ️  Process check error:`, checkErr.message);
+            }
+          }
+          deps.childProcesses.delete(jobId);
+        }, 500);  // ✅ Only wait 500ms before SIGKILL
+        
+      } catch (error: any) {
+        console.error(`   ❌ Error killing process:`, error.message);
+        // Process might already be dead, continue with cleanup
+        deps.childProcesses.delete(jobId);
+      }
       
       // Update task status
       const status = deps.jobs.get(jobId);
@@ -161,13 +202,18 @@ export function createJobRoutes(deps: {
         deps.logStreams.get(jobId)?.forEach(listener => listener(logEntry));
       }
       
-      // Clean up child process
-      deps.childProcesses.delete(jobId);
+      // Don't delete here - let the timeout handler do it
+      console.log(`   ℹ️  Waiting for process to exit...`);
+    } else {
+      console.log(`   ⚠️ No child process found for job ${jobId}`);
+      console.log(`   Available job IDs:`, Array.from(deps.childProcesses.keys()));
     }
     
     // ✅ ALWAYS clean up task state (live snapshots, return in-progress to queue)
     // This is important even if childProcess doesn't exist (e.g., after page refresh)
+    console.log(`   🧹 Cleaning up job state...`);
     await deps.cleanupJobState(jobId, projectId, featureName);
+    console.log(`   ✅ Job state cleaned up\n`);
     
     res.json({ success: true, message: 'Task stopped' });
   });

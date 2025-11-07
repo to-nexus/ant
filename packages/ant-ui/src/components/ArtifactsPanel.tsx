@@ -365,8 +365,8 @@ export function ArtifactsPanel() {
   }
 
   // Separate inputs and outputs
-  const inputsNodes = fileTree.find(node => node.name === 'inputs')?.children || [];
-  const outputsNodes = fileTree.find(node => node.name === 'outputs')?.children || [];
+  const inputsNodes = fileTree?.find(node => node.name === 'inputs')?.children || [];
+  const outputsNodes = fileTree?.find(node => node.name === 'outputs')?.children || [];
 
   return (
     <div className="space-y-3">

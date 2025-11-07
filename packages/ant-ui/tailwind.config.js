@@ -163,11 +163,19 @@ export default {
         shine: {
           '0%': { transform: 'translateX(-100%)' },
           '100%': { transform: 'translateX(100%)' }
+        },
+        // ✅ Flash animation for completed tasks
+        flash: {
+          '0%, 100%': { opacity: '1', transform: 'scale(1)' },
+          '25%': { opacity: '0.7', transform: 'scale(1.02)' },
+          '50%': { opacity: '1', transform: 'scale(1)' },
+          '75%': { opacity: '0.8', transform: 'scale(1.01)' }
         }
       },
       animation: {
         gradient: 'gradient 2s ease infinite',
-        shine: 'shine 0.8s ease-in-out'
+        shine: 'shine 0.8s ease-in-out',
+        flash: 'flash 0.6s ease-in-out'
       }
     }
   },

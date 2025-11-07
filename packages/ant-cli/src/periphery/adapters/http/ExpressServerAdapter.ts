@@ -123,7 +123,13 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     // ✅ Broadcast immediately to Kanban clients via SSE service
     const mapping = this.jobToProject.get(jobId);
     if (mapping) {
-      this.sseBroadcastService.broadcastKanbanUpdate(mapping.projectId, mapping.featureName);
+      this.sseBroadcastService.broadcastKanbanUpdate(
+        mapping.projectId, 
+        mapping.featureName,
+        this.jobToProject,
+        this.jobs,
+        this.taskQueueSnapshots
+      );
     } else {
     }
   }
@@ -132,6 +138,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
    * Clean up job state when stopped (called when job is terminated)
    */
   async cleanupJobState(jobId: string, projectId?: string, featureName?: string): Promise<void> {
+    console.log(`\n🧹 [ExpressServerAdapter] cleanupJobState called for ${jobId}`);
     
     // Get mapping before deletion (from Map or from parameters)
     let mapping = this.jobToProject.get(jobId);
@@ -139,17 +146,25 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     // ✅ If mapping not found in Map (e.g., after page refresh), use provided parameters
     if (!mapping && projectId && featureName) {
       mapping = { projectId, featureName };
+      console.log(`   Using provided mapping: ${projectId}/${featureName}`);
     }
     
     // Get current snapshot to return in-progress task to queue
     const snapshot = this.taskQueueSnapshots.get(jobId);
     
+    // ✅ End workflow tracking
+    this.workflowStateService.endJob(jobId);
+    console.log(`   ✅ Workflow state ended`);
+    
     // Clear live data
     this.taskQueueSnapshots.delete(jobId);
     this.jobToProject.delete(jobId);
+    this.jobs.delete(jobId);  // ✅ CRITICAL: Delete job status to prevent UI from detecting it as active
+    console.log(`   ✅ Cleared live data (snapshot, jobToProject, jobs)`);
     
     if (this.currentJobId === jobId) {
       this.currentJobId = null;
+      console.log(`   ✅ Cleared currentJobId`);
     }
     
     
@@ -191,10 +206,19 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
           await fs.promises.writeFile(sessionPath, JSON.stringify(sessionData, null, 2), 'utf-8');
           
         } else {
+          console.log(`   ℹ️  No currentTask to return (already completed or not started)`);
         }
           
-        // Broadcast final update to switch to session data via SSE service
-        this.sseBroadcastService.broadcastKanbanUpdate(mapping.projectId, mapping.featureName);
+        // ✅ Broadcast final update to switch to session data via SSE service
+        console.log(`   📡 Broadcasting Kanban update (job stopped)...`);
+        this.sseBroadcastService.broadcastKanbanUpdate(
+          mapping.projectId, 
+          mapping.featureName,
+          this.jobToProject,
+          this.jobs,
+          this.taskQueueSnapshots
+        );
+        console.log(`   ✅ Broadcast completed\n`);
       }
     } catch (error) {
     }
@@ -234,7 +258,13 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     // Initialize session service with SSE callback
     this.sessionService = new SessionService(this.WORKSPACE_ROOT, {
       onSessionChange: (projectId, featureName) => {
-        this.sseBroadcastService.broadcastKanbanUpdate(projectId, featureName);
+        this.sseBroadcastService.broadcastKanbanUpdate(
+          projectId, 
+          featureName,
+          this.jobToProject,
+          this.jobs,
+          this.taskQueueSnapshots
+        );
       }
     });
     
@@ -265,7 +295,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   
   private setupRoutes(): void {
     // Internal API for task queue updates (from child processes)
-    this.app.post('/api/internal/task-queue', express.json(), (req, res) => {
+    this.app.post('/api/internal/task-queue', express.json(), (req: Request, res: Response) => {
       const { taskId, currentTask, queue, completedTasks, recursionCount, recursionLimit } = req.body;
       if (!taskId) {
         return res.status(400).json({ error: 'taskId is required' });
@@ -332,6 +362,12 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   async executeJob(params: ExecuteJobParams): Promise<JobResult> {
     const jobId = `job-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
+    console.log(`\n🚀 [ExecuteJob] Starting job: ${jobId}`);
+    console.log(`   Project: ${params.project}`);
+    console.log(`   Feature: ${params.feature}`);
+    console.log(`   Agent: ${params.agent}`);
+    console.log(`   Task: ${params.task}`);
+    
     // Initialize job tracking
     this.jobs.set(jobId, {
       jobId,
@@ -339,6 +375,8 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       startedAt: new Date().toISOString()
     });
     this.logs.set(jobId, []);
+    
+    console.log(`   ✅ Job status set to 'pending'`);
     
     // ✅ Validate required feature parameter
     if (!params.feature) {
@@ -351,13 +389,30 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     // Map jobId to project/feature for Kanban tracking
     this.jobToProject.set(jobId, { projectId, featureName });
     
+    console.log(`   ✅ Job mapped: ${projectId}/${featureName} -> ${jobId}`);
+    console.log(`   Total jobs in map: ${this.jobToProject.size}`);
+    
+    
+    // ✅ Start workflow tracking for Agent Workflow visualization
+    this.startJob(jobId);
+    console.log(`   ✅ Workflow tracking started`);
     
     // Start session file watcher for real-time Kanban updates
     this.watchSessionFile(jobId, projectId, featureName);
     
+    console.log(`   ✅ Session file watcher started`);
+    
     // ✅ CRITICAL: Broadcast immediately to show "estimating" state via SSE service
     // This ensures UI updates INSTANTLY when job starts, even before decompose
-    this.sseBroadcastService.broadcastKanbanUpdate(projectId, featureName);
+    console.log(`   🔥 Broadcasting Kanban update to show ESTIMATING state...`);
+    this.sseBroadcastService.broadcastKanbanUpdate(
+      projectId, 
+      featureName,
+      this.jobToProject,  // ✅ Pass job map
+      this.jobs,           // ✅ Pass jobs status
+      this.taskQueueSnapshots  // ✅ Pass snapshots
+    );
+    console.log(`   ✅ Kanban broadcast completed\n`);
     
     // Start job execution in child process (non-blocking)
     this.runJob(jobId, params).catch(error => {
@@ -413,7 +468,8 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
           ANT_JOB_ID: jobId,  // ✅ Pass jobId via environment variable
           ANT_SERVER_PORT: '4100'  // ✅ Pass server port for HTTP updates
         },
-        stdio: ['ignore', 'pipe', 'pipe']
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: false  // ✅ Keep in same process group for easier killing
       });
       
       this.childProcesses.set(jobId, childProcess);

@@ -244,6 +244,7 @@ export async function architectAgent(
         console.log(`   process.env.ANT_JOB_ID:`, process.env.ANT_JOB_ID || 'undefined');
         console.log(`   resolvedTaskId:`, resolvedTaskId || 'undefined');
         console.log(`   kanbanUpdate available:`, !!deps?.kanbanUpdate);
+        console.log(`   workflowUpdate available:`, !!deps?.workflowUpdate);
         
         const initial: ArchitectGraphState = {
           context,
@@ -258,7 +259,8 @@ export async function architectAgent(
             session: deps?.session,
             command: deps?.command,
             kanbanUpdate: deps?.kanbanUpdate,  // ✅ Pass Kanban update port (undefined in child process)
-            fileTreeUpdate: deps?.fileTreeUpdate  // ✅ Pass file tree update port (undefined in child process)
+            fileTreeUpdate: deps?.fileTreeUpdate,  // ✅ Pass file tree update port (undefined in child process)
+            workflowUpdate: deps?.workflowUpdate  // ✅ Pass workflow update port for Agent Workflow visualization
           },
           gitPort: deps?.git,
           planText: "",

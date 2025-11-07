@@ -90,13 +90,15 @@ export async function orchestrator(params: {
         // ✅ Get ExpressServerAdapter instance for real-time updates
         let kanbanUpdate: TaskQueueUpdatePort | undefined = undefined;
         let fileTreeUpdate: import('../core/ports').FileTreeUpdatePort | undefined = undefined;
+        let workflowUpdate: import('../core/ports').WorkflowStateUpdatePort | undefined = undefined;
         try {
           const { ExpressServerAdapter } = await import('../periphery/adapters/http/ExpressServerAdapter');
           const instance = ExpressServerAdapter.getInstance();
           kanbanUpdate = instance || undefined;  // Convert null to undefined
           fileTreeUpdate = instance || undefined;  // Same instance implements both ports
+          workflowUpdate = instance || undefined;  // Same instance implements WorkflowStateUpdatePort
           if (kanbanUpdate) {
-            console.log('✅ Real-time updates enabled (Kanban + File Tree)');
+            console.log('✅ Real-time updates enabled (Kanban + File Tree + Workflow)');
           }
         } catch (error) {
           console.log('ℹ️  Real-time updates disabled (server not running)');
@@ -108,7 +110,7 @@ export async function orchestrator(params: {
           project || "default", 
           'code', 
           inputFile, 
-          { memory, llm, promptPort, profilePort, analyzer, git, config, chunk, session, command, kanbanUpdate, fileTreeUpdate },
+          { memory, llm, promptPort, profilePort, analyzer, git, config, chunk, session, command, kanbanUpdate, fileTreeUpdate, workflowUpdate },
           mode,              // Can be undefined (auto-infer) or explicit
           enableEvaluation,  // Pass evaluation flag
           taskId             // ✅ Pass taskId for real-time updates

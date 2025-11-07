@@ -18,6 +18,8 @@ interface StoreState {
   session: Session | undefined;
   logs: LogEntry[];
   isRunning: boolean;
+  isStopping: boolean;  // ✅ Stopping state for Stop button
+  userStoppedJobId: string | null;  // ✅ Track which job user explicitly stopped
   currentJobId: string | undefined;
   currentJob: JobExecution | null;
   activeTasks: Map<string, EventSource>;
@@ -50,6 +52,7 @@ interface StoreActions {
   setSession: (session: Session | undefined) => void;
   addLog: (log: LogEntry) => void;
   setRunning: (isRunning: boolean, taskId?: string, mode?: 'generate' | 'refactor' | 'explain') => void;
+  setStopping: (isStopping: boolean) => void;  // ✅ Set stopping state
   setCurrentJob: (job: JobExecution | null) => void;
   clearLogs: () => void;
   reset: () => void;
@@ -77,6 +80,8 @@ const STORAGE_KEYS = {
   TASK_MODE: 'ant-ui:task-mode',
   SELECTED_PROJECT: 'ant-ui:selected-project',
   SELECTED_FEATURE: 'ant-ui:selected-feature',
+  SELECTED_AGENT: 'ant-ui:selected-agent',
+  SELECTED_WORK_TYPE: 'ant-ui:selected-work-type',
   THEME: 'ant-ui:theme',
 };
 
@@ -140,6 +145,8 @@ export const useStore = create<Store>((set, get) => ({
   session: undefined,
   logs: [],
   isRunning: false,
+  isStopping: false,
+  userStoppedJobId: null,
   currentJobId: undefined,
   currentJob: null,
   activeTasks: new Map<string, EventSource>(),
@@ -264,10 +271,12 @@ export const useStore = create<Store>((set, get) => ({
 
   setSelectedAgent: (agent: string) => {
     set({ selectedAgent: agent });
+    saveToStorage(STORAGE_KEYS.SELECTED_AGENT, agent);
   },
 
   setSelectedWorkType: (workType: string) => {
     set({ selectedWorkType: workType });
+    saveToStorage(STORAGE_KEYS.SELECTED_WORK_TYPE, workType);
   },
 
   fetchFeatures: async () => {
@@ -342,7 +351,9 @@ export const useStore = create<Store>((set, get) => ({
       currentJobId: isRunning ? jobId : undefined,
       taskStartTime: startTime,
       elapsedTime: isRunning ? 0 : get().elapsedTime,
-      currentMode: isRunning ? mode : undefined
+      currentMode: isRunning ? mode : undefined,
+      // ✅ Clear userStoppedJobId when starting a new job (user explicitly clicked Run)
+      userStoppedJobId: isRunning ? null : get().userStoppedJobId
     });
 
     // Persist to localStorage
@@ -357,6 +368,10 @@ export const useStore = create<Store>((set, get) => ({
       removeFromStorage(STORAGE_KEYS.TASK_START_TIME);
       removeFromStorage(STORAGE_KEYS.TASK_MODE);
     }
+  },
+
+  setStopping: (isStopping: boolean) => {
+    set({ isStopping });
   },
 
   setCurrentJob: (job: JobExecution | null) => {
@@ -461,6 +476,8 @@ export const useStore = create<Store>((set, get) => ({
       session: undefined,
       logs: [],
       isRunning: false,
+      isStopping: false,
+      userStoppedJobId: null,
       activeTasks: new Map<string, EventSource>(),
       connectionStatus: 'disconnected',
     });
