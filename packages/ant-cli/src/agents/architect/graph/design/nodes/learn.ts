@@ -19,7 +19,14 @@ import { SessionTurn } from "../../../../../core/types";
 export async function learn(state: DesignGraphState): Promise<DesignGraphState> {
   // ✅ Workflow instrumentation: Enter node
   if (state.deps?.workflowUpdate && state._httpTaskId) {
-    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'learn');
+    const taskInfo = state.currentTask ? {
+      id: state.currentTask.id,
+      name: state.currentTask.name,
+      type: state.currentTask.type,
+      description: state.currentTask.description,
+      priority: state.currentTask.priority
+    } : undefined;
+    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'learn', taskInfo);
   }
   
   // Get GitPort for file operations

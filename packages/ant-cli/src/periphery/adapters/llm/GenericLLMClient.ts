@@ -3,6 +3,12 @@ import { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { ChatAnthropic } from "@langchain/anthropic";
 import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage } from "@langchain/core/messages";
+import { EventEmitter } from "events";
+
+// ✅ Increase max listeners for AbortSignal to suppress warnings during retries
+// LangChain internally creates abort listeners for each API call, and with retries this can exceed the default limit (10)
+// This is safe because the listeners are properly cleaned up after each request completes
+EventEmitter.defaultMaxListeners = 20;
 
 export type ModelProvider = 'anthropic' | 'openai';
 

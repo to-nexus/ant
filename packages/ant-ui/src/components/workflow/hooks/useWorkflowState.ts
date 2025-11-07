@@ -1,12 +1,18 @@
 /**
- * useWorkflowState Hook
+ * useWorkflowSSE Hook (구 useWorkflowState)
  * 
- * 실시간 워크플로우 상태 구독 (SSE) + 노드 전환 큐
+ * App 레벨에서 단일 Workflow SSE 연결 관리
+ * 
+ * Responsibilities:
+ * 1. Workflow SSE 연결 (job 단위)
+ * 2. 실시간 노드 상태 수신
+ * 3. 노드 전환 큐로 최소 표시 시간 보장
  * 
  * Features:
  * - SSE를 통한 실시간 상태 수신
  * - 노드 전환 큐로 최소 표시 시간 보장
  * - 빠른 노드도 사용자가 인지 가능하도록 연출
+ * - ✅ 글로벌 단일 큐: 태스크 변경과 무관하게 모든 노드 연출 보장
  */
 
 import { useState, useEffect, useRef } from 'react';
@@ -36,13 +42,88 @@ interface WorkflowStateWithQueue {
   displayedState: WorkflowRealtimeState | null; // 큐를 통해 표시되는 상태
 }
 
-export function useWorkflowState(jobId: string | undefined): WorkflowStateWithQueue {
+// ✅ 글로벌 단일 큐: 컴포넌트 외부에 선언하여 태스크/jobId 변경과 무관하게 유지
+interface QueuedNode {
+  nodeId: string;
+  state: WorkflowRealtimeState;
+  taskId?: string;  // ✅ 태스크 ID (태스크 경계 인식용)
+  taskName?: string;  // ✅ 태스크 이름 (디버깅용)
+  timestamp: number;
+}
+
+let globalNodeQueue: QueuedNode[] = [];
+let globalProcessing = false;
+let globalDisplayStartTime = 0;
+let globalCurrentTimer: ReturnType<typeof setTimeout> | null = null;
+const globalQueueCallbacks: Set<() => void> = new Set();
+const taskDrainCallbacks: Map<string, () => void> = new Map();
+
+// 큐 변경 알림
+function notifyQueueChange() {
+  globalQueueCallbacks.forEach(cb => cb());
+}
+
+/**
+ * ✅ 글로벌 큐 초기화 (페이지 새로고침 또는 연결 재설정 시)
+ * 이전 연출 상태를 모두 클리어하여 최신 데이터 기반 UI 표시
+ */
+export function clearGlobalQueue(): void {
+  console.log('[clearGlobalQueue] 🧹 Clearing global workflow queue');
+  globalNodeQueue = [];
+  globalProcessing = false;
+  globalDisplayStartTime = 0;
+  
+  if (globalCurrentTimer) {
+    clearTimeout(globalCurrentTimer);
+    globalCurrentTimer = null;
+  }
+  
+  notifyQueueChange();
+}
+
+/**
+ * ✅ 특정 태스크의 모든 노드가 큐에서 소진될 때까지 대기
+ * Kanban 태스크 전환과 Workflow 연출을 동기화하기 위한 핵심 함수
+ */
+export function waitForTaskQueueDrain(taskId: string | undefined): Promise<void> {
+  if (!taskId) {
+    return Promise.resolve();
+  }
+  
+  // 해당 태스크의 노드가 큐에 없으면 즉시 완료
+  const hasTaskNodes = globalNodeQueue.some(node => node.taskId === taskId);
+  if (!hasTaskNodes) {
+    console.log(`[waitForTaskQueueDrain] Task ${taskId} has no pending nodes, resolving immediately`);
+    return Promise.resolve();
+  }
+  
+  console.log(`[waitForTaskQueueDrain] Waiting for task ${taskId} to drain from queue`);
+  
+  return new Promise((resolve) => {
+    // 큐가 업데이트될 때마다 체크
+    const checkInterval = setInterval(() => {
+      const stillHasNodes = globalNodeQueue.some(node => node.taskId === taskId);
+      
+      if (!stillHasNodes) {
+        console.log(`[waitForTaskQueueDrain] Task ${taskId} queue drained, resolving`);
+        clearInterval(checkInterval);
+        resolve();
+      }
+    }, 100); // 100ms마다 체크
+    
+    // 최대 10초 타임아웃
+    setTimeout(() => {
+      console.warn(`[waitForTaskQueueDrain] Timeout waiting for task ${taskId}, forcing resolve`);
+      clearInterval(checkInterval);
+      resolve();
+    }, 10000);
+  });
+}
+
+export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueue {
   const [rawState, setRawState] = useState<WorkflowRealtimeState | null>(null);
   const [displayedState, setDisplayedState] = useState<WorkflowRealtimeState | null>(null);
-  const [nodeQueue, setNodeQueue] = useState<string[]>([]);
-  const processingRef = useRef(false);
-  const displayStartTimeRef = useRef<number>(0);
-  const currentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [queueLength, setQueueLength] = useState(globalNodeQueue.length);
   const currentJobIdRef = useRef<string | undefined>(jobId);
   const rawStateRef = useRef<WorkflowRealtimeState | null>(null);
   const jobEndedRef = useRef(false);  // ✅ NEW: 'end' 이벤트 수신 여부
@@ -57,23 +138,25 @@ export function useWorkflowState(jobId: string | undefined): WorkflowStateWithQu
     rawStateRef.current = rawState;
   }, [rawState]);
   
+  // ✅ 글로벌 큐 변경 구독
+  useEffect(() => {
+    const callback = () => setQueueLength(globalNodeQueue.length);
+    globalQueueCallbacks.add(callback);
+    return () => {
+      globalQueueCallbacks.delete(callback);
+    };
+  }, []);
+  
   // SSE 구독
   useEffect(() => {
     if (!jobId) {
       console.log('[useWorkflowState] Clearing state (no jobId)');
       
-      // ✅ 진행 중인 타이머 취소
-      if (currentTimerRef.current) {
-        clearTimeout(currentTimerRef.current);
-        currentTimerRef.current = null;
-      }
-      
-      processingRef.current = false;
-      displayStartTimeRef.current = 0;
-      jobEndedRef.current = false;  // ✅ Reset
+      // ✅ 글로벌 타이머 취소 (진행 중인 연출 중단하지 않음)
+      // 단, rawState는 초기화
+      jobEndedRef.current = false;
       setRawState(null);
       setDisplayedState(null);
-      setNodeQueue([]);
       return;
     }
     
@@ -103,7 +186,7 @@ export function useWorkflowState(jobId: string | undefined): WorkflowStateWithQu
     
     eventSource.addEventListener('end', () => {
       console.log('[useWorkflowState] 🏁 SSE "end" event received');
-      console.log('[useWorkflowState] 📊 Current queue length:', nodeQueue.length);
+      console.log('[useWorkflowState] 📊 Current global queue length:', globalNodeQueue.length);
       console.log('[useWorkflowState] ⏳ Waiting for queue to drain before cleanup...');
       
       // ✅ CRITICAL: 'end' 이벤트를 받았다는 플래그만 설정
@@ -121,29 +204,21 @@ export function useWorkflowState(jobId: string | undefined): WorkflowStateWithQu
     
     return () => {
       console.log('[useWorkflowState] 🧹 Cleanup - closing SSE connection for job:', jobId);
+      console.log('[useWorkflowState] 📊 Global queue has', globalNodeQueue.length, 'pending nodes');
       eventSource.close();
       
-      // ✅ 연출 개선: 타이머는 취소하지만, 큐와 rawState는 유지
+      // ✅ 연출 개선: 타이머 취소 안함, 큐 유지 (글로벌이므로)
       // → 이전 Task의 노드들을 모두 소비한 후에 새 Task로 전환
-      if (currentTimerRef.current) {
-        console.log('[useWorkflowState] ⏹️  Cancelling pending timer (task switch, queue will be drained)');
-        clearTimeout(currentTimerRef.current);
-        currentTimerRef.current = null;
-      }
-      
-      processingRef.current = false;
-      displayStartTimeRef.current = 0;
       jobEndedRef.current = false;  // ✅ Reset
       
-      // ✅ rawState만 null로 (새 노드 추가 차단), 큐는 유지 (기존 노드 소비)
+      // ✅ rawState만 null로 (새 노드 추가 차단), 큐는 글로벌이므로 유지
       setRawState(null);
       
-      // ❌ displayedState와 nodeQueue는 유지!
-      // → 큐를 계속 소비하여 이전 Task의 노드들을 연출 완료
+      // ✅ displayedState는 유지하여 마지막 노드가 계속 보이도록
     };
   }, [jobId]);
   
-  // 새 노드 감지 → 큐에 추가
+  // ✅ 새 노드 감지 → 글로벌 큐에 추가
   useEffect(() => {
     if (!rawState?.currentNode) return;
     
@@ -153,26 +228,37 @@ export function useWorkflowState(jobId: string | undefined): WorkflowStateWithQu
     // 이미 표시 중이면 무시
     if (newNode === currentDisplayedNode) return;
     
-    // 큐에 이미 있으면 무시
-    if (nodeQueue.includes(newNode)) return;
+    // 글로벌 큐에 이미 있으면 무시
+    if (globalNodeQueue.some(item => item.nodeId === newNode)) return;
     
-    console.log(`[useWorkflowState] 📥 Queuing node: ${newNode}`);
-    setNodeQueue(prev => [...prev, newNode]);
-  }, [rawState?.currentNode, displayedState?.currentNode, nodeQueue]);
+    console.log(`[useWorkflowState] 📥 Queuing node to global queue: ${newNode}`);
+    if (rawState.currentTask) {
+      console.log(`   📋 Task: ${rawState.currentTask.name}`);
+    }
+    globalNodeQueue.push({
+      nodeId: newNode,
+      state: rawState,
+      taskId: rawState.currentTask?.id,
+      taskName: rawState.currentTask?.name,
+      timestamp: Date.now()
+    });
+    notifyQueueChange();
+  }, [rawState?.currentNode, displayedState?.currentNode]);
   
-  // 큐 처리 (rawState dependency 제거 - ref 사용)
+  // ✅ 글로벌 큐 처리
   useEffect(() => {
-    if (processingRef.current || nodeQueue.length === 0) return;
+    if (globalProcessing || globalNodeQueue.length === 0) return;
     
     const processNext = async () => {
-      processingRef.current = true;
+      globalProcessing = true;
       
-      const nextNode = nodeQueue[0];
+      const nextItem = globalNodeQueue[0];
+      const nextNode = nextItem.nodeId;
       const minDisplayTime = NODE_MIN_DISPLAY_TIME[nextNode] || DEFAULT_MIN_DISPLAY_TIME;
       
       // 현재 표시 중인 노드의 경과 시간 계산
-      const elapsed = displayStartTimeRef.current 
-        ? Date.now() - displayStartTimeRef.current 
+      const elapsed = globalDisplayStartTime 
+        ? Date.now() - globalDisplayStartTime 
         : Infinity;
       
       // 최소 표시 시간이 지나지 않았으면 대기
@@ -180,27 +266,27 @@ export function useWorkflowState(jobId: string | undefined): WorkflowStateWithQu
         const waitTime = minDisplayTime - elapsed;
         console.log(`[useWorkflowState] ⏳ Waiting ${waitTime}ms before showing: ${nextNode}`);
         
-        // ✅ 타이머를 저장하고 대기
+        // ✅ 글로벌 타이머 저장하고 대기
         await new Promise(resolve => {
-          currentTimerRef.current = setTimeout(() => {
-            currentTimerRef.current = null;
+          globalCurrentTimer = setTimeout(() => {
+            globalCurrentTimer = null;
             resolve(undefined);
           }, waitTime);
         });
       }
       
-      // ✅ 연출 개선: jobId 체크 제거 - 큐에 있는 노드는 무조건 표시
+      // ✅ 연출 개선: 큐에 있는 노드는 무조건 표시
       // → 이전 Task의 노드들을 모두 보여주고 나서 새 Task로 전환
       
       // 노드 표시
-      console.log(`[useWorkflowState] 🎬 Displaying node: ${nextNode} (min: ${minDisplayTime}ms)`);
-      displayStartTimeRef.current = Date.now();
+      console.log(`[useWorkflowState] 🎬 Displaying node from global queue: ${nextNode} (min: ${minDisplayTime}ms, queue: ${globalNodeQueue.length})`);
+      globalDisplayStartTime = Date.now();
       
-      // ✅ rawStateRef 사용 (현재 시점의 rawState 참조)
+      // ✅ 큐에 저장된 state 사용 (노드가 추가된 시점의 상태)
       const currentRawState = rawStateRef.current;
       
       setDisplayedState(prev => {
-        // rawState가 있으면 (같은 Task 진행 중)
+        // rawState가 있으면 (같은 Task 진행 중) - 현재 rawState 사용
         if (currentRawState) {
           return {
             ...currentRawState,
@@ -208,53 +294,39 @@ export function useWorkflowState(jobId: string | undefined): WorkflowStateWithQu
             previousNode: prev?.currentNode || currentRawState.previousNode
           };
         }
-        // rawState 없으면 (이전 Task 큐 소비 중)
-        else if (prev) {
+        // rawState 없으면 (이전 Task 큐 소비 중) - 큐에 저장된 state 사용
+        else {
           return {
-            ...prev,
+            ...nextItem.state,
             currentNode: nextNode,
-            previousNode: prev.currentNode
+            previousNode: prev?.currentNode || nextItem.state.previousNode
           };
         }
-        // 둘 다 없으면 기본값 (필요한 최소 필드만)
-        const now = new Date().toISOString();
-        return {
-          jobId: '',
-          currentNode: nextNode,
-          previousNode: null,
-          startedAt: now,
-          nodeHistory: [{ nodeId: nextNode, enteredAt: now }],
-          activeActors: [],
-          isCompleted: false
-        };
       });
       
-      // 큐에서 제거
-      setNodeQueue(prev => {
-        const updated = prev.slice(1);
-        
-        // ✅ CRITICAL: 큐가 비었고 job이 종료되었으면 cleanup
-        if (updated.length === 0 && jobEndedRef.current) {
-          console.log('[useWorkflowState] ✅ Queue drained after job end, clearing state');
-          setTimeout(() => {
-            setDisplayedState(null);
-            console.log('[useWorkflowState] 🏁 Cleanup complete');
-          }, 500);  // 마지막 노드가 잠깐 표시될 시간을 줌
-        }
-        // ✅ 큐가 비었고 rawState도 없으면 (이전 Task 큐 소비 완료) 상태 초기화
-        else if (updated.length === 0 && !rawStateRef.current && !jobEndedRef.current) {
-          console.log('[useWorkflowState] ✅ Previous task queue drained, clearing state');
-          setTimeout(() => setDisplayedState(null), 100);
-        }
-        
-        return updated;
-      });
+      // 글로벌 큐에서 제거
+      globalNodeQueue.shift();
+      notifyQueueChange();
       
-      processingRef.current = false;
+      // ✅ CRITICAL: 큐가 비었고 job이 종료되었으면 cleanup
+      if (globalNodeQueue.length === 0 && jobEndedRef.current) {
+        console.log('[useWorkflowState] ✅ Global queue drained after job end, clearing state');
+        setTimeout(() => {
+          setDisplayedState(null);
+          console.log('[useWorkflowState] 🏁 Cleanup complete');
+        }, 500);  // 마지막 노드가 잠깐 표시될 시간을 줌
+      }
+      
+      globalProcessing = false;
+      
+      // ✅ 큐에 다음 항목이 있으면 즉시 처리 시작
+      if (globalNodeQueue.length > 0) {
+        notifyQueueChange();
+      }
     };
     
     processNext();
-  }, [nodeQueue]);  // ✅ nodeQueue만 dependency - 큐에 항목이 추가될 때만 실행
+  }, [queueLength]);  // ✅ queueLength만 dependency - 글로벌 큐에 항목이 추가될 때마다 실행
   
   return { rawState, displayedState };
 }

@@ -69,9 +69,16 @@ function formatPreviousAttempts(attempts: AttemptHistory[]): string {
  * 4. Generate execution plan for current task
  */
 export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphState> {
-  // ✅ Workflow instrumentation: Enter node
+  // ✅ Workflow instrumentation: Enter node with current task info
   if (state.deps?.workflowUpdate && state._httpTaskId) {
-    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'plan');
+    const taskInfo = state.currentTask ? {
+      id: state.currentTask.id,
+      name: state.currentTask.name,
+      type: state.currentTask.type,
+      description: state.currentTask.description,
+      priority: state.currentTask.priority
+    } : undefined;
+    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'plan', taskInfo);
   }
   
   // ✅ Increment recursion count (track iteration)
@@ -209,18 +216,29 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         // Child process: HTTP API fallback
         console.log(`   Method: HTTP API fallback\n`);
         const serverPort = process.env.ANT_SERVER_PORT || '4100';
-        fetch(`http://localhost:${serverPort}/api/internal/task-queue`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            taskId: state._httpTaskId,
-            currentTask: nextTask,
-            queue: queueTasks,
-            completedTasks: completedTasksDetails,
-            recursionCount: recursionCount,
-            recursionLimit: state.recursionLimit || 50
-          })
-        }).catch(err => console.log(`⚠️  [Plan] HTTP update failed:`, err.message));
+        try {
+          // ✅ CRITICAL: await fetch to ensure update is sent before continuing
+          const response = await fetch(`http://localhost:${serverPort}/api/internal/task-queue`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              taskId: state._httpTaskId,
+              currentTask: nextTask,
+              queue: queueTasks,
+              completedTasks: completedTasksDetails,
+              recursionCount: recursionCount,
+              recursionLimit: state.recursionLimit || 50
+            })
+          });
+          
+          if (response.ok) {
+            console.log(`   ✅ HTTP update successful\n`);
+          } else {
+            console.log(`   ⚠️  HTTP update failed: ${response.status} ${response.statusText}\n`);
+          }
+        } catch (err: any) {
+          console.log(`   ⚠️  HTTP update error: ${err.message}\n`);
+        }
       }
     } else {
       console.log(`⚠️  [Plan] Live update SKIPPED - no taskId available\n`);

@@ -17,7 +17,8 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useStore } from '@/lib/store';
-import { useGraphMetadata, useWorkflowState, useGraphLayout } from './hooks';
+import { WorkflowRealtimeState } from '@/types/workflow';
+import { useGraphMetadata, useGraphLayout } from './hooks';
 import { WorkflowNode, ActorNode } from './nodes';
 import { NodeType } from '@/types/workflow';
 
@@ -31,7 +32,11 @@ const nodeTypes: NodeTypes = {
   actor: ActorNode  // Actor 노드 추가
 };
 
-export function WorkflowVisualization() {
+interface WorkflowVisualizationProps {
+  workflowState: WorkflowRealtimeState | null;  // ✅ App에서 전달받음 (AgentWorkflowBoard를 통해)
+}
+
+export function WorkflowVisualization({ workflowState }: WorkflowVisualizationProps) {
   const selectedProject = useStore(state => state.selectedProject);
   const selectedFeature = useStore(state => state.selectedFeature);
   const selectedAgent = useStore(state => state.selectedAgent);
@@ -44,14 +49,9 @@ export function WorkflowVisualization() {
   // 1. 정적 그래프 메타데이터 로드 (Hooks는 항상 호출되어야 함)
   const { metadata, loading, error } = useGraphMetadata(selectedAgent, selectedWorkType);
   
-  // 2. 실시간 상태 구독 (Job 실행 중일 때)
-  // ✅ CRITICAL: Don't subscribe if user stopped this job
-  const shouldSubscribe = currentJobId && currentJobId !== userStoppedJobId;
-  const { displayedState } = useWorkflowState(shouldSubscribe ? currentJobId : undefined);
-  
-  // 3. ReactFlow 노드/엣지 변환 + 레이아웃
-  // ✅ displayedState 사용: 큐를 통해 천천히 표시되는 상태
-  const { nodes: baseNodes, edges } = useGraphLayout(metadata, displayedState);
+  // 2. ReactFlow 노드/엣지 변환 + 레이아웃
+  // ✅ workflowState 사용: App에서 전달받은 단일 SSE 상태
+  const { nodes: baseNodes, edges } = useGraphLayout(metadata, workflowState);
   
   // ReactFlow instance for fitView
   const [reactFlowInstance, setReactFlowInstance] = React.useState<any>(null);
@@ -83,11 +83,10 @@ export function WorkflowVisualization() {
   }, [reactFlowInstance, nodes.length, splitLayout]);
   
   // ✅ 활성 노드로 자동 포커스 + 줌인
-  // ✅ CRITICAL: displayedState 사용 - 큐에서 표시되는 노드와 포커스 동기화
   React.useEffect(() => {
-    if (!reactFlowInstance || !displayedState?.currentNode) return;
+    if (!reactFlowInstance || !workflowState?.currentNode) return;
     
-    const currentNodeId = displayedState.currentNode;
+    const currentNodeId = workflowState.currentNode;
     const node = reactFlowInstance.getNode(currentNodeId);
     
     if (!node) {
@@ -109,7 +108,7 @@ export function WorkflowVisualization() {
       zoom: 1.3,
       duration: 800  // 800ms 애니메이션
     });
-  }, [reactFlowInstance, displayedState?.currentNode]);
+  }, [reactFlowInstance, workflowState?.currentNode]);
   
   // ReactFlow 이벤트 핸들러
   const onNodesChange = useCallback(() => {

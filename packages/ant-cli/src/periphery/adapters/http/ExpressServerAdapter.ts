@@ -131,7 +131,6 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         this.jobs,
         this.taskQueueSnapshots
       );
-    } else {
     }
   }
   
@@ -828,9 +827,12 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   /**
    * Track node entry
    */
-  enterNode(jobId: string, nodeId: string): void {
+  enterNode(jobId: string, nodeId: string, taskInfo?: import('../../../core/ports/workflow').TaskInfo): void {
     console.log(`\n🎯 [ExpressServerAdapter] enterNode called: ${nodeId} (job: ${jobId})`);
-    this.workflowStateService.enterNode(jobId, nodeId);
+    if (taskInfo) {
+      console.log(`   📋 Task: ${taskInfo.name}`);
+    }
+    this.workflowStateService.enterNode(jobId, nodeId, taskInfo);
   }
   
   /**

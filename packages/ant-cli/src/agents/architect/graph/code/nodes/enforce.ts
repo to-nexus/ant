@@ -49,7 +49,14 @@ function areViolationsRetryable(violations: Violation[]): boolean {
 export async function enforce(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   // ✅ Workflow instrumentation: Enter node
   if (state.deps?.workflowUpdate && state._httpTaskId) {
-    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'enforce');
+    const taskInfo = state.currentTask ? {
+      id: state.currentTask.id,
+      name: state.currentTask.name,
+      type: state.currentTask.type,
+      description: state.currentTask.description,
+      priority: state.currentTask.priority
+    } : undefined;
+    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'enforce', taskInfo);
   }
   
   const violations = state.violations || [];

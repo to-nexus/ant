@@ -71,10 +71,19 @@ export interface WorkflowGraphMetadata {
   endNodes: string[];
 }
 
+export interface TaskInfo {
+  id?: string;
+  name: string;
+  type?: string;
+  description?: string;
+  priority?: number;
+}
+
 export interface WorkflowRealtimeState {
   jobId: string;
   currentNode: string | null;
   previousNode: string | null;
+  currentTask: TaskInfo | null;  // ✅ 현재 실행 중인 태스크
   startedAt: string;
   endedAt?: string;  // Job 종료 시간
   isCompleted: boolean;  // Job 완료 여부

@@ -117,7 +117,11 @@ export class TaskExecutionService {
       // Spawn child process using tsx
       const childProcess = spawn('npx', ['tsx', ...args], {
         cwd: process.cwd(),
-        env: { ...process.env },
+        env: { 
+          ...process.env,
+          ANT_JOB_ID: jobId,  // For tracking
+          ANT_SERVER_PORT: process.env.PORT || '4100'  // For HTTP client updates
+        },
         stdio: ['ignore', 'pipe', 'pipe']
       });
       

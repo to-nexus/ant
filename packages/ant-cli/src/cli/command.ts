@@ -135,9 +135,9 @@ async function runArchitect(task: 'design' | 'code' | 'learn', inputPath: string
     
     // ✅ Display result based on status (type guard for ArchitectResult)
     if (typeof result !== 'string' && 'success' in result) {
-      if (result.status === 'paused' && result.tasksRemaining) {
+      if (result.status === 'paused' && result.interruption?.metadata?.tasksRemaining) {
         console.log('\n⏸️  Task paused due to recursion limit');
-        console.log(`📊 Progress: ${result.tasksRemaining} tasks remaining`);
+        console.log(`📊 Progress: ${result.interruption.metadata.tasksRemaining} tasks remaining`);
         console.log('💡 Run the same command again to resume\n');
       } else if (result.success) {
         console.log('\n✅ Task completed successfully!');

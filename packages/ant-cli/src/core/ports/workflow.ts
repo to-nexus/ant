@@ -4,6 +4,14 @@
  * LangGraph 노드 실행 상태를 실시간으로 업데이트하기 위한 포트
  */
 
+export interface TaskInfo {
+  id?: string;
+  name: string;
+  type?: string;
+  description?: string;
+  priority?: number;
+}
+
 export interface WorkflowStateUpdatePort {
   /**
    * Job 시작 알림
@@ -13,7 +21,7 @@ export interface WorkflowStateUpdatePort {
   /**
    * 노드 진입 알림
    */
-  enterNode(jobId: string, nodeId: string): void;
+  enterNode(jobId: string, nodeId: string, taskInfo?: TaskInfo): void;
   
   /**
    * 노드 이탈 알림

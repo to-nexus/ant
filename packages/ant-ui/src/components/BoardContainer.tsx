@@ -50,8 +50,8 @@ export function BoardContainer({
         </div>
       </div>
       
-      {/* Scrollable Content */}
-      <div className="flex-1 overflow-y-auto bg-white dark:bg-[#161b22] p-4">
+      {/* Content Area - no scroll (children handle their own scroll) */}
+      <div className="flex-1 overflow-hidden bg-white dark:bg-[#161b22] p-4">
         {children}
       </div>
     </div>

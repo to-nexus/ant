@@ -3,27 +3,37 @@
  * 
  * Task Board의 In Progress 카드 아래에 표시되는
  * 현재 활성 노드 및 Actor 정보
+ * 
+ * ⚠️ CRITICAL: WorkflowVisualization과 displayedState를 공유
+ * → 중복 SSE 연결 방지 (각각 useWorkflowState 호출하면 2개 연결 생성!)
  */
 
-import { useWorkflowState } from '../workflow/hooks';
+import { memo } from 'react';
+import { WorkflowRealtimeState } from '@/types/workflow';
 import { useStore } from '@/lib/store';
-import { useUIActionPolicy } from '@/hooks/useUIActionPolicy';
 
-export function ActiveNodeIndicator() {
-  const currentJobId = useStore(state => state.currentJobId);
-  const userStoppedJobId = useStore(state => state.userStoppedJobId);
+interface ActiveNodeIndicatorProps {
+  displayedState: WorkflowRealtimeState | null;
+}
+
+function ActiveNodeIndicatorComponent({ displayedState }: ActiveNodeIndicatorProps) {
+  // ✅ Store에서 직접 필요한 값만 구독
+  const isRunning = useStore(state => state.isRunning);
+  const isStopping = useStore(state => state.isStopping);
   
-  // ✅ UI 정책 시스템 사용
-  const policy = useUIActionPolicy();
+  // 🔍 DEBUG
+  console.log('[ActiveNodeIndicator] Debug:', {
+    isRunning,
+    isStopping,
+    hasDisplayedState: !!displayedState,
+    currentNode: displayedState?.currentNode,
+    currentTask: displayedState?.currentTask?.name
+  });
   
-  // ✅ CRITICAL: Don't subscribe if user stopped this job
-  const shouldSubscribe = currentJobId && currentJobId !== userStoppedJobId;
+  // ✅ UI 정책: 실행 중이고 중단 중이 아닐 때만 표시
+  const shouldShow = isRunning && !isStopping;
   
-  // 실시간 워크플로우 상태 구독 (큐를 통해 표시되는 상태)
-  const { displayedState } = useWorkflowState(shouldSubscribe ? currentJobId : undefined);
-  
-  // ✅ UI 정책에 따라 표시 여부 결정
-  if (!policy.shouldShowWorkflowIndicators || !displayedState || !displayedState.currentNode) {
+  if (!shouldShow || !displayedState || !displayedState.currentNode) {
     return null;
   }
   
@@ -75,4 +85,8 @@ export function ActiveNodeIndicator() {
     </div>
   );
 }
+
+// ✅ CRITICAL: React.memo로 감싸서 부모의 재렌더링으로부터 격리
+// ActiveNodeIndicator는 props가 없으므로, store의 값이 변경될 때만 재렌더링됨
+export const ActiveNodeIndicator = memo(ActiveNodeIndicatorComponent);
 

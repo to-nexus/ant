@@ -2,7 +2,9 @@ import { Badge } from '@/ui/badge';
 import { TaskCard } from '../TaskCard';
 import { motion, LayoutGroup } from 'framer-motion';
 import { UnifiedTask } from '@/types/task';
+import { WorkflowRealtimeState } from '@/types/workflow';
 import { ActiveNodeIndicator } from './ActiveNodeIndicator';
+import { useEffect, useRef, useMemo } from 'react';
 
 interface KanbanColumnsProps {
   todoTasks: UnifiedTask[];
@@ -11,6 +13,7 @@ interface KanbanColumnsProps {
   newlyCompletedIds: Set<string>;
   newlyInProgressId: string | null;
   splitLayout: 'horizontal' | 'vertical';
+  workflowDisplayedState: WorkflowRealtimeState | null;  // ✅ WorkflowVisualization에서 전달
   onShineComplete: (taskId: string) => void;
   onInProgressAnimationComplete: () => void;
 }
@@ -30,6 +33,7 @@ export function KanbanColumns({
   newlyCompletedIds,
   newlyInProgressId,
   splitLayout,
+  workflowDisplayedState,
   onShineComplete,
   onInProgressAnimationComplete
 }: KanbanColumnsProps) {
@@ -37,19 +41,87 @@ export function KanbanColumns({
   // Vertical split: horizontal column layout (grid-cols-3)
   const isHorizontalSplit = splitLayout === 'horizontal';
   
+  // ✅ Sort todo tasks by priority before rendering (lower number = higher priority = shown first)
+  const sortedTodoTasks = useMemo(() => {
+    return [...todoTasks].sort((a, b) => {
+      const priorityA = typeof a.priority === 'number' ? a.priority : 999;
+      const priorityB = typeof b.priority === 'number' ? b.priority : 999;
+      return priorityA - priorityB;
+    });
+  }, [todoTasks]);
+  
+  // ✅ Auto-clear in-progress animation flag after delay
+  const inProgressTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (newlyInProgressId) {
+      // Clear any existing timer
+      if (inProgressTimerRef.current) {
+        clearTimeout(inProgressTimerRef.current);
+      }
+      // Set new timer to clear flag
+      inProgressTimerRef.current = setTimeout(() => {
+        onInProgressAnimationComplete();
+        inProgressTimerRef.current = null;
+      }, 800) as unknown as number;
+    }
+    
+    return () => {
+      if (inProgressTimerRef.current) {
+        clearTimeout(inProgressTimerRef.current);
+        inProgressTimerRef.current = null;
+      }
+    };
+  }, [newlyInProgressId, onInProgressAnimationComplete]);
+  
+  // ✅ Auto-clear completed animation flags after shine
+  const completedTimersRef = useRef<Map<string, number>>(new Map());
+  useEffect(() => {
+    newlyCompletedIds.forEach(taskId => {
+      if (!completedTimersRef.current.has(taskId)) {
+        const timerId = setTimeout(() => {
+          onShineComplete(taskId);
+          completedTimersRef.current.delete(taskId);
+        }, 1200) as unknown as number;
+        completedTimersRef.current.set(taskId, timerId);
+      }
+    });
+    
+    return () => {
+      completedTimersRef.current.forEach(timerId => clearTimeout(timerId));
+      completedTimersRef.current.clear();
+    };
+  }, [newlyCompletedIds, onShineComplete]);
+  
   return (
     <LayoutGroup>
-      <div className={isHorizontalSplit ? "flex flex-col gap-4 pt-4" : "grid grid-cols-3 gap-4 pt-4"}>
-        {/* TO DO Column */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 mb-3">
+      <div className="flex flex-col h-full">
+        {/* Fixed Column Headers */}
+        <div className={isHorizontalSplit ? "flex flex-col gap-4 mb-4 shrink-0" : "grid grid-cols-3 gap-4 mb-4 shrink-0"}>
+          <div className="flex items-center gap-2">
             <h3 className="font-semibold text-sm text-gray-900 dark:text-white">📝 To Do</h3>
             <Badge variant="secondary" className="text-xs">
-              {todoTasks.length}
+              {sortedTodoTasks.length}
             </Badge>
           </div>
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold text-sm text-gray-900 dark:text-white">🚀 In Progress</h3>
+            <Badge variant="secondary" className="text-xs">
+              {inProgressTask ? 1 : 0}
+            </Badge>
+          </div>
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold text-sm text-gray-900 dark:text-white">✅ Completed</h3>
+            <Badge variant="secondary" className="text-xs">
+              {completedTasks.length}
+            </Badge>
+          </div>
+        </div>
+
+        {/* Scrollable Content Area */}
+        <div className={isHorizontalSplit ? "flex flex-col gap-4 overflow-y-auto pr-2" : "grid grid-cols-3 gap-4 overflow-y-auto pr-2"}>
+          {/* TO DO Column */}
           <div className="space-y-2">
-            {todoTasks.map((task) => {
+            {sortedTodoTasks.map((task) => {
               const taskId = task.id || task.name;
               return (
                 <motion.div
@@ -73,26 +145,17 @@ export function KanbanColumns({
                 </motion.div>
               );
             })}
-            {todoTasks.length === 0 && (
+            {sortedTodoTasks.length === 0 && (
               <div className="text-center text-gray-500 dark:text-gray-400 text-sm py-8">
                 No pending tasks
               </div>
             )}
           </div>
-        </div>
 
-        {/* IN PROGRESS Column */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 mb-3">
-            <h3 className="font-semibold text-sm text-gray-900 dark:text-white">🚀 In Progress</h3>
-            <Badge variant="secondary" className="text-xs">
-              {inProgressTask ? 1 : 0}
-            </Badge>
-          </div>
+          {/* IN PROGRESS Column */}
           <div className="space-y-3">
             {inProgressTask && (() => {
               const taskId = inProgressTask.id || inProgressTask.name;
-              const isNewlyInProgress = newlyInProgressId === taskId;
               
               return (
                 <div key="in-progress-with-indicator" className="space-y-2">
@@ -107,21 +170,16 @@ export function KanbanColumns({
                         damping: 35
                       }
                     }}
-                    onAnimationComplete={() => {
-                      if (isNewlyInProgress) {
-                        onInProgressAnimationComplete();
-                      }
-                    }}
                   >
-                    {/* ✅ Keep "todo" style during animation, then switch to "in-progress" */}
+                    {/* ✅ Always use "in-progress" style - animation handles movement */}
                     <TaskCard 
                       task={inProgressTask} 
-                      status={isNewlyInProgress ? "todo" : "in-progress"}
+                      status="in-progress"
                     />
                   </motion.div>
                   
                   {/* ✅ Active Node/Actor Indicator - Below the in-progress card */}
-                  <ActiveNodeIndicator />
+                  <ActiveNodeIndicator displayedState={workflowDisplayedState} />
                 </div>
               );
             })()}
@@ -131,16 +189,8 @@ export function KanbanColumns({
               </div>
             )}
           </div>
-        </div>
 
-        {/* COMPLETED Column */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 mb-3">
-            <h3 className="font-semibold text-sm text-gray-900 dark:text-white">✅ Completed</h3>
-            <Badge variant="secondary" className="text-xs">
-              {completedTasks.length}
-            </Badge>
-          </div>
+          {/* COMPLETED Column */}
           <div className="space-y-2">
             {completedTasks.slice().reverse().map((task) => {
               const taskId = task.id || task.name;
@@ -183,12 +233,6 @@ export function KanbanColumns({
                       <motion.div
                         className="absolute inset-0 pointer-events-none rounded-lg overflow-hidden"
                         style={{ zIndex: 100 }}
-                        onAnimationComplete={() => {
-                          // Remove from newly completed set after shine animation
-                          setTimeout(() => {
-                            onShineComplete(taskId);
-                          }, 100);
-                        }}
                       >
                         <motion.div
                           className="absolute inset-0"
@@ -209,10 +253,10 @@ export function KanbanColumns({
                     </>
                   )}
                   <div className="relative z-10">
-                    {/* ✅ Keep "in-progress" style during animation, then switch to "completed" */}
+                    {/* ✅ Always use "completed" style - animation handles movement, shine handles celebration */}
                     <TaskCard 
                       task={task} 
-                      status={isNewlyCompleted ? "in-progress" : "completed"}
+                      status="completed"
                     />
                   </div>
                 </motion.div>

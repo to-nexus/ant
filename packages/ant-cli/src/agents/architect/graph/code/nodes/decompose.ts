@@ -18,7 +18,14 @@ import { ArchitectGraphState, Task, TaskQueue } from "../state";
 export async function decompose(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   // ✅ Workflow instrumentation: Enter node
   if (state.deps?.workflowUpdate && state._httpTaskId) {
-    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'decompose');
+    const taskInfo = state.currentTask ? {
+      id: state.currentTask.id,
+      name: state.currentTask.name,
+      type: state.currentTask.type,
+      description: state.currentTask.description,
+      priority: state.currentTask.priority
+    } : undefined;
+    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'decompose', taskInfo);
   }
   
   const llm = state.deps?.llm as LLMClient;

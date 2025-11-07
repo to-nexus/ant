@@ -6,6 +6,33 @@ import { plan } from "./nodes/plan";
 import { execute } from "./nodes/execute";
 import { learn } from "./nodes/learn";
 
+/**
+ * Check if there are more tasks to process
+ * Routes to plan (next task) or learn (all done)
+ */
+async function checkTaskCompletion(state: DesignGraphState): Promise<Partial<DesignGraphState>> {
+  // ✅ Workflow instrumentation: Enter node
+  if (state.deps?.workflowUpdate && state._httpTaskId) {
+    const taskInfo = state.currentTask ? {
+      id: state.currentTask.id,
+      name: state.currentTask.name,
+      type: state.currentTask.type,
+      description: state.currentTask.description,
+      priority: state.currentTask.priority
+    } : undefined;
+    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'checkTaskCompletion', taskInfo);
+  }
+  
+  // If there are more tasks in queue, continue to next task
+  if (state.taskQueue && !state.taskQueue.isEmpty()) {
+    console.log(`\n📋 ${state.taskQueue.size()} task(s) remaining, continuing...\n`);
+    return state;
+  }
+  
+  console.log(`\n✅ All design tasks completed!\n`);
+  return state;
+}
+
 export function buildDesignGraph() {
   const graph = new StateGraph<DesignGraphState>({
     channels: {
@@ -47,17 +74,31 @@ export function buildDesignGraph() {
   } as any);
 
   graph.addNode("resolve" as const, resolve as any);
-  graph.addNode("decompose" as const, decompose as any);  // ✅ NEW
+  graph.addNode("decompose" as const, decompose as any);
   graph.addNode("plan" as const, plan as any);
   graph.addNode("execute" as const, execute as any);
+  graph.addNode("checkTaskCompletion" as const, checkTaskCompletion as any);  // ✅ NEW
   graph.addNode("learn" as const, learn as any);
 
-  // ✅ NEW flow: resolve → decompose → plan → execute → learn
+  // ✅ Flow with task loop: resolve → decompose → [plan → execute → check] → learn
   (graph as any).addEdge("__start__", "resolve");
-  (graph as any).addEdge("resolve", "decompose");  // ✅ NEW
-  (graph as any).addEdge("decompose", "plan");     // ✅ CHANGED
+  (graph as any).addEdge("resolve", "decompose");
+  (graph as any).addEdge("decompose", "plan");
   (graph as any).addEdge("plan", "execute");
-  (graph as any).addEdge("execute", "learn");
+  (graph as any).addEdge("execute", "checkTaskCompletion");  // ✅ Check after each task
+  
+  // ✅ Conditional routing: more tasks → plan, all done → learn
+  graph.addConditionalEdges(
+    "checkTaskCompletion" as any,
+    ((s: DesignGraphState) => {
+      if (s.taskQueue && !s.taskQueue.isEmpty()) {
+        return "plan";  // ← Next task
+      } else {
+        return "learn";  // ← All done
+      }
+    }) as any,
+    { plan: "plan", learn: "learn" } as any
+  );
 
   return graph.compile();
 }
