@@ -820,19 +820,27 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   /**
    * Start workflow tracking for a job
    */
-  startJob(jobId: string): void {
-    this.workflowStateService.startJob(jobId);
+  startJob(jobId: string, llmInfo?: import('../../../core/ports/workflow').LLMInfo): void {
+    console.log(`\n🚀 [ExpressServerAdapter] startJob called: ${jobId}`);
+    if (llmInfo) {
+      console.log(`   🤖 LLM: ${llmInfo.provider} / ${llmInfo.model}`);
+    }
+    this.workflowStateService.startJob(jobId, llmInfo);
   }
   
   /**
    * Track node entry
+   * ✅ Returns Promise to ensure SSE ordering
    */
-  enterNode(jobId: string, nodeId: string, taskInfo?: import('../../../core/ports/workflow').TaskInfo): void {
+  async enterNode(jobId: string, nodeId: string, taskInfo?: import('../../../core/ports/workflow').TaskInfo, llmInfo?: import('../../../core/ports/workflow').LLMInfo): Promise<void> {
     console.log(`\n🎯 [ExpressServerAdapter] enterNode called: ${nodeId} (job: ${jobId})`);
     if (taskInfo) {
       console.log(`   📋 Task: ${taskInfo.name}`);
     }
-    this.workflowStateService.enterNode(jobId, nodeId, taskInfo);
+    if (llmInfo) {
+      console.log(`   🤖 LLM: ${llmInfo.provider} / ${llmInfo.model}`);
+    }
+    await this.workflowStateService.enterNode(jobId, nodeId, taskInfo, llmInfo);
   }
   
   /**

@@ -43,19 +43,22 @@ export class WorkflowHttpClient implements WorkflowStateUpdatePort {
    * Start job tracking
    * Note: Called by parent server, not needed in child process
    */
-  startJob(jobId: string): void {
+  startJob(jobId: string, llmInfo?: import('../../../../core/ports/workflow').LLMInfo): void {
     // No-op: Job is already started by parent server
+    // llmInfo is ignored in child process context
   }
 
   /**
    * Track node entry
    * Notifies parent server that agent entered a graph node
+   * ✅ Returns Promise to ensure SSE ordering
    */
-  enterNode(jobId: string, nodeId: string, taskInfo?: TaskInfo): void {
-    this.sendUpdate(jobId, 'enterNode', { nodeId, taskInfo })
-      .catch(err => {
-        console.warn(`[WorkflowHttpClient] Failed to track enterNode (${nodeId}):`, err.message);
-      });
+  async enterNode(jobId: string, nodeId: string, taskInfo?: TaskInfo, llmInfo?: import('../../../../core/ports/workflow').LLMInfo): Promise<void> {
+    try {
+      await this.sendUpdate(jobId, 'enterNode', { nodeId, taskInfo, llmInfo });
+    } catch (err: any) {
+      console.warn(`[WorkflowHttpClient] Failed to track enterNode (${nodeId}):`, err.message);
+    }
   }
 
   /**

@@ -63,8 +63,8 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
     }
   }, [selectedProject]);
   
-  // Actor 정보 조회
-  const baseActorInfo = data.actorId ? getActorInfo(data.actorId) : null;
+  // ✅ Actor 정보 조회 (LLM인 경우 서버에서 받은 실제 정보 사용)
+  const baseActorInfo = data.actorId ? getActorInfo(data.actorId, data.llmInfo || undefined) : null;
   
   // 실제 경로로 details 동적 생성 및 config에서 실제 모델 정보 반영
   const actorInfo = React.useMemo(() => {
@@ -175,11 +175,23 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
             <div className="space-y-2 text-xs text-gray-800 dark:text-gray-200">
               <div>
                 <div className="font-semibold opacity-70 mb-1">Provider:</div>
-                <div className="opacity-90">{actorInfo.provider}</div>
+                <div className="opacity-90">
+                  {data.actorId === 'llm' && !data.llmInfo ? (
+                    <span className="text-gray-400 dark:text-gray-500 italic">Loading...</span>
+                  ) : (
+                    actorInfo.provider
+                  )}
+                </div>
               </div>
               <div>
                 <div className="font-semibold opacity-70 mb-1">Model/System:</div>
-                <div className="opacity-90">{actorInfo.model}</div>
+                <div className="opacity-90">
+                  {data.actorId === 'llm' && !data.llmInfo ? (
+                    <span className="text-gray-400 dark:text-gray-500 italic">Loading...</span>
+                  ) : (
+                    actorInfo.model
+                  )}
+                </div>
               </div>
               {actorInfo.details && (
                 <div>

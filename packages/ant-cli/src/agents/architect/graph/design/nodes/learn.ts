@@ -17,7 +17,7 @@ import { SessionTurn } from "../../../../../core/types";
  * - No direct infrastructure dependencies
  */
 export async function learn(state: DesignGraphState): Promise<DesignGraphState> {
-  // ✅ Workflow instrumentation: Enter node
+  // ✅ Workflow instrumentation: Enter node FIRST
   if (state.deps?.workflowUpdate && state._httpTaskId) {
     const taskInfo = state.currentTask ? {
       id: state.currentTask.id,
@@ -26,7 +26,53 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'learn', taskInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'learn', taskInfo);
+  }
+  
+  // ✅ Update Kanban AFTER workflow tracking
+  // This ensures workflow node is added to queue before Kanban update triggers UI changes
+  if (state._httpTaskId && state.taskQueue) {
+    const queueTasks = state.taskQueue.getAll();
+    const completedTasksDetails = state.completedTasksDetails || [];
+    
+    console.log(`\n🔥 [Design Learn] Updating Kanban - all tasks complete`);
+    console.log(`   Queue remaining: ${queueTasks.length}`);
+    console.log(`   Completed: ${completedTasksDetails.length}`);
+    
+    if (state.deps?.kanbanUpdate) {
+      // In-process: use injected port
+      console.log(`   Method: Direct port call\n`);
+      state.deps.kanbanUpdate.updateTaskQueue(
+        state._httpTaskId,
+        undefined,  // No current task (all complete)
+        queueTasks,
+        completedTasksDetails
+      );
+    } else {
+      // Child process: HTTP API fallback
+      console.log(`   Method: HTTP API fallback\n`);
+      const serverPort = process.env.ANT_SERVER_PORT || '4100';
+      try {
+        const response = await fetch(`http://localhost:${serverPort}/api/internal/task-queue`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            taskId: state._httpTaskId,
+            currentTask: undefined,
+            queue: queueTasks,
+            completedTasks: completedTasksDetails
+          })
+        });
+        
+        if (response.ok) {
+          console.log(`   ✅ HTTP update successful\n`);
+        } else {
+          console.log(`   ⚠️  HTTP update failed: ${response.status} ${response.statusText}\n`);
+        }
+      } catch (err: any) {
+        console.log(`   ⚠️  HTTP update error: ${err.message}\n`);
+      }
+    }
   }
   
   // Get GitPort for file operations
@@ -175,6 +221,12 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       console.error('⚠️  Failed to store learnings to memory:', error instanceof Error ? error.message : error);
       console.log('   Continuing without memory storage...');
     }
+  }
+  
+  // ✅ CRITICAL: End job to stop workflow visualization
+  if (state.deps?.workflowUpdate && state._httpTaskId) {
+    state.deps.workflowUpdate.endJob(state._httpTaskId);
+    console.log(`\n🏁 Job ended: ${state._httpTaskId}\n`);
   }
   
   return { ...state, designFilePath, learnings };

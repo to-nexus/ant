@@ -75,17 +75,32 @@ const ACTOR_INFO_MAP: Record<string, ActorInfo> = {
 
 /**
  * Actor ID로 정보 조회
+ * @param actorId - Actor ID (e.g., 'llm', 'vector-db')
+ * @param llmInfo - (Optional) 서버에서 받은 실제 LLM 정보
  */
-export function getActorInfo(actorId: string): ActorInfo | null {
-  return ACTOR_INFO_MAP[actorId] || null;
+export function getActorInfo(actorId: string, llmInfo?: { provider: string; model: string }): ActorInfo | null {
+  const info = ACTOR_INFO_MAP[actorId];
+  
+  // ✅ LLM인 경우, 서버에서 받은 실제 정보로 업데이트
+  if (actorId === 'llm' && llmInfo && info) {
+    return {
+      ...info,
+      provider: llmInfo.provider === 'anthropic' ? 'Anthropic' : 'OpenAI',
+      model: llmInfo.model
+    };
+  }
+  
+  return info || null;
 }
 
 /**
  * 여러 Actor ID들의 정보 조회
+ * @param actorIds - Actor IDs 배열
+ * @param llmInfo - (Optional) 서버에서 받은 실제 LLM 정보
  */
-export function getActorInfoList(actorIds: string[]): ActorInfo[] {
+export function getActorInfoList(actorIds: string[], llmInfo?: { provider: string; model: string }): ActorInfo[] {
   return actorIds
-    .map(id => getActorInfo(id))
+    .map(id => getActorInfo(id, llmInfo))
     .filter((info): info is ActorInfo => info !== null);
 }
 

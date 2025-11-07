@@ -430,6 +430,7 @@ export interface KanbanData {
   completed: KanbanTask[];
   isEstimating?: boolean;  // Task running but no queue data yet
   dataSource?: 'live' | 'session' | 'estimating';  // Where the data comes from
+  activeJobId?: string;  // ✅ Currently running job ID
   
   // ✅ Unified interruption state
   interruption?: import('@/types/session').InterruptionDetails;

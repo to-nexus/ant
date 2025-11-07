@@ -15,12 +15,35 @@ export type ModelProvider = 'anthropic' | 'openai';
 function resolveProvider(agentType?: string, override?: ModelProvider): ModelProvider {
   if (override) return override;
   const prefix = agentType ? `${agentType.toUpperCase()}_` : '';
-  return (process.env[`${prefix}MODEL_PROVIDER`] as ModelProvider) || (process.env.AI_MODEL_PROVIDER as ModelProvider) || 'openai';
+  const provider = (process.env[`${prefix}MODEL_PROVIDER`] as ModelProvider) 
+    || (process.env.AI_MODEL_PROVIDER as ModelProvider) 
+    || 'openai';
+  
+  console.log(`[LLM] Resolving provider for agentType="${agentType}":`, {
+    envVar: `${prefix}MODEL_PROVIDER`,
+    value: process.env[`${prefix}MODEL_PROVIDER`],
+    fallback: process.env.AI_MODEL_PROVIDER,
+    resolved: provider
+  });
+  
+  return provider;
 }
 
 function resolveModelName(provider: ModelProvider, agentType?: string): string {
   const prefix = agentType ? `${agentType.toUpperCase()}_` : '';
-  return process.env[`${prefix}MODEL_NAME`] || process.env.AI_MODEL_NAME || (provider === 'anthropic' ? 'claude-3-haiku-20240307' : 'gpt-4o');
+  const modelName = process.env[`${prefix}MODEL_NAME`] 
+    || process.env.AI_MODEL_NAME 
+    || (provider === 'anthropic' ? 'claude-3-haiku-20240307' : 'gpt-4o');
+  
+  console.log(`[LLM] Resolving model name for provider="${provider}", agentType="${agentType}":`, {
+    envVar: `${prefix}MODEL_NAME`,
+    value: process.env[`${prefix}MODEL_NAME`],
+    fallback: process.env.AI_MODEL_NAME,
+    defaultForProvider: provider === 'anthropic' ? 'claude-3-haiku-20240307' : 'gpt-4o',
+    resolved: modelName
+  });
+  
+  return modelName;
 }
 
 function resolveTemperature(agentType?: string, fallback = 0.2): number {
@@ -46,20 +69,31 @@ export interface LLMConfig {
 
 export class GenericLLMClient implements LLMClient {
   private model: BaseChatModel;
+  public readonly provider: ModelProvider;  // ✅ 실제 사용 중인 provider
+  public readonly modelName: string;        // ✅ 실제 사용 중인 model
 
   constructor(private agentType?: string, providerOverride?: ModelProvider, config?: LLMConfig) {
     // Priority: config > providerOverride > env vars
-    const provider = (config?.llmProvider as ModelProvider) || resolveProvider(agentType, providerOverride);
-    const modelName = config?.llmModel || resolveModelName(provider, agentType);
+    this.provider = (config?.llmProvider as ModelProvider) || resolveProvider(agentType, providerOverride);
+    this.modelName = config?.llmModel || resolveModelName(this.provider, agentType);
     const temperature = config?.temperature ?? resolveTemperature(agentType);
     const maxTokens = config?.maxTokens ?? resolveMaxTokens(agentType, 16000);
     const timeout = config?.timeout ?? 180000; // Default: 3 minutes
 
-    switch (provider) {
+    console.log(`\n🤖 [LLM] Initializing LLM Client:`, {
+      agentType,
+      provider: this.provider,
+      modelName: this.modelName,
+      temperature,
+      maxTokens,
+      configOverride: config?.llmProvider || config?.llmModel ? { llmProvider: config?.llmProvider, llmModel: config?.llmModel } : 'none'
+    });
+
+    switch (this.provider) {
       case 'anthropic':
         this.model = new ChatAnthropic({
           anthropicApiKey: process.env.ANTHROPIC_API_KEY,
-          modelName,
+          modelName: this.modelName,
           temperature,
           maxTokens,
         });
@@ -68,7 +102,7 @@ export class GenericLLMClient implements LLMClient {
       default:
         this.model = new ChatOpenAI({
           openAIApiKey: process.env.OPENAI_API_KEY,
-          modelName,
+          modelName: this.modelName,
           temperature,
           maxTokens,
           timeout,

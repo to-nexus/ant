@@ -14,8 +14,3 @@
 - 외부 API 불필요
 - 상태는 useState로 관리
 - 디자인은 최소한으로 (Tailwind OK)
-
-## 성공 기준
-- npm run dev 로 실행 가능한 상태일 것
-- 모든 주요 기능이 동작할 것
-- ellipsis 없이 완전한 코드 생성

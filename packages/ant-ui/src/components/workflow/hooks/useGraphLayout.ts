@@ -72,7 +72,8 @@ export function useGraphLayout(
         actorType: actor.type,
         actorId: actor.id,  // 실제 정보 조회용
         icon: actor.icon,
-        isActive: realtimeState?.activeActors?.includes(actor.id) || false
+        isActive: realtimeState?.activeActors?.includes(actor.id) || false,
+        llmInfo: actor.id === 'llm' ? (realtimeState?.llmInfo || null) : null  // ✅ LLM Actor에 실제 정보 전달
       },
       position: { x: 0, y: 0 }
     }));

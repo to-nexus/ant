@@ -12,16 +12,22 @@ export interface TaskInfo {
   priority?: number;
 }
 
+export interface LLMInfo {
+  provider: string;  // 'anthropic' | 'openai'
+  model: string;     // 실제 모델명
+}
+
 export interface WorkflowStateUpdatePort {
   /**
    * Job 시작 알림
    */
-  startJob(jobId: string): void;
+  startJob(jobId: string, llmInfo?: LLMInfo): void;
   
   /**
    * 노드 진입 알림
+   * ✅ Returns Promise to ensure SSE is sent before continuing
    */
-  enterNode(jobId: string, nodeId: string, taskInfo?: TaskInfo): void;
+  enterNode(jobId: string, nodeId: string, taskInfo?: TaskInfo, llmInfo?: LLMInfo): Promise<void>;
   
   /**
    * 노드 이탈 알림
