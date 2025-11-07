@@ -56,34 +56,6 @@ export function MainPanelBar(props: BaseBarProps = {}) {
       ),
     right: (
         <div className="flex items-center gap-3">
-          {/* Layout Toggle Buttons */}
-          <div className="flex items-center gap-1 border-l pl-3 border-gray-300 dark:border-gray-600">
-            <button
-              onClick={() => toggleSplitLayout('horizontal')}
-              className={cn(
-                'p-1.5 rounded transition-colors',
-                splitLayout === 'horizontal'
-                  ? 'bg-blue-500 text-white'
-                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
-              )}
-              title="Horizontal Split (Left/Right)"
-            >
-              <Columns className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => toggleSplitLayout('vertical')}
-              className={cn(
-                'p-1.5 rounded transition-colors',
-                splitLayout === 'vertical'
-                  ? 'bg-blue-500 text-white'
-                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
-              )}
-              title="Vertical Split (Top/Bottom)"
-            >
-              <Rows className="w-4 h-4" />
-            </button>
-          </div>
-
           {/* Job ID */}
           {currentJobId && (
             <div className="flex items-center gap-2 border-l pl-3 border-gray-300 dark:border-gray-600">
@@ -93,6 +65,34 @@ export function MainPanelBar(props: BaseBarProps = {}) {
               </span>
             </div>
           )}
+
+          {/* Layout Toggle Buttons */}
+          <div className="flex items-center gap-1 border-l pl-3 border-gray-300 dark:border-gray-600">
+            <button
+              onClick={() => toggleSplitLayout('horizontal')}
+              className={cn(
+                'p-1.5 rounded transition-all',
+                splitLayout === 'horizontal'
+                  ? 'bg-emerald-600 dark:bg-emerald-500 text-white shadow-sm'
+                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+              )}
+              title="Horizontal Split (Left/Right)"
+            >
+              <Columns className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => toggleSplitLayout('vertical')}
+              className={cn(
+                'p-1.5 rounded transition-all',
+                splitLayout === 'vertical'
+                  ? 'bg-emerald-600 dark:bg-emerald-500 text-white shadow-sm'
+                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+              )}
+              title="Vertical Split (Top/Bottom)"
+            >
+              <Rows className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       ),
     className: props.className

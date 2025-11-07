@@ -31,10 +31,12 @@ function App() {
   const selectedFeature = useStore((state) => state.selectedFeature);
   const selectedFile = useStore((state) => state.selectedFile);
   const isRunning = useStore((state) => state.isRunning);
+  const isStopping = useStore((state) => state.isStopping);
   const taskId = useStore((state) => state.currentJobId);
   const currentJob = useStore((state) => state.currentJob);
   const setCurrentJob = useStore((state) => state.setCurrentJob);
   const setRunning = useStore((state) => state.setRunning);
+  const setStopping = useStore((state) => state.setStopping);
   const setConnectionStatus = useStore((state) => state.setConnectionStatus);
   const connectionStatus = useStore((state) => state.connectionStatus);
   const refreshFileTree = useStore((state) => state.refreshFileTree);
@@ -190,34 +192,83 @@ function App() {
           console.error('[App] Failed to restore selected project/feature:', error);
         }
 
-        // Restore running task from localStorage
+        // Restore selected agent and work type from localStorage
         try {
+          console.log('[App] Restoring agent and work type...');
+          const savedAgent = localStorage.getItem('ant-ui:selected-agent');
+          const savedWorkType = localStorage.getItem('ant-ui:selected-work-type');
+          
+          if (savedAgent) {
+            const agent = JSON.parse(savedAgent);
+            console.log('[App] Restoring selected agent:', agent);
+            useStore.getState().setSelectedAgent(agent);
+          }
+          
+          if (savedWorkType) {
+            const workType = JSON.parse(savedWorkType);
+            console.log('[App] Restoring selected work type:', workType);
+            useStore.getState().setSelectedWorkType(workType);
+          }
+        } catch (error) {
+          console.error('[App] Failed to restore agent/work type:', error);
+        }
+
+        // Restore running job from localStorage
+        try {
+          console.log('[App] Checking localStorage for running job...');
           const savedTaskId = localStorage.getItem('ant-ui:running-task');
           const savedStartTime = localStorage.getItem('ant-ui:task-start-time');
           const savedMode = localStorage.getItem('ant-ui:task-mode');
+          
+          console.log('[App] localStorage values:', { savedTaskId, savedStartTime, savedMode });
 
           if (savedTaskId && savedStartTime) {
-            const taskId = JSON.parse(savedTaskId);
+            const jobId = JSON.parse(savedTaskId);
             const startTime = JSON.parse(savedStartTime);
             const mode = savedMode ? JSON.parse(savedMode) : 'generate';
             
-            console.log('[App] Restoring running task:', taskId);
+            // ✅ CRITICAL: Check if user explicitly stopped this job
+            const userStoppedJobId = useStore.getState().userStoppedJobId;
+            if (userStoppedJobId === jobId) {
+              console.log('[App] 🚫 Skipping restore - user explicitly stopped job:', jobId);
+              // Clean up localStorage
+              localStorage.removeItem('ant-ui:running-task');
+              localStorage.removeItem('ant-ui:task-start-time');
+              localStorage.removeItem('ant-ui:task-mode');
+              return;
+            }
+            
+            console.log('[App] ✅ Restoring running job:', { jobId, startTime, mode });
             
             // Calculate elapsed time
             const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            console.log('[App] Elapsed time:', elapsed, 'seconds');
             
             // Restore state
-            setRunning(true, taskId, mode);
+            console.log('[App] Calling setRunning(true, jobId, mode)...');
+            setRunning(true, jobId, mode);
             useStore.setState({ 
               taskStartTime: startTime,
               elapsedTime: elapsed 
             });
             
-            // Note: We don't restore the EventSource/TaskExecution
-            // User can stop the task manually if needed
+            console.log('[App] Store state after restoration:', {
+              isRunning: useStore.getState().isRunning,
+              currentJobId: useStore.getState().currentJobId
+            });
+            
+            // 🔥 CRITICAL: Restore Log SSE connection
+            // Without this, UI won't receive real-time updates!
+            console.log('[App] Reconnecting Log SSE for job:', jobId);
+            startLogStream(jobId);
+            
+            // Note: Kanban/Workflow SSE will auto-reconnect via their useEffects
+            // when selectedProject/selectedFeature are restored
+          } else {
+            console.log('[App] ℹ️ No running job to restore');
           }
         } catch (error) {
-          console.error('[App] Failed to restore running task:', error);
+          console.error('[App] ❌ Failed to restore running job:', error);
         }
       } catch (error) {
         console.error('Failed to check health or load projects:', error);
@@ -298,15 +349,20 @@ function App() {
   }, [isResizingExplorer, MIN_EXPLORER_WIDTH, MAX_EXPLORER_WIDTH]);
 
   const handleRunTask = (agent: string, task: string) => {
+    console.log('[App] handleRunTask called:', { agent, task, isRunning, selectedProject, selectedFeature });
+    
     if (isRunning || !selectedProject) {
+      console.warn('[App] Cannot run:', { isRunning, selectedProject });
       return;
     }
 
-    // Start running state immediately (taskId will be set when server responds)
+    // Start running state immediately (jobId will be set when server responds)
+    console.log('[App] Setting running state...');
     setRunning(true, undefined, 'generate'); // Default mode
 
     try {
-      const taskExecution = executeCodeJob({
+      console.log('[App] Calling executeCodeJob...');
+      const jobExecution = executeCodeJob({
         projectId: selectedProject,
         featureName: selectedFeature,  // Pass selected feature
         task: task as any,
@@ -315,88 +371,119 @@ function App() {
         language: 'en',
       });
 
-      setCurrentJob(taskExecution);
+      console.log('[App] jobExecution created:', jobExecution);
+      setCurrentJob(jobExecution);
 
-      // Update with actual taskId once server responds
-      if (taskExecution.onTaskIdReady) {
-        taskExecution.onTaskIdReady((taskId) => {
-          console.log('[App] Task ID ready:', taskId);
-          setRunning(true, taskId, 'generate');
-        });
-      }
+      // Update with actual jobId once server responds
+      console.log('[App] Setting up onJobIdReady callback...');
+      jobExecution.onJobIdReady((jobId) => {
+        console.log('[App] Job ID ready:', jobId);
+        setRunning(true, jobId, 'generate');
+      });
 
-      taskExecution.on('exit', (code: number | null, _signal: string | null) => {
-        console.log('[App] Task exit:', code);
+      console.log('[App] Setting up exit handler...');
+      jobExecution.on('exit', (code: number | null, _signal: string | null) => {
+        console.log('[App] Job exit:', code);
         setRunning(false);
         setCurrentJob(null);
         
-        // Reload session after task completion to get updated data
+        // Reload session after job completion to get updated data
         if (selectedProject && selectedFeature) {
-          console.log('[App] Task completed, reloading session...');
+          console.log('[App] Job completed, reloading session...');
           fetchFeatureSession(selectedProject, selectedFeature)
             .then(session => {
               setSession(session ?? undefined);
-              console.log('[App] Session reloaded after task completion');
+              console.log('[App] Session reloaded after job completion');
             })
             .catch(error => {
               console.error('[App] Failed to reload session:', error);
             });
         }
         
-        // Refresh file tree after task completion
+        // Refresh file tree after job completion
         refreshFileTree();
         if (code !== 0) {
-          console.error(`Task execution failed with code: ${code}`);
+          console.error(`Job execution failed with code: ${code}`);
         }
       });
     } catch (error) {
-      console.error('Failed to execute task:', error);
+      console.error('Failed to execute job:', error);
       setRunning(false);
       setCurrentJob(null);
     }
   };
 
   const handleStopTask = async () => {
-    console.log('[App] Stopping task...', { hasCurrentTask: !!currentJob, taskId, selectedProject, selectedFeature });
+    console.log('[App] Stopping task...', { 
+      hasCurrentTask: !!currentJob, 
+      currentJobId: taskId,
+      isRunning,
+      selectedProject, 
+      selectedFeature 
+    });
     
+    // ✅ Set "Stopping..." state immediately
+    console.log('[App] 🛑 Setting stopping state...');
+    setStopping(true);
+    
+    // ✅ CRITICAL: Mark this job as explicitly stopped by user
+    // This prevents auto-restore from server SSE events
+    if (taskId) {
+      console.log(`[App] 🚫 Marking job ${taskId} as user-stopped (no auto-restore)`);
+      useStore.setState({ userStoppedJobId: taskId });
+    }
+    
+    // ✅ Send stop request to server and wait for confirmation
     try {
       // Method 1: If we have the currentJob object (direct execution)
       if (currentJob) {
-        console.log('[App] Stopping via currentJob.kill()');
+        console.log('[App] Method 1: Stopping via currentJob.kill()');
         await currentJob.kill();
+        console.log('[App] ✅ Server confirmed stop (Method 1)');
       }
       // Method 2: If we only have taskId (e.g., after page refresh)
       else if (taskId) {
-        console.log('[App] Stopping via API (taskId:', taskId, ')');
+        console.log('[App] Method 2: Stopping via API (taskId:', taskId, ')');
         // ✅ Pass projectId and featureName for proper cleanup
         await stopJob(taskId, selectedProject || undefined, selectedFeature || undefined);
+        console.log('[App] ✅ Server confirmed stop (Method 2)');
       } else {
-        console.warn('[App] No task to stop (no currentJob or taskId)');
+        console.warn('[App] ⚠️ No task to stop (no currentJob or taskId)');
+        console.warn('[App] State:', { currentJob: !!currentJob, taskId, selectedProject, selectedFeature });
       }
-    } catch (error) {
-      console.error('[App] Failed to stop task:', error);
-    } finally {
-      // Always clean up state
+      
+      // ✅ Now update UI after server confirmation
+      console.log('[App] 🎯 Server confirmed, updating UI...');
       setRunning(false);
       setCurrentJob(null);
       
-      // Reload session after stopping
+      // Reload session after server confirms stop
       if (selectedProject && selectedFeature) {
-        console.log('[App] Task stopped, reloading session...');
+        console.log('[App] Reloading session after stop...');
         try {
           const session = await fetchFeatureSession(selectedProject, selectedFeature);
           setSession(session ?? undefined);
-          console.log('[App] Session reloaded after task stop');
+          console.log('[App] Session reloaded');
         } catch (error) {
           console.error('[App] Failed to reload session:', error);
         }
       }
+    } catch (error) {
+      console.error('[App] Failed to stop task on server:', error);
+      // Still update UI even if server fails
+      setRunning(false);
+      setCurrentJob(null);
+    } finally {
+      // ✅ Clear stopping state after everything completes
+      // Keep stopping=true during session reload to prevent auto-restore
+      console.log('[App] 🔓 Clearing stopping state...');
+      setStopping(false);
     }
   };
 
   return (
     <div className="h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-colors">
-      <GlobalNavBar onRunTask={handleRunTask} onStopTask={handleStopTask} isRunning={isRunning} />
+      <GlobalNavBar onRunTask={handleRunTask} onStopTask={handleStopTask} isRunning={isRunning} isStopping={isStopping} />
       
       {/* Main Layout - Always visible (with top padding for fixed header) */}
       <div className="flex-1 flex gap-0 overflow-hidden pt-16">

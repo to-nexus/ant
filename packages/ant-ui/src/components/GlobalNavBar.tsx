@@ -10,6 +10,7 @@ export interface GlobalNavBarProps {
   onRunTask: (agent: string, task: string) => void;  // 'task' here refers to agent's work type (code/design/etc), not to be confused with Task Board tasks
   onStopTask: () => void;
   isRunning: boolean;
+  isStopping?: boolean;  // ✅ Stopping state
 }
 
 /**
@@ -22,7 +23,7 @@ export interface GlobalNavBarProps {
  * - Agent selection and work type selection (code/design/etc)
  * - Run/Stop buttons for agent jobs
  */
-export function GlobalNavBar({ onRunTask, onStopTask, isRunning }: GlobalNavBarProps) {
+export function GlobalNavBar({ onRunTask, onStopTask, isRunning, isStopping = false }: GlobalNavBarProps) {
   const connectionStatus = useStore((state) => state.connectionStatus);
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);
@@ -115,15 +116,17 @@ export function GlobalNavBar({ onRunTask, onStopTask, isRunning }: GlobalNavBarP
 
   // Run button disabled when:
   // - Agent job is already running
+  // - Currently stopping (prevent race condition)
   // - Server disconnected
   // - Project/feature not selected
-  const isRunDisabled = isRunning || isDisconnected || !hasValidSelection;
+  const isRunDisabled = isRunning || isStopping || isDisconnected || !hasValidSelection;
 
   // Stop button disabled when:
   // - No agent job is running
+  // - Already stopping
   // - Server disconnected
   // - Project/feature not selected (for safety)
-  const isStopDisabled = !isRunning || isDisconnected || !hasValidSelection;
+  const isStopDisabled = !isRunning || isStopping || isDisconnected || !hasValidSelection;
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-gray-50 dark:bg-[#0d1117] border-b border-gray-300 dark:border-[#30363d] shadow-md transition-colors">
@@ -268,75 +271,79 @@ export function GlobalNavBar({ onRunTask, onStopTask, isRunning }: GlobalNavBarP
             
             <ConnectionStatus status={connectionStatus} />
             
-            <div className="w-px h-6 bg-gray-300"></div>
+            <div className="w-px h-6 bg-gray-300 dark:bg-gray-600"></div>
             
-            {/* Agent Selection */}
-            <div className="flex items-center space-x-2">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Agent</label>
-              <div ref={agentRef} className="relative">
-                <button
-                  onClick={() => !isRunning && !isDisconnected && !isLoadingAgents && setAgentDropdownOpen(!agentDropdownOpen)}
-                  disabled={isRunning || isDisconnected || isLoadingAgents}
-                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700 active:bg-gray-300 dark:active:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow min-w-[100px]"
-                >
+            {/* Agent Selection - Compact Inline Design */}
+            <div ref={agentRef} className="relative">
+              <button
+                onClick={() => !isRunning && !isDisconnected && !isLoadingAgents && setAgentDropdownOpen(!agentDropdownOpen)}
+                disabled={isRunning || isDisconnected || isLoadingAgents}
+                className="h-10 px-3 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow flex items-center gap-2"
+              >
+                <span className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Agent:
+                </span>
+                <span className="text-sm font-bold text-gray-900 dark:text-white">
                   {isLoadingAgents 
                     ? 'Loading...' 
                     : capitalize(agents.find(a => a.value === selectedAgent)?.label || 'No agents')}
-                </button>
-                {agentDropdownOpen && !isLoadingAgents && agents.length > 0 && (
-                  <div className="absolute top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg z-50">
-                    {agents.map((agent) => (
-                      <button
-                        key={agent.value}
-                        onClick={() => agent.enabled && handleAgentChange(agent.value)}
-                        disabled={!agent.enabled}
-                        className={`w-full px-3 py-2 text-left text-sm first:rounded-t-md last:rounded-b-md ${
-                          !agent.enabled
-                            ? 'bg-gray-50 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-60'
-                            : selectedAgent === agent.value
-                            ? 'bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-200 font-medium'
-                            : 'text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span>{agent.label}</span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+                </span>
+              </button>
+              {agentDropdownOpen && !isLoadingAgents && agents.length > 0 && (
+                <div className="absolute top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg z-50 overflow-hidden">
+                  {agents.map((agent) => (
+                    <button
+                      key={agent.value}
+                      onClick={() => agent.enabled && handleAgentChange(agent.value)}
+                      disabled={!agent.enabled}
+                      className={`w-full px-3 py-2 text-left text-sm transition-colors ${
+                        !agent.enabled
+                          ? 'bg-gray-50 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-60'
+                          : selectedAgent === agent.value
+                          ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 font-semibold'
+                          : 'text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span>{agent.label}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
-            {/* Job Type (Work Type) Selection */}
-            <div className="flex items-center space-x-2">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 dark:text-gray-300">Job</label>
-              <div ref={workTypeRef} className="relative">
-                <button
-                  onClick={() => !isRunning && !isDisconnected && setWorkTypeDropdownOpen(!workTypeDropdownOpen)}
-                  disabled={isRunning || isDisconnected}
-                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700 active:bg-gray-300 dark:active:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow min-w-[100px]"
-                >
+            {/* Job Type Selection - Compact Inline Design */}
+            <div ref={workTypeRef} className="relative">
+              <button
+                onClick={() => !isRunning && !isDisconnected && setWorkTypeDropdownOpen(!workTypeDropdownOpen)}
+                disabled={isRunning || isDisconnected}
+                className="h-10 px-3 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow flex items-center gap-2"
+              >
+                <span className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Job:
+                </span>
+                <span className="text-sm font-bold text-gray-900 dark:text-white">
                   {capitalize(workTypes.find(t => t.value === selectedWorkType)?.label || '')}
-                </button>
-                {workTypeDropdownOpen && (
-                  <div className="absolute top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg z-50">
-                    {workTypes.map((workType) => (
-                      <button
-                        key={workType.value}
-                        onClick={() => handleWorkTypeChange(workType.value)}
-                        className={`w-full px-3 py-2 text-left text-sm first:rounded-t-md last:rounded-b-md ${
-                          selectedWorkType === workType.value 
-                            ? 'bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-200 font-medium' 
-                            : 'text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700'
-                        }`}
-                      >
-                        {workType.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+                </span>
+              </button>
+              {workTypeDropdownOpen && (
+                <div className="absolute top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg z-50 overflow-hidden">
+                  {workTypes.map((workType) => (
+                    <button
+                      key={workType.value}
+                      onClick={() => handleWorkTypeChange(workType.value)}
+                      className={`w-full px-3 py-2 text-left text-sm transition-colors ${
+                        selectedWorkType === workType.value 
+                          ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 font-semibold' 
+                          : 'text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700'
+                      }`}
+                    >
+                      {workType.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             
             <Button
@@ -345,12 +352,12 @@ export function GlobalNavBar({ onRunTask, onStopTask, isRunning }: GlobalNavBarP
               variant="primary"
               size="default"
               className={`flex items-center space-x-2 transition-all ${
-                isRunning 
-                  ? 'bg-gradient-to-r from-blue-500 via-blue-600 to-blue-500 bg-[length:200%_100%] animate-gradient text-white cursor-not-allowed' 
+                (isRunning && !isStopping)
+                  ? 'bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-500 bg-[length:200%_100%] animate-gradient text-white cursor-not-allowed shadow-lg' 
                   : ''
               }`}
             >
-              {isRunning ? (
+              {isRunning && !isStopping ? (
                 <>
                   <div className="relative flex h-4 w-4">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
@@ -374,7 +381,7 @@ export function GlobalNavBar({ onRunTask, onStopTask, isRunning }: GlobalNavBarP
               className="flex items-center space-x-2"
             >
               <Square className="w-4 h-4" />
-              <span>Stop</span>
+              <span>{isStopping ? 'Stopping...' : 'Stop'}</span>
             </Button>
           </div>
         </div>

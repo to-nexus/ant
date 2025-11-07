@@ -49,7 +49,7 @@ const ACTOR_COLORS_DARK: Record<ActorType, string> = {
 };
 
 export const ActorNode = memo(({ data }: ActorNodeProps) => {
-  const { theme, splitLayout, selectedProject, selectedFeature } = useStore();
+  const { splitLayout, selectedProject, selectedFeature } = useStore();
   const [isExpanded, setIsExpanded] = React.useState(data.isExpanded || false);
   
   // Actor 정보 조회

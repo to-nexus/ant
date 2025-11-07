@@ -294,7 +294,7 @@ export async function fetchQueueStatus(jobId: string): Promise<QueueStatus> {
 }
 
 export function subscribeToLogs(jobId: string, onLog: (log: LogEntry) => void): EventSource {
-  const eventSource = new EventSource(`${API_BASE}/tasks/${encodeURIComponent(jobId)}/stream`);
+  const eventSource = new EventSource(`${API_BASE}/jobs/${encodeURIComponent(jobId)}/stream`);
   
   eventSource.onmessage = (event) => {
     try {

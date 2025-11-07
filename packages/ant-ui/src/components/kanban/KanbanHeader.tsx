@@ -2,6 +2,7 @@ import { StatusChip, ChipVariant } from '../StatusChip';
 
 interface DataSourceIndicatorProps {
   dataSource?: string;
+  isStopping?: boolean;  // ✅ 즉각적인 피드백을 위한 상태
 }
 
 const DATA_SOURCE_VARIANTS: Record<string, { variant: ChipVariant; label: string }> = {
@@ -12,11 +13,18 @@ const DATA_SOURCE_VARIANTS: Record<string, { variant: ChipVariant; label: string
 
 /**
  * DataSourceIndicator - 타이틀 옆에 표시될 데이터 소스 인디케이터
+ * 
+ * ✅ 즉각적인 피드백: isStopping=true면 즉시 "Session File" 표시
+ * ✅ 서버 SSOT: 실제 데이터는 변경하지 않음, 표시만 변경
  */
-export function DataSourceIndicator({ dataSource }: DataSourceIndicatorProps) {
+export function DataSourceIndicator({ dataSource, isStopping = false }: DataSourceIndicatorProps) {
   if (!dataSource) return null;
 
-  const config = DATA_SOURCE_VARIANTS[dataSource];
+  // ✅ CRITICAL: Stopping 시 즉각적인 시각적 피드백
+  // 서버가 확인할 때까지 기다리지 않고 사용자에게 즉시 피드백 제공
+  const effectiveDataSource = isStopping ? 'session' : dataSource;
+  
+  const config = DATA_SOURCE_VARIANTS[effectiveDataSource];
   if (!config) return null;
 
   return <StatusChip variant={config.variant} label={config.label} />;

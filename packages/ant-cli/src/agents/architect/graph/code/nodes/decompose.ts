@@ -16,6 +16,11 @@ import { ArchitectGraphState, Task, TaskQueue } from "../state";
  * 4. Store feature tasks for completion tracking
  */
 export async function decompose(state: ArchitectGraphState): Promise<ArchitectGraphState> {
+  // ✅ Workflow instrumentation: Enter node
+  if (state.deps?.workflowUpdate && state._httpTaskId) {
+    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'decompose');
+  }
+  
   const llm = state.deps?.llm as LLMClient;
   
   // ✅ RESUME: Check if we have previous state to restore
@@ -555,6 +560,11 @@ ${rules}`;
       console.log(`⚠️  [Decompose] Live update SKIPPED - no taskId available\n`);
     }
     
+    // ✅ Workflow instrumentation: Exit node
+    if (state.deps?.workflowUpdate && state._httpTaskId) {
+      state.deps.workflowUpdate.exitNode(state._httpTaskId, 'decompose');
+    }
+    
     return newState;
     
   } catch (error) {
@@ -625,6 +635,11 @@ ${rules}`;
           console.log(`🎬 [Decompose Error] Live snapshot updated via HTTP (1 fallback task)\n`);
         }).catch(err => console.log(`⚠️  [Decompose Error] HTTP update failed:`, err.message));
       }
+    }
+    
+    // ✅ Workflow instrumentation: Exit node (error path)
+    if (state.deps?.workflowUpdate && state._httpTaskId) {
+      state.deps.workflowUpdate.exitNode(state._httpTaskId, 'decompose');
     }
     
     return newState;

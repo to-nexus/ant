@@ -69,6 +69,11 @@ function formatPreviousAttempts(attempts: AttemptHistory[]): string {
  * 4. Generate execution plan for current task
  */
 export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphState> {
+  // ✅ Workflow instrumentation: Enter node
+  if (state.deps?.workflowUpdate && state._httpTaskId) {
+    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'plan');
+  }
+  
   // ✅ Increment recursion count (track iteration)
   const recursionCount = (state.recursionCount || 0) + 1;
   state.recursionCount = recursionCount;
@@ -639,6 +644,11 @@ ${nextTask.type === 'error' ?
     const { saveCheckpoint } = await import('./checkpoint');
     await saveCheckpoint(updatedState);
     
+    // ✅ Workflow instrumentation: Exit node (success path)
+    if (state.deps?.workflowUpdate && state._httpTaskId) {
+      state.deps.workflowUpdate.exitNode(state._httpTaskId, 'plan');
+    }
+    
     return updatedState;
   } catch (error) {
     console.error('\n❌ ═══════════════════════════════════════════════════════════════');
@@ -696,6 +706,11 @@ ${nextTask.type === 'error' ?
     }
     
     console.error('❌ ═══════════════════════════════════════════════════════════════\n');
+    
+    // ✅ Workflow instrumentation: Exit node (error path)
+    if (state.deps?.workflowUpdate && state._httpTaskId) {
+      state.deps.workflowUpdate.exitNode(state._httpTaskId, 'plan');
+    }
     
     throw error;
   }

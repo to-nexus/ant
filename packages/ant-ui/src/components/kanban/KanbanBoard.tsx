@@ -23,6 +23,8 @@ export function KanbanBoard() {
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);
   const isRunning = useStore((state) => state.isRunning);
+  const isStopping = useStore((state) => state.isStopping);
+  const userStoppedJobId = useStore((state) => state.userStoppedJobId);
   const setRunning = useStore((state) => state.setRunning);
   const setCurrentJob = useStore((state) => state.setCurrentJob);
   const setSession = useStore((state) => state.setSession);
@@ -40,6 +42,21 @@ export function KanbanBoard() {
   const [newlyInProgressId, setNewlyInProgressId] = useState<string | null>(null);
   const [previousInProgressId, setPreviousInProgressId] = useState<string | null>(null);
   const [previousDataSource, setPreviousDataSource] = useState<string | undefined>(undefined);
+
+  // ✅ CRITICAL: Optimistic update on stop
+  // When user clicks Stop, immediately update kanbanData to "stopped" state
+  // Server SSE will overwrite with actual data when it arrives
+  useEffect(() => {
+    if (isStopping) {
+      console.log('[KanbanBoard] 🛑 Optimistic update: forcing stopped state');
+      setKanbanData(prev => ({
+        ...prev,
+        isEstimating: false,
+        dataSource: 'session',
+        activeJobId: undefined
+      }));
+    }
+  }, [isStopping]);
 
   // SSE connection for real-time updates
   useEffect(() => {
@@ -76,13 +93,43 @@ export function KanbanBoard() {
       try {
         const data = JSON.parse(event.data);
         if (isMounted) {
+          const activeJobId = data.activeJobId;
+          const dataSource = data.dataSource;
+          const userStoppedJobId = useStore.getState().userStoppedJobId;
+          const isStopping = useStore.getState().isStopping;
+          
           console.log('[Kanban SSE] Received update:', {
             todoCount: data.todo?.length ?? 0,
             hasInProgress: !!data.inProgress,
             completedCount: data.completed?.length ?? 0,
             isEstimating: data.isEstimating,
-            dataSource: data.dataSource
+            dataSource: dataSource,
+            activeJobId: activeJobId,
+            hasActiveJobId: !!activeJobId,
+            isStopping: isStopping,
+            userStoppedJobId: userStoppedJobId
           });
+          
+          // ✅ CRITICAL: Filter data during stop process
+          // Rule 1: If stopping, ONLY accept session data (server confirmed stop)
+          if (isStopping) {
+            if (dataSource === 'session' && !activeJobId) {
+              console.log('[Kanban SSE] ✅ Accepting session data (stop confirmed)');
+              setKanbanData(data);
+            } else {
+              console.log('[Kanban SSE] 🚫 Ignoring data during stop (waiting for server)');
+              console.log('   dataSource:', dataSource, ', activeJobId:', activeJobId);
+            }
+            return;
+          }
+          
+          // Rule 2: If user stopped this job, ignore its active data
+          if (userStoppedJobId && activeJobId === userStoppedJobId) {
+            console.log('[Kanban SSE] 🚫 Ignoring data for user-stopped job:', activeJobId);
+            return;
+          }
+          
+          // Rule 3: Accept all other data
           setKanbanData(data);
         }
       } catch (error) {
@@ -132,19 +179,60 @@ export function KanbanBoard() {
     }
   }, [kanbanData.inProgress, previousInProgressId]);
 
-  // Detect agent job completion/stop
+  // Detect agent job start/completion/stop
   useEffect(() => {
     const currentDataSource = kanbanData.dataSource;
+    const activeJobId = (kanbanData as any).activeJobId;  // Job ID from server
     
-    if ((previousDataSource === 'live' || previousDataSource === 'estimating') && 
-        currentDataSource === 'session' && 
-        isRunning) {
-      console.log('[KanbanBoard] Task ended detected (live→session), updating UI state');
+    // ✅ CRITICAL: Skip ALL auto-restore logic during stop process
+    // BUT still update previousDataSource to prevent repeated triggers
+    if (isStopping) {
+      console.log('[KanbanBoard] ⏸️  Skipping all auto-restore logic (stopping in progress)');
+      setPreviousDataSource(currentDataSource);
+      return;
+    }
+    
+    // ✅ Job started (detected via server state)
+    // Only restore if:
+    // - dataSource is NOT 'session' (to prevent restoring stopped jobs)
+    // - NOT currently stopping (prevent restore right after stop)
+    // - NOT a job that user explicitly stopped (prevent restore after user Stop)
+    if ((currentDataSource === 'live' || currentDataSource === 'estimating') && 
+        !isRunning && 
+        !isStopping && 
+        activeJobId &&
+        activeJobId !== userStoppedJobId) {  // ✅ CRITICAL: Don't restore jobs user stopped
+      console.log('[KanbanBoard] ✅ Job detected via server, restoring UI state');
+      console.log('   activeJobId:', activeJobId);
+      console.log('   dataSource:', currentDataSource);
+      
+      // Restore running state
+      setRunning(true, activeJobId, 'generate');
+      
+      // Reconnect Log SSE
+      const { startLogStream } = useStore.getState();
+      startLogStream(activeJobId);
+      
+      console.log('[KanbanBoard] UI state restored from server');
+    } else if (activeJobId === userStoppedJobId) {
+      console.log('[KanbanBoard] 🚫 Skipping restore - user explicitly stopped this job:', activeJobId);
+    }
+    
+    // ✅ Job ended (live→session transition OR no activeJobId)
+    if (isRunning && !isStopping && (
+      // Case 1: Transition from live/estimating to session
+      ((previousDataSource === 'live' || previousDataSource === 'estimating') && currentDataSource === 'session') ||
+      // Case 2: No activeJobId anymore (job was deleted)
+      (!activeJobId && currentDataSource === 'session')
+    )) {
+      console.log('[KanbanBoard] Task ended detected, clearing UI state');
+      console.log('   Reason:', !activeJobId ? 'No activeJobId' : 'dataSource changed to session');
       setRunning(false);
+      setCurrentJob(null);  // ✅ Also clear currentJob
     }
     
     setPreviousDataSource(currentDataSource);
-  }, [kanbanData.dataSource, previousDataSource, isRunning, setRunning]);
+  }, [kanbanData.dataSource, (kanbanData as any).activeJobId, previousDataSource, isRunning, isStopping, userStoppedJobId, setRunning, setCurrentJob]);
 
   // Handle Resume Task
   const handleResumeTask = async () => {
@@ -157,7 +245,7 @@ export function KanbanBoard() {
       const { executeCodeJob } = await import('@/lib/cli');
       const { fetchFeatureSession } = await import('@/lib/api');
       
-      const taskExecution = executeCodeJob({
+      const jobExecution = executeCodeJob({
         projectId: selectedProject,
         featureName: selectedFeature,
         task: 'code',
@@ -166,17 +254,17 @@ export function KanbanBoard() {
         language: 'en',
       });
       
-      setCurrentJob(taskExecution);
+      setCurrentJob(jobExecution);
       
-      if (taskExecution.onTaskIdReady) {
-        taskExecution.onTaskIdReady((taskId) => {
-          console.log('[KanbanBoard] Task ID ready:', taskId);
-          setRunning(true, taskId, 'generate');
+      if (jobExecution.onJobIdReady) {
+        jobExecution.onJobIdReady((jobId) => {
+          console.log('[KanbanBoard] Job ID ready:', jobId);
+          setRunning(true, jobId, 'generate');
         });
       }
       
-      taskExecution.on('exit', async (code, _signal) => {
-        console.log(`[KanbanBoard] Task exited with code ${code}`);
+      jobExecution.on('exit', async (code, _signal) => {
+        console.log(`[KanbanBoard] Job exited with code ${code}`);
         setRunning(false);
         setCurrentJob(null);
         
@@ -190,12 +278,12 @@ export function KanbanBoard() {
         }
       });
       
-      console.log('[KanbanBoard] Task resumed successfully');
+      console.log('[KanbanBoard] Job resumed successfully');
     } catch (error) {
-      console.error('[KanbanBoard] Failed to resume task:', error);
+      console.error('[KanbanBoard] Failed to resume job:', error);
       setRunning(false);
       setCurrentJob(null);
-      alert('Failed to resume task. Please try again.');
+      alert('Failed to resume job. Please try again.');
     }
   };
 
@@ -225,7 +313,10 @@ export function KanbanBoard() {
     <BoardContainer 
       title="📋 Task Board"
       titleActions={
-        <DataSourceIndicator dataSource={kanbanData.dataSource} />
+        <DataSourceIndicator 
+          dataSource={kanbanData.dataSource} 
+          isStopping={isStopping}  // ✅ 즉각적인 피드백
+        />
       }
       headerActions={
         <GaugesGroup
@@ -245,7 +336,8 @@ export function KanbanBoard() {
       )}
 
       {/* Estimating State: Show only banner, hide columns */}
-      {kanbanData.isEstimating ? (
+      {/* ✅ 즉각적인 피드백: isStopping이면 Estimating 표시 안 함 */}
+      {kanbanData.isEstimating && !isStopping ? (
         <KanbanEstimating />
       ) : (
         <KanbanColumns

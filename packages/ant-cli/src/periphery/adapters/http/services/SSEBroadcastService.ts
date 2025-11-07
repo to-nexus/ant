@@ -29,16 +29,44 @@ export class SSEBroadcastService {
     return this.kanbanSSE;
   }
   
-  async broadcastKanbanUpdate(projectId: string, featureName: string): Promise<void> {
+  async broadcastKanbanUpdate(
+    projectId: string, 
+    featureName: string,
+    jobToProject?: Map<string, { projectId: string; featureName: string }>,
+    jobs?: Map<string, any>,
+    taskQueueSnapshots?: Map<string, any>
+  ): Promise<void> {
     const key = `${projectId}/${featureName}`;
     const clients = this.kanbanSSE.get(key);
     
+    console.log(`\n📡 [SSEBroadcast] broadcastKanbanUpdate called`);
+    console.log(`   Key: ${key}`);
+    console.log(`   Clients: ${clients?.size || 0}`);
+    console.log(`   Has jobToProject: ${!!jobToProject}`);
+    console.log(`   Has jobs: ${!!jobs}`);
+    console.log(`   Has snapshots: ${!!taskQueueSnapshots}`);
+    
     if (!clients || clients.size === 0) {
+      console.log(`   ⚠️  No clients connected, skipping broadcast\n`);
       return;
     }
     
     try {
-      const data = await this.kanbanService.getKanbanData(projectId, featureName);
+      // ✅ CRITICAL: Pass all required parameters to getKanbanData
+      const data = await this.kanbanService.getKanbanData(
+        projectId, 
+        featureName,
+        jobToProject,
+        jobs,
+        taskQueueSnapshots
+      );
+      
+      console.log(`   ✅ Kanban data retrieved:`, {
+        dataSource: data.dataSource,
+        isEstimating: data.isEstimating,
+        activeJobId: data.activeJobId
+      });
+      
       const message = `data: ${JSON.stringify(data)}\n\n`;
       
       clients.forEach(res => {
@@ -49,6 +77,8 @@ export class SSEBroadcastService {
           clients.delete(res);
         }
       });
+      
+      console.log(`   ✅ Broadcast completed to ${clients.size} client(s)\n`);
     } catch (error) {
       console.error(`[Kanban SSE] Error getting Kanban data:`, error);
     }

@@ -37,6 +37,8 @@ export function WorkflowVisualization() {
   const selectedAgent = useStore(state => state.selectedAgent);
   const selectedWorkType = useStore(state => state.selectedWorkType);
   const currentJob = useStore(state => state.currentJob);
+  const currentJobId = useStore(state => state.currentJobId);
+  const userStoppedJobId = useStore(state => state.userStoppedJobId);
   const theme = useStore(state => state.theme);
   const splitLayout = useStore(state => state.splitLayout);
   
@@ -44,7 +46,9 @@ export function WorkflowVisualization() {
   const { metadata, loading, error } = useGraphMetadata(selectedAgent, selectedWorkType);
   
   // 2. 실시간 상태 구독 (Job 실행 중일 때)
-  const realtimeState = useWorkflowState(currentJob?.jobId);
+  // ✅ CRITICAL: Don't subscribe if user stopped this job
+  const shouldSubscribe = currentJobId && currentJobId !== userStoppedJobId;
+  const realtimeState = useWorkflowState(shouldSubscribe ? currentJobId : undefined);
   
   // 3. ReactFlow 노드/엣지 변환 + 레이아웃
   const { nodes: baseNodes, edges } = useGraphLayout(metadata, realtimeState);

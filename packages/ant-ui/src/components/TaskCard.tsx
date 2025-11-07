@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { UnifiedTask } from '@/types/task';
 import { useStore } from '@/lib/store';
 import { statusColors, badgeColors, cn } from '@/lib/design-system';
+import { ActiveNodeIndicator } from './kanban/ActiveNodeIndicator';
 
 interface TaskCardProps {
   task: UnifiedTask;
@@ -42,16 +43,16 @@ export function TaskCard({
   // Show expand button for all statuses if there's description (not just in-progress)
   const showExpandButton = hasDescription;
   
-  // Debug: Check task data
-  if (status === 'todo' || status === 'in-progress') {
-    console.log(`[TaskCard] ${status}:`, {
-      name: task.name,
-      priority: task.priority,
-      hasPriority: task.priority !== undefined,
-      hasDescription,
-      type: task.type
-    });
-  }
+  // Debug: Check task data (disabled to reduce log noise)
+  // if (status === 'todo' || status === 'in-progress') {
+  //   console.log(`[TaskCard] ${status}:`, {
+  //     name: task.name,
+  //     priority: task.priority,
+  //     hasPriority: task.priority !== undefined,
+  //     hasDescription,
+  //     type: task.type
+  //   });
+  // }
   
   // ✅ Determine display type: Priority 1000 = Final Verification
   const displayType = task.priority === 1000 ? 'final' : task.type;

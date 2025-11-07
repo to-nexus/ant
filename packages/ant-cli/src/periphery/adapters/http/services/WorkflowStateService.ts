@@ -40,6 +40,7 @@ export class WorkflowStateService {
    * Job 시작 (초기 상태 생성)
    */
   startJob(jobId: string): void {
+    console.log(`\n🚀 [WorkflowStateService] startJob called for ${jobId}`);
     
     this.states.set(jobId, {
       jobId,
@@ -50,19 +51,22 @@ export class WorkflowStateService {
       nodeHistory: [],
       activeActors: new Set()
     });
+    
+    console.log(`   ✅ Initial state created`);
   }
   
   /**
    * 노드 진입 기록
    */
   enterNode(jobId: string, nodeId: string): void {
+    console.log(`\n🔵 [WorkflowStateService] enterNode: ${nodeId} (job: ${jobId})`);
+    
     const state = this.states.get(jobId);
     if (!state) {
-      console.warn(`[WorkflowStateService] Job ${jobId} not found, creating...`);
+      console.warn(`   ⚠️ Job ${jobId} not found, creating...`);
       this.startJob(jobId);
       return this.enterNode(jobId, nodeId);
     }
-    
     
     // 이전 노드 종료 처리
     if (state.currentNode) {
@@ -71,6 +75,7 @@ export class WorkflowStateService {
         const exitTime = new Date().toISOString();
         lastEntry.exitedAt = exitTime;
         lastEntry.duration = new Date(exitTime).getTime() - new Date(lastEntry.enteredAt).getTime();
+        console.log(`   ⏹️  Closed previous node: ${state.currentNode} (${lastEntry.duration}ms)`);
       }
     }
     
@@ -81,6 +86,9 @@ export class WorkflowStateService {
       nodeId,
       enteredAt: new Date().toISOString()
     });
+    
+    console.log(`   ✅ Current node updated: ${nodeId}`);
+    console.log(`   📊 Total clients: ${this.clients.get(jobId)?.size || 0}`);
     
     // 브로드캐스트
     this.broadcast(jobId);
@@ -171,20 +179,27 @@ export class WorkflowStateService {
    * SSE 클라이언트 등록
    */
   addClient(jobId: string, res: Response): void {
+    console.log(`\n📡 [WorkflowStateService] New SSE client for job ${jobId}`);
+    
     if (!this.clients.has(jobId)) {
       this.clients.set(jobId, new Set());
     }
     this.clients.get(jobId)!.add(res);
     
+    console.log(`   ✅ Client registered (total: ${this.clients.get(jobId)!.size})`);
     
     // 현재 상태 즉시 전송
     const state = this.states.get(jobId);
     if (state) {
+      console.log(`   📤 Sending current state: ${state.currentNode || 'null'}`);
       this.sendToClient(res, state);
+    } else {
+      console.log(`   ⚠️ No state found for job ${jobId}`);
     }
     
     // 클라이언트 연결 종료 처리
     res.on('close', () => {
+      console.log(`   🔌 Client disconnected from job ${jobId}`);
       const clients = this.clients.get(jobId);
       if (clients) {
         clients.delete(res);
