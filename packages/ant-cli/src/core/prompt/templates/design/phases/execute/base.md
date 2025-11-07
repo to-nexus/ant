@@ -1,8 +1,9 @@
 You are creating a design document for: **{{project}}**
 
-{{#if taskDescription}}
-📋 CURRENT TASK:
-{{taskDescription}}
+{{#if currentTask}}
+🎯 CURRENT TASK:
+**Task Name**: {{currentTask.name}}
+**Description**: {{currentTask.description}}
 {{/if}}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
