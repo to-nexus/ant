@@ -15,6 +15,7 @@ import { ConfigEditor } from './components/ConfigEditor';
 import { checkHealth, fetchProjectConfig, updateProjectConfig, ProjectConfig, fetchFeatureSession, stopJob } from './lib/api';
 import { executeCodeJob } from './lib/cli';
 import { useStore } from './lib/store';
+import { useJobStateSync } from './hooks/useJobStateSync';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 function App() {
@@ -26,6 +27,10 @@ function App() {
 
   const MIN_EXPLORER_WIDTH = 200; // 최소 너비
   const MAX_EXPLORER_WIDTH = 600; // 최대 너비
+  
+  // ✅ Job state synchronization (via Kanban SSE monitoring)
+  // Detects job start/end from server and syncs UI state
+  useJobStateSync();
   
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);
@@ -48,6 +53,7 @@ function App() {
   const setShowFileEditor = useStore((state) => state.setShowFileEditor);
   const setSession = useStore((state) => state.setSession);
   const splitLayout = useStore((state) => state.splitLayout);
+  const startLogStream = useStore((state) => state.startLogStream);
 
   // Load session when project/feature changes (but not during task execution)
   useEffect(() => {

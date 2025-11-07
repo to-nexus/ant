@@ -21,6 +21,11 @@ import { errorStatsCollector, formatStatistics } from "./diagnostics/errorStats"
  * - No direct infrastructure dependencies
  */
 export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphState> {
+  // ✅ Workflow instrumentation: Enter node
+  if (state.deps?.workflowUpdate && state._httpTaskId) {
+    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'learn');
+  }
+  
   // 0. Generate quality evaluation report (optional, if files were generated)
   if (state.files && state.files.length > 0) {
     try {
@@ -113,6 +118,12 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     const errorStats = errorStatsCollector.getStatistics();
     console.log('\n' + formatStatistics(errorStats) + '\n');
     
+    // ✅ Load existing session to preserve interruption details
+    const existingSession = await state.deps.session.load(
+      state.context.project,
+      state.context.featureFolder || 'default'
+    );
+    
     // Update artifacts and save state snapshot for resuming
     await state.deps.session.updateArtifacts(
       state.context.project,
@@ -126,6 +137,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
           taskQueue: state.taskQueue?.getAll() || [],
           currentTask: state.currentTask,
           completedTasks: state.completedTasks || [],
+          completedTasksDetails: state.completedTasksDetails || [],  // ✅ CRITICAL: Preserve completed task details
           retries: state.retries,
           maxRetries: state.maxRetries,
           previousAttempts: state.previousAttempts || [],
@@ -133,6 +145,9 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
           lastViolations: state.lastViolations || [],
           previousFileCount: state.previousFileCount,
           resolvedCategories: state.resolvedCategories || [],
+          recursionCount: state.recursionCount,  // ✅ Preserve recursion tracking
+          recursionLimit: state.recursionLimit,
+          interruption: existingSession.state?.interruption || (state as any).interruption  // ✅ CRITICAL: Preserve interruption details!
         }
       }
     );

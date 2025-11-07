@@ -31,6 +31,11 @@ function formatFileSize(bytes: number): string {
 }
 
 export async function writeFiles(state: ArchitectGraphState): Promise<ArchitectGraphState> {
+  // ✅ Workflow instrumentation: Enter node
+  if (state.deps?.workflowUpdate && state._httpTaskId) {
+    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'writeFiles');
+  }
+  
   const gitPort = state.deps?.git;
 
   if (!gitPort) {

@@ -36,8 +36,11 @@ export interface WorkspaceConfig {
   runTests?: boolean;               // Run tests during validation (default: false)
   
   // LLM settings
-  llmProvider?: 'anthropic' | 'openai';  // Default: from env
-  llmModel?: string;                     // Default: from env
+  // Priority: workspace config > agent-specific env vars > generic env vars > hardcoded defaults
+  // Agent-specific env vars: {AGENT}_MODEL_PROVIDER, {AGENT}_MODEL_NAME (e.g., ARCHITECT_MODEL_PROVIDER)
+  // Generic env vars: AI_MODEL_PROVIDER, AI_MODEL_NAME
+  llmProvider?: 'anthropic' | 'openai';  // Default: 'anthropic'
+  llmModel?: string;                     // Default: 'claude-3-5-sonnet-20241022'
 }
 
 /**
@@ -77,15 +80,30 @@ export function validateWorkspaceConfig(config: any): WorkspaceConfig {
 
 /**
  * Default workspace config
+ * Reads from environment variables if available:
+ * - ARCHITECT_MODEL_PROVIDER or AI_MODEL_PROVIDER
+ * - ARCHITECT_MODEL_NAME or AI_MODEL_NAME
  */
 export function getDefaultWorkspaceConfig(projectName: string): WorkspaceConfig {
+  // Read from environment variables (agent-specific or generic)
+  const llmProvider = (
+    process.env.ARCHITECT_MODEL_PROVIDER || 
+    process.env.AI_MODEL_PROVIDER || 
+    'anthropic'
+  ) as 'anthropic' | 'openai';
+  
+  const llmModel = (
+    process.env.ARCHITECT_MODEL_NAME || 
+    process.env.AI_MODEL_NAME
+  );
+  
   return {
     projectName,
     repoType: 'local',
     branchBase: 'main',
     autoLearn: true,
-    llmProvider: 'anthropic',
-    llmModel: 'claude-3-5-sonnet-20241022'
+    llmProvider,
+    llmModel
   };
 }
 

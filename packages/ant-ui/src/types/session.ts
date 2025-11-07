@@ -39,20 +39,47 @@ export interface Task {
 
 export type SessionStatus = 'active' | 'paused' | 'completed' | 'cancelled';
 
+/**
+ * Interruption Reason
+ * Categorizes why a job was interrupted
+ */
+export type InterruptionReason = 
+  | 'recursion_limit'      // Hit recursion limit
+  | 'user_stopped'         // User clicked Stop button
+  | 'api_error'            // LLM API error (overloaded, rate limit, etc.)
+  | 'process_crash'        // Child process crashed unexpectedly
+  | 'timeout'              // Job timeout
+  | 'unknown';             // Unknown reason
+
+/**
+ * Interruption Details
+ * Provides context about the interruption
+ */
+export interface InterruptionDetails {
+  reason: InterruptionReason;
+  message: string;          // Human-readable message
+  timestamp: string;        // ISO timestamp
+  canResume: boolean;       // Whether the job can be resumed
+  metadata?: Record<string, any>;  // Additional context (e.g., error type, recursion count)
+}
+
 export interface SessionState {
   taskQueue: Task[];
   completedTasks: string[];
-  completedTasksDetails?: Task[]; // ✅ NEW: Full task objects with timing
+  completedTasksDetails?: Task[];
   retries?: number;
   maxRetries?: number;
   previousAttempts?: any[];
   enforcementHistory?: any[];
   lastViolations?: any[];
   resolvedCategories?: any[];
-  pausedDueToLimit?: boolean; // ✅ Indicates if paused due to recursion limit
-  tasksRemaining?: number; // ✅ Number of tasks remaining when paused
-  recursionCount?: number; // ✅ Current recursion iteration count
-  recursionLimit?: number; // ✅ Maximum recursion limit
+  
+  // ✅ Unified Interruption State
+  interruption?: InterruptionDetails;
+  
+  // Recursion Tracking
+  recursionCount?: number;
+  recursionLimit?: number;
 }
 
 export interface Session {
@@ -75,6 +102,33 @@ export interface Session {
     totalEstimatedHours: number;
     totalActualHours: number;
   };
+  description?: string;
+  goals?: string[];
+}
+
+export interface SessionStateContext {
+  currentTaskId?: string;
+  isRunning: boolean;
+  isPaused: boolean;
+  startTime?: number;
+  pauseTime?: number;
+  elapsedTime: number;
+  progress: {
+    completed: number;
+    total: number;
+    percentage: number;
+  };
+  errors: Array<{
+    taskId: string;
+    message: string;
+    timestamp: string;
+  }>;
+  warnings: Array<{
+    taskId: string;
+    message: string;
+    timestamp: string;
+  }>;
+}
   description?: string;
   goals?: string[];
 }

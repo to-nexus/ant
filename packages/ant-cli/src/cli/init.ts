@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
+import { getDefaultWorkspaceConfig } from "../core/types/workspace";
 
 /**
  * Initialize a new workspace with boilerplate structure
@@ -19,14 +20,8 @@ export function initWorkspace(workspaceName: string): void {
   // Common outputs directory (no need for memory subdirectory)
   fs.mkdirSync(path.join(workspaceDir, "common/outputs/reports"), { recursive: true });
 
-  // Create config.json
-  const config = {
-    projectName: workspaceName,
-    branchBase: "main",
-    autoLearn: true,
-    llmProvider: "anthropic",
-    llmModel: "claude-3-5-sonnet-20241022"
-  };
+  // Create config.json using centralized default config
+  const config = getDefaultWorkspaceConfig(workspaceName);
   fs.writeFileSync(
     path.join(workspaceDir, "config.json"),
     JSON.stringify(config, null, 2),

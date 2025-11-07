@@ -1,23 +1,49 @@
-================================================================================
-EXECUTION CHECKLIST
-================================================================================
+## DESIGN DOCUMENT RULES
 
-Before outputting, verify:
-□ Architecture overview is clear and concise
-□ All major components are identified with responsibilities
-□ Data flow is explained comprehensively
-□ APIs/Database schemas are specified (if needed)
-□ Integration points are clearly documented
-□ Implementation plan has exact file paths (not placeholders)
-□ Each file in plan has NEW/MODIFY + rationale
-□ Document is well-structured with proper markdown formatting
-□ Technical decisions are justified
+**Format:**
+- Use markdown format
+- Include clear headings and subheadings
+- Use tables, lists, and code blocks where appropriate
+- Add diagrams in text/ASCII format if helpful
 
-================================================================================
-OUTPUT FORMAT
-================================================================================
+**Content Quality:**
+- Be specific and detailed, not vague
+- Provide concrete examples
+- Explain the "why" behind decisions
+- Address edge cases and error scenarios
 
-Produce the design document as a single, cohesive markdown document.
-Use clear headings, bullet points, and code blocks where appropriate.
-Ensure the implementation plan is actionable and complete.
+**Completeness:**
+- Cover all sections in the structure
+- Don't skip sections - if not applicable, explain why
+- Address both happy path and error cases
+- Include all non-functional requirements
 
+**Technical Depth:**
+- Provide sufficient detail for implementation
+- Include data models, API contracts, and schemas
+- Specify technology choices and configurations
+- Document important algorithms or logic
+
+**Clarity:**
+- Write for the implementation team
+- Use consistent terminology
+- Define acronyms and technical terms
+- Organize information logically
+
+**Actionability:**
+- The design should be implementation-ready
+- Include enough detail to guide development
+- Prioritize and sequence work
+- Identify dependencies and risks
+
+**Best Practices:**
+- Follow industry standards and conventions
+- Consider scalability from the start
+- Design for maintainability
+- Include security considerations
+- Plan for testing and deployment
+
+**Output:**
+- Output ONLY the design document in markdown
+- Do NOT include meta-commentary or explanations outside the document
+- The document should be complete and self-contained

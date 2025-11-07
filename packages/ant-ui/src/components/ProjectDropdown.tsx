@@ -3,10 +3,12 @@ import { Folder } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { createProject, deleteProject, fetchProjectConfig, createProjectConfig } from '../lib/api';
 import { ItemDropdown } from './ItemDropdown';
+import { useUIActionPolicy } from '@/hooks/useUIActionPolicy';
 
 export function ProjectDropdown() {
   const { projects, selectedProject, setSelectedProject, fetchProjects, setShowConfigEditor } = useStore();
   const [configExists, setConfigExists] = useState<boolean | null>(null);
+  const policy = useUIActionPolicy();
 
   // Check if config exists when project is selected
   useEffect(() => {
@@ -75,6 +77,8 @@ export function ProjectDropdown() {
         placeholder="Select a workspace..."
         inputPlaceholder="Workspace name..."
         onSettingsClick={handleConfigClick}
+        disabled={!policy.canChangeProject}
+        disabledReason={policy.disabledReason || undefined}
       />
       
       {/* Configuration warning - inside workspace panel */}
@@ -91,7 +95,9 @@ export function ProjectDropdown() {
               </p>
               <button
                 onClick={handleConfigClick}
-                className="text-xs px-2 py-1 bg-orange-600 text-white rounded hover:bg-orange-700 transition-colors"
+                disabled={!policy.canEditConfig}
+                className="text-xs px-2 py-1 bg-orange-600 text-white rounded hover:bg-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title={!policy.canEditConfig ? policy.disabledReason || undefined : undefined}
               >
                 Create Configuration
               </button>

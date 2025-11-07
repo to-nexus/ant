@@ -24,7 +24,6 @@ export interface ArchitectResult {
   task: AgentTask;
   reportFile: string;
   filesAnalyzed?: number;
-  tasksRemaining?: number;  // ✅ For paused state
-  pausedDueToLimit?: boolean;  // ✅ Recursion limit indicator
+  interruption?: import('../../core/types').InterruptionDetails;  // ✅ Unified interruption details
   message: string;
 }

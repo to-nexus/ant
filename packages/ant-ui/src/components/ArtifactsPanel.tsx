@@ -4,6 +4,7 @@ import { useStore } from '@/lib/store';
 import { createFile, uploadFiles, createDirectory, deleteFileOrDirectory, FileNode } from '@/lib/api';
 import { Button } from '@/ui/button';
 import { textColors, bgColors, cn } from '@/lib/design-system';
+import { useUIActionPolicy } from '@/hooks/useUIActionPolicy';
 
 interface DirectoryViewProps {
   title: string;
@@ -260,6 +261,9 @@ export function ArtifactsPanel() {
   const setShowFileEditor = useStore((state) => state.setShowFileEditor);
   const refreshFileTree = useStore((state) => state.refreshFileTree);
   const setFileTree = useStore((state) => state.setFileTree);
+  
+  // ✅ UI Action Policy
+  const policy = useUIActionPolicy();
 
   // Refresh file tree when project or feature changes
   useEffect(() => {
@@ -380,20 +384,22 @@ export function ArtifactsPanel() {
           nodes={inputsNodes}
           onFileSelect={selectFile}
           selectedFile={selectedFile}
-          onCreateFile={handleCreateFile}
-          onCreateDirectory={handleCreateDirectory}
-          onUploadFiles={handleUploadFiles}
-          onDelete={handleDelete}
+          // ✅ UI Policy: 파일 조작은 작업 진행 중에 비활성화
+          onCreateFile={policy.canCreateFile ? handleCreateFile : undefined}
+          onCreateDirectory={policy.canCreateDirectory ? handleCreateDirectory : undefined}
+          onUploadFiles={policy.canUploadFiles ? handleUploadFiles : undefined}
+          onDelete={policy.canDeleteFile ? handleDelete : undefined}
         />
         <DirectoryView
           title="Outputs"
           nodes={outputsNodes}
           onFileSelect={selectFile}
           selectedFile={selectedFile}
-          onCreateFile={handleCreateFile}
-          onCreateDirectory={handleCreateDirectory}
-          onUploadFiles={handleUploadFiles}
-          onDelete={handleDelete}
+          // ✅ UI Policy: 파일 조작은 작업 진행 중에 비활성화
+          onCreateFile={policy.canCreateFile ? handleCreateFile : undefined}
+          onCreateDirectory={policy.canCreateDirectory ? handleCreateDirectory : undefined}
+          onUploadFiles={policy.canUploadFiles ? handleUploadFiles : undefined}
+          onDelete={policy.canDeleteFile ? handleDelete : undefined}
         />
       </div>
     </div>

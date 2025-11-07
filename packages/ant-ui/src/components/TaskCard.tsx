@@ -5,7 +5,6 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { UnifiedTask } from '@/types/task';
 import { useStore } from '@/lib/store';
 import { statusColors, badgeColors, cn } from '@/lib/design-system';
-import { ActiveNodeIndicator } from './kanban/ActiveNodeIndicator';
 
 interface TaskCardProps {
   task: UnifiedTask;
@@ -109,7 +108,7 @@ export function TaskCard({
             className={`flex items-start gap-2 mb-1 ${showExpandButton ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
             onClick={showExpandButton ? toggleExpand : undefined}
           >
-            {/* Priority Badge - Only for to-do */}
+            {/* Priority Badge - Only for to-do (Left Side) */}
             {status === 'todo' && task.priority !== undefined && (
               <Badge variant="outline" className={cn(
                 'flex-shrink-0',
@@ -123,28 +122,31 @@ export function TaskCard({
               </Badge>
             )}
             
-            {/* Interrupted Badge - Only for to-do tasks that were interrupted */}
-            {status === 'todo' && task.interrupted && (
-              <Badge variant="outline" className={cn(
-                'flex-shrink-0 flex items-center gap-1',
-                'bg-orange-100 dark:bg-orange-950',
-                'border-orange-400 dark:border-orange-700',
-                'text-orange-800 dark:text-orange-200'
-              )}>
-                <span>⏸️</span>
-                <span className="font-semibold">Interrupted</span>
-              </Badge>
-            )}
-            
-            {/* Task Name (no ID shown) */}
+            {/* Task Name (Center) */}
             <span className={cn('text-sm font-medium flex-1 min-w-0', colors.text.primary)}>
               {task.name}
             </span>
             
-            {/* Type Badge */}
-            <Badge className={cn(typeBadge.color, 'text-xs flex-shrink-0')}>
-              {typeBadge.label}
-            </Badge>
+            {/* Right Side: Interrupted Badge + Type Badge (Stacked, Right-Aligned) */}
+            <div className="flex flex-col items-end gap-1 flex-shrink-0">
+              {/* Interrupted Badge - Only for to-do tasks that were interrupted (TOP) */}
+              {status === 'todo' && task.interrupted && (
+                <Badge variant="outline" className={cn(
+                  'flex items-center gap-1',
+                  'bg-orange-100 dark:bg-orange-950',
+                  'border-orange-400 dark:border-orange-700',
+                  'text-orange-800 dark:text-orange-200'
+                )}>
+                  <span>⏸️</span>
+                  <span className="font-semibold text-xs">Interrupted</span>
+                </Badge>
+              )}
+              
+              {/* Type Badge (BOTTOM) */}
+              <Badge className={cn(typeBadge.color, 'text-xs')}>
+                {typeBadge.label}
+              </Badge>
+            </div>
           </div>
           
           {/* Timing Info - Show for in-progress and completed */}
@@ -167,13 +169,6 @@ export function TaskCard({
               </span>
             )}
           </div>
-          
-          {/* Active Node/Actor Indicator - Only for in-progress */}
-          {status === 'in-progress' && (
-            <div className={showExpandButton ? 'ml-0' : 'ml-12'}>
-              <ActiveNodeIndicator />
-            </div>
-          )}
           
           {/* Expanded content - NOT clickable (allows text selection) */}
           {expanded && hasDescription && (

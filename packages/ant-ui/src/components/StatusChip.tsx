@@ -24,6 +24,7 @@ interface StatusChipProps {
   label: string;
   icon?: React.ReactNode;
   pulse?: boolean;  // 펄스 애니메이션 강제 활성화/비활성화
+  hideDot?: boolean;  // dot 아이콘 숨기기
 }
 
 const VARIANT_STYLES: Record<ChipVariant, {
@@ -74,7 +75,8 @@ export function StatusChip({
   variant = 'neutral', 
   label, 
   icon,
-  pulse 
+  pulse,
+  hideDot = false
 }: StatusChipProps) {
   const style = VARIANT_STYLES[variant];
   const shouldPulse = pulse !== undefined ? pulse : style.pulse;
@@ -85,6 +87,9 @@ export function StatusChip({
         {icon ? (
           // 커스텀 아이콘 사용
           <span className={style.textColor}>{icon}</span>
+        ) : hideDot ? (
+          // dot 숨김 (텍스트만)
+          null
         ) : (
           // 기본 도트 표시
           shouldPulse ? (

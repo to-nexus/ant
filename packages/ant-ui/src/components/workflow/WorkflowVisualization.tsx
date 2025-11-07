@@ -36,7 +36,6 @@ export function WorkflowVisualization() {
   const selectedFeature = useStore(state => state.selectedFeature);
   const selectedAgent = useStore(state => state.selectedAgent);
   const selectedWorkType = useStore(state => state.selectedWorkType);
-  const currentJob = useStore(state => state.currentJob);
   const currentJobId = useStore(state => state.currentJobId);
   const userStoppedJobId = useStore(state => state.userStoppedJobId);
   const theme = useStore(state => state.theme);
@@ -48,10 +47,11 @@ export function WorkflowVisualization() {
   // 2. 실시간 상태 구독 (Job 실행 중일 때)
   // ✅ CRITICAL: Don't subscribe if user stopped this job
   const shouldSubscribe = currentJobId && currentJobId !== userStoppedJobId;
-  const realtimeState = useWorkflowState(shouldSubscribe ? currentJobId : undefined);
+  const { displayedState } = useWorkflowState(shouldSubscribe ? currentJobId : undefined);
   
   // 3. ReactFlow 노드/엣지 변환 + 레이아웃
-  const { nodes: baseNodes, edges } = useGraphLayout(metadata, realtimeState);
+  // ✅ displayedState 사용: 큐를 통해 천천히 표시되는 상태
+  const { nodes: baseNodes, edges } = useGraphLayout(metadata, displayedState);
   
   // ReactFlow instance for fitView
   const [reactFlowInstance, setReactFlowInstance] = React.useState<any>(null);
@@ -81,6 +81,35 @@ export function WorkflowVisualization() {
       }, 50);
     }
   }, [reactFlowInstance, nodes.length, splitLayout]);
+  
+  // ✅ 활성 노드로 자동 포커스 + 줌인
+  // ✅ CRITICAL: displayedState 사용 - 큐에서 표시되는 노드와 포커스 동기화
+  React.useEffect(() => {
+    if (!reactFlowInstance || !displayedState?.currentNode) return;
+    
+    const currentNodeId = displayedState.currentNode;
+    const node = reactFlowInstance.getNode(currentNodeId);
+    
+    if (!node) {
+      console.log(`[WorkflowVisualization] Node ${currentNodeId} not found in graph`);
+      return;
+    }
+    
+    console.log(`[WorkflowVisualization] 🎯 Focusing on displayed node: ${currentNodeId}`);
+    
+    // 노드 중심으로 이동 + 적절한 줌 레벨
+    // position은 노드의 좌측 상단이므로 노드 크기의 절반을 더해서 중심을 구함
+    const nodeWidth = node.width || 150;
+    const nodeHeight = node.height || 60;
+    const centerX = node.position.x + nodeWidth / 2;
+    const centerY = node.position.y + nodeHeight / 2;
+    
+    // 부드러운 애니메이션으로 이동 + 줌인 (1.3배)
+    reactFlowInstance.setCenter(centerX, centerY, {
+      zoom: 1.3,
+      duration: 800  // 800ms 애니메이션
+    });
+  }, [reactFlowInstance, displayedState?.currentNode]);
   
   // ReactFlow 이벤트 핸들러
   const onNodesChange = useCallback(() => {

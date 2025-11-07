@@ -71,8 +71,48 @@ export class GenericLLMClient implements LLMClient {
   }
 
   async invoke(messages: Array<{ role: string; content: string }>): Promise<string> {
-    const resp = await this.model.invoke(messages.map(m => new HumanMessage(m.content)));
-    return typeof (resp as any).content === 'string' ? (resp as any).content : JSON.stringify((resp as any).content);
+    return this.invokeWithRetry(async () => {
+      const resp = await this.model.invoke(messages.map(m => new HumanMessage(m.content)));
+      return typeof (resp as any).content === 'string' ? (resp as any).content : JSON.stringify((resp as any).content);
+    });
+  }
+  
+  /**
+   * Retry wrapper for API calls with exponential backoff
+   * Handles transient errors like overloaded_error and rate_limit_error
+   */
+  private async invokeWithRetry<T>(
+    fn: () => Promise<T>,
+    maxRetries: number = 5,
+    initialDelay: number = 1000
+  ): Promise<T> {
+    let lastError: any;
+    
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await fn();
+      } catch (error: any) {
+        lastError = error;
+        
+        // Check if error is retryable
+        const errorType = error?.error?.error?.type || error?.error?.type;
+        const isRetryable = errorType === 'overloaded_error' || errorType === 'rate_limit_error';
+        
+        if (!isRetryable || attempt === maxRetries) {
+          throw error;
+        }
+        
+        // Calculate delay with exponential backoff: 1s, 2s, 4s, 8s, 16s
+        const delay = initialDelay * Math.pow(2, attempt);
+        
+        console.log(`\n⚠️  API ${errorType} - Retrying in ${delay / 1000}s (attempt ${attempt + 1}/${maxRetries})...`);
+        
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+    
+    throw lastError;
   }
 
   async *stream(messages: Array<{ role: string; content: string }>): AsyncIterable<string> {
@@ -91,19 +131,21 @@ export class GenericLLMClient implements LLMClient {
     schema: Record<string, any>,
     schemaName: string
   ): Promise<T> {
-    // Use LangChain's withStructuredOutput for both Anthropic and OpenAI
-    // This handles the provider-specific implementation automatically:
-    // - Anthropic: tool use
-    // - OpenAI: response_format with json_schema
-    const structuredModel = this.model.withStructuredOutput(schema, {
-      name: schemaName,
-      includeRaw: false
+    return this.invokeWithRetry(async () => {
+      // Use LangChain's withStructuredOutput for both Anthropic and OpenAI
+      // This handles the provider-specific implementation automatically:
+      // - Anthropic: tool use
+      // - OpenAI: response_format with json_schema
+      const structuredModel = this.model.withStructuredOutput(schema, {
+        name: schemaName,
+        includeRaw: false
+      });
+      
+      const result = await structuredModel.invoke(
+        messages.map(m => new HumanMessage(m.content))
+      );
+      
+      return result as T;
     });
-    
-    const result = await structuredModel.invoke(
-      messages.map(m => new HumanMessage(m.content))
-    );
-    
-    return result as T;
   }
 }

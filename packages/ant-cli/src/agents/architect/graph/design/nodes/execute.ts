@@ -7,6 +7,11 @@ import { PromptEngine } from "../../../../../core/prompt/engine";
  * Generate design document based on plan
  */
 export async function execute(state: DesignGraphState) {
+  // ✅ Workflow instrumentation: Enter node
+  if (state.deps?.workflowUpdate && state._httpTaskId) {
+    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'execute');
+  }
+  
   const llm = state.deps?.llm as LLMClient;
   const engine = state.deps?.promptEngine as PromptEngine;
 
@@ -46,5 +51,44 @@ export async function execute(state: DesignGraphState) {
     designMarkdown = await llm.invoke(result.formatted.messages);
   }
 
-  return { ...state, designMarkdown };
+  // ✅ Mark current task as completed
+  let completedTasks = state.completedTasks || [];
+  let completedTasksDetails = state.completedTasksDetails || [];
+  
+  if (state.currentTask) {
+    const completedTask = {
+      ...state.currentTask,
+      completed: true
+    };
+    
+    completedTasks.push(completedTask.id);
+    completedTasksDetails.push(completedTask);
+    
+    console.log(`✅ Task "${completedTask.name}" completed!`);
+    
+    // ✅ Update live Kanban snapshot
+    if (state.deps?.kanbanUpdate && state._httpTaskId && state.taskQueue) {
+      const queueTasks = state.taskQueue.getAll();
+      
+      console.log(`\n🔥 [Design Execute] Updating Kanban - task completed`);
+      console.log(`   Completed task: ${completedTask.name}`);
+      console.log(`   Total completed: ${completedTasksDetails.length}`);
+      console.log(`   Queue remaining: ${queueTasks.length}\n`);
+      
+      state.deps.kanbanUpdate.updateTaskQueue(
+        state._httpTaskId,
+        undefined,  // currentTask is now undefined (just completed)
+        queueTasks,
+        completedTasksDetails
+      );
+    }
+  }
+
+  return { 
+    ...state, 
+    designMarkdown,
+    currentTask: undefined,  // Clear current task
+    completedTasks,
+    completedTasksDetails
+  };
 }

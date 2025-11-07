@@ -7,8 +7,47 @@ import { PromptEngine } from "../../../../../core/prompt/engine";
  * Generate design plan based on artifacts
  */
 export async function plan(state: DesignGraphState) {
+  // ✅ Workflow instrumentation: Enter node
+  if (state.deps?.workflowUpdate && state._httpTaskId) {
+    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'plan');
+  }
+  
   const llm = state.deps?.llm as LLMClient;
   const engine = state.deps?.promptEngine as PromptEngine;
+
+  // ✅ Get next task from queue (if using task-based design)
+  let currentTask = state.currentTask;
+  
+  if (state.taskQueue && !currentTask) {
+    const nextTask = state.taskQueue.pop();
+    if (nextTask) {
+      currentTask = nextTask;
+      console.log(`\n📋 Processing task: "${nextTask.name}"`);
+      console.log(`   Priority: ${nextTask.priority}`);
+      console.log(`   Description: ${nextTask.description}\n`);
+      
+      // ✅ Update live Kanban snapshot
+      if (state.deps?.kanbanUpdate && state._httpTaskId) {
+        const queueTasks = state.taskQueue.getAll();
+        const completedTasksDetails = state.completedTasksDetails || [];
+        
+        console.log(`🔥 [Design Plan] Updating Kanban - moved task to In Progress`);
+        console.log(`   Current task: ${currentTask.name}`);
+        console.log(`   Queue remaining: ${queueTasks.length}`);
+        console.log(`   Completed: ${completedTasksDetails.length}\n`);
+        
+        state.deps.kanbanUpdate.updateTaskQueue(
+          state._httpTaskId,
+          currentTask,
+          queueTasks,
+          completedTasksDetails
+        );
+      }
+    } else {
+      console.log('⚠️  No task to execute');
+      return state;
+    }
+  }
 
   // Prepare artifacts (using new unified names)
   const artifacts = {
@@ -46,5 +85,5 @@ export async function plan(state: DesignGraphState) {
     planText = await llm.invoke(result.formatted.messages);
   }
 
-  return { ...state, planText };
+  return { ...state, planText, currentTask };
 }

@@ -263,7 +263,10 @@ export class KanbanService {
     }
     
     // Priority 3: SESSION DATA (job running but live data not ready yet, OR job completed)
-    console.log(`\n📁 [KanbanService] SESSION DATA returned (fallback)\n`);
+    console.log(`\n📁 [KanbanService] SESSION DATA returned (fallback)`);
+    console.log(`   Completed tasks in session: ${completedTasksDetails.length}`);
+    console.log(`   Has interruption: ${!!sessionState.interruption}`);
+    console.log(`   Interruption reason: ${sessionState.interruption?.reason || 'none'}\n`);
     
     return {
       todo: sessionTaskQueue.filter((task: any) => 
@@ -278,8 +281,7 @@ export class KanbanService {
       })),
       isEstimating: false,
       dataSource: 'session',
-      pausedDueToLimit: sessionState.pausedDueToLimit || false,
-      tasksRemaining: sessionState.tasksRemaining || 0,
+      interruption: sessionState.interruption,  // ✅ Include interruption details
       recursionCount: sessionState.recursionCount,
       recursionLimit: sessionState.recursionLimit
     };

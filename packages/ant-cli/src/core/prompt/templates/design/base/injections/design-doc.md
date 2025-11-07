@@ -1,7 +1,10 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-📋 DIRECTIVE (User Instructions):
+📐 PREVIOUS DESIGN DOCUMENT:
 
-{{directiveSection}}
+{{previousDesignSection}}
+
+ℹ️  This is the existing design. You should evolve or refactor it based on new requirements.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+

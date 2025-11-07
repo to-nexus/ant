@@ -49,6 +49,11 @@ export interface RuntimeValidationResult {
  * 3. Target repository exists
  */
 export async function runtimeValidate(state: ArchitectGraphState): Promise<ArchitectGraphState> {
+  // ✅ Workflow instrumentation: Enter node
+  if (state.deps?.workflowUpdate && state._httpTaskId) {
+    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'runtimeValidate');
+  }
+  
   const commandPort = state.deps?.command;
   const gitPort = state.deps?.git;
   const currentTask = state.currentTask;

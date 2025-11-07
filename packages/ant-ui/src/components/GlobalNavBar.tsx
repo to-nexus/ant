@@ -5,6 +5,7 @@ import { ConnectionStatus } from './ConnectionStatus';
 import { useStore } from '@/lib/store';
 import { fetchAgents, Agent } from '@/lib/api';
 import { capitalize } from '@/lib/text-utils';
+import { useUIActionPolicy } from '@/hooks/useUIActionPolicy';
 
 export interface GlobalNavBarProps {
   onRunTask: (agent: string, task: string) => void;  // 'task' here refers to agent's work type (code/design/etc), not to be confused with Task Board tasks
@@ -25,15 +26,13 @@ export interface GlobalNavBarProps {
  */
 export function GlobalNavBar({ onRunTask, onStopTask, isRunning, isStopping = false }: GlobalNavBarProps) {
   const connectionStatus = useStore((state) => state.connectionStatus);
-  const selectedProject = useStore((state) => state.selectedProject);
-  const selectedFeature = useStore((state) => state.selectedFeature);
   const theme = useStore((state) => state.theme);
   const toggleTheme = useStore((state) => state.toggleTheme);
   const selectedAgent = useStore((state) => state.selectedAgent);
   const selectedWorkType = useStore((state) => state.selectedWorkType);
   const setSelectedAgent = useStore((state) => state.setSelectedAgent);
   const setSelectedWorkType = useStore((state) => state.setSelectedWorkType);
-  const isDisconnected = connectionStatus !== 'connected';
+  const policy = useUIActionPolicy();
   const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
   const [workTypeDropdownOpen, setWorkTypeDropdownOpen] = useState(false);
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -42,7 +41,7 @@ export function GlobalNavBar({ onRunTask, onStopTask, isRunning, isStopping = fa
   const workTypeRef = useRef<HTMLDivElement>(null);
   
   // Deployment mode state
-  const [deploymentMode, setDeploymentMode] = useState<'local' | 'cloud'>('local');
+  const [deploymentMode, _setDeploymentMode] = useState<'local' | 'cloud'>('local');
   const [showLocalTooltip, setShowLocalTooltip] = useState(false);
   const [showCloudTooltip, setShowCloudTooltip] = useState(false);
 
@@ -110,23 +109,6 @@ export function GlobalNavBar({ onRunTask, onStopTask, isRunning, isStopping = fa
   const handleRun = () => {
     onRunTask(selectedAgent, selectedWorkType);
   };
-
-  // Validation: Project and feature must be selected
-  const hasValidSelection = Boolean(selectedProject && selectedFeature);
-
-  // Run button disabled when:
-  // - Agent job is already running
-  // - Currently stopping (prevent race condition)
-  // - Server disconnected
-  // - Project/feature not selected
-  const isRunDisabled = isRunning || isStopping || isDisconnected || !hasValidSelection;
-
-  // Stop button disabled when:
-  // - No agent job is running
-  // - Already stopping
-  // - Server disconnected
-  // - Project/feature not selected (for safety)
-  const isStopDisabled = !isRunning || isStopping || isDisconnected || !hasValidSelection;
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-gray-50 dark:bg-[#0d1117] border-b border-gray-300 dark:border-[#30363d] shadow-md transition-colors">
@@ -276,8 +258,9 @@ export function GlobalNavBar({ onRunTask, onStopTask, isRunning, isStopping = fa
             {/* Agent Selection - Compact Inline Design */}
             <div ref={agentRef} className="relative">
               <button
-                onClick={() => !isRunning && !isDisconnected && !isLoadingAgents && setAgentDropdownOpen(!agentDropdownOpen)}
-                disabled={isRunning || isDisconnected || isLoadingAgents}
+                onClick={() => policy.canChangeAgent && !isLoadingAgents && setAgentDropdownOpen(!agentDropdownOpen)}
+                disabled={!policy.canChangeAgent || isLoadingAgents}
+                title={!policy.canChangeAgent ? policy.disabledReason || undefined : undefined}
                 className="h-10 px-3 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow flex items-center gap-2"
               >
                 <span className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -316,8 +299,9 @@ export function GlobalNavBar({ onRunTask, onStopTask, isRunning, isStopping = fa
             {/* Job Type Selection - Compact Inline Design */}
             <div ref={workTypeRef} className="relative">
               <button
-                onClick={() => !isRunning && !isDisconnected && setWorkTypeDropdownOpen(!workTypeDropdownOpen)}
-                disabled={isRunning || isDisconnected}
+                onClick={() => policy.canChangeWorkType && setWorkTypeDropdownOpen(!workTypeDropdownOpen)}
+                disabled={!policy.canChangeWorkType}
+                title={!policy.canChangeWorkType ? policy.disabledReason || undefined : undefined}
                 className="h-10 px-3 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow flex items-center gap-2"
               >
                 <span className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -348,7 +332,7 @@ export function GlobalNavBar({ onRunTask, onStopTask, isRunning, isStopping = fa
             
             <Button
               onClick={handleRun}
-              disabled={isRunDisabled}
+              disabled={!policy.canRun}
               variant="primary"
               size="default"
               className={`flex items-center space-x-2 transition-all ${
@@ -375,7 +359,7 @@ export function GlobalNavBar({ onRunTask, onStopTask, isRunning, isStopping = fa
             
             <Button
               onClick={onStopTask}
-              disabled={isStopDisabled}
+              disabled={!policy.canStop}
               variant="outline"
               size="default"
               className="flex items-center space-x-2"

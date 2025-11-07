@@ -51,13 +51,40 @@ const ACTOR_COLORS_DARK: Record<ActorType, string> = {
 export const ActorNode = memo(({ data }: ActorNodeProps) => {
   const { splitLayout, selectedProject, selectedFeature } = useStore();
   const [isExpanded, setIsExpanded] = React.useState(data.isExpanded || false);
+  const [config, setConfig] = React.useState<any>(null);
+  
+  // Fetch config to get actual LLM provider and model
+  React.useEffect(() => {
+    if (selectedProject) {
+      fetch(`/api/projects/${selectedProject}/config`)
+        .then(res => res.ok ? res.json() : null)
+        .then(data => data && setConfig(data))
+        .catch(() => setConfig(null));
+    }
+  }, [selectedProject]);
   
   // Actor 정보 조회
   const baseActorInfo = data.actorId ? getActorInfo(data.actorId) : null;
   
-  // 실제 경로로 details 동적 생성
+  // 실제 경로로 details 동적 생성 및 config에서 실제 모델 정보 반영
   const actorInfo = React.useMemo(() => {
     if (!baseActorInfo) return null;
+    
+    // LLM actor의 경우 config에서 실제 provider와 model 가져오기
+    if (data.actorId === 'llm' && config) {
+      const provider = config.llmProvider || 'openai';
+      const model = config.llmModel || 'gpt-4o';
+      
+      // Provider 이름 포맷팅
+      const providerName = provider === 'anthropic' ? 'Anthropic' : 
+                          provider === 'openai' ? 'OpenAI' : provider;
+      
+      return {
+        ...baseActorInfo,
+        provider: providerName,
+        model: model
+      };
+    }
     
     // local-storage와 file-system의 경우 실제 경로로 치환
     if (data.actorId === 'local-storage' && selectedProject && selectedFeature) {
@@ -74,16 +101,16 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
       };
     }
     
-    if (data.actorId === 'code-repo' && selectedProject && selectedFeature) {
-      // TODO: config에서 localPath 가져오기 (지금은 placeholder)
+    if (data.actorId === 'code-repo' && config) {
+      // config에서 localPath 가져오기
       return {
         ...baseActorInfo,
-        details: `~/dev/${selectedProject}` // config.localPath
+        details: config.localPath || `~/dev/${selectedProject}`
       };
     }
     
     return baseActorInfo;
-  }, [baseActorInfo, data.actorId, selectedProject, selectedFeature]);
+  }, [baseActorInfo, data.actorId, selectedProject, selectedFeature, config]);
   
   const colorClass = `${ACTOR_COLORS_LIGHT[data.actorType]} ${ACTOR_COLORS_DARK[data.actorType]}`;
   

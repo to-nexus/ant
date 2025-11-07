@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useStore } from '../lib/store';
 import { createFeature, deleteFeature, startDevServer, stopDevServer, getDevServerStatus } from '../lib/api';
 import { ItemDropdown } from './ItemDropdown';
+import { useUIActionPolicy } from '@/hooks/useUIActionPolicy';
 
 export function FeatureDropdown() {
   const { 
@@ -18,6 +19,7 @@ export function FeatureDropdown() {
   const [showStatusPanel, setShowStatusPanel] = useState(false);
   const [serverStarted, setServerStarted] = useState(false);
   const [isInitialMount, setIsInitialMount] = useState(true);
+  const policy = useUIActionPolicy();
 
   // Auto-show status panel when dev server is running (including after refresh)
   useEffect(() => {
@@ -156,6 +158,8 @@ export function FeatureDropdown() {
         onPlayClick={handleStartDevServer}
         onStopClick={handleStopDevServer}
         isPlaying={devServerStatus?.running || false}
+        disabled={!policy.canChangeFeature}
+        disabledReason={policy.disabledReason || undefined}
       />
       
       {/* Dev Server Status Panel */}

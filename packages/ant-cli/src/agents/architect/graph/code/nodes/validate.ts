@@ -9,6 +9,11 @@ import { ArchitectGraphState, Violation } from "../state";
  * ✅ Returns structured Violation objects for better analysis
  */
 export async function validate(state: ArchitectGraphState): Promise<ArchitectGraphState> {
+  // ✅ Workflow instrumentation: Enter node
+  if (state.deps?.workflowUpdate && state._httpTaskId) {
+    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'validate');
+  }
+  
   const violations: Violation[] = [];
   // ✅ Only detect ellipsis in comments or standalone (not spread/rest operators)
   // Matches:
