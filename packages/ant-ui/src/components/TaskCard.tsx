@@ -79,13 +79,25 @@ export function TaskCard({
   return (
     <div 
       className={cn(
-        'p-3 rounded-lg border transition-colors',
+        'p-3 rounded-lg border transition-colors relative',
         status === 'in-progress' ? 'border-2' : '',
         colors.border,
         colors.bg
       )}
     >
-      <div className="flex items-start gap-2">
+      {/* Wave effect for in-progress tasks (behind main content) */}
+      {status === 'in-progress' && (
+        <div className="absolute inset-0 rounded-lg overflow-hidden pointer-events-none">
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-blue-300/50 dark:via-blue-400/40 to-transparent" 
+            style={{
+              backgroundSize: '200% 100%',
+              animation: 'wave-slide-continuous 2s linear infinite'
+            }}
+          />
+        </div>
+      )}
+      
+      <div className="flex items-start gap-2 relative z-10">
         {showExpandButton && (
           <button
             className="mt-0.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
@@ -170,13 +182,13 @@ export function TaskCard({
             )}
           </div>
           
-          {/* Expanded content - NOT clickable (allows text selection) */}
+          {/* Expanded content - NOT clickable (allows text selection), blocks wave effect */}
           {expanded && hasDescription && (
             <div 
               className={cn(
-                'mt-2 p-2 rounded border text-xs select-text',
+                'mt-2 p-2 rounded border text-xs select-text relative z-20',
                 colors.border,
-                'bg-white/50 dark:bg-gray-900/50',
+                'bg-white dark:bg-gray-900',
                 colors.text.secondary,
                 showExpandButton ? 'ml-0' : 'ml-12'
               )}
