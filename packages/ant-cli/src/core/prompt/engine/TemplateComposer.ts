@@ -61,6 +61,7 @@ export class TemplateComposer {
           ? 'MODIFICATION MODE: Copy original, then modify'
           : 'CREATION MODE: Build from scratch',
         currentCode: assembled.currentCode || '',  // ✅ Pass currentCode to template
+        designDoc: assembled.designDoc || '',      // ✅ Pass accumulated design document
         currentTask: assembled.currentTask || null  // ✅ Pass current task info
       }
     );

@@ -282,6 +282,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
         await state.deps.session.updateArtifacts(
           state.context.project,
           state.context.featureFolder,
+          'design',  // ✅ Add job parameter
           {
             state: {
               taskQueue: taskQueue.getAll(),
@@ -346,6 +347,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
         await state.deps.session.updateArtifacts(
           state.context.project,
           state.context.featureFolder,
+          'design',  // ✅ Add job parameter
           {
             state: {
               taskQueue: taskQueue.getAll(),

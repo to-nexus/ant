@@ -139,12 +139,20 @@ const ACTOR_MAPPINGS: Record<string, { actors: string[]; description?: string }>
     description: 'Create design plan'
   },
   'architect:design:execute': {
-    actors: [COMMON_ACTORS.llm.id, COMMON_ACTORS.fileSystem.id],
+    actors: [COMMON_ACTORS.llm.id],
     description: 'Generate design document'
+  },
+  'architect:design:writeFiles': {
+    actors: [COMMON_ACTORS.fileSystem.id],
+    description: 'Write design document to file'
+  },
+  'architect:design:checkTaskStatus': {
+    actors: [],
+    description: 'Check task completion and route to next'
   },
   'architect:design:learn': {
     actors: [COMMON_ACTORS.embedding.id, COMMON_ACTORS.localStorage.id],
-    description: 'Store learnings'
+    description: 'Store learnings and finalize'
   },
   
   // Architect Learn

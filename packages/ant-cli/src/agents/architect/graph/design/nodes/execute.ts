@@ -3,6 +3,37 @@ import { LLMClient } from "../../../../../core/ports";
 import { PromptEngine } from "../../../../../core/prompt/engine";
 
 /**
+ * Merge incremental design changes into existing document
+ * 
+ * Strategy: Section-level merging
+ * - Parse both documents into sections (by markdown headers)
+ * - For each section in the incremental update:
+ *   - If it's marked as (UPDATED) or (NEW), replace/append in the existing doc
+ *   - Otherwise, append as new content
+ * - Preserve all existing sections that weren't updated
+ */
+function mergeDesignDocuments(existingDoc: string, incrementalChanges: string): string {
+  // Simple but effective approach:
+  // 1. Keep the entire existing document
+  // 2. Append incremental changes with a clear separator
+  // 3. Let the user manually consolidate if needed, or improve this logic later
+  
+  // Check if incrementalChanges looks like a full document (starts with # and has multiple major sections)
+  const hasMultipleMajorSections = (incrementalChanges.match(/^#\s+/gm) || []).length >= 2;
+  
+  if (hasMultipleMajorSections && incrementalChanges.length > existingDoc.length * 0.8) {
+    // LLM returned what looks like a full document (disobeyed instructions)
+    // Use it as-is but warn
+    console.warn('⚠️  Warning: LLM returned a full document instead of incremental changes. Using new version.');
+    return incrementalChanges;
+  }
+  
+  // Incremental update: append with separator
+  const separator = '\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n';
+  return existingDoc.trimEnd() + separator + incrementalChanges.trimStart();
+}
+
+/**
  * Execute Node
  * Generate design document based on plan
  */
@@ -75,9 +106,16 @@ export async function execute(state: DesignGraphState) {
   }
   
   // ✅ Merge with previous designMarkdown if this is a continuation task
-  // For first task: use as-is
-  // For subsequent tasks: LLM should return the full updated document
-  const finalDesignMarkdown = designMarkdown;
+  let finalDesignMarkdown: string;
+  
+  if (isFirstTask) {
+    // First task: use LLM response as-is (full document)
+    finalDesignMarkdown = designMarkdown;
+  } else {
+    // Continuation task: LLM returns only changes, merge with existing
+    console.log('\n🔀 Merging incremental changes with existing document...\n');
+    finalDesignMarkdown = mergeDesignDocuments(state.designMarkdown!, designMarkdown);
+  }
 
   // ✅ Mark current task as completed
   let completedTasks = state.completedTasks || [];

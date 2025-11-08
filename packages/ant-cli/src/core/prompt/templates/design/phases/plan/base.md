@@ -1,81 +1,59 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PHASE 1: DESIGN STRATEGY (메타적 전략 문서)
+PHASE 1: DESIGN STRATEGY (CONCISE 전략 가이드)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 PROJECT: {{project}}
 
 {{#if currentTask}}
-🎯 CURRENT TASK:
-**Task Name**: {{currentTask.name}}
-**Description**: {{currentTask.description}}
+🎯 CURRENT TASK: {{currentTask.name}}
+{{currentTask.description}}
 {{/if}}
 
-⚠️  CRITICAL INSTRUCTIONS FOR THIS PHASE:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️  CRITICAL LENGTH RESTRICTION
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-🚫 DO NOT WRITE THE SYSTEM DESIGN DOCUMENT IN THIS PHASE!
+🚨 MAXIMUM OUTPUT: 30-40 LINES (strict limit)
+🚨 This is NOT the system design document - just a STRATEGY guide!
 
-This is the STRATEGY phase. You will create a META-LEVEL design strategy document that guides the next phase.
+Your job is to create a BRIEF, ACTIONABLE strategy that will guide the EXECUTE phase.
+Think of this as "design planning notes" - not detailed documentation.
 
-✅ You will:
-- Analyze requirements and constraints
-- Identify key design challenges and priorities
-- Define architectural approach and principles
-- List critical decisions that need to be made
-- Outline document structure and focus areas
-- Specify what to emphasize and what to omit
+✅ DO (keep each section 2-3 bullet points MAX):
+- Identify 2-3 key requirements (NOT all of them)
+- List 1-2 main technical challenges
+- Define high-level approach (1-2 sentences)
+- Note critical decisions needed (2-3 items)
 
-🚫 You will NOT:
-❌ Write detailed architecture diagrams
-❌ Create complete data models
-❌ Write full API specifications
-❌ Generate comprehensive technical content
-❌ Write the actual system design document
-
-The actual system design document will be generated in the NEXT phase (EXECUTE).
-This phase is about STRATEGY, not EXECUTION.
+❌ DON'T (these belong in EXECUTE phase):
+- Write detailed explanations
+- Create specifications
+- Repeat task breakdown (already done)
+- Add extra sections beyond the 4 required
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-## YOUR TASK: CREATE A DESIGN STRATEGY DOCUMENT
+## REQUIRED FORMAT (STRICT - stay within 30-40 lines total):
 
-Generate a CONCISE strategy document (50-100 lines) that serves as a guide for writing the system design.
+# Design Strategy: {{currentTask.name}}
 
-### Format:
+## 1. Key Requirements (2-3 items only)
+- [Requirement 1]
+- [Requirement 2]
 
-# Design Strategy for {{project}}
+## 2. Technical Challenges (1-2 items only)
+- [Challenge]: [1-line approach]
 
-## 1. Requirements Analysis
-- Key functional requirements (top 3-5)
-- Critical non-functional requirements (performance, security, scalability)
-- Constraints and limitations
+## 3. Architectural Approach (3-5 lines max)
+- Style: [architecture type]
+- Principles: [1-2 key principles]
+- Stack: [brief tech stack]
 
-## 2. Design Challenges & Priorities
-- Main technical challenges to address
-- Priority order (what's most critical?)
-- Risk areas that need special attention
-
-## 3. Architectural Approach
-- High-level architectural style (e.g., monolith, microservices, event-driven)
-- Key principles to follow (e.g., separation of concerns, modularity)
-- Technology strategy (language, frameworks, infrastructure)
-
-## 4. Critical Design Decisions
-- What needs to be decided? (e.g., database choice, API style, auth method)
-- Decision criteria for each
-- Recommended direction (with brief rationale)
-
-## 5. Document Structure Plan
-- Main sections to include in the system design
-- What to emphasize (detailed vs. high-level)
-- What to omit or keep minimal
-
-## 6. Execution Guidance
-- What should the execute phase focus on?
-- Any special instructions or considerations?
-- Output format and structure preferences
+## 4. Execute Phase Focus (2-3 priorities)
+- [Priority 1]
+- [Priority 2]
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Remember: This is a STRATEGY document, not the system design itself.
-Keep it SHORT, FOCUSED, and ACTIONABLE for the next phase.
+STOP IMMEDIATELY after section 4. Do NOT add extra sections.
+BE EXTREMELY CONCISE - every word must add value.

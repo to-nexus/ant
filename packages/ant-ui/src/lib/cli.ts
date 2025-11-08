@@ -87,6 +87,31 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
   })
     .then((response) => {
       console.log('[cli.ts] executeJob response:', response);
+      
+      // ✅ Check for prerequisites validation failure
+      if (response.error && response.missingMaterials) {
+        console.error('[cli.ts] Prerequisites validation failed:', response.error);
+        
+        // Format error message for display
+        const materialsList = response.missingMaterials
+          .map((m: any) => `  • ${m.name}: ${m.description}`)
+          .join('\n');
+        
+        const errorMessage = `Cannot start ${task} job. The following required materials are missing:\n\n${materialsList}\n\nAll of these materials must be provided before starting the job.`;
+        
+        // Show error to user
+        alert(errorMessage);
+        
+        // Notify exit listener
+        if (exitListener) {
+          exitListener(1, null);
+        }
+        
+        // Reset running state
+        store.setRunning(false);
+        return;
+      }
+      
       jobId = response.jobId;
       jobExecution.jobId = jobId;
       

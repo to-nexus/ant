@@ -34,6 +34,13 @@ export interface JobResult {
   success: boolean;
   message?: string;
   data?: any;
+  error?: string;  // ✅ Error message (e.g., prerequisites validation failure)
+  missingMaterials?: Array<{  // ✅ Details about missing prerequisites
+    name: string;
+    path: string;
+    description: string;
+    mustHaveContent: boolean;
+  }>;
 }
 
 export interface Feature {
