@@ -16,3 +16,13 @@
     display: none;
   }
 }
+
+/* Wave animation for in-progress tasks - continuous flow */
+@keyframes wave-slide-continuous {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
