@@ -231,6 +231,9 @@ export function buildCodeGraph() {
       // Real-time Kanban tracking
       _httpTaskId: null as any,  // ✅ HTTP task ID for live updates
       
+      // ✅ Error repetition tracking
+      _errorIsRepeating: null as any,  // Flag to indicate if errors are repeating
+      
       // Recursion tracking
       recursionCount: null as any,  // ✅ Current iteration count
       recursionLimit: null as any,  // ✅ Maximum allowed iterations
@@ -289,13 +292,8 @@ export function buildCodeGraph() {
       const hasViolations = (s.violations && s.violations.length > 0);
       
       if (!hasViolations) {
-        // Task succeeded - check if more tasks exist
-        if (s.taskQueue && !s.taskQueue.isEmpty()) {
-          return "plan";  // ← Next task
-        } else {
-          console.log(`\n✅ All tasks completed!`);
-          return "learn";  // ← All done
-        }
+        // ✅ Task succeeded - ALWAYS go to learn for incremental learning
+        return "learn";
       }
       
       // Has violations - check if we should retry
@@ -308,15 +306,28 @@ export function buildCodeGraph() {
       console.log(`   Plan node will create error task and move to next task\n`);
       return "enforce";  // ← Let plan handle retry limit logic
     }) as any,
-    { enforce: "enforce", learn: "learn", plan: "plan" } as any
+    { enforce: "enforce", learn: "learn" } as any
   );
 
   // ✅ KEY CHANGE: Enforce → Plan (not Execute)
   // This allows the agent to re-analyze the problem and create a better strategy
   graph.addEdge("enforce" as any, "plan" as any);
   
-  // ✅ Learn is final node
-  graph.addEdge("learn" as any, "__end__" as any);
+  // ✅ NEW: Learn node routing - continue to next task or end
+  graph.addConditionalEdges(
+    "learn" as any,
+    ((s: ArchitectGraphState) => {
+      // Check if more tasks exist in queue
+      if (s.taskQueue && !s.taskQueue.isEmpty()) {
+        console.log(`\n📋 [Learn] More tasks in queue (${s.taskQueue.size()} remaining) → continuing to plan\n`);
+        return "plan";  // ← Next task
+      } else {
+        console.log(`\n✅ [Learn] All tasks completed! Workflow finished.\n`);
+        return "__end__";  // ← All done
+      }
+    }) as any,
+    { plan: "plan", __end__: "__end__" } as any
+  );
   
   // Note: Using manual checkpoint saves instead of LangGraph's built-in checkpointer
   // because it requires thread_id management which complicates the API

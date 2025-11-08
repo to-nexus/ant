@@ -31,6 +31,13 @@ interface ParseResult {
   responseSection: string | null;
   files: GeneratedFile[];
   filesToDelete: string[];
+  commands: Command[];  // ✅ New: Parsed shell commands
+}
+
+interface Command {
+  command: string;
+  cwd?: string;  // Optional working directory
+  description?: string;  // Optional description from LLM
 }
 
 interface FileParser {
@@ -102,6 +109,41 @@ const DELETE_PARSERS: DeleteParser[] = [
     name: 'XML Format',
     regex: /<delete path="([^"]+)"\s*\/>/g,
     extractPath: (m) => m[1].trim(),
+  },
+];
+
+// ✅ Command format parsers
+const COMMAND_PARSERS = [
+  {
+    name: 'Bash Code Block',
+    // Matches: ```bash ... ``` or ```sh ... ```
+    regex: /```(?:bash|sh)\n([\s\S]*?)\n```/g,
+    extractCommands: (match: RegExpExecArray) => {
+      const commandBlock = match[1].trim();
+      // Split by newlines and filter out comments and empty lines
+      return commandBlock
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line && !line.startsWith('#'))
+        .map(cmd => ({ command: cmd }));
+    },
+  },
+  {
+    name: 'Structured Command Format',
+    // Matches: === COMMAND: description === ... === END COMMAND ===
+    regex: /=== COMMAND:?\s*(.*?)\s*===\n([\s\S]*?)\n=== END COMMAND ===/g,
+    extractCommands: (match: RegExpExecArray) => {
+      const description = match[1].trim() || undefined;
+      const commandBlock = match[2].trim();
+      return commandBlock
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line && !line.startsWith('#'))
+        .map(cmd => ({ 
+          command: cmd,
+          description: description 
+        }));
+    },
   },
 ];
 
@@ -198,6 +240,24 @@ function parseDeletes(content: string): string[] {
   return deletePaths;
 }
 
+/**
+ * ✅ Parses shell commands using all registered command parsers
+ */
+function parseCommands(content: string): Command[] {
+  const commands: Command[] = [];
+  
+  for (const parser of COMMAND_PARSERS) {
+    let match: RegExpExecArray | null;
+    
+    while ((match = parser.regex.exec(content)) !== null) {
+      const parsedCommands = parser.extractCommands(match);
+      commands.push(...parsedCommands);
+    }
+  }
+  
+  return commands;
+}
+
 // ============================================================================
 // Main Export
 // ============================================================================
@@ -228,11 +288,15 @@ export function parseResponse(raw: string): ParseResult {
   // 4. Parse all delete directives
   const filesToDelete = parseDeletes(content);
   
-  // 5. Return structured result
+  // 5. ✅ Parse shell commands
+  const commands = parseCommands(content);
+  
+  // 6. Return structured result
   return {
     responseSection,
     files: Array.from(fileMap.values()),
     filesToDelete,
+    commands,  // ✅ New: Include parsed commands
   };
 }
 

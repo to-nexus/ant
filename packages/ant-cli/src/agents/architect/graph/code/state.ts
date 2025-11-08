@@ -22,6 +22,7 @@ export interface Violation {
   isRetryable?: boolean;         // 재시도로 해결 가능한지
   module?: string;               // 관련 모듈 (missing_dependency인 경우)
   errorCode?: string;            // 에러 코드 (있으면)
+  metadata?: any;                // ✅ 추가 메타데이터 (에러 통계 등)
 }
 
 /**
@@ -299,6 +300,9 @@ export interface ArchitectGraphState extends TaskArtifacts {
   
   // ✅ Real-time Kanban tracking (internal, not persisted)
   _httpTaskId?: string;  // HTTP task ID for live updates
+  
+  // ✅ Error repetition tracking (internal)
+  _errorIsRepeating?: boolean;  // Flag to indicate if errors are repeating
   
   // ✅ Recursion tracking
   recursionCount?: number;  // Current iteration count
