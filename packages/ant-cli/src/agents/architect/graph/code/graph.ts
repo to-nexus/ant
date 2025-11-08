@@ -8,6 +8,19 @@ import { saveCheckpoint } from "./nodes/checkpoint";
  * This MUST be a node (not a router) because it mutates state.
  */
 async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<ArchitectGraphState>> {
+  // ✅ Workflow instrumentation: Enter node
+  // ✅ CRITICAL: await to ensure workflow SSE is sent before continuing
+  if (state.deps?.workflowUpdate && state._httpTaskId) {
+    const taskInfo = state.currentTask ? {
+      id: state.currentTask.id,
+      name: state.currentTask.name,
+      type: state.currentTask.type,
+      description: state.currentTask.description,
+      priority: state.currentTask.priority
+    } : undefined;
+    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'checkTaskStatus', taskInfo);
+  }
+  
   const hasViolations = (state.violations && state.violations.length > 0);
   
   if (!hasViolations && state.currentTask) {
@@ -101,19 +114,25 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
     // ✅ CRITICAL: Save checkpoint with updated completedTasksDetails
     await saveCheckpoint(updatedState);
     
-    // ✅ Update live snapshot via injected port (Hexagonal Architecture compliant)
-    if (state.deps?.kanbanUpdate && state._httpTaskId) {
-      const queueTasks = updatedState.taskQueue?.getAll() || [];
+    // ✅ CRITICAL: Update Kanban to next task AFTER checkTaskStatus SSE sent
+    // This ensures frontend sees checkTaskStatus animation before Kanban switches
+    if (state.deps?.kanbanUpdate && state._httpTaskId && updatedState.taskQueue) {
+      const allTasks = updatedState.taskQueue.getAll();
+      const nextTask = updatedState.taskQueue.peek(); // ✅ Use peek() for correct next task
       
-      console.log(`\n🔥 [checkTaskStatus] Updating live Kanban after task completion`);
-      console.log(`   Completed task: ${completedTask.name}`);
-      console.log(`   Total completed: ${completedTasksDetails.length}`);
-      console.log(`   Queue remaining: ${queueTasks.length}\n`);
+      // ✅ CRITICAL: Remove nextTask from queue display (it's now in progress)
+      const remainingQueue = nextTask ? allTasks.filter((t: Task) => t.id !== nextTask.id) : allTasks;
+      
+      console.log(`\n🔥 [checkTaskStatus] Updating Kanban → next task`);
+      console.log(`   Completed: ${completedTask.name}`);
+      console.log(`   Next: ${nextTask?.name || 'none (learn)'}`);
+      console.log(`   Remaining in queue: ${remainingQueue.length}`);
+      console.log(`   Total completed: ${completedTasksDetails.length}\n`);
       
       state.deps.kanbanUpdate.updateTaskQueue(
         state._httpTaskId,
-        undefined,  // currentTask is now undefined (just completed)
-        queueTasks,
+        nextTask || null,  // ✅ Show next task as in-progress
+        remainingQueue,    // ✅ Exclude nextTask from queue
         completedTasksDetails,
         state.recursionCount,
         state.recursionLimit
