@@ -86,6 +86,18 @@ KEY WORKING PRINCIPLES:
 2. {{modificationMode}}
 3. Write COMPLETE files - NEVER use "// ..." to skip code
 
+⚡ AGENT CAPABILITIES - YOU CAN EXECUTE TERMINAL COMMANDS:
+- You have access to terminal command execution
+- You CAN run: npm install, npm run build, npx prisma generate, etc.
+- You CAN fix environment issues by running appropriate commands
+- Examples of fixable issues:
+  ✅ Corrupted dependencies → Run: rm -rf node_modules package-lock.json && npm install
+  ✅ Missing Prisma client → Run: npx prisma generate
+  ✅ Outdated lockfile → Run: npm install
+  ✅ Build cache issues → Run: npm cache clean --force && npm install
+- Do NOT hesitate to execute commands if they solve the problem
+- After executing fix commands, continue with your task
+
 ⚠️  CRITICAL: EXISTING FILES IN WORKING DIRECTORY
 {{#if currentCode}}
 The following files ALREADY EXIST in the working directory:
@@ -211,7 +223,11 @@ Step 4: FILE PATH RULES - CRITICAL
 
 **CRITICAL: File paths must be relative to the TARGET REPOSITORY ROOT, NOT the workspace directory!**
 
-The system writes files to the TARGET REPOSITORY configured in config.json (e.g., /Users/probe/dev/test-app).
+The system writes files to the TARGET REPOSITORY configured in config.json.
+{{#if projectPath}}
+Your current project path: `{{projectPath}}`
+{{/if}}
+
 You must provide paths relative to THAT repository, NOT relative to the workspace folder structure.
 
 ✅ CORRECT - Repository-relative paths:
@@ -240,7 +256,7 @@ export default defineConfig({ ... });
 ...
 === END FILE ===
 
-=== FILE: /Users/probe/dev/test-app/src/Header.tsx ===  ← WRONG! Don't use absolute paths!
+=== FILE: /absolute/path/to/src/Header.tsx ===  ← WRONG! Don't use absolute paths!
 ...
 === END FILE ===
 ```
@@ -248,9 +264,21 @@ export default defineConfig({ ... });
 **Rules:**
 1. **ALWAYS use paths relative to the target repository root**
 2. **NEVER include "workspace/" prefix in file paths**
-3. **NEVER use absolute paths** (e.g., /Users/probe/...)
+3. **NEVER use absolute paths** (e.g., /Users/username/...)
 4. Examples: `package.json`, `src/App.tsx`, `public/index.html`
 5. The file writer handles the actual disk location automatically
+
+**For bash commands** (if needed for environment fixes):
+{{#if projectPath}}
+- Use the actual project path: `{{projectPath}}`
+- Example:
+```bash
+cd {{projectPath}}
+npm install
+```
+{{else}}
+- Commands will execute in the project directory automatically
+{{/if}}
 
 Step 5: OUTPUT FORMAT - CRITICAL RULES
 

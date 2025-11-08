@@ -428,11 +428,93 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
                 
                 // Check for ENVIRONMENT layer errors
                 if (diagnosis.layer === ErrorLayer.ENVIRONMENT) {
-                  console.error('🚨 ENVIRONMENT ISSUE DETECTED - User intervention required!');
+                  console.error('🚨 ENVIRONMENT ISSUE DETECTED!');
                   console.error(`   ${diagnosis.message}`);
                   console.error('   Root cause:', diagnosis.rootCause);
                   diagnosis.suggestedActions.forEach(action => console.error(`   • ${action}`));
                   
+                  // ✅ Check if this is a corrupted dependency issue (auto-fixable)
+                  const isCorruptedDependency = diagnosis.message.toLowerCase().includes('corrupted') ||
+                                                 diagnosis.message.toLowerCase().includes('rollup') ||
+                                                 diagnosis.type === 'environment_issue';
+                  
+                  if (isCorruptedDependency && diagnosis.canLLMFix) {
+                    console.log('\n⚡ ATTEMPTING AUTO-FIX: Clean dependency reinstall...');
+                    
+                    try {
+                      const pm = await commandPort.detectPackageManager(resolvedPath);
+                      
+                      // Step 1: Remove corrupted files
+                      console.log('🗑️  Removing node_modules and lock file...');
+                      const rmResult = await commandPort.execute(
+                        'rm -rf node_modules package-lock.json yarn.lock pnpm-lock.yaml',
+                        { cwd: resolvedPath, timeout: 30000 }
+                      );
+                      if (!rmResult.success) {
+                        console.error('   ❌ Failed to remove files:', rmResult.stderr);
+                        throw new Error('Failed to remove corrupted files');
+                      }
+                      console.log('   ✅ Removed successfully');
+                      
+                      // Step 2: Clear cache
+                      console.log('🧹 Clearing package manager cache...');
+                      const clearCmd = pm === 'npm' ? 'npm cache clean --force' :
+                                      pm === 'yarn' ? 'yarn cache clean' :
+                                      'pnpm store prune';
+                      const cacheResult = await commandPort.execute(clearCmd, { 
+                        cwd: resolvedPath, 
+                        timeout: 60000 
+                      });
+                      if (!cacheResult.success) {
+                        console.warn('   ⚠️  Cache clear failed (non-critical):', cacheResult.stderr);
+                      } else {
+                        console.log('   ✅ Cache cleared');
+                      }
+                      
+                      // Step 3: Reinstall dependencies
+                      console.log('📦 Reinstalling dependencies (this may take 1-2 minutes)...');
+                      const installResult = await commandPort.execute(`${pm} install`, { 
+                        cwd: resolvedPath, 
+                        timeout: 5 * 60 * 1000  // 5 minutes timeout
+                      });
+                      if (!installResult.success) {
+                        console.error('   ❌ Installation failed:', installResult.stderr);
+                        throw new Error('Failed to reinstall dependencies');
+                      }
+                      console.log('   ✅ Dependencies reinstalled successfully\n');
+                      
+                      // Step 4: Retry build
+                      console.log('🔨 Retrying build after dependency fix...');
+                      const retryResult = await commandPort.execute(`${pm} run build`, {
+                        cwd: resolvedPath,
+                        timeout: 5 * 60 * 1000,
+                      });
+                      
+                      if (retryResult.success) {
+                        console.log('✅ BUILD SUCCEEDED after auto-fix!\n');
+                        // Continue with normal flow (build passed)
+                        result.passed = true;
+                        result.buildErrors = [];  // Clear build errors
+                        // Return early with successful state
+                        return {
+                          ...state,
+                          violations: [],
+                          runtimeValidationResult: result,
+                        };
+                      } else {
+                        console.error('❌ Build still failing after dependency fix');
+                        console.error('   This may be a code error, not an environment issue');
+                        // Fall through to add violation
+                      }
+                    } catch (autoFixError) {
+                      console.error('❌ Auto-fix failed:', autoFixError instanceof Error ? autoFixError.message : autoFixError);
+                      console.error('   User intervention may be required\n');
+                      // Fall through to add violation
+                    }
+                  }
+                  
+                  // If auto-fix failed or not applicable, add violation
+                  console.error('⚠️  Adding violation for manual resolution\n');
                   const violations = state.violations || [];
                   violations.push({
                     type: diagnosis.type as any,
@@ -643,27 +725,64 @@ function convertDiagnosesToViolations(result: RuntimeValidationResult): Violatio
   if (result.typeErrors && result.typeErrors.length > 0) {
     const uncoveredTypeErrors = result.typeErrors.filter(e => !diagnosedMessages.has(e));
     if (uncoveredTypeErrors.length > 0) {
-      // ✅ Extract file names from TypeScript errors
-      const filesWithErrors = new Set<string>();
+      // ✅ Group errors by file for better context
+      const errorsByFile = new Map<string, string[]>();
+      const errorsWithoutFile: string[] = [];
+      
       uncoveredTypeErrors.forEach(error => {
         // Parse: "src/path/file.ts(line,col): error TS1234: message"
         const fileMatch = error.match(/^(.+?)\(\d+,\d+\):/);
         if (fileMatch) {
-          filesWithErrors.add(fileMatch[1]);
+          const file = fileMatch[1];
+          if (!errorsByFile.has(file)) {
+            errorsByFile.set(file, []);
+          }
+          errorsByFile.get(file)!.push(error);
+        } else {
+          errorsWithoutFile.push(error);
         }
       });
       
-      const filesList = Array.from(filesWithErrors).join(', ');
-      const filesContext = filesList ? `\n\n🎯 Files requiring fixes: ${filesList}` : '';
-      
-      violations.push({
-        type: 'type_error',
-        severity: 'major',
-        message: `TypeScript type errors (${uncoveredTypeErrors.length} total):\n${uncoveredTypeErrors.slice(0, 5).join('\n')}${uncoveredTypeErrors.length > 5 ? `\n... and ${uncoveredTypeErrors.length - 5} more` : ''}${filesContext}`,
-        file: filesWithErrors.size === 1 ? Array.from(filesWithErrors)[0] : undefined,
-        suggestedFix: `Fix type errors in: ${filesList || 'code'}`,
-        isRetryable: true
+      // ✅ Create separate violation for each file (better for LLM to focus)
+      errorsByFile.forEach((errors, file) => {
+        // ✅ Extract unique error codes for this file
+        const errorCodes = new Set<string>();
+        errors.forEach(error => {
+          const codeMatch = error.match(/error (TS\d+):/);
+          if (codeMatch) {
+            errorCodes.add(codeMatch[1]);
+          }
+        });
+        
+        const codesInfo = errorCodes.size > 0 
+          ? ` [${Array.from(errorCodes).join(', ')}]` 
+          : '';
+        
+        violations.push({
+          type: 'type_error',
+          severity: 'major',
+          file, // ⭐ Specific file for LLM to target
+          message: `TypeScript errors in ${file}${codesInfo}:\n\n${errors.join('\n')}`,
+          suggestedFix: `Fix TypeScript errors in ${file}`,
+          isRetryable: true,
+          // ✅ Add metadata for potential future use
+          metadata: {
+            errorCount: errors.length,
+            errorCodes: Array.from(errorCodes)
+          }
+        });
       });
+      
+      // ✅ If there are errors without file info, group them separately
+      if (errorsWithoutFile.length > 0) {
+        violations.push({
+          type: 'type_error',
+          severity: 'major',
+          message: `TypeScript errors (general):\n\n${errorsWithoutFile.join('\n')}`,
+          suggestedFix: 'Fix TypeScript errors',
+          isRetryable: true
+        });
+      }
     }
   }
   

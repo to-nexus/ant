@@ -1,26 +1,3 @@
 # Code Directive
 
-## Objective
-Implement the CoinWatcher application as specified in the system design document.
-
-## Key Requirements
-1. **Complete Implementation**: Build all features described in the PRD and design document
-2. **Component Structure**: Follow the component architecture defined in the design document
-3. **API Integration**: Implement CoinGecko API integration with proper error handling
-4. **Auto-refresh**: Implement 10-second auto-refresh functionality
-5. **Responsive Design**: Ensure the UI works well on different screen sizes
-
-## Implementation Guidelines
-- Use React 18 with TypeScript
-- Follow the component hierarchy from the design document
-- Implement all custom hooks (useCoinList, useCoinSearch, useAutoRefresh)
-- Use TailwindCSS for styling
-- Ensure proper error handling and loading states
-- Add meaningful console logs for debugging
-
-## Success Criteria
-- All features from the PRD are working
-- UI matches the design specifications
-- API calls are efficient and properly handled
-- No TypeScript errors
-- Code is clean and well-structured
+현재 시스템디자인의 목표 피처들의 구현은 완료되었지만 빌드에러가 나고 있다. 피쳐 구현은 더 이상 하지말고 빌드가 성공해서 완료될 수 있도록 하는 것에만 초점을 맞춰라. 추가 개발은 절대 하지마라.

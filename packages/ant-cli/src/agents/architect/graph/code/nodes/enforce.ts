@@ -46,6 +46,37 @@ function areViolationsRetryable(violations: Violation[]): boolean {
   return violations.every(v => v.isRetryable === true);
 }
 
+/**
+ * Generate error fingerprint for detecting repeated errors
+ */
+function generateErrorFingerprint(violations: Violation[]): string {
+  return violations
+    .map(v => {
+      const fileInfo = v.file ? `:${v.file}` : '';
+      const msgSnippet = v.message.substring(0, 80).replace(/\n/g, ' ');
+      return `${v.type}${fileInfo}:${msgSnippet}`;
+    })
+    .sort()
+    .join('|');
+}
+
+/**
+ * Check if errors are repeating from previous attempt
+ */
+function areErrorsRepeating(
+  currentViolations: Violation[], 
+  previousViolations?: Violation[]
+): boolean {
+  if (!previousViolations || previousViolations.length === 0) {
+    return false;
+  }
+  
+  const currentFingerprint = generateErrorFingerprint(currentViolations);
+  const previousFingerprint = generateErrorFingerprint(previousViolations);
+  
+  return currentFingerprint === previousFingerprint;
+}
+
 export async function enforce(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   // ✅ Workflow instrumentation: Enter node
   if (state.deps?.workflowUpdate && state._httpTaskId) {
@@ -64,8 +95,40 @@ export async function enforce(state: ArchitectGraphState): Promise<ArchitectGrap
   console.log(`\n⚠️  ENFORCEMENT triggered (retry ${state.retries + 1}/${state.maxRetries})\n`);
   console.log(`   Violations: ${violations.length}`);
   
+  // ✅ Check for repeated errors
+  const isRepeating = areErrorsRepeating(violations, state.lastViolations);
+  
+  if (isRepeating) {
+    console.warn('🚨 REPEATED ERRORS DETECTED - Same errors as previous attempt!\n');
+    console.warn('   This suggests the LLM is stuck or misunderstanding the problem.\n');
+    console.warn('   Escalating context for next retry...\n');
+  }
+  
   // Format violations for LLM
-  const formattedViolations = formatViolations(violations);
+  let formattedViolations = formatViolations(violations);
+  
+  // ✅ Add escalation notice if errors are repeating
+  if (isRepeating && state.retries > 0) {
+    formattedViolations = `
+⚠️⚠️⚠️ CRITICAL: REPEATED ERRORS DETECTED ⚠️⚠️⚠️
+
+You have seen these EXACT SAME ERRORS before and your previous fix DID NOT WORK.
+This means your previous approach was WRONG.
+
+🔴 YOU MUST:
+1. **STOP and READ** the error messages MORE CAREFULLY
+2. **THINK DIFFERENTLY** - your previous approach failed
+3. **CHECK YOUR ASSUMPTIONS** - you may have misunderstood the problem
+4. **BE MORE PRECISE** - follow the error message LITERALLY
+
+For example:
+- If error says "Property 'X' does not exist on type 'Y'" → Add property 'X' to type 'Y'
+- If error says "Variable 'Z' is declared but never read" → Remove variable 'Z'
+- DO NOT try to fix something else - fix EXACTLY what the error says
+
+${formattedViolations}
+`;
+  }
   
   console.log(`\n📋 Violation Summary:\n${formattedViolations}\n`);
   
@@ -100,7 +163,8 @@ export async function enforce(state: ArchitectGraphState): Promise<ArchitectGrap
     enforcementReason: formattedViolations,
     retries: state.retries + 1,
     lastViolations: violations,
-    enforcementHistory
+    enforcementHistory,
+    _errorIsRepeating: isRepeating // ⭐ Flag for execute node to use
   };
 }
 

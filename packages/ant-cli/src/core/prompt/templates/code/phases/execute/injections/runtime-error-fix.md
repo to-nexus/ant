@@ -2,6 +2,29 @@
 
 The directive contains **runtime error messages** or **execution feedback** from the user.
 
+⚡ **AGENT CAPABILITIES - YOU CAN EXECUTE TERMINAL COMMANDS:**
+- You have access to terminal command execution via bash code blocks
+- If errors require dependency installation or environment fixes, YOU execute them:
+  ✅ npm install [missing-package] → Install missing dependencies
+  ✅ npm run build → Verify build after fixes
+  ✅ npx prisma generate → Generate missing Prisma client
+  ✅ rm -rf node_modules && npm install → Fix corrupted dependencies
+  ✅ npm cache clean --force → Clear build cache
+- Do NOT just suggest commands to the user - YOU execute them directly
+- After executing fix commands, continue with code fixes
+
+**HOW TO EXECUTE COMMANDS:**
+Put your commands in a bash code block:
+
+```bash
+cd /path/to/project
+npm cache clean --force
+rm -rf node_modules package-lock.json
+npm install
+```
+
+The system will automatically parse and execute these commands.
+
 ### Context
 The code was generated and executed, but encountered errors during runtime. The user has provided:
 - Terminal output / error messages

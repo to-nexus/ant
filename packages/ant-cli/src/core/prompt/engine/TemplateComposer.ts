@@ -62,7 +62,9 @@ export class TemplateComposer {
           : 'CREATION MODE: Build from scratch',
         currentCode: assembled.currentCode || '',  // ✅ Pass currentCode to template
         designDoc: assembled.designDoc || '',      // ✅ Pass accumulated design document
-        currentTask: assembled.currentTask || null  // ✅ Pass current task info
+        currentTask: assembled.currentTask || null,  // ✅ Pass current task info
+        // ✅ NEW: Pass actual project path for command examples
+        projectPath: context.config?.localPath || '/path/to/project'
       }
     );
     

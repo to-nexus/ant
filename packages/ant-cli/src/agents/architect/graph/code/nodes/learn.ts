@@ -4,11 +4,14 @@ import { SessionTurn } from "../../../../../core/types";
 import { errorStatsCollector, formatStatistics } from "./diagnostics/errorStats";
 
 /**
- * Learn node - Learning artifacts finalization:
- * 1. Generate quality evaluation report (if enabled)
- * 2. Extract learnings from execution
- * 3. Store learnings to vector DB (for future retrieval)
- * 4. Save turn to session file (for context continuity)
+ * Learn node - Incremental learning after each task completion:
+ * 1. Extract learnings from completed task
+ * 2. Store learnings to vector DB (ASYNC - non-blocking)
+ * 3. Save turn to session file (for context continuity)
+ * 4. Route to next task or end
+ * 
+ * ✅ NEW: Called after EVERY task completion (not just at the end)
+ * ✅ NEW: Async learning - doesn't block workflow progression
  * 
  * NOTE: File saving happens in writeFiles node (before validation)
  * This node focuses purely on learning/metadata artifacts.
@@ -176,46 +179,58 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     }
   }
   
-  // 4. Chunk and store learnings to memory with session tracking
+  // 4. 🚀 ASYNC learning - Store to vector DB without blocking workflow
+  // This allows the agent to move to the next task immediately while learning happens in background
   if (state.deps?.memory && state.deps?.chunk) {
-    try {
-      // Process through chunking pipeline (via ChunkPort)
-      const result = await state.deps.chunk.process({
-        source: 'code-learning',
-        sourceType: 'text',
-        content: learnings,
-        metadata: {
-          type: 'learning',
-          task: 'code',
-          project: state.context.project,
-          feature: state.context.featureFolder || 'default',
-          timestamp: new Date().toISOString(),
-          // 🔗 Session tracking for traceability
-          sessionId: sessionId,
-          turnId: turnId
+    // ✅ Fire-and-forget: Don't await, let it run in background
+    (async () => {
+      try {
+        console.log(`\n🎓 [Async Learning] Starting background learning for task: ${state.currentTask?.name || 'unknown'}`);
+        
+        // Process through chunking pipeline (via ChunkPort)
+        const result = await state.deps!.chunk!.process({
+          source: 'code-learning',
+          sourceType: 'text',
+          content: learnings,
+          metadata: {
+            type: 'learning',
+            task: 'code',
+            project: state.context.project,
+            feature: state.context.featureFolder || 'default',
+            timestamp: new Date().toISOString(),
+            taskName: state.currentTask?.name,
+            // 🔗 Session tracking for traceability
+            sessionId: sessionId,
+            turnId: turnId
+          }
+        });
+        
+        console.log(`📚 [Async Learning] Chunked into ${result.chunks.length} pieces (avg ${result.stats.avgTokens} tokens)`);
+        
+        // ✅ BATCH STORE: Convert all chunks to documents and store in ONE call
+        const documents = result.chunks.map(chunk => ({
+          content: chunk.text,
+          metadata: chunk.metadata
+        }));
+        
+        // Single batch store operation (reduces HTTP overhead and memory pressure)
+        await state.deps!.memory!.store(documents, state.context.project);
+        
+        console.log(`✅ [Async Learning] ${result.chunks.length} learning chunks stored to memory (batch)`);
+        if (sessionId && turnId) {
+          console.log(`🔗 [Async Learning] Linked to session: ${sessionId}, turn: ${turnId}`);
         }
-      });
-      
-      console.log(`📚 Chunked into ${result.chunks.length} pieces (avg ${result.stats.avgTokens} tokens)`);
-      
-      // ✅ BATCH STORE: Convert all chunks to documents and store in ONE call
-      const documents = result.chunks.map(chunk => ({
-        content: chunk.text,
-        metadata: chunk.metadata
-      }));
-      
-      // Single batch store operation (reduces HTTP overhead and memory pressure)
-      await state.deps.memory.store(documents, state.context.project);
-      
-      console.log(`✅ ${result.chunks.length} learning chunks stored to memory (batch)`);
-      if (sessionId && turnId) {
-        console.log(`🔗 Linked to session: ${sessionId}, turn: ${turnId}`);
+      } catch (error) {
+        // Non-fatal: log error but don't fail the entire workflow
+        console.error('⚠️  [Async Learning] Failed to store learnings to memory:', error instanceof Error ? error.message : error);
+        console.log('   Workflow continues without memory storage...');
       }
-    } catch (error) {
-      // Non-fatal: log error but don't fail the entire workflow
-      console.error('⚠️  Failed to store learnings to memory:', error instanceof Error ? error.message : error);
-      console.log('   Continuing without memory storage...');
-    }
+    })();
+    
+    // ✅ Don't wait - continue to next task immediately
+    console.log(`🚀 [Learn] Background learning started, continuing workflow...\n`);
+  } else {
+    console.log(`ℹ️  [Learn] Memory/Chunk ports not available, skipping learning storage\n`);
   }
   
   return { ...state, learnings, branch, filesWritten };

@@ -172,11 +172,43 @@ export async function execute(
       return lines.join('\n');
     }).join('\n') || 'No previous attempts.';
     
+    // ✅ Check if this is an environment error that requires terminal commands
+    const hasEnvironmentError = state.enforcementReason?.toLowerCase().includes('environment') ||
+                                 state.enforcementReason?.toLowerCase().includes('corrupted') ||
+                                 state.enforcementReason?.toLowerCase().includes('npm install') ||
+                                 state.enforcementReason?.toLowerCase().includes('clean dependency');
+    
     const retryContext = `
 🔴 PREVIOUS ATTEMPT FAILED - FIX THESE ERRORS:
 
 ${state.enforcementReason}
 
+${hasEnvironmentError ? `
+⚡ **CRITICAL: YOU CAN EXECUTE TERMINAL COMMANDS!**
+
+The error above requires running terminal commands. You HAVE THE ABILITY to execute them directly.
+
+**DO NOT say "I cannot execute commands" or "User needs to run"**
+
+**EXECUTE THESE COMMANDS NOW:**
+1. Navigate to the project directory
+2. Run the commands listed in the error message above
+3. After successful execution, continue with your task
+
+Example:
+\`\`\`bash
+cd /path/to/project
+rm -rf node_modules package-lock.json
+npm cache clean --force
+npm install
+npm run build
+\`\`\`
+
+✅ You MUST execute these commands as part of your response.
+✅ After commands succeed, generate any code files if needed.
+❌ DO NOT just suggest - EXECUTE the commands!
+
+` : ''}
 📝 PREVIOUS ATTEMPTS (${state.previousAttempts?.length || 0} attempts):
 ${previousAttemptsText}
 
@@ -187,23 +219,28 @@ ${alreadyAppliedChanges.length > 0 ? alreadyAppliedChanges.map(c => `  ✓ ${c}`
 ${alreadyCreatedFiles.size > 0 ? Array.from(alreadyCreatedFiles).map(f => `  ✓ ${f}`).join('\n') : '  (None)'}
 
 ⚠️ CRITICAL INSTRUCTIONS FOR RETRY:
-1. READ THE ERRORS ABOVE CAREFULLY
+1. READ THE ERRORS ABOVE CAREFULLY - each error tells you EXACTLY what to fix
 2. DO NOT REPEAT THE SAME APPROACH OR CHANGES LISTED ABOVE
-3. **ONLY OUTPUT FILES THAT NEED TO BE FIXED OR ADDED**
+3. ${hasEnvironmentError ? '**IF ENVIRONMENT ERROR: EXECUTE THE TERMINAL COMMANDS FIRST**' : '**ONLY OUTPUT FILES THAT NEED TO BE FIXED OR ADDED**'}
    - If error is in package.json BUT it's already modified → Try a DIFFERENT fix
-   - If error is in specific .ts file → Only output that .ts file
+   - If error is in specific .ts file → Only output that .ts file with the fix
    - If missing file → Only output the missing file
 4. DO NOT RE-GENERATE FILES THAT ARE WORKING CORRECTLY
 5. DO NOT RE-APPLY CHANGES ALREADY LISTED IN "ALREADY APPLIED" SECTION
-6. Think of NEW APPROACHES, not the same solutions that already failed
+6. For type errors: Follow the error message literally - it tells you exactly what to do
+${hasEnvironmentError ? '7. **FOR ENVIRONMENT ERRORS: Execute commands in RESPONSE section, then output any needed files**' : ''}
 
 📋 OUTPUT FORMAT:
-- **MINIMAL APPROACH**: Only output files that directly fix the errors above
+${hasEnvironmentError ? `- **RESPONSE**: Execute the terminal commands shown in the error message
+- **FILES**: Output code files ONLY if needed after commands succeed
+` : `- **MINIMAL APPROACH**: Only output files that directly fix the errors above
+- **PRECISE FIXES**: Fix the exact issue mentioned in the error (add missing property, remove unused variable, etc.)
 - **NO REDUNDANCY**: Do not include files that were generated correctly in previous attempts
 - **NEW STRATEGY**: Try a different approach than what was already attempted
 - **FOCUS**: Fix the specific violations with fresh thinking
+`}
 
-📋 NOW GENERATE ONLY THE FILES NEEDED TO FIX THE ERRORS (WITH NEW APPROACH):
+📋 NOW ${hasEnvironmentError ? 'EXECUTE THE COMMANDS AND' : ''} GENERATE ONLY THE FILES NEEDED TO FIX THE ERRORS (WITH NEW APPROACH):
 `;
     
     // Add retry context to the last user message
@@ -345,7 +382,72 @@ ${completedTaskCount > 0 ? `📝 RECENTLY COMPLETED TASKS:\n${completedTasksList
     raw = await llm.invoke(promptMessages);
   }
   
-    const { responseSection, files, filesToDelete } = parseResponse(raw);
+    const { responseSection, files, filesToDelete, commands } = parseResponse(raw);
+
+    // ✅ Execute parsed commands if any (WITH SAFETY CHECKS)
+    if (commands && commands.length > 0 && state.deps?.command && state.context.config?.localPath) {
+      console.log(`\n🔧 Found ${commands.length} command(s) in LLM response`);
+      
+      // Safety check: Only execute in environment error scenarios
+      const isEnvironmentError = state.enforcementReason?.toLowerCase().includes('environment') ||
+                                  state.enforcementReason?.toLowerCase().includes('corrupted');
+      
+      if (isEnvironmentError) {
+        console.log('⚡ Environment error detected - executing commands...\n');
+        
+        const actualProjectPath = state.context.config.localPath;
+        
+        for (const cmd of commands) {
+          // ✅ Replace any placeholder paths with actual project path
+          let actualCommand = cmd.command;
+          
+          // Common placeholder patterns to replace
+          const placeholders = [
+            '/Users/probe/dev/test-app',
+            '/Users/probe/dev/coin-watcher',
+            '/path/to/project',
+            '{{projectPath}}'
+          ];
+          
+          for (const placeholder of placeholders) {
+            if (actualCommand.includes(placeholder)) {
+              actualCommand = actualCommand.replace(new RegExp(placeholder, 'g'), actualProjectPath);
+              console.log(`   🔄 Replaced path: ${placeholder} → ${actualProjectPath}`);
+            }
+          }
+          
+          // Skip cd commands if they're just changing to project root (already there)
+          if (actualCommand.trim().startsWith('cd ') && actualCommand.includes(actualProjectPath)) {
+            console.log(`💻 Skipping redundant cd: ${actualCommand}`);
+            continue;
+          }
+          
+          console.log(`💻 Executing: ${actualCommand}`);
+          if (cmd.description) {
+            console.log(`   Purpose: ${cmd.description}`);
+          }
+          
+          try {
+            const result = await state.deps.command.execute(actualCommand, {
+              cwd: actualProjectPath,  // Always use actual project path as cwd
+              timeout: 5 * 60 * 1000,  // 5 minutes
+            });
+            
+            if (result.success) {
+              console.log(`   ✅ Success`);
+            } else {
+              console.error(`   ❌ Failed: ${result.stderr || result.stdout}`);
+            }
+          } catch (error) {
+            console.error(`   ❌ Error: ${error instanceof Error ? error.message : error}`);
+          }
+        }
+        console.log();
+      } else {
+        console.log('⚠️  Commands found but not in environment error context - skipping execution');
+        console.log('   (Commands are only auto-executed for environment fixes)\n');
+      }
+    }
 
     // Record this attempt for learning
     const filesGenerated = files.map(f => f.path);

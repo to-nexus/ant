@@ -176,8 +176,12 @@ export class ModeController {
     }
     
     if (phase === 'execute') {
-      // Runtime error fix detection (highest priority if directive contains error messages)
-      if (context.directive && this.containsRuntimeError(context.directive)) {
+      // TypeScript error fix detection (highest priority - more specific than runtime errors)
+      if (context.directive && this.containsTypeScriptError(context.directive)) {
+        injections.push(`${phasePrefix}/typescript-error-fix`);
+      }
+      // Runtime error fix detection (general runtime errors)
+      else if (context.directive && this.containsRuntimeError(context.directive)) {
         injections.push(`${phasePrefix}/runtime-error-fix`);
       }
       
@@ -250,6 +254,27 @@ export class ModeController {
     // 3. Default to TypeScript (most common in current projects)
     console.log('[ModeController] Could not detect language, defaulting to TypeScript');
     return 'typescript';
+  }
+  
+  /**
+   * Check if directive contains TypeScript errors
+   */
+  private containsTypeScriptError(directive: string): boolean {
+    const tsErrorPatterns = [
+      // TypeScript compiler errors
+      /error TS\d+:/i,
+      /\.tsx?\(\d+,\d+\):/i,  // file.ts(line,col): error
+      /TypeScript error/i,
+      /tsc --noEmit/i,
+      /Type .+ is not assignable/i,
+      /Property .+ does not exist/i,
+      /Cannot find name/i,
+      /is declared but its value is never read/i,
+      /All imports in import declaration are unused/i,
+      /Could not find a declaration file/i
+    ];
+    
+    return tsErrorPatterns.some(pattern => pattern.test(directive));
   }
   
   /**

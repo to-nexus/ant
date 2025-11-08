@@ -248,32 +248,86 @@ export const TYPESCRIPT_PATTERNS: ErrorPattern[] = [
   // ========================================
   // CODE LAYER - TypeScript 타입 에러
   // ========================================
+  
+  // ✅ CATCH-ALL: 모든 TypeScript 에러 - 전체 메시지를 그대로 추출
   {
     layer: ErrorLayer.CODE,
     patterns: [
-      /error TS(\d+):.*Cannot find name ['"](\w+)['"]/,
-      /\(\d+,\d+\): error TS(\d+):/
+      // Multiline pattern to capture full error message
+      /^(.+?)\((\d+),(\d+)\):\s*error\s+(TS\d+):\s*(.+?)(?=\n(?:\S|$))/ms
     ],
     severity: 'major',
     canLLMFix: true,
-    diagnosis: (match) => {
-      const errorCode = match[1];
-      const name = match[2] || 'unknown';
+    diagnosis: (match, context) => {
+      const file = match[1]?.trim() || 'unknown';
+      const line = match[2] || '?';
+      const col = match[3] || '?';
+      const code = match[4] || 'TS????';
+      let fullMessage = match[5]?.trim() || 'Unknown TypeScript error';
+      
+      // ✅ Capture continuation lines (indented)
+      const lines = fullMessage.split('\n');
+      const mainMessage = lines[0];
+      const details = lines.slice(1)
+        .filter(l => l.trim().length > 0)
+        .map(l => '  ' + l.trim())
+        .join('\n');
+      
+      const completeMessage = details 
+        ? `${mainMessage}\n${details}` 
+        : mainMessage;
+      
+      // ✅ Extract specific hints based on error code
+      const hints: string[] = [];
+      
+      // Common TS error codes with specific guidance
+      if (code === 'TS2322') {
+        hints.push('Type assignment error - check interface properties and types');
+        if (completeMessage.includes('does not exist')) {
+          const propMatch = completeMessage.match(/Property ['"](\w+)['"]/);
+          if (propMatch) {
+            hints.push(`Add missing property '${propMatch[1]}' to the interface`);
+          }
+        }
+      } else if (code === 'TS6133') {
+        const varMatch = completeMessage.match(/['"](\w+)['"]/);
+        hints.push(varMatch 
+          ? `Remove unused variable '${varMatch[1]}' or prefix with underscore` 
+          : 'Remove unused variable declarations');
+      } else if (code === 'TS7016') {
+        hints.push('Missing TypeScript declarations - convert .jsx to .tsx or install @types');
+      } else if (code === 'TS2304') {
+        const nameMatch = completeMessage.match(/Cannot find name ['"](\w+)['"]/);
+        hints.push(nameMatch 
+          ? `Import '${nameMatch[1]}' or check for typos` 
+          : 'Check imports and type definitions');
+      } else if (code === 'TS6192') {
+        hints.push('Remove unused import statement');
+      } else if (code === 'TS2339') {
+        hints.push('Property does not exist - check type definition or add property');
+      } else if (code === 'TS2345') {
+        hints.push('Function argument type mismatch - check function signature');
+      }
+      
+      // Fallback hints
+      if (hints.length === 0) {
+        hints.push('Read the full error message carefully');
+        hints.push('Fix the specific type issue described');
+      }
       
       return {
         type: 'type_error',
         layer: ErrorLayer.CODE,
-        message: `TypeScript error TS${errorCode}: Cannot find name '${name}'`,
-        rootCause: 'Type checking failure - missing import or incorrect type',
+        message: `${file}(${line},${col}): ${code}\n${completeMessage}`,
+        rootCause: 'TypeScript type checking failure',
         suggestedActions: [
-          `Import '${name}' from the correct module`,
-          'Fix type annotations',
-          'Install @types packages if needed',
-          'Check tsconfig.json compiler options'
+          ...hints,
+          'Do NOT guess - follow the error message exactly',
+          'Read related type definitions and interfaces'
         ],
         isRetryable: true,
         canLLMFix: true,
-        severity: 'major'
+        severity: code.includes('6133') || code.includes('6192') ? 'minor' : 'major'
       };
     }
   },
