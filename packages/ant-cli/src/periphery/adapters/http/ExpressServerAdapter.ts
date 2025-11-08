@@ -162,6 +162,8 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     interruptionReason?: InterruptionDetails
   ): Promise<void> {
     console.log(`\n🧹 [ExpressServerAdapter] cleanupJobState called for ${jobId}`);
+    console.log(`   projectId: ${projectId || 'undefined'}, featureName: ${featureName || 'undefined'}`);
+    console.log(`   interruptionReason: ${interruptionReason?.reason || 'none'}`);
     
     // Get mapping before deletion (from Map or from parameters)
     let mapping = this.jobToProject.get(jobId);
@@ -174,6 +176,12 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     
     // Get current snapshot to return in-progress task to queue
     const snapshot = this.taskQueueSnapshots.get(jobId);
+    console.log(`   Snapshot exists: ${!!snapshot}`);
+    
+    // ✅ CRITICAL: Get jobStatus BEFORE deletion to determine job type
+    const jobStatus = this.jobs.get(jobId);
+    const jobType = (jobStatus?.task as 'design' | 'code' | 'learn') || 'code';
+    console.log(`   Job type: ${jobType}`);
     
     // ✅ End workflow tracking
     this.workflowStateService.endJob(jobId);
@@ -184,6 +192,9 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     this.jobToProject.delete(jobId);
     this.jobs.delete(jobId);  // ✅ CRITICAL: Delete job status to prevent UI from detecting it as active
     console.log(`   ✅ Cleared live data (snapshot, jobToProject, jobs)`);
+    console.log(`   ✅ jobs.size after delete: ${this.jobs.size}`);
+    console.log(`   ✅ jobToProject.size after delete: ${this.jobToProject.size}`);
+    console.log(`   ✅ taskQueueSnapshots.size after delete: ${this.taskQueueSnapshots.size}`);
     
     if (this.currentJobId === jobId) {
       this.currentJobId = null;
@@ -194,10 +205,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   // ✅ Move in-progress task back to queue in session file
   if (mapping) {
     try {
-      // ✅ Determine job type from jobStatus or default to 'code'
-      const jobStatus = this.jobs.get(jobId);
-      const jobType = (jobStatus?.task as 'design' | 'code' | 'learn') || 'code';
-      
+      // ✅ Use job type already determined before deletion
       const sessionPath = path.join(
         this.WORKSPACE_ROOT,
         mapping.projectId,
@@ -333,6 +341,10 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         const logs = this.logs.get(jobId) || [];
         logs.push(log);
         this.logs.set(jobId, logs);
+      },
+      onJobCompleted: async (jobId) => {
+        // ✅ Clean up job state when job completes successfully
+        await this.cleanupJobState(jobId);
       }
     });
     this.projectService = new ProjectService(this.WORKSPACE_ROOT);
@@ -729,7 +741,10 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
             }
             
             // ✅ Clean up job state (pass interruption if exists)
+            console.log(`\n🧹 [ExpressServerAdapter.runJob] Job ${jobId} completed, calling cleanupJobState...`);
+            console.log(`   interruption: ${interruption ? interruption.reason : 'none'}`);
             await this.cleanupJobState(jobId, undefined, undefined, interruption);
+            console.log(`   ✅ cleanupJobState completed\n`);
             
             resolve();
           } else {

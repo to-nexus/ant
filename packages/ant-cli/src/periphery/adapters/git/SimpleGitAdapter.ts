@@ -117,6 +117,62 @@ export class SimpleGitAdapter implements GitPort {
     return fs.existsSync(full);
   }
 
+  async deleteFile(path: string): Promise<void> {
+    const fs = await import("fs");
+    const p = await import("path");
+    
+    // For workspace paths, delete from workspace root
+    if (path.startsWith('workspace/')) {
+      const relativePath = path.substring('workspace/'.length);
+      const full = p.join(WORKSPACE_ROOT, relativePath);
+      
+      // ✅ Check if file exists and is a file (not directory)
+      if (!fs.existsSync(full)) {
+        return; // File doesn't exist, nothing to do
+      }
+      
+      const stats = fs.statSync(full);
+      if (stats.isDirectory()) {
+        throw new Error(`Cannot delete directory as file: ${path}`);
+      }
+      
+      try {
+        fs.unlinkSync(full);
+      } catch (error: any) {
+        // ✅ Re-throw with better error message
+        throw new Error(`Failed to delete ${path}: ${error.message || 'Permission denied'}`);
+      }
+      return;
+    }
+    
+    await this.ensure();
+    const root = await this.getRepoRoot();
+    const full = p.join(root, path);
+    
+    // ✅ Check if file exists and is a file (not directory)
+    if (!fs.existsSync(full)) {
+      return; // File doesn't exist, nothing to do
+    }
+    
+    const stats = fs.statSync(full);
+    if (stats.isDirectory()) {
+      throw new Error(`Cannot delete directory as file: ${path}`);
+    }
+    
+    try {
+      fs.unlinkSync(full);
+    } catch (error: any) {
+      // ✅ Re-throw with better error message for permission/lock issues
+      if (error.code === 'EPERM') {
+        throw new Error(`Permission denied: ${path}`);
+      } else if (error.code === 'EBUSY') {
+        throw new Error(`File is in use: ${path}`);
+      } else {
+        throw new Error(`Failed to delete ${path}: ${error.message || 'Unknown error'}`);
+      }
+    }
+  }
+
   async readDirectory(path: string): Promise<Array<{ name: string; isDirectory: boolean }>> {
     const fs = await import("fs");
     const p = await import("path");

@@ -21,6 +21,7 @@ export interface GitPort {
   writeFile(path: string, content: string): Promise<void>;
   readFile(path: string): Promise<string | null>;
   fileExists(path: string): Promise<boolean>;
+  deleteFile(path: string): Promise<void>;
   readDirectory(path: string): Promise<Array<{ name: string; isDirectory: boolean }>>;
   createDirectory(path: string): Promise<void>;
   
