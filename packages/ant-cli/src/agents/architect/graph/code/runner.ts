@@ -55,7 +55,8 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
       try {
         const session = await initial.deps.session.load(
           initial.context.project,
-          initial.context.featureFolder || 'default'
+          initial.context.featureFolder || 'default',
+          'code'  // ✅ Add job parameter
         );
         
         if (session.state && session.state.taskQueue) {

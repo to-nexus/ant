@@ -109,11 +109,18 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     recursionLimit?: number
   ): void {
     
+    console.log(`\n🔄 [updateTaskQueue] Called for job ${jobId}`);
+    console.log(`   currentTask: ${currentTask?.name || 'null'}`);
+    console.log(`   queue length: ${queue.length}`);
+    console.log(`   completedTasks param: ${completedTasks !== undefined ? completedTasks.length : 'undefined'}`);
+    
     // ✅ CRITICAL: Preserve existing completed tasks if not provided
     const existingSnapshot = this.taskQueueSnapshots.get(jobId);
     const finalCompletedTasks = completedTasks !== undefined 
       ? completedTasks 
       : (existingSnapshot?.completedTasks || []);
+    
+    console.log(`   finalCompletedTasks length: ${finalCompletedTasks.length}`);
     
     // Update local snapshot for coordination
     this.taskQueueSnapshots.set(jobId, { 
@@ -128,14 +135,17 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     const mapping = this.jobToProject.get(jobId);
     if (mapping) {
       const jobStatus = this.jobs.get(jobId);
-      const jobType = jobStatus?.task || 'code';
+      // ✅ Narrow jobType to supported values
+      const task = jobStatus?.task;
+      const jobType: 'design' | 'code' | 'learn' = 
+        (task === 'design' || task === 'code' || task === 'learn') ? task : 'code';
       this.sseBroadcastService.broadcastKanbanUpdate(
         mapping.projectId, 
         mapping.featureName,
         this.jobToProject,
         this.jobs,
         this.taskQueueSnapshots,
-        jobType  // ✅ Pass job type
+        jobType  // ✅ Pass narrowed job type
       );
     }
   }
@@ -341,16 +351,16 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     
     // Initialize session service with SSE callback
     this.sessionService = new SessionService(this.WORKSPACE_ROOT, {
-      onSessionChange: (projectId, featureName) => {
+      onSessionChange: (projectId, featureName, jobType) => {
         // ✅ Broadcast Kanban update when session changes
-        // Job type will be inferred from active job in broadcastKanbanUpdate
+        // Now we know exactly which job type triggered the change
         this.sseBroadcastService.broadcastKanbanUpdate(
           projectId, 
           featureName,
           this.jobToProject,
           this.jobs,
-          this.taskQueueSnapshots
-          // jobType is omitted - will be inferred from active job
+          this.taskQueueSnapshots,
+          jobType  // ✅ Pass the job type from the watcher
         );
         
         // ✅ Broadcast file tree update when session file is created/modified
@@ -476,7 +486,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     
     const validationResult = await this.jobPrerequisitesAdapter.validate(
       params.project,
-      params.feature,
+      params.feature || 'default',  // ✅ Provide default value
       jobType
     );
     
@@ -525,7 +535,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     console.log(`   ✅ Workflow tracking started`);
     
     // Start session file watcher for real-time Kanban updates
-    this.watchSessionFile(jobId, projectId, featureName, params.task);
+    this.watchSessionFile(jobId, projectId, featureName, jobType);  // ✅ Use narrowed jobType
     
     console.log(`   ✅ Session file watcher started`);
     
@@ -538,7 +548,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       this.jobToProject,  // ✅ Pass job map
       this.jobs,           // ✅ Pass jobs status
       this.taskQueueSnapshots,  // ✅ Pass snapshots
-      params.task  // ✅ Pass job type
+      jobType  // ✅ Pass narrowed job type
     );
     console.log(`   ✅ Kanban broadcast completed\n`);
     

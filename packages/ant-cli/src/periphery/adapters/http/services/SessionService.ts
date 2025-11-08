@@ -10,14 +10,14 @@ import * as path from 'path';
 export class SessionService {
   private readonly workspaceRoot: string;
   
-  // Session file watchers - key: "projectId/featureName"
+  // Session file watchers - key: "projectId/featureName/job"
   private sessionWatchers: Map<string, NodeJS.Timeout> = new Map();
   
-  // Callback for session file changes
-  private onSessionChange?: (projectId: string, featureName: string) => void;
+  // Callback for session file changes - now includes job type
+  private onSessionChange?: (projectId: string, featureName: string, jobType: 'design' | 'code' | 'learn') => void;
   
   constructor(workspaceRoot: string, callbacks?: {
-    onSessionChange?: (projectId: string, featureName: string) => void;
+    onSessionChange?: (projectId: string, featureName: string, jobType: 'design' | 'code' | 'learn') => void;
   }) {
     this.workspaceRoot = workspaceRoot;
     this.onSessionChange = callbacks?.onSessionChange;
@@ -63,7 +63,7 @@ export class SessionService {
           fileExisted = true;
           lastModified = mtime;
           lastSize = size;
-          this.onSessionChange?.(projectId, featureName);
+          this.onSessionChange?.(projectId, featureName, job);  // ✅ Pass job type
         } else if (mtime > lastModified || size !== lastSize) {
           // File was modified or size changed (emptied)
           lastModified = mtime;
@@ -75,7 +75,7 @@ export class SessionService {
           } else {
           }
           
-          this.onSessionChange?.(projectId, featureName);
+          this.onSessionChange?.(projectId, featureName, job);  // ✅ Pass job type
         }
       } catch (error: any) {
         // File doesn't exist
@@ -85,7 +85,7 @@ export class SessionService {
             fileExisted = false;
             lastModified = 0;
             lastSize = 0;
-            this.onSessionChange?.(projectId, featureName);
+            this.onSessionChange?.(projectId, featureName, job);  // ✅ Pass job type
           }
         }
       }

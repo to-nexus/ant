@@ -405,11 +405,11 @@ export function ArtifactsPanel() {
           nodes={sessionsNodes}
           onFileSelect={selectFile}
           selectedFile={selectedFile}
-          // ✅ Sessions are read-only - no file manipulation allowed
+          // ✅ Sessions: read-only except deletion (allow users to clear old session files)
           onCreateFile={undefined}
           onCreateDirectory={undefined}
           onUploadFiles={undefined}
-          onDelete={undefined}
+          onDelete={policy.canDeleteFile ? handleDelete : undefined}
         />
       </div>
     </div>

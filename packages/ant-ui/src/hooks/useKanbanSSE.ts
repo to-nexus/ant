@@ -72,7 +72,8 @@ export function useKanbanSSE() {
           isRunning: previousRunning,
           isStopping,
           currentInProgress: currentInProgressId,
-          newInProgress: newInProgressId
+          newInProgress: newInProgressId,
+          completedCount: data.completed?.length || 0  // ✅ Log completed count
         });
         
         // ✅ Job state synchronization

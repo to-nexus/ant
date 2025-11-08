@@ -50,8 +50,12 @@ export function BoardContainer({
         </div>
       </div>
       
-      {/* Content Area - no scroll (children handle their own scroll) */}
-      <div className="flex-1 overflow-hidden bg-white dark:bg-[#161b22] p-4">
+      {/* Content Area - board-level scroll in horizontal split, no scroll in vertical split */}
+      <div className={`flex-1 overflow-hidden bg-white dark:bg-[#161b22] p-4 ${
+        className.includes('kanban-board') && className.includes('horizontal') 
+          ? 'overflow-y-auto scrollbar-hide' 
+          : ''
+      }`}>
         {children}
       </div>
     </div>

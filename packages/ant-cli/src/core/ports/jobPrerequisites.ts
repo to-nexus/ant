@@ -11,7 +11,10 @@
  * - Used by: HTTP routes before job execution
  */
 
-export type JobType = 'design' | 'code' | 'learn';
+import { JobType } from './session';  // ✅ Import from session to avoid duplication
+
+// ✅ Re-export for convenience
+export { JobType };
 
 /**
  * Required material that must be present for a job to run

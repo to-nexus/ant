@@ -25,8 +25,8 @@ interface MainPanelProps {
  * 
  * Structure:
  * - Header Bar (status/context info + layout toggles)
- * - Content area (always split: 2 boards)
- * - Footer area (Terminal Bar)
+ * - Content area (always split: 2 boards) - Flex-1, shrinks when terminal opens
+ * - Footer area (Terminal Bar) - Flex layout, takes space from content area
  */
 export function MainPanel({ children, headerBar, footer, className = '' }: MainPanelProps) {
   return (
@@ -37,12 +37,12 @@ export function MainPanel({ children, headerBar, footer, className = '' }: MainP
       {/* Header Bar (Status/Context + Layout Controls) */}
       {headerBar}
       
-      {/* Content area (boards with independent scrolling) */}
-      <div className="flex-1 overflow-hidden">
+      {/* Content area (boards with independent scrolling) - Shrinks when terminal opens */}
+      <div className="flex-1 overflow-hidden min-h-0">
         {children}
       </div>
       
-      {/* Fixed footer area (Terminal Bar) */}
+      {/* Terminal Bar - Flex layout (pushes content area up when expanded) */}
       {footer}
     </main>
   );

@@ -48,6 +48,40 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
   const theme = useStore(state => state.theme);
   const splitLayout = useStore(state => state.splitLayout);
   
+  // ✅ Track terminal bar height for workflow controls positioning
+  React.useEffect(() => {
+    const updateControlsPosition = () => {
+      // Find the terminal bar element
+      const terminalBar = document.querySelector('[data-terminal-bar]') as HTMLElement;
+      if (terminalBar) {
+        const terminalHeight = terminalBar.offsetHeight;
+        // Update CSS variable for controls positioning
+        document.documentElement.style.setProperty('--terminal-offset', `${terminalHeight + 10}px`);
+      } else {
+        // Default offset when terminal is collapsed
+        document.documentElement.style.setProperty('--terminal-offset', '10px');
+      }
+    };
+    
+    // Initial update
+    updateControlsPosition();
+    
+    // Watch for terminal resize with ResizeObserver
+    const terminalBar = document.querySelector('[data-terminal-bar]') as HTMLElement;
+    if (terminalBar) {
+      const resizeObserver = new ResizeObserver(updateControlsPosition);
+      resizeObserver.observe(terminalBar);
+      
+      return () => {
+        resizeObserver.disconnect();
+      };
+    }
+    
+    // Fallback: periodic check
+    const interval = setInterval(updateControlsPosition, 500);
+    return () => clearInterval(interval);
+  }, []);
+  
   // ✅ Fetch config to get LLM info (for non-running jobs)
   const [config, setConfig] = React.useState<any>(null);
   React.useEffect(() => {

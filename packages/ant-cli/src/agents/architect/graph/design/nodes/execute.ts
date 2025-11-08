@@ -117,34 +117,13 @@ export async function execute(state: DesignGraphState) {
     finalDesignMarkdown = mergeDesignDocuments(state.designMarkdown!, designMarkdown);
   }
 
-  // ✅ Mark current task as completed
-  let completedTasks = state.completedTasks || [];
-  let completedTasksDetails = state.completedTasksDetails || [];
-  
-  if (state.currentTask) {
-    // ✨ Complete task with timing
-    const { TaskTimingHelper } = await import('../../code/state');
-    const completedTask = TaskTimingHelper.completeTask(state.currentTask);
-    
-    if (completedTask.timing?.elapsedTime) {
-      const formattedTime = TaskTimingHelper.formatElapsedTime(completedTask.timing.elapsedTime);
-      console.log(`✅ Task "${completedTask.name}" completed in ${formattedTime}!`);
-    } else {
-      console.log(`✅ Task "${completedTask.name}" completed!`);
-    }
-    
-    completedTasks.push(completedTask.id);
-    completedTasksDetails.push(completedTask);
-  }
-
-  // ✅ DON'T update Kanban here - let checkTaskCompletion do it after workflow tracking
+  // ✅ DON'T mark task as completed here - checkTaskStatus node handles completion
+  // This prevents duplicate entries in completedTasksDetails
   // This ensures Kanban updates happen AFTER all workflow nodes are processed
 
   return { 
     ...state, 
     designMarkdown: finalDesignMarkdown,  // ✅ Use merged/updated markdown
-    currentTask: state.currentTask,  // ✅ Keep currentTask (checkTaskCompletion will clear it)
-    completedTasks,
-    completedTasksDetails
+    // Keep currentTask - checkTaskStatus will handle completion and clear it
   };
 }
