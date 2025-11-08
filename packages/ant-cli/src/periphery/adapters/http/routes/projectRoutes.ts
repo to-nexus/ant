@@ -202,6 +202,7 @@ export function createProjectRoutes(deps: {
       await fs.promises.mkdir(path.join(featurePath, 'inputs/sources'), { recursive: true });
       await fs.promises.mkdir(path.join(featurePath, 'outputs/design'), { recursive: true });
       await fs.promises.mkdir(path.join(featurePath, 'outputs/reports'), { recursive: true });
+      await fs.promises.mkdir(path.join(featurePath, 'sessions'), { recursive: true });  // ✅ Add sessions directory
       
       // Create empty directive.md files
       await fs.promises.writeFile(
@@ -217,18 +218,8 @@ export function createProjectRoutes(deps: {
         '# Learn Directive\n\nDescribe what you want to learn here.\n'
       );
       
-      // Create empty session.json
-      const defaultSession = {
-        id: `session-${Date.now()}`,
-        featureName,
-        createdAt: new Date().toISOString(),
-        tasks: [],
-        status: "created"
-      };
-      await fs.promises.writeFile(
-        path.join(featurePath, 'outputs/session.json'),
-        JSON.stringify(defaultSession, null, 2)
-      );
+      // ✅ Note: Session files (design.json, code.json, learn.json) are created
+      // automatically when jobs run, not at feature creation time.
       
       res.json({ success: true, featureName, path: featurePath });
     } catch (error: any) {
@@ -268,11 +259,13 @@ export function createProjectRoutes(deps: {
     try {
       const projectId = req.params.id;
       const featureName = req.params.feature;
+      const job = (req.query.job as 'design' | 'code' | 'learn') || 'code';  // ✅ Get job from query param
+      
       const sessionPath = path.join(
         deps.workspaceRoot,
         projectId,
         featureName,
-        'outputs/session.json'
+        `sessions/${job}.json`  // ✅ Use job-specific path
       );
       
       // Check if session file exists

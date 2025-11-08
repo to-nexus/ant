@@ -34,7 +34,8 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     try {
       const session = await state.deps.session.load(
         state.context.project,
-        state.context.featureFolder || 'default'
+        state.context.featureFolder || 'default',
+        'design'  // ✅ Specify job type
       );
       
       // ✅ Extract completed tasks for "estimating started" signal
@@ -47,7 +48,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
       if (session.state && 
           session.state.taskQueue && 
           (session.state.taskQueue.length > 0 || session.state.currentTask)) {
-        console.log('\n🔄 Resuming from previous session...\n');
+        console.log('\n🔄 Resuming from previous design session...\n');
         
         // Restore TaskQueue from saved state
         const taskQueue = new TaskQueue();
@@ -64,7 +65,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
           _httpTaskId: state._httpTaskId
         };
         
-        console.log(`📊 RESUMING SESSION:`);
+        console.log(`📊 RESUMING DESIGN SESSION:`);
         console.log(`   ✅ ${resumedState.completedTasks?.length || 0} task(s) completed`);
         if (resumedState.currentTask) {
           console.log(`   🔄 Current task: "${resumedState.currentTask.name}"`);

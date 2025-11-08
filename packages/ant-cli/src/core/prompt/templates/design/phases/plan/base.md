@@ -1,5 +1,5 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PHASE 1: DESIGN PLANNING (Document Outline & Strategy)
+PHASE 1: DESIGN STRATEGY (메타적 전략 문서)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 PROJECT: {{project}}
@@ -13,53 +13,69 @@ PROJECT: {{project}}
 ⚠️  CRITICAL INSTRUCTIONS FOR THIS PHASE:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-🚫 DO NOT WRITE THE FULL DESIGN DOCUMENT IN THIS PHASE!
+🚫 DO NOT WRITE THE SYSTEM DESIGN DOCUMENT IN THIS PHASE!
 
-This is the PLANNING phase. You will:
-✅ Create a document outline/table of contents
-✅ Identify key sections to cover
-✅ List main topics for each section (1-2 lines each)
-✅ Define the approach and priorities
+This is the STRATEGY phase. You will create a META-LEVEL design strategy document that guides the next phase.
+
+✅ You will:
+- Analyze requirements and constraints
+- Identify key design challenges and priorities
+- Define architectural approach and principles
+- List critical decisions that need to be made
+- Outline document structure and focus areas
+- Specify what to emphasize and what to omit
 
 🚫 You will NOT:
 ❌ Write detailed architecture diagrams
 ❌ Create complete data models
 ❌ Write full API specifications
-❌ Generate comprehensive content
+❌ Generate comprehensive technical content
+❌ Write the actual system design document
 
-The actual detailed design document will be generated in the NEXT phase (EXECUTE).
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-## YOUR TASK: CREATE A CONCISE DESIGN PLAN
-
-Generate a SHORT design plan (50-100 lines) that includes:
-
-### 1. Document Structure
-List the main sections to include:
-- Overview (purpose, stakeholders, goals)
-- Architecture (components, communication patterns)
-- Data Models (entities, relationships, storage)
-- API Design (key endpoints, contracts)
-- Security (authentication, authorization, data protection)
-- Performance (targets, caching, scalability)
-- Deployment (infrastructure, CI/CD)
-- etc.
-
-### 2. Key Focus Areas
-For each section, note 1-2 key topics to address:
-- Example: "Architecture: Microservices vs Monolith, service boundaries"
-- Example: "Data Models: User, Transaction, Portfolio entities"
-
-### 3. Approach & Priorities
-- Which sections are most critical?
-- What order should they be covered?
-- Any special considerations or constraints?
-
-### 4. Open Questions
-- What needs clarification?
-- What assumptions are being made?
+The actual system design document will be generated in the NEXT phase (EXECUTE).
+This phase is about STRATEGY, not EXECUTION.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Keep your plan CONCISE. The execute phase will expand it into a full document.
+## YOUR TASK: CREATE A DESIGN STRATEGY DOCUMENT
+
+Generate a CONCISE strategy document (50-100 lines) that serves as a guide for writing the system design.
+
+### Format:
+
+# Design Strategy for {{project}}
+
+## 1. Requirements Analysis
+- Key functional requirements (top 3-5)
+- Critical non-functional requirements (performance, security, scalability)
+- Constraints and limitations
+
+## 2. Design Challenges & Priorities
+- Main technical challenges to address
+- Priority order (what's most critical?)
+- Risk areas that need special attention
+
+## 3. Architectural Approach
+- High-level architectural style (e.g., monolith, microservices, event-driven)
+- Key principles to follow (e.g., separation of concerns, modularity)
+- Technology strategy (language, frameworks, infrastructure)
+
+## 4. Critical Design Decisions
+- What needs to be decided? (e.g., database choice, API style, auth method)
+- Decision criteria for each
+- Recommended direction (with brief rationale)
+
+## 5. Document Structure Plan
+- Main sections to include in the system design
+- What to emphasize (detailed vs. high-level)
+- What to omit or keep minimal
+
+## 6. Execution Guidance
+- What should the execute phase focus on?
+- Any special instructions or considerations?
+- Output format and structure preferences
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Remember: This is a STRATEGY document, not the system design itself.
+Keep it SHORT, FOCUSED, and ACTIONABLE for the next phase.

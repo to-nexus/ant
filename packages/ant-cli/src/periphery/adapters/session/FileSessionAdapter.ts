@@ -1,4 +1,4 @@
-import { SessionPort } from "../../../core/ports";
+import { SessionPort, JobType } from "../../../core/ports";
 import { Session, SessionTurn, SessionArtifacts } from "../../../core/types";
 import { parseSession, safeParseSession } from "../../../core/schemas/session.schema";
 import * as fs from "fs/promises";
@@ -11,7 +11,10 @@ import { randomUUID } from "crypto";
  * Implements SessionPort using JSON files in the workspace directory.
  * 
  * File structure:
- * workspace/{project}/{feature}/outputs/session.json
+ * workspace/{project}/{feature}/sessions/{job}.json
+ * 
+ * Each job type (design, code, learn) maintains its own session file,
+ * preventing conflicts when switching between different job types.
  * 
  * Benefits:
  * - Human-readable JSON format
@@ -19,6 +22,7 @@ import { randomUUID } from "crypto";
  * - Direct file access
  * - Easy backup and sharing
  * - AI can read directly
+ * - Job isolation
  */
 export class FileSessionAdapter implements SessionPort {
   private workspaceRoot: string;
@@ -30,23 +34,23 @@ export class FileSessionAdapter implements SessionPort {
   /**
    * Get the session file path
    */
-  private getSessionPath(project: string, feature: string): string {
-    return path.join(this.workspaceRoot, project, feature, "outputs", "session.json");
+  private getSessionPath(project: string, feature: string, job: JobType): string {
+    return path.join(this.workspaceRoot, project, feature, "sessions", `${job}.json`);
   }
   
   /**
-   * Ensure the session directory exists
+   * Ensure the sessions directory exists
    */
   private async ensureDirectory(project: string, feature: string): Promise<void> {
-    const sessionDir = path.join(this.workspaceRoot, project, feature, "outputs");
-    await fs.mkdir(sessionDir, { recursive: true });
+    const sessionsDir = path.join(this.workspaceRoot, project, feature, "sessions");
+    await fs.mkdir(sessionsDir, { recursive: true });
   }
   
   /**
    * Load an existing session or create a new one
    */
-  async load(project: string, feature: string): Promise<Session> {
-    const sessionPath = this.getSessionPath(project, feature);
+  async load(project: string, feature: string, job: JobType): Promise<Session> {
+    const sessionPath = this.getSessionPath(project, feature, job);
     
     try {
       const content = await fs.readFile(sessionPath, "utf-8");
@@ -113,9 +117,9 @@ export class FileSessionAdapter implements SessionPort {
   /**
    * Save the entire session
    */
-  async save(session: Session): Promise<void> {
+  async save(session: Session, job: JobType): Promise<void> {
     await this.ensureDirectory(session.project, session.feature);
-    const sessionPath = this.getSessionPath(session.project, session.feature);
+    const sessionPath = this.getSessionPath(session.project, session.feature, job);
     
     // Update timestamp
     session.updatedAt = new Date().toISOString();
@@ -136,8 +140,8 @@ export class FileSessionAdapter implements SessionPort {
   /**
    * Add a new turn to the session
    */
-  async addTurn(project: string, feature: string, turn: SessionTurn): Promise<void> {
-    const session = await this.load(project, feature);
+  async addTurn(project: string, feature: string, job: JobType, turn: SessionTurn): Promise<void> {
+    const session = await this.load(project, feature, job);
     
     // Set turn ID if not provided
     if (!turn.turnId) {
@@ -150,7 +154,7 @@ export class FileSessionAdapter implements SessionPort {
     }
     
     session.turns.push(turn);
-    await this.save(session);
+    await this.save(session, job);
   }
   
   /**
@@ -162,9 +166,10 @@ export class FileSessionAdapter implements SessionPort {
   async updateArtifacts(
     project: string,
     feature: string,
+    job: JobType,
     artifacts: Partial<SessionArtifacts> & { state?: any }
   ): Promise<void> {
-    const session = await this.load(project, feature);
+    const session = await this.load(project, feature, job);
     
     // Extract state if provided (it's not part of artifacts, but a top-level session field)
     const { state, ...actualArtifacts } = artifacts as any;
@@ -177,14 +182,14 @@ export class FileSessionAdapter implements SessionPort {
       session.state = state;
     }
     
-    await this.save(session);
+    await this.save(session, job);
   }
   
   /**
    * Get the last turn from the session
    */
-  async getLastTurn(project: string, feature: string): Promise<SessionTurn | null> {
-    const session = await this.load(project, feature);
+  async getLastTurn(project: string, feature: string, job: JobType): Promise<SessionTurn | null> {
+    const session = await this.load(project, feature, job);
     if (session.turns.length === 0) {
       return null;
     }
@@ -194,8 +199,8 @@ export class FileSessionAdapter implements SessionPort {
   /**
    * Check if a session exists
    */
-  async exists(project: string, feature: string): Promise<boolean> {
-    const sessionPath = this.getSessionPath(project, feature);
+  async exists(project: string, feature: string, job: JobType): Promise<boolean> {
+    const sessionPath = this.getSessionPath(project, feature, job);
     try {
       await fs.access(sessionPath);
       return true;

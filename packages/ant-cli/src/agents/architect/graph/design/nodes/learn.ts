@@ -84,7 +84,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   // 1. Extract learnings
   const learnings = extractDesignLearnings(state);
   
-  // 2. Save design document to file
+  // 2. Save system design document to file
   const designDir = path.join(
     "workspace",
     state.context.project,
@@ -96,10 +96,10 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   
   const designFilePath = path.join(
     designDir, 
-    `design-${state.context.project}-${Date.now()}.md`
+    `system-design-${state.context.project}-${Date.now()}.md`  // ✅ Renamed to system-design
   );
   await gitPort.writeFile(designFilePath, state.designMarkdown);
-  console.log(`📝 Design saved: ${designFilePath}`);
+  console.log(`📐 System design saved: ${designFilePath}`);
   
   // 3. Save turn to session file first (to get sessionId and turnId)
   let sessionId: string | undefined;
@@ -144,26 +144,30 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     await state.deps.session.addTurn(
       state.context.project,
       state.context.featureFolder || 'default',
+      'design',  // ✅ Specify job type
       turn
     );
     
     // Get the turnId that was assigned
     const updatedSession = await state.deps.session.load(
       state.context.project,
-      state.context.featureFolder || 'default'
+      state.context.featureFolder || 'default',
+      'design'  // ✅ Specify job type
     );
     turnId = updatedSession.turns[updatedSession.turns.length - 1]?.turnId;
     
     // ✅ Load existing session to preserve interruption details and other state
     const existingSession = await state.deps.session.load(
       state.context.project,
-      state.context.featureFolder || 'default'
+      state.context.featureFolder || 'default',
+      'design'  // ✅ Specify job type
     );
 
     // Update artifacts (no latestPlan to avoid duplication)
     await state.deps.session.updateArtifacts(
       state.context.project,
       state.context.featureFolder || 'default',
+      'design',  // ✅ Specify job type
       {
         latestDesign: designFilePath,
         keyDecisions: decisions.slice(0, 5),  // Only top 5 decisions
@@ -177,7 +181,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       }
     );
     
-        console.log(`💾 Session turn saved to workspace/${state.context.project}/${state.context.featureFolder || 'default'}/outputs/session.json`);
+        console.log(`💾 Session turn saved to workspace/${state.context.project}/${state.context.featureFolder || 'default'}/sessions/design.json`);
   }
   
   // 4. Chunk and store learnings to memory with session tracking

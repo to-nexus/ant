@@ -22,12 +22,16 @@ export async function execute(state: DesignGraphState) {
   const llm = state.deps?.llm as LLMClient;
   const engine = state.deps?.promptEngine as PromptEngine;
 
+  // ✅ Use in-memory planText (no need to read from file)
+  // planText was generated in the plan node and passed through state
+  const strategyContent = state.planText;
+
   // Prepare artifacts (using new unified names)
   const artifacts = {
     directive: state.directive,
-    designDoc: undefined,              // Design doesn't use design as input
+    designDoc: state.designMarkdown || undefined,  // ✅ Pass accumulated design from previous tasks
     prdSpec: state.prd,               // PRD
-    previousDesign: state.design,     // Previous design
+    previousDesign: state.design,     // Previous design (from git)
     currentCode: state.code,          // Codebase (for evolution/refactor)
     originalFiles: undefined,         // Design doesn't use git HEAD
     currentTask: state.currentTask ? {  // ✅ Pass current task info
@@ -37,19 +41,26 @@ export async function execute(state: DesignGraphState) {
     } : undefined
   };
 
-  // Build prompt using PromptEngine
+  // Build prompt using PromptEngine with strategy content
   const result = await engine.buildExecutePrompt(
     "design",
     state.context,
     artifacts,
-    state.planText
+    strategyContent  // ✅ Use loaded strategy content
   );
 
   // Generate design with streaming
   let designMarkdown = '';
   
   console.log(`⏱️  Prompt build time: ${result.metadata.buildTime}ms`);
-  console.log('\n📐 Generating design document...\n');
+  
+  // ✅ Check if this is a continuation task
+  const isFirstTask = !state.designMarkdown;
+  if (isFirstTask) {
+    console.log('\n📐 Generating initial design document...\n');
+  } else {
+    console.log('\n📐 Updating design document (incremental task)...\n');
+  }
   
   if (llm.stream) {
     // Use streaming if available
@@ -62,6 +73,11 @@ export async function execute(state: DesignGraphState) {
     // Fallback to regular invoke
     designMarkdown = await llm.invoke(result.formatted.messages);
   }
+  
+  // ✅ Merge with previous designMarkdown if this is a continuation task
+  // For first task: use as-is
+  // For subsequent tasks: LLM should return the full updated document
+  const finalDesignMarkdown = designMarkdown;
 
   // ✅ Mark current task as completed
   let completedTasks = state.completedTasks || [];
@@ -88,7 +104,7 @@ export async function execute(state: DesignGraphState) {
 
   return { 
     ...state, 
-    designMarkdown,
+    designMarkdown: finalDesignMarkdown,  // ✅ Use merged/updated markdown
     currentTask: state.currentTask,  // ✅ Keep currentTask (checkTaskCompletion will clear it)
     completedTasks,
     completedTasksDetails

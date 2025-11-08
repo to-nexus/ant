@@ -53,6 +53,7 @@ function App() {
   const refreshFileTree = useStore((state) => state.refreshFileTree);
   const fetchProjects = useStore((state) => state.fetchProjects);
   const setProjects = useStore((state) => state.setProjects);
+  const selectedWorkType = useStore((state) => state.selectedWorkType);  // ✅ Get selected work type
   const showConfigEditor = useStore((state) => state.showConfigEditor);
   const showFileEditor = useStore((state) => state.showFileEditor);
   const setShowConfigEditor = useStore((state) => state.setShowConfigEditor);
@@ -77,7 +78,8 @@ function App() {
 
       try {
         console.log('[App] Loading session for:', selectedProject, selectedFeature);
-        const session = await fetchFeatureSession(selectedProject, selectedFeature);
+        const job = (selectedWorkType as 'design' | 'code' | 'learn') || 'code';  // ✅ Get job from workType
+        const session = await fetchFeatureSession(selectedProject, selectedFeature, job);  // ✅ Pass job
         setSession(session ?? undefined);
         console.log('[App] Session loaded:', {
           hasSession: !!session,
@@ -92,8 +94,9 @@ function App() {
 
     loadSession();
     // NOTE: isRunning is intentionally NOT in dependencies to prevent reload during task execution
+    // ✅ selectedWorkType 추가 - job 전환 시 session 재로드
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedProject, selectedFeature, setSession]);
+  }, [selectedProject, selectedFeature, selectedWorkType, setSession]);
 
   // Auto-open file editor when a file is selected
   useEffect(() => {

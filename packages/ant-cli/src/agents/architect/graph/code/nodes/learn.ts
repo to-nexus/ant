@@ -87,7 +87,8 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     // Load session to get sessionId
     const session = await state.deps.session.load(
       state.context.project,
-      state.context.featureFolder || 'default'
+      state.context.featureFolder || 'default',
+      'code'  // ✅ Specify job type
     );
     sessionId = session.sessionId;
     
@@ -117,13 +118,15 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     await state.deps.session.addTurn(
       state.context.project,
       state.context.featureFolder || 'default',
+      'code',  // ✅ Specify job type
       turn
     );
     
     // Get the turnId that was assigned
     const updatedSession = await state.deps.session.load(
       state.context.project,
-      state.context.featureFolder || 'default'
+      state.context.featureFolder || 'default',
+      'code'  // ✅ Specify job type
     );
     turnId = updatedSession.turns[updatedSession.turns.length - 1]?.turnId;
     
@@ -134,13 +137,15 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     // ✅ Load existing session to preserve interruption details
     const existingSession = await state.deps.session.load(
       state.context.project,
-      state.context.featureFolder || 'default'
+      state.context.featureFolder || 'default',
+      'code'  // ✅ Specify job type
     );
     
     // Update artifacts and save state snapshot for resuming
     await state.deps.session.updateArtifacts(
       state.context.project,
       state.context.featureFolder || 'default',
+      'code',  // ✅ Specify job type
       {
         activeBranch: branch,
         // ✅ Save error statistics
@@ -165,7 +170,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       }
     );
     
-    console.log(`💾 Session turn saved to workspace/${state.context.project}/${state.context.featureFolder || 'default'}/outputs/session.json`);
+    console.log(`💾 Session turn saved to workspace/${state.context.project}/${state.context.featureFolder || 'default'}/sessions/code.json`);
     if (state.taskQueue && !state.taskQueue.isEmpty()) {
       console.log(`💾 State snapshot saved: ${state.completedTasks?.length || 0} completed, ${state.taskQueue.size()} remaining`);
     }

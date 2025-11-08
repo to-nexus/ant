@@ -3,5 +3,7 @@
   "repoType": "local",
   "localPath": "~/dev/coin-watcher",
   "branchBase": "main",
-  "autoLearn": true
+  "autoLearn": true,
+  "llmProvider": "anthropic",
+  "llmModel": "claude-haiku-4-5"
 }

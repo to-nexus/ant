@@ -126,6 +126,7 @@ export class KanbanService {
   async getKanbanData(
     projectId: string,
     featureName: string,
+    jobType: 'design' | 'code' | 'learn',  // ✅ Add job type parameter
     jobToProject?: Map<string, { projectId: string; featureName: string }>,
     jobs?: Map<string, any>,
     taskQueueSnapshots?: Map<string, any>
@@ -178,7 +179,7 @@ export class KanbanService {
       this.workspaceRoot,
       projectId,
       featureName,
-      'outputs/session.json'
+      `sessions/${jobType}.json`  // ✅ Use job-specific session file
     );
     
     let sessionData: any = null;
