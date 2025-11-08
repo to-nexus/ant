@@ -28,6 +28,18 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
   const splitLayout = useStore((state) => state.splitLayout);
   const policy = useUIActionPolicy();
   
+  // ✅ DEBUG: Log when kanbanData.isEstimating changes
+  useEffect(() => {
+    console.log('[KanbanBoard] 📊 kanbanData changed:', {
+      isEstimating: kanbanData.isEstimating,
+      dataSource: kanbanData.dataSource,
+      activeJobId: kanbanData.activeJobId,
+      completedCount: kanbanData.completed?.length || 0,
+      todoCount: kanbanData.todo?.length || 0,
+      inProgress: kanbanData.inProgress?.name || null
+    });
+  }, [kanbanData.isEstimating, kanbanData.dataSource, kanbanData.activeJobId, kanbanData.completed, kanbanData.todo, kanbanData.inProgress]);
+  
   // ✅ Animation state management
   const [newlyCompletedIds, setNewlyCompletedIds] = useState<Set<string>>(new Set());
   const [previousCompletedIds, setPreviousCompletedIds] = useState<Set<string>>(new Set());

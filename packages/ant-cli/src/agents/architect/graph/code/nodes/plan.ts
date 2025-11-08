@@ -108,9 +108,25 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     // ✅ OPTIMIZATION: If retrying with existing plan, reuse it (skip LLM call)
     if (state.planText && !enforcementReason) {
       console.log(`⚡ Reusing existing plan from previous attempt\n`);
+      
+      // ✅ CRITICAL: If resuming from pause with lastViolations, reconstruct enforcementReason
+      // This ensures execute.ts adds retry context with violation details
+      let reconstructedEnforcementReason: string | undefined;
+      if (state.lastViolations && state.lastViolations.length > 0) {
+        console.log(`⚠️  Reconstructing enforcementReason from lastViolations (${state.lastViolations.length} violations)\n`);
+        
+        const violationsSummary = state.lastViolations
+          .slice(0, 5)  // Limit to first 5 to avoid excessive context
+          .map((v: any, idx: number) => `${idx + 1}. [${v.severity?.toUpperCase() || 'MAJOR'}] ${v.type}\n   Message: ${v.message}\n   💡 Suggested Fix: ${v.suggestedFix || 'Fix the error'}\n   ♻️  Retryable: ${v.isRetryable ? 'YES' : 'NO'}`)
+          .join('\n\n');
+        
+        reconstructedEnforcementReason = violationsSummary;
+      }
+      
       return {
         ...state,
         currentTask: nextTask,
+        enforcementReason: reconstructedEnforcementReason || state.enforcementReason,
       };
     }
   } else {
