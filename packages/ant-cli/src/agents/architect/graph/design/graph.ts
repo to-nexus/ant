@@ -4,13 +4,17 @@ import { resolve } from "./nodes/resolve";
 import { decompose } from "./nodes/decompose";
 import { plan } from "./nodes/plan";
 import { execute } from "./nodes/execute";
+import { writeFiles } from "./nodes/writeFiles";
 import { learn } from "./nodes/learn";
 
 /**
- * Check if there are more tasks to process
+ * Check task status and handle completion
  * Routes to plan (next task) or learn (all done)
+ * 
+ * This MUST be a node (not a router) because it mutates state.
+ * Consistent with code job's checkTaskStatus node.
  */
-async function checkTaskCompletion(state: DesignGraphState): Promise<Partial<DesignGraphState>> {
+async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignGraphState>> {
   // ✅ Workflow instrumentation: Enter node
   // ✅ CRITICAL: await to ensure workflow SSE is sent before continuing
   if (state.deps?.workflowUpdate && state._httpTaskId) {
@@ -21,25 +25,75 @@ async function checkTaskCompletion(state: DesignGraphState): Promise<Partial<Des
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'checkTaskCompletion', taskInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'checkTaskStatus', taskInfo);
   }
   
-  // ✅ CRITICAL: Update Kanban to next task AFTER checkTaskCompletion SSE sent
-  // This ensures frontend sees checkTaskCompletion animation before Kanban switches
-  if (state._httpTaskId && state.taskQueue) {
-    const allTasks = state.taskQueue.getAll();
+  // ✅ Current task completed successfully (design has no validation failures)
+  if (state.currentTask) {
+    // Mark as completed with timing
+    const { TaskTimingHelper } = await import('../code/state');
+    const completedTask = TaskTimingHelper.completeTask(state.currentTask);
+    
+    if (completedTask.timing?.elapsedTime) {
+      const formattedTime = TaskTimingHelper.formatElapsedTime(completedTask.timing.elapsedTime);
+      console.log(`✅ Task "${completedTask.name}" completed in ${formattedTime}!`);
+    } else {
+      console.log(`✅ Task "${completedTask.name}" completed!`);
+    }
+    
+    // Update completedTasks (IDs only - for backward compatibility)
+    const completedTasks = state.completedTasks || [];
+    completedTasks.push(completedTask.id);
+    
+    // Store full task details
     const completedTasksDetails = state.completedTasksDetails || [];
-    const nextTask = state.taskQueue.peek(); // ✅ Use peek() for correct next task
+    completedTasksDetails.push(completedTask);
     
-    // ✅ CRITICAL: Remove nextTask from queue display (it's now in progress)
-    const remainingQueue = nextTask ? allTasks.filter(t => t.id !== nextTask.id) : allTasks;
+    console.log(`[checkTaskStatus] 💾 Task completion details saved:`, {
+      taskId: completedTask.id,
+      taskName: completedTask.name,
+      totalCompleted: completedTasksDetails.length
+    });
     
-    console.log(`\n🔥 [checkTaskCompletion] Updating Kanban → next task`);
-    console.log(`   Current: ${state.currentTask?.name}`);
-    console.log(`   Next: ${nextTask?.name || 'none (learn)'}`);
-    console.log(`   Remaining in queue: ${remainingQueue.length}`);
+    // ✅ CRITICAL: Save checkpoint after completing a task
+    if (state.deps?.session && state.context.featureFolder) {
+      try {
+        await state.deps.session.updateArtifacts(
+          state.context.project,
+          state.context.featureFolder,
+          'design',
+          {
+            state: {
+              taskQueue: state.taskQueue?.getAll() || [],
+              completedTasks,
+              completedTasksDetails,
+              currentTask: undefined,
+              planText: state.planText,
+              designMarkdown: state.designMarkdown,
+            }
+          }
+        );
+        console.log(`[checkTaskStatus] ✅ Checkpoint saved (${completedTasksDetails.length} tasks completed)\n`);
+      } catch (error) {
+        console.warn(`[checkTaskStatus] ⚠️  Failed to save checkpoint:`, error);
+      }
+    }
     
-    if (state.deps?.kanbanUpdate) {
+    // ✅ CRITICAL: Update Kanban to next task AFTER checkTaskStatus SSE sent
+    // This ensures frontend sees checkTaskStatus animation before Kanban switches
+    if (state._httpTaskId && state.taskQueue && state.deps?.kanbanUpdate) {
+      const allTasks = state.taskQueue.getAll();
+      const nextTask = state.taskQueue.peek(); // ✅ Use peek() for correct next task
+      
+      // ✅ CRITICAL: Remove nextTask from queue display (it's now in progress)
+      const remainingQueue = nextTask ? allTasks.filter(t => t.id !== nextTask.id) : allTasks;
+      
+      console.log(`\n🔥 [checkTaskStatus] Updating Kanban → next task`);
+      console.log(`   Completed: ${completedTask.name}`);
+      console.log(`   Next: ${nextTask?.name || 'none (learn)'}`);
+      console.log(`   Remaining in queue: ${remainingQueue.length}`);
+      console.log(`   Total completed: ${completedTasksDetails.length}\n`);
+      
       state.deps.kanbanUpdate.updateTaskQueue(
         state._httpTaskId,
         nextTask || null,
@@ -47,18 +101,17 @@ async function checkTaskCompletion(state: DesignGraphState): Promise<Partial<Des
         completedTasksDetails
       );
     }
+    
+    // Return updated state
+    return {
+      completedTasks,
+      completedTasksDetails,
+      currentTask: undefined
+    };
   }
   
-  // If there are more tasks in queue, continue to next task
-  if (state.taskQueue && !state.taskQueue.isEmpty()) {
-    console.log(`\n📋 ${state.taskQueue.size()} task(s) remaining, continuing...\n`);
-    // ✅ CRITICAL: Clear currentTask so plan will pop next task
-    return { ...state, currentTask: undefined };
-  }
-  
-  console.log(`\n✅ All design tasks completed!\n`);
-  // ✅ CRITICAL: Clear currentTask for final state
-  return { ...state, currentTask: undefined };
+  // No current task (shouldn't happen, but handle gracefully)
+  return { currentTask: undefined };
 }
 
 export function buildDesignGraph() {
@@ -105,19 +158,21 @@ export function buildDesignGraph() {
   graph.addNode("decompose" as const, decompose as any);
   graph.addNode("plan" as const, plan as any);
   graph.addNode("execute" as const, execute as any);
-  graph.addNode("checkTaskCompletion" as const, checkTaskCompletion as any);  // ✅ NEW
+  graph.addNode("writeFiles" as const, writeFiles as any);  // ✅ Write files after execute
+  graph.addNode("checkTaskStatus" as const, checkTaskStatus as any);  // ✅ Consistent naming with code job
   graph.addNode("learn" as const, learn as any);
 
-  // ✅ Flow with task loop: resolve → decompose → [plan → execute → check] → learn
+  // ✅ Flow with task loop: resolve → decompose → [plan → execute → writeFiles → check] → learn
   (graph as any).addEdge("__start__", "resolve");
   (graph as any).addEdge("resolve", "decompose");
   (graph as any).addEdge("decompose", "plan");
   (graph as any).addEdge("plan", "execute");
-  (graph as any).addEdge("execute", "checkTaskCompletion");  // ✅ Check after each task
+  (graph as any).addEdge("execute", "writeFiles");  // ✅ Write files immediately after execute
+  (graph as any).addEdge("writeFiles", "checkTaskStatus");  // ✅ Check after files are written
   
   // ✅ Conditional routing: more tasks → plan, all done → learn
   graph.addConditionalEdges(
-    "checkTaskCompletion" as any,
+    "checkTaskStatus" as any,
     ((s: DesignGraphState) => {
       if (s.taskQueue && !s.taskQueue.isEmpty()) {
         return "plan";  // ← Next task

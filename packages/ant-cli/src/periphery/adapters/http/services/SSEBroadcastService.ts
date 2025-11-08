@@ -34,7 +34,8 @@ export class SSEBroadcastService {
     featureName: string,
     jobToProject?: Map<string, { projectId: string; featureName: string }>,
     jobs?: Map<string, any>,
-    taskQueueSnapshots?: Map<string, any>
+    taskQueueSnapshots?: Map<string, any>,
+    jobType?: 'design' | 'code' | 'learn'  // ✅ Add jobType parameter
   ): Promise<void> {
     const key = `${projectId}/${featureName}`;
     const clients = this.kanbanSSE.get(key);
@@ -45,6 +46,7 @@ export class SSEBroadcastService {
     console.log(`   Has jobToProject: ${!!jobToProject}`);
     console.log(`   Has jobs: ${!!jobs}`);
     console.log(`   Has snapshots: ${!!taskQueueSnapshots}`);
+    console.log(`   Job type: ${jobType || 'not specified'}`);
     
     if (!clients || clients.size === 0) {
       console.log(`   ⚠️  No clients connected, skipping broadcast\n`);
@@ -52,10 +54,28 @@ export class SSEBroadcastService {
     }
     
     try {
-      // ✅ CRITICAL: Pass all required parameters to getKanbanData
+      // Determine job type: use provided or infer from active job
+      let finalJobType: 'design' | 'code' | 'learn' = jobType || 'code';
+      
+      if (!jobType && jobToProject && jobs) {
+        // Try to infer job type from active job
+        for (const [jobId, mapping] of jobToProject.entries()) {
+          if (mapping.projectId === projectId && mapping.featureName === featureName) {
+            const jobStatus = jobs.get(jobId);
+            if (jobStatus && jobStatus.task) {
+              finalJobType = jobStatus.task;
+              console.log(`   ℹ️  Inferred job type from active job: ${finalJobType}`);
+              break;
+            }
+          }
+        }
+      }
+      
+      // ✅ CRITICAL: Pass all required parameters including jobType to getKanbanData
       const data = await this.kanbanService.getKanbanData(
         projectId, 
         featureName,
+        finalJobType,  // ✅ Pass job type
         jobToProject,
         jobs,
         taskQueueSnapshots
@@ -134,24 +154,34 @@ export class SSEBroadcastService {
     const key = `${projectId}/${featureName}`;
     const clients = this.fileTreeSSE.get(key);
     
+    console.log(`[SSEBroadcastService] 📡 broadcastFileTreeUpdate: ${key}`);
+    console.log(`[SSEBroadcastService]    Connected clients: ${clients?.size || 0}`);
+    
     if (!clients || clients.size === 0) {
+      console.log(`[SSEBroadcastService] ⚠️  No clients connected for ${key} - skipping broadcast`);
       return;
     }
     
     try {
       // Fetch updated file tree from ProjectService
+      console.log(`[SSEBroadcastService] 📂 Fetching file tree from ProjectService...`);
       const fileTree = await this.projectService.getFileTree(projectId, featureName);
+      console.log(`[SSEBroadcastService] ✅ File tree fetched: ${fileTree.length} items`);
+      
       const message = `data: ${JSON.stringify({ type: 'update', fileTree })}\n\n`;
       
-      
+      let successCount = 0;
       clients.forEach(res => {
         try {
           res.write(message);
+          successCount++;
         } catch (error) {
           console.error(`[FileTree SSE] Error sending to client:`, error);
           clients.delete(res);
         }
       });
+      
+      console.log(`[SSEBroadcastService] ✅ File tree update sent to ${successCount}/${clients.size} clients`);
     } catch (error) {
       console.error(`[FileTree SSE] Error getting file tree:`, error);
     }

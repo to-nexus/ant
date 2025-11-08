@@ -13,7 +13,7 @@ interface KanbanColumnsProps {
   newlyCompletedIds: Set<string>;
   newlyInProgressId: string | null;
   splitLayout: 'horizontal' | 'vertical';
-  workflowDisplayedState: WorkflowRealtimeState | null;  // ✅ WorkflowVisualization에서 전달
+  workflowDisplayedState: WorkflowRealtimeState | null;
   onShineComplete: (taskId: string) => void;
   onInProgressAnimationComplete: () => void;
 }
@@ -25,6 +25,7 @@ interface KanbanColumnsProps {
  * Layout:
  * - Horizontal split (left/right): Columns arranged vertically (flex-col)
  * - Vertical split (top/bottom): Columns arranged horizontally (grid-cols-3)
+ * - Each column has fixed header + scrollable content
  */
 export function KanbanColumns({
   todoTasks,
@@ -37,11 +38,9 @@ export function KanbanColumns({
   onShineComplete,
   onInProgressAnimationComplete
 }: KanbanColumnsProps) {
-  // Horizontal split: vertical column layout (flex-col)
-  // Vertical split: horizontal column layout (grid-cols-3)
   const isHorizontalSplit = splitLayout === 'horizontal';
   
-  // ✅ Sort todo tasks by priority before rendering (lower number = higher priority = shown first)
+  // ✅ Sort todo tasks by priority before rendering
   const sortedTodoTasks = useMemo(() => {
     return [...todoTasks].sort((a, b) => {
       const priorityA = typeof a.priority === 'number' ? a.priority : 999;
@@ -50,15 +49,13 @@ export function KanbanColumns({
     });
   }, [todoTasks]);
   
-  // ✅ Auto-clear in-progress animation flag after delay
+  // ✅ Auto-clear in-progress animation flag
   const inProgressTimerRef = useRef<number | null>(null);
   useEffect(() => {
     if (newlyInProgressId) {
-      // Clear any existing timer
       if (inProgressTimerRef.current) {
         clearTimeout(inProgressTimerRef.current);
       }
-      // Set new timer to clear flag
       inProgressTimerRef.current = setTimeout(() => {
         onInProgressAnimationComplete();
         inProgressTimerRef.current = null;
@@ -73,7 +70,7 @@ export function KanbanColumns({
     };
   }, [newlyInProgressId, onInProgressAnimationComplete]);
   
-  // ✅ Auto-clear completed animation flags after shine
+  // ✅ Auto-clear completed animation flags
   const completedTimersRef = useRef<Map<string, number>>(new Map());
   useEffect(() => {
     newlyCompletedIds.forEach(taskId => {
@@ -94,39 +91,28 @@ export function KanbanColumns({
   
   return (
     <LayoutGroup>
-      <div className="flex flex-col h-full">
-        {/* Fixed Column Headers */}
-        <div className={isHorizontalSplit ? "flex flex-col gap-4 mb-4 shrink-0" : "grid grid-cols-3 gap-4 mb-4 shrink-0"}>
-          <div className="flex items-center gap-2">
+      <div className={isHorizontalSplit ? 
+        "flex flex-col gap-4 h-full overflow-y-auto scrollbar-hide" : 
+        "grid grid-cols-3 gap-4 h-full"
+      }>
+        {/* TO DO Column */}
+        <div className="flex flex-col min-h-0">
+          {/* Column Header */}
+          <div className="flex items-center gap-2 mb-3 shrink-0">
             <h3 className="font-semibold text-sm text-gray-900 dark:text-white">📝 To Do</h3>
             <Badge variant="secondary" className="text-xs">
               {sortedTodoTasks.length}
             </Badge>
           </div>
-          <div className="flex items-center gap-2">
-            <h3 className="font-semibold text-sm text-gray-900 dark:text-white">🚀 In Progress</h3>
-            <Badge variant="secondary" className="text-xs">
-              {inProgressTask ? 1 : 0}
-            </Badge>
-          </div>
-          <div className="flex items-center gap-2">
-            <h3 className="font-semibold text-sm text-gray-900 dark:text-white">✅ Completed</h3>
-            <Badge variant="secondary" className="text-xs">
-              {completedTasks.length}
-            </Badge>
-          </div>
-        </div>
-
-        {/* Scrollable Content Area */}
-        <div className={isHorizontalSplit ? "flex flex-col gap-4 overflow-y-auto pr-2" : "grid grid-cols-3 gap-4 overflow-y-auto pr-2"}>
-          {/* TO DO Column */}
-          <div className="space-y-2">
+          
+          {/* Scrollable Content */}
+          <div className="space-y-2 overflow-y-auto pr-2 scrollbar-hide">
             {sortedTodoTasks.map((task) => {
               const taskId = task.id || task.name;
               return (
                 <motion.div
                   key={taskId}
-                  layoutId={`task-${taskId}`}  // ✅ Critical: enables shared layout animations across columns
+                  layoutId={`task-${taskId}`}
                   layout
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
@@ -151,9 +137,20 @@ export function KanbanColumns({
               </div>
             )}
           </div>
+        </div>
 
-          {/* IN PROGRESS Column */}
-          <div className="space-y-3">
+        {/* IN PROGRESS Column */}
+        <div className="flex flex-col min-h-0">
+          {/* Column Header */}
+          <div className="flex items-center gap-2 mb-3 shrink-0">
+            <h3 className="font-semibold text-sm text-gray-900 dark:text-white">🚀 In Progress</h3>
+            <Badge variant="secondary" className="text-xs">
+              {inProgressTask ? 1 : 0}
+            </Badge>
+          </div>
+          
+          {/* Scrollable Content */}
+          <div className="space-y-3 overflow-y-auto pr-2 scrollbar-hide">
             {inProgressTask && (() => {
               const taskId = inProgressTask.id || inProgressTask.name;
               
@@ -161,7 +158,7 @@ export function KanbanColumns({
                 <div key="in-progress-with-indicator" className="space-y-2">
                   <motion.div
                     key={taskId}
-                    layoutId={`task-${taskId}`}  // ✅ Critical: enables shared layout animations
+                    layoutId={`task-${taskId}`}
                     layout
                     transition={{ 
                       layout: {
@@ -171,14 +168,12 @@ export function KanbanColumns({
                       }
                     }}
                   >
-                    {/* ✅ Always use "in-progress" style - animation handles movement */}
                     <TaskCard 
                       task={inProgressTask} 
                       status="in-progress"
                     />
                   </motion.div>
                   
-                  {/* ✅ Active Node/Actor Indicator - Below the in-progress card */}
                   <ActiveNodeIndicator displayedState={workflowDisplayedState} />
                 </div>
               );
@@ -189,9 +184,20 @@ export function KanbanColumns({
               </div>
             )}
           </div>
+        </div>
 
-          {/* COMPLETED Column */}
-          <div className="space-y-2">
+        {/* COMPLETED Column */}
+        <div className="flex flex-col min-h-0">
+          {/* Column Header */}
+          <div className="flex items-center gap-2 mb-3 shrink-0">
+            <h3 className="font-semibold text-sm text-gray-900 dark:text-white">✅ Completed</h3>
+            <Badge variant="secondary" className="text-xs">
+              {completedTasks.length}
+            </Badge>
+          </div>
+          
+          {/* Scrollable Content */}
+          <div className="space-y-2 overflow-y-auto pr-2 scrollbar-hide">
             {completedTasks.slice().reverse().map((task) => {
               const taskId = task.id || task.name;
               const isNewlyCompleted = newlyCompletedIds.has(taskId);
@@ -199,7 +205,7 @@ export function KanbanColumns({
               return (
                 <motion.div
                   key={taskId}
-                  layoutId={`task-${taskId}`}  // ✅ Critical: enables shared layout animations
+                  layoutId={`task-${taskId}`}
                   layout
                   transition={{ 
                     layout: {
@@ -253,7 +259,6 @@ export function KanbanColumns({
                     </>
                   )}
                   <div className="relative z-10">
-                    {/* ✅ Always use "completed" style - animation handles movement, shine handles celebration */}
                     <TaskCard 
                       task={task} 
                       status="completed"
@@ -273,4 +278,3 @@ export function KanbanColumns({
     </LayoutGroup>
   );
 }
-

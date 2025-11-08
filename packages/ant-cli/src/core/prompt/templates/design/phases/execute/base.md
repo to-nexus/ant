@@ -16,13 +16,29 @@ This is a detailed technical specification that will be used by the code generat
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-**IMPORTANT**: The above is the work from previous tasks. For this task:
-1. Focus ONLY on the section(s) relevant to your current task
-2. Update or expand those specific sections
-3. Return the COMPLETE updated document (with your changes integrated)
-4. Keep all other sections unchanged
+**CRITICAL INSTRUCTION - Incremental Update Mode**:
 
-This incremental approach ensures efficient token usage while maintaining document completeness.
+This is a CONTINUATION task. The design document above already exists from previous work.
+
+**YOU MUST**:
+1. Generate ONLY the new/modified sections relevant to your current task
+2. DO NOT regenerate existing sections that don't need changes
+3. Clearly mark which sections you're adding/updating with headers
+
+**Example Format**:
+```markdown
+## 3. Detailed Design
+
+### 3.2 Data Models (UPDATED)
+
+[Your new/updated content here - only this section]
+
+### 3.5 Security Considerations (NEW)
+
+[Your new section here]
+```
+
+This approach saves tokens and prevents redundant work. The system will merge your changes with the existing document.
 
 {{/if}}
 
@@ -37,10 +53,7 @@ This incremental approach ensures efficient token usage while maintaining docume
 ## INSTRUCTIONS:
 
 {{#unless designDoc}}
-This is the initial task. Create a comprehensive system design document that includes:
-{{else}}
-Update the existing document above by focusing on your current task. Modify/expand only the relevant sections, then return the complete document.
-{{/unless}}
+This is the INITIAL task. Create a comprehensive system design document from scratch that includes:
 
 ### 1. Overview
 - System purpose and goals
@@ -149,40 +162,33 @@ For each major component identified in your strategy:
 Make it detailed, specific, and actionable. Include concrete examples where helpful.
 
 Focus on the areas highlighted in your design strategy as most critical.
-- Data encryption
-- Security best practices
-- Compliance considerations
 
-#### 5.3 Reliability
-- Availability targets
-- Fault tolerance
-- Disaster recovery
-- Monitoring and logging
+{{else}}
 
-#### 5.4 Maintainability
-- Code organization
-- Testing strategy
-- Documentation approach
-- Deployment process
+This is a CONTINUATION task. The design document already exists (shown above).
 
-### 6. Implementation Roadmap
-- Phase 1: Core functionality
-- Phase 2: Additional features
-- Phase 3: Optimization and polish
-- Estimated effort and timeline
+**YOUR TASK**:
+Generate ONLY the sections relevant to your current task: **{{currentTask.name}}**
 
-### 7. Risks and Mitigation
-- Technical risks
-- Business risks
-- Mitigation strategies
+**FORMAT YOUR RESPONSE**:
+- Use clear markdown headers (##, ###, ####)
+- Mark sections as (UPDATED) if modifying existing content, or (NEW) if adding new sections
+- Include ONLY what's new or changed - DO NOT repeat unchanged sections
+- Be specific and detailed for your task's scope
 
-### 8. Open Questions
-- Items needing clarification
-- Decisions deferred
-- Areas for future consideration
+**EXAMPLE**:
+```markdown
+### 3.2 Data Models (UPDATED)
+
+[Only the new/updated data models for your current task]
+
+### 5.2 Security - Authentication Flow (NEW)
+
+[New security section specific to your task]
+```
+
+The system will automatically merge your changes with the existing document.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Generate a comprehensive design document following this structure.
-
-Write in clear, professional markdown. Be specific and detailed, but remain readable.
+{{/unless}}

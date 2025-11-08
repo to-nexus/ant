@@ -181,7 +181,7 @@ export async function fetchSession(projectId: string): Promise<Session | null> {
   }
 }
 
-export async function executeJob(params: ExecuteJobParams): Promise<{ jobId: string }> {
+export async function executeJob(params: ExecuteJobParams): Promise<{ jobId: string; error?: string; missingMaterials?: any[] }> {
   try {
     const { 
       projectId, 
@@ -212,11 +212,22 @@ export async function executeJob(params: ExecuteJobParams): Promise<{ jobId: str
       body: JSON.stringify(requestBody),
     });
     
+    const data = await response.json();
+    
+    // ✅ Check for prerequisites validation failure
+    if (!data.success && data.error && data.missingMaterials) {
+      // Return error with details instead of throwing
+      return {
+        jobId: data.jobId,
+        error: data.error,
+        missingMaterials: data.missingMaterials
+      };
+    }
+    
     if (!response.ok) {
       throw new Error(`Failed to execute task: ${response.statusText}`);
     }
     
-    const data = await response.json();
     return data;
   } catch (error) {
     console.error('Error executing task:', error);

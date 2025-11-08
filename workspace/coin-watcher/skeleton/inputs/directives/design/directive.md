@@ -1,3 +1,4 @@
 # Design Directive
 
-Describe the design requirements here.
+태스크를 반드시 3개로 분할해서 작업해라.1개가 아닌 3개의 태스크로 만들어라.
+작업물은 최대한 간결하게 써라. 장황하게 길게 쓸 필요가 없다.

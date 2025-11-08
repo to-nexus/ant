@@ -19,4 +19,5 @@ export * from "./http";
 export * from "./kanban";
 export * from "./fileTree";
 export * from "./workflow";
+export * from "./jobPrerequisites";
 

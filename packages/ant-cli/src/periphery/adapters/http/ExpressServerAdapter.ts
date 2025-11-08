@@ -1,6 +1,7 @@
 import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import { ChildProcess } from 'child_process';
+import * as crypto from 'crypto';
 import { 
   HttpServerPort, 
   JobExecutionPort, 
@@ -32,6 +33,7 @@ import {
   createProjectRoutes,
   createWorkflowRoutes
 } from './routes';
+import { FileJobPrerequisitesAdapter } from '../prerequisites/FileJobPrerequisitesAdapter';
 
 /**
  * ExpressServerAdapter
@@ -61,6 +63,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   private sseBroadcastService: SSEBroadcastService;
   private graphMetadataService: GraphMetadataService;
   private workflowStateService: WorkflowStateService;
+  private jobPrerequisitesAdapter: FileJobPrerequisitesAdapter;
   
   // Job tracking (agent execution instances)
   private jobs: Map<string, JobStatus> = new Map();
@@ -124,12 +127,15 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     // ✅ Broadcast immediately to Kanban clients via SSE service
     const mapping = this.jobToProject.get(jobId);
     if (mapping) {
+      const jobStatus = this.jobs.get(jobId);
+      const jobType = jobStatus?.task || 'code';
       this.sseBroadcastService.broadcastKanbanUpdate(
         mapping.projectId, 
         mapping.featureName,
         this.jobToProject,
         this.jobs,
-        this.taskQueueSnapshots
+        this.taskQueueSnapshots,
+        jobType  // ✅ Pass job type
       );
     }
   }
@@ -178,15 +184,30 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   // ✅ Move in-progress task back to queue in session file
   if (mapping) {
     try {
+      // ✅ Determine job type from jobStatus or default to 'code'
+      const jobStatus = this.jobs.get(jobId);
+      const jobType = (jobStatus?.task as 'design' | 'code' | 'learn') || 'code';
+      
       const sessionPath = path.join(
         this.WORKSPACE_ROOT,
         mapping.projectId,
-        'skeleton',
-        'outputs',
-        'session.json'
+        mapping.featureName || 'skeleton',
+        'sessions',  // ✅ Correct directory
+        `${jobType}.json`  // ✅ Job-specific session file
       );
       
-      const sessionData = await this.sessionService.readSessionData(mapping.projectId, mapping.featureName);
+      console.log(`   📄 Session file: ${sessionPath}`);
+      
+      const sessionData = await this.sessionService.readSessionData(
+        mapping.projectId, 
+        mapping.featureName || 'skeleton',
+        jobType  // ✅ Pass job type
+      );
+      
+      // ✅ CRITICAL: Always broadcast, even if no session file exists yet
+      // This ensures UI shows the stopped state immediately
+      let shouldBroadcast = true;
+      
       if (sessionData?.state) {
         // Check if there's a currentTask to move back (either from snapshot or session file)
         const taskToReturn = snapshot?.currentTask || sessionData.state.currentTask;
@@ -240,16 +261,44 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         });
         
         // Write updated session (preserving ALL fields including pausedDueToLimit, completedTasksDetails)
-        await fs.promises.writeFile(sessionPath, JSON.stringify(sessionData, null, 2), 'utf-8')
+        await fs.promises.writeFile(sessionPath, JSON.stringify(sessionData, null, 2), 'utf-8');
+      } else {
+        // ✅ No session file yet - create minimal session with interruption if provided
+        console.log(`   ⚠️  No session file found - creating minimal session with interruption`);
+        
+        if (interruptionReason) {
+          const minimalSession = {
+            sessionId: crypto.randomUUID(),
+            projectId: mapping.projectId,
+            featureName: mapping.featureName,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            turns: [],
+            state: {
+              taskQueue: [],
+              completedTasks: [],
+              completedTasksDetails: [],
+              interruption: interruptionReason
+            }
+          };
           
-        // ✅ Broadcast final update to switch to session data via SSE service
+          // Ensure directory exists
+          await fs.promises.mkdir(path.dirname(sessionPath), { recursive: true });
+          await fs.promises.writeFile(sessionPath, JSON.stringify(minimalSession, null, 2), 'utf-8');
+          console.log(`   ✅ Created minimal session with interruption: ${interruptionReason.reason}`);
+        }
+      }
+      
+      // ✅ CRITICAL: Always broadcast final update to notify UI that job has stopped
+      if (shouldBroadcast) {
         console.log(`   📡 Broadcasting Kanban update (job stopped)...`);
         this.sseBroadcastService.broadcastKanbanUpdate(
           mapping.projectId, 
           mapping.featureName,
           this.jobToProject,
           this.jobs,
-          this.taskQueueSnapshots
+          this.taskQueueSnapshots,
+          jobType  // ✅ Pass job type
         );
         console.log(`   ✅ Broadcast completed\n`);
       }
@@ -294,12 +343,14 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     this.sessionService = new SessionService(this.WORKSPACE_ROOT, {
       onSessionChange: (projectId, featureName) => {
         // ✅ Broadcast Kanban update when session changes
+        // Job type will be inferred from active job in broadcastKanbanUpdate
         this.sseBroadcastService.broadcastKanbanUpdate(
           projectId, 
           featureName,
           this.jobToProject,
           this.jobs,
           this.taskQueueSnapshots
+          // jobType is omitted - will be inferred from active job
         );
         
         // ✅ Broadcast file tree update when session file is created/modified
@@ -315,6 +366,10 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     // Initialize workflow state service for real-time workflow tracking
     console.log('   🔄 Creating WorkflowStateService...');
     this.workflowStateService = new WorkflowStateService();
+    
+    // Initialize job prerequisites adapter
+    console.log('   ✅ Creating JobPrerequisitesAdapter...');
+    this.jobPrerequisitesAdapter = new FileJobPrerequisitesAdapter(this.WORKSPACE_ROOT);
     
     console.log('   ⚙️  Setting up middleware...');
     this.setupMiddleware();
@@ -413,6 +468,33 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     console.log(`   Agent: ${params.agent}`);
     console.log(`   Task: ${params.task}`);
     
+    // ✅ VALIDATE PREREQUISITES FIRST
+    console.log(`\n📋 [Prerequisites] Validating required materials...`);
+    const jobType = (params.task === 'design' || params.task === 'code' || params.task === 'learn') 
+      ? params.task 
+      : 'code';
+    
+    const validationResult = await this.jobPrerequisitesAdapter.validate(
+      params.project,
+      params.feature,
+      jobType
+    );
+    
+    if (!validationResult.isValid) {
+      console.log(`\n❌ [Prerequisites] Validation failed!`);
+      console.log(validationResult.errorMessage);
+      
+      // Return validation error
+      return {
+        jobId,
+        success: false,
+        error: validationResult.errorMessage,
+        missingMaterials: validationResult.missingMaterials
+      };
+    }
+    
+    console.log(`✅ [Prerequisites] All required materials present\n`);
+    
     // Initialize job tracking
     this.jobs.set(jobId, {
       jobId,
@@ -455,7 +537,8 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       featureName,
       this.jobToProject,  // ✅ Pass job map
       this.jobs,           // ✅ Pass jobs status
-      this.taskQueueSnapshots  // ✅ Pass snapshots
+      this.taskQueueSnapshots,  // ✅ Pass snapshots
+      params.task  // ✅ Pass job type
     );
     console.log(`   ✅ Kanban broadcast completed\n`);
     
@@ -665,25 +748,85 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
                 .map(log => log.message)
                 .join('\n');
               
-              // Check for API errors (LLM API failures)
-              const apiErrorMatch = stderrLogs.match(/404.*?model.*?not.*?found|overloaded_error|rate_limit_error|invalid_api_key|authentication_error/i);
-              const modelNotFoundMatch = stderrLogs.match(/model:\s*([^\s"]+)/i);
+              // Check for specific API error patterns
+              const overloadedMatch = stderrLogs.match(/overloaded_error|overloaded/i);
+              const rateLimitMatch = stderrLogs.match(/rate_limit_error|rate.*limit/i);
+              const authErrorMatch = stderrLogs.match(/invalid_api_key|authentication_error|unauthorized/i);
+              const modelNotFoundMatch = stderrLogs.match(/404.*?model.*?not.*?found/i);
+              const modelNameMatch = stderrLogs.match(/model:\s*([^\s"]+)/i);
               
-              if (apiErrorMatch) {
-                const modelName = modelNotFoundMatch ? modelNotFoundMatch[1] : 'unknown';
+              // Check if this is any API error (generic detection)
+              const isApiError = stderrLogs.match(/Error:.*?"type":\s*"error"|api.*error|llm.*error/i);
+              
+              if (overloadedMatch) {
+                // API overloaded - temporary issue
                 interruption = {
                   reason: 'api_error',
-                  message: `LLM API error: Model not found or unavailable (${modelName})`,
+                  message: `LLM API is currently overloaded. Please try again in a few moments.`,
                   timestamp: new Date().toISOString(),
                   canResume: true,
                   metadata: {
+                    errorType: 'api_overloaded',
+                    exitCode: code,
+                    suggestion: 'Wait a few minutes and resume the task'
+                  }
+                };
+              } else if (rateLimitMatch) {
+                // Rate limit exceeded
+                interruption = {
+                  reason: 'api_error',
+                  message: `LLM API rate limit exceeded. Please wait before resuming.`,
+                  timestamp: new Date().toISOString(),
+                  canResume: true,
+                  metadata: {
+                    errorType: 'rate_limit',
+                    exitCode: code,
+                    suggestion: 'Wait for rate limit to reset'
+                  }
+                };
+              } else if (authErrorMatch) {
+                // Authentication error
+                interruption = {
+                  reason: 'api_error',
+                  message: `LLM API authentication failed. Please check your API key.`,
+                  timestamp: new Date().toISOString(),
+                  canResume: false,
+                  metadata: {
+                    errorType: 'authentication',
+                    exitCode: code,
+                    suggestion: 'Verify API key in environment variables'
+                  }
+                };
+              } else if (modelNotFoundMatch) {
+                // Model not found
+                const modelName = modelNameMatch ? modelNameMatch[1] : 'unknown';
+                interruption = {
+                  reason: 'api_error',
+                  message: `LLM model not found or unavailable: ${modelName}`,
+                  timestamp: new Date().toISOString(),
+                  canResume: false,
+                  metadata: {
                     errorType: 'model_not_found',
                     modelName: modelName,
-                    exitCode: code
+                    exitCode: code,
+                    suggestion: 'Check model name in config'
+                  }
+                };
+              } else if (isApiError) {
+                // Generic API error (catch-all for unrecognized API errors)
+                interruption = {
+                  reason: 'api_error',
+                  message: `LLM API error occurred. Check logs for details.`,
+                  timestamp: new Date().toISOString(),
+                  canResume: true,
+                  metadata: {
+                    errorType: 'unknown_api_error',
+                    exitCode: code,
+                    suggestion: 'Review error logs and try again'
                   }
                 };
               } else {
-                // Generic process crash
+                // Process crash (not API-related)
                 interruption = {
                   reason: 'process_crash',
                   message: `Process crashed with exit code ${code}`,
@@ -813,7 +956,9 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
    * Notify file tree update (implements FileTreeUpdatePort)
    */
   notifyFileTreeUpdate(projectId: string, featureName: string): void {
+    console.log(`[ExpressServerAdapter] 📡 notifyFileTreeUpdate called: ${projectId}/${featureName}`);
     this.sseBroadcastService.broadcastFileTreeUpdate(projectId, featureName);
+    console.log(`[ExpressServerAdapter] ✅ broadcastFileTreeUpdate dispatched`);
   }
   
   // =====================================

@@ -1,23 +1,24 @@
-import * as path from "path";
 import { DesignGraphState } from "../state";
 import { SessionTurn } from "../../../../../core/types";
 
 /**
- * Learn node - Complete workflow finalization:
- * 1. Extract learnings from design
- * 2. Save design document to file
- * 3. Chunk and store learnings to memory
- * 4. Save turn to session file
+ * Learn Node - Finalize workflow and store learnings
  * 
- * This is the final node that performs all side effects.
- * Depends on GitPort, ChunkPort and SessionPort (injected via deps) - follows hexagonal architecture.
+ * Responsibilities:
+ * 1. Update Kanban to show completion
+ * 2. Extract learnings from design process
+ * 3. Save turn to session file with metadata
+ * 4. Chunk and store learnings to vector memory
+ * 5. End workflow visualization
+ * 
+ * Note: File writing is handled by separate writeFiles node (consistency with code job)
  * 
  * ✅ Hexagonal Architecture Compliance:
- * - Uses GitPort for file operations (not fs directly)
- * - No direct infrastructure dependencies
+ * - Uses ports for all infrastructure operations
+ * - No direct file system access
  */
 export async function learn(state: DesignGraphState): Promise<DesignGraphState> {
-  // ✅ Workflow instrumentation: Enter node FIRST
+  // ✅ Workflow instrumentation: Enter node
   if (state.deps?.workflowUpdate && state._httpTaskId) {
     const taskInfo = state.currentTask ? {
       id: state.currentTask.id,
@@ -29,211 +30,182 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'learn', taskInfo);
   }
   
-  // ✅ Update Kanban AFTER workflow tracking
-  // This ensures workflow node is added to queue before Kanban update triggers UI changes
-  if (state._httpTaskId && state.taskQueue) {
-    const queueTasks = state.taskQueue.getAll();
+  // ✅ Update Kanban to show all tasks completed
+  if (state._httpTaskId && state.deps?.kanbanUpdate) {
     const completedTasksDetails = state.completedTasksDetails || [];
     
-    console.log(`\n🔥 [Design Learn] Updating Kanban - all tasks complete`);
-    console.log(`   Queue remaining: ${queueTasks.length}`);
-    console.log(`   Completed: ${completedTasksDetails.length}`);
+    console.log(`\n🔥 [Learn] Final Kanban update`);
+    console.log(`   All tasks completed: ${completedTasksDetails.length}`);
     
-    if (state.deps?.kanbanUpdate) {
-      // In-process: use injected port
-      console.log(`   Method: Direct port call\n`);
-      state.deps.kanbanUpdate.updateTaskQueue(
-        state._httpTaskId,
-        undefined,  // No current task (all complete)
-        queueTasks,
-        completedTasksDetails
-      );
-    } else {
-      // Child process: HTTP API fallback
-      console.log(`   Method: HTTP API fallback\n`);
-      const serverPort = process.env.ANT_SERVER_PORT || '4100';
-      try {
-        const response = await fetch(`http://localhost:${serverPort}/api/internal/task-queue`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            taskId: state._httpTaskId,
-            currentTask: undefined,
-            queue: queueTasks,
-            completedTasks: completedTasksDetails
-          })
-        });
-        
-        if (response.ok) {
-          console.log(`   ✅ HTTP update successful\n`);
-        } else {
-          console.log(`   ⚠️  HTTP update failed: ${response.status} ${response.statusText}\n`);
-        }
-      } catch (err: any) {
-        console.log(`   ⚠️  HTTP update error: ${err.message}\n`);
-      }
-    }
+    state.deps.kanbanUpdate.updateTaskQueue(
+      state._httpTaskId,
+      null,  // No current task
+      [],    // Empty queue
+      completedTasksDetails
+    );
   }
   
-  // Get GitPort for file operations
-  const gitPort = state.deps?.git;
-  if (!gitPort) {
-    throw new Error("GitPort not provided for file saving");
+  // ✅ Validate designFilePath was set by writeFiles node
+  if (!state.designFilePath) {
+    throw new Error("designFilePath not set - writeFiles node must run before learn");
   }
   
-  // 1. Extract learnings
+  // 1. Extract learnings from design process
   const learnings = extractDesignLearnings(state);
   
-  // 2. Save system design document to file
-  const designDir = path.join(
-    "workspace",
-    state.context.project,
-    state.context.featureFolder || "default",
-    "outputs",
-    "design"
-  );
-  await gitPort.createDirectory(designDir);
-  
-  const designFilePath = path.join(
-    designDir, 
-    `system-design-${state.context.project}-${Date.now()}.md`  // ✅ Renamed to system-design
-  );
-  await gitPort.writeFile(designFilePath, state.designMarkdown);
-  console.log(`📐 System design saved: ${designFilePath}`);
-  
-  // 3. Save turn to session file first (to get sessionId and turnId)
+  // 2. Save turn to session file
   let sessionId: string | undefined;
   let turnId: number | undefined;
   
   if (state.deps?.session) {
-    const decisions = extractDesignDecisions(state).split('\n').filter(d => d.trim());
+    await saveSessionTurn(state);
     
-    // Load session to get sessionId
+    // Get session IDs for memory linking
     const session = await state.deps.session.load(
       state.context.project,
-      state.context.featureFolder || 'default'
+      state.context.featureFolder || 'default',
+      'design'
     );
     sessionId = session.sessionId;
+    turnId = session.turns[session.turns.length - 1]?.turnId;
     
-    // Create input summary (truncate PRD to 200 chars)
-    const inputSummary = state.spec.length > 200 
-      ? state.spec.substring(0, 197) + '...' 
-      : state.spec;
-    
-    // Create plan summary (first 3 lines)
-    const planLines = state.planText.split('\n');
-    const planSummary = planLines.slice(0, 3).join('\n') + (planLines.length > 3 ? '...' : '');
-    
-    const turn: SessionTurn = {
-      turnId: 0, // Will be set by adapter
-      task: 'design',
-      timestamp: new Date().toISOString(),
-      input: {
-        type: 'file',
-        source: 'inputs/sources/prd.md',  // Reference to source file
-        summary: inputSummary,
-        size: state.spec.length,
-      },
-      output: {
-        designPath: designFilePath,
-        planSummary: planSummary.substring(0, 300),  // Brief summary only
-        decisionCount: decisions.length
-      }
-    };
-    
-    await state.deps.session.addTurn(
-      state.context.project,
-      state.context.featureFolder || 'default',
-      'design',  // ✅ Specify job type
-      turn
-    );
-    
-    // Get the turnId that was assigned
-    const updatedSession = await state.deps.session.load(
-      state.context.project,
-      state.context.featureFolder || 'default',
-      'design'  // ✅ Specify job type
-    );
-    turnId = updatedSession.turns[updatedSession.turns.length - 1]?.turnId;
-    
-    // ✅ Load existing session to preserve interruption details and other state
-    const existingSession = await state.deps.session.load(
-      state.context.project,
-      state.context.featureFolder || 'default',
-      'design'  // ✅ Specify job type
-    );
-
-    // Update artifacts (no latestPlan to avoid duplication)
-    await state.deps.session.updateArtifacts(
-      state.context.project,
-      state.context.featureFolder || 'default',
-      'design',  // ✅ Specify job type
-      {
-        latestDesign: designFilePath,
-        keyDecisions: decisions.slice(0, 5),  // Only top 5 decisions
-        state: {
-          taskQueue: state.taskQueue?.getAll() || [],
-          currentTask: state.currentTask,
-          completedTasks: state.completedTasks || [],
-          completedTasksDetails: state.completedTasksDetails || [],  // ✅ Preserve completed task details
-          interruption: existingSession.state?.interruption  // ✅ Preserve interruption details
-        }
-      }
-    );
-    
-        console.log(`💾 Session turn saved to workspace/${state.context.project}/${state.context.featureFolder || 'default'}/sessions/design.json`);
+    console.log(`💾 Session turn saved to workspace/${state.context.project}/${state.context.featureFolder || 'default'}/sessions/design.json`);
   }
   
-  // 4. Chunk and store learnings to memory with session tracking
+  // 3. Store learnings to vector memory
   if (state.context.memory && state.deps?.chunk) {
-    try {
-      // Process through chunking pipeline (via ChunkPort)
-      const result = await state.deps.chunk.process({
-        source: 'design-learning',
-        sourceType: 'text',
-        content: learnings,
-        metadata: {
-          type: 'learning',
-          task: 'design',
-          project: state.context.project,
-          feature: state.context.featureFolder || 'default',
-          timestamp: new Date().toISOString(),
-          // 🔗 Session tracking for traceability
-          sessionId: sessionId,
-          turnId: turnId
-        }
-      });
-      
-      console.log(`📚 Chunked into ${result.chunks.length} pieces (avg ${result.stats.avgTokens} tokens)`);
-      
-      // ✅ BATCH STORE: Convert all chunks to documents and store in ONE call
-      const documents = result.chunks.map(chunk => ({
-        content: chunk.text,
-        metadata: chunk.metadata
-      }));
-      
-      // Single batch store operation (reduces HTTP overhead and memory pressure)
-      const memory = state.context.memory as any;
-      await memory.store(documents, state.context.project);
-      
-      console.log(`✅ ${result.chunks.length} learning chunks stored to memory (batch)`);
-      if (sessionId && turnId) {
-        console.log(`🔗 Linked to session: ${sessionId}, turn: ${turnId}`);
-      }
-    } catch (error) {
-      // Non-fatal: log error but don't fail the entire workflow
-      console.error('⚠️  Failed to store learnings to memory:', error instanceof Error ? error.message : error);
-      console.log('   Continuing without memory storage...');
-    }
+    await storeLearningsToMemory(state, learnings, sessionId, turnId);
   }
   
-  // ✅ CRITICAL: End job to stop workflow visualization
+  // ✅ End workflow visualization
   if (state.deps?.workflowUpdate && state._httpTaskId) {
     state.deps.workflowUpdate.endJob(state._httpTaskId);
     console.log(`\n🏁 Job ended: ${state._httpTaskId}\n`);
   }
   
-  return { ...state, designFilePath, learnings };
+  return { 
+    ...state, 
+    learnings 
+  };
+}
+
+/**
+ * Save session turn with all metadata
+ */
+async function saveSessionTurn(state: DesignGraphState): Promise<void> {
+  if (!state.deps?.session) return;
+  
+  const decisions = extractDesignDecisions(state).split('\n').filter(d => d.trim());
+  
+  // Create input summary (truncate if too long)
+  const inputSummary = state.spec.length > 200 
+    ? state.spec.substring(0, 197) + '...' 
+    : state.spec;
+  
+  // Create plan summary (first 3 lines)
+  const planLines = state.planText.split('\n');
+  const planSummary = planLines.slice(0, 3).join('\n') + (planLines.length > 3 ? '...' : '');
+  
+  const turn: SessionTurn = {
+    turnId: 0, // Will be set by adapter
+    task: 'design',
+    timestamp: new Date().toISOString(),
+    input: {
+      type: 'file',
+      source: 'inputs/sources/prd.md',
+      summary: inputSummary,
+      size: state.spec.length,
+    },
+    output: {
+      designPath: state.designFilePath!,
+      planSummary: planSummary.substring(0, 300),
+      decisionCount: decisions.length
+    }
+  };
+  
+  await state.deps.session.addTurn(
+    state.context.project,
+    state.context.featureFolder || 'default',
+    'design',
+    turn
+  );
+  
+  // Load existing session to preserve interruption details
+  const existingSession = await state.deps.session.load(
+    state.context.project,
+    state.context.featureFolder || 'default',
+    'design'
+  );
+
+  // Update artifacts with latest design and state
+  await state.deps.session.updateArtifacts(
+    state.context.project,
+    state.context.featureFolder || 'default',
+    'design',
+    {
+      latestDesign: state.designFilePath!,
+      keyDecisions: decisions.slice(0, 5),
+      state: {
+        taskQueue: state.taskQueue?.getAll() || [],
+        currentTask: state.currentTask,
+        completedTasks: state.completedTasks || [],
+        completedTasksDetails: state.completedTasksDetails || [],
+        interruption: existingSession.state?.interruption
+      }
+    }
+  );
+}
+
+/**
+ * Store learnings to vector memory with chunking
+ */
+async function storeLearningsToMemory(
+  state: DesignGraphState,
+  learnings: string,
+  sessionId: string | undefined,
+  turnId: number | undefined
+): Promise<void> {
+  if (!state.deps?.chunk || !state.context.memory) return;
+  
+  try {
+    // Process through chunking pipeline
+    const result = await state.deps.chunk.process({
+      source: 'design-learning',
+      sourceType: 'text',
+      content: learnings,
+      metadata: {
+        type: 'learning',
+        task: 'design',
+        project: state.context.project,
+        feature: state.context.featureFolder || 'default',
+        timestamp: new Date().toISOString(),
+        // Session tracking for traceability
+        sessionId: sessionId,
+        turnId: turnId
+      }
+    });
+    
+    console.log(`📚 Chunked into ${result.chunks.length} pieces (avg ${result.stats.avgTokens} tokens)`);
+    
+    // Convert chunks to documents
+    const documents = result.chunks.map(chunk => ({
+      content: chunk.text,
+      metadata: chunk.metadata
+    }));
+    
+    // Batch store operation
+    const memory = state.context.memory as any;
+    await memory.store(documents, state.context.project);
+    
+    console.log(`✅ ${result.chunks.length} learning chunks stored to memory (batch)`);
+    if (sessionId && turnId) {
+      console.log(`🔗 Linked to session: ${sessionId}, turn: ${turnId}`);
+    }
+  } catch (error) {
+    // Non-fatal: log error but don't fail workflow
+    console.error('⚠️  Failed to store learnings to memory:', error instanceof Error ? error.message : error);
+    console.log('   Continuing without memory storage...');
+  }
 }
 
 /**
@@ -242,16 +214,16 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
 function extractDesignLearnings(state: DesignGraphState): string {
   const sections: string[] = [];
   
-  // 1. Context
+  // 1. Session context
   sections.push(`## Design Session`);
   sections.push(`**Project**: ${state.context.project}`);
   sections.push(`**Feature**: ${state.context.featureFolder || 'main'}`);
   sections.push(`**Timestamp**: ${new Date().toISOString()}`);
   
-  // 2. Design Plan (summarized to reduce memory)
+  // 2. Design approach summary
   if (state.planText) {
     sections.push(`\n## Design Approach Summary`);
-    // Extract key points from plan (THINKING section only)
+    // Extract thinking section if available
     const thinkingMatch = state.planText.match(/=== THINKING ===([\s\S]*?)=== END THINKING ===/);
     if (thinkingMatch) {
       const thinking = thinkingMatch[1].trim();
@@ -261,14 +233,14 @@ function extractDesignLearnings(state: DesignGraphState): string {
     }
   }
   
-  // 3. Previous Design Context (keep minimal reference)
+  // 3. Previous design reference (if evolution/refactor)
   if (state.design) {
     sections.push(`\n## Previous Design Reference`);
     const summary = state.design.substring(0, 300);
     sections.push(summary + (state.design.length > 300 ? '...\n[Full previous design available in session artifacts]' : ''));
   }
   
-  // 4. Directive Applied (summarized if too long)
+  // 4. Directive applied
   if (state.directive) {
     sections.push(`\n## Directive Applied`);
     if (state.directive.length > 2000) {
@@ -278,12 +250,12 @@ function extractDesignLearnings(state: DesignGraphState): string {
     }
   }
   
-  // 5. Design Summary
+  // 5. Design document summary
   sections.push(`\n## Design Document Summary`);
   const lines = state.designMarkdown.split('\n').length;
   sections.push(`**Length**: ${lines} lines`);
   
-  // Extract key sections from markdown
+  // Extract main sections from markdown
   const headings = state.designMarkdown.match(/^#{1,3}\s+(.+)$/gm);
   if (headings && headings.length > 0) {
     sections.push(`\n**Key Sections**:`);
@@ -292,7 +264,7 @@ function extractDesignLearnings(state: DesignGraphState): string {
     }
   }
   
-  // 6. Key Design Decisions
+  // 6. Key design decisions
   sections.push(`\n## Key Design Decisions`);
   sections.push(extractDesignDecisions(state));
   
@@ -300,12 +272,10 @@ function extractDesignLearnings(state: DesignGraphState): string {
 }
 
 /**
- * Extract key design decisions from the markdown
+ * Extract key design decisions from the design document
  */
 function extractDesignDecisions(state: DesignGraphState): string {
   const decisions: string[] = [];
-  
-  // Look for common design decision patterns
   const markdown = state.designMarkdown;
   
   // Technology stack
@@ -326,10 +296,10 @@ function extractDesignDecisions(state: DesignGraphState): string {
     decisions.push(`- **Database**: ${dbMatch[1].trim()}`);
   }
   
+  // Fallback if no specific decisions found
   if (decisions.length === 0) {
     decisions.push(`- Design approach documented in ${state.designMarkdown.split('\n').length} lines`);
   }
   
   return decisions.join('\n');
 }
-
