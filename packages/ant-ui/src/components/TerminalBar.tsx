@@ -11,7 +11,9 @@ import { Bar, BaseBarProps } from './Bar';
  * 
  * Features:
  * - Collapsible/expandable terminal output
- * - Resizable height
+ * - Resizable height (100px minimum)
+ * - Auto-collapse when resized below 100px
+ * - Drag from collapsed state to expand (starts at 100px)
  * - Auto-scroll to latest logs
  * - Log type indicators (INFO, OUT, ERR, ERROR)
  * - Clear logs functionality
@@ -23,6 +25,9 @@ export function TerminalBar(props: BaseBarProps = {}) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [height, setHeight] = useState(400);
   const [isResizing, setIsResizing] = useState(false);
+  const startYRef = useRef<number>(0);  // ✅ Track initial Y position
+  const startHeightRef = useRef<number>(0);  // ✅ Track initial height
+  const MIN_HEIGHT = 100; // ✅ Minimum height in pixels
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -33,13 +38,31 @@ export function TerminalBar(props: BaseBarProps = {}) {
   // ✅ REMOVED: Auto-expand when logs arrive
   // Users should manually expand/collapse terminal to keep their preferred state
 
-  // Handle mouse resize when expanded
+  // Handle mouse resize
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizing || !isExpanded) return;
+      if (!isResizing) return;
       
-      // Resize from top (inverted movement)
-      const newHeight = Math.max(200, Math.min(800, height - e.movementY));
+      // ✅ If collapsed, expand to MIN_HEIGHT on first drag
+      if (!isExpanded) {
+        setIsExpanded(true);
+        setHeight(MIN_HEIGHT);
+        startYRef.current = e.clientY;
+        startHeightRef.current = MIN_HEIGHT;
+        return;
+      }
+      
+      // ✅ Calculate new height from initial position (more stable)
+      const deltaY = startYRef.current - e.clientY;  // Inverted: drag up = increase height
+      const newHeight = Math.max(MIN_HEIGHT, Math.min(800, startHeightRef.current + deltaY));
+      
+      // ✅ Auto-collapse if dragged below MIN_HEIGHT
+      if (newHeight <= MIN_HEIGHT && startHeightRef.current > MIN_HEIGHT) {
+        setIsExpanded(false);
+        setIsResizing(false);
+        return;
+      }
+      
       setHeight(newHeight);
     };
 
@@ -63,7 +86,7 @@ export function TerminalBar(props: BaseBarProps = {}) {
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
-  }, [isResizing, height, isExpanded]);
+  }, [isResizing, isExpanded]);
 
   const getLogTypeIndicator = (type: string): string => {
     switch (type) {
@@ -109,19 +132,24 @@ export function TerminalBar(props: BaseBarProps = {}) {
   };
 
   return (
-    <div className="relative bg-white dark:bg-gray-800 border-t-2 border-gray-300 dark:border-gray-700 shadow-lg shrink-0">
-      {/* Resize handle (only when expanded) */}
-      {isExpanded && (
-        <div
-          className={`h-1 cursor-ns-resize transition-all duration-200 ${
-            isResizing 
-              ? 'bg-gradient-to-r from-blue-500 to-blue-600 dark:from-blue-700 dark:to-blue-800' 
-              : 'bg-gradient-to-r from-blue-200 to-blue-300 dark:from-gray-700 dark:to-gray-600 hover:from-blue-400 hover:to-blue-500 dark:hover:from-gray-600 dark:hover:to-gray-500'
-          }`}
-          onMouseDown={() => setIsResizing(true)}
-          title="Drag to resize terminal height"
-        />
-      )}
+    <div 
+      className="relative bg-white dark:bg-gray-800 border-t-2 border-gray-300 dark:border-gray-700 shadow-lg shrink-0"
+      data-terminal-bar
+    >
+      {/* Resize handle (always visible - can drag from collapsed state) */}
+      <div
+        className={`h-1 cursor-ns-resize transition-all duration-200 ${
+          isResizing 
+            ? 'bg-gradient-to-r from-blue-500 to-blue-600 dark:from-blue-700 dark:to-blue-800' 
+            : 'bg-gradient-to-r from-blue-200 to-blue-300 dark:from-gray-700 dark:to-gray-600 hover:from-blue-400 hover:to-blue-500 dark:hover:from-gray-600 dark:hover:to-gray-500'
+        }`}
+        onMouseDown={(e) => {
+          setIsResizing(true);
+          startYRef.current = e.clientY;
+          startHeightRef.current = height;
+        }}
+        title={isExpanded ? "Drag to resize terminal height" : "Drag up to open terminal"}
+      />
       
       {/* Header Bar (Always Visible) - Extends Base Bar */}
       {Bar.render({

@@ -67,7 +67,9 @@ export async function architectAgent(
   if (deps?.session && featureFolder) {
     try {
       console.log(`📖 Loading session history for feature: ${featureFolder}...`);
-      const session = await deps.session.load(project, featureFolder);
+      // ✅ Only load session for supported job types
+      const jobType: 'design' | 'code' | 'learn' = (task === 'design' || task === 'code' || task === 'learn') ? task : 'code';
+      const session = await deps.session.load(project, featureFolder, jobType);
       if (session.turns.length > 0) {
         sessionHistory = formatSessionContext(session);
         console.log(`✅ Loaded ${session.turns.length} previous turn(s)`);

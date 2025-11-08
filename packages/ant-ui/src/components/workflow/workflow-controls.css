@@ -10,6 +10,8 @@
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
+  /* 동적 위치 조정을 위한 변수 (JS에서 설정) */
+  bottom: var(--terminal-offset, 10px) !important;
 }
 
 /* 각 버튼을 독립적인 둥근 버튼으로 */

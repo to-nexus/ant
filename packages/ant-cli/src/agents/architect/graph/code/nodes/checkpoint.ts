@@ -59,6 +59,7 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
     await state.deps.session.updateArtifacts(
       state.context.project,
       state.context.featureFolder || 'default',
+      'code',  // ✅ Add job parameter
       {
         state: sessionState
       }

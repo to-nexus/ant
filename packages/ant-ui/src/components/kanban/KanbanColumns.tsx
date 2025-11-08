@@ -92,11 +92,14 @@ export function KanbanColumns({
   return (
     <LayoutGroup>
       <div className={isHorizontalSplit ? 
-        "flex flex-col gap-4 h-full overflow-y-auto scrollbar-hide" : 
+        "flex flex-col gap-4" : 
         "grid grid-cols-3 gap-4 h-full"
       }>
         {/* TO DO Column */}
-        <div className="flex flex-col min-h-0">
+        <div className={isHorizontalSplit ? 
+          "flex flex-col" : 
+          "flex flex-col min-h-0"
+        }>
           {/* Column Header */}
           <div className="flex items-center gap-2 mb-3 shrink-0">
             <h3 className="font-semibold text-sm text-gray-900 dark:text-white">📝 To Do</h3>
@@ -105,8 +108,11 @@ export function KanbanColumns({
             </Badge>
           </div>
           
-          {/* Scrollable Content */}
-          <div className="space-y-2 overflow-y-auto pr-2 scrollbar-hide">
+          {/* Content - No scroll in horizontal (board scrolls), scroll in vertical (column scrolls) */}
+          <div className={isHorizontalSplit ? 
+            "space-y-2 pr-2" : 
+            "space-y-2 overflow-y-auto pr-2 scrollbar-hide"
+          }>
             {sortedTodoTasks.map((task) => {
               const taskId = task.id || task.name;
               return (
@@ -140,7 +146,10 @@ export function KanbanColumns({
         </div>
 
         {/* IN PROGRESS Column */}
-        <div className="flex flex-col min-h-0">
+        <div className={isHorizontalSplit ? 
+          "flex flex-col" : 
+          "flex flex-col min-h-0"
+        }>
           {/* Column Header */}
           <div className="flex items-center gap-2 mb-3 shrink-0">
             <h3 className="font-semibold text-sm text-gray-900 dark:text-white">🚀 In Progress</h3>
@@ -149,8 +158,11 @@ export function KanbanColumns({
             </Badge>
           </div>
           
-          {/* Scrollable Content */}
-          <div className="space-y-3 overflow-y-auto pr-2 scrollbar-hide">
+          {/* Content - No scroll in horizontal (board scrolls), scroll in vertical (column scrolls) */}
+          <div className={isHorizontalSplit ? 
+            "space-y-3 pr-2" : 
+            "space-y-3 overflow-y-auto pr-2 scrollbar-hide"
+          }>
             {inProgressTask && (() => {
               const taskId = inProgressTask.id || inProgressTask.name;
               
@@ -187,7 +199,10 @@ export function KanbanColumns({
         </div>
 
         {/* COMPLETED Column */}
-        <div className="flex flex-col min-h-0">
+        <div className={isHorizontalSplit ? 
+          "flex flex-col" : 
+          "flex flex-col min-h-0"
+        }>
           {/* Column Header */}
           <div className="flex items-center gap-2 mb-3 shrink-0">
             <h3 className="font-semibold text-sm text-gray-900 dark:text-white">✅ Completed</h3>
@@ -196,8 +211,11 @@ export function KanbanColumns({
             </Badge>
           </div>
           
-          {/* Scrollable Content */}
-          <div className="space-y-2 overflow-y-auto pr-2 scrollbar-hide">
+          {/* Content - No scroll in horizontal (board scrolls), scroll in vertical (column scrolls) */}
+          <div className={isHorizontalSplit ? 
+            "space-y-2 pr-2" : 
+            "space-y-2 overflow-y-auto pr-2 scrollbar-hide"
+          }>
             {completedTasks.slice().reverse().map((task) => {
               const taskId = task.id || task.name;
               const isNewlyCompleted = newlyCompletedIds.has(taskId);

@@ -33,6 +33,7 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
   const [previousCompletedIds, setPreviousCompletedIds] = useState<Set<string>>(new Set());
   const [newlyInProgressId, setNewlyInProgressId] = useState<string | null>(null);
   const [previousInProgressId, setPreviousInProgressId] = useState<string | null>(null);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);  // ✅ Track initial load
   
   // ✅ Track dismissed interrupts (user chose to ignore)
   const [dismissedInterruptJobId, setDismissedInterruptJobId] = useState<string | null>(null);
@@ -45,9 +46,17 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
     }
   }, [kanbanData.interruption?.timestamp, dismissedInterruptJobId]);
 
-  // ✅ Detect newly completed tasks
+  // ✅ Detect newly completed tasks (skip animation on initial load)
   useEffect(() => {
     const currentCompletedIds = new Set(kanbanData.completed.map(task => task.id || task.name));
+    
+    // ✅ On initial load, just set previous IDs without triggering animation
+    if (isInitialLoad) {
+      setPreviousCompletedIds(currentCompletedIds);
+      setIsInitialLoad(false);
+      return;
+    }
+    
     const newIds = new Set<string>();
     
     currentCompletedIds.forEach(id => {
@@ -60,7 +69,7 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
       setNewlyCompletedIds(newIds);
       setPreviousCompletedIds(currentCompletedIds);
     }
-  }, [kanbanData.completed, previousCompletedIds]);
+  }, [kanbanData.completed, previousCompletedIds, isInitialLoad]);
 
   // ✅ Detect newly in-progress task
   useEffect(() => {
@@ -121,10 +130,13 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
         titleActions={<DataSourceIndicator dataSource={kanbanData.dataSource} />}
         headerActions={
           <GaugesGroup
+            recursionCount={kanbanData.recursionCount}
+            recursionLimit={kanbanData.recursionLimit}
             completedCount={completedCount}
             totalTasks={totalTasks}
           />
         }
+        className={`kanban-board ${splitLayout}`}  // ✅ Pass splitLayout
       >
         <KanbanEstimating />
       </BoardContainer>
@@ -138,12 +150,18 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
       titleActions={<DataSourceIndicator dataSource={kanbanData.dataSource} />}
       headerActions={
         <GaugesGroup
+          recursionCount={kanbanData.recursionCount}
+          recursionLimit={kanbanData.recursionLimit}
           completedCount={completedCount}
           totalTasks={totalTasks}
         />
       }
+      className={`kanban-board ${splitLayout}`}  // ✅ Pass splitLayout
     >
-      <div className="flex flex-col h-full overflow-hidden">
+      <div className={splitLayout === 'horizontal' ? 
+        "flex flex-col" : 
+        "flex flex-col h-full overflow-hidden"
+      }>
         {shouldShowInterruption && (
           <div className="mb-3">
             <KanbanPausedPrompt

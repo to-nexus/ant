@@ -180,6 +180,8 @@ export async function getSource(context: ProjectContext, gitPort: GitPort): Prom
 
 /**
  * Find latest design document
+ * 
+ * Standard naming: system-design-{project}-{timestamp}.md
  */
 export async function findLatestDesign(context: ProjectContext, gitPort: GitPort): Promise<string | null> {
   const designPath = path.join("workspace", context.project, context.featureFolder, "outputs/design");
@@ -188,9 +190,10 @@ export async function findLatestDesign(context: ProjectContext, gitPort: GitPort
   if (!exists) return "";
 
   const entries = await gitPort.readDirectory(designPath);
+  // ✅ STANDARD: system-design-*.md only
   const designFiles = entries
-    .filter(e => !e.isDirectory && e.name.startsWith("design-") && e.name.endsWith(".md"))
-    .sort((a, b) => b.name.localeCompare(a.name));
+    .filter(e => !e.isDirectory && e.name.startsWith("system-design-") && e.name.endsWith(".md"))
+    .sort((a, b) => b.name.localeCompare(a.name));  // Newest first
 
   if (designFiles.length === 0) return "";
 

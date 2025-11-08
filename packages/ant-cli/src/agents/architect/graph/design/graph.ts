@@ -41,13 +41,9 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       console.log(`✅ Task "${completedTask.name}" completed!`);
     }
     
-    // Update completedTasks (IDs only - for backward compatibility)
-    const completedTasks = state.completedTasks || [];
-    completedTasks.push(completedTask.id);
-    
-    // Store full task details
-    const completedTasksDetails = state.completedTasksDetails || [];
-    completedTasksDetails.push(completedTask);
+    // ✅ CRITICAL: Create NEW arrays (immutable update pattern for LangGraph)
+    const completedTasks = [...(state.completedTasks || []), completedTask.id];
+    const completedTasksDetails = [...(state.completedTasksDetails || []), completedTask];
     
     console.log(`[checkTaskStatus] 💾 Task completion details saved:`, {
       taskId: completedTask.id,

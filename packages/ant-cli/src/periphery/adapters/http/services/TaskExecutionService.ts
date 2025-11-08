@@ -54,6 +54,7 @@ export class TaskExecutionService {
     const jobStatus: JobStatus = {
       jobId,
       status: 'pending',
+      task: params.task,  // ✅ Track the job type
       startedAt: new Date().toISOString()
     };
     

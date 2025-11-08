@@ -126,6 +126,7 @@ export function SplitLayout({
     };
   }, [isResizing, isHorizontal, minSize]);
 
+  // ✅ For horizontal split, maintain fixed width ratio (not affected by height changes)
   const firstPanelStyle = isHorizontal
     ? { width: `${ratio * 100}%` }
     : { height: `${ratio * 100}%` };
