@@ -24,6 +24,7 @@ export class NodeCommandAdapter implements CommandPort {
     'yarn',
     'git',
     'node',
+    'rm',     // ✅ Added for cleaning node_modules (use with caution)
   ];
 
   private readonly DEFAULT_TIMEOUT = 5 * 60 * 1000; // 5 minutes
@@ -46,7 +47,13 @@ export class NodeCommandAdapter implements CommandPort {
     }
 
     const timeout = options.timeout || this.DEFAULT_TIMEOUT;
-    const cwd = options.cwd || process.cwd();
+    let cwd = options.cwd || process.cwd();
+    
+    // ✅ Expand ~ to home directory
+    if (cwd.startsWith('~')) {
+      const os = await import('os');
+      cwd = cwd.replace(/^~/, os.homedir());
+    }
 
     console.log(`🔧 Executing: ${command}`);
     console.log(`   Directory: ${cwd}`);

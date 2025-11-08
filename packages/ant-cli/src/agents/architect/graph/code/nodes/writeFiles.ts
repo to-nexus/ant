@@ -107,19 +107,37 @@ export async function writeFiles(state: ArchitectGraphState): Promise<ArchitectG
     
     // Handle file deletions if any
     const filesToDelete = state.filesToDelete || [];
+    let deletedFiles = 0;
     if (filesToDelete.length > 0) {
       console.log(`\n🗑️  DELETED FILES:\n`);
       for (const deletePath of filesToDelete) {
-        const filePath = p.join(resolvedPath, deletePath);
-        const relPath = p.relative(repoRoot, filePath);
+        // ✅ Normalize path: remove absolute path if present
+        let normalizedPath = deletePath;
+        
+        // If path is absolute and matches resolvedPath, make it relative
+        if (p.isAbsolute(deletePath)) {
+          if (deletePath.startsWith(resolvedPath)) {
+            normalizedPath = p.relative(resolvedPath, deletePath);
+          } else if (deletePath.startsWith(repoRoot)) {
+            normalizedPath = p.relative(repoRoot, deletePath);
+          } else {
+            console.log(`⚠️  SKIP      ${deletePath} (absolute path outside project)`);
+            continue;
+          }
+        }
         
         // Check if file exists before deleting
-        const exists = await gitPort.fileExists(relPath);
+        const exists = await gitPort.fileExists(normalizedPath);
         if (exists) {
-          // TODO: Implement delete via GitPort
-          console.log(`🗑️  DELETED   ${deletePath}`);
+          try {
+            await gitPort.deleteFile(normalizedPath);
+            console.log(`🗑️  DELETED   ${normalizedPath}`);
+            deletedFiles++;
+          } catch (error) {
+            console.error(`❌ FAILED    ${normalizedPath}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          }
         } else {
-          console.log(`⚠️  SKIP      ${deletePath} (not found)`);
+          console.log(`⚠️  SKIP      ${normalizedPath} (not found)`);
         }
       }
     }
@@ -129,8 +147,8 @@ export async function writeFiles(state: ArchitectGraphState): Promise<ArchitectG
     console.log(`📊 SUMMARY:`);
     console.log(`   ✨ New files:      ${newFiles}`);
     console.log(`   📝 Modified files: ${modifiedFiles}`);
-    if (filesToDelete.length > 0) {
-      console.log(`   🗑️  Deleted files:  ${filesToDelete.length}`);
+    if (deletedFiles > 0) {
+      console.log(`   🗑️  Deleted files:  ${deletedFiles}`);
     }
     console.log(`   📦 Total files:    ${state.files.length}`);
     console.log(`   💾 Total size:     ${formatFileSize(totalSize)}`);

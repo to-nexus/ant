@@ -416,6 +416,36 @@ ${completedTaskCount > 0 ? `📝 RECENTLY COMPLETED TASKS:\n${completedTasksList
             }
           }
           
+          // ✅ Special handling for rm -rf commands (use Node.js fs instead)
+          if (actualCommand.trim().match(/^rm\s+-rf\s+/)) {
+            console.log(`💻 Executing (via fs): ${actualCommand}`);
+            
+            try {
+              const fs = await import('fs/promises');
+              const path = await import('path');
+              
+              // Extract target paths from command
+              const targets = actualCommand.replace(/^rm\s+-rf\s+/, '').trim().split(/\s+/);
+              
+              for (const target of targets) {
+                const targetPath = path.isAbsolute(target) 
+                  ? target 
+                  : path.join(actualProjectPath, target);
+                
+                try {
+                  await fs.rm(targetPath, { recursive: true, force: true });
+                  console.log(`   ✅ Removed: ${target}`);
+                } catch (err) {
+                  console.log(`   ℹ️  ${target} not found or already removed`);
+                }
+              }
+              console.log(`   ✅ Success`);
+            } catch (error) {
+              console.error(`   ❌ Error: ${error instanceof Error ? error.message : error}`);
+            }
+            continue;
+          }
+          
           // Skip cd commands if they're just changing to project root (already there)
           if (actualCommand.trim().startsWith('cd ') && actualCommand.includes(actualProjectPath)) {
             console.log(`💻 Skipping redundant cd: ${actualCommand}`);

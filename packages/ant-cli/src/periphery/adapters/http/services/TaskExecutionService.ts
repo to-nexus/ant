@@ -28,13 +28,16 @@ export class TaskExecutionService {
   // Callbacks
   private onJobStatusChange?: (jobId: string, status: JobStatus) => void;
   private onLogEntry?: (jobId: string, log: LogEntry) => void;
+  private onJobCompleted?: (jobId: string) => Promise<void>;
   
   constructor(callbacks?: {
     onJobStatusChange?: (jobId: string, status: JobStatus) => void;
     onLogEntry?: (jobId: string, log: LogEntry) => void;
+    onJobCompleted?: (jobId: string) => Promise<void>;
   }) {
     this.onJobStatusChange = callbacks?.onJobStatusChange;
     this.onLogEntry = callbacks?.onLogEntry;
+    this.onJobCompleted = callbacks?.onJobCompleted;
   }
   
   /**
@@ -219,6 +222,14 @@ export class TaskExecutionService {
               timestamp: new Date().toISOString()
             };
             this.logStreams.get(jobId)?.forEach(listener => listener(completionMarker));
+            
+            // ✅ CRITICAL: Clean up job state to remove from active jobs
+            // This ensures UI switches from "estimating" to "session" data source
+            if (this.onJobCompleted) {
+              this.onJobCompleted(jobId).catch(err => {
+                console.error(`[TaskExecutionService] Failed to cleanup job state:`, err);
+              });
+            }
             
             resolve();
           } else {

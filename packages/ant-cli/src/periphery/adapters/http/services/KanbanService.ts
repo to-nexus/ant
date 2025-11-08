@@ -139,7 +139,8 @@ export class KanbanService {
     if (jobToProject && jobs) {
       console.log(`\n🔍 [KanbanService] Looking for active job:`);
       console.log(`   Project: ${projectId}, Feature: ${featureName}`);
-      console.log(`   Total jobs in map: ${jobToProject.size}`);
+      console.log(`   Total jobs in jobToProject: ${jobToProject.size}`);
+      console.log(`   Total jobs in jobs: ${jobs.size}`);
       
       for (const [jobId, mapping] of jobToProject.entries()) {
         if (mapping.projectId === projectId && mapping.featureName === featureName) {
@@ -162,6 +163,9 @@ export class KanbanService {
       if (!activeJobId) {
         console.log(`   ❌ No active job found (all jobs completed/stopped)`);
       }
+    } else {
+      console.log(`\n⚠️  [KanbanService] jobToProject or jobs not provided!`);
+      console.log(`   jobToProject: ${!!jobToProject}, jobs: ${!!jobs}`);
     }
     
     // 2. Try to get LIVE data from memory snapshot

@@ -444,17 +444,38 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
                     try {
                       const pm = await commandPort.detectPackageManager(resolvedPath);
                       
-                      // Step 1: Remove corrupted files
-                      console.log('🗑️  Removing node_modules and lock file...');
-                      const rmResult = await commandPort.execute(
-                        'rm -rf node_modules package-lock.json yarn.lock pnpm-lock.yaml',
-                        { cwd: resolvedPath, timeout: 30000 }
-                      );
-                      if (!rmResult.success) {
-                        console.error('   ❌ Failed to remove files:', rmResult.stderr);
+                      // Step 1: Remove corrupted files using Node.js fs (safer than shell rm)
+                      console.log('🗑️  Removing node_modules and lock files...');
+                      try {
+                        const fs = await import('fs/promises');
+                        const path = await import('path');
+                        
+                        // Remove node_modules
+                        const nodeModulesPath = path.join(resolvedPath, 'node_modules');
+                        try {
+                          await fs.rm(nodeModulesPath, { recursive: true, force: true });
+                          console.log('   ✅ Removed node_modules');
+                        } catch (err) {
+                          console.log('   ℹ️  node_modules not found or already removed');
+                        }
+                        
+                        // Remove lock files
+                        const lockFiles = ['package-lock.json', 'yarn.lock', 'pnpm-lock.yaml'];
+                        for (const lockFile of lockFiles) {
+                          const lockPath = path.join(resolvedPath, lockFile);
+                          try {
+                            await fs.unlink(lockPath);
+                            console.log(`   ✅ Removed ${lockFile}`);
+                          } catch (err) {
+                            // File doesn't exist, ignore
+                          }
+                        }
+                        
+                        console.log('   ✅ Cleanup completed');
+                      } catch (fsError) {
+                        console.error('   ❌ Failed to remove files:', fsError instanceof Error ? fsError.message : fsError);
                         throw new Error('Failed to remove corrupted files');
                       }
-                      console.log('   ✅ Removed successfully');
                       
                       // Step 2: Clear cache
                       console.log('🧹 Clearing package manager cache...');
