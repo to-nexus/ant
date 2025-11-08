@@ -335,6 +335,13 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     this.kanbanService = new KanbanService(this.WORKSPACE_ROOT);
     this.taskExecutionService = new TaskExecutionService({
       onJobStatusChange: (jobId, status) => {
+        // ✅ CRITICAL: Don't re-add completed/failed jobs to Map
+        // cleanupJobState already handles removal, and re-adding causes
+        // frontend to see "estimating" state again
+        if (status.status === 'completed' || status.status === 'failed') {
+          console.log(`[TaskExecutionService] ⏭️  Skipping jobs.set for ${status.status} job: ${jobId}`);
+          return;
+        }
         this.jobs.set(jobId, status);
       },
       onLogEntry: (jobId, log) => {
@@ -366,14 +373,27 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       onSessionChange: (projectId, featureName, jobType) => {
         // ✅ Broadcast Kanban update when session changes
         // Now we know exactly which job type triggered the change
-        this.sseBroadcastService.broadcastKanbanUpdate(
-          projectId, 
-          featureName,
-          this.jobToProject,
-          this.jobs,
-          this.taskQueueSnapshots,
-          jobType  // ✅ Pass the job type from the watcher
-        );
+        console.log(`\n📡 [onSessionChange] Session file changed: ${projectId}/${featureName}/${jobType}`);
+        console.log(`   Current jobs.size: ${this.jobs.size}`);
+        console.log(`   Current jobToProject.size: ${this.jobToProject.size}`);
+        console.log(`   Current taskQueueSnapshots.size: ${this.taskQueueSnapshots.size}`);
+        
+        // ✅ CRITICAL: Small delay to let cleanupJobState complete
+        // Session file can be updated by 'learn' node BEFORE cleanupJobState deletes job from map
+        // This 50ms delay ensures cleanupJobState runs first
+        setTimeout(() => {
+          console.log(`📡 [onSessionChange] Broadcasting after delay...`);
+          console.log(`   jobs.size after delay: ${this.jobs.size}`);
+          
+          this.sseBroadcastService.broadcastKanbanUpdate(
+            projectId, 
+            featureName,
+            this.jobToProject,
+            this.jobs,
+            this.taskQueueSnapshots,
+            jobType  // ✅ Pass the job type from the watcher
+          );
+        }, 50);  // 50ms delay
         
         // ✅ Broadcast file tree update when session file is created/modified
         // This ensures the frontend sees session.json appear in the output tree

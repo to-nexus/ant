@@ -39,13 +39,21 @@ export function useKanbanSSE() {
   
   const isRunningRef = useRef(isRunning);
   const currentInProgressIdRef = useRef<string | undefined>(undefined); // ✅ Track current task
+  const setRunningRef = useRef(setRunning);
+  const startLogStreamRef = useRef(startLogStream);
   
   useEffect(() => {
     isRunningRef.current = isRunning;
   }, [isRunning]);
   
   useEffect(() => {
+    setRunningRef.current = setRunning;
+    startLogStreamRef.current = startLogStream;
+  }, [setRunning, startLogStream]);
+  
+  useEffect(() => {
     if (!selectedProject || !selectedFeature) {
+      console.log('[useKanbanSSE] ❌ No project/feature, resetting data');
       setKanbanData({ todo: [], inProgress: null, completed: [] });
       return;
     }
@@ -73,7 +81,8 @@ export function useKanbanSSE() {
           isStopping,
           currentInProgress: currentInProgressId,
           newInProgress: newInProgressId,
-          completedCount: data.completed?.length || 0  // ✅ Log completed count
+          completedCount: data.completed?.length || 0,  // ✅ Log completed count
+          isEstimating: data.isEstimating  // ✅ Log estimating state
         });
         
         // ✅ Job state synchronization
@@ -83,8 +92,8 @@ export function useKanbanSSE() {
             activeJobId &&
             activeJobId !== userStoppedJobId) {
           console.log('[useKanbanSSE] ✅ Job started:', activeJobId);
-          setRunning(true, activeJobId, 'generate');
-          startLogStream(activeJobId);
+          setRunningRef.current(true, activeJobId, 'generate');
+          startLogStreamRef.current(activeJobId);
         }
         
         // Job ended detection
@@ -92,7 +101,7 @@ export function useKanbanSSE() {
             dataSource === 'session' &&
             !activeJobId) {
           console.log('[useKanbanSSE] ✅ Job ended');
-          setRunning(false);
+          setRunningRef.current(false);
         }
         
         // ✅ CRITICAL: Wait for workflow animations BEFORE updating Kanban
@@ -141,6 +150,14 @@ export function useKanbanSSE() {
         
         // ✅ Update Kanban data AFTER workflow animations AND render cycles
         currentInProgressIdRef.current = newInProgressId;
+        
+        console.log('[useKanbanSSE] 🔄 Updating Kanban data:', {
+          dataSource: data.dataSource,
+          isEstimating: data.isEstimating,
+          activeJobId: data.activeJobId,
+          completedCount: data.completed?.length || 0
+        });
+        
         setKanbanData(data);
         
       } catch (error) {
@@ -156,7 +173,7 @@ export function useKanbanSSE() {
       console.log('[useKanbanSSE] 🧹 Closing connection');
       eventSource.close();
     };
-  }, [selectedProject, selectedFeature, selectedWorkType, isStopping, userStoppedJobId, setRunning, startLogStream]);  // ✅ Add selectedWorkType to deps
+  }, [selectedProject, selectedFeature, selectedWorkType]);  // ✅ Remove unstable dependencies
   
   return { kanbanData };
 }
