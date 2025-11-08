@@ -21,6 +21,7 @@ interface NodeData {
   nodeType: NodeType;
   actors?: string[];  // Actor IDs
   isExpanded?: boolean;  // 확장 상태
+  llmInfo?: { provider: string; model: string };  // ✅ 백엔드에서 받은 실제 LLM 정보
 }
 
 interface WorkflowNodeProps {
@@ -69,7 +70,7 @@ export const WorkflowNode = memo(({ data }: WorkflowNodeProps) => {
   const size = isExpanded ? NODE_SIZE.expanded : NODE_SIZE.collapsed;
   const colorClass = `${NODE_COLORS_LIGHT[data.nodeType]} ${NODE_COLORS_DARK[data.nodeType]}`;
   
-  const actorInfoList = getActorInfoList(data.actors || []);
+  const actorInfoList = getActorInfoList(data.actors || [], data.llmInfo);
   
   // 화면 분할 방향에 따라 Handle 위치 변경
   const targetPosition = splitLayout === 'horizontal' ? Position.Top : Position.Left;

@@ -33,7 +33,8 @@ const getEdgeLabelStyle = (theme: 'light' | 'dark') => ({
 
 export function useGraphLayout(
   metadata: WorkflowGraphMetadata | null,
-  realtimeState: WorkflowRealtimeState | null
+  realtimeState: WorkflowRealtimeState | null,
+  config?: any  // ✅ config 추가 (Job 실행 전 LLM 정보용)
 ) {
   const splitLayout = useStore(state => state.splitLayout);
   const theme = useStore(state => state.theme);
@@ -42,6 +43,12 @@ export function useGraphLayout(
     if (!metadata) {
       return { nodes: [], edges: [] };
     }
+    
+    // ✅ LLM 정보 결정: realtimeState 우선, 없으면 config 사용
+    const llmInfo = realtimeState?.llmInfo || (config ? {
+      provider: config.llmProvider,
+      model: config.llmModel
+    } : null);
     
     // 화면 분할 방향에 따라 워크플로우 방향 결정
     // horizontal (좌우 분할) → 워크플로우는 세로로 (TB)
@@ -58,7 +65,8 @@ export function useGraphLayout(
         importance: node.importance,
         isActive: realtimeState?.currentNode === node.id,
         actors: node.interactsWithActors,
-        nodeType: node.type
+        nodeType: node.type,
+        llmInfo  // ✅ Workflow 노드에도 LLM 정보 전달
       },
       position: { x: 0, y: 0 }, // Dagre가 계산할 것
     }));
@@ -73,7 +81,7 @@ export function useGraphLayout(
         actorId: actor.id,  // 실제 정보 조회용
         icon: actor.icon,
         isActive: realtimeState?.activeActors?.includes(actor.id) || false,
-        llmInfo: actor.id === 'llm' ? (realtimeState?.llmInfo || null) : null  // ✅ LLM Actor에 실제 정보 전달
+        llmInfo: actor.id === 'llm' ? llmInfo : null  // ✅ LLM Actor에 정보 전달
       },
       position: { x: 0, y: 0 }
     }));
@@ -200,7 +208,7 @@ export function useGraphLayout(
     });
     
     return { nodes: layoutedNodes, edges: rfEdges };
-  }, [metadata, realtimeState, splitLayout, theme]);
+  }, [metadata, realtimeState, splitLayout, theme, config]);
 }
 
 /**

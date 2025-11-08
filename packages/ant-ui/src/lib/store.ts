@@ -249,13 +249,14 @@ export const useStore = create<Store>((set, get) => ({
     
     // Load session.json when feature is selected
     if (featureName) {
-      const { selectedProject } = get();
+      const { selectedProject, selectedWorkType } = get();
       if (selectedProject) {
         // Load session asynchronously
         (async () => {
           try {
             const { fetchFeatureSession } = await import('@/lib/api');
-            const session = await fetchFeatureSession(selectedProject, featureName);
+            const job = (selectedWorkType as 'design' | 'code' | 'learn') || 'code';  // ✅ Get job from workType
+            const session = await fetchFeatureSession(selectedProject, featureName, job);  // ✅ Pass job
             set({ session: session || undefined });
           } catch (error) {
             console.error('Failed to load session:', error);

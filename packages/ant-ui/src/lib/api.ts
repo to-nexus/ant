@@ -382,9 +382,9 @@ export async function deleteFeature(projectId: string, featureName: string): Pro
   }
 }
 
-export async function fetchFeatureSession(projectId: string, featureName: string): Promise<Session | null> {
+export async function fetchFeatureSession(projectId: string, featureName: string, job: 'design' | 'code' | 'learn' = 'code'): Promise<Session | null> {
   try {
-    const url = `${API_BASE}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/session`;
+    const url = `${API_BASE}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/session?job=${job}`;  // ✅ Add job query param
     const response = await fetch(url);
     
     if (response.status === 404) {
@@ -444,9 +444,9 @@ export interface KanbanData {
  * Fetch complete Kanban board data for a feature
  * Returns ready-to-render data (no client-side merging needed)
  */
-export async function fetchKanbanData(projectId: string, featureName: string): Promise<KanbanData> {
+export async function fetchKanbanData(projectId: string, featureName: string, job: 'design' | 'code' | 'learn' = 'code'): Promise<KanbanData> {
   try {
-    const url = `${API_BASE}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/kanban`;
+    const url = `${API_BASE}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/kanban?job=${job}`;  // ✅ Add job query param
     const response = await fetch(url);
     
     if (!response.ok) {
@@ -702,6 +702,7 @@ export async function createProjectConfig(projectId: string): Promise<ProjectCon
     localPath: `~/dev/${sanitizedName}`,
     branchBase: 'main',
     autoLearn: true,
+    // Note: llmProvider and llmModel will be set by backend from environment variables
   };
   
   try {

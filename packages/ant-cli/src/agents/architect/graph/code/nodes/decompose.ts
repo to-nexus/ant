@@ -43,7 +43,8 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     try {
       const session = await state.deps.session.load(
         state.context.project,
-        state.context.featureFolder || 'default'
+        state.context.featureFolder || 'default',
+        'code'  // ✅ Specify job type
       );
       
       // ✅ Extract completed tasks for "estimating started" signal
@@ -56,7 +57,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       if (session.state && 
           session.state.taskQueue && 
           (session.state.taskQueue.length > 0 || session.state.currentTask)) {
-        console.log('\n🔄 Resuming from previous session...\n');
+        console.log('\n🔄 Resuming from previous code session...\n');
         
         // ✅ CRITICAL: Reload codebase from actual disk to detect file deletions
         const gitPort = state.deps?.git;

@@ -22,6 +22,8 @@ import { useGraphMetadata, useGraphLayout } from './hooks';
 import { WorkflowNode, ActorNode } from './nodes';
 import { NodeType } from '@/types/workflow';
 
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4100/api';
+
 // 커스텀 노드 타입 매핑
 const nodeTypes: NodeTypes = {
   [NodeType.ENTRY]: WorkflowNode,
@@ -46,12 +48,24 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
   const theme = useStore(state => state.theme);
   const splitLayout = useStore(state => state.splitLayout);
   
+  // ✅ Fetch config to get LLM info (for non-running jobs)
+  const [config, setConfig] = React.useState<any>(null);
+  React.useEffect(() => {
+    if (selectedProject) {
+      fetch(`${API_BASE}/projects/${selectedProject}/config`)
+        .then(res => res.ok ? res.json() : null)
+        .then(data => data && setConfig(data))
+        .catch(() => setConfig(null));
+    }
+  }, [selectedProject]);
+  
   // 1. 정적 그래프 메타데이터 로드 (Hooks는 항상 호출되어야 함)
   const { metadata, loading, error } = useGraphMetadata(selectedAgent, selectedWorkType);
   
   // 2. ReactFlow 노드/엣지 변환 + 레이아웃
   // ✅ workflowState 사용: App에서 전달받은 단일 SSE 상태
-  const { nodes: baseNodes, edges } = useGraphLayout(metadata, workflowState);
+  // ✅ config 전달: Job 실행 전에도 LLM 정보 표시
+  const { nodes: baseNodes, edges } = useGraphLayout(metadata, workflowState, config);
   
   // ReactFlow instance for fitView
   const [reactFlowInstance, setReactFlowInstance] = React.useState<any>(null);

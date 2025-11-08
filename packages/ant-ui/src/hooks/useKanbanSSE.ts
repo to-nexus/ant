@@ -24,6 +24,7 @@ const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4100/api';
 export function useKanbanSSE() {
   const selectedProject = useStore(state => state.selectedProject);
   const selectedFeature = useStore(state => state.selectedFeature);
+  const selectedWorkType = useStore(state => state.selectedWorkType);  // ✅ Get selected work type
   const isRunning = useStore(state => state.isRunning);
   const isStopping = useStore(state => state.isStopping);
   const userStoppedJobId = useStore(state => state.userStoppedJobId);
@@ -51,8 +52,9 @@ export function useKanbanSSE() {
     
     console.log('[useKanbanSSE] 🔄 Connecting:', selectedProject, selectedFeature);
     
+    const job = (selectedWorkType as 'design' | 'code' | 'learn') || 'code';  // ✅ Get job from workType
     const eventSource = new EventSource(
-      `${API_BASE}/projects/${selectedProject}/features/${selectedFeature}/kanban/stream`
+      `${API_BASE}/projects/${selectedProject}/features/${selectedFeature}/kanban/stream?job=${job}`  // ✅ Add job param
     );
     
     eventSource.onmessage = async (event) => {  // ✅ Make async!
@@ -153,7 +155,7 @@ export function useKanbanSSE() {
       console.log('[useKanbanSSE] 🧹 Closing connection');
       eventSource.close();
     };
-  }, [selectedProject, selectedFeature, isStopping, userStoppedJobId, setRunning, startLogStream]);
+  }, [selectedProject, selectedFeature, selectedWorkType, isStopping, userStoppedJobId, setRunning, startLogStream]);  // ✅ Add selectedWorkType to deps
   
   return { kanbanData };
 }

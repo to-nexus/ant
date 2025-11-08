@@ -20,6 +20,7 @@ interface ActorNodeData {
   icon?: string;
   isActive?: boolean;  // Actor 활성화 상태 (통신 중)
   isExpanded?: boolean;  // 확장 상태
+  llmInfo?: { provider: string; model: string };  // ✅ 백엔드에서 받은 실제 LLM 정보
 }
 
 interface ActorNodeProps {
@@ -53,7 +54,7 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
   const [isExpanded, setIsExpanded] = React.useState(data.isExpanded || false);
   const [config, setConfig] = React.useState<any>(null);
   
-  // Fetch config to get actual LLM provider and model
+  // Fetch config for localPath (code-repo)
   React.useEffect(() => {
     if (selectedProject) {
       fetch(`/api/projects/${selectedProject}/config`)
@@ -63,28 +64,13 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
     }
   }, [selectedProject]);
   
-  // ✅ Actor 정보 조회 (LLM인 경우 서버에서 받은 실제 정보 사용)
+  // ✅ Actor 정보 조회 (LLM인 경우 data.llmInfo 사용)
+  // llmInfo는 이미 useGraphLayout에서 realtimeState 또는 config로부터 설정됨
   const baseActorInfo = data.actorId ? getActorInfo(data.actorId, data.llmInfo || undefined) : null;
   
-  // 실제 경로로 details 동적 생성 및 config에서 실제 모델 정보 반영
+  // 실제 경로로 details 동적 생성
   const actorInfo = React.useMemo(() => {
     if (!baseActorInfo) return null;
-    
-    // LLM actor의 경우 config에서 실제 provider와 model 가져오기
-    if (data.actorId === 'llm' && config) {
-      const provider = config.llmProvider || 'openai';
-      const model = config.llmModel || 'gpt-4o';
-      
-      // Provider 이름 포맷팅
-      const providerName = provider === 'anthropic' ? 'Anthropic' : 
-                          provider === 'openai' ? 'OpenAI' : provider;
-      
-      return {
-        ...baseActorInfo,
-        provider: providerName,
-        model: model
-      };
-    }
     
     // local-storage와 file-system의 경우 실제 경로로 치환
     if (data.actorId === 'local-storage' && selectedProject && selectedFeature) {
@@ -110,7 +96,7 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
     }
     
     return baseActorInfo;
-  }, [baseActorInfo, data.actorId, selectedProject, selectedFeature, config]);
+  }, [baseActorInfo, data.actorId, selectedProject, selectedFeature]);
   
   const colorClass = `${ACTOR_COLORS_LIGHT[data.actorType]} ${ACTOR_COLORS_DARK[data.actorType]}`;
   

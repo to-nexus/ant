@@ -32,18 +32,16 @@ function resolveProvider(agentType?: string, override?: ModelProvider): ModelPro
 function resolveModelName(provider: ModelProvider, agentType?: string): string {
   const prefix = agentType ? `${agentType.toUpperCase()}_` : '';
   const modelName = process.env[`${prefix}MODEL_NAME`] 
-    || process.env.AI_MODEL_NAME 
-    || (provider === 'anthropic' ? 'claude-3-haiku-20240307' : 'gpt-4o');
+    || process.env.AI_MODEL_NAME
   
   console.log(`[LLM] Resolving model name for provider="${provider}", agentType="${agentType}":`, {
     envVar: `${prefix}MODEL_NAME`,
     value: process.env[`${prefix}MODEL_NAME`],
     fallback: process.env.AI_MODEL_NAME,
-    defaultForProvider: provider === 'anthropic' ? 'claude-3-haiku-20240307' : 'gpt-4o',
     resolved: modelName
   });
   
-  return modelName;
+  return modelName || '';
 }
 
 function resolveTemperature(agentType?: string, fallback = 0.2): number {

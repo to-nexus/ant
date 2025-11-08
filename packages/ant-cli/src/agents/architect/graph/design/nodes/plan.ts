@@ -42,7 +42,14 @@ export async function plan(state: DesignGraphState) {
       description: currentTask.description,
       priority: currentTask.priority
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'plan', taskInfo);
+    
+    // ✅ Extract LLM info from GenericLLMClient
+    const llmInfo = (llm as any)?.provider && (llm as any)?.modelName ? {
+      provider: (llm as any).provider,
+      model: (llm as any).modelName
+    } : undefined;
+    
+    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'plan', taskInfo, llmInfo);
   }
 
   // Prepare artifacts (using new unified names)
@@ -67,7 +74,7 @@ export async function plan(state: DesignGraphState) {
   
   console.log(`⏱️  Prompt build time: ${result.metadata.buildTime}ms`);
   console.log(`🎯 Design mode: ${state.designMode || 'auto'}`);
-  console.log('\n📝 Generating design plan...\n');
+  console.log('\n📝 Generating design strategy...\n');
   
   if (llm.stream) {
     // Use streaming if available
@@ -81,5 +88,6 @@ export async function plan(state: DesignGraphState) {
     planText = await llm.invoke(result.formatted.messages);
   }
 
+  // ✅ planText를 메모리(state)에 저장하여 execute 노드에서 직접 사용
   return { ...state, planText, currentTask };
 }

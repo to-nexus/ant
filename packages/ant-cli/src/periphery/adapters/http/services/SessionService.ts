@@ -28,15 +28,16 @@ export class SessionService {
    */
   watchSessionFile(
     projectId: string, 
-    featureName: string, 
+    featureName: string,
+    job: 'design' | 'code' | 'learn',
     sseClientChecker: () => boolean
   ): void {
-    const key = `${projectId}/${featureName}`;
+    const key = `${projectId}/${featureName}/${job}`;  // ✅ Include job in key
     const sessionPath = path.join(
       this.workspaceRoot,
       projectId,
       featureName,
-      'outputs/session.json'
+      `sessions/${job}.json`  // ✅ Use job-specific path
     );
     
     // Don't create duplicate watchers
@@ -115,12 +116,12 @@ export class SessionService {
   /**
    * Read session data from file
    */
-  async readSessionData(projectId: string, featureName: string): Promise<any> {
+  async readSessionData(projectId: string, featureName: string, job: 'design' | 'code' | 'learn' = 'code'): Promise<any> {
     const sessionPath = path.join(
       this.workspaceRoot,
       projectId,
       featureName,
-      'outputs/session.json'
+      `sessions/${job}.json`
     );
     
     try {
@@ -138,12 +139,12 @@ export class SessionService {
   /**
    * Check if session file exists
    */
-  async sessionExists(projectId: string, featureName: string): Promise<boolean> {
+  async sessionExists(projectId: string, featureName: string, job: 'design' | 'code' | 'learn' = 'code'): Promise<boolean> {
     const sessionPath = path.join(
       this.workspaceRoot,
       projectId,
       featureName,
-      'outputs/session.json'
+      `sessions/${job}.json`
     );
     
     try {

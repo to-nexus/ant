@@ -79,12 +79,19 @@ export class ProjectService {
     
     // Create config with proper defaults
     const configPath = path.join(projectPath, 'config.json');
+    
+    // ✅ Get LLM config from environment variables
+    const llmProvider = process.env.AI_MODEL_PROVIDER || process.env.MODEL_PROVIDER || 'openai';
+    const llmModel = process.env.AI_MODEL_NAME || process.env.MODEL_NAME || 'gpt-4o';
+    
     const defaultConfig = {
       projectName: sanitizedName,
       repoType: 'local',
       localPath: `~/dev/${sanitizedName}`,
       branchBase: 'main',
-      autoLearn: true
+      autoLearn: true,
+      llmProvider,  // ✅ Add LLM provider from env
+      llmModel      // ✅ Add LLM model from env
     };
     
     await fs.promises.writeFile(configPath, JSON.stringify(defaultConfig, null, 2));
@@ -121,7 +128,21 @@ export class ProjectService {
     }
     
     const configData = await fs.promises.readFile(configPath, 'utf-8');
-    return JSON.parse(configData);
+    const config = JSON.parse(configData);
+    
+    // ✅ Add default LLM settings if missing (for backward compatibility)
+    if (!config.llmProvider || !config.llmModel) {
+      const llmProvider = process.env.AI_MODEL_PROVIDER || process.env.MODEL_PROVIDER || 'openai';
+      const llmModel = process.env.AI_MODEL_NAME || process.env.MODEL_NAME || 'gpt-4o';
+      
+      return {
+        ...config,
+        llmProvider: config.llmProvider || llmProvider,
+        llmModel: config.llmModel || llmModel
+      };
+    }
+    
+    return config;
   }
   
   /**
@@ -146,12 +167,12 @@ export class ProjectService {
   /**
    * Get session data for a project
    */
-  async getSession(projectId: string, featureName: string = 'skeleton'): Promise<any> {
+  async getSession(projectId: string, featureName: string = 'skeleton', job: 'design' | 'code' | 'learn' = 'code'): Promise<any> {
     const sessionPath = path.join(
       this.workspaceRoot,
       projectId,
       featureName,
-      'outputs/session.json'
+      `sessions/${job}.json`
     );
     
     // Check if session file exists
@@ -283,6 +304,7 @@ export class ProjectService {
     await fs.promises.mkdir(path.join(featurePath, 'inputs/sources'), { recursive: true });
     await fs.promises.mkdir(path.join(featurePath, 'outputs/design'), { recursive: true });
     await fs.promises.mkdir(path.join(featurePath, 'outputs/reports'), { recursive: true });
+    await fs.promises.mkdir(path.join(featurePath, 'sessions'), { recursive: true });  // ✅ Add sessions directory
   }
   
   /**

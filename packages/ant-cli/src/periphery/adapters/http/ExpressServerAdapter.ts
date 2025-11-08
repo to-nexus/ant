@@ -443,7 +443,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     console.log(`   ✅ Workflow tracking started`);
     
     // Start session file watcher for real-time Kanban updates
-    this.watchSessionFile(jobId, projectId, featureName);
+    this.watchSessionFile(jobId, projectId, featureName, params.task);
     
     console.log(`   ✅ Session file watcher started`);
     
@@ -796,14 +796,17 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   /**
    * Watch session file for changes
    */
-  private watchSessionFile(jobId: string, projectId: string, featureName: string): void {
+  private watchSessionFile(jobId: string, projectId: string, featureName: string, task: string): void {
     const key = `${projectId}/${featureName}`;
     const sseClientChecker = () => {
       const clients = this.sseBroadcastService.getKanbanSSE().get(key);
       return clients ? clients.size > 0 : false;
     };
     
-    this.sessionService.watchSessionFile(projectId, featureName, sseClientChecker);
+    // Map task to job type
+    const job = (task === 'design' || task === 'code' || task === 'learn') ? task : 'code';
+    
+    this.sessionService.watchSessionFile(projectId, featureName, job, sseClientChecker);
   }
   
   /**

@@ -117,10 +117,11 @@ export function initFeature(workspaceName: string, featureName: string): void {
   fs.mkdirSync(path.join(featureDir, "inputs/directives/learn"), { recursive: true });
   fs.mkdirSync(path.join(featureDir, "outputs/design"), { recursive: true });
   fs.mkdirSync(path.join(featureDir, "outputs/reports"), { recursive: true });
-  fs.mkdirSync(path.join(featureDir, "outputs/eval"), { recursive: true });
-  // NOTE: outputs/code and outputs/memory are NOT created
+  fs.mkdirSync(path.join(featureDir, "sessions"), { recursive: true });  // ✅ Add sessions directory
+  // NOTE: outputs/code, outputs/memory, outputs/eval are NOT created
   //       - Code goes directly to repository (config.localPath)
   //       - Memory uses ChromaDB vector database
+  //       - Eval is deprecated
 
   // Create PRD template
   const prdTemplate = `# ${featureName} - Product Requirements
@@ -185,9 +186,9 @@ Describe the feature and its purpose.
   // Create .gitkeep for output directories
   const outputDirs = [
     "outputs/design",
-    "outputs/reports",
-    "outputs/eval"
+    "outputs/reports"
     // NOTE: outputs/code is NOT needed - generated code goes directly to repo
+    // NOTE: outputs/eval is deprecated
   ];
   
   outputDirs.forEach(dir => {
@@ -207,8 +208,7 @@ Describe the feature and its purpose.
   console.log(`  - inputs/directives/learn/`);
   console.log(`  - outputs/design/`);
   console.log(`  - outputs/reports/`);
-  console.log(`  - outputs/eval/`);
-  console.log(`  - outputs/session.json (auto-generated)`);
+  console.log(`  - sessions/ (for design.json, code.json, learn.json)`);
   console.log("");
   console.log("🚀 Next steps:");
   console.log(`  1. Edit inputs/sources/prd.md`);

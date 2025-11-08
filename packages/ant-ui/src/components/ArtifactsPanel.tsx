@@ -234,19 +234,17 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
     );
   };
 
-  if (nodes.length === 0) {
-    return (
-      <div className={cn('text-sm p-4', textColors.tertiary)}>
-        No files in {title.toLowerCase()}
-      </div>
-    );
-  }
-
   return (
     <div>
       <h4 className="font-medium text-sm mb-2 text-gray-700 dark:text-gray-300 text-center">{title}</h4>
-      <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-2 bg-gray-50 dark:bg-gray-900/50">
-        {nodes.map((node) => renderNode(node, 0))}
+      <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-2 bg-gray-50 dark:bg-gray-900/50 max-h-96 overflow-y-auto scrollbar-hide">
+        {nodes.length === 0 ? (
+          <div className={cn('text-sm p-2 text-center', textColors.tertiary)}>
+            No files in {title.toLowerCase()}
+          </div>
+        ) : (
+          nodes.map((node) => renderNode(node, 0))
+        )}
       </div>
     </div>
   );
@@ -368,9 +366,10 @@ export function ArtifactsPanel() {
     return null;
   }
 
-  // Separate inputs and outputs
+  // Separate inputs, outputs, and sessions
   const inputsNodes = fileTree?.find(node => node.name === 'inputs')?.children || [];
   const outputsNodes = fileTree?.find(node => node.name === 'outputs')?.children || [];
+  const sessionsNodes = fileTree?.find(node => node.name === 'sessions')?.children || [];
 
   return (
     <div className="space-y-3">
@@ -400,6 +399,17 @@ export function ArtifactsPanel() {
           onCreateDirectory={policy.canCreateDirectory ? handleCreateDirectory : undefined}
           onUploadFiles={policy.canUploadFiles ? handleUploadFiles : undefined}
           onDelete={policy.canDeleteFile ? handleDelete : undefined}
+        />
+        <DirectoryView
+          title="Sessions"
+          nodes={sessionsNodes}
+          onFileSelect={selectFile}
+          selectedFile={selectedFile}
+          // ✅ Sessions are read-only - no file manipulation allowed
+          onCreateFile={undefined}
+          onCreateDirectory={undefined}
+          onUploadFiles={undefined}
+          onDelete={undefined}
         />
       </div>
     </div>

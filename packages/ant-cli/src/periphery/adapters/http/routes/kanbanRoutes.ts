@@ -11,7 +11,7 @@ export function createKanbanRoutes(deps: {
   jobToProject: Map<string, { projectId: string; featureName: string }>;
   jobs: Map<string, any>;
   taskQueueSnapshots: Map<string, any>;
-  watchSessionFile: (jobId: string, projectId: string, featureName: string) => void;
+  watchSessionFile: (jobId: string, projectId: string, featureName: string, task: string) => void;
 }): Router {
   const router = Router();
   
@@ -20,10 +20,12 @@ export function createKanbanRoutes(deps: {
     try {
       const projectId = req.params.id;
       const featureName = req.params.feature;
+      const job = (req.query.job as 'design' | 'code' | 'learn') || 'code';  // ✅ Get job from query param
       
       const kanbanData = await deps.kanbanService.getKanbanData(
         projectId,
         featureName,
+        job,  // ✅ Pass job type
         deps.jobToProject,
         deps.jobs,
         deps.taskQueueSnapshots
@@ -39,6 +41,7 @@ export function createKanbanRoutes(deps: {
   router.get('/projects/:id/features/:feature/kanban/stream', async (req: Request, res: Response) => {
     const projectId = req.params.id;
     const featureName = req.params.feature;
+    const job = (req.query.job as 'design' | 'code' | 'learn') || 'code';  // ✅ Get job from query param
     const key = `${projectId}/${featureName}`;
     
     // Check if there's an active task for this project/feature
@@ -62,7 +65,7 @@ export function createKanbanRoutes(deps: {
     if (activeTaskId) {
     } else {
       // Start watching session file even when no task is running
-      deps.watchSessionFile('', projectId, featureName);
+      deps.watchSessionFile('', projectId, featureName, job);
     }
     
     // Send initial data
@@ -70,6 +73,7 @@ export function createKanbanRoutes(deps: {
       const initialData = await deps.kanbanService.getKanbanData(
         projectId,
         featureName,
+        job,  // ✅ Pass job type
         deps.jobToProject,
         deps.jobs,
         deps.taskQueueSnapshots
