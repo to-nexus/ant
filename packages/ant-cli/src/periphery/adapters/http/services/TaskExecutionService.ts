@@ -187,7 +187,7 @@ export class TaskExecutionService {
       
       // Wait for process to complete
       await new Promise<void>((resolve, reject) => {
-        childProcess.on('exit', (code, signal) => {
+        childProcess.on('exit', async (code, signal) => {
           this.childProcesses.delete(jobId);
           
           // Flush any remaining buffered output
@@ -226,7 +226,7 @@ export class TaskExecutionService {
             // ✅ CRITICAL: Clean up job state to remove from active jobs
             // This ensures UI switches from "estimating" to "session" data source
             if (this.onJobCompleted) {
-              this.onJobCompleted(jobId).catch(err => {
+              await this.onJobCompleted(jobId).catch(err => {
                 console.error(`[TaskExecutionService] Failed to cleanup job state:`, err);
               });
             }

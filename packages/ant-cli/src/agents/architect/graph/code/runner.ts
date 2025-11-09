@@ -93,6 +93,21 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
       throw error;
     }
     
+    // ✅ CRITICAL: Check if all tasks are actually completed
+    // If taskQueue is empty and no currentTask, then we're done (not an error!)
+    const hasRemainingWork = (state.taskQueue && !state.taskQueue.isEmpty()) || state.currentTask;
+    
+    if (!hasRemainingWork) {
+      console.log('✅ Recursion limit reached but all tasks completed - treating as success\n');
+      // Continue to learn node execution below (don't set isRecursionLimit)
+      // LangGraph will have already executed learn node, so state should be final
+      return {
+        ...state,
+        code: state.code || '',
+        design: state.design || ''
+      };
+    }
+    
     isRecursionLimit = true;
     
     // ✅ Calculate remaining tasks (including currentTask if exists)

@@ -96,7 +96,7 @@ export async function execute(state: DesignGraphState) {
   if (llm.stream) {
     // Use streaming if available
     for await (const chunk of llm.stream(result.formatted.messages)) {
-      process.stdout.write(chunk);
+      // ✅ Don't output LLM response to stdout (handled by logFilters.ts)
       designMarkdown += chunk;
     }
     console.log('\n');

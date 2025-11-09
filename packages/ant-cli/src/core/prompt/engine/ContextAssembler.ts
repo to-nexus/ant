@@ -23,6 +23,32 @@ export interface AssembledContext {
     description: string;
   };
   
+  // ✅ NEW: Retry and Plan Context
+  retryContext?: {
+    attemptNumber: number;
+    originalDirective: string;
+    originalPlan: string;
+    keyDecisions: string[];
+    previousAttempts: Array<{
+      attemptNumber: number;
+      approach: string;
+      error: string;
+      wasCloseToSuccess: boolean;
+    }>;
+    currentError: string;
+  } | null;
+  
+  planContract?: {
+    summary: string;
+    requiredElements: Array<{
+      type: string;
+      name: string;
+      location?: string;
+      purpose: string;
+      implemented: boolean;
+    }>;
+  } | null;
+  
   // Memory
   memory?: string;              // Vector memory (long-term knowledge)
   sessionHistory?: string;      // Session history (short-term context)
@@ -78,6 +104,8 @@ export class ContextAssembler {
         type: string;
         description: string;
       };
+      retryContext?: AssembledContext['retryContext'];
+      planContract?: AssembledContext['planContract'];
     }
   ): Promise<AssembledContext> {
     const assembled: Partial<AssembledContext> = {};
@@ -89,6 +117,8 @@ export class ContextAssembler {
       assembled.prdSpec = artifacts.prdSpec;
       assembled.currentCode = artifacts.currentCode;  // ✅ Include currentCode!
       assembled.currentTask = artifacts.currentTask;  // ✅ Include current task!
+      assembled.retryContext = artifacts.retryContext;  // ✅ NEW: Retry context
+      assembled.planContract = artifacts.planContract;  // ✅ NEW: Plan contract
       // Note: originalFiles from artifacts will be overridden by git if available
     }
     

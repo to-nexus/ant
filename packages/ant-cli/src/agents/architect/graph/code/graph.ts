@@ -331,5 +331,11 @@ export function buildCodeGraph() {
   
   // Note: Using manual checkpoint saves instead of LangGraph's built-in checkpointer
   // because it requires thread_id management which complicates the API
-  return (graph as any).compile();
+  
+  // ✅ Set LangGraph recursion limit to a high value (we manage our own limit in plan node)
+  // Default is 50, but we need more because each task goes through ~8-10 nodes
+  // With our own limit of 50 iterations, we could need up to 500 node transitions
+  return (graph as any).compile({
+    recursionLimit: 500  // Allow many node transitions (our own limit controls iterations)
+  });
 }

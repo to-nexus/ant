@@ -23,12 +23,7 @@ import * as path from "path";
  */
 export async function resolve(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   // ✅ Workflow instrumentation: Enter node
-  console.log(`\n🔍 [resolve] Checking workflow tracking:`);
-  console.log(`   workflowUpdate exists: ${!!state.deps?.workflowUpdate}`);
-  console.log(`   _httpTaskId: ${state._httpTaskId || 'undefined'}`);
-  
   if (state.deps?.workflowUpdate && state._httpTaskId) {
-    console.log(`   ✅ Calling workflowUpdate.enterNode('${state._httpTaskId}', 'resolve')`);
     const taskInfo = state.currentTask ? {
       id: state.currentTask.id,
       name: state.currentTask.name,
@@ -37,8 +32,6 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
       priority: state.currentTask.priority
     } : undefined;
     state.deps.workflowUpdate.enterNode(state._httpTaskId, 'resolve', taskInfo);
-  } else {
-    console.log(`   ❌ Skipping workflow tracking (missing workflowUpdate or _httpTaskId)`);
   }
   
   const { context } = state;

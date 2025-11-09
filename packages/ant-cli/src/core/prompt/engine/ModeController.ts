@@ -176,6 +176,16 @@ export class ModeController {
     }
     
     if (phase === 'execute') {
+      // ✅ NEW: Retry context injection (highest priority - only on retries)
+      if (context.retryContext) {
+        injections.push(`${phasePrefix}/retry-context`);
+      }
+      
+      // ✅ NEW: Plan preservation injection (always, to enforce contract)
+      if (context.planContract) {
+        injections.push(`${phasePrefix}/plan-preservation`);
+      }
+      
       // TypeScript error fix detection (highest priority - more specific than runtime errors)
       if (context.directive && this.containsTypeScriptError(context.directive)) {
         injections.push(`${phasePrefix}/typescript-error-fix`);

@@ -4,6 +4,10 @@ import { LogEntry } from '@/types/log';
 import { Feature, FileNode, FileContent, DevServerStatus } from '@/lib/api';
 import { subscribeToLogs } from '@/lib/api';
 import { JobExecution } from '@/lib/cli';
+import { CircularLogBuffer } from '@/lib/CircularLogBuffer';
+
+// ✅ Circular buffer for efficient log storage
+const logBuffer = new CircularLogBuffer(2000);  // 최대 2000개 로그
 
 interface StoreState {
   projects: string[];
@@ -16,7 +20,7 @@ interface StoreState {
   fileTree: FileNode[];
   fileContent: FileContent | undefined;
   session: Session | undefined;
-  logs: LogEntry[];
+  logsVersion: number;  // ✅ 로그 변경 알림용 (증가만 함)
   isRunning: boolean;
   isStopping: boolean;  // ✅ Stopping state for Stop button
   userStoppedJobId: string | null;  // ✅ Track which job user explicitly stopped
@@ -51,6 +55,7 @@ interface StoreActions {
   setFileContent: (content: FileContent | undefined) => void;
   setSession: (session: Session | undefined) => void;
   addLog: (log: LogEntry) => void;
+  getLogs: () => LogEntry[];  // ✅ 로그 가져오기
   setRunning: (isRunning: boolean, taskId?: string, mode?: 'generate' | 'refactor' | 'explain') => void;
   setStopping: (isStopping: boolean) => void;  // ✅ Set stopping state
   setCurrentJob: (job: JobExecution | null) => void;
@@ -70,7 +75,7 @@ interface StoreActions {
 
 type Store = StoreState & StoreActions;
 
-const MAX_LOGS = 500;
+// ✅ 제거: MAX_LOGS (Circular Buffer가 관리)
 
 // LocalStorage keys
 const STORAGE_KEYS = {
@@ -142,7 +147,7 @@ export const useStore = create<Store>((set, get) => ({
   fileTree: [],
   fileContent: undefined,
   session: undefined,
-  logs: [],
+  logsVersion: 0,  // ✅ 로그 변경 카운터
   isRunning: false,
   isStopping: false,
   userStoppedJobId: null,
@@ -334,13 +339,13 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   addLog: (log: LogEntry) => {
-    set((state) => {
-      const newLogs = [...state.logs, log];
-      if (newLogs.length > MAX_LOGS) {
-        return { logs: newLogs.slice(newLogs.length - MAX_LOGS) };
-      }
-      return { logs: newLogs };
-    });
+    logBuffer.add(log);
+    // 로그 변경 알림 (컴포넌트 리렌더링 트리거)
+    set((state) => ({ logsVersion: state.logsVersion + 1 }));
+  },
+
+  getLogs: () => {
+    return logBuffer.getAll();
   },
 
   setRunning: (isRunning: boolean, jobId?: string, mode?: 'generate' | 'refactor' | 'explain') => {
@@ -379,7 +384,8 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   clearLogs: () => {
-    set({ logs: [] });
+    logBuffer.clear();
+    set({ logsVersion: 0 });
   },
 
   startLogStream: (taskId: string) => {
@@ -471,10 +477,12 @@ export const useStore = create<Store>((set, get) => ({
       eventSource.close();
     });
 
+    logBuffer.clear();  // ✅ 버퍼 초기화
+
     set({
       selectedProject: undefined,
       session: undefined,
-      logs: [],
+      logsVersion: 0,  // ✅ 버전 초기화
       isRunning: false,
       isStopping: false,
       userStoppedJobId: null,

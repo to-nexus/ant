@@ -31,6 +31,26 @@ export interface LLMInfo {
   model: string;      // 실제 모델명 (e.g., 'claude-haiku-4-5', 'gpt-4o')
 }
 
+/**
+ * 노드별 이모지 매핑
+ */
+function getNodeEmoji(nodeId: string): string {
+  const emojiMap: Record<string, string> = {
+    'resolve': '🔍',
+    'decompose': '🧩',
+    'plan': '📋',
+    'execute': '⚡',
+    'writeFiles': '📝',
+    'validate': '✓',
+    'installDeps': '📦',
+    'runtimeValidate': '🔨',
+    'enforce': '🔄',
+    'checkTaskStatus': '✅',
+    'learn': '🎓'
+  };
+  return emojiMap[nodeId] || '🔵';
+}
+
 export interface WorkflowRealtimeState {
   jobId: string;
   currentNode: string | null;
@@ -96,17 +116,8 @@ export class WorkflowStateService {
    * ✅ Returns Promise to ensure broadcast completes before caller continues
    */
   async enterNode(jobId: string, nodeId: string, taskInfo?: TaskInfo, llmInfo?: LLMInfo): Promise<void> {
-    console.log(`\n🔵 [WorkflowStateService] enterNode: ${nodeId} (job: ${jobId})`);
-    if (taskInfo) {
-      console.log(`   📋 Task: ${taskInfo.name}`);
-    }
-    if (llmInfo) {
-      console.log(`   🤖 LLM: ${llmInfo.provider} / ${llmInfo.model}`);
-    }
-    
     const state = this.states.get(jobId);
     if (!state) {
-      console.warn(`   ⚠️ Job ${jobId} not found, creating...`);
       this.startJob(jobId);
       return this.enterNode(jobId, nodeId, taskInfo);
     }
@@ -114,13 +125,11 @@ export class WorkflowStateService {
     // ✅ Update current task if provided
     if (taskInfo) {
       state.currentTask = taskInfo;
-      console.log(`   ✅ Updated currentTask: ${taskInfo.name}`);
     }
     
     // ✅ Update LLM info if provided (첫 번째 노드에서만)
     if (llmInfo && !state.llmInfo) {
       state.llmInfo = llmInfo;
-      console.log(`   ✅ Updated LLM info: ${llmInfo.provider} / ${llmInfo.model}`);
     }
     
     // 이전 노드 종료 처리
@@ -130,20 +139,26 @@ export class WorkflowStateService {
         const exitTime = new Date().toISOString();
         lastEntry.exitedAt = exitTime;
         lastEntry.duration = new Date(exitTime).getTime() - new Date(lastEntry.enteredAt).getTime();
-        console.log(`   ⏹️  Closed previous node: ${state.currentNode} (${lastEntry.duration}ms)`);
       }
     }
     
     // 새 노드 진입
     state.previousNode = state.currentNode;
     state.currentNode = nodeId;
+    const enteredAt = new Date().toISOString();
     state.nodeHistory.push({
       nodeId,
-      enteredAt: new Date().toISOString()
+      enteredAt
     });
     
-    console.log(`   ✅ Current node updated: ${nodeId}`);
-    console.log(`   📊 Total clients: ${this.clients.get(jobId)?.size || 0}`);
+    // ✅ 간결한 노드 전환 로그 (stdout으로 전송)
+    const time = new Date(enteredAt).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const nodeEmoji = getNodeEmoji(nodeId);
+    let logMsg = `${nodeEmoji} ${nodeId}`;
+    if (taskInfo) {
+      logMsg += ` → ${taskInfo.name}`;
+    }
+    console.log(logMsg);
     
     // ✅ CRITICAL: Broadcast synchronously (writes to buffer)
     // TCP guarantees order, so this SSE will arrive before any subsequent SSE

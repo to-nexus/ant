@@ -222,6 +222,9 @@ export class TemplateComposer {
       'modification-details': { files: assembled.originalFiles },
       'modification-warning': {},
       'pre-output-check': {},
+      // ✅ NEW: Retry and plan context
+      'retry-context': { retryContext: assembled.retryContext },
+      'plan-preservation': { planContract: assembled.planContract },
       'response': {}
     };
     

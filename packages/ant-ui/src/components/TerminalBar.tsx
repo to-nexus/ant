@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { useStore } from '@/lib/store';
 import { ChevronUp, ChevronDown, X } from 'lucide-react';
 import { Bar, BaseBarProps } from './Bar';
+import { filterLogsForTerminal } from '@/lib/logFilters';
 
 /**
  * TerminalBar - Extends Bar
@@ -19,7 +20,8 @@ import { Bar, BaseBarProps } from './Bar';
  * - Clear logs functionality
  */
 export function TerminalBar(props: BaseBarProps = {}) {
-  const logs = useStore((state) => state.logs);
+  const logsVersion = useStore((state) => state.logsVersion);  // ✅ 로그 변경 감지
+  const getLogs = useStore((state) => state.getLogs);
   const clearLogs = useStore((state) => state.clearLogs);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -29,11 +31,17 @@ export function TerminalBar(props: BaseBarProps = {}) {
   const startHeightRef = useRef<number>(0);  // ✅ Track initial height
   const MIN_HEIGHT = 100; // ✅ Minimum height in pixels
 
+  // ✅ 로그 가져오기 (logsVersion 변경 시 자동 업데이트)
+  const logs = useMemo(() => getLogs(), [logsVersion, getLogs]);
+  
+  // ✅ 필터링된 로그 (THINKING 생략, CODE 파일명만, RESPONSE 전체 표시)
+  const filteredLogs = useMemo(() => filterLogsForTerminal(logs), [logs]);
+
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [logs]);
+  }, [filteredLogs]);
 
   // ✅ REMOVED: Auto-expand when logs arrive
   // Users should manually expand/collapse terminal to keep their preferred state
@@ -88,35 +96,6 @@ export function TerminalBar(props: BaseBarProps = {}) {
     };
   }, [isResizing, isExpanded]);
 
-  const getLogTypeIndicator = (type: string): string => {
-    switch (type) {
-      case 'info':
-        return '[INFO]';
-      case 'stdout':
-        return '[OUT]';
-      case 'stderr':
-        return '[ERR]';
-      case 'error':
-        return '[ERROR]';
-      default:
-        return '[LOG]';
-    }
-  };
-
-  const getLogTypeColor = (type: string): string => {
-    switch (type) {
-      case 'error':
-        return 'text-red-600 dark:text-red-400';
-      case 'stderr':
-        return 'text-orange-600 dark:text-orange-400';
-      case 'info':
-        return 'text-blue-600 dark:text-blue-400';
-      case 'stdout':
-      default:
-        return 'text-gray-700 dark:text-gray-300';
-    }
-  };
-
   const formatTimestamp = (timestamp: string): string => {
     try {
       const date = new Date(timestamp);
@@ -163,7 +142,7 @@ export function TerminalBar(props: BaseBarProps = {}) {
               <span>🖥️ Terminal Output</span>
             </button>
             <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded-full">
-              {logs.length > 500 ? '500+' : logs.length} logs
+              {filteredLogs.length} logs
             </span>
             {isExpanded && (
               <span className="text-xs text-gray-400 dark:text-gray-500">
@@ -192,22 +171,18 @@ export function TerminalBar(props: BaseBarProps = {}) {
           className="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white font-mono text-sm overflow-y-auto p-4 border-t border-gray-200 dark:border-gray-700"
           style={{ height: `${height}px` }}
         >
-          {logs.length === 0 ? (
+          {filteredLogs.length === 0 ? (
             <div className="text-gray-500 dark:text-gray-400 text-center py-8">
               <div className="text-2xl mb-2">📟</div>
               <div>No logs yet...</div>
               <div className="text-xs mt-1">Execute a task to see output here</div>
             </div>
           ) : (
-            logs.map((log, index) => (
+            filteredLogs.map((log, index) => (
               <div key={index} className="mb-1 leading-relaxed hover:bg-gray-100 dark:hover:bg-gray-800 px-2 py-1 rounded">
                 <span className="text-gray-400 dark:text-gray-500 text-xs">{formatTimestamp(log.timestamp)}</span>
                 {' '}
-                <span className={`${getLogTypeColor(log.type)} text-xs font-bold`}>
-                  {getLogTypeIndicator(log.type)}
-                </span>
-                {' '}
-                <span className="text-gray-800 dark:text-gray-200">{log.message}</span>
+                <span className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{log.message}</span>
               </div>
             ))
           )}

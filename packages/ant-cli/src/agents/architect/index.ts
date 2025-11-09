@@ -246,13 +246,6 @@ export async function architectAgent(
         // ✅ Resolve taskId: orchestrator param > env var (child process) > undefined
         const resolvedTaskId = taskId || process.env.ANT_JOB_ID;
         
-        console.log(`🔍 [architectAgent] Task ID resolution:`);
-        console.log(`   taskId param:`, taskId || 'undefined');
-        console.log(`   process.env.ANT_JOB_ID:`, process.env.ANT_JOB_ID || 'undefined');
-        console.log(`   resolvedTaskId:`, resolvedTaskId || 'undefined');
-        console.log(`   kanbanUpdate available:`, !!deps?.kanbanUpdate);
-        console.log(`   workflowUpdate available:`, !!deps?.workflowUpdate);
-        
         const initial: ArchitectGraphState = {
           context,
           spec,
@@ -304,10 +297,10 @@ export async function architectAgent(
           success: status === 'success',
           status: status,  // ✅ Add explicit status field
           task: 'code',
-          reportFile: result.reportFile,
-          filesAnalyzed: result.filesChanged,
+          reportFile: result.reportFile || '',
+          filesAnalyzed: result.filesChanged || 0,
           interruption: result.interruption,  // ✅ Return interruption details
-          message: result.filesChanged > 0
+          message: (result.filesChanged || 0) > 0
             ? `${result.filesChanged} files changed. Review with 'git diff' and commit when ready.`
             : `No code changes generated. See report for plan and learnings.`
         };

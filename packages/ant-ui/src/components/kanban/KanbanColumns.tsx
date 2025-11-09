@@ -137,7 +137,7 @@ export function KanbanColumns({
                 </motion.div>
               );
             })}
-            {sortedTodoTasks.length === 0 && (
+            {sortedTodoTasks.length === 0 && !isHorizontalSplit && (
               <div className="text-center text-gray-500 dark:text-gray-400 text-sm py-8">
                 No pending tasks
               </div>
@@ -190,7 +190,7 @@ export function KanbanColumns({
                 </div>
               );
             })()}
-            {!inProgressTask && (
+            {!inProgressTask && !isHorizontalSplit && (
               <div className="text-center text-gray-500 dark:text-gray-400 text-sm py-8">
                 No task in progress
               </div>
@@ -285,7 +285,7 @@ export function KanbanColumns({
                 </motion.div>
               );
             })}
-            {completedTasks.length === 0 && (
+            {completedTasks.length === 0 && !isHorizontalSplit && (
               <div className="text-center text-gray-500 dark:text-gray-400 text-sm py-8">
                 No completed tasks yet
               </div>

@@ -95,8 +95,43 @@ export async function enforce(state: ArchitectGraphState): Promise<ArchitectGrap
   console.log(`\n⚠️  ENFORCEMENT triggered (retry ${state.retries + 1}/${state.maxRetries})\n`);
   console.log(`   Violations: ${violations.length}`);
   
+  // ✅ Apply error priority system
+  const { 
+    logErrorPriority, 
+    getTopPriorityError,
+    prioritizeViolations
+  } = await import('./errorPriority');
+  
+  const errorContext = {
+    directive: state.context.task || '',
+    taskType: state.currentTask?.type || 'feature',
+    taskName: state.currentTask?.name || 'Unknown',
+    retryCount: state.retries
+  };
+  
+  // Log priority analysis
+  logErrorPriority(violations, errorContext);
+  
+  // Get only retryable errors
+  const retryableErrors = prioritizeViolations(violations, errorContext, true);
+  
+  if (retryableErrors.length === 0) {
+    console.log('✅ No blocking/retryable errors found - proceeding despite warnings\n');
+    return {
+      ...state,
+      violations: []  // Clear non-blocking errors
+    };
+  }
+  
+  // Focus on top priority error
+  const topError = retryableErrors[0];
+  console.log(`🎯 Focusing on highest priority error (score: ${topError.impact.score}/100)\n`);
+  
+  // Use only top priority for retry (avoid overwhelming LLM)
+  const focusedViolations = [topError.violation];
+  
   // ✅ Check for repeated errors
-  const isRepeating = areErrorsRepeating(violations, state.lastViolations);
+  const isRepeating = areErrorsRepeating(focusedViolations, state.lastViolations);
   
   if (isRepeating) {
     console.warn('🚨 REPEATED ERRORS DETECTED - Same errors as previous attempt!\n');
@@ -104,8 +139,8 @@ export async function enforce(state: ArchitectGraphState): Promise<ArchitectGrap
     console.warn('   Escalating context for next retry...\n');
   }
   
-  // Format violations for LLM
-  let formattedViolations = formatViolations(violations);
+  // Format violations for LLM (use focused violations only)
+  let formattedViolations = formatViolations(focusedViolations);
   
   // ✅ Add escalation notice if errors are repeating
   if (isRepeating && state.retries > 0) {
@@ -134,7 +169,7 @@ ${formattedViolations}
   
   // ===== RETRY HEURISTIC =====
   // Analyze if violations are retryable or need task decomposition
-  const retryable = areViolationsRetryable(violations);
+  const retryable = areViolationsRetryable(focusedViolations);
   
   if (retryable) {
     console.log('✅ All violations are retryable (can fix with regeneration)\n');
@@ -147,7 +182,7 @@ ${formattedViolations}
     taskId: state.currentTask?.id || 'unknown',
     taskName: state.currentTask?.name || 'Unknown Task',
     attemptNumber: state.retries + 1,
-    violations: violations,
+    violations: focusedViolations,  // Use focused violations
     enforcementReason: formattedViolations,
     fixStrategy: 'retry',  // Will be updated by Plan node
     timestamp: Date.now()
@@ -162,7 +197,7 @@ ${formattedViolations}
     ...state,
     enforcementReason: formattedViolations,
     retries: state.retries + 1,
-    lastViolations: violations,
+    lastViolations: focusedViolations,
     enforcementHistory,
     _errorIsRepeating: isRepeating // ⭐ Flag for execute node to use
   };

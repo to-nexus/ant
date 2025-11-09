@@ -79,7 +79,7 @@ export async function plan(state: DesignGraphState) {
   if (llm.stream) {
     // Use streaming if available
     for await (const chunk of llm.stream(result.formatted.messages)) {
-      process.stdout.write(chunk);
+      // ✅ Don't output LLM response to stdout (handled by logFilters.ts)
       planText += chunk;
     }
     console.log('\n');
