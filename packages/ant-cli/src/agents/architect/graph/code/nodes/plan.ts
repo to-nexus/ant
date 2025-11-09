@@ -85,9 +85,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   const recursionCount = (state.recursionCount || 0) + 1;
   state.recursionCount = recursionCount;
   
-  console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-  console.log(`🧭 PLAN NODE (Iteration ${recursionCount}/${state.recursionLimit || 50})`);
-  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+  console.log(`\n🧭 Planning (${recursionCount}/${state.recursionLimit || 50})`);
   
   const llm = state.deps?.llm as LLMClient;
   const engine = state.deps?.promptEngine as PromptEngine;
@@ -173,53 +171,22 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     }
     
     const completedCount = state.completedTasks?.length || 0;
-    const totalTasks = completedCount + remainingBeforePop;  // Use size before pop
-    
-    console.log(`\n📊 Task Progress:`);
-    console.log(`   Overall: ${completedCount}/${totalTasks} (${Math.round(completedCount / totalTasks * 100)}%)`);
-    console.log(`   Setup:   ${tasksByType.setup === 0 ? '✅' : '⬜'} ${tasksByType.setup} total (incl. current)`);
-    console.log(`   Feature: ${tasksByType.feature === 0 ? '✅' : '⬜'} ${tasksByType.feature} total (incl. current)`);
-    console.log(`   Error:   ${tasksByType.error === 0 ? '✅' : '⚠️ '} ${tasksByType.error} total (incl. current)`);
-    console.log(`   Final:   ${tasksByType.final === 0 ? '✅' : '⬜'} ${tasksByType.final} total (incl. current)`);
-    
-    // ✅ Show remaining tasks (current + queue)
-    console.log(``);
-    console.log(`📋 Remaining tasks (${remainingBeforePop}):`);
-    console.log(`   → [P${nextTask.priority}] ${nextTask.name} (${nextTask.type}) ← Starting now`);
-    console.log(`      ${nextTask.description || 'No description'}`);
-    
+    const totalTasks = completedCount + remainingBeforePop;
     const queueTasks = state.taskQueue?.getAll() || [];
-    queueTasks.forEach((task, idx) => {
-      console.log(`   ${idx + 2}. [P${task.priority}] ${task.name} (${task.type})`);
-      console.log(`      ${task.description || 'No description'}`);
-    });
     
-    console.log(``);
-    console.log(`🚀 Starting task: "${nextTask.name}"`);
-    console.log(`   Type: ${nextTask.type.toUpperCase()}`);
-    console.log(`   Priority: P${nextTask.priority}`);
-    console.log(`   Description: ${nextTask.description || 'No description'}\n`);
+    console.log(`📊 Progress: ${completedCount}/${totalTasks} (${Math.round(completedCount / totalTasks * 100)}%) | Setup: ${tasksByType.setup} | Feature: ${tasksByType.feature} | Error: ${tasksByType.error}`);
+    console.log(`🚀 Starting: ${nextTask.name} (${nextTask.type})`);
+    if (remainingBeforePop > 1) {
+      console.log(`   ${remainingBeforePop - 1} more task(s) in queue`);
+    }
     
-    // ✅ Output current task info for real-time tracking
-    console.log(`📋 Current Task: ${nextTask.name} (type: ${nextTask.type})`);
-    
-    // ✅ Update live task queue snapshot (Port or HTTP fallback for child process)
-    console.log(`\n🔍 [Plan] Checking live update conditions:`);
-    console.log(`   state.deps?.kanbanUpdate:`, !!state.deps?.kanbanUpdate);
-    console.log(`   state._httpTaskId:`, state._httpTaskId || 'undefined');
-    console.log(`   process.env.ANT_JOB_ID:`, process.env.ANT_JOB_ID || 'undefined');
+    // ✅ Update live task queue snapshot
     
     if (state._httpTaskId) {
       const completedTasksDetails = state.completedTasksDetails || [];
       
-      console.log(`\n🔥 [Plan] Updating live Kanban with new task`);
-      console.log(`   New task: ${nextTask.name}`);
-      console.log(`   Queue remaining: ${queueTasks.length}`);
-      console.log(`   Completed: ${completedTasksDetails.length}`);
-      
       if (state.deps?.kanbanUpdate) {
         // In-process: use injected port
-        console.log(`   Method: Direct port call\n`);
         state.deps.kanbanUpdate.updateTaskQueue(
           state._httpTaskId,
           nextTask,
@@ -230,7 +197,6 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         );
       } else {
         // Child process: HTTP API fallback
-        console.log(`   Method: HTTP API fallback\n`);
         const serverPort = process.env.ANT_SERVER_PORT || '4100';
         try {
           // ✅ CRITICAL: await fetch to ensure update is sent before continuing
@@ -246,18 +212,10 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
               recursionLimit: state.recursionLimit || 50
             })
           });
-          
-          if (response.ok) {
-            console.log(`   ✅ HTTP update successful\n`);
-          } else {
-            console.log(`   ⚠️  HTTP update failed: ${response.status} ${response.statusText}\n`);
-          }
         } catch (err: any) {
-          console.log(`   ⚠️  HTTP update error: ${err.message}\n`);
+          // Silent fail for HTTP fallback
         }
       }
-    } else {
-      console.log(`⚠️  [Plan] Live update SKIPPED - no taskId available\n`);
     }
   }
   
@@ -570,7 +528,6 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
 
     let planText = '';
     
-    console.log(`⏱️  Prompt build time: ${result.metadata.buildTime}ms`);
     console.log(`🎯 Inferred mode: ${result.modeConfig.mode}`);
     
     // If this is a retry of the SAME task, add retry context
@@ -642,14 +599,7 @@ ${nextTask.type === 'error' ?
     
     if (llm.stream) {
       for await (const chunk of llm.stream(promptMessages)) {
-        process.stdout.write(chunk);
-        try {
-          // @ts-ignore
-          if (typeof process.stdout._handle?.flush === 'function') {
-            // @ts-ignore
-            process.stdout._handle.flush();
-          }
-        } catch {}
+        // ✅ Don't output LLM response to stdout (handled by logFilters.ts)
         planText += chunk;
       }
       console.log('\n');

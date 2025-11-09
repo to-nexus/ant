@@ -615,8 +615,26 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
   if (!result.passed) {
     const violations = state.violations || [];
     
+    // ✅ Apply validation policy to determine filtering level
+    const { 
+      determineValidationLevel, 
+      filterErrorsByLevel, 
+      logValidationLevel 
+    } = await import('./validationPolicy');
+    
+    const validationContext = {
+      taskType: state.currentTask?.type || 'feature',
+      taskName: state.currentTask?.name || 'Unknown',
+      retryCount: state.retries || 0,
+      isLastTask: (state.taskQueue?.size() || 0) === 0,
+      hasPreviousAttempts: (state.retries || 0) > 0
+    };
+    
+    const validationLevel = determineValidationLevel(validationContext);
+    logValidationLevel(validationLevel, validationContext);
+    
     // ✅ Convert diagnostics to structured violations
-    const newViolations = convertDiagnosesToViolations(result);
+    let newViolations = convertDiagnosesToViolations(result);
     
     // ⚠️ CRITICAL SAFETY CHECK: If build/type/lint failed but no violations were created,
     // add a generic violation to prevent silent failures
@@ -648,10 +666,36 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
         isRetryable: true
       });
     }
+    
+    // ✅ Apply validation level filtering
+    const filteredViolations = filterErrorsByLevel(newViolations, validationLevel) as Violation[];
+    
+    console.log(`\n📊 Validation Results:`);
+    console.log(`   Total errors found: ${newViolations.length}`);
+    console.log(`   After filtering: ${filteredViolations.length}`);
+    
+    if (filteredViolations.length < newViolations.length) {
+      const filtered = newViolations.length - filteredViolations.length;
+      console.log(`   ✅ ${filtered} error(s) ignored based on validation level`);
+    }
+
+    // ✅ If no blocking errors remain after filtering, pass validation
+    if (filteredViolations.length === 0) {
+      console.log(`\n✅ No blocking errors - proceeding despite warnings\n`);
+      
+      // Save checkpoint
+      const { saveCheckpoint } = await import('./checkpoint');
+      await saveCheckpoint(state);
+      
+      return {
+        ...state,
+        runtimeValidationResult: { ...result, passed: true },
+      };
+    }
 
     return {
       ...state,
-      violations: [...violations, ...newViolations],
+      violations: [...violations, ...filteredViolations],
       runtimeValidationResult: result,
     };
   }

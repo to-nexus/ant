@@ -4,6 +4,160 @@ import { parseResponse } from "./parseResponse";
 import { PromptEngine } from "../../../../../core/prompt/engine";
 
 /**
+ * Extract retry context for template injection
+ */
+function buildRetryContext(state: ArchitectGraphState) {
+  if (!state.retries || state.retries === 0) {
+    return null;
+  }
+  
+  // Extract original directive and plan
+  const originalDirective = state.directive || state.context.task || '';
+  const originalPlan = extractKeyPlan(state.planText || '');
+  
+  // Extract key decisions from plan
+  const keyDecisions = extractKeyDecisions(state.planText || '');
+  
+  // Build previous attempts history
+  const previousAttempts = (state.previousAttempts || []).map(attempt => ({
+    attemptNumber: attempt.attemptNumber,
+    approach: attempt.keyChanges.join(', ') || 'No changes recorded',
+    error: attempt.errorsAttemptedToFix.join('; ') || 'Unknown error',
+    wasCloseToSuccess: attempt.filesGenerated.length > 0
+  }));
+  
+  // Current error (from enforcementReason)
+  const currentError = state.enforcementReason || 'See violations below';
+  
+  return {
+    attemptNumber: state.retries,
+    originalDirective,
+    originalPlan,
+    keyDecisions,
+    previousAttempts,
+    currentError
+  };
+}
+
+/**
+ * Extract key plan from THINKING section
+ */
+function extractKeyPlan(planText: string): string {
+  // Extract THINKING section
+  const thinkingMatch = planText.match(/===\s*THINKING\s*===([\s\S]*?)===\s*END THINKING\s*===/);
+  if (!thinkingMatch) return '';
+  
+  const thinking = thinkingMatch[1];
+  const keyParts: string[] = [];
+  
+  // Extract Solution section
+  const solutionMatch = thinking.match(/\*\*Solution:\*\*([\s\S]*?)(?=\n\*\*|$)/);
+  if (solutionMatch) {
+    keyParts.push(solutionMatch[1].trim());
+  }
+  
+  // Extract Execution Plan/Approach
+  const planMatch = thinking.match(/\*\*(?:Execution Plan|Approach):\*\*([\s\S]*?)(?=\n\*\*|$)/);
+  if (planMatch) {
+    keyParts.push(planMatch[1].trim());
+  }
+  
+  // Extract Files to modify/create
+  const filesMatch = thinking.match(/\*\*Files to (?:Create\/)?Modify:\*\*([\s\S]*?)(?=\n\*\*|$)/);
+  if (filesMatch) {
+    keyParts.push(filesMatch[1].trim());
+  }
+  
+  return keyParts.join('\n\n').substring(0, 500); // Limit length
+}
+
+/**
+ * Extract key decisions from plan (functions to use, approaches, etc.)
+ */
+function extractKeyDecisions(planText: string): string[] {
+  const decisions: string[] = [];
+  
+  // "Use X instead of Y" pattern
+  const useInsteadMatches = planText.matchAll(/use\s+`([^`]+)`\s+instead of\s+`([^`]+)`/gi);
+  for (const match of useInsteadMatches) {
+    decisions.push(`Use ${match[1]} instead of ${match[2]}`);
+  }
+  
+  // "Import X from Y" pattern
+  const importMatches = planText.matchAll(/import.*?`([^`]+)`.*?from\s+[`']([^`']+)[`']/gi);
+  for (const match of importMatches) {
+    decisions.push(`Import ${match[1]} from ${match[2]}`);
+  }
+  
+  // Function names mentioned in backticks
+  const functionMatches = planText.matchAll(/`(\w+(?:WithFallback|Helper|Service)(?:\.\w+)?)`/g);
+  const functionNames = new Set<string>();
+  for (const match of functionMatches) {
+    functionNames.add(match[1]);
+  }
+  
+  if (functionNames.size > 0) {
+    decisions.push(`Key functions: ${Array.from(functionNames).join(', ')}`);
+  }
+  
+  // Limit to top 5 most important decisions
+  return decisions.slice(0, 5);
+}
+
+/**
+ * Build plan contract for preservation
+ */
+function buildPlanContract(state: ArchitectGraphState) {
+  const planText = state.planText || '';
+  
+  // Extract summary
+  const summary = extractKeyPlan(planText).substring(0, 300);
+  
+  // Extract required elements
+  const requiredElements: Array<{
+    type: string;
+    name: string;
+    location?: string;
+    purpose: string;
+    implemented: boolean;
+  }> = [];
+  
+  // Extract functions from plan
+  const functionMatches = planText.matchAll(/(?:use|call|invoke)\s+`([A-Za-z][A-Za-z0-9]*(?:WithFallback|Helper|Service)?(?:\.\w+)?)`/gi);
+  const seenFunctions = new Set<string>();
+  
+  for (const match of functionMatches) {
+    const funcName = match[1];
+    if (!seenFunctions.has(funcName)) {
+      seenFunctions.add(funcName);
+      requiredElements.push({
+        type: 'function',
+        name: funcName,
+        purpose: 'Core function from plan',
+        implemented: false // Will be checked in template
+      });
+    }
+  }
+  
+  // Extract imports
+  const importMatches = planText.matchAll(/import.*?`([^`]+)`.*?from\s+[`']([^`']+)[`']/gi);
+  for (const match of importMatches) {
+    requiredElements.push({
+      type: 'import',
+      name: match[1],
+      location: match[2],
+      purpose: 'Required import',
+      implemented: false
+    });
+  }
+  
+  return requiredElements.length > 0 ? {
+    summary,
+    requiredElements: requiredElements.slice(0, 5) // Top 5
+  } : null;
+}
+
+/**
  * Extract key changes from generated files
  * Focus on package.json changes and new file types
  */
@@ -79,10 +233,8 @@ export async function execute(
   // ✨ Start timing for current task
   let currentTask = state.currentTask;
   if (currentTask && !currentTask.timing?.startedAt) {
-    console.log(`⏱️  Starting timer for task: ${currentTask.name}`);
     currentTask = TaskTimingHelper.startTask(currentTask);
   } else if (currentTask?.timing?.pausedAt) {
-    console.log(`⏱️  Resuming timer for task: ${currentTask.name}`);
     currentTask = TaskTimingHelper.startTask(currentTask); // Resumes and accumulates pause duration
   }
   
@@ -97,7 +249,11 @@ export async function execute(
       name: currentTask.name,
       type: currentTask.type,
       description: currentTask.description
-    } : undefined
+    } : undefined,
+    // ✅ NEW: Retry context for template injection
+    retryContext: buildRetryContext(state),
+    // ✅ NEW: Plan contract for preservation
+    planContract: buildPlanContract(state)
   };
   
   // Build prompt using PromptEngine with taskType
@@ -112,8 +268,6 @@ export async function execute(
   
   const formatted = buildResult.formatted;
   
-  console.log(`⏱️  Prompt build time: ${buildResult.metadata.buildTime}ms`);
-
   // ===== COLLECT FILES FROM PREVIOUS COMPLETED TASKS =====
   const filesFromCompletedTasks: Set<string> = new Set();
   
@@ -334,46 +488,30 @@ ${completedTaskCount > 0 ? `📝 RECENTLY COMPLETED TASKS:\n${completedTasksList
   if (llm.stream) {
     // Use streaming if available
     for await (const chunk of llm.stream(promptMessages)) {
-      // Accumulate chunks to detect file markers
+      // ✅ Don't output LLM response to stdout (handled by logFilters.ts)
+      raw += chunk;
+      
+      // Keep a buffer for internal processing (if needed later)
       accumulatedChunk += chunk;
       
-      // Detect file start markers (common patterns in LLM responses)
+      // Track file generation for internal logic (without outputting)
       const fileStartMatch = accumulatedChunk.match(/```(?:typescript|javascript|tsx|jsx|json|html|css|md|yaml|yml)\n.*?\/([^\n]+)\n/i);
       if (fileStartMatch && !insideFileBlock) {
         insideFileBlock = true;
         currentFilePath = fileStartMatch[1];
-        process.stdout.write(`\n📝 Generating file: ${currentFilePath}...\n`);
         accumulatedChunk = '';
       }
       
       // Detect file end marker
       if (accumulatedChunk.includes('```') && insideFileBlock && accumulatedChunk.split('```').length > 2) {
         insideFileBlock = false;
-        process.stdout.write(`✓ ${currentFilePath} complete\n`);
         currentFilePath = '';
         accumulatedChunk = '';
       }
       
-      // Only show non-file content (explanations, reasoning, etc.)
-      if (!insideFileBlock) {
-        process.stdout.write(chunk);
-        // Force flush for real-time output
-        try {
-          // @ts-ignore - _handle is internal Node.js API
-          if (typeof process.stdout._handle?.flush === 'function') {
-            // @ts-ignore
-            process.stdout._handle.flush();
-          }
-        } catch {
-          // Ignore flush errors
-        }
-      }
-      
-      raw += chunk;
-      
-      // Keep only last 500 chars in accumulated chunk to detect markers
-      if (accumulatedChunk.length > 500) {
-        accumulatedChunk = accumulatedChunk.slice(-500);
+      // Reset buffer periodically to avoid memory issues
+      if (accumulatedChunk.length > 10000) {
+        accumulatedChunk = accumulatedChunk.slice(-1000);
       }
     }
     console.log('\n');
