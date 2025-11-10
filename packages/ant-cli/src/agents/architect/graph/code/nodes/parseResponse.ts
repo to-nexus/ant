@@ -1,5 +1,8 @@
 import { GeneratedFile } from "../state";
 
+// ✅ Export types for external use
+export type { EditInstruction };
+
 /**
  * ============================================================================
  * LLM Response Parser
@@ -31,7 +34,14 @@ interface ParseResult {
   responseSection: string | null;
   files: GeneratedFile[];
   filesToDelete: string[];
-  commands: Command[];  // ✅ New: Parsed shell commands
+  commands: Command[];  // ✅ Parsed shell commands
+  edits: EditInstruction[];  // ✅ NEW: Search/Replace edits
+}
+
+interface EditInstruction {
+  path: string;
+  search: string;
+  replace: string;
 }
 
 interface Command {
@@ -51,6 +61,14 @@ interface DeleteParser {
   name: string;
   regex: RegExp;
   extractPath: (match: RegExpExecArray) => string;
+}
+
+interface EditParser {
+  name: string;
+  regex: RegExp;
+  extractPath: (match: RegExpExecArray) => string;
+  extractSearch: (match: RegExpExecArray) => string;
+  extractReplace: (match: RegExpExecArray) => string;
 }
 
 // ============================================================================
@@ -109,6 +127,17 @@ const DELETE_PARSERS: DeleteParser[] = [
     name: 'XML Format',
     regex: /<delete path="([^"]+)"\s*\/>/g,
     extractPath: (m) => m[1].trim(),
+  },
+];
+
+// ✅ Edit format parsers (Search/Replace)
+const EDIT_PARSERS: EditParser[] = [
+  {
+    name: 'Search/Replace Format',
+    regex: /=== EDIT: (.+?) ===\n<<<<<<< SEARCH\n([\s\S]*?)\n=======\n([\s\S]*?)\n>>>>>>> REPLACE\n=== END EDIT ===/g,
+    extractPath: (m) => m[1].trim(),
+    extractSearch: (m) => m[2].trim(),
+    extractReplace: (m) => m[3].trim(),
   },
 ];
 
@@ -241,6 +270,27 @@ function parseDeletes(content: string): string[] {
 }
 
 /**
+ * ✅ Parses edit instructions (search/replace) using all registered edit parsers
+ */
+function parseEdits(content: string): EditInstruction[] {
+  const edits: EditInstruction[] = [];
+  
+  for (const parser of EDIT_PARSERS) {
+    let match: RegExpExecArray | null;
+    
+    while ((match = parser.regex.exec(content)) !== null) {
+      edits.push({
+        path: parser.extractPath(match),
+        search: parser.extractSearch(match),
+        replace: parser.extractReplace(match),
+      });
+    }
+  }
+  
+  return edits;
+}
+
+/**
  * ✅ Parses shell commands using all registered command parsers
  */
 function parseCommands(content: string): Command[] {
@@ -288,15 +338,19 @@ export function parseResponse(raw: string): ParseResult {
   // 4. Parse all delete directives
   const filesToDelete = parseDeletes(content);
   
-  // 5. ✅ Parse shell commands
+  // 5. ✅ Parse edit instructions (search/replace)
+  const edits = parseEdits(content);
+  
+  // 6. ✅ Parse shell commands
   const commands = parseCommands(content);
   
-  // 6. Return structured result
+  // 7. Return structured result
   return {
     responseSection,
     files: Array.from(fileMap.values()),
     filesToDelete,
-    commands,  // ✅ New: Include parsed commands
+    edits,  // ✅ NEW: Include edit instructions
+    commands,
   };
 }
 

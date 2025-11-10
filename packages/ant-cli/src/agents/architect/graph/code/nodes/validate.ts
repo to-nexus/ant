@@ -9,6 +9,9 @@ import { ArchitectGraphState, Violation } from "../state";
  * ✅ Returns structured Violation objects for better analysis
  */
 export async function validate(state: ArchitectGraphState): Promise<ArchitectGraphState> {
+  // ✅ Increment recursion count (track every node execution)
+  state.recursionCount = (state.recursionCount || 0) + 1;
+  
   // ✅ Workflow instrumentation: Enter node
   if (state.deps?.workflowUpdate && state._httpTaskId) {
     const taskInfo = state.currentTask ? {

@@ -91,6 +91,58 @@ export const TYPESCRIPT_PATTERNS: ErrorPattern[] = [
   // DEPENDENCY LAYER - LLM이 수정 가능
   // ========================================
   
+  // 🚨 NODE.JS BUILT-IN MODULES IN BROWSER CODE (CRITICAL!)
+  {
+    layer: ErrorLayer.CODE,
+    patterns: [
+      /Cannot find module ['"](?:node:)?(fs|path|crypto|os|http|https|stream|buffer|process|util|events|child_process|net|tls|dgram|dns|zlib|readline|repl|vm|cluster|worker_threads|perf_hooks|async_hooks|inspector)['"]/, 
+      /Module not found.*['"](?:node:)?(fs|path|crypto|os|http|https|stream|buffer|process|util|events|child_process|net|tls|dgram|dns|zlib|readline|repl|vm|cluster|worker_threads|perf_hooks|async_hooks|inspector)['"]/,
+      /\[TS2307\].*Cannot find module ['"](?:node:)?(fs|path|crypto|os|http|https|stream|buffer|process|util)['"]/
+    ],
+    severity: 'critical',
+    canLLMFix: true,
+    diagnosis: (match) => {
+      const moduleName = match[1] || 'Node.js built-in';
+      
+      // Browser-compatible alternatives
+      const alternatives: Record<string, string> = {
+        'fs': 'Use localStorage/IndexedDB for client storage, or fetch() to load from backend API',
+        'path': 'Use URL API: new URL(\'./file\', import.meta.url), or string manipulation',
+        'crypto': 'Use Web Crypto API: crypto.randomUUID(), crypto.getRandomValues()',
+        'os': 'Remove - browser has no OS access. Use navigator.userAgent for platform detection',
+        'http': 'Use fetch() or axios for HTTP requests',
+        'https': 'Use fetch() or axios for HTTPS requests',
+        'stream': 'Use ReadableStream/WritableStream (Web Streams API)',
+        'buffer': 'Use ArrayBuffer, Uint8Array, or TextEncoder/TextDecoder',
+        'process': 'Use import.meta.env (Vite) or process.env.REACT_APP_* (CRA) for env vars',
+        'util': 'Remove - use browser-compatible alternatives',
+        'events': 'Use native DOM EventTarget or custom event emitter',
+      };
+      
+      const alternative = alternatives[moduleName] || 'Remove Node.js module usage - not available in browser';
+      
+      return {
+        type: 'environment_error',
+        layer: ErrorLayer.CODE,
+        message: `Node.js module '${moduleName}' cannot be used in browser code`,
+        rootCause: `Browser environment cannot access Node.js built-in modules. This code will crash at runtime.`,
+        suggestedActions: [
+          `🚨 CRITICAL: Remove 'import ${moduleName}' from browser code`,
+          `❌ DO NOT run 'npm install ${moduleName}' - it won't work!`,
+          `✅ Use browser-compatible alternative: ${alternative}`,
+          `If this file MUST run in Node.js (not browser):`,
+          `  - Move to server/ directory`,
+          `  - Or move to scripts/ directory`,
+          `  - Or move to *.config.ts (build-time only)`,
+          `Otherwise: Rewrite using browser APIs (see environment injection for examples)`
+        ],
+        isRetryable: true,
+        canLLMFix: true,
+        severity: 'critical'
+      };
+    }
+  },
+  
   // MISSING TYPE DECLARATIONS (@types/xxx)
   {
     layer: ErrorLayer.DEPENDENCY,
@@ -231,12 +283,14 @@ export const TYPESCRIPT_PATTERNS: ErrorPattern[] = [
         message: `Missing npm package: ${moduleName}`,
         rootCause: `Package "${moduleName}" is not in package.json or not installed`,
         suggestedActions: isTypesPackage ? [
-          `Add to package.json devDependencies: "${moduleName}": "latest"`,
-          'npm install'
+          `Run: npm install -D ${moduleName}`,
+          `This will install AND automatically save to package.json devDependencies`,
+          `Output the command in a bash code block`
         ] : [
-          `Add to package.json dependencies: "${moduleName}": "latest"`,
-          'npm install',
-          `If types needed: npm install -D @types/${baseModule}`
+          `Run: npm install ${moduleName}`,
+          `This will install AND automatically save to package.json dependencies`,
+          `If types needed: Also run npm install -D @types/${baseModule}`,
+          `Output the command in a bash code block`
         ],
         isRetryable: true,
         canLLMFix: true,
@@ -248,6 +302,117 @@ export const TYPESCRIPT_PATTERNS: ErrorPattern[] = [
   // ========================================
   // CODE LAYER - TypeScript 타입 에러
   // ========================================
+  
+  // 🚨 NODE.JS GLOBALS IN BROWSER CODE (__dirname, __filename, require, etc.)
+  {
+    layer: ErrorLayer.CODE,
+    patterns: [
+      /Cannot find name ['"](__dirname|__filename|require|exports|module)['"]/,
+      /\[TS2304\].*Cannot find name ['"](__dirname|__filename|require|exports|module)['"]/,
+    ],
+    severity: 'critical',
+    canLLMFix: true,
+    diagnosis: (match) => {
+      const identifier = match[1] || '__dirname';
+      
+      const alternatives: Record<string, string> = {
+        '__dirname': 'Use import.meta.url: new URL(\'.\', import.meta.url).pathname',
+        '__filename': 'Use import.meta.url directly',
+        'require': 'Use ES6 import statement: import x from \'module\'',
+        'exports': 'Use ES6 export statement: export const x = ...',
+        'module': 'Use ES6 export statement: export default ...',
+      };
+      
+      const alternative = alternatives[identifier] || 'Use ES6 module syntax';
+      
+      return {
+        type: 'environment_error',
+        layer: ErrorLayer.CODE,
+        message: `Node.js global '${identifier}' cannot be used in browser code`,
+        rootCause: `'${identifier}' is a Node.js CommonJS global that doesn't exist in browser/ES modules`,
+        suggestedActions: [
+          `🚨 CRITICAL: Remove '${identifier}' from browser code`,
+          `✅ Use browser-compatible alternative: ${alternative}`,
+          `If this file MUST run in Node.js:`,
+          `  - Move to server/ or scripts/ directory`,
+          `  - Or use in *.config.ts (build-time only)`,
+          `Otherwise: Remove all Node.js-specific code and use browser APIs`
+        ],
+        isRetryable: true,
+        canLLMFix: true,
+        severity: 'critical'
+      };
+    }
+  },
+  
+  // UNDEFINED IDENTIFIER - General pattern for "Cannot find name"
+  {
+    layer: ErrorLayer.CODE,
+    patterns: [
+      /Cannot find name ['"](\w+)['"]/,
+      /\[TS2304\] Cannot find name ['"](\w+)['"]/,
+    ],
+    severity: 'major',
+    canLLMFix: true,
+    diagnosis: (match) => {
+      const identifier = match[1] || 'identifier';
+      
+      return {
+        type: 'import_error',  // ✅ Changed from type_error to import_error (critical)
+        layer: ErrorLayer.CODE,
+        message: `Undefined identifier: '${identifier}'`,
+        rootCause: `Variable, function, or type '${identifier}' is not defined or imported`,
+        suggestedActions: [
+          `Check if '${identifier}' needs to be imported`,
+          `If you recently changed imports, update ALL usage of old identifiers`,
+          `Search the file for ALL occurrences of '${identifier}' and fix them`,
+          `Common causes:`,
+          `  - Incomplete refactoring (import changed but usage not updated)`,
+          `  - Missing import statement`,
+          `  - Typo in identifier name`,
+          `Use FILE format to output COMPLETE file with ALL changes (not EDIT)`
+        ],
+        isRetryable: true,
+        canLLMFix: true,
+        severity: 'major'
+      };
+    }
+  },
+  
+  // INCORRECT IMPORT - Exported member not found (generic handling)
+  {
+    layer: ErrorLayer.CODE,
+    patterns: [
+      /Module ['"]([^'"]+)['"] has no exported member ['"]([^'"]+)['"]/,
+      /['""]([^'"]+)['""] has no exported member named? ['"]([^'"]+)['"]/,
+      /has no exported member ['"]([^'"]+)['"]/
+    ],
+    severity: 'major',
+    canLLMFix: true,
+    diagnosis: (match) => {
+      const moduleName = match[1] || 'module';
+      const memberName = match[2] || match[1] || 'member';
+      
+      return {
+        type: 'import_error',
+        layer: ErrorLayer.CODE,
+        message: `Import error: '${memberName}' is not exported by '${moduleName}'`,
+        rootCause: `Package API has changed, incorrect import syntax, or member doesn't exist`,
+        suggestedActions: [
+          `Check package documentation for correct import syntax`,
+          `Package may have breaking changes - consult changelog`,
+          `If fixing import, also update ALL usage in code:`,
+          `  1. Fix import statement at top of file`,
+          `  2. Search for ALL occurrences of old identifiers (e.g., ${memberName})`,
+          `  3. Replace with new API throughout the file`,
+          `Use FILE format to output COMPLETE file (ensures no usage is missed)`
+        ],
+        isRetryable: true,
+        canLLMFix: true,
+        severity: 'major'
+      };
+    }
+  },
   
   // ✅ CATCH-ALL: 모든 TypeScript 에러 - 전체 메시지를 그대로 추출
   {

@@ -1,4 +1,6 @@
+import { useState, useEffect } from 'react';
 import { StatusChip, ChipVariant } from '../StatusChip';
+import { formatElapsedTime } from '@/lib/timeUtils';
 
 interface DataSourceIndicatorProps {
   dataSource?: string;
@@ -28,6 +30,87 @@ export function DataSourceIndicator({ dataSource, isStopping = false }: DataSour
   if (!config) return null;
 
   return <StatusChip variant={config.variant} label={config.label} />;
+}
+
+interface ElapsedTimeBadgeProps {
+  totalElapsedTime?: number;
+  jobTiming?: {
+    startedAt: string;
+    lastResumedAt?: string;
+    pausedAt?: string;
+    completedAt?: string;
+    totalPausedDuration: number;
+    estimatingDuration?: number;
+  };
+  inProgressTask?: any;
+  activeJobId?: string;
+}
+
+/**
+ * ElapsedTimeBadge - Real-time 뱃지 우측에 위치할 경과 시간 뱃지
+ */
+export function ElapsedTimeBadge({
+  totalElapsedTime,
+  jobTiming,
+  inProgressTask,
+  activeJobId
+}: ElapsedTimeBadgeProps) {
+  // ✨ Real-time elapsed time calculation
+  const [realtimeElapsed, setRealtimeElapsed] = useState<number | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
+  
+  // ✅ Initialize with backend data when it arrives
+  useEffect(() => {
+    if (totalElapsedTime !== undefined) {
+      setRealtimeElapsed(totalElapsedTime);
+      setIsInitialized(true);
+    }
+  }, [totalElapsedTime]);
+  
+  // ✅ Tick every second if job is running
+  useEffect(() => {
+    // Don't tick if not initialized yet
+    if (!isInitialized || realtimeElapsed === null) {
+      return;
+    }
+    
+    // If job is paused, completed, or not running, don't tick
+    if (!inProgressTask || jobTiming?.pausedAt || jobTiming?.completedAt) {
+      return;
+    }
+    
+    // Job is running: increment every second
+    const intervalId = setInterval(() => {
+      setRealtimeElapsed(prev => (prev !== null ? prev + 1000 : 0));
+    }, 1000);
+    
+    return () => clearInterval(intervalId);
+  }, [isInitialized, realtimeElapsed, inProgressTask, jobTiming]);
+  
+  // ✅ Show badge if job is active or has session data
+  // - activeJobId: job is running
+  // - jobTiming: job was run before (paused/completed)
+  if (!activeJobId && !jobTiming) {
+    return null;
+  }
+  
+  // ✅ Wait for data to be initialized before showing
+  if (!isInitialized || realtimeElapsed === null) {
+    return null;
+  }
+  
+  // Format elapsed time (include seconds for real-time updates)
+  const formattedTime = formatElapsedTime(realtimeElapsed, true);
+  
+  return (
+    <div className="h-7 min-h-7 max-h-7 px-3 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-300 dark:border-blue-800 min-w-[140px]">
+      <div className="flex items-center justify-center h-7">
+        <span className="text-xs text-blue-700 dark:text-blue-300 font-medium leading-none">
+          Elapsed Time: {formattedTime}
+        </span>
+      </div>
+    </div>
+  );
 }
 
 interface GaugesGroupProps {

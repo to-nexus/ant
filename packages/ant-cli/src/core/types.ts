@@ -170,6 +170,9 @@ export interface InterruptionDetails {
  * without re-decomposing tasks or losing progress.
  */
 export interface SessionState {
+  // ✨ Job Identity (Resume 시 재사용)
+  jobId?: string;                 // Current active job ID (persists until completion or reset)
+  
   // Task Queue State
   taskQueue?: any[];              // Remaining tasks (Task[] from state.ts)
   currentTask?: any;              // Currently executing task (Task from state.ts)
@@ -198,6 +201,17 @@ export interface SessionState {
   // Recursion Tracking
   recursionCount?: number;        // Current recursion iteration count
   recursionLimit?: number;        // Maximum recursion limit
+  
+  // ✨ Job-level Timing (총 소요 시간 추적)
+  jobTiming?: {
+    startedAt: string;              // Job 최초 시작 시간 (Resume 후에도 유지)
+    lastResumedAt?: string;         // 마지막 Resume 시간
+    pausedAt?: string;              // 중단 시간 (Stop 또는 recursion limit)
+    completedAt?: string;           // 완료 시간
+    totalPausedDuration: number;    // 총 일시정지 시간 (ms)
+    estimatingDuration?: number;    // Estimating 단계 소요 시간 (ms, decompose 완료까지)
+    totalElapsedTime?: number;      // 총 실 소요 시간 (ms, 일시정지 제외)
+  };
 }
 
 /**

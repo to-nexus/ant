@@ -49,6 +49,9 @@ export interface RuntimeValidationResult {
  * 3. Target repository exists
  */
 export async function runtimeValidate(state: ArchitectGraphState): Promise<ArchitectGraphState> {
+  // ✅ Increment recursion count (track every node execution)
+  state.recursionCount = (state.recursionCount || 0) + 1;
+  
   // ✅ Workflow instrumentation: Enter node
   if (state.deps?.workflowUpdate && state._httpTaskId) {
     const taskInfo = state.currentTask ? {

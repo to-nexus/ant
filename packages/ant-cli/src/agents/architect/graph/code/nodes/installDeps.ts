@@ -17,6 +17,9 @@ import { ArchitectGraphState, Violation } from "../state";
 import { resolveLocalPath } from "../../../../../periphery/adapters/git/gitUtils";
 
 export async function installDeps(state: ArchitectGraphState): Promise<ArchitectGraphState> {
+  // ✅ Increment recursion count (track every node execution)
+  state.recursionCount = (state.recursionCount || 0) + 1;
+  
   // ✅ Workflow instrumentation: Enter node
   if (state.deps?.workflowUpdate && state._httpTaskId) {
     const taskInfo = state.currentTask ? {

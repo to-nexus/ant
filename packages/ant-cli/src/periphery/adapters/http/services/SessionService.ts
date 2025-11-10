@@ -156,6 +156,57 @@ export class SessionService {
   }
   
   /**
+   * Reset job state (remove jobId, timing, and all task data from session)
+   * Used when user explicitly wants to start fresh
+   */
+  async resetJobState(projectId: string, featureName: string, job: 'design' | 'code' | 'learn' = 'code'): Promise<void> {
+    const sessionPath = path.join(
+      this.workspaceRoot,
+      projectId,
+      featureName,
+      `sessions/${job}.json`
+    );
+    
+    try {
+      // Read existing session
+      if (!fs.existsSync(sessionPath)) {
+        console.log(`[SessionService] No session to reset: ${sessionPath}`);
+        return;
+      }
+      
+      const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
+      
+      // Remove ALL job-related data (jobId, timing, tasks)
+      if (sessionData.state) {
+        delete sessionData.state.jobId;
+        delete sessionData.state.jobTiming;
+        delete sessionData.state.taskQueue;
+        delete sessionData.state.currentTask;
+        delete sessionData.state.completedTasks;
+        delete sessionData.state.completedTasksDetails;
+        delete sessionData.state.interruption;
+        delete sessionData.state.retries;
+        delete sessionData.state.recursionCount;
+        delete sessionData.state.recursionLimit;
+        
+        console.log(`[SessionService] Reset job state: ${sessionPath}`);
+        console.log(`   Removed: jobId, jobTiming, taskQueue, currentTask, completedTasks, completedTasksDetails, interruption, retries, recursionCount, recursionLimit`);
+        
+        // Write back to file
+        fs.writeFileSync(sessionPath, JSON.stringify(sessionData, null, 2), 'utf-8');
+        
+        // Trigger onChange callback if exists
+        if (this.onSessionChange) {
+          this.onSessionChange(projectId, featureName, job);
+        }
+      }
+    } catch (error) {
+      console.error(`[SessionService] Error resetting job state:`, error);
+      throw error;
+    }
+  }
+  
+  /**
    * Cleanup all watchers
    */
   cleanup(): void {

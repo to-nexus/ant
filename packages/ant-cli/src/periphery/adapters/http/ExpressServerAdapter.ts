@@ -97,6 +97,25 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   }
   
   /**
+   * Check if job is completed (all tasks done)
+   */
+  private isJobCompleted(sessionState: any): boolean {
+    // Job is completed if:
+    // 1. No tasks remaining in queue AND
+    // 2. No current task AND
+    // 3. Has completed tasks OR has jobTiming.completedAt
+    const hasNoRemainingWork = 
+      (!sessionState.taskQueue || sessionState.taskQueue.length === 0) &&
+      !sessionState.currentTask;
+    
+    const hasCompletionMarker = 
+      (sessionState.completedTasks && sessionState.completedTasks.length > 0) ||
+      sessionState.jobTiming?.completedAt;
+    
+    return hasNoRemainingWork && hasCompletionMarker;
+  }
+  
+  /**
    * Update task queue snapshot (called by orchestrator during execution)
    * Note: This manages Task Board tasks, not job execution
    */
@@ -261,6 +280,15 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
           sessionData.state = {
             ...sessionData.state
           };
+        }
+        
+        // ✨ Update jobTiming with pausedAt
+        if (sessionData.state.jobTiming) {
+          sessionData.state.jobTiming = {
+            ...sessionData.state.jobTiming,
+            pausedAt: new Date().toISOString()
+          };
+          console.log(`   ⏰ Updated jobTiming.pausedAt`);
         }
         
         // ✅ NEW: Save interruption details if provided
@@ -502,23 +530,53 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   // =====================================
   
   async executeJob(params: ExecuteJobParams): Promise<JobResult> {
-    const jobId = `job-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    // ✅ Validate required feature parameter first
+    if (!params.feature) {
+      throw new Error('Feature name is required for job execution');
+    }
     
-    console.log(`\n🚀 [ExecuteJob] Starting job: ${jobId}`);
-    console.log(`   Project: ${params.project}`);
-    console.log(`   Feature: ${params.feature}`);
-    console.log(`   Agent: ${params.agent}`);
-    console.log(`   Task: ${params.task}`);
+    const projectId = params.project;
+    const featureName = params.feature;
     
-    // ✅ VALIDATE PREREQUISITES FIRST
-    console.log(`\n📋 [Prerequisites] Validating required materials...`);
+    // Determine job type
     const jobType = (params.task === 'design' || params.task === 'code' || params.task === 'learn') 
       ? params.task 
       : 'code';
     
+    // ✨ NEW: Check session for existing jobId (Resume support)
+    let jobId: string;
+    let isResume = false;
+    
+    try {
+      const sessionData = await this.sessionService.readSessionData(projectId, featureName, jobType);
+      
+      // Resume if: session has jobId AND job is not completed
+      if (sessionData?.state?.jobId && !this.isJobCompleted(sessionData.state)) {
+        jobId = sessionData.state.jobId;
+        isResume = true;
+        console.log(`\n🔄 [ExecuteJob] Resuming with existing Job ID: ${jobId}`);
+      } else {
+        // Create new jobId
+        jobId = `job-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        console.log(`\n🆕 [ExecuteJob] Creating new Job ID: ${jobId}`);
+      }
+    } catch (error) {
+      // Session doesn't exist or error reading - create new jobId
+      jobId = `job-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      console.log(`\n🆕 [ExecuteJob] No session found, creating new Job ID: ${jobId}`);
+    }
+    
+    console.log(`   Project: ${projectId}`);
+    console.log(`   Feature: ${featureName}`);
+    console.log(`   Agent: ${params.agent}`);
+    console.log(`   Task: ${params.task}`);
+    
+    // ✅ VALIDATE PREREQUISITES
+    console.log(`\n📋 [Prerequisites] Validating required materials...`);
+    
     const validationResult = await this.jobPrerequisitesAdapter.validate(
-      params.project,
-      params.feature || 'default',  // ✅ Provide default value
+      projectId,
+      featureName,
       jobType
     );
     
@@ -541,19 +599,12 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     this.jobs.set(jobId, {
       jobId,
       status: 'pending',
+      task: jobType,  // ✅ Track job type
       startedAt: new Date().toISOString()
     });
     this.logs.set(jobId, []);
     
     console.log(`   ✅ Job status set to 'pending'`);
-    
-    // ✅ Validate required feature parameter
-    if (!params.feature) {
-      throw new Error('Feature name is required for job execution');
-    }
-    
-    const projectId = params.project;
-    const featureName = params.feature;
     
     // Map jobId to project/feature for Kanban tracking
     this.jobToProject.set(jobId, { projectId, featureName });
@@ -631,10 +682,17 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       
       
       const { spawn } = await import('child_process');
+      
+      // ✅ Ensure PATH includes common locations for git and other tools
+      const ensuredPath = process.env.PATH 
+        ? `${process.env.PATH}:/usr/local/bin:/usr/bin:/bin`
+        : '/usr/local/bin:/usr/bin:/bin';
+      
       const childProcess = spawn('npx', ['tsx', ...args], {
         cwd: process.cwd(),
         env: { 
           ...process.env,
+          PATH: ensuredPath,  // ✅ Explicitly ensure PATH includes standard locations
           ANT_JOB_ID: jobId,  // ✅ Pass jobId via environment variable
           ANT_SERVER_PORT: '4100'  // ✅ Pass server port for HTTP updates
         },

@@ -6,17 +6,17 @@ MANDATORY SELF-CHECK BEFORE OUTPUT
 Before you output anything, verify each point:
 
 FORMAT CHECKS:
-□ Each file starts with "=== FILE: path ===" (no extra formatting)
-□ File paths are ACTUAL paths from ORIGINAL FILES or DESIGN DOCUMENT
+□ Used EDIT format for modifying existing files (mandatory!)
+□ Used FILE format ONLY for creating NEW files
+□ Each EDIT block has: === EDIT: path ===, <<<<<<< SEARCH, =======, >>>>>>> REPLACE, === END EDIT ===
+□ Each FILE block has: === FILE: path ===, [content], === END FILE ===
+□ File/Edit paths are ACTUAL paths from ORIGINAL FILES or DESIGN DOCUMENT
 □ NO placeholder paths like "path/to/file.tsx"
 □ Paths match exactly as they appear in the project structure
+□ SEARCH blocks match EXACTLY (including whitespace)
+□ REPLACE blocks contain new code only
 □ File content is PURE source code (no \`\`\`, no markdown)
-□ File content is COMPLETE (no "// ..." or "..." to skip code)
-□ File content ends with "=== END FILE ===" (no extra formatting)
-□ No explanatory text between FILE tags
-□ NO "// ... all other imports ..." type comments
-□ NO "{/* ... original code ... */}" type comments
-□ Every import, every line of code is written out completely
+□ No explanatory text between tags
 
 CONTENT CHECKS:
 □ All imports are present at top of file
@@ -35,25 +35,31 @@ LANGUAGE CHECKS:
 □ Translated any non-English comments/identifiers to English
 
 MINIMAL CHANGES CHECKS (MOST CRITICAL):
-□ Reviewed ORIGINAL FILES completely
-□ Started from ORIGINAL FILES as base (not from scratch)
-□ Output file size is similar to original (if original = 200 lines, output = ~200+ lines)
-□ Did NOT delete entire file and rewrite with simple example
-□ Did NOT use "// ..." or "..." comments to skip code
-□ Wrote EVERY import, EVERY state line, EVERY function, EVERY JSX line
-□ Kept ALL existing: imports, state, hooks, effects, logic, components
-□ Kept existing comments (unless related to changed code)
-□ Preserved all unrelated code from ORIGINAL FILES
-□ Only ADDED or CHANGED specific lines needed for task
-□ Didn't reformat unrelated code
+□ Used EDIT format for modifications (only changed necessary code sections)
+□ SEARCH blocks contain exact code to find (no more, no less)
+□ REPLACE blocks contain only new code (no unchanged surrounding code)
+□ Reviewed ORIGINAL FILES completely before creating EDIT blocks
+□ Did NOT regenerate entire files when only small changes needed
+□ Used FILE format ONLY for brand new files
+□ Preserved all unrelated code (it stays untouched automatically with EDIT)
+□ Only targeted specific lines/sections that need changes
 
 DOUBLE SANITY CHECKS:
-1. If ORIGINAL FILES = 200 lines but output = 50 lines → STOP! You deleted too much.
-2. If output contains "// ... all other imports ..." → STOP! Write them all out.
-3. If output contains "// ... rest of code ..." → STOP! Write every line.
-4. If output contains "{/* ... original JSX ... */}" → STOP! Write all JSX.
+1. Am I modifying an existing file?
+   → USUALLY use EDIT format (efficient)
+   → EXCEPT for refactoring: Use FILE format (see below)
+2. Am I creating a new file? → Use FILE format with complete content
+3. Is my SEARCH block exact? → Copy-paste exact code from ORIGINAL FILES
+4. Does my REPLACE block have unchanged code? → Remove it, keep only changes
 
-If ANY of these are true, go back and write the COMPLETE file.
+⚠️ EXCEPTION: When to use FILE instead of EDIT for modifications:
+- Fixing import errors (must update ALL usage in file)
+- Refactoring identifiers (renaming, API changes)
+- Multiple related changes scattered throughout file
+- When EDIT failed before (pattern not found)
+→ In these cases: Use FILE format to ensure ALL changes are made
+
+If using FILE format for simple modification → STOP! Use EDIT instead.
 
 TASK CHECKS:
 □ If DIRECTIVE exists: I responded with === RESPONSE === section
@@ -86,42 +92,46 @@ OUTPUT STRUCTURE
 ================================================================================
 
 CRITICAL OUTPUT RULES:
-1. File Paths: Use ACTUAL paths from ORIGINAL FILES or DESIGN DOCUMENT
-2. File Content: Write COMPLETE file with EVERY line of code
-3. NEVER use placeholder paths like "path/to/file.tsx"
-4. NEVER use "// ..." or "..." to skip code
+
+**FORMAT 1: Modifying EXISTING files** (PREFERRED - use this 90% of the time!)
+=== EDIT: src/components/Button.tsx ===
+<<<<<<< SEARCH
+[exact code to find - must match perfectly]
+=======
+[new code to replace with]
+>>>>>>> REPLACE
+=== END EDIT ===
+
+**FORMAT 2: Creating NEW files** (only for files that don't exist yet)
+=== FILE: src/components/NewButton.tsx ===
+[COMPLETE file content - write EVERY line]
+=== END FILE ===
+
+**FORMAT 3: Deleting files**
+=== DELETE: src/components/OldButton.tsx ===
 
 ABSOLUTELY FORBIDDEN:
-❌ "// ... all other imports ..."
-❌ "// ... rest of code ..."
-❌ "{/* ... original JSX ... */}"
-❌ "return (<div>...</div>);"
+❌ Using FILE format to modify existing files (use EDIT!)
+❌ Incomplete SEARCH blocks (must match exactly)
+❌ Including unchanged code in REPLACE blocks
+❌ Placeholder paths like "path/to/file.tsx"
+❌ Comments in JSON files (package.json, tsconfig.json, etc.) - JSON spec forbids comments!
 
 YOU MUST:
-✅ Write EVERY import statement
-✅ Write EVERY line of state/hooks
-✅ Write EVERY line of JSX
-✅ Output COMPLETE, runnable files
-
-=== FILE: [actual/file/path.tsx] ===
-[COMPLETE file - write EVERY line, not "// ... rest ..."]
-=== END FILE ===
-
-=== FILE: [actual/file/path2.tsx] ===
-[Complete pure source code - use ACTUAL file path from project]
-=== END FILE ===
-
-To delete files:
-=== DELETE: [actual/old/file.ts] ===
+✅ Use EDIT for modifications (saves 90% tokens!)
+✅ SEARCH block = exact copy from original file
+✅ REPLACE block = only the new/changed code
+✅ Use FILE only for brand new files
+✅ Write complete content in FILE blocks
 
 NOW EXECUTE YOUR PLAN. 
 
 FINAL REMINDERS BEFORE YOU OUTPUT:
-1. Write COMPLETE files with EVERY line of code
-2. NEVER use "// ..." or "..." to skip code
-3. If ORIGINAL FILES = 200 lines, output should be ~200+ lines
-4. Use ACTUAL file paths from ORIGINAL FILES
-5. Write PURE source code (no markdown, no backticks)
+1. **Modifying existing file?** → Use EDIT format (mandatory!)
+2. **Creating new file?** → Use FILE format with complete content
+3. **SEARCH block** → Must match original file EXACTLY
+4. **REPLACE block** → Only the new/changed code
+5. Use ACTUAL file paths from ORIGINAL FILES
 
-If you're about to output a file with "// ... rest of code ...", STOP and write it completely!
+⚠️ If you're about to use FILE format for a modification → STOP! Use EDIT instead!
 

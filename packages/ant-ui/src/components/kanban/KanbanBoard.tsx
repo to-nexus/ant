@@ -4,7 +4,7 @@ import { useUIActionPolicy } from '@/hooks/useUIActionPolicy';
 import { KanbanData } from '@/lib/api';
 import { WorkflowRealtimeState } from '@/types/workflow';
 import { BoardContainer } from '../BoardContainer';
-import { DataSourceIndicator, GaugesGroup } from './KanbanHeader';
+import { DataSourceIndicator, ElapsedTimeBadge, GaugesGroup } from './KanbanHeader';
 import { KanbanEstimating } from './KanbanEstimating';
 import { KanbanPausedPrompt } from './KanbanPausedPrompt';
 import { KanbanColumns } from './KanbanColumns';
@@ -139,7 +139,17 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
     return (
       <BoardContainer 
         title="Task Board"
-        titleActions={<DataSourceIndicator dataSource={kanbanData.dataSource} />}
+        titleActions={
+          <>
+            <DataSourceIndicator dataSource={kanbanData.dataSource} />
+            <ElapsedTimeBadge
+              totalElapsedTime={kanbanData.totalElapsedTime}
+              jobTiming={kanbanData.jobTiming}
+              inProgressTask={kanbanData.inProgress}
+              activeJobId={kanbanData.activeJobId}
+            />
+          </>
+        }
         headerActions={
           <GaugesGroup
             recursionCount={kanbanData.recursionCount}
@@ -159,7 +169,17 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
   return (
     <BoardContainer 
       title="Task Board"
-      titleActions={<DataSourceIndicator dataSource={kanbanData.dataSource} />}
+      titleActions={
+        <>
+          <DataSourceIndicator dataSource={kanbanData.dataSource} />
+          <ElapsedTimeBadge
+            totalElapsedTime={kanbanData.totalElapsedTime}
+            jobTiming={kanbanData.jobTiming}
+            inProgressTask={kanbanData.inProgress}
+            activeJobId={kanbanData.activeJobId}
+          />
+        </>
+      }
       headerActions={
         <GaugesGroup
           recursionCount={kanbanData.recursionCount}

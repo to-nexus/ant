@@ -118,11 +118,17 @@ export class TaskExecutionService {
       }
       
       
+      // ✅ Ensure PATH includes common locations for git and other tools
+      const ensuredPath = process.env.PATH 
+        ? `${process.env.PATH}:/usr/local/bin:/usr/bin:/bin`
+        : '/usr/local/bin:/usr/bin:/bin';
+      
       // Spawn child process using tsx
       const childProcess = spawn('npx', ['tsx', ...args], {
         cwd: process.cwd(),
         env: { 
           ...process.env,
+          PATH: ensuredPath,  // ✅ Explicitly ensure PATH includes standard locations
           ANT_JOB_ID: jobId,  // For tracking
           ANT_SERVER_PORT: process.env.PORT || '4100'  // For HTTP client updates
         },

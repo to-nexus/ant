@@ -31,6 +31,9 @@ function formatFileSize(bytes: number): string {
 }
 
 export async function writeFiles(state: ArchitectGraphState): Promise<ArchitectGraphState> {
+  // ✅ Increment recursion count (track every node execution)
+  state.recursionCount = (state.recursionCount || 0) + 1;
+  
   // ✅ Workflow instrumentation: Enter node
   if (state.deps?.workflowUpdate && state._httpTaskId) {
     const taskInfo = state.currentTask ? {

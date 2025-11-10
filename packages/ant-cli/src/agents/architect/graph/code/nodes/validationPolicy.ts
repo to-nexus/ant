@@ -33,7 +33,19 @@ export interface ValidationContext {
  * 4. Feature tasks → Build-only (lenient)
  */
 export function determineValidationLevel(context: ValidationContext): ValidationLevel {
-  // 🎯 Rule 1: Retry attempts should be lenient
+  // 🎯 Rule 1: Error tasks ALWAYS need strict validation (highest priority!)
+  // Reason: These tasks explicitly fix errors, must validate correctly even on retry
+  if (context.taskType === 'error') {
+    return {
+      type: 'full',
+      ignoreWarnings: false,
+      ignoreLintErrors: false,
+      allowMinorTypeErrors: false,
+      description: 'Error fix task - strict validation to ensure errors are properly fixed'
+    };
+  }
+  
+  // 🎯 Rule 2: Retry attempts should be lenient (for non-error tasks)
   // Reason: LLM already tried to fix core issue, don't block on minor style issues
   if (context.retryCount > 0) {
     return {
@@ -45,7 +57,7 @@ export function determineValidationLevel(context: ValidationContext): Validation
     };
   }
   
-  // 🎯 Rule 2: Final verification tasks should focus on functionality
+  // 🎯 Rule 3: Final verification tasks should focus on functionality
   // Reason: These tasks are for integration, not for fixing unused variables
   if (context.isLastTask && 
       (context.taskName.toLowerCase().includes('verification') ||
@@ -57,18 +69,6 @@ export function determineValidationLevel(context: ValidationContext): Validation
       ignoreLintErrors: true,
       allowMinorTypeErrors: true,
       description: 'Final task - focus on build success and functionality, ignore style issues'
-    };
-  }
-  
-  // 🎯 Rule 3: Error tasks need strict validation
-  // Reason: These tasks explicitly fix errors, should validate correctly
-  if (context.taskType === 'error') {
-    return {
-      type: 'full',
-      ignoreWarnings: false,
-      ignoreLintErrors: false,
-      allowMinorTypeErrors: false,
-      description: 'Error fix task - strict validation to ensure errors are properly fixed'
     };
   }
   

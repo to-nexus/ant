@@ -63,6 +63,7 @@ export interface AssembledContext {
     hasMemory: boolean;
     hasSessionHistory: boolean;
     codebaseDetected: boolean;
+    hasMissingDependency: boolean;  // ✅ For missing dependency injection
   };
 }
 
@@ -149,6 +150,13 @@ export class ContextAssembler {
     assembled.sessionHistory = context.sessionHistory || undefined;
     
     // 5. Generate statistics
+    const hasMissingDependency = Boolean(
+      assembled.currentTask?.name?.toLowerCase().includes('missing') ||
+      assembled.currentTask?.name?.toLowerCase().includes('dependency') ||
+      assembled.currentTask?.description?.toLowerCase().includes('missing') ||
+      assembled.currentTask?.description?.toLowerCase().includes('dependency')
+    );
+    
     const stats = {
       hasDirective: Boolean(assembled.directive),
       hasDesign: Boolean(assembled.designDoc || assembled.previousDesign),
@@ -156,7 +164,8 @@ export class ContextAssembler {
       hasCurrentCode: Boolean(assembled.currentCode),
       hasMemory: Boolean(assembled.memory),
       hasSessionHistory: Boolean(assembled.sessionHistory),
-      codebaseDetected: Boolean(assembled.codebaseProfile)
+      codebaseDetected: Boolean(assembled.codebaseProfile),
+      hasMissingDependency
     };
     
     return {

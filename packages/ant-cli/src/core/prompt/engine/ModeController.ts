@@ -176,6 +176,12 @@ export class ModeController {
     }
     
     if (phase === 'execute') {
+      // ✅ Language-specific environment rules (highest priority - applies to ALL execute tasks)
+      const language = this.detectLanguage(context);
+      if (language && task === 'code') {
+        injections.push(`${task}/languages/${language}/execute/environment`);
+      }
+      
       // ✅ NEW: Retry context injection (highest priority - only on retries)
       if (context.retryContext) {
         injections.push(`${phasePrefix}/retry-context`);
@@ -184,6 +190,11 @@ export class ModeController {
       // ✅ NEW: Plan preservation injection (always, to enforce contract)
       if (context.planContract) {
         injections.push(`${phasePrefix}/plan-preservation`);
+      }
+      
+      // ✅ Missing dependency fix protocol (Critical - language-specific)
+      if (context.stats.hasMissingDependency && language && task === 'code') {
+        injections.push(`${task}/languages/${language}/execute/missing-dependency-fix`);
       }
       
       // TypeScript error fix detection (highest priority - more specific than runtime errors)
@@ -201,7 +212,6 @@ export class ModeController {
         injections.push(`${phasePrefix}/new-project-setup-general`);
         
         // Language-specific setup details
-        const language = this.detectLanguage(context);
         const languageConfigPath = `${task}/languages/${language}/setup/config`;
         injections.push(languageConfigPath);
       }

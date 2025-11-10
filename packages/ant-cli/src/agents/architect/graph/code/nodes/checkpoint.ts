@@ -46,6 +46,14 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       recursionLimit: state.recursionLimit,  // ✅ Save recursion limit
     };
     
+    // ✅ Include jobId and jobTiming if present
+    if ((state as any).jobId) {
+      (sessionState as any).jobId = (state as any).jobId;
+    }
+    if ((state as any).jobTiming) {
+      (sessionState as any).jobTiming = (state as any).jobTiming;
+    }
+    
     // ✅ Include interruption details if present
     if ((state as any).interruption) {
       (sessionState as any).interruption = (state as any).interruption;

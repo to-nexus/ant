@@ -1,9 +1,0 @@
-{
-  "projectName": "coin-watcher",
-  "repoType": "local",
-  "localPath": "~/dev/coin-watcher",
-  "branchBase": "main",
-  "autoLearn": true,
-  "llmProvider": "anthropic",
-  "llmModel": "claude-sonnet-4-5"
-}
