@@ -65,8 +65,18 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     prd = undefined;
   }
 
-  // 2. Load directive (optional)
-  const directive = await getDirective(context, 'design', gitPort) || undefined;
+  // 2. Load directive with override priority
+  // ✅ Priority: overrideDirective (from chat) > directive.md > directive-nnn.md
+  let directive: string | undefined;
+  
+  if (state.overrideDirective) {
+    // ✅ Chat input takes highest priority
+    console.log('\n🎯 [Design Resolve] Using override directive from chat input\n');
+    directive = state.overrideDirective;
+  } else {
+    // Load from file system
+    directive = await getDirective(context, 'design', gitPort) || undefined;
+  }
 
   // 3. Load previous design (optional)
   const design = await findLatestDesign(context, gitPort) || undefined;
@@ -80,6 +90,14 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
   
   if (needsCodebase) {
     console.log(`🔍 Retrieving codebase for ${designMode} mode...`);
+    
+    // ✅ Get ChatAPI client for grepping tracking
+    const { getChatAPIClient } = await import('../../../../../core/adapters/ChatAPIClient');
+    const chatAPI = getChatAPIClient();
+    
+    // ✅ Send grepping status (extracting query from directive/design/prd)
+    const query = (directive || design || prd || "").slice(0, 100);  // First 100 chars as query
+    await chatAPI.addGreppingStatus(query, 0, 25);  // Max 25 files
     
     const codeContext = await retriever.retrieve(
       directive || design || prd || "",
@@ -96,6 +114,14 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     );
     
     console.log(`✅ Strategy: ${codeContext.strategy}, Files: ${codeContext.stats.filesLoaded}, Tokens: ~${codeContext.stats.estimatedTokens}`);
+    
+    // ✅ Send grepped result
+    await chatAPI.addGreppedResult(
+      query,
+      codeContext.stats.filesLoaded,
+      codeContext.strategy,
+      codeContext.files || []
+    );
     
     code = codeContext.code;
     codeHead = codeContext.codeHead;

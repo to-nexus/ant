@@ -221,6 +221,10 @@ export interface ArchitectGraphState extends TaskArtifacts {
   
   // Mode (inferred or explicit)
   codeMode?: CodeMode;  // generate / refactor / explain
+  
+  // ✅ Chat Integration
+  overrideDirective?: string;  // Chat input as directive (highest priority)
+  chatSource?: boolean;         // True if job started from chat (enables Chat SSE)
 
   // Execution
   planText: string;

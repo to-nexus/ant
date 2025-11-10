@@ -40,6 +40,10 @@ export interface DesignGraphState extends TaskArtifacts {
 
   // Mode (explicit or inferred)
   designMode?: DesignMode;  // greenfield / evolution / refactor
+  
+  // ✅ Chat Integration
+  overrideDirective?: string;  // Chat input as directive (highest priority)
+  chatSource?: boolean;         // True if job started from chat (enables Chat SSE)
 
   // ✅ NEW: Task Queue (for task breakdown like code)
   taskQueue?: TaskQueue;

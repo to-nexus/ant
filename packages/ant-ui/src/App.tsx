@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { GlobalNavBar } from './components/GlobalNavBar';
 import { ProjectDropdown } from './components/ProjectDropdown';
 import { FeatureDropdown } from './components/FeatureDropdown';
@@ -12,12 +12,13 @@ import { SplitLayout } from './components/SplitLayout';
 import { Bar } from './components/Bar';
 import { FileEditorPanel } from './components/FileEditorPanel';
 import { ConfigEditor } from './components/ConfigEditor';
+import { ChatPanel, useChatData } from './components/chat/ChatPanel';
 import { checkHealth, fetchProjectConfig, updateProjectConfig, ProjectConfig, fetchFeatureSession, stopJob } from './lib/api';
 import { executeCodeJob } from './lib/cli';
 import { useStore } from './lib/store';
 import { useKanbanSSE } from './hooks/useKanbanSSE';
 import { useWorkflowSSE } from './components/workflow/hooks';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, WifiOff } from 'lucide-react';
 
 function App() {
   const [configData, setConfigData] = useState<ProjectConfig | null>(null);
@@ -25,13 +26,19 @@ function App() {
   const [isExplorerCollapsed, setIsExplorerCollapsed] = useState(false);
   const [explorerWidth, setExplorerWidth] = useState(320); // 80 * 4 = 320px (w-80)
   const [isResizingExplorer, setIsResizingExplorer] = useState(false);
+  const [isChatCollapsed, setIsChatCollapsed] = useState(false);
+  const [chatWidth, setChatWidth] = useState(400); // Chat panel width
+  const [isResizingChat, setIsResizingChat] = useState(false);
 
   const MIN_EXPLORER_WIDTH = 160; // 최소 너비
   const MAX_EXPLORER_WIDTH = 600; // 최대 너비
+  const MIN_CHAT_WIDTH = 160; // Chat 최소 너비
+  const MAX_CHAT_WIDTH = 1000; // Chat 최대 너비
   
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);
   const selectedFile = useStore((state) => state.selectedFile);
+  const selectedAgent = useStore((state) => state.selectedAgent);
   const isRunning = useStore((state) => state.isRunning);
   const isStopping = useStore((state) => state.isStopping);
   const currentJobId = useStore((state) => state.currentJobId);
@@ -41,8 +48,14 @@ function App() {
   const { kanbanData } = useKanbanSSE();
   
   // ✅ Single Workflow SSE connection (job 단위)
-  const shouldSubscribeWorkflow = currentJobId && currentJobId !== userStoppedJobId;
-  const { displayedState: workflowState } = useWorkflowSSE(shouldSubscribeWorkflow ? currentJobId : undefined);
+  // Use activeJobId from kanbanData for workflow tracking
+  // ✅ CRITICAL: Memoize activeJobId to prevent reference changes when kanbanData updates
+  const activeJobId = useMemo(() => kanbanData?.activeJobId, [kanbanData?.activeJobId]);
+  
+  // ✅ Pass activeJobId directly to useWorkflowSSE (no need for stabilization with useMemo)
+  const { displayedState: workflowState } = useWorkflowSSE(
+    activeJobId && activeJobId !== userStoppedJobId ? activeJobId : undefined
+  );
   
   const currentJob = useStore((state) => state.currentJob);
   const setCurrentJob = useStore((state) => state.setCurrentJob);
@@ -61,6 +74,13 @@ function App() {
   const setSession = useStore((state) => state.setSession);
   const splitLayout = useStore((state) => state.splitLayout);
   const startLogStream = useStore((state) => state.startLogStream);
+  
+  // Chat SSE data
+  const chatData = useChatData(
+    selectedProject || null,
+    selectedFeature || null,
+    !isChatCollapsed
+  );
 
   // Load session when project/feature changes (but not during task execution)
   useEffect(() => {
@@ -299,29 +319,31 @@ function App() {
     const healthCheckInterval = setInterval(async () => {
       try {
         const isHealthy = await checkHealth();
-        const currentStatus = useStore.getState().connectionStatus;
+        const store = useStore.getState();
+        const currentStatus = store.connectionStatus;
         
         if (!isHealthy) {
           console.warn('[App] Health check failed during periodic check');
-          setConnectionStatus('error');
-          setProjects([]);
+          store.setConnectionStatus('error');
+          store.setProjects([]);
         } else if (currentStatus === 'error' || currentStatus === 'disconnected') {
           // Reconnected - reload projects
           console.log('[App] Reconnected! Reloading projects...');
-          await fetchProjects();
-          setConnectionStatus('connected');
+          await store.fetchProjects();
+          store.setConnectionStatus('connected');
         }
       } catch (error) {
         console.error('[App] Periodic health check error:', error);
-        setConnectionStatus('error');
-        setProjects([]);
+        const store = useStore.getState();
+        store.setConnectionStatus('error');
+        store.setProjects([]);
       }
     }, 5000);
 
     return () => {
       clearInterval(healthCheckInterval);
     };
-  }, [setConnectionStatus, fetchProjects, setProjects]);
+  }, []); // ✅ Empty deps - run once on mount
 
   // Explorer resize handler
   useEffect(() => {
@@ -362,6 +384,47 @@ function App() {
       document.removeEventListener('mouseup', handleMouseUp);
     };
   }, [isResizingExplorer, MIN_EXPLORER_WIDTH, MAX_EXPLORER_WIDTH]);
+
+  // Chat resize handler (right side)
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizingChat) return;
+
+      // Calculate width from right edge (window.innerWidth - clientX)
+      const newWidth = window.innerWidth - e.clientX;
+      
+      // 최소 너비보다 작으면 접기
+      if (newWidth < MIN_CHAT_WIDTH) {
+        setIsChatCollapsed(true);
+        setIsResizingChat(false);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        return;
+      }
+
+      // 최대 너비 제한
+      const constrainedWidth = Math.min(newWidth, MAX_CHAT_WIDTH);
+      setChatWidth(constrainedWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingChat(false);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    if (isResizingChat) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'ew-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizingChat, MIN_CHAT_WIDTH, MAX_CHAT_WIDTH]);
 
   const handleRunTask = (agent: string, task: string) => {
     console.log('[App] handleRunTask called:', { agent, task, isRunning, selectedProject, selectedFeature });
@@ -643,7 +706,111 @@ function App() {
               </div>
             )}
           </MainPanel>
-        </div>
+
+          {/* Right Column: Chat Panel (Collapsible, Resizable) */}
+          {!isChatCollapsed && (
+            <aside 
+              className="bg-white dark:bg-[#161b22] border-l border-gray-200 dark:border-[#30363d] flex flex-col overflow-hidden transition-colors shrink-0 relative shadow-sm"
+              style={{ width: `${chatWidth}px` }}
+            >
+              {/* Resize Handle (left side for chat) */}
+              <div
+                className="absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-blue-400 dark:hover:bg-blue-500 transition-colors z-10"
+                style={{
+                  backgroundColor: isResizingChat ? '#3b82f6' : 'transparent'
+                }}
+                onMouseDown={() => setIsResizingChat(true)}
+              />
+
+              {/* Chat Bar - Extends Base Bar */}
+              {Bar.render({
+                left: (
+                  <>
+                    {(() => {
+                      // Determine chat status based on selection state
+                      const hasProject = Boolean(selectedProject);
+                      const hasFeature = Boolean(selectedFeature);
+                      const hasAgent = Boolean(selectedAgent);
+                      
+                      if (!hasAgent) {
+                        return (
+                          <span className="text-gray-500 dark:text-gray-400 font-medium flex items-center gap-1.5">
+                            <WifiOff className="w-4 h-4" />
+                            Chat is Offline
+                          </span>
+                        );
+                      }
+                      
+                      // Get agent display name
+                      const agentNames: Record<string, string> = {
+                        'architect': 'Architect',
+                        'reviewer': 'Reviewer',
+                        'planner': 'Planner',
+                        'doc': 'Documentation'
+                      };
+                      const agentName = agentNames[selectedAgent] || selectedAgent.charAt(0).toUpperCase() + selectedAgent.slice(1);
+                      
+                      return (
+                        <span className="text-gray-700 dark:text-gray-200 font-medium">
+                          💬 Chat with {agentName}
+                        </span>
+                      );
+                    })()}
+                  </>
+                ),
+                right: (
+                  <>
+                    {chatData.messages.length > 0 && (
+                      <button
+                        onClick={async () => {
+                          if (window.confirm('Clear all chat messages for this feature?')) {
+                            await chatData.clearMessages();
+                          }
+                        }}
+                        className="text-xs px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+                        title="Clear messages"
+                      >
+                        Clear
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setIsChatCollapsed(true);
+                      }}
+                      className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors flex items-center justify-center w-10 h-10 -mr-4 -my-4"
+                      title="Collapse Chat"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </>
+                )
+              })}
+
+              {/* Chat Content */}
+              <ChatPanel 
+                projectId={selectedProject || null}
+                featureName={selectedFeature || null}
+                enabled={!isChatCollapsed}
+              />
+            </aside>
+          )}
+
+          {/* Collapsed Chat Button */}
+          {isChatCollapsed && (
+            <div className="w-10 bg-white dark:bg-[#161b22] border-l border-gray-200 dark:border-[#30363d] flex flex-col items-center shrink-0 transition-colors shadow-sm">
+              <button
+                onClick={() => {
+                  setIsChatCollapsed(false);
+                  setChatWidth(400); // Reset to recommended size
+                }}
+                className="h-10 w-10 flex items-center justify-center border-b border-gray-200 dark:border-[#30363d] bg-gray-50 dark:bg-[#0d1117] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+                title="Expand Chat"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+      </div>
     </div>
   );
 }

@@ -6,3 +6,4 @@ export { ProjectService } from './ProjectService';
 export { SSEBroadcastService } from './SSEBroadcastService';
 export { GraphMetadataService } from './GraphMetadataService';
 export { WorkflowStateService } from './WorkflowStateService';
+export { ChatService } from './ChatService';

@@ -1,6 +1,8 @@
-import { LLMClient } from "../../../../../core/ports";
-import { ArchitectGraphState, Task, TaskQueue } from "../state";
-import { JobTimingManager } from "../../common/timing/JobTimingManager";
+import { LLMClient } from "../../../../../../core/ports";
+import { ArchitectGraphState, Task, TaskQueue } from "../../state";
+import { JobTimingManager } from "../../../common/timing/JobTimingManager";
+import { streamLLMResponse, finalizeChatMessage } from "../shared/llmStreamHandler";
+import { extractErrorDetails, createErrorViolation, logErrorHeader } from "../shared/errorHandler";
 
 /**
  * Decompose Node
@@ -38,7 +40,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       model: (llm as any).modelName
     } : undefined;
     
-    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'decompose', taskInfo, llmInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'decompose', taskInfo, llmInfo);
   }
   
   // ✅ CRITICAL: Load session FIRST to get completedTasksDetails before signaling
@@ -266,7 +268,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // 💾 CRITICAL: Save jobTiming to session IMMEDIATELY so frontend can show timer during estimating
   if (state.deps?.session && state.context.featureFolder) {
     try {
-      const { saveCheckpoint } = await import('./checkpoint');
+      const { saveCheckpoint } = await import('../checkpoint');
       const tempState = {
         ...state,
         jobId: newJobId,
@@ -343,7 +345,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     // ✅ Save checkpoint for default task
     if (state.deps?.session && state.context.featureFolder) {
       try {
-        const { saveCheckpoint } = await import('./checkpoint');
+        const { saveCheckpoint } = await import('../checkpoint');
         await saveCheckpoint(newState);
         console.log(`💾 [Decompose Default] Checkpoint saved (1 default task)\n`);
       } catch (error) {
@@ -400,7 +402,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   }
   
   // Use FilePromptAdapter directly for decompose templates
-  const FilePromptAdapter = await import('../../../../../periphery/adapters/prompt/FilePromptAdapter');
+  const FilePromptAdapter = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
   const promptAdapter = new FilePromptAdapter.FilePromptAdapter();
   
   // Render templates with variables
@@ -525,7 +527,7 @@ ${rules}`;
       // ✅ Save checkpoint for default task
       if (state.deps?.session && state.context.featureFolder) {
         try {
-          const { saveCheckpoint } = await import('./checkpoint');
+          const { saveCheckpoint } = await import('../checkpoint');
           await saveCheckpoint(newState);
           console.log(`💾 [Decompose EmptyResult] Checkpoint saved (1 default task)\n`);
         } catch (error) {
@@ -609,7 +611,7 @@ ${rules}`;
     // This triggers file watcher → SSE broadcast → UI update
     if (state.deps?.session && state.context.featureFolder) {
       try {
-        const { saveCheckpoint } = await import('./checkpoint');
+        const { saveCheckpoint } = await import('../checkpoint');
         await saveCheckpoint(newState);
         console.log(`💾 [Decompose] Checkpoint saved (${taskQueue.size()} tasks)\n`);
       } catch (error) {
@@ -659,7 +661,11 @@ ${rules}`;
     return newState;
     
   } catch (error) {
-    console.error('❌ Failed to decompose tasks:', error);
+    logErrorHeader('Decompose');
+    
+    // Extract detailed error information
+    const errorDetails = extractErrorDetails(error);
+    console.error('❌ Failed to decompose tasks:', errorDetails.message);
     
     // Fallback: create default task
     const taskQueue = new TaskQueue();
@@ -693,7 +699,7 @@ ${rules}`;
     // ✅ Save checkpoint for fallback task
     if (state.deps?.session && state.context.featureFolder) {
       try {
-        const { saveCheckpoint } = await import('./checkpoint');
+        const { saveCheckpoint } = await import('../checkpoint');
         await saveCheckpoint(newState);
         console.log(`💾 [Decompose Error] Checkpoint saved (1 fallback task)\n`);
       } catch (saveError) {

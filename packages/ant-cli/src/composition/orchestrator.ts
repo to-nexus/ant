@@ -3,7 +3,7 @@ import { architectAgent } from "../agents/architect/index";
 import { plannerAgent } from "../agents/planner";
 import { docAgent } from "../agents/doc";
 import { ChromaMemoryAdapter } from "../periphery/adapters/memory/ChromaMemoryAdapter";
-import { GenericLLMClient } from "../periphery/adapters/llm/GenericLLMClient";
+import { createLLMClient } from "../periphery/adapters/llm/LLMClientFactory";
 import { FilePromptAdapter } from "../periphery/adapters/prompt/FilePromptAdapter";
 import { FileProfileAdapter } from "../periphery/adapters/profile/FileProfileAdapter";
 import { CodebaseAnalyzer } from "../periphery/adapters/analyzer/CodebaseAnalyzer";
@@ -14,6 +14,7 @@ import { ChunkAdapter } from "../periphery/adapters/chunk/ChunkingAdapter";
 import { NodeCommandAdapter } from "../periphery/adapters/command/NodeCommandAdapter";
 import { TaskQueueUpdatePort, FileTreeUpdatePort } from "../core/ports";
 import { WorkflowStateUpdatePort } from "../core/ports/workflow";
+import { getChatAPIClient } from "../core/adapters/ChatAPIClient";
 import * as path from "path";
 
 /**
@@ -53,7 +54,7 @@ export async function orchestrator(params: {
       
       // LLM configuration priority: workspace config > environment variables
       // Environment variables: ARCHITECT_MODEL_PROVIDER, ARCHITECT_MODEL_NAME, AI_MODEL_PROVIDER, AI_MODEL_NAME
-      const llm = new GenericLLMClient('architect', undefined, {
+      const llm = createLLMClient('architect', {
         llmProvider: configData.llmProvider,
         llmModel: configData.llmModel
       });
@@ -168,7 +169,7 @@ export async function orchestrator(params: {
       const memory = new ChromaMemoryAdapter();
       const config = new FileConfigAdapter();
       const configData = await config.load(project || "default");
-      const llm = new GenericLLMClient('reviewer', undefined, {
+      const llm = createLLMClient('reviewer', {
         llmProvider: configData.llmProvider,
         llmModel: configData.llmModel
       });
@@ -180,7 +181,7 @@ export async function orchestrator(params: {
       const memory = new ChromaMemoryAdapter();
       const config = new FileConfigAdapter();
       const configData = await config.load(project || "default");
-      const llm = new GenericLLMClient('planner', undefined, {
+      const llm = createLLMClient('planner', {
         llmProvider: configData.llmProvider,
         llmModel: configData.llmModel
       });
@@ -191,7 +192,7 @@ export async function orchestrator(params: {
       const memory = new ChromaMemoryAdapter();
       const config = new FileConfigAdapter();
       const configData = await config.load(project || "default");
-      const llm = new GenericLLMClient('doc', undefined, {
+      const llm = createLLMClient('doc', {
         llmProvider: configData.llmProvider,
         llmModel: configData.llmModel
       });

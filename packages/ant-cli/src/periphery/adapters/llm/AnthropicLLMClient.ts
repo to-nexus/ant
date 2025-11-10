@@ -5,6 +5,7 @@
  * Falls back to LangChain for compatibility with existing code.
  */
 
+// @ts-ignore
 import Anthropic from '@anthropic-ai/sdk';
 import { LLMClient, LLMStreamEvent } from '../../../core/ports/llm';
 
@@ -29,11 +30,6 @@ export class AnthropicLLMClient implements LLMClient {
     this.modelName = config?.modelName || 
       process.env[`${agentType?.toUpperCase()}_MODEL_NAME`] || 
       'claude-sonnet-4-20250514';
-
-    console.log(`\n🤖 [Anthropic] Direct SDK Client:`, {
-      agentType,
-      modelName: this.modelName,
-    });
   }
 
   async invoke(messages: Array<{ role: string; content: string }>): Promise<string> {
@@ -47,8 +43,8 @@ export class AnthropicLLMClient implements LLMClient {
     });
 
     // Extract text content (ignore thinking blocks for non-streaming)
-    const textBlocks = response.content.filter(block => block.type === 'text');
-    return textBlocks.map(block => block.text).join('');
+    const textBlocks = response.content.filter((block: any) => block.type === 'text');
+    return textBlocks.map((block: any) => block.text).join('');
   }
 
   async *stream(messages: Array<{ role: string; content: string }>): AsyncIterable<string> {
@@ -145,12 +141,37 @@ export class AnthropicLLMClient implements LLMClient {
     schemaName: string
   ): Promise<T> {
     // Anthropic doesn't have native structured output yet
-    // Fall back to text parsing
-    const response = await this.invoke(messages);
+    // Add JSON schema to prompt
+    const lastMessage = messages[messages.length - 1];
+    const enhancedMessages = [
+      ...messages.slice(0, -1),
+      {
+        role: lastMessage.role,
+        content: `${lastMessage.content}
+
+Please respond with ONLY a valid JSON object that matches this schema:
+\`\`\`json
+${JSON.stringify(schema, null, 2)}
+\`\`\`
+
+Do not include any explanatory text before or after the JSON. Start your response with { and end with }.`
+      }
+    ];
+    
+    const response = await this.invoke(enhancedMessages);
+    
     try {
+      // Try to extract JSON from response (in case there's extra text)
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]) as T;
+      }
+      // If no braces found, try parsing the whole response
       return JSON.parse(response) as T;
-    } catch {
-      throw new Error('Failed to parse structured response from Anthropic');
+    } catch (error) {
+      console.error('Failed to parse structured response:', response);
+      console.error('Parse error:', error);
+      throw new Error(`Failed to parse structured response from Anthropic: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 }

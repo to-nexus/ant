@@ -61,7 +61,7 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'runtimeValidate', taskInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'runtimeValidate', taskInfo);
   }
   
   const commandPort = state.deps?.command;

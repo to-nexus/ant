@@ -24,7 +24,8 @@ import {
   ProjectService,
   SSEBroadcastService,
   GraphMetadataService,
-  WorkflowStateService
+  WorkflowStateService,
+  ChatService
 } from './services';
 import {
   createJobRoutes,
@@ -61,6 +62,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   private devServerService: DevServerService;
   private projectService: ProjectService;
   private sseBroadcastService: SSEBroadcastService;
+  private chatService: ChatService;
   private graphMetadataService: GraphMetadataService;
   private workflowStateService: WorkflowStateService;
   private jobPrerequisitesAdapter: FileJobPrerequisitesAdapter;
@@ -437,6 +439,10 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     console.log('   🔄 Creating WorkflowStateService...');
     this.workflowStateService = new WorkflowStateService();
     
+    // Initialize ChatService
+    console.log('   💬 Creating ChatService...');
+    this.chatService = new ChatService(this.WORKSPACE_ROOT);
+    
     // Initialize job prerequisites adapter
     console.log('   ✅ Creating JobPrerequisitesAdapter...');
     this.jobPrerequisitesAdapter = new FileJobPrerequisitesAdapter(this.WORKSPACE_ROOT);
@@ -474,11 +480,12 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       res.json({ success: true });
     });
     
-    // Project routes (includes health, agents, projects, features, files)
+    // Project routes (includes health, agents, projects, features, files, chat)
     const projectRoutes = createProjectRoutes({
       projectService: this.projectService,
       workspaceRoot: this.WORKSPACE_ROOT,
-      fileTreeSSE: this.sseBroadcastService.getFileTreeSSE()
+      fileTreeSSE: this.sseBroadcastService.getFileTreeSSE(),
+      chatService: this.chatService
     });
     this.app.use('/api', projectRoutes);
     
@@ -520,7 +527,8 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       logs: this.logs,
       childProcesses: this.childProcesses,
       jobs: this.jobs,
-      cleanupJobState: this.cleanupJobState.bind(this)
+      cleanupJobState: this.cleanupJobState.bind(this),
+      workflowStateService: this.workflowStateService  // ✅ CRITICAL: Pass for node tracking
     });
     this.app.use('/api', jobRoutes);
   }
@@ -694,7 +702,9 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
           ...process.env,
           PATH: ensuredPath,  // ✅ Explicitly ensure PATH includes standard locations
           ANT_JOB_ID: jobId,  // ✅ Pass jobId via environment variable
-          ANT_SERVER_PORT: '4100'  // ✅ Pass server port for HTTP updates
+          ANT_SERVER_PORT: '4100',  // ✅ Pass server port for HTTP updates
+          ANT_PROJECT_ID: params.project || '',  // ✅ Pass project ID
+          ANT_FEATURE_NAME: params.feature || ''  // ✅ Pass feature name
         },
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: false  // ✅ Keep in same process group for easier killing

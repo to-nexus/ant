@@ -43,7 +43,7 @@ export async function writeFiles(state: ArchitectGraphState): Promise<ArchitectG
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'writeFiles', taskInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'writeFiles', taskInfo);
   }
   
   const gitPort = state.deps?.git;

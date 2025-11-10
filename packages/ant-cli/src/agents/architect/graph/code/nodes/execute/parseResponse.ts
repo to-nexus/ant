@@ -1,4 +1,4 @@
-import { GeneratedFile } from "../state";
+import { GeneratedFile } from "../../state";
 
 // ✅ Export types for external use
 export type { EditInstruction };

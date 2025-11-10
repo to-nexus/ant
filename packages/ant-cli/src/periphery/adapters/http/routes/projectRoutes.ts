@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import multer from 'multer';
-import { ProjectService } from '../services';
+import { ProjectService, ChatService } from '../services';
 
 /**
  * Project and feature management routes
@@ -12,6 +12,7 @@ export function createProjectRoutes(deps: {
   projectService: ProjectService;
   workspaceRoot: string;
   fileTreeSSE?: Map<string, Set<Response>>;
+  chatService?: ChatService;
 }): Router {
   const router = Router();
   
@@ -628,6 +629,316 @@ export function createProjectRoutes(deps: {
         res.status(500).json({ error: error.message });
       }
     }
+  });
+
+  // ===================================================================
+  // Chat SSE - Real-time AI chat messages
+  // ===================================================================
+  
+  /**
+   * GET /projects/:id/features/:feature/chat/stream
+   * SSE endpoint for real-time chat messages
+   */
+  router.get('/projects/:id/features/:feature/chat/stream', (req: Request, res: Response) => {
+    const projectId = req.params.id;
+    const featureName = req.params.feature;
+
+    if (!deps.chatService) {
+      res.status(503).json({ error: 'Chat service not available' });
+      return;
+    }
+
+    // Set up SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+
+    // Register client
+    deps.chatService.registerSSEClient(projectId, featureName, res);
+
+    // Handle client disconnect
+    req.on('close', () => {
+      deps.chatService?.unregisterSSEClient(projectId, featureName, res);
+    });
+  });
+
+  /**
+   * GET /projects/:id/features/:feature/chat/messages
+   * Get all chat messages for a feature
+   */
+  router.get('/projects/:id/features/:feature/chat/messages', (req: Request, res: Response) => {
+    const projectId = req.params.id;
+    const featureName = req.params.feature;
+
+    if (!deps.chatService) {
+      res.status(503).json({ error: 'Chat service not available' });
+      return;
+    }
+
+    const messages = deps.chatService.getMessages(projectId, featureName);
+    res.json({ messages });
+  });
+
+  /**
+   * DELETE /projects/:id/features/:feature/chat/messages
+   * Clear all chat messages for a feature
+   */
+  router.delete('/projects/:id/features/:feature/chat/messages', (req: Request, res: Response) => {
+    const projectId = req.params.id;
+    const featureName = req.params.feature;
+
+    if (!deps.chatService) {
+      res.status(503).json({ error: 'Chat service not available' });
+      return;
+    }
+
+    deps.chatService.clearMessages(projectId, featureName);
+    res.json({ success: true });
+  });
+
+  /**
+   * POST /projects/:id/features/:feature/chat/user-message
+   * Add a user message to chat history
+   */
+  router.post('/projects/:id/features/:feature/chat/user-message', (req: Request, res: Response) => {
+    const projectId = req.params.id;
+    const featureName = req.params.feature;
+    const { content, jobId } = req.body;
+
+    if (!deps.chatService) {
+      res.status(503).json({ error: 'Chat service not available' });
+      return;
+    }
+
+    if (!content) {
+      res.status(400).json({ error: 'content is required' });
+      return;
+    }
+
+    const messageId = deps.chatService.addUserMessage(projectId, featureName, content, jobId);
+    res.json({ messageId });
+  });
+
+  /**
+   * POST /projects/:id/features/:feature/chat/start-message
+   * Start a new assistant message
+   * jobId is optional - if not provided, creates a pending message that will be associated with job later
+   */
+  router.post('/projects/:id/features/:feature/chat/start-message', (req: Request, res: Response) => {
+    const projectId = req.params.id;
+    const featureName = req.params.feature;
+    const { jobId } = req.body;
+
+    if (!deps.chatService) {
+      res.status(503).json({ error: 'Chat service not available' });
+      return;
+    }
+
+    // ✅ jobId is now optional - use pending jobId if not provided
+    const actualJobId = jobId || `pending-${Date.now()}`;
+    const messageId = deps.chatService.startAssistantMessage(projectId, featureName, actualJobId);
+    res.json({ messageId, pendingJobId: jobId ? undefined : actualJobId });
+  });
+
+  /**
+   * POST /projects/:id/features/:feature/chat/llm-event
+   * Handle LLM stream event
+   */
+  router.post('/projects/:id/features/:feature/chat/llm-event', (req: Request, res: Response) => {
+    const projectId = req.params.id;
+    const featureName = req.params.feature;
+    const { event } = req.body;
+
+    if (!deps.chatService) {
+      res.status(503).json({ error: 'Chat service not available' });
+      return;
+    }
+
+    if (!event || !event.type) {
+      res.status(400).json({ error: 'event with type is required' });
+      return;
+    }
+
+    deps.chatService.handleLLMStreamEvent(projectId, featureName, event);
+    res.json({ success: true });
+  });
+
+  /**
+   * POST /projects/:id/features/:feature/chat/finalize-message
+   * Finalize current streaming message
+   */
+  router.post('/projects/:id/features/:feature/chat/finalize-message', (req: Request, res: Response) => {
+    const projectId = req.params.id;
+    const featureName = req.params.feature;
+
+    if (!deps.chatService) {
+      res.status(503).json({ error: 'Chat service not available' });
+      return;
+    }
+
+    deps.chatService.finalizeCurrentMessage(projectId, featureName);
+    res.json({ success: true });
+  });
+
+  /**
+   * POST /projects/:id/features/:feature/chat/file-operation
+   * Add file operation notification with content
+   */
+  router.post('/projects/:id/features/:feature/chat/file-operation', (req: Request, res: Response) => {
+    const projectId = req.params.id;
+    const featureName = req.params.feature;
+    const { operation, filePath, content, diffBefore, diffAfter, phase } = req.body;
+
+    if (!deps.chatService) {
+      res.status(503).json({ error: 'Chat service not available' });
+      return;
+    }
+
+    if (!operation || !filePath) {
+      res.status(400).json({ error: 'operation and filePath are required' });
+      return;
+    }
+
+    deps.chatService.addFileOperation(projectId, featureName, operation, filePath, content, diffBefore, diffAfter, phase);
+    res.json({ success: true });
+  });
+
+  /**
+   * POST /projects/:id/features/:feature/chat/command-execution
+   * Add command execution notification
+   */
+  router.post('/projects/:id/features/:feature/chat/command-execution', (req: Request, res: Response) => {
+    const projectId = req.params.id;
+    const featureName = req.params.feature;
+    const { command, output, exitCode, phase } = req.body;
+
+    if (!deps.chatService) {
+      res.status(503).json({ error: 'Chat service not available' });
+      return;
+    }
+
+    if (!command) {
+      res.status(400).json({ error: 'command is required' });
+      return;
+    }
+
+    deps.chatService.addCommandExecution(projectId, featureName, command, output, exitCode, phase);
+    res.json({ success: true });
+  });
+
+  /**
+   * POST /projects/:id/features/:feature/chat/exploration
+   * Add exploration status/result
+   */
+  router.post('/projects/:id/features/:feature/chat/exploration', (req: Request, res: Response) => {
+    const projectId = req.params.id;
+    const featureName = req.params.feature;
+    const { status, current, total, filesCount, tokensCount, filesList } = req.body;
+
+    if (!deps.chatService) {
+      res.status(503).json({ error: 'Chat service not available' });
+      return;
+    }
+
+    if (!status || (status !== 'exploring' && status !== 'explored')) {
+      res.status(400).json({ error: 'status must be "exploring" or "explored"' });
+      return;
+    }
+
+    deps.chatService.addExploration(projectId, featureName, status, {
+      current,
+      total,
+      filesCount,
+      tokensCount,
+      filesList
+    });
+    res.json({ success: true });
+  });
+
+  /**
+   * POST /projects/:id/features/:feature/chat/file-read
+   * Add file reading status
+   */
+  router.post('/projects/:id/features/:feature/chat/file-read', (req: Request, res: Response) => {
+    const projectId = req.params.id;
+    const featureName = req.params.feature;
+    const { status, filePath } = req.body;
+
+    if (!deps.chatService) {
+      res.status(503).json({ error: 'Chat service not available' });
+      return;
+    }
+
+    if (!status || (status !== 'reading' && status !== 'read')) {
+      res.status(400).json({ error: 'status must be "reading" or "read"' });
+      return;
+    }
+
+    if (!filePath) {
+      res.status(400).json({ error: 'filePath is required' });
+      return;
+    }
+
+    deps.chatService.addFileRead(projectId, featureName, status, filePath);
+    res.json({ success: true });
+  });
+
+  /**
+   * POST /projects/:id/features/:feature/chat/grep
+   * Add grep/search status/result
+   */
+  router.post('/projects/:id/features/:feature/chat/grep', (req: Request, res: Response) => {
+    const projectId = req.params.id;
+    const featureName = req.params.feature;
+    const { status, query, current, total, filesCount, strategy, filesList } = req.body;
+
+    if (!deps.chatService) {
+      res.status(503).json({ error: 'Chat service not available' });
+      return;
+    }
+
+    if (!status || (status !== 'grepping' && status !== 'grepped')) {
+      res.status(400).json({ error: 'status must be "grepping" or "grepped"' });
+      return;
+    }
+
+    if (!query) {
+      res.status(400).json({ error: 'query is required' });
+      return;
+    }
+
+    deps.chatService.addGrep(projectId, featureName, status, query, {
+      current,
+      total,
+      filesCount,
+      strategy,
+      filesList
+    });
+    res.json({ success: true });
+  });
+
+  /**
+   * POST /projects/:id/features/:feature/chat/job-error
+   * Add job error message
+   */
+  router.post('/projects/:id/features/:feature/chat/job-error', (req: Request, res: Response) => {
+    const projectId = req.params.id;
+    const featureName = req.params.feature;
+    const { jobId, errorMessage, errorDetails } = req.body;
+
+    if (!deps.chatService) {
+      res.status(503).json({ error: 'Chat service not available' });
+      return;
+    }
+
+    if (!jobId || !errorMessage) {
+      res.status(400).json({ error: 'jobId and errorMessage are required' });
+      return;
+    }
+
+    const messageId = deps.chatService.addJobError(projectId, featureName, jobId, errorMessage, errorDetails);
+    res.json({ messageId });
   });
   
   return router;

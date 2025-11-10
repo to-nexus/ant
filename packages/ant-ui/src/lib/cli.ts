@@ -9,6 +9,8 @@ export interface ExecuteCodeJobOptions {
   mode?: 'generate' | 'refactor' | 'explain';
   language?: string;
   cwd?: string;
+  overrideDirective?: string;  // ✅ Chat input as directive
+  chatSource?: boolean;        // ✅ Flag for Chat SSE
 }
 
 export interface JobExecution {
@@ -26,7 +28,9 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
     task = 'code',
     agent = 'architect',
     mode = 'generate',
-    language = 'en' 
+    language = 'en',
+    overrideDirective,  // ✅ Chat input as directive
+    chatSource          // ✅ Flag for Chat SSE
   } = options;
   
   const store = useStore.getState();
@@ -75,7 +79,7 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
     }
   };
   
-  console.log('[cli.ts] executeCodeJob called with:', { projectId, featureName, task, agent, mode, language });
+  console.log('[cli.ts] executeCodeJob called with:', { projectId, featureName, task, agent, mode, language, overrideDirective: overrideDirective ? '(provided)' : undefined, chatSource });
   
   executeJob({
     projectId,
@@ -84,6 +88,8 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
     agent,
     mode,
     language,
+    overrideDirective,  // ✅ Pass to API
+    chatSource           // ✅ Pass to API
   })
     .then((response) => {
       console.log('[cli.ts] executeJob response:', response);

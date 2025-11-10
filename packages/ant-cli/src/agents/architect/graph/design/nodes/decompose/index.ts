@@ -1,6 +1,7 @@
-import { LLMClient } from "../../../../../core/ports";
-import { DesignGraphState, Task, TaskQueue } from "../state";
-import { JobTimingManager } from "../../common/timing/JobTimingManager";
+import { LLMClient } from "../../../../../../core/ports";
+import { DesignGraphState, Task, TaskQueue } from "../../state";
+import { JobTimingManager } from "../../../common/timing/JobTimingManager";
+import { extractErrorDetails, logErrorHeader } from "../../../code/nodes/shared/errorHandler";
 
 /**
  * Decompose Node for Design
@@ -212,7 +213,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
   const codePreview = state.code ? state.code.split('\n').slice(0, 20).join('\n') + '\n...' : '';
   
   // ✅ Use FilePromptAdapter for design decompose template
-  const FilePromptAdapter = await import('../../../../../periphery/adapters/prompt/FilePromptAdapter');
+  const FilePromptAdapter = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
   const promptAdapter = new FilePromptAdapter.FilePromptAdapter();
   
   // Render template with variables
@@ -298,7 +299,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     }
     
     // ✨ Start timing for the first task
-    const { TaskTimingHelper } = await import('../../code/state');
+    const { TaskTimingHelper } = await import('../../../code/state');
     console.log(`⏱️  Starting timer for first task: ${firstTask.name}`);
     const currentTask = TaskTimingHelper.startTask(firstTask);
     

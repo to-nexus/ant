@@ -1,6 +1,8 @@
-import { LLMClient } from "../../../../../core/ports";
-import { ArchitectGraphState, AttemptHistory, Task, Violation, TASK_PRIORITIES } from "../state";
-import { PromptEngine } from "../../../../../core/prompt/engine";
+import { LLMClient } from "../../../../../../core/ports";
+import { ArchitectGraphState, AttemptHistory, Task, Violation, TASK_PRIORITIES } from "../../state";
+import { PromptEngine } from "../../../../../../core/prompt/engine";
+import { streamLLMResponse, finalizeChatMessage } from "../shared/llmStreamHandler";
+import { extractErrorDetails, createErrorViolation, logErrorHeader } from "../shared/errorHandler";
 
 /**
  * Format previous attempts for LLM context
@@ -78,7 +80,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'plan', taskInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'plan', taskInfo);
   }
   
   // ✅ Increment recursion count (track every node execution)
@@ -295,7 +297,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         console.log(`✅ Task "${nextTask.name}" marked as completed (with errors deferred to error tasks)\n`);
         
         // ✅ CRITICAL: Save checkpoint immediately so completed task is not lost
-        const { saveCheckpoint } = await import('./checkpoint');
+        const { saveCheckpoint } = await import('../checkpoint');
         await saveCheckpoint(state);
         
         // ✅ Update live snapshot via injected port (Hexagonal Architecture compliant)
@@ -396,7 +398,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       };
       
       // ✅ CRITICAL: Save checkpoint before retry (for recursion limit recovery)
-      const { saveCheckpoint } = await import('./checkpoint');
+      const { saveCheckpoint } = await import('../checkpoint');
       await saveCheckpoint(retryState);
       console.log(`💾 Checkpoint saved (retry ${state.retries + 1})\n`);
       
@@ -413,7 +415,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     };
     
     // ✅ CRITICAL: Save checkpoint before retry (for recursion limit recovery)
-    const { saveCheckpoint } = await import('./checkpoint');
+    const { saveCheckpoint } = await import('../checkpoint');
     await saveCheckpoint(retryState);
     console.log(`💾 Checkpoint saved (blocking errors, retry ${state.retries + 1})\n`);
     
@@ -456,6 +458,10 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     // ✅ Load ALL existing files (we're in early stage, files are few)
     // This ensures LLM sees what's already created and doesn't regenerate
     try {
+      // Get ChatAPI client for progress tracking
+      const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
+      const chatAPI = getChatAPIClient();
+      
       // Get all files, excluding build artifacts and dependencies
       const allFiles = await gitPort.listFiles('', [
         'node_modules',
@@ -471,15 +477,28 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         '*.spec.tsx'
       ]);
       
+      const maxFiles = Math.min(allFiles.length, 50);
+      
+      // ✅ Send exploring status
+      await chatAPI.addExploringStatus(0, maxFiles);
+      
       // Load all files into a formatted string
       const fileContents: string[] = [];
+      const loadedFiles: string[] = [];
       let totalTokens = 0;
       
-      for (const file of allFiles.slice(0, 50)) {  // Max 50 files
+      for (let i = 0; i < maxFiles; i++) {
+        const file = allFiles[i];
         try {
+          // ✅ Send progress update every 5 files
+          if (i > 0 && i % 5 === 0) {
+            await chatAPI.addExploringStatus(i, maxFiles);
+          }
+          
           const content = await gitPort.readFile(file);
           if (content && content.length > 0) {
             fileContents.push(`=== ${file} ===\n${content}\n`);
+            loadedFiles.push(file);
             totalTokens += Math.ceil(content.length / 4);
             
             if (totalTokens > 100000) break;  // Token limit
@@ -488,6 +507,9 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
           // Skip files that can't be read
         }
       }
+      
+      // ✅ Send explored result
+      await chatAPI.addExploredResult(fileContents.length, totalTokens, loadedFiles);
       
       currentCode = fileContents.join('\n');
       console.log(`   ✅ Loaded ${fileContents.length} files (~${totalTokens} tokens)`);
@@ -596,15 +618,15 @@ ${nextTask.type === 'error' ?
     
     console.log('\n📝 Generating plan...\n');
     
-    if (llm.stream) {
-      for await (const chunk of llm.stream(promptMessages)) {
-        // ✅ Don't output LLM response to stdout (handled by logFilters.ts)
-        planText += chunk;
-      }
-      console.log('\n');
-    } else {
-      planText = await llm.invoke(promptMessages);
-    }
+    // Use common streaming handler with Chat integration
+    const { raw, chatMessageStarted } = await streamLLMResponse(llm, promptMessages, {
+      enableChat: true  // ✅ Plan 전략을 일반 응답으로 표시
+    });
+    planText = raw;
+    console.log('\n');
+    
+    // Finalize chat message
+    await finalizeChatMessage(chatMessageStarted);
 
     const codeMode = result.modeConfig.mode;
 
@@ -624,7 +646,7 @@ ${nextTask.type === 'error' ?
     };
     
     // ✅ Save checkpoint after planning (in case recursion limit hits during execute)
-    const { saveCheckpoint } = await import('./checkpoint');
+    const { saveCheckpoint } = await import('../checkpoint');
     await saveCheckpoint(updatedState);
     
     // ✅ Workflow instrumentation: Exit node (success path)
@@ -634,11 +656,12 @@ ${nextTask.type === 'error' ?
     
     return updatedState;
   } catch (error) {
-    console.error('\n❌ ═══════════════════════════════════════════════════════════════');
-    console.error('❌ [Plan] CRITICAL ERROR - LLM API CALL FAILED');
-    console.error('❌ ═══════════════════════════════════════════════════════════════\n');
+    logErrorHeader('Plan');
     
-    // Extract detailed error information (same logic as execute.ts)
+    // Extract detailed error information
+    const errorDetails = extractErrorDetails(error);
+    
+    // Legacy error logging for backward compatibility
     if (error && typeof error === 'object') {
       const apiError = error as any;
       

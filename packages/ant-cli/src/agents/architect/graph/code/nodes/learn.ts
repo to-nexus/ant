@@ -36,7 +36,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'learn', taskInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'learn', taskInfo);
   }
   
   // 0. Generate quality evaluation report (optional, if files were generated)

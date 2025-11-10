@@ -151,14 +151,31 @@ export function useKanbanSSE() {
         // ✅ Update Kanban data AFTER workflow animations AND render cycles
         currentInProgressIdRef.current = newInProgressId;
         
-        console.log('[useKanbanSSE] 🔄 Updating Kanban data:', {
-          dataSource: data.dataSource,
-          isEstimating: data.isEstimating,
-          activeJobId: data.activeJobId,
-          completedCount: data.completed?.length || 0
+        // ✅ CRITICAL: Only update if data actually changed (prevent infinite re-renders)
+        setKanbanData(prev => {
+          // Compare critical fields to detect actual changes
+          const hasChanged = 
+            prev.dataSource !== data.dataSource ||
+            prev.isEstimating !== data.isEstimating ||
+            prev.activeJobId !== data.activeJobId ||
+            prev.inProgress?.id !== data.inProgress?.id ||
+            prev.todo?.length !== data.todo?.length ||
+            prev.completed?.length !== data.completed?.length;
+          
+          if (!hasChanged) {
+            // No change - return same reference to prevent re-render
+            return prev;
+          }
+          
+          console.log('[useKanbanSSE] 🔄 Updating Kanban data:', {
+            dataSource: data.dataSource,
+            isEstimating: data.isEstimating,
+            activeJobId: data.activeJobId,
+            completedCount: data.completed?.length || 0
+          });
+          
+          return data;
         });
-        
-        setKanbanData(data);
         
       } catch (error) {
         console.error('[useKanbanSSE] Parse error:', error);

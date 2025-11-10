@@ -1,6 +1,7 @@
-import { DesignGraphState } from "../state";
-import { LLMClient } from "../../../../../core/ports";
-import { PromptEngine } from "../../../../../core/prompt/engine";
+import { DesignGraphState } from "../../state";
+import { LLMClient } from "../../../../../../core/ports";
+import { PromptEngine } from "../../../../../../core/prompt/engine";
+import { streamLLMResponse, finalizeChatMessage } from "../../../code/nodes/shared/llmStreamHandler";
 
 /**
  * Merge incremental design changes into existing document
@@ -93,17 +94,31 @@ export async function execute(state: DesignGraphState) {
     console.log('\n📐 Updating design document (incremental task)...\n');
   }
   
-  if (llm.stream) {
-    // Use streaming if available
-    for await (const chunk of llm.stream(result.formatted.messages)) {
-      // ✅ Don't output LLM response to stdout (handled by logFilters.ts)
-      designMarkdown += chunk;
-    }
-    console.log('\n');
+  // ✅ Get ChatAPIClient for file operations
+  const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
+  const chatAPI = getChatAPIClient();
+  
+  const filePath = 'outputs/design/system-design.md';
+  
+  // ✅ 1. Stream LLM response with thinking display (starts message automatically)
+  const { raw, chatMessageStarted } = await streamLLMResponse(llm, result.formatted.messages, {
+    thinkingOnly: true  // ✅ Show thinking in chat, but not text (file card will show content)
+  });
+  
+  // ✅ 2. After streaming, start file operation animation
+  if (isFirstTask) {
+    await chatAPI.startFileCreation(filePath);
   } else {
-    // Fallback to regular invoke
-    designMarkdown = await llm.invoke(result.formatted.messages);
+    await chatAPI.startFileEdit(filePath);
   }
+  
+  // ✅ Remove <thinking> blocks from file content (they're for chat UI only)
+  const removeThinkingTags = (text: string): string => {
+    return text.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
+  };
+  
+  designMarkdown = removeThinkingTags(raw);
+  console.log('\n');
   
   // ✅ Merge with previous designMarkdown if this is a continuation task
   let finalDesignMarkdown: string;
@@ -116,6 +131,18 @@ export async function execute(state: DesignGraphState) {
     console.log('\n🔀 Merging incremental changes with existing document...\n');
     finalDesignMarkdown = mergeDesignDocuments(state.designMarkdown!, designMarkdown);
   }
+
+  // ✅ Complete file operation with final content (Cursor-style)
+  if (isFirstTask) {
+    // Complete file creation
+    await chatAPI.completeFileCreation(filePath, finalDesignMarkdown);
+  } else {
+    // Complete file edit with diff
+    await chatAPI.completeFileEdit(filePath, state.designMarkdown || '', finalDesignMarkdown);
+  }
+  
+  // Finalize chat message
+  await finalizeChatMessage(chatMessageStarted);
 
   // ✅ DON'T mark task as completed here - checkTaskStatus node handles completion
   // This prevents duplicate entries in completedTasksDetails
