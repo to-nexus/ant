@@ -151,55 +151,37 @@ export function createJobRoutes(deps: {
   // Stop task
   router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
     const jobId = req.params.jobId;
-    const { projectId, featureName } = req.body;  // ✅ Accept project info from frontend
+    const { projectId, featureName } = req.body;
     const childProcess = deps.childProcesses.get(jobId);
     
-    console.log(`\n🛑 [JobRoute] Stopping job ${jobId}`);
-    console.log(`   Request body:`, { projectId, featureName });
-    console.log(`   childProcesses size:`, deps.childProcesses.size);
-    console.log(`   childProcesses keys:`, Array.from(deps.childProcesses.keys()));
-    console.log(`   childProcess found:`, !!childProcess);
-    console.log(`   childProcess PID:`, childProcess?.pid);
-    
-    // ✅ Send response immediately (don't wait for process to die)
+    // Send response immediately (don't wait for process to die)
     res.json({ 
       success: true, 
       message: 'Stop signal sent',
       jobId 
     });
-    console.log(`   ✅ HTTP response sent`);
     
     // Kill the process if it exists (in background)
     if (childProcess && childProcess.pid) {
       try {
         const pid = childProcess.pid;
-        console.log(`   Killing process ${pid}...`);
         
-        // ✅ Try graceful kill first
+        // Try graceful kill first
         childProcess.kill('SIGTERM');
-        console.log(`   ✅ SIGTERM sent to process ${pid}`);
         
-        // ✅ Forcefully kill immediately (don't wait - tsx processes often ignore SIGTERM)
+        // Forcefully kill after 500ms if still alive
         setTimeout(() => {
           try {
-            // Check if still alive
-            process.kill(pid, 0);  // Signal 0 checks if process exists
-            console.log(`   ⚠️ Process still alive, sending SIGKILL to ${pid}...`);
+            process.kill(pid, 0);  // Check if still alive
             process.kill(pid, 'SIGKILL');
-            console.log(`   ✅ SIGKILL sent to process ${pid}`);
           } catch (checkErr: any) {
-            if (checkErr.code === 'ESRCH') {
-              console.log(`   ℹ️  Process ${pid} already dead`);
-            } else {
-              console.log(`   ℹ️  Process check error:`, checkErr.message);
-            }
+            // Process already dead or error checking
           }
           deps.childProcesses.delete(jobId);
-        }, 500);  // ✅ Only wait 500ms before SIGKILL
+        }, 500);
         
       } catch (error: any) {
-        console.error(`   ❌ Error killing process:`, error.message);
-        // Process might already be dead, continue with cleanup
+        console.error('Error killing process:', error.message);
         deps.childProcesses.delete(jobId);
       }
       
@@ -210,7 +192,6 @@ export function createJobRoutes(deps: {
         status.completedAt = new Date().toISOString();
         status.error = 'Task stopped by user';
         
-        // Add log entry
         const logEntry: LogEntry = {
           type: 'stderr',
           message: '\n🛑 Task stopped by user',
@@ -219,18 +200,9 @@ export function createJobRoutes(deps: {
         deps.logs.get(jobId)?.push(logEntry);
         deps.logStreams.get(jobId)?.forEach(listener => listener(logEntry));
       }
-      
-      console.log(`   ℹ️  Process kill initiated in background`);
-    } else {
-      console.log(`   ⚠️ No child process found for job ${jobId}`);
-      console.log(`   Available job IDs:`, Array.from(deps.childProcesses.keys()));
     }
     
-    // ✅ ALWAYS clean up task state (live snapshots, return in-progress to queue)
-    // This is important even if childProcess doesn't exist (e.g., after page refresh)
-    console.log(`   🧹 Cleaning up job state...`);
-    
-    // ✅ Create interruption details for user stop
+    // Clean up task state
     const interruption: InterruptionDetails = {
       reason: 'user_stopped',
       message: 'Task stopped by user',
@@ -242,9 +214,6 @@ export function createJobRoutes(deps: {
     };
     
     await deps.cleanupJobState(jobId, projectId, featureName, interruption);
-    console.log(`   ✅ Job state cleaned up\n`);
-    
-    // ✅ Response already sent above (line 165)
   });
   
   return router;

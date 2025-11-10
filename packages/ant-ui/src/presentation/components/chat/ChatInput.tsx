@@ -373,7 +373,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
                 </span>
               )}
               {fileStats!.filesDeleted > 0 && (
-                <span className="px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-[10px] font-medium">
+                <span className="px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-[10px] font-medium">
                   -{fileStats!.filesDeleted}
                 </span>
               )}
@@ -399,7 +399,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
                     <span className={`font-medium ${operationColor} w-16`}>
                       {operationLabel}
                     </span>
-                    <span className="font-mono truncate flex-1">
+                    <span className={`font-mono truncate flex-1 ${operationColor}`}>
                       {file.path}
                     </span>
                   </div>

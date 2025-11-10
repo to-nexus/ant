@@ -117,7 +117,7 @@ export function GlobalNavBar({ onRunTask, onStopTask, isRunning, isStopping = fa
           <div className="flex items-center space-x-3">
             {/* ANT Logo - Neural Network Pattern */}
             <img 
-              src="/logo.svg" 
+              src={theme === 'dark' ? '/logo-dark.svg' : '/logo-light.svg'}
               alt="ANT Works Logo" 
               className="w-8 h-8" 
             />

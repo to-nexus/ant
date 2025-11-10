@@ -63,6 +63,7 @@ function App() {
   const setCurrentJob = useStore((state) => state.setCurrentJob);
   const setRunning = useStore((state) => state.setRunning);
   const setStopping = useStore((state) => state.setStopping);
+  const setLastJobFailed = useStore((state) => state.setLastJobFailed);
   const connectionStatus = useStore((state) => state.connectionStatus);
   const refreshFileTree = useStore((state) => state.refreshFileTree);
   const selectedWorkType = useStore((state) => state.selectedWorkType);  // ✅ Get selected work type
@@ -214,8 +215,12 @@ function App() {
       console.log('[App] Setting up exit handler...');
       jobExecution.on('exit', (code: number | null, _signal: string | null) => {
         console.log('[App] Job exit:', code);
+        
+        const jobFailed = code !== 0 && code !== null;
+        
         setRunning(false);
         setCurrentJob(null);
+        setLastJobFailed(jobFailed);  // ✅ Set failed state for retry button
         
         // Reload session after job completion to get updated data
         if (selectedProject && selectedFeature) {
@@ -232,7 +237,7 @@ function App() {
         
         // Refresh file tree after job completion
         refreshFileTree();
-        if (code !== 0) {
+        if (jobFailed) {
           console.error(`Job execution failed with code: ${code}`);
         }
       });

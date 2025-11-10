@@ -236,17 +236,10 @@ export function ItemDropdown({
             {selectedItem && (onPlayClick || onStopClick) && (
               <button
                 onClick={(e) => {
-                  console.log('[ItemDropdown] Play/Stop button clicked');
-                  console.log('[ItemDropdown] isPlaying:', isPlaying);
-                  console.log('[ItemDropdown] onPlayClick:', !!onPlayClick);
-                  console.log('[ItemDropdown] onStopClick:', !!onStopClick);
-                  
                   e.stopPropagation();
                   if (isPlaying && onStopClick) {
-                    console.log('[ItemDropdown] Calling onStopClick');
                     onStopClick();
                   } else if (!isPlaying && onPlayClick) {
-                    console.log('[ItemDropdown] Calling onPlayClick');
                     onPlayClick();
                   }
                 }}

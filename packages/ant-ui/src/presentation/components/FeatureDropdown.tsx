@@ -99,7 +99,7 @@ export function FeatureDropdown() {
       
       // SSE will handle status updates automatically
     } catch (error: any) {
-      console.error('[FeatureDropdown] Failed to start dev server:', error);
+      console.error('Failed to start dev server:', error);
       setShowStatusPanel(true);
       setServerStarted(false);
     }

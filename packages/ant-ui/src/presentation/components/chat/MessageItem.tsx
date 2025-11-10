@@ -694,9 +694,9 @@ function FileCard({ content, operation }: FileCardProps) {
               +{lineStats.total} lines
             </span>
           )}
-          {isCompleted && operation === 'delete' && lineStats.total && lineStats.total > 0 && (
-            <span className="text-red-600 dark:text-red-400 font-mono">
-              -{lineStats.total} lines
+          {isCompleted && operation === 'delete' && lineStats.total != null && (
+            <span className="text-red-600 dark:!text-red-400 font-mono">
+              {lineStats.total > 0 ? `-${lineStats.total} lines` : '0'}
             </span>
           )}
           {/* Show/Hide button - only when completed and has content */}
