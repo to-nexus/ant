@@ -1,0 +1,40 @@
+# ========== LLM Providers ==========
+OPENAI_API_KEY=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
+ANTHROPIC_API_KEY=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
+
+# AI Model Configuration
+AI_MODEL_PROVIDER=openai        # 'openai' or 'anthropic'
+AI_MODEL_NAME=gpt-4o            # Optional, uses defaults if not set
+
+ARCHITECT_MODEL_PROVIDER=anthropic
+# ARCHITECT_MODEL_NAME=claude-sonnet-4-5-20250929
+ARCHITECT_MODEL_NAME=claude-haiku-4-5
+ARCHITECT_MODEL_TEMPERATURE=0.1
+
+# RECURSION_LIMIT
+RECURSION_LIMIT=50
+
+# ========== Memory / Vector DB ==========
+CHROMA_PATH=./.chroma
+
+# ========== Git Integration ==========
+# Used only for remote repositories (GitHub, GitLab, etc.)
+GIT_PROVIDER=github                # github | gitlab | bitbucket
+GIT_TOKEN=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 # PAT with repo & PR write permissions
+
+# (Optional) Default organization name for remote repos
+GIT_DEFAULT_OWNER=nexus
+
+# (Optional) Default base branch if not overridden in project config
+GIT_DEFAULT_BASE=develop
+
+# ========== System Paths ==========
+# Used if agents need to locate common directories
+PROJECTS_ROOT=./projects
+MEMORY_ROOT=./memory
+TMP_DIR=./tmp
+
+# ========== Logging / Debug ==========
+LOG_LEVEL=info                     # debug | info | warn | error
+LOG_OUTPUT=./logs/agents.log
+CHROMA_URL=http://localhost:8000

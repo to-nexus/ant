@@ -78,6 +78,9 @@ function areErrorsRepeating(
 }
 
 export async function enforce(state: ArchitectGraphState): Promise<ArchitectGraphState> {
+  // ✅ Increment recursion count (track every node execution)
+  state.recursionCount = (state.recursionCount || 0) + 1;
+  
   // ✅ Workflow instrumentation: Enter node
   if (state.deps?.workflowUpdate && state._httpTaskId) {
     const taskInfo = state.currentTask ? {
@@ -137,6 +140,13 @@ export async function enforce(state: ArchitectGraphState): Promise<ArchitectGrap
     console.warn('🚨 REPEATED ERRORS DETECTED - Same errors as previous attempt!\n');
     console.warn('   This suggests the LLM is stuck or misunderstanding the problem.\n');
     console.warn('   Escalating context for next retry...\n');
+    
+    // ✅ CRITICAL: Force package.json update for repeated missing dependency errors
+    const hasMissingDependency = focusedViolations.some(v => v.type === 'missing_dependency');
+    if (hasMissingDependency && state.retries >= 1) {
+      console.warn('   💡 Missing dependency error repeating - forcing package.json modification strategy\n');
+      // This will be used in the enforcement message
+    }
   }
   
   // Format violations for LLM (use focused violations only)
@@ -144,6 +154,23 @@ export async function enforce(state: ArchitectGraphState): Promise<ArchitectGrap
   
   // ✅ Add escalation notice if errors are repeating
   if (isRepeating && state.retries > 0) {
+    const hasMissingDependency = focusedViolations.some(v => v.type === 'missing_dependency');
+    
+    const dependencyInstructions = hasMissingDependency ? `
+
+🚨 SPECIFIC FIX FOR MISSING DEPENDENCY:
+Your previous attempts to run npm commands DID NOT WORK.
+
+✅ CORRECT APPROACH - MODIFY package.json DIRECTLY:
+1. Find the missing package name (e.g., "@types/react")
+2. Output the COMPLETE package.json file with the dependency added
+3. Format: === FILE: package.json === ... === END FILE ===
+
+❌ DO NOT output npm commands in bash blocks - they did not execute!
+❌ DO NOT create separate "Terminal Commands" files
+✅ MODIFY package.json file DIRECTLY - system will auto-install
+` : '';
+    
     formattedViolations = `
 ⚠️⚠️⚠️ CRITICAL: REPEATED ERRORS DETECTED ⚠️⚠️⚠️
 
@@ -155,6 +182,7 @@ This means your previous approach was WRONG.
 2. **THINK DIFFERENTLY** - your previous approach failed
 3. **CHECK YOUR ASSUMPTIONS** - you may have misunderstood the problem
 4. **BE MORE PRECISE** - follow the error message LITERALLY
+${dependencyInstructions}
 
 For example:
 - If error says "Property 'X' does not exist on type 'Y'" → Add property 'X' to type 'Y'
@@ -195,6 +223,7 @@ ${formattedViolations}
   
   return {
     ...state,
+    violations: focusedViolations,  // ✅ Pass violations to next node (execute needs this!)
     enforcementReason: formattedViolations,
     retries: state.retries + 1,
     lastViolations: focusedViolations,

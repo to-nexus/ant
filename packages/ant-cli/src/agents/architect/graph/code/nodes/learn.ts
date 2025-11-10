@@ -24,6 +24,9 @@ import { errorStatsCollector, formatStatistics } from "./diagnostics/errorStats"
  * - No direct infrastructure dependencies
  */
 export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphState> {
+  // ✅ Increment recursion count (track every node execution)
+  state.recursionCount = (state.recursionCount || 0) + 1;
+  
   // ✅ Workflow instrumentation: Enter node
   if (state.deps?.workflowUpdate && state._httpTaskId) {
     const taskInfo = state.currentTask ? {
@@ -144,6 +147,12 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       'code'  // ✅ Specify job type
     );
     
+    // ✨ Mark job as completed
+    const completedJobTiming = (state as any).jobTiming ? {
+      ...(state as any).jobTiming,
+      completedAt: new Date().toISOString()
+    } : undefined;
+    
     // Update artifacts and save state snapshot for resuming
     await state.deps.session.updateArtifacts(
       state.context.project,
@@ -168,7 +177,9 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
           resolvedCategories: state.resolvedCategories || [],
           recursionCount: state.recursionCount,  // ✅ Preserve recursion tracking
           recursionLimit: state.recursionLimit,
-          interruption: existingSession.state?.interruption || (state as any).interruption  // ✅ CRITICAL: Preserve interruption details!
+          interruption: existingSession.state?.interruption || (state as any).interruption,  // ✅ CRITICAL: Preserve interruption details!
+          jobId: (state as any).jobId,  // ✨ Preserve jobId
+          jobTiming: completedJobTiming  // ✨ Mark as completed
         }
       }
     );

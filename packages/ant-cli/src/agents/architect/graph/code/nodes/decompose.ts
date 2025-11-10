@@ -16,6 +16,9 @@ import { ArchitectGraphState, Task, TaskQueue } from "../state";
  * 4. Store feature tasks for completion tracking
  */
 export async function decompose(state: ArchitectGraphState): Promise<ArchitectGraphState> {
+  // ✅ Increment recursion count (track every node execution)
+  state.recursionCount = (state.recursionCount || 0) + 1;
+  
   const llm = state.deps?.llm as LLMClient;
   
   // ✅ Workflow instrumentation: Enter node with LLM info
@@ -192,8 +195,37 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         console.log(`   Final:   ${tasksByType.final === 0 ? '✅' : '⬜'} ${tasksByType.final} remaining`);
         console.log(``);
         
+        // ✨ Handle jobId and jobTiming for Resume
+        const now = new Date().toISOString();
+        const nowMs = Date.now();
+        let jobId = session.state.jobId || state._httpTaskId;  // Use existing or current
+        let jobTiming = session.state.jobTiming;
+        
+        if (jobTiming) {
+          // Resume: Update lastResumedAt and calculate pause duration
+          if (jobTiming.pausedAt) {
+            const pauseDuration = nowMs - new Date(jobTiming.pausedAt).getTime();
+            jobTiming = {
+              ...jobTiming,
+              lastResumedAt: now,
+              totalPausedDuration: jobTiming.totalPausedDuration + pauseDuration,
+              pausedAt: undefined  // Clear pausedAt on resume
+            };
+            console.log(`⏰ [Resume] Updated jobTiming:`);
+            console.log(`   Pause duration: ${Math.round(pauseDuration / 1000)}s`);
+            console.log(`   Total paused: ${Math.round(jobTiming.totalPausedDuration / 1000)}s`);
+          } else {
+            jobTiming = {
+              ...jobTiming,
+              lastResumedAt: now
+            };
+          }
+        }
+        
         const resumedState = {
           ...state,
+          jobId,  // ✨ Restore jobId
+          jobTiming,  // ✨ Restore/update jobTiming
           taskQueue,
           featureTasks,
           currentTask: session.state.currentTask,  // ✅ Restore currentTask (in-progress task)
@@ -250,6 +282,18 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     }
   }
   
+  // ✨ Initialize jobId and jobTiming for new job
+  const estimatingStartTime = new Date().toISOString();
+  const newJobId = state._httpTaskId;
+  const newJobTiming = {
+    startedAt: estimatingStartTime,
+    totalPausedDuration: 0
+  };
+  
+  console.log(`⏰ [New Job] Initialized jobTiming:`);
+  console.log(`   Job ID: ${newJobId}`);
+  console.log(`   Started at: ${estimatingStartTime}`);
+  
   // ✅ NOW send "estimating started" signal with preloaded completed tasks
   if (state._httpTaskId && state.deps?.kanbanUpdate) {
     console.log(`\n🎬 [Code Decompose] Signaling estimating started...`);
@@ -295,8 +339,19 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     const featureTasks = new Map<string, Task>();
     featureTasks.set(defaultTask.id, defaultTask);
     
+    // ✨ Calculate estimating duration (decompose completed)
+    const estimatingEndTime = Date.now();
+    const estimatingDuration = estimatingEndTime - new Date(estimatingStartTime).getTime();
+    const finalJobTiming = {
+      ...newJobTiming,
+      estimatingDuration
+    };
+    console.log(`⏰ [Estimating Complete] Duration: ${Math.round(estimatingDuration / 1000)}s\n`);
+    
     const newState = {
       ...state,
+      jobId: newJobId,  // ✨ Initialize jobId
+      jobTiming: finalJobTiming,  // ✨ Initialize jobTiming with estimatingDuration
       taskQueue,
       featureTasks,
       completedTasks: [],
@@ -466,8 +521,19 @@ ${rules}`;
       const featureTasks = new Map<string, Task>();
       featureTasks.set(defaultTask.id, defaultTask);
       
+      // ✨ Calculate estimating duration (decompose completed)
+      const estimatingEndTime = Date.now();
+      const estimatingDuration = estimatingEndTime - new Date(estimatingStartTime).getTime();
+      const finalJobTiming = {
+        ...newJobTiming,
+        estimatingDuration
+      };
+      console.log(`⏰ [Estimating Complete] Duration: ${Math.round(estimatingDuration / 1000)}s\n`);
+      
       const newState = {
         ...state,
+        jobId: newJobId,  // ✨ Initialize jobId
+        jobTiming: finalJobTiming,  // ✨ Initialize jobTiming with estimatingDuration
         taskQueue,
         featureTasks,
         completedTasks: [],
@@ -544,8 +610,19 @@ ${rules}`;
     });
     console.log('');
     
+    // ✨ Calculate estimating duration (decompose completed)
+    const estimatingEndTime = Date.now();
+    const estimatingDuration = estimatingEndTime - new Date(estimatingStartTime).getTime();
+    const finalJobTiming = {
+      ...newJobTiming,
+      estimatingDuration
+    };
+    console.log(`⏰ [Estimating Complete] Duration: ${Math.round(estimatingDuration / 1000)}s\n`);
+    
     const newState = {
       ...state,
+      jobId: newJobId,  // ✨ Initialize jobId
+      jobTiming: finalJobTiming,  // ✨ Initialize jobTiming with estimatingDuration
       taskQueue,
       featureTasks,
       completedTasks: [],
@@ -624,8 +701,19 @@ ${rules}`;
     const featureTasks = new Map<string, Task>();
     featureTasks.set(defaultTask.id, defaultTask);
     
+    // ✨ Calculate estimating duration (decompose completed)
+    const estimatingEndTime = Date.now();
+    const estimatingDuration = estimatingEndTime - new Date(estimatingStartTime).getTime();
+    const finalJobTiming = {
+      ...newJobTiming,
+      estimatingDuration
+    };
+    console.log(`⏰ [Estimating Complete] Duration: ${Math.round(estimatingDuration / 1000)}s\n`);
+    
     const newState = {
       ...state,
+      jobId: newJobId,  // ✨ Initialize jobId
+      jobTiming: finalJobTiming,  // ✨ Initialize jobTiming with estimatingDuration
       taskQueue,
       featureTasks,
       completedTasks: [],

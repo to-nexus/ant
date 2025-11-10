@@ -81,11 +81,10 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     state.deps.workflowUpdate.enterNode(state._httpTaskId, 'plan', taskInfo);
   }
   
-  // ✅ Increment recursion count (track iteration)
-  const recursionCount = (state.recursionCount || 0) + 1;
-  state.recursionCount = recursionCount;
+  // ✅ Increment recursion count (track every node execution)
+  state.recursionCount = (state.recursionCount || 0) + 1;
   
-  console.log(`\n🧭 Planning (${recursionCount}/${state.recursionLimit || 50})`);
+  console.log(`\n🧭 Planning (${state.recursionCount}/${state.recursionLimit || 50})`);
   
   const llm = state.deps?.llm as LLMClient;
   const engine = state.deps?.promptEngine as PromptEngine;
@@ -192,7 +191,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
           nextTask,
           queueTasks,
           completedTasksDetails,
-          recursionCount,
+          state.recursionCount,
           state.recursionLimit || 50
         );
       } else {
@@ -208,7 +207,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
               currentTask: nextTask,
               queue: queueTasks,
               completedTasks: completedTasksDetails,
-              recursionCount: recursionCount,
+              recursionCount: state.recursionCount,
               recursionLimit: state.recursionLimit || 50
             })
           });
@@ -313,7 +312,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
             undefined,
             queueTasks,
             completedTasksDetails,
-            recursionCount,
+            state.recursionCount,
             state.recursionLimit || 50
           );
         }
@@ -620,7 +619,7 @@ ${nextTask.type === 'error' ?
       retries: shouldClearEnforcement ? 0 : state.retries,  // Reset only if new task
       enforcementReason: shouldClearEnforcement ? null : state.enforcementReason,  // Clear only if new task
       completedTasksDetails: state.completedTasksDetails || [],  // ✅ CRITICAL: Preserve completedTasksDetails from checkTaskStatus
-      recursionCount: recursionCount,  // ✅ CRITICAL: Propagate recursion count
+      recursionCount: state.recursionCount,  // ✅ CRITICAL: Propagate recursion count
       recursionLimit: state.recursionLimit,  // ✅ CRITICAL: Propagate recursion limit
     };
     

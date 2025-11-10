@@ -1,6 +1,7 @@
 import { LLMClient } from "../../../../../core/ports";
 import { ArchitectGraphState, AttemptHistory, Violation, TaskTimingHelper } from "../state";
 import { parseResponse } from "./parseResponse";
+import { applyEditToFile } from "./applyEdits";  // ✅ NEW: Import edit utility
 import { PromptEngine } from "../../../../../core/prompt/engine";
 
 /**
@@ -214,6 +215,9 @@ function extractKeyChanges(files: Array<{ path: string; content: string }>): str
 export async function execute(
   state: ArchitectGraphState
 ): Promise<ArchitectGraphState> {
+  // ✅ Increment recursion count (track every node execution)
+  state.recursionCount = (state.recursionCount || 0) + 1;
+  
   // ✅ Workflow instrumentation: Enter node with current task info
   if (state.deps?.workflowUpdate && state._httpTaskId) {
     const taskInfo = state.currentTask ? {
@@ -520,18 +524,49 @@ ${completedTaskCount > 0 ? `📝 RECENTLY COMPLETED TASKS:\n${completedTasksList
     raw = await llm.invoke(promptMessages);
   }
   
-    const { responseSection, files, filesToDelete, commands } = parseResponse(raw);
+    const { responseSection, files, filesToDelete, commands, edits } = parseResponse(raw);
 
     // ✅ Execute parsed commands if any (WITH SAFETY CHECKS)
     if (commands && commands.length > 0 && state.deps?.command && state.context.config?.localPath) {
       console.log(`\n🔧 Found ${commands.length} command(s) in LLM response`);
       
-      // Safety check: Only execute in environment error scenarios
+      // ✅ Safety check: Execute in environment errors OR missing dependency scenarios
       const isEnvironmentError = state.enforcementReason?.toLowerCase().includes('environment') ||
                                   state.enforcementReason?.toLowerCase().includes('corrupted');
       
-      if (isEnvironmentError) {
-        console.log('⚡ Environment error detected - executing commands...\n');
+      const isMissingDependency = state.violations?.some(v => 
+        v.type === 'missing_dependency' || 
+        v.message.toLowerCase().includes('npm install') ||
+        v.message.toLowerCase().includes('@types/')
+      ) || false;
+      
+      // ✅ Check task name/description for dependency keywords (when violations are cleared)
+      const taskName = state.currentTask?.name?.toLowerCase() || '';
+      const taskDesc = state.currentTask?.description?.toLowerCase() || '';
+      const isErrorTaskForDependency = (
+        taskName.includes('dependency') || 
+        taskName.includes('missing') ||
+        taskDesc.includes('npm install') ||
+        taskDesc.includes('@types')
+      );
+      
+      const shouldExecuteCommands = isEnvironmentError || isMissingDependency || isErrorTaskForDependency;
+      
+      // ✅ Debug logging
+      console.log(`   🔍 Command execution check:`);
+      console.log(`      isEnvironmentError: ${isEnvironmentError}`);
+      console.log(`      isMissingDependency: ${isMissingDependency}`);
+      console.log(`      isErrorTaskForDependency: ${isErrorTaskForDependency}`);
+      console.log(`      violations count: ${state.violations?.length || 0}`);
+      console.log(`      task name: ${state.currentTask?.name}`);
+      console.log(`      shouldExecute: ${shouldExecuteCommands}`);
+      
+      if (shouldExecuteCommands) {
+        if (isEnvironmentError) {
+          console.log('⚡ Environment error detected - executing commands...\n');
+        } else if (isMissingDependency) {
+          console.log('📦 Missing dependency detected - executing installation commands...\n');
+        }
         
         const actualProjectPath = state.context.config.localPath;
         
@@ -612,8 +647,56 @@ ${completedTaskCount > 0 ? `📝 RECENTLY COMPLETED TASKS:\n${completedTasksList
         }
         console.log();
       } else {
-        console.log('⚠️  Commands found but not in environment error context - skipping execution');
-        console.log('   (Commands are only auto-executed for environment fixes)\n');
+        console.log('⚠️  Commands found but not in safe execution context - skipping');
+        console.log('   (Commands are only auto-executed for environment fixes or missing dependencies)\n');
+      }
+    }
+
+    // ✅ Apply edit instructions (search/replace) to existing files
+    const failedEdits: string[] = [];
+    
+    if (edits && edits.length > 0 && state.deps?.git) {
+      console.log(`\n✂️  Found ${edits.length} edit instruction(s) in LLM response`);
+      
+      for (const edit of edits) {
+        try {
+          console.log(`\n📝 Applying edit to: ${edit.path}`);
+          
+          // Read existing file
+          const existingContent = await state.deps.git.readFile(edit.path);
+          
+          // Apply edit
+          const updatedContent = applyEditToFile(existingContent, edit);
+          
+          // Add to files list (will be written by existing writeFiles logic)
+          files.push({
+            path: edit.path,
+            content: updatedContent
+          });
+          
+          console.log(`   ✅ Edit applied successfully to ${edit.path}`);
+        } catch (error) {
+          const errorMsg = (error as Error).message;
+          console.error(`   ❌ Failed to apply edit to ${edit.path}:`);
+          console.error(`      ${errorMsg}`);
+          
+          // Track failed edit for feedback
+          failedEdits.push(edit.path);
+          
+          // ✅ Diagnose failure reason
+          if (errorMsg.includes('ENOENT') || errorMsg.includes('does not exist') || 
+              errorMsg.includes('null or undefined')) {
+            console.log(`   💡 File doesn't exist or couldn't be read`);
+            console.log(`   💡 Should use FILE format (=== FILE: ${edit.path} ===) instead of EDIT`);
+          } else if (errorMsg.includes('Search pattern not found')) {
+            console.log(`   💡 SEARCH block doesn't match file content`);
+            console.log(`   💡 Copy exact code from file or use FILE format to replace entire file`);
+          } else {
+            console.log(`   💡 Unknown error - consider using FILE format instead`);
+          }
+          
+          console.log(`   ⚠️  Skipping this edit - file will remain unchanged`);
+        }
       }
     }
 
@@ -641,6 +724,16 @@ ${completedTaskCount > 0 ? `📝 RECENTLY COMPLETED TASKS:\n${completedTasksList
       keyChanges.forEach(change => console.log(`      - ${change}`));
     }
 
+    // ✅ Add violations for failed edits (to guide next retry)
+    const editViolations: Violation[] = failedEdits.map(path => ({
+      type: 'edit_failed',
+      severity: 'major',
+      file: path,
+      message: `Failed to apply EDIT to ${path}. File may not exist or SEARCH pattern doesn't match.`,
+      suggestedFix: `Use FILE format (=== FILE: ${path} ===) to create/replace the entire file instead of EDIT format`,
+      isRetryable: true
+    }));
+    
     const updatedState = {
       ...state,
       currentTask, // ✨ Updated with timing info
@@ -649,6 +742,7 @@ ${completedTaskCount > 0 ? `📝 RECENTLY COMPLETED TASKS:\n${completedTasksList
       files,
       filesToDelete,
       previousAttempts,
+      violations: editViolations.length > 0 ? editViolations : undefined,  // ✅ Add edit failures as violations
       completedTasksDetails: state.completedTasksDetails || [],  // ✅ Preserve completed tasks
     };
     

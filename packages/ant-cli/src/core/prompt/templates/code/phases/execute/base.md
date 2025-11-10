@@ -84,7 +84,19 @@ Do NOT create the entire application in one task!
 KEY WORKING PRINCIPLES:
 1. Priority: DIRECTIVE (what) → DESIGN DOC (how) → ORIGINAL FILES (base)
 2. {{modificationMode}}
-3. Write COMPLETE files - NEVER use "// ..." to skip code
+3. ⚠️ CRITICAL: Choose the correct output format:
+   
+   **SITUATION A: Creating a NEW file** (doesn't exist in codebase yet)
+   → Use === FILE: === format with COMPLETE file content
+   → Write EVERY line - NEVER use "// ..." to skip code
+   
+   **SITUATION B: Modifying EXISTING file** (already in codebase)
+   → Use === EDIT: === format with SEARCH/REPLACE blocks
+   → Specify ONLY the exact code section to change
+   → Saves 90% tokens and reduces errors!
+   
+   ✅ **ALWAYS use EDIT for modifications** - this is mandatory!
+   ❌ **FORBIDDEN: Using FILE format to modify existing files**
 
 ⚡ AGENT CAPABILITIES - YOU CAN EXECUTE TERMINAL COMMANDS:
 - You have access to terminal command execution
@@ -282,8 +294,10 @@ npm install
 
 Step 5: OUTPUT FORMAT - CRITICAL RULES
 
-✅ CORRECT - Pure source code:
-=== FILE: [actual/path/to/Button.tsx] ===
+📋 **FORMAT 1: Creating NEW files**
+
+✅ CORRECT - Pure source code with FILE markers:
+=== FILE: src/components/NewButton.tsx ===
 import React from 'react';
 
 export function Button({ label }: { label: string }) {
@@ -292,9 +306,62 @@ export function Button({ label }: { label: string }) {
 === END FILE ===
 
 ❌ WRONG - Markdown formatting:
-=== FILE: [actual/path/to/Button.tsx] ===
+=== FILE: src/components/NewButton.tsx ===
 \`\`\`typescript
 import React from 'react';
 \`\`\`
 === END FILE ===
+
+📋 **FORMAT 2: Modifying EXISTING files** (PREFERRED!)
+
+✅ CORRECT - Search/Replace with EDIT markers:
+=== EDIT: src/components/Button.tsx ===
+<<<<<<< SEARCH
+export function Button({ label }: { label: string }) {
+  return <button>{label}</button>;
+}
+=======
+export function Button({ label, onClick }: ButtonProps) {
+  return <button onClick={onClick}>{label}</button>;
+}
+>>>>>>> REPLACE
+=== END EDIT ===
+
+**Multiple edits to same file:**
+=== EDIT: src/utils/api.ts ===
+<<<<<<< SEARCH
+export async function fetchData(url: string) {
+  const response = await fetch(url);
+  return response.json();
+}
+=======
+export async function fetchData(url: string, options?: RequestInit) {
+  const response = await fetch(url, options);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+}
+>>>>>>> REPLACE
+=== END EDIT ===
+
+=== EDIT: src/utils/api.ts ===
+<<<<<<< SEARCH
+export { fetchData };
+=======
+export async function postData(url: string, data: any) {
+  return fetchData(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+}
+
+export { fetchData, postData };
+>>>>>>> REPLACE
+=== END EDIT ===
+
+⚠️  **EDIT Format Rules:**
+1. SEARCH block must match EXACTLY (including whitespace)
+2. REPLACE block is the new code to insert
+3. Can have multiple EDIT blocks for same file
+4. Edits applied in order (top to bottom)
 

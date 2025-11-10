@@ -82,7 +82,7 @@ export class ProjectService {
     
     // ✅ Get LLM config from environment variables
     const llmProvider = process.env.AI_MODEL_PROVIDER || process.env.MODEL_PROVIDER || 'openai';
-    const llmModel = process.env.AI_MODEL_NAME || process.env.MODEL_NAME || 'gpt-4o';
+    const llmModel = process.env.AI_MODEL_NAME || process.env.MODEL_NAME;
     
     const defaultConfig = {
       projectName: sanitizedName,
@@ -133,7 +133,7 @@ export class ProjectService {
     // ✅ Add default LLM settings if missing (for backward compatibility)
     if (!config.llmProvider || !config.llmModel) {
       const llmProvider = process.env.AI_MODEL_PROVIDER || process.env.MODEL_PROVIDER || 'openai';
-      const llmModel = process.env.AI_MODEL_NAME || process.env.MODEL_NAME || 'gpt-4o';
+      const llmModel = process.env.AI_MODEL_NAME || process.env.MODEL_NAME;
       
       return {
         ...config,
@@ -186,6 +186,56 @@ export class ProjectService {
     
     const sessionData = await fs.promises.readFile(sessionPath, 'utf-8');
     return JSON.parse(sessionData);
+  }
+  
+  /**
+   * Reset job state (remove jobId, timing, and all task data from session)
+   */
+  async resetJobState(projectId: string, featureName: string, job: 'design' | 'code' | 'learn' = 'code'): Promise<void> {
+    const sessionPath = path.join(
+      this.workspaceRoot,
+      projectId,
+      featureName,
+      `sessions/${job}.json`
+    );
+    
+    // Check if session file exists
+    const exists = await fs.promises.access(sessionPath)
+      .then(() => true)
+      .catch(() => false);
+    
+    if (!exists) {
+      console.log(`[ProjectService] No session file to reset: ${sessionPath}`);
+      return;
+    }
+    
+    // Read existing session
+    const sessionData = await fs.promises.readFile(sessionPath, 'utf-8');
+    const session = JSON.parse(sessionData);
+    
+    // Remove ALL job-related data (jobId, timing, tasks)
+    if (session.state) {
+      delete session.state.jobId;
+      delete session.state.jobTiming;
+      delete session.state.taskQueue;
+      delete session.state.currentTask;
+      delete session.state.completedTasks;
+      delete session.state.completedTasksDetails;
+      delete session.state.interruption;
+      delete session.state.retries;
+      delete session.state.recursionCount;
+      delete session.state.recursionLimit;
+      
+      console.log(`[ProjectService] Reset job state: ${sessionPath}`);
+      console.log(`   Removed: jobId, jobTiming, taskQueue, currentTask, completedTasks, completedTasksDetails, interruption, retries, recursionCount, recursionLimit`);
+      
+      // Write back to file
+      await fs.promises.writeFile(
+        sessionPath, 
+        JSON.stringify(session, null, 2), 
+        'utf-8'
+      );
+    }
   }
   
   /**

@@ -137,6 +137,12 @@ async function saveSessionTurn(state: DesignGraphState): Promise<void> {
     'design'
   );
 
+  // ✨ Mark job as completed
+  const completedJobTiming = (state as any).jobTiming ? {
+    ...(state as any).jobTiming,
+    completedAt: new Date().toISOString()
+  } : undefined;
+
   // Update artifacts with latest design and state
   await state.deps.session.updateArtifacts(
     state.context.project,
@@ -150,7 +156,9 @@ async function saveSessionTurn(state: DesignGraphState): Promise<void> {
         currentTask: state.currentTask,
         completedTasks: state.completedTasks || [],
         completedTasksDetails: state.completedTasksDetails || [],
-        interruption: existingSession.state?.interruption
+        interruption: existingSession.state?.interruption,
+        jobId: (state as any).jobId,  // ✨ Preserve jobId
+        jobTiming: completedJobTiming  // ✨ Mark as completed
       }
     }
   );

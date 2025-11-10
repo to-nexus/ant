@@ -43,7 +43,14 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
     }) as ArchitectGraphState;
   } catch (error: any) {
     // ✅ CRITICAL: Recursion limit or other errors
-    console.log(`\n⚠️  Execution interrupted: ${error.message}\n`);
+    if (error.message.includes('Recursion limit')) {
+      const actualCount = error.state?.recursionCount || state.recursionCount || 0;
+      console.log(`\n⚠️  Execution interrupted: Graph recursion limit reached`);
+      console.log(`   📊 Node executions: ${actualCount}/${finalLimit}`);
+      console.log(`   ℹ️  This counts every node executed (resolve, plan, execute, validate, etc.)\n`);
+    } else {
+      console.log(`\n⚠️  Execution interrupted: ${error.message}\n`);
+    }
     
     // ✅ Try to restore state from last checkpoint
     if (error.state) {
@@ -137,13 +144,14 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
     // ✅ Create interruption details for recursion limit (before checkpoint)
     const interruption = {
       reason: 'recursion_limit' as const,
-      message: `Task paused: Reached recursion limit (${finalLimit} iterations)`,
+      message: `Task paused: Graph recursion limit reached (${finalLimit} total node executions, ${state.recursionCount || 0} plan iterations)`,
       timestamp: new Date().toISOString(),
       canResume: true,
       metadata: {
         recursionCount: state.recursionCount || 0,
         recursionLimit: finalLimit,
-        tasksRemaining: remainingTasks
+        tasksRemaining: remainingTasks,
+        nodeExecutionCount: finalLimit  // Total graph node executions
       }
     };
     

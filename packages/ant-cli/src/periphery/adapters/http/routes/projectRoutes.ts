@@ -299,6 +299,32 @@ export function createProjectRoutes(deps: {
     }
   });
   
+  // Reset job state (remove jobId and jobTiming)
+  router.post('/projects/:id/features/:feature/reset-job', async (req: Request, res: Response) => {
+    try {
+      const projectId = req.params.id;
+      const featureName = req.params.feature;
+      const job = (req.body.job || req.query.job as 'design' | 'code' | 'learn') || 'code';
+      
+      console.log(`\n🔄 [API] Reset job state request:`);
+      console.log(`   Project: ${projectId}`);
+      console.log(`   Feature: ${featureName}`);
+      console.log(`   Job: ${job}`);
+      
+      await deps.projectService.resetJobState(projectId, featureName, job);
+      
+      console.log(`   ✅ Job state reset successfully\n`);
+      
+      res.json({ 
+        success: true, 
+        message: 'Job state reset successfully' 
+      });
+    } catch (error: any) {
+      console.error(`[API] Error resetting job state:`, error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+  
   // Get file tree for a feature
   router.get('/projects/:id/features/:feature/files', async (req: Request, res: Response) => {
     try {

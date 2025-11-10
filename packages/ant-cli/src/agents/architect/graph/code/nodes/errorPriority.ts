@@ -123,10 +123,24 @@ export function calculateErrorImpact(
     score = Math.max(score - 15, 0);
     explanation += ` | Priority lowered (retry ${context.retryCount}/3)`;
     
-    // After 2 retries, only block on critical issues
-    if (context.retryCount >= 2 && score < 80) {
+    // ✅ Critical error types MUST be retried regardless of score
+    const criticalTypes = [
+      'missing_dependency',
+      'import_error', 
+      'build_error',
+      'environment_error',
+      'module_not_found',
+      'edit_failed'  // ✅ EDIT failures must be retried (LLM needs to switch to FILE format)
+    ];
+    const isCritical = criticalTypes.includes(error.type);
+    
+    // After 2 retries, only block on critical issues OR non-critical with score >= 80
+    if (context.retryCount >= 2 && score < 80 && !isCritical) {
       shouldRetry = false;
       explanation += ' | Skipping to avoid infinite retry';
+    } else if (context.retryCount >= 2 && isCritical) {
+      // Keep retrying critical errors
+      explanation += ' | Critical error - will retry despite low score';
     }
   }
   

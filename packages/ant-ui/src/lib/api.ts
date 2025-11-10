@@ -449,6 +449,17 @@ export interface KanbanData {
   // Recursion Tracking
   recursionCount?: number;
   recursionLimit?: number;
+  
+  // ✨ Job Timing
+  totalElapsedTime?: number;  // Total elapsed time in milliseconds (excluding paused time)
+  jobTiming?: {
+    startedAt: string;
+    lastResumedAt?: string;
+    pausedAt?: string;
+    completedAt?: string;
+    totalPausedDuration: number;
+    estimatingDuration?: number;
+  };
 }
 
 /**
@@ -821,6 +832,38 @@ export async function getDevServerStatus(projectId: string): Promise<DevServerSt
     return await response.json();
   } catch (error) {
     console.error('Error getting dev server status:', error);
+    throw error;
+  }
+}
+
+/**
+ * Reset job state (remove jobId and jobTiming from session)
+ */
+export async function resetJobState(
+  projectId: string, 
+  featureName: string, 
+  job: 'design' | 'code' | 'learn' = 'code'
+): Promise<void> {
+  try {
+    const response = await fetch(
+      `${API_BASE}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/reset-job`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ job }),
+      }
+    );
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || `Failed to reset job state: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error resetting job state:', error);
     throw error;
   }
 }
