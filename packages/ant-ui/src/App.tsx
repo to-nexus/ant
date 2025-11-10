@@ -26,7 +26,7 @@ function App() {
   const [explorerWidth, setExplorerWidth] = useState(320); // 80 * 4 = 320px (w-80)
   const [isResizingExplorer, setIsResizingExplorer] = useState(false);
 
-  const MIN_EXPLORER_WIDTH = 200; // 최소 너비
+  const MIN_EXPLORER_WIDTH = 160; // 최소 너비
   const MAX_EXPLORER_WIDTH = 600; // 최대 너비
   
   const selectedProject = useStore((state) => state.selectedProject);

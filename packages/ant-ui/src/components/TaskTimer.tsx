@@ -51,15 +51,7 @@ export function TaskTimer({ timing, isRunning = false, className = '' }: TaskTim
   const [elapsedTime, setElapsedTime] = useState<number | null>(null);
   
   useEffect(() => {
-    // If running but no timing info, start from 0
-    if (isRunning && !timing) {
-      setElapsedTime(0);
-      const intervalId = setInterval(() => {
-        setElapsedTime(prev => (prev || 0) + 1000);
-      }, 1000);
-      return () => clearInterval(intervalId);
-    }
-    
+    // ✅ No timing info - wait for data
     if (!timing) {
       setElapsedTime(null);
       return;
@@ -71,7 +63,7 @@ export function TaskTimer({ timing, isRunning = false, className = '' }: TaskTim
       return;
     }
     
-    // If task is running, calculate and update elapsed time every second
+    // If task is running and has startedAt, calculate and update elapsed time
     if (isRunning && timing.startedAt) {
       const updateElapsedTime = () => {
         const currentElapsed = calculateCurrentElapsedTime(timing);
@@ -87,22 +79,23 @@ export function TaskTimer({ timing, isRunning = false, className = '' }: TaskTim
       return () => clearInterval(intervalId);
     }
     
-    // Task is paused or not started
-    if (timing.pausedAt) {
+    // Task is paused
+    if (timing.pausedAt && timing.startedAt) {
       const pausedTime = new Date(timing.pausedAt).getTime();
-      const startTime = new Date(timing.startedAt!).getTime();
+      const startTime = new Date(timing.startedAt).getTime();
       const elapsedBeforePause = pausedTime - startTime - timing.totalPausedDuration;
       setElapsedTime(Math.max(0, elapsedBeforePause));
-    } else {
-      setElapsedTime(null);
+      return;
+    }
+    
+    // Task has timing but not started yet - show 0
+    if (timing) {
+      setElapsedTime(0);
     }
   }, [timing, isRunning]);
   
+  // ✅ Only hide if truly no data
   if (elapsedTime === null) {
-    // For running tasks with no timing info, show 00:00
-    if (isRunning) {
-      return <span className={className}>0s</span>;
-    }
     return null;
   }
   

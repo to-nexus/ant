@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Timer } from 'lucide-react';
 import { StatusChip, ChipVariant } from '../StatusChip';
 import { formatElapsedTime } from '@/lib/timeUtils';
 
@@ -42,7 +43,6 @@ interface ElapsedTimeBadgeProps {
     totalPausedDuration: number;
     estimatingDuration?: number;
   };
-  inProgressTask?: any;
   activeJobId?: string;
 }
 
@@ -52,20 +52,43 @@ interface ElapsedTimeBadgeProps {
 export function ElapsedTimeBadge({
   totalElapsedTime,
   jobTiming,
-  inProgressTask,
   activeJobId
 }: ElapsedTimeBadgeProps) {
   // ✨ Real-time elapsed time calculation
   const [realtimeElapsed, setRealtimeElapsed] = useState<number | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   
-  // ✅ Initialize with backend data when it arrives
+  // ✅ Initialize: Use backend data OR calculate from jobTiming.startedAt
   useEffect(() => {
-    if (totalElapsedTime !== undefined) {
+    // Priority 1: Job completed - use final totalElapsedTime
+    if (jobTiming?.completedAt && totalElapsedTime !== undefined) {
       setRealtimeElapsed(totalElapsedTime);
       setIsInitialized(true);
+      return;
     }
-  }, [totalElapsedTime]);
+    
+    // Priority 2: Use backend calculated value if available (and positive)
+    if (totalElapsedTime !== undefined && totalElapsedTime > 0) {
+      setRealtimeElapsed(totalElapsedTime);
+      setIsInitialized(true);
+      return;
+    }
+    
+    // Priority 3: If job has started (jobTiming.startedAt exists), calculate elapsed time
+    // This handles estimating phase where totalElapsedTime is 0
+    if (jobTiming?.startedAt) {
+      const startTime = new Date(jobTiming.startedAt).getTime();
+      const currentTime = Date.now();
+      const elapsed = currentTime - startTime - (jobTiming.totalPausedDuration || 0);
+      setRealtimeElapsed(Math.max(0, elapsed));
+      setIsInitialized(true);
+      return;
+    }
+    
+    // Priority 4: No timing info yet
+    setRealtimeElapsed(null);
+    setIsInitialized(false);
+  }, [totalElapsedTime, jobTiming]);
   
   // ✅ Tick every second if job is running
   useEffect(() => {
@@ -74,8 +97,8 @@ export function ElapsedTimeBadge({
       return;
     }
     
-    // If job is paused, completed, or not running, don't tick
-    if (!inProgressTask || jobTiming?.pausedAt || jobTiming?.completedAt) {
+    // If job is paused or completed, don't tick
+    if (jobTiming?.pausedAt || jobTiming?.completedAt) {
       return;
     }
     
@@ -85,7 +108,7 @@ export function ElapsedTimeBadge({
     }, 1000);
     
     return () => clearInterval(intervalId);
-  }, [isInitialized, realtimeElapsed, inProgressTask, jobTiming]);
+  }, [isInitialized, realtimeElapsed, jobTiming]);
   
   // ✅ Show badge if job is active or has session data
   // - activeJobId: job is running
@@ -103,10 +126,11 @@ export function ElapsedTimeBadge({
   const formattedTime = formatElapsedTime(realtimeElapsed, true);
   
   return (
-    <div className="h-7 min-h-7 max-h-7 px-3 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-300 dark:border-blue-800 min-w-[140px]">
-      <div className="flex items-center justify-center h-7">
+    <div className="h-7 min-h-7 max-h-7 px-2.5 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-300 dark:border-blue-800">
+      <div className="flex items-center justify-center gap-1.5 h-7">
+        <Timer className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
         <span className="text-xs text-blue-700 dark:text-blue-300 font-medium leading-none">
-          Elapsed Time: {formattedTime}
+          {formattedTime}
         </span>
       </div>
     </div>

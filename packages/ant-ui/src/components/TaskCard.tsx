@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Badge } from '@/ui/badge';
 import { TaskTimer } from './TaskTimer';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, Timer } from 'lucide-react';
 import { UnifiedTask } from '@/types/task';
 import { useStore } from '@/lib/store';
 import { statusColors, badgeColors, cn } from '@/lib/design-system';
@@ -171,13 +171,15 @@ export function TaskCard({
             onClick={showExpandButton ? toggleExpand : undefined}
           >
             {status === 'in-progress' && (
-              <span className="font-medium">
-                ⏱️ <TaskTimer timing={task.timing} isRunning={isTaskRunning} />
+              <span className="font-medium flex items-center gap-1">
+                <Timer className="w-3.5 h-3.5" />
+                <TaskTimer timing={task.timing} isRunning={isTaskRunning} />
               </span>
             )}
             {status === 'completed' && task.timing && task.timing.elapsedTime !== undefined && (
-              <span>
-                ⏱️ <TaskTimer timing={task.timing} />
+              <span className="flex items-center gap-1">
+                <Timer className="w-3.5 h-3.5" />
+                <TaskTimer timing={task.timing} />
               </span>
             )}
           </div>

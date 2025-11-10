@@ -1,5 +1,6 @@
 import { LLMClient } from "../../../../../core/ports";
 import { ArchitectGraphState, Task, TaskQueue } from "../state";
+import { JobTimingManager } from "../../common/timing/JobTimingManager";
 
 /**
  * Decompose Node
@@ -196,31 +197,8 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         console.log(``);
         
         // ✨ Handle jobId and jobTiming for Resume
-        const now = new Date().toISOString();
-        const nowMs = Date.now();
-        let jobId = session.state.jobId || state._httpTaskId;  // Use existing or current
-        let jobTiming = session.state.jobTiming;
-        
-        if (jobTiming) {
-          // Resume: Update lastResumedAt and calculate pause duration
-          if (jobTiming.pausedAt) {
-            const pauseDuration = nowMs - new Date(jobTiming.pausedAt).getTime();
-            jobTiming = {
-              ...jobTiming,
-              lastResumedAt: now,
-              totalPausedDuration: jobTiming.totalPausedDuration + pauseDuration,
-              pausedAt: undefined  // Clear pausedAt on resume
-            };
-            console.log(`⏰ [Resume] Updated jobTiming:`);
-            console.log(`   Pause duration: ${Math.round(pauseDuration / 1000)}s`);
-            console.log(`   Total paused: ${Math.round(jobTiming.totalPausedDuration / 1000)}s`);
-          } else {
-            jobTiming = {
-              ...jobTiming,
-              lastResumedAt: now
-            };
-          }
-        }
+        const existingJobId = session.state.jobId || state._httpTaskId || 'unknown-job';
+        const { jobId, jobTiming } = JobTimingManager.resumeJob(existingJobId, session.state.jobTiming);
         
         const resumedState = {
           ...state,
@@ -283,16 +261,26 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   }
   
   // ✨ Initialize jobId and jobTiming for new job
-  const estimatingStartTime = new Date().toISOString();
-  const newJobId = state._httpTaskId;
-  const newJobTiming = {
-    startedAt: estimatingStartTime,
-    totalPausedDuration: 0
-  };
+  const { jobId: newJobId, jobTiming: newJobTiming, estimatingStartTime } = JobTimingManager.initializeNewJob(state._httpTaskId!);
   
-  console.log(`⏰ [New Job] Initialized jobTiming:`);
-  console.log(`   Job ID: ${newJobId}`);
-  console.log(`   Started at: ${estimatingStartTime}`);
+  // 💾 CRITICAL: Save jobTiming to session IMMEDIATELY so frontend can show timer during estimating
+  if (state.deps?.session && state.context.featureFolder) {
+    try {
+      const { saveCheckpoint } = await import('./checkpoint');
+      const tempState = {
+        ...state,
+        jobId: newJobId,
+        jobTiming: newJobTiming,
+        taskQueue: new TaskQueue(), // empty queue
+        completedTasks: [],
+        completedTasksDetails: preloadedCompletedTasks
+      } as any;
+      await saveCheckpoint(tempState);
+      console.log(`💾 [Code Decompose] Initial jobTiming saved to session\n`);
+    } catch (error) {
+      console.warn(`⚠️  [Code Decompose] Failed to save initial jobTiming:`, error);
+    }
+  }
   
   // ✅ NOW send "estimating started" signal with preloaded completed tasks
   if (state._httpTaskId && state.deps?.kanbanUpdate) {
@@ -340,13 +328,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     featureTasks.set(defaultTask.id, defaultTask);
     
     // ✨ Calculate estimating duration (decompose completed)
-    const estimatingEndTime = Date.now();
-    const estimatingDuration = estimatingEndTime - new Date(estimatingStartTime).getTime();
-    const finalJobTiming = {
-      ...newJobTiming,
-      estimatingDuration
-    };
-    console.log(`⏰ [Estimating Complete] Duration: ${Math.round(estimatingDuration / 1000)}s\n`);
+    const finalJobTiming = JobTimingManager.finalizeEstimatingPhase(newJobTiming, estimatingStartTime);
     
     const newState = {
       ...state,
@@ -611,13 +593,7 @@ ${rules}`;
     console.log('');
     
     // ✨ Calculate estimating duration (decompose completed)
-    const estimatingEndTime = Date.now();
-    const estimatingDuration = estimatingEndTime - new Date(estimatingStartTime).getTime();
-    const finalJobTiming = {
-      ...newJobTiming,
-      estimatingDuration
-    };
-    console.log(`⏰ [Estimating Complete] Duration: ${Math.round(estimatingDuration / 1000)}s\n`);
+    const finalJobTiming = JobTimingManager.finalizeEstimatingPhase(newJobTiming, estimatingStartTime);
     
     const newState = {
       ...state,
@@ -702,13 +678,7 @@ ${rules}`;
     featureTasks.set(defaultTask.id, defaultTask);
     
     // ✨ Calculate estimating duration (decompose completed)
-    const estimatingEndTime = Date.now();
-    const estimatingDuration = estimatingEndTime - new Date(estimatingStartTime).getTime();
-    const finalJobTiming = {
-      ...newJobTiming,
-      estimatingDuration
-    };
-    console.log(`⏰ [Estimating Complete] Duration: ${Math.round(estimatingDuration / 1000)}s\n`);
+    const finalJobTiming = JobTimingManager.finalizeEstimatingPhase(newJobTiming, estimatingStartTime);
     
     const newState = {
       ...state,

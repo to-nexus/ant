@@ -218,6 +218,10 @@ export function buildCodeGraph() {
       completedTasksDetails: null as any,  // ✅ Full task objects for completed tasks
       resolvedCategories: null as any,
       
+      // ✅ Job tracking (for timing and continuity)
+      jobId: null as any,
+      jobTiming: null as any,
+      
       // Error Handling & Final Verification
       failedTasks: null as any,
       unresolvedErrors: null as any,
