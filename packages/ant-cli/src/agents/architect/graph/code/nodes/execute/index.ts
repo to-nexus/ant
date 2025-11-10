@@ -62,18 +62,55 @@ export async function execute(
     // Build prompt messages with context
     const { messages } = await buildExecutePromptMessages(state, engine);
     
-    // ✅ Generate code with thinking display (starts message automatically)
+    // ✅ Get ChatAPIClient for chat integration
+    const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
+    const chatAPI = getChatAPIClient();
+    
+    // ✅ Start message FIRST (so everything goes into the same message)
+    if (chatAPI.isEnabled()) {
+      await chatAPI.startMessage();
+      
+      // ✅ Show "Planning next moves..."
+      await chatAPI.sendLLMEvent({
+        type: 'thinking',
+        content: 'Planning next moves...',
+        metadata: {
+          provider: 'system',
+          timestamp: new Date().toISOString()
+        }
+      });
+    }
+    
+    // ✅ Track current file for real-time streaming
+    let currentFileForStreaming: string | null = null;
+    const streamedFiles = new Set<string>();
+    
+    // ✅ Generate code with real-time file streaming (Cursor-style)
     console.log('\n💻 Generating code...\n');
     const { raw, chatMessageStarted } = await streamLLMResponse(llm, messages, {
-      thinkingOnly: true,  // ✅ Show thinking in chat, but not text (file cards will show content)
-      onFileStart: (filePath) => {
-        // Optional: Track file generation in real-time
+      thinkingOnly: false,  // ✅ Show thinking AND text (for file streaming)
+      onFileStart: async (filePath) => {
+        // ✅ New file detected in LLM response
+        if (currentFileForStreaming && streamedFiles.has(currentFileForStreaming)) {
+          // Complete previous file
+          await chatAPI.completeFileCreation(currentFileForStreaming, ''); // Content already streamed
+        }
+        
+        // Start new file card
+        currentFileForStreaming = filePath;
+        streamedFiles.add(filePath);
+        await chatAPI.streamFileContent(filePath, ''); // Start with empty (will be filled by text events)
       },
-      onFileEnd: () => {
-        // Optional: Track file completion
+      onFileEnd: async () => {
+        // File block ended (will start next file or finish)
       }
     });
     console.log('\n');
+    
+    // ✅ Complete last streamed file (if any)
+    if (currentFileForStreaming) {
+      await chatAPI.completeFileCreation(currentFileForStreaming, '');
+    }
     
     // Parse LLM response
     const { responseSection, files, filesToDelete, commands, edits } = parseResponse(raw);
@@ -84,20 +121,15 @@ export async function execute(
     // Apply edit instructions to existing files
     const failedEdits = await applyEdits(state, edits || [], files);
     
-    // ✅ Get ChatAPIClient for real-time file operation display (Cursor-style)
-    const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
-    const chatAPI = getChatAPIClient();
-    
-    // ✅ Show file creations with content (Cursor-style)
+    // ✅ Add any files that weren't streamed (fallback for parsing differences)
     for (const file of files) {
-      // Start and complete file creation in sequence
-      await chatAPI.startFileCreation(file.path);
-      await chatAPI.completeFileCreation(file.path, file.content || '');
+      if (!streamedFiles.has(file.path)) {
+        await chatAPI.completeFileCreation(file.path, file.content || '');
+      }
     }
     
     // ✅ Show file deletions
     for (const file of filesToDelete || []) {
-      await chatAPI.startFileDeletion(file);
       await chatAPI.completeFileDeletion(file);
     }
     

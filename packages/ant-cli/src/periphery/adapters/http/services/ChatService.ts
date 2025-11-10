@@ -60,6 +60,10 @@ interface ChatSession {
   jobId?: string;
   messages: ChatMessage[];
   currentMessage?: ChatMessage; // Message being streamed
+  activeFileOperation?: {  // Track active file being written
+    filePath: string;
+    contentIndex: number;  // Index of file content in currentMessage.contents
+  };
 }
 
 export class ChatService {
@@ -213,6 +217,12 @@ export class ChatService {
   startAssistantMessage(projectId: string, featureName: string, jobId: string): string {
     const session = this.getOrCreateSession(projectId, featureName, jobId);
     
+    // ✅ If there's already a current message being streamed, reuse it (avoid duplicates)
+    if (session.currentMessage && session.currentMessage.isStreaming) {
+      console.log(`[ChatService] ♻️  Reusing existing streaming message: ${session.currentMessage.id}`);
+      return session.currentMessage.id;
+    }
+    
     const messageId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
     const newMessage: ChatMessage = {
       id: messageId,
@@ -259,10 +269,16 @@ export class ChatService {
         lastContent.type === content.type && 
         (content.type === 'thinking' || content.type === 'text') &&
         !content.metadata) {
-      // Append to existing content
-      lastContent.content += content.content;
       
-      // Broadcast content update (merged)
+      // ✅ REPLACE "Planning next moves..." with actual LLM thinking
+      if (content.type === 'thinking' && lastContent.content.trim() === 'Planning next moves...') {
+        lastContent.content = content.content;
+      } else {
+        // Append to existing content
+        lastContent.content += content.content;
+      }
+      
+      // Broadcast content update (merged or replaced)
       this.broadcast(projectId, featureName, {
         type: 'content_update',
         messageId: session.currentMessage.id,
@@ -353,6 +369,9 @@ export class ChatService {
     featureName: string,
     event: LLMStreamEvent
   ): void {
+    const key = this.getSessionKey(projectId, featureName);
+    const session = this.sessions.get(key);
+    
     switch (event.type) {
       case 'thinking':
         this.addContentToCurrentMessage(projectId, featureName, {
@@ -362,10 +381,28 @@ export class ChatService {
         break;
 
       case 'text':
-        this.addContentToCurrentMessage(projectId, featureName, {
-          type: 'text',
-          content: event.content
-        });
+        // ✅ If there's an active file operation, stream text into the file card
+        if (session?.activeFileOperation && session.currentMessage) {
+          const fileContent = session.currentMessage.contents[session.activeFileOperation.contentIndex];
+          if (fileContent && (fileContent.type === 'file_writing' || fileContent.type === 'file_updating')) {
+            // Update file content in real-time
+            fileContent.content += event.content;
+            
+            // Broadcast update
+            this.broadcast(projectId, featureName, {
+              type: 'content_update',
+              messageId: session.currentMessage.id,
+              contentIndex: session.activeFileOperation.contentIndex,
+              content: fileContent
+            });
+          }
+        } else {
+          // No active file operation - add as regular text
+          this.addContentToCurrentMessage(projectId, featureName, {
+            type: 'text',
+            content: event.content
+          });
+        }
         break;
 
       case 'done':
@@ -394,6 +431,57 @@ export class ChatService {
     diffAfter?: string,
     phase?: 'creating' | 'writing' | 'editing' | 'updating' | 'deleting' | 'complete'
   ): void {
+    const key = this.getSessionKey(projectId, featureName);
+    const session = this.sessions.get(key);
+    
+    // ✅ COMPLETE phase: Update existing in-progress content instead of adding new
+    if (phase === 'complete' && session?.currentMessage) {
+      const inProgressTypes = {
+        'create': ['file_creating', 'file_writing'],
+        'edit': ['file_editing', 'file_updating'],
+        'delete': ['file_deleting']
+      };
+      
+      const typesToFind = inProgressTypes[operation] || [];
+      const existingIndex = session.currentMessage.contents.findIndex(c => 
+        typesToFind.includes(c.type) && 
+        c.metadata?.filePath === filePath
+      );
+      
+      if (existingIndex !== -1) {
+        // ✅ Update existing content to final state
+        const finalType = operation === 'create' ? 'file_create' :
+                         operation === 'edit' ? 'file_edit' :
+                         'file_delete';
+        
+        session.currentMessage.contents[existingIndex] = {
+          type: finalType,
+          content: content || session.currentMessage.contents[existingIndex].content,
+          metadata: {
+            filePath,
+            diffBefore,
+            diffAfter,
+            timestamp: new Date().toISOString()
+          }
+        };
+        
+        // Broadcast content update
+        this.broadcast(projectId, featureName, {
+          type: 'content_update',
+          messageId: session.currentMessage.id,
+          contentIndex: existingIndex,
+          content: session.currentMessage.contents[existingIndex]
+        });
+        
+        // Clear active file operation
+        if (session.activeFileOperation?.filePath === filePath) {
+          session.activeFileOperation = undefined;
+        }
+        
+        return; // ✅ Early return - don't add new content
+      }
+    }
+    
     // Determine content type based on phase and operation
     let type: ChatMessageContent['type'];
     
@@ -427,6 +515,15 @@ export class ChatService {
         timestamp: new Date().toISOString()
       }
     });
+    
+    // ✅ Track active file operation for real-time streaming
+    if (session && session.currentMessage) {
+      if (phase === 'writing' || phase === 'updating') {
+        // Set active file operation (text events will stream into this file card)
+        const contentIndex = session.currentMessage.contents.length - 1;
+        session.activeFileOperation = { filePath, contentIndex };
+      }
+    }
   }
 
   /**

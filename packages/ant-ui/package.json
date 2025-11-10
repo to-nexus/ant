@@ -8,9 +8,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@radix-ui/react-slot": "^1.2.4",
     "@tailwindcss/typography": "^0.5.19",
     "@types/dagre": "^0.7.53",
-    "class-variance-authority": "^0.7.0",
+    "class-variance-authority": "^0.7.1",
     "clsx": "^2.0.0",
     "dagre": "^0.8.5",
     "framer-motion": "^12.23.24",
