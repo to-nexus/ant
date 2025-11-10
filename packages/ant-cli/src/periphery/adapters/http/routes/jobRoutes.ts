@@ -155,11 +155,21 @@ export function createJobRoutes(deps: {
     const childProcess = deps.childProcesses.get(jobId);
     
     console.log(`\n🛑 [JobRoute] Stopping job ${jobId}`);
+    console.log(`   Request body:`, { projectId, featureName });
     console.log(`   childProcesses size:`, deps.childProcesses.size);
+    console.log(`   childProcesses keys:`, Array.from(deps.childProcesses.keys()));
     console.log(`   childProcess found:`, !!childProcess);
     console.log(`   childProcess PID:`, childProcess?.pid);
     
-    // Kill the process if it exists
+    // ✅ Send response immediately (don't wait for process to die)
+    res.json({ 
+      success: true, 
+      message: 'Stop signal sent',
+      jobId 
+    });
+    console.log(`   ✅ HTTP response sent`);
+    
+    // Kill the process if it exists (in background)
     if (childProcess && childProcess.pid) {
       try {
         const pid = childProcess.pid;
@@ -210,8 +220,7 @@ export function createJobRoutes(deps: {
         deps.logStreams.get(jobId)?.forEach(listener => listener(logEntry));
       }
       
-      // Don't delete here - let the timeout handler do it
-      console.log(`   ℹ️  Waiting for process to exit...`);
+      console.log(`   ℹ️  Process kill initiated in background`);
     } else {
       console.log(`   ⚠️ No child process found for job ${jobId}`);
       console.log(`   Available job IDs:`, Array.from(deps.childProcesses.keys()));
@@ -235,7 +244,7 @@ export function createJobRoutes(deps: {
     await deps.cleanupJobState(jobId, projectId, featureName, interruption);
     console.log(`   ✅ Job state cleaned up\n`);
     
-    res.json({ success: true, message: 'Task stopped' });
+    // ✅ Response already sent above (line 165)
   });
   
   return router;

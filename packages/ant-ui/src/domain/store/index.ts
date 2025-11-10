@@ -223,6 +223,22 @@ export const useStore = create<Store>((set, get) => ({
         isRunning: false,
         currentMode: undefined
       });
+    } else if (!data.activeJobId && state.isRunning) {
+      // ✅ 새로고침 후: activeJobId 없으면 무조건 isRunning = false
+      console.log('[Store] 🔄 No active job, ensuring isRunning is false');
+      set({ 
+        kanban: data,
+        isRunning: false,
+        currentMode: undefined
+      });
+    } else if (data.activeJobId && !state.isRunning) {
+      // ✅ 새로고침 후 진행 중인 작업 발견: isRunning = true로 복원
+      console.log('[Store] 🔄 Active job found after refresh, restoring isRunning state');
+      set({ 
+        kanban: data,
+        isRunning: true,
+        currentJobId: data.activeJobId
+      });
     } else {
       set({ kanban: data });
     }
