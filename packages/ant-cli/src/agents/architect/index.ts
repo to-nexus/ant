@@ -92,6 +92,11 @@ export async function architectAgent(
     sessionHistory: sessionHistory,  // Short-term context
     enableEvaluation                 // Evaluation flag
   };
+  
+  // ✅ Read chat integration parameters from environment
+  // ✅ Properly handle empty string as undefined
+  const overrideDirective = process.env.ANT_OVERRIDE_DIRECTIVE?.trim() || undefined;
+  const chatSource = process.env.ANT_CHAT_SOURCE === 'true';
 
   // Call appropriate handler based on task
   switch (task) {
@@ -160,7 +165,9 @@ export async function architectAgent(
         },
         planText: "",
         designMarkdown: "",
-        _httpTaskId: taskId || process.env.ANT_JOB_ID  // ✅ NEW: For tracking in UI
+        _httpTaskId: taskId || process.env.ANT_JOB_ID,  // ✅ NEW: For tracking in UI
+        overrideDirective,  // ✅ Chat input as directive
+        chatSource          // ✅ Chat SSE flag
       };
       
       console.log('\n🚀 Starting task: "Generate Design Document"');
@@ -276,7 +283,9 @@ export async function architectAgent(
                 codeMode: codeMode, // Will be inferred in graph nodes
                 subtaskIndex: 0,  // Backward compatibility
                 totalSubtasks: 0,  // Backward compatibility
-                _httpTaskId: resolvedTaskId  // ✅ For real-time Kanban tracking
+                _httpTaskId: resolvedTaskId,  // ✅ For real-time Kanban tracking
+                overrideDirective,  // ✅ Chat input as directive
+                chatSource          // ✅ Chat SSE flag
               };
         const result = await runCodeGraph(initial);
         

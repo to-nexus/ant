@@ -176,18 +176,39 @@ export function waitForTaskQueueDrain(taskId: string | undefined): Promise<void>
 }
 
 export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueue {
+  console.log('[useWorkflowSSE] 🎯 Hook called! jobId:', jobId);
+  
   const [rawState, setRawState] = useState<WorkflowRealtimeState | null>(null);
   const [displayedState, setDisplayedState] = useState<WorkflowRealtimeState | null>(null);
   const [queueLength, setQueueLength] = useState(globalNodeQueue.length);
+  
+  // ✅ CRITICAL: 안정화된 jobId - 실제로 변경되었을 때만 업데이트
+  const [stableJobId, setStableJobId] = useState<string | undefined>(jobId);
+  const previousJobIdRef = useRef<string | undefined>(jobId);
   const currentJobIdRef = useRef<string | undefined>(jobId);
   const rawStateRef = useRef<WorkflowRealtimeState | null>(null);
-  const displayedStateRef = useRef<WorkflowRealtimeState | null>(null);  // ✅ displayedState ref
-  const jobEndedRef = useRef(false);  // ✅ NEW: 'end' 이벤트 수신 여부
+  const displayedStateRef = useRef<WorkflowRealtimeState | null>(null);
+  const jobEndedRef = useRef(false);
   
-  // jobId 변경 추적
+  // ✅ CRITICAL: jobId가 실제로 변경되었을 때만 stableJobId 업데이트
+  // 무한 렌더링으로 인한 불필요한 EventSource 재생성 방지
   useEffect(() => {
-    currentJobIdRef.current = jobId;
+    if (jobId !== previousJobIdRef.current) {
+      console.log('[useWorkflowSSE] 🔄 jobId ACTUALLY changed:', { 
+        from: previousJobIdRef.current, 
+        to: jobId 
+      });
+      previousJobIdRef.current = jobId;
+      setStableJobId(jobId);
+    } else {
+      console.log('[useWorkflowSSE] ℹ️  jobId unchanged (ignoring re-render):', jobId);
+    }
   }, [jobId]);
+  
+  // jobId 변경 추적 (현재 ref 동기화)
+  useEffect(() => {
+    currentJobIdRef.current = stableJobId;
+  }, [stableJobId]);
   
   // rawState ref 동기화
   useEffect(() => {
@@ -209,10 +230,14 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
     };
   }, []);
   
-  // SSE 구독
+  // SSE 구독 - ✅ CRITICAL: stableJobId 사용하여 불필요한 재연결 방지
   useEffect(() => {
-    if (!jobId) {
-      console.log('[useWorkflowState] Clearing state (no jobId)');
+    console.log('[useWorkflowState] 🔍 SSE useEffect triggered! stableJobId:', stableJobId);
+    console.log('[useWorkflowState] 🔍 typeof stableJobId:', typeof stableJobId);
+    console.log('[useWorkflowState] 🔍 stableJobId truthy?:', !!stableJobId);
+    
+    if (!stableJobId) {
+      console.log('[useWorkflowState] Clearing state (no stableJobId)');
       
       // ✅ 글로벌 타이머 취소 (진행 중인 연출 중단하지 않음)
       // 단, rawState는 초기화
@@ -222,12 +247,25 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
       return;
     }
     
-    console.log('[useWorkflowState] 🔄 Subscribing to job:', jobId);
+    console.log('[useWorkflowState] 🔄 Subscribing to job (STABLE):', stableJobId);
+    const sseUrl = `${API_BASE}/jobs/${stableJobId}/workflow/stream`;
+    console.log('[useWorkflowState] 🔗 SSE URL:', sseUrl);
+    console.log('[useWorkflowState] 🔗 API_BASE:', API_BASE);
     jobEndedRef.current = false;  // ✅ Reset for new job
     
-    const eventSource = new EventSource(
-      `${API_BASE}/jobs/${jobId}/workflow/stream`
-    );
+    console.log('[useWorkflowState] 🏗️ Creating EventSource...');
+    const eventSource = new EventSource(sseUrl);
+    
+    console.log('[useWorkflowState] ✅ EventSource created, readyState:', eventSource.readyState);
+    console.log('[useWorkflowState] 📊 EventSource details:', {
+      url: eventSource.url,
+      readyState: eventSource.readyState,
+      withCredentials: eventSource.withCredentials
+    });
+    
+    eventSource.onopen = () => {
+      console.log('[useWorkflowState] ✅ SSE connection opened successfully!');
+    };
     
     eventSource.onmessage = (event) => {
       try {
@@ -300,11 +338,16 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
     });
     
     eventSource.onerror = (error) => {
-      console.error('[useWorkflowState] SSE error:', error);
+      console.error('[useWorkflowState] ❌ SSE error:', error);
+      console.error('[useWorkflowState] 📊 EventSource state:', {
+        readyState: eventSource.readyState,
+        url: eventSource.url,
+        withCredentials: eventSource.withCredentials
+      });
     };
     
     return () => {
-      console.log('[useWorkflowState] 🧹 Cleanup - closing SSE connection for job:', jobId);
+      console.log('[useWorkflowState] 🧹 Cleanup - closing SSE connection for job:', stableJobId);
       console.log('[useWorkflowState] 📊 Global queue has', globalNodeQueue.length, 'pending nodes');
       eventSource.close();
       
@@ -317,7 +360,7 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
       
       // ✅ displayedState는 유지하여 마지막 노드가 계속 보이도록
     };
-  }, [jobId]);
+  }, [stableJobId]);  // ✅ CRITICAL: stableJobId를 dependency로 사용
   
   // ✅ 노드 감지는 이제 SSE 핸들러에서 직접 처리
   // (React batching으로 인한 스킵 방지)

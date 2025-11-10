@@ -170,14 +170,53 @@ export default {
           '25%': { opacity: '0.7', transform: 'scale(1.02)' },
           '50%': { opacity: '1', transform: 'scale(1)' },
           '75%': { opacity: '0.8', transform: 'scale(1.01)' }
+        },
+        // ✅ Gentle pulse for chat ready state
+        'pulse-gentle': {
+          '0%, 100%': { opacity: '1', transform: 'scale(1)' },
+          '50%': { opacity: '0.7', transform: 'scale(1.05)' }
+        },
+        // ✅ Gentle bounce for chat ready state
+        'bounce-gentle': {
+          '0%, 100%': { transform: 'translateY(0)' },
+          '50%': { transform: 'translateY(-5px)' }
+        },
+        // ✨ Sparkle float - 뚱뚱해졌다 홀쭉해지는 효과 (크기 + 불투명도만)
+        'sparkle-float': {
+          '0%, 100%': { 
+            opacity: '1', 
+            transform: 'scale(1)' 
+          },
+          '50%': { 
+            opacity: '0.75', 
+            transform: 'scale(1.25)' 
+          }
         }
       },
       animation: {
         gradient: 'gradient 2s ease infinite',
         shine: 'shine 0.8s ease-in-out',
-        flash: 'flash 0.6s ease-in-out'
+        flash: 'flash 0.6s ease-in-out',
+        'pulse-gentle': 'pulse-gentle 2.5s ease-in-out infinite',
+        'bounce-gentle': 'bounce-gentle 2s ease-in-out infinite',
+        'sparkle-float': 'sparkle-float 3s ease-in-out infinite'
       }
     }
   },
-  plugins: []
+  plugins: [
+    require('@tailwindcss/typography'),
+    // ✅ 스크롤바 숨김 유틸리티
+    function({ addUtilities }) {
+      addUtilities({
+        '.scrollbar-hide': {
+          /* Firefox */
+          'scrollbar-width': 'none',
+          /* Safari and Chrome */
+          '&::-webkit-scrollbar': {
+            display: 'none'
+          }
+        }
+      })
+    }
+  ]
 };

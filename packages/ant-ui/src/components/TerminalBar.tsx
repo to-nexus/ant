@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
+import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import { useStore } from '@/lib/store';
 import { ChevronUp, ChevronDown, X } from 'lucide-react';
 import { Bar, BaseBarProps } from './Bar';
@@ -23,7 +24,7 @@ export function TerminalBar(props: BaseBarProps = {}) {
   const logsVersion = useStore((state) => state.logsVersion);  // ✅ 로그 변경 감지
   const getLogs = useStore((state) => state.getLogs);
   const clearLogs = useStore((state) => state.clearLogs);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);  // ✅ Virtual scroll ref
   const [isExpanded, setIsExpanded] = useState(false);
   const [height, setHeight] = useState(400);
   const [isResizing, setIsResizing] = useState(false);
@@ -37,11 +38,16 @@ export function TerminalBar(props: BaseBarProps = {}) {
   // ✅ 필터링된 로그 (THINKING 생략, CODE 파일명만, RESPONSE 전체 표시)
   const filteredLogs = useMemo(() => filterLogsForTerminal(logs), [logs]);
 
+  // ✅ Auto-scroll to bottom when new logs arrive
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (filteredLogs.length > 0 && virtuosoRef.current) {
+      virtuosoRef.current.scrollToIndex({
+        index: filteredLogs.length - 1,
+        behavior: 'smooth',
+        align: 'end'
+      });
     }
-  }, [filteredLogs]);
+  }, [filteredLogs.length]);
 
   // ✅ REMOVED: Auto-expand when logs arrive
   // Users should manually expand/collapse terminal to keep their preferred state
@@ -164,11 +170,10 @@ export function TerminalBar(props: BaseBarProps = {}) {
         className: props.className
       })}
 
-      {/* Terminal Content (Expandable) - Light Mode */}
+      {/* Terminal Content (Expandable) - Virtual Scrolling */}
       {isExpanded && (
         <div
-          ref={scrollRef}
-          className="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white font-mono text-sm overflow-y-auto p-4 border-t border-gray-200 dark:border-gray-700"
+          className="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white font-mono text-sm border-t border-gray-200 dark:border-gray-700"
           style={{ height: `${height}px` }}
         >
           {filteredLogs.length === 0 ? (
@@ -178,13 +183,20 @@ export function TerminalBar(props: BaseBarProps = {}) {
               <div className="text-xs mt-1">Execute a task to see output here</div>
             </div>
           ) : (
-            filteredLogs.map((log, index) => (
-              <div key={index} className="mb-1 leading-relaxed hover:bg-gray-100 dark:hover:bg-gray-800 px-2 py-1 rounded">
-                <span className="text-gray-400 dark:text-gray-500 text-xs">{formatTimestamp(log.timestamp)}</span>
-                {' '}
-                <span className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{log.message}</span>
-              </div>
-            ))
+            <Virtuoso
+              ref={virtuosoRef}
+              data={filteredLogs}
+              style={{ height: '100%' }}
+              initialTopMostItemIndex={filteredLogs.length - 1}  // Start at bottom
+              followOutput="smooth"  // Auto-scroll to new logs
+              itemContent={(index, log) => (
+                <div className="mb-1 leading-relaxed hover:bg-gray-100 dark:hover:bg-gray-800 px-6 py-1 rounded">
+                  <span className="text-gray-400 dark:text-gray-500 text-xs">{formatTimestamp(log.timestamp)}</span>
+                  {' '}
+                  <span className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{log.message}</span>
+                </div>
+              )}
+            />
           )}
         </div>
       )}

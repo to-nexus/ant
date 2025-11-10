@@ -1,9 +1,9 @@
 import { StateGraph } from "@langchain/langgraph";
 import { DesignGraphState } from "./state";
 import { resolve } from "./nodes/resolve";
-import { decompose } from "./nodes/decompose";
+import { decompose } from "./nodes/decompose/index";
 import { plan } from "./nodes/plan";
-import { execute } from "./nodes/execute";
+import { execute } from "./nodes/execute/index";
 import { writeFiles } from "./nodes/writeFiles";
 import { learn } from "./nodes/learn";
 

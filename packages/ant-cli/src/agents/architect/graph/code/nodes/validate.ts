@@ -21,7 +21,7 @@ export async function validate(state: ArchitectGraphState): Promise<ArchitectGra
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'validate', taskInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'validate', taskInfo);
   }
   
   const violations: Violation[] = [];

@@ -15,6 +15,8 @@ export interface ExecuteJobParams {
   agent?: 'architect' | 'reviewer' | 'planner' | 'doc';
   mode?: 'generate' | 'refactor' | 'explain';
   language?: string;
+  overrideDirective?: string;  // ✅ Chat input becomes directive (highest priority)
+  chatSource?: boolean;        // ✅ True if job started from chat (enables Chat SSE)
 }
 
 export interface JobStatus {
@@ -189,7 +191,9 @@ export async function executeJob(params: ExecuteJobParams): Promise<{ jobId: str
       task = 'code', 
       agent, 
       mode = 'generate', 
-      language = 'en' 
+      language = 'en',
+      overrideDirective,  // ✅ Chat input as directive
+      chatSource           // ✅ Flag for Chat SSE
     } = params;
     
     const requestBody = {
@@ -197,6 +201,8 @@ export async function executeJob(params: ExecuteJobParams): Promise<{ jobId: str
       agent,
       mode,
       language,
+      overrideDirective,  // ✅ Include in request
+      chatSource           // ✅ Include in request
     };
     
     // Use feature-specific endpoint if feature provided

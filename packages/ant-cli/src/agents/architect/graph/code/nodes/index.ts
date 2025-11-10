@@ -1,7 +1,7 @@
 export { resolve } from "./resolve";
-export { decompose } from "./decompose";
-export { plan } from "./plan";
-export { execute } from "./execute";
+export { decompose } from "./decompose/index";
+export { plan } from "./plan/index";
+export { execute } from "./execute/index";
 export { writeFiles } from "./writeFiles";
 export { validate } from "./validate";
 export { installDeps } from "./installDeps";

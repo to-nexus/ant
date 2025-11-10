@@ -69,24 +69,23 @@ export async function plan(state: DesignGraphState) {
     artifacts
   );
 
-  // Generate plan with streaming
+  // Generate plan with streaming and Chat integration
   let planText = '';
   
   console.log(`⏱️  Prompt build time: ${result.metadata.buildTime}ms`);
   console.log(`🎯 Design mode: ${state.designMode || 'auto'}`);
   console.log('\n📝 Generating design strategy...\n');
   
-  if (llm.stream) {
-    // Use streaming if available
-    for await (const chunk of llm.stream(result.formatted.messages)) {
-      // ✅ Don't output LLM response to stdout (handled by logFilters.ts)
-      planText += chunk;
-    }
-    console.log('\n');
-  } else {
-    // Fallback to regular invoke
-    planText = await llm.invoke(result.formatted.messages);
-  }
+  // ✅ Use common streaming handler with Chat integration
+  const { streamLLMResponse, finalizeChatMessage } = await import('../../code/nodes/shared/llmStreamHandler');
+  const { raw, chatMessageStarted } = await streamLLMResponse(llm, result.formatted.messages, {
+    enableChat: true  // ✅ Plan 전략을 일반 응답으로 표시
+  });
+  planText = raw;
+  console.log('\n');
+  
+  // Finalize chat message
+  await finalizeChatMessage(chatMessageStarted);
 
   // ✅ planText를 메모리(state)에 저장하여 execute 노드에서 직접 사용
   return { ...state, planText, currentTask };

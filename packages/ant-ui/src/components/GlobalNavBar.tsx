@@ -115,39 +115,12 @@ export function GlobalNavBar({ onRunTask, onStopTask, isRunning, isStopping = fa
       <div className="px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            {/* AI Logo - Simple & Modern */}
-            <svg 
+            {/* ANT Logo - Neural Network Pattern */}
+            <img 
+              src="/logo.svg" 
+              alt="ANT Works Logo" 
               className="w-8 h-8" 
-              viewBox="0 0 32 32" 
-              fill="none" 
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              {/* Neural Network Pattern */}
-              <defs>
-                <linearGradient id="gradient1" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" className="[stop-color:#3b82f6]" />
-                  <stop offset="100%" className="[stop-color:#8b5cf6]" />
-                </linearGradient>
-              </defs>
-              
-              {/* Center Core */}
-              <circle cx="16" cy="16" r="4" fill="url(#gradient1)" />
-              
-              {/* Outer Nodes */}
-              <circle cx="8" cy="8" r="2.5" className="fill-blue-500 dark:fill-blue-400" opacity="0.8" />
-              <circle cx="24" cy="8" r="2.5" className="fill-blue-500 dark:fill-blue-400" opacity="0.8" />
-              <circle cx="8" cy="24" r="2.5" className="fill-purple-500 dark:fill-purple-400" opacity="0.8" />
-              <circle cx="24" cy="24" r="2.5" className="fill-purple-500 dark:fill-purple-400" opacity="0.8" />
-              
-              {/* Connection Lines */}
-              <path d="M9.5 9.5 L12.5 12.5" className="stroke-blue-500 dark:stroke-blue-400" strokeWidth="1.5" strokeLinecap="round" opacity="0.4" />
-              <path d="M22.5 9.5 L19.5 12.5" className="stroke-blue-500 dark:stroke-blue-400" strokeWidth="1.5" strokeLinecap="round" opacity="0.4" />
-              <path d="M9.5 22.5 L12.5 19.5" className="stroke-purple-500 dark:stroke-purple-400" strokeWidth="1.5" strokeLinecap="round" opacity="0.4" />
-              <path d="M22.5 22.5 L19.5 19.5" className="stroke-purple-500 dark:stroke-purple-400" strokeWidth="1.5" strokeLinecap="round" opacity="0.4" />
-              
-              {/* Center Glow Effect */}
-              <circle cx="16" cy="16" r="6" className="stroke-blue-400 dark:stroke-blue-300" strokeWidth="0.5" opacity="0.2" fill="none" />
-            </svg>
+            />
             
             <h1 className="text-xl font-display font-bold text-gray-900 dark:text-white tracking-tight">ANT Works</h1>
             

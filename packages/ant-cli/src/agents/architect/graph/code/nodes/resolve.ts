@@ -34,7 +34,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'resolve', taskInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'resolve', taskInfo);
   }
   
   const { context } = state;
@@ -77,8 +77,18 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   // 1. Load design document (optional)
   const design = await findLatestDesign(context, gitPort) || undefined;
 
-  // 2. Load directive (optional)
-  const directive = await getDirective(context, 'code', gitPort) || undefined;
+  // 2. Load directive with override priority
+  // ✅ Priority: overrideDirective (from chat) > directive.md > directive-nnn.md
+  let directive: string | undefined;
+  
+  if (state.overrideDirective) {
+    // ✅ Chat input takes highest priority
+    console.log('\n🎯 [Code Resolve] Using override directive from chat input\n');
+    directive = state.overrideDirective;
+  } else {
+    // Load from file system
+    directive = await getDirective(context, 'code', gitPort) || undefined;
+  }
   
   // Validate: Must have either design doc OR directive
   if (!design && !directive) {
@@ -91,6 +101,14 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
 
   // 3. Retrieve relevant codebase (Phase 1: Smart Retrieval)
   console.log(`📋 Retrieving relevant codebase...`);
+  
+  // ✅ Get ChatAPI client for grepping tracking
+  const { getChatAPIClient } = await import('../../../../../core/adapters/ChatAPIClient');
+  const chatAPI = getChatAPIClient();
+  
+  // ✅ Send grepping status (extracting query from directive/design)
+  const query = (directive || design || "").slice(0, 100);  // First 100 chars as query
+  await chatAPI.addGreppingStatus(query, 0, 30);  // Max 30 files
   
   const codeContext = await retriever.retrieve(
     directive || design || "",
@@ -107,6 +125,14 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   );
 
   console.log(`✅ Strategy: ${codeContext.strategy}, Files: ${codeContext.stats.filesLoaded}, Tokens: ~${codeContext.stats.estimatedTokens}`);
+  
+  // ✅ Send grepped result
+  await chatAPI.addGreppedResult(
+    query,
+    codeContext.stats.filesLoaded,
+    codeContext.strategy,
+    codeContext.files || []
+  );
 
   // 4. Analyze codebase profile
   let profile = undefined;

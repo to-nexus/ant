@@ -28,6 +28,8 @@ export interface ExecuteJobParams {
   inputFile: string;
   mode?: 'generate' | 'refactor' | 'explain';
   enableEvaluation?: boolean;
+  overrideDirective?: string;  // ✅ Chat input as directive (highest priority)
+  chatSource?: boolean;        // ✅ True if job started from chat (enables Chat SSE)
 }
 
 export interface JobResult {

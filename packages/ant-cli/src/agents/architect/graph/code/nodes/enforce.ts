@@ -90,7 +90,7 @@ export async function enforce(state: ArchitectGraphState): Promise<ArchitectGrap
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'enforce', taskInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'enforce', taskInfo);
   }
   
   const violations = state.violations || [];

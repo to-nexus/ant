@@ -18,6 +18,7 @@ export function createJobRoutes(deps: {
   childProcesses: Map<string, any>;
   jobs: Map<string, any>;
   cleanupJobState: (jobId: string, projectId?: string, featureName?: string, interruptionReason?: InterruptionDetails) => Promise<void>;
+  workflowStateService: import('../services/WorkflowStateService').WorkflowStateService;  // ✅ For node tracking
 }): Router {
   const router = Router();
   
@@ -26,10 +27,12 @@ export function createJobRoutes(deps: {
     try {
       const projectId = req.params.id;
       const featureName = req.params.feature;
-      const { task, agent = 'architect', enableEvaluation } = req.body;
+      const { task, agent = 'architect', enableEvaluation, overrideDirective, chatSource } = req.body;
       
       console.log(`\n📨 [JobRoute] POST /projects/${projectId}/features/${featureName}/execute`);
       console.log(`   Agent: ${agent}, Task: ${task}`);
+      console.log(`   Override Directive: ${overrideDirective ? '(provided)' : 'none'}`);
+      console.log(`   Chat Source: ${chatSource || false}`);
       console.log(`   Body:`, req.body);
       
       const params: ExecuteJobParams = {
@@ -43,7 +46,9 @@ export function createJobRoutes(deps: {
           featureName,
           `inputs/directives/${task}/directive.md`
         ),
-        enableEvaluation
+        enableEvaluation,
+        overrideDirective,  // ✅ Chat input as directive
+        chatSource          // ✅ Flag for Chat SSE
       };
       
       console.log(`   📦 Calling deps.executeJob with params:`, params);
@@ -60,7 +65,7 @@ export function createJobRoutes(deps: {
   router.post('/projects/:id/execute', async (req: Request, res: Response) => {
     try {
       const projectId = req.params.id;
-      const { task, agent = 'architect', enableEvaluation } = req.body;
+      const { task, agent = 'architect', enableEvaluation, overrideDirective, chatSource } = req.body;
       
       const params: ExecuteJobParams = {
         agent: agent || 'architect',
@@ -72,7 +77,9 @@ export function createJobRoutes(deps: {
           projectId,
           `skeleton/inputs/directives/${task}/directive.md`
         ),
-        enableEvaluation
+        enableEvaluation,
+        overrideDirective,  // ✅ Chat input as directive
+        chatSource          // ✅ Flag for Chat SSE
       };
       
       const result = await deps.executeJob(params);

@@ -130,7 +130,9 @@ export class TaskExecutionService {
           ...process.env,
           PATH: ensuredPath,  // ✅ Explicitly ensure PATH includes standard locations
           ANT_JOB_ID: jobId,  // For tracking
-          ANT_SERVER_PORT: process.env.PORT || '4100'  // For HTTP client updates
+          ANT_SERVER_PORT: process.env.PORT || '4100',  // For HTTP client updates
+          ANT_OVERRIDE_DIRECTIVE: params.overrideDirective || '',  // ✅ Chat input as directive
+          ANT_CHAT_SOURCE: params.chatSource ? 'true' : 'false'    // ✅ Chat SSE flag
         },
         stdio: ['ignore', 'pipe', 'pipe']
       });

@@ -106,6 +106,7 @@ export function createWorkflowRoutes(deps: {
   router.get('/jobs/:jobId/workflow/stream', (req: Request, res: Response) => {
     const { jobId } = req.params;
     
+    console.log(`\n🔌 [WorkflowRoutes] GET /jobs/${jobId}/workflow/stream - Client connecting...`);
     
     // SSE 헤더 설정
     res.setHeader('Content-Type', 'text/event-stream');
@@ -113,8 +114,12 @@ export function createWorkflowRoutes(deps: {
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no'); // Nginx 버퍼링 방지
     
+    console.log(`   ✅ SSE headers set`);
+    
     // 클라이언트 등록 (현재 상태 즉시 전송 포함)
+    console.log(`   📡 Calling workflowStateService.addClient...`);
     deps.workflowStateService.addClient(jobId, res);
+    console.log(`   ✅ Client registered`);
     
     // Keep-alive ping (30초마다)
     const pingInterval = setInterval(() => {

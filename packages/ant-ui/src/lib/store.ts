@@ -24,6 +24,7 @@ interface StoreState {
   isRunning: boolean;
   isStopping: boolean;  // ✅ Stopping state for Stop button
   userStoppedJobId: string | null;  // ✅ Track which job user explicitly stopped
+  lastJobFailed: boolean;  // ✅ Track if last job failed (for retry)
   currentJobId: string | undefined;
   currentJob: JobExecution | null;
   activeTasks: Map<string, EventSource>;
@@ -58,6 +59,7 @@ interface StoreActions {
   getLogs: () => LogEntry[];  // ✅ 로그 가져오기
   setRunning: (isRunning: boolean, taskId?: string, mode?: 'generate' | 'refactor' | 'explain') => void;
   setStopping: (isStopping: boolean) => void;  // ✅ Set stopping state
+  setLastJobFailed: (failed: boolean) => void;  // ✅ Set job failed state
   setCurrentJob: (job: JobExecution | null) => void;
   clearLogs: () => void;
   reset: () => void;
@@ -151,6 +153,7 @@ export const useStore = create<Store>((set, get) => ({
   isRunning: false,
   isStopping: false,
   userStoppedJobId: null,
+  lastJobFailed: false,  // ✅ Job failed state
   currentJobId: undefined,
   currentJob: null,
   activeTasks: new Map<string, EventSource>(),
@@ -358,7 +361,9 @@ export const useStore = create<Store>((set, get) => ({
       elapsedTime: isRunning ? 0 : get().elapsedTime,
       currentMode: isRunning ? mode : undefined,
       // ✅ Clear userStoppedJobId when starting a new job (user explicitly clicked Run)
-      userStoppedJobId: isRunning ? null : get().userStoppedJobId
+      userStoppedJobId: isRunning ? null : get().userStoppedJobId,
+      // ✅ Clear lastJobFailed when starting a new job
+      lastJobFailed: false
     });
 
     // Persist to localStorage
@@ -377,6 +382,10 @@ export const useStore = create<Store>((set, get) => ({
 
   setStopping: (isStopping: boolean) => {
     set({ isStopping });
+  },
+
+  setLastJobFailed: (failed: boolean) => {
+    set({ lastJobFailed: failed });
   },
 
   setCurrentJob: (job: JobExecution | null) => {

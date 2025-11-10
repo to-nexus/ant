@@ -29,7 +29,7 @@ export async function installDeps(state: ArchitectGraphState): Promise<Architect
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    state.deps.workflowUpdate.enterNode(state._httpTaskId, 'installDeps', taskInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'installDeps', taskInfo);
   }
   
   const commandPort = state.deps?.command;
