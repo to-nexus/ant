@@ -2,18 +2,67 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Hide scrollbar but keep scroll functionality */
+/* ✅ Global scrollbar styles - Applied to ALL scrollbars (Cursor/Copilot inspired) */
+@layer base {
+  /* Firefox */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(156, 163, 175, 0.3) transparent;
+  }
+  
+  /* Chrome, Safari, Edge */
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  *::-webkit-scrollbar-thumb {
+    background-color: rgba(156, 163, 175, 0.3);
+    border-radius: 3px;
+    transition: background-color 0.2s ease;
+  }
+  
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(156, 163, 175, 0.5);
+  }
+  
+  /* Dark mode */
+  .dark * {
+    scrollbar-color: rgba(156, 163, 175, 0.2) transparent;
+  }
+  
+  .dark *::-webkit-scrollbar-thumb {
+    background-color: rgba(156, 163, 175, 0.2);
+  }
+  
+  .dark *::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(156, 163, 175, 0.4);
+  }
+}
+
+/* ✅ Utility classes for special cases */
 @layer utilities {
+  /* Hide scrollbar completely (for specific elements that need it) */
   .scrollbar-hide {
     /* Firefox */
-    scrollbar-width: none;
+    scrollbar-width: none !important;
     /* IE and Edge */
-    -ms-overflow-style: none;
+    -ms-overflow-style: none !important;
   }
   
   .scrollbar-hide::-webkit-scrollbar {
     /* Chrome, Safari and Opera */
-    display: none;
+    display: none !important;
+  }
+  
+  /* Explicit thin scrollbar (redundant now, but kept for backwards compatibility) */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(156, 163, 175, 0.3) transparent;
   }
 }
 

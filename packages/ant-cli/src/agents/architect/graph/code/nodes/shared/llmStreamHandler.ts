@@ -41,7 +41,7 @@ export async function streamLLMResponse(
   
   // Use streamRaw if available (provides thinking/text separation)
   if (llm.streamRaw && chatAPI.isEnabled() && (enableChat || thinkingOnly)) {
-    // Start chat message (if not already started)
+    // Start chat message (if not already started - will reuse existing if available)
     if (!chatMessageStarted) {
       await chatAPI.startMessage();
       chatMessageStarted = true;
@@ -86,12 +86,13 @@ export async function streamLLMResponse(
     raw = await llm.invoke(promptMessages);
   }
   
-  // Helper function to track file generation
+  // Helper function to track file generation (improved pattern matching)
   function trackFileGeneration() {
-    const fileStartMatch = accumulatedChunk.match(/```(?:typescript|javascript|tsx|jsx|json|html|css|md|yaml|yml)\n.*?\/([^\n]+)\n/i);
+    // ✅ Improved pattern: Match file paths in code blocks (```language:path/to/file.ext or ```language\npath)
+    const fileStartMatch = accumulatedChunk.match(/```(?:typescript|javascript|tsx|jsx|ts|js|json|html|css|md|yaml|yml)?[:\s]+([^\n`]+\.[a-z]+)/i);
     if (fileStartMatch && !insideFileBlock) {
       insideFileBlock = true;
-      currentFilePath = fileStartMatch[1];
+      currentFilePath = fileStartMatch[1].trim();
       accumulatedChunk = '';
       
       if (onFileStart) {
@@ -99,14 +100,18 @@ export async function streamLLMResponse(
       }
     }
     
-    // Detect file end marker
-    if (accumulatedChunk.includes('```') && insideFileBlock && accumulatedChunk.split('```').length > 2) {
-      insideFileBlock = false;
-      currentFilePath = '';
-      accumulatedChunk = '';
-      
-      if (onFileEnd) {
-        onFileEnd();
+    // Detect file end marker (closing ```)
+    if (insideFileBlock) {
+      const closingMatch = accumulatedChunk.match(/```\s*$/m);
+      if (closingMatch) {
+        insideFileBlock = false;
+        const prevPath = currentFilePath;
+        currentFilePath = '';
+        accumulatedChunk = '';
+        
+        if (onFileEnd) {
+          onFileEnd();
+        }
       }
     }
     

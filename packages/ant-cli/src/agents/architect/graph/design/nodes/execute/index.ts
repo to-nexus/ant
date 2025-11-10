@@ -100,17 +100,36 @@ export async function execute(state: DesignGraphState) {
   
   const filePath = 'outputs/design/system-design.md';
   
-  // ✅ 1. Stream LLM response with thinking display (starts message automatically)
-  const { raw, chatMessageStarted } = await streamLLMResponse(llm, result.formatted.messages, {
-    thinkingOnly: true  // ✅ Show thinking in chat, but not text (file card will show content)
-  });
-  
-  // ✅ 2. After streaming, start file operation animation
-  if (isFirstTask) {
-    await chatAPI.startFileCreation(filePath);
-  } else {
-    await chatAPI.startFileEdit(filePath);
+  // ✅ 0. Start message FIRST (so everything goes into the same message)
+  if (chatAPI.isEnabled()) {
+    await chatAPI.startMessage();
+    
+    // ✅ 1. Show "Planning next moves..." 
+    await chatAPI.sendLLMEvent({
+      type: 'thinking',
+      content: 'Planning next moves...',
+      metadata: {
+        provider: 'system',
+        timestamp: new Date().toISOString()
+      }
+    });
+    
+    // ✅ 2. Start file operation in WRITING state (in the SAME message)
+    if (isFirstTask) {
+      // Start with 'writing' phase so LLM text streams directly into the file card
+      await chatAPI.streamFileContent(filePath, '');
+    } else {
+      // For edit: start with 'updating' phase
+      // TODO: Add proper method to ChatAPIClient for this
+      await chatAPI.startFileEdit(filePath);
+    }
   }
+  
+  // ✅ 3. Stream LLM response - file content streams into file card in real-time
+  // (ChatService will reuse the existing message)
+  const { raw, chatMessageStarted } = await streamLLMResponse(llm, result.formatted.messages, {
+    thinkingOnly: false  // ✅ Show thinking AND text (text goes to file card)
+  });
   
   // ✅ Remove <thinking> blocks from file content (they're for chat UI only)
   const removeThinkingTags = (text: string): string => {
@@ -132,7 +151,7 @@ export async function execute(state: DesignGraphState) {
     finalDesignMarkdown = mergeDesignDocuments(state.designMarkdown!, designMarkdown);
   }
 
-  // ✅ Complete file operation with final content (Cursor-style)
+  // ✅ Complete file operation (transition to collapsible state)
   if (isFirstTask) {
     // Complete file creation
     await chatAPI.completeFileCreation(filePath, finalDesignMarkdown);
