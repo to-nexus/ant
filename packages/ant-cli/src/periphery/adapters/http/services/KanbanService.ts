@@ -32,7 +32,12 @@ export class KanbanService {
     completedTasksDetails: any[],
     currentTask: any | null
   ): number {
-    if (!jobTiming) return 0;
+    if (!jobTiming) {
+      console.warn(`⚠️  [KanbanService] calculateTotalElapsedTime: No jobTiming data!`);
+      console.warn(`   This indicates the job was started before jobTiming was implemented.`);
+      console.warn(`   Please restart the job to track timing correctly.`);
+      return 0;
+    }
     
     let totalElapsed = 0;
     
@@ -49,8 +54,9 @@ export class KanbanService {
     }
     
     // 3. Add current task elapsed time (if in progress)
-    if (currentTask?.startedAt) {
-      const currentTaskElapsed = Date.now() - new Date(currentTask.startedAt).getTime();
+    if (currentTask?.timing?.startedAt) {
+      const currentTaskStartTime = new Date(currentTask.timing.startedAt).getTime();
+      const currentTaskElapsed = Date.now() - currentTaskStartTime - (currentTask.timing.totalPausedDuration || 0);
       totalElapsed += currentTaskElapsed;
     }
     

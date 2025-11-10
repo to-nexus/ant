@@ -145,7 +145,6 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
             <ElapsedTimeBadge
               totalElapsedTime={kanbanData.totalElapsedTime}
               jobTiming={kanbanData.jobTiming}
-              inProgressTask={kanbanData.inProgress}
               activeJobId={kanbanData.activeJobId}
             />
           </>
@@ -175,7 +174,6 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
           <ElapsedTimeBadge
             totalElapsedTime={kanbanData.totalElapsedTime}
             jobTiming={kanbanData.jobTiming}
-            inProgressTask={kanbanData.inProgress}
             activeJobId={kanbanData.activeJobId}
           />
         </>

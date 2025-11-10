@@ -157,6 +157,9 @@ export class GenericLLMClient implements LLMClient {
     const stream = await this.model.stream(messages.map(m => new HumanMessage(m.content)));
     
     for await (const chunk of stream) {
+      // 🔍 DEBUG: Log raw chunk structure
+      console.log('[LLM Stream Debug] Raw chunk:', JSON.stringify(chunk, null, 2));
+      
       const content = (chunk as any).content;
       if (typeof content === 'string') {
         yield content;

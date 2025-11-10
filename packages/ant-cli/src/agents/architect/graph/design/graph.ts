@@ -66,6 +66,8 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
               currentTask: undefined,
               planText: state.planText,
               designMarkdown: state.designMarkdown,
+              jobId: (state as any).jobId,
+              jobTiming: (state as any).jobTiming
             }
           }
         );
@@ -136,6 +138,10 @@ export function buildDesignGraph() {
       currentTask: null as any,
       completedTasks: null as any,
       completedTasksDetails: null as any,
+      
+      // ✅ Job tracking (for timing and continuity)
+      jobId: null as any,
+      jobTiming: null as any,
       
       // Execution
       planText: null as any,

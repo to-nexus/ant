@@ -1,5 +1,6 @@
 import { LLMClient } from "../../../../../core/ports";
 import { DesignGraphState, Task, TaskQueue } from "../state";
+import { JobTimingManager } from "../../common/timing/JobTimingManager";
 
 /**
  * Decompose Node for Design
@@ -56,14 +57,20 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
           taskQueue.push(task);
         });
         
+        // ✨ Restore or initialize jobId and jobTiming
+        const existingJobId = session.state.jobId || state._httpTaskId || 'unknown-job';
+        const { jobId, jobTiming: resumedJobTiming } = JobTimingManager.resumeJob(existingJobId, session.state.jobTiming);
+        
         const resumedState: DesignGraphState = {
           ...state,
           taskQueue,
           currentTask: session.state.currentTask,
           completedTasks: session.state.completedTasks || [],
           completedTasksDetails: session.state.completedTasksDetails || [],
-          _httpTaskId: state._httpTaskId
-        };
+          _httpTaskId: state._httpTaskId,
+          jobId,
+          jobTiming: resumedJobTiming
+        } as any;
         
         console.log(`📊 RESUMING DESIGN SESSION:`);
         console.log(`   ✅ ${resumedState.completedTasks?.length || 0} task(s) completed`);
@@ -96,6 +103,32 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
       }
     } catch (error) {
       console.log('⚠️  Could not load previous session state, starting fresh');
+    }
+  }
+  
+  // ✨ Initialize jobId and jobTiming for NEW job
+  const { jobId: newJobId, jobTiming: newJobTiming, estimatingStartTime } = JobTimingManager.initializeNewJob(state._httpTaskId!);
+  
+  // 💾 CRITICAL: Save jobTiming to session IMMEDIATELY so frontend can show timer during estimating
+  if (state.deps?.session && state.context.featureFolder) {
+    try {
+      await state.deps.session.updateArtifacts(
+        state.context.project,
+        state.context.featureFolder,
+        'design',
+        {
+          state: {
+            jobId: newJobId,
+            jobTiming: newJobTiming,
+            taskQueue: [],
+            completedTasks: [],
+            completedTasksDetails: preloadedCompletedTasks
+          }
+        }
+      );
+      console.log(`💾 [Design Decompose] Initial jobTiming saved to session\n`);
+    } catch (error) {
+      console.warn(`⚠️  [Design Decompose] Failed to save initial jobTiming:`, error);
     }
   }
   
@@ -145,8 +178,10 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
       ...state,
       taskQueue,
       completedTasks: [],
-      _httpTaskId: state._httpTaskId
-    };
+      _httpTaskId: state._httpTaskId,
+      jobId: newJobId,
+      jobTiming: newJobTiming
+    } as any;
     
     // ✅ Update live snapshot
     console.log(`\n🔍 [Design Decompose Default] Kanban update check:`);
@@ -267,13 +302,18 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     console.log(`⏱️  Starting timer for first task: ${firstTask.name}`);
     const currentTask = TaskTimingHelper.startTask(firstTask);
     
+    // ✨ Calculate estimating duration
+    const finalJobTiming = JobTimingManager.finalizeEstimatingPhase(newJobTiming, estimatingStartTime);
+    
     const newState = {
       ...state,
       taskQueue,
       currentTask, // ✅ Set first task as current
       completedTasks: [],
-      _httpTaskId: state._httpTaskId
-    };
+      _httpTaskId: state._httpTaskId,
+      jobId: newJobId,
+      jobTiming: finalJobTiming
+    } as any;
     
     // ✅ CRITICAL: Save checkpoint immediately after decompose (like code job)
     // This triggers file watcher → SSE broadcast → UI update
@@ -287,7 +327,9 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
             state: {
               taskQueue: taskQueue.getAll(),
               completedTasks: [],
-              completedTasksDetails: []
+              completedTasksDetails: [],
+              jobId: newJobId,
+              jobTiming: finalJobTiming
             }
           }
         );
@@ -338,8 +380,10 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
       ...state,
       taskQueue,
       completedTasks: [],
-      _httpTaskId: state._httpTaskId
-    };
+      _httpTaskId: state._httpTaskId,
+      jobId: newJobId,
+      jobTiming: newJobTiming
+    } as any;
     
     // ✅ CRITICAL: Save checkpoint for fallback too
     if (state.deps?.session && state.context.featureFolder) {
@@ -352,7 +396,9 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
             state: {
               taskQueue: taskQueue.getAll(),
               completedTasks: [],
-              completedTasksDetails: []
+              completedTasksDetails: [],
+              jobId: newJobId,
+              jobTiming: newJobTiming
             }
           }
         );
