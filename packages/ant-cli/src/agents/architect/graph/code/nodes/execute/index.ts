@@ -93,23 +93,28 @@ export async function execute(
         // ✅ New file detected in LLM response
         if (currentFileForStreaming && streamedFiles.has(currentFileForStreaming)) {
           // Complete previous file
-          await chatAPI.completeFileCreation(currentFileForStreaming, ''); // Content already streamed
+          await chatAPI.completeFileCreation(currentFileForStreaming, '');
         }
         
         // Start new file card
         currentFileForStreaming = filePath;
         streamedFiles.add(filePath);
-        await chatAPI.streamFileContent(filePath, ''); // Start with empty (will be filled by text events)
+        await chatAPI.streamFileContent(filePath, '');
       },
       onFileEnd: async () => {
-        // File block ended (will start next file or finish)
+        // ✅ Complete current file when block ends
+        if (currentFileForStreaming) {
+          await chatAPI.completeFileCreation(currentFileForStreaming, '');
+          currentFileForStreaming = null;
+        }
       }
     });
     console.log('\n');
     
-    // ✅ Complete last streamed file (if any)
+    // ✅ Complete last streamed file if not already completed
     if (currentFileForStreaming) {
       await chatAPI.completeFileCreation(currentFileForStreaming, '');
+      currentFileForStreaming = null;
     }
     
     // Parse LLM response

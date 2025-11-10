@@ -18,7 +18,7 @@ interface ChatPanelProps {
   enabled: boolean;
 }
 
-export function ChatPanel({ projectId, featureName, enabled }: ChatPanelProps) {
+export function ChatPanel({ projectId: _projectId, featureName: _featureName, enabled: _enabled }: ChatPanelProps) {
   // ✅ Get chat data from Domain Store (via Application Hook)
   // SSE subscription is managed automatically in Store
   const { messages, isStreaming } = useChat();
@@ -134,7 +134,7 @@ export function ChatPanel({ projectId, featureName, enabled }: ChatPanelProps) {
 }
 
 // Export hook for parent to use (delegates to Application Hook)
-export function useChatData(projectId: string | null, featureName: string | null, enabled: boolean) {
+export function useChatData(_projectId: string | null, _featureName: string | null, _enabled: boolean) {
   // ✅ Delegate to Application Hook (parameters ignored, Store manages subscription)
   return useChat();
 }

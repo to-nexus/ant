@@ -56,14 +56,8 @@
   </g>
   
   <style>
-    /* Show light version by default, hide dark */
+    /* Controlled by external CSS (index.css) based on .dark class */
     .logo-light { display: block; }
     .logo-dark { display: none; }
-    
-    /* In dark mode, show dark version, hide light */
-    @media (prefers-color-scheme: dark) {
-      .logo-light { display: none; }
-      .logo-dark { display: block; }
-    }
   </style>
 </svg>

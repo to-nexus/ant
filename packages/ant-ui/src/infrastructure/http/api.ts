@@ -242,48 +242,23 @@ export async function executeJob(params: ExecuteJobParams): Promise<{ jobId: str
 }
 
 export async function stopJob(jobId: string, projectId?: string, featureName?: string): Promise<void> {
-  const url = `${API_BASE}/jobs/${encodeURIComponent(jobId)}/stop`;
-  console.log('[api.ts] stopJob - Sending request to:', url);
-  console.log('[api.ts] stopJob - Body:', { projectId, featureName });
-  
   try {
-    // ✅ Add timeout to detect hanging requests
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      console.error('[api.ts] stopJob - Request timeout after 5s');
-      controller.abort();
-    }, 5000);
-    
-    const response = await fetch(url, {
+    const response = await fetch(`${API_BASE}/jobs/${encodeURIComponent(jobId)}/stop`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ projectId, featureName }),  // ✅ Send project info
-      signal: controller.signal
+      body: JSON.stringify({ projectId, featureName }),
     });
     
-    clearTimeout(timeoutId);
-    
-    console.log('[api.ts] stopJob - Response status:', response.status);
-    console.log('[api.ts] stopJob - Response ok:', response.ok);
-    
     if (!response.ok) {
-      const text = await response.text();
-      console.error('[api.ts] stopJob - Error response:', text);
-      throw new Error(`Failed to stop task: ${response.statusText} - ${text}`);
+      throw new Error(`Failed to stop task: ${response.statusText}`);
     }
     
     const data = await response.json();
-    console.log('[api.ts] stopJob - Success:', data);
     return data;
-  } catch (error: any) {
-    if (error.name === 'AbortError') {
-      console.error('[api.ts] stopJob - Request was aborted (timeout)');
-    }
-    console.error('[api.ts] stopJob - Exception:', error);
-    console.error('[api.ts] stopJob - Error type:', error.name);
-    console.error('[api.ts] stopJob - Error message:', error.message);
+  } catch (error) {
+    console.error('Error stopping task:', error);
     throw error;
   }
 }
