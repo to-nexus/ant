@@ -47,7 +47,9 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
       try {
         // Stop the job on the server first
         if (jobId) {
-          await stopJob(jobId);
+          console.log('[cli.ts] Calling stopJob with:', { jobId, projectId, featureName });
+          await stopJob(jobId, projectId || undefined, featureName || undefined);  // ✅ Pass project info
+          console.log('[cli.ts] ✅ stopJob completed');
         }
       } catch (error) {
         console.error('Error stopping job on server:', error);

@@ -125,6 +125,7 @@ export function ItemDropdown({
           </h3>
           {!isCreating && (
             <Button 
+              variant="ghost"
               size="sm" 
               onClick={handleOpenCreate}
             >
@@ -180,6 +181,7 @@ export function ItemDropdown({
         </h3>
         {!isCreating && (
           <Button 
+            variant="ghost"
             size="sm" 
             onClick={handleOpenCreate}
           >

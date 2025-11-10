@@ -34,6 +34,9 @@ export async function streamLLMResponse(
   let accumulatedChunk = '';
   let insideFileBlock = false;
   let currentFilePath = '';
+  let insideResponseBlock = false;  // ✅ Track == RESPONSE == block
+  let firstFileDetected = false;    // ✅ Track if we've seen any files yet
+  let pendingContent = '';           // ✅ Buffer for incomplete markers
   
   // Initialize Chat API client
   const chatAPI = getChatAPIClient();
@@ -49,23 +52,78 @@ export async function streamLLMResponse(
     
     // Stream with chat integration
     for await (const event of llm.streamRaw(promptMessages)) {
-      // Send to Chat UI (filter based on thinkingOnly)
-      if (!thinkingOnly || event.type === 'thinking') {
-        await chatAPI.sendLLMEvent(event);
-      }
-      
       // Accumulate for parsing
       if (event.type === 'thinking' || event.type === 'text') {
-        const content = event.content;
+        let content = event.content;
         raw += content;
         accumulatedChunk += content;
         
-        if (onChunk) {
-          onChunk(content);
+        // ✅ Track RESPONSE block boundaries
+        if (accumulatedChunk.includes('== RESPONSE ==')) {
+          insideResponseBlock = true;
+        }
+        if (accumulatedChunk.includes('== END RESPONSE ==')) {
+          insideResponseBlock = false;
         }
         
-        // Track file generation
+        // ✅ Track state transitions
+        const previousInsideFileBlock = insideFileBlock;
+        
+        // Track file generation (updates insideFileBlock and firstFileDetected)
         trackFileGeneration();
+        
+        // ✅ Detect if file just started or ended (these chunks contain markers)
+        const fileJustStarted = !previousInsideFileBlock && insideFileBlock;
+        const fileJustEnded = previousInsideFileBlock && !insideFileBlock;
+        
+        // ✅ Aggressively remove all marker patterns from content BEFORE any checks
+        let cleanContent = content
+          .replace(/===\s*FILE:[^\n=]*===/g, '')
+          .replace(/===\s*END\s*FILE\s*===/g, '')
+          .replace(/==\s*RESPONSE\s*===/g, '')
+          .replace(/==\s*END\s*RESPONSE\s*===/g, '')
+          .replace(/===\s*FILE:/g, '')  // Partial marker at start
+          .replace(/FILE:[^\n=]*/g, '')  // Partial marker middle
+          .replace(/===\s*END/g, '')     // Partial END marker
+          .replace(/END\s*FILE/g, '')    // Partial END FILE
+          .trim();
+        
+        // ✅ Skip chunks that are at file boundaries OR became empty after cleaning
+        if (fileJustStarted || fileJustEnded || cleanContent.length === 0) {
+          // Don't send this chunk
+          if (onChunk) {
+            onChunk(content);
+          }
+          continue;
+        }
+        
+        // ✅ Filter logic:
+        // - Show thinking always
+        // - Show text ONLY if:
+        //   1. We're solidly inside a file block (not at boundaries)
+        //   2. Not inside RESPONSE block  
+        //   3. Has actual content after cleaning
+        const isFileContent = insideFileBlock && !fileJustStarted && !fileJustEnded;
+        const hasContentToShow = cleanContent.trim().length > 0;
+        const shouldShowInChat = (
+          (event.type === 'thinking') ||  // Always show thinking
+          (event.type === 'text' && isFileContent && !insideResponseBlock && hasContentToShow)  // Show text only inside file blocks
+        );
+        
+        // Send to Chat UI (with cleaned content)
+        if (!thinkingOnly || event.type === 'thinking') {
+          if (shouldShowInChat) {
+            // ✅ Send cleaned content (without markers)
+            await chatAPI.sendLLMEvent({
+              ...event,
+              content: cleanContent
+            });
+          }
+        }
+        
+        if (onChunk) {
+          onChunk(content); // Original content for parsing
+        }
       }
     }
   } else if (llm.stream) {
@@ -88,22 +146,42 @@ export async function streamLLMResponse(
   
   // Helper function to track file generation (improved pattern matching)
   function trackFileGeneration() {
-    // ✅ Improved pattern: Match file paths in code blocks (```language:path/to/file.ext or ```language\npath)
+    // ✅ Pattern 1: Match === FILE: path === marker (code job format)
+    const fileMarkerMatch = accumulatedChunk.match(/===\s*FILE:\s*([^\s=]+)\s*===/);
+    if (fileMarkerMatch && !insideFileBlock) {
+      insideFileBlock = true;
+      firstFileDetected = true;  // ✅ Mark that we've seen a file
+      currentFilePath = fileMarkerMatch[1].trim();
+      accumulatedChunk = '';
+      
+      if (onFileStart) {
+        onFileStart(currentFilePath);
+      }
+      return; // Don't check other patterns
+    }
+    
+    // ✅ Pattern 2: Match file paths in code blocks (```language:path/to/file.ext or ```language\npath)
     const fileStartMatch = accumulatedChunk.match(/```(?:typescript|javascript|tsx|jsx|ts|js|json|html|css|md|yaml|yml)?[:\s]+([^\n`]+\.[a-z]+)/i);
     if (fileStartMatch && !insideFileBlock) {
       insideFileBlock = true;
+      firstFileDetected = true;  // ✅ Mark that we've seen a file
       currentFilePath = fileStartMatch[1].trim();
       accumulatedChunk = '';
       
       if (onFileStart) {
         onFileStart(currentFilePath);
       }
+      return;
     }
     
-    // Detect file end marker (closing ```)
+    // Detect file end markers
     if (insideFileBlock) {
+      // Pattern 1: === END FILE === marker
+      const endMarkerMatch = accumulatedChunk.match(/===\s*END\s*FILE\s*===/);
+      // Pattern 2: closing ```
       const closingMatch = accumulatedChunk.match(/```\s*$/m);
-      if (closingMatch) {
+      
+      if (endMarkerMatch || closingMatch) {
         insideFileBlock = false;
         const prevPath = currentFilePath;
         currentFilePath = '';
