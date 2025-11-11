@@ -11,13 +11,9 @@ import { LogEntry } from '../../../../core/ports/http';
  * Handles spawning, monitoring, and stopping dev servers.
  */
 export class DevServerService {
-  // Dev server tracking
   private devServers: Map<string, ChildProcess> = new Map();
   private devServerPorts: Map<string, number> = new Map();
   private devServerLogs: Map<string, LogEntry[]> = new Map();
-  private devServerSSE: Map<string, Set<Response>> = new Map();
-  
-  // Callback for status changes
   private onStatusChange?: (projectId: string) => void;
   
   constructor(callbacks?: {
@@ -145,15 +141,11 @@ export class DevServerService {
           if (match) {
             const port = parseInt(match[1]);
             this.devServerPorts.set(projectId, port);
-            // Broadcast port detected
             this.onStatusChange?.(projectId);
             break;
           }
         }
       }
-      
-      // Broadcast log to SSE clients
-      this.broadcastLog(projectId, log);
     });
     
     // Capture stderr
@@ -169,9 +161,6 @@ export class DevServerService {
       const logs = this.devServerLogs.get(projectId) || [];
       logs.push(log);
       this.devServerLogs.set(projectId, logs);
-      
-      // Broadcast log to SSE clients
-      this.broadcastLog(projectId, log);
     });
     
     // Handle process exit
@@ -188,9 +177,6 @@ export class DevServerService {
       const logs = this.devServerLogs.get(projectId) || [];
       logs.push(log);
       this.devServerLogs.set(projectId, logs);
-      
-      // Broadcast log to SSE clients
-      this.broadcastLog(projectId, log);
       
       // Cleanup
       this.devServers.delete(projectId);
@@ -210,9 +196,6 @@ export class DevServerService {
       const logs = this.devServerLogs.get(projectId) || [];
       logs.push(log);
       this.devServerLogs.set(projectId, logs);
-      
-      // Broadcast log to SSE clients
-      this.broadcastLog(projectId, log);
       
       // Cleanup
       this.devServers.delete(projectId);
@@ -268,50 +251,6 @@ export class DevServerService {
    */
   getDevServerLogs(projectId: string): LogEntry[] {
     return this.devServerLogs.get(projectId) || [];
-  }
-  
-  /**
-   * Add SSE client for dev server logs
-   */
-  addSSEClient(projectId: string, res: Response): void {
-    if (!this.devServerSSE.has(projectId)) {
-      this.devServerSSE.set(projectId, new Set());
-    }
-    this.devServerSSE.get(projectId)!.add(res);
-  }
-  
-  /**
-   * Remove SSE client
-   */
-  removeSSEClient(projectId: string, res: Response): void {
-    const clients = this.devServerSSE.get(projectId);
-    if (clients) {
-      clients.delete(res);
-      if (clients.size === 0) {
-        this.devServerSSE.delete(projectId);
-      }
-    }
-  }
-  
-  /**
-   * Broadcast log to SSE clients
-   */
-  private broadcastLog(projectId: string, log: LogEntry): void {
-    const clients = this.devServerSSE.get(projectId);
-    if (!clients || clients.size === 0) {
-      return;
-    }
-    
-    const message = `data: ${JSON.stringify(log)}\n\n`;
-    
-    clients.forEach(res => {
-      try {
-        res.write(message);
-      } catch (error) {
-        console.error(`[DevServer SSE] Error sending to client:`, error);
-        clients.delete(res);
-      }
-    });
   }
   
   /**

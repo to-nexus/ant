@@ -47,45 +47,28 @@ export function FeatureDropdown() {
     checkInitialStatus();
   }, [selectedProject, isInitialMount, setDevServerStatus]);
 
-  // SSE connection for dev server status
+  // Poll dev server status periodically
   useEffect(() => {
     if (!selectedProject) {
       setDevServerStatus(undefined);
       return;
     }
     
-    // Setup SSE connection
-    const eventSource = new EventSource(
-      `http://localhost:4100/api/projects/${encodeURIComponent(selectedProject)}/dev/stream`
-    );
-    
-    eventSource.onmessage = (event) => {
+    const pollStatus = async () => {
       try {
-        const status = JSON.parse(event.data);
-        
-        // Log errors if server stopped unexpectedly
-        if (!status.running && status.logs && status.logs.length > 0) {
-          console.error('[FeatureDropdown] Dev server logs:', status.logs);
-          status.logs.forEach((log: any) => {
-            if (log.type === 'error' || log.type === 'stderr') {
-              console.error(`[DevServer Log] ${log.message}`);
-            }
-          });
-        }
-        
+        const status = await getDevServerStatus(selectedProject);
         setDevServerStatus(status);
       } catch (error) {
-        console.error('[FeatureDropdown] Failed to parse SSE data:', error);
+        console.error('[FeatureDropdown] Failed to fetch dev server status:', error);
       }
     };
     
-    eventSource.onerror = (error) => {
-      console.error('[FeatureDropdown] SSE error:', error);
-      eventSource.close();
-    };
+    // Poll every 5 seconds
+    const interval = setInterval(pollStatus, 5000);
+    pollStatus(); // Initial poll
     
     return () => {
-      eventSource.close();
+      clearInterval(interval);
     };
   }, [selectedProject, setDevServerStatus]);
 

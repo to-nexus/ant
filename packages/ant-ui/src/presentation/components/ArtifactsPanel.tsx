@@ -270,42 +270,7 @@ export function ArtifactsPanel() {
     }
   }, [selectedProject, selectedFeature, refreshFileTree]);
 
-  // ✅ SSE connection for real-time file tree updates
-  useEffect(() => {
-    if (!selectedProject || !selectedFeature) {
-      return;
-    }
-
-    const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4100/api';
-    const eventSource = new EventSource(
-      `${API_BASE}/projects/${selectedProject}/features/${selectedFeature}/files/stream`
-    );
-
-    console.log(`[FileTree SSE] Connecting to ${selectedProject}/${selectedFeature}`);
-
-    eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        console.log('[FileTree SSE] Received update:', data.type);
-        
-        if (data.type === 'initial' || data.type === 'update') {
-          setFileTree(data.fileTree);
-        }
-      } catch (error) {
-        console.error('[FileTree SSE] Failed to parse data:', error);
-      }
-    };
-
-    eventSource.onerror = () => {
-      console.log('[FileTree SSE] Connection error, but keeping connection alive');
-      // ✅ DON'T close the connection! SSE will auto-reconnect
-    };
-
-    return () => {
-      console.log('[FileTree SSE] Disconnecting');
-      eventSource.close();
-    };
-  }, [selectedProject, selectedFeature, setFileTree]);
+  // Note: Real-time file tree updates are now handled by the unified SSE connection in the store
 
   const handleCreateFile = async (dirPath: string, fileName: string) => {
     if (!selectedProject || !selectedFeature) return;

@@ -275,167 +275,117 @@ export const useStore = create<Store>((set, get) => ({
   // ==================
   initializeSSE: () => {
     const state = get();
-    console.log('[Store] 🚀 Initializing SSE connections...');
+    console.log('[Store] 🚀 Initializing unified SSE connection...');
     
-    // Kanban SSE
-    if (state.selectedProject && state.selectedFeature) {
-      const kanbanUrl = `${API_BASE}/projects/${state.selectedProject}/features/${state.selectedFeature}/kanban/stream`;
-      sseManager.connect('kanban', kanbanUrl, (data) => {
-        get().updateKanban(data);
-      });
+    if (!state.selectedProject || !state.selectedFeature) {
+      console.warn('[Store] ⚠️  Cannot initialize SSE: missing project/feature');
+      return;
     }
     
-    // Workflow SSE
+    // ✅ Clear existing handlers to prevent duplicates
+    sseManager.clearHandlers();
+    
+    // ✅ Register message handlers
+    sseManager.registerHandler('kanban', (data) => {
+      console.log('[Store] 📊 Kanban update received:', data);
+      get().updateKanban(data);
+    });
+    
+    sseManager.registerHandler('chat', (event) => {
+      console.log('[Store] 💬 Chat SSE event:', event.type);
+      
+      switch (event.type) {
+        case 'initial_state':
+          console.log('[Store] 💬 Loading initial chat messages:', event.messages.length);
+          set({ chatMessages: event.messages });
+          break;
+          
+        case 'user_message':
+          console.log('[Store] 💬 Adding user message');
+          get().addChatMessage(event.message);
+          break;
+          
+        case 'message_start':
+          console.log('[Store] 💬 Starting assistant message');
+          get().addChatMessage(event.message);
+          break;
+          
+        case 'content_add':
+          console.log('[Store] 💬 Adding content to message:', event.messageId);
+          get().updateChatMessage(event.messageId, {
+            contents: [...(get().chatMessages.find(m => m.id === event.messageId)?.contents || []), event.content]
+          });
+          break;
+          
+        case 'content_update':
+          console.log('[Store] 💬 Updating content in message:', event.messageId, 'index:', event.contentIndex);
+          const message = get().chatMessages.find(m => m.id === event.messageId);
+          if (message) {
+            const updatedContents = [...message.contents];
+            updatedContents[event.contentIndex] = event.content;
+            get().updateChatMessage(event.messageId, { contents: updatedContents });
+          }
+          break;
+          
+        case 'message_complete':
+          console.log('[Store] 💬 Completing message:', event.messageId);
+          get().updateChatMessage(event.messageId, { isComplete: true });
+          break;
+          
+        default:
+          console.warn('[Store] 💬 Unknown chat event type:', event.type);
+      }
+    });
+    
+    sseManager.registerHandler('fileTree', (data) => {
+      if (data.type === 'initial' || data.type === 'update') {
+        get().setFileTree(data.tree || data.fileTree);
+      }
+    });
+    
+    sseManager.registerHandler('workflow', (data) => {
+      get().updateWorkflow(data);
+    });
+    
+    // ✅ Connect to unified SSE endpoint
+    sseManager.connect(state.selectedProject, state.selectedFeature, state.currentMode || 'code');
+    
+    // ✅ Connect workflow SSE if job is running
     if (state.currentJobId) {
-      const workflowUrl = `${API_BASE}/jobs/${state.currentJobId}/workflow/stream`;
-      sseManager.connect('workflow', workflowUrl, (data) => {
-        get().updateWorkflow(data);
-      });
-    }
-    
-    // Chat SSE
-    if (state.selectedProject && state.selectedFeature) {
-      const chatUrl = `${API_BASE}/projects/${state.selectedProject}/features/${state.selectedFeature}/chat/stream`;
-      sseManager.connect('chat', chatUrl, (event) => {
-        console.log('[Store] 💬 Chat SSE event:', event.type);
-        
-        switch (event.type) {
-          case 'initial_state':
-            // 초기 상태 로드 (기존 메시지들)
-            console.log('[Store] 💬 Loading initial chat messages:', event.messages.length);
-            set({ chatMessages: event.messages });
-            break;
-            
-          case 'user_message':
-            // 사용자 메시지 추가
-            console.log('[Store] 💬 Adding user message');
-            get().addChatMessage(event.message);
-            break;
-            
-          case 'message_start':
-            // 어시스턴트 메시지 시작
-            console.log('[Store] 💬 Starting assistant message');
-            get().addChatMessage(event.message);
-            break;
-            
-          case 'content_add':
-            // 새 content 추가
-            console.log('[Store] 💬 Adding content to message:', event.messageId);
-            get().updateChatMessage(event.messageId, {
-              contents: [...(get().chatMessages.find(m => m.id === event.messageId)?.contents || []), event.content]
-            });
-            break;
-            
-          case 'content_update':
-            // 기존 content 업데이트
-            console.log('[Store] 💬 Updating content in message:', event.messageId, 'index:', event.contentIndex);
-            const message = get().chatMessages.find(m => m.id === event.messageId);
-            if (message) {
-              const updatedContents = [...message.contents];
-              updatedContents[event.contentIndex] = event.content;
-              get().updateChatMessage(event.messageId, { contents: updatedContents });
-            }
-            break;
-            
-          case 'message_complete':
-            // 메시지 완료
-            console.log('[Store] 💬 Completing message:', event.messageId);
-            get().updateChatMessage(event.messageId, { isComplete: true });
-            break;
-            
-          default:
-            console.warn('[Store] 💬 Unknown chat event type:', event.type);
-        }
-      });
-    }
-    
-    // FileTree SSE
-    if (state.selectedProject && state.selectedFeature) {
-      const fileTreeUrl = `${API_BASE}/projects/${state.selectedProject}/features/${state.selectedFeature}/files/stream`;
-      sseManager.connect('fileTree', fileTreeUrl, (data) => {
-        if (data.type === 'initial' || data.type === 'update') {
-          get().setFileTree(data.fileTree);
-        }
-      });
+      sseManager.connectWorkflow(state.currentJobId);
     }
     
     set({ connectionStatus: 'connected' });
-    console.log('[Store] ✅ SSE connections initialized');
+    console.log('[Store] ✅ Unified SSE connection initialized');
   },
   
   cleanupSSE: () => {
     console.log('[Store] 🧹 Cleaning up SSE connections...');
-    sseManager.disconnectAll();
+    sseManager.cleanup();
+    sseManager.clearHandlers();
     set({ connectionStatus: 'disconnected' });
     console.log('[Store] ✅ SSE connections cleaned up');
   },
   
   reconnectSSE: (key) => {
     const state = get();
-    console.log(`[Store] 🔄 Reconnecting SSE: ${key}`);
+    console.log(`[Store] 🔄 Reconnecting unified SSE (key: ${key})`);
     
-    // 기존 연결 종료
-    sseManager.disconnect(key);
+    if (!state.selectedProject || !state.selectedFeature) {
+      console.warn('[Store] ⚠️  Cannot reconnect: missing project/feature');
+      return;
+    }
     
-    // 새 연결 생성
-    if (key === 'kanban' && state.selectedProject && state.selectedFeature) {
-      const url = `${API_BASE}/projects/${state.selectedProject}/features/${state.selectedFeature}/kanban/stream`;
-      sseManager.connect('kanban', url, (data) => {
-        get().updateKanban(data);
-      });
-    } else if (key === 'workflow' && state.currentJobId) {
-      const url = `${API_BASE}/jobs/${state.currentJobId}/workflow/stream`;
-      sseManager.connect('workflow', url, (data) => {
-        get().updateWorkflow(data);
-      });
-    } else if (key === 'chat' && state.selectedProject && state.selectedFeature) {
-      const url = `${API_BASE}/projects/${state.selectedProject}/features/${state.selectedFeature}/chat/stream`;
-      sseManager.connect('chat', url, (event) => {
-        console.log('[Store] 💬 Chat SSE event (reconnect):', event.type);
-        
-        switch (event.type) {
-          case 'initial_state':
-            console.log('[Store] 💬 Loading initial chat messages:', event.messages.length);
-            set({ chatMessages: event.messages });
-            break;
-          case 'user_message':
-            console.log('[Store] 💬 Adding user message');
-            get().addChatMessage(event.message);
-            break;
-          case 'message_start':
-            console.log('[Store] 💬 Starting assistant message');
-            get().addChatMessage(event.message);
-            break;
-          case 'content_add':
-            console.log('[Store] 💬 Adding content to message:', event.messageId);
-            get().updateChatMessage(event.messageId, {
-              contents: [...(get().chatMessages.find(m => m.id === event.messageId)?.contents || []), event.content]
-            });
-            break;
-          case 'content_update':
-            console.log('[Store] 💬 Updating content in message:', event.messageId, 'index:', event.contentIndex);
-            const message = get().chatMessages.find(m => m.id === event.messageId);
-            if (message) {
-              const updatedContents = [...message.contents];
-              updatedContents[event.contentIndex] = event.content;
-              get().updateChatMessage(event.messageId, { contents: updatedContents });
-            }
-            break;
-          case 'message_complete':
-            console.log('[Store] 💬 Completing message:', event.messageId);
-            get().updateChatMessage(event.messageId, { isComplete: true });
-            break;
-          default:
-            console.warn('[Store] 💬 Unknown chat event type:', event.type);
-        }
-      });
-    } else if (key === 'fileTree' && state.selectedProject && state.selectedFeature) {
-      const url = `${API_BASE}/projects/${state.selectedProject}/features/${state.selectedFeature}/files/stream`;
-      sseManager.connect('fileTree', url, (data) => {
-        if (data.type === 'initial' || data.type === 'update') {
-          get().setFileTree(data.fileTree);
-        }
-      });
+    // ✅ For unified SSE, reinitialize to ensure handlers are registered
+    if (key === 'kanban' || key === 'chat' || key === 'fileTree') {
+      // Disconnect and reinitialize (which will register handlers + reconnect)
+      sseManager.disconnect();
+      get().initializeSSE();
+    } 
+    // ✅ For workflow SSE, reconnect per-job connection
+    else if (key === 'workflow' && state.currentJobId) {
+      sseManager.disconnectWorkflow(state.currentJobId);
+      sseManager.connectWorkflow(state.currentJobId);
     }
   },
 
@@ -474,9 +424,7 @@ export const useStore = create<Store>((set, get) => ({
     
     // SSE 재연결
     if (get().selectedFeature) {
-      get().reconnectSSE('kanban');
-      get().reconnectSSE('chat');
-      get().reconnectSSE('fileTree');
+      get().initializeSSE();
     }
   },
 
@@ -517,10 +465,8 @@ export const useStore = create<Store>((set, get) => ({
     
     saveToStorage(STORAGE_KEYS.SELECTED_FEATURE, featureName);
     
-    // SSE 재연결
-    get().reconnectSSE('kanban');
-    get().reconnectSSE('chat');
-    get().reconnectSSE('fileTree');
+    // SSE 초기화
+    get().initializeSSE();
   },
 
   setSelectedFeature: (featureName: string | undefined) => {
@@ -550,10 +496,8 @@ export const useStore = create<Store>((set, get) => ({
         })();
       }
       
-      // SSE 재연결
-      get().reconnectSSE('kanban');
-      get().reconnectSSE('chat');
-      get().reconnectSSE('fileTree');
+      // SSE 초기화
+      get().initializeSSE();
     } else {
       removeFromStorage(STORAGE_KEYS.SELECTED_FEATURE);
       set({ session: undefined });
@@ -648,23 +592,20 @@ export const useStore = create<Store>((set, get) => ({
         saveToStorage(STORAGE_KEYS.TASK_MODE, mode);
       }
       
-      // ✅ 기존 연결이 있으면 먼저 종료
-      sseManager.disconnect('workflow');
-      
-      // ✅ Workflow SSE 연결 - jobId를 직접 사용
+      // ✅ Connect Workflow SSE using new unified manager
       console.log('[Store] 🔗 Connecting workflow SSE for jobId:', jobId);
-      const workflowUrl = `${API_BASE}/jobs/${jobId}/workflow/stream`;
-      sseManager.connect('workflow', workflowUrl, (data) => {
-        get().updateWorkflow(data);
-      });
+      sseManager.connectWorkflow(jobId);
     } else {
       removeFromStorage(STORAGE_KEYS.RUNNING_TASK);
       removeFromStorage(STORAGE_KEYS.TASK_START_TIME);
       removeFromStorage(STORAGE_KEYS.TASK_MODE);
       
-      // Workflow SSE 종료
-      console.log('[Store] 🔌 Disconnecting workflow SSE');
-      sseManager.disconnect('workflow');
+      // ✅ Disconnect Workflow SSE using previous jobId
+      const prevJobId = get().currentJobId;
+      if (prevJobId) {
+        console.log('[Store] 🔌 Disconnecting workflow SSE for jobId:', prevJobId);
+        sseManager.disconnectWorkflow(prevJobId);
+      }
     }
   },
 

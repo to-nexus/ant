@@ -1,0 +1,63 @@
+{
+  "sessionId": "fe1c2090-bebf-45b6-ac19-45afa653df90",
+  "project": "demo-project",
+  "feature": "skeleton",
+  "createdAt": "2025-11-11T06:05:02.219Z",
+  "updatedAt": "2025-11-11T06:08:59.453Z",
+  "turns": [
+    {
+      "turnId": 1,
+      "task": "design",
+      "timestamp": "2025-11-11T06:08:59.449Z",
+      "input": {
+        "type": "file",
+        "source": "inputs/sources/prd.md",
+        "summary": "# Design Directive\n\nDescribe the design requirements here.\n",
+        "size": 59
+      },
+      "output": {
+        "designPath": "workspace/demo-project/skeleton/outputs/design/system-design-demo-project-1762841339435.md",
+        "planSummary": "# Design Strategy: CoinWatcher\n\n## 1. Key Requirements (2-3 items only)...",
+        "decisionCount": 3
+      }
+    }
+  ],
+  "artifacts": {
+    "latestDesign": "workspace/demo-project/skeleton/outputs/design/system-design-demo-project-1762841339435.md",
+    "keyDecisions": [
+      "- **Technology**: Foundation:**",
+      "- **Architecture**: ```",
+      "- **Database**: **"
+    ]
+  },
+  "state": {
+    "taskQueue": [],
+    "completedTasks": [
+      "design-doc"
+    ],
+    "completedTasksDetails": [
+      {
+        "id": "design-doc",
+        "name": "Create Design Document",
+        "type": "feature",
+        "priority": 250,
+        "description": "Design the CoinWatcher frontend application including component architecture, data flow, API integration with CoinGecko, state management strategy, UI/UX layout with TailwindCSS, auto-refresh mechanism, and currency conversion logic for the coin price tracking interface",
+        "completed": true,
+        "timing": {
+          "startedAt": "2025-11-11T06:05:07.542Z",
+          "totalPausedDuration": 0,
+          "completedAt": "2025-11-11T06:08:59.441Z",
+          "elapsedTime": 231899
+        }
+      }
+    ],
+    "jobId": "job-1762841100417-5uiprio1x",
+    "jobTiming": {
+      "startedAt": "2025-11-11T06:05:02.218Z",
+      "totalPausedDuration": 0,
+      "estimatingDuration": 5324,
+      "completedAt": "2025-11-11T06:08:59.452Z",
+      "pausedAt": "2025-11-11T06:08:59.491Z"
+    }
+  }
+}

@@ -9,6 +9,7 @@ import { Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { LLMStreamEvent } from '../../llm/types';
+import type { SSEService } from './SSEService';
 
 export interface ChatMessageContent {
   type: 'thinking' | 'text' 
@@ -68,11 +69,12 @@ interface ChatSession {
 
 export class ChatService {
   private workspaceRoot: string;
-  private sessions = new Map<string, ChatSession>(); // key: projectId/featureName (in-memory cache)
-  private sseClients = new Map<string, Set<Response>>(); // key: projectId/featureName
+  private sessions = new Map<string, ChatSession>();
+  private sseService?: SSEService;
 
-  constructor(workspaceRoot: string) {
+  constructor(workspaceRoot: string, sseService?: SSEService) {
     this.workspaceRoot = workspaceRoot;
+    this.sseService = sseService;
   }
 
   /**
@@ -811,79 +813,10 @@ export class ChatService {
     }
   }
 
-  /**
-   * Register SSE client
-   */
-  registerSSEClient(projectId: string, featureName: string, res: Response): void {
-    const key = this.getSessionKey(projectId, featureName);
-    
-    if (!this.sseClients.has(key)) {
-      this.sseClients.set(key, new Set());
-    }
-
-    this.sseClients.get(key)!.add(res);
-
-    // Send current state on connect
-    const messages = this.getMessages(projectId, featureName);
-    this.sendSSE(res, {
-      type: 'initial_state',
-      messages
-    });
-
-    console.log(`💬 [ChatService] SSE client registered for ${key} (${this.sseClients.get(key)!.size} clients)`);
-  }
-
-  /**
-   * Unregister SSE client
-   */
-  unregisterSSEClient(projectId: string, featureName: string, res: Response): void {
-    const key = this.getSessionKey(projectId, featureName);
-    const clients = this.sseClients.get(key);
-    
-    if (clients) {
-      clients.delete(res);
-      
-      if (clients.size === 0) {
-        this.sseClients.delete(key);
-      }
-      
-      console.log(`💬 [ChatService] SSE client unregistered for ${key} (${clients.size} clients remaining)`);
-    }
-  }
-
-  /**
-   * Broadcast update to all SSE clients for a session
-   */
   private broadcast(projectId: string, featureName: string, data: any): void {
-    const key = this.getSessionKey(projectId, featureName);
-    const clients = this.sseClients.get(key);
-    
-    if (!clients || clients.size === 0) {
-      return;
+    if (this.sseService) {
+      this.sseService.broadcast(projectId, featureName, 'chat', data);
     }
-
-    const deadClients: Response[] = [];
-
-    clients.forEach((client) => {
-      try {
-        this.sendSSE(client, data);
-      } catch (error) {
-        console.error('❌ [ChatService] Failed to send SSE:', error);
-        deadClients.push(client);
-      }
-    });
-
-    // Clean up dead clients
-    deadClients.forEach((client) => {
-      clients.delete(client);
-    });
-  }
-
-  /**
-   * Send SSE event to a single client
-   */
-  private sendSSE(res: Response, data: any): void {
-    res.write(`data: ${JSON.stringify(data)}\n\n`);
   }
 }
 

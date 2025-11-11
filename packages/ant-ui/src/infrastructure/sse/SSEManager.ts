@@ -1,10 +1,11 @@
 /**
- * SSEManager - Singleton SSE Connection Manager
+ * SSEManager - Unified SSE Connection Manager
  * 
  * Responsibilities:
- * - EventSource 인스턴스 생성/관리
+ * - 단일 EventSource 인스턴스 생성/관리
+ * - 메시지 타입별 라우팅
  * - 연결 상태 모니터링
- * - 자동 재연결 (EventSource 내장 기능 활용)
+ * - 자동 재연결
  * - Store에 데이터 전달
  * 
  * Architecture:
@@ -13,207 +14,302 @@
  * - 메모리 누수 방지를 위한 cleanup 보장
  * 
  * Usage:
- *   sseManager.connect('kanban', url, (data) => {
+ *   // Register handlers for different message types
+ *   sseManager.registerHandler('kanban', (data) => {
  *     useStore.getState().updateKanban(data);
  *   });
+ *   
+ *   // Connect to unified SSE endpoint
+ *   sseManager.connect(projectId, featureName);
  * 
  * @see packages/ant-ui/ARCHITECTURE.md
  */
 
+export type SSEMessageType = 'kanban' | 'chat' | 'fileTree' | 'workflow';
 export type SSEMessageHandler = (data: any) => void;
+
+interface SSEMessage {
+  type: SSEMessageType;
+  timestamp: string;
+  data: any;
+}
 
 interface SSEConnection {
   eventSource: EventSource;
   url: string;
-  onMessage: SSEMessageHandler;
+  projectId: string;
+  featureName: string;
   isConnected: boolean;
   reconnectAttempts: number;
 }
 
+interface WorkflowConnection {
+  eventSource: EventSource;
+  url: string;
+  jobId: string;
+  isConnected: boolean;
+}
+
 class SSEManager {
-  private connections: Map<string, SSEConnection> = new Map();
+  // Single unified SSE connection per project/feature
+  private unifiedConnection: SSEConnection | null = null;
+  
+  // Workflow SSE connections (per job)
+  private workflowConnections: Map<string, WorkflowConnection> = new Map();
+  
+  // Message handlers by type
+  private handlers: Map<SSEMessageType, SSEMessageHandler[]> = new Map();
+  
   private maxReconnectAttempts = 5;
+  private readonly API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4100/api';
   
   /**
-   * SSE 연결 생성
-   * @param key - 연결 식별자 (예: 'kanban', 'workflow', 'chat', 'fileTree')
-   * @param url - SSE 엔드포인트 URL
-   * @param onMessage - 메시지 수신 콜백 (Store 업데이트)
+   * Register message handler for a specific type
    */
-  connect(key: string, url: string, onMessage: SSEMessageHandler): void {
-    // 이미 연결되어 있으면 무시
-    if (this.connections.has(key)) {
-      console.warn(`[SSEManager] Connection '${key}' already exists. Ignoring duplicate connect.`);
-      return;
+  registerHandler(type: SSEMessageType, handler: SSEMessageHandler): void {
+    if (!this.handlers.has(type)) {
+      this.handlers.set(type, []);
+    }
+    this.handlers.get(type)!.push(handler);
+    console.log(`[SSEManager] 📝 Handler registered for '${type}' (total: ${this.handlers.get(type)!.length})`);
+  }
+  
+  /**
+   * Clear all handlers for a specific type (or all types)
+   */
+  clearHandlers(type?: SSEMessageType): void {
+    if (type) {
+      this.handlers.delete(type);
+      console.log(`[SSEManager] 🧹 Cleared handlers for '${type}'`);
+    } else {
+      this.handlers.clear();
+      console.log(`[SSEManager] 🧹 Cleared all handlers`);
+    }
+  }
+  
+  /**
+   * Unregister message handler
+   */
+  unregisterHandler(type: SSEMessageType, handler: SSEMessageHandler): void {
+    const handlers = this.handlers.get(type);
+    if (handlers) {
+      const index = handlers.indexOf(handler);
+      if (index > -1) {
+        handlers.splice(index, 1);
+      }
+    }
+  }
+  
+  /**
+   * Connect to unified SSE endpoint
+   */
+  connect(projectId: string, featureName: string, job: 'design' | 'code' | 'learn' = 'code'): void {
+    // Close existing connection if different project/feature
+    if (this.unifiedConnection) {
+      if (this.unifiedConnection.projectId === projectId && 
+          this.unifiedConnection.featureName === featureName) {
+        console.warn(`[SSEManager] Already connected to ${projectId}/${featureName}`);
+        return;
+      }
+      this.disconnect();
     }
     
-    console.log(`[SSEManager] 🔌 Connecting to '${key}': ${url}`);
+    const url = `${this.API_BASE}/projects/${projectId}/features/${featureName}/stream?job=${job}`;
+    console.log(`[SSEManager] 🔌 Connecting to unified SSE: ${url}`);
     
     try {
       const eventSource = new EventSource(url, {
-        withCredentials: false // CORS 설정에 따라 조정 가능
+        withCredentials: false
       });
       
       eventSource.onopen = () => {
-        console.log(`[SSEManager] ✅ '${key}' connection opened successfully`);
-        const conn = this.connections.get(key);
-        if (conn) {
-          conn.isConnected = true;
-          conn.reconnectAttempts = 0; // 연결 성공 시 재시도 카운트 리셋
+        console.log(`[SSEManager] ✅ Unified SSE connection opened`);
+        if (this.unifiedConnection) {
+          this.unifiedConnection.isConnected = true;
+          this.unifiedConnection.reconnectAttempts = 0;
         }
       };
       
       eventSource.onmessage = (event) => {
         try {
-          const data = JSON.parse(event.data);
-          // ✅ Workflow만 로그 출력
-          if (key === 'workflow') {
-            console.log(`[SSEManager] 📨 WORKFLOW message:`, {
-              jobId: data.jobId,
-              currentNode: data.currentNode,
-              previousNode: data.previousNode,
-              activeActors: data.activeActors
-            });
-          }
-          // ✅ Chat 메시지 디버깅
-          if (key === 'chat') {
-            console.log(`[SSEManager] 💬 CHAT message received:`, data);
-          }
-          // ✅ Store에 직접 업데이트 (React 외부에서 실행)
-          onMessage(data);
+          const message: SSEMessage = JSON.parse(event.data);
+          this.routeMessage(message);
         } catch (error) {
-          console.error(`[SSEManager] ❌ '${key}' parse error:`, error);
+          console.error(`[SSEManager] ❌ Parse error:`, error);
           console.error('[SSEManager] Raw data:', event.data);
         }
       };
       
       eventSource.onerror = (error) => {
-        console.error(`[SSEManager] ⚠️  '${key}' connection error:`, error);
-        const conn = this.connections.get(key);
-        if (conn) {
-          conn.isConnected = false;
-          conn.reconnectAttempts++;
+        console.error(`[SSEManager] ⚠️  Connection error:`, error);
+        if (this.unifiedConnection) {
+          this.unifiedConnection.isConnected = false;
+          this.unifiedConnection.reconnectAttempts++;
           
-          // 최대 재시도 횟수 초과 시 연결 종료
-          if (conn.reconnectAttempts >= this.maxReconnectAttempts) {
-            console.error(`[SSEManager] ❌ '${key}' max reconnection attempts reached. Closing connection.`);
-            this.disconnect(key);
-          } else {
-            console.log(`[SSEManager] 🔄 '${key}' will auto-reconnect (attempt ${conn.reconnectAttempts}/${this.maxReconnectAttempts})...`);
-            // EventSource가 자동으로 재연결 시도함
+          if (this.unifiedConnection.reconnectAttempts >= this.maxReconnectAttempts) {
+            console.error(`[SSEManager] ❌ Max reconnection attempts reached. Closing connection.`);
+            this.disconnect();
           }
         }
       };
       
-      this.connections.set(key, {
+      this.unifiedConnection = {
         eventSource,
         url,
-        onMessage,
-        isConnected: false, // onopen에서 true로 변경됨
+        projectId,
+        featureName,
+        isConnected: false,
         reconnectAttempts: 0
-      });
+      };
+      
     } catch (error) {
-      console.error(`[SSEManager] ❌ Failed to create EventSource for '${key}':`, error);
+      console.error(`[SSEManager] ❌ Failed to create EventSource:`, error);
     }
   }
   
   /**
-   * SSE 연결 종료
-   * @param key - 연결 식별자
+   * Connect to workflow SSE endpoint (per job)
    */
-  disconnect(key: string): void {
-    const connection = this.connections.get(key);
-    if (!connection) {
-      console.warn(`[SSEManager] Connection '${key}' not found. Nothing to disconnect.`);
+  connectWorkflow(jobId: string): void {
+    if (this.workflowConnections.has(jobId)) {
+      console.warn(`[SSEManager] Workflow connection for ${jobId} already exists`);
       return;
     }
     
-    console.log(`[SSEManager] 🔌 Disconnecting '${key}'...`);
+    const url = `${this.API_BASE}/jobs/${jobId}/workflow/stream`;
+    console.log(`[SSEManager] 🔌 Connecting to workflow SSE: ${url}`);
     
     try {
-      connection.eventSource.close();
-      this.connections.delete(key);
-      console.log(`[SSEManager] ✅ '${key}' disconnected successfully`);
+      const eventSource = new EventSource(url, {
+        withCredentials: false
+      });
+      
+      eventSource.onopen = () => {
+        console.log(`[SSEManager] ✅ Workflow connection opened for ${jobId}`);
+        const conn = this.workflowConnections.get(jobId);
+        if (conn) {
+          conn.isConnected = true;
+        }
+      };
+      
+      eventSource.onmessage = (event) => {
+        try {
+          const message: SSEMessage = JSON.parse(event.data);
+          this.routeMessage(message);
+        } catch (error) {
+          console.error(`[SSEManager] ❌ Workflow parse error:`, error);
+        }
+      };
+      
+      eventSource.onerror = (error) => {
+        console.error(`[SSEManager] ⚠️  Workflow connection error for ${jobId}:`, error);
+        this.disconnectWorkflow(jobId);
+      };
+      
+      this.workflowConnections.set(jobId, {
+        eventSource,
+        url,
+        jobId,
+        isConnected: false
+      });
+      
     } catch (error) {
-      console.error(`[SSEManager] ❌ Error disconnecting '${key}':`, error);
-      // 에러가 발생해도 Map에서는 제거
-      this.connections.delete(key);
+      console.error(`[SSEManager] ❌ Failed to create workflow EventSource:`, error);
     }
   }
   
   /**
-   * 모든 SSE 연결 종료
-   * App unmount 시 호출
+   * Route message to registered handlers based on type
    */
-  disconnectAll(): void {
-    const connectionCount = this.connections.size;
-    console.log(`[SSEManager] 🔌 Disconnecting all connections (${connectionCount} total)...`);
+  private routeMessage(message: SSEMessage): void {
+    const { type, data } = message;
+    console.log(`[SSEManager] 📨 Routing message: type='${type}'`, data);
     
-    // forEach는 내부에서 delete를 호출하므로 Array.from으로 복사 후 처리
-    const keys = Array.from(this.connections.keys());
-    keys.forEach((key) => {
-      this.disconnect(key);
+    const handlers = this.handlers.get(type);
+    
+    if (!handlers || handlers.length === 0) {
+      console.warn(`[SSEManager] ⚠️ No handlers registered for type '${type}'`);
+      return;
+    }
+    
+    console.log(`[SSEManager] 📡 Calling ${handlers.length} handler(s) for '${type}'`);
+    
+    // Call all registered handlers for this type
+    handlers.forEach(handler => {
+      try {
+        handler(data);
+      } catch (error) {
+        console.error(`[SSEManager] ❌ Handler error for '${type}':`, error);
+      }
+    });
+  }
+  
+  /**
+   * Disconnect unified SSE
+   */
+  disconnect(): void {
+    if (this.unifiedConnection) {
+      console.log(`[SSEManager] Connection 'unified' disconnecting...`);
+      try {
+        this.unifiedConnection.eventSource.close();
+      } catch (error) {
+        console.error('[SSEManager] Error closing unified connection:', error);
+      }
+      this.unifiedConnection = null;
+    }
+  }
+  
+  /**
+   * Disconnect workflow SSE
+   */
+  disconnectWorkflow(jobId: string): void {
+    const conn = this.workflowConnections.get(jobId);
+    if (conn) {
+      console.log(`[SSEManager] Disconnecting workflow for ${jobId}...`);
+      try {
+        conn.eventSource.close();
+      } catch (error) {
+        console.error('[SSEManager] Error closing workflow connection:', error);
+      }
+      this.workflowConnections.delete(jobId);
+    }
+  }
+  
+  /**
+   * Cleanup all connections
+   */
+  cleanup(): void {
+    console.log('[SSEManager] 🧹 Cleaning up all connections...');
+    
+    this.disconnect();
+    
+    this.workflowConnections.forEach((_, jobId) => {
+      this.disconnectWorkflow(jobId);
     });
     
-    console.log('[SSEManager] ✅ All connections disconnected');
+    this.handlers.clear();
   }
   
   /**
-   * 연결 상태 확인
-   * @param key - 연결 식별자
-   * @returns 연결 여부
+   * Get connection status
    */
-  isConnected(key: string): boolean {
-    return this.connections.get(key)?.isConnected ?? false;
+  isConnected(): boolean {
+    return this.unifiedConnection?.isConnected || false;
   }
   
   /**
-   * 현재 활성 연결 목록
-   * @returns 연결 키 배열
+   * Get workflow connection status
    */
-  getActiveConnections(): string[] {
-    return Array.from(this.connections.keys());
-  }
-  
-  /**
-   * 연결 정보 조회 (디버깅용)
-   * @param key - 연결 식별자
-   * @returns 연결 정보
-   */
-  getConnectionInfo(key: string): { url: string; isConnected: boolean; reconnectAttempts: number } | null {
-    const conn = this.connections.get(key);
-    if (!conn) return null;
-    
-    return {
-      url: conn.url,
-      isConnected: conn.isConnected,
-      reconnectAttempts: conn.reconnectAttempts
-    };
-  }
-  
-  /**
-   * 모든 연결 정보 조회 (디버깅용)
-   */
-  getAllConnectionInfo(): Record<string, { url: string; isConnected: boolean; reconnectAttempts: number }> {
-    const info: Record<string, any> = {};
-    this.connections.forEach((conn, key) => {
-      info[key] = {
-        url: conn.url,
-        isConnected: conn.isConnected,
-        reconnectAttempts: conn.reconnectAttempts
-      };
-    });
-    return info;
+  isWorkflowConnected(jobId: string): boolean {
+    return this.workflowConnections.get(jobId)?.isConnected || false;
   }
 }
 
-// ✅ Singleton 인스턴스 export
-// 애플리케이션 전체에서 단 하나의 SSEManager만 존재
+// Export singleton instance
 export const sseManager = new SSEManager();
 
-// 디버깅용: window 객체에 노출 (개발 환경에서만)
+// Debug access (개발 환경에서만)
 if (import.meta.env.DEV) {
   (window as any).__sseManager = sseManager;
   console.log('[SSEManager] 🐛 Debug mode: sseManager available at window.__sseManager');
 }
-
