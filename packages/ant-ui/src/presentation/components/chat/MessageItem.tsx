@@ -679,24 +679,28 @@ function FileCard({ content, operation }: FileCardProps) {
             </span>
           </div>
           {/* Line stats - only show when completed or actively streaming with content */}
-          {isCompleted && operation === 'edit' && lineStats.added > 0 && lineStats.removed > 0 && (
+          {isCompleted && operation === 'edit' && (lineStats.added > 0 || lineStats.removed > 0) && (
             <div className="flex items-center gap-2">
-              <span className="text-green-600 dark:text-green-400 font-mono">
-                +{lineStats.added}
-              </span>
-              <span className="text-red-600 dark:text-red-400 font-mono">
-                -{lineStats.removed}
-              </span>
+              {lineStats.added >= 0 && (
+                <span className="text-green-600 dark:text-green-400 font-mono">
+                  +{lineStats.added}
+                </span>
+              )}
+              {lineStats.removed >= 0 && (
+                <span className="text-red-600 dark:text-red-400 font-mono">
+                  -{lineStats.removed}
+                </span>
+              )}
             </div>
           )}
-          {isCompleted && operation === 'create' && lineStats.total && lineStats.total > 0 && (
+          {isCompleted && operation === 'create' && lineStats.total != null && (
             <span className="text-green-600 dark:text-green-400 font-mono">
-              +{lineStats.total} lines
+              +{lineStats.total} {lineStats.total === 1 ? 'line' : 'lines'}
             </span>
           )}
           {isCompleted && operation === 'delete' && lineStats.total != null && (
-            <span className="text-red-600 dark:!text-red-400 font-mono">
-              {lineStats.total > 0 ? `-${lineStats.total} lines` : '0'}
+            <span className="text-red-600 dark:text-red-400 font-mono">
+              -{lineStats.total} {lineStats.total === 1 ? 'line' : 'lines'}
             </span>
           )}
           {/* Show/Hide button - only when completed and has content */}

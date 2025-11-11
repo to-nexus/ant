@@ -289,9 +289,11 @@ export class KanbanService {
     
     // Priority 3: SESSION DATA (job completed or no session)
     console.log(`\n📁 [KanbanService] SESSION DATA returned`);
+    console.log(`   Session jobId: ${sessionJobId || 'MISSING!'}`);
     console.log(`   Job completed: ${isJobCompleted}`);
     console.log(`   Completed tasks: ${completedTasksDetails.length}`);
-    console.log(`   Has interruption: ${!!sessionState.interruption}\n`);
+    console.log(`   Has interruption: ${!!sessionState.interruption}`);
+    console.log(`   Interruption reason: ${sessionState.interruption?.reason || 'none'}\n`);
     
     const totalElapsedTime = this.calculateTotalElapsedTime(
       sessionState.jobTiming,

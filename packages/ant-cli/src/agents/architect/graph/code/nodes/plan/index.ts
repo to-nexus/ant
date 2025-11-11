@@ -71,22 +71,8 @@ function formatPreviousAttempts(attempts: AttemptHistory[]): string {
  * 4. Generate execution plan for current task
  */
 export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphState> {
-  // ✅ Workflow instrumentation: Enter node with current task info
-  if (state.deps?.workflowUpdate && state._httpTaskId) {
-    const taskInfo = state.currentTask ? {
-      id: state.currentTask.id,
-      name: state.currentTask.name,
-      type: state.currentTask.type,
-      description: state.currentTask.description,
-      priority: state.currentTask.priority
-    } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'plan', taskInfo);
-  }
-  
   // ✅ Increment recursion count (track every node execution)
   state.recursionCount = (state.recursionCount || 0) + 1;
-  
-  console.log(`\n🧭 Planning (${state.recursionCount}/${state.recursionLimit || 50})`);
   
   const llm = state.deps?.llm as LLMClient;
   const engine = state.deps?.promptEngine as PromptEngine;
@@ -95,6 +81,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   const isRetry = Boolean(enforcementReason);
   
   // ===== DETERMINE WHICH TASK TO EXECUTE =====
+  // ✅ CRITICAL: Pop next task BEFORE enterNode (so UI shows correct task immediately)
   let nextTask: Task | undefined;
   
   if (isRetry && state.currentTask) {
@@ -137,6 +124,20 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
           state.recursionLimit || 50
         );
       }
+      
+      // ✅ Workflow instrumentation: Enter node AFTER Kanban update (with retry task info)
+      if (state.deps?.workflowUpdate && state._httpTaskId) {
+        const taskInfo = {
+          id: nextTask.id,
+          name: nextTask.name,
+          type: nextTask.type,
+          description: nextTask.description,
+          priority: nextTask.priority
+        };
+        await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'plan', taskInfo);
+      }
+      
+      console.log(`\n🧭 Planning (${state.recursionCount}/${state.recursionLimit || 50})`);
       
       return {
         ...state,
@@ -197,8 +198,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       console.log(`   ${remainingBeforePop - 1} more task(s) in queue`);
     }
     
-    // ✅ Update live task queue snapshot
-    
+    // ✅ CRITICAL: Update Kanban snapshot BEFORE enterNode (so UI shows task immediately)
     if (state._httpTaskId) {
       const completedTasksDetails = state.completedTasksDetails || [];
       
@@ -212,6 +212,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
           state.recursionCount,
           state.recursionLimit || 50
         );
+        console.log(`🎬 [Plan] Task started! Sent to Kanban board via PORT\n`);
       } else {
         // Child process: HTTP API fallback
         const serverPort = process.env.ANT_SERVER_PORT || '4100';
@@ -229,11 +230,26 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
               recursionLimit: state.recursionLimit || 50
             })
           });
+          console.log(`🎬 [Plan] Task started! Sent to Kanban board via HTTP\n`);
         } catch (err: any) {
           // Silent fail for HTTP fallback
         }
       }
     }
+    
+    // ✅ Workflow instrumentation: Enter node AFTER Kanban update (with new task info)
+    if (state.deps?.workflowUpdate && state._httpTaskId) {
+      const taskInfo = {
+        id: nextTask.id,
+        name: nextTask.name,
+        type: nextTask.type,
+        description: nextTask.description,
+        priority: nextTask.priority
+      };
+      await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'plan', taskInfo);
+    }
+    
+    console.log(`\n🧭 Planning (${state.recursionCount}/${state.recursionLimit || 50})`);
   }
   
   // ===== CHECK RETRY LIMIT (Priority Check) =====

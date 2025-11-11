@@ -51,7 +51,7 @@ export class TaskExecutionService {
    * Execute an agent job asynchronously
    */
   async executeJob(params: ExecuteJobParams): Promise<JobResult> {
-    const jobId = `job-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const jobId = `${Date.now().toString(36)}${Math.random().toString(36).substr(2, 6)}`;
     
     // Initialize job tracking
     const jobStatus: JobStatus = {

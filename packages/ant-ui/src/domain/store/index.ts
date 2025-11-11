@@ -31,6 +31,7 @@ interface StoreState {
   isStopping: boolean;  // ✅ Stopping state for Stop button
   userStoppedJobId: string | null;  // ✅ Track which job user explicitly stopped
   lastJobFailed: boolean;  // ✅ Track if last job failed (for retry)
+  dismissedInterruptTimestamp: string | null;  // ✅ Track dismissed interruption (hide resume UI)
   
   // ✅ Job Identity
   // Single source of truth for current job ID (synced from server via Kanban SSE)
@@ -88,6 +89,7 @@ interface StoreActions {
   setRunning: (isRunning: boolean, taskId?: string, mode?: 'generate' | 'refactor' | 'explain') => void;
   setStopping: (isStopping: boolean) => void;
   setLastJobFailed: (failed: boolean) => void;
+  setDismissedInterruptTimestamp: (timestamp: string | null) => void;
   setCurrentJob: (job: JobExecution | null) => void;
   reset: () => void;
   setConnectionStatus: (status: 'connected' | 'disconnected' | 'error') => void;
@@ -183,6 +185,7 @@ export const useStore = create<Store>((set, get) => ({
   isStopping: false,
   userStoppedJobId: null,
   lastJobFailed: false,
+  dismissedInterruptTimestamp: null,
   currentJobId: undefined,
   currentJob: null,
   connectionStatus: 'disconnected',
@@ -216,6 +219,8 @@ export const useStore = create<Store>((set, get) => ({
       console.log(`   DataSource: ${data.dataSource}`);
       console.log(`   Job ID from Kanban: ${kanbanJobId}`);
       console.log(`   Current Job ID in store: ${state.currentJobId}`);
+      console.log(`   Has interruption: ${!!data.interruption}`);
+      console.log(`   Interruption reason: ${data.interruption?.reason || 'none'}`);
       console.log('   Setting isRunning: false');
       
       set({ 
@@ -604,7 +609,8 @@ export const useStore = create<Store>((set, get) => ({
       elapsedTime: isRunning ? 0 : get().elapsedTime,
       currentMode: isRunning ? mode : undefined,
       userStoppedJobId: isRunning ? null : get().userStoppedJobId,
-      lastJobFailed: false
+      // ✅ Only reset lastJobFailed when starting a new job, not when stopping
+      ...(isRunning ? { lastJobFailed: false } : {})
     });
 
     if (isRunning && jobId) {
@@ -637,6 +643,10 @@ export const useStore = create<Store>((set, get) => ({
 
   setLastJobFailed: (failed: boolean) => {
     set({ lastJobFailed: failed });
+  },
+
+  setDismissedInterruptTimestamp: (timestamp: string | null) => {
+    set({ dismissedInterruptTimestamp: timestamp });
   },
 
   setCurrentJob: (job: JobExecution | null) => {

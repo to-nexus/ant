@@ -88,6 +88,8 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
             resolvedCategories: (session.state.resolvedCategories || []) as any,
             recursionCount: session.state.recursionCount || 0,  // ✅ CRITICAL: Restore recursion count
             recursionLimit: session.state.recursionLimit || finalLimit,  // ✅ CRITICAL: Restore recursion limit
+            jobId: (session.state as any).jobId,  // ✅ CRITICAL: Restore jobId
+            jobTiming: (session.state as any).jobTiming,  // ✅ CRITICAL: Restore jobTiming
           };
         }
       } catch (restoreError) {
