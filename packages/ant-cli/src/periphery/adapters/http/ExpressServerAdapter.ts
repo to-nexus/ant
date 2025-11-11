@@ -84,7 +84,8 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     recursionCount?: number;  // ✅ Current recursion iteration
     recursionLimit?: number;  // ✅ Maximum recursion limit
   }> = new Map();
-  private jobToProject: Map<string, { projectId: string; featureName: string }> = new Map();
+  private jobToProject: Map<string, { projectId: string; featureName: string; jobType: 'design' | 'code' | 'learn' }> = new Map();
+  private userStoppedJobs: Set<string> = new Set();  // ✅ Track user-stopped jobs to prevent duplicate cleanup
   
   /**
    * Get current job ID (for CLI subprocess)
@@ -183,29 +184,36 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     jobId: string, 
     projectId?: string, 
     featureName?: string,
-    interruptionReason?: InterruptionDetails
+    interruptionReason?: InterruptionDetails,
+    explicitJobType?: 'design' | 'code' | 'learn'
   ): Promise<void> {
     console.log(`\n🧹 [ExpressServerAdapter] cleanupJobState called for ${jobId}`);
     console.log(`   projectId: ${projectId || 'undefined'}, featureName: ${featureName || 'undefined'}`);
     console.log(`   interruptionReason: ${interruptionReason?.reason || 'none'}`);
+    console.log(`   explicitJobType: ${explicitJobType || 'undefined'}`);
     
-    // Get mapping before deletion (from Map or from parameters)
+    // ✅ Get mapping before deletion (includes jobType!)
     let mapping = this.jobToProject.get(jobId);
     
     // ✅ If mapping not found in Map (e.g., after page refresh), use provided parameters
     if (!mapping && projectId && featureName) {
-      mapping = { projectId, featureName };
-      console.log(`   Using provided mapping: ${projectId}/${featureName}`);
+      mapping = { 
+        projectId, 
+        featureName, 
+        jobType: explicitJobType || 'code'  // Fallback to explicit or default
+      };
+      console.log(`   Using provided mapping: ${projectId}/${featureName}/${mapping.jobType}`);
     }
     
     // Get current snapshot to return in-progress task to queue
     const snapshot = this.taskQueueSnapshots.get(jobId);
     console.log(`   Snapshot exists: ${!!snapshot}`);
     
-    // ✅ CRITICAL: Get jobStatus BEFORE deletion to determine job type
+    // ✅ CRITICAL: Determine job type (priority: mapping > explicit > jobStatus > default)
     const jobStatus = this.jobs.get(jobId);
-    const jobType = (jobStatus?.task as 'design' | 'code' | 'learn') || 'code';
-    console.log(`   Job type: ${jobType}`);
+    const jobType = mapping?.jobType || explicitJobType || (jobStatus?.task as 'design' | 'code' | 'learn') || 'code';
+    const jobTypeSource = mapping?.jobType ? 'mapping' : explicitJobType ? 'explicit' : jobStatus?.task ? 'jobStatus' : 'default';
+    console.log(`   Job type determined: ${jobType} (source: ${jobTypeSource})`);
     
     // ✅ End workflow tracking
     this.workflowStateService.endJob(jobId);
@@ -300,10 +308,14 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         if (interruptionReason) {
           sessionData.state.interruption = interruptionReason;
           console.log(`   ✅ Saved interruption reason: ${interruptionReason.reason}`);
+          
+          // ✅ NOTE: Keep jobId in session (needed for UI display)
+          // Auto-restore prevention is handled by frontend userStoppedJobId check
         }
         
         // ✅ Log preserved state for debugging
         console.log(`   ✅ Preserving state:`, {
+          jobId: sessionData.state.jobId,  // ✅ CRITICAL: Check if jobId is preserved
           hasInterruption: !!sessionData.state.interruption,
           interruptionReason: sessionData.state.interruption?.reason,
           recursionCount: sessionData.state.recursionCount,
@@ -504,6 +516,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       logs: this.logs,
       childProcesses: this.childProcesses,
       jobs: this.jobs,
+      userStoppedJobs: this.userStoppedJobs,  // ✅ Track user-stopped jobs
       cleanupJobState: this.cleanupJobState.bind(this),
       workflowStateService: this.workflowStateService  // ✅ CRITICAL: Pass for node tracking
     });
@@ -591,10 +604,10 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     
     console.log(`   ✅ Job status set to 'pending'`);
     
-    // Map jobId to project/feature for Kanban tracking
-    this.jobToProject.set(jobId, { projectId, featureName });
+    // Map jobId to project/feature/jobType for Kanban tracking
+    this.jobToProject.set(jobId, { projectId, featureName, jobType });
     
-    console.log(`   ✅ Job mapped: ${projectId}/${featureName} -> ${jobId}`);
+    console.log(`   ✅ Job mapped: ${projectId}/${featureName}/${jobType} -> ${jobId}`);
     console.log(`   Total jobs in map: ${this.jobToProject.size}`);
     
     
@@ -928,11 +941,19 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
                 };
               }
             }
-            // Don't save interruption for user stops (already handled in jobRoutes)
             
-            // ✅ CRITICAL: Clean up job state even on failure (recursion limit, errors)
-            // This moves currentTask back to queue and broadcasts to UI
+            // ✅ CRITICAL: Don't cleanup if user explicitly stopped (already handled in Stop API)
+            if (this.userStoppedJobs.has(jobId)) {
+              console.log(`\n⏭️  [ExpressServerAdapter.runJob] Job ${jobId} was user-stopped, skipping exit handler cleanup (Stop API will handle it)\n`);
+              this.userStoppedJobs.delete(jobId);  // Clean up flag
+              reject(new Error(status.error));
+              return;
+            }
+            
+            // Only cleanup for natural failures (not user stops)
+            console.log(`\n🧹 [ExpressServerAdapter.runJob] Job ${jobId} failed naturally, calling cleanupJobState...`);
             await this.cleanupJobState(jobId, undefined, undefined, interruption);
+            console.log(`   ✅ cleanupJobState completed\n`);
             
             reject(new Error(status.error));
           }

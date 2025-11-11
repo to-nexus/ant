@@ -852,6 +852,63 @@ export function createProjectRoutes(deps: {
     const messageId = deps.chatService.addJobError(projectId, featureName, jobId, errorMessage, errorDetails);
     res.json({ messageId });
   });
+
+  /**
+   * DELETE /projects/:id/features/:feature/session
+   * Clear session data for a specific job type
+   */
+  router.delete('/projects/:id/features/:feature/session', async (req: Request, res: Response) => {
+    try {
+      const projectId = req.params.id;
+      const featureName = req.params.feature;
+      const jobType = (req.query.job as 'design' | 'code' | 'learn') || 'code';
+      
+      const sessionPath = path.join(
+        deps.workspaceRoot,
+        projectId,
+        featureName,
+        `sessions/${jobType}.json`
+      );
+      
+      // Check if session file exists
+      const exists = await fs.promises.access(sessionPath)
+        .then(() => true)
+        .catch(() => false);
+      
+      if (!exists) {
+        console.log(`[Session] No session file to clear: ${sessionPath}`);
+        return res.json({ success: true, message: 'No session data to clear' });
+      }
+      
+      // Read existing session
+      const sessionData = JSON.parse(await fs.promises.readFile(sessionPath, 'utf-8'));
+      
+      // Clear job-related data but keep structure
+      const clearedSession = {
+        ...sessionData,
+        state: {
+          taskQueue: [],
+          completedTasks: [],
+          completedTasksDetails: [],
+          currentTask: null,
+          jobId: undefined,
+          jobTiming: undefined,
+          recursionCount: 0,
+          recursionLimit: sessionData.state?.recursionLimit || 50,
+          interruption: undefined
+        }
+      };
+      
+      // Write cleared session
+      await fs.promises.writeFile(sessionPath, JSON.stringify(clearedSession, null, 2), 'utf-8');
+      
+      console.log(`[Session] ✅ Cleared session data: ${projectId}/${featureName}/${jobType}.json`);
+      res.json({ success: true, message: 'Session data cleared' });
+    } catch (error: any) {
+      console.error('[Session] ❌ Error clearing session:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
   
   return router;
 }

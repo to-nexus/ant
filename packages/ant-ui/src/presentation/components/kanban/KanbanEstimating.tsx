@@ -1,3 +1,4 @@
+import { Timer, Brain } from 'lucide-react';
 import { TaskTimer } from '../TaskTimer';
 import { KanbanStatusBanner } from './KanbanStatusBanner';
 
@@ -54,12 +55,12 @@ export function KanbanEstimating({ jobTiming }: KanbanEstimatingProps) {
   
   return (
     <>
-      {/* Compact banner with animated hourglass and timer */}
+      {/* Compact banner with animated brain icon and timer */}
       <div className="mb-4 p-4 bg-purple-50 dark:bg-purple-950 border-2 border-purple-300 dark:border-purple-700 rounded-lg">
         <div className="flex items-start gap-4">
-          {/* Animated hourglass icon */}
-          <div className="text-2xl animate-spin">
-            ⏳
+          {/* Animated brain icon - thinking/analyzing */}
+          <div className="animate-pulse">
+            <Brain className="w-6 h-6 text-purple-600 dark:text-purple-400" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-baseline gap-3">
@@ -67,8 +68,9 @@ export function KanbanEstimating({ jobTiming }: KanbanEstimatingProps) {
                 Breaking down tasks...
               </div>
               {/* Elapsed time timer - using TaskTimer component (same as TaskCard) */}
-              <div className="text-sm text-purple-700 dark:text-purple-300 whitespace-nowrap">
-                ⏱️ <TaskTimer timing={jobTiming} isRunning={true} />
+              <div className="text-sm text-purple-700 dark:text-purple-300 whitespace-nowrap flex items-center gap-1">
+                <Timer className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                <TaskTimer timing={jobTiming} isRunning={true} />
               </div>
             </div>
             <div className="text-sm text-purple-800 dark:text-purple-300 mt-2">

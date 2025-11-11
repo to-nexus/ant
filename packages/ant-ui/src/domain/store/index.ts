@@ -1,18 +1,10 @@
 import { create } from 'zustand';
 import { Session } from '@/domain/models/session';
-import { LogEntry } from '@/domain/models/log';
 import { Feature, FileNode, FileContent, DevServerStatus, KanbanData } from '@/infrastructure/http/api';
-import { subscribeToLogs } from '@/infrastructure/http/api';
 import { JobExecution } from '@/infrastructure/http/cli';
-import { CircularLogBuffer } from '@/shared/utils/CircularLogBuffer';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
 import type { WorkflowRealtimeState } from '@/domain/models/workflow';
 import type { ChatMessage } from '@/domain/models/chat';
-
-// ✅ Circular buffer for efficient log storage
-const logBuffer = new CircularLogBuffer(2000);  // 최대 2000개 로그
-
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4100/api';
 
 interface StoreState {
   // ==================
@@ -35,14 +27,18 @@ interface StoreState {
   fileTree: FileNode[];
   fileContent: FileContent | undefined;
   session: Session | undefined;
-  logsVersion: number;  // ✅ 로그 변경 알림용 (증가만 함)
   isRunning: boolean;
   isStopping: boolean;  // ✅ Stopping state for Stop button
   userStoppedJobId: string | null;  // ✅ Track which job user explicitly stopped
   lastJobFailed: boolean;  // ✅ Track if last job failed (for retry)
+  
+  // ✅ Job Identity
+  // Single source of truth for current job ID (synced from server via Kanban SSE)
   currentJobId: string | undefined;
+  
+  // ✅ Job execution handle (optional, only for client-initiated jobs)
+  // Used to call .kill() for client-side stop requests
   currentJob: JobExecution | null;
-  activeTasks: Map<string, EventSource>;
   connectionStatus: 'connected' | 'disconnected' | 'error';
   showConfigEditor: boolean;
   showFileEditor: boolean;
@@ -89,16 +85,11 @@ interface StoreActions {
   refreshFileTree: () => Promise<void>;
   setFileContent: (content: FileContent | undefined) => void;
   setSession: (session: Session | undefined) => void;
-  addLog: (log: LogEntry) => void;
-  getLogs: () => LogEntry[];
   setRunning: (isRunning: boolean, taskId?: string, mode?: 'generate' | 'refactor' | 'explain') => void;
   setStopping: (isStopping: boolean) => void;
   setLastJobFailed: (failed: boolean) => void;
   setCurrentJob: (job: JobExecution | null) => void;
-  clearLogs: () => void;
   reset: () => void;
-  startLogStream: (taskId: string) => void;
-  stopLogStream: (taskId: string) => void;
   setConnectionStatus: (status: 'connected' | 'disconnected' | 'error') => void;
   setShowConfigEditor: (show: boolean) => void;
   setShowFileEditor: (show: boolean) => void;
@@ -174,7 +165,7 @@ export const useStore = create<Store>((set, get) => ({
   // ==================
   // Initial State
   // ==================
-  kanban: { todo: [], inProgress: null, completed: [] },
+  kanban: { jobId: undefined, todo: [], inProgress: null, completed: [] },
   workflow: null,
   chatMessages: [],
   
@@ -188,14 +179,12 @@ export const useStore = create<Store>((set, get) => ({
   fileTree: [],
   fileContent: undefined,
   session: undefined,
-  logsVersion: 0,
   isRunning: false,
   isStopping: false,
   userStoppedJobId: null,
   lastJobFailed: false,
   currentJobId: undefined,
   currentJob: null,
-  activeTasks: new Map<string, EventSource>(),
   connectionStatus: 'disconnected',
   showConfigEditor: false,
   showFileEditor: false,
@@ -212,35 +201,70 @@ export const useStore = create<Store>((set, get) => ({
   updateKanban: (data) => {
     const state = get();
     
-    // ✅ Job 완료 감지: activeJobId가 undefined로 변경되고 현재 실행 중이면
-    if (!data.activeJobId && state.isRunning && state.currentJobId) {
+    // ✅ CRITICAL: Always sync jobId from KanbanData
+    // This ensures job type changes (design → code) update the displayed jobId
+    const kanbanJobId = data.jobId;
+    
+    // ✅ Determine if job is running based on dataSource
+    // - 'live' or 'estimating' = job is running
+    // - 'session' = job is completed/paused/stopped
+    const isJobRunning = data.dataSource === 'live' || data.dataSource === 'estimating';
+    
+    // ✅ Job completion detected
+    if (!isJobRunning && state.isRunning) {
       console.log('[Store] 🏁 Job completed detected via Kanban update');
-      console.log('   Previous jobId:', state.currentJobId);
+      console.log(`   DataSource: ${data.dataSource}`);
+      console.log(`   Job ID from Kanban: ${kanbanJobId}`);
+      console.log(`   Current Job ID in store: ${state.currentJobId}`);
       console.log('   Setting isRunning: false');
       
       set({ 
         kanban: data,
+        // ✅ SSOT: Always sync jobId from server (single source of truth)
+        currentJobId: kanbanJobId,
         isRunning: false,
         currentMode: undefined
       });
-    } else if (!data.activeJobId && state.isRunning) {
-      // ✅ 새로고침 후: activeJobId 없으면 무조건 isRunning = false
-      console.log('[Store] 🔄 No active job, ensuring isRunning is false');
+    }
+    // ✅ Job running detected (e.g. after refresh)
+    else if (isJobRunning && !state.isRunning) {
+      // ✅ CRITICAL: Don't auto-restore if user explicitly stopped this job
+      if (state.userStoppedJobId === kanbanJobId) {
+        console.log('[Store] 🚫 Skipping auto-restore - user explicitly stopped job:', kanbanJobId);
+        set({ 
+          kanban: data,
+          currentJobId: kanbanJobId
+        });
+        return;
+      }
+      
+      console.log('[Store] 🔄 Active job detected via Kanban update');
+      console.log(`   DataSource: ${data.dataSource}`);
+      console.log(`   Job ID: ${kanbanJobId}`);
+      console.log('   Setting isRunning: true');
+      
       set({ 
         kanban: data,
-        isRunning: false,
-        currentMode: undefined
+        currentJobId: kanbanJobId,  // ✅ Sync jobId
+        isRunning: true
       });
-    } else if (data.activeJobId && !state.isRunning) {
-      // ✅ 새로고침 후 진행 중인 작업 발견: isRunning = true로 복원
-      console.log('[Store] 🔄 Active job found after refresh, restoring isRunning state');
-      set({ 
-        kanban: data,
-        isRunning: true,
-        currentJobId: data.activeJobId
-      });
-    } else {
-      set({ kanban: data });
+    }
+    // ✅ Normal update (including job type change)
+    else {
+      // ✅ CRITICAL: Always sync jobId (including undefined)
+      // This handles job type changes (design → code)
+      if (kanbanJobId !== state.currentJobId) {
+        console.log('[Store] 🔄 Job ID changed via Kanban update');
+        console.log(`   Previous: ${state.currentJobId}`);
+        console.log(`   New: ${kanbanJobId || 'undefined'}`);
+        
+        set({ 
+          kanban: data,
+          currentJobId: kanbanJobId
+        });
+      } else {
+        set({ kanban: data });
+      }
     }
   },
   
@@ -329,7 +353,7 @@ export const useStore = create<Store>((set, get) => ({
           
         case 'message_complete':
           console.log('[Store] 💬 Completing message:', event.messageId);
-          get().updateChatMessage(event.messageId, { isComplete: true });
+          get().updateChatMessage(event.messageId, { isStreaming: false });
           break;
           
         default:
@@ -348,7 +372,7 @@ export const useStore = create<Store>((set, get) => ({
     });
     
     // ✅ Connect to unified SSE endpoint
-    sseManager.connect(state.selectedProject, state.selectedFeature, state.currentMode || 'code');
+    sseManager.connect(state.selectedProject, state.selectedFeature, state.selectedWorkType as 'design' | 'code' | 'learn');
     
     // ✅ Connect workflow SSE if job is running
     if (state.currentJobId) {
@@ -510,8 +534,15 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   setSelectedWorkType: (workType: string) => {
+    const state = get();
     set({ selectedWorkType: workType });
     saveToStorage(STORAGE_KEYS.SELECTED_WORK_TYPE, workType);
+    
+    // ✅ CRITICAL: Reconnect SSE to fetch new job type's data
+    if (state.selectedProject && state.selectedFeature) {
+      console.log(`[Store] 🔄 Job type changed to '${workType}', reconnecting SSE...`);
+      get().reconnectSSE('kanban');
+    }
   },
 
   fetchFeatures: async () => {
@@ -563,15 +594,6 @@ export const useStore = create<Store>((set, get) => ({
     set({ session });
   },
 
-  addLog: (log: LogEntry) => {
-    logBuffer.add(log);
-    set((state) => ({ logsVersion: state.logsVersion + 1 }));
-  },
-
-  getLogs: () => {
-    return logBuffer.getAll();
-  },
-
   setRunning: (isRunning: boolean, jobId?: string, mode?: 'generate' | 'refactor' | 'explain') => {
     const startTime = isRunning ? Date.now() : undefined;
     
@@ -621,63 +643,6 @@ export const useStore = create<Store>((set, get) => ({
     set({ currentJob: job });
   },
 
-  clearLogs: () => {
-    logBuffer.clear();
-    set({ logsVersion: 0 });
-  },
-
-  startLogStream: (taskId: string) => {
-    const state = get();
-    
-    if (state.activeTasks.has(taskId)) {
-      console.warn(`Log stream for task ${taskId} is already active`);
-      return;
-    }
-
-    try {
-      const eventSource = subscribeToLogs(taskId, (log: LogEntry) => {
-        get().addLog(log);
-      });
-
-      eventSource.onopen = () => {
-        set({ connectionStatus: 'connected' });
-      };
-
-      eventSource.onerror = (error) => {
-        console.error('EventSource error:', error);
-        set({ connectionStatus: 'error' });
-        get().stopLogStream(taskId);
-      };
-
-      set((state) => {
-        const newActiveTasks = new Map(state.activeTasks);
-        newActiveTasks.set(taskId, eventSource);
-        return { activeTasks: newActiveTasks };
-      });
-    } catch (error) {
-      console.error('Failed to start log stream:', error);
-      set({ connectionStatus: 'error' });
-    }
-  },
-
-  stopLogStream: (taskId: string) => {
-    const state = get();
-    const eventSource = state.activeTasks.get(taskId);
-
-    if (eventSource) {
-      eventSource.close();
-      
-      set((state) => {
-        const newActiveTasks = new Map(state.activeTasks);
-        newActiveTasks.delete(taskId);
-        return { 
-          activeTasks: newActiveTasks,
-          connectionStatus: newActiveTasks.size > 0 ? 'connected' : 'disconnected'
-        };
-      });
-    }
-  },
-
   setConnectionStatus: (status: 'connected' | 'disconnected' | 'error') => {
     set({ connectionStatus: status });
   },
@@ -709,22 +674,12 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   reset: () => {
-    const state = get();
-    
-    state.activeTasks.forEach((eventSource) => {
-      eventSource.close();
-    });
-
-    logBuffer.clear();
-
     set({
       selectedProject: undefined,
       session: undefined,
-      logsVersion: 0,
       isRunning: false,
       isStopping: false,
       userStoppedJobId: null,
-      activeTasks: new Map<string, EventSource>(),
       connectionStatus: 'disconnected',
     });
   },

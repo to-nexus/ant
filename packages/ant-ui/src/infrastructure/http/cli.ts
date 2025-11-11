@@ -44,12 +44,13 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
       try {
         // Stop the job on the server
         if (jobId) {
-          // ✅ Get actual projectId/featureName from store (critical for cleanup!)
+          // ✅ Get actual projectId/featureName/jobType from store (critical for cleanup!)
           const currentState = useStore.getState();
           const actualProjectId = currentState.selectedProject || projectId;
           const actualFeatureName = currentState.selectedFeature || featureName;
+          const actualJobType = (currentState.selectedWorkType as 'design' | 'code' | 'learn') || 'code';
           
-          await stopJob(jobId, actualProjectId || undefined, actualFeatureName || undefined);
+          await stopJob(jobId, actualProjectId || undefined, actualFeatureName || undefined, actualJobType);
           
           // Notify exit listener (though no longer used since Kanban SSE detects completion)
           if (exitListener) {
@@ -134,11 +135,7 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
       console.log('[cli.ts] Job started, completion will be detected by Kanban SSE');
     })
     .catch((error) => {
-      store.addLog({
-        type: 'error',
-        message: `Failed to start job: ${error.message}`,
-        timestamp: new Date().toISOString(),
-      });
+      console.error('[cli.ts] Failed to start job:', error);
       
       if (exitListener) {
         exitListener(1, null);

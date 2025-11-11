@@ -126,48 +126,20 @@ export class KanbanService {
   async getKanbanData(
     projectId: string,
     featureName: string,
-    jobType: 'design' | 'code' | 'learn',  // ✅ Add job type parameter
+    jobType: 'design' | 'code' | 'learn',
     jobToProject?: Map<string, { projectId: string; featureName: string }>,
     jobs?: Map<string, any>,
     taskQueueSnapshots?: Map<string, any>
   ): Promise<any> {
-    // Use provided data sources or fall back to service's own
     const snapshots = taskQueueSnapshots || this.taskQueueSnapshots;
     
-    // 1. Find active jobId for this project/feature
-    let activeJobId: string | null = null;
-    if (jobToProject && jobs) {
-      for (const [jobId, mapping] of jobToProject.entries()) {
-        if (mapping.projectId === projectId && mapping.featureName === featureName) {
-          const jobStatus = jobs.get(jobId);
-          
-          // Check for both 'pending' and 'running' states
-          if (jobStatus && (jobStatus.status === 'running' || jobStatus.status === 'pending')) {
-            activeJobId = jobId;
-            break;
-          }
-        }
-      }
-    }
-    
-    // 2. Try to get LIVE data from memory snapshot
-    let liveSnapshot = null;
-    if (activeJobId) {
-      liveSnapshot = snapshots.get(activeJobId);
-      const taskCount = liveSnapshot?.queue?.length || 0;
-      console.log(`🔍 [KanbanService] Active job: ${activeJobId} (${projectId}/${featureName}, ${taskCount} tasks)`);
-    } else if (jobToProject && jobs) {
-      console.log(`❌ [KanbanService] No active job (${projectId}/${featureName})`);
-    } else {
-      console.log(`⚠️  [KanbanService] Missing job tracking data`);
-    }
-    
-    // 3. Get SESSION data from file
+    // 1. Get SESSION data from file (single source of truth)
+    console.log(`\n📂 [KanbanService] Loading session: ${projectId}/${featureName}/${jobType}.json`);
     const sessionPath = path.join(
       this.workspaceRoot,
       projectId,
       featureName,
-      `sessions/${jobType}.json`  // ✅ Use job-specific session file
+      `sessions/${jobType}.json`
     );
     
     let sessionData: any = null;
@@ -176,35 +148,45 @@ export class KanbanService {
         sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
       }
     } catch (error) {
-      console.error(`[Kanban] Error reading session file:`, error);
+      console.error(`❌ [KanbanService] Error reading session file:`, error);
     }
     
     const sessionState = sessionData?.state || {};
+    const sessionJobId = sessionState.jobId;
     const sessionTaskQueue = sessionState.taskQueue || [];
     const completedTaskIds = sessionState.completedTasks || [];
     const completedTasksDetails = sessionState.completedTasksDetails || [];
     const currentTask = sessionState.currentTask || null;
+    const isJobCompleted = !!sessionState.jobTiming?.completedAt;
     
-    // 4. Determine state and build Kanban data
+    console.log(`   Session jobId: ${sessionJobId || 'none'}`);
+    console.log(`   Job completed: ${isJobCompleted}`);
+    console.log(`   Completed tasks: ${completedTasksDetails.length}`);
     
-    // ✅ DEBUG: Log ALL decision factors with snapshot details
-    if (liveSnapshot) {
+    // 2. Try to get LIVE data from memory snapshot (if job is running)
+    let liveSnapshot = null;
+    if (sessionJobId && !isJobCompleted) {
+      liveSnapshot = snapshots.get(sessionJobId);
+      if (liveSnapshot) {
+        const taskCount = liveSnapshot?.queue?.length || 0;
+        console.log(`   ✅ Found live snapshot for ${sessionJobId} (${taskCount} tasks)`);
+      } else {
+        console.log(`   ⏳ No live snapshot yet (estimating or starting...)`);
+      }
     }
     
     // Priority 1: LIVE DATA (most recent, real-time)
-    if (activeJobId && liveSnapshot) {
+    if (sessionJobId && !isJobCompleted && liveSnapshot) {
       const liveQueue = liveSnapshot.queue || [];
       const liveCurrentTask = liveSnapshot.currentTask || null;
       const liveCompletedTasks = liveSnapshot.completedTasks || [];
       
       // ✅ SPECIAL CASE: Empty snapshot = "estimating started" signal
       // If queue is empty and no current task → still estimating (decompose in progress)
-      // Note: We don't check liveCompletedTasks because during resume, tasks may already be completed
       if (liveQueue.length === 0 && !liveCurrentTask) {
         console.log(`\n🎬 [KanbanService] ESTIMATING STARTED (empty live snapshot)`);
         console.log(`   Preserving completed tasks from session: ${completedTasksDetails.length}\n`);
         
-        // Read recursion limit from session or environment variable
         const MINIMUM_RECURSION_LIMIT = 5;
         const DEFAULT_RECURSION_LIMIT = 50;
         const envLimit = parseInt(process.env.RECURSION_LIMIT || String(DEFAULT_RECURSION_LIMIT), 10);
@@ -214,21 +196,14 @@ export class KanbanService {
             ? MINIMUM_RECURSION_LIMIT 
             : envLimit;
         
-        // Calculate total elapsed time
         const totalElapsedTime = this.calculateTotalElapsedTime(
           sessionState.jobTiming,
           completedTasksDetails,
-          null // No current task during estimating
+          null
         );
         
-        console.log(`⏱️  [KanbanService] Estimating started - Time calculation:`, {
-          totalElapsedTime,
-          hasJobTiming: !!sessionState.jobTiming,
-          jobTimingStartedAt: sessionState.jobTiming?.startedAt,
-          estimatingDuration: sessionState.jobTiming?.estimatingDuration
-        });
-        
         return {
+          jobId: sessionJobId,
           todo: sessionTaskQueue,
           inProgress: null,
           completed: completedTasksDetails.map((detail: any) => ({
@@ -238,7 +213,6 @@ export class KanbanService {
           })),
           isEstimating: true,
           dataSource: 'estimating',
-          activeJobId,
           recursionCount: sessionState.recursionCount || 0,
           recursionLimit: sessionState.recursionLimit || finalLimit,
           totalElapsedTime,
@@ -248,7 +222,6 @@ export class KanbanService {
       
       console.log(`\n🔴 [KanbanService] LIVE DATA returned\n`);
       
-      // Calculate total elapsed time using live data
       const totalElapsedTime = this.calculateTotalElapsedTime(
         sessionState.jobTiming,
         liveCompletedTasks,
@@ -256,6 +229,7 @@ export class KanbanService {
       );
       
       return {
+        jobId: sessionJobId,
         todo: liveQueue,
         inProgress: liveCurrentTask,
         completed: liveCompletedTasks.map((detail: any) => ({
@@ -265,26 +239,21 @@ export class KanbanService {
         })),
         isEstimating: false,
         dataSource: 'live',
-        activeJobId,  // ✅ Pass job ID to UI for state restoration
         recursionCount: liveSnapshot.recursionCount,
         recursionLimit: liveSnapshot.recursionLimit,
-        pausedDueToLimit: sessionState.pausedDueToLimit || false,  // From session (live doesn't track pause state)
+        pausedDueToLimit: sessionState.pausedDueToLimit || false,
         tasksRemaining: sessionState.tasksRemaining || 0,
         totalElapsedTime,
         jobTiming: sessionState.jobTiming
       };
     }
     
-    // Priority 2: ESTIMATING (job running but no data yet)
-    // ✅ FIX: If job is active but no live snapshot exists, it MUST be estimating!
-    //         Don't check session data - that's stale from previous run.
-    if (activeJobId && !liveSnapshot) {
-      console.log(`\n🎯 [KanbanService] ESTIMATING STATE DETECTED!`);
-      console.log(`   activeJobId: ${activeJobId}`);
-      console.log(`   liveSnapshot: ${liveSnapshot}`);
-      console.log(`   → Returning isEstimating: true\n`);
+    // Priority 2: ESTIMATING (job running but no live snapshot yet)
+    // ✅ CRITICAL: Skip ESTIMATING if job has any interruption (stopped/paused/failed)
+    const hasInterruption = !!sessionState.interruption;
+    if (sessionJobId && !isJobCompleted && !liveSnapshot && !hasInterruption) {
+      console.log(`\n🎯 [KanbanService] ESTIMATING STATE (no live snapshot yet)`);
       
-      // Read recursion limit from session or environment variable
       const MINIMUM_RECURSION_LIMIT = 5;
       const DEFAULT_RECURSION_LIMIT = 50;
       const envLimit = parseInt(process.env.RECURSION_LIMIT || String(DEFAULT_RECURSION_LIMIT), 10);
@@ -294,39 +263,36 @@ export class KanbanService {
           ? MINIMUM_RECURSION_LIMIT 
           : envLimit;
       
-        // Calculate total elapsed time
-        const totalElapsedTime = this.calculateTotalElapsedTime(
-          sessionState.jobTiming,
-          completedTasksDetails,
-          null // No current task during estimating
-        );
-        
-        return {
-          // FIX: estimating 상태에서도 sessionTaskQueue를 todo로 내려줌
-          todo: sessionTaskQueue,
-          inProgress: null,
-          completed: completedTasksDetails.map((detail: any) => ({
-            ...detail,
-            status: 'completed',
-            completed: true
-          })),
-          isEstimating: true,
-          dataSource: 'estimating',
-          activeJobId,  // ✅ Pass job ID to UI for state restoration
-          recursionCount: sessionState.recursionCount || 0,
-          recursionLimit: sessionState.recursionLimit || finalLimit,
-          totalElapsedTime,
-          jobTiming: sessionState.jobTiming
-        };
+      const totalElapsedTime = this.calculateTotalElapsedTime(
+        sessionState.jobTiming,
+        completedTasksDetails,
+        null
+      );
+      
+      return {
+        jobId: sessionJobId,
+        todo: sessionTaskQueue,
+        inProgress: null,
+        completed: completedTasksDetails.map((detail: any) => ({
+          ...detail,
+          status: 'completed',
+          completed: true
+        })),
+        isEstimating: true,
+        dataSource: 'estimating',
+        recursionCount: sessionState.recursionCount || 0,
+        recursionLimit: sessionState.recursionLimit || finalLimit,
+        totalElapsedTime,
+        jobTiming: sessionState.jobTiming
+      };
     }
     
-    // Priority 3: SESSION DATA (job running but live data not ready yet, OR job completed)
-    console.log(`\n📁 [KanbanService] SESSION DATA returned (fallback)`);
-    console.log(`   Completed tasks in session: ${completedTasksDetails.length}`);
-    console.log(`   Has interruption: ${!!sessionState.interruption}`);
-    console.log(`   Interruption reason: ${sessionState.interruption?.reason || 'none'}\n`);
+    // Priority 3: SESSION DATA (job completed or no session)
+    console.log(`\n📁 [KanbanService] SESSION DATA returned`);
+    console.log(`   Job completed: ${isJobCompleted}`);
+    console.log(`   Completed tasks: ${completedTasksDetails.length}`);
+    console.log(`   Has interruption: ${!!sessionState.interruption}\n`);
     
-    // Calculate total elapsed time using session data
     const totalElapsedTime = this.calculateTotalElapsedTime(
       sessionState.jobTiming,
       completedTasksDetails,
@@ -334,6 +300,7 @@ export class KanbanService {
     );
     
     return {
+      jobId: sessionJobId,
       todo: sessionTaskQueue.filter((task: any) => 
         !completedTaskIds.includes(task.id) && 
         (!currentTask || currentTask.id !== task.id)
@@ -346,7 +313,7 @@ export class KanbanService {
       })),
       isEstimating: false,
       dataSource: 'session',
-      interruption: sessionState.interruption,  // ✅ Include interruption details
+      interruption: sessionState.interruption,
       recursionCount: sessionState.recursionCount,
       recursionLimit: sessionState.recursionLimit,
       totalElapsedTime,

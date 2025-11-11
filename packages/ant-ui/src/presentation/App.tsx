@@ -104,7 +104,7 @@ function App() {
     isStopping,
     currentJobId,
     userStoppedJobId,
-    kanbanData: kanbanData?.activeJobId, // Only track activeJobId for brevity
+    kanbanDataSource: kanbanData?.dataSource, // Track data source (live/estimating/session)
     workflowData: workflowData?.currentNode, // Track current node
     configData: !!configData,
     isLoadingConfig,
@@ -179,7 +179,7 @@ function App() {
 
   // ✅ All initialization logic moved to custom hooks above
 
-  const handleRunTask = (agent: string, task: string) => {
+  const handleRunTask = async (agent: string, task: string) => {
     console.log('[App] handleRunTask called:', { agent, task, isRunning, selectedProject, selectedFeature });
     
     if (isRunning || !selectedProject) {
@@ -187,6 +187,32 @@ function App() {
       return;
     }
 
+    // ✅ CRITICAL: Check if this is a Resume or New task
+    const kanbanData = useStore.getState().kanban;
+    const currentJobId = kanbanData?.jobId;
+    const hasInterruption = kanbanData?.interruption?.canResume === true;
+    
+    // ✅ Resume existing job (jobId exists + interruption)
+    if (currentJobId && hasInterruption) {
+      console.log(`[App] Resuming existing job: ${currentJobId}`);
+      
+      try {
+        const result = await resumeJob(currentJobId, selectedProject, selectedFeature!);
+        console.log('[App] Resume successful:', result);
+        console.log(`  Original job: ${result.originalJobId}`);
+        console.log(`  New job: ${result.jobId}`);
+        console.log(`  Job type: ${result.jobType}`);
+      } catch (error) {
+        console.error('[App] Failed to resume job:', error);
+        alert(`Failed to resume job: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        setRunning(false);
+      }
+      return;
+    }
+
+    // ✅ Start new job
+    console.log('[App] Starting new job...');
+    
     // Start running state immediately (jobId will be set when server responds)
     console.log('[App] Setting running state...');
     setRunning(true, undefined, 'generate'); // Default mode
@@ -270,11 +296,15 @@ function App() {
     console.log('[App] 🛑 Setting stopping state...');
     setStopping(true);
     
-    // ✅ CRITICAL: Mark this job as explicitly stopped by user
-    // This prevents auto-restore from server SSE events
+    // ✅ CRITICAL: Mark this job as explicitly stopped by user and clear localStorage
     if (currentJobId) {
-      console.log(`[App] 🚫 Marking job ${currentJobId} as user-stopped (no auto-restore)`);
+      console.log(`[App] 🚫 Marking job ${currentJobId} as user-stopped`);
       useStore.setState({ userStoppedJobId: currentJobId });
+      
+      // ✅ Immediately clear localStorage to prevent auto-restore
+      localStorage.removeItem('ant-ui:running-task');
+      localStorage.removeItem('ant-ui:task-start-time');
+      localStorage.removeItem('ant-ui:task-mode');
     }
     
     // ✅ Send stop request to server and wait for confirmation
@@ -285,8 +315,9 @@ function App() {
       }
       
       // ✅ Send stop request to server (no EventSource to close - logs SSE removed)
-      console.log('[App] Sending stop request to server...');
-      await stopJob(currentJobId, selectedProject || undefined, selectedFeature || undefined);
+      const jobType = (selectedWorkType as 'design' | 'code' | 'learn') || 'code';
+      console.log(`[App] Sending stop request to server... jobType: ${jobType}`);
+      await stopJob(currentJobId, selectedProject || undefined, selectedFeature || undefined, jobType);
       console.log('[App] ✅ Server confirmed stop');
       
       // ✅ Now update UI after server confirmation

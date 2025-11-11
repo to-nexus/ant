@@ -50,8 +50,15 @@ export async function streamLLMResponse(
       chatMessageStarted = true;
     }
     
+    console.log('[llmStreamHandler] 🎬 Starting LLM stream...');
+    let eventCount = 0;
+    
     // Stream with chat integration
     for await (const event of llm.streamRaw(promptMessages)) {
+      eventCount++;
+      if (eventCount === 1) {
+        console.log('[llmStreamHandler] 📥 First LLM event received:', event.type);
+      }
       // Accumulate for parsing
       if (event.type === 'thinking' || event.type === 'text') {
         let content = event.content;
@@ -85,8 +92,11 @@ export async function streamLLMResponse(
           .replace(/===\s*FILE:/g, '')  // Partial marker at start
           .replace(/FILE:[^\n=]*/g, '')  // Partial marker middle
           .replace(/===\s*END/g, '')     // Partial END marker
-          .replace(/END\s*FILE/g, '')    // Partial END FILE
-          .trim();
+          .replace(/END\s*FILE/g, '');   // Partial END FILE
+        
+        // ✅ CRITICAL: Only trim for thinking (to check if empty)
+        // For file content, preserve all whitespace including newlines
+        const contentForCheck = event.type === 'thinking' ? cleanContent.trim() : cleanContent;
         
         // ✅ Filter logic:
         // - Show thinking always (even if empty or at boundaries)
@@ -95,7 +105,7 @@ export async function streamLLMResponse(
         //   2. Not inside RESPONSE block  
         //   3. Has actual content after cleaning
         const isFileContent = insideFileBlock && !fileJustStarted && !fileJustEnded;
-        const hasContentToShow = cleanContent.trim().length > 0;
+        const hasContentToShow = contentForCheck.length > 0;
         const shouldShowInChat = (
           (event.type === 'thinking' && hasContentToShow) ||  // Show thinking if it has content
           (event.type === 'text' && isFileContent && !insideResponseBlock && hasContentToShow)  // Show text only inside file blocks
@@ -103,6 +113,9 @@ export async function streamLLMResponse(
         
         // ✅ Skip if shouldn't show in chat
         if (!shouldShowInChat) {
+          if (eventCount <= 5 && event.type === 'thinking') {
+            console.log(`[llmStreamHandler] ⏭️  SKIPPED thinking: hasContent=${hasContentToShow}, cleanedLength=${contentForCheck.length}`);
+          }
           if (onChunk) {
             onChunk(content);
           }
@@ -111,10 +124,13 @@ export async function streamLLMResponse(
         
         // Send to Chat UI (with cleaned content)
         if (!thinkingOnly || event.type === 'thinking') {
-          // ✅ Send cleaned content (without markers)
+          if (eventCount <= 5) {
+            console.log(`[llmStreamHandler] 📤 Sending ${event.type} to chat: length=${cleanContent.length}, preview="${cleanContent.substring(0, 50)}..."`);
+          }
+          // ✅ Send cleaned content (without markers), preserving whitespace
           await chatAPI.sendLLMEvent({
             ...event,
-            content: cleanContent
+            content: cleanContent  // ✅ No trim - preserve newlines
           });
         }
         

@@ -17,7 +17,8 @@ export function createJobRoutes(deps: {
   logs: Map<string, LogEntry[]>;
   childProcesses: Map<string, any>;
   jobs: Map<string, any>;
-  cleanupJobState: (jobId: string, projectId?: string, featureName?: string, interruptionReason?: InterruptionDetails) => Promise<void>;
+  userStoppedJobs: Set<string>;  // ✅ Track user-stopped jobs
+  cleanupJobState: (jobId: string, projectId?: string, featureName?: string, interruptionReason?: InterruptionDetails, explicitJobType?: 'design' | 'code' | 'learn') => Promise<void>;
   workflowStateService: import('../services/WorkflowStateService').WorkflowStateService;  // ✅ For node tracking
 }): Router {
   const router = Router();
@@ -117,39 +118,44 @@ export function createJobRoutes(deps: {
   });
 
   // Stop task
-  router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
-    const jobId = req.params.jobId;
-    const { projectId, featureName } = req.body;
+router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
+  const jobId = req.params.jobId;
+  const { projectId, featureName, jobType } = req.body;
+  
+  console.log(`\n🛑 [StopRoute] Stop request received for job: ${jobId}`);
+  console.log(`   Project: ${projectId}, Feature: ${featureName}, JobType: ${jobType || 'not provided'}`);
+    
     const childProcess = deps.childProcesses.get(jobId);
     
-    // Send response immediately (don't wait for process to die)
-    res.json({ 
-      success: true, 
-      message: 'Stop signal sent',
-      jobId 
-    });
+    // ✅ CRITICAL: Mark as user-stopped BEFORE killing to prevent exit handler cleanup
+    deps.userStoppedJobs.add(jobId);
+    console.log(`   ✅ Marked job ${jobId} as user-stopped`);
     
-    // Kill the process if it exists (in background)
+    // ✅ CRITICAL: Kill process FIRST, then cleanup, then respond
     if (childProcess && childProcess.pid) {
       try {
         const pid = childProcess.pid;
+        console.log(`   Process PID: ${pid}, killing...`);
         
         // Try graceful kill first
         childProcess.kill('SIGTERM');
         
-        // Forcefully kill after 500ms if still alive
-        setTimeout(() => {
-          try {
-            process.kill(pid, 0);  // Check if still alive
-            process.kill(pid, 'SIGKILL');
-          } catch (checkErr: any) {
-            // Process already dead or error checking
-          }
-          deps.childProcesses.delete(jobId);
-        }, 500);
+        // Wait a bit for graceful shutdown
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Forcefully kill if still alive
+        try {
+          process.kill(pid, 0);  // Check if still alive
+          console.log(`   Process still alive, sending SIGKILL...`);
+          process.kill(pid, 'SIGKILL');
+        } catch (checkErr: any) {
+          console.log(`   Process already terminated`);
+        }
+        
+        deps.childProcesses.delete(jobId);
         
       } catch (error: any) {
-        console.error('Error killing process:', error.message);
+        console.error(`   ❌ Error killing process:`, error.message);
         deps.childProcesses.delete(jobId);
       }
       
@@ -168,9 +174,11 @@ export function createJobRoutes(deps: {
         deps.logs.get(jobId)?.push(logEntry);
         deps.logStreams.get(jobId)?.forEach(listener => listener(logEntry));
       }
+    } else {
+      console.log(`   ⚠️  No running process found for ${jobId}`);
     }
     
-    // Clean up task state
+    // ✅ Clean up task state (move task back to queue, save to session)
     const interruption: InterruptionDetails = {
       reason: 'user_stopped',
       message: 'Task stopped by user',
@@ -181,7 +189,94 @@ export function createJobRoutes(deps: {
       }
     };
     
-    await deps.cleanupJobState(jobId, projectId, featureName, interruption);
+    console.log(`   Calling cleanupJobState with jobType: ${jobType || 'auto-detect'}...`);
+    await deps.cleanupJobState(jobId, projectId, featureName, interruption, jobType);
+    console.log(`   ✅ cleanupJobState completed`);
+    
+    // ✅ Send response AFTER everything is done
+    res.json({ 
+      success: true, 
+      message: 'Task stopped successfully',
+      jobId 
+    });
+    
+    console.log(`   ✅ Stop request completed\n`);
+  });
+  
+  // Resume existing job
+  router.post('/jobs/:jobId/resume', async (req: Request, res: Response) => {
+    const jobId = req.params.jobId;
+    const { projectId, featureName } = req.body;
+    
+    console.log(`\n🔄 [ResumeRoute] Resume request received for job: ${jobId}`);
+    console.log(`   Project: ${projectId}, Feature: ${featureName}`);
+    
+    try {
+      // ✅ Find job type from session files
+      const fs = require('fs');
+      const sessionDir = path.join(deps.workspaceRoot, projectId, featureName, 'sessions');
+      
+      let jobType: 'design' | 'code' | 'learn' | null = null;
+      
+      for (const type of ['design', 'code', 'learn'] as const) {
+        const sessionPath = path.join(sessionDir, `${type}.json`);
+        if (fs.existsSync(sessionPath)) {
+          const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
+          if (sessionData.state?.jobId === jobId) {
+            jobType = type;
+            console.log(`   ✅ Found job in ${type}.json`);
+            break;
+          }
+        }
+      }
+      
+      if (!jobType) {
+        console.log(`   ❌ Job ${jobId} not found in any session file`);
+        return res.status(404).json({ 
+          error: 'Job not found',
+          message: `Job ${jobId} not found in session files`
+        });
+      }
+      
+      console.log(`   Job type: ${jobType}`);
+      console.log(`   Starting resume job execution...`);
+      
+      // ✅ Execute job with correct type (will resume from session)
+      const params: ExecuteJobParams = {
+        agent: 'architect',
+        task: jobType,
+        project: projectId,
+        feature: featureName,
+        inputFile: path.join(
+          deps.workspaceRoot,
+          projectId,
+          featureName,
+          `inputs/directives/${jobType}/directive.md`
+        ),
+        enableEvaluation: false,
+        overrideDirective: undefined,
+        chatSource: false
+      };
+      
+      const result = await deps.executeJob(params);
+      
+      console.log(`   ✅ Resume job started: ${result.jobId}`);
+      console.log(`   ✅ Resume request completed\n`);
+      
+      res.json({
+        success: true,
+        jobId: result.jobId,
+        originalJobId: jobId,
+        jobType,
+        message: `Job resumed from ${jobId}`
+      });
+    } catch (error: any) {
+      console.error(`   ❌ Resume failed:`, error);
+      res.status(500).json({ 
+        error: error.message,
+        jobId
+      });
+    }
   });
   
   return router;

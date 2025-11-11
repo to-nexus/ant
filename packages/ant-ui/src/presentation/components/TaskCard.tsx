@@ -115,12 +115,25 @@ export function TaskCard({
         )}
         
         <div className="flex-1 min-w-0">
-          {/* Header - Clickable to toggle */}
+          {/* Task Name - Full Width (Clickable to toggle) */}
           <div 
-            className={`flex items-start gap-2 mb-1 ${showExpandButton ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
+            className={`mb-2 ${showExpandButton ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
             onClick={showExpandButton ? toggleExpand : undefined}
           >
-            {/* Priority Badge - Only for to-do (Left Side) */}
+            <span className={cn('text-sm font-medium', colors.text.primary)}>
+              {task.name}
+            </span>
+          </div>
+          
+          {/* Badges + Timer Row - Wrap automatically (Clickable to toggle) */}
+          <div 
+            className={cn(
+              'flex flex-wrap items-center gap-2',
+              showExpandButton ? 'cursor-pointer' : ''
+            )}
+            onClick={showExpandButton ? toggleExpand : undefined}
+          >
+            {/* Priority Badge - Only for to-do */}
             {status === 'todo' && task.priority !== undefined && (
               <Badge variant="outline" className={cn(
                 'flex-shrink-0',
@@ -134,50 +147,33 @@ export function TaskCard({
               </Badge>
             )}
             
-            {/* Task Name (Center) */}
-            <span className={cn('text-sm font-medium flex-1 min-w-0', colors.text.primary)}>
-              {task.name}
-            </span>
-            
-            {/* Right Side: Interrupted Badge + Type Badge (Stacked, Right-Aligned) */}
-            <div className="flex flex-col items-end gap-1 flex-shrink-0">
-              {/* Interrupted Badge - Only for to-do tasks that were interrupted (TOP) */}
-              {status === 'todo' && task.interrupted && (
-                <Badge variant="outline" className={cn(
-                  'flex items-center gap-1',
-                  'bg-orange-100 dark:bg-orange-950',
-                  'border-orange-400 dark:border-orange-700',
-                  'text-orange-800 dark:text-orange-200'
-                )}>
-                  <span>⏸️</span>
-                  <span className="font-semibold text-xs">Interrupted</span>
-                </Badge>
-              )}
-              
-              {/* Type Badge (BOTTOM) */}
-              <Badge className={cn(typeBadge.color, 'text-xs')}>
-                {typeBadge.label}
+            {/* Interrupted Badge - Only for to-do tasks that were interrupted */}
+            {status === 'todo' && task.interrupted && (
+              <Badge variant="outline" className={cn(
+                'flex items-center gap-1 flex-shrink-0',
+                'bg-orange-100 dark:bg-orange-950',
+                'border-orange-400 dark:border-orange-700',
+                'text-orange-800 dark:text-orange-200'
+              )}>
+                <Timer className="w-3 h-3" />
+                <span className="font-semibold text-xs">Paused</span>
               </Badge>
-            </div>
-          </div>
-          
-          {/* Timing Info - Show for in-progress and completed */}
-          <div 
-            className={cn(
-              'text-xs',
-              colors.text.secondary,
-              showExpandButton ? 'ml-0 cursor-pointer' : 'ml-12'
             )}
-            onClick={showExpandButton ? toggleExpand : undefined}
-          >
+            
+            {/* Type Badge */}
+            <Badge className={cn(typeBadge.color, 'text-xs flex-shrink-0')}>
+              {typeBadge.label}
+            </Badge>
+            
+            {/* Timer - Show for in-progress and completed */}
             {status === 'in-progress' && (
-              <span className="font-medium flex items-center gap-1">
+              <span className={cn('font-medium flex items-center gap-1 text-xs flex-shrink-0', colors.text.secondary)}>
                 <Timer className="w-3.5 h-3.5" />
                 <TaskTimer timing={task.timing} isRunning={isTaskRunning} />
               </span>
             )}
             {status === 'completed' && task.timing && task.timing.elapsedTime !== undefined && (
-              <span className="flex items-center gap-1">
+              <span className={cn('flex items-center gap-1 text-xs flex-shrink-0', colors.text.secondary)}>
                 <Timer className="w-3.5 h-3.5" />
                 <TaskTimer timing={task.timing} />
               </span>
@@ -191,8 +187,7 @@ export function TaskCard({
                 'mt-2 p-2 rounded border text-xs select-text relative z-20',
                 colors.border,
                 'bg-white dark:bg-gray-900',
-                colors.text.secondary,
-                showExpandButton ? 'ml-0' : 'ml-12'
+                colors.text.secondary
               )}
               onClick={(e) => e.stopPropagation()}
             >

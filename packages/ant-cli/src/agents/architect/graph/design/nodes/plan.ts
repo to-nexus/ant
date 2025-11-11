@@ -26,6 +26,20 @@ export async function plan(state: DesignGraphState) {
       const { TaskTimingHelper } = await import('../../code/state');
       console.log(`⏱️  Starting timer for task: ${currentTask.name}`);
       currentTask = TaskTimingHelper.startTask(currentTask);
+      
+      // ✅ CRITICAL: Update Kanban snapshot when task starts
+      if (state._httpTaskId && state.deps?.kanbanUpdate) {
+        console.log(`\n🔥 [Plan] Updating Kanban → task started`);
+        console.log(`   Current: ${currentTask.name}`);
+        console.log(`   Remaining in queue: ${state.taskQueue.size()}\n`);
+        
+        state.deps.kanbanUpdate.updateTaskQueue(
+          state._httpTaskId,
+          currentTask,                    // ✅ Show current task as in-progress
+          state.taskQueue.getAll(),      // ✅ Remaining queue
+          state.completedTasksDetails || []
+        );
+      }
     } else {
       console.log('⚠️  No task to execute');
       return state;

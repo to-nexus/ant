@@ -1,9 +1,3 @@
-export interface LogEntry {
-  type: 'info' | 'stdout' | 'stderr' | 'error';
-  message: string;
-  timestamp: string;
-}
-
 export interface TaskStatus {
   taskId: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
@@ -19,3 +13,4 @@ export interface ExecuteTaskParams {
   mode?: 'generate' | 'refactor' | 'explain';
   enableEvaluation?: boolean;
 }
+

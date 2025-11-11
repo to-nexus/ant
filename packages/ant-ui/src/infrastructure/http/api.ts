@@ -1,7 +1,6 @@
 /// <reference types="vite/client" />
 
 import { Session } from '@/domain/models/session';
-import { LogEntry } from '@/domain/models/log';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4100/api';
 
@@ -61,7 +60,6 @@ export interface DevServerStatus {
   running: boolean;
   port: number | null;
   url: string | null;
-  logs: LogEntry[];
 }
 
 // Health check function to verify API connection
@@ -241,14 +239,41 @@ export async function executeJob(params: ExecuteJobParams): Promise<{ jobId: str
   }
 }
 
-export async function stopJob(jobId: string, projectId?: string, featureName?: string): Promise<void> {
+export async function clearSessionData(
+  projectId: string,
+  featureName: string,
+  jobType: 'design' | 'code' | 'learn'
+): Promise<void> {
+  const response = await fetch(
+    `${API_BASE}/projects/${projectId}/features/${featureName}/session?job=${jobType}`,
+    {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to clear session data: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function stopJob(
+  jobId: string, 
+  projectId?: string, 
+  featureName?: string, 
+  jobType?: 'design' | 'code' | 'learn'
+): Promise<void> {
   try {
     const response = await fetch(`${API_BASE}/jobs/${encodeURIComponent(jobId)}/stop`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ projectId, featureName }),
+      body: JSON.stringify({ projectId, featureName, jobType }),
     });
     
     if (!response.ok) {
@@ -259,6 +284,40 @@ export async function stopJob(jobId: string, projectId?: string, featureName?: s
     return data;
   } catch (error) {
     console.error('Error stopping task:', error);
+    throw error;
+  }
+}
+
+/**
+ * Resume existing job by jobId
+ * Server will automatically detect job type from session files
+ */
+export async function resumeJob(
+  jobId: string,
+  projectId: string,
+  featureName: string
+): Promise<{ jobId: string; originalJobId: string; jobType: string }> {
+  try {
+    console.log(`[api.ts] resumeJob called: ${jobId}`);
+    
+    const response = await fetch(`${API_BASE}/jobs/${encodeURIComponent(jobId)}/resume`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ projectId, featureName }),
+    });
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: response.statusText }));
+      throw new Error(error.error || `Failed to resume job: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log(`[api.ts] Resume successful:`, data);
+    return data;
+  } catch (error) {
+    console.error('Error resuming job:', error);
     throw error;
   }
 }
@@ -308,26 +367,6 @@ export async function fetchQueueStatus(jobId: string): Promise<QueueStatus> {
     console.error('Error fetching queue status:', error);
     throw error;
   }
-}
-
-export function subscribeToLogs(jobId: string, onLog: (log: LogEntry) => void): EventSource {
-  const eventSource = new EventSource(`${API_BASE}/jobs/${encodeURIComponent(jobId)}/stream`);
-  
-  eventSource.onmessage = (event) => {
-    try {
-      const log: LogEntry = JSON.parse(event.data);
-      onLog(log);
-    } catch (error) {
-      console.error('Error parsing log entry:', error);
-    }
-  };
-  
-  eventSource.onerror = (error) => {
-    console.error('EventSource error:', error);
-    eventSource.close();
-  };
-  
-  return eventSource;
 }
 
 export async function fetchJobStatus(jobId: string): Promise<JobStatus> {
@@ -442,15 +481,17 @@ export interface KanbanTask {
 }
 
 export interface KanbanData {
+  // ✅ Job Identity (from session.jobId)
+  jobId?: string;
+  
   todo: KanbanTask[];
   inProgress: KanbanTask | null;
   completed: KanbanTask[];
   isEstimating?: boolean;  // Task running but no queue data yet
   dataSource?: 'live' | 'session' | 'estimating';  // Where the data comes from
-  activeJobId?: string;  // ✅ Currently running job ID
   
   // ✅ Unified interruption state
-  interruption?: import('@/types/session').InterruptionDetails;
+  interruption?: import('@/domain/models/session').InterruptionDetails;
   
   // Recursion Tracking
   recursionCount?: number;
@@ -851,23 +892,8 @@ export async function resetJobState(
   job: 'design' | 'code' | 'learn' = 'code'
 ): Promise<void> {
   try {
-    const response = await fetch(
-      `${API_BASE}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/reset-job`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ job }),
-      }
-    );
-    
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || `Failed to reset job state: ${response.statusText}`);
-    }
-    
-    return await response.json();
+    // Use the new clearSessionData API
+    await clearSessionData(projectId, featureName, job);
   } catch (error) {
     console.error('Error resetting job state:', error);
     throw error;
