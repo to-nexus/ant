@@ -200,6 +200,7 @@ function App() {
         agent: agent as any,
         mode: 'generate', // This should be inferred or passed from UI
         language: 'en',
+        chatSource: true,  // ✅ Enable Chat SSE for task board/GNB runs
       });
 
       console.log('[App] jobExecution created:', jobExecution);
@@ -270,18 +271,24 @@ function App() {
     
     // ✅ Send stop request to server and wait for confirmation
     try {
-      // Method 1: If we have the currentJob object (direct execution)
-      if (currentJob) {
-        console.log('[App] Method 1: Stopping via currentJob.kill()');
-        await currentJob.kill();
-        console.log('[App] ✅ Server confirmed stop (Method 1)');
-      }
-      // Method 2: If we only have currentJobId (e.g., after page refresh)
-      else if (currentJobId) {
-        console.log('[App] Method 2: Stopping via API (currentJobId:', currentJobId, ')');
+      // ✅ ALWAYS use Method 2 (API) if we have currentJobId (more reliable)
+      if (currentJobId) {
+        console.log('[App] Stopping via API (currentJobId:', currentJobId, ')');
         // ✅ Pass projectId and featureName for proper cleanup
         await stopJob(currentJobId, selectedProject || undefined, selectedFeature || undefined);
-        console.log('[App] ✅ Server confirmed stop (Method 2)');
+        console.log('[App] ✅ Server confirmed stop');
+        
+        // Also close the EventSource if we have currentJob
+        if (currentJob && currentJob.eventSource) {
+          console.log('[App] Closing EventSource...');
+          currentJob.eventSource.close();
+        }
+      }
+      // Fallback: Use currentJob.kill() if no currentJobId
+      else if (currentJob) {
+        console.log('[App] Fallback: Stopping via currentJob.kill()');
+        await currentJob.kill();
+        console.log('[App] ✅ Server confirmed stop (fallback)');
       } else {
         console.warn('[App] ⚠️ No task to stop (no currentJob or currentJobId)');
         console.warn('[App] State:', { currentJob: !!currentJob, currentJobId, selectedProject, selectedFeature });
@@ -291,6 +298,23 @@ function App() {
       console.log('[App] 🎯 Server confirmed, updating UI...');
       setRunning(false);
       setCurrentJob(null);
+      
+      // ✅ Finalize chat message if exists (mark as complete)
+      if (selectedProject && selectedFeature) {
+        try {
+          console.log('[App] Finalizing chat message...');
+          await fetch(
+            `${import.meta.env.VITE_API_BASE || 'http://localhost:4100/api'}/projects/${selectedProject}/features/${selectedFeature}/chat/finalize-message`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+            }
+          );
+          console.log('[App] Chat message finalized');
+        } catch (error) {
+          console.error('[App] Failed to finalize chat message:', error);
+        }
+      }
       
       // Reload session after server confirms stop
       if (selectedProject && selectedFeature) {

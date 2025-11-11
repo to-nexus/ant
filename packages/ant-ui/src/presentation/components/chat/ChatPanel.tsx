@@ -41,7 +41,9 @@ export function ChatPanel({ projectId: _projectId, featureName: _featureName, en
       c.type === 'file_edit' || 
       c.type === 'file_delete'
     ).length;
-  }, [lastAssistantMessage?.id, lastAssistantMessage?.contents.length]);
+  }, [lastAssistantMessage?.id, lastAssistantMessage?.contents.length, 
+      // ✅ Also track changes in content types (e.g., file_creating → file_create)
+      lastAssistantMessage?.contents.map(c => c.type).join(',')]);
   
   // ✅ CRITICAL: Memoize fileStats with stable dependencies
   // 파일 operation 개수가 변경될 때만 재계산 (thinking/text 스트리밍은 무시)
