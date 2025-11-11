@@ -1,4 +1,4 @@
-import { executeJob, subscribeToLogs, stopJob } from '@/infrastructure/http/api';
+import { executeJob, stopJob } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
 
 export interface ExecuteCodeJobOptions {
@@ -15,7 +15,6 @@ export interface ExecuteCodeJobOptions {
 
 export interface JobExecution {
   jobId: string;
-  eventSource: EventSource;
   kill: (signal?: string) => Promise<boolean>;
   on: (event: 'exit', listener: (code: number | null, signal: string | null) => void) => JobExecution;
   onJobIdReady: (callback: (jobId: string) => void) => void;
@@ -35,17 +34,15 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
   
   const store = useStore.getState();
   
-  let eventSource: EventSource | null = null;
   let jobId = '';
   let exitListener: ((code: number | null, signal: string | null) => void) | null = null;
   let jobIdReadyCallback: ((jobId: string) => void) | null = null;
   
   const jobExecution: JobExecution = {
     jobId: '',
-    eventSource: null as unknown as EventSource,
     kill: async (_signal?: string) => {
       try {
-        // Stop the job on the server first
+        // Stop the job on the server
         if (jobId) {
           // ✅ Get actual projectId/featureName from store (critical for cleanup!)
           const currentState = useStore.getState();
@@ -53,18 +50,14 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
           const actualFeatureName = currentState.selectedFeature || featureName;
           
           await stopJob(jobId, actualProjectId || undefined, actualFeatureName || undefined);
-        }
-      } catch (error) {
-        console.error('Error stopping job on server:', error);
-      } finally {
-        // Always close the event source and notify listener
-        if (eventSource) {
-          eventSource.close();
           
+          // Notify exit listener (though no longer used since Kanban SSE detects completion)
           if (exitListener) {
             exitListener(0, 'SIGTERM');
           }
         }
+      } catch (error) {
+        console.error('Error stopping job on server:', error);
       }
       return true;
     },
@@ -134,51 +127,11 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
         console.warn('[cli.ts] jobIdReadyCallback is not set!');
       }
       
-      // SSE 연결 - 실제 작업 로그만 스트리밍
-      console.log('[cli.ts] Subscribing to logs for jobId:', jobId);
-      eventSource = subscribeToLogs(jobId, (log) => {
-        // Check for completion markers
-        if (log.message === '__JOB_COMPLETED__') {
-          // Job completed successfully
-          eventSource?.close();
-          if (exitListener) {
-            exitListener(0, null);
-          }
-          return;
-        }
-        
-        if (log.message === '__JOB_FAILED__') {
-          // Job failed
-          eventSource?.close();
-          if (exitListener) {
-            exitListener(1, null);
-          }
-          return;
-        }
-        
-        // Normal log message
-        store.addLog(log);
-      });
-      
-      jobExecution.eventSource = eventSource;
-      
-      eventSource.addEventListener('error', () => {
-        store.addLog({
-          type: 'error',
-          message: 'Connection to log stream lost',
-          timestamp: new Date().toISOString(),
-        });
-        
-        if (exitListener) {
-          exitListener(1, null);
-        }
-      });
-      
-      eventSource.addEventListener('close', () => {
-        if (exitListener) {
-          exitListener(0, null);
-        }
-      });
+      // ✅ No logs SSE needed - job completion is detected by:
+      // 1. Kanban SSE (activeJobId becomes undefined)
+      // 2. Workflow SSE (isCompleted: true)
+      // Exit listener will be called when Kanban detects completion
+      console.log('[cli.ts] Job started, completion will be detected by Kanban SSE');
     })
     .catch((error) => {
       store.addLog({

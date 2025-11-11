@@ -213,42 +213,50 @@ function App() {
         setRunning(true, jobId, 'generate');
       });
 
-      console.log('[App] Setting up exit handler...');
-      jobExecution.on('exit', (code: number | null, _signal: string | null) => {
-        console.log('[App] Job exit:', code);
-        
-        const jobFailed = code !== 0 && code !== null;
-        
-        setRunning(false);
-        setCurrentJob(null);
-        setLastJobFailed(jobFailed);  // ✅ Set failed state for retry button
-        
-        // Reload session after job completion to get updated data
-        if (selectedProject && selectedFeature) {
-          console.log('[App] Job completed, reloading session...');
-          fetchFeatureSession(selectedProject, selectedFeature)
-            .then(session => {
-              setSession(session ?? undefined);
-              console.log('[App] Session reloaded after job completion');
-            })
-            .catch(error => {
-              console.error('[App] Failed to reload session:', error);
-            });
-        }
-        
-        // Refresh file tree after job completion
-        refreshFileTree();
-        if (jobFailed) {
-          console.error(`Job execution failed with code: ${code}`);
-        }
-      });
+      // ✅ Exit handler is no longer needed - Kanban SSE detects completion
+      // Job cleanup will happen via useEffect watching isRunning
+      console.log('[App] Job started, completion will be detected by Kanban SSE');
     } catch (error) {
       console.error('Failed to execute job:', error);
       setRunning(false);
       setCurrentJob(null);
     }
   };
+  
+  // ✅ Watch isRunning to detect job completion (via Kanban SSE)
+  useEffect(() => {
+    // Skip if still running or stopping
+    if (isRunning || isStopping) return;
+    
+    // Skip if no job was running
+    if (!currentJob && !currentJobId) return;
+    
+    // ✅ Job completed - cleanup and reload
+    console.log('[App] Job completion detected (isRunning -> false)');
+    
+    // Clear currentJob reference
+    if (currentJob) {
+      console.log('[App] Clearing currentJob reference');
+      setCurrentJob(null);
+    }
+    
+    // Reload session and file tree
+    if (selectedProject && selectedFeature) {
+      console.log('[App] Reloading session after job completion...');
+      fetchFeatureSession(selectedProject, selectedFeature)
+        .then(session => {
+          setSession(session ?? undefined);
+          console.log('[App] Session reloaded after job completion');
+        })
+        .catch(error => {
+          console.error('[App] Failed to reload session:', error);
+        });
+      
+      refreshFileTree();
+    }
+  }, [isRunning, isStopping, currentJob, currentJobId, selectedProject, selectedFeature]);
 
+  // ✅ Centralized Stop Task Handler
   const handleStopTask = async () => {
     console.log('[App] Stopping task...', { 
       hasCurrentTask: !!currentJob, 
@@ -271,28 +279,15 @@ function App() {
     
     // ✅ Send stop request to server and wait for confirmation
     try {
-      // ✅ ALWAYS use Method 2 (API) if we have currentJobId (more reliable)
-      if (currentJobId) {
-        console.log('[App] Stopping via API (currentJobId:', currentJobId, ')');
-        // ✅ Pass projectId and featureName for proper cleanup
-        await stopJob(currentJobId, selectedProject || undefined, selectedFeature || undefined);
-        console.log('[App] ✅ Server confirmed stop');
-        
-        // Also close the EventSource if we have currentJob
-        if (currentJob && currentJob.eventSource) {
-          console.log('[App] Closing EventSource...');
-          currentJob.eventSource.close();
-        }
+      if (!currentJobId) {
+        console.warn('[App] ⚠️ No currentJobId to stop');
+        return;
       }
-      // Fallback: Use currentJob.kill() if no currentJobId
-      else if (currentJob) {
-        console.log('[App] Fallback: Stopping via currentJob.kill()');
-        await currentJob.kill();
-        console.log('[App] ✅ Server confirmed stop (fallback)');
-      } else {
-        console.warn('[App] ⚠️ No task to stop (no currentJob or currentJobId)');
-        console.warn('[App] State:', { currentJob: !!currentJob, currentJobId, selectedProject, selectedFeature });
-      }
+      
+      // ✅ Send stop request to server (no EventSource to close - logs SSE removed)
+      console.log('[App] Sending stop request to server...');
+      await stopJob(currentJobId, selectedProject || undefined, selectedFeature || undefined);
+      console.log('[App] ✅ Server confirmed stop');
       
       // ✅ Now update UI after server confirmation
       console.log('[App] 🎯 Server confirmed, updating UI...');
@@ -339,6 +334,14 @@ function App() {
       setStopping(false);
     }
   };
+
+  // ✅ Register handleStopTask globally for ChatInput to use
+  useEffect(() => {
+    (window as any).__stopTaskHandler = handleStopTask;
+    return () => {
+      delete (window as any).__stopTaskHandler;
+    };
+  }, [handleStopTask]);
 
   return (
     <div className="h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-colors">

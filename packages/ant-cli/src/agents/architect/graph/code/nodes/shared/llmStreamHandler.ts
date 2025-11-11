@@ -88,17 +88,8 @@ export async function streamLLMResponse(
           .replace(/END\s*FILE/g, '')    // Partial END FILE
           .trim();
         
-        // ✅ Skip chunks that are at file boundaries OR became empty after cleaning
-        if (fileJustStarted || fileJustEnded || cleanContent.length === 0) {
-          // Don't send this chunk
-          if (onChunk) {
-            onChunk(content);
-          }
-          continue;
-        }
-        
         // ✅ Filter logic:
-        // - Show thinking always
+        // - Show thinking always (even if empty or at boundaries)
         // - Show text ONLY if:
         //   1. We're solidly inside a file block (not at boundaries)
         //   2. Not inside RESPONSE block  
@@ -106,19 +97,25 @@ export async function streamLLMResponse(
         const isFileContent = insideFileBlock && !fileJustStarted && !fileJustEnded;
         const hasContentToShow = cleanContent.trim().length > 0;
         const shouldShowInChat = (
-          (event.type === 'thinking') ||  // Always show thinking
+          (event.type === 'thinking' && hasContentToShow) ||  // Show thinking if it has content
           (event.type === 'text' && isFileContent && !insideResponseBlock && hasContentToShow)  // Show text only inside file blocks
         );
         
+        // ✅ Skip if shouldn't show in chat
+        if (!shouldShowInChat) {
+          if (onChunk) {
+            onChunk(content);
+          }
+          continue;
+        }
+        
         // Send to Chat UI (with cleaned content)
         if (!thinkingOnly || event.type === 'thinking') {
-          if (shouldShowInChat) {
-            // ✅ Send cleaned content (without markers)
-            await chatAPI.sendLLMEvent({
-              ...event,
-              content: cleanContent
-            });
-          }
+          // ✅ Send cleaned content (without markers)
+          await chatAPI.sendLLMEvent({
+            ...event,
+            content: cleanContent
+          });
         }
         
         if (onChunk) {

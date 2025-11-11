@@ -91,33 +91,15 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
     setShowJobMenu(false);
   };
 
-  // ✅ Stop job handler (synchronized with GNB)
-  const handleStop = async () => {
-    if (!currentJobId || isStopping) return;
-    
-    console.log('[ChatInput] Stopping job...', currentJobId);
-    
-    // ✅ Set global stopping state
-    setStopping(true);
-    
-    // ✅ Mark as user-stopped to prevent auto-restore
-    useStore.setState({ userStoppedJobId: currentJobId });
-    
-    try {
-      const selectedProject = useStore.getState().selectedProject;
-      const selectedFeature = useStore.getState().selectedFeature;
-      
-      await stopJob(currentJobId, selectedProject || undefined, selectedFeature || undefined);
-      
-      // ✅ Update global state
-      setRunning(false);
-      console.log('[ChatInput] Job stopped successfully');
-    } catch (error) {
-      console.error('[ChatInput] Failed to stop job:', error);
-      // Still update UI even if server fails
-      setRunning(false);
-    } finally {
-      setStopping(false);
+  // ✅ Stop job handler - delegates to App's centralized handler
+  const handleStop = () => {
+    console.log('[ChatInput] Stop button clicked, delegating to App.handleStopTask');
+    // Get the stop handler from window (set by App.tsx)
+    const globalStopHandler = (window as any).__stopTaskHandler;
+    if (globalStopHandler) {
+      globalStopHandler();
+    } else {
+      console.error('[ChatInput] Global stop handler not found!');
     }
   };
 
