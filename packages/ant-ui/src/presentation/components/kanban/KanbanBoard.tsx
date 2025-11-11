@@ -26,6 +26,7 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);
   const splitLayout = useStore((state) => state.splitLayout);
+  const dismissedInterruptTimestamp = useStore((state) => state.dismissedInterruptTimestamp);  // ✅ Global state
   const policy = useUIActionPolicy();
   
   // ✅ DEBUG: Log when kanbanData.isEstimating changes
@@ -46,16 +47,13 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
   const [previousInProgressId, setPreviousInProgressId] = useState<string | null>(null);
   const [isInitialLoad, setIsInitialLoad] = useState(true);  // ✅ Track initial load
   
-  // ✅ Track dismissed interrupts (user chose to ignore)
-  const [dismissedInterruptJobId, setDismissedInterruptJobId] = useState<string | null>(null);
-  
-  // ✅ Reset dismissed state when interruption changes
+  // ✅ Reset dismissed state when interruption changes (new interruption appeared)
   useEffect(() => {
     if (kanbanData.interruption?.timestamp && 
-        dismissedInterruptJobId !== kanbanData.interruption.timestamp) {
-      setDismissedInterruptJobId(null);
+        dismissedInterruptTimestamp !== kanbanData.interruption.timestamp) {
+      useStore.getState().setDismissedInterruptTimestamp(null);
     }
-  }, [kanbanData.interruption?.timestamp, dismissedInterruptJobId]);
+  }, [kanbanData.interruption?.timestamp, dismissedInterruptTimestamp]);
 
   // ✅ Detect newly completed tasks (skip animation on initial load)
   useEffect(() => {
@@ -109,19 +107,29 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
     try {
       console.log(`[KanbanBoard] Resuming job ${jobId} from interruption`);
       
+      // ✅ Set running state immediately
+      useStore.getState().setRunning(true, jobId);
+      
       // ✅ Use new resumeJob API - server will auto-detect job type
       const { resumeJob } = await import('@/infrastructure/http/api');
-      const result = await resumeJob(jobId, selectedProject, selectedFeature);
+      const result = await resumeJob(jobId, selectedProject, selectedFeature, true);  // chatSource: true
       
       console.log(`[KanbanBoard] Resume successful:`, result);
       console.log(`  Original job: ${result.originalJobId}`);
       console.log(`  New job: ${result.jobId}`);
       console.log(`  Job type: ${result.jobType}`);
       
-      // Clear dismissal state when resuming
-      setDismissedInterruptJobId(null);
+      // ✅ Update with new jobId from server
+      useStore.getState().setRunning(true, result.jobId);
+      
+      // ✅ CRITICAL: Mark current interruption as dismissed (hide it permanently)
+      // This prevents it from reappearing when job completes
+      if (interruption) {
+        useStore.getState().setDismissedInterruptTimestamp(interruption.timestamp);
+      }
     } catch (error) {
       console.error('[KanbanBoard] Failed to resume task:', error);
+      useStore.getState().setRunning(false);  // ✅ Clear running state on error
       alert(`Failed to resume task: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
@@ -130,7 +138,7 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
   const interruption = kanbanData.interruption;
   const shouldShowInterruption = 
     interruption &&
-    interruption.timestamp !== dismissedInterruptJobId &&
+    interruption.timestamp !== dismissedInterruptTimestamp &&  // ✅ Global state
     !policy.isRunning &&
     !policy.isStopping;
 
@@ -199,7 +207,7 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
             <KanbanPausedPrompt
               interruption={interruption}
               onResume={handleResumeTask}
-              onDismiss={() => setDismissedInterruptJobId(interruption.timestamp)}
+              onDismiss={() => useStore.getState().setDismissedInterruptTimestamp(interruption.timestamp)}
             />
           </div>
         )}

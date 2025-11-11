@@ -114,38 +114,51 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   const handleRetry = async () => {
     const selectedProject = useStore.getState().selectedProject;
     const selectedFeature = useStore.getState().selectedFeature;
-    const currentJobId = useStore.getState().currentJobId;
+    const kanbanData = useStore.getState().kanban;
     
     if (!selectedProject || !selectedFeature) {
       console.error('[ChatInput] Missing required selection for retry');
       return;
     }
     
-    if (!currentJobId) {
+    // ✅ Get jobId from kanban (session data after interruption)
+    const jobIdToResume = kanbanData?.jobId;
+    
+    if (!jobIdToResume) {
       console.error('[ChatInput] Missing jobId for retry - cannot resume');
+      console.error('[ChatInput] KanbanData:', kanbanData);
       return;
     }
     
-    console.log(`[ChatInput] Retrying job ${currentJobId} (resume from last checkpoint)...`);
+    console.log(`[ChatInput] Retrying job ${jobIdToResume} (resume from last checkpoint)...`);
     
     try {
+      // ✅ Set running state immediately
+      useStore.getState().setRunning(true, jobIdToResume);
+      
       // ✅ Use new resumeJob API - server will auto-detect job type
       const { resumeJob } = await import('@/infrastructure/http/api');
-      const result = await resumeJob(currentJobId, selectedProject, selectedFeature);
+      const result = await resumeJob(jobIdToResume, selectedProject, selectedFeature, true);  // chatSource: true
       
       console.log(`[ChatInput] Retry successful:`, result);
       console.log(`  Original job: ${result.originalJobId}`);
       console.log(`  New job: ${result.jobId}`);
       console.log(`  Job type: ${result.jobType}`);
       
+      // ✅ Update with new jobId from server
+      useStore.getState().setRunning(true, result.jobId);
+      
       // ✅ Clear failed state
       useStore.getState().setLastJobFailed(false);
       
-      // ✅ Note: Job state will be updated via SSE (Kanban/Chat)
-      // No need to manually set running state here
+      // ✅ CRITICAL: Dismiss interruption UI globally (hides it in KanbanBoard too)
+      if (kanbanData?.interruption?.timestamp) {
+        useStore.getState().setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
+      }
       
     } catch (error) {
       console.error('[ChatInput] Failed to retry job:', error);
+      useStore.getState().setRunning(false);  // ✅ Clear running state on error
       alert(`Failed to retry job: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
@@ -260,9 +273,10 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
         
         const jobFailed = code !== 0 && code !== null;
         
-        // ✅ Update running and failed states
-        useStore.getState().setRunning(false);
+        // ✅ Update failed state FIRST, then running state
+        // This ensures lastJobFailed is set before isRunning is cleared
         useStore.getState().setLastJobFailed(jobFailed);
+        useStore.getState().setRunning(false);
         
         // ✅ If job failed, add error message to chat
         if (jobFailed) {

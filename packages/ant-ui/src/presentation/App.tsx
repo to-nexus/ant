@@ -197,15 +197,26 @@ function App() {
       console.log(`[App] Resuming existing job: ${currentJobId}`);
       
       try {
-        const result = await resumeJob(currentJobId, selectedProject, selectedFeature!);
+        // ✅ Set running state immediately
+        setRunning(true, currentJobId);
+        
+        const result = await resumeJob(currentJobId, selectedProject, selectedFeature!, true);  // chatSource: true
         console.log('[App] Resume successful:', result);
         console.log(`  Original job: ${result.originalJobId}`);
         console.log(`  New job: ${result.jobId}`);
         console.log(`  Job type: ${result.jobType}`);
+        
+        // ✅ Update with new jobId from server
+        setRunning(true, result.jobId);
+        
+        // ✅ CRITICAL: Dismiss interruption UI globally
+        if (kanbanData?.interruption?.timestamp) {
+          useStore.getState().setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
+        }
       } catch (error) {
         console.error('[App] Failed to resume job:', error);
-        alert(`Failed to resume job: ${error instanceof Error ? error.message : 'Unknown error'}`);
         setRunning(false);
+        alert(`Failed to resume job: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
       return;
     }

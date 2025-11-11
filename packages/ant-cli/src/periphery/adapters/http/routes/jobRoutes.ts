@@ -206,7 +206,7 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
   // Resume existing job
   router.post('/jobs/:jobId/resume', async (req: Request, res: Response) => {
     const jobId = req.params.jobId;
-    const { projectId, featureName } = req.body;
+    const { projectId, featureName, chatSource = true } = req.body;  // ✅ Default to true for UI consistency
     
     console.log(`\n🔄 [ResumeRoute] Resume request received for job: ${jobId}`);
     console.log(`   Project: ${projectId}, Feature: ${featureName}`);
@@ -255,7 +255,7 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
         ),
         enableEvaluation: false,
         overrideDirective: undefined,
-        chatSource: false
+        chatSource  // ✅ Use chatSource from request body (default: true)
       };
       
       const result = await deps.executeJob(params);

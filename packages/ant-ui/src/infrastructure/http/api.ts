@@ -295,17 +295,18 @@ export async function stopJob(
 export async function resumeJob(
   jobId: string,
   projectId: string,
-  featureName: string
+  featureName: string,
+  chatSource: boolean = true  // ✅ Enable Chat SSE by default
 ): Promise<{ jobId: string; originalJobId: string; jobType: string }> {
   try {
-    console.log(`[api.ts] resumeJob called: ${jobId}`);
+    console.log(`[api.ts] resumeJob called: ${jobId}, chatSource: ${chatSource}`);
     
     const response = await fetch(`${API_BASE}/jobs/${encodeURIComponent(jobId)}/resume`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ projectId, featureName }),
+      body: JSON.stringify({ projectId, featureName, chatSource }),
     });
     
     if (!response.ok) {

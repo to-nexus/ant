@@ -354,6 +354,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       
       // Broadcast final update to notify UI that job has stopped
       if (shouldBroadcast) {
+        console.log(`   📡 Broadcasting final Kanban update...`);
         this.kanbanService.getKanbanData(
           mapping.projectId, 
           mapping.featureName,
@@ -362,12 +363,18 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
           this.jobs,
           this.taskQueueSnapshots
         ).then(kanbanData => {
+          console.log(`   ✅ Kanban data source: ${kanbanData.dataSource}`);
           this.sseService.broadcast(mapping.projectId, mapping.featureName, 'kanban', kanbanData);
+          console.log(`   ✅ Broadcast complete`);
+        }).catch(err => {
+          console.error(`   ❌ Failed to broadcast Kanban update:`, err);
         });
       }
     } catch (error) {
+      console.error(`   ❌ Error in cleanupJobState:`, error);
     }
   } else {
+    console.warn(`   ⚠️  No mapping found for ${jobId}, cannot broadcast Kanban update`);
   }
   }
   
@@ -555,12 +562,12 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         console.log(`\n🔄 [ExecuteJob] Resuming with existing Job ID: ${jobId}`);
       } else {
         // Create new jobId
-        jobId = `job-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        jobId = `${Date.now().toString(36)}${Math.random().toString(36).substr(2, 6)}`;
         console.log(`\n🆕 [ExecuteJob] Creating new Job ID: ${jobId}`);
       }
     } catch (error) {
       // Session doesn't exist or error reading - create new jobId
-      jobId = `job-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      jobId = `${Date.now().toString(36)}${Math.random().toString(36).substr(2, 6)}`;
       console.log(`\n🆕 [ExecuteJob] No session found, creating new Job ID: ${jobId}`);
     }
     
@@ -820,7 +827,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
             // ✅ Clean up job state (pass interruption if exists)
             console.log(`\n🧹 [ExpressServerAdapter.runJob] Job ${jobId} completed, calling cleanupJobState...`);
             console.log(`   interruption: ${interruption ? interruption.reason : 'none'}`);
-            await this.cleanupJobState(jobId, undefined, undefined, interruption);
+            await this.cleanupJobState(jobId, params.project, params.feature, interruption);
             console.log(`   ✅ cleanupJobState completed\n`);
             
             resolve();
@@ -952,7 +959,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
             
             // Only cleanup for natural failures (not user stops)
             console.log(`\n🧹 [ExpressServerAdapter.runJob] Job ${jobId} failed naturally, calling cleanupJobState...`);
-            await this.cleanupJobState(jobId, undefined, undefined, interruption);
+            await this.cleanupJobState(jobId, params.project, params.feature, interruption);
             console.log(`   ✅ cleanupJobState completed\n`);
             
             reject(new Error(status.error));
@@ -986,7 +993,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
             }
           };
           
-          await this.cleanupJobState(jobId, undefined, undefined, interruption);
+          await this.cleanupJobState(jobId, params.project, params.feature, interruption);
           
           reject(error);
         });
@@ -1017,7 +1024,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         }
       };
       
-      await this.cleanupJobState(jobId, undefined, undefined, interruption);
+      await this.cleanupJobState(jobId, params.project, params.feature, interruption);
     } finally {
       if (this.currentJobId === jobId) {
         this.currentJobId = null;
