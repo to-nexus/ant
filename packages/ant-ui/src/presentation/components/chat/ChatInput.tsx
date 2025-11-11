@@ -146,6 +146,10 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
         chatSource: true  // ✅ Enable Chat SSE
       });
       
+      // ✅ Store job execution object IMMEDIATELY for stop functionality
+      // (jobId will be set later when API responds)
+      useStore.getState().setCurrentJob(jobExecution);
+      
       // Set up job tracking
       jobExecution.onJobIdReady((jobId) => {
         console.log('[ChatInput] Retry job started with ID:', jobId);
@@ -284,6 +288,10 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
         overrideDirective: userMessage,  // ✅ Chat input becomes directive
         chatSource: true                  // ✅ Enable Chat SSE
       });
+      
+      // ✅ Store job execution object IMMEDIATELY for stop functionality
+      // (jobId will be set later when API responds)
+      useStore.getState().setCurrentJob(jobExecution);
       
       // ✅ 4. Set up job tracking
       jobExecution.onJobIdReady(async (jobId) => {

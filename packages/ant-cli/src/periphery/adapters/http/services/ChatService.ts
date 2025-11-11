@@ -101,7 +101,16 @@ export class ChatService {
       }
 
       const content = fs.readFileSync(filePath, 'utf-8');
-      return JSON.parse(content) as ChatSessionFile;
+      const sessionFile = JSON.parse(content) as ChatSessionFile;
+      
+      // ✅ Mark all loaded messages as complete (they're from file, not streaming)
+      sessionFile.messages = sessionFile.messages.map(msg => ({
+        ...msg,
+        isComplete: true,
+        isStreaming: undefined
+      }));
+      
+      return sessionFile;
     } catch (error) {
       console.error(`❌ [ChatService] Failed to load chat file for ${projectId}/${featureName}:`, error);
       return null;
@@ -285,6 +294,49 @@ export class ChatService {
         contentIndex: existingContents.length - 1,
         content: lastContent
       });
+    } 
+    // ✅ UPDATE progress content types (exploring, grepping, reading)
+    else if (lastContent && 
+             lastContent.type === 'exploring' && content.type === 'exploring') {
+      // Update progress content in-place
+      lastContent.content = content.content;
+      lastContent.metadata = { ...lastContent.metadata, ...content.metadata };
+      
+      // Broadcast content update
+      this.broadcast(projectId, featureName, {
+        type: 'content_update',
+        messageId: session.currentMessage.id,
+        contentIndex: existingContents.length - 1,
+        content: lastContent
+      });
+    }
+    else if (lastContent && 
+             lastContent.type === 'grepping' && content.type === 'grepping') {
+      // Update grepping progress in-place
+      lastContent.content = content.content;
+      lastContent.metadata = { ...lastContent.metadata, ...content.metadata };
+      
+      // Broadcast content update
+      this.broadcast(projectId, featureName, {
+        type: 'content_update',
+        messageId: session.currentMessage.id,
+        contentIndex: existingContents.length - 1,
+        content: lastContent
+      });
+    }
+    else if (lastContent && 
+             lastContent.type === 'reading' && content.type === 'reading') {
+      // Update reading progress in-place
+      lastContent.content = content.content;
+      lastContent.metadata = { ...lastContent.metadata, ...content.metadata };
+      
+      // Broadcast content update
+      this.broadcast(projectId, featureName, {
+        type: 'content_update',
+        messageId: session.currentMessage.id,
+        contentIndex: existingContents.length - 1,
+        content: lastContent
+      });
     } else if (content.metadata?.filePath && 
                (content.type === 'file_create' || content.type === 'file_edit' || content.type === 'file_delete')) {
       // ✅ File operation completion: find and update the in-progress content
@@ -434,8 +486,8 @@ export class ChatService {
     const key = this.getSessionKey(projectId, featureName);
     const session = this.sessions.get(key);
     
-    // ✅ COMPLETE phase: Update existing in-progress content instead of adding new
-    if (phase === 'complete' && session?.currentMessage) {
+    // ✅ Update existing in-progress content instead of adding new ones
+    if (session?.currentMessage && phase) {
       const inProgressTypes = {
         'create': ['file_creating', 'file_writing'],
         'edit': ['file_editing', 'file_updating'],
@@ -449,14 +501,31 @@ export class ChatService {
       );
       
       if (existingIndex !== -1) {
-        // ✅ Update existing content to final state
-        const finalType = operation === 'create' ? 'file_create' :
-                         operation === 'edit' ? 'file_edit' :
-                         'file_delete';
+        // ✅ Determine new type based on phase
+        let newType: ChatMessageContent['type'];
         
+        if (phase === 'creating') {
+          newType = 'file_creating';
+        } else if (phase === 'writing') {
+          newType = 'file_writing';
+        } else if (phase === 'editing') {
+          newType = 'file_editing';
+        } else if (phase === 'updating') {
+          newType = 'file_updating';
+        } else if (phase === 'deleting') {
+          newType = 'file_deleting';
+        } else if (phase === 'complete') {
+          newType = operation === 'create' ? 'file_create' :
+                    operation === 'edit' ? 'file_edit' :
+                    'file_delete';
+        } else {
+          newType = session.currentMessage.contents[existingIndex].type;
+        }
+        
+        // ✅ Update existing content
         session.currentMessage.contents[existingIndex] = {
-          type: finalType,
-          content: content || session.currentMessage.contents[existingIndex].content,
+          type: newType,
+          content: content !== undefined ? content : session.currentMessage.contents[existingIndex].content,
           metadata: {
             filePath,
             diffBefore,
@@ -473,15 +542,21 @@ export class ChatService {
           content: session.currentMessage.contents[existingIndex]
         });
         
-        // Clear active file operation
-        if (session.activeFileOperation?.filePath === filePath) {
-          session.activeFileOperation = undefined;
+        // ✅ Track active file operation for real-time streaming
+        if (phase === 'writing' || phase === 'updating') {
+          session.activeFileOperation = { filePath, contentIndex: existingIndex };
+        } else if (phase === 'complete') {
+          // Clear active file operation
+          if (session.activeFileOperation?.filePath === filePath) {
+            session.activeFileOperation = undefined;
+          }
         }
         
         return; // ✅ Early return - don't add new content
       }
     }
     
+    // ✅ No existing content found - add new content
     // Determine content type based on phase and operation
     let type: ChatMessageContent['type'];
     
@@ -691,18 +766,18 @@ export class ChatService {
    * Get all messages for a session
    */
   getMessages(projectId: string, featureName: string): ChatMessage[] {
-    const key = this.getSessionKey(projectId, featureName);
-    const session = this.sessions.get(key);
-    
-    if (!session) {
-      return [];
-    }
+    // ✅ Use getOrCreateSession to ensure file is loaded
+    const session = this.getOrCreateSession(projectId, featureName);
 
     const messages = [...session.messages];
     
     // Include current streaming message if exists
     if (session.currentMessage) {
-      messages.push(session.currentMessage);
+      // ✅ Remove isStreaming flag when sending to frontend
+      messages.push({
+        ...session.currentMessage,
+        isStreaming: undefined
+      });
     }
 
     return messages;

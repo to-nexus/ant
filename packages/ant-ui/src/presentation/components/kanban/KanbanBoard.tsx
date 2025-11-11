@@ -159,7 +159,7 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
         }
         className={`kanban-board ${splitLayout}`}  // ✅ Pass splitLayout
       >
-        <KanbanEstimating />
+        <KanbanEstimating jobTiming={kanbanData.jobTiming} />
       </BoardContainer>
     );
   }

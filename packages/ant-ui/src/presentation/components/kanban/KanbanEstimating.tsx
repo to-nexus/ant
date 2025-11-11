@@ -37,11 +37,20 @@ function ColumnHeader({ icon, title, count }: { icon: string; title: string; cou
   );
 }
 
+interface KanbanEstimatingProps {
+  jobTiming?: {
+    startedAt?: string;
+    completedAt?: string;
+    pausedAt?: string;
+    totalPausedDuration?: number;
+  };
+}
+
 /**
  * KanbanEstimating - Estimating state display with full kanban layout
  * Uses StatusBanner + shows skeleton cards in To Do column while keeping layout intact
  */
-export function KanbanEstimating() {
+export function KanbanEstimating({ jobTiming }: KanbanEstimatingProps) {
   
   return (
     <>
@@ -59,7 +68,7 @@ export function KanbanEstimating() {
               </div>
               {/* Elapsed time timer - using TaskTimer component (same as TaskCard) */}
               <div className="text-sm text-purple-700 dark:text-purple-300 whitespace-nowrap">
-                ⏱️ <TaskTimer isRunning={true} />
+                ⏱️ <TaskTimer timing={jobTiming} isRunning={true} />
               </div>
             </div>
             <div className="text-sm text-purple-800 dark:text-purple-300 mt-2">

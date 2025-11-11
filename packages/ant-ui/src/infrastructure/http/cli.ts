@@ -47,7 +47,12 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
       try {
         // Stop the job on the server first
         if (jobId) {
-          await stopJob(jobId, projectId || undefined, featureName || undefined);
+          // ✅ Get actual projectId/featureName from store (critical for cleanup!)
+          const currentState = useStore.getState();
+          const actualProjectId = currentState.selectedProject || projectId;
+          const actualFeatureName = currentState.selectedFeature || featureName;
+          
+          await stopJob(jobId, actualProjectId || undefined, actualFeatureName || undefined);
         }
       } catch (error) {
         console.error('Error stopping job on server:', error);
