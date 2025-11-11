@@ -10,8 +10,6 @@ import { ProjectService } from '../services/ProjectService';
 export function createDevServerRoutes(deps: {
   projectService: ProjectService;
   devServerService: DevServerService;
-  devServerSSE: Map<string, Set<Response>>;
-  broadcastDevServerStatus: (projectId: string) => void;
 }): Router {
   const router = Router();
   
@@ -49,8 +47,6 @@ export function createDevServerRoutes(deps: {
       const result = deps.devServerService.stopDevServer(projectId);
       
       if (result.success) {
-        // Broadcast server stopped
-        deps.broadcastDevServerStatus(projectId);
         res.json(result);
       } else {
         res.status(404).json(result);
@@ -81,45 +77,11 @@ export function createDevServerRoutes(deps: {
     }
   });
   
-  // SSE stream for dev server status
+  // SSE stream for dev server status (deprecated)
   router.get('/projects/:id/dev/stream', (req: Request, res: Response) => {
-    const projectId = req.params.id;
-    
-    // Set SSE headers
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.flushHeaders();
-    
-    // Add client to SSE map
-    if (!deps.devServerSSE.has(projectId)) {
-      deps.devServerSSE.set(projectId, new Set());
-    }
-    deps.devServerSSE.get(projectId)!.add(res);
-    
-    
-    // Send initial status
-    const status = deps.devServerService.getDevServerStatus(projectId);
-    const logs = deps.devServerService.getDevServerLogs(projectId);
-    
-    const fullStatus = {
-      running: status.running,
-      port: status.port || null,
-      url: status.port ? `http://localhost:${status.port}` : null,
-      logs: logs.slice(-50)
-    };
-    
-    res.write(`data: ${JSON.stringify(fullStatus)}\n\n`);
-    
-    // Handle client disconnect
-    req.on('close', () => {
-      const clients = deps.devServerSSE.get(projectId);
-      if (clients) {
-        clients.delete(res);
-        if (clients.size === 0) {
-          deps.devServerSSE.delete(projectId);
-        }
-      }
+    res.status(410).json({ 
+      error: 'Endpoint deprecated',
+      message: 'Dev server SSE is no longer supported'
     });
   });
   

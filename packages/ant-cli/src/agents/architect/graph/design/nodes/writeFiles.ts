@@ -52,7 +52,7 @@ export async function writeFiles(state: DesignGraphState): Promise<DesignGraphSt
   if (state.deps?.fileTreeUpdate) {
     const featureName = state.context.featureFolder || 'default';
     console.log(`📡 Notifying file tree update: ${state.context.project}/${featureName}`);
-    state.deps.fileTreeUpdate.notifyFileTreeUpdate(
+    await state.deps.fileTreeUpdate.notifyFileTreeUpdate(
       state.context.project,
       featureName
     );

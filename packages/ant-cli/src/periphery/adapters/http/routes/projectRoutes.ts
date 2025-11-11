@@ -11,7 +11,6 @@ import { ProjectService, ChatService } from '../services';
 export function createProjectRoutes(deps: {
   projectService: ProjectService;
   workspaceRoot: string;
-  fileTreeSSE?: Map<string, Set<Response>>;
   chatService?: ChatService;
 }): Router {
   const router = Router();
@@ -367,76 +366,12 @@ export function createProjectRoutes(deps: {
     }
   });
   
-  // SSE stream for file tree updates
-  router.get('/projects/:id/features/:feature/files/stream', async (req: Request, res: Response) => {
-    const projectId = req.params.id;
-    const featureName = req.params.feature;
-    const key = `${projectId}/${featureName}`;
-    
-    if (!deps.fileTreeSSE) {
-      res.status(500).json({ error: 'SSE not configured' });
-      return;
-    }
-    
-    // Set SSE headers
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.flushHeaders();
-    
-    // Add client to SSE map
-    if (!deps.fileTreeSSE.has(key)) {
-      deps.fileTreeSSE.set(key, new Set());
-    }
-    deps.fileTreeSSE.get(key)!.add(res);
-    
-    
-    // Send initial data (current file tree)
-    try {
-      const featurePath = path.join(deps.workspaceRoot, projectId, featureName);
-      
-      const buildFileTree = async (dirPath: string, relativePath: string = ''): Promise<any[]> => {
-        const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
-        const nodes = await Promise.all(
-          entries.map(async (entry) => {
-            const fullPath = path.join(dirPath, entry.name);
-            const relPath = path.join(relativePath, entry.name);
-            
-            if (entry.isDirectory()) {
-              const children = await buildFileTree(fullPath, relPath);
-              return {
-                name: entry.name,
-                path: relPath,
-                type: 'directory',
-                children
-              };
-            } else {
-              return {
-                name: entry.name,
-                path: relPath,
-                type: 'file'
-              };
-            }
-          })
-        );
-        return nodes;
-      };
-      
-      const tree = await buildFileTree(featurePath);
-      res.write(`data: ${JSON.stringify({ type: 'initial', fileTree: tree })}\n\n`);
-    } catch (error) {
-      console.error(`[FileTree SSE] Error sending initial data:`, error);
-    }
-    
-    // Handle client disconnect
-    req.on('close', () => {
-      const clients = deps.fileTreeSSE!.get(key);
-      if (clients) {
-        clients.delete(res);
-        if (clients.size === 0) {
-          deps.fileTreeSSE!.delete(key);
-        }
-      }
+  // ⚠️ DEPRECATED: Redirect to unified SSE endpoint
+  router.get('/projects/:id/features/:feature/files/stream', (req: Request, res: Response) => {
+    res.status(410).json({ 
+      error: 'Endpoint deprecated',
+      message: 'Use /projects/:id/features/:feature/stream instead',
+      newEndpoint: `/projects/${req.params.id}/features/${req.params.feature}/stream`
     });
   });
   
@@ -551,16 +486,7 @@ export function createProjectRoutes(deps: {
         uploadedFiles.push(file.originalname);
       }
       
-      // Broadcast file tree update via SSE
-      if (deps.fileTreeSSE) {
-        const key = `${projectId}/${featureName}`;
-        const clients = deps.fileTreeSSE.get(key);
-        if (clients) {
-          clients.forEach(client => {
-            client.write(`data: ${JSON.stringify({ type: 'update' })}\n\n`);
-          });
-        }
-      }
+      // Note: File tree update is now handled by SSEService via notifyFileTreeUpdate
       
       res.json({ 
         success: true, 
@@ -638,28 +564,14 @@ export function createProjectRoutes(deps: {
   /**
    * GET /projects/:id/features/:feature/chat/stream
    * SSE endpoint for real-time chat messages
+   * ⚠️ DEPRECATED: Use unified SSE endpoint /projects/:id/features/:feature/stream instead
    */
+  // ⚠️ DEPRECATED: Redirect to unified SSE endpoint
   router.get('/projects/:id/features/:feature/chat/stream', (req: Request, res: Response) => {
-    const projectId = req.params.id;
-    const featureName = req.params.feature;
-
-    if (!deps.chatService) {
-      res.status(503).json({ error: 'Chat service not available' });
-      return;
-    }
-
-    // Set up SSE headers
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
-
-    // Register client
-    deps.chatService.registerSSEClient(projectId, featureName, res);
-
-    // Handle client disconnect
-    req.on('close', () => {
-      deps.chatService?.unregisterSSEClient(projectId, featureName, res);
+    res.status(410).json({ 
+      error: 'Endpoint deprecated',
+      message: 'Use /projects/:id/features/:feature/stream instead',
+      newEndpoint: `/projects/${req.params.id}/features/${req.params.feature}/stream`
     });
   });
 

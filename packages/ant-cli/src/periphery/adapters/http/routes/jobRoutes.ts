@@ -109,42 +109,10 @@ export function createJobRoutes(deps: {
     res.json(logs);
   });
   
-  // Stream logs (SSE)
+  // Deprecated: Logs SSE endpoint (replaced by unified SSE)
   router.get('/jobs/:jobId/stream', (req: Request, res: Response) => {
-    const jobId = req.params.jobId;
-    
-    // Set SSE headers
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    
-    // Send existing logs
-    const existingLogs = deps.logs.get(jobId) || [];
-    existingLogs.forEach(log => {
-      res.write(`data: ${JSON.stringify(log)}\n\n`);
-    });
-    
-    // Subscribe to new logs
-    const listener = (log: LogEntry) => {
-      res.write(`data: ${JSON.stringify(log)}\n\n`);
-    };
-    
-    if (!deps.logStreams.has(jobId)) {
-      deps.logStreams.set(jobId, new Set());
-    }
-    deps.logStreams.get(jobId)!.add(listener);
-    
-    // Store SSE response for later closing
-    if (!deps.sseResponses.has(jobId)) {
-      deps.sseResponses.set(jobId, new Set());
-    }
-    deps.sseResponses.get(jobId)!.add(res);
-    
-    // Clean up on disconnect
-    req.on('close', () => {
-      deps.logStreams.get(jobId)?.delete(listener);
-      deps.sseResponses.get(jobId)?.delete(res);
-      res.end();
+    res.status(410).json({ 
+      error: 'This endpoint has been deprecated. Use unified SSE instead.' 
     });
   });
 

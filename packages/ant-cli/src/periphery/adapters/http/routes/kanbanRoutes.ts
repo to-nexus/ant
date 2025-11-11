@@ -37,62 +37,12 @@ export function createKanbanRoutes(deps: {
     }
   });
   
-  // SSE stream for Kanban board updates
-  router.get('/projects/:id/features/:feature/kanban/stream', async (req: Request, res: Response) => {
-    const projectId = req.params.id;
-    const featureName = req.params.feature;
-    const job = (req.query.job as 'design' | 'code' | 'learn') || 'code';  // ✅ Get job from query param
-    const key = `${projectId}/${featureName}`;
-    
-    // Check if there's an active task for this project/feature
-    const activeTaskId = Array.from(deps.jobToProject.entries())
-      .find(([_, mapping]) => 
-        mapping.projectId === projectId && mapping.featureName === featureName
-      )?.[0];
-    
-    // Set SSE headers
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.flushHeaders();
-    
-    // Add client to SSE map
-    if (!deps.kanbanSSE.has(key)) {
-      deps.kanbanSSE.set(key, new Set());
-    }
-    deps.kanbanSSE.get(key)!.add(res);
-    
-    if (activeTaskId) {
-    } else {
-      // Start watching session file even when no task is running
-      deps.watchSessionFile('', projectId, featureName, job);
-    }
-    
-    // Send initial data
-    try {
-      const initialData = await deps.kanbanService.getKanbanData(
-        projectId,
-        featureName,
-        job,  // ✅ Pass job type
-        deps.jobToProject,
-        deps.jobs,
-        deps.taskQueueSnapshots
-      );
-      res.write(`data: ${JSON.stringify(initialData)}\n\n`);
-    } catch (error) {
-      console.error(`[Kanban SSE] Error sending initial data:`, error);
-    }
-    
-    // Handle client disconnect
-    req.on('close', () => {
-      const clients = deps.kanbanSSE.get(key);
-      if (clients) {
-        clients.delete(res);
-        if (clients.size === 0) {
-          deps.kanbanSSE.delete(key);
-          // Session watcher will auto-stop when no SSE clients
-        }
-      }
+  // ⚠️ DEPRECATED: Redirect to unified SSE endpoint
+  router.get('/projects/:id/features/:feature/kanban/stream', (req: Request, res: Response) => {
+    res.status(410).json({ 
+      error: 'Endpoint deprecated',
+      message: 'Use /projects/:id/features/:feature/stream instead',
+      newEndpoint: `/projects/${req.params.id}/features/${req.params.feature}/stream`
     });
   });
   

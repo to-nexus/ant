@@ -1,11 +1,10 @@
-import { Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 
 /**
  * KanbanService
  * 
- * Manages Kanban board state and SSE broadcasts for real-time task tracking.
+ * Manages Kanban board state for real-time task tracking.
  * Implements hybrid data strategy: live memory snapshots + session file fallback.
  */
 export class KanbanService {
@@ -71,9 +70,6 @@ export class KanbanService {
   // Task to project/feature mapping
   private taskToProject: Map<string, { projectId: string; featureName: string }> = new Map();
   
-  // Kanban SSE tracking - key: "projectId/featureName"
-  private kanbanSSE: Map<string, Set<Response>> = new Map();
-  
   constructor(workspaceRoot: string) {
     this.workspaceRoot = workspaceRoot;
   }
@@ -118,51 +114,6 @@ export class KanbanService {
     this.taskToProject.delete(taskId);
     this.taskQueueSnapshots.delete(taskId);
   }
-  
-  /**
-   * Add Kanban SSE client
-   */
-  addSSEClient(projectId: string, featureName: string, res: Response): void {
-    const key = `${projectId}/${featureName}`;
-    if (!this.kanbanSSE.has(key)) {
-      this.kanbanSSE.set(key, new Set());
-    }
-    this.kanbanSSE.get(key)!.add(res);
-  }
-  
-  /**
-   * Remove Kanban SSE client
-   */
-  removeSSEClient(projectId: string, featureName: string, res: Response): void {
-    const key = `${projectId}/${featureName}`;
-    const clients = this.kanbanSSE.get(key);
-    if (clients) {
-      clients.delete(res);
-      if (clients.size === 0) {
-        this.kanbanSSE.delete(key);
-      }
-    }
-  }
-  
-  /**
-   * Close all Kanban SSE connections for a project/feature
-   */
-  closeSSEConnections(projectId: string, featureName: string): void {
-    const key = `${projectId}/${featureName}`;
-    const kanbanClients = this.kanbanSSE.get(key);
-    if (kanbanClients) {
-      kanbanClients.forEach(res => {
-        try {
-          res.end();
-        } catch (err) {
-          // Ignore errors from already closed connections
-        }
-      });
-      this.kanbanSSE.delete(key);
-    }
-  }
-  
-  // Note: Broadcast methods are removed as they are now handled by SSEBroadcastService
   
   /**
    * Get Kanban data with hybrid strategy

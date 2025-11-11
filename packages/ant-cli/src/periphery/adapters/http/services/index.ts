@@ -3,7 +3,7 @@ export { TaskExecutionService } from './TaskExecutionService';
 export { SessionService } from './SessionService';
 export { DevServerService } from './DevServerService';
 export { ProjectService } from './ProjectService';
-export { SSEBroadcastService } from './SSEBroadcastService';
 export { GraphMetadataService } from './GraphMetadataService';
 export { WorkflowStateService } from './WorkflowStateService';
 export { ChatService } from './ChatService';
+export { SSEService } from './SSEService';

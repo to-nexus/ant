@@ -22,17 +22,18 @@ import {
   SessionService, 
   DevServerService, 
   ProjectService,
-  SSEBroadcastService,
   GraphMetadataService,
   WorkflowStateService,
-  ChatService
+  ChatService,
+  SSEService
 } from './services';
 import {
   createJobRoutes,
   createKanbanRoutes,
   createDevServerRoutes,
   createProjectRoutes,
-  createWorkflowRoutes
+  createWorkflowRoutes,
+  createSSERoutes
 } from './routes';
 import { FileJobPrerequisitesAdapter } from '../prerequisites/FileJobPrerequisitesAdapter';
 
@@ -61,10 +62,10 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   private sessionService: SessionService;
   private devServerService: DevServerService;
   private projectService: ProjectService;
-  private sseBroadcastService: SSEBroadcastService;
   private chatService: ChatService;
   private graphMetadataService: GraphMetadataService;
   private workflowStateService: WorkflowStateService;
+  private sseService: SSEService;  // ✅ Unified SSE service
   private jobPrerequisitesAdapter: FileJobPrerequisitesAdapter;
   
   // Job tracking (agent execution instances)
@@ -156,18 +157,20 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     const mapping = this.jobToProject.get(jobId);
     if (mapping) {
       const jobStatus = this.jobs.get(jobId);
-      // ✅ Narrow jobType to supported values
       const task = jobStatus?.task;
       const jobType: 'design' | 'code' | 'learn' = 
         (task === 'design' || task === 'code' || task === 'learn') ? task : 'code';
-      this.sseBroadcastService.broadcastKanbanUpdate(
+      
+      this.kanbanService.getKanbanData(
         mapping.projectId, 
         mapping.featureName,
+        jobType,
         this.jobToProject,
         this.jobs,
-        this.taskQueueSnapshots,
-        jobType  // ✅ Pass narrowed job type
-      );
+        this.taskQueueSnapshots
+      ).then(kanbanData => {
+        this.sseService.broadcast(mapping.projectId, mapping.featureName, 'kanban', kanbanData);
+      });
     }
   }
   
@@ -337,18 +340,18 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         }
       }
       
-      // ✅ CRITICAL: Always broadcast final update to notify UI that job has stopped
+      // Broadcast final update to notify UI that job has stopped
       if (shouldBroadcast) {
-        console.log(`   📡 Broadcasting Kanban update (job stopped)...`);
-        this.sseBroadcastService.broadcastKanbanUpdate(
+        this.kanbanService.getKanbanData(
           mapping.projectId, 
           mapping.featureName,
+          jobType,
           this.jobToProject,
           this.jobs,
-          this.taskQueueSnapshots,
-          jobType  // ✅ Pass job type
-        );
-        console.log(`   ✅ Broadcast completed\n`);
+          this.taskQueueSnapshots
+        ).then(kanbanData => {
+          this.sseService.broadcast(mapping.projectId, mapping.featureName, 'kanban', kanbanData);
+        });
       }
     } catch (error) {
     }
@@ -357,11 +360,9 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   }
   
   constructor() {
-    console.log('🔧 Initializing ExpressServerAdapter...');
     this.app = express();
     
     // Initialize services
-    console.log('   📦 Creating KanbanService...');
     this.kanbanService = new KanbanService(this.WORKSPACE_ROOT);
     this.taskExecutionService = new TaskExecutionService({
       onJobStatusChange: (jobId, status) => {
@@ -385,76 +386,41 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       }
     });
     this.projectService = new ProjectService(this.WORKSPACE_ROOT);
+    this.sseService = new SSEService();
     this.devServerService = new DevServerService({
       onStatusChange: (projectId) => {
-        this.sseBroadcastService.broadcastDevServerStatus(projectId);
+        // DevServer status broadcasting removed
       }
     });
     
-    // Initialize SSE broadcast service (requires other services to be initialized first)
-    this.sseBroadcastService = new SSEBroadcastService(
-      this.kanbanService,
-      this.devServerService,
-      this.projectService
-    );
-    
-    // Initialize session service with SSE callback
     this.sessionService = new SessionService(this.WORKSPACE_ROOT, {
-      onSessionChange: (projectId, featureName, jobType) => {
-        // ✅ Broadcast Kanban update when session changes
-        // Now we know exactly which job type triggered the change
-        console.log(`\n📡 [onSessionChange] Session file changed: ${projectId}/${featureName}/${jobType}`);
-        console.log(`   Current jobs.size: ${this.jobs.size}`);
-        console.log(`   Current jobToProject.size: ${this.jobToProject.size}`);
-        console.log(`   Current taskQueueSnapshots.size: ${this.taskQueueSnapshots.size}`);
-        
-        // ✅ CRITICAL: Small delay to let cleanupJobState complete
-        // Session file can be updated by 'learn' node BEFORE cleanupJobState deletes job from map
-        // This 50ms delay ensures cleanupJobState runs first
-        setTimeout(() => {
-          console.log(`📡 [onSessionChange] Broadcasting after delay...`);
-          console.log(`   jobs.size after delay: ${this.jobs.size}`);
-          
-          this.sseBroadcastService.broadcastKanbanUpdate(
+      onSessionChange: async (projectId, featureName, jobType) => {
+        setTimeout(async () => {
+          const kanbanData = await this.kanbanService.getKanbanData(
             projectId, 
             featureName,
+            jobType,
             this.jobToProject,
             this.jobs,
-            this.taskQueueSnapshots,
-            jobType  // ✅ Pass the job type from the watcher
+            this.taskQueueSnapshots
           );
-        }, 50);  // 50ms delay
-        
-        // ✅ Broadcast file tree update when session file is created/modified
-        // This ensures the frontend sees session.json appear in the output tree
-        this.sseBroadcastService.broadcastFileTreeUpdate(projectId, featureName);
+          this.sseService.broadcast(projectId, featureName, 'kanban', kanbanData);
+          
+          const fileTree = await this.projectService.getFileTree(projectId, featureName);
+          this.sseService.broadcast(projectId, featureName, 'fileTree', { type: 'update', tree: fileTree });
+        }, 50);
       }
     });
     
-    // Initialize graph metadata service for workflow visualization
-    console.log('   📊 Creating GraphMetadataService...');
     this.graphMetadataService = new GraphMetadataService();
-    
-    // Initialize workflow state service for real-time workflow tracking
-    console.log('   🔄 Creating WorkflowStateService...');
-    this.workflowStateService = new WorkflowStateService();
-    
-    // Initialize ChatService
-    console.log('   💬 Creating ChatService...');
-    this.chatService = new ChatService(this.WORKSPACE_ROOT);
-    
-    // Initialize job prerequisites adapter
-    console.log('   ✅ Creating JobPrerequisitesAdapter...');
+    this.workflowStateService = new WorkflowStateService(this.sseService);
+    this.chatService = new ChatService(this.WORKSPACE_ROOT, this.sseService);
     this.jobPrerequisitesAdapter = new FileJobPrerequisitesAdapter(this.WORKSPACE_ROOT);
     
-    console.log('   ⚙️  Setting up middleware...');
     this.setupMiddleware();
-    console.log('   🛣️  Setting up routes...');
     this.setupRoutes();
     
-    // Set singleton instance
     ExpressServerAdapter.instance = this;
-    console.log('✅ ExpressServerAdapter initialized successfully\n');
   }
   
   /**
@@ -484,7 +450,6 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     const projectRoutes = createProjectRoutes({
       projectService: this.projectService,
       workspaceRoot: this.WORKSPACE_ROOT,
-      fileTreeSSE: this.sseBroadcastService.getFileTreeSSE(),
       chatService: this.chatService
     });
     this.app.use('/api', projectRoutes);
@@ -492,7 +457,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     // Kanban routes
     const kanbanRoutes = createKanbanRoutes({
       kanbanService: this.kanbanService,
-      kanbanSSE: this.sseBroadcastService.getKanbanSSE(),
+      kanbanSSE: new Map(), // Legacy SSE - deprecated
       jobToProject: this.jobToProject,
       jobs: this.jobs,
       taskQueueSnapshots: this.taskQueueSnapshots,
@@ -503,9 +468,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     // Dev server routes
     const devServerRoutes = createDevServerRoutes({
       projectService: this.projectService,
-      devServerService: this.devServerService,
-      devServerSSE: this.sseBroadcastService.getDevServerSSE(),
-      broadcastDevServerStatus: this.sseBroadcastService.broadcastDevServerStatus.bind(this.sseBroadcastService)
+      devServerService: this.devServerService
     });
     this.app.use('/api', devServerRoutes);
     
@@ -515,6 +478,20 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       workflowStateService: this.workflowStateService
     });
     this.app.use('/api', workflowRoutes);
+    
+    // ✅ Unified SSE routes (consolidates kanban, chat, fileTree, workflow)
+    const sseRoutes = createSSERoutes({
+      sseService: this.sseService,
+      kanbanService: this.kanbanService,
+      chatService: this.chatService,
+      projectService: this.projectService,
+      workflowStateService: this.workflowStateService,
+      workspaceRoot: this.WORKSPACE_ROOT,
+      jobToProject: this.jobToProject,
+      jobs: this.jobs,
+      taskQueueSnapshots: this.taskQueueSnapshots
+    });
+    this.app.use('/api', sseRoutes);
     
     // Job execution routes
     const jobRoutes = createJobRoutes({
@@ -630,18 +607,17 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     
     console.log(`   ✅ Session file watcher started`);
     
-    // ✅ CRITICAL: Broadcast immediately to show "estimating" state via SSE service
-    // This ensures UI updates INSTANTLY when job starts, even before decompose
-    console.log(`   🔥 Broadcasting Kanban update to show ESTIMATING state...`);
-    this.sseBroadcastService.broadcastKanbanUpdate(
+    // Broadcast immediately to show "estimating" state
+    this.kanbanService.getKanbanData(
       projectId, 
       featureName,
-      this.jobToProject,  // ✅ Pass job map
-      this.jobs,           // ✅ Pass jobs status
-      this.taskQueueSnapshots,  // ✅ Pass snapshots
-      jobType  // ✅ Pass narrowed job type
-    );
-    console.log(`   ✅ Kanban broadcast completed\n`);
+      jobType,
+      this.jobToProject,
+      this.jobs,
+      this.taskQueueSnapshots
+    ).then(kanbanData => {
+      this.sseService.broadcast(projectId, featureName, 'kanban', kanbanData);
+    });
     
     // Start job execution in child process (non-blocking)
     this.runJob(jobId, params).catch(error => {
@@ -1055,8 +1031,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   private watchSessionFile(jobId: string, projectId: string, featureName: string, task: string): void {
     const key = `${projectId}/${featureName}`;
     const sseClientChecker = () => {
-      const clients = this.sseBroadcastService.getKanbanSSE().get(key);
-      return clients ? clients.size > 0 : false;
+      return this.sseService.getClientCount(projectId, featureName) > 0;
     };
     
     // Map task to job type
@@ -1068,10 +1043,16 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   /**
    * Notify file tree update (implements FileTreeUpdatePort)
    */
-  notifyFileTreeUpdate(projectId: string, featureName: string): void {
-    console.log(`[ExpressServerAdapter] 📡 notifyFileTreeUpdate called: ${projectId}/${featureName}`);
-    this.sseBroadcastService.broadcastFileTreeUpdate(projectId, featureName);
-    console.log(`[ExpressServerAdapter] ✅ broadcastFileTreeUpdate dispatched`);
+  async notifyFileTreeUpdate(projectId: string, featureName: string): Promise<void> {
+    try {
+      console.log(`[FileTreeUpdate] Updating for ${projectId}/${featureName}`);
+      const fileTree = await this.projectService.getFileTree(projectId, featureName);
+      const clientCount = this.sseService.getClientCount(projectId, featureName);
+      console.log(`[FileTreeUpdate] Broadcasting to ${clientCount} client(s)`);
+      this.sseService.broadcast(projectId, featureName, 'fileTree', { type: 'update', tree: fileTree });
+    } catch (error) {
+      console.error(`[FileTreeUpdate] Error:`, error);
+    }
   }
   
   // =====================================
@@ -1161,7 +1142,6 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         // Cleanup services
         this.sessionService.cleanup();
         this.devServerService.cleanup();
-        this.sseBroadcastService.cleanup(); // Cleanup all SSE connections
         
         this.server.close(() => {
           this.running = false;

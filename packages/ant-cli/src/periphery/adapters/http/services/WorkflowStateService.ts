@@ -10,6 +10,7 @@
  */
 
 import { Response } from 'express';
+import type { SSEService } from './SSEService';
 
 export interface NodeHistoryEntry {
   nodeId: string;
@@ -72,8 +73,12 @@ export class WorkflowStateService {
   // jobId → WorkflowRealtimeState
   private states: Map<string, WorkflowRealtimeState> = new Map();
   
-  // jobId → SSE Response clients
-  private clients: Map<string, Set<Response>> = new Map();
+  // SSEService for broadcasting
+  private sseService?: SSEService;
+  
+  constructor(sseService?: SSEService) {
+    this.sseService = sseService;
+  }
   
   /**
    * Job 시작 (초기 상태 생성)
@@ -232,57 +237,27 @@ export class WorkflowStateService {
     // 최종 브로드캐스트 (종료 알림)
     this.broadcast(jobId);
     
-    // 클라이언트 연결 종료
-    const clients = this.clients.get(jobId);
-    if (clients) {
-      clients.forEach(res => {
-        try {
-          res.write('event: end\ndata: {}\n\n');
-          res.end();
-        } catch (err) {
-          console.error(`[WorkflowStateService] Error closing SSE connection:`, err);
-        }
-      });
-      this.clients.delete(jobId);
-    }
+    // Note: SSE 연결 종료는 SSEService가 관리합니다
     
     // 상태는 삭제하지 않고 보존 (UI에서 마지막 상태 조회 가능)
     // 메모리 관리를 위해 주기적으로 오래된 상태는 정리될 수 있음
   }
   
   /**
-   * SSE 클라이언트 등록
+   * Get initial workflow state (called when SSE client connects)
    */
-  addClient(jobId: string, res: Response): void {
-    console.log(`\n📡 [WorkflowStateService] New SSE client for job ${jobId}`);
-    
-    if (!this.clients.has(jobId)) {
-      this.clients.set(jobId, new Set());
-    }
-    this.clients.get(jobId)!.add(res);
-    
-    console.log(`   ✅ Client registered (total: ${this.clients.get(jobId)!.size})`);
-    
-    // 현재 상태 즉시 전송
+  getInitialState(jobId: string): WorkflowRealtimeState | null {
     const state = this.states.get(jobId);
-    if (state) {
-      console.log(`   📤 Sending current state: ${state.currentNode || 'null'}`);
-      this.sendToClient(res, state);
-    } else {
+    if (!state) {
       console.log(`   ⚠️ No state found for job ${jobId}`);
+      return null;
     }
     
-    // 클라이언트 연결 종료 처리
-    res.on('close', () => {
-      console.log(`   🔌 Client disconnected from job ${jobId}`);
-      const clients = this.clients.get(jobId);
-      if (clients) {
-        clients.delete(res);
-        if (clients.size === 0) {
-          this.clients.delete(jobId);
-        }
-      }
-    });
+    // Return serialized state (convert Set to Array)
+    return {
+      ...state,
+      activeActors: new Set(state.activeActors) // Clone Set
+    };
   }
   
   /**
@@ -293,7 +268,7 @@ export class WorkflowStateService {
   }
   
   /**
-   * 상태를 모든 클라이언트에 브로드캐스트
+   * 상태를 모든 클라이언트에 브로드캐스트 (SSEService 사용)
    */
   private broadcast(jobId: string): void {
     const state = this.states.get(jobId);
@@ -302,36 +277,22 @@ export class WorkflowStateService {
       return;
     }
     
-    const clients = this.clients.get(jobId);
-    if (!clients || clients.size === 0) {
-      console.log(`   ⚠️ [WorkflowStateService] No clients to broadcast to for job ${jobId}`);
+    if (!this.sseService) {
+      console.warn(`   ⚠️ [WorkflowStateService] SSEService not available, skipping broadcast`);
       return;
     }
     
-    console.log(`   📡 [WorkflowStateService] Broadcasting to ${clients.size} client(s)`);
+    // Set을 Array로 변환하여 JSON 직렬화 가능하게
+    const serializedState = {
+      ...state,
+      activeActors: Array.from(state.activeActors)
+    };
+    
+    console.log(`   📡 [WorkflowStateService] Broadcasting workflow state`);
     console.log(`      Current node: ${state.currentNode || 'null'}`);
     console.log(`      Active actors: ${state.activeActors.size}`);
     
-    clients.forEach(res => {
-      this.sendToClient(res, state);
-    });
-  }
-  
-  /**
-   * 단일 클라이언트에 상태 전송
-   */
-  private sendToClient(res: Response, state: WorkflowRealtimeState): void {
-    try {
-      // Set을 Array로 변환하여 JSON 직렬화 가능하게
-      const serializedState = {
-        ...state,
-        activeActors: Array.from(state.activeActors)
-      };
-      
-      res.write(`data: ${JSON.stringify(serializedState)}\n\n`);
-    } catch (err) {
-      console.error(`[WorkflowStateService] Error sending state:`, err);
-    }
+    this.sseService.broadcastWorkflow(jobId, serializedState);
   }
 }
 

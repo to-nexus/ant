@@ -92,49 +92,7 @@ export function createWorkflowRoutes(deps: {
     res.json(serializedState);
   });
   
-  /**
-   * GET /api/jobs/:jobId/workflow/stream
-   * 
-   * 실시간 워크플로우 상태 스트림 (SSE)
-   * 
-   * Parameters:
-   * - jobId: string (실행 중인 Job ID)
-   * 
-   * Response:
-   * - text/event-stream
-   */
-  router.get('/jobs/:jobId/workflow/stream', (req: Request, res: Response) => {
-    const { jobId } = req.params;
-    
-    console.log(`\n🔌 [WorkflowRoutes] GET /jobs/${jobId}/workflow/stream - Client connecting...`);
-    
-    // SSE 헤더 설정
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no'); // Nginx 버퍼링 방지
-    
-    console.log(`   ✅ SSE headers set`);
-    
-    // 클라이언트 등록 (현재 상태 즉시 전송 포함)
-    console.log(`   📡 Calling workflowStateService.addClient...`);
-    deps.workflowStateService.addClient(jobId, res);
-    console.log(`   ✅ Client registered`);
-    
-    // Keep-alive ping (30초마다)
-    const pingInterval = setInterval(() => {
-      try {
-        res.write(': ping\n\n');
-      } catch (err) {
-        clearInterval(pingInterval);
-      }
-    }, 30000);
-    
-    // 연결 종료시 정리
-    req.on('close', () => {
-      clearInterval(pingInterval);
-    });
-  });
+  // Note: /jobs/:jobId/workflow/stream is now handled by sseRoutes.ts (unified SSE)
   
   /**
    * POST /api/jobs/:jobId/workflow/update

@@ -160,7 +160,7 @@ export async function writeFiles(state: ArchitectGraphState): Promise<ArchitectG
     // ✅ Notify file tree update for real-time UI refresh
     if (state.deps?.fileTreeUpdate && state.context.project && state.context.featureFolder) {
       const featureName = path.basename(state.context.featureFolder);
-      state.deps.fileTreeUpdate.notifyFileTreeUpdate(state.context.project, featureName);
+      await state.deps.fileTreeUpdate.notifyFileTreeUpdate(state.context.project, featureName);
       console.log(`📡 File tree update notification sent to UI\n`);
     }
 
