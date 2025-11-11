@@ -6,7 +6,7 @@ import { AgentWorkflowBoard } from '../workflow';
 import { ConfigEditor } from '../ConfigEditor';
 import { FileEditorPanel } from '../FileEditorPanel';
 import type { ProjectConfig } from '@/infrastructure/http/api';
-import type { KanbanData } from '@/domain/models/kanban';
+import type { KanbanData } from '@/infrastructure/http/api';
 import type { WorkflowRealtimeState } from '@/domain/models/workflow';
 
 interface MainContentAreaProps {

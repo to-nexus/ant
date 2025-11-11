@@ -86,6 +86,13 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
     };
   }, [showJobMenu]);
 
+  // Close menu when job starts running
+  useEffect(() => {
+    if (isRunning && showJobMenu) {
+      setShowJobMenu(false);
+    }
+  }, [isRunning, showJobMenu]);
+
   const handleJobSelect = (jobValue: string) => {
     setSelectedWorkType(jobValue as 'design' | 'code' | 'learn');
     setShowJobMenu(false);
@@ -107,73 +114,39 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   const handleRetry = async () => {
     const selectedProject = useStore.getState().selectedProject;
     const selectedFeature = useStore.getState().selectedFeature;
-    const selectedAgent = useStore.getState().selectedAgent;
+    const currentJobId = useStore.getState().currentJobId;
     
-    if (!selectedProject || !selectedFeature || !selectedAgent || !selectedWorkType) {
+    if (!selectedProject || !selectedFeature) {
       console.error('[ChatInput] Missing required selection for retry');
       return;
     }
     
-    console.log('[ChatInput] Retrying job (resume from last checkpoint)...');
+    if (!currentJobId) {
+      console.error('[ChatInput] Missing jobId for retry - cannot resume');
+      return;
+    }
+    
+    console.log(`[ChatInput] Retrying job ${currentJobId} (resume from last checkpoint)...`);
     
     try {
-      // ✅ Execute job without overrideDirective (will auto-resume from session)
-      const { executeCodeJob } = await import('@/infrastructure/http/cli');
+      // ✅ Use new resumeJob API - server will auto-detect job type
+      const { resumeJob } = await import('@/infrastructure/http/api');
+      const result = await resumeJob(currentJobId, selectedProject, selectedFeature);
       
-      const jobExecution = executeCodeJob({
-        projectId: selectedProject,
-        featureName: selectedFeature,
-        task: selectedWorkType as 'design' | 'code' | 'learn',
-        agent: selectedAgent as 'architect',
-        chatSource: true  // ✅ Enable Chat SSE
-      });
+      console.log(`[ChatInput] Retry successful:`, result);
+      console.log(`  Original job: ${result.originalJobId}`);
+      console.log(`  New job: ${result.jobId}`);
+      console.log(`  Job type: ${result.jobType}`);
       
-      // ✅ Store job execution object IMMEDIATELY for stop functionality
-      // (jobId will be set later when API responds)
-      useStore.getState().setCurrentJob(jobExecution);
+      // ✅ Clear failed state
+      useStore.getState().setLastJobFailed(false);
       
-      // Set up job tracking
-      jobExecution.onJobIdReady((jobId) => {
-        console.log('[ChatInput] Retry job started with ID:', jobId);
-        useStore.getState().setRunning(true, jobId);
-      });
-      
-      // Handle job completion
-      jobExecution.on('exit', async (code, signal) => {
-        console.log('[ChatInput] Retry job finished:', { code, signal });
-        
-        const jobFailed = code !== 0 && code !== null;
-        
-        useStore.getState().setRunning(false);
-        useStore.getState().setLastJobFailed(jobFailed);
-        
-        if (jobFailed) {
-          try {
-            const jobId = useStore.getState().currentJobId;
-            if (jobId) {
-              await fetch(
-                `${API_BASE}/projects/${selectedProject}/features/${selectedFeature}/chat/job-error`,
-                {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    jobId,
-                    errorMessage: signal 
-                      ? `Job was terminated with signal: ${signal}` 
-                      : `Job failed with exit code: ${code}`,
-                    errorDetails: { code, signal }
-                  })
-                }
-              );
-            }
-          } catch (error) {
-            console.error('[ChatInput] Failed to add error message:', error);
-          }
-        }
-      });
+      // ✅ Note: Job state will be updated via SSE (Kanban/Chat)
+      // No need to manually set running state here
       
     } catch (error) {
       console.error('[ChatInput] Failed to retry job:', error);
+      alert(`Failed to retry job: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -437,12 +410,14 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setShowJobMenu(!showJobMenu)}
+              disabled={!chatPolicy.canChangeJob}
               className="flex items-center gap-1 px-2 py-1 text-xs
                          bg-white dark:bg-gray-700 
                          border border-gray-300 dark:border-gray-600
                          text-gray-700 dark:text-gray-200
                          rounded hover:bg-gray-100 dark:hover:bg-gray-600 
-                         transition-colors"
+                         transition-colors
+                         disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span>
                 {chatPolicy.reason === 'no-job' ? '🎯 Job' : (currentJob?.label || '🎯 Job')}

@@ -35,6 +35,10 @@ export interface ChatMessageContent {
     tokensCount?: number;   // For explored
     strategy?: string;      // For grepped (git/vector/keyword)
     filesList?: string[];   // List of files (for explored/grepped)
+    // LLM metadata
+    model?: string;         // LLM model used
+    provider?: string;      // LLM provider (e.g., 'anthropic', 'openai')
+    placeholder?: boolean;  // ✅ Mark as placeholder for replacement
   };
 }
 
@@ -275,16 +279,26 @@ export class ChatService {
     const existingContents = session.currentMessage.contents;
     const lastContent = existingContents[existingContents.length - 1];
     
-    // If same type as last content (thinking or text), append to it
-    if (lastContent && 
+    // If same type as last content (thinking or text), append or replace
+    // ✅ CRITICAL: Don't check !content.metadata for file operations (they need metadata)
+    const isFileOperation = content.type.includes('file_') || content.type.includes('command');
+    const canMerge = lastContent && 
         lastContent.type === content.type && 
         (content.type === 'thinking' || content.type === 'text') &&
-        !content.metadata) {
+        (!content.metadata || !isFileOperation);  // Allow metadata for thinking/text
+    
+    if (canMerge) {
+      // ✅ REPLACE placeholder with actual LLM thinking
+      const isPlaceholder = lastContent.metadata?.placeholder === true;
       
-      // ✅ REPLACE "Planning next moves..." with actual LLM thinking
-      if (content.type === 'thinking' && lastContent.content.trim() === 'Planning next moves...') {
+      if (content.type === 'thinking' && isPlaceholder) {
+        console.log(`[ChatService] 🔄 Replacing placeholder with LLM thinking (${content.content.substring(0, 50)}...)`);
+        // Replace placeholder entirely (don't append)
         lastContent.content = content.content;
+        // Keep metadata from incoming content (provider, timestamp, etc.)
+        lastContent.metadata = { ...content.metadata, placeholder: undefined };
       } else {
+        console.log(`[ChatService] ➕ Appending to existing ${content.type} (adding ${content.content.length} chars)`);
         // Append to existing content
         lastContent.content += content.content;
       }

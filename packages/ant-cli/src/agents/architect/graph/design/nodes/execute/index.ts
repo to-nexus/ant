@@ -104,12 +104,13 @@ export async function execute(state: DesignGraphState) {
   if (chatAPI.isEnabled()) {
     await chatAPI.startMessage();
     
-    // ✅ 1. Show "Planning next moves..." 
+    // ✅ 1. Show "Planning next moves..." (with placeholder marker)
     await chatAPI.sendLLMEvent({
       type: 'thinking',
       content: 'Planning next moves...',
       metadata: {
         provider: 'system',
+        placeholder: true,  // ✅ Mark as placeholder for easy replacement
         timestamp: new Date().toISOString()
       }
     });

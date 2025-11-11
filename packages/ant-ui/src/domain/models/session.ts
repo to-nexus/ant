@@ -64,9 +64,13 @@ export interface InterruptionDetails {
 }
 
 export interface SessionState {
+  // ✅ Job Identity
+  jobId?: string;  // Currently running job ID
+  
   taskQueue: Task[];
   completedTasks: string[];
   completedTasksDetails?: Task[];
+  currentTask?: Task | null;
   retries?: number;
   maxRetries?: number;
   previousAttempts?: any[];
@@ -77,9 +81,21 @@ export interface SessionState {
   // ✅ Unified Interruption State
   interruption?: InterruptionDetails;
   
+  // ✅ Job Timing
+  jobTiming?: {
+    startedAt: string;
+    lastResumedAt?: string;
+    pausedAt?: string;
+    completedAt?: string;
+    totalPausedDuration: number;
+    estimatingDuration?: number;
+  };
+  
   // Recursion Tracking
   recursionCount?: number;
   recursionLimit?: number;
+  pausedDueToLimit?: boolean;
+  tasksRemaining?: number;
 }
 
 export interface Session {
@@ -104,30 +120,6 @@ export interface Session {
   };
   description?: string;
   goals?: string[];
-}
-
-export interface SessionStateContext {
-  currentTaskId?: string;
-  isRunning: boolean;
-  isPaused: boolean;
-  startTime?: number;
-  pauseTime?: number;
-  elapsedTime: number;
-  progress: {
-    completed: number;
-    total: number;
-    percentage: number;
-  };
-  errors: Array<{
-    taskId: string;
-    message: string;
-    timestamp: string;
-  }>;
-  warnings: Array<{
-    taskId: string;
-    message: string;
-    timestamp: string;
-  }>;
 }
 
 export interface SessionStateContext {

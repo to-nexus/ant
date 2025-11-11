@@ -13,6 +13,7 @@ export interface LLMStreamEvent {
     model?: string;
     provider?: string;
     timestamp?: string;
+    placeholder?: boolean;  // ✅ Mark as placeholder for replacement
   };
 }
 

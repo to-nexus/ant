@@ -1,6 +1,8 @@
+import { Timer } from 'lucide-react';
 import { Button } from '@/presentation/components/common/button';
 import type { InterruptionDetails } from '@/domain/models/session';
 import { KanbanStatusBanner, type BannerVariant } from './KanbanStatusBanner';
+import type { ReactNode } from 'react';
 
 interface KanbanPausedPromptProps {
   interruption: InterruptionDetails;
@@ -13,45 +15,48 @@ interface KanbanPausedPromptProps {
  */
 function getInterruptionDisplay(interruption: InterruptionDetails): {
   variant: BannerVariant;
-  icon: string;
+  icon: ReactNode;
   title: string;
 } {
+  // ✅ 모든 케이스에 공통 Timer 아이콘 사용
+  const timerIcon = <Timer className="w-6 h-6" />;
+  
   switch (interruption.reason) {
     case 'recursion_limit':
       return {
         variant: 'warning',
-        icon: '⏸️',
+        icon: timerIcon,
         title: 'Task paused: Recursion limit reached'
       };
     case 'user_stopped':
       return {
         variant: 'info',
-        icon: '🛑',
-        title: 'Task stopped by user'
+        icon: timerIcon,
+        title: 'Task paused by user'
       };
     case 'api_error':
       return {
         variant: 'error',
-        icon: '⚠️',
-        title: 'Task interrupted: API error'
+        icon: timerIcon,
+        title: 'Task paused: API error'
       };
     case 'process_crash':
       return {
         variant: 'error',
-        icon: '💥',
-        title: 'Task interrupted: Process crashed'
+        icon: timerIcon,
+        title: 'Task paused: Process crashed'
       };
     case 'timeout':
       return {
         variant: 'warning',
-        icon: '⏱️',
-        title: 'Task interrupted: Timeout'
+        icon: timerIcon,
+        title: 'Task paused: Timeout'
       };
     default:
       return {
         variant: 'info',
-        icon: '❓',
-        title: 'Task interrupted'
+        icon: timerIcon,
+        title: 'Task paused'
       };
   }
 }

@@ -43,7 +43,6 @@ interface ElapsedTimeBadgeProps {
     totalPausedDuration: number;
     estimatingDuration?: number;
   };
-  activeJobId?: string;
 }
 
 /**
@@ -51,8 +50,7 @@ interface ElapsedTimeBadgeProps {
  */
 export function ElapsedTimeBadge({
   totalElapsedTime,
-  jobTiming,
-  activeJobId
+  jobTiming
 }: ElapsedTimeBadgeProps) {
   // ✨ Real-time elapsed time calculation
   const [realtimeElapsed, setRealtimeElapsed] = useState<number | null>(null);
@@ -110,10 +108,8 @@ export function ElapsedTimeBadge({
     return () => clearInterval(intervalId);
   }, [isInitialized, realtimeElapsed, jobTiming]);
   
-  // ✅ Show badge if job is active or has session data
-  // - activeJobId: job is running
-  // - jobTiming: job was run before (paused/completed)
-  if (!activeJobId && !jobTiming) {
+  // ✅ Show badge if job has timing data
+  if (!jobTiming) {
     return null;
   }
   

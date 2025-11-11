@@ -29,6 +29,7 @@ export function MainPanelBar(props: BaseBarProps = {}) {
   const currentMode = useStore((state) => state.currentMode);
   const splitLayout = useStore((state) => state.splitLayout);
   const toggleSplitLayout = useStore((state) => state.toggleSplitLayout);
+  const reconnectSSE = useStore((state) => state.reconnectSSE);
   
   // ✅ UI Policy 시스템 사용
   const policy = useUIActionPolicy();
@@ -42,7 +43,7 @@ export function MainPanelBar(props: BaseBarProps = {}) {
       return;
     }
     
-    if (!confirm('Reset this job? This will remove job tracking and start fresh on next run.')) {
+    if (!confirm('Clear this job data? This will remove all tasks and job tracking from the session.')) {
       return;
     }
     
@@ -50,18 +51,23 @@ export function MainPanelBar(props: BaseBarProps = {}) {
       setIsResetting(true);
       const jobType = (selectedWorkType as 'design' | 'code' | 'learn') || 'code';
       
-      console.log('[MainPanelBar] Resetting job state:', {
+      console.log('[MainPanelBar] Clearing job session data:', {
         project: selectedProject,
         feature: selectedFeature,
         job: jobType
       });
       
+      // Clear session data on server
       await resetJobState(selectedProject, selectedFeature, jobType);
       
-      console.log('[MainPanelBar] Job state reset successfully');
+      // Reconnect SSE to fetch updated (empty) kanban data
+      console.log('[MainPanelBar] Reconnecting SSE to fetch cleared data...');
+      reconnectSSE('kanban');
+      
+      console.log('[MainPanelBar] ✅ Job session cleared successfully');
     } catch (error) {
-      console.error('[MainPanelBar] Failed to reset job state:', error);
-      alert('Failed to reset job state. See console for details.');
+      console.error('[MainPanelBar] Failed to clear job session:', error);
+      alert('Failed to clear job session. See console for details.');
     } finally {
       setIsResetting(false);
     }

@@ -9,7 +9,7 @@
 
 import { useMemo } from 'react';
 import { useStore } from '@/domain/store';
-import type { KanbanData } from '@/domain/models/kanban';
+import type { KanbanData } from '@/infrastructure/http/api';
 
 interface UseKanbanReturn {
   kanbanData: KanbanData;

@@ -21,6 +21,7 @@ export interface ChatPolicy {
   
   // Job Selector
   jobButtonLabel: string;
+  canChangeJob: boolean;  // ✅ Job 변경 가능 여부
   
   // Retry
   canRetry: boolean;  // ✅ Retry 가능 여부
@@ -35,6 +36,10 @@ export function useChatPolicy(messageCount: number = 0, lastJobFailed: boolean =
   const selectedAgent = useStore((state) => state.selectedAgent);
   const selectedWorkType = useStore((state) => state.selectedWorkType);
   const isRunning = useStore((state) => state.isRunning);
+  const kanbanData = useStore((state) => state.kanban);
+  
+  // ✅ CRITICAL: Check if job is interrupted (user_stopped, recursion_limit, etc.)
+  const hasInterruption = !isRunning && kanbanData?.interruption?.canResume === true;
 
   // Agent 미선택
   if (!selectedAgent) {
@@ -46,6 +51,7 @@ export function useChatPolicy(messageCount: number = 0, lastJobFailed: boolean =
       emptyStateMessage: 'Please select an agent from the navigation bar',
       readyEmptyStateMessage: null,
       jobButtonLabel: selectedWorkType || 'Job',
+      canChangeJob: true,
       canRetry: false,
       reason: 'no-agent'
     };
@@ -61,6 +67,7 @@ export function useChatPolicy(messageCount: number = 0, lastJobFailed: boolean =
       emptyStateMessage: 'Please select a workspace from the navigation bar',
       readyEmptyStateMessage: null,
       jobButtonLabel: selectedWorkType || 'Job',
+      canChangeJob: true,
       canRetry: false,
       reason: 'no-workspace'
     };
@@ -76,6 +83,7 @@ export function useChatPolicy(messageCount: number = 0, lastJobFailed: boolean =
       emptyStateMessage: 'Please select a project from the navigation bar',
       readyEmptyStateMessage: null,
       jobButtonLabel: selectedWorkType || 'Job',
+      canChangeJob: true,
       canRetry: false,
       reason: 'no-project'
     };
@@ -91,6 +99,7 @@ export function useChatPolicy(messageCount: number = 0, lastJobFailed: boolean =
       emptyStateMessage: 'Please select a job type from the selector below',
       readyEmptyStateMessage: null,
       jobButtonLabel: 'Job',
+      canChangeJob: true,
       canRetry: false,
       reason: 'no-job'
     };
@@ -106,23 +115,29 @@ export function useChatPolicy(messageCount: number = 0, lastJobFailed: boolean =
       emptyStateMessage: null,
       readyEmptyStateMessage: null,
       jobButtonLabel: selectedWorkType,
+      canChangeJob: false,  // ❌ Job 실행 중엔 변경 불가
       canRetry: false,  // ❌ 실행 중엔 retry 불가
       reason: 'job-running'
     };
   }
 
-  // ✅ Job 실패 상태 - Retry 가능
-  if (lastJobFailed) {
+  // ✅ Job 실패 또는 중단 상태 - Retry/Resume 가능
+  if (lastJobFailed || hasInterruption) {
+    const isInterrupted = hasInterruption && !lastJobFailed;
+    
     return {
       headerText: `Chat with ${getAgentDisplayName(selectedAgent)}`,
       isOffline: false,
-      canSendMessage: false,  // ❌ 실패 후엔 새 메시지 불가 (retry만 가능)
-      inputPlaceholder: 'Job failed. Click Retry to resume or send a new message...',
+      canSendMessage: false,  // ❌ 중단/실패 후엔 새 메시지 불가 (retry만 가능)
+      inputPlaceholder: isInterrupted 
+        ? 'Job was interrupted. Click Retry to resume...'
+        : 'Job failed. Click Retry to resume or send a new message...',
       emptyStateMessage: null,
       readyEmptyStateMessage: null,
       jobButtonLabel: selectedWorkType,
-      canRetry: true,  // ✅ Retry 가능
-      reason: 'job-failed'
+      canChangeJob: true,  // ✅ 중단/실패 후엔 변경 가능
+      canRetry: true,  // ✅ Retry/Resume 가능
+      reason: 'job-failed'  // Note: reason을 'job-interrupted'로 확장 가능
     };
   }
 
@@ -139,6 +154,7 @@ export function useChatPolicy(messageCount: number = 0, lastJobFailed: boolean =
     emptyStateMessage: null,
     readyEmptyStateMessage: 'Start chatting to collaborate with the agent',
     jobButtonLabel: selectedWorkType,
+    canChangeJob: true,  // ✅ 정상 상태에선 변경 가능
     canRetry: false,  // ❌ 정상 상태에선 retry 불필요
     reason: 'ready'
   };

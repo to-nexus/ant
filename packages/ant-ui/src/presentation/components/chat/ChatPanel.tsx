@@ -94,7 +94,7 @@ export function ChatPanel({ projectId: _projectId, featureName: _featureName, en
           <div className="flex items-center justify-center h-full p-8">
             <div className="text-center max-w-sm">
               <div className="text-4xl mb-4">💬</div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-gray-600 dark:text-gray-300 shimmer-text">
                 {chatPolicy.emptyStateMessage}
               </p>
             </div>
@@ -107,10 +107,10 @@ export function ChatPanel({ projectId: _projectId, featureName: _featureName, en
             <div className="text-center max-w-sm">
               {/* ✨ Animated sparkle with float effect (크기 + 위치 + 회전) */}
               <div className="text-5xl mb-4 animate-sparkle-float inline-block">✨</div>
-              <p className="text-sm text-gray-600 dark:text-gray-300 font-medium mb-2">
+              <p className="text-sm text-gray-700 dark:text-gray-200 font-medium mb-2 shimmer-text">
                 Ready to start
               </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
+              <p className="text-xs text-gray-600 dark:text-gray-300 shimmer-text">
                 {chatPolicy.readyEmptyStateMessage}
               </p>
             </div>

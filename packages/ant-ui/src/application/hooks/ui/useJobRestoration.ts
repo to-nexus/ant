@@ -32,14 +32,10 @@ export function useJobRestoration({
         const startTime = JSON.parse(savedStartTime);
         const mode = savedMode ? JSON.parse(savedMode) : 'generate';
         
-        // ✅ CRITICAL: Check if user explicitly stopped this job
+        // ✅ Check if user explicitly stopped this job (memory only - localStorage cleared on stop)
         const store = useStore.getState();
         if (store.userStoppedJobId === jobId) {
           console.log('[useJobRestoration] 🚫 Skipping restore - user explicitly stopped job:', jobId);
-          // Clean up localStorage
-          localStorage.removeItem('ant-ui:running-task');
-          localStorage.removeItem('ant-ui:task-start-time');
-          localStorage.removeItem('ant-ui:task-mode');
           restoredRef.current = true;
           return;
         }
@@ -63,15 +59,10 @@ export function useJobRestoration({
           currentJobId: store.currentJobId
         });
         
-        // 🔥 CRITICAL: Restore Log SSE connection
-        // Without this, UI won't receive real-time updates!
-        console.log('[useJobRestoration] Reconnecting Log SSE for job:', jobId);
-        store.startLogStream(jobId);
-        
         // Mark as restored
         restoredRef.current = true;
         
-        // Note: Kanban/Workflow SSE will auto-reconnect via their useEffects
+        // Note: Kanban/Workflow/Chat SSE will auto-reconnect via unified SSE
         // when selectedProject/selectedFeature are restored
       } else {
         console.log('[useJobRestoration] ℹ️ No running job to restore');

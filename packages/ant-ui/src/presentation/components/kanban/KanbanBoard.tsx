@@ -33,12 +33,11 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
     console.log('[KanbanBoard] 📊 kanbanData changed:', {
       isEstimating: kanbanData.isEstimating,
       dataSource: kanbanData.dataSource,
-      activeJobId: kanbanData.activeJobId,
       completedCount: kanbanData.completed?.length || 0,
       todoCount: kanbanData.todo?.length || 0,
       inProgress: kanbanData.inProgress?.name || null
     });
-  }, [kanbanData.isEstimating, kanbanData.dataSource, kanbanData.activeJobId, kanbanData.completed, kanbanData.todo, kanbanData.inProgress]);
+  }, [kanbanData.isEstimating, kanbanData.dataSource, kanbanData.completed, kanbanData.todo, kanbanData.inProgress]);
   
   // ✅ Animation state management
   const [newlyCompletedIds, setNewlyCompletedIds] = useState<Set<string>>(new Set());
@@ -100,25 +99,30 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
       return;
     }
 
+    // ✅ CRITICAL: Resume requires jobId from kanban data
+    const jobId = kanbanData.jobId;
+    if (!jobId) {
+      console.error('[KanbanBoard] Cannot resume: missing jobId in kanban data');
+      return;
+    }
+
     try {
-      console.log('[KanbanBoard] Resuming job from interruption');
+      console.log(`[KanbanBoard] Resuming job ${jobId} from interruption`);
       
-      // Dynamic import to avoid circular dependency
-      const { executeCodeJob } = await import('@/infrastructure/http/cli');
-      executeCodeJob({
-        projectId: selectedProject,
-        featureName: selectedFeature,
-        task: 'code',  // Resume code generation
-        agent: 'architect',
-        mode: 'generate'
-      });
+      // ✅ Use new resumeJob API - server will auto-detect job type
+      const { resumeJob } = await import('@/infrastructure/http/api');
+      const result = await resumeJob(jobId, selectedProject, selectedFeature);
+      
+      console.log(`[KanbanBoard] Resume successful:`, result);
+      console.log(`  Original job: ${result.originalJobId}`);
+      console.log(`  New job: ${result.jobId}`);
+      console.log(`  Job type: ${result.jobType}`);
       
       // Clear dismissal state when resuming
       setDismissedInterruptJobId(null);
-      
-      console.log('[KanbanBoard] Resume job started');
     } catch (error) {
       console.error('[KanbanBoard] Failed to resume task:', error);
+      alert(`Failed to resume task: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -145,7 +149,6 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
             <ElapsedTimeBadge
               totalElapsedTime={kanbanData.totalElapsedTime}
               jobTiming={kanbanData.jobTiming}
-              activeJobId={kanbanData.activeJobId}
             />
           </>
         }
@@ -174,7 +177,6 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
           <ElapsedTimeBadge
             totalElapsedTime={kanbanData.totalElapsedTime}
             jobTiming={kanbanData.jobTiming}
-            activeJobId={kanbanData.activeJobId}
           />
         </>
       }

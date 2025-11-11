@@ -4,7 +4,7 @@ export type BannerVariant = 'info' | 'warning' | 'error' | 'success' | 'processi
 
 interface KanbanStatusBannerProps {
   variant: BannerVariant;
-  icon: string;
+  icon: ReactNode;  // ✅ ReactNode로 변경하여 아이콘 컴포넌트 지원
   title: string;
   message?: string;
   children?: ReactNode;  // 추가 콘텐츠 (버튼, 스켈레톤 등)

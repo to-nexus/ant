@@ -105,8 +105,6 @@ export class SSEService {
         clients.delete(res);
       }
     });
-    
-    console.log(`[SSEService] Broadcasted ${type} to ${clients.size} client(s) for ${key}`);
   }
   
   /**
@@ -135,8 +133,6 @@ export class SSEService {
         clients.delete(res);
       }
     });
-    
-    console.log(`[SSEService] Broadcasted workflow to ${clients.size} client(s) for ${jobId}`);
   }
   
   /**

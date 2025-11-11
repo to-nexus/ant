@@ -104,13 +104,20 @@ class SSEManager {
    * Connect to unified SSE endpoint
    */
   connect(projectId: string, featureName: string, job: 'design' | 'code' | 'learn' = 'code'): void {
-    // Close existing connection if different project/feature
+    // Close existing connection if different project/feature/job
     if (this.unifiedConnection) {
+      const currentJob = new URL(this.unifiedConnection.url).searchParams.get('job');
+      
       if (this.unifiedConnection.projectId === projectId && 
-          this.unifiedConnection.featureName === featureName) {
-        console.warn(`[SSEManager] Already connected to ${projectId}/${featureName}`);
+          this.unifiedConnection.featureName === featureName &&
+          currentJob === job) {
+        console.warn(`[SSEManager] Already connected to ${projectId}/${featureName}?job=${job}`);
         return;
       }
+      
+      console.log(`[SSEManager] 🔄 Connection change detected, reconnecting...`);
+      console.log(`   Previous: ${this.unifiedConnection.projectId}/${this.unifiedConnection.featureName}?job=${currentJob}`);
+      console.log(`   New: ${projectId}/${featureName}?job=${job}`);
       this.disconnect();
     }
     

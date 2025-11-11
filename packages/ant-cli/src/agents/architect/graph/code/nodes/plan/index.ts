@@ -122,6 +122,22 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         reconstructedEnforcementReason = violationsSummary;
       }
       
+      // ✅ CRITICAL: Update Kanban snapshot when retrying (resume scenario)
+      if (state._httpTaskId && state.deps?.kanbanUpdate) {
+        console.log(`\n🔥 [Plan Retry] Updating Kanban → task retrying`);
+        console.log(`   Current: ${nextTask.name}`);
+        console.log(`   Remaining in queue: ${state.taskQueue?.size() || 0}\n`);
+        
+        state.deps.kanbanUpdate.updateTaskQueue(
+          state._httpTaskId,
+          nextTask,                               // ✅ Show retry task as in-progress
+          state.taskQueue?.getAll() || [],       // ✅ Remaining queue
+          state.completedTasksDetails || [],
+          state.recursionCount,
+          state.recursionLimit || 50
+        );
+      }
+      
       return {
         ...state,
         currentTask: nextTask,
