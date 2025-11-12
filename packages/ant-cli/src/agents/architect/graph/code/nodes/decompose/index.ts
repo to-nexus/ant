@@ -219,8 +219,9 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           previousFileCount: session.state.previousFileCount,
           resolvedCategories: (session.state.resolvedCategories || []) as any,
           planText: session.state.planText || '',  // ✅ Restore plan to skip LLM call on resume
-          _httpTaskId: state._httpTaskId  // ✅ Explicitly preserve taskId for next node
-        };
+          _httpTaskId: state._httpTaskId,  // ✅ Explicitly preserve taskId for next node
+          interruption: undefined  // ✅ CRITICAL: Clear interruption when resuming (job is now running again)
+        } as any;
         
         // ✅ Update live snapshot for seamless UI transition (Port or HTTP fallback)
         if (state._httpTaskId) {

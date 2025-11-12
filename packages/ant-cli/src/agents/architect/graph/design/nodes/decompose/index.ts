@@ -70,7 +70,8 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
           completedTasksDetails: session.state.completedTasksDetails || [],
           _httpTaskId: state._httpTaskId,
           jobId,
-          jobTiming: resumedJobTiming
+          jobTiming: resumedJobTiming,
+          interruption: undefined  // ✅ CRITICAL: Clear interruption when resuming (job is now running again)
         } as any;
         
         console.log(`📊 RESUMING DESIGN SESSION:`);
