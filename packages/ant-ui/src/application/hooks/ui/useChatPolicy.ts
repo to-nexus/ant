@@ -37,9 +37,13 @@ export function useChatPolicy(messageCount: number = 0, lastJobFailed: boolean =
   const selectedWorkType = useStore((state) => state.selectedWorkType);
   const isRunning = useStore((state) => state.isRunning);
   const kanbanData = useStore((state) => state.kanban);
+  const dismissedInterruptTimestamp = useStore((state) => state.dismissedInterruptTimestamp);
   
   // ✅ CRITICAL: Check if job is interrupted (user_stopped, recursion_limit, etc.)
-  const hasInterruption = !isRunning && kanbanData?.interruption?.canResume === true;
+  // AND not dismissed by user (global dismissal applies to both chat and task board)
+  const hasInterruption = !isRunning 
+    && kanbanData?.interruption?.canResume === true
+    && kanbanData?.interruption?.timestamp !== dismissedInterruptTimestamp;
 
   // Agent 미선택
   if (!selectedAgent) {
