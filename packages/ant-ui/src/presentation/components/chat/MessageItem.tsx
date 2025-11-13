@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Brain, FileEdit, FilePlus, Trash2, Terminal, ChevronDown, ChevronRight, FileCode, 
+import { Brain, FileEdit, FilePlus, Trash2, Terminal, ChevronDown, ChevronRight, 
          Search, FileSearch, Eye, Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -58,7 +58,6 @@ function ContentBlock({ content, isStreaming }: ContentBlockProps) {
   const thinkingScrollRef = useRef<HTMLDivElement>(null);
   
   // ✅ Cursor-style: Expand/collapse state (must be at top level for Hooks rules)
-  const [isExpanded, setIsExpanded] = useState(false);
   const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
   
   // ✅ CRITICAL: Use ref to track previous content length to prevent infinite scroll loops
@@ -97,12 +96,10 @@ function ContentBlock({ content, isStreaming }: ContentBlockProps) {
   switch (content.type) {
     case 'placeholder':
       return (
-        <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden bg-gray-50/30 dark:bg-gray-800/30">
-          <div className="w-full flex items-center gap-2 px-3 py-1.5">
-            <span className="text-xs text-gray-500 dark:text-gray-400 font-medium shimmer-text">
-              {content.content}
-            </span>
-          </div>
+        <div className="w-full flex items-center gap-2 px-3 py-2">
+          <span className="text-xs text-gray-500 dark:text-gray-400 font-medium shimmer-text">
+            {content.content}
+          </span>
         </div>
       );
 
@@ -112,19 +109,19 @@ function ContentBlock({ content, isStreaming }: ContentBlockProps) {
       const hasThinkingContent = content.content && content.content.trim().length > 0;
       
       return (
-        <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden bg-gray-50/30 dark:bg-gray-800/30">
+        <div>
           {/* Header - clickable when completed */}
           <button
             onClick={() => !isStreaming && hasThinkingContent && setIsThinkingExpanded(!isThinkingExpanded)}
-            className={`w-full flex items-center gap-2 px-3 py-1.5 ${!isStreaming && hasThinkingContent ? 'hover:bg-gray-100 dark:hover:bg-gray-700/50 cursor-pointer' : ''}`}
+            className={`w-full flex items-center gap-2 px-3 py-2 transition-colors rounded-md ${!isStreaming && hasThinkingContent ? 'hover:bg-gray-100/50 dark:hover:bg-gray-800/30 cursor-pointer' : ''}`}
             disabled={isStreaming || !hasThinkingContent}
           >
-            <Brain className="w-3 h-3 text-gray-400 dark:text-gray-500" />
-            <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+            <Brain className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
+            <span className="text-xs text-gray-600 dark:text-gray-400 font-medium">
               {isStreaming ? 'Thinking...' : 'Thought'}
             </span>
             {!isStreaming && hasThinkingContent && (
-              <ChevronRight className={`w-3 h-3 text-gray-400 ml-auto transition-transform ${isThinkingExpanded ? 'rotate-90' : ''}`} />
+              <ChevronRight className={`w-3.5 h-3.5 text-gray-400 dark:text-gray-500 ml-auto transition-transform ${isThinkingExpanded ? 'rotate-90' : ''}`} />
             )}
           </button>
           
@@ -132,9 +129,9 @@ function ContentBlock({ content, isStreaming }: ContentBlockProps) {
           {hasThinkingContent && !isThinkingCollapsed && (
             <div 
               ref={thinkingScrollRef}
-              className="px-4 py-2 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400 bg-gray-50/20 dark:bg-gray-900/20 max-h-48 overflow-y-auto scrollbar-thin"
+              className="mt-1 px-4 py-3 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400 bg-gray-50/30 dark:bg-gray-900/20 rounded-md max-h-48 overflow-y-auto scrollbar-thin"
             >
-              <pre className="whitespace-pre-wrap font-mono opacity-60">{content.content}</pre>
+              <pre className="whitespace-pre-wrap font-mono opacity-70">{content.content}</pre>
             </div>
           )}
         </div>
@@ -384,76 +381,76 @@ function CommandCard({ content }: CommandCardProps) {
   const isSuccess = exitCode === 0;
   const statusConfig = isSuccess
     ? {
-        bgColor: 'bg-green-50 dark:bg-green-900/20',
-        borderColor: 'border-green-200 dark:border-green-800',
-        textColor: 'text-green-700 dark:text-green-300',
-        iconColor: 'text-green-600 dark:text-green-400',
-        headerBg: 'bg-green-100 dark:bg-green-900/30',
+        bgColor: 'bg-white dark:bg-gray-800/50',
+        borderColor: 'border-gray-200 dark:border-gray-700',
+        textColor: 'text-gray-700 dark:text-gray-300',
+        iconColor: 'text-green-500 dark:text-green-400',
+        headerBg: 'bg-gray-50/50 dark:bg-gray-800/30',
+        hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50',
         label: 'Completed'
       }
     : {
-        bgColor: 'bg-red-50 dark:bg-red-900/20',
-        borderColor: 'border-red-200 dark:border-red-800',
-        textColor: 'text-red-700 dark:text-red-300',
-        iconColor: 'text-red-600 dark:text-red-400',
-        headerBg: 'bg-red-100 dark:bg-red-900/30',
+        bgColor: 'bg-white dark:bg-gray-800/50',
+        borderColor: 'border-gray-200 dark:border-gray-700',
+        textColor: 'text-gray-700 dark:text-gray-300',
+        iconColor: 'text-red-500 dark:text-red-400',
+        headerBg: 'bg-gray-50/50 dark:bg-gray-800/30',
+        hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50',
         label: 'Failed'
       };
   
   const activeConfig = {
-    bgColor: 'bg-blue-50 dark:bg-blue-900/20',
-    borderColor: 'border-blue-200 dark:border-blue-800',
-    textColor: 'text-blue-700 dark:text-blue-300',
-    iconColor: 'text-blue-600 dark:text-blue-400',
-    headerBg: 'bg-blue-100 dark:bg-blue-900/30',
+    bgColor: 'bg-white dark:bg-gray-800/50',
+    borderColor: 'border-gray-200 dark:border-gray-700',
+    textColor: 'text-gray-700 dark:text-gray-300',
+    iconColor: 'text-blue-500 dark:text-blue-400',
+    headerBg: 'bg-gray-50/50 dark:bg-gray-800/30',
+    hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50',
     label: isRunning ? 'Running...' : 'Running...'
   };
   
   const config = isActive ? activeConfig : statusConfig;
+  const hasOutput = output && output.trim().length > 0;
   
   return (
-    <div className={`border ${config.borderColor} rounded-lg overflow-hidden`}>
-      {/* Header - Cursor Style */}
-      <div className={`${config.headerBg} px-3 py-2`}>
-        <div className="flex items-center gap-2 mb-1">
-          <Terminal className={`w-4 h-4 ${config.iconColor}`} />
-          <span className={`text-sm font-mono font-medium ${config.textColor} truncate flex-1`}>
+    <div className={`border ${config.borderColor} rounded-lg overflow-hidden ${config.bgColor}`}>
+      {/* Header - Copilot/Cursor Style (Single Row) */}
+      <button 
+        onClick={() => hasOutput && isCompleted && setIsExpanded(!isExpanded)}
+        disabled={!hasOutput || !isCompleted}
+        className={`w-full ${config.headerBg} px-3 py-2.5 ${hasOutput && isCompleted ? config.hoverBg + ' cursor-pointer' : 'cursor-default'} transition-colors`}
+      >
+        <div className="flex items-center gap-2">
+          {/* Status Icon */}
+          {isActive ? (
+            <Loader2 className={`w-4 h-4 ${config.iconColor} animate-spin flex-shrink-0`} />
+          ) : (
+            <Terminal className={`w-4 h-4 ${config.iconColor} flex-shrink-0`} />
+          )}
+          
+          {/* Command */}
+          <span className={`text-xs font-mono ${config.textColor} truncate flex-1 text-left`}>
             {command}
           </span>
-        </div>
-        <div className="flex items-center gap-3 text-xs">
-          <div className="flex items-center gap-1.5">
-            {isActive ? (
-              <Loader2 className={`w-3.5 h-3.5 ${config.iconColor} animate-spin`} />
-            ) : (
-              <Terminal className={`w-3.5 h-3.5 ${config.iconColor}`} />
-            )}
-            <span className={`font-medium ${config.textColor}`}>
-              {config.label}
-            </span>
-          </div>
+          
+          {/* Exit Code (Compact) */}
           {isCompleted && exitCode !== undefined && (
-            <span className={`font-mono ${config.textColor}`}>
-              Exit code: {exitCode}
+            <span className={`text-[10px] font-mono ${isSuccess ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'} flex-shrink-0 font-medium`}>
+              {isSuccess ? '✓' : `✗ ${exitCode}`}
             </span>
           )}
-          {/* Show/Hide button - only when completed and has output */}
-          {isCompleted && output && (
-            <button 
-              onClick={() => setIsExpanded(!isExpanded)}
-              className={`ml-auto flex items-center gap-1 ${config.textColor} hover:opacity-70 transition-opacity`}
-            >
-              <span className="text-xs">
-                {isExpanded ? 'Hide' : 'Show'} output
-              </span>
+          
+          {/* Expand/Collapse Icon */}
+          {isCompleted && hasOutput && (
+            <div className="flex-shrink-0">
               {isExpanded ? 
-                <ChevronDown className="w-3.5 h-3.5" /> :
-                <ChevronRight className="w-3.5 h-3.5" />
+                <ChevronDown className={`w-4 h-4 ${config.textColor} opacity-60`} /> :
+                <ChevronRight className={`w-4 h-4 ${config.textColor} opacity-60`} />
               }
-            </button>
+            </div>
           )}
         </div>
-      </div>
+      </button>
       
       {/* Output (auto-expand during streaming, collapsible when complete) */}
       {shouldShowOutput && (
@@ -482,26 +479,30 @@ function ExplorationCard({ content }: { content: MessageContent }) {
   const hasFiles = filesList.length > 0;
 
   return (
-    <div className="border border-blue-200 dark:border-blue-800 rounded-lg overflow-hidden bg-blue-50 dark:bg-blue-900/20">
-      <div 
-        className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:opacity-80 transition-opacity"
+    <div className="border border-gray-200/50 dark:border-gray-700/50 rounded-lg overflow-hidden bg-transparent">
+      <button 
+        className="w-full flex items-center gap-2 px-3 py-2 bg-gray-50/30 dark:bg-gray-800/20 hover:bg-gray-100/50 dark:hover:bg-gray-800/30 transition-colors cursor-pointer"
         onClick={() => hasFiles && setIsExpanded(!isExpanded)}
+        disabled={!hasFiles}
       >
-        <FileSearch className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-        <div className="flex-1 min-w-0">
-          <span className="text-xs font-medium text-blue-700 dark:text-blue-300">
+        <FileSearch className="w-4 h-4 text-blue-500 dark:text-blue-400 flex-shrink-0" />
+        <div className="flex-1 min-w-0 text-left">
+          <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
             {content.content}
           </span>
         </div>
         {hasFiles && (
-          isExpanded ? 
-            <ChevronDown className="w-4 h-4 text-blue-600 dark:text-blue-400" /> :
-            <ChevronRight className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+          <div className="flex-shrink-0">
+            {isExpanded ? 
+              <ChevronDown className="w-4 h-4 text-gray-600 dark:text-gray-400 opacity-60" /> :
+              <ChevronRight className="w-4 h-4 text-gray-600 dark:text-gray-400 opacity-60" />
+            }
+          </div>
         )}
-      </div>
+      </button>
       
       {hasFiles && isExpanded && (
-        <div className="border-t border-blue-200 dark:border-blue-700 max-h-60 overflow-y-auto scrollbar-thin bg-white dark:bg-gray-900/50">
+        <div className="border-t border-gray-200/50 dark:border-gray-700/50 max-h-60 overflow-y-auto scrollbar-thin bg-gray-50/20 dark:bg-gray-900/10">
           <div className="px-4 py-2 text-xs">
             {filesList.map((file, i) => (
               <div key={i} className="py-1 font-mono text-gray-700 dark:text-gray-300 truncate">
@@ -524,26 +525,30 @@ function GrepCard({ content }: { content: MessageContent }) {
   const hasFiles = filesList.length > 0;
 
   return (
-    <div className="border border-purple-200 dark:border-purple-800 rounded-lg overflow-hidden bg-purple-50 dark:bg-purple-900/20">
-      <div 
-        className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:opacity-80 transition-opacity"
+    <div className="border border-gray-200/50 dark:border-gray-700/50 rounded-lg overflow-hidden bg-transparent">
+      <button 
+        className="w-full flex items-center gap-2 px-3 py-2 bg-gray-50/30 dark:bg-gray-800/20 hover:bg-gray-100/50 dark:hover:bg-gray-800/30 transition-colors cursor-pointer"
         onClick={() => hasFiles && setIsExpanded(!isExpanded)}
+        disabled={!hasFiles}
       >
-        <Search className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-        <div className="flex-1 min-w-0">
-          <span className="text-xs font-medium text-purple-700 dark:text-purple-300">
+        <Search className="w-4 h-4 text-purple-500 dark:text-purple-400 flex-shrink-0" />
+        <div className="flex-1 min-w-0 text-left">
+          <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
             {content.content}
           </span>
         </div>
         {hasFiles && (
-          isExpanded ? 
-            <ChevronDown className="w-4 h-4 text-purple-600 dark:text-purple-400" /> :
-            <ChevronRight className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+          <div className="flex-shrink-0">
+            {isExpanded ? 
+              <ChevronDown className="w-4 h-4 text-gray-600 dark:text-gray-400 opacity-60" /> :
+              <ChevronRight className="w-4 h-4 text-gray-600 dark:text-gray-400 opacity-60" />
+            }
+          </div>
         )}
-      </div>
+      </button>
       
       {hasFiles && isExpanded && (
-        <div className="border-t border-purple-200 dark:border-purple-700 max-h-60 overflow-y-auto scrollbar-thin bg-white dark:bg-gray-900/50">
+        <div className="border-t border-gray-200/50 dark:border-gray-700/50 max-h-60 overflow-y-auto scrollbar-thin bg-gray-50/20 dark:bg-gray-900/10">
           <div className="px-4 py-2 text-xs">
             {filesList.map((file, i) => (
               <div key={i} className="py-1 font-mono text-gray-700 dark:text-gray-300 truncate">
@@ -629,43 +634,45 @@ function FileCard({ content, operation }: FileCardProps) {
   
   const lineStats = calculateLineStats();
   
-  // Determine operation details
+  // Determine operation details (Copilot/Cursor style - subtle, modern)
   const operationConfig = {
     create: {
       icon: FilePlus,
       labelCompleted: 'Created',
       labelActive: isCreating ? 'Creating...' : 'Writing...',
-      bgColor: 'bg-green-50 dark:bg-green-900/20',
-      borderColor: 'border-green-200 dark:border-green-800',
-      textColor: 'text-green-700 dark:text-green-300',
-      iconColor: 'text-green-600 dark:text-green-400',
-      headerBg: 'bg-green-100 dark:bg-green-900/30'
+      bgColor: 'bg-white dark:bg-gray-800/50',
+      borderColor: 'border-gray-200 dark:border-gray-700',
+      textColor: 'text-gray-700 dark:text-gray-300',
+      iconColor: 'text-green-500 dark:text-green-400',
+      headerBg: 'bg-gray-50/50 dark:bg-gray-800/30',
+      hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50'
     },
     edit: {
       icon: FileEdit,
       labelCompleted: 'Modified',
       labelActive: isEditing ? 'Editing...' : 'Updating...',
-      bgColor: 'bg-amber-50 dark:bg-amber-900/20',
-      borderColor: 'border-amber-200 dark:border-amber-800',
-      textColor: 'text-amber-700 dark:text-amber-300',
-      iconColor: 'text-amber-600 dark:text-amber-400',
-      headerBg: 'bg-amber-100 dark:bg-amber-900/30'
+      bgColor: 'bg-white dark:bg-gray-800/50',
+      borderColor: 'border-gray-200 dark:border-gray-700',
+      textColor: 'text-gray-700 dark:text-gray-300',
+      iconColor: 'text-blue-500 dark:text-blue-400',
+      headerBg: 'bg-gray-50/50 dark:bg-gray-800/30',
+      hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50'
     },
     delete: {
       icon: Trash2,
       labelCompleted: 'Deleted',
       labelActive: 'Deleting...',
-      bgColor: 'bg-red-50 dark:bg-red-900/20',
-      borderColor: 'border-red-200 dark:border-red-800',
-      textColor: 'text-red-700 dark:text-red-300',
-      iconColor: 'text-red-600 dark:text-red-400',
-      headerBg: 'bg-red-100 dark:bg-red-900/30'
+      bgColor: 'bg-white dark:bg-gray-800/50',
+      borderColor: 'border-gray-200 dark:border-gray-700',
+      textColor: 'text-gray-700 dark:text-gray-300',
+      iconColor: 'text-red-500 dark:text-red-400',
+      headerBg: 'bg-gray-50/50 dark:bg-gray-800/30',
+      hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50'
     }
   };
   
   const config = operationConfig[operation];
   const Icon = config.icon;
-  const displayLabel = isActive ? config.labelActive : config.labelCompleted;
   
   // Check if there's content to show
   const hasContent = (operation === 'create' && fileContent) || 
@@ -673,68 +680,67 @@ function FileCard({ content, operation }: FileCardProps) {
                     (operation === 'delete' && fileContent);
   
   return (
-    <div className={`border ${config.borderColor} rounded-lg overflow-hidden`}>
-      {/* Header - Cursor Style with real-time streaming */}
-      <div className={`${config.headerBg} px-3 py-2`}>
-        <div className="flex items-center gap-2 mb-1">
-          <FileCode className={`w-4 h-4 ${config.iconColor}`} />
-          <span className={`text-sm font-mono font-medium ${config.textColor} truncate flex-1`}>
+    <div className={`border ${config.borderColor} rounded-lg overflow-hidden ${config.bgColor}`}>
+      {/* Header - Copilot/Cursor Style (Single Row, Compact) */}
+      <button 
+        onClick={() => hasContent && isCompleted && setIsExpanded(!isExpanded)}
+        disabled={!hasContent || !isCompleted}
+        className={`w-full ${config.headerBg} px-3 py-2.5 ${hasContent && isCompleted ? config.hoverBg + ' cursor-pointer' : 'cursor-default'} transition-colors`}
+      >
+        <div className="flex items-center gap-2">
+          {/* Operation Icon + Status */}
+          {isActive ? (
+            <Loader2 className={`w-4 h-4 ${config.iconColor} animate-spin flex-shrink-0`} />
+          ) : (
+            <Icon className={`w-4 h-4 ${config.iconColor} flex-shrink-0`} />
+          )}
+          
+          {/* File Path */}
+          <span className={`text-xs font-mono ${config.textColor} truncate flex-1 text-left`}>
             {filePath}
           </span>
-        </div>
-        <div className="flex items-center gap-3 text-xs">
-          <div className="flex items-center gap-1.5">
-            {isActive ? (
-              <Loader2 className={`w-3.5 h-3.5 ${config.iconColor} animate-spin`} />
-            ) : (
-              <Icon className={`w-3.5 h-3.5 ${config.iconColor}`} />
-            )}
-            <span className={`font-medium ${config.textColor}`}>
-              {displayLabel}
-            </span>
-          </div>
-          {/* Line stats - only show when completed or actively streaming with content */}
-          {isCompleted && operation === 'edit' && (lineStats.added > 0 || lineStats.removed > 0) && (
-            <div className="flex items-center gap-2">
-              {lineStats.added >= 0 && (
-                <span className="text-green-600 dark:text-green-400 font-mono">
-                  +{lineStats.added}
+          
+          {/* Line Stats (Compact) */}
+          {isCompleted && (
+            <>
+              {operation === 'edit' && (lineStats.added > 0 || lineStats.removed > 0) && (
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {lineStats.added >= 0 && (
+                    <span className="text-[10px] text-green-600 dark:text-green-400 font-mono font-medium">
+                      +{lineStats.added}
+                    </span>
+                  )}
+                  {lineStats.removed >= 0 && (
+                    <span className="text-[10px] text-red-600 dark:text-red-400 font-mono font-medium">
+                      -{lineStats.removed}
+                    </span>
+                  )}
+                </div>
+              )}
+              {operation === 'create' && lineStats.total != null && (
+                <span className="text-[10px] text-green-600 dark:text-green-400 font-mono font-medium flex-shrink-0">
+                  +{lineStats.total}
                 </span>
               )}
-              {lineStats.removed >= 0 && (
-                <span className="text-red-600 dark:text-red-400 font-mono">
-                  -{lineStats.removed}
+              {operation === 'delete' && lineStats.total != null && (
+                <span className="text-[10px] text-red-600 dark:text-red-400 font-mono font-medium flex-shrink-0">
+                  -{lineStats.total}
                 </span>
               )}
+            </>
+          )}
+          
+          {/* Expand/Collapse Icon */}
+          {isCompleted && hasContent && (
+            <div className="flex-shrink-0">
+              {isExpanded ? 
+                <ChevronDown className={`w-4 h-4 ${config.textColor} opacity-60`} /> :
+                <ChevronRight className={`w-4 h-4 ${config.textColor} opacity-60`} />
+              }
             </div>
           )}
-          {isCompleted && operation === 'create' && lineStats.total != null && (
-            <span className="text-green-600 dark:text-green-400 font-mono">
-              +{lineStats.total} {lineStats.total === 1 ? 'line' : 'lines'}
-            </span>
-          )}
-          {isCompleted && operation === 'delete' && lineStats.total != null && (
-            <span className="text-red-600 dark:text-red-400 font-mono">
-              -{lineStats.total} {lineStats.total === 1 ? 'line' : 'lines'}
-            </span>
-          )}
-          {/* Show/Hide button - only when completed and has content */}
-          {isCompleted && hasContent && (
-            <button 
-              onClick={() => setIsExpanded(!isExpanded)}
-              className={`ml-auto flex items-center gap-1 ${config.textColor} hover:opacity-70 transition-opacity`}
-            >
-              <span className="text-xs">
-                {isExpanded ? 'Hide' : 'Show'} content
-              </span>
-              {isExpanded ? 
-                <ChevronDown className="w-3.5 h-3.5" /> :
-                <ChevronRight className="w-3.5 h-3.5" />
-              }
-            </button>
-          )}
         </div>
-      </div>
+      </button>
       
       {/* Content (auto-expand during streaming, collapsible when complete) */}
       {shouldShowContent && (
