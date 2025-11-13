@@ -55,6 +55,7 @@ interface ContentBlockProps {
 function ContentBlock({ content, isStreaming }: ContentBlockProps) {
   // ✅ Auto-scroll to bottom during streaming to prevent word-by-word disappearing
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const thinkingScrollRef = useRef<HTMLDivElement>(null);
   
   // ✅ Cursor-style: Expand/collapse state (must be at top level for Hooks rules)
   const [isExpanded, setIsExpanded] = useState(false);
@@ -62,6 +63,7 @@ function ContentBlock({ content, isStreaming }: ContentBlockProps) {
   
   // ✅ CRITICAL: Use ref to track previous content length to prevent infinite scroll loops
   const prevContentLengthRef = useRef(0);
+  const prevThinkingLengthRef = useRef(0);
   
   useEffect(() => {
     if (isStreaming && scrollContainerRef.current && content.type === 'text') {
@@ -75,32 +77,63 @@ function ContentBlock({ content, isStreaming }: ContentBlockProps) {
     }
   }, [content.content, isStreaming, content.type]);
   
+  // ✅ Auto-scroll thinking content during streaming
+  useEffect(() => {
+    if (isStreaming && thinkingScrollRef.current && content.type === 'thinking') {
+      const currentLength = content.content?.length || 0;
+      
+      // Only scroll if content actually grew
+      if (currentLength > prevThinkingLengthRef.current) {
+        requestAnimationFrame(() => {
+          if (thinkingScrollRef.current) {
+            thinkingScrollRef.current.scrollTop = thinkingScrollRef.current.scrollHeight;
+          }
+        });
+        prevThinkingLengthRef.current = currentLength;
+      }
+    }
+  }, [content.content, isStreaming, content.type]);
+  
   switch (content.type) {
+    case 'placeholder':
+      return (
+        <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden bg-gray-50/30 dark:bg-gray-800/30">
+          <div className="w-full flex items-center gap-2 px-3 py-1.5">
+            <span className="text-xs text-gray-500 dark:text-gray-400 font-medium shimmer-text">
+              {content.content}
+            </span>
+          </div>
+        </div>
+      );
+
     case 'thinking':
       // ✅ Cursor 스타일: 스트리밍 중 = 펼침, 완료 후 = 접힘 (클릭하면 펼침)
-      const isPlanning = content.content.trim() === 'Planning next moves...';
       const isThinkingCollapsed = !isStreaming && !isThinkingExpanded;
+      const hasThinkingContent = content.content && content.content.trim().length > 0;
       
       return (
         <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden bg-gray-50/30 dark:bg-gray-800/30">
           {/* Header - clickable when completed */}
           <button
-            onClick={() => !isStreaming && !isPlanning && setIsThinkingExpanded(!isThinkingExpanded)}
-            className={`w-full flex items-center gap-2 px-3 py-1.5 ${!isStreaming && !isPlanning ? 'hover:bg-gray-100 dark:hover:bg-gray-700/50 cursor-pointer' : ''}`}
-            disabled={isStreaming || isPlanning}
+            onClick={() => !isStreaming && hasThinkingContent && setIsThinkingExpanded(!isThinkingExpanded)}
+            className={`w-full flex items-center gap-2 px-3 py-1.5 ${!isStreaming && hasThinkingContent ? 'hover:bg-gray-100 dark:hover:bg-gray-700/50 cursor-pointer' : ''}`}
+            disabled={isStreaming || !hasThinkingContent}
           >
             <Brain className="w-3 h-3 text-gray-400 dark:text-gray-500" />
             <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
-              {isPlanning ? 'Planning next moves...' : (isStreaming ? 'Thinking...' : 'Thought')}
+              {isStreaming ? 'Thinking...' : 'Thought'}
             </span>
-            {!isStreaming && !isPlanning && content.content && (
+            {!isStreaming && hasThinkingContent && (
               <ChevronRight className={`w-3 h-3 text-gray-400 ml-auto transition-transform ${isThinkingExpanded ? 'rotate-90' : ''}`} />
             )}
           </button>
           
-          {/* Content - show during streaming or when expanded (but not for "Planning next moves...") */}
-          {content.content && !isPlanning && !isThinkingCollapsed && (
-            <div className="px-4 py-2 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400 bg-gray-50/20 dark:bg-gray-900/20 max-h-48 overflow-y-auto scrollbar-thin">
+          {/* Content - show during streaming or when expanded */}
+          {hasThinkingContent && !isThinkingCollapsed && (
+            <div 
+              ref={thinkingScrollRef}
+              className="px-4 py-2 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400 bg-gray-50/20 dark:bg-gray-900/20 max-h-48 overflow-y-auto scrollbar-thin"
+            >
               <pre className="whitespace-pre-wrap font-mono opacity-60">{content.content}</pre>
             </div>
           )}
@@ -108,13 +141,8 @@ function ContentBlock({ content, isStreaming }: ContentBlockProps) {
       );
 
     case 'text':
-      // ✅ Cursor-style: Show limited content with "Show more" button
-      const CHAR_LIMIT = 2000;
-      const isLongContent = content.content.length > CHAR_LIMIT;
-      const displayContent = (!isExpanded && isLongContent) 
-        ? content.content.slice(0, CHAR_LIMIT) 
-        : content.content;
-      
+      // ✅ Cursor/Copilot-style: ALWAYS show full content (never truncate general responses)
+      // Only thinking and file cards can be collapsed, not summary/response text
       return (
         <div className="px-1 py-2 w-full">
           <div className="prose prose-sm dark:prose-invert max-w-none w-full"
@@ -190,22 +218,9 @@ function ContentBlock({ content, isStreaming }: ContentBlockProps) {
                   )
                 }}
               >
-                {displayContent}
+                {content.content}
               </ReactMarkdown>
             </div>
-            
-          {/* ✅ Show more/less button (Cursor-style) */}
-          {isLongContent && !isStreaming && (
-            <button
-              onClick={() => setIsExpanded(!isExpanded)}
-              className="mt-2 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 
-                         hover:text-gray-900 dark:hover:text-gray-200 
-                         bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700
-                         rounded transition-colors"
-            >
-              {isExpanded ? 'Show less' : 'Show more'}
-            </button>
-          )}
         </div>
       );
 

@@ -31,10 +31,6 @@ export function ChatHistory({ messages, isStreaming }: ChatHistoryProps) {
   const itemContent = useCallback((index: number, message: ChatMessage) => (
     <div className="px-4 py-2">
       <MessageItem message={message} />
-      {/* ✅ Streaming indicator is handled by MessageItem itself:
-          - Thinking content shows "Planning next moves..." or "Thinking"
-          - Text/Code content shows real-time content
-          No need for generic "AI is thinking..." footer */}
     </div>
   ), []); // Empty deps - function logic doesn't change
   

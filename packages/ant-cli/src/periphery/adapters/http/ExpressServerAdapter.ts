@@ -134,6 +134,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     
     console.log(`\n🔄 [updateTaskQueue] Called for job ${jobId}`);
     console.log(`   currentTask: ${currentTask?.name || 'null'}`);
+    console.log(`   currentTask.timing: ${currentTask?.timing ? JSON.stringify(currentTask.timing) : 'null'}`);
     console.log(`   queue length: ${queue.length}`);
     console.log(`   completedTasks param: ${completedTasks !== undefined ? completedTasks.length : 'undefined'}`);
     
@@ -415,6 +416,19 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     this.sessionService = new SessionService(this.WORKSPACE_ROOT, {
       onSessionChange: async (projectId, featureName, jobType) => {
         setTimeout(async () => {
+          // ✅ CRITICAL: Check if live data exists before broadcasting session data
+          // This prevents race condition where session watcher broadcasts stale data
+          // while decompose/plan nodes have already updated live snapshot
+          const sessionData = await this.sessionService.readSessionData(projectId, featureName, jobType);
+          const sessionJobId = sessionData?.state?.jobId;
+          const hasLiveSnapshot = sessionJobId ? this.taskQueueSnapshots.has(sessionJobId) : false;
+          
+          if (hasLiveSnapshot) {
+            console.log(`[SessionWatcher] 🔴 Skipping broadcast - live snapshot exists for ${sessionJobId}`);
+            console.log(`[SessionWatcher] Live snapshot will be used instead of session file\n`);
+            // ✅ Still broadcast to trigger UI update, but getKanbanData will use live data
+          }
+          
           const kanbanData = await this.kanbanService.getKanbanData(
             projectId, 
             featureName,
@@ -865,7 +879,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
               const modelNameMatch = stderrLogs.match(/model:\s*([^\s"]+)/i);
               
               // Check if this is any API error (generic detection)
-              const isApiError = stderrLogs.match(/Error:.*?"type":\s*"error"|api.*error|llm.*error/i);
+              const isApiError = stderrLogs.match(/Error:.*?"type":\s*"error"|api.*error|llm.*error|llm.*api.*failed|critical.*error.*llm/i);
               
               if (overloadedMatch) {
                 // API overloaded - temporary issue

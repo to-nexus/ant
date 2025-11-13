@@ -75,19 +75,18 @@ For Next.js/React projects using `@/` alias:
 **Always update tsconfig.json when fixing path alias errors!**
 
 ### Response Format
-Start with a brief explanation:
+Start with a brief explanation (plain text):
+
 ```
-=== RESPONSE ===
 I see the issue. [Explain the root cause in 1-2 sentences]
 [Describe your fix approach]
-=== END RESPONSE ===
 ```
 
 Then output the fixed files:
-```
-=== FILE: [path/to/problematic/file.ts] ===
+```xml
+<file path="path/to/problematic/file.ts">
 [Complete fixed file content]
-=== END FILE ===
+</file>
 ```
 
 ### Critical Rules

@@ -17,6 +17,7 @@ export class ChatAPIClient {
   private jobId: string;
   private baseUrl: string;
   private enabled: boolean;
+  private messageStarted: boolean = false;  // ✅ Track if message is active
 
   constructor() {
     this.serverPort = process.env.ANT_SERVER_PORT || '4100';
@@ -31,6 +32,13 @@ export class ChatAPIClient {
     if (this.enabled) {
       console.log(`💬 [ChatAPIClient] Initialized for ${this.projectId}/${this.featureName} (Job: ${this.jobId})`);
     }
+  }
+
+  /**
+   * Check if a message is currently active
+   */
+  hasActiveMessage(): boolean {
+    return this.messageStarted;
   }
 
   /**
@@ -52,10 +60,113 @@ export class ChatAPIClient {
       }
 
       const { messageId } = await response.json();
+      this.messageStarted = true;  // ✅ Mark message as active
       return messageId;
     } catch (error) {
       console.error('❌ [ChatAPIClient] Error starting message:', error);
       return null;
+    }
+  }
+
+  
+
+  /**
+   * Show Chat Status Message
+   * 
+   * Rules:
+   * - Content text is auto-generated based on type
+   * - If message not started: start message first
+   * - Auto-merge or disappear based on next content type (handled by ChatService)
+   */
+  async showChatStatus(
+    type: 'placeholder' | 'exploring' | 'explored' | 'grepping' | 'grepped' | 'reading' | 'read' | 'thinking',
+    metadata?: Record<string, any>
+  ): Promise<void> {
+    if (!this.enabled) return;
+
+    try {
+      // Ensure message is started
+      if (!this.messageStarted) {
+        const messageId = await this.startMessage();
+        if (!messageId) {
+          console.error(`❌ [ChatAPIClient] Cannot show chat status - message start failed`);
+          return;  // ✅ Don't proceed if message start failed
+        }
+      }
+
+      // ✅ Auto-generate content text based on type
+      let content: string;
+      switch (type) {
+        case 'placeholder':
+          content = 'Planning next moves...';
+          break;
+        case 'exploring':
+          const exploringFiles = metadata?.filesCount ?? 0;
+          const exploringTotal = metadata?.totalFiles ?? 0;
+          content = exploringFiles > 0 
+            ? `Exploring codebase... ${exploringFiles}/${exploringTotal} files`
+            : 'Exploring codebase...';
+          break;
+        case 'explored':
+          const exploredFiles = metadata?.filesCount ?? 0;
+          const tokensCount = metadata?.tokensCount ?? 0;
+          content = `Explored ${exploredFiles} files (~${Math.ceil(tokensCount / 1000)}K tokens)`;
+          break;
+        case 'grepping':
+          const query = metadata?.query ?? '';
+          content = query 
+            ? `Searching for '${query}'...`
+            : 'Searching...';
+          break;
+        case 'grepped':
+          const greppedFiles = metadata?.filesCount ?? 0;
+          const strategy = metadata?.strategy ?? 'unknown';
+          content = `Found in ${greppedFiles} files (strategy: ${strategy})`;
+          break;
+        case 'reading':
+          const readingPath = metadata?.filePath ?? '';
+          content = readingPath 
+            ? `Reading ${readingPath}...`
+            : 'Reading file...';
+          break;
+        case 'read':
+          const readPath = metadata?.filePath ?? '';
+          content = readPath 
+            ? `Read ${readPath}`
+            : 'Read file';
+          break;
+        case 'thinking':
+          content = '';  // Empty content, will be filled by LLM tokens
+          break;
+        default:
+          content = 'Processing...';
+      }
+
+      // Send Chat Status Message directly to chat service (NOT an LLM event!)
+      const response = await fetch(`${this.baseUrl}/add-content`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: {
+            type,
+            content,
+            metadata: {
+              provider: 'system',
+              timestamp: new Date().toISOString(),
+              ...metadata
+            }
+          }
+        })
+      });
+
+      if (!response.ok) {
+        console.error(`❌ [ChatAPIClient] Failed to show chat status: ${response.statusText}`);
+        return;
+      }
+
+      console.log(`🎯 [ChatAPIClient] Chat Status shown: ${type} - "${content}"`);
+    } catch (error) {
+      console.error('❌ [ChatAPIClient] Error showing chat status:', error);
     }
   }
 
@@ -96,8 +207,11 @@ export class ChatAPIClient {
       if (!response.ok) {
         console.error(`❌ [ChatAPIClient] Failed to finalize message: ${response.statusText}`);
       }
+      
+      this.messageStarted = false;  // ✅ Reset flag after finalize
     } catch (error) {
       console.error('❌ [ChatAPIClient] Error finalizing message:', error);
+      this.messageStarted = false;  // ✅ Reset even on error
     }
   }
 
@@ -322,87 +436,39 @@ export class ChatAPIClient {
 
   /**
    * Add exploration status (scanning codebase)
+   * @deprecated Use showChatStatus('exploring', { filesCount, totalFiles }) instead
    */
   async addExploringStatus(current: number, total: number): Promise<void> {
-    if (!this.enabled) return;
-
-    try {
-      await fetch(`${this.baseUrl}/exploration`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'exploring', current, total })
-      });
-    } catch (error) {
-      // Silently fail
-    }
+    await this.showChatStatus('exploring', { filesCount: current, totalFiles: total });
   }
 
   /**
    * Add exploration result (scan complete)
    */
   async addExploredResult(filesCount: number, tokensCount: number, filesList?: string[]): Promise<void> {
-    if (!this.enabled) return;
-
-    try {
-      await fetch(`${this.baseUrl}/exploration`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'explored', filesCount, tokensCount, filesList })
-      });
-    } catch (error) {
-      // Silently fail
-    }
+    await this.showChatStatus('explored', { filesCount, tokensCount, filesList });
   }
 
   /**
    * Add reading file status
    */
   async addReadingFile(filePath: string): Promise<void> {
-    if (!this.enabled) return;
-
-    try {
-      await fetch(`${this.baseUrl}/file-read`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'reading', filePath })
-      });
-    } catch (error) {
-      // Silently fail
-    }
+    await this.showChatStatus('reading', { filePath });
   }
 
   /**
    * Add file read complete
    */
   async addReadComplete(filePath: string): Promise<void> {
-    if (!this.enabled) return;
-
-    try {
-      await fetch(`${this.baseUrl}/file-read`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'read', filePath })
-      });
-    } catch (error) {
-      // Silently fail
-    }
+    await this.showChatStatus('read', { filePath });
   }
 
   /**
    * Add grepping status (searching codebase)
+   * @deprecated Use showChatStatus('grepping', { query, filesCount, totalFiles }) instead
    */
   async addGreppingStatus(query: string, current: number, total: number): Promise<void> {
-    if (!this.enabled) return;
-
-    try {
-      await fetch(`${this.baseUrl}/grep`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'grepping', query, current, total })
-      });
-    } catch (error) {
-      // Silently fail
-    }
+    await this.showChatStatus('grepping', { query, filesCount: current, totalFiles: total });
   }
 
   /**
@@ -414,17 +480,7 @@ export class ChatAPIClient {
     strategy: string,
     filesList?: string[]
   ): Promise<void> {
-    if (!this.enabled) return;
-
-    try {
-      await fetch(`${this.baseUrl}/grep`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'grepped', query, filesCount, strategy, filesList })
-      });
-    } catch (error) {
-      // Silently fail
-    }
+    await this.showChatStatus('grepped', { query, filesCount, strategy, filesList });
   }
 
   /**

@@ -11,16 +11,23 @@ import * as path from 'path';
 import type { LLMStreamEvent } from '../../llm/types';
 import type { SSEService } from './SSEService';
 
-export interface ChatMessageContent {
-  type: 'thinking' | 'text' 
+// ✅ NOTE: This is duplicated in @ant-ui/domain/models/chat.ts
+// Keep types in sync manually (packages are separate)
+export interface MessageContent {
+  type: // 🎯 Chat Status Messages (progress indicators)
+     | 'placeholder'
+     | 'thinking'       // LLM thinking / reasoning
+     | 'exploring' | 'explored'   // Codebase scan
+     | 'grepping' | 'grepped'     // Search
+     | 'reading' | 'read'         // File read
+     // General content
+     | 'text'
      // File Operations - Real-time streaming
      | 'file_creating' | 'file_writing' | 'file_create'
      | 'file_editing' | 'file_updating' | 'file_edit'
      | 'file_deleting' | 'file_delete'
      // Command Execution - Real-time streaming
-     | 'command_running' | 'command_streaming' | 'command'
-     // Exploration & Analysis
-     | 'exploring' | 'explored' | 'reading' | 'read' | 'grepping' | 'grepped';
+     | 'command_running' | 'command_streaming' | 'command';
   content: string;
   metadata?: {
     filePath?: string;
@@ -38,14 +45,14 @@ export interface ChatMessageContent {
     // LLM metadata
     model?: string;         // LLM model used
     provider?: string;      // LLM provider (e.g., 'anthropic', 'openai')
-    placeholder?: boolean;  // ✅ Mark as placeholder for replacement
+    blockStart?: boolean;   // For thinking: marks <thinking> tag opened (new block)
   };
 }
 
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
-  contents: ChatMessageContent[];
+  contents: MessageContent[];
   timestamp: string;
   jobId?: string; // Which job this message belongs to
   isStreaming?: boolean;
@@ -222,7 +229,6 @@ export class ChatService {
       message: userMessage
     });
     
-    console.log(`💬 [ChatService] Added user message: ${messageId}`);
     return messageId;
   }
 
@@ -234,7 +240,6 @@ export class ChatService {
     
     // ✅ If there's already a current message being streamed, reuse it (avoid duplicates)
     if (session.currentMessage && session.currentMessage.isStreaming) {
-      console.log(`[ChatService] ♻️  Reusing existing streaming message: ${session.currentMessage.id}`);
       return session.currentMessage.id;
     }
     
@@ -265,7 +270,7 @@ export class ChatService {
   addContentToCurrentMessage(
     projectId: string, 
     featureName: string, 
-    content: ChatMessageContent
+    content: MessageContent
   ): void {
     const key = this.getSessionKey(projectId, featureName);
     const session = this.sessions.get(key);
@@ -275,85 +280,160 @@ export class ChatService {
       return;
     }
 
-    // ✅ Smart append: merge consecutive content of same type
+    // ✅ Simple: only check last content in currentMessage
+    // (placeholder is always shown right before LLM API call, so it's always in the same message)
     const existingContents = session.currentMessage.contents;
-    const lastContent = existingContents[existingContents.length - 1];
+    const lastContent = existingContents.length > 0 
+      ? existingContents[existingContents.length - 1] 
+      : undefined;
+    const lastContentIndex = existingContents.length - 1;
     
-    // If same type as last content (thinking or text), append or replace
-    // ✅ CRITICAL: Don't check !content.metadata for file operations (they need metadata)
-    const isFileOperation = content.type.includes('file_') || content.type.includes('command');
-    const canMerge = lastContent && 
-        lastContent.type === content.type && 
-        (content.type === 'thinking' || content.type === 'text') &&
-        (!content.metadata || !isFileOperation);  // Allow metadata for thinking/text
+    // 🎯 UNIFIED CHAT STATUS MESSAGE HANDLING (Cursor/Copilot style)
+    // 
+    // Chat Status Message = Progress indicator (unified concept)
+    // Types: placeholder, exploring, explored, grepping, grepped, reading, read, thinking
+    // 
+    // Rules:
+    // 1. placeholder → placeholder: REPLACE (node transition)
+    // 2. Chat Status Message → Chat Status Message: MERGE (e.g. placeholder → exploring)
+    // 3. Chat Status Message → General Content (text/file): HIDE (remove Chat Status Message)
     
-    if (canMerge) {
-      // ✅ REPLACE placeholder with actual LLM thinking
-      const isPlaceholder = lastContent.metadata?.placeholder === true;
+    const CHAT_STATUS_TYPES = new Set([
+      'placeholder', 
+      'exploring', 'explored', 
+      'grepping', 'grepped', 
+      'reading', 'read'
+      // NOTE: 'thinking' is NOT a Chat Status - it's general content!
+      // - Chat Status = progress indicator (placeholder, exploring, grepping, etc.)
+      // - thinking = LLM thought process (collapsible content block)
+      // When thinking arrives, Chat Status (if any) will HIDE via Case 3
+    ]);
+    
+    const isLastChatStatus = lastContent && CHAT_STATUS_TYPES.has(lastContent.type);
+    const isNewChatStatus = CHAT_STATUS_TYPES.has(content.type);
+    
+    const isLastPlaceholder = lastContent?.type === 'placeholder';
+    const isNewPlaceholder = content.type === 'placeholder';
+    
+    // ✅ Check if new thinking block starts (<thinking> tag opened)
+    const isNewThinkingBlock = 
+      content.type === 'thinking' && 
+      content.metadata?.blockStart === true;
+    
+    // Case 1: Placeholder → Placeholder (node transition)
+    if (isLastPlaceholder && isNewPlaceholder && lastContent) {
+      console.log('[ChatService] 🔄 Node transition: Old placeholder → New placeholder');
       
-      if (content.type === 'thinking' && isPlaceholder) {
-        console.log(`[ChatService] 🔄 Replacing placeholder with LLM thinking (${content.content.substring(0, 50)}...)`);
-        // Replace placeholder entirely (don't append)
-        lastContent.content = content.content;
-        // Keep metadata from incoming content (provider, timestamp, etc.)
-        lastContent.metadata = { ...content.metadata, placeholder: undefined };
+      lastContent.type = content.type;
+      lastContent.content = content.content;
+      lastContent.metadata = { ...lastContent.metadata, ...content.metadata };
+      
+      this.broadcast(projectId, featureName, {
+        type: 'content_update',
+        messageId: session.currentMessage.id,
+        contentIndex: lastContentIndex,
+        content: lastContent
+      });
+      return;
+    }
+    
+    // Case 2: Explicit MERGE patterns
+    // - placeholder → any (placeholder는 모든 후속 content로 MERGE)
+    // - exploring → exploring/explored (progress update/completion)
+    // - grepping → grepping/grepped (progress update/completion)
+    // - reading → reading/read (progress update/completion)
+    const shouldMergeChatStatus = (
+      // placeholder → anything (MERGE all!)
+      isLastPlaceholder ||
+      // Progress → Progress (same task update)
+      (lastContent?.type === 'exploring' && content.type === 'exploring') ||
+      (lastContent?.type === 'grepping' && content.type === 'grepping') ||
+      (lastContent?.type === 'reading' && content.type === 'reading') ||
+      // Progress → Completed (same task completion)
+      (lastContent?.type === 'exploring' && content.type === 'explored') ||
+      (lastContent?.type === 'grepping' && content.type === 'grepped') ||
+      (lastContent?.type === 'reading' && content.type === 'read')
+    );
+    
+    if (shouldMergeChatStatus && lastContent) {
+      console.log(`[ChatService] ✅ MERGED: ${lastContent.type} → ${content.type}`);
+      
+      lastContent.type = content.type;
+      // ✅ Special case: placeholder → thinking = clear placeholder content
+      // thinking 블록은 LLM content를 받아야 하므로, placeholder content를 지워야 함
+      if (isLastPlaceholder && content.type === 'thinking') {
+        lastContent.content = '';  // Clear placeholder content, wait for LLM thinking
+        console.log(`[ChatService] 🧹 Cleared placeholder content for thinking block`);
       } else {
-        console.log(`[ChatService] ➕ Appending to existing ${content.type} (adding ${content.content.length} chars)`);
-        // Append to existing content
-        lastContent.content += content.content;
+        lastContent.content = content.content;
       }
-      
-      // Broadcast content update (merged or replaced)
-      this.broadcast(projectId, featureName, {
-        type: 'content_update',
-        messageId: session.currentMessage.id,
-        contentIndex: existingContents.length - 1,
-        content: lastContent
-      });
-    } 
-    // ✅ UPDATE progress content types (exploring, grepping, reading)
-    else if (lastContent && 
-             lastContent.type === 'exploring' && content.type === 'exploring') {
-      // Update progress content in-place
-      lastContent.content = content.content;
       lastContent.metadata = { ...lastContent.metadata, ...content.metadata };
       
-      // Broadcast content update
       this.broadcast(projectId, featureName, {
         type: 'content_update',
         messageId: session.currentMessage.id,
-        contentIndex: existingContents.length - 1,
+        contentIndex: lastContentIndex,
         content: lastContent
       });
+      return;
     }
-    else if (lastContent && 
-             lastContent.type === 'grepping' && content.type === 'grepping') {
-      // Update grepping progress in-place
-      lastContent.content = content.content;
-      lastContent.metadata = { ...lastContent.metadata, ...content.metadata };
-      
-      // Broadcast content update
-      this.broadcast(projectId, featureName, {
-        type: 'content_update',
-        messageId: session.currentMessage.id,
-        contentIndex: existingContents.length - 1,
-        content: lastContent
-      });
+    
+    // Case 2.5: Direct duplicate of completed Chat Status = IGNORE
+    // e.g., grepped → grepped, explored → explored, read → read
+    // But grepped → grepping → grepped = NEW grepped (independent search)
+    const completedChatStatusTypes = new Set(['grepped', 'explored', 'read']);
+    const shouldIgnore = 
+      lastContent &&
+      completedChatStatusTypes.has(lastContent.type) &&
+      lastContent.type === content.type;  // ✅ Only ignore direct duplicates
+    
+    if (shouldIgnore) {
+      console.log(`[ChatService] ⏭️ IGNORED: ${content.type} → ${content.type} (direct duplicate)`);
+      return;  // Do nothing, discard silently
     }
-    else if (lastContent && 
-             lastContent.type === 'reading' && content.type === 'reading') {
-      // Update reading progress in-place
-      lastContent.content = content.content;
+    
+    // ✅ STREAMING: Same-type content appending (ignore = don't create new block)
+    // - text → text: append tokens
+    // - thinking → thinking (same block): append tokens
+    // - file_writing → file_writing (same file): append code
+    // - file_updating → file_updating (same file): append code
+    // - file_creating/editing/deleting → same (same file): maintain state
+    const isTextOrThinking = content.type === 'text' || content.type === 'thinking';
+    const isFileStreaming = 
+      content.type === 'file_writing' ||
+      content.type === 'file_updating' ||
+      content.type === 'file_creating' ||
+      content.type === 'file_editing' ||
+      content.type === 'file_deleting';
+    
+    // For files, check if it's the same file (same filePath)
+    const isSameFile = lastContent?.metadata?.filePath && 
+                       content.metadata?.filePath &&
+                       lastContent.metadata.filePath === content.metadata.filePath;
+    
+    const canAppend = lastContent &&
+        lastContent.type === content.type &&
+        (
+          (isTextOrThinking && !isNewThinkingBlock) ||  // text/thinking (not new block)
+          (isFileStreaming && isSameFile)               // file (same file only!)
+        );
+
+    if (canAppend && lastContent) {
+      // Append silently (streaming tokens/code)
+      lastContent.content += content.content;
+      // Update metadata (e.g., line counts for files)
       lastContent.metadata = { ...lastContent.metadata, ...content.metadata };
-      
-      // Broadcast content update
+
       this.broadcast(projectId, featureName, {
         type: 'content_update',
         messageId: session.currentMessage.id,
-        contentIndex: existingContents.length - 1,
+        contentIndex: lastContentIndex,
         content: lastContent
       });
-    } else if (content.metadata?.filePath && 
+      return;
+    }
+    // ✅ File operations: Find and update in-progress content
+    else if (content.metadata?.filePath && 
                (content.type === 'file_create' || content.type === 'file_edit' || content.type === 'file_delete')) {
       // ✅ File operation completion: find and update the in-progress content
       const inProgressTypes = {
@@ -392,6 +472,10 @@ export class ChatService {
       }
     } else {
       // Different type or has metadata → add as new content block
+      if (isNewThinkingBlock) {
+        console.log('[ChatService] 🆕 New thinking block (<thinking> opened)');
+      }
+      
       session.currentMessage.contents.push(content);
 
       // Broadcast content add
@@ -518,7 +602,7 @@ export class ChatService {
       
       if (existingIndex !== -1) {
         // ✅ Determine new type based on phase
-        let newType: ChatMessageContent['type'];
+        let newType: MessageContent['type'];
         
         if (phase === 'creating') {
           newType = 'file_creating';
@@ -574,7 +658,7 @@ export class ChatService {
     
     // ✅ No existing content found - add new content
     // Determine content type based on phase and operation
-    let type: ChatMessageContent['type'];
+    let type: MessageContent['type'];
     
     if (phase === 'creating') {
       type = 'file_creating';
@@ -629,7 +713,7 @@ export class ChatService {
     phase?: 'running' | 'streaming' | 'complete'
   ): void {
     // Determine content type based on phase
-    let type: ChatMessageContent['type'];
+    let type: MessageContent['type'];
     
     if (phase === 'running') {
       type = 'command_running';
@@ -651,93 +735,7 @@ export class ChatService {
     });
   }
 
-  /**
-   * Add exploration status (exploring/explored)
-   */
-  addExploration(
-    projectId: string,
-    featureName: string,
-    status: 'exploring' | 'explored',
-    data: {
-      current?: number;
-      total?: number;
-      filesCount?: number;
-      tokensCount?: number;
-      filesList?: string[];
-    }
-  ): void {
-    const content = status === 'exploring'
-      ? `Exploring codebase... ${data.current || 0}/${data.total || 0} files`
-      : `Explored ${data.filesCount || 0} files (~${Math.ceil((data.tokensCount || 0) / 1000)}K tokens)`;
 
-    this.addContentToCurrentMessage(projectId, featureName, {
-      type: status,
-      content,
-      metadata: {
-        filesCount: data.filesCount,
-        totalFiles: status === 'exploring' ? data.total : undefined,
-        tokensCount: data.tokensCount,
-        filesList: data.filesList,
-        timestamp: new Date().toISOString()
-      }
-    });
-  }
-
-  /**
-   * Add file reading status (reading/read)
-   */
-  addFileRead(
-    projectId: string,
-    featureName: string,
-    status: 'reading' | 'read',
-    filePath: string
-  ): void {
-    const content = status === 'reading'
-      ? `Reading ${filePath}...`
-      : `Read ${filePath}`;
-
-    this.addContentToCurrentMessage(projectId, featureName, {
-      type: status,
-      content,
-      metadata: {
-        filePath,
-        timestamp: new Date().toISOString()
-      }
-    });
-  }
-
-  /**
-   * Add grep status (grepping/grepped)
-   */
-  addGrep(
-    projectId: string,
-    featureName: string,
-    status: 'grepping' | 'grepped',
-    query: string,
-    data: {
-      current?: number;
-      total?: number;
-      filesCount?: number;
-      strategy?: string;
-      filesList?: string[];
-    }
-  ): void {
-    const content = status === 'grepping'
-      ? `Searching for "${query}"... ${data.current || 0}/${data.total || 0} files`
-      : `Found in ${data.filesCount || 0} files (strategy: ${data.strategy || 'unknown'})`;
-
-    this.addContentToCurrentMessage(projectId, featureName, {
-      type: status,
-      content,
-      metadata: {
-        filesCount: data.filesCount,
-        totalFiles: status === 'grepping' ? data.total : undefined,
-        strategy: data.strategy,
-        filesList: data.filesList,
-        timestamp: new Date().toISOString()
-      }
-    });
-  }
 
   /**
    * Add job error message (for job failures)

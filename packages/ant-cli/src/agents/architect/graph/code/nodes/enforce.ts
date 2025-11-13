@@ -164,7 +164,7 @@ Your previous attempts to run npm commands DID NOT WORK.
 ✅ CORRECT APPROACH - MODIFY package.json DIRECTLY:
 1. Find the missing package name (e.g., "@types/react")
 2. Output the COMPLETE package.json file with the dependency added
-3. Format: === FILE: package.json === ... === END FILE ===
+3. Format: <file path="package.json">...</file>
 
 ❌ DO NOT output npm commands in bash blocks - they did not execute!
 ❌ DO NOT create separate "Terminal Commands" files

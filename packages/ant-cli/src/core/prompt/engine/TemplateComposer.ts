@@ -224,8 +224,8 @@ export class TemplateComposer {
       'pre-output-check': {},
       // ✅ NEW: Retry and plan context
       'retry-context': { retryContext: assembled.retryContext },
-      'plan-preservation': { planContract: assembled.planContract },
-      'response': {}
+      'plan-preservation': { planContract: assembled.planContract }
+      // ✅ REMOVED: 'response' injection (legacy, no longer used)
     };
     
     return varMap[filename] || {};

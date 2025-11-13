@@ -95,7 +95,7 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     const { getChatAPIClient } = await import('../../../../../core/adapters/ChatAPIClient');
     const chatAPI = getChatAPIClient();
     
-    // ✅ Send grepping status (extracting query from directive/design/prd)
+    // ✅ Send grepping status
     const query = (directive || design || prd || "").slice(0, 100);  // First 100 chars as query
     await chatAPI.addGreppingStatus(query, 0, 25);  // Max 25 files
     

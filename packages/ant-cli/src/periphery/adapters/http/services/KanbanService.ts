@@ -14,6 +14,7 @@ export class KanbanService {
   private taskQueueSnapshots: Map<string, { 
     currentTask: any; 
     queue: any[];
+    completedTasks: any[];
     recursionCount?: number;
     recursionLimit?: number;
   }> = new Map();
@@ -83,6 +84,7 @@ export class KanbanService {
     taskId: string, 
     currentTask: any, 
     queue: any[],
+    completedTasks: any[],
     recursionCount?: number,
     recursionLimit?: number
   ): void {
@@ -91,6 +93,7 @@ export class KanbanService {
     this.taskQueueSnapshots.set(taskId, { 
       currentTask, 
       queue,
+      completedTasks,  // ✅ CRITICAL: Store completedTasks in snapshot
       recursionCount,
       recursionLimit
     });
@@ -157,9 +160,17 @@ export class KanbanService {
     const completedTaskIds = sessionState.completedTasks || [];
     const completedTasksDetails = sessionState.completedTasksDetails || [];
     const currentTask = sessionState.currentTask || null;
-    const isJobCompleted = !!sessionState.jobTiming?.completedAt;
+    
+    // ✅ CRITICAL: Job is completed ONLY if:
+    // 1. Has completedAt timestamp
+    // 2. No interruption (user_stopped, recursion_limit, etc.)
+    // 3. Task queue is empty (all work done)
+    const hasInterruption = !!sessionState.interruption;
+    const hasTasksRemaining = sessionTaskQueue.length > 0 || !!currentTask;
+    const isJobCompleted = !!sessionState.jobTiming?.completedAt && !hasInterruption && !hasTasksRemaining;
     
     console.log(`   Session jobId: ${sessionJobId || 'none'}`);
+    console.log(`   Has interruption: ${hasInterruption}`);
     console.log(`   Job completed: ${isJobCompleted}`);
     console.log(`   Completed tasks: ${completedTasksDetails.length}`);
     
@@ -171,7 +182,8 @@ export class KanbanService {
         const taskCount = liveSnapshot?.queue?.length || 0;
         console.log(`   ✅ Found live snapshot for ${sessionJobId} (${taskCount} tasks)`);
       } else {
-        console.log(`   ⏳ No live snapshot yet (estimating or starting...)`);
+        console.log(`   ⏳ No live snapshot yet for jobId: ${sessionJobId}`);
+        console.log(`   📋 Available snapshot keys: ${Array.from(snapshots.keys()).join(', ')}`);
       }
     }
     
@@ -187,14 +199,11 @@ export class KanbanService {
         console.log(`\n🎬 [KanbanService] ESTIMATING STARTED (empty live snapshot)`);
         console.log(`   Preserving completed tasks from session: ${completedTasksDetails.length}\n`);
         
-        const MINIMUM_RECURSION_LIMIT = 5;
-        const DEFAULT_RECURSION_LIMIT = 50;
-        const envLimit = parseInt(process.env.RECURSION_LIMIT || String(DEFAULT_RECURSION_LIMIT), 10);
-        const finalLimit = isNaN(envLimit) || envLimit < 1 
-          ? DEFAULT_RECURSION_LIMIT 
-          : envLimit < MINIMUM_RECURSION_LIMIT 
-            ? MINIMUM_RECURSION_LIMIT 
-            : envLimit;
+        const MIN_RECURSION_LIMIT = 5;
+        const recursionLimit = parseInt(process.env.RECURSION_LIMIT || '', 10);
+        const finalLimit = (isNaN(recursionLimit) || recursionLimit < MIN_RECURSION_LIMIT) 
+          ? MIN_RECURSION_LIMIT 
+          : recursionLimit;
         
         const totalElapsedTime = this.calculateTotalElapsedTime(
           sessionState.jobTiming,
@@ -250,18 +259,14 @@ export class KanbanService {
     
     // Priority 2: ESTIMATING (job running but no live snapshot yet)
     // ✅ CRITICAL: Skip ESTIMATING if job has any interruption (stopped/paused/failed)
-    const hasInterruption = !!sessionState.interruption;
     if (sessionJobId && !isJobCompleted && !liveSnapshot && !hasInterruption) {
       console.log(`\n🎯 [KanbanService] ESTIMATING STATE (no live snapshot yet)`);
       
-      const MINIMUM_RECURSION_LIMIT = 5;
-      const DEFAULT_RECURSION_LIMIT = 50;
-      const envLimit = parseInt(process.env.RECURSION_LIMIT || String(DEFAULT_RECURSION_LIMIT), 10);
-      const finalLimit = isNaN(envLimit) || envLimit < 1 
-        ? DEFAULT_RECURSION_LIMIT 
-        : envLimit < MINIMUM_RECURSION_LIMIT 
-          ? MINIMUM_RECURSION_LIMIT 
-          : envLimit;
+      const MIN_RECURSION_LIMIT = 5;
+      const recursionLimit = parseInt(process.env.RECURSION_LIMIT || '', 10);
+      const finalLimit = (isNaN(recursionLimit) || recursionLimit < MIN_RECURSION_LIMIT) 
+        ? MIN_RECURSION_LIMIT 
+        : recursionLimit;
       
       const totalElapsedTime = this.calculateTotalElapsedTime(
         sessionState.jobTiming,

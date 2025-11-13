@@ -654,6 +654,31 @@ export function createProjectRoutes(deps: {
   });
 
   /**
+   * POST /projects/:id/features/:feature/chat/add-content
+   * Add content to current message (for Chat Status Messages)
+   */
+  router.post('/projects/:id/features/:feature/chat/add-content', (req: Request, res: Response) => {
+    const projectId = req.params.id;
+    const featureName = req.params.feature;
+    const { content } = req.body;
+
+    console.log(`🔵 [/add-content] Endpoint called! projectId=${projectId}, featureName=${featureName}, content.type=${content?.type}`);
+
+    if (!deps.chatService) {
+      res.status(503).json({ error: 'Chat service not available' });
+      return;
+    }
+
+    if (!content || !content.type) {
+      res.status(400).json({ error: 'content with type is required' });
+      return;
+    }
+
+    deps.chatService.addContentToCurrentMessage(projectId, featureName, content);
+    res.json({ success: true });
+  });
+
+  /**
    * POST /projects/:id/features/:feature/chat/llm-event
    * Handle LLM stream event
    */
@@ -739,96 +764,7 @@ export function createProjectRoutes(deps: {
     res.json({ success: true });
   });
 
-  /**
-   * POST /projects/:id/features/:feature/chat/exploration
-   * Add exploration status/result
-   */
-  router.post('/projects/:id/features/:feature/chat/exploration', (req: Request, res: Response) => {
-    const projectId = req.params.id;
-    const featureName = req.params.feature;
-    const { status, current, total, filesCount, tokensCount, filesList } = req.body;
 
-    if (!deps.chatService) {
-      res.status(503).json({ error: 'Chat service not available' });
-      return;
-    }
-
-    if (!status || (status !== 'exploring' && status !== 'explored')) {
-      res.status(400).json({ error: 'status must be "exploring" or "explored"' });
-      return;
-    }
-
-    deps.chatService.addExploration(projectId, featureName, status, {
-      current,
-      total,
-      filesCount,
-      tokensCount,
-      filesList
-    });
-    res.json({ success: true });
-  });
-
-  /**
-   * POST /projects/:id/features/:feature/chat/file-read
-   * Add file reading status
-   */
-  router.post('/projects/:id/features/:feature/chat/file-read', (req: Request, res: Response) => {
-    const projectId = req.params.id;
-    const featureName = req.params.feature;
-    const { status, filePath } = req.body;
-
-    if (!deps.chatService) {
-      res.status(503).json({ error: 'Chat service not available' });
-      return;
-    }
-
-    if (!status || (status !== 'reading' && status !== 'read')) {
-      res.status(400).json({ error: 'status must be "reading" or "read"' });
-      return;
-    }
-
-    if (!filePath) {
-      res.status(400).json({ error: 'filePath is required' });
-      return;
-    }
-
-    deps.chatService.addFileRead(projectId, featureName, status, filePath);
-    res.json({ success: true });
-  });
-
-  /**
-   * POST /projects/:id/features/:feature/chat/grep
-   * Add grep/search status/result
-   */
-  router.post('/projects/:id/features/:feature/chat/grep', (req: Request, res: Response) => {
-    const projectId = req.params.id;
-    const featureName = req.params.feature;
-    const { status, query, current, total, filesCount, strategy, filesList } = req.body;
-
-    if (!deps.chatService) {
-      res.status(503).json({ error: 'Chat service not available' });
-      return;
-    }
-
-    if (!status || (status !== 'grepping' && status !== 'grepped')) {
-      res.status(400).json({ error: 'status must be "grepping" or "grepped"' });
-      return;
-    }
-
-    if (!query) {
-      res.status(400).json({ error: 'query is required' });
-      return;
-    }
-
-    deps.chatService.addGrep(projectId, featureName, status, query, {
-      current,
-      total,
-      filesCount,
-      strategy,
-      filesList
-    });
-    res.json({ success: true });
-  });
 
   /**
    * POST /projects/:id/features/:feature/chat/job-error

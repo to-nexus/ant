@@ -1,7 +1,6 @@
 import { LLMClient } from "../../../../../../core/ports";
 import { ArchitectGraphState, Task, TaskQueue } from "../../state";
 import { JobTimingManager } from "../../../common/timing/JobTimingManager";
-import { streamLLMResponse, finalizeChatMessage } from "../shared/llmStreamHandler";
 import { extractErrorDetails, createErrorViolation, logErrorHeader } from "../shared/errorHandler";
 
 /**
@@ -223,20 +222,50 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           interruption: undefined  // ✅ CRITICAL: Clear interruption when resuming (job is now running again)
         } as any;
         
+        // ✅ Start/resume timing for currentTask if exists
+        if (resumedState.currentTask) {
+          const { TaskTimingHelper } = await import('../../state');
+          if (!resumedState.currentTask.timing?.startedAt) {
+            console.log(`⏱️  [Decompose Resume] Starting timer for resumed task: ${resumedState.currentTask.name}`);
+            resumedState.currentTask = TaskTimingHelper.startTask(resumedState.currentTask);
+          } else if (resumedState.currentTask.timing?.pausedAt) {
+            console.log(`⏱️  [Decompose Resume] Resuming timer for task: ${resumedState.currentTask.name}`);
+            resumedState.currentTask = TaskTimingHelper.startTask(resumedState.currentTask);
+          } else {
+            console.log(`⏱️  [Decompose Resume] Timer already running for task: ${resumedState.currentTask.name}`);
+          }
+        }
+        
         // ✅ Update live snapshot for seamless UI transition (Port or HTTP fallback)
         if (state._httpTaskId) {
           const completedTasks = resumedState.completedTasksDetails || [];
           const queueTasks = taskQueue.getAll();
           
+          // ✅ CRITICAL: Get recursionCount and recursionLimit from resumed state
+          const recursionCount = session.state.recursionCount || 0;
+          const MIN_RECURSION_LIMIT = 5;
+          const envLimit = parseInt(process.env.RECURSION_LIMIT || '', 10);
+          const recursionLimit = (isNaN(envLimit) || envLimit < MIN_RECURSION_LIMIT) 
+            ? MIN_RECURSION_LIMIT 
+            : envLimit;
+          
           if (state.deps?.kanbanUpdate) {
             // In-process: use injected port
             state.deps.kanbanUpdate.updateTaskQueue(
               state._httpTaskId,
-              resumedState.currentTask || null,
+              resumedState.currentTask || null,  // ✅ Now includes timing info
               queueTasks,
-              completedTasks
+              completedTasks,
+              recursionCount,  // ✅ Pass recursion tracking
+              recursionLimit   // ✅ Pass recursion limit
             );
-            console.log(`🔄 [Decompose Resume] Live snapshot updated via PORT (${taskQueue.size()} tasks, current: ${resumedState.currentTask?.name || 'none'})\n`);
+            console.log(`🔄 [Decompose Resume] Live snapshot updated via PORT`);
+            console.log(`   JobId: ${state._httpTaskId}`);
+            console.log(`   CurrentTask: ${resumedState.currentTask?.name || 'none'}`);
+            console.log(`   Queue: ${taskQueue.size()} tasks`);
+            console.log(`   Completed: ${completedTasks.length} tasks`);
+            console.log(`   Recursion: ${recursionCount}/${recursionLimit}`);
+            console.log(`   Live snapshot will be broadcast immediately by updateTaskQueue\n`);
           } else {
             // Child process: HTTP API fallback
             const serverPort = process.env.ANT_SERVER_PORT || '4100';
@@ -247,7 +276,9 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
                 taskId: state._httpTaskId,
                 currentTask: resumedState.currentTask || null,
                 queue: queueTasks,
-                completedTasks: completedTasks
+                completedTasks: completedTasks,
+                recursionCount,
+                recursionLimit
               })
             }).then(() => {
               console.log(`🔄 [Decompose Resume] Live snapshot updated via HTTP (${taskQueue.size()} tasks, current: ${resumedState.currentTask?.name || 'none'})\n`);
@@ -423,73 +454,74 @@ ${validationStrategy}
 ${rules}`;
 
   try {
-    // Define JSON schema for task decomposition
-    const taskSchema = {
-      type: "object",
-      properties: {
-        tasks: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              id: {
-                type: "string",
-                description: "Unique task identifier in kebab-case"
-              },
-              name: {
-                type: "string",
-                description: "Human-readable task name"
-              },
-              type: {
-                type: "string",
-                enum: ["setup", "feature", "error"],
-                description: "Task type: setup (config files), feature (implementation), or error (bug fix)"
-              },
-              priority: {
-                type: "number",
-                description: "Priority number (lower = higher priority). Setup: 100, Features: 200-999"
-              },
-              description: {
-                type: "string",
-                description: "Detailed task description"
-      },
-              dependencies: {
-                type: "array",
-                items: { type: "string" },
-                description: "Optional array of task IDs this task depends on"
-              },
-              validationRequired: {
-                type: "boolean",
-                description: "Whether this task requires validation after completion. Use true for critical tasks, false for batch intermediate tasks"
-              },
-              validationType: {
-                type: "string",
-                enum: ["none", "static", "runtime"],
-                description: "Type of validation: none (skip all), static (syntax/config only), runtime (full: tsc + build + lint)"
-              },
-              validationRationale: {
-                type: "string",
-                description: "Brief explanation for the validation decision (e.g., 'Config files need syntax check', 'Batch component, validate at end')"
-              }
-            },
-            required: ["id", "name", "type", "priority", "description", "validationRequired", "validationType"]
-          }
+    console.log('\n📝 Analyzing specification and breaking down tasks...\n');
+    
+    // ✅ Get ChatAPIClient for UI feedback
+    const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
+    const chatAPI = getChatAPIClient();
+    
+    // ✅ Use StreamOrchestrator for consistent XML parsing
+    const { StreamOrchestrator, XMLStreamParser, CommonRenderStrategy } = await import('../../../../../../core/streaming');
+    
+    if (!llm.streamRaw) {
+      throw new Error('LLM client does not support streaming');
+    }
+    
+    const orchestrator = new StreamOrchestrator({
+      parser: new XMLStreamParser(),
+      renderStrategy: new CommonRenderStrategy(chatAPI),
+      existingFiles: new Set([]) // Decompose phase doesn't generate files
+    });
+    
+    // 🎯 Show placeholder before LLM call
+    await chatAPI.showChatStatus('placeholder');
+    
+    // Stream LLM response with real-time XML parsing
+    for await (const event of llm.streamRaw([{ role: 'user', content: prompt }])) {
+      await orchestrator.processEvent(event);
+    }
+    
+    const streamResult = await orchestrator.finalize();
+    const raw = streamResult.raw;
+    
+    // ✅ Extract JSON from <tasks> tags (more reliable than parsing freeform text)
+    let tasks: Task[] = [];
+    const tasksMatch = raw.match(/<tasks>\s*([\s\S]*?)\s*<\/tasks>/);
+    
+    if (tasksMatch && tasksMatch[1]) {
+      try {
+        const jsonText = tasksMatch[1].trim();
+        const parsed = JSON.parse(jsonText);
+        tasks = parsed.tasks || [];
+        console.log(`✅ Parsed ${tasks.length} tasks from LLM response\n`);
+      } catch (parseError) {
+        console.error('❌ Failed to parse task JSON from <tasks> tags:', parseError);
+        console.error('JSON text:', tasksMatch[1].substring(0, 500));
+      }
+    } else {
+      // Fallback: Try to find JSON in raw response (for backward compatibility)
+      console.log('⚠️  No <tasks> tags found, trying fallback JSON extraction...\n');
+      
+      // Remove thinking tags
+      let jsonText = raw.replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
+      
+      // Try to find JSON object
+      const jsonMatch = jsonText.match(/\{[\s\S]*"tasks"[\s\S]*\]/);
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[0] + '}');
+          tasks = parsed.tasks || [];
+          console.log(`✅ Parsed ${tasks.length} tasks from fallback extraction\n`);
+        } catch (parseError) {
+          console.error('❌ Fallback JSON parsing also failed:', parseError);
         }
-      },
-      required: ["tasks"]
-    };
-    
-    // Use structured output to guarantee valid JSON
-    const result = await llm.invokeStructured<{ tasks: Task[] }>(
-      [{ role: 'user', content: prompt }],
-      taskSchema,
-      'task_decomposition'
-    );
-    
-    const tasks: Task[] = result.tasks || [];
+      }
+    }
     
     if (tasks.length === 0) {
-      console.log('⚠️  No tasks created from spec, creating default task');
+      console.log('⚠️  Could not extract tasks from LLM response');
+      console.log('Raw response preview:', raw.substring(0, 300), '...');
+      console.log('Creating default task as fallback...\n');
       
       const taskQueue = new TaskQueue();
       const defaultTask: Task = {

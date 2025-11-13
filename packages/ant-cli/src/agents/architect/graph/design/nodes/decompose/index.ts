@@ -90,13 +90,28 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
           const completedTasks = resumedState.completedTasksDetails || [];
           const queueTasks = taskQueue.getAll();
           
+          // ✅ CRITICAL: Get recursionCount and recursionLimit from resumed state
+          const recursionCount = session.state.recursionCount || 0;
+          const MIN_RECURSION_LIMIT = 5;
+          const envLimit = parseInt(process.env.RECURSION_LIMIT || '', 10);
+          const recursionLimit = (isNaN(envLimit) || envLimit < MIN_RECURSION_LIMIT) 
+            ? MIN_RECURSION_LIMIT 
+            : envLimit;
+          
           state.deps.kanbanUpdate.updateTaskQueue(
             state._httpTaskId,
             resumedState.currentTask || null,
             queueTasks,
-            completedTasks
+            completedTasks,
+            recursionCount,  // ✅ Pass recursion tracking
+            recursionLimit   // ✅ Pass recursion limit
           );
-          console.log(`   ✅ Live snapshot updated (${taskQueue.size()} tasks)\n`);
+          console.log(`🔄 [Design Decompose Resume] Live snapshot updated via PORT`);
+          console.log(`   JobId: ${state._httpTaskId}`);
+          console.log(`   CurrentTask: ${resumedState.currentTask?.name || 'none'}`);
+          console.log(`   Queue: ${taskQueue.size()} tasks`);
+          console.log(`   Completed: ${completedTasks.length} tasks`);
+          console.log(`   Recursion: ${recursionCount}/${recursionLimit}\n`);
         } else {
           console.log(`   ❌ Skipping Kanban update (missing httpTaskId or kanbanUpdate port)\n`);
         }
@@ -228,6 +243,11 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
 
   try {
     console.log('🤖 Analyzing design requirements...\n');
+    
+    // ✅ Show placeholder before LLM call
+    const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
+    const chatAPI = getChatAPIClient();
+    await chatAPI.showChatStatus('placeholder');
     
     // Call LLM with structured output
     let response: { tasks: Array<{ id: string; name: string; description: string; priority: number }> };

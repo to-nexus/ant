@@ -4,7 +4,22 @@
  * Common types for LLM adapters and streaming
  */
 
-export type LLMStreamEventType = 'thinking' | 'text' | 'error' | 'done';
+export type LLMStreamEventType = 
+  // LLM-generated content
+  | 'thinking'          // LLM thinking / reasoning process
+  | 'text'              // General LLM response
+  | 'file_creating'     // File creation in progress (streaming)
+  | 'file_create'       // File creation complete
+  | 'file_editing'      // File edit in progress (streaming)
+  | 'file_edit'         // File edit complete
+  | 'file_deleting'     // File deletion in progress
+  | 'file_delete'       // File deletion complete
+  | 'command_running'   // Command execution in progress
+  | 'command_streaming' // Command output streaming
+  | 'command'           // Command execution complete
+  // System events
+  | 'error'             // Error event
+  | 'done';             // Stream complete
 
 export interface LLMStreamEvent {
   type: LLMStreamEventType;
@@ -14,7 +29,7 @@ export interface LLMStreamEvent {
     model?: string;
     provider?: string;
     timestamp?: string;
-    placeholder?: boolean;  // ✅ Mark as placeholder for replacement
+    blockStart?: boolean;  // For thinking: marks <thinking> tag opened (new block)
   };
 }
 

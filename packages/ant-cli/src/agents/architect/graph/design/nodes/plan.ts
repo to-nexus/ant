@@ -90,16 +90,40 @@ export async function plan(state: DesignGraphState) {
   console.log(`🎯 Design mode: ${state.designMode || 'auto'}`);
   console.log('\n📝 Generating design strategy...\n');
   
-  // ✅ Use common streaming handler with Chat integration
-  const { streamLLMResponse, finalizeChatMessage } = await import('../../code/nodes/shared/llmStreamHandler');
-  const { raw, chatMessageStarted } = await streamLLMResponse(llm, result.formatted.messages, {
-    enableChat: true  // ✅ Plan 전략을 일반 응답으로 표시
-  });
-  planText = raw;
-  console.log('\n');
+  // ✅ Get ChatAPIClient
+  const { getChatAPIClient } = await import('../../../../../core/adapters/ChatAPIClient');
+  const chatAPI = getChatAPIClient();
   
-  // Finalize chat message
-  await finalizeChatMessage(chatMessageStarted);
+  // ✅ Use StreamOrchestrator for consistent XML parsing
+  const { StreamOrchestrator, XMLStreamParser, CommonRenderStrategy } = await import('../../../../../core/streaming');
+  
+  if (!llm.streamRaw) {
+    throw new Error('LLM client does not support streaming');
+  }
+  
+  const orchestrator = new StreamOrchestrator({
+    parser: new XMLStreamParser(),
+    renderStrategy: new CommonRenderStrategy(chatAPI),
+    existingFiles: new Set([]) // Design plan phase doesn't generate files
+  });
+  
+  // 🎯 Show placeholder before LLM call
+  await chatAPI.showChatStatus('placeholder');
+  
+  // Stream LLM response with real-time XML parsing (will replace placeholder)
+  for await (const event of llm.streamRaw(result.formatted.messages)) {
+    await orchestrator.processEvent(event);
+  }
+  
+  const streamResult = await orchestrator.finalize();
+  planText = streamResult.raw;
+  console.log('\n');
+
+  // ✅ DEBUG: Verify timing before return
+  console.log(`\n🔍 [Design Plan] About to return state:`);
+  console.log(`   currentTask: ${currentTask?.name}`);
+  console.log(`   Has timing: ${!!currentTask?.timing}`);
+  console.log(`   timing.startedAt: ${currentTask?.timing?.startedAt}\n`);
 
   // ✅ planText를 메모리(state)에 저장하여 execute 노드에서 직접 사용
   return { ...state, planText, currentTask };

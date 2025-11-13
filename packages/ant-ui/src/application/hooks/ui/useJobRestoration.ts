@@ -3,21 +3,37 @@ import { useStore } from '@/domain/store';
 
 interface UseJobRestorationOptions {
   connectionStatus: string;
+  selectedProject: string | null;
+  selectedFeature: string | null;
 }
 
 /**
  * Restores running job from localStorage after page refresh
- * Only runs after connection is established
+ * Only runs after connection is established AND project/feature are selected
  */
 export function useJobRestoration({ 
-  connectionStatus
+  connectionStatus,
+  selectedProject,
+  selectedFeature
 }: UseJobRestorationOptions) {
   // ✅ Track if restoration already happened to prevent re-runs
   const restoredRef = useRef(false);
 
   useEffect(() => {
-    // Only restore job after successful connection and if not already restored
-    if (connectionStatus !== 'connected' || restoredRef.current) return;
+    // ✅ CRITICAL: Only restore once, regardless of dependency changes
+    if (restoredRef.current) return;
+    
+    // Wait for connection
+    if (connectionStatus !== 'connected') return;
+    
+    // ✅ Wait for project/feature (job belongs to feature)
+    if (!selectedProject || !selectedFeature) {
+      console.log('[useJobRestoration] ⏸️ Waiting for project/feature selection before restoring job');
+      return;
+    }
+    
+    // ✅ Mark as attempted to prevent re-runs when dependencies change
+    restoredRef.current = true;
 
     try {
       console.log('[useJobRestoration] Checking localStorage for running job...');
@@ -59,19 +75,14 @@ export function useJobRestoration({
           currentJobId: store.currentJobId
         });
         
-        // Mark as restored
-        restoredRef.current = true;
-        
         // Note: Kanban/Workflow/Chat SSE will auto-reconnect via unified SSE
         // when selectedProject/selectedFeature are restored
       } else {
         console.log('[useJobRestoration] ℹ️ No running job to restore');
-        restoredRef.current = true;
       }
     } catch (error) {
       console.error('[useJobRestoration] ❌ Failed to restore running job:', error);
-      restoredRef.current = true;
     }
-  }, [connectionStatus]);  // ✅ Only connectionStatus as dependency
+  }, [connectionStatus, selectedProject, selectedFeature]);  // ✅ Wait for project/feature selection
 }
 

@@ -6,12 +6,10 @@ import { useStore } from '@/domain/store';
 import { fetchAgents, Agent } from '@/infrastructure/http/api';
 import { capitalize } from '@/shared/utils/text-utils';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
+import { useJobExecution } from '@/application/hooks/features/useJobExecution';
 
 export interface GlobalNavBarProps {
-  onRunTask: (agent: string, task: string) => void;  // 'task' here refers to agent's work type (code/design/etc), not to be confused with Task Board tasks
-  onStopTask: () => void;
-  isRunning: boolean;
-  isStopping?: boolean;  // ✅ Stopping state
+  // ✅ No props needed - uses hooks directly
 }
 
 /**
@@ -23,8 +21,10 @@ export interface GlobalNavBarProps {
  * - Connection status
  * - Agent selection and work type selection (code/design/etc)
  * - Run/Stop buttons for agent jobs
+ * 
+ * ✅ Uses hooks directly - no props drilling
  */
-export function GlobalNavBar({ onRunTask, onStopTask, isRunning, isStopping = false }: GlobalNavBarProps) {
+export function GlobalNavBar({}: GlobalNavBarProps) {
   const connectionStatus = useStore((state) => state.connectionStatus);
   const theme = useStore((state) => state.theme);
   const toggleTheme = useStore((state) => state.toggleTheme);
@@ -32,6 +32,14 @@ export function GlobalNavBar({ onRunTask, onStopTask, isRunning, isStopping = fa
   const selectedWorkType = useStore((state) => state.selectedWorkType);
   const setSelectedAgent = useStore((state) => state.setSelectedAgent);
   const setSelectedWorkType = useStore((state) => state.setSelectedWorkType);
+  
+  // ✅ CRITICAL: Subscribe directly to Store for reactive updates
+  const isRunning = useStore((state) => state.isRunning);
+  const isStopping = useStore((state) => state.isStopping);
+  
+  // ✅ Business logic in custom hook
+  const { runJob, stopJob } = useJobExecution();
+  
   const policy = useUIActionPolicy();
   const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
   const [workTypeDropdownOpen, setWorkTypeDropdownOpen] = useState(false);
@@ -107,7 +115,9 @@ export function GlobalNavBar({ onRunTask, onStopTask, isRunning, isStopping = fa
   };
 
   const handleRun = () => {
-    onRunTask(selectedAgent, selectedWorkType);
+    if (selectedAgent && selectedWorkType) {
+      runJob(selectedAgent, selectedWorkType);
+    }
   };
 
   return (
@@ -331,7 +341,7 @@ export function GlobalNavBar({ onRunTask, onStopTask, isRunning, isStopping = fa
             </Button>
             
             <Button
-              onClick={onStopTask}
+              onClick={stopJob}
               disabled={!policy.canStop}
               variant="outline"
               size="default"

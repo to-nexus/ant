@@ -143,24 +143,47 @@ export class PromptFormatter {
    - Import/module errors → Fix import paths or file names
    - Build configuration errors → Update config files
 
-3. FILE FORMAT (MANDATORY):
-   ⚠️  YOU MUST USE THIS EXACT FORMAT:
+3. OUTPUT FORMAT (MANDATORY):
    
-   === FILE: path/to/file.ext ===
-   [complete file content here]
-   === END FILE ===
+   ⚠️  CHOOSE THE CORRECT FORMAT BASED ON FILE STATUS:
+   
+   **For EXISTING files** (files already in the codebase):
+   <edit path="path/to/file.ext">
+   <search>
+   [exact code section to find - must match perfectly]
+   </search>
+   <replace>
+   [new code to replace with]
+   </replace>
+   </edit>
+   
+   **For NEW files only** (files that don't exist yet):
+   <file path="path/to/file.ext">
+   [complete file content - write EVERY line]
+   </file>
+   
+   ⚠️  CRITICAL: Use <edit> for modifications, <file> only for new files!
 
 4. ❌ FORBIDDEN - DO NOT USE:
+   - NO <file> tags for existing files (use <edit>!)
    - NO markdown code blocks (NO \`\`\`tsx, \`\`\`typescript, \`\`\`json, etc.)
    - NO markdown headers (NO ### FILE:, ## FILE:, etc.)
    - NO explanatory text before/after files
    - NO ellipsis (...) or placeholder comments
+   - NO unclosed XML tags
    
-5. EXAMPLE OF CORRECT FORMAT:
+5. EXAMPLE OF CORRECT FORMAT (Editing existing package.json):
    
-   === FILE: package.json ===
+   <edit path="package.json">
+   <search>
    {
-     "name": "test-app",
+     "dependencies": {
+       "react": "^18.3.1"
+     }
+   }
+   </search>
+   <replace>
+   {
      "dependencies": {
        "react": "^18.3.1"
      },
@@ -170,14 +193,27 @@ export class PromptFormatter {
        "typescript": "^5.0.0"
      }
    }
-   === END FILE ===
+   </replace>
+   </edit>
 
-6. GENERATE COMPLETE FILES:
-   - Include ALL content, NO shortcuts
-   - Every file must be complete and valid
+6. VALIDATION RULES:
+   - <search> block must match existing file content EXACTLY
+   - Use <edit> for all existing files (even config files!)
+   - Use <file> only if creating a brand new file
+   - Include ALL content in <file> blocks (no shortcuts)
    - Check for missing dependencies carefully
+   - Close all XML tags properly
 
-START YOUR RESPONSE WITH THE FIRST FILE (=== FILE: ...)`;
+7. END WITH SUMMARY (REQUIRED!):
+   After all file operations, provide a brief explanation:
+   
+   Example:
+   <edit path="package.json">...</edit>
+   
+   Fixed the build errors by adding missing type definitions to devDependencies.
+   The build should now succeed.
+
+START YOUR RESPONSE WITH THE FIRST EDIT/FILE (<edit path="..." or <file path="...")`;
 
     
     // Use slightly higher temperature for retry

@@ -51,7 +51,7 @@ Before you write ANY code, verify:
 - ❌ "I'm fixing a minor error"
 
 **If you have a valid reason to deviate:**
-1. State it explicitly in your RESPONSE section
+1. State it explicitly in your summary
 2. Explain why the original plan won't work
 3. Propose the alternative clearly
 

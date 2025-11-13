@@ -7,8 +7,17 @@
 export type MessageRole = 'user' | 'assistant';
 
 export type MessageContentType = 
-  | 'thinking'    // AI's internal reasoning (collapsible)
-  | 'text'        // Text response
+  // 🎯 Chat Status Messages (progress indicators only)
+  | 'placeholder'    // "Planning next moves..." (system-generated, shown at node start)
+  | 'exploring'      // Scanning codebase (in progress)
+  | 'explored'       // Codebase scan complete
+  | 'grepping'       // Searching codebase (in progress)
+  | 'grepped'        // Search complete
+  | 'reading'        // Reading file (in progress)
+  | 'read'           // File read complete
+  // General content (Chat Status Messages HIDE when these arrive)
+  | 'thinking'       // LLM's thought process (collapsible block, accumulates, multiple blocks possible)
+  | 'text'           // General text response
   // File Operations - Real-time streaming
   | 'file_creating'  // File creation started (header only)
   | 'file_writing'   // File being written (real-time code streaming)
@@ -21,14 +30,7 @@ export type MessageContentType =
   // Command Execution - Real-time streaming
   | 'command_running'   // Command started (header only)
   | 'command_streaming' // Command output streaming
-  | 'command'           // Command complete (collapsible)
-  // Exploration & Analysis
-  | 'exploring'   // Scanning codebase (in progress)
-  | 'explored'    // Codebase scan complete
-  | 'reading'     // Reading file (in progress)
-  | 'read'        // File read complete
-  | 'grepping'    // Searching codebase (in progress)
-  | 'grepped';    // Search complete
+  | 'command';          // Command complete (collapsible)
 
 export interface MessageContent {
   type: MessageContentType;
@@ -46,6 +48,9 @@ export interface MessageContent {
     tokensCount?: number;   // For explored
     strategy?: string;      // For grepped (git/vector/keyword)
     filesList?: string[];   // List of files (for explored/grepped)
+    // Metadata
+    provider?: string;      // 'system' or 'llm'
+    model?: string;         // LLM model name
   };
 }
 

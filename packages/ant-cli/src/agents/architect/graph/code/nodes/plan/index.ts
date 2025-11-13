@@ -1,7 +1,6 @@
 import { LLMClient } from "../../../../../../core/ports";
 import { ArchitectGraphState, AttemptHistory, Task, Violation, TASK_PRIORITIES } from "../../state";
 import { PromptEngine } from "../../../../../../core/prompt/engine";
-import { streamLLMResponse, finalizeChatMessage } from "../shared/llmStreamHandler";
 import { extractErrorDetails, createErrorViolation, logErrorHeader } from "../shared/errorHandler";
 
 /**
@@ -109,6 +108,16 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         reconstructedEnforcementReason = violationsSummary;
       }
       
+      // ✅ Start timing for the retry task
+      const { TaskTimingHelper } = await import('../../state');
+      if (!nextTask.timing?.startedAt) {
+        console.log(`⏱️  [Plan Retry] Starting timer for retry task: ${nextTask.name}`);
+        nextTask = TaskTimingHelper.startTask(nextTask);
+      } else if (nextTask.timing?.pausedAt) {
+        console.log(`⏱️  [Plan Retry] Resuming timer for task: ${nextTask.name}`);
+        nextTask = TaskTimingHelper.startTask(nextTask); // Resumes and accumulates pause duration
+      }
+      
       // ✅ CRITICAL: Update Kanban snapshot when retrying (resume scenario)
       if (state._httpTaskId && state.deps?.kanbanUpdate) {
         console.log(`\n🔥 [Plan Retry] Updating Kanban → task retrying`);
@@ -117,7 +126,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         
         state.deps.kanbanUpdate.updateTaskQueue(
           state._httpTaskId,
-          nextTask,                               // ✅ Show retry task as in-progress
+          nextTask,                               // ✅ Show retry task with timing info
           state.taskQueue?.getAll() || [],       // ✅ Remaining queue
           state.completedTasksDetails || [],
           state.recursionCount,
@@ -198,7 +207,14 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       console.log(`   ${remainingBeforePop - 1} more task(s) in queue`);
     }
     
-    // ✅ CRITICAL: Update Kanban snapshot BEFORE enterNode (so UI shows task immediately)
+    // ✅ Start timing for the task
+    const { TaskTimingHelper } = await import('../../state');
+    if (!nextTask.timing?.startedAt) {
+      console.log(`⏱️  [Plan] Starting timer for task: ${nextTask.name}`);
+      nextTask = TaskTimingHelper.startTask(nextTask);
+    }
+    
+    // ✅ CRITICAL: Update Kanban snapshot BEFORE enterNode (so UI shows task immediately with timing)
     if (state._httpTaskId) {
       const completedTasksDetails = state.completedTasksDetails || [];
       
@@ -206,7 +222,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         // In-process: use injected port
         state.deps.kanbanUpdate.updateTaskQueue(
           state._httpTaskId,
-          nextTask,
+          nextTask,  // ✅ Now includes timing info
           queueTasks,
           completedTasksDetails,
           state.recursionCount,
@@ -650,15 +666,34 @@ ${nextTask.type === 'error' ?
     
     console.log('\n📝 Generating plan...\n');
     
-    // Use common streaming handler with Chat integration
-    const { raw, chatMessageStarted } = await streamLLMResponse(llm, promptMessages, {
-      enableChat: true  // ✅ Plan 전략을 일반 응답으로 표시
-    });
-    planText = raw;
-    console.log('\n');
+    // ✅ Get ChatAPIClient
+    const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
+    const chatAPI = getChatAPIClient();
     
-    // Finalize chat message
-    await finalizeChatMessage(chatMessageStarted);
+    // ✅ Use StreamOrchestrator for consistent XML parsing
+    const { StreamOrchestrator, XMLStreamParser, CommonRenderStrategy } = await import('../../../../../../core/streaming');
+    
+    if (!llm.streamRaw) {
+      throw new Error('LLM client does not support streaming');
+    }
+    
+    const orchestrator = new StreamOrchestrator({
+      parser: new XMLStreamParser(),
+      renderStrategy: new CommonRenderStrategy(chatAPI),
+      existingFiles: new Set([]) // Plan phase doesn't generate files
+    });
+    
+    // 🎯 Show placeholder before LLM call
+    await chatAPI.showChatStatus('placeholder');
+    
+    // Stream LLM response with real-time XML parsing (will replace placeholder)
+    for await (const event of llm.streamRaw(promptMessages)) {
+      await orchestrator.processEvent(event);
+    }
+    
+    const streamResult = await orchestrator.finalize();
+    planText = streamResult.raw;
+    console.log('\n');
 
     const codeMode = result.modeConfig.mode;
 
@@ -676,6 +711,12 @@ ${nextTask.type === 'error' ?
       recursionCount: state.recursionCount,  // ✅ CRITICAL: Propagate recursion count
       recursionLimit: state.recursionLimit,  // ✅ CRITICAL: Propagate recursion limit
     };
+    
+    // ✅ DEBUG: Verify timing before return
+    console.log(`\n🔍 [Plan] About to return state:`);
+    console.log(`   currentTask: ${updatedState.currentTask?.name}`);
+    console.log(`   Has timing: ${!!updatedState.currentTask?.timing}`);
+    console.log(`   timing.startedAt: ${updatedState.currentTask?.timing?.startedAt}\n`);
     
     // ✅ Save checkpoint after planning (in case recursion limit hits during execute)
     const { saveCheckpoint } = await import('../checkpoint');

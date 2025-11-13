@@ -215,6 +215,22 @@ export const useStore = create<Store>((set, get) => ({
     
     // ✅ Job completion detected
     if (!isJobRunning && state.isRunning) {
+      // ✅ CRITICAL: Don't auto-stop if interruption was dismissed (user clicked Resume)
+      // Resume flow: user dismisses interruption → resumeJob API → live data arrives
+      // During this transition, session data with interruption may arrive
+      const interruptionWasDismissed = 
+        data.interruption?.timestamp && 
+        data.interruption.timestamp === state.dismissedInterruptTimestamp;
+      
+      if (interruptionWasDismissed) {
+        console.log('[Store] ⏸️ Ignoring session data - interruption was dismissed (Resume in progress)');
+        console.log(`   Interruption timestamp: ${data.interruption?.timestamp}`);
+        console.log(`   Dismissed timestamp: ${state.dismissedInterruptTimestamp}`);
+        // ✅ Update kanban data but keep isRunning: true
+        set({ kanban: data });
+        return;
+      }
+      
       console.log('[Store] 🏁 Job completed detected via Kanban update');
       console.log(`   DataSource: ${data.dataSource}`);
       console.log(`   Job ID from Kanban: ${kanbanJobId}`);
@@ -352,7 +368,24 @@ export const useStore = create<Store>((set, get) => ({
           if (message) {
             const updatedContents = [...message.contents];
             updatedContents[event.contentIndex] = event.content;
-            get().updateChatMessage(event.messageId, { contents: updatedContents });
+            // ✅ Set isStreaming=true when receiving content updates (for refresh/reconnect)
+            get().updateChatMessage(event.messageId, { 
+              contents: updatedContents,
+              isStreaming: true 
+            });
+          }
+          break;
+          
+        case 'content_delete':
+          console.log('[Store] 🗑️  Deleting content from message:', event.messageId, 'index:', event.contentIndex);
+          const deleteMessage = get().chatMessages.find(m => m.id === event.messageId);
+          if (deleteMessage) {
+            const deletedContents = [...deleteMessage.contents];
+            deletedContents.splice(event.contentIndex, 1);
+            get().updateChatMessage(event.messageId, { 
+              contents: deletedContents,
+              isStreaming: true 
+            });
           }
           break;
           
@@ -601,6 +634,13 @@ export const useStore = create<Store>((set, get) => ({
 
   setRunning: (isRunning: boolean, jobId?: string, mode?: 'generate' | 'refactor' | 'explain') => {
     const startTime = isRunning ? Date.now() : undefined;
+    const prevJobId = get().currentJobId;
+    
+    // ✅ CRITICAL: Disconnect previous workflow SSE if jobId is changing
+    if (isRunning && jobId && prevJobId && prevJobId !== jobId) {
+      console.log(`[Store] 🔄 JobId changing: ${prevJobId} → ${jobId}, reconnecting SSE...`);
+      sseManager.disconnectWorkflow(prevJobId);
+    }
     
     set({ 
       isRunning,
@@ -628,8 +668,7 @@ export const useStore = create<Store>((set, get) => ({
       removeFromStorage(STORAGE_KEYS.TASK_START_TIME);
       removeFromStorage(STORAGE_KEYS.TASK_MODE);
       
-      // ✅ Disconnect Workflow SSE using previous jobId
-      const prevJobId = get().currentJobId;
+      // ✅ Disconnect Workflow SSE when stopping
       if (prevJobId) {
         console.log('[Store] 🔌 Disconnecting workflow SSE for jobId:', prevJobId);
         sseManager.disconnectWorkflow(prevJobId);

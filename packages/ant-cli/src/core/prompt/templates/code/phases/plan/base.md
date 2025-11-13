@@ -19,7 +19,7 @@ This is the PLANNING phase. You will:
 ❌ Generate actual code
 ❌ Create file content
 ❌ Write implementations
-❌ Output any <file>, === FILE:, or similar code blocks
+❌ Output any code files (<file> tags)
 
 The actual code generation will happen in the NEXT phase (IMPLEMENTATION).
 

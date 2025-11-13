@@ -1,28 +1,47 @@
-Return JSON ONLY (no explanation):
+OUTPUT FORMAT:
+
+First, analyze in thinking tags:
+
+<thinking>
+- Is this a new project or existing project?
+- Does it need setup/configuration tasks?
+- What are the main features to implement?
+- What is the optimal task breakdown?
+- What validation strategy for each task?
+</thinking>
+
+Then output the task list wrapped in <tasks> tags with valid JSON:
+
+<tasks>
 {
   "tasks": [
-      {
-        "id": "setup-docker",
-        "name": "Setup Docker Configuration",
-        "type": "setup",
-        "priority": 100,
-        "description": "Generate Dockerfile, docker-compose.yml, .dockerignore",
-        "validationRequired": true,
-        "validationType": "static",
-        "validationRationale": "Config files need syntax validation"
-      },
-      {
-        "id": "auth-impl",
-        "name": "Implement User Authentication System",
-        "type": "feature",
-        "priority": 200,
-        "description": "Create login, signup, JWT token handling, protected routes",
-        "validationRequired": true,
-        "validationType": "runtime",
-        "validationRationale": "Critical security feature requires full validation"
-      }
+    {
+      "id": "setup-docker",
+      "name": "Setup Docker Configuration",
+      "type": "setup",
+      "priority": 100,
+      "description": "Generate Dockerfile, docker-compose.yml, .dockerignore",
+      "validationRequired": true,
+      "validationType": "static",
+      "validationRationale": "Config files need syntax validation"
+    },
+    {
+      "id": "auth-impl",
+      "name": "Implement User Authentication System",
+      "type": "feature",
+      "priority": 200,
+      "description": "Create login, signup, JWT token handling, protected routes",
+      "validationRequired": true,
+      "validationType": "runtime",
+      "validationRationale": "Critical security feature requires full validation"
+    }
   ]
 }
+</tasks>
+
+CRITICAL: 
+- The JSON inside <tasks> tags MUST be valid JSON (no trailing commas, proper quotes)
+- Use <tasks> wrapper so the JSON can be reliably extracted
 
 IMPORTANT:
 - **Decide intelligently**: Create setup task ONLY if spec requires new configuration
