@@ -135,38 +135,12 @@ export async function execute(
     
     try {
       console.log('🔵 [Execute] Starting LLM stream...');
-      console.log(`   Messages count: ${messages.length}`);
-      console.log(`   LLM provider: ${llm.constructor.name}`);
-      
-      let eventCount = 0;
-      let lastLogTime = Date.now();
-      
       for await (const event of llm.streamRaw(messages)) {
-        eventCount++;
-        if (eventCount === 1) {
-          console.log('   ✅ First event received');
-        }
-        
-        // Log every 100 events or every 5 seconds
-        const now = Date.now();
-        if (eventCount % 100 === 0 || now - lastLogTime > 5000) {
-          console.log(`   📊 Processing event ${eventCount} (type: ${event.type})`);
-          lastLogTime = now;
-        }
-        
-        try {
-          await orchestrator.processEvent(event);
-        } catch (processError) {
-          console.error(`   ❌ Error processing event ${eventCount}:`, processError);
-          console.error(`      Event type: ${event.type}`);
-          console.error(`      Event content length: ${event.content?.length || 0}`);
-          throw processError;
-        }
+        await orchestrator.processEvent(event);
       }
-      console.log(`✅ [Execute] LLM stream completed (${eventCount} events)`);
+      console.log('✅ [Execute] LLM stream completed');
     } catch (error) {
       console.error('❌ [Execute] LLM stream failed:', error);
-      console.error('   Error details:', error instanceof Error ? error.stack : error);
       throw error;
     }
     

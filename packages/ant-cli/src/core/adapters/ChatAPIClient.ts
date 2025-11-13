@@ -163,8 +163,6 @@ export class ChatAPIClient {
         console.error(`❌ [ChatAPIClient] Failed to show chat status: ${response.statusText}`);
         return;
       }
-
-      console.log(`🎯 [ChatAPIClient] Chat Status shown: ${type} - "${content}"`);
     } catch (error) {
       console.error('❌ [ChatAPIClient] Error showing chat status:', error);
     }
@@ -188,7 +186,6 @@ export class ChatAPIClient {
       }
     } catch (error) {
       // Silently fail - don't break agent execution if chat fails
-      // console.error('❌ [ChatAPIClient] Error sending LLM event:', error);
     }
   }
 

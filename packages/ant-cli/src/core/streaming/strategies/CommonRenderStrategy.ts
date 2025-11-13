@@ -65,20 +65,32 @@ export class CommonRenderStrategy implements IRenderStrategy {
       await this.chatAPI.showChatStatus('thinking', {
         blockStart: true
       });
-    }
-    
-    // ✅ Send thinking content ONLY if there's actual content
-    // (blockStart with empty content is just the status change, no content to append yet)
-    if (content) {
-      await this.chatAPI.sendLLMEvent({
-        type: 'thinking',
-        content,
-        metadata: {
-          provider: 'llm',  // Mark as LLM-generated (not system placeholder)
-          timestamp: new Date().toISOString(),
-          blockStart: isBlockStart  // ✅ New block start signal
-        }
-      });
+      
+      // ✅ If blockStart has content, send it separately WITHOUT blockStart flag
+      // (showChatStatus already handled the placeholder → thinking merge)
+      if (content) {
+        await this.chatAPI.sendLLMEvent({
+          type: 'thinking',
+          content,
+          metadata: {
+            provider: 'llm',
+            timestamp: new Date().toISOString()
+            // ❌ NO blockStart here - already handled by showChatStatus
+          }
+        });
+      }
+    } else {
+      // ✅ Regular thinking content (not block start) - just append
+      if (content) {
+        await this.chatAPI.sendLLMEvent({
+          type: 'thinking',
+          content,
+          metadata: {
+            provider: 'llm',
+            timestamp: new Date().toISOString()
+          }
+        });
+      }
     }
   }
   
