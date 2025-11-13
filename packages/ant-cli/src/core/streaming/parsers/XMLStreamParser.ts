@@ -111,9 +111,8 @@ export class XMLStreamParser implements IStreamParser {
         continue;
       }
       
-      // 3. Accumulate thinking content
+      // 3. Accumulate thinking content (emit every token for real-time streaming)
       if (this.context.insideThinking && this.buffer.length > 0) {
-        // Stream thinking content incrementally
         const content = this.buffer;
         this.buffer = '';
         actions.push({
@@ -352,27 +351,22 @@ export class XMLStreamParser implements IStreamParser {
         continue;
       }
       
-      // 14. If not inside any block and buffer is just whitespace/text, treat as response
+      // 14. General text response handling (outside any XML block)
       if (!this.context.insideThinking && 
           !this.context.insideTasks &&
           !this.context.insideFile && 
           !this.context.insideEdit) {
         
-        // Check if buffer contains start of a tag (don't emit yet)
-        const hasPartialTag = this.buffer.match(/<(thinking|tasks|file|edit|delete)?$/);
-        if (hasPartialTag) {
-          // Keep buffer, wait for more tokens
-          break;
-        }
-        
-        // Check if there's a complete line or significant content
         if (this.buffer.length > 0) {
-          // Check if there's an upcoming XML tag
-          const nextTagMatch = this.buffer.match(/^(.*?)(?=<(?:thinking|tasks|file|edit|delete))/s);
-          if (nextTagMatch) {
-            const content = nextTagMatch[1];
+          // 🎯 STRATEGY: Only emit text when it's SAFE (won't break XML tag parsing)
+          
+          // 1️⃣ HIGHEST PRIORITY: Check if there's text BEFORE an XML tag
+          // Example: "Here is the code:\n<file path=..." → emit "Here is the code:\n"
+          const beforeTagMatch = this.buffer.match(/^(.+?)(?=<(?:thinking|tasks|file|edit|delete)[\s>])/s);
+          if (beforeTagMatch) {
+            const content = beforeTagMatch[1];
             this.buffer = this.buffer.substring(content.length);
-            if (content.trim()) {
+            if (content.trim() || content.includes('\n')) {  // Emit if has content or newline
               actions.push({
                 type: 'response',
                 data: { content }
@@ -382,13 +376,25 @@ export class XMLStreamParser implements IStreamParser {
             continue;
           }
           
-          // ✅ REAL-TIME FLUSH: Emit on newline (Cursor/Copilot style)
-          const newlineIndex = this.buffer.indexOf('\n');
-          if (newlineIndex !== -1) {
-            // Emit everything up to and including the newline
-            const content = this.buffer.substring(0, newlineIndex + 1);
-            this.buffer = this.buffer.substring(newlineIndex + 1);
-            // Always emit - formatting (newlines) matters!
+          // 2️⃣ Check if buffer might contain an INCOMPLETE XML tag
+          // Wait for completion if we detect potential tag start
+          const hasPotentialTagStart = 
+            this.buffer.match(/<[a-z]*$/i);  // Ends with incomplete tag like "<", "<f", "<fil"
+          
+          if (hasPotentialTagStart) {
+            // Wait for more tokens to complete the tag
+            // BUT: Don't wait forever - if buffer is too large, give up and emit
+            if (this.buffer.length < 500) {
+              break;  // Wait for more tokens
+            }
+          }
+          
+          // 3️⃣ SAFE EMIT: Emit up to last newline (preserve incomplete lines for XML detection)
+          const lastNewline = this.buffer.lastIndexOf('\n');
+          if (lastNewline !== -1 && lastNewline < this.buffer.length - 1) {
+            // Emit everything up to and including the last newline
+            const content = this.buffer.substring(0, lastNewline + 1);
+            this.buffer = this.buffer.substring(lastNewline + 1);
             actions.push({
               type: 'response',
               data: { content }
@@ -397,14 +403,17 @@ export class XMLStreamParser implements IStreamParser {
             continue;
           }
           
-          // ✅ FALLBACK: If buffer grows too large without newline, emit anyway
-          if (this.buffer.length > 200) {
+          // 4️⃣ FALLBACK: If buffer is getting large without newlines, emit it
+          // (This handles cases where LLM sends long text without line breaks)
+          if (this.buffer.length > 200 && !hasPotentialTagStart) {
             const content = this.buffer;
             this.buffer = '';
             actions.push({
               type: 'response',
               data: { content }
             });
+            continueParsingLoop = true;
+            continue;
           }
         }
       }
