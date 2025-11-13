@@ -243,7 +243,6 @@ For EACH error in the violation message:
 Start with understanding the error:
 
 ```
-=== RESPONSE ===
 I see [number] TypeScript errors:
 
 1. [File:Line] - TS[CODE]: [Brief explanation]
@@ -253,19 +252,18 @@ I see [number] TypeScript errors:
    Fix: [What you'll do]
 
 I will fix these by modifying only the affected files.
-=== END RESPONSE ===
 ```
 
 Then output ONLY the files that need fixes:
 
-```
-=== FILE: src/components/CoinList.tsx ===
+```xml
+<file path="src/components/CoinList.tsx">
 [Complete fixed file content]
-=== END FILE ===
+</file>
 
-=== FILE: src/App.tsx ===
+<file path="src/App.tsx">
 [Complete fixed file content]
-=== END FILE ===
+</file>
 ```
 
 ### Remember

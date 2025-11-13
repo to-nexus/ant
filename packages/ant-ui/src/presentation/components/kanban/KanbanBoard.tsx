@@ -107,6 +107,13 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
     try {
       console.log(`[KanbanBoard] Resuming job ${jobId} from interruption`);
       
+      // ✅ CRITICAL: Dismiss interruption FIRST before setting running state
+      // This prevents SSE initial state from auto-stopping the job
+      if (interruption) {
+        console.log('[KanbanBoard] Dismissing interruption timestamp BEFORE setRunning');
+        useStore.getState().setDismissedInterruptTimestamp(interruption.timestamp);
+      }
+      
       // ✅ Set running state immediately
       useStore.getState().setRunning(true, jobId);
       
@@ -121,12 +128,6 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
       
       // ✅ Update with new jobId from server
       useStore.getState().setRunning(true, result.jobId);
-      
-      // ✅ CRITICAL: Mark current interruption as dismissed (hide it permanently)
-      // This prevents it from reappearing when job completes
-      if (interruption) {
-        useStore.getState().setDismissedInterruptTimestamp(interruption.timestamp);
-      }
     } catch (error) {
       console.error('[KanbanBoard] Failed to resume task:', error);
       useStore.getState().setRunning(false);  // ✅ Clear running state on error

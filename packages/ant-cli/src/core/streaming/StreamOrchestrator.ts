@@ -1,0 +1,121 @@
+/**
+ * StreamOrchestrator - Main coordinator for LLM streaming pipeline
+ * 
+ * Orchestrates the single-pipeline flow:
+ * 1. Receive LLM tokens
+ * 2. Parse incrementally (XMLStreamParser)
+ * 3. Render actions (CommonRenderStrategy)
+ * 4. Track files (FileRegistry)
+ * 
+ * Design goals:
+ * - Single pipeline (no dual-pipeline issues)
+ * - Real-time parsing (token-level incremental)
+ * - Duplicate prevention (via FileRegistry)
+ * - Reusable across all agent nodes (code/design/learn)
+ */
+
+import { IStreamParser } from './parsers/IStreamParser';
+import { IRenderStrategy } from './strategies/IRenderStrategy';
+import { StreamState } from './state/StreamState';
+import { FileRegistry } from './state/FileRegistry';
+import { LLMStreamEvent, StreamResult } from './types';
+
+export interface StreamOrchestratorConfig {
+  parser: IStreamParser;
+  renderStrategy: IRenderStrategy;
+  existingFiles: Set<string>;
+}
+
+export class StreamOrchestrator {
+  private parser: IStreamParser;
+  private renderStrategy: IRenderStrategy;
+  private state: StreamState;
+  private registry: FileRegistry;
+  
+  constructor(config: StreamOrchestratorConfig) {
+    this.parser = config.parser;
+    this.renderStrategy = config.renderStrategy;
+    this.registry = new FileRegistry(config.existingFiles);
+    this.state = new StreamState();
+  }
+  
+  /**
+   * Process a single streaming event
+   * 
+   * @param event - LLM stream event (token/thinking/done/error)
+   * @returns Promise that resolves when event is processed
+   */
+  async processEvent(event: LLMStreamEvent): Promise<void> {
+    try {
+      // 1. Parse event → actions
+      const actions = this.parser.parse(event, this.state);
+      
+      // 2. Render each action
+      for (const action of actions) {
+        await this.renderStrategy.render(action, this.registry);
+      }
+    } catch (error) {
+      console.error('[StreamOrchestrator] Error processing event:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Finalize the stream (called after all events processed)
+   * 
+   * @returns StreamResult containing raw text and metadata
+   */
+  async finalize(): Promise<StreamResult> {
+    console.log('[StreamOrchestrator] 🏁 Finalizing orchestrator...');
+    try {
+      // ✅ CRITICAL: Flush parser buffer first (get any remaining content)
+      const finalActions = this.parser.finalize();
+      
+      // Only log if there are final actions (non-empty buffer)
+      if (finalActions.length > 0) {
+        console.log(`[StreamOrchestrator] 🔚 Flushing ${finalActions.length} final action(s)`);
+      }
+      
+      // Process final actions
+      for (const action of finalActions) {
+        await this.renderStrategy.render(action, this.registry);
+      }
+      
+      // Finalize rendering (cleanup incomplete operations)
+      await this.renderStrategy.finalize();
+      
+      return {
+        raw: this.state.getRaw(),
+        streamedFiles: this.registry.getStreamedFiles(),
+        completedActions: []  // TODO: track if needed
+      };
+    } catch (error) {
+      console.error('[StreamOrchestrator] Error finalizing:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Reset orchestrator state (for reuse)
+   */
+  reset(): void {
+    this.parser.reset();
+    this.state.reset();
+    this.registry.reset();
+  }
+  
+  /**
+   * Get file registry (for post-processing checks)
+   */
+  getRegistry(): FileRegistry {
+    return this.registry;
+  }
+  
+  /**
+   * Get accumulated raw text
+   */
+  getRaw(): string {
+    return this.state.getRaw();
+  }
+}
+

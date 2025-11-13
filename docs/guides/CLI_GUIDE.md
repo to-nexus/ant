@@ -255,7 +255,7 @@ NODE_ENV=development
 # Recursion Limit (default: 50)
 # Controls maximum graph execution steps before pause
 # Higher values = more tasks per run, but may hit API rate limits
-RECURSION_LIMIT=50
+RECURSION_LIMIT=10
 ```
 
 **Recursion Limit Configuration:**

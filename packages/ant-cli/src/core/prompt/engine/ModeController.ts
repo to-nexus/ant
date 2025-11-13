@@ -221,9 +221,7 @@ export class ModeController {
         injections.push(`${phasePrefix}/pre-output-check`);
       }
       
-      if (context.directive) {
-        injections.push(`${phasePrefix}/response`);
-      }
+      // ✅ REMOVED: response injection (legacy, no longer needed with new streaming system)
     }
     
     return injections;

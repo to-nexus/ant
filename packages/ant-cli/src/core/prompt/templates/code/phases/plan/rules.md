@@ -70,7 +70,10 @@ Q6: How will I verify this is done correctly?
 </step_3_define_success>
 
 REQUIRED OUTPUT FORMAT:
-=== THINKING ===
+
+Use <thinking> tags for your analysis:
+
+<thinking>
 **Primary Task:** [What is the main objective?]
 
 **Context Understanding:**
@@ -90,12 +93,9 @@ REQUIRED OUTPUT FORMAT:
 
 CRITICAL: Use ACTUAL file paths from ORIGINAL FILES or DESIGN DOCUMENT.
 NEVER use placeholder paths like "path/to/file.tsx".
-=== END THINKING ===
+</thinking>
 
-================================================================================
-RESPONSE
-================================================================================
-
+Then provide a brief summary in plain text:
 [Your execution plan summary - max 5-7 sentences explaining what you will implement and how]
 
 ⚠️  CRITICAL REMINDER:
@@ -104,14 +104,13 @@ RESPONSE
 🚫 DO NOT OUTPUT ANY CODE OR FILE CONTENT IN THIS PHASE!
 
 Your response should ONLY contain:
-✅ === THINKING === section (analysis and plan)
-✅ RESPONSE section (brief summary)
+✅ <thinking> section (analysis and plan)
+✅ Plain text summary after thinking
 
 ❌ DO NOT include:
 - <file path="...">...</file> blocks
-- === FILE: ... === blocks  
-- <file_path>...</file_path> blocks
 - Any actual code implementation
+- Code syntax or file content
 - Configuration file contents
 - Component implementations
 

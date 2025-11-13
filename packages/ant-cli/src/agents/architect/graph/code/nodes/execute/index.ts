@@ -15,8 +15,10 @@ import { ArchitectGraphState, AttemptHistory, Violation, TaskTimingHelper } from
 import { PromptEngine } from "../../../../../../core/prompt/engine";
 
 // Import shared utilities
-import { streamLLMResponse, finalizeChatMessage, addChatFileOperation } from "../shared/llmStreamHandler";
 import { extractErrorDetails, createErrorViolation, logErrorHeader } from "../shared/errorHandler";
+
+// Import streaming system
+import { StreamOrchestrator, XMLStreamParser, CommonRenderStrategy } from "../../../../../../core/streaming";
 
 // Import execute-specific modules
 import { parseResponse } from "./parseResponse";
@@ -53,10 +55,49 @@ export async function execute(
     
     // ✨ Start timing for current task
     let currentTask = state.currentTask;
+    console.log(`\n⏱️  [Execute] Checking task timing...`);
+    console.log(`   Task: ${currentTask?.name}`);
+    console.log(`   Has timing: ${!!currentTask?.timing}`);
+    console.log(`   timing.startedAt: ${currentTask?.timing?.startedAt}`);
+    
     if (currentTask && !currentTask.timing?.startedAt) {
+      console.log(`   ➡️  Starting timing for task...`);
       currentTask = TaskTimingHelper.startTask(currentTask);
+      console.log(`   ✅ Timing started at: ${currentTask.timing?.startedAt}`);
     } else if (currentTask?.timing?.pausedAt) {
+      console.log(`   ➡️  Resuming timing (was paused at ${currentTask.timing.pausedAt})...`);
       currentTask = TaskTimingHelper.startTask(currentTask); // Resumes and accumulates pause duration
+      console.log(`   ✅ Timing resumed`);
+    } else {
+      console.log(`   ℹ️  Timing already started (${currentTask?.timing?.startedAt})`);
+    }
+    
+    // ✅ Update Kanban with timing info IMMEDIATELY after starting task
+    if (currentTask && state._httpTaskId && state.deps?.kanbanUpdate) {
+      const queueTasks = state.taskQueue?.getAll() || [];
+      const completedTasksDetails = state.completedTasksDetails || [];
+      
+      console.log(`\n📡 [Execute] Broadcasting Kanban update with timing...`);
+      console.log(`   jobId: ${state._httpTaskId}`);
+      console.log(`   currentTask.name: ${currentTask.name}`);
+      console.log(`   currentTask.timing.startedAt: ${currentTask.timing?.startedAt}`);
+      console.log(`   queue length: ${queueTasks.length}`);
+      console.log(`   completed length: ${completedTasksDetails.length}`);
+      
+      state.deps.kanbanUpdate.updateTaskQueue(
+        state._httpTaskId,
+        currentTask,  // ✅ Now includes timing info
+        queueTasks,
+        completedTasksDetails,
+        state.recursionCount,
+        state.recursionLimit || 50
+      );
+      console.log(`   ✅ Kanban update sent!\n`);
+    } else {
+      console.log(`\n⚠️  [Execute] Skipping Kanban update:`);
+      console.log(`   currentTask: ${!!currentTask}`);
+      console.log(`   _httpTaskId: ${!!state._httpTaskId}`);
+      console.log(`   kanbanUpdate: ${!!state.deps?.kanbanUpdate}\n`);
     }
     
     // Build prompt messages with context
@@ -66,85 +107,132 @@ export async function execute(
     const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
     const chatAPI = getChatAPIClient();
     
-    // ✅ Start message FIRST (so everything goes into the same message)
-    if (chatAPI.isEnabled()) {
-      await chatAPI.startMessage();
-      
-      // ✅ Show "Planning next moves..." (with placeholder marker)
-      await chatAPI.sendLLMEvent({
-        type: 'thinking',
-        content: 'Planning next moves...',
-        metadata: {
-          provider: 'system',
-          placeholder: true,  // ✅ Mark as placeholder for easy replacement
-          timestamp: new Date().toISOString()
-        }
-      });
+    // ✅ Extract existing file paths for duplicate prevention
+    const existingFilePaths = new Set<string>();
+    if (state.code) {
+      const fileMatches = state.code.matchAll(/===\s+FILE:\s+(.+?)\s+===/g);
+      for (const match of fileMatches) {
+        existingFilePaths.add(match[1].trim());
+      }
     }
     
-    // ✅ Track current file for real-time streaming
-    let currentFileForStreaming: string | null = null;
-    const streamedFiles = new Set<string>();
+    // ✅ Initialize StreamOrchestrator (single-pipeline streaming)
+    const orchestrator = new StreamOrchestrator({
+      parser: new XMLStreamParser(),
+      renderStrategy: new CommonRenderStrategy(chatAPI),
+      existingFiles: existingFilePaths
+    });
     
-    // ✅ Generate code with real-time file streaming (Cursor-style)
-    console.log('\n💻 Generating code...\n');
-    const { raw, chatMessageStarted } = await streamLLMResponse(llm, messages, {
-      thinkingOnly: false,  // ✅ Show thinking AND text (for file streaming)
-      onFileStart: async (filePath) => {
-        // ✅ New file detected in LLM response
-        if (currentFileForStreaming && streamedFiles.has(currentFileForStreaming)) {
-          // Complete previous file
-          await chatAPI.completeFileCreation(currentFileForStreaming, '');
+    console.log('\n💻 Generating code with real-time streaming...\n');
+    
+    // ✅ Stream LLM response through orchestrator
+    if (!llm.streamRaw) {
+      throw new Error('LLM client does not support streaming');
+    }
+    
+    // 🎯 Show placeholder before LLM call
+    await chatAPI.showChatStatus('placeholder');
+    
+    try {
+      console.log('🔵 [Execute] Starting LLM stream...');
+      console.log(`   Messages count: ${messages.length}`);
+      console.log(`   LLM provider: ${llm.constructor.name}`);
+      
+      let eventCount = 0;
+      let lastLogTime = Date.now();
+      
+      for await (const event of llm.streamRaw(messages)) {
+        eventCount++;
+        if (eventCount === 1) {
+          console.log('   ✅ First event received');
         }
         
-        // Start new file card
-        currentFileForStreaming = filePath;
-        streamedFiles.add(filePath);
-        await chatAPI.streamFileContent(filePath, '');
-      },
-      onFileEnd: async () => {
-        // ✅ Complete current file when block ends
-        if (currentFileForStreaming) {
-          await chatAPI.completeFileCreation(currentFileForStreaming, '');
-          currentFileForStreaming = null;
+        // Log every 100 events or every 5 seconds
+        const now = Date.now();
+        if (eventCount % 100 === 0 || now - lastLogTime > 5000) {
+          console.log(`   📊 Processing event ${eventCount} (type: ${event.type})`);
+          lastLogTime = now;
+        }
+        
+        try {
+          await orchestrator.processEvent(event);
+        } catch (processError) {
+          console.error(`   ❌ Error processing event ${eventCount}:`, processError);
+          console.error(`      Event type: ${event.type}`);
+          console.error(`      Event content length: ${event.content?.length || 0}`);
+          throw processError;
         }
       }
-    });
-    console.log('\n');
-    
-    // ✅ Complete last streamed file if not already completed
-    if (currentFileForStreaming) {
-      await chatAPI.completeFileCreation(currentFileForStreaming, '');
-      currentFileForStreaming = null;
+      console.log(`✅ [Execute] LLM stream completed (${eventCount} events)`);
+    } catch (error) {
+      console.error('❌ [Execute] LLM stream failed:', error);
+      console.error('   Error details:', error instanceof Error ? error.stack : error);
+      throw error;
     }
     
-    // Parse LLM response
-    const { responseSection, files, filesToDelete, commands, edits } = parseResponse(raw);
+    // ✅ Finalize streaming
+    const streamResult = await orchestrator.finalize();
+    const raw = streamResult.raw;
+    
+    console.log('\n');
+    
+    // ✅ Fallback parsing (for any files/edits that weren't streamed)
+    const { files, filesToDelete, commands, edits } = parseResponse(raw);
+    const streamedFiles = new Set(streamResult.streamedFiles);
+    
+    console.log(`\n📊 [Execute] Stream result:`);
+    console.log(`   Streamed files: ${streamedFiles.size}`);
+    console.log(`   Parsed files (total): ${files.length}`);
+    console.log(`   Parsed edits: ${edits.length}`);
+    console.log(`   Parsed deletes: ${filesToDelete?.length || 0}\n`);
     
     // Execute commands if any (with safety checks)
     await executeCommands(state, commands || []);
     
-    // Apply edit instructions to existing files
-    const failedEdits = await applyEdits(state, edits || [], files);
-    
-    // ✅ Add any files that weren't streamed (fallback for parsing differences)
-    for (const file of files) {
-      if (!streamedFiles.has(file.path)) {
-        await chatAPI.completeFileCreation(file.path, file.content || '');
+    // ✅ Fallback: Create file cards for files that weren't streamed
+    const unstreamedFiles = files.filter(f => !streamedFiles.has(f.path));
+    if (unstreamedFiles.length > 0) {
+      console.log(`\n📄 [Execute] Creating fallback cards for ${unstreamedFiles.length} unstreamed file(s)...\n`);
+      for (const file of unstreamedFiles) {
+        console.log(`   ✅ ${file.path}`);
+        const isExisting = existingFilePaths.has(file.path);
+        if (isExisting && state.deps?.git) {
+          // Existing file → treat as edit (full replacement)
+          try {
+            const existingContent = await state.deps.git.readFile(file.path);
+            if (existingContent) {
+              await chatAPI.startFileEdit(file.path);
+              await chatAPI.completeFileEdit(file.path, existingContent, file.content || '');
+            } else {
+              await chatAPI.completeFileCreation(file.path, file.content || '');
+            }
+          } catch (error) {
+            await chatAPI.completeFileCreation(file.path, file.content || '');
+          }
+        } else {
+          // New file
+          await chatAPI.completeFileCreation(file.path, file.content || '');
+        }
       }
     }
     
-    // ✅ Show file deletions
+    // ✅ Fallback: Apply edit instructions (if any weren't streamed)
+    const failedEdits = await applyEdits(state, edits || [], []);
+    
+    // ✅ Fallback: Show file deletions (if any weren't streamed)
     for (const file of filesToDelete || []) {
-      await chatAPI.completeFileDeletion(file);
+      if (!streamedFiles.has(file)) {
+        await chatAPI.completeFileDeletion(file);
+      }
     }
     
     // ✅ Show file edits (from applyEdits)
     // Note: Edit notifications are already handled in applyEdits function
     
-    // Record this attempt for learning
-    const filesGenerated = files.map(f => f.path);
-    const keyChanges = extractKeyChanges(files);
+    // Record this attempt for learning (include all files: streamed + fallback)
+    const allProcessedFiles = [...Array.from(streamedFiles), ...unstreamedFiles.map(f => f.path)];
+    const filesGenerated = allProcessedFiles;
+    const keyChanges = extractKeyChanges(files);  // Use all parsed files for analysis
     
     const currentAttempt: AttemptHistory = {
       attemptNumber: (state.previousAttempts?.length || 0) + 1,
@@ -172,7 +260,7 @@ export async function execute(
       severity: 'major',
       file: path,
       message: `Failed to apply EDIT to ${path}. File may not exist or SEARCH pattern doesn't match.`,
-      suggestedFix: `Use FILE format (=== FILE: ${path} ===) to create/replace the entire file instead of EDIT format`,
+      suggestedFix: `Use <file> format to create/replace the entire file instead of <edit> format`,
       isRetryable: true
     }));
     
@@ -180,16 +268,14 @@ export async function execute(
       ...state,
       currentTask, // ✨ Updated with timing info
       rawResponse: raw,
-      responseSection,
-      files,
+      files,  // ✅ All parsed files
       filesToDelete,
       previousAttempts,
       violations: editViolations.length > 0 ? editViolations : undefined,  // ✅ Add edit failures as violations
       completedTasksDetails: state.completedTasksDetails || [],  // ✅ Preserve completed tasks
     };
     
-    // ✅ Finalize chat message if started
-    await finalizeChatMessage(chatMessageStarted);
+    // ✅ Chat message is automatically finalized by orchestrator
     
     // ✅ Save checkpoint after code generation (in case recursion limit hits during writeFiles)
     const { saveCheckpoint } = await import('../checkpoint');
@@ -238,6 +324,7 @@ async function applyEdits(
   const chatAPI = getChatAPIClient();
   
   for (const edit of edits) {
+    let editStarted = false;
     try {
       console.log(`\n📝 Applying edit to: ${edit.path}`);
       
@@ -250,6 +337,7 @@ async function applyEdits(
       
       // ✅ Phase 1: Start editing
       await chatAPI.startFileEdit(edit.path);
+      editStarted = true;  // ✅ Track that editing UI was started
       
       // Apply edit
       const updatedContent = applyEditToFile(existingContent, edit);
@@ -264,7 +352,19 @@ async function applyEdits(
       
       // ✅ Phase 2: Complete editing with diff (Cursor-style)
       await chatAPI.completeFileEdit(edit.path, existingContent, updatedContent);
+      editStarted = false;  // ✅ Successfully completed
     } catch (error) {
+      // ✅ CRITICAL: If editing UI was started, complete it with error state
+      if (editStarted) {
+        console.error(`   ⚠️  Completing file edit with error state to prevent stuck "Editing" UI`);
+        try {
+          // Complete with empty diff to close the card
+          await chatAPI.completeFileEdit(edit.path, '', '');
+        } catch (completeError) {
+          console.error(`   ⚠️  Failed to complete edit UI:`, completeError);
+        }
+      }
+      
       const errorMsg = (error as Error).message;
       console.error(`   ❌ Failed to apply edit to ${edit.path}:`);
       console.error(`      ${errorMsg}`);
@@ -276,12 +376,12 @@ async function applyEdits(
       if (errorMsg.includes('ENOENT') || errorMsg.includes('does not exist') || 
           errorMsg.includes('null or undefined')) {
         console.log(`   💡 File doesn't exist or couldn't be read`);
-        console.log(`   💡 Should use FILE format (=== FILE: ${edit.path} ===) instead of EDIT`);
+        console.log(`   💡 Should use <file> format instead of <edit>`);
       } else if (errorMsg.includes('Search pattern not found')) {
-        console.log(`   💡 SEARCH block doesn't match file content`);
-        console.log(`   💡 Copy exact code from file or use FILE format to replace entire file`);
+        console.log(`   💡 <search> block doesn't match file content`);
+        console.log(`   💡 Copy exact code from file or use <file> format to replace entire file`);
       } else {
-        console.log(`   💡 Unknown error - consider using FILE format instead`);
+        console.log(`   💡 Unknown error - consider using <file> format instead`);
       }
       
       console.log(`   ⚠️  Skipping this edit - file will remain unchanged`);

@@ -52,16 +52,14 @@ YOUR PLAN (from Phase 1):
 - Keep changes minimal
 
 **RESPONSE FORMAT**:
-```
-=== THINKING ===
+```xml
+<thinking>
 (Analyze build state, identify specific errors if any)
-=== END THINKING ===
+</thinking>
 
-=== RESPONSE ===
 Build Status: [Success/Errors Found]
 (If errors: List specific errors and your fix strategy)
 (If success: Confirmation message)
-=== END RESPONSE ===
 
 (Files section: ONLY if fixes needed, otherwise EMPTY)
 ```
@@ -87,16 +85,16 @@ KEY WORKING PRINCIPLES:
 3. ⚠️ CRITICAL: Choose the correct output format:
    
    **SITUATION A: Creating a NEW file** (doesn't exist in codebase yet)
-   → Use === FILE: === format with COMPLETE file content
+   → Use <file path="..."> tags with COMPLETE file content
    → Write EVERY line - NEVER use "// ..." to skip code
    
    **SITUATION B: Modifying EXISTING file** (already in codebase)
-   → Use === EDIT: === format with SEARCH/REPLACE blocks
+   → Use <edit path="..."> tags with <search>/<replace> blocks
    → Specify ONLY the exact code section to change
    → Saves 90% tokens and reduces errors!
    
-   ✅ **ALWAYS use EDIT for modifications** - this is mandatory!
-   ❌ **FORBIDDEN: Using FILE format to modify existing files**
+   ✅ **ALWAYS use <edit> for modifications** - this is mandatory!
+   ❌ **FORBIDDEN: Using <file> tags to modify existing files**
 
 ⚡ AGENT CAPABILITIES - YOU CAN EXECUTE TERMINAL COMMANDS:
 - You have access to terminal command execution
@@ -244,33 +242,33 @@ You must provide paths relative to THAT repository, NOT relative to the workspac
 
 ✅ CORRECT - Repository-relative paths:
 ```
-=== FILE: package.json ===
+<file path="package.json">
 {
   "name": "test-app",
   "version": "1.0.0"
 }
-=== END FILE ===
+</file>
 
-=== FILE: src/components/Header.tsx ===
+<file path="src/components/Header.tsx">
 import React from 'react';
 export function Header() { ... }
-=== END FILE ===
+</file>
 
-=== FILE: vite.config.ts ===
+<file path="vite.config.ts">
 import { defineConfig } from 'vite';
 export default defineConfig({ ... });
-=== END FILE ===
+</file>
 ```
 
 ❌ WRONG - Including workspace path in file names:
 ```
-=== FILE: workspace/test-app/package.json ===  ← WRONG! Don't include workspace path!
+<file path="workspace/test-app/package.json">  ← WRONG! Don't include workspace path!
 ...
-=== END FILE ===
+</file>
 
-=== FILE: /absolute/path/to/src/Header.tsx ===  ← WRONG! Don't use absolute paths!
+<file path="/absolute/path/to/src/Header.tsx">  ← WRONG! Don't use absolute paths!
 ...
-=== END FILE ===
+</file>
 ```
 
 **Rules:**
@@ -296,57 +294,60 @@ Step 5: OUTPUT FORMAT - CRITICAL RULES
 
 📋 **FORMAT 1: Creating NEW files**
 
-✅ CORRECT - Pure source code with FILE markers:
-=== FILE: src/components/NewButton.tsx ===
+✅ CORRECT - Pure source code with XML tags:
+<file path="src/components/NewButton.tsx">
 import React from 'react';
 
 export function Button({ label }: { label: string }) {
   return <button>{label}</button>;
 }
-=== END FILE ===
+</file>
 
 ❌ WRONG - Markdown formatting:
-=== FILE: src/components/NewButton.tsx ===
+<file path="src/components/NewButton.tsx">
 \`\`\`typescript
 import React from 'react';
 \`\`\`
-=== END FILE ===
+</file>
 
 📋 **FORMAT 2: Modifying EXISTING files** (PREFERRED!)
 
-✅ CORRECT - Search/Replace with EDIT markers:
-=== EDIT: src/components/Button.tsx ===
-<<<<<<< SEARCH
+✅ CORRECT - Search/Replace with XML tags:
+<edit path="src/components/Button.tsx">
+<search>
 export function Button({ label }: { label: string }) {
   return <button>{label}</button>;
 }
-=======
+</search>
+<replace>
 export function Button({ label, onClick }: ButtonProps) {
   return <button onClick={onClick}>{label}</button>;
 }
->>>>>>> REPLACE
-=== END EDIT ===
+</replace>
+</edit>
 
 **Multiple edits to same file:**
-=== EDIT: src/utils/api.ts ===
-<<<<<<< SEARCH
+<edit path="src/utils/api.ts">
+<search>
 export async function fetchData(url: string) {
   const response = await fetch(url);
   return response.json();
 }
-=======
+</search>
+<replace>
 export async function fetchData(url: string, options?: RequestInit) {
   const response = await fetch(url, options);
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return response.json();
 }
->>>>>>> REPLACE
-=== END EDIT ===
+</replace>
+</edit>
 
-=== EDIT: src/utils/api.ts ===
-<<<<<<< SEARCH
+<edit path="src/utils/api.ts">
+<search>
 export { fetchData };
-=======
+</search>
+<replace>
 export async function postData(url: string, data: any) {
   return fetchData(url, {
     method: 'POST',
@@ -356,12 +357,12 @@ export async function postData(url: string, data: any) {
 }
 
 export { fetchData, postData };
->>>>>>> REPLACE
-=== END EDIT ===
+</replace>
+</edit>
 
 ⚠️  **EDIT Format Rules:**
-1. SEARCH block must match EXACTLY (including whitespace)
-2. REPLACE block is the new code to insert
-3. Can have multiple EDIT blocks for same file
+1. <search> block must match EXACTLY (including whitespace)
+2. <replace> block is the new code to insert
+3. Can have multiple <edit> blocks for same file
 4. Edits applied in order (top to bottom)
 

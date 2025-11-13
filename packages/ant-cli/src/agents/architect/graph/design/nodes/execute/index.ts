@@ -1,7 +1,6 @@
 import { DesignGraphState } from "../../state";
 import { LLMClient } from "../../../../../../core/ports";
 import { PromptEngine } from "../../../../../../core/prompt/engine";
-import { streamLLMResponse, finalizeChatMessage } from "../../../code/nodes/shared/llmStreamHandler";
 
 /**
  * Merge incremental design changes into existing document
@@ -39,16 +38,37 @@ function mergeDesignDocuments(existingDoc: string, incrementalChanges: string): 
  * Generate design document based on plan
  */
 export async function execute(state: DesignGraphState) {
+  // ✅ DEBUG: Check timing at node entry
+  let currentTask = state.currentTask;
+  console.log(`\n🔍 [Design Execute] Node entry:`);
+  console.log(`   currentTask: ${currentTask?.name}`);
+  console.log(`   Has timing: ${!!currentTask?.timing}`);
+  console.log(`   timing.startedAt: ${currentTask?.timing?.startedAt}\n`);
+  
   // ✅ Workflow instrumentation: Enter node
   if (state.deps?.workflowUpdate && state._httpTaskId) {
-    const taskInfo = state.currentTask ? {
-      id: state.currentTask.id,
-      name: state.currentTask.name,
-      type: state.currentTask.type,
-      description: state.currentTask.description,
-      priority: state.currentTask.priority
+    const taskInfo = currentTask ? {
+      id: currentTask.id,
+      name: currentTask.name,
+      type: currentTask.type,
+      description: currentTask.description,
+      priority: currentTask.priority
     } : undefined;
     await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'execute', taskInfo);
+  }
+  
+  // ✅ Update Kanban snapshot with timing info
+  if (state._httpTaskId && currentTask && state.deps?.kanbanUpdate) {
+    console.log(`\n🔥 [Design Execute] Updating Kanban with timing info`);
+    console.log(`   Current: ${currentTask.name}`);
+    console.log(`   Remaining in queue: ${state.taskQueue?.size() || 0}\n`);
+    
+    state.deps.kanbanUpdate.updateTaskQueue(
+      state._httpTaskId,
+      currentTask,  // ✅ With timing info
+      state.taskQueue?.getAll() || [],
+      state.completedTasksDetails || []
+    );
   }
   
   const llm = state.deps?.llm as LLMClient;
@@ -100,22 +120,9 @@ export async function execute(state: DesignGraphState) {
   
   const filePath = 'outputs/design/system-design.md';
   
-  // ✅ 0. Start message FIRST (so everything goes into the same message)
+  // ✅ Start message if not already started
   if (chatAPI.isEnabled()) {
-    await chatAPI.startMessage();
-    
-    // ✅ 1. Show "Planning next moves..." (with placeholder marker)
-    await chatAPI.sendLLMEvent({
-      type: 'thinking',
-      content: 'Planning next moves...',
-      metadata: {
-        provider: 'system',
-        placeholder: true,  // ✅ Mark as placeholder for easy replacement
-        timestamp: new Date().toISOString()
-      }
-    });
-    
-    // ✅ 2. Start file operation in WRITING state (in the SAME message)
+    // ✅ Start file operation in WRITING state (in the SAME message)
     if (isFirstTask) {
       // Start with 'writing' phase so LLM text streams directly into the file card
       await chatAPI.streamFileContent(filePath, '');
@@ -126,18 +133,41 @@ export async function execute(state: DesignGraphState) {
     }
   }
   
-  // ✅ 3. Stream LLM response - file content streams into file card in real-time
-  // (ChatService will reuse the existing message)
-  const { raw, chatMessageStarted } = await streamLLMResponse(llm, result.formatted.messages, {
-    thinkingOnly: false  // ✅ Show thinking AND text (text goes to file card)
+  // ✅ 3. Stream LLM response with real-time XML parsing
+  console.log('\n💭 Streaming design document...\n');
+  
+  if (!llm.streamRaw) {
+    throw new Error('LLM client does not support streaming');
+  }
+  
+  // ✅ Use StreamOrchestrator but collect text content separately for design document
+  const { StreamOrchestrator, XMLStreamParser, CommonRenderStrategy } = await import('../../../../../../core/streaming');
+  
+  const orchestrator = new StreamOrchestrator({
+    parser: new XMLStreamParser(),
+    renderStrategy: new CommonRenderStrategy(chatAPI),
+    existingFiles: new Set([]) // Design phase doesn't generate code files
   });
   
-  // ✅ Remove <thinking> blocks from file content (they're for chat UI only)
-  const removeThinkingTags = (text: string): string => {
-    return text.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
-  };
+  // 🎯 Show placeholder before LLM call
+  await chatAPI.showChatStatus('placeholder');
   
-  designMarkdown = removeThinkingTags(raw);
+  // Stream LLM response with real-time XML parsing
+  for await (const event of llm.streamRaw(result.formatted.messages)) {
+    await orchestrator.processEvent(event);
+  }
+  
+  const streamResult = await orchestrator.finalize();
+  const raw = streamResult.raw;
+  
+  // Extract design content (everything outside thinking tags)
+  // The raw response contains both thinking and response text, but we only want response
+  let designContent = raw;
+  
+  // Remove thinking sections from raw content
+  designContent = designContent.replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
+  
+  designMarkdown = designContent;
   console.log('\n');
   
   // ✅ Merge with previous designMarkdown if this is a continuation task
@@ -160,16 +190,20 @@ export async function execute(state: DesignGraphState) {
     // Complete file edit with diff
     await chatAPI.completeFileEdit(filePath, state.designMarkdown || '', finalDesignMarkdown);
   }
-  
-  // Finalize chat message
-  await finalizeChatMessage(chatMessageStarted);
 
   // ✅ DON'T mark task as completed here - checkTaskStatus node handles completion
   // This prevents duplicate entries in completedTasksDetails
   // This ensures Kanban updates happen AFTER all workflow nodes are processed
 
+  // ✅ DEBUG: Verify timing before return
+  console.log(`\n🔍 [Design Execute] About to return state:`);
+  console.log(`   currentTask: ${currentTask?.name}`);
+  console.log(`   Has timing: ${!!currentTask?.timing}`);
+  console.log(`   timing.startedAt: ${currentTask?.timing?.startedAt}\n`);
+
   return { 
-    ...state, 
+    ...state,
+    currentTask,  // ✅ Explicitly include currentTask with timing
     designMarkdown: finalDesignMarkdown,  // ✅ Use merged/updated markdown
     // Keep currentTask - checkTaskStatus will handle completion and clear it
   };

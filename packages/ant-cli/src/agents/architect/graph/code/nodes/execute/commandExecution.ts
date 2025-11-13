@@ -5,7 +5,7 @@
  */
 
 import { ArchitectGraphState } from "../../state";
-import { addChatCommandExecution } from "../shared/llmStreamHandler";
+import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient";
 
 export interface CommandExecutionResult {
   success: boolean;
@@ -22,6 +22,8 @@ export async function executeCommands(
   if (!commands || commands.length === 0 || !state.deps?.command || !state.context.config?.localPath) {
     return { success: true, executedCount: 0 };
   }
+  
+  const chatAPI = getChatAPIClient();
   
   console.log(`\n🔧 Found ${commands.length} command(s) in LLM response`);
   
@@ -116,12 +118,12 @@ export async function executeCommands(
         console.log(`   ✅ Success`);
         
         // Add to chat
-        await addChatCommandExecution(actualCommand, 'Success', 0);
+        await chatAPI.completeCommand(actualCommand, 'Success', 0);
         executedCount++;
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         console.error(`   ❌ Error: ${errorMsg}`);
-        await addChatCommandExecution(actualCommand, errorMsg, 1);
+        await chatAPI.completeCommand(actualCommand, errorMsg, 1);
       }
       continue;
     }
@@ -145,17 +147,17 @@ export async function executeCommands(
       
       if (result.success) {
         console.log(`   ✅ Success`);
-        await addChatCommandExecution(actualCommand, result.stdout || 'Success', 0);
+        await chatAPI.completeCommand(actualCommand, result.stdout || 'Success', 0);
         executedCount++;
       } else {
         const errorOutput = result.stderr || result.stdout || 'Failed';
         console.error(`   ❌ Failed: ${errorOutput}`);
-        await addChatCommandExecution(actualCommand, errorOutput, result.exitCode || 1);
+        await chatAPI.completeCommand(actualCommand, errorOutput, result.exitCode || 1);
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       console.error(`   ❌ Error: ${errorMsg}`);
-      await addChatCommandExecution(actualCommand, errorMsg, 1);
+      await chatAPI.completeCommand(actualCommand, errorMsg, 1);
     }
   }
   

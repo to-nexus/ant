@@ -5,25 +5,20 @@ export type { EditInstruction };
 
 /**
  * ============================================================================
- * LLM Response Parser
+ * LLM Response Parser (Fallback)
  * ============================================================================
  * 
- * Parses LLM-generated responses to extract:
- * - Response section (explanatory text)
- * - Generated files (code content)
- * - Files to delete
+ * Fallback parser for any content not caught by real-time streaming.
+ * Primary parsing happens in XMLStreamParser during streaming.
  * 
- * Supports multiple file format conventions:
- * 1. === FILE: path === ... === END FILE ===
- * 2. <file path="...">...</file>
- * 3. <file_path>...</file_path><file_code>...</file_code>
- * 4. ### FILE: path (or ### path) followed by ```code block```
- * 5. #### path followed by ```code block```
+ * This parser handles:
+ * - XML format: <file path="...">...</file>
+ * - XML edits: <edit path="..."><search>...</search><replace>...</replace></edit>
+ * - XML deletes: <delete path="..." />
+ * - Commands: ```bash ... ```
  * 
- * Also handles:
- * - <code_output> wrapper
- * - Markdown code fences (```language)
- * - Duplicate file prevention
+ * Note: This is only used for content that somehow wasn't streamed.
+ * Real-time parsing happens in core/streaming/parsers/XMLStreamParser.ts
  */
 
 // ============================================================================
@@ -31,11 +26,10 @@ export type { EditInstruction };
 // ============================================================================
 
 interface ParseResult {
-  responseSection: string | null;
   files: GeneratedFile[];
   filesToDelete: string[];
-  commands: Command[];  // ✅ Parsed shell commands
-  edits: EditInstruction[];  // ✅ NEW: Search/Replace edits
+  commands: Command[];
+  edits: EditInstruction[];
 }
 
 interface EditInstruction {
@@ -75,54 +69,18 @@ interface EditParser {
 // Constants
 // ============================================================================
 
-const RESPONSE_SECTION_REGEX = /=== RESPONSE ===\n([\s\S]*?)\n=== END RESPONSE ===/;
-const CODE_OUTPUT_WRAPPER_REGEX = /<code_output>([\s\S]*?)<\/code_output>/;
-
-// File format parsers (order matters: later parsers override earlier ones)
+// File format parser (XML only - primary format)
 const FILE_PARSERS: FileParser[] = [
-  {
-    name: 'Standard Format',
-    regex: /=== FILE: (.+?) ===\n([\s\S]*?)\n=== END FILE ===/g,
-    extractPath: (m) => m[1].trim(),
-    extractContent: (m) => m[2].trim(),
-  },
   {
     name: 'XML Format',
     regex: /<file path="([^"]+)">\s*([\s\S]*?)\s*<\/file>/g,
     extractPath: (m) => m[1].trim(),
     extractContent: (m) => m[2].trim(),
   },
-  {
-    name: 'Path+Code Format',
-    regex: /<file_path>(.+?)<\/file_path>\s*<file_code>([\s\S]*?)<\/file_code>/g,
-    extractPath: (m) => m[1].trim(),
-    extractContent: (m) => m[2].trim(),
-  },
-  {
-    name: 'Markdown Header H3 + Code Block',
-    // Matches: ### FILE: path or ### path
-    // Followed by optional language identifier and code block
-    regex: /###\s*(?:FILE:\s*)?(.+?)\s*\n```[\w]*\s*\n([\s\S]*?)\n```/g,
-    extractPath: (m) => m[1].trim(),
-    extractContent: (m) => m[2].trim(),
-  },
-  {
-    name: 'Markdown Header H4 + Code Block',
-    // Matches: #### path
-    // Followed by optional language identifier and code block
-    regex: /####\s+(.+?)\s*\n```[\w]*\s*\n([\s\S]*?)\n```/g,
-    extractPath: (m) => m[1].trim(),
-    extractContent: (m) => m[2].trim(),
-  },
 ];
 
-// Delete format parsers
+// Delete format parser (XML only)
 const DELETE_PARSERS: DeleteParser[] = [
-  {
-    name: 'Standard Format',
-    regex: /=== DELETE: (.+?) ===/g,
-    extractPath: (m) => m[1].trim(),
-  },
   {
     name: 'XML Format',
     regex: /<delete path="([^"]+)"\s*\/>/g,
@@ -130,11 +88,11 @@ const DELETE_PARSERS: DeleteParser[] = [
   },
 ];
 
-// ✅ Edit format parsers (Search/Replace)
+// Edit format parser (XML only - Search/Replace)
 const EDIT_PARSERS: EditParser[] = [
   {
-    name: 'Search/Replace Format',
-    regex: /=== EDIT: (.+?) ===\n<<<<<<< SEARCH\n([\s\S]*?)\n=======\n([\s\S]*?)\n>>>>>>> REPLACE\n=== END EDIT ===/g,
+    name: 'XML Edit Format',
+    regex: /<edit path="([^"]+)">\s*<search>\s*([\s\S]*?)\s*<\/search>\s*<replace>\s*([\s\S]*?)\s*<\/replace>\s*<\/edit>/g,
     extractPath: (m) => m[1].trim(),
     extractSearch: (m) => m[2].trim(),
     extractReplace: (m) => m[3].trim(),
@@ -211,19 +169,11 @@ function cleanMarkdownFences(content: string): string {
 }
 
 /**
- * Extracts content from <code_output> wrapper if present
+ * No preprocessing needed for XML format
+ * (kept for backward compatibility)
  */
 function unwrapCodeOutput(raw: string): string {
-  const match = raw.match(CODE_OUTPUT_WRAPPER_REGEX);
-  return match ? match[1] : raw;
-}
-
-/**
- * Extracts response section (explanatory text) from content
- */
-function extractResponseSection(content: string): string | null {
-  const match = RESPONSE_SECTION_REGEX.exec(content);
-  return match ? match[1].trim() : null;
+  return raw;
 }
 
 /**
@@ -326,30 +276,26 @@ function parseCommands(content: string): Command[] {
  * ```
  */
 export function parseResponse(raw: string): ParseResult {
-  // 1. Unwrap code output wrapper if present
+  // 1. No preprocessing needed for XML format
   const content = unwrapCodeOutput(raw);
   
-  // 2. Extract response section
-  const responseSection = extractResponseSection(content);
-  
-  // 3. Parse all files (using Map to prevent duplicates)
+  // 2. Parse all files (using Map to prevent duplicates)
   const fileMap = parseFiles(content);
   
-  // 4. Parse all delete directives
+  // 3. Parse all delete directives
   const filesToDelete = parseDeletes(content);
   
-  // 5. ✅ Parse edit instructions (search/replace)
+  // 4. Parse edit instructions (search/replace)
   const edits = parseEdits(content);
   
-  // 6. ✅ Parse shell commands
+  // 5. Parse shell commands
   const commands = parseCommands(content);
   
-  // 7. Return structured result
+  // 6. Return structured result
   return {
-    responseSection,
     files: Array.from(fileMap.values()),
     filesToDelete,
-    edits,  // ✅ NEW: Include edit instructions
+    edits,
     commands,
   };
 }

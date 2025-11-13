@@ -6,17 +6,18 @@ MANDATORY SELF-CHECK BEFORE OUTPUT
 Before you output anything, verify each point:
 
 FORMAT CHECKS:
-□ Used EDIT format for modifying existing files (mandatory!)
-□ Used FILE format ONLY for creating NEW files
-□ Each EDIT block has: === EDIT: path ===, <<<<<<< SEARCH, =======, >>>>>>> REPLACE, === END EDIT ===
-□ Each FILE block has: === FILE: path ===, [content], === END FILE ===
+□ Used <edit> tags for modifying existing files (mandatory!)
+□ Used <file> tags ONLY for creating NEW files
+□ Each <edit> has: <edit path="..."><search>exact code</search><replace>new code</replace></edit>
+□ Each <file> has: <file path="...">complete content</file>
 □ File/Edit paths are ACTUAL paths from ORIGINAL FILES or DESIGN DOCUMENT
 □ NO placeholder paths like "path/to/file.tsx"
 □ Paths match exactly as they appear in the project structure
-□ SEARCH blocks match EXACTLY (including whitespace)
-□ REPLACE blocks contain new code only
+□ <search> blocks match EXACTLY (including whitespace)
+□ <replace> blocks contain new code only
 □ File content is PURE source code (no \`\`\`, no markdown)
-□ No explanatory text between tags
+□ No explanatory text between XML tags
+□ All XML tags are properly closed
 
 CONTENT CHECKS:
 □ All imports are present at top of file
@@ -35,34 +36,35 @@ LANGUAGE CHECKS:
 □ Translated any non-English comments/identifiers to English
 
 MINIMAL CHANGES CHECKS (MOST CRITICAL):
-□ Used EDIT format for modifications (only changed necessary code sections)
-□ SEARCH blocks contain exact code to find (no more, no less)
-□ REPLACE blocks contain only new code (no unchanged surrounding code)
-□ Reviewed ORIGINAL FILES completely before creating EDIT blocks
+□ Used <edit> tags for modifications (only changed necessary code sections)
+□ <search> blocks contain exact code to find (no more, no less)
+□ <replace> blocks contain only new code (no unchanged surrounding code)
+□ Reviewed ORIGINAL FILES completely before creating <edit> blocks
 □ Did NOT regenerate entire files when only small changes needed
-□ Used FILE format ONLY for brand new files
-□ Preserved all unrelated code (it stays untouched automatically with EDIT)
+□ Used <file> tags ONLY for brand new files
+□ Preserved all unrelated code (it stays untouched automatically with <edit>)
 □ Only targeted specific lines/sections that need changes
 
 DOUBLE SANITY CHECKS:
 1. Am I modifying an existing file?
-   → USUALLY use EDIT format (efficient)
-   → EXCEPT for refactoring: Use FILE format (see below)
-2. Am I creating a new file? → Use FILE format with complete content
-3. Is my SEARCH block exact? → Copy-paste exact code from ORIGINAL FILES
-4. Does my REPLACE block have unchanged code? → Remove it, keep only changes
+   → USUALLY use <edit> tags (efficient)
+   → EXCEPT for refactoring: Use <file> tags (see below)
+2. Am I creating a new file? → Use <file> tags with complete content
+3. Is my <search> block exact? → Copy-paste exact code from ORIGINAL FILES
+4. Does my <replace> block have unchanged code? → Remove it, keep only changes
 
-⚠️ EXCEPTION: When to use FILE instead of EDIT for modifications:
+⚠️ EXCEPTION: When to use <file> instead of <edit> for modifications:
 - Fixing import errors (must update ALL usage in file)
 - Refactoring identifiers (renaming, API changes)
 - Multiple related changes scattered throughout file
-- When EDIT failed before (pattern not found)
-→ In these cases: Use FILE format to ensure ALL changes are made
+- When <edit> failed before (pattern not found)
+→ In these cases: Use <file> tags to ensure ALL changes are made
 
-If using FILE format for simple modification → STOP! Use EDIT instead.
+If using <file> tags for simple modification → STOP! Use <edit> instead.
 
 TASK CHECKS:
-□ If DIRECTIVE exists: I responded with === RESPONSE === section
+□ I provided a summary explanation after all file operations (REQUIRED!)
+□ Summary explains what I did and why (in plain text outside XML tags)
 □ I followed my plan exactly (no scope creep)
 □ I only modified files that need changes
 □ Changes satisfy the primary task
@@ -94,44 +96,78 @@ OUTPUT STRUCTURE
 CRITICAL OUTPUT RULES:
 
 **FORMAT 1: Modifying EXISTING files** (PREFERRED - use this 90% of the time!)
-=== EDIT: src/components/Button.tsx ===
-<<<<<<< SEARCH
+<edit path="src/components/Button.tsx">
+<search>
 [exact code to find - must match perfectly]
-=======
+</search>
+<replace>
 [new code to replace with]
->>>>>>> REPLACE
-=== END EDIT ===
+</replace>
+</edit>
 
 **FORMAT 2: Creating NEW files** (only for files that don't exist yet)
-=== FILE: src/components/NewButton.tsx ===
+<file path="src/components/NewButton.tsx">
 [COMPLETE file content - write EVERY line]
-=== END FILE ===
+</file>
 
 **FORMAT 3: Deleting files**
-=== DELETE: src/components/OldButton.tsx ===
+<delete path="src/components/OldButton.tsx" />
+
+**FORMAT 4: Summary response** (REQUIRED - explain what you did!)
+After all file/edit operations, provide a brief summary outside XML tags.
+
+Example:
+```
+<file path="src/Button.tsx">
+...
+</file>
+
+<edit path="src/App.tsx">
+...
+</edit>
+
+I've successfully implemented the button feature. Here's what I did:
+
+1. **Created Button component** - Reusable button with props
+2. **Updated App.tsx** - Integrated the new button
+3. **Added click handler** - Alert on button click
+
+The button is now ready to use!
+```
 
 ABSOLUTELY FORBIDDEN:
-❌ Using FILE format to modify existing files (use EDIT!)
-❌ Incomplete SEARCH blocks (must match exactly)
-❌ Including unchanged code in REPLACE blocks
+❌ Using <file> tags to modify existing files (use <edit>!)
+❌ Incomplete <search> blocks (must match exactly)
+❌ Including unchanged code in <replace> blocks
 ❌ Placeholder paths like "path/to/file.tsx"
 ❌ Comments in JSON files (package.json, tsconfig.json, etc.) - JSON spec forbids comments!
+❌ Unclosed XML tags
 
 YOU MUST:
-✅ Use EDIT for modifications (saves 90% tokens!)
-✅ SEARCH block = exact copy from original file
-✅ REPLACE block = only the new/changed code
-✅ Use FILE only for brand new files
-✅ Write complete content in FILE blocks
+✅ Use <edit> for modifications (saves 90% tokens!)
+✅ <search> block = exact copy from original file
+✅ <replace> block = only the new/changed code
+✅ Use <file> only for brand new files
+✅ Write complete content in <file> blocks
+✅ Close all XML tags properly
 
 NOW EXECUTE YOUR PLAN. 
 
 FINAL REMINDERS BEFORE YOU OUTPUT:
-1. **Modifying existing file?** → Use EDIT format (mandatory!)
-2. **Creating new file?** → Use FILE format with complete content
-3. **SEARCH block** → Must match original file EXACTLY
-4. **REPLACE block** → Only the new/changed code
+1. **Modifying existing file?** → Use <edit> tags (mandatory!)
+2. **Creating new file?** → Use <file> tags with complete content
+3. **<search> block** → Must match original file EXACTLY
+4. **<replace> block** → Only the new/changed code
 5. Use ACTUAL file paths from ORIGINAL FILES
+6. **End with summary** → Explain what you did in plain text (REQUIRED!)
 
-⚠️ If you're about to use FILE format for a modification → STOP! Use EDIT instead!
+⚠️ If you're about to use <file> tags for a modification → STOP! Use <edit> instead!
+
+📝 OUTPUT STRUCTURE:
+```
+<file>...</file>         ← File operations first
+<edit>...</edit>
+
+Summary explanation...   ← Plain text summary REQUIRED!
+```
 

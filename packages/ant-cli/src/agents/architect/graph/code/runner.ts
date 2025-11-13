@@ -7,7 +7,7 @@ import { buildCodeGraph } from "./graph";
  * Responsibility: Execute the graph and return results
  * All side effects (file saving, memory storage) are handled inside the graph
  * 
- * ✅ RecursionLimit: Configurable via RECURSION_LIMIT env var (default: 50)
+ * ✅ RecursionLimit: Read from RECURSION_LIMIT env var (minimum: 5)
  * ✅ Learn node is ALWAYS executed on exit (success/error/recursion limit)
  */
 export async function runCodeGraph(initial: ArchitectGraphState) {
@@ -15,22 +15,19 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
   let state: ArchitectGraphState = initial;
   let isRecursionLimit = false;
   
-  // ✅ Configurable recursion limit via environment variable (minimum: 5)
-  const MINIMUM_RECURSION_LIMIT = 5;
-  const DEFAULT_RECURSION_LIMIT = 50;
-  const recursionLimit = parseInt(process.env.RECURSION_LIMIT || String(DEFAULT_RECURSION_LIMIT), 10);
+  // ✅ Read recursion limit from environment variable
+  const MIN_RECURSION_LIMIT = 5;
+  const recursionLimit = parseInt(process.env.RECURSION_LIMIT || '', 10);
+  const finalLimit = (isNaN(recursionLimit) || recursionLimit < MIN_RECURSION_LIMIT) 
+    ? MIN_RECURSION_LIMIT 
+    : recursionLimit;
   
-  // Validate and log
-  let finalLimit: number;
-  if (isNaN(recursionLimit) || recursionLimit < 1) {
-    console.warn(`⚠️  Invalid RECURSION_LIMIT: ${process.env.RECURSION_LIMIT}, using default: ${DEFAULT_RECURSION_LIMIT}`);
-    finalLimit = DEFAULT_RECURSION_LIMIT;
-  } else if (recursionLimit < MINIMUM_RECURSION_LIMIT) {
-    console.warn(`⚠️  RECURSION_LIMIT (${recursionLimit}) is below minimum (${MINIMUM_RECURSION_LIMIT}), using minimum`);
-    finalLimit = MINIMUM_RECURSION_LIMIT;
+  if (isNaN(recursionLimit) || !process.env.RECURSION_LIMIT) {
+    console.warn(`⚠️  RECURSION_LIMIT not set, using minimum: ${MIN_RECURSION_LIMIT}`);
+  } else if (recursionLimit < MIN_RECURSION_LIMIT) {
+    console.warn(`⚠️  RECURSION_LIMIT (${recursionLimit}) below minimum (${MIN_RECURSION_LIMIT}), using minimum`);
   } else {
-    console.log(`⚙️  Recursion limit: ${recursionLimit} (from RECURSION_LIMIT env var)\n`);
-    finalLimit = recursionLimit;
+    console.log(`⚙️  Recursion limit: ${recursionLimit}\n`);
   }
   
   // ✅ Initialize recursion tracking in state
@@ -88,9 +85,9 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
             resolvedCategories: (session.state.resolvedCategories || []) as any,
             recursionCount: session.state.recursionCount || 0,  // ✅ CRITICAL: Restore recursion count
             recursionLimit: session.state.recursionLimit || finalLimit,  // ✅ CRITICAL: Restore recursion limit
-            jobId: (session.state as any).jobId,  // ✅ CRITICAL: Restore jobId
-            jobTiming: (session.state as any).jobTiming,  // ✅ CRITICAL: Restore jobTiming
-          };
+            ...(session.state as any).jobId && { jobId: (session.state as any).jobId },  // ✅ CRITICAL: Restore jobId
+            ...(session.state as any).jobTiming && { jobTiming: (session.state as any).jobTiming },  // ✅ CRITICAL: Restore jobTiming
+          } as any;
         }
       } catch (restoreError) {
         console.warn('⚠️  Failed to restore from checkpoint:', restoreError);

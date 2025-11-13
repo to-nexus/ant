@@ -83,7 +83,7 @@ RULE 4: Code Language - English Only
 - Type names: English only
 - If you see non-English comments in existing code: translate them to English
 - If you see non-English identifiers in existing code: rename them to English equivalents
-- Your RESPONSE section: should be in English (clear, professional explanation)
+- Your summary: should be in English (clear, professional explanation)
 
 RULE 5: Completeness & Validation
 - Always include all imports

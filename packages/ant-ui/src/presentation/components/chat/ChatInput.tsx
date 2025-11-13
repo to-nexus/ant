@@ -133,6 +133,13 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
     console.log(`[ChatInput] Retrying job ${jobIdToResume} (resume from last checkpoint)...`);
     
     try {
+      // ✅ CRITICAL: Dismiss interruption FIRST before setting running state
+      // This prevents SSE initial state from auto-stopping the job
+      if (kanbanData?.interruption?.timestamp) {
+        console.log('[ChatInput] Dismissing interruption timestamp BEFORE setRunning');
+        useStore.getState().setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
+      }
+      
       // ✅ Set running state immediately
       useStore.getState().setRunning(true, jobIdToResume);
       
@@ -151,11 +158,6 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
       // ✅ Clear failed state
       useStore.getState().setLastJobFailed(false);
       
-      // ✅ CRITICAL: Dismiss interruption UI globally (hides it in KanbanBoard too)
-      if (kanbanData?.interruption?.timestamp) {
-        useStore.getState().setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
-      }
-      
     } catch (error) {
       console.error('[ChatInput] Failed to retry job:', error);
       useStore.getState().setRunning(false);  // ✅ Clear running state on error
@@ -170,12 +172,64 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
     const selectedProject = useStore.getState().selectedProject;
     const selectedFeature = useStore.getState().selectedFeature;
     const selectedAgent = useStore.getState().selectedAgent;
+    const kanbanData = useStore.getState().kanban;
     
     if (!selectedProject || !selectedFeature || !selectedAgent || !selectedWorkType) {
       console.error('[ChatInput] Missing required selection for job execution');
       return;
     }
     
+    // ✅ CRITICAL: Check if this is a Resume or New task
+    const currentJobId = kanbanData?.jobId;
+    const hasInterruption = kanbanData?.interruption?.canResume === true;
+    
+    // ✅ DEFENSE: If interruption exists, redirect to Resume (shouldn't happen if UI Policy works correctly)
+    if (currentJobId && hasInterruption) {
+      console.warn('[ChatInput] Interruption detected in Submit - redirecting to Resume');
+      console.warn('[ChatInput] This should be prevented by UI Policy (canSendMessage: false)');
+      
+      // Clear message immediately for better UX
+      const userMessage = message;
+      setMessage('');
+      
+      try {
+        // ✅ 1. Add user message to chat history first
+        await fetch(
+          `${API_BASE}/projects/${selectedProject}/features/${selectedFeature}/chat/user-message`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: userMessage })
+          }
+        );
+        
+        // ✅ 2. Resume job instead of starting new one
+        useStore.getState().setRunning(true, currentJobId);
+        
+        const { resumeJob } = await import('@/infrastructure/http/api');
+        const result = await resumeJob(currentJobId, selectedProject, selectedFeature, true);
+        
+        console.log('[ChatInput] Resume successful (from submit):', result);
+        console.log(`  Original job: ${result.originalJobId}`);
+        console.log(`  New job: ${result.jobId}`);
+        console.log(`  Job type: ${result.jobType}`);
+        
+        // ✅ Update with new jobId from server
+        useStore.getState().setRunning(true, result.jobId);
+        
+        // ✅ Dismiss interruption UI globally
+        if (kanbanData?.interruption?.timestamp) {
+          useStore.getState().setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
+        }
+      } catch (error) {
+        console.error('[ChatInput] Failed to resume job:', error);
+        useStore.getState().setRunning(false);
+        alert(`Failed to resume job: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+      return;
+    }
+    
+    // ✅ Normal path: Start new job
     console.log('[ChatInput] Submitting chat message as job...');
     console.log('   Message:', message);
     console.log('   Project:', selectedProject);
@@ -202,8 +256,6 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
         throw new Error('Failed to add user message to chat');
       }
       
-      // ✅ 2. Immediately show "Planning next moves..." (like Cursor)
-      // This will be replaced when actual LLM thinking starts
       let pendingJobId: string | undefined;
       try {
         // Start assistant message placeholder (without real jobId yet)
@@ -221,25 +273,8 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
           pendingJobId = returnedPendingJobId;
           console.log('[ChatInput] Started assistant message with pending jobId:', pendingJobId);
         }
-        
-        // Add planning status immediately (thinking type - will merge with actual thinking)
-        await fetch(
-          `${API_BASE}/projects/${selectedProject}/features/${selectedFeature}/chat/llm-event`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              event: {
-                type: 'thinking',
-                content: 'Planning next moves...'
-              }
-            })
-          }
-        );
-        
-        console.log('[ChatInput] Planning message added successfully');
       } catch (error) {
-        console.error('[ChatInput] Failed to add planning message:', error);
+        console.error('[ChatInput] Failed to start assistant message:', error);
         if (error instanceof Error) {
           console.error('  Error message:', error.message);
         }
