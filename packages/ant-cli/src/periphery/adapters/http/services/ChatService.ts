@@ -374,7 +374,6 @@ export class ChatService {
       
       // ✅ CRITICAL: Start tracking thinking block duration when placeholder → thinking (with blockStart)
       if (isLastPlaceholder && content.type === 'thinking' && content.metadata?.blockStart) {
-        console.log(`[ChatService] ⏱️  Thinking block started (merged from placeholder, contentIndex: ${lastContentIndex})`);
         session.thinkingStartTime = Date.now();
         session.lastThinkingContentIndex = lastContentIndex;  // Use existing index (merged content)
       }
@@ -422,8 +421,6 @@ export class ChatService {
             durationMs
           };
           
-          console.log(`[ChatService] ⏱️  Thinking duration: ${durationMs}ms (${(durationMs / 1000).toFixed(1)}s)`);
-          
           // Broadcast duration update
           this.broadcast(projectId, featureName, {
             type: 'content_update',
@@ -441,11 +438,8 @@ export class ChatService {
     
     // Start tracking new thinking block
     if (content.type === 'thinking' && content.metadata?.blockStart) {
-      console.log(`[ChatService] ⏱️  Thinking block started (contentIndex will be: ${existingContents.length})`);
       session.thinkingStartTime = Date.now();
       session.lastThinkingContentIndex = existingContents.length;  // Will be the index after we add it
-    } else if (content.type === 'thinking') {
-      console.log(`[ChatService] 🔵 Thinking content (blockStart: ${content.metadata?.blockStart})`);
     }
     
     // ✅ STREAMING: Same-type content appending (ignore = don't create new block)
@@ -564,8 +558,6 @@ export class ChatService {
           ...thinkingContent.metadata,
           durationMs
         };
-        
-        console.log(`[ChatService] ⏱️  Thinking duration: ${durationMs}ms (${(durationMs / 1000).toFixed(1)}s)`);
         
         // Broadcast duration update
         this.broadcast(projectId, featureName, {
