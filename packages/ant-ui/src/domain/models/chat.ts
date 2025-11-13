@@ -51,6 +51,8 @@ export interface MessageContent {
     // Metadata
     provider?: string;      // 'system' or 'llm'
     model?: string;         // LLM model name
+    blockStart?: boolean;   // For thinking: marks <thinking> tag opened (new block)
+    durationMs?: number;    // For thinking: duration in milliseconds
   };
 }
 

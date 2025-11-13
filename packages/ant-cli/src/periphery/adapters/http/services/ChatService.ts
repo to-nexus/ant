@@ -46,6 +46,7 @@ export interface MessageContent {
     model?: string;         // LLM model used
     provider?: string;      // LLM provider (e.g., 'anthropic', 'openai')
     blockStart?: boolean;   // For thinking: marks <thinking> tag opened (new block)
+    durationMs?: number;    // For thinking: duration in milliseconds
   };
 }
 
@@ -76,6 +77,8 @@ interface ChatSession {
     filePath: string;
     contentIndex: number;  // Index of file content in currentMessage.contents
   };
+  thinkingStartTime?: number;  // Track thinking block start time (ms)
+  lastThinkingContentIndex?: number;  // Track last thinking content index
 }
 
 export class ChatService {
@@ -369,6 +372,13 @@ export class ChatService {
       }
       lastContent.metadata = { ...lastContent.metadata, ...content.metadata };
       
+      // ✅ CRITICAL: Start tracking thinking block duration when placeholder → thinking (with blockStart)
+      if (isLastPlaceholder && content.type === 'thinking' && content.metadata?.blockStart) {
+        console.log(`[ChatService] ⏱️  Thinking block started (merged from placeholder, contentIndex: ${lastContentIndex})`);
+        session.thinkingStartTime = Date.now();
+        session.lastThinkingContentIndex = lastContentIndex;  // Use existing index (merged content)
+      }
+      
       this.broadcast(projectId, featureName, {
         type: 'content_update',
         messageId: session.currentMessage.id,
@@ -390,6 +400,52 @@ export class ChatService {
     if (shouldIgnore) {
       console.log(`[ChatService] ⏭️ IGNORED: ${content.type} → ${content.type} (direct duplicate)`);
       return;  // Do nothing, discard silently
+    }
+    
+    // ✅ Track thinking block duration (supports multiple thinking blocks in one message)
+    // When thinking ends (new non-thinking content OR new thinking block), calculate duration
+    if (session.thinkingStartTime && session.lastThinkingContentIndex !== undefined) {
+      // End previous thinking block if:
+      // 1. New non-thinking content arrives, OR
+      // 2. New thinking block starts (blockStart: true)
+      const isEndingThinkingBlock = 
+        content.type !== 'thinking' || 
+        content.metadata?.blockStart;
+      
+      if (isEndingThinkingBlock) {
+        const durationMs = Date.now() - session.thinkingStartTime;
+        const thinkingContent = existingContents[session.lastThinkingContentIndex];
+        
+        if (thinkingContent && thinkingContent.type === 'thinking') {
+          thinkingContent.metadata = {
+            ...thinkingContent.metadata,
+            durationMs
+          };
+          
+          console.log(`[ChatService] ⏱️  Thinking duration: ${durationMs}ms (${(durationMs / 1000).toFixed(1)}s)`);
+          
+          // Broadcast duration update
+          this.broadcast(projectId, featureName, {
+            type: 'content_update',
+            messageId: session.currentMessage.id,
+            contentIndex: session.lastThinkingContentIndex,
+            content: thinkingContent
+          });
+        }
+        
+        // Reset tracking (will be set again below if new thinking block starts)
+        session.thinkingStartTime = undefined;
+        session.lastThinkingContentIndex = undefined;
+      }
+    }
+    
+    // Start tracking new thinking block
+    if (content.type === 'thinking' && content.metadata?.blockStart) {
+      console.log(`[ChatService] ⏱️  Thinking block started (contentIndex will be: ${existingContents.length})`);
+      session.thinkingStartTime = Date.now();
+      session.lastThinkingContentIndex = existingContents.length;  // Will be the index after we add it
+    } else if (content.type === 'thinking') {
+      console.log(`[ChatService] 🔵 Thinking content (blockStart: ${content.metadata?.blockStart})`);
     }
     
     // ✅ STREAMING: Same-type content appending (ignore = don't create new block)
@@ -496,6 +552,33 @@ export class ChatService {
     
     if (!session || !session.currentMessage) {
       return;
+    }
+
+    // ✅ Calculate duration for last thinking block if exists
+    if (session.thinkingStartTime && session.lastThinkingContentIndex !== undefined) {
+      const durationMs = Date.now() - session.thinkingStartTime;
+      const thinkingContent = session.currentMessage.contents[session.lastThinkingContentIndex];
+      
+      if (thinkingContent && thinkingContent.type === 'thinking') {
+        thinkingContent.metadata = {
+          ...thinkingContent.metadata,
+          durationMs
+        };
+        
+        console.log(`[ChatService] ⏱️  Thinking duration: ${durationMs}ms (${(durationMs / 1000).toFixed(1)}s)`);
+        
+        // Broadcast duration update
+        this.broadcast(projectId, featureName, {
+          type: 'content_update',
+          messageId: session.currentMessage.id,
+          contentIndex: session.lastThinkingContentIndex,
+          content: thinkingContent
+        });
+      }
+      
+      // Reset tracking
+      session.thinkingStartTime = undefined;
+      session.lastThinkingContentIndex = undefined;
     }
 
     session.currentMessage.isStreaming = false;
