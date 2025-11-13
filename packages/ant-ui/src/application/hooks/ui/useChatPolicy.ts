@@ -40,10 +40,10 @@ export function useChatPolicy(messageCount: number = 0, lastJobFailed: boolean =
   const dismissedInterruptTimestamp = useStore((state) => state.dismissedInterruptTimestamp);
   
   // ✅ CRITICAL: Check if job is interrupted (user_stopped, recursion_limit, etc.)
-  // AND not dismissed by user (global dismissal applies to both chat and task board)
+  // Chat doesn't have a dismiss button - it only disappears after successful resume
   const hasInterruption = !isRunning 
     && kanbanData?.interruption?.canResume === true
-    && kanbanData?.interruption?.timestamp !== dismissedInterruptTimestamp;
+    && kanbanData?.interruption?.timestamp !== dismissedInterruptTimestamp;  // Only hide after resume success
 
   // Agent 미선택
   if (!selectedAgent) {

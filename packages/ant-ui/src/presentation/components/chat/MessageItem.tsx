@@ -108,6 +108,24 @@ function ContentBlock({ content, isStreaming }: ContentBlockProps) {
       const isThinkingCollapsed = !isStreaming && !isThinkingExpanded;
       const hasThinkingContent = content.content && content.content.trim().length > 0;
       
+      // Format duration: "Thought for X seconds"
+      const durationMs = content.metadata?.durationMs;
+      const durationText = durationMs 
+        ? durationMs < 1000 
+          ? `${(durationMs / 1000).toFixed(1)}s`  // "0.5s"
+          : `${Math.round(durationMs / 1000)}s`   // "3s"
+        : null;
+      
+      // ✅ DEBUG: Log duration info
+      if (!isStreaming) {
+        console.log(`[MessageItem] Thinking metadata:`, {
+          hasDuration: !!durationMs,
+          durationMs,
+          durationText,
+          metadata: content.metadata
+        });
+      }
+      
       return (
         <div>
           {/* Header - clickable when completed */}
@@ -118,7 +136,7 @@ function ContentBlock({ content, isStreaming }: ContentBlockProps) {
           >
             <Brain className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
             <span className="text-xs text-gray-600 dark:text-gray-400 font-medium">
-              {isStreaming ? 'Thinking...' : 'Thought'}
+              {isStreaming ? 'Thinking...' : durationText ? `Thought for ${durationText}` : 'Thought'}
             </span>
             {!isStreaming && hasThinkingContent && (
               <ChevronRight className={`w-3.5 h-3.5 text-gray-400 dark:text-gray-500 ml-auto transition-transform ${isThinkingExpanded ? 'rotate-90' : ''}`} />

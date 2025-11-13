@@ -1,5 +1,5 @@
 import { useStore } from '@/domain/store';
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { KanbanData } from '@/infrastructure/http/api';
 import { WorkflowRealtimeState } from '@/domain/models/workflow';
@@ -26,7 +26,8 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);
   const splitLayout = useStore((state) => state.splitLayout);
-  const dismissedInterruptTimestamp = useStore((state) => state.dismissedInterruptTimestamp);  // ✅ Global state
+  const dismissedInterruptTimestamp = useStore((state) => state.dismissedInterruptTimestamp);  // ✅ Global state (for resume)
+  const [dismissedKanbanInterrupt, setDismissedKanbanInterrupt] = React.useState<string | null>(null);  // ✅ Local state (for dismiss button only)
   const policy = useUIActionPolicy();
   
   // ✅ DEBUG: Log when kanbanData.isEstimating changes
@@ -47,13 +48,13 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
   const [previousInProgressId, setPreviousInProgressId] = useState<string | null>(null);
   const [isInitialLoad, setIsInitialLoad] = useState(true);  // ✅ Track initial load
   
-  // ✅ Reset dismissed state when interruption changes (new interruption appeared)
+  // ✅ Reset local dismissed state when interruption changes (new interruption appeared)
   useEffect(() => {
     if (kanbanData.interruption?.timestamp && 
-        dismissedInterruptTimestamp !== kanbanData.interruption.timestamp) {
-      useStore.getState().setDismissedInterruptTimestamp(null);
+        dismissedKanbanInterrupt !== kanbanData.interruption.timestamp) {
+      setDismissedKanbanInterrupt(null);  // Reset local dismiss state for new interruption
     }
-  }, [kanbanData.interruption?.timestamp, dismissedInterruptTimestamp]);
+  }, [kanbanData.interruption?.timestamp, dismissedKanbanInterrupt]);
 
   // ✅ Detect newly completed tasks (skip animation on initial load)
   useEffect(() => {
@@ -128,6 +129,13 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
       
       // ✅ Update with new jobId from server
       useStore.getState().setRunning(true, result.jobId);
+      
+      // ✅ CRITICAL: Mark current interruption as dismissed globally (hide both task board and chat)
+      // This prevents it from reappearing when job completes
+      if (interruption) {
+        useStore.getState().setDismissedInterruptTimestamp(interruption.timestamp);
+        setDismissedKanbanInterrupt(interruption.timestamp);  // Also update local state
+      }
     } catch (error) {
       console.error('[KanbanBoard] Failed to resume task:', error);
       useStore.getState().setRunning(false);  // ✅ Clear running state on error
@@ -135,11 +143,12 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
     }
   };
 
-  // ✅ Check if interruption should be shown
+  // ✅ Check if interruption should be shown (task board only checks local dismiss + global resume)
   const interruption = kanbanData.interruption;
   const shouldShowInterruption = 
     interruption &&
-    interruption.timestamp !== dismissedInterruptTimestamp &&  // ✅ Global state
+    interruption.timestamp !== dismissedKanbanInterrupt &&  // ✅ Local dismiss (task board only)
+    interruption.timestamp !== dismissedInterruptTimestamp &&  // ✅ Global resume (both task board and chat)
     !policy.isRunning &&
     !policy.isStopping;
 
@@ -208,7 +217,7 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
             <KanbanPausedPrompt
               interruption={interruption}
               onResume={handleResumeTask}
-              onDismiss={() => useStore.getState().setDismissedInterruptTimestamp(interruption.timestamp)}
+              onDismiss={() => setDismissedKanbanInterrupt(interruption.timestamp)}  // ✅ Local dismiss (task board only)
             />
           </div>
         )}
