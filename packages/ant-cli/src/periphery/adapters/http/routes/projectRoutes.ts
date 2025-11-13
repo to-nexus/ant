@@ -662,7 +662,7 @@ export function createProjectRoutes(deps: {
     const featureName = req.params.feature;
     const { content } = req.body;
 
-    console.log(`🔵 [/add-content] Endpoint called! projectId=${projectId}, featureName=${featureName}, content.type=${content?.type}, blockStart=${content?.metadata?.blockStart}`);
+    // Add content to chat service
 
     if (!deps.chatService) {
       res.status(503).json({ error: 'Chat service not available' });

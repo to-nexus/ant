@@ -116,16 +116,6 @@ function ContentBlock({ content, isStreaming }: ContentBlockProps) {
           : `${Math.round(durationMs / 1000)}s`   // "3s"
         : null;
       
-      // ✅ DEBUG: Log duration info
-      if (!isStreaming) {
-        console.log(`[MessageItem] Thinking metadata:`, {
-          hasDuration: !!durationMs,
-          durationMs,
-          durationText,
-          metadata: content.metadata
-        });
-      }
-      
       return (
         <div>
           {/* Header - clickable when completed */}
