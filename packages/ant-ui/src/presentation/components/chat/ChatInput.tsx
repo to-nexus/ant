@@ -6,10 +6,8 @@ import { useState, useRef, useEffect } from 'react';
 import { Send, ChevronDown, ChevronRight, Square, RefreshCw } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
-import { fetchAgents, type Agent } from '@/infrastructure/http/api';
+import { fetchAgents, type Agent, getApiBase, authFetch } from '@/infrastructure/http/api';
 import type { FileStats } from '@/domain/models/chat';
-
-import { getApiBase } from '@/infrastructure/http/api';
 
 const API_BASE = () => getApiBase();
 
@@ -250,11 +248,10 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
       
       try {
         // ✅ 1. Add user message to chat history first
-        await fetch(
+        await authFetch(
           `${API_BASE()}/projects/${selectedProject}/features/${selectedFeature}/chat/user-message`,
           {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ content: userMessage })
           }
         );
@@ -299,11 +296,10 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
     
     try {
       // ✅ 1. Add user message to chat history first
-      const userMessageResponse = await fetch(
+      const userMessageResponse = await authFetch(
         `${API_BASE()}/projects/${selectedProject}/features/${selectedFeature}/chat/user-message`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ content: userMessage })
         }
       );
@@ -315,11 +311,10 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
       let pendingJobId: string | undefined;
       try {
         // Start assistant message placeholder (without real jobId yet)
-        const startResponse = await fetch(
+        const startResponse = await authFetch(
           `${API_BASE()}/projects/${selectedProject}/features/${selectedFeature}/chat/start-message`,
           {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({})  // ✅ No jobId - will get pending jobId from server
           }
         );

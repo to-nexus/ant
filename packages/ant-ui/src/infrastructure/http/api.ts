@@ -59,7 +59,7 @@ function getAuthHeaders(): HeadersInit {
  * Authenticated fetch wrapper
  * Automatically includes auth headers for all requests
  */
-async function authFetch(url: string, options?: RequestInit): Promise<Response> {
+export async function authFetch(url: string, options?: RequestInit): Promise<Response> {
   const headers = {
     'Content-Type': 'application/json',
     ...getAuthHeaders(),
