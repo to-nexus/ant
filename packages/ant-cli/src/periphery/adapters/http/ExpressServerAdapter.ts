@@ -1,4 +1,4 @@
-import express, { Express, Request, Response } from 'express';
+import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import { ChildProcess } from 'child_process';
 import * as crypto from 'crypto';
@@ -14,6 +14,7 @@ import {
   WorkflowStateUpdatePort
 } from '../../../core/ports';
 import type { InterruptionDetails } from '../../../core/types';
+import { UserContext } from '../../../core/types/user';
 import * as fs from 'fs';
 import * as path from 'path';
 import { 
@@ -33,9 +34,28 @@ import {
   createDevServerRoutes,
   createProjectRoutes,
   createWorkflowRoutes,
-  createSSERoutes
+  createSSERoutes,
+  createAuthRoutes,
+  createIDERoutes
 } from './routes';
 import { FileJobPrerequisitesAdapter } from '../prerequisites/FileJobPrerequisitesAdapter';
+import { WorkspaceResolver, LocalWorkspaceResolver, CloudWorkspaceResolver } from '../../../infrastructure/workspace/WorkspaceResolver';
+import { AuthService } from '../../../infrastructure/auth/AuthService';
+
+/**
+ * Extended Request with User Context
+ */
+interface RequestWithUser extends Request {
+  user?: {
+    id: string;
+    email: string;
+    organizationId: string;
+  };
+  organization?: {
+    id: string;
+    name: string;
+  };
+}
 
 /**
  * ExpressServerAdapter
@@ -53,8 +73,12 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   // Singleton instance for global access
   private static instance: ExpressServerAdapter | null = null;
   
-  // Workspace root path
-  private readonly WORKSPACE_ROOT = path.join(process.cwd(), '../../workspace');
+  // Mode configuration
+  private readonly mode: 'local' | 'cloud';
+  private readonly WORKSPACE_ROOT: string;
+  private readonly cloudUrl: string;
+  private readonly workspaceResolver: WorkspaceResolver;
+  private readonly authService?: AuthService;
   
   // Services
   private kanbanService: KanbanService;
@@ -379,8 +403,26 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   }
   }
   
-  constructor() {
+  constructor(mode: 'local' | 'cloud' = 'local', workspaceRoot?: string, cloudUrl: string = 'https://ant.nexus.ai') {
     this.app = express();
+    
+    // Mode configuration
+    this.mode = mode;
+    this.WORKSPACE_ROOT = workspaceRoot || path.join(process.cwd(), '../../workspaces');
+    this.cloudUrl = cloudUrl;
+    
+    // Initialize WorkspaceResolver
+    this.workspaceResolver = mode === 'cloud'
+      ? new CloudWorkspaceResolver(this.WORKSPACE_ROOT)
+      : new LocalWorkspaceResolver(this.WORKSPACE_ROOT);
+    
+    // Initialize AuthService for Cloud mode
+    if (mode === 'cloud') {
+      this.authService = new AuthService();
+    }
+    
+    console.log(`[ExpressServerAdapter] Initialized in ${mode.toUpperCase()} mode`);
+    console.log(`   Workspace: ${this.WORKSPACE_ROOT}`);
     
     // Initialize services
     this.kanbanService = new KanbanService(this.WORKSPACE_ROOT);
@@ -466,9 +508,90 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   private setupMiddleware(): void {
     this.app.use(cors());
     this.app.use(express.json({ limit: '50mb' }));
+    
+    // Cloud mode: Add authentication middleware
+    if (this.mode === 'cloud' && this.authService) {
+      this.app.use(async (req: RequestWithUser, res: Response, next: NextFunction) => {
+        // Skip auth for public pages, auth endpoints, and metadata APIs
+        const publicPaths = [
+          '/api/health',
+          '/api/agents',  // Agent list is public
+          '/',
+          '/local',
+          '/api/auth/signup',
+          '/api/auth/signin',
+          '/api/auth/signout'
+        ];
+        
+        // Skip auth for SSE endpoints (EventSource doesn't support headers)
+        // TODO: Implement query-based auth for SSE endpoints
+        const isSSEEndpoint = req.path.includes('/stream');
+        
+        // Also skip auth for graph metadata (read-only metadata)
+        if (publicPaths.includes(req.path) || req.path.includes('/graph-metadata') || isSSEEndpoint) {
+          return next();
+        }
+        
+        try {
+          const email = req.headers['x-user-email'] as string;
+          
+          if (!email) {
+            return res.status(401).json({ 
+              error: 'Authentication required', 
+              message: 'x-user-email header is required in cloud mode' 
+            });
+          }
+          
+          const authContext = await this.authService!.authenticate({ email });
+          
+          // Attach user context to request
+          req.user = authContext.user;
+          req.organization = authContext.organization;
+          
+          console.log(`[Auth] ${authContext.user.id}@${authContext.organization.id}`);
+          
+          next();
+        } catch (error: any) {
+          console.error('[Auth] Authentication failed:', error);
+          return res.status(401).json({ 
+            error: 'Authentication failed', 
+            message: error.message 
+          });
+        }
+      });
+    }
   }
   
   private setupRoutes(): void {
+    // ========================================
+    // Mode-specific Root Routes
+    // ========================================
+    
+    if (this.mode === 'local') {
+      // Local Mode: Redirect root to cloud
+      this.app.get('/', (req: Request, res: Response) => {
+        res.redirect(this.cloudUrl);
+      });
+    } else {
+      // Cloud Mode: Show /local info page
+      this.app.get('/local', (req: Request, res: Response) => {
+        res.send(this.getLocalModeInfoPage());
+      });
+      
+      // Cloud Mode: Root serves the main app (handled by ant-ui)
+      this.app.get('/', (req: Request, res: Response) => {
+        res.json({
+          mode: 'cloud',
+          message: 'ANT Works Cloud Service',
+          documentation: '/local'
+        });
+      });
+    }
+    
+    // ========================================
+    // API Routes
+    // ========================================
+    
     // Internal API for task queue updates (from child processes)
     this.app.post('/api/internal/task-queue', express.json(), (req: Request, res: Response) => {
       const { taskId, currentTask, queue, completedTasks, recursionCount, recursionLimit } = req.body;
@@ -479,13 +602,29 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       res.json({ success: true });
     });
     
+    // Auth routes (Cloud Mode only - public, no auth middleware)
+    if (this.mode === 'cloud' && this.authService) {
+      const authRoutes = createAuthRoutes({
+        authService: this.authService,
+        workspaceResolver: this.workspaceResolver
+      });
+      this.app.use('/api', authRoutes);
+    }
+    
     // Project routes (includes health, agents, projects, features, files, chat)
     const projectRoutes = createProjectRoutes({
       projectService: this.projectService,
       workspaceRoot: this.WORKSPACE_ROOT,
-      chatService: this.chatService
+      chatService: this.chatService,
+      mode: this.mode  // ✅ Pass mode for user-specific project listing
     });
     this.app.use('/api', projectRoutes);
+    
+    // IDE routes (Local Mode only - opens local IDE apps)
+    if (this.mode === 'local') {
+      const ideRoutes = createIDERoutes();
+      this.app.use('/api', ideRoutes);
+    }
     
     // Kanban routes
     const kanbanRoutes = createKanbanRoutes({
@@ -1197,5 +1336,285 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   
   isRunning(): boolean {
     return this.running;
+  }
+  
+  /**
+   * Generate Local Mode Info Page HTML
+   */
+  private getLocalModeInfoPage(): string {
+    return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ANT Works - Local Mode</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+      line-height: 1.6;
+      color: #333;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    
+    .container {
+      max-width: 800px;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      padding: 60px;
+      animation: fadeIn 0.5s ease-out;
+    }
+    
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    h1 {
+      font-size: 2.5em;
+      margin-bottom: 20px;
+      color: #667eea;
+      font-weight: 700;
+    }
+    
+    .subtitle {
+      font-size: 1.2em;
+      color: #666;
+      margin-bottom: 40px;
+    }
+    
+    h2 {
+      font-size: 1.8em;
+      margin-top: 40px;
+      margin-bottom: 20px;
+      color: #333;
+      font-weight: 600;
+      border-bottom: 2px solid #667eea;
+      padding-bottom: 10px;
+    }
+    
+    p {
+      margin-bottom: 20px;
+      font-size: 1.1em;
+      color: #555;
+    }
+    
+    .highlight {
+      background: #f0f4ff;
+      border-left: 4px solid #667eea;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 30px 0;
+    }
+    
+    .highlight p {
+      margin-bottom: 10px;
+    }
+    
+    .highlight p:last-child {
+      margin-bottom: 0;
+    }
+    
+    code {
+      background: #f5f5f5;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.9em;
+      color: #e83e8c;
+    }
+    
+    .code-block {
+      background: #2d2d2d;
+      color: #f8f8f2;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+      overflow-x: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 0.95em;
+      line-height: 1.5;
+    }
+    
+    .btn {
+      display: inline-block;
+      background: #667eea;
+      color: white;
+      padding: 15px 30px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 1.1em;
+      transition: all 0.3s ease;
+      margin-top: 20px;
+    }
+    
+    .btn:hover {
+      background: #5568d3;
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+    
+    ul {
+      list-style: none;
+      padding-left: 0;
+    }
+    
+    li {
+      margin-bottom: 15px;
+      padding-left: 30px;
+      position: relative;
+      font-size: 1.05em;
+      color: #555;
+    }
+    
+    li:before {
+      content: "✓";
+      position: absolute;
+      left: 0;
+      color: #667eea;
+      font-weight: bold;
+      font-size: 1.2em;
+    }
+    
+    .comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin: 30px 0;
+    }
+    
+    .comparison-item {
+      background: #f9f9f9;
+      padding: 20px;
+      border-radius: 8px;
+      border: 2px solid #e0e0e0;
+    }
+    
+    .comparison-item h3 {
+      color: #667eea;
+      margin-bottom: 15px;
+      font-size: 1.3em;
+    }
+    
+    @media (max-width: 768px) {
+      .container {
+        padding: 40px 30px;
+      }
+      
+      h1 {
+        font-size: 2em;
+      }
+      
+      .comparison {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🏠 ANT Works - Local Mode</h1>
+    <p class="subtitle">Run AI-powered development tools on your machine</p>
+    
+    <div class="highlight">
+      <p><strong>⚠️ Important:</strong> Local mode requires running ANT Works on your own machine. This gives you full control over your data and infrastructure.</p>
+    </div>
+    
+    <h2>How to Run Local Mode</h2>
+    
+    <p>Clone the repository and start the server:</p>
+    
+    <div class="code-block">
+# Clone the repository
+git clone https://github.com/to-nexus/ant.git
+cd ant
+
+# Install dependencies
+pnpm install
+
+# Set up environment variables
+cd packages/ant-cli
+cp .env.example .env
+# Edit .env and add your API keys
+
+# Start local server
+pnpm dev:cli
+    </div>
+    
+    <h2>Local vs Cloud Mode</h2>
+    
+    <div class="comparison">
+      <div class="comparison-item">
+        <h3>☁️ Cloud Mode</h3>
+        <ul>
+          <li>Multi-user support</li>
+          <li>No installation needed</li>
+          <li>Managed infrastructure</li>
+          <li>Organization-level isolation</li>
+          <li>Automatic updates</li>
+        </ul>
+      </div>
+      
+      <div class="comparison-item">
+        <h3>💻 Local Mode</h3>
+        <ul>
+          <li>Single user</li>
+          <li>Full data control</li>
+          <li>Customizable setup</li>
+          <li>No network dependency</li>
+          <li>Direct file access</li>
+        </ul>
+      </div>
+    </div>
+    
+    <h2>Key Differences</h2>
+    
+    <ul>
+      <li><strong>Workspace Structure:</strong> Local uses <code>workspace/&lt;project&gt;</code>, Cloud uses <code>workspaces/&lt;org&gt;/&lt;user&gt;/&lt;project&gt;</code></li>
+      <li><strong>Authentication:</strong> Local has no authentication, Cloud requires email-based auth</li>
+      <li><strong>Data Storage:</strong> Local stores on your machine, Cloud stores in managed infrastructure</li>
+      <li><strong>Scaling:</strong> Local is single-user, Cloud supports multiple users and teams</li>
+    </ul>
+    
+    <h2>When to Use Local Mode</h2>
+    
+    <ul>
+      <li>You want complete control over your data and infrastructure</li>
+      <li>You need to work offline or in restricted networks</li>
+      <li>You want to customize the system extensively</li>
+      <li>You're developing or testing ANT Works itself</li>
+      <li>You have specific security or compliance requirements</li>
+    </ul>
+    
+    <div class="highlight">
+      <p><strong>💡 Tip:</strong> Most users should use the Cloud version for easier setup and maintenance. Use Local mode only if you have specific requirements.</p>
+    </div>
+    
+    <a href="https://github.com/to-nexus/ant" class="btn" target="_blank">
+      View on GitHub →
+    </a>
+  </div>
+</body>
+</html>
+    `.trim();
   }
 }

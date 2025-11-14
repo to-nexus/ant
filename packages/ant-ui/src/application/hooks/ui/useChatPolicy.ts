@@ -27,7 +27,7 @@ export interface ChatPolicy {
   canRetry: boolean;  // ✅ Retry 가능 여부
   
   // Metadata
-  reason: 'no-agent' | 'no-workspace' | 'no-project' | 'no-job' | 'ready' | 'job-running' | 'job-failed';
+  reason: 'not-authenticated' | 'no-agent' | 'no-workspace' | 'no-project' | 'no-job' | 'ready' | 'job-running' | 'job-failed';
 }
 
 export function useChatPolicy(messageCount: number = 0, lastJobFailed: boolean = false): ChatPolicy {
@@ -38,12 +38,33 @@ export function useChatPolicy(messageCount: number = 0, lastJobFailed: boolean =
   const isRunning = useStore((state) => state.isRunning);
   const kanbanData = useStore((state) => state.kanban);
   const dismissedInterruptTimestamp = useStore((state) => state.dismissedInterruptTimestamp);
+  const deploymentMode = useStore((state) => state.deploymentMode);
+  const userEmail = useStore((state) => state.userEmail);
+  
+  // ✅ Check authentication status
+  const isAuthenticated = deploymentMode === 'local' || !!userEmail;
   
   // ✅ CRITICAL: Check if job is interrupted (user_stopped, recursion_limit, etc.)
   // Chat doesn't have a dismiss button - it only disappears after successful resume
   const hasInterruption = !isRunning 
     && kanbanData?.interruption?.canResume === true
     && kanbanData?.interruption?.timestamp !== dismissedInterruptTimestamp;  // Only hide after resume success
+
+  // ✅ Not authenticated in cloud mode
+  if (!isAuthenticated) {
+    return {
+      headerText: 'Chat is Offline',
+      isOffline: true,
+      canSendMessage: false,
+      inputPlaceholder: 'Please sign in to start chatting...',
+      emptyStateMessage: 'Please sign in from the navigation bar to continue',
+      readyEmptyStateMessage: null,
+      jobButtonLabel: selectedWorkType || 'Job',
+      canChangeJob: false,
+      canRetry: false,
+      reason: 'not-authenticated'
+    };
+  }
 
   // Agent 미선택
   if (!selectedAgent) {

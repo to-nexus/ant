@@ -25,6 +25,8 @@
  * @see packages/ant-ui/ARCHITECTURE.md
  */
 
+import { getApiBase } from '../http/api';
+
 export type SSEMessageType = 'kanban' | 'chat' | 'fileTree' | 'workflow';
 export type SSEMessageHandler = (data: any) => void;
 
@@ -61,7 +63,6 @@ class SSEManager {
   private handlers: Map<SSEMessageType, SSEMessageHandler[]> = new Map();
   
   private maxReconnectAttempts = 5;
-  private readonly API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4100/api';
   
   /**
    * Register message handler for a specific type
@@ -121,7 +122,7 @@ class SSEManager {
       this.disconnect();
     }
     
-    const url = `${this.API_BASE}/projects/${projectId}/features/${featureName}/stream?job=${job}`;
+    const url = `${getApiBase()}/projects/${projectId}/features/${featureName}/stream?job=${job}`;
     console.log(`[SSEManager] 🔌 Connecting to unified SSE: ${url}`);
     
     try {
@@ -183,7 +184,7 @@ class SSEManager {
       return;
     }
     
-    const url = `${this.API_BASE}/jobs/${jobId}/workflow/stream`;
+    const url = `${getApiBase()}/jobs/${jobId}/workflow/stream`;
     console.log(`[SSEManager] 🔌 Connecting to workflow SSE: ${url}`);
     
     try {

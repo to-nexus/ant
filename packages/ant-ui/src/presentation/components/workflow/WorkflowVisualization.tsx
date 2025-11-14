@@ -22,7 +22,7 @@ import { useGraphMetadata, useGraphLayout } from './hooks';
 import { WorkflowNode, ActorNode } from './nodes';
 import { NodeType } from '@/domain/models/workflow';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4100/api';
+import { fetchProjectConfig } from '@/infrastructure/http/api';
 
 // 커스텀 노드 타입 매핑
 const nodeTypes: NodeTypes = {
@@ -93,9 +93,8 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
   const [config, setConfig] = React.useState<any>(null);
   React.useEffect(() => {
     if (selectedProject) {
-      fetch(`${API_BASE}/projects/${selectedProject}/config`)
-        .then(res => res.ok ? res.json() : null)
-        .then(data => data && setConfig(data))
+      fetchProjectConfig(selectedProject)
+        .then(data => setConfig(data))
         .catch(() => setConfig(null));
     }
   }, [selectedProject]);

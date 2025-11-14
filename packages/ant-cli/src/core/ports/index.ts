@@ -20,4 +20,7 @@ export * from "./kanban";
 export * from "./fileTree";
 export * from "./workflow";
 export * from "./jobPrerequisites";
+export * from "./auth";
+export * from "./queue";
+export * from "./workspace";
 

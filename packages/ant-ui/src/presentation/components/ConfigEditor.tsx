@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ProjectConfig } from '@/infrastructure/http/api';
+import { useStore } from '@/domain/store';
 
 interface ConfigEditorProps {
   config: ProjectConfig;
@@ -29,8 +30,8 @@ const CONFIG_SCHEMA: ConfigField[] = [
     label: 'Repository Type',
     type: 'select',
     required: false,
-    options: ['local', 'github'],
-    description: 'Type of repository (local or GitHub)'
+    options: ['local', 'cloud', 'github'],
+    description: 'Type of repository (local, cloud, or GitHub)'
   },
   {
     key: 'localPath',
@@ -85,15 +86,26 @@ const CONFIG_SCHEMA: ConfigField[] = [
 ];
 
 export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
+  const deploymentMode = useStore((state) => state.deploymentMode);
   const [editedConfig, setEditedConfig] = useState<ProjectConfig>(config);
   const [isSaving, setIsSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [hasChanges, setHasChanges] = useState(false);
 
+  // ✅ Cloud 모드일 때 repoType을 'cloud'로 강제 설정
   useEffect(() => {
-    setEditedConfig(config);
+    if (deploymentMode === 'cloud' && config.repoType !== 'cloud') {
+      const cloudConfig = {
+        ...config,
+        repoType: 'cloud' as const,
+        localPath: undefined  // localPath 제거
+      };
+      setEditedConfig(cloudConfig);
+    } else {
+      setEditedConfig(config);
+    }
     setHasChanges(false);
-  }, [config]);
+  }, [config, deploymentMode]);
 
   // Check for changes whenever editedConfig updates
   useEffect(() => {
@@ -146,6 +158,14 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   const renderField = (field: ConfigField) => {
     const value = editedConfig[field.key];
     const hasError = !!errors[field.key];
+    
+    // ✅ Cloud 모드에서 localPath 필드 숨김
+    if (deploymentMode === 'cloud' && field.key === 'localPath') {
+      return null;
+    }
+    
+    // ✅ Cloud 모드에서 repoType 비활성화 (cloud로 고정)
+    const isRepoTypeDisabled = deploymentMode === 'cloud' && field.key === 'repoType';
 
     return (
       <div key={field.key} className="space-y-2">
@@ -160,7 +180,10 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
         </div>
         
         {field.description && (
-          <p className="text-xs text-gray-500 dark:text-gray-400">{field.description}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            {field.description}
+            {isRepoTypeDisabled && ' (Fixed in Cloud Mode)'}
+          </p>
         )}
         
         {field.type === 'text' && (
@@ -190,6 +213,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
           <select
             value={value as string || ''}
             onChange={(e) => handleChange(field.key, e.target.value || undefined)}
+            disabled={isRepoTypeDisabled}
             className={`w-full px-3 py-2 border rounded-md text-sm 
               bg-white dark:bg-gray-800 
               text-gray-900 dark:text-white
@@ -198,9 +222,10 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
                   ? 'border-red-500 dark:border-red-400' 
                   : 'border-gray-300 dark:border-gray-600'
               } 
+              ${isRepoTypeDisabled ? 'opacity-50 cursor-not-allowed' : ''}
               focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400`}
           >
-            <option value="">-- Select --</option>
+            {!isRepoTypeDisabled && <option value="">-- Select --</option>}
             {field.options?.map(option => (
               <option key={option} value={option}>
                 {option}

@@ -1,8 +1,9 @@
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, LogIn } from 'lucide-react';
 import { Bar } from '../Bar';
 import { ProjectSection } from '../ProjectSection';
 import { FeatureSection } from '../FeatureSection';
 import { ArtifactsPanel } from '../ArtifactsPanel';
+import { useStore } from '@/domain/store';
 
 interface ExplorerPanelProps {
   isCollapsed: boolean;
@@ -25,6 +26,12 @@ export function ExplorerPanel({
   onToggleFileEditor,
   onResizeStart,
 }: ExplorerPanelProps) {
+  const deploymentMode = useStore((state) => state.deploymentMode);
+  const userEmail = useStore((state) => state.userEmail);
+  
+  // Check authentication status
+  const isAuthenticated = deploymentMode === 'local' || !!userEmail;
+  
   if (isCollapsed) return null;
 
   return (
@@ -62,7 +69,17 @@ export function ExplorerPanel({
       })}
       
       <div className="flex-1 px-3 py-3 space-y-3 overflow-y-auto">
-        {connectionStatus === 'connected' ? (
+        {!isAuthenticated ? (
+          <div className="text-center text-gray-400 dark:text-gray-500 mt-8">
+            <div className="text-4xl mb-2">
+              <LogIn className="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600" />
+            </div>
+            <div className="text-sm font-medium mb-1">Sign In Required</div>
+            <div className="text-xs text-gray-400 dark:text-gray-600">
+              Please sign in to access your projects
+            </div>
+          </div>
+        ) : connectionStatus === 'connected' ? (
           <>
             <ProjectSection />
             <FeatureSection />
