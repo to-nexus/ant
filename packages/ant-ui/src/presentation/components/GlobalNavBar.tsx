@@ -1,12 +1,7 @@
-import { useState, useRef, useEffect } from 'react';
-import { Button } from '@/presentation/components/common/button';
-import { Play, Square, Sun, Moon, Monitor, Cloud } from 'lucide-react';
+import { useState } from 'react';
+import { Sun, Moon, Monitor, Cloud } from 'lucide-react';
 import { ConnectionStatus } from './ConnectionStatus';
 import { useStore } from '@/domain/store';
-import { fetchAgents, Agent } from '@/infrastructure/http/api';
-import { capitalize } from '@/shared/utils/text-utils';
-import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
-import { useJobExecution } from '@/application/hooks/features/useJobExecution';
 
 export interface GlobalNavBarProps {
   // ✅ No props needed - uses hooks directly
@@ -19,106 +14,19 @@ export interface GlobalNavBarProps {
  * - App branding
  * - Theme toggle
  * - Connection status
- * - Agent selection and work type selection (code/design/etc)
- * - Run/Stop buttons for agent jobs
+ * - Deployment mode selector
  * 
- * ✅ Uses hooks directly - no props drilling
+ * ✅ Agent/Job selection and Run/Stop are now in Chat UI
  */
 export function GlobalNavBar({}: GlobalNavBarProps) {
   const connectionStatus = useStore((state) => state.connectionStatus);
   const theme = useStore((state) => state.theme);
   const toggleTheme = useStore((state) => state.toggleTheme);
-  const selectedAgent = useStore((state) => state.selectedAgent);
-  const selectedWorkType = useStore((state) => state.selectedWorkType);
-  const setSelectedAgent = useStore((state) => state.setSelectedAgent);
-  const setSelectedWorkType = useStore((state) => state.setSelectedWorkType);
-  
-  // ✅ CRITICAL: Subscribe directly to Store for reactive updates
-  const isRunning = useStore((state) => state.isRunning);
-  const isStopping = useStore((state) => state.isStopping);
-  
-  // ✅ Business logic in custom hook
-  const { runJob, stopJob } = useJobExecution();
-  
-  const policy = useUIActionPolicy();
-  const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
-  const [workTypeDropdownOpen, setWorkTypeDropdownOpen] = useState(false);
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [isLoadingAgents, setIsLoadingAgents] = useState(true);
-  const agentRef = useRef<HTMLDivElement>(null);
-  const workTypeRef = useRef<HTMLDivElement>(null);
   
   // Deployment mode state
   const [deploymentMode, _setDeploymentMode] = useState<'local' | 'cloud'>('local');
   const [showLocalTooltip, setShowLocalTooltip] = useState(false);
   const [showCloudTooltip, setShowCloudTooltip] = useState(false);
-
-  // Fetch agents from API when connected
-  useEffect(() => {
-    if (connectionStatus !== 'connected') {
-      setIsLoadingAgents(false);
-      return;
-    }
-    
-    async function loadAgents() {
-      setIsLoadingAgents(true);
-      try {
-        const agentsData = await fetchAgents();
-        setAgents(agentsData);
-      } catch (error) {
-        console.error('[GlobalNavBar] Failed to load agents:', error);
-        setAgents([]);
-      } finally {
-        setIsLoadingAgents(false);
-      }
-    }
-    loadAgents();
-  }, [connectionStatus]);
-
-  const workTypes = agents.find(a => a.value === selectedAgent)?.tasks || [];
-
-  // Close dropdowns and tooltips when clicking outside
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (agentRef.current && !agentRef.current.contains(event.target as Node)) {
-        setAgentDropdownOpen(false);
-      }
-      if (workTypeRef.current && !workTypeRef.current.contains(event.target as Node)) {
-        setWorkTypeDropdownOpen(false);
-      }
-      // Close tooltips when clicking anywhere
-      const target = event.target as HTMLElement;
-      if (!target.closest('.deployment-mode-selector')) {
-        setShowLocalTooltip(false);
-        setShowCloudTooltip(false);
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const handleAgentChange = (agent: string) => {
-    setSelectedAgent(agent);
-    setAgentDropdownOpen(false);
-    // Reset work type to first available for this agent
-    const agentData = agents.find(a => a.value === agent);
-    const firstWorkType = agentData?.tasks?.[0]?.value;
-    if (firstWorkType) {
-      setSelectedWorkType(firstWorkType);
-    }
-  };
-
-  const handleWorkTypeChange = (workType: string) => {
-    setSelectedWorkType(workType);
-    setWorkTypeDropdownOpen(false);
-  };
-
-  const handleRun = () => {
-    if (selectedAgent && selectedWorkType) {
-      runJob(selectedAgent, selectedWorkType);
-    }
-  };
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-gray-50 dark:bg-[#0d1117] border-b border-gray-300 dark:border-[#30363d] shadow-md transition-colors">
@@ -235,121 +143,6 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
             <div className="w-px h-6 bg-gray-300 dark:bg-gray-600"></div>
             
             <ConnectionStatus status={connectionStatus} />
-            
-            <div className="w-px h-6 bg-gray-300 dark:bg-gray-600"></div>
-            
-            {/* Agent Selection - Compact Inline Design */}
-            <div ref={agentRef} className="relative">
-              <button
-                onClick={() => policy.canChangeAgent && !isLoadingAgents && setAgentDropdownOpen(!agentDropdownOpen)}
-                disabled={!policy.canChangeAgent || isLoadingAgents}
-                title={!policy.canChangeAgent ? policy.disabledReason || undefined : undefined}
-                className="h-10 px-3 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow flex items-center gap-2"
-              >
-                <span className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Agent:
-                </span>
-                <span className="text-sm font-bold text-gray-900 dark:text-white">
-                  {isLoadingAgents 
-                    ? 'Loading...' 
-                    : capitalize(agents.find(a => a.value === selectedAgent)?.label || 'No agents')}
-                </span>
-              </button>
-              {agentDropdownOpen && !isLoadingAgents && agents.length > 0 && (
-                <div className="absolute top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg z-50 overflow-hidden">
-                  {agents.map((agent) => (
-                    <button
-                      key={agent.value}
-                      onClick={() => agent.enabled && handleAgentChange(agent.value)}
-                      disabled={!agent.enabled}
-                      className={`w-full px-3 py-2 text-left text-sm transition-colors ${
-                        !agent.enabled
-                          ? 'bg-gray-50 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-60'
-                          : selectedAgent === agent.value
-                          ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 font-semibold'
-                          : 'text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span>{agent.label}</span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Job Type Selection - Compact Inline Design */}
-            <div ref={workTypeRef} className="relative">
-              <button
-                onClick={() => policy.canChangeWorkType && setWorkTypeDropdownOpen(!workTypeDropdownOpen)}
-                disabled={!policy.canChangeWorkType}
-                title={!policy.canChangeWorkType ? policy.disabledReason || undefined : undefined}
-                className="h-10 px-3 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow flex items-center gap-2"
-              >
-                <span className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Job:
-                </span>
-                <span className="text-sm font-bold text-gray-900 dark:text-white">
-                  {capitalize(workTypes.find(t => t.value === selectedWorkType)?.label || '')}
-                </span>
-              </button>
-              {workTypeDropdownOpen && (
-                <div className="absolute top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg z-50 overflow-hidden">
-                  {workTypes.map((workType) => (
-                    <button
-                      key={workType.value}
-                      onClick={() => handleWorkTypeChange(workType.value)}
-                      className={`w-full px-3 py-2 text-left text-sm transition-colors ${
-                        selectedWorkType === workType.value 
-                          ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 font-semibold' 
-                          : 'text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700'
-                      }`}
-                    >
-                      {workType.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            
-            <Button
-              onClick={handleRun}
-              disabled={!policy.canRun}
-              variant="primary"
-              size="default"
-              className={`flex items-center space-x-2 transition-all ${
-                (isRunning && !isStopping)
-                  ? 'bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-500 bg-[length:200%_100%] animate-gradient text-white cursor-not-allowed shadow-lg' 
-                  : ''
-              }`}
-            >
-              {isRunning && !isStopping ? (
-                <>
-                  <div className="relative flex h-4 w-4">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-4 w-4 bg-white"></span>
-                  </div>
-                  <span className="font-semibold">Running...</span>
-                </>
-              ) : (
-                <>
-                  <Play className="w-4 h-4" />
-                  <span>Run</span>
-                </>
-              )}
-            </Button>
-            
-            <Button
-              onClick={stopJob}
-              disabled={!policy.canStop}
-              variant="outline"
-              size="default"
-              className="flex items-center space-x-2"
-            >
-              <Square className="w-4 h-4" />
-              <span>{isStopping ? 'Stopping...' : 'Stop'}</span>
-            </Button>
           </div>
         </div>
       </div>

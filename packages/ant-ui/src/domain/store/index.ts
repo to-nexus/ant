@@ -80,7 +80,7 @@ interface StoreActions {
   setSelectedAgent: (agent: string) => void;
   setSelectedWorkType: (workType: string) => void;
   fetchFeatures: () => Promise<void>;
-  selectFile: (filePath: string) => void;
+  selectFile: (filePath: string | undefined) => void;
   setFeatures: (features: Feature[]) => void;
   setFileTree: (tree: FileNode[]) => void;
   refreshFileTree: () => Promise<void>;
@@ -597,8 +597,19 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
-  selectFile: (filePath: string) => {
-    set({ selectedFile: filePath });
+  selectFile: (filePath: string | undefined) => {
+    if (filePath === undefined) {
+      // 명시적으로 선택 해제
+      set({ selectedFile: undefined });
+    } else {
+      const { selectedFile } = get();
+      // Toggle: 같은 파일을 다시 클릭하면 선택 해제
+      if (selectedFile === filePath) {
+        set({ selectedFile: undefined });
+      } else {
+        set({ selectedFile: filePath });
+      }
+    }
   },
 
   setFeatures: (features: Feature[]) => {

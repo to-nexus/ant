@@ -20,6 +20,7 @@ function App() {
   // ✅ Development: Render tracking for debugging
   const renderCountRef = useRef(0);
   const prevPropsRef = useRef<Record<string, any>>({});
+  const prevSelectedFileRef = useRef<string | undefined>(undefined);
   renderCountRef.current += 1;
   
   // ✅ Layout state management (extracted to hook)
@@ -52,6 +53,7 @@ function App() {
   const showFileEditor = useStore((state) => state.showFileEditor);
   const setShowConfigEditor = useStore((state) => state.setShowConfigEditor);
   const setShowFileEditor = useStore((state) => state.setShowFileEditor);
+  const selectFile = useStore((state) => state.selectFile);
   const setSession = useStore((state) => state.setSession);
   const splitLayout = useStore((state) => state.splitLayout);
   
@@ -141,11 +143,21 @@ function App() {
     loadSession();
   }, [selectedProject, selectedFeature, isRunning, setSession]);
 
-  // Auto-open file editor when file is selected
+  // Auto-open/close file editor when file is selected/deselected
   useEffect(() => {
-    if (selectedFile && !showFileEditor) {
+    const prevFile = prevSelectedFileRef.current;
+    const fileChanged = prevFile !== selectedFile;
+    
+    if (selectedFile && fileChanged) {
+      // 새 파일이 선택되면 에디터 자동 열기 (토글로 닫은 경우는 존중)
       setShowFileEditor(true);
+    } else if (!selectedFile && showFileEditor) {
+      // 파일이 선택 해제되면 에디터 자동 닫기
+      setShowFileEditor(false);
     }
+    
+    // 현재 파일을 다음 비교를 위해 저장
+    prevSelectedFileRef.current = selectedFile;
   }, [selectedFile, showFileEditor, setShowFileEditor]);
 
   return (
@@ -192,7 +204,10 @@ function App() {
           onCloseConfig={() => setShowConfigEditor(false)}
           showFileEditor={showFileEditor}
           selectedFile={selectedFile || null}
-          onCloseFileEditor={() => setShowFileEditor(false)}
+          onCloseFileEditor={() => {
+            // 에디터 닫기 버튼: 에디터 닫고 + 파일 선택 해제
+            selectFile(undefined);
+          }}
           connectionStatus={connectionStatus}
           splitLayout={splitLayout}
           kanbanData={kanbanData}
