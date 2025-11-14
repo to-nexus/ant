@@ -180,8 +180,8 @@ export function useUIActionPolicy(): UIActionPolicy {
  * Example Usage:
  * 
  * ```typescript
- * // In ProjectDropdown.tsx
- * export function ProjectDropdown() {
+ * // In ProjectSection.tsx
+ * export function ProjectSection() {
  *   const policy = useUIActionPolicy();
  *   
  *   return (

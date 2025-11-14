@@ -49,6 +49,8 @@ interface StoreState {
   devServerStatus: DevServerStatus | undefined;
   theme: 'light' | 'dark';
   splitLayout: 'horizontal' | 'vertical';
+  editorMode: 'agents' | 'editor';  // ✅ Editor mode toggle
+  ideWorkspacePath: string | undefined;  // ✅ IDE workspace path (for folder parameter)
 }
 
 interface StoreActions {
@@ -100,6 +102,8 @@ interface StoreActions {
   toggleTheme: () => void;
   setTheme: (theme: 'light' | 'dark') => void;
   toggleSplitLayout: (layout: 'horizontal' | 'vertical') => void;
+  setEditorMode: (mode: 'agents' | 'editor') => void;  // ✅ Set editor mode
+  setIdeWorkspacePath: (path: string | undefined) => void;  // ✅ Set IDE workspace path
 }
 
 type Store = StoreState & StoreActions;
@@ -114,6 +118,7 @@ const STORAGE_KEYS = {
   SELECTED_AGENT: 'ant-ui:selected-agent',
   SELECTED_WORK_TYPE: 'ant-ui:selected-work-type',
   THEME: 'ant-ui:theme',
+  EDITOR_MODE: 'ant-ui:editor-mode',
 };
 
 // Helper functions for localStorage
@@ -197,6 +202,8 @@ export const useStore = create<Store>((set, get) => ({
   devServerStatus: undefined,
   theme: getInitialTheme(),
   splitLayout: 'vertical',
+  editorMode: (localStorage.getItem(STORAGE_KEYS.EDITOR_MODE) as 'agents' | 'editor') || 'agents',
+  ideWorkspacePath: undefined,
 
   // ==================
   // SSE Update Actions
@@ -760,6 +767,21 @@ export const useStore = create<Store>((set, get) => ({
 
   toggleSplitLayout: (layout: 'horizontal' | 'vertical') => {
     set({ splitLayout: layout });
+  },
+  
+  // ==================
+  // Editor Mode
+  // ==================
+  setEditorMode: (mode: 'agents' | 'editor') => {
+    set({ editorMode: mode });
+    saveToStorage(STORAGE_KEYS.EDITOR_MODE, mode);
+  },
+  
+  // ==================
+  // IDE Workspace Path
+  // ==================
+  setIdeWorkspacePath: (path: string | undefined) => {
+    set({ ideWorkspacePath: path });
   },
 }));
 

@@ -1,3 +1,6 @@
 packages:
   - 'packages/*'
+  # ant-cli: AI workflow backend
+  # ant-ui: Frontend UI
+  # ant-ide: code-server wrapper
 

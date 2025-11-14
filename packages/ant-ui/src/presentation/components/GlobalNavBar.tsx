@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Sun, Moon, Monitor, Cloud } from 'lucide-react';
+import { Sun, Moon, Monitor, Cloud, Bot, Code2 } from 'lucide-react';
 import { ConnectionStatus } from './ConnectionStatus';
 import { useStore } from '@/domain/store';
 
@@ -22,6 +22,8 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
   const connectionStatus = useStore((state) => state.connectionStatus);
   const theme = useStore((state) => state.theme);
   const toggleTheme = useStore((state) => state.toggleTheme);
+  const editorMode = useStore((state) => state.editorMode);
+  const setEditorMode = useStore((state) => state.setEditorMode);
   
   // Deployment mode state
   const [deploymentMode, _setDeploymentMode] = useState<'local' | 'cloud'>('local');
@@ -113,6 +115,39 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
                   </div>
                 )}
               </div>
+            </div>
+            
+            {/* Editor Mode Selector */}
+            <div className="editor-mode-selector flex items-center gap-1 ml-4 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
+              {/* Agents Button */}
+              <button
+                onClick={() => setEditorMode('agents')}
+                className={`
+                  px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5
+                  ${editorMode === 'agents'
+                    ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-white shadow-md border border-blue-200 dark:border-transparent'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                  }
+                `}
+              >
+                <Bot className="w-3.5 h-3.5" />
+                Agents
+              </button>
+              
+              {/* Editor Button */}
+              <button
+                onClick={() => setEditorMode('editor')}
+                className={`
+                  px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5
+                  ${editorMode === 'editor'
+                    ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-white shadow-md border border-blue-200 dark:border-transparent'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                  }
+                `}
+              >
+                <Code2 className="w-3.5 h-3.5" />
+                Editor
+              </button>
             </div>
           </div>
           

@@ -5,7 +5,7 @@ import { createFeature, deleteFeature, startDevServer, stopDevServer, getDevServ
 import { ItemDropdown } from './ItemDropdown';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 
-export function FeatureDropdown() {
+export function FeatureSection() {
   const { 
     features, 
     selectedProject, 
@@ -40,7 +40,7 @@ export function FeatureDropdown() {
         const status = await getDevServerStatus(selectedProject);
         setDevServerStatus(status);
       } catch (error) {
-        console.error('[FeatureDropdown] Failed to get initial status:', error);
+        console.error('[FeatureSection] Failed to get initial status:', error);
       }
     };
     
@@ -59,7 +59,7 @@ export function FeatureDropdown() {
         const status = await getDevServerStatus(selectedProject);
         setDevServerStatus(status);
       } catch (error) {
-        console.error('[FeatureDropdown] Failed to fetch dev server status:', error);
+        console.error('[FeatureSection] Failed to fetch dev server status:', error);
       }
     };
     
@@ -95,7 +95,7 @@ export function FeatureDropdown() {
       await stopDevServer(selectedProject);
       // Status will be updated by polling
     } catch (error: any) {
-      console.error('[FeatureDropdown] Failed to stop dev server:', error);
+      console.error('[FeatureSection] Failed to stop dev server:', error);
       alert(`Failed to stop dev server: ${error.message}`);
     }
   };
@@ -203,3 +203,4 @@ export function FeatureDropdown() {
     </div>
   );
 }
+
