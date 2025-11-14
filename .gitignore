@@ -20,6 +20,7 @@ packages/*/build/
 *.swp
 *.swo
 *~
+.openvscode-server/
 
 # OS
 .DS_Store
