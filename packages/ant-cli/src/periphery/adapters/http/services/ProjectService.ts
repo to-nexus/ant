@@ -9,24 +9,55 @@ import * as path from 'path';
  */
 export class ProjectService {
   private readonly workspaceRoot: string;
+  private currentWorkspacePath: string;  // ✅ Current active workspace path (changes for Cloud Mode users)
   
   constructor(workspaceRoot: string) {
     this.workspaceRoot = workspaceRoot;
+    this.currentWorkspacePath = workspaceRoot;  // Default to root
   }
   
   /**
-   * List all projects
+   * Set the current workspace path (for Cloud Mode user-specific workspace)
+   */
+  setWorkspacePath(workspacePath: string): void {
+    this.currentWorkspacePath = workspacePath;
+  }
+  
+  /**
+   * Get the current workspace path
+   */
+  getWorkspacePath(): string {
+    return this.currentWorkspacePath;
+  }
+  
+  /**
+   * Reset to default workspace root
+   */
+  resetWorkspacePath(): void {
+    this.currentWorkspacePath = this.workspaceRoot;
+  }
+  
+  /**
+   * List all projects (uses current workspace path)
    */
   async listProjects(): Promise<string[]> {
     try {
-      const projects = await fs.promises.readdir(this.workspaceRoot);
+      // Check if workspace exists
+      try {
+        await fs.promises.access(this.currentWorkspacePath);
+      } catch {
+        // Workspace doesn't exist, return empty array
+        return [];
+      }
+      
+      const projects = await fs.promises.readdir(this.currentWorkspacePath);
       
       // Filter out hidden files and get only directories
       const projectDirs = await Promise.all(
         projects
           .filter(p => !p.startsWith('.'))
           .map(async (p) => {
-            const stat = await fs.promises.stat(path.join(this.workspaceRoot, p));
+            const stat = await fs.promises.stat(path.join(this.currentWorkspacePath, p));
             return stat.isDirectory() ? p : null;
           })
       );
@@ -34,6 +65,39 @@ export class ProjectService {
       return projectDirs.filter(Boolean) as string[];
     } catch (error: any) {
       throw new Error(`Failed to list projects: ${error.message}`);
+    }
+  }
+  
+  /**
+   * List projects in a specific path (Cloud Mode)
+   * 
+   * @param workspacePath - User's workspace path (e.g., workspaces/nexus/alice)
+   */
+  async listProjectsInPath(workspacePath: string): Promise<string[]> {
+    try {
+      // Check if directory exists
+      try {
+        await fs.promises.access(workspacePath);
+      } catch {
+        // Directory doesn't exist, return empty array
+        return [];
+      }
+      
+      const projects = await fs.promises.readdir(workspacePath);
+      
+      // Filter out hidden files and get only directories
+      const projectDirs = await Promise.all(
+        projects
+          .filter(p => !p.startsWith('.'))
+          .map(async (p) => {
+            const stat = await fs.promises.stat(path.join(workspacePath, p));
+            return stat.isDirectory() ? p : null;
+          })
+      );
+      
+      return projectDirs.filter(Boolean) as string[];
+    } catch (error: any) {
+      throw new Error(`Failed to list projects in ${workspacePath}: ${error.message}`);
     }
   }
   
@@ -50,7 +114,9 @@ export class ProjectService {
   }
 
   /**
-   * Create a new project
+   * Create a new project (uses current workspace path)
+   * 
+   * @param id - Project ID
    */
   async createProject(id: string): Promise<void> {
     // Validate project ID (no special characters except hyphens and underscores)
@@ -58,7 +124,7 @@ export class ProjectService {
       throw new Error('Project ID can only contain letters, numbers, hyphens, and underscores');
     }
     
-    const projectPath = path.join(this.workspaceRoot, id);
+    const projectPath = path.join(this.currentWorkspacePath, id);
     
     // Check if project already exists
     try {
@@ -84,15 +150,30 @@ export class ProjectService {
     const llmProvider = process.env.AI_MODEL_PROVIDER || process.env.MODEL_PROVIDER || 'openai';
     const llmModel = process.env.AI_MODEL_NAME || process.env.MODEL_NAME;
     
-    const defaultConfig = {
+    // ✅ Determine if Cloud Mode (workspace path differs from root)
+    const isCloudMode = this.currentWorkspacePath !== this.workspaceRoot;
+    
+    console.log('[ProjectService] Creating project config:');
+    console.log('  - currentWorkspacePath:', this.currentWorkspacePath);
+    console.log('  - workspaceRoot:', this.workspaceRoot);
+    console.log('  - isCloudMode:', isCloudMode);
+    
+    // ✅ Create config based on mode
+    const defaultConfig: any = {
       projectName: sanitizedName,
-      repoType: 'local',
-      localPath: `~/dev/${sanitizedName}`,
+      repoType: isCloudMode ? 'cloud' : 'local',  // 'local' | 'cloud' | 'github'
       branchBase: 'main',
       autoLearn: true,
       llmProvider,  // ✅ Add LLM provider from env
       llmModel      // ✅ Add LLM model from env
     };
+    
+    // ✅ Only add localPath for local mode
+    if (!isCloudMode) {
+      defaultConfig.localPath = `~/dev/${sanitizedName}`;
+    }
+    
+    console.log('[ProjectService] Config to be created:', JSON.stringify(defaultConfig, null, 2));
     
     await fs.promises.writeFile(configPath, JSON.stringify(defaultConfig, null, 2));
   }
@@ -101,7 +182,7 @@ export class ProjectService {
    * Delete a project
    */
   async deleteProject(id: string): Promise<void> {
-    const projectPath = path.join(this.workspaceRoot, id);
+    const projectPath = path.join(this.currentWorkspacePath, id);
     
     // Check if project exists
     try {
@@ -118,7 +199,7 @@ export class ProjectService {
    * Get project config
    */
   async getProjectConfig(projectId: string): Promise<any> {
-    const configPath = path.join(this.workspaceRoot, projectId, 'config.json');
+    const configPath = path.join(this.currentWorkspacePath, projectId, 'config.json');
     
     // Check if config exists
     try {
@@ -149,7 +230,7 @@ export class ProjectService {
    * Update project config
    */
   async updateProjectConfig(projectId: string, config: any): Promise<void> {
-    const configPath = path.join(this.workspaceRoot, projectId, 'config.json');
+    const configPath = path.join(this.currentWorkspacePath, projectId, 'config.json');
     
     // Validate required fields
     if (!config.projectName || !config.branchBase) {
@@ -169,7 +250,7 @@ export class ProjectService {
    */
   async getSession(projectId: string, featureName: string = 'skeleton', job: 'design' | 'code' | 'learn' = 'code'): Promise<any> {
     const sessionPath = path.join(
-      this.workspaceRoot,
+      this.currentWorkspacePath,
       projectId,
       featureName,
       `sessions/${job}.json`
@@ -193,7 +274,7 @@ export class ProjectService {
    */
   async resetJobState(projectId: string, featureName: string, job: 'design' | 'code' | 'learn' = 'code'): Promise<void> {
     const sessionPath = path.join(
-      this.workspaceRoot,
+      this.currentWorkspacePath,
       projectId,
       featureName,
       `sessions/${job}.json`
@@ -242,7 +323,7 @@ export class ProjectService {
    * Get file tree for a project
    */
   async getFileTree(projectId: string, featureName: string = 'skeleton'): Promise<any> {
-    const featurePath = path.join(this.workspaceRoot, projectId, featureName);
+    const featurePath = path.join(this.currentWorkspacePath, projectId, featureName);
     
     const buildTree = async (currentPath: string, relativePath: string = ''): Promise<any> => {
       const entries = await fs.promises.readdir(currentPath, { withFileTypes: true });
@@ -287,7 +368,7 @@ export class ProjectService {
    * Read a file
    */
   async readFile(projectId: string, featureName: string, filePath: string): Promise<string> {
-    const fullPath = path.join(this.workspaceRoot, projectId, featureName, filePath);
+    const fullPath = path.join(this.currentWorkspacePath, projectId, featureName, filePath);
     
     try {
       await fs.promises.access(fullPath);
@@ -302,7 +383,7 @@ export class ProjectService {
    * Write a file
    */
   async writeFile(projectId: string, featureName: string, filePath: string, content: string): Promise<void> {
-    const fullPath = path.join(this.workspaceRoot, projectId, featureName, filePath);
+    const fullPath = path.join(this.currentWorkspacePath, projectId, featureName, filePath);
     
     // Ensure parent directory exists
     await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
@@ -314,7 +395,7 @@ export class ProjectService {
    * List features for a project
    */
   async listFeatures(projectId: string): Promise<string[]> {
-    const projectPath = path.join(this.workspaceRoot, projectId);
+    const projectPath = path.join(this.currentWorkspacePath, projectId);
     
     try {
       const entries = await fs.promises.readdir(projectPath, { withFileTypes: true });
@@ -336,7 +417,7 @@ export class ProjectService {
    * Create a feature directory structure
    */
   async createFeature(projectId: string, featureName: string): Promise<void> {
-    const featurePath = path.join(this.workspaceRoot, projectId, featureName);
+    const featurePath = path.join(this.currentWorkspacePath, projectId, featureName);
     
     // Check if feature already exists
     try {
@@ -355,6 +436,23 @@ export class ProjectService {
     await fs.promises.mkdir(path.join(featurePath, 'outputs/design'), { recursive: true });
     await fs.promises.mkdir(path.join(featurePath, 'outputs/reports'), { recursive: true });
     await fs.promises.mkdir(path.join(featurePath, 'sessions'), { recursive: true });  // ✅ Add sessions directory
+  }
+  
+  /**
+   * Delete a feature (respects currentWorkspacePath for Cloud Mode)
+   */
+  async deleteFeature(projectId: string, featureName: string): Promise<void> {
+    const featurePath = path.join(this.currentWorkspacePath, projectId, featureName);
+    
+    // Check if feature exists
+    try {
+      await fs.promises.access(featurePath);
+    } catch (error: any) {
+      throw new Error('Feature not found');
+    }
+    
+    // Delete feature directory recursively
+    await fs.promises.rm(featurePath, { recursive: true, force: true });
   }
   
   /**

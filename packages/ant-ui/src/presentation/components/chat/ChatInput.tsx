@@ -9,7 +9,9 @@ import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
 import { fetchAgents, type Agent } from '@/infrastructure/http/api';
 import type { FileStats } from '@/domain/models/chat';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4100/api';
+import { getApiBase } from '@/infrastructure/http/api';
+
+const API_BASE = () => getApiBase();
 
 interface ChatInputProps {
   disabled?: boolean;
@@ -24,13 +26,25 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   const setSelectedAgent = useStore((state) => state.setSelectedAgent);  // ✅ Add setter for agent
   const isRunning = useStore((state) => state.isRunning);
   const isStopping = useStore((state) => state.isStopping);  // ✅ Use global state
+  const deploymentMode = useStore((state) => state.deploymentMode);
+  const userEmail = useStore((state) => state.userEmail);
   const [showJobMenu, setShowJobMenu] = useState(false);
   const [showAgentMenu, setShowAgentMenu] = useState(false);  // ✅ Agent menu state
   const [message, setMessage] = useState('');
-  const [agents, setAgents] = useState<Agent[]>([]);
+  // ✅ Initialize agents with default to prevent empty state
+  const [agents, setAgents] = useState<Agent[]>([
+    { value: 'architect', label: 'Architect', enabled: true, tasks: [
+      { value: 'code', label: 'Code' },
+      { value: 'design', label: 'Design' },
+      { value: 'learn', label: 'Learn' }
+    ]}
+  ]);
   const [showFileList, setShowFileList] = useState(false);  // ✅ Cursor-style file list toggle
   const menuRef = useRef<HTMLDivElement>(null);
   const agentMenuRef = useRef<HTMLDivElement>(null);  // ✅ Agent menu ref
+  
+  // ✅ Check authentication status
+  const isAuthenticated = deploymentMode === 'local' || !!userEmail;
   
   // ✅ Use Chat Policy for UI states (메시지 개수 전달)
   const chatPolicy = useChatPolicy(messageCount);
@@ -43,7 +57,14 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
         setAgents(agentsData);
       } catch (error) {
         console.error('[ChatInput] Failed to load agents:', error);
-        setAgents([]);
+        // ✅ Provide default agents when API fails
+        setAgents([
+          { value: 'architect', label: 'Architect', enabled: true, tasks: [
+            { value: 'code', label: 'Code' },
+            { value: 'design', label: 'Design' },
+            { value: 'learn', label: 'Learn' }
+          ]}
+        ]);
       }
     }
     loadAgents();
@@ -230,7 +251,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
       try {
         // ✅ 1. Add user message to chat history first
         await fetch(
-          `${API_BASE}/projects/${selectedProject}/features/${selectedFeature}/chat/user-message`,
+          `${API_BASE()}/projects/${selectedProject}/features/${selectedFeature}/chat/user-message`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -279,7 +300,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
     try {
       // ✅ 1. Add user message to chat history first
       const userMessageResponse = await fetch(
-        `${API_BASE}/projects/${selectedProject}/features/${selectedFeature}/chat/user-message`,
+        `${API_BASE()}/projects/${selectedProject}/features/${selectedFeature}/chat/user-message`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -295,7 +316,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
       try {
         // Start assistant message placeholder (without real jobId yet)
         const startResponse = await fetch(
-          `${API_BASE}/projects/${selectedProject}/features/${selectedFeature}/chat/start-message`,
+          `${API_BASE()}/projects/${selectedProject}/features/${selectedFeature}/chat/start-message`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -354,7 +375,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
             const jobId = useStore.getState().currentJobId;
             if (jobId) {
               await fetch(
-                `${API_BASE}/projects/${selectedProject}/features/${selectedFeature}/chat/job-error`,
+                `${API_BASE()}/projects/${selectedProject}/features/${selectedFeature}/chat/job-error`,
                 {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -384,6 +405,73 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   // Calculate file stats summary for display
   const hasFileChanges = fileStats && (fileStats.filesEdited > 0 || fileStats.filesCreated > 0 || fileStats.filesDeleted > 0);
   const totalChangedFiles = (fileStats?.filesCreated || 0) + (fileStats?.filesEdited || 0) + (fileStats?.filesDeleted || 0);
+
+  // ✅ Show placeholder if not authenticated in cloud mode
+  if (!isAuthenticated) {
+    return (
+      <div className="p-3 relative">
+        <div className="bg-white dark:bg-gray-800 
+                        border border-gray-200 dark:border-gray-700 
+                        rounded-lg shadow-sm overflow-hidden">
+          <textarea
+            className="w-full px-3 py-2.5 
+                       bg-gray-50 dark:bg-gray-900/50
+                       text-gray-400 dark:text-gray-500
+                       text-sm leading-relaxed 
+                       focus:outline-none
+                       resize-none border-none
+                       cursor-not-allowed"
+            placeholder="Please sign in to start chatting..."
+            rows={3}
+            disabled
+            readOnly
+          />
+          
+          <div className="flex items-center justify-between px-2 py-1.5 
+                          border-t border-gray-200 dark:border-gray-700
+                          bg-gray-50 dark:bg-gray-800/50">
+            <div className="flex items-center gap-2">
+              <button
+                disabled
+                className="flex items-center gap-1 px-2 py-1 text-xs
+                           bg-gray-100 dark:bg-gray-700 
+                           border border-gray-300 dark:border-gray-600
+                           text-gray-400 dark:text-gray-500
+                           rounded cursor-not-allowed opacity-50"
+              >
+                <span>🤖 Agent</span>
+                <ChevronDown className="w-3 h-3" />
+              </button>
+              
+              <button
+                disabled
+                className="flex items-center gap-1 px-2 py-1 text-xs
+                           bg-gray-100 dark:bg-gray-700 
+                           border border-gray-300 dark:border-gray-600
+                           text-gray-400 dark:text-gray-500
+                           rounded cursor-not-allowed opacity-50"
+              >
+                <span>🎯 Job</span>
+                <ChevronDown className="w-3 h-3" />
+              </button>
+            </div>
+            
+            <button
+              disabled
+              className="flex items-center gap-1.5 px-2.5 py-1.5 
+                         bg-gray-300 dark:bg-gray-700 
+                         text-gray-400 dark:text-gray-500
+                         text-xs font-medium rounded-lg
+                         cursor-not-allowed opacity-50"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>Send</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-3 relative">
@@ -541,50 +629,50 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
               )}
             </div>
 
-            {/* Job Selector - Compact */}
-            <div className="relative" ref={menuRef}>
-              <button
-                onClick={() => setShowJobMenu(!showJobMenu)}
-                disabled={!chatPolicy.canChangeJob}
-                className="flex items-center gap-1 px-2 py-1 text-xs
-                           bg-white dark:bg-gray-700 
-                           border border-gray-300 dark:border-gray-600
-                           text-gray-700 dark:text-gray-200
-                           rounded hover:bg-gray-100 dark:hover:bg-gray-600 
-                           transition-colors
-                           disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <span>
-                  {chatPolicy.reason === 'no-job' ? '🎯 Job' : (currentJob?.label || '🎯 Job')}
-                </span>
-                <ChevronDown className={`w-3 h-3 text-gray-500 dark:text-gray-400 transition-transform ${showJobMenu ? 'rotate-180' : ''}`} />
-              </button>
+          {/* Job Selector - Compact */}
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setShowJobMenu(!showJobMenu)}
+              disabled={!chatPolicy.canChangeJob}
+              className="flex items-center gap-1 px-2 py-1 text-xs
+                         bg-white dark:bg-gray-700 
+                         border border-gray-300 dark:border-gray-600
+                         text-gray-700 dark:text-gray-200
+                         rounded hover:bg-gray-100 dark:hover:bg-gray-600 
+                         transition-colors
+                         disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span>
+                {chatPolicy.reason === 'no-job' ? '🎯 Job' : (currentJob?.label || '🎯 Job')}
+              </span>
+              <ChevronDown className={`w-3 h-3 text-gray-500 dark:text-gray-400 transition-transform ${showJobMenu ? 'rotate-180' : ''}`} />
+            </button>
 
-              {/* Job Menu - Compact */}
-              {showJobMenu && jobsWithMetadata.length > 0 && (
-                <div className="absolute bottom-full left-0 mb-1 w-48 
-                                bg-white dark:bg-gray-800 
-                                border border-gray-300 dark:border-gray-600 
-                                rounded-lg shadow-lg z-50 overflow-hidden">
-                  {jobsWithMetadata.map((job: { value: string; label: string; description: string }) => (
-                    <button
-                      key={job.value}
-                      onClick={() => handleJobSelect(job.value)}
-                      className={`w-full px-2.5 py-1.5 text-left text-xs 
-                                 hover:bg-gray-100 dark:hover:bg-gray-700 
-                                 transition-colors flex flex-col gap-0.5
-                                 text-gray-900 dark:text-gray-100 ${
-                        job.value === selectedWorkType 
-                          ? 'bg-blue-50 dark:bg-blue-900/20 border-l-2 border-blue-500 dark:border-blue-400' 
-                          : ''
-                      }`}
-                    >
-                      <span className="font-medium">{job.label}</span>
-                      <span className="text-[10px] text-gray-500 dark:text-gray-400">{job.description}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
+            {/* Job Menu - Compact */}
+            {showJobMenu && jobsWithMetadata.length > 0 && (
+              <div className="absolute bottom-full left-0 mb-1 w-48 
+                              bg-white dark:bg-gray-800 
+                              border border-gray-300 dark:border-gray-600 
+                              rounded-lg shadow-lg z-50 overflow-hidden">
+                {jobsWithMetadata.map((job: { value: string; label: string; description: string }) => (
+                  <button
+                    key={job.value}
+                    onClick={() => handleJobSelect(job.value)}
+                    className={`w-full px-2.5 py-1.5 text-left text-xs 
+                               hover:bg-gray-100 dark:hover:bg-gray-700 
+                               transition-colors flex flex-col gap-0.5
+                               text-gray-900 dark:text-gray-100 ${
+                      job.value === selectedWorkType 
+                        ? 'bg-blue-50 dark:bg-blue-900/20 border-l-2 border-blue-500 dark:border-blue-400' 
+                        : ''
+                    }`}
+                  >
+                    <span className="font-medium">{job.label}</span>
+                    <span className="text-[10px] text-gray-500 dark:text-gray-400">{job.description}</span>
+                  </button>
+                ))}
+              </div>
+            )}
             </div>
           </div>
 

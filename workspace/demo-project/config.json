@@ -1,9 +1,0 @@
-{
-  "projectName": "demo-project",
-  "repoType": "local",
-  "localPath": "~/dev/demo-project",
-  "branchBase": "main",
-  "autoLearn": true,
-  "llmProvider": "anthropic",
-  "llmModel": "claude-sonnet-4-5"
-}

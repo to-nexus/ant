@@ -86,10 +86,18 @@ export function useUIActionPolicy(): UIActionPolicy {
   const isDisconnected = useStore(state => state.connectionStatus === 'disconnected');
   const selectedProject = useStore(state => state.selectedProject);
   const selectedFeature = useStore(state => state.selectedFeature);
+  const deploymentMode = useStore(state => state.deploymentMode);
+  const userEmail = useStore(state => state.userEmail);
   
   // ============================================
   // Policy Rules (정책 규칙)
   // ============================================
+  
+  /**
+   * Rule 0: Cloud 모드에서 비로그인 시 모든 액션 불가
+   * - deploymentMode === 'cloud' && !userEmail → 모든 액션 비활성화
+   */
+  const isAuthenticated = deploymentMode === 'local' || !!userEmail;
   
   /**
    * Rule 1: 작업 진행 중에는 모든 선택 변경 불가
@@ -101,7 +109,7 @@ export function useUIActionPolicy(): UIActionPolicy {
    * Rule 2: 서버 연결 끊김 시 모든 액션 불가
    * - isDisconnected → 모든 액션 비활성화
    */
-  const canPerformAnyAction = !isDisconnected;
+  const canPerformAnyAction = !isDisconnected && isAuthenticated;
   
   /**
    * Rule 3: Run 실행 조건
@@ -126,7 +134,9 @@ export function useUIActionPolicy(): UIActionPolicy {
   // ============================================
   let disabledReason: string | null = null;
   
-  if (isDisconnected) {
+  if (!isAuthenticated) {
+    disabledReason = 'Please sign in to continue';
+  } else if (isDisconnected) {
     disabledReason = 'Server disconnected';
   } else if (isStopping) {
     disabledReason = 'Stopping in progress...';

@@ -51,6 +51,20 @@ interface StoreState {
   splitLayout: 'horizontal' | 'vertical';
   editorMode: 'agents' | 'editor';  // ✅ Editor mode toggle
   ideWorkspacePath: string | undefined;  // ✅ IDE workspace path (for folder parameter)
+  
+  // ==================
+  // User Authentication (Cloud Mode)
+  // ==================
+  userEmail: string | undefined;
+  userOrganization: string | undefined;
+  
+  // ==================
+  // Server Configuration
+  // ==================
+  // Frontend Mode: Where the frontend is running (static from env)
+  frontendMode: 'cloud' | 'local';
+  // Deployment Mode: Which backend to connect to (dynamic, user can toggle)
+  deploymentMode: 'local' | 'cloud';
 }
 
 interface StoreActions {
@@ -104,6 +118,17 @@ interface StoreActions {
   toggleSplitLayout: (layout: 'horizontal' | 'vertical') => void;
   setEditorMode: (mode: 'agents' | 'editor') => void;  // ✅ Set editor mode
   setIdeWorkspacePath: (path: string | undefined) => void;  // ✅ Set IDE workspace path
+  
+  // ==================
+  // User Authentication
+  // ==================
+  setUser: (email: string, organization: string) => void;
+  clearUser: () => void;
+  
+  // ==================
+  // Server Configuration
+  // ==================
+  setDeploymentMode: (mode: 'local' | 'cloud') => void;
 }
 
 type Store = StoreState & StoreActions;
@@ -119,6 +144,9 @@ const STORAGE_KEYS = {
   SELECTED_WORK_TYPE: 'ant-ui:selected-work-type',
   THEME: 'ant-ui:theme',
   EDITOR_MODE: 'ant-ui:editor-mode',
+  USER_EMAIL: 'ant-ui:user-email',
+  USER_ORGANIZATION: 'ant-ui:user-organization',
+  DEPLOYMENT_MODE: 'ant-ui:deployment-mode',
 };
 
 // Helper functions for localStorage
@@ -204,6 +232,38 @@ export const useStore = create<Store>((set, get) => ({
   splitLayout: 'vertical',
   editorMode: (localStorage.getItem(STORAGE_KEYS.EDITOR_MODE) as 'agents' | 'editor') || 'agents',
   ideWorkspacePath: undefined,
+  
+  // User Authentication (Cloud Mode)
+  userEmail: (() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.USER_EMAIL);
+      return stored ? JSON.parse(stored) : undefined;
+    } catch { return undefined; }
+  })(),
+  userOrganization: (() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.USER_ORGANIZATION);
+      return stored ? JSON.parse(stored) : undefined;
+    } catch { return undefined; }
+  })(),
+  
+  // Server Configuration
+  // Frontend Mode: static from environment (where frontend is running)
+  frontendMode: (import.meta.env.VITE_FRONTEND_MODE || 'local') as 'cloud' | 'local',
+  // Deployment Mode: dynamic, persisted in localStorage (which backend to connect to)
+  deploymentMode: (() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.DEPLOYMENT_MODE);
+      if (stored) return JSON.parse(stored);
+      // ✅ Default: use env var, then fallback to FRONTEND_MODE
+      const frontendMode = (import.meta.env.VITE_FRONTEND_MODE || 'local') as 'local' | 'cloud';
+      return (import.meta.env.VITE_TARGET_BACKEND_MODE || frontendMode) as 'local' | 'cloud';
+    } catch { 
+      // ✅ On error, fallback to FRONTEND_MODE
+      const frontendMode = (import.meta.env.VITE_FRONTEND_MODE || 'local') as 'local' | 'cloud';
+      return (import.meta.env.VITE_TARGET_BACKEND_MODE || frontendMode) as 'local' | 'cloud';
+    }
+  })(),
 
   // ==================
   // SSE Update Actions
@@ -782,6 +842,38 @@ export const useStore = create<Store>((set, get) => ({
   // ==================
   setIdeWorkspacePath: (path: string | undefined) => {
     set({ ideWorkspacePath: path });
+  },
+  
+  // ==================
+  // User Authentication
+  // ==================
+  setUser: (email: string, organization: string) => {
+    set({ userEmail: email, userOrganization: organization });
+    saveToStorage(STORAGE_KEYS.USER_EMAIL, email);
+    saveToStorage(STORAGE_KEYS.USER_ORGANIZATION, organization);
+  },
+  
+  clearUser: () => {
+    set({ userEmail: undefined, userOrganization: undefined });
+    removeFromStorage(STORAGE_KEYS.USER_EMAIL);
+    removeFromStorage(STORAGE_KEYS.USER_ORGANIZATION);
+  },
+  
+  // ==================
+  // Server Configuration
+  // ==================
+  setDeploymentMode: (mode: 'local' | 'cloud') => {
+    set({ deploymentMode: mode });
+    saveToStorage(STORAGE_KEYS.DEPLOYMENT_MODE, mode);
+    console.log('[Store] Deployment mode changed to:', mode);
+    
+    // Clear user session when switching modes
+    const store = useStore.getState();
+    if (store.userEmail) {
+      store.clearUser();
+    }
+    // Clear projects when switching modes
+    set({ projects: [], selectedProject: undefined, selectedFeature: undefined });
   },
 }));
 

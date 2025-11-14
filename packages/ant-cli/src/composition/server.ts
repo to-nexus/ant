@@ -1,26 +1,44 @@
 #!/usr/bin/env node
 import "dotenv/config";
+import * as path from 'path';
 import { ExpressServerAdapter } from "../periphery/adapters/http/ExpressServerAdapter";
 
 /**
  * Server Entry Point
- * 
+ *
  * Hexagonal Architecture - Composition Root
- * 
- * This file wires the HTTP adapter to the existing orchestrator.
- * No business logic here - just dependency injection.
- * 
- * The orchestrator remains unchanged and can still be used
- * via CLI (src/index.ts) or HTTP (this file).
+ *
+ * Supports Local and Cloud modes via configuration:
+ * - Local Mode: workspace/<project>
+ * - Cloud Mode: workspaces/<org>/<user>/<project>
+ *
+ * Environment Variables:
+ * - ANT_SERVER_MODE: 'local' (default) or 'cloud'
+ * - PORT: Server port (default: 4100)
+ * - WORKSPACE_ROOT: Workspace root directory
+ * - CLOUD_URL: Cloud service URL (for redirect)
  */
 
 const DEFAULT_PORT = 4100;
+const DEFAULT_WORKSPACE_ROOT = path.join(process.cwd(), '../../workspaces');
+const DEFAULT_CLOUD_URL = 'https://ant.nexus.ai';
 
 async function main() {
+  // Environment configuration
+  const mode = (process.env.ANT_SERVER_MODE || 'local') as 'local' | 'cloud';
   const port = process.env.PORT ? parseInt(process.env.PORT) : DEFAULT_PORT;
+  const workspaceRoot = process.env.WORKSPACE_ROOT || DEFAULT_WORKSPACE_ROOT;
+  const cloudUrl = process.env.CLOUD_URL || DEFAULT_CLOUD_URL;
   
-  // Create adapter (implements Port interfaces)
-  const server = new ExpressServerAdapter();
+  console.log(`\n${mode === 'cloud' ? '🌐' : '💻'} Starting in ${mode.toUpperCase()} mode`);
+  console.log(`   Workspace: ${workspaceRoot}`);
+  console.log(`   Port: ${port}`);
+  if (mode === 'local') {
+    console.log(`   Cloud URL: ${cloudUrl}`);
+  }
+  
+  // Create server with mode configuration
+  const server = new ExpressServerAdapter(mode, workspaceRoot, cloudUrl);
   
   try {
     // Start server
@@ -42,6 +60,7 @@ async function main() {
     });
   } catch (error: any) {
     console.error('❌ Failed to start server:', error.message);
+    console.error(error.stack);
     process.exit(1);
   }
 }

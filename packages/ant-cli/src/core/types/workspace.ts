@@ -4,8 +4,11 @@
 
 /**
  * Repository type
+ * - local: Local file system (development)
+ * - cloud: Cloud workspace (multi-tenant)
+ * - github: GitHub repository
  */
-export type RepoType = 'local' | 'github';
+export type RepoType = 'local' | 'cloud' | 'github';
 
 /**
  * Workspace Configuration
@@ -17,7 +20,8 @@ export interface WorkspaceConfig {
   
   // Repository settings
   repoType?: RepoType;              // Default: 'local'
-  localPath?: string;               // Local repository path (absolute or relative to ANT repo root)
+  localPath?: string;               // Local repository path (ONLY for repoType='local')
+                                     // Not used for 'cloud' or 'github' types
                                      // Examples: 
                                      //   - "../my-project" (sibling to ANT repo)
                                      //   - "/Users/user/projects/my-project" (absolute)
@@ -59,6 +63,15 @@ export function validateWorkspaceConfig(config: any): WorkspaceConfig {
   
   if (repoType === 'local' && !config.localPath) {
     throw new Error('Config with repoType="local" requires localPath');
+  }
+  
+  if (repoType === 'cloud') {
+    // Cloud mode: No localPath required (workspace is in cloud storage)
+    // Validate that localPath is NOT present
+    if (config.localPath) {
+      console.warn('[Config] localPath should not be set for cloud mode, ignoring...');
+      delete config.localPath;
+    }
   }
   
   if (repoType === 'github' && (!config.owner || !config.repo)) {

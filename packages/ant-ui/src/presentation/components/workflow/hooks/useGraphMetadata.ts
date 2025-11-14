@@ -7,7 +7,9 @@
 import { useState, useEffect } from 'react';
 import { WorkflowGraphMetadata } from '@/domain/models/workflow';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4100/api';
+import { getApiBase } from '@/infrastructure/http/api';
+
+const API_BASE = () => getApiBase();
 
 export function useGraphMetadata(agent: string, job: string) {
   const [metadata, setMetadata] = useState<WorkflowGraphMetadata | null>(null);
@@ -26,7 +28,7 @@ export function useGraphMetadata(agent: string, job: string) {
       
       try {
         const response = await fetch(
-          `${API_BASE}/agents/${agent}/jobs/${job}/graph-metadata`
+          `${API_BASE()}/agents/${agent}/jobs/${job}/graph-metadata`
         );
         
         if (!response.ok) {

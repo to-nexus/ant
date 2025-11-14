@@ -4,4 +4,6 @@ export { createDevServerRoutes } from './devServerRoutes';
 export { createProjectRoutes } from './projectRoutes';
 export { createWorkflowRoutes } from './workflowRoutes';
 export { createSSERoutes } from './sseRoutes';
+export { createAuthRoutes } from './authRoutes';
+export { createIDERoutes } from './ideRoutes';
 

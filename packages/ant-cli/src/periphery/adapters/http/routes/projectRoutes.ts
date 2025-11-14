@@ -4,6 +4,19 @@ import * as path from 'path';
 import multer from 'multer';
 import { ProjectService, ChatService } from '../services';
 
+// ✅ Request with user context (for Cloud Mode auth)
+interface RequestWithUser extends Request {
+  user?: {
+    id: string;
+    email: string;
+    organizationId: string;
+  };
+  organization?: {
+    id: string;
+    name: string;
+  };
+}
+
 /**
  * Project and feature management routes
  * Handles CRUD operations for projects, features, files, and configs
@@ -12,8 +25,24 @@ export function createProjectRoutes(deps: {
   projectService: ProjectService;
   workspaceRoot: string;
   chatService?: ChatService;
+  mode?: 'local' | 'cloud';  // ✅ Add mode for conditional logic
 }): Router {
   const router = Router();
+  
+  // ✅ Middleware: Set workspace path for Cloud Mode users
+  router.use((req: RequestWithUser, _res, next) => {
+    if (deps.mode === 'cloud' && req.user && req.organization) {
+      const userWorkspacePath = path.join(
+        deps.workspaceRoot,
+        req.organization.id,
+        req.user.id
+      );
+      deps.projectService.setWorkspacePath(userWorkspacePath);
+    } else {
+      deps.projectService.resetWorkspacePath();
+    }
+    next();
+  });
   
   // Configure multer for file uploads (use memory storage)
   const upload = multer({
@@ -68,23 +97,39 @@ export function createProjectRoutes(deps: {
     ]);
   });
   
-  // List projects
-  router.get('/projects', async (_req: Request, res: Response) => {
+  // List projects (workspace path is set by middleware)
+  router.get('/projects', async (req: RequestWithUser, res: Response) => {
     try {
       const projects = await deps.projectService.listProjects();
+      
+      if (deps.mode === 'cloud' && req.user) {
+        console.log(`[Projects] Listed ${projects.length} projects for ${req.user.id}@${req.organization?.id}`);
+      }
+      
       res.json(projects);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });
   
-  // Create a new project
-  router.post('/projects', async (req: Request, res: Response) => {
+  // Create a new project (workspace path is set by middleware)
+  router.post('/projects', async (req: RequestWithUser, res: Response) => {
     try {
       const { id } = req.body;
       
       if (!id || typeof id !== 'string') {
         return res.status(400).json({ error: 'Project ID is required and must be a string' });
+      }
+      
+      // ✅ Ensure user workspace exists (Cloud Mode)
+      if (deps.mode === 'cloud' && req.user && req.organization) {
+        const userWorkspacePath = path.join(
+          deps.workspaceRoot,
+          req.organization.id,
+          req.user.id
+        );
+        await fs.promises.mkdir(userWorkspacePath, { recursive: true });
+        console.log(`[Projects] Creating project '${id}' for ${req.user.id}@${req.organization.id}`);
       }
       
       await deps.projectService.createProject(id);
@@ -170,11 +215,8 @@ export function createProjectRoutes(deps: {
       const projectId = req.params.id;
       const features = await deps.projectService.listFeatures(projectId);
       
-      // Format for API response
-      const formattedFeatures = features.map(name => ({
-        name,
-        path: path.join(deps.workspaceRoot, projectId, name)
-      }));
+      // Format for API response (path not needed, frontend uses name)
+      const formattedFeatures = features.map(name => ({ name }));
       
       res.json(formattedFeatures);
     } catch (error: any) {
@@ -182,8 +224,8 @@ export function createProjectRoutes(deps: {
     }
   });
   
-  // Create a new feature
-  router.post('/projects/:id/features', async (req: Request, res: Response) => {
+  // Create a new feature (workspace path is set by middleware)
+  router.post('/projects/:id/features', async (req: RequestWithUser, res: Response) => {
     try {
       const projectId = req.params.id;
       const { featureName } = req.body;
@@ -193,109 +235,62 @@ export function createProjectRoutes(deps: {
         return;
       }
       
-      const featurePath = path.join(deps.workspaceRoot, projectId, featureName);
+      // ✅ Use ProjectService.createFeature (respects currentWorkspacePath)
+      await deps.projectService.createFeature(projectId, featureName);
       
-      // Create feature directory structure
-      await fs.promises.mkdir(path.join(featurePath, 'inputs/directives/code'), { recursive: true });
-      await fs.promises.mkdir(path.join(featurePath, 'inputs/directives/design'), { recursive: true });
-      await fs.promises.mkdir(path.join(featurePath, 'inputs/directives/learn'), { recursive: true });
-      await fs.promises.mkdir(path.join(featurePath, 'inputs/sources'), { recursive: true });
-      await fs.promises.mkdir(path.join(featurePath, 'outputs/design'), { recursive: true });
-      await fs.promises.mkdir(path.join(featurePath, 'outputs/reports'), { recursive: true });
-      await fs.promises.mkdir(path.join(featurePath, 'sessions'), { recursive: true });  // ✅ Add sessions directory
+      if (deps.mode === 'cloud' && req.user) {
+        console.log(`[Features] Created feature '${featureName}' for ${req.user.id}@${req.organization?.id}`);
+      }
       
-      // Create empty directive.md files
-      await fs.promises.writeFile(
-        path.join(featurePath, 'inputs/directives/code/directive.md'),
-        '# Code Directive\n\nDescribe what you want to build here.\n'
-      );
-      await fs.promises.writeFile(
-        path.join(featurePath, 'inputs/directives/design/directive.md'),
-        '# Design Directive\n\nDescribe the design requirements here.\n'
-      );
-      await fs.promises.writeFile(
-        path.join(featurePath, 'inputs/directives/learn/directive.md'),
-        '# Learn Directive\n\nDescribe what you want to learn here.\n'
-      );
-      
-      // ✅ Note: Session files (design.json, code.json, learn.json) are created
-      // automatically when jobs run, not at feature creation time.
-      
-      res.json({ success: true, featureName, path: featurePath });
+      res.json({ success: true, featureName });
     } catch (error: any) {
+      if (error.message === 'Feature already exists') {
+        res.status(409).json({ error: error.message });
+      } else {
       res.status(500).json({ error: error.message });
+      }
     }
   });
   
-  // Delete a feature
-  router.delete('/projects/:id/features/:feature', async (req: Request, res: Response) => {
+  // Delete a feature (workspace path is set by middleware)
+  router.delete('/projects/:id/features/:feature', async (req: RequestWithUser, res: Response) => {
     try {
       const projectId = req.params.id;
       const featureName = req.params.feature;
       
-      const featurePath = path.join(deps.workspaceRoot, projectId, featureName);
+      // ✅ Use ProjectService.deleteFeature (respects currentWorkspacePath)
+      await deps.projectService.deleteFeature(projectId, featureName);
       
-      // Check if feature exists
-      const exists = await fs.promises.access(featurePath)
-        .then(() => true)
-        .catch(() => false);
-      
-      if (!exists) {
-        res.status(404).json({ error: 'Feature not found' });
-        return;
+      if (deps.mode === 'cloud' && req.user) {
+        console.log(`[Features] Deleted feature '${featureName}' for ${req.user.id}@${req.organization?.id}`);
       }
-      
-      // Delete feature directory recursively
-      await fs.promises.rm(featurePath, { recursive: true, force: true });
       
       res.json({ success: true, message: `Feature ${featureName} deleted` });
     } catch (error: any) {
+      if (error.message === 'Feature not found') {
+        res.status(404).json({ error: error.message });
+      } else {
       res.status(500).json({ error: error.message });
+      }
     }
   });
   
-  // Get session for a specific feature
+  // Get session for a specific feature (workspace path is set by middleware)
   router.get('/projects/:id/features/:feature/session', async (req: Request, res: Response) => {
     try {
       const projectId = req.params.id;
       const featureName = req.params.feature;
-      const job = (req.query.job as 'design' | 'code' | 'learn') || 'code';  // ✅ Get job from query param
+      const job = (req.query.job as 'design' | 'code' | 'learn') || 'code';
       
-      const sessionPath = path.join(
-        deps.workspaceRoot,
-        projectId,
-        featureName,
-        `sessions/${job}.json`  // ✅ Use job-specific path
-      );
-      
-      // Check if session file exists
-      const exists = await fs.promises.access(sessionPath)
-        .then(() => true)
-        .catch(() => false);
-      
-      if (!exists) {
-        res.json(null);
-        return;
-      }
-      
-      try {
-        const sessionData = await fs.promises.readFile(sessionPath, 'utf-8');
-        
-        // Handle empty file
-        if (!sessionData || sessionData.trim() === '') {
-          res.json(null);
-          return;
-        }
-        
-        const parsedData = JSON.parse(sessionData);
-        res.json(parsedData);
-      } catch (parseError) {
-        console.error(`[API] Error parsing session file: ${sessionPath}`, parseError);
-        res.status(500).json({ error: 'Invalid JSON in session file' });
-      }
+      // ✅ Use ProjectService.getSession (respects currentWorkspacePath)
+      const sessionData = await deps.projectService.getSession(projectId, featureName, job);
+      res.json(sessionData);
     } catch (error: any) {
-      console.error(`[API] Error reading session file:`, error);
-      res.status(500).json({ error: error.message });
+      if (error.message === 'Session file not found' || error.message.includes('not found')) {
+        res.json(null);
+      } else {
+        res.status(500).json({ error: error.message });
+      }
     }
   });
   
@@ -325,41 +320,14 @@ export function createProjectRoutes(deps: {
     }
   });
   
-  // Get file tree for a feature
+  // Get file tree for a feature (workspace path is set by middleware)
   router.get('/projects/:id/features/:feature/files', async (req: Request, res: Response) => {
     try {
       const projectId = req.params.id;
       const featureName = req.params.feature;
-      const featurePath = path.join(deps.workspaceRoot, projectId, featureName);
       
-      const buildFileTree = async (dirPath: string, relativePath: string = ''): Promise<any[]> => {
-        const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
-        const nodes = await Promise.all(
-          entries.map(async (entry) => {
-            const fullPath = path.join(dirPath, entry.name);
-            const relPath = path.join(relativePath, entry.name);
-            
-            if (entry.isDirectory()) {
-              const children = await buildFileTree(fullPath, relPath);
-              return {
-                name: entry.name,
-                path: relPath,
-                type: 'directory',
-                children
-              };
-            } else {
-              return {
-                name: entry.name,
-                path: relPath,
-                type: 'file'
-              };
-            }
-          })
-        );
-        return nodes;
-      };
-      
-      const tree = await buildFileTree(featurePath);
+      // ✅ Use ProjectService.getFileTree (respects currentWorkspacePath)
+      const tree = await deps.projectService.getFileTree(projectId, featureName);
       res.json(tree);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -375,7 +343,7 @@ export function createProjectRoutes(deps: {
     });
   });
   
-  // Get file content (using regex pattern for catch-all)
+  // Get file content (workspace path is set by middleware)
   router.get(/^\/projects\/([^\/]+)\/features\/([^\/]+)\/files\/(.+)$/, async (req: Request, res: Response) => {
     try {
       const projectId = req.params[0];
@@ -387,37 +355,21 @@ export function createProjectRoutes(deps: {
         return;
       }
       
-      const fullPath = path.join(
-        deps.workspaceRoot,
-        projectId,
-        featureName,
-        filePath
-      );
-      
-      // Check if file exists
-      const exists = await fs.promises.access(fullPath)
-        .then(() => true)
-        .catch(() => false);
-      
-      if (!exists) {
-        res.status(404).json({ error: 'File not found' });
-        return;
-      }
-      
-      const stats = await fs.promises.stat(fullPath);
-      if (stats.isDirectory()) {
-        res.status(400).json({ error: 'Path is a directory, not a file' });
-        return;
-      }
-      
-      const content = await fs.promises.readFile(fullPath, 'utf-8');
+      // ✅ Use ProjectService.readFile (respects currentWorkspacePath)
+      const content = await deps.projectService.readFile(projectId, featureName, filePath);
       res.json({ path: filePath, content });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      if (error.message.includes('not found') || error.code === 'ENOENT') {
+        res.status(404).json({ error: 'File not found' });
+      } else if (error.message.includes('directory')) {
+        res.status(400).json({ error: 'Path is a directory, not a file' });
+      } else {
+        res.status(500).json({ error: error.message });
+      }
     }
   });
   
-  // Update file content (using regex pattern for catch-all)
+  // Update file content (workspace path is set by middleware)
   router.put(/^\/projects\/([^\/]+)\/features\/([^\/]+)\/files\/(.+)$/, async (req: Request, res: Response) => {
     try {
       const projectId = req.params[0];
@@ -435,18 +387,8 @@ export function createProjectRoutes(deps: {
         return;
       }
       
-      const fullPath = path.join(
-        deps.workspaceRoot,
-        projectId,
-        featureName,
-        filePath
-      );
-      
-      // Create directory if it doesn't exist
-      await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
-      
-      // Write file
-      await fs.promises.writeFile(fullPath, content, 'utf-8');
+      // ✅ Use ProjectService.writeFile (respects currentWorkspacePath)
+      await deps.projectService.writeFile(projectId, featureName, filePath, content);
       
       res.json({ success: true, path: filePath });
     } catch (error: any) {
@@ -454,7 +396,7 @@ export function createProjectRoutes(deps: {
     }
   });
 
-  // Upload files to a feature directory
+  // Upload files to a feature directory (workspace path is set by middleware)
   router.post('/projects/:id/features/:feature/upload', upload.array('files'), async (req: Request, res: Response) => {
     try {
       const projectId = req.params.id;
@@ -467,9 +409,9 @@ export function createProjectRoutes(deps: {
         return;
       }
       
-      // Base directory for uploads
+      // ✅ Use ProjectService.getWorkspacePath() (respects currentWorkspacePath)
       const baseDir = path.join(
-        deps.workspaceRoot,
+        deps.projectService.getWorkspacePath(),
         projectId,
         featureName,
         dirPath
@@ -499,7 +441,7 @@ export function createProjectRoutes(deps: {
     }
   });
 
-  // Create directory in a feature
+  // Create directory in a feature (workspace path is set by middleware)
   router.post('/projects/:id/features/:feature/directory', async (req: Request, res: Response) => {
     try {
       const projectId = req.params.id;
@@ -509,7 +451,8 @@ export function createProjectRoutes(deps: {
         return res.status(400).json({ error: 'Directory path is required' });
       }
       
-      const projectPath = path.join(deps.workspaceRoot, projectId);
+      // ✅ Use ProjectService.getWorkspacePath() (respects currentWorkspacePath)
+      const projectPath = path.join(deps.projectService.getWorkspacePath(), projectId);
       const fullPath = path.join(projectPath, dirPath);
       
       // Create directory recursively
@@ -521,7 +464,7 @@ export function createProjectRoutes(deps: {
     }
   });
 
-  // Delete file or directory in a feature
+  // Delete file or directory in a feature (workspace path is set by middleware)
   router.delete('/projects/:id/features/:feature/item', async (req: Request, res: Response) => {
     try {
       const projectId = req.params.id;
@@ -532,8 +475,8 @@ export function createProjectRoutes(deps: {
         return res.status(400).json({ error: 'Item path is required' });
       }
       
-      // Build full path: workspace/project/feature/itemPath
-      const featurePath = path.join(deps.workspaceRoot, projectId, featureName);
+      // ✅ Use ProjectService.getWorkspacePath() (respects currentWorkspacePath)
+      const featurePath = path.join(deps.projectService.getWorkspacePath(), projectId, featureName);
       const fullPath = path.join(featurePath, itemPath);
       
       // Check if path exists
@@ -799,8 +742,9 @@ export function createProjectRoutes(deps: {
       const featureName = req.params.feature;
       const jobType = (req.query.job as 'design' | 'code' | 'learn') || 'code';
       
+      // ✅ Use ProjectService.getWorkspacePath() (respects currentWorkspacePath)
       const sessionPath = path.join(
-        deps.workspaceRoot,
+        deps.projectService.getWorkspacePath(),
         projectId,
         featureName,
         `sessions/${jobType}.json`

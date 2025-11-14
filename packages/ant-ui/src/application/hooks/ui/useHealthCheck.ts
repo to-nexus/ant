@@ -6,7 +6,16 @@ import { useStore } from '@/domain/store';
  * Manages server health checks and connection status
  */
 export function useHealthCheck() {
+  const deploymentMode = useStore((state) => state.deploymentMode);
+  const userEmail = useStore((state) => state.userEmail);
+  
   useEffect(() => {
+    // ✅ Skip health check on /local page (setup guide)
+    if (window.location.pathname === '/local') {
+      console.log('[useHealthCheck] Skipping health check on /local page');
+      return;
+    }
+    
     async function checkConnectionAndLoadProjects() {
       try {
         console.log('[useHealthCheck] Checking health...');
@@ -20,9 +29,19 @@ export function useHealthCheck() {
           return;
         }
         
+        const store = useStore.getState();
+        
+        // ✅ Cloud Mode: Skip project loading if not signed in
+        if (store.deploymentMode === 'cloud' && !store.userEmail) {
+          console.log('[useHealthCheck] Cloud mode - waiting for sign in');
+          store.setConnectionStatus('connected');
+          store.setProjects([]);
+          return;
+        }
+        
         console.log('[useHealthCheck] Health check passed, loading projects...');
-        await useStore.getState().fetchProjects();
-        useStore.getState().setConnectionStatus('connected');
+        await store.fetchProjects();
+        store.setConnectionStatus('connected');
       } catch (error) {
         console.error('[useHealthCheck] Failed to check health or load projects:', error);
         useStore.getState().setProjects([]);
@@ -46,6 +65,15 @@ export function useHealthCheck() {
           store.setProjects([]);
         } else if (currentStatus === 'error' || currentStatus === 'disconnected') {
           console.log('[useHealthCheck] Connection restored, reloading...');
+          
+          // ✅ Cloud Mode: Skip project loading if not signed in
+          if (store.deploymentMode === 'cloud' && !store.userEmail) {
+            console.log('[useHealthCheck] Cloud mode - waiting for sign in');
+            store.setConnectionStatus('connected');
+            store.setProjects([]);
+            return;
+          }
+          
           await store.fetchProjects();
           store.setConnectionStatus('connected');
         }
@@ -57,6 +85,6 @@ export function useHealthCheck() {
     return () => {
       clearInterval(healthCheckInterval);
     };
-  }, []); // ✅ Empty deps - use getState() internally
+  }, [deploymentMode, userEmail]); // ✅ Re-run when deploymentMode or userEmail changes
 }
 

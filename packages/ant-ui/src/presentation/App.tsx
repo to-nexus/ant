@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { GlobalNavBar } from '@/presentation/components/GlobalNavBar';
 // Chat data는 ChatPanel에서만 사용 (App에서는 불필요)
 import { fetchFeatureSession } from '@/infrastructure/http/api';
@@ -14,9 +14,24 @@ import { useConfigLoader } from '@/application/hooks/ui/useConfigLoader';
 import { ExplorerPanel } from '@/presentation/components/layout/ExplorerPanel';
 import { MainContentArea } from '@/presentation/components/layout/MainContentArea';
 import { ChatSidebarWrapper } from '@/presentation/components/layout/ChatSidebarWrapper';
+import { LocalSetupGuide } from '@/presentation/pages/LocalSetupGuide';
 import { ChevronRight } from 'lucide-react';
 
 function App() {
+  // ✅ Route handling: Track current path
+  const [currentPath, setCurrentPath] = useState(window.location.pathname);
+  const frontendMode = useStore((state) => state.frontendMode);
+  const deploymentMode = useStore((state) => state.deploymentMode);
+  
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentPath(window.location.pathname);
+    };
+    
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+  
   // ✅ Development: Render tracking for debugging
   const renderCountRef = useRef(0);
   const prevPropsRef = useRef<Record<string, any>>({});
@@ -58,7 +73,6 @@ function App() {
   const splitLayout = useStore((state) => state.splitLayout);
   const editorMode = useStore((state) => state.editorMode);
   const ideWorkspacePath = useStore((state) => state.ideWorkspacePath);
-  const theme = useStore((state) => state.theme);
   
   // ✅ Domain data (via Application Hooks)
   const { kanbanData } = useKanban();
@@ -85,6 +99,15 @@ function App() {
     showConfigEditor,
     selectedProject || null
   );
+  
+  // ✅ Auto-redirect: Cloud frontend with local mode → /local page
+  useEffect(() => {
+    if (frontendMode === 'cloud' && deploymentMode === 'local' && currentPath !== '/local') {
+      console.log('[App] Auto-redirecting to /local (Cloud frontend + Local backend selected)');
+      window.history.pushState({}, '', '/local');
+      setCurrentPath('/local');
+    }
+  }, [frontendMode, deploymentMode, currentPath]);
 
   // ✅ Development: Render tracking for debugging
   if (import.meta.env.DEV && renderCountRef.current > 1) {
@@ -163,6 +186,16 @@ function App() {
     prevSelectedFileRef.current = selectedFile;
   }, [selectedFile, showFileEditor, setShowFileEditor]);
 
+  // ✅ Show local setup guide for /local path
+  if (currentPath === '/local') {
+    return (
+      <>
+        <GlobalNavBar />
+        <LocalSetupGuide />
+      </>
+    );
+  }
+
   return (
     <div className="h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-colors">
       {/* ✅ GNB uses hooks directly - no props needed */}
@@ -181,7 +214,7 @@ function App() {
         </div>
       ) : (
         // ✅ Agents Mode: Original UI
-        <div className="flex-1 flex gap-0 overflow-hidden pt-16">
+      <div className="flex-1 flex gap-0 overflow-hidden pt-16">
         {/* Explorer Panel */}
         <ExplorerPanel
           isCollapsed={isExplorerCollapsed}
@@ -241,7 +274,7 @@ function App() {
           onCollapse={() => setIsChatCollapsed(true)}
           onResizeStart={() => setIsResizingChat(true)}
         />
-        </div>
+      </div>
       )}
     </div>
   );

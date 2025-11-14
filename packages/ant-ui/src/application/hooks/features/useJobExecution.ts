@@ -13,7 +13,7 @@
 
 import { useCallback } from 'react';
 import { useStore } from '@/domain/store';
-import { resumeJob, stopJob as stopJobAPI, fetchFeatureSession } from '@/infrastructure/http/api';
+import { resumeJob, stopJob as stopJobAPI, fetchFeatureSession, getApiBase } from '@/infrastructure/http/api';
 import { executeCodeJob } from '@/infrastructure/http/cli';
 
 export function useJobExecution() {
@@ -211,7 +211,7 @@ export function useJobExecution() {
         try {
           console.log('[useJobExecution] Finalizing chat message...');
           await fetch(
-            `${import.meta.env.VITE_API_BASE || 'http://localhost:4100/api'}/projects/${selectedProject}/features/${selectedFeature}/chat/finalize-message`,
+            `${getApiBase()}/projects/${selectedProject}/features/${selectedFeature}/chat/finalize-message`,
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },

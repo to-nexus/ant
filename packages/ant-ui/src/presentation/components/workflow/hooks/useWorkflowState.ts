@@ -18,7 +18,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { WorkflowRealtimeState } from '@/domain/models/workflow';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4100/api';
+import { getApiBase } from '@/infrastructure/http/api';
+
+const API_BASE = () => getApiBase();
 
 // 노드별 최소 표시 시간 (ms)
 // ✅ 모든 노드를 사용자가 인식할 수 있도록 충분한 시간 확보
@@ -257,7 +259,7 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
     }
     
     console.log('[useWorkflowState] 🔄 Subscribing to job (STABLE):', stableJobId);
-    const sseUrl = `${API_BASE}/jobs/${stableJobId}/workflow/stream`;
+    const sseUrl = `${API_BASE()}/jobs/${stableJobId}/workflow/stream`;
     console.log('[useWorkflowState] 🔗 SSE URL:', sseUrl);
     console.log('[useWorkflowState] 🔗 API_BASE:', API_BASE);
     jobEndedRef.current = false;  // ✅ Reset for new job
