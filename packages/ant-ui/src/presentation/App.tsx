@@ -56,6 +56,9 @@ function App() {
   const selectFile = useStore((state) => state.selectFile);
   const setSession = useStore((state) => state.setSession);
   const splitLayout = useStore((state) => state.splitLayout);
+  const editorMode = useStore((state) => state.editorMode);
+  const ideWorkspacePath = useStore((state) => state.ideWorkspacePath);
+  const theme = useStore((state) => state.theme);
   
   // ✅ Domain data (via Application Hooks)
   const { kanbanData } = useKanban();
@@ -166,7 +169,19 @@ function App() {
       <GlobalNavBar />
       
       {/* Main Layout */}
-      <div className="flex-1 flex gap-0 overflow-hidden pt-16">
+      {editorMode === 'editor' ? (
+        // ✅ Editor Mode: OpenVSCode Server iframe
+        <div className="flex-1 pt-16">
+          <iframe
+            key={`ide-${ideWorkspacePath || 'default'}`}
+            src={`http://localhost:4400/?folder=${encodeURIComponent(ideWorkspacePath || '/workspace')}`}
+            className="w-full h-full border-0"
+            title="ANT Code Editor"
+          />
+        </div>
+      ) : (
+        // ✅ Agents Mode: Original UI
+        <div className="flex-1 flex gap-0 overflow-hidden pt-16">
         {/* Explorer Panel */}
         <ExplorerPanel
           isCollapsed={isExplorerCollapsed}
@@ -226,7 +241,8 @@ function App() {
           onCollapse={() => setIsChatCollapsed(true)}
           onResizeStart={() => setIsResizingChat(true)}
         />
-      </div>
+        </div>
+      )}
     </div>
   );
 }

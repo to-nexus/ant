@@ -1,0 +1,15 @@
+{
+  "name": "@ant/ide",
+  "version": "1.0.0",
+  "description": "ANT IDE Server - using Docker openvscode-server",
+  "scripts": {
+    "predev": "docker ps -a | grep ant-openvscode && (docker stop ant-openvscode; docker rm ant-openvscode) || true",
+    "dev": "docker run -d --name ant-openvscode -p 4400:3000 -v \"$HOME:/workspace:cached\" gitpod/openvscode-server && echo '✅ OpenVSCode Server started on http://localhost:4400'",
+    "stop": "docker stop ant-openvscode && docker rm ant-openvscode",
+    "start": "npm run dev",
+    "build": "echo 'No build step required for Docker-based IDE'"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

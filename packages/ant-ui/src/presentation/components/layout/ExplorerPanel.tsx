@@ -1,7 +1,7 @@
 import { ChevronLeft } from 'lucide-react';
 import { Bar } from '../Bar';
-import { ProjectDropdown } from '../ProjectDropdown';
-import { FeatureDropdown } from '../FeatureDropdown';
+import { ProjectSection } from '../ProjectSection';
+import { FeatureSection } from '../FeatureSection';
 import { ArtifactsPanel } from '../ArtifactsPanel';
 
 interface ExplorerPanelProps {
@@ -64,8 +64,8 @@ export function ExplorerPanel({
       <div className="flex-1 px-3 py-3 space-y-3 overflow-y-auto">
         {connectionStatus === 'connected' ? (
           <>
-            <ProjectDropdown />
-            <FeatureDropdown />
+            <ProjectSection />
+            <FeatureSection />
             <ArtifactsPanel />
           </>
         ) : (
