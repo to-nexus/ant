@@ -331,9 +331,16 @@ export function ArtifactsPanel() {
     return null;
   }
 
-  // Separate inputs, outputs, and sessions
-  const inputsNodes = fileTree?.find(node => node.name === 'inputs')?.children || [];
-  const outputsNodes = fileTree?.find(node => node.name === 'outputs')?.children || [];
+  // Separate inputs, outputs, and sessions with filtering
+  // inputs: only show 'sources' directory
+  const allInputsNodes = fileTree?.find(node => node.name === 'inputs')?.children || [];
+  const inputsNodes = allInputsNodes.filter(node => node.name === 'sources');
+  
+  // outputs: only show 'design' and 'reports' directories
+  const allOutputsNodes = fileTree?.find(node => node.name === 'outputs')?.children || [];
+  const outputsNodes = allOutputsNodes.filter(node => node.name === 'design' || node.name === 'reports');
+  
+  // sessions: show all
   const sessionsNodes = fileTree?.find(node => node.name === 'sessions')?.children || [];
 
   return (

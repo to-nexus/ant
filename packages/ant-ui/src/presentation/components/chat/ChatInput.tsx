@@ -6,7 +6,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Send, ChevronDown, ChevronRight, Square, RefreshCw } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
-import { stopJob, fetchAgents, type Agent } from '@/infrastructure/http/api';
+import { fetchAgents, type Agent } from '@/infrastructure/http/api';
 import type { FileStats } from '@/domain/models/chat';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4100/api';
@@ -21,16 +21,16 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   const selectedWorkType = useStore((state) => state.selectedWorkType);
   const setSelectedWorkType = useStore((state) => state.setSelectedWorkType);
   const selectedAgent = useStore((state) => state.selectedAgent);  // ✅ Reactive selectedAgent
+  const setSelectedAgent = useStore((state) => state.setSelectedAgent);  // ✅ Add setter for agent
   const isRunning = useStore((state) => state.isRunning);
   const isStopping = useStore((state) => state.isStopping);  // ✅ Use global state
-  const currentJobId = useStore((state) => state.currentJobId);
-  const setRunning = useStore((state) => state.setRunning);
-  const setStopping = useStore((state) => state.setStopping);  // ✅ Use global state
   const [showJobMenu, setShowJobMenu] = useState(false);
+  const [showAgentMenu, setShowAgentMenu] = useState(false);  // ✅ Agent menu state
   const [message, setMessage] = useState('');
   const [agents, setAgents] = useState<Agent[]>([]);
   const [showFileList, setShowFileList] = useState(false);  // ✅ Cursor-style file list toggle
   const menuRef = useRef<HTMLDivElement>(null);
+  const agentMenuRef = useRef<HTMLDivElement>(null);  // ✅ Agent menu ref
   
   // ✅ Use Chat Policy for UI states (메시지 개수 전달)
   const chatPolicy = useChatPolicy(messageCount);
@@ -48,6 +48,24 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
     }
     loadAgents();
   }, []);
+
+  // ✅ Add emoji and description for each agent
+  const agentsWithMetadata = agents.map((agent: Agent) => {
+    const metadata: Record<string, { emoji: string; description: string }> = {
+      architect: { emoji: '🤖', description: 'Optimized for coding tasks' },
+      planner: { emoji: '📋', description: 'Creates project plans & roadmaps' },
+      reviewer: { emoji: '🔍', description: 'Reviews code & provides feedback' },
+      doc: { emoji: '📝', description: 'Generates documentation' }
+    };
+    const meta = metadata[agent.value] || { emoji: '🤖', description: agent.label };
+    return {
+      ...agent,
+      displayLabel: `${meta.emoji} ${agent.label}`,
+      description: meta.description
+    };
+  });
+
+  const currentAgent = agentsWithMetadata.find((a) => a.value === selectedAgent) || agentsWithMetadata[0];
 
   // ✅ Get jobs for currently selected agent (dynamically from API, reactive)
   const jobs = agents.find((a: Agent) => a.value === selectedAgent)?.tasks || [];
@@ -75,27 +93,44 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setShowJobMenu(false);
       }
+      if (agentMenuRef.current && !agentMenuRef.current.contains(event.target as Node)) {
+        setShowAgentMenu(false);
+      }
     };
 
-    if (showJobMenu) {
+    if (showJobMenu || showAgentMenu) {
       document.addEventListener('mousedown', handleClickOutside);
     }
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showJobMenu]);
+  }, [showJobMenu, showAgentMenu]);
 
   // Close menu when job starts running
   useEffect(() => {
     if (isRunning && showJobMenu) {
       setShowJobMenu(false);
     }
-  }, [isRunning, showJobMenu]);
+    if (isRunning && showAgentMenu) {
+      setShowAgentMenu(false);
+    }
+  }, [isRunning, showJobMenu, showAgentMenu]);
 
   const handleJobSelect = (jobValue: string) => {
     setSelectedWorkType(jobValue as 'design' | 'code' | 'learn');
     setShowJobMenu(false);
+  };
+
+  const handleAgentSelect = (agentValue: string) => {
+    setSelectedAgent(agentValue);
+    setShowAgentMenu(false);
+    // Reset work type to first available for this agent
+    const agentData = agents.find((a: Agent) => a.value === agentValue);
+    const firstWorkType = agentData?.tasks?.[0]?.value;
+    if (firstWorkType) {
+      setSelectedWorkType(firstWorkType as 'design' | 'code' | 'learn');
+    }
   };
 
   // ✅ Stop job handler - delegates to App's centralized handler
@@ -451,54 +486,106 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
           disabled={disabled || isRunning}
         />
         
-        {/* Bottom Bar with Job Selector and Submit */}
+        {/* Bottom Bar with Agent, Job Selector and Submit */}
         <div className="flex items-center justify-between px-2 py-1.5 
                         border-t border-gray-200 dark:border-gray-700
                         bg-gray-50 dark:bg-gray-800/50">
-          {/* Job Selector - Compact */}
-          <div className="relative" ref={menuRef}>
-            <button
-              onClick={() => setShowJobMenu(!showJobMenu)}
-              disabled={!chatPolicy.canChangeJob}
-              className="flex items-center gap-1 px-2 py-1 text-xs
-                         bg-white dark:bg-gray-700 
-                         border border-gray-300 dark:border-gray-600
-                         text-gray-700 dark:text-gray-200
-                         rounded hover:bg-gray-100 dark:hover:bg-gray-600 
-                         transition-colors
-                         disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <span>
-                {chatPolicy.reason === 'no-job' ? '🎯 Job' : (currentJob?.label || '🎯 Job')}
-              </span>
-              <ChevronDown className={`w-3 h-3 text-gray-500 dark:text-gray-400 transition-transform ${showJobMenu ? 'rotate-180' : ''}`} />
-            </button>
+          {/* Agent & Job Selectors - Compact */}
+          <div className="flex items-center gap-2">
+            {/* Agent Selector */}
+            <div className="relative" ref={agentMenuRef}>
+              <button
+                onClick={() => setShowAgentMenu(!showAgentMenu)}
+                disabled={!chatPolicy.canChangeJob || isRunning}
+                className="flex items-center gap-1 px-2 py-1 text-xs
+                           bg-white dark:bg-gray-700 
+                           border border-gray-300 dark:border-gray-600
+                           text-gray-700 dark:text-gray-200
+                           rounded hover:bg-gray-100 dark:hover:bg-gray-600 
+                           transition-colors
+                           disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span>
+                  {currentAgent?.displayLabel || '🤖 Agent'}
+                </span>
+                <ChevronDown className={`w-3 h-3 text-gray-500 dark:text-gray-400 transition-transform ${showAgentMenu ? 'rotate-180' : ''}`} />
+              </button>
 
-            {/* Job Menu - Compact */}
-            {showJobMenu && jobsWithMetadata.length > 0 && (
-              <div className="absolute bottom-full left-0 mb-1 w-48 
-                              bg-white dark:bg-gray-800 
-                              border border-gray-300 dark:border-gray-600 
-                              rounded-lg shadow-lg z-50 overflow-hidden">
-                {jobsWithMetadata.map((job: { value: string; label: string; description: string }) => (
-                  <button
-                    key={job.value}
-                    onClick={() => handleJobSelect(job.value)}
-                    className={`w-full px-2.5 py-1.5 text-left text-xs 
-                               hover:bg-gray-100 dark:hover:bg-gray-700 
-                               transition-colors flex flex-col gap-0.5
-                               text-gray-900 dark:text-gray-100 ${
-                      job.value === selectedWorkType 
-                        ? 'bg-blue-50 dark:bg-blue-900/20 border-l-2 border-blue-500 dark:border-blue-400' 
-                        : ''
-                    }`}
-                  >
-                    <span className="font-medium">{job.label}</span>
-                    <span className="text-[10px] text-gray-500 dark:text-gray-400">{job.description}</span>
-                  </button>
-                ))}
-              </div>
-            )}
+              {/* Agent Menu - Compact with Description */}
+              {showAgentMenu && agentsWithMetadata.length > 0 && (
+                <div className="absolute bottom-full left-0 mb-1 w-56
+                                bg-white dark:bg-gray-800 
+                                border border-gray-300 dark:border-gray-600 
+                                rounded-lg shadow-lg z-50 overflow-hidden">
+                  {agentsWithMetadata.map((agent) => (
+                    <button
+                      key={agent.value}
+                      onClick={() => agent.enabled && handleAgentSelect(agent.value)}
+                      disabled={!agent.enabled}
+                      className={`w-full px-2.5 py-1.5 text-left text-xs 
+                                 hover:bg-gray-100 dark:hover:bg-gray-700 
+                                 transition-colors flex flex-col gap-0.5
+                                 text-gray-900 dark:text-gray-100 ${
+                        !agent.enabled
+                          ? 'opacity-50 cursor-not-allowed'
+                          : agent.value === selectedAgent 
+                          ? 'bg-blue-50 dark:bg-blue-900/20 border-l-2 border-blue-500 dark:border-blue-400' 
+                          : ''
+                      }`}
+                    >
+                      <span className="font-medium">{agent.displayLabel}</span>
+                      <span className="text-[10px] text-gray-500 dark:text-gray-400">{agent.description}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Job Selector - Compact */}
+            <div className="relative" ref={menuRef}>
+              <button
+                onClick={() => setShowJobMenu(!showJobMenu)}
+                disabled={!chatPolicy.canChangeJob}
+                className="flex items-center gap-1 px-2 py-1 text-xs
+                           bg-white dark:bg-gray-700 
+                           border border-gray-300 dark:border-gray-600
+                           text-gray-700 dark:text-gray-200
+                           rounded hover:bg-gray-100 dark:hover:bg-gray-600 
+                           transition-colors
+                           disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span>
+                  {chatPolicy.reason === 'no-job' ? '🎯 Job' : (currentJob?.label || '🎯 Job')}
+                </span>
+                <ChevronDown className={`w-3 h-3 text-gray-500 dark:text-gray-400 transition-transform ${showJobMenu ? 'rotate-180' : ''}`} />
+              </button>
+
+              {/* Job Menu - Compact */}
+              {showJobMenu && jobsWithMetadata.length > 0 && (
+                <div className="absolute bottom-full left-0 mb-1 w-48 
+                                bg-white dark:bg-gray-800 
+                                border border-gray-300 dark:border-gray-600 
+                                rounded-lg shadow-lg z-50 overflow-hidden">
+                  {jobsWithMetadata.map((job: { value: string; label: string; description: string }) => (
+                    <button
+                      key={job.value}
+                      onClick={() => handleJobSelect(job.value)}
+                      className={`w-full px-2.5 py-1.5 text-left text-xs 
+                                 hover:bg-gray-100 dark:hover:bg-gray-700 
+                                 transition-colors flex flex-col gap-0.5
+                                 text-gray-900 dark:text-gray-100 ${
+                        job.value === selectedWorkType 
+                          ? 'bg-blue-50 dark:bg-blue-900/20 border-l-2 border-blue-500 dark:border-blue-400' 
+                          : ''
+                      }`}
+                    >
+                      <span className="font-medium">{job.label}</span>
+                      <span className="text-[10px] text-gray-500 dark:text-gray-400">{job.description}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Action Buttons */}
