@@ -160,10 +160,27 @@ export function LocalSetupGuide() {
                     <code className="text-gray-900 dark:text-gray-100">
                       ANT_SERVER_MODE=local
                       <br />
-                      WORKSPACE_ROOT=../../workspaces
-                      <br />
                       PORT={backendPort}
+                      <br />
+                      WORKSPACES_PATH=~/ant-workspaces
+                      <br />
+                      <br />
+                      # LLM Provider (required)
+                      <br />
+                      AI_MODEL_PROVIDER=anthropic
+                      <br />
+                      ANTHROPIC_API_KEY=your_api_key_here
+                      <br />
+                      <br />
+                      # Optional: specify model
+                      <br />
+                      # AI_MODEL_NAME=claude-3-5-sonnet-20241022
                     </code>
+                  </div>
+                  <div className="mt-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+                    <p className="text-xs text-blue-700 dark:text-blue-300">
+                      <strong>Note:</strong> <code className="px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-900">WORKSPACES_PATH</code> can be absolute, relative, or use <code className="px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-900">~/path</code> (tilde expansion supported)
+                    </p>
                   </div>
                 </div>
 
