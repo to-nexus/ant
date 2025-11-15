@@ -10,7 +10,7 @@ import {
   openLocalIDE,
   checkIDEInstalled
 } from '@/infrastructure/http/api';
-import { getProjectPath } from '@/shared/utils/workspace-path';
+import { getProjectPath, getCodebasePath } from '@/shared/utils/workspace-path';
 import { ItemDropdown } from './ItemDropdown';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { Button } from '@/presentation/components/common/button';
@@ -131,69 +131,77 @@ export function ProjectSection() {
   };
 
   // Open Web IDE (iframe) - Cloud Backend or Local UI
+  // ✅ Same logic as GlobalNavBar's Editor button
   const handleOpenWebIDE = async () => {
-    // ✅ Cloud Mode: Use project path from server workspace
-    // ✅ Local Mode: Use localPath from config
-    let workspacePath: string;
-    
-    if (config?.repoType === 'cloud') {
-      // Cloud Mode: Project path is managed by server
-      // Use centralized path utility
-      if (!selectedProject) {
-        alert('Project not selected.');
-        return;
-      }
-      
-      // ✅ Use centralized path utility
-      const projectPath = getProjectPath(selectedProject);
-      
-      // Build Docker path
-      // Assuming ant is at ~/dev/ant and Docker mounts $HOME as /workspace
-      workspacePath = `/workspace/dev/ant/${projectPath}`;
-      
-      console.log('[ProjectSection] Cloud Mode - Using server workspace path:', {
-        selectedProject,
-        projectPath,
-        workspacePath
-      });
-    } else {
-      // Local Mode: Use localPath from config
-      if (!config?.localPath) {
-        alert('Local path is not configured for this workspace.');
-        return;
-      }
-
-      // Check if IDE is accessible (localhost only)
-      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      if (!isLocalhost) {
-        const confirmed = window.confirm(
-          'Web IDE 기능은 localhost 접속 시에만 사용 가능합니다.\n\n' +
-          '현재 원격 UI에서 로컬 백엔드에 접속 중이므로 Web IDE가 정상 작동하지 않을 수 있습니다.\n\n' +
-          '권장사항: 로컬에서 ant-ui를 실행하거나 (pnpm dev:ui) 실제 IDE를 사용하세요.\n\n' +
-          '그래도 계속하시겠습니까?'
-        );
-        if (!confirmed) return;
-      }
-
-      // Convert ~/path to /workspace/path (Docker mount: $HOME:/workspace)
-      workspacePath = config.localPath.startsWith('~/')
-        ? config.localPath.replace('~', '/workspace')
-        : config.localPath.startsWith('~')
-        ? config.localPath.replace('~', '/workspace')
-        : `/workspace${config.localPath}`;
-      
-      console.log('[ProjectSection] Local Mode - Converting path:', {
-        localPath: config.localPath,
-        workspacePath,
-        isLocalhost
-      });
+    // ✅ Check if project is selected
+    if (!selectedProject) {
+      alert('Project not selected.');
+      return;
     }
     
-    // Set IDE workspace path
-    setIdeWorkspacePath(workspacePath);
+    // ✅ Check if config exists
+    if (!config) {
+      alert('Project config not found. Please configure the project first.');
+      return;
+    }
     
-    // Switch to Editor mode
-    setEditorMode('editor');
+    try {
+      // Determine workspace path based on repoType
+      let workspacePath: string;
+      
+      if (config.repoType === 'cloud') {
+        // Cloud Mode: Use codebase directory
+        const codebasePath = getCodebasePath(selectedProject, config);
+        // Build Docker path (assuming ant is at ~/dev/ant and Docker mounts $HOME as /workspace)
+        workspacePath = `/workspace/dev/ant/${codebasePath}`;
+        
+        console.log('[ProjectSection] Cloud Mode - Using codebase path:', {
+          selectedProject,
+          codebasePath,
+          workspacePath
+        });
+      } else {
+        // Local Mode: Use localPath from config
+        if (!config.localPath) {
+          alert('Local path is not configured for this workspace.');
+          return;
+        }
+
+        // Check if IDE is accessible (localhost only)
+        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        if (!isLocalhost) {
+          const confirmed = window.confirm(
+            'Web IDE 기능은 localhost 접속 시에만 사용 가능합니다.\n\n' +
+            '현재 원격 UI에서 로컬 백엔드에 접속 중이므로 Web IDE가 정상 작동하지 않을 수 있습니다.\n\n' +
+            '권장사항: 로컬에서 ant-ui를 실행하거나 (pnpm dev:ui) 실제 IDE를 사용하세요.\n\n' +
+            '그래도 계속하시겠습니까?'
+          );
+          if (!confirmed) return;
+        }
+
+        // Convert ~/path to /workspace/path (Docker mount: $HOME:/workspace)
+        workspacePath = config.localPath.startsWith('~/')
+          ? config.localPath.replace('~', '/workspace')
+          : config.localPath.startsWith('~')
+          ? config.localPath.replace('~', '/workspace')
+          : `/workspace${config.localPath}`;
+        
+        console.log('[ProjectSection] Local Mode - Converting path:', {
+          localPath: config.localPath,
+          workspacePath,
+          isLocalhost
+        });
+      }
+      
+      // Set IDE workspace path
+      setIdeWorkspacePath(workspacePath);
+      
+      // Switch to Editor mode
+      setEditorMode('editor');
+    } catch (error: any) {
+      console.error('[ProjectSection] Failed to open IDE:', error);
+      alert(`Failed to open IDE: ${error.message}`);
+    }
   };
 
   const projectItems = projects.map((p: string) => ({ name: p }));
