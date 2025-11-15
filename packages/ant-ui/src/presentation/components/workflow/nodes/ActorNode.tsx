@@ -12,6 +12,7 @@ import { ActorType } from '@/domain/models/workflow';
 import { useStore } from '@/domain/store';
 import { cn } from '@/shared/utils/design-system';
 import { getActorInfo } from '@/shared/utils/actor-utils';
+import { getDisplayPath } from '@/shared/utils/workspace-path';
 
 interface ActorNodeData {
   label: string;
@@ -72,23 +73,24 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
   const actorInfo = React.useMemo(() => {
     if (!baseActorInfo) return null;
     
-    // local-storage와 file-system의 경우 실제 경로로 치환
+    // local-storage: 세션 파일 경로 (중앙화된 경로 사용)
     if (data.actorId === 'local-storage' && selectedProject && selectedFeature) {
       return {
         ...baseActorInfo,
-        details: `./workspace/${selectedProject}/${selectedFeature}/outputs/session.json`
+        details: getDisplayPath(selectedProject, selectedFeature, 'outputs/session.json')
       };
     }
     
+    // file-system: outputs 디렉토리 경로 (중앙화된 경로 사용)
     if (data.actorId === 'file-system' && selectedProject && selectedFeature) {
       return {
         ...baseActorInfo,
-        details: `./workspace/${selectedProject}/${selectedFeature}/outputs/`
+        details: getDisplayPath(selectedProject, selectedFeature, 'outputs/')
       };
     }
     
+    // code-repo: config의 localPath 사용 (변경 없음)
     if (data.actorId === 'code-repo' && config) {
-      // config에서 localPath 가져오기
       return {
         ...baseActorInfo,
         details: config.localPath || `~/dev/${selectedProject}`
@@ -96,7 +98,7 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
     }
     
     return baseActorInfo;
-  }, [baseActorInfo, data.actorId, selectedProject, selectedFeature]);
+  }, [baseActorInfo, data.actorId, selectedProject, selectedFeature, config]);
   
   const colorClass = `${ACTOR_COLORS_LIGHT[data.actorType]} ${ACTOR_COLORS_DARK[data.actorType]}`;
   

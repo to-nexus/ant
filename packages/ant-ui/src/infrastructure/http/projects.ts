@@ -1,4 +1,5 @@
 import { fetchProjects } from '@/infrastructure/http/api';
+import { getProjectPath as getWorkspaceProjectPath } from '@/shared/utils/workspace-path';
 
 export interface Project {
   id: string;
@@ -29,8 +30,8 @@ export async function projectExists(_projectId: string): Promise<boolean> {
 
 /**
  * Gets the full path to a project directory.
- * Browser-compatible stub - returns placeholder path.
+ * Uses centralized workspace path utility.
  */
 export function getProjectPath(projectId: string): string {
-  return `workspace/${projectId}`;
+  return getWorkspaceProjectPath(projectId);
 }

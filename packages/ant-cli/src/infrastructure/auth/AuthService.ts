@@ -52,8 +52,6 @@ export class AuthService implements AuthPort {
       name: organizationId  // Display name = organization ID
     };
     
-    console.log(`[AuthService] Authenticated: ${username}@${organizationId}`);
-    
     return {
       user,
       organization

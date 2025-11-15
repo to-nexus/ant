@@ -1,85 +1,35 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { WorkspaceResolver } from '../../../../infrastructure/workspace/WorkspaceResolver';
+import { UserContext } from '../../../../core/types/user';
 
 /**
  * ProjectService
  * 
  * Manages project and feature CRUD operations.
  * Handles file system operations for project directories, configs, and features.
+ * 
+ * ✅ Refactored to use WorkspaceResolver (no more state-based workspace path)
  */
 export class ProjectService {
-  private readonly workspaceRoot: string;
-  private currentWorkspacePath: string;  // ✅ Current active workspace path (changes for Cloud Mode users)
+  private readonly workspaceResolver: WorkspaceResolver;
   
-  constructor(workspaceRoot: string) {
-    this.workspaceRoot = workspaceRoot;
-    this.currentWorkspacePath = workspaceRoot;  // Default to root
+  constructor(workspaceResolver: WorkspaceResolver) {
+    this.workspaceResolver = workspaceResolver;
   }
   
   /**
-   * Set the current workspace path (for Cloud Mode user-specific workspace)
+   * List all projects for a user
    */
-  setWorkspacePath(workspacePath: string): void {
-    this.currentWorkspacePath = workspacePath;
-  }
-  
-  /**
-   * Get the current workspace path
-   */
-  getWorkspacePath(): string {
-    return this.currentWorkspacePath;
-  }
-  
-  /**
-   * Reset to default workspace root
-   */
-  resetWorkspacePath(): void {
-    this.currentWorkspacePath = this.workspaceRoot;
-  }
-  
-  /**
-   * List all projects (uses current workspace path)
-   */
-  async listProjects(): Promise<string[]> {
+  async listProjects(userContext: UserContext): Promise<string[]> {
     try {
+      const workspacePath = this.workspaceResolver.getWorkspacePath(userContext);
+      
       // Check if workspace exists
-      try {
-        await fs.promises.access(this.currentWorkspacePath);
-      } catch {
-        // Workspace doesn't exist, return empty array
-        return [];
-      }
-      
-      const projects = await fs.promises.readdir(this.currentWorkspacePath);
-      
-      // Filter out hidden files and get only directories
-      const projectDirs = await Promise.all(
-        projects
-          .filter(p => !p.startsWith('.'))
-          .map(async (p) => {
-            const stat = await fs.promises.stat(path.join(this.currentWorkspacePath, p));
-            return stat.isDirectory() ? p : null;
-          })
-      );
-      
-      return projectDirs.filter(Boolean) as string[];
-    } catch (error: any) {
-      throw new Error(`Failed to list projects: ${error.message}`);
-    }
-  }
-  
-  /**
-   * List projects in a specific path (Cloud Mode)
-   * 
-   * @param workspacePath - User's workspace path (e.g., workspaces/nexus/alice)
-   */
-  async listProjectsInPath(workspacePath: string): Promise<string[]> {
-    try {
-      // Check if directory exists
       try {
         await fs.promises.access(workspacePath);
       } catch {
-        // Directory doesn't exist, return empty array
+        // Workspace doesn't exist, return empty array
         return [];
       }
       
@@ -96,35 +46,37 @@ export class ProjectService {
       );
       
       return projectDirs.filter(Boolean) as string[];
-    } catch (error: any) {
-      throw new Error(`Failed to list projects in ${workspacePath}: ${error.message}`);
+    } catch (error) {
+      console.error('[ProjectService] Error listing projects:', error);
+      return [];
     }
   }
   
   /**
-   * Sanitize project ID to valid project name (alphanumeric + hyphens)
+   * Sanitize project name for use in file paths
+   * Removes special characters except hyphens and underscores
    */
   private sanitizeProjectName(projectId: string): string {
     return projectId
       .toLowerCase()
-      .replace(/\s+/g, '-')           // spaces → hyphens
-      .replace(/[^a-z0-9-]/g, '')     // remove non-alphanumeric except hyphens
-      .replace(/-+/g, '-')            // multiple hyphens → single hyphen
+      .replace(/[^a-z0-9_-]/g, '-')  // replace invalid chars with hyphen
+      .replace(/-+/g, '-')           // collapse multiple hyphens
       .replace(/^-+|-+$/g, '');       // trim leading/trailing hyphens
   }
 
   /**
-   * Create a new project (uses current workspace path)
+   * Create a new project
    * 
    * @param id - Project ID
+   * @param userContext - User context for workspace path
    */
-  async createProject(id: string): Promise<void> {
+  async createProject(id: string, userContext: UserContext): Promise<void> {
     // Validate project ID (no special characters except hyphens and underscores)
     if (!/^[a-zA-Z0-9_-]+$/.test(id)) {
       throw new Error('Project ID can only contain letters, numbers, hyphens, and underscores');
     }
     
-    const projectPath = path.join(this.currentWorkspacePath, id);
+    const projectPath = this.workspaceResolver.getProjectPath(userContext, id);
     
     // Check if project already exists
     try {
@@ -150,94 +102,76 @@ export class ProjectService {
     const llmProvider = process.env.AI_MODEL_PROVIDER || process.env.MODEL_PROVIDER || 'openai';
     const llmModel = process.env.AI_MODEL_NAME || process.env.MODEL_NAME;
     
-    // ✅ Determine if Cloud Mode (workspace path differs from root)
-    const isCloudMode = this.currentWorkspacePath !== this.workspaceRoot;
+    // ✅ Determine if Cloud Mode
+    const isCloudMode = userContext.userId !== 'local' && userContext.organizationId !== 'local';
     
     console.log('[ProjectService] Creating project config:');
-    console.log('  - currentWorkspacePath:', this.currentWorkspacePath);
-    console.log('  - workspaceRoot:', this.workspaceRoot);
+    console.log('  - userContext:', userContext);
     console.log('  - isCloudMode:', isCloudMode);
     
     // ✅ Create config based on mode
-    const defaultConfig: any = {
-      projectName: sanitizedName,
-      repoType: isCloudMode ? 'cloud' : 'local',  // 'local' | 'cloud' | 'github'
+    const config = {
+      repositoryName: sanitizedName,  // ✅ Repository/codebase name
+      repoType: isCloudMode ? 'cloud' : 'local',
+      localPath: isCloudMode 
+        ? path.join(projectPath, 'codebase')  // Cloud: workspaces/{org}/{user}/{project}/codebase
+        : `../${sanitizedName}`,               // Local: relative path (~/dev/{sanitizedName})
       branchBase: 'main',
       autoLearn: true,
-      llmProvider,  // ✅ Add LLM provider from env
-      llmModel      // ✅ Add LLM model from env
+      llmProvider,
+      ...(llmModel && { llmModel })
     };
     
-    // ✅ Only add localPath for local mode
-    if (!isCloudMode) {
-      defaultConfig.localPath = `~/dev/${sanitizedName}`;
-    }
-    
-    console.log('[ProjectService] Config to be created:', JSON.stringify(defaultConfig, null, 2));
-    
-    await fs.promises.writeFile(configPath, JSON.stringify(defaultConfig, null, 2));
+    await fs.promises.writeFile(
+      configPath,
+      JSON.stringify(config, null, 2),
+      'utf-8'
+    );
   }
   
   /**
    * Delete a project
    */
-  async deleteProject(id: string): Promise<void> {
-    const projectPath = path.join(this.currentWorkspacePath, id);
+  async deleteProject(id: string, userContext: UserContext): Promise<void> {
+    const projectPath = this.workspaceResolver.getProjectPath(userContext, id);
     
     // Check if project exists
     try {
       await fs.promises.access(projectPath);
-    } catch (error: any) {
+    } catch {
       throw new Error('Project not found');
     }
     
-    // Delete project directory recursively
+    // Delete project directory
     await fs.promises.rm(projectPath, { recursive: true, force: true });
   }
   
   /**
-   * Get project config
+   * Get project configuration
    */
-  async getProjectConfig(projectId: string): Promise<any> {
-    const configPath = path.join(this.currentWorkspacePath, projectId, 'config.json');
+  async getProjectConfig(id: string, userContext: UserContext): Promise<any> {
+    const projectPath = this.workspaceResolver.getProjectPath(userContext, id);
+    const configPath = path.join(projectPath, 'config.json');
     
-    // Check if config exists
     try {
-      await fs.promises.access(configPath);
-    } catch (error: any) {
-      throw new Error('Config file not found');
-    }
-    
-    const configData = await fs.promises.readFile(configPath, 'utf-8');
-    const config = JSON.parse(configData);
-    
-    // ✅ Add default LLM settings if missing (for backward compatibility)
-    if (!config.llmProvider || !config.llmModel) {
-      const llmProvider = process.env.AI_MODEL_PROVIDER || process.env.MODEL_PROVIDER || 'openai';
-      const llmModel = process.env.AI_MODEL_NAME || process.env.MODEL_NAME;
-      
+      const configData = await fs.promises.readFile(configPath, 'utf-8');
+      return JSON.parse(configData);
+    } catch (error) {
+      // Return default config if file doesn't exist
       return {
-        ...config,
-        llmProvider: config.llmProvider || llmProvider,
-        llmModel: config.llmModel || llmModel
+        repoType: 'local',
+        localPath: `../${id}`
       };
     }
-    
-    return config;
   }
   
   /**
-   * Update project config
+   * Update project configuration
    */
-  async updateProjectConfig(projectId: string, config: any): Promise<void> {
-    const configPath = path.join(this.currentWorkspacePath, projectId, 'config.json');
+  async updateProjectConfig(projectId: string, config: any, userContext: UserContext): Promise<void> {
+    const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
+    const configPath = path.join(projectPath, 'config.json');
     
-    // Validate required fields
-    if (!config.projectName || !config.branchBase) {
-      throw new Error('Missing required fields: projectName, branchBase');
-    }
-    
-    // Write config file
     await fs.promises.writeFile(
       configPath,
       JSON.stringify(config, null, 2),
@@ -248,13 +182,9 @@ export class ProjectService {
   /**
    * Get session data for a project
    */
-  async getSession(projectId: string, featureName: string = 'skeleton', job: 'design' | 'code' | 'learn' = 'code'): Promise<any> {
-    const sessionPath = path.join(
-      this.currentWorkspacePath,
-      projectId,
-      featureName,
-      `sessions/${job}.json`
-    );
+  async getSession(projectId: string, featureName: string = 'skeleton', job: 'design' | 'code' | 'learn' = 'code', userContext: UserContext): Promise<any> {
+    const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+    const sessionPath = path.join(featurePath, `sessions/${job}.json`);
     
     // Check if session file exists
     const exists = await fs.promises.access(sessionPath)
@@ -272,198 +202,224 @@ export class ProjectService {
   /**
    * Reset job state (remove jobId, timing, and all task data from session)
    */
-  async resetJobState(projectId: string, featureName: string, job: 'design' | 'code' | 'learn' = 'code'): Promise<void> {
-    const sessionPath = path.join(
-      this.currentWorkspacePath,
-      projectId,
-      featureName,
-      `sessions/${job}.json`
-    );
+  async resetJobState(
+    projectId: string,
+    featureName: string,
+    jobType: 'design' | 'code' | 'learn',
+    userContext: UserContext
+  ): Promise<void> {
+    const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+    const sessionPath = path.join(featurePath, `sessions/${jobType}.json`);
     
-    // Check if session file exists
-    const exists = await fs.promises.access(sessionPath)
-      .then(() => true)
-      .catch(() => false);
-    
-    if (!exists) {
-      console.log(`[ProjectService] No session file to reset: ${sessionPath}`);
-      return;
-    }
-    
-    // Read existing session
-    const sessionData = await fs.promises.readFile(sessionPath, 'utf-8');
-    const session = JSON.parse(sessionData);
-    
-    // Remove ALL job-related data (jobId, timing, tasks)
-    if (session.state) {
-      delete session.state.jobId;
-      delete session.state.jobTiming;
-      delete session.state.taskQueue;
-      delete session.state.currentTask;
-      delete session.state.completedTasks;
-      delete session.state.completedTasksDetails;
-      delete session.state.interruption;
-      delete session.state.retries;
-      delete session.state.recursionCount;
-      delete session.state.recursionLimit;
+    try {
+      // Read existing session
+      const sessionData = JSON.parse(await fs.promises.readFile(sessionPath, 'utf-8'));
       
-      console.log(`[ProjectService] Reset job state: ${sessionPath}`);
-      console.log(`   Removed: jobId, jobTiming, taskQueue, currentTask, completedTasks, completedTasksDetails, interruption, retries, recursionCount, recursionLimit`);
+      // Reset state
+      const resetSession = {
+        ...sessionData,
+        state: {
+          taskQueue: [],
+          completedTasks: [],
+          completedTasksDetails: [],
+          currentTask: null,
+          jobTiming: null,
+          interruption: null
+        }
+      };
       
-      // Write back to file
-      await fs.promises.writeFile(
-        sessionPath, 
-        JSON.stringify(session, null, 2), 
-        'utf-8'
-      );
+      // Write back
+      await fs.promises.writeFile(sessionPath, JSON.stringify(resetSession, null, 2), 'utf-8');
+      console.log(`✅ [ProjectService] Reset ${jobType} job state for ${projectId}/${featureName}`);
+    } catch (error) {
+      console.error(`❌ [ProjectService] Failed to reset ${jobType} job state:`, error);
+      throw error;
     }
   }
   
+  // =====================================
+  // Feature Management
+  // =====================================
+  
   /**
-   * Get file tree for a project
+   * List all features for a project
    */
-  async getFileTree(projectId: string, featureName: string = 'skeleton'): Promise<any> {
-    const featurePath = path.join(this.currentWorkspacePath, projectId, featureName);
+  async listFeatures(projectId: string, userContext: UserContext): Promise<string[]> {
+    const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
+    const featuresPath = path.join(projectPath, 'features');
     
-    const buildTree = async (currentPath: string, relativePath: string = ''): Promise<any> => {
-      const entries = await fs.promises.readdir(currentPath, { withFileTypes: true });
+    try {
+      await fs.promises.access(featuresPath);
+    } catch {
+      // features directory doesn't exist yet
+      return [];
+    }
+    
+    const items = await fs.promises.readdir(featuresPath);
+    const features = await Promise.all(
+      items
+        .filter(item => !item.startsWith('.'))
+        .map(async (item) => {
+          const itemPath = path.join(featuresPath, item);
+          const stat = await fs.promises.stat(itemPath);
+          return stat.isDirectory() ? item : null;
+        })
+    );
+    
+    return features.filter(Boolean) as string[];
+  }
+  
+  /**
+   * Create a new feature
+   */
+  async createFeature(projectId: string, featureName: string, userContext: UserContext): Promise<void> {
+    const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+    
+    // Create feature directory structure
+    await fs.promises.mkdir(path.join(featurePath, 'inputs/directives/design'), { recursive: true });
+    await fs.promises.mkdir(path.join(featurePath, 'inputs/directives/code'), { recursive: true });
+    await fs.promises.mkdir(path.join(featurePath, 'inputs/directives/learn'), { recursive: true });
+    await fs.promises.mkdir(path.join(featurePath, 'inputs/sources'), { recursive: true });
+    await fs.promises.mkdir(path.join(featurePath, 'outputs'), { recursive: true });
+    await fs.promises.mkdir(path.join(featurePath, 'sessions'), { recursive: true });
+  }
+  
+  /**
+   * Delete a feature
+   */
+  async deleteFeature(projectId: string, featureName: string, userContext: UserContext): Promise<void> {
+    const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+    
+    try {
+      await fs.promises.access(featurePath);
+    } catch {
+      throw new Error('Feature not found');
+    }
+    
+    await fs.promises.rm(featurePath, { recursive: true, force: true });
+  }
+  
+  // =====================================
+  // File Operations
+  // =====================================
+  
+  /**
+   * Get file tree for a feature
+   */
+  async getFileTree(projectId: string, featureName: string, userContext: UserContext): Promise<any> {
+    const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+    
+    const buildTree = async (dirPath: string, relativePath: string = ''): Promise<any> => {
+      const items = await fs.promises.readdir(dirPath);
+      const tree: any[] = [];
       
-      const tree = await Promise.all(
-        entries
-          .filter(entry => !entry.name.startsWith('.'))
-          .map(async (entry) => {
-            const fullPath = path.join(currentPath, entry.name);
-            const relPath = path.join(relativePath, entry.name);
-            
-            if (entry.isDirectory()) {
-              return {
-                name: entry.name,
-                type: 'directory',
-                path: relPath,
-                children: await buildTree(fullPath, relPath)
-              };
-            } else {
-              const stats = await fs.promises.stat(fullPath);
-              return {
-                name: entry.name,
-                type: 'file',
-                path: relPath,
-                size: stats.size
-              };
-            }
-          })
-      );
+      for (const item of items) {
+        if (item.startsWith('.')) continue;
+        
+        const fullPath = path.join(dirPath, item);
+        const itemRelativePath = relativePath ? `${relativePath}/${item}` : item;
+        const stat = await fs.promises.stat(fullPath);
+        
+        if (stat.isDirectory()) {
+          const children = await buildTree(fullPath, itemRelativePath);
+          tree.push({
+            name: item,
+            path: itemRelativePath,
+            type: 'directory',
+            children
+          });
+        } else {
+          tree.push({
+            name: item,
+            path: itemRelativePath,
+            type: 'file'
+          });
+        }
+      }
       
       return tree;
     };
     
     try {
-      return await buildTree(featurePath);
-    } catch (error: any) {
-      throw new Error(`Failed to build file tree: ${error.message}`);
+      const tree = await buildTree(featurePath);
+      return tree;
+    } catch (error) {
+      console.error('[ProjectService] Error building file tree:', error);
+      return [];
     }
   }
   
   /**
-   * Read a file
+   * Read file content
    */
-  async readFile(projectId: string, featureName: string, filePath: string): Promise<string> {
-    const fullPath = path.join(this.currentWorkspacePath, projectId, featureName, filePath);
+  async readFile(projectId: string, featureName: string, filePath: string, userContext: UserContext): Promise<string> {
+    const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+    const fullPath = path.join(featurePath, filePath);
     
-    try {
-      await fs.promises.access(fullPath);
-    } catch (error: any) {
-      throw new Error('File not found');
+    // Security: prevent path traversal
+    if (!fullPath.startsWith(featurePath)) {
+      throw new Error('Invalid file path');
     }
     
     return await fs.promises.readFile(fullPath, 'utf-8');
   }
   
   /**
-   * Write a file
+   * Write file content
    */
-  async writeFile(projectId: string, featureName: string, filePath: string, content: string): Promise<void> {
-    const fullPath = path.join(this.currentWorkspacePath, projectId, featureName, filePath);
+  async writeFile(projectId: string, featureName: string, filePath: string, content: string, userContext: UserContext): Promise<void> {
+    const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+    const fullPath = path.join(featurePath, filePath);
     
-    // Ensure parent directory exists
+    // Security: prevent path traversal
+    if (!fullPath.startsWith(featurePath)) {
+      throw new Error('Invalid file path');
+    }
+    
+    // Ensure directory exists
     await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
     
     await fs.promises.writeFile(fullPath, content, 'utf-8');
   }
   
   /**
-   * List features for a project
+   * Delete a file
    */
-  async listFeatures(projectId: string): Promise<string[]> {
-    const projectPath = path.join(this.currentWorkspacePath, projectId);
+  async deleteFile(projectId: string, featureName: string, filePath: string, userContext: UserContext): Promise<void> {
+    const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+    const fullPath = path.join(featurePath, filePath);
     
-    try {
-      const entries = await fs.promises.readdir(projectPath, { withFileTypes: true });
+    // Security: prevent path traversal
+    if (!fullPath.startsWith(featurePath)) {
+      throw new Error('Invalid file path');
+    }
+    
+    await fs.promises.unlink(fullPath);
+  }
+  
+  /**
+   * Upload multiple files
+   */
+  async uploadFiles(
+    projectId: string,
+    featureName: string,
+    files: Array<{ path: string; content: Buffer }>,
+    userContext: UserContext
+  ): Promise<void> {
+    const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+    
+    for (const file of files) {
+      const fullPath = path.join(featurePath, file.path);
       
-      // Return all directories except common ones
-      return entries
-        .filter(entry => 
-          entry.isDirectory() && 
-          !entry.name.startsWith('.') &&
-          entry.name !== 'node_modules'
-        )
-        .map(entry => entry.name);
-    } catch (error: any) {
-      throw new Error(`Failed to list features: ${error.message}`);
-    }
-  }
-  
-  /**
-   * Create a feature directory structure
-   */
-  async createFeature(projectId: string, featureName: string): Promise<void> {
-    const featurePath = path.join(this.currentWorkspacePath, projectId, featureName);
-    
-    // Check if feature already exists
-    try {
-      await fs.promises.access(featurePath);
-      throw new Error('Feature already exists');
-    } catch (error: any) {
-      if (error.message === 'Feature already exists') {
-        throw error;
+      // Security: prevent path traversal
+      if (!fullPath.startsWith(featurePath)) {
+        throw new Error(`Invalid file path: ${file.path}`);
       }
-      // Feature doesn't exist, which is what we want
+      
+      // Ensure directory exists
+      await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
+      
+      await fs.promises.writeFile(fullPath, file.content);
     }
-    
-    // Create feature directory structure
-    await fs.promises.mkdir(path.join(featurePath, 'inputs/directives'), { recursive: true });
-    await fs.promises.mkdir(path.join(featurePath, 'inputs/sources'), { recursive: true });
-    await fs.promises.mkdir(path.join(featurePath, 'outputs/design'), { recursive: true });
-    await fs.promises.mkdir(path.join(featurePath, 'outputs/reports'), { recursive: true });
-    await fs.promises.mkdir(path.join(featurePath, 'sessions'), { recursive: true });  // ✅ Add sessions directory
-  }
-  
-  /**
-   * Delete a feature (respects currentWorkspacePath for Cloud Mode)
-   */
-  async deleteFeature(projectId: string, featureName: string): Promise<void> {
-    const featurePath = path.join(this.currentWorkspacePath, projectId, featureName);
-    
-    // Check if feature exists
-    try {
-      await fs.promises.access(featurePath);
-    } catch (error: any) {
-      throw new Error('Feature not found');
-    }
-    
-    // Delete feature directory recursively
-    await fs.promises.rm(featurePath, { recursive: true, force: true });
-  }
-  
-  /**
-   * Resolve local path (handles ~/ expansion)
-   */
-  resolveLocalPath(localPath: string): string {
-    if (localPath.startsWith('~/')) {
-      const homeDir = process.env.HOME || process.env.USERPROFILE || '';
-      return path.join(homeDir, localPath.slice(2));
-    }
-    return localPath;
   }
 }
-

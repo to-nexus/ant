@@ -35,6 +35,24 @@ export class ChatAPIClient {
   }
 
   /**
+   * Build HTTP headers with authentication (Cloud mode)
+   * @private
+   */
+  private getHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+    
+    // ✅ Add user email for Cloud mode authentication
+    const userEmail = process.env.ANT_USER_EMAIL;
+    if (userEmail) {
+      headers['x-user-email'] = userEmail;
+    }
+    
+    return headers;
+  }
+
+  /**
    * Check if a message is currently active
    */
   hasActiveMessage(): boolean {
@@ -50,7 +68,7 @@ export class ChatAPIClient {
     try {
       const response = await fetch(`${this.baseUrl}/start-message`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getHeaders(),
         body: JSON.stringify({ jobId: this.jobId })
       });
 
@@ -145,7 +163,7 @@ export class ChatAPIClient {
       // Send Chat Status Message directly to chat service (NOT an LLM event!)
       const response = await fetch(`${this.baseUrl}/add-content`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getHeaders(),
         body: JSON.stringify({
           content: {
             type,
@@ -177,7 +195,7 @@ export class ChatAPIClient {
     try {
       const response = await fetch(`${this.baseUrl}/llm-event`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getHeaders(),
         body: JSON.stringify({ event })
       });
 
@@ -198,7 +216,7 @@ export class ChatAPIClient {
     try {
       const response = await fetch(`${this.baseUrl}/finalize-message`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: this.getHeaders()
       });
 
       if (!response.ok) {
@@ -224,7 +242,7 @@ export class ChatAPIClient {
     try {
       await fetch(`${this.baseUrl}/file-operation`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getHeaders(),
         body: JSON.stringify({ phase: 'creating', operation: 'create', filePath })
       });
     } catch (error) { /* Silently fail */ }
@@ -238,7 +256,7 @@ export class ChatAPIClient {
     try {
       await fetch(`${this.baseUrl}/file-operation`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getHeaders(),
         body: JSON.stringify({ phase: 'writing', operation: 'create', filePath, content })
       });
     } catch (error) { /* Silently fail */ }
@@ -252,7 +270,7 @@ export class ChatAPIClient {
     try {
       await fetch(`${this.baseUrl}/file-operation`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getHeaders(),
         body: JSON.stringify({ phase: 'complete', operation: 'create', filePath, content })
       });
     } catch (error) { /* Silently fail */ }
@@ -266,7 +284,7 @@ export class ChatAPIClient {
     try {
       await fetch(`${this.baseUrl}/file-operation`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getHeaders(),
         body: JSON.stringify({ phase: 'editing', operation: 'edit', filePath })
       });
     } catch (error) { /* Silently fail */ }
@@ -280,7 +298,7 @@ export class ChatAPIClient {
     try {
       await fetch(`${this.baseUrl}/file-operation`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getHeaders(),
         body: JSON.stringify({ phase: 'updating', operation: 'edit', filePath, diffBefore, diffAfter })
       });
     } catch (error) { /* Silently fail */ }
@@ -294,7 +312,7 @@ export class ChatAPIClient {
     try {
       await fetch(`${this.baseUrl}/file-operation`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getHeaders(),
         body: JSON.stringify({ phase: 'complete', operation: 'edit', filePath, diffBefore, diffAfter })
       });
     } catch (error) { /* Silently fail */ }
@@ -308,7 +326,7 @@ export class ChatAPIClient {
     try {
       await fetch(`${this.baseUrl}/file-operation`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getHeaders(),
         body: JSON.stringify({ phase: 'deleting', operation: 'delete', filePath })
       });
     } catch (error) { /* Silently fail */ }
@@ -322,7 +340,7 @@ export class ChatAPIClient {
     try {
       await fetch(`${this.baseUrl}/file-operation`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getHeaders(),
         body: JSON.stringify({ phase: 'complete', operation: 'delete', filePath, content })
       });
     } catch (error) { /* Silently fail */ }
@@ -344,7 +362,7 @@ export class ChatAPIClient {
     try {
       const response = await fetch(`${this.baseUrl}/file-operation`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getHeaders(),
         body: JSON.stringify({ 
           phase: 'complete',  // Legacy calls are treated as complete
           operation, 
@@ -375,7 +393,7 @@ export class ChatAPIClient {
     try {
       await fetch(`${this.baseUrl}/command-execution`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getHeaders(),
         body: JSON.stringify({ phase: 'running', command })
       });
     } catch (error) { /* Silently fail */ }
@@ -389,7 +407,7 @@ export class ChatAPIClient {
     try {
       await fetch(`${this.baseUrl}/command-execution`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getHeaders(),
         body: JSON.stringify({ phase: 'streaming', command, output })
       });
     } catch (error) { /* Silently fail */ }
@@ -403,7 +421,7 @@ export class ChatAPIClient {
     try {
       await fetch(`${this.baseUrl}/command-execution`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getHeaders(),
         body: JSON.stringify({ phase: 'complete', command, output, exitCode })
       });
     } catch (error) { /* Silently fail */ }
@@ -419,7 +437,7 @@ export class ChatAPIClient {
     try {
       const response = await fetch(`${this.baseUrl}/command-execution`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getHeaders(),
         body: JSON.stringify({ phase: 'complete', command, output, exitCode })
       });
 

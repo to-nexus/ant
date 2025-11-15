@@ -26,11 +26,11 @@ export function ExplorerPanel({
   onToggleFileEditor,
   onResizeStart,
 }: ExplorerPanelProps) {
-  const deploymentMode = useStore((state) => state.deploymentMode);
+  const backendMode = useStore((state) => state.backendMode);
   const userEmail = useStore((state) => state.userEmail);
   
   // Check authentication status
-  const isAuthenticated = deploymentMode === 'local' || !!userEmail;
+  const isAuthenticated = backendMode === 'local' || !!userEmail;
   
   if (isCollapsed) return null;
 

@@ -10,6 +10,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { LLMStreamEvent } from '../../llm/types';
 import type { SSEService } from './SSEService';
+import type { WorkspaceResolver } from '../../../../infrastructure/workspace/WorkspaceResolver';
+import type { UserContext } from '../../../../core/types/user';
 
 // ✅ NOTE: This is duplicated in @ant-ui/domain/models/chat.ts
 // Keep types in sync manually (packages are separate)
@@ -79,16 +81,27 @@ interface ChatSession {
   };
   thinkingStartTime?: number;  // Track thinking block start time (ms)
   lastThinkingContentIndex?: number;  // Track last thinking content index
+  userContext?: UserContext;  // ✅ Store user context for file operations
 }
 
 export class ChatService {
   private workspaceRoot: string;
   private sessions = new Map<string, ChatSession>();
   private sseService?: SSEService;
+  private workspaceResolver?: WorkspaceResolver;  // ✅ Add WorkspaceResolver
+  private defaultUserContext?: UserContext;  // ✅ Store default user context from request
 
-  constructor(workspaceRoot: string, sseService?: SSEService) {
+  constructor(workspaceRoot: string, sseService?: SSEService, workspaceResolver?: WorkspaceResolver) {
     this.workspaceRoot = workspaceRoot;
     this.sseService = sseService;
+    this.workspaceResolver = workspaceResolver;  // ✅ Store WorkspaceResolver
+  }
+  
+  /**
+   * Set user context for subsequent operations (from Express middleware)
+   */
+  setUserContext(userContext: UserContext): void {
+    this.defaultUserContext = userContext;
   }
 
   /**
@@ -101,15 +114,20 @@ export class ChatService {
   /**
    * Get chat file path for a project/feature
    */
-  private getChatFilePath(projectId: string, featureName: string): string {
-    return path.join(this.workspaceRoot, projectId, featureName, 'sessions', 'chat.json');
+  private getChatFilePath(projectId: string, featureName: string, userContext?: UserContext): string {
+    if (!this.workspaceResolver || !userContext) {
+      throw new Error('WorkspaceResolver and userContext are required');
+    }
+    
+    const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+    return path.join(featurePath, 'sessions', 'chat.json');
   }
 
   /**
    * Load chat session from file
    */
-  private loadSessionFromFile(projectId: string, featureName: string): ChatSessionFile | null {
-    const filePath = this.getChatFilePath(projectId, featureName);
+  private loadSessionFromFile(projectId: string, featureName: string, userContext?: UserContext): ChatSessionFile | null {
+    const filePath = this.getChatFilePath(projectId, featureName, userContext);
     
     try {
       if (!fs.existsSync(filePath)) {
@@ -136,8 +154,8 @@ export class ChatService {
   /**
    * Save chat session to file
    */
-  private saveSessionToFile(projectId: string, featureName: string, messages: ChatMessage[]): void {
-    const filePath = this.getChatFilePath(projectId, featureName);
+  private saveSessionToFile(projectId: string, featureName: string, messages: ChatMessage[], userContext?: UserContext): void {
+    const filePath = this.getChatFilePath(projectId, featureName, userContext);
     
     try {
       // Ensure directory exists
@@ -148,7 +166,7 @@ export class ChatService {
 
       // Load existing file to preserve createdAt
       let createdAt = new Date().toISOString();
-      const existing = this.loadSessionFromFile(projectId, featureName);
+      const existing = this.loadSessionFromFile(projectId, featureName, userContext);
       if (existing) {
         createdAt = existing.createdAt;
       }
@@ -173,13 +191,13 @@ export class ChatService {
   /**
    * Initialize or get chat session (with file loading)
    */
-  getOrCreateSession(projectId: string, featureName: string, jobId?: string): ChatSession {
+  getOrCreateSession(projectId: string, featureName: string, jobId?: string, userContext?: UserContext): ChatSession {
     const key = this.getSessionKey(projectId, featureName);
     
     // Check memory cache first
     if (!this.sessions.has(key)) {
       // Load from file if exists
-      const fileSession = this.loadSessionFromFile(projectId, featureName);
+      const fileSession = this.loadSessionFromFile(projectId, featureName, userContext);
       
       this.sessions.set(key, {
         projectId,
@@ -206,8 +224,8 @@ export class ChatService {
   /**
    * Add user message to chat history
    */
-  addUserMessage(projectId: string, featureName: string, content: string, jobId?: string): string {
-    const session = this.getOrCreateSession(projectId, featureName, jobId);
+  addUserMessage(projectId: string, featureName: string, content: string, jobId?: string, userContext?: UserContext): string {
+    const session = this.getOrCreateSession(projectId, featureName, jobId, userContext);
     
     const messageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const userMessage: ChatMessage = {
@@ -224,7 +242,7 @@ export class ChatService {
     session.messages.push(userMessage);
     
     // Save to file
-    this.saveSessionToFile(projectId, featureName, session.messages);
+    this.saveSessionToFile(projectId, featureName, session.messages, userContext);
     
     // Broadcast new user message
     this.broadcast(projectId, featureName, {
@@ -238,8 +256,8 @@ export class ChatService {
   /**
    * Start a new assistant message (for streaming)
    */
-  startAssistantMessage(projectId: string, featureName: string, jobId: string): string {
-    const session = this.getOrCreateSession(projectId, featureName, jobId);
+  startAssistantMessage(projectId: string, featureName: string, jobId: string, userContext?: UserContext): string {
+    const session = this.getOrCreateSession(projectId, featureName, jobId, userContext);
     
     // ✅ If there's already a current message being streamed, reuse it (avoid duplicates)
     if (session.currentMessage && session.currentMessage.isStreaming) {
@@ -577,7 +595,7 @@ export class ChatService {
     session.messages.push(session.currentMessage);
     
     // Save to file
-    this.saveSessionToFile(projectId, featureName, session.messages);
+    this.saveSessionToFile(projectId, featureName, session.messages, session.userContext);
     
     // Broadcast message complete
     this.broadcast(projectId, featureName, {
@@ -854,9 +872,9 @@ export class ChatService {
   /**
    * Get all messages for a session
    */
-  getMessages(projectId: string, featureName: string): ChatMessage[] {
+  getMessages(projectId: string, featureName: string, userContext?: UserContext): ChatMessage[] {
     // ✅ Use getOrCreateSession to ensure file is loaded
-    const session = this.getOrCreateSession(projectId, featureName);
+    const session = this.getOrCreateSession(projectId, featureName, undefined, userContext);
 
     const messages = [...session.messages];
     
@@ -875,7 +893,7 @@ export class ChatService {
   /**
    * Clear messages for a session
    */
-  clearMessages(projectId: string, featureName: string): void {
+  clearMessages(projectId: string, featureName: string, userContext?: UserContext): void {
     const key = this.getSessionKey(projectId, featureName);
     const session = this.sessions.get(key);
     
@@ -884,7 +902,7 @@ export class ChatService {
       session.currentMessage = undefined;
       
       // Delete file
-      const filePath = this.getChatFilePath(projectId, featureName);
+      const filePath = this.getChatFilePath(projectId, featureName, userContext);
       try {
         if (fs.existsSync(filePath)) {
           fs.unlinkSync(filePath);

@@ -2,17 +2,22 @@ import { GitPort } from "../../../core/ports";
 import { getGitInstance, createBranch, getChangedFiles, getFileFromHead, resolveLocalPath } from "./gitUtils";
 import * as path from "path";
 
-// Workspace is at project root (../../workspace from packages/ant-cli)
-const WORKSPACE_ROOT = path.join(process.cwd(), "../../workspace");
-
 export class SimpleGitAdapter implements GitPort {
   private git: any;
   private project: string;
   private config: any;
+  private projectPath: string;  // ✅ Store project path
 
-  constructor(project: string, config: any) {
+  constructor(project: string, config: any, projectPath?: string) {
     this.project = project;
     this.config = config;
+    
+    // ✅ Require projectPath - no fallback
+    if (!projectPath) {
+      throw new Error('projectPath is required for SimpleGitAdapter. Use WorkspaceResolver to generate paths.');
+    }
+    
+    this.projectPath = projectPath;
   }
 
   private async ensure() {
@@ -57,10 +62,17 @@ export class SimpleGitAdapter implements GitPort {
     const fs = await import("fs");
     const p = await import("path");
     
-    // For workspace paths, write to workspace root
+    // For workspace paths, write to project path
     if (path.startsWith('workspace/')) {
-      const relativePath = path.substring('workspace/'.length);
-      const full = p.join(WORKSPACE_ROOT, relativePath);
+      // workspace/project/feature/... -> feature/...
+      // Extract everything after workspace/project/
+      const parts = path.split('/');
+      parts.shift();  // Remove 'workspace'
+      parts.shift();  // Remove project name
+      const featureRelativePath = parts.join('/');
+      
+      const full = p.join(this.projectPath, featureRelativePath);
+      
       fs.mkdirSync(p.dirname(full), { recursive: true });
       fs.writeFileSync(full, content, "utf8");
       return;
@@ -77,10 +89,16 @@ export class SimpleGitAdapter implements GitPort {
     const fs = await import("fs");
     const p = await import("path");
     
-    // For workspace paths, read from workspace root
+    // For workspace paths, read from project path
     if (path.startsWith('workspace/')) {
-      const relativePath = path.substring('workspace/'.length);
-      const full = p.join(WORKSPACE_ROOT, relativePath);
+      // workspace/project/feature/... -> feature/...
+      const parts = path.split('/');
+      parts.shift();  // Remove 'workspace'
+      parts.shift();  // Remove project name
+      const featureRelativePath = parts.join('/');
+      
+      const full = p.join(this.projectPath, featureRelativePath);
+      
       try {
         return fs.readFileSync(full, "utf8");
       } catch {
@@ -103,10 +121,16 @@ export class SimpleGitAdapter implements GitPort {
     const fs = await import("fs");
     const p = await import("path");
     
-    // For workspace paths, check in workspace root
+    // For workspace paths, check in project path
     if (path.startsWith('workspace/')) {
-      const relativePath = path.substring('workspace/'.length);
-      const full = p.join(WORKSPACE_ROOT, relativePath);
+      // workspace/project/feature/... -> feature/...
+      const parts = path.split('/');
+      parts.shift();  // Remove 'workspace'
+      const projectInPath = parts[0];
+      parts.shift();  // Remove project name
+      const featureRelativePath = parts.join('/');
+      
+      const full = p.join(this.projectPath, featureRelativePath);
       return fs.existsSync(full);
     }
     
@@ -121,10 +145,15 @@ export class SimpleGitAdapter implements GitPort {
     const fs = await import("fs");
     const p = await import("path");
     
-    // For workspace paths, delete from workspace root
+    // For workspace paths, delete from project path
     if (path.startsWith('workspace/')) {
-      const relativePath = path.substring('workspace/'.length);
-      const full = p.join(WORKSPACE_ROOT, relativePath);
+      // workspace/project/feature/... -> feature/...
+      const parts = path.split('/');
+      parts.shift();  // Remove 'workspace'
+      parts.shift();  // Remove project name
+      const featureRelativePath = parts.join('/');
+      
+      const full = p.join(this.projectPath, featureRelativePath);
       
       // ✅ Check if file exists and is a file (not directory)
       if (!fs.existsSync(full)) {
@@ -177,10 +206,15 @@ export class SimpleGitAdapter implements GitPort {
     const fs = await import("fs");
     const p = await import("path");
     
-    // For workspace paths, read from workspace root
+    // For workspace paths, read from project path
     if (path.startsWith('workspace/')) {
-      const relativePath = path.substring('workspace/'.length);
-      const full = p.join(WORKSPACE_ROOT, relativePath);
+      // workspace/project/feature/... -> feature/...
+      const parts = path.split('/');
+      parts.shift();  // Remove 'workspace'
+      parts.shift();  // Remove project name
+      const featureRelativePath = parts.join('/');
+      
+      const full = p.join(this.projectPath, featureRelativePath);
       try {
         const entries = fs.readdirSync(full, { withFileTypes: true });
         return entries.map(entry => ({
@@ -211,10 +245,15 @@ export class SimpleGitAdapter implements GitPort {
     const fs = await import("fs");
     const p = await import("path");
     
-    // For workspace paths, create in workspace root
+    // For workspace paths, create in project path
     if (path.startsWith('workspace/')) {
-      const relativePath = path.substring('workspace/'.length);
-      const full = p.join(WORKSPACE_ROOT, relativePath);
+      // workspace/project/feature/... -> feature/...
+      const parts = path.split('/');
+      parts.shift();  // Remove 'workspace'
+      parts.shift();  // Remove project name
+      const featureRelativePath = parts.join('/');
+      
+      const full = p.join(this.projectPath, featureRelativePath);
       fs.mkdirSync(full, { recursive: true });
       return;
     }

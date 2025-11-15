@@ -10,6 +10,7 @@ import {
   openLocalIDE,
   checkIDEInstalled
 } from '@/infrastructure/http/api';
+import { getProjectPath } from '@/shared/utils/workspace-path';
 import { ItemDropdown } from './ItemDropdown';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { Button } from '@/presentation/components/common/button';
@@ -23,7 +24,7 @@ export function ProjectSection() {
     setShowConfigEditor, 
     setEditorMode, 
     setIdeWorkspacePath, 
-    deploymentMode,
+    backendMode,
     userEmail,
     userOrganization
   } = useStore();
@@ -36,7 +37,7 @@ export function ProjectSection() {
   
   // Check IDE installation status (Local mode only)
   useEffect(() => {
-    if (deploymentMode === 'local') {
+    if (backendMode === 'local') {
       Promise.all([
         checkIDEInstalled('cursor'),
         checkIDEInstalled('vscode')
@@ -53,7 +54,7 @@ export function ProjectSection() {
         }
       });
     }
-  }, [deploymentMode]);
+  }, [backendMode]);
 
   // Check if config exists when project is selected
   useEffect(() => {
@@ -137,25 +138,22 @@ export function ProjectSection() {
     
     if (config?.repoType === 'cloud') {
       // Cloud Mode: Project path is managed by server
-      // Path structure in server: workspaces/{org_id}/{user_id}/{project_name}
-      // Docker mount: $HOME -> /workspace
-      // Final path in Docker: /workspace/dev/ant/workspaces/{org_id}/{user_id}/{project_name}
-      if (!selectedProject || !userEmail || !userOrganization) {
-        alert('User information or project not available.');
+      // Use centralized path utility
+      if (!selectedProject) {
+        alert('Project not selected.');
         return;
       }
       
-      // Extract userId from email (e.g., alice@to.nexus -> alice)
-      const userId = userEmail.split('@')[0];
+      // ✅ Use centralized path utility
+      const projectPath = getProjectPath(selectedProject);
       
       // Build Docker path
       // Assuming ant is at ~/dev/ant and Docker mounts $HOME as /workspace
-      workspacePath = `/workspace/dev/ant/workspaces/${userOrganization}/${userId}/${selectedProject}`;
+      workspacePath = `/workspace/dev/ant/${projectPath}`;
       
       console.log('[ProjectSection] Cloud Mode - Using server workspace path:', {
-        userOrganization,
-        userId,
         selectedProject,
+        projectPath,
         workspacePath
       });
     } else {
@@ -221,7 +219,7 @@ export function ProjectSection() {
       {/* Open IDE Section */}
       {selectedProject && (
         <div className="mt-2">
-          {deploymentMode === 'local' ? (
+          {backendMode === 'local' ? (
             // Local Backend: Show IDE selector (Cursor/VS Code)
             <div className="relative">
               <div className="flex gap-2">
@@ -336,7 +334,7 @@ export function ProjectSection() {
             </div>
           )}
           
-          {deploymentMode === 'local' && configExists && config?.localPath && !ideStatus.cursor && !ideStatus.vscode && (
+          {backendMode === 'local' && configExists && config?.localPath && !ideStatus.cursor && !ideStatus.vscode && (
             <div className="mt-2 p-2 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-md">
               <div className="flex items-start gap-1.5">
                 <span className="text-orange-600 dark:text-orange-400 text-xs flex-shrink-0">⚠️</span>

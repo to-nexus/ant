@@ -2,13 +2,15 @@ import { Router, Request, Response } from 'express';
 import * as path from 'path';
 import { ExecuteJobParams, LogEntry } from '../../../../core/ports/http';
 import type { InterruptionDetails } from '../../../../core/types';
+import { WorkspaceResolver } from '../../../../infrastructure/workspace/WorkspaceResolver';
 
 /**
  * Job execution routes
  * Handles agent job execution, status, logs, and control endpoints
  */
 export function createJobRoutes(deps: {
-  workspaceRoot: string;
+  // workspaceRoot: string;  // ❌ 제거 - 사용하지 않음
+  workspaceResolver: WorkspaceResolver;  // ✅ WorkspaceResolver 사용
   executeJob: (params: ExecuteJobParams) => Promise<any>;
   getJobStatus: (jobId: string) => any;
   getLogs: (jobId: string) => LogEntry[];
@@ -36,20 +38,31 @@ export function createJobRoutes(deps: {
       console.log(`   Chat Source: ${chatSource || false}`);
       console.log(`   Body:`, req.body);
       
+      // ✅ Build context for WorkspaceResolver
+      const userContext = req.user && req.organization ? {
+        userId: req.user.id,
+        organizationId: req.organization.id,
+        workspacePath: ''  // Not used by WorkspaceResolver
+      } : { userId: 'local', organizationId: 'local', workspacePath: '' };
+      
+      // ✅ Use WorkspaceResolver to get proper path
+      // ✅ Only set inputFile if no overrideDirective (chat input takes precedence)
+      let inputFile: string | undefined;
+      if (!overrideDirective) {
+        const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+        inputFile = path.join(featurePath, `inputs/directives/${task}/directive.md`);
+      }
+      
       const params: ExecuteJobParams = {
         agent: agent || 'architect',
         task,
         project: projectId,
         feature: featureName,
-        inputFile: path.join(
-          deps.workspaceRoot,
-          projectId,
-          featureName,
-          `inputs/directives/${task}/directive.md`
-        ),
+        inputFile,
         enableEvaluation,
         overrideDirective,  // ✅ Chat input as directive
-        chatSource          // ✅ Flag for Chat SSE
+        chatSource,         // ✅ Flag for Chat SSE
+        userContext         // ✅ Pass user context
       };
       
       console.log(`   📦 Calling deps.executeJob with params:`, params);
@@ -68,19 +81,31 @@ export function createJobRoutes(deps: {
       const projectId = req.params.id;
       const { task, agent = 'architect', enableEvaluation, overrideDirective, chatSource } = req.body;
       
+      // ✅ Build context for WorkspaceResolver
+      const userContext = req.user && req.organization ? {
+        userId: req.user.id,
+        organizationId: req.organization.id,
+        workspacePath: ''  // Not used by WorkspaceResolver
+      } : { userId: 'local', organizationId: 'local', workspacePath: '' };
+      
+      // ✅ Use WorkspaceResolver to get proper path
+      // ✅ Only set inputFile if no overrideDirective (chat input takes precedence)
+      let inputFile: string | undefined;
+      if (!overrideDirective) {
+        const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, 'skeleton');
+        inputFile = path.join(featurePath, `inputs/directives/${task}/directive.md`);
+      }
+      
       const params: ExecuteJobParams = {
         agent: agent || 'architect',
         task,
         project: projectId,
         feature: 'skeleton',
-        inputFile: path.join(
-          deps.workspaceRoot,
-          projectId,
-          `skeleton/inputs/directives/${task}/directive.md`
-        ),
+        inputFile,
         enableEvaluation,
         overrideDirective,  // ✅ Chat input as directive
-        chatSource          // ✅ Flag for Chat SSE
+        chatSource,         // ✅ Flag for Chat SSE
+        userContext         // ✅ Pass user context
       };
       
       const result = await deps.executeJob(params);
@@ -212,9 +237,19 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
     console.log(`   Project: ${projectId}, Feature: ${featureName}`);
     
     try {
+      // ✅ Build context for WorkspaceResolver
+      const userContext = req.user && req.organization ? {
+        userId: req.user.id,
+        organizationId: req.organization.id,
+        workspacePath: ''  // Not used by WorkspaceResolver
+      } : { userId: 'local', organizationId: 'local', workspacePath: '' };
+      
+      // ✅ Use WorkspaceResolver to get proper path
+      const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+      
       // ✅ Find job type from session files
       const fs = require('fs');
-      const sessionDir = path.join(deps.workspaceRoot, projectId, featureName, 'sessions');
+      const sessionDir = path.join(featurePath, 'sessions');
       
       let jobType: 'design' | 'code' | 'learn' | null = null;
       
@@ -241,21 +276,19 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
       console.log(`   Job type: ${jobType}`);
       console.log(`   Starting resume job execution...`);
       
-      // ✅ Execute job with correct type (will resume from session)
+      // ✅ Build inputFile path (but file may not exist for chat-initiated jobs)
+      const inputFile = path.join(featurePath, `inputs/directives/${jobType}/directive.md`);
+      
       const params: ExecuteJobParams = {
         agent: 'architect',
         task: jobType,
         project: projectId,
         feature: featureName,
-        inputFile: path.join(
-          deps.workspaceRoot,
-          projectId,
-          featureName,
-          `inputs/directives/${jobType}/directive.md`
-        ),
+        inputFile,  // May not exist for chat-initiated jobs, but that's ok
         enableEvaluation: false,
         overrideDirective: undefined,
-        chatSource  // ✅ Use chatSource from request body (default: true)
+        chatSource,         // ✅ Use chatSource from request body (default: true)
+        userContext         // ✅ Pass user context
       };
       
       const result = await deps.executeJob(params);

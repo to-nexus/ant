@@ -2,8 +2,8 @@ import { ExternalLink, Terminal, Server, Laptop, CheckCircle, AlertCircle } from
 import { useStore } from '@/domain/store';
 
 export function LocalSetupGuide() {
-  const frontendMode = useStore((state) => state.frontendMode);
-  const setDeploymentMode = useStore((state) => state.setDeploymentMode);
+  const backendMode = useStore((state) => state.backendMode);
+  const setBackendMode = useStore((state) => state.setBackendMode);
   
   // ✅ Read backend URL from environment variables
   const localBackendBase = import.meta.env.VITE_LOCAL_BACKEND_BASE || 'http://localhost:4100/api';
@@ -11,10 +11,8 @@ export function LocalSetupGuide() {
   const backendPort = new URL(backendUrl).port || '4100';
   
   const handleBackToHome = () => {
-    // ✅ If frontend is cloud, switch back to cloud mode
-    if (frontendMode === 'cloud') {
-      setDeploymentMode('cloud');
-    }
+    // ✅ Cloud Backend를 사용 중이었다면 Cloud 모드 유지
+    // backendMode는 변경하지 않고 홈으로만 이동
     window.history.pushState({}, '', '/');
     window.dispatchEvent(new PopStateEvent('popstate'));
   };

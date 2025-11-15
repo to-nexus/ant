@@ -4,7 +4,7 @@ import { Session } from '@/domain/models/session';
 
 // Backend URLs from environment
 const LOCAL_BACKEND_BASE = import.meta.env.VITE_LOCAL_BACKEND_BASE || 'http://localhost:4100/api';
-const CLOUD_BACKEND_BASE = import.meta.env.VITE_CLOUD_BACKEND_BASE || 'https://api.ant.works/api';
+const CLOUD_BACKEND_BASE = import.meta.env.VITE_CLOUD_BACKEND_BASE || 'http://localhost:4100/api';
 
 // Frontend Mode - Where the frontend is running (static)
 // cloud: Frontend is deployed to cloud (production)
@@ -17,10 +17,10 @@ export function getApiBase(): string {
   try {
     const stored = localStorage.getItem('ant-ui:deployment-mode');
     // ✅ If stored, use it; otherwise use env var; finally fallback to FRONTEND_MODE
-    const deploymentMode = stored 
+    const backendMode = stored 
       ? JSON.parse(stored) 
       : (import.meta.env.VITE_TARGET_BACKEND_MODE || FRONTEND_MODE);
-    return deploymentMode === 'local' ? LOCAL_BACKEND_BASE : CLOUD_BACKEND_BASE;
+    return backendMode === 'local' ? LOCAL_BACKEND_BASE : CLOUD_BACKEND_BASE;
   } catch {
     // ✅ Default to FRONTEND_MODE (cloud frontend -> cloud backend, local frontend -> local backend)
     return FRONTEND_MODE === 'local' ? LOCAL_BACKEND_BASE : CLOUD_BACKEND_BASE;
@@ -781,9 +781,9 @@ export async function createDirectory(
 
 // Config types
 export interface ProjectConfig {
-  projectName: string;
-  repoType?: 'local' | 'cloud' | 'github';  // ✅ Added 'cloud' type
-  localPath?: string;  // ✅ Only for repoType='local'
+  repositoryName: string;  // Repository/codebase name (sanitized from workspace project name)
+  repoType?: 'local' | 'cloud' | 'github';
+  localPath?: string;  // Only for repoType='local'
   githubRepo?: string;
   branchBase: string;
   autoLearn: boolean;
@@ -814,8 +814,8 @@ export async function fetchProjectConfig(projectId: string): Promise<ProjectConf
   }
 }
 
-// Sanitize workspace ID to valid project name (alphanumeric + hyphens)
-function sanitizeProjectName(workspaceId: string): string {
+// Sanitize workspace ID to valid repository name (alphanumeric + hyphens)
+function sanitizeRepositoryName(workspaceId: string): string {
   return workspaceId
     .toLowerCase()
     .replace(/\s+/g, '-')           // spaces → hyphens
@@ -826,10 +826,10 @@ function sanitizeProjectName(workspaceId: string): string {
 
 // Create project config with defaults
 export async function createProjectConfig(projectId: string): Promise<ProjectConfig> {
-  const sanitizedName = sanitizeProjectName(projectId);
+  const sanitizedName = sanitizeRepositoryName(projectId);
   
   const defaultConfig: ProjectConfig = {
-    projectName: sanitizedName,
+    repositoryName: sanitizedName,
     repoType: 'local',
     localPath: `~/dev/${sanitizedName}`,
     branchBase: 'main',

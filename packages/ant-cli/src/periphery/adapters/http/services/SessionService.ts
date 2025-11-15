@@ -1,5 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { WorkspaceResolver } from '../../../../infrastructure/workspace/WorkspaceResolver';
+import { UserContext } from '../../../../core/types/user';
 
 /**
  * SessionService
@@ -9,6 +11,7 @@ import * as path from 'path';
  */
 export class SessionService {
   private readonly workspaceRoot: string;
+  private readonly workspaceResolver?: WorkspaceResolver;
   
   // Session file watchers - key: "projectId/featureName/job"
   private sessionWatchers: Map<string, NodeJS.Timeout> = new Map();
@@ -18,9 +21,10 @@ export class SessionService {
   
   constructor(workspaceRoot: string, callbacks?: {
     onSessionChange?: (projectId: string, featureName: string, jobType: 'design' | 'code' | 'learn') => void;
-  }) {
+  }, workspaceResolver?: WorkspaceResolver) {
     this.workspaceRoot = workspaceRoot;
     this.onSessionChange = callbacks?.onSessionChange;
+    this.workspaceResolver = workspaceResolver;
   }
   
   /**
@@ -116,13 +120,13 @@ export class SessionService {
   /**
    * Read session data from file
    */
-  async readSessionData(projectId: string, featureName: string, job: 'design' | 'code' | 'learn' = 'code'): Promise<any> {
-    const sessionPath = path.join(
-      this.workspaceRoot,
-      projectId,
-      featureName,
-      `sessions/${job}.json`
-    );
+  async readSessionData(projectId: string, featureName: string, job: 'design' | 'code' | 'learn' = 'code', userContext?: UserContext): Promise<any> {
+    if (!this.workspaceResolver || !userContext) {
+      throw new Error('WorkspaceResolver and userContext are required');
+    }
+    
+    const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+    const sessionPath = path.join(featurePath, `sessions/${job}.json`);
     
     try {
       if (fs.existsSync(sessionPath)) {
@@ -139,13 +143,13 @@ export class SessionService {
   /**
    * Check if session file exists
    */
-  async sessionExists(projectId: string, featureName: string, job: 'design' | 'code' | 'learn' = 'code'): Promise<boolean> {
-    const sessionPath = path.join(
-      this.workspaceRoot,
-      projectId,
-      featureName,
-      `sessions/${job}.json`
-    );
+  async sessionExists(projectId: string, featureName: string, job: 'design' | 'code' | 'learn' = 'code', userContext?: UserContext): Promise<boolean> {
+    if (!this.workspaceResolver || !userContext) {
+      throw new Error('WorkspaceResolver and userContext are required');
+    }
+    
+    const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+    const sessionPath = path.join(featurePath, `sessions/${job}.json`);
     
     try {
       await fs.promises.access(sessionPath);

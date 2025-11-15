@@ -11,7 +11,7 @@ import { randomUUID } from "crypto";
  * Implements SessionPort using JSON files in the workspace directory.
  * 
  * File structure:
- * workspace/{project}/{feature}/sessions/{job}.json
+ * {featurePath}/sessions/{job}.json
  * 
  * Each job type (design, code, learn) maintains its own session file,
  * preventing conflicts when switching between different job types.
@@ -25,24 +25,24 @@ import { randomUUID } from "crypto";
  * - Job isolation
  */
 export class FileSessionAdapter implements SessionPort {
-  private workspaceRoot: string;
+  private featurePath: string;
   
-  constructor(workspaceRoot: string) {
-    this.workspaceRoot = workspaceRoot;
+  constructor(featurePath: string) {
+    this.featurePath = featurePath;
   }
   
   /**
    * Get the session file path
    */
   private getSessionPath(project: string, feature: string, job: JobType): string {
-    return path.join(this.workspaceRoot, project, feature, "sessions", `${job}.json`);
+    return path.join(this.featurePath, "sessions", `${job}.json`);
   }
   
   /**
    * Ensure the sessions directory exists
    */
   private async ensureDirectory(project: string, feature: string): Promise<void> {
-    const sessionsDir = path.join(this.workspaceRoot, project, feature, "sessions");
+    const sessionsDir = path.join(this.featurePath, "sessions");
     await fs.mkdir(sessionsDir, { recursive: true });
   }
   

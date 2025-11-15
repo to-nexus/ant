@@ -1,5 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { WorkspaceResolver } from '../../../../infrastructure/workspace/WorkspaceResolver';
+import { UserContext } from '../../../../core/types/user';
 
 /**
  * KanbanService
@@ -9,6 +11,7 @@ import * as path from 'path';
  */
 export class KanbanService {
   private readonly workspaceRoot: string;
+  private readonly workspaceResolver?: WorkspaceResolver;
   
   // Real-time queue tracking (direct from state, not parsed)
   private taskQueueSnapshots: Map<string, { 
@@ -71,8 +74,9 @@ export class KanbanService {
   // Task to project/feature mapping
   private taskToProject: Map<string, { projectId: string; featureName: string }> = new Map();
   
-  constructor(workspaceRoot: string) {
+  constructor(workspaceRoot: string, workspaceResolver?: WorkspaceResolver) {
     this.workspaceRoot = workspaceRoot;
+    this.workspaceResolver = workspaceResolver;
   }
   
   /**
@@ -132,18 +136,21 @@ export class KanbanService {
     jobType: 'design' | 'code' | 'learn',
     jobToProject?: Map<string, { projectId: string; featureName: string }>,
     jobs?: Map<string, any>,
-    taskQueueSnapshots?: Map<string, any>
+    taskQueueSnapshots?: Map<string, any>,
+    userContext?: UserContext
   ): Promise<any> {
     const snapshots = taskQueueSnapshots || this.taskQueueSnapshots;
     
     // 1. Get SESSION data from file (single source of truth)
     console.log(`\n📂 [KanbanService] Loading session: ${projectId}/${featureName}/${jobType}.json`);
-    const sessionPath = path.join(
-      this.workspaceRoot,
-      projectId,
-      featureName,
-      `sessions/${jobType}.json`
-    );
+    
+    if (!this.workspaceResolver || !userContext) {
+      throw new Error('WorkspaceResolver and userContext are required');
+    }
+    
+    // ✅ Use WorkspaceResolver for proper path resolution
+    const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+    const sessionPath = path.join(featurePath, `sessions/${jobType}.json`);
     
     let sessionData: any = null;
     try {

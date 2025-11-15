@@ -21,7 +21,7 @@ function App() {
   // ✅ Route handling: Track current path
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
   const frontendMode = useStore((state) => state.frontendMode);
-  const deploymentMode = useStore((state) => state.deploymentMode);
+  const backendMode = useStore((state) => state.backendMode);
   
   useEffect(() => {
     const handlePopState = () => {
@@ -102,12 +102,12 @@ function App() {
   
   // ✅ Auto-redirect: Cloud frontend with local mode → /local page
   useEffect(() => {
-    if (frontendMode === 'cloud' && deploymentMode === 'local' && currentPath !== '/local') {
+    if (frontendMode === 'cloud' && backendMode === 'local' && currentPath !== '/local') {
       console.log('[App] Auto-redirecting to /local (Cloud frontend + Local backend selected)');
       window.history.pushState({}, '', '/local');
       setCurrentPath('/local');
     }
-  }, [frontendMode, deploymentMode, currentPath]);
+  }, [frontendMode, backendMode, currentPath]);
 
   // ✅ Development: Render tracking for debugging
   if (import.meta.env.DEV && renderCountRef.current > 1) {
