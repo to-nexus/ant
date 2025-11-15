@@ -547,15 +547,23 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
           '/api/auth/signin',
           '/api/auth/signout',
           '/api/internal/task-queue',  // ✅ Internal endpoint for child processes (has ANT_USER_EMAIL env var)
-          '/api/jobs'                   // ✅ Internal endpoints for child processes (workflow updates)
+        ];
+        
+        // ✅ Paths that need prefix matching (not exact match)
+        const prefixPaths = [
+          '/api/jobs',  // ✅ Internal endpoints for child processes (workflow updates)
         ];
         
         // Skip auth for SSE endpoints (EventSource doesn't support headers)
         // TODO: Implement query-based auth for SSE endpoints
         const isSSEEndpoint = req.path.includes('/stream');
         
-        // Also skip auth for graph metadata (read-only metadata)
-        if (publicPaths.includes(req.path) || publicPaths.some(p => req.path.startsWith(p)) || req.path.includes('/graph-metadata') || isSSEEndpoint) {
+        // Check if path should skip auth
+        const isPublicPath = publicPaths.includes(req.path);
+        const isPrefixPath = prefixPaths.some(p => req.path.startsWith(p));
+        const isGraphMetadata = req.path.includes('/graph-metadata');
+        
+        if (isPublicPath || isPrefixPath || isGraphMetadata || isSSEEndpoint) {
           return next();
         }
         
