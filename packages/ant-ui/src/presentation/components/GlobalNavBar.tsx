@@ -4,7 +4,8 @@ import { ConnectionStatus } from './ConnectionStatus';
 import { useStore } from '@/domain/store';
 import { SignUpModal } from './auth/SignUpModal';
 import { SignInModal } from './auth/SignInModal';
-import { signUp, signIn, signOut } from '@/infrastructure/http/api';
+import { signUp, signIn, signOut, fetchProjectConfig, ProjectConfig } from '@/infrastructure/http/api';
+import { getCodebasePath } from '@/shared/utils/workspace-path';
 
 export interface GlobalNavBarProps {
   // ✅ No props needed - uses hooks directly
@@ -27,6 +28,8 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
   const toggleTheme = useStore((state) => state.toggleTheme);
   const editorMode = useStore((state) => state.editorMode);
   const setEditorMode = useStore((state) => state.setEditorMode);
+  const setIdeWorkspacePath = useStore((state) => state.setIdeWorkspacePath);
+  const selectedProject = useStore((state) => state.selectedProject);
   const userEmail = useStore((state) => state.userEmail);
   const userOrganization = useStore((state) => state.userOrganization);
   const setUser = useStore((state) => state.setUser);
@@ -39,6 +42,7 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
   const [showSignUpModal, setShowSignUpModal] = useState(false);
   const [showSignInModal, setShowSignInModal] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [editorTooltip, setEditorTooltip] = useState<string | null>(null);
   
   // Check if user is signed in
   const isSignedIn = !!userEmail && !!userOrganization;
@@ -50,7 +54,7 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
   const handleModeChange = (mode: 'local' | 'cloud') => {
     // If on /local page and user clicks cloud, go back to home
     if (window.location.pathname === '/local' && mode === 'cloud') {
-      setBackendMode('cloud');
+      // ✅ Don't call setBackendMode - just navigate back
       window.history.pushState({}, '', '/');
       window.dispatchEvent(new PopStateEvent('popstate'));
       return;
@@ -59,6 +63,7 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
     // ✅ Cloud Backend 사용 중에 Local로 전환 시도 → 안내 페이지만 표시
     // backendMode를 변경하지 않고 페이지만 이동 (Local Backend에 요청 안 함)
     if (backendMode === 'cloud' && mode === 'local') {
+      // ✅ Don't call setBackendMode - just show setup guide
       window.history.pushState({}, '', '/local');
       window.dispatchEvent(new PopStateEvent('popstate'));
       return;
@@ -111,6 +116,53 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
     setSelectedProject(undefined);
     setSelectedFeature(undefined);
   };
+  
+  // Handle Editor mode switch
+  const handleEditorModeSwitch = async () => {
+    // ✅ Check if project is selected
+    if (!selectedProject) {
+      setEditorTooltip('Please select a project first');
+      setTimeout(() => setEditorTooltip(null), 3000);
+      return;
+    }
+    
+    try {
+      // Fetch project config to get codebase path
+      const config: ProjectConfig = await fetchProjectConfig(selectedProject);
+      
+      // Determine workspace path based on repoType
+      let workspacePath: string;
+      
+      if (config.repoType === 'cloud') {
+        // Cloud Mode: Use codebase directory
+        const codebasePath = getCodebasePath(selectedProject, config);
+        // Build Docker path (assuming ant is at ~/dev/ant and Docker mounts $HOME as /workspace)
+        workspacePath = `/workspace/dev/ant/${codebasePath}`;
+      } else {
+        // Local Mode: Use localPath from config
+        if (!config.localPath) {
+          setEditorTooltip('Local path not configured');
+          setTimeout(() => setEditorTooltip(null), 3000);
+          return;
+        }
+        
+        // Convert ~/path to /workspace/path (Docker mount: $HOME:/workspace)
+        workspacePath = config.localPath.startsWith('~/')
+          ? config.localPath.replace('~', '/workspace')
+          : config.localPath.startsWith('~')
+          ? config.localPath.replace('~', '/workspace')
+          : `/workspace${config.localPath}`;
+      }
+      
+      // Set IDE workspace path and switch to editor mode
+      setIdeWorkspacePath(workspacePath);
+      setEditorMode('editor');
+    } catch (error: any) {
+      console.error('[GlobalNavBar] Failed to switch to editor:', error);
+      setEditorTooltip('Failed to load project config');
+      setTimeout(() => setEditorTooltip(null), 3000);
+    }
+  };
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-gray-50 dark:bg-[#0d1117] border-b border-gray-300 dark:border-[#30363d] shadow-md transition-colors">
@@ -162,7 +214,7 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
             </div>
             
             {/* Editor Mode Selector */}
-            <div className="editor-mode-selector flex items-center gap-1 ml-4 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
+            <div className="editor-mode-selector flex items-center gap-1 ml-4 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg relative">
               {/* Agents Button */}
               <button
                 onClick={() => setEditorMode('agents')}
@@ -180,7 +232,7 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
               
               {/* Editor Button */}
               <button
-                onClick={() => setEditorMode('editor')}
+                onClick={handleEditorModeSwitch}
                 className={`
                   px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5
                   ${editorMode === 'editor'
@@ -188,10 +240,19 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                   }
                 `}
+                title={selectedProject ? 'Open codebase in editor' : 'Select a project first'}
               >
                 <Code2 className="w-3.5 h-3.5" />
                 Editor
               </button>
+              
+              {/* Tooltip for Editor button */}
+              {editorTooltip && (
+                <div className="absolute top-full mt-2 left-1/2 transform -translate-x-1/2 bg-gray-900 dark:bg-gray-700 text-white text-xs px-3 py-2 rounded shadow-lg whitespace-nowrap z-50">
+                  {editorTooltip}
+                  <div className="absolute -top-1 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-gray-900 dark:bg-gray-700 rotate-45"></div>
+                </div>
+              )}
             </div>
           </div>
           
