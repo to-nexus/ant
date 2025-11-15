@@ -6,6 +6,7 @@ import {
   LogEntry 
 } from '../../../../core/ports/http';
 import * as path from 'path';
+import { WorkspaceResolver } from '../../../../infrastructure/workspace/WorkspaceResolver';
 
 /**
  * TaskExecutionService
@@ -25,16 +26,22 @@ export class TaskExecutionService {
   // Current jobId being executed (for CLI subprocess to access)
   private currentJobId: string | null = null;
   
+  // ✅ WorkspaceResolver for path resolution
+  private workspaceResolver: WorkspaceResolver;
+  
   // Callbacks
   private onJobStatusChange?: (jobId: string, status: JobStatus) => void;
   private onLogEntry?: (jobId: string, log: LogEntry) => void;
   private onJobCompleted?: (jobId: string) => Promise<void>;
   
-  constructor(callbacks?: {
-    onJobStatusChange?: (jobId: string, status: JobStatus) => void;
-    onLogEntry?: (jobId: string, log: LogEntry) => void;
-    onJobCompleted?: (jobId: string) => Promise<void>;
+  constructor(
+    workspaceResolver: WorkspaceResolver,
+    callbacks?: {
+      onJobStatusChange?: (jobId: string, status: JobStatus) => void;
+      onLogEntry?: (jobId: string, log: LogEntry) => void;
+      onJobCompleted?: (jobId: string) => Promise<void>;
   }) {
+    this.workspaceResolver = workspaceResolver;
     this.onJobStatusChange = callbacks?.onJobStatusChange;
     this.onLogEntry = callbacks?.onLogEntry;
     this.onJobCompleted = callbacks?.onJobCompleted;
@@ -99,9 +106,17 @@ export class TaskExecutionService {
         params.task        // e.g., 'code'
       ];
       
-      // Add input file as positional argument
+      // Add input file or feature path as positional argument
+      // ✅ If no inputFile (chat-initiated), use feature path instead
       if (params.inputFile) {
         args.push(params.inputFile);
+      } else if (params.feature && params.userContext) {
+        const featurePath = this.workspaceResolver.getFeaturePath(
+          params.userContext,
+          params.project,
+          params.feature
+        );
+        args.push(featurePath);
       }
       
       // Add options (only for tasks that support them)
@@ -116,6 +131,8 @@ export class TaskExecutionService {
       if (params.enableEvaluation && params.task === 'code') {
         args.push('--eval');
       }
+      
+      console.log(`[TaskExecutionService] 🚀 Spawning CLI with args:`, args);
       
       
       // ✅ Ensure PATH includes common locations for git and other tools

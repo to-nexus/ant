@@ -6,6 +6,8 @@ import {
   ProjectService,
   WorkflowStateService
 } from '../services';
+import { UserContext } from '../../../../core/types/user';
+import { extractUserContext } from './helpers/userContext';
 
 /**
  * Unified SSE Routes
@@ -17,7 +19,7 @@ export function createSSERoutes(deps: {
   chatService: ChatService;
   projectService: ProjectService;
   workflowStateService: WorkflowStateService;
-  workspaceRoot: string;
+  // workspaceRoot: string;  // ❌ 제거 - 사용하지 않음
   jobToProject?: Map<string, { projectId: string; featureName: string }>;
   jobs?: Map<string, any>;
   taskQueueSnapshots?: Map<string, any>;
@@ -34,6 +36,38 @@ export function createSSERoutes(deps: {
     const job = (req.query.job as 'design' | 'code' | 'learn') || 'code';
     
     console.log(`\n📡 [SSE] Client connecting: ${projectId}/${featureName} (job: ${job})`);
+    
+    // ✅ Extract user context from query parameter (for EventSource) or request (for regular auth)
+    let userContext: UserContext;
+    const userEmailQuery = req.query['user-email'] as string | undefined;
+    
+    if (userEmailQuery) {
+      // EventSource sent user-email as query parameter
+      console.log(`[SSE] 🔐 User email from query: ${userEmailQuery}`);
+      const userId = userEmailQuery.split('@')[0];
+      const domain = userEmailQuery.split('@')[1];
+      userContext = {
+        userId,
+        organizationId: domain,
+        workspacePath: ''
+      };
+    } else if (req.user && req.organization) {
+      // Regular auth middleware
+      userContext = {
+        userId: req.user.id,
+        organizationId: req.organization.id,
+        workspacePath: ''
+      };
+    } else {
+      // Fallback for Local mode
+      userContext = {
+        userId: 'local',
+        organizationId: 'local',
+        workspacePath: ''
+      };
+    }
+    
+    console.log(`[SSE] User context:`, userContext);
     
     // Set SSE headers
     res.writeHead(200, {
@@ -56,23 +90,27 @@ export function createSSERoutes(deps: {
         job,
         deps.jobToProject,
         deps.jobs,
-        deps.taskQueueSnapshots
+        deps.taskQueueSnapshots,
+        userContext  // ✅ Pass user context
       );
       deps.sseService.sendInitialState(res, 'kanban', kanbanData);
       
       // 2. Send initial Chat messages
-      const chatMessages = deps.chatService.getMessages(projectId, featureName);
+      const chatMessages = deps.chatService.getMessages(projectId, featureName, userContext);  // ✅ Pass user context
       deps.sseService.sendInitialState(res, 'chat', { 
         type: 'initial_state', 
         messages: chatMessages 
       });
       
       // 3. Send initial FileTree
-      const fileTree = await deps.projectService.getFileTree(projectId, featureName);
+      console.log(`[SSE] Fetching file tree for ${projectId}/${featureName}...`);
+      const fileTree = await deps.projectService.getFileTree(projectId, featureName, userContext);  // ✅ Pass user context
+      console.log(`[SSE] File tree fetched: ${fileTree?.length || 0} items`);
       deps.sseService.sendInitialState(res, 'fileTree', { 
         type: 'initial', 
         tree: fileTree 
       });
+      console.log(`[SSE] File tree sent to client`);
       
       console.log(`✅ [SSE] Initial states sent to ${projectId}/${featureName}`);
     } catch (error) {
@@ -103,6 +141,38 @@ export function createSSERoutes(deps: {
     const jobId = req.params.jobId;
     
     console.log(`\n📡 [SSE] Workflow client connecting: ${jobId}`);
+    
+    // ✅ Extract user context from query parameter (for EventSource) or request (for regular auth)
+    let userContext: UserContext;
+    const userEmailQuery = req.query['user-email'] as string | undefined;
+    
+    if (userEmailQuery) {
+      // EventSource sent user-email as query parameter
+      console.log(`[SSE Workflow] 🔐 User email from query: ${userEmailQuery}`);
+      const userId = userEmailQuery.split('@')[0];
+      const domain = userEmailQuery.split('@')[1];
+      userContext = {
+        userId,
+        organizationId: domain,
+        workspacePath: ''
+      };
+    } else if (req.user && req.organization) {
+      // Regular auth middleware
+      userContext = {
+        userId: req.user.id,
+        organizationId: req.organization.id,
+        workspacePath: ''
+      };
+    } else {
+      // Fallback for Local mode
+      userContext = {
+        userId: 'local',
+        organizationId: 'local',
+        workspacePath: ''
+      };
+    }
+    
+    console.log(`[SSE Workflow] User context:`, userContext);
     
     // Set SSE headers
     res.writeHead(200, {

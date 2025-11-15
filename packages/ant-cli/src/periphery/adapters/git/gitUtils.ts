@@ -9,9 +9,19 @@ const GIT_DEFAULT_OWNER = process.env.GIT_DEFAULT_OWNER;
 const GIT_DEFAULT_BASE = process.env.GIT_DEFAULT_BASE || "main";
 
 export async function loadProjectGitConfig(project: string) {
-  // workspace is at project root (../../workspace from packages/ant-cli)
-  const workspaceRoot = path.join(process.cwd(), "../../workspace");
-  const configPath = path.join(workspaceRoot, project, "config.json");
+  // ✅ Require ANT_PROJECT_PATH - no fallback
+  const projectPath = process.env.ANT_PROJECT_PATH;
+  
+  if (!projectPath) {
+    throw new Error(
+      'ANT_PROJECT_PATH environment variable is required.\n' +
+      'This should be set by the HTTP server when spawning CLI processes.\n' +
+      'Use WorkspaceResolver.getProjectPath() to generate the correct path.'
+    );
+  }
+  
+  const configPath = path.join(projectPath, "config.json");
+  
   if (!fs.existsSync(configPath)) {
     throw new Error(`No config.json for project: ${project}\nExpected at: ${configPath}`);
   }
@@ -41,15 +51,23 @@ export function resolveLocalPath(localPath: string, project: string): string {
 }
 
 export async function getGitInstance(project: string, config: any) {
-  if (config.repoType === "local") {
-    // Resolve localPath to absolute path
+  if (config.repoType === "local" || config.repoType === "cloud") {
+    // Local or Cloud workspace: use projectPath from SimpleGitAdapter
+    // For local: config.localPath (e.g., ~/dev/my-project)
+    // For cloud: workspaces/{org}/{user}/{project}/codebase (set by orchestrator)
+    
+    // ✅ Require localPath for both local and cloud
+    if (!config.localPath) {
+      throw new Error(`localPath is required for repoType "${config.repoType}"`);
+    }
+    
     const localPath = resolveLocalPath(config.localPath, project);
     
     console.log(`📂 Working directory: ${localPath}`);
     
     // Ensure localPath directory exists
     if (!fs.existsSync(localPath)) {
-      console.log(`📁 Creating local repository directory: ${localPath}`);
+      console.log(`📁 Creating repository directory: ${localPath}`);
       fs.mkdirSync(localPath, { recursive: true });
     }
     
@@ -63,11 +81,14 @@ export async function getGitInstance(project: string, config: any) {
     }
     
     return simpleGit(localPath);
-  } else {
+  } else if (config.repoUrl) {
+    // Remote repository (GitHub/GitLab): clone to temp directory
     const tmpDir = path.join(os.tmpdir(), `${project}-${Date.now()}`);
     const git = simpleGit();
     await git.clone(config.repoUrl, tmpDir, ["--depth", "1"]);
     return simpleGit(tmpDir);
+  } else {
+    throw new Error(`Unsupported config: repoType="${config.repoType}", repoUrl=${config.repoUrl}`);
   }
 }
 

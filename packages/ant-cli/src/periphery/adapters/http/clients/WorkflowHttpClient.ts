@@ -122,11 +122,20 @@ export class WorkflowHttpClient implements WorkflowStateUpdatePort {
       // Use native fetch (Node 18+) or fall back to manual HTTP
       const fetch = globalThis.fetch || this.getFetchPolyfill();
       
+      // ✅ Build headers with authentication (Cloud mode)
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      
+      // ✅ Add user email for Cloud mode authentication
+      const userEmail = process.env.ANT_USER_EMAIL;
+      if (userEmail) {
+        headers['x-user-email'] = userEmail;
+      }
+      
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify(payload),
       });
 

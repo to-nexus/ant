@@ -19,11 +19,11 @@ interface ConfigField {
 
 const CONFIG_SCHEMA: ConfigField[] = [
   {
-    key: 'projectName',
-    label: 'Project Name',
+    key: 'repositoryName',
+    label: 'Repository Name',
     type: 'text',
     required: true,
-    description: 'Name of the project'
+    description: 'Name of the codebase/repository'
   },
   {
     key: 'repoType',
@@ -86,7 +86,7 @@ const CONFIG_SCHEMA: ConfigField[] = [
 ];
 
 export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
-  const deploymentMode = useStore((state) => state.deploymentMode);
+  const backendMode = useStore((state) => state.backendMode);
   const [editedConfig, setEditedConfig] = useState<ProjectConfig>(config);
   const [isSaving, setIsSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -94,7 +94,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
 
   // ✅ Cloud 모드일 때 repoType을 'cloud'로 강제 설정
   useEffect(() => {
-    if (deploymentMode === 'cloud' && config.repoType !== 'cloud') {
+    if (backendMode === 'cloud' && config.repoType !== 'cloud') {
       const cloudConfig = {
         ...config,
         repoType: 'cloud' as const,
@@ -105,7 +105,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
       setEditedConfig(config);
     }
     setHasChanges(false);
-  }, [config, deploymentMode]);
+  }, [config, backendMode]);
 
   // Check for changes whenever editedConfig updates
   useEffect(() => {
@@ -160,12 +160,12 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
     const hasError = !!errors[field.key];
     
     // ✅ Cloud 모드에서 localPath 필드 숨김
-    if (deploymentMode === 'cloud' && field.key === 'localPath') {
+    if (backendMode === 'cloud' && field.key === 'localPath') {
       return null;
     }
     
     // ✅ Cloud 모드에서 repoType 비활성화 (cloud로 고정)
-    const isRepoTypeDisabled = deploymentMode === 'cloud' && field.key === 'repoType';
+    const isRepoTypeDisabled = backendMode === 'cloud' && field.key === 'repoType';
 
     return (
       <div key={field.key} className="space-y-2">

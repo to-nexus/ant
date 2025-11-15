@@ -6,6 +6,8 @@ import {
   RequiredMaterial,
   PrerequisitesValidationResult,
 } from '../../../core/ports/jobPrerequisites';
+import { WorkspaceResolver } from '../../../infrastructure/workspace/WorkspaceResolver';
+import { UserContext } from '../../../core/types/user';
 
 /**
  * File-based Job Prerequisites Adapter
@@ -18,10 +20,10 @@ import {
  * - Learn Job: Requires directive only
  */
 export class FileJobPrerequisitesAdapter implements JobPrerequisitesPort {
-  private readonly workspaceRoot: string;
+  private readonly workspaceResolver: WorkspaceResolver;
   
-  constructor(workspaceRoot: string) {
-    this.workspaceRoot = workspaceRoot;
+  constructor(workspaceResolver: WorkspaceResolver) {
+    this.workspaceResolver = workspaceResolver;
   }
   
   /**
@@ -81,23 +83,43 @@ export class FileJobPrerequisitesAdapter implements JobPrerequisitesPort {
    * 
    * For design and code jobs: At least ONE of the required materials must be present
    * For learn job: The directive must be present
+   * 
+   * @param overrideDirective - If provided (from chat), skip directive file check
    */
   async validate(
     projectId: string,
     featureName: string,
-    jobType: JobType
+    jobType: JobType,
+    userContext?: { userId: string; organizationId: string },
+    overrideDirective?: string
   ): Promise<PrerequisitesValidationResult> {
     const requiredMaterials = this.getRequiredMaterials(jobType);
     const missingMaterials: RequiredMaterial[] = [];
     const presentMaterials: RequiredMaterial[] = [];
     
+    // ✅ Use WorkspaceResolver to get proper feature path
+    const contextWithPath: UserContext = {
+      userId: userContext?.userId || 'local',
+      organizationId: userContext?.organizationId || 'local',
+      workspacePath: '' // Not used by WorkspaceResolver
+    };
+    
+    const featurePath = this.workspaceResolver.getFeaturePath(
+      contextWithPath,
+      projectId,
+      featureName
+    );
+    
     for (const material of requiredMaterials) {
-      const fullPath = path.join(
-        this.workspaceRoot,
-        projectId,
-        featureName,
-        material.path
-      );
+      // ✅ Skip directive check if overrideDirective is provided (from chat)
+      const isDirectiveMaterial = material.path.includes('directives/');
+      if (isDirectiveMaterial && overrideDirective) {
+        console.log(`   ⏭️  Skipping ${material.name} check (using chat input)`);
+        presentMaterials.push(material);
+        continue;
+      }
+      
+      const fullPath = path.join(featurePath, material.path);
       
       const isMissing = await this.isMaterialMissing(fullPath, material);
       if (isMissing) {

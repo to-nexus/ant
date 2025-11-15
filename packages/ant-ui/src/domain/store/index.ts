@@ -63,8 +63,8 @@ interface StoreState {
   // ==================
   // Frontend Mode: Where the frontend is running (static from env)
   frontendMode: 'cloud' | 'local';
-  // Deployment Mode: Which backend to connect to (dynamic, user can toggle)
-  deploymentMode: 'local' | 'cloud';
+  // Backend Mode: Which backend to connect to (dynamic, user can toggle)
+  backendMode: 'local' | 'cloud';
 }
 
 interface StoreActions {
@@ -128,7 +128,7 @@ interface StoreActions {
   // ==================
   // Server Configuration
   // ==================
-  setDeploymentMode: (mode: 'local' | 'cloud') => void;
+  setBackendMode: (mode: 'local' | 'cloud') => void;
 }
 
 type Store = StoreState & StoreActions;
@@ -146,7 +146,7 @@ const STORAGE_KEYS = {
   EDITOR_MODE: 'ant-ui:editor-mode',
   USER_EMAIL: 'ant-ui:user-email',
   USER_ORGANIZATION: 'ant-ui:user-organization',
-  DEPLOYMENT_MODE: 'ant-ui:deployment-mode',
+  BACKEND_MODE: 'ant-ui:backend-mode',
 };
 
 // Helper functions for localStorage
@@ -230,7 +230,15 @@ export const useStore = create<Store>((set, get) => ({
   devServerStatus: undefined,
   theme: getInitialTheme(),
   splitLayout: 'vertical',
-  editorMode: (localStorage.getItem(STORAGE_KEYS.EDITOR_MODE) as 'agents' | 'editor') || 'agents',
+  editorMode: (() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.EDITOR_MODE);
+      if (stored === 'agents' || stored === 'editor') return stored;
+      return 'agents'; // ✅ Default to 'agents'
+    } catch {
+      return 'agents';
+    }
+  })(),
   ideWorkspacePath: undefined,
   
   // User Authentication (Cloud Mode)
@@ -250,10 +258,10 @@ export const useStore = create<Store>((set, get) => ({
   // Server Configuration
   // Frontend Mode: static from environment (where frontend is running)
   frontendMode: (import.meta.env.VITE_FRONTEND_MODE || 'local') as 'cloud' | 'local',
-  // Deployment Mode: dynamic, persisted in localStorage (which backend to connect to)
-  deploymentMode: (() => {
+  // Backend Mode: dynamic, persisted in localStorage (which backend to connect to)
+  backendMode: (() => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEYS.DEPLOYMENT_MODE);
+      const stored = localStorage.getItem(STORAGE_KEYS.BACKEND_MODE);
       if (stored) return JSON.parse(stored);
       // ✅ Default: use env var, then fallback to FRONTEND_MODE
       const frontendMode = (import.meta.env.VITE_FRONTEND_MODE || 'local') as 'local' | 'cloud';
@@ -467,8 +475,11 @@ export const useStore = create<Store>((set, get) => ({
     });
     
     sseManager.registerHandler('fileTree', (data) => {
+      console.log('[Store] 📂 FileTree SSE event received:', data.type);
       if (data.type === 'initial' || data.type === 'update') {
-        get().setFileTree(data.tree || data.fileTree);
+        const tree = data.tree || data.fileTree;
+        console.log(`[Store] 📂 Setting file tree: ${tree?.length || 0} items`);
+        get().setFileTree(tree);
       }
     });
     
@@ -862,10 +873,10 @@ export const useStore = create<Store>((set, get) => ({
   // ==================
   // Server Configuration
   // ==================
-  setDeploymentMode: (mode: 'local' | 'cloud') => {
-    set({ deploymentMode: mode });
-    saveToStorage(STORAGE_KEYS.DEPLOYMENT_MODE, mode);
-    console.log('[Store] Deployment mode changed to:', mode);
+  setBackendMode: (mode: 'local' | 'cloud') => {
+    set({ backendMode: mode });
+    saveToStorage(STORAGE_KEYS.BACKEND_MODE, mode);
+    console.log('[Store] Backend mode changed to:', mode);
     
     // Clear user session when switching modes
     const store = useStore.getState();

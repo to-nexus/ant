@@ -72,7 +72,6 @@ class SSEManager {
       this.handlers.set(type, []);
     }
     this.handlers.get(type)!.push(handler);
-    console.log(`[SSEManager] 📝 Handler registered for '${type}' (total: ${this.handlers.get(type)!.length})`);
   }
   
   /**
@@ -81,10 +80,8 @@ class SSEManager {
   clearHandlers(type?: SSEMessageType): void {
     if (type) {
       this.handlers.delete(type);
-      console.log(`[SSEManager] 🧹 Cleared handlers for '${type}'`);
     } else {
       this.handlers.clear();
-      console.log(`[SSEManager] 🧹 Cleared all handlers`);
     }
   }
   
@@ -122,12 +119,31 @@ class SSEManager {
       this.disconnect();
     }
     
-    const url = `${getApiBase()}/projects/${projectId}/features/${featureName}/stream?job=${job}`;
-    console.log(`[SSEManager] 🔌 Connecting to unified SSE: ${url}`);
+    // ✅ Get user email from localStorage for authentication
+    let userEmail: string | undefined;
+    try {
+      const stored = localStorage.getItem('ant-ui:user-email');
+      if (stored) {
+        userEmail = JSON.parse(stored);
+      }
+    } catch (error) {
+      console.warn('[SSEManager] Failed to get user email:', error);
+    }
+    
+    // ✅ Build URL with user email as query parameter (for EventSource authentication)
+    const url = new URL(`${getApiBase()}/projects/${projectId}/features/${featureName}/stream`);
+    url.searchParams.set('job', job);
+    if (userEmail) {
+      url.searchParams.set('user-email', userEmail);
+      console.log(`[SSEManager] 🔐 Adding user-email to SSE URL: ${userEmail}`);
+    }
+    
+    const finalUrl = url.toString();
+    console.log(`[SSEManager] 🔌 Connecting to unified SSE: ${finalUrl}`);
     
     try {
-      const eventSource = new EventSource(url, {
-        withCredentials: false
+      const eventSource = new EventSource(finalUrl, {
+        withCredentials: true  // ✅ Send cookies for authentication
       });
       
       eventSource.onopen = () => {
@@ -163,7 +179,7 @@ class SSEManager {
       
       this.unifiedConnection = {
         eventSource,
-        url,
+        url: finalUrl,  // ✅ Store as string
         projectId,
         featureName,
         isConnected: false,
@@ -184,12 +200,30 @@ class SSEManager {
       return;
     }
     
-    const url = `${getApiBase()}/jobs/${jobId}/workflow/stream`;
-    console.log(`[SSEManager] 🔌 Connecting to workflow SSE: ${url}`);
+    // ✅ Get user email from localStorage for authentication
+    let userEmail: string | undefined;
+    try {
+      const stored = localStorage.getItem('ant-ui:user-email');
+      if (stored) {
+        userEmail = JSON.parse(stored);
+      }
+    } catch (error) {
+      console.warn('[SSEManager] Failed to get user email:', error);
+    }
+    
+    // ✅ Build URL with user email as query parameter
+    const url = new URL(`${getApiBase()}/jobs/${jobId}/workflow/stream`);
+    if (userEmail) {
+      url.searchParams.set('user-email', userEmail);
+      console.log(`[SSEManager] 🔐 Adding user-email to workflow SSE URL: ${userEmail}`);
+    }
+    
+    const finalUrl = url.toString();
+    console.log(`[SSEManager] 🔌 Connecting to workflow SSE: ${finalUrl}`);
     
     try {
-      const eventSource = new EventSource(url, {
-        withCredentials: false
+      const eventSource = new EventSource(finalUrl, {
+        withCredentials: true  // ✅ Send cookies for authentication
       });
       
       eventSource.onopen = () => {
@@ -216,7 +250,7 @@ class SSEManager {
       
       this.workflowConnections.set(jobId, {
         eventSource,
-        url,
+        url: finalUrl,  // ✅ Store as string
         jobId,
         isConnected: false
       });

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import "dotenv/config";
-import * as path from 'path';
 import { ExpressServerAdapter } from "../periphery/adapters/http/ExpressServerAdapter";
+import { WorkspacePathResolver } from "../infrastructure/workspace/WorkspaceResolver";
 
 /**
  * Server Entry Point
@@ -9,36 +9,43 @@ import { ExpressServerAdapter } from "../periphery/adapters/http/ExpressServerAd
  * Hexagonal Architecture - Composition Root
  *
  * Supports Local and Cloud modes via configuration:
- * - Local Mode: workspace/<project>
+ * - Local Mode: workspaces/local/<project>
  * - Cloud Mode: workspaces/<org>/<user>/<project>
  *
  * Environment Variables:
  * - ANT_SERVER_MODE: 'local' (default) or 'cloud'
  * - PORT: Server port (default: 4100)
- * - WORKSPACE_ROOT: Workspace root directory
+ * - WORKSPACES_PATH: Physical workspaces directory path (supports ~/path, absolute, relative)
  * - CLOUD_URL: Cloud service URL (for redirect)
+ * 
+ * Note: WORKSPACES_PATH can use:
+ *   - Absolute path: /Users/yourname/ant/workspaces
+ *   - Home directory: ~/dev/ant/workspaces
+ *   - Relative path: ../../workspaces (not recommended)
  */
 
 const DEFAULT_PORT = 4100;
-const DEFAULT_WORKSPACE_ROOT = path.join(process.cwd(), '../../workspaces');
 const DEFAULT_CLOUD_URL = 'https://ant.nexus.ai';
 
 async function main() {
   // Environment configuration
   const mode = (process.env.ANT_SERVER_MODE || 'local') as 'local' | 'cloud';
   const port = process.env.PORT ? parseInt(process.env.PORT) : DEFAULT_PORT;
-  const workspaceRoot = process.env.WORKSPACE_ROOT || DEFAULT_WORKSPACE_ROOT;
+  
+  // ✅ Get physical workspaces path (centralized in WorkspacePathResolver)
+  const workspacesPath = WorkspacePathResolver.getPhysicalWorkspacesPath();
+  
   const cloudUrl = process.env.CLOUD_URL || DEFAULT_CLOUD_URL;
   
   console.log(`\n${mode === 'cloud' ? '🌐' : '💻'} Starting in ${mode.toUpperCase()} mode`);
-  console.log(`   Workspace: ${workspaceRoot}`);
+  console.log(`   Workspaces: ${workspacesPath}`);
   console.log(`   Port: ${port}`);
   if (mode === 'local') {
     console.log(`   Cloud URL: ${cloudUrl}`);
   }
   
   // Create server with mode configuration
-  const server = new ExpressServerAdapter(mode, workspaceRoot, cloudUrl);
+  const server = new ExpressServerAdapter(mode, workspacesPath, cloudUrl);
   
   try {
     // Start server

@@ -5,6 +5,8 @@
  * This allows the core domain to be independent of specific HTTP frameworks.
  */
 
+import { UserContext } from '../types/user';
+
 export interface LogEntry {
   type: 'info' | 'stdout' | 'stderr' | 'error';
   message: string;
@@ -25,11 +27,12 @@ export interface ExecuteJobParams {
   task: 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';  // Note: 'task' here means agent's work type, not Task Board task
   project: string;
   feature?: string;  // ✅ Feature name for Kanban tracking
-  inputFile: string;
+  inputFile?: string;  // ✅ Optional: undefined for chat-initiated jobs with overrideDirective
   mode?: 'generate' | 'refactor' | 'explain';
   enableEvaluation?: boolean;
   overrideDirective?: string;  // ✅ Chat input as directive (highest priority)
   chatSource?: boolean;        // ✅ True if job started from chat (enables Chat SSE)
+  userContext?: UserContext;   // ✅ User context for Cloud mode (includes workspacePath)
 }
 
 export interface JobResult {

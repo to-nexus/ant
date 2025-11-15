@@ -24,11 +24,13 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   const setSelectedAgent = useStore((state) => state.setSelectedAgent);  // ✅ Add setter for agent
   const isRunning = useStore((state) => state.isRunning);
   const isStopping = useStore((state) => state.isStopping);  // ✅ Use global state
-  const deploymentMode = useStore((state) => state.deploymentMode);
+  const backendMode = useStore((state) => state.backendMode);
   const userEmail = useStore((state) => state.userEmail);
   const [showJobMenu, setShowJobMenu] = useState(false);
   const [showAgentMenu, setShowAgentMenu] = useState(false);  // ✅ Agent menu state
   const [message, setMessage] = useState('');
+  // ✅ Track IME composition state to prevent premature submission
+  const [isComposing, setIsComposing] = useState(false);
   // ✅ Initialize agents with default to prevent empty state
   const [agents, setAgents] = useState<Agent[]>([
     { value: 'architect', label: 'Architect', enabled: true, tasks: [
@@ -42,7 +44,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   const agentMenuRef = useRef<HTMLDivElement>(null);  // ✅ Agent menu ref
   
   // ✅ Check authentication status
-  const isAuthenticated = deploymentMode === 'local' || !!userEmail;
+  const isAuthenticated = backendMode === 'local' || !!userEmail;
   
   // ✅ Use Chat Policy for UI states (메시지 개수 전달)
   const chatPolicy = useChatPolicy(messageCount);
@@ -555,8 +557,8 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={(e) => {
-            // Submit on Enter (without Shift)
-            if (e.key === 'Enter' && !e.shiftKey) {
+            // ✅ Ignore Enter key during IME composition (e.g., Korean, Japanese, Chinese input)
+            if (e.key === 'Enter' && !e.shiftKey && !isComposing) {
               e.preventDefault();
               if (isRunning) {
                 handleStop();
@@ -565,6 +567,8 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
               }
             }
           }}
+          onCompositionStart={() => setIsComposing(true)}
+          onCompositionEnd={() => setIsComposing(false)}
           rows={3}
           disabled={disabled || isRunning}
         />

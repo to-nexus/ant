@@ -15,6 +15,7 @@ export interface ActorInfo {
 
 /**
  * Actor ID → 정규화된 정보 매핑
+ * Note: local-storage, file-system, code-repo의 details는 동적으로 생성되므로 템플릿만 제공
  */
 const ACTOR_INFO_MAP: Record<string, ActorInfo> = {
   'llm': {
@@ -44,7 +45,7 @@ const ACTOR_INFO_MAP: Record<string, ActorInfo> = {
     displayName: 'Storage',
     provider: 'File System',
     model: 'JSON Session Files',
-    details: './workspace/{project}/{feature}/session.json',
+    // details will be set dynamically based on project/feature
     icon: '💾'
   },
   'file-system': {
@@ -52,7 +53,7 @@ const ACTOR_INFO_MAP: Record<string, ActorInfo> = {
     displayName: 'Workspace Files',
     provider: 'Node.js',
     model: 'FS API',
-    details: './workspace/{project}/{feature}/outputs/',
+    // details will be set dynamically based on project/feature
     icon: '📁'
   },
   'code-repo': {
@@ -60,7 +61,7 @@ const ACTOR_INFO_MAP: Record<string, ActorInfo> = {
     displayName: 'Code Repository',
     provider: 'Git',
     model: 'Local Repository',
-    details: '~/dev/{project}',
+    // details will be set dynamically based on config
     icon: '💻'
   },
   'tool': {

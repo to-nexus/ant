@@ -32,8 +32,8 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
   const setUser = useStore((state) => state.setUser);
   const clearUser = useStore((state) => state.clearUser);
   const frontendMode = useStore((state) => state.frontendMode);
-  const deploymentMode = useStore((state) => state.deploymentMode);
-  const setDeploymentMode = useStore((state) => state.setDeploymentMode);
+  const backendMode = useStore((state) => state.backendMode);
+  const setBackendMode = useStore((state) => state.setBackendMode);
   
   // Auth modal state
   const [showSignUpModal, setShowSignUpModal] = useState(false);
@@ -43,29 +43,33 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
   // Check if user is signed in
   const isSignedIn = !!userEmail && !!userOrganization;
   
+  // ✅ UI 선택 상태: /local 페이지면 'local', 아니면 backendMode
+  const uiSelectedMode = window.location.pathname === '/local' ? 'local' : backendMode;
+  
   // Handle deployment mode change
   const handleModeChange = (mode: 'local' | 'cloud') => {
-    if (mode === deploymentMode) return;
-    
     // If on /local page and user clicks cloud, go back to home
     if (window.location.pathname === '/local' && mode === 'cloud') {
-      setDeploymentMode('cloud');
+      setBackendMode('cloud');
       window.history.pushState({}, '', '/');
       window.dispatchEvent(new PopStateEvent('popstate'));
       return;
     }
     
-    // If frontend is cloud and user clicks local, show /local guide page
-    if (frontendMode === 'cloud' && mode === 'local') {
-      setDeploymentMode('local'); // ✅ Set mode to local to show button as selected
+    // ✅ Cloud Backend 사용 중에 Local로 전환 시도 → 안내 페이지만 표시
+    // backendMode를 변경하지 않고 페이지만 이동 (Local Backend에 요청 안 함)
+    if (backendMode === 'cloud' && mode === 'local') {
       window.history.pushState({}, '', '/local');
       window.dispatchEvent(new PopStateEvent('popstate'));
       return;
     }
     
+    // Early return if same mode (but only for non-/local pages)
+    if (mode === backendMode) return;
+    
     // If frontend is local, actually switch modes
     if (frontendMode === 'local') {
-      setDeploymentMode(mode);
+      setBackendMode(mode);
       // Reload projects after mode change
       const fetchProjects = useStore.getState().fetchProjects;
       fetchProjects();
@@ -129,12 +133,12 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
                 onClick={() => handleModeChange('local')}
                 className={`
                   px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5
-                  ${deploymentMode === 'local'
+                  ${uiSelectedMode === 'local'
                     ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-white shadow-md border border-blue-200 dark:border-transparent'
                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 opacity-60'
                   }
                 `}
-                title={frontendMode === 'cloud' && deploymentMode !== 'local' ? 'View local setup guide' : 'Switch to local backend'}
+                title={frontendMode === 'cloud' && uiSelectedMode !== 'local' ? 'View local setup guide' : 'Switch to local backend'}
               >
                 <Monitor className="w-3.5 h-3.5" />
                 Local
@@ -145,7 +149,7 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
                 onClick={() => handleModeChange('cloud')}
                 className={`
                   px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5
-                  ${deploymentMode === 'cloud'
+                  ${uiSelectedMode === 'cloud'
                     ? 'bg-white dark:bg-gray-700 text-purple-600 dark:text-white shadow-md border border-purple-200 dark:border-transparent'
                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 opacity-60'
                   }
@@ -220,7 +224,7 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
             <ConnectionStatus status={connectionStatus} />
             
             {/* User Section (Cloud Mode only) */}
-            {deploymentMode === 'cloud' && (
+            {uiSelectedMode === 'cloud' && (
               <>
                 <div className="w-px h-6 bg-gray-300 dark:bg-gray-600"></div>
                 

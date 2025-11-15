@@ -31,7 +31,7 @@ const architect = program
   .description('Architecture design and code generation agent');
 
 architect
-  .command('design <input>')
+  .command('design [input]')
   .description('Generate architecture design from PRD and requirements')
   .option('--project <name>', 'Override auto-detected project name')
   .action(async (input: string, options: any) => {
@@ -39,7 +39,7 @@ architect
   });
 
 architect
-  .command('code <input>')
+  .command('code [input]')
   .description('Generate code from design document')
   .option('--mode <mode>', 'Code generation mode (generate|refactor|explain)', 'generate')
   .option('--project <name>', 'Override auto-detected project name')
@@ -49,7 +49,7 @@ architect
   });
 
 architect
-  .command('learn <input>')
+  .command('learn [input]')
   .description('Learn from repository patterns and conventions')
   .option('--project <name>', 'Override auto-detected project name')
   .action(async (input: string, options: any) => {
@@ -92,22 +92,59 @@ program
 /**
  * Run architect agent
  */
-async function runArchitect(task: 'design' | 'code' | 'learn', inputPath: string, options: any) {
+async function runArchitect(task: 'design' | 'code' | 'learn', inputPath: string | undefined, options: any) {
   let logger: TaskLogger | null = null;
   
   try {
-    // Resolve project
-    const project = options.project || detectProject(inputPath);
+    // ✅ Check for override directive from environment (chat input)
+    const overrideDirective = process.env.ANT_OVERRIDE_DIRECTIVE;
     
-    // Resolve input file based on task
-    const resolvedFile = resolveInputFile(inputPath, task);
-    const input = fs.readFileSync(resolvedFile, 'utf-8');
+    // ✅ For chat-initiated jobs, inputPath might be undefined
+    // In that case, we need a default project detection or it should be provided via options
+    if (!inputPath && !overrideDirective) {
+      throw new Error('Either input path or override directive (from chat) must be provided');
+    }
+    
+    // Resolve project
+    const project = options.project || (inputPath ? detectProject(inputPath) : 'unknown');
+    
+    let input: string;
+    let resolvedFile: string;
+    
+    if (overrideDirective) {
+      // ✅ Use override directive from chat (no file reading)
+      console.log('📝 Using chat input as directive');
+      input = overrideDirective;
+      resolvedFile = ''; // No file path needed
+    } else if (inputPath) {
+      // ✅ Read from file as usual
+      resolvedFile = resolveInputFile(inputPath, task);
+      input = fs.readFileSync(resolvedFile, 'utf-8');
+    } else {
+      throw new Error('No input source available');
+    }
     
     // Determine output directory for logs
-    // resolvedFile is like: workspace/test-app/skeleton/inputs/directives/code/directive.md
-    // We want: workspace/test-app/skeleton/outputs/reports
-    const featureDir = path.dirname(path.dirname(path.dirname(path.dirname(resolvedFile)))); // Go up 4 levels (from directive.md -> code -> directives -> inputs -> skeleton)
+    // ✅ Use ANT_FEATURE_PATH if available (from HTTP server)
+    // Otherwise calculate from resolved file or input path
+    let featureDir: string;
+    
+    if (process.env.ANT_FEATURE_PATH) {
+      // HTTP server mode: use provided feature path
+      featureDir = process.env.ANT_FEATURE_PATH;
+      console.log(`📂 [Command] Using ANT_FEATURE_PATH: ${featureDir}`);
+    } else if (resolvedFile) {
+      // CLI standalone mode: calculate from file path
+      // resolvedFile is like: workspace/test-app/skeleton/inputs/directives/code/directive.md
+      // We want: workspace/test-app/skeleton
+      featureDir = path.dirname(path.dirname(path.dirname(path.dirname(resolvedFile))));
+    } else {
+      // Fallback: use inputPath or current directory
+      featureDir = inputPath || process.cwd();
+    }
+    
     const outputDir = path.join(featureDir, 'outputs', 'reports');
+    console.log(`📂 [Command] Output directory: ${outputDir}`);
     
     // Start logging
     logger = new TaskLogger(outputDir, `architect-${task}`);
@@ -130,7 +167,9 @@ async function runArchitect(task: 'design' | 'code' | 'learn', inputPath: string
       project,
       inputFile: resolvedFile,
       mode: options.mode,
-      enableEvaluation: task === 'code' && options.eval  // Pass eval flag
+      enableEvaluation: task === 'code' && options.eval,  // Pass eval flag
+      featurePath: featureDir,  // ✅ Pass full feature path
+      projectPath: process.env.ANT_PROJECT_PATH  // ✅ Pass full project path if available
     });
     
     // ✅ Display result based on status (type guard for ArchitectResult)

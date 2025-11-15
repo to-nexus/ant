@@ -36,8 +36,11 @@ export async function orchestrator(params: {
   mode?: 'generate' | 'refactor' | 'explain';
   enableEvaluation?: boolean;
   taskId?: string;  // ✅ For real-time Kanban tracking
+  featurePath?: string;  // ✅ Full feature path for Cloud mode
+  projectPath?: string;  // ✅ Full project path for Cloud mode
+  workspaceResolver?: import('../infrastructure/workspace/WorkspaceResolver').WorkspaceResolver;  // ✅ NEW: Inject resolver
 }) {
-  const { agent, task, input, project, inputFile, mode, enableEvaluation, taskId } = params;
+  const { agent, task, input, project, inputFile, mode, enableEvaluation, taskId, featurePath, projectPath, workspaceResolver } = params;
 
   switch (agent) {
     case "architect": {
@@ -68,13 +71,18 @@ export async function orchestrator(params: {
       const promptPort = new FilePromptAdapter();
       const profilePort = new FileProfileAdapter();
       const chunk = new ChunkAdapter();
-      // workspace is at project root (../../workspace from packages/ant-cli)
-      const workspaceRoot = path.join(process.cwd(), "../../workspace");
-      const session = new FileSessionAdapter(workspaceRoot);
+      
+      // ✅ Require featurePath and projectPath - no fallback
+      if (!featurePath || !projectPath) {
+        throw new Error('featurePath and projectPath are required for design/code tasks');
+      }
+      
+      // FileSessionAdapter uses featurePath directly
+      const session = new FileSessionAdapter(featurePath);
 
       if (task === 'design') {
         const analyzer = new CodebaseAnalyzer();
-        const git = new SimpleGitAdapter(project || "default", configData);
+        const git = new SimpleGitAdapter(project || "default", configData, projectPath);  // ✅ Pass projectPath
         
         // ✅ Get ExpressServerAdapter instance for real-time updates
         let kanbanUpdate: TaskQueueUpdatePort | undefined = undefined;
@@ -118,7 +126,7 @@ export async function orchestrator(params: {
 
       if (task === 'code') {
         const analyzer = new CodebaseAnalyzer();
-        const git = new SimpleGitAdapter(project || "default", configData);
+        const git = new SimpleGitAdapter(project || "default", configData, projectPath);  // ✅ Pass projectPath
         const command = new NodeCommandAdapter();
         
         // ✅ Get ExpressServerAdapter instance for real-time updates

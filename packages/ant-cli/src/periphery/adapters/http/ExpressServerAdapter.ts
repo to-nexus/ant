@@ -32,30 +32,15 @@ import {
   createJobRoutes,
   createKanbanRoutes,
   createDevServerRoutes,
-  createProjectRoutes,
   createWorkflowRoutes,
   createSSERoutes,
   createAuthRoutes,
-  createIDERoutes
+  createIDERoutes,
+  createApiRoutes  // ✅ NEW: Unified API routes
 } from './routes';
 import { FileJobPrerequisitesAdapter } from '../prerequisites/FileJobPrerequisitesAdapter';
 import { WorkspaceResolver, LocalWorkspaceResolver, CloudWorkspaceResolver } from '../../../infrastructure/workspace/WorkspaceResolver';
 import { AuthService } from '../../../infrastructure/auth/AuthService';
-
-/**
- * Extended Request with User Context
- */
-interface RequestWithUser extends Request {
-  user?: {
-    id: string;
-    email: string;
-    organizationId: string;
-  };
-  organization?: {
-    id: string;
-    name: string;
-  };
-}
 
 /**
  * ExpressServerAdapter
@@ -75,7 +60,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   
   // Mode configuration
   private readonly mode: 'local' | 'cloud';
-  private readonly WORKSPACE_ROOT: string;
+  private readonly workspacesPath: string;  // ✅ Physical workspaces directory path
   private readonly cloudUrl: string;
   private readonly workspaceResolver: WorkspaceResolver;
   private readonly authService?: AuthService;
@@ -108,7 +93,12 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     recursionCount?: number;  // ✅ Current recursion iteration
     recursionLimit?: number;  // ✅ Maximum recursion limit
   }> = new Map();
-  private jobToProject: Map<string, { projectId: string; featureName: string; jobType: 'design' | 'code' | 'learn' }> = new Map();
+  private jobToProject: Map<string, { 
+    projectId: string; 
+    featureName: string; 
+    jobType: 'design' | 'code' | 'learn';
+    userContext?: UserContext;  // ✅ Store user context for Cloud mode path resolution
+  }> = new Map();
   private userStoppedJobs: Set<string> = new Set();  // ✅ Track user-stopped jobs to prevent duplicate cleanup
   
   /**
@@ -193,7 +183,8 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         jobType,
         this.jobToProject,
         this.jobs,
-        this.taskQueueSnapshots
+        this.taskQueueSnapshots,
+        mapping.userContext  // ✅ Pass user context for Cloud mode
       ).then(kanbanData => {
         this.sseService.broadcast(mapping.projectId, mapping.featureName, 'kanban', kanbanData);
       });
@@ -262,21 +253,27 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   // ✅ Move in-progress task back to queue in session file
   if (mapping) {
     try {
-      // ✅ Use job type already determined before deletion
-      const sessionPath = path.join(
-        this.WORKSPACE_ROOT,
+      // ✅ Use WorkspaceResolver to get correct path (Cloud/Local)
+      const userContext = mapping.userContext || {
+        userId: 'local',
+        organizationId: 'local',
+        workspacePath: ''
+      };
+      
+      const featurePath = this.workspaceResolver.getFeaturePath(
+        userContext,
         mapping.projectId,
-        mapping.featureName || 'skeleton',
-        'sessions',  // ✅ Correct directory
-        `${jobType}.json`  // ✅ Job-specific session file
+        mapping.featureName || 'skeleton'
       );
+      const sessionPath = path.join(featurePath, 'sessions', `${jobType}.json`);
       
       console.log(`   📄 Session file: ${sessionPath}`);
       
       const sessionData = await this.sessionService.readSessionData(
         mapping.projectId, 
         mapping.featureName || 'skeleton',
-        jobType  // ✅ Pass job type
+        jobType,
+        userContext  // ✅ Pass user context
       );
       
       // ✅ CRITICAL: Always broadcast, even if no session file exists yet
@@ -386,7 +383,8 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
           jobType,
           this.jobToProject,
           this.jobs,
-          this.taskQueueSnapshots
+          this.taskQueueSnapshots,
+          mapping.userContext  // ✅ Pass user context for Cloud mode
         ).then(kanbanData => {
           console.log(`   ✅ Kanban data source: ${kanbanData.dataSource}`);
           this.sseService.broadcast(mapping.projectId, mapping.featureName, 'kanban', kanbanData);
@@ -403,18 +401,18 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   }
   }
   
-  constructor(mode: 'local' | 'cloud' = 'local', workspaceRoot?: string, cloudUrl: string = 'https://ant.nexus.ai') {
+  constructor(mode: 'local' | 'cloud' = 'local', workspacesPath: string, cloudUrl: string = 'https://ant.nexus.ai') {
     this.app = express();
     
     // Mode configuration
     this.mode = mode;
-    this.WORKSPACE_ROOT = workspaceRoot || path.join(process.cwd(), '../../workspaces');
+    this.workspacesPath = workspacesPath;
     this.cloudUrl = cloudUrl;
     
     // Initialize WorkspaceResolver
     this.workspaceResolver = mode === 'cloud'
-      ? new CloudWorkspaceResolver(this.WORKSPACE_ROOT)
-      : new LocalWorkspaceResolver(this.WORKSPACE_ROOT);
+      ? new CloudWorkspaceResolver(this.workspacesPath)
+      : new LocalWorkspaceResolver(this.workspacesPath);
     
     // Initialize AuthService for Cloud mode
     if (mode === 'cloud') {
@@ -422,21 +420,24 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     }
     
     console.log(`[ExpressServerAdapter] Initialized in ${mode.toUpperCase()} mode`);
-    console.log(`   Workspace: ${this.WORKSPACE_ROOT}`);
+    console.log(`   Workspaces: ${this.workspacesPath}`);
     
     // Initialize services
-    this.kanbanService = new KanbanService(this.WORKSPACE_ROOT);
-    this.taskExecutionService = new TaskExecutionService({
-      onJobStatusChange: (jobId, status) => {
-        // ✅ CRITICAL: Don't re-add completed/failed jobs to Map
-        // cleanupJobState already handles removal, and re-adding causes
-        // frontend to see "estimating" state again
-        if (status.status === 'completed' || status.status === 'failed') {
-          console.log(`[TaskExecutionService] ⏭️  Skipping jobs.set for ${status.status} job: ${jobId}`);
-          return;
-        }
-        this.jobs.set(jobId, status);
-      },
+    // ✅ Services now use WorkspaceResolver for path generation
+    this.kanbanService = new KanbanService(this.workspacesPath, this.workspaceResolver);
+    this.taskExecutionService = new TaskExecutionService(
+      this.workspaceResolver,  // ✅ Pass WorkspaceResolver
+      {
+        onJobStatusChange: (jobId, status) => {
+          // ✅ CRITICAL: Don't re-add completed/failed jobs to Map
+          // cleanupJobState already handles removal, and re-adding causes
+          // frontend to see "estimating" state again
+          if (status.status === 'completed' || status.status === 'failed') {
+            console.log(`[TaskExecutionService] ⏭️  Skipping jobs.set for ${status.status} job: ${jobId}`);
+            return;
+          }
+          this.jobs.set(jobId, status);
+        },
       onLogEntry: (jobId, log) => {
         const logs = this.logs.get(jobId) || [];
         logs.push(log);
@@ -447,7 +448,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         await this.cleanupJobState(jobId);
       }
     });
-    this.projectService = new ProjectService(this.WORKSPACE_ROOT);
+    this.projectService = new ProjectService(this.workspaceResolver);  // ✅ WorkspaceResolver 사용
     this.sseService = new SSEService();
     this.devServerService = new DevServerService({
       onStatusChange: (projectId) => {
@@ -455,13 +456,32 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       }
     });
     
-    this.sessionService = new SessionService(this.WORKSPACE_ROOT, {
+    this.sessionService = new SessionService(this.workspacesPath, {
       onSessionChange: async (projectId, featureName, jobType) => {
         setTimeout(async () => {
           // ✅ CRITICAL: Check if live data exists before broadcasting session data
           // This prevents race condition where session watcher broadcasts stale data
           // while decompose/plan nodes have already updated live snapshot
-          const sessionData = await this.sessionService.readSessionData(projectId, featureName, jobType);
+          
+          // ✅ Find userContext from jobToProject map
+          let userContext: UserContext | undefined;
+          for (const [jobId, mapping] of this.jobToProject.entries()) {
+            if (mapping.projectId === projectId && mapping.featureName === featureName) {
+              userContext = mapping.userContext;
+              break;
+            }
+          }
+          
+          // Fallback for Local mode
+          if (!userContext) {
+            userContext = {
+              userId: 'local',
+              organizationId: 'local',
+              workspacePath: ''
+            };
+          }
+          
+          const sessionData = await this.sessionService.readSessionData(projectId, featureName, jobType, userContext);
           const sessionJobId = sessionData?.state?.jobId;
           const hasLiveSnapshot = sessionJobId ? this.taskQueueSnapshots.has(sessionJobId) : false;
           
@@ -477,20 +497,21 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
             jobType,
             this.jobToProject,
             this.jobs,
-            this.taskQueueSnapshots
+            this.taskQueueSnapshots,
+            userContext  // ✅ Pass user context for Cloud mode
           );
           this.sseService.broadcast(projectId, featureName, 'kanban', kanbanData);
           
-          const fileTree = await this.projectService.getFileTree(projectId, featureName);
+          const fileTree = await this.projectService.getFileTree(projectId, featureName, userContext);
           this.sseService.broadcast(projectId, featureName, 'fileTree', { type: 'update', tree: fileTree });
         }, 50);
       }
-    });
+    }, this.workspaceResolver);  // ✅ Pass WorkspaceResolver to SessionService
     
     this.graphMetadataService = new GraphMetadataService();
     this.workflowStateService = new WorkflowStateService(this.sseService);
-    this.chatService = new ChatService(this.WORKSPACE_ROOT, this.sseService);
-    this.jobPrerequisitesAdapter = new FileJobPrerequisitesAdapter(this.WORKSPACE_ROOT);
+    this.chatService = new ChatService(this.workspacesPath, this.sseService, this.workspaceResolver);
+    this.jobPrerequisitesAdapter = new FileJobPrerequisitesAdapter(this.workspaceResolver);
     
     this.setupMiddleware();
     this.setupRoutes();
@@ -506,12 +527,16 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   }
   
   private setupMiddleware(): void {
-    this.app.use(cors());
+    // ✅ Configure CORS to support credentials
+    this.app.use(cors({
+      origin: true,  // Allow the requesting origin (supports localhost:4200, etc.)
+      credentials: true  // Allow credentials (cookies)
+    }));
     this.app.use(express.json({ limit: '50mb' }));
     
     // Cloud mode: Add authentication middleware
     if (this.mode === 'cloud' && this.authService) {
-      this.app.use(async (req: RequestWithUser, res: Response, next: NextFunction) => {
+      this.app.use(async (req: Request, res: Response, next: NextFunction) => {
         // Skip auth for public pages, auth endpoints, and metadata APIs
         const publicPaths = [
           '/api/health',
@@ -520,7 +545,9 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
           '/local',
           '/api/auth/signup',
           '/api/auth/signin',
-          '/api/auth/signout'
+          '/api/auth/signout',
+          '/api/internal/task-queue',  // ✅ Internal endpoint for child processes (has ANT_USER_EMAIL env var)
+          '/api/jobs'                   // ✅ Internal endpoints for child processes (workflow updates)
         ];
         
         // Skip auth for SSE endpoints (EventSource doesn't support headers)
@@ -528,7 +555,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         const isSSEEndpoint = req.path.includes('/stream');
         
         // Also skip auth for graph metadata (read-only metadata)
-        if (publicPaths.includes(req.path) || req.path.includes('/graph-metadata') || isSSEEndpoint) {
+        if (publicPaths.includes(req.path) || publicPaths.some(p => req.path.startsWith(p)) || req.path.includes('/graph-metadata') || isSSEEndpoint) {
           return next();
         }
         
@@ -548,7 +575,10 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
           req.user = authContext.user;
           req.organization = authContext.organization;
           
-          console.log(`[Auth] ${authContext.user.id}@${authContext.organization.id}`);
+          // ✅ Only log auth for non-polling endpoints (reduce noise)
+          if (!req.path.includes('/projects') && !req.path.includes('/session') && !req.path.includes('/stream')) {
+            console.log(`[Auth] ${authContext.user.id}@${authContext.organization.id}`);
+          }
           
           next();
         } catch (error: any) {
@@ -611,14 +641,12 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       this.app.use('/api', authRoutes);
     }
     
-    // Project routes (includes health, agents, projects, features, files, chat)
-    const projectRoutes = createProjectRoutes({
+    // ✅ NEW: Unified API routes (health, agents, projects, features, files, chat)
+    const apiRoutes = createApiRoutes({
       projectService: this.projectService,
-      workspaceRoot: this.WORKSPACE_ROOT,
-      chatService: this.chatService,
-      mode: this.mode  // ✅ Pass mode for user-specific project listing
+      chatService: this.chatService
     });
-    this.app.use('/api', projectRoutes);
+    this.app.use('/api', apiRoutes);
     
     // IDE routes (Local Mode only - opens local IDE apps)
     if (this.mode === 'local') {
@@ -658,7 +686,6 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       chatService: this.chatService,
       projectService: this.projectService,
       workflowStateService: this.workflowStateService,
-      workspaceRoot: this.WORKSPACE_ROOT,
       jobToProject: this.jobToProject,
       jobs: this.jobs,
       taskQueueSnapshots: this.taskQueueSnapshots
@@ -667,7 +694,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     
     // Job execution routes
     const jobRoutes = createJobRoutes({
-      workspaceRoot: this.WORKSPACE_ROOT,
+      workspaceResolver: this.workspaceResolver,  // ✅ WorkspaceResolver 사용
       executeJob: this.executeJob.bind(this),
       getJobStatus: this.getJobStatus.bind(this),
       getLogs: this.getLogs.bind(this),
@@ -735,7 +762,9 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     const validationResult = await this.jobPrerequisitesAdapter.validate(
       projectId,
       featureName,
-      jobType
+      jobType,
+      params.userContext,    // ✅ Pass user context
+      params.overrideDirective  // ✅ Pass override directive (from chat)
     );
     
     if (!validationResult.isValid) {
@@ -765,7 +794,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     console.log(`   ✅ Job status set to 'pending'`);
     
     // Map jobId to project/feature/jobType for Kanban tracking
-    this.jobToProject.set(jobId, { projectId, featureName, jobType });
+    this.jobToProject.set(jobId, { projectId, featureName, jobType, userContext: params.userContext });  // ✅ Store userContext
     
     console.log(`   ✅ Job mapped: ${projectId}/${featureName}/${jobType} -> ${jobId}`);
     console.log(`   Total jobs in map: ${this.jobToProject.size}`);
@@ -787,7 +816,8 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       jobType,
       this.jobToProject,
       this.jobs,
-      this.taskQueueSnapshots
+      this.taskQueueSnapshots,
+      params.userContext  // ✅ Pass user context for Cloud mode
     ).then(kanbanData => {
       this.sseService.broadcast(projectId, featureName, 'kanban', kanbanData);
     });
@@ -821,8 +851,16 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         params.task
       ];
       
+      // ✅ Add input file or feature path as positional argument
       if (params.inputFile) {
         args.push(params.inputFile);
+      } else if (params.feature && params.userContext) {
+        const featurePath = this.workspaceResolver.getFeaturePath(
+          params.userContext,
+          params.project,
+          params.feature
+        );
+        args.push(featurePath);
       }
       
       if (params.mode && params.task === 'code') {
@@ -837,13 +875,34 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         args.push('--eval');
       }
       
+      console.log(`[ExpressServerAdapter.runJob] 🚀 Final CLI args:`, args);
+      
       
       const { spawn } = await import('child_process');
+      
+      // ✅ Require userContext for path generation - no fallback
+      if (!params.userContext) {
+        throw new Error('userContext is required to run jobs. Authentication failed.');
+      }
+      
+      // Generate full project path and feature path using WorkspaceResolver
+      const projectPath = this.workspaceResolver.getProjectPath(params.userContext, params.project);
+      const featurePath = params.feature
+        ? this.workspaceResolver.getFeaturePath(params.userContext, params.project, params.feature)
+        : projectPath;  // If no feature, use project path
+      
+      console.log(`[ExpressServerAdapter.runJob] 📂 Project path: ${projectPath}`);
+      console.log(`[ExpressServerAdapter.runJob] 📂 Feature path: ${featurePath}`);
       
       // ✅ Ensure PATH includes common locations for git and other tools
       const ensuredPath = process.env.PATH 
         ? `${process.env.PATH}:/usr/local/bin:/usr/bin:/bin`
         : '/usr/local/bin:/usr/bin:/bin';
+      
+      // ✅ Build user email for authentication (Cloud mode needs this for HTTP client auth)
+      const userEmail = params.userContext 
+        ? `${params.userContext.userId}@${params.userContext.organizationId}` 
+        : undefined;
       
       const childProcess = spawn('npx', ['tsx', ...args], {
         cwd: process.cwd(),
@@ -853,7 +912,10 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
           ANT_JOB_ID: jobId,  // ✅ Pass jobId via environment variable
           ANT_SERVER_PORT: '4100',  // ✅ Pass server port for HTTP updates
           ANT_PROJECT_ID: params.project || '',  // ✅ Pass project ID
-          ANT_FEATURE_NAME: params.feature || ''  // ✅ Pass feature name
+          ANT_FEATURE_NAME: params.feature || '',  // ✅ Pass feature name
+          ANT_PROJECT_PATH: projectPath,  // ✅ Pass full project path for config.json
+          ANT_FEATURE_PATH: featurePath,  // ✅ Pass full feature path for outputs (used by command.ts for logging)
+          ...(userEmail && { ANT_USER_EMAIL: userEmail })  // ✅ Pass user email for HTTP client auth (Cloud mode)
         },
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: false  // ✅ Keep in same process group for easier killing
@@ -1164,20 +1226,27 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       this.logs.get(jobId)!.push(logEntry);
       this.logStreams.get(jobId)?.forEach(listener => listener(logEntry));
       
-      // ✅ Create interruption details for job startup/execution failure
-      const interruption: InterruptionDetails = {
-        reason: 'unknown',
-        message: `Job execution failed: ${error.message}`,
-        timestamp: new Date().toISOString(),
-        canResume: true,
-        metadata: {
-          errorType: 'execution_failure',
-          errorMessage: error.message,
-          stack: error.stack
-        }
-      };
-      
-      await this.cleanupJobState(jobId, params.project, params.feature, interruption);
+      // ✅ Only cleanup if not already cleaned up (check if job still exists in maps)
+      if (this.jobs.has(jobId) || this.jobToProject.has(jobId)) {
+        console.log(`\n🧹 [ExpressServerAdapter.runJob.catch] Job ${jobId} failed in try-catch, calling cleanupJobState...`);
+        
+        // ✅ Create interruption details for job startup/execution failure
+        const interruption: InterruptionDetails = {
+          reason: 'unknown',
+          message: `Job execution failed: ${error.message}`,
+          timestamp: new Date().toISOString(),
+          canResume: true,
+          metadata: {
+            errorType: 'execution_failure',
+            errorMessage: error.message,
+            stack: error.stack
+          }
+        };
+        
+        await this.cleanupJobState(jobId, params.project, params.feature, interruption);
+      } else {
+        console.log(`\n⏭️  [ExpressServerAdapter.runJob.catch] Job ${jobId} already cleaned up, skipping duplicate cleanup`);
+      }
     } finally {
       if (this.currentJobId === jobId) {
         this.currentJobId = null;
@@ -1227,7 +1296,26 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   async notifyFileTreeUpdate(projectId: string, featureName: string): Promise<void> {
     try {
       console.log(`[FileTreeUpdate] Updating for ${projectId}/${featureName}`);
-      const fileTree = await this.projectService.getFileTree(projectId, featureName);
+      
+      // ✅ Find userContext from jobToProject map
+      let userContext: UserContext | undefined;
+      for (const [jobId, mapping] of this.jobToProject.entries()) {
+        if (mapping.projectId === projectId && mapping.featureName === featureName) {
+          userContext = mapping.userContext;
+          break;
+        }
+      }
+      
+      // Fallback for Local mode
+      if (!userContext) {
+        userContext = {
+          userId: 'local',
+          organizationId: 'local',
+          workspacePath: ''
+        };
+      }
+      
+      const fileTree = await this.projectService.getFileTree(projectId, featureName, userContext);
       const clientCount = this.sseService.getClientCount(projectId, featureName);
       console.log(`[FileTreeUpdate] Broadcasting to ${clientCount} client(s)`);
       this.sseService.broadcast(projectId, featureName, 'fileTree', { type: 'update', tree: fileTree });

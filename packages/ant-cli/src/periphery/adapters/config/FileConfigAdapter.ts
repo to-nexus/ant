@@ -8,9 +8,19 @@ import { ConfigPort } from "../../../core/ports";
  */
 export class FileConfigAdapter implements ConfigPort {
   async load(project: string): Promise<any> {
-    // workspace is at project root (../../workspace from packages/ant-cli)
-    const workspaceRoot = path.join(process.cwd(), "../../workspace");
-    const configPath = path.join(workspaceRoot, project, "config.json");
+    // ✅ Require ANT_PROJECT_PATH - no fallback
+    const projectPath = process.env.ANT_PROJECT_PATH;
+    
+    if (!projectPath) {
+      throw new Error(
+        'ANT_PROJECT_PATH environment variable is required.\n' +
+        'This should be set by the HTTP server when spawning CLI processes.\n' +
+        'Use WorkspaceResolver.getProjectPath() to generate the correct path.'
+      );
+    }
+    
+    const configPath = path.join(projectPath, "config.json");
+    
     if (!fs.existsSync(configPath)) {
       throw new Error(`No config.json for project: ${project}\nExpected at: ${configPath}`);
     }

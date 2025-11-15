@@ -2,6 +2,9 @@ import { Router, Request, Response } from 'express';
 import { LogEntry } from '../../../../core/ports/http';
 import { DevServerService } from '../services/DevServerService';
 import { ProjectService } from '../services/ProjectService';
+import { extractUserContext } from './helpers/userContext';
+import * as path from 'path';
+import * as os from 'os';
 
 /**
  * Dev server routes
@@ -17,15 +20,18 @@ export function createDevServerRoutes(deps: {
   router.post('/projects/:id/dev/start', async (req: Request, res: Response) => {
     try {
       const projectId = req.params.id;
-      const config = await deps.projectService.getProjectConfig(projectId);
+      const userContext = extractUserContext(req);
+      const config = await deps.projectService.getProjectConfig(projectId, userContext);
       
       if (!config?.localPath) {
         res.status(400).json({ error: 'Project localPath not configured' });
         return;
       }
       
-      // Resolve local path
-      const localPath = deps.projectService.resolveLocalPath(config.localPath);
+      // Resolve local path (inline, previously ProjectService.resolveLocalPath)
+      const localPath = config.localPath.startsWith('~') 
+        ? path.join(os.homedir(), config.localPath.slice(1))
+        : path.resolve(config.localPath);
       
       // Start dev server
       const result = await deps.devServerService.startDevServer(projectId, localPath);
