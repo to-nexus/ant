@@ -49,7 +49,7 @@ interface StoreState {
   devServerStatus: DevServerStatus | undefined;
   theme: 'light' | 'dark';
   splitLayout: 'horizontal' | 'vertical';
-  editorMode: 'agents' | 'editor';  // ✅ Editor mode toggle
+  viewMode: 'agents' | 'editor';  // ✅ View mode toggle (agents view / editor view)
   ideWorkspacePath: string | undefined;  // ✅ IDE workspace path (for folder parameter)
   
   // ==================
@@ -116,8 +116,9 @@ interface StoreActions {
   toggleTheme: () => void;
   setTheme: (theme: 'light' | 'dark') => void;
   toggleSplitLayout: (layout: 'horizontal' | 'vertical') => void;
-  setEditorMode: (mode: 'agents' | 'editor') => void;  // ✅ Set editor mode
+  setViewMode: (mode: 'agents' | 'editor') => void;  // ✅ Set view mode
   setIdeWorkspacePath: (path: string | undefined) => void;  // ✅ Set IDE workspace path
+  switchToEditorView: (workspacePath: string) => void;  // ✅ Switch to editor view with workspace path (batch update)
   
   // ==================
   // User Authentication
@@ -143,7 +144,7 @@ const STORAGE_KEYS = {
   SELECTED_AGENT: 'ant-ui:selected-agent',
   SELECTED_WORK_TYPE: 'ant-ui:selected-work-type',
   THEME: 'ant-ui:theme',
-  EDITOR_MODE: 'ant-ui:editor-mode',
+  VIEW_MODE: 'ant-ui:view-mode',
   USER_EMAIL: 'ant-ui:user-email',
   USER_ORGANIZATION: 'ant-ui:user-organization',
   BACKEND_MODE: 'ant-ui:backend-mode',
@@ -230,9 +231,9 @@ export const useStore = create<Store>((set, get) => ({
   devServerStatus: undefined,
   theme: getInitialTheme(),
   splitLayout: 'vertical',
-  editorMode: (() => {
+  viewMode: (() => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEYS.EDITOR_MODE);
+      const stored = localStorage.getItem(STORAGE_KEYS.VIEW_MODE);
       if (stored === 'agents' || stored === 'editor') return stored;
       return 'agents'; // ✅ Default to 'agents'
     } catch {
@@ -841,11 +842,11 @@ export const useStore = create<Store>((set, get) => ({
   },
   
   // ==================
-  // Editor Mode
+  // View Mode
   // ==================
-  setEditorMode: (mode: 'agents' | 'editor') => {
-    set({ editorMode: mode });
-    saveToStorage(STORAGE_KEYS.EDITOR_MODE, mode);
+  setViewMode: (mode: 'agents' | 'editor') => {
+    set({ viewMode: mode });
+    saveToStorage(STORAGE_KEYS.VIEW_MODE, mode);
   },
   
   // ==================
@@ -853,6 +854,15 @@ export const useStore = create<Store>((set, get) => ({
   // ==================
   setIdeWorkspacePath: (path: string | undefined) => {
     set({ ideWorkspacePath: path });
+  },
+  
+  // ✅ Switch to editor view with workspace path (batch update to prevent double render)
+  switchToEditorView: (workspacePath: string) => {
+    set({ 
+      ideWorkspacePath: workspacePath,
+      viewMode: 'editor'
+    });
+    saveToStorage(STORAGE_KEYS.VIEW_MODE, 'editor');
   },
   
   // ==================
