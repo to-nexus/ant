@@ -22,8 +22,8 @@ export function ProjectSection() {
     setSelectedProject, 
     fetchProjects, 
     setShowConfigEditor, 
-    setEditorMode, 
-    setIdeWorkspacePath, 
+    setViewMode, 
+    switchToEditorView, 
     backendMode,
     userEmail,
     userOrganization
@@ -193,11 +193,8 @@ export function ProjectSection() {
         });
       }
       
-      // Set IDE workspace path
-      setIdeWorkspacePath(workspacePath);
-      
-      // Switch to Editor mode
-      setEditorMode('editor');
+      // ✅ Set both IDE workspace path and view mode in single batch update
+      switchToEditorView(workspacePath);
     } catch (error: any) {
       console.error('[ProjectSection] Failed to open IDE:', error);
       alert(`Failed to open IDE: ${error.message}`);

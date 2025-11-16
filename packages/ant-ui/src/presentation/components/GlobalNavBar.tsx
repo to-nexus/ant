@@ -26,9 +26,8 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
   const connectionStatus = useStore((state) => state.connectionStatus);
   const theme = useStore((state) => state.theme);
   const toggleTheme = useStore((state) => state.toggleTheme);
-  const editorMode = useStore((state) => state.editorMode);
-  const setEditorMode = useStore((state) => state.setEditorMode);
-  const setIdeWorkspacePath = useStore((state) => state.setIdeWorkspacePath);
+  const viewMode = useStore((state) => state.viewMode);
+  const setViewMode = useStore((state) => state.setViewMode);
   const selectedProject = useStore((state) => state.selectedProject);
   const userEmail = useStore((state) => state.userEmail);
   const userOrganization = useStore((state) => state.userOrganization);
@@ -118,7 +117,7 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
   };
   
   // Handle Editor mode switch
-  const handleEditorModeSwitch = async () => {
+  const handleEditorViewSwitch = () => {
     // ✅ Check if project is selected
     if (!selectedProject) {
       setEditorTooltip('Please select a project first');
@@ -126,42 +125,8 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
       return;
     }
     
-    try {
-      // Fetch project config to get codebase path
-      const config: ProjectConfig = await fetchProjectConfig(selectedProject);
-      
-      // Determine workspace path based on repoType
-      let workspacePath: string;
-      
-      if (config.repoType === 'cloud') {
-        // Cloud Mode: Use codebase directory
-        const codebasePath = getCodebasePath(selectedProject, config);
-        // Build Docker path (assuming ant is at ~/dev/ant and Docker mounts $HOME as /workspace)
-        workspacePath = `/workspace/dev/ant/${codebasePath}`;
-      } else {
-        // Local Mode: Use localPath from config
-        if (!config.localPath) {
-          setEditorTooltip('Local path not configured');
-          setTimeout(() => setEditorTooltip(null), 3000);
-          return;
-        }
-        
-        // Convert ~/path to /workspace/path (Docker mount: $HOME:/workspace)
-        workspacePath = config.localPath.startsWith('~/')
-          ? config.localPath.replace('~', '/workspace')
-          : config.localPath.startsWith('~')
-          ? config.localPath.replace('~', '/workspace')
-          : `/workspace${config.localPath}`;
-      }
-      
-      // Set IDE workspace path and switch to editor mode
-      setIdeWorkspacePath(workspacePath);
-      setEditorMode('editor');
-    } catch (error: any) {
-      console.error('[GlobalNavBar] Failed to switch to editor:', error);
-      setEditorTooltip('Failed to load project config');
-      setTimeout(() => setEditorTooltip(null), 3000);
-    }
+    // ✅ Simply switch to editor view (like Local/Cloud does)
+    setViewMode('editor');
   };
 
   return (
@@ -184,10 +149,10 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
               <button
                 onClick={() => handleModeChange('local')}
                 className={`
-                  px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5
+                  px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 border
                   ${uiSelectedMode === 'local'
-                    ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-white shadow-md border border-blue-200 dark:border-transparent'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 opacity-60'
+                    ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-white shadow-md border-blue-200 dark:border-transparent'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 opacity-60 border-transparent'
                   }
                 `}
                 title={frontendMode === 'cloud' && uiSelectedMode !== 'local' ? 'View local setup guide' : 'Switch to local backend'}
@@ -200,10 +165,10 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
               <button
                 onClick={() => handleModeChange('cloud')}
                 className={`
-                  px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5
+                  px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 border
                   ${uiSelectedMode === 'cloud'
-                    ? 'bg-white dark:bg-gray-700 text-purple-600 dark:text-white shadow-md border border-purple-200 dark:border-transparent'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 opacity-60'
+                    ? 'bg-white dark:bg-gray-700 text-purple-600 dark:text-white shadow-md border-purple-200 dark:border-transparent'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 opacity-60 border-transparent'
                   }
                 `}
                 title="Switch to cloud backend"
@@ -213,16 +178,16 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
               </button>
             </div>
             
-            {/* Editor Mode Selector */}
-            <div className="editor-mode-selector flex items-center gap-1 ml-4 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg relative">
+            {/* View Mode Selector */}
+            <div className="view-mode-selector flex items-center gap-1 ml-4 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg relative">
               {/* Agents Button */}
               <button
-                onClick={() => setEditorMode('agents')}
+                onClick={() => setViewMode('agents')}
                 className={`
-                  px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5
-                  ${editorMode === 'agents'
-                    ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-white shadow-md border border-blue-200 dark:border-transparent'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                  px-3 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 border
+                  ${viewMode === 'agents'
+                    ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-white shadow-md border-blue-200 dark:border-transparent'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 opacity-60 border-transparent'
                   }
                 `}
               >
@@ -232,12 +197,12 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
               
               {/* Editor Button */}
               <button
-                onClick={handleEditorModeSwitch}
+                onClick={handleEditorViewSwitch}
                 className={`
-                  px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5
-                  ${editorMode === 'editor'
-                    ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-white shadow-md border border-blue-200 dark:border-transparent'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                  px-3 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 border
+                  ${viewMode === 'editor'
+                    ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-white shadow-md border-blue-200 dark:border-transparent'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 opacity-60 border-transparent'
                   }
                 `}
                 title={selectedProject ? 'Open codebase in editor' : 'Select a project first'}

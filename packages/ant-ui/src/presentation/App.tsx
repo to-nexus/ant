@@ -71,12 +71,48 @@ function App() {
   const selectFile = useStore((state) => state.selectFile);
   const setSession = useStore((state) => state.setSession);
   const splitLayout = useStore((state) => state.splitLayout);
-  const editorMode = useStore((state) => state.editorMode);
+  const viewMode = useStore((state) => state.viewMode);
   const ideWorkspacePath = useStore((state) => state.ideWorkspacePath);
+  const setIdeWorkspacePath = useStore((state) => state.setIdeWorkspacePath);
   
   // ✅ Domain data (via Application Hooks)
   const { kanbanData } = useKanban();
   const { workflowData } = useWorkflow();
+  
+  // ✅ Load IDE workspace path when switching to editor view
+  // Only run when viewMode changes to 'editor', not when ideWorkspacePath changes
+  useEffect(() => {
+    if (viewMode === 'editor' && !ideWorkspacePath && selectedProject) {
+      // Lazy load workspace path when editor is opened
+      (async () => {
+        try {
+          const { fetchProjectConfig } = await import('@/infrastructure/http/api');
+          const { getCodebasePath } = await import('@/shared/utils/workspace-path');
+          
+          const config = await fetchProjectConfig(selectedProject);
+          let workspacePath: string;
+          
+          if (config.repoType === 'cloud') {
+            const codebasePath = getCodebasePath(selectedProject, config);
+            workspacePath = `/workspace/dev/ant/${codebasePath}`;
+          } else {
+            if (!config.localPath) return;
+            workspacePath = config.localPath.startsWith('~/')
+              ? config.localPath.replace('~', '/workspace')
+              : config.localPath.startsWith('~')
+              ? config.localPath.replace('~', '/workspace')
+              : `/workspace${config.localPath}`;
+          }
+          
+          setIdeWorkspacePath(workspacePath);
+        } catch (error) {
+          console.error('[App] Failed to load IDE workspace path:', error);
+        }
+      })();
+    }
+  // ✅ Remove ideWorkspacePath from dependencies to prevent double render
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, selectedProject]);
   
   // ✅ Chat SSE는 Store에서 자동 관리 (ChatPanel에서만 사용)
   // App.tsx에서는 불필요하므로 제거 → 불필요한 리렌더링 방지
@@ -202,8 +238,8 @@ function App() {
       <GlobalNavBar />
       
       {/* Main Layout */}
-      {editorMode === 'editor' ? (
-        // ✅ Editor Mode: OpenVSCode Server iframe
+      {viewMode === 'editor' ? (
+        // ✅ Editor View: OpenVSCode Server iframe
         <div className="flex-1 pt-16">
           <iframe
             key={`ide-${ideWorkspacePath || 'default'}`}
@@ -213,7 +249,7 @@ function App() {
           />
         </div>
       ) : (
-        // ✅ Agents Mode: Original UI
+        // ✅ Agents View: Original UI
       <div className="flex-1 flex gap-0 overflow-hidden pt-16">
         {/* Explorer Panel */}
         <ExplorerPanel
