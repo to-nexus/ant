@@ -24,7 +24,7 @@ import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 export function MainPanelBar(props: BaseBarProps = {}) {
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);
-  const selectedWorkType = useStore((state) => state.selectedWorkType);
+  const selectedJobType = useStore((state) => state.selectedJobType);
   const currentJobId = useStore((state) => state.currentJobId);
   const currentMode = useStore((state) => state.currentMode);
   const splitLayout = useStore((state) => state.splitLayout);
@@ -49,7 +49,7 @@ export function MainPanelBar(props: BaseBarProps = {}) {
     
     try {
       setIsResetting(true);
-      const jobType = (selectedWorkType as 'design' | 'code' | 'learn') || 'code';
+      const jobType = selectedJobType;
       
       console.log('[MainPanelBar] Clearing job session data:', {
         project: selectedProject,

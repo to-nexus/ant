@@ -34,7 +34,7 @@ export function useChatPolicy(messageCount: number = 0, lastJobFailed: boolean =
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);
   const selectedAgent = useStore((state) => state.selectedAgent);
-  const selectedWorkType = useStore((state) => state.selectedWorkType);
+  const selectedJobType = useStore((state) => state.selectedJobType);
   const isRunning = useStore((state) => state.isRunning);
   const kanbanData = useStore((state) => state.kanban);
   const dismissedInterruptTimestamp = useStore((state) => state.dismissedInterruptTimestamp);
@@ -59,7 +59,7 @@ export function useChatPolicy(messageCount: number = 0, lastJobFailed: boolean =
       inputPlaceholder: 'Please sign in to start chatting...',
       emptyStateMessage: 'Please sign in from the navigation bar to continue',
       readyEmptyStateMessage: null,
-      jobButtonLabel: selectedWorkType || 'Job',
+      jobButtonLabel: selectedJobType || 'Job',
       canChangeJob: false,
       canRetry: false,
       reason: 'not-authenticated'
@@ -75,7 +75,7 @@ export function useChatPolicy(messageCount: number = 0, lastJobFailed: boolean =
       inputPlaceholder: 'Select an agent to start chatting...',
       emptyStateMessage: 'Please select an agent from the navigation bar',
       readyEmptyStateMessage: null,
-      jobButtonLabel: selectedWorkType || 'Job',
+      jobButtonLabel: selectedJobType || 'Job',
       canChangeJob: true,
       canRetry: false,
       reason: 'no-agent'
@@ -91,7 +91,7 @@ export function useChatPolicy(messageCount: number = 0, lastJobFailed: boolean =
       inputPlaceholder: 'Select a workspace to continue...',
       emptyStateMessage: 'Please select a workspace from the navigation bar',
       readyEmptyStateMessage: null,
-      jobButtonLabel: selectedWorkType || 'Job',
+      jobButtonLabel: selectedJobType || 'Job',
       canChangeJob: true,
       canRetry: false,
       reason: 'no-workspace'
@@ -107,7 +107,7 @@ export function useChatPolicy(messageCount: number = 0, lastJobFailed: boolean =
       inputPlaceholder: 'Select a project to continue...',
       emptyStateMessage: 'Please select a project from the navigation bar',
       readyEmptyStateMessage: null,
-      jobButtonLabel: selectedWorkType || 'Job',
+      jobButtonLabel: selectedJobType || 'Job',
       canChangeJob: true,
       canRetry: false,
       reason: 'no-project'
@@ -115,7 +115,7 @@ export function useChatPolicy(messageCount: number = 0, lastJobFailed: boolean =
   }
 
   // Job 미선택 (이론상 불가능하지만 방어 코드)
-  if (!selectedWorkType) {
+  if (!selectedJobType) {
     return {
       headerText: `Chat with ${getAgentDisplayName(selectedAgent)}`,
       isOffline: false,
@@ -139,7 +139,7 @@ export function useChatPolicy(messageCount: number = 0, lastJobFailed: boolean =
       inputPlaceholder: 'Job is running. Stop the job to send a new message...',
       emptyStateMessage: null,
       readyEmptyStateMessage: null,
-      jobButtonLabel: selectedWorkType,
+      jobButtonLabel: selectedJobType,
       canChangeJob: false,  // ❌ Job 실행 중엔 변경 불가
       canRetry: false,  // ❌ 실행 중엔 retry 불가
       reason: 'job-running'
@@ -159,7 +159,7 @@ export function useChatPolicy(messageCount: number = 0, lastJobFailed: boolean =
         : 'Job failed. Click Retry to resume or send a new message...',
       emptyStateMessage: null,
       readyEmptyStateMessage: null,
-      jobButtonLabel: selectedWorkType,
+      jobButtonLabel: selectedJobType,
       canChangeJob: true,  // ✅ 중단/실패 후엔 변경 가능
       canRetry: true,  // ✅ Retry/Resume 가능
       reason: 'job-failed'  // Note: reason을 'job-interrupted'로 확장 가능
@@ -178,7 +178,7 @@ export function useChatPolicy(messageCount: number = 0, lastJobFailed: boolean =
       : 'Continue your conversation...',
     emptyStateMessage: null,
     readyEmptyStateMessage: 'Start chatting to collaborate with the agent',
-    jobButtonLabel: selectedWorkType,
+    jobButtonLabel: selectedJobType,
     canChangeJob: true,  // ✅ 정상 상태에선 변경 가능
     canRetry: false,  // ❌ 정상 상태에선 retry 불필요
     reason: 'ready'

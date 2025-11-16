@@ -90,6 +90,11 @@ function App() {
           const { getCodebasePath } = await import('@/shared/utils/workspace-path');
           
           const config = await fetchProjectConfig(selectedProject);
+          if (!config) {
+            console.error('[App] Failed to load project config');
+            return;
+          }
+          
           let workspacePath: string;
           
           if (config.repoType === 'cloud') {

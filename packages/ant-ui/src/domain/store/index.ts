@@ -22,7 +22,7 @@ interface StoreState {
   selectedFeature: string | undefined;
   selectedFile: string | undefined;
   selectedAgent: string;  // GNB에서 선택된 Agent
-  selectedWorkType: string;  // GNB에서 선택된 Work Type (code/design/etc)
+  selectedJobType: 'design' | 'code' | 'learn';  // GNB에서 선택된 Job Type
   features: Feature[];
   fileTree: FileNode[];
   fileContent: FileContent | undefined;
@@ -89,12 +89,10 @@ interface StoreActions {
   // ==================
   setProjects: (projects: string[]) => void;
   fetchProjects: () => Promise<void>;
-  selectProject: (projectId: string) => void;
   setSelectedProject: (projectId: string | undefined) => void;
-  selectFeature: (featureName: string) => void;
   setSelectedFeature: (featureName: string | undefined) => void;
   setSelectedAgent: (agent: string) => void;
-  setSelectedWorkType: (workType: string) => void;
+  setSelectedJobType: (jobType: 'design' | 'code' | 'learn') => void;
   fetchFeatures: () => Promise<void>;
   selectFile: (filePath: string | undefined) => void;
   setFeatures: (features: Feature[]) => void;
@@ -142,12 +140,13 @@ const STORAGE_KEYS = {
   SELECTED_PROJECT: 'ant-ui:selected-project',
   SELECTED_FEATURE: 'ant-ui:selected-feature',
   SELECTED_AGENT: 'ant-ui:selected-agent',
-  SELECTED_WORK_TYPE: 'ant-ui:selected-work-type',
+  SELECTED_JOB_TYPE: 'ant-ui:selected-job-type',
   THEME: 'ant-ui:theme',
   VIEW_MODE: 'ant-ui:view-mode',
   USER_EMAIL: 'ant-ui:user-email',
   USER_ORGANIZATION: 'ant-ui:user-organization',
   BACKEND_MODE: 'ant-ui:backend-mode',
+  DISMISSED_INTERRUPT_TIMESTAMP: 'ant-ui:dismissed-interrupt-timestamp',
 };
 
 // Helper functions for localStorage
@@ -156,6 +155,16 @@ const saveToStorage = (key: string, value: any) => {
     localStorage.setItem(key, JSON.stringify(value));
   } catch (error) {
     console.error('Failed to save to localStorage:', error);
+  }
+};
+
+const loadFromStorage = (key: string): any => {
+  try {
+    const stored = localStorage.getItem(key);
+    return stored ? JSON.parse(stored) : undefined;
+  } catch (error) {
+    console.error('Failed to load from localStorage:', error);
+    return undefined;
   }
 };
 
@@ -197,7 +206,37 @@ const applyTheme = (theme: 'light' | 'dark') => {
   }
 };
 
-export const useStore = create<Store>((set, get) => ({
+// ✅ Centralized initialization for all localStorage-persisted state
+function initializePersistentState() {
+  const theme = getInitialTheme();
+  const viewMode = (loadFromStorage(STORAGE_KEYS.VIEW_MODE) as 'agents' | 'editor') || 'agents';
+  const userEmail = loadFromStorage(STORAGE_KEYS.USER_EMAIL);
+  const userOrganization = loadFromStorage(STORAGE_KEYS.USER_ORGANIZATION);
+  const selectedAgent = loadFromStorage(STORAGE_KEYS.SELECTED_AGENT) || 'architect';
+  const selectedJobType = (loadFromStorage(STORAGE_KEYS.SELECTED_JOB_TYPE) as 'design' | 'code' | 'learn') || 'code';
+  const dismissedInterruptTimestamp = loadFromStorage(STORAGE_KEYS.DISMISSED_INTERRUPT_TIMESTAMP);
+  
+  const storedBackendMode = loadFromStorage(STORAGE_KEYS.BACKEND_MODE);
+  const frontendMode = (import.meta.env.VITE_FRONTEND_MODE || 'local') as 'local' | 'cloud';
+  const backendMode = storedBackendMode || (import.meta.env.VITE_TARGET_BACKEND_MODE || frontendMode) as 'local' | 'cloud';
+  
+  return {
+    theme,
+    viewMode,
+    userEmail,
+    userOrganization,
+    selectedAgent,
+    selectedJobType,
+    dismissedInterruptTimestamp,
+    backendMode,
+    frontendMode,
+  };
+}
+
+export const useStore = create<Store>((set, get) => {
+  const persistent = initializePersistentState();
+  
+  return {
   // ==================
   // Initial State
   // ==================
@@ -209,8 +248,8 @@ export const useStore = create<Store>((set, get) => ({
   selectedProject: undefined,
   selectedFeature: undefined,
   selectedFile: undefined,
-  selectedAgent: 'architect',
-  selectedWorkType: 'code',
+  selectedAgent: persistent.selectedAgent,
+  selectedJobType: persistent.selectedJobType,
   features: [],
   fileTree: [],
   fileContent: undefined,
@@ -219,7 +258,7 @@ export const useStore = create<Store>((set, get) => ({
   isStopping: false,
   userStoppedJobId: null,
   lastJobFailed: false,
-  dismissedInterruptTimestamp: null,
+  dismissedInterruptTimestamp: persistent.dismissedInterruptTimestamp,
   currentJobId: undefined,
   currentJob: null,
   connectionStatus: 'disconnected',
@@ -229,50 +268,18 @@ export const useStore = create<Store>((set, get) => ({
   elapsedTime: 0,
   currentMode: undefined,
   devServerStatus: undefined,
-  theme: getInitialTheme(),
+  theme: persistent.theme,
   splitLayout: 'vertical',
-  viewMode: (() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.VIEW_MODE);
-      if (stored === 'agents' || stored === 'editor') return stored;
-      return 'agents'; // ✅ Default to 'agents'
-    } catch {
-      return 'agents';
-    }
-  })(),
+  viewMode: persistent.viewMode,
   ideWorkspacePath: undefined,
   
   // User Authentication (Cloud Mode)
-  userEmail: (() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.USER_EMAIL);
-      return stored ? JSON.parse(stored) : undefined;
-    } catch { return undefined; }
-  })(),
-  userOrganization: (() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.USER_ORGANIZATION);
-      return stored ? JSON.parse(stored) : undefined;
-    } catch { return undefined; }
-  })(),
+  userEmail: persistent.userEmail,
+  userOrganization: persistent.userOrganization,
   
   // Server Configuration
-  // Frontend Mode: static from environment (where frontend is running)
-  frontendMode: (import.meta.env.VITE_FRONTEND_MODE || 'local') as 'cloud' | 'local',
-  // Backend Mode: dynamic, persisted in localStorage (which backend to connect to)
-  backendMode: (() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.BACKEND_MODE);
-      if (stored) return JSON.parse(stored);
-      // ✅ Default: use env var, then fallback to FRONTEND_MODE
-      const frontendMode = (import.meta.env.VITE_FRONTEND_MODE || 'local') as 'local' | 'cloud';
-      return (import.meta.env.VITE_TARGET_BACKEND_MODE || frontendMode) as 'local' | 'cloud';
-    } catch { 
-      // ✅ On error, fallback to FRONTEND_MODE
-      const frontendMode = (import.meta.env.VITE_FRONTEND_MODE || 'local') as 'local' | 'cloud';
-      return (import.meta.env.VITE_TARGET_BACKEND_MODE || frontendMode) as 'local' | 'cloud';
-    }
-  })(),
+  frontendMode: persistent.frontendMode,
+  backendMode: persistent.backendMode,
 
   // ==================
   // SSE Update Actions
@@ -397,11 +404,20 @@ export const useStore = create<Store>((set, get) => ({
   initializeSSE: () => {
     const state = get();
     console.log('[Store] 🚀 Initializing unified SSE connection...');
+    console.log('[Store] Current state:', {
+      selectedProject: state.selectedProject,
+      selectedFeature: state.selectedFeature,
+      selectedJobType: state.selectedJobType
+    });
     
     if (!state.selectedProject || !state.selectedFeature) {
       console.warn('[Store] ⚠️  Cannot initialize SSE: missing project/feature');
       return;
     }
+    
+    // ✅ Job type is now guaranteed to be valid (typed as 'design' | 'code' | 'learn')
+    const jobType = state.selectedJobType;
+    console.log('[Store] 🎯 Using job type:', jobType);
     
     // ✅ Clear existing handlers to prevent duplicates
     sseManager.clearHandlers();
@@ -489,7 +505,7 @@ export const useStore = create<Store>((set, get) => ({
     });
     
     // ✅ Connect to unified SSE endpoint
-    sseManager.connect(state.selectedProject, state.selectedFeature, state.selectedWorkType as 'design' | 'code' | 'learn');
+    sseManager.connect(state.selectedProject, state.selectedFeature, jobType);
     
     // ✅ Connect workflow SSE if job is running
     if (state.currentJobId) {
@@ -548,27 +564,6 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
-  selectProject: (projectId: string) => {
-    set({ 
-      selectedProject: projectId,
-      selectedFeature: undefined,
-      selectedFile: undefined,
-      features: [],
-      fileTree: [],
-      fileContent: undefined,
-    });
-    
-    saveToStorage(STORAGE_KEYS.SELECTED_PROJECT, projectId);
-    removeFromStorage(STORAGE_KEYS.SELECTED_FEATURE);
-    
-    get().fetchFeatures();
-    
-    // SSE 재연결
-    if (get().selectedFeature) {
-      get().initializeSSE();
-    }
-  },
-
   setSelectedProject: (projectId: string | undefined) => {
     if (!projectId) {
       set({ 
@@ -596,20 +591,6 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
-  selectFeature: (featureName: string) => {
-    set({ 
-      selectedFeature: featureName,
-      selectedFile: undefined,
-      fileTree: [],
-      fileContent: undefined,
-    });
-    
-    saveToStorage(STORAGE_KEYS.SELECTED_FEATURE, featureName);
-    
-    // SSE 초기화
-    get().initializeSSE();
-  },
-
   setSelectedFeature: (featureName: string | undefined) => {
     set({ 
       selectedFeature: featureName,
@@ -622,16 +603,30 @@ export const useStore = create<Store>((set, get) => ({
       saveToStorage(STORAGE_KEYS.SELECTED_FEATURE, featureName);
       
       // Load session.json when feature is selected
-      const { selectedProject, selectedWorkType } = get();
+      const { selectedProject, selectedJobType } = get();
       if (selectedProject) {
         (async () => {
           try {
             const { fetchFeatureSession } = await import('@/infrastructure/http/api');
-            const job = (selectedWorkType as 'design' | 'code' | 'learn') || 'code';
-            const session = await fetchFeatureSession(selectedProject, featureName, job);
+            
+            // ✅ Simply load session for the currently selected job type
+            // User's current selection is the source of truth
+            console.log(`[Store] 📂 Loading session for job type: ${selectedJobType}`);
+            const session = await fetchFeatureSession(selectedProject, featureName, selectedJobType);
+            
+            if (session) {
+              console.log(`[Store] ✅ Session loaded for ${selectedJobType}:`, {
+                hasJobId: !!session?.state?.jobId,
+                taskCount: session?.state?.taskQueue?.length || 0,
+                completedCount: session?.state?.completedTasks?.length || 0
+              });
+            } else {
+              console.log(`[Store] ℹ️ No session found for ${selectedJobType}`);
+            }
+            
             set({ session: session || undefined });
           } catch (error) {
-            console.error('Failed to load session:', error);
+            console.error('[Store] Failed to load session:', error);
             set({ session: undefined });
           }
         })();
@@ -650,14 +645,28 @@ export const useStore = create<Store>((set, get) => ({
     saveToStorage(STORAGE_KEYS.SELECTED_AGENT, agent);
   },
 
-  setSelectedWorkType: (workType: string) => {
+  setSelectedJobType: (jobType: 'design' | 'code' | 'learn') => {
     const state = get();
-    set({ selectedWorkType: workType });
-    saveToStorage(STORAGE_KEYS.SELECTED_WORK_TYPE, workType);
+    set({ selectedJobType: jobType });
+    saveToStorage(STORAGE_KEYS.SELECTED_JOB_TYPE, jobType);
     
-    // ✅ CRITICAL: Reconnect SSE to fetch new job type's data
+    // ✅ CRITICAL: Reload session for new job type
     if (state.selectedProject && state.selectedFeature) {
-      console.log(`[Store] 🔄 Job type changed to '${workType}', reconnecting SSE...`);
+      console.log(`[Store] 🔄 Job type changed to '${jobType}', reloading session...`);
+      
+      (async () => {
+        try {
+          const { fetchFeatureSession } = await import('@/infrastructure/http/api');
+          const session = await fetchFeatureSession(state.selectedProject!, state.selectedFeature!, jobType);
+          set({ session: session || undefined });
+          console.log(`[Store] ✅ Session loaded for ${jobType}`);
+        } catch (error) {
+          console.error('[Store] Failed to reload session:', error);
+          set({ session: undefined });
+        }
+      })();
+      
+      // ✅ Reconnect SSE to fetch new job type's kanban/workflow data
       get().reconnectSSE('kanban');
     }
   },
@@ -814,13 +823,31 @@ export const useStore = create<Store>((set, get) => ({
 
   reset: () => {
     set({
+      kanban: { jobId: undefined, todo: [], inProgress: null, completed: [] },
+      workflow: null,
       selectedProject: undefined,
+      selectedFeature: undefined,
+      // ✅ Keep UI preferences (agent, jobType) - user settings persist across logout
+      // selectedAgent: user's last choice
+      // selectedJobType: user's last choice
       session: undefined,
       isRunning: false,
       isStopping: false,
       userStoppedJobId: null,
+      lastJobFailed: false,
+      currentJobId: undefined,
+      currentJob: null,
       connectionStatus: 'disconnected',
     });
+    
+    // ✅ Clear job-related localStorage (transient data)
+    removeFromStorage(STORAGE_KEYS.RUNNING_TASK);
+    removeFromStorage(STORAGE_KEYS.TASK_START_TIME);
+    removeFromStorage(STORAGE_KEYS.TASK_MODE);
+    removeFromStorage(STORAGE_KEYS.DISMISSED_INTERRUPT_TIMESTAMP);
+    
+    // ✅ Keep UI preferences in localStorage (agent, jobType)
+    // User's last selection should persist across logout/login
   },
 
   toggleTheme: () => {
@@ -896,7 +923,7 @@ export const useStore = create<Store>((set, get) => ({
     // Clear projects when switching modes
     set({ projects: [], selectedProject: undefined, selectedFeature: undefined });
   },
-}));
+}});
 
 // Apply initial theme on load
 applyTheme(getInitialTheme());
