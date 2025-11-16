@@ -20,7 +20,7 @@ interface AgentWorkflowBoardProps {
  */
 export function AgentWorkflowBoard({ workflowState }: AgentWorkflowBoardProps) {
   const selectedAgent = useStore((state) => state.selectedAgent);
-  const selectedWorkType = useStore((state) => state.selectedWorkType);
+  const selectedJobType = useStore((state) => state.selectedJobType);
   
   // ✅ UI Policy 시스템 사용
   const policy = useUIActionPolicy();
@@ -39,7 +39,7 @@ export function AgentWorkflowBoard({ workflowState }: AgentWorkflowBoardProps) {
           {/* Always show selected work type (job) */}
           <StatusChip 
             variant="success" 
-            label={`Job: ${capitalize(selectedWorkType)}`}
+            label={`Job: ${capitalize(selectedJobType)}`}
             hideDot
           />
           {/* Show Status (Running / Idle) - dot 표시 필요 */}

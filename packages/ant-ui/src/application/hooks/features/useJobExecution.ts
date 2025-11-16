@@ -162,7 +162,7 @@ export function useJobExecution() {
       currentJobId, 
       selectedProject, 
       selectedFeature,
-      selectedWorkType 
+      selectedJobType 
     } = state;
     
     console.log('[useJobExecution] Stopping job...', { 
@@ -196,7 +196,7 @@ export function useJobExecution() {
       }
       
       // ✅ Send stop request to server
-      const jobType = (selectedWorkType as 'design' | 'code' | 'learn') || 'code';
+      const jobType = selectedJobType;
       console.log(`[useJobExecution] Sending stop request to server... jobType: ${jobType}`);
       await stopJobAPI(currentJobId, selectedProject, selectedFeature, jobType);
       console.log('[useJobExecution] ✅ Server confirmed stop');

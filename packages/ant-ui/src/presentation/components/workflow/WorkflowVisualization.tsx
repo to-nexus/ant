@@ -42,7 +42,7 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
   const selectedProject = useStore(state => state.selectedProject);
   const selectedFeature = useStore(state => state.selectedFeature);
   const selectedAgent = useStore(state => state.selectedAgent);
-  const selectedWorkType = useStore(state => state.selectedWorkType);
+  const selectedJobType = useStore(state => state.selectedJobType);
   const currentJobId = useStore(state => state.currentJobId);
   const userStoppedJobId = useStore(state => state.userStoppedJobId);
   const theme = useStore(state => state.theme);
@@ -100,7 +100,7 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
   }, [selectedProject]);
   
   // 1. 정적 그래프 메타데이터 로드 (Hooks는 항상 호출되어야 함)
-  const { metadata, loading, error } = useGraphMetadata(selectedAgent, selectedWorkType);
+  const { metadata, loading, error } = useGraphMetadata(selectedAgent, selectedJobType);
   
   // 2. ReactFlow 노드/엣지 변환 + 레이아웃
   // ✅ workflowState 사용: App에서 전달받은 단일 SSE 상태

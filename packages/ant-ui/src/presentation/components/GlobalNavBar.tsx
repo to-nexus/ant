@@ -4,8 +4,7 @@ import { ConnectionStatus } from './ConnectionStatus';
 import { useStore } from '@/domain/store';
 import { SignUpModal } from './auth/SignUpModal';
 import { SignInModal } from './auth/SignInModal';
-import { signUp, signIn, signOut, fetchProjectConfig, ProjectConfig } from '@/infrastructure/http/api';
-import { getCodebasePath } from '@/shared/utils/workspace-path';
+import { signUp, signIn, signOut } from '@/infrastructure/http/api';
 
 export interface GlobalNavBarProps {
   // ✅ No props needed - uses hooks directly
@@ -33,6 +32,7 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
   const userOrganization = useStore((state) => state.userOrganization);
   const setUser = useStore((state) => state.setUser);
   const clearUser = useStore((state) => state.clearUser);
+  const reset = useStore((state) => state.reset);
   const frontendMode = useStore((state) => state.frontendMode);
   const backendMode = useStore((state) => state.backendMode);
   const setBackendMode = useStore((state) => state.setBackendMode);
@@ -107,6 +107,10 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
     await signOut();
     clearUser();
     setShowUserMenu(false);
+    
+    // ✅ Reset all job/task/kanban state
+    reset();
+    
     // Clear projects after sign out
     const setProjects = useStore.getState().setProjects;
     const setSelectedProject = useStore.getState().setSelectedProject;

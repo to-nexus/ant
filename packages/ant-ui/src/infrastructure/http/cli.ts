@@ -48,7 +48,7 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
           const currentState = useStore.getState();
           const actualProjectId = currentState.selectedProject || projectId;
           const actualFeatureName = currentState.selectedFeature || featureName;
-          const actualJobType = (currentState.selectedWorkType as 'design' | 'code' | 'learn') || 'code';
+          const actualJobType = currentState.selectedJobType;
           
           await stopJob(jobId, actualProjectId || undefined, actualFeatureName || undefined, actualJobType);
           

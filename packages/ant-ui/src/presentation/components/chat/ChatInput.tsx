@@ -18,8 +18,8 @@ interface ChatInputProps {
 }
 
 export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputProps) {
-  const selectedWorkType = useStore((state) => state.selectedWorkType);
-  const setSelectedWorkType = useStore((state) => state.setSelectedWorkType);
+  const selectedJobType = useStore((state) => state.selectedJobType);
+  const setSelectedJobType = useStore((state) => state.setSelectedJobType);
   const selectedAgent = useStore((state) => state.selectedAgent);  // ✅ Reactive selectedAgent
   const setSelectedAgent = useStore((state) => state.setSelectedAgent);  // ✅ Add setter for agent
   const isRunning = useStore((state) => state.isRunning);
@@ -106,7 +106,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
     };
   });
 
-  const currentJob = jobsWithMetadata.find((j: { value: string; label: string; description: string }) => j.value === selectedWorkType) || jobsWithMetadata[0];
+  const currentJob = jobsWithMetadata.find((j: { value: string; label: string; description: string }) => j.value === selectedJobType) || jobsWithMetadata[0];
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -139,7 +139,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   }, [isRunning, showJobMenu, showAgentMenu]);
 
   const handleJobSelect = (jobValue: string) => {
-    setSelectedWorkType(jobValue as 'design' | 'code' | 'learn');
+    setSelectedJobType(jobValue as 'design' | 'code' | 'learn');
     setShowJobMenu(false);
   };
 
@@ -150,7 +150,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
     const agentData = agents.find((a: Agent) => a.value === agentValue);
     const firstWorkType = agentData?.tasks?.[0]?.value;
     if (firstWorkType) {
-      setSelectedWorkType(firstWorkType as 'design' | 'code' | 'learn');
+      setSelectedJobType(firstWorkType as 'design' | 'code' | 'learn');
     }
   };
 
@@ -230,7 +230,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
     const selectedAgent = useStore.getState().selectedAgent;
     const kanbanData = useStore.getState().kanban;
     
-    if (!selectedProject || !selectedFeature || !selectedAgent || !selectedWorkType) {
+    if (!selectedProject || !selectedFeature || !selectedAgent || !selectedJobType) {
       console.error('[ChatInput] Missing required selection for job execution');
       return;
     }
@@ -290,7 +290,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
     console.log('   Project:', selectedProject);
     console.log('   Feature:', selectedFeature);
     console.log('   Agent:', selectedAgent);
-    console.log('   Job Type:', selectedWorkType);
+    console.log('   Job Type:', selectedJobType);
     
     // Clear message immediately for better UX
     const userMessage = message;
@@ -339,7 +339,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
       const jobExecution = executeCodeJob({
         projectId: selectedProject,
         featureName: selectedFeature,
-        task: selectedWorkType as 'design' | 'code' | 'learn',
+        task: selectedJobType as 'design' | 'code' | 'learn',
         agent: selectedAgent as 'architect',
         overrideDirective: userMessage,  // ✅ Chat input becomes directive
         chatSource: true                  // ✅ Enable Chat SSE
@@ -661,7 +661,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
                                hover:bg-gray-100 dark:hover:bg-gray-700 
                                transition-colors flex flex-col gap-0.5
                                text-gray-900 dark:text-gray-100 ${
-                      job.value === selectedWorkType 
+                      job.value === selectedJobType 
                         ? 'bg-blue-50 dark:bg-blue-900/20 border-l-2 border-blue-500 dark:border-blue-400' 
                         : ''
                     }`}
