@@ -4,7 +4,7 @@ import { useStore } from '@/domain/store';
 export interface ExecuteCodeJobOptions {
   projectId?: string;
   featureName?: string;  // Which feature to execute for
-  task?: 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';  // Note: 'task' here means agent's work type
+  jobType?: 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';  // ✅ Type of job to execute
   agent?: 'architect' | 'reviewer' | 'planner' | 'doc';
   mode?: 'generate' | 'refactor' | 'explain';
   language?: string;
@@ -23,14 +23,19 @@ export interface JobExecution {
 export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecution {
   const { 
     projectId = '', 
-    featureName = 'skeleton',  // Default to skeleton
-    task = 'code',
-    agent = 'architect',
+    featureName,
+    jobType,
+    agent,
     mode = 'generate',
     language = 'en',
     overrideDirective,  // ✅ Chat input as directive
     chatSource          // ✅ Flag for Chat SSE
   } = options;
+  
+  // ✅ Feature name is required
+  if (!featureName) {
+    throw new Error('Feature name is required for job execution');
+  }
   
   const store = useStore.getState();
   
@@ -78,12 +83,12 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
     }
   };
   
-  console.log('[cli.ts] executeCodeJob called with:', { projectId, featureName, task, agent, mode, language, overrideDirective: overrideDirective ? '(provided)' : undefined, chatSource });
+  console.log('[cli.ts] executeCodeJob called with:', { projectId, featureName, jobType, agent, mode, language, overrideDirective: overrideDirective ? '(provided)' : undefined, chatSource });
   
   executeJob({
     projectId,
     featureName,
-    task,
+    jobType,
     agent,
     mode,
     language,
@@ -102,7 +107,7 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
           .map((m: any) => `  • ${m.name}: ${m.description}`)
           .join('\n');
         
-        const errorMessage = `Cannot start ${task} job. The following required materials are missing:\n\n${materialsList}\n\nAll of these materials must be provided before starting the job.`;
+        const errorMessage = `Cannot start ${jobType} job. The following required materials are missing:\n\n${materialsList}\n\nAll of these materials must be provided before starting the job.`;
         
         // Show error to user
         alert(errorMessage);

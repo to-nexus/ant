@@ -32,19 +32,26 @@ export async function architectAgent(
     workflowUpdate?: import('../../core/ports/workflow').WorkflowStateUpdatePort;  // ✅ For real-time workflow tracking
     workspaceResolver?: any;
     userContext?: import('../../core/types/user').UserContext;  // ✅ User context (Cloud or Local)
+    overrideDirective?: string;  // ✅ Chat input as directive (highest priority)
+    chatSource?: boolean;  // ✅ Flag for Chat SSE
+    feature?: string;  // ✅ Feature name (for chat jobs without inputFile)
   },
   codeMode?: CodeMode,
   enableEvaluation?: boolean,
-  taskId?: string  // ✅ For real-time tracking
+  jobId?: string  // ✅ Existing jobId for resume or real-time tracking
 ): Promise<ArchitectResult> {
   // Initialize context
-  const featureFolder = ArtifactService.extractFeatureFolderFromPath(inputFile, project);
+  // ✅ For chat jobs: use provided feature name
+  // ✅ For file jobs: extract from inputFile
+  const featureFolder = deps?.feature || ArtifactService.extractFeatureFolderFromPath(inputFile, project);
+  
   if (!project || typeof project !== 'string' || !project.trim()) {
     throw new Error('Project name is required and must be a non-empty string');
   }
   if (!featureFolder || typeof featureFolder !== 'string' || !featureFolder.trim()) {
     console.error('❌ featureFolder is undefined or empty.');
     console.error('  inputFile:', inputFile);
+    console.error('  feature:', deps?.feature);
     console.error('  project:', project);
     throw new Error('Feature folder is required and must be a non-empty string');
   }
@@ -200,9 +207,9 @@ export async function architectAgent(
         },
         planText: "",
         designMarkdown: "",
-        _httpTaskId: taskId || process.env.ANT_JOB_ID,  // ✅ NEW: For tracking in UI
-        overrideDirective,  // ✅ Chat input as directive
-        chatSource          // ✅ Chat SSE flag
+        _httpJobId: jobId || process.env.ANT_JOB_ID,  // ✅ For tracking and resume
+        overrideDirective: deps?.overrideDirective,  // ✅ Chat input as directive
+        chatSource: deps?.chatSource  // ✅ Chat SSE flag
       };
       
       console.log('\n🚀 Starting task: "Generate Design Document"');
@@ -235,15 +242,14 @@ export async function architectAgent(
       let inferredMode = codeMode;
       if (!inferredMode) {
         const { inferCodeMode } = await import('../../core/modeInference');
-        const { getDirective, findLatestDesign } = await import('./utils');
         
         const gitPort = deps?.git;
         if (!gitPort) {
           throw new Error("GitPort not provided for code mode inference");
         }
         
-        const directive = await getDirective(context, 'code', gitPort);
-        const designDoc = await findLatestDesign(context, gitPort);
+        const directive = await ArtifactService.getDirective(context, 'code', gitPort);
+        const designDoc = await ArtifactService.findLatestDesign(context, gitPort);
         const hasGitChanges = await gitPort.hasChanges();
         
         inferredMode = inferCodeMode({
@@ -293,8 +299,8 @@ export async function architectAgent(
           }
         });
         
-        // ✅ Resolve taskId: orchestrator param > env var (child process) > undefined
-        const resolvedTaskId = taskId || process.env.ANT_JOB_ID;
+        // ✅ Resolve jobId: orchestrator param > env var (child process) > undefined
+        const resolvedJobId = jobId || process.env.ANT_JOB_ID;
         
         const initial: ArchitectGraphState = {
           context,
@@ -326,9 +332,9 @@ export async function architectAgent(
                 codeMode: codeMode, // Will be inferred in graph nodes
                 subtaskIndex: 0,  // Backward compatibility
                 totalSubtasks: 0,  // Backward compatibility
-                _httpTaskId: resolvedTaskId,  // ✅ For real-time Kanban tracking
-                overrideDirective,  // ✅ Chat input as directive
-                chatSource          // ✅ Chat SSE flag
+                _httpJobId: resolvedJobId,  // ✅ For real-time tracking and resume
+                overrideDirective: deps?.overrideDirective,  // ✅ Chat input as directive
+                chatSource: deps?.chatSource  // ✅ Chat SSE flag
               };
         const result = await runCodeGraph(initial);
         

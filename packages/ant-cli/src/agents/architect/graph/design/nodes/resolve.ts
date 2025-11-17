@@ -21,6 +21,21 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
   const context = state.context; // Use directly from state
   const retriever = new CodebaseRetriever();
   
+  // ✅ CRITICAL: Skip validation if resuming (taskQueue already exists)
+  const isResume = state.taskQueue && !state.taskQueue.isEmpty();
+  if (isResume) {
+    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🔄 DESIGN AGENT - RESUME (Skip Resolve)');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    console.log('✅ Resuming from previous state (resolve phase skipped)');
+    if (state.taskQueue) {
+      console.log(`   Task queue: ${state.taskQueue.size()} tasks remaining\n`);
+    }
+    
+    // Return existing state without changes
+    return state;
+  }
+  
   // Get GitPort for file operations
   const gitPort = state.deps?.git;
   if (!gitPort) {

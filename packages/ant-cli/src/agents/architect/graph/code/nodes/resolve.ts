@@ -26,7 +26,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   state.recursionCount = (state.recursionCount || 0) + 1;
   
   // ✅ Workflow instrumentation: Enter node
-  if (state.deps?.workflowUpdate && state._httpTaskId) {
+  if (state.deps?.workflowUpdate && state._httpJobId) {
     const taskInfo = state.currentTask ? {
       id: state.currentTask.id,
       name: state.currentTask.name,
@@ -34,7 +34,22 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'resolve', taskInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'resolve', taskInfo);
+  }
+  
+  // ✅ CRITICAL: Skip validation if resuming (taskQueue already exists)
+  const isResume = state.taskQueue && !state.taskQueue.isEmpty();
+  if (isResume) {
+    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🔄 CODE AGENT - RESUME (Skip Resolve)');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    console.log('✅ Resuming from previous state (resolve phase skipped)');
+    if (state.taskQueue) {
+      console.log(`   Task queue: ${state.taskQueue.size()} tasks remaining\n`);
+    }
+    
+    // Return existing state without changes
+    return state;
   }
   
   const { context } = state;

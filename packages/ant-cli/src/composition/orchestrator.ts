@@ -29,24 +29,27 @@ import * as path from "path";
  */
 export async function orchestrator(params: {
   agent: "architect" | "reviewer" | "planner" | "doc";
-  task?: "design" | "code" | "learn" | "review" | "plan" | "doc";
+  jobType?: "design" | "code" | "learn" | "review" | "plan" | "doc";  // ✅ Type of job to execute
   input: string;
   project?: string;
+  feature?: string;  // ✅ Feature name (for chat jobs without inputFile)
   inputFile?: string;
   mode?: 'generate' | 'refactor' | 'explain';
   enableEvaluation?: boolean;
-  taskId?: string;  // ✅ For real-time Kanban tracking
+  jobId?: string;  // ✅ Existing jobId for resume or tracking
   featurePath?: string;  // ✅ Full feature path for Cloud mode
   projectPath?: string;  // ✅ Full project path for Cloud mode
   workspaceResolver?: import('../infrastructure/workspace/WorkspaceResolver').WorkspaceResolver;  // ✅ NEW: Inject resolver
   userContext?: import('../core/types/user').UserContext;  // ✅ NEW: User context for Cloud mode
+  overrideDirective?: string;  // ✅ Chat input as directive (highest priority)
+  chatSource?: boolean;  // ✅ Flag for Chat SSE
 }) {
-  const { agent, task, input, project, inputFile, mode, enableEvaluation, taskId, featurePath, projectPath, workspaceResolver, userContext } = params;
+  const { agent, jobType, input, project, feature, inputFile, mode, enableEvaluation, jobId, featurePath, projectPath, workspaceResolver, userContext, overrideDirective, chatSource } = params;
 
   switch (agent) {
     case "architect": {
-      if (!task || !['design', 'code', 'learn'].includes(task)) {
-        throw new Error(`Architect agent requires task: 'design', 'code', or 'learn'`);
+      if (!jobType || !['design', 'code', 'learn'].includes(jobType)) {
+        throw new Error(`Architect agent requires jobType: 'design', 'code', or 'learn'`);
       }
 
       // Common dependencies for architect
@@ -67,7 +70,7 @@ export async function orchestrator(params: {
         llmModel: configData.llmModel
       });
 
-      if (task === 'learn') {
+      if (jobType === 'learn') {
         // Learn task: minimal dependencies
         return await architectAgent(input, project || "default", 'learn', inputFile, { memory, llm, config, userContext });
       }
@@ -85,7 +88,7 @@ export async function orchestrator(params: {
       // ✅ Extract featureName from featurePath
       const featureName = featurePath.split(path.sep).filter(Boolean).pop() || 'unknown';
 
-      if (task === 'design') {
+      if (jobType === 'design') {
         const analyzer = new CodebaseAnalyzer();
         const git = new SimpleGitAdapter(project || "default", configData, projectPath);  // ✅ Pass projectPath
         
@@ -125,14 +128,14 @@ export async function orchestrator(params: {
           project || "default", 
           'design', 
           inputFile, 
-          { memory, llm, promptPort, profilePort, config, chunk, session, git, analyzer, kanbanUpdate, fileTreeUpdate, workflowUpdate, workspaceResolver, userContext },
+          { memory, llm, promptPort, profilePort, config, chunk, session, git, analyzer, kanbanUpdate, fileTreeUpdate, workflowUpdate, workspaceResolver, userContext, overrideDirective, chatSource, feature },
           undefined,  // codeMode
           undefined,  // enableEvaluation
-          taskId      // ✅ Pass taskId for real-time Kanban
+          jobId       // ✅ Pass jobId for real-time Kanban and resume
         );
       }
 
-      if (task === 'code') {
+      if (jobType === 'code') {
         const analyzer = new CodebaseAnalyzer();
         const git = new SimpleGitAdapter(project || "default", configData, projectPath);  // ✅ Pass projectPath
         const command = new NodeCommandAdapter();
@@ -174,14 +177,14 @@ export async function orchestrator(params: {
           project || "default", 
           'code', 
           inputFile, 
-          { memory, llm, promptPort, profilePort, analyzer, git, config, chunk, session, command, kanbanUpdate, fileTreeUpdate, workflowUpdate, workspaceResolver, userContext },
+          { memory, llm, promptPort, profilePort, analyzer, git, config, chunk, session, command, kanbanUpdate, fileTreeUpdate, workflowUpdate, workspaceResolver, userContext, overrideDirective, chatSource, feature },
           mode,              // Can be undefined (auto-infer) or explicit
           enableEvaluation,  // Pass evaluation flag
-          taskId             // ✅ Pass taskId for real-time updates
+          jobId              // ✅ Pass jobId for real-time updates and resume
         );
       }
 
-      throw new Error(`Unknown architect task: ${task}`);
+      throw new Error(`Unknown architect jobType: ${jobType}`);
     }
 
     case "reviewer": {

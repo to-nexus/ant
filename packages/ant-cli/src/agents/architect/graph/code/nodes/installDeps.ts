@@ -21,7 +21,7 @@ export async function installDeps(state: ArchitectGraphState): Promise<Architect
   state.recursionCount = (state.recursionCount || 0) + 1;
   
   // ✅ Workflow instrumentation: Enter node
-  if (state.deps?.workflowUpdate && state._httpTaskId) {
+  if (state.deps?.workflowUpdate && state._httpJobId) {
     const taskInfo = state.currentTask ? {
       id: state.currentTask.id,
       name: state.currentTask.name,
@@ -29,7 +29,7 @@ export async function installDeps(state: ArchitectGraphState): Promise<Architect
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'installDeps', taskInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'installDeps', taskInfo);
   }
   
   const commandPort = state.deps?.command;

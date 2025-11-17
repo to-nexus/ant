@@ -400,6 +400,15 @@ export const useStore = create<Store>((set, get) => {
   clearChatMessages: () => {
     set({ chatMessages: [] });
   },
+  
+  removeCancelledMessage: (jobId: string) => {
+    set((state) => ({
+      chatMessages: state.chatMessages.filter(msg => 
+        // cancelled 메시지이고 해당 jobId와 매칭되면 제거
+        !(msg.contents.some(c => c.type === 'cancelled' && c.metadata?.jobId === jobId))
+      )
+    }));
+  },
 
   // ==================
   // SSE Lifecycle

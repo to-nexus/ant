@@ -38,7 +38,7 @@ export async function execute(
   state.recursionCount = (state.recursionCount || 0) + 1;
   
   // ✅ Workflow instrumentation: Enter node with current task info
-  if (state.deps?.workflowUpdate && state._httpTaskId) {
+  if (state.deps?.workflowUpdate && state._httpJobId) {
     const taskInfo = state.currentTask ? {
       id: state.currentTask.id,
       name: state.currentTask.name,
@@ -46,7 +46,7 @@ export async function execute(
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'execute', taskInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'execute', taskInfo);
   }
   
   try {
@@ -73,19 +73,19 @@ export async function execute(
     }
     
     // ✅ Update Kanban with timing info IMMEDIATELY after starting task
-    if (currentTask && state._httpTaskId && state.deps?.kanbanUpdate) {
+    if (currentTask && state._httpJobId && state.deps?.kanbanUpdate) {
       const queueTasks = state.taskQueue?.getAll() || [];
       const completedTasksDetails = state.completedTasksDetails || [];
       
       console.log(`\n📡 [Execute] Broadcasting Kanban update with timing...`);
-      console.log(`   jobId: ${state._httpTaskId}`);
+      console.log(`   jobId: ${state._httpJobId}`);
       console.log(`   currentTask.name: ${currentTask.name}`);
       console.log(`   currentTask.timing.startedAt: ${currentTask.timing?.startedAt}`);
       console.log(`   queue length: ${queueTasks.length}`);
       console.log(`   completed length: ${completedTasksDetails.length}`);
       
       state.deps.kanbanUpdate.updateTaskQueue(
-        state._httpTaskId,
+        state._httpJobId,
         currentTask,  // ✅ Now includes timing info
         queueTasks,
         completedTasksDetails,
@@ -96,7 +96,7 @@ export async function execute(
     } else {
       console.log(`\n⚠️  [Execute] Skipping Kanban update:`);
       console.log(`   currentTask: ${!!currentTask}`);
-      console.log(`   _httpTaskId: ${!!state._httpTaskId}`);
+      console.log(`   _httpJobId: ${!!state._httpJobId}`);
       console.log(`   kanbanUpdate: ${!!state.deps?.kanbanUpdate}\n`);
     }
     

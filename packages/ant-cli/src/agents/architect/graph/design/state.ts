@@ -71,6 +71,6 @@ export interface DesignGraphState extends TaskArtifacts {
   designFilePath?: string;
   learnings?: string;
   
-  // ✅ For tracking in UI
-  _httpTaskId?: string;
+  // ✅ For tracking and resume
+  _httpJobId?: string;  // Job ID for real-time UI updates and job resumption
 }

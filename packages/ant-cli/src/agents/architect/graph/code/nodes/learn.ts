@@ -28,7 +28,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   state.recursionCount = (state.recursionCount || 0) + 1;
   
   // ✅ Workflow instrumentation: Enter node
-  if (state.deps?.workflowUpdate && state._httpTaskId) {
+  if (state.deps?.workflowUpdate && state._httpJobId) {
     const taskInfo = state.currentTask ? {
       id: state.currentTask.id,
       name: state.currentTask.name,
@@ -36,7 +36,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'learn', taskInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'learn', taskInfo);
   }
   
   // 0. Generate quality evaluation report (optional, if files were generated)

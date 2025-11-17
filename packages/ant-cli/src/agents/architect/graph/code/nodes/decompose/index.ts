@@ -24,7 +24,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   const llm = state.deps?.llm as LLMClient;
   
   // ✅ Workflow instrumentation: Enter node with LLM info
-  if (state.deps?.workflowUpdate && state._httpTaskId) {
+  if (state.deps?.workflowUpdate && state._httpJobId) {
     const taskInfo = state.currentTask ? {
       id: state.currentTask.id,
       name: state.currentTask.name,
@@ -39,7 +39,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       model: (llm as any).modelName
     } : undefined;
     
-    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'decompose', taskInfo, llmInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'decompose', taskInfo, llmInfo);
   }
   
   // ✅ CRITICAL: Load session FIRST to get completedTasksDetails before signaling
@@ -198,7 +198,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         console.log(``);
         
         // ✨ Handle jobId and jobTiming for Resume
-        const existingJobId = session.state.jobId || state._httpTaskId || 'unknown-job';
+        const existingJobId = session.state.jobId || state._httpJobId || 'unknown-job';
         const { jobId, jobTiming } = JobTimingManager.resumeJob(existingJobId, session.state.jobTiming);
         
         // ✅ Build merged directive from directives array (newest first = highest priority)
@@ -245,7 +245,9 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           resolvedCategories: (session.state.resolvedCategories || []) as any,
           planText: session.state.planText || '',  // ✅ Restore plan to skip LLM call on resume
           directive: mergedDirective,  // ✅ Merged directives (newest first)
-          _httpTaskId: state._httpTaskId,  // ✅ Explicitly preserve taskId for next node
+          overrideDirective: session.state.overrideDirective,  // ✅ Restore chat-initiated directive
+          chatSource: session.state.chatSource,  // ✅ Restore chat source flag
+          _httpJobId: state._httpJobId,  // ✅ Explicitly preserve jobId for next node
           interruption: undefined  // ✅ CRITICAL: Clear interruption when resuming (job is now running again)
         } as any;
         
@@ -264,7 +266,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         }
         
         // ✅ Update live snapshot for seamless UI transition (Port or HTTP fallback)
-        if (state._httpTaskId) {
+        if (state._httpJobId) {
           const completedTasks = resumedState.completedTasksDetails || [];
           const queueTasks = taskQueue.getAll();
           
@@ -279,7 +281,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           if (state.deps?.kanbanUpdate) {
             // In-process: use injected port
             state.deps.kanbanUpdate.updateTaskQueue(
-              state._httpTaskId,
+              state._httpJobId,
               resumedState.currentTask || null,  // ✅ Now includes timing info
               queueTasks,
               completedTasks,
@@ -287,7 +289,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
               recursionLimit   // ✅ Pass recursion limit
             );
             console.log(`🔄 [Decompose Resume] Live snapshot updated via PORT`);
-            console.log(`   JobId: ${state._httpTaskId}`);
+            console.log(`   JobId: ${state._httpJobId}`);
             console.log(`   CurrentTask: ${resumedState.currentTask?.name || 'none'}`);
             console.log(`   Queue: ${taskQueue.size()} tasks`);
             console.log(`   Completed: ${completedTasks.length} tasks`);
@@ -300,7 +302,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                taskId: state._httpTaskId,
+                taskId: state._httpJobId,
                 currentTask: resumedState.currentTask || null,
                 queue: queueTasks,
                 completedTasks: completedTasks,
@@ -322,7 +324,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   }
   
   // ✨ Initialize jobId and jobTiming for new job
-  const { jobId: newJobId, jobTiming: newJobTiming, estimatingStartTime } = JobTimingManager.initializeNewJob(state._httpTaskId!);
+  const { jobId: newJobId, jobTiming: newJobTiming, estimatingStartTime } = JobTimingManager.initializeNewJob(state._httpJobId!);
   
   // 💾 CRITICAL: Save jobTiming to session IMMEDIATELY so frontend can show timer during estimating
   if (state.deps?.session && state.context.featureFolder) {
@@ -344,12 +346,12 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   }
   
   // ✅ NOW send "estimating started" signal with preloaded completed tasks
-  if (state._httpTaskId && state.deps?.kanbanUpdate) {
+  if (state._httpJobId && state.deps?.kanbanUpdate) {
     console.log(`\n🎬 [Code Decompose] Signaling estimating started...`);
     console.log(`   Preserving ${preloadedCompletedTasks.length} completed tasks`);
     
     state.deps.kanbanUpdate.updateTaskQueue(
-      state._httpTaskId,
+      state._httpJobId,
       null,    // no currentTask yet
       [],      // no tasks yet
       preloadedCompletedTasks,  // ✅ Use preloaded completed tasks
@@ -398,7 +400,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       taskQueue,
       featureTasks,
       completedTasks: [],
-      _httpTaskId: state._httpTaskId  // ✅ Explicitly preserve taskId for next node
+      _httpJobId: state._httpJobId  // ✅ Explicitly preserve taskId for next node
     };
     
     // ✅ Save checkpoint for default task
@@ -413,14 +415,14 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     }
     
     // ✅ Update live snapshot (Port or HTTP fallback)
-    if (state._httpTaskId) {
+    if (state._httpJobId) {
       const completedTasks = state.completedTasksDetails || [];
       const queueTasks = taskQueue.getAll();
       
       if (state.deps?.kanbanUpdate) {
         // In-process: use injected port
         state.deps.kanbanUpdate.updateTaskQueue(
-          state._httpTaskId,
+          state._httpJobId,
           null,
           queueTasks,
           completedTasks
@@ -433,7 +435,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            taskId: state._httpTaskId,
+            taskId: state._httpJobId,
             currentTask: null,
             queue: queueTasks,
             completedTasks: completedTasks
@@ -581,7 +583,7 @@ ${rules}`;
         taskQueue,
         featureTasks,
         completedTasks: [],
-        _httpTaskId: state._httpTaskId  // ✅ Explicitly preserve taskId for next node
+        _httpJobId: state._httpJobId  // ✅ Explicitly preserve taskId for next node
       };
       
       // ✅ Save checkpoint for default task
@@ -596,14 +598,14 @@ ${rules}`;
       }
       
       // ✅ Update live snapshot (Port or HTTP fallback)
-      if (state._httpTaskId) {
+      if (state._httpJobId) {
         const completedTasks = state.completedTasksDetails || [];
         const queueTasks = taskQueue.getAll();
         
         if (state.deps?.kanbanUpdate) {
           // In-process: use injected port
           state.deps.kanbanUpdate.updateTaskQueue(
-            state._httpTaskId,
+            state._httpJobId,
             null,
             queueTasks,
             completedTasks
@@ -616,7 +618,7 @@ ${rules}`;
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              taskId: state._httpTaskId,
+              taskId: state._httpJobId,
               currentTask: null,
               queue: queueTasks,
               completedTasks: completedTasks
@@ -664,7 +666,7 @@ ${rules}`;
       taskQueue,
       featureTasks,
       completedTasks: [],
-      _httpTaskId: state._httpTaskId  // ✅ Explicitly preserve taskId for next node
+      _httpJobId: state._httpJobId  // ✅ Explicitly preserve taskId for next node
     };
     
     // ✅ CRITICAL: Save checkpoint immediately after decompose
@@ -680,14 +682,14 @@ ${rules}`;
     }
     
     // ✅ Update live task queue snapshot (Port or HTTP fallback for child process)
-    if (state._httpTaskId) {
+    if (state._httpJobId) {
       const completedTasks = state.completedTasksDetails || [];
       const queueTasks = taskQueue.getAll();
       
       if (state.deps?.kanbanUpdate) {
         // In-process: use injected port
         state.deps.kanbanUpdate.updateTaskQueue(
-          state._httpTaskId,
+          state._httpJobId,
           null,
           queueTasks,
           completedTasks
@@ -700,7 +702,7 @@ ${rules}`;
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            taskId: state._httpTaskId,
+            taskId: state._httpJobId,
             currentTask: null,
             queue: queueTasks,
             completedTasks: completedTasks
@@ -714,8 +716,8 @@ ${rules}`;
     }
     
     // ✅ Workflow instrumentation: Exit node
-    if (state.deps?.workflowUpdate && state._httpTaskId) {
-      state.deps.workflowUpdate.exitNode(state._httpTaskId, 'decompose');
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      state.deps.workflowUpdate.exitNode(state._httpJobId, 'decompose');
     }
     
     return newState;
@@ -753,7 +755,7 @@ ${rules}`;
       taskQueue,
       featureTasks,
       completedTasks: [],
-      _httpTaskId: state._httpTaskId  // ✅ Explicitly preserve taskId for next node
+      _httpJobId: state._httpJobId  // ✅ Explicitly preserve taskId for next node
     };
     
     // ✅ Save checkpoint for fallback task
@@ -768,14 +770,14 @@ ${rules}`;
     }
     
     // ✅ Update live snapshot (Port or HTTP fallback)
-    if (state._httpTaskId) {
+    if (state._httpJobId) {
       const completedTasks = state.completedTasksDetails || [];
       const queueTasks = taskQueue.getAll();
       
       if (state.deps?.kanbanUpdate) {
         // In-process: use injected port
         state.deps.kanbanUpdate.updateTaskQueue(
-          state._httpTaskId,
+          state._httpJobId,
           null,
           queueTasks,
           completedTasks
@@ -788,7 +790,7 @@ ${rules}`;
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            taskId: state._httpTaskId,
+            taskId: state._httpJobId,
             currentTask: null,
             queue: queueTasks,
             completedTasks: completedTasks
@@ -800,8 +802,8 @@ ${rules}`;
     }
     
     // ✅ Workflow instrumentation: Exit node (error path)
-    if (state.deps?.workflowUpdate && state._httpTaskId) {
-      state.deps.workflowUpdate.exitNode(state._httpTaskId, 'decompose');
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      state.deps.workflowUpdate.exitNode(state._httpJobId, 'decompose');
     }
     
     return newState;

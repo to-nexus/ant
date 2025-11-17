@@ -13,7 +13,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
   
   // ✅ Workflow instrumentation: Enter node
   // ✅ CRITICAL: await to ensure workflow SSE is sent before continuing
-  if (state.deps?.workflowUpdate && state._httpTaskId) {
+  if (state.deps?.workflowUpdate && state._httpJobId) {
     const taskInfo = state.currentTask ? {
       id: state.currentTask.id,
       name: state.currentTask.name,
@@ -21,7 +21,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'checkTaskStatus', taskInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'checkTaskStatus', taskInfo);
   }
   
   const hasViolations = (state.violations && state.violations.length > 0);
@@ -119,7 +119,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
     
     // ✅ CRITICAL: Update Kanban to next task AFTER checkTaskStatus SSE sent
     // This ensures frontend sees checkTaskStatus animation before Kanban switches
-    if (state.deps?.kanbanUpdate && state._httpTaskId && updatedState.taskQueue) {
+    if (state.deps?.kanbanUpdate && state._httpJobId && updatedState.taskQueue) {
       const allTasks = updatedState.taskQueue.getAll();
       const nextTask = updatedState.taskQueue.peek(); // ✅ Use peek() for correct next task
       
@@ -133,7 +133,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       console.log(`   Total completed: ${completedTasksDetails.length}\n`);
       
       state.deps.kanbanUpdate.updateTaskQueue(
-        state._httpTaskId,
+        state._httpJobId,
         nextTask || null,  // ✅ Show next task as in-progress
         remainingQueue,    // ✅ Exclude nextTask from queue
         completedTasksDetails,
@@ -236,7 +236,7 @@ export function buildCodeGraph() {
       reportFile: null as any,
       
       // Real-time Kanban tracking
-      _httpTaskId: null as any,  // ✅ HTTP task ID for live updates
+      _httpJobId: null as any,  // ✅ HTTP task ID for live updates
       
       // ✅ Error repetition tracking
       _errorIsRepeating: null as any,  // Flag to indicate if errors are repeating

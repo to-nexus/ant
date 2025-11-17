@@ -46,7 +46,7 @@ export async function execute(state: DesignGraphState) {
   console.log(`   timing.startedAt: ${currentTask?.timing?.startedAt}\n`);
   
   // ✅ Workflow instrumentation: Enter node
-  if (state.deps?.workflowUpdate && state._httpTaskId) {
+  if (state.deps?.workflowUpdate && state._httpJobId) {
     const taskInfo = currentTask ? {
       id: currentTask.id,
       name: currentTask.name,
@@ -54,17 +54,17 @@ export async function execute(state: DesignGraphState) {
       description: currentTask.description,
       priority: currentTask.priority
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'execute', taskInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'execute', taskInfo);
   }
   
   // ✅ Update Kanban snapshot with timing info
-  if (state._httpTaskId && currentTask && state.deps?.kanbanUpdate) {
+  if (state._httpJobId && currentTask && state.deps?.kanbanUpdate) {
     console.log(`\n🔥 [Design Execute] Updating Kanban with timing info`);
     console.log(`   Current: ${currentTask.name}`);
     console.log(`   Remaining in queue: ${state.taskQueue?.size() || 0}\n`);
     
     state.deps.kanbanUpdate.updateTaskQueue(
-      state._httpTaskId,
+      state._httpJobId,
       currentTask,  // ✅ With timing info
       state.taskQueue?.getAll() || [],
       state.completedTasksDetails || []

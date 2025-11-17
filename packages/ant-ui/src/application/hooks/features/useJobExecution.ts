@@ -13,7 +13,7 @@
 
 import { useCallback } from 'react';
 import { useStore } from '@/domain/store';
-import { resumeJob, stopJob as stopJobAPI, fetchFeatureSession, getApiBase } from '@/infrastructure/http/api';
+import { resumeJob, stopJob as stopJobAPI, fetchFeatureSession, getApiBase, authFetch } from '@/infrastructure/http/api';
 import { executeCodeJob } from '@/infrastructure/http/cli';
 
 export function useJobExecution() {
@@ -61,6 +61,19 @@ export function useJobExecution() {
           useStore.getState().setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
         }
         
+        // ✅ Remove cancelled message from chat and add resume message
+        console.log('[useJobExecution] Removing cancelled message and adding resume message');
+        useStore.getState().removeCancelledMessage(currentJobId);
+        useStore.getState().addChatMessage({
+          id: `msg-resume-${Date.now()}`,
+          role: 'assistant',
+          contents: [{
+            type: 'text',
+            content: '🔄 작업을 재개합니다...'
+          }],
+          timestamp: new Date().toISOString()
+        });
+        
         // ✅ Set running state immediately
         console.log('[useJobExecution] Setting isRunning=true BEFORE resumeJob API call');
         console.log('[useJobExecution] Current state:', { isRunning, currentJobId });
@@ -105,7 +118,7 @@ export function useJobExecution() {
       const jobExecution = executeCodeJob({
         projectId: selectedProject,
         featureName: selectedFeature!,
-        task: jobType as 'design' | 'code' | 'learn',
+        jobType: jobType as 'design' | 'code' | 'learn',
         agent: agent as 'architect',
         chatSource: true  // ✅ Enable Chat SSE for all jobs
       });

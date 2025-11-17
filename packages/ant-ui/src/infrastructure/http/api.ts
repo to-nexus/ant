@@ -136,7 +136,7 @@ export async function authFetch(url: string, options?: RequestInit): Promise<Res
 export interface ExecuteJobParams {
   projectId: string;
   featureName?: string;  // Optional: if not provided, uses 'skeleton'
-  task?: 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';  // Note: 'task' here means agent's work type
+  jobType?: 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';  // Note: 'task' here means agent's work type
   agent?: 'architect' | 'reviewer' | 'planner' | 'doc';
   mode?: 'generate' | 'refactor' | 'explain';
   language?: string;
@@ -303,14 +303,19 @@ export async function executeJob(params: ExecuteJobParams): Promise<{ jobId: str
   try {
     const { 
       projectId, 
-      featureName = 'skeleton',  // Default to skeleton for backward compatibility
-      task = 'code', 
+      featureName,
+      jobType: task = 'code', 
       agent, 
       mode = 'generate', 
       language = 'en',
       overrideDirective,  // ✅ Chat input as directive
       chatSource           // ✅ Flag for Chat SSE
     } = params;
+    
+    // ✅ Feature name is required
+    if (!featureName) {
+      throw new Error('Feature name is required for job execution');
+    }
     
     const requestBody = {
       task,
@@ -321,10 +326,8 @@ export async function executeJob(params: ExecuteJobParams): Promise<{ jobId: str
       chatSource           // ✅ Include in request
     };
     
-    // Use feature-specific endpoint if feature provided
-    const endpoint = featureName 
-      ? `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/execute`
-      : `${API_BASE()}/projects/${encodeURIComponent(projectId)}/execute`;
+    // ✅ Always use feature-specific endpoint (featureName defaults to 'skeleton')
+    const endpoint = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/execute`;
     
     const response = await authFetch(endpoint, {
       method: 'POST',

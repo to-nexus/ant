@@ -19,7 +19,7 @@ import { SessionTurn } from "../../../../../core/types";
  */
 export async function learn(state: DesignGraphState): Promise<DesignGraphState> {
   // ✅ Workflow instrumentation: Enter node
-  if (state.deps?.workflowUpdate && state._httpTaskId) {
+  if (state.deps?.workflowUpdate && state._httpJobId) {
     const taskInfo = state.currentTask ? {
       id: state.currentTask.id,
       name: state.currentTask.name,
@@ -27,18 +27,18 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'learn', taskInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'learn', taskInfo);
   }
   
   // ✅ Update Kanban to show all tasks completed
-  if (state._httpTaskId && state.deps?.kanbanUpdate) {
+  if (state._httpJobId && state.deps?.kanbanUpdate) {
     const completedTasksDetails = state.completedTasksDetails || [];
     
     console.log(`\n🔥 [Learn] Final Kanban update`);
     console.log(`   All tasks completed: ${completedTasksDetails.length}`);
     
     state.deps.kanbanUpdate.updateTaskQueue(
-      state._httpTaskId,
+      state._httpJobId,
       null,  // No current task
       [],    // Empty queue
       completedTasksDetails
@@ -78,9 +78,9 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   }
   
   // ✅ End workflow visualization
-  if (state.deps?.workflowUpdate && state._httpTaskId) {
-    state.deps.workflowUpdate.endJob(state._httpTaskId);
-    console.log(`\n🏁 Job ended: ${state._httpTaskId}\n`);
+  if (state.deps?.workflowUpdate && state._httpJobId) {
+    state.deps.workflowUpdate.endJob(state._httpJobId);
+    console.log(`\n🏁 Job ended: ${state._httpJobId}\n`);
   }
   
   return { 
@@ -169,7 +169,9 @@ async function saveSessionTurn(state: DesignGraphState): Promise<void> {
         interruption: existingSession.state?.interruption,
         jobId: (state as any).jobId,  // ✨ Preserve jobId
         jobTiming: completedJobTiming,  // ✨ Mark as completed
-        directives: directivesArray  // ✅ Save directives array (newest first)
+        directives: directivesArray,  // ✅ Save directives array (newest first)
+        overrideDirective: state.overrideDirective,  // ✅ Save chat-initiated directive
+        chatSource: state.chatSource  // ✅ Save chat source flag
       }
     }
   );
