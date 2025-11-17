@@ -44,7 +44,7 @@ export interface WorkspaceConfig {
   // Agent-specific env vars: {AGENT}_MODEL_PROVIDER, {AGENT}_MODEL_NAME (e.g., ARCHITECT_MODEL_PROVIDER)
   // Generic env vars: AI_MODEL_PROVIDER, AI_MODEL_NAME
   llmProvider?: 'anthropic' | 'openai';  // Default: 'anthropic'
-  llmModel?: string;                     // Default: 'claude-3-5-sonnet-20241022'
+  llmModel?: string;                     // Default: 'claude-sonnet-4-5'
 }
 
 /**

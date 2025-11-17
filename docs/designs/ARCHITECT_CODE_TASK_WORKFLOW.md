@@ -722,7 +722,7 @@ if (allRetryable && !hasBlockingErrors) {
   "strictValidation": true,
   "runTests": false,
   "llmProvider": "anthropic",
-  "llmModel": "claude-3-5-sonnet-20241022"
+  "llmModel": "claude-sonnet-4-5"
 }
 ```
 

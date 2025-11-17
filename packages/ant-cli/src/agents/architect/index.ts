@@ -1,6 +1,6 @@
 import { ProjectContext, AgentTask, CodeMode, ArchitectResult } from "./types";
-import { extractFeatureFolder } from "./utils";
 import { retrieve } from "./memory";
+import { ArtifactService } from "../../infrastructure/workspace/ArtifactService";
 import { formatSessionContext } from "./session-formatter";
 import { MemoryPort, LLMClient, PromptPort, GitPort, ConfigPort, CodebaseAnalyzerPort, ProfilePort, SessionPort, ChunkPort, CommandPort, TaskQueueUpdatePort } from "../../core/ports";
 import { runCodeGraph } from "./graph/code/runner";
@@ -30,13 +30,24 @@ export async function architectAgent(
     kanbanUpdate?: TaskQueueUpdatePort;  // ✅ For real-time Kanban updates
     fileTreeUpdate?: import('../../core/ports').FileTreeUpdatePort;  // ✅ For real-time file tree updates
     workflowUpdate?: import('../../core/ports/workflow').WorkflowStateUpdatePort;  // ✅ For real-time workflow tracking
+    workspaceResolver?: any;
+    userContext?: import('../../core/types/user').UserContext;  // ✅ User context (Cloud or Local)
   },
   codeMode?: CodeMode,
   enableEvaluation?: boolean,
   taskId?: string  // ✅ For real-time tracking
 ): Promise<ArchitectResult> {
   // Initialize context
-  const featureFolder = extractFeatureFolder(inputFile, project);
+  const featureFolder = ArtifactService.extractFeatureFolderFromPath(inputFile, project);
+  if (!project || typeof project !== 'string' || !project.trim()) {
+    throw new Error('Project name is required and must be a non-empty string');
+  }
+  if (!featureFolder || typeof featureFolder !== 'string' || !featureFolder.trim()) {
+    console.error('❌ featureFolder is undefined or empty.');
+    console.error('  inputFile:', inputFile);
+    console.error('  project:', project);
+    throw new Error('Feature folder is required and must be a non-empty string');
+  }
   
   // 1. Load config
   if (!deps?.config) {
@@ -45,17 +56,21 @@ export async function architectAgent(
   const config = await deps.config.load(project);
   
   // 2. Determine working directory (actual code repository path)
-  let workingDir = process.cwd(); // Default fallback
+  // ✅ Must use GitPort.getRepoRoot() - never fallback to process.cwd()
+  if (!deps?.git) {
+    throw new Error("GitPort is required to determine working directory (codebase path)");
+  }
   
-  if (deps?.git) {
-    try {
-      // Get the actual repository root from git adapter
-      // This will resolve localPath correctly for local repos
-      workingDir = await deps.git.getRepoRoot();
-    } catch (error) {
-      console.warn(`⚠️  Could not determine working directory from git:`, error);
-      // Fall back to process.cwd()
-    }
+  let workingDir: string;
+  try {
+    // Get the actual repository root from git adapter
+    // Local mode: resolves config.localPath
+    // Cloud mode: returns projectPath/codebase
+    workingDir = await deps.git.getRepoRoot();
+    console.log(`📂 Working directory (codebase): ${workingDir}`);
+  } catch (error) {
+    console.error(`❌ Failed to determine working directory:`, error);
+    throw new Error(`Could not determine codebase path. Ensure config.localPath is set correctly.`);
   }
   
   // 3. Retrieve long-term knowledge from Vector DB
@@ -82,15 +97,36 @@ export async function architectAgent(
     }
   }
   
-  // 5. Create ProjectContext with both Vector and Session
-  const context: ProjectContext & { enableEvaluation?: boolean } = {
+  // 5. Extract UserContext for path resolution
+  // ✅ Get from deps (passed by orchestrator)
+  const userContext = deps?.userContext || { userId: 'local', organizationId: 'local', workspacePath: '' };
+  const { userId, organizationId } = userContext;
+  
+  // 6. (Optional) Pre-calculate featurePath for performance
+  let featurePath: string | undefined;
+  if (deps?.workspaceResolver) {
+    try {
+      const userContext = { userId, organizationId, workspacePath: '' };
+      featurePath = deps.workspaceResolver.getFeaturePath(userContext, project, featureFolder);
+      console.log(`📂 Feature path: ${featurePath}`);
+    } catch (error) {
+      console.warn(`⚠️  Could not resolve featurePath:`, error);
+    }
+  }
+  
+  // 7. Create ProjectContext with both Vector and Session
+  const context: ProjectContext & { enableEvaluation?: boolean, workspaceResolver?: any, featurePath?: string } = {
     project,
     featureFolder,
     workingDir,  // Now uses resolved repository path
     config,
     memory: vectorMemory,           // Long-term knowledge
     sessionHistory: sessionHistory,  // Short-term context
-    enableEvaluation                 // Evaluation flag
+    enableEvaluation,                // Evaluation flag
+    workspaceResolver: deps?.workspaceResolver,
+    userId,                          // ✅ For path resolution
+    organizationId,                  // ✅ For path resolution
+    featurePath                      // ✅ Optional: Pre-resolved for performance
   };
   
   // ✅ Read chat integration parameters from environment
@@ -132,13 +168,12 @@ export async function architectAgent(
         git: deps.git,
         memory: deps.memory,
         contextLoader: async (task, ctx) => {
-          const { getDirective, getSource, findLatestDesign } = await import('./utils');
           const gitPort = deps.git;
           if (!gitPort) return {};
           
-          const directive = await getDirective(ctx, task, gitPort);
-          const previousDesign = await findLatestDesign(ctx, gitPort);
-          const source = await getSource(ctx, gitPort);
+          const directive = await ArtifactService.getDirective(ctx, task, gitPort);
+          const previousDesign = await ArtifactService.findLatestDesign(ctx, gitPort);
+          const source = await ArtifactService.getSource(ctx, gitPort);
           
           return {
             directive: directive || undefined,
@@ -173,6 +208,15 @@ export async function architectAgent(
       console.log('\n🚀 Starting task: "Generate Design Document"');
       console.log('   Type: DESIGN');
       console.log('');
+      
+      // 🔍 DEBUG: Check dInitial state
+      console.log('🔍 [DEBUG] dInitial.context:', {
+        project: dInitial.context.project,
+        featureFolder: dInitial.context.featureFolder,
+        workingDir: dInitial.context.workingDir,
+        featurePath: dInitial.context.featurePath,
+        workspaceResolver: !!dInitial.context.workspaceResolver
+      });
       
       const d = await runDesignGraph(dInitial);
       return {
@@ -236,12 +280,11 @@ export async function architectAgent(
           git: deps.git,
           memory: deps.memory,
           contextLoader: async (task, ctx) => {
-            const { getDirective, findLatestDesign } = await import('./utils');
             const gitPort = deps.git;
             if (!gitPort) return {};
             
-            const directive = await getDirective(ctx, task, gitPort);
-            const designDoc = await findLatestDesign(ctx, gitPort);
+            const directive = await ArtifactService.getDirective(ctx, task, gitPort);
+            const designDoc = await ArtifactService.findLatestDesign(ctx, gitPort);
             
             return {
               directive: directive || undefined,

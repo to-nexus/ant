@@ -308,7 +308,7 @@ Edit `workspace/myapp/config.json`:
   "strictValidation": true,
   "runTests": false,
   "llmProvider": "anthropic",
-  "llmModel": "claude-3-5-sonnet-20241022"
+  "llmModel": "claude-sonnet-4-5"
 }
 ```
 
@@ -320,9 +320,7 @@ Edit `workspace/myapp/config.json`:
 - `gpt-3.5-turbo`
 
 **Anthropic**:
-- `claude-3-5-sonnet-20241022` (recommended)
-- `claude-3-opus-20240229`
-- `claude-3-sonnet-20240229`
+- `claude-sonnet-4-5` (recommended)
 
 ---
 

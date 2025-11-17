@@ -150,9 +150,6 @@ export function LocalSetupGuide() {
                     <br />
                     PORT=4000
                     <br />
-                    WORKSPACES_PATH=~/ant-workspaces
-                    <br />
-                    <br />
                     # LLM Provider (required)
                     <br />
                     AI_MODEL_PROVIDER=anthropic
@@ -162,7 +159,7 @@ export function LocalSetupGuide() {
                     <br />
                     # Optional: specify model
                     <br />
-                    # AI_MODEL_NAME=claude-3-5-sonnet-20241022
+                    # AI_MODEL_NAME=claude-sonnet-4-5
                   </code>
                 </div>
                 <div className="mt-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">

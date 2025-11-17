@@ -3,20 +3,40 @@ import path from "path";
 
 /**
  * Auto-detect project name from path
- * Example: workspace/test-app/... → test-app
+ * 
+ * Supports multiple path patterns:
+ * - workspaces/local/user/<project>/... → project
+ * - workspaces/<org>/<user>/<project>/... → project
+ * - workspace/<project>/... → project (legacy, deprecated)
+ * - projects/<project>/... → project (legacy, deprecated)
  */
 export function detectProject(inputPath: string): string {
   const parts = inputPath.split(path.sep);
   
-  // Look for workspace/project-name pattern
+  // ✅ Modern: workspaces/local/user/<project> or workspaces/<org>/<user>/<project>
+  const workspacesIdx = parts.indexOf("workspaces");
+  if (workspacesIdx >= 0) {
+    // Local mode: workspaces/local/user/<project>
+    if (parts[workspacesIdx + 1] === "local" && parts[workspacesIdx + 2] === "user" && parts[workspacesIdx + 3]) {
+      return parts[workspacesIdx + 3];
+    }
+    // Cloud mode: workspaces/<org>/<user>/<project>
+    if (parts[workspacesIdx + 3]) {
+      return parts[workspacesIdx + 3];
+    }
+  }
+  
+  // ⚠️ DEPRECATED: workspace/<project> (singular - old structure)
   const workspaceIdx = parts.indexOf("workspace");
   if (workspaceIdx >= 0 && workspaceIdx + 1 < parts.length) {
+    console.warn('⚠️  Using deprecated "workspace" (singular) path structure. Please migrate to "workspaces".');
     return parts[workspaceIdx + 1];
   }
   
-  // Legacy: projects/project-name pattern
+  // ⚠️ DEPRECATED: projects/<project> (very old structure)
   const projectsIdx = parts.indexOf("projects");
   if (projectsIdx >= 0 && projectsIdx + 1 < parts.length) {
+    console.warn('⚠️  Using deprecated "projects" path structure. Please migrate to "workspaces".');
     return parts[projectsIdx + 1];
   }
   

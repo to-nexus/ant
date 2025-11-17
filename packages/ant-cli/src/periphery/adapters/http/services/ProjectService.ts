@@ -167,10 +167,31 @@ export class ProjectService {
   
   /**
    * Update project configuration
+   * 
+   * ⚠️ Security: In Cloud mode, localPath is immutable (always {projectPath}/codebase)
    */
   async updateProjectConfig(projectId: string, config: any, userContext: UserContext): Promise<void> {
     const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
     const configPath = path.join(projectPath, 'config.json');
+    
+    // ✅ Cloud Mode: Validate and enforce localPath
+    const isCloudMode = userContext.userId !== 'local' && userContext.organizationId !== 'local';
+    
+    if (isCloudMode && config.repoType === 'cloud') {
+      // ✅ CRITICAL: In Cloud mode, localPath is always fixed to {projectPath}/codebase
+      // Users cannot modify this for security reasons
+      const expectedLocalPath = path.join(projectPath, 'codebase');
+      
+      if (config.localPath && config.localPath !== expectedLocalPath) {
+        console.warn(`[ProjectService] ⚠️  Attempted to modify localPath in Cloud mode`);
+        console.warn(`   Provided: ${config.localPath}`);
+        console.warn(`   Expected: ${expectedLocalPath}`);
+        console.warn(`   Enforcing correct localPath for security`);
+      }
+      
+      // ✅ Force correct localPath
+      config.localPath = expectedLocalPath;
+    }
     
     await fs.promises.writeFile(
       configPath,
@@ -308,18 +329,34 @@ export class ProjectService {
    */
   async getFileTree(projectId: string, featureName: string, userContext: UserContext): Promise<any> {
     const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-    
+
     const buildTree = async (dirPath: string, relativePath: string = ''): Promise<any> => {
-      const items = await fs.promises.readdir(dirPath);
+      let items: string[] = [];
+      try {
+        items = await fs.promises.readdir(dirPath);
+      } catch (err) {
+        // 폴더가 없으면 빈 children 반환
+        return [];
+      }
       const tree: any[] = [];
-      
+
+      // 폴더가 비어있어도 반드시 반환
+      if (items.length === 0) {
+        return [{
+          name: path.basename(dirPath),
+          path: relativePath || path.basename(dirPath),
+          type: 'directory',
+          children: []
+        }];
+      }
+
       for (const item of items) {
         if (item.startsWith('.')) continue;
-        
+
         const fullPath = path.join(dirPath, item);
         const itemRelativePath = relativePath ? `${relativePath}/${item}` : item;
         const stat = await fs.promises.stat(fullPath);
-        
+
         if (stat.isDirectory()) {
           const children = await buildTree(fullPath, itemRelativePath);
           tree.push({
@@ -336,16 +373,30 @@ export class ProjectService {
           });
         }
       }
-      
+
       return tree;
     };
-    
+
     try {
       const tree = await buildTree(featurePath);
+      // 최상위 featurePath가 비어있으면 빈 폴더 반환
+      if (tree.length === 0) {
+        return [{
+          name: path.basename(featurePath),
+          path: '',
+          type: 'directory',
+          children: []
+        }];
+      }
       return tree;
     } catch (error) {
       console.error('[ProjectService] Error building file tree:', error);
-      return [];
+      return [{
+        name: path.basename(featurePath),
+        path: '',
+        type: 'directory',
+        children: []
+      }];
     }
   }
   

@@ -393,12 +393,26 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
           console.error(`   ❌ Failed to broadcast Kanban update:`, err);
         });
       }
+      
+      // ✅ Add cancelled message to chat if interruption occurred
+      if (interruptionReason && mapping.projectId && mapping.featureName) {
+        this.chatService.addCancelledMessage(
+          mapping.projectId,
+          mapping.featureName,
+          jobId,
+          interruptionReason.reason,
+          interruptionReason.message,
+          mapping.userContext  // ✅ Pass user context
+        );
+        console.log(`   ✅ Added cancelled message to chat (reason: ${interruptionReason.reason})`);
+      }
     } catch (error) {
       console.error(`   ❌ Error in cleanupJobState:`, error);
     }
   } else {
     console.warn(`   ⚠️  No mapping found for ${jobId}, cannot broadcast Kanban update`);
   }
+  console.log(`   ✅ cleanupJobState completed`);
   }
   
   constructor(mode: 'local' | 'cloud' = 'local', workspacesPath: string, cloudUrl: string = 'https://ant.nexus.ai') {
@@ -1187,19 +1201,6 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
             console.log(`\n🧹 [ExpressServerAdapter.runJob] Job ${jobId} failed naturally, calling cleanupJobState...`);
             await this.cleanupJobState(jobId, params.project, params.feature, interruption);
             console.log(`   ✅ cleanupJobState completed\n`);
-            
-            // ✅ Add cancelled message to chat
-            if (interruption && params.project && params.feature) {
-              this.chatService.addCancelledMessage(
-                params.project,
-                params.feature,
-                jobId,
-                interruption.reason,
-                interruption.message,
-                params.userContext  // ✅ Pass userContext
-              );
-              console.log(`   ✅ Added cancelled message to chat (reason: ${interruption.reason})`);
-            }
             
             reject(new Error(status.error));
           }

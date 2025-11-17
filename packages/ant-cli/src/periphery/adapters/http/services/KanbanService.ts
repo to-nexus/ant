@@ -150,7 +150,7 @@ export class KanbanService {
     
     // ✅ Use WorkspaceResolver for proper path resolution
     const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-    const sessionPath = path.join(featurePath, `sessions/${jobType}.json`);
+    const sessionPath = `${featurePath}/sessions/${jobType}.json`;
     
     let sessionData: any = null;
     try {

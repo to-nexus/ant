@@ -31,11 +31,14 @@ export async function writeFiles(state: DesignGraphState): Promise<DesignGraphSt
     throw new Error("GitPort is required for writeFiles node");
   }
   
+  // ✅ Use pre-resolved featurePath (should be set by resolve node)
+  if (!state.context.featurePath) {
+    throw new Error("featurePath is required in ProjectContext. Ensure resolve node has run.");
+  }
+  
   // Save system design document to file
   const designDir = path.join(
-    "workspace",
-    state.context.project,
-    state.context.featureFolder || "default",
+    state.context.featurePath,
     "outputs",
     "design"
   );

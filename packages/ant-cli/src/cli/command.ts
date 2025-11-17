@@ -160,6 +160,28 @@ async function runArchitect(task: 'design' | 'code' | 'learn', inputPath: string
     console.log('');
     
     // Run orchestrator with new agent/task structure
+    // Inject workspaceResolver from server context if available
+    let workspaceResolver;
+    if (process.env.ANT_SERVER_MODE === 'cloud') {
+      const { CloudWorkspaceResolver, WorkspacePathResolver } = require('../infrastructure/workspace/WorkspaceResolver');
+      const workspacesPath = WorkspacePathResolver.getPhysicalWorkspacesPath();
+      workspaceResolver = new CloudWorkspaceResolver(workspacesPath);
+    } else {
+      const { LocalWorkspaceResolver, WorkspacePathResolver } = require('../infrastructure/workspace/WorkspaceResolver');
+      const workspacesPath = WorkspacePathResolver.getPhysicalWorkspacesPath();
+      workspaceResolver = new LocalWorkspaceResolver(workspacesPath);
+    }
+    // ✅ Extract userContext from environment (set by server in Cloud mode)
+    let userContext: import('../core/types/user').UserContext;
+    if (process.env.ANT_USER_EMAIL) {
+      // Cloud mode: Parse user email
+      const [userId, organizationId] = process.env.ANT_USER_EMAIL.split('@');
+      userContext = { userId, organizationId, workspacePath: '' };
+    } else {
+      // Local mode: Use default
+      userContext = { userId: 'local', organizationId: 'local', workspacePath: '' };
+    }
+    
     const result = await orchestrator({
       agent: 'architect',
       task: task,
@@ -169,7 +191,9 @@ async function runArchitect(task: 'design' | 'code' | 'learn', inputPath: string
       mode: options.mode,
       enableEvaluation: task === 'code' && options.eval,  // Pass eval flag
       featurePath: featureDir,  // ✅ Pass full feature path
-      projectPath: process.env.ANT_PROJECT_PATH  // ✅ Pass full project path if available
+      projectPath: process.env.ANT_PROJECT_PATH,  // ✅ Pass full project path if available
+      workspaceResolver,
+      userContext  // ✅ Pass user context
     });
     
     // ✅ Display result based on status (type guard for ArchitectResult)

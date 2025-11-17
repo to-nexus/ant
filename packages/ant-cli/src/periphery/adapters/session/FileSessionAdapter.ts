@@ -1,9 +1,10 @@
-import { SessionPort, JobType } from "../../../core/ports";
+import { SessionPort, JobType, FileTreeUpdatePort } from "../../../core/ports";
 import { Session, SessionTurn, SessionArtifacts } from "../../../core/types";
 import { parseSession, safeParseSession } from "../../../core/schemas/session.schema";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { randomUUID } from "crypto";
+import { WorkspaceResolver } from "@/infrastructure/workspace/WorkspaceResolver";
 
 /**
  * File-based Session Adapter
@@ -26,16 +27,51 @@ import { randomUUID } from "crypto";
  */
 export class FileSessionAdapter implements SessionPort {
   private featurePath: string;
+  private workspaceResolver: WorkspaceResolver;
+  private projectId: string;
+  private featureName: string;
+  private fileTreeUpdate?: FileTreeUpdatePort;
   
-  constructor(featurePath: string) {
+  constructor(featurePath: string, projectId?: string, featureName?: string, fileTreeUpdate?: FileTreeUpdatePort) {
     this.featurePath = featurePath;
+    // WorkspaceResolver는 외부에서 주입받도록 변경 필요
+    const mode = process.env.ANT_SERVER_MODE === 'cloud' ? 'cloud' : 'local';
+    const { WorkspacePathResolver, CloudWorkspaceResolver, LocalWorkspaceResolver } = require('../../../infrastructure/workspace/WorkspaceResolver');
+    const workspacesPath = WorkspacePathResolver.getPhysicalWorkspacesPath();
+    this.workspaceResolver = mode === 'cloud'
+      ? new CloudWorkspaceResolver(workspacesPath)
+      : new LocalWorkspaceResolver(workspacesPath);
+    
+    // ✅ Extract projectId and featureName from featurePath if not provided
+    if (projectId && featureName) {
+      this.projectId = projectId;
+      this.featureName = featureName;
+    } else {
+      const parts = featurePath.split(path.sep);
+      const featuresIdx = parts.lastIndexOf('features');
+      this.projectId = featuresIdx > 0 ? parts[featuresIdx - 1] : 'unknown';
+      this.featureName = featuresIdx >= 0 && featuresIdx + 1 < parts.length ? parts[featuresIdx + 1] : 'unknown';
+    }
+    
+    this.fileTreeUpdate = fileTreeUpdate;
   }
   
   /**
    * Get the session file path
    */
   private getSessionPath(project: string, feature: string, job: JobType): string {
-    return path.join(this.featurePath, "sessions", `${job}.json`);
+    // featurePath는 WorkspaceResolver로 생성
+    if (!project || !feature) {
+      throw new Error('getSessionPath: project and feature must be provided');
+    }
+    // context는 최소한 userId, organizationId, workspacePath가 필요함
+    const context = {
+      userId: process.env.USER_ID || 'probe',
+      organizationId: process.env.ORG_ID || 'to.nexus',
+      workspacePath: ''
+    };
+    const featurePath = this.workspaceResolver.getFeaturePath(context, project, feature);
+    return path.join(featurePath, "sessions", `${job}.json`);
   }
   
   /**
@@ -135,6 +171,11 @@ export class FileSessionAdapter implements SessionPort {
     // Write with pretty formatting for human readability
     const content = JSON.stringify(session, null, 2);
     await fs.writeFile(sessionPath, content, "utf-8");
+    
+    // ✅ Notify file tree update
+    if (this.fileTreeUpdate) {
+      this.fileTreeUpdate.notifyFileTreeUpdate(this.projectId, this.featureName);
+    }
   }
   
   /**
