@@ -13,7 +13,7 @@ export async function validate(state: ArchitectGraphState): Promise<ArchitectGra
   state.recursionCount = (state.recursionCount || 0) + 1;
   
   // ✅ Workflow instrumentation: Enter node
-  if (state.deps?.workflowUpdate && state._httpTaskId) {
+  if (state.deps?.workflowUpdate && state._httpJobId) {
     const taskInfo = state.currentTask ? {
       id: state.currentTask.id,
       name: state.currentTask.name,
@@ -21,7 +21,7 @@ export async function validate(state: ArchitectGraphState): Promise<ArchitectGra
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'validate', taskInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'validate', taskInfo);
   }
   
   const violations: Violation[] = [];

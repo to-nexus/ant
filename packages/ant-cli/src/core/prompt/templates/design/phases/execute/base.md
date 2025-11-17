@@ -261,18 +261,84 @@ Focus on the areas highlighted in your design strategy as most critical.
 
 {{else}}
 
-This is a CONTINUATION task. The design document already exists (shown above).
+🚨 **THIS IS A CONTINUATION TASK - DO NOT REPEAT PREVIOUS WORK** 🚨
 
-**YOUR TASK**:
-Generate ONLY the sections relevant to your current task: **{{currentTask.name}}**
+**EXISTING DESIGN DOCUMENT** (already completed):
+```
+{{designDoc}}
+```
 
-Focus on:
-- Adding new chapters/sections that build upon the existing design
-- Updating specific sections that need improvement or correction
-- Maintaining consistency with the existing document structure
-- Providing sufficient detail for implementation
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-The system will automatically merge your changes with the existing document.
+**YOUR SPECIFIC TASK**: {{currentTask.name}}
+**Description**: {{currentTask.description}}
+
+**⚠️ CRITICAL INSTRUCTIONS FOR CONTINUATION TASKS**:
+
+1. **DO NOT REPEAT ANALYSIS** ❌
+   - Do NOT write "Design Strategy" again
+   - Do NOT re-analyze requirements
+   - Do NOT summarize the entire project again
+   - The project analysis is ALREADY DONE in the existing document above
+
+2. **WRITE ONLY YOUR ASSIGNED CHAPTERS** ✅
+   - Task name tells you which chapters to write
+   - Example: "Component Design" → Write ONLY Component Design chapter
+   - Example: "API Design & Data Models" → Write ONLY those 2 chapters
+   - START IMMEDIATELY with your chapter heading (e.g., "## 3. Detailed Design")
+
+3. **BUILD UPON EXISTING CONTENT** ✅
+   - Reference chapters from existing document when needed
+   - Maintain consistency with established architecture
+   - Use the same technology stack and terminology
+   - Extend, don't contradict
+
+4. **OUTPUT FORMAT** ✅
+   - Use `<append>` tag (not `<file>` - document already exists!)
+   - Start with your chapter number/heading
+   - Example:
+     ```xml
+     <append path="outputs/design/system-design.md">
+     ## 3. Detailed Design
+     
+     ### 3.1 Component Architecture
+     ...
+     </append>
+     ```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**CORRECT CONTINUATION EXAMPLE**:
+
+Task: "Design Document: Component Design"
+
+✅ **START IMMEDIATELY WITH YOUR CHAPTER**:
+```xml
+<append path="outputs/design/system-design.md">
+## 3. Detailed Design
+
+### 3.1 Component Architecture
+
+Based on the architecture established in Chapter 2, we define the following components:
+
+#### TaskManager Component
+- **Purpose**: Central state management for task collection
+- **Responsibilities**: CRUD operations, filtering logic
+- **State**: Array<Task>, currentFilter: FilterType
+...
+</append>
+```
+
+❌ **DO NOT DO THIS** (repeating project analysis):
+```
+Design Strategy: Simple Tasks
+
+1. Key Requirements
+   - Frontend-only task management
+   ...
+
+<-- This is WRONG! Skip this, you already did it in Task 1! -->
+```
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

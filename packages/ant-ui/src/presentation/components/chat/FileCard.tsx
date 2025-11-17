@@ -33,10 +33,20 @@ export function FileCard({ content, operation }: FileCardProps) {
   // ✅ Cursor/Copilot style: Default to expanded (show content), allow user to collapse
   const [isCollapsed, setIsCollapsed] = useState(false);
   
+  // ✅ Track if user manually scrolled away from bottom
+  const [isUserScrolling, setIsUserScrolling] = useState(false);
+  
   // ✅ DEBUG: Log content updates
   useEffect(() => {
     console.log(`[FileCard] Content update - path: ${filePath}, type: ${content.type}, length: ${fileContent.length}, content preview: "${fileContent.substring(0, 50)}..."`);
   }, [fileContent, content.type, filePath]);
+  
+  // ✅ Reset user scrolling state when file operation completes
+  useEffect(() => {
+    if (isCompleted) {
+      setIsUserScrolling(false);
+    }
+  }, [isCompleted]);
   
   // ✅ Show content when: has content OR is actively streaming
   const hasFileContent = fileContent && fileContent.length > 0;
@@ -50,9 +60,28 @@ export function FileCard({ content, operation }: FileCardProps) {
   // ✅ CRITICAL: Use ref to track previous content length for auto-scroll
   const prevScrollLengthRef = useRef(0);
   
-  // ✅ Auto-scroll to bottom during streaming
+  // ✅ Check if user is at bottom of scroll area
+  const isAtBottom = (element: HTMLDivElement) => {
+    const threshold = 50; // 50px threshold for "near bottom"
+    return element.scrollHeight - element.scrollTop - element.clientHeight < threshold;
+  };
+  
+  // ✅ Handle user manual scroll
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const element = e.currentTarget;
+    
+    if (isAtBottom(element)) {
+      // User scrolled to bottom → re-enable auto-scroll
+      setIsUserScrolling(false);
+    } else {
+      // User scrolled away from bottom → disable auto-scroll
+      setIsUserScrolling(true);
+    }
+  };
+  
+  // ✅ Auto-scroll to bottom during streaming (only if user hasn't manually scrolled)
   useEffect(() => {
-    if (isActive && contentRef.current) {
+    if (isActive && contentRef.current && !isUserScrolling) {
       const currentLength = fileContent?.length || 0;
       
       // Only scroll if content actually grew (prevent infinite loops)
@@ -65,7 +94,7 @@ export function FileCard({ content, operation }: FileCardProps) {
         prevScrollLengthRef.current = currentLength;
       }
     }
-  }, [fileContent, isActive]);
+  }, [fileContent, isActive, isUserScrolling]);
   
   // Calculate line stats
   const calculateLineStats = () => {
@@ -202,7 +231,7 @@ export function FileCard({ content, operation }: FileCardProps) {
         <div className="border-t border-gray-200 dark:border-gray-700">
           {operation === 'edit' && (diffBefore || diffAfter) ? (
             // Diff view for edits (real-time streaming)
-            <div ref={contentRef} className="max-h-[300px] overflow-y-auto scrollbar-thin" style={{ overflowAnchor: 'none' }}>
+            <div ref={contentRef} className="max-h-[300px] overflow-y-auto scrollbar-thin" style={{ overflowAnchor: 'none' }} onScroll={handleScroll}>
               {diffBefore && (
                 <div className="bg-red-50 dark:bg-red-900/10">
                   <pre className="px-4 py-2 text-xs font-mono text-red-800 dark:text-red-300 whitespace-pre-wrap break-words">
@@ -235,6 +264,7 @@ export function FileCard({ content, operation }: FileCardProps) {
               ref={contentRef}
               className="px-4 py-3 text-xs font-mono text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900/50 max-h-[300px] overflow-y-auto scrollbar-thin"
               style={{ overflowAnchor: 'none' }}
+              onScroll={handleScroll}
             >
               <pre className="whitespace-pre-wrap break-words">
                 {fileContent}

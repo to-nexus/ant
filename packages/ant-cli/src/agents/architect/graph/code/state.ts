@@ -302,8 +302,8 @@ export interface ArchitectGraphState extends TaskArtifacts {
   filesWritten?: number;
   reportFile?: string;
   
-  // ✅ Real-time Kanban tracking (internal, not persisted)
-  _httpTaskId?: string;  // HTTP task ID for live updates
+  // ✅ Real-time tracking and resume (internal, not persisted)
+  _httpJobId?: string;  // Job ID for live updates and job resumption
   
   // ✅ Error repetition tracking (internal)
   _errorIsRepeating?: boolean;  // Flag to indicate if errors are repeating

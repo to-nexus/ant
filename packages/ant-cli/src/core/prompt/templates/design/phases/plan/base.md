@@ -9,8 +9,9 @@ PROJECT: {{project}}
 {{currentTask.description}}
 {{/if}}
 
+{{#unless designDoc}}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚠️  CRITICAL LENGTH RESTRICTION
+⚠️  FIRST TASK: OVERALL PROJECT STRATEGY
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 🚨 MAXIMUM OUTPUT: 30-40 LINES (strict limit)
@@ -57,3 +58,47 @@ Think of this as "design planning notes" - not detailed documentation.
 
 STOP IMMEDIATELY after section 4. Do NOT add extra sections.
 BE EXTREMELY CONCISE - every word must add value.
+
+{{else}}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️  CONTINUATION TASK: CHAPTER-SPECIFIC PLAN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**EXISTING DESIGN DOCUMENT**:
+```
+{{designDoc}}
+```
+
+🚨 **DO NOT REPEAT PROJECT-LEVEL STRATEGY** 🚨
+
+The overall project strategy is ALREADY ESTABLISHED in the existing document.
+Your job is to plan ONLY the specific chapters you will write in this task.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## REQUIRED FORMAT (10-15 lines max):
+
+# Chapter Plan: {{currentTask.name}}
+
+## 1. Chapters to Write (list chapter numbers/names)
+- Chapter X: [Name]
+- Chapter Y: [Name]
+
+## 2. Key Content for Each Chapter (1-2 lines per chapter)
+- **Chapter X**: [What will be covered]
+- **Chapter Y**: [What will be covered]
+
+## 3. References to Existing Content (1-2 items)
+- Will build upon: [existing chapter/section]
+- Will use tech stack from: [existing section]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**CRITICAL**: This is a CHAPTER PLAN, not a PROJECT STRATEGY.
+- ❌ DO NOT write "Key Requirements" (already in existing doc)
+- ❌ DO NOT write "Technical Challenges" (already analyzed)
+- ❌ DO NOT write "Architectural Approach" (already established)
+- ✅ ONLY write what chapters YOU will add and what they will contain
+
+{{/unless}}

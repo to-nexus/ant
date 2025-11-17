@@ -119,13 +119,13 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       }
       
       // ✅ CRITICAL: Update Kanban snapshot when retrying (resume scenario)
-      if (state._httpTaskId && state.deps?.kanbanUpdate) {
+      if (state._httpJobId && state.deps?.kanbanUpdate) {
         console.log(`\n🔥 [Plan Retry] Updating Kanban → task retrying`);
         console.log(`   Current: ${nextTask.name}`);
         console.log(`   Remaining in queue: ${state.taskQueue?.size() || 0}\n`);
         
         state.deps.kanbanUpdate.updateTaskQueue(
-          state._httpTaskId,
+          state._httpJobId,
           nextTask,                               // ✅ Show retry task with timing info
           state.taskQueue?.getAll() || [],       // ✅ Remaining queue
           state.completedTasksDetails || [],
@@ -135,7 +135,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       }
       
       // ✅ Workflow instrumentation: Enter node AFTER Kanban update (with retry task info)
-      if (state.deps?.workflowUpdate && state._httpTaskId) {
+      if (state.deps?.workflowUpdate && state._httpJobId) {
         const taskInfo = {
           id: nextTask.id,
           name: nextTask.name,
@@ -143,7 +143,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
           description: nextTask.description,
           priority: nextTask.priority
         };
-        await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'plan', taskInfo);
+        await state.deps.workflowUpdate.enterNode(state._httpJobId, 'plan', taskInfo);
       }
       
       console.log(`\n🧭 Planning (${state.recursionCount}/${state.recursionLimit || 50})`);
@@ -215,13 +215,13 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     }
     
     // ✅ CRITICAL: Update Kanban snapshot BEFORE enterNode (so UI shows task immediately with timing)
-    if (state._httpTaskId) {
+    if (state._httpJobId) {
       const completedTasksDetails = state.completedTasksDetails || [];
       
       if (state.deps?.kanbanUpdate) {
         // In-process: use injected port
         state.deps.kanbanUpdate.updateTaskQueue(
-          state._httpTaskId,
+          state._httpJobId,
           nextTask,  // ✅ Now includes timing info
           queueTasks,
           completedTasksDetails,
@@ -238,7 +238,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              taskId: state._httpTaskId,
+              taskId: state._httpJobId,
               currentTask: nextTask,
               queue: queueTasks,
               completedTasks: completedTasksDetails,
@@ -254,7 +254,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     }
     
     // ✅ Workflow instrumentation: Enter node AFTER Kanban update (with new task info)
-    if (state.deps?.workflowUpdate && state._httpTaskId) {
+    if (state.deps?.workflowUpdate && state._httpJobId) {
       const taskInfo = {
         id: nextTask.id,
         name: nextTask.name,
@@ -262,7 +262,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         description: nextTask.description,
         priority: nextTask.priority
       };
-      await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'plan', taskInfo);
+      await state.deps.workflowUpdate.enterNode(state._httpJobId, 'plan', taskInfo);
     }
     
     console.log(`\n🧭 Planning (${state.recursionCount}/${state.recursionLimit || 50})`);
@@ -349,7 +349,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         await saveCheckpoint(state);
         
         // ✅ Update live snapshot via injected port (Hexagonal Architecture compliant)
-        if (state.deps?.kanbanUpdate && state._httpTaskId) {
+        if (state.deps?.kanbanUpdate && state._httpJobId) {
           const queueTasks = state.taskQueue?.getAll() || [];
           const completedTasksDetails = state.completedTasksDetails || [];
           
@@ -358,7 +358,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
           console.log(`   Total completed: ${completedTasksDetails.length}\n`);
           
           state.deps.kanbanUpdate.updateTaskQueue(
-            state._httpTaskId,
+            state._httpJobId,
             undefined,
             queueTasks,
             completedTasksDetails,
@@ -723,8 +723,8 @@ ${nextTask.type === 'error' ?
     await saveCheckpoint(updatedState);
     
     // ✅ Workflow instrumentation: Exit node (success path)
-    if (state.deps?.workflowUpdate && state._httpTaskId) {
-      state.deps.workflowUpdate.exitNode(state._httpTaskId, 'plan');
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan');
     }
     
     return updatedState;
@@ -787,8 +787,8 @@ ${nextTask.type === 'error' ?
     console.error('❌ ═══════════════════════════════════════════════════════════════\n');
     
     // ✅ Workflow instrumentation: Exit node (error path)
-    if (state.deps?.workflowUpdate && state._httpTaskId) {
-      state.deps.workflowUpdate.exitNode(state._httpTaskId, 'plan');
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan');
     }
     
     throw error;

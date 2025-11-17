@@ -24,7 +24,7 @@ export interface JobStatus {
 
 export interface ExecuteJobParams {
   agent: 'architect' | 'reviewer' | 'planner' | 'doc';
-  task: 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';  // Note: 'task' here means agent's work type, not Task Board task
+  jobType: 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';  // ✅ Type of job to execute (design/code/learn)
   project: string;
   feature?: string;  // ✅ Feature name for Kanban tracking
   inputFile?: string;  // ✅ Optional: undefined for chat-initiated jobs with overrideDirective
@@ -33,6 +33,7 @@ export interface ExecuteJobParams {
   overrideDirective?: string;  // ✅ Chat input as directive (highest priority)
   chatSource?: boolean;        // ✅ True if job started from chat (enables Chat SSE)
   userContext?: UserContext;   // ✅ User context for Cloud mode (includes workspacePath)
+  jobId?: string;              // ✅ Existing jobId for resume (don't generate new one)
 }
 
 export interface JobResult {

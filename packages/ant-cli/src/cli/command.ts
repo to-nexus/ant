@@ -92,7 +92,7 @@ program
 /**
  * Run architect agent
  */
-async function runArchitect(task: 'design' | 'code' | 'learn', inputPath: string | undefined, options: any) {
+async function runArchitect(jobType: 'design' | 'code' | 'learn', inputPath: string | undefined, options: any) {
   let logger: TaskLogger | null = null;
   
   try {
@@ -118,7 +118,7 @@ async function runArchitect(task: 'design' | 'code' | 'learn', inputPath: string
       resolvedFile = ''; // No file path needed
     } else if (inputPath) {
       // ✅ Read from file as usual
-      resolvedFile = resolveInputFile(inputPath, task);
+      resolvedFile = resolveInputFile(inputPath, jobType);
       input = fs.readFileSync(resolvedFile, 'utf-8');
     } else {
       throw new Error('No input source available');
@@ -147,11 +147,11 @@ async function runArchitect(task: 'design' | 'code' | 'learn', inputPath: string
     console.log(`📂 [Command] Output directory: ${outputDir}`);
     
     // Start logging
-    logger = new TaskLogger(outputDir, `architect-${task}`);
+    logger = new TaskLogger(outputDir, `architect-${jobType}`);
     logger.start();
     
     console.log(`🎯 Agent: Architect`);
-    console.log(`📋 Task: ${task}`);
+    console.log(`📋 jobType: ${jobType}`);
     console.log(`🏗️  Project: ${project}`);
     console.log(`📂 Input: ${resolvedFile}`);
     if (options.mode) {
@@ -182,33 +182,40 @@ async function runArchitect(task: 'design' | 'code' | 'learn', inputPath: string
       userContext = { userId: 'local', organizationId: 'local', workspacePath: '' };
     }
     
+    // ✅ Extract chat-related environment variables (already declared at line 100)
+    const chatSource = process.env.ANT_CHAT_SOURCE === 'true';
+    const feature = process.env.ANT_FEATURE_NAME;  // ✅ Feature name from server
+    
     const result = await orchestrator({
       agent: 'architect',
-      task: task,
+      jobType,
       input,
       project,
+      feature,  // ✅ Pass feature name (for chat jobs)
       inputFile: resolvedFile,
       mode: options.mode,
-      enableEvaluation: task === 'code' && options.eval,  // Pass eval flag
+      enableEvaluation: jobType === 'code' && options.eval,  // Pass eval flag
       featurePath: featureDir,  // ✅ Pass full feature path
       projectPath: process.env.ANT_PROJECT_PATH,  // ✅ Pass full project path if available
       workspaceResolver,
-      userContext  // ✅ Pass user context
+      userContext,  // ✅ Pass user context
+      overrideDirective,  // ✅ Pass chat directive
+      chatSource  // ✅ Pass chat source flag
     });
     
     // ✅ Display result based on status (type guard for ArchitectResult)
     if (typeof result !== 'string' && 'success' in result) {
       if (result.status === 'paused' && result.interruption?.metadata?.tasksRemaining) {
-        console.log('\n⏸️  Task paused due to recursion limit');
+        console.log('\n⏸️  Job paused due to recursion limit');
         console.log(`📊 Progress: ${result.interruption.metadata.tasksRemaining} tasks remaining`);
         console.log('💡 Run the same command again to resume\n');
       } else if (result.success) {
-        console.log('\n✅ Task completed successfully!');
+        console.log('\n✅ Job completed successfully!');
       } else {
-        console.log('\n⚠️  Task completed with issues');
+        console.log('\n⚠️  Job completed with issues');
       }
     } else {
-    console.log('\n✅ Task completed successfully!');
+    console.log('\n✅ Job completed successfully!');
     }
     
     console.log('\n--- Result ---\n', JSON.stringify(result, null, 2));

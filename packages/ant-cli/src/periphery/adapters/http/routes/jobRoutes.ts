@@ -31,10 +31,10 @@ export function createJobRoutes(deps: {
     try {
       const projectId = req.params.id;
       const featureName = req.params.feature;
-      const { task, agent = 'architect', enableEvaluation, overrideDirective, chatSource } = req.body;
+      const { task: jobType, agent = 'architect', enableEvaluation, overrideDirective, chatSource } = req.body;
       
       console.log(`\n📨 [JobRoute] POST /projects/${projectId}/features/${featureName}/execute`);
-      console.log(`   Agent: ${agent}, Task: ${task}`);
+      console.log(`   Agent: ${agent}, jobType: ${jobType}`);
       console.log(`   Override Directive: ${overrideDirective ? '(provided)' : 'none'}`);
       console.log(`   Chat Source: ${chatSource || false}`);
       console.log(`   Body:`, req.body);
@@ -47,16 +47,13 @@ export function createJobRoutes(deps: {
       } : { userId: 'local', organizationId: 'local', workspacePath: '' };
       
       // ✅ Use WorkspaceResolver to get proper path
-      // ✅ Only set inputFile if no overrideDirective (chat input takes precedence)
-      let inputFile: string | undefined;
-      if (!overrideDirective) {
-        const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-        inputFile = path.join(featurePath, `inputs/directives/${task}/directive.md`);
-      }
+      // ✅ Only set inputFile if NOT using override directive (file-based job)
+      const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+      const inputFile = overrideDirective ? undefined : path.join(featurePath, `inputs/directives/${jobType}/directive.md`);
       
       const params: ExecuteJobParams = {
         agent: agent || 'architect',
-        task,
+        jobType,
         project: projectId,
         feature: featureName,
         inputFile,
@@ -72,46 +69,6 @@ export function createJobRoutes(deps: {
       res.json(result);
     } catch (error: any) {
       console.error(`   ❌ Error:`, error.message);
-      res.status(500).json({ error: error.message });
-    }
-  });
-  
-  // Execute task (legacy endpoint for backward compatibility - uses skeleton)
-  router.post('/projects/:id/execute', async (req: Request, res: Response) => {
-    try {
-      const projectId = req.params.id;
-      const { task, agent = 'architect', enableEvaluation, overrideDirective, chatSource } = req.body;
-      
-      // ✅ Build context for WorkspaceResolver
-      const userContext = req.user && req.organization ? {
-        userId: req.user.id,
-        organizationId: req.organization.id,
-        workspacePath: ''  // Not used by WorkspaceResolver
-      } : { userId: 'local', organizationId: 'local', workspacePath: '' };
-      
-      // ✅ Use WorkspaceResolver to get proper path
-      // ✅ Only set inputFile if no overrideDirective (chat input takes precedence)
-      let inputFile: string | undefined;
-      if (!overrideDirective) {
-        const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, 'skeleton');
-        inputFile = path.join(featurePath, `inputs/directives/${task}/directive.md`);
-      }
-      
-      const params: ExecuteJobParams = {
-        agent: agent || 'architect',
-        task,
-        project: projectId,
-        feature: 'skeleton',
-        inputFile,
-        enableEvaluation,
-        overrideDirective,  // ✅ Chat input as directive
-        chatSource,         // ✅ Flag for Chat SSE
-        userContext         // ✅ Pass user context
-      };
-      
-      const result = await deps.executeJob(params);
-      res.json(result);
-    } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });
@@ -233,11 +190,14 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
   
   // Resume existing job
   router.post('/jobs/:jobId/resume', async (req: Request, res: Response) => {
-    const jobId = req.params.jobId;
+    const requestedJobId = req.params.jobId;  // ✅ This is just for API compatibility (may be new)
     const { projectId, featureName, chatSource = true } = req.body;  // ✅ Default to true for UI consistency
     
-    console.log(`\n🔄 [ResumeRoute] Resume request received for job: ${jobId}`);
+    console.log(`\n🔄 [ResumeRoute] Resume request received`);
     console.log(`   Project: ${projectId}, Feature: ${featureName}`);
+    console.log(`   Requested jobId: ${requestedJobId} (will use session's jobId if found)`);
+    
+    let sessionJobId: string | null = null;  // ✅ Declare outside try-catch for error handling
     
     try {
       // ✅ Build context for WorkspaceResolver
@@ -250,67 +210,71 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
       // ✅ Use WorkspaceResolver to get proper path
       const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
       
-      // ✅ Find job type from session files
+      // ✅ Find job type and jobId from session files (don't rely on requested jobId)
       const fs = require('fs');
       const sessionDir = path.join(featurePath, 'sessions');
       
       let jobType: 'design' | 'code' | 'learn' | null = null;
       
+      // ✅ CRITICAL: Look for interrupted jobs in session files
       for (const type of ['design', 'code', 'learn'] as const) {
         const sessionPath = path.join(sessionDir, `${type}.json`);
         if (fs.existsSync(sessionPath)) {
           const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
-          if (sessionData.state?.jobId === jobId) {
+          // ✅ Check for interrupted job (has jobId and interruption)
+          if (sessionData.state?.jobId && sessionData.state?.interruption) {
             jobType = type;
-            console.log(`   ✅ Found job in ${type}.json`);
+            sessionJobId = sessionData.state.jobId;
+            console.log(`   ✅ Found interrupted job in ${type}.json`);
+            console.log(`   Session jobId: ${sessionJobId}`);
             break;
           }
         }
       }
       
-      if (!jobType) {
-        console.log(`   ❌ Job ${jobId} not found in any session file`);
+      if (!jobType || !sessionJobId) {
+        console.log(`   ❌ No interrupted job found in session files`);
         return res.status(404).json({ 
-          error: 'Job not found',
-          message: `Job ${jobId} not found in session files`
+          error: 'No interrupted job found',
+          message: `No resumable job found for ${projectId}/${featureName}`
         });
       }
       
       console.log(`   Job type: ${jobType}`);
       console.log(`   Starting resume job execution...`);
       
-      // ✅ Build inputFile path (but file may not exist for chat-initiated jobs)
-      const inputFile = path.join(featurePath, `inputs/directives/${jobType}/directive.md`);
+      // ✅ inputFile not needed for resume (feature name is sufficient)
+      const inputFile = undefined;
       
       const params: ExecuteJobParams = {
         agent: 'architect',
-        task: jobType,
+        jobType: jobType,
         project: projectId,
         feature: featureName,
         inputFile,  // May not exist for chat-initiated jobs, but that's ok
         enableEvaluation: false,
         overrideDirective: undefined,
-        chatSource,         // ✅ Use chatSource from request body (default: true)
-        userContext         // ✅ Pass user context
+        chatSource,
+        userContext,
+        jobId: sessionJobId  // ✅ Use existing jobId for resume
       };
       
       const result = await deps.executeJob(params);
       
-      console.log(`   ✅ Resume job started: ${result.jobId}`);
+      console.log(`   ✅ Resume job continued with existing jobId: ${sessionJobId}`);
       console.log(`   ✅ Resume request completed\n`);
       
       res.json({
         success: true,
-        jobId: result.jobId,
-        originalJobId: jobId,
+        jobId: sessionJobId,  // ✅ Return the existing jobId
         jobType,
-        message: `Job resumed from ${jobId}`
+        message: `Job ${sessionJobId} resumed`
       });
     } catch (error: any) {
       console.error(`   ❌ Resume failed:`, error);
       res.status(500).json({ 
         error: error.message,
-        jobId
+        jobId: sessionJobId || requestedJobId  // ✅ Return session jobId if found, else requested jobId
       });
     }
   });
@@ -391,12 +355,12 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
       console.log(`   Job type: ${jobType}`);
       console.log(`   Starting continue job execution...`);
       
-      // ✅ Build inputFile path (but may not exist for chat-initiated jobs)
-      const inputFile = path.join(featurePath, `inputs/directives/${jobType}/directive.md`);
+      // ✅ inputFile not needed for continue (feature name is sufficient)
+      const inputFile = undefined;
       
       const params: ExecuteJobParams = {
         agent: 'architect',
-        task: jobType,
+        jobType: jobType,
         project: projectId,
         feature: featureName,
         inputFile,

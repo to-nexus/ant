@@ -17,7 +17,7 @@ import { learn } from "./nodes/learn";
 async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignGraphState>> {
   // ✅ Workflow instrumentation: Enter node
   // ✅ CRITICAL: await to ensure workflow SSE is sent before continuing
-  if (state.deps?.workflowUpdate && state._httpTaskId) {
+  if (state.deps?.workflowUpdate && state._httpJobId) {
     const taskInfo = state.currentTask ? {
       id: state.currentTask.id,
       name: state.currentTask.name,
@@ -25,7 +25,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'checkTaskStatus', taskInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'checkTaskStatus', taskInfo);
   }
   
   // ✅ Current task completed successfully (design has no validation failures)
@@ -67,7 +67,9 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
               planText: state.planText,
               designMarkdown: state.designMarkdown,
               jobId: (state as any).jobId,
-              jobTiming: (state as any).jobTiming
+              jobTiming: (state as any).jobTiming,
+              overrideDirective: state.overrideDirective,  // ✅ Save chat-initiated directive
+              chatSource: state.chatSource  // ✅ Save chat source flag
             }
           }
         );
@@ -79,7 +81,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
     
     // ✅ CRITICAL: Update Kanban to next task AFTER checkTaskStatus SSE sent
     // This ensures frontend sees checkTaskStatus animation before Kanban switches
-    if (state._httpTaskId && state.taskQueue && state.deps?.kanbanUpdate) {
+    if (state._httpJobId && state.taskQueue && state.deps?.kanbanUpdate) {
       const allTasks = state.taskQueue.getAll();
       const nextTask = state.taskQueue.peek(); // ✅ Use peek() for correct next task
       
@@ -93,7 +95,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       console.log(`   Total completed: ${completedTasksDetails.length}\n`);
       
       state.deps.kanbanUpdate.updateTaskQueue(
-        state._httpTaskId,
+        state._httpJobId,
         nextTask || null,
         remainingQueue,  // ✅ Exclude nextTask from queue
         completedTasksDetails
@@ -152,7 +154,7 @@ export function buildDesignGraph() {
       learnings: null as any,
       
       // ✅ For tracking in UI
-      _httpTaskId: null as any,
+      _httpJobId: null as any,
     } as any,
   } as any);
 

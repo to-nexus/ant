@@ -595,6 +595,32 @@ export class ChatService {
       session.lastThinkingContentIndex = undefined;
     }
 
+    // ✅ Finalize any active file operations (interrupted/incomplete)
+    if (session.activeFileOperation) {
+      const fileContent = session.currentMessage.contents[session.activeFileOperation.contentIndex];
+      if (fileContent) {
+        // Convert streaming types to completed types
+        if (fileContent.type === 'file_creating' || fileContent.type === 'file_writing') {
+          fileContent.type = 'file_create';
+        } else if (fileContent.type === 'file_editing' || fileContent.type === 'file_updating') {
+          fileContent.type = 'file_edit';
+        } else if (fileContent.type === 'file_deleting') {
+          fileContent.type = 'file_delete';
+        }
+        
+        // Broadcast final state
+        this.broadcast(projectId, featureName, {
+          type: 'content_update',
+          messageId: session.currentMessage.id,
+          contentIndex: session.activeFileOperation.contentIndex,
+          content: fileContent
+        });
+      }
+      
+      // Clear active operation
+      session.activeFileOperation = undefined;
+    }
+
     session.currentMessage.isStreaming = false;
     session.messages.push(session.currentMessage);
     

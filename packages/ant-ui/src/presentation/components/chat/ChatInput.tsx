@@ -287,7 +287,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
       const jobExecution = executeCodeJob({
         projectId: selectedProject,
         featureName: selectedFeature,
-        task: selectedJobType as 'design' | 'code' | 'learn',
+        jobType: selectedJobType as 'design' | 'code' | 'learn',
         agent: selectedAgent as 'architect',
         overrideDirective: userMessage,  // ✅ Chat input becomes directive
         chatSource: true                  // ✅ Enable Chat SSE

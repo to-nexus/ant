@@ -17,7 +17,7 @@ import { extractErrorDetails, logErrorHeader } from "../../../code/nodes/shared/
  */
 export async function decompose(state: DesignGraphState): Promise<DesignGraphState> {
   // ✅ Workflow instrumentation: Enter node
-  if (state.deps?.workflowUpdate && state._httpTaskId) {
+  if (state.deps?.workflowUpdate && state._httpJobId) {
     const taskInfo = state.currentTask ? {
       id: state.currentTask.id,
       name: state.currentTask.name,
@@ -25,7 +25,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'decompose', taskInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'decompose', taskInfo);
   }
   
   const llm = state.deps?.llm as LLMClient;
@@ -59,7 +59,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
         });
         
         // ✨ Restore or initialize jobId and jobTiming
-        const existingJobId = session.state.jobId || state._httpTaskId || 'unknown-job';
+        const existingJobId = session.state.jobId || state._httpJobId || 'unknown-job';
         const { jobId, jobTiming: resumedJobTiming } = JobTimingManager.resumeJob(existingJobId, session.state.jobTiming);
         
         // ✅ Build merged directive from directives array (newest first = highest priority)
@@ -94,10 +94,12 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
           currentTask: session.state.currentTask,
           completedTasks: session.state.completedTasks || [],
           completedTasksDetails: session.state.completedTasksDetails || [],
-          _httpTaskId: state._httpTaskId,
+          _httpJobId: state._httpJobId,
           jobId,
           jobTiming: resumedJobTiming,
           directive: mergedDirective,  // ✅ Merged directives (newest first)
+          overrideDirective: session.state.overrideDirective,  // ✅ Restore chat-initiated directive
+          chatSource: session.state.chatSource,  // ✅ Restore chat source flag
           interruption: undefined  // ✅ CRITICAL: Clear interruption when resuming (job is now running again)
         } as any;
         
@@ -110,10 +112,10 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
         
         // ✅ Update live snapshot via kanbanUpdate port
         console.log(`🔍 [Design Decompose Resume] Kanban update check:`);
-        console.log(`   _httpTaskId: ${state._httpTaskId || 'undefined'}`);
+        console.log(`   _httpJobId: ${state._httpJobId || 'undefined'}`);
         console.log(`   kanbanUpdate exists: ${!!state.deps?.kanbanUpdate}`);
         
-        if (state._httpTaskId && state.deps?.kanbanUpdate) {
+        if (state._httpJobId && state.deps?.kanbanUpdate) {
           const completedTasks = resumedState.completedTasksDetails || [];
           const queueTasks = taskQueue.getAll();
           
@@ -126,7 +128,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
             : envLimit;
           
           state.deps.kanbanUpdate.updateTaskQueue(
-            state._httpTaskId,
+            state._httpJobId,
             resumedState.currentTask || null,
             queueTasks,
             completedTasks,
@@ -134,7 +136,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
             recursionLimit   // ✅ Pass recursion limit
           );
           console.log(`🔄 [Design Decompose Resume] Live snapshot updated via PORT`);
-          console.log(`   JobId: ${state._httpTaskId}`);
+          console.log(`   JobId: ${state._httpJobId}`);
           console.log(`   CurrentTask: ${resumedState.currentTask?.name || 'none'}`);
           console.log(`   Queue: ${taskQueue.size()} tasks`);
           console.log(`   Completed: ${completedTasks.length} tasks`);
@@ -151,7 +153,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
   }
   
   // ✨ Initialize jobId and jobTiming for NEW job
-  const { jobId: newJobId, jobTiming: newJobTiming, estimatingStartTime } = JobTimingManager.initializeNewJob(state._httpTaskId!);
+  const { jobId: newJobId, jobTiming: newJobTiming, estimatingStartTime } = JobTimingManager.initializeNewJob(state._httpJobId!);
   
   // 💾 CRITICAL: Save jobTiming to session IMMEDIATELY so frontend can show timer during estimating
   if (state.deps?.session && state.context.featureFolder) {
@@ -177,12 +179,12 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
   }
   
   // ✅ NOW send "estimating started" signal with preloaded completed tasks
-  if (state._httpTaskId && state.deps?.kanbanUpdate) {
+  if (state._httpJobId && state.deps?.kanbanUpdate) {
     console.log(`\n🎬 [Design Decompose] Signaling estimating started...`);
     console.log(`   Preserving ${preloadedCompletedTasks.length} completed tasks`);
     
     state.deps.kanbanUpdate.updateTaskQueue(
-      state._httpTaskId,
+      state._httpJobId,
       null,    // no currentTask yet
       [],      // no tasks yet
       preloadedCompletedTasks,  // ✅ Use preloaded completed tasks
@@ -222,19 +224,19 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
       ...state,
       taskQueue,
       completedTasks: [],
-      _httpTaskId: state._httpTaskId,
+      _httpJobId: state._httpJobId,
       jobId: newJobId,
       jobTiming: newJobTiming
     } as any;
     
     // ✅ Update live snapshot
     console.log(`\n🔍 [Design Decompose Default] Kanban update check:`);
-    console.log(`   _httpTaskId: ${state._httpTaskId || 'undefined'}`);
+    console.log(`   _httpJobId: ${state._httpJobId || 'undefined'}`);
     console.log(`   kanbanUpdate exists: ${!!state.deps?.kanbanUpdate}`);
     
-    if (state._httpTaskId && state.deps?.kanbanUpdate) {
+    if (state._httpJobId && state.deps?.kanbanUpdate) {
       state.deps.kanbanUpdate.updateTaskQueue(
-        state._httpTaskId,
+        state._httpJobId,
         null,
         taskQueue.getAll(),
         []
@@ -359,7 +361,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
       taskQueue,
       currentTask, // ✅ Set first task as current
       completedTasks: [],
-      _httpTaskId: state._httpTaskId,
+      _httpJobId: state._httpJobId,
       jobId: newJobId,
       jobTiming: finalJobTiming
     } as any;
@@ -391,13 +393,13 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     // ✅ Update live snapshot with FIRST TASK as current
     // Kanban SSE will be queued on frontend and processed after workflow SSE
     console.log(`\n🔍 [Design Decompose] Kanban update check:`);
-    console.log(`   _httpTaskId: ${state._httpTaskId || 'undefined'}`);
+    console.log(`   _httpJobId: ${state._httpJobId || 'undefined'}`);
     console.log(`   kanbanUpdate exists: ${!!state.deps?.kanbanUpdate}`);
     console.log(`   First task: ${currentTask.name}`);
     
-    if (state._httpTaskId && state.deps?.kanbanUpdate) {
+    if (state._httpJobId && state.deps?.kanbanUpdate) {
       state.deps.kanbanUpdate.updateTaskQueue(
-        state._httpTaskId,
+        state._httpJobId,
         currentTask, // ✅ Set first task as In Progress
         taskQueue.getAll(),
         []
@@ -429,7 +431,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
       ...state,
       taskQueue,
       completedTasks: [],
-      _httpTaskId: state._httpTaskId,
+      _httpJobId: state._httpJobId,
       jobId: newJobId,
       jobTiming: newJobTiming
     } as any;
@@ -459,12 +461,12 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     
     // ✅ Update live snapshot
     console.log(`\n🔍 [Design Decompose Fallback] Kanban update check:`);
-    console.log(`   _httpTaskId: ${state._httpTaskId || 'undefined'}`);
+    console.log(`   _httpJobId: ${state._httpJobId || 'undefined'}`);
     console.log(`   kanbanUpdate exists: ${!!state.deps?.kanbanUpdate}`);
     
-    if (state._httpTaskId && state.deps?.kanbanUpdate) {
+    if (state._httpJobId && state.deps?.kanbanUpdate) {
       state.deps.kanbanUpdate.updateTaskQueue(
-        state._httpTaskId,
+        state._httpJobId,
         null,
         taskQueue.getAll(),
         []

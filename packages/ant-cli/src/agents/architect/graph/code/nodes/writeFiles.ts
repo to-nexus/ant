@@ -35,7 +35,7 @@ export async function writeFiles(state: ArchitectGraphState): Promise<ArchitectG
   state.recursionCount = (state.recursionCount || 0) + 1;
   
   // ✅ Workflow instrumentation: Enter node
-  if (state.deps?.workflowUpdate && state._httpTaskId) {
+  if (state.deps?.workflowUpdate && state._httpJobId) {
     const taskInfo = state.currentTask ? {
       id: state.currentTask.id,
       name: state.currentTask.name,
@@ -43,7 +43,7 @@ export async function writeFiles(state: ArchitectGraphState): Promise<ArchitectG
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'writeFiles', taskInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'writeFiles', taskInfo);
   }
   
   const gitPort = state.deps?.git;

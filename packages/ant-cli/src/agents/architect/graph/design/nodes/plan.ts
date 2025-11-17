@@ -28,13 +28,13 @@ export async function plan(state: DesignGraphState) {
       currentTask = TaskTimingHelper.startTask(currentTask);
       
       // ✅ CRITICAL: Update Kanban snapshot when task starts
-      if (state._httpTaskId && state.deps?.kanbanUpdate) {
+      if (state._httpJobId && state.deps?.kanbanUpdate) {
         console.log(`\n🔥 [Plan] Updating Kanban → task started`);
         console.log(`   Current: ${currentTask.name}`);
         console.log(`   Remaining in queue: ${state.taskQueue.size()}\n`);
         
         state.deps.kanbanUpdate.updateTaskQueue(
-          state._httpTaskId,
+          state._httpJobId,
           currentTask,                    // ✅ Show current task as in-progress
           state.taskQueue.getAll(),      // ✅ Remaining queue
           state.completedTasksDetails || []
@@ -48,7 +48,7 @@ export async function plan(state: DesignGraphState) {
   
   // ✅ Workflow instrumentation: Enter node AFTER currentTask is set
   // ✅ CRITICAL: await to ensure workflow SSE is sent before continuing
-  if (state.deps?.workflowUpdate && state._httpTaskId) {
+  if (state.deps?.workflowUpdate && state._httpJobId) {
     const taskInfo = currentTask ? {
       id: currentTask.id,
       name: currentTask.name,
@@ -63,7 +63,7 @@ export async function plan(state: DesignGraphState) {
       model: (llm as any).modelName
     } : undefined;
     
-    await state.deps.workflowUpdate.enterNode(state._httpTaskId, 'plan', taskInfo, llmInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'plan', taskInfo, llmInfo);
   }
 
   // Prepare artifacts (using new unified names)

@@ -749,63 +749,76 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     const featureName = params.feature;
     
     // Determine job type
-    const jobType = (params.task === 'design' || params.task === 'code' || params.task === 'learn') 
-      ? params.task 
+    const jobType = (params.jobType === 'design' || params.jobType === 'code' || params.jobType === 'learn') 
+      ? params.jobType 
       : 'code';
     
-    // ✨ NEW: Check session for existing jobId (Resume support)
+    // ✨ Determine jobId with priority: explicit params.jobId > session jobId > new jobId
     let jobId: string;
     let isResume = false;
     
-    try {
-      const sessionData = await this.sessionService.readSessionData(projectId, featureName, jobType);
-      
-      // Resume if: session has jobId AND job is not completed
-      if (sessionData?.state?.jobId && !this.isJobCompleted(sessionData.state)) {
-        jobId = sessionData.state.jobId;
-        isResume = true;
-        console.log(`\n🔄 [ExecuteJob] Resuming with existing Job ID: ${jobId}`);
-      } else {
-        // Create new jobId
+    if (params.jobId) {
+      // ✅ PRIORITY 1: Explicit jobId from Resume API (highest priority)
+      jobId = params.jobId;
+      isResume = true;
+      console.log(`\n🔄 [ExecuteJob] Using explicit Job ID from Resume API: ${jobId}`);
+    } else {
+      // ✅ PRIORITY 2: Auto-resume from session (if interrupted job exists)
+      try {
+        const sessionData = await this.sessionService.readSessionData(projectId, featureName, jobType);
+        
+        // Resume if: session has jobId AND job is not completed
+        if (sessionData?.state?.jobId && !this.isJobCompleted(sessionData.state)) {
+          jobId = sessionData.state.jobId;
+          isResume = true;
+          console.log(`\n🔄 [ExecuteJob] Auto-resuming with existing Job ID: ${jobId}`);
+        } else {
+          // Create new jobId
+          jobId = `${Date.now().toString(36)}${Math.random().toString(36).substr(2, 6)}`;
+          console.log(`\n🆕 [ExecuteJob] Creating new Job ID: ${jobId}`);
+        }
+      } catch (error) {
+        // Session doesn't exist or error reading - create new jobId
         jobId = `${Date.now().toString(36)}${Math.random().toString(36).substr(2, 6)}`;
-        console.log(`\n🆕 [ExecuteJob] Creating new Job ID: ${jobId}`);
+        console.log(`\n🆕 [ExecuteJob] No session found, creating new Job ID: ${jobId}`);
       }
-    } catch (error) {
-      // Session doesn't exist or error reading - create new jobId
-      jobId = `${Date.now().toString(36)}${Math.random().toString(36).substr(2, 6)}`;
-      console.log(`\n🆕 [ExecuteJob] No session found, creating new Job ID: ${jobId}`);
     }
     
     console.log(`   Project: ${projectId}`);
     console.log(`   Feature: ${featureName}`);
     console.log(`   Agent: ${params.agent}`);
-    console.log(`   Task: ${params.task}`);
+    console.log(`   Job Type: ${params.jobType}`);
+    console.log(`   Resume: ${isResume ? 'Yes' : 'No'}`);
     
-    // ✅ VALIDATE PREREQUISITES
-    console.log(`\n📋 [Prerequisites] Validating required materials...`);
-    
-    const validationResult = await this.jobPrerequisitesAdapter.validate(
-      projectId,
-      featureName,
-      jobType,
-      params.userContext,    // ✅ Pass user context
-      params.overrideDirective  // ✅ Pass override directive (from chat)
-    );
-    
-    if (!validationResult.isValid) {
-      console.log(`\n❌ [Prerequisites] Validation failed!`);
-      console.log(validationResult.errorMessage);
+    // ✅ VALIDATE PREREQUISITES (skip if resuming - already validated)
+    if (!isResume) {
+      console.log(`\n📋 [Prerequisites] Validating required materials...`);
       
-      // Return validation error
-      return {
-        jobId,
-        success: false,
-        error: validationResult.errorMessage,
-        missingMaterials: validationResult.missingMaterials
-      };
+      const validationResult = await this.jobPrerequisitesAdapter.validate(
+        projectId,
+        featureName,
+        jobType,
+        params.userContext,    // ✅ Pass user context
+        params.overrideDirective  // ✅ Pass override directive (from chat)
+      );
+      
+      if (!validationResult.isValid) {
+        console.log(`\n❌ [Prerequisites] Validation failed!`);
+        console.log(validationResult.errorMessage);
+        
+        // Return validation error
+        return {
+          jobId,
+          success: false,
+          error: validationResult.errorMessage,
+          missingMaterials: validationResult.missingMaterials
+        };
+      }
+      
+      console.log(`✅ [Prerequisites] All required materials present\n`);
+    } else {
+      console.log(`\n⏭️  [Prerequisites] Skipping validation (resuming interrupted job)\n`);
     }
-    
-    console.log(`✅ [Prerequisites] All required materials present\n`);
     
     // Initialize job tracking
     this.jobs.set(jobId, {
@@ -873,7 +886,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       const args = [
         antCliSrc,
         params.agent,
-        params.task
+        params.jobType
       ];
       
       // ✅ Add input file or feature path as positional argument
@@ -888,7 +901,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         args.push(featurePath);
       }
       
-      if (params.mode && params.task === 'code') {
+      if (params.mode && params.jobType === 'code') {
         args.push('--mode', params.mode);
       }
       
@@ -896,7 +909,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         args.push('--project', params.project);
       }
       
-      if (params.enableEvaluation && params.task === 'code') {
+      if (params.enableEvaluation && params.jobType === 'code') {
         args.push('--eval');
       }
       
@@ -940,7 +953,9 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
           ANT_FEATURE_NAME: params.feature || '',  // ✅ Pass feature name
           ANT_PROJECT_PATH: projectPath,  // ✅ Pass full project path for config.json
           ANT_FEATURE_PATH: featurePath,  // ✅ Pass full feature path for outputs (used by command.ts for logging)
-          ...(userEmail && { ANT_USER_EMAIL: userEmail })  // ✅ Pass user email for HTTP client auth (Cloud mode)
+          ...(userEmail && { ANT_USER_EMAIL: userEmail }),  // ✅ Pass user email for HTTP client auth (Cloud mode)
+          ...(params.overrideDirective && { ANT_OVERRIDE_DIRECTIVE: params.overrideDirective }),  // ✅ Pass chat directive
+          ...(params.chatSource && { ANT_CHAT_SOURCE: 'true' })  // ✅ Pass chat source flag
         },
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: false  // ✅ Keep in same process group for easier killing

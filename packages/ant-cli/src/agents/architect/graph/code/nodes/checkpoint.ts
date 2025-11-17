@@ -57,6 +57,8 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       recursionCount: state.recursionCount,  // ✅ Save current recursion count
       recursionLimit: state.recursionLimit,  // ✅ Save recursion limit
       directives: directivesArray,  // ✅ Save directives array (newest first)
+      overrideDirective: state.overrideDirective,  // ✅ Save chat-initiated directive
+      chatSource: state.chatSource,  // ✅ Save chat source flag
     };
     
     // ✅ Include jobId and jobTiming if present

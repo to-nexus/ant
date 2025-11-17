@@ -22,6 +22,9 @@ export function ThinkingCard({ content }: ThinkingCardProps) {
   const thinkingTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const thinkingScrollRef = useRef<HTMLDivElement>(null);
   
+  // ✅ Track if user manually scrolled away from bottom
+  const [isUserScrolling, setIsUserScrolling] = useState(false);
+  
   // ✅ CRITICAL: Use ref to track previous content length to prevent infinite scroll loops
   const prevThinkingLengthRef = useRef(0);
   
@@ -45,6 +48,8 @@ export function ThinkingCard({ content }: ThinkingCardProps) {
         thinkingTimeoutRef.current = setTimeout(() => {
           console.log('[ThinkingCard] Thinking completed (500ms timeout)');
           setIsThinkingComplete(true);
+          // ✅ Reset user scrolling state when thinking completes
+          setIsUserScrolling(false);
         }, 500);
       }
     }
@@ -57,9 +62,28 @@ export function ThinkingCard({ content }: ThinkingCardProps) {
     };
   }, [content.content, content.type]);
   
-  // ✅ Auto-scroll thinking content during streaming (independent of message streaming)
+  // ✅ Check if user is at bottom of scroll area
+  const isAtBottom = (element: HTMLDivElement) => {
+    const threshold = 50; // 50px threshold for "near bottom"
+    return element.scrollHeight - element.scrollTop - element.clientHeight < threshold;
+  };
+  
+  // ✅ Handle user manual scroll
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const element = e.currentTarget;
+    
+    if (isAtBottom(element)) {
+      // User scrolled to bottom → re-enable auto-scroll
+      setIsUserScrolling(false);
+    } else {
+      // User scrolled away from bottom → disable auto-scroll
+      setIsUserScrolling(true);
+    }
+  };
+  
+  // ✅ Auto-scroll thinking content during streaming (only if user hasn't manually scrolled)
   useEffect(() => {
-    if (!isThinkingComplete && thinkingScrollRef.current && content.type === 'thinking') {
+    if (!isThinkingComplete && thinkingScrollRef.current && content.type === 'thinking' && !isUserScrolling) {
       const currentLength = content.content?.length || 0;
       
       // Only scroll if content actually grew
@@ -72,7 +96,7 @@ export function ThinkingCard({ content }: ThinkingCardProps) {
         prevThinkingLengthRef.current = currentLength;
       }
     }
-  }, [content.content, isThinkingComplete, content.type]);
+  }, [content.content, isThinkingComplete, content.type, isUserScrolling]);
   
   const isThinkingCollapsed = isThinkingComplete && !isThinkingExpanded;
   const hasThinkingContent = content.content && content.content.trim().length > 0;
@@ -108,6 +132,7 @@ export function ThinkingCard({ content }: ThinkingCardProps) {
           ref={thinkingScrollRef}
           className="mt-1 px-4 py-3 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400 bg-gray-50/30 dark:bg-gray-900/20 rounded-md max-h-[300px] overflow-y-auto scrollbar-thin"
           style={{ overflowAnchor: 'none' }}
+          onScroll={handleScroll}
         >
           <pre className="whitespace-pre-wrap font-mono opacity-70">{content.content}</pre>
         </div>
