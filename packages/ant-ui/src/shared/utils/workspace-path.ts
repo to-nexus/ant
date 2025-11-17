@@ -219,7 +219,7 @@ export function getDisplayPath(
     return `./workspaces/${organization}/${userId}/${projectId}/features/${featureId}/${subPath}`;
   }
   
-  // Local mode - keep backward compatible display (단수 'workspace')
-  return `./workspace/${projectId}/${featureId}/${subPath}`;
+  // Local mode - 중앙화된 경로로 변경 (복수 'workspaces')
+  return `./workspaces/local/${projectId}/features/${featureId}/${subPath}`;
 }
 

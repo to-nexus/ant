@@ -21,10 +21,8 @@ interface ConfigField {
 // LLM Model options by provider (optimized for coding)
 const LLM_MODELS: Record<string, { value: string; label: string }[]> = {
   anthropic: [
-    { value: 'claude-4-5-sonnet', label: 'Claude 4.5 Sonnet (Latest, best for coding)' },
-    { value: 'claude-4-5-haiku', label: 'Claude 4.5 Haiku (Fast & efficient)' },
-    { value: 'claude-3-5-sonnet', label: 'Claude 3.5 Sonnet (Stable)' },
-    { value: 'claude-3-5-haiku', label: 'Claude 3.5 Haiku (Fast & efficient)' },
+    { value: 'claude-sonnet-4-5-20250929', label: 'Claude 4.5 Sonnet (Latest, best for coding)' },
+    { value: 'claude-haiku-4-5-20251001', label: 'Claude 4.5 Haiku (Fast & efficient)' },
   ],
   openai: [
     { value: 'gpt-4o', label: 'GPT-4o (Optimized)' },

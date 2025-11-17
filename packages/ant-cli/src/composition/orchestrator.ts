@@ -39,8 +39,9 @@ export async function orchestrator(params: {
   featurePath?: string;  // ✅ Full feature path for Cloud mode
   projectPath?: string;  // ✅ Full project path for Cloud mode
   workspaceResolver?: import('../infrastructure/workspace/WorkspaceResolver').WorkspaceResolver;  // ✅ NEW: Inject resolver
+  userContext?: import('../core/types/user').UserContext;  // ✅ NEW: User context for Cloud mode
 }) {
-  const { agent, task, input, project, inputFile, mode, enableEvaluation, taskId, featurePath, projectPath, workspaceResolver } = params;
+  const { agent, task, input, project, inputFile, mode, enableEvaluation, taskId, featurePath, projectPath, workspaceResolver, userContext } = params;
 
   switch (agent) {
     case "architect": {
@@ -53,7 +54,11 @@ export async function orchestrator(params: {
       const config = new FileConfigAdapter();
       
       // Load project config for git/repo and LLM settings
-      const configData = await config.load(project || "default");
+      let configData = await config.load(project || "default");
+      // Inject projectPath into configData for cloud mode
+      if (configData.repoType === "cloud" && projectPath) {
+        configData.projectPath = projectPath;
+      }
       
       // LLM configuration priority: workspace config > environment variables
       // Environment variables: ARCHITECT_MODEL_PROVIDER, ARCHITECT_MODEL_NAME, AI_MODEL_PROVIDER, AI_MODEL_NAME
@@ -64,7 +69,7 @@ export async function orchestrator(params: {
 
       if (task === 'learn') {
         // Learn task: minimal dependencies
-        return await architectAgent(input, project || "default", 'learn', inputFile, { memory, llm, config });
+        return await architectAgent(input, project || "default", 'learn', inputFile, { memory, llm, config, userContext });
       }
 
       // Design and Code tasks: full dependencies
@@ -77,8 +82,8 @@ export async function orchestrator(params: {
         throw new Error('featurePath and projectPath are required for design/code tasks');
       }
       
-      // FileSessionAdapter uses featurePath directly
-      const session = new FileSessionAdapter(featurePath);
+      // ✅ Extract featureName from featurePath
+      const featureName = featurePath.split(path.sep).filter(Boolean).pop() || 'unknown';
 
       if (task === 'design') {
         const analyzer = new CodebaseAnalyzer();
@@ -112,12 +117,15 @@ export async function orchestrator(params: {
           console.log('ℹ️  Real-time updates disabled (server not running) [Design]');
         }
         
+        // ✅ Create session with file tree update support
+        const session = new FileSessionAdapter(featurePath, project, featureName, fileTreeUpdate);
+        
         return await architectAgent(
           input, 
           project || "default", 
           'design', 
           inputFile, 
-          { memory, llm, promptPort, profilePort, config, chunk, session, git, analyzer, kanbanUpdate, fileTreeUpdate, workflowUpdate },
+          { memory, llm, promptPort, profilePort, config, chunk, session, git, analyzer, kanbanUpdate, fileTreeUpdate, workflowUpdate, workspaceResolver, userContext },
           undefined,  // codeMode
           undefined,  // enableEvaluation
           taskId      // ✅ Pass taskId for real-time Kanban
@@ -157,13 +165,16 @@ export async function orchestrator(params: {
           console.log('ℹ️  Real-time updates disabled (server not running)');
         }
         
+        // ✅ Create session with file tree update support
+        const session = new FileSessionAdapter(featurePath, project, featureName, fileTreeUpdate);
+        
         // Mode will be inferred or auto-determined in architect agent
         return await architectAgent(
           input, 
           project || "default", 
           'code', 
           inputFile, 
-          { memory, llm, promptPort, profilePort, analyzer, git, config, chunk, session, command, kanbanUpdate, fileTreeUpdate, workflowUpdate },
+          { memory, llm, promptPort, profilePort, analyzer, git, config, chunk, session, command, kanbanUpdate, fileTreeUpdate, workflowUpdate, workspaceResolver, userContext },
           mode,              // Can be undefined (auto-infer) or explicit
           enableEvaluation,  // Pass evaluation flag
           taskId             // ✅ Pass taskId for real-time updates

@@ -212,15 +212,7 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
         "flex flex-col" : 
         "flex flex-col h-full overflow-hidden"
       }>
-        {shouldShowInterruption && (
-          <div className="mb-3">
-            <KanbanPausedPrompt
-              interruption={interruption}
-              onResume={handleResumeTask}
-              onDismiss={() => setDismissedKanbanInterrupt(interruption.timestamp)}  // ✅ Local dismiss (task board only)
-            />
-          </div>
-        )}
+        {/* 중단(interruption) 관련 UI 완전 제거. 채팅에서만 노출됨. */}
         
         <KanbanColumns
           todoTasks={kanbanData.todo || []}

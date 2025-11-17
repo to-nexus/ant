@@ -2,6 +2,7 @@
 import "dotenv/config";
 import { ExpressServerAdapter } from "../periphery/adapters/http/ExpressServerAdapter";
 import { WorkspacePathResolver } from "../infrastructure/workspace/WorkspaceResolver";
+import { LocalWorkspaceResolver } from "../infrastructure/workspace/WorkspaceResolver";
 
 /**
  * Server Entry Point
@@ -15,13 +16,7 @@ import { WorkspacePathResolver } from "../infrastructure/workspace/WorkspaceReso
  * Environment Variables:
  * - ANT_SERVER_MODE: 'local' (default) or 'cloud'
  * - PORT: Server port (default: 4100)
- * - WORKSPACES_PATH: Physical workspaces directory path (supports ~/path, absolute, relative)
  * - CLOUD_URL: Cloud service URL (for redirect)
- * 
- * Note: WORKSPACES_PATH can use:
- *   - Absolute path: /Users/yourname/ant/workspaces
- *   - Home directory: ~/dev/ant/workspaces
- *   - Relative path: ../../workspaces (not recommended)
  */
 
 const DEFAULT_PORT = 4100;
@@ -34,6 +29,10 @@ async function main() {
   
   // ✅ Get physical workspaces path (centralized in WorkspacePathResolver)
   const workspacesPath = WorkspacePathResolver.getPhysicalWorkspacesPath();
+  // Use correct resolver for mode
+  const resolver = mode === 'cloud'
+    ? new (await import('../infrastructure/workspace/WorkspaceResolver')).CloudWorkspaceResolver(workspacesPath)
+    : new LocalWorkspaceResolver(workspacesPath);
   
   const cloudUrl = process.env.CLOUD_URL || DEFAULT_CLOUD_URL;
   

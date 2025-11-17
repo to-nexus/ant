@@ -489,6 +489,11 @@ export const useStore = create<Store>((set, get) => {
           get().updateChatMessage(event.messageId, { isStreaming: false });
           break;
           
+        case 'cancelled_message':
+          console.log('[Store] 🛑 Adding cancelled message:', event.message);
+          get().addChatMessage(event.message);
+          break;
+          
         default:
           console.warn('[Store] 💬 Unknown chat event type:', event.type);
       }

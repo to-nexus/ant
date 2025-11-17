@@ -842,8 +842,9 @@ function CancelledCard({ content }: { content: MessageContent }) {
     }
   };
 
-  // Hide Resume button if another job is running or required data is missing
-  const showResumeButton = !isRunning && jobId && selectedProject && selectedFeature;
+  // interruption.reason이 'api_error' 등일 때도 Resume 버튼 노출
+  const reason = content.metadata?.reason;
+  const showResumeButton = !isRunning && jobId && selectedProject && selectedFeature && !!reason;
 
   return (
     <div className="border border-orange-200 dark:border-orange-800 rounded-lg overflow-hidden 

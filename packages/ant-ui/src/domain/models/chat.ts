@@ -44,6 +44,7 @@ export interface MessageContent {
     exitCode?: number;      // For command result
     timestamp?: string;
     jobId?: string;         // For cancelled: job ID to resume
+    reason?: string;        // For cancelled: interruption reason
     // Exploration & Analysis
     filesCount?: number;    // For explored/grepped
     totalFiles?: number;    // For exploring/grepping progress

@@ -16,6 +16,10 @@ export type CodeMode = CoreCodeMode;
 export interface ProjectContext extends CoreProjectContext {
   featureFolder: string;
   config: any;
+  
+  // ✅ UserContext information for path resolution
+  userId?: string;
+  organizationId?: string;
 }
 
 export interface ArchitectResult {

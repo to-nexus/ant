@@ -11,12 +11,12 @@ export class SimpleGitAdapter implements GitPort {
   constructor(project: string, config: any, projectPath?: string) {
     this.project = project;
     this.config = config;
-    
     // ✅ Require projectPath - no fallback
+    // projectPath는 WorkspaceResolver에서 생성해야 함
+    // 예시: new LocalWorkspaceResolver().getProjectPath(context, project)
     if (!projectPath) {
       throw new Error('projectPath is required for SimpleGitAdapter. Use WorkspaceResolver to generate paths.');
     }
-    
     this.projectPath = projectPath;
   }
 
@@ -28,12 +28,14 @@ export class SimpleGitAdapter implements GitPort {
 
   async getRepoRoot(): Promise<string> {
     await this.ensure();
-    
     // For local repos, use resolved localPath
     if (this.config.repoType === "local") {
       return resolveLocalPath(this.config.localPath, this.project);
     }
-    
+    // For cloud repos, codebase is in projectPath/codebase
+    if (this.config.repoType === "cloud") {
+      return path.join(this.projectPath, 'codebase');
+    }
     return (await this.git.revparse(["--show-toplevel"]))?.trim();
   }
 
@@ -120,6 +122,11 @@ export class SimpleGitAdapter implements GitPort {
   async fileExists(path: string): Promise<boolean> {
     const fs = await import("fs");
     const p = await import("path");
+    
+    // ✅ If absolute path, check directly (for workspace/project/feature validation)
+    if (p.isAbsolute(path)) {
+      return fs.existsSync(path);
+    }
     
     // For workspace paths, check in project path
     if (path.startsWith('workspace/')) {

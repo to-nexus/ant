@@ -222,10 +222,6 @@ ANT_SERVER_MODE=local
 # Port for HTTP server (default: 4100)
 PORT=4100
 
-# Workspaces directory (where projects are stored)
-# Supports: absolute paths, relative paths, ~/path (tilde expansion)
-WORKSPACES_PATH=~/ant-workspaces
-
 # Cloud mode only: Redirect URL for local mode info
 CLOUD_URL=http://localhost:4200/local
 
@@ -240,7 +236,7 @@ ANTHROPIC_API_KEY=sk-ant-api03-...
 # OPENAI_API_KEY=sk-...
 
 # Optional: Specify model (defaults to provider's best model)
-# AI_MODEL_NAME=claude-3-5-sonnet-20241022
+# AI_MODEL_NAME=claude-sonnet-4-5
 # AI_MODEL_NAME=gpt-4-turbo
 
 # ============================================
@@ -256,11 +252,10 @@ ANTHROPIC_API_KEY=sk-ant-api03-...
 |----------|-------------|---------|
 | `ANT_SERVER_MODE` | Deployment mode: `local` or `cloud` | `local` |
 | `PORT` | HTTP server port | `4100` |
-| `WORKSPACES_PATH` | Directory for workspaces | `~/ant-workspaces` |
 | `AI_MODEL_PROVIDER` | LLM provider | `anthropic` or `openai` |
 | `ANTHROPIC_API_KEY` | Anthropic API key | `sk-ant-api03-...` |
 | `OPENAI_API_KEY` | OpenAI API key | `sk-...` |
-| `AI_MODEL_NAME` | Specific model (optional) | `claude-3-5-sonnet-20241022` |
+| `AI_MODEL_NAME` | Specific model (optional) | `claude-sonnet-4-5` |
 | `CHROMA_URL` | ChromaDB URL (optional) | `http://localhost:8000` |
 
 #### Frontend (`ant-ui`)
@@ -394,7 +389,7 @@ Each project has a `config.json` file:
   "branchBase": "main",
   "autoLearn": true,
   "llmProvider": "anthropic",
-  "llmModel": "claude-3-5-sonnet-20241022"
+  "llmModel": "claude-sonnet-4-5"
 }
 ```
 

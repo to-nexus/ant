@@ -23,8 +23,7 @@ export function ChatPanel({ projectId: _projectId, featureName: _featureName, en
   // SSE subscription is managed automatically in Store
   const { messages, isStreaming } = useChat();
   
-  const lastJobFailed = useStore((state) => state.lastJobFailed);
-  const chatPolicy = useChatPolicy(messages.length, lastJobFailed);
+  const chatPolicy = useChatPolicy(messages.length);
 
   // ✅ CRITICAL: Extract stable values for dependency tracking
   // messages 배열 자체는 매번 새 참조이므로, 실제 변경사항만 추적
@@ -126,7 +125,6 @@ export function ChatPanel({ projectId: _projectId, featureName: _featureName, en
       {/* Input Area - Fixed at bottom */}
       <div className="border-t border-gray-200 dark:border-gray-700 shrink-0">
         <ChatInput 
-          disabled={isStreaming} 
           messageCount={messages.length}
           fileStats={fileStats}
         />

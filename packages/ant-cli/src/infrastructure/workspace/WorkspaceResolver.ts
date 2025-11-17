@@ -9,28 +9,25 @@ import { UserContext } from '../../core/types/user';
 
 export interface WorkspaceResolver {
   /**
-   * 사용자 컨텍스트를 기반으로 workspace 루트 경로 반환
+   * workspace 루트 경로 반환
+   * @param userContext Local 모드에서는 무시됨, Cloud 모드에서는 검증용으로 사용
    */
-  getWorkspacePath(context: UserContext): string;
+  getWorkspacePath(userContext: UserContext): string;
   
   /**
    * 프로젝트 경로 반환
+   * @param userContext Local 모드에서는 무시됨, Cloud 모드에서는 검증용으로 사용
    */
-  getProjectPath(context: UserContext, projectId: string): string;
+  getProjectPath(userContext: UserContext, projectId: string): string;
   
   /**
    * 피처 경로 반환
+   * @param userContext Local 모드에서는 무시됨, Cloud 모드에서는 검증용으로 사용
    */
-  getFeaturePath(context: UserContext, projectId: string, featureId: string): string;
+  getFeaturePath(userContext: UserContext, projectId: string, featureId: string): string;
   
   /**
    * Get physical workspaces directory path
-   * Reads from WORKSPACES_PATH environment variable
-   * Supports:
-   * - Absolute paths: /Users/wag/dev/ant/workspaces
-   * - Home directory: ~/dev/ant/workspaces
-   * - Relative paths: ../../workspaces (not recommended)
-   * Falls back to default relative path for development
    */
   getPhysicalWorkspacesPath(): string;
 }
@@ -41,51 +38,71 @@ export interface WorkspaceResolver {
 export class WorkspacePathResolver {
   /**
    * Get physical workspaces directory path
-   * This is the ONLY place that reads WORKSPACES_PATH env var
    */
   static getPhysicalWorkspacesPath(): string {
-    const envPath = process.env.WORKSPACES_PATH;
-    if (envPath) {
-      // ✅ Handle tilde expansion
-      let resolvedPath = envPath;
-      if (envPath.startsWith('~/')) {
-        const homeDir = process.env.HOME || process.env.USERPROFILE;
-        if (!homeDir) {
-          throw new Error('Cannot resolve ~: HOME environment variable not set');
-        }
-        resolvedPath = path.join(homeDir, envPath.slice(2));
-      }
-      
-      // Convert to absolute path if relative
-      return path.isAbsolute(resolvedPath) ? resolvedPath : path.resolve(process.cwd(), resolvedPath);
+    const projectRoot = path.resolve(__dirname, '../../../../..');
+    return path.join(projectRoot, 'workspaces');
+  }
+  
+  /**
+   * Helper: Resolve feature path from context
+   * Extracts UserContext from ProjectContext and calls WorkspaceResolver
+   * 
+   * @param context ProjectContext with userId, organizationId
+   * @param resolver WorkspaceResolver instance
+   * @returns Feature path
+   */
+  static resolveFeaturePath(
+    context: { project: string; featureFolder: string; userId?: string; organizationId?: string; featurePath?: string; workspaceResolver?: WorkspaceResolver },
+    resolver?: WorkspaceResolver
+  ): string {
+    // ✅ Use cached featurePath if available (performance)
+    if (context.featurePath) {
+      return context.featurePath;
     }
     
-    // Fallback: 개발 환경용 (server.ts 기준 상대 경로)
-    // server.ts 위치: packages/ant-cli/src/composition/
-    // workspaces 위치: workspaces/
-    const defaultPath = path.resolve(__dirname, '../../../../workspaces');
-    console.warn(`⚠️  WORKSPACES_PATH not set, using default: ${defaultPath}`);
-    return defaultPath;
+    // ✅ Use provided resolver or extract from context
+    const workspaceResolver = resolver || (context as any).workspaceResolver;
+    if (!workspaceResolver) {
+      // ⚠️ Fallback: construct path (assumes Local mode)
+      console.warn('[WorkspacePathResolver.resolveFeaturePath] No resolver available, using fallback');
+      return path.join('workspaces', 'local', 'user', context.project, 'features', context.featureFolder);
+    }
+    
+    // ✅ Build UserContext from ProjectContext
+    const userContext: UserContext = {
+      userId: context.userId || 'local',
+      organizationId: context.organizationId || 'local',
+      workspacePath: ''
+    };
+    
+    return workspaceResolver.getFeaturePath(userContext, context.project, context.featureFolder);
   }
+  
 }
+
 
 /**
  * Local Mode Workspace Resolver
  * 
- * workspaces/local/user/<project>/features/<feature>
+ * 구조: workspaces/local/user/<project>/features/<feature>
+ * Local 모드에서는 단일 사용자이므로 UserContext 무시
  */
 export class LocalWorkspaceResolver implements WorkspaceResolver {
   constructor(private readonly workspacesPath: string) {}
   
-  getWorkspacePath(context: UserContext): string {
+  getWorkspacePath(userContext: UserContext): string {
+    // Local 모드에서는 userContext 무시
     return path.join(this.workspacesPath, 'local', 'user');
   }
   
-  getProjectPath(context: UserContext, projectId: string): string {
+  getProjectPath(userContext: UserContext, projectId: string): string {
+    // Local 모드에서는 userContext 무시
     return path.join(this.workspacesPath, 'local', 'user', projectId);
   }
   
-  getFeaturePath(context: UserContext, projectId: string, featureId: string): string {
+  getFeaturePath(userContext: UserContext, projectId: string, featureId: string): string {
+    // Local 모드에서는 userContext 무시
     return path.join(this.workspacesPath, 'local', 'user', projectId, 'features', featureId);
   }
   
@@ -97,35 +114,33 @@ export class LocalWorkspaceResolver implements WorkspaceResolver {
 /**
  * Cloud Mode Workspace Resolver
  * 
- * workspaces/<org>/<user>/<project>/features/<feature>
+ * 구조: workspaces/<org>/<user>/<project>/features/<feature>
+ * Cloud 모드에서는 요청마다 UserContext 검증
  */
 export class CloudWorkspaceResolver implements WorkspaceResolver {
   constructor(private readonly workspacesPath: string) {}
   
-  getWorkspacePath(context: UserContext): string {
-    // ⚠️ Validate context in Cloud mode
-    if (context.organizationId === 'local' || context.userId === 'local') {
-      console.error(`[CloudWorkspaceResolver] ❌ Invalid context in Cloud mode:`, context);
+  private validateContext(userContext: UserContext): void {
+    if (!userContext || userContext.organizationId === 'local' || userContext.userId === 'local') {
+      console.error(`[CloudWorkspaceResolver] ❌ Invalid context in Cloud mode:`, userContext);
       console.error(`   This indicates authentication failure. Check that cookies are being sent.`);
       throw new Error('Authentication required for Cloud mode. Please ensure cookies are enabled and user is authenticated.');
     }
-    return path.join(this.workspacesPath, context.organizationId, context.userId);
   }
   
-  getProjectPath(context: UserContext, projectId: string): string {
-    if (context.organizationId === 'local' || context.userId === 'local') {
-      console.error(`[CloudWorkspaceResolver] ❌ Invalid context in Cloud mode:`, context);
-      throw new Error('Authentication required for Cloud mode.');
-    }
-    return path.join(this.workspacesPath, context.organizationId, context.userId, projectId);
+  getWorkspacePath(userContext: UserContext): string {
+    this.validateContext(userContext);
+    return path.join(this.workspacesPath, userContext.organizationId, userContext.userId);
   }
   
-  getFeaturePath(context: UserContext, projectId: string, featureId: string): string {
-    if (context.organizationId === 'local' || context.userId === 'local') {
-      console.error(`[CloudWorkspaceResolver] ❌ Invalid context in Cloud mode:`, context);
-      throw new Error('Authentication required for Cloud mode.');
-    }
-    return path.join(this.workspacesPath, context.organizationId, context.userId, projectId, 'features', featureId);
+  getProjectPath(userContext: UserContext, projectId: string): string {
+    this.validateContext(userContext);
+    return path.join(this.workspacesPath, userContext.organizationId, userContext.userId, projectId);
+  }
+  
+  getFeaturePath(userContext: UserContext, projectId: string, featureId: string): string {
+    this.validateContext(userContext);
+    return path.join(this.workspacesPath, userContext.organizationId, userContext.userId, projectId, 'features', featureId);
   }
   
   getPhysicalWorkspacesPath(): string {

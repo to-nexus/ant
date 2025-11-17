@@ -1,4 +1,4 @@
-import { getDirective, findLatestDesign } from "../../../utils";
+import { ArtifactService } from "../../../../../infrastructure/workspace/ArtifactService";
 import { ArchitectGraphState } from "../state";
 import { CodebaseRetriever } from "../../../../../core/codebase/CodebaseRetriever";
 import * as path from "path";
@@ -46,36 +46,49 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     throw new Error("GitPort not provided for file operations");
   }
 
-  // 0. Validate workspace exists
-  const workspacePath = path.join("workspace", context.project);
-  const workspaceExists = await gitPort.fileExists(workspacePath);
+  // 0. Validate workspace exists (WorkspaceResolver 기반)
+  const workspaceResolver = context.workspaceResolver;
+  if (!workspaceResolver) {
+    throw new Error('WorkspaceResolver not provided in context');
+  }
   
+  // ✅ Extract UserContext from ProjectContext
+  const userContext = {
+    userId: context.userId || 'local',
+    organizationId: context.organizationId || 'local',
+    workspacePath: ''
+  };
+  
+  const workspacePath = workspaceResolver.getProjectPath(userContext, context.project);
+  const workspaceExists = await gitPort.fileExists(workspacePath);
   if (!workspaceExists) {
     throw new Error(
       `Workspace not found: ${workspacePath}\n\n` +
       `Please create workspace first:\n` +
       `  npm run init:workspace ${context.project}\n\n` +
       `Then prepare your inputs in:\n` +
-      `  workspace/${context.project}/${context.featureFolder}/inputs/`
+      `  ${workspacePath}/${context.featureFolder}/inputs/`
     );
   }
 
-  // Validate feature exists
-  const featurePath = path.join("workspace", context.project, context.featureFolder);
+  // Validate feature exists and store resolved path in context
+  const featurePath = workspaceResolver.getFeaturePath(userContext, context.project, context.featureFolder);
   const featureExists = await gitPort.fileExists(featurePath);
-  
   if (!featureExists) {
     throw new Error(
       `Feature directory not found: ${featurePath}\n\n` +
       `Please create feature first:\n` +
       `  npm run init:feature ${context.project} ${context.featureFolder}\n\n` +
       `Then prepare your inputs in:\n` +
-      `  workspace/${context.project}/${context.featureFolder}/inputs/`
+      `  ${featurePath}/inputs/`
     );
   }
+  
+  // ✅ Store resolved featurePath in context for use by other nodes
+  context.featurePath = featurePath;
 
   // 1. Load design document (optional)
-  const design = await findLatestDesign(context, gitPort) || undefined;
+  const design = await ArtifactService.findLatestDesign(context, gitPort) || undefined;
 
   // 2. Load directive with override priority
   // ✅ Priority: overrideDirective (from chat) > directive.md > directive-nnn.md
@@ -87,7 +100,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     directive = state.overrideDirective;
   } else {
     // Load from file system
-    directive = await getDirective(context, 'code', gitPort) || undefined;
+    directive = await ArtifactService.getDirective(context, 'code', gitPort) || undefined;
   }
   
   // Validate: Must have either design doc OR directive

@@ -7,15 +7,18 @@
 
 import * as path from 'path';
 import { WorkspacePort } from '../../core/ports/workspace';
+import { WorkspaceResolver, LocalWorkspaceResolver, WorkspacePathResolver } from './WorkspaceResolver';
 
 export class WorkspaceService implements WorkspacePort {
-  private readonly workspaceRoot: string;
+  private readonly workspaceResolver: WorkspaceResolver;
   
   /**
    * @param workspaceRoot - 작업 공간 루트 디렉토리 (예: /path/to/workspaces)
    */
   constructor(workspaceRoot: string) {
-    this.workspaceRoot = path.resolve(workspaceRoot);
+    // Use WorkspacePathResolver to get the correct workspaces path
+    const workspacesPath = WorkspacePathResolver.getPhysicalWorkspacesPath();
+    this.workspaceResolver = new LocalWorkspaceResolver(workspacesPath);
   }
   
   /**
@@ -25,8 +28,7 @@ export class WorkspaceService implements WorkspacePort {
   getUserWorkspacePath(organizationId: string, userId: string): string {
     this.validateIdentifier(organizationId, 'organizationId');
     this.validateIdentifier(userId, 'userId');
-    
-    return path.join(this.workspaceRoot, organizationId, userId);
+    return this.workspaceResolver.getWorkspacePath({ organizationId, userId, workspacePath: '' });
   }
   
   /**
@@ -37,8 +39,7 @@ export class WorkspaceService implements WorkspacePort {
     this.validateIdentifier(org, 'organizationId');
     this.validateIdentifier(user, 'userId');
     this.validateIdentifier(project, 'projectId');
-    
-    return path.join(this.workspaceRoot, org, user, project);
+    return this.workspaceResolver.getProjectPath({ organizationId: org, userId: user, workspacePath: '' }, project);
   }
   
   /**
@@ -50,8 +51,7 @@ export class WorkspaceService implements WorkspacePort {
     this.validateIdentifier(user, 'userId');
     this.validateIdentifier(project, 'projectId');
     this.validateIdentifier(feature, 'featureId');
-    
-    return path.join(this.workspaceRoot, org, user, project, 'features', feature);
+    return this.workspaceResolver.getFeaturePath({ organizationId: org, userId: user, workspacePath: '' }, project, feature);
   }
   
   /**
@@ -60,7 +60,7 @@ export class WorkspaceService implements WorkspacePort {
    */
   getArtifactsPath(org: string, user: string, project: string, feature: string): string {
     const featurePath = this.getFeaturePath(org, user, project, feature);
-    return path.join(featurePath, 'artifacts');
+    return `${featurePath}/artifacts`;
   }
   
   /**
@@ -69,7 +69,7 @@ export class WorkspaceService implements WorkspacePort {
    */
   getCodebasePath(org: string, user: string, project: string): string {
     const projectPath = this.getProjectPath(org, user, project);
-    return path.join(projectPath, 'codebase');
+    return `${projectPath}/codebase`;
   }
   
   /**
@@ -78,7 +78,7 @@ export class WorkspaceService implements WorkspacePort {
    */
   getConfigPath(org: string, user: string, project: string): string {
     const projectPath = this.getProjectPath(org, user, project);
-    return path.join(projectPath, 'config.json');
+    return `${projectPath}/config.json`;
   }
   
   /**
