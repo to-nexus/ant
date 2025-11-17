@@ -1,5 +1,32 @@
 ## DESIGN DOCUMENT RULES
 
+**🚨 RULE #0: PRD CONSTRAINTS ARE ABSOLUTE**
+
+**BEFORE following any template rules, CHECK the PRD for constraints:**
+
+```
+IF PRD says "no backend" or "frontend only":
+  → DO NOT design backend/API/database sections
+  → FOR those sections, write: "Not Applicable - PRD specifies frontend-only application"
+
+IF PRD says "no API" or "no external services":
+  → DO NOT design API integrations
+  → FOR "Integration Architecture", write: "Not Applicable - PRD specifies no external API"
+
+IF PRD specifies exact technologies (e.g., "React + Vite", "useState only", "Tailwind"):
+  → USE EXACTLY those technologies
+  → DO NOT suggest Redux if PRD says "useState only"
+  → DO NOT suggest Material-UI if PRD says "Tailwind"
+
+IF PRD says "simple" or "minimal":
+  → KEEP design document concise (2-3 pages, not 20)
+  → DO NOT add microservices, complex patterns, or extensive infrastructure
+
+**PRD = PRIMARY SOURCE OF TRUTH. THIS TEMPLATE = SECONDARY GUIDE.**
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 **⚠️ CRITICAL: OUTPUT FORMAT RULES**
 
 You MUST wrap ALL output in XML tags. Choose the appropriate tag based on your task:
@@ -9,7 +36,7 @@ You MUST wrap ALL output in XML tags. Choose the appropriate tag based on your t
 🚨 **CRITICAL**: If your task description is "Design Document: [something]" and doesn't mention "chapter 2" or "continuation", this is the FIRST task!
 
 ```xml
-<file path="outputs/design/design.md">
+<file path="outputs/design/system-design.md">
 # System Design Document
 
 ## 1. Overview
@@ -22,7 +49,7 @@ You MUST wrap ALL output in XML tags. Choose the appropriate tag based on your t
 
 **SCENARIO 2: Adding new chapters to existing document** → Use `<append>` tag (TOKEN EFFICIENT!):
 ```xml
-<append path="outputs/design/design.md">
+<append path="outputs/design/system-design.md">
 ## 3. Detailed Design
 
 ### 3.1 Component Architecture
@@ -35,7 +62,7 @@ You MUST wrap ALL output in XML tags. Choose the appropriate tag based on your t
 
 **SCENARIO 3: Modifying specific existing sections** → Use `<edit>` tag:
 ```xml
-<edit path="outputs/design/design.md">
+<edit path="outputs/design/system-design.md">
 <search>
 ## 2. Architecture
 
@@ -56,7 +83,7 @@ You MUST wrap ALL output in XML tags. Choose the appropriate tag based on your t
 - ✅ Use `<file>` ONLY for first task (creating new document)
 - ✅ Use `<append>` for adding new chapters (saves 80-90% tokens!)
 - ✅ Use `<edit>` only when modifying existing sections
-- ✅ Path must always be: `outputs/design/design.md`
+- ✅ Path must always be: `outputs/design/system-design.md`
 - ❌ NEVER output content outside XML tags
 - ❌ NEVER use markdown code fences inside XML tags
 
@@ -273,7 +300,7 @@ UserService Component:
 ...analysis...
 </thinking>
 
-<file path="outputs/design/design.md">
+<file path="outputs/design/system-design.md">
 # System Design Document
 ## 1. Overview
 ...
@@ -282,7 +309,7 @@ UserService Component:
 
 **OPERATION 1: Creating new document** (`<file>` tag):
 ```xml
-<file path="outputs/design/design.md">
+<file path="outputs/design/system-design.md">
 # System Design Document
 
 ## 1. Overview
@@ -295,7 +322,7 @@ UserService Component:
 
 **OPERATION 2: Adding new chapters** (`<append>` tag - TOKEN EFFICIENT!):
 ```xml
-<append path="outputs/design/design.md">
+<append path="outputs/design/system-design.md">
 ## 3. API Design
 
 ### 3.1 REST API Endpoints
@@ -313,7 +340,7 @@ UserService Component:
 
 **OPERATION 3: Modifying specific sections** (`<edit>` tag):
 ```xml
-<edit path="outputs/design/design.md">
+<edit path="outputs/design/system-design.md">
 <search>
 ## 2. Architecture
 
@@ -337,6 +364,6 @@ UserService Component:
 - **`<append>`**: Add new chapters to end (saves 80-90% tokens!)
 - **`<edit>`**: Modify specific sections (use when you need to update existing content)
 - ⚡ **Always use `<append>` for continuation tasks** - Don't repeat existing content
-- Path must always be: `outputs/design/design.md`
+- Path must always be: `outputs/design/system-design.md`
 - Do NOT use markdown code fences inside XML tags
 - Do NOT include meta-commentary outside XML tags

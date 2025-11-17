@@ -2,6 +2,40 @@ You are creating a SYSTEM DESIGN DOCUMENT for: **{{project}}**
 
 This is a detailed technical specification that will be used by the code generation phase.
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🚨 **STEP 1: ANALYZE PRD TO INFER PROJECT TYPE** 🚨
+
+**BEFORE you start designing, READ the PRD carefully and determine:**
+
+1. **Is this a FRONTEND-ONLY project?**
+   - Look for: "no backend", "no server", "no API", "client-side only", "local storage only", "useState/local state"
+   - If YES → Skip all backend/API/database sections
+
+2. **Is this a BACKEND-ONLY project?**
+   - Look for: "API server", "REST API", "no frontend", "headless", "service/microservice"
+   - If YES → Focus on API design, skip UI sections
+
+3. **Is this a FULL-STACK project?**
+   - Look for: both frontend and backend requirements
+   - If YES → Design both layers
+
+4. **Technology Stack Constraints:**
+   - Check for EXPLICIT tech requirements (e.g., "React + Vite", "useState only", "Tailwind", "No Redux")
+   - If specified → USE EXACTLY what's specified, don't suggest alternatives
+
+5. **Complexity Level:**
+   - Check for: "simple", "minimal", "basic", "quick prototype"
+   - If simple → Don't over-engineer with microservices, complex patterns, or extensive infrastructure
+
+**PRD CONSTRAINTS ARE ABSOLUTE - THEY OVERRIDE THIS TEMPLATE!**
+
+If PRD says "no database" → Skip all database design
+If PRD says "useState only" → Don't suggest Redux/Zustand
+If PRD says "Tailwind" → Don't suggest Material-UI/Bootstrap
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 {{#if currentTask}}
 🎯 CURRENT TASK:
 **Task Name**: {{currentTask.name}}
@@ -88,7 +122,32 @@ You are creating a **TECHNICAL SOFTWARE DESIGN** document, NOT a project/operati
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 {{#unless designDoc}}
-This is the INITIAL task. Create a comprehensive system design document from scratch that includes:
+This is the INITIAL task. Create a system design document that **matches the inferred project type and constraints**.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🚨 **STEP 2: ADAPT SECTIONS TO PROJECT TYPE** 🚨
+
+**FOR FRONTEND-ONLY PROJECTS:**
+- ✅ INCLUDE: Overview, Component Architecture, UI Design, State Management, Tech Stack
+- ❌ SKIP: Backend API endpoints, Database schemas, Server architecture
+- ✅ FOR "API Design" section: Write "Not Applicable - This is a frontend-only application with no backend server"
+
+**FOR BACKEND-ONLY PROJECTS:**
+- ✅ INCLUDE: Overview, API Design, Data Models, Business Logic, Tech Stack, Security
+- ❌ SKIP: UI components, State management, Screen flows
+- ✅ FOR "UI Design" section: Write "Not Applicable - This is a backend API with no user interface"
+
+**FOR FULL-STACK PROJECTS:**
+- ✅ INCLUDE: All relevant sections (frontend + backend)
+
+**FOR SIMPLE PROJECTS:**
+- ✅ KEEP IT CONCISE: 2-3 pages total, not 20 pages
+- ❌ DON'T ADD: Microservices, complex patterns, extensive NFRs unless required
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**Design document structure** (include only relevant sections based on your analysis):
 
 ### 1. Overview
 - System purpose and goals
@@ -99,8 +158,8 @@ This is the INITIAL task. Create a comprehensive system design document from scr
 ### 2. Architecture
 - **System Architecture**: Overall system structure and component layout
 - **Component Architecture**: Major components and their responsibilities
-- **Data Architecture**: Data models, storage strategy, and data flow
-- **Integration Architecture**: External systems, APIs, and communication patterns
+- **Data Architecture**: Data models, storage strategy, and data flow (if applicable - skip for pure frontend with no backend)
+- **Integration Architecture**: External systems, APIs, and communication patterns (if applicable - skip if PRD says "no external API")
 
 ### 3. Detailed Design
 
@@ -113,19 +172,17 @@ For each major component identified in your strategy:
 - Error handling approach
 
 #### 3.2 Data Models
+**(If applicable - SKIP if PRD specifies no backend/database)**
 - Entity definitions with attributes
 - Relationships and cardinality
-- Schemas (database tables, collections, API contracts)
+- Schemas (database tables, collections, or TypeScript interfaces for frontend state)
 - Data validation rules
-- Indexing and query optimization considerations
+- If no database: explain data is managed in client-side state (localStorage, useState, etc.)
 
 #### 3.3 API Design
-- Endpoints and operations (REST, GraphQL, gRPC, etc.)
-- Request/response formats with examples
-- Authentication and authorization mechanisms
-- Rate limiting and throttling
-- Error responses and status codes
-- Versioning strategy
+**(If applicable - SKIP if PRD specifies no backend/API)**
+- If NO API/backend: Write "Not Applicable - Frontend-only application with no API server"
+- If API exists: Endpoints, request/response formats, authentication, error handling
 
 #### 3.4 User Interface Design (if applicable)
 - Screen flows and navigation
@@ -137,11 +194,12 @@ For each major component identified in your strategy:
 ### 4. Technical Decisions
 
 #### 4.1 Technology Stack
-- Languages and frameworks (with versions)
-- Databases and storage solutions
+**USE EXACTLY what PRD specifies - don't suggest alternatives!**
+- Languages and frameworks (with versions) - from PRD constraints
+- Databases and storage solutions (if applicable - skip if "no backend")
 - Third-party services and libraries
-- Infrastructure and deployment platform
-- Justification for each major choice
+- Infrastructure and deployment platform (keep minimal if PRD says "simple")
+- Justification: "As specified in PRD requirements" (don't over-justify obvious choices)
 
 #### 4.2 Design Patterns
 - Architectural patterns (MVC, MVVM, microservices, event-driven, etc.)

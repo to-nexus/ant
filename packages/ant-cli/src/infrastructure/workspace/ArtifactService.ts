@@ -164,7 +164,7 @@ export class ArtifactService {
 
   /**
    * Find latest design document
-   * Standard naming: system-design-{project}-{timestamp}.md
+   * Standard naming: system-design.md (fixed filename)
    */
   static async findLatestDesign(
     context: ProjectContext,
@@ -173,18 +173,13 @@ export class ArtifactService {
     const featurePath = WorkspacePathResolver.resolveFeaturePath(context);
     const designPath = path.join(featurePath, "outputs/design");
 
-    const exists = await gitPort.fileExists(designPath);
-    if (!exists) return "";
+    // ✅ Use fixed filename: system-design.md
+    const designFilePath = path.join(designPath, "system-design.md");
+    const exists = await gitPort.fileExists(designFilePath);
 
-    const entries = await gitPort.readDirectory(designPath);
-    const designFiles = entries
-      .filter(e => !e.isDirectory && e.name.startsWith("system-design-") && e.name.endsWith(".md"))
-      .map(e => ({ name: e.name, path: path.join(designPath, e.name) }))
-      .sort((a, b) => b.name.localeCompare(a.name)); // Latest first
+    if (!exists) return null;
 
-    if (designFiles.length === 0) return "";
-
-    return await gitPort.readFile(designFiles[0].path);
+    return await gitPort.readFile(designFilePath);
   }
 
   /**
