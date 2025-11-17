@@ -31,7 +31,7 @@ export interface ParsedAction {
   data: {
     content?: string;
     filePath?: string;
-    actionType?: 'create' | 'edit' | 'delete';
+    actionType?: 'create' | 'append' | 'edit' | 'delete';
     metadata?: Record<string, any>;
     blockStart?: boolean;  // For thinking: marks <thinking> tag opened (new block)
   };
@@ -53,7 +53,7 @@ export interface StreamResult {
 
 export interface FileStreamInfo {
   filePath: string;
-  actionType: 'create' | 'edit' | 'delete';
+  actionType: 'create' | 'append' | 'edit' | 'delete';
   startedAt: number;
   contentBuffer: string;
 }

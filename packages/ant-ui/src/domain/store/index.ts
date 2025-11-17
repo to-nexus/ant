@@ -345,8 +345,8 @@ export const useStore = create<Store>((set, get) => {
         return;
       }
       
-      console.log('[Store] 🔄 Active job detected via Kanban update');
-      console.log(`   DataSource: ${data.dataSource}`);
+      // console.log('[Store] 🔄 Active job detected via Kanban update'); // ✅ Too verbose
+      // console.log(`   DataSource: ${data.dataSource}`);
       console.log(`   Job ID: ${kanbanJobId}`);
       console.log('   Setting isRunning: true');
       
@@ -376,10 +376,10 @@ export const useStore = create<Store>((set, get) => {
   },
   
   updateWorkflow: (data) => {
-    console.log('[Store] 🔄 updateWorkflow:', {
-      currentNode: data.currentNode,
-      previousNode: data.previousNode
-    });
+    // console.log('[Store] 🔄 updateWorkflow:', { // ✅ Too verbose
+    //   currentNode: data.currentNode,
+    //   previousNode: data.previousNode
+    // });
     set({ workflow: data });
   },
   
@@ -427,12 +427,12 @@ export const useStore = create<Store>((set, get) => {
     
     // ✅ Register message handlers
     sseManager.registerHandler('kanban', (data) => {
-      console.log('[Store] 📊 Kanban update received:', data);
+      // console.log('[Store] 📊 Kanban update received:', data); // ✅ Too verbose
       get().updateKanban(data);
     });
     
     sseManager.registerHandler('chat', (event) => {
-      console.log('[Store] 💬 Chat SSE event:', event.type);
+      // console.log('[Store] 💬 Chat SSE event:', event.type); // ✅ Too verbose
       
       switch (event.type) {
         case 'initial_state':
@@ -446,19 +446,19 @@ export const useStore = create<Store>((set, get) => {
           break;
           
         case 'message_start':
-          console.log('[Store] 💬 Starting assistant message');
+          // console.log('[Store] 💬 Starting assistant message'); // ✅ Too verbose
           get().addChatMessage(event.message);
           break;
           
         case 'content_add':
-          console.log('[Store] 💬 Adding content to message:', event.messageId);
+          // console.log('[Store] 💬 Adding content to message:', event.messageId); // ✅ Too verbose
           get().updateChatMessage(event.messageId, {
             contents: [...(get().chatMessages.find(m => m.id === event.messageId)?.contents || []), event.content]
           });
           break;
           
         case 'content_update':
-          console.log('[Store] 💬 Updating content in message:', event.messageId, 'index:', event.contentIndex);
+          // console.log('[Store] 💬 Updating content in message:', event.messageId, 'index:', event.contentIndex); // ✅ Too verbose
           const message = get().chatMessages.find(m => m.id === event.messageId);
           if (message) {
             const updatedContents = [...message.contents];
@@ -468,6 +468,34 @@ export const useStore = create<Store>((set, get) => {
               contents: updatedContents,
               isStreaming: true 
             });
+          }
+          break;
+          
+        case 'content_append':
+          // ✅ Incremental content update - append delta to existing content (network efficient)
+          const appendMessage = get().chatMessages.find(m => m.id === event.messageId);
+          if (appendMessage) {
+            const appendContents = [...appendMessage.contents];
+            if (appendContents[event.contentIndex]) {
+              const oldContent = appendContents[event.contentIndex].content;
+              const newContent = oldContent + event.delta;
+              // ✅ DEBUG
+              console.log(`[Store] content_append - index: ${event.contentIndex}, old length: ${oldContent.length}, delta length: ${event.delta.length}, new length: ${newContent.length}`);
+              
+              // ✅ Append delta to existing content
+              appendContents[event.contentIndex] = {
+                ...appendContents[event.contentIndex],
+                content: newContent
+              };
+              get().updateChatMessage(event.messageId, { 
+                contents: appendContents,
+                isStreaming: true 
+              });
+            } else {
+              console.warn(`[Store] content_append - content at index ${event.contentIndex} not found`);
+            }
+          } else {
+            console.warn(`[Store] content_append - message ${event.messageId} not found`);
           }
           break;
           

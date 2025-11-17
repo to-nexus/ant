@@ -24,6 +24,7 @@ export class CommonRenderStrategy implements IRenderStrategy {
   private chatAPI: ChatAPIClient;
   private activeFiles: Map<string, FileStreamInfo> = new Map();
   private editOperations: Map<string, EditOperation> = new Map();
+  private lineBuffers: Map<string, string> = new Map();  // ✅ Line-based buffering for smooth streaming
   
   constructor(chatAPI: ChatAPIClient) {
     this.chatAPI = chatAPI;
@@ -117,17 +118,23 @@ export class CommonRenderStrategy implements IRenderStrategy {
     
     // Check for duplicates
     if (registry.hasStreamed(filePath)) {
-      console.log(`⏭️  [Render] Skipping duplicate file: ${filePath}`);
       return;
     }
     
     // Determine final action type
     const isExisting = registry.isExisting(filePath);
-    const finalActionType = actionType === 'delete' 
-      ? 'delete' 
-      : (isExisting ? 'edit' : 'create');
+    let finalActionType: 'create' | 'append' | 'edit' | 'delete';
     
-    console.log(`📝 [Render] Starting ${finalActionType.toUpperCase()}: ${filePath}`);
+    if (actionType === 'delete') {
+      finalActionType = 'delete';
+    } else if (actionType === 'append') {
+      finalActionType = 'append';  // ✅ Keep append as-is
+    } else if (actionType === 'edit') {
+      finalActionType = 'edit';    // ✅ Keep edit as-is
+    } else {
+      // 'create' or undefined - determine from existence
+      finalActionType = isExisting ? 'edit' : 'create';
+    }
     
     // Register in registry
     registry.markAsStreamed(filePath, finalActionType);
@@ -140,12 +147,16 @@ export class CommonRenderStrategy implements IRenderStrategy {
       contentBuffer: ''
     });
     
+    // ✅ Initialize line buffer for streaming
+    this.lineBuffers.set(filePath, '');
+    
     // Send UI notification
-    if (finalActionType === 'create') {
+    if (finalActionType === 'create' || finalActionType === 'append') {
+      // ✅ Both create and append use streamFileContent for real-time streaming
       await this.chatAPI.streamFileContent(filePath, '');
     } else if (finalActionType === 'edit') {
       await this.chatAPI.startFileEdit(filePath);
-      // Initialize edit operation tracking
+      // Initialize edit operation tracking (for search/replace)
       this.editOperations.set(filePath, {
         filePath,
         searchContent: '',
@@ -191,12 +202,25 @@ export class CommonRenderStrategy implements IRenderStrategy {
       return;  // Don't stream search/replace sections incrementally
     }
     
-    // For create operations, we could stream content incrementally here
-    // But for now, we'll accumulate and send at file_end for simplicity
-    // Uncomment below to enable real-time streaming:
-    // if (fileInfo.actionType === 'create') {
-    //   await this.chatAPI.streamFileContent(filePath, content);
-    // }
+    // ✅ Real-time streaming for create and append operations (LINE-BASED BUFFERING)
+    if (fileInfo.actionType === 'create' || fileInfo.actionType === 'append') {
+      const lineBuffer = this.lineBuffers.get(filePath) || '';
+      const updatedBuffer = lineBuffer + content;
+      
+      // Split by newlines and emit complete lines
+      const lines = updatedBuffer.split('\n');
+      
+      // Keep last incomplete line in buffer
+      const incompleteLastLine = lines.pop() || '';
+      this.lineBuffers.set(filePath, incompleteLastLine);
+      
+      // ✅ Incremental streaming: Send only new complete lines (network efficient)
+      // ChatService now uses content_append event (delta-based)
+      if (lines.length > 0) {
+        const newContent = lines.join('\n') + '\n';  // ✅ Only new lines
+        await this.chatAPI.streamFileContent(filePath, newContent);
+      }
+    }
   }
   
   private async renderFileEnd(
@@ -219,7 +243,15 @@ export class CommonRenderStrategy implements IRenderStrategy {
     console.log(`✅ [Render] Completing ${fileInfo.actionType.toUpperCase()}: ${filePath}`);
     
     try {
-      if (fileInfo.actionType === 'create') {
+      // ✅ Flush any remaining incomplete line before completion
+      const remainingBuffer = this.lineBuffers.get(filePath);
+      if (remainingBuffer && (fileInfo.actionType === 'create' || fileInfo.actionType === 'append')) {
+        await this.chatAPI.streamFileContent(filePath, remainingBuffer);
+        this.lineBuffers.delete(filePath);
+      }
+      
+      if (fileInfo.actionType === 'create' || fileInfo.actionType === 'append') {
+        // ✅ Both create and append complete as file creation
         await this.chatAPI.completeFileCreation(filePath, fileInfo.contentBuffer);
       } else if (fileInfo.actionType === 'edit') {
         const editOp = this.editOperations.get(filePath);
@@ -241,6 +273,8 @@ export class CommonRenderStrategy implements IRenderStrategy {
     } finally {
       // Cleanup
       this.activeFiles.delete(filePath);
+      this.editOperations.delete(filePath);
+      this.lineBuffers.delete(filePath);  // ✅ Cleanup line buffer
     }
   }
   

@@ -1,7 +1,7 @@
 import { GeneratedFile } from "../../state";
 
 // ✅ Export types for external use
-export type { EditInstruction };
+export type { EditInstruction, AppendInstruction };
 
 /**
  * ============================================================================
@@ -13,6 +13,7 @@ export type { EditInstruction };
  * 
  * This parser handles:
  * - XML format: <file path="...">...</file>
+ * - XML appends: <append path="...">...</append>
  * - XML edits: <edit path="..."><search>...</search><replace>...</replace></edit>
  * - XML deletes: <delete path="..." />
  * - Commands: ```bash ... ```
@@ -30,12 +31,18 @@ interface ParseResult {
   filesToDelete: string[];
   commands: Command[];
   edits: EditInstruction[];
+  appends: AppendInstruction[];  // ✅ NEW
 }
 
 interface EditInstruction {
   path: string;
   search: string;
   replace: string;
+}
+
+interface AppendInstruction {  // ✅ NEW
+  path: string;
+  content: string;
 }
 
 interface Command {
@@ -96,6 +103,16 @@ const EDIT_PARSERS: EditParser[] = [
     extractPath: (m) => m[1].trim(),
     extractSearch: (m) => m[2].trim(),
     extractReplace: (m) => m[3].trim(),
+  },
+];
+
+// ✅ Append format parser (XML only - Append to file)
+const APPEND_PARSERS: FileParser[] = [
+  {
+    name: 'XML Append Format',
+    regex: /<append path="([^"]+)">\s*([\s\S]*?)\s*<\/append>/g,
+    extractPath: (m) => m[1].trim(),
+    extractContent: (m) => m[2].trim(),
   },
 ];
 
@@ -258,6 +275,26 @@ function parseCommands(content: string): Command[] {
   return commands;
 }
 
+/**
+ * ✅ Parses append instructions using all registered append parsers
+ */
+function parseAppends(content: string): AppendInstruction[] {
+  const appends: AppendInstruction[] = [];
+  
+  for (const parser of APPEND_PARSERS) {
+    let match: RegExpExecArray | null;
+    
+    while ((match = parser.regex.exec(content)) !== null) {
+      appends.push({
+        path: parser.extractPath(match),
+        content: parser.extractContent(match),
+      });
+    }
+  }
+  
+  return appends;
+}
+
 // ============================================================================
 // Main Export
 // ============================================================================
@@ -288,14 +325,18 @@ export function parseResponse(raw: string): ParseResult {
   // 4. Parse edit instructions (search/replace)
   const edits = parseEdits(content);
   
-  // 5. Parse shell commands
+  // 5. ✅ Parse append instructions
+  const appends = parseAppends(content);
+  
+  // 6. Parse shell commands
   const commands = parseCommands(content);
   
-  // 6. Return structured result
+  // 7. Return structured result
   return {
     files: Array.from(fileMap.values()),
     filesToDelete,
     edits,
+    appends,
     commands,
   };
 }

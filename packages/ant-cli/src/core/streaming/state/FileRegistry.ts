@@ -29,7 +29,7 @@ export class FileRegistry {
   /**
    * Mark file as streamed (prevents duplicate processing)
    */
-  markAsStreamed(filePath: string, actionType: 'create' | 'edit' | 'delete'): void {
+  markAsStreamed(filePath: string, actionType: 'create' | 'append' | 'edit' | 'delete'): void {
     this.streamedFiles.set(filePath, {
       filePath,
       actionType,

@@ -64,22 +64,18 @@ export class SimpleGitAdapter implements GitPort {
     const fs = await import("fs");
     const p = await import("path");
     
-    // For workspace paths, write to project path
-    if (path.startsWith('workspace/')) {
-      // workspace/project/feature/... -> feature/...
-      // Extract everything after workspace/project/
-      const parts = path.split('/');
-      parts.shift();  // Remove 'workspace'
-      parts.shift();  // Remove project name
-      const featureRelativePath = parts.join('/');
-      
-      const full = p.join(this.projectPath, featureRelativePath);
-      
-      fs.mkdirSync(p.dirname(full), { recursive: true });
-      fs.writeFileSync(full, content, "utf8");
+    // ✅ Strategy: Let WorkspaceResolver handle all path resolution
+    // - Absolute paths: Already resolved (feature outputs) → write directly
+    // - Relative paths: Codebase files → join with repoRoot
+    
+    if (p.isAbsolute(path)) {
+      // Absolute path already resolved by WorkspaceResolver
+      fs.mkdirSync(p.dirname(path), { recursive: true });
+      fs.writeFileSync(path, content, "utf8");
       return;
     }
     
+    // Relative path: codebase file
     await this.ensure();
     const root = await this.getRepoRoot();
     const full = p.join(root, path);
@@ -91,23 +87,19 @@ export class SimpleGitAdapter implements GitPort {
     const fs = await import("fs");
     const p = await import("path");
     
-    // For workspace paths, read from project path
-    if (path.startsWith('workspace/')) {
-      // workspace/project/feature/... -> feature/...
-      const parts = path.split('/');
-      parts.shift();  // Remove 'workspace'
-      parts.shift();  // Remove project name
-      const featureRelativePath = parts.join('/');
-      
-      const full = p.join(this.projectPath, featureRelativePath);
-      
+    // ✅ Strategy: Let WorkspaceResolver handle all path resolution
+    // - Absolute paths: Already resolved → read directly
+    // - Relative paths: Codebase files → join with repoRoot
+    
+    if (p.isAbsolute(path)) {
       try {
-        return fs.readFileSync(full, "utf8");
+        return fs.readFileSync(path, "utf8");
       } catch {
         return null;
       }
     }
     
+    // Relative path: codebase file
     await this.ensure();
     const root = await this.getRepoRoot();
     const full = p.join(root, path);
@@ -123,24 +115,15 @@ export class SimpleGitAdapter implements GitPort {
     const fs = await import("fs");
     const p = await import("path");
     
-    // ✅ If absolute path, check directly (for workspace/project/feature validation)
+    // ✅ Strategy: Let WorkspaceResolver handle all path resolution
+    // - Absolute paths: Already resolved → check directly
+    // - Relative paths: Codebase files → join with repoRoot
+    
     if (p.isAbsolute(path)) {
       return fs.existsSync(path);
     }
     
-    // For workspace paths, check in project path
-    if (path.startsWith('workspace/')) {
-      // workspace/project/feature/... -> feature/...
-      const parts = path.split('/');
-      parts.shift();  // Remove 'workspace'
-      const projectInPath = parts[0];
-      parts.shift();  // Remove project name
-      const featureRelativePath = parts.join('/');
-      
-      const full = p.join(this.projectPath, featureRelativePath);
-      return fs.existsSync(full);
-    }
-    
+    // Relative path: codebase file
     await this.ensure();
     const root = await this.getRepoRoot();
     const full = p.join(root, path);
@@ -152,38 +135,18 @@ export class SimpleGitAdapter implements GitPort {
     const fs = await import("fs");
     const p = await import("path");
     
-    // For workspace paths, delete from project path
-    if (path.startsWith('workspace/')) {
-      // workspace/project/feature/... -> feature/...
-      const parts = path.split('/');
-      parts.shift();  // Remove 'workspace'
-      parts.shift();  // Remove project name
-      const featureRelativePath = parts.join('/');
-      
-      const full = p.join(this.projectPath, featureRelativePath);
-      
-      // ✅ Check if file exists and is a file (not directory)
-      if (!fs.existsSync(full)) {
-        return; // File doesn't exist, nothing to do
-      }
-      
-      const stats = fs.statSync(full);
-      if (stats.isDirectory()) {
-        throw new Error(`Cannot delete directory as file: ${path}`);
-      }
-      
-      try {
-        fs.unlinkSync(full);
-      } catch (error: any) {
-        // ✅ Re-throw with better error message
-        throw new Error(`Failed to delete ${path}: ${error.message || 'Permission denied'}`);
-      }
-      return;
-    }
+    // ✅ Strategy: Let WorkspaceResolver handle all path resolution
+    // - Absolute paths: Already resolved → delete directly
+    // - Relative paths: Codebase files → join with repoRoot
     
-    await this.ensure();
-    const root = await this.getRepoRoot();
-    const full = p.join(root, path);
+    let full: string;
+    if (p.isAbsolute(path)) {
+      full = path;
+    } else {
+      await this.ensure();
+      const root = await this.getRepoRoot();
+      full = p.join(root, path);
+    }
     
     // ✅ Check if file exists and is a file (not directory)
     if (!fs.existsSync(full)) {
@@ -213,29 +176,18 @@ export class SimpleGitAdapter implements GitPort {
     const fs = await import("fs");
     const p = await import("path");
     
-    // For workspace paths, read from project path
-    if (path.startsWith('workspace/')) {
-      // workspace/project/feature/... -> feature/...
-      const parts = path.split('/');
-      parts.shift();  // Remove 'workspace'
-      parts.shift();  // Remove project name
-      const featureRelativePath = parts.join('/');
-      
-      const full = p.join(this.projectPath, featureRelativePath);
-      try {
-        const entries = fs.readdirSync(full, { withFileTypes: true });
-        return entries.map(entry => ({
-          name: entry.name,
-          isDirectory: entry.isDirectory()
-        }));
-      } catch {
-        return [];
-      }
-    }
+    // ✅ Strategy: Let WorkspaceResolver handle all path resolution
+    // - Absolute paths: Already resolved → read directly
+    // - Relative paths: Codebase dirs → join with repoRoot
     
-    await this.ensure();
-    const root = await this.getRepoRoot();
-    const full = p.join(root, path);
+    let full: string;
+    if (p.isAbsolute(path)) {
+      full = path;
+    } else {
+      await this.ensure();
+      const root = await this.getRepoRoot();
+      full = p.join(root, path);
+    }
     
     try {
       const entries = fs.readdirSync(full, { withFileTypes: true });
@@ -252,23 +204,19 @@ export class SimpleGitAdapter implements GitPort {
     const fs = await import("fs");
     const p = await import("path");
     
-    // For workspace paths, create in project path
-    if (path.startsWith('workspace/')) {
-      // workspace/project/feature/... -> feature/...
-      const parts = path.split('/');
-      parts.shift();  // Remove 'workspace'
-      parts.shift();  // Remove project name
-      const featureRelativePath = parts.join('/');
-      
-      const full = p.join(this.projectPath, featureRelativePath);
-      fs.mkdirSync(full, { recursive: true });
+    // ✅ Strategy: Let WorkspaceResolver handle all path resolution
+    // - Absolute paths: Already resolved → create directly
+    // - Relative paths: Codebase dirs → join with repoRoot
+    
+    if (p.isAbsolute(path)) {
+      fs.mkdirSync(path, { recursive: true });
       return;
     }
     
+    // Relative path: codebase directory
     await this.ensure();
     const root = await this.getRepoRoot();
     const full = p.join(root, path);
-    
     fs.mkdirSync(full, { recursive: true });
   }
 

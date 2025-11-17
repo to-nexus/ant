@@ -22,13 +22,13 @@ function ActiveNodeIndicatorComponent({ displayedState }: ActiveNodeIndicatorPro
   const isStopping = useStore(state => state.isStopping);
   
   // 🔍 DEBUG
-  console.log('[ActiveNodeIndicator] Debug:', {
-    isRunning,
-    isStopping,
-    hasDisplayedState: !!displayedState,
-    currentNode: displayedState?.currentNode,
-    currentTask: displayedState?.currentTask?.name
-  });
+  // console.log('[ActiveNodeIndicator] Debug:', { // ✅ Too verbose
+  //   isRunning,
+  //   isStopping,
+  //   hasDisplayedState: !!displayedState,
+  //   currentNode: displayedState?.currentNode,
+  //   currentTask: displayedState?.currentTask?.name
+  // });
   
   // ✅ UI 정책: 실행 중이고 중단 중이 아닐 때만 표시
   const shouldShow = isRunning && !isStopping;

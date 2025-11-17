@@ -77,22 +77,22 @@ function getAuthHeaders(): HeadersInit {
   // ✅ Skip auth headers for Local mode
   const backendMode = getBackendMode();
   
-  console.log('[getAuthHeaders] backendMode:', backendMode);
+  // console.log('[getAuthHeaders] backendMode:', backendMode); // ✅ Too verbose
   
   if (backendMode === 'local') {
-    console.log('[getAuthHeaders] Local mode - no auth headers');
+    // console.log('[getAuthHeaders] Local mode - no auth headers'); // ✅ Too verbose
     return {};
   }
   
   // Get user email from localStorage (Cloud mode only)
   try {
     const userEmail = localStorage.getItem('ant-ui:user-email');
-    console.log('[getAuthHeaders] userEmail from localStorage:', userEmail);
+    // console.log('[getAuthHeaders] userEmail from localStorage:', userEmail); // ✅ Too verbose
     
     if (userEmail) {
       const email = JSON.parse(userEmail);
-      console.log('[getAuthHeaders] Parsed email:', email);
-      console.log('[getAuthHeaders] Returning header:', { 'x-user-email': email });
+      // console.log('[getAuthHeaders] Parsed email:', email); // ✅ Too verbose
+      // console.log('[getAuthHeaders] Returning header:', { 'x-user-email': email }); // ✅ Too verbose
       return {
         'x-user-email': email
       };

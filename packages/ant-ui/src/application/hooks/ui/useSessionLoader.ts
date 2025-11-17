@@ -23,7 +23,7 @@ export function useSessionLoader(connectionStatus: string) {
           // Verify project still exists
           const currentProjects = useStore.getState().projects;
           if (currentProjects.includes(projectId)) {
-            console.log('[useSessionLoader] Restoring selected project:', projectId);
+            // console.log('[useSessionLoader] Restoring selected project:', projectId); // ✅ Too verbose
             useStore.getState().setSelectedProject(projectId);
             
             // ✅ Wait for features to load instead of setTimeout
@@ -42,7 +42,7 @@ export function useSessionLoader(connectionStatus: string) {
                   
                   // Verify feature exists
                   if (currentFeatures.some(f => f.name === featureName)) {
-                    console.log('[useSessionLoader] Restoring selected feature:', featureName);
+                    // console.log('[useSessionLoader] Restoring selected feature:', featureName); // ✅ Too verbose
                     useStore.getState().setSelectedFeature(featureName);
                   } else {
                     console.log('[useSessionLoader] Saved feature no longer exists, clearing');

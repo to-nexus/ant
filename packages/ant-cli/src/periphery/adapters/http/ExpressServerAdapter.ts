@@ -1072,24 +1072,45 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
             
             resolve();
           } else {
+            // ✅ Check if this is a user-initiated stop (exit code 143 = SIGTERM)
+            const isUserStop = code === 143 || signal === 'SIGTERM';
+            
             status.status = 'failed';
             status.completedAt = new Date().toISOString();
             status.error = signal ? `Killed by ${signal}` : `Exit code: ${code}`;
             
-            const logEntry: LogEntry = {
-              type: 'stderr',
-              message: signal 
-                ? `\n🛑 Job stopped by user (${signal})`
-                : `\n❌ Job failed with exit code ${code}`,
-              timestamp: new Date().toISOString()
-            };
-            this.logs.get(jobId)!.push(logEntry);
-            this.logStreams.get(jobId)?.forEach(listener => listener(logEntry));
+            // ✅ Only add error message if NOT a user stop (to avoid duplicate messages)
+            if (!isUserStop) {
+              const logEntry: LogEntry = {
+                type: 'stderr',
+                message: signal 
+                  ? `\n🛑 Job stopped by user (${signal})`
+                  : `\n❌ Job failed with exit code ${code}`,
+                timestamp: new Date().toISOString()
+              };
+              this.logs.get(jobId)!.push(logEntry);
+              this.logStreams.get(jobId)?.forEach(listener => listener(logEntry));
+            } else {
+              console.log(`   ⚠️  Exit code 143 (SIGTERM) detected - user stop, skipping error message (cleanupJobState will handle it)`);
+            }
             
             // ✅ Analyze logs to determine interruption reason
             let interruption: InterruptionDetails | undefined;
             
-            if (!signal) {
+            // ✅ User stop (exit code 143 = SIGTERM) - create user_stopped interruption
+            if (isUserStop) {
+              interruption = {
+                reason: 'user_stopped',
+                message: 'Task stopped by user',
+                timestamp: new Date().toISOString(),
+                canResume: true,
+                metadata: {
+                  exitCode: code,
+                  signal: signal || 'SIGTERM',
+                  stoppedBy: 'user_action'
+                }
+              };
+            } else if (!signal) {
               // Get all stderr logs for analysis
               const allLogs = this.logs.get(jobId) || [];
               const stderrLogs = allLogs
@@ -1191,9 +1212,9 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
             
             // ✅ CRITICAL: Don't cleanup if user explicitly stopped (already handled in Stop API)
             if (this.userStoppedJobs.has(jobId)) {
-              console.log(`\n⏭️  [ExpressServerAdapter.runJob] Job ${jobId} was user-stopped, skipping exit handler cleanup (Stop API will handle it)\n`);
+              console.log(`\n⏭️  [ExpressServerAdapter.runJob] Job ${jobId} was user-stopped, skipping exit handler cleanup (Stop API already handled it)\n`);
               this.userStoppedJobs.delete(jobId);  // Clean up flag
-              reject(new Error(status.error));
+              resolve();  // ✅ Resolve (not reject) since Stop API already handled cleanup
               return;
             }
             

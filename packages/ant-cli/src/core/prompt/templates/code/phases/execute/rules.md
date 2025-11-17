@@ -28,6 +28,14 @@ CONTENT CHECKS:
 □ No TODO comments unless actually needed
 □ Code is syntactically valid
 
+DESIGN → CODE TRANSLATION CHECKS:
+□ Converted pseudocode/algorithms from design into actual TypeScript/React code
+□ Implemented conceptual APIs/interfaces as concrete functions/classes
+□ Added proper TypeScript types (design has concepts, code needs types)
+□ Added error handling (design describes flow, code needs try-catch)
+□ Implemented edge cases (design mentions them, code handles them)
+□ Used appropriate libraries/frameworks (design suggests, code uses actual imports)
+
 LANGUAGE CHECKS:
 □ All variable names are in English
 □ All function names are in English
@@ -105,15 +113,20 @@ CRITICAL OUTPUT RULES:
 </replace>
 </edit>
 
-**FORMAT 2: Creating NEW files** (only for files that don't exist yet)
+**FORMAT 2: Adding to END of existing files** (TOKEN EFFICIENT!)
+<append path="src/utils.ts">
+[NEW code to add at the end - don't repeat existing code!]
+</append>
+
+**FORMAT 3: Creating NEW files** (only for files that don't exist yet)
 <file path="src/components/NewButton.tsx">
 [COMPLETE file content - write EVERY line]
 </file>
 
-**FORMAT 3: Deleting files**
+**FORMAT 4: Deleting files**
 <delete path="src/components/OldButton.tsx" />
 
-**FORMAT 4: Summary response** (REQUIRED - explain what you did!)
+**FORMAT 5: Summary response** (REQUIRED - explain what you did!)
 After all file/edit operations, provide a brief summary outside XML tags.
 
 Example:
@@ -145,6 +158,7 @@ ABSOLUTELY FORBIDDEN:
 
 YOU MUST:
 ✅ Use <edit> for modifications (saves 90% tokens!)
+✅ Use <append> to add code at end of file (even more efficient!)
 ✅ <search> block = exact copy from original file
 ✅ <replace> block = only the new/changed code
 ✅ Use <file> only for brand new files
@@ -155,11 +169,13 @@ NOW EXECUTE YOUR PLAN.
 
 FINAL REMINDERS BEFORE YOU OUTPUT:
 1. **Modifying existing file?** → Use <edit> tags (mandatory!)
-2. **Creating new file?** → Use <file> tags with complete content
-3. **<search> block** → Must match original file EXACTLY
-4. **<replace> block** → Only the new/changed code
-5. Use ACTUAL file paths from ORIGINAL FILES
-6. **End with summary** → Explain what you did in plain text (REQUIRED!)
+2. **Adding to end of file?** → Use <append> tags (token efficient!)
+3. **Creating new file?** → Use <file> tags with complete content
+4. **<search> block** → Must match original file EXACTLY
+5. **<replace> block** → Only the new/changed code
+6. **<append> block** → Only the new code to add
+7. Use ACTUAL file paths from ORIGINAL FILES
+8. **End with summary** → Explain what you did in plain text (REQUIRED!)
 
 ⚠️ If you're about to use <file> tags for a modification → STOP! Use <edit> instead!
 

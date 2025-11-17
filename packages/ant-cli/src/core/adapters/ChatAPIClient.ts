@@ -254,6 +254,7 @@ export class ChatAPIClient {
   async streamFileContent(filePath: string, content: string): Promise<void> {
     if (!this.enabled) return;
     try {
+      console.log(`[ChatAPIClient.streamFileContent] filePath: ${filePath}, content length: ${content.length}`);
       await fetch(`${this.baseUrl}/file-operation`, {
         method: 'POST',
         headers: this.getHeaders(),

@@ -66,7 +66,7 @@ export function ProjectSection() {
 
       try {
         const projectConfig = await fetchProjectConfig(selectedProject);
-        console.log('[ProjectSection] Config check result:', { selectedProject, exists: projectConfig !== null, config: projectConfig });
+        // console.log('[ProjectSection] Config check result:', { selectedProject, exists: projectConfig !== null, config: projectConfig }); // ✅ Too verbose
         setConfigExists(projectConfig !== null);
         setConfig(projectConfig);
       } catch (error) {

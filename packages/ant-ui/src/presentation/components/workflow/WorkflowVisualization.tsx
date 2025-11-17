@@ -51,7 +51,7 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
   // ✅ Track workflowState changes
   React.useEffect(() => {
     if (workflowState?.currentNode) {
-      console.log('[WorkflowViz] 🎯 Current node:', workflowState.currentNode);
+      // console.log('[WorkflowViz] 🎯 Current node:', workflowState.currentNode); // ✅ Too verbose
     }
   }, [workflowState?.currentNode]);
   
@@ -148,7 +148,7 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
       return;
     }
     
-    console.log(`[WorkflowVisualization] 🎯 Focusing on displayed node: ${currentNodeId}`);
+    // console.log(`[WorkflowVisualization] 🎯 Focusing on displayed node: ${currentNodeId}`); // ✅ Too verbose
     
     // 노드 중심으로 이동 + 적절한 줌 레벨
     // position은 노드의 좌측 상단이므로 노드 크기의 절반을 더해서 중심을 구함

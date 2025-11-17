@@ -150,14 +150,15 @@ export async function execute(
     
     console.log('\n');
     
-    // ✅ Fallback parsing (for any files/edits that weren't streamed)
-    const { files, filesToDelete, commands, edits } = parseResponse(raw);
+    // ✅ Fallback parsing (for any files/edits/appends that weren't streamed)
+    const { files, filesToDelete, commands, edits, appends } = parseResponse(raw);
     const streamedFiles = new Set(streamResult.streamedFiles);
     
     console.log(`\n📊 [Execute] Stream result:`);
     console.log(`   Streamed files: ${streamedFiles.size}`);
     console.log(`   Parsed files (total): ${files.length}`);
     console.log(`   Parsed edits: ${edits.length}`);
+    console.log(`   Parsed appends: ${appends.length}`);
     console.log(`   Parsed deletes: ${filesToDelete?.length || 0}\n`);
     
     // Execute commands if any (with safety checks)
@@ -192,6 +193,9 @@ export async function execute(
     
     // ✅ Fallback: Apply edit instructions (if any weren't streamed)
     const failedEdits = await applyEdits(state, edits || [], []);
+    
+    // ✅ Fallback: Apply append instructions (if any weren't streamed)
+    const failedAppends = await applyAppends(state, appends || [], []);
     
     // ✅ Fallback: Show file deletions (if any weren't streamed)
     for (const file of filesToDelete || []) {
@@ -363,5 +367,91 @@ async function applyEdits(
   }
   
   return failedEdits;
+}
+
+/**
+ * ✅ Apply append instructions to existing files
+ * Appends content to the end of files
+ */
+async function applyAppends(
+  state: ArchitectGraphState,
+  appends: Array<{ path: string; content: string }>,
+  files: Array<{ path: string; content: string }>
+): Promise<string[]> {
+  const failedAppends: string[] = [];
+  
+  if (appends.length === 0 || !state.deps?.git) {
+    return failedAppends;
+  }
+  
+  console.log(`\n➕ Found ${appends.length} append instruction(s) in LLM response`);
+  
+  // ✅ Import ChatAPIClient for Cursor-style file edit streaming
+  const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
+  const chatAPI = getChatAPIClient();
+  
+  for (const append of appends) {
+    let appendStarted = false;
+    try {
+      console.log(`\n📝 Appending to: ${append.path}`);
+      
+      // Read existing file
+      const existingContent = await state.deps.git.readFile(append.path);
+      
+      if (!existingContent) {
+        throw new Error(`File ${append.path} does not exist or is empty`);
+      }
+      
+      // ✅ Phase 1: Start editing
+      await chatAPI.startFileEdit(append.path);
+      appendStarted = true;  // ✅ Track that editing UI was started
+      
+      // Append content
+      const updatedContent = existingContent.trimEnd() + '\n\n' + append.content.trimStart();
+      
+      // Add to files list (will be written by existing writeFiles logic)
+      files.push({
+        path: append.path,
+        content: updatedContent
+      });
+      
+      console.log(`   ✅ Append applied successfully to ${append.path}`);
+      
+      // ✅ Phase 2: Complete editing with diff (Cursor-style)
+      await chatAPI.completeFileEdit(append.path, existingContent, updatedContent);
+      appendStarted = false;  // ✅ Successfully completed
+    } catch (error) {
+      // ✅ CRITICAL: If editing UI was started, complete it with error state
+      if (appendStarted) {
+        console.error(`   ⚠️  Completing file edit with error state to prevent stuck "Editing" UI`);
+        try {
+          // Complete with empty diff to close the card
+          await chatAPI.completeFileEdit(append.path, '', '');
+        } catch (completeError) {
+          console.error(`   ⚠️  Failed to complete edit UI:`, completeError);
+        }
+      }
+      
+      const errorMsg = (error as Error).message;
+      console.error(`   ❌ Failed to append to ${append.path}:`);
+      console.error(`      ${errorMsg}`);
+      
+      // Track failed append for feedback
+      failedAppends.push(append.path);
+      
+      // ✅ Diagnose failure reason
+      if (errorMsg.includes('ENOENT') || errorMsg.includes('does not exist') || 
+          errorMsg.includes('null or undefined')) {
+        console.log(`   💡 File doesn't exist or couldn't be read`);
+        console.log(`   💡 Should use <file> format instead of <append>`);
+      } else {
+        console.log(`   💡 Unknown error - consider using <file> format instead`);
+      }
+      
+      console.log(`   ⚠️  Skipping this append - file will remain unchanged`);
+    }
+  }
+  
+  return failedAppends;
 }
 
