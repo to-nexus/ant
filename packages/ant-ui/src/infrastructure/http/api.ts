@@ -3,7 +3,7 @@
 import { Session } from '@/domain/models/session';
 
 // Backend URLs from environment
-const LOCAL_BACKEND_BASE = import.meta.env.VITE_LOCAL_BACKEND_BASE || 'http://localhost:4100/api';
+const LOCAL_BACKEND_BASE = import.meta.env.VITE_LOCAL_BACKEND_BASE || 'http://localhost:4000/api';
 const CLOUD_BACKEND_BASE = import.meta.env.VITE_CLOUD_BACKEND_BASE || 'http://localhost:4100/api';
 
 // Frontend Mode - Where the frontend is running (static)
@@ -11,19 +11,38 @@ const CLOUD_BACKEND_BASE = import.meta.env.VITE_CLOUD_BACKEND_BASE || 'http://lo
 // local: Frontend is running locally (development)
 export const FRONTEND_MODE = (import.meta.env.VITE_FRONTEND_MODE || 'local') as 'cloud' | 'local';
 
-// Get API base URL dynamically based on deployment mode from store
+/**
+ * Get API base URL dynamically based on backend mode from localStorage
+ * 
+ * Priority:
+ * 1. localStorage value (user selection)
+ * 2. Default: 'cloud' (always default to cloud)
+ */
 export function getApiBase(): string {
-  // Read from localStorage directly to avoid circular dependency with store
   try {
-    const stored = localStorage.getItem('ant-ui:deployment-mode');
-    // ✅ If stored, use it; otherwise use env var; finally fallback to FRONTEND_MODE
-    const backendMode = stored 
-      ? JSON.parse(stored) 
-      : (import.meta.env.VITE_TARGET_BACKEND_MODE || FRONTEND_MODE);
+    const stored = localStorage.getItem('ant-ui:backend-mode');
+    const backendMode = stored ? JSON.parse(stored) : 'cloud';  // ✅ Default to 'cloud'
     return backendMode === 'local' ? LOCAL_BACKEND_BASE : CLOUD_BACKEND_BASE;
   } catch {
-    // ✅ Default to FRONTEND_MODE (cloud frontend -> cloud backend, local frontend -> local backend)
-    return FRONTEND_MODE === 'local' ? LOCAL_BACKEND_BASE : CLOUD_BACKEND_BASE;
+    // ✅ Always default to cloud on error
+    return CLOUD_BACKEND_BASE;
+  }
+}
+
+/**
+ * Check if local backend server is available
+ */
+export async function checkLocalBackend(): Promise<boolean> {
+  try {
+    // Use /api/health endpoint (LOCAL_BACKEND_BASE already includes /api)
+    const response = await fetch(`${LOCAL_BACKEND_BASE}/health`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(3000)  // 3 second timeout
+    });
+    return response.ok;
+  } catch (error) {
+    console.warn('[API] Local backend not available');
+    return false;
   }
 }
 
@@ -36,33 +55,69 @@ console.log('[API] CLOUD_BACKEND_BASE:', CLOUD_BACKEND_BASE);
 console.log('[API] Environment variables:', import.meta.env);
 
 /**
+ * Get backend mode from localStorage
+ */
+function getBackendMode(): 'local' | 'cloud' {
+  try {
+    const stored = localStorage.getItem('ant-ui:backend-mode');
+    return stored ? JSON.parse(stored) : 'cloud';
+  } catch (error) {
+    console.warn('[API] Error reading backend mode from localStorage:', error);
+    return 'cloud';
+  }
+}
+
+/**
  * Get authentication headers for Cloud mode
  * Automatically adds x-user-email header if user is signed in
+ * 
+ * ✅ Only adds headers for Cloud mode
  */
 function getAuthHeaders(): HeadersInit {
-  // Get user email from localStorage
+  // ✅ Skip auth headers for Local mode
+  const backendMode = getBackendMode();
+  
+  console.log('[getAuthHeaders] backendMode:', backendMode);
+  
+  if (backendMode === 'local') {
+    console.log('[getAuthHeaders] Local mode - no auth headers');
+    return {};
+  }
+  
+  // Get user email from localStorage (Cloud mode only)
   try {
     const userEmail = localStorage.getItem('ant-ui:user-email');
+    console.log('[getAuthHeaders] userEmail from localStorage:', userEmail);
+    
     if (userEmail) {
       const email = JSON.parse(userEmail);
+      console.log('[getAuthHeaders] Parsed email:', email);
+      console.log('[getAuthHeaders] Returning header:', { 'x-user-email': email });
       return {
         'x-user-email': email
       };
+    } else {
+      console.warn('[getAuthHeaders] No userEmail in localStorage!');
     }
   } catch (error) {
     console.warn('[API] Failed to get user email from localStorage:', error);
   }
+  
+  console.warn('[getAuthHeaders] Returning empty headers (no auth)');
   return {};
 }
 
 /**
  * Authenticated fetch wrapper
- * Automatically includes auth headers for all requests
+ * Automatically includes auth headers for Cloud mode requests
+ * 
+ * ✅ Local mode: No auth headers
+ * ✅ Cloud mode: Adds x-user-email header
  */
 export async function authFetch(url: string, options?: RequestInit): Promise<Response> {
   const headers = {
     'Content-Type': 'application/json',
-    ...getAuthHeaders(),
+    ...getAuthHeaders(),  // ✅ Empty for local mode
     ...(options?.headers || {})
   };
   
@@ -159,21 +214,16 @@ export async function checkHealth(): Promise<boolean> {
 export async function fetchProjects(): Promise<string[]> {
   try {
     const url = `${API_BASE()}/projects`;
-    console.log('[API] Fetching projects from:', url);
     const response = await authFetch(url);
-    
-    console.log('[API] Response status:', response.status);
-    console.log('[API] Response headers:', Object.fromEntries(response.headers.entries()));
     
     if (!response.ok) {
       throw new Error(`Failed to fetch projects: ${response.statusText}`);
     }
     
     const data = await response.json();
-    console.log('[API] Projects data received:', data);
     return data;
   } catch (error) {
-    console.error('Error fetching projects:', error);
+    console.error('[API] Error fetching projects:', error);
     throw error;
   }
 }
@@ -363,11 +413,9 @@ export async function resumeJob(
   try {
     console.log(`[api.ts] resumeJob called: ${jobId}, chatSource: ${chatSource}`);
     
+    // ✅ authFetch already adds Content-Type and auth headers
     const response = await authFetch(`${API_BASE()}/jobs/${encodeURIComponent(jobId)}/resume`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({ projectId, featureName, chatSource }),
     });
     
@@ -381,6 +429,40 @@ export async function resumeJob(
     return data;
   } catch (error) {
     console.error('Error resuming job:', error);
+    throw error;
+  }
+}
+
+/**
+ * Continue a running job with additional directive (highest priority)
+ * Used when user sends a new message while job is still in progress
+ */
+export async function continueJob(
+  jobId: string,
+  projectId: string,
+  featureName: string,
+  newDirective: string,
+  chatSource: boolean = true
+): Promise<{ jobId: string; originalJobId: string; jobType: string; directivesCount: number }> {
+  try {
+    console.log(`[api.ts] continueJob called: ${jobId}, newDirective length: ${newDirective.length}, chatSource: ${chatSource}`);
+    
+    // ✅ authFetch already adds Content-Type and auth headers
+    const response = await authFetch(`${API_BASE()}/jobs/${encodeURIComponent(jobId)}/continue`, {
+      method: 'POST',
+      body: JSON.stringify({ projectId, featureName, newDirective, chatSource }),
+    });
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: response.statusText }));
+      throw new Error(error.error || `Failed to continue job: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log(`[api.ts] Continue successful:`, data);
+    return data;
+  } catch (error) {
+    console.error('Error continuing job:', error);
     throw error;
   }
 }

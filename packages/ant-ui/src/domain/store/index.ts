@@ -216,9 +216,12 @@ function initializePersistentState() {
   const selectedJobType = (loadFromStorage(STORAGE_KEYS.SELECTED_JOB_TYPE) as 'design' | 'code' | 'learn') || 'code';
   const dismissedInterruptTimestamp = loadFromStorage(STORAGE_KEYS.DISMISSED_INTERRUPT_TIMESTAMP);
   
-  const storedBackendMode = loadFromStorage(STORAGE_KEYS.BACKEND_MODE);
+  // ✅ Frontend mode: where the frontend is deployed (from env)
   const frontendMode = (import.meta.env.VITE_FRONTEND_MODE || 'local') as 'local' | 'cloud';
-  const backendMode = storedBackendMode || (import.meta.env.VITE_TARGET_BACKEND_MODE || frontendMode) as 'local' | 'cloud';
+  
+  // ✅ Backend mode: localStorage only, default to 'cloud'
+  const storedBackendMode = loadFromStorage(STORAGE_KEYS.BACKEND_MODE);
+  const backendMode = (storedBackendMode || 'cloud') as 'local' | 'cloud';
   
   return {
     theme,
@@ -228,8 +231,8 @@ function initializePersistentState() {
     selectedAgent,
     selectedJobType,
     dismissedInterruptTimestamp,
-    backendMode,
     frontendMode,
+    backendMode,
   };
 }
 

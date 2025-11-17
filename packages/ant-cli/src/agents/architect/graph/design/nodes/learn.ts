@@ -143,6 +143,16 @@ async function saveSessionTurn(state: DesignGraphState): Promise<void> {
     completedAt: new Date().toISOString()
   } : undefined;
 
+  // ✅ Build directives array from state.directive (split by separator)
+  let directivesArray: string[] = [];
+  if (state.directive) {
+    if (state.directive.includes('\n\n---\n\n')) {
+      directivesArray = state.directive.split('\n\n---\n\n').filter(d => d.trim());
+    } else {
+      directivesArray = [state.directive];
+    }
+  }
+
   // Update artifacts with latest design and state
   await state.deps.session.updateArtifacts(
     state.context.project,
@@ -158,7 +168,8 @@ async function saveSessionTurn(state: DesignGraphState): Promise<void> {
         completedTasksDetails: state.completedTasksDetails || [],
         interruption: existingSession.state?.interruption,
         jobId: (state as any).jobId,  // ✨ Preserve jobId
-        jobTiming: completedJobTiming  // ✨ Mark as completed
+        jobTiming: completedJobTiming,  // ✨ Mark as completed
+        directives: directivesArray  // ✅ Save directives array (newest first)
       }
     }
   );

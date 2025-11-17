@@ -18,6 +18,7 @@ export type MessageContentType =
   // General content (Chat Status Messages HIDE when these arrive)
   | 'thinking'       // LLM's thought process (collapsible block, accumulates, multiple blocks possible)
   | 'text'           // General text response
+  | 'cancelled'      // Task cancelled by user (with Resume button)
   // File Operations - Real-time streaming
   | 'file_creating'  // File creation started (header only)
   | 'file_writing'   // File being written (real-time code streaming)
@@ -42,6 +43,7 @@ export interface MessageContent {
     command?: string;       // For command execution
     exitCode?: number;      // For command result
     timestamp?: string;
+    jobId?: string;         // For cancelled: job ID to resume
     // Exploration & Analysis
     filesCount?: number;    // For explored/grepped
     totalFiles?: number;    // For exploring/grepping progress

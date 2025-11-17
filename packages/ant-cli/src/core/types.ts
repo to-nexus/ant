@@ -173,6 +173,9 @@ export interface SessionState {
   // ✨ Job Identity (Resume 시 재사용)
   jobId?: string;                 // Current active job ID (persists until completion or reset)
   
+  // ✅ Directives (최신이 맨 앞, Continue 시 추가)
+  directives?: string[];          // User directives (newest first for highest priority)
+  
   // Task Queue State
   taskQueue?: any[];              // Remaining tasks (Task[] from state.ts)
   currentTask?: any;              // Currently executing task (Task from state.ts)

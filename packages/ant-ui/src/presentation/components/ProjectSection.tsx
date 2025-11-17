@@ -10,10 +10,11 @@ import {
   openLocalIDE,
   checkIDEInstalled
 } from '@/infrastructure/http/api';
-import { getProjectPath, getCodebasePath } from '@/shared/utils/workspace-path';
+import { getCodebasePath } from '@/shared/utils/workspace-path';
 import { ItemDropdown } from './ItemDropdown';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { Button } from '@/presentation/components/common/button';
+import { useAlertModal } from '@/application/hooks/ui/useAlertModal';
 
 export function ProjectSection() {
   const { 
@@ -22,11 +23,8 @@ export function ProjectSection() {
     setSelectedProject, 
     fetchProjects, 
     setShowConfigEditor, 
-    setViewMode, 
     switchToEditorView, 
-    backendMode,
-    userEmail,
-    userOrganization
+    backendMode
   } = useStore();
   const [configExists, setConfigExists] = useState<boolean | null>(null);
   const [config, setConfig] = useState<ProjectConfig | null>(null);
@@ -34,6 +32,7 @@ export function ProjectSection() {
   const [showIDEMenu, setShowIDEMenu] = useState(false);
   const [ideStatus, setIdeStatus] = useState<{ cursor: boolean; vscode: boolean }>({ cursor: false, vscode: false });
   const policy = useUIActionPolicy();
+  const { showError, showConfirm, AlertModal } = useAlertModal();
   
   // Check IDE installation status (Local mode only)
   useEffect(() => {
@@ -102,7 +101,7 @@ export function ProjectSection() {
         await new Promise(resolve => setTimeout(resolve, 100));
       } catch (error) {
         console.error('Failed to create config:', error);
-        alert('Failed to create configuration. Please try again.');
+        showError('Failed to create configuration. Please try again.');
         return;
       }
     }
@@ -113,12 +112,12 @@ export function ProjectSection() {
   // Open Local IDE (Cursor/VS Code) - Local Backend only
   const handleOpenLocalIDE = async () => {
     if (!config?.localPath) {
-      alert('Local path is not configured for this workspace.');
+      showError('Local path is not configured for this workspace.');
       return;
     }
 
     if (!ideStatus.cursor && !ideStatus.vscode) {
-      alert('No IDE found. Please install Cursor or VS Code.');
+      showError('No IDE found. Please install Cursor or VS Code.');
       return;
     }
 
@@ -126,8 +125,27 @@ export function ProjectSection() {
       const result = await openLocalIDE(selectedIDE, config.localPath);
       console.log('[ProjectSection] Opened local IDE:', result);
     } catch (error: any) {
-      alert(`Failed to open ${selectedIDE}: ${error.message}`);
+      showError(`Failed to open ${selectedIDE}: ${error.message}`);
     }
+  };
+
+  // Helper function to continue opening Web IDE (used by confirm dialog)
+  const continueWebIDEOpen = (localPath: string) => {
+    // Convert ~/path to /workspace/path (Docker mount: $HOME:/workspace)
+    const workspacePath = localPath.startsWith('~/')
+      ? localPath.replace('~', '/workspace')
+      : localPath.startsWith('~')
+      ? localPath.replace('~', '/workspace')
+      : `/workspace${localPath}`;
+    
+    console.log('[ProjectSection] Local Mode - Converting path:', {
+      localPath,
+      workspacePath,
+      isLocalhost: window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    });
+    
+    // ✅ Set both IDE workspace path and view mode in single batch update
+    switchToEditorView(workspacePath);
   };
 
   // Open Web IDE (iframe) - Cloud Backend or Local UI
@@ -135,13 +153,13 @@ export function ProjectSection() {
   const handleOpenWebIDE = async () => {
     // ✅ Check if project is selected
     if (!selectedProject) {
-      alert('Project not selected.');
+      showError('Project not selected.');
       return;
     }
     
     // ✅ Check if config exists
     if (!config) {
-      alert('Project config not found. Please configure the project first.');
+      showError('Project config not found. Please configure the project first.');
       return;
     }
     
@@ -163,41 +181,42 @@ export function ProjectSection() {
       } else {
         // Local Mode: Use localPath from config
         if (!config.localPath) {
-          alert('Local path is not configured for this workspace.');
+          showError('Local path is not configured for this workspace.');
           return;
         }
 
         // Check if IDE is accessible (localhost only)
         const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         if (!isLocalhost) {
-          const confirmed = window.confirm(
-            'Web IDE 기능은 localhost 접속 시에만 사용 가능합니다.\n\n' +
-            '현재 원격 UI에서 로컬 백엔드에 접속 중이므로 Web IDE가 정상 작동하지 않을 수 있습니다.\n\n' +
-            '권장사항: 로컬에서 ant-ui를 실행하거나 (pnpm dev:ui) 실제 IDE를 사용하세요.\n\n' +
-            '그래도 계속하시겠습니까?'
+          showConfirm(
+            <div>
+              <p className="mb-2">Web IDE 기능은 localhost 접속 시에만 사용 가능합니다.</p>
+              <p className="mb-2">현재 원격 UI에서 로컬 백엔드에 접속 중이므로 Web IDE가 정상 작동하지 않을 수 있습니다.</p>
+              <p className="mb-2">권장사항: 로컬에서 ant-ui를 실행하거나 (pnpm dev:ui) 실제 IDE를 사용하세요.</p>
+              <p>그래도 계속하시겠습니까?</p>
+            </div>,
+            {
+              title: 'Web IDE Warning',
+              type: 'warning',
+              onConfirm: async () => {
+                // Continue with Web IDE open
+                continueWebIDEOpen(config.localPath!);
+              }
+            }
           );
-          if (!confirmed) return;
+          return;
         }
 
-        // Convert ~/path to /workspace/path (Docker mount: $HOME:/workspace)
-        workspacePath = config.localPath.startsWith('~/')
-          ? config.localPath.replace('~', '/workspace')
-          : config.localPath.startsWith('~')
-          ? config.localPath.replace('~', '/workspace')
-          : `/workspace${config.localPath}`;
-        
-        console.log('[ProjectSection] Local Mode - Converting path:', {
-          localPath: config.localPath,
-          workspacePath,
-          isLocalhost
-        });
+        // Use helper function for local path
+        continueWebIDEOpen(config.localPath);
+        return;
       }
       
       // ✅ Set both IDE workspace path and view mode in single batch update
       switchToEditorView(workspacePath);
     } catch (error: any) {
       console.error('[ProjectSection] Failed to open IDE:', error);
-      alert(`Failed to open IDE: ${error.message}`);
+      showError(`Failed to open IDE: ${error.message}`);
     }
   };
 
@@ -353,6 +372,9 @@ export function ProjectSection() {
           )}
         </div>
       )}
+      
+      {/* Alert Modal */}
+      <AlertModal />
     </div>
   );
 }

@@ -6,10 +6,12 @@
   "scripts": {
     "dev": "concurrently \"pnpm dev:cli\" \"pnpm dev:ui\" \"pnpm dev:ide\"",
     "dev:cli": "pnpm --filter @ant/cli dev:server",
+    "dev:cli-local": "ANT_SERVER_MODE=local PORT=4000 pnpm --filter @ant/cli dev:server",
     "dev:ui": "pnpm --filter @ant/ui dev",
     "dev:ide": "pnpm --filter @ant/ide dev",
     "build": "pnpm -r build",
     "build:cli": "pnpm --filter @ant/cli build",
+    "build:cli-local": "ANT_SERVER_MODE=local PORT=4000 pnpm --filter @ant/cli build",
     "build:ui": "pnpm --filter @ant/ui build",
     "start:ide": "pnpm --filter @ant/ide start",
     "init:workspace": "pnpm --filter @ant/cli init:workspace",

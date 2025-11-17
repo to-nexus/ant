@@ -153,6 +153,16 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       completedAt: new Date().toISOString()
     } : undefined;
     
+    // ✅ Build directives array from state.directive (split by separator)
+    let directivesArray: string[] = [];
+    if (state.directive) {
+      if (state.directive.includes('\n\n---\n\n')) {
+        directivesArray = state.directive.split('\n\n---\n\n').filter(d => d.trim());
+      } else {
+        directivesArray = [state.directive];
+      }
+    }
+    
     // Update artifacts and save state snapshot for resuming
     await state.deps.session.updateArtifacts(
       state.context.project,
@@ -179,7 +189,8 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
           recursionLimit: state.recursionLimit,
           interruption: existingSession.state?.interruption || (state as any).interruption,  // ✅ CRITICAL: Preserve interruption details!
           jobId: (state as any).jobId,  // ✨ Preserve jobId
-          jobTiming: completedJobTiming  // ✨ Mark as completed
+          jobTiming: completedJobTiming,  // ✨ Mark as completed
+          directives: directivesArray  // ✅ Save directives array (newest first)
         }
       }
     );

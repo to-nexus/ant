@@ -1,0 +1,9 @@
+{
+  "repositoryName": "test-app",
+  "repoType": "cloud",
+  "localPath": "/Users/probe/dev/ant/packages/workspaces/to.nexus/probe/test-app/codebase",
+  "branchBase": "main",
+  "autoLearn": true,
+  "llmProvider": "anthropic",
+  "llmModel": "claude-3-5-haiku"
+}

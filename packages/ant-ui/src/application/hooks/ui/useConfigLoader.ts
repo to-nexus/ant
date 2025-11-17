@@ -4,7 +4,7 @@ import { fetchProjectConfig, updateProjectConfig, ProjectConfig } from '@/infras
 interface UseConfigLoaderReturn {
   configData: ProjectConfig | null;
   isLoadingConfig: boolean;
-  handleSaveConfig: (config: ProjectConfig) => Promise<void>;
+  handleSaveConfig: (config: ProjectConfig) => Promise<{ success: boolean; error?: string }>;
 }
 
 /**
@@ -41,8 +41,10 @@ export function useConfigLoader(
     loadConfig();
   }, [showConfigEditor, selectedProject]);
 
-  const handleSaveConfig = async (config: ProjectConfig) => {
-    if (!selectedProject) return;
+  const handleSaveConfig = async (config: ProjectConfig): Promise<{ success: boolean; error?: string }> => {
+    if (!selectedProject) {
+      return { success: false, error: 'No project selected' };
+    }
 
     try {
       // Backend now returns the saved config directly
@@ -50,10 +52,13 @@ export function useConfigLoader(
       if (savedConfig) {
         setConfigData(savedConfig);
       }
-      alert('Configuration saved successfully!');
+      return { success: true };
     } catch (error) {
       console.error('[useConfigLoader] Failed to save config:', error);
-      alert('Failed to save configuration. Please try again.');
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Failed to save configuration'
+      };
     }
   };
 

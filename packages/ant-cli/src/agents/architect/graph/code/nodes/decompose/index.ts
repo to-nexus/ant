@@ -201,6 +201,32 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         const existingJobId = session.state.jobId || state._httpTaskId || 'unknown-job';
         const { jobId, jobTiming } = JobTimingManager.resumeJob(existingJobId, session.state.jobTiming);
         
+        // ✅ Build merged directive from directives array (newest first = highest priority)
+        let mergedDirective = state.directive;
+        if (session.state.directives && session.state.directives.length > 0) {
+          console.log(`\n📝 Merging ${session.state.directives.length} directive(s) (newest first):`);
+          session.state.directives.forEach((dir: string, idx: number) => {
+            console.log(`   ${idx + 1}. ${dir.substring(0, 60)}...`);
+          });
+          
+          // ✅ Structure directives with context (newest = highest priority)
+          if (session.state.directives.length === 1) {
+            mergedDirective = session.state.directives[0];
+          } else {
+            // Multiple directives: label them clearly
+            const [initial, ...feedbacks] = session.state.directives.slice().reverse(); // oldest first for labeling
+            const parts = [`[Initial Request]\n${initial}`];
+            
+            feedbacks.forEach((feedback, idx) => {
+              parts.push(`[Additional Feedback ${idx + 1}]\n${feedback}`);
+            });
+            
+            // Join with clear separators (newest feedback last = most visible to LLM)
+            mergedDirective = parts.join('\n\n---\n\n');
+            console.log(`   ✅ Structured ${session.state.directives.length} directive(s) with labels\n`);
+          }
+        }
+        
         const resumedState = {
           ...state,
           jobId,  // ✨ Restore jobId
@@ -218,6 +244,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           previousFileCount: session.state.previousFileCount,
           resolvedCategories: (session.state.resolvedCategories || []) as any,
           planText: session.state.planText || '',  // ✅ Restore plan to skip LLM call on resume
+          directive: mergedDirective,  // ✅ Merged directives (newest first)
           _httpTaskId: state._httpTaskId,  // ✅ Explicitly preserve taskId for next node
           interruption: undefined  // ✅ CRITICAL: Clear interruption when resuming (job is now running again)
         } as any;
