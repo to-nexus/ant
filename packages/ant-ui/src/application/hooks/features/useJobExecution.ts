@@ -13,7 +13,7 @@
 
 import { useCallback } from 'react';
 import { useStore } from '@/domain/store';
-import { resumeJob, stopJob as stopJobAPI, fetchFeatureSession, getApiBase, authFetch } from '@/infrastructure/http/api';
+import { resumeJob, stopJob as stopJobAPI, fetchFeatureSession, getApiBase } from '@/infrastructure/http/api';
 import { executeCodeJob } from '@/infrastructure/http/cli';
 
 export function useJobExecution() {
