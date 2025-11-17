@@ -29,6 +29,18 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
   });
   
   try {
+    // ✅ Build directives array from state.directive (split by separator)
+    let directivesArray: string[] = [];
+    if (state.directive) {
+      // Check if already separated by our marker
+      if (state.directive.includes('\n\n---\n\n')) {
+        directivesArray = state.directive.split('\n\n---\n\n').filter(d => d.trim());
+      } else {
+        // Single directive
+        directivesArray = [state.directive];
+      }
+    }
+    
     // ✅ Build state object, conditionally include currentTask
     const sessionState: any = {
       taskQueue: state.taskQueue?.getAll() || [],
@@ -44,6 +56,7 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       planText: state.planText,  // ✅ Save plan for reuse on resume
       recursionCount: state.recursionCount,  // ✅ Save current recursion count
       recursionLimit: state.recursionLimit,  // ✅ Save recursion limit
+      directives: directivesArray,  // ✅ Save directives array (newest first)
     };
     
     // ✅ Include jobId and jobTiming if present

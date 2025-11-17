@@ -14,7 +14,7 @@ interface MainContentAreaProps {
   showConfigEditor: boolean;
   configData: ProjectConfig | null;
   isLoadingConfig: boolean;
-  onSaveConfig: (config: ProjectConfig) => Promise<void>;
+  onSaveConfig: (config: ProjectConfig) => Promise<{ success: boolean; error?: string }>;
   onCloseConfig: () => void;
   
   // File Editor

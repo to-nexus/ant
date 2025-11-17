@@ -22,6 +22,7 @@ export function createJobRoutes(deps: {
   userStoppedJobs: Set<string>;  // ✅ Track user-stopped jobs
   cleanupJobState: (jobId: string, projectId?: string, featureName?: string, interruptionReason?: InterruptionDetails, explicitJobType?: 'design' | 'code' | 'learn') => Promise<void>;
   workflowStateService: import('../services/WorkflowStateService').WorkflowStateService;  // ✅ For node tracking
+  chatService: import('../services/ChatService').ChatService;  // ✅ For adding cancelled messages
 }): Router {
   const router = Router();
   
@@ -218,6 +219,26 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
     await deps.cleanupJobState(jobId, projectId, featureName, interruption, jobType);
     console.log(`   ✅ cleanupJobState completed`);
     
+    // ✅ Add cancelled message to chat
+    if (projectId && featureName) {
+      // ✅ Build userContext
+      const userContext = (req as any).user && (req as any).organization ? {
+        userId: (req as any).user.id,
+        organizationId: (req as any).organization.id,
+        workspacePath: ''
+      } : { userId: 'local', organizationId: 'local', workspacePath: '' };
+      
+      deps.chatService.addCancelledMessage(
+        projectId,
+        featureName,
+        jobId,
+        'user_stopped',
+        'Task stopped by user',
+        userContext
+      );
+      console.log(`   ✅ Added cancelled message to chat`);
+    }
+    
     // ✅ Send response AFTER everything is done
     res.json({ 
       success: true, 
@@ -305,6 +326,119 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
       });
     } catch (error: any) {
       console.error(`   ❌ Resume failed:`, error);
+      res.status(500).json({ 
+        error: error.message,
+        jobId
+      });
+    }
+  });
+  
+  // ✅ Continue existing job with additional directive (highest priority)
+  router.post('/jobs/:jobId/continue', async (req: Request, res: Response) => {
+    const jobId = req.params.jobId;
+    const { projectId, featureName, newDirective, chatSource = true } = req.body;
+    
+    console.log(`\n➕ [ContinueRoute] Continue request received for job: ${jobId}`);
+    console.log(`   Project: ${projectId}, Feature: ${featureName}`);
+    console.log(`   New directive: ${newDirective?.substring(0, 100)}...`);
+    
+    if (!newDirective || typeof newDirective !== 'string') {
+      return res.status(400).json({
+        error: 'Invalid request',
+        message: 'newDirective is required and must be a string'
+      });
+    }
+    
+    try {
+      // ✅ Build context for WorkspaceResolver
+      const userContext = req.user && req.organization ? {
+        userId: req.user.id,
+        organizationId: req.organization.id,
+        workspacePath: ''
+      } : { userId: 'local', organizationId: 'local', workspacePath: '' };
+      
+      // ✅ Use WorkspaceResolver to get proper path
+      const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+      
+      // ✅ Find job type from session files
+      const fs = require('fs');
+      const sessionDir = path.join(featurePath, 'sessions');
+      
+      let jobType: 'design' | 'code' | 'learn' | null = null;
+      let sessionPath: string | null = null;
+      
+      for (const type of ['design', 'code', 'learn'] as const) {
+        const candidatePath = path.join(sessionDir, `${type}.json`);
+        if (fs.existsSync(candidatePath)) {
+          const sessionData = JSON.parse(fs.readFileSync(candidatePath, 'utf-8'));
+          if (sessionData.state?.jobId === jobId) {
+            jobType = type;
+            sessionPath = candidatePath;
+            console.log(`   ✅ Found job in ${type}.json`);
+            break;
+          }
+        }
+      }
+      
+      if (!jobType || !sessionPath) {
+        console.log(`   ❌ Job ${jobId} not found in any session file`);
+        return res.status(404).json({ 
+          error: 'Job not found',
+          message: `Job ${jobId} not found in session files`
+        });
+      }
+      
+      // ✅ Load session data
+      const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
+      
+      // ✅ Add new directive to the FRONT of the array (highest priority)
+      if (!sessionData.state.directives) {
+        sessionData.state.directives = [];
+      }
+      
+      // ✅ Prepend new directive (newest first = highest priority)
+      sessionData.state.directives.unshift(newDirective);
+      
+      console.log(`   ✅ Added new directive (total: ${sessionData.state.directives.length})`);
+      console.log(`   ✅ Directive priorities: [newest → oldest]`);
+      
+      // ✅ Save updated session
+      fs.writeFileSync(sessionPath, JSON.stringify(sessionData, null, 2), 'utf-8');
+      console.log(`   ✅ Session updated with new directive`);
+      
+      console.log(`   Job type: ${jobType}`);
+      console.log(`   Starting continue job execution...`);
+      
+      // ✅ Build inputFile path (but may not exist for chat-initiated jobs)
+      const inputFile = path.join(featurePath, `inputs/directives/${jobType}/directive.md`);
+      
+      const params: ExecuteJobParams = {
+        agent: 'architect',
+        task: jobType,
+        project: projectId,
+        feature: featureName,
+        inputFile,
+        enableEvaluation: false,
+        overrideDirective: undefined,
+        chatSource,
+        userContext
+      };
+      
+      const result = await deps.executeJob(params);
+      
+      console.log(`   ✅ Continue job started: ${result.jobId}`);
+      console.log(`   ✅ Continue request completed\n`);
+      
+      res.json({
+        success: true,
+        jobId: result.jobId,
+        originalJobId: jobId,
+        jobType,
+        directivesCount: sessionData.state.directives.length,
+        message: `Job continued from ${jobId} with new directive`
+      });
+    } catch (error: any) {
+      console.error(`   ❌ Continue failed:`, error);
       res.status(500).json({ 
         error: error.message,
         jobId

@@ -4,7 +4,7 @@ import { ConnectionStatus } from './ConnectionStatus';
 import { useStore } from '@/domain/store';
 import { SignUpModal } from './auth/SignUpModal';
 import { SignInModal } from './auth/SignInModal';
-import { signUp, signIn, signOut } from '@/infrastructure/http/api';
+import { signUp, signIn, signOut, checkLocalBackend } from '@/infrastructure/http/api';
 
 export interface GlobalNavBarProps {
   // ✅ No props needed - uses hooks directly
@@ -50,33 +50,54 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
   const uiSelectedMode = window.location.pathname === '/local' ? 'local' : backendMode;
   
   // Handle deployment mode change
-  const handleModeChange = (mode: 'local' | 'cloud') => {
+  const handleModeChange = async (mode: 'local' | 'cloud') => {
     // If on /local page and user clicks cloud, go back to home
     if (window.location.pathname === '/local' && mode === 'cloud') {
-      // ✅ Don't call setBackendMode - just navigate back
+      // Switch to cloud mode and navigate home
+      setBackendMode('cloud');
       window.history.pushState({}, '', '/');
       window.dispatchEvent(new PopStateEvent('popstate'));
-      return;
-    }
-    
-    // ✅ Cloud Backend 사용 중에 Local로 전환 시도 → 안내 페이지만 표시
-    // backendMode를 변경하지 않고 페이지만 이동 (Local Backend에 요청 안 함)
-    if (backendMode === 'cloud' && mode === 'local') {
-      // ✅ Don't call setBackendMode - just show setup guide
-      window.history.pushState({}, '', '/local');
-      window.dispatchEvent(new PopStateEvent('popstate'));
+      
+      // Reload projects in cloud mode
+      const fetchProjects = useStore.getState().fetchProjects;
+      fetchProjects();
       return;
     }
     
     // Early return if same mode (but only for non-/local pages)
-    if (mode === backendMode) return;
+    if (mode === backendMode && window.location.pathname !== '/local') return;
     
-    // If frontend is local, actually switch modes
-    if (frontendMode === 'local') {
-      setBackendMode(mode);
-      // Reload projects after mode change
-      const fetchProjects = useStore.getState().fetchProjects;
-      fetchProjects();
+    // ✅ Local 선택 시 health check 수행
+    if (mode === 'local') {
+      console.log('[GNB] Checking local backend availability...');
+      const isAvailable = await checkLocalBackend();
+      
+      if (isAvailable) {
+        // ✅ 로컬 서버 정상 응답 → 백엔드 전환
+        console.log('[GNB] Local backend available, switching mode');
+        setBackendMode('local');
+        
+        // Reload projects after mode change
+        const fetchProjects = useStore.getState().fetchProjects;
+        fetchProjects();
+      } else {
+        // ❌ 로컬 서버 응답 없음 → 안내 페이지만 표시 (backendMode 유지)
+        console.log('[GNB] Local backend not available, showing setup guide');
+        window.history.pushState({}, '', '/local');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }
+      return;
+    }
+    
+    // Cloud 선택 시 (바로 전환)
+    if (mode === 'cloud') {
+      setBackendMode('cloud');
+      
+      // ✅ Only reload projects if authenticated (cloud mode requires auth)
+      if (isSignedIn) {
+        const fetchProjects = useStore.getState().fetchProjects;
+        fetchProjects();
+      }
     }
   };
   

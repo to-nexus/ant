@@ -3,7 +3,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, ChevronDown, ChevronRight, Square, RefreshCw } from 'lucide-react';
+import { Send, ChevronDown, ChevronRight, Square } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
 import { fetchAgents, type Agent, getApiBase, authFetch } from '@/infrastructure/http/api';
@@ -166,62 +166,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
     }
   };
 
-  // ✅ Retry job handler (resume from last checkpoint)
-  const handleRetry = async () => {
-    const selectedProject = useStore.getState().selectedProject;
-    const selectedFeature = useStore.getState().selectedFeature;
-    const kanbanData = useStore.getState().kanban;
-    
-    if (!selectedProject || !selectedFeature) {
-      console.error('[ChatInput] Missing required selection for retry');
-      return;
-    }
-    
-    // ✅ Get jobId from kanban (session data after interruption)
-    const jobIdToResume = kanbanData?.jobId;
-    
-    if (!jobIdToResume) {
-      console.error('[ChatInput] Missing jobId for retry - cannot resume');
-      console.error('[ChatInput] KanbanData:', kanbanData);
-      return;
-    }
-    
-    console.log(`[ChatInput] Retrying job ${jobIdToResume} (resume from last checkpoint)...`);
-    
-    try {
-      // ✅ CRITICAL: Dismiss interruption FIRST before setting running state
-      // This prevents SSE initial state from auto-stopping the job
-      if (kanbanData?.interruption?.timestamp) {
-        console.log('[ChatInput] Dismissing interruption timestamp BEFORE setRunning');
-        useStore.getState().setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
-      }
-      
-      // ✅ Set running state immediately
-      useStore.getState().setRunning(true, jobIdToResume);
-      
-      // ✅ Use new resumeJob API - server will auto-detect job type
-      const { resumeJob } = await import('@/infrastructure/http/api');
-      const result = await resumeJob(jobIdToResume, selectedProject, selectedFeature, true);  // chatSource: true
-      
-      console.log(`[ChatInput] Retry successful:`, result);
-      console.log(`  Original job: ${result.originalJobId}`);
-      console.log(`  New job: ${result.jobId}`);
-      console.log(`  Job type: ${result.jobType}`);
-      
-      // ✅ Update with new jobId from server
-      useStore.getState().setRunning(true, result.jobId);
-      
-      // ✅ Clear failed state
-      useStore.getState().setLastJobFailed(false);
-      
-    } catch (error) {
-      console.error('[ChatInput] Failed to retry job:', error);
-      useStore.getState().setRunning(false);  // ✅ Clear running state on error
-      alert(`Failed to retry job: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  };
-
-  // ✅ Submit message handler
+  // ✅ Submit message handler - handles both Continue and New Job
   const handleSubmit = async () => {
     if (!message.trim() || !chatPolicy.canSendMessage) return;
     
@@ -235,21 +180,23 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
       return;
     }
     
-    // ✅ CRITICAL: Check if this is a Resume or New task
-    const currentJobId = kanbanData?.jobId;
-    const hasInterruption = kanbanData?.interruption?.canResume === true;
+    // Clear message immediately for better UX
+    const userMessage = message;
+    setMessage('');
     
-    // ✅ DEFENSE: If interruption exists, redirect to Resume (shouldn't happen if UI Policy works correctly)
+    // ✅ Check if there's an interrupted job (not completed)
+    const currentJobId = kanbanData?.jobId;
+    const hasInterruption = kanbanData?.interruption && !kanbanData?.interruption?.message?.includes('completed');
+    
+    // ✅ CASE 1: Continue existing interrupted job with new directive
     if (currentJobId && hasInterruption) {
-      console.warn('[ChatInput] Interruption detected in Submit - redirecting to Resume');
-      console.warn('[ChatInput] This should be prevented by UI Policy (canSendMessage: false)');
-      
-      // Clear message immediately for better UX
-      const userMessage = message;
-      setMessage('');
+      console.log('[ChatInput] 🔄 Continuing interrupted job with new directive...');
+      console.log('   Job ID:', currentJobId);
+      console.log('   Interruption:', kanbanData?.interruption?.reason);
+      console.log('   New directive:', userMessage.substring(0, 100));
       
       try {
-        // ✅ 1. Add user message to chat history first
+        // ✅ 1. Add user message to chat history
         await authFetch(
           `${API_BASE()}/projects/${selectedProject}/features/${selectedFeature}/chat/user-message`,
           {
@@ -258,43 +205,46 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
           }
         );
         
-        // ✅ 2. Resume job instead of starting new one
+        // ✅ 2. Dismiss interruption UI before continuing
+        if (kanbanData?.interruption?.timestamp) {
+          console.log('[ChatInput] Dismissing interruption timestamp BEFORE continue');
+          useStore.getState().setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
+        }
+        
+        // ✅ 3. Set running state immediately
         useStore.getState().setRunning(true, currentJobId);
         
-        const { resumeJob } = await import('@/infrastructure/http/api');
-        const result = await resumeJob(currentJobId, selectedProject, selectedFeature, true);
+        // ✅ 4. Call Continue API (adds directive with highest priority)
+        const { continueJob } = await import('@/infrastructure/http/api');
+        const result = await continueJob(currentJobId, selectedProject, selectedFeature, userMessage, true);
         
-        console.log('[ChatInput] Resume successful (from submit):', result);
+        console.log('[ChatInput] ✅ Continue successful:', result);
         console.log(`  Original job: ${result.originalJobId}`);
         console.log(`  New job: ${result.jobId}`);
         console.log(`  Job type: ${result.jobType}`);
+        console.log(`  Directives count: ${result.directivesCount}`);
         
-        // ✅ Update with new jobId from server
+        // ✅ 5. Update with same jobId from server (Continue uses same jobId)
         useStore.getState().setRunning(true, result.jobId);
         
-        // ✅ Dismiss interruption UI globally
-        if (kanbanData?.interruption?.timestamp) {
-          useStore.getState().setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
-        }
+        // ✅ 6. Clear failed state
+        useStore.getState().setLastJobFailed(false);
+        
       } catch (error) {
-        console.error('[ChatInput] Failed to resume job:', error);
+        console.error('[ChatInput] Failed to continue job:', error);
         useStore.getState().setRunning(false);
-        alert(`Failed to resume job: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        alert(`Failed to continue job: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
       return;
     }
     
-    // ✅ Normal path: Start new job
-    console.log('[ChatInput] Submitting chat message as job...');
-    console.log('   Message:', message);
+    // ✅ CASE 2: Normal path - Start new job
+    console.log('[ChatInput] 🆕 Starting new job...');
+    console.log('   Message:', userMessage.substring(0, 100));
     console.log('   Project:', selectedProject);
     console.log('   Feature:', selectedFeature);
     console.log('   Agent:', selectedAgent);
     console.log('   Job Type:', selectedJobType);
-    
-    // Clear message immediately for better UX
-    const userMessage = message;
-    setMessage('');
     
     try {
       // ✅ 1. Add user message to chat history first
@@ -677,22 +627,6 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2">
-            {/* Retry Button (Job 실패 상태일 때만 표시) */}
-            {chatPolicy.canRetry && !isRunning && (
-              <button
-                onClick={handleRetry}
-                className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded
-                           bg-amber-500 hover:bg-amber-600 
-                           text-white
-                           border border-amber-600 dark:border-amber-500
-                           transition-colors"
-                title="Retry the failed job"
-              >
-                <RefreshCw className="w-3 h-3" />
-                <span>Retry</span>
-              </button>
-            )}
-
             {/* Submit/Stop Button */}
             {isRunning ? (
               // Stop Button (Job 진행 중)

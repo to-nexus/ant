@@ -549,9 +549,11 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
           '/api/internal/task-queue',  // ✅ Internal endpoint for child processes (has ANT_USER_EMAIL env var)
         ];
         
-        // ✅ Paths that need prefix matching (not exact match)
-        const prefixPaths = [
-          '/api/jobs',  // ✅ Internal endpoints for child processes (workflow updates)
+        // ✅ Specific internal endpoints that should skip auth (child processes)
+        const internalEndpoints = [
+          '/api/jobs/queue/next',           // Child process polling
+          '/api/jobs/queue/complete',       // Child process completion
+          '/api/internal/task-queue',       // Already in publicPaths but for clarity
         ];
         
         // Skip auth for SSE endpoints (EventSource doesn't support headers)
@@ -560,10 +562,10 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         
         // Check if path should skip auth
         const isPublicPath = publicPaths.includes(req.path);
-        const isPrefixPath = prefixPaths.some(p => req.path.startsWith(p));
+        const isInternalEndpoint = internalEndpoints.some(p => req.path.startsWith(p));
         const isGraphMetadata = req.path.includes('/graph-metadata');
         
-        if (isPublicPath || isPrefixPath || isGraphMetadata || isSSEEndpoint) {
+        if (isPublicPath || isInternalEndpoint || isGraphMetadata || isSSEEndpoint) {
           return next();
         }
         
@@ -713,7 +715,8 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       jobs: this.jobs,
       userStoppedJobs: this.userStoppedJobs,  // ✅ Track user-stopped jobs
       cleanupJobState: this.cleanupJobState.bind(this),
-      workflowStateService: this.workflowStateService  // ✅ CRITICAL: Pass for node tracking
+      workflowStateService: this.workflowStateService,  // ✅ CRITICAL: Pass for node tracking
+      chatService: this.chatService  // ✅ For adding cancelled messages
     });
     this.app.use('/api', jobRoutes);
   }
@@ -1184,6 +1187,19 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
             console.log(`\n🧹 [ExpressServerAdapter.runJob] Job ${jobId} failed naturally, calling cleanupJobState...`);
             await this.cleanupJobState(jobId, params.project, params.feature, interruption);
             console.log(`   ✅ cleanupJobState completed\n`);
+            
+            // ✅ Add cancelled message to chat
+            if (interruption && params.project && params.feature) {
+              this.chatService.addCancelledMessage(
+                params.project,
+                params.feature,
+                jobId,
+                interruption.reason,
+                interruption.message,
+                params.userContext  // ✅ Pass userContext
+              );
+              console.log(`   ✅ Added cancelled message to chat (reason: ${interruption.reason})`);
+            }
             
             reject(new Error(status.error));
           }

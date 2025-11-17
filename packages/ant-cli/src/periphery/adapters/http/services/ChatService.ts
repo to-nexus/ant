@@ -24,6 +24,7 @@ export interface MessageContent {
      | 'reading' | 'read'         // File read
      // General content
      | 'text'
+     | 'cancelled'      // Task cancelled (with Resume button)
      // File Operations - Real-time streaming
      | 'file_creating' | 'file_writing' | 'file_create'
      | 'file_editing' | 'file_updating' | 'file_edit'
@@ -48,6 +49,9 @@ export interface MessageContent {
     model?: string;         // LLM model used
     provider?: string;      // LLM provider (e.g., 'anthropic', 'openai')
     blockStart?: boolean;   // For thinking: marks <thinking> tag opened (new block)
+    // Cancelled metadata
+    jobId?: string;         // For cancelled: job ID to resume
+    reason?: string;        // For cancelled: cancellation reason
     durationMs?: number;    // For thinking: duration in milliseconds
   };
 }
@@ -866,6 +870,51 @@ export class ChatService {
     });
     
     console.log(`❌ [ChatService] Added job error message: ${messageId}`);
+    return messageId;
+  }
+
+  /**
+   * Add cancelled message (for job interruptions)
+   * Shows Resume button in chat UI
+   */
+  addCancelledMessage(
+    projectId: string,
+    featureName: string,
+    jobId: string,
+    reason: string,
+    message: string,
+    userContext?: UserContext
+  ): string {
+    const session = this.getOrCreateSession(projectId, featureName, jobId);
+    
+    const messageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const cancelledMsg: ChatMessage = {
+      id: messageId,
+      role: 'assistant',
+      contents: [{
+        type: 'cancelled',
+        content: message,
+        metadata: {
+          jobId,
+          reason
+        }
+      }],
+      timestamp: new Date().toISOString(),
+      jobId
+    };
+    
+    session.messages.push(cancelledMsg);
+    
+    // Save to file
+    this.saveSessionToFile(projectId, featureName, session.messages, userContext);
+    
+    // Broadcast cancelled message
+    this.broadcast(projectId, featureName, {
+      type: 'cancelled_message',
+      message: cancelledMsg
+    });
+    
+    console.log(`🛑 [ChatService] Added cancelled message: ${messageId} (reason: ${reason})`);
     return messageId;
   }
 

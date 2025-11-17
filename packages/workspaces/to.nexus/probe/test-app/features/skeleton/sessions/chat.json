@@ -1,0 +1,36 @@
+{
+  "projectId": "test-app",
+  "featureName": "skeleton",
+  "messages": [
+    {
+      "id": "msg-1763345233771-3z3erxvqo",
+      "role": "user",
+      "contents": [
+        {
+          "type": "text",
+          "content": "작업을 수행해라. 간결하게 작성하고 영어로 작성해라."
+        }
+      ],
+      "timestamp": "2025-11-17T02:07:13.771Z",
+      "isComplete": true
+    },
+    {
+      "id": "msg-1763349096748-m7yw33ncw",
+      "role": "assistant",
+      "contents": [
+        {
+          "type": "cancelled",
+          "content": "Process crashed with exit code 1",
+          "metadata": {
+            "jobId": "mi2kiu3xq8mkk5",
+            "reason": "process_crash"
+          }
+        }
+      ],
+      "timestamp": "2025-11-17T03:11:36.748Z",
+      "jobId": "mi2kiu3xq8mkk5"
+    }
+  ],
+  "createdAt": "2025-11-17T02:07:13.772Z",
+  "updatedAt": "2025-11-17T03:11:36.748Z"
+}

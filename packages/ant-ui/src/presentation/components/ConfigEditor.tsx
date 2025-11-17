@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { ProjectConfig } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
+import { useAlertModal } from '@/application/hooks/ui/useAlertModal';
 
 interface ConfigEditorProps {
   config: ProjectConfig;
-  onSave: (config: ProjectConfig) => Promise<void>;
+  onSave: (config: ProjectConfig) => Promise<{ success: boolean; error?: string }>;
   onClose: () => void;
 }
 
@@ -16,6 +17,22 @@ interface ConfigField {
   options?: string[];
   description?: string;
 }
+
+// LLM Model options by provider (optimized for coding)
+const LLM_MODELS: Record<string, { value: string; label: string }[]> = {
+  anthropic: [
+    { value: 'claude-4-5-sonnet', label: 'Claude 4.5 Sonnet (Latest, best for coding)' },
+    { value: 'claude-4-5-haiku', label: 'Claude 4.5 Haiku (Fast & efficient)' },
+    { value: 'claude-3-5-sonnet', label: 'Claude 3.5 Sonnet (Stable)' },
+    { value: 'claude-3-5-haiku', label: 'Claude 3.5 Haiku (Fast & efficient)' },
+  ],
+  openai: [
+    { value: 'gpt-4o', label: 'GPT-4o (Optimized)' },
+    { value: 'gpt-4o-mini', label: 'GPT-4o Mini (Fast)' },
+    { value: 'o1-preview', label: 'o1 Preview (Advanced reasoning)' },
+    { value: 'o1-mini', label: 'o1 Mini (Efficient reasoning)' },
+  ],
+};
 
 const CONFIG_SCHEMA: ConfigField[] = [
   {
@@ -79,9 +96,10 @@ const CONFIG_SCHEMA: ConfigField[] = [
   {
     key: 'llmModel',
     label: 'LLM Model',
-    type: 'text',
+    type: 'select',
     required: false,
-    description: 'Specific LLM model name'
+    options: [], // Dynamic options based on provider
+    description: 'Specific LLM model for code generation'
   }
 ];
 
@@ -91,6 +109,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [hasChanges, setHasChanges] = useState(false);
+  const { showSuccess, showError, AlertModal } = useAlertModal();
 
   // ✅ Cloud 모드일 때 repoType을 'cloud'로 강제 설정
   useEffect(() => {
@@ -114,10 +133,19 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   }, [editedConfig, config]);
 
   const handleChange = (key: keyof ProjectConfig, value: any) => {
-    setEditedConfig(prev => ({
-      ...prev,
-      [key]: value
-    }));
+    setEditedConfig(prev => {
+      const newConfig = {
+        ...prev,
+        [key]: value
+      };
+      
+      // ✅ Provider 변경 시 model 초기화
+      if (key === 'llmProvider' && value !== prev.llmProvider) {
+        newConfig.llmModel = undefined;
+      }
+      
+      return newConfig;
+    });
     
     // Clear error for this field
     if (errors[key]) {
@@ -149,7 +177,14 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
     
     setIsSaving(true);
     try {
-      await onSave(editedConfig);
+      const result = await onSave(editedConfig);
+      if (result.success) {
+        showSuccess('Configuration saved successfully!');
+      } else {
+        showError(result.error || 'Failed to save configuration. Please try again.');
+      }
+    } catch (error) {
+      showError('Failed to save configuration. Please try again.');
     } finally {
       setIsSaving(false);
     }
@@ -183,6 +218,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
           <p className="text-xs text-gray-500 dark:text-gray-400">
             {field.description}
             {isRepoTypeDisabled && ' (Fixed in Cloud Mode)'}
+            {field.key === 'llmModel' && !editedConfig.llmProvider && ' (Select provider first)'}
           </p>
         )}
         
@@ -213,7 +249,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
           <select
             value={value as string || ''}
             onChange={(e) => handleChange(field.key, e.target.value || undefined)}
-            disabled={isRepoTypeDisabled}
+            disabled={isRepoTypeDisabled || (field.key === 'llmModel' && !editedConfig.llmProvider)}
             className={`w-full px-3 py-2 border rounded-md text-sm 
               bg-white dark:bg-gray-800 
               text-gray-900 dark:text-white
@@ -222,15 +258,24 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
                   ? 'border-red-500 dark:border-red-400' 
                   : 'border-gray-300 dark:border-gray-600'
               } 
-              ${isRepoTypeDisabled ? 'opacity-50 cursor-not-allowed' : ''}
+              ${isRepoTypeDisabled || (field.key === 'llmModel' && !editedConfig.llmProvider) ? 'opacity-50 cursor-not-allowed' : ''}
               focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400`}
           >
             {!isRepoTypeDisabled && <option value="">-- Select --</option>}
-            {field.options?.map(option => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
+            {/* ✅ Dynamic model options based on provider */}
+            {field.key === 'llmModel' && editedConfig.llmProvider ? (
+              LLM_MODELS[editedConfig.llmProvider]?.map(model => (
+                <option key={model.value} value={model.value}>
+                  {model.label}
+                </option>
+              ))
+            ) : (
+              field.options?.map(option => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))
+            )}
           </select>
         )}
         
@@ -298,6 +343,9 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
           {CONFIG_SCHEMA.map(field => renderField(field))}
         </div>
       </div>
+      
+      {/* Alert Modal */}
+      <AlertModal />
     </div>
   );
 }
