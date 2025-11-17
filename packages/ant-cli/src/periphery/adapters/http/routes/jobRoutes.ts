@@ -217,14 +217,16 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
       let jobType: 'design' | 'code' | 'learn' | null = null;
       
       // ✅ CRITICAL: Look for interrupted jobs in session files
+      let sessionData: any = null;
       for (const type of ['design', 'code', 'learn'] as const) {
         const sessionPath = path.join(sessionDir, `${type}.json`);
         if (fs.existsSync(sessionPath)) {
-          const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
+          const data = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
           // ✅ Check for interrupted job (has jobId and interruption)
-          if (sessionData.state?.jobId && sessionData.state?.interruption) {
+          if (data.state?.jobId && data.state?.interruption) {
             jobType = type;
-            sessionJobId = sessionData.state.jobId;
+            sessionJobId = data.state.jobId;
+            sessionData = data;  // ✅ Save session data for later use
             console.log(`   ✅ Found interrupted job in ${type}.json`);
             console.log(`   Session jobId: ${sessionJobId}`);
             break;
@@ -232,7 +234,7 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
         }
       }
       
-      if (!jobType || !sessionJobId) {
+      if (!jobType || !sessionJobId || !sessionData) {
         console.log(`   ❌ No interrupted job found in session files`);
         return res.status(404).json({ 
           error: 'No interrupted job found',
@@ -243,6 +245,12 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
       console.log(`   Job type: ${jobType}`);
       console.log(`   Starting resume job execution...`);
       
+      // ✅ Restore overrideDirective from session (for chat-initiated jobs)
+      const overrideDirective = sessionData.state?.overrideDirective;
+      if (overrideDirective) {
+        console.log(`   ✅ Restoring override directive from session`);
+      }
+      
       // ✅ inputFile not needed for resume (feature name is sufficient)
       const inputFile = undefined;
       
@@ -251,9 +259,9 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
         jobType: jobType,
         project: projectId,
         feature: featureName,
-        inputFile,  // May not exist for chat-initiated jobs, but that's ok
+        inputFile,
         enableEvaluation: false,
-        overrideDirective: undefined,
+        overrideDirective,  // ✅ Restore from session
         chatSource,
         userContext,
         jobId: sessionJobId  // ✅ Use existing jobId for resume

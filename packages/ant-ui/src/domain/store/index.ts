@@ -76,6 +76,7 @@ interface StoreActions {
   addChatMessage: (message: ChatMessage) => void;
   updateChatMessage: (messageId: string, updates: Partial<ChatMessage>) => void;
   clearChatMessages: () => void;
+  removeCancelledMessage: (jobId: string) => void;
   
   // ==================
   // SSE Lifecycle

@@ -207,7 +207,8 @@ export class ChatService {
         projectId,
         featureName,
         jobId,
-        messages: fileSession?.messages || []
+        messages: fileSession?.messages || [],
+        userContext  // ✅ Store user context for later file operations
       });
       
       if (fileSession) {
@@ -220,6 +221,11 @@ export class ChatService {
     // Update jobId if provided and changed
     if (jobId && session.jobId !== jobId) {
       session.jobId = jobId;
+    }
+    
+    // ✅ Update userContext if provided (for existing sessions)
+    if (userContext && !session.userContext) {
+      session.userContext = userContext;
     }
 
     return session;

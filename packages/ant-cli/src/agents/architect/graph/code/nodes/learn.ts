@@ -190,7 +190,9 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
           interruption: existingSession.state?.interruption || (state as any).interruption,  // ✅ CRITICAL: Preserve interruption details!
           jobId: (state as any).jobId,  // ✨ Preserve jobId
           jobTiming: completedJobTiming,  // ✨ Mark as completed
-          directives: directivesArray  // ✅ Save directives array (newest first)
+          directives: directivesArray,  // ✅ Save directives array (newest first)
+          overrideDirective: state.overrideDirective,  // ✅ Save chat-initiated directive
+          chatSource: state.chatSource  // ✅ Save chat source flag
         }
       }
     );
