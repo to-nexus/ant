@@ -155,9 +155,9 @@ export async function execute(state: DesignGraphState) {
   
   // Mode 1: <edit> tag used (precise section modification)
   if (parsed.edits.length > 0) {
-    const designEdit = parsed.edits.find(e => e.path.includes('design.md'));
+    const designEdit = parsed.edits.find(e => e.path.includes('system-design.md'));
     if (!designEdit) {
-      throw new Error('Edit instruction found but not for design.md');
+      throw new Error('Edit instruction found but not for system-design.md');
     }
     
     // Read existing design document
@@ -176,9 +176,9 @@ export async function execute(state: DesignGraphState) {
   }
   // Mode 2: <append> tag used (append to existing document)
   else if (parsed.appends.length > 0) {
-    const designAppend = parsed.appends.find(a => a.path.includes('design.md'));
+    const designAppend = parsed.appends.find(a => a.path.includes('system-design.md'));
     if (!designAppend) {
-      throw new Error('Append instruction found but not for design.md');
+      throw new Error('Append instruction found but not for system-design.md');
     }
     
     // Read existing design document
@@ -192,11 +192,11 @@ export async function execute(state: DesignGraphState) {
   }
   // Mode 3: <file> tag used (create new document)
   else if (parsed.files.length > 0) {
-    const designFile = parsed.files.find(f => f.path.includes('design.md'));
+    const designFile = parsed.files.find(f => f.path.includes('system-design.md'));
     if (designFile) {
       finalDesignMarkdown = designFile.content || '';
     } else {
-      console.warn('⚠️  No design.md file found in parsed files. Using raw content as fallback.');
+      console.warn('⚠️  No system-design.md file found in parsed files. Using raw content as fallback.');
       finalDesignMarkdown = raw.replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
     }
   }

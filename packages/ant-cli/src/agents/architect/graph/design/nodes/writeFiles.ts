@@ -57,9 +57,10 @@ export async function writeFiles(state: DesignGraphState): Promise<DesignGraphSt
   console.log(`   Target directory: ${designDir}`);
   await gitPort.createDirectory(designDir);
   
+  // ✅ Use fixed filename: system-design.md (Git handles versioning)
   const designFilePath = path.join(
     designDir, 
-    `system-design-${state.context.project}-${Date.now()}.md`
+    `system-design.md`
   );
   
   console.log(`   Writing to: ${designFilePath}`);
