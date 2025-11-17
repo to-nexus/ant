@@ -61,7 +61,7 @@ export function useGraphLayout(
       
       // ✅ Track active node
       if (isActive) {
-        console.log('[useGraphLayout] 🟢 ACTIVE NODE:', node.id);
+        // console.log('[useGraphLayout] 🟢 ACTIVE NODE:', node.id); // ✅ Too verbose
       }
       
       return {

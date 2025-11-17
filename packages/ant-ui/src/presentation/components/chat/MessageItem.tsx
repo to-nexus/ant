@@ -5,13 +5,15 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Brain, FileEdit, FilePlus, Trash2, Terminal, ChevronDown, ChevronRight, 
+import { Terminal, ChevronDown, ChevronRight, 
          Search, FileSearch, Eye, Loader2, Play, XCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ChatMessage, MessageContent } from '@/domain/models/chat';
 import { useStore } from '@/domain/store';
 import { resumeJob as resumeJobAPI } from '@/infrastructure/http/api';
+import { ThinkingCard } from './ThinkingCard';
+import { FileCard } from './FileCard';
 
 interface MessageItemProps {
   message: ChatMessage;
@@ -57,14 +59,9 @@ interface ContentBlockProps {
 function ContentBlock({ content, isStreaming }: ContentBlockProps) {
   // ✅ Auto-scroll to bottom during streaming to prevent word-by-word disappearing
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const thinkingScrollRef = useRef<HTMLDivElement>(null);
-  
-  // ✅ Cursor-style: Expand/collapse state (must be at top level for Hooks rules)
-  const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
   
   // ✅ CRITICAL: Use ref to track previous content length to prevent infinite scroll loops
   const prevContentLengthRef = useRef(0);
-  const prevThinkingLengthRef = useRef(0);
   
   useEffect(() => {
     if (isStreaming && scrollContainerRef.current && content.type === 'text') {
@@ -74,23 +71,6 @@ function ContentBlock({ content, isStreaming }: ContentBlockProps) {
       if (currentLength > prevContentLengthRef.current) {
         scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
         prevContentLengthRef.current = currentLength;
-      }
-    }
-  }, [content.content, isStreaming, content.type]);
-  
-  // ✅ Auto-scroll thinking content during streaming
-  useEffect(() => {
-    if (isStreaming && thinkingScrollRef.current && content.type === 'thinking') {
-      const currentLength = content.content?.length || 0;
-      
-      // Only scroll if content actually grew
-      if (currentLength > prevThinkingLengthRef.current) {
-        requestAnimationFrame(() => {
-          if (thinkingScrollRef.current) {
-            thinkingScrollRef.current.scrollTop = thinkingScrollRef.current.scrollHeight;
-          }
-        });
-        prevThinkingLengthRef.current = currentLength;
       }
     }
   }, [content.content, isStreaming, content.type]);
@@ -106,46 +86,7 @@ function ContentBlock({ content, isStreaming }: ContentBlockProps) {
       );
 
     case 'thinking':
-      // ✅ Cursor 스타일: 스트리밍 중 = 펼침, 완료 후 = 접힘 (클릭하면 펼침)
-      const isThinkingCollapsed = !isStreaming && !isThinkingExpanded;
-      const hasThinkingContent = content.content && content.content.trim().length > 0;
-      
-      // Format duration: "Thought for X seconds"
-      const durationMs = content.metadata?.durationMs;
-      const durationText = durationMs 
-        ? durationMs < 1000 
-          ? `${(durationMs / 1000).toFixed(1)}s`  // "0.5s"
-          : `${Math.round(durationMs / 1000)}s`   // "3s"
-        : null;
-      
-      return (
-        <div>
-          {/* Header - clickable when completed */}
-          <button
-            onClick={() => !isStreaming && hasThinkingContent && setIsThinkingExpanded(!isThinkingExpanded)}
-            className={`w-full flex items-center gap-2 px-3 py-2 transition-colors rounded-md ${!isStreaming && hasThinkingContent ? 'hover:bg-gray-100/50 dark:hover:bg-gray-800/30 cursor-pointer' : ''}`}
-            disabled={isStreaming || !hasThinkingContent}
-          >
-            <Brain className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
-            <span className="text-xs text-gray-600 dark:text-gray-400 font-medium">
-              {isStreaming ? 'Thinking...' : durationText ? `Thought for ${durationText}` : 'Thought'}
-            </span>
-            {!isStreaming && hasThinkingContent && (
-              <ChevronRight className={`w-3.5 h-3.5 text-gray-400 dark:text-gray-500 ml-auto transition-transform ${isThinkingExpanded ? 'rotate-90' : ''}`} />
-            )}
-          </button>
-          
-          {/* Content - show during streaming or when expanded */}
-          {hasThinkingContent && !isThinkingCollapsed && (
-            <div 
-              ref={thinkingScrollRef}
-              className="mt-1 px-4 py-3 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400 bg-gray-50/30 dark:bg-gray-900/20 rounded-md max-h-48 overflow-y-auto scrollbar-thin"
-            >
-              <pre className="whitespace-pre-wrap font-mono opacity-70">{content.content}</pre>
-            </div>
-          )}
-        </div>
-      );
+      return <ThinkingCard content={content} />;
 
     case 'cancelled':
       return <CancelledCard content={content} />;
@@ -371,9 +312,9 @@ function CommandCard({ content }: CommandCardProps) {
   const isCompleted = content.type === 'command';
   const isActive = isRunning || isStreamingOutput;
   
-  // Auto-expand when streaming, collapsible when complete
-  const [isExpanded, setIsExpanded] = useState(false);
-  const shouldShowOutput = (isStreamingOutput || isExpanded) && output;
+  // ✅ Cursor/Copilot style: Default to expanded (show output), allow user to collapse
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const shouldShowOutput = !isCollapsed && output;
   
   // ✅ CRITICAL: Use ref to track previous output length
   const prevOutputLengthRef = useRef(0);
@@ -429,7 +370,7 @@ function CommandCard({ content }: CommandCardProps) {
     <div className={`border ${config.borderColor} rounded-lg overflow-hidden ${config.bgColor}`}>
       {/* Header - Copilot/Cursor Style (Single Row) */}
       <button 
-        onClick={() => hasOutput && isCompleted && setIsExpanded(!isExpanded)}
+        onClick={() => hasOutput && isCompleted && setIsCollapsed(!isCollapsed)}
         disabled={!hasOutput || !isCompleted}
         className={`w-full ${config.headerBg} px-3 py-2.5 ${hasOutput && isCompleted ? config.hoverBg + ' cursor-pointer' : 'cursor-default'} transition-colors`}
       >
@@ -456,9 +397,9 @@ function CommandCard({ content }: CommandCardProps) {
           {/* Expand/Collapse Icon */}
           {isCompleted && hasOutput && (
             <div className="flex-shrink-0">
-              {isExpanded ? 
-                <ChevronDown className={`w-4 h-4 ${config.textColor} opacity-60`} /> :
-                <ChevronRight className={`w-4 h-4 ${config.textColor} opacity-60`} />
+              {isCollapsed ? 
+                <ChevronRight className={`w-4 h-4 ${config.textColor} opacity-60`} /> :
+                <ChevronDown className={`w-4 h-4 ${config.textColor} opacity-60`} />
               }
             </div>
           )}
@@ -470,7 +411,7 @@ function CommandCard({ content }: CommandCardProps) {
         <div className="border-t border-gray-200 dark:border-gray-700">
           <div 
             ref={outputRef}
-            className="max-h-60 overflow-y-auto scrollbar-thin bg-gray-50 dark:bg-gray-900/50 px-4 py-3"
+            className="max-h-[300px] overflow-y-auto scrollbar-thin bg-gray-50 dark:bg-gray-900/50 px-4 py-3"
             style={{ overflowAnchor: 'none' }}
           >
             <pre className="text-xs font-mono text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words">
@@ -575,240 +516,6 @@ function GrepCard({ content }: { content: MessageContent }) {
   );
 }
 
-/**
- * FileCard - Cursor-style file operation card with real-time streaming
- */
-interface FileCardProps {
-  content: MessageContent;
-  operation: 'create' | 'edit' | 'delete';
-  isStreaming?: boolean;
-}
-
-function FileCard({ content, operation }: FileCardProps) {
-  const contentRef = useRef<HTMLDivElement>(null);
-  const filePath = content.metadata?.filePath || 'Unknown file';
-  const fileContent = content.content;
-  const diffBefore = content.metadata?.diffBefore;
-  const diffAfter = content.metadata?.diffAfter;
-  
-  // Determine streaming state based on content type
-  const isCreating = content.type === 'file_creating';
-  const isWriting = content.type === 'file_writing';
-  const isEditing = content.type === 'file_editing';
-  const isUpdating = content.type === 'file_updating';
-  const isDeleting = content.type === 'file_deleting';
-  const isActive = isCreating || isWriting || isEditing || isUpdating || isDeleting;
-  const isCompleted = content.type === 'file_create' || content.type === 'file_edit' || content.type === 'file_delete';
-  
-  // Auto-expand when streaming/writing, auto-collapse when complete
-  const [isExpanded, setIsExpanded] = useState(false);
-  // ✅ Only show content when: actively writing OR user manually expanded
-  const shouldShowContent = (isWriting || isUpdating || isExpanded) && (fileContent || diffBefore || diffAfter);
-  
-  // ✅ CRITICAL: Use ref to track previous content length
-  const prevContentLengthRef = useRef(0);
-  
-  // Auto-scroll to bottom during streaming (with requestAnimationFrame for better performance)
-  useEffect(() => {
-    if ((isWriting || isUpdating) && contentRef.current) {
-      const currentLength = (fileContent?.length || 0) + (diffAfter?.length || 0);
-      
-      // Only scroll if content actually grew
-      if (currentLength > prevContentLengthRef.current) {
-        // Use requestAnimationFrame to ensure DOM is updated before scrolling
-        requestAnimationFrame(() => {
-          if (contentRef.current) {
-            contentRef.current.scrollTop = contentRef.current.scrollHeight;
-          }
-        });
-        prevContentLengthRef.current = currentLength;
-      }
-    }
-  }, [fileContent, diffAfter, isWriting, isUpdating]);
-  
-  // Calculate line stats
-  const calculateLineStats = () => {
-    if (operation === 'edit' && diffBefore && diffAfter) {
-      const beforeLines = diffBefore.split('\n').length;
-      const afterLines = diffAfter.split('\n').length;
-      const added = afterLines;
-      const removed = beforeLines;
-      return { added, removed, total: null };
-    } else if (fileContent) {
-      const totalLines = fileContent.split('\n').length;
-      return { 
-        added: operation === 'create' ? totalLines : 0, 
-        removed: operation === 'delete' ? totalLines : 0,
-        total: totalLines 
-      };
-    }
-    return { added: 0, removed: 0, total: 0 };
-  };
-  
-  const lineStats = calculateLineStats();
-  
-  // Determine operation details (Copilot/Cursor style - subtle, modern)
-  const operationConfig = {
-    create: {
-      icon: FilePlus,
-      labelCompleted: 'Created',
-      labelActive: isCreating ? 'Creating...' : 'Writing...',
-      bgColor: 'bg-white dark:bg-gray-800/50',
-      borderColor: 'border-gray-200 dark:border-gray-700',
-      textColor: 'text-gray-700 dark:text-gray-300',
-      iconColor: 'text-green-500 dark:text-green-400',
-      headerBg: 'bg-gray-50/50 dark:bg-gray-800/30',
-      hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50'
-    },
-    edit: {
-      icon: FileEdit,
-      labelCompleted: 'Modified',
-      labelActive: isEditing ? 'Editing...' : 'Updating...',
-      bgColor: 'bg-white dark:bg-gray-800/50',
-      borderColor: 'border-gray-200 dark:border-gray-700',
-      textColor: 'text-gray-700 dark:text-gray-300',
-      iconColor: 'text-blue-500 dark:text-blue-400',
-      headerBg: 'bg-gray-50/50 dark:bg-gray-800/30',
-      hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50'
-    },
-    delete: {
-      icon: Trash2,
-      labelCompleted: 'Deleted',
-      labelActive: 'Deleting...',
-      bgColor: 'bg-white dark:bg-gray-800/50',
-      borderColor: 'border-gray-200 dark:border-gray-700',
-      textColor: 'text-gray-700 dark:text-gray-300',
-      iconColor: 'text-red-500 dark:text-red-400',
-      headerBg: 'bg-gray-50/50 dark:bg-gray-800/30',
-      hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50'
-    }
-  };
-  
-  const config = operationConfig[operation];
-  const Icon = config.icon;
-  
-  // Check if there's content to show
-  const hasContent = (operation === 'create' && fileContent) || 
-                    (operation === 'edit' && (diffBefore || diffAfter)) ||
-                    (operation === 'delete' && fileContent);
-  
-  return (
-    <div className={`border ${config.borderColor} rounded-lg overflow-hidden ${config.bgColor}`}>
-      {/* Header - Copilot/Cursor Style (Single Row, Compact) */}
-      <button 
-        onClick={() => hasContent && isCompleted && setIsExpanded(!isExpanded)}
-        disabled={!hasContent || !isCompleted}
-        className={`w-full ${config.headerBg} px-3 py-2.5 ${hasContent && isCompleted ? config.hoverBg + ' cursor-pointer' : 'cursor-default'} transition-colors`}
-      >
-        <div className="flex items-center gap-2">
-          {/* Operation Icon + Status */}
-          {isActive ? (
-            <Loader2 className={`w-4 h-4 ${config.iconColor} animate-spin flex-shrink-0`} />
-          ) : (
-            <Icon className={`w-4 h-4 ${config.iconColor} flex-shrink-0`} />
-          )}
-          
-          {/* File Path */}
-          <span className={`text-xs font-mono ${config.textColor} truncate flex-1 text-left`}>
-            {filePath}
-          </span>
-          
-          {/* Line Stats (Compact) */}
-          {isCompleted && (
-            <>
-              {operation === 'edit' && (lineStats.added > 0 || lineStats.removed > 0) && (
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  {lineStats.added >= 0 && (
-                    <span className="text-[10px] text-green-600 dark:text-green-400 font-mono font-medium">
-                      +{lineStats.added}
-                    </span>
-                  )}
-                  {lineStats.removed >= 0 && (
-                    <span className="text-[10px] text-red-600 dark:text-red-400 font-mono font-medium">
-                      -{lineStats.removed}
-                    </span>
-                  )}
-                </div>
-              )}
-              {operation === 'create' && lineStats.total != null && (
-                <span className="text-[10px] text-green-600 dark:text-green-400 font-mono font-medium flex-shrink-0">
-                  +{lineStats.total}
-                </span>
-              )}
-              {operation === 'delete' && lineStats.total != null && (
-                <span className="text-[10px] text-red-600 dark:text-red-400 font-mono font-medium flex-shrink-0">
-                  -{lineStats.total}
-                </span>
-              )}
-            </>
-          )}
-          
-          {/* Expand/Collapse Icon */}
-          {isCompleted && hasContent && (
-            <div className="flex-shrink-0">
-              {isExpanded ? 
-                <ChevronDown className={`w-4 h-4 ${config.textColor} opacity-60`} /> :
-                <ChevronRight className={`w-4 h-4 ${config.textColor} opacity-60`} />
-              }
-            </div>
-          )}
-        </div>
-      </button>
-      
-      {/* Content (auto-expand during streaming, collapsible when complete) */}
-      {shouldShowContent && (
-        <div className="border-t border-gray-200 dark:border-gray-700">
-          {operation === 'edit' && (diffBefore || diffAfter) ? (
-            // Diff view for edits (real-time streaming)
-            <div ref={contentRef} className="max-h-96 overflow-y-auto scrollbar-thin" style={{ overflowAnchor: 'none' }}>
-              {diffBefore && (
-                <div className="bg-red-50 dark:bg-red-900/10">
-                  <pre className="px-4 py-2 text-xs font-mono text-red-800 dark:text-red-300 whitespace-pre-wrap break-words">
-                    {diffBefore.split('\n').map((line, i) => (
-                      <div key={i} className="flex">
-                        <span className="text-red-600 dark:text-red-400 mr-2">-</span>
-                        <span>{line}</span>
-                      </div>
-                    ))}
-                  </pre>
-                </div>
-              )}
-              {diffAfter && (
-                <div className="bg-green-50 dark:bg-green-900/10">
-                  <pre className="px-4 py-2 text-xs font-mono text-green-800 dark:text-green-300 whitespace-pre-wrap break-words">
-                    {diffAfter.split('\n').map((line, i) => (
-                      <div key={i} className="flex">
-                        <span className="text-green-600 dark:text-green-400 mr-2">+</span>
-                        <span>{line}</span>
-                      </div>
-                    ))}
-                  </pre>
-                </div>
-              )}
-            </div>
-          ) : fileContent ? (
-            // ✅ File content: ALWAYS show as raw text (no markdown rendering)
-            // Virtual scrolling: During streaming, show only last 200 lines
-            (() => {
-              const lines = fileContent.split('\n');
-              const displayContent = (isWriting || isUpdating) && lines.length > 200
-                ? '...\n' + lines.slice(-200).join('\n')
-                : fileContent;
-              
-              return (
-                <div ref={contentRef} className="max-h-96 overflow-y-auto scrollbar-thin bg-gray-50 dark:bg-gray-900/50" style={{ overflowAnchor: 'none' }}>
-                  <pre className="px-4 py-3 text-xs font-mono text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words">
-                    {displayContent}
-                  </pre>
-                </div>
-              );
-            })()
-          ) : null}
-        </div>
-      )}
-    </div>
-  );
-}
 
 /**
  * CancelledCard - Cursor/Copilot-style cancelled task card with Resume button

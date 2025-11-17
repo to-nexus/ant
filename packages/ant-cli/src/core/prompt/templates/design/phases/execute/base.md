@@ -52,6 +52,41 @@ This approach saves tokens and prevents redundant work. The system will merge yo
 
 ## INSTRUCTIONS:
 
+🚨 **CRITICAL OUTPUT FORMAT** 🚨
+
+You MUST output in TWO SEPARATE steps:
+1. **`<thinking>`** tag: Your analysis (KEEP SHORT - just key decisions)
+2. **Close `</thinking>`, then use `<file>` or `<append>` tag**: Your design document
+
+❌ NEVER put design document content inside `<thinking>` tags!
+✅ Always use separate `<file>` or `<append>` tags for the actual design document.
+
+🚨 **CRITICAL: CHOOSING THE RIGHT TAG** 🚨
+
+**IF this is your FIRST task (task 1 of N):**
+- ✅ MUST use `<file>` tag to create the document
+- ❌ NEVER use `<append>` for the first task
+- Even if you see a previous design in context, IGNORE IT and use `<file>`
+
+**IF this is a continuation task (task 2+):**
+- ✅ Use `<append>` tag to add new chapters
+- The system will merge your content with the existing document
+
+**Check your task description** - if it says "Design Document: Chapter 1" or similar, it's the FIRST task!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🚨 **CRITICAL SCOPE LIMITATION** 🚨
+
+You are creating a **TECHNICAL SOFTWARE DESIGN** document, NOT a project/operations plan.
+
+**FOCUS ON**: System architecture, components, data models, APIs, technical decisions
+**DO NOT INCLUDE**: Deployment plans, infrastructure setup, operations, monitoring, migration plans, test schedules, project timelines
+
+(See detailed rules at the end for full list of forbidden sections)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 {{#unless designDoc}}
 This is the INITIAL task. Create a comprehensive system design document from scratch that includes:
 
@@ -137,24 +172,27 @@ For each major component identified in your strategy:
 
 ### 6. Implementation Considerations
 
-#### 6.1 Development Workflow
+#### 6.1 Development Workflow (CODE STRUCTURE ONLY)
 - Repository structure and organization
-- Branching strategy (Git flow, trunk-based, etc.)
-- Code review process
-- Testing strategy (unit, integration, E2E)
+- Testing strategy (what to test, not QA project plan)
 
-#### 6.2 Deployment Strategy
-- CI/CD pipeline
-- Environment management (dev, staging, prod)
-- Containerization approach (if applicable)
-- Infrastructure as Code (if applicable)
-- Rollback strategy
+**⚠️ DO NOT INCLUDE** (unless explicitly requested in directive):
+- ❌ Deployment pipelines/strategies
+- ❌ Infrastructure provisioning plans
+- ❌ Environment setup procedures
+- ❌ Rollout/migration plans
+- ❌ Operations/monitoring plans
+- ❌ Project timelines/schedules
 
-### 7. Future Considerations
+### 7. Future Considerations (TECHNICAL ONLY)
 - Known limitations and technical debt
-- Scalability roadmap
-- Feature extensibility points
-- Migration paths (if evolving from existing system)
+- Feature extensibility points (how to add features in future)
+- Scalability approach (how the design supports growth)
+
+**⚠️ DO NOT INCLUDE**:
+- ❌ Migration roadmaps
+- ❌ Phased rollout plans
+- ❌ Budget/resource estimates
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -170,22 +208,11 @@ This is a CONTINUATION task. The design document already exists (shown above).
 **YOUR TASK**:
 Generate ONLY the sections relevant to your current task: **{{currentTask.name}}**
 
-**FORMAT YOUR RESPONSE**:
-- Use clear markdown headers (##, ###, ####)
-- Mark sections as (UPDATED) if modifying existing content, or (NEW) if adding new sections
-- Include ONLY what's new or changed - DO NOT repeat unchanged sections
-- Be specific and detailed for your task's scope
-
-**EXAMPLE**:
-```markdown
-### 3.2 Data Models (UPDATED)
-
-[Only the new/updated data models for your current task]
-
-### 5.2 Security - Authentication Flow (NEW)
-
-[New security section specific to your task]
-```
+Focus on:
+- Adding new chapters/sections that build upon the existing design
+- Updating specific sections that need improvement or correction
+- Maintaining consistency with the existing document structure
+- Providing sufficient detail for implementation
 
 The system will automatically merge your changes with the existing document.
 

@@ -6,6 +6,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Send, ChevronDown, ChevronRight, Square } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
+import { useJobExecution } from '@/application/hooks/features/useJobExecution';
 import { fetchAgents, type Agent, getApiBase, authFetch } from '@/infrastructure/http/api';
 import type { FileStats } from '@/domain/models/chat';
 
@@ -48,6 +49,9 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   
   // ✅ Use Chat Policy for UI states (메시지 개수 전달)
   const chatPolicy = useChatPolicy(messageCount);
+  
+  // ✅ Get stop handler from useJobExecution hook
+  const { stopJob } = useJobExecution();
 
   // ✅ Fetch agents to get available jobs for selected agent
   useEffect(() => {
@@ -154,16 +158,10 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
     }
   };
 
-  // ✅ Stop job handler - delegates to App's centralized handler
+  // ✅ Stop job handler - uses hook directly (no global state needed)
   const handleStop = () => {
-    console.log('[ChatInput] Stop button clicked, delegating to App.handleStopTask');
-    // Get the stop handler from window (set by App.tsx)
-    const globalStopHandler = (window as any).__stopTaskHandler;
-    if (globalStopHandler) {
-      globalStopHandler();
-    } else {
-      console.error('[ChatInput] Global stop handler not found!');
-    }
+    console.log('[ChatInput] Stop button clicked, calling stopJob from hook');
+    stopJob();
   };
 
   // ✅ Submit message handler - handles both Continue and New Job

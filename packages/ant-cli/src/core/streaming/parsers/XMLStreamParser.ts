@@ -4,6 +4,7 @@
  * Supports incremental parsing of:
  * - <thinking>...</thinking>
  * - <file path="...">...</file>
+ * - <append path="...">...</append>
  * - <edit path="..."><search>...</search><replace>...</replace></edit>
  * - <delete path="..." />
  */
@@ -15,11 +16,13 @@ import { StreamState } from '../state/StreamState';
 interface ParserContext {
   insideThinking: boolean;
   insideFile: boolean;
+  insideAppend: boolean;  // ✅ NEW: <append> tag
   insideEdit: boolean;
   insideSearch: boolean;
   insideReplace: boolean;
   insideTasks: boolean; // For <tasks> JSON data (not displayed in UI)
   currentFilePath: string | null;
+  currentAppendPath: string | null;  // ✅ NEW
   currentEditPath: string | null;
 }
 
@@ -27,11 +30,13 @@ export class XMLStreamParser implements IStreamParser {
   private context: ParserContext = {
     insideThinking: false,
     insideFile: false,
+    insideAppend: false,  // ✅ NEW
     insideEdit: false,
     insideSearch: false,
     insideReplace: false,
     insideTasks: false,
     currentFilePath: null,
+    currentAppendPath: null,  // ✅ NEW
     currentEditPath: null
   };
   
@@ -228,7 +233,79 @@ export class XMLStreamParser implements IStreamParser {
         continue;
       }
       
-      // 10. Check for <edit path="..."> opening
+      // 10. Check for <append path="..."> opening
+      if (!this.context.insideAppend) {
+        const appendMatch = this.buffer.match(/<append\s+path="([^"]+)">/);
+        if (appendMatch) {
+          const fullMatch = appendMatch[0];
+          const filePath = appendMatch[1];
+          const startIdx = this.buffer.indexOf(fullMatch);
+          
+          this.buffer = this.buffer.substring(startIdx + fullMatch.length);
+          this.context.insideAppend = true;
+          this.context.currentAppendPath = filePath;
+          
+          actions.push({
+            type: 'file_start',
+            data: {
+              filePath,
+              actionType: 'append'
+            }
+          });
+          continueParsingLoop = true;
+          continue;
+        }
+      }
+      
+      // 11. Check for </append> closing
+      if (this.context.insideAppend && this.buffer.includes('</append>')) {
+        const endIdx = this.buffer.indexOf('</append>');
+        const appendContent = this.buffer.substring(0, endIdx);
+        this.buffer = this.buffer.substring(endIdx + '</append>'.length);
+        
+        // Emit remaining content
+        if (appendContent.length > 0) {
+          actions.push({
+            type: 'file_content',
+            data: {
+              filePath: this.context.currentAppendPath!,
+              content: appendContent
+            }
+          });
+        }
+        
+        actions.push({
+          type: 'file_end',
+          data: { filePath: this.context.currentAppendPath! }
+        });
+        
+        this.context.insideAppend = false;
+        this.context.currentAppendPath = null;
+        continueParsingLoop = true;
+        continue;
+      }
+      
+      // 12. Accumulate append content
+      if (this.context.insideAppend && this.buffer.length > 0) {
+        const lookahead = '</append>';
+        if (this.buffer.length > lookahead.length) {
+          const safeContent = this.buffer.substring(0, this.buffer.length - lookahead.length);
+          this.buffer = this.buffer.substring(safeContent.length);
+          
+          if (safeContent.length > 0) {
+            actions.push({
+              type: 'file_content',
+              data: {
+                filePath: this.context.currentAppendPath!,
+                content: safeContent
+              }
+            });
+          }
+        }
+        continue;
+      }
+      
+      // 13. Check for <edit path="..."> opening
       if (!this.context.insideEdit) {
         const editMatch = this.buffer.match(/<edit\s+path="([^"]+)">/);
         if (editMatch) {

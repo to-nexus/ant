@@ -634,15 +634,15 @@ export class ChatService {
         if (session?.activeFileOperation && session.currentMessage) {
           const fileContent = session.currentMessage.contents[session.activeFileOperation.contentIndex];
           if (fileContent && (fileContent.type === 'file_writing' || fileContent.type === 'file_updating')) {
-            // Update file content in real-time
+            // Update file content in real-time (accumulate internally)
             fileContent.content += event.content;
             
-            // Broadcast update
+            // ✅ Broadcast incremental update (delta only - network efficient)
             this.broadcast(projectId, featureName, {
-              type: 'content_update',
+              type: 'content_append',
               messageId: session.currentMessage.id,
               contentIndex: session.activeFileOperation.contentIndex,
-              content: fileContent
+              delta: event.content  // ✅ Only send the new chunk, not full content
             });
           }
         } else {
@@ -692,6 +692,7 @@ export class ChatService {
       };
       
       const typesToFind = inProgressTypes[operation] || [];
+      
       const existingIndex = session.currentMessage.contents.findIndex(c => 
         typesToFind.includes(c.type) && 
         c.metadata?.filePath === filePath
@@ -720,9 +721,12 @@ export class ChatService {
         }
         
         // ✅ Update existing content
+        const oldContent = session.currentMessage.contents[existingIndex].content;
+        const newContent = content !== undefined ? content : oldContent;
+        
         session.currentMessage.contents[existingIndex] = {
           type: newType,
-          content: content !== undefined ? content : session.currentMessage.contents[existingIndex].content,
+          content: newContent,
           metadata: {
             filePath,
             diffBefore,
@@ -731,13 +735,26 @@ export class ChatService {
           }
         };
         
-        // Broadcast content update
-        this.broadcast(projectId, featureName, {
-          type: 'content_update',
-          messageId: session.currentMessage.id,
-          contentIndex: existingIndex,
-          content: session.currentMessage.contents[existingIndex]
-        });
+        // ✅ Broadcast incremental update for writing phase (real-time streaming)
+        if (phase === 'writing' && content !== undefined && oldContent !== newContent) {
+          // Calculate delta (new content that was added)
+          const delta = newContent.startsWith(oldContent) ? newContent.substring(oldContent.length) : newContent;
+          
+          this.broadcast(projectId, featureName, {
+            type: 'content_append',
+            messageId: session.currentMessage.id,
+            contentIndex: existingIndex,
+            delta: delta
+          });
+        } else {
+          // Full content update for other phases (metadata changes, etc.)
+          this.broadcast(projectId, featureName, {
+            type: 'content_update',
+            messageId: session.currentMessage.id,
+            contentIndex: existingIndex,
+            content: session.currentMessage.contents[existingIndex]
+          });
+        }
         
         // ✅ Track active file operation for real-time streaming
         if (phase === 'writing' || phase === 'updating') {

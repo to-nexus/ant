@@ -217,27 +217,9 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
     
     console.log(`   Calling cleanupJobState with jobType: ${jobType || 'auto-detect'}...`);
     await deps.cleanupJobState(jobId, projectId, featureName, interruption, jobType);
-    console.log(`   ✅ cleanupJobState completed`);
+    console.log(`   ✅ cleanupJobState completed (cleanupJobState handles adding cancelled message)`);
     
-    // ✅ Add cancelled message to chat
-    if (projectId && featureName) {
-      // ✅ Build userContext
-      const userContext = (req as any).user && (req as any).organization ? {
-        userId: (req as any).user.id,
-        organizationId: (req as any).organization.id,
-        workspacePath: ''
-      } : { userId: 'local', organizationId: 'local', workspacePath: '' };
-      
-      deps.chatService.addCancelledMessage(
-        projectId,
-        featureName,
-        jobId,
-        'user_stopped',
-        'Task stopped by user',
-        userContext
-      );
-      console.log(`   ✅ Added cancelled message to chat`);
-    }
+    // ✅ cleanupJobState already calls addCancelledMessage, so no need to call it again here
     
     // ✅ Send response AFTER everything is done
     res.json({ 

@@ -265,7 +265,7 @@ class SSEManager {
    */
   private routeMessage(message: SSEMessage): void {
     const { type, data } = message;
-    console.log(`[SSEManager] 📨 Routing message: type='${type}'`, data);
+    // console.log(`[SSEManager] 📨 Routing message: type='${type}'`, data); // ✅ Too verbose
     
     const handlers = this.handlers.get(type);
     
@@ -274,7 +274,7 @@ class SSEManager {
       return;
     }
     
-    console.log(`[SSEManager] 📡 Calling ${handlers.length} handler(s) for '${type}'`);
+    // console.log(`[SSEManager] 📡 Calling ${handlers.length} handler(s) for '${type}'`); // ✅ Too verbose
     
     // Call all registered handlers for this type
     handlers.forEach(handler => {

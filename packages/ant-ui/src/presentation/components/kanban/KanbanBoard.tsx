@@ -32,13 +32,13 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
   
   // ✅ DEBUG: Log when kanbanData.isEstimating changes
   useEffect(() => {
-    console.log('[KanbanBoard] 📊 kanbanData changed:', {
-      isEstimating: kanbanData.isEstimating,
-      dataSource: kanbanData.dataSource,
-      completedCount: kanbanData.completed?.length || 0,
-      todoCount: kanbanData.todo?.length || 0,
-      inProgress: kanbanData.inProgress?.name || null
-    });
+    // console.log('[KanbanBoard] 📊 kanbanData changed:', { // ✅ Too verbose
+    //   isEstimating: kanbanData.isEstimating,
+    //   dataSource: kanbanData.dataSource,
+    //   completedCount: kanbanData.completed?.length || 0,
+    //   todoCount: kanbanData.todo?.length || 0,
+    //   inProgress: kanbanData.inProgress?.name || null
+    // });
   }, [kanbanData.isEstimating, kanbanData.dataSource, kanbanData.completed, kanbanData.todo, kanbanData.inProgress]);
   
   // ✅ Animation state management

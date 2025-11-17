@@ -114,24 +114,9 @@ export async function execute(state: DesignGraphState) {
     console.log('\n📐 Updating design document (incremental task)...\n');
   }
   
-  // ✅ Get ChatAPIClient for file operations
+  // ✅ Get ChatAPIClient
   const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
   const chatAPI = getChatAPIClient();
-  
-  const filePath = 'outputs/design/system-design.md';
-  
-  // ✅ Start message if not already started
-  if (chatAPI.isEnabled()) {
-    // ✅ Start file operation in WRITING state (in the SAME message)
-    if (isFirstTask) {
-      // Start with 'writing' phase so LLM text streams directly into the file card
-      await chatAPI.streamFileContent(filePath, '');
-    } else {
-      // For edit: start with 'updating' phase
-      // TODO: Add proper method to ChatAPIClient for this
-      await chatAPI.startFileEdit(filePath);
-    }
-  }
   
   // ✅ 3. Stream LLM response with real-time XML parsing
   console.log('\n💭 Streaming design document...\n');
@@ -160,46 +145,79 @@ export async function execute(state: DesignGraphState) {
   const streamResult = await orchestrator.finalize();
   const raw = streamResult.raw;
   
-  // Extract design content (everything outside thinking tags)
-  // The raw response contains both thinking and response text, but we only want response
-  let designContent = raw;
+  // ✅ Parse <edit> tags from raw response (for precise section modifications)
+  const { parseResponse } = await import('../../../code/nodes/execute/parseResponse');
+  const { applyEditToFile } = await import('../../../code/nodes/execute/applyEdits');
+  const parsed = parseResponse(raw);
   
-  // Remove thinking sections from raw content
-  designContent = designContent.replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
-  
-  designMarkdown = designContent;
-  console.log('\n');
-  
-  // ✅ Merge with previous designMarkdown if this is a continuation task
+  // ✅ Determine operation mode (same as Code job)
   let finalDesignMarkdown: string;
   
-  if (isFirstTask) {
-    // First task: use LLM response as-is (full document)
-    finalDesignMarkdown = designMarkdown;
-  } else {
-    // Continuation task: LLM returns only changes, merge with existing
-    console.log('\n🔀 Merging incremental changes with existing document...\n');
-    finalDesignMarkdown = mergeDesignDocuments(state.designMarkdown!, designMarkdown);
+  // Mode 1: <edit> tag used (precise section modification)
+  if (parsed.edits.length > 0) {
+    const designEdit = parsed.edits.find(e => e.path.includes('design.md'));
+    if (!designEdit) {
+      throw new Error('Edit instruction found but not for design.md');
+    }
+    
+    // Read existing design document
+    const existingDesign = state.designMarkdown || '';
+    if (!existingDesign) {
+      throw new Error('Cannot apply edit: no existing design document found. Use <file> tag for first task.');
+    }
+    
+    // Apply edit (search/replace)
+    try {
+      finalDesignMarkdown = applyEditToFile(existingDesign, designEdit);
+    } catch (error) {
+      console.error(`   ❌ Failed to apply edit:`, error);
+      throw error;
+    }
+  }
+  // Mode 2: <append> tag used (append to existing document)
+  else if (parsed.appends.length > 0) {
+    const designAppend = parsed.appends.find(a => a.path.includes('design.md'));
+    if (!designAppend) {
+      throw new Error('Append instruction found but not for design.md');
+    }
+    
+    // Read existing design document
+    const existingDesign = state.designMarkdown || '';
+    if (!existingDesign) {
+      throw new Error('Cannot append: no existing design document found. Use <file> tag for first task.');
+    }
+    
+    // Append content (same logic as mergeDesignDocuments)
+    finalDesignMarkdown = mergeDesignDocuments(existingDesign, designAppend.content);
+  }
+  // Mode 3: <file> tag used (create new document)
+  else if (parsed.files.length > 0) {
+    const designFile = parsed.files.find(f => f.path.includes('design.md'));
+    if (designFile) {
+      finalDesignMarkdown = designFile.content || '';
+    } else {
+      console.warn('⚠️  No design.md file found in parsed files. Using raw content as fallback.');
+      finalDesignMarkdown = raw.replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
+    }
+  }
+  // Mode 4: No tags (fallback)
+  else {
+    console.warn('⚠️  No files in stream. LLM may not have used XML tags. Using raw text fallback.\n');
+    finalDesignMarkdown = raw.replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
   }
 
-  // ✅ Complete file operation (transition to collapsible state)
-  if (isFirstTask) {
-    // Complete file creation
-    await chatAPI.completeFileCreation(filePath, finalDesignMarkdown);
-  } else {
-    // Complete file edit with diff
-    await chatAPI.completeFileEdit(filePath, state.designMarkdown || '', finalDesignMarkdown);
-  }
+  // ✅ StreamOrchestrator already handled file card rendering in real-time
+  // No manual file card operations needed!
 
   // ✅ DON'T mark task as completed here - checkTaskStatus node handles completion
   // This prevents duplicate entries in completedTasksDetails
   // This ensures Kanban updates happen AFTER all workflow nodes are processed
 
-  // ✅ DEBUG: Verify timing before return
-  console.log(`\n🔍 [Design Execute] About to return state:`);
-  console.log(`   currentTask: ${currentTask?.name}`);
-  console.log(`   Has timing: ${!!currentTask?.timing}`);
-  console.log(`   timing.startedAt: ${currentTask?.timing?.startedAt}\n`);
+  // ✅ Validate finalDesignMarkdown before returning
+  console.log(`\n✅ [Execute] Design document generated: ${finalDesignMarkdown.length} chars`);
+  if (!finalDesignMarkdown || finalDesignMarkdown.trim().length === 0) {
+    console.error(`❌ [Execute] WARNING: finalDesignMarkdown is empty!`);
+  }
 
   return { 
     ...state,

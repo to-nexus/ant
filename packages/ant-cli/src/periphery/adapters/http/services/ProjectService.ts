@@ -335,19 +335,16 @@ export class ProjectService {
       try {
         items = await fs.promises.readdir(dirPath);
       } catch (err) {
-        // 폴더가 없으면 빈 children 반환
+        // 폴더가 없으면 빈 배열 반환
         return [];
       }
+      
       const tree: any[] = [];
 
-      // 폴더가 비어있어도 반드시 반환
+      // ✅ 빈 폴더일 경우 빈 배열 반환 (children: []로 처리됨)
+      // 자기 자신을 다시 반환하지 않음 (design/design 중복 버그 수정)
       if (items.length === 0) {
-        return [{
-          name: path.basename(dirPath),
-          path: relativePath || path.basename(dirPath),
-          type: 'directory',
-          children: []
-        }];
+        return [];
       }
 
       for (const item of items) {

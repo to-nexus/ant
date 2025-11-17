@@ -166,9 +166,9 @@ function App() {
       }
     });
     
-    if (changes.length > 0) {
-      console.log(`[App] 🔄 Render #${renderCountRef.current} - Changes:`, changes);
-    }
+    // if (changes.length > 0) {
+    //   console.log(`[App] 🔄 Render #${renderCountRef.current} - Changes:`, changes);
+    // }
     
     prevPropsRef.current = currentProps;
   }

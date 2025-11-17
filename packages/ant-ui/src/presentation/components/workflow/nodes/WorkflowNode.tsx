@@ -75,7 +75,7 @@ export const WorkflowNode = memo(({ data }: WorkflowNodeProps) => {
   // ✅ Track isActive changes
   useEffect(() => {
     if (data.isActive) {
-      console.log('[WorkflowNode] ⭐ NODE ACTIVE:', data.label);
+      // console.log('[WorkflowNode] ⭐ NODE ACTIVE:', data.label); // ✅ Too verbose
     }
   }, [data.isActive, data.label]);
   
