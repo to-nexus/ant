@@ -69,11 +69,16 @@ export async function plan(state: DesignGraphState) {
   // Prepare artifacts (using new unified names)
   const artifacts = {
     directive: state.directive,
-    designDoc: undefined,              // Design doesn't use design as input
+    designDoc: state.designMarkdown || undefined,  // ✅ Pass accumulated design for continuation detection
     prdSpec: state.prd,               // PRD
     previousDesign: state.design,     // Previous design (for evolution/refactor)
     currentCode: state.code,          // Codebase (for evolution/refactor)
     originalFiles: undefined,         // Design doesn't use git HEAD
+    currentTask: currentTask ? {      // ✅ Pass current task info to plan prompt
+      name: currentTask.name,
+      type: currentTask.type,
+      description: currentTask.description
+    } : undefined
   };
 
   // Build prompt using PromptEngine

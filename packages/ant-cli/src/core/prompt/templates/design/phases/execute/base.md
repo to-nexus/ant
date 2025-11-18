@@ -78,9 +78,17 @@ This approach saves tokens and prevents redundant work. The system will merge yo
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+{{#if designDoc}}
+🎯 **YOUR CHAPTER PLAN** (for this task only):
+
+{{plan}}
+
+{{else}}
 ## YOUR DESIGN STRATEGY:
 
 {{plan}}
+
+{{/if}}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -112,12 +120,55 @@ You MUST output in TWO SEPARATE steps:
 
 🚨 **CRITICAL SCOPE LIMITATION** 🚨
 
-You are creating a **TECHNICAL SOFTWARE DESIGN** document, NOT a project/operations plan.
+You are creating a **TECHNICAL SOFTWARE DESIGN** document, NOT implementation code or operations plan.
 
-**FOCUS ON**: System architecture, components, data models, APIs, technical decisions
-**DO NOT INCLUDE**: Deployment plans, infrastructure setup, operations, monitoring, migration plans, test schedules, project timelines
+**FOCUS ON**: 
+- System architecture and component relationships
+- Data models and schemas (structure, not implementation)
+- API contracts and interfaces (signatures, not handlers)
+- Technical decisions and rationale
 
-(See detailed rules at the end for full list of forbidden sections)
+**DO NOT INCLUDE**: 
+- ❌ Full code implementations (use pseudo-code or interface definitions instead)
+- ❌ Deployment plans, infrastructure setup, operations, monitoring
+- ❌ Migration plans, test schedules, project timelines
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🚨 **CRITICAL: CODE USAGE IN DESIGN DOCUMENTS** 🚨
+
+**DESIGN PRINCIPLE**: A design document should be **readable and understandable** without requiring code review skills. Focus on **WHAT** and **WHY**, not **HOW**.
+
+**WHEN TO USE CODE**:
+1. ✅ **Type/Interface definitions** (5-10 lines max per interface)
+   - Shows data structure, contracts, and API shapes
+   - Example: `interface User { id: string; name: string; }`
+
+2. ✅ **Function signatures** (1 line each)
+   - Shows contracts without implementation
+   - Example: `function authenticate(credentials: Credentials): Promise<Session>`
+
+3. ✅ **Pseudo-code** for complex algorithms (5-10 lines max)
+   - High-level steps, not actual code
+   - Example: "1. Validate input 2. Query database 3. Return result"
+
+**WHEN NOT TO USE CODE**:
+- ❌ Full function/method implementations (use prose instead)
+- ❌ Complete component code (use hierarchy diagrams instead)
+- ❌ SQL statements (use schema tables instead)
+- ❌ Configuration files (describe in text instead)
+- ❌ Test code (describe strategy instead)
+
+**LENGTH GUIDELINE**: 
+- Each code block should be **≤ 15 lines**
+- If longer → split into multiple interfaces OR use prose description
+- Design doc should be **70% prose, 30% code/diagrams**
+
+**REMEMBER**: The code generation phase will write the actual implementation. Your job is to provide the **design blueprint**, not the **construction manual**.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+(See detailed section-specific rules below)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -167,29 +218,152 @@ This is the INITIAL task. Create a system design document that **matches the inf
 For each major component identified in your strategy:
 - Purpose and responsibility
 - Internal structure and organization
-- Key algorithms or business logic
-- Dependencies and interfaces
+- Key algorithms or business logic (describe in prose, not code)
+- Dependencies and interfaces (signatures only, not implementations)
 - Error handling approach
+
+**⚠️ CODE USAGE GUIDELINES**:
+- ✅ Use **TypeScript interfaces** or **type definitions** to show data structures
+- ✅ Use **function signatures** to show API contracts (without implementation)
+- ✅ Use **pseudo-code** or **prose** to describe complex logic
+- ❌ Do NOT write full function implementations
+- ❌ Do NOT write complete React components or class definitions
+- ❌ Do NOT write actual business logic code
+
+**GOOD EXAMPLES**:
+```typescript
+// ✅ Interface definition (structure only)
+interface Task {
+  id: string;
+  title: string;
+  status: 'active' | 'completed';
+}
+
+// ✅ Function signature (contract only)
+function filterTasks(tasks: Task[], filter: FilterType): Task[]
+```
+
+**BAD EXAMPLES**:
+```typescript
+// ❌ Full implementation (too detailed for design doc)
+function filterTasks(tasks: Task[], filter: FilterType): Task[] {
+  switch(filter) {
+    case 'all': return tasks;
+    case 'active': return tasks.filter(t => t.status === 'active');
+    // ... 20+ lines of implementation
+  }
+}
+```
 
 #### 3.2 Data Models
 **(If applicable - SKIP if PRD specifies no backend/database)**
 - Entity definitions with attributes
 - Relationships and cardinality
-- Schemas (database tables, collections, or TypeScript interfaces for frontend state)
+- Schemas (show structure only - TypeScript interfaces, table schemas, NOT SQL CREATE statements)
 - Data validation rules
 - If no database: explain data is managed in client-side state (localStorage, useState, etc.)
+
+**⚠️ SCHEMA GUIDELINES**:
+- ✅ Use **TypeScript interfaces** or **table structure** (field names, types, constraints)
+- ✅ Show relationships with arrows or descriptions
+- ❌ Do NOT write full SQL CREATE TABLE statements
+- ❌ Do NOT write database migration code
+- ❌ Do NOT write ORM model implementations
+
+**GOOD EXAMPLE**:
+```typescript
+// ✅ Entity structure (interface)
+interface User {
+  id: string;
+  email: string;
+  role: 'admin' | 'user';
+  createdAt: Date;
+}
+
+// Relationships: User 1:N Posts
+```
+
+**BAD EXAMPLE**:
+```sql
+-- ❌ Full SQL implementation (too detailed)
+CREATE TABLE users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  -- ... 20+ lines of SQL
+);
+```
 
 #### 3.3 API Design
 **(If applicable - SKIP if PRD specifies no backend/API)**
 - If NO API/backend: Write "Not Applicable - Frontend-only application with no API server"
 - If API exists: Endpoints, request/response formats, authentication, error handling
 
+**⚠️ API SPECIFICATION GUIDELINES**:
+- ✅ Show **endpoint signatures** (method, path, params)
+- ✅ Show **request/response types** (interfaces or schemas)
+- ✅ Describe behavior in prose (what it does, not how)
+- ❌ Do NOT write route handler implementations
+- ❌ Do NOT write Express/Fastify middleware code
+- ❌ Do NOT write database query logic
+
+**GOOD EXAMPLE**:
+```typescript
+// ✅ API contract (signature and types only)
+POST /api/tasks
+Request: { title: string; description?: string }
+Response: { id: string; title: string; status: 'active' }
+
+// Behavior: Creates a new task, returns created task with generated ID
+```
+
+**BAD EXAMPLE**:
+```typescript
+// ❌ Full handler implementation (too detailed)
+app.post('/api/tasks', async (req, res) => {
+  const { title, description } = req.body;
+  const task = await db.tasks.create({
+    // ... 30+ lines of implementation
+  });
+  res.json(task);
+});
+```
+
 #### 3.4 User Interface Design (if applicable)
 - Screen flows and navigation
 - Key interactions and user journeys
-- State management approach
+- State management approach (which pattern, not implementation)
 - Responsive design considerations
 - Accessibility requirements
+
+**⚠️ UI DESIGN GUIDELINES**:
+- ✅ Use **wireframes** or **component hierarchy** (text-based)
+- ✅ Describe **user flows** and **interactions** in prose
+- ✅ Show **state structure** (interfaces only)
+- ❌ Do NOT write full React/Vue/Angular components
+- ❌ Do NOT write CSS/styling code
+- ❌ Do NOT write event handler implementations
+
+**GOOD EXAMPLE**:
+```
+Screen: Task List
+├── Header (title, add button)
+├── FilterBar (all/active/completed)
+└── TaskList
+    └── TaskItem[] (checkbox, title, delete button)
+
+State: { tasks: Task[]; filter: FilterType }
+```
+
+**BAD EXAMPLE**:
+```typescript
+// ❌ Full component implementation (too detailed)
+function TaskList() {
+  const [tasks, setTasks] = useState([]);
+  const handleAdd = () => { /* 50+ lines */ };
+  return <div>...</div>;
+}
+```
 
 ### 4. Technical Decisions
 
@@ -275,13 +449,19 @@ Focus on the areas highlighted in your design strategy as most critical.
 
 **⚠️ CRITICAL INSTRUCTIONS FOR CONTINUATION TASKS**:
 
-1. **DO NOT REPEAT ANALYSIS** ❌
-   - Do NOT write "Design Strategy" again
-   - Do NOT re-analyze requirements
-   - Do NOT summarize the entire project again
-   - The project analysis is ALREADY DONE in the existing document above
+1. **DO NOT REPEAT PROJECT-LEVEL ANALYSIS IN GENERAL RESPONSE** ❌
+   - Your general response (text BEFORE `<thinking>`) should ONLY mention this specific task's chapters
+   - ❌ WRONG: "Design Strategy: Simple Tasks\n\n1. Key Requirements\n   - Frontend-only task management..."
+   - ✅ RIGHT: "I will now add the Component Design and API Design chapters to the existing document."
+   - Do NOT re-analyze requirements, technical challenges, or overall architecture
+   - The project-level strategy is ALREADY DONE in Task 1
 
-2. **WRITE ONLY YOUR ASSIGNED CHAPTERS** ✅
+2. **IN YOUR GENERAL RESPONSE** ✅
+   - State which chapters you will add (e.g., "Adding Chapter 3: Detailed Design")
+   - Mention how it builds on existing content (e.g., "Building upon the architecture in Chapter 2")
+   - Keep it to 1-2 sentences maximum
+
+3. **WRITE ONLY YOUR ASSIGNED CHAPTERS** ✅
    - Task name tells you which chapters to write
    - Example: "Component Design" → Write ONLY Component Design chapter
    - Example: "API Design & Data Models" → Write ONLY those 2 chapters
