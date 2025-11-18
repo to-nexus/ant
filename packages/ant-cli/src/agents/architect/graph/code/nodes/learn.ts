@@ -238,7 +238,13 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
         }));
         
         // Single batch store operation (reduces HTTP overhead and memory pressure)
-        await state.deps!.memory!.store(documents, state.context.project);
+        if (!state.deps?.memory) {
+          throw new Error('Memory adapter not available in state.deps');
+        }
+        if (typeof state.deps.memory.store !== 'function') {
+          throw new Error(`Memory adapter store is not a function. Type: ${typeof state.deps.memory.store}, Memory object: ${JSON.stringify(Object.keys(state.deps.memory))}`);
+        }
+        await state.deps.memory.store(documents, state.context.project);
         
         console.log(`✅ [Async Learning] ${result.chunks.length} learning chunks stored to memory (batch)`);
         if (sessionId && turnId) {

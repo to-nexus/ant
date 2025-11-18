@@ -216,6 +216,12 @@ async function storeLearningsToMemory(
     
     // Batch store operation
     const memory = state.context.memory as any;
+    if (!memory) {
+      throw new Error('Memory adapter not available in state.context.memory');
+    }
+    if (typeof memory.store !== 'function') {
+      throw new Error(`Memory adapter store is not a function. Type: ${typeof memory.store}, Memory object: ${JSON.stringify(Object.keys(memory))}`);
+    }
     await memory.store(documents, state.context.project);
     
     console.log(`✅ ${result.chunks.length} learning chunks stored to memory (batch)`);

@@ -36,10 +36,6 @@ export function FileCard({ content, operation }: FileCardProps) {
   // ✅ Track if user manually scrolled away from bottom
   const [isUserScrolling, setIsUserScrolling] = useState(false);
   
-  // ✅ DEBUG: Log content updates
-  useEffect(() => {
-    console.log(`[FileCard] Content update - path: ${filePath}, type: ${content.type}, length: ${fileContent.length}, content preview: "${fileContent.substring(0, 50)}..."`);
-  }, [fileContent, content.type, filePath]);
   
   // ✅ Reset user scrolling state when file operation completes
   useEffect(() => {

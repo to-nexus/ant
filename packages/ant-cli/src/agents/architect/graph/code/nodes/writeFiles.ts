@@ -17,7 +17,6 @@
 
 import { ArchitectGraphState } from "../state";
 import * as path from "path";
-import { resolveLocalPath } from "../../../../../periphery/adapters/git/gitUtils";
 
 /**
  * Format file size in human-readable format
@@ -53,20 +52,13 @@ export async function writeFiles(state: ArchitectGraphState): Promise<ArchitectG
     return state;
   }
 
-  // Get target directory from config
-  const config = state.context.config;
-  if (!config || config.repoType !== 'local' || !config.localPath) {
-    console.log('⚠️  No local repository path configured, skipping file write');
-    return state;
-  }
-
+  // ✅ Use GitPort.getRepoRoot() which handles both Local and Cloud modes
+  // - Local mode: resolves config.localPath (handled by SimpleGitAdapter)
+  // - Cloud mode: returns projectPath/codebase (handled by SimpleGitAdapter)
   const repoRoot = await gitPort.getRepoRoot();
   const p = await import("path");
-  
-  // ✅ Use resolveLocalPath to properly handle tilde (~) expansion
-  const resolvedPath = resolveLocalPath(config.localPath, state.context.project);
 
-  console.log(`\n🔧 Post-processing in: ${resolvedPath}\n`);
+  console.log(`\n🔧 Post-processing in: ${repoRoot}\n`);
 
   try {
     console.log(`\n${'='.repeat(80)}`);
@@ -79,7 +71,7 @@ export async function writeFiles(state: ArchitectGraphState): Promise<ArchitectG
     let totalSize = 0;
     
     for (const file of state.files) {
-      const filePath = p.join(resolvedPath, file.path);
+      const filePath = p.join(repoRoot, file.path);
       const relPath = p.relative(repoRoot, filePath);
       
       // Check if file exists (to determine if new or modified)
@@ -117,11 +109,9 @@ export async function writeFiles(state: ArchitectGraphState): Promise<ArchitectG
         // ✅ Normalize path: remove absolute path if present
         let normalizedPath = deletePath;
         
-        // If path is absolute and matches resolvedPath, make it relative
+        // If path is absolute and matches repoRoot, make it relative
         if (p.isAbsolute(deletePath)) {
-          if (deletePath.startsWith(resolvedPath)) {
-            normalizedPath = p.relative(resolvedPath, deletePath);
-          } else if (deletePath.startsWith(repoRoot)) {
+          if (deletePath.startsWith(repoRoot)) {
             normalizedPath = p.relative(repoRoot, deletePath);
           } else {
             console.log(`⚠️  SKIP      ${deletePath} (absolute path outside project)`);

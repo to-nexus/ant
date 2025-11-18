@@ -1027,7 +1027,12 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
             
             if (mapping) {
               try {
-                const sessionData = await this.sessionService.readSessionData(mapping.projectId, mapping.featureName);
+                const sessionData = await this.sessionService.readSessionData(
+                  mapping.projectId, 
+                  mapping.featureName || 'skeleton',
+                  mapping.jobType || 'code',
+                  mapping.userContext  // ✅ Pass userContext for Cloud mode
+                );
                 if (sessionData?.state?.interruption) {
                   const sessionInterruption = sessionData.state.interruption;
                   interruption = sessionInterruption;
