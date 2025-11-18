@@ -537,15 +537,11 @@ function CancelledCard({ content }: { content: MessageContent }) {
 
     setIsResuming(true);
     try {
-      console.log('[CancelledCard] Resuming job:', jobId);
-      
       // ✅ Remove this cancelled card immediately
       removeCancelledMessage(jobId);
       
       // ✅ Use useJobExecution's runJob (which handles resume internally)
       await runJob(selectedAgent, selectedJobType);
-      
-      console.log('[CancelledCard] Resume successful');
     } catch (error) {
       console.error('[CancelledCard] Failed to resume job:', error);
     } finally {

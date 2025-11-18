@@ -185,12 +185,6 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     profile,
   };
   
-  // 🔍 DEBUG: Log state preservation
-  console.log(`\n🔍 [Code Resolve] State preservation check:`);
-  console.log(`   state.overrideDirective: ${state.overrideDirective ? `"${state.overrideDirective.substring(0, 50)}..."` : 'undefined'}`);
-  console.log(`   state.chatSource: ${state.chatSource}`);
-  console.log(`   result.overrideDirective: ${result.overrideDirective ? `"${result.overrideDirective.substring(0, 50)}..."` : 'undefined'}`);
-  console.log(`   result.chatSource: ${result.chatSource}\n`);
   
   return result;
 }

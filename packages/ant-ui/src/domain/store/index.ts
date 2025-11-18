@@ -884,6 +884,7 @@ export const useStore = create<Store>((set, get) => {
       currentJobId: undefined,
       currentJob: null,
       connectionStatus: 'disconnected',
+      chatMessages: [],  // ✅ Clear chat messages on logout
     });
     
     // ✅ Clear job-related localStorage (transient data)
