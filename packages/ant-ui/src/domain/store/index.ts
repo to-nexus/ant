@@ -318,13 +318,6 @@ export const useStore = create<Store>((set, get) => {
         return;
       }
       
-      console.log('[Store] 🏁 Job completed detected via Kanban update');
-      console.log(`   DataSource: ${data.dataSource}`);
-      console.log(`   Job ID from Kanban: ${kanbanJobId}`);
-      console.log(`   Current Job ID in store: ${state.currentJobId}`);
-      console.log(`   Has interruption: ${!!data.interruption}`);
-      console.log(`   Interruption reason: ${data.interruption?.reason || 'none'}`);
-      console.log('   Setting isRunning: false');
       
       set({ 
         kanban: data,
@@ -428,6 +421,12 @@ export const useStore = create<Store>((set, get) => {
       return;
     }
     
+    // ✅ Cloud mode requires authentication - skip if not signed in
+    if (state.backendMode === 'cloud' && !state.userEmail) {
+      console.log('[Store] ⚠️  Cannot initialize SSE: Cloud mode requires authentication');
+      return;
+    }
+    
     // ✅ Job type is now guaranteed to be valid (typed as 'design' | 'code' | 'learn')
     const jobType = state.selectedJobType;
     console.log('[Store] 🎯 Using job type:', jobType);
@@ -489,8 +488,6 @@ export const useStore = create<Store>((set, get) => {
             if (appendContents[event.contentIndex]) {
               const oldContent = appendContents[event.contentIndex].content;
               const newContent = oldContent + event.delta;
-              // ✅ DEBUG
-              console.log(`[Store] content_append - index: ${event.contentIndex}, old length: ${oldContent.length}, delta length: ${event.delta.length}, new length: ${newContent.length}`);
               
               // ✅ Append delta to existing content
               appendContents[event.contentIndex] = {
@@ -523,7 +520,6 @@ export const useStore = create<Store>((set, get) => {
           break;
           
         case 'message_complete':
-          console.log('[Store] 💬 Completing message:', event.messageId);
           get().updateChatMessage(event.messageId, { isStreaming: false });
           break;
           
@@ -579,6 +575,12 @@ export const useStore = create<Store>((set, get) => {
       return;
     }
     
+    // ✅ Cloud mode requires authentication - skip if not signed in
+    if (state.backendMode === 'cloud' && !state.userEmail) {
+      console.log('[Store] ⚠️  Cannot reconnect SSE: Cloud mode requires authentication');
+      return;
+    }
+    
     // ✅ For unified SSE, reinitialize to ensure handlers are registered
     if (key === 'kanban' || key === 'chat' || key === 'fileTree') {
       // Disconnect and reinitialize (which will register handlers + reconnect)
@@ -601,6 +603,14 @@ export const useStore = create<Store>((set, get) => {
 
   fetchProjects: async () => {
     try {
+      // ✅ Cloud mode requires authentication - skip if not signed in
+      const state = get();
+      if (state.backendMode === 'cloud' && !state.userEmail) {
+        console.log('[Store] Skipping fetchProjects: Cloud mode requires authentication');
+        set({ projects: [] });
+        return;
+      }
+      
       const { listProjects } = await import('@/infrastructure/http/projects');
       const projectList = await listProjects();
       set({ projects: projectList });
@@ -718,8 +728,16 @@ export const useStore = create<Store>((set, get) => {
   },
 
   fetchFeatures: async () => {
-    const { selectedProject } = get();
+    const state = get();
+    const { selectedProject, backendMode, userEmail } = state;
     if (!selectedProject) return;
+    
+    // ✅ Cloud mode requires authentication - skip if not signed in
+    if (backendMode === 'cloud' && !userEmail) {
+      console.log('[Store] Skipping fetchFeatures: Cloud mode requires authentication');
+      set({ features: [] });
+      return;
+    }
     
     try {
       const { fetchFeatures: apiFetchFeatures } = await import('@/infrastructure/http/api');
@@ -756,9 +774,16 @@ export const useStore = create<Store>((set, get) => {
 
   refreshFileTree: async () => {
     const state = get();
-    const { selectedProject, selectedFeature } = state;
+    const { selectedProject, selectedFeature, backendMode, userEmail } = state;
     
     if (!selectedProject || !selectedFeature) return;
+    
+    // ✅ Cloud mode requires authentication - skip if not signed in
+    if (backendMode === 'cloud' && !userEmail) {
+      console.log('[Store] Skipping refreshFileTree: Cloud mode requires authentication');
+      set({ fileTree: [] });
+      return;
+    }
     
     try {
       const { fetchFileTree } = await import('@/infrastructure/http/api');
@@ -854,8 +879,16 @@ export const useStore = create<Store>((set, get) => {
   },
 
   refreshDevServerStatus: async () => {
-    const { selectedProject } = get();
+    const state = get();
+    const { selectedProject, backendMode, userEmail } = state;
     if (!selectedProject) return;
+    
+    // ✅ Cloud mode requires authentication - skip if not signed in
+    if (backendMode === 'cloud' && !userEmail) {
+      console.log('[Store] Skipping refreshDevServerStatus: Cloud mode requires authentication');
+      set({ devServerStatus: undefined });
+      return;
+    }
     
     try {
       const { getDevServerStatus } = await import('@/infrastructure/http/api');

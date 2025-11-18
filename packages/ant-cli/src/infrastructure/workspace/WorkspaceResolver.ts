@@ -64,9 +64,10 @@ export class WorkspacePathResolver {
     // ✅ Use provided resolver or extract from context
     const workspaceResolver = resolver || (context as any).workspaceResolver;
     if (!workspaceResolver) {
-      // ⚠️ Fallback: construct path (assumes Local mode)
+      // ⚠️ Fallback: construct ABSOLUTE path (assumes Local mode)
       console.warn('[WorkspacePathResolver.resolveFeaturePath] No resolver available, using fallback');
-      return path.join('workspaces', 'local', 'user', context.project, 'features', context.featureFolder);
+      const workspacesPath = WorkspacePathResolver.getPhysicalWorkspacesPath();
+      return path.join(workspacesPath, 'local', 'user', context.project, 'features', context.featureFolder);
     }
     
     // ✅ Build UserContext from ProjectContext

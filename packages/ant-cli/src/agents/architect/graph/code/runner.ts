@@ -172,8 +172,8 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
       }
     }
     
-    // ✅ CRITICAL: Preserve interruption before learn node (learn may overwrite state)
-    const savedInterruption = interruption;
+    // ✅ CRITICAL: Set interruption in state before learn node
+    (state as any).interruption = interruption;
     
     // ✅ Try to run learn node for cleanup (optional, can fail safely)
     try {
@@ -181,8 +181,10 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
       const { learn } = await import('./nodes/index');
       state = await learn(state);
       
-      // ✅ CRITICAL: Restore interruption after learn node
-      (state as any).interruption = savedInterruption;
+      // ✅ CRITICAL: Ensure interruption is preserved after learn node
+      if (!(state as any).interruption) {
+        (state as any).interruption = interruption;
+      }
     } catch (learnError) {
       console.warn('⚠️  Learn node failed (non-critical):', learnError);
     }
