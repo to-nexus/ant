@@ -155,6 +155,10 @@ export function buildDesignGraph() {
       
       // ✅ For tracking in UI
       _httpJobId: null as any,
+      
+      // ✅ Chat integration
+      overrideDirective: null as any,  // ✅ Chat input as directive (highest priority)
+      chatSource: null as any,  // ✅ Flag for Chat SSE
     } as any,
   } as any);
 

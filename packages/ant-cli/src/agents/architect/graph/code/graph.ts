@@ -238,6 +238,10 @@ export function buildCodeGraph() {
       // Real-time Kanban tracking
       _httpJobId: null as any,  // ✅ HTTP task ID for live updates
       
+      // ✅ Chat integration
+      overrideDirective: null as any,  // ✅ Chat input as directive (highest priority)
+      chatSource: null as any,  // ✅ Flag for Chat SSE
+      
       // ✅ Error repetition tracking
       _errorIsRepeating: null as any,  // Flag to indicate if errors are repeating
       

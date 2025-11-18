@@ -11,7 +11,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ChatMessage, MessageContent } from '@/domain/models/chat';
 import { useStore } from '@/domain/store';
-import { resumeJob as resumeJobAPI } from '@/infrastructure/http/api';
+import { useJobExecution } from '@/application/hooks/features/useJobExecution';
 import { ThinkingCard } from './ThinkingCard';
 import { FileCard } from './FileCard';
 
@@ -523,10 +523,13 @@ function GrepCard({ content }: { content: MessageContent }) {
 function CancelledCard({ content }: { content: MessageContent }) {
   const selectedProject = useStore(state => state.selectedProject);
   const selectedFeature = useStore(state => state.selectedFeature);
+  const selectedAgent = useStore(state => state.selectedAgent);
+  const selectedJobType = useStore(state => state.selectedJobType);
   const isRunning = useStore(state => state.isRunning);
-  const setRunning = useStore(state => state.setRunning);
+  const removeCancelledMessage = useStore(state => state.removeCancelledMessage);
   const [isResuming, setIsResuming] = useState(false);
 
+  const { runJob } = useJobExecution();
   const jobId = content.metadata?.jobId;
 
   const handleResume = async () => {
@@ -536,14 +539,15 @@ function CancelledCard({ content }: { content: MessageContent }) {
     try {
       console.log('[CancelledCard] Resuming job:', jobId);
       
-      // Set running state before calling API
-      setRunning(true, jobId);
+      // ✅ Remove this cancelled card immediately
+      removeCancelledMessage(jobId);
       
-      const result = await resumeJobAPI(jobId, selectedProject, selectedFeature, true);
-      console.log('[CancelledCard] Resume successful:', result);
+      // ✅ Use useJobExecution's runJob (which handles resume internally)
+      await runJob(selectedAgent, selectedJobType);
+      
+      console.log('[CancelledCard] Resume successful');
     } catch (error) {
       console.error('[CancelledCard] Failed to resume job:', error);
-      setRunning(false);
     } finally {
       setIsResuming(false);
     }

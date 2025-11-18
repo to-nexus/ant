@@ -326,6 +326,12 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ✨ Initialize jobId and jobTiming for new job
   const { jobId: newJobId, jobTiming: newJobTiming, estimatingStartTime } = JobTimingManager.initializeNewJob(state._httpJobId!);
   
+  // 🔍 DEBUG: Log override directive state
+  console.log(`\n🔍 [Code Decompose] State check before initial save:`);
+  console.log(`   overrideDirective: ${state.overrideDirective ? `"${state.overrideDirective.substring(0, 50)}..."` : 'undefined'}`);
+  console.log(`   chatSource: ${state.chatSource}`);
+  console.log(`   directive: ${state.directive ? `"${state.directive.substring(0, 50)}..."` : 'undefined'}\n`);
+  
   // 💾 CRITICAL: Save jobTiming to session IMMEDIATELY so frontend can show timer during estimating
   if (state.deps?.session && state.context.featureFolder) {
     try {
@@ -336,7 +342,9 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         jobTiming: newJobTiming,
         taskQueue: new TaskQueue(), // empty queue
         completedTasks: [],
-        completedTasksDetails: preloadedCompletedTasks
+        completedTasksDetails: preloadedCompletedTasks,
+        overrideDirective: state.overrideDirective,  // ✅ Preserve chat directive
+        chatSource: state.chatSource  // ✅ Preserve chat source flag
       } as any;
       await saveCheckpoint(tempState);
       console.log(`💾 [Code Decompose] Initial jobTiming saved to session\n`);
@@ -400,6 +408,8 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       taskQueue,
       featureTasks,
       completedTasks: [],
+      overrideDirective: state.overrideDirective,  // ✅ Preserve chat directive
+      chatSource: state.chatSource,  // ✅ Preserve chat source flag
       _httpJobId: state._httpJobId  // ✅ Explicitly preserve taskId for next node
     };
     
@@ -583,6 +593,8 @@ ${rules}`;
         taskQueue,
         featureTasks,
         completedTasks: [],
+        overrideDirective: state.overrideDirective,  // ✅ Preserve chat directive
+        chatSource: state.chatSource,  // ✅ Preserve chat source flag
         _httpJobId: state._httpJobId  // ✅ Explicitly preserve taskId for next node
       };
       
@@ -666,6 +678,8 @@ ${rules}`;
       taskQueue,
       featureTasks,
       completedTasks: [],
+      overrideDirective: state.overrideDirective,  // ✅ Preserve chat directive
+      chatSource: state.chatSource,  // ✅ Preserve chat source flag
       _httpJobId: state._httpJobId  // ✅ Explicitly preserve taskId for next node
     };
     
@@ -755,6 +769,8 @@ ${rules}`;
       taskQueue,
       featureTasks,
       completedTasks: [],
+      overrideDirective: state.overrideDirective,  // ✅ Preserve chat directive
+      chatSource: state.chatSource,  // ✅ Preserve chat source flag
       _httpJobId: state._httpJobId  // ✅ Explicitly preserve taskId for next node
     };
     

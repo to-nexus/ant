@@ -168,7 +168,9 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
             jobTiming: newJobTiming,
             taskQueue: [],
             completedTasks: [],
-            completedTasksDetails: preloadedCompletedTasks
+            completedTasksDetails: preloadedCompletedTasks,
+            overrideDirective: state.overrideDirective,  // ✅ Preserve chat directive
+            chatSource: state.chatSource  // ✅ Preserve chat source flag
           }
         }
       );

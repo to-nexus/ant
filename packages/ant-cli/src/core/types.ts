@@ -175,6 +175,8 @@ export interface SessionState {
   
   // ✅ Directives (최신이 맨 앞, Continue 시 추가)
   directives?: string[];          // User directives (newest first for highest priority)
+  overrideDirective?: string;     // ✅ Chat-initiated directive (highest priority, from chat input)
+  chatSource?: boolean;           // ✅ Flag indicating if job was started from chat interface
   
   // Task Queue State
   taskQueue?: any[];              // Remaining tasks (Task[] from state.ts)

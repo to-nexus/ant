@@ -64,7 +64,7 @@ export class TaskExecutionService {
     const jobStatus: JobStatus = {
       jobId,
       status: 'pending',
-      task: params.task,  // ✅ Track the job type
+      task: params.jobType,  // ✅ Track the job type
       startedAt: new Date().toISOString()
     };
     
@@ -103,7 +103,7 @@ export class TaskExecutionService {
       const args = [
         antCliSrc,
         params.agent,      // e.g., 'architect'
-        params.task        // e.g., 'code'
+        params.jobType     // e.g., 'code'
       ];
       
       // Add input file or feature path as positional argument
@@ -120,7 +120,7 @@ export class TaskExecutionService {
       }
       
       // Add options (only for tasks that support them)
-      if (params.mode && params.task === 'code') {
+      if (params.mode && params.jobType === 'code') {
         args.push('--mode', params.mode);
       }
       
@@ -128,7 +128,7 @@ export class TaskExecutionService {
         args.push('--project', params.project);
       }
       
-      if (params.enableEvaluation && params.task === 'code') {
+      if (params.enableEvaluation && params.jobType === 'code') {
         args.push('--eval');
       }
       

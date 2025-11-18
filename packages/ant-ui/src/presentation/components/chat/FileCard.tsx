@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { FilePlus, FileEdit, Trash2, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
+import { FilePlus, FileEdit, Trash2, ChevronDown, ChevronRight, Loader2, Ban } from 'lucide-react';
 import type { MessageContent } from '@/domain/models/chat';
 
 interface FileCardProps {
@@ -183,8 +183,15 @@ export function FileCard({ content, operation }: FileCardProps) {
             {filePath}
           </span>
           
-          {/* Line Stats (Compact) */}
-          {isCompleted && (
+          {/* Cancelled Indicator or Line Stats */}
+          {isCompleted && content.metadata?.reason ? (
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <Ban className="w-3 h-3 text-orange-500 dark:text-orange-400" />
+              <span className="text-[10px] text-orange-600 dark:text-orange-400 font-medium">
+                Cancelled
+              </span>
+            </div>
+          ) : isCompleted && (
             <>
               {operation === 'edit' && (lineStats.added > 0 || lineStats.removed > 0) && (
                 <div className="flex items-center gap-1.5 flex-shrink-0">

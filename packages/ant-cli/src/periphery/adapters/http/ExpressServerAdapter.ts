@@ -235,6 +235,12 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     this.workflowStateService.endJob(jobId);
     console.log(`   ✅ Workflow state ended`);
     
+    // ✅ Finalize any active chat message (converts streaming file cards to completed with cancelled flag)
+    if (mapping && this.chatService) {
+      this.chatService.finalizeCurrentMessage(mapping.projectId, mapping.featureName || 'skeleton', true);  // cancelled: true
+      console.log(`   ✅ Chat message finalized (file cards marked as cancelled)`);
+    }
+    
     // Clear live data
     this.taskQueueSnapshots.delete(jobId);
     this.jobToProject.delete(jobId);
