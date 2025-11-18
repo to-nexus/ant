@@ -326,11 +326,6 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ✨ Initialize jobId and jobTiming for new job
   const { jobId: newJobId, jobTiming: newJobTiming, estimatingStartTime } = JobTimingManager.initializeNewJob(state._httpJobId!);
   
-  // 🔍 DEBUG: Log override directive state
-  console.log(`\n🔍 [Code Decompose] State check before initial save:`);
-  console.log(`   overrideDirective: ${state.overrideDirective ? `"${state.overrideDirective.substring(0, 50)}..."` : 'undefined'}`);
-  console.log(`   chatSource: ${state.chatSource}`);
-  console.log(`   directive: ${state.directive ? `"${state.directive.substring(0, 50)}..."` : 'undefined'}\n`);
   
   // 💾 CRITICAL: Save jobTiming to session IMMEDIATELY so frontend can show timer during estimating
   if (state.deps?.session && state.context.featureFolder) {

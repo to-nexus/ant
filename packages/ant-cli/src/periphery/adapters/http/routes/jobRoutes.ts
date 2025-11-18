@@ -35,9 +35,6 @@ export function createJobRoutes(deps: {
       
       console.log(`\n📨 [JobRoute] POST /projects/${projectId}/features/${featureName}/execute`);
       console.log(`   Agent: ${agent}, jobType: ${jobType}`);
-      console.log(`   Override Directive: ${overrideDirective ? '(provided)' : 'none'}`);
-      console.log(`   Chat Source: ${chatSource || false}`);
-      console.log(`   Body:`, req.body);
       
       // ✅ Build context for WorkspaceResolver
       const userContext = req.user && req.organization ? {
@@ -247,9 +244,6 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
       
       // ✅ Restore overrideDirective from session (for chat-initiated jobs)
       const overrideDirective = sessionData.state?.overrideDirective;
-      if (overrideDirective) {
-        console.log(`   ✅ Restoring override directive from session`);
-      }
       
       // ✅ inputFile not needed for resume (feature name is sufficient)
       const inputFile = undefined;

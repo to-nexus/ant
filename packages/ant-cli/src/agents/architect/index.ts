@@ -216,14 +216,6 @@ export async function architectAgent(
       console.log('   Type: DESIGN');
       console.log('');
       
-      // 🔍 DEBUG: Check dInitial state
-      console.log('🔍 [DEBUG] dInitial.context:', {
-        project: dInitial.context.project,
-        featureFolder: dInitial.context.featureFolder,
-        workingDir: dInitial.context.workingDir,
-        featurePath: dInitial.context.featurePath,
-        workspaceResolver: !!dInitial.context.workspaceResolver
-      });
       
       const d = await runDesignGraph(dInitial);
       return {
@@ -302,11 +294,6 @@ export async function architectAgent(
         // ✅ Resolve jobId: orchestrator param > env var (child process) > undefined
         const resolvedJobId = jobId || process.env.ANT_JOB_ID;
         
-        // 🔍 DEBUG: Log deps for code job
-        console.log(`\n🔍 [ArchitectAgent] Code job initialization:`);
-        console.log(`   deps.overrideDirective: ${deps?.overrideDirective ? `"${deps.overrideDirective.substring(0, 50)}..."` : 'undefined'}`);
-        console.log(`   deps.chatSource: ${deps?.chatSource}`);
-        console.log(`   deps.feature: ${deps?.feature}\n`);
         
         const initial: ArchitectGraphState = {
           context,
