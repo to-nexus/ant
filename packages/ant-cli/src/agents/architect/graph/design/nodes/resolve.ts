@@ -183,5 +183,8 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     code,
     codeHead,
     profile,
+    overrideDirective: state.overrideDirective,  // ✅ Preserve chat directive
+    chatSource: state.chatSource,  // ✅ Preserve chat source flag
+    _httpJobId: state._httpJobId  // ✅ Preserve jobId
   };
 }

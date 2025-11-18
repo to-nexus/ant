@@ -302,6 +302,12 @@ export async function architectAgent(
         // ✅ Resolve jobId: orchestrator param > env var (child process) > undefined
         const resolvedJobId = jobId || process.env.ANT_JOB_ID;
         
+        // 🔍 DEBUG: Log deps for code job
+        console.log(`\n🔍 [ArchitectAgent] Code job initialization:`);
+        console.log(`   deps.overrideDirective: ${deps?.overrideDirective ? `"${deps.overrideDirective.substring(0, 50)}..."` : 'undefined'}`);
+        console.log(`   deps.chatSource: ${deps?.chatSource}`);
+        console.log(`   deps.feature: ${deps?.feature}\n`);
+        
         const initial: ArchitectGraphState = {
           context,
           spec,
@@ -328,14 +334,14 @@ export async function architectAgent(
           violations: [],  // ✅ Initialize violations array
           retries: 0,
           maxRetries: 3,  // ✅ Allow multiple retries for dependency fixes
-                completedTasksDetails: [],  // ✅ Initialize completedTasksDetails
-                codeMode: codeMode, // Will be inferred in graph nodes
-                subtaskIndex: 0,  // Backward compatibility
-                totalSubtasks: 0,  // Backward compatibility
-                _httpJobId: resolvedJobId,  // ✅ For real-time tracking and resume
-                overrideDirective: deps?.overrideDirective,  // ✅ Chat input as directive
-                chatSource: deps?.chatSource  // ✅ Chat SSE flag
-              };
+          completedTasksDetails: [],  // ✅ Initialize completedTasksDetails
+          codeMode: codeMode, // Will be inferred in graph nodes
+          subtaskIndex: 0,  // Backward compatibility
+          totalSubtasks: 0,  // Backward compatibility
+          _httpJobId: resolvedJobId,  // ✅ For real-time tracking and resume
+          overrideDirective: deps?.overrideDirective,  // ✅ Chat input as directive
+          chatSource: deps?.chatSource  // ✅ Chat SSE flag
+        };
         const result = await runCodeGraph(initial);
         
         // ✅ Determine status based on execution result (using unified interruption)

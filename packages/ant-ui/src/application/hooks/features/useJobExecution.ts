@@ -37,10 +37,7 @@ export function useJobExecution() {
       kanban: kanbanData 
     } = state;
     
-    console.log('[useJobExecution] runJob called:', { agent, jobType, isRunning, selectedProject, selectedFeature });
-    
     if (isRunning || !selectedProject) {
-      console.warn('[useJobExecution] Cannot run:', { isRunning, selectedProject });
       return;
     }
 
@@ -50,52 +47,32 @@ export function useJobExecution() {
     
     // ✅ Resume existing job (jobId exists + interruption)
     if (currentJobId && hasInterruption) {
-      console.log(`[useJobExecution] Resuming existing job: ${currentJobId}`);
-      console.log(`[useJobExecution] Interruption reason: ${kanbanData?.interruption?.reason}`);
-      
       try {
         // ✅ CRITICAL: Dismiss interruption FIRST before setting running state
         // This prevents SSE initial state from auto-stopping the job
         if (kanbanData?.interruption?.timestamp) {
-          console.log('[useJobExecution] Dismissing interruption timestamp BEFORE setRunning');
           useStore.getState().setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
         }
         
         // ✅ Remove cancelled message from chat and add resume message
-        console.log('[useJobExecution] Removing cancelled message and adding resume message');
         useStore.getState().removeCancelledMessage(currentJobId);
         useStore.getState().addChatMessage({
           id: `msg-resume-${Date.now()}`,
           role: 'assistant',
           contents: [{
             type: 'text',
-            content: '🔄 작업을 재개합니다...'
+            content: '🔄 Continuing interrupted job...'
           }],
           timestamp: new Date().toISOString()
         });
         
         // ✅ Set running state immediately
-        console.log('[useJobExecution] Setting isRunning=true BEFORE resumeJob API call');
-        console.log('[useJobExecution] Current state:', { isRunning, currentJobId });
         setRunning(true, currentJobId);
-        console.log('[useJobExecution] After setRunning:', { 
-          isRunning: useStore.getState().isRunning, 
-          currentJobId: useStore.getState().currentJobId 
-        });
         
-        const result = await resumeJob(currentJobId, selectedProject, selectedFeature!, true);  // chatSource: true
-        console.log('[useJobExecution] Resume successful:', result);
-        console.log(`  Original job: ${result.originalJobId}`);
-        console.log(`  New job: ${result.jobId}`);
-        console.log(`  Job type: ${result.jobType}`);
+        const result = await resumeJob(currentJobId, selectedProject, selectedFeature!, true);
         
         // ✅ Update with new jobId from server
-        console.log('[useJobExecution] Updating jobId after resume:', result.jobId);
         setRunning(true, result.jobId);
-        console.log('[useJobExecution] Final state:', { 
-          isRunning: useStore.getState().isRunning, 
-          currentJobId: useStore.getState().currentJobId 
-        });
       } catch (error) {
         console.error('[useJobExecution] Failed to resume job:', error);
         console.error('[useJobExecution] Error details:', error);
@@ -106,15 +83,9 @@ export function useJobExecution() {
     }
 
     // ✅ Start new job
-    console.log('[useJobExecution] Starting new job...');
-    console.log(`[useJobExecution] Job Type: ${jobType}`);
-    
-    // Start running state immediately (jobId will be set when server responds)
-    console.log('[useJobExecution] Setting running state...');
     setRunning(true, undefined, 'generate'); // Default mode
     
     try {
-      console.log('[useJobExecution] Calling executeCodeJob...');
       const jobExecution = executeCodeJob({
         projectId: selectedProject,
         featureName: selectedFeature!,

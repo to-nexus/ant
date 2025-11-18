@@ -567,8 +567,9 @@ export class ChatService {
 
   /**
    * Finalize current streaming message
+   * @param cancelled - If true, marks file operations as cancelled
    */
-  finalizeCurrentMessage(projectId: string, featureName: string): void {
+  finalizeCurrentMessage(projectId: string, featureName: string, cancelled: boolean = false): void {
     const key = this.getSessionKey(projectId, featureName);
     const session = this.sessions.get(key);
     
@@ -612,6 +613,14 @@ export class ChatService {
           fileContent.type = 'file_edit';
         } else if (fileContent.type === 'file_deleting') {
           fileContent.type = 'file_delete';
+        }
+        
+        // ✅ Mark as interrupted if job was stopped
+        if (cancelled) {
+          fileContent.metadata = {
+            ...fileContent.metadata,
+            reason: 'user_stopped'
+          };
         }
         
         // Broadcast final state
