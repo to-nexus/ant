@@ -199,6 +199,11 @@ export interface SessionState {
   
   // Execution Context (for resume optimization)
   planText?: string;              // Cached plan to skip LLM call on resume
+  files?: Array<{ path: string; content: string }>;  // ✅ Generated files (design & code)
+  filesToDelete?: string[];       // ✅ Files to delete (design & code)
+  
+  // ⚠️  DEPRECATED: Legacy fields (for backward compatibility only)
+  designMarkdown?: string;        // Use files[] instead
   
   // ✅ Unified Interruption State
   interruption?: InterruptionDetails;  // Details about why and how the job was interrupted

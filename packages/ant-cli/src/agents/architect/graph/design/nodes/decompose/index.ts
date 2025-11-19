@@ -100,15 +100,38 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
           directive: mergedDirective,  // ✅ Merged directives (newest first)
           overrideDirective: session.state.overrideDirective,  // ✅ Restore chat-initiated directive
           chatSource: session.state.chatSource,  // ✅ Restore chat source flag
+          files: session.state.files || [],  // ✅ Restore generated files (unified approach)
+          filesToDelete: session.state.filesToDelete || [],
           interruption: undefined  // ✅ CRITICAL: Clear interruption when resuming (job is now running again)
         } as any;
+        
+        // ✅ Restore buffer from disk for interruption recovery
+        try {
+          const { StreamBufferManager } = await import('../../../../../../core/streaming/buffer/StreamBufferManager');
+          const featurePath = state.context.workspaceResolver?.getFeaturePath(
+            { userId: state.context.userId, organizationId: state.context.organizationId },
+            state.context.project,
+            state.context.featureFolder
+          ) || state.context.featurePath || '';
+          const projectPath = featurePath.replace(`/features/${state.context.featureFolder}`, '');
+          const bufferManager = new StreamBufferManager(projectPath, state.context.featureFolder, 'design', jobId);
+          
+          const savedBuffers = bufferManager.loadBuffersFromDisk();
+          if (savedBuffers.size > 0) {
+            console.log(`\n🔄 [Resume] Loaded ${savedBuffers.size} buffer(s) from disk for recovery`);
+            // Buffer will be used by execute node automatically
+          }
+        } catch (error) {
+          console.warn(`⚠️  [Resume] Failed to restore buffers (non-critical):`, error);
+        }
         
         console.log(`📊 RESUMING DESIGN SESSION:`);
         console.log(`   ✅ ${resumedState.completedTasks?.length || 0} task(s) completed`);
         if (resumedState.currentTask) {
           console.log(`   🔄 Current task: "${resumedState.currentTask.name}"`);
         }
-        console.log(`   📋 ${taskQueue.size()} task(s) in queue\n`);
+        console.log(`   📋 ${taskQueue.size()} task(s) in queue`);
+        console.log(`   📄 Generated files: ${resumedState.files?.length || 0} restored\n`);
         
         // ✅ Update live snapshot via kanbanUpdate port
         console.log(`🔍 [Design Decompose Resume] Kanban update check:`);

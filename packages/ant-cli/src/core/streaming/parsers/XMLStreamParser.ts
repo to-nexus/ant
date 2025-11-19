@@ -10,7 +10,8 @@
  */
 
 import { IStreamParser } from './IStreamParser';
-import { LLMStreamEvent, ParsedAction } from '../types';
+import { LLMStreamEvent } from '../../ports/llm';
+import { ParsedAction } from '../types';
 import { StreamState } from '../state/StreamState';
 
 interface ParserContext {
@@ -46,21 +47,21 @@ export class XMLStreamParser implements IStreamParser {
     const actions: ParsedAction[] = [];
     
     // Handle thinking events (some LLM APIs send this separately)
-    if (event.type === 'thinking' && event.content) {
+    if (event.type === 'thinking' && event.thinking) {  // ✅ NEW: thinking 필드 사용
       actions.push({
         type: 'thinking',
-        data: { content: event.content }
+        data: { content: event.thinking }
       });
       return actions;
     }
     
-    if (event.type !== 'text' || !event.content) {
+    if (event.type !== 'text' || !event.text) {  // ✅ NEW: text 필드 사용
       return actions;
     }
     
     // Append to both state and parser buffer
-    state.append(event.content);
-    this.buffer += event.content;
+    state.append(event.text);
+    this.buffer += event.text;
     
     // Incremental parsing: try to extract complete tags
     actions.push(...this.parseBuffer());
@@ -545,11 +546,13 @@ export class XMLStreamParser implements IStreamParser {
     this.context = {
       insideThinking: false,
       insideFile: false,
+      insideAppend: false,
       insideEdit: false,
       insideSearch: false,
       insideReplace: false,
       insideTasks: false,
       currentFilePath: null,
+      currentAppendPath: null,
       currentEditPath: null
     };
     this.buffer = '';

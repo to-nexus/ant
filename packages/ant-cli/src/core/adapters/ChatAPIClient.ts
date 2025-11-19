@@ -8,7 +8,7 @@
  * - ANT_JOB_ID: Current job ID
  */
 
-import type { LLMStreamEvent } from '../../periphery/adapters/llm/types';
+import type { LLMStreamEvent } from '../ports/llm';
 
 export class ChatAPIClient {
   private serverPort: string;

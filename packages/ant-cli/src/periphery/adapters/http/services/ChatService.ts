@@ -8,7 +8,7 @@
 import { Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
-import type { LLMStreamEvent } from '../../llm/types';
+import type { LLMStreamEvent } from '../../../../core/ports/llm';
 import type { SSEService } from './SSEService';
 import type { WorkspaceResolver } from '../../../../infrastructure/workspace/WorkspaceResolver';
 import type { UserContext } from '../../../../core/types/user';
@@ -666,7 +666,7 @@ export class ChatService {
       case 'thinking':
         this.addContentToCurrentMessage(projectId, featureName, {
           type: 'thinking',
-          content: event.content
+          content: event.thinking || ''  // ✅ NEW: thinking 필드 사용
         });
         break;
 
@@ -676,21 +676,32 @@ export class ChatService {
           const fileContent = session.currentMessage.contents[session.activeFileOperation.contentIndex];
           if (fileContent && (fileContent.type === 'file_writing' || fileContent.type === 'file_updating')) {
             // Update file content in real-time (accumulate internally)
-            fileContent.content += event.content;
+            const textDelta = event.text || '';  // ✅ NEW: text 필드 사용
+            fileContent.content += textDelta;
             
             // ✅ Broadcast incremental update (delta only - network efficient)
             this.broadcast(projectId, featureName, {
               type: 'content_append',
               messageId: session.currentMessage.id,
               contentIndex: session.activeFileOperation.contentIndex,
-              delta: event.content  // ✅ Only send the new chunk, not full content
+              delta: textDelta  // ✅ Only send the new chunk, not full content
             });
           }
         } else {
           // No active file operation - add as regular text
           this.addContentToCurrentMessage(projectId, featureName, {
             type: 'text',
-            content: event.content
+            content: event.text || ''  // ✅ NEW: text 필드 사용
+          });
+        }
+        break;
+
+      case 'tool_use':
+        // ✅ Tool call detected - show loading card
+        if (event.toolUse) {
+          this.addContentToCurrentMessage(projectId, featureName, {
+            type: 'text',
+            content: `🔧 **Tool Call**: \`${event.toolUse.name}\`\n\`\`\`json\n${JSON.stringify(event.toolUse.input, null, 2)}\n\`\`\``
           });
         }
         break;
@@ -702,7 +713,7 @@ export class ChatService {
       case 'error':
         this.addContentToCurrentMessage(projectId, featureName, {
           type: 'text',
-          content: `❌ Error: ${event.content}`
+          content: `❌ Error: ${event.error?.message || 'Unknown error'}`  // ✅ NEW: error 필드 사용
         });
         break;
     }

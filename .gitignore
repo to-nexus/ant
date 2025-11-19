@@ -42,6 +42,7 @@ pnpm-debug.log*
 *.tmp
 *.temp
 .cache/
+.buffers/
 
 # ChromaDB data
 .chroma/

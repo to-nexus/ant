@@ -9,10 +9,10 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "tsx src/index.ts",
-    "dev:server": "tsx src/composition/server.ts",
+    "dev:server": "NODE_OPTIONS='--max-old-space-size=8192' tsx src/composition/server.ts",
     "build": "tsc && cp -r src/core/prompt/templates dist/core/prompt/ && cp -r src/periphery/profiles dist/periphery/",
     "start": "node dist/index.js",
-    "start:server": "node dist/composition/server.js",
+    "start:server": "NODE_OPTIONS='--max-old-space-size=8192' node dist/composition/server.js",
     "init:workspace": "tsx src/cli/init-cli.ts workspace",
     "init:feature": "tsx src/cli/init-cli.ts feature"
   },

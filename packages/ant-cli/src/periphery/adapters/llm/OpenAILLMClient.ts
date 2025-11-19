@@ -6,7 +6,7 @@
  */
 
 import OpenAI from 'openai';
-import { LLMClient, LLMStreamEvent } from '../../../core/ports/llm';
+import { LLMClient, LLMStreamEvent, ToolDefinition } from '../../../core/ports/llm';
 
 export class OpenAILLMClient implements LLMClient {
   private client: OpenAI;
@@ -47,39 +47,36 @@ export class OpenAILLMClient implements LLMClient {
     return response.choices[0]?.message?.content || '';
   }
 
-  async *stream(messages: Array<{ role: string; content: string }>): AsyncIterable<string> {
-    const stream = await this.client.chat.completions.create({
-      model: this.modelName,
-      messages: messages.map(m => ({
-        role: m.role as 'user' | 'assistant' | 'system',
-        content: m.content,
-      })),
-      temperature: 0.7,
-      max_tokens: 16000,
-      stream: true,
-    });
-
-    for await (const chunk of stream) {
-      const content = chunk.choices[0]?.delta?.content;
-      if (content) {
-        yield content;
-      }
-    }
-  }
-
   /**
-   * 🎯 Raw streaming (OpenAI doesn't separate thinking like Anthropic)
-   * For compatibility, wrap all content as 'text' type
+   * 🎯 Unified streaming interface
+   * OpenAI doesn't separate thinking blocks like Anthropic
    */
-  async *streamRaw(messages: Array<{ role: string; content: string }>): AsyncIterable<LLMStreamEvent> {
+  async *stream(
+    messages: Array<{ role: string; content: string | any[] }>,
+    options?: {
+      tools?: ToolDefinition[];
+      maxTokens?: number;
+      [key: string]: any;
+    }
+  ): AsyncIterable<LLMStreamEvent> {
     const stream = await this.client.chat.completions.create({
       model: this.modelName,
       messages: messages.map(m => ({
         role: m.role as 'user' | 'assistant' | 'system',
         content: m.content,
       })),
+      ...(options?.tools && options.tools.length > 0 ? {
+        tools: options.tools.map(t => ({
+          type: 'function' as const,
+          function: {
+            name: t.name,
+            description: t.description,
+            parameters: t.input_schema,
+          },
+        })),
+      } : {}),
       temperature: 0.7,
-      max_tokens: 16000,
+      max_tokens: options?.maxTokens || 16000,
       stream: true,
     });
 
@@ -88,7 +85,7 @@ export class OpenAILLMClient implements LLMClient {
       if (content) {
         yield {
           type: 'text',
-          content,
+          text: content,  // ✅ NEW: 명시적 text 필드
           metadata: {
             provider: 'openai',
             model: this.modelName,
@@ -97,11 +94,34 @@ export class OpenAILLMClient implements LLMClient {
         };
       }
 
+      // Tool calls (OpenAI format)
+      const toolCalls = chunk.choices[0]?.delta?.tool_calls;
+      if (toolCalls && toolCalls.length > 0) {
+        for (const toolCall of toolCalls) {
+          if (toolCall.function) {
+            yield {
+              type: 'tool_use',
+              toolUse: {
+                id: toolCall.id || `call_${Date.now()}`,
+                name: toolCall.function.name || '',
+                input: JSON.parse(toolCall.function.arguments || '{}'),
+                type: 'function' as const,  // ✅ NEW: 분류 추가
+              },
+              metadata: {
+                provider: 'openai',
+                model: this.modelName,
+                timestamp: new Date().toISOString(),
+              },
+            };
+          }
+        }
+      }
+
       // Check for finish
       if (chunk.choices[0]?.finish_reason) {
         yield {
           type: 'done',
-          content: '',
+          done: true,  // ✅ NEW: 명시적 done 플래그
           metadata: {
             provider: 'openai',
             model: this.modelName,

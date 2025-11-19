@@ -7,7 +7,8 @@
  * - JSONStructuredParser: Handles JSON mode output (future)
  */
 
-import { LLMStreamEvent, ParsedAction } from '../types';
+import { LLMStreamEvent } from '../../ports/llm';
+import { ParsedAction } from '../types';
 import { StreamState } from '../state/StreamState';
 
 export interface IStreamParser {

@@ -45,9 +45,9 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     );
   }
   
-  // ✅ Validate designFilePath was set by writeFiles node
-  if (!state.designFilePath) {
-    throw new Error("designFilePath not set - writeFiles node must run before learn");
+  // ✅ Validate files were generated
+  if (!state.files || state.files.length === 0) {
+    throw new Error("No files generated - execute and writeFiles nodes must run before learn");
   }
   
   // 1. Extract learnings from design process
@@ -117,9 +117,10 @@ async function saveSessionTurn(state: DesignGraphState): Promise<void> {
       size: state.spec.length,
     },
     output: {
-      designPath: state.designFilePath!,
+      // ✅ Only store summaries, not paths (paths are deterministic from context)
       planSummary: planSummary.substring(0, 300),
-      decisionCount: decisions.length
+      decisionCount: decisions.length,
+      fileCount: state.files?.length || 1
     }
   };
   
@@ -159,7 +160,7 @@ async function saveSessionTurn(state: DesignGraphState): Promise<void> {
     state.context.featureFolder || 'default',
     'design',
     {
-      latestDesign: state.designFilePath!,
+      // ✅ latestDesign path is deterministic - no need to save
       keyDecisions: decisions.slice(0, 5),
       state: {
         taskQueue: state.taskQueue?.getAll() || [],
@@ -277,18 +278,28 @@ function extractDesignLearnings(state: DesignGraphState): string {
     }
   }
   
-  // 5. Design document summary
+  // 5. Design document summary (from files[])
   sections.push(`\n## Design Document Summary`);
-  const lines = state.designMarkdown.split('\n').length;
-  sections.push(`**Length**: ${lines} lines`);
   
-  // Extract main sections from markdown
-  const headings = state.designMarkdown.match(/^#{1,3}\s+(.+)$/gm);
-  if (headings && headings.length > 0) {
-    sections.push(`\n**Key Sections**:`);
-    for (const heading of headings.slice(0, 10)) {
-      sections.push(`- ${heading}`);
+  const primaryDesign = state.files?.find(f => 
+    f.path.includes('system-design') || f.path.includes('design.md')
+  );
+  
+  if (primaryDesign) {
+    const lines = primaryDesign.content.split('\n').length;
+    sections.push(`**File**: ${primaryDesign.path}`);
+    sections.push(`**Length**: ${lines} lines`);
+    
+    // Extract main sections from markdown
+    const headings = primaryDesign.content.match(/^#{1,3}\s+(.+)$/gm);
+    if (headings && headings.length > 0) {
+      sections.push(`\n**Key Sections**:`);
+      for (const heading of headings.slice(0, 10)) {
+        sections.push(`- ${heading}`);
+      }
     }
+  } else {
+    sections.push(`**No design document generated**`);
   }
   
   // 6. Key design decisions
@@ -303,7 +314,17 @@ function extractDesignLearnings(state: DesignGraphState): string {
  */
 function extractDesignDecisions(state: DesignGraphState): string {
   const decisions: string[] = [];
-  const markdown = state.designMarkdown;
+  
+  // Get primary design document content
+  const primaryDesign = state.files?.find(f => 
+    f.path.includes('system-design') || f.path.includes('design.md')
+  );
+  
+  if (!primaryDesign) {
+    return '- No design document available for analysis';
+  }
+  
+  const markdown = primaryDesign.content;
   
   // Technology stack
   const techMatch = markdown.match(/(?:technology|tech stack|framework|language)[\s:]+([^\n]+)/i);
@@ -325,7 +346,7 @@ function extractDesignDecisions(state: DesignGraphState): string {
   
   // Fallback if no specific decisions found
   if (decisions.length === 0) {
-    decisions.push(`- Design approach documented in ${state.designMarkdown.split('\n').length} lines`);
+    decisions.push(`- Design approach documented in ${markdown.split('\n').length} lines`);
   }
   
   return decisions.join('\n');

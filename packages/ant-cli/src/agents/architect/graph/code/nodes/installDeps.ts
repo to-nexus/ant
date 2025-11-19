@@ -14,7 +14,6 @@
  */
 
 import { ArchitectGraphState, Violation } from "../state";
-import { resolveLocalPath } from "../../../../../periphery/adapters/git/gitUtils";
 
 export async function installDeps(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   // ✅ Increment recursion count (track every node execution)
@@ -42,18 +41,16 @@ export async function installDeps(state: ArchitectGraphState): Promise<Architect
     return state;
   }
 
-  // Get target directory from config
-  const config = state.context.config;
-  if (!config || config.repoType !== 'local' || !config.localPath) {
-    console.log('⚠️  No local repository path configured, skipping dependency installation');
-    return state;
-  }
-
+  // ✅ Get codebase path (works for both local and cloud mode)
   const repoRoot = await gitPort.getRepoRoot();
   const p = await import("path");
   
-  // ✅ Use resolveLocalPath to properly handle tilde (~) expansion
-  const resolvedPath = resolveLocalPath(config.localPath, state.context.project);
+  // repoRoot is already the codebase directory
+  // For local mode: resolves from config.localPath
+  // For cloud mode: resolves from workspaces/{org}/{user}/{project}/codebase
+  const resolvedPath = repoRoot;
+  
+  console.log(`📂 Target directory: ${resolvedPath}`);
 
   try {
     // 1. Check if package.json was generated or modified

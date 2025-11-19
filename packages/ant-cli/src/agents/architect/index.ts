@@ -206,7 +206,6 @@ export async function architectAgent(
           workflowUpdate: deps?.workflowUpdate   // ✅ NEW: For real-time workflow tracking
         },
         planText: "",
-        designMarkdown: "",
         _httpJobId: jobId || process.env.ANT_JOB_ID,  // ✅ For tracking and resume
         overrideDirective: deps?.overrideDirective,  // ✅ Chat input as directive
         chatSource: deps?.chatSource  // ✅ Chat SSE flag
@@ -221,8 +220,7 @@ export async function architectAgent(
       return {
         success: true,
         task: 'design',
-        reportFile: d.designFilePath,
-        message: `Design document created at ${d.designFilePath}. Review and approve before generating code.`
+        message: `Design document created. Review and approve before generating code.`
       };
     case 'code':
       // Run via code graph (auto-detect batch vs normal)

@@ -4,6 +4,57 @@ import { SessionTurn } from "../../../../../core/types";
 import { errorStatsCollector, formatStatistics } from "./diagnostics/errorStats";
 
 /**
+ * ✅ Global queue for async learning tasks to prevent memory explosion
+ * Limits concurrent learning operations to 2 at a time
+ */
+class LearningQueue {
+  private queue: Array<() => Promise<void>> = [];
+  private running = 0;
+  private readonly maxConcurrent = 2;
+
+  async add(task: () => Promise<void>): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const wrappedTask = async () => {
+        try {
+          await task();
+          resolve();
+        } catch (error) {
+          reject(error);
+        } finally {
+          this.running--;
+          this.processNext();
+        }
+      };
+
+      this.queue.push(wrappedTask);
+      this.processNext();
+    });
+  }
+
+  private processNext(): void {
+    if (this.running >= this.maxConcurrent || this.queue.length === 0) {
+      return;
+    }
+
+    const task = this.queue.shift();
+    if (task) {
+      this.running++;
+      task().catch(() => {}); // Errors are handled in wrappedTask
+    }
+  }
+
+  getStats() {
+    return {
+      queued: this.queue.length,
+      running: this.running,
+      total: this.queue.length + this.running
+    };
+  }
+}
+
+const learningQueue = new LearningQueue();
+
+/**
  * Learn node - Incremental learning after each task completion:
  * 1. Extract learnings from completed task
  * 2. Store learnings to vector DB (ASYNC - non-blocking)
@@ -206,23 +257,39 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   // 4. 🚀 ASYNC learning - Store to vector DB without blocking workflow
   // This allows the agent to move to the next task immediately while learning happens in background
   if (state.deps?.memory && state.deps?.chunk) {
-    // ✅ Fire-and-forget: Don't await, let it run in background
-    (async () => {
+    // ✅ Capture dependencies in closure to avoid holding onto entire state
+    const deps = {
+      chunk: state.deps.chunk,
+      memory: state.deps.memory
+    };
+    const taskName = state.currentTask?.name || 'unknown';
+    const contextData = {
+      project: state.context.project,
+      feature: state.context.featureFolder || 'default'
+    };
+    
+    // ✅ Add to queue instead of firing immediately
+    // Queue limits concurrent learning operations to prevent memory explosion
+    const queueStats = learningQueue.getStats();
+    console.log(`\n🎓 [Async Learning] Queuing learning task for: ${taskName}`);
+    console.log(`   Queue status: ${queueStats.running} running, ${queueStats.queued} queued`);
+    
+    learningQueue.add(async () => {
       try {
-        console.log(`\n🎓 [Async Learning] Starting background learning for task: ${state.currentTask?.name || 'unknown'}`);
+        console.log(`\n🎓 [Async Learning] Processing task: ${taskName}`);
         
         // Process through chunking pipeline (via ChunkPort)
-        const result = await state.deps!.chunk!.process({
+        const result = await deps.chunk.process({
           source: 'code-learning',
           sourceType: 'text',
           content: learnings,
           metadata: {
             type: 'learning',
             task: 'code',
-            project: state.context.project,
-            feature: state.context.featureFolder || 'default',
+            project: contextData.project,
+            feature: contextData.feature,
             timestamp: new Date().toISOString(),
-            taskName: state.currentTask?.name,
+            taskName: taskName,
             // 🔗 Session tracking for traceability
             sessionId: sessionId,
             turnId: turnId
@@ -238,13 +305,13 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
         }));
         
         // Single batch store operation (reduces HTTP overhead and memory pressure)
-        if (!state.deps?.memory) {
-          throw new Error('Memory adapter not available in state.deps');
+        if (!deps.memory) {
+          throw new Error('Memory adapter not available');
         }
-        if (typeof state.deps.memory.store !== 'function') {
-          throw new Error(`Memory adapter store is not a function. Type: ${typeof state.deps.memory.store}, Memory object: ${JSON.stringify(Object.keys(state.deps.memory))}`);
+        if (typeof deps.memory.store !== 'function') {
+          throw new Error(`Memory adapter store is not a function. Type: ${typeof deps.memory.store}`);
         }
-        await state.deps.memory.store(documents, state.context.project);
+        await deps.memory.store(documents, contextData.project);
         
         console.log(`✅ [Async Learning] ${result.chunks.length} learning chunks stored to memory (batch)`);
         if (sessionId && turnId) {
@@ -255,10 +322,12 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
         console.error('⚠️  [Async Learning] Failed to store learnings to memory:', error instanceof Error ? error.message : error);
         console.log('   Workflow continues without memory storage...');
       }
-    })();
+    }).catch(() => {
+      // Queue already handles errors, this is just to prevent unhandled rejection
+    });
     
     // ✅ Don't wait - continue to next task immediately
-    console.log(`🚀 [Learn] Background learning started, continuing workflow...\n`);
+    console.log(`🚀 [Learn] Background learning queued, continuing workflow...\n`);
   } else {
     console.log(`ℹ️  [Learn] Memory/Chunk ports not available, skipping learning storage\n`);
   }

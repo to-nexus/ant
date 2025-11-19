@@ -39,8 +39,8 @@ export { StreamState } from './state/StreamState';
 export { FileRegistry } from './state/FileRegistry';
 
 // Types
+// NOTE: LLMStreamEvent is now exported from core/ports/llm.ts (unified)
 export type {
-  LLMStreamEvent,
   ParsedAction,
   ParsedActionType,
   StreamResult,

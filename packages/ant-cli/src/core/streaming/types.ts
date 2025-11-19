@@ -1,16 +1,8 @@
 /**
  * Core types for the streaming system
+ * 
+ * NOTE: LLMStreamEvent is now in core/ports/llm.ts (unified with LLM interface)
  */
-
-// ============================================================================
-// Stream Events
-// ============================================================================
-
-export interface LLMStreamEvent {
-  type: 'thinking' | 'text' | 'done' | 'error';
-  content?: string;
-  error?: string;
-}
 
 // ============================================================================
 // Parsed Actions
