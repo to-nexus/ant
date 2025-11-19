@@ -19,6 +19,10 @@ export interface CommandOptions {
   cwd?: string;           // Working directory
   timeout?: number;       // Timeout in ms (default: 5 minutes)
   env?: Record<string, string>;  // Environment variables
+  // ✅ NEW: Streaming callbacks (for tool calling)
+  onStdout?: (chunk: string) => void;  // Real-time stdout streaming
+  onStderr?: (chunk: string) => void;  // Real-time stderr streaming
+  onExit?: (code: number) => void;     // Exit code callback
 }
 
 export interface CommandPort {

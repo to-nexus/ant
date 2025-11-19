@@ -1,0 +1,2 @@
+{{> base/output-format-markdown}}
+

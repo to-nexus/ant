@@ -26,7 +26,7 @@ export interface ArchitectResult {
   success: boolean;
   status?: 'success' | 'paused' | 'partial';  // ✅ Explicit status for better clarity
   task: AgentTask;
-  reportFile: string;
+  reportFile?: string;  // ⚠️  DEPRECATED: Only for code jobs (report.md), design jobs don't need this
   filesAnalyzed?: number;
   interruption?: import('../../core/types').InterruptionDetails;  // ✅ Unified interruption details
   message: string;

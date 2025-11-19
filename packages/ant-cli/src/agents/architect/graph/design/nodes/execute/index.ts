@@ -78,10 +78,15 @@ export async function execute(state: DesignGraphState) {
   // planText was generated in the plan node and passed through state
   const strategyContent = state.planText;
 
+  // ✅ Get accumulated design from previous tasks (files[])
+  const primaryDesign = state.files?.find(f => 
+    f.path.includes('system-design') || f.path.includes('design.md')
+  );
+
   // Prepare artifacts (using new unified names)
   const artifacts = {
     directive: state.directive,
-    designDoc: state.designMarkdown || undefined,  // ✅ Pass accumulated design from previous tasks
+    designDoc: primaryDesign?.content,  // ✅ Pass accumulated design from previous tasks
     prdSpec: state.prd,               // PRD
     previousDesign: state.design,     // Previous design (from git)
     currentCode: state.code,          // Codebase (for evolution/refactor)
@@ -102,12 +107,10 @@ export async function execute(state: DesignGraphState) {
   );
 
   // Generate design with streaming
-  let designMarkdown = '';
-  
   console.log(`⏱️  Prompt build time: ${result.metadata.buildTime}ms`);
   
   // ✅ Check if this is a continuation task
-  const isFirstTask = !state.designMarkdown;
+  const isFirstTask = !primaryDesign;
   if (isFirstTask) {
     console.log('\n📐 Generating initial design document...\n');
   } else {
@@ -121,16 +124,28 @@ export async function execute(state: DesignGraphState) {
   // ✅ 3. Stream LLM response with real-time XML parsing
   console.log('\n💭 Streaming design document...\n');
   
-  if (!llm.streamRaw) {
+  if (!llm.stream) {
     throw new Error('LLM client does not support streaming');
   }
   
   // ✅ Use StreamOrchestrator but collect text content separately for design document
   const { StreamOrchestrator, XMLStreamParser, CommonRenderStrategy } = await import('../../../../../../core/streaming');
+  const { StreamBufferManager } = await import('../../../../../../core/streaming/buffer/StreamBufferManager');
+  
+  // ✅ Initialize buffer manager for interruption safety
+  const featurePath = state.context.workspaceResolver?.getFeaturePath(
+    { userId: state.context.userId, organizationId: state.context.organizationId },
+    state.context.project,
+    state.context.featureFolder
+  ) || state.context.featurePath || '';
+  
+  const projectPath = featurePath.replace(`/features/${state.context.featureFolder}`, '');
+  const jobId = state._httpJobId || `design-${Date.now()}`;
+  const bufferManager = new StreamBufferManager(projectPath, state.context.featureFolder, 'design', jobId);
   
   const orchestrator = new StreamOrchestrator({
     parser: new XMLStreamParser(),
-    renderStrategy: new CommonRenderStrategy(chatAPI),
+    renderStrategy: new CommonRenderStrategy(chatAPI, bufferManager),
     existingFiles: new Set([]) // Design phase doesn't generate code files
   });
   
@@ -138,73 +153,38 @@ export async function execute(state: DesignGraphState) {
   await chatAPI.showChatStatus('placeholder');
   
   // Stream LLM response with real-time XML parsing
-  for await (const event of llm.streamRaw(result.formatted.messages)) {
+  for await (const event of llm.stream(result.formatted.messages)) {
     await orchestrator.processEvent(event);
   }
   
   const streamResult = await orchestrator.finalize();
   const raw = streamResult.raw;
   
-  // ✅ Parse <edit> tags from raw response (for precise section modifications)
-  const { parseResponse } = await import('../../../code/nodes/execute/parseResponse');
-  const { applyEditToFile } = await import('../../../code/nodes/execute/applyEdits');
-  const parsed = parseResponse(raw);
+  // ✅ CRITICAL: Get ALL files from buffer (not just design document)
+  // This supports multi-file design (e.g., system-design.md + architecture.md + api-spec.md)
+  const allBuffers = bufferManager.getAllBuffers();
+  const files = Array.from(allBuffers.values()).map(buffer => ({
+    path: buffer.filePath,
+    content: buffer.content
+  }));
   
-  // ✅ Determine operation mode (same as Code job)
-  let finalDesignMarkdown: string;
+  console.log(`\n📦 [Execute] Buffer analysis:`);
+  console.log(`   Total buffers: ${allBuffers.size}`);
+  for (const [path, buffer] of allBuffers) {
+    console.log(`   📂 ${path}: ${buffer.content.length} chars (${buffer.actionType})`);
+  }
   
-  // Mode 1: <edit> tag used (precise section modification)
-  if (parsed.edits.length > 0) {
-    const designEdit = parsed.edits.find(e => e.path.includes('system-design.md'));
-    if (!designEdit) {
-      throw new Error('Edit instruction found but not for system-design.md');
-    }
-    
-    // Read existing design document
-    const existingDesign = state.designMarkdown || '';
-    if (!existingDesign) {
-      throw new Error('Cannot apply edit: no existing design document found. Use <file> tag for first task.');
-    }
-    
-    // Apply edit (search/replace)
-    try {
-      finalDesignMarkdown = applyEditToFile(existingDesign, designEdit);
-    } catch (error) {
-      console.error(`   ❌ Failed to apply edit:`, error);
-      throw error;
-    }
+  if (files.length === 0) {
+    console.error(`❌ [Execute] No files generated!`);
+    console.error(`   Streamed files: ${streamResult.streamedFiles.join(', ')}`);
+    console.error(`   Raw response length: ${raw.length}`);
+    throw new Error('No design files generated');
   }
-  // Mode 2: <append> tag used (append to existing document)
-  else if (parsed.appends.length > 0) {
-    const designAppend = parsed.appends.find(a => a.path.includes('system-design.md'));
-    if (!designAppend) {
-      throw new Error('Append instruction found but not for system-design.md');
-    }
-    
-    // Read existing design document
-    const existingDesign = state.designMarkdown || '';
-    if (!existingDesign) {
-      throw new Error('Cannot append: no existing design document found. Use <file> tag for first task.');
-    }
-    
-    // Append content (same logic as mergeDesignDocuments)
-    finalDesignMarkdown = mergeDesignDocuments(existingDesign, designAppend.content);
-  }
-  // Mode 3: <file> tag used (create new document)
-  else if (parsed.files.length > 0) {
-    const designFile = parsed.files.find(f => f.path.includes('system-design.md'));
-    if (designFile) {
-      finalDesignMarkdown = designFile.content || '';
-    } else {
-      console.warn('⚠️  No system-design.md file found in parsed files. Using raw content as fallback.');
-      finalDesignMarkdown = raw.replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
-    }
-  }
-  // Mode 4: No tags (fallback)
-  else {
-    console.warn('⚠️  No files in stream. LLM may not have used XML tags. Using raw text fallback.\n');
-    finalDesignMarkdown = raw.replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
-  }
+  
+  // ✅ Legacy support: Extract primary design document for designMarkdown
+  const primaryDesignFile = files.find(f => 
+    f.path.includes('system-design') || f.path.includes('design.md')
+  ) || files[0];
 
   // ✅ StreamOrchestrator already handled file card rendering in real-time
   // No manual file card operations needed!
@@ -213,16 +193,15 @@ export async function execute(state: DesignGraphState) {
   // This prevents duplicate entries in completedTasksDetails
   // This ensures Kanban updates happen AFTER all workflow nodes are processed
 
-  // ✅ Validate finalDesignMarkdown before returning
-  console.log(`\n✅ [Execute] Design document generated: ${finalDesignMarkdown.length} chars`);
-  if (!finalDesignMarkdown || finalDesignMarkdown.trim().length === 0) {
-    console.error(`❌ [Execute] WARNING: finalDesignMarkdown is empty!`);
-  }
+  console.log(`\n✅ [Execute] Generated ${files.length} file(s):`);
+  files.forEach(f => console.log(`   📄 ${f.path}: ${f.content.length} chars`));
 
+  // ✅ CRITICAL: Sync buffer content to state for resume and writeFiles
   return { 
     ...state,
     currentTask,  // ✅ Explicitly include currentTask with timing
-    designMarkdown: finalDesignMarkdown,  // ✅ Use merged/updated markdown
+    files,  // ✅ All generated files (unified approach)
+    filesToDelete: [],  // Design doesn't delete files
     // Keep currentTask - checkTaskStatus will handle completion and clear it
   };
 }

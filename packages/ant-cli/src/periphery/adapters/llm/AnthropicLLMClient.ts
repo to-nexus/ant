@@ -7,7 +7,7 @@
 
 // @ts-ignore
 import Anthropic from '@anthropic-ai/sdk';
-import { LLMClient, LLMStreamEvent } from '../../../core/ports/llm';
+import { LLMClient, LLMStreamEvent, ToolDefinition } from '../../../core/ports/llm';
 
 export class AnthropicLLMClient implements LLMClient {
   private client: Anthropic;
@@ -47,84 +47,88 @@ export class AnthropicLLMClient implements LLMClient {
     return textBlocks.map((block: any) => block.text).join('');
   }
 
-  async *stream(messages: Array<{ role: string; content: string }>): AsyncIterable<string> {
-    // Simple streaming (thinking + text combined, for backward compatibility)
-    const stream = await this.client.messages.create({
-      model: this.modelName,
-      max_tokens: 16000,
-      messages: messages.map(m => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-      })),
-      stream: true,
-    });
-
-    for await (const event of stream) {
-      if (event.type === 'content_block_delta') {
-        if (event.delta.type === 'text_delta') {
-          yield event.delta.text;
-        }
-        // Note: thinking_delta is skipped for backward compatibility
-      }
-    }
-  }
-
   /**
-   * 🎯 NEW: Raw streaming with thinking/text separation
+   * 🎯 Unified streaming interface
+   * Handles thinking blocks, tool calling, and regular text
    */
-  async *streamRaw(messages: Array<{ role: string; content: string }>): AsyncIterable<LLMStreamEvent> {
+  async *stream(
+    messages: Array<{ role: string; content: string | any[] }>,
+    options?: {
+      tools?: ToolDefinition[];
+      maxTokens?: number;
+      [key: string]: any;
+    }
+  ): AsyncIterable<LLMStreamEvent> {
     const stream = await this.client.messages.create({
       model: this.modelName,
-      max_tokens: 16000,
+      max_tokens: options?.maxTokens || 16000,
       messages: messages.map(m => ({
         role: m.role as 'user' | 'assistant',
         content: m.content,
       })),
+      ...(options?.tools && options.tools.length > 0 ? {
+        tools: options.tools.map(t => ({
+          name: t.name,
+          description: t.description,
+          input_schema: t.input_schema,
+        })),
+      } : {}),
       stream: true,
     });
 
-    let currentBlockIndex = 0;
-    let currentBlockType: 'thinking' | 'text' | null = null;
-
     for await (const event of stream) {
-      // Block start: identify type
-      if (event.type === 'content_block_start') {
-        currentBlockIndex = event.index;
-        currentBlockType = event.content_block.type === 'thinking' ? 'thinking' : 'text';
+      // Thinking block
+      if (event.type === 'content_block_delta' && event.delta.type === 'thinking_delta') {
+        yield {
+          type: 'thinking',
+          thinking: event.delta.thinking,  // ✅ NEW: 명시적 thinking 필드
+          index: event.index,
+          metadata: {
+            provider: 'anthropic',
+            model: this.modelName,
+            timestamp: new Date().toISOString(),
+          },
+        };
       }
 
-      // Block delta: stream content
-      if (event.type === 'content_block_delta') {
-        if (event.delta.type === 'thinking_delta') {
-          yield {
-            type: 'thinking',
-            content: event.delta.thinking,
-            index: event.index,
-            metadata: {
-              provider: 'anthropic',
-              model: this.modelName,
-              timestamp: new Date().toISOString(),
-            },
-          };
-        } else if (event.delta.type === 'text_delta') {
-          yield {
-            type: 'text',
-            content: event.delta.text,
-            index: event.index,
-            metadata: {
-              provider: 'anthropic',
-              model: this.modelName,
-              timestamp: new Date().toISOString(),
-            },
-          };
-        }
+      // Text block
+      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+        yield {
+          type: 'text',
+          text: event.delta.text,  // ✅ NEW: 명시적 text 필드
+          index: event.index,
+          metadata: {
+            provider: 'anthropic',
+            model: this.modelName,
+            timestamp: new Date().toISOString(),
+          },
+        };
+      }
+
+      // Tool use
+      if (event.type === 'content_block_start' && event.content_block.type === 'tool_use') {
+        yield {
+          type: 'tool_use',
+          toolUse: {
+            id: event.content_block.id,
+            name: event.content_block.name,
+            input: event.content_block.input,
+            type: 'function' as const,  // ✅ NEW: 분류 추가
+          },
+          index: event.index,
+          metadata: {
+            provider: 'anthropic',
+            model: this.modelName,
+            timestamp: new Date().toISOString(),
+          },
+        };
       }
 
       // Message complete
       if (event.type === 'message_stop') {
         yield {
           type: 'done',
-          content: '',
+          done: true,  // ✅ NEW: 명시적 done 플래그
           metadata: {
             provider: 'anthropic',
             model: this.modelName,

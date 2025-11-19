@@ -18,7 +18,8 @@ import { IStreamParser } from './parsers/IStreamParser';
 import { IRenderStrategy } from './strategies/IRenderStrategy';
 import { StreamState } from './state/StreamState';
 import { FileRegistry } from './state/FileRegistry';
-import { LLMStreamEvent, StreamResult } from './types';
+import { LLMStreamEvent } from '../ports/llm';
+import { StreamResult } from './types';
 
 export interface StreamOrchestratorConfig {
   parser: IStreamParser;

@@ -1,6 +1,16 @@
 import { StateGraph } from "@langchain/langgraph";
 import { ArchitectGraphState, TASK_PRIORITIES, Task, TaskTimingHelper } from "./state";
-import { resolve, decompose, plan, execute, writeFiles, validate, installDeps, runtimeValidate, enforce, learn } from "./nodes/index";
+import { resolve } from "./nodes/resolve";
+import { decompose } from "./nodes/decompose";
+import { plan } from "./nodes/plan";
+import { codeGen } from "./nodes/codeGen";
+import { tool } from "./nodes/tool";
+import { validate } from "./nodes/validate";
+import { installDeps } from "./nodes/installDeps";
+import { runtimeValidate } from "./nodes/runtimeValidate";
+import { enforce } from "./nodes/enforce";
+import { learn } from "./nodes/learn";
+import { routeAfterCodeGen } from "./routers/codeGenRouter";
 import { saveCheckpoint } from "./nodes/checkpoint";
 
 /**
@@ -251,30 +261,39 @@ export function buildCodeGraph() {
     } as any,
   } as any);
   
+  // ✅ NEW ARCHITECTURE: CodeGen <-> Tool loop managed by LangGraph
   graph.addNode("resolve", resolve as any);
-  graph.addNode("decompose", decompose as any);  // NEW: Meta-level task decomposition
+  graph.addNode("decompose", decompose as any);
   graph.addNode("plan", plan as any);
-  graph.addNode("execute", execute as any);
-  graph.addNode("writeFiles", writeFiles as any);  // ✅ Write files immediately
+  graph.addNode("codeGen", codeGen as any);      // ✅ NEW: Code generation (LLM reasoning)
+  graph.addNode("tool", tool as any);            // ✅ NEW: Single tool execution (saves immediately!)
   graph.addNode("validate", validate as any);
-  graph.addNode("installDeps", installDeps as any);  // ✅ Install after validation
+  graph.addNode("installDeps", installDeps as any);
   graph.addNode("runtimeValidate", runtimeValidate as any);
-  graph.addNode("checkTaskStatus", checkTaskStatus as any);  // ✅ NEW: Handle task completion logic
+  graph.addNode("checkTaskStatus", checkTaskStatus as any);
   graph.addNode("enforce", enforce as any);
   graph.addNode("learn", learn as any);
 
   graph.addEdge("__start__" as any, "resolve" as any);
-  graph.addEdge("resolve" as any, "decompose" as any);  // resolve → decompose
-  graph.addEdge("decompose" as any, "plan" as any);     // decompose → plan (first task)
+  graph.addEdge("resolve" as any, "decompose" as any);
+  graph.addEdge("decompose" as any, "plan" as any);
   
-  // ✅ Plan always goes to execute
-  graph.addEdge("plan" as any, "execute" as any);
+  // ✅ Plan → CodeGen (시작)
+  graph.addEdge("plan" as any, "codeGen" as any);
   
-  // ✅ CRITICAL: Write files immediately after execute
-  graph.addEdge("execute" as any, "writeFiles" as any);
+  // ✅ CodeGen → Router (tool call 체크)
+  graph.addConditionalEdges(
+    "codeGen" as any,
+    routeAfterCodeGen as any,
+    {
+      tool: "tool",           // Tool call 있으면 → tool 노드
+      validate: "validate",   // Done이면 → validate (tool이 이미 저장함!)
+      codeGen: "codeGen",     // 재추론 (드물음)
+    } as any
+  );
   
-  // ✅ Validate after files are written
-  graph.addEdge("writeFiles" as any, "validate" as any);
+  // ✅ Tool → CodeGen (도구 결과 가지고 다시 추론)
+  graph.addEdge("tool" as any, "codeGen" as any);
 
   // Static validation (ellipsis, excessive deletion)
   graph.addConditionalEdges(
@@ -285,9 +304,20 @@ export function buildCodeGraph() {
       if (hasViolations) {
         return "enforce";
       }
-      return "installDeps";  // ✅ Static validation passed → Install dependencies
+      
+      // ✅ OPTIMIZATION: Skip installDeps/runtimeValidate for intermediate tasks
+      // Only run on the LAST task (when queue is empty after this task)
+      const isLastTask = !s.taskQueue || s.taskQueue?.isEmpty();
+      
+      if (isLastTask) {
+        console.log('✅ [Validate] Last task → running installDeps + runtimeValidate');
+        return "installDeps";
+      } else {
+        console.log(`⏭️  [Validate] Intermediate task (${s.taskQueue?.size()} remaining) → skipping deps/validation`);
+        return "checkTaskStatus";  // Skip directly to task status check
+      }
     }) as any,
-    { enforce: "enforce", installDeps: "installDeps" } as any
+    { enforce: "enforce", installDeps: "installDeps", checkTaskStatus: "checkTaskStatus" } as any
   );
 
   // After installing dependencies, run runtime validation

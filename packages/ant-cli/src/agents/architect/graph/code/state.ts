@@ -234,6 +234,40 @@ export interface ArchitectGraphState extends TaskArtifacts {
   files: GeneratedFile[];
   filesToDelete: string[];
   modifications?: any[];  // For evaluation
+  
+  // ✅ NEW: LLM Response (tool calling 지원)
+  llmResponse?: {
+    thinking?: string;           // LLM의 사고 과정
+    textResponse?: string;       // 일반 텍스트 응답
+    toolCalls?: Array<{          // 도구 호출 목록
+      id: string;
+      name: string;
+      args: Record<string, any>;
+    }>;
+    done: boolean;               // 작업 완료 여부
+  };
+  
+  // ✅ NEW: Tool Results (도구 실행 결과)
+  toolResults?: Array<{
+    toolCallId: string;
+    result: any;
+    error?: string;
+  }>;
+  
+  // ✅ NEW: File Buffers (state-level, 노드 로컬 아님!)
+  fileBuffers?: Map<string, {
+    path: string;
+    content: string;
+    actionType: 'create' | 'edit' | 'append' | 'delete';
+    committed: boolean;          // 디스크 저장 완료 여부
+    tempPath?: string;           // 임시 파일 경로
+  }>;
+  
+  // ✅ NEW: Conversation History (멀티턴 대화)
+  conversationHistory?: Array<{
+    role: 'user' | 'assistant';
+    content: string | any[];     // Anthropic 형식 지원
+  }>;
 
   requiredIntegrations: IntegrationRequirement[];
   violations?: Violation[];  // ✅ 구조화된 violation 배열

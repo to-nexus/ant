@@ -70,36 +70,21 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         let shouldResetAndDecompose = false;  // Flag to trigger decomposition
         
         if (gitPort) {
-          console.log('📂 Reloading current codebase from disk...');
+          console.log('📂 Checking codebase status for resume...');
           
           try {
-            const allFiles = await gitPort.listFiles('', [
-              'node_modules', 'dist', 'build', 'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', '.git',
-              '*.test.ts', '*.test.tsx', '*.spec.ts', '*.spec.tsx'
+            // ✅ SMART RELOAD: Only check file count for deletion detection
+            // Don't load full codebase content - Plan node will do smart context loading
+            const allFiles = await gitPort.listFiles('.', [
+              'node_modules', '.git', 'dist', 'build', '.next', 'out', 
+              'coverage', '.cache', '.turbo', '.vercel', '.netlify'
             ]);
             
-            const fileContents: string[] = [];
-            let totalTokens = 0;
-            
-            for (const file of allFiles.slice(0, 50)) {
-              try {
-                const content = await gitPort.readFile(file);
-                if (content && content.length > 0) {
-                  fileContents.push(`=== ${file} ===\n${content}\n`);
-                  totalTokens += Math.ceil(content.length / 4);
-                  if (totalTokens > 100000) break;
-                }
-              } catch (error) {
-                // Skip files that can't be read
-              }
-            }
-            
-            reloadedCode = fileContents.join('\n');
-            console.log(`   ✅ Reloaded ${fileContents.length} files (~${totalTokens} tokens) from disk\n`);
+            console.log(`   Found ${allFiles.length} files in codebase`);
             
             // ✅ Detect full project deletion (not partial edits)
             const hasCompletedTasks = session.state.completedTasks && session.state.completedTasks.length > 0;
-            const hasNoFiles = fileContents.length === 0;
+            const hasNoFiles = allFiles.length === 0;
             
             if (hasCompletedTasks && hasNoFiles) {
               // 🚨 All files deleted - reset and decompose
@@ -225,6 +210,28 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
             mergedDirective = parts.join('\n\n---\n\n');
             console.log(`   ✅ Structured ${session.state.directives.length} directive(s) with labels\n`);
           }
+        }
+        
+        // ✅ Restore buffer from disk for interruption recovery
+        try {
+          const { StreamBufferManager } = await import('../../../../../../core/streaming/buffer/StreamBufferManager');
+          const featurePath = state.context.workspaceResolver?.getFeaturePath(
+            { userId: state.context.userId, organizationId: state.context.organizationId },
+            state.context.project,
+            state.context.featureFolder
+          ) || state.context.featurePath || '';
+          const projectPath = featurePath.replace(`/features/${state.context.featureFolder}`, '');
+          const bufferManager = new StreamBufferManager(projectPath, state.context.featureFolder, 'code', jobId);
+          
+          const savedBuffers = bufferManager.loadBuffersFromDisk();
+          if (savedBuffers.size > 0) {
+            console.log(`\n🔄 [Resume] Loaded ${savedBuffers.size} buffer(s) from disk for recovery`);
+            for (const [filePath, buffer] of savedBuffers) {
+              console.log(`   📂 ${filePath}: ${buffer.content.length} chars (${buffer.actionType})`);
+            }
+          }
+        } catch (error) {
+          console.warn(`⚠️  [Resume] Failed to restore buffers (non-critical):`, error);
         }
         
         const resumedState = {
@@ -494,29 +501,32 @@ ${rules}`;
     const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
     const chatAPI = getChatAPIClient();
     
-    // ✅ Use StreamOrchestrator for consistent XML parsing
-    const { StreamOrchestrator, XMLStreamParser, CommonRenderStrategy } = await import('../../../../../../core/streaming');
-    
-    if (!llm.streamRaw) {
+    if (!llm.stream) {
       throw new Error('LLM client does not support streaming');
     }
-    
-    const orchestrator = new StreamOrchestrator({
-      parser: new XMLStreamParser(),
-      renderStrategy: new CommonRenderStrategy(chatAPI),
-      existingFiles: new Set([]) // Decompose phase doesn't generate files
-    });
     
     // 🎯 Show placeholder before LLM call
     await chatAPI.showChatStatus('placeholder');
     
-    // Stream LLM response with real-time XML parsing
-    for await (const event of llm.streamRaw([{ role: 'user', content: prompt }])) {
-      await orchestrator.processEvent(event);
+    // ✅ NEW: Direct streaming (no XML parsing!)
+    let raw = '';
+    for await (const event of llm.stream([{ role: 'user', content: prompt }])) {
+      // Thinking
+      if (event.type === 'thinking') {
+        await chatAPI.sendLLMEvent(event);
+      }
+      
+      // Text
+      if (event.type === 'text') {
+        raw += event.text || '';  // ✅ NEW: text 필드 사용
+        await chatAPI.sendLLMEvent(event);
+      }
+      
+      // Done
+      if (event.type === 'done') {
+        await chatAPI.sendLLMEvent(event);
+      }
     }
-    
-    const streamResult = await orchestrator.finalize();
-    const raw = streamResult.raw;
     
     // ✅ Extract JSON from <tasks> tags (more reliable than parsing freeform text)
     let tasks: Task[] = [];

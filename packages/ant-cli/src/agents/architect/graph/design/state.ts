@@ -3,6 +3,7 @@ import { LLMClient, ChunkPort, SessionPort, GitPort, CodebaseAnalyzerPort, Memor
 import { PromptEngine } from "../../../../core/prompt/engine";
 import { ProjectContext } from "../../types";
 import { Task, TaskQueue } from "../code/state";  // ✅ Reuse Task and TaskQueue from code
+import { StreamBufferManager } from '../../../../core/streaming/buffer/StreamBufferManager';  // ✅ NEW
 
 // ✅ Re-export Task and TaskQueue for use in design nodes
 export { Task, TaskQueue } from "../code/state";
@@ -65,12 +66,34 @@ export interface DesignGraphState extends TaskArtifacts {
 
   // Execution
   planText: string;
-  designMarkdown: string;
+  
+  // ✅ UNIFIED: Files generated (same structure as code job)
+  files?: Array<{ path: string; content: string }>;
+  filesToDelete?: string[];
+  
+  // ✅ NEW: Tool Calling Support (same as code job)
+  llmResponse?: {
+    thinking?: string;
+    textResponse?: string;
+    toolCalls?: Array<{
+      id: string;
+      name: string;
+      args: Record<string, any>;
+    }>;
+    done: boolean;
+  };
+  
+  conversationHistory?: Array<{
+    role: 'user' | 'assistant';
+    content: string | any[];
+  }>;
   
   // Results (populated by learn node)
-  designFilePath?: string;
   learnings?: string;
   
   // ✅ For tracking and resume
   _httpJobId?: string;  // Job ID for real-time UI updates and job resumption
+  
+  // ✅ NEW: Buffer Manager (for real-time file streaming with <file> tags)
+  _bufferManager?: StreamBufferManager;
 }

@@ -63,6 +63,13 @@ export class FileRegistry {
   }
   
   /**
+   * ✅ Reset specific file (for multi-turn overwrites)
+   */
+  resetFile(filePath: string): void {
+    this.streamedFiles.delete(filePath);
+  }
+  
+  /**
    * Reset registry
    */
   reset(): void {

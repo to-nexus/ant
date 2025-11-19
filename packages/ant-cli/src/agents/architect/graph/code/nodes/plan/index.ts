@@ -496,74 +496,77 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   const shouldReload = nextTask.type !== 'setup' && !isResuming;
   
   if (shouldReload) {
-    console.log(`📂 Reloading current codebase for task: ${nextTask.name}`);
+    console.log(`📂 Smart context loading for task: ${nextTask.name}`);
     
     const gitPort = state.deps?.git;
     if (!gitPort) {
       throw new Error("GitPort not provided for file operations");
     }
     
-    // ✅ Load ALL existing files (we're in early stage, files are few)
-    // This ensures LLM sees what's already created and doesn't regenerate
     try {
-      // Get ChatAPI client for progress tracking
-      const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
-      const chatAPI = getChatAPIClient();
+      // ✅ OPTION C: Smart Pre-loading (Cursor style)
+      const { analyzeContextNeeds } = await import('../../../../context/analyzer');
+      const { loadContext } = await import('../../../../context/loader');
       
-      // Get all files, excluding build artifacts and dependencies
-      const allFiles = await gitPort.listFiles('', [
-        'node_modules',
-        'dist',
-        'build',
-        'package-lock.json',
-        'yarn.lock',
-        'pnpm-lock.yaml',
-        '.git',
-        '*.test.ts',
-        '*.test.tsx',
-        '*.spec.ts',
-        '*.spec.tsx'
-      ]);
+      // 1. Analyze what context we need (based on TASK, not directive!)
+      const strategy = analyzeContextNeeds(
+        nextTask,                    // PRIMARY: Task itself
+        state.enforcementReason,     // SECONDARY: Error context
+        state.design,                // TERTIARY: Design document
+        state.files?.map(f => f.path) // QUATERNARY: Existing files
+      );
       
-      const maxFiles = Math.min(allFiles.length, 50);
+      console.log(`   🧠 Context strategy:`, {
+        explore: strategy.needsExplore,
+        grep: strategy.needsGrep,
+        read: strategy.needsRead,
+        keywords: strategy.keywords,
+      });
       
-      // ✅ Send exploring status
-      await chatAPI.addExploringStatus(0, maxFiles);
+      // 2. Load context (with UI)
+      const context = await loadContext(strategy, gitPort);
       
-      // Load all files into a formatted string
-      const fileContents: string[] = [];
-      const loadedFiles: string[] = [];
-      let totalTokens = 0;
+      console.log(`   ✅ ${context.summary}`);
       
-      for (let i = 0; i < maxFiles; i++) {
-        const file = allFiles[i];
-        try {
-          // ✅ Send progress update every 5 files
-          if (i > 0 && i % 5 === 0) {
-            await chatAPI.addExploringStatus(i, maxFiles);
-          }
-          
-          const content = await gitPort.readFile(file);
-          if (content && content.length > 0) {
-            fileContents.push(`=== ${file} ===\n${content}\n`);
-            loadedFiles.push(file);
-            totalTokens += Math.ceil(content.length / 4);
-            
-            if (totalTokens > 100000) break;  // Token limit
-          }
-        } catch (error) {
-          // Skip files that can't be read
-        }
+      // 3. Build context for LLM
+      const contextParts: string[] = ['=== CODEBASE CONTEXT ===\n'];
+      
+      if (context.fileTree) {
+        contextParts.push(context.fileTree);
+        contextParts.push('');
       }
       
-      // ✅ Send explored result
-      await chatAPI.addExploredResult(fileContents.length, totalTokens, loadedFiles);
+      if (context.grepResults) {
+        contextParts.push(context.grepResults);
+        contextParts.push('');
+      }
       
-      currentCode = fileContents.join('\n');
-      console.log(`   ✅ Loaded ${fileContents.length} files (~${totalTokens} tokens)`);
+      if (context.fileContents) {
+        contextParts.push(context.fileContents);
+        contextParts.push('');
+      }
+      
+      contextParts.push('💡 **Available Tools** (use if you need more info):');
+      contextParts.push('- `read_file(path)`: Read any file');
+      contextParts.push('- `search_code(pattern)`: Search for code');
+      contextParts.push('- `list_files(directory)`: List specific directory');
+      contextParts.push('- `write_file(path, content)`: Create/modify files');
+      contextParts.push('- `delete_file(path)`: Remove files');
+      contextParts.push('- `apply_patch(path, patch)`: Apply diffs');
+      contextParts.push('- `run_command(command)`: Execute commands\n');
+      
+      currentCode = contextParts.join('\n');
+      
     } catch (error) {
-      console.warn(`⚠️  Could not load files: ${error}`);
-      currentCode = state.code;  // Fallback to original
+      console.warn(`⚠️  Smart context loading failed:`, error);
+      // Fallback to minimal context
+      currentCode = `=== CODEBASE CONTEXT ===
+
+Context loading failed. Use tools to explore:
+- list_files()
+- read_file(path)
+- search_code(pattern)
+`;
     }
   } else if (isResuming) {
     console.log(`⚡ Using code loaded by decompose (resume mode)\n`);
@@ -571,13 +574,14 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   
   // ===== GENERATE EXECUTION PLAN FOR CURRENT TASK =====
   
+  // ✅ CRITICAL: For retry, minimize context to reduce token usage
   // Prepare artifacts
   const artifacts = {
     directive: state.directive,
-    designDoc: state.design,
-    prdSpec: state.prd,
-    currentCode: currentCode,  // ✅ Use reloaded code
-    originalFiles: state.codeHead,
+    designDoc: isRetry ? undefined : state.design,      // ❌ Skip design in retry (not needed for replanning)
+    prdSpec: isRetry ? undefined : state.prd,           // ❌ Skip PRD in retry (not needed for replanning)
+    currentCode: currentCode,  // ✅ Use reloaded code (already filtered by plan node)
+    originalFiles: isRetry ? undefined : state.codeHead, // ❌ Skip original in retry (not needed for replanning)
     currentTask: nextTask ? {  // ✅ Pass current task info
       name: nextTask.name,
       type: nextTask.type,
@@ -603,7 +607,9 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     let promptMessages = result.formatted.messages;
     
     if (isRetry && enforcementReason && !shouldClearEnforcement) {
-      const previousAttemptsText = formatPreviousAttempts(state.previousAttempts || []);
+      // ✅ Limit previous attempts to last 3 (token optimization)
+      const recentAttempts = (state.previousAttempts || []).slice(-3);
+      const previousAttemptsText = formatPreviousAttempts(recentAttempts);
       
       // Format feature tasks reminder
       const featureReminder = state.featureTasks && state.featureTasks.size > 0 ? `
@@ -670,29 +676,32 @@ ${nextTask.type === 'error' ?
     const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
     const chatAPI = getChatAPIClient();
     
-    // ✅ Use StreamOrchestrator for consistent XML parsing
-    const { StreamOrchestrator, XMLStreamParser, CommonRenderStrategy } = await import('../../../../../../core/streaming');
-    
-    if (!llm.streamRaw) {
+    if (!llm.stream) {
       throw new Error('LLM client does not support streaming');
     }
-    
-    const orchestrator = new StreamOrchestrator({
-      parser: new XMLStreamParser(),
-      renderStrategy: new CommonRenderStrategy(chatAPI),
-      existingFiles: new Set([]) // Plan phase doesn't generate files
-    });
     
     // 🎯 Show placeholder before LLM call
     await chatAPI.showChatStatus('placeholder');
     
-    // Stream LLM response with real-time XML parsing (will replace placeholder)
-    for await (const event of llm.streamRaw(promptMessages)) {
-      await orchestrator.processEvent(event);
+    // ✅ NEW: Direct streaming (no XML parsing!)
+    planText = '';
+    for await (const event of llm.stream(promptMessages)) {
+      // Thinking
+      if (event.type === 'thinking') {
+        await chatAPI.sendLLMEvent(event);
+      }
+      
+      // Text
+      if (event.type === 'text') {
+        planText += event.text || '';  // ✅ NEW: text 필드 사용
+        await chatAPI.sendLLMEvent(event);
+      }
+      
+      // Done
+      if (event.type === 'done') {
+        await chatAPI.sendLLMEvent(event);
+      }
     }
-    
-    const streamResult = await orchestrator.finalize();
-    planText = streamResult.raw;
     console.log('\n');
 
     const codeMode = result.modeConfig.mode;

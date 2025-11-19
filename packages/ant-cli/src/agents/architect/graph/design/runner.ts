@@ -11,9 +11,7 @@ export async function runDesignGraph(initial: DesignGraphState) {
   const app = buildDesignGraph();
   const state = await (app as any).invoke(initial as any) as DesignGraphState;
   
-  // Return results (all saving was done in learn node)
-  return { 
-    designFilePath: state.designFilePath!, 
-    markdown: state.designMarkdown 
-  };
+  // ✅ Return minimal results (all files were saved in writeFiles node)
+  // No need to return paths - they are deterministic from context
+  return state;
 }

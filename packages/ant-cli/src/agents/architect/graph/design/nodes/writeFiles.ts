@@ -36,36 +36,47 @@ export async function writeFiles(state: DesignGraphState): Promise<DesignGraphSt
     throw new Error("featurePath is required in ProjectContext. Ensure resolve node has run.");
   }
   
-  // ✅ Validate designMarkdown exists
-  if (!state.designMarkdown || state.designMarkdown.trim().length === 0) {
-    console.error(`❌ [writeFiles] state.designMarkdown is empty or undefined!`);
-    console.error(`   state.designMarkdown: ${state.designMarkdown ? `"${state.designMarkdown.substring(0, 100)}..."` : 'undefined/null'}`);
-    throw new Error("Cannot write design file: state.designMarkdown is empty");
+  // ✅ NEW: Use files[] array (supports multi-file design)
+  const filesToWrite = state.files || [];
+  
+  if (filesToWrite.length === 0) {
+    console.error(`❌ [writeFiles] No files to write!`);
+    console.error(`   state.files: ${state.files?.length || 0}`);
+    throw new Error("Cannot write design files: no content provided");
   }
   
-  console.log(`\n📝 [writeFiles] Writing design document...`);
-  console.log(`   Content length: ${state.designMarkdown.length} chars`);
-  console.log(`   Feature path (from WorkspaceResolver): ${state.context.featurePath}`);
+  console.log(`\n📝 [writeFiles] Writing ${filesToWrite.length} design file(s)...`);
+  console.log(`   Feature path: ${state.context.featurePath}`);
   
-  // ✅ Use absolute path from WorkspaceResolver (already resolved correctly)
-  const designDir = path.join(
-    state.context.featurePath,
-    "outputs",
-    "design"
-  );
+  // ✅ Write all files
+  for (const file of filesToWrite) {
+    // Resolve absolute path
+    const absolutePath = path.isAbsolute(file.path)
+      ? file.path
+      : path.join(state.context.featurePath, file.path);
+    
+    // Ensure directory exists
+    const fileDir = path.dirname(absolutePath);
+    await gitPort.createDirectory(fileDir);
+    
+    // Write file
+    console.log(`   📄 ${file.path}: ${file.content.length} chars`);
+    await gitPort.writeFile(absolutePath, file.content);
+  }
   
-  console.log(`   Target directory: ${designDir}`);
-  await gitPort.createDirectory(designDir);
+  console.log(`✅ [writeFiles] ${filesToWrite.length} file(s) saved`);
   
-  // ✅ Use fixed filename: system-design.md (Git handles versioning)
-  const designFilePath = path.join(
-    designDir, 
-    `system-design.md`
-  );
-  
-  console.log(`   Writing to: ${designFilePath}`);
-  await gitPort.writeFile(designFilePath, state.designMarkdown);
-  console.log(`✅ [writeFiles] System design saved: ${designFilePath}`);
+  // ✅ Clean up buffer files on successful write
+  try {
+    const { StreamBufferManager } = await import('../../../../../core/streaming/buffer/StreamBufferManager');
+    const projectPath = state.context.featurePath.replace(`/features/${state.context.featureFolder}`, '');
+    const jobId = state._httpJobId || `design-${Date.now()}`;
+    const bufferManager = new StreamBufferManager(projectPath, state.context.featureFolder, 'design', jobId);
+    bufferManager.cleanupAll();
+    console.log(`🧹 [writeFiles] Buffer files cleaned up`);
+  } catch (error) {
+    console.warn(`⚠️  [writeFiles] Failed to cleanup buffers (non-critical):`, error);
+  }
   
   // ✅ Broadcast file tree update
   if (state.deps?.fileTreeUpdate) {
@@ -80,9 +91,6 @@ export async function writeFiles(state: DesignGraphState): Promise<DesignGraphSt
     console.warn('⚠️  fileTreeUpdate dependency not available - UI may not update automatically');
   }
   
-  return { 
-    ...state, 
-    designFilePath 
-  };
+  return state;
 }
 

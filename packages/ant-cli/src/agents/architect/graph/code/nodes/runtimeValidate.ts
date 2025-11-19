@@ -27,7 +27,6 @@ import {
 } from "./diagnostics";
 import { errorStatsCollector } from "./diagnostics/errorStats";
 import { ErrorParserFactory, ParsedError } from "./diagnostics/parsers";
-import { resolveLocalPath } from "../../../../../periphery/adapters/git/gitUtils";
 
 export interface RuntimeValidationResult {
   passed: boolean;
@@ -94,17 +93,17 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
     return state;
   }
 
-  // Get target directory
+  // ✅ Get codebase path (works for both local and cloud mode)
   const config = state.context.config;
-  if (!config || config.repoType !== 'local' || !config.localPath) {
-    console.log('⚠️  No local repository path, skipping runtime validation');
-    return state;
-  }
-
   const repoRoot = await gitPort.getRepoRoot();
   const p = await import("path");
-  // ✅ Use resolveLocalPath to properly handle tilde (~) expansion
-  const resolvedPath = resolveLocalPath(config.localPath, state.context.project);
+  
+  // repoRoot is already the codebase directory
+  // For local mode: resolves from config.localPath
+  // For cloud mode: resolves from workspaces/{org}/{user}/{project}/codebase
+  const resolvedPath = repoRoot;
+  
+  console.log(`📂 Target directory for validation: ${resolvedPath}`);
 
   // ✅ FORCE VALIDATION TYPE BY TASK TYPE (ignore LLM decision for consistency)
   let validationType: 'static' | 'runtime';

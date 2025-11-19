@@ -25,9 +25,14 @@ export class CommonRenderStrategy implements IRenderStrategy {
   private activeFiles: Map<string, FileStreamInfo> = new Map();
   private editOperations: Map<string, EditOperation> = new Map();
   private lineBuffers: Map<string, string> = new Map();  // ✅ Line-based buffering for smooth streaming
+  private bufferManager?: import('../buffer/StreamBufferManager').StreamBufferManager;  // ✅ Disk buffer for interruption safety
   
-  constructor(chatAPI: ChatAPIClient) {
+  constructor(
+    chatAPI: ChatAPIClient,
+    bufferManager?: import('../buffer/StreamBufferManager').StreamBufferManager
+  ) {
     this.chatAPI = chatAPI;
+    this.bufferManager = bufferManager;
   }
   
   async render(action: ParsedAction, registry: FileRegistry): Promise<void> {
@@ -72,7 +77,7 @@ export class CommonRenderStrategy implements IRenderStrategy {
       if (content) {
         await this.chatAPI.sendLLMEvent({
           type: 'thinking',
-          content,
+          thinking: content,  // ✅ NEW: thinking 필드 사용
           metadata: {
             provider: 'llm',
             timestamp: new Date().toISOString()
@@ -85,7 +90,7 @@ export class CommonRenderStrategy implements IRenderStrategy {
       if (content) {
         await this.chatAPI.sendLLMEvent({
           type: 'thinking',
-          content,
+          thinking: content,  // ✅ NEW: thinking 필드 사용
           metadata: {
             provider: 'llm',
             timestamp: new Date().toISOString()
@@ -101,7 +106,7 @@ export class CommonRenderStrategy implements IRenderStrategy {
     
     await this.chatAPI.sendLLMEvent({
       type: 'text',
-      content
+      text: content  // ✅ NEW: text 필드 사용
     });
   }
   
@@ -116,9 +121,55 @@ export class CommonRenderStrategy implements IRenderStrategy {
       return;
     }
     
-    // Check for duplicates
+    // ✅ Check for duplicates (multi-turn overwrites)
     if (registry.hasStreamed(filePath)) {
-      return;
+      const previousInfo = registry.getFileInfo(filePath);
+      const previousActionType = previousInfo?.actionType;
+      
+      console.log(`[Render] ⚠️  File ${filePath} already streamed (previous: ${previousActionType}, new: ${actionType})`);
+      
+      // Determine if this is a full replacement or incremental change
+      const isFullReplacement = 
+        (previousActionType === 'create' || previousActionType === 'edit') &&
+        (actionType === 'create' || !actionType);  // <file> tag = create/undefined
+      
+      const isIncrementalChange = 
+        previousActionType === 'create' && 
+        (actionType === 'edit' || actionType === 'append');
+      
+      if (isFullReplacement) {
+        // ✅ Case 1: Full file replacement (Turn 1: <file>, Turn 2: <file>)
+        console.log(`[Render] 🔄 Full overwrite - replacing entire file (multi-turn)`);
+        
+        // Reset everything
+        registry.resetFile(filePath);
+        
+        if (this.bufferManager) {
+          const isExisting = registry.isExisting(filePath);
+          const finalActionType = isExisting ? 'edit' : 'create';
+          this.bufferManager.resetFile(filePath, finalActionType);
+        }
+        
+        this.activeFiles.delete(filePath);
+        this.lineBuffers.delete(filePath);
+        this.editOperations.delete(filePath);
+        
+        // Continue with fresh start
+      } else if (isIncrementalChange) {
+        // ✅ Case 2: Incremental change (Turn 1: <file>, Turn 2: <edit>/<append>)
+        console.log(`[Render] ✏️  Incremental ${actionType} on top of previous content (multi-turn)`);
+        
+        // ❌ DON'T reset buffer! 
+        // <edit> and <append> need the previous content from Turn 1
+        // They will be handled separately in execute node (applyEdits/applyAppends)
+        
+        // Skip duplicate file_start (already initialized)
+        return;
+      } else {
+        // ✅ Case 3: Same turn duplicate or invalid combination
+        console.log(`[Render] ⏭️  Skipping duplicate file_start (same turn)`);
+        return;
+      }
     }
     
     // Determine final action type
@@ -149,6 +200,11 @@ export class CommonRenderStrategy implements IRenderStrategy {
     
     // ✅ Initialize line buffer for streaming
     this.lineBuffers.set(filePath, '');
+    
+    // ✅ Start disk buffer tracking for interruption safety
+    if (this.bufferManager) {
+      this.bufferManager.startFile(filePath, finalActionType);
+    }
     
     // Send UI notification
     if (finalActionType === 'create' || finalActionType === 'append') {
@@ -188,6 +244,11 @@ export class CommonRenderStrategy implements IRenderStrategy {
     
     // Update local buffer
     fileInfo.contentBuffer += content;
+    
+    // ✅ Update disk buffer for interruption safety
+    if (this.bufferManager) {
+      this.bufferManager.appendContent(filePath, content);
+    }
     
     // Handle edit operations (search/replace sections)
     if (fileInfo.actionType === 'edit' && metadata?.section) {
@@ -275,11 +336,22 @@ export class CommonRenderStrategy implements IRenderStrategy {
       this.activeFiles.delete(filePath);
       this.editOperations.delete(filePath);
       this.lineBuffers.delete(filePath);  // ✅ Cleanup line buffer
+      
+      // ✅ CRITICAL: Mark as completed but DON'T cleanup buffer yet
+      // Buffer cleanup happens in writeFiles node after successful disk write
+      if (this.bufferManager) {
+        this.bufferManager.completeFile(filePath, false);  // cleanup=false!
+      }
     }
   }
   
   async finalize(): Promise<void> {
     console.log('[CommonRenderStrategy] 🏁 Finalizing render strategy...');
+    
+    // ✅ Preserve buffers on finalization (in case of interruption)
+    if (this.bufferManager) {
+      this.bufferManager.preserveOnInterruption();
+    }
     
     // Force complete any unfinished files
     for (const [filePath, fileInfo] of this.activeFiles) {

@@ -66,13 +66,75 @@ export async function plan(state: DesignGraphState) {
     await state.deps.workflowUpdate.enterNode(state._httpJobId, 'plan', taskInfo, llmInfo);
   }
 
+  // ✅ SMART CONTEXT PRE-LOADING (like code job!)
+  let currentCode = state.code;
+  
+  // Only reload context if we have existing code (evolution/refactor mode)
+  const gitPort = state.deps?.git;
+  const hasExistingCode = Boolean(state.code && state.code.trim().length > 0);
+  const shouldReload = hasExistingCode && gitPort && currentTask;
+  
+  if (shouldReload && currentTask) {
+    console.log(`📂 Smart context loading for design task: ${currentTask.name}`);
+    
+    try {
+      const { analyzeContextNeeds } = await import('../../../context/analyzer');
+      const { loadContext } = await import('../../../context/loader');
+      
+      // Analyze what context we need (based on TASK, not directive!)
+      const strategy = analyzeContextNeeds(
+        currentTask,                 // PRIMARY: Task itself
+        undefined,                   // SECONDARY: No enforcement in design
+        state.prd,                   // TERTIARY: PRD document
+        state.files?.map(f => f.path) // QUATERNARY: Existing files
+      );
+      
+      console.log(`   🧠 Context strategy:`, {
+        explore: strategy.needsExplore,
+        grep: strategy.needsGrep,
+        read: strategy.needsRead,
+        keywords: strategy.keywords,
+      });
+      
+      // Load context (with UI)
+      const context = await loadContext(strategy, gitPort);
+      
+      console.log(`   ✅ ${context.summary}`);
+      
+      // Build context for LLM
+      const contextParts: string[] = ['=== CODEBASE CONTEXT ===\n'];
+      
+      if (context.fileTree) { contextParts.push(context.fileTree); contextParts.push(''); }
+      if (context.grepResults) { contextParts.push(context.grepResults); contextParts.push(''); }
+      if (context.fileContents) { contextParts.push(context.fileContents); contextParts.push(''); }
+      
+      contextParts.push('💡 **Available Tools** (use if you need more info):');
+      contextParts.push('- `read_file(path)`: Read any file');
+      contextParts.push('- `search_code(pattern)`: Search for code');
+      contextParts.push('- `list_files(directory)`: List specific directory');
+      contextParts.push('- `write_file(path, content)`: Create/modify files');
+      contextParts.push('- `delete_file(path)`: Remove files\n');
+      
+      currentCode = contextParts.join('\n');
+      
+    } catch (error) {
+      console.warn(`⚠️  Smart context loading failed:`, error);
+      currentCode = state.code; // Fallback to original
+    }
+  }
+  
   // Prepare artifacts (using new unified names)
+  // ✅ Get accumulated design from previous tasks (files[])
+  const primaryDesign = state.files?.find(f => 
+    f.path.includes('system-design') || f.path.includes('design.md')
+  );
+
   const artifacts = {
     directive: state.directive,
-    designDoc: state.designMarkdown || undefined,  // ✅ Pass accumulated design for continuation detection
+    designDoc: primaryDesign?.content,  // ✅ Pass accumulated design for continuation detection
     prdSpec: state.prd,               // PRD
     previousDesign: state.design,     // Previous design (for evolution/refactor)
-    currentCode: state.code,          // Codebase (for evolution/refactor)
+    currentCode: currentCode,         // ✅ Codebase (with smart context!)
     originalFiles: undefined,         // Design doesn't use git HEAD
     currentTask: currentTask ? {      // ✅ Pass current task info to plan prompt
       name: currentTask.name,
@@ -99,29 +161,34 @@ export async function plan(state: DesignGraphState) {
   const { getChatAPIClient } = await import('../../../../../core/adapters/ChatAPIClient');
   const chatAPI = getChatAPIClient();
   
-  // ✅ Use StreamOrchestrator for consistent XML parsing
-  const { StreamOrchestrator, XMLStreamParser, CommonRenderStrategy } = await import('../../../../../core/streaming');
-  
-  if (!llm.streamRaw) {
+  if (!llm.stream) {
     throw new Error('LLM client does not support streaming');
   }
-  
-  const orchestrator = new StreamOrchestrator({
-    parser: new XMLStreamParser(),
-    renderStrategy: new CommonRenderStrategy(chatAPI),
-    existingFiles: new Set([]) // Design plan phase doesn't generate files
-  });
   
   // 🎯 Show placeholder before LLM call
   await chatAPI.showChatStatus('placeholder');
   
-  // Stream LLM response with real-time XML parsing (will replace placeholder)
-  for await (const event of llm.streamRaw(result.formatted.messages)) {
-    await orchestrator.processEvent(event);
+  // ✅ NEW: Direct streaming (no XML parsing!)
+  let rawText = '';
+  for await (const event of llm.stream(result.formatted.messages)) {
+    // Thinking
+    if (event.type === 'thinking') {
+      await chatAPI.sendLLMEvent(event);
+    }
+    
+    // Text
+    if (event.type === 'text') {
+      rawText += event.text || '';  // ✅ NEW: text 필드 사용
+      await chatAPI.sendLLMEvent(event);
+    }
+    
+    // Done
+    if (event.type === 'done') {
+      await chatAPI.sendLLMEvent(event);
+    }
   }
   
-  const streamResult = await orchestrator.finalize();
-  planText = streamResult.raw;
+  planText = rawText;
   console.log('\n');
 
   // ✅ DEBUG: Verify timing before return
