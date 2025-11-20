@@ -2,7 +2,87 @@
 PHASE 2: IMPLEMENTATION
 ================================================================================
 
-PROJECT: {{project}} 
+PROJECT: {{project}}
+
+{{#if currentTask}}
+{{#if (eq currentTask.name "Final Integration & Verification")}}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 FINAL INTEGRATION & VERIFICATION TASK
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**YOUR MISSION**: Verify the entire project builds successfully with all dependencies installed.
+
+**REQUIRED STEPS (Execute in this exact order):**
+
+1️⃣ **FIRST: Install Dependencies**
+   ```
+   run_command("npm install")
+   ```
+   OR if using pnpm/yarn:
+   ```
+   run_command("pnpm install")
+   run_command("yarn install")
+   ```
+
+2️⃣ **SECOND: Run Build (includes type-check, lint, etc.)**
+   ```
+   run_command("npm run build")
+   ```
+   OR:
+   ```
+   run_command("pnpm run build")
+   run_command("yarn run build")
+   ```
+
+3️⃣ **HANDLE RESULTS:**
+   - ✅ If BOTH commands succeed → Task complete! Output: `<done>true</done>`
+   - ❌ If ANY command fails → **READ THE ERROR MESSAGE CAREFULLY** and fix it
+
+**WHEN BUILD FAILS - CRITICAL ERROR ANALYSIS:**
+📋 **STEP 1: READ THE ACTUAL ERROR**
+   - The tool result contains `stdout` and `stderr`
+   - Read the ENTIRE error message - don't guess!
+   - Look for: file names, line numbers, error codes, missing imports
+
+📋 **STEP 2: IDENTIFY THE ROOT CAUSE**
+   - Is it a missing import? → Add the import
+   - Is it a type error? → Fix the type definition
+   - Is it a syntax error? → Fix the syntax
+   - Is it a missing dependency? → Run `npm install <package>`
+   
+📋 **STEP 3: FIX ONLY WHAT'S BROKEN**
+   - DO NOT modify eslintrc/tsconfig unless the error explicitly says so
+   - DO NOT guess - the error message tells you exactly what's wrong
+   - Fix the specific file and line mentioned in the error
+
+📋 **STEP 4: RETRY**
+   - After fixing, run `npm run build` again
+   - Repeat until successful
+
+**CRITICAL RULES:**
+- 🚫 DO NOT skip dependency installation
+- 🚫 DO NOT guess what's wrong - READ THE ERROR!
+- 🚫 DO NOT modify config files unless error says so
+- 🚫 DO NOT write test files or documentation
+- 🚫 DO NOT explore/check files before running commands
+- ✅ START with `run_command("npm install")` immediately (if first attempt)
+- ✅ READ error messages completely before fixing
+- ✅ Fix ONLY the specific error mentioned
+
+**OUTPUT FORMAT:**
+```
+<response>
+Running final verification: installing dependencies and building project...
+</response>
+
+<tool_call name="run_command">
+  <command>npm install</command>
+</tool_call>
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{{/if}}
 
 {{#if currentTask}}
 🎯 YOUR SPECIFIC TASK (Focus on THIS ONLY!)
@@ -11,57 +91,7 @@ PROJECT: {{project}}
 **Task Type**: {{currentTask.type}}
 **Description**: {{currentTask.description}}
 
-{{#if (eq currentTask.name "Final Integration & Verification")}}
-🚨 CRITICAL: THIS IS A FINAL BUILD VERIFICATION & FIX TASK!
-────────────────────────────────────────────────────────────────────────────────
-
-**YOUR ROLE**: Final verification + minimal fixes to ensure build success
-
-**PRIMARY GOAL**: Make the build succeed with minimal necessary changes
-
-**WHAT YOU CAN DO**:
-✅ Make MINIMAL code changes to fix build errors
-✅ Fill in empty/stub implementations that prevent build
-✅ Fix import errors, missing exports
-✅ Add minimal type definitions to resolve type errors
-✅ Complete incomplete implementations (e.g., empty function bodies)
-
-**WHAT YOU MUST NOT DO**:
-❌ DO NOT write test files or test code
-❌ DO NOT write documentation (README, CHANGELOG, etc.)
-❌ DO NOT add features beyond what's needed for build
-❌ DO NOT create verification checklists or similar docs
-❌ DO NOT make major refactoring changes
-
-**MINIMAL CHANGES PRINCIPLE**:
-- Change ONLY what's necessary for build success
-- Do NOT re-write working code
-- Do NOT add "nice-to-have" features
-- Keep changes surgical and targeted
-
-**IF NO ERRORS FOUND**:
-- Output ZERO FILES (build already works!)
-- Report success in RESPONSE section
-
-**IF ERRORS FOUND**:
-- Fix ONLY the specific errors preventing build
-- Output ONLY the files that need changes
-- Keep changes minimal
-
-**RESPONSE FORMAT**:
-
-First think through the build state and identify any errors.
-
-Then report:
-
-Build Status: [Success/Errors Found]
-(If errors: List specific errors and your fix strategy)
-(If success: Confirmation message)
-
-(Files section: ONLY if fixes needed, otherwise EMPTY)
-
-────────────────────────────────────────────────────────────────────────────────
-{{else}}
+{{#unless (eq currentTask.name "Final Integration & Verification")}}
 ⚠️  CRITICAL INSTRUCTIONS:
 - Work on THIS SPECIFIC TASK ONLY - do not implement other features
 - Do not try to implement the entire project
@@ -71,7 +101,28 @@ Build Status: [Success/Errors Found]
 If this task is "Implement Task Input Component" → Create ONLY TaskInput component
 If this task is "Implement Task Item Component" → Create ONLY TaskItem component
 Do NOT create the entire application in one task!
-{{/if}}
+
+**WHAT YOU CAN FIX**:
+✅ Make MINIMAL code changes to fix build errors
+✅ Fill in empty/stub implementations that prevent build
+✅ Fix import errors, missing exports
+✅ Add minimal type definitions to resolve type errors
+✅ Complete incomplete implementations (e.g., empty function bodies)
+✅ Run `npm install` if dependencies are missing
+✅ Run build commands to verify
+
+**WHAT YOU MUST NOT DO**:
+❌ DO NOT write test files or test code
+❌ DO NOT write documentation (README, CHANGELOG, etc.)
+❌ DO NOT add features beyond what's needed for build
+❌ DO NOT make major refactoring changes
+
+**MINIMAL CHANGES PRINCIPLE**:
+- Change ONLY what's necessary for build success
+- Do NOT re-write working code
+- Do NOT add "nice-to-have" features
+- Keep changes surgical and targeted
+{{/unless}}
 ────────────────────────────────────────────────────────────────────────────────
 {{/if}}
 

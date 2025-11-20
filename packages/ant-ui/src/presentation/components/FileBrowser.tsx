@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useStore } from '@/domain/store';
 import { fetchFileTree, FileNode } from '@/infrastructure/http/api';
 import { Card, CardHeader, CardTitle, CardContent } from '@/presentation/components/common/card';
+import { FileIcon } from '@/shared/utils/file-icons';
+import { Folder, FolderOpen } from 'lucide-react';
 
 interface FileTreeNodeProps {
   node: FileNode;
@@ -33,11 +35,14 @@ function FileTreeNode({ node, level, onFileSelect, selectedFile }: FileTreeNodeP
         style={{ paddingLeft: `${level * 12 + 8}px` }}
         onClick={handleClick}
       >
-        {node.type === 'directory' && (
-          <span className="text-xs">{isExpanded ? '📂' : '📁'}</span>
-        )}
-        {node.type === 'file' && (
-          <span className="text-xs">📄</span>
+        {node.type === 'directory' ? (
+          isExpanded ? (
+            <FolderOpen className="w-4 h-4 text-blue-500 flex-shrink-0" />
+          ) : (
+            <Folder className="w-4 h-4 text-blue-500 flex-shrink-0" />
+          )
+        ) : (
+          <FileIcon filePath={node.name} size={16} />
         )}
         <span className="text-sm">{node.name}</span>
       </div>

@@ -293,6 +293,7 @@ export interface ArchitectGraphState extends TaskArtifacts {
   featureTasks?: Map<string, Task>;   // Original feature tasks (for tracking completion)
   completedTasks?: string[];          // Task IDs that finished successfully
   completedTasksDetails?: Task[];     // ✅ NEW: Full task objects of completed tasks (with timing, etc.)
+  verifiedTasks?: Map<string, { passed: boolean; timestamp: string; errors?: string[] }>;  // ✅ Verification cache
   resolvedCategories?: ErrorCategory[]; // Categories with 0 errors (successfully resolved)
   
   // ✅ Failed Tasks (deferred to Final Verification)

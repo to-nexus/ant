@@ -71,9 +71,37 @@ export async function installDeps(state: ArchitectGraphState): Promise<Architect
       f.path.endsWith('package.json')
     );
 
-    if (hasPackageJson) {
-      console.log('📦 Detected package.json changes in current task');
+    // ✅ CRITICAL: Also check if node_modules exists (for first-time setup or after cleanup)
+    const nodeModulesPath = p.join(resolvedPath, 'node_modules');
+    const nodeModulesExists = await gitPort.fileExists(p.relative(repoRoot, nodeModulesPath));
+
+    // ✅ Detect final/integration tasks
+    const isFinalTask = state.currentTask?.name?.toLowerCase().includes('final') ||
+                        state.currentTask?.name?.toLowerCase().includes('integration') ||
+                        state.currentTask?.name?.toLowerCase().includes('verification');
+
+    // ✅ OPTION 2: Install strategy based on task type
+    let shouldInstall: boolean;
+    
+    if (isFinalTask) {
+      // Final/Integration task → ALWAYS install (verification requires fresh build)
+      shouldInstall = true;
+      console.log('📦 Final verification task - forcing fresh dependency installation for build validation');
+    } else {
+      // Regular task → Install ONLY if package.json changed OR node_modules missing
+      shouldInstall = hasPackageJson || !nodeModulesExists;
       
+      if (shouldInstall) {
+        if (hasPackageJson) {
+          console.log('📦 Detected package.json changes in current task');
+        }
+        if (!nodeModulesExists) {
+          console.log('📦 node_modules not found - dependencies need to be installed');
+        }
+      }
+    }
+
+    if (shouldInstall) {
       // Check if package.json exists in target directory
       const pkgJsonPath = p.join(resolvedPath, 'package.json');
       const pkgExists = await gitPort.fileExists(p.relative(repoRoot, pkgJsonPath));
@@ -208,15 +236,19 @@ Please check:
         } else {
           console.log('⚠️  Could not detect package manager');
         }
+      } else {
+        console.log('⚠️  package.json not found in target directory');
       }
-    } else if (state.currentTask?.type === 'feature') {
-      // ✅ OPTIMIZATION: Skip install for feature tasks that don't modify package.json
-      console.log('⏭️  Skipping dependency installation (package.json unchanged)');
-      console.log(`   Task: ${state.currentTask.name}`);
-      console.log(`   Type: ${state.currentTask.type}`);
-      console.log(`   Rationale: Feature tasks only need install if dependencies change\n`);
     } else {
-      console.log('⏭️  No package.json changes detected');
+      // ✅ Skip install: package.json unchanged AND node_modules exists
+      if (state.currentTask?.type === 'feature') {
+        console.log('⏭️  Skipping dependency installation (package.json unchanged and node_modules exists)');
+        console.log(`   Task: ${state.currentTask.name}`);
+        console.log(`   Type: ${state.currentTask.type}`);
+        console.log(`   Rationale: Feature tasks only need install if dependencies change or node_modules missing\n`);
+      } else {
+        console.log('⏭️  No package.json changes detected and node_modules exists');
+      }
     }
 
     // 2. Check if Git repository needs initialization

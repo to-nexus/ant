@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Package } from 'lucide-react';
+import { Package, Folder, FolderOpen } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { createFile, uploadFiles, createDirectory, deleteFileOrDirectory, FileNode } from '@/infrastructure/http/api';
 import { Button } from '@/presentation/components/common/button';
 import { textColors, cn } from '@/shared/utils/design-system';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
+import { FileIcon } from '@/shared/utils/file-icons';
 
 interface DirectoryViewProps {
   title: string;
@@ -67,11 +68,14 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
               }
             }}
           >
-            {node.type === 'directory' && (
-              <span className="text-xs">{isExpanded ? '📂' : '📁'}</span>
-            )}
-            {node.type === 'file' && (
-              <span className="text-xs">📄</span>
+            {node.type === 'directory' ? (
+              isExpanded ? (
+                <FolderOpen className="w-4 h-4 text-blue-500 flex-shrink-0" />
+              ) : (
+                <Folder className="w-4 h-4 text-blue-500 flex-shrink-0" />
+              )
+            ) : (
+              <FileIcon filePath={node.name} size={16} />
             )}
             <span className={cn('text-sm', textColors.primary)}>{node.name}</span>
           </div>

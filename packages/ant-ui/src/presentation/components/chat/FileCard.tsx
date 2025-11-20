@@ -5,8 +5,9 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { FilePlus, FileEdit, Trash2, ChevronDown, ChevronRight, Loader2, Ban } from 'lucide-react';
+import { ChevronDown, ChevronRight, Loader2, Ban } from 'lucide-react';
 import type { MessageContent } from '@/domain/models/chat';
+import { FileIcon } from '@/shared/utils/file-icons';
 
 interface FileCardProps {
   content: MessageContent;
@@ -116,7 +117,6 @@ export function FileCard({ content, operation }: FileCardProps) {
   // Determine operation details (Copilot/Cursor style - subtle, modern)
   const operationConfig = {
     create: {
-      icon: FilePlus,
       labelCompleted: 'Created',
       labelActive: isCreating ? 'Creating...' : 'Writing...',
       bgColor: 'bg-white dark:bg-gray-800/50',
@@ -127,7 +127,6 @@ export function FileCard({ content, operation }: FileCardProps) {
       hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50'
     },
     edit: {
-      icon: FileEdit,
       labelCompleted: 'Modified',
       labelActive: isEditing ? 'Editing...' : 'Updating...',
       bgColor: 'bg-white dark:bg-gray-800/50',
@@ -138,7 +137,6 @@ export function FileCard({ content, operation }: FileCardProps) {
       hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50'
     },
     delete: {
-      icon: Trash2,
       labelCompleted: 'Deleted',
       labelActive: 'Deleting...',
       bgColor: 'bg-white dark:bg-gray-800/50',
@@ -151,7 +149,6 @@ export function FileCard({ content, operation }: FileCardProps) {
   };
   
   const config = operationConfig[operation];
-  const Icon = config.icon;
   
   // Check if there's content to show for collapse button
   const hasContentForButton = (operation === 'create' && fileContent) || 
@@ -167,11 +164,11 @@ export function FileCard({ content, operation }: FileCardProps) {
         className={`w-full ${config.headerBg} px-3 py-2.5 ${hasContentForButton && isCompleted ? config.hoverBg + ' cursor-pointer' : 'cursor-default'} transition-colors`}
       >
         <div className="flex items-center gap-2">
-          {/* Operation Icon + Status */}
+          {/* File Icon - Shows loading spinner when active, file type icon when complete */}
           {isActive ? (
             <Loader2 className={`w-4 h-4 ${config.iconColor} animate-spin flex-shrink-0`} />
           ) : (
-            <Icon className={`w-4 h-4 ${config.iconColor} flex-shrink-0`} />
+            <FileIcon filePath={filePath} size={16} />
           )}
           
           {/* File Path */}

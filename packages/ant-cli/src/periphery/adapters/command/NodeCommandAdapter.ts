@@ -18,17 +18,49 @@ const execAsync = promisify(exec);
 
 export class NodeCommandAdapter implements CommandPort {
   private readonly ALLOWED_COMMANDS = [
+    // Package managers
     'npm',
-    'npx',    // ✅ Added for running tools like tsc, eslint
+    'npx',
     'pnpm',
     'yarn',
+    
+    // Version control
     'git',
+    
+    // Runtime
     'node',
-    'rm',     // ✅ Added for cleaning node_modules (use with caution)
-    'ls',     // ✅ Added for directory exploration
-    'cat',    // ✅ Added for file content inspection
-    'find',   // ✅ Added for file searching
-    'grep',   // ✅ Added for text searching
+    
+    // File operations
+    'rm',      // File/directory removal
+    'mkdir',   // Directory creation
+    'cp',      // Copy files
+    'mv',      // Move files
+    'touch',   // Create empty files
+    
+    // File inspection
+    'ls',      // List directory contents
+    'cat',     // Display file contents
+    'head',    // Display file start
+    'tail',    // Display file end
+    'wc',      // Count lines/words/bytes
+    'file',    // Identify file type
+    'diff',    // Compare files
+    
+    // File searching
+    'find',    // Search for files
+    'grep',    // Search text patterns
+    'which',   // Locate command
+    
+    // Text processing
+    'echo',    // Print text
+    'sort',    // Sort lines
+    'uniq',    // Remove duplicates
+    'awk',     // Text processing
+    'sed',     // Stream editor
+    
+    // System info
+    'pwd',     // Print working directory
+    'tree',    // Directory tree (if installed)
   ];
 
   private readonly DEFAULT_TIMEOUT = 5 * 60 * 1000; // 5 minutes

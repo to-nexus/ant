@@ -711,6 +711,18 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
 
   console.log('\n✅ All dynamic validations passed!\n');
   
+  // ✅ Cache verification result
+  if (currentTask) {
+    const verifiedTasks = state.verifiedTasks || new Map();
+    verifiedTasks.set(currentTask.id, {
+      passed: true,
+      timestamp: new Date().toISOString(),
+      errors: []
+    });
+    console.log(`💾 Cached verification result for task: ${currentTask.name}\n`);
+    state = { ...state, verifiedTasks };
+  }
+  
   // ✅ CHECKPOINT: Save state after validation (success/failure)
   // This allows resuming from this point if recursion limit is hit
   const { saveCheckpoint } = await import('./checkpoint');
