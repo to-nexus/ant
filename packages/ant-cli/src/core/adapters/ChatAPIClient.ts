@@ -182,9 +182,14 @@ export class ChatAPIClient {
           break;
         case 'read':
           const readPath = metadata?.filePath ?? '';
-          content = readPath 
-            ? `Read ${readPath}`
-            : 'Read file';
+          const isReadError = metadata?.error === true;
+          if (isReadError) {
+            // Error case: "File not found: path/to/file.tsx"
+            content = `File not found: ${readPath}`;
+          } else {
+            // Success case: "Read path/to/file.tsx"
+            content = readPath ? `Read ${readPath}` : 'Read file';
+          }
           break;
         case 'thinking':
           content = '';  // Empty content, will be filled by LLM tokens
@@ -534,8 +539,14 @@ export class ChatAPIClient {
   /**
    * Add file read complete
    */
-  async addReadComplete(filePath: string): Promise<void> {
-    await this.showChatStatus('read', { filePath });
+  async addReadComplete(filePath: string, error?: string): Promise<void> {
+    if (error) {
+      // Error case: signal error without including the message (showChatStatus will format it)
+      await this.showChatStatus('read', { filePath, error: true });
+    } else {
+      // Success case
+      await this.showChatStatus('read', { filePath });
+    }
   }
 
   /**

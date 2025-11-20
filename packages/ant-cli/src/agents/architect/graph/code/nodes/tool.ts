@@ -280,30 +280,35 @@ async function handleReadFile(
   
   const chatAPI = getChatAPIClient();
   
-  // ✅ Check buffer first (uncommitted changes)
-  const fileBuffers = state.fileBuffers || new Map();
-  const buffered = fileBuffers.get(filePath);
-  
-  if (buffered && !buffered.committed) {
-    console.log(`   📦 Reading from buffer: ${filePath}`);
-    // ✅ UI notification: read complete
+  try {
+    // ✅ Check buffer first (uncommitted changes)
+    const fileBuffers = state.fileBuffers || new Map();
+    const buffered = fileBuffers.get(filePath);
+    
+    if (buffered && !buffered.committed) {
+      console.log(`   📦 Reading from buffer: ${filePath}`);
+      await chatAPI.addReadComplete(filePath);
+      return buffered.content;
+    }
+    
+    // ✅ Read from disk
+    const content = await gitPort.readFile(filePath);
+    
+    if (!content) {
+      throw new Error(`File not found: ${filePath}`);
+    }
+    
+    console.log(`   💾 Read from disk: ${filePath} (${content.length} bytes)`);
+    
+    // ✅ UI notification: read complete (success)
     await chatAPI.addReadComplete(filePath);
-    return buffered.content;
+    
+    return content;
+  } catch (error) {
+    // ✅ Update reading status with error message
+    await chatAPI.addReadComplete(filePath, (error as Error).message);
+    throw error;
   }
-  
-  // ✅ Read from disk
-  const content = await gitPort.readFile(filePath);
-  
-  if (!content) {
-    throw new Error(`File not found: ${filePath}`);
-  }
-  
-  console.log(`   💾 Read from disk: ${filePath} (${content.length} bytes)`);
-  
-  // ✅ UI notification: read complete
-  await chatAPI.addReadComplete(filePath);
-  
-  return content;
 }
 
 /**

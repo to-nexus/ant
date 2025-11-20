@@ -207,23 +207,29 @@ async function handleReadFile(
 ): Promise<string> {
   const { path: filePath } = args;
   const gitPort = state.deps?.git;
+  const chatAPI = getChatAPIClient();
   
   if (!gitPort) {
     throw new Error('GitPort not available');
   }
   
-  const content = await gitPort.readFile(filePath);
-  if (!content) {
-    throw new Error(`File not found or empty: ${filePath}`);
+  try {
+    const content = await gitPort.readFile(filePath);
+    if (!content) {
+      throw new Error(`File not found or empty: ${filePath}`);
+    }
+    
+    console.log(`   📖 Read: ${filePath} (${content.length} bytes)`);
+    
+    // ✅ UI notification: read complete (success)
+    await chatAPI.addReadComplete(filePath);
+    
+    return content;
+  } catch (error) {
+    // ✅ Update reading status with error message
+    await chatAPI.addReadComplete(filePath, (error as Error).message);
+    throw error;
   }
-  
-  console.log(`   📖 Read: ${filePath} (${content.length} bytes)`);
-  
-  // ✅ UI notification: read complete
-  const chatAPI = getChatAPIClient();
-  await chatAPI.addReadComplete(filePath);
-  
-  return content;
 }
 
 /**

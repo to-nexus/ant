@@ -8,6 +8,7 @@
 // @ts-ignore
 import Anthropic from '@anthropic-ai/sdk';
 import { LLMClient, LLMStreamEvent, ToolDefinition } from '../../../core/ports/llm';
+import { withRetryStream } from '../../../core/utils/retry';
 
 export class AnthropicLLMClient implements LLMClient {
   private client: Anthropic;
@@ -48,15 +49,39 @@ export class AnthropicLLMClient implements LLMClient {
   }
 
   /**
-   * 🎯 Unified streaming interface
+   * 🎯 Unified streaming interface with automatic retry
    * Handles thinking blocks, tool calling, and regular text
+   * ✅ Retries on overloaded_error and api_error
    */
   async *stream(
     messages: Array<{ role: string; content: string | any[] }>,
     options?: {
       tools?: ToolDefinition[];
       maxTokens?: number;
-      enableThinking?: boolean;  // ✅ NEW: Control Extended Thinking
+      enableThinking?: boolean;
+      [key: string]: any;
+    }
+  ): AsyncIterable<LLMStreamEvent> {
+    yield* withRetryStream(
+      () => this._streamInternal(messages, options),
+      {
+        maxAttempts: 4,
+        initialDelayMs: 2000,
+        backoffMultiplier: 2,
+        retryableErrors: ['overloaded_error', 'api_error'],
+      }
+    );
+  }
+
+  /**
+   * Internal streaming implementation
+   */
+  private async *_streamInternal(
+    messages: Array<{ role: string; content: string | any[] }>,
+    options?: {
+      tools?: ToolDefinition[];
+      maxTokens?: number;
+      enableThinking?: boolean;
       [key: string]: any;
     }
   ): AsyncIterable<LLMStreamEvent> {

@@ -348,7 +348,8 @@ export class ChatService {
       'placeholder', 
       'exploring', 'explored', 
       'grepping', 'grepped', 
-      'reading', 'read'
+      'reading', 'read',
+      'command_running', 'command_streaming', 'command'
       // NOTE: 'thinking' is NOT a Chat Status - it's general content!
       // - Chat Status = progress indicator (placeholder, exploring, grepping, etc.)
       // - thinking = LLM thought process (collapsible content block)
@@ -475,11 +476,35 @@ export class ChatService {
       }
     }
     
-    // reading → reading/read
+    // reading → reading/read (✅ CRITICAL: Must match filePath)
     if (content.type === 'reading' || content.type === 'read') {
       const found = findRecentChatStatus(['reading', 'read']);
-      if (found && found.content.type === 'reading') {
-        console.log(`[ChatService] ✅ MERGED: ${found.content.type} → ${content.type} (reverse search, index ${found.index})`);
+      // ✅ Only merge if it's the SAME FILE
+      if (found && found.content.type === 'reading' && 
+          found.content.metadata?.filePath === content.metadata?.filePath) {
+        console.log(`[ChatService] ✅ MERGED: ${found.content.type} → ${content.type} for ${content.metadata?.filePath} (reverse search, index ${found.index})`);
+        found.content.type = content.type;
+        found.content.content = content.content;
+        found.content.metadata = { ...found.content.metadata, ...content.metadata };
+        
+        this.broadcast(projectId, featureName, {
+          type: 'content_update',
+          messageId: session.currentMessage.id,
+          contentIndex: found.index,
+          content: found.content
+        });
+        return found.index;
+      }
+    }
+    
+    // command_running → command_streaming → command
+    if (content.type === 'command_running' || content.type === 'command_streaming' || content.type === 'command') {
+      const found = findRecentChatStatus(['command_running', 'command_streaming', 'command']);
+      // ✅ Only merge if it's the SAME COMMAND
+      if (found && 
+          (found.content.type === 'command_running' || found.content.type === 'command_streaming') &&
+          found.content.metadata?.command === content.metadata?.command) {
+        console.log(`[ChatService] ✅ MERGED: ${found.content.type} → ${content.type} for command "${content.metadata?.command}" (reverse search, index ${found.index})`);
         found.content.type = content.type;
         found.content.content = content.content;
         found.content.metadata = { ...found.content.metadata, ...content.metadata };
@@ -497,7 +522,7 @@ export class ChatService {
     // Case 2.5: Direct duplicate of completed Chat Status = IGNORE
     // e.g., grepped → grepped, explored → explored, read → read
     // But grepped → grepping → grepped = NEW grepped (independent search)
-    const completedChatStatusTypes = new Set(['grepped', 'explored', 'read']);
+    const completedChatStatusTypes = new Set(['grepped', 'explored', 'read', 'command']);
     const shouldIgnore = 
       lastContent &&
       completedChatStatusTypes.has(lastContent.type) &&
