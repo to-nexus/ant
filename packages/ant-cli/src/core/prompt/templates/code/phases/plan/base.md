@@ -34,11 +34,38 @@ The actual code generation will happen in the NEXT phase (IMPLEMENTATION).
 **Task Type**: {{currentTask.type}}
 **Description**: {{currentTask.description}}
 
+{{#if (eq currentTask.name "Final Integration & Verification")}}
+⚠️  **SPECIAL INSTRUCTIONS FOR FINAL VERIFICATION TASK**:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**YOUR PLAN:**
+
+1. **Install all project dependencies**
+   - Detect package manager (npm/pnpm/yarn)
+   - Run: `npm install` (or equivalent)
+
+2. **Build the entire project**
+   - Run: `npm run build`
+   - This includes: type-check, lint, compilation
+
+3. **Handle results**
+   - If successful → Done
+   - If errors → Fix code and retry
+
+**CRITICAL:**
+- ✅ Plan to run BOTH install and build commands
+- ✅ Plan to fix errors if build fails
+- 🚫 DO NOT plan to write tests or documentation
+- 🚫 DO NOT plan to explore/verify files manually
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{{else}}
 ⚠️  **CRITICAL**: You are working on THIS SPECIFIC TASK ONLY!
 - DO NOT try to implement the entire project
 - DO NOT create files unrelated to this specific task
 - FOCUS ONLY on what is needed for this one task
 - Other tasks will handle other parts of the project
+{{/if}}
 {{else}}
 **Full Project Scope**: Complete implementation as specified in design document
 {{/if}}

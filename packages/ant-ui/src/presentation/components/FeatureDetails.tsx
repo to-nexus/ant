@@ -3,7 +3,8 @@ import { useStore } from '@/domain/store';
 import { fetchFileContent, saveFileContent, createFile, uploadFiles, createDirectory, deleteFileOrDirectory, FileNode } from '@/infrastructure/http/api';
 import { Card, CardHeader, CardTitle, CardContent } from '@/presentation/components/common/card';
 import { Button } from '@/presentation/components/common/button';
-import { Package } from 'lucide-react';
+import { Package, Folder, FolderOpen } from 'lucide-react';
+import { FileIcon } from '@/shared/utils/file-icons';
 
 interface DirectoryViewProps {
   title: string;
@@ -56,11 +57,14 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
               }
             }}
           >
-            {node.type === 'directory' && (
-              <span className="text-xs">{isExpanded ? '📂' : '📁'}</span>
-            )}
-            {node.type === 'file' && (
-              <span className="text-xs">📄</span>
+            {node.type === 'directory' ? (
+              isExpanded ? (
+                <FolderOpen className="w-4 h-4 text-blue-500 flex-shrink-0" />
+              ) : (
+                <Folder className="w-4 h-4 text-blue-500 flex-shrink-0" />
+              )
+            ) : (
+              <FileIcon filePath={node.name} size={16} />
             )}
             <span className="text-sm">{node.name}</span>
           </div>

@@ -253,6 +253,10 @@ async function handleListFiles(
     'build',
   ]);
   
+  // ✅ Note: listFiles returns only files (not directories) recursively
+  // For non-recursive listing with directories, we'd use readDirectory
+  // But since this is used for code exploration, files-only is appropriate
+  
   // Filter by pattern if provided
   const filteredFiles = pattern 
     ? files.filter(f => f.includes(pattern))

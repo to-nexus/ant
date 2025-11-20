@@ -247,9 +247,9 @@ Final Verification (runtime) → 🔍 full validation
 **ALWAYS add a final verification task at the end** (lowest priority):
 - Type: "feature" (not a special type, just a regular feature task)
 - Priority: 1000 (runs LAST - after all features AND error fixes)
-- Purpose: Verify ALL requirements from the spec are met
-- Check for missing components, incomplete features, gaps in implementation
-- Ensure the ENTIRE goal of the specification is achieved
+- Purpose: Install dependencies and build the entire project
+- Verify the project compiles successfully with all dependencies
+- This is NOT about checking if features exist - it's about running the actual build
 
 Example verification task:
 {
@@ -257,9 +257,9 @@ Example verification task:
   "name": "Final Integration & Verification",
   "type": "feature",
   "priority": 1000,
-  "description": "Verify all features from specification are fully implemented: [list key features]. Check for missing components, incomplete functionality, or gaps. Ensure the complete application works as intended.",
+  "description": "Install all project dependencies and build the entire project to verify successful compilation. Run dependency installation (npm/pnpm/yarn install) followed by the build command (npm run build) to ensure all code compiles, type-checks pass, and linting succeeds.",
   "validationRequired": true,
   "validationType": "runtime",
-  "validationRationale": "Final comprehensive validation of entire application"
+  "validationRationale": "Final build validation ensures entire project compiles successfully"
 }
 

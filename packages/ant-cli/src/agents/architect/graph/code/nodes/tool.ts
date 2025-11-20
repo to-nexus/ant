@@ -14,8 +14,6 @@
 
 import { ArchitectGraphState } from '../state';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
-import * as path from 'path';
-import * as fs from 'fs';
 
 // ❌ REMOVED: createMinimalThinking()
 // New approach: Disable Extended Thinking after first tool call
@@ -325,21 +323,20 @@ async function handleListFiles(
     throw new Error('GitPort not available');
   }
   
-  const repoRoot = await gitPort.getRepoRoot();
-  const targetDir = path.join(repoRoot, directory);
+  // ✅ Use GitPort instead of direct fs access (Hexagonal Architecture)
+  const items = await gitPort.readDirectory(directory);
   
-  if (!fs.existsSync(targetDir)) {
-    throw new Error(`Directory not found: ${directory}`);
-  }
-  
-  const files = fs.readdirSync(targetDir);
+  // ✅ Add type suffix for directories so UI can distinguish them
+  const itemsWithType = items.map(item => 
+    item.isDirectory ? `${item.name}/` : item.name
+  );
   
   // Filter by pattern if provided
   const filtered = pattern 
-    ? files.filter(f => f.includes(pattern))
-    : files;
+    ? itemsWithType.filter(f => f.includes(pattern))
+    : itemsWithType;
   
-  console.log(`   📁 Listed ${filtered.length} files in ${directory}`);
+  console.log(`   📁 Listed ${filtered.length} items in ${directory}`);
   
   // ✅ UI notification: exploration complete
   const chatAPI = getChatAPIClient();
@@ -369,20 +366,24 @@ async function handleSearchCode(
     throw new Error('GitPort not available');
   }
   
-  const repoRoot = await gitPort.getRepoRoot();
+  // ✅ Use GitPort to list files (Hexagonal Architecture)
+  const files = await gitPort.listFiles('.', ['node_modules', '.git', 'dist', 'build']);
   
-  // Simple file search (fallback - ideally use ripgrep)
+  // Filter by file pattern if provided
+  const filteredFiles = file_pattern
+    ? files.filter(f => f.includes(file_pattern))
+    : files;
+  
+  // Search through files
   const results: string[] = [];
-  const files = getAllFiles(repoRoot, file_pattern);
-  
-  for (const file of files.slice(0, 50)) {  // Limit to 50 files
-    const content = fs.readFileSync(file, 'utf-8');
-    const lines = content.split('\n');
+  for (const file of filteredFiles.slice(0, 50)) {  // Limit to 50 files
+    const content = await gitPort.readFile(file);
+    if (!content) continue;
     
+    const lines = content.split('\n');
     lines.forEach((line, index) => {
       if (line.includes(pattern)) {
-        const relativePath = path.relative(repoRoot, file);
-        results.push(`${relativePath}:${index + 1}: ${line.trim()}`);
+        results.push(`${file}:${index + 1}: ${line.trim()}`);
       }
     });
   }
@@ -402,49 +403,12 @@ async function handleSearchCode(
 
 /**
  * Get temp file path for buffering
+ * Note: This is a pure string manipulation, no fs access
  */
 function getTempFilePath(state: ArchitectGraphState, filePath: string): string {
   const jobId = state._httpJobId || 'unknown';
   const safeFilePath = filePath.replace(/\//g, '_');
-  return path.join('/tmp', `ant-buffer-${jobId}-${safeFilePath}`);
-}
-
-/**
- * Ensure directory exists
- */
-function ensureDirectoryExists(dir: string): void {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-}
-
-/**
- * Get all files recursively
- */
-function getAllFiles(dir: string, pattern?: string): string[] {
-  const results: string[] = [];
-  
-  function walk(currentDir: string) {
-    const files = fs.readdirSync(currentDir);
-    
-    for (const file of files) {
-      const filePath = path.join(currentDir, file);
-      const stat = fs.statSync(filePath);
-      
-      if (stat.isDirectory()) {
-        if (!file.startsWith('.') && file !== 'node_modules') {
-          walk(filePath);
-        }
-      } else {
-        if (!pattern || file.includes(pattern)) {
-          results.push(filePath);
-        }
-      }
-    }
-  }
-  
-  walk(dir);
-  return results;
+  return `/tmp/ant-buffer-${jobId}-${safeFilePath}`;
 }
 
 /**
@@ -675,48 +639,84 @@ async function handleRunCommand(
   console.log(`\n   🔧 Running command: ${command}`);
   console.log(`   📁 Working directory: ${workingDir}\n`);
   
-  let stdout = '';
-  let stderr = '';
-  let exitCode: number | undefined;
+  let streamedStdout = '';
+  let streamedStderr = '';
   
-  // Execute command with streaming output
-  await commandPort.execute(command, {
-    cwd: workingDir,
-    onStdout: (chunk: string) => {
-      stdout += chunk;
-      console.log(chunk);
-    },
-    onStderr: (chunk: string) => {
-      stderr += chunk;
-      console.error(chunk);
-    },
-    onExit: (code: number) => {
-      exitCode = code;
-    },
-  });
-  
-  const success = exitCode === 0;
-  const output = stdout + stderr;
-  
-  if (success) {
-    console.log(`\n   ✅ Command succeeded (exit code: ${exitCode})\n`);
-  } else {
-    console.error(`\n   ❌ Command failed (exit code: ${exitCode})\n`);
+  try {
+    // ✅ Execute command with timeout (10 minutes for installs/builds)
+    const result = await commandPort.execute(command, {
+      cwd: workingDir,
+      timeout: 10 * 60 * 1000, // 10 minutes
+      onStdout: (chunk: string) => {
+        streamedStdout += chunk;
+        console.log(chunk);
+      },
+      onStderr: (chunk: string) => {
+        streamedStderr += chunk;
+        console.error(chunk);
+      },
+      onExit: (code: number) => {
+        console.log(`   Exit code: ${code}`);
+      },
+    });
+    
+    // ✅ Use result from execute (more reliable than callbacks)
+    const { stdout, stderr, exitCode, success } = result;
+    const output = stdout + stderr;
+    
+    if (success) {
+      console.log(`\n   ✅ Command succeeded (exit code: ${exitCode})\n`);
+    } else {
+      console.error(`\n   ❌ Command failed (exit code: ${exitCode})\n`);
+    }
+    
+    // ✅ UI notification: command complete
+    await chatAPI.commandComplete(command, success, exitCode, output);
+    
+    // ✅ Format result - emphasize errors for LLM attention
+    if (!success) {
+      // ❌ BUILD FAILED - Return error-first format
+      return `❌ COMMAND FAILED: ${command}
+Exit Code: ${exitCode}
+
+📋 ERROR OUTPUT:
+${output}
+
+⚠️  You MUST read the error above and fix the specific issue mentioned.
+DO NOT guess - the error tells you exactly what's wrong.`;
+    }
+    
+    // ✅ SUCCESS - Return with output (may contain useful warnings/info)
+    const hasOutput = output.trim().length > 0;
+    
+    if (hasOutput) {
+      return `✅ COMMAND SUCCEEDED: ${command}
+Exit Code: 0
+
+Output:
+${output}`;
+    } else {
+      return `✅ COMMAND SUCCEEDED: ${command}
+Exit Code: 0
+(No output)`;
+    }
+  } catch (error) {
+    // ✅ Handle timeout or execution errors
+    const errorMessage = (error as Error).message;
+    console.error(`\n   ❌ Command execution error: ${errorMessage}\n`);
+    
+    // ✅ UI notification: command failed
+    await chatAPI.commandComplete(command, false, -1, errorMessage);
+    
+    // ✅ Timeout/execution error - Return error-first format
+    return `❌ COMMAND EXECUTION ERROR: ${command}
+Error: ${errorMessage}
+
+Captured output:
+${streamedStdout}
+${streamedStderr}
+
+⚠️  The command timed out or failed to execute. Check the error above.`;
   }
-  
-  // ✅ UI notification: command complete
-  await chatAPI.commandComplete(command, success, exitCode || 0, output);
-  
-  return JSON.stringify({
-    success,
-    command,
-    working_directory: workingDir,
-    stdout,
-    stderr,
-    exitCode,
-    message: success 
-      ? `Command executed successfully: ${command}`
-      : `Command failed with exit code ${exitCode}: ${command}`,
-  }, null, 2);
 }
 
