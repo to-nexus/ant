@@ -161,6 +161,11 @@ export async function tool(
   // Message finalize should only happen when the entire job completes (learn node, etc.)
   // Tool node continues the loop back to codeGen, so message must stay open
   
+  // ✅ Workflow instrumentation: Exit node
+  if (state.deps?.workflowUpdate && state._httpJobId) {
+    state.deps.workflowUpdate.exitNode(state._httpJobId, 'tool');
+  }
+  
   return {
     conversationHistory: newHistory,
     llmResponse: {
@@ -202,6 +207,16 @@ async function handleWriteFile(
   const exists = await gitPort.fileExists(filePath);
   const actionType = exists ? 'edit' : 'create';
   
+  // ✅ 0. UI notification - START (show writing state for better UX)
+  const chatAPI = getChatAPIClient();
+  if (actionType === 'create') {
+    // Update to 'writing' state (shows progress)
+    await chatAPI.updateFileProgress(filePath, 'writing');
+  } else {
+    // For edit, show editing state
+    await chatAPI.startFileEdit(filePath);
+  }
+  
   // ✅ 1. IMMEDIATELY write to project disk (점진적 저장!)
   await gitPort.writeFile(filePath, content);
   console.log(`   💾 ${actionType === 'create' ? 'Created' : 'Modified'}: ${filePath} (${content.length} bytes)`);
@@ -216,13 +231,11 @@ async function handleWriteFile(
     committed: true,  // Already committed to disk!
   });
   
-  // ✅ 3. UI notification
-  const chatAPI = getChatAPIClient();
+  // ✅ 3. UI notification - COMPLETE
   if (actionType === 'create') {
     await chatAPI.completeFileCreation(filePath, content);
   } else {
     const existingContent = exists ? await gitPort.readFile(filePath) : '';
-    await chatAPI.startFileEdit(filePath);
     await chatAPI.completeFileEdit(filePath, existingContent || '', content);
   }
   
@@ -667,6 +680,9 @@ async function handleRunCommand(
   } else {
     console.error(`\n   ❌ Command failed (exit code: ${exitCode})\n`);
   }
+  
+  // ✅ UI notification: command complete
+  await chatAPI.commandComplete(command, success, exitCode || 0, output);
   
   return JSON.stringify({
     success,
