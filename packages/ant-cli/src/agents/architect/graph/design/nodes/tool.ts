@@ -118,6 +118,11 @@ export async function tool(
     },
   ];
   
+  // ✅ Workflow instrumentation: Exit node
+  if (state.deps?.workflowUpdate && state._httpJobId) {
+    state.deps.workflowUpdate.exitNode(state._httpJobId, 'tool');
+  }
+  
   return {
     conversationHistory: newHistory,
     files: state.files,  // Updated by handleWriteFile

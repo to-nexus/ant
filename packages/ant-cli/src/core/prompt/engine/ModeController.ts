@@ -177,7 +177,7 @@ export class ModeController {
     
     if (phase === 'execute') {
       // ✅ Markdown output format (always include for real-time MD file streaming)
-      injections.push(`${phasePrefix}/markdown-output-format`);
+      injections.push(`${phasePrefix}/injections/markdown-output-format`);
       
       // ✅ Language-specific environment rules (highest priority - applies to ALL execute tasks)
       const language = this.detectLanguage(context);
@@ -187,12 +187,12 @@ export class ModeController {
       
       // ✅ NEW: Retry context injection (highest priority - only on retries)
       if (context.retryContext) {
-        injections.push(`${phasePrefix}/retry-context`);
+        injections.push(`${phasePrefix}/injections/retry-context`);
       }
       
       // ✅ NEW: Plan preservation injection (always, to enforce contract)
       if (context.planContract) {
-        injections.push(`${phasePrefix}/plan-preservation`);
+        injections.push(`${phasePrefix}/injections/plan-preservation`);
       }
       
       // ✅ Missing dependency fix protocol (Critical - language-specific)
@@ -202,17 +202,17 @@ export class ModeController {
       
       // TypeScript error fix detection (highest priority - more specific than runtime errors)
       if (context.directive && this.containsTypeScriptError(context.directive)) {
-        injections.push(`${phasePrefix}/typescript-error-fix`);
+        injections.push(`${phasePrefix}/injections/typescript-error-fix`);
       }
       // Runtime error fix detection (general runtime errors)
       else if (context.directive && this.containsRuntimeError(context.directive)) {
-        injections.push(`${phasePrefix}/runtime-error-fix`);
+        injections.push(`${phasePrefix}/injections/runtime-error-fix`);
       }
       
       // New project setup injection (highest priority for new projects)
       if (!context.stats.hasOriginalFiles && task === 'code') {
         // General setup guide (language-agnostic)
-        injections.push(`${phasePrefix}/new-project-setup-general`);
+        injections.push(`${phasePrefix}/injections/new-project-setup-general`);
         
         // Language-specific setup details
         const languageConfigPath = `${task}/languages/${language}/setup/config`;
@@ -220,8 +220,8 @@ export class ModeController {
       }
       
       if (context.stats.hasOriginalFiles) {
-        injections.push(`${phasePrefix}/modification-details`);
-        injections.push(`${phasePrefix}/pre-output-check`);
+        injections.push(`${phasePrefix}/injections/modification-details`);
+        injections.push(`${phasePrefix}/injections/pre-output-check`);
       }
       
       // ✅ REMOVED: response injection (legacy, no longer needed with new streaming system)

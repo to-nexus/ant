@@ -297,6 +297,26 @@ export class ChatAPIClient {
   }
 
   /**
+   * Update file progress to 'writing' state (intermediate progress indication)
+   */
+  async updateFileProgress(filePath: string, phase: 'writing'): Promise<void> {
+    if (!this.enabled) return;
+    try {
+      // ✅ Ensure message is active
+      if (!await this.ensureMessageActive()) {
+        console.error(`❌ [ChatAPIClient] Cannot update file progress - no active message for: ${filePath}`);
+        return;
+      }
+      
+      await fetch(`${this.baseUrl}/file-operation`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ phase, operation: 'create', filePath })
+      });
+    } catch (error) { /* Silently fail */ }
+  }
+
+  /**
    * Complete file creation (final state, collapsible)
    */
   async completeFileCreation(filePath: string, content: string): Promise<void> {
@@ -517,6 +537,20 @@ export class ChatAPIClient {
    */
   async addReadComplete(filePath: string): Promise<void> {
     await this.showChatStatus('read', { filePath });
+  }
+
+  /**
+   * Complete command execution
+   */
+  async commandComplete(command: string, success: boolean, exitCode: number, output: string): Promise<void> {
+    if (!this.enabled) return;
+    try {
+      await fetch(`${this.baseUrl}/command-execution`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ command, output, exitCode, phase: 'complete' })
+      });
+    } catch (error) { /* Silently fail */ }
   }
 
   /**
