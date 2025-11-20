@@ -143,7 +143,14 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
           description: nextTask.description,
           priority: nextTask.priority
         };
-        await state.deps.workflowUpdate.enterNode(state._httpJobId, 'plan', taskInfo);
+        await state.deps.workflowUpdate.enterNode(
+          state._httpJobId, 
+          'plan', 
+          taskInfo, 
+          undefined, // llmInfo
+          state.recursionCount,
+          state.recursionLimit
+        );
       }
       
       console.log(`\n🧭 Planning (${state.recursionCount}/${state.recursionLimit || 50})`);
@@ -262,7 +269,14 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         description: nextTask.description,
         priority: nextTask.priority
       };
-      await state.deps.workflowUpdate.enterNode(state._httpJobId, 'plan', taskInfo);
+      await state.deps.workflowUpdate.enterNode(
+        state._httpJobId, 
+        'plan', 
+        taskInfo, 
+        undefined, // llmInfo
+        state.recursionCount,
+        state.recursionLimit
+      );
     }
     
     console.log(`\n🧭 Planning (${state.recursionCount}/${state.recursionLimit || 50})`);
@@ -680,6 +694,11 @@ ${nextTask.type === 'error' ?
       throw new Error('LLM client does not support streaming');
     }
     
+    // 🎯 CRITICAL: Start message BEFORE sending any events!
+    // Without this, all sendLLMEvent() calls will be silently ignored
+    await chatAPI.startMessage();
+    console.log('✅ [Plan] Message started for UI streaming');
+    
     // 🎯 Show placeholder before LLM call
     await chatAPI.showChatStatus('placeholder');
     
@@ -707,6 +726,11 @@ ${nextTask.type === 'error' ?
     const codeMode = result.modeConfig.mode;
 
     console.log('\n✅ Plan generation complete');
+    
+    // ✅ CRITICAL: Finalize message after plan is complete
+    // Plan node does NOT have tool calls, so we finalize immediately
+    await chatAPI.finalizeMessage();
+    console.log('✅ [Plan] Message finalized');
     
     const updatedState = { 
       ...state,

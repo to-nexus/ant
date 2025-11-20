@@ -39,7 +39,14 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       model: (llm as any).modelName
     } : undefined;
     
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'decompose', taskInfo, llmInfo);
+    await state.deps.workflowUpdate.enterNode(
+      state._httpJobId, 
+      'decompose', 
+      taskInfo, 
+      llmInfo,
+      state.recursionCount,
+      state.recursionLimit
+    );
   }
   
   // ✅ CRITICAL: Load session FIRST to get completedTasksDetails before signaling
@@ -505,6 +512,11 @@ ${rules}`;
       throw new Error('LLM client does not support streaming');
     }
     
+    // 🎯 CRITICAL: Start message BEFORE sending any events!
+    // Without this, all orchestrator events will be silently ignored
+    await chatAPI.startMessage();
+    console.log('✅ [Decompose] Message started for UI streaming');
+    
     // 🎯 Show placeholder before LLM call
     await chatAPI.showChatStatus('placeholder');
     
@@ -533,8 +545,9 @@ ${rules}`;
       }
     }
     
-    // ✅ Finalize orchestrator
-    await orchestrator.finalize();
+    // ✅ Finalize orchestrator (no tool calls in decompose, so finalize immediately)
+    await orchestrator.finalize(false);  // false = no tool calls, finalize message
+    console.log('✅ [Decompose] Message finalized');
     
     // ✅ Extract JSON from <tasks> tags (more reliable than parsing freeform text)
     let tasks: Task[] = [];

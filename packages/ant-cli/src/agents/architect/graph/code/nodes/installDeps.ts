@@ -28,7 +28,14 @@ export async function installDeps(state: ArchitectGraphState): Promise<Architect
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'installDeps', taskInfo);
+    await state.deps.workflowUpdate.enterNode(
+      state._httpJobId, 
+      'installDeps', 
+      taskInfo, 
+      undefined, // llmInfo
+      state.recursionCount,
+      state.recursionLimit
+    );
   }
   
   const commandPort = state.deps?.command;
@@ -38,6 +45,12 @@ export async function installDeps(state: ArchitectGraphState): Promise<Architect
   // Skip if no command port (optional dependency)
   if (!commandPort || !gitPort) {
     console.log('⚠️  CommandPort not available, skipping dependency installation');
+    
+    // ✅ Workflow instrumentation: Exit node (skip path)
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      state.deps.workflowUpdate.exitNode(state._httpJobId, 'installDeps');
+    }
+    
     return state;
   }
 
@@ -242,6 +255,11 @@ Please check:
     });
   }
 
+  // ✅ Workflow instrumentation: Exit node (success path)
+  if (state.deps?.workflowUpdate && state._httpJobId) {
+    state.deps.workflowUpdate.exitNode(state._httpJobId, 'installDeps');
+  }
+  
   // ✅ Return with violations if any
   return {
     ...state,

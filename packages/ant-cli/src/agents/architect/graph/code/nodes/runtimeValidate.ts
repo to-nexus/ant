@@ -60,7 +60,14 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'runtimeValidate', taskInfo);
+    await state.deps.workflowUpdate.enterNode(
+      state._httpJobId, 
+      'runtimeValidate', 
+      taskInfo, 
+      undefined, // llmInfo
+      state.recursionCount,
+      state.recursionLimit
+    );
   }
   
   const commandPort = state.deps?.command;
@@ -708,6 +715,11 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
   // This allows resuming from this point if recursion limit is hit
   const { saveCheckpoint } = await import('./checkpoint');
   await saveCheckpoint(state);
+  
+  // ✅ Workflow instrumentation: Exit node (success path)
+  if (state.deps?.workflowUpdate && state._httpJobId) {
+    state.deps.workflowUpdate.exitNode(state._httpJobId, 'runtimeValidate');
+  }
   
   return {
     ...state,

@@ -324,8 +324,7 @@ export class ChatService {
       return -1;  // Return invalid index
     }
 
-    // ✅ Simple: only check last content in currentMessage
-    // (placeholder is always shown right before LLM API call, so it's always in the same message)
+    // ✅ Get existing contents and last content
     const existingContents = session.currentMessage.contents;
     const lastContent = existingContents.length > 0 
       ? existingContents[existingContents.length - 1] 
@@ -341,6 +340,9 @@ export class ChatService {
     // 1. placeholder → placeholder: REPLACE (node transition)
     // 2. Chat Status Message → Chat Status Message: MERGE (e.g. placeholder → exploring)
     // 3. Chat Status Message → General Content (text/file): HIDE (remove Chat Status Message)
+    // 
+    // ✅ CRITICAL FIX: Search backwards to find the most recent Chat Status of specific type
+    // This handles cases where other content (text, thinking) was added between status updates
     
     const CHAT_STATUS_TYPES = new Set([
       'placeholder', 
@@ -352,6 +354,20 @@ export class ChatService {
       // - thinking = LLM thought process (collapsible content block)
       // When thinking arrives, Chat Status (if any) will HIDE via Case 3
     ]);
+    
+    /**
+     * ✅ Find the most recent Chat Status of a specific type (reverse search)
+     * This ensures we can merge status updates even if other content was added in between
+     */
+    const findRecentChatStatus = (type: MessageContent['type'] | MessageContent['type'][]): { content: MessageContent; index: number } | null => {
+      const types = Array.isArray(type) ? type : [type];
+      for (let i = existingContents.length - 1; i >= 0; i--) {
+        if (types.includes(existingContents[i].type)) {
+          return { content: existingContents[i], index: i };
+        }
+      }
+      return null;
+    };
     
     const isLastChatStatus = lastContent && CHAT_STATUS_TYPES.has(lastContent.type);
     const isNewChatStatus = CHAT_STATUS_TYPES.has(content.type);
@@ -386,26 +402,18 @@ export class ChatService {
     // - exploring → exploring/explored (progress update/completion)
     // - grepping → grepping/grepped (progress update/completion)
     // - reading → reading/read (progress update/completion)
-    const shouldMergeChatStatus = (
-      // placeholder → anything (MERGE all!)
-      isLastPlaceholder ||
-      // Progress → Progress (same task update)
-      (lastContent?.type === 'exploring' && content.type === 'exploring') ||
-      (lastContent?.type === 'grepping' && content.type === 'grepping') ||
-      (lastContent?.type === 'reading' && content.type === 'reading') ||
-      // Progress → Completed (same task completion)
-      (lastContent?.type === 'exploring' && content.type === 'explored') ||
-      (lastContent?.type === 'grepping' && content.type === 'grepped') ||
-      (lastContent?.type === 'reading' && content.type === 'read')
-    );
+    // 
+    // ✅ NEW: Use reverse search to find the most recent matching status
+    // This handles cases where other content was added in between
     
-    if (shouldMergeChatStatus && lastContent) {
-      console.log(`[ChatService] ✅ MERGED: ${lastContent.type} → ${content.type}`);
+    // ✅ Check if we should merge with placeholder (always merge if last is placeholder)
+    if (isLastPlaceholder && lastContent) {
+      // Placeholder → anything: merge with last (which is placeholder)
+      console.log(`[ChatService] ✅ MERGED: ${lastContent.type} → ${content.type} (placeholder merge)`);
       
       lastContent.type = content.type;
       // ✅ Special case: placeholder → thinking = clear placeholder content
-      // thinking 블록은 LLM content를 받아야 하므로, placeholder content를 지워야 함
-      if (isLastPlaceholder && content.type === 'thinking') {
+      if (content.type === 'thinking') {
         lastContent.content = '';  // Clear placeholder content, wait for LLM thinking
         console.log(`[ChatService] 🧹 Cleared placeholder content for thinking block`);
       } else {
@@ -414,9 +422,9 @@ export class ChatService {
       lastContent.metadata = { ...lastContent.metadata, ...content.metadata };
       
       // ✅ CRITICAL: Start tracking thinking block duration when placeholder → thinking (with blockStart)
-      if (isLastPlaceholder && content.type === 'thinking' && content.metadata?.blockStart) {
+      if (content.type === 'thinking' && content.metadata?.blockStart) {
         session.thinkingStartTime = Date.now();
-        session.lastThinkingContentIndex = lastContentIndex;  // Use existing index (merged content)
+        session.lastThinkingContentIndex = lastContentIndex;
       }
       
       this.broadcast(projectId, featureName, {
@@ -425,7 +433,65 @@ export class ChatService {
         contentIndex: lastContentIndex,
         content: lastContent
       });
-      return lastContentIndex;  // Return the merged index
+      return lastContentIndex;
+    }
+    
+    // ✅ Check if we should merge with a specific progress status (reverse search)
+    // exploring → exploring/explored
+    if (content.type === 'exploring' || content.type === 'explored') {
+      const found = findRecentChatStatus(['exploring', 'explored']);
+      if (found && found.content.type === 'exploring') {
+        console.log(`[ChatService] ✅ MERGED: ${found.content.type} → ${content.type} (reverse search, index ${found.index})`);
+        found.content.type = content.type;
+        found.content.content = content.content;
+        found.content.metadata = { ...found.content.metadata, ...content.metadata };
+        
+        this.broadcast(projectId, featureName, {
+          type: 'content_update',
+          messageId: session.currentMessage.id,
+          contentIndex: found.index,
+          content: found.content
+        });
+        return found.index;
+      }
+    }
+    
+    // grepping → grepping/grepped
+    if (content.type === 'grepping' || content.type === 'grepped') {
+      const found = findRecentChatStatus(['grepping', 'grepped']);
+      if (found && found.content.type === 'grepping') {
+        console.log(`[ChatService] ✅ MERGED: ${found.content.type} → ${content.type} (reverse search, index ${found.index})`);
+        found.content.type = content.type;
+        found.content.content = content.content;
+        found.content.metadata = { ...found.content.metadata, ...content.metadata };
+        
+        this.broadcast(projectId, featureName, {
+          type: 'content_update',
+          messageId: session.currentMessage.id,
+          contentIndex: found.index,
+          content: found.content
+        });
+        return found.index;
+      }
+    }
+    
+    // reading → reading/read
+    if (content.type === 'reading' || content.type === 'read') {
+      const found = findRecentChatStatus(['reading', 'read']);
+      if (found && found.content.type === 'reading') {
+        console.log(`[ChatService] ✅ MERGED: ${found.content.type} → ${content.type} (reverse search, index ${found.index})`);
+        found.content.type = content.type;
+        found.content.content = content.content;
+        found.content.metadata = { ...found.content.metadata, ...content.metadata };
+        
+        this.broadcast(projectId, featureName, {
+          type: 'content_update',
+          messageId: session.currentMessage.id,
+          contentIndex: found.index,
+          content: found.content
+        });
+        return found.index;
+      }
     }
     
     // Case 2.5: Direct duplicate of completed Chat Status = IGNORE

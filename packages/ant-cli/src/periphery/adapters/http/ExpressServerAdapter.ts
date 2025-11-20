@@ -1415,7 +1415,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
    * Track node entry
    * ✅ Returns Promise to ensure SSE ordering
    */
-  async enterNode(jobId: string, nodeId: string, taskInfo?: import('../../../core/ports/workflow').TaskInfo, llmInfo?: import('../../../core/ports/workflow').LLMInfo): Promise<void> {
+  async enterNode(jobId: string, nodeId: string, taskInfo?: import('../../../core/ports/workflow').TaskInfo, llmInfo?: import('../../../core/ports/workflow').LLMInfo, recursionCount?: number, recursionLimit?: number): Promise<void> {
     console.log(`\n🎯 [ExpressServerAdapter] enterNode called: ${nodeId} (job: ${jobId})`);
     if (taskInfo) {
       console.log(`   📋 Task: ${taskInfo.name}`);
@@ -1423,7 +1423,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     if (llmInfo) {
       console.log(`   🤖 LLM: ${llmInfo.provider} / ${llmInfo.model}`);
     }
-    await this.workflowStateService.enterNode(jobId, nodeId, taskInfo, llmInfo);
+    await this.workflowStateService.enterNode(jobId, nodeId, taskInfo, llmInfo, recursionCount, recursionLimit);
   }
   
   /**

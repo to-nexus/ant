@@ -34,7 +34,14 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'resolve', taskInfo);
+    await state.deps.workflowUpdate.enterNode(
+      state._httpJobId, 
+      'resolve', 
+      taskInfo, 
+      undefined, // llmInfo
+      state.recursionCount,
+      state.recursionLimit
+    );
   }
   
   // ✅ CRITICAL: Skip validation if resuming (taskQueue already exists)
@@ -46,6 +53,11 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     console.log('✅ Resuming from previous state (resolve phase skipped)');
     if (state.taskQueue) {
       console.log(`   Task queue: ${state.taskQueue.size()} tasks remaining\n`);
+    }
+    
+    // ✅ Workflow instrumentation: Exit node (skip path)
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      state.deps.workflowUpdate.exitNode(state._httpJobId, 'resolve');
     }
     
     // Return existing state without changes
@@ -185,6 +197,10 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     profile,
   };
   
+  // ✅ Workflow instrumentation: Exit node (success path)
+  if (state.deps?.workflowUpdate && state._httpJobId) {
+    state.deps.workflowUpdate.exitNode(state._httpJobId, 'resolve');
+  }
   
   return result;
 }

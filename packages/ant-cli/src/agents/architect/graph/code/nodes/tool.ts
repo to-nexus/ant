@@ -58,7 +58,25 @@ export async function tool(
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'tool', taskInfo);
+    await state.deps.workflowUpdate.enterNode(
+      state._httpJobId, 
+      'tool', 
+      taskInfo, 
+      undefined, // llmInfo
+      state.recursionCount,
+      state.recursionLimit
+    );
+  }
+  
+  // ✅ CRITICAL: Give UI time to render file card from tool_use event
+  // This ensures smooth loading → complete animation for ALL files, not just the first one
+  // Why needed:
+  // - First file: LLM thinking provides natural delay → UI has time → animation works ✅
+  // - Subsequent files: No thinking (disabled) → tool executes immediately → card rendered as completed ❌
+  // - Solution: Intentional 150ms delay for UI card creation (NOT a hack, it's for UX consistency)
+  if (name === 'write_file' || name === 'delete_file' || name === 'apply_patch') {
+    await new Promise(resolve => setTimeout(resolve, 150));
+    console.log('   ⏱️  UI preparation time provided (150ms) for smooth card animation');
   }
   
   let result: any;

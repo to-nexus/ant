@@ -90,7 +90,14 @@ export async function enforce(state: ArchitectGraphState): Promise<ArchitectGrap
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'enforce', taskInfo);
+    await state.deps.workflowUpdate.enterNode(
+      state._httpJobId, 
+      'enforce', 
+      taskInfo, 
+      undefined, // llmInfo
+      state.recursionCount,
+      state.recursionLimit
+    );
   }
   
   const violations = state.violations || [];
@@ -120,6 +127,12 @@ export async function enforce(state: ArchitectGraphState): Promise<ArchitectGrap
   
   if (retryableErrors.length === 0) {
     console.log('✅ No blocking/retryable errors found - proceeding despite warnings\n');
+    
+    // ✅ Workflow instrumentation: Exit node (no retryable errors path)
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      state.deps.workflowUpdate.exitNode(state._httpJobId, 'enforce');
+    }
+    
     return {
       ...state,
       violations: []  // Clear non-blocking errors
@@ -220,6 +233,11 @@ ${formattedViolations}
   
   console.log('💾 Enforcement feedback saved for learning\n');
   console.log('📨 Passing violations to Plan node for strategy decision...\n');
+  
+  // ✅ Workflow instrumentation: Exit node (retry path)
+  if (state.deps?.workflowUpdate && state._httpJobId) {
+    state.deps.workflowUpdate.exitNode(state._httpJobId, 'enforce');
+  }
   
   return {
     ...state,

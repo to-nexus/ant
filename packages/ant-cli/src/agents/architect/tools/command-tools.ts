@@ -25,7 +25,13 @@ export function createRunCommandTool(commandPort: CommandPort, projectPath: stri
 - Install dependencies (e.g., "npm install", "npm install axios")
 - Run builds (e.g., "npm run build", "npm run dev")
 - Run tests (e.g., "npm test", "npm run lint")
+- List files (e.g., "ls -la", "find . -name '*.ts'")
+- Check file contents (e.g., "cat package.json", "grep -r 'pattern' src/")
 - Execute任意 commands (e.g., "npx prisma generate")
+
+CRITICAL: Use 'working_directory' parameter instead of 'cd':
+❌ WRONG: "cd src/domain && ls -la" (cd doesn't work in subshells)
+✅ CORRECT: command="ls -la", working_directory="src/domain"
 
 IMPORTANT: Command output is streamed in real-time. If a command fails, you can see the error and retry with fixes.`,
       input_schema: {
@@ -37,7 +43,7 @@ IMPORTANT: Command output is streamed in real-time. If a command fails, you can 
           },
           working_directory: {
             type: 'string',
-            description: 'Optional working directory (relative to project root). Defaults to project root.',
+            description: 'Optional working directory (relative to project root). Use this instead of "cd" in command. Example: "src/domain/validators". Defaults to project root.',
           },
         },
         required: ['command'],

@@ -87,7 +87,14 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'learn', taskInfo);
+    await state.deps.workflowUpdate.enterNode(
+      state._httpJobId, 
+      'learn', 
+      taskInfo, 
+      undefined, // llmInfo
+      state.recursionCount,
+      state.recursionLimit
+    );
   }
   
   // 0. Generate quality evaluation report (optional, if files were generated)
@@ -330,6 +337,11 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     console.log(`🚀 [Learn] Background learning queued, continuing workflow...\n`);
   } else {
     console.log(`ℹ️  [Learn] Memory/Chunk ports not available, skipping learning storage\n`);
+  }
+  
+  // ✅ Workflow instrumentation: Exit node (success path)
+  if (state.deps?.workflowUpdate && state._httpJobId) {
+    state.deps.workflowUpdate.exitNode(state._httpJobId, 'learn');
   }
   
   return { ...state, learnings, branch, filesWritten };
