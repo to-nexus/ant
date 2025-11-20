@@ -54,6 +54,11 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       console.log(`✅ Task "${completedTask.name}" completed!`);
     }
     
+    // ✅ CRITICAL: Clear conversation history for next task
+    // Each task should start fresh without previous task's conversation
+    state.conversationHistory = [];
+    console.log(`🧹 [checkTaskStatus] Cleared conversation history for next task`);
+    
     // Update completedTasks (IDs only - for backward compatibility)
     const completedTasks = state.completedTasks || [];
     completedTasks.push(completedTask.id);
@@ -160,6 +165,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       retries: 0,
       violations: [],
       enforcementReason: undefined,
+      conversationHistory: [],  // ✅ Clear for next task
       recursionCount: state.recursionCount,  // ✅ Propagate recursion count
       recursionLimit: state.recursionLimit,  // ✅ Propagate recursion limit
     };

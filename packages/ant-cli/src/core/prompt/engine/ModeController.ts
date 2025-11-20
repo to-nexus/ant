@@ -164,8 +164,8 @@ export class ModeController {
     
     // Phase-specific injections
     if (phase === 'plan') {
-      // New project setup warning
-      if (!context.stats.hasOriginalFiles && task === 'code') {
+      // New project setup warning (ONLY for setup tasks!)
+      if (!context.stats.hasOriginalFiles && task === 'code' && context.currentTask?.type === 'setup') {
         injections.push(`${phasePrefix}/new-project-warning`);
       }
       
@@ -176,10 +176,12 @@ export class ModeController {
     }
     
     if (phase === 'execute') {
-      // ✅ Markdown output format (always include for real-time MD file streaming)
-      const mdFormatPath = `${phasePrefix}/markdown-output-format`;
-      injections.push(mdFormatPath);
-      console.log(`[ModeController] Adding markdown-output-format injection: ${mdFormatPath}`);
+      // ✅ Markdown output format (ONLY for design job - uses XML streaming)
+      if (task === 'design') {
+        const mdFormatPath = `${phasePrefix}/markdown-output-format`;
+        injections.push(mdFormatPath);
+        console.log(`[ModeController] Adding markdown-output-format injection: ${mdFormatPath}`);
+      }
       
       // ✅ Language-specific environment rules (highest priority - applies to ALL execute tasks)
       const language = this.detectLanguage(context);
@@ -206,11 +208,10 @@ export class ModeController {
         injections.push(`${phasePrefix}/injections/runtime-error-fix`);
       }
       
-      // New project setup injection (highest priority for new projects)
-      if (!context.stats.hasOriginalFiles && task === 'code') {
-        // General setup guide (language-agnostic)
-        injections.push(`${phasePrefix}/new-project-setup-general`);
-        
+      // New project setup injection (ONLY for setup tasks!)
+      // Note: Setup instructions are now in base.md (dedicated setup section)
+      // Only language-specific config is added as injection
+      if (!context.stats.hasOriginalFiles && task === 'code' && context.currentTask?.type === 'setup') {
         // Language-specific setup details
         const languageConfigPath = `${task}/languages/${language}/setup/config`;
         injections.push(languageConfigPath);

@@ -136,6 +136,16 @@ export async function tool(
     taskReminder = `\n\n# Current Task Reminder\n` +
       `**${state.currentTask.name}** (${state.currentTask.type})\n\n` +
       `${state.currentTask.description}`;
+    
+    // ✅ CRITICAL: Setup task MUST install dependencies after config files
+    if (state.currentTask.type === 'setup') {
+      taskReminder += `\n\n⚠️  **SETUP TASK - MANDATORY STEPS:**\n` +
+        `1. ✅ Generate ALL config files (package.json, tsconfig.json, etc.)\n` +
+        `2. ⚠️  **RUN: npm install** (or pnpm/yarn install)\n` +
+        `3. ✅ Output: <done>true</done>\n\n` +
+        `🚫 If you skip "npm install", setup FAILS!\n` +
+        `✅ After "npm install" completes, output <done>true</done>`;
+    }
   }
   
   const newHistory = [
