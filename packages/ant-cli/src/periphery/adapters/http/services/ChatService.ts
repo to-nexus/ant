@@ -920,7 +920,7 @@ export class ChatService {
             console.log(`[ChatService] 🔍 Tool: ${name}`);
             this.addContentToCurrentMessage(projectId, featureName, {
               type: 'exploring',
-              content: name === 'list_files' ? 'Listing files...' : 'Searching code...',
+              content: 'Exploring...',
               metadata: {
                 timestamp: new Date().toISOString()
               }

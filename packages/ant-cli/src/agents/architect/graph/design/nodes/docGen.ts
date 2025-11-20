@@ -189,9 +189,8 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
               description: state.currentTask.description,
             },
           },
-          state.planText,  // ✅ CRITICAL: Pass plan!
-          undefined,  // mode (PromptEngine will infer from task)
-          undefined   // taskType (PromptEngine will infer)
+          undefined,
+          undefined
         );
         
         // ✅ Extract system prompt from formatted messages

@@ -157,20 +157,19 @@ export class PromptEngine {
     context: ProjectContext,
     artifacts: {
       directive?: string;
-      designDoc?: string;       // For code task: design document
-      previousDesign?: string;  // For design task: previous design
+      designDoc?: string;
+      previousDesign?: string;
       prdSpec?: string;
-      originalFiles?: string;   // Git HEAD version (for comparison)
-      currentCode?: string;     // Working tree code
-      currentTask?: {           // Current task being executed
+      originalFiles?: string;
+      currentCode?: string;
+      currentTask?: {
         name: string;
         type: string;
         description: string;
       };
     },
-    plan: string,
     mode?: CodeMode,
-    taskType?: string  // 'setup' | 'feature' | 'error' for code tasks
+    taskType?: string
   ): Promise<PromptBuildResult> {
     const startTime = Date.now();
     
@@ -179,11 +178,10 @@ export class PromptEngine {
       task,
       context,
       artifacts,
-      plan,
       mode
     );
     
-    // Layer 2: Assemble context (reuse from plan phase if available)
+    // Layer 2: Assemble context
     const assembled = await this.assembler.assemble(
       task,
       context,
@@ -204,12 +202,11 @@ export class PromptEngine {
       taskType
     );
     
-    // Layer 4: Compose prompt from templates (with plan)
+    // Layer 4: Compose prompt from templates
     const composed = await this.composer.compose(
       modeConfig,
       context,
-      assembled,
-      plan
+      assembled
     );
     
     // Layer 5: Inject policies

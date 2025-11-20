@@ -69,12 +69,10 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
     
     // ✅ Local 선택 시 health check 수행
     if (mode === 'local') {
-      console.log('[GNB] Checking local backend availability...');
       const isAvailable = await checkLocalBackend();
       
       if (isAvailable) {
         // ✅ 로컬 서버 정상 응답 → 백엔드 전환
-        console.log('[GNB] Local backend available, switching mode');
         setBackendMode('local');
         
         // Reload projects after mode change
@@ -82,7 +80,6 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
         fetchProjects();
       } else {
         // ❌ 로컬 서버 응답 없음 → 안내 페이지만 표시 (backendMode 유지)
-        console.log('[GNB] Local backend not available, showing setup guide');
         window.history.pushState({}, '', '/local');
         window.dispatchEvent(new PopStateEvent('popstate'));
       }

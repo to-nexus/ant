@@ -161,8 +161,7 @@ export class ChatAPIClient {
           break;
         case 'explored':
           const exploredFiles = metadata?.filesCount ?? 0;
-          const tokensCount = metadata?.tokensCount ?? 0;
-          content = `Explored ${exploredFiles} files (~${Math.ceil(tokensCount / 1000)}K tokens)`;
+          content = `Explored ${exploredFiles} files`;
           break;
         case 'grepping':
           const query = metadata?.query ?? '';
@@ -521,8 +520,8 @@ export class ChatAPIClient {
   /**
    * Add exploration result (scan complete)
    */
-  async addExploredResult(filesCount: number, tokensCount: number, filesList?: string[]): Promise<void> {
-    await this.showChatStatus('explored', { filesCount, tokensCount, filesList });
+  async addExploredResult(filesCount: number, filesList?: string[]): Promise<void> {
+    await this.showChatStatus('explored', { filesCount, filesList });
   }
 
   /**

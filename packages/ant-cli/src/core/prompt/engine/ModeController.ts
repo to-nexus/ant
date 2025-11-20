@@ -190,11 +190,6 @@ export class ModeController {
         injections.push(`${phasePrefix}/injections/retry-context`);
       }
       
-      // ✅ NEW: Plan preservation injection (always, to enforce contract)
-      if (context.planContract) {
-        injections.push(`${phasePrefix}/injections/plan-preservation`);
-      }
-      
       // ✅ Missing dependency fix protocol (Critical - language-specific)
       if (context.stats.hasMissingDependency && language && task === 'code') {
         injections.push(`${task}/languages/${language}/execute/missing-dependency-fix`);

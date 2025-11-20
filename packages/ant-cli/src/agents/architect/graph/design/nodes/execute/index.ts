@@ -74,10 +74,6 @@ export async function execute(state: DesignGraphState) {
   const llm = state.deps?.llm as LLMClient;
   const engine = state.deps?.promptEngine as PromptEngine;
 
-  // ✅ Use in-memory planText (no need to read from file)
-  // planText was generated in the plan node and passed through state
-  const strategyContent = state.planText;
-
   // ✅ Get accumulated design from previous tasks (files[])
   const primaryDesign = state.files?.find(f => 
     f.path.includes('system-design') || f.path.includes('design.md')
@@ -98,12 +94,10 @@ export async function execute(state: DesignGraphState) {
     } : undefined
   };
 
-  // Build prompt using PromptEngine with strategy content
   const result = await engine.buildExecutePrompt(
     "design",
     state.context,
-    artifacts,
-    strategyContent  // ✅ Use loaded strategy content
+    artifacts
   );
 
   // Generate design with streaming

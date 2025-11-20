@@ -77,15 +77,11 @@ export class InputNormalizer {
       originalFiles?: string;
       currentCode?: string;
     },
-    plan: string,
     mode?: CodeMode
   ): NormalizedPromptInput {
-    // For execute phase, goal comes from plan or directive
-    const goal = plan 
-      ? this.extractGoal(plan)
-      : artifacts.directive 
-        ? this.extractGoal(artifacts.directive)
-        : this.getDefaultGoal(task, "execute");
+    const goal = artifacts.directive 
+      ? this.extractGoal(artifacts.directive)
+      : this.getDefaultGoal(task, "execute");
     
     this.validateInput(task, "execute", artifacts);
     

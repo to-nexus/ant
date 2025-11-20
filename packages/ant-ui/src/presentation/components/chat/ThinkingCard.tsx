@@ -26,18 +26,10 @@ export function ThinkingCard({ content }: ThinkingCardProps) {
   // ✅ CRITICAL: Use ref to track previous content length to prevent infinite scroll loops
   const prevThinkingLengthRef = useRef(0);
   
-  // ✅ NEW: Listen to backend collapse signal (from thinking_collapse SSE event)
   useEffect(() => {
-    console.log('[ThinkingCard] 🔍 Metadata check:', {
-      collapsed: content.metadata?.collapsed,
-      durationMs: content.metadata?.durationMs,
-      fullMetadata: content.metadata
-    });
-    
     if (content.metadata?.collapsed === true) {
-      console.log('[ThinkingCard] 💭 Backend signaled collapse - auto-collapsing with duration:', content.metadata?.durationMs);
       setIsThinkingComplete(true);
-      setIsThinkingExpanded(false);  // ✅ Force collapsed state
+      setIsThinkingExpanded(false);
       setIsUserScrolling(false);
     }
   }, [content.metadata?.collapsed, content.metadata?.durationMs]);

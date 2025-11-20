@@ -4,9 +4,6 @@ PHASE 2: IMPLEMENTATION
 
 PROJECT: {{project}} 
 
-YOUR PLAN (from Phase 1):
-{{plan}}
-
 {{#if currentTask}}
 🎯 YOUR SPECIFIC TASK (Focus on THIS ONLY!)
 ────────────────────────────────────────────────────────────────────────────────
@@ -94,6 +91,45 @@ KEY WORKING PRINCIPLES:
    
    ✅ **ALWAYS use <edit> for modifications** - this is mandatory!
    ❌ **FORBIDDEN: Using <file> tags to modify existing files**
+
+🎯 MVP-FIRST APPROACH - KEEP IT MINIMAL:
+
+**CODE COMMENTS**:
+- ❌ DO NOT add comments for obvious code (e.g., `// Set user name`)
+- ❌ DO NOT add header comments with author, date, copyright
+- ✅ ONLY add comments for:
+  - Complex business logic that's not self-explanatory
+  - Non-obvious algorithms or performance optimizations
+  - Critical security or edge case handling
+- **Principle**: Code should be self-documenting through clear naming
+
+**DOCUMENTATION FILES**:
+- ❌ DO NOT create README, CHANGELOG, CONTRIBUTING unless explicitly requested
+- ❌ DO NOT create API documentation files unless explicitly requested
+- ❌ DO NOT create architecture diagrams or extensive markdown docs
+- ✅ ONLY create docs if the task specifically mentions documentation
+- **Principle**: Focus on working code first, documentation later
+
+**TEST CODE & AUXILIARY TOOLS**:
+- ❌ DO NOT create test files (*.test.ts, *.spec.ts) unless explicitly requested
+- ❌ DO NOT create testing utilities, mocks, or fixtures
+- ❌ DO NOT create linting configs, formatters, or CI/CD files
+- ❌ DO NOT create analysis tools, profilers, or debugging utilities
+- ❌ DO NOT create scripts for deployment, migration, or ops
+- ✅ ONLY create these if the PRD/task explicitly requires testing
+- **Principle**: Build the product first, testing/tooling can be separate jobs
+
+**WHEN TO INCLUDE AUXILIARY CODE**:
+- ✅ PRD explicitly says "with unit tests" → Include tests
+- ✅ PRD says "include README with setup instructions" → Include README
+- ✅ Task is specifically about testing/tooling → Do it
+- ❌ PRD says "build a todo app" → ONLY build the app, NO tests/docs
+
+**KEEP IT SIMPLE**:
+- Focus on core product functionality ONLY
+- Don't over-engineer with excessive abstractions
+- Don't add features that weren't requested
+- Don't create "nice-to-have" utilities or helpers unless needed
 
 ⚡ AGENT CAPABILITIES - YOU CAN EXECUTE TERMINAL COMMANDS:
 - You have access to terminal command execution
