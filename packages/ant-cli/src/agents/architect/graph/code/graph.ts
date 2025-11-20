@@ -71,19 +71,6 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       completedTasksDetailsIds: completedTasksDetails.map(t => t.id)
     });
     
-    // ✅ CRITICAL: Save checkpoint after completing a task
-    // This ensures completedTasksDetails is persisted to session
-    const { saveCheckpoint } = await import('./nodes/checkpoint');
-    const stateWithCompletedTask = {
-      ...state,
-      completedTasks,
-      completedTasksDetails,
-      currentTask: undefined
-    };
-    
-    await saveCheckpoint(stateWithCompletedTask);
-    console.log(`[checkTaskStatus] ✅ Checkpoint saved with completedTasksDetails (${completedTasksDetails.length} tasks)`);
-    
     // If feature task, mark in featureTasks map
     if (completedTask.type === 'feature' && state.featureTasks) {
       const feature = state.featureTasks.get(completedTask.id);
@@ -132,7 +119,9 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
     };
     
     // ✅ CRITICAL: Save checkpoint with updated completedTasksDetails
+    const { saveCheckpoint } = await import('./nodes/checkpoint');
     await saveCheckpoint(updatedState);
+    console.log(`[checkTaskStatus] ✅ Checkpoint saved with completedTasksDetails (${completedTasksDetails.length} tasks)`);
     
     // ✅ CRITICAL: Update Kanban to next task AFTER checkTaskStatus SSE sent
     // This ensures frontend sees checkTaskStatus animation before Kanban switches

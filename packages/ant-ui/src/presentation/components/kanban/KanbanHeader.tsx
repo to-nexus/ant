@@ -106,7 +106,9 @@ export function ElapsedTimeBadge({
     }, 1000);
     
     return () => clearInterval(intervalId);
-  }, [isInitialized, realtimeElapsed, jobTiming]);
+  }, [isInitialized, jobTiming?.pausedAt, jobTiming?.completedAt]);
+  // ✅ CRITICAL: Don't include realtimeElapsed in deps!
+  // Including it would cause interval to reset every second → timer never advances
   
   // ✅ Show badge if job has timing data
   if (!jobTiming) {
