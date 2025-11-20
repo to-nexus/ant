@@ -63,10 +63,11 @@ export class KanbanService {
       totalElapsed += currentTaskElapsed;
     }
     
-    // 4. Subtract total paused duration
-    if (jobTiming.totalPausedDuration) {
-      totalElapsed -= jobTiming.totalPausedDuration;
-    }
+    // ❌ REMOVED: Don't subtract jobTiming.totalPausedDuration again!
+    // Why: completedTasksDetails[].elapsedTime already excludes pause time
+    // and currentTask calculation above also excludes pause time.
+    // Subtracting jobTiming.totalPausedDuration here causes DOUBLE DEDUCTION
+    // and makes totalElapsed go negative → reset to 0 → UI shows 0s!
     
     return Math.max(0, totalElapsed); // Never return negative
   }
