@@ -133,6 +133,7 @@ export async function docGen(
     console.log(`\n✅ [DocGen] XML streaming complete`);
     console.log(`   Thinking: ${thinking.length} chars`);
     console.log(`   Text: ${textResponse.length} chars`);
+    console.log(`   Text content (first 500 chars):\n${textResponse.substring(0, 500)}`);
     console.log(`   Files generated: ${files.length}`);
     files.forEach(f => console.log(`      📄 ${f.path}: ${f.content.length} chars`));
     
@@ -218,6 +219,18 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
     const mergedContent = `${basePrompt}\n\n${runtimeContext}`;
     console.log(`   mergedContent type: ${typeof mergedContent}, length: ${mergedContent.length}`);
     
+    // ✅ DEBUG: Search for markdown-output-format in prompt
+    const hasMarkdownFormat = mergedContent.includes('<file path=') || mergedContent.includes('Markdown File Output Format');
+    console.log(`\n🔍 [DocGen] Markdown format check: ${hasMarkdownFormat}`);
+    console.log(`\n📜 [DocGen] Prompt TAIL (last 3000 chars):\n${mergedContent.slice(-3000)}\n`);
+    
+    if (!hasMarkdownFormat) {
+      console.log(`\n⚠️  WARNING: Markdown output format NOT found in prompt!`);
+      console.log(`   Prompt length: ${mergedContent.length} chars`);
+      console.log(`   First 2000 chars:\n${mergedContent.substring(0, 2000)}\n`);
+      console.log(`   Last 2000 chars:\n${mergedContent.slice(-2000)}\n`);
+    }
+    
     messages.push({
       role: 'user',
       content: mergedContent,
@@ -235,14 +248,13 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
 }
 
 /**
- * Build runtime context (task, plan, existing design, file format, instructions)
+ * Build runtime context (task, directive, existing design)
  * 
  * This supplements PromptEngine's base prompt with execution-specific context:
  * - Current task and directive
- * - Execution plan (from plan node)
  * - Existing design (for continuation)
- * - File output format (Markdown streaming)
- * - Tool instructions
+ * 
+ * Note: Output format instructions are in PromptEngine templates
  */
 function buildRuntimeContext(state: DesignGraphState): string {
   const task = state.currentTask;
@@ -267,13 +279,6 @@ function buildRuntimeContext(state: DesignGraphState): string {
   if (state.design) {
     lines.push(`# Existing Design Document`);
     lines.push(state.design);
-    lines.push('');
-  }
-  
-  // ✅ 4. Execution Plan (from plan node)
-  if (state.planText) {
-    lines.push(`# Execution Plan`);
-    lines.push(state.planText);
     lines.push('');
   }
   

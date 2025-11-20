@@ -177,7 +177,9 @@ export class ModeController {
     
     if (phase === 'execute') {
       // ✅ Markdown output format (always include for real-time MD file streaming)
-      injections.push(`${phasePrefix}/injections/markdown-output-format`);
+      const mdFormatPath = `${phasePrefix}/markdown-output-format`;
+      injections.push(mdFormatPath);
+      console.log(`[ModeController] Adding markdown-output-format injection: ${mdFormatPath}`);
       
       // ✅ Language-specific environment rules (highest priority - applies to ALL execute tasks)
       const language = this.detectLanguage(context);
@@ -207,7 +209,7 @@ export class ModeController {
       // New project setup injection (highest priority for new projects)
       if (!context.stats.hasOriginalFiles && task === 'code') {
         // General setup guide (language-agnostic)
-        injections.push(`${phasePrefix}/injections/new-project-setup-general`);
+        injections.push(`${phasePrefix}/new-project-setup-general`);
         
         // Language-specific setup details
         const languageConfigPath = `${task}/languages/${language}/setup/config`;

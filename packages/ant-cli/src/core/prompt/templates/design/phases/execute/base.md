@@ -1,29 +1,70 @@
-You are creating a **CONCISE** SYSTEM DESIGN DOCUMENT for: **{{project}}**
+════════════════════════════════════════════════════════════════════════════════
+🚨 CRITICAL: READ THIS FIRST - YOUR OUTPUT WILL BE REJECTED IF TOO LONG! 🚨
+════════════════════════════════════════════════════════════════════════════════
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+You are creating a **EXTREMELY CONCISE** SYSTEM DESIGN DOCUMENT for: **{{project}}**
 
-⚠️ **OUTPUT LENGTH ENFORCEMENT** ⚠️
+**ABSOLUTE LENGTH LIMITS** (if you exceed these, your output is REJECTED):
 
-Your output **WILL BE REJECTED** if it exceeds:
-- Simple project: **800 lines MAX**
-- Medium project: **1500 lines MAX**
-- Complex project: **3000 lines MAX**
+| Project Type | TOTAL Document MAX | Per-Chapter MAX |
+|-------------|-------------------|-----------------|
+| **Simple** (todo, counter) | **150 lines** | **30 lines** |
+| **Medium** (blog, landing) | **300 lines** | **60 lines** |
+| **Complex** (SaaS, marketplace) | **600 lines** | **120 lines** |
 
-**COUNT YOUR LINES. STOP WHEN YOU HIT THE LIMIT.**
+**EXAMPLE OF ACCEPTABLE LENGTH:**
+```
+Simple Todo App Design Document:
+## 1. Architecture (25 lines)
+- Pattern: MVC (1 line)
+- Components: Model, View, Controller (3 lines)
+- Tech: React + Context API (2 lines)
+- ... (concise descriptions)
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 2. Data Models (30 lines)
+- Todo interface (5 lines)
+- State structure (5 lines)
+- ... (brief definitions)
 
-🚨 **ABSOLUTE RULE #1: STRICT LENGTH LIMITS** 🚨
+## 3. Implementation (40 lines)
+- Component list (10 lines)
+- API methods (10 lines)
+- ... (signatures only)
 
-**YOUR OUTPUT WILL BE REJECTED IF IT EXCEEDS THESE LIMITS:**
+TOTAL: ~95 lines ✅
+```
 
-| Document Type | MAX Length | Per-Chapter MAX |
-|--------------|------------|-----------------|
-| Simple project (todo app) | **800 lines** | 150 lines |
-| Medium project (blog) | **1500 lines** | 250 lines |
-| Complex project (SaaS) | **3000 lines** | 400 lines |
+**EXAMPLE OF UNACCEPTABLE LENGTH:**
+```
+❌ "Let me explain React Context in detail..." (tutorial mode)
+❌ "First, we need to understand..." (verbose explanations)
+❌ Code examples > 5 lines
+❌ Detailed implementation guides
+❌ Step-by-step tutorials
+```
 
-**IF YOU WRITE MORE THAN THIS, YOU FAIL.**
+════════════════════════════════════════════════════════════════════════════════
+
+🚨 **COUNTING RULE: COUNT EVERY LINE YOU WRITE** 🚨
+
+**How to count:**
+1. Every line of markdown = 1 line
+2. Empty lines = 1 line
+3. Code blocks count EVERY line inside
+4. Headers count as 1 line each
+
+**While writing:**
+- After each section, COUNT: "I've written X lines so far"
+- If approaching limit, STOP IMMEDIATELY
+- Better to be incomplete than exceed limit!
+
+**IF YOUR TASK SAYS "MAX 60 lines":**
+- Write 50-60 lines MAX
+- Do NOT write 61 lines
+- Do NOT think "just a bit more is okay"
+- STOP AT 60 LINES!
+
+════════════════════════════════════════════════════════════════════════════════
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -46,18 +87,34 @@ Your output **WILL BE REJECTED** if it exceeds:
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-🚨 **ABSOLUTE RULE #3: WRITE CONCISELY** 🚨
+🚨 **ABSOLUTE RULE #3: EXTREME CONCISENESS REQUIRED** 🚨
 
-**Before writing each section, ask:**
-1. "Can I explain this in 3 sentences instead of 10?" → DO IT
-2. "Is this implementation detail or design decision?" → Only keep design
-3. "Would a developer understand without this?" → If YES, delete it
+**Writing Rules:**
+1. **1 sentence per point** - NO paragraphs!
+2. **No tutorials** - Design decisions only, not explanations
+3. **No code examples > 5 lines** - Signatures only
+4. **Bullet points over prose** - Lists are shorter
 
-**Writing Style:**
-- ✅ "Use React Context for state" (1 sentence)
-- ❌ "React Context is a built-in feature that allows..." (tutorial mode)
+**GOOD Examples (concise):**
+```
+✅ Architecture: Layered (Presentation/Domain/Infrastructure)
+✅ State: React Context API
+✅ Routing: React Router v6
+✅ Components: Button, Card, Input (see ch.3)
+```
 
-**If you're writing a tutorial, YOU'RE DOING IT WRONG.**
+**BAD Examples (too verbose):**
+```
+❌ "The architecture follows a layered pattern which separates concerns into three distinct layers. The presentation layer handles UI rendering, the domain layer manages business logic, and the infrastructure layer deals with external dependencies. This approach provides better maintainability and testability."
+
+❌ "For state management, we will use React Context API. React Context is a built-in React feature that allows you to share data across the component tree without prop drilling. It's simpler than Redux for our use case..."
+
+THESE ARE TUTORIALS, NOT DESIGN!
+```
+
+**Target length for each sentence:**
+- ✅ 5-15 words per sentence
+- ❌ NOT 30-50 words per sentence
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -111,10 +168,17 @@ If PRD says "Tailwind" → Don't suggest Material-UI/Bootstrap
 
 This is a CONTINUATION task. The design document above already exists from previous work.
 
+**⚠️ LENGTH TRACKING (CRITICAL!):**
+- **Existing document**: Count the lines above (estimate ~{{designDocLines}} lines)
+- **Your task budget**: Extract from your task description (e.g., "MAX 600 lines")
+- **TOTAL after your addition**: Existing + Your Addition MUST NOT exceed project limit!
+- **Example**: If existing is 1200 lines and your budget is 600 lines, you can add UP TO 600 lines (but check total doesn't exceed 3000!)
+
 **YOU MUST**:
 1. Generate ONLY the new/modified sections relevant to your current task
 2. DO NOT regenerate existing sections that don't need changes
 3. Clearly mark which sections you're adding/updating with headers
+4. **STOP WRITING when you hit your task's line budget!**
 
 **Example Format**:
 ```markdown
@@ -128,6 +192,12 @@ This is a CONTINUATION task. The design document above already exists from previ
 
 [Your new section here]
 ```
+
+**BEFORE YOU START WRITING:**
+- Count existing lines (roughly): {{designDocLines}} lines
+- Check your task budget from description
+- Plan your sections to fit within budget
+- Write concisely to stay under limit!
 
 This approach saves tokens and prevents redundant work. The system will merge your changes with the existing document.
 
@@ -299,11 +369,26 @@ Response: { id: string; title: string }
 
 | Section | Simple | Medium | Complex |
 |---------|--------|--------|---------|
-| Overview | 50 lines | 80 lines | 100 lines |
-| Architecture | 100 lines | 150 lines | 250 lines |
-| Design Decisions | 150 lines | 250 lines | 400 lines |
-| Tech Stack | 50 lines | 80 lines | 100 lines |
-| NFRs | 50 lines | 100 lines | 150 lines |
+| Overview | 10 lines | 20 lines | 40 lines |
+| Architecture | 20 lines | 40 lines | 80 lines |
+| Design Decisions | 30 lines | 60 lines | 120 lines |
+| Tech Stack | 15 lines | 30 lines | 60 lines |
+| Components | 40 lines | 80 lines | 160 lines |
+| Data Models | 20 lines | 40 lines | 80 lines |
+| NFRs | 15 lines | 30 lines | 60 lines |
+
+**CRITICAL CALCULATION:**
+- Count TOTAL lines from ALL chapters
+- Simple: **150 lines MAX** (all chapters combined)
+- Medium: **300 lines MAX** (all chapters combined)
+- Complex: **600 lines MAX** (all chapters combined)
+
+**IF YOU'RE WRITING A CONTINUATION TASK:**
+- Existing doc: {{designDocLines}} lines
+- Your budget: [from task description] lines
+- TOTAL MUST NOT EXCEED project limit!
+- Example: Existing 150 lines + Your 150 lines = 300 lines (Medium project OK)
+- Example: Existing 200 lines + Your 150 lines = 350 lines (Medium project FAIL!)
 
 **IF YOU EXCEED THESE, YOU FAIL.**
 

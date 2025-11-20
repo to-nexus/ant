@@ -1,6 +1,11 @@
 import { promises as fs } from "fs";
 import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import Handlebars from "handlebars";
+
+// ✅ ESM-compatible __dirname replacement
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 import { PromptPort } from "../../../core/ports";
 
 // ✅ Register helpers once (top-level, not per render call)

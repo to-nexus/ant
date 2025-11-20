@@ -589,7 +589,7 @@ Context loading failed. Use tools to explore:
   
   // ===== GENERATE EXECUTION PLAN FOR CURRENT TASK =====
   
-  // ✅ CRITICAL: For retry, minimize context to reduce token usage
+  //  CRITICAL: For retry, minimize context to reduce token usage
   // Prepare artifacts
   const artifacts = {
     directive: state.directive,

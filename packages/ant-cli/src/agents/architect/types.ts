@@ -16,8 +16,10 @@ export type CodeMode = CoreCodeMode;
 export interface ProjectContext extends CoreProjectContext {
   featureFolder: string;
   config?: any;  // ✅ Make optional to avoid JSON serialization issues
-  projectPath?: string;  // ✅ Extracted from config.localPath
-  repoType?: string;     // ✅ Extracted from config.repoType
+  projectPath?: string;     // ✅ Extracted from config.localPath
+  repoType?: string;        // ✅ Extracted from config.repoType
+  branchBase?: string;      // ✅ Extracted from config.branchBase (for learn node)
+  strictValidation?: boolean; // ✅ Extracted from config.strictValidation (for runtime validation)
   
   // ✅ UserContext information for path resolution
   userId?: string;

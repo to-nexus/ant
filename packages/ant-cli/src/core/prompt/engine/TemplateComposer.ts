@@ -60,6 +60,7 @@ export class TemplateComposer {
           : 'CREATION MODE: Build from scratch',
         currentCode: assembled.currentCode || '',
         designDoc: assembled.designDoc || '',
+        designDocLines: assembled.designDoc ? assembled.designDoc.split('\n').length : 0,  // ✅ Line count for length tracking
         currentTask: assembled.currentTask || null,
         projectPath: (context as any).projectPath || context.workingDir || '/path/to/project'
       }
@@ -187,11 +188,15 @@ export class TemplateComposer {
     const injections: string[] = [];
     
     for (const path of injectionPaths) {
+      console.log(`[TemplateComposer] Rendering injection: ${path}`);
       const vars = this.getInjectionVars(path, assembled);
       const rendered = await this.renderTemplate(path, vars);
       
       if (rendered) {
+        console.log(`  ✅ Rendered (${rendered.length} chars)`);
         injections.push(rendered);
+      } else {
+        console.log(`  ⚠️  Empty or failed to render`);
       }
     }
     
@@ -209,7 +214,7 @@ export class TemplateComposer {
     
     const varMap: Record<string, any> = {
       'directive': { content: assembled.directive },
-      'design-doc': { content: this.truncate(assembled.designDoc || '', 800) },
+      'design-doc': { content: assembled.designDoc || '' },  // ❌ REMOVED TRUNCATE - was causing LLM to ignore design and improvise
       'prd-spec': { content: this.truncate(assembled.prdSpec || '', 800) },
       'original-files': { files: assembled.originalFiles },
       'current-code': { content: this.truncate(assembled.currentCode || '', 500) },

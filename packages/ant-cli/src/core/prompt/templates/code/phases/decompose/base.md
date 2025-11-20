@@ -53,7 +53,7 @@ Analyze the specification and decide if a SETUP task is needed.
         "name": "Setup [What You're Setting Up]",
         "type": "setup",
         "priority": 100,
-        "description": "Generate [specific config files]. Example: Dockerfile, docker-compose.yml, .dockerignore for Docker support",
+        "description": "Generate ONLY configuration files: [list specific config files like package.json, tsconfig.json, etc.]. Create EMPTY folder structure: [list folders]. DO NOT create any application code files (.tsx, .jsx, .ts components/services/hooks/pages).",
         "validationRequired": true,
         "validationType": "static",
         "validationRationale": "Config files need syntax validation"
@@ -61,6 +61,15 @@ Analyze the specification and decide if a SETUP task is needed.
       ... then feature tasks (priority 200+) ...
   ]
 }
+
+🚨 CRITICAL FOR SETUP TASK DESCRIPTION:
+- ✅ List specific config files (package.json, tsconfig.json, tailwind.config.ts, etc.)
+- ✅ List folder structure (src/domain/, src/infrastructure/, src/application/, src/presentation/)
+- ✅ ALWAYS add: "Create EMPTY folders only, NO code files"
+- ❌ DO NOT say "Create components/atoms folder with Button, Input, etc." - that implies code!
+- ❌ DO NOT list specific component names or implementation details
+- ✅ GOOD: "Create folder structure: src/presentation/components/atoms/ (empty folder)"
+- ❌ BAD: "Create folder structure: src/presentation/components/atoms/ (Button, Input, Icon)"
 
 YOUR TASK:
 Break this specification into a prioritized list of implementation tasks.
@@ -82,6 +91,10 @@ GUIDELINES:
    - Analyze spec: Does it require NEW configuration files?
    - If yes: Create setup task describing WHAT configs to generate
    - If no: Skip to feature tasks
+   - 🚨 CRITICAL: Setup task description MUST say:
+     * "Generate ONLY config files: [list files]"
+     * "Create EMPTY folders: [list folders]"  
+     * "DO NOT create any .tsx/.jsx/.ts code files"
    - Setup task should ONLY generate config files (NO application code)
    
 2. **Feature Tasks** (priority 200-899):

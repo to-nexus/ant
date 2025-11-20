@@ -124,16 +124,12 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     throw new Error("GitPort not provided for branch management");
   }
   
-  // ✅ DEBUG: Log config before createBranch
-  console.log('\n🔍 [Learn] createBranch config check:');
-  console.log('   context.config:', JSON.stringify(state.context.config, null, 2));
-  console.log('   gitPort type:', gitPort.constructor.name);
-  console.log('');
-  
   const branch = state.context.featureFolder
     ? `feature/${state.context.featureFolder}`
     : `feature/${state.context.project}-arch-${Date.now()}`;
-  await gitPort.createBranch(branch, state.context.config.branchBase);
+  
+  const branchBase = state.context.branchBase || 'main';
+  await gitPort.createBranch(branch, branchBase);
   
   // Log files that were written in writeFiles
   console.log(`\n📌 Branch '${branch}' ready with ${state.files.length} files`);

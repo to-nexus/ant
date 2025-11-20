@@ -42,7 +42,6 @@ export async function validate(state: ArchitectGraphState): Promise<ArchitectGra
   //   - [...arr] (array spread)
   const forbiddenEllipsis = /\/\/\s*\.{3}|\/\*\s*\.{3}\s*\*\/|^\s*\.{3}\s*$/m;
 
-  const config = state.context.config;
   const git = state.deps?.git ? state.deps.git : null as any;
 
   // ✅ IMPROVED: Check if no files generated
