@@ -91,6 +91,9 @@ You MUST wrap ALL output in XML tags. Choose the appropriate tag based on your t
 - Use markdown format
 - Include clear headings and subheadings (##, ###, ####)
 - Use tables, lists, and diagrams where appropriate
+- Follow text formatting guidelines (keep content inline, no unnecessary line breaks)
+
+{{> base/text-response-format}}
 
 **⚠️ CRITICAL: DESIGN DOCUMENT SCOPE - WHAT TO INCLUDE**
 
