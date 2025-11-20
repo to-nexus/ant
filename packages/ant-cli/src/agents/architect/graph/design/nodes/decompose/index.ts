@@ -108,8 +108,8 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
         // ✅ Restore buffer from disk for interruption recovery
         try {
           const { StreamBufferManager } = await import('../../../../../../core/streaming/buffer/StreamBufferManager');
-          const featurePath = state.context.workspaceResolver?.getFeaturePath(
-            { userId: state.context.userId, organizationId: state.context.organizationId },
+          const featurePath = state.deps?.workspaceResolver?.getFeaturePath(
+            { userId: state.context.userId || 'local', organizationId: state.context.organizationId || 'local', workspacePath: '' },
             state.context.project,
             state.context.featureFolder
           ) || state.context.featurePath || '';

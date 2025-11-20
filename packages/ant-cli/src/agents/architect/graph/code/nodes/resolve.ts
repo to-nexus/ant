@@ -74,9 +74,9 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   }
 
   // 0. Validate workspace exists (WorkspaceResolver 기반)
-  const workspaceResolver = context.workspaceResolver;
+  const workspaceResolver = state.deps?.workspaceResolver;
   if (!workspaceResolver) {
-    throw new Error('WorkspaceResolver not provided in context');
+    throw new Error('WorkspaceResolver not provided in deps');
   }
   
   // ✅ Extract UserContext from ProjectContext

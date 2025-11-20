@@ -34,6 +34,7 @@ export interface DesignGraphState extends TaskArtifacts {
     git?: GitPort;
     analyzer?: CodebaseAnalyzerPort;
     memory?: MemoryPort;
+    workspaceResolver?: import('../../../../infrastructure/workspace/WorkspaceResolver').WorkspaceResolver;  // ✅ For path resolution
     kanbanUpdate?: TaskQueueUpdatePort;  // ✅ For real-time Kanban updates
     fileTreeUpdate?: import('../../../../core/ports').FileTreeUpdatePort;
     workflowUpdate?: import('../../../../core/ports/workflow').WorkflowStateUpdatePort;

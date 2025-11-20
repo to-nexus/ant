@@ -127,8 +127,8 @@ export async function execute(state: DesignGraphState) {
   const { StreamBufferManager } = await import('../../../../../../core/streaming/buffer/StreamBufferManager');
   
   // ✅ Initialize buffer manager for interruption safety
-  const featurePath = state.context.workspaceResolver?.getFeaturePath(
-    { userId: state.context.userId, organizationId: state.context.organizationId },
+  const featurePath = state.deps?.workspaceResolver?.getFeaturePath(
+    { userId: state.context.userId || 'local', organizationId: state.context.organizationId || 'local', workspacePath: '' },
     state.context.project,
     state.context.featureFolder
   ) || state.context.featurePath || '';

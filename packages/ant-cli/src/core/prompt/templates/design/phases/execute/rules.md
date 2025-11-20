@@ -352,4 +352,9 @@ Consider:
 
 ================================================================================
 
-{{> base/tool-calling-rules}}
+⚠️  **DESIGN JOB USES PURE XML STREAMING - NO TOOL CALLING** ⚠️
+
+- ALL file operations use XML tags: `<file>`, `<append>`, `<edit>`, `<delete>`
+- Files are automatically saved from stream buffer
+- NO need to call any tools - just use XML tags
+- When done with a task, simply end your response (no tool calls needed)

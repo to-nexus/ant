@@ -1053,15 +1053,9 @@ export class ChatService {
           typesToFind.includes(c.type) && 
           c.metadata?.filePath === filePath
         );
-        if (existingIndex !== -1) {
-          console.log(`[ChatService] ✅ Found existing file card at index ${existingIndex} for ${filePath} via content search`);
-        }
-      } else {
-        console.log(`[ChatService] ✅ Found existing file card at index ${existingIndex} for ${filePath} via activeFileOperations Map`);
       }
       
       if (existingIndex !== -1) {
-        console.log(`[ChatService] ✅ Updating file card at index ${existingIndex} for ${filePath}, phase: ${phase}`);
         
         // ✅ Determine new type based on phase
         let newType: MessageContent['type'];

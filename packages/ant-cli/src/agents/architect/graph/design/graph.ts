@@ -3,8 +3,8 @@ import { DesignGraphState } from "./state";
 import { resolve } from "./nodes/resolve";
 import { decompose } from "./nodes/decompose/index";
 import { plan } from "./nodes/plan";
-import { docGen } from "./nodes/docGen";  // ✅ NEW: Tool calling
-import { tool } from "./nodes/tool";      // ✅ NEW: Tool execution
+import { docGen } from "./nodes/docGen";  // ✅ XML streaming to buffer
+import { writeFiles } from "./nodes/writeFiles";  // ✅ Save buffer to disk
 import { learn } from "./nodes/learn";
 
 /**
@@ -168,48 +168,21 @@ export function buildDesignGraph() {
   graph.addNode("resolve" as const, resolve as any);
   graph.addNode("decompose" as const, decompose as any);
   graph.addNode("plan" as const, plan as any);
-  graph.addNode("docGen" as const, docGen as any);  // ✅ NEW: LLM reasoning
-  graph.addNode("tool" as const, tool as any);      // ✅ NEW: Tool execution (writes immediately!)
+  graph.addNode("docGen" as const, docGen as any);  // ✅ XML streaming (no tool calling!)
+  graph.addNode("writeFiles" as const, writeFiles as any);  // ✅ Save buffer to disk
   graph.addNode("checkTaskStatus" as const, checkTaskStatus as any);
   graph.addNode("learn" as const, learn as any);
 
-  // ✅ Flow with tool calling: resolve → decompose → [plan → docGen ⇄ tool → check] → learn
+  // ✅ Simplified flow: resolve → decompose → [plan → docGen → writeFiles → check] → learn
+  // Design job uses PURE XML streaming (<file>, <append>, <edit> tags)
+  // docGen: XML streaming to buffer
+  // writeFiles: Save buffer to actual files
   (graph as any).addEdge("__start__", "resolve");
   (graph as any).addEdge("resolve", "decompose");
   (graph as any).addEdge("decompose", "plan");
   (graph as any).addEdge("plan", "docGen");
-  
-  // ✅ DocGen → Router (tool call 체크)
-  graph.addConditionalEdges(
-    "docGen" as any,
-    ((s: DesignGraphState) => {
-      const response = s.llmResponse;
-      
-      if (!response) {
-        return "checkTaskStatus";  // No response, end
-      }
-      
-      // Tool calls 있으면 → tool 노드
-      if (response.toolCalls && response.toolCalls.length > 0) {
-        console.log(`🔧 [Router] ${response.toolCalls.length} tool call(s) detected → tool node`);
-        return "tool";
-      }
-      
-      // Done이면 → checkTaskStatus (tool이 이미 파일 저장함!)
-      if (response.done) {
-        console.log(`✅ [Router] DocGen done → checkTaskStatus`);
-        return "checkTaskStatus";
-      }
-      
-      // 그 외 → docGen 재추론 (드물음)
-      console.log(`🔄 [Router] Continue reasoning → docGen`);
-      return "docGen";
-    }) as any,
-    { tool: "tool", checkTaskStatus: "checkTaskStatus", docGen: "docGen" } as any
-  );
-  
-  // ✅ Tool → DocGen (도구 결과 가지고 다시 추론)
-  (graph as any).addEdge("tool", "docGen");
+  (graph as any).addEdge("docGen", "writeFiles");
+  (graph as any).addEdge("writeFiles", "checkTaskStatus");
   
   // ✅ Conditional routing: more tasks → plan, all done → learn
   graph.addConditionalEdges(

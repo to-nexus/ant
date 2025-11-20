@@ -44,7 +44,25 @@ export async function tool(
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'tool', taskInfo);
+    await state.deps.workflowUpdate.enterNode(
+      state._httpJobId, 
+      'tool', 
+      taskInfo, 
+      undefined, // llmInfo
+      (state as any).recursionCount,  // ✅ Optional: design job doesn't have recursion tracking
+      (state as any).recursionLimit
+    );
+  }
+  
+  // ✅ CRITICAL: Give UI time to render file card from tool_use event
+  // This ensures smooth loading → complete animation for ALL files, not just the first one
+  // Why needed:
+  // - First file: LLM thinking provides natural delay → UI has time → animation works ✅
+  // - Subsequent files: No thinking (disabled) → tool executes immediately → card rendered as completed ❌
+  // - Solution: Intentional 150ms delay for UI card creation (NOT a hack, it's for UX consistency)
+  if (name === 'write_file' || name === 'delete_file') {
+    await new Promise(resolve => setTimeout(resolve, 150));
+    console.log('   ⏱️  UI preparation time provided (150ms) for smooth card animation');
   }
   
   let result: any;
@@ -168,15 +186,31 @@ async function handleWriteFile(
     }
   }
   
+  // ✅ CRITICAL: Convert relative path to absolute path for design outputs
+  // Design files (outputs/design/*.md) should be saved in features/{feature}/outputs/design
+  // NOT in codebase/outputs/design
+  const path = await import('path');
+  let absolutePath = filePath;
+  
+  if (!path.isAbsolute(filePath)) {
+    // Relative path: resolve to feature directory
+    const featurePath = state.context.featurePath;
+    if (!featurePath) {
+      throw new Error('featurePath not available in context. Ensure resolve node has run.');
+    }
+    absolutePath = path.join(featurePath, filePath);
+    console.log(`📍 [Tool] Resolved path: ${filePath} → ${absolutePath}`);
+  }
+  
   // Determine action type
-  const exists = await gitPort.fileExists(filePath);
+  const exists = await gitPort.fileExists(absolutePath);
   const actionType = exists ? 'edit' : 'create';
   
-  // ✅ 2. IMMEDIATELY write to project disk
-  await gitPort.writeFile(filePath, content);
-  console.log(`   💾 ${actionType === 'create' ? 'Created' : 'Modified'}: ${filePath} (${content.length} bytes)`);
+  // ✅ 2. IMMEDIATELY write to project disk (using absolute path)
+  await gitPort.writeFile(absolutePath, content);
+  console.log(`   💾 ${actionType === 'create' ? 'Created' : 'Modified'}: ${absolutePath} (${content.length} bytes)`);
   
-  // ✅ 3. Update state.files
+  // ✅ 3. Update state.files (use relative path for consistency)
   const files = state.files || [];
   const existingFileIndex = files.findIndex(f => f.path === filePath);
   if (existingFileIndex !== -1) {
@@ -186,11 +220,11 @@ async function handleWriteFile(
   }
   state.files = files;
   
-  // ✅ 4. UI notification
+  // ✅ 4. UI notification (use relative path for display)
   if (actionType === 'create') {
     await chatAPI.completeFileCreation(filePath, content);
   } else {
-    const existingContent = exists ? await gitPort.readFile(filePath) : '';
+    const existingContent = exists ? await gitPort.readFile(absolutePath) : '';
     await chatAPI.startFileEdit(filePath);
     await chatAPI.completeFileEdit(filePath, existingContent || '', content);
   }
@@ -213,13 +247,25 @@ async function handleReadFile(
     throw new Error('GitPort not available');
   }
   
+  // ✅ Convert relative path to absolute path for design outputs
+  const path = await import('path');
+  let absolutePath = filePath;
+  
+  if (!path.isAbsolute(filePath)) {
+    const featurePath = state.context.featurePath;
+    if (!featurePath) {
+      throw new Error('featurePath not available in context');
+    }
+    absolutePath = path.join(featurePath, filePath);
+  }
+  
   try {
-    const content = await gitPort.readFile(filePath);
+    const content = await gitPort.readFile(absolutePath);
     if (!content) {
       throw new Error(`File not found or empty: ${filePath}`);
     }
     
-    console.log(`   📖 Read: ${filePath} (${content.length} bytes)`);
+    console.log(`   📖 Read: ${absolutePath} (${content.length} bytes)`);
     
     // ✅ UI notification: read complete (success)
     await chatAPI.addReadComplete(filePath);
@@ -246,7 +292,19 @@ async function handleListFiles(
     throw new Error('GitPort not available');
   }
   
-  const files = await gitPort.listFiles(directory || '.', [
+  // ✅ Convert relative directory path to absolute path for design job
+  const path = await import('path');
+  let absoluteDir = directory || '.';
+  
+  if (!path.isAbsolute(absoluteDir)) {
+    const featurePath = state.context.featurePath;
+    if (!featurePath) {
+      throw new Error('featurePath not available in context');
+    }
+    absoluteDir = path.join(featurePath, absoluteDir);
+  }
+  
+  const files = await gitPort.listFiles(absoluteDir, [
     'node_modules',
     '.git',
     'dist',
@@ -293,8 +351,16 @@ async function handleSearchCode(
     throw new Error('GitPort not available');
   }
   
+  // ✅ Convert relative path to absolute path for design job
+  const path = await import('path');
+  const featurePath = state.context.featurePath;
+  if (!featurePath) {
+    throw new Error('featurePath not available in context');
+  }
+  const absoluteDir = path.join(featurePath, '.');
+  
   // Simple search implementation
-  const files = await gitPort.listFiles('.', ['node_modules', '.git']);
+  const files = await gitPort.listFiles(absoluteDir, ['node_modules', '.git']);
   const results: any[] = [];
   
   for (const file of files.slice(0, 50)) {
@@ -355,15 +421,30 @@ async function handleDeleteFile(
   
   const chatAPI = getChatAPIClient();
   
-  const exists = await gitPort.fileExists(filePath);
+  // ✅ Convert relative path to absolute path for design outputs
+  const path = await import('path');
+  let absolutePath = filePath;
+  
+  if (!path.isAbsolute(filePath)) {
+    const featurePath = state.context.featurePath;
+    if (!featurePath) {
+      throw new Error('featurePath not available in context');
+    }
+    absolutePath = path.join(featurePath, filePath);
+  }
+  
+  const exists = await gitPort.fileExists(absolutePath);
   if (!exists) {
     throw new Error(`File does not exist: ${filePath}`);
   }
   
-  await gitPort.deleteFile(filePath);
-  console.log(`   🗑️  Deleted: ${filePath}`);
+  await gitPort.deleteFile(absolutePath);
+  console.log(`   🗑️  Deleted: ${absolutePath}`);
   
   await chatAPI.completeFileDeletion(filePath);
+  
+  // ✅ Update state.files (use relative path)
+  state.files = (state.files || []).filter(f => f.path !== filePath);
   
   return `File deleted successfully: ${filePath}`;
 }
@@ -382,8 +463,20 @@ async function handleMkdir(
     throw new Error('GitPort not available');
   }
   
-  await gitPort.createDirectory(dirPath);
-  console.log(`   📁 Created directory: ${dirPath}`);
+  // ✅ Convert relative path to absolute path for design outputs
+  const path = await import('path');
+  let absolutePath = dirPath;
+  
+  if (!path.isAbsolute(dirPath)) {
+    const featurePath = state.context.featurePath;
+    if (!featurePath) {
+      throw new Error('featurePath not available in context');
+    }
+    absolutePath = path.join(featurePath, dirPath);
+  }
+  
+  await gitPort.createDirectory(absolutePath);
+  console.log(`   📁 Created directory: ${absolutePath}`);
   
   return `Directory created: ${dirPath}`;
 }

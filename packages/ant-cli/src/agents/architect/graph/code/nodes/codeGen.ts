@@ -30,7 +30,7 @@ export async function codeGen(
   }
   
   // ✅ Build messages from conversation history + current task
-  const messages = buildMessages(state);
+  const messages = await buildMessages(state);
   
   // ✅ Tool activation control: Only enable for code job
   // Design job uses XML streaming (not tool calling)
@@ -68,10 +68,29 @@ export async function codeGen(
   
   // ✅ Initialize BufferManager for MD file streaming (if not exists)
   if (!state._bufferManager) {
+    // ✅ Code job works in CODEBASE directory (not features/)
+    // Get codebase path from context
     const gitPort = state.deps?.git;
-    const projectPath = gitPort ? await gitPort.getRepoRoot() : '';
+    if (!gitPort) {
+      throw new Error('[CodeGen] GitPort is required but not available');
+    }
+    
+    const projectPath = await gitPort.getRepoRoot();
+    
+    // ✅ Validate projectPath is string
+    if (typeof projectPath !== 'string') {
+      console.error('[CodeGen] getRepoRoot returned non-string:', projectPath);
+      throw new Error('[CodeGen] GitPort.getRepoRoot() must return a string path');
+    }
+    
     const featureName = state.featureName || 'unknown';
     const jobId = state._httpJobId || 'unknown';
+    
+    console.log(`📦 [CodeGen] Initializing BufferManager:`, {
+      projectPath,
+      featureName,
+      jobId,
+    });
     
     state._bufferManager = new StreamBufferManager(projectPath, featureName, 'code', jobId);
     console.log(`📦 [CodeGen] BufferManager initialized`);
@@ -194,22 +213,76 @@ export async function codeGen(
 }
 
 /**
- * Build messages for LLM
+ * Build messages for LLM using PromptEngine
  */
-function buildMessages(state: ArchitectGraphState): Array<{
-  role: string;
+async function buildMessages(state: ArchitectGraphState): Promise<Array<{
+  role: 'user' | 'assistant';
   content: string | any[];
-}> {
-  const messages: any[] = [];
+}>> {
+  const messages: Array<{ role: 'user' | 'assistant'; content: string | any[] }> = [];
   
-  // ✅ 1. System prompt (plan + task)
-  const systemPrompt = buildSystemPrompt(state);
-  messages.push({
-    role: 'user',
-    content: systemPrompt,
-  });
+  // ✅ Use PromptEngine for system prompt (if no conversation history)
+  if (!state.conversationHistory || state.conversationHistory.length === 0) {
+    const promptEngine = state.deps?.promptEngine;
+    
+    if (!promptEngine) {
+      throw new Error('[CodeGen] PromptEngine is required but not available in state.deps');
+    }
+    
+    if (!state.currentTask) {
+      throw new Error('[CodeGen] currentTask is required but not available in state');
+    }
+    
+    // ✅ Build prompt using PromptEngine
+    const promptResult = await promptEngine.buildExecutePrompt(
+      'code',  // ✅ AgentTask type (not the task object!)
+      state.context,
+      {
+        directive: state.directive,
+        designDoc: state.design,  // Code job uses designDoc
+        prdSpec: state.prd,
+        originalFiles: state.codeHead,  // Git HEAD version
+        currentCode: state.code,  // Working tree code
+        currentTask: {
+          name: state.currentTask.name,
+          type: state.currentTask.type,
+          description: state.currentTask.description,
+        },
+      },
+      state.codeMode,
+      state.currentTask.type  // taskType for language-specific constraints
+    );
+    
+    // ✅ Extract base prompt from PromptEngine (templates, rules, profiles)
+    const systemMessage = promptResult.formatted.messages.find(m => m.role === 'system' || m.role === 'user');
+    
+    // ✅ CRITICAL: content can be string OR array (Anthropic format)
+    let basePrompt = '';
+    if (systemMessage) {
+      if (typeof systemMessage.content === 'string') {
+        basePrompt = systemMessage.content;
+      } else if (Array.isArray(systemMessage.content)) {
+        // Anthropic format: [{ type: 'text', text: '...' }]
+        const contentArray = systemMessage.content as any[];
+        basePrompt = contentArray
+          .filter((c: any) => c.type === 'text')
+          .map((c: any) => c.text)
+          .join('\n');
+      }
+    }
+    
+    // ✅ CRITICAL: Add runtime context (plan, enforcement, file tree)
+    // PromptEngine provides templates, buildRuntimeContext adds execution context
+    const runtimeContext = buildRuntimeContext(state);
+    
+    // ✅ Merge: PromptEngine base + runtime context
+    messages.push({
+      role: 'user',
+      content: `${basePrompt}\n\n${runtimeContext}`,
+    });
+  }
   
-  // ✅ 2. Conversation history (tool calls & results)
+  // ✅ Add conversation history (if exists)
   if (state.conversationHistory && state.conversationHistory.length > 0) {
     messages.push(...state.conversationHistory);
   }
@@ -218,12 +291,18 @@ function buildMessages(state: ArchitectGraphState): Array<{
 }
 
 /**
- * Build system prompt from plan
+ * Build runtime context (plan, enforcement, file tree, instructions)
+ * 
+ * This supplements PromptEngine's base prompt with execution-specific context:
+ * - Current task and plan (from plan node)
+ * - Enforcement feedback (from validation failures)
+ * - File tree (current codebase state)
+ * - Tool instructions
  */
-function buildSystemPrompt(state: ArchitectGraphState): string {
+function buildRuntimeContext(state: ArchitectGraphState): string {
   const lines: string[] = [];
   
-  // Task info
+  // ✅ 1. Current Task
   if (state.currentTask) {
     lines.push(`# Current Task`);
     lines.push(`**${state.currentTask.name}**`);
@@ -232,41 +311,46 @@ function buildSystemPrompt(state: ArchitectGraphState): string {
     lines.push(``);
   }
   
-  // Plan
+  // ✅ 2. Execution Plan (from plan node)
   if (state.planText) {
-    lines.push(`# Plan`);
+    lines.push(`# Execution Plan`);
     lines.push(state.planText);
     lines.push(``);
   }
   
-  // Enforcement feedback (retry)
+  // ✅ 3. Enforcement Feedback (retry context)
   if (state.enforcementReason) {
     lines.push(`# Previous Attempt Failed`);
     lines.push(state.enforcementReason);
     lines.push(``);
   }
   
-  // Codebase context (file tree - tool calling mode)
+  // ✅ 4. Codebase File Tree
   const fileTree = generateFileTree(state);
   if (fileTree) {
     lines.push(fileTree);
     lines.push(``);
   }
   
-  // Instructions
-  lines.push(`# Instructions`);
+  // ✅ 5. Tool Usage Instructions
+  lines.push(`# Available Tools`);
   lines.push(``);
   lines.push(`You have access to the following tools:`);
   lines.push(`- **write_file(path, content)**: Create or overwrite a file`);
   lines.push(`- **read_file(path)**: Read a file's contents`);
-  lines.push(`- **list_files(directory?, pattern?)**: List files`);
-  lines.push(`- **search_code(pattern, file_pattern?)**: Search code`);
+  lines.push(`- **list_files(directory?, pattern?)**: List files in a directory`);
+  lines.push(`- **search_code(pattern, file_pattern?)**: Search codebase for patterns`);
+  lines.push(`- **delete_file(path)**: Delete a file`);
+  lines.push(`- **mkdir(path)**: Create a directory`);
+  lines.push(`- **apply_patch(path, patch)**: Apply unified diff patch to a file`);
+  lines.push(`- **run_command(command, working_directory?)**: Execute shell command`);
   lines.push(``);
   lines.push(`Use these tools to complete the task. When done, respond with "Task complete" without tool calls.`);
   lines.push(``);
   
   return lines.join('\n');
 }
+
 
 /**
  * Generate file tree for context
