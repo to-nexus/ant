@@ -111,13 +111,38 @@ KEY WORKING PRINCIPLES:
 - **Principle**: Focus on working code first, documentation later
 
 **TEST CODE & AUXILIARY TOOLS**:
-- ❌ DO NOT create test files (*.test.ts, *.spec.ts) unless explicitly requested
-- ❌ DO NOT create testing utilities, mocks, or fixtures
-- ❌ DO NOT create linting configs, formatters, or CI/CD files
-- ❌ DO NOT create analysis tools, profilers, or debugging utilities
-- ❌ DO NOT create scripts for deployment, migration, or ops
-- ✅ ONLY create these if the PRD/task explicitly requires testing
-- **Principle**: Build the product first, testing/tooling can be separate jobs
+
+🚫 **FORBIDDEN TEST FILE PATTERNS** (unless explicitly requested):
+```
+❌ *.test.ts / *.test.tsx / *.test.js / *.test.jsx
+❌ *.spec.ts / *.spec.tsx / *.spec.js / *.spec.jsx
+❌ *.stories.ts / *.stories.tsx / *.stories.js / *.stories.jsx (Storybook)
+❌ *_test.py / test_*.py (Python)
+❌ *_test.go (Go)
+❌ __tests__/** directory
+❌ tests/** directory (unless task is about testing)
+❌ spec/** directory
+```
+
+**Other forbidden auxiliary files:**
+- ❌ Testing utilities, mocks, fixtures, test helpers
+- ❌ Linting configs (.eslintrc, .prettierrc, etc.)
+- ❌ CI/CD pipeline files (.github/workflows/, .gitlab-ci.yml)
+- ❌ Analysis tools, profilers, debugging utilities
+- ❌ Deployment scripts, migration scripts, ops playbooks
+
+**When to create these files:**
+- ✅ Task explicitly says: "Write tests for..."
+- ✅ Task explicitly says: "Add test coverage..."
+- ✅ Task explicitly says: "Create Storybook stories..."
+- ✅ Task specifically mentions testing/tooling as the goal
+
+**Examples:**
+- ❌ Task: "Implement Button component" → DO NOT create Button.spec.tsx
+- ❌ Task: "Add login feature" → DO NOT create login.test.ts
+- ✅ Task: "Write unit tests for Button component" → CREATE Button.spec.tsx
+
+**Principle**: Build the product first, testing/tooling can be separate jobs
 
 **WHEN TO INCLUDE AUXILIARY CODE**:
 - ✅ PRD explicitly says "with unit tests" → Include tests
@@ -182,6 +207,14 @@ The following files ALREADY EXIST in the working directory:
 - ✅ DO: Modify existing files if this task requires changes
 - ❌ DON'T: Recreate files that already exist and don't need changes
 - ✅ DO: Import from and reference existing files
+
+🔄 **SPECIAL CASE: Task Resumed After Interruption**
+- If files were ALREADY CREATED in a previous attempt (visible in currentCode above):
+  - ✅ **SKIP those files** - they are already done!
+  - ✅ **Continue with remaining work** only
+  - ❌ **DO NOT regenerate** completed files
+  - 💡 **Example**: If `Button.tsx` and `Input.tsx` exist, but `Form.tsx` is missing → Create ONLY `Form.tsx`
+- This saves time and avoids unnecessary duplication
 
 **3. Documentation/Static Files (README, HTML, etc.)**
 

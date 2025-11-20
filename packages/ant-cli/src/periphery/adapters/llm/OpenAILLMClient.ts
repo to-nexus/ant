@@ -7,6 +7,7 @@
 
 import OpenAI from 'openai';
 import { LLMClient, LLMStreamEvent, ToolDefinition } from '../../../core/ports/llm';
+import { withRetryStream } from '../../../core/utils/retry';
 
 export class OpenAILLMClient implements LLMClient {
   private client: OpenAI;
