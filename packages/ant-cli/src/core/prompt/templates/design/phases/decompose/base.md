@@ -56,8 +56,9 @@ Analyze the complexity and scope of the requirements:
    - **ONLY** in this case, create ONE task: "Create Design Document"
    - Example: "Add a simple counter button" or "Change navbar color"
    - If in doubt, use 2 tasks instead!
+   - **Complexity**: **Simple**
    - **Length Budget**: **150 lines MAX total**
-   - **Guidance**: Simple = todo app, counter, single component
+   - **Guidance**: Single page, 5-15 components, no complex state
    - **Task description must say**: "Write entire document (MAX 150 lines TOTAL)"
 
 2. **Medium Requirements** (300-1500 words, OR multiple features):
@@ -65,9 +66,10 @@ Analyze the complexity and scope of the requirements:
    - Each task writes specific chapters of the SAME design document
    - Example chapters: "1. Architecture & Overview", "2. Data Models & API Design", "3. UI/UX & Implementation Details"
    - **Example triggers**: Multiple features, database design, API endpoints, authentication
+   - **Complexity**: **Medium**
    - **Length Budget**: **300 lines MAX total**
    - **Per-Task Budget**: 100-150 lines each (split evenly)
-   - **Guidance**: Medium = blog, landing page, CRUD app
+   - **Guidance**: 3-7 pages, 15-30 components, basic state + API
    - **Task description must say**: "Write chapters X-Y (MAX 100 lines for this task, TOTAL doc must stay under 300 lines)"
 
 3. **Large/Complex Requirements** (> 1500 words, OR system design):
@@ -79,10 +81,11 @@ Analyze the complexity and scope of the requirements:
      * "3. API Design & Service Layer"
      * "4. Frontend Architecture & UI Components"
      * "5. Security & Authentication"
-   - **Length Budget**: **600 lines MAX total**
-   - **Per-Task Budget**: 120-150 lines each (split evenly across N tasks)
-   - **Guidance**: Complex = SaaS, marketplace, multi-tenant system
-   - **Task description must say**: "Write chapters X-Y (MAX 120 lines for this task, TOTAL doc must stay under 600 lines)"
+   - **Complexity**: **Complex**
+   - **Length Budget**: **500 lines MAX total**
+   - **Per-Task Budget**: 100-125 lines each (split evenly across N tasks)
+   - **Guidance**: 8+ pages, 30+ components, advanced state + real-time + auth
+   - **Task description must say**: "Write chapters X-Y (MAX 100 lines for this task, TOTAL doc must stay under 500 lines)"
 
 **🚫 FORBIDDEN TASK TYPES** (DO NOT CREATE THESE):
    - ❌ Deployment plans or CI/CD pipeline tasks

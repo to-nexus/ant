@@ -143,6 +143,7 @@ export async function tool(
         `1. ✅ Generate ALL config files (package.json, tsconfig.json, etc.)\n` +
         `2. ⚠️  **RUN: npm install** (or pnpm/yarn install)\n` +
         `3. ✅ Output: <done>true</done>\n\n` +
+        `🚫 DO NOT create directories (mkdir) - folders are created automatically when files are added!\n` +
         `🚫 If you skip "npm install", setup FAILS!\n` +
         `✅ After "npm install" completes, output <done>true</done>`;
     }
