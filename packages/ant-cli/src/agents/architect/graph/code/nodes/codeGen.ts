@@ -52,7 +52,14 @@ export async function codeGen(
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'llm', taskInfo);
+    await state.deps.workflowUpdate.enterNode(
+      state._httpJobId, 
+      'codeGen',  // ✅ FIX: Must match graph.addNode() name!
+      taskInfo, 
+      undefined, // llmInfo
+      state.recursionCount,
+      state.recursionLimit
+    );
   }
   
   // ✅ UI streaming
@@ -158,6 +165,11 @@ export async function codeGen(
     console.log(`   Text: ${textResponse.length} chars`);
     console.log(`   Tool calls: ${toolCalls.length}`);
     
+    // ✅ Workflow instrumentation: Exit node (success path)
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      state.deps.workflowUpdate.exitNode(state._httpJobId, 'codeGen');  // ✅ FIX: Must match graph.addNode() name!
+    }
+    
     // ✅ Return LLM response (state에 저장)
     // 🔴 FIX: done should be false if there are tool calls (LLM is NOT done yet!)
     return {
@@ -171,6 +183,12 @@ export async function codeGen(
     };
   } catch (error) {
     console.error('❌ [CodeGen] Error during reasoning:', error);
+    
+    // ✅ Workflow instrumentation: Exit node (error path)
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      state.deps.workflowUpdate.exitNode(state._httpJobId, 'codeGen');  // ✅ FIX: Must match graph.addNode() name!
+    }
+    
     throw error;
   }
 }

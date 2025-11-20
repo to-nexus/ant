@@ -25,6 +25,10 @@ export class NodeCommandAdapter implements CommandPort {
     'git',
     'node',
     'rm',     // ✅ Added for cleaning node_modules (use with caution)
+    'ls',     // ✅ Added for directory exploration
+    'cat',    // ✅ Added for file content inspection
+    'find',   // ✅ Added for file searching
+    'grep',   // ✅ Added for text searching
   ];
 
   private readonly DEFAULT_TIMEOUT = 5 * 60 * 1000; // 5 minutes

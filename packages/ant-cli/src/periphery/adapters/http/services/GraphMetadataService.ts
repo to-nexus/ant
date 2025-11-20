@@ -92,9 +92,13 @@ const ACTOR_MAPPINGS: Record<string, { actors: string[]; description?: string }>
     actors: [COMMON_ACTORS.llm.id],
     description: 'Break down into tasks'
   },
-  'architect:code:execute': {
+  'architect:code:codeGen': {
     actors: [COMMON_ACTORS.llm.id],
-    description: 'Generate code for current task'
+    description: 'Generate code with LLM reasoning'
+  },
+  'architect:code:tool': {
+    actors: [COMMON_ACTORS.codeRepo.id, COMMON_ACTORS.tool.id],
+    description: 'Execute tools (read/write files, run commands)'
   },
   'architect:code:writeFiles': {
     actors: [COMMON_ACTORS.codeRepo.id, COMMON_ACTORS.fileSystem.id],

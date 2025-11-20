@@ -27,7 +27,7 @@ export interface WorkflowStateUpdatePort {
    * 노드 진입 알림
    * ✅ Returns Promise to ensure SSE is sent before continuing
    */
-  enterNode(jobId: string, nodeId: string, taskInfo?: TaskInfo, llmInfo?: LLMInfo): Promise<void>;
+  enterNode(jobId: string, nodeId: string, taskInfo?: TaskInfo, llmInfo?: LLMInfo, recursionCount?: number, recursionLimit?: number): Promise<void>;
   
   /**
    * 노드 이탈 알림

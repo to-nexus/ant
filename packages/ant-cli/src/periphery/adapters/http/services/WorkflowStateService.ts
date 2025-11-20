@@ -41,6 +41,8 @@ function getNodeEmoji(nodeId: string): string {
     'decompose': '🧩',
     'plan': '📋',
     'execute': '⚡',
+    'codeGen': '💻',      // ✅ NEW: Code generation with LLM
+    'tool': '🔧',         // ✅ NEW: Tool execution
     'writeFiles': '📝',
     'validate': '✓',
     'installDeps': '📦',
@@ -63,6 +65,10 @@ export interface WorkflowRealtimeState {
   isCompleted: boolean;  // Job 완료 여부
   nodeHistory: NodeHistoryEntry[];
   activeActors: Set<string>;  // 현재 통신 중인 Actor IDs
+  
+  // ✅ Recursion tracking (for UI progress display)
+  recursionCount?: number;
+  recursionLimit?: number;
   
   // ✅ Kanban info (piggybacked on workflow SSE for atomic updates)
   kanbanCurrentTask?: TaskInfo | null;  // In-progress task for Kanban
@@ -120,11 +126,11 @@ export class WorkflowStateService {
    * 노드 진입 기록
    * ✅ Returns Promise to ensure broadcast completes before caller continues
    */
-  async enterNode(jobId: string, nodeId: string, taskInfo?: TaskInfo, llmInfo?: LLMInfo): Promise<void> {
+  async enterNode(jobId: string, nodeId: string, taskInfo?: TaskInfo, llmInfo?: LLMInfo, recursionCount?: number, recursionLimit?: number): Promise<void> {
     const state = this.states.get(jobId);
     if (!state) {
       this.startJob(jobId);
-      return this.enterNode(jobId, nodeId, taskInfo);
+      return this.enterNode(jobId, nodeId, taskInfo, llmInfo, recursionCount, recursionLimit);
     }
     
     // ✅ Update current task if provided
@@ -135,6 +141,14 @@ export class WorkflowStateService {
     // ✅ Update LLM info if provided (첫 번째 노드에서만)
     if (llmInfo && !state.llmInfo) {
       state.llmInfo = llmInfo;
+    }
+    
+    // ✅ Update recursion tracking if provided
+    if (recursionCount !== undefined) {
+      state.recursionCount = recursionCount;
+    }
+    if (recursionLimit !== undefined) {
+      state.recursionLimit = recursionLimit;
     }
     
     // 이전 노드 종료 처리

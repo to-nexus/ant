@@ -21,7 +21,14 @@ export async function validate(state: ArchitectGraphState): Promise<ArchitectGra
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'validate', taskInfo);
+    await state.deps.workflowUpdate.enterNode(
+      state._httpJobId, 
+      'validate', 
+      taskInfo, 
+      undefined, // llmInfo
+      state.recursionCount,
+      state.recursionLimit
+    );
   }
   
   const violations: Violation[] = [];
@@ -69,6 +76,12 @@ export async function validate(state: ArchitectGraphState): Promise<ArchitectGra
           // Files already exist, LLM determined no changes needed
           // Continue to runtimeValidate to check if there are actual errors
           console.log('ℹ️  No files generated, but source files already exist - proceeding to validation');
+          
+          // ✅ Workflow instrumentation: Exit node (existing files path)
+          if (state.deps?.workflowUpdate && state._httpJobId) {
+            state.deps.workflowUpdate.exitNode(state._httpJobId, 'validate');
+          }
+          
           return { ...state, violations };
         }
       } catch (error) {
@@ -85,6 +98,12 @@ export async function validate(state: ArchitectGraphState): Promise<ArchitectGra
       suggestedFix: 'Generate required files',
       isRetryable: true
     });
+    
+    // ✅ Workflow instrumentation: Exit node (no files path)
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      state.deps.workflowUpdate.exitNode(state._httpJobId, 'validate');
+    }
+    
     return { ...state, violations };
   }
 
@@ -123,6 +142,11 @@ export async function validate(state: ArchitectGraphState): Promise<ArchitectGra
         }
       }
     } catch {}
+  }
+
+  // ✅ Workflow instrumentation: Exit node (success path)
+  if (state.deps?.workflowUpdate && state._httpJobId) {
+    state.deps.workflowUpdate.exitNode(state._httpJobId, 'validate');
   }
 
   return { ...state, violations };

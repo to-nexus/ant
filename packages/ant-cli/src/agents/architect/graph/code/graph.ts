@@ -31,7 +31,14 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'checkTaskStatus', taskInfo);
+    await state.deps.workflowUpdate.enterNode(
+      state._httpJobId, 
+      'checkTaskStatus', 
+      taskInfo, 
+      undefined, // llmInfo
+      state.recursionCount,
+      state.recursionLimit
+    );
   }
   
   const hasViolations = (state.violations && state.violations.length > 0);
@@ -152,6 +159,11 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       );
     }
     
+    // ✅ Workflow instrumentation: Exit node (task completed path)
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus');
+    }
+    
     return {
       completedTasks,
       completedTasksDetails,
@@ -162,6 +174,11 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       recursionCount: state.recursionCount,  // ✅ Propagate recursion count
       recursionLimit: state.recursionLimit,  // ✅ Propagate recursion limit
     };
+  }
+  
+  // ✅ Workflow instrumentation: Exit node (task failed/has violations path)
+  if (state.deps?.workflowUpdate && state._httpJobId) {
+    state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus');
   }
   
   // Task failed or has violations - propagate recursion tracking
