@@ -37,7 +37,7 @@ Created the following folder structure:
 
 ### ❌ BAD: Excessive Line Breaks
 
-**DON'T break after punctuation unnecessarily:**
+**DON'T break inside parentheses:**
 ```
 ❌ Created: package.json
 (
@@ -47,6 +47,28 @@ with dependencies
 (
 strict mode
 )
+
+❌ Full keyboard navigation (Tab, Enter, Escape)
+
+ARIA attributes (
+aria-label
+,
+aria-expanded
+,
+aria-controls
+,
+aria-hidden
+,
+aria-busy
+)
+```
+
+**✅ CORRECT - Keep parentheses content inline:**
+```
+✅ Created: package.json (with dependencies), tsconfig.json (strict mode)
+
+✅ Full keyboard navigation (Tab, Enter, Escape)
+✅ ARIA attributes (aria-label, aria-expanded, aria-controls, aria-hidden, aria-busy)
 ```
 
 **DON'T create orphan lines:**
@@ -70,6 +92,11 @@ src/presentation/
 3. **Break for clarity, not decoration** - Line breaks for logical sections only
 4. **Markdown lists for 3+ items** - Use `-` or `1.` for structured lists
 5. **Avoid orphan punctuation** - Keep `(`, `)`, `,` attached to content
+
+⚠️ **CRITICAL: Parentheses Content Must Stay Inline**
+- ✅ CORRECT: `(aria-label, aria-expanded, aria-controls)`
+- ❌ WRONG: Breaking each item inside parentheses onto separate lines
+- **Rule**: If it starts with `(` and ends with `)`, keep everything on one line or use proper list format
 
 ---
 
@@ -145,9 +172,25 @@ RBAC
 **DON'T use line breaks for:**
 - ❌ After opening parentheses `(`
 - ❌ Before closing parentheses `)`
+- ❌ **Between items inside parentheses** - Keep `(item1, item2, item3)` on one line
 - ❌ After commas in inline lists
 - ❌ Between related inline items
 - ❌ To "decorate" or "emphasize" text
+
+**SPECIAL RULE for Parentheses:**
+If content inside `()` is too long (>100 chars), convert to a proper list instead:
+```
+✅ Features include:
+- Full keyboard navigation (Tab, Enter, Escape)
+- ARIA attributes (aria-label, aria-expanded, aria-controls, aria-hidden, aria-busy)
+- Screen reader support
+
+❌ Features include (
+Full keyboard navigation,
+ARIA attributes,
+Screen reader support
+)
+```
 
 ---
 
@@ -166,8 +209,11 @@ RBAC
 Before sending your response, verify:
 - □ No orphan parentheses on separate lines
 - □ No orphan commas on separate lines
+- □ **All content inside parentheses stays on ONE LINE** (unless using proper list format)
+- □ No line breaks after opening `(` or before closing `)`
 - □ Inline lists are actually inline
 - □ Line breaks only at logical boundaries
+- □ Commas inside parentheses have NO line breaks after them
 - □ Markdown lists used for 3+ items
 - □ Text flows naturally when read aloud
 
