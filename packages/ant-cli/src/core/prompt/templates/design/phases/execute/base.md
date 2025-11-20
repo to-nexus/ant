@@ -78,20 +78,6 @@ This approach saves tokens and prevents redundant work. The system will merge yo
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-{{#if designDoc}}
-🎯 **YOUR CHAPTER PLAN** (for this task only):
-
-{{plan}}
-
-{{else}}
-## YOUR DESIGN STRATEGY:
-
-{{plan}}
-
-{{/if}}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 ## INSTRUCTIONS:
 
 🚨 **CRITICAL OUTPUT FORMAT** 🚨
@@ -131,6 +117,32 @@ You are creating a **TECHNICAL SOFTWARE DESIGN** document, NOT implementation co
 - ❌ Full code implementations (use pseudo-code or interface definitions instead)
 - ❌ Deployment plans, infrastructure setup, operations, monitoring
 - ❌ Migration plans, test schedules, project timelines
+- ❌ Testing strategies, QA plans, test case documentation
+- ❌ Detailed development workflows, Git strategies, PR templates
+- ❌ Performance benchmarking plans, profiling strategies
+- ❌ Extensive background/context (assume reader knows basics)
+
+🎯 **KEEP IT CONCISE - MVP-FIRST APPROACH**:
+
+**LENGTH GUIDELINES**:
+- **Simple projects** (todo app, calculator): 2-4 pages total
+- **Medium projects** (blog platform, dashboard): 5-10 pages total
+- **Complex projects** (e-commerce, SaaS): 10-20 pages max
+- ❌ DO NOT write 30+ page documents for simple applications
+
+**WRITING STYLE**:
+- ✅ Be direct and specific: "Use React Context for global state"
+- ❌ Don't explain basics: "React Context is a built-in feature that..."
+- ✅ Focus on decisions: "Why we chose X over Y"
+- ❌ Don't write tutorials: "Here's how React Context works..."
+
+**WHAT TO MINIMIZE**:
+- ❌ Excessive background sections explaining common technologies
+- ❌ Detailed comparisons of technologies (assume decision is made)
+- ❌ Step-by-step implementation guides
+- ❌ Exhaustive error scenarios and edge cases
+- ❌ Future roadmap beyond technical extensibility points
+- ✅ Focus on WHAT to build and WHY, not HOW to build it
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

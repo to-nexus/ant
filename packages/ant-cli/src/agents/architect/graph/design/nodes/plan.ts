@@ -150,46 +150,7 @@ export async function plan(state: DesignGraphState) {
     artifacts
   );
 
-  // Generate plan with streaming and Chat integration
-  let planText = '';
-  
-  console.log(`⏱️  Prompt build time: ${result.metadata.buildTime}ms`);
-  console.log(`🎯 Design mode: ${state.designMode || 'auto'}`);
-  console.log('\n📝 Generating design strategy...\n');
-  
-  // ✅ Get ChatAPIClient
-  const { getChatAPIClient } = await import('../../../../../core/adapters/ChatAPIClient');
-  const chatAPI = getChatAPIClient();
-  
-  if (!llm.stream) {
-    throw new Error('LLM client does not support streaming');
-  }
-  
-  // 🎯 Show placeholder before LLM call
-  await chatAPI.showChatStatus('placeholder');
-  
-  // ✅ NEW: Direct streaming (no XML parsing!)
-  let rawText = '';
-  for await (const event of llm.stream(result.formatted.messages)) {
-    // Thinking
-    if (event.type === 'thinking') {
-      await chatAPI.sendLLMEvent(event);
-    }
-    
-    // Text
-    if (event.type === 'text') {
-      rawText += event.text || '';  // ✅ NEW: text 필드 사용
-      await chatAPI.sendLLMEvent(event);
-    }
-    
-    // Done
-    if (event.type === 'done') {
-      await chatAPI.sendLLMEvent(event);
-    }
-  }
-  
-  planText = rawText;
-  console.log('\n');
+  const planText = '';
 
   // ✅ DEBUG: Verify timing before return
   console.log(`\n🔍 [Design Plan] About to return state:`);

@@ -144,7 +144,6 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
     const node = reactFlowInstance.getNode(currentNodeId);
     
     if (!node) {
-      console.log(`[WorkflowVisualization] Node ${currentNodeId} not found in graph`);
       return;
     }
     

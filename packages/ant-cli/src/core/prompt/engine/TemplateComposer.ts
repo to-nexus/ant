@@ -40,8 +40,7 @@ export class TemplateComposer {
   async compose(
     modeConfig: PromptModeConfig,
     context: ProjectContext,
-    assembled: AssembledContext,
-    plan?: string
+    assembled: AssembledContext
   ): Promise<ComposedPrompt> {
     // 1. Load system prompt (cached)
     const system = await this.getSystemPrompt(modeConfig.task);
@@ -56,14 +55,12 @@ export class TemplateComposer {
       modeConfig.templates.base,
       {
         project: context.project,
-        plan: plan || '',
         modificationMode: assembled.stats.hasOriginalFiles
           ? 'MODIFICATION MODE: Copy original, then modify'
           : 'CREATION MODE: Build from scratch',
-        currentCode: assembled.currentCode || '',  // ✅ Pass currentCode to template
-        designDoc: assembled.designDoc || '',      // ✅ Pass accumulated design document
-        currentTask: assembled.currentTask || null,  // ✅ Pass current task info
-        // ✅ NEW: Pass actual project path for command examples
+        currentCode: assembled.currentCode || '',
+        designDoc: assembled.designDoc || '',
+        currentTask: assembled.currentTask || null,
         projectPath: context.config?.localPath || '/path/to/project'
       }
     );
@@ -222,10 +219,7 @@ export class TemplateComposer {
       'modification-details': { files: assembled.originalFiles },
       'modification-warning': {},
       'pre-output-check': {},
-      // ✅ NEW: Retry and plan context
-      'retry-context': { retryContext: assembled.retryContext },
-      'plan-preservation': { planContract: assembled.planContract }
-      // ✅ REMOVED: 'response' injection (legacy, no longer used)
+      'retry-context': { retryContext: assembled.retryContext }
     };
     
     return varMap[filename] || {};

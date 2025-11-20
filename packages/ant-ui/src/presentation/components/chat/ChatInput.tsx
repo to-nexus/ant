@@ -158,9 +158,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
     }
   };
 
-  // ✅ Stop job handler - uses hook directly (no global state needed)
   const handleStop = () => {
-    console.log('[ChatInput] Stop button clicked, calling stopJob from hook');
     stopJob();
   };
 
@@ -188,11 +186,6 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
     
     // ✅ CASE 1: Continue existing interrupted job with new directive
     if (currentJobId && hasInterruption) {
-      console.log('[ChatInput] 🔄 Continuing interrupted job with new directive...');
-      console.log('   Job ID:', currentJobId);
-      console.log('   Interruption:', kanbanData?.interruption?.reason);
-      console.log('   New directive:', userMessage.substring(0, 100));
-      
       try {
         // ✅ 1. Add user message to chat history
         await authFetch(
@@ -205,7 +198,6 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
         
         // ✅ 2. Dismiss interruption UI before continuing
         if (kanbanData?.interruption?.timestamp) {
-          console.log('[ChatInput] Dismissing interruption timestamp BEFORE continue');
           useStore.getState().setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
         }
         
@@ -215,12 +207,6 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
         // ✅ 4. Call Continue API (adds directive with highest priority)
         const { continueJob } = await import('@/infrastructure/http/api');
         const result = await continueJob(currentJobId, selectedProject, selectedFeature, userMessage, true);
-        
-        console.log('[ChatInput] ✅ Continue successful:', result);
-        console.log(`  Original job: ${result.originalJobId}`);
-        console.log(`  New job: ${result.jobId}`);
-        console.log(`  Job type: ${result.jobType}`);
-        console.log(`  Directives count: ${result.directivesCount}`);
         
         // ✅ 5. Update with same jobId from server (Continue uses same jobId)
         useStore.getState().setRunning(true, result.jobId);
@@ -237,13 +223,6 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
     }
     
     // ✅ CASE 2: Normal path - Start new job
-    console.log('[ChatInput] 🆕 Starting new job...');
-    console.log('   Message:', userMessage.substring(0, 100));
-    console.log('   Project:', selectedProject);
-    console.log('   Feature:', selectedFeature);
-    console.log('   Agent:', selectedAgent);
-    console.log('   Job Type:', selectedJobType);
-    
     try {
       // ✅ 1. Add user message to chat history first
       const userMessageResponse = await authFetch(
@@ -272,7 +251,6 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
         if (startResponse.ok) {
           const { pendingJobId: returnedPendingJobId } = await startResponse.json();
           pendingJobId = returnedPendingJobId;
-          console.log('[ChatInput] Started assistant message with pending jobId:', pendingJobId);
         }
       } catch (error) {
         console.error('[ChatInput] Failed to start assistant message:', error);
@@ -299,14 +277,11 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
       
       // ✅ 4. Set up job tracking
       jobExecution.onJobIdReady(async (jobId) => {
-        console.log('[ChatInput] Job started with ID:', jobId);
         useStore.getState().setRunning(true, jobId);
       });
       
       // ✅ 4. Handle job completion and errors
       jobExecution.on('exit', async (code, signal) => {
-        console.log('[ChatInput] Job finished:', { code, signal });
-        
         const jobFailed = code !== 0 && code !== null;
         
         // ✅ Update failed state FIRST, then running state

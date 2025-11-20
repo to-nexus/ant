@@ -106,12 +106,10 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
     }
 
     try {
-      console.log(`[KanbanBoard] Resuming job ${jobId} from interruption`);
       
       // ✅ CRITICAL: Dismiss interruption FIRST before setting running state
       // This prevents SSE initial state from auto-stopping the job
       if (interruption) {
-        console.log('[KanbanBoard] Dismissing interruption timestamp BEFORE setRunning');
         useStore.getState().setDismissedInterruptTimestamp(interruption.timestamp);
       }
       
@@ -122,10 +120,6 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
       const { resumeJob } = await import('@/infrastructure/http/api');
       const result = await resumeJob(jobId, selectedProject, selectedFeature, true);  // chatSource: true
       
-      console.log(`[KanbanBoard] Resume successful:`, result);
-      console.log(`  Original job: ${result.originalJobId}`);
-      console.log(`  New job: ${result.jobId}`);
-      console.log(`  Job type: ${result.jobType}`);
       
       // ✅ Update with new jobId from server
       useStore.getState().setRunning(true, result.jobId);

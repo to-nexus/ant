@@ -51,20 +51,8 @@ export function MainPanelBar(props: BaseBarProps = {}) {
       setIsResetting(true);
       const jobType = selectedJobType;
       
-      console.log('[MainPanelBar] Clearing job session data:', {
-        project: selectedProject,
-        feature: selectedFeature,
-        job: jobType
-      });
-      
-      // Clear session data on server
       await resetJobState(selectedProject, selectedFeature, jobType);
-      
-      // Reconnect SSE to fetch updated (empty) kanban data
-      console.log('[MainPanelBar] Reconnecting SSE to fetch cleared data...');
       reconnectSSE('kanban');
-      
-      console.log('[MainPanelBar] ✅ Job session cleared successfully');
     } catch (error) {
       console.error('[MainPanelBar] Failed to clear job session:', error);
       alert('Failed to clear job session. See console for details.');

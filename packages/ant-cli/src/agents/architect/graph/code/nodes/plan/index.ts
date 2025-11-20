@@ -3,6 +3,7 @@ import { ArchitectGraphState, AttemptHistory, Task, Violation, TASK_PRIORITIES }
 import { PromptEngine } from "../../../../../../core/prompt/engine";
 import { extractErrorDetails, createErrorViolation, logErrorHeader } from "../shared/errorHandler";
 
+
 /**
  * Format previous attempts for LLM context
  */
@@ -612,8 +613,6 @@ Context loading failed. Use tools to explore:
       state.codeMode,
       nextTask.type  // Pass taskType to engine for language-specific constraints
     );
-
-    let planText = '';
     
     console.log(`🎯 Inferred mode: ${result.modeConfig.mode}`);
     
@@ -684,53 +683,8 @@ ${nextTask.type === 'error' ?
       });
     }
     
-    console.log('\n📝 Generating plan...\n');
-    
-    // ✅ Get ChatAPIClient
-    const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
-    const chatAPI = getChatAPIClient();
-    
-    if (!llm.stream) {
-      throw new Error('LLM client does not support streaming');
-    }
-    
-    // 🎯 CRITICAL: Start message BEFORE sending any events!
-    // Without this, all sendLLMEvent() calls will be silently ignored
-    await chatAPI.startMessage();
-    console.log('✅ [Plan] Message started for UI streaming');
-    
-    // 🎯 Show placeholder before LLM call
-    await chatAPI.showChatStatus('placeholder');
-    
-    // ✅ NEW: Direct streaming (no XML parsing!)
-    planText = '';
-    for await (const event of llm.stream(promptMessages)) {
-      // Thinking
-      if (event.type === 'thinking') {
-        await chatAPI.sendLLMEvent(event);
-      }
-      
-      // Text
-      if (event.type === 'text') {
-        planText += event.text || '';  // ✅ NEW: text 필드 사용
-        await chatAPI.sendLLMEvent(event);
-      }
-      
-      // Done
-      if (event.type === 'done') {
-        await chatAPI.sendLLMEvent(event);
-      }
-    }
-    console.log('\n');
-
+    const planText = '';
     const codeMode = result.modeConfig.mode;
-
-    console.log('\n✅ Plan generation complete');
-    
-    // ✅ CRITICAL: Finalize message after plan is complete
-    // Plan node does NOT have tool calls, so we finalize immediately
-    await chatAPI.finalizeMessage();
-    console.log('✅ [Plan] Message finalized');
     
     const updatedState = { 
       ...state,

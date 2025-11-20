@@ -122,8 +122,7 @@ export function ProjectSection() {
     }
 
     try {
-      const result = await openLocalIDE(selectedIDE, config.localPath);
-      console.log('[ProjectSection] Opened local IDE:', result);
+      await openLocalIDE(selectedIDE, config.localPath);
     } catch (error: any) {
       showError(`Failed to open ${selectedIDE}: ${error.message}`);
     }
@@ -138,13 +137,6 @@ export function ProjectSection() {
       ? localPath.replace('~', '/workspace')
       : `/workspace${localPath}`;
     
-    console.log('[ProjectSection] Local Mode - Converting path:', {
-      localPath,
-      workspacePath,
-      isLocalhost: window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    });
-    
-    // ✅ Set both IDE workspace path and view mode in single batch update
     switchToEditorView(workspacePath);
   };
 
@@ -172,12 +164,6 @@ export function ProjectSection() {
         const codebasePath = getCodebasePath(selectedProject, config);
         // Build Docker path (assuming ant is at ~/dev/ant and Docker mounts $HOME as /workspace)
         workspacePath = `/workspace/dev/ant/${codebasePath}`;
-        
-        console.log('[ProjectSection] Cloud Mode - Using codebase path:', {
-          selectedProject,
-          codebasePath,
-          workspacePath
-        });
       } else {
         // Local Mode: Use localPath from config
         if (!config.localPath) {
