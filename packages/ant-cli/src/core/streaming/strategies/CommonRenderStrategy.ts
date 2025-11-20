@@ -27,6 +27,9 @@ export class CommonRenderStrategy implements IRenderStrategy {
   private lineBuffers: Map<string, string> = new Map();  // ✅ Line-based buffering for smooth streaming
   private bufferManager?: import('../buffer/StreamBufferManager').StreamBufferManager;  // ✅ Disk buffer for interruption safety
   
+  // ✅ Thinking timing
+  private thinkingStartTime?: number;
+  
   constructor(
     chatAPI: ChatAPIClient,
     bufferManager?: import('../buffer/StreamBufferManager').StreamBufferManager
@@ -44,6 +47,8 @@ export class CommonRenderStrategy implements IRenderStrategy {
       case 'response':
         await this.renderResponse(action);
         break;
+        
+      // ❌ tasks_start, tasks_content, tasks_end 제거 (UI 출력 없음)
         
       case 'file_start':
         await this.renderFileStart(action, registry);
@@ -65,9 +70,12 @@ export class CommonRenderStrategy implements IRenderStrategy {
   private async renderThinking(action: ParsedAction): Promise<void> {
     const content = action.data.content || '';
     const isBlockStart = action.data.blockStart === true;
+    const isBlockEnd = action.data.blockEnd === true;
     
     // ✅ Show Chat Status when new thinking block starts
     if (isBlockStart) {
+      this.thinkingStartTime = Date.now();  // ✅ Start timing
+      
       await this.chatAPI.showChatStatus('thinking', {
         blockStart: true
       });
@@ -77,20 +85,54 @@ export class CommonRenderStrategy implements IRenderStrategy {
       if (content) {
         await this.chatAPI.sendLLMEvent({
           type: 'thinking',
-          thinking: content,  // ✅ NEW: thinking 필드 사용
+          thinking: content,
           metadata: {
             provider: 'llm',
             timestamp: new Date().toISOString()
-            // ❌ NO blockStart here - already handled by showChatStatus
           }
         });
       }
-    } else {
-      // ✅ Regular thinking content (not block start) - just append
+    } else if (isBlockEnd) {
+      // ✅ Calculate thinking duration
+      const durationMs = this.thinkingStartTime 
+        ? Date.now() - this.thinkingStartTime 
+        : undefined;
+      
+      // ✅ Send final thinking chunk with duration (if has content)
       if (content) {
         await this.chatAPI.sendLLMEvent({
           type: 'thinking',
-          thinking: content,  // ✅ NEW: thinking 필드 사용
+          thinking: content,
+          metadata: {
+            provider: 'llm',
+            timestamp: new Date().toISOString(),
+            durationMs  // ✅ Pass duration for "Thought for 3s"
+          }
+        });
+      }
+      
+      // ✅ CRITICAL: Always send blockEnd signal even if no content
+      // This ensures ChatService can trigger thinking_collapse
+      if (!content || content.trim().length === 0) {
+        await this.chatAPI.sendLLMEvent({
+          type: 'thinking',
+          thinking: '',  // Empty content
+          metadata: {
+            provider: 'llm',
+            timestamp: new Date().toISOString(),
+            blockEnd: true,  // ✅ Signal end
+            durationMs  // ✅ Pass duration
+          }
+        });
+      }
+      
+      this.thinkingStartTime = undefined;  // Reset
+    } else {
+      // ✅ Regular thinking content (not block start/end) - just append
+      if (content) {
+        await this.chatAPI.sendLLMEvent({
+          type: 'thinking',
+          thinking: content,
           metadata: {
             provider: 'llm',
             timestamp: new Date().toISOString()
@@ -109,6 +151,84 @@ export class CommonRenderStrategy implements IRenderStrategy {
       text: content  // ✅ NEW: text 필드 사용
     });
   }
+  
+  // ❌ tasks 렌더링 메서드 모두 제거 (UI 출력 없음)
+  
+  /**
+   * Try to parse partial JSON incrementally
+   * Returns parsed object if valid, null if incomplete
+   */
+  private tryParsePartialJSON(json: string): any | null {
+    try {
+      // Try to parse as-is first
+      return JSON.parse(json);
+    } catch {
+      // Try to complete incomplete JSON structures
+      const completed = this.completePartialJSON(json);
+      try {
+        return JSON.parse(completed);
+      } catch {
+        return null;
+      }
+    }
+  }
+  
+  /**
+   * Complete partial JSON by closing unclosed brackets/braces
+   */
+  private completePartialJSON(json: string): string {
+    let completed = json.trim();
+    let openBraces = 0;
+    let openBrackets = 0;
+    let inString = false;
+    let escaped = false;
+    
+    // Count unclosed brackets/braces
+    for (let i = 0; i < completed.length; i++) {
+      const char = completed[i];
+      
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+      
+      if (char === '"') {
+        inString = !inString;
+        continue;
+      }
+      
+      if (!inString) {
+        if (char === '{') openBraces++;
+        if (char === '}') openBraces--;
+        if (char === '[') openBrackets++;
+        if (char === ']') openBrackets--;
+      }
+    }
+    
+    // Close any unclosed strings
+    if (inString) {
+      completed += '"';
+    }
+    
+    // Close unclosed brackets/braces
+    while (openBrackets > 0) {
+      completed += ']';
+      openBrackets--;
+    }
+    
+    while (openBraces > 0) {
+      completed += '}';
+      openBraces--;
+    }
+    
+    return completed;
+  }
+  
   
   private async renderFileStart(
     action: ParsedAction,
@@ -345,7 +465,7 @@ export class CommonRenderStrategy implements IRenderStrategy {
     }
   }
   
-  async finalize(): Promise<void> {
+  async finalize(hasToolCalls: boolean = false): Promise<void> {
     console.log('[CommonRenderStrategy] 🏁 Finalizing render strategy...');
     
     // ✅ Preserve buffers on finalization (in case of interruption)
@@ -378,9 +498,14 @@ export class CommonRenderStrategy implements IRenderStrategy {
     this.activeFiles.clear();
     this.editOperations.clear();
     
-    // ✅ CRITICAL: Finalize the chat message (sets isStreaming = false)
-    // This triggers UI updates: "Thinking..." → "Thought", auto-collapse
-    await this.chatAPI.finalizeMessage();
+    // ✅ CRITICAL: Only finalize message if NO tool calls (keep message open for tool execution)
+    // Tool calls need the same message context to update loading cards
+    if (!hasToolCalls) {
+      console.log('[CommonRenderStrategy] ✅ Finalizing message (no tool calls)');
+      await this.chatAPI.finalizeMessage();
+    } else {
+      console.log('[CommonRenderStrategy] ⏸️  Keeping message open (tool calls pending)');
+    }
   }
 }
 

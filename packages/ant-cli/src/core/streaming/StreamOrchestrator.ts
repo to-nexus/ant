@@ -64,9 +64,10 @@ export class StreamOrchestrator {
   /**
    * Finalize the stream (called after all events processed)
    * 
+   * @param hasToolCalls - If true, keeps message open for tool execution
    * @returns StreamResult containing raw text and metadata
    */
-  async finalize(): Promise<StreamResult> {
+  async finalize(hasToolCalls: boolean = false): Promise<StreamResult> {
     console.log('[StreamOrchestrator] 🏁 Finalizing orchestrator...');
     try {
       // ✅ CRITICAL: Flush parser buffer first (get any remaining content)
@@ -83,7 +84,8 @@ export class StreamOrchestrator {
       }
       
       // Finalize rendering (cleanup incomplete operations)
-      await this.renderStrategy.finalize();
+      // Pass hasToolCalls to prevent premature message finalization
+      await this.renderStrategy.finalize(hasToolCalls);
       
       return {
         raw: this.state.getRaw(),

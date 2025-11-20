@@ -234,10 +234,11 @@ export interface ArchitectGraphState extends TaskArtifacts {
   files: GeneratedFile[];
   filesToDelete: string[];
   modifications?: any[];  // For evaluation
+  featureName?: string;  // ✅ For buffer manager initialization
   
   // ✅ NEW: LLM Response (tool calling 지원)
   llmResponse?: {
-    thinking?: string;           // LLM의 사고 과정
+    thinking?: string;           // LLM의 사고 과정 (UI 전용, conversation history에는 포함 안 함!)
     textResponse?: string;       // 일반 텍스트 응답
     toolCalls?: Array<{          // 도구 호출 목록
       id: string;
@@ -338,6 +339,9 @@ export interface ArchitectGraphState extends TaskArtifacts {
   
   // ✅ Real-time tracking and resume (internal, not persisted)
   _httpJobId?: string;  // Job ID for live updates and job resumption
+  
+  // ✅ Buffer Manager (for real-time MD file streaming with <file> tags)
+  _bufferManager?: import('../../../../core/streaming/buffer/StreamBufferManager').StreamBufferManager;
   
   // ✅ Error repetition tracking (internal)
   _errorIsRepeating?: boolean;  // Flag to indicate if errors are repeating

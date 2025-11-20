@@ -71,9 +71,8 @@ Q6: How will I verify this is done correctly?
 
 REQUIRED OUTPUT FORMAT:
 
-Use <thinking> tags for your analysis:
+First, think through your analysis step by step (the system will display this as "thinking"):
 
-<thinking>
 **Primary Task:** [What is the main objective?]
 
 **Context Understanding:**
@@ -93,9 +92,8 @@ Use <thinking> tags for your analysis:
 
 CRITICAL: Use ACTUAL file paths from ORIGINAL FILES or DESIGN DOCUMENT.
 NEVER use placeholder paths like "path/to/file.tsx".
-</thinking>
 
-Then provide a brief summary in plain text:
+Then provide a brief summary:
 [Your execution plan summary - max 5-7 sentences explaining what you will implement and how]
 
 ⚠️  CRITICAL REMINDER:

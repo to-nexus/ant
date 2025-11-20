@@ -52,17 +52,16 @@ YOUR PLAN (from Phase 1):
 - Keep changes minimal
 
 **RESPONSE FORMAT**:
-```xml
-<thinking>
-(Analyze build state, identify specific errors if any)
-</thinking>
+
+First think through the build state and identify any errors.
+
+Then report:
 
 Build Status: [Success/Errors Found]
 (If errors: List specific errors and your fix strategy)
 (If success: Confirmation message)
 
 (Files section: ONLY if fixes needed, otherwise EMPTY)
-```
 
 ────────────────────────────────────────────────────────────────────────────────
 {{else}}

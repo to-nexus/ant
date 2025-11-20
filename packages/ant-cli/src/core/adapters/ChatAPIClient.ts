@@ -58,6 +58,38 @@ export class ChatAPIClient {
   hasActiveMessage(): boolean {
     return this.messageStarted;
   }
+  
+  /**
+   * Ensure message is active, start new one if needed
+   * Returns true if message is active (or successfully started), false otherwise
+   */
+  private async ensureMessageActive(): Promise<boolean> {
+    if (!this.enabled) return false;
+    
+    try {
+      // Check if server has an active message
+      const response = await fetch(`${this.baseUrl}/has-active-message`, {
+        method: 'GET',
+        headers: this.getHeaders()
+      });
+      
+      if (response.ok) {
+        const { hasActive } = await response.json();
+        if (hasActive) {
+          return true;  // Message is active on server
+        }
+      }
+      
+      // No active message on server, need to start new one
+      console.log('[ChatAPIClient] ⚠️  No active message on server, starting new message...');
+      this.messageStarted = false;  // Reset flag to allow starting new message
+      const messageId = await this.startMessage();
+      return messageId !== null;
+    } catch (error) {
+      // Fallback: if endpoint doesn't exist, trust the messageStarted flag
+      return this.messageStarted;
+    }
+  }
 
   /**
    * Start a new assistant message
@@ -103,7 +135,9 @@ export class ChatAPIClient {
     if (!this.enabled) return;
 
     try {
-      // Ensure message is started
+      // ✅ CRITICAL: Always ensure message is started
+      // The messageStarted flag might be true, but the actual currentMessage might be finalized
+      // So we need to verify the message state with the server
       if (!this.messageStarted) {
         const messageId = await this.startMessage();
         if (!messageId) {
@@ -268,6 +302,13 @@ export class ChatAPIClient {
   async completeFileCreation(filePath: string, content: string): Promise<void> {
     if (!this.enabled) return;
     try {
+      // ✅ CRITICAL: Ensure message is active before completing file operation
+      // This handles the case where messageStarted=true but currentMessage was finalized
+      if (!await this.ensureMessageActive()) {
+        console.error(`❌ [ChatAPIClient] Cannot complete file creation - no active message for: ${filePath}`);
+        return;
+      }
+      
       await fetch(`${this.baseUrl}/file-operation`, {
         method: 'POST',
         headers: this.getHeaders(),

@@ -97,11 +97,10 @@ This approach saves tokens and prevents redundant work. The system will merge yo
 🚨 **CRITICAL OUTPUT FORMAT** 🚨
 
 You MUST output in TWO SEPARATE steps:
-1. **`<thinking>`** tag: Your analysis (KEEP SHORT - just key decisions)
-2. **Close `</thinking>`, then use `<file>` or `<append>` tag**: Your design document
+1. **Think through your analysis** (internal reasoning - KEEP SHORT - just key decisions)
+2. **Then use `<file>` or `<append>` tag**: Your design document
 
-❌ NEVER put design document content inside `<thinking>` tags!
-✅ Always use separate `<file>` or `<append>` tags for the actual design document.
+✅ Always use `<file>` or `<append>` tags for the actual design document.
 
 🚨 **CRITICAL: CHOOSING THE RIGHT TAG** 🚨
 
@@ -449,8 +448,8 @@ Focus on the areas highlighted in your design strategy as most critical.
 
 **⚠️ CRITICAL INSTRUCTIONS FOR CONTINUATION TASKS**:
 
-1. **DO NOT REPEAT PROJECT-LEVEL ANALYSIS IN GENERAL RESPONSE** ❌
-   - Your general response (text BEFORE `<thinking>`) should ONLY mention this specific task's chapters
+1. **DO NOT REPEAT PROJECT-LEVEL ANALYSIS** ❌
+   - Your response should ONLY mention this specific task's chapters
    - ❌ WRONG: "Design Strategy: Simple Tasks\n\n1. Key Requirements\n   - Frontend-only task management..."
    - ✅ RIGHT: "I will now add the Component Design and API Design chapters to the existing document."
    - Do NOT re-analyze requirements, technical challenges, or overall architecture

@@ -20,7 +20,9 @@ export interface IRenderStrategy {
   /**
    * Finalize rendering (called after stream completes)
    * Used to cleanup incomplete operations
+   * 
+   * @param hasToolCalls - If true, keeps message open for tool execution
    */
-  finalize(): Promise<void>;
+  finalize(hasToolCalls?: boolean): Promise<void>;
 }
 

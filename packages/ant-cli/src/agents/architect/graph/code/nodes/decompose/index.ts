@@ -508,25 +508,33 @@ ${rules}`;
     // 🎯 Show placeholder before LLM call
     await chatAPI.showChatStatus('placeholder');
     
-    // ✅ NEW: Direct streaming (no XML parsing!)
+    // ✅ Setup XML Parser + StreamOrchestrator for <tasks> tag handling
+    const { StreamOrchestrator } = await import('../../../../../../core/streaming/StreamOrchestrator');
+    const { XMLStreamParser } = await import('../../../../../../core/streaming/parsers/XMLStreamParser');
+    const { CommonRenderStrategy } = await import('../../../../../../core/streaming/strategies/CommonRenderStrategy');
+    
+    const parser = new XMLStreamParser();
+    const renderStrategy = new CommonRenderStrategy(chatAPI);
+    const orchestrator = new StreamOrchestrator({
+      parser,
+      renderStrategy,
+      existingFiles: new Set(),
+    });
+    
+    // ✅ Stream with XML parsing for <tasks> tag
     let raw = '';
     for await (const event of llm.stream([{ role: 'user', content: prompt }])) {
-      // Thinking
-      if (event.type === 'thinking') {
-        await chatAPI.sendLLMEvent(event);
-      }
+      // ✅ Pass to orchestrator for XML parsing
+      await orchestrator.processEvent(event);
       
-      // Text
+      // Accumulate raw text for task extraction
       if (event.type === 'text') {
-        raw += event.text || '';  // ✅ NEW: text 필드 사용
-        await chatAPI.sendLLMEvent(event);
-      }
-      
-      // Done
-      if (event.type === 'done') {
-        await chatAPI.sendLLMEvent(event);
+        raw += event.text || '';
       }
     }
+    
+    // ✅ Finalize orchestrator
+    await orchestrator.finalize();
     
     // ✅ Extract JSON from <tasks> tags (more reliable than parsing freeform text)
     let tasks: Task[] = [];

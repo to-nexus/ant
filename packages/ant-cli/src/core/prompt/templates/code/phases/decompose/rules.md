@@ -1,14 +1,13 @@
 OUTPUT FORMAT:
 
-First, analyze in thinking tags:
+{{> base/text-response-format}}
 
-<thinking>
+First, analyze step by step (think through):
 - Is this a new project or existing project?
 - Does it need setup/configuration tasks?
 - What are the main features to implement?
 - What is the optimal task breakdown?
 - What validation strategy for each task?
-</thinking>
 
 Then output the task list wrapped in <tasks> tags with valid JSON:
 

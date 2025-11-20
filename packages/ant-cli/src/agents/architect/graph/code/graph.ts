@@ -258,6 +258,11 @@ export function buildCodeGraph() {
       // Recursion tracking
       recursionCount: null as any,  // ✅ Current iteration count
       recursionLimit: null as any,  // ✅ Maximum allowed iterations
+      
+      // ✅ NEW: Tool Calling support
+      llmResponse: null as any,     // LLM response (thinking, text, tool calls)
+      toolResults: null as any,     // Tool execution results
+      conversationHistory: null as any,  // Multi-turn conversation
     } as any,
   } as any);
   

@@ -17,20 +17,34 @@ import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
 import * as path from 'path';
 import * as fs from 'fs';
 
+// ❌ REMOVED: createMinimalThinking()
+// New approach: Disable Extended Thinking after first tool call
+// No need for thinking placeholder in conversation history
+
 export async function tool(
   state: ArchitectGraphState
 ): Promise<Partial<ArchitectGraphState>> {
   console.log('\n🔧 [Tool] Executing tool...\n');
   
   // ✅ Get first tool call from llmResponse
-  const toolCall = state.llmResponse?.toolCalls?.[0];
+  const toolCalls = state.llmResponse?.toolCalls || [];
   
-  if (!toolCall) {
+  if (toolCalls.length === 0) {
     console.log('⚠️  [Tool] No tool call found, skipping');
     return {};
   }
   
+  // 🎯 CRITICAL: Only process FIRST tool call (Standard Tool Calling pattern)
+  const toolCall = toolCalls[0];
   const { id, name, args } = toolCall;
+  
+  // ✅ Log if multiple tool calls were dropped
+  if (toolCalls.length > 1) {
+    console.log(`   ⚠️  Multiple tool calls detected (${toolCalls.length}), processing FIRST only:`);
+    console.log(`   ✅ Processing: ${name}`);
+    console.log(`   ❌ Dropping: ${toolCalls.slice(1).map(tc => tc.name).join(', ')}`);
+    console.log(`   💡 LLM will re-decide remaining actions in next turn\n`);
+  }
   
   console.log(`   Tool: ${name}`);
   console.log(`   Args:`, JSON.stringify(args, null, 2));
@@ -97,9 +111,12 @@ export async function tool(
     : typeof result === 'string' ? result : JSON.stringify(result, null, 2);
   
   // ✅ Update conversation history
+  // 🔴 NEW APPROACH: Don't include thinking in conversation history
+  // Extended Thinking will be DISABLED for subsequent calls after tool use
+  
   const newHistory = [
     ...(state.conversationHistory || []),
-    // Assistant's tool call
+    // Assistant's response (only tool_use, no thinking)
     {
       role: 'assistant' as const,
       content: [
@@ -124,8 +141,25 @@ export async function tool(
     },
   ];
   
-  // ✅ Remove processed tool call
-  const remainingToolCalls = state.llmResponse?.toolCalls?.slice(1) || [];
+  // ✅ Drop ALL tool calls (standard pattern: LLM re-decides next action)
+  // This ensures LLM has full context to decide what to do next
+  const remainingToolCalls: any[] = [];
+  
+  // ✅ Convert fileBuffers to state.files for validation
+  const files: Array<{ path: string; content: string; actionType: 'create' | 'edit' | 'append' | 'delete' }> = [];
+  if (state.fileBuffers) {
+    for (const [path, buffer] of state.fileBuffers.entries()) {
+      files.push({
+        path: buffer.path,
+        content: buffer.content,
+        actionType: buffer.actionType as 'create' | 'edit' | 'append' | 'delete',
+      });
+    }
+  }
+  
+  // ❌ REMOVED: Don't finalize message here! 
+  // Message finalize should only happen when the entire job completes (learn node, etc.)
+  // Tool node continues the loop back to codeGen, so message must stay open
   
   return {
     conversationHistory: newHistory,
@@ -141,6 +175,7 @@ export async function tool(
         error,
       },
     ],
+    files,  // ✅ Pass files for validation
   };
 }
 
@@ -212,12 +247,16 @@ async function handleReadFile(
     throw new Error('GitPort not available');
   }
   
+  const chatAPI = getChatAPIClient();
+  
   // ✅ Check buffer first (uncommitted changes)
   const fileBuffers = state.fileBuffers || new Map();
   const buffered = fileBuffers.get(filePath);
   
   if (buffered && !buffered.committed) {
     console.log(`   📦 Reading from buffer: ${filePath}`);
+    // ✅ UI notification: read complete
+    await chatAPI.addReadComplete(filePath);
     return buffered.content;
   }
   
@@ -229,6 +268,9 @@ async function handleReadFile(
   }
   
   console.log(`   💾 Read from disk: ${filePath} (${content.length} bytes)`);
+  
+  // ✅ UI notification: read complete
+  await chatAPI.addReadComplete(filePath);
   
   return content;
 }
@@ -262,6 +304,13 @@ async function handleListFiles(
     : files;
   
   console.log(`   📁 Listed ${filtered.length} files in ${directory}`);
+  
+  // ✅ UI notification: exploration complete
+  const chatAPI = getChatAPIClient();
+  await chatAPI.showChatStatus('explored', { 
+    filesCount: filtered.length,
+    filesList: filtered 
+  });
   
   return filtered;
 }
@@ -303,6 +352,14 @@ async function handleSearchCode(
   }
   
   console.log(`   🔍 Found ${results.length} matches for "${pattern}"`);
+  
+  // ✅ UI notification: search complete
+  const chatAPI = getChatAPIClient();
+  const matchedFiles = [...new Set(results.map(r => r.split(':')[0]))];
+  await chatAPI.showChatStatus('explored', { 
+    filesCount: matchedFiles.length,
+    filesList: matchedFiles 
+  });
   
   return results.join('\n');
 }

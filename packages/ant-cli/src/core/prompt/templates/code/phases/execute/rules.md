@@ -129,6 +129,8 @@ CRITICAL OUTPUT RULES:
 **FORMAT 5: Summary response** (REQUIRED - explain what you did!)
 After all file/edit operations, provide a brief summary outside XML tags.
 
+{{> base/text-response-format}}
+
 Example:
 ```
 <file path="src/Button.tsx">
@@ -139,13 +141,13 @@ Example:
 ...
 </edit>
 
-I've successfully implemented the button feature. Here's what I did:
+I've successfully implemented the button feature with the following changes:
 
-1. **Created Button component** - Reusable button with props
-2. **Updated App.tsx** - Integrated the new button
+1. **Created Button component** - Reusable button with props (onClick, label, variant)
+2. **Updated App.tsx** - Integrated the new button with event handlers
 3. **Added click handler** - Alert on button click
 
-The button is now ready to use!
+The button is now ready to use with full TypeScript support and styled variants.
 ```
 
 ABSOLUTELY FORBIDDEN:
@@ -186,4 +188,6 @@ FINAL REMINDERS BEFORE YOU OUTPUT:
 
 Summary explanation...   ← Plain text summary REQUIRED!
 ```
+
+{{> base/tool-calling-rules}}
 

@@ -265,41 +265,20 @@ UserService Component:
 
 **⚠️ CRITICAL: TWO-STEP OUTPUT PROCESS**
 
-**STEP 1: Start with `<thinking>` tags** (your internal analysis):
+**STEP 1: Think through your analysis** (internal reasoning):
 
-```xml
-<thinking>
-**Design Strategy:**
+Consider:
 - What are the key architectural decisions?
 - How will components interact?
 - What are the critical technical considerations?
-
-**Chapter Plan:**
 - Which chapters will I write?
 - What are the main topics for each chapter?
 - How do they flow together?
-</thinking>
-```
 
-**STEP 2: CLOSE `</thinking>` tag, then IMMEDIATELY output your design document in a SEPARATE `<file>` or `<append>` tag:**
+**STEP 2: Output your design document in a `<file>` or `<append>` tag:**
 
-❌ **WRONG - Design document inside thinking:**
+✅ **CORRECT - Design document in XML tag:**
 ```xml
-<thinking>
-...analysis...
-
-# System Design Document
-## 1. Overview
-...
-</thinking>
-```
-
-✅ **CORRECT - Design document in separate tag AFTER thinking:**
-```xml
-<thinking>
-...analysis...
-</thinking>
-
 <file path="outputs/design/system-design.md">
 # System Design Document
 ## 1. Overview
@@ -367,3 +346,7 @@ UserService Component:
 - Path must always be: `outputs/design/system-design.md`
 - Do NOT use markdown code fences inside XML tags
 - Do NOT include meta-commentary outside XML tags
+
+================================================================================
+
+{{> base/tool-calling-rules}}
