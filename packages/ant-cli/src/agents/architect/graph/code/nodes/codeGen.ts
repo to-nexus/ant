@@ -68,19 +68,22 @@ export async function codeGen(
   
   // ✅ Initialize BufferManager for MD file streaming (if not exists)
   if (!state._bufferManager) {
-    // ✅ Code job works in CODEBASE directory (not features/)
-    // Get codebase path from context
-    const gitPort = state.deps?.git;
-    if (!gitPort) {
-      throw new Error('[CodeGen] GitPort is required but not available');
+    // ✅ Code job: Working dir = codebase, Buffer dir = features/{feature}/.buffers
+    const featurePath = state.context?.featurePath;
+    if (!featurePath || typeof featurePath !== 'string') {
+      console.error('[CodeGen] featurePath not available or not a string:', featurePath);
+      throw new Error('[CodeGen] featurePath is required for buffer initialization');
     }
     
-    const projectPath = await gitPort.getRepoRoot();
+    // Extract project root from featurePath
+    // Example: workspaces/to.nexus/probe/ant-landing/features/skeleton
+    // Project root: workspaces/to.nexus/probe/ant-landing
+    const projectPath = featurePath.replace(/\/features\/[^/]+$/, '');
     
-    // ✅ Validate projectPath is string
-    if (typeof projectPath !== 'string') {
-      console.error('[CodeGen] getRepoRoot returned non-string:', projectPath);
-      throw new Error('[CodeGen] GitPort.getRepoRoot() must return a string path');
+    // ✅ Validate projectPath
+    if (!projectPath || projectPath === featurePath) {
+      console.error('[CodeGen] Failed to extract project root from featurePath:', featurePath);
+      throw new Error('[CodeGen] Invalid featurePath format');
     }
     
     const featureName = state.featureName || 'unknown';

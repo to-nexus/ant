@@ -71,15 +71,10 @@ PROJECT: {{project}}
 - ✅ Fix ONLY the specific error mentioned
 
 **OUTPUT FORMAT:**
-```
-<response>
-Running final verification: installing dependencies and building project...
-</response>
-
-<tool_call name="run_command">
-  <command>npm install</command>
-</tool_call>
-```
+- Start by calling `run_command("npm install")` tool
+- Then call `run_command("npm run build")` tool
+- If both succeed, output `<done>true</done>`
+- If either fails, read the error and fix it before retrying
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {{/if}}
@@ -104,22 +99,11 @@ Running final verification: installing dependencies and building project...
    - Use `write_file` tool for each config file
 
 2️⃣ **CRITICAL: Install dependencies**
-   ```
-   <tool_call name="run_command">
-     <command>npm install</command>
-   </tool_call>
-   ```
-   OR:
-   ```
-   <tool_call name="run_command">
-     <command>pnpm install</command>
-   </tool_call>
-   ```
+   - After generating all config files, call `run_command` tool with `"npm install"`
+   - OR use `pnpm install` / `yarn install` depending on project
 
 3️⃣ **Output completion signal**
-   ```
-   <done>true</done>
-   ```
+   - Output `<done>true</done>` when setup is complete
 
 **CRITICAL RULES:**
 - 🚫 DO NOT create directories (folders will be created when files are added)
@@ -192,7 +176,8 @@ KEY WORKING PRINCIPLES:
    → Saves 90% tokens and reduces errors!
    
    ✅ **ALWAYS use <edit> for modifications** - this is mandatory!
-   ❌ **FORBIDDEN: Using <file> tags to modify existing files**
+   ❌ **FORBIDDEN: Using XML tags like `<file>`, `<append>`, `<edit>` for file operations**
+   → Use tool calling instead (e.g., `write_file` tool)
 
 🎯 MVP-FIRST APPROACH - KEEP IT MINIMAL:
 
@@ -397,49 +382,45 @@ import react from '@vitejs/plugin-react';  // ← Need this in package.json!
 - Vite 4.x → use @vitejs/plugin-react@^3.0.0
 - Check peer dependency requirements!
 
-Step 4: FILE PATH RULES - CRITICAL
+Step 4: FILE OPERATIONS - CRITICAL
 
-⚠️  USE REPOSITORY-RELATIVE PATHS ONLY!
+🛠️ **YOU MUST USE TOOL CALLING FOR ALL FILE OPERATIONS**
 
-**CRITICAL: File paths must be relative to the TARGET REPOSITORY ROOT, NOT the workspace directory!**
+**CRITICAL: You have access to file operation tools. Use them!**
 
-The system writes files to the TARGET REPOSITORY configured in config.json.
 {{#if projectPath}}
 Your current project path: `{{projectPath}}`
 {{/if}}
 
-You must provide paths relative to THAT repository, NOT relative to the workspace folder structure.
+**Available Tools:**
+1. `write_file(path, content)` - Create or overwrite a file
+2. `read_file(path)` - Read existing file contents
+3. `list_files(directory, pattern)` - List files in a directory
+4. `search_code(pattern, file_pattern)` - Search for code patterns
+5. `delete_file(path)` - Delete a file
+6. `mkdir(path)` - Create a directory
+7. `apply_patch(path, patch)` - Apply unified diff patch (efficient for edits)
+8. `run_command(command, working_directory)` - Execute shell commands
 
-✅ CORRECT - Repository-relative paths:
-```
-<file path="package.json">
-{
-  "name": "test-app",
-  "version": "1.0.0"
-}
-</file>
+**File Path Rules:**
+- ✅ Use repository-relative paths (e.g., `"src/App.tsx"`, `"package.json"`)
+- ❌ Do NOT include workspace path (e.g., ~~`"workspace/test-app/src/App.tsx"`~~)
+- ❌ Do NOT use absolute paths (e.g., ~~`"/Users/user/project/src/App.tsx"`~~)
 
-<file path="src/components/Header.tsx">
-import React from 'react';
-export function Header() { ... }
-</file>
+**Examples of Correct Tool Usage:**
+- Create file: Call `write_file` tool with `path="src/App.tsx"` and `content="..."`
+- Edit file: Call `read_file` to get current content, then `write_file` with updated content
+- Run command: Call `run_command` with `command="npm install"`
 
-<file path="vite.config.ts">
-import { defineConfig } from 'vite';
-export default defineConfig({ ... });
-</file>
-```
+🚫 **FORBIDDEN OUTPUT FORMATS:**
+- ❌ **DO NOT use XML tags like `<file>`, `<append>`, `<edit>`, `<thinking>`**
+- ❌ **DO NOT output raw file content without tool calls**
+- ✅ **ONLY use tool calling (the system will automatically handle this)**
 
-❌ WRONG - Including workspace path in file names:
-```
-<file path="workspace/test-app/package.json">  ← WRONG! Don't include workspace path!
-...
-</file>
-
-<file path="/absolute/path/to/src/Header.tsx">  ← WRONG! Don't use absolute paths!
-...
-</file>
-```
+**Why Tool Calling?**
+- Tools execute immediately and reliably
+- XML streaming is disabled for code job (design job only)
+- Using tools ensures proper error handling and validation
 
 **Rules:**
 1. **ALWAYS use paths relative to the target repository root**
