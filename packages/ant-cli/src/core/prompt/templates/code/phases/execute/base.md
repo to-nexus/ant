@@ -85,6 +85,55 @@ Running final verification: installing dependencies and building project...
 {{/if}}
 
 {{#if currentTask}}
+{{#if (eq currentTask.type "setup")}}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔧 SETUP TASK
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**YOUR MISSION**: Generate project configuration files and install dependencies.
+
+**REQUIRED STEPS (Execute in this EXACT order):**
+
+1️⃣ **Generate ALL config files ONLY**
+   - package.json (with all dependencies)
+   - tsconfig.json / jsconfig.json
+   - Build tool config (next.config.js, vite.config.ts, etc.)
+   - Style config (tailwind.config.ts, postcss.config.js, etc.)
+   - Linter config (.eslintrc.json, prettier.config.js)
+   - .gitignore
+   - Use `write_file` tool for each config file
+
+2️⃣ **CRITICAL: Install dependencies**
+   ```
+   <tool_call name="run_command">
+     <command>npm install</command>
+   </tool_call>
+   ```
+   OR:
+   ```
+   <tool_call name="run_command">
+     <command>pnpm install</command>
+   </tool_call>
+   ```
+
+3️⃣ **Output completion signal**
+   ```
+   <done>true</done>
+   ```
+
+**CRITICAL RULES:**
+- 🚫 DO NOT create directories (folders will be created when files are added)
+- 🚫 DO NOT create .gitkeep files
+- 🚫 DO NOT skip `npm install` - it's MANDATORY!
+- 🚫 DO NOT run `npm run dev` or `npm run build` in setup task
+- 🚫 DO NOT generate application code (components, pages, etc.)
+- ✅ ONLY generate configuration files
+- ✅ MUST run `npm install` after generating all config files
+- ✅ MUST output `<done>true</done>` after installation completes
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{{/if}}
+
 🎯 YOUR SPECIFIC TASK (Focus on THIS ONLY!)
 ────────────────────────────────────────────────────────────────────────────────
 **Task Name**: {{currentTask.name}}
@@ -92,6 +141,7 @@ Running final verification: installing dependencies and building project...
 **Description**: {{currentTask.description}}
 
 {{#unless (eq currentTask.name "Final Integration & Verification")}}
+{{#unless (eq currentTask.type "setup")}}
 ⚠️  CRITICAL INSTRUCTIONS:
 - Work on THIS SPECIFIC TASK ONLY - do not implement other features
 - Do not try to implement the entire project
@@ -122,6 +172,7 @@ Do NOT create the entire application in one task!
 - Do NOT re-write working code
 - Do NOT add "nice-to-have" features
 - Keep changes surgical and targeted
+{{/unless}}
 {{/unless}}
 ────────────────────────────────────────────────────────────────────────────────
 {{/if}}
