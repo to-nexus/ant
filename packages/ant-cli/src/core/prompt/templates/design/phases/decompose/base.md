@@ -56,15 +56,22 @@ Analyze the complexity and scope of the requirements:
    - **ONLY** in this case, create ONE task: "Create Design Document"
    - Example: "Add a simple counter button" or "Change navbar color"
    - If in doubt, use 2 tasks instead!
+   - **Length Budget**: **150 lines MAX total**
+   - **Guidance**: Simple = todo app, counter, single component
+   - **Task description must say**: "Write entire document (MAX 150 lines TOTAL)"
 
 2. **Medium Requirements** (300-1500 words, OR multiple features):
    - **MUST** break into 2-3 chapter-based tasks
    - Each task writes specific chapters of the SAME design document
    - Example chapters: "1. Architecture & Overview", "2. Data Models & API Design", "3. UI/UX & Implementation Details"
    - **Example triggers**: Multiple features, database design, API endpoints, authentication
+   - **Length Budget**: **300 lines MAX total**
+   - **Per-Task Budget**: 100-150 lines each (split evenly)
+   - **Guidance**: Medium = blog, landing page, CRUD app
+   - **Task description must say**: "Write chapters X-Y (MAX 100 lines for this task, TOTAL doc must stay under 300 lines)"
 
 3. **Large/Complex Requirements** (> 1500 words, OR system design):
-   - **MUST** break into 4-6 chapter-based tasks
+   - **MUST** break into 3-5 chapter-based tasks
    - Each task contributes a major section to the SAME design document
    - Example chapters: 
      * "1. System Architecture & Technology Stack"
@@ -72,7 +79,10 @@ Analyze the complexity and scope of the requirements:
      * "3. API Design & Service Layer"
      * "4. Frontend Architecture & UI Components"
      * "5. Security & Authentication"
-     * "6. Performance & Optimization"
+   - **Length Budget**: **600 lines MAX total**
+   - **Per-Task Budget**: 120-150 lines each (split evenly across N tasks)
+   - **Guidance**: Complex = SaaS, marketplace, multi-tenant system
+   - **Task description must say**: "Write chapters X-Y (MAX 120 lines for this task, TOTAL doc must stay under 600 lines)"
 
 **🚫 FORBIDDEN TASK TYPES** (DO NOT CREATE THESE):
    - ❌ Deployment plans or CI/CD pipeline tasks
@@ -106,6 +116,40 @@ Each task description should specify:
 - Which chapters/sections it will write
 - Key topics to cover in those chapters
 - How it builds upon previous chapters (if applicable)
+- **CRITICAL**: Length budget for this task (e.g., "This task: 500-600 lines MAX")
+
+**⚠️ CRITICAL: LENGTH BUDGET CALCULATION (MANDATORY!):**
+
+When creating N tasks for a project:
+- **Simple project**: 150 lines total ÷ N tasks = per-task budget
+- **Medium project**: 300 lines total ÷ N tasks = per-task budget  
+- **Complex project**: 600 lines total ÷ N tasks = per-task budget
+
+**Examples:**
+- Medium project, 3 tasks: 300 ÷ 3 = 100 lines per task MAX
+- Complex project, 5 tasks: 600 ÷ 5 = 120 lines per task MAX
+
+**EVERY TASK DESCRIPTION MUST INCLUDE:**
+```
+"Write chapters X-Y: [topics]. 
+CRITICAL: MAX [N] lines for this task! 
+(Total doc limit: [Total] lines across all tasks)"
+```
+
+**REAL EXAMPLE:**
+```
+Task 1: "Write chapters 1-2: Architecture and Tech Stack. 
+CRITICAL: MAX 100 lines for this task! 
+(Total doc limit: 300 lines across 3 tasks)"
+
+Task 2: "Write chapters 3-4: Components and Data Models. 
+CRITICAL: MAX 100 lines for this task! 
+(Total doc limit: 300 lines, currently ~100 lines after task 1)"
+
+Task 3: "Write chapters 5-6: Implementation and NFRs. 
+CRITICAL: MAX 100 lines for this task! 
+(Total doc limit: 300 lines, currently ~200 lines after task 2)"
+```
 
 **Priority:**
 - Lower number = higher priority (use 200-299 range)

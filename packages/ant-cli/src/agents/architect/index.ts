@@ -128,14 +128,16 @@ export async function architectAgent(
     project,
     featureFolder,
     workingDir,  // Repository root path (string)
-    projectPath: config.localPath,  // ✅ Used by TemplateComposer (primitive string)
-    repoType: config.repoType,      // ✅ For mode detection (primitive string)
-    memory: vectorMemory,           // Long-term knowledge (string)
-    sessionHistory: sessionHistory,  // Short-term context (string)
-    enableEvaluation,                // Evaluation flag (boolean)
-    userId,                          // ✅ For path resolution (string)
-    organizationId,                  // ✅ For path resolution (string)
-    featurePath                      // ✅ Optional: Pre-resolved for performance (string)
+    projectPath: config.localPath,         // ✅ Used by TemplateComposer (primitive string)
+    repoType: config.repoType,             // ✅ For mode detection (primitive string)
+    branchBase: config.branchBase,         // ✅ For learn node branch creation (primitive string)
+    strictValidation: config.strictValidation ?? true, // ✅ For runtime validation (boolean)
+    memory: vectorMemory,                  // Long-term knowledge (string)
+    sessionHistory: sessionHistory,        // Short-term context (string)
+    enableEvaluation,                      // Evaluation flag (boolean)
+    userId,                                // ✅ For path resolution (string)
+    organizationId,                        // ✅ For path resolution (string)
+    featurePath                            // ✅ Optional: Pre-resolved for performance (string)
   };
   
   // ✅ Read chat integration parameters from environment

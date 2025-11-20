@@ -271,14 +271,46 @@ async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       }
     }
     
-    // ✅ CRITICAL: Add runtime context (plan, enforcement, file tree)
-    // PromptEngine provides templates, buildRuntimeContext adds execution context
+    // ✅ CRITICAL: Inject execution plan and enforcement feedback
+    // These need to be HIGH PRIORITY, so we inject them strategically
+    
+    let finalPrompt = basePrompt;
+    
+    // Strategy 1: If we have execution plan, inject it RIGHT AFTER task description
+    // This ensures LLM sees the plan immediately after reading the task
+    if (state.planText && state.currentTask) {
+      const taskMarker = `**Description**: ${state.currentTask.description}`;
+      const taskMarkerIndex = finalPrompt.indexOf(taskMarker);
+      
+      if (taskMarkerIndex !== -1) {
+        const injectionPoint = taskMarkerIndex + taskMarker.length;
+        const planSection = `\n\n────────────────────────────────────────────────────────────────────────────────\n` +
+          `# 📋 EXECUTION PLAN FOR THIS TASK\n` +
+          `────────────────────────────────────────────────────────────────────────────────\n\n` +
+          `${state.planText}\n`;
+        
+        finalPrompt = finalPrompt.slice(0, injectionPoint) + planSection + finalPrompt.slice(injectionPoint);
+      }
+    }
+    
+    // Strategy 2: If retry, inject enforcement feedback at the VERY TOP (highest priority)
+    if (state.enforcementReason) {
+      const enforcementHeader = `════════════════════════════════════════════════════════════════════════════════\n` +
+        `⚠️  CRITICAL: PREVIOUS ATTEMPT FAILED - READ THIS FIRST!\n` +
+        `════════════════════════════════════════════════════════════════════════════════\n\n` +
+        `${state.enforcementReason}\n\n` +
+        `YOU MUST FIX THE ABOVE ISSUE BEFORE PROCEEDING!\n` +
+        `════════════════════════════════════════════════════════════════════════════════\n\n`;
+      
+      finalPrompt = enforcementHeader + finalPrompt;
+    }
+    
+    // Strategy 3: Append file tree and other runtime context at the end
     const runtimeContext = buildRuntimeContext(state);
     
-    // ✅ Merge: PromptEngine base + runtime context
     messages.push({
       role: 'user',
-      content: `${basePrompt}\n\n${runtimeContext}`,
+      content: `${finalPrompt}${runtimeContext ? '\n\n' + runtimeContext : ''}`,
     });
   }
   
@@ -291,18 +323,15 @@ async function buildMessages(state: ArchitectGraphState): Promise<Array<{
 }
 
 /**
- * Build runtime context (plan, enforcement, file tree, instructions)
+ * Build runtime context (task, plan, enforcement, file tree)
  * 
- * This supplements PromptEngine's base prompt with execution-specific context:
- * - Current task and plan (from plan node)
- * - Enforcement feedback (from validation failures)
- * - File tree (current codebase state)
- * - Tool instructions
+ * CRITICAL: This is appended to EVERY user message, even during tool call loops!
+ * This ensures task constraints (especially setup task restrictions) are always visible.
  */
 function buildRuntimeContext(state: ArchitectGraphState): string {
   const lines: string[] = [];
   
-  // ✅ 1. Current Task
+  // ✅ 1. Current Task (CRITICAL: must be repeated for tool call loops!)
   if (state.currentTask) {
     lines.push(`# Current Task`);
     lines.push(`**${state.currentTask.name}**`);
@@ -331,22 +360,6 @@ function buildRuntimeContext(state: ArchitectGraphState): string {
     lines.push(fileTree);
     lines.push(``);
   }
-  
-  // ✅ 5. Tool Usage Instructions
-  lines.push(`# Available Tools`);
-  lines.push(``);
-  lines.push(`You have access to the following tools:`);
-  lines.push(`- **write_file(path, content)**: Create or overwrite a file`);
-  lines.push(`- **read_file(path)**: Read a file's contents`);
-  lines.push(`- **list_files(directory?, pattern?)**: List files in a directory`);
-  lines.push(`- **search_code(pattern, file_pattern?)**: Search codebase for patterns`);
-  lines.push(`- **delete_file(path)**: Delete a file`);
-  lines.push(`- **mkdir(path)**: Create a directory`);
-  lines.push(`- **apply_patch(path, patch)**: Apply unified diff patch to a file`);
-  lines.push(`- **run_command(command, working_directory?)**: Execute shell command`);
-  lines.push(``);
-  lines.push(`Use these tools to complete the task. When done, respond with "Task complete" without tool calls.`);
-  lines.push(``);
   
   return lines.join('\n');
 }

@@ -88,7 +88,7 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
   }
 
   // Skip if explicitly disabled (default is enabled)
-  const strictValidation = state.context.config?.strictValidation ?? true;  // ✅ Default: true
+  const strictValidation = state.context.strictValidation ?? true;  // ✅ Default: true
   if (strictValidation === false) {
     console.log('⚠️  Runtime validation disabled (set strictValidation: true in config to enable)');
     return state;
@@ -101,7 +101,6 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
   }
 
   // ✅ Get codebase path (works for both local and cloud mode)
-  const config = state.context.config;
   const repoRoot = await gitPort.getRepoRoot();
   const p = await import("path");
   

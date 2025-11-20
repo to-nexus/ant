@@ -1,14 +1,11 @@
 import { DesignGraphState } from "../state";
-import { LLMClient } from "../../../../../core/ports";
-import { PromptEngine } from "../../../../../core/prompt/engine";
 
 /**
  * Plan Node
- * Generate design plan based on artifacts
+ * Manages task queue - pops next task, starts timing, updates Kanban
+ * NO LLM calls - docGen handles all document generation
  */
 export async function plan(state: DesignGraphState) {
-  const llm = state.deps?.llm as LLMClient;
-  const engine = state.deps?.promptEngine as PromptEngine;
 
   // ✅ CRITICAL: Get next task BEFORE enterNode
   // This ensures enterNode is called with correct taskInfo
@@ -57,7 +54,8 @@ export async function plan(state: DesignGraphState) {
       priority: currentTask.priority
     } : undefined;
     
-    // ✅ Extract LLM info from GenericLLMClient
+    // ✅ Extract LLM info from state.deps
+    const llm = state.deps?.llm;
     const llmInfo = (llm as any)?.provider && (llm as any)?.modelName ? {
       provider: (llm as any).provider,
       model: (llm as any).modelName
@@ -123,52 +121,13 @@ export async function plan(state: DesignGraphState) {
     }
   }
   
-  // Prepare artifacts (using new unified names)
-  // ✅ Get accumulated design from previous tasks (files[])
-  const primaryDesign = state.files?.find(f => 
-    f.path.includes('system-design') || f.path.includes('design.md')
-  );
-
-  const artifacts = {
-    directive: state.directive,
-    designDoc: primaryDesign?.content,  // ✅ Pass accumulated design for continuation detection
-    prdSpec: state.prd,               // PRD
-    previousDesign: state.design,     // Previous design (for evolution/refactor)
-    currentCode: currentCode,         // ✅ Codebase (with smart context!)
-    originalFiles: undefined,         // Design doesn't use git HEAD
-    currentTask: currentTask ? {      // ✅ Pass current task info to plan prompt
-      name: currentTask.name,
-      type: currentTask.type,
-      description: currentTask.description
-    } : undefined
-  };
-
-  // Build prompt using PromptEngine
-  const result = await engine.buildPlanPrompt(
-    "design",
-    state.context,
-    artifacts
-  );
-
-  // ✅ Extract plan text from prompt (plan is included in system prompt)
-  // The actual LLM call happens in docGen node with this plan in context
-  const systemMessage = result.formatted.messages.find(m => m.role === 'system' || m.role === 'user');
+  // ✅ Plan node now ONLY manages task queue
+  // No LLM call, no planText generation
+  // docGen will handle all LLM communication and document generation
   
-  // ✅ CRITICAL: content can be string OR array (Anthropic format)
-  let planText = '';
-  if (systemMessage) {
-    if (typeof systemMessage.content === 'string') {
-      planText = systemMessage.content;
-    } else if (Array.isArray(systemMessage.content)) {
-      // Anthropic format: [{ type: 'text', text: '...' }]
-      const contentArray = systemMessage.content as any[];
-      planText = contentArray
-        .filter((c: any) => c.type === 'text')
-        .map((c: any) => c.text)
-        .join('\n');
-    }
-  }
-
-  // ✅ planText를 메모리(state)에 저장하여 execute 노드에서 직접 사용
-  return { ...state, planText, currentTask };
+  console.log(`\n✅ [Plan] Task prepared for execution`);
+  console.log(`   Task: ${currentTask?.name}`);
+  console.log(`   Next node: docGen will generate document\n`);
+  
+  return { ...state, currentTask, code: currentCode };
 }

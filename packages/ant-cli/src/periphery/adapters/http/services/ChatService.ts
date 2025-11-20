@@ -848,7 +848,7 @@ export class ChatService {
               contentIndex: session.currentMessage.contents.length - 1,
               delta: event.thinking || ''
             });
-          } else {
+        } else {
             // ✅ Create new thinking block
             this.addContentToCurrentMessage(projectId, featureName, {
               type: 'thinking',
@@ -859,10 +859,10 @@ export class ChatService {
         break;
 
       case 'text':
-        // No active file operation - add as regular text
+          // No active file operation - add as regular text
         // (File content is now handled by tool node, not streaming)
-        this.addContentToCurrentMessage(projectId, featureName, {
-          type: 'text',
+          this.addContentToCurrentMessage(projectId, featureName, {
+            type: 'text',
           content: event.text || ''  // ✅ NEW: text 필드 사용
         });
         break;
@@ -1050,9 +1050,9 @@ export class ChatService {
       // ✅ 2차 시도: typesToFind로 검색 (fallback)
       if (existingIndex === -1) {
         existingIndex = session.currentMessage.contents.findIndex(c => 
-          typesToFind.includes(c.type) && 
-          c.metadata?.filePath === filePath
-        );
+        typesToFind.includes(c.type) && 
+        c.metadata?.filePath === filePath
+      );
       }
       
       if (existingIndex !== -1) {
@@ -1112,12 +1112,12 @@ export class ChatService {
           });
         } else {
           // Full content update for other phases (metadata changes, etc.)
-          this.broadcast(projectId, featureName, {
-            type: 'content_update',
-            messageId: session.currentMessage.id,
-            contentIndex: existingIndex,
-            content: session.currentMessage.contents[existingIndex]
-          });
+        this.broadcast(projectId, featureName, {
+          type: 'content_update',
+          messageId: session.currentMessage.id,
+          contentIndex: existingIndex,
+          content: session.currentMessage.contents[existingIndex]
+        });
         }
         
         // ✅ Track active file operations for real-time streaming (Map for multiple files)

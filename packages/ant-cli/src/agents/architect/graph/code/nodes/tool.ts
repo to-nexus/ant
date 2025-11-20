@@ -130,6 +130,14 @@ export async function tool(
   // 🔴 NEW APPROACH: Don't include thinking in conversation history
   // Extended Thinking will be DISABLED for subsequent calls after tool use
   
+  // ✅ Build reminder text with task description (for tool call loops)
+  let taskReminder = '';
+  if (state.currentTask) {
+    taskReminder = `\n\n# Current Task Reminder\n` +
+      `**${state.currentTask.name}** (${state.currentTask.type})\n\n` +
+      `${state.currentTask.description}`;
+  }
+  
   const newHistory = [
     ...(state.conversationHistory || []),
     // Assistant's response (only tool_use, no thinking)
@@ -144,7 +152,7 @@ export async function tool(
         },
       ],
     },
-    // User's tool result
+    // User's tool result + task reminder
     {
       role: 'user' as const,
       content: [
@@ -153,6 +161,10 @@ export async function tool(
           tool_use_id: id,
           content: toolResultContent,
         },
+        ...(taskReminder ? [{
+          type: 'text' as const,
+          text: taskReminder,
+        }] : []),
       ],
     },
   ];
