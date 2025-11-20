@@ -4,34 +4,64 @@
 
 You are creating a **EXTREMELY CONCISE** SYSTEM DESIGN DOCUMENT for: **{{project}}**
 
-**ABSOLUTE LENGTH LIMITS** (if you exceed these, your output is REJECTED):
+**STEP 1: CLASSIFY PROJECT COMPLEXITY**
+
+Read the PRD/Directive and classify:
+
+**Simple**: 
+- Single page OR 2-3 simple pages
+- 5-15 components
+- No complex state management
+- No backend/API integration
+- Examples: Todo app, Calculator, Counter, Static portfolio
+
+**Medium**:
+- 3-7 pages
+- 15-30 components
+- Simple state management (Context API, Zustand)
+- Basic API calls (REST)
+- Examples: Landing page, Blog, Dashboard, Small e-commerce
+
+**Complex**:
+- 8+ pages OR complex multi-page app
+- 30+ components
+- Advanced state + real-time + auth
+- Multiple API integrations, WebSocket, etc.
+- Examples: SaaS platform, Marketplace, Social network, Admin portal
+
+**STEP 2: APPLY LENGTH LIMITS**
 
 | Project Type | TOTAL Document MAX | Per-Chapter MAX |
 |-------------|-------------------|-----------------|
-| **Simple** (todo, counter) | **150 lines** | **30 lines** |
-| **Medium** (blog, landing) | **300 lines** | **60 lines** |
-| **Complex** (SaaS, marketplace) | **600 lines** | **120 lines** |
+| **Simple** | **150 lines** | **25 lines** |
+| **Medium** | **300 lines** | **50 lines** |
+| **Complex** | **500 lines** | **80 lines** |
 
 **EXAMPLE OF ACCEPTABLE LENGTH:**
 ```
-Simple Todo App Design Document:
-## 1. Architecture (25 lines)
-- Pattern: MVC (1 line)
-- Components: Model, View, Controller (3 lines)
-- Tech: React + Context API (2 lines)
-- ... (concise descriptions)
+Simple Todo App (classified as: Simple → 150 lines MAX):
+## 1. Architecture (20 lines)
+- Pattern: Component-based (1 line)
+- Layers: Presentation + Domain (2 lines)
+- State: React hooks (1 line)
+- ... (brief, no details)
 
-## 2. Data Models (30 lines)
-- Todo interface (5 lines)
-- State structure (5 lines)
-- ... (brief definitions)
+## 2. Data Models (25 lines)
+- Todo: {id, text, done} (3 lines)
+- TodoList: Todo[] (2 lines)
+- ... (types only)
 
-## 3. Implementation (40 lines)
-- Component list (10 lines)
-- API methods (10 lines)
+## 3. Components (30 lines)
+- TodoApp, TodoList, TodoItem, AddTodo (4 lines)
+- Props for each (10 lines)
 - ... (signatures only)
 
-TOTAL: ~95 lines ✅
+## 4. Implementation (35 lines)
+- CRUD operations (list only, 5 lines)
+- Event handlers (list only, 5 lines)
+- ... (no code)
+
+TOTAL: ~110 lines ✅ (under 150 limit)
 ```
 
 **EXAMPLE OF UNACCEPTABLE LENGTH:**
