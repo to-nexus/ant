@@ -150,13 +150,24 @@ export async function plan(state: DesignGraphState) {
     artifacts
   );
 
-  const planText = '';
-
-  // ✅ DEBUG: Verify timing before return
-  console.log(`\n🔍 [Design Plan] About to return state:`);
-  console.log(`   currentTask: ${currentTask?.name}`);
-  console.log(`   Has timing: ${!!currentTask?.timing}`);
-  console.log(`   timing.startedAt: ${currentTask?.timing?.startedAt}\n`);
+  // ✅ Extract plan text from prompt (plan is included in system prompt)
+  // The actual LLM call happens in docGen node with this plan in context
+  const systemMessage = result.formatted.messages.find(m => m.role === 'system' || m.role === 'user');
+  
+  // ✅ CRITICAL: content can be string OR array (Anthropic format)
+  let planText = '';
+  if (systemMessage) {
+    if (typeof systemMessage.content === 'string') {
+      planText = systemMessage.content;
+    } else if (Array.isArray(systemMessage.content)) {
+      // Anthropic format: [{ type: 'text', text: '...' }]
+      const contentArray = systemMessage.content as any[];
+      planText = contentArray
+        .filter((c: any) => c.type === 'text')
+        .map((c: any) => c.text)
+        .join('\n');
+    }
+  }
 
   // ✅ planText를 메모리(state)에 저장하여 execute 노드에서 직접 사용
   return { ...state, planText, currentTask };

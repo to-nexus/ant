@@ -35,21 +35,31 @@ export async function docGen(
   
   // ✅ 1. Initialize BufferManager (if not exists)
   if (!state._bufferManager) {
-    const projectPath = await gitPort.getRepoRoot();  // ✅ await 추가
-    const featureName = state.context.feature?.name || 'default';
+    // ✅ CRITICAL: Use featurePath to get projectPath (not codebase!)
+    // featurePath: /workspaces/{org}/{user}/{project}/features/{feature}
+    // projectPath: /workspaces/{org}/{user}/{project}
+    const featurePath = state.context.featurePath;
+    if (!featurePath) {
+      throw new Error('featurePath not available in context. Ensure resolve node has run.');
+    }
+    
+    const path = await import('path');
+    const featureName = state.context.featureFolder || state.context.feature?.name || 'default';
+    const projectPath = featurePath.replace(`/features/${featureName}`, '');
     const jobId = state._httpJobId || 'unknown';
     
     state._bufferManager = new StreamBufferManager(projectPath, featureName, 'design', jobId);
-    console.log(`📦 [DocGen] BufferManager initialized`);
+    console.log(`📦 [DocGen] BufferManager initialized: ${projectPath}/features/${featureName}/.buffers/design`);
   }
   
   // ✅ 2. Build messages from conversation history + current task
   const messages = await buildMessages(state);
   
-  // ✅ 3. Tool activation control: Design job도 tool calling 사용
-  const tools = getAvailableTools();
+  // ✅ 3. Design job uses PURE XML streaming - no tool calling!
+  // All file operations are done via <file>, <append>, <edit> tags
+  const tools = undefined;
   
-  console.log(`🔧 [DocGen] Tool calling enabled (design job)`);
+  console.log(`📝 [DocGen] Pure XML streaming mode (no tool calling)`);
   
   // ✅ 4. Workflow update
   if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -83,19 +93,15 @@ export async function docGen(
   // ✅ 6. Collect LLM output
   let thinking = '';
   let textResponse = '';
-  const toolCalls: Array<{
-    id: string;
-    name: string;
-    args: Record<string, any>;
-  }> = [];
   
   try {
-    // ✅ Single stream (no loop!)
+    // ✅ Stream with XML parsing only (no tool calling)
     for await (const event of llmClient.stream(messages, {
-      tools,
+      tools: undefined,  // ✅ No tool calling for design job
       maxTokens: 16000,
+      enableThinking: true,  // ✅ Always enable thinking for design job
     })) {
-      // ✅ Pass to orchestrator for XML parsing
+      // ✅ Pass to orchestrator for XML parsing (<file>, <append>, <edit>)
       await orchestrator.processEvent(event);
       
       // Thinking
@@ -108,49 +114,32 @@ export async function docGen(
         textResponse += event.text || '';
       }
       
-      // Tool call (감지만, 실행 안함!)
-      if (event.type === 'tool_use' && event.toolUse) {
-        const { id, name, input } = event.toolUse;
-        
-        console.log(`🔧 [DocGen] Tool call detected: ${name}`);
-        console.log(`   Args:`, JSON.stringify(input, null, 2));
-        
-        // 🎯 CRITICAL: Only send FIRST tool call to UI (Standard Tool Calling pattern)
-        if (toolCalls.length === 0) {
-          await chatAPI.sendLLMEvent(event);
-          console.log(`   ✅ Sent to UI (first tool call)`);
-        } else {
-          console.log(`   ⚠️  Skipped UI display (will be dropped by tool node)`);
-        }
-        
-        toolCalls.push({
-          id,
-          name,
-          args: input,
-        });
+      // Done
+      if (event.type === 'done') {
+        await chatAPI.sendLLMEvent(event);
       }
     }
     
-    // ✅ Finalize orchestrator (flush buffer)
-    // Pass hasToolCalls flag to prevent premature message finalization
-    const hasToolCalls = toolCalls.length > 0;
-    await orchestrator.finalize(hasToolCalls);
+    // ✅ Finalize orchestrator (flush buffer and save files)
+    await orchestrator.finalize(false);  // No tool calls in XML streaming
     
-    console.log(`\n✅ [DocGen] Reasoning complete`);
+    // ✅ Get generated files from buffer
+    const buffers = state._bufferManager?.getAllBuffers() || new Map();
+    const files = Array.from(buffers.values()).map(buffer => ({
+      path: buffer.filePath,
+      content: buffer.content
+    }));
+    
+    console.log(`\n✅ [DocGen] XML streaming complete`);
     console.log(`   Thinking: ${thinking.length} chars`);
     console.log(`   Text: ${textResponse.length} chars`);
-    console.log(`   Tool calls: ${toolCalls.length}`);
-    console.log(`   Buffer stats:`, state._bufferManager?.getStats());
+    console.log(`   Files generated: ${files.length}`);
+    files.forEach(f => console.log(`      📄 ${f.path}: ${f.content.length} chars`));
     
-    // ✅ Return LLM response (state에 저장)
+    // ✅ Return generated files
     return {
-      llmResponse: {
-        thinking,
-        textResponse,
-        toolCalls,
-        done: toolCalls.length === 0,  // 도구 호출 없으면 완료
-      },
-      _bufferManager: state._bufferManager,  // ✅ Preserve buffer manager
+      files,  // ✅ Files from XML streaming
+      _bufferManager: state._bufferManager,
     };
   } catch (error) {
     console.error('❌ [DocGen] Error during reasoning:', error);
@@ -171,53 +160,73 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
   if (!state.conversationHistory || state.conversationHistory.length === 0) {
     const promptEngine = state.deps?.promptEngine;
     
-    if (promptEngine && state.currentTask) {
-      try {
-        // ✅ Build prompt using PromptEngine
-        const promptResult = await promptEngine.buildExecutePrompt(
-          state.currentTask as any,  // Cast to AgentTask
-          state.context,
-          {
-            directive: state.directive || state.spec,
-            designDoc: undefined,  // Design job doesn't use designDoc in execute
-            previousDesign: state.design,  // Use previousDesign for design job
-            prdSpec: state.prd,
-            currentCode: state.code,
-            currentTask: {
-              name: state.currentTask.name,
-              type: state.currentTask.type,
-              description: state.currentTask.description,
-            },
-          },
-          undefined,
-          undefined
-        );
-        
-        // ✅ Extract system prompt from formatted messages
-        const systemMessage = promptResult.formatted.messages.find(m => m.role === 'system' || m.role === 'user');
-        if (systemMessage) {
-          messages.push({
-            role: 'user',
-            content: systemMessage.content,
-          });
-        }
-      } catch (error) {
-        console.warn('[DocGen] Failed to use PromptEngine, falling back:', error);
-        messages.push({
-          role: 'user',
-          content: buildSystemPrompt(state),
-        });
-      }
-    } else {
-      // Fallback: When PromptEngine or currentTask unavailable
-      messages.push({
-        role: 'user',
-        content: buildSystemPrompt(state),
-      });
+    if (!promptEngine) {
+      throw new Error('[DocGen] PromptEngine is required but not available in state.deps');
     }
+    
+    if (!state.currentTask) {
+      throw new Error('[DocGen] currentTask is required but not available in state');
+    }
+    // ✅ Build prompt using PromptEngine
+    const promptResult = await promptEngine.buildExecutePrompt(
+      'design',  // ✅ AgentTask type (not the task object!)
+      state.context,
+      {
+        directive: state.directive || state.spec,
+        designDoc: undefined,  // Design job doesn't use designDoc in execute
+        previousDesign: state.design,  // Use previousDesign for design job
+        prdSpec: state.prd,
+        currentCode: state.code,
+        currentTask: {
+          name: state.currentTask.name,
+          type: state.currentTask.type,
+          description: state.currentTask.description,
+        },
+      },
+      undefined,
+      undefined
+    );
+    
+    // ✅ Extract base prompt from PromptEngine (templates, rules, profiles)
+    const systemMessage = promptResult.formatted.messages.find(m => m.role === 'system' || m.role === 'user');
+    
+    // ✅ CRITICAL: content can be string OR array (Anthropic format)
+    let basePrompt = '';
+    if (systemMessage) {
+      if (typeof systemMessage.content === 'string') {
+        basePrompt = systemMessage.content;
+      } else if (Array.isArray(systemMessage.content)) {
+        // Anthropic format: [{ type: 'text', text: '...' }]
+        const contentArray = systemMessage.content as any[];
+        basePrompt = contentArray
+          .filter((c: any) => c.type === 'text')
+          .map((c: any) => c.text)
+          .join('\n');
+      }
+    }
+    
+    // ✅ CRITICAL: Add runtime context (task, plan, existing design, file format)
+    // PromptEngine provides templates, buildRuntimeContext adds execution context
+    const runtimeContext = buildRuntimeContext(state);
+    
+    // ✅ DEBUG: Type check before merge
+    console.log(`\n🔍 [DocGen] Before merge:`);
+    console.log(`   basePrompt type: ${typeof basePrompt}, length: ${basePrompt.length}`);
+    console.log(`   runtimeContext type: ${typeof runtimeContext}, length: ${runtimeContext.length}`);
+    
+    // ✅ Merge: PromptEngine base + runtime context
+    const mergedContent = `${basePrompt}\n\n${runtimeContext}`;
+    console.log(`   mergedContent type: ${typeof mergedContent}, length: ${mergedContent.length}`);
+    
+    messages.push({
+      role: 'user',
+      content: mergedContent,
+    });
   }
   
   // ✅ Add conversation history (if exists)
+  // CRITICAL: Conversation history from LLM may have content as arrays (tool_use, tool_result)
+  // We need to pass them as-is for proper context continuation
   if (state.conversationHistory && state.conversationHistory.length > 0) {
     messages.push(...state.conversationHistory);
   }
@@ -226,164 +235,52 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
 }
 
 /**
- * Build system prompt for design job
+ * Build runtime context (task, plan, existing design, file format, instructions)
  * 
- * NOTE: This uses a simplified prompt structure.
- * Full PromptEngine integration with design/phases/execute/base.md template
- * should be implemented in the future.
+ * This supplements PromptEngine's base prompt with execution-specific context:
+ * - Current task and directive
+ * - Execution plan (from plan node)
+ * - Existing design (for continuation)
+ * - File output format (Markdown streaming)
+ * - Tool instructions
  */
-function buildSystemPrompt(state: DesignGraphState): string {
+function buildRuntimeContext(state: DesignGraphState): string {
   const task = state.currentTask;
+  const lines: string[] = [];
   
-  return `You are an expert technical writer and software architect.
-
-Current task: ${task?.name || 'Generate design document'}
-Description: ${task?.description || 'No description provided'}
-
-Directive: ${state.directive || state.spec}
-
-${state.design ? `\nExisting Design:\n${state.design}\n` : ''}
-
-${state.planText ? `\nPlan:\n${state.planText}\n` : ''}
-
-**IMPORTANT: Markdown File Output Format**
-
-For Markdown (.md) files, follow this two-step process:
-
-1. **Stream content with <file> tag** (for live preview):
-\`\`\`xml
-<file path="DESIGN.md">
-# System Design
-...
-</file>
-\`\`\`
-
-2. **Call write_file() with empty content** (to save from buffer):
-\`\`\`json
-{
-  "tool": "write_file",
-  "arguments": {
-    "path": "DESIGN.md",
-    "content": ""
+  // ✅ 1. Current Task
+  if (task) {
+    lines.push(`# Current Task`);
+    lines.push(`**${task.name}**`);
+    lines.push(task.description);
+    lines.push('');
   }
-}
-\`\`\`
-
-For other files (.ts, .tsx, .json, etc.), directly use write_file() tool.
-
-**Available tools:**
-- write_file(path, content): Save file (leave content empty for .md files already streamed)
-- read_file(path): Read existing files
-- list_files(directory, pattern): Browse project structure
-- search_code(pattern): Search codebase
-- delete_file(path): Remove outdated files
-- mkdir(path): Create directories
-
-When done, do NOT call any more tools.`;
-}
-
-/**
- * Get available tools
- */
-function getAvailableTools(): import('../../../../../core/ports/llm').ToolDefinition[] {
-  // ✅ Same tools as Code job (unified!)
-  return [
-    {
-      name: 'write_file',
-      description: 'Create or overwrite a file with the given content',
-      input_schema: {
-        type: 'object' as const,
-        properties: {
-          path: {
-            type: 'string',
-            description: 'File path relative to project root',
-          },
-          content: {
-            type: 'string',
-            description: 'File content',
-          },
-        },
-        required: ['path', 'content'],
-      },
-    },
-    {
-      name: 'read_file',
-      description: 'Read the contents of a file',
-      input_schema: {
-        type: 'object' as const,
-        properties: {
-          path: {
-            type: 'string',
-            description: 'File path relative to project root',
-          },
-        },
-        required: ['path'],
-      },
-    },
-    {
-      name: 'list_files',
-      description: 'List files in a directory',
-      input_schema: {
-        type: 'object' as const,
-        properties: {
-          directory: {
-            type: 'string',
-            description: 'Directory path (optional, defaults to ".")',
-          },
-          pattern: {
-            type: 'string',
-            description: 'Filename pattern to filter (optional)',
-          },
-        },
-        required: [],
-      },
-    },
-    {
-      name: 'search_code',
-      description: 'Search for a pattern in the codebase',
-      input_schema: {
-        type: 'object' as const,
-        properties: {
-          pattern: {
-            type: 'string',
-            description: 'Search pattern',
-          },
-          file_pattern: {
-            type: 'string',
-            description: 'File pattern to filter (optional)',
-          },
-        },
-        required: ['pattern'],
-      },
-    },
-    {
-      name: 'delete_file',
-      description: 'Delete a file from the codebase',
-      input_schema: {
-        type: 'object' as const,
-        properties: {
-          path: {
-            type: 'string',
-            description: 'File path relative to project root',
-          },
-        },
-        required: ['path'],
-      },
-    },
-    {
-      name: 'mkdir',
-      description: 'Create a directory (and parent directories if needed)',
-      input_schema: {
-        type: 'object' as const,
-        properties: {
-          path: {
-            type: 'string',
-            description: 'Directory path relative to project root',
-          },
-        },
-        required: ['path'],
-      },
-    },
-  ];
+  
+  // ✅ 2. Directive (user requirements)
+  if (state.directive || state.spec) {
+    lines.push(`# Directive`);
+    lines.push(state.directive || state.spec);
+    lines.push('');
+  }
+  
+  // ✅ 3. Existing Design (for continuation/evolution)
+  if (state.design) {
+    lines.push(`# Existing Design Document`);
+    lines.push(state.design);
+    lines.push('');
+  }
+  
+  // ✅ 4. Execution Plan (from plan node)
+  if (state.planText) {
+    lines.push(`# Execution Plan`);
+    lines.push(state.planText);
+    lines.push('');
+  }
+  
+  // ✅ Note: Output format instructions are in PromptEngine templates
+  // (design/phases/execute/rules.md)
+  // Design job uses pure XML streaming - no tool calling needed!
+  
+  return lines.join('\n');
 }
 

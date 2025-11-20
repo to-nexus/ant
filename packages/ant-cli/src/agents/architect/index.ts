@@ -122,18 +122,20 @@ export async function architectAgent(
   }
   
   // 7. Create ProjectContext with both Vector and Session
-  const context: ProjectContext & { enableEvaluation?: boolean, workspaceResolver?: any, featurePath?: string } = {
+  // ✅ FIX: Do NOT include ANY complex objects in context - only primitives!
+  // ✅ LangGraph state serialization + ProjectContext's index signature causes issues
+  const context: ProjectContext & { enableEvaluation?: boolean, featurePath?: string } = {
     project,
     featureFolder,
-    workingDir,  // Now uses resolved repository path
-    config,
-    memory: vectorMemory,           // Long-term knowledge
-    sessionHistory: sessionHistory,  // Short-term context
-    enableEvaluation,                // Evaluation flag
-    workspaceResolver: deps?.workspaceResolver,
-    userId,                          // ✅ For path resolution
-    organizationId,                  // ✅ For path resolution
-    featurePath                      // ✅ Optional: Pre-resolved for performance
+    workingDir,  // Repository root path (string)
+    projectPath: config.localPath,  // ✅ Used by TemplateComposer (primitive string)
+    repoType: config.repoType,      // ✅ For mode detection (primitive string)
+    memory: vectorMemory,           // Long-term knowledge (string)
+    sessionHistory: sessionHistory,  // Short-term context (string)
+    enableEvaluation,                // Evaluation flag (boolean)
+    userId,                          // ✅ For path resolution (string)
+    organizationId,                  // ✅ For path resolution (string)
+    featurePath                      // ✅ Optional: Pre-resolved for performance (string)
   };
   
   // ✅ Read chat integration parameters from environment
@@ -175,10 +177,14 @@ export async function architectAgent(
         git: deps.git,
         memory: deps.memory,
         contextLoader: async (task, ctx) => {
+          // ✅ FIX: task parameter is a Task object, not AgentTask string!
+          // For design job, we need to pass 'design' as the AgentTask type
+          const agentTask: AgentTask = 'design';
+          
           const gitPort = deps.git;
           if (!gitPort) return {};
           
-          const directive = await ArtifactService.getDirective(ctx, task, gitPort);
+          const directive = await ArtifactService.getDirective(ctx, agentTask, gitPort);
           const previousDesign = await ArtifactService.findLatestDesign(ctx, gitPort);
           const source = await ArtifactService.getSource(ctx, gitPort);
           
@@ -201,6 +207,7 @@ export async function architectAgent(
           git: deps?.git,
           analyzer: deps?.analyzer,
           memory: deps?.memory,
+          workspaceResolver: deps?.workspaceResolver,  // ✅ For path resolution
           kanbanUpdate: deps?.kanbanUpdate,      // ✅ NEW: For real-time Kanban updates
           fileTreeUpdate: deps?.fileTreeUpdate,  // ✅ NEW: For real-time file tree updates
           workflowUpdate: deps?.workflowUpdate   // ✅ NEW: For real-time workflow tracking
@@ -276,10 +283,14 @@ export async function architectAgent(
           git: deps.git,
           memory: deps.memory,
           contextLoader: async (task, ctx) => {
+            // ✅ FIX: task parameter is a Task object, not AgentTask string!
+            // For code job, we need to pass 'code' as the AgentTask type
+            const agentTask: AgentTask = 'code';
+            
             const gitPort = deps.git;
             if (!gitPort) return {};
             
-            const directive = await ArtifactService.getDirective(ctx, task, gitPort);
+            const directive = await ArtifactService.getDirective(ctx, agentTask, gitPort);
             const designDoc = await ArtifactService.findLatestDesign(ctx, gitPort);
             
             return {
@@ -305,6 +316,7 @@ export async function architectAgent(
             chunk: deps?.chunk,
             session: deps?.session,
             command: deps?.command,
+            workspaceResolver: deps?.workspaceResolver,  // ✅ For path resolution
             kanbanUpdate: deps?.kanbanUpdate,  // ✅ Pass Kanban update port (undefined in child process)
             fileTreeUpdate: deps?.fileTreeUpdate,  // ✅ Pass file tree update port (undefined in child process)
             workflowUpdate: deps?.workflowUpdate  // ✅ Pass workflow update port for Agent Workflow visualization

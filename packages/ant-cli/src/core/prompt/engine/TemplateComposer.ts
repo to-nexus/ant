@@ -61,7 +61,7 @@ export class TemplateComposer {
         currentCode: assembled.currentCode || '',
         designDoc: assembled.designDoc || '',
         currentTask: assembled.currentTask || null,
-        projectPath: context.config?.localPath || '/path/to/project'
+        projectPath: (context as any).projectPath || context.workingDir || '/path/to/project'
       }
     );
     

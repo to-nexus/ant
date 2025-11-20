@@ -15,7 +15,9 @@ export type CodeMode = CoreCodeMode;
 // Extend core ProjectContext with architect-specific fields
 export interface ProjectContext extends CoreProjectContext {
   featureFolder: string;
-  config: any;
+  config?: any;  // ✅ Make optional to avoid JSON serialization issues
+  projectPath?: string;  // ✅ Extracted from config.localPath
+  repoType?: string;     // ✅ Extracted from config.repoType
   
   // ✅ UserContext information for path resolution
   userId?: string;

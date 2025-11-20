@@ -9,15 +9,14 @@ When creating or modifying `.md` files, follow this **two-step process** for rea
 #### Step 1: Stream content with `<file>` tag (for live preview)
 
 ```xml
-<file path="DESIGN.md">
-# System Design
+<file path="path/to/document.md">
+# Document Title
 
-## Architecture Overview
-This system uses a microservices architecture...
+## Section 1
+Content here...
 
-## Components
-### API Gateway
-...
+## Section 2
+More content...
 </file>
 ```
 
@@ -31,7 +30,7 @@ This system uses a microservices architecture...
 {
   "tool": "write_file",
   "arguments": {
-    "path": "DESIGN.md",
+    "path": "path/to/document.md",
     "content": ""
   }
 }
