@@ -105,11 +105,17 @@ export class XMLStreamParser implements IStreamParser {
         this.buffer = this.buffer.substring(endIdx + '</thinking>'.length);
         this.context.insideThinking = false;
         
-        // ✅ Just emit remaining content (if any)
+        // ✅ Emit remaining content with blockEnd flag (for timing)
         if (thinkingContent.trim()) {
           actions.push({
             type: 'thinking',
-            data: { content: thinkingContent }
+            data: { content: thinkingContent, blockEnd: true }  // ✅ Signal end
+          });
+        } else {
+          // Empty content but still signal end
+          actions.push({
+            type: 'thinking',
+            data: { content: '', blockEnd: true }
           });
         }
         
@@ -117,8 +123,29 @@ export class XMLStreamParser implements IStreamParser {
         continue;
       }
       
-      // 3. Accumulate thinking content (emit every token for real-time streaming)
-      if (this.context.insideThinking && this.buffer.length > 0) {
+      // 3. Check for <tasks> inside thinking (조용히 소비, UI 출력 없음)
+      if (this.context.insideThinking && !this.context.insideTasks && this.buffer.includes('<tasks>')) {
+        const startIdx = this.buffer.indexOf('<tasks>');
+        
+        // Emit thinking content before <tasks>
+        const thinkingBeforeTasks = this.buffer.substring(0, startIdx);
+        if (thinkingBeforeTasks.trim()) {
+          actions.push({
+            type: 'thinking',
+            data: { content: thinkingBeforeTasks }
+          });
+        }
+        
+        this.buffer = this.buffer.substring(startIdx + '<tasks>'.length);
+        this.context.insideTasks = true;
+        // ❌ UI 출력 제거 (내부 파싱만)
+        
+        continueParsingLoop = true;
+        continue;
+      }
+      
+      // 4. Accumulate thinking content (emit every token for real-time streaming)
+      if (this.context.insideThinking && !this.context.insideTasks && this.buffer.length > 0) {
         const content = this.buffer;
         this.buffer = '';
         actions.push({
@@ -128,8 +155,8 @@ export class XMLStreamParser implements IStreamParser {
         continue;
       }
       
-      // 4. Check for <tasks> opening (suppress output - internal use only)
-      if (!this.context.insideTasks && this.buffer.includes('<tasks>')) {
+    // 5. Check for <tasks> opening at top level (조용히 소비, UI 출력 없음)
+    if (!this.context.insideTasks && this.buffer.includes('<tasks>')) {
         const startIdx = this.buffer.indexOf('<tasks>');
         // Emit any text before <tasks> as response
         const beforeTasks = this.buffer.substring(0, startIdx);
@@ -141,22 +168,27 @@ export class XMLStreamParser implements IStreamParser {
         }
         this.buffer = this.buffer.substring(startIdx + '<tasks>'.length);
         this.context.insideTasks = true;
+        // ❌ UI 출력 제거 (내부 파싱만)
+        
         continueParsingLoop = true;
         continue;
       }
       
-      // 5. Check for </tasks> closing (skip content - not displayed)
-      if (this.context.insideTasks && this.buffer.includes('</tasks>')) {
+    // 6. Check for </tasks> closing (조용히 소비, UI 출력 없음)
+    if (this.context.insideTasks && this.buffer.includes('</tasks>')) {
         const endIdx = this.buffer.indexOf('</tasks>');
-        // Discard tasks content (not displayed in UI)
+        // ❌ tasksContent 제거 - 더 이상 UI로 전송하지 않음
         this.buffer = this.buffer.substring(endIdx + '</tasks>'.length);
         this.context.insideTasks = false;
+        // ❌ UI 출력 제거 (내부 파싱만)
+        
         continueParsingLoop = true;
         continue;
       }
       
-      // 6. Discard content inside <tasks> (not displayed)
+      // 7. Accumulate content inside <tasks> (조용히 소비, UI 출력 없음)
       if (this.context.insideTasks && this.buffer.length > 0) {
+        // ❌ 그냥 버퍼 비우기 (UI 출력 없음)
         this.buffer = '';
         continue;
       }

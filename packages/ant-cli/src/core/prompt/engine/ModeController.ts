@@ -176,6 +176,9 @@ export class ModeController {
     }
     
     if (phase === 'execute') {
+      // ✅ Markdown output format (always include for real-time MD file streaming)
+      injections.push(`${phasePrefix}/markdown-output-format`);
+      
       // ✅ Language-specific environment rules (highest priority - applies to ALL execute tasks)
       const language = this.detectLanguage(context);
       if (language && task === 'code') {

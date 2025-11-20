@@ -26,6 +26,7 @@ export interface ParsedAction {
     actionType?: 'create' | 'append' | 'edit' | 'delete';
     metadata?: Record<string, any>;
     blockStart?: boolean;  // For thinking: marks <thinking> tag opened (new block)
+    blockEnd?: boolean;    // ✅ For thinking: marks </thinking> tag closed (duration calc)
   };
 }
 

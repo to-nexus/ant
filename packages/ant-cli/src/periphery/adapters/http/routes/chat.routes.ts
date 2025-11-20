@@ -80,6 +80,23 @@ export function createChatRoutes(deps: {
   });
 
   /**
+   * GET /projects/:id/features/:feature/chat/has-active-message
+   * Check if there's an active message
+   */
+  router.get('/projects/:id/features/:feature/chat/has-active-message', (req: Request, res: Response) => {
+    const projectId = req.params.id;
+    const featureName = req.params.feature;
+    
+    if (!deps.chatService) {
+      res.status(503).json({ error: 'Chat service not available' });
+      return;
+    }
+    
+    const hasActive = deps.chatService.hasActiveMessage(projectId, featureName);
+    res.json({ hasActive });
+  });
+
+  /**
    * POST /projects/:id/features/:feature/chat/start-message
    * Start a new assistant message
    * jobId is optional - if not provided, creates a pending message that will be associated with job later

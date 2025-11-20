@@ -14,6 +14,10 @@
 
 import { ArchitectGraphState } from '../state';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
+import { StreamOrchestrator } from '../../../../../core/streaming/StreamOrchestrator';
+import { XMLStreamParser } from '../../../../../core/streaming/parsers/XMLStreamParser';
+import { CommonRenderStrategy } from '../../../../../core/streaming/strategies/CommonRenderStrategy';
+import { StreamBufferManager } from '../../../../../core/streaming/buffer/StreamBufferManager';
 
 export async function codeGen(
   state: ArchitectGraphState
@@ -55,6 +59,31 @@ export async function codeGen(
   const chatAPI = getChatAPIClient();
   await chatAPI.showChatStatus('placeholder');
   
+  // ✅ Initialize BufferManager for MD file streaming (if not exists)
+  if (!state._bufferManager) {
+    const gitPort = state.deps?.git;
+    const projectPath = gitPort ? await gitPort.getRepoRoot() : '';
+    const featureName = state.featureName || 'unknown';
+    const jobId = state._httpJobId || 'unknown';
+    
+    state._bufferManager = new StreamBufferManager(projectPath, featureName, 'code', jobId);
+    console.log(`📦 [CodeGen] BufferManager initialized`);
+  }
+  
+  // ✅ Setup XML Parser + StreamOrchestrator for MD file streaming
+  const parser = new XMLStreamParser();
+  const renderStrategy = new CommonRenderStrategy(
+    chatAPI,
+    state._bufferManager
+  );
+  
+  const existingFiles = new Set(state.files?.map(f => f.path) || []);
+  const orchestrator = new StreamOrchestrator({
+    parser,
+    renderStrategy,
+    existingFiles,
+  });
+  
   // Collect LLM output
   let thinking = '';
   let textResponse = '';
@@ -64,22 +93,30 @@ export async function codeGen(
     args: Record<string, any>;
   }> = [];
   
+  // ✅ Check if this is a continuation after tool calling
+  const isAfterToolCall = state.conversationHistory && state.conversationHistory.length > 0;
+  console.log(`[CodeGen] isAfterToolCall: ${isAfterToolCall}, enableThinking: ${!isAfterToolCall}`);
+  
   try {
     // ✅ Single stream (no loop!)
     for await (const event of llmClient.stream(messages, {
       tools,
       maxTokens: 16000,
+      enableThinking: !isAfterToolCall,  // ✅ Disable thinking after tool call
     })) {
-      // Thinking
+      // ✅ Pass to orchestrator for XML parsing (MD file streaming)
+      await orchestrator.processEvent(event);
+      
+      // Thinking (UI only - NOT included in conversation history!)
       if (event.type === 'thinking') {
-        thinking += event.thinking || '';  // ✅ NEW: thinking 필드 사용
-        await chatAPI.sendLLMEvent(event);
+        thinking += event.thinking || '';  // ✅ For UI display only
+        // Don't send directly - orchestrator handles it
       }
       
       // Text
       if (event.type === 'text') {
         textResponse += event.text || '';  // ✅ NEW: text 필드 사용
-        await chatAPI.sendLLMEvent(event);
+        // Don't send directly - orchestrator handles it
       }
       
       // Tool call (감지만, 실행 안함!)
@@ -88,6 +125,15 @@ export async function codeGen(
         
         console.log(`🔧 [CodeGen] Tool call detected: ${name}`);
         console.log(`   Args:`, JSON.stringify(input, null, 2));
+        
+        // 🎯 CRITICAL: Only send FIRST tool call to UI (Standard Tool Calling pattern)
+        // Other tool calls are collected but not shown to user (they'll be dropped by tool node)
+        if (toolCalls.length === 0) {
+          await chatAPI.sendLLMEvent(event);
+          console.log(`   ✅ Sent to UI (first tool call)`);
+        } else {
+          console.log(`   ⚠️  Skipped UI display (will be dropped by tool node)`);
+        }
         
         toolCalls.push({
           id,
@@ -102,19 +148,26 @@ export async function codeGen(
       }
     }
     
+    // ✅ Finalize orchestrator (flush buffer)
+    // Pass hasToolCalls flag to prevent premature message finalization
+    const hasToolCalls = toolCalls.length > 0;
+    await orchestrator.finalize(hasToolCalls);
+    
     console.log(`\n✅ [CodeGen] Reasoning complete`);
     console.log(`   Thinking: ${thinking.length} chars`);
     console.log(`   Text: ${textResponse.length} chars`);
     console.log(`   Tool calls: ${toolCalls.length}`);
     
     // ✅ Return LLM response (state에 저장)
+    // 🔴 FIX: done should be false if there are tool calls (LLM is NOT done yet!)
     return {
       llmResponse: {
-        thinking,
-        textResponse,
-        toolCalls,
-        done: toolCalls.length === 0,  // 도구 호출 없으면 완료
+        thinking,         // ✅ For UI display only (not in conversation history)
+        textResponse,     // ✅ For conversation history (if no tool calls)
+        toolCalls,        // ✅ For tool execution
+        done: toolCalls.length === 0,  // ✅ Tool calls 없을 때만 done = true
       },
+      _bufferManager: state._bufferManager,  // ✅ Preserve buffer manager
     };
   } catch (error) {
     console.error('❌ [CodeGen] Error during reasoning:', error);

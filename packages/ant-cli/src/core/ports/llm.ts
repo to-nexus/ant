@@ -77,7 +77,10 @@ export interface LLMStreamEvent {
     provider?: string;        // Provider name (e.g. "anthropic", "openai")
     timestamp?: string;       // ISO 8601 timestamp
     blockStart?: boolean;     // Marks block opening (e.g. thinking block start)
+    blockEnd?: boolean;       // ✅ Marks block ending (e.g. thinking block end)
     placeholder?: boolean;    // Mark as placeholder for replacement
+    durationMs?: number;      // ✅ Duration in milliseconds (for thinking/tasks)
+    thinkingDuration?: number;  // ✅ DEPRECATED: Use durationMs instead
   };
 }
 

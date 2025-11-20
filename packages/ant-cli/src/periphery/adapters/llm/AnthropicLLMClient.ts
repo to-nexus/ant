@@ -56,12 +56,24 @@ export class AnthropicLLMClient implements LLMClient {
     options?: {
       tools?: ToolDefinition[];
       maxTokens?: number;
+      enableThinking?: boolean;  // ✅ NEW: Control Extended Thinking
       [key: string]: any;
     }
   ): AsyncIterable<LLMStreamEvent> {
+    // ✅ Conditionally enable Extended Thinking (default: true)
+    const enableThinking = options?.enableThinking !== false;
+    console.log(`[AnthropicLLM] Extended Thinking: ${enableThinking ? 'ENABLED' : 'DISABLED'}`);
+    
     const stream = await this.client.messages.create({
       model: this.modelName,
       max_tokens: options?.maxTokens || 16000,
+      // ✅ Conditionally enable Extended Thinking
+      ...(enableThinking ? {
+        thinking: {
+          type: 'enabled',
+          budget_tokens: 10000,
+        }
+      } : {}),
       messages: messages.map(m => ({
         role: m.role as 'user' | 'assistant',
         content: m.content,
@@ -76,9 +88,26 @@ export class AnthropicLLMClient implements LLMClient {
       stream: true,
     });
 
+    // 🔴 FIX: Accumulate tool_use input across multiple deltas
+    const toolUseBuffer: Map<number, { id: string; name: string; input: string }> = new Map();
+    const thinkingBlocks: Map<number, { startTime: number; content: string }> = new Map();
+    
     for await (const event of stream) {
-      // Thinking block
+      // Thinking block - START
+      if (event.type === 'content_block_start' && event.content_block.type === 'thinking') {
+        thinkingBlocks.set(event.index, {
+          startTime: Date.now(),
+          content: '',
+        });
+      }
+      
+      // Thinking block - DELTA
       if (event.type === 'content_block_delta' && event.delta.type === 'thinking_delta') {
+        const block = thinkingBlocks.get(event.index);
+        if (block) {
+          block.content += event.delta.thinking;
+        }
+        
         yield {
           type: 'thinking',
           thinking: event.delta.thinking,  // ✅ NEW: 명시적 thinking 필드
@@ -105,23 +134,74 @@ export class AnthropicLLMClient implements LLMClient {
         };
       }
 
-      // Tool use
+      // 🔴 FIX: Tool use - START (initialize buffer)
       if (event.type === 'content_block_start' && event.content_block.type === 'tool_use') {
-        yield {
-          type: 'tool_use',
-          toolUse: {
-            id: event.content_block.id,
-            name: event.content_block.name,
-            input: event.content_block.input,
-            type: 'function' as const,  // ✅ NEW: 분류 추가
-          },
-          index: event.index,
-          metadata: {
-            provider: 'anthropic',
-            model: this.modelName,
-            timestamp: new Date().toISOString(),
-          },
-        };
+        toolUseBuffer.set(event.index, {
+          id: event.content_block.id,
+          name: event.content_block.name,
+          input: '',  // ✅ Start empty, will accumulate from deltas
+        });
+      }
+
+      // 🔴 FIX: Tool use - DELTA (accumulate input JSON)
+      if (event.type === 'content_block_delta' && event.delta.type === 'input_json_delta') {
+        const buffer = toolUseBuffer.get(event.index);
+        if (buffer) {
+          buffer.input += event.delta.partial_json;  // ✅ Accumulate JSON
+        }
+      }
+
+      // 🔴 FIX: Content block STOP (handle both tool_use and thinking)
+      if (event.type === 'content_block_stop') {
+        // ✅ Check if this is a thinking block ending
+        const thinkingBlock = thinkingBlocks.get(event.index);
+        if (thinkingBlock) {
+          const durationMs = Date.now() - thinkingBlock.startTime;
+          console.log(`[AnthropicLLM] 🧠 Thinking block ended - duration: ${durationMs}ms, index: ${event.index}`);
+          
+          // ✅ Emit thinking end signal
+          yield {
+            type: 'thinking',
+            thinking: '',  // Empty content
+            index: event.index,
+            metadata: {
+              provider: 'anthropic',
+              model: this.modelName,
+              timestamp: new Date().toISOString(),
+              blockEnd: true,  // ✅ Signal end
+              durationMs,
+            },
+          };
+          
+          thinkingBlocks.delete(event.index);  // Clean up
+        }
+        
+        // ✅ Check if this is a tool_use ending
+        const buffer = toolUseBuffer.get(event.index);
+        if (buffer) {
+          try {
+            const parsedInput = JSON.parse(buffer.input);  // ✅ Parse complete JSON
+            yield {
+              type: 'tool_use',
+              toolUse: {
+                id: buffer.id,
+                name: buffer.name,
+                input: parsedInput,  // ✅ Complete parsed input!
+                type: 'function' as const,
+              },
+              index: event.index,
+              metadata: {
+                provider: 'anthropic',
+                model: this.modelName,
+                timestamp: new Date().toISOString(),
+              },
+            };
+            toolUseBuffer.delete(event.index);  // ✅ Clean up
+          } catch (error) {
+            console.error(`[AnthropicLLM] Failed to parse tool input:`, buffer.input);
+            console.error(error);
+          }
+        }
       }
 
       // Message complete

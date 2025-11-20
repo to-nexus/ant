@@ -251,6 +251,19 @@ function ContentBlock({ content, isStreaming }: ContentBlockProps) {
         </div>
       );
 
+    case 'tool_action':
+      // ✅ Cursor/Copilot style: Minimal one-line display for simple tool actions
+      const icon = content.metadata?.actionIcon || '🔧';
+      const toolContent = content.content;
+      
+      return (
+        <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-gray-600 dark:text-gray-400 
+                        bg-gray-50/30 dark:bg-gray-800/20 rounded border border-gray-200/50 dark:border-gray-700/50">
+          <span>{icon}</span>
+          <span className="font-medium">{toolContent}</span>
+        </div>
+      );
+
     case 'grepping':
       return (
         <div className="flex items-center gap-2 px-3 py-2 bg-purple-50 dark:bg-purple-900/20 

@@ -13,14 +13,24 @@ export async function tool(
   console.log('\n🔧 [Tool] Executing tool...\n');
   
   // ✅ Get first tool call from llmResponse
-  const toolCall = state.llmResponse?.toolCalls?.[0];
+  const toolCalls = state.llmResponse?.toolCalls || [];
   
-  if (!toolCall) {
+  if (toolCalls.length === 0) {
     console.log('⚠️  [Tool] No tool call found, skipping');
     return {};
   }
   
+  // 🎯 CRITICAL: Only process FIRST tool call (Standard Tool Calling pattern)
+  const toolCall = toolCalls[0];
   const { id, name, args } = toolCall;
+  
+  // ✅ Log if multiple tool calls were dropped
+  if (toolCalls.length > 1) {
+    console.log(`   ⚠️  Multiple tool calls detected (${toolCalls.length}), processing FIRST only:`);
+    console.log(`   ✅ Processing: ${name}`);
+    console.log(`   ❌ Dropping: ${toolCalls.slice(1).map(tc => tc.name).join(', ')}`);
+    console.log(`   💡 LLM will re-decide remaining actions in next turn\n`);
+  }
   
   console.log(`   Tool: ${name}`);
   console.log(`   Args:`, JSON.stringify(args, null, 2));
@@ -204,6 +214,10 @@ async function handleReadFile(
   
   console.log(`   📖 Read: ${filePath} (${content.length} bytes)`);
   
+  // ✅ UI notification: read complete
+  const chatAPI = getChatAPIClient();
+  await chatAPI.addReadComplete(filePath);
+  
   return content;
 }
 
@@ -234,6 +248,13 @@ async function handleListFiles(
     : files;
   
   console.log(`   📂 Listed: ${filteredFiles.length} files in ${directory || '.'}`);
+  
+  // ✅ UI notification: exploration complete
+  const chatAPI = getChatAPIClient();
+  await chatAPI.showChatStatus('explored', { 
+    filesCount: filteredFiles.length,
+    filesList: filteredFiles 
+  });
   
   return JSON.stringify({
     directory: directory || '.',
@@ -286,6 +307,14 @@ async function handleSearchCode(
   }
   
   console.log(`   🔍 Search: "${pattern}" found ${results.length} results`);
+  
+  // ✅ UI notification: search complete
+  const chatAPI = getChatAPIClient();
+  const matchedFiles = [...new Set(results.map(r => r.file))];
+  await chatAPI.showChatStatus('explored', { 
+    filesCount: matchedFiles.length,
+    filesList: matchedFiles 
+  });
   
   return JSON.stringify({
     pattern,

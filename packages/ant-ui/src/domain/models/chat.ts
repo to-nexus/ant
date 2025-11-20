@@ -28,6 +28,8 @@ export type MessageContentType =
   | 'file_edit'      // File edit complete (collapsible)
   | 'file_deleting'  // File deletion started
   | 'file_delete'    // File deletion complete
+  // Tool Actions - Cursor/Copilot style (minimal, one-line display)
+  | 'tool_action'    // Simple tool actions (mkdir, etc.) - ✓ Created organisms/, templates/
   // Command Execution - Real-time streaming
   | 'command_running'   // Command started (header only)
   | 'command_streaming' // Command output streaming
@@ -51,11 +53,15 @@ export interface MessageContent {
     tokensCount?: number;   // For explored
     strategy?: string;      // For grepped (git/vector/keyword)
     filesList?: string[];   // List of files (for explored/grepped)
+    // Tool Actions
+    toolName?: string;      // For tool_action: tool name (mkdir, etc.)
+    actionIcon?: string;    // For tool_action: emoji/icon to display
     // Metadata
     provider?: string;      // 'system' or 'llm'
     model?: string;         // LLM model name
     blockStart?: boolean;   // For thinking: marks <thinking> tag opened (new block)
     durationMs?: number;    // For thinking: duration in milliseconds
+    collapsed?: boolean;    // For thinking: marks if the block should be collapsed
   };
 }
 

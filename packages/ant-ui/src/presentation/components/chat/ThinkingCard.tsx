@@ -18,8 +18,6 @@ export function ThinkingCard({ content }: ThinkingCardProps) {
   
   // ✅ Track if thinking content is still actively streaming
   const [isThinkingComplete, setIsThinkingComplete] = useState(false);
-  const thinkingContentRef = useRef(content.content);
-  const thinkingTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const thinkingScrollRef = useRef<HTMLDivElement>(null);
   
   // ✅ Track if user manually scrolled away from bottom
@@ -28,39 +26,25 @@ export function ThinkingCard({ content }: ThinkingCardProps) {
   // ✅ CRITICAL: Use ref to track previous content length to prevent infinite scroll loops
   const prevThinkingLengthRef = useRef(0);
   
-  // ✅ Detect when thinking content stops growing (completed)
-  // Track ONLY thinking content changes, independent of overall message streaming
+  // ✅ NEW: Listen to backend collapse signal (from thinking_collapse SSE event)
   useEffect(() => {
-    if (content.type === 'thinking') {
-      const currentContent = content.content || '';
-      
-      // If content changed OR this is initial mount, reset the timeout
-      if (currentContent !== thinkingContentRef.current || thinkingContentRef.current === undefined) {
-        thinkingContentRef.current = currentContent;
-        setIsThinkingComplete(false);
-        
-        // Clear existing timeout
-        if (thinkingTimeoutRef.current) {
-          clearTimeout(thinkingTimeoutRef.current);
-        }
-        
-        // Set new timeout: if no change for 500ms, mark as complete
-        thinkingTimeoutRef.current = setTimeout(() => {
-          console.log('[ThinkingCard] Thinking completed (500ms timeout)');
-          setIsThinkingComplete(true);
-          // ✅ Reset user scrolling state when thinking completes
-          setIsUserScrolling(false);
-        }, 500);
-      }
-    }
+    console.log('[ThinkingCard] 🔍 Metadata check:', {
+      collapsed: content.metadata?.collapsed,
+      durationMs: content.metadata?.durationMs,
+      fullMetadata: content.metadata
+    });
     
-    // Cleanup timeout on unmount
-    return () => {
-      if (thinkingTimeoutRef.current) {
-        clearTimeout(thinkingTimeoutRef.current);
-      }
-    };
-  }, [content.content, content.type]);
+    if (content.metadata?.collapsed === true) {
+      console.log('[ThinkingCard] 💭 Backend signaled collapse - auto-collapsing with duration:', content.metadata?.durationMs);
+      setIsThinkingComplete(true);
+      setIsThinkingExpanded(false);  // ✅ Force collapsed state
+      setIsUserScrolling(false);
+    }
+  }, [content.metadata?.collapsed, content.metadata?.durationMs]);
+  
+  // ✅ REMOVED: 500ms timeout fallback (causing flickering)
+  // Only use backend collapse signal (thinking_collapse event)
+  // This prevents premature collapse during streaming
   
   // ✅ Check if user is at bottom of scroll area
   const isAtBottom = (element: HTMLDivElement) => {

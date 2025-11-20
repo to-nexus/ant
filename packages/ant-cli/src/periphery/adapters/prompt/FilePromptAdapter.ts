@@ -9,6 +9,23 @@ Handlebars.registerHelper("ne", (a, b) => a !== b);
 Handlebars.registerHelper("and", (a, b) => a && b);
 Handlebars.registerHelper("or", (a, b) => a || b);
 
+// ✅ Register base partials (shared templates)
+const basePartialsPath = join(__dirname, "../../../core/prompt/templates/base");
+Promise.all([
+  fs.readFile(join(basePartialsPath, "output-format-markdown.md"), "utf8")
+    .then(content => Handlebars.registerPartial("base/output-format-markdown", content))
+    .catch(() => {}),  // Graceful degradation
+  fs.readFile(join(basePartialsPath, "text-response-format.md"), "utf8")
+    .then(content => Handlebars.registerPartial("base/text-response-format", content))
+    .catch(() => {}),  // Graceful degradation
+  fs.readFile(join(basePartialsPath, "tool-calling-rules.md"), "utf8")
+    .then(content => Handlebars.registerPartial("base/tool-calling-rules", content))
+    .catch(() => {}),  // Graceful degradation
+  fs.readFile(join(basePartialsPath, "architect-role.md"), "utf8")
+    .then(content => Handlebars.registerPartial("base/architect-role", content))
+    .catch(() => {})   // Graceful degradation
+]);
+
 /**
  * FilePromptAdapter - File system implementation of PromptPort
  * Loads template files and renders with Handlebars template engine

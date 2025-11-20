@@ -519,6 +519,34 @@ export const useStore = create<Store>((set, get) => {
           }
           break;
           
+        case 'thinking_collapse':
+          // ✅ Thinking block completed - mark as collapsed
+          console.log('[Store] 💭 Collapsing thinking block:', event.messageId, 'index:', event.contentIndex, 'duration:', event.durationMs);
+          const collapseMessage = get().chatMessages.find(m => m.id === event.messageId);
+          if (collapseMessage) {
+            const collapseContents = [...collapseMessage.contents];
+            if (collapseContents[event.contentIndex] && collapseContents[event.contentIndex].type === 'thinking') {
+              // ✅ Mark thinking block as collapsed
+              collapseContents[event.contentIndex] = {
+                ...collapseContents[event.contentIndex],
+                metadata: {
+                  ...collapseContents[event.contentIndex].metadata,
+                  collapsed: true,
+                  durationMs: event.durationMs
+                }
+              };
+              get().updateChatMessage(event.messageId, { 
+                contents: collapseContents,
+                isStreaming: true 
+              });
+            } else {
+              console.warn(`[Store] thinking_collapse - content at index ${event.contentIndex} is not a thinking block`);
+            }
+          } else {
+            console.warn(`[Store] thinking_collapse - message ${event.messageId} not found`);
+          }
+          break;
+          
         case 'message_complete':
           get().updateChatMessage(event.messageId, { isStreaming: false });
           break;

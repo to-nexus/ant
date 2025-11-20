@@ -5,7 +5,6 @@
  * Persists chat history to {project}/{feature}/chat.json
  */
 
-import { Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { LLMStreamEvent } from '../../../../core/ports/llm';
@@ -29,6 +28,8 @@ export interface MessageContent {
      | 'file_creating' | 'file_writing' | 'file_create'
      | 'file_editing' | 'file_updating' | 'file_edit'
      | 'file_deleting' | 'file_delete'
+     // Tool Actions - Cursor/Copilot style
+     | 'tool_action'    // Simple tool actions (mkdir, etc.)
      // Command Execution - Real-time streaming
      | 'command_running' | 'command_streaming' | 'command';
   content: string;
@@ -45,6 +46,9 @@ export interface MessageContent {
     tokensCount?: number;   // For explored
     strategy?: string;      // For grepped (git/vector/keyword)
     filesList?: string[];   // List of files (for explored/grepped)
+    // Tool Actions
+    toolName?: string;      // For tool_action: tool name
+    actionIcon?: string;    // For tool_action: emoji/icon
     // LLM metadata
     model?: string;         // LLM model used
     provider?: string;      // LLM provider (e.g., 'anthropic', 'openai')
@@ -53,6 +57,8 @@ export interface MessageContent {
     jobId?: string;         // For cancelled: job ID to resume
     reason?: string;        // For cancelled: cancellation reason
     durationMs?: number;    // For thinking: duration in milliseconds
+    collapsed?: boolean;    // For thinking: marks if the block should be collapsed
+    // ❌ tasksJson 제거 (더 이상 사용하지 않음)
   };
 }
 
@@ -79,10 +85,7 @@ interface ChatSession {
   jobId?: string;
   messages: ChatMessage[];
   currentMessage?: ChatMessage; // Message being streamed
-  activeFileOperation?: {  // Track active file being written
-    filePath: string;
-    contentIndex: number;  // Index of file content in currentMessage.contents
-  };
+  activeFileOperations?: Map<string, { filePath: string; contentIndex: number }>;  // ✅ Track multiple files: filePath → { filePath, contentIndex }
   thinkingStartTime?: number;  // Track thinking block start time (ms)
   lastThinkingContentIndex?: number;  // Track last thinking content index
   userContext?: UserContext;  // ✅ Store user context for file operations
@@ -264,6 +267,15 @@ export class ChatService {
   }
 
   /**
+   * Check if there's an active (streaming) message
+   */
+  hasActiveMessage(projectId: string, featureName: string): boolean {
+    const key = this.getSessionKey(projectId, featureName);
+    const session = this.sessions.get(key);
+    return session?.currentMessage !== undefined;
+  }
+
+  /**
    * Start a new assistant message (for streaming)
    */
   startAssistantMessage(projectId: string, featureName: string, jobId: string, userContext?: UserContext): string {
@@ -297,18 +309,19 @@ export class ChatService {
 
   /**
    * Add content to current streaming message
+   * Returns the actual content index used (important for MERGE cases)
    */
   addContentToCurrentMessage(
     projectId: string, 
     featureName: string, 
     content: MessageContent
-  ): void {
+  ): number {
     const key = this.getSessionKey(projectId, featureName);
     const session = this.sessions.get(key);
     
     if (!session || !session.currentMessage) {
       console.warn('⚠️  [ChatService] No current message to add content to');
-      return;
+      return -1;  // Return invalid index
     }
 
     // ✅ Simple: only check last content in currentMessage
@@ -365,7 +378,7 @@ export class ChatService {
         contentIndex: lastContentIndex,
         content: lastContent
       });
-      return;
+      return lastContentIndex;  // Return the merged index
     }
     
     // Case 2: Explicit MERGE patterns
@@ -412,7 +425,7 @@ export class ChatService {
         contentIndex: lastContentIndex,
         content: lastContent
       });
-      return;
+      return lastContentIndex;  // Return the merged index
     }
     
     // Case 2.5: Direct duplicate of completed Chat Status = IGNORE
@@ -426,7 +439,7 @@ export class ChatService {
     
     if (shouldIgnore) {
       console.log(`[ChatService] ⏭️ IGNORED: ${content.type} → ${content.type} (direct duplicate)`);
-      return;  // Do nothing, discard silently
+      return lastContentIndex;  // Return existing index (no change needed)
     }
     
     // ✅ Track thinking block duration (supports multiple thinking blocks in one message)
@@ -444,18 +457,29 @@ export class ChatService {
         const thinkingContent = existingContents[session.lastThinkingContentIndex];
         
         if (thinkingContent && thinkingContent.type === 'thinking') {
+          // ✅ 1. Update duration metadata
           thinkingContent.metadata = {
             ...thinkingContent.metadata,
             durationMs
           };
           
-          // Broadcast duration update
+          // ✅ 2. Broadcast duration update
           this.broadcast(projectId, featureName, {
             type: 'content_update',
             messageId: session.currentMessage.id,
             contentIndex: session.lastThinkingContentIndex,
             content: thinkingContent
           });
+          
+          // ✅ 3. Broadcast collapse signal (프론트엔드가 thinking 카드를 접도록 신호)
+          this.broadcast(projectId, featureName, {
+            type: 'thinking_collapse',
+            messageId: session.currentMessage.id,
+            contentIndex: session.lastThinkingContentIndex,
+            durationMs
+          });
+          
+          console.log(`[ChatService] 💭 Thinking block collapsed (duration: ${(durationMs / 1000).toFixed(1)}s)`);
         }
         
         // Reset tracking (will be set again below if new thinking block starts)
@@ -508,7 +532,7 @@ export class ChatService {
         contentIndex: lastContentIndex,
         content: lastContent
       });
-      return;
+      return lastContentIndex;  // Return the appended index
     }
     // ✅ File operations: Find and update in-progress content
     else if (content.metadata?.filePath && 
@@ -537,8 +561,10 @@ export class ChatService {
           contentIndex: existingIndex,
           content
         });
+        return existingIndex;  // Return the updated index
       } else {
         // No in-progress content found, add as new
+        const newIndex = session.currentMessage.contents.length;
         session.currentMessage.contents.push(content);
         
         // Broadcast content add
@@ -547,6 +573,7 @@ export class ChatService {
           messageId: session.currentMessage.id,
           content
         });
+        return newIndex;  // Return the new index
       }
     } else {
       // Different type or has metadata → add as new content block
@@ -554,6 +581,7 @@ export class ChatService {
         console.log('[ChatService] 🆕 New thinking block (<thinking> opened)');
       }
       
+      const newIndex = session.currentMessage.contents.length;
       session.currentMessage.contents.push(content);
 
       // Broadcast content add
@@ -562,6 +590,7 @@ export class ChatService {
         messageId: session.currentMessage.id,
         content
       });
+      return newIndex;  // Return the new index
     }
   }
 
@@ -577,24 +606,35 @@ export class ChatService {
       return;
     }
 
-    // ✅ Calculate duration for last thinking block if exists
+    // ✅ Calculate duration for last thinking block if exists (message finalize)
     if (session.thinkingStartTime && session.lastThinkingContentIndex !== undefined) {
       const durationMs = Date.now() - session.thinkingStartTime;
       const thinkingContent = session.currentMessage.contents[session.lastThinkingContentIndex];
       
       if (thinkingContent && thinkingContent.type === 'thinking') {
+        // ✅ 1. Update duration metadata
         thinkingContent.metadata = {
           ...thinkingContent.metadata,
           durationMs
         };
         
-        // Broadcast duration update
+        // ✅ 2. Broadcast duration update
         this.broadcast(projectId, featureName, {
           type: 'content_update',
           messageId: session.currentMessage.id,
           contentIndex: session.lastThinkingContentIndex,
           content: thinkingContent
         });
+        
+        // ✅ 3. Broadcast collapse signal (메시지 종료 시에도 마지막 thinking 접기)
+        this.broadcast(projectId, featureName, {
+          type: 'thinking_collapse',
+          messageId: session.currentMessage.id,
+          contentIndex: session.lastThinkingContentIndex,
+          durationMs
+        });
+        
+        console.log(`[ChatService] 💭 Final thinking block collapsed (duration: ${(durationMs / 1000).toFixed(1)}s)`);
       }
       
       // Reset tracking
@@ -603,37 +643,39 @@ export class ChatService {
     }
 
     // ✅ Finalize any active file operations (interrupted/incomplete)
-    if (session.activeFileOperation) {
-      const fileContent = session.currentMessage.contents[session.activeFileOperation.contentIndex];
-      if (fileContent) {
-        // Convert streaming types to completed types
-        if (fileContent.type === 'file_creating' || fileContent.type === 'file_writing') {
-          fileContent.type = 'file_create';
-        } else if (fileContent.type === 'file_editing' || fileContent.type === 'file_updating') {
-          fileContent.type = 'file_edit';
-        } else if (fileContent.type === 'file_deleting') {
-          fileContent.type = 'file_delete';
+    if (session.activeFileOperations && session.activeFileOperations.size > 0) {
+      for (const [filePath, fileOp] of session.activeFileOperations.entries()) {
+        const fileContent = session.currentMessage.contents[fileOp.contentIndex];
+        if (fileContent) {
+          // Convert streaming types to completed types
+          if (fileContent.type === 'file_creating' || fileContent.type === 'file_writing') {
+            fileContent.type = 'file_create';
+          } else if (fileContent.type === 'file_editing' || fileContent.type === 'file_updating') {
+            fileContent.type = 'file_edit';
+          } else if (fileContent.type === 'file_deleting') {
+            fileContent.type = 'file_delete';
+          }
+          
+          // ✅ Mark as interrupted if job was stopped
+          if (cancelled) {
+            fileContent.metadata = {
+              ...fileContent.metadata,
+              reason: 'user_stopped'
+            };
+          }
+          
+          // Broadcast final state
+          this.broadcast(projectId, featureName, {
+            type: 'content_update',
+            messageId: session.currentMessage.id,
+            contentIndex: fileOp.contentIndex,
+            content: fileContent
+          });
         }
-        
-        // ✅ Mark as interrupted if job was stopped
-        if (cancelled) {
-          fileContent.metadata = {
-            ...fileContent.metadata,
-            reason: 'user_stopped'
-          };
-        }
-        
-        // Broadcast final state
-        this.broadcast(projectId, featureName, {
-          type: 'content_update',
-          messageId: session.currentMessage.id,
-          contentIndex: session.activeFileOperation.contentIndex,
-          content: fileContent
-        });
       }
       
-      // Clear active operation
-      session.activeFileOperation = undefined;
+      // Clear active operations
+      session.activeFileOperations.clear();
     }
 
     session.currentMessage.isStreaming = false;
@@ -664,45 +706,189 @@ export class ChatService {
     
     switch (event.type) {
       case 'thinking':
-        this.addContentToCurrentMessage(projectId, featureName, {
-          type: 'thinking',
-          content: event.thinking || ''  // ✅ NEW: thinking 필드 사용
-        });
-        break;
-
-      case 'text':
-        // ✅ If there's an active file operation, stream text into the file card
-        if (session?.activeFileOperation && session.currentMessage) {
-          const fileContent = session.currentMessage.contents[session.activeFileOperation.contentIndex];
-          if (fileContent && (fileContent.type === 'file_writing' || fileContent.type === 'file_updating')) {
-            // Update file content in real-time (accumulate internally)
-            const textDelta = event.text || '';  // ✅ NEW: text 필드 사용
-            fileContent.content += textDelta;
+        // ✅ FIX: Thinking should create a dedicated thinking card, not plain text
+        // Check if we already have a thinking content block
+        if (session?.currentMessage) {
+          const lastContent = session.currentMessage.contents[session.currentMessage.contents.length - 1];
+          
+          // ✅ Check if this is a blockEnd signal (for collapse)
+          const isBlockEnd = event.metadata?.blockEnd === true;
+          
+          if (isBlockEnd && lastContent && lastContent.type === 'thinking') {
+            // ✅ BlockEnd signal - update duration and trigger collapse
+            const durationMs = event.metadata?.durationMs;
+            console.log(`[ChatService] 💭 Thinking blockEnd detected - duration: ${durationMs}ms, contentIndex: ${session.currentMessage.contents.length - 1}`);
             
-            // ✅ Broadcast incremental update (delta only - network efficient)
+            // Only append content if exists
+            if (event.thinking && event.thinking.trim()) {
+              lastContent.content += event.thinking;
+            }
+            
+            // Update metadata with duration
+            lastContent.metadata = {
+              ...lastContent.metadata,
+              durationMs
+            };
+            
+            // Broadcast update
+            this.broadcast(projectId, featureName, {
+              type: 'content_update',
+              messageId: session.currentMessage.id,
+              contentIndex: session.currentMessage.contents.length - 1,
+              content: lastContent
+            });
+            
+            // ✅ Trigger collapse
+            console.log(`[ChatService] 📤 Broadcasting thinking_collapse with duration: ${durationMs}ms`);
+            this.broadcast(projectId, featureName, {
+              type: 'thinking_collapse',
+              messageId: session.currentMessage.id,
+              contentIndex: session.currentMessage.contents.length - 1,
+              durationMs
+            });
+          } else if (lastContent && lastContent.type === 'thinking') {
+            // ✅ Append to existing thinking block
+            lastContent.content += event.thinking || '';
+            
+            // Broadcast incremental update
             this.broadcast(projectId, featureName, {
               type: 'content_append',
               messageId: session.currentMessage.id,
-              contentIndex: session.activeFileOperation.contentIndex,
-              delta: textDelta  // ✅ Only send the new chunk, not full content
+              contentIndex: session.currentMessage.contents.length - 1,
+              delta: event.thinking || ''
+            });
+          } else {
+            // ✅ Create new thinking block
+            this.addContentToCurrentMessage(projectId, featureName, {
+              type: 'thinking',
+              content: event.thinking || ''
             });
           }
-        } else {
-          // No active file operation - add as regular text
-          this.addContentToCurrentMessage(projectId, featureName, {
-            type: 'text',
-            content: event.text || ''  // ✅ NEW: text 필드 사용
-          });
         }
         break;
 
+      case 'text':
+        // No active file operation - add as regular text
+        // (File content is now handled by tool node, not streaming)
+        this.addContentToCurrentMessage(projectId, featureName, {
+          type: 'text',
+          content: event.text || ''  // ✅ NEW: text 필드 사용
+        });
+        break;
+
       case 'tool_use':
-        // ✅ Tool call detected - show loading card
-        if (event.toolUse) {
-          this.addContentToCurrentMessage(projectId, featureName, {
-            type: 'text',
-            content: `🔧 **Tool Call**: \`${event.toolUse.name}\`\n\`\`\`json\n${JSON.stringify(event.toolUse.input, null, 2)}\n\`\`\``
-          });
+        // ✅ Tool call detected - create appropriate loading card based on tool type
+        if (event.toolUse && session?.currentMessage) {
+          const { name, input } = event.toolUse;
+          
+          // ✅ FILE OPERATIONS: write_file, apply_patch, delete_file (로딩 카드 생성)
+          if (name === 'write_file' || name === 'apply_patch' || name === 'delete_file') {
+            const filePath = (input as any).path;
+            
+            if (filePath) {
+              console.log(`[ChatService] 📄 Creating loading file card for: ${filePath}`);
+              
+              // Determine operation type
+              let contentType: MessageContent['type'];
+              if (name === 'delete_file') {
+                contentType = 'file_deleting';
+              } else {
+                // Default to creating (tool node will update based on file existence)
+                contentType = 'file_creating';
+              }
+              
+              // ✅ CRITICAL: Get the actual index after MERGE (placeholder → file_creating)
+              const actualIndex = this.addContentToCurrentMessage(projectId, featureName, {
+                type: contentType,
+                content: '',  // Empty initially, will be filled by tool node
+                metadata: {
+                  filePath,
+                  timestamp: new Date().toISOString()
+                }
+              });
+              
+              // ✅ Track as active file operation with the ACTUAL index (not predicted)
+              if (actualIndex !== -1) {
+                if (!session.activeFileOperations) {
+                  session.activeFileOperations = new Map();
+                }
+                session.activeFileOperations.set(filePath, { filePath, contentIndex: actualIndex });
+                console.log(`[ChatService] ✅ Tracked file operation at actual index ${actualIndex} for: ${filePath}`);
+              }
+            }
+          }
+          // ✅ COMMAND EXECUTION: run_command
+          else if (name === 'run_command') {
+            const command = (input as any).command;
+            
+            if (command) {
+              console.log(`[ChatService] 💻 Creating loading command card for: ${command}`);
+              
+              // Add loading command card
+              this.addContentToCurrentMessage(projectId, featureName, {
+                type: 'command_running',  // Loading state
+                content: '',  // Output will be streamed
+                metadata: {
+                  command,
+                  timestamp: new Date().toISOString()
+                }
+              });
+            }
+          }
+          // ✅ CODEBASE EXPLORATION: read_file, list_files, search_code, etc.
+          else if (name === 'read_file') {
+            const filePath = (input as any).path;
+            if (filePath) {
+              console.log(`[ChatService] 👁️  Reading file: ${filePath}`);
+              this.addContentToCurrentMessage(projectId, featureName, {
+                type: 'reading',
+                content: `Reading ${filePath}...`,
+                metadata: {
+                  filePath,
+                  timestamp: new Date().toISOString()
+                }
+              });
+            }
+          }
+          else if (name === 'list_files' || name === 'search_code') {
+            console.log(`[ChatService] 🔍 Tool: ${name}`);
+            this.addContentToCurrentMessage(projectId, featureName, {
+              type: 'exploring',
+              content: name === 'list_files' ? 'Listing files...' : 'Searching code...',
+              metadata: {
+                timestamp: new Date().toISOString()
+              }
+            });
+          }
+          // ✅ SIMPLE TOOLS: mkdir (Cursor/Copilot style - minimal one-line display)
+          else if (name === 'mkdir') {
+            const dirPath = (input as any).path;
+            console.log(`[ChatService] 📁 Tool: mkdir (${dirPath})`);
+            this.addContentToCurrentMessage(projectId, featureName, {
+              type: 'tool_action',
+              content: `Created directory: ${dirPath}`,
+              metadata: {
+                toolName: 'mkdir',
+                actionIcon: '📁',
+                filePath: dirPath,
+                timestamp: new Date().toISOString()
+              }
+            });
+          }
+          // ✅ OTHER TOOLS: Fallback (should rarely be used)
+          else {
+            // Generic tool call display
+            console.log(`[ChatService] 🔧 Tool: ${name}`);
+            this.addContentToCurrentMessage(projectId, featureName, {
+              type: 'tool_action',
+              content: `${name}: ${JSON.stringify(input)}`,
+              metadata: {
+                toolName: name,
+                actionIcon: '🔧',
+                timestamp: new Date().toISOString()
+              }
+            });
+          }
         }
         break;
 
@@ -735,6 +921,27 @@ export class ChatService {
     const key = this.getSessionKey(projectId, featureName);
     const session = this.sessions.get(key);
     
+    // ✅ CRITICAL: Debug logging for missing currentMessage
+    if (!session) {
+      console.error(`❌ [ChatService] addFileOperation: No session found for key: ${key}`);
+      console.error(`   File: ${filePath}, Phase: ${phase}, Operation: ${operation}`);
+      return;
+    }
+    
+    if (!session.currentMessage) {
+      console.error(`❌ [ChatService] addFileOperation: No currentMessage in session`);
+      console.error(`   Session key: ${key}`);
+      console.error(`   File: ${filePath}, Phase: ${phase}, Operation: ${operation}`);
+      console.error(`   activeFileOperations size: ${session.activeFileOperations?.size || 0}`);
+      console.error(`   Total messages in session: ${session.messages?.length || 0}`);
+      return;
+    }
+    
+    if (!phase) {
+      console.warn(`⚠️  [ChatService] addFileOperation: No phase provided for ${filePath}`);
+      return;
+    }
+    
     // ✅ Update existing in-progress content instead of adding new ones
     if (session?.currentMessage && phase) {
       const inProgressTypes = {
@@ -745,12 +952,26 @@ export class ChatService {
       
       const typesToFind = inProgressTypes[operation] || [];
       
-      const existingIndex = session.currentMessage.contents.findIndex(c => 
-        typesToFind.includes(c.type) && 
-        c.metadata?.filePath === filePath
-      );
+      // ✅ 1차 시도: activeFileOperations Map에서 찾기 (tool_use에서 생성한 카드)
+      const activeOp = session.activeFileOperations?.get(filePath);
+      let existingIndex = activeOp ? activeOp.contentIndex : -1;
+      
+      // ✅ 2차 시도: typesToFind로 검색 (fallback)
+      if (existingIndex === -1) {
+        existingIndex = session.currentMessage.contents.findIndex(c => 
+          typesToFind.includes(c.type) && 
+          c.metadata?.filePath === filePath
+        );
+        if (existingIndex !== -1) {
+          console.log(`[ChatService] ✅ Found existing file card at index ${existingIndex} for ${filePath} via content search`);
+        }
+      } else {
+        console.log(`[ChatService] ✅ Found existing file card at index ${existingIndex} for ${filePath} via activeFileOperations Map`);
+      }
       
       if (existingIndex !== -1) {
+        console.log(`[ChatService] ✅ Updating file card at index ${existingIndex} for ${filePath}, phase: ${phase}`);
+        
         // ✅ Determine new type based on phase
         let newType: MessageContent['type'];
         
@@ -773,7 +994,13 @@ export class ChatService {
         }
         
         // ✅ Update existing content
-        const oldContent = session.currentMessage.contents[existingIndex].content;
+        const existingContent = session.currentMessage.contents[existingIndex];
+        if (!existingContent) {
+          console.error(`[ChatService] ❌ Content at index ${existingIndex} is undefined!`);
+          return;
+        }
+        
+        const oldContent = existingContent.content || '';
         const newContent = content !== undefined ? content : oldContent;
         
         session.currentMessage.contents[existingIndex] = {
@@ -808,14 +1035,15 @@ export class ChatService {
           });
         }
         
-        // ✅ Track active file operation for real-time streaming
+        // ✅ Track active file operations for real-time streaming (Map for multiple files)
         if (phase === 'writing' || phase === 'updating') {
-          session.activeFileOperation = { filePath, contentIndex: existingIndex };
+          if (!session.activeFileOperations) {
+            session.activeFileOperations = new Map();
+          }
+          session.activeFileOperations.set(filePath, { filePath, contentIndex: existingIndex });
         } else if (phase === 'complete') {
           // Clear active file operation
-          if (session.activeFileOperation?.filePath === filePath) {
-            session.activeFileOperation = undefined;
-          }
+          session.activeFileOperations?.delete(filePath);
         }
         
         return; // ✅ Early return - don't add new content
@@ -856,15 +1084,6 @@ export class ChatService {
         timestamp: new Date().toISOString()
       }
     });
-    
-    // ✅ Track active file operation for real-time streaming
-    if (session && session.currentMessage) {
-      if (phase === 'writing' || phase === 'updating') {
-        // Set active file operation (text events will stream into this file card)
-        const contentIndex = session.currentMessage.contents.length - 1;
-        session.activeFileOperation = { filePath, contentIndex };
-      }
-    }
   }
 
   /**
