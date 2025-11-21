@@ -206,11 +206,23 @@ async function handleWriteFile(
   const exists = await gitPort.fileExists(absolutePath);
   const actionType = exists ? 'edit' : 'create';
   
-  // ✅ 2. IMMEDIATELY write to project disk (using absolute path)
+  // ✅ 2. Read existing content BEFORE writing (for diff) - with error handling
+  let existingContent = '';
+  if (exists) {
+    try {
+      existingContent = await gitPort.readFile(absolutePath) || '';
+    } catch (readError) {
+      // If read fails, continue with empty diff (file write is more important!)
+      console.warn(`⚠️  Failed to read existing content for diff: ${(readError as Error).message}`);
+      existingContent = '';
+    }
+  }
+  
+  // ✅ 3. IMMEDIATELY write to project disk (using absolute path)
   await gitPort.writeFile(absolutePath, content);
   console.log(`   💾 ${actionType === 'create' ? 'Created' : 'Modified'}: ${absolutePath} (${content.length} bytes)`);
   
-  // ✅ 3. Update state.files (use relative path for consistency)
+  // ✅ 4. Update state.files (use relative path for consistency)
   const files = state.files || [];
   const existingFileIndex = files.findIndex(f => f.path === filePath);
   if (existingFileIndex !== -1) {
@@ -220,13 +232,12 @@ async function handleWriteFile(
   }
   state.files = files;
   
-  // ✅ 4. UI notification (use relative path for display)
+  // ✅ 5. UI notification (use relative path for display)
   if (actionType === 'create') {
     await chatAPI.completeFileCreation(filePath, content);
   } else {
-    const existingContent = exists ? await gitPort.readFile(absolutePath) : '';
     await chatAPI.startFileEdit(filePath);
-    await chatAPI.completeFileEdit(filePath, existingContent || '', content);
+    await chatAPI.completeFileEdit(filePath, existingContent, content);
   }
   
   return `File ${filePath} ${actionType === 'create' ? 'created' : 'updated'} (${content.length} bytes)`;

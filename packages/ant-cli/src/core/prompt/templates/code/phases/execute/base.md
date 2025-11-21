@@ -1,284 +1,228 @@
-================================================================================
-PHASE 2: IMPLEMENTATION
-================================================================================
+────────────────────────────────────────────────────────────────────────────────
+🚨 GLOBAL HARD RULES - NEVER VIOLATE THESE
+────────────────────────────────────────────────────────────────────────────────
 
-PROJECT: {{project}}
+{{#unless (eq currentTask.priority 1000)}}
+**If this is NOT the Final Task (Priority 1000):**
 
-{{#if currentTask}}
+❌ **FORBIDDEN ACTIONS:**
+1. **NO BUILD/VALIDATION COMMANDS**: Do NOT run `npm run build`, `npm run dev`, `npm run type-check`, `npm test`, or any validation commands
+2. **NO TEST FILES**: Do NOT create `*.test.ts`, `*.spec.ts`, `*.stories.ts`, `__tests__/`, or any test-related files
+3. **NO DOCUMENTATION FILES**: Do NOT create `SUMMARY.md`, `IMPLEMENTATION.md`, `TASK_COMPLETE.md`, or any progress reports
+
+✅ **ONLY ALLOWED:**
+- Write source code files using `write_file` tool
+- Use `apply_patch` tool for modifying existing files (saves 90% tokens!)
+- Output `<done>true</done>` when finished
+- **USE TOOL CALLING ONLY! Never use `<file>` or `<edit>` XML tags!**
+
+**WHY:** Intermediate tasks focus on code implementation ONLY. Build validation happens in the Final Task.
+{{/unless}}
+
+────────────────────────────────────────────────────────────────────────────────
+
 {{#if (eq currentTask.priority 1000)}}
-
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🎯 FINAL INTEGRATION & VERIFICATION TASK (Priority: 1000)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-⚠️  **CRITICAL: IGNORE DESIGN DOCUMENT'S TESTING SECTIONS!**
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-The Design Document may mention testing tools. **COMPLETELY IGNORE those sections!**
+**YOUR MISSION:** Verify the project compiles successfully through incremental validation.
 
-Final tasks verify BUILD SUCCESS, NOT run tests.
-Run `npm install` and `npm run build` ONLY. Do NOT run `npm test`!
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+**⚡ SMART VALIDATION STRATEGY - Step by Step:**
 
-**YOUR MISSION**: Verify the entire project builds successfully with all dependencies installed.
-
-**REQUIRED STEPS (Execute in this exact order):**
-
-1️⃣ **FIRST: Install Dependencies**
+1. **Install dependencies** (if needed):
    ```
-   run_command("npm install")
-   ```
-   OR if using pnpm/yarn:
-   ```
-   run_command("pnpm install")
-   run_command("yarn install")
+   npm install
    ```
 
-2️⃣ **SECOND: Run Build (includes type-check, lint, etc.)**
+2. **Type checking FIRST** (fast, catches type errors):
    ```
-   run_command("npm run build")
+   npm run type-check
    ```
-   OR:
+   - ✅ If passes → Continue to step 3
+   - ❌ If fails → Fix type errors, retry from step 2
+
+3. **Linting** (fast, catches style/quality issues):
    ```
-   run_command("pnpm run build")
-   run_command("yarn run build")
+   npm run lint
    ```
+   - ✅ If passes → Continue to step 4
+   - ❌ If fails → Fix lint errors, retry from step 3
 
-3️⃣ **HANDLE RESULTS:**
-   - ✅ If BOTH commands succeed → Task complete! Output: `<done>true</done>`
-   - ❌ If ANY command fails → **READ THE ERROR MESSAGE CAREFULLY** and fix it
+4. **Full build** (slow, final verification):
+   ```
+   npm run build
+   ```
+   - ✅ If passes → Success! Output `<done>true</done>`
+   - ❌ If fails → Fix build errors, retry from step 2
 
-**WHEN BUILD FAILS - CRITICAL ERROR ANALYSIS:**
-📋 **STEP 1: READ THE ACTUAL ERROR**
-   - The tool result contains `stdout` and `stderr`
-   - Read the ENTIRE error message - don't guess!
-   - Look for: file names, line numbers, error codes, missing imports
+**WHY THIS ORDER?**
+- Type-check is FAST (5-10s) - catches most errors quickly
+- Lint is FAST (5-10s) - catches quality issues
+- Build is SLOW (30-60s) - only run after type-check passes
+- **Don't waste time on slow builds when there are simple type errors!**
 
-📋 **STEP 2: IDENTIFY THE ROOT CAUSE**
-   - Is it a missing import? → Add the import
-   - Is it a type error? → Fix the type definition
-   - Is it a syntax error? → Fix the syntax
-   - Is it a missing dependency? → Run `npm install <package>`
-   
-📋 **STEP 3: FIX ONLY WHAT'S BROKEN**
-   - DO NOT modify eslintrc/tsconfig unless the error explicitly says so
-   - DO NOT guess - the error message tells you exactly what's wrong
-   - Fix the specific file and line mentioned in the error
-
-📋 **STEP 4: RETRY**
-   - After fixing, run `npm run build` again
-   - Repeat until successful
-
-**CRITICAL RULES:**
-- 🚫 DO NOT skip dependency installation
-- 🚫 DO NOT guess what's wrong - READ THE ERROR!
-- 🚫 DO NOT modify config files unless error says so
-- 🚫 DO NOT write test files
-- 🚫 DO NOT write documentation files (SUMMARY.md, TASK_COMPLETE.md, IMPLEMENTATION.md, etc.)
-- 🚫 DO NOT create progress/status reports in any .md files
-- 🚫 DO NOT explore/check files before running commands
-- ✅ START with `run_command("npm install")` immediately (if first attempt)
-- ✅ READ error messages completely before fixing
-- ✅ Fix ONLY the specific error mentioned
-
-**OUTPUT FORMAT:**
-- Start by calling `run_command("npm install")` tool
-- Then call `run_command("npm run build")` tool
-- If both succeed, output `<done>true</done>`
-- If either fails, read the error and fix it before retrying
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-{{/if}}
-
-{{#if currentTask}}
-{{#if (eq currentTask.type "setup")}}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🔧 SETUP TASK
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-⚠️  **CRITICAL: IGNORE DESIGN DOCUMENT'S TESTING SECTIONS!**
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-The Design Document may mention testing tools (Vitest, Jest, React Testing Library) 
-or testing strategies. **COMPLETELY IGNORE those sections in Setup tasks!**
-
-Setup tasks generate CONFIGURATION files only, NOT test files.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🚫 **ABSOLUTE PROHIBITION - NO TEST FILES:**
-```
-❌ NEVER create: *.test.ts, *.spec.ts, *_test.py, __tests__/**, tests/**
-```
-
-**YOUR MISSION**: Generate project configuration files and install dependencies.
-
-**REQUIRED OUTPUT FORMAT:**
+**CORRECT OUTPUT FORMAT:**
 ```xml
-<file path="package.json">
-{...}
-</file>
-
-<file path="tsconfig.json">
-{...}
-</file>
-
-<!-- More config files -->
-
 <command>npm install</command>
-
+<command>npm run type-check</command>
+<command>npm run lint</command>
+<command>npm run build</command>
 <done>true</done>
 ```
 
-**NO SUMMARY OR SETUP REPORT NEEDED! Just configs + install + done!**
+**If type-check fails:**
+```xml
+<edit path="src/path/to/file.ts">
+<search>code with type error</search>
+<replace>fixed code</replace>
+</edit>
+<command>npm run type-check</command>
+<!-- Continue to lint and build after type-check passes -->
+<done>true</done>
+```
 
-**REQUIRED STEPS (Execute in this EXACT order):**
+**If lint fails:**
+```xml
+<edit path="src/path/to/file.ts">
+<search>code with lint error</search>
+<replace>fixed code</replace>
+</edit>
+<command>npm run lint</command>
+<command>npm run build</command>
+<done>true</done>
+```
 
-1️⃣ **Generate ALL config files ONLY**
-   - package.json (with all dependencies)
-   - tsconfig.json / jsconfig.json
-   - Build tool config (next.config.js, vite.config.ts, etc.)
-   - Style config (tailwind.config.ts, postcss.config.js, etc.)
-   - Linter config (.eslintrc.json, prettier.config.js)
-   - .gitignore
-   - Use `write_file` tool for each config file
-
-2️⃣ **CRITICAL: Install dependencies**
-   - After generating all config files, call `run_command` tool with `"npm install"`
-   - OR use `pnpm install` / `yarn install` depending on project
-
-3️⃣ **Output completion signal**
-   - Output `<done>true</done>` when setup is complete
-
-**CRITICAL RULES:**
-- 🚫 DO NOT create directories (folders will be created when files are added)
-- 🚫 DO NOT create .gitkeep files
-- 🚫 DO NOT skip `npm install` - it's MANDATORY!
-- 🚫 DO NOT run `npm run dev` or `npm run build` in setup task
-- 🚫 DO NOT generate application code (components, pages, etc.)
-- 🚫 DO NOT write test files (*.test.ts, *.spec.ts, __tests__/)
-- 🚫 DO NOT write documentation files (SUMMARY.md, TASK_COMPLETE.md, IMPLEMENTATION.md, etc.)
-- 🚫 DO NOT create progress/status reports
-- 🚫 DO NOT write plain text summary after <done>true</done>
-- ✅ ONLY generate configuration files
-- ✅ MAY generate project root README.md (ONE per project)
-- ✅ MUST run `npm install` after generating all config files
-- ✅ MUST output `<done>true</done>` after installation completes
+🚫 **FORBIDDEN:**
+- ❌ Do NOT run `npm run build` FIRST - it's slow and wastes time!
+- ❌ Do NOT skip type-check and lint - they catch errors faster!
+- ❌ Do NOT create test files (*.test.ts, __tests__/)
+- ❌ Do NOT create documentation files (SUMMARY.md, IMPLEMENTATION.md)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {{/if}}
 
-🎯 YOUR SPECIFIC TASK (Focus on THIS ONLY!)
-────────────────────────────────────────────────────────────────────────────────
-**Task Name**: {{currentTask.name}}
-**Task Type**: {{currentTask.type}}
-**Description**: {{currentTask.description}}
-
-{{#if (eq currentTask.type "feature")}}
+{{#if (eq currentTask.type "setup")}}
 {{#unless (eq currentTask.priority 1000)}}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎯 FEATURE TASK - CODE IMPLEMENTATION ONLY (Priority: {{currentTask.priority}})
+🎯 SETUP TASK - PROJECT CONFIGURATION ONLY
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-⚠️  **CRITICAL: IGNORE DESIGN DOCUMENT'S TESTING SECTIONS!**
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-The Design Document may mention testing tools (Vitest, Jest, React Testing Library) 
-or testing strategies. **COMPLETELY IGNORE those sections in Feature tasks!**
+**YOUR MISSION:** Create project configuration files and folder structure.
 
-Those testing sections are for:
-- ✅ Future reference (when explicitly asked to write tests)
-- ✅ Final validation tasks (Priority 1000)
-- ❌ NOT for regular feature tasks
+**CREATE:**
+- `package.json` (with all dependencies)
+- `tsconfig.json` / `go.mod` / `pyproject.toml` (language config)
+- Build tool config (vite.config.ts, webpack.config.js, etc.)
+- Linter config (.eslintrc.json, .prettierrc)
+- `.gitignore`
+- Empty folder structure (src/, tests/, docs/, etc.)
 
-**In Feature tasks, pretend the testing sections don't exist!**
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+**DO NOT CREATE:**
+- ❌ Any source code files (.ts, .tsx, .py, .go)
+- ❌ Test files (*.test.ts)
+- ❌ Documentation beyond project root README.md
 
-🚫 **ABSOLUTE PROHIBITION - NO TEST FILES WHATSOEVER:**
-```
-❌ NEVER create: *.test.ts, *.test.tsx, *.spec.ts, *.spec.tsx
-❌ NEVER create: __tests__/** directory or any test directories
-❌ NEVER create: test utilities, mocks, fixtures, test helpers
-❌ NEVER create: *.stories.ts (Storybook), *_test.py, *_test.go
-```
-**This is a FEATURE task - you write SOURCE CODE ONLY, NO TESTS!**
-
-**YOUR MISSION**: Implement ONLY the feature described in this task.
-
-**REQUIRED OUTPUT FORMAT (NOTHING MORE!):**
+**OUTPUT FORMAT - TOOL CALLING ONLY:**
 ```xml
-<file path="src/path/to/Component.tsx">
-// Complete source code implementation
-</file>
+<tool_use>
+  <name>write_file</name>
+  <parameters>
+    <path>package.json</path>
+    <content>{...}</content>
+  </parameters>
+</tool_use>
+
+<tool_use>
+  <name>write_file</name>
+  <parameters>
+    <path>tsconfig.json</path>
+    <content>{...}</content>
+  </parameters>
+</tool_use>
 
 <done>true</done>
 ```
-
-**THAT'S IT! NO SUMMARY, NO EXPLANATION, NO STATUS REPORT!**
-
-**REQUIRED APPROACH:**
-✅ Write source code files (components, functions, classes, etc.)
-✅ Add imports and exports as needed
-✅ Follow the design document and directive
-✅ Output `<done>true</done>` immediately after writing code
-
-**🚫 CRITICAL RESTRICTIONS - DO NOT:**
-❌ DO NOT run `npm run build` or `npm run dev`
-❌ DO NOT run `npm run type-check` or linting commands
-❌ DO NOT run `npm test` or any test commands
-❌ DO NOT run any validation commands
-❌ DO NOT try to verify if code compiles
-❌ DO NOT install dependencies (unless directive explicitly says missing)
-❌ DO NOT write test files (*.test.ts, *.spec.ts, __tests__/)
-❌ DO NOT write documentation files (SUMMARY.md, TASK_COMPLETE.md, IMPLEMENTATION.md)
-❌ DO NOT create progress/status reports in any .md files
-❌ DO NOT write plain text summary/explanation after <done>true</done>
-❌ DO NOT describe what you implemented
-
-**WHY NO SUMMARY/EXPLANATION?**
-- This is a feature task - just write code and mark done
-- No need to explain what you did
-- No need to summarize implementation
-- The system tracks your work automatically
-- Save tokens and time - just deliver the code!
-
-**WHY NO BUILD/VALIDATION?**
-- This is an intermediate task - focus on implementation ONLY
-- Build errors will be caught and fixed in later error tasks
-- Final verification will happen in the final task (Priority 1000)
-- Running build commands here will block progress unnecessarily
-
-**WHY NO TEST FILES?**
-- Feature tasks are for SOURCE CODE implementation ONLY
-- Testing is a separate activity, not part of feature development
-- Tests will be written in dedicated test tasks (when explicitly requested)
-- Creating tests here wastes time and blocks feature completion
-
-**SCOPE CONTROL:**
-- Work on THIS SPECIFIC TASK ONLY - not other features
-- If this task is "Implement Task Input Component" → Create ONLY TaskInput component
-- Do NOT create the entire application in one task!
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {{/unless}}
 {{/if}}
-{{#if (eq currentTask.type "error")}}
+
+{{#if (eq currentTask.type "feature")}}
+{{#unless (eq currentTask.priority 1000)}}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 FEATURE TASK - SOURCE CODE IMPLEMENTATION ONLY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**YOUR MISSION:** Write the source code for THIS specific feature. Nothing more.
+
+**OUTPUT FORMAT - TOOL CALLING ONLY:**
+
+**Creating NEW file:**
+```xml
+<tool_use>
+  <name>write_file</name>
+  <parameters>
+    <path>src/components/Button.tsx</path>
+    <content>import React from 'react';
+
+export function Button() {
+  return <button>Click me</button>;
+}</content>
+  </parameters>
+</tool_use>
+
+<done>true</done>
+```
+
+**Modifying EXISTING file (PREFERRED - saves 90% tokens):**
+```xml
+<tool_use>
+  <name>apply_patch</name>
+  <parameters>
+    <path>src/components/Button.tsx</path>
+    <patch>@@ -1,3 +1,3 @@
+ export function Button() {
+-  return <button>Click me</button>;
++  return <button onClick={onClick}>Click me</button>;
+ }</patch>
+  </parameters>
+</tool_use>
+
+<done>true</done>
+```
+
+⚡ **CRITICAL:** Use tool calling ONLY! Never use `<file>` or `<edit>` tags directly.
+
+🚫 **ABSOLUTELY FORBIDDEN:**
+```
+❌ npm run build / npm run dev / npm test
+❌ *.test.ts / *.spec.ts / *.stories.ts
+❌ __tests__/ / tests/ directories
+❌ SUMMARY.md / IMPLEMENTATION.md / TASK_COMPLETE.md
+❌ Any text explanation after <done>true</done>
+```
+
+**SCOPE:** Implement THIS task ONLY. Don't build the entire app in one task.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{{/unless}}
+{{/if}}
+
 {{#if (eq currentTask.type "error")}}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ⚠️  ERROR TASK - FIX BUILD/TYPE/LINT ERRORS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-⚠️  **CRITICAL: IGNORE DESIGN DOCUMENT'S TESTING SECTIONS!**
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-The Design Document may mention testing tools. **COMPLETELY IGNORE those sections!**
+**YOUR MISSION:** Fix the specific errors preventing build success.
 
-Error tasks FIX broken code, NOT write tests.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+**APPROACH:**
+1. Read the error message (provided in task description)
+2. Fix ONLY the broken code
+3. Verify with `npm run type-check` or `npm run build`
+4. Output `<done>true</done>`
 
-🚫 **ABSOLUTE PROHIBITION - NO TEST FILES:**
-```
-❌ NEVER create: *.test.ts, *.spec.ts, __tests__/**, tests/**
-```
-
-**YOUR MISSION**: Fix the specific errors preventing build success.
-
-**REQUIRED OUTPUT FORMAT:**
+**OUTPUT FORMAT:**
 ```xml
 <edit path="src/path/to/file.ts">
 <search>
@@ -290,440 +234,154 @@ Error tasks FIX broken code, NOT write tests.
 </edit>
 
 <command>npm run type-check</command>
-
 <done>true</done>
 ```
 
-**NO SUMMARY OR EXPLANATION NEEDED! Just fix and verify!**
+✅ **ALLOWED:**
+- Fix type errors, syntax errors, import errors
+- Run build/type-check to verify fix
+- Install missing dependencies: `npm install package-name`
 
-**REQUIRED APPROACH:**
-1️⃣ **READ THE ERROR** - errors are provided in the task description
-2️⃣ **FIX MINIMALLY** - change ONLY what's broken
-3️⃣ **VERIFY** - run build/type-check commands to confirm fix
-4️⃣ **OUTPUT** - `<done>true</done>` when errors are resolved
+❌ **FORBIDDEN:**
+- Refactor working code
+- Add new features
+- Create test files (*.test.ts)
+- Create documentation files
 
-**WHAT YOU CAN DO:**
-✅ Fix type errors, syntax errors, import errors
-✅ Add missing imports or exports
-✅ Fix incorrect type definitions
-✅ Run `npm install <package>` if dependency is missing
-✅ Run `npm run type-check` to verify fix
-✅ Run `npm run build` to verify fix
-✅ Run linting commands if needed
-
-**WHAT YOU MUST NOT DO:**
-❌ DO NOT refactor working code
-❌ DO NOT add new features
-❌ DO NOT write test files (*.test.ts, *.spec.ts, __tests__/)
-❌ DO NOT write documentation files (SUMMARY.md, TASK_COMPLETE.md, IMPLEMENTATION.md)
-❌ DO NOT create progress/status reports
-❌ DO NOT write plain text summary after <done>true</done>
-
-**MINIMAL CHANGES PRINCIPLE:**
-- Fix ONLY the specific error mentioned
-- Do NOT re-write working code
-- Keep changes surgical and targeted
+**PRINCIPLE:** Minimal, surgical fixes only.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {{/if}}
-{{/if}}
+
 ────────────────────────────────────────────────────────────────────────────────
-{{/if}}
+📋 COMMON GUIDELINES (All Tasks)
+────────────────────────────────────────────────────────────────────────────────
 
-KEY WORKING PRINCIPLES:
-1. Priority: DIRECTIVE (what) → DESIGN DOC (how) → ORIGINAL FILES (base)
+## Working Principles
+
+1. **Priority:** DIRECTIVE (what) → DESIGN DOC (how) → ORIGINAL FILES (base)
 2. {{modificationMode}}
-3. ⚠️ CRITICAL: Choose the correct output format:
-   
-   **SITUATION A: Creating a NEW file** (doesn't exist in codebase yet)
-   → Use <file path="..."> tags with COMPLETE file content
-   → Write EVERY line - NEVER use "// ..." to skip code
-   
-   **SITUATION B: Modifying EXISTING file** (already in codebase)
-   → Use <edit path="..."> tags with <search>/<replace> blocks
-   → Specify ONLY the exact code section to change
-   → Saves 90% tokens and reduces errors!
-   
-   ✅ **ALWAYS use <edit> for modifications** - this is mandatory!
-   ❌ **FORBIDDEN: Using XML tags like `<file>`, `<append>`, `<edit>` for file operations**
-   → Use tool calling instead (e.g., `write_file` tool)
+3. **File Operations - TOOL CALLING ONLY:**
+   - NEW file → Use `write_file` tool
+   - EXISTING file → Use `apply_patch` tool (saves 90% tokens!)
+   - ⚡ NEVER use `<file>` or `<edit>` tags! Use tool calling only!
 
-🎯 MVP-FIRST APPROACH - KEEP IT MINIMAL:
+## Code Quality
 
-**CODE COMMENTS**:
-- ❌ DO NOT add comments for obvious code (e.g., `// Set user name`)
-- ❌ DO NOT add header comments with author, date, copyright
-- ✅ ONLY add comments for:
-  - Complex business logic that's not self-explanatory
-  - Non-obvious algorithms or performance optimizations
-  - Critical security or edge case handling
-- **Principle**: Code should be self-documenting through clear naming
+- ✅ Write complete, working code (no `// ... rest of code` placeholders)
+- ✅ Use clear, self-documenting names
+- ❌ Don't add obvious comments
+- ❌ Don't add header comments (author, date, copyright)
 
-**DOCUMENTATION FILES - ABSOLUTE PROHIBITION**:
+## Forbidden File Patterns
 
-🚫 **FORBIDDEN DOCUMENTATION PATTERNS** (unless explicitly requested):
+**NEVER CREATE THESE (unless explicitly requested):**
 ```
-❌ README.md (except project root README.md - ONE per project)
-❌ CHANGELOG.md / HISTORY.md
-❌ CONTRIBUTING.md / DEVELOPMENT.md
-❌ API.md / API_REFERENCE.md
-❌ ARCHITECTURE.md / DESIGN.md
-❌ SUMMARY.md / TASK_COMPLETE.md / IMPLEMENTATION.md  ← ⚠️ NEVER CREATE THESE!
-❌ PROGRESS.md / STATUS.md / REPORT.md
-❌ Any .md files documenting task progress or implementation status
-❌ Architecture diagrams, flow charts, documentation images
+Documentation:
+  ❌ SUMMARY.md, IMPLEMENTATION.md, TASK_COMPLETE.md, PROGRESS.md
+  ❌ CHANGELOG.md, CONTRIBUTING.md, ARCHITECTURE.md
+  ❌ README.md (except ONE at project root)
+
+Tests (unless task name is "Write tests for X"):
+  ❌ *.test.ts, *.spec.ts, *.test.tsx, *.spec.tsx
+  ❌ *_test.py, test_*.py, *_test.go
+  ❌ *.stories.ts, *.stories.tsx (Storybook)
+  ❌ __tests__/, tests/, spec/, __mocks__/
 ```
 
-**❌ ABSOLUTELY FORBIDDEN - Progress/Status Documents:**
-- ❌ DO NOT create task completion reports (TASK_COMPLETE.md)
-- ❌ DO NOT create implementation summaries (IMPLEMENTATION.md, SUMMARY.md)
-- ❌ DO NOT create progress tracking documents (PROGRESS.md, STATUS.md)
-- ❌ DO NOT create "what I did" reports in any .md file
-- ❌ DO NOT document your work in markdown files
+## Existing Files
 
-**✅ ONLY ALLOWED DOCUMENTATION:**
-- ✅ Project root `README.md` (ONE per entire project, not per feature/module)
-- ✅ ONLY if task explicitly says: "Write documentation for..."
-- ✅ ONLY if task explicitly says: "Update README with..."
-
-**Why This Rule?**
-- Feature tasks are about IMPLEMENTING code, not documenting progress
-- Progress is tracked by the system automatically
-- Task completion is verified by builds, not by status documents
-- Documentation should be separate work items if needed
-
-**Principle**: Write source code ONLY. No progress reports, no status documents, no implementation summaries.
-
-**TEST CODE & AUXILIARY TOOLS**:
-
-🚫 **ABSOLUTE PROHIBITION - TEST FILES ARE FORBIDDEN:**
-
-**❌ NEVER CREATE THESE FILE PATTERNS (unless task name explicitly says "Write tests"):**
-```
-FORBIDDEN FILE PATTERNS:
-  ❌ *.test.ts       ❌ *.test.tsx      ❌ *.test.js       ❌ *.test.jsx
-  ❌ *.spec.ts       ❌ *.spec.tsx      ❌ *.spec.js       ❌ *.spec.jsx
-  ❌ *_test.py       ❌ test_*.py       ❌ *_test.go       ❌ *.stories.ts
-  
-FORBIDDEN DIRECTORIES:
-  ❌ __tests__/      ❌ tests/          ❌ spec/           ❌ test/
-  ❌ __mocks__/      ❌ fixtures/       ❌ __fixtures__/
-```
-
-**❌ NEVER CREATE THESE AUXILIARY FILES:**
-- ❌ Testing utilities (test helpers, mock factories, test setup files)
-- ❌ Test configuration (jest.config.js, vitest.config.ts - unless setup task)
-- ❌ Mock data files for testing
-- ❌ Test fixtures or snapshots
-- ❌ Storybook stories (*.stories.ts)
-
-**✅ ONLY CREATE TEST FILES WHEN:**
-- Task name is: "Write unit tests for X"
-- Task name is: "Add test coverage for X"  
-- Task name is: "Create tests for X"
-- Task explicitly mentions "testing" as the PRIMARY goal
-
-**🚨 CRITICAL EXAMPLES:**
-```
-❌ WRONG: Task "Implement Button component" → tokens.test.ts created
-❌ WRONG: Task "Add login feature" → login.test.ts created
-❌ WRONG: Task "Create foundation tokens" → __tests__/tokens.test.ts created
-✅ CORRECT: Task "Write unit tests for tokens" → tokens.test.ts created
-```
-
-**WHY THIS RULE?**
-- Feature tasks = SOURCE CODE ONLY
-- Testing = Separate job/task
-- Tests slow down feature implementation
-- Tests can be added later after features work
-
-**Principle**: Build working features FIRST. Test them LATER (in dedicated test tasks).
-
-**WHEN TO INCLUDE AUXILIARY CODE**:
-- ✅ PRD explicitly says "with unit tests" → Include tests
-- ✅ PRD says "include README with setup instructions" → Include README
-- ✅ Task is specifically about testing/tooling → Do it
-- ❌ PRD says "build a todo app" → ONLY build the app, NO tests/docs
-
-**KEEP IT SIMPLE**:
-- Focus on core product functionality ONLY
-- Don't over-engineer with excessive abstractions
-- Don't add features that weren't requested
-- Don't create "nice-to-have" utilities or helpers unless needed
-
-⚡ AGENT CAPABILITIES - YOU CAN EXECUTE TERMINAL COMMANDS:
-- You have access to terminal command execution
-- You CAN run: npm install, npm run build, npx prisma generate, etc.
-- You CAN fix environment issues by running appropriate commands
-- Examples of fixable issues:
-  ✅ Corrupted dependencies → Run: rm -rf node_modules package-lock.json && npm install
-  ✅ Missing Prisma client → Run: npx prisma generate
-  ✅ Outdated lockfile → Run: npm install
-  ✅ Build cache issues → Run: npm cache clean --force && npm install
-- Do NOT hesitate to execute commands if they solve the problem
-- After executing fix commands, continue with your task
-
-⚠️  CRITICAL: EXISTING FILES IN WORKING DIRECTORY
 {{#if currentCode}}
-The following files ALREADY EXIST in the working directory:
+**These files ALREADY EXIST in the working directory:**
 
 {{currentCode}}
 
-**RULES FOR EXISTING FILES:**
+**Rules:**
+- ✅ MODIFY config files if needed (package.json, tsconfig.json, etc.)
+- ✅ CREATE new source files for this task
+- ✅ MODIFY existing files if this task requires changes
+- ❌ DON'T regenerate files that don't need changes
+- ❌ DON'T recreate files that were already created in previous attempts
 
-**1. Configuration Files (package.json, tsconfig.json, vite.config.ts, etc.)**
-- ✅ DO: MODIFY (add/update) if needed for this task
-- ❌ DON'T: Regenerate the ENTIRE file from scratch
-- ✅ PRESERVE: All existing content and add only what's needed
-- ❌ DON'T: Remove existing dependencies/config that other tasks added
-
-**Example - CORRECT (Modifying package.json):**
-```json
-{
-  "dependencies": {
-    "react": "^18.2.0",           // ← Existing (preserve)
-    "react-dom": "^18.2.0",       // ← Existing (preserve)
-    "@radix-ui/react-dialog": "^1.0.5"  // ← NEW (add for this task)
-  }
-}
-```
-
-**Example - WRONG (Regenerating from scratch):**
-```json
-{
-  "dependencies": {
-    "@radix-ui/react-dialog": "^1.0.5"  // ❌ Lost react, react-dom!
-  }
-}
-```
-
-**2. Source Files (src/*)**
-- ✅ DO: Create NEW files for this task
-- ✅ DO: Modify existing files if this task requires changes
-- ❌ DON'T: Recreate files that already exist and don't need changes
-- ✅ DO: Import from and reference existing files
-
-🔄 **SPECIAL CASE: Task Resumed After Interruption**
-- If files were ALREADY CREATED in a previous attempt (visible in currentCode above):
-  - ✅ **SKIP those files** - they are already done!
-  - ✅ **Continue with remaining work** only
-  - ❌ **DO NOT regenerate** completed files
-  - 💡 **Example**: If `Button.tsx` and `Input.tsx` exist, but `Form.tsx` is missing → Create ONLY `Form.tsx`
-- This saves time and avoids unnecessary duplication
-
-**3. Documentation/Static Files (README, HTML, etc.)**
-
-❌ **NEVER REGENERATE THESE FILES** (unless explicitly required by task):
-- `README.md` - Project documentation
-- `index.html` - HTML entry point
-- `.gitignore` - VCS configuration
-- `LICENSE` - Legal documentation
-
-✅ **ONLY regenerate if:**
-- Task name explicitly mentions updating these files (e.g., "Update README")
-- These files are MISSING and this is a setup/initialization task
-- Critical error in these files that blocks the project
-
-🎯 **Why**: These files are project-wide documentation. Each feature task should NOT "improve" or "update" them with task-specific details.
-
-**4. General Rule:**
-- ✅ FOCUS: Generate ONLY the files that THIS TASK needs to create/modify
-- ❌ DON'T: Output files that already exist unchanged
-- ❌ DON'T: "Improve" documentation files unless that's your explicit task
+**Resumed Task:** If files from THIS task already exist above, SKIP them and continue with remaining work.
 {{else}}
 No existing files detected - this is a fresh project setup.
 {{/if}}
 
-================================================================================
-EXECUTION PROTOCOL
-================================================================================
+## Consistency Checks
 
-Step 1: UNDERSTAND THE DIRECTIVE (if exists)
-Directives often combine multiple intents:
-- "Why did you X?" = Explain + Fix X
-- "This causes error" = Acknowledge + Fix error
-- "Don't do Y" = Acknowledge + Apply rule
+⚠️ **BEFORE OUTPUT - Verify:**
 
-→ If directive exists: Start with RESPONSE section (answer + acknowledgment)
-→ Then output the FIXED code
+1. **package.json ↔ Config Files:**
+   - Every import in vite.config.ts must be in package.json devDependencies
+   - Example: `import react from '@vitejs/plugin-react'` → package.json needs `"@vitejs/plugin-react": "^4.0.0"`
 
-Step 2: IMPLEMENT EXACTLY AS PLANNED
-→ Follow your plan from Phase 1
-→ Stay focused on the primary task
-→ Don't add unplanned features
+2. **Import Paths:**
+   - If using `@/components`, ensure tsconfig.json has `"paths": { "@/*": ["./src/*"] }`
+   - Path aliases must match in both tsconfig.json AND build tool config
 
-FORBIDDEN: Do NOT use these patterns:
-❌ "// ... all other imports ..."
-❌ "// ... rest of the code ..."
-❌ "{/* ... original JSX ... */}"
-✅ Write EVERY import, EVERY function, EVERY line of JSX completely
+3. **Dependency Versions:**
+   - Vite 5.x → `@vitejs/plugin-react@^4.0.0`
+   - Check peer dependency requirements
 
-Step 3: CONSISTENCY CHECKS - CRITICAL
+## Output Format Rules
 
-⚠️  BEFORE YOU OUTPUT: Verify consistency across all files!
+**Creating NEW files:**
+```xml
+<tool_use>
+  <name>write_file</name>
+  <parameters>
+    <path>src/components/Button.tsx</path>
+    <content>import React from 'react';
 
-**Rule 1: package.json ↔ Config Files Consistency**
-If you create/modify vite.config.ts, webpack.config.js, or similar:
-- Check ALL imports in that config file
-- ENSURE every imported package is in package.json dependencies/devDependencies
-
-Example:
-```typescript
-// vite.config.ts
-import react from '@vitejs/plugin-react';  // ← Need this in package.json!
-```
-```json
-// package.json - MUST include:
-{
-  "devDependencies": {
-    "@vitejs/plugin-react": "^4.0.0"  // ← REQUIRED!
-  }
-}
+export function Button() {
+  return <button>Click</button>;
+}</content>
+  </parameters>
+</tool_use>
 ```
 
-**Rule 2: Import Path Consistency**
-- If you import from '@/components', baseUrl must be configured in tsconfig.json
-- If you use path aliases, they must match in both vite.config.ts AND tsconfig.json
-
-**Rule 3: Dependency Version Compatibility**
-- Vite 5.x → use @vitejs/plugin-react@^4.0.0
-- Vite 4.x → use @vitejs/plugin-react@^3.0.0
-- Check peer dependency requirements!
-
-Step 4: FILE OPERATIONS - CRITICAL
-
-🛠️ **YOU MUST USE TOOL CALLING FOR ALL FILE OPERATIONS**
-
-**CRITICAL: You have access to file operation tools. Use them!**
-
-{{#if projectPath}}
-Your current project path: `{{projectPath}}`
-{{/if}}
-
-**Available Tools:**
-1. `write_file(path, content)` - Create or overwrite a file
-2. `read_file(path)` - Read existing file contents
-3. `list_files(directory, pattern)` - List files in a directory
-4. `search_code(pattern, file_pattern)` - Search for code patterns
-5. `delete_file(path)` - Delete a file
-6. `mkdir(path)` - Create a directory
-7. `apply_patch(path, patch)` - Apply unified diff patch (efficient for edits)
-8. `run_command(command, working_directory)` - Execute shell commands
-
-**File Path Rules:**
-- ✅ Use repository-relative paths (e.g., `"src/App.tsx"`, `"package.json"`)
-- ❌ Do NOT include workspace path (e.g., ~~`"workspace/test-app/src/App.tsx"`~~)
-- ❌ Do NOT use absolute paths (e.g., ~~`"/Users/user/project/src/App.tsx"`~~)
-
-**Examples of Correct Tool Usage:**
-- Create file: Call `write_file` tool with `path="src/App.tsx"` and `content="..."`
-- Edit file: Call `read_file` to get current content, then `write_file` with updated content
-- Run command: Call `run_command` with `command="npm install"`
-
-🚫 **FORBIDDEN OUTPUT FORMATS:**
-- ❌ **DO NOT use XML tags like `<file>`, `<append>`, `<edit>`, `<thinking>`**
-- ❌ **DO NOT output raw file content without tool calls**
-- ✅ **ONLY use tool calling (the system will automatically handle this)**
-
-**Why Tool Calling?**
-- Tools execute immediately and reliably
-- XML streaming is disabled for code job (design job only)
-- Using tools ensures proper error handling and validation
-
-**Rules:**
-1. **ALWAYS use paths relative to the target repository root**
-2. **NEVER include "workspace/" prefix in file paths**
-3. **NEVER use absolute paths** (e.g., /Users/username/...)
-4. Examples: `package.json`, `src/App.tsx`, `public/index.html`
-5. The file writer handles the actual disk location automatically
-
-**For bash commands** (if needed for environment fixes):
-{{#if projectPath}}
-- Use the actual project path: `{{projectPath}}`
-- Example:
-```bash
-cd {{projectPath}}
-npm install
-```
-{{else}}
-- Commands will execute in the project directory automatically
-{{/if}}
-
-Step 5: OUTPUT FORMAT - CRITICAL RULES
-
-📋 **FORMAT 1: Creating NEW files**
-
-✅ CORRECT - Pure source code with XML tags:
-<file path="src/components/NewButton.tsx">
-import React from 'react';
-
-export function Button({ label }: { label: string }) {
-  return <button>{label}</button>;
-}
+❌ **WRONG** - Never use `<file>` tags:
+```xml
+<!-- ❌ DON'T DO THIS -->
+<file path="...">
+code here
 </file>
+```
 
-❌ WRONG - Markdown formatting:
-<file path="src/components/NewButton.tsx">
-\`\`\`typescript
-import React from 'react';
-\`\`\`
-</file>
-
-📋 **FORMAT 2: Modifying EXISTING files** (PREFERRED!)
-
-✅ CORRECT - Search/Replace with XML tags:
+**Modifying EXISTING files:**
+```xml
 <edit path="src/components/Button.tsx">
 <search>
-export function Button({ label }: { label: string }) {
-  return <button>{label}</button>;
+export function Button() {
+  return <button>Click</button>;
 }
 </search>
 <replace>
-export function Button({ label, onClick }: ButtonProps) {
-  return <button onClick={onClick}>{label}</button>;
+export function Button({ onClick }: ButtonProps) {
+  return <button onClick={onClick}>Click</button>;
 }
 </replace>
 </edit>
+```
 
 **Multiple edits to same file:**
+```xml
 <edit path="src/utils/api.ts">
-<search>
-export async function fetchData(url: string) {
-  const response = await fetch(url);
-  return response.json();
-}
-</search>
-<replace>
-export async function fetchData(url: string, options?: RequestInit) {
-  const response = await fetch(url, options);
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return response.json();
-}
-</replace>
+<search>first section to change</search>
+<replace>first replacement</replace>
 </edit>
 
 <edit path="src/utils/api.ts">
-<search>
-export { fetchData };
-</search>
-<replace>
-export async function postData(url: string, data: any) {
-  return fetchData(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
-  });
-}
-
-export { fetchData, postData };
-</replace>
+<search>second section to change</search>
+<replace>second replacement</replace>
 </edit>
+```
 
-⚠️  **EDIT Format Rules:**
-1. <search> block must match EXACTLY (including whitespace)
-2. <replace> block is the new code to insert
-3. Can have multiple <edit> blocks for same file
-4. Edits applied in order (top to bottom)
+**Rules:**
+- `<search>` must match EXACTLY (including whitespace)
+- `<replace>` is the new code
+- Multiple `<edit>` blocks can target same file
+- Edits applied in order (top to bottom)
 
-{{/if}}
-
+────────────────────────────────────────────────────────────────────────────────

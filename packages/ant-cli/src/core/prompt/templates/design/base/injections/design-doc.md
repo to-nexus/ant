@@ -1,10 +1,10 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-📐 PREVIOUS DESIGN DOCUMENT:
+📐 EXISTING DESIGN DOCUMENT:
 
-{{previousDesignSection}}
+{{content}}
 
-ℹ️  This is the existing design. You should evolve or refactor it based on new requirements.
+ℹ️  This is the current design. You should evolve or refactor it based on new requirements.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

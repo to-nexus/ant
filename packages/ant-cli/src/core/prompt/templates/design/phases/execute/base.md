@@ -1,361 +1,176 @@
 ════════════════════════════════════════════════════════════════════════════════
-🚨 CRITICAL: READ THIS FIRST - YOUR OUTPUT WILL BE REJECTED IF TOO LONG! 🚨
+🚨 CRITICAL RULES - READ FIRST 🚨
 ════════════════════════════════════════════════════════════════════════════════
 
-You are creating a **EXTREMELY CONCISE** SYSTEM DESIGN DOCUMENT for: **{{project}}**
+You are creating a **CONCISE SYSTEM DESIGN DOCUMENT** for: **{{project}}**
 
-**STEP 1: CLASSIFY PROJECT COMPLEXITY**
+## 🎯 STEP 1: CLASSIFY PROJECT COMPLEXITY
 
-Read the PRD/Directive and classify:
+Read PRD and classify:
 
-**Simple**: 
-- Single page OR 2-3 simple pages
-- 5-15 components
-- No complex state management
-- No backend/API integration
-- Examples: Todo app, Calculator, Counter, Static portfolio
+- **Simple**: Single/2-3 pages, 5-15 components, no complex state, no backend
+  - Examples: Todo, Calculator, Static site
+  - **Limit: 150 lines MAX**
 
-**Medium**:
-- 3-7 pages
-- 15-30 components
-- Simple state management (Context API, Zustand)
-- Basic API calls (REST)
-- Examples: Landing page, Blog, Dashboard, Small e-commerce
+- **Medium**: 3-7 pages, 15-30 components, simple state (Context/Zustand), basic API
+  - Examples: Landing page, Blog, Dashboard  
+  - **Limit: 300 lines MAX**
 
-**Complex**:
-- 8+ pages OR complex multi-page app
-- 30+ components
-- Advanced state + real-time + auth
-- Multiple API integrations, WebSocket, etc.
-- Examples: SaaS platform, Marketplace, Social network, Admin portal
+- **Complex**: 8+ pages, 30+ components, advanced state, real-time, auth, multiple APIs
+  - Examples: SaaS, Marketplace, Admin portal
+  - **Limit: 500 lines MAX**
 
-**STEP 2: APPLY LENGTH LIMITS**
+## 🎯 STEP 2: ADAPT TO PROJECT TYPE (PRD = ABSOLUTE TRUTH)
 
-| Project Type | TOTAL Document MAX | Per-Chapter MAX |
-|-------------|-------------------|-----------------|
-| **Simple** | **150 lines** | **25 lines** |
-| **Medium** | **300 lines** | **50 lines** |
-| **Complex** | **500 lines** | **80 lines** |
+**FOR FRONTEND-ONLY** (PRD says "no backend", "no API", "client-side only"):
+- ✅ INCLUDE: Components, UI, State Management, Tech Stack
+- ❌ SKIP: Backend API, Database, Server architecture
+- ✅ FOR skipped sections: "Not Applicable - Frontend-only per PRD"
 
-**EXAMPLE OF ACCEPTABLE LENGTH:**
-```
-Simple Todo App (classified as: Simple → 150 lines MAX):
-## 1. Architecture (20 lines)
-- Pattern: Component-based (1 line)
-- Layers: Presentation + Domain (2 lines)
-- State: React hooks (1 line)
-- ... (brief, no details)
+**FOR BACKEND-ONLY** (PRD says "API server", "no frontend", "headless"):
+- ✅ INCLUDE: API Design, Data Models, Business Logic, Security
+- ❌ SKIP: UI components, State management, Screen flows
+- ✅ FOR skipped sections: "Not Applicable - Backend API per PRD"
 
-## 2. Data Models (25 lines)
-- Todo: {id, text, done} (3 lines)
-- TodoList: Todo[] (2 lines)
-- ... (types only)
+**FOR SIMPLE PROJECTS** (PRD says "simple", "minimal", "basic"):
+- ✅ Keep 2-3 pages total
+- ❌ NO microservices, complex patterns, extensive infrastructure
 
-## 3. Components (30 lines)
-- TodoApp, TodoList, TodoItem, AddTodo (4 lines)
-- Props for each (10 lines)
-- ... (signatures only)
+**TECHNOLOGY CONSTRAINTS**:
+- IF PRD specifies tech (e.g., "React + Vite", "useState only"): USE EXACTLY those
+- DO NOT suggest Redux if PRD says "useState only"
+- DO NOT suggest Material-UI if PRD says "Tailwind"
 
-## 4. Implementation (35 lines)
-- CRUD operations (list only, 5 lines)
-- Event handlers (list only, 5 lines)
-- ... (no code)
+**🚫 ABSOLUTELY FORBIDDEN (Unless PRD EXPLICITLY requests)**:
+- ❌ Deployment architecture / CI/CD pipelines
+- ❌ Infrastructure planning / cloud setup / Kubernetes
+- ❌ Operations / monitoring / alerting
+- ❌ Migration plans / rollout strategies
+- ❌ Test plans / QA schedules
+- ❌ Project timelines / milestones / team structure
+- ❌ Budget / cost analysis
 
-TOTAL: ~110 lines ✅ (under 150 limit)
-```
+**✅ FOCUS ON**:
+- System architecture (components, layers, patterns)
+- Data models and schemas
+- API design (if applicable)
+- Component interactions
+- Tech stack decisions
+- Security design (auth mechanisms only if needed)
 
-**EXAMPLE OF UNACCEPTABLE LENGTH:**
-```
-❌ "Let me explain React Context in detail..." (tutorial mode)
-❌ "First, we need to understand..." (verbose explanations)
-❌ Code examples > 5 lines
-❌ Detailed implementation guides
-❌ Step-by-step tutorials
-```
+## 🎯 STEP 3: WRITING RULES
 
-════════════════════════════════════════════════════════════════════════════════
+**ABSOLUTE RULES**:
+1. **Line Limits**: Simple 150 / Medium 300 / Complex 500 lines MAX
+2. **NO Code Implementations**: Only interfaces/signatures (≤10 lines each)
+3. **Extreme Conciseness**: 1 sentence per point, NO paragraphs
+4. **Bullet Lists**: Use lists, not prose
+5. **Token Efficiency**: Design decisions only, NOT tutorials
 
-🚨 **COUNTING RULE: COUNT EVERY LINE YOU WRITE** 🚨
-
-**How to count:**
-1. Every line of markdown = 1 line
-2. Empty lines = 1 line
-3. Code blocks count EVERY line inside
-4. Headers count as 1 line each
-
-**While writing:**
-- After each section, COUNT: "I've written X lines so far"
-- If approaching limit, STOP IMMEDIATELY
-- Better to be incomplete than exceed limit!
-
-**IF YOUR TASK SAYS "MAX 60 lines":**
-- Write 50-60 lines MAX
-- Do NOT write 61 lines
-- Do NOT think "just a bit more is okay"
-- STOP AT 60 LINES!
-
-════════════════════════════════════════════════════════════════════════════════
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🚨 **ABSOLUTE RULE #2: NO CODE IMPLEMENTATIONS** 🚨
-
-**FORBIDDEN** (will cause rejection):
+**FORBIDDEN**:
 - ❌ Function bodies / implementations
-- ❌ Component code (React/Vue/etc)
+- ❌ React/Vue component code
 - ❌ SQL CREATE statements
 - ❌ Config file contents
-- ❌ Example code blocks > 10 lines
-- ❌ Step-by-step implementation guides
+- ❌ "Let me explain..." tutorials
+- ❌ "What is React?" background info
 
-**ALLOWED** (must be brief):
-- ✅ Interface definitions (≤10 lines)
-- ✅ Function signatures (1 line, NO body)
-- ✅ Prose descriptions (explain in words)
+**ALLOWED**:
+- ✅ Interface/type definitions (brief)
+- ✅ API signatures (1 line, NO implementation)
+- ✅ Pseudocode/algorithms (high-level only)
+- ✅ Simple diagrams (ASCII/text)
 
-**RATIO REQUIREMENT**: 80% prose, 20% code/diagrams MAX
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🚨 **ABSOLUTE RULE #3: EXTREME CONCISENESS REQUIRED** 🚨
-
-**Writing Rules:**
-1. **1 sentence per point** - NO paragraphs!
-2. **No tutorials** - Design decisions only, not explanations
-3. **No code examples > 5 lines** - Signatures only
-4. **Bullet points over prose** - Lists are shorter
-
-**GOOD Examples (concise):**
+**Example - GOOD (concise)**:
 ```
 ✅ Architecture: Layered (Presentation/Domain/Infrastructure)
-✅ State: React Context API
-✅ Routing: React Router v6
-✅ Components: Button, Card, Input (see ch.3)
+✅ State: React Context API for global user state
+✅ API: REST endpoints - GET /tasks, POST /tasks, DELETE /tasks/:id
+✅ Database: PostgreSQL with tasks, users tables
 ```
 
-**BAD Examples (too verbose):**
+**Example - BAD (verbose)**:
 ```
-❌ "The architecture follows a layered pattern which separates concerns into three distinct layers. The presentation layer handles UI rendering, the domain layer manages business logic, and the infrastructure layer deals with external dependencies. This approach provides better maintainability and testability."
+❌ "The architecture follows a layered pattern which separates concerns 
+into three distinct layers. The presentation layer handles UI rendering, 
+the domain layer manages business logic, and the infrastructure layer 
+deals with external dependencies. This provides better maintainability..."
 
-❌ "For state management, we will use React Context API. React Context is a built-in React feature that allows you to share data across the component tree without prop drilling. It's simpler than Redux for our use case..."
-
-THESE ARE TUTORIALS, NOT DESIGN!
+THIS IS A TUTORIAL, NOT A DESIGN!
 ```
 
-**Target length for each sentence:**
-- ✅ 5-15 words per sentence
-- ❌ NOT 30-50 words per sentence
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🚨 **STEP 1: ANALYZE PRD TO INFER PROJECT TYPE** 🚨
-
-**BEFORE you start designing, READ the PRD carefully and determine:**
-
-1. **Is this a FRONTEND-ONLY project?**
-   - Look for: "no backend", "no server", "no API", "client-side only", "local storage only", "useState/local state"
-   - If YES → Skip all backend/API/database sections
-
-2. **Is this a BACKEND-ONLY project?**
-   - Look for: "API server", "REST API", "no frontend", "headless", "service/microservice"
-   - If YES → Focus on API design, skip UI sections
-
-3. **Is this a FULL-STACK project?**
-   - Look for: both frontend and backend requirements
-   - If YES → Design both layers
-
-4. **Technology Stack Constraints:**
-   - Check for EXPLICIT tech requirements (e.g., "React + Vite", "useState only", "Tailwind", "No Redux")
-   - If specified → USE EXACTLY what's specified, don't suggest alternatives
-
-5. **Complexity Level:**
-   - Check for: "simple", "minimal", "basic", "quick prototype"
-   - If simple → Don't over-engineer with microservices, complex patterns, or extensive infrastructure
-
-**PRD CONSTRAINTS ARE ABSOLUTE - THEY OVERRIDE THIS TEMPLATE!**
-
-If PRD says "no database" → Skip all database design
-If PRD says "useState only" → Don't suggest Redux/Zustand
-If PRD says "Tailwind" → Don't suggest Material-UI/Bootstrap
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+════════════════════════════════════════════════════════════════════════════════
 
 {{#if currentTask}}
 🎯 CURRENT TASK:
-**Task Name**: {{currentTask.name}}
+**Task**: {{currentTask.name}}
 **Description**: {{currentTask.description}}
 {{/if}}
 
 {{#if designDoc}}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-## EXISTING DESIGN DOCUMENT (from previous tasks):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## EXISTING DESIGN DOCUMENT:
 
 {{designDoc}}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-**CRITICAL INSTRUCTION - Incremental Update Mode**:
+**CONTINUATION TASK - Your Rules**:
+1. ❌ NO repeating existing content
+2. ✅ Write ONLY new/modified sections
+3. ✅ Use `<append>` tag (not `<file>`)
+4. ✅ Count existing lines (~{{designDocLines}}) + your addition
+5. ✅ TOTAL must not exceed project limit!
 
-This is a CONTINUATION task. The design document above already exists from previous work.
+**Example**:
+```xml
+<append path="outputs/design/system-design.md">
+## 3. Component Design
 
-**⚠️ LENGTH TRACKING (CRITICAL!):**
-- **Existing document**: Count the lines above (estimate ~{{designDocLines}} lines)
-- **Your task budget**: Extract from your task description (e.g., "MAX 600 lines")
-- **TOTAL after your addition**: Existing + Your Addition MUST NOT exceed project limit!
-- **Example**: If existing is 1200 lines and your budget is 600 lines, you can add UP TO 600 lines (but check total doesn't exceed 3000!)
-
-**YOU MUST**:
-1. Generate ONLY the new/modified sections relevant to your current task
-2. DO NOT regenerate existing sections that don't need changes
-3. Clearly mark which sections you're adding/updating with headers
-4. **STOP WRITING when you hit your task's line budget!**
-
-**Example Format**:
-```markdown
-## 3. Detailed Design
-
-### 3.2 Data Models (UPDATED)
-
-[Your new/updated content here - only this section]
-
-### 3.5 Security Considerations (NEW)
-
-[Your new section here]
+### 3.1 TaskManager
+- Purpose: CRUD operations for tasks
+- Interface: { getTasks(), addTask(), deleteTask() }
+- Dependencies: Database, ValidationService
+</append>
 ```
 
-**BEFORE YOU START WRITING:**
-- Count existing lines (roughly): {{designDocLines}} lines
-- Check your task budget from description
-- Plan your sections to fit within budget
-- Write concisely to stay under limit!
+{{else}}
 
-This approach saves tokens and prevents redundant work. The system will merge your changes with the existing document.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-{{/if}}
+## INITIAL TASK - Create Design Document
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+**Design Document Structure** (adapt based on project type):
 
-## INSTRUCTIONS:
-
-🚨 **CRITICAL OUTPUT FORMAT** 🚨
-
-You MUST output in TWO SEPARATE steps:
-1. **Think through your analysis** (internal reasoning - KEEP SHORT - just key decisions)
-2. **Then use `<file>` or `<append>` tag**: Your design document
-
-✅ Always use `<file>` or `<append>` tags for the actual design document.
-
-🚨 **CRITICAL: CHOOSING THE RIGHT TAG** 🚨
-
-**IF this is your FIRST task (task 1 of N):**
-- ✅ MUST use `<file>` tag to create the document
-- ❌ NEVER use `<append>` for the first task
-- Even if you see a previous design in context, IGNORE IT and use `<file>`
-
-**IF this is a continuation task (task 2+):**
-- ✅ Use `<append>` tag to add new chapters
-- The system will merge your content with the existing document
-
-**Check your task description** - if it says "Design Document: Chapter 1" or similar, it's the FIRST task!
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🚨 **WHAT TO WRITE vs. WHAT TO SKIP** 🚨
-
-**✅ WRITE** (design decisions):
-- Architecture pattern choice + why
-- Component responsibilities
-- Data structure (interfaces only)
-- API contracts (signatures only)
-- Tech stack + rationale
-
-**❌ SKIP** (implementation details):
-- How to implement components
-- Deployment/ops/monitoring
-- Test cases/QA plans
-- Migration/rollout plans
-- Performance profiling
-- Git workflows
-
-**❌ SKIP** (unnecessary context):
-- Technology tutorials
-- "What is React?" explanations
-- Detailed tech comparisons
-- Background information
-- Future roadmaps beyond extensibility
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🚨 **REMINDER: NO CODE IMPLEMENTATIONS!** 🚨
-
-This rule was already stated above. If you're tempted to write code, STOP and write prose instead.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-(See detailed section-specific rules below)
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-{{#unless designDoc}}
-This is the INITIAL task. Create a system design document that **matches the inferred project type and constraints**.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🚨 **STEP 2: ADAPT SECTIONS TO PROJECT TYPE** 🚨
-
-**FOR FRONTEND-ONLY PROJECTS:**
-- ✅ INCLUDE: Overview, Component Architecture, UI Design, State Management, Tech Stack
-- ❌ SKIP: Backend API endpoints, Database schemas, Server architecture
-- ✅ FOR "API Design" section: Write "Not Applicable - This is a frontend-only application with no backend server"
-
-**FOR BACKEND-ONLY PROJECTS:**
-- ✅ INCLUDE: Overview, API Design, Data Models, Business Logic, Tech Stack, Security
-- ❌ SKIP: UI components, State management, Screen flows
-- ✅ FOR "UI Design" section: Write "Not Applicable - This is a backend API with no user interface"
-
-**FOR FULL-STACK PROJECTS:**
-- ✅ INCLUDE: All relevant sections (frontend + backend)
-
-**FOR SIMPLE PROJECTS:**
-- ✅ KEEP IT CONCISE: 2-3 pages total, not 20 pages
-- ❌ DON'T ADD: Microservices, complex patterns, extensive NFRs unless required
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-**Design document structure** (adapt based on project type - skip irrelevant sections):
-
-### 1. Overview (≤1 page)
+### 1. Overview (Simple: 10 lines / Medium: 20 lines / Complex: 40 lines)
 - System purpose (2-3 sentences)
 - High-level architecture (text diagram or 1 paragraph)
 - Core use cases (bullet list, ≤5 items)
 
-### 2. Architecture (≤2 pages)
-- **Chosen Pattern**: Name + why (e.g., "MVC because...")
-- **Major Components**: List with 1-sentence responsibility each
-- **Data Flow**: How data moves through system (prose or simple diagram)
+### 2. Architecture (Simple: 20 lines / Medium: 40 lines / Complex: 80 lines)
+- Pattern choice + why (e.g., "MVC - separates UI from logic")
+- Major components (list with 1-sentence responsibility each)
+- Data flow (how data moves through system)
 
-### 3. Key Design Decisions (≤2 pages)
+### 3. Key Design Decisions (Simple: 30 lines / Medium: 60 lines / Complex: 120 lines)
 
-#### 3.1 Component Structure
-For each major component (≤3 components):
-- **Purpose**: 1 sentence
-- **Interfaces**: Type definitions ONLY (≤10 lines each)
-- **Dependencies**: What it talks to
+**3.1 Component Structure**:
+List major components (≤3):
+- Purpose (1 sentence)
+- Interface (type definition ≤10 lines)
+- Dependencies
 
 Example:
 ```typescript
 interface TaskService {
   getTasks(): Task[];
   addTask(title: string): Task;
+  deleteTask(id: string): void;
 }
 ```
 
-#### 3.2 Data Models
-**(SKIP if no backend/database)**
-
+**3.2 Data Models** (SKIP if no backend):
 List entities with fields ONLY. NO SQL. NO ORM code.
-
-Example:
 ```typescript
 interface User {
   id: string;
@@ -365,100 +180,92 @@ interface User {
 // Relationships: User 1:N Tasks
 ```
 
-#### 3.3 API Contracts
-**(SKIP if no API)**
-
+**3.3 API Contracts** (SKIP if no API):
 List endpoints with types ONLY. NO handler code.
-
-Example:
 ```typescript
 POST /api/tasks
 Request: { title: string }
-Response: { id: string; title: string }
+Response: { id: string; title: string; status: 'pending' }
 ```
 
-### 4. Technology Stack (≤1 page)
+### 4. Technology Stack (Simple: 15 lines / Medium: 30 lines / Complex: 60 lines)
 - Framework: [name + version]
 - Database: [name] (if applicable)
 - Key libraries: [list 3-5]
-- Rationale: "As specified in PRD" OR "Chosen because [1 sentence]"
+- Rationale: "Per PRD" OR "Chosen because [1 sentence]"
 
-### 5. Non-Functional Requirements (≤1 page)
-**(SKIP if PRD doesn't mention)**
-- Performance targets
-- Security approach
-- Scalability plan
+### 5. Non-Functional Requirements (ONLY if PRD mentions)
+- Security: Auth mechanism (if PRD requires)
+- Performance: Caching strategy (if PRD requires)
+- Integration: External APIs (if PRD requires)
 
-### 6. Testing & Quality (≤0.5 page)
-- What to test (unit/integration/e2e)
-- Key quality concerns
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{{/if}}
 
----
+## 🎯 OUTPUT FORMAT
 
-**SECTION LENGTH LIMITS** (strictly enforced):
+**CRITICAL: You MUST use XML tags for ALL output!**
 
-| Section | Simple | Medium | Complex |
-|---------|--------|--------|---------|
-| Overview | 10 lines | 20 lines | 40 lines |
-| Architecture | 20 lines | 40 lines | 80 lines |
-| Design Decisions | 30 lines | 60 lines | 120 lines |
-| Tech Stack | 15 lines | 30 lines | 60 lines |
-| Components | 40 lines | 80 lines | 160 lines |
-| Data Models | 20 lines | 40 lines | 80 lines |
-| NFRs | 15 lines | 30 lines | 60 lines |
+**SCENARIO 1: First task** (creating new document):
+```xml
+<file path="outputs/design/system-design.md">
+# System Design Document
 
-**CRITICAL CALCULATION:**
-- Count TOTAL lines from ALL chapters
-- Simple: **150 lines MAX** (all chapters combined)
-- Medium: **300 lines MAX** (all chapters combined)
-- Complex: **600 lines MAX** (all chapters combined)
+## 1. Overview
+...
 
-**IF YOU'RE WRITING A CONTINUATION TASK:**
-- Existing doc: {{designDocLines}} lines
-- Your budget: [from task description] lines
-- TOTAL MUST NOT EXCEED project limit!
-- Example: Existing 150 lines + Your 150 lines = 300 lines (Medium project OK)
-- Example: Existing 200 lines + Your 150 lines = 350 lines (Medium project FAIL!)
-
-**IF YOU EXCEED THESE, YOU FAIL.**
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-**IMPORTANT**: This document will be used by the code generation phase. 
-Make it detailed, specific, and actionable. Include concrete examples where helpful.
-
-Focus on the areas highlighted in your design strategy as most critical.
-
-{{else}}
-
-🚨 **CONTINUATION TASK - ADD YOUR CHAPTER ONLY** 🚨
-
-**EXISTING DOCUMENT**:
-```
-{{designDoc}}
+## 2. Architecture
+...
+</file>
 ```
 
-**YOUR TASK**: {{currentTask.name}}
-
-**RULES**:
-1. ❌ NO project analysis (already done)
-2. ❌ NO repeating existing content
-3. ✅ Write ONLY your assigned chapter
-4. ✅ Use `<append>` tag (not `<file>`)
-5. ✅ Start with chapter heading immediately
-
-**Example**:
+**SCENARIO 2: Continuation task** (adding chapters):
 ```xml
 <append path="outputs/design/system-design.md">
 ## 3. Component Design
 
 ### 3.1 TaskManager
-- Purpose: CRUD operations
-- Interface: { getTasks(), addTask(), deleteTask() }
 ...
 </append>
 ```
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+**SCENARIO 3: Modifying existing sections**:
+```xml
+<edit path="outputs/design/system-design.md">
+<search>
+## 2. Architecture
 
-{{/unless}}
+### 2.1 System Overview
+...existing content...
+</search>
+<replace>
+## 2. Architecture
+
+### 2.1 System Overview
+...updated content...
+</replace>
+</edit>
+```
+
+**RULES**:
+- ✅ Path MUST be: `outputs/design/system-design.md`
+- ✅ Use `<file>` for first task, `<append>` for continuation
+- ✅ NO markdown code fences inside XML tags
+- ❌ NEVER output content outside XML tags
+
+════════════════════════════════════════════════════════════════════════════════
+
+{{> base/text-response-format}}
+
+════════════════════════════════════════════════════════════════════════════════
+
+**FINAL CHECKLIST**:
+1. ✅ Classified project (Simple/Medium/Complex)?
+2. ✅ Checked PRD constraints (frontend-only? backend-only? tech requirements)?
+3. ✅ Skipped forbidden sections (deployment, ops, monitoring)?
+4. ✅ Used XML tags (`<file>` or `<append>`)?
+5. ✅ Stayed within line limit?
+6. ✅ NO code implementations?
+7. ✅ Concise (1 sentence per point)?
+
+**If YES to all → Proceed. If NO → Fix first!**

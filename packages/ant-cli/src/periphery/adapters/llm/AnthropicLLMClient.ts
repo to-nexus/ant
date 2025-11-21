@@ -87,7 +87,6 @@ export class AnthropicLLMClient implements LLMClient {
   ): AsyncIterable<LLMStreamEvent> {
     // ✅ Conditionally enable Extended Thinking (default: true)
     const enableThinking = options?.enableThinking !== false;
-    console.log(`[AnthropicLLM] Extended Thinking: ${enableThinking ? 'ENABLED' : 'DISABLED'}`);
     
     const stream = await this.client.messages.create({
       model: this.modelName,

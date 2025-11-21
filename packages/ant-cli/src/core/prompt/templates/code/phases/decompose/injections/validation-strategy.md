@@ -1,58 +1,51 @@
-⚙️  VALIDATION STRATEGY (CRITICAL - MUST DECIDE FOR EACH TASK):
+⚙️  VALIDATION STRATEGY - SYSTEM HANDLES THIS AUTOMATICALLY
 
-**For each task, you MUST decide the validation strategy to optimize performance:**
+**CRITICAL: You do NOT need to create "verify" or "validate" tasks!**
+
+The system automatically validates based on task priority and type:
+- **Priority 1000 (Final task):** Full runtime validation (build + type-check + lint)
+- **Setup tasks:** Static validation (config syntax check)
+- **Feature tasks:** Static validation (deferred to Final task)
+- **Error tasks:** Runtime validation (verify fix works)
+
+---
+
+## Task Properties (Optional):
+
+You CAN include these properties, but the system will override them based on task type:
 
 **validationRequired** (boolean):
-- true: Task requires validation after completion
-- false: Skip validation for this task (use for batch/intermediate tasks)
-
-**validationType** (string):
-- "none": Skip all validation checks (fastest, use for low-risk intermediate tasks)
-- "static": Only syntax/config validation (fast, use for config files like JSON, YAML)
-- "runtime": Full validation including TypeScript compile + build + lint (slow, use for critical tasks)
+- `true`: Run validation after this task (default for most tasks)
+- `false`: Skip validation (use ONLY for trivial tasks like adding comments)
 
 **validationRationale** (string):
-- Brief explanation for your decision (helps debugging and learning)
+- Brief explanation for skipping validation (only if validationRequired: false)
 
-**GUIDELINES FOR VALIDATION DECISIONS:**
+---
 
-1. **Setup Tasks (config files)**:
-   - validationRequired: true
-   - validationType: "static" (JSON syntax check is enough)
-   - Rationale: "Config files need syntax validation before code generation"
+## ❌ DO NOT CREATE THESE TASKS:
 
-2. **Batch Component/Feature Creation**:
-   - Intermediate tasks (1st, 2nd, 3rd...):
-     - validationRequired: false
-     - validationType: "none"
-     - Rationale: "Batch creation, will validate after all components complete"
-   - Last task in batch:
-     - validationRequired: true
-     - validationType: "runtime"
-     - Rationale: "Final validation after batch component creation"
+**WRONG - Intermediate "verify" tasks:**
+```json
+{
+  "id": "verify-ui-components",  ❌ DON'T CREATE THIS!
+  "name": "Validate All UI Components",
+  "type": "feature"
+}
+```
 
-3. **Error Fix Tasks**:
-   - validationRequired: true
-   - validationType: "runtime" (must verify fix works!)
-   - Rationale: "Critical error fix requires immediate validation"
+**WHY THIS IS WRONG:**
+- System validates automatically - no need for explicit "verify" tasks
+- Creates confusion - LLM thinks it should run npm run build
+- Wastes a task slot that could be used for actual features
 
-4. **Critical Features** (auth, payment, core functionality):
-   - validationRequired: true
-   - validationType: "runtime"
-   - Rationale: "Critical feature requires full validation"
+---
 
-5. **Minor Features** (styling, UI tweaks):
-   - validationRequired: false OR true with "static"
-   - validationType: "none" OR "static"
-   - Rationale: "Minor changes, batch validate later" OR "Quick syntax check"
+## ✅ CORRECT TASK BREAKDOWN:
 
-6. **Final Verification Task**:
-   - validationRequired: true
-   - validationType: "runtime" (ALWAYS!)
-   - Rationale: "Final comprehensive validation of entire application"
+**For a UI component library:**
 
-**EXAMPLE - BATCH COMPONENT CREATION:**
-
+```json
 {
   "tasks": [
     {
@@ -60,61 +53,75 @@
       "name": "Setup Project Configuration",
       "type": "setup",
       "priority": 100,
-      "description": "Generate package.json, tsconfig.json, vite.config.ts",
-      "validationRequired": true,
-      "validationType": "static",
-      "validationRationale": "Config files need syntax validation"
+      "description": "Generate package.json, tsconfig.json, vite.config.ts"
     },
     {
-      "id": "ui-button",
+      "id": "button-component",
       "name": "Create Button Component",
       "type": "feature",
       "priority": 200,
-      "description": "Create reusable Button component",
-      "validationRequired": false,
-      "validationType": "none",
-      "validationRationale": "Batch component creation, validate after all UI components"
+      "description": "Implement reusable Button with variants and sizes"
     },
     {
-      "id": "ui-card",
+      "id": "card-component",
       "name": "Create Card Component",
       "type": "feature",
-      "priority": 201,
-      "description": "Create reusable Card component",
-      "validationRequired": false,
-      "validationType": "none",
-      "validationRationale": "Batch component creation, validate after all UI components"
+      "priority": 210,
+      "description": "Implement reusable Card component"
     },
     {
-      "id": "ui-input",
+      "id": "input-component",
       "name": "Create Input Component",
       "type": "feature",
-      "priority": 202,
-      "description": "Create reusable Input component",
-      "validationRequired": false,
-      "validationType": "none",
-      "validationRationale": "Batch component creation, validate after all UI components"
-    },
-    {
-      "id": "verify-ui-components",
-      "name": "Validate All UI Components",
-      "type": "feature",
-      "priority": 299,
-      "description": "Comprehensive validation of all UI components created in batch",
-      "validationRequired": true,
-      "validationType": "runtime",
-      "validationRationale": "Final validation after batch UI component creation"
+      "priority": 220,
+      "description": "Implement reusable Input with validation"
     },
     {
       "id": "final-verification",
-      "name": "Final Integration & Verification",
+      "name": "Final Integration & Build Verification",
       "type": "feature",
-      "priority": 999,
-      "description": "Verify all requirements are met",
-      "validationRequired": true,
-      "validationType": "runtime",
-      "validationRationale": "Final comprehensive validation of entire application"
+      "priority": 1000,
+      "description": "Install all dependencies and build entire project to verify compilation"
     }
   ]
 }
+```
 
+**Note:**
+- NO intermediate "verify" tasks
+- Just feature implementations + ONE Final task (Priority 1000)
+- System handles validation automatically at each step
+- Final task does comprehensive build validation
+
+---
+
+## When to Skip Validation:
+
+**Use `validationRequired: false` ONLY for:**
+- Adding code comments
+- Updating README text
+- Trivial formatting changes
+
+**Example:**
+```json
+{
+  "id": "add-comments",
+  "name": "Add JSDoc Comments",
+  "type": "feature",
+  "priority": 250,
+  "description": "Add documentation comments to functions",
+  "validationRequired": false,
+  "validationRationale": "Only adding comments, no code changes"
+}
+```
+
+---
+
+## Summary:
+
+✅ **DO:** Create feature tasks for actual implementations
+✅ **DO:** Create ONE Final task with Priority 1000
+❌ **DON'T:** Create intermediate "verify" or "validate" tasks
+❌ **DON'T:** Try to control validation type (system decides automatically)
+
+**Trust the system to handle validation intelligently!**

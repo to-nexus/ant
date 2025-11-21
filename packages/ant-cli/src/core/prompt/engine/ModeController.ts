@@ -199,12 +199,10 @@ export class ModeController {
         injections.push(`${task}/languages/${language}/execute/missing-dependency-fix`);
       }
       
-      // TypeScript error fix detection (highest priority - more specific than runtime errors)
-      if (context.directive && this.containsTypeScriptError(context.directive)) {
-        injections.push(`${phasePrefix}/injections/typescript-error-fix`);
-      }
-      // Runtime error fix detection (general runtime errors)
-      else if (context.directive && this.containsRuntimeError(context.directive)) {
+      // ✅ Runtime error fix detection
+      // TypeScript errors are now handled by diagnostics system + LLM's native capability
+      // Only inject runtime-error-fix for complex cases (path alias, etc.)
+      if (context.directive && this.containsRuntimeError(context.directive)) {
         injections.push(`${phasePrefix}/injections/runtime-error-fix`);
       }
       
@@ -217,10 +215,11 @@ export class ModeController {
         injections.push(languageConfigPath);
       }
       
-      if (context.stats.hasOriginalFiles) {
-        injections.push(`${phasePrefix}/injections/modification-details`);
-        injections.push(`${phasePrefix}/injections/pre-output-check`);
-      }
+      // ✅ REMOVED: modification-details and pre-output-check
+      // These injections were:
+      // 1. Duplicating content from base.md's currentCode section
+      // 2. Contradicting our <edit> tag strategy (encouraging full file rewrites)
+      // 3. Causing token waste by instructing LLM to copy entire files
       
       // ✅ REMOVED: response injection (legacy, no longer needed with new streaming system)
     }
@@ -284,26 +283,13 @@ export class ModeController {
     return 'typescript';
   }
   
-  /**
-   * Check if directive contains TypeScript errors
-   */
-  private containsTypeScriptError(directive: string): boolean {
-    const tsErrorPatterns = [
-      // TypeScript compiler errors
-      /error TS\d+:/i,
-      /\.tsx?\(\d+,\d+\):/i,  // file.ts(line,col): error
-      /TypeScript error/i,
-      /tsc --noEmit/i,
-      /Type .+ is not assignable/i,
-      /Property .+ does not exist/i,
-      /Cannot find name/i,
-      /is declared but its value is never read/i,
-      /All imports in import declaration are unused/i,
-      /Could not find a declaration file/i
-    ];
-    
-    return tsErrorPatterns.some(pattern => pattern.test(directive));
-  }
+  // ✅ REMOVED: containsTypeScriptError
+  // TypeScript errors are now handled by:
+  // 1. diagnostics/languages/typescript.ts (549 lines of patterns)
+  // 2. ErrorParserFactory (structured error parsing)
+  // 3. enforce node provides structured violations with suggestedFix
+  // 4. LLM's native TypeScript error fixing capability
+  // No need for 278-line typescript-error-fix.md injection!
   
   /**
    * Detect if directive contains runtime error messages or execution feedback
