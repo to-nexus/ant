@@ -600,6 +600,7 @@ Context loading failed. Use tools to explore:
     currentTask: nextTask ? {  // ✅ Pass current task info
       name: nextTask.name,
       type: nextTask.type,
+      priority: nextTask.priority,
       description: nextTask.description
     } : undefined
   };

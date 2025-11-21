@@ -94,37 +94,22 @@ export class CommonRenderStrategy implements IRenderStrategy {
       }
     } else if (isBlockEnd) {
       // ✅ Calculate thinking duration
-      const durationMs = this.thinkingStartTime 
-        ? Date.now() - this.thinkingStartTime 
-        : undefined;
+      // Use LLM-provided duration first (more accurate), fallback to local timer
+      const durationMs = action.data.durationMs 
+        || (this.thinkingStartTime ? Date.now() - this.thinkingStartTime : undefined);
       
-      // ✅ Send final thinking chunk with duration (if has content)
-      if (content) {
-        await this.chatAPI.sendLLMEvent({
-          type: 'thinking',
-          thinking: content,
-          metadata: {
-            provider: 'llm',
-            timestamp: new Date().toISOString(),
-            durationMs  // ✅ Pass duration for "Thought for 3s"
-          }
-        });
-      }
-      
-      // ✅ CRITICAL: Always send blockEnd signal even if no content
+      // ✅ CRITICAL: Always send blockEnd signal with duration
       // This ensures ChatService can trigger thinking_collapse
-      if (!content || content.trim().length === 0) {
-        await this.chatAPI.sendLLMEvent({
-          type: 'thinking',
-          thinking: '',  // Empty content
-          metadata: {
-            provider: 'llm',
-            timestamp: new Date().toISOString(),
-            blockEnd: true,  // ✅ Signal end
-            durationMs  // ✅ Pass duration
-          }
-        });
-      }
+      await this.chatAPI.sendLLMEvent({
+        type: 'thinking',
+        thinking: content,  // Send final content (or empty string)
+        metadata: {
+          provider: 'llm',
+          timestamp: new Date().toISOString(),
+          blockEnd: true,  // ✅ Always signal end
+          durationMs  // ✅ Pass duration for "Thought for 3s"
+        }
+      });
       
       this.thinkingStartTime = undefined;  // Reset
     } else {

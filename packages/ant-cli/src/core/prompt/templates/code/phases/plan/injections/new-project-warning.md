@@ -26,7 +26,8 @@ YOUR PLAN STRUCTURE MUST BE:
       • TypeScript: tailwind.config.js, .eslintrc
       • Go: .golangci.yml
       • Python: .pylintrc, pyproject.toml [tool.black]
-   Step 6: Generate .gitignore and README.md
+   Step 6: Generate .gitignore
+      • README.md (ONE per project - ONLY in setup task, NEVER in feature tasks)
 
 **PHASE 2: Application Code**
    Step 7: Generate source code structure

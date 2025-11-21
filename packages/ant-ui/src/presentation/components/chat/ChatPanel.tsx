@@ -29,7 +29,14 @@ export function ChatPanel({ projectId: _projectId, featureName: _featureName, en
   // messages 배열 자체는 매번 새 참조이므로, 실제 변경사항만 추적
   const lastAssistantMessage = useMemo(() => {
     return messages.filter(m => m.role === 'assistant').pop();
-  }, [messages.length, messages[messages.length - 1]?.id]);  // length와 마지막 메시지 ID만 추적
+  }, [
+    messages.length, 
+    messages[messages.length - 1]?.id,
+    // ✅ CRITICAL: Track last assistant message's contents changes
+    // This ensures fileStats updates when file operations complete (file_creating → file_create)
+    messages.filter(m => m.role === 'assistant').pop()?.contents.length,
+    messages.filter(m => m.role === 'assistant').pop()?.contents.map(c => c.type).join(',')
+  ]);
   
   // ✅ CRITICAL: 파일 관련 content만 카운트 (thinking/text는 제외)
   // thinking content가 스트리밍되어도 fileStats는 변하지 않음!

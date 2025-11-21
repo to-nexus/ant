@@ -86,7 +86,7 @@ export async function codeGen(
       throw new Error('[CodeGen] Invalid featurePath format');
     }
     
-    const featureName = state.featureName || 'unknown';
+    const featureName = state.context.featureFolder || 'default';
     const jobId = state._httpJobId || 'unknown';
     
     console.log(`📦 [CodeGen] Initializing BufferManager:`, {
@@ -249,6 +249,7 @@ async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         currentTask: {
           name: state.currentTask.name,
           type: state.currentTask.type,
+          priority: state.currentTask.priority,
           description: state.currentTask.description,
         },
       },

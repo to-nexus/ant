@@ -27,6 +27,7 @@ export interface ParsedAction {
     metadata?: Record<string, any>;
     blockStart?: boolean;  // For thinking: marks <thinking> tag opened (new block)
     blockEnd?: boolean;    // ✅ For thinking: marks </thinking> tag closed (duration calc)
+    durationMs?: number;   // ✅ For thinking: duration in milliseconds (from LLM or local timer)
   };
 }
 

@@ -47,10 +47,15 @@ export class XMLStreamParser implements IStreamParser {
     const actions: ParsedAction[] = [];
     
     // Handle thinking events (some LLM APIs send this separately)
-    if (event.type === 'thinking' && event.thinking) {  // ✅ NEW: thinking 필드 사용
+    if (event.type === 'thinking') {  // ✅ 빈 thinking도 처리 (blockEnd 시 빈 문자열 가능)
       actions.push({
         type: 'thinking',
-        data: { content: event.thinking }
+        data: { 
+          content: event.thinking || '',
+          blockStart: event.metadata?.blockStart,  // ✅ 메타데이터 전달
+          blockEnd: event.metadata?.blockEnd,      // ✅ 메타데이터 전달
+          durationMs: event.metadata?.durationMs   // ✅ duration 전달 (AnthropicLLM이 계산)
+        }
       });
       return actions;
     }

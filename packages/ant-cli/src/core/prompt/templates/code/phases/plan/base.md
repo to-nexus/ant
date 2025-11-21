@@ -34,8 +34,8 @@ The actual code generation will happen in the NEXT phase (IMPLEMENTATION).
 **Task Type**: {{currentTask.type}}
 **Description**: {{currentTask.description}}
 
-{{#if (eq currentTask.name "Final Integration & Verification")}}
-⚠️  **SPECIAL INSTRUCTIONS FOR FINAL VERIFICATION TASK**:
+{{#if (eq currentTask.priority 1000)}}
+⚠️  **SPECIAL INSTRUCTIONS FOR FINAL VERIFICATION TASK (Priority: 1000)**:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 **YOUR PLAN:**
@@ -55,7 +55,9 @@ The actual code generation will happen in the NEXT phase (IMPLEMENTATION).
 **CRITICAL:**
 - ✅ Plan to run BOTH install and build commands
 - ✅ Plan to fix errors if build fails
-- 🚫 DO NOT plan to write tests or documentation
+- 🚫 DO NOT plan to write tests
+- 🚫 DO NOT plan to write documentation (SUMMARY.md, TASK_COMPLETE.md, IMPLEMENTATION.md, etc.)
+- 🚫 DO NOT plan to create progress/status reports
 - 🚫 DO NOT plan to explore/verify files manually
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

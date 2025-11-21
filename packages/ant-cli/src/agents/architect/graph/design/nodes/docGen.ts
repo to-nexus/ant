@@ -181,6 +181,7 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
         currentTask: {
           name: state.currentTask.name,
           type: state.currentTask.type,
+          priority: state.currentTask.priority,
           description: state.currentTask.description,
         },
       },

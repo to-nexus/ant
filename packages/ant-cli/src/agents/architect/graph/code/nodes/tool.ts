@@ -278,6 +278,15 @@ async function handleWriteFile(
     await chatAPI.completeFileEdit(filePath, existingContent || '', content);
   }
   
+  // ✅ 4. Broadcast file tree update (for "n Files Edited" counter)
+  if (state.deps?.fileTreeUpdate) {
+    const featureName = state.context.featureFolder || 'default';
+    await state.deps.fileTreeUpdate.notifyFileTreeUpdate(
+      state.context.project,
+      featureName
+    );
+  }
+  
   return `File ${filePath} ${actionType === 'create' ? 'created' : 'updated'} (${content.length} bytes, saved to disk)`;
 }
 
@@ -463,6 +472,15 @@ async function handleDeleteFile(
   // UI notification
   await chatAPI.completeFileDeletion(filePath);
   
+  // ✅ Broadcast file tree update (for "n Files Edited" counter)
+  if (state.deps?.fileTreeUpdate) {
+    const featureName = state.context.featureFolder || 'default';
+    await state.deps.fileTreeUpdate.notifyFileTreeUpdate(
+      state.context.project,
+      featureName
+    );
+  }
+  
   return `File deleted successfully: ${filePath}`;
 }
 
@@ -534,6 +552,15 @@ async function handleApplyPatch(
   // UI notification
   await chatAPI.startFileEdit(filePath);
   await chatAPI.completeFileEdit(filePath, originalContent, patchedContent);
+  
+  // ✅ Broadcast file tree update (for "n Files Edited" counter)
+  if (state.deps?.fileTreeUpdate) {
+    const featureName = state.context.featureFolder || 'default';
+    await state.deps.fileTreeUpdate.notifyFileTreeUpdate(
+      state.context.project,
+      featureName
+    );
+  }
   
   return `Patch applied successfully to ${filePath} (${delta > 0 ? '+' : ''}${delta} lines)`;
 }
