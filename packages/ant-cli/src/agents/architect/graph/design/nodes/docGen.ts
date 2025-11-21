@@ -130,12 +130,7 @@ export async function docGen(
       content: buffer.content
     }));
     
-    console.log(`\n✅ [DocGen] XML streaming complete`);
-    console.log(`   Thinking: ${thinking.length} chars`);
-    console.log(`   Text: ${textResponse.length} chars`);
-    console.log(`   Text content (first 500 chars):\n${textResponse.substring(0, 500)}`);
-    console.log(`   Files generated: ${files.length}`);
-    files.forEach(f => console.log(`      📄 ${f.path}: ${f.content.length} chars`));
+    console.log(`\n✅ [DocGen] XML streaming complete (${files.length} files generated)`);
     
     // ✅ Return generated files
     return {

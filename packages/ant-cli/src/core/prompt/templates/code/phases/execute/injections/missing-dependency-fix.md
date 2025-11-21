@@ -1,95 +1,42 @@
-## 🚨 CRITICAL: MISSING DEPENDENCY FIX PROTOCOL
+## 🚨 MISSING DEPENDENCY FIX
 
-**Your task contains "MISSING DEPENDENCY" errors. Follow this EXACT protocol:**
+**Your task contains "MISSING DEPENDENCY" errors.**
 
----
+### Quick Fix Protocol:
 
-### ✅ **CORRECT APPROACH - Use npm install with package names:**
-
-#### **Step 1: Identify Missing Packages**
-
-From error messages, extract package names:
-- `Cannot find module 'openai'` → Need: `openai`
-- `Cannot find module 'axios'` → Need: `axios`
-- `Cannot find module '@types/react'` → Need: `@types/react` (devDependency)
-
-#### **Step 2: Output npm install command with ALL missing packages**
-
-**For regular dependencies:**
-```bash
-npm install openai axios
+**1. Extract package names from error messages:**
+```
+"Cannot find module 'openai'" → openai
+"Cannot find module '@types/react'" → @types/react
 ```
 
-**For dev dependencies (types):**
+**2. Install ALL missing packages in ONE command:**
 ```bash
+npm install openai axios cors
 npm install -D @types/react @types/node
 ```
 
-**IMPORTANT:**
-- ✅ List ALL missing packages in ONE command
-- ✅ npm automatically saves to package.json (npm 5+)
-- ✅ Use `-D` flag for @types packages
-- ❌ DO NOT run `npm install` without package names
+### Critical Rules:
 
-#### **Step 3: System Auto-Installs**
+✅ **DO:**
+- List ALL missing packages in one command
+- Use `-D` flag for @types packages (devDependencies)
+- npm automatically saves to package.json (npm 5+)
 
-After you output the command:
-- ✅ System executes: `npm install openai axios`
-- ✅ Packages are installed AND saved to package.json
-- ✅ Saved to package-lock.json
-- ✅ Error is resolved
+❌ **DON'T:**
+- Run `npm install` without package names (does nothing!)
+- Install packages one by one (inefficient)
 
----
+### Example:
 
-### 📋 **SELF-CHECK BEFORE OUTPUT:**
-
-- [ ] Did I identify ALL missing packages from error messages?
-- [ ] Did I include ALL package names in the npm install command?
-- [ ] Did I use `-D` flag for @types packages?
-- [ ] Did I separate regular deps and dev deps into different commands?
-
-**If ANY checkbox is unchecked, FIX IT before outputting!**
-
----
-
-### ⚠️ **COMMON MISTAKES TO AVOID:**
-
-❌ **Mistake 1: Running npm install without package names**
-```bash
-npm install  ← WRONG! Doesn't add any packages
+**Error:**
+```
+Cannot find module 'openai'
+Cannot find module '@types/node'
 ```
 
-❌ **Mistake 2: Installing one package at a time**
+**Fix:**
 ```bash
 npm install openai
-npm install axios
-npm install cors
+npm install -D @types/node
 ```
-This works but is inefficient. Better:
-```bash
-npm install openai axios cors
-```
-
-❌ **Mistake 3: Forgetting -D for @types packages**
-```bash
-npm install @types/react  ← WRONG! Should be -D (devDependency)
-```
-
-✅ **Correct: List all packages with proper flags**
-```bash
-npm install openai axios cors
-npm install -D @types/react @types/node
-```
-
----
-
-### 🎯 **FINAL REMINDER:**
-
-**For MISSING DEPENDENCY errors:**
-1. ✅ Extract ALL missing package names from errors
-2. ✅ Output: `npm install <pkg1> <pkg2> <pkg3>`
-3. ✅ Use `-D` flag for @types packages
-4. ❌ DO NOT run `npm install` without package names
-
-**npm automatically saves to package.json (npm 5+)!**
-

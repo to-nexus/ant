@@ -214,17 +214,15 @@ export class TemplateComposer {
     
     const varMap: Record<string, any> = {
       'directive': { content: assembled.directive },
-      'design-doc': { content: assembled.designDoc || '' },  // ❌ REMOVED TRUNCATE - was causing LLM to ignore design and improvise
+      'design-doc': { content: assembled.designDoc || '' },
       'prd-spec': { content: this.truncate(assembled.prdSpec || '', 800) },
       'original-files': { files: assembled.originalFiles },
       'current-code': { content: this.truncate(assembled.currentCode || '', 500) },
       'memory': { content: this.truncate(assembled.memory || '', 1000) },
       'session-history': { content: this.truncate(assembled.sessionHistory || '', 2000) },
-      'previous-design': { content: this.truncate(assembled.previousDesign || '', 1000) },
-      'modification-details': { files: assembled.originalFiles },
       'modification-warning': {},
-      'pre-output-check': {},
       'retry-context': { retryContext: assembled.retryContext }
+      // ✅ REMOVED: modification-details, pre-output-check, previous-design (deleted files)
     };
     
     return varMap[filename] || {};

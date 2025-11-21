@@ -124,7 +124,6 @@ export async function codeGen(
   
   // ✅ Check if this is a continuation after tool calling
   const isAfterToolCall = state.conversationHistory && state.conversationHistory.length > 0;
-  console.log(`[CodeGen] isAfterToolCall: ${isAfterToolCall}, enableThinking: ${!isAfterToolCall}`);
   
   try {
     // ✅ Single stream (no loop!)

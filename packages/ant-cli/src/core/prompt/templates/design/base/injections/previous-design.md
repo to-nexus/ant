@@ -1,3 +1,0 @@
-📐 PREVIOUS DESIGN:
-{{content}}
-

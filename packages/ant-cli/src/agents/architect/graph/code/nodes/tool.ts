@@ -256,12 +256,24 @@ async function handleWriteFile(
     await chatAPI.startFileEdit(filePath);
   }
   
-  // ✅ 1. IMMEDIATELY write to project disk (점진적 저장!)
+  // ✅ 1. Read existing content BEFORE writing (for diff) - with error handling
+  let existingContent = '';
+  if (exists) {
+    try {
+      existingContent = await gitPort.readFile(filePath) || '';
+    } catch (readError) {
+      // If read fails, continue with empty diff (file write is more important!)
+      console.warn(`⚠️  Failed to read existing content for diff: ${(readError as Error).message}`);
+      existingContent = '';
+    }
+  }
+  
+  // ✅ 2. IMMEDIATELY write to project disk (점진적 저장!)
   await gitPort.writeFile(filePath, content);
   console.log(`   💾 ${actionType === 'create' ? 'Created' : 'Modified'}: ${filePath} (${content.length} bytes)`);
   console.log(`   ✅ Saved to disk IMMEDIATELY (true incremental saving)`);
   
-  // ✅ 2. Update buffer in state (for tracking & potential rollback)
+  // ✅ 3. Update buffer in state (for tracking & potential rollback)
   const fileBuffers = state.fileBuffers || new Map();
   fileBuffers.set(filePath, {
     path: filePath,
@@ -270,12 +282,11 @@ async function handleWriteFile(
     committed: true,  // Already committed to disk!
   });
   
-  // ✅ 3. UI notification - COMPLETE
+  // ✅ 4. UI notification - COMPLETE
   if (actionType === 'create') {
     await chatAPI.completeFileCreation(filePath, content);
   } else {
-    const existingContent = exists ? await gitPort.readFile(filePath) : '';
-    await chatAPI.completeFileEdit(filePath, existingContent || '', content);
+    await chatAPI.completeFileEdit(filePath, existingContent, content);
   }
   
   // ✅ 4. Broadcast file tree update (for "n Files Edited" counter)

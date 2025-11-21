@@ -53,6 +53,7 @@ export interface MessageContent {
     model?: string;         // LLM model used
     provider?: string;      // LLM provider (e.g., 'anthropic', 'openai')
     blockStart?: boolean;   // For thinking: marks <thinking> tag opened (new block)
+    blockEnd?: boolean;     // For thinking: marks </thinking> tag closed (block end)
     // Cancelled metadata
     jobId?: string;         // For cancelled: job ID to resume
     reason?: string;        // For cancelled: cancellation reason
@@ -416,7 +417,6 @@ export class ChatService {
       // ✅ Special case: placeholder → thinking = clear placeholder content
       if (content.type === 'thinking') {
         lastContent.content = '';  // Clear placeholder content, wait for LLM thinking
-        console.log(`[ChatService] 🧹 Cleared placeholder content for thinking block`);
       } else {
         lastContent.content = content.content;
       }
@@ -569,8 +569,6 @@ export class ChatService {
             contentIndex: session.lastThinkingContentIndex,
             durationMs
           });
-          
-          console.log(`[ChatService] 💭 Thinking block collapsed (duration: ${(durationMs / 1000).toFixed(1)}s)`);
         }
         
         // Reset tracking (will be set again below if new thinking block starts)
@@ -724,8 +722,6 @@ export class ChatService {
           contentIndex: session.lastThinkingContentIndex,
           durationMs
         });
-        
-        console.log(`[ChatService] 💭 Final thinking block collapsed (duration: ${(durationMs / 1000).toFixed(1)}s)`);
       }
       
       // Reset tracking
