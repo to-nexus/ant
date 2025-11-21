@@ -860,12 +860,14 @@ export class ChatService {
         break;
 
       case 'text':
-          // No active file operation - add as regular text
+        // No active file operation - add as regular text
         // (File content is now handled by tool node, not streaming)
+        if (event.text && event.text.trim()) {  // ✅ Filter empty/whitespace-only text
           this.addContentToCurrentMessage(projectId, featureName, {
             type: 'text',
-          content: event.text || ''  // ✅ NEW: text 필드 사용
-        });
+            content: event.text
+          });
+        }
         break;
 
       case 'tool_use':
