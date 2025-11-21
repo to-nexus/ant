@@ -240,6 +240,12 @@ export class TemplateComposer {
     try {
       return await this.promptPort.render(templatePath, vars);
     } catch (error) {
+      // ✅ Plan phase templates are deprecated (plan node doesn't use LLM)
+      // Just return empty string silently
+      if (templatePath.includes('phases/plan/')) {
+        return '';
+      }
+      
       console.error(`[TemplateComposer] Failed to load template: ${templatePath}`);
       console.error(`[TemplateComposer] Error details:`, error);
       return '';

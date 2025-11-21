@@ -312,10 +312,13 @@ async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     // Strategy 3: Append file tree and other runtime context at the end
     const runtimeContext = buildRuntimeContext(state);
     
+    const fullContent = `${finalPrompt}${runtimeContext ? '\n\n' + runtimeContext : ''}`;
+    
     messages.push({
       role: 'user',
-      content: `${finalPrompt}${runtimeContext ? '\n\n' + runtimeContext : ''}`,
+      content: fullContent,
     });
+    
   }
   
   // ✅ Add conversation history (if exists)

@@ -159,7 +159,100 @@ THIS IS CORRECT! Complete file with ALL code written out. No "..." comments!
 KEY REMINDERS:
 ✅ Use <edit> for modifying existing files (efficient, shows only changes)
 ✅ Use <file> for creating new files (must be complete)
-✅ Always end with a plain text summary explaining what you did
+✅ FEATURE TASKS: Just code + `<done>true</done>` - NO summary!
+✅ ERROR/FINAL TASKS: May include brief summary if helpful
 ✅ Never use "..." or "// rest of code" - write COMPLETE content
 ✅ Use ACTUAL paths from ORIGINAL FILES section
+
+--------------------------------------------------------------------------------
+
+Example 6: Feature task completion (CORRECT WAY - NO SUMMARY!)
+
+✅ CORRECT OUTPUT FOR FEATURE TASKS:
+```xml
+<file path="src/components/atoms/Icon.tsx">
+import React from 'react';
+
+export interface IconProps {
+  name: string;
+  size?: 'sm' | 'md' | 'lg';
+}
+
+export function Icon({ name, size = 'md' }: IconProps) {
+  return <svg className={`icon-${size}`}>{/* SVG content */}</svg>;
+}
+</file>
+
+<done>true</done>
+```
+
+**That's it! No summary, no explanation - just code and done!**
+
+Feature tasks are intermediate steps. The system tracks everything automatically.
+Save tokens and user's time - just deliver the code!
+
+```xml
+<file path="src/components/atoms/Icon.tsx">
+{/* component code */}
+</file>
+
+<done>true</done>
+
+I've successfully implemented the Icon component with the following features:
+- Full TypeScript typing with IconProps interface
+- Size variants (sm, md, lg) using design tokens
+...
+```
+
+**Why this is WRONG:**
+- Feature tasks don't need explanations
+- System tracks your work automatically
+- Wastes tokens and time
+- Just output code + `<done>true</done>`!
+
+❌ ALSO WRONG - DO NOT CREATE .md FILES:
+
+--------------------------------------------------------------------------------
+
+Example 7: DO NOT create test files (unless task explicitly says "write tests")
+
+❌ WRONG - DO NOT DO THIS:
+```xml
+<file path="src/components/atoms/Button.tsx">
+export function Button() { /* implementation */ }
+</file>
+
+<file path="src/components/atoms/Button.test.tsx">
+import { Button } from './Button';
+// test code...
+</file>
+
+<done>true</done>
+```
+
+❌ ALSO WRONG - DO NOT DO THIS:
+```xml
+<file path="src/components/Typography.tsx">
+export function Typography() { /* implementation */ }
+</file>
+
+<command>npm test -- Typography.test.tsx</command>
+```
+
+✅ CORRECT - FEATURE TASKS:
+```xml
+<file path="src/components/atoms/Button.tsx">
+export function Button() { /* implementation */ }
+</file>
+
+<done>true</done>
+```
+
+**In FEATURE tasks: Write SOURCE CODE ONLY!**
+- ❌ NO *.test.ts, *.test.tsx, *.spec.ts files
+- ❌ NO __tests__/ directory
+- ❌ NO test running commands (npm test, vitest, jest)
+- ❌ NO Storybook files (*.stories.ts)
+
+**Tests are ONLY created when task explicitly says "write tests" or "add testing"!**
 

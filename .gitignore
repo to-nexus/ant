@@ -60,3 +60,6 @@ projects/**/generated/reports/*.md
 # New structure (workspaces/)
 workspaces/*
 !workspaces/.gitkeep
+
+# logs
+.ant-debug/
