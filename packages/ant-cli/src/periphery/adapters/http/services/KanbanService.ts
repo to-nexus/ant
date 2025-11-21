@@ -50,8 +50,14 @@ export class KanbanService {
     }
     
     // 2. Add completed tasks elapsed time
+    let completedTasksTime = 0;
     for (const task of completedTasksDetails) {
-      if (task.elapsedTime) {
+      if (task.timing?.elapsedTime) {
+        completedTasksTime += task.timing.elapsedTime;
+        totalElapsed += task.timing.elapsedTime;
+      } else if (task.elapsedTime) {
+        // Fallback: elapsedTime might be at root level
+        completedTasksTime += task.elapsedTime;
         totalElapsed += task.elapsedTime;
       }
     }
@@ -61,8 +67,7 @@ export class KanbanService {
       const currentTaskStartTime = new Date(currentTask.timing.startedAt).getTime();
       const currentTaskElapsed = Date.now() - currentTaskStartTime - (currentTask.timing.totalPausedDuration || 0);
       totalElapsed += currentTaskElapsed;
-    }
-    
+    } 
     // ❌ REMOVED: Don't subtract jobTiming.totalPausedDuration again!
     // Why: completedTasksDetails[].elapsedTime already excludes pause time
     // and currentTask calculation above also excludes pause time.

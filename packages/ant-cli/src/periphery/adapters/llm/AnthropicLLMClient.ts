@@ -182,7 +182,6 @@ export class AnthropicLLMClient implements LLMClient {
         const thinkingBlock = thinkingBlocks.get(event.index);
         if (thinkingBlock) {
           const durationMs = Date.now() - thinkingBlock.startTime;
-          console.log(`[AnthropicLLM] 🧠 Thinking block ended - duration: ${durationMs}ms, index: ${event.index}`);
           
           // ✅ Emit thinking end signal
           yield {

@@ -1019,15 +1019,29 @@ export const useStore = create<Store>((set, get) => {
   // Server Configuration
   // ==================
   setBackendMode: (mode: 'local' | 'cloud') => {
+    const currentMode = get().backendMode;
+    
+    // ✅ 동일한 모드면 아무것도 안함 (중복 호출 방지)
+    if (currentMode === mode) {
+      console.log('[Store] Backend mode unchanged:', mode);
+      return;
+    }
+    
     set({ backendMode: mode });
     saveToStorage(STORAGE_KEYS.BACKEND_MODE, mode);
-    console.log('[Store] Backend mode changed to:', mode);
+    console.log('[Store] Backend mode changed:', currentMode, '→', mode);
     
-    // Clear user session when switching modes
-    const store = useStore.getState();
-    if (store.userEmail) {
-      store.clearUser();
+    // ✅ Cloud → Local 전환 시에만 사용자 정보 초기화
+    // (로컬 모드는 인증이 필요 없으므로)
+    // Local → Cloud 전환 시에는 사용자 정보 유지 (다시 로그인할 필요 없음)
+    if (currentMode === 'cloud' && mode === 'local') {
+      const store = useStore.getState();
+      if (store.userEmail) {
+        console.log('[Store] Clearing user info (Cloud → Local)');
+        store.clearUser();
+      }
     }
+    
     // Clear projects when switching modes
     set({ projects: [], selectedProject: undefined, selectedFeature: undefined });
   },
