@@ -321,23 +321,63 @@ export class GraphMetadataService {
         }
       }
       
-      // ✅ 방법 2: _compiled 내부의 branches 확인 (conditional edges)
-      if (compiledGraph._compiled?.branches) {
-        const branches = compiledGraph._compiled.branches;
-        for (const [sourceNode, branchInfo] of Object.entries(branches)) {
-          if (typeof branchInfo === 'object' && branchInfo && 'branches' in branchInfo) {
-            // conditional edge의 모든 가능한 target을 edges로 추가
-            const branchTargets = (branchInfo as any).branches;
-            if (typeof branchTargets === 'object') {
-              for (const [condition, target] of Object.entries(branchTargets)) {
-                if (typeof target === 'string' && target !== '__end__') {
-                  edges.push({
-                    id: `${sourceNode}_to_${target}`,
-                    source: sourceNode,
-                    target,
-                    type: EdgeType.CONDITIONAL,
-                    label: condition !== 'default' ? condition : undefined
-                  });
+      // ✅ 방법 2: builder를 통한 엣지 추출
+      if (compiledGraph.builder) {
+        // ✅ builder.edges - 정적 엣지 (addEdge)
+        if (Array.isArray(compiledGraph.builder.edges)) {
+          for (const [source, target] of compiledGraph.builder.edges) {
+            if (source !== '__start__' && target !== '__end__') {
+              edges.push({
+                id: `${source}_to_${target}`,
+                source,
+                target,
+                type: EdgeType.NORMAL
+              });
+            }
+          }
+        } else if (compiledGraph.builder.edges && typeof compiledGraph.builder.edges[Symbol.iterator] === 'function') {
+          // edges가 iterable이지만 배열은 아닌 경우 (Set, Map.entries() 등)
+          for (const edge of compiledGraph.builder.edges) {
+            if (Array.isArray(edge) && edge.length >= 2) {
+              const [source, target] = edge;
+              if (source !== '__start__' && target !== '__end__') {
+                edges.push({
+                  id: `${source}_to_${target}`,
+                  source,
+                  target,
+                  type: EdgeType.NORMAL
+                });
+              }
+            }
+          }
+        }
+        
+        // ✅ builder.branches - 조건부 엣지 (addConditionalEdges)
+        if (compiledGraph.builder.branches && typeof compiledGraph.builder.branches === 'object') {
+          for (const [sourceNode, branchInfo] of Object.entries(compiledGraph.builder.branches)) {
+            if (typeof branchInfo === 'object' && branchInfo) {
+              // branchInfo는 { condition: Branch } 형태
+              // Branch 객체는 { path: ..., ends: { condition1: target1, ... } } 형태
+              
+              for (const [key, value] of Object.entries(branchInfo)) {
+                if (value && typeof value === 'object' && 'ends' in value) {
+                  // value는 Branch 객체
+                  const branch = value as any;
+                  
+                  if (branch.ends && typeof branch.ends === 'object') {
+                    // ends는 { condition → target } 매핑
+                    for (const [condition, target] of Object.entries(branch.ends)) {
+                      if (typeof target === 'string' && target !== '__end__') {
+                        edges.push({
+                          id: `${sourceNode}_to_${target}_${condition}`,
+                          source: sourceNode,
+                          target,
+                          type: EdgeType.CONDITIONAL,
+                          label: condition
+                        });
+                      }
+                    }
+                  }
                 }
               }
             }

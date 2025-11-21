@@ -5,7 +5,7 @@ import { decompose } from "./nodes/decompose";
 import { plan } from "./nodes/plan";
 import { codeGen } from "./nodes/codeGen";
 import { tool } from "./nodes/tool";
-import { validate } from "./nodes/validate";
+// import { validate } from "./nodes/validate";  // ✅ REMOVED: Static validation no longer needed (prompts handle it)
 import { installDeps } from "./nodes/installDeps";
 import { runtimeValidate } from "./nodes/runtimeValidate";
 import { enforce } from "./nodes/enforce";
@@ -278,13 +278,13 @@ export function buildCodeGraph() {
     } as any,
   } as any);
   
-  // ✅ NEW ARCHITECTURE: CodeGen <-> Tool loop managed by LangGraph
+  // ✅ SIMPLIFIED ARCHITECTURE: CodeGen <-> Tool loop, then branch by priority
   graph.addNode("resolve", resolve as any);
   graph.addNode("decompose", decompose as any);
   graph.addNode("plan", plan as any);
-  graph.addNode("codeGen", codeGen as any);      // ✅ NEW: Code generation (LLM reasoning)
-  graph.addNode("tool", tool as any);            // ✅ NEW: Single tool execution (saves immediately!)
-  graph.addNode("validate", validate as any);
+  graph.addNode("codeGen", codeGen as any);      // ✅ Code generation (LLM reasoning)
+  graph.addNode("tool", tool as any);            // ✅ Single tool execution (saves immediately!)
+  // graph.addNode("validate", validate as any);  // ✅ REMOVED: Prompts handle static validation
   graph.addNode("installDeps", installDeps as any);
   graph.addNode("runtimeValidate", runtimeValidate as any);
   graph.addNode("checkTaskStatus", checkTaskStatus as any);
@@ -298,52 +298,34 @@ export function buildCodeGraph() {
   // ✅ Plan → CodeGen (시작)
   graph.addEdge("plan" as any, "codeGen" as any);
   
-  // ✅ CodeGen → Router (tool call 체크)
+  // ✅ CodeGen → Router (tool call 체크 & priority 기반 분기)
   graph.addConditionalEdges(
     "codeGen" as any,
     routeAfterCodeGen as any,
     {
-      tool: "tool",           // Tool call 있으면 → tool 노드
-      validate: "validate",   // Done이면 → validate (tool이 이미 저장함!)
-      codeGen: "codeGen",     // 재추론 (드물음)
+      tool: "tool",                     // Tool call 있으면 → tool 노드
+      checkTaskStatus: "checkTaskStatus",  // Done (non-final) → checkTaskStatus
+      installDeps: "installDeps",       // Done (final task) → installDeps
+      codeGen: "codeGen",               // 재추론 (드물음)
     } as any
   );
   
   // ✅ Tool → CodeGen (도구 결과 가지고 다시 추론)
   graph.addEdge("tool" as any, "codeGen" as any);
 
-  // Static validation (ellipsis, excessive deletion)
-  graph.addConditionalEdges(
-    "validate" as any,
-    ((s: ArchitectGraphState) => {
-      // ✅ Only check violations array (validate node handles no_files violation internally)
-      const hasViolations = s.violations && s.violations.length > 0;
-      if (hasViolations) {
-        return "enforce";
-      }
-      
-      // ✅ OPTIMIZATION: Skip installDeps/runtimeValidate for intermediate tasks
-      // Only run on the LAST task (when queue is empty after this task)
-      const isLastTask = !s.taskQueue || s.taskQueue?.isEmpty();
-      
-      if (isLastTask) {
-        console.log('✅ [Validate] Last task → running installDeps + runtimeValidate');
-        return "installDeps";
-      } else {
-        console.log(`⏭️  [Validate] Intermediate task (${s.taskQueue?.size()} remaining) → skipping deps/validation`);
-        return "checkTaskStatus";  // Skip directly to task status check
-      }
-    }) as any,
-    { enforce: "enforce", installDeps: "installDeps", checkTaskStatus: "checkTaskStatus" } as any
-  );
+  // ✅ REMOVED: validate 노드 관련 로직 제거
+  // - Static validation (ellipsis, excessive deletion)은 프롬프트로 충분히 제어
+  // - Runtime validation (build)만 final task에서 실행
 
-  // After installing dependencies, run runtime validation
+  // ✅ Final task: installDeps → runtimeValidate
   graph.addEdge("installDeps" as any, "runtimeValidate" as any);
 
-  // After runtime validation, check task status (moved from router to node for state mutation)
+  // ✅ Final task: runtimeValidate → checkTaskStatus
   graph.addEdge("runtimeValidate" as any, "checkTaskStatus" as any);
 
-  // Route based on task completion status
+  // ✅ checkTaskStatus: 태스크 완료 상태 확인 및 라우팅
+  // - Non-final tasks: codeGen → checkTaskStatus (직접)
+  // - Final task: codeGen → installDeps → runtimeValidate → checkTaskStatus
   graph.addConditionalEdges(
     "checkTaskStatus" as any,
     ((s: ArchitectGraphState) => {

@@ -3,15 +3,17 @@
  * 
  * 책임:
  * - llmResponse 분석
- * - 다음 노드 결정 (tool / validate / codeGen)
+ * - 다음 노드 결정 (tool / checkTaskStatus / installDeps / codeGen)
  * 
  * 라우팅 로직:
  * 1. Tool calls 있으면 → tool 노드
- * 2. Done이면 → validate 노드
+ * 2. Done이면:
+ *    - Final task (priority=1000) → installDeps 노드
+ *    - Other tasks → checkTaskStatus 노드
  * 3. 그 외 → codeGen 노드 (재추론)
  */
 
-import { ArchitectGraphState } from '../state';
+import { ArchitectGraphState, TASK_PRIORITIES } from '../state';
 
 export function routeAfterCodeGen(state: ArchitectGraphState): string {
   const response = state.llmResponse;
@@ -27,10 +29,18 @@ export function routeAfterCodeGen(state: ArchitectGraphState): string {
     return 'tool';
   }
   
-  // ✅ 2. Done이면 → validate 노드 (tool이 이미 파일 저장함!)
+  // ✅ 2. Done이면 → priority 기반 분기
   if (response.done) {
-    console.log(`✅ [Router] LLM done → validate node (files already saved by tool node)`);
-    return 'validate';
+    const currentTask = state.currentTask;
+    const isFinalTask = currentTask?.priority === TASK_PRIORITIES.FINAL_VERIFICATION;
+    
+    if (isFinalTask) {
+      console.log(`✅ [Router] Final task done → installDeps (build verification)`);
+      return 'installDeps';
+    } else {
+      console.log(`✅ [Router] Task done → checkTaskStatus (skip validation for ${currentTask?.type} task)`);
+      return 'checkTaskStatus';
+    }
   }
   
   // ✅ 3. 그 외 → codeGen 노드 (재추론 - 드물지만 가능)
