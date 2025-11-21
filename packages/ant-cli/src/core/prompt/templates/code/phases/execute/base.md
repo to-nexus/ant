@@ -5,10 +5,10 @@ PHASE 2: IMPLEMENTATION
 PROJECT: {{project}}
 
 {{#if currentTask}}
-{{#if (eq currentTask.name "Final Integration & Verification")}}
+{{#if (eq currentTask.priority 1000)}}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎯 FINAL INTEGRATION & VERIFICATION TASK
+🎯 FINAL INTEGRATION & VERIFICATION TASK (Priority: 1000)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 **YOUR MISSION**: Verify the entire project builds successfully with all dependencies installed.
@@ -64,7 +64,9 @@ PROJECT: {{project}}
 - 🚫 DO NOT skip dependency installation
 - 🚫 DO NOT guess what's wrong - READ THE ERROR!
 - 🚫 DO NOT modify config files unless error says so
-- 🚫 DO NOT write test files or documentation
+- 🚫 DO NOT write test files
+- 🚫 DO NOT write documentation files (SUMMARY.md, TASK_COMPLETE.md, IMPLEMENTATION.md, etc.)
+- 🚫 DO NOT create progress/status reports in any .md files
 - 🚫 DO NOT explore/check files before running commands
 - ✅ START with `run_command("npm install")` immediately (if first attempt)
 - ✅ READ error messages completely before fixing
@@ -84,6 +86,11 @@ PROJECT: {{project}}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🔧 SETUP TASK
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🚫 **ABSOLUTE PROHIBITION - NO TEST FILES:**
+```
+❌ NEVER create: *.test.ts, *.spec.ts, *_test.py, __tests__/**, tests/**
+```
 
 **YOUR MISSION**: Generate project configuration files and install dependencies.
 
@@ -111,7 +118,10 @@ PROJECT: {{project}}
 - 🚫 DO NOT skip `npm install` - it's MANDATORY!
 - 🚫 DO NOT run `npm run dev` or `npm run build` in setup task
 - 🚫 DO NOT generate application code (components, pages, etc.)
+- 🚫 DO NOT write documentation files (SUMMARY.md, TASK_COMPLETE.md, IMPLEMENTATION.md, etc.)
+- 🚫 DO NOT create progress/status reports
 - ✅ ONLY generate configuration files
+- ✅ MAY generate project root README.md (ONE per project)
 - ✅ MUST run `npm install` after generating all config files
 - ✅ MUST output `<done>true</done>` after installation completes
 
@@ -124,40 +134,96 @@ PROJECT: {{project}}
 **Task Type**: {{currentTask.type}}
 **Description**: {{currentTask.description}}
 
-{{#unless (eq currentTask.name "Final Integration & Verification")}}
-{{#unless (eq currentTask.type "setup")}}
-⚠️  CRITICAL INSTRUCTIONS:
-- Work on THIS SPECIFIC TASK ONLY - do not implement other features
-- Do not try to implement the entire project
-- Focus only on what is needed for THIS ONE TASK
-- Other tasks will be handled in separate iterations
+{{#if (eq currentTask.type "feature")}}
+{{#unless (eq currentTask.priority 1000)}}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 FEATURE TASK - CODE IMPLEMENTATION ONLY (Priority: {{currentTask.priority}})
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-If this task is "Implement Task Input Component" → Create ONLY TaskInput component
-If this task is "Implement Task Item Component" → Create ONLY TaskItem component
-Do NOT create the entire application in one task!
+🚫 **ABSOLUTE PROHIBITION - NO TEST FILES WHATSOEVER:**
+```
+❌ NEVER create: *.test.ts, *.test.tsx, *.spec.ts, *.spec.tsx
+❌ NEVER create: __tests__/** directory or any test directories
+❌ NEVER create: test utilities, mocks, fixtures, test helpers
+❌ NEVER create: *.stories.ts (Storybook), *_test.py, *_test.go
+```
+**This is a FEATURE task - you write SOURCE CODE ONLY, NO TESTS!**
 
-**WHAT YOU CAN FIX**:
-✅ Make MINIMAL code changes to fix build errors
-✅ Fill in empty/stub implementations that prevent build
-✅ Fix import errors, missing exports
-✅ Add minimal type definitions to resolve type errors
-✅ Complete incomplete implementations (e.g., empty function bodies)
-✅ Run `npm install` if dependencies are missing
-✅ Run build commands to verify
+**YOUR MISSION**: Implement ONLY the feature described in this task.
 
-**WHAT YOU MUST NOT DO**:
-❌ DO NOT write test files or test code
-❌ DO NOT write documentation (README, CHANGELOG, etc.)
-❌ DO NOT add features beyond what's needed for build
-❌ DO NOT make major refactoring changes
+**REQUIRED APPROACH:**
+✅ Write source code files (components, functions, classes, etc.)
+✅ Add imports and exports as needed
+✅ Follow the design document and directive
+✅ Output `<done>true</done>` when feature code is written
 
-**MINIMAL CHANGES PRINCIPLE**:
-- Change ONLY what's necessary for build success
+**🚫 CRITICAL RESTRICTIONS - DO NOT:**
+❌ DO NOT run `npm run build` or `npm run dev`
+❌ DO NOT run `npm run type-check` or linting commands
+❌ DO NOT run any validation commands
+❌ DO NOT try to verify if code compiles
+❌ DO NOT install dependencies (unless directive explicitly says missing)
+❌ DO NOT write test files
+❌ DO NOT write documentation files (SUMMARY.md, TASK_COMPLETE.md, IMPLEMENTATION.md, etc.)
+❌ DO NOT create progress/status reports in any .md files
+
+**WHY NO BUILD/VALIDATION?**
+- This is an intermediate task - focus on implementation ONLY
+- Build errors will be caught and fixed in later error tasks
+- Final verification will happen in the final task (Priority 1000)
+- Running build commands here will block progress unnecessarily
+
+**SCOPE CONTROL:**
+- Work on THIS SPECIFIC TASK ONLY - not other features
+- If this task is "Implement Task Input Component" → Create ONLY TaskInput component
+- Do NOT create the entire application in one task!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{{/unless}}
+{{/if}}
+{{#if (eq currentTask.type "error")}}
+{{#if (eq currentTask.type "error")}}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️  ERROR TASK - FIX BUILD/TYPE/LINT ERRORS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🚫 **ABSOLUTE PROHIBITION - NO TEST FILES:**
+```
+❌ NEVER create: *.test.ts, *.spec.ts, __tests__/**, tests/**
+```
+
+**YOUR MISSION**: Fix the specific errors preventing build success.
+
+**REQUIRED APPROACH:**
+1️⃣ **READ THE ERROR** - errors are provided in the task description
+2️⃣ **FIX MINIMALLY** - change ONLY what's broken
+3️⃣ **VERIFY** - run build/type-check commands to confirm fix
+4️⃣ **OUTPUT** - `<done>true</done>` when errors are resolved
+
+**WHAT YOU CAN DO:**
+✅ Fix type errors, syntax errors, import errors
+✅ Add missing imports or exports
+✅ Fix incorrect type definitions
+✅ Run `npm install <package>` if dependency is missing
+✅ Run `npm run type-check` to verify fix
+✅ Run `npm run build` to verify fix
+✅ Run linting commands if needed
+
+**WHAT YOU MUST NOT DO:**
+❌ DO NOT refactor working code
+❌ DO NOT add new features
+❌ DO NOT write test files
+❌ DO NOT write documentation files (SUMMARY.md, TASK_COMPLETE.md, IMPLEMENTATION.md, etc.)
+❌ DO NOT create progress/status reports
+
+**MINIMAL CHANGES PRINCIPLE:**
+- Fix ONLY the specific error mentioned
 - Do NOT re-write working code
-- Do NOT add "nice-to-have" features
 - Keep changes surgical and targeted
-{{/unless}}
-{{/unless}}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{{/if}}
+{{/if}}
 ────────────────────────────────────────────────────────────────────────────────
 {{/if}}
 
@@ -190,46 +256,85 @@ KEY WORKING PRINCIPLES:
   - Critical security or edge case handling
 - **Principle**: Code should be self-documenting through clear naming
 
-**DOCUMENTATION FILES**:
-- ❌ DO NOT create README, CHANGELOG, CONTRIBUTING unless explicitly requested
-- ❌ DO NOT create API documentation files unless explicitly requested
-- ❌ DO NOT create architecture diagrams or extensive markdown docs
-- ✅ ONLY create docs if the task specifically mentions documentation
-- **Principle**: Focus on working code first, documentation later
+**DOCUMENTATION FILES - ABSOLUTE PROHIBITION**:
+
+🚫 **FORBIDDEN DOCUMENTATION PATTERNS** (unless explicitly requested):
+```
+❌ README.md (except project root README.md - ONE per project)
+❌ CHANGELOG.md / HISTORY.md
+❌ CONTRIBUTING.md / DEVELOPMENT.md
+❌ API.md / API_REFERENCE.md
+❌ ARCHITECTURE.md / DESIGN.md
+❌ SUMMARY.md / TASK_COMPLETE.md / IMPLEMENTATION.md  ← ⚠️ NEVER CREATE THESE!
+❌ PROGRESS.md / STATUS.md / REPORT.md
+❌ Any .md files documenting task progress or implementation status
+❌ Architecture diagrams, flow charts, documentation images
+```
+
+**❌ ABSOLUTELY FORBIDDEN - Progress/Status Documents:**
+- ❌ DO NOT create task completion reports (TASK_COMPLETE.md)
+- ❌ DO NOT create implementation summaries (IMPLEMENTATION.md, SUMMARY.md)
+- ❌ DO NOT create progress tracking documents (PROGRESS.md, STATUS.md)
+- ❌ DO NOT create "what I did" reports in any .md file
+- ❌ DO NOT document your work in markdown files
+
+**✅ ONLY ALLOWED DOCUMENTATION:**
+- ✅ Project root `README.md` (ONE per entire project, not per feature/module)
+- ✅ ONLY if task explicitly says: "Write documentation for..."
+- ✅ ONLY if task explicitly says: "Update README with..."
+
+**Why This Rule?**
+- Feature tasks are about IMPLEMENTING code, not documenting progress
+- Progress is tracked by the system automatically
+- Task completion is verified by builds, not by status documents
+- Documentation should be separate work items if needed
+
+**Principle**: Write source code ONLY. No progress reports, no status documents, no implementation summaries.
 
 **TEST CODE & AUXILIARY TOOLS**:
 
-🚫 **FORBIDDEN TEST FILE PATTERNS** (unless explicitly requested):
+🚫 **ABSOLUTE PROHIBITION - TEST FILES ARE FORBIDDEN:**
+
+**❌ NEVER CREATE THESE FILE PATTERNS (unless task name explicitly says "Write tests"):**
 ```
-❌ *.test.ts / *.test.tsx / *.test.js / *.test.jsx
-❌ *.spec.ts / *.spec.tsx / *.spec.js / *.spec.jsx
-❌ *.stories.ts / *.stories.tsx / *.stories.js / *.stories.jsx (Storybook)
-❌ *_test.py / test_*.py (Python)
-❌ *_test.go (Go)
-❌ __tests__/** directory
-❌ tests/** directory (unless task is about testing)
-❌ spec/** directory
+FORBIDDEN FILE PATTERNS:
+  ❌ *.test.ts       ❌ *.test.tsx      ❌ *.test.js       ❌ *.test.jsx
+  ❌ *.spec.ts       ❌ *.spec.tsx      ❌ *.spec.js       ❌ *.spec.jsx
+  ❌ *_test.py       ❌ test_*.py       ❌ *_test.go       ❌ *.stories.ts
+  
+FORBIDDEN DIRECTORIES:
+  ❌ __tests__/      ❌ tests/          ❌ spec/           ❌ test/
+  ❌ __mocks__/      ❌ fixtures/       ❌ __fixtures__/
 ```
 
-**Other forbidden auxiliary files:**
-- ❌ Testing utilities, mocks, fixtures, test helpers
-- ❌ Linting configs (.eslintrc, .prettierrc, etc.)
-- ❌ CI/CD pipeline files (.github/workflows/, .gitlab-ci.yml)
-- ❌ Analysis tools, profilers, debugging utilities
-- ❌ Deployment scripts, migration scripts, ops playbooks
+**❌ NEVER CREATE THESE AUXILIARY FILES:**
+- ❌ Testing utilities (test helpers, mock factories, test setup files)
+- ❌ Test configuration (jest.config.js, vitest.config.ts - unless setup task)
+- ❌ Mock data files for testing
+- ❌ Test fixtures or snapshots
+- ❌ Storybook stories (*.stories.ts)
 
-**When to create these files:**
-- ✅ Task explicitly says: "Write tests for..."
-- ✅ Task explicitly says: "Add test coverage..."
-- ✅ Task explicitly says: "Create Storybook stories..."
-- ✅ Task specifically mentions testing/tooling as the goal
+**✅ ONLY CREATE TEST FILES WHEN:**
+- Task name is: "Write unit tests for X"
+- Task name is: "Add test coverage for X"  
+- Task name is: "Create tests for X"
+- Task explicitly mentions "testing" as the PRIMARY goal
 
-**Examples:**
-- ❌ Task: "Implement Button component" → DO NOT create Button.spec.tsx
-- ❌ Task: "Add login feature" → DO NOT create login.test.ts
-- ✅ Task: "Write unit tests for Button component" → CREATE Button.spec.tsx
+**🚨 CRITICAL EXAMPLES:**
+```
+❌ WRONG: Task "Implement Button component" → tokens.test.ts created
+❌ WRONG: Task "Add login feature" → login.test.ts created
+❌ WRONG: Task "Create foundation tokens" → __tests__/tokens.test.ts created
+✅ CORRECT: Task "Write unit tests for tokens" → tokens.test.ts created
+```
 
-**Principle**: Build the product first, testing/tooling can be separate jobs
+**WHY THIS RULE?**
+- Feature tasks = SOURCE CODE ONLY
+- Testing = Separate job/task
+- Tests slow down feature implementation
+- Tests can be added later after features work
+
+**Principle**: Build working features FIRST. Test them LATER (in dedicated test tasks).
 
 **WHEN TO INCLUDE AUXILIARY CODE**:
 - ✅ PRD explicitly says "with unit tests" → Include tests

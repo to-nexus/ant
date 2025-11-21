@@ -90,6 +90,7 @@ export async function execute(state: DesignGraphState) {
     currentTask: state.currentTask ? {  // ✅ Pass current task info
       name: state.currentTask.name,
       type: state.currentTask.type,
+      priority: state.currentTask.priority,
       description: state.currentTask.description
     } : undefined
   };

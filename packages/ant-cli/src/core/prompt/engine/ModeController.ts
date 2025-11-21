@@ -236,11 +236,21 @@ export class ModeController {
     if (context.codebaseProfile?.language) {
       const lang = context.codebaseProfile.language.toLowerCase();
       // Map known languages
-      if (lang.includes('typescript') || lang.includes('javascript')) return 'typescript';
-      if (lang.includes('go') || lang.includes('golang')) return 'golang';
-      if (lang.includes('python')) return 'python';
-      if (lang.includes('rust')) return 'rust';
-      if (lang.includes('java')) return 'java';
+      if (lang.includes('typescript') || lang.includes('javascript')) {
+        return 'typescript';
+      }
+      if (lang.includes('go') || lang.includes('golang')) {
+        return 'golang';
+      }
+      if (lang.includes('python')) {
+        return 'python';
+      }
+      if (lang.includes('rust')) {
+        return 'rust';
+      }
+      if (lang.includes('java')) {
+        return 'java';
+      }
     }
     
     // 2. Try to detect from design document (new projects)
@@ -271,7 +281,6 @@ export class ModeController {
     }
     
     // 3. Default to TypeScript (most common in current projects)
-    console.log('[ModeController] Could not detect language, defaulting to TypeScript');
     return 'typescript';
   }
   

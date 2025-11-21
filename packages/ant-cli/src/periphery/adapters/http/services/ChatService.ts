@@ -797,62 +797,67 @@ export class ChatService {
     
     switch (event.type) {
       case 'thinking':
-        // ✅ FIX: Thinking should create a dedicated thinking card, not plain text
-        // Check if we already have a thinking content block
+        // ✅ Use addContentToCurrentMessage like other content types (exploring, grepping, etc.)
+        // This ensures thinking benefits from the same merge/append logic
         if (session?.currentMessage) {
-          const lastContent = session.currentMessage.contents[session.currentMessage.contents.length - 1];
-          
-          // ✅ Check if this is a blockEnd signal (for collapse)
           const isBlockEnd = event.metadata?.blockEnd === true;
           
-          if (isBlockEnd && lastContent && lastContent.type === 'thinking') {
-            // ✅ BlockEnd signal - update duration and trigger collapse
+          if (isBlockEnd) {
+            // ✅ BlockEnd: Find and collapse the most recent thinking block
             const durationMs = event.metadata?.durationMs;
-            console.log(`[ChatService] 💭 Thinking blockEnd detected - duration: ${durationMs}ms, contentIndex: ${session.currentMessage.contents.length - 1}`);
             
-            // Only append content if exists
-            if (event.thinking && event.thinking.trim()) {
-              lastContent.content += event.thinking;
+            // Find last thinking content (reverse search)
+            let thinkingIndex = -1;
+            for (let i = session.currentMessage.contents.length - 1; i >= 0; i--) {
+              if (session.currentMessage.contents[i].type === 'thinking') {
+                thinkingIndex = i;
+                break;
+              }
             }
             
-            // Update metadata with duration
-            lastContent.metadata = {
-              ...lastContent.metadata,
-              durationMs
-            };
-            
-            // Broadcast update
-            this.broadcast(projectId, featureName, {
-              type: 'content_update',
-              messageId: session.currentMessage.id,
-              contentIndex: session.currentMessage.contents.length - 1,
-              content: lastContent
-            });
-            
-            // ✅ Trigger collapse
-            console.log(`[ChatService] 📤 Broadcasting thinking_collapse with duration: ${durationMs}ms`);
-            this.broadcast(projectId, featureName, {
-              type: 'thinking_collapse',
-              messageId: session.currentMessage.id,
-              contentIndex: session.currentMessage.contents.length - 1,
-              durationMs
-            });
-          } else if (lastContent && lastContent.type === 'thinking') {
-            // ✅ Append to existing thinking block
-            lastContent.content += event.thinking || '';
-            
-            // Broadcast incremental update
-            this.broadcast(projectId, featureName, {
-              type: 'content_append',
-              messageId: session.currentMessage.id,
-              contentIndex: session.currentMessage.contents.length - 1,
-              delta: event.thinking || ''
-            });
-        } else {
-            // ✅ Create new thinking block
+            if (thinkingIndex !== -1) {
+              const thinkingContent = session.currentMessage.contents[thinkingIndex];
+              
+              // Append final content if exists
+              if (event.thinking && event.thinking.trim()) {
+                thinkingContent.content += event.thinking;
+              }
+              
+              // Update metadata with duration
+              thinkingContent.metadata = {
+                ...thinkingContent.metadata,
+                durationMs
+              };
+              
+              // Broadcast update
+              this.broadcast(projectId, featureName, {
+                type: 'content_update',
+                messageId: session.currentMessage.id,
+                contentIndex: thinkingIndex,
+                content: thinkingContent
+              });
+              
+              // ✅ Trigger collapse
+              this.broadcast(projectId, featureName, {
+                type: 'thinking_collapse',
+                messageId: session.currentMessage.id,
+                contentIndex: thinkingIndex,
+                durationMs
+              });
+              
+              // Reset tracking
+              session.thinkingStartTime = undefined;
+              session.lastThinkingContentIndex = undefined;
+            } else {
+              console.warn(`[ChatService] ⚠️  blockEnd received but no thinking content found`);
+            }
+          } else {
+            // ✅ Regular thinking content: Use addContentToCurrentMessage (like exploring/grepping)
+            // This will automatically handle merge/append via the unified logic (588-627)
             this.addContentToCurrentMessage(projectId, featureName, {
               type: 'thinking',
-              content: event.thinking || ''
+              content: event.thinking || '',
+              metadata: event.metadata
             });
           }
         }

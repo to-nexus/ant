@@ -77,6 +77,7 @@ export class PromptEngine {
       currentTask?: {           // Current task being executed
         name: string;
         type: string;
+        priority: number;
         description: string;
       };
     },
@@ -165,6 +166,7 @@ export class PromptEngine {
       currentTask?: {
         name: string;
         type: string;
+        priority: number;
         description: string;
       };
     },
