@@ -11,6 +11,14 @@ PROJECT: {{project}}
 🎯 FINAL INTEGRATION & VERIFICATION TASK (Priority: 1000)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+⚠️  **CRITICAL: IGNORE DESIGN DOCUMENT'S TESTING SECTIONS!**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+The Design Document may mention testing tools. **COMPLETELY IGNORE those sections!**
+
+Final tasks verify BUILD SUCCESS, NOT run tests.
+Run `npm install` and `npm run build` ONLY. Do NOT run `npm test`!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 **YOUR MISSION**: Verify the entire project builds successfully with all dependencies installed.
 
 **REQUIRED STEPS (Execute in this exact order):**
@@ -87,12 +95,39 @@ PROJECT: {{project}}
 🔧 SETUP TASK
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+⚠️  **CRITICAL: IGNORE DESIGN DOCUMENT'S TESTING SECTIONS!**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+The Design Document may mention testing tools (Vitest, Jest, React Testing Library) 
+or testing strategies. **COMPLETELY IGNORE those sections in Setup tasks!**
+
+Setup tasks generate CONFIGURATION files only, NOT test files.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 🚫 **ABSOLUTE PROHIBITION - NO TEST FILES:**
 ```
 ❌ NEVER create: *.test.ts, *.spec.ts, *_test.py, __tests__/**, tests/**
 ```
 
 **YOUR MISSION**: Generate project configuration files and install dependencies.
+
+**REQUIRED OUTPUT FORMAT:**
+```xml
+<file path="package.json">
+{...}
+</file>
+
+<file path="tsconfig.json">
+{...}
+</file>
+
+<!-- More config files -->
+
+<command>npm install</command>
+
+<done>true</done>
+```
+
+**NO SUMMARY OR SETUP REPORT NEEDED! Just configs + install + done!**
 
 **REQUIRED STEPS (Execute in this EXACT order):**
 
@@ -118,8 +153,10 @@ PROJECT: {{project}}
 - 🚫 DO NOT skip `npm install` - it's MANDATORY!
 - 🚫 DO NOT run `npm run dev` or `npm run build` in setup task
 - 🚫 DO NOT generate application code (components, pages, etc.)
+- 🚫 DO NOT write test files (*.test.ts, *.spec.ts, __tests__/)
 - 🚫 DO NOT write documentation files (SUMMARY.md, TASK_COMPLETE.md, IMPLEMENTATION.md, etc.)
 - 🚫 DO NOT create progress/status reports
+- 🚫 DO NOT write plain text summary after <done>true</done>
 - ✅ ONLY generate configuration files
 - ✅ MAY generate project root README.md (ONE per project)
 - ✅ MUST run `npm install` after generating all config files
@@ -140,6 +177,19 @@ PROJECT: {{project}}
 🎯 FEATURE TASK - CODE IMPLEMENTATION ONLY (Priority: {{currentTask.priority}})
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+⚠️  **CRITICAL: IGNORE DESIGN DOCUMENT'S TESTING SECTIONS!**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+The Design Document may mention testing tools (Vitest, Jest, React Testing Library) 
+or testing strategies. **COMPLETELY IGNORE those sections in Feature tasks!**
+
+Those testing sections are for:
+- ✅ Future reference (when explicitly asked to write tests)
+- ✅ Final validation tasks (Priority 1000)
+- ❌ NOT for regular feature tasks
+
+**In Feature tasks, pretend the testing sections don't exist!**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 🚫 **ABSOLUTE PROHIBITION - NO TEST FILES WHATSOEVER:**
 ```
 ❌ NEVER create: *.test.ts, *.test.tsx, *.spec.ts, *.spec.tsx
@@ -151,27 +201,54 @@ PROJECT: {{project}}
 
 **YOUR MISSION**: Implement ONLY the feature described in this task.
 
+**REQUIRED OUTPUT FORMAT (NOTHING MORE!):**
+```xml
+<file path="src/path/to/Component.tsx">
+// Complete source code implementation
+</file>
+
+<done>true</done>
+```
+
+**THAT'S IT! NO SUMMARY, NO EXPLANATION, NO STATUS REPORT!**
+
 **REQUIRED APPROACH:**
 ✅ Write source code files (components, functions, classes, etc.)
 ✅ Add imports and exports as needed
 ✅ Follow the design document and directive
-✅ Output `<done>true</done>` when feature code is written
+✅ Output `<done>true</done>` immediately after writing code
 
 **🚫 CRITICAL RESTRICTIONS - DO NOT:**
 ❌ DO NOT run `npm run build` or `npm run dev`
 ❌ DO NOT run `npm run type-check` or linting commands
+❌ DO NOT run `npm test` or any test commands
 ❌ DO NOT run any validation commands
 ❌ DO NOT try to verify if code compiles
 ❌ DO NOT install dependencies (unless directive explicitly says missing)
-❌ DO NOT write test files
-❌ DO NOT write documentation files (SUMMARY.md, TASK_COMPLETE.md, IMPLEMENTATION.md, etc.)
+❌ DO NOT write test files (*.test.ts, *.spec.ts, __tests__/)
+❌ DO NOT write documentation files (SUMMARY.md, TASK_COMPLETE.md, IMPLEMENTATION.md)
 ❌ DO NOT create progress/status reports in any .md files
+❌ DO NOT write plain text summary/explanation after <done>true</done>
+❌ DO NOT describe what you implemented
+
+**WHY NO SUMMARY/EXPLANATION?**
+- This is a feature task - just write code and mark done
+- No need to explain what you did
+- No need to summarize implementation
+- The system tracks your work automatically
+- Save tokens and time - just deliver the code!
 
 **WHY NO BUILD/VALIDATION?**
 - This is an intermediate task - focus on implementation ONLY
 - Build errors will be caught and fixed in later error tasks
 - Final verification will happen in the final task (Priority 1000)
 - Running build commands here will block progress unnecessarily
+
+**WHY NO TEST FILES?**
+- Feature tasks are for SOURCE CODE implementation ONLY
+- Testing is a separate activity, not part of feature development
+- Tests will be written in dedicated test tasks (when explicitly requested)
+- Creating tests here wastes time and blocks feature completion
 
 **SCOPE CONTROL:**
 - Work on THIS SPECIFIC TASK ONLY - not other features
@@ -187,12 +264,37 @@ PROJECT: {{project}}
 ⚠️  ERROR TASK - FIX BUILD/TYPE/LINT ERRORS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+⚠️  **CRITICAL: IGNORE DESIGN DOCUMENT'S TESTING SECTIONS!**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+The Design Document may mention testing tools. **COMPLETELY IGNORE those sections!**
+
+Error tasks FIX broken code, NOT write tests.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 🚫 **ABSOLUTE PROHIBITION - NO TEST FILES:**
 ```
 ❌ NEVER create: *.test.ts, *.spec.ts, __tests__/**, tests/**
 ```
 
 **YOUR MISSION**: Fix the specific errors preventing build success.
+
+**REQUIRED OUTPUT FORMAT:**
+```xml
+<edit path="src/path/to/file.ts">
+<search>
+// buggy code
+</search>
+<replace>
+// fixed code
+</replace>
+</edit>
+
+<command>npm run type-check</command>
+
+<done>true</done>
+```
+
+**NO SUMMARY OR EXPLANATION NEEDED! Just fix and verify!**
 
 **REQUIRED APPROACH:**
 1️⃣ **READ THE ERROR** - errors are provided in the task description
@@ -212,9 +314,10 @@ PROJECT: {{project}}
 **WHAT YOU MUST NOT DO:**
 ❌ DO NOT refactor working code
 ❌ DO NOT add new features
-❌ DO NOT write test files
-❌ DO NOT write documentation files (SUMMARY.md, TASK_COMPLETE.md, IMPLEMENTATION.md, etc.)
+❌ DO NOT write test files (*.test.ts, *.spec.ts, __tests__/)
+❌ DO NOT write documentation files (SUMMARY.md, TASK_COMPLETE.md, IMPLEMENTATION.md)
 ❌ DO NOT create progress/status reports
+❌ DO NOT write plain text summary after <done>true</done>
 
 **MINIMAL CHANGES PRINCIPLE:**
 - Fix ONLY the specific error mentioned
