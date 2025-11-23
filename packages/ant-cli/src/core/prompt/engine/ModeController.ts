@@ -120,8 +120,9 @@ export class ModeController {
     context: AssembledContext,
     taskType?: string
   ): string[] {
-    const basePrefix = `${task}/base/injections`;
-    const phasePrefix = `${task}/phases/${phase}/injections`;
+    const commonPrefix = `base/injections`;  // ✅ All jobs (templates/base/injections)
+    const taskPrefix = `${task}/base/injections`;  // ✅ Task-specific (templates/{task}/base/injections)
+    const phasePrefix = `${task}/phases/${phase}/injections`;  // ✅ Phase-specific
     const injections: string[] = [];
     
     // ✅ SETUP TASK: Add language-specific setup constraints
@@ -132,34 +133,34 @@ export class ModeController {
       }
     }
     
-    // Base injections (common to task)
+    // ✅ Common injections (used by ALL jobs - code, design, learn)
     if (context.stats.hasDirective) {
-      injections.push(`${basePrefix}/directive`);
+      injections.push(`${commonPrefix}/directive`);
     }
     
     if (context.stats.hasMemory) {
-      injections.push(`${basePrefix}/memory`);
+      injections.push(`${commonPrefix}/memory`);
     }
     
     // Session history (short-term context about recent work)
     if (context.stats.hasSessionHistory) {
-      injections.push(`${basePrefix}/session-history`);
+      injections.push(`${commonPrefix}/session-history`);
     }
     
     if (context.designDoc) {
-      injections.push(`${basePrefix}/design-doc`);
+      injections.push(`${commonPrefix}/design-doc`);
     }
     
     if (context.prdSpec) {
-      injections.push(`${basePrefix}/prd-spec`);
+      injections.push(`${commonPrefix}/prd-spec`);
     }
     
     if (context.originalFiles) {
-      injections.push(`${basePrefix}/original-files`);
+      injections.push(`${commonPrefix}/original-files`);
     }
     
     if (context.currentCode && !context.originalFiles) {
-      injections.push(`${basePrefix}/current-code`);
+      injections.push(`${commonPrefix}/current-code`);
     }
     
     // Phase-specific injections

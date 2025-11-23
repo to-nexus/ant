@@ -79,9 +79,12 @@ export class FilePromptAdapter implements PromptPort {
         }).filter(Boolean))]
       : [];
     
-    // 4. Validate variables (filter out Handlebars keywords)
+    // 4. Validate variables (filter out Handlebars keywords and helpers)
     const handlebarsKeywords = ['if', 'unless', 'each', 'with', 'else'];
-    const templateVars = (usedVars as string[]).filter(v => !handlebarsKeywords.includes(v));
+    const handlebarsHelpers = ['eq', 'ne', 'and', 'or', 'add'];  // ✅ Registered helpers
+    const templateVars = (usedVars as string[]).filter(v => 
+      !handlebarsKeywords.includes(v) && !handlebarsHelpers.includes(v)
+    );
     const missingVars = templateVars.filter(v => !(v in vars));
     const providedVars = Object.keys(vars);
     const unusedVars = providedVars.filter(v => !templateVars.includes(v));
