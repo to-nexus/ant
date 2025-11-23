@@ -49,13 +49,6 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
   const theme = useStore(state => state.theme);
   const splitLayout = useStore(state => state.splitLayout);
   
-  // ✅ Track workflowState changes
-  React.useEffect(() => {
-    if (workflowState?.currentNode) {
-      // console.log('[WorkflowViz] 🎯 Current node:', workflowState.currentNode); // ✅ Too verbose
-    }
-  }, [workflowState?.currentNode]);
-  
   // ✅ Track terminal bar height for workflow controls positioning
   React.useEffect(() => {
     const updateControlsPosition = () => {
@@ -154,7 +147,7 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
     setTimeout(() => {
       reactFlowInstance.fitView({ padding: 0.1, duration: 400 });
     }, 50);
-  }, [reactFlowInstance, nodes.length, splitLayout]);
+  }, [reactFlowInstance, nodes.length, splitLayout, isRunning, workflowState?.currentNode]);  // ✅ 의존성 추가
   
   // ✅ 활성 노드로 자동 포커스 + 줌인
   React.useEffect(() => {
@@ -201,7 +194,9 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
   
   // ✅ 현재 노드 추적 버튼 핸들러
   const handleTrackCurrentNode = useCallback(() => {
-    if (!reactFlowInstance) return;
+    if (!reactFlowInstance || nodes.length === 0) {
+      return;
+    }
     
     // Job이 실행 중이고 활성 노드가 있으면 해당 노드로 포커스
     if (isRunning && workflowState?.currentNode) {
@@ -219,25 +214,30 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
           duration: 800
         });
         return;
+      } else {
+        console.warn('[WorkflowViz] ⚠️ Active node not found in ReactFlow:', currentNodeId);
       }
     }
     
     // Job이 멈춘 상태면 첫 번째 노드 (resolve 등)로 포커스
-    if (nodes.length > 0) {
-      const firstNode = reactFlowInstance.getNode(nodes[0].id);
-      if (firstNode) {
-        const nodeWidth = firstNode.width || 150;
-        const nodeHeight = firstNode.height || 60;
-        const centerX = firstNode.position.x + nodeWidth / 2;
-        const centerY = firstNode.position.y + nodeHeight / 2;
-        
-        reactFlowInstance.setCenter(centerX, centerY, {
-          zoom: 1.3,
-          duration: 800
-        });
-      }
+    const firstNode = reactFlowInstance.getNode(nodes[0].id);
+    
+    if (firstNode) {
+      const nodeWidth = firstNode.width || 150;
+      const nodeHeight = firstNode.height || 60;
+      const centerX = firstNode.position.x + nodeWidth / 2;
+      const centerY = firstNode.position.y + nodeHeight / 2;
+      
+      reactFlowInstance.setCenter(centerX, centerY, {
+        zoom: 1.3,
+        duration: 800
+      });
+    } else {
+      console.warn('[WorkflowViz] ⚠️ First node not found in ReactFlow:', nodes[0]?.id);
+      // Fallback: fitView
+      reactFlowInstance.fitView({ padding: 0.1, duration: 400 });
     }
-  }, [reactFlowInstance, isRunning, workflowState, nodes]);
+  }, [reactFlowInstance, isRunning, workflowState?.currentNode, nodes]);
   
   // ========================================
   // 조건부 렌더링 (모든 Hooks 호출 후)
