@@ -223,106 +223,125 @@ async function buildMessages(state: ArchitectGraphState): Promise<Array<{
 }>> {
   const messages: Array<{ role: 'user' | 'assistant'; content: string | any[] }> = [];
   
-  // ✅ Use PromptEngine for system prompt (if no conversation history)
-  if (!state.conversationHistory || state.conversationHistory.length === 0) {
-    const promptEngine = state.deps?.promptEngine;
-    
-    if (!promptEngine) {
-      throw new Error('[CodeGen] PromptEngine is required but not available in state.deps');
-    }
-    
-    if (!state.currentTask) {
-      throw new Error('[CodeGen] currentTask is required but not available in state');
-    }
-    
-    // ✅ Build prompt using PromptEngine
-    const promptResult = await promptEngine.buildExecutePrompt(
-      'code',  // ✅ AgentTask type (not the task object!)
-      state.context,
-      {
-        directive: state.directive,
-        designDoc: state.design,  // Code job uses designDoc
-        prdSpec: state.prd,
-        originalFiles: state.codeHead,  // Git HEAD version
-        currentCode: state.code,  // Working tree code
-        currentTask: {
-          name: state.currentTask.name,
-          type: state.currentTask.type,
-          priority: state.currentTask.priority,
-          description: state.currentTask.description,
-        },
-      },
-      state.codeMode,
-      state.currentTask.type  // taskType for language-specific constraints
-    );
-    
-    // ✅ Extract base prompt from PromptEngine (templates, rules, profiles)
-    const systemMessage = promptResult.formatted.messages.find(m => m.role === 'system' || m.role === 'user');
-    
-    // ✅ CRITICAL: content can be string OR array (Anthropic format)
-    let basePrompt = '';
-    if (systemMessage) {
-      if (typeof systemMessage.content === 'string') {
-        basePrompt = systemMessage.content;
-      } else if (Array.isArray(systemMessage.content)) {
-        // Anthropic format: [{ type: 'text', text: '...' }]
-        const contentArray = systemMessage.content as any[];
-        basePrompt = contentArray
-          .filter((c: any) => c.type === 'text')
-          .map((c: any) => c.text)
-          .join('\n');
-      }
-    }
-    
-    // ✅ CRITICAL: Inject execution plan and enforcement feedback
-    // These need to be HIGH PRIORITY, so we inject them strategically
-    
-    let finalPrompt = basePrompt;
-    
-    // Strategy 1: If we have execution plan, inject it RIGHT AFTER task description
-    // This ensures LLM sees the plan immediately after reading the task
-    if (state.planText && state.currentTask) {
-      const taskMarker = `**Description**: ${state.currentTask.description}`;
-      const taskMarkerIndex = finalPrompt.indexOf(taskMarker);
-      
-      if (taskMarkerIndex !== -1) {
-        const injectionPoint = taskMarkerIndex + taskMarker.length;
-        const planSection = `\n\n────────────────────────────────────────────────────────────────────────────────\n` +
-          `# 📋 EXECUTION PLAN FOR THIS TASK\n` +
-          `────────────────────────────────────────────────────────────────────────────────\n\n` +
-          `${state.planText}\n`;
-        
-        finalPrompt = finalPrompt.slice(0, injectionPoint) + planSection + finalPrompt.slice(injectionPoint);
-      }
-    }
-    
-    // Strategy 2: If retry, inject enforcement feedback at the VERY TOP (highest priority)
-    if (state.enforcementReason) {
-      const enforcementHeader = `════════════════════════════════════════════════════════════════════════════════\n` +
-        `⚠️  CRITICAL: PREVIOUS ATTEMPT FAILED - READ THIS FIRST!\n` +
-        `════════════════════════════════════════════════════════════════════════════════\n\n` +
-        `${state.enforcementReason}\n\n` +
-        `YOU MUST FIX THE ABOVE ISSUE BEFORE PROCEEDING!\n` +
-        `════════════════════════════════════════════════════════════════════════════════\n\n`;
-      
-      finalPrompt = enforcementHeader + finalPrompt;
-    }
-    
-    // Strategy 3: Append file tree and other runtime context at the end
-    const runtimeContext = buildRuntimeContext(state);
-    
-    const fullContent = `${finalPrompt}${runtimeContext ? '\n\n' + runtimeContext : ''}`;
-    
-    messages.push({
-      role: 'user',
-      content: fullContent,
-    });
-    
+  // ✅ ALWAYS build fresh prompt with PromptEngine
+  // This ensures task constraints are present in EVERY turn, not just the first
+  const promptEngine = state.deps?.promptEngine;
+  
+  if (!promptEngine) {
+    throw new Error('[CodeGen] PromptEngine is required but not available in state.deps');
   }
   
+  if (!state.currentTask) {
+    throw new Error('[CodeGen] currentTask is required but not available in state');
+  }
+  
+  // ✅ Build prompt using PromptEngine
+  const promptResult = await promptEngine.buildExecutePrompt(
+    'code',  // ✅ AgentTask type (not the task object!)
+    state.context,
+    {
+      directive: state.directive,
+      designDoc: state.design,  // Code job uses designDoc
+      prdSpec: state.prd,
+      originalFiles: state.codeHead,  // Git HEAD version
+      currentCode: state.code,  // Working tree code
+      currentTask: {
+        name: state.currentTask.name,
+        type: state.currentTask.type,
+        priority: state.currentTask.priority,
+        description: state.currentTask.description,
+      },
+    },
+    state.codeMode,
+    state.currentTask.type  // taskType for language-specific constraints
+  );
+  
+  // ✅ Extract base prompt from PromptEngine (templates, rules, profiles)
+  const systemMessage = promptResult.formatted.messages.find(m => m.role === 'system' || m.role === 'user');
+  
+  // ✅ CRITICAL: content can be string OR array (Anthropic format)
+  let basePrompt = '';
+  if (systemMessage) {
+    if (typeof systemMessage.content === 'string') {
+      basePrompt = systemMessage.content;
+    } else if (Array.isArray(systemMessage.content)) {
+      // Anthropic format: [{ type: 'text', text: '...' }]
+      const contentArray = systemMessage.content as any[];
+      basePrompt = contentArray
+        .filter((c: any) => c.type === 'text')
+        .map((c: any) => c.text)
+        .join('\n');
+    }
+  }
+  
+  // ✅ CRITICAL: Inject execution plan and enforcement feedback
+  // These need to be HIGH PRIORITY, so we inject them strategically
+  
+  let finalPrompt = basePrompt;
+  
+  // Strategy 1: If we have execution plan, inject it RIGHT AFTER task description
+  // This ensures LLM sees the plan immediately after reading the task
+  if (state.planText && state.currentTask) {
+    const taskMarker = `**Description**: ${state.currentTask.description}`;
+    const taskMarkerIndex = finalPrompt.indexOf(taskMarker);
+    
+    if (taskMarkerIndex !== -1) {
+      const injectionPoint = taskMarkerIndex + taskMarker.length;
+      const planSection = `\n\n────────────────────────────────────────────────────────────────────────────────\n` +
+        `# 📋 EXECUTION PLAN FOR THIS TASK\n` +
+        `────────────────────────────────────────────────────────────────────────────────\n\n` +
+        `${state.planText}\n`;
+      
+      finalPrompt = finalPrompt.slice(0, injectionPoint) + planSection + finalPrompt.slice(injectionPoint);
+    }
+  }
+  
+  // Strategy 2: If retry, inject enforcement feedback at the VERY TOP (highest priority)
+  if (state.enforcementReason) {
+    const enforcementHeader = `════════════════════════════════════════════════════════════════════════════════\n` +
+      `⚠️  CRITICAL: PREVIOUS ATTEMPT FAILED - READ THIS FIRST!\n` +
+      `════════════════════════════════════════════════════════════════════════════════\n\n` +
+      `${state.enforcementReason}\n\n` +
+      `YOU MUST FIX THE ABOVE ISSUE BEFORE PROCEEDING!\n` +
+      `════════════════════════════════════════════════════════════════════════════════\n\n`;
+    
+    finalPrompt = enforcementHeader + finalPrompt;
+  }
+  
+  // Strategy 3: Append file tree and other runtime context at the end
+  const runtimeContext = buildRuntimeContext(state);
+  
+  const fullContent = `${finalPrompt}${runtimeContext ? '\n\n' + runtimeContext : ''}`;
+  
+  // ✅ First message: Always the full prompt
+  messages.push({
+    role: 'user',
+    content: fullContent,
+  });
+  
   // ✅ Add conversation history (if exists)
+  // CRITICAL: We need to handle Anthropic's tool calling format correctly
+  // - Assistant messages contain tool_use blocks
+  // - Following user messages contain tool_result blocks
+  // - They must be paired correctly!
   if (state.conversationHistory && state.conversationHistory.length > 0) {
-    messages.push(...state.conversationHistory);
+    // Strategy: Skip only initial user prompts, keep assistant+tool_result pairs
+    let skipInitialUserMessages = true;
+    
+    for (const msg of state.conversationHistory) {
+      // Once we see an assistant message, start including everything
+      if (msg.role === 'assistant') {
+        skipInitialUserMessages = false;
+      }
+      
+      // Skip initial user prompts (they're replaced by our fresh prompt)
+      // But keep user messages that follow assistant messages (tool results)
+      if (skipInitialUserMessages && msg.role === 'user') {
+        continue;
+      }
+      
+      messages.push(msg);
+    }
   }
   
   return messages;

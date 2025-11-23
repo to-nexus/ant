@@ -19,9 +19,16 @@ You are implementing a specific task. Follow the instructions for your task type
 
 **What NOT to create:**
 - ❌ Source code files (.ts, .tsx, .py, .go, etc.)
-- ❌ Test files
+- ❌ Test files (*.test.*, *.spec.*)
+- ❌ Test configuration (jest.config.js, vitest.config.ts, jest.setup.js)
+- ❌ Test infrastructure files (setupTests.ts, test-utils.ts)
 - ❌ Documentation beyond README.md
 - ❌ Component/page/service files
+
+**Important**: If task description mentions "testing libraries":
+- ✅ Add them to package.json devDependencies
+- ❌ DO NOT create jest.config.js, vitest.config.ts, or any test setup files
+- Testing setup will be handled separately if needed
 
 **Required Actions:**
 1. Use `write_file` tool for each config file
@@ -32,6 +39,7 @@ You are implementing a specific task. Follow the instructions for your task type
 - [ ] All dependencies in package.json are needed for the project
 - [ ] tsconfig.json paths match the project structure
 - [ ] Build tool config imports match package.json devDependencies
+- [ ] No test config files (jest.config.js, vitest.config.ts) created
 
 {{/unless}}
 {{/if}}
