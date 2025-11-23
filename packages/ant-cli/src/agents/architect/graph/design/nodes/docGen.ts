@@ -80,7 +80,8 @@ export async function docGen(
   const parser = new XMLStreamParser();
   const renderStrategy = new CommonRenderStrategy(
     chatAPI,
-    state._bufferManager  // ✅ Pass buffer manager (2 params only)
+    state._bufferManager,  // ✅ Pass buffer manager
+    state.context.userLanguage  // ✅ Pass user language for localized messages
   );
   
   const existingFiles = new Set(state.files?.map(f => f.path) || []);

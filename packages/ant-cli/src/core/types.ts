@@ -66,6 +66,7 @@ export interface ProjectContext {
   workingDir: string;
   memory?: string;              // Vector memory (long-term knowledge)
   sessionHistory?: string;      // Session history (short-term context)
+  userLanguage?: 'en' | 'ko' | 'ja' | 'zh';  // User's preferred language for this job
   [key: string]: any;
 }
 

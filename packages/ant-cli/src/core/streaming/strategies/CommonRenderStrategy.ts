@@ -30,12 +30,17 @@ export class CommonRenderStrategy implements IRenderStrategy {
   // ✅ Thinking timing
   private thinkingStartTime?: number;
   
+  // ✅ User language for localized messages
+  private userLanguage?: 'en' | 'ko' | 'ja' | 'zh';
+  
   constructor(
     chatAPI: ChatAPIClient,
-    bufferManager?: import('../buffer/StreamBufferManager').StreamBufferManager
+    bufferManager?: import('../buffer/StreamBufferManager').StreamBufferManager,
+    userLanguage?: 'en' | 'ko' | 'ja' | 'zh'
   ) {
     this.chatAPI = chatAPI;
     this.bufferManager = bufferManager;
+    this.userLanguage = userLanguage || 'en';
   }
   
   async render(action: ParsedAction, registry: FileRegistry): Promise<void> {
@@ -159,17 +164,9 @@ export class CommonRenderStrategy implements IRenderStrategy {
     if (doneMatch) {
       const isDone = doneMatch[1].toLowerCase() === 'true';
       if (isDone) {
-        console.log(`[Render] ✅ Detected <done>true</done>, showing completion message`);
-        
-        // Natural, varied completion messages (like a human would say)
-        const messages = [
-          'All set. Moving to the next task.',
-          'Done. Proceeding with the next step.',
-          'Finished. Ready for the next one.',
-          'Complete. On to the next task.',
-          'That\'s done. Continuing now.'
-        ];
-        const randomMessage = messages[Math.floor(Math.random() * messages.length)];
+        // ✅ Get localized completion message
+        const { getCompletionMessage } = require('../../utils/languageDetector');
+        const randomMessage = getCompletionMessage(this.userLanguage || 'en');
         
         await this.chatAPI.sendLLMEvent({
           type: 'text',
@@ -178,11 +175,9 @@ export class CommonRenderStrategy implements IRenderStrategy {
         return;
       }
       // If <done>false</done>, skip rendering (LLM will continue with more work)
-      console.log(`[Render] 🔄 Detected <done>false</done>, skipping (more work pending)`);
       return;
     }
     
-    console.log(`[Render] 📝 Sending response: ${content.length} chars, content: ${JSON.stringify(content.substring(0, 50))}`);
     await this.chatAPI.sendLLMEvent({
       type: 'text',
       text: content  // ✅ NEW: text 필드 사용
