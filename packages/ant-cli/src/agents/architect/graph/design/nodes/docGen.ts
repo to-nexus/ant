@@ -172,6 +172,7 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
   
   // ✅ Use PromptEngine for system prompt (if no conversation history)
   if (!state.conversationHistory || state.conversationHistory.length === 0) {
+    console.log(`📄 [DocGen] Building fresh prompt (no conversation history)`);
     const promptEngine = state.deps?.promptEngine;
     
     if (!promptEngine) {
@@ -181,49 +182,56 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
     if (!state.currentTask) {
       throw new Error('[DocGen] currentTask is required but not available in state');
     }
-    // ✅ Build prompt using PromptEngine
     // ✅ Load existing design document's last section number
-    // Read only the LAST LINE to get metadata comment
+    // CRITICAL: ONLY read from disk file (completed tasks), NOT buffer (in-progress/interrupted tasks)
     let lastSectionNumber = 0;
-    let designDocLines = '';
     
     try {
       const designDocPath = `${state.context.featurePath}/outputs/design/system-design.md`;
       
+      console.log(`\n📄 [DocGen] ━━━ Reading file for lastSectionNumber calculation ━━━`);
+      console.log(`   Path: ${designDocPath}`);
+      console.log(`   Current task: ${state.currentTask?.name}`);
+      
+      // ✅ ALWAYS read from disk file (source of truth for completed tasks)
+      // DO NOT read buffer (may contain incomplete/interrupted work)
       if (state.deps?.git) {
         const fileExists = await state.deps.git.fileExists(designDocPath);
         if (fileExists) {
-          const fullContent = await state.deps.git.readFile(designDocPath);
+          const fullContent = await state.deps.git.readFile(designDocPath) || '';
           if (fullContent) {
+            console.log(`   File size: ${fullContent.length} chars, ${fullContent.split('\n').length} lines`);
+            console.log(`   Last 150 chars of file:\n${fullContent.slice(-150)}`);
+            
             // ✅ Strategy 1: Check last line for metadata comment
             const lastLine = fullContent.trim().split('\n').pop() || '';
             const metadataMatch = lastLine.match(/<!-- LAST_SECTION: (\d+) -->/);
             
             if (metadataMatch) {
               lastSectionNumber = parseInt(metadataMatch[1]);
-              console.log(`📄 [DocGen] Found metadata: last section = ${lastSectionNumber}`);
+              console.log(`   ✅ Found metadata in last line: "${lastLine}"`);
+              console.log(`   ✅ Extracted lastSectionNumber = ${lastSectionNumber}`);
             } else {
               // ✅ Fallback: Scan full document for section numbers
               const sectionMatches = fullContent.match(/^## (\d+)\./gm);
               if (sectionMatches) {
                 const numbers = sectionMatches.map(m => parseInt(m.match(/\d+/)?.[0] || '0'));
                 lastSectionNumber = Math.max(...numbers);
-                console.log(`📄 [DocGen] No metadata found, scanned document: last section = ${lastSectionNumber}`);
+                console.log(`   ⚠️  No metadata found in last line: "${lastLine}"`);
+                console.log(`   📊 Scanned sections: ${sectionMatches.join(', ')}`);
+                console.log(`   📊 Max section number = ${lastSectionNumber}`);
               }
             }
             
-            // ✅ Get last 50 lines for context
-            const lines = fullContent.split('\n');
-            designDocLines = lines.slice(-50).join('\n');
-            
-            console.log(`📄 [DocGen] Next section should be: ${lastSectionNumber + 1}`);
+            console.log(`   📄 RESULT: lastSectionNumber = ${lastSectionNumber}, next should be ${lastSectionNumber + 1}`);
+            console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
           }
         } else {
-          console.log(`📄 [DocGen] No existing design document found (first task)`);
+          console.log(`   ℹ️  No file exists (first task)`);
         }
       }
     } catch (error) {
-      console.log(`📄 [DocGen] Could not load existing design document (probably first task):`, error);
+      console.log(`   ❌ Error reading file:`, error);
     }
     
     const promptResult = await promptEngine.buildExecutePrompt(
@@ -232,8 +240,7 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
       {
         directive: state.directive || state.spec,
         designDoc: undefined,  // ✅ Don't pass full document - not needed
-        designDocLines,  // ✅ Last 50 lines for context
-        lastSectionNumber,  // ✅ Just pass the number
+        lastSectionNumber,  // ✅ Only pass the section number
         previousDesign: state.design,  // Use previousDesign for design job
         prdSpec: state.prd,
         currentCode: state.code,
@@ -247,6 +254,8 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
       undefined,
       undefined
     );
+    
+    console.log(`📄 [DocGen] Passed to promptEngine: lastSectionNumber=${lastSectionNumber}`);
     
     // ✅ Extract base prompt from PromptEngine (templates, rules, profiles)
     const systemMessage = promptResult.formatted.messages.find(m => m.role === 'system' || m.role === 'user');
@@ -276,12 +285,26 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
       const hasNextSection = basePrompt.includes(`Your first section MUST be: ## ${lastSectionNumber + 1}`);
       console.log(`📄 [DocGen] Prompt includes lastSectionNumber: ${hasLastSection}, next section: ${hasNextSection}`);
       
+      // 🔍 Extract the actual instruction section to verify rendering
+      const instructionMatch = basePrompt.match(/CONTINUE SECTION NUMBERING FROM (\d+)[\s\S]{0,500}/);
+      if (instructionMatch) {
+        console.log(`📄 [DocGen] ✅ Found instruction block:\n${instructionMatch[0].substring(0, 300)}...`);
+      } else {
+        console.log(`📄 [DocGen] ⚠️  Instruction block NOT FOUND in prompt! Searching for any section number...`);
+        const anyLastSection = basePrompt.match(/Last section in document: ## (\d+)/);
+        const anyNextSection = basePrompt.match(/Your first section MUST be: ## (\d+)/);
+        console.log(`📄 [DocGen] Found "Last section": ${anyLastSection?.[1] || 'NOT FOUND'}`);
+        console.log(`📄 [DocGen] Found "First section": ${anyNextSection?.[1] || 'NOT FOUND'}`);
+        console.log(`📄 [DocGen] Expected last: ${lastSectionNumber}, Expected first: ${lastSectionNumber + 1}`);
+      }
+      
       if (!hasLastSection || !hasNextSection) {
         console.error(`❌ [DocGen] lastSectionNumber (${lastSectionNumber}) NOT properly rendered in prompt!`);
         console.error(`   Searching for: "CONTINUE SECTION NUMBERING FROM ${lastSectionNumber}"`);
         console.error(`   Prompt preview (first 2000 chars):\n${basePrompt.substring(0, 2000)}`);
       }
     }
+    
     
     // ✅ CRITICAL: Add runtime context (task, plan, existing design, file format)
     // PromptEngine provides templates, buildRuntimeContext adds execution context
@@ -307,6 +330,7 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
   // CRITICAL: Conversation history from LLM may have content as arrays (tool_use, tool_result)
   // We need to pass them as-is for proper context continuation
   if (state.conversationHistory && state.conversationHistory.length > 0) {
+    console.log(`📄 [DocGen] Using existing conversation history (${state.conversationHistory.length} messages)`);
     messages.push(...state.conversationHistory);
   }
   
@@ -341,16 +365,19 @@ function buildRuntimeContext(state: DesignGraphState): string {
     lines.push('');
   }
   
-  // ✅ 3. Existing Design (for continuation/evolution)
-  if (state.design) {
-    lines.push(`# Existing Design Document`);
-    lines.push(state.design);
-    lines.push('');
+  // ✅ 3. Existing Design Document (ONLY for evolution/refactor modes)
+  // - greenfield: NO document needed (lastSectionNumber is sufficient for sequential chapter generation)
+  // - evolution/refactor: FULL document needed (LLM must understand structure to modify specific sections)
+  if (state.designMode === 'evolution' || state.designMode === 'refactor') {
+    if (state.design) {
+      lines.push(`# Existing Design Document`);
+      lines.push(state.design);
+      lines.push('');
+    }
   }
-  
-  // ✅ Note: Output format instructions are in PromptEngine templates
-  // (design/phases/execute/rules.md)
-  // Design job uses pure XML streaming - no tool calling needed!
+  // ❌ For greenfield mode: DO NOT include state.design
+  // Reason: Including old document content causes LLM confusion with outdated metadata
+  // The lastSectionNumber in the base prompt is sufficient for sequential chapter numbering
   
   return lines.join('\n');
 }

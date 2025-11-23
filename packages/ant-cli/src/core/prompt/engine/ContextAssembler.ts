@@ -9,7 +9,6 @@ export interface AssembledContext {
   // Documents
   directive?: string;
   designDoc?: string;         // For code task
-  designDocLines?: string;    // Line count or summary
   lastSectionNumber?: number; // Last section number for continuation
   previousDesign?: string;    // For design task
   prdSpec?: string;
@@ -89,7 +88,6 @@ export class ContextAssembler {
     artifacts?: {
       directive?: string;
       designDoc?: string;
-      designDocLines?: string;
       lastSectionNumber?: number;
       prdSpec?: string;
       originalFiles?: string;
@@ -110,7 +108,6 @@ export class ContextAssembler {
       console.log(`🔍 [ContextAssembler] Received artifacts:`, {
         hasDirective: !!artifacts.directive,
         hasDesignDoc: !!artifacts.designDoc,
-        hasDesignDocLines: !!artifacts.designDocLines,
         lastSectionNumber: artifacts.lastSectionNumber,
         hasPrdSpec: !!artifacts.prdSpec,
         hasCurrentCode: !!artifacts.currentCode,
@@ -119,8 +116,8 @@ export class ContextAssembler {
       
       assembled.directive = artifacts.directive;
       assembled.designDoc = artifacts.designDoc;
-      assembled.designDocLines = artifacts.designDocLines;
       assembled.lastSectionNumber = artifacts.lastSectionNumber;
+      console.log(`🔍 [ContextAssembler] Received lastSectionNumber from artifacts: ${artifacts.lastSectionNumber}`);
       assembled.prdSpec = artifacts.prdSpec;
       assembled.currentCode = artifacts.currentCode;
       assembled.currentTask = artifacts.currentTask;
@@ -130,7 +127,6 @@ export class ContextAssembler {
       console.log(`🔍 [ContextAssembler] Assembled context:`, {
         hasDirective: !!assembled.directive,
         hasDesignDoc: !!assembled.designDoc,
-        hasDesignDocLines: !!assembled.designDocLines,
         lastSectionNumber: assembled.lastSectionNumber,
       });
     }

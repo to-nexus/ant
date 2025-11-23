@@ -27,13 +27,13 @@ Promise.all([
 const codeBaseInjectionsPath = join(__dirname, "../../../core/prompt/templates/code/base/injections");
 Promise.all([
   fs.readFile(join(codeBaseInjectionsPath, "text-response-format.md"), "utf8")
-    .then(content => Handlebars.registerPartial("code/text-response-format", content))
+    .then(content => Handlebars.registerPartial("code/base/injections/text-response-format", content))
     .catch(() => {}),
   fs.readFile(join(codeBaseInjectionsPath, "tool-calling-rules.md"), "utf8")
-    .then(content => Handlebars.registerPartial("code/tool-calling-rules", content))
+    .then(content => Handlebars.registerPartial("code/base/injections/tool-calling-rules", content))
     .catch(() => {}),
   fs.readFile(join(codeBaseInjectionsPath, "output-format-markdown.md"), "utf8")
-    .then(content => Handlebars.registerPartial("code/output-format-markdown", content))
+    .then(content => Handlebars.registerPartial("code/base/injections/output-format-markdown", content))
     .catch(() => {})
 ]).catch(() => {});
 
