@@ -270,6 +270,19 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
     const hasChapterCountRule = basePrompt.includes('Chapter Count') || basePrompt.includes('ONE task = ONE chapter');
     console.log(`📄 [DocGen] Prompt includes "Chapter Count" rule: ${hasChapterCountRule}`);
     
+    // 🔍 Debug: Check if lastSectionNumber is correctly passed to prompt
+    if (lastSectionNumber > 0) {
+      const hasLastSection = basePrompt.includes(`CONTINUE SECTION NUMBERING FROM ${lastSectionNumber}`);
+      const hasNextSection = basePrompt.includes(`Your first section MUST be: ## ${lastSectionNumber + 1}`);
+      console.log(`📄 [DocGen] Prompt includes lastSectionNumber: ${hasLastSection}, next section: ${hasNextSection}`);
+      
+      if (!hasLastSection || !hasNextSection) {
+        console.error(`❌ [DocGen] lastSectionNumber (${lastSectionNumber}) NOT properly rendered in prompt!`);
+        console.error(`   Searching for: "CONTINUE SECTION NUMBERING FROM ${lastSectionNumber}"`);
+        console.error(`   Prompt preview (first 2000 chars):\n${basePrompt.substring(0, 2000)}`);
+      }
+    }
+    
     // ✅ CRITICAL: Add runtime context (task, plan, existing design, file format)
     // PromptEngine provides templates, buildRuntimeContext adds execution context
     const runtimeContext = buildRuntimeContext(state);

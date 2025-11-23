@@ -1,0 +1,4 @@
+# Session History
+
+{{sessionHistory}}
+
