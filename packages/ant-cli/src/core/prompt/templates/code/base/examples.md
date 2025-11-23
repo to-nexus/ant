@@ -2,257 +2,162 @@
 FEW-SHOT EXAMPLES
 ================================================================================
 
-Example 1: Directive requests "remove console.log from Button.tsx"
+These examples demonstrate how to interpret and respond to directives while following the design document.
 
-CORRECT OUTPUT:
+────────────────────────────────────────────────────────────────────────────────
+
+Example 1: Simple Directive - Remove Debug Code
+
+**Directive**: "Remove console.log from Button.tsx"
+
+**Response**:
 ```xml
-<file path="src/components/Button.tsx">
-import React from 'react';
-
+<edit path="src/components/Button.tsx">
+<search>
+export function Button() {
+  console.log('Button rendered');
+  return <button>Click</button>;
+}
+</search>
+<replace>
 export function Button() {
   return <button>Click</button>;
 }
-</file>
+</replace>
+</edit>
 
-I've removed all console.log statements from Button.tsx as requested.
+<done>true</done>
 ```
 
---------------------------------------------------------------------------------
+I've removed the console.log statement from Button.tsx as requested.
 
-Example 2: Directive asks "Import error, why didn't you check?"
+────────────────────────────────────────────────────────────────────────────────
 
-CORRECT OUTPUT:
+Example 2: Directive Identifies Problem - Fix Import Error
+
+**Directive**: "Import error, why didn't you check?"
+
+**Context**: File tried to import from wrong path
+
+**Response**:
 ```xml
-<file path="src/pages/CatalogPage.tsx">
+<edit path="src/pages/CatalogPage.tsx">
+<search>
+import { TabMenu } from '@/components/ui/TabMenu';
+</search>
+<replace>
 import { TabMenu } from '@/components/TabMenu';
+</replace>
+</edit>
 
-export default function CatalogPage() {
-  return <TabMenu tabs={['Option A', 'Option B']} />;
-}
-</file>
+<done>true</done>
+```
 
 I apologize for not verifying the import path. I should have checked the actual 
-file structure before creating the import statement. I've now corrected the 
-import path to match the actual file location.
-```
+file structure before creating the import statement. The TabMenu component is 
+located at `@/components/TabMenu`, not in a `ui/` subdirectory. I've corrected 
+the import path to match the actual file location.
 
---------------------------------------------------------------------------------
+────────────────────────────────────────────────────────────────────────────────
 
-Example 3: Directive says "Add error handling" + Design doc shows "use ErrorBoundary pattern"
+Example 3: Directive + Design Document - Add Feature with Specific Pattern
 
-CORRECT OUTPUT:
+**Directive**: "Add error handling to DataDisplay"
+**Design Document**: "Use ErrorBoundary pattern for all data-fetching components"
+
+**Response**:
 ```xml
-<file path="src/components/DataDisplay.tsx">
+<edit path="src/components/DataDisplay.tsx">
+<search>
+import { useEffect, useState } from 'react';
+
+export function DataDisplay() {
+  const [data, setData] = useState(null);
+</search>
+<replace>
+import { useEffect, useState } from 'react';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 export function DataDisplay() {
-  return (
-    <ErrorBoundary fallback={<ErrorMessage />}>
-      {/* component logic */}
-    </ErrorBoundary>
-  );
-}
-</file>
-
-I'll add error handling following the ErrorBoundary pattern specified in the 
-design document.
-```
-
---------------------------------------------------------------------------------
-
-Example 4: Modifying existing file with <edit> tags
-
-CORRECT OUTPUT (using search/replace for targeted changes):
-```xml
-<edit path="src/pages/MainPage.tsx">
-<search>
-import { useState, useEffect } from 'react';
-import { Header } from '@/components/Header';
-</search>
-<replace>
-import { useState, useEffect } from 'react';
-import { TabMenu } from '@/components/TabMenu';
-import { Header } from '@/components/Header';
-</replace>
-</edit>
-
-<edit path="src/pages/MainPage.tsx">
-<search>
-  return (
-    <div className="container">
-      <Header />
-      <ErrorBoundary>
-</search>
-<replace>
-  return (
-    <div className="container">
-      <Header />
-      <TabMenu selected={selectedTab} onChange={setSelectedTab} />
-      <ErrorBoundary>
-</replace>
-</edit>
-
-I've added the TabMenu component to MainPage using targeted edits that only 
-change the necessary lines.
-```
-
---------------------------------------------------------------------------------
-
-Example 5: Creating complete new file
-
-CORRECT OUTPUT (write COMPLETE file with ALL code):
-```xml
-<file path="src/pages/MainPage.tsx">
-'use client';
-import { useState, useEffect } from 'react';
-import { TabMenu } from '@/components/TabMenu';
-import { Header } from '@/components/Header';
-import { Footer } from '@/components/Footer';
-import { DataLoader } from '@/components/DataLoader';
-import { UserProfile } from '@/components/UserProfile';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
-
-export default function MainPage() {
-  const [selectedTab, setSelectedTab] = useState('tab1');
   const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  
-  useEffect(() => {
-    fetchData();
-  }, []);
-  
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const result = await api.getData();
-      setData(result);
-    } catch (e) {
-      setError(e);
-    } finally {
-      setLoading(false);
-    }
-  };
-  
+</replace>
+</edit>
+
+<edit path="src/components/DataDisplay.tsx">
+<search>
   return (
-    <div className="container">
-      <Header />
-      <TabMenu selected={selectedTab} onChange={setSelectedTab} />
-      <ErrorBoundary>
-        {loading ? <Spinner /> : <DataLoader data={data} />}
-      </ErrorBoundary>
-      <UserProfile />
-      <Footer />
+    <div className="data-display">
+      {data ? <Content data={data} /> : <Loading />}
     </div>
   );
 }
-</file>
-
-I've created the MainPage component with tab menu integration and complete 
-error handling.
-```
-
-THIS IS CORRECT! Complete file with ALL code written out. No "..." comments!
-
---------------------------------------------------------------------------------
-
-KEY REMINDERS:
-✅ Use <edit> for modifying existing files (efficient, shows only changes)
-✅ Use <file> for creating new files (must be complete)
-✅ FEATURE TASKS: Just code + `<done>true</done>` - NO summary!
-✅ ERROR/FINAL TASKS: May include brief summary if helpful
-✅ Never use "..." or "// rest of code" - write COMPLETE content
-✅ Use ACTUAL paths from ORIGINAL FILES section
-
---------------------------------------------------------------------------------
-
-Example 6: Feature task completion (CORRECT WAY - NO SUMMARY!)
-
-✅ CORRECT OUTPUT FOR FEATURE TASKS:
-```xml
-<file path="src/components/atoms/Icon.tsx">
-import React from 'react';
-
-export interface IconProps {
-  name: string;
-  size?: 'sm' | 'md' | 'lg';
+</search>
+<replace>
+  return (
+    <ErrorBoundary fallback={<ErrorMessage />}>
+      <div className="data-display">
+        {data ? <Content data={data} /> : <Loading />}
+      </div>
+    </ErrorBoundary>
+  );
 }
+</replace>
+</edit>
 
-export function Icon({ name, size = 'md' }: IconProps) {
-  return <svg className={`icon-${size}`}>{/* SVG content */}</svg>;
+<done>true</done>
+```
+
+I've added error handling following the ErrorBoundary pattern specified in the 
+design document. The ErrorBoundary wraps the data display component and will 
+catch any rendering errors, showing the ErrorMessage fallback UI.
+
+────────────────────────────────────────────────────────────────────────────────
+
+Example 4: Feedback Statement - Apply Constraint
+
+**Directive**: "Don't use inline styles, use Tailwind classes"
+**Context**: Previous implementation used inline `style={{...}}`
+
+**Response**:
+```xml
+<edit path="src/components/Card.tsx">
+<search>
+export function Card({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ padding: '16px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+      {children}
+    </div>
+  );
 }
-</file>
+</search>
+<replace>
+export function Card({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="p-4 rounded-lg shadow-sm">
+      {children}
+    </div>
+  );
+}
+</replace>
+</edit>
 
 <done>true</done>
 ```
 
-**That's it! No summary, no explanation - just code and done!**
+You're right, I should use Tailwind utility classes instead of inline styles. 
+I've replaced the inline style object with equivalent Tailwind classes: 
+`p-4` (padding), `rounded-lg` (border-radius), and `shadow-sm` (box-shadow).
 
-Feature tasks are intermediate steps. The system tracks everything automatically.
-Save tokens and user's time - just deliver the code!
+────────────────────────────────────────────────────────────────────────────────
 
-```xml
-<file path="src/components/atoms/Icon.tsx">
-{/* component code */}
-</file>
+KEY PRINCIPLES DEMONSTRATED:
 
-<done>true</done>
+1. **Directive Priority**: Always address what the directive asks for first
+2. **Design Document**: Follow architectural patterns specified in design
+3. **Acknowledge + Fix**: When directive points out error, explain AND fix it
+4. **Minimal Changes**: Only modify what's necessary for the task
+5. **Complete Context**: Include enough surrounding code in <search> blocks
 
-I've successfully implemented the Icon component with the following features:
-- Full TypeScript typing with IconProps interface
-- Size variants (sm, md, lg) using design tokens
-...
-```
+────────────────────────────────────────────────────────────────────────────────
 
-**Why this is WRONG:**
-- Feature tasks don't need explanations
-- System tracks your work automatically
-- Wastes tokens and time
-- Just output code + `<done>true</done>`!
-
-❌ ALSO WRONG - DO NOT CREATE .md FILES:
-
---------------------------------------------------------------------------------
-
-Example 7: DO NOT create test files (unless task explicitly says "write tests")
-
-❌ WRONG - DO NOT DO THIS:
-```xml
-<file path="src/components/atoms/Button.tsx">
-export function Button() { /* implementation */ }
-</file>
-
-<file path="src/components/atoms/Button.test.tsx">
-import { Button } from './Button';
-// test code...
-</file>
-
-<done>true</done>
-```
-
-❌ ALSO WRONG - DO NOT DO THIS:
-```xml
-<file path="src/components/Typography.tsx">
-export function Typography() { /* implementation */ }
-</file>
-
-<command>npm test -- Typography.test.tsx</command>
-```
-
-✅ CORRECT - FEATURE TASKS:
-```xml
-<file path="src/components/atoms/Button.tsx">
-export function Button() { /* implementation */ }
-</file>
-
-<done>true</done>
-```
-
-**In FEATURE tasks: Write SOURCE CODE ONLY!**
-- ❌ NO *.test.ts, *.test.tsx, *.spec.ts files
-- ❌ NO __tests__/ directory
-- ❌ NO test running commands (npm test, vitest, jest)
-- ❌ NO Storybook files (*.stories.ts)
-
-**Tests are ONLY created when task explicitly says "write tests" or "add testing"!**
-
+For detailed XML tag syntax and output format rules, see execute/rules.md

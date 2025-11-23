@@ -96,12 +96,7 @@ export interface Task {
   category?: ErrorCategory;        // Type of errors (for error tasks)
   completed?: boolean;             // Whether this task is done
   interrupted?: boolean;           // Whether this task was interrupted (stopped manually)
-  timing?: TaskTiming;             // ✨ NEW: Task timing information
-  
-  // Validation Strategy (LLM decides)
-  validationRequired?: boolean;    // Whether this task requires validation after completion
-  validationType?: 'none' | 'static' | 'runtime';  // Type of validation: none (skip), static (syntax only), runtime (full)
-  validationRationale?: string;    // Reasoning for validation decision
+  timing?: TaskTiming;             // Task timing information
 }
 
 export class TaskQueue {

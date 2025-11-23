@@ -20,6 +20,7 @@ export interface AssembledContext {
   currentTask?: {             // Current task being executed
     name: string;
     type: string;
+    priority: number;
     description: string;
   };
   
@@ -92,6 +93,7 @@ export class ContextAssembler {
       currentTask?: {
         name: string;
         type: string;
+        priority: number;
         description: string;
       };
       retryContext?: AssembledContext['retryContext'];

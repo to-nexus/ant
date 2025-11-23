@@ -492,12 +492,9 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     codePreview
   });
   
-  const validationStrategy = await promptAdapter.render('code/phases/decompose/injections/validation-strategy', {});
   const rules = await promptAdapter.render('code/phases/decompose/rules', {});
   
   const prompt = `${basePrompt}
-
-${validationStrategy}
 
 ${rules}`;
 

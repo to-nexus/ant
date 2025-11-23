@@ -19,9 +19,6 @@ export interface UnifiedTask {
   description?: string;
   priority?: number | 'low' | 'medium' | 'high' | 'critical'; // Support both formats
   dependencies?: string[];
-  validationRequired?: boolean;
-  validationType?: string;
-  validationRationale?: string;
   completed?: boolean;
   interrupted?: boolean;  // Whether this task was interrupted (stopped manually)
   

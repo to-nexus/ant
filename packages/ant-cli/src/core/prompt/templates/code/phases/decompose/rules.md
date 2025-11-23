@@ -7,7 +7,6 @@ First, analyze step by step (think through):
 - Does it need setup/configuration tasks?
 - What are the main features to implement?
 - What is the optimal task breakdown?
-- What validation strategy for each task?
 
 Then output the task list wrapped in <tasks> tags with valid JSON:
 
@@ -15,24 +14,25 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
 {
   "tasks": [
     {
-      "id": "setup-docker",
-      "name": "Setup Docker Configuration",
+      "id": "setup-project-config",
+      "name": "Setup Project Configuration",
       "type": "setup",
       "priority": 100,
-      "description": "Generate Dockerfile, docker-compose.yml, .dockerignore",
-      "validationRequired": true,
-      "validationType": "static",
-      "validationRationale": "Config files need syntax validation"
+      "description": "Generate package.json with all dependencies (React, TypeScript, Vite, TailwindCSS, etc.), tsconfig.json, vite.config.ts, tailwind.config.ts, and .gitignore"
     },
     {
       "id": "auth-impl",
       "name": "Implement User Authentication System",
       "type": "feature",
       "priority": 200,
-      "description": "Create login, signup, JWT token handling, protected routes",
-      "validationRequired": true,
-      "validationType": "runtime",
-      "validationRationale": "Critical security feature requires full validation"
+      "description": "Create login, signup, JWT token handling, protected routes"
+    },
+    {
+      "id": "final-verification",
+      "name": "Final Integration & Verification",
+      "type": "feature",
+      "priority": 1000,
+      "description": "Install all dependencies and build the project to verify compilation. Run npm/pnpm install and npm run build to ensure code compiles, type-checks pass, and no errors exist."
     }
   ]
 }
@@ -50,5 +50,4 @@ IMPORTANT:
 - Focus on USER-FACING features, not infrastructure (infrastructure = setup task)
 - Each task must have unique id (kebab-case)
 - **ALWAYS include the final verification task as the last task**
-- **CRITICAL**: You MUST provide validationRequired, validationType, and validationRationale for EVERY task
 

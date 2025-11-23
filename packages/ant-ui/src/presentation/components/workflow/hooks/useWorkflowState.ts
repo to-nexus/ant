@@ -25,24 +25,24 @@ const API_BASE = () => getApiBase();
 // 노드별 최소 표시 시간 (ms)
 // ✅ 모든 노드를 사용자가 인식할 수 있도록 충분한 시간 확보
 const NODE_MIN_DISPLAY_TIME: Record<string, number> = {
-  resolve: 800,
-  decompose: 600,
-  plan: 700,
-  codeGen: 900,        // ✅ LLM 추론 (code job)
-  docGen: 900,         // ✅ LLM 추론 (design job)
-  tool: 800,           // ✅ 툴 실행 (빠르게 지나가므로 충분한 시간)
-  execute: 800,        // 레거시 유지
-  writeFiles: 600,
-  validate: 500,
-  installDeps: 700,
-  runtimeValidate: 600,
-  checkTaskCompletion: 600,
-  checkTaskStatus: 400,
-  enforce: 500,
-  learn: 800,
+  resolve: 1000,
+  decompose: 1000,
+  plan: 1000,
+  codeGen: 1000,        // ✅ LLM 추론 (code job)
+  docGen: 1000,         // ✅ LLM 추론 (design job)
+  tool: 1000,           // ✅ 툴 실행 (빠르게 지나가므로 충분한 시간)
+  execute: 1000,        // 레거시 유지
+  writeFiles: 1000,
+  validate: 1000,
+  installDeps: 1000,
+  runtimeValidate: 1000,
+  checkTaskCompletion: 1000,
+  checkTaskStatus: 1000,
+  enforce: 1000,
+  learn: 1000,
 };
 
-const DEFAULT_MIN_DISPLAY_TIME = 700; // ✅ 기본값 (600 → 700)
+const DEFAULT_MIN_DISPLAY_TIME = 1000; // ✅ 기본값 통일
 
 interface WorkflowStateWithQueue {
   rawState: WorkflowRealtimeState | null;      // 실제 서버 상태
@@ -61,6 +61,7 @@ interface QueuedNode {
 let globalNodeQueue: QueuedNode[] = [];
 let globalProcessing = false;
 let globalDisplayStartTime = 0;
+let globalDisplayedNode: string | null = null;  // ✅ 현재 표시 중인 노드 ID
 let globalCurrentTimer: ReturnType<typeof setTimeout> | null = null;
 let globalCleanupTimer: ReturnType<typeof setTimeout> | null = null;  // ✅ Cleanup 타이머 관리
 let globalDisplayedState: WorkflowRealtimeState | null = null;  // ✅ Global displayed state
@@ -79,6 +80,7 @@ export function clearGlobalQueue(): void {
   globalNodeQueue = [];
   globalProcessing = false;
   globalDisplayStartTime = 0;
+  globalDisplayedNode = null;
   
   if (globalCurrentTimer) {
     clearTimeout(globalCurrentTimer);
@@ -345,24 +347,29 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
       
       const nextItem = globalNodeQueue[0];
       const nextNode = nextItem.nodeId;
-      const minDisplayTime = NODE_MIN_DISPLAY_TIME[nextNode] || DEFAULT_MIN_DISPLAY_TIME;
+      const currentNodeMinTime = NODE_MIN_DISPLAY_TIME[nextNode] || DEFAULT_MIN_DISPLAY_TIME;
       
-      // 현재 표시 중인 노드의 경과 시간 계산
-      const elapsed = globalDisplayStartTime 
-        ? Date.now() - globalDisplayStartTime 
-        : Infinity;
-      
-      // 최소 표시 시간이 지나지 않았으면 대기
-      if (elapsed < minDisplayTime) {
-        const waitTime = minDisplayTime - elapsed;
+      // ✅ FIX: 이전 노드의 최소 표시 시간 보장
+      // 이전 노드가 충분히 표시되었는지 확인
+      if (globalDisplayStartTime) {
+        const prevNodeElapsed = Date.now() - globalDisplayStartTime;
+        const prevNodeMinTime = globalDisplayedNode 
+          ? (NODE_MIN_DISPLAY_TIME[globalDisplayedNode] || DEFAULT_MIN_DISPLAY_TIME)
+          : DEFAULT_MIN_DISPLAY_TIME;
         
-        // ✅ 글로벌 타이머 저장하고 대기
-        await new Promise(resolve => {
-          globalCurrentTimer = setTimeout(() => {
-            globalCurrentTimer = null;
-            resolve(undefined);
-          }, waitTime);
-        });
+        if (prevNodeElapsed < prevNodeMinTime) {
+          const waitTime = prevNodeMinTime - prevNodeElapsed;
+          
+          console.log(`[Workflow Queue] Waiting ${waitTime}ms for previous node "${globalDisplayedNode}" (min: ${prevNodeMinTime}ms, elapsed: ${prevNodeElapsed}ms)`);
+          
+          // ✅ 이전 노드의 최소 시간 보장
+          await new Promise(resolve => {
+            globalCurrentTimer = setTimeout(() => {
+              globalCurrentTimer = null;
+              resolve(undefined);
+            }, waitTime);
+          });
+        }
       }
       
       // ✅ 연출 개선: 큐에 있는 노드는 무조건 표시
@@ -370,6 +377,8 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
       
       // 노드 표시
       globalDisplayStartTime = Date.now();
+      globalDisplayedNode = nextNode;  // ✅ 표시 중인 노드 저장
+      console.log(`[Workflow Queue] Displaying node "${nextNode}" (task: ${nextItem.taskId || 'N/A'})`);
       
       // ✅ 큐에 저장된 state 사용 (노드가 추가된 시점의 상태)
       const currentRawState = rawStateRef.current;
