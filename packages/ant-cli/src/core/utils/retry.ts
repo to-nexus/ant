@@ -40,6 +40,19 @@ function isRetryableError(error: unknown, retryableErrors: string[]): boolean {
   
   const apiError = error as any;
   
+  // Check for network errors (TypeError with "terminated", "fetch failed", etc.)
+  if (error instanceof TypeError) {
+    const message = apiError.message?.toLowerCase() || '';
+    if (message.includes('terminated') || 
+        message.includes('fetch failed') || 
+        message.includes('network') ||
+        message.includes('econnreset') ||
+        message.includes('socket')) {
+      console.log(`[Retry] Network error detected: ${apiError.message} - will retry`);
+      return true;
+    }
+  }
+  
   // Check Anthropic API error format (nested structure)
   // Structure: { error: { type: 'error', error: { type: 'overloaded_error' } } }
   if (apiError.error?.error?.type) {

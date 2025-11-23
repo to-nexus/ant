@@ -203,7 +203,13 @@ export async function codeGen(
       _bufferManager: state._bufferManager,  // ✅ Preserve buffer manager
     };
   } catch (error) {
-    console.error('❌ [CodeGen] Error during reasoning:', error);
+    console.error('[ERROR] ❌ [CodeGen] Error during reasoning:');
+    console.error('[ERROR] Error type:', error instanceof Error ? error.constructor.name : typeof error);
+    console.error('[ERROR] Error message:', error instanceof Error ? error.message : String(error));
+    console.error('[ERROR] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    if (error && typeof error === 'object') {
+      console.error('[ERROR] Error details:', JSON.stringify(error, null, 2));
+    }
     
     // ✅ Workflow instrumentation: Exit node (error path)
     if (state.deps?.workflowUpdate && state._httpJobId) {

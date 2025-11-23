@@ -159,7 +159,6 @@ export class PromptEngine {
     artifacts: {
       directive?: string;
       designDoc?: string;
-      designDocLines?: string;
       lastSectionNumber?: number;
       previousDesign?: string;
       prdSpec?: string;
