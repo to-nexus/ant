@@ -251,7 +251,10 @@ export class WorkflowStateService {
     // 최종 브로드캐스트 (종료 알림)
     this.broadcast(jobId);
     
-    // Note: SSE 연결 종료는 SSEService가 관리합니다
+    // Send 'end' event to SSE clients via SSEService
+    if (this.sseService) {
+      this.sseService.sendWorkflowEndEvent(jobId);
+    }
     
     // 상태는 삭제하지 않고 보존 (UI에서 마지막 상태 조회 가능)
     // 메모리 관리를 위해 주기적으로 오래된 상태는 정리될 수 있음

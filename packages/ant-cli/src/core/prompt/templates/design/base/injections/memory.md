@@ -1,2 +1,0 @@
-📚 RELEVANT KNOWLEDGE FROM VECTOR DB:
-{{content}}

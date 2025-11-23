@@ -69,7 +69,11 @@ export interface DesignGraphState extends TaskArtifacts {
   planText: string;
   
   // ✅ UNIFIED: Files generated (same structure as code job)
-  files?: Array<{ path: string; content: string }>;
+  files?: Array<{ 
+    path: string; 
+    content: string; 
+    actionType?: 'create' | 'append' | 'edit' | 'delete';  // ✅ For design job XML streaming
+  }>;
   filesToDelete?: string[];
   
   // ✅ NEW: Tool Calling Support (same as code job)

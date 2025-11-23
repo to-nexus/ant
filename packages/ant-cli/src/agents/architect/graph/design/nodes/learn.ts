@@ -50,6 +50,40 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     throw new Error("No files generated - execute and writeFiles nodes must run before learn");
   }
   
+  // ✅ Clean up metadata comment from final output
+  // This is the last node, so remove the LAST_SECTION comment
+  try {
+    const designDocPath = `${state.context.featurePath}/outputs/design/system-design.md`;
+    
+    if (state.deps?.git) {
+      const fileExists = await state.deps.git.fileExists(designDocPath);
+      if (fileExists) {
+        const content = await state.deps.git.readFile(designDocPath);
+        if (content) {
+          const lines = content.split('\n');
+          
+          // Find and remove LAST_SECTION comment (last non-empty line)
+          let lastLineIndex = lines.length - 1;
+          while (lastLineIndex >= 0 && lines[lastLineIndex].trim() === '') {
+            lastLineIndex--;
+          }
+          
+          if (lastLineIndex >= 0) {
+            const lastLine = lines[lastLineIndex].trim();
+            if (lastLine.match(/^<!-- LAST_SECTION: \d+ -->$/)) {
+              lines.splice(lastLineIndex, 1);
+              const cleanedContent = lines.join('\n');
+              await state.deps.git.writeFile(designDocPath, cleanedContent);
+              console.log(`🧹 [Learn] Removed metadata comment from final document`);
+            }
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.warn(`⚠️  [Learn] Failed to clean up metadata (non-critical):`, error);
+  }
+  
   // 1. Extract learnings from design process
   const learnings = extractDesignLearnings(state);
   
@@ -73,7 +107,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   }
   
   // 3. Store learnings to vector memory
-  if (state.context.memory && state.deps?.chunk) {
+  if (state.deps?.memory && state.deps?.chunk) {
     await storeLearningsToMemory(state, learnings, sessionId, turnId);
   }
   
@@ -187,7 +221,7 @@ async function storeLearningsToMemory(
   sessionId: string | undefined,
   turnId: number | undefined
 ): Promise<void> {
-  if (!state.deps?.chunk || !state.context.memory) return;
+  if (!state.deps?.chunk || !state.deps?.memory) return;
   
   try {
     // Process through chunking pipeline
@@ -215,14 +249,12 @@ async function storeLearningsToMemory(
       metadata: chunk.metadata
     }));
     
-    // Batch store operation
-    const memory = state.context.memory as any;
-    if (!memory) {
-      throw new Error('Memory adapter not available in state.context.memory');
+    // ✅ Use memory adapter from deps
+    const memory = state.deps.memory;
+    if (!memory || typeof memory.store !== 'function') {
+      throw new Error(`Memory adapter is not properly configured. Has store method: ${typeof memory?.store}`);
     }
-    if (typeof memory.store !== 'function') {
-      throw new Error(`Memory adapter store is not a function. Type: ${typeof memory.store}, Memory object: ${JSON.stringify(Object.keys(memory))}`);
-    }
+    
     await memory.store(documents, state.context.project);
     
     console.log(`✅ ${result.chunks.length} learning chunks stored to memory (batch)`);

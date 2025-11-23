@@ -54,10 +54,12 @@ export class WorkflowHttpClient implements WorkflowStateUpdatePort {
    * ✅ Returns Promise to ensure SSE ordering
    */
   async enterNode(jobId: string, nodeId: string, taskInfo?: TaskInfo, llmInfo?: import('../../../../core/ports/workflow').LLMInfo): Promise<void> {
+    console.log(`[WorkflowHttpClient] 📤 Sending enterNode: ${nodeId} (job: ${jobId})`);
     try {
       await this.sendUpdate(jobId, 'enterNode', { nodeId, taskInfo, llmInfo });
+      console.log(`[WorkflowHttpClient] ✅ enterNode sent successfully: ${nodeId}`);
     } catch (err: any) {
-      console.warn(`[WorkflowHttpClient] Failed to track enterNode (${nodeId}):`, err.message);
+      console.warn(`[WorkflowHttpClient] ❌ Failed to track enterNode (${nodeId}):`, err.message);
     }
   }
 
@@ -118,6 +120,9 @@ export class WorkflowHttpClient implements WorkflowStateUpdatePort {
       ...data
     };
 
+    console.log(`[WorkflowHttpClient] 🔗 Sending ${action} to ${url}`);
+    console.log(`[WorkflowHttpClient] 📦 Payload:`, JSON.stringify(payload, null, 2));
+
     try {
       // Use native fetch (Node 18+) or fall back to manual HTTP
       const fetch = globalThis.fetch || this.getFetchPolyfill();
@@ -140,9 +145,13 @@ export class WorkflowHttpClient implements WorkflowStateUpdatePort {
       });
 
       if (!response.ok) {
+        console.error(`[WorkflowHttpClient] ❌ HTTP ${response.status}: ${response.statusText}`);
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
+      
+      console.log(`[WorkflowHttpClient] ✅ Update sent successfully: ${action}`);
     } catch (error: any) {
+      console.error(`[WorkflowHttpClient] ❌ Failed to send workflow update:`, error.message);
       // Re-throw for caller to handle
       throw new Error(`Failed to send workflow update: ${error.message}`);
     }

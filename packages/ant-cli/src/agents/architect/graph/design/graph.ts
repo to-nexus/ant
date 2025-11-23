@@ -196,6 +196,9 @@ export function buildDesignGraph() {
     }) as any,
     { plan: "plan", learn: "learn" } as any
   );
+  
+  // ✅ CRITICAL: learn 노드 이후 END로 이동
+  (graph as any).addEdge("learn", "__end__");
 
   return graph.compile();
 }

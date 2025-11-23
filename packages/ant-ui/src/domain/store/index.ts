@@ -3,7 +3,6 @@ import { Session } from '@/domain/models/session';
 import { Feature, FileNode, FileContent, DevServerStatus, KanbanData } from '@/infrastructure/http/api';
 import { JobExecution } from '@/infrastructure/http/cli';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
-import type { WorkflowRealtimeState } from '@/domain/models/workflow';
 import type { ChatMessage } from '@/domain/models/chat';
 
 interface StoreState {
@@ -11,7 +10,6 @@ interface StoreState {
   // Server State (SSE)
   // ==================
   kanban: KanbanData;
-  workflow: WorkflowRealtimeState | null;
   chatMessages: ChatMessage[];
   
   // ==================
@@ -72,7 +70,6 @@ interface StoreActions {
   // SSE Update Actions
   // ==================
   updateKanban: (data: KanbanData) => void;
-  updateWorkflow: (data: WorkflowRealtimeState) => void;
   addChatMessage: (message: ChatMessage) => void;
   updateChatMessage: (messageId: string, updates: Partial<ChatMessage>) => void;
   clearChatMessages: () => void;
@@ -245,7 +242,6 @@ export const useStore = create<Store>((set, get) => {
   // Initial State
   // ==================
   kanban: { jobId: undefined, todo: [], inProgress: null, completed: [] },
-  workflow: null,
   chatMessages: [],
   
   projects: [],
@@ -367,14 +363,6 @@ export const useStore = create<Store>((set, get) => {
         set({ kanban: data });
       }
     }
-  },
-  
-  updateWorkflow: (data) => {
-    // console.log('[Store] 🔄 updateWorkflow:', { // ✅ Too verbose
-    //   currentNode: data.currentNode,
-    //   previousNode: data.previousNode
-    // });
-    set({ workflow: data });
   },
   
   addChatMessage: (message) => {
@@ -568,10 +556,6 @@ export const useStore = create<Store>((set, get) => {
         console.log(`[Store] 📂 Setting file tree: ${tree?.length || 0} items`);
         get().setFileTree(tree);
       }
-    });
-    
-    sseManager.registerHandler('workflow', (data) => {
-      get().updateWorkflow(data);
     });
     
     // ✅ Connect to unified SSE endpoint
@@ -931,7 +915,6 @@ export const useStore = create<Store>((set, get) => {
   reset: () => {
     set({
       kanban: { jobId: undefined, todo: [], inProgress: null, completed: [] },
-      workflow: null,
       selectedProject: undefined,
       selectedFeature: undefined,
       // ✅ Keep UI preferences (agent, jobType) - user settings persist across logout

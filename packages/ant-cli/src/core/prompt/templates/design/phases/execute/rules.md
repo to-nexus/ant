@@ -24,16 +24,18 @@ Use `<file>` tag:
 
 ### Scenario 2: Appending Content (Continuation Task)
 
-Use `<append>` tag:
+Use `<append>` tag. **IMPORTANT**: Continue section numbering from existing document!
 
 ```xml
 <append path="outputs/design/system-design.md">
-## 3. Component Design
+## 5. Component Design    <!-- ⚠️ Number depends on existing sections! -->
 
-### 3.1 TaskManager
+### 5.1 TaskManager
 - Purpose: CRUD operations for tasks
 - Interface: { getTasks(), addTask(), deleteTask() }
 - Dependencies: Database, ValidationService
+
+<!-- LAST_SECTION: 5 -->
 </append>
 ```
 

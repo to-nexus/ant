@@ -235,13 +235,29 @@ class SSEManager {
       };
       
       eventSource.onmessage = (event) => {
+        console.log(`[SSEManager] 📨 Workflow message received for ${jobId}:`, event.data);
         try {
           const message: SSEMessage = JSON.parse(event.data);
+          console.log(`[SSEManager] 📨 Parsed workflow message:`, { type: message.type, data: message.data });
           this.routeMessage(message);
         } catch (error) {
           console.error(`[SSEManager] ❌ Workflow parse error:`, error);
         }
       };
+      
+      // ✅ Handle 'end' event for workflow completion
+      eventSource.addEventListener('end', () => {
+        console.log(`[SSEManager] 🏁 Workflow 'end' event received for ${jobId}`);
+        // Route to workflow handlers as a special message
+        this.routeMessage({
+          type: 'workflow',
+          data: {
+            jobId,
+            eventType: 'end',  // ✅ Special flag for end event
+            isCompleted: true
+          }
+        });
+      });
       
       eventSource.onerror = (error) => {
         console.error(`[SSEManager] ⚠️  Workflow connection error for ${jobId}:`, error);
@@ -265,7 +281,7 @@ class SSEManager {
    */
   private routeMessage(message: SSEMessage): void {
     const { type, data } = message;
-    // console.log(`[SSEManager] 📨 Routing message: type='${type}'`, data); // ✅ Too verbose
+    console.log(`[SSEManager] 📨 Routing message: type='${type}'`, data);
     
     const handlers = this.handlers.get(type);
     
@@ -274,7 +290,7 @@ class SSEManager {
       return;
     }
     
-    // console.log(`[SSEManager] 📡 Calling ${handlers.length} handler(s) for '${type}'`); // ✅ Too verbose
+    console.log(`[SSEManager] 📡 Calling ${handlers.length} handler(s) for '${type}'`);
     
     // Call all registered handlers for this type
     handlers.forEach(handler => {

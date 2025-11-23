@@ -18,28 +18,28 @@
 import { useState, useEffect, useRef } from 'react';
 import { WorkflowRealtimeState } from '@/domain/models/workflow';
 
-import { getApiBase } from '@/infrastructure/http/api';
-
-const API_BASE = () => getApiBase();
-
 // 노드별 최소 표시 시간 (ms)
 // ✅ 모든 노드를 사용자가 인식할 수 있도록 충분한 시간 확보
 const NODE_MIN_DISPLAY_TIME: Record<string, number> = {
+  // Common nodes
   resolve: 1000,
   decompose: 1000,
   plan: 1000,
-  codeGen: 1000,        // ✅ LLM 추론 (code job)
-  docGen: 1000,         // ✅ LLM 추론 (design job)
-  tool: 1000,           // ✅ 툴 실행 (빠르게 지나가므로 충분한 시간)
-  execute: 1000,        // 레거시 유지
-  writeFiles: 1000,
+  learn: 1000,
+  checkTaskStatus: 1000,
+  
+  // Code job nodes
+  codeGen: 1000,        // ✅ LLM 추론
+  tool: 1000,           // ✅ 툴 실행
   validate: 1000,
   installDeps: 1000,
   runtimeValidate: 1000,
-  checkTaskCompletion: 1000,
-  checkTaskStatus: 1000,
   enforce: 1000,
-  learn: 1000,
+  execute: 1000,        // 레거시 (호환성)
+  
+  // Design job nodes
+  docGen: 1000,         // ✅ LLM 추론
+  writeFiles: 1000,
 };
 
 const DEFAULT_MIN_DISPLAY_TIME = 1000; // ✅ 기본값 통일
@@ -234,11 +234,10 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
     };
   }, []);
   
-  // SSE 구독 - ✅ CRITICAL: stableJobId 사용하여 불필요한 재연결 방지
+  // SSE 구독 - ✅ SSEManager 핸들러 등록 (중복 EventSource 방지)
   useEffect(() => {
     
     if (!stableJobId) {
-      
       // ✅ 글로벌 타이머 취소 (진행 중인 연출 중단하지 않음)
       // 단, rawState는 초기화
       // ✅ CRITICAL: jobEndedRef는 초기화하지 않음! (learn 노드 cleanup을 위해 유지)
@@ -247,82 +246,61 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
       return;
     }
     
-    const sseUrl = `${API_BASE()}/jobs/${stableJobId}/workflow/stream`;
     jobEndedRef.current = false;  // ✅ Reset for new job
     
-    const eventSource = new EventSource(sseUrl);
-    
-    
-    eventSource.onopen = () => {
-    };
-    
-    eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
+    // ✅ SSEManager 핸들러 등록 (Store가 이미 connectWorkflow 호출함)
+    const handleWorkflowMessage = (data: any) => {
+      // ✅ Handle 'end' event
+      if (data.eventType === 'end') {
+        jobEndedRef.current = true;
+        setTimeout(() => {
+          setRawState(null);
+        }, 500);
+        return;
+      }
+      
+      // ✅ CRITICAL: Add to queue IMMEDIATELY in SSE handler
+      // This prevents race condition where rapid SSE updates skip nodes
+      if (data.currentNode) {
+        const newNode = data.currentNode;
+        const newTaskId = data.currentTask?.id;
         
-        // ✅ CRITICAL: Add to queue IMMEDIATELY in SSE handler
-        // This prevents race condition where rapid SSE updates skip nodes
-        if (data.currentNode) {
-          const newNode = data.currentNode;
-          const newTaskId = data.currentTask?.id;
+        // Check duplicates in queue
+        const isDuplicate = globalNodeQueue.some(item => 
+          item.nodeId === newNode && item.taskId === newTaskId
+        );
+        
+        if (!isDuplicate) {
+          // Check if already displaying
+          const currentDisplayed = displayedStateRef.current?.currentNode;
+          const currentDisplayedTask = displayedStateRef.current?.currentTask?.id;
           
-          // Check duplicates in queue
-          const isDuplicate = globalNodeQueue.some(item => 
-            item.nodeId === newNode && item.taskId === newTaskId
-          );
-          
-          if (!isDuplicate) {
-            // Check if already displaying
-            const currentDisplayed = displayedStateRef.current?.currentNode;
-            const currentDisplayedTask = displayedStateRef.current?.currentTask?.id;
-            
-            if (!(newNode === currentDisplayed && newTaskId === currentDisplayedTask)) {
-              if (data.currentTask) {
-              }
-              
-              globalNodeQueue.push({
-                nodeId: newNode,
-                state: data,
-                taskId: newTaskId,
-                taskName: data.currentTask?.name,
-                timestamp: Date.now()
-              });
-              notifyQueueChange();
-            }
+          if (!(newNode === currentDisplayed && newTaskId === currentDisplayedTask)) {
+            globalNodeQueue.push({
+              nodeId: newNode,
+              state: data,
+              taskId: newTaskId,
+              taskName: data.currentTask?.name,
+              timestamp: Date.now()
+            });
+            notifyQueueChange();
           }
         }
-        
-        setRawState(data);
-      } catch (err) {
-        console.error('[useWorkflowState] Failed to parse SSE data:', err);
       }
+      
+      setRawState(data);
     };
     
-    eventSource.addEventListener('end', () => {
-      
-      // ✅ CRITICAL: 'end' 이벤트를 받았다는 플래그만 설정
-      // → 큐가 비워질 때까지 cleanup 지연!
-      jobEndedRef.current = true;
-      eventSource.close();
-      
-      // ✅ RACE CONDITION FIX: 마지막 노드 상태 업데이트를 받을 시간을 줌
-      // learn 노드 같은 마지막 노드의 상태가 'end' 이벤트보다 늦게 도착할 수 있음
-      setTimeout(() => {
-        setRawState(null);
-      }, 500);  // 500ms 유예 기간
+    // ✅ Import sseManager and register handler
+    import('@/infrastructure/sse/SSEManager').then(({ sseManager }) => {
+      sseManager.registerHandler('workflow', handleWorkflowMessage);
     });
     
-    eventSource.onerror = (error) => {
-      console.error('[useWorkflowState] ❌ SSE error:', error);
-      console.error('[useWorkflowState] 📊 EventSource state:', {
-        readyState: eventSource.readyState,
-        url: eventSource.url,
-        withCredentials: eventSource.withCredentials
-      });
-    };
-    
     return () => {
-      eventSource.close();
+      // ✅ Cleanup: unregister handler
+      import('@/infrastructure/sse/SSEManager').then(({ sseManager }) => {
+        sseManager.unregisterHandler('workflow', handleWorkflowMessage);
+      });
       
       // ✅ 연출 개선: 타이머 취소 안함, 큐 유지 (글로벌이므로)
       // → 이전 Task의 노드들을 모두 소비한 후에 새 Task로 전환
@@ -350,7 +328,6 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
       const currentNodeMinTime = NODE_MIN_DISPLAY_TIME[nextNode] || DEFAULT_MIN_DISPLAY_TIME;
       
       // ✅ FIX: 이전 노드의 최소 표시 시간 보장
-      // 이전 노드가 충분히 표시되었는지 확인
       if (globalDisplayStartTime) {
         const prevNodeElapsed = Date.now() - globalDisplayStartTime;
         const prevNodeMinTime = globalDisplayedNode 
@@ -360,9 +337,6 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
         if (prevNodeElapsed < prevNodeMinTime) {
           const waitTime = prevNodeMinTime - prevNodeElapsed;
           
-          console.log(`[Workflow Queue] Waiting ${waitTime}ms for previous node "${globalDisplayedNode}" (min: ${prevNodeMinTime}ms, elapsed: ${prevNodeElapsed}ms)`);
-          
-          // ✅ 이전 노드의 최소 시간 보장
           await new Promise(resolve => {
             globalCurrentTimer = setTimeout(() => {
               globalCurrentTimer = null;
@@ -372,13 +346,9 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
         }
       }
       
-      // ✅ 연출 개선: 큐에 있는 노드는 무조건 표시
-      // → 이전 Task의 노드들을 모두 보여주고 나서 새 Task로 전환
-      
       // 노드 표시
       globalDisplayStartTime = Date.now();
-      globalDisplayedNode = nextNode;  // ✅ 표시 중인 노드 저장
-      console.log(`[Workflow Queue] Displaying node "${nextNode}" (task: ${nextItem.taskId || 'N/A'})`);
+      globalDisplayedNode = nextNode;
       
       // ✅ 큐에 저장된 state 사용 (노드가 추가된 시점의 상태)
       const currentRawState = rawStateRef.current;

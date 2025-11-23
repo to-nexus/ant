@@ -41,71 +41,26 @@ When implementing:
 
 RULE 3: Minimal Changes Principle - CRITICAL
 When ORIGINAL FILES exist:
-- START with the original file content as your BASE
-- Write the COMPLETE file with ALL code (not "// ... other imports ...")
-- Only modify the specific lines/sections needed for your task
-- Keep ALL existing logic, hooks, components, imports (unless they're wrong)
-- Keep ALL existing comments (unless they describe changed code)
-- Keep ALL existing code structure and organization
-- NEVER rewrite the entire file from scratch
-- NEVER delete unrelated code "to simplify" or "for cleanup"
-- NEVER use "// ..." or "..." comments to skip writing code
-
-FORBIDDEN patterns:
-❌ "// ... all other imports ..."
-❌ "// ... all other state ..."
-❌ "// ... rest of code ..."
-❌ "{/* ... all original JSX ... */}"
-✅ Write EVERY import, EVERY line of state, EVERY line of JSX
-
-Example thinking process:
-"I need to add a tab menu. Original file has 200 lines. I'll:
-1. Copy ALL 200 lines as base
-2. Add TabMenu import (write it out completely)
-3. Add tab state (write it out completely)
-4. Add tab UI (write it out completely)
-Total: ~213 lines. If my output is 50 lines OR uses "...", I'm doing it wrong!"
+- ONLY modify what's needed for the directive
+- Keep ALL existing structure, patterns, and conventions
+- Don't refactor or "improve" code that works
+- Preserve all imports, comments, and formatting
+- Match existing code style exactly
 
 RULE 4: Code Completeness
-- Always include all imports
-- Always include all type definitions
-- Produce complete, working files (no placeholders, no "// ... rest of code")
-- Mentally check that import paths are correct
-- Mentally check for potential import errors before outputting
+- All code must be complete, syntactically correct
+- No placeholders like "// ... rest of implementation"
+- All imports, types, and dependencies must be included
+- Code must compile/run without modifications
 
-RULE 5: Mental Self-Check Before Output
-- Before outputting, mentally verify:
-  □ No markdown formatting in files
-  □ All files are complete
-  □ Addressed the task requirements
-  □ Import paths look correct
-  □ All code and comments are in English
+RULE 5: Self-Verification (mental checks before output)
+Before finalizing, mentally verify:
+- ✅ Did I follow the directive exactly?
+- ✅ Does this match the design document's architecture?
+- ✅ Are ALL imports present?
+- ✅ Is ALL code complete (no placeholders)?
+- ✅ Did I keep changes minimal (if modifying existing code)?
+- ✅ Is code in English (comments, variable names)?
 
-Note: These are MENTAL checks - do NOT run build/validation commands.
-
-RULE 6: Type Safety & Null Handling (STRICT)
-- Treat possibly undefined inputs with defaults or guards (e.g., projectId ?? '', language ?? 'en')
-- Use explicit types; avoid implicit any
-- Prefer guard clauses or early returns for invalid inputs
-- null vs undefined policy:
-  - Use undefined at boundaries for React props and optional fields
-  - Convert null to undefined where needed (e.g., const value: T | undefined = maybeNull ?? undefined)
-  - Keep this consistent across files and functions
-- Ensure no TypeScript errors (assume strict mode)
-
-RULE 7: Style-Only Changes Preserve Structure
-- If the task is primarily styling (e.g., TabMenu UI), DO NOT change logic/state/data hooks
-- Keep imports, state, effects, providers, and layout structure unchanged
-- Only adjust classes/style-related props and minimal glue code needed to integrate components
+These are MENTAL checks - do NOT run build/validation commands.
 </critical_rules>
-
-<common_mistakes_to_avoid>
-❌ MISTAKE 1: Wrapping code in markdown
-❌ MISTAKE 2: Not responding to directives
-❌ MISTAKE 3: Rebuilding everything when asked to fix one thing
-❌ MISTAKE 4: Incomplete files with placeholders
-❌ MISTAKE 5: Deleting existing comments unnecessarily
-❌ MISTAKE 6: Wrong import paths
-❌ MISTAKE 7: Using placeholder file paths
-❌ MISTAKE 8: Rewriting entire file or using "..." to skip code (MOST CRITICAL!)
-</common_mistakes_to_avoid>
