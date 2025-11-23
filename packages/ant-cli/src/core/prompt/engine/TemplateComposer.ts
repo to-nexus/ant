@@ -60,12 +60,31 @@ export class TemplateComposer {
           : 'CREATION MODE: Build from scratch',
         currentCode: assembled.currentCode || '',
         designDoc: assembled.designDoc || '',
-        designDocLines: assembled.designDocLines || '',  // ✅ Last 50 lines text (not count)
         lastSectionNumber: assembled.lastSectionNumber ?? 0,  // ✅ Last chapter number
         currentTask: assembled.currentTask || null,
         projectPath: (context as any).projectPath || context.workingDir || '/path/to/project'
       }
     );
+    
+    console.log(`🔍 [TemplateComposer] Rendered base with lastSectionNumber: ${assembled.lastSectionNumber ?? 0}`);
+    console.log(`🔍 [TemplateComposer] Handlebars will evaluate {{#if lastSectionNumber}} as: ${!!assembled.lastSectionNumber}`);
+    
+    // 🔍 Debug: Verify the rendered content includes correct lastSectionNumber
+    if ((assembled.lastSectionNumber ?? 0) > 0) {
+      const expectedText = `CONTINUE SECTION NUMBERING FROM ${assembled.lastSectionNumber}`;
+      const isPresent = base.includes(expectedText);
+      console.log(`🔍 [TemplateComposer] Verification - Expected text "${expectedText}" in rendered base: ${isPresent}`);
+      
+      if (!isPresent) {
+        // Search for what actually got rendered
+        const match = base.match(/CONTINUE SECTION NUMBERING FROM (\d+)/);
+        if (match) {
+          console.log(`🔍 [TemplateComposer] ⚠️  Found different value in rendered base: "${match[0]}" (expected ${assembled.lastSectionNumber})`);
+        } else {
+          console.log(`🔍 [TemplateComposer] ⚠️  "CONTINUE SECTION NUMBERING" not found in rendered base at all!`);
+        }
+      }
+    }
     
     // 4. Render rules template
     const rules = await this.renderTemplate(

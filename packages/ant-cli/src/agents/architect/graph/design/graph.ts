@@ -107,7 +107,9 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
     return {
       completedTasks,
       completedTasksDetails,
-      currentTask: undefined
+      currentTask: undefined,
+      conversationHistory: [],  // ✅ CRITICAL: Reset conversation history between tasks
+      _bufferManager: undefined  // ✅ CRITICAL: Clear buffer manager to force fresh start for next task
     };
   }
   

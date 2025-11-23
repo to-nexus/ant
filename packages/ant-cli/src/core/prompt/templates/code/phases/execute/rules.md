@@ -1,6 +1,6 @@
 # Output Format Rules
 
-{{> base/injections/text-response-format}}
+{{> code/base/injections/text-response-format}}
 
 ════════════════════════════════════════════════════════════════════════════════
 ## 🎯 XML TAG REFERENCE

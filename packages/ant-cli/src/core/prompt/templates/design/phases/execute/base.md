@@ -67,7 +67,7 @@ IF YOU CREATE MORE CHAPTERS THAN ALLOWED, YOU WILL FAIL THIS TASK!
 ## 2. Architecture
 ...
 
-<!-- LAST_SECTION: 2 -->
+<!-- LAST_SECTION: 2 -->  <!-- ⚠️ This is an EXAMPLE for a 2-section document -->
 </file>
 ```
 

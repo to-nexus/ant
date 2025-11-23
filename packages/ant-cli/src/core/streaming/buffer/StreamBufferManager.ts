@@ -44,27 +44,15 @@ export class StreamBufferManager {
   
   /**
    * Start tracking a new file
-   * ✅ CRITICAL: For append actions, load existing buffer content first
-   * ⚠️  For edit actions, DON'T load buffer (LLM already has original file via context)
+   * ✅ Always start fresh - disk file is source of truth
+   * ⚠️  Do NOT load existing buffers (they may be incomplete/interrupted)
    */
   startFile(filePath: string, actionType: 'create' | 'append' | 'edit' | 'delete'): void {
-    let initialContent = '';
-    
-    // ✅ For append only, try to load existing buffer from disk
-    // ⚠️  For edit, start fresh - LLM has the original file content in context
-    if (actionType === 'append') {
-      const existingBuffer = this.loadBufferFromDisk(filePath);
-      if (existingBuffer) {
-        initialContent = existingBuffer.content;
-        console.log(`[StreamBuffer] 🔄 Loaded existing buffer for ${filePath}: ${initialContent.length} chars`);
-      }
-    } else if (actionType === 'edit') {
-      console.log(`[StreamBuffer] 📝 Starting edit for ${filePath} (not loading buffer - using original file)`);
-    }
+    const initialContent = '';  // ✅ Always start fresh
     
     const bufferedFile: BufferedFile = {
       filePath,
-      content: initialContent,  // ✅ Start with existing content for append
+      content: initialContent,
       actionType,
       startedAt: Date.now()
     };
@@ -72,7 +60,7 @@ export class StreamBufferManager {
     this.buffers.set(filePath, bufferedFile);
     this.writeBufferFile(filePath, bufferedFile);
     
-    console.log(`[StreamBuffer] 📝 Started tracking: ${filePath} (${actionType}, initial: ${initialContent.length} chars)`);
+    console.log(`[StreamBuffer] 📝 Started tracking: ${filePath} (${actionType}, fresh start)`);
   }
   
   /**
