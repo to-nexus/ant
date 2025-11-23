@@ -54,14 +54,8 @@ export async function plan(state: DesignGraphState) {
       priority: currentTask.priority
     } : undefined;
     
-    // ✅ Extract LLM info from state.deps
-    const llm = state.deps?.llm;
-    const llmInfo = (llm as any)?.provider && (llm as any)?.modelName ? {
-      provider: (llm as any).provider,
-      model: (llm as any).modelName
-    } : undefined;
-    
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'plan', taskInfo, llmInfo);
+    // ✅ Note: No llmInfo needed - plan node doesn't call LLM
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'plan', taskInfo);
   }
 
   // ✅ SMART CONTEXT PRE-LOADING (like code job!)

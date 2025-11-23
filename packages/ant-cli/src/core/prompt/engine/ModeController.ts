@@ -176,13 +176,6 @@ export class ModeController {
     }
     
     if (phase === 'execute') {
-      // ✅ Markdown output format (ONLY for design job - uses XML streaming)
-      if (task === 'design') {
-        const mdFormatPath = `${phasePrefix}/markdown-output-format`;
-        injections.push(mdFormatPath);
-        console.log(`[ModeController] Adding markdown-output-format injection: ${mdFormatPath}`);
-      }
-      
       // ✅ Language-specific environment rules (highest priority - applies to ALL execute tasks)
       const language = this.detectLanguage(context);
       if (language && task === 'code') {

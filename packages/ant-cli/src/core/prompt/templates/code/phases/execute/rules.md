@@ -1,193 +1,406 @@
-================================================================================
-MANDATORY SELF-CHECK BEFORE OUTPUT
-================================================================================
-
-<self_verification>
-Before you output anything, verify each point:
-
-FORMAT CHECKS:
-□ Used <edit> tags for modifying existing files (mandatory!)
-□ Used <file> tags ONLY for creating NEW files
-□ Each <edit> has: <edit path="..."><search>exact code</search><replace>new code</replace></edit>
-□ Each <file> has: <file path="...">complete content</file>
-□ File/Edit paths are ACTUAL paths from ORIGINAL FILES or DESIGN DOCUMENT
-□ NO placeholder paths like "path/to/file.tsx"
-□ Paths match exactly as they appear in the project structure
-□ <search> blocks match EXACTLY (including whitespace)
-□ <replace> blocks contain new code only
-□ File content is PURE source code (no \`\`\`, no markdown)
-□ No explanatory text between XML tags
-□ All XML tags are properly closed
-
-CONTENT CHECKS:
-□ All imports are present at top of file
-□ Import paths are correct (verified against file structure)
-□ No import errors would occur
-□ All types/interfaces are defined
-□ No placeholders like "// ... rest of code"
-□ No TODO comments unless actually needed
-□ Code is syntactically valid
-
-DESIGN → CODE TRANSLATION CHECKS:
-□ Converted pseudocode/algorithms from design into actual TypeScript/React code
-□ Implemented conceptual APIs/interfaces as concrete functions/classes
-□ Added proper TypeScript types (design has concepts, code needs types)
-□ Added error handling (design describes flow, code needs try-catch)
-□ Implemented edge cases (design mentions them, code handles them)
-□ Used appropriate libraries/frameworks (design suggests, code uses actual imports)
-
-LANGUAGE CHECKS:
-□ All variable names are in English
-□ All function names are in English
-□ All comments are in English
-□ No non-English text in code (comments, variables, types)
-□ Translated any non-English comments/identifiers to English
-
-MINIMAL CHANGES CHECKS (MOST CRITICAL):
-□ Used <edit> tags for modifications (only changed necessary code sections)
-□ <search> blocks contain exact code to find (no more, no less)
-□ <replace> blocks contain only new code (no unchanged surrounding code)
-□ Reviewed ORIGINAL FILES completely before creating <edit> blocks
-□ Did NOT regenerate entire files when only small changes needed
-□ Used <file> tags ONLY for brand new files
-□ Preserved all unrelated code (it stays untouched automatically with <edit>)
-□ Only targeted specific lines/sections that need changes
-
-DOUBLE SANITY CHECKS:
-1. Am I modifying an existing file?
-   → USUALLY use <edit> tags (efficient)
-   → EXCEPT for refactoring: Use <file> tags (see below)
-2. Am I creating a new file? → Use <file> tags with complete content
-3. Is my <search> block exact? → Copy-paste exact code from ORIGINAL FILES
-4. Does my <replace> block have unchanged code? → Remove it, keep only changes
-
-⚠️ EXCEPTION: When to use <file> instead of <edit> for modifications:
-- Fixing import errors (must update ALL usage in file)
-- Refactoring identifiers (renaming, API changes)
-- Multiple related changes scattered throughout file
-- When <edit> failed before (pattern not found)
-→ In these cases: Use <file> tags to ensure ALL changes are made
-
-If using <file> tags for simple modification → STOP! Use <edit> instead.
-
-TASK CHECKS:
-□ I provided a summary explanation after all file operations (REQUIRED!)
-□ Summary explains what I did and why (in plain text outside XML tags)
-□ I followed my plan exactly (no scope creep)
-□ I only modified files that need changes
-□ Changes satisfy the primary task
-
-DESIGN CONFORMANCE CHECKS:
-□ Implementation follows DESIGN DOCUMENT architecture
-□ Used components/patterns specified in DESIGN DOCUMENT
-□ Code structure matches DESIGN DOCUMENT conventions
-□ If DIRECTIVE changed requirements, I still followed DESIGN's architectural patterns
-
-TYPE & RUNTIME CHECKS:
-□ No TypeScript errors (mentally verify strict typing)
-□ No implicit any introduced
-□ All possibly-undefined values are guarded or defaulted (e.g., projectId, language)
-□ Null vs undefined handled consistently (convert null → undefined at boundaries)
-
-STYLE-ONLY CHANGE CHECKS (if applicable):
-□ No removal of existing imports/state/effects/providers unrelated to style
-□ No logic refactors; only className/styles/glue code adjusted
-□ Component integration preserves previous behavior
-
-If ANY checkbox is unchecked, FIX IT before outputting.
-</self_verification>
-
-================================================================================
-OUTPUT STRUCTURE
-================================================================================
-
-CRITICAL OUTPUT RULES:
-
-**FORMAT 1: Modifying EXISTING files** (PREFERRED - use this 90% of the time!)
-<edit path="src/components/Button.tsx">
-<search>
-[exact code to find - must match perfectly]
-</search>
-<replace>
-[new code to replace with]
-</replace>
-</edit>
-
-**FORMAT 2: Adding to END of existing files** (TOKEN EFFICIENT!)
-<append path="src/utils.ts">
-[NEW code to add at the end - don't repeat existing code!]
-</append>
-
-**FORMAT 3: Creating NEW files** (only for files that don't exist yet)
-<file path="src/components/NewButton.tsx">
-[COMPLETE file content - write EVERY line]
-</file>
-
-**FORMAT 4: Deleting files**
-<delete path="src/components/OldButton.tsx" />
-
-**FORMAT 5: Summary response** (REQUIRED - explain what you did!)
-After all file/edit operations, provide a brief summary outside XML tags.
+# Output Format Rules
 
 {{> base/text-response-format}}
 
-Example:
-```
-<file path="src/Button.tsx">
-...
-</file>
+════════════════════════════════════════════════════════════════════════════════
+## 🎯 XML TAG REFERENCE
+════════════════════════════════════════════════════════════════════════════════
 
+### Tool Use: Creating New Files & Running Commands
+
+**Syntax:**
+```xml
+<tool_use>
+  <name>TOOL_NAME</name>
+  <parameters>
+    <param_name>value</param_name>
+  </parameters>
+</tool_use>
+```
+
+**Tool 1: write_file** - Create a new file
+```xml
+<tool_use>
+  <name>write_file</name>
+  <parameters>
+    <path>src/components/Button.tsx</path>
+    <content>import React from 'react';
+
+export function Button({ children }: { children: React.ReactNode }) {
+  return <button className="btn">{children}</button>;
+}</content>
+  </parameters>
+</tool_use>
+```
+
+**Tool 2: run_command** - Execute shell command
+```xml
+<tool_use>
+  <name>run_command</name>
+  <parameters>
+    <command>npm install</command>
+  </parameters>
+</tool_use>
+```
+
+**Tool 3: apply_patch** - Apply multiple edits (advanced)
+```xml
+<tool_use>
+  <name>apply_patch</name>
+  <parameters>
+    <path>src/App.tsx</path>
+    <patch>diff format patch content</patch>
+  </parameters>
+</tool_use>
+```
+
+────────────────────────────────────────────────────────────────────────────────
+
+### Edit: Modifying Existing Files
+
+**Syntax:**
+```xml
+<edit path="file/path">
+<search>exact code to find</search>
+<replace>new code</replace>
+</edit>
+```
+
+**Example 1: Add import**
+```xml
+<edit path="src/pages/MainPage.tsx">
+<search>
+import { useState, useEffect } from 'react';
+import { Header } from '@/components/Header';
+</search>
+<replace>
+import { useState, useEffect } from 'react';
+import { TabMenu } from '@/components/TabMenu';
+import { Header } from '@/components/Header';
+</replace>
+</edit>
+```
+
+**Example 2: Modify function**
+```xml
+<edit path="src/components/Button.tsx">
+<search>
+export function Button() {
+  return <button>Click</button>;
+}
+</search>
+<replace>
+export function Button({ onClick }: { onClick: () => void }) {
+  return <button onClick={onClick}>Click</button>;
+}
+</replace>
+</edit>
+```
+
+**Example 3: Multiple edits to same file**
+```xml
 <edit path="src/App.tsx">
-...
+<search>
+import { Header } from './components/Header';
+</search>
+<replace>
+import { Header } from './components/Header';
+import { Footer } from './components/Footer';
+</replace>
 </edit>
 
-I've successfully implemented the button feature with the following changes:
-
-1. **Created Button component** - Reusable button with props (onClick, label, variant)
-2. **Updated App.tsx** - Integrated the new button with event handlers
-3. **Added click handler** - Alert on button click
-
-The button is now ready to use with full TypeScript support and styled variants.
+<edit path="src/App.tsx">
+<search>
+      <Header />
+    </div>
+  );
+}
+</search>
+<replace>
+      <Header />
+      <Footer />
+    </div>
+  );
+}
+</replace>
+</edit>
 ```
 
-ABSOLUTELY FORBIDDEN:
-❌ Using <file> tags to modify existing files (use <edit>!)
-❌ Incomplete <search> blocks (must match exactly)
-❌ Including unchanged code in <replace> blocks
-❌ Placeholder paths like "path/to/file.tsx"
-❌ Comments in JSON files (package.json, tsconfig.json, etc.) - JSON spec forbids comments!
-❌ Unclosed XML tags
+────────────────────────────────────────────────────────────────────────────────
 
-YOU MUST:
-✅ Use <edit> for modifications (saves 90% tokens!)
-✅ Use <append> to add code at end of file (even more efficient!)
-✅ <search> block = exact copy from original file
-✅ <replace> block = only the new/changed code
-✅ Use <file> only for brand new files
-✅ Write complete content in <file> blocks
-✅ Close all XML tags properly
+### Completion Signal
 
-NOW EXECUTE YOUR PLAN. 
-
-FINAL REMINDERS BEFORE YOU OUTPUT:
-1. **Modifying existing file?** → Use <edit> tags (mandatory!)
-2. **Adding to end of file?** → Use <append> tags (token efficient!)
-3. **Creating new file?** → Use <file> tags with complete content
-4. **<search> block** → Must match original file EXACTLY
-5. **<replace> block** → Only the new/changed code
-6. **<append> block** → Only the new code to add
-7. Use ACTUAL file paths from ORIGINAL FILES
-8. **End with summary** → Explain what you did in plain text (REQUIRED!)
-
-⚠️ If you're about to use <file> tags for a modification → STOP! Use <edit> instead!
-
-📝 OUTPUT STRUCTURE:
-```
-<file>...</file>         ← File operations first
-<edit>...</edit>
-
-Summary explanation...   ← Plain text summary REQUIRED!
+```xml
+<done>true</done>
 ```
 
-{{> base/tool-calling-rules}}
+**Output this when your task is complete.**
 
+For feature tasks, output ONLY code + `<done>true</done>` - NO summary!
+
+════════════════════════════════════════════════════════════════════════════════
+## ⚠️ CRITICAL: `<search>` BLOCK RULES
+════════════════════════════════════════════════════════════════════════════════
+
+**The `<search>` block must match EXACTLY including:**
+- ✅ Whitespace (spaces, tabs)
+- ✅ Line breaks
+- ✅ Comments
+- ✅ All characters
+
+**Example - This WORKS:**
+```xml
+<search>
+export function Button() {
+  return <button>Click</button>;
+}
+</search>
+```
+
+**Example - This FAILS:**
+```xml
+<search>
+export function Button() {
+return <button>Click</button>;
+}
+</search>
+```
+❌ Missing indentation on `return` statement
+
+**Example - This FAILS:**
+```xml
+<search>
+export function Button(){
+  return <button>Click</button>;
+}
+</search>
+```
+❌ Missing space before `{` in function declaration
+
+────────────────────────────────────────────────────────────────────────────────
+
+### How to Get `<search>` Right
+
+1. **Copy EXACTLY from ORIGINAL FILES section** (if file exists)
+2. **Include enough context** to make the search unique
+3. **Test mentally**: Would this pattern appear multiple times? If yes, add more context.
+
+**BAD - Too vague:**
+```xml
+<search>
+return <button>Click</button>;
+</search>
+```
+(Might match multiple buttons)
+
+**GOOD - Specific context:**
+```xml
+<search>
+export function Button() {
+  return <button>Click</button>;
+}
+</search>
+```
+(Unique to this function)
+
+════════════════════════════════════════════════════════════════════════════════
+## 📋 SELF-VERIFICATION CHECKLIST
+════════════════════════════════════════════════════════════════════════════════
+
+Before outputting, verify:
+
+### Format ✓
+- [ ] Used `<edit>` for modifying existing files (NOT `<file>`)
+- [ ] Used `<tool_use>` with `write_file` for creating new files
+- [ ] Paths are actual project paths (no "path/to/file.tsx" placeholders)
+- [ ] `<search>` blocks match EXACTLY (including whitespace)
+- [ ] File content is pure source code (no ```, no markdown)
+- [ ] All XML tags properly closed
+
+### Content ✓
+- [ ] All imports present at top of file
+- [ ] Import paths are correct (check tsconfig.json paths)
+- [ ] All types/interfaces defined
+- [ ] No placeholders like "// ... rest of code"
+- [ ] Code is syntactically valid
+- [ ] No incomplete functions or missing closing braces
+
+### Language ✓
+- [ ] All identifiers in English (variables, functions, types)
+- [ ] All comments in English
+- [ ] No non-English text in code
+
+### Task Alignment ✓
+- [ ] Followed task description exactly
+- [ ] Did NOT add features outside scope
+- [ ] For **feature tasks**: Did NOT run validation commands
+- [ ] For **feature tasks**: Did NOT create documentation/examples/tests
+- [ ] For **feature tasks**: Did NOT create config files
+
+════════════════════════════════════════════════════════════════════════════════
+## 💡 TIPS FOR SUCCESS
+════════════════════════════════════════════════════════════════════════════════
+
+### Tip 1: Prefer `<edit>` over `write_file` for existing files
+- `<edit>` is more efficient - shows only changes
+- `write_file` requires writing entire file content
+- Use `write_file` ONLY for NEW files
+
+### Tip 2: For modifications, copy from ORIGINAL FILES
+- Don't trust your memory for exact formatting
+- Copy the exact code from the ORIGINAL FILES section
+- Include 3-5 lines of context before and after the change
+
+### Tip 3: Only put CHANGED code in `<replace>`
+```xml
+<!-- ❌ WRONG - includes unchanged code -->
+<search>
+function foo() {
+  const x = 1;
+  const y = 2;
+  return x + y;
+}
+</search>
+<replace>
+function foo() {
+  const x = 1;
+  const y = 2;
+  const z = 3;  // Added this
+  return x + y + z;  // Changed this
+}
+</replace>
+
+<!-- ✅ CORRECT - only changed section -->
+<search>
+  const y = 2;
+  return x + y;
+}
+</search>
+<replace>
+  const y = 2;
+  const z = 3;
+  return x + y + z;
+}
+</replace>
+```
+
+### Tip 4: Path aliases require configuration
+- `@/components` → needs tsconfig.json `"paths": { "@/*": ["./src/*"] }`
+- `~/utils` → needs tsconfig.json + build tool config
+- Relative imports `./Button` → always work, no config needed
+
+### Tip 5: Multiple edits apply in order
+If you have multiple `<edit>` blocks for the same file:
+- They execute top-to-bottom
+- Each edit sees the result of previous edits
+- Plan your edits accordingly
+
+### Tip 6: For large changes, consider `write_file`
+If you're modifying > 50% of a file:
+- Using `write_file` might be clearer
+- Write the complete new file content
+- Ensures no search/replace mismatches
+
+════════════════════════════════════════════════════════════════════════════════
+## 🚫 COMMON MISTAKES TO AVOID
+════════════════════════════════════════════════════════════════════════════════
+
+❌ **MISTAKE 1**: Using `<file>` instead of `<edit>` for existing files
+```xml
+<!-- WRONG -->
+<file path="src/App.tsx">
+// entire file content...
+</file>
+
+<!-- CORRECT -->
+<edit path="src/App.tsx">
+<search>existing code</search>
+<replace>new code</replace>
+</edit>
+```
+
+❌ **MISTAKE 2**: Wrapping file content in markdown
+```xml
+<!-- WRONG -->
+<tool_use>
+  <name>write_file</name>
+  <parameters>
+    <path>src/Button.tsx</path>
+    <content>```typescript
+export function Button() {}
+```</content>
+  </parameters>
+</tool_use>
+
+<!-- CORRECT -->
+<tool_use>
+  <name>write_file</name>
+  <parameters>
+    <path>src/Button.tsx</path>
+    <content>export function Button() {}</content>
+  </parameters>
+</tool_use>
+```
+
+❌ **MISTAKE 3**: Placeholder paths
+```xml
+<!-- WRONG -->
+<edit path="path/to/your/file.tsx">
+
+<!-- CORRECT -->
+<edit path="src/components/Button.tsx">
+```
+
+❌ **MISTAKE 4**: Using "..." or placeholders
+```xml
+<!-- WRONG -->
+<content>
+import React from 'react';
+// ... other imports ...
+
+export function App() {
+  // ... component logic ...
+}
+</content>
+
+<!-- CORRECT -->
+<content>
+import React from 'react';
+import { Header } from './Header';
+import { Footer } from './Footer';
+
+export function App() {
+  return (
+    <div>
+      <Header />
+      <Footer />
+    </div>
+  );
+}
+</content>
+```
+
+❌ **MISTAKE 5**: Not closing XML tags
+```xml
+<!-- WRONG -->
+<tool_use>
+  <name>write_file</name>
+  <parameters>
+    <path>file.ts</path>
+    <content>code</content>
+  </parameters>
+<!-- Missing </tool_use> -->
+
+<!-- CORRECT -->
+<tool_use>
+  <name>write_file</name>
+  <parameters>
+    <path>file.ts</path>
+    <content>code</content>
+  </parameters>
+</tool_use>
+```
+
+════════════════════════════════════════════════════════════════════════════════
+
+**If you follow these rules, your code will be applied successfully!**

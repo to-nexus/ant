@@ -305,8 +305,6 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
           priority: errorPriority,
           description: formatErrorDescription(group.violations),
           errors: group.violations.map((v: any) => v.message),
-          validationRequired: true,
-          validationType: 'runtime',
         };
         state.taskQueue?.push(errorTask);
         console.log(`   ${idx + 1}. "${errorTask.name}" (P${errorTask.priority}) - ${group.violations.length} error(s)`);
@@ -587,111 +585,16 @@ Context loading failed. Use tools to explore:
     console.log(`⚡ Using code loaded by decompose (resume mode)\n`);
   }
   
-  // ===== GENERATE EXECUTION PLAN FOR CURRENT TASK =====
+  // ===== TASK PLANNING (No LLM call - just task management) =====
   
-  //  CRITICAL: For retry, minimize context to reduce token usage
-  // Prepare artifacts
-  const artifacts = {
-    directive: state.directive,
-    designDoc: isRetry ? undefined : state.design,      // ❌ Skip design in retry (not needed for replanning)
-    prdSpec: isRetry ? undefined : state.prd,           // ❌ Skip PRD in retry (not needed for replanning)
-    currentCode: currentCode,  // ✅ Use reloaded code (already filtered by plan node)
-    originalFiles: isRetry ? undefined : state.codeHead, // ❌ Skip original in retry (not needed for replanning)
-    currentTask: nextTask ? {  // ✅ Pass current task info
-      name: nextTask.name,
-      type: nextTask.type,
-      priority: nextTask.priority,
-      description: nextTask.description
-    } : undefined
-  };
-
+  // ✅ Note: Plan node does NOT call LLM anymore.
+  // It only manages task queue, timing, and Kanban updates.
+  // Actual execution planning happens in codeGen node's prompt.
+  
   try {
-    // Build prompt using PromptEngine with taskType
-    const result = await engine.buildPlanPrompt(
-      "code",
-      state.context,
-      artifacts,
-      state.codeMode,
-      nextTask.type  // Pass taskType to engine for language-specific constraints
-    );
-    
-    console.log(`🎯 Inferred mode: ${result.modeConfig.mode}`);
-    
-    // If this is a retry of the SAME task, add retry context
-    let promptMessages = result.formatted.messages;
-    
-    if (isRetry && enforcementReason && !shouldClearEnforcement) {
-      // ✅ Limit previous attempts to last 3 (token optimization)
-      const recentAttempts = (state.previousAttempts || []).slice(-3);
-      const previousAttemptsText = formatPreviousAttempts(recentAttempts);
-      
-      // Format feature tasks reminder
-      const featureReminder = state.featureTasks && state.featureTasks.size > 0 ? `
-🎯 ORIGINAL FEATURE GOALS (DO NOT FORGET):
-${Array.from(state.featureTasks.values()).map(f => 
-  `  ${f.completed ? '✅' : '⏳'} ${f.name} - ${f.description}`
-).join('\n')}
-` : '';
-      
-      const taskContext = `
-🎯 CURRENT TASK (${state.taskQueue?.size() || 0} tasks remaining after this):
-  Name: ${nextTask.name}
-  Type: ${nextTask.type} ${
-    nextTask.type === 'setup' ? '(Config files only)' :
-    nextTask.type === 'feature' ? '(Implement this feature)' : 
-    '(Fix errors to unblock)'
-  }
-  Description: ${nextTask.description}
-  ${nextTask.errors ? `Errors to fix: ${nextTask.errors.length}` : ''}
-
-${
-  nextTask.type === 'setup' ? '🔧 Generate configuration files ONLY (no application code)!' :
-  nextTask.type === 'error' ? '⚠️ This is a BLOCKER task - fix quickly and correctly to resume feature implementation!' : 
-  '🎯 Focus on implementing this feature properly!'
-}
-`;
-      
-      const retryContext = `
-${featureReminder}
-🔴 PREVIOUS ATTEMPT FAILED - VALIDATION ERRORS:
-
-${enforcementReason}
-${taskContext}
-📝 PREVIOUS ATTEMPTS HISTORY (${state.previousAttempts?.length || 0} attempts):
-${previousAttemptsText}
-
-⚠️ CRITICAL: DO NOT REPEAT THE SAME APPROACH!
-${nextTask.type === 'error' ? 
-  'These are BLOCKING errors - fix them quickly and correctly.' : 
-  'Work on the feature, but if errors occur, they will be handled separately.'}
-
-🚫 FORBIDDEN ACTIONS:
-1. ❌ Adding comments to JSON files (package.json, tsconfig.json)
-2. ❌ Changing config to avoid missing files (CREATE the files instead)
-3. ❌ Adding only main package without peer dependencies
-
-📋 LEARN FROM FAILURES AND TRY A DIFFERENT APPROACH
-`;
-      
-      promptMessages = result.formatted.messages.map((msg, idx) => {
-        if (idx === promptMessages.length - 1 && msg.role === 'user') {
-          return {
-            ...msg,
-            content: retryContext + '\n\n' + msg.content
-          };
-        }
-        return msg;
-      });
-    }
-    
-    const planText = '';
-    const codeMode = result.modeConfig.mode;
-    
     const updatedState = { 
       ...state,
       currentTask: nextTask,
-      planText,
-      codeMode,
       code: currentCode,  // ✅ Update state with reloaded files
       retries: shouldClearEnforcement ? 0 : state.retries,  // Reset only if new task
       enforcementReason: shouldClearEnforcement ? null : state.enforcementReason,  // Clear only if new task

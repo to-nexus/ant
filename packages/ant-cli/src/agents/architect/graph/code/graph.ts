@@ -101,8 +101,6 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
             type: 'feature' as const,
             priority: TASK_PRIORITIES.FINAL_VERIFICATION,
             description: 'Re-verify all errors are resolved after error fixes',
-            validationRequired: true,
-            validationType: 'runtime' as const,
           };
           state.taskQueue.push(finalTask);
           console.log(`📋 Re-added Final Verification to confirm all errors resolved\n`);
