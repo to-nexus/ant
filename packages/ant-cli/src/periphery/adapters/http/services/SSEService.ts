@@ -136,6 +136,28 @@ export class SSEService {
   }
   
   /**
+   * Send 'end' event to workflow clients to signal job completion
+   */
+  sendWorkflowEndEvent(jobId: string): void {
+    const clients = this.workflowClients.get(jobId);
+    
+    if (!clients || clients.size === 0) {
+      return;
+    }
+    
+    console.log(`[SSEService] Sending 'end' event to ${clients.size} workflow client(s) for job ${jobId}`);
+    
+    clients.forEach(res => {
+      try {
+        res.write(`event: end\ndata: ${JSON.stringify({ jobId })}\n\n`);
+      } catch (error) {
+        console.error(`[SSEService] Failed to send 'end' event to client:`, error);
+        clients.delete(res);
+      }
+    });
+  }
+  
+  /**
    * Send initial state to a newly connected client
    */
   sendInitialState(res: Response, type: SSEMessageType, data: any): void {

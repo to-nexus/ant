@@ -21,6 +21,11 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
   const context = state.context; // Use directly from state
   const retriever = new CodebaseRetriever();
   
+  // ✅ Workflow instrumentation: Enter node
+  if (state.deps?.workflowUpdate && state._httpJobId) {
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'resolve');
+  }
+  
   // ✅ CRITICAL: Skip validation if resuming (taskQueue already exists)
   const isResume = state.taskQueue && !state.taskQueue.isEmpty();
   if (isResume) {

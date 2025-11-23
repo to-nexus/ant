@@ -1,2 +1,0 @@
-📋 DIRECTIVE (User Instructions):
-{{content}}

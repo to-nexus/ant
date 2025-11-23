@@ -1,6 +1,6 @@
 OUTPUT FORMAT:
 
-{{> base/text-response-format}}
+{{> base/injections/text-response-format}}
 
 First, analyze step by step (think through):
 - Is this a new project or existing project?

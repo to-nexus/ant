@@ -94,12 +94,29 @@ export async function docGen(
   let thinking = '';
   let textResponse = '';
   
+  // ✅ Calculate maxTokens based on task line budget
+  let maxTokens = 16000;  // Default
+  
+  if (state.currentTask?.description) {
+    const lineMatch = state.currentTask.description.match(/MAX (\d+) lines/i);
+    if (lineMatch) {
+      const maxLines = parseInt(lineMatch[1]);
+      // Estimate: ~15 tokens per line (conservative for Markdown with formatting)
+      // Add 2000 tokens buffer for XML tags, metadata, and thinking
+      const estimatedTokens = maxLines * 15 + 2000;
+      
+      maxTokens = Math.max(16000, estimatedTokens);  // Ensure sufficient tokens for thinking
+      console.log(`📏 [DocGen] Task line budget: ${maxLines} lines → maxTokens: ${maxTokens}`);
+    }
+  }
+  
   try {
     // ✅ Stream with XML parsing only (no tool calling)
+    // ✅ Thinking is ALWAYS enabled for design jobs
     for await (const event of llmClient.stream(messages, {
       tools: undefined,  // ✅ No tool calling for design job
-      maxTokens: 16000,
-      enableThinking: true,  // ✅ Always enable thinking for design job
+      maxTokens,  // ✅ Dynamic based on line budget (minimum 16000 to support thinking)
+      enableThinking: true,  // ✅ ALWAYS enabled for design jobs
     })) {
       // ✅ Pass to orchestrator for XML parsing (<file>, <append>, <edit>)
       await orchestrator.processEvent(event);
@@ -127,7 +144,8 @@ export async function docGen(
     const buffers = state._bufferManager?.getAllBuffers() || new Map();
     const files = Array.from(buffers.values()).map(buffer => ({
       path: buffer.filePath,
-      content: buffer.content
+      content: buffer.content,
+      actionType: buffer.actionType  // ✅ CRITICAL: Preserve actionType for writeFiles node
     }));
     
     console.log(`\n✅ [DocGen] XML streaming complete (${files.length} files generated)`);
@@ -164,12 +182,58 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
       throw new Error('[DocGen] currentTask is required but not available in state');
     }
     // ✅ Build prompt using PromptEngine
+    // ✅ Load existing design document's last section number
+    // Read only the LAST LINE to get metadata comment
+    let lastSectionNumber = 0;
+    let designDocLines = '';
+    
+    try {
+      const designDocPath = `${state.context.featurePath}/outputs/design/system-design.md`;
+      
+      if (state.deps?.git) {
+        const fileExists = await state.deps.git.fileExists(designDocPath);
+        if (fileExists) {
+          const fullContent = await state.deps.git.readFile(designDocPath);
+          if (fullContent) {
+            // ✅ Strategy 1: Check last line for metadata comment
+            const lastLine = fullContent.trim().split('\n').pop() || '';
+            const metadataMatch = lastLine.match(/<!-- LAST_SECTION: (\d+) -->/);
+            
+            if (metadataMatch) {
+              lastSectionNumber = parseInt(metadataMatch[1]);
+              console.log(`📄 [DocGen] Found metadata: last section = ${lastSectionNumber}`);
+            } else {
+              // ✅ Fallback: Scan full document for section numbers
+              const sectionMatches = fullContent.match(/^## (\d+)\./gm);
+              if (sectionMatches) {
+                const numbers = sectionMatches.map(m => parseInt(m.match(/\d+/)?.[0] || '0'));
+                lastSectionNumber = Math.max(...numbers);
+                console.log(`📄 [DocGen] No metadata found, scanned document: last section = ${lastSectionNumber}`);
+              }
+            }
+            
+            // ✅ Get last 50 lines for context
+            const lines = fullContent.split('\n');
+            designDocLines = lines.slice(-50).join('\n');
+            
+            console.log(`📄 [DocGen] Next section should be: ${lastSectionNumber + 1}`);
+          }
+        } else {
+          console.log(`📄 [DocGen] No existing design document found (first task)`);
+        }
+      }
+    } catch (error) {
+      console.log(`📄 [DocGen] Could not load existing design document (probably first task):`, error);
+    }
+    
     const promptResult = await promptEngine.buildExecutePrompt(
       'design',  // ✅ AgentTask type (not the task object!)
       state.context,
       {
         directive: state.directive || state.spec,
-        designDoc: undefined,  // Design job doesn't use designDoc in execute
+        designDoc: undefined,  // ✅ Don't pass full document - not needed
+        designDocLines,  // ✅ Last 50 lines for context
+        lastSectionNumber,  // ✅ Just pass the number
         previousDesign: state.design,  // Use previousDesign for design job
         prdSpec: state.prd,
         currentCode: state.code,
@@ -202,29 +266,22 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
       }
     }
     
+    // 🔍 Debug: Check if "Chapter Count" rule is in prompt
+    const hasChapterCountRule = basePrompt.includes('Chapter Count') || basePrompt.includes('ONE task = ONE chapter');
+    console.log(`📄 [DocGen] Prompt includes "Chapter Count" rule: ${hasChapterCountRule}`);
+    
     // ✅ CRITICAL: Add runtime context (task, plan, existing design, file format)
     // PromptEngine provides templates, buildRuntimeContext adds execution context
     const runtimeContext = buildRuntimeContext(state);
     
-    // ✅ DEBUG: Type check before merge
-    console.log(`\n🔍 [DocGen] Before merge:`);
-    console.log(`   basePrompt type: ${typeof basePrompt}, length: ${basePrompt.length}`);
-    console.log(`   runtimeContext type: ${typeof runtimeContext}, length: ${runtimeContext.length}`);
-    
     // ✅ Merge: PromptEngine base + runtime context
     const mergedContent = `${basePrompt}\n\n${runtimeContext}`;
-    console.log(`   mergedContent type: ${typeof mergedContent}, length: ${mergedContent.length}`);
     
-    // ✅ DEBUG: Search for markdown-output-format in prompt
+    // ✅ Validate: Ensure XML output format instructions are present
     const hasMarkdownFormat = mergedContent.includes('<file path=') || mergedContent.includes('Markdown File Output Format');
-    console.log(`\n🔍 [DocGen] Markdown format check: ${hasMarkdownFormat}`);
-    console.log(`\n📜 [DocGen] Prompt TAIL (last 3000 chars):\n${mergedContent.slice(-3000)}\n`);
     
     if (!hasMarkdownFormat) {
-      console.log(`\n⚠️  WARNING: Markdown output format NOT found in prompt!`);
-      console.log(`   Prompt length: ${mergedContent.length} chars`);
-      console.log(`   First 2000 chars:\n${mergedContent.substring(0, 2000)}\n`);
-      console.log(`   Last 2000 chars:\n${mergedContent.slice(-2000)}\n`);
+      console.warn(`⚠️  WARNING: Markdown output format NOT found in prompt! (length: ${mergedContent.length} chars)`);
     }
     
     messages.push({

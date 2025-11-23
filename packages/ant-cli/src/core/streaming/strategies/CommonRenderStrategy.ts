@@ -129,8 +129,29 @@ export class CommonRenderStrategy implements IRenderStrategy {
   
   private async renderResponse(action: ParsedAction): Promise<void> {
     const content = action.data.content;
-    if (!content || !content.trim()) return;
     
+    // ✅ CRITICAL: Filter out empty/whitespace-only content
+    // This prevents empty code blocks from appearing in Chat UI
+    if (!content || !content.trim()) {
+      console.log(`[Render] 🚫 Skipping empty response content`);
+      return;
+    }
+    
+    // ✅ Also skip if content is ONLY newlines/spaces (no visible text)
+    if (content.replace(/[\s\n\r]/g, '').length === 0) {
+      console.log(`[Render] 🚫 Skipping whitespace-only response: ${JSON.stringify(content)}`);
+      return;
+    }
+    
+    // ✅ CRITICAL: Filter out XML markdown code block tags
+    // LLM sometimes wraps XML streaming output in ```xml ... ``` which creates empty code blocks in UI
+    const trimmed = content.trim();
+    if (trimmed === '```xml' || trimmed === '```') {
+      console.log(`[Render] 🚫 Skipping XML markdown block tag: ${JSON.stringify(content)}`);
+      return;
+    }
+    
+    console.log(`[Render] 📝 Sending response: ${content.length} chars, content: ${JSON.stringify(content.substring(0, 50))}`);
     await this.chatAPI.sendLLMEvent({
       type: 'text',
       text: content  // ✅ NEW: text 필드 사용

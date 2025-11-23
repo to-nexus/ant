@@ -60,7 +60,8 @@ export class TemplateComposer {
           : 'CREATION MODE: Build from scratch',
         currentCode: assembled.currentCode || '',
         designDoc: assembled.designDoc || '',
-        designDocLines: assembled.designDoc ? assembled.designDoc.split('\n').length : 0,  // ✅ Line count for length tracking
+        designDocLines: assembled.designDocLines || '',  // ✅ Last 50 lines text (not count)
+        lastSectionNumber: assembled.lastSectionNumber ?? 0,  // ✅ Last chapter number
         currentTask: assembled.currentTask || null,
         projectPath: (context as any).projectPath || context.workingDir || '/path/to/project'
       }

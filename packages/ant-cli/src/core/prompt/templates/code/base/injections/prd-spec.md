@@ -1,3 +1,0 @@
-📝 PRD/SPEC:
-{{content}}
-

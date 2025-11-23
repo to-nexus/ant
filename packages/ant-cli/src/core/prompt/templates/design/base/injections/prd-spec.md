@@ -1,2 +1,0 @@
-📄 PRODUCT REQUIREMENTS DOCUMENT (PRD):
-{{content}}

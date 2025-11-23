@@ -13,23 +13,29 @@ Handlebars.registerHelper("eq", (a, b) => a === b);
 Handlebars.registerHelper("ne", (a, b) => a !== b);
 Handlebars.registerHelper("and", (a, b) => a && b);
 Handlebars.registerHelper("or", (a, b) => a || b);
+Handlebars.registerHelper("add", (a, b) => Number(a) + Number(b));
 
-// ✅ Register base partials (shared templates)
+// ✅ Register base partials (always included for all agents/phases)
 const basePartialsPath = join(__dirname, "../../../core/prompt/templates/base");
 Promise.all([
-  fs.readFile(join(basePartialsPath, "output-format-markdown.md"), "utf8")
-    .then(content => Handlebars.registerPartial("base/output-format-markdown", content))
-    .catch(() => {}),  // Graceful degradation
-  fs.readFile(join(basePartialsPath, "text-response-format.md"), "utf8")
-    .then(content => Handlebars.registerPartial("base/text-response-format", content))
-    .catch(() => {}),  // Graceful degradation
-  fs.readFile(join(basePartialsPath, "tool-calling-rules.md"), "utf8")
-    .then(content => Handlebars.registerPartial("base/tool-calling-rules", content))
-    .catch(() => {}),  // Graceful degradation
   fs.readFile(join(basePartialsPath, "architect-role.md"), "utf8")
     .then(content => Handlebars.registerPartial("base/architect-role", content))
-    .catch(() => {})   // Graceful degradation
-]);
+    .catch(() => {})
+]).catch(() => {});
+
+// ✅ Register code-specific base injections (conditionally used by code templates)
+const codeBaseInjectionsPath = join(__dirname, "../../../core/prompt/templates/code/base/injections");
+Promise.all([
+  fs.readFile(join(codeBaseInjectionsPath, "text-response-format.md"), "utf8")
+    .then(content => Handlebars.registerPartial("code/text-response-format", content))
+    .catch(() => {}),
+  fs.readFile(join(codeBaseInjectionsPath, "tool-calling-rules.md"), "utf8")
+    .then(content => Handlebars.registerPartial("code/tool-calling-rules", content))
+    .catch(() => {}),
+  fs.readFile(join(codeBaseInjectionsPath, "output-format-markdown.md"), "utf8")
+    .then(content => Handlebars.registerPartial("code/output-format-markdown", content))
+    .catch(() => {})
+]).catch(() => {});
 
 /**
  * FilePromptAdapter - File system implementation of PromptPort

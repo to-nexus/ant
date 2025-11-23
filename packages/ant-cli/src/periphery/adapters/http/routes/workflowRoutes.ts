@@ -115,6 +115,11 @@ export function createWorkflowRoutes(deps: {
     const { jobId } = req.params;
     const { action, nodeId, actorId, taskInfo, llmInfo } = req.body;
     
+    console.log(`\n📨 [WorkflowRoutes] Received update: ${action} for job ${jobId}`);
+    if (nodeId) console.log(`   Node: ${nodeId}`);
+    if (actorId) console.log(`   Actor: ${actorId}`);
+    if (taskInfo) console.log(`   Task: ${taskInfo.name}`);
+    
     try {
       switch (action) {
         case 'enterNode':

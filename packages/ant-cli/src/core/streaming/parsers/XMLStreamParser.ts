@@ -477,15 +477,22 @@ export class XMLStreamParser implements IStreamParser {
           
           // 1️⃣ HIGHEST PRIORITY: Check if there's text BEFORE an XML tag
           // Example: "Here is the code:\n<file path=..." → emit "Here is the code:\n"
-          const beforeTagMatch = this.buffer.match(/^(.+?)(?=<(?:thinking|tasks|file|edit|delete)[\s>])/s);
+          const beforeTagMatch = this.buffer.match(/^(.+?)(?=<(?:thinking|tasks|file|edit|delete|append)[\s>])/s);
           if (beforeTagMatch) {
             const content = beforeTagMatch[1];
             this.buffer = this.buffer.substring(content.length);
-            if (content.trim() || content.includes('\n')) {  // Emit if has content or newline
+            
+            // ✅ CRITICAL: Only emit if content has actual text (not just whitespace/newlines)
+            const hasActualContent = content.trim().length > 0 || content.includes('\n');
+            const isNotOnlyWhitespace = content.replace(/[\s\n\r]/g, '').length > 0;
+            
+            if (hasActualContent && isNotOnlyWhitespace) {
               actions.push({
                 type: 'response',
                 data: { content }
               });
+            } else {
+              console.log(`[XMLParser] 🚫 Skipping whitespace-only content before tag: ${JSON.stringify(content.substring(0, 50))}`);
             }
             continueParsingLoop = true;
             continue;
@@ -510,10 +517,16 @@ export class XMLStreamParser implements IStreamParser {
             // Emit everything up to and including the last newline
             const content = this.buffer.substring(0, lastNewline + 1);
             this.buffer = this.buffer.substring(lastNewline + 1);
-            actions.push({
-              type: 'response',
-              data: { content }
-            });
+            
+            // ✅ CRITICAL: Only emit if content has actual visible text
+            if (content.replace(/[\s\n\r]/g, '').length > 0) {
+              actions.push({
+                type: 'response',
+                data: { content }
+              });
+            } else {
+              console.log(`[XMLParser] 🚫 Skipping whitespace-only line content`);
+            }
             continueParsingLoop = true;
             continue;
           }
@@ -523,10 +536,16 @@ export class XMLStreamParser implements IStreamParser {
           if (this.buffer.length > 200 && !hasPotentialTagStart) {
             const content = this.buffer;
             this.buffer = '';
-            actions.push({
-              type: 'response',
-              data: { content }
-            });
+            
+            // ✅ CRITICAL: Only emit if content has actual visible text
+            if (content.replace(/[\s\n\r]/g, '').length > 0) {
+              actions.push({
+                type: 'response',
+                data: { content }
+              });
+            } else {
+              console.log(`[XMLParser] 🚫 Skipping whitespace-only large buffer`);
+            }
             continueParsingLoop = true;
             continue;
           }
@@ -546,15 +565,23 @@ export class XMLStreamParser implements IStreamParser {
     }
     
     if (this.buffer.length > 0) {
+      // ✅ Check if buffer has actual content (not just whitespace)
+      const hasActualContent = this.buffer.replace(/[\s\n\r]/g, '').length > 0;
+      
       // If inside thinking, emit as thinking
       if (this.context.insideThinking) {
-        actions.push({
-          type: 'thinking',
-          data: { content: this.buffer }
-        });
+        if (hasActualContent) {
+          actions.push({
+            type: 'thinking',
+            data: { content: this.buffer }
+          });
+        } else {
+          console.log(`[XMLParser] 🚫 Skipping whitespace-only thinking in finalize`);
+        }
       }
       // If inside file, emit as file content
       else if (this.context.insideFile && this.context.currentFilePath) {
+        // ✅ File content: Always emit (even whitespace, as it may be meaningful)
         actions.push({
           type: 'file_content',
           data: {
@@ -563,14 +590,15 @@ export class XMLStreamParser implements IStreamParser {
           }
         });
       }
-      // Otherwise, emit as response
-      else if (!this.context.insideTasks) {
+      // Otherwise, emit as response (ONLY if has actual content)
+      else if (!this.context.insideTasks && hasActualContent) {
         // Don't emit if inside <tasks> (should be hidden)
-        // ✅ Emit even if only whitespace - formatting matters!
         actions.push({
           type: 'response',
           data: { content: this.buffer }
         });
+      } else if (!this.context.insideTasks && !hasActualContent) {
+        console.log(`[XMLParser] 🚫 Skipping whitespace-only response in finalize`);
       }
       
       this.buffer = '';

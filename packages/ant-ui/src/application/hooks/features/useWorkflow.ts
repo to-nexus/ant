@@ -2,20 +2,24 @@
  * Application Layer: Workflow View Adapter Hook
  * 
  * Responsibility:
- * - Select Workflow data from Domain Store
- * - No business logic, no Infrastructure access
+ * - Manage Workflow SSE connection with queue-based display
+ * - Ensure minimum display time for each node
  */
 
 import { useStore } from '@/domain/store';
+import { useWorkflowSSE } from '@/presentation/components/workflow/hooks';
 import type { WorkflowRealtimeState } from '@/domain/models/workflow';
 
 interface UseWorkflowReturn {
-  workflowData: WorkflowRealtimeState | null;
+  workflowData: WorkflowRealtimeState | null;  // ✅ displayedState from queue
 }
 
 export function useWorkflow(): UseWorkflowReturn {
-  // ✅ Select data from Domain Store
-  const workflowData = useStore((state) => state.workflow);
+  // ✅ Get current jobId from store
+  const currentJobId = useStore((state) => state.currentJobId);
+  
+  // ✅ Use WorkflowSSE hook with queue (ensures minimum display time)
+  const { displayedState } = useWorkflowSSE(currentJobId);
 
-  return { workflowData };
+  return { workflowData: displayedState };
 }

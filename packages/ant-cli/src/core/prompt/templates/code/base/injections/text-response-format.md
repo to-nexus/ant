@@ -19,7 +19,7 @@ The configuration includes Next.js 14, React 18, TypeScript 5.x, TailwindCSS 3.x
 Created configuration files:
 - package.json with ALL dependencies
 - tsconfig.json with strict mode enabled
-- tailwind.config.ts with design tokens from Chapter 3
+- tailwind.config.ts with design tokens from Design System chapter
 - next.config.js, postcss.config.js, .eslintrc.json
 ```
 
@@ -105,7 +105,7 @@ src/presentation/
 #### Configuration Summary:
 ```
 ✅ GOOD:
-Created project configuration with package.json (Next.js 14, React 18, TypeScript 5.x, TailwindCSS 3.x, testing libraries, ESLint), tsconfig.json (strict mode per spec), tailwind.config.ts (all design tokens defined in Chapter 3), next.config.js, postcss.config.js, and .eslintrc.json.
+Created project configuration with package.json (Next.js 14, React 18, TypeScript 5.x, TailwindCSS 3.x, testing libraries, ESLint), tsconfig.json (strict mode per spec), tailwind.config.ts (all design tokens from design system section), next.config.js, postcss.config.js, and .eslintrc.json.
 
 ❌ BAD:
 Created project configuration with package.json

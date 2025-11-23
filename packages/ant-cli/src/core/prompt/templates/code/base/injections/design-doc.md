@@ -1,3 +1,0 @@
-📐 DESIGN DOCUMENT:
-{{content}}
-

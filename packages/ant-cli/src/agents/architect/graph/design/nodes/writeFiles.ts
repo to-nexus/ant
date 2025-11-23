@@ -59,9 +59,52 @@ export async function writeFiles(state: DesignGraphState): Promise<DesignGraphSt
     const fileDir = path.dirname(absolutePath);
     await gitPort.createDirectory(fileDir);
     
-    // Write file
-    console.log(`   📄 ${file.path}: ${file.content.length} chars`);
-    await gitPort.writeFile(absolutePath, file.content);
+    // ✅ Handle actionType: append vs write (create/edit/delete)
+    const actionType = file.actionType || 'create';
+    
+    if (actionType === 'append') {
+      // ✅ Append to existing file
+      console.log(`   📄 ${file.path}: ${file.content.length} chars (append)`);
+      
+      // Read existing content (if file exists)
+      let existingContent = '';
+      try {
+        const fileExists = await gitPort.fileExists(absolutePath);
+        if (fileExists) {
+          const fileContent = await gitPort.readFile(absolutePath);
+          existingContent = fileContent || '';  // ✅ Handle null case
+          
+          // ✅ Remove old metadata comment (last non-empty line if it's LAST_SECTION)
+          const lines = existingContent.split('\n');
+          // Find last non-empty line
+          let lastLineIndex = lines.length - 1;
+          while (lastLineIndex >= 0 && lines[lastLineIndex].trim() === '') {
+            lastLineIndex--;
+          }
+          
+          if (lastLineIndex >= 0) {
+            const lastLine = lines[lastLineIndex].trim();
+            if (lastLine.match(/^<!-- LAST_SECTION: \d+ -->$/)) {
+              lines.splice(lastLineIndex, 1);  // Remove metadata line
+              existingContent = lines.join('\n');
+              console.log(`   🧹 Removed old metadata comment from line ${lastLineIndex + 1}`);
+            }
+          }
+        }
+      } catch (error) {
+        // File doesn't exist, start fresh
+        console.log(`   ℹ️  File doesn't exist yet, creating: ${file.path}`);
+      }
+      
+      // Append new content (which should include new metadata at the end)
+      const mergedContent = existingContent + '\n' + file.content;
+      await gitPort.writeFile(absolutePath, mergedContent);
+      console.log(`   ✅ Appended ${file.content.length} chars (total: ${mergedContent.length} chars)`);
+    } else {
+      // ✅ Create/overwrite file (create, edit, or delete)
+      console.log(`   📄 ${file.path}: ${file.content.length} chars (${actionType})`);
+      await gitPort.writeFile(absolutePath, file.content);
+    }
   }
   
   console.log(`✅ [writeFiles] ${filesToWrite.length} file(s) saved`);
@@ -71,7 +114,12 @@ export async function writeFiles(state: DesignGraphState): Promise<DesignGraphSt
     const { StreamBufferManager } = await import('../../../../../core/streaming/buffer/StreamBufferManager');
     const projectPath = state.context.featurePath.replace(`/features/${state.context.featureFolder}`, '');
     const jobId = state._httpJobId || `design-${Date.now()}`;
-    const bufferManager = new StreamBufferManager(projectPath, state.context.featureFolder, 'design', jobId);
+    const bufferManager = new StreamBufferManager(projectPath, state.context.featureFolder || 'default', 'design', jobId);
+    
+    // ✅ CRITICAL: Load buffers from disk first before cleanup
+    const loadedBuffers = bufferManager.loadBuffersFromDisk();
+    console.log(`🧹 [writeFiles] Loaded ${loadedBuffers.size} buffer(s) from disk for cleanup`);
+    
     bufferManager.cleanupAll();
     console.log(`🧹 [writeFiles] Buffer files cleaned up`);
   } catch (error) {

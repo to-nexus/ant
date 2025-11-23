@@ -356,16 +356,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
       taskQueue.push(task);
     }
     
-    console.log(`\n✅ Task breakdown complete:`);
-    console.log(`   📋 Total tasks: ${taskQueue.size()}\n`);
-    
-    // Print task summary
-    const tasks = taskQueue.getAll();
-    tasks.forEach((task, index) => {
-      console.log(`   ${index + 1}. ${task.name}`);
-      console.log(`      ${task.description}`);
-      console.log(`      Priority: ${task.priority}\n`);
-    });
+    console.log(`\n✅ Task breakdown complete: ${taskQueue.size()} tasks\n`);
     
     // ✅ CRITICAL: Pop first task and set as currentTask immediately
     const firstTask = taskQueue.pop();

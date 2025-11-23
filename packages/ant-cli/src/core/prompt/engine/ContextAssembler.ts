@@ -9,6 +9,8 @@ export interface AssembledContext {
   // Documents
   directive?: string;
   designDoc?: string;         // For code task
+  designDocLines?: string;    // Line count or summary
+  lastSectionNumber?: number; // Last section number for continuation
   previousDesign?: string;    // For design task
   prdSpec?: string;
   
@@ -87,6 +89,8 @@ export class ContextAssembler {
     artifacts?: {
       directive?: string;
       designDoc?: string;
+      designDocLines?: string;
+      lastSectionNumber?: number;
       prdSpec?: string;
       originalFiles?: string;
       currentCode?: string;
@@ -103,13 +107,32 @@ export class ContextAssembler {
     
     // 0. Add pre-loaded artifacts if provided
     if (artifacts) {
+      console.log(`🔍 [ContextAssembler] Received artifacts:`, {
+        hasDirective: !!artifacts.directive,
+        hasDesignDoc: !!artifacts.designDoc,
+        hasDesignDocLines: !!artifacts.designDocLines,
+        lastSectionNumber: artifacts.lastSectionNumber,
+        hasPrdSpec: !!artifacts.prdSpec,
+        hasCurrentCode: !!artifacts.currentCode,
+        hasCurrentTask: !!artifacts.currentTask,
+      });
+      
       assembled.directive = artifacts.directive;
       assembled.designDoc = artifacts.designDoc;
+      assembled.designDocLines = artifacts.designDocLines;
+      assembled.lastSectionNumber = artifacts.lastSectionNumber;
       assembled.prdSpec = artifacts.prdSpec;
       assembled.currentCode = artifacts.currentCode;
       assembled.currentTask = artifacts.currentTask;
       assembled.retryContext = artifacts.retryContext;
       // Note: originalFiles from artifacts will be overridden by git if available
+      
+      console.log(`🔍 [ContextAssembler] Assembled context:`, {
+        hasDirective: !!assembled.directive,
+        hasDesignDoc: !!assembled.designDoc,
+        hasDesignDocLines: !!assembled.designDocLines,
+        lastSectionNumber: assembled.lastSectionNumber,
+      });
     }
     
     // 1. Load task-specific documents using provided loader
