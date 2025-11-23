@@ -50,9 +50,9 @@ export function FileCard({ content, operation }: FileCardProps) {
   const hasDiffContent = diffBefore || diffAfter;
   const hasAnyContent = hasFileContent || hasDiffContent;
   
-  // ✅ Streaming detection: simplified logic
-  // Show content area when: (1) not collapsed AND has content, OR (2) is active
-  const shouldShowContent = (isActive || !isCollapsed) && (hasAnyContent || isActive);
+  // ✅ UPDATED: Only show content when completed and not collapsed
+  // During loading (isActive), only show header (like collapsed state)
+  const shouldShowContent = !isCollapsed && isCompleted && hasAnyContent;
   
   // ✅ CRITICAL: Use ref to track previous content length for auto-scroll
   const prevScrollLengthRef = useRef(0);
@@ -230,11 +230,11 @@ export function FileCard({ content, operation }: FileCardProps) {
       {shouldShowContent && (
         <div className="border-t border-gray-200 dark:border-gray-700">
           {operation === 'edit' && (diffBefore || diffAfter) ? (
-            // Diff view for edits (real-time streaming)
-            <div ref={contentRef} className="max-h-[300px] overflow-y-auto scrollbar-thin" style={{ overflowAnchor: 'none' }} onScroll={handleScroll}>
+            // Diff view for edits - 4 lines visible (96px)
+            <div ref={contentRef} className="max-h-[96px] overflow-y-auto scrollbar-thin" style={{ overflowAnchor: 'none', lineHeight: '1.5' }} onScroll={handleScroll}>
               {diffBefore && (
                 <div className="bg-red-50 dark:bg-red-900/10">
-                  <pre className="px-4 py-2 text-xs font-mono text-red-800 dark:text-red-300 whitespace-pre-wrap break-words">
+                  <pre className="px-4 py-2 text-xs font-mono text-red-800 dark:text-red-300 whitespace-pre-wrap break-words" style={{ lineHeight: '1.5' }}>
                     {diffBefore.split('\n').map((line, i) => (
                       <div key={i} className="flex">
                         <span className="text-red-600 dark:text-red-400 mr-2">-</span>
@@ -246,7 +246,7 @@ export function FileCard({ content, operation }: FileCardProps) {
               )}
               {diffAfter && (
                 <div className="bg-green-50 dark:bg-green-900/10">
-                  <pre className="px-4 py-2 text-xs font-mono text-green-800 dark:text-green-300 whitespace-pre-wrap break-words">
+                  <pre className="px-4 py-2 text-xs font-mono text-green-800 dark:text-green-300 whitespace-pre-wrap break-words" style={{ lineHeight: '1.5' }}>
                     {diffAfter.split('\n').map((line, i) => (
                       <div key={i} className="flex">
                         <span className="text-green-600 dark:text-green-400 mr-2">+</span>
@@ -258,15 +258,16 @@ export function FileCard({ content, operation }: FileCardProps) {
               )}
             </div>
           ) : (
-            // ✅ File content: Match ThinkingCard structure exactly
-            // Container div with padding and max-height, pre inside with content
+            // ✅ File content with limited height (4 lines visible)
+            // Line height = 1.5 * 12px (text-xs) = 18px per line
+            // 4 lines = 72px + padding (12px top + 12px bottom) = 96px
             <div 
               ref={contentRef}
-              className="px-4 py-3 text-xs font-mono text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900/50 max-h-[300px] overflow-y-auto scrollbar-thin"
-              style={{ overflowAnchor: 'none' }}
+              className="px-4 py-3 text-xs font-mono text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900/50 max-h-[96px] overflow-y-auto scrollbar-thin"
+              style={{ overflowAnchor: 'none', lineHeight: '1.5' }}
               onScroll={handleScroll}
             >
-              <pre className="whitespace-pre-wrap break-words">
+              <pre className="whitespace-pre-wrap break-words" style={{ lineHeight: '1.5' }}>
                 {fileContent}
               </pre>
             </div>
