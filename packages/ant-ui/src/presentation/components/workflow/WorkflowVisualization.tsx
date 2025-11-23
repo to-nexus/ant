@@ -13,7 +13,8 @@ import ReactFlow, {
   Controls,
   BackgroundVariant,
   NodeTypes,
-  Node as RFNode
+  Node as RFNode,
+  ControlButton
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useStore } from '@/domain/store';
@@ -21,6 +22,7 @@ import { WorkflowRealtimeState } from '@/domain/models/workflow';
 import { useGraphMetadata, useGraphLayout } from './hooks';
 import { WorkflowNode, ActorNode } from './nodes';
 import { NodeType } from '@/domain/models/workflow';
+import { Play } from 'lucide-react';  // ✅ Play 아이콘
 
 import { fetchProjectConfig } from '@/infrastructure/http/api';
 
@@ -43,8 +45,7 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
   const selectedFeature = useStore(state => state.selectedFeature);
   const selectedAgent = useStore(state => state.selectedAgent);
   const selectedJobType = useStore(state => state.selectedJobType);
-  const currentJobId = useStore(state => state.currentJobId);
-  const userStoppedJobId = useStore(state => state.userStoppedJobId);
+  const isRunning = useStore(state => state.isRunning);  // ✅ Job 실행 상태
   const theme = useStore(state => state.theme);
   const splitLayout = useStore(state => state.splitLayout);
   
@@ -126,14 +127,33 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
     [baseNodes, expandedNodeId]
   );
   
-  // 메타데이터 로드 완료 or 레이아웃 변경시 fitView 자동 실행
+  // ✅ 페이지 로드/새로고침 시: Job 실행 중이면 활성 노드로 포커스, 아니면 fit to screen
   React.useEffect(() => {
-    if (reactFlowInstance && nodes.length > 0) {
-      // 약간의 딜레이를 주어 DOM 업데이트 후 fitView
-      setTimeout(() => {
-        reactFlowInstance.fitView({ padding: 0.1, duration: 400 });
-      }, 50);
+    if (!reactFlowInstance || nodes.length === 0) return;
+    
+    // Job이 실행 중이고 활성 노드가 있으면 포커스
+    if (isRunning && workflowState?.currentNode) {
+      const currentNodeId = workflowState.currentNode;
+      const node = reactFlowInstance.getNode(currentNodeId);
+      
+      if (node) {
+        const nodeWidth = node.width || 150;
+        const nodeHeight = node.height || 60;
+        const centerX = node.position.x + nodeWidth / 2;
+        const centerY = node.position.y + nodeHeight / 2;
+        
+        reactFlowInstance.setCenter(centerX, centerY, {
+          zoom: 1.3,
+          duration: 800
+        });
+        return;
+      }
     }
+    
+    // Job이 멈춘 상태면 fit to screen
+    setTimeout(() => {
+      reactFlowInstance.fitView({ padding: 0.1, duration: 400 });
+    }, 50);
   }, [reactFlowInstance, nodes.length, splitLayout]);
   
   // ✅ 활성 노드로 자동 포커스 + 줌인
@@ -147,10 +167,7 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
       return;
     }
     
-    // console.log(`[WorkflowVisualization] 🎯 Focusing on displayed node: ${currentNodeId}`); // ✅ Too verbose
-    
     // 노드 중심으로 이동 + 적절한 줌 레벨
-    // position은 노드의 좌측 상단이므로 노드 크기의 절반을 더해서 중심을 구함
     const nodeWidth = node.width || 150;
     const nodeHeight = node.height || 60;
     const centerX = node.position.x + nodeWidth / 2;
@@ -181,6 +198,46 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
     // 같은 노드/Actor를 다시 클릭하면 축소, 다른 것을 클릭하면 확장
     setExpandedNodeId(prev => prev === node.id ? null : node.id);
   }, []);
+  
+  // ✅ 현재 노드 추적 버튼 핸들러
+  const handleTrackCurrentNode = useCallback(() => {
+    if (!reactFlowInstance) return;
+    
+    // Job이 실행 중이고 활성 노드가 있으면 해당 노드로 포커스
+    if (isRunning && workflowState?.currentNode) {
+      const currentNodeId = workflowState.currentNode;
+      const node = reactFlowInstance.getNode(currentNodeId);
+      
+      if (node) {
+        const nodeWidth = node.width || 150;
+        const nodeHeight = node.height || 60;
+        const centerX = node.position.x + nodeWidth / 2;
+        const centerY = node.position.y + nodeHeight / 2;
+        
+        reactFlowInstance.setCenter(centerX, centerY, {
+          zoom: 1.3,
+          duration: 800
+        });
+        return;
+      }
+    }
+    
+    // Job이 멈춘 상태면 첫 번째 노드 (resolve 등)로 포커스
+    if (nodes.length > 0) {
+      const firstNode = reactFlowInstance.getNode(nodes[0].id);
+      if (firstNode) {
+        const nodeWidth = firstNode.width || 150;
+        const nodeHeight = firstNode.height || 60;
+        const centerX = firstNode.position.x + nodeWidth / 2;
+        const centerY = firstNode.position.y + nodeHeight / 2;
+        
+        reactFlowInstance.setCenter(centerX, centerY, {
+          zoom: 1.3,
+          duration: 800
+        });
+      }
+    }
+  }, [reactFlowInstance, isRunning, workflowState, nodes]);
   
   // ========================================
   // 조건부 렌더링 (모든 Hooks 호출 후)
@@ -277,7 +334,16 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
         <Controls 
           showInteractive={false}
           className="workflow-controls"
-        />
+        >
+          {/* ✅ 현재 노드 추적 버튼 */}
+          <ControlButton
+            onClick={handleTrackCurrentNode}
+            title="Track current node"
+            className="workflow-control-button"
+          >
+            <Play className="w-3.5 h-3.5" />
+          </ControlButton>
+        </Controls>
       </ReactFlow>
     </div>
   );

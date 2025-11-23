@@ -109,13 +109,9 @@ class SSEManager {
       if (this.unifiedConnection.projectId === projectId && 
           this.unifiedConnection.featureName === featureName &&
           currentJob === job) {
-        console.warn(`[SSEManager] Already connected to ${projectId}/${featureName}?job=${job}`);
         return;
       }
       
-      console.log(`[SSEManager] 🔄 Connection change detected, reconnecting...`);
-      console.log(`   Previous: ${this.unifiedConnection.projectId}/${this.unifiedConnection.featureName}?job=${currentJob}`);
-      console.log(`   New: ${projectId}/${featureName}?job=${job}`);
       this.disconnect();
     }
     
@@ -135,11 +131,9 @@ class SSEManager {
     url.searchParams.set('job', job);
     if (userEmail) {
       url.searchParams.set('user-email', userEmail);
-      console.log(`[SSEManager] 🔐 Adding user-email to SSE URL: ${userEmail}`);
     }
     
     const finalUrl = url.toString();
-    console.log(`[SSEManager] 🔌 Connecting to unified SSE: ${finalUrl}`);
     
     try {
       const eventSource = new EventSource(finalUrl, {
@@ -147,7 +141,6 @@ class SSEManager {
       });
       
       eventSource.onopen = () => {
-        console.log(`[SSEManager] ✅ Unified SSE connection opened`);
         if (this.unifiedConnection) {
           this.unifiedConnection.isConnected = true;
           this.unifiedConnection.reconnectAttempts = 0;
@@ -159,19 +152,19 @@ class SSEManager {
           const message: SSEMessage = JSON.parse(event.data);
           this.routeMessage(message);
         } catch (error) {
-          console.error(`[SSEManager] ❌ Parse error:`, error);
+          console.error(`[SSEManager] Parse error:`, error);
           console.error('[SSEManager] Raw data:', event.data);
         }
       };
       
       eventSource.onerror = (error) => {
-        console.error(`[SSEManager] ⚠️  Connection error:`, error);
+        console.error(`[SSEManager] Connection error:`, error);
         if (this.unifiedConnection) {
           this.unifiedConnection.isConnected = false;
           this.unifiedConnection.reconnectAttempts++;
           
           if (this.unifiedConnection.reconnectAttempts >= this.maxReconnectAttempts) {
-            console.error(`[SSEManager] ❌ Max reconnection attempts reached. Closing connection.`);
+            console.error(`[SSEManager] Max reconnection attempts reached. Closing connection.`);
             this.disconnect();
           }
         }
@@ -179,7 +172,7 @@ class SSEManager {
       
       this.unifiedConnection = {
         eventSource,
-        url: finalUrl,  // ✅ Store as string
+        url: finalUrl,
         projectId,
         featureName,
         isConnected: false,
@@ -187,7 +180,7 @@ class SSEManager {
       };
       
     } catch (error) {
-      console.error(`[SSEManager] ❌ Failed to create EventSource:`, error);
+      console.error(`[SSEManager] Failed to create EventSource:`, error);
     }
   }
   
@@ -196,7 +189,6 @@ class SSEManager {
    */
   connectWorkflow(jobId: string): void {
     if (this.workflowConnections.has(jobId)) {
-      console.warn(`[SSEManager] Workflow connection for ${jobId} already exists`);
       return;
     }
     
@@ -215,19 +207,16 @@ class SSEManager {
     const url = new URL(`${getApiBase()}/jobs/${jobId}/workflow/stream`);
     if (userEmail) {
       url.searchParams.set('user-email', userEmail);
-      console.log(`[SSEManager] 🔐 Adding user-email to workflow SSE URL: ${userEmail}`);
     }
     
     const finalUrl = url.toString();
-    console.log(`[SSEManager] 🔌 Connecting to workflow SSE: ${finalUrl}`);
     
     try {
       const eventSource = new EventSource(finalUrl, {
-        withCredentials: true  // ✅ Send cookies for authentication
+        withCredentials: true
       });
       
       eventSource.onopen = () => {
-        console.log(`[SSEManager] ✅ Workflow connection opened for ${jobId}`);
         const conn = this.workflowConnections.get(jobId);
         if (conn) {
           conn.isConnected = true;
@@ -235,44 +224,40 @@ class SSEManager {
       };
       
       eventSource.onmessage = (event) => {
-        console.log(`[SSEManager] 📨 Workflow message received for ${jobId}:`, event.data);
         try {
           const message: SSEMessage = JSON.parse(event.data);
-          console.log(`[SSEManager] 📨 Parsed workflow message:`, { type: message.type, data: message.data });
           this.routeMessage(message);
         } catch (error) {
-          console.error(`[SSEManager] ❌ Workflow parse error:`, error);
+          console.error(`[SSEManager] Workflow parse error:`, error);
         }
       };
       
       // ✅ Handle 'end' event for workflow completion
       eventSource.addEventListener('end', () => {
-        console.log(`[SSEManager] 🏁 Workflow 'end' event received for ${jobId}`);
-        // Route to workflow handlers as a special message
         this.routeMessage({
           type: 'workflow',
           data: {
             jobId,
-            eventType: 'end',  // ✅ Special flag for end event
+            eventType: 'end',
             isCompleted: true
           }
         });
       });
       
       eventSource.onerror = (error) => {
-        console.error(`[SSEManager] ⚠️  Workflow connection error for ${jobId}:`, error);
+        console.error(`[SSEManager] Workflow connection error for ${jobId}:`, error);
         this.disconnectWorkflow(jobId);
       };
       
       this.workflowConnections.set(jobId, {
         eventSource,
-        url: finalUrl,  // ✅ Store as string
+        url: finalUrl,
         jobId,
         isConnected: false
       });
       
     } catch (error) {
-      console.error(`[SSEManager] ❌ Failed to create workflow EventSource:`, error);
+      console.error(`[SSEManager] Failed to create workflow EventSource:`, error);
     }
   }
   
@@ -281,23 +266,18 @@ class SSEManager {
    */
   private routeMessage(message: SSEMessage): void {
     const { type, data } = message;
-    console.log(`[SSEManager] 📨 Routing message: type='${type}'`, data);
     
     const handlers = this.handlers.get(type);
     
     if (!handlers || handlers.length === 0) {
-      console.warn(`[SSEManager] ⚠️ No handlers registered for type '${type}'`);
       return;
     }
     
-    console.log(`[SSEManager] 📡 Calling ${handlers.length} handler(s) for '${type}'`);
-    
-    // Call all registered handlers for this type
     handlers.forEach(handler => {
       try {
         handler(data);
       } catch (error) {
-        console.error(`[SSEManager] ❌ Handler error for '${type}':`, error);
+        console.error(`[SSEManager] Handler error for '${type}':`, error);
       }
     });
   }
@@ -307,7 +287,6 @@ class SSEManager {
    */
   disconnect(): void {
     if (this.unifiedConnection) {
-      console.log(`[SSEManager] Connection 'unified' disconnecting...`);
       try {
         this.unifiedConnection.eventSource.close();
       } catch (error) {
@@ -323,7 +302,6 @@ class SSEManager {
   disconnectWorkflow(jobId: string): void {
     const conn = this.workflowConnections.get(jobId);
     if (conn) {
-      console.log(`[SSEManager] Disconnecting workflow for ${jobId}...`);
       try {
         conn.eventSource.close();
       } catch (error) {
@@ -337,8 +315,6 @@ class SSEManager {
    * Cleanup all connections
    */
   cleanup(): void {
-    console.log('[SSEManager] 🧹 Cleaning up all connections...');
-    
     this.disconnect();
     
     this.workflowConnections.forEach((_, jobId) => {
@@ -369,5 +345,5 @@ export const sseManager = new SSEManager();
 // Debug access (개발 환경에서만)
 if (import.meta.env.DEV) {
   (window as any).__sseManager = sseManager;
-  console.log('[SSEManager] 🐛 Debug mode: sseManager available at window.__sseManager');
+  console.log('[SSEManager] Debug mode: sseManager available at window.__sseManager');
 }

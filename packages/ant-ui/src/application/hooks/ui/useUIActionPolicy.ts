@@ -57,6 +57,12 @@ export interface UIActionPolicy {
   canSelectFile: boolean;       // 파일 선택/보기 (항상 가능)
   
   // ============================================
+  // Dev Server Actions (개발 서버)
+  // ============================================
+  canStartDevServer: boolean;   // 개발 서버 시작 가능
+  canStopDevServer: boolean;    // 개발 서버 중단 가능
+  
+  // ============================================
   // Display Policy (표시/숨김 정책)
   // ============================================
   shouldShowWorkflowIndicators: boolean;  // 워크플로우 인디케이터 표시 여부
@@ -88,6 +94,8 @@ export function useUIActionPolicy(): UIActionPolicy {
   const selectedFeature = useStore(state => state.selectedFeature);
   const backendMode = useStore(state => state.backendMode);
   const userEmail = useStore(state => state.userEmail);
+  const isDevServerLoading = useStore(state => state.isDevServerLoading);
+  const devServerStatus = useStore(state => state.devServerStatus);
   
   // ============================================
   // Policy Rules (정책 규칙)
@@ -128,6 +136,23 @@ export function useUIActionPolicy(): UIActionPolicy {
    * - NOT disconnected
    */
   const canStop = isRunning && !isStopping && canPerformAnyAction;
+  
+  /**
+   * Rule 5: Dev Server 시작 조건
+   * - NOT job running (작업 실행 중 아님)
+   * - NOT dev server loading (개발서버 시작/중단 중 아님)
+   * - NOT disconnected
+   * - project 선택됨
+   */
+  const canStartDevServer = !isRunning && !isDevServerLoading && canPerformAnyAction && !!selectedProject && !(devServerStatus?.running ?? false);
+  
+  /**
+   * Rule 6: Dev Server 중단 조건
+   * - Dev server running
+   * - NOT dev server loading (개발서버 시작/중단 중 아님)
+   * - NOT disconnected
+   */
+  const canStopDevServer = (devServerStatus?.running ?? false) && !isDevServerLoading && canPerformAnyAction;
   
   // ============================================
   // Disabled Reason (비활성화 사유 메시지)
@@ -171,6 +196,10 @@ export function useUIActionPolicy(): UIActionPolicy {
     canUploadFiles: !isWorkInProgress && canPerformAnyAction,
     canDeleteFile: !isWorkInProgress && canPerformAnyAction,
     canSelectFile: canPerformAnyAction,  // 파일 선택/보기는 항상 가능 (서버 연결 시)
+    
+    // Dev Server Actions
+    canStartDevServer,
+    canStopDevServer,
     
     // Display Policy
     shouldShowWorkflowIndicators: isRunning && !isStopping,  // 실행 중이고 중단 중이 아닐 때만 표시

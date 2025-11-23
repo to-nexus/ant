@@ -45,6 +45,7 @@ interface StoreState {
   elapsedTime: number;
   currentMode: 'generate' | 'refactor' | 'explain' | undefined;
   devServerStatus: DevServerStatus | undefined;
+  isDevServerLoading: boolean;  // ✅ Dev server start/stop 중
   theme: 'light' | 'dark';
   splitLayout: 'horizontal' | 'vertical';
   viewMode: 'agents' | 'editor';  // ✅ View mode toggle (agents view / editor view)
@@ -108,6 +109,7 @@ interface StoreActions {
   setShowConfigEditor: (show: boolean) => void;
   setShowFileEditor: (show: boolean) => void;
   setDevServerStatus: (status: DevServerStatus | undefined) => void;
+  setDevServerLoading: (loading: boolean) => void;  // ✅ Dev server 로딩 상태 설정
   refreshDevServerStatus: () => Promise<void>;
   toggleTheme: () => void;
   setTheme: (theme: 'light' | 'dark') => void;
@@ -268,6 +270,7 @@ export const useStore = create<Store>((set, get) => {
   elapsedTime: 0,
   currentMode: undefined,
   devServerStatus: undefined,
+  isDevServerLoading: false,  // ✅ 초기값: 로딩 중 아님
   theme: persistent.theme,
   splitLayout: 'vertical',
   viewMode: persistent.viewMode,
@@ -397,27 +400,20 @@ export const useStore = create<Store>((set, get) => {
   // ==================
   initializeSSE: () => {
     const state = get();
-    console.log('[Store] 🚀 Initializing unified SSE connection...');
-    console.log('[Store] Current state:', {
-      selectedProject: state.selectedProject,
-      selectedFeature: state.selectedFeature,
-      selectedJobType: state.selectedJobType
-    });
     
     if (!state.selectedProject || !state.selectedFeature) {
-      console.warn('[Store] ⚠️  Cannot initialize SSE: missing project/feature');
+      console.warn('[Store] Cannot initialize SSE: missing project/feature');
       return;
     }
     
     // ✅ Cloud mode requires authentication - skip if not signed in
     if (state.backendMode === 'cloud' && !state.userEmail) {
-      console.log('[Store] ⚠️  Cannot initialize SSE: Cloud mode requires authentication');
+      console.log('[Store] Cannot initialize SSE: Cloud mode requires authentication');
       return;
     }
     
     // ✅ Job type is now guaranteed to be valid (typed as 'design' | 'code' | 'learn')
     const jobType = state.selectedJobType;
-    console.log('[Store] 🎯 Using job type:', jobType);
     
     // ✅ Clear existing handlers to prevent duplicates
     sseManager.clearHandlers();
@@ -888,6 +884,10 @@ export const useStore = create<Store>((set, get) => {
 
   setDevServerStatus: (status: DevServerStatus | undefined) => {
     set({ devServerStatus: status });
+  },
+
+  setDevServerLoading: (loading: boolean) => {
+    set({ isDevServerLoading: loading });
   },
 
   refreshDevServerStatus: async () => {

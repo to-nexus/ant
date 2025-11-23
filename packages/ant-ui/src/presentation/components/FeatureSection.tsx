@@ -14,7 +14,9 @@ export function FeatureSection() {
     fetchFeatures,
     refreshFileTree,
     devServerStatus,
-    setDevServerStatus
+    setDevServerStatus,
+    setDevServerLoading,  // ✅ 로딩 상태 설정 함수 추가
+    isDevServerLoading    // ✅ 로딩 상태 가져오기
   } = useStore();
   const [showStatusPanel, setShowStatusPanel] = useState(false);
   const [serverStarted, setServerStarted] = useState(false);
@@ -75,6 +77,7 @@ export function FeatureSection() {
   const handleStartDevServer = async () => {
     if (!selectedProject) return;
     
+    setDevServerLoading(true);  // ✅ 로딩 시작
     try {
       await startDevServer(selectedProject);
       setServerStarted(true);
@@ -85,18 +88,23 @@ export function FeatureSection() {
       console.error('Failed to start dev server:', error);
       setShowStatusPanel(true);
       setServerStarted(false);
+    } finally {
+      setDevServerLoading(false);  // ✅ 로딩 종료
     }
   };
 
   const handleStopDevServer = async () => {
     if (!selectedProject) return;
     
+    setDevServerLoading(true);  // ✅ 로딩 시작
     try {
       await stopDevServer(selectedProject);
       // Status will be updated by polling
     } catch (error: any) {
       console.error('[FeatureSection] Failed to stop dev server:', error);
       alert(`Failed to stop dev server: ${error.message}`);
+    } finally {
+      setDevServerLoading(false);  // ✅ 로딩 종료
     }
   };
 
@@ -143,6 +151,8 @@ export function FeatureSection() {
         isPlaying={devServerStatus?.running || false}
         disabled={!policy.canChangeFeature}
         disabledReason={policy.disabledReason || undefined}
+        playButtonDisabled={!policy.canStartDevServer && !policy.canStopDevServer}  // ✅ Play 버튼 비활성화
+        playButtonLoading={isDevServerLoading}  // ✅ 로딩 상태 전달
       />
       
       {/* Dev Server Status Panel */}
@@ -189,13 +199,6 @@ export function FeatureSection() {
                   <X size={14} />
                 </button>
               </div>
-              {devServerStatus?.logs && devServerStatus.logs.length > 0 && (
-                <div className="mt-2 text-xs text-red-700 dark:text-red-300 max-h-20 overflow-y-auto">
-                  {devServerStatus.logs.slice(-3).map((log, i) => (
-                    <div key={i} className="font-mono">{log.message}</div>
-                  ))}
-                </div>
-              )}
             </div>
           )}
         </div>
