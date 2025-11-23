@@ -41,10 +41,35 @@ LLM이 출력하는 `<done>true</done>` 같은 기술적 XML 태그를 Cursor/Co
 
 **UI 표시:**
 ```
-✅ Created src/Button.tsx
+Created src/Button.tsx
 
-✅ Task completed! All files have been created/modified as requested.  ← 자연스러운 메시지!
+All set. Moving to the next task.  ← 자연스러운 대화체!
 ```
+
+## 🎨 메시지 스타일
+
+### 변화의 원칙
+- ❌ AI 티나는 이모지 제거 (✅, 🎉, 🚀 등)
+- ❌ 과장된 표현 제거 ("successfully!", "Perfect!", "Great!")
+- ✅ 짧고 간결한 문장
+- ✅ 대화하듯 자연스럽게
+- ✅ 행동 지향적 (다음 단계로 이동)
+
+### 메시지 예시 (랜덤 선택)
+```typescript
+const messages = [
+  'All set. Moving to the next task.',
+  'Done. Proceeding with the next step.',
+  'Finished. Ready for the next one.',
+  'Complete. On to the next task.',
+  'That\'s done. Continuing now.'
+];
+```
+
+### 왜 이렇게?
+- **Cursor**: "Done." (단순, 직접적)
+- **Copilot**: "Applied changes." (행동 중심)
+- **ANT**: "All set. Moving to the next task." (진행 상황 공유)
 
 ## 🔧 구현 위치
 
@@ -83,17 +108,27 @@ private async renderResponse(action: ParsedAction): Promise<void> {
 ## 🎨 Cursor/Copilot 스타일 참고
 
 ### Cursor
-- ✅ "Done! I've created the component."
-- ✅ "All set! The files have been updated."
-- ✅ "Complete! Here's what I changed:"
+- "Done."
+- "Applied."
+- "Changes saved."
 
 ### Copilot
-- ✅ "✓ Changes applied successfully"
-- ✅ "✓ All files updated"
-- ✅ "✓ Task completed"
+- "Applied changes."
+- "Updated files."
+- "Changes complete."
 
 ### ANT (현재 구현)
-- ✅ "✅ **Task completed!** All files have been created/modified as requested."
+- "All set. Moving to the next task."
+- "Done. Proceeding with the next step."
+- "Finished. Ready for the next one."
+- "Complete. On to the next task."
+- "That's done. Continuing now."
+
+**특징:**
+- 🚫 이모지 없음 (AI 티 제거)
+- ✅ 짧고 명확한 문장
+- ✅ 대화체 (like a human colleague)
+- ✅ 진행 지향적 (다음 단계 언급)
 
 ## 📊 처리 흐름
 
@@ -171,7 +206,7 @@ return `✅ Task completed! ${fileCount} file(s) created/modified.`;
 ### 시나리오 1: Setup task 완료
 ```
 Input: <done>true</done>
-Output: ✅ **Task completed!** All files have been created/modified as requested.
+Output: "All set. Moving to the next task."
 ```
 
 ### 시나리오 2: Feature task - 여러 파일 생성
@@ -182,9 +217,9 @@ Input:
   <done>true</done>
 
 Output:
-  ✅ Created src/Button.tsx
-  ✅ Created src/Input.tsx
-  ✅ **Task completed!** All files have been created/modified as requested.
+  Created src/Button.tsx
+  Created src/Input.tsx
+  Done. Proceeding with the next step.
 ```
 
 ### 시나리오 3: <done>false</done> (계속 작업)
@@ -196,7 +231,7 @@ Output: (nothing - LLM will continue)
 ### 시나리오 4: 대소문자 무시
 ```
 Input: <DONE>TRUE</DONE>
-Output: ✅ **Task completed!** All files have been created/modified as requested.
+Output: "Finished. Ready for the next one."  (랜덤 선택)
 ```
 
 ---
