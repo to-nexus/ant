@@ -119,71 +119,88 @@ export function Button({ children }: { children: React.ReactNode }) {
 
 **Objective**: Verify the entire project compiles successfully.
 
-**Validation Strategy** (execute in order):
+🚨🚨🚨 **CRITICAL - VALIDATION ORDER IS MANDATORY** 🚨🚨🚨
 
-1. **Install dependencies** (if needed):
-   ```xml
-   <tool_use>
-     <name>run_command</name>
-     <parameters>
-       <command>npm install</command>
-     </parameters>
-   </tool_use>
-   ```
+**YOU MUST EXECUTE IN THIS EXACT ORDER:**
 
-2. **Type-check** (fast, ~5-10s):
-   ```xml
-   <tool_use>
-     <name>run_command</name>
-     <parameters>
-       <command>npm run type-check</command>
-     </parameters>
-   </tool_use>
-   ```
-   If fails → fix type errors, retry from step 2
+**Step 1: Type-check FIRST** (fast, ~5-10s)
+```xml
+<tool_use>
+  <name>run_command</name>
+  <parameters>
+    <command>npx tsc --noEmit</command>
+  </parameters>
+</tool_use>
+```
+❌ **FORBIDDEN**: Running build/lint before type-check passes
+✅ **REQUIRED**: Fix all type errors before proceeding to Step 2
 
-3. **Lint** (fast, ~5-10s):
-   ```xml
-   <tool_use>
-     <name>run_command</name>
-     <parameters>
-       <command>npm run lint</command>
-     </parameters>
-   </tool_use>
-   ```
-   If fails → fix lint errors, retry from step 2
+**Step 2: Lint SECOND** (fast, ~5-10s)
+```xml
+<tool_use>
+  <name>run_command</name>
+  <parameters>
+    <command>npm run lint</command>
+  </parameters>
+</tool_use>
+```
+❌ **FORBIDDEN**: Running build before lint passes
+✅ **REQUIRED**: Fix all lint errors before proceeding to Step 3
 
-4. **Build** (slow, ~30-60s):
-   ```xml
-   <tool_use>
-     <name>run_command</name>
-     <parameters>
-       <command>npm run build</command>
-     </parameters>
-   </tool_use>
-   ```
-   If fails → fix build errors, retry from step 2
+**Step 3: Build LAST** (slow, ~30-60s)
+```xml
+<tool_use>
+  <name>run_command</name>
+  <parameters>
+    <command>npm run build</command>
+  </parameters>
+</tool_use>
+```
+✅ **ONLY run build after type-check AND lint both pass**
 
-**Why this order?**
-- Type-check and lint catch most errors quickly
-- Build is expensive - only run after type-check passes
+────────────────────────────────────────────────────────────────────────────────
+
+**Why this order is MANDATORY:**
+
+1. **Type errors** (tsc) catch 80% of issues in 5-10 seconds
+2. **Lint errors** catch style/quality issues in 5-10 seconds  
+3. **Build** is expensive (30-60s) - only run when type-check + lint are clean
+
+❌ **Running build first wastes time**:
+- Build takes 30-60s to fail
+- Type-check would catch the same error in 5s
+- You'll fix the error and waste another 30-60s rebuilding
+
+────────────────────────────────────────────────────────────────────────────────
 
 **When errors occur:**
+
 ```xml
+<!-- Fix the error first -->
 <edit path="src/path/to/file.ts">
 <search>code with error</search>
 <replace>fixed code</replace>
 </edit>
 
+<!-- Then re-run validation FROM THE FAILED STEP -->
 <tool_use>
   <name>run_command</name>
   <parameters>
-    <command>npm run type-check</command>
+    <command>npx tsc --noEmit</command>
   </parameters>
 </tool_use>
 ```
 
-Repeat until all validations pass, then output `<done>true</done>`.
+**Repeat until all validations pass**, then output `<done>true</done>`.
+
+────────────────────────────────────────────────────────────────────────────────
+
+**CHECKLIST - Before EVERY command:**
+
+Before running `npm run build`:
+- [ ] Did `npx tsc --noEmit` pass? (If not, run it first!)
+- [ ] Did `npm run lint` pass? (If not, run it first!)
+- [ ] Both passed? → NOW you can run build
 
 {{/if}}
 {{/if}}

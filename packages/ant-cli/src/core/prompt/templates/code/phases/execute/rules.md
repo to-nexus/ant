@@ -241,10 +241,12 @@ Before outputting, verify:
 ## 💡 TIPS FOR SUCCESS
 ════════════════════════════════════════════════════════════════════════════════
 
-### Tip 1: Prefer `<edit>` over `write_file` for existing files
+### Tip 1: **ALWAYS use `<edit>` for existing files**
 - `<edit>` is more efficient - shows only changes
-- `write_file` requires writing entire file content
-- Use `write_file` ONLY for NEW files
+- `<edit>` helps reviewers see what changed
+- `<edit>` reduces token usage
+- **Use `write_file` ONLY for completely NEW files that don't exist yet**
+- ❌ **NEVER use `write_file` to modify existing files**
 
 ### Tip 2: For modifications, copy from ORIGINAL FILES
 - Don't trust your memory for exact formatting
@@ -295,22 +297,20 @@ If you have multiple `<edit>` blocks for the same file:
 - Each edit sees the result of previous edits
 - Plan your edits accordingly
 
-### Tip 6: For large changes, consider `write_file`
-If you're modifying > 50% of a file:
-- Using `write_file` might be clearer
-- Write the complete new file content
-- Ensures no search/replace mismatches
-
 ════════════════════════════════════════════════════════════════════════════════
 ## 🚫 COMMON MISTAKES TO AVOID
 ════════════════════════════════════════════════════════════════════════════════
 
-❌ **MISTAKE 1**: Using `<file>` instead of `<edit>` for existing files
+❌ **MISTAKE 1**: Using `write_file` to modify existing files
 ```xml
-<!-- WRONG -->
-<file path="src/App.tsx">
-// entire file content...
-</file>
+<!-- WRONG - File already exists, should use <edit> -->
+<tool_use>
+  <name>write_file</name>
+  <parameters>
+    <path>src/App.tsx</path>
+    <content>// entire file content...</content>
+  </parameters>
+</tool_use>
 
 <!-- CORRECT -->
 <edit path="src/App.tsx">
