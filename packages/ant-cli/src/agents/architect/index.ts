@@ -84,7 +84,14 @@ export async function architectAgent(
   console.log(`🔍 Retrieving vector memory for ${task}...`);
   const vectorMemory = await retrieve(task, project, featureFolder, deps?.memory ? { memory: deps.memory } : undefined);
   
-  // 4. Load short-term context from Session
+  // 4. Detect user language from input (directive > spec)
+  // ✅ Job-level language detection: each job can have different language
+  const { detectUserLanguage } = await import('../../core/utils/languageDetector');
+  const inputText = spec || '';  // Use spec (which contains directive/PRD)
+  const userLanguage = detectUserLanguage(inputText);
+  console.log(`🌍 Detected user language: ${userLanguage}`);
+  
+  // 5. Load short-term context from Session
   let sessionHistory = "";
   if (deps?.session && featureFolder) {
     try {
@@ -104,7 +111,7 @@ export async function architectAgent(
     }
   }
   
-  // 5. Extract UserContext for path resolution
+  // 6. Extract UserContext for path resolution
   // ✅ Get from deps (passed by orchestrator)
   const userContext = deps?.userContext || { userId: 'local', organizationId: 'local', workspacePath: '' };
   const { userId, organizationId } = userContext;
@@ -134,6 +141,7 @@ export async function architectAgent(
     strictValidation: config.strictValidation ?? true, // ✅ For runtime validation (boolean)
     memory: vectorMemory,                  // Long-term knowledge (string)
     sessionHistory: sessionHistory,        // Short-term context (string)
+    userLanguage,                          // ✅ User's language for this job (string)
     enableEvaluation,                      // Evaluation flag (boolean)
     userId,                                // ✅ For path resolution (string)
     organizationId,                        // ✅ For path resolution (string)

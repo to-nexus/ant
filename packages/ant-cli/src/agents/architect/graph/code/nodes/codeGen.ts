@@ -103,7 +103,8 @@ export async function codeGen(
   const parser = new XMLStreamParser();
   const renderStrategy = new CommonRenderStrategy(
     chatAPI,
-    state._bufferManager
+    state._bufferManager,
+    state.context.userLanguage  // ✅ Pass user language for localized messages
   );
   
   const existingFiles = new Set(state.files?.map(f => f.path) || []);

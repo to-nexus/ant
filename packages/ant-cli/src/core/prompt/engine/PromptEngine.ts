@@ -129,7 +129,7 @@ export class PromptEngine {
     // Assemble with policies
     const promptWithPolicies = [
       guardrailSection,
-      this.composer.assembleFinal(composed),
+      this.composer.assembleFinal(composed, context.userLanguage),  // ✅ Pass userLanguage (plan phase)
       policySection
     ].join('\n\n');
     
@@ -219,7 +219,7 @@ export class PromptEngine {
     // Assemble with policies
     const promptWithPolicies = [
       guardrailSection,
-      this.composer.assembleFinal(composed),
+      this.composer.assembleFinal(composed, context.userLanguage),  // ✅ Pass userLanguage (execute phase)
       policySection
     ].join('\n\n');
     

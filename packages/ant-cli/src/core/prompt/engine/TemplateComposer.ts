@@ -105,12 +105,22 @@ export class TemplateComposer {
   /**
    * Assemble all parts into final prompt string
    */
-  assembleFinal(composed: ComposedPrompt): string {
+  assembleFinal(composed: ComposedPrompt, userLanguage?: string): string {
     const parts: string[] = [];
     
     // Always include system
     if (composed.system) {
       parts.push(composed.system);
+    }
+    
+    // ✅ NEW: Add language instruction if non-English
+    if (userLanguage && userLanguage !== 'en') {
+      const { getLanguageInstruction } = require('../../utils/languageDetector');
+      const languageInstruction = getLanguageInstruction(userLanguage);
+      if (languageInstruction) {
+        console.log(`🌍 [TemplateComposer] Adding ${userLanguage} language instruction`);
+        parts.push(languageInstruction);
+      }
     }
     
     // Add profiles if present
