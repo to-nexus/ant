@@ -66,26 +66,6 @@ export class TemplateComposer {
       }
     );
     
-    console.log(`🔍 [TemplateComposer] Rendered base with lastSectionNumber: ${assembled.lastSectionNumber ?? 0}`);
-    console.log(`🔍 [TemplateComposer] Handlebars will evaluate {{#if lastSectionNumber}} as: ${!!assembled.lastSectionNumber}`);
-    
-    // 🔍 Debug: Verify the rendered content includes correct lastSectionNumber
-    if ((assembled.lastSectionNumber ?? 0) > 0) {
-      const expectedText = `CONTINUE SECTION NUMBERING FROM ${assembled.lastSectionNumber}`;
-      const isPresent = base.includes(expectedText);
-      console.log(`🔍 [TemplateComposer] Verification - Expected text "${expectedText}" in rendered base: ${isPresent}`);
-      
-      if (!isPresent) {
-        // Search for what actually got rendered
-        const match = base.match(/CONTINUE SECTION NUMBERING FROM (\d+)/);
-        if (match) {
-          console.log(`🔍 [TemplateComposer] ⚠️  Found different value in rendered base: "${match[0]}" (expected ${assembled.lastSectionNumber})`);
-        } else {
-          console.log(`🔍 [TemplateComposer] ⚠️  "CONTINUE SECTION NUMBERING" not found in rendered base at all!`);
-        }
-      }
-    }
-    
     // 4. Render rules template
     const rules = await this.renderTemplate(
       modeConfig.templates.rules,
@@ -102,6 +82,15 @@ export class TemplateComposer {
     const examples = modeConfig.flags.includeExamples
       ? await this.renderTemplate(`${modeConfig.task}/base/examples`, {})
       : '';
+    
+    // ✅ Debug: Verify examples loading
+    if (modeConfig.flags.includeExamples) {
+      if (examples && examples.length > 0) {
+        console.log(`✅ [TemplateComposer] Examples loaded: ${examples.length} chars`);
+      } else {
+        console.error(`❌ [TemplateComposer] Examples enabled but empty!`);
+      }
+    }
     
     return {
       system,
@@ -146,7 +135,10 @@ export class TemplateComposer {
     
     // Add examples at the end
     if (composed.examples) {
+      console.log(`✅ [TemplateComposer] Including examples in final prompt: ${composed.examples.length} chars`);
       parts.push(composed.examples);
+    } else if (composed.examples === '') {
+      console.log(`ℹ️  [TemplateComposer] Examples explicitly disabled or empty`);
     }
     
     return parts.join('\n\n');
@@ -265,7 +257,11 @@ export class TemplateComposer {
       }
       
       console.error(`[TemplateComposer] Failed to load template: ${templatePath}`);
-      console.error(`[TemplateComposer] Error details:`, error);
+      console.error(`[TemplateComposer] Error type: ${error instanceof Error ? error.constructor.name : typeof error}`);
+      console.error(`[TemplateComposer] Error message: ${error instanceof Error ? error.message : String(error)}`);
+      if (error instanceof Error && error.stack) {
+        console.error(`[TemplateComposer] Stack trace:`, error.stack.split('\n').slice(0, 5).join('\n'));
+      }
       return '';
     }
   }

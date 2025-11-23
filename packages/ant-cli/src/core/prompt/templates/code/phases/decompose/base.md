@@ -42,6 +42,11 @@ GUIDELINES:
      - Generates ONLY config files (package.json, tsconfig.json, build tool configs)
      - Include ALL dependencies in ONE setup task (avoid multiple tasks touching package.json)
      - Folder structure will be created automatically by feature tasks - don't pre-create empty folders
+   - **CRITICAL - Testing:**
+     - ❌ DO NOT mention "testing libraries" or "test setup" in setup task description
+     - ❌ DO NOT request creation of jest.config.js, vitest.config.ts, or test setup files
+     - Testing infrastructure is explicitly excluded from setup
+     - If spec mentions testing: Acknowledge in analysis but don't include in setup task
 
 **2. Feature Tasks (priority 200-899):**
    - Extract features from the specification

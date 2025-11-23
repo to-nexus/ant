@@ -151,6 +151,26 @@ export class CommonRenderStrategy implements IRenderStrategy {
       return;
     }
     
+    // ✅ NEW: Detect and transform <done> tags into user-friendly messages
+    // Inspired by Cursor/Copilot: Turn technical XML into natural language
+    // <done>true</done> → "✅ Task completed successfully!"
+    // <done>false</done> → (keep as is, more work needed)
+    const doneMatch = content.match(/<done>(true|false)<\/done>/i);
+    if (doneMatch) {
+      const isDone = doneMatch[1].toLowerCase() === 'true';
+      if (isDone) {
+        console.log(`[Render] ✅ Detected <done>true</done>, showing completion message`);
+        await this.chatAPI.sendLLMEvent({
+          type: 'text',
+          text: '✅ **Task completed!** All files have been created/modified as requested.'
+        });
+        return;
+      }
+      // If <done>false</done>, skip rendering (LLM will continue with more work)
+      console.log(`[Render] 🔄 Detected <done>false</done>, skipping (more work pending)`);
+      return;
+    }
+    
     console.log(`[Render] 📝 Sending response: ${content.length} chars, content: ${JSON.stringify(content.substring(0, 50))}`);
     await this.chatAPI.sendLLMEvent({
       type: 'text',

@@ -105,30 +105,14 @@ export class ContextAssembler {
     
     // 0. Add pre-loaded artifacts if provided
     if (artifacts) {
-      console.log(`🔍 [ContextAssembler] Received artifacts:`, {
-        hasDirective: !!artifacts.directive,
-        hasDesignDoc: !!artifacts.designDoc,
-        lastSectionNumber: artifacts.lastSectionNumber,
-        hasPrdSpec: !!artifacts.prdSpec,
-        hasCurrentCode: !!artifacts.currentCode,
-        hasCurrentTask: !!artifacts.currentTask,
-      });
-      
       assembled.directive = artifacts.directive;
       assembled.designDoc = artifacts.designDoc;
       assembled.lastSectionNumber = artifacts.lastSectionNumber;
-      console.log(`🔍 [ContextAssembler] Received lastSectionNumber from artifacts: ${artifacts.lastSectionNumber}`);
       assembled.prdSpec = artifacts.prdSpec;
       assembled.currentCode = artifacts.currentCode;
       assembled.currentTask = artifacts.currentTask;
       assembled.retryContext = artifacts.retryContext;
       // Note: originalFiles from artifacts will be overridden by git if available
-      
-      console.log(`🔍 [ContextAssembler] Assembled context:`, {
-        hasDirective: !!assembled.directive,
-        hasDesignDoc: !!assembled.designDoc,
-        lastSectionNumber: assembled.lastSectionNumber,
-      });
     }
     
     // 1. Load task-specific documents using provided loader

@@ -116,28 +116,28 @@ catch any rendering errors, showing the ErrorMessage fallback UI.
 Example 4: Feedback Statement - Apply Constraint
 
 **Directive**: "Don't use inline styles, use Tailwind classes"
-**Context**: Previous implementation used inline `style={{...}}`
+**Context**: Previous implementation used inline `style=\{{...\}}`
 
 **Response**:
 ```xml
 <edit path="src/components/Card.tsx">
 <search>
-export function Card({ children }: { children: React.ReactNode }) {
+export function Card(\{ children \}: \{ children: React.ReactNode \}) \{
   return (
-    <div style={{ padding: '16px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
-      {children}
+    <div style=\{\{ padding: '16px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' \}\}>
+      \{children\}
     </div>
   );
-}
+\}
 </search>
 <replace>
-export function Card({ children }: { children: React.ReactNode }) {
+export function Card(\{ children \}: \{ children: React.ReactNode \}) \{
   return (
     <div className="p-4 rounded-lg shadow-sm">
-      {children}
+      \{children\}
     </div>
   );
-}
+\}
 </replace>
 </edit>
 
