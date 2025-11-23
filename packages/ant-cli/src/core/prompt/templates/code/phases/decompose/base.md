@@ -57,6 +57,12 @@ GUIDELINES:
      - ❌ BAD: "Create and test Button component"
      - ❌ BAD: "Create Button and verify it works with Tailwind"
      - ❌ BAD: "Create Button and ensure proper styling"
+   - **CRITICAL - Accessibility/WCAG:**
+     - ❌ DO NOT include accessibility features (WCAG, ARIA, screen reader, keyboard navigation) UNLESS explicitly requested in spec
+     - ❌ DO NOT mention "prefers-reduced-motion", "aria-label", "keyboard shortcuts" unless in spec
+     - ❌ DO NOT add accessibility layers automatically - they are NOT required by default
+     - ✅ ONLY include if spec explicitly states: "implement WCAG 2.1 compliance" or similar
+     - Rationale: Accessibility is a specialized requirement, not a default feature
    - Let LLM figure out architecture details - just describe the feature goal
 
 **3. Final Verification Task (priority 1000)** - ALWAYS INCLUDE:
