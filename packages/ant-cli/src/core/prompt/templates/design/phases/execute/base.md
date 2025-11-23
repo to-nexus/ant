@@ -156,6 +156,9 @@ These structural limits ensure you stay within your line budget.
 ## 🚫 ABSOLUTELY FORBIDDEN (Unless PRD EXPLICITLY requests)
 ════════════════════════════════════════════════════════════════════════════════
 
+**DO NOT add requirements that are NOT in the PRD**, even if they are industry "best practices":
+
+**Operational Concerns:**
 - ❌ Deployment architecture / CI/CD pipelines
 - ❌ Infrastructure planning / cloud setup / Kubernetes
 - ❌ Operations / monitoring / alerting
@@ -164,7 +167,17 @@ These structural limits ensure you stay within your line budget.
 - ❌ Project timelines / milestones / team structure
 - ❌ Budget / cost analysis
 
-**Focus on WHAT to build and HOW components interact, NOT operational concerns.**
+**Unstated Requirements (Do NOT invent):**
+- ❌ Accessibility standards (WCAG, ARIA, a11y) unless PRD explicitly requires them
+- ❌ Testing strategies unless PRD mentions testing
+- ❌ Security compliance (SOC2, HIPAA, GDPR) unless PRD requires them
+- ❌ Performance SLAs (99.9% uptime) unless PRD specifies them
+- ❌ Internationalization (i18n) unless PRD mentions multiple languages
+- ❌ Analytics/tracking unless PRD requests it
+
+**Golden Rule**: If it's not in the PRD, DON'T design it. Your job is to design what was ASKED FOR.
+
+**Focus on WHAT to build and HOW components interact, NOT what you think SHOULD BE there.**
 
 ════════════════════════════════════════════════════════════════════════════════
 ## ✍️ WRITING RULES
