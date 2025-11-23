@@ -14,14 +14,21 @@
   bottom: var(--terminal-offset, 10px) !important;
 }
 
-/* 각 버튼을 독립적인 둥근 버튼으로 */
+/* 각 버튼을 독립적인 둥근 버튼으로 (크기 축소) */
 .workflow-controls button {
-  width: 40px !important;
-  height: 40px !important;
+  width: 32px !important;  /* 40px → 32px */
+  height: 32px !important;  /* 40px → 32px */
   border-radius: 50% !important;
-  margin: 0 0 8px 0 !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+  margin: 0 0 6px 0 !important;  /* 8px → 6px */
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1) !important;  /* 그림자도 약간 축소 */
   transition: all 0.2s ease !important;
+}
+
+/* 커스텀 버튼 추가 스타일 */
+.workflow-control-button {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
 /* Light mode 버튼 스타일 */

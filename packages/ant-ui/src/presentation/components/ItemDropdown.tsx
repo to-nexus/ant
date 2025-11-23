@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ChevronDown, LucideIcon, Settings, Play, Square } from 'lucide-react';
+import { ChevronDown, LucideIcon, Settings, Play, Square, Loader2 } from 'lucide-react';
 import { Button } from '@/presentation/components/common/button';
 import { CreateItemForm } from './CreateItemForm';
 import { textColors, cn } from '@/shared/utils/design-system';
@@ -26,6 +26,8 @@ interface ItemDropdownProps {
   onPlayClick?: () => void;
   onStopClick?: () => void;
   isPlaying?: boolean;
+  playButtonDisabled?: boolean;  // ✅ Play 버튼 비활성화 여부
+  playButtonLoading?: boolean;   // ✅ Play 버튼 로딩 중 여부
   disabled?: boolean;  // ✅ 작업 진행 중 선택 변경 불가
   disabledReason?: string;  // ✅ 비활성화 이유 (tooltip)
 }
@@ -47,6 +49,8 @@ export function ItemDropdown({
   onPlayClick,
   onStopClick,
   isPlaying = false,
+  playButtonDisabled = false,  // ✅ 기본값: 활성화
+  playButtonLoading = false,   // ✅ 기본값: 로딩 아님
   disabled = false,
   disabledReason,
 }: ItemDropdownProps) {
@@ -237,20 +241,32 @@ export function ItemDropdown({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (playButtonDisabled || playButtonLoading) return;  // ✅ 비활성화 또는 로딩 중이면 무시
                   if (isPlaying && onStopClick) {
                     onStopClick();
                   } else if (!isPlaying && onPlayClick) {
                     onPlayClick();
                   }
                 }}
-                className={`p-1 hover:bg-gray-50 dark:hover:bg-[#30363d] rounded transition-colors pointer-events-auto ${
-                  isPlaying 
-                    ? 'text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300' 
-                    : 'text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300'
+                disabled={playButtonDisabled || playButtonLoading}  // ✅ 버튼 비활성화
+                className={`p-1 rounded transition-colors pointer-events-auto ${
+                  playButtonDisabled || playButtonLoading
+                    ? 'opacity-50 cursor-not-allowed text-gray-400 dark:text-gray-600'  // ✅ 비활성화 스타일
+                    : isPlaying 
+                      ? 'text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 hover:bg-gray-50 dark:hover:bg-[#30363d]' 
+                      : 'text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300 hover:bg-gray-50 dark:hover:bg-[#30363d]'
                 }`}
-                title={isPlaying ? 'Stop dev server' : 'Start dev server'}
+                title={
+                  playButtonLoading 
+                    ? (isPlaying ? 'Stopping dev server...' : 'Starting dev server...')
+                    : playButtonDisabled
+                      ? 'Cannot start/stop dev server (task running or not available)'
+                      : (isPlaying ? 'Stop dev server' : 'Start dev server')
+                }
               >
-                {isPlaying ? (
+                {playButtonLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />  // ✅ 로딩 스피너
+                ) : isPlaying ? (
                   <Square className="h-4 w-4" />
                 ) : (
                   <Play className="h-4 w-4" />
