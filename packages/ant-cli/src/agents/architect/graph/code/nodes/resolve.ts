@@ -115,7 +115,9 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   context.featurePath = featurePath;
 
   // 1. Load design document (optional)
-  const design = await ArtifactService.findLatestDesign(context, gitPort) || undefined;
+  const designResult = await ArtifactService.findLatestDesign(context, gitPort);
+  const design = designResult?.content || undefined;
+  const designDocPath = designResult?.filePath || undefined;
 
   // 2. Load directive with override priority
   // ✅ Priority: overrideDirective (from chat) > directive.md > directive-nnn.md
@@ -192,6 +194,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     ...state,
     directive,
     design,
+    designDocPath,  // ✅ Add design document file path for environment inference
     code: codeContext.code,
     codeHead: codeContext.codeHead,
     profile,

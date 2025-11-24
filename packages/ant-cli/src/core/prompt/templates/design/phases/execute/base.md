@@ -5,6 +5,12 @@
 {{#if currentTask}}
 YOUR LINE BUDGET: Look for "MAX [N] lines" in task description below.
 
+**IMPORTANT FOR DUAL DESIGN (fe-system-design.md / be-system-design.md):**
+- Each document has its OWN independent line budget (NOT shared)
+- Frontend document: 80-500 lines MAX (based on complexity)
+- Backend document: 80-500 lines MAX (based on complexity)
+- Your task's line budget applies to YOUR specific document only
+
 CHAPTER LIMIT based on budget:
 - Budget ≤ 50 lines → Create EXACTLY 1 chapter
 - Budget 51-80 lines → Create 1-2 chapters MAX
@@ -29,8 +35,14 @@ IF YOU CREATE MORE CHAPTERS THAN ALLOWED, YOU WILL FAIL THIS TASK!
 **Your first section MUST be: ## {{add lastSectionNumber 1}}.**
 
 **YOUR OUTPUT MUST FOLLOW THIS FORMAT:**
+
+**⚠️ IMPORTANT: Check your task description for the target file name!**
+- If description mentions "fe-system-design.md", use that file
+- If description mentions "be-system-design.md", use that file
+- Otherwise, use "system-design.md"
+
 ```
-<append path="outputs/design/system-design.md">
+<append path="outputs/design/[FILE-NAME-FROM-TASK-DESCRIPTION]">
 
 ## {{add lastSectionNumber 1}}. [Your First Topic]
 ...
@@ -43,23 +55,29 @@ IF YOU CREATE MORE CHAPTERS THAN ALLOWED, YOU WILL FAIL THIS TASK!
 ```
 
 **⚠️ CRITICAL INSTRUCTIONS:**
-1. Start sections from {{add lastSectionNumber 1}}, {{add lastSectionNumber 2}}, etc.
-2. **END your output with metadata comment**: `<!-- LAST_SECTION: N -->` where N is your LAST section number
-3. Remove the old metadata line (it will be at the end of existing document)
-4. NEVER reuse numbers 1 through {{lastSectionNumber}}
+1. **USE THE CORRECT FILE NAME** from your task description (fe-system-design.md, be-system-design.md, or system-design.md)
+2. Start sections from {{add lastSectionNumber 1}}, {{add lastSectionNumber 2}}, etc.
+3. **END your output with metadata comment**: `<!-- LAST_SECTION: N -->` where N is your LAST section number
+4. Remove the old metadata line (it will be at the end of existing document)
+5. NEVER reuse numbers 1 through {{lastSectionNumber}}
 
 {{else}}
 ════════════════════════════════════════════════════════════════════════════════
 🆕 NEW DOCUMENT - START FROM ## 1.
 ════════════════════════════════════════════════════════════════════════════════
 
-**This is the first task.**
+**This is the first task for this document.**
+
+**⚠️ IMPORTANT: Check your task description for the target file name!**
+- If description mentions "Create fe-system-design.md", use `fe-system-design.md`
+- If description mentions "Create be-system-design.md", use `be-system-design.md`
+- Otherwise, use `system-design.md`
 
 **YOUR OUTPUT MUST FOLLOW THIS FORMAT:**
 ```
-<file path="outputs/design/system-design.md">
+<file path="outputs/design/[FILE-NAME-FROM-TASK-DESCRIPTION]">
 
-# System Design Document: [Project Name]
+# [Frontend/Backend/System] Design Document: [Project Name]
 
 ## 1. Overview
 ...
@@ -71,7 +89,10 @@ IF YOU CREATE MORE CHAPTERS THAN ALLOWED, YOU WILL FAIL THIS TASK!
 </file>
 ```
 
-**⚠️ CRITICAL: END your document with**: `<!-- LAST_SECTION: N -->` where N is your LAST section number
+**⚠️ CRITICAL INSTRUCTIONS:**
+1. **USE THE CORRECT FILE NAME** from your task description (fe-system-design.md, be-system-design.md, or system-design.md)
+2. **Use appropriate title**: "Frontend Design Document" for FE, "Backend Design Document" for BE, "System Design Document" for unified
+3. **END your document with**: `<!-- LAST_SECTION: N -->` where N is your LAST section number
 
 {{/if}}
 ════════════════════════════════════════════════════════════════════════════════

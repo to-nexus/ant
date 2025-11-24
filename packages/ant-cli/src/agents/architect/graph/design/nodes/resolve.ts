@@ -112,7 +112,8 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
   }
 
   // 3. Load previous design (optional)
-  const design = await ArtifactService.findLatestDesign(context, gitPort) || undefined;
+  const designResult = await ArtifactService.findLatestDesign(context, gitPort);
+  const design = designResult?.content || undefined;
 
   // 4. Load codebase (conditional on mode - Phase 1: CodebaseRetriever)
   let code: string | undefined;

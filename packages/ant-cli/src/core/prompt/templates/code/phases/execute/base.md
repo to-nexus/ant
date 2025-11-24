@@ -3,6 +3,40 @@
 You are implementing a specific task. Follow the instructions for your task type.
 
 ════════════════════════════════════════════════════════════════════════════════
+{{#if designDoc}}
+{{#if (eq modificationMode "MODIFICATION MODE: Copy original, then modify")}}
+## 📋 DESIGN DOCUMENT (Architecture Reference)
+
+**⚠️ CRITICAL: This design document is for REFERENCE ONLY!**
+
+**YOU MUST:**
+- ✅ Modify the EXISTING code below (see "EXISTING FILES" section)
+- ✅ Keep the same architecture/patterns as existing code
+- ✅ Use design document to understand the intended architecture
+- ❌ DO NOT regenerate files from scratch
+- ❌ DO NOT ignore existing code structure
+
+**The design document explains the intended architecture. Your job is to MODIFY existing code to match the task, NOT recreate everything.**
+
+────────────────────────────────────────────────────────────────────────────────
+
+{{designDoc}}
+
+────────────────────────────────────────────────────────────────────────────────
+
+**Remember: The code ALREADY EXISTS below. Your job is to MODIFY it, not rewrite it.**
+
+════════════════════════════════════════════════════════════════════════════════
+{{else}}
+## 📋 DESIGN DOCUMENT (Implementation Guide)
+
+**Follow this design document to create the project:**
+
+{{designDoc}}
+
+════════════════════════════════════════════════════════════════════════════════
+{{/if}}
+{{/if}}
 
 {{#if currentTask}}
 {{#if (eq currentTask.type "setup")}}
@@ -269,7 +303,11 @@ Before running `npm run build`:
 **Feature Task Rules:**
 - ✅ CREATE application code files (src/, app/, pages/, lib/, components/)
 - ✅ MODIFY existing application code if needed
-- ❌ DON'T modify config files (package.json, tsconfig.json, etc.)
+- ⚠️ Config files (package.json, tsconfig.json, etc.):
+  - **Preferred:** Setup task handles config files
+  - **BUT:** You CAN modify if absolutely necessary for this feature
+  - **When allowed:** Adding missing dependencies, adding required plugins
+  - **Keep minimal:** Only add what's strictly needed for this feature
 - ❌ DON'T regenerate files that don't need changes
 
 {{/if}}

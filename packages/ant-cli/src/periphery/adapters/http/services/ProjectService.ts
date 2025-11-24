@@ -113,9 +113,8 @@ export class ProjectService {
     const config = {
       repositoryName: sanitizedName,  // ✅ Repository/codebase name
       repoType: isCloudMode ? 'cloud' : 'local',
-      localPath: isCloudMode 
-        ? path.join(projectPath, 'codebase')  // Cloud: workspaces/{org}/{user}/{project}/codebase
-        : `../${sanitizedName}`,               // Local: relative path (~/dev/{sanitizedName})
+      // ✅ Only include localPath for local mode
+      ...(isCloudMode ? {} : { localPath: `../${sanitizedName}` }),
       branchBase: 'main',
       autoLearn: true,
       llmProvider,
@@ -168,29 +167,24 @@ export class ProjectService {
   /**
    * Update project configuration
    * 
-   * ⚠️ Security: In Cloud mode, localPath is immutable (always {projectPath}/codebase)
+   * ⚠️ Security: In Cloud mode, localPath should not be stored or modified
    */
   async updateProjectConfig(projectId: string, config: any, userContext: UserContext): Promise<void> {
     const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
     const configPath = path.join(projectPath, 'config.json');
     
-    // ✅ Cloud Mode: Validate and enforce localPath
+    // ✅ Cloud Mode: Remove localPath from config (should not be stored)
     const isCloudMode = userContext.userId !== 'local' && userContext.organizationId !== 'local';
     
     if (isCloudMode && config.repoType === 'cloud') {
-      // ✅ CRITICAL: In Cloud mode, localPath is always fixed to {projectPath}/codebase
-      // Users cannot modify this for security reasons
-      const expectedLocalPath = path.join(projectPath, 'codebase');
-      
-      if (config.localPath && config.localPath !== expectedLocalPath) {
-        console.warn(`[ProjectService] ⚠️  Attempted to modify localPath in Cloud mode`);
-        console.warn(`   Provided: ${config.localPath}`);
-        console.warn(`   Expected: ${expectedLocalPath}`);
-        console.warn(`   Enforcing correct localPath for security`);
+      // ✅ CRITICAL: In Cloud mode, localPath should not be stored
+      // Path is always calculated from WorkspaceResolver
+      if (config.localPath) {
+        console.warn(`[ProjectService] ⚠️  Removing localPath from Cloud mode config`);
+        console.warn(`   localPath should not be stored in Cloud mode`);
+        console.warn(`   Path is calculated from WorkspaceResolver: {projectPath}/codebase`);
+        delete config.localPath;
       }
-      
-      // ✅ Force correct localPath
-      config.localPath = expectedLocalPath;
     }
     
     await fs.promises.writeFile(
@@ -301,7 +295,8 @@ export class ProjectService {
     await fs.promises.mkdir(path.join(featurePath, 'inputs/directives/code'), { recursive: true });
     await fs.promises.mkdir(path.join(featurePath, 'inputs/directives/learn'), { recursive: true });
     await fs.promises.mkdir(path.join(featurePath, 'inputs/sources'), { recursive: true });
-    await fs.promises.mkdir(path.join(featurePath, 'outputs'), { recursive: true });
+    await fs.promises.mkdir(path.join(featurePath, 'outputs/design'), { recursive: true });
+    await fs.promises.mkdir(path.join(featurePath, 'outputs/reports'), { recursive: true });
     await fs.promises.mkdir(path.join(featurePath, 'sessions'), { recursive: true });
   }
   

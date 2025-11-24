@@ -698,7 +698,8 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     // Dev server routes
     const devServerRoutes = createDevServerRoutes({
       projectService: this.projectService,
-      devServerService: this.devServerService
+      devServerService: this.devServerService,
+      workspaceResolver: this.workspaceResolver  // ✅ Pass WorkspaceResolver for Cloud mode path resolution
     });
     this.app.use('/api', devServerRoutes);
     
@@ -733,6 +734,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       logs: this.logs,
       childProcesses: this.childProcesses,
       jobs: this.jobs,
+      jobToProject: this.jobToProject,  // ✅ For checking duplicate jobs per feature
       userStoppedJobs: this.userStoppedJobs,  // ✅ Track user-stopped jobs
       cleanupJobState: this.cleanupJobState.bind(this),
       workflowStateService: this.workflowStateService,  // ✅ CRITICAL: Pass for node tracking

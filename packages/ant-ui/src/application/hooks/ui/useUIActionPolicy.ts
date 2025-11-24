@@ -108,8 +108,9 @@ export function useUIActionPolicy(): UIActionPolicy {
   const isAuthenticated = backendMode === 'local' || !!userEmail;
   
   /**
-   * Rule 1: 작업 진행 중에는 모든 선택 변경 불가
-   * - isRunning || isStopping → 모든 selection 비활성화
+   * Rule 1: 작업 진행 중에는 파일/설정 변경 불가
+   * - isRunning || isStopping → file/config 변경 비활성화
+   * - ✅ BUT project/feature 변경은 허용 (다른 피처에서 작업 가능)
    */
   const isWorkInProgress = isRunning || isStopping;
   
@@ -176,8 +177,8 @@ export function useUIActionPolicy(): UIActionPolicy {
   // ============================================
   return {
     // Selection Actions
-    canChangeProject: !isWorkInProgress && canPerformAnyAction,
-    canChangeFeature: !isWorkInProgress && canPerformAnyAction,
+    canChangeProject: canPerformAnyAction,  // ✅ Always allow (can work on different projects)
+    canChangeFeature: canPerformAnyAction,  // ✅ Always allow (can work on different features)
     canChangeAgent: !isWorkInProgress && canPerformAnyAction,
     canChangeWorkType: !isWorkInProgress && canPerformAnyAction,
     

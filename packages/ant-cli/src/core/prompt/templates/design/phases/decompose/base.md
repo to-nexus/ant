@@ -223,6 +223,92 @@ Input: "Design full-stack e-commerce platform with product catalog, cart, checko
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+## 🔀 DUAL DESIGN MODE: Frontend + Backend Separation
+
+**IF the project requires BOTH distinct Frontend AND Backend components:**
+
+### Detection Criteria
+- Project has BOTH UI requirements AND backend/database requirements
+- Mentions "SPA + API server", "React frontend with Express backend", or similar
+- Has API endpoints AND UI components
+- Explicitly separates frontend and backend concerns
+
+### Task Breakdown Strategy for Dual Design
+
+**CRITICAL: Each document (FE and BE) gets its OWN independent line budget!**
+
+**Analyze Frontend complexity separately:**
+- Simple frontend (1-2 pages, basic state): 80-120 lines
+- Medium frontend (3-5 pages, complex state): 150-250 lines
+- Complex frontend (5+ pages, advanced patterns): 300-500 lines
+
+**Analyze Backend complexity separately:**
+- Simple backend (CRUD API, 1-3 tables): 80-120 lines
+- Medium backend (auth, business logic, 3-5 tables): 150-250 lines
+- Complex backend (multi-service, complex data, 5+ tables): 300-500 lines
+
+**Create SEPARATE task groups for FE and BE:**
+
+**CRITICAL RULE: Group FE tasks together (priorities 210-229), then BE tasks (priorities 230-249)**
+
+Example: Medium Frontend (200 lines, 2 tasks) + Medium Backend (220 lines, 2 tasks)
+```json
+{
+  "tasks": [
+    {
+      "id": "design-fe-overview",
+      "name": "Frontend Design: Overview & Architecture",
+      "description": "Create fe-system-design.md with: System overview, component architecture, routing, state management. MAX 100 lines! (FE total budget: 200 lines)",
+      "priority": 210
+    },
+    {
+      "id": "design-fe-api-ui",
+      "name": "Frontend Design: API Integration & UI",
+      "description": "Append to fe-system-design.md with: API integration layer (DTOs, endpoints - consumer view), UI/UX design, styling approach. MAX 100 lines! (FE total budget: 200 lines, currently ~100 after task 1)",
+      "priority": 220
+    },
+    {
+      "id": "design-be-overview",
+      "name": "Backend Design: Overview & Data",
+      "description": "Create be-system-design.md with: System overview, architecture layers, database design, entity relationships. MAX 110 lines! (BE total budget: 220 lines)",
+      "priority": 230
+    },
+    {
+      "id": "design-be-api-service",
+      "name": "Backend Design: API & Services",
+      "description": "Append to be-system-design.md with: API specification (endpoints, DTOs - MUST MATCH FE), service layer, business logic, error handling. MAX 110 lines! (BE total budget: 220 lines, currently ~110 after task 1)",
+      "priority": 240
+    }
+  ]
+}
+```
+
+**Task Grouping Strategy:**
+- **Tasks 1-N**: Complete `fe-system-design.md` (priorities 210, 211, 212, ...)
+- **Tasks N+1 onwards**: Complete `be-system-design.md` (priorities 230, 231, 232, ...)
+- This ensures FE document is fully completed before starting BE document
+
+**KEY RULES for Dual Design Tasks:**
+1. **Separate Task Groups**: Create FE tasks first (complete fe-system-design.md), then BE tasks (complete be-system-design.md)
+2. **Independent Budgets**: FE and BE documents each have their own 80-500 line limit (NOT shared)
+3. **Explicit File Naming**: 
+   - First FE task: "Create fe-system-design.md with..."
+   - Subsequent FE tasks: "Append to fe-system-design.md with..."
+   - First BE task: "Create be-system-design.md with..."
+   - Subsequent BE tasks: "Append to be-system-design.md with..."
+4. **API Protocol Alignment**: Both FE and BE tasks MUST emphasize DTOs and endpoints must match exactly
+5. **Priority Grouping**: 
+   - FE tasks: 210-229 range
+   - BE tasks: 230-249 range
+6. **Budget Clarity**: Each task description must state its document's total budget and current progress
+
+**DO NOT create dual design tasks if:**
+- Project is frontend-only (React app, Vue SPA with no backend)
+- Project is backend-only (REST API, microservice, CLI tool)
+- Project is fullstack SSR (Next.js, Nuxt) where FE/BE are tightly coupled
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 🚨 FINAL CHECK: Review task names. If ANY contains these words, DELETE IT:
 "Deployment", "Operations", "Migration", "Infrastructure", "Testing", "CI/CD", "Monitoring", "Rollout"
 

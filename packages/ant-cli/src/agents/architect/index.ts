@@ -195,12 +195,12 @@ export async function architectAgent(
           if (!gitPort) return {};
           
           const directive = await ArtifactService.getDirective(ctx, agentTask, gitPort);
-          const previousDesign = await ArtifactService.findLatestDesign(ctx, gitPort);
+          const designResult = await ArtifactService.findLatestDesign(ctx, gitPort);
           const source = await ArtifactService.getSource(ctx, gitPort);
           
           return {
             directive: directive || undefined,
-            previousDesign: previousDesign || undefined,
+            previousDesign: designResult?.content || undefined,
             prdSpec: source?.prd || undefined
           };
         }
@@ -256,7 +256,8 @@ export async function architectAgent(
         }
         
         const directive = await ArtifactService.getDirective(context, 'code', gitPort);
-        const designDoc = await ArtifactService.findLatestDesign(context, gitPort);
+        const designResult = await ArtifactService.findLatestDesign(context, gitPort);
+        const designDoc = designResult?.content || null;
         const hasGitChanges = await gitPort.hasChanges();
         
         inferredMode = inferCodeMode({
@@ -301,11 +302,12 @@ export async function architectAgent(
             if (!gitPort) return {};
             
             const directive = await ArtifactService.getDirective(ctx, agentTask, gitPort);
-            const designDoc = await ArtifactService.findLatestDesign(ctx, gitPort);
+            const designResult = await ArtifactService.findLatestDesign(ctx, gitPort);
             
             return {
               directive: directive || undefined,
-              designDoc: designDoc || undefined
+              designDoc: designResult?.content || undefined,
+              designDocPath: designResult?.filePath || undefined
             };
           }
         });
