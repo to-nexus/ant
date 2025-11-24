@@ -25,11 +25,15 @@ interface StoreState {
   fileTree: FileNode[];
   fileContent: FileContent | undefined;
   session: Session | undefined;
-  isRunning: boolean;
+  isRunning: boolean;  // ✅ DEPRECATED: Use runningJobsByFeature instead (현재 피처의 실행 상태를 위해 유지)
   isStopping: boolean;  // ✅ Stopping state for Stop button
   userStoppedJobId: string | null;  // ✅ Track which job user explicitly stopped
   lastJobFailed: boolean;  // ✅ Track if last job failed (for retry)
   dismissedInterruptTimestamp: string | null;  // ✅ Track dismissed interruption (hide resume UI)
+  
+  // ✅ Multi-Feature Job Tracking
+  // Track running jobs per feature (key: "projectId/featureName", value: jobId)
+  runningJobsByFeature: Record<string, string>;
   
   // ✅ Job Identity
   // Single source of truth for current job ID (synced from server via Kanban SSE)
@@ -261,6 +265,7 @@ export const useStore = create<Store>((set, get) => {
   userStoppedJobId: null,
   lastJobFailed: false,
   dismissedInterruptTimestamp: persistent.dismissedInterruptTimestamp,
+  runningJobsByFeature: {},  // ✅ Track running jobs per feature
   currentJobId: undefined,
   currentJob: null,
   connectionStatus: 'disconnected',
@@ -294,13 +299,37 @@ export const useStore = create<Store>((set, get) => {
     // This ensures job type changes (design → code) update the displayed jobId
     const kanbanJobId = data.jobId;
     
+    // ✅ Get feature key for current selection
+    const { selectedProject, selectedFeature } = state;
+    const currentFeatureKey = selectedProject && selectedFeature ? `${selectedProject}/${selectedFeature}` : null;
+    
     // ✅ Determine if job is running based on dataSource
     // - 'live' or 'estimating' = job is running
     // - 'session' = job is completed/paused/stopped
     const isJobRunning = data.dataSource === 'live' || data.dataSource === 'estimating';
     
-    // ✅ Job completion detected
-    if (!isJobRunning && state.isRunning) {
+    // ✅ Update runningJobsByFeature map
+    const updatedRunningJobs = { ...state.runningJobsByFeature };
+    
+    if (currentFeatureKey) {
+      if (isJobRunning && kanbanJobId) {
+        // Job is running - register it
+        updatedRunningJobs[currentFeatureKey] = kanbanJobId;
+        console.log(`[Store] 📌 Registered running job for ${currentFeatureKey}: ${kanbanJobId}`);
+      } else if (!isJobRunning) {
+        // Job stopped - unregister it
+        if (updatedRunningJobs[currentFeatureKey]) {
+          console.log(`[Store] 📌 Unregistered job for ${currentFeatureKey}`);
+          delete updatedRunningJobs[currentFeatureKey];
+        }
+      }
+    }
+    
+    // ✅ Calculate isRunning for CURRENT feature only
+    const currentFeatureIsRunning = currentFeatureKey ? !!updatedRunningJobs[currentFeatureKey] : false;
+    
+    // ✅ Job completion detected (for current feature)
+    if (!isJobRunning && state.isRunning && currentFeatureKey) {
       // ✅ CRITICAL: Don't auto-stop if interruption was dismissed (user clicked Resume)
       // Resume flow: user dismisses interruption → resumeJob API → live data arrives
       // During this transition, session data with interruption may arrive
@@ -312,59 +341,62 @@ export const useStore = create<Store>((set, get) => {
         console.log('[Store] ⏸️ Ignoring session data - interruption was dismissed (Resume in progress)');
         console.log(`   Interruption timestamp: ${data.interruption?.timestamp}`);
         console.log(`   Dismissed timestamp: ${state.dismissedInterruptTimestamp}`);
-        // ✅ Update kanban data but keep isRunning: true
-        set({ kanban: data });
+        // ✅ Update kanban data but keep isRunning: true for current feature
+        set({ kanban: data, runningJobsByFeature: updatedRunningJobs });
         return;
       }
       
-      
+      console.log(`[Store] ✅ Job completed for ${currentFeatureKey}`);
       set({ 
         kanban: data,
-        // ✅ SSOT: Always sync jobId from server (single source of truth)
+        runningJobsByFeature: updatedRunningJobs,
         currentJobId: kanbanJobId,
         isRunning: false,
         currentMode: undefined
       });
     }
-    // ✅ Job running detected (e.g. after refresh)
-    else if (isJobRunning && !state.isRunning) {
+    // ✅ Job running detected (e.g. after refresh or feature switch)
+    else if (isJobRunning && !state.isRunning && currentFeatureKey) {
       // ✅ CRITICAL: Don't auto-restore if user explicitly stopped this job
       if (state.userStoppedJobId === kanbanJobId) {
         console.log('[Store] 🚫 Skipping auto-restore - user explicitly stopped job:', kanbanJobId);
         set({ 
           kanban: data,
+          runningJobsByFeature: updatedRunningJobs,
           currentJobId: kanbanJobId
         });
         return;
       }
       
-      // console.log('[Store] 🔄 Active job detected via Kanban update'); // ✅ Too verbose
-      // console.log(`   DataSource: ${data.dataSource}`);
-      console.log(`   Job ID: ${kanbanJobId}`);
-      console.log('   Setting isRunning: true');
+      console.log(`[Store] 🔄 Active job detected for ${currentFeatureKey}: ${kanbanJobId}`);
+      console.log('   Setting isRunning: true for current feature');
       
       set({ 
         kanban: data,
-        currentJobId: kanbanJobId,  // ✅ Sync jobId
+        runningJobsByFeature: updatedRunningJobs,
+        currentJobId: kanbanJobId,
         isRunning: true
       });
     }
     // ✅ Normal update (including job type change)
     else {
+      // ✅ Update isRunning based on current feature's state
+      const newState: any = { 
+        kanban: data,
+        runningJobsByFeature: updatedRunningJobs,
+        isRunning: currentFeatureIsRunning
+      };
+      
       // ✅ CRITICAL: Always sync jobId (including undefined)
       // This handles job type changes (design → code)
       if (kanbanJobId !== state.currentJobId) {
         console.log('[Store] 🔄 Job ID changed via Kanban update');
         console.log(`   Previous: ${state.currentJobId}`);
         console.log(`   New: ${kanbanJobId || 'undefined'}`);
-        
-        set({ 
-          kanban: data,
-          currentJobId: kanbanJobId
-        });
-      } else {
-        set({ kanban: data });
+        newState.currentJobId = kanbanJobId;
       }
+      
+      set(newState);
     }
   },
   
@@ -629,6 +661,8 @@ export const useStore = create<Store>((set, get) => {
   },
 
   setSelectedProject: (projectId: string | undefined) => {
+    console.log(`[Store] 🔀 Project changed to: ${projectId || 'none'}`);
+    
     if (!projectId) {
       set({ 
         selectedProject: undefined,
@@ -637,6 +671,7 @@ export const useStore = create<Store>((set, get) => {
         features: [],
         fileTree: [],
         fileContent: undefined,
+        isRunning: false,  // ✅ No feature selected = not running
       });
       removeFromStorage(STORAGE_KEYS.SELECTED_PROJECT);
       removeFromStorage(STORAGE_KEYS.SELECTED_FEATURE);
@@ -648,6 +683,7 @@ export const useStore = create<Store>((set, get) => {
         features: [],
         fileTree: [],
         fileContent: undefined,
+        isRunning: false,  // ✅ Feature deselected = not running
       });
       saveToStorage(STORAGE_KEYS.SELECTED_PROJECT, projectId);
       removeFromStorage(STORAGE_KEYS.SELECTED_FEATURE);
@@ -656,11 +692,24 @@ export const useStore = create<Store>((set, get) => {
   },
 
   setSelectedFeature: (featureName: string | undefined) => {
+    const state = get();
+    
+    // ✅ Calculate isRunning for NEW feature
+    const newFeatureKey = state.selectedProject && featureName ? `${state.selectedProject}/${featureName}` : null;
+    const newFeatureIsRunning = newFeatureKey ? !!state.runningJobsByFeature[newFeatureKey] : false;
+    
+    console.log(`[Store] 🔀 Feature changed to: ${featureName || 'none'}`);
+    if (newFeatureKey) {
+      console.log(`   Feature key: ${newFeatureKey}`);
+      console.log(`   Has running job: ${newFeatureIsRunning}`);
+    }
+    
     set({ 
       selectedFeature: featureName,
       selectedFile: undefined,
       fileTree: [],
       fileContent: undefined,
+      isRunning: newFeatureIsRunning,  // ✅ Update isRunning based on new feature
     });
     
     if (featureName) {
@@ -925,6 +974,7 @@ export const useStore = create<Store>((set, get) => {
       isStopping: false,
       userStoppedJobId: null,
       lastJobFailed: false,
+      runningJobsByFeature: {},  // ✅ Clear all running jobs
       currentJobId: undefined,
       currentJob: null,
       connectionStatus: 'disconnected',

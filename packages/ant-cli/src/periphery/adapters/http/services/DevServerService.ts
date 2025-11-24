@@ -25,7 +25,7 @@ export class DevServerService {
   /**
    * Start dev server for a project
    */
-  async startDevServer(projectId: string, localPath: string): Promise<{ success: boolean; message?: string; error?: string }> {
+  async startDevServer(projectId: string, localPath: string, port?: number): Promise<{ success: boolean; message?: string; error?: string }> {
     // Check if dev server is already running
     if (this.devServers.has(projectId)) {
       return { success: false, error: 'Dev server already running' };
@@ -57,34 +57,47 @@ export class DevServerService {
       };
     }
     
+    // ✅ Use provided port or default
+    const devPort = port || 4200;
+    console.log(`[DevServerService] Starting dev server on port ${devPort}`);
+    
     // Determine the best dev server command
     let command: string;
     let args: string[];
+    let needsPortArg = false;
     
-    if (packageJson.scripts?.dev) {
-      // Use npm/pnpm/yarn run dev
-      command = 'npm';
-      args = ['run', 'dev'];
-    } else if (packageJson.scripts?.start) {
-      // Fallback to start script
-      command = 'npm';
-      args = ['run', 'start'];
-    } else if (packageJson.devDependencies?.vite || packageJson.dependencies?.vite) {
+    // Check for specific frameworks first (before generic "dev" script)
+    if (packageJson.devDependencies?.vite || packageJson.dependencies?.vite) {
       // Direct vite command
       command = 'npx';
-      args = ['vite'];
+      args = ['vite', '--port', devPort.toString()];  // ✅ Vite accepts --port
+      needsPortArg = true;
     } else if (packageJson.devDependencies?.['@vitejs/plugin-react'] || packageJson.dependencies?.['@vitejs/plugin-react']) {
       // Vite React project
       command = 'npx';
-      args = ['vite'];
+      args = ['vite', '--port', devPort.toString()];  // ✅ Vite accepts --port
+      needsPortArg = true;
     } else if (packageJson.devDependencies?.['next'] || packageJson.dependencies?.['next']) {
       // Next.js project
       command = 'npx';
-      args = ['next', 'dev'];
+      args = ['next', 'dev', '-p', devPort.toString()];  // ✅ Next.js accepts -p
+      needsPortArg = true;
     } else if (packageJson.devDependencies?.['react-scripts']) {
       // Create React App
       command = 'npx';
       args = ['react-scripts', 'start'];
+      needsPortArg = false;  // Port set via PORT env var
+    } else if (packageJson.scripts?.dev) {
+      // Fallback: Use npm/pnpm/yarn run dev
+      // Try to pass port via -- (works for most modern dev servers)
+      command = 'npm';
+      args = ['run', 'dev', '--', '--port', devPort.toString()];
+      needsPortArg = true;
+    } else if (packageJson.scripts?.start) {
+      // Last resort: start script
+      command = 'npm';
+      args = ['run', 'start'];
+      needsPortArg = false;  // Port set via PORT env var
     } else {
       return { 
         success: false,
@@ -95,6 +108,8 @@ export class DevServerService {
     // Clear previous logs
     this.devServerLogs.set(projectId, []);
     
+    // ✅ Store port for later use
+    this.devServerPorts.set(projectId, devPort);
     
     // Start dev server with BROWSER=none to prevent auto-opening
     const devProcess = spawn(command, args, {
@@ -102,8 +117,9 @@ export class DevServerService {
       shell: true,
       env: { 
         ...process.env,
-        BROWSER: 'none',  // Prevent Vite/CRA from auto-opening browser
-        OPEN: 'false'     // Alternative env var for some dev servers
+        PORT: devPort.toString(),  // ✅ Set port via environment variable
+        BROWSER: 'none',           // Prevent Vite/CRA from auto-opening browser
+        OPEN: 'false'              // Alternative env var for some dev servers
       }
     });
     

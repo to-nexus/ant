@@ -58,9 +58,16 @@ export function inferCodeMode(
     return 'refactor';
   }
 
-  // 4. Default logic
-  // If existing code but no git changes → new feature (generate)
+  // 4. Default logic based on code presence
+  // ✅ CRITICAL: If existing code → modify existing (refactor)
+  // This prevents regenerating entire project when fixing bugs
+  if (hasExistingCode) {
+    console.log('[ModeInference] Existing code detected → refactor mode (modify existing code)');
+    return 'refactor';
+  }
+
   // If no existing code → new project (generate)
+  console.log('[ModeInference] No existing code → generate mode (create new)');
   return 'generate';
 }
 
@@ -83,10 +90,17 @@ function inferFromText(text?: string | null): CodeMode {
     return 'explain';
   }
 
-  // 2. Check for "refactor" keywords
+  // 2. Check for "refactor" keywords (broad modification intent)
   const refactorKeywords = [
+    // Explicit refactor
     'refactor', 'restructure', 'reorganize', 'clean up', 'improve structure',
-    'migrate', 'update all', 'change all', 'rename all', 'move all'
+    // Bulk changes
+    'migrate', 'update all', 'change all', 'rename all', 'move all',
+    // Bug fixes and modifications (✅ NEW)
+    'fix', 'bug', 'error', 'issue', 'problem', 'broken',
+    'modify', 'change', 'update', 'adjust', 'correct',
+    // Korean equivalents
+    '수정', '버그', '고치', '에러', '오류', '문제', '변경'
   ];
   if (refactorKeywords.some(kw => lower.includes(kw))) {
     return 'refactor';

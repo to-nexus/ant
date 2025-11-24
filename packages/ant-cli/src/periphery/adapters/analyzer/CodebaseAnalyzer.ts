@@ -2,16 +2,24 @@ import { promises as fs } from "fs";
 import { join } from "path";
 import { CodebaseAnalyzerPort } from "../../../core/ports";
 import { CodebaseProfile } from "../../../core/types";
+import { EnvironmentDetector } from "./EnvironmentDetector";
 
 /**
- * CodebaseAnalyzer - Detects language and framework from source code
+ * CodebaseAnalyzer - Detects language, framework, and environment from source code
  * 
  * Analyzes file extensions, imports, and configuration files to determine:
  * - Primary language (typescript, javascript, golang)
  * - Framework (react, nextjs, react-native, gin)
+ * - Execution environment (browser, node-api, fullstack)
  * - Additional metadata (version, package manager, conventions)
  */
 export class CodebaseAnalyzer implements CodebaseAnalyzerPort {
+  private environmentDetector: EnvironmentDetector;
+  
+  constructor() {
+    this.environmentDetector = new EnvironmentDetector();
+  }
+  
   async analyze(filesBlock: string, workingDir: string): Promise<CodebaseProfile> {
     // 1. Detect language from file extensions and content
     const language = this.detectLanguage(filesBlock);
@@ -24,12 +32,26 @@ export class CodebaseAnalyzer implements CodebaseAnalyzerPort {
     const packageManager = await this.detectPackageManager(workingDir, language);
     const conventions = this.extractConventions(filesBlock, language);
     
-    return {
+    // 4. ✅ Detect execution environment (NEW)
+    const baseProfile: CodebaseProfile = {
       language,
       framework,
       version,
       packageManager,
       conventions
+    };
+    
+    const environment = await this.environmentDetector.detectEnvironment(
+      workingDir,
+      baseProfile
+    );
+    
+    console.log(`[CodebaseAnalyzer] Detected environment: ${environment.primary} (confidence: ${environment.confidence})`);
+    console.log(`[CodebaseAnalyzer] Indicators: ${environment.indicators.join(', ')}`);
+    
+    return {
+      ...baseProfile,
+      environment  // ✅ Add environment detection result
     };
   }
   

@@ -3,6 +3,7 @@ import { LogEntry } from '../../../../core/ports/http';
 import { DevServerService } from '../services/DevServerService';
 import { ProjectService } from '../services/ProjectService';
 import { extractUserContext } from './helpers/userContext';
+import { WorkspaceResolver } from '../../../../infrastructure/workspace/WorkspaceResolver';
 import * as path from 'path';
 import * as os from 'os';
 
@@ -13,6 +14,7 @@ import * as os from 'os';
 export function createDevServerRoutes(deps: {
   projectService: ProjectService;
   devServerService: DevServerService;
+  workspaceResolver: WorkspaceResolver;  // ✅ Add WorkspaceResolver for Cloud mode
 }): Router {
   const router = Router();
   
@@ -23,18 +25,39 @@ export function createDevServerRoutes(deps: {
       const userContext = extractUserContext(req);
       const config = await deps.projectService.getProjectConfig(projectId, userContext);
       
-      if (!config?.localPath) {
-        res.status(400).json({ error: 'Project localPath not configured' });
-        return;
+      // ✅ Get port from request body (optional)
+      const port = req.body?.port;
+      if (port !== undefined) {
+        console.log(`[DevServer] Requested port: ${port}`);
       }
       
-      // Resolve local path (inline, previously ProjectService.resolveLocalPath)
-      const localPath = config.localPath.startsWith('~') 
-        ? path.join(os.homedir(), config.localPath.slice(1))
-        : path.resolve(config.localPath);
+      // ✅ Determine codebase path based on repoType
+      let codebasePath: string;
       
-      // Start dev server
-      const result = await deps.devServerService.startDevServer(projectId, localPath);
+      if (config?.repoType === 'cloud') {
+        // ✅ Cloud Mode: Use WorkspaceResolver to calculate path
+        // Path structure: workspaces/{org}/{user}/{project}/codebase
+        const projectPath = deps.workspaceResolver.getProjectPath(userContext, projectId);
+        codebasePath = path.join(projectPath, 'codebase');
+        
+        console.log(`[DevServer] Cloud mode - calculated codebase path: ${codebasePath}`);
+      } else {
+        // ✅ Local Mode: Use localPath from config
+        if (!config?.localPath) {
+          res.status(400).json({ error: 'Project localPath not configured' });
+          return;
+        }
+        
+        // Resolve local path (handle ~ expansion)
+        codebasePath = config.localPath.startsWith('~') 
+          ? path.join(os.homedir(), config.localPath.slice(1))
+          : path.resolve(config.localPath);
+        
+        console.log(`[DevServer] Local mode - using config localPath: ${codebasePath}`);
+      }
+      
+      // Start dev server with optional port
+      const result = await deps.devServerService.startDevServer(projectId, codebasePath, port);
       
       if (result.success) {
         res.json(result);

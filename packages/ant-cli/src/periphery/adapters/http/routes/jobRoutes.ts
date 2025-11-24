@@ -19,6 +19,7 @@ export function createJobRoutes(deps: {
   logs: Map<string, LogEntry[]>;
   childProcesses: Map<string, any>;
   jobs: Map<string, any>;
+  jobToProject: Map<string, { projectId: string; featureName: string; jobType: 'design' | 'code' | 'learn'; userContext?: any }>;  // ✅ For checking duplicate jobs
   userStoppedJobs: Set<string>;  // ✅ Track user-stopped jobs
   cleanupJobState: (jobId: string, projectId?: string, featureName?: string, interruptionReason?: InterruptionDetails, explicitJobType?: 'design' | 'code' | 'learn') => Promise<void>;
   workflowStateService: import('../services/WorkflowStateService').WorkflowStateService;  // ✅ For node tracking
@@ -35,6 +36,31 @@ export function createJobRoutes(deps: {
       
       console.log(`\n📨 [JobRoute] POST /projects/${projectId}/features/${featureName}/execute`);
       console.log(`   Agent: ${agent}, jobType: ${jobType}`);
+      
+      // ✅ Check if this feature already has a running job
+      const featureKey = `${projectId}/${featureName}`;
+      let existingJobId: string | undefined;
+      
+      for (const [jobId, mapping] of Array.from(deps.jobToProject?.entries() || [])) {
+        if (mapping.projectId === projectId && mapping.featureName === featureName) {
+          const jobStatus = deps.jobs?.get(jobId);
+          if (jobStatus && jobStatus.status === 'running') {
+            existingJobId = jobId;
+            break;
+          }
+        }
+      }
+      
+      if (existingJobId) {
+        console.log(`   ⚠️  Job already running for feature ${featureKey}: ${existingJobId}`);
+        return res.status(409).json({ 
+          error: `A job is already running for this feature. Please wait for it to complete or stop it first.`,
+          existingJobId,
+          featureKey
+        });
+      }
+      
+      console.log(`   ✅ No running job found for feature ${featureKey}, proceeding...`);
       
       // ✅ Build context for WorkspaceResolver
       const userContext = req.user && req.organization ? {

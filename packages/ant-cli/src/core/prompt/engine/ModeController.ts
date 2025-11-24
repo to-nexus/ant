@@ -1,4 +1,4 @@
-import { AgentTask, CodeMode } from "../../types";
+import { AgentTask, CodeMode, ProjectEnvironment } from "../../types";
 import { AssembledContext } from "./ContextAssembler";
 import { inferCodeMode } from "../../modeInference";
 
@@ -177,10 +177,15 @@ export class ModeController {
     }
     
     if (phase === 'execute') {
-      // ✅ Language-specific environment rules (highest priority - applies to ALL execute tasks)
+      // ✅ Environment-aware prompt injections (highest priority - applies to ALL execute tasks)
       const language = this.detectLanguage(context);
+      const environment = this.detectEnvironment(context);
+      
       if (language && task === 'code') {
-        injections.push(`${task}/languages/${language}/execute/environment`);
+        // Environment-specific rules (always inferred, no fallback)
+        const envPath = `${task}/languages/${language}/environments/${environment}/rules`;
+        injections.push(envPath);
+        console.log(`[ModeController] Adding environment-specific injection: ${envPath}`);
       }
       
       // ✅ NEW: Retry context injection (highest priority - only on retries)
@@ -219,6 +224,155 @@ export class ModeController {
     }
     
     return injections;
+  }
+  
+  /**
+   * Detect project environment from codebase profile or design document
+   * Always returns an inferred environment (never null)
+   */
+  private detectEnvironment(context: AssembledContext): string {
+    // 0. ✨ HIGHEST PRIORITY: Design document file name convention (fe-*, be-*)
+    if (context.designDocPath) {
+      const fileName = context.designDocPath.toLowerCase();
+      
+      // Frontend design document
+      if (fileName.includes('fe-system-design') || 
+          fileName.includes('frontend-design') ||
+          fileName.includes('fe-design')) {
+        console.log(`[ModeController] Detected environment from file name (${context.designDocPath}): browser`);
+        return 'browser';
+      }
+      
+      // Backend design document
+      if (fileName.includes('be-system-design') || 
+          fileName.includes('backend-design') ||
+          fileName.includes('be-design') ||
+          fileName.includes('api-design')) {
+        console.log(`[ModeController] Detected environment from file name (${context.designDocPath}): node-api`);
+        return 'node-api';
+      }
+      
+      // Fullstack design document
+      if (fileName.includes('fullstack-design') || 
+          fileName.includes('fs-design')) {
+        console.log(`[ModeController] Detected environment from file name (${context.designDocPath}): fullstack`);
+        return 'fullstack';
+      }
+    }
+    
+    // 1. Try to get from codebase profile (existing projects)
+    const env = context.codebaseProfile?.environment;
+    if (env) {
+      // Map ProjectEnvironment to directory name
+      switch (env.primary) {
+        case ProjectEnvironment.BROWSER:
+          return 'browser';
+        case ProjectEnvironment.NODE_API:
+          return 'node-api';
+        case ProjectEnvironment.NODE_CLI:
+          return 'node-cli';
+        case ProjectEnvironment.FULLSTACK:
+          return 'fullstack';
+        case ProjectEnvironment.CONFIG:
+          return 'config';
+        default:
+          console.log(`[ModeController] Unknown environment type: ${env.primary}, defaulting to: browser`);
+          return 'browser';
+      }
+    }
+    
+    // 2. Try to infer from design document content (new projects)
+    if (context.designDoc) {
+      const doc = context.designDoc.toLowerCase();
+      
+      // Fullstack frameworks (highest priority)
+      if (doc.includes('next.js') || doc.includes('nextjs') || doc.includes('next app router')) {
+        console.log('[ModeController] Inferred environment from design doc: fullstack (Next.js)');
+        return 'fullstack';
+      }
+      if (doc.includes('remix') || doc.includes('@remix-run')) {
+        console.log('[ModeController] Inferred environment from design doc: fullstack (Remix)');
+        return 'fullstack';
+      }
+      if (doc.includes('sveltekit') || doc.includes('svelte kit')) {
+        console.log('[ModeController] Inferred environment from design doc: fullstack (SvelteKit)');
+        return 'fullstack';
+      }
+      if (doc.includes('nuxt')) {
+        console.log('[ModeController] Inferred environment from design doc: fullstack (Nuxt)');
+        return 'fullstack';
+      }
+      
+      // Backend API indicators
+      const isBackendAPI = 
+        doc.includes('api server') ||
+        doc.includes('backend api') ||
+        doc.includes('rest api') ||
+        doc.includes('graphql api') ||
+        doc.includes('express') ||
+        doc.includes('fastify') ||
+        doc.includes('nestjs') ||
+        doc.includes('koa') ||
+        doc.includes('hapi') ||
+        doc.includes('database') && (doc.includes('prisma') || doc.includes('typeorm') || doc.includes('mongoose')) ||
+        doc.includes('microservice');
+      
+      if (isBackendAPI) {
+        console.log('[ModeController] Inferred environment from design doc: node-api');
+        return 'node-api';
+      }
+      
+      // Browser SPA indicators
+      const isBrowserSPA = 
+        doc.includes('single page application') ||
+        doc.includes('spa') && !doc.includes('spa ') || // "SPA" but not "spa ce"
+        doc.includes('react app') ||
+        doc.includes('vue app') ||
+        doc.includes('angular app') ||
+        doc.includes('frontend') && (doc.includes('react') || doc.includes('vue') || doc.includes('angular')) ||
+        doc.includes('vite') && (doc.includes('react') || doc.includes('vue')) ||
+        doc.includes('web app') && (doc.includes('react') || doc.includes('vue'));
+      
+      if (isBrowserSPA) {
+        console.log('[ModeController] Inferred environment from design doc: browser');
+        return 'browser';
+      }
+      
+      // CLI tool indicators
+      const isCLI = 
+        doc.includes('cli tool') ||
+        doc.includes('command-line') ||
+        doc.includes('command line tool') ||
+        doc.includes('cli application') ||
+        doc.includes('terminal tool') ||
+        doc.includes('npm package') && doc.includes('bin') ||
+        doc.includes('commander') ||
+        doc.includes('inquirer');
+      
+      if (isCLI) {
+        console.log('[ModeController] Inferred environment from design doc: node-cli');
+        return 'node-cli';
+      }
+    }
+    
+    // 3. Infer from language and context (no design doc or unclear indicators)
+    const language = this.detectLanguage(context);
+    
+    // If TypeScript/JavaScript without clear indicators, default to browser (most common)
+    if (language === 'typescript' || language === 'javascript') {
+      console.log('[ModeController] No clear environment indicators, defaulting to: browser');
+      return 'browser';
+    }
+    
+    // For backend languages, default to node-api
+    if (language === 'golang' || language === 'python' || language === 'rust' || language === 'java') {
+      console.log(`[ModeController] Backend language (${language}), defaulting to: node-api`);
+      return 'node-api';
+    }
+    
+    // Ultimate fallback: browser (safest for web projects)
+    console.log('[ModeController] Ultimate fallback, defaulting to: browser');
+    return 'browser';
   }
   
   /**

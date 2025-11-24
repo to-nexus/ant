@@ -9,6 +9,7 @@ export interface AssembledContext {
   // Documents
   directive?: string;
   designDoc?: string;         // For code task
+  designDocPath?: string;     // ✅ NEW: Design document file path (for environment inference)
   lastSectionNumber?: number; // Last section number for continuation
   previousDesign?: string;    // For design task
   prdSpec?: string;

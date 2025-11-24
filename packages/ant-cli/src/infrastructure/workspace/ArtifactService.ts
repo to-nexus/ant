@@ -164,22 +164,60 @@ export class ArtifactService {
 
   /**
    * Find latest design document
-   * Standard naming: system-design.md (fixed filename)
+   * Supports multiple file naming conventions:
+   * - fe-system-design.md (frontend-specific)
+   * - be-system-design.md (backend-specific)
+   * - system-design.md (legacy or unified)
+   * 
+   * Returns both content and file path for environment inference
    */
   static async findLatestDesign(
     context: ProjectContext,
-    gitPort: GitPort
-  ): Promise<string | null> {
+    gitPort: GitPort,
+    preferredEnvironment?: 'frontend' | 'backend' | 'any'
+  ): Promise<{ content: string; filePath: string } | null> {
     const featurePath = WorkspacePathResolver.resolveFeaturePath(context);
     const designPath = path.join(featurePath, "outputs/design");
 
-    // ✅ Use fixed filename: system-design.md
-    const designFilePath = path.join(designPath, "system-design.md");
-    const exists = await gitPort.fileExists(designFilePath);
+    // ✅ Try design documents in priority order
+    const candidateFiles: string[] = [];
+    
+    if (preferredEnvironment === 'frontend') {
+      // Frontend job: prefer fe-system-design.md
+      candidateFiles.push('fe-system-design.md', 'frontend-design.md', 'system-design.md');
+    } else if (preferredEnvironment === 'backend') {
+      // Backend job: prefer be-system-design.md
+      candidateFiles.push('be-system-design.md', 'backend-design.md', 'api-design.md', 'system-design.md');
+    } else {
+      // No preference or dual environment: try all
+      candidateFiles.push(
+        'fe-system-design.md',    // Frontend
+        'be-system-design.md',    // Backend
+        'frontend-design.md',
+        'backend-design.md',
+        'api-design.md',
+        'system-design.md'        // Legacy/unified
+      );
+    }
 
-    if (!exists) return null;
+    // Try each candidate file
+    for (const fileName of candidateFiles) {
+      const designFilePath = path.join(designPath, fileName);
+      const exists = await gitPort.fileExists(designFilePath);
 
-    return await gitPort.readFile(designFilePath);
+      if (exists) {
+        const content = await gitPort.readFile(designFilePath);
+        if (content) {
+          console.log(`📄 [ArtifactService] Found design document: ${fileName}`);
+          return {
+            content,
+            filePath: fileName  // Return relative filename for environment inference
+          };
+        }
+      }
+    }
+
+    return null;
   }
 
   /**

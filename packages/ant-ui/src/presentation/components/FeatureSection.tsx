@@ -1,9 +1,11 @@
-import { GitBranch, ExternalLink, X } from 'lucide-react';
+import { GitBranch } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useStore } from '@/domain/store';
 import { createFeature, deleteFeature, startDevServer, stopDevServer, getDevServerStatus } from '@/infrastructure/http/api';
 import { ItemDropdown } from './ItemDropdown';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
+import { DevServerSetup } from './DevServerSetup';
+import { DevServerStatus } from './DevServerStatus';
 
 export function FeatureSection() {
   const { 
@@ -18,8 +20,16 @@ export function FeatureSection() {
     setDevServerLoading,  // ✅ 로딩 상태 설정 함수 추가
     isDevServerLoading    // ✅ 로딩 상태 가져오기
   } = useStore();
-  const [showStatusPanel, setShowStatusPanel] = useState(false);
+  
+  // ✅ 로딩 상태 변경 감지
+  useEffect(() => {
+    console.log('[FeatureSection] 📊 isDevServerLoading changed:', isDevServerLoading);
+  }, [isDevServerLoading]);
+  
+  const [showSetupPanel, setShowSetupPanel] = useState(false);  // ✅ Setup panel (포트 입력)
+  const [showStatusPanel, setShowStatusPanel] = useState(false); // ✅ Status panel (실행 결과)
   const [serverStarted, setServerStarted] = useState(false);
+  const [startError, setStartError] = useState<string | undefined>();
   const [isInitialMount, setIsInitialMount] = useState(true);
   const policy = useUIActionPolicy();
 
@@ -74,21 +84,36 @@ export function FeatureSection() {
     };
   }, [selectedProject, setDevServerStatus]);
 
-  const handleStartDevServer = async () => {
+  // ✅ Play 버튼 클릭: Setup Panel 표시 (바로 실행하지 않음)
+  const handlePlayButtonClick = () => {
+    setShowSetupPanel(true);
+    setShowStatusPanel(false);
+    setStartError(undefined);
+  };
+
+  // ✅ 실제 서버 실행 (Setup Panel에서 호출)
+  const handleStartDevServer = async (port: number) => {
     if (!selectedProject) return;
     
+    console.log(`[FeatureSection] 🔄 Starting dev server on port ${port}, setting loading=true`);
     setDevServerLoading(true);  // ✅ 로딩 시작
+    setStartError(undefined);
+    
     try {
-      await startDevServer(selectedProject);
+      await startDevServer(selectedProject, port);
       setServerStarted(true);
-      setShowStatusPanel(true);
+      setShowSetupPanel(false);  // ✅ Setup panel 숨김
+      setShowStatusPanel(true);  // ✅ Status panel 표시
       
       // SSE will handle status updates automatically
     } catch (error: any) {
       console.error('Failed to start dev server:', error);
-      setShowStatusPanel(true);
+      setStartError(error.message || 'Unknown error');
       setServerStarted(false);
+      setShowSetupPanel(false);  // ✅ Setup panel 숨김
+      setShowStatusPanel(true);  // ✅ Error status 표시
     } finally {
+      console.log('[FeatureSection] ✅ Dev server start complete, setting loading=false');
       setDevServerLoading(false);  // ✅ 로딩 종료
     }
   };
@@ -146,61 +171,41 @@ export function FeatureSection() {
         onItemCreated={fetchFeatures}
         placeholder="Select a feature..."
         inputPlaceholder="Feature name..."
-        onPlayClick={handleStartDevServer}
+        onPlayClick={handlePlayButtonClick}  // ✅ Setup panel 표시
         onStopClick={handleStopDevServer}
         isPlaying={devServerStatus?.running || false}
         disabled={!policy.canChangeFeature}
         disabledReason={policy.disabledReason || undefined}
-        playButtonDisabled={!policy.canStartDevServer && !policy.canStopDevServer}  // ✅ Play 버튼 비활성화
-        playButtonLoading={isDevServerLoading}  // ✅ 로딩 상태 전달
+        playButtonDisabled={!policy.canStartDevServer && !policy.canStopDevServer}
+        playButtonLoading={isDevServerLoading}
       />
       
-      {/* Dev Server Status Panel */}
+      {/* Dev Server Setup Panel (포트 입력 + 실행 버튼) */}
+      {showSetupPanel && selectedProject && selectedFeature && (
+        <div className="mt-2">
+          <DevServerSetup
+            projectId={selectedProject}
+            defaultPort={5000}  // TODO: Get from config
+            onStart={handleStartDevServer}
+            onClose={() => setShowSetupPanel(false)}
+            isStarting={isDevServerLoading}
+          />
+        </div>
+      )}
+      
+      {/* Dev Server Status Panel (실행 결과) */}
       {showStatusPanel && selectedProject && selectedFeature && (
         <div className="mt-2">
-          {/* Running Status */}
-          {devServerStatus?.running && (
-            <div className="p-3 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-md">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 animate-pulse">
-                  <div className="w-2 h-2 bg-green-500 dark:bg-green-400 rounded-full"></div>
-                  <span className="text-sm font-medium text-green-900 dark:text-green-100">Dev Server Running</span>
-                </div>
-                {devServerStatus.url && (
-                  <button
-                    onClick={() => window.open(devServerStatus.url!, '_blank')}
-                    className="px-2 py-1 text-xs bg-green-600 dark:bg-green-700 text-white rounded hover:bg-green-700 dark:hover:bg-green-600 transition-colors flex items-center gap-1"
-                    title="Open in new tab"
-                  >
-                    <ExternalLink size={12} />
-                    Open
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-          
-          {/* Error Status */}
-          {hasError && (
-            <div className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-md">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-red-600 dark:text-red-400 text-sm">⚠️</span>
-                  <span className="text-sm font-medium text-red-900 dark:text-red-100">Dev Server Failed to Start</span>
-                </div>
-                <button
-                  onClick={() => {
-                    setShowStatusPanel(false);
-                    setServerStarted(false);
-                  }}
-                  className="p-1 text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 rounded hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors"
-                  title="Close"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            </div>
-          )}
+          <DevServerStatus
+            status={devServerStatus?.running ? 'running' : 'error'}
+            url={devServerStatus?.url}
+            errorMessage={startError}
+            onClose={() => {
+              setShowStatusPanel(false);
+              setServerStarted(false);
+              setStartError(undefined);
+            }}
+          />
         </div>
       )}
     </div>

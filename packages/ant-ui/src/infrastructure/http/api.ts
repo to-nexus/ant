@@ -972,12 +972,16 @@ export async function updateProjectConfig(projectId: string, config: ProjectConf
 }
 
 // Dev server management
-export async function startDevServer(projectId: string): Promise<{ success: boolean; message: string; script: string }> {
+export async function startDevServer(projectId: string, port?: number): Promise<{ success: boolean; message: string; script: string }> {
   try {
     const response = await authFetch(
       `${API_BASE()}/projects/${encodeURIComponent(projectId)}/dev/start`,
       {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ port }),
       }
     );
     

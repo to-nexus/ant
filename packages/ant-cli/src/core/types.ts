@@ -8,6 +8,9 @@
 // Re-export workspace types
 export * from './types/workspace';
 
+// Re-export environment types
+export * from './types/environment';
+
 /**
  * Agent task types
  * Defines what kind of work an agent performs
@@ -28,13 +31,14 @@ export type DesignMode = 'greenfield' | 'evolution' | 'refactor';
 
 /**
  * Codebase profile
- * Detected language and framework information
+ * Detected language, framework, and environment information
  */
 export interface CodebaseProfile {
   language: string;
   framework?: string;
   version?: string;
   packageManager?: string;
+  environment?: import('./types/environment').EnvironmentDetection;  // ✅ Environment detection result
   [key: string]: any;
 }
 
