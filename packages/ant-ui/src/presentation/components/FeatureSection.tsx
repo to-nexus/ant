@@ -1,7 +1,7 @@
 import { GitBranch } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useStore } from '@/domain/store';
-import { createFeature, deleteFeature, startDevServer, stopDevServer, getDevServerStatus } from '@/infrastructure/http/api';
+import { createFeature, deleteFeature, startDevServer, stopDevServer, getDevServerStatus, switchToFeatureBranch } from '@/infrastructure/http/api';
 import { ItemDropdown } from './ItemDropdown';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { DevServerSetup } from './DevServerSetup';
@@ -31,7 +31,31 @@ export function FeatureSection() {
   const [serverStarted, setServerStarted] = useState(false);
   const [startError, setStartError] = useState<string | undefined>();
   const [isInitialMount, setIsInitialMount] = useState(true);
+  const [isInstalling, setIsInstalling] = useState(false);  // ✅ Dependency 설치 중 상태
   const policy = useUIActionPolicy();
+
+  // Auto-checkout feature branch when feature is selected
+  useEffect(() => {
+    const checkoutBranch = async () => {
+      if (!selectedProject || !selectedFeature) return;
+      
+      try {
+        console.log(`[FeatureSection] Switching to branch for feature: ${selectedFeature}`);
+        const result = await switchToFeatureBranch(selectedProject, selectedFeature);
+        
+        if (result.success) {
+          console.log(`[FeatureSection] ✅ Branch switched for ${selectedFeature}`);
+        } else {
+          console.error('[FeatureSection] Branch switch failed:', result.error);
+          // Don't show error to user - Git might not be initialized yet
+        }
+      } catch (error) {
+        console.error('[FeatureSection] Branch switch error:', error);
+      }
+    };
+    
+    checkoutBranch();
+  }, [selectedProject, selectedFeature]);
 
   // Auto-show status panel when dev server is running (including after refresh)
   useEffect(() => {
@@ -70,6 +94,56 @@ export function FeatureSection() {
       try {
         const status = await getDevServerStatus(selectedProject);
         setDevServerStatus(status);
+        
+        // Check logs for various states
+        if (status.logs && status.logs.length > 0) {
+          // Check for installing dependencies
+          const installingLog = status.logs.find(log => 
+            log.message.includes('Installing dependencies')
+          );
+          
+          if (installingLog) {
+            setIsInstalling(true);
+            setShowStatusPanel(true);
+            return;
+          }
+          
+          // Check for installation success
+          const installSuccessLog = status.logs.find(log =>
+            log.message.includes('Dependencies installed successfully')
+          );
+          
+          if (installSuccessLog) {
+            setIsInstalling(false);
+          }
+          
+          // Check for port in use error
+          const portErrorLog = status.logs.find(log => 
+            log.type === 'stderr' && 
+            log.message.includes('Port') && 
+            log.message.includes('already in use')
+          );
+          
+          if (portErrorLog) {
+            setStartError(portErrorLog.message);
+            setServerStarted(false);
+            setIsInstalling(false);
+            setShowStatusPanel(true);
+          }
+          
+          // Check for installation failure
+          const installErrorLog = status.logs.find(log =>
+            log.type === 'stderr' &&
+            log.message.includes('Failed to install dependencies')
+          );
+          
+          if (installErrorLog) {
+            setStartError(installErrorLog.message);
+            setServerStarted(false);
+            setIsInstalling(false);
+            setShowStatusPanel(true);
+          }
+        }
       } catch (error) {
         console.error('[FeatureSection] Failed to fetch dev server status:', error);
       }
@@ -89,6 +163,7 @@ export function FeatureSection() {
     setShowSetupPanel(true);
     setShowStatusPanel(false);
     setStartError(undefined);
+    setIsInstalling(false);
   };
 
   // ✅ 실제 서버 실행 (Setup Panel에서 호출)
@@ -98,6 +173,7 @@ export function FeatureSection() {
     console.log(`[FeatureSection] 🔄 Starting dev server on port ${port}, setting loading=true`);
     setDevServerLoading(true);  // ✅ 로딩 시작
     setStartError(undefined);
+    setIsInstalling(false);  // ✅ 설치 상태 초기화
     
     try {
       await startDevServer(selectedProject, port);
@@ -197,13 +273,22 @@ export function FeatureSection() {
       {showStatusPanel && selectedProject && selectedFeature && (
         <div className="mt-2">
           <DevServerStatus
-            status={devServerStatus?.running ? 'running' : 'error'}
+            status={
+              isInstalling
+                ? 'installing'
+                : isDevServerLoading 
+                ? 'starting' 
+                : devServerStatus?.running 
+                ? 'running' 
+                : 'error'
+            }
             url={devServerStatus?.url}
             errorMessage={startError}
             onClose={() => {
               setShowStatusPanel(false);
               setServerStarted(false);
               setStartError(undefined);
+              setIsInstalling(false);
             }}
           />
         </div>

@@ -268,6 +268,113 @@ export class SimpleGitAdapter implements GitPort {
     return results;
   }
 
+  // GitHub integration methods
+  async clone(url: string, targetPath: string, options?: { depth?: number }): Promise<void> {
+    const cloneOptions = options?.depth ? ['--depth', options.depth.toString()] : [];
+    const git = await import('simple-git').then(m => m.default());
+    await git.clone(url, targetPath, cloneOptions);
+  }
+
+  async fetch(remote: string = 'origin'): Promise<void> {
+    await this.ensure();
+    await this.git.fetch(remote);
+  }
+
+  async pull(remote: string = 'origin', branch?: string): Promise<void> {
+    await this.ensure();
+    if (branch) {
+      await this.git.pull(remote, branch);
+    } else {
+      await this.git.pull();
+    }
+  }
+
+  async push(remote: string = 'origin', branch?: string, options?: { setUpstream?: boolean; force?: boolean }): Promise<void> {
+    await this.ensure();
+    
+    const pushOptions: string[] = [];
+    if (options?.setUpstream) {
+      pushOptions.push('--set-upstream');
+    }
+    if (options?.force) {
+      pushOptions.push('--force');
+    }
+    
+    if (branch) {
+      await this.git.push(remote, branch, pushOptions);
+    } else {
+      await this.git.push(pushOptions);
+    }
+  }
+
+  async commit(message: string, files?: string[]): Promise<void> {
+    await this.ensure();
+    
+    if (files && files.length > 0) {
+      await this.git.add(files);
+    } else {
+      await this.git.add('.');
+    }
+    
+    await this.git.commit(message);
+  }
+
+  async stage(files: string[]): Promise<void> {
+    await this.ensure();
+    await this.git.add(files);
+  }
+
+  async unstage(files: string[]): Promise<void> {
+    await this.ensure();
+    await this.git.reset(['HEAD', ...files]);
+  }
+
+  async getCurrentBranch(): Promise<string> {
+    await this.ensure();
+    const result = await this.git.branch();
+    return result.current;
+  }
+
+  async getBranches(options?: { remote?: boolean }): Promise<string[]> {
+    await this.ensure();
+    const result = await this.git.branch(options?.remote ? ['-r'] : []);
+    return result.all;
+  }
+
+  async checkoutBranch(branch: string, options?: { create?: boolean }): Promise<void> {
+    await this.ensure();
+    
+    if (options?.create) {
+      await this.git.checkoutLocalBranch(branch);
+    } else {
+      await this.git.checkout(branch);
+    }
+  }
+
+  async getRemotes(): Promise<Array<{ name: string; url: string }>> {
+    await this.ensure();
+    const remotes = await this.git.getRemotes(true);
+    return remotes.map((remote: any) => ({
+      name: remote.name,
+      url: remote.refs.fetch || remote.refs.push
+    }));
+  }
+
+  async addRemote(name: string, url: string): Promise<void> {
+    await this.ensure();
+    await this.git.addRemote(name, url);
+  }
+
+  async removeRemote(name: string): Promise<void> {
+    await this.ensure();
+    await this.git.removeRemote(name);
+  }
+
+  async setRemoteUrl(name: string, url: string): Promise<void> {
+    await this.ensure();
+    await this.git.remote(['set-url', name, url]);
+  }
+
   // Legacy compatibility methods
   async diff(): Promise<string[]> {
     return await this.getChangedFiles();

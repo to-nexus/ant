@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import { ProjectService, ChatService } from '../services';
+import { GitHubAuthService } from '../../auth/GitHubAuthService';
 import { createHealthRoutes } from './health.routes';
 import { createProjectsRoutes } from './projects.routes';
 import { createFeaturesRoutes } from './features.routes';
 import { createFilesRoutes } from './files.routes';
 import { createChatRoutes } from './chat.routes';
+import { createGitHubRoutes } from './github.routes';
 
 // ✅ Re-export existing routes (for backward compatibility)
 export { createJobRoutes } from './jobRoutes';
@@ -21,6 +23,7 @@ export { createIDERoutes } from './ideRoutes';
 export interface RoutesDeps {
   projectService: ProjectService;
   chatService?: ChatService;
+  githubAuthService?: GitHubAuthService;
 }
 
 /**
@@ -52,6 +55,13 @@ export function createApiRoutes(deps: RoutesDeps): Router {
   router.use(createChatRoutes({
     chatService: deps.chatService
   }));
+  
+  // GitHub integration
+  if (deps.githubAuthService) {
+    router.use('/github', createGitHubRoutes({
+      githubAuthService: deps.githubAuthService
+    }));
+  }
   
   return router;
 }

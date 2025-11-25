@@ -50,15 +50,89 @@ export class DevServerService {
       .then(() => true)
       .catch(() => false);
     
-    if (!hasNodeModules) {
-      return { 
-        success: false,
-        error: 'Dependencies not installed. Please run "npm install" in the project directory first.' 
-      };
-    }
-    
     // ✅ Use provided port or default
     const devPort = port || 4200;
+    
+    // Clear previous logs
+    this.devServerLogs.set(projectId, []);
+    
+    // ✅ Auto-install dependencies if not found
+    if (!hasNodeModules) {
+      const installLog: LogEntry = {
+        timestamp: new Date().toISOString(),
+        type: 'stdout',
+        message: '📦 Installing dependencies... This may take a few minutes.'
+      };
+      const logs = this.devServerLogs.get(projectId) || [];
+      logs.push(installLog);
+      this.devServerLogs.set(projectId, logs);
+      
+      // Run npm install
+      return new Promise((resolve) => {
+        const installProcess = spawn('npm', ['install'], {
+          cwd: localPath,
+          shell: true
+        });
+        
+        installProcess.stdout?.on('data', (data: Buffer) => {
+          const message = data.toString();
+          const log: LogEntry = {
+            timestamp: new Date().toISOString(),
+            type: 'stdout',
+            message: message.trim()
+          };
+          
+          const logs = this.devServerLogs.get(projectId) || [];
+          logs.push(log);
+          this.devServerLogs.set(projectId, logs);
+        });
+        
+        installProcess.stderr?.on('data', (data: Buffer) => {
+          const message = data.toString();
+          const log: LogEntry = {
+            timestamp: new Date().toISOString(),
+            type: 'stderr',
+            message: message.trim()
+          };
+          
+          const logs = this.devServerLogs.get(projectId) || [];
+          logs.push(log);
+          this.devServerLogs.set(projectId, logs);
+        });
+        
+        installProcess.on('exit', async (code) => {
+          if (code === 0) {
+            const successLog: LogEntry = {
+              timestamp: new Date().toISOString(),
+              type: 'stdout',
+              message: '✅ Dependencies installed successfully. Starting dev server...'
+            };
+            const logs = this.devServerLogs.get(projectId) || [];
+            logs.push(successLog);
+            this.devServerLogs.set(projectId, logs);
+            
+            // Now start the dev server by calling this method again
+            const result = await this.startDevServer(projectId, localPath, port);
+            resolve(result);
+          } else {
+            const errorLog: LogEntry = {
+              timestamp: new Date().toISOString(),
+              type: 'stderr',
+              message: `❌ Failed to install dependencies (exit code ${code})`
+            };
+            const logs = this.devServerLogs.get(projectId) || [];
+            logs.push(errorLog);
+            this.devServerLogs.set(projectId, logs);
+            
+            resolve({
+              success: false,
+              error: `Failed to install dependencies (exit code ${code})`
+            });
+          }
+        });
+      });
+    }
+    
     console.log(`[DevServerService] Starting dev server on port ${devPort}`);
     
     // Determine the best dev server command
@@ -104,9 +178,6 @@ export class DevServerService {
         error: 'No suitable dev server command found. Please add a "dev" script to package.json' 
       };
     }
-    
-    // Clear previous logs
-    this.devServerLogs.set(projectId, []);
     
     // ✅ Store port for later use
     this.devServerPorts.set(projectId, devPort);
@@ -167,6 +238,34 @@ export class DevServerService {
     // Capture stderr
     devProcess.stderr?.on('data', (data: Buffer) => {
       const message = data.toString();
+      
+      // Check for port already in use error
+      const portInUsePatterns = [
+        /EADDRINUSE/i,
+        /address already in use/i,
+        /port.*already.*allocated/i,
+        /bind.*EADDRINUSE/i,
+        /Port \d+ is already in use/i
+      ];
+      
+      const isPortInUse = portInUsePatterns.some(pattern => pattern.test(message));
+      
+      if (isPortInUse) {
+        // Add clear error message for port in use
+        const errorLog: LogEntry = {
+          timestamp: new Date().toISOString(),
+          type: 'stderr',
+          message: `❌ Port ${devPort} is already in use. Please stop the other process using this port or choose a different port.`
+        };
+        
+        const logs = this.devServerLogs.get(projectId) || [];
+        logs.push(errorLog);
+        this.devServerLogs.set(projectId, logs);
+        
+        // Kill the process to prevent zombie process
+        devProcess.kill();
+        return;
+      }
       
       const log: LogEntry = {
         timestamp: new Date().toISOString(),

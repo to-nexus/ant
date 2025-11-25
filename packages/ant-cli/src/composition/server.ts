@@ -23,6 +23,15 @@ const DEFAULT_PORT = 4100;
 const DEFAULT_CLOUD_URL = 'https://ant.nexus.ai';
 
 async function main() {
+  // ✅ Debug: Check if environment variables are loaded
+  console.log('[Server] Environment variables check:');
+  console.log(`  ANT_ENCRYPTION_KEY present: ${!!process.env.ANT_ENCRYPTION_KEY}`);
+  if (process.env.ANT_ENCRYPTION_KEY) {
+    console.log(`  ANT_ENCRYPTION_KEY length: ${process.env.ANT_ENCRYPTION_KEY.length}`);
+  } else {
+    console.warn('  ⚠️  ANT_ENCRYPTION_KEY not found in environment!');
+  }
+  
   // Environment configuration
   const mode = (process.env.ANT_SERVER_MODE || 'local') as 'local' | 'cloud';
   const port = process.env.PORT ? parseInt(process.env.PORT) : DEFAULT_PORT;

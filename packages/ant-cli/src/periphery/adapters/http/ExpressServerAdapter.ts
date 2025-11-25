@@ -41,6 +41,7 @@ import {
 import { FileJobPrerequisitesAdapter } from '../prerequisites/FileJobPrerequisitesAdapter';
 import { WorkspaceResolver, LocalWorkspaceResolver, CloudWorkspaceResolver } from '../../../infrastructure/workspace/WorkspaceResolver';
 import { AuthService } from '../../../infrastructure/auth/AuthService';
+import { GitHubAuthService } from '../auth/GitHubAuthService';
 
 /**
  * ExpressServerAdapter
@@ -75,6 +76,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   private graphMetadataService: GraphMetadataService;
   private workflowStateService: WorkflowStateService;
   private sseService: SSEService;  // ✅ Unified SSE service
+  private githubAuthService: GitHubAuthService;  // ✅ GitHub Auth service
   private jobPrerequisitesAdapter: FileJobPrerequisitesAdapter;
   
   // Job tracking (agent execution instances)
@@ -468,7 +470,8 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         await this.cleanupJobState(jobId);
       }
     });
-    this.projectService = new ProjectService(this.workspaceResolver);  // ✅ WorkspaceResolver 사용
+    this.githubAuthService = new GitHubAuthService(this.workspacesPath);  // ✅ Initialize GitHub Auth service
+    this.projectService = new ProjectService(this.workspaceResolver, this.githubAuthService);  // ✅ WorkspaceResolver + GitHubAuthService
     this.sseService = new SSEService();
     this.devServerService = new DevServerService({
       onStatusChange: (projectId) => {
@@ -671,10 +674,11 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       this.app.use('/api', authRoutes);
     }
     
-    // ✅ NEW: Unified API routes (health, agents, projects, features, files, chat)
+    // ✅ NEW: Unified API routes (health, agents, projects, features, files, chat, github)
     const apiRoutes = createApiRoutes({
       projectService: this.projectService,
-      chatService: this.chatService
+      chatService: this.chatService,
+      githubAuthService: this.githubAuthService  // ✅ Pass GitHub Auth service
     });
     this.app.use('/api', apiRoutes);
     

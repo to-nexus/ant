@@ -1,7 +1,7 @@
-import { X, ExternalLink } from 'lucide-react';
+import { X, ExternalLink, Loader2, Package } from 'lucide-react';
 
 interface DevServerStatusProps {
-  status: 'running' | 'error';
+  status: 'installing' | 'starting' | 'running' | 'error';
   url?: string;
   errorMessage?: string;
   onClose: () => void;
@@ -11,6 +11,7 @@ interface DevServerStatusProps {
  * DevServerStatus
  * 
  * 개발서버 실행 결과 표시 UI
+ * - 구동 시도 중: 로딩 표시
  * - 실행 성공: Open 버튼 표시 (Close 버튼 없음)
  * - 실행 실패: Close 버튼 표시
  */
@@ -20,6 +21,34 @@ export function DevServerStatus({
   errorMessage,
   onClose
 }: DevServerStatusProps) {
+  // Installing dependencies status
+  if (status === 'installing') {
+    return (
+      <div className="p-3 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded-md">
+        <div className="flex items-center gap-2">
+          <Package className="w-4 h-4 text-purple-600 dark:text-purple-400 animate-pulse" />
+          <span className="text-sm font-medium text-purple-900 dark:text-purple-100">
+            Installing dependencies... 잠시만 기다려주세요.
+          </span>
+        </div>
+      </div>
+    );
+  }
+  
+  // Starting status
+  if (status === 'starting') {
+    return (
+      <div className="p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-md">
+        <div className="flex items-center gap-2">
+          <Loader2 className="w-4 h-4 text-blue-600 dark:text-blue-400 animate-spin" />
+          <span className="text-sm font-medium text-blue-900 dark:text-blue-100">
+            Dev Server 구동을 시도하고 있습니다...
+          </span>
+        </div>
+      </div>
+    );
+  }
+  
   if (status === 'running') {
     return (
       <div className="p-3 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-md">

@@ -139,7 +139,7 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
   };
   
   // Handle Editor mode switch
-  const handleEditorViewSwitch = () => {
+  const handleEditorViewSwitch = async () => {
     // ✅ Check if project is selected
     if (!selectedProject) {
       setEditorTooltip('Please select a project first');
@@ -147,8 +147,46 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
       return;
     }
     
-    // ✅ Simply switch to editor view (like Local/Cloud does)
-    setViewMode('editor');
+    // ✅ Open IDE with the correct workspace path
+    try {
+      // Get project config first
+      const { fetchProjectConfig } = await import('@/infrastructure/http/api');
+      const config = await fetchProjectConfig(selectedProject);
+      
+      if (!config) {
+        setEditorTooltip('Project config not found');
+        setTimeout(() => setEditorTooltip(null), 3000);
+        return;
+      }
+      
+      // Determine workspace path based on repoType
+      let workspacePath: string;
+      
+      if (config.repoType === 'cloud') {
+        // Cloud Mode: Use codebase directory
+        // Build codebase path from user context
+        const org = userOrganization || 'default';
+        const user = userEmail?.split('@')[0] || 'user';
+        workspacePath = `/workspace/dev/ant/workspaces/${org}/${user}/${selectedProject}/codebase`;
+      } else {
+        // Local Mode: Use localPath from config
+        if (!config.localPath) {
+          setEditorTooltip('Local path not configured');
+          setTimeout(() => setEditorTooltip(null), 3000);
+          return;
+        }
+        workspacePath = config.localPath;
+      }
+      
+      console.log('[GlobalNavBar] Opening editor with path:', workspacePath);
+      
+      // ✅ Set IDE workspace path and switch to editor view
+      useStore.getState().switchToEditorView(workspacePath);
+    } catch (error: any) {
+      console.error('[GlobalNavBar] Failed to open IDE:', error);
+      setEditorTooltip('Failed to open IDE');
+      setTimeout(() => setEditorTooltip(null), 3000);
+    }
   };
 
   return (
