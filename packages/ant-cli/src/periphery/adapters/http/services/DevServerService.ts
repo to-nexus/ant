@@ -23,6 +23,68 @@ export class DevServerService {
   }
   
   /**
+   * Check if npm install is needed
+   * Returns true if:
+   * 1. node_modules doesn't exist
+   * 2. package.json is newer than node_modules
+   * 3. package-lock.json is newer than node_modules
+   */
+  private async checkIfInstallNeeded(localPath: string, hasNodeModules: boolean): Promise<boolean> {
+    // If node_modules doesn't exist, definitely need install
+    if (!hasNodeModules) {
+      console.log('[DevServerService] node_modules not found - install needed');
+      return true;
+    }
+    
+    try {
+      const nodeModulesPath = path.join(localPath, 'node_modules');
+      const packageJsonPath = path.join(localPath, 'package.json');
+      
+      // Get node_modules timestamp
+      const nodeModulesStat = await fs.promises.stat(nodeModulesPath);
+      const nodeModulesTime = nodeModulesStat.mtime.getTime();
+      
+      // Check if package.json is newer than node_modules
+      try {
+        const packageJsonStat = await fs.promises.stat(packageJsonPath);
+        const packageJsonTime = packageJsonStat.mtime.getTime();
+        
+        if (packageJsonTime > nodeModulesTime) {
+          console.log('[DevServerService] package.json is newer than node_modules - install needed');
+          return true;
+        }
+      } catch {
+        // package.json doesn't exist - this shouldn't happen but skip check
+      }
+      
+      // Check if package-lock.json is newer than node_modules
+      const lockFiles = ['package-lock.json', 'yarn.lock', 'pnpm-lock.yaml'];
+      for (const lockFile of lockFiles) {
+        const lockPath = path.join(localPath, lockFile);
+        try {
+          const lockStat = await fs.promises.stat(lockPath);
+          const lockTime = lockStat.mtime.getTime();
+          
+          if (lockTime > nodeModulesTime) {
+            console.log(`[DevServerService] ${lockFile} is newer than node_modules - install needed`);
+            return true;
+          }
+        } catch {
+          // Lock file doesn't exist, skip
+          continue;
+        }
+      }
+      
+      console.log('[DevServerService] Dependencies are up to date - no install needed');
+      return false;
+    } catch (error) {
+      console.error('[DevServerService] Error checking install status:', error);
+      // On error, be safe and don't install (user can manually install if needed)
+      return false;
+    }
+  }
+  
+  /**
    * Start dev server for a project
    */
   async startDevServer(projectId: string, localPath: string, port?: number): Promise<{ success: boolean; message?: string; error?: string }> {
@@ -50,18 +112,25 @@ export class DevServerService {
       .then(() => true)
       .catch(() => false);
     
+    // ✅ Smart dependency check: install if missing OR outdated
+    const needsInstall = await this.checkIfInstallNeeded(localPath, hasNodeModules);
+    
     // ✅ Use provided port or default
     const devPort = port || 4200;
     
     // Clear previous logs
     this.devServerLogs.set(projectId, []);
     
-    // ✅ Auto-install dependencies if not found
-    if (!hasNodeModules) {
+    // ✅ Auto-install dependencies if needed
+    if (needsInstall) {
+      const reason = !hasNodeModules 
+        ? 'Dependencies not found' 
+        : 'Dependencies outdated (package.json or lock file changed)';
+      
       const installLog: LogEntry = {
         timestamp: new Date().toISOString(),
         type: 'stdout',
-        message: '📦 Installing dependencies... This may take a few minutes.'
+        message: `📦 ${reason}. Installing dependencies... This may take a few minutes.`
       };
       const logs = this.devServerLogs.get(projectId) || [];
       logs.push(installLog);
