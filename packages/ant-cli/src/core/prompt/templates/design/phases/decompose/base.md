@@ -303,9 +303,15 @@ Example: Medium Frontend (300 lines, 2 tasks) + Medium Backend (330 lines, 2 tas
 6. **Budget Clarity**: Each task description must state its document's total budget and current progress
 
 **DO NOT create dual design tasks if:**
-- Project is frontend-only (React app, Vue SPA with no backend)
-- Project is backend-only (REST API, microservice, CLI tool)
-- Project is fullstack SSR (Next.js, Nuxt) where FE/BE are tightly coupled
+- Project is frontend-only (React app, Vue SPA with no backend) → Use `system-design.md` only
+- Project is backend-only (REST API, microservice, CLI tool) → Use `system-design.md` only
+- Project is fullstack SSR (Next.js, Nuxt) where FE/BE are tightly coupled → Use `system-design.md` only
+
+**For non-dual design projects (frontend-only, backend-only, or unified):**
+- **ALL tasks must write to `system-design.md`**
+- **First task description must include**: "Write to system-design.md with sections..."
+- **Subsequent task descriptions must include**: "Append to system-design.md with sections..."
+- **NEVER use fe-system-design.md or be-system-design.md** for single-tier projects
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

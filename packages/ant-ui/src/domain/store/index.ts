@@ -590,10 +590,8 @@ export const useStore = create<Store>((set, get) => {
     });
     
     sseManager.registerHandler('fileTree', (data) => {
-      console.log('[Store] 📂 FileTree SSE event received:', data.type);
       if (data.type === 'initial' || data.type === 'update') {
         const tree = data.tree || data.fileTree;
-        console.log(`[Store] 📂 Setting file tree: ${tree?.length || 0} items`);
         get().setFileTree(tree);
       }
     });
