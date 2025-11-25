@@ -1036,6 +1036,118 @@ export class ProjectService {
   }
 
   /**
+   * Generate .gitignore content based on project type
+   */
+  private async generateGitignoreContent(codebasePath: string): Promise<string> {
+    // Check for package.json to determine project type
+    const packageJsonPath = path.join(codebasePath, 'package.json');
+    let projectType = 'generic';
+    
+    if (fs.existsSync(packageJsonPath)) {
+      try {
+        const packageJson = JSON.parse(await fs.promises.readFile(packageJsonPath, 'utf-8'));
+        
+        // Detect Next.js
+        if (packageJson.dependencies?.next || packageJson.devDependencies?.next) {
+          projectType = 'nextjs';
+        }
+        // Detect Vite
+        else if (packageJson.dependencies?.vite || packageJson.devDependencies?.vite) {
+          projectType = 'vite';
+        }
+        // Detect React (CRA or generic)
+        else if (packageJson.dependencies?.react || packageJson.devDependencies?.react) {
+          projectType = 'react';
+        }
+        // Generic Node.js
+        else {
+          projectType = 'nodejs';
+        }
+      } catch {
+        projectType = 'generic';
+      }
+    }
+    
+    console.log(`[ProjectService] Detected project type: ${projectType}`);
+    
+    // Base .gitignore (always include these)
+    let gitignoreContent = `# Dependencies
+node_modules/
+/.pnp
+.pnp.js
+
+# Testing
+/coverage
+
+# Production builds
+/build
+/dist
+
+# Misc
+.DS_Store
+*.pem
+*.log
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Editor directories
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+
+`;
+    
+    // Add project-specific ignores
+    switch (projectType) {
+      case 'nextjs':
+        gitignoreContent += `# Next.js
+/.next/
+/out/
+next-env.d.ts
+
+# Vercel
+.vercel
+
+`;
+        break;
+      
+      case 'vite':
+      case 'react':
+        gitignoreContent += `# Vite / React
+/dist
+/dist-ssr
+*.local
+
+`;
+        break;
+      
+      case 'nodejs':
+        gitignoreContent += `# Node.js
+*.tsbuildinfo
+
+`;
+        break;
+    }
+    
+    return gitignoreContent;
+  }
+
+  /**
    * Initialize a new GitHub repository and push existing code
    */
   async initializeGitHubRepo(projectId: string, userContext: UserContext): Promise<void> {
@@ -1126,9 +1238,23 @@ export class ProjectService {
       throw new Error(`Git initialization failed: .git not found in ${codebasePath}`);
     }
 
+    // ✅ Create .gitignore BEFORE staging files (critical!)
+    const gitignorePath = path.join(codebasePath, '.gitignore');
+    if (!fs.existsSync(gitignorePath)) {
+      console.log(`[ProjectService] Creating .gitignore at ${gitignorePath}`);
+      
+      // Detect project type and create appropriate .gitignore
+      const gitignoreContent = await this.generateGitignoreContent(codebasePath);
+      await fs.promises.writeFile(gitignorePath, gitignoreContent, 'utf-8');
+      
+      console.log(`[ProjectService] ✅ .gitignore created`);
+    } else {
+      console.log(`[ProjectService] .gitignore already exists, skipping creation`);
+    }
+
     // ✅ Auto-commit and push to create base branch on GitHub
     try {
-      // Stage all files (either README.md or existing code)
+      // Stage all files (now with .gitignore in place!)
       await git.add('.');
       
       // Create initial commit
@@ -1532,14 +1658,40 @@ export class ProjectService {
       // Create new branch from base
       
       // Ensure we're on base branch first
-      try {
+      const localBranches = await git.branchLocal();
+      const baseBranchExists = localBranches.all.includes(baseBranch);
+      
+      if (!baseBranchExists) {
+        // ✅ Base branch doesn't exist locally - try to fetch from remote
+        console.log(`[ProjectService] Base branch '${baseBranch}' not found locally, checking remote...`);
+        
+        try {
+          // Fetch from remote
+          await git.fetch(['origin', baseBranch]);
+          
+          // Check if remote branch exists
+          const remoteBranches = await git.branch(['-r']);
+          if (remoteBranches.all.includes(`origin/${baseBranch}`)) {
+            // Create local branch tracking remote
+            await git.checkout(['-b', baseBranch, `origin/${baseBranch}`]);
+            console.log(`[ProjectService] ✅ Created local '${baseBranch}' from origin/${baseBranch}`);
+          } else {
+            throw new Error(`Base branch '${baseBranch}' not found on remote`);
+          }
+        } catch (fetchError) {
+          throw new Error(
+            `Base branch '${baseBranch}' not found locally or on remote. ` +
+            `Please ensure the base branch exists before creating features. ` +
+            `Error: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`
+          );
+        }
+      } else {
+        // Base branch exists locally, check it out
         await git.checkout(baseBranch);
-      } catch (error) {
-        // Base branch might not exist locally, create it
-        await git.checkoutLocalBranch(baseBranch);
+        console.log(`[ProjectService] ✅ Checked out base branch: ${baseBranch}`);
       }
       
-      // Create feature branch
+      // Create feature branch from base
       await git.checkoutLocalBranch(branchName);
       console.log(`[ProjectService] ✅ Created new local branch: ${branchName}`);
     }
