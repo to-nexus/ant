@@ -572,7 +572,6 @@ export class ProjectService {
       user: userContext.userId
     };
     
-    console.log(`[ProjectService] Building authenticated URL for repo: ${config.githubRepo}`);
     const authenticatedUrl = await this.githubAuthService.buildAuthenticatedUrl(
       credentialContext,
       config.githubRepo
@@ -588,7 +587,6 @@ export class ProjectService {
     }
 
     // Clone to temp directory
-    console.log(`[ProjectService] Cloning ${config.githubRepo} to temporary location...`);
     const git = simpleGit();
     await git.clone(authenticatedUrl, tempPath, ['--depth', '1']);
     console.log(`[ProjectService] ✅ Clone completed, analyzing structure...`);
@@ -615,9 +613,7 @@ export class ProjectService {
       const codebaseGitDir = path.join(codebasePath, '.git');
       
       if (fs.existsSync(tempGitDir)) {
-        console.log(`[ProjectService] Moving .git from temp to codebase...`);
         await fs.promises.rename(tempGitDir, codebaseGitDir);
-        console.log(`[ProjectService] ✅ .git moved to ${codebaseGitDir}`);
       } else {
         console.warn(`[ProjectService] ⚠️  .git not found in temp directory`);
       }
@@ -632,9 +628,6 @@ export class ProjectService {
     // ✅ Verify .git exists in final location
     const finalGitDir = path.join(codebasePath, '.git');
     if (fs.existsSync(finalGitDir)) {
-      console.log(`[ProjectService] ✅ Repository ready at ${codebasePath}`);
-      console.log(`[ProjectService] ✅ .git confirmed at ${finalGitDir}`);
-      
       // ✅ Set upstream for default branch (main)
       try {
         const git = simpleGit(codebasePath);

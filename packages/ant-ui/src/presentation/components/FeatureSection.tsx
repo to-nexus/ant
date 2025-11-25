@@ -320,6 +320,13 @@ export function FeatureSection() {
     }
     await createFeature(selectedProject, featureName);
     await refreshFileTree();
+    
+    // ✅ After creating feature, directly select it (skip Git change check)
+    // This is safe because:
+    // 1. Backend already switched to the new feature branch
+    // 2. New branch has same content as main (no changes)
+    // 3. Git might be in unstable state during push
+    setSelectedFeature(featureName);
   };
 
   const handleDeleteFeature = async (featureName: string) => {
