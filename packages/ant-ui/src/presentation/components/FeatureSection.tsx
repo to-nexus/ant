@@ -1,7 +1,7 @@
 import { GitBranch, AlertTriangle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useStore } from '@/domain/store';
-import { createFeature, deleteFeature, startDevServer, stopDevServer, getDevServerStatus, switchToFeatureBranch, getAvailablePort, getGitChanges, fetchProjectConfig } from '@/infrastructure/http/api';
+import { createFeature, deleteFeature, startDevServer, stopDevServer, getDevServerStatus, switchToFeatureBranch, getAvailablePort, getGitChanges, fetchProjectConfig, fetchFromGitHub } from '@/infrastructure/http/api';
 import { ItemDropdown } from './ItemDropdown';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { DevServerSetup } from './DevServerSetup';
@@ -19,7 +19,10 @@ export function FeatureSection() {
     devServerStatus,
     setDevServerStatus,
     setDevServerLoading,  // ✅ 로딩 상태 설정 함수 추가
-    isDevServerLoading    // ✅ 로딩 상태 가져오기
+    isDevServerLoading,   // ✅ 로딩 상태 가져오기
+    setGitStatusLoading,  // ✅ Git status 로딩 상태 설정
+    setGitStatusPhase,    // ✅ Git status 세부 단계 설정
+    setCurrentGitBranch   // ✅ Current Git branch 설정
   } = useStore();
   
   // ✅ 로딩 상태 변경 감지
@@ -59,36 +62,78 @@ export function FeatureSection() {
     const checkoutBranch = async () => {
       if (!selectedProject) return;
       
+      // ✅ Start Git status loading
+      setGitStatusLoading(true);
+      
       try {
         if (selectedFeature) {
-          // Feature selected - switch to feature branch
+          // ✅ Phase 1: Switch to feature branch (upstream change)
+          setGitStatusPhase('switching');
           console.log(`[FeatureSection] Switching to branch for feature: ${selectedFeature}`);
           const result = await switchToFeatureBranch(selectedProject, selectedFeature);
           
           if (result.success) {
             console.log(`[FeatureSection] ✅ Branch switched for ${selectedFeature}`);
+            // ✅ Immediately update current branch (before fetch)
+            setCurrentGitBranch(`feature/${selectedFeature}`);
+            
+            // ✅ Phase 2: Fetch from remote
+            setGitStatusPhase('fetching');
+            console.log(`[FeatureSection] 🔄 Auto-fetching for ${selectedFeature}...`);
+            try {
+              const fetchResult = await fetchFromGitHub(selectedProject);
+              if (fetchResult.success) {
+                console.log(`[FeatureSection] ✅ Fetch completed for ${selectedFeature}`);
+              } else {
+                console.warn(`[FeatureSection] Fetch failed:`, fetchResult.error);
+              }
+            } catch (fetchError) {
+              console.warn('[FeatureSection] Fetch error (non-critical):', fetchError);
+              // Fetch failure is non-critical, don't block UI
+            }
           } else {
             console.error('[FeatureSection] Branch switch failed:', result.error);
             // Don't show error to user - Git might not be initialized yet
           }
         } else {
-          // Feature deselected - switch to base branch
+          // ✅ Phase 1: Switch to base branch
+          setGitStatusPhase('switching');
           console.log(`[FeatureSection] Switching to base branch (${baseBranch}) - no feature selected`);
           const result = await switchToFeatureBranch(selectedProject, baseBranch);
           
           if (result.success) {
             console.log(`[FeatureSection] ✅ Switched to base branch (${baseBranch})`);
+            // ✅ Immediately update current branch (before fetch)
+            setCurrentGitBranch(baseBranch);
+            
+            // ✅ Phase 2: Fetch from remote
+            setGitStatusPhase('fetching');
+            console.log(`[FeatureSection] 🔄 Auto-fetching for ${baseBranch}...`);
+            try {
+              const fetchResult = await fetchFromGitHub(selectedProject);
+              if (fetchResult.success) {
+                console.log(`[FeatureSection] ✅ Fetch completed for ${baseBranch}`);
+              } else {
+                console.warn(`[FeatureSection] Fetch failed:`, fetchResult.error);
+              }
+            } catch (fetchError) {
+              console.warn('[FeatureSection] Fetch error (non-critical):', fetchError);
+            }
           } else {
             console.error(`[FeatureSection] Failed to switch to ${baseBranch}:`, result.error);
           }
         }
       } catch (error) {
-      console.error('[FeatureSection] Branch switch error:', error);
-    }
-  };
-  
-  checkoutBranch();
-}, [selectedProject, selectedFeature, baseBranch]); // ✅ Include baseBranch in dependencies
+        console.error('[FeatureSection] Branch switch error:', error);
+      } finally {
+        // ✅ End Git status loading
+        setGitStatusPhase(null);
+        setGitStatusLoading(false);
+      }
+    };
+    
+    checkoutBranch();
+  }, [selectedProject, selectedFeature, baseBranch, setGitStatusLoading, setGitStatusPhase, setCurrentGitBranch]); // ✅ Include all setters
 
   // Auto-show status panel when dev server is running (including after refresh)
   useEffect(() => {
