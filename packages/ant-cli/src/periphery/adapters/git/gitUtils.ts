@@ -3,9 +3,9 @@ import path from "path";
 import simpleGit from "simple-git";
 import { Octokit } from "@octokit/rest";
 import os from "os";
+import { CredentialStore } from "../../../utils/credentialStore";
+import { UserContext } from "../../../core/types/user";
 
-const GIT_TOKEN = process.env.GIT_TOKEN;
-const GIT_DEFAULT_OWNER = process.env.GIT_DEFAULT_OWNER;
 const GIT_DEFAULT_BASE = process.env.GIT_DEFAULT_BASE || "main";
 
 export async function loadProjectGitConfig(project: string) {
@@ -161,12 +161,44 @@ export async function commitAndPush(git: any, filePath: string, content: string,
   await git.push("origin", branch);
 }
 
-export async function openPullRequest(config: any, branch: string, title: string, body: string) {
+export async function openPullRequest(
+  config: any, 
+  branch: string, 
+  title: string, 
+  body: string,
+  userContext: UserContext,
+  workspaceRoot: string
+) {
   if (config.repoType !== "remote") return;
-  const octokit = new Octokit({ auth: GIT_TOKEN });
+  
+  // Get PAT from credential store
+  const credentialStore = new CredentialStore(workspaceRoot);
+  const pat = await credentialStore.getPAT(userContext);
+  
+  if (!pat) {
+    throw new Error('GitHub PAT not configured. Please configure it in project settings.');
+  }
+  
+  // Parse owner and repo from githubRepo URL if available
+  let owner = config.owner;
+  let repo = config.repo;
+  
+  if (config.githubRepo && !owner && !repo) {
+    const match = config.githubRepo.match(/github\.com[/:]([^/]+)\/([^/.]+)/);
+    if (match) {
+      owner = match[1];
+      repo = match[2];
+    }
+  }
+  
+  if (!owner || !repo) {
+    throw new Error('GitHub owner and repo must be specified in config');
+  }
+  
+  const octokit = new Octokit({ auth: pat });
   await octokit.pulls.create({
-    owner: config.owner || GIT_DEFAULT_OWNER,
-    repo: config.repo,
+    owner,
+    repo,
     title,
     head: branch,
     base: config.branchBase || GIT_DEFAULT_BASE,

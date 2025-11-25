@@ -182,10 +182,17 @@ export interface Agent {
   tasks: AgentTask[];
 }
 
+export interface LogEntry {
+  timestamp: string;
+  type: 'stdout' | 'stderr';
+  message: string;
+}
+
 export interface DevServerStatus {
   running: boolean;
   port: number | null;
   url: string | null;
+  logs?: LogEntry[];
 }
 
 // Health check function to verify API connection
@@ -1203,6 +1210,380 @@ export async function checkIDEInstalled(ide: 'cursor' | 'vscode'): Promise<Check
       installed: false,
       path: null,
       error: error.message
+    };
+  }
+}
+
+// ============================================
+// GitHub Integration
+// ============================================
+
+export interface GitHubPATStatus {
+  configured: boolean;
+  message: string;
+}
+
+export interface SavePATResult {
+  success: boolean;
+  username?: string;
+  error?: string;
+  message?: string;
+}
+
+/**
+ * Check if GitHub PAT is configured
+ */
+export async function checkGitHubPATStatus(): Promise<GitHubPATStatus> {
+  try {
+    const response = await authFetch(`${API_BASE()}/github/pat/status`);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error: any) {
+    console.error('Error checking GitHub PAT status:', error);
+    return {
+      configured: false,
+      message: 'Failed to check PAT status'
+    };
+  }
+}
+
+/**
+ * Save GitHub PAT
+ */
+export async function saveGitHubPAT(pat: string): Promise<SavePATResult> {
+  try {
+    const response = await authFetch(`${API_BASE()}/github/pat`, {
+      method: 'POST',
+      body: JSON.stringify({ pat })
+    });
+    
+    const result = await response.json();
+    
+    if (!response.ok) {
+      return {
+        success: false,
+        error: result.error || `HTTP ${response.status}`
+      };
+    }
+    
+    return result;
+  } catch (error: any) {
+    console.error('Error saving GitHub PAT:', error);
+    return {
+      success: false,
+      error: error.message || 'Network error'
+    };
+  }
+}
+
+/**
+ * Delete GitHub PAT
+ */
+export async function deleteGitHubPAT(): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await authFetch(`${API_BASE()}/github/pat`, {
+      method: 'DELETE'
+    });
+    
+    if (!response.ok) {
+      const result = await response.json();
+      return {
+        success: false,
+        error: result.error || `HTTP ${response.status}`
+      };
+    }
+    
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error deleting GitHub PAT:', error);
+    return {
+      success: false,
+      error: error.message || 'Network error'
+    };
+  }
+}
+
+/**
+ * Clone GitHub repository to project
+ */
+export async function cloneGitHubRepo(projectId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await authFetch(`${API_BASE()}/projects/${encodeURIComponent(projectId)}/clone`, {
+      method: 'POST'
+    });
+    
+    const result = await response.json();
+    
+    if (!response.ok) {
+      return {
+        success: false,
+        error: result.error || `HTTP ${response.status}`
+      };
+    }
+    
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error cloning GitHub repo:', error);
+    return {
+      success: false,
+      error: error.message || 'Network error'
+    };
+  }
+}
+
+/**
+ * Check if project is cloned (has .git directory)
+ */
+export async function checkCloneStatus(projectId: string): Promise<{ cloned: boolean; error?: string }> {
+  try {
+    const response = await authFetch(`${API_BASE()}/projects/${encodeURIComponent(projectId)}/clone/status`);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    
+    const result = await response.json();
+    return { cloned: result.cloned };
+  } catch (error: any) {
+    console.error('Error checking clone status:', error);
+    return {
+      cloned: false,
+      error: error.message || 'Network error'
+    };
+  }
+}
+
+/**
+ * Initialize GitHub repository (create new repo and push)
+ */
+export async function initializeGitHubRepo(projectId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await authFetch(`${API_BASE()}/projects/${encodeURIComponent(projectId)}/initialize`, {
+      method: 'POST'
+    });
+    
+    const result = await response.json();
+    
+    if (!response.ok) {
+      return {
+        success: false,
+        error: result.error || `HTTP ${response.status}`
+      };
+    }
+    
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error initializing GitHub repo:', error);
+    return {
+      success: false,
+      error: error.message || 'Network error'
+    };
+  }
+}
+
+/**
+ * Push changes to GitHub
+ */
+export async function pushToGitHub(projectId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await authFetch(`${API_BASE()}/projects/${encodeURIComponent(projectId)}/push`, {
+      method: 'POST'
+    });
+    
+    const result = await response.json();
+    
+    if (!response.ok) {
+      return {
+        success: false,
+        error: result.error || `HTTP ${response.status}`
+      };
+    }
+    
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error pushing to GitHub:', error);
+    return {
+      success: false,
+      error: error.message || 'Network error'
+    };
+  }
+}
+
+/**
+ * Pull changes from GitHub
+ */
+export async function pullFromGitHub(projectId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await authFetch(`${API_BASE()}/projects/${encodeURIComponent(projectId)}/pull`, {
+      method: 'POST'
+    });
+    
+    const result = await response.json();
+    
+    if (!response.ok) {
+      return {
+        success: false,
+        error: result.error || `HTTP ${response.status}`
+      };
+    }
+    
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error pulling from GitHub:', error);
+    return {
+      success: false,
+      error: error.message || 'Network error'
+    };
+  }
+}
+
+/**
+ * Fetch from GitHub (update remote refs)
+ */
+export async function fetchFromGitHub(projectId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await authFetch(`${API_BASE()}/projects/${encodeURIComponent(projectId)}/fetch`, {
+      method: 'POST'
+    });
+    
+    const result = await response.json();
+    
+    if (!response.ok) {
+      return {
+        success: false,
+        error: result.error || `HTTP ${response.status}`
+      };
+    }
+    
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error fetching from GitHub:', error);
+    return {
+      success: false,
+      error: error.message || 'Network error'
+    };
+  }
+}
+
+/**
+ * Get Git status for project
+ */
+export async function getGitStatus(projectId: string): Promise<{
+  hasGit: boolean;
+  hasCodebase: boolean;
+  hasFeatures: boolean;
+  currentBranch?: string;
+}> {
+  try {
+    const response = await authFetch(`${API_BASE()}/projects/${encodeURIComponent(projectId)}/git/status`);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error: any) {
+    console.error('Error getting Git status:', error);
+    return {
+      hasGit: false,
+      hasCodebase: false,
+      hasFeatures: false
+    };
+  }
+}
+
+/**
+ * Get Git changes with detailed file status and ahead/behind information
+ */
+export async function getGitChanges(projectId: string): Promise<{
+  hasChanges: boolean;
+  staged: string[];
+  unstaged: string[];
+  untracked: string[];
+  ahead: number;
+  behind: number;
+  currentBranch?: string;
+}> {
+  const response = await authFetch(`${API_BASE()}/projects/${encodeURIComponent(projectId)}/git/changes`);
+  
+  if (!response.ok) {
+    throw new Error('Failed to get Git changes');
+  }
+  
+  return await response.json();
+}
+
+/**
+ * Commit changes with auto-generated or custom message
+ */
+export async function commitGitChanges(projectId: string, message?: string): Promise<{
+  success: boolean;
+  commitHash?: string;
+  error?: string;
+}> {
+  const response = await authFetch(
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/git/commit`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message })
+    }
+  );
+  
+  return await response.json();
+}
+
+/**
+ * Sync with remote (pull then push)
+ */
+export async function syncWithRemote(projectId: string): Promise<{
+  success: boolean;
+  pulledChanges?: boolean;
+  pushedChanges?: boolean;
+  error?: string;
+}> {
+  const response = await authFetch(
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/git/sync`,
+    {
+      method: 'POST'
+    }
+  );
+  
+  return await response.json();
+}
+
+/**
+ * Switch to feature branch
+ */
+export async function switchToFeatureBranch(
+  projectId: string,
+  featureName: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await authFetch(
+      `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/checkout`,
+      { method: 'POST' }
+    );
+    
+    const result = await response.json();
+    
+    if (!response.ok) {
+      return {
+        success: false,
+        error: result.error || `HTTP ${response.status}`
+      };
+    }
+    
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error switching branch:', error);
+    return {
+      success: false,
+      error: error.message || 'Network error'
     };
   }
 }

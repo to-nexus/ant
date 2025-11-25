@@ -3,7 +3,6 @@
  * 
  * Handles post-validation tasks:
  * 1. Package installation (if package.json changed)
- * 2. Git initialization (if new project)
  * 
  * This runs AFTER validation to ensure we don't install dependencies
  * for invalid code (ellipsis, excessive deletion, etc.)
@@ -248,31 +247,6 @@ Please check:
         console.log(`   Rationale: Feature tasks only need install if dependencies change or node_modules missing\n`);
       } else {
         console.log('⏭️  No package.json changes detected and node_modules exists');
-      }
-    }
-
-    // 2. Check if Git repository needs initialization
-    const isNewProject = state.files.length > 0 && 
-                         !state.codeHead && 
-                         state.codeMode === 'generate';
-
-    if (isNewProject) {
-      // Check if .git exists
-      const gitPath = p.join(resolvedPath, '.git');
-      const gitExists = await gitPort.fileExists(p.relative(repoRoot, gitPath));
-
-      if (!gitExists) {
-        console.log('🔧 Initializing Git repository...');
-        
-        const result = await commandPort.execute('git init', {
-          cwd: resolvedPath,
-        });
-
-        if (result.success) {
-          console.log('✅ Git repository initialized');
-        } else {
-          console.error('⚠️  Git init failed:', result.stderr);
-        }
       }
     }
 

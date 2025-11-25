@@ -4,8 +4,7 @@
  * 
  * Used for:
  * - Package installation (npm/pnpm/yarn install)
- * - Git initialization
- * - Build/test commands (future)
+ * - Build/test commands
  */
 
 export interface CommandResult {

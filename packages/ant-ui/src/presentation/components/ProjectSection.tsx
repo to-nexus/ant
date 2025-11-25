@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Folder, ExternalLink, ChevronDown } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Folder, Github, ChevronDown, Download, Plus, Upload, Download as DownloadIcon, RefreshCw } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { 
   createProject, 
@@ -7,14 +7,18 @@ import {
   fetchProjectConfig, 
   createProjectConfig, 
   ProjectConfig,
-  openLocalIDE,
-  checkIDEInstalled
+  cloneGitHubRepo,
+  initializeGitHubRepo,
+  pushToGitHub,
+  pullFromGitHub,
+  fetchFromGitHub,
+  getGitStatus
 } from '@/infrastructure/http/api';
-import { getCodebasePath } from '@/shared/utils/workspace-path';
 import { ItemDropdown } from './ItemDropdown';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
-import { Button } from '@/presentation/components/common/button';
 import { useAlertModal } from '@/application/hooks/ui/useAlertModal';
+import { GitStatusButtons } from './GitStatusButtons';
+import { Button } from '@/presentation/components/common/button';
 
 export function ProjectSection() {
   const { 
@@ -22,38 +26,52 @@ export function ProjectSection() {
     selectedProject, 
     setSelectedProject, 
     fetchProjects, 
-    setShowConfigEditor, 
-    switchToEditorView, 
-    backendMode
+    setShowConfigEditor
   } = useStore();
   const [configExists, setConfigExists] = useState<boolean | null>(null);
   const [config, setConfig] = useState<ProjectConfig | null>(null);
-  const [selectedIDE, setSelectedIDE] = useState<'cursor' | 'vscode'>('cursor');
-  const [showIDEMenu, setShowIDEMenu] = useState(false);
-  const [ideStatus, setIdeStatus] = useState<{ cursor: boolean; vscode: boolean }>({ cursor: false, vscode: false });
+  const [showGitMenu, setShowGitMenu] = useState(false);
+  const [isGitProcessing, setIsGitProcessing] = useState(false);
+  const [gitStatus, setGitStatus] = useState<{
+    hasGit: boolean;
+    hasCodebase: boolean;
+    hasFeatures: boolean;
+    currentBranch?: string;
+  }>({ hasGit: false, hasCodebase: false, hasFeatures: false });
+  const gitMenuRef = useRef<HTMLDivElement>(null);
   const policy = useUIActionPolicy();
-  const { showError, showConfirm, AlertModal } = useAlertModal();
+  const { showError, showSuccess, AlertModal } = useAlertModal();
   
-  // Check IDE installation status (Local mode only)
+  // Click outside to close Git menu
   useEffect(() => {
-    if (backendMode === 'local') {
-      Promise.all([
-        checkIDEInstalled('cursor'),
-        checkIDEInstalled('vscode')
-      ]).then(([cursorResult, vscodeResult]) => {
-        setIdeStatus({
-          cursor: cursorResult.installed,
-          vscode: vscodeResult.installed
-        });
-        // Select first available IDE
-        if (cursorResult.installed) {
-          setSelectedIDE('cursor');
-        } else if (vscodeResult.installed) {
-          setSelectedIDE('vscode');
-        }
-      });
-    }
-  }, [backendMode]);
+    const handleClickOutside = (event: MouseEvent) => {
+      if (gitMenuRef.current && !gitMenuRef.current.contains(event.target as Node)) {
+        setShowGitMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+  
+  // Fetch Git status when project/feature changes
+  useEffect(() => {
+    const fetchGitStatus = async () => {
+      if (!selectedProject) {
+        setGitStatus({ hasGit: false, hasCodebase: false, hasFeatures: false });
+        return;
+      }
+      
+      try {
+        const status = await getGitStatus(selectedProject);
+        setGitStatus(status);
+      } catch (error) {
+        console.error('Failed to fetch Git status:', error);
+        setGitStatus({ hasGit: false, hasCodebase: false, hasFeatures: false });
+      }
+    };
+    
+    fetchGitStatus();
+  }, [selectedProject]);
 
   // Check if config exists when project is selected
   useEffect(() => {
@@ -109,102 +127,59 @@ export function ProjectSection() {
     setShowConfigEditor(true);
   };
 
-  // Open Local IDE (Cursor/VS Code) - Local Backend only
-  const handleOpenLocalIDE = async () => {
-    if (!config?.localPath) {
-      showError('Local path is not configured for this workspace.');
-      return;
-    }
-
-    if (!ideStatus.cursor && !ideStatus.vscode) {
-      showError('No IDE found. Please install Cursor or VS Code.');
-      return;
-    }
-
+  // Git handlers
+  const handleGitAction = async (action: () => Promise<any>, successMsg: string, shouldRefreshGitStatus = true) => {
+    if (!selectedProject) return;
+    
+    setShowGitMenu(false);
+    setIsGitProcessing(true);
     try {
-      await openLocalIDE(selectedIDE, config.localPath);
-    } catch (error: any) {
-      showError(`Failed to open ${selectedIDE}: ${error.message}`);
-    }
-  };
-
-  // Helper function to continue opening Web IDE (used by confirm dialog)
-  const continueWebIDEOpen = (localPath: string) => {
-    // Convert ~/path to /workspace/path (Docker mount: $HOME:/workspace)
-    const workspacePath = localPath.startsWith('~/')
-      ? localPath.replace('~', '/workspace')
-      : localPath.startsWith('~')
-      ? localPath.replace('~', '/workspace')
-      : `/workspace${localPath}`;
-    
-    switchToEditorView(workspacePath);
-  };
-
-  // Open Web IDE (iframe) - Cloud Backend or Local UI
-  // ✅ Same logic as GlobalNavBar's Editor button
-  const handleOpenWebIDE = async () => {
-    // ✅ Check if project is selected
-    if (!selectedProject) {
-      showError('Project not selected.');
-      return;
-    }
-    
-    // ✅ Check if config exists
-    if (!config) {
-      showError('Project config not found. Please configure the project first.');
-      return;
-    }
-    
-    try {
-      // Determine workspace path based on repoType
-      let workspacePath: string;
-      
-      if (config.repoType === 'cloud') {
-        // Cloud Mode: Use codebase directory
-        const codebasePath = getCodebasePath(selectedProject, config);
-        // Build Docker path (assuming ant is at ~/dev/ant and Docker mounts $HOME as /workspace)
-        workspacePath = `/workspace/dev/ant/${codebasePath}`;
+      const result = await action();
+      if (result.success) {
+        showSuccess(successMsg);
+        
+        // Refresh Git status after successful operation
+        if (shouldRefreshGitStatus) {
+          const status = await getGitStatus(selectedProject);
+          setGitStatus(status);
+        }
       } else {
-        // Local Mode: Use localPath from config
-        if (!config.localPath) {
-          showError('Local path is not configured for this workspace.');
-          return;
-        }
-
-        // Check if IDE is accessible (localhost only)
-        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        if (!isLocalhost) {
-          showConfirm(
-            <div>
-              <p className="mb-2">Web IDE 기능은 localhost 접속 시에만 사용 가능합니다.</p>
-              <p className="mb-2">현재 원격 UI에서 로컬 백엔드에 접속 중이므로 Web IDE가 정상 작동하지 않을 수 있습니다.</p>
-              <p className="mb-2">권장사항: 로컬에서 ant-ui를 실행하거나 (pnpm dev:ui) 실제 IDE를 사용하세요.</p>
-              <p>그래도 계속하시겠습니까?</p>
-            </div>,
-            {
-              title: 'Web IDE Warning',
-              type: 'warning',
-              onConfirm: async () => {
-                // Continue with Web IDE open
-                continueWebIDEOpen(config.localPath!);
-              }
-            }
-          );
-          return;
-        }
-
-        // Use helper function for local path
-        continueWebIDEOpen(config.localPath);
-        return;
+        showError(result.error || `Failed to ${successMsg.toLowerCase()}`);
       }
-      
-      // ✅ Set both IDE workspace path and view mode in single batch update
-      switchToEditorView(workspacePath);
     } catch (error: any) {
-      console.error('[ProjectSection] Failed to open IDE:', error);
-      showError(`Failed to open IDE: ${error.message}`);
+      showError(error.message || `Failed to ${successMsg.toLowerCase()}`);
+    } finally {
+      setIsGitProcessing(false);
     }
   };
+
+  const handleClone = () => handleGitAction(
+    () => cloneGitHubRepo(selectedProject!),
+    'Repository cloned successfully'
+  );
+
+  const handleInitialize = () => handleGitAction(
+    () => initializeGitHubRepo(selectedProject!),
+    'Repository initialized successfully'
+  );
+
+  const handlePush = () => handleGitAction(
+    () => pushToGitHub(selectedProject!),
+    'Changes pushed successfully',
+    false // Don't refresh Git status (hasGit won't change)
+  );
+
+  const handlePull = () => handleGitAction(
+    () => pullFromGitHub(selectedProject!),
+    'Changes pulled successfully',
+    false // Don't refresh Git status (hasGit won't change)
+  );
+
+  const handleFetch = () => handleGitAction(
+    () => fetchFromGitHub(selectedProject!),
+    'Remote refs updated successfully',
+    false // Don't refresh Git status (hasGit won't change)
+  );
 
   const projectItems = projects.map((p: string) => ({ name: p }));
 
@@ -226,97 +201,107 @@ export function ProjectSection() {
         disabledReason={policy.disabledReason || undefined}
       />
       
-      {/* Open IDE Section */}
+      {/* Git Status Section */}
       {selectedProject && (
         <div className="mt-2">
-          {backendMode === 'local' ? (
-            // Local Backend: Show IDE selector (Cursor/VS Code)
-            <div className="relative">
-              <div className="flex gap-2">
-                {/* IDE Selector Button */}
-                <Button
-                  onClick={() => setShowIDEMenu(!showIDEMenu)}
-                  variant="outline"
-                  size="sm"
-                  className="flex items-center gap-2 px-3"
-                  disabled={!configExists || !config?.localPath || (!ideStatus.cursor && !ideStatus.vscode)}
-                >
-                  <span className="text-xs">
-                    {selectedIDE === 'cursor' ? '🔷 Cursor' : '💙 VS Code'}
-                  </span>
-                  <ChevronDown className="w-3 h-3" />
-                </Button>
-                
-                {/* Open Button */}
-                <Button
-                  onClick={handleOpenLocalIDE}
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 flex items-center justify-center gap-2"
-                  disabled={!configExists || !config?.localPath || (!ideStatus.cursor && !ideStatus.vscode)}
-                  title={
-                    !configExists 
-                      ? 'Configuration required' 
-                      : !config?.localPath
-                      ? 'Local path not configured'
-                      : (!ideStatus.cursor && !ideStatus.vscode)
-                      ? 'No IDE found'
-                      : `Open in ${selectedIDE === 'cursor' ? 'Cursor' : 'VS Code'}`
-                  }
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  Open in IDE
-                </Button>
-              </div>
+          <div className="flex gap-2 items-center">
+            {/* Git Status Buttons (Commit/Push/Pull/Sync) - Takes most space */}
+            <div className="flex-1 min-w-0">
+              <GitStatusButtons />
+            </div>
+            
+            {/* Git Management Button - Compact */}
+            <div className="relative" ref={gitMenuRef}>
+              <Button
+                onClick={() => setShowGitMenu(!showGitMenu)}
+                variant="outline"
+                size="sm"
+                className="px-2.5 py-1.5"
+                disabled={!config?.githubRepo || isGitProcessing}
+                title={!config?.githubRepo ? 'Configure GitHub repo first' : 'Git management'}
+              >
+                <Github className="w-4 h-4" />
+                <ChevronDown className="w-3 h-3 ml-1" />
+              </Button>
               
-              {/* IDE Selection Dropdown */}
-              {showIDEMenu && (
-                <div className="absolute top-full left-0 mt-1 w-40 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-[9999]">
-                  <button
-                    onClick={() => { setSelectedIDE('cursor'); setShowIDEMenu(false); }}
-                    disabled={!ideStatus.cursor}
-                    className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 ${
-                      !ideStatus.cursor ? 'opacity-50 cursor-not-allowed' : ''
-                    } ${selectedIDE === 'cursor' ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
-                  >
-                    <span>🔷</span>
-                    <span>Cursor</span>
-                    {!ideStatus.cursor && <span className="ml-auto text-xs text-gray-400">(Not installed)</span>}
-                  </button>
-                  <button
-                    onClick={() => { setSelectedIDE('vscode'); setShowIDEMenu(false); }}
-                    disabled={!ideStatus.vscode}
-                    className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 ${
-                      !ideStatus.vscode ? 'opacity-50 cursor-not-allowed' : ''
-                    } ${selectedIDE === 'vscode' ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
-                  >
-                    <span>💙</span>
-                    <span>VS Code</span>
-                    {!ideStatus.vscode && <span className="ml-auto text-xs text-gray-400">(Not installed)</span>}
-                  </button>
+              {/* Git Menu Dropdown */}
+              {showGitMenu && (
+                <div className="absolute top-full right-0 mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-[9999]">
+                  {!gitStatus.hasGit && !gitStatus.hasFeatures ? (
+                    // Case 1: No Git, No Features → Show Clone/Initialize
+                    <>
+                      <button
+                        onClick={handleClone}
+                        className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      >
+                        <Download className="w-4 h-4" />
+                        <div>
+                          <div className="font-medium">Clone</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">Pull existing repo</div>
+                        </div>
+                      </button>
+                      <button
+                        onClick={handleInitialize}
+                        className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <div>
+                          <div className="font-medium">Initialize</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">Create new repo & push</div>
+                        </div>
+                      </button>
+                    </>
+                  ) : !gitStatus.hasGit && gitStatus.hasFeatures ? (
+                    // Case 2: No Git, Has Features → Show warning
+                    <div className="px-3 py-4 text-center">
+                      <div className="text-sm text-gray-600 dark:text-gray-400">
+                        Features exist
+                      </div>
+                      <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                        Delete features first to clone/initialize
+                      </div>
+                    </div>
+                  ) : (
+                    // Case 3: Has Git → Show Push/Pull/Fetch
+                    <>
+                      <button
+                        onClick={handlePush}
+                        className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      >
+                        <Upload className="w-4 h-4" />
+                        <div>
+                          <div className="font-medium">Push</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">Upload changes</div>
+                        </div>
+                      </button>
+                      <button
+                        onClick={handlePull}
+                        className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      >
+                        <DownloadIcon className="w-4 h-4" />
+                        <div>
+                          <div className="font-medium">Pull</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">Download changes</div>
+                        </div>
+                      </button>
+                      <button
+                        onClick={handleFetch}
+                        className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                        <div>
+                          <div className="font-medium">Fetch</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">Update remote refs</div>
+                        </div>
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
-          ) : (
-            // Cloud Backend: Show Web IDE button
-            <Button
-              onClick={handleOpenWebIDE}
-              variant="outline"
-              size="sm"
-              className="w-full flex items-center justify-center gap-2"
-              disabled={!configExists}
-              title={
-                !configExists 
-                  ? 'Configuration required' 
-                  : 'Open workspace in Web IDE'
-              }
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              Open in IDE
-            </Button>
-          )}
+          </div>
           
-          {/* IDE Button Warning Messages */}
+          {/* Warning Messages */}
           {!configExists && (
             <div className="mt-2 p-2 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-md">
               <div className="flex items-start gap-1.5">
@@ -338,19 +323,6 @@ export function ProjectSection() {
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-orange-700 dark:text-orange-300">
                     Local path not configured. Click the settings icon to set it.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          {backendMode === 'local' && configExists && config?.localPath && !ideStatus.cursor && !ideStatus.vscode && (
-            <div className="mt-2 p-2 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-md">
-              <div className="flex items-start gap-1.5">
-                <span className="text-orange-600 dark:text-orange-400 text-xs flex-shrink-0">⚠️</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-orange-700 dark:text-orange-300">
-                    No IDE found. Please install <a href="https://cursor.sh" target="_blank" rel="noopener noreferrer" className="underline">Cursor</a> or <a href="https://code.visualstudio.com" target="_blank" rel="noopener noreferrer" className="underline">VS Code</a>.
                   </p>
                 </div>
               </div>
