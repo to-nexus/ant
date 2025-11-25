@@ -85,8 +85,7 @@ export function ItemDropdown({
     setIsCreating(false);
     setIsOpen(false);
     onItemCreated?.();
-    // Auto-select the newly created item
-    onSelect(itemName);
+    // ✅ Don't auto-select - let parent component handle it to avoid Git timing issues
   };
 
   const handleCancelCreate = () => {

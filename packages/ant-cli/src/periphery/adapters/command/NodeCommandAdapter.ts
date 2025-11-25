@@ -32,6 +32,7 @@ export class NodeCommandAdapter implements CommandPort {
     
     // File operations
     'rm',      // File/directory removal
+    'rmdir',   // Remove empty directories
     'mkdir',   // Directory creation
     'cp',      // Copy files
     'mv',      // Move files

@@ -51,6 +51,7 @@ export function resolveLocalPath(localPath: string, project: string): string {
 }
 
 export async function getGitInstance(project: string, config: any) {
+  console.log(`[getGitInstance] Called for project: ${project}, repoType: ${config.repoType}`);
   if (config.repoType === "local") {
     // Local workspace: use localPath
     if (!config.localPath) {
@@ -58,40 +59,32 @@ export async function getGitInstance(project: string, config: any) {
     }
     const localPath = resolveLocalPath(config.localPath, project);
     console.log(`📂 Working directory: ${localPath}`);
+    
+    // ✅ Only create directory if it doesn't exist
+    // ✅ Do NOT auto-initialize git - user must explicitly call initializeLocalRepository
     if (!fs.existsSync(localPath)) {
       console.log(`📁 Creating repository directory: ${localPath}`);
       fs.mkdirSync(localPath, { recursive: true });
     }
-    const gitDir = path.join(localPath, '.git');
-    if (!fs.existsSync(gitDir)) {
-      console.log(`🔧 Initializing git repository: ${localPath}`);
-      const git = simpleGit(localPath);
-      await git.init();
-      console.log(`✅ Git repository initialized`);
-    }
+    
     return simpleGit(localPath);
   } else if (config.repoType === "cloud") {
-    // Cloud workspace: use projectPath from SimpleGitAdapter
-    // projectPath is passed as cwd to simpleGit by SimpleGitAdapter
-    // No localPath required
-    // Just return simpleGit with cwd set to projectPath
+    // Cloud workspace: use projectPath/codebase
+    // ✅ CRITICAL: Cloud repos MUST be in projectPath/codebase, NOT projectPath!
     if (!config.projectPath) {
       throw new Error(`projectPath is required for repoType "cloud"`);
     }
-    const projectPath = config.projectPath;
-    console.log(`📂 Working directory (cloud): ${projectPath}`);
-    if (!fs.existsSync(projectPath)) {
-      console.log(`📁 Creating repository directory: ${projectPath}`);
-      fs.mkdirSync(projectPath, { recursive: true });
+    const codebasePath = path.join(config.projectPath, 'codebase');
+    console.log(`📂 Working directory (cloud): ${codebasePath}`);
+    
+    // ✅ Only create directory if it doesn't exist
+    // ✅ Do NOT auto-initialize git - user must explicitly call initializeLocalRepository
+    if (!fs.existsSync(codebasePath)) {
+      console.log(`📁 Creating repository directory: ${codebasePath}`);
+      fs.mkdirSync(codebasePath, { recursive: true });
     }
-    const gitDir = path.join(projectPath, '.git');
-    if (!fs.existsSync(gitDir)) {
-      console.log(`🔧 Initializing git repository: ${projectPath}`);
-      const git = simpleGit(projectPath);
-      await git.init();
-      console.log(`✅ Git repository initialized`);
-    }
-    return simpleGit(projectPath);
+    
+    return simpleGit(codebasePath);
   } else if (config.repoUrl) {
     // Remote repository (GitHub/GitLab): clone to temp directory
     const tmpDir = path.join(os.tmpdir(), `${project}-${Date.now()}`);
