@@ -21,6 +21,8 @@ import { StreamOrchestrator } from '../../../../../core/streaming/StreamOrchestr
 import { XMLStreamParser } from '../../../../../core/streaming/parsers/XMLStreamParser';
 import { CommonRenderStrategy } from '../../../../../core/streaming/strategies/CommonRenderStrategy';
 import { StreamBufferManager } from '../../../../../core/streaming/buffer/StreamBufferManager';
+import { TokenBudgetManager } from '../../../../../core/utils/tokenBudget';
+import { HistoryManager } from '../../../../../core/utils/historyManager';
 
 export async function docGen(
   state: DesignGraphState
@@ -283,7 +285,30 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
   // We need to pass them as-is for proper context continuation
   if (state.conversationHistory && state.conversationHistory.length > 0) {
     console.log(`📄 [DocGen] Using existing conversation history (${state.conversationHistory.length} messages)`);
-    messages.push(...state.conversationHistory);
+    
+    // ✅ NEW: Prune history to prevent token overflow
+    const tokenManager = new TokenBudgetManager();
+    const historyManager = new HistoryManager(tokenManager);
+    
+    const { prunedHistory } = historyManager.pruneHistory(state.conversationHistory);
+    messages.push(...prunedHistory);
+    
+    // ✅ Check final token budget
+    const estimation = tokenManager.checkBudget(messages);
+    
+    // 🚨 If still over budget, throw error (should not happen with proper pruning)
+    if (estimation.isOverBudget) {
+      throw new Error(
+        `[DocGen] Token budget exceeded after pruning! ` +
+        `${estimation.totalTokens.toLocaleString()} tokens > ` +
+        `${tokenManager['config'].maxTokens.toLocaleString()} limit. ` +
+        `This should not happen - please report this bug.`
+      );
+    }
+  } else {
+    // No history - just check base prompt tokens
+    const tokenManager = new TokenBudgetManager();
+    tokenManager.checkBudget(messages);
   }
   
   return messages;

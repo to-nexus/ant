@@ -14,10 +14,16 @@
 
 import { ArchitectGraphState } from '../state';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
+import { TokenBudgetManager } from '../../../../../core/utils/tokenBudget';
+import { ToolResultManager } from '../../../../../core/utils/toolResultManager';
 
 // ❌ REMOVED: createMinimalThinking()
 // New approach: Disable Extended Thinking after first tool call
 // No need for thinking placeholder in conversation history
+
+// ✅ Initialize tool result manager (singleton for consistency)
+const tokenManager = new TokenBudgetManager();
+const toolResultManager = new ToolResultManager(tokenManager);
 
 export async function tool(
   state: ArchitectGraphState
@@ -121,10 +127,17 @@ export async function tool(
     console.error(`❌ [Tool] Tool execution failed:`, error);
   }
   
+  // ✅ Truncate tool result to prevent token overflow
+  const truncation = toolResultManager.truncateResult(name, result, error);
+  
   // ✅ Build tool result content (Anthropic format)
-  const toolResultContent = error 
-    ? `Error: ${error}`
-    : typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+  const toolResultContent = truncation.content;
+  
+  // ✅ Log if truncated
+  if (truncation.wasTruncated) {
+    console.log(`📏 [Tool] Result truncated: ${truncation.originalTokens} → ${truncation.truncatedTokens} tokens`);
+    console.log(`   Reason: ${truncation.reason}`);
+  }
   
   // ✅ Update conversation history
   // 🔴 NEW APPROACH: Don't include thinking in conversation history
