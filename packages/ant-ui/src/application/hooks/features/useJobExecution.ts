@@ -126,6 +126,14 @@ export function useJobExecution() {
         
         // Refresh file tree to show new/modified files
         refreshFileTree();
+        
+        // ✅ Refresh Git status to show uncommitted changes (non-blocking)
+        // Trigger Git status refresh by toggling manualGitAction
+        console.log('[useJobExecution] Triggering Git status refresh after job completion');
+        const store = useStore.getState();
+        store.setManualGitAction('fetch');  // Trigger refresh
+        // Clear after a short delay to allow GitStatusButtons to detect the change
+        setTimeout(() => store.setManualGitAction(null), 100);
       });
       
       console.log('[useJobExecution] Job execution started successfully');
