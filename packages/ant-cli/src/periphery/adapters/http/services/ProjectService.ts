@@ -1459,7 +1459,7 @@ export class ProjectService {
     projectId: string,
     featureName: string,
     userContext: UserContext
-  ): Promise<void> {
+  ): Promise<string> {  // ✅ Return the actual branch name
     const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
     const configPath = path.join(projectPath, 'config.json');
     
@@ -1520,7 +1520,7 @@ export class ProjectService {
         console.log(`[ProjectService] Could not set upstream for ${baseBranch}:`, err);
       }
       
-      return;
+      return baseBranch;  // ✅ Return base branch name
     }
     
     // Sanitize feature name for branch (replace spaces with hyphens, lowercase)
@@ -1534,6 +1534,7 @@ export class ProjectService {
     if (branchExists) {
       // Checkout existing branch
       await git.checkout(branchName);
+      console.log(`[ProjectService] ✅ Checked out existing branch: ${branchName}`);
     } else {
       // Create new branch from base
       
@@ -1547,14 +1548,53 @@ export class ProjectService {
       
       // Create feature branch
       await git.checkoutLocalBranch(branchName);
+      console.log(`[ProjectService] ✅ Created new local branch: ${branchName}`);
     }
 
-    // ✅ After checkout, set upstream if remote branch exists
+    // ✅ After checkout, handle upstream and remote branch
     try {
+      // ✅ First, fetch to update remote branch info (to avoid stale cache)
+      if (config.githubRepo && this.githubAuthService) {
+        try {
+          const credentialContext = {
+            org: userContext.organizationId,
+            user: userContext.userId
+          };
+          const authenticatedUrl = await this.githubAuthService.buildAuthenticatedUrl(
+            credentialContext,
+            config.githubRepo
+          );
+          
+          // Update remote URL
+          try {
+            const remotes = await git.getRemotes(true);
+            const originExists = remotes.some(r => r.name === 'origin');
+            
+            if (originExists) {
+              await git.remote(['set-url', 'origin', authenticatedUrl]);
+            } else {
+              await git.addRemote('origin', authenticatedUrl);
+            }
+          } catch (remoteError) {
+            console.log(`[ProjectService] Could not update remote:`, remoteError);
+          }
+          
+          // Fetch to update remote refs (with --prune to remove deleted branches)
+          await git.fetch(['--prune']);
+          console.log(`[ProjectService] ✅ Fetched latest remote refs (with prune)`);
+        } catch (fetchError) {
+          console.log(`[ProjectService] Could not fetch (non-critical):`, fetchError);
+          // Continue even if fetch fails
+        }
+      }
+      
       const remoteBranches = await git.branch(['-r']);
       const remoteBranchName = `origin/${branchName}`;
+      const remoteExists = remoteBranches.all.includes(remoteBranchName);
       
-      if (remoteBranches.all.includes(remoteBranchName)) {
+      console.log(`[ProjectService] Remote branch check: ${remoteBranchName} exists=${remoteExists}`);
+      
+      if (remoteExists) {
         // Remote branch exists - ensure upstream is set
         const branchClean = branchName.trim();
         
@@ -1573,11 +1613,48 @@ export class ProjectService {
         } else {
           console.log(`[ProjectService] ✅ Upstream already set for ${branchClean}`);
         }
+      } else if (config.githubRepo && this.githubAuthService) {
+        // ✅ Remote branch doesn't exist and GitHub is configured → auto-push to create remote branch
+        console.log(`[ProjectService] 🚀 Remote branch not found, pushing to create: ${branchName}`);
+        
+        try {
+          // Build authenticated URL
+          const credentialContext = {
+            org: userContext.organizationId,
+            user: userContext.userId
+          };
+          const authenticatedUrl = await this.githubAuthService.buildAuthenticatedUrl(
+            credentialContext,
+            config.githubRepo
+          );
+          
+          // Update remote URL to use authenticated URL
+          try {
+            const remotes = await git.getRemotes(true);
+            const originExists = remotes.some(r => r.name === 'origin');
+            
+            if (originExists) {
+              await git.remote(['set-url', 'origin', authenticatedUrl]);
+            } else {
+              await git.addRemote('origin', authenticatedUrl);
+            }
+          } catch (remoteError) {
+            console.log(`[ProjectService] Could not update remote:`, remoteError);
+          }
+          
+          // Push with upstream
+          await git.push(['-u', 'origin', branchName]);
+          console.log(`[ProjectService] ✅ Pushed ${branchName} to remote and set upstream`);
+        } catch (pushError: any) {
+          console.error(`[ProjectService] Failed to push new branch:`, pushError.message);
+          // Don't throw - branch is created locally, user can push manually later
+        }
       }
     } catch (err) {
-      console.log(`[ProjectService] Could not set upstream (remote branch may not exist):`, err);
+      console.log(`[ProjectService] Could not set upstream:`, err);
     }
-
+    
+    return branchName;  // ✅ Return the feature branch name
   }
 
   /**

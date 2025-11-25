@@ -74,8 +74,10 @@ export function FeatureSection() {
           
           if (result.success) {
             console.log(`[FeatureSection] ✅ Branch switched for ${selectedFeature}`);
-            // ✅ Immediately update current branch (before fetch)
-            setCurrentGitBranch(`feature/${selectedFeature}`);
+            // ✅ Use actual branch name from API response
+            if (result.branchName) {
+              setCurrentGitBranch(result.branchName);
+            }
             
             // ✅ Phase 2: Fetch from remote
             setGitStatusPhase('fetching');
@@ -103,8 +105,10 @@ export function FeatureSection() {
           
           if (result.success) {
             console.log(`[FeatureSection] ✅ Switched to base branch (${baseBranch})`);
-            // ✅ Immediately update current branch (before fetch)
-            setCurrentGitBranch(baseBranch);
+            // ✅ Use actual branch name from API response
+            if (result.branchName) {
+              setCurrentGitBranch(result.branchName);
+            }
             
             // ✅ Phase 2: Fetch from remote
             setGitStatusPhase('fetching');
@@ -267,7 +271,17 @@ export function FeatureSection() {
       setShowSetupPanel(false);  // ✅ Setup panel 숨김
       setShowStatusPanel(true);  // ✅ Status panel 표시
       
-      // SSE will handle status updates automatically
+      // ✅ Poll status after a short delay to allow process to initialize
+      // This prevents premature "running" status before actual server start
+      setTimeout(async () => {
+        try {
+          const status = await getDevServerStatus(selectedProject);
+          setDevServerStatus(status);
+          console.log('[FeatureSection] ✅ Dev server status polled:', status);
+        } catch (pollError) {
+          console.error('[FeatureSection] Failed to poll dev server status:', pollError);
+        }
+      }, 1000); // Wait 1 second for process to start and emit logs
     } catch (error: any) {
       console.error('Failed to start dev server:', error);
       setStartError(error.message || 'Unknown error');
@@ -422,30 +436,57 @@ export function FeatureSection() {
       )}
       
       {/* Dev Server Status Panel (실행 결과) */}
-      {showStatusPanel && selectedProject && selectedFeature && (
-        <div className="mt-2">
-          <DevServerStatus
-            status={
-              isInstalling
-                ? 'installing'
-                : isDevServerLoading 
-                ? 'starting' 
-                : devServerStatus?.running 
-                ? 'running'
-                : startError
-                ? 'error'
-                : 'starting'  // ✅ 에러도 없고 running도 아니면 starting (SSE 대기 중)
-            }
-            url={devServerStatus?.url || undefined}
-            errorMessage={startError}
-            onClose={() => {
-              setShowStatusPanel(false);
-              setStartError(undefined);
-              setIsInstalling(false);
-            }}
-          />
-        </div>
-      )}
+      {showStatusPanel && selectedProject && selectedFeature && (() => {
+        // ✅ Determine status based on devServerStatus and logs
+        let displayStatus: 'installing' | 'starting' | 'running' | 'error' = 'starting';
+        let displayError: string | undefined = startError;
+        
+        if (isInstalling) {
+          displayStatus = 'installing';
+        } else if (isDevServerLoading) {
+          displayStatus = 'starting';
+        } else if (startError) {
+          displayStatus = 'error';
+        } else if (devServerStatus?.running) {
+          displayStatus = 'running';
+        } else if (devServerStatus && !devServerStatus.running) {
+          // ✅ Process not running - check logs for errors
+          const logs = devServerStatus.logs || [];
+          const hasError = logs.some(log => 
+            log.type === 'stderr' && 
+            (log.message.includes('Error:') || 
+             log.message.includes('error:') ||
+             log.message.includes('❌'))
+          );
+          
+          if (hasError) {
+            displayStatus = 'error';
+            // Extract last error message from logs
+            const lastError = logs
+              .filter(log => log.type === 'stderr')
+              .pop();
+            displayError = lastError?.message || 'Dev server failed to start';
+          } else {
+            // No error in logs, just not running yet
+            displayStatus = 'starting';
+          }
+        }
+        
+        return (
+          <div className="mt-2">
+            <DevServerStatus
+              status={displayStatus}
+              url={devServerStatus?.url || undefined}
+              errorMessage={displayError}
+              onClose={() => {
+                setShowStatusPanel(false);
+                setStartError(undefined);
+                setIsInstalling(false);
+              }}
+            />
+          </div>
+        );
+      })()}
       
       {/* Alert Modal for uncommitted changes warning */}
       <AlertModal />
