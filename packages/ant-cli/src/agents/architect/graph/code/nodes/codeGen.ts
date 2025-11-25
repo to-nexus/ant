@@ -18,6 +18,8 @@ import { StreamOrchestrator } from '../../../../../core/streaming/StreamOrchestr
 import { XMLStreamParser } from '../../../../../core/streaming/parsers/XMLStreamParser';
 import { CommonRenderStrategy } from '../../../../../core/streaming/strategies/CommonRenderStrategy';
 import { StreamBufferManager } from '../../../../../core/streaming/buffer/StreamBufferManager';
+import { TokenBudgetManager } from '../../../../../core/utils/tokenBudget';
+import { HistoryManager } from '../../../../../core/utils/historyManager';
 
 export async function codeGen(
   state: ArchitectGraphState
@@ -223,6 +225,8 @@ export async function codeGen(
 
 /**
  * Build messages for LLM using PromptEngine
+ * 
+ * ✅ NEW: Integrated token budget management and history pruning
  */
 async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   role: 'user' | 'assistant';
@@ -332,8 +336,13 @@ async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   // - Following user messages contain tool_result blocks
   // - They must be paired correctly!
   if (state.conversationHistory && state.conversationHistory.length > 0) {
-    // Strategy: Skip only initial user prompts, keep assistant+tool_result pairs
+    // ✅ NEW: Prune history to prevent token overflow
+    const tokenManager = new TokenBudgetManager();
+    const historyManager = new HistoryManager(tokenManager);
+    
+    // Filter out initial user prompts (replaced by fresh prompt)
     let skipInitialUserMessages = true;
+    const filteredHistory: typeof state.conversationHistory = [];
     
     for (const msg of state.conversationHistory) {
       // Once we see an assistant message, start including everything
@@ -347,8 +356,31 @@ async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         continue;
       }
       
-      messages.push(msg);
+      filteredHistory.push(msg);
     }
+    
+    // ✅ Prune filtered history to fit token budget
+    const { prunedHistory } = historyManager.pruneHistory(filteredHistory);
+    
+    // Add pruned history to messages
+    messages.push(...prunedHistory);
+    
+    // ✅ Check final token budget
+    const estimation = tokenManager.checkBudget(messages);
+    
+    // 🚨 If still over budget, throw error (should not happen with proper pruning)
+    if (estimation.isOverBudget) {
+      throw new Error(
+        `[CodeGen] Token budget exceeded after pruning! ` +
+        `${estimation.totalTokens.toLocaleString()} tokens > ` +
+        `${tokenManager['config'].maxTokens.toLocaleString()} limit. ` +
+        `This should not happen - please report this bug.`
+      );
+    }
+  } else {
+    // No history - just check base prompt tokens
+    const tokenManager = new TokenBudgetManager();
+    tokenManager.checkBudget(messages);
   }
   
   return messages;
