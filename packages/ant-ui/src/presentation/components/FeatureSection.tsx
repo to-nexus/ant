@@ -1,11 +1,12 @@
-import { GitBranch } from 'lucide-react';
+import { GitBranch, AlertTriangle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useStore } from '@/domain/store';
-import { createFeature, deleteFeature, startDevServer, stopDevServer, getDevServerStatus, switchToFeatureBranch } from '@/infrastructure/http/api';
+import { createFeature, deleteFeature, startDevServer, stopDevServer, getDevServerStatus, switchToFeatureBranch, getAvailablePort, getGitChanges, fetchProjectConfig } from '@/infrastructure/http/api';
 import { ItemDropdown } from './ItemDropdown';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { DevServerSetup } from './DevServerSetup';
 import { DevServerStatus } from './DevServerStatus';
+import { useAlertModal } from '@/application/hooks/ui/useAlertModal';
 
 export function FeatureSection() {
   const { 
@@ -28,40 +29,71 @@ export function FeatureSection() {
   
   const [showSetupPanel, setShowSetupPanel] = useState(false);  // ✅ Setup panel (포트 입력)
   const [showStatusPanel, setShowStatusPanel] = useState(false); // ✅ Status panel (실행 결과)
-  const [serverStarted, setServerStarted] = useState(false);
   const [startError, setStartError] = useState<string | undefined>();
   const [isInitialMount, setIsInitialMount] = useState(true);
   const [isInstalling, setIsInstalling] = useState(false);  // ✅ Dependency 설치 중 상태
+  const [availablePort, setAvailablePort] = useState<number>(5173);  // ✅ 사용 가능한 포트
+  const [baseBranch, setBaseBranch] = useState<string>('main');  // ✅ Base branch from config
   const policy = useUIActionPolicy();
+  const { showConfirm, AlertModal } = useAlertModal();
 
-  // Auto-checkout feature branch when feature is selected
+  // Load base branch from project config
   useEffect(() => {
-    const checkoutBranch = async () => {
-      if (!selectedProject || !selectedFeature) return;
+    const loadBaseBranch = async () => {
+      if (!selectedProject) return;
       
       try {
-        console.log(`[FeatureSection] Switching to branch for feature: ${selectedFeature}`);
-        const result = await switchToFeatureBranch(selectedProject, selectedFeature);
-        
-        if (result.success) {
-          console.log(`[FeatureSection] ✅ Branch switched for ${selectedFeature}`);
-        } else {
-          console.error('[FeatureSection] Branch switch failed:', result.error);
-          // Don't show error to user - Git might not be initialized yet
-        }
+        const config = await fetchProjectConfig(selectedProject);
+        setBaseBranch(config?.branchBase || 'main');
       } catch (error) {
-        console.error('[FeatureSection] Branch switch error:', error);
+        console.warn('[FeatureSection] Failed to load base branch, using default "main":', error);
+        setBaseBranch('main');
       }
     };
     
-    checkoutBranch();
-  }, [selectedProject, selectedFeature]);
+    loadBaseBranch();
+  }, [selectedProject]);
+
+  // Auto-checkout feature branch when feature is selected, or base branch when deselected
+  useEffect(() => {
+    const checkoutBranch = async () => {
+      if (!selectedProject) return;
+      
+      try {
+        if (selectedFeature) {
+          // Feature selected - switch to feature branch
+          console.log(`[FeatureSection] Switching to branch for feature: ${selectedFeature}`);
+          const result = await switchToFeatureBranch(selectedProject, selectedFeature);
+          
+          if (result.success) {
+            console.log(`[FeatureSection] ✅ Branch switched for ${selectedFeature}`);
+          } else {
+            console.error('[FeatureSection] Branch switch failed:', result.error);
+            // Don't show error to user - Git might not be initialized yet
+          }
+        } else {
+          // Feature deselected - switch to base branch
+          console.log(`[FeatureSection] Switching to base branch (${baseBranch}) - no feature selected`);
+          const result = await switchToFeatureBranch(selectedProject, baseBranch);
+          
+          if (result.success) {
+            console.log(`[FeatureSection] ✅ Switched to base branch (${baseBranch})`);
+          } else {
+            console.error(`[FeatureSection] Failed to switch to ${baseBranch}:`, result.error);
+          }
+        }
+      } catch (error) {
+      console.error('[FeatureSection] Branch switch error:', error);
+    }
+  };
+  
+  checkoutBranch();
+}, [selectedProject, selectedFeature, baseBranch]); // ✅ Include baseBranch in dependencies
 
   // Auto-show status panel when dev server is running (including after refresh)
   useEffect(() => {
     if (devServerStatus?.running) {
       setShowStatusPanel(true);
-      setServerStarted(true);
     }
   }, [devServerStatus?.running]);
 
@@ -126,7 +158,6 @@ export function FeatureSection() {
           
           if (portErrorLog) {
             setStartError(portErrorLog.message);
-            setServerStarted(false);
             setIsInstalling(false);
             setShowStatusPanel(true);
           }
@@ -139,7 +170,6 @@ export function FeatureSection() {
           
           if (installErrorLog) {
             setStartError(installErrorLog.message);
-            setServerStarted(false);
             setIsInstalling(false);
             setShowStatusPanel(true);
           }
@@ -159,7 +189,19 @@ export function FeatureSection() {
   }, [selectedProject, setDevServerStatus]);
 
   // ✅ Play 버튼 클릭: Setup Panel 표시 (바로 실행하지 않음)
-  const handlePlayButtonClick = () => {
+  const handlePlayButtonClick = async () => {
+    if (!selectedProject) return;
+    
+    // ✅ 사용 가능한 포트 가져오기
+    try {
+      const port = await getAvailablePort(selectedProject);
+      setAvailablePort(port);
+      console.log(`[FeatureSection] Available port found: ${port}`);
+    } catch (error) {
+      console.error('[FeatureSection] Failed to get available port, using default:', error);
+      setAvailablePort(5173);
+    }
+    
     setShowSetupPanel(true);
     setShowStatusPanel(false);
     setStartError(undefined);
@@ -177,7 +219,6 @@ export function FeatureSection() {
     
     try {
       await startDevServer(selectedProject, port);
-      setServerStarted(true);
       setShowSetupPanel(false);  // ✅ Setup panel 숨김
       setShowStatusPanel(true);  // ✅ Status panel 표시
       
@@ -185,7 +226,6 @@ export function FeatureSection() {
     } catch (error: any) {
       console.error('Failed to start dev server:', error);
       setStartError(error.message || 'Unknown error');
-      setServerStarted(false);
       setShowSetupPanel(false);  // ✅ Setup panel 숨김
       setShowStatusPanel(true);  // ✅ Error status 표시
     } finally {
@@ -200,7 +240,13 @@ export function FeatureSection() {
     setDevServerLoading(true);  // ✅ 로딩 시작
     try {
       await stopDevServer(selectedProject);
-      // Status will be updated by polling
+      
+      // ✅ 수동 종료는 정상 종료이므로 status panel 숨기기
+      setShowStatusPanel(false);
+      setStartError(undefined);
+      setIsInstalling(false);
+      
+      console.log('[FeatureSection] Dev server stopped successfully');
     } catch (error: any) {
       console.error('[FeatureSection] Failed to stop dev server:', error);
       alert(`Failed to stop dev server: ${error.message}`);
@@ -225,14 +271,75 @@ export function FeatureSection() {
     await refreshFileTree();
   };
 
+  // ✅ Feature 변경 시 uncommitted changes 확인
+  const handleFeatureChange = async (featureName: string | null) => {
+    if (!selectedProject) return;
+    
+    // Same feature selected - do nothing
+    if (featureName === selectedFeature) return;
+    
+    // Convert null to undefined for setSelectedFeature
+    const targetFeature = featureName === null ? undefined : featureName;
+    
+    try {
+      // Check for uncommitted changes in current branch
+      const changes = await getGitChanges(selectedProject);
+      
+      if (changes.hasChanges) {
+        const totalChanges = changes.staged.length + changes.unstaged.length + changes.untracked.length;
+        const targetBranch = featureName ? `feature/${featureName}` : baseBranch;
+        
+        // Show confirmation dialog
+        showConfirm(
+          <div className="space-y-3">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">
+                  Uncommitted Changes Detected
+                </p>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                  You have <strong>{totalChanges} uncommitted change{totalChanges > 1 ? 's' : ''}</strong> in the current branch.
+                </p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Switching to <strong>{targetBranch}</strong> may cause file loss or conflicts.
+                </p>
+                <p className="text-sm text-yellow-600 dark:text-yellow-400 mt-2">
+                  ⚠️ Please commit or stash your changes before switching branches.
+                </p>
+              </div>
+            </div>
+          </div>,
+          {
+            title: 'Warning',
+            confirmText: 'Switch Anyway',
+            cancelText: 'Cancel',
+            onConfirm: () => {
+              // User confirmed - proceed with feature change
+              setSelectedFeature(targetFeature);
+            },
+            onCancel: () => {
+              // User cancelled - do nothing
+              console.log('[FeatureSection] Feature switch cancelled by user');
+            }
+          }
+        );
+      } else {
+        // No changes - safe to switch
+        setSelectedFeature(targetFeature);
+      }
+    } catch (error) {
+      // If we can't check changes (e.g., Git not initialized), allow the switch
+      console.warn('[FeatureSection] Could not check Git changes:', error);
+      setSelectedFeature(targetFeature);
+    }
+  };
+
   const featureItems = features.map((f) => ({ name: f.name, path: f.path }));
 
   if (!selectedProject) {
     return null;
   }
-
-  // Only log when state actually changes (removed constant logging on every render)
-  const hasError = showStatusPanel && !serverStarted && !devServerStatus?.running;
 
   return (
     <div>
@@ -241,7 +348,7 @@ export function FeatureSection() {
         icon={GitBranch}
         items={featureItems}
         selectedItem={selectedFeature}
-        onSelect={setSelectedFeature}
+        onSelect={handleFeatureChange}  // ✅ Check for uncommitted changes before switching
         onCreate={handleCreateFeature}
         onDelete={handleDeleteFeature}
         onItemCreated={fetchFeatures}
@@ -261,7 +368,7 @@ export function FeatureSection() {
         <div className="mt-2">
           <DevServerSetup
             projectId={selectedProject}
-            defaultPort={5000}  // TODO: Get from config
+            defaultPort={availablePort}
             onStart={handleStartDevServer}
             onClose={() => setShowSetupPanel(false)}
             isStarting={isDevServerLoading}
@@ -279,20 +386,24 @@ export function FeatureSection() {
                 : isDevServerLoading 
                 ? 'starting' 
                 : devServerStatus?.running 
-                ? 'running' 
-                : 'error'
+                ? 'running'
+                : startError
+                ? 'error'
+                : 'starting'  // ✅ 에러도 없고 running도 아니면 starting (SSE 대기 중)
             }
-            url={devServerStatus?.url}
+            url={devServerStatus?.url || undefined}
             errorMessage={startError}
             onClose={() => {
               setShowStatusPanel(false);
-              setServerStarted(false);
               setStartError(undefined);
               setIsInstalling(false);
             }}
           />
         </div>
       )}
+      
+      {/* Alert Modal for uncommitted changes warning */}
+      <AlertModal />
     </div>
   );
 }

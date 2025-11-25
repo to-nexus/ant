@@ -109,10 +109,11 @@ export async function orchestrator(params: {
             console.log('✅ Real-time updates enabled (Direct - Kanban + File Tree + Workflow) [Design]');
           } else if (process.env.ANT_SERVER_PORT) {
             // 자식 프로세스: HTTP 클라이언트 사용
-            const { WorkflowHttpClient, KanbanHttpClient } = await import('../periphery/adapters/http/clients');
+            const { WorkflowHttpClient, KanbanHttpClient, FileTreeHttpClient } = await import('../periphery/adapters/http/clients');
             kanbanUpdate = new KanbanHttpClient(process.env.ANT_SERVER_PORT);
+            fileTreeUpdate = new FileTreeHttpClient(process.env.ANT_SERVER_PORT);
             workflowUpdate = new WorkflowHttpClient(process.env.ANT_SERVER_PORT);
-            console.log('✅ Real-time updates enabled (HTTP - Kanban + Workflow) [Design]');
+            console.log('✅ Real-time updates enabled (HTTP - Kanban + File Tree + Workflow) [Design]');
           } else {
             console.log('ℹ️  Real-time updates disabled (no server instance or port) [Design]');
           }
@@ -157,10 +158,11 @@ export async function orchestrator(params: {
             console.log('✅ Real-time updates enabled (Direct - Kanban + File Tree + Workflow)');
           } else if (process.env.ANT_SERVER_PORT) {
             // 자식 프로세스: HTTP 클라이언트 사용
-            const { WorkflowHttpClient, KanbanHttpClient } = await import('../periphery/adapters/http/clients');
+            const { WorkflowHttpClient, KanbanHttpClient, FileTreeHttpClient } = await import('../periphery/adapters/http/clients');
             kanbanUpdate = new KanbanHttpClient(process.env.ANT_SERVER_PORT);
+            fileTreeUpdate = new FileTreeHttpClient(process.env.ANT_SERVER_PORT);
             workflowUpdate = new WorkflowHttpClient(process.env.ANT_SERVER_PORT);
-            console.log('✅ Real-time updates enabled (HTTP - Kanban + Workflow)');
+            console.log('✅ Real-time updates enabled (HTTP - Kanban + File Tree + Workflow)');
           } else {
             console.log('ℹ️  Real-time updates disabled (no server instance or port)');
           }

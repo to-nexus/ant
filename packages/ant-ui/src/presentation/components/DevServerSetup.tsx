@@ -30,9 +30,14 @@ export function DevServerSetup({
   };
 
   const handlePortChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = parseInt(e.target.value, 10);
-    if (!isNaN(value) && value > 0 && value <= 65535) {
-      setPort(value);
+    const value = e.target.value;
+    // Allow empty string for user to clear and retype
+    if (value === '') {
+      return;
+    }
+    const numValue = parseInt(value, 10);
+    if (!isNaN(numValue) && numValue > 0 && numValue <= 65535) {
+      setPort(numValue);
     }
   };
 
@@ -69,9 +74,9 @@ export function DevServerSetup({
           </label>
           <input
             id="dev-server-port"
-            type="number"
-            min="1"
-            max="65535"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
             value={port}
             onChange={handlePortChange}
             disabled={isStarting}
@@ -79,7 +84,8 @@ export function DevServerSetup({
                      bg-white dark:bg-gray-800 
                      text-gray-900 dark:text-gray-100
                      focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400
-                     disabled:opacity-50 disabled:cursor-not-allowed"
+                     disabled:opacity-50 disabled:cursor-not-allowed
+                     [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             placeholder="Enter port number"
           />
         </div>

@@ -7,4 +7,5 @@
 
 export { WorkflowHttpClient } from './WorkflowHttpClient';
 export { KanbanHttpClient } from './KanbanHttpClient';
+export { FileTreeHttpClient } from './FileTreeHttpClient';
 

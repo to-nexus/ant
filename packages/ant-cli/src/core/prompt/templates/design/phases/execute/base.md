@@ -7,14 +7,14 @@ YOUR LINE BUDGET: Look for "MAX [N] lines" in task description below.
 
 **IMPORTANT FOR DUAL DESIGN (fe-system-design.md / be-system-design.md):**
 - Each document has its OWN independent line budget (NOT shared)
-- Frontend document: 80-500 lines MAX (based on complexity)
-- Backend document: 80-500 lines MAX (based on complexity)
+- Frontend document: 120-750 lines MAX (based on complexity)
+- Backend document: 120-750 lines MAX (based on complexity)
 - Your task's line budget applies to YOUR specific document only
 
 CHAPTER LIMIT based on budget:
-- Budget ≤ 50 lines → Create EXACTLY 1 chapter
-- Budget 51-80 lines → Create 1-2 chapters MAX
-- Budget 81-120 lines → Create 2-3 chapters MAX
+- Budget ≤ 75 lines → Create EXACTLY 1 chapter
+- Budget 76-120 lines → Create 1-2 chapters MAX
+- Budget 121-180 lines → Create 2-3 chapters MAX
 
 STRUCTURE PER CHAPTER:
 - Maximum 5 subsections (###)
@@ -107,15 +107,15 @@ You are creating a **CONCISE SYSTEM DESIGN DOCUMENT** for: **{{project}}**
 
 🚨 STRUCTURAL CONSTRAINTS 🚨
 **Chapter limit based on your line budget:**
-- If budget ≤ 50 lines → Create 1 chapter
-- If budget 51-80 lines → Create 1-2 chapters
-- If budget 81-120 lines → Create 2-3 chapters
+- If budget ≤ 75 lines → Create 1 chapter
+- If budget 76-120 lines → Create 1-2 chapters
+- If budget 121-180 lines → Create 2-3 chapters
 
 **For each chapter:**
 - **Maximum 5 subsections (###)**
 - **Each subsection: 3-8 bullet points MAX**
 - **Each bullet: ONE sentence (no sub-bullets)**
-- **NO code blocks > 10 lines**
+- **NO code blocks > 15 lines**
 
 These structural limits ensure you stay within your line budget.
 {{/if}}
