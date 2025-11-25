@@ -109,31 +109,22 @@ export function GitStatusButtons() {
     const loadingJustCompleted = prevLoadingRef.current === true && isGitStatusLoading === false;
     prevLoadingRef.current = isGitStatusLoading;  // Update ref
     
-    let interval: number | null = null;
-    
     if (loadingJustCompleted) {
       // ✅ Loading just completed - fetch immediately (no delay) to prevent showing stale data
       console.log('[GitStatusButtons] Loading completed - fetching immediately');
       fetchChanges();
-      // Then start regular polling
-      interval = window.setInterval(fetchChanges, 5000);
     } else {
-      // ✅ Normal case - delay initial fetch to allow any transitions to complete
+      // ✅ Normal case - fetch once on mount (no polling)
       const delayTimer = setTimeout(() => {
         fetchChanges();
-        // Then start regular polling
-        interval = window.setInterval(fetchChanges, 5000);
       }, 500); // 500ms delay
       
       return () => {
         clearTimeout(delayTimer);
-        if (interval) clearInterval(interval);
       };
     }
     
-    return () => {
-      if (interval) clearInterval(interval);
-    };
+    // ✅ No cleanup needed - no polling interval
   }, [selectedProject, hasGitHubRepo, isGitStatusLoading]); // ✅ Add isGitStatusLoading to trigger re-fetch when loading completes
 
   const handleCommit = async () => {

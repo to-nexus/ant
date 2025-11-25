@@ -1581,7 +1581,7 @@ export async function syncWithRemote(projectId: string): Promise<{
 export async function switchToFeatureBranch(
   projectId: string,
   featureName: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; branchName?: string }> {
   try {
     const response = await authFetch(
       `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/checkout`,
@@ -1597,7 +1597,7 @@ export async function switchToFeatureBranch(
       };
     }
     
-    return { success: true };
+    return { success: true, branchName: result.branchName };
   } catch (error: any) {
     console.error('Error switching branch:', error);
     return {

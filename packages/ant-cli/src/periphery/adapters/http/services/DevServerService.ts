@@ -194,6 +194,9 @@ export class DevServerService {
       }
     });
     
+    console.log(`[DevServerService] Process spawned for ${projectId}, PID: ${devProcess.pid}`);
+    console.log(`[DevServerService] Command: ${command} ${args.join(' ')}`);
+    
     this.devServers.set(projectId, devProcess);
     
     // Log when process starts
@@ -201,6 +204,10 @@ export class DevServerService {
     // Capture stdout
     devProcess.stdout?.on('data', (data: Buffer) => {
       const message = data.toString();
+      
+      // ✅ Log to console for debugging
+      console.log(`[DevServer:${projectId}] ${message.trim()}`);
+      
       const log: LogEntry = {
         timestamp: new Date().toISOString(),
         type: 'stdout',
@@ -239,6 +246,9 @@ export class DevServerService {
     devProcess.stderr?.on('data', (data: Buffer) => {
       const message = data.toString();
       
+      // ✅ Log to console for debugging
+      console.error(`[DevServer:${projectId}] ${message.trim()}`);
+      
       // Check for port already in use error
       const portInUsePatterns = [
         /EADDRINUSE/i,
@@ -262,9 +272,9 @@ export class DevServerService {
         logs.push(errorLog);
         this.devServerLogs.set(projectId, logs);
         
-        // Kill the process to prevent zombie process
+        // ✅ Kill the process - the 'exit' handler will do cleanup
         devProcess.kill();
-        return;
+        // Don't return here - let other stderr output be logged too
       }
       
       const log: LogEntry = {
@@ -280,6 +290,7 @@ export class DevServerService {
     
     // Handle process exit
     devProcess.on('exit', (code, signal) => {
+      console.log(`[DevServerService] Process exited for ${projectId}, code: ${code}, signal: ${signal}`);
       
       const log: LogEntry = {
         timestamp: new Date().toISOString(),
@@ -300,7 +311,7 @@ export class DevServerService {
     });
     
     devProcess.on('error', (error) => {
-      console.error(`[DevServer] Error for ${projectId}:`, error);
+      console.error(`[DevServerService] Process error for ${projectId}:`, error);
       
       const log: LogEntry = {
         timestamp: new Date().toISOString(),
@@ -354,10 +365,22 @@ export class DevServerService {
     const devProcess = this.devServers.get(projectId);
     const port = this.devServerPorts.get(projectId);
     
+    // ✅ Check if process is actually alive (not killed or exited)
+    const isActuallyRunning = devProcess && 
+                               !devProcess.killed && 
+                               devProcess.exitCode === null;
+    
+    // ✅ If process is dead but still in map, clean it up
+    if (devProcess && !isActuallyRunning) {
+      console.log(`[DevServerService] Cleaning up dead process for ${projectId}`);
+      this.devServers.delete(projectId);
+      this.devServerPorts.delete(projectId);
+    }
+    
     return {
-      running: !!devProcess,
-      port,
-      pid: devProcess?.pid
+      running: !!isActuallyRunning,
+      port: isActuallyRunning ? port : undefined,
+      pid: isActuallyRunning ? devProcess?.pid : undefined
     };
   }
   

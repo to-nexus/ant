@@ -312,8 +312,8 @@ export function createProjectsRoutes(deps: {
       
       console.log(`[Projects] Switching to feature branch for ${projectId}/${featureName}`);
       
-      await deps.projectService.switchToFeatureBranch(projectId, featureName, userContext);
-      res.json({ success: true, message: 'Branch switched successfully' });
+      const actualBranchName = await deps.projectService.switchToFeatureBranch(projectId, featureName, userContext);
+      res.json({ success: true, message: 'Branch switched successfully', branchName: actualBranchName });
     } catch (error: any) {
       console.error(`[Projects] Branch switch failed for ${projectId}/${featureName}:`, error);
       
