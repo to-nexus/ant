@@ -14,6 +14,7 @@ export class DevServerService {
   private devServers: Map<string, ChildProcess> = new Map();
   private devServerPorts: Map<string, number> = new Map();
   private devServerLogs: Map<string, LogEntry[]> = new Map();
+  private installingProjects: Set<string> = new Set();  // ✅ Track installing projects
   private onStatusChange?: (projectId: string) => void;
   
   constructor(callbacks?: {
@@ -24,63 +25,37 @@ export class DevServerService {
   
   /**
    * Check if npm install is needed
-   * Returns true if:
-   * 1. node_modules doesn't exist
-   * 2. package.json is newer than node_modules
-   * 3. package-lock.json is newer than node_modules
+   * ✅ CRITICAL FIX: Use marker file instead of mtime
+   * Directory mtime is UNRELIABLE (only updates on add/remove, not modify!)
    */
   private async checkIfInstallNeeded(localPath: string, hasNodeModules: boolean): Promise<boolean> {
-    // If node_modules doesn't exist, definitely need install
     if (!hasNodeModules) {
       console.log('[DevServerService] node_modules not found - install needed');
       return true;
     }
     
+    // ✅ Use marker file to track install completion
+    const markerPath = path.join(localPath, 'node_modules', '.install-complete');
     try {
-      const nodeModulesPath = path.join(localPath, 'node_modules');
-      const packageJsonPath = path.join(localPath, 'package.json');
-      
-      // Get node_modules timestamp
-      const nodeModulesStat = await fs.promises.stat(nodeModulesPath);
-      const nodeModulesTime = nodeModulesStat.mtime.getTime();
-      
-      // Check if package.json is newer than node_modules
-      try {
-        const packageJsonStat = await fs.promises.stat(packageJsonPath);
-        const packageJsonTime = packageJsonStat.mtime.getTime();
-        
-        if (packageJsonTime > nodeModulesTime) {
-          console.log('[DevServerService] package.json is newer than node_modules - install needed');
-          return true;
-        }
-      } catch {
-        // package.json doesn't exist - this shouldn't happen but skip check
-      }
-      
-      // Check if package-lock.json is newer than node_modules
-      const lockFiles = ['package-lock.json', 'yarn.lock', 'pnpm-lock.yaml'];
-      for (const lockFile of lockFiles) {
-        const lockPath = path.join(localPath, lockFile);
-        try {
-          const lockStat = await fs.promises.stat(lockPath);
-          const lockTime = lockStat.mtime.getTime();
-          
-          if (lockTime > nodeModulesTime) {
-            console.log(`[DevServerService] ${lockFile} is newer than node_modules - install needed`);
-            return true;
-          }
-        } catch {
-          // Lock file doesn't exist, skip
-          continue;
-        }
-      }
-      
-      console.log('[DevServerService] Dependencies are up to date - no install needed');
+      await fs.promises.access(markerPath);
+      console.log('[DevServerService] ✅ Dependencies up to date (marker found)');
       return false;
+    } catch {
+      console.log('[DevServerService] Marker file missing - install needed');
+      return true;
+    }
+  }
+  
+  /**
+   * Mark installation as complete
+   */
+  private async markInstallComplete(localPath: string): Promise<void> {
+    const markerPath = path.join(localPath, 'node_modules', '.install-complete');
+    try {
+      await fs.promises.writeFile(markerPath, new Date().toISOString(), 'utf-8');
+      console.log('[DevServerService] ✅ Install marker created');
     } catch (error) {
-      console.error('[DevServerService] Error checking install status:', error);
-      // On error, be safe and don't install (user can manually install if needed)
-      return false;
+      console.warn('[DevServerService] ⚠️  Failed to create marker:', error);
     }
   }
   
@@ -92,6 +67,13 @@ export class DevServerService {
     if (this.devServers.has(projectId)) {
       return { success: false, error: 'Dev server already running' };
     }
+    
+    // ✅ CRITICAL: Check and add ATOMICALLY (before any await!)
+    if (this.installingProjects.has(projectId)) {
+      return { success: false, error: 'Dependencies are being installed. Please wait...' };
+    }
+    // ✅ Add immediately to prevent race condition with concurrent requests
+    this.installingProjects.add(projectId);
     
     // Check if package.json exists
     const packageJsonPath = path.join(localPath, 'package.json');
@@ -170,7 +152,13 @@ export class DevServerService {
         });
         
         installProcess.on('exit', async (code) => {
+          // ✅ Remove from installing set
+          this.installingProjects.delete(projectId);
+          
           if (code === 0) {
+            // ✅ CRITICAL: Create marker file BEFORE recursive call!
+            await this.markInstallComplete(localPath);
+            
             const successLog: LogEntry = {
               timestamp: new Date().toISOString(),
               type: 'stdout',
@@ -200,6 +188,11 @@ export class DevServerService {
           }
         });
       });
+    }
+    
+    // ✅ If install not needed, remove from installing set
+    if (!needsInstall) {
+      this.installingProjects.delete(projectId);
     }
     
     console.log(`[DevServerService] Starting dev server on port ${devPort}`);
@@ -287,10 +280,24 @@ export class DevServerService {
       logs.push(log);
       this.devServerLogs.set(projectId, logs);
       
-      // Try to extract port from common dev server outputs
-      // Vite: "Local:   http://localhost:5173/"
-      // Next.js: "ready - started server on 0.0.0.0:3000"
-      // Create React App: "Local:            http://localhost:3000"
+      // ✅ Detect when server is ready (various dev server patterns)
+      const readyPatterns = [
+        /ready in \d+/i,           // Next.js: "Ready in 1771ms"
+        /ready - started/i,         // Next.js (older): "ready - started server"
+        /local:.*http/i,            // Vite: "Local: http://localhost:5173"
+        /compiled successfully/i,   // Webpack: "Compiled successfully"
+        /server running at/i,       // Generic
+      ];
+      
+      const isReady = readyPatterns.some(pattern => pattern.test(message));
+      
+      if (isReady) {
+        // Server is ready - notify UI immediately
+        console.log(`[DevServerService] ✅ Dev server ready for ${projectId}`);
+        this.onStatusChange?.(projectId);
+      }
+      
+      // Also try to extract port from output (fallback)
       const portPatterns = [
         /localhost:(\d+)/i,
         /127\.0\.0\.1:(\d+)/i,
@@ -304,7 +311,6 @@ export class DevServerService {
           if (match) {
             const port = parseInt(match[1]);
             this.devServerPorts.set(projectId, port);
-            this.onStatusChange?.(projectId);
             break;
           }
         }
