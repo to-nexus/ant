@@ -360,8 +360,8 @@ export class CommonRenderStrategy implements IRenderStrategy {
     
     // Send UI notification
     if (finalActionType === 'create' || finalActionType === 'append') {
-      // ✅ Both create and append use streamFileContent for real-time streaming
-      await this.chatAPI.streamFileContent(filePath, '');
+      // ✅ CRITICAL: Start with 'creating' phase to initialize file card
+      await this.chatAPI.startFileCreation(filePath);
     } else if (finalActionType === 'edit') {
       await this.chatAPI.startFileEdit(filePath);
       // Initialize edit operation tracking (for search/replace)

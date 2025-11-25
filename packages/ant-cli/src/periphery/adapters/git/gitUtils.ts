@@ -67,7 +67,12 @@ export async function getGitInstance(project: string, config: any) {
       fs.mkdirSync(localPath, { recursive: true });
     }
     
-    return simpleGit(localPath);
+    // ✅ CRITICAL: Prevent Git from searching parent directories
+    return simpleGit({
+      baseDir: localPath,
+      binary: 'git',
+      maxConcurrentProcesses: 6
+    });
   } else if (config.repoType === "cloud") {
     // Cloud workspace: use projectPath/codebase
     // ✅ CRITICAL: Cloud repos MUST be in projectPath/codebase, NOT projectPath!
@@ -84,7 +89,12 @@ export async function getGitInstance(project: string, config: any) {
       fs.mkdirSync(codebasePath, { recursive: true });
     }
     
-    return simpleGit(codebasePath);
+    // ✅ CRITICAL: Prevent Git from searching parent directories
+    return simpleGit({
+      baseDir: codebasePath,
+      binary: 'git',
+      maxConcurrentProcesses: 6
+    });
   } else if (config.repoUrl) {
     // Remote repository (GitHub/GitLab): clone to temp directory
     const tmpDir = path.join(os.tmpdir(), `${project}-${Date.now()}`);

@@ -1162,7 +1162,7 @@ export class ChatService {
       type = typeMap[operation];
     }
 
-    this.addContentToCurrentMessage(projectId, featureName, {
+    const contentIndex = this.addContentToCurrentMessage(projectId, featureName, {
       type,
       content: content || '',  // ✅ Full content or empty
       metadata: {
@@ -1172,6 +1172,16 @@ export class ChatService {
         timestamp: new Date().toISOString()
       }
     });
+    
+    // ✅ CRITICAL: Track active file operations for real-time streaming (NEW content)
+    // This was missing! Without this, first streamFileContent creates card but no live updates
+    if ((phase === 'writing' || phase === 'updating') && contentIndex !== -1) {
+      if (!session.activeFileOperations) {
+        session.activeFileOperations = new Map();
+      }
+      session.activeFileOperations.set(filePath, { filePath, contentIndex });
+      console.log(`[ChatService] ✅ Tracked NEW file operation at index ${contentIndex} for: ${filePath}`);
+    }
   }
 
   /**
