@@ -250,22 +250,31 @@ export class XMLStreamParser implements IStreamParser {
         continue;
       }
       
-      // 9. Accumulate file content
+      // 9. Accumulate file content (LINE-BASED STREAMING for real-time rendering)
       if (this.context.insideFile && this.buffer.length > 0) {
-        // Stream file content incrementally (but keep small buffer for tag detection)
         const lookahead = '</file>';
+        
+        // ✅ AGGRESSIVE STREAMING: Emit complete lines immediately
+        // Only keep incomplete last line + lookahead in buffer
         if (this.buffer.length > lookahead.length) {
-          const safeContent = this.buffer.substring(0, this.buffer.length - lookahead.length);
-          this.buffer = this.buffer.substring(safeContent.length);
+          const searchableContent = this.buffer.substring(0, this.buffer.length - lookahead.length);
           
-          if (safeContent.length > 0) {
+          // Find last complete line (ending with \n)
+          const lastNewlineIdx = searchableContent.lastIndexOf('\n');
+          
+          if (lastNewlineIdx >= 0) {
+            // Emit all complete lines (including the trailing \n)
+            const completeLines = searchableContent.substring(0, lastNewlineIdx + 1);
+            this.buffer = this.buffer.substring(completeLines.length);
+            
             actions.push({
               type: 'file_content',
               data: {
                 filePath: this.context.currentFilePath!,
-                content: safeContent
+                content: completeLines
               }
             });
+            continueParsingLoop = true;  // ✅ Re-check for more lines
           }
         }
         continue;
@@ -323,21 +332,31 @@ export class XMLStreamParser implements IStreamParser {
         continue;
       }
       
-      // 12. Accumulate append content
+      // 12. Accumulate append content (LINE-BASED STREAMING for real-time rendering)
       if (this.context.insideAppend && this.buffer.length > 0) {
         const lookahead = '</append>';
+        
+        // ✅ AGGRESSIVE STREAMING: Emit complete lines immediately
+        // Only keep incomplete last line + lookahead in buffer
         if (this.buffer.length > lookahead.length) {
-          const safeContent = this.buffer.substring(0, this.buffer.length - lookahead.length);
-          this.buffer = this.buffer.substring(safeContent.length);
+          const searchableContent = this.buffer.substring(0, this.buffer.length - lookahead.length);
           
-          if (safeContent.length > 0) {
+          // Find last complete line (ending with \n)
+          const lastNewlineIdx = searchableContent.lastIndexOf('\n');
+          
+          if (lastNewlineIdx >= 0) {
+            // Emit all complete lines (including the trailing \n)
+            const completeLines = searchableContent.substring(0, lastNewlineIdx + 1);
+            this.buffer = this.buffer.substring(completeLines.length);
+            
             actions.push({
               type: 'file_content',
               data: {
                 filePath: this.context.currentAppendPath!,
-                content: safeContent
+                content: completeLines
               }
             });
+            continueParsingLoop = true;  // ✅ Re-check for more lines
           }
         }
         continue;
