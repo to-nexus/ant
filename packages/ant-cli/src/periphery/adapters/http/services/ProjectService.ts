@@ -870,19 +870,13 @@ export class ProjectService {
         console.log(`[ProjectService] ⚠️  No upstream detected for ${currentBranch.trim()}`);
       }
       
-      // If no upstream, check if there are local commits (unpushed branch)
+      // ✅ If no upstream, reset ahead/behind to avoid showing unreliable data
+      // The UI will show "No changes" instead of incorrect "Push N"
+      // After upstream is configured (by fetch/pull/push), correct data will be shown
       if (!hasUpstream) {
-        try {
-          // Count commits on current branch
-          const log = await git.log({ maxCount: 100 });
-          // If we have commits and no upstream, treat them as "ahead"
-          if (log.total > 0) {
-            ahead = log.total;
-            console.log(`[ProjectService] No upstream - counting local commits: ${ahead}`);
-          }
-        } catch (err) {
-          console.log(`[ProjectService] Failed to count local commits:`, err);
-        }
+        ahead = 0;
+        behind = 0;
+        console.log(`[ProjectService] No upstream - resetting ahead/behind to 0 (data unreliable)`);
       }
 
 
@@ -1641,13 +1635,22 @@ export class ProjectService {
       config.githubRepo
     );
 
-    // Update remote URL
+    // ✅ Update remote URL safely - check if remote exists first
     try {
-      await git.removeRemote('origin');
-    } catch {
-      // Remote might not exist
+      const remotes = await git.getRemotes(true);
+      const originExists = remotes.some(r => r.name === 'origin');
+      
+      if (originExists) {
+        // Update existing remote URL (doesn't affect upstream)
+        await git.remote(['set-url', 'origin', authenticatedUrl]);
+      } else {
+        // Add new remote
+        await git.addRemote('origin', authenticatedUrl);
+      }
+    } catch (error: any) {
+      console.error('[ProjectService] Failed to update remote:', error.message);
+      throw new Error('Failed to update remote configuration');
     }
-    await git.addRemote('origin', authenticatedUrl);
 
     // Fetch
     try {

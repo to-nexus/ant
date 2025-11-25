@@ -50,6 +50,10 @@ interface StoreState {
   currentMode: 'generate' | 'refactor' | 'explain' | undefined;
   devServerStatus: DevServerStatus | undefined;
   isDevServerLoading: boolean;  // ✅ Dev server start/stop 중
+  isGitStatusLoading: boolean;  // ✅ Git status (branch switch + fetch) 중
+  gitStatusPhase: 'switching' | 'fetching' | null;  // ✅ Git status 세부 단계
+  currentGitBranch: string | undefined;  // ✅ Current Git branch (updated immediately on switch)
+  manualGitAction: 'fetch' | 'push' | 'pull' | null;  // ✅ Manual Git action from ProjectSection dropdown
   theme: 'light' | 'dark';
   splitLayout: 'horizontal' | 'vertical';
   viewMode: 'agents' | 'editor';  // ✅ View mode toggle (agents view / editor view)
@@ -115,6 +119,10 @@ interface StoreActions {
   setDevServerStatus: (status: DevServerStatus | undefined) => void;
   setDevServerLoading: (loading: boolean) => void;  // ✅ Dev server 로딩 상태 설정
   refreshDevServerStatus: () => Promise<void>;
+  setGitStatusLoading: (loading: boolean) => void;  // ✅ Git status 로딩 상태 설정
+  setGitStatusPhase: (phase: 'switching' | 'fetching' | null) => void;  // ✅ Git status 세부 단계 설정
+  setCurrentGitBranch: (branch: string | undefined) => void;  // ✅ Current Git branch 설정
+  setManualGitAction: (action: 'fetch' | 'push' | 'pull' | null) => void;  // ✅ Manual Git action 설정
   toggleTheme: () => void;
   setTheme: (theme: 'light' | 'dark') => void;
   toggleSplitLayout: (layout: 'horizontal' | 'vertical') => void;
@@ -276,6 +284,10 @@ export const useStore = create<Store>((set, get) => {
   currentMode: undefined,
   devServerStatus: undefined,
   isDevServerLoading: false,  // ✅ 초기값: 로딩 중 아님
+  isGitStatusLoading: false,  // ✅ 초기값: 로딩 중 아님
+  gitStatusPhase: null,  // ✅ 초기값: 단계 없음
+  currentGitBranch: undefined,  // ✅ 초기값: 브랜치 미정
+  manualGitAction: null,  // ✅ 초기값: 수동 작업 없음
   theme: persistent.theme,
   splitLayout: 'vertical',
   viewMode: persistent.viewMode,
@@ -937,6 +949,22 @@ export const useStore = create<Store>((set, get) => {
 
   setDevServerLoading: (loading: boolean) => {
     set({ isDevServerLoading: loading });
+  },
+
+  setGitStatusLoading: (loading: boolean) => {
+    set({ isGitStatusLoading: loading });
+  },
+
+  setGitStatusPhase: (phase: 'switching' | 'fetching' | null) => {
+    set({ gitStatusPhase: phase });
+  },
+
+  setCurrentGitBranch: (branch: string | undefined) => {
+    set({ currentGitBranch: branch });
+  },
+
+  setManualGitAction: (action: 'fetch' | 'push' | 'pull' | null) => {
+    set({ manualGitAction: action });
   },
 
   refreshDevServerStatus: async () => {

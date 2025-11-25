@@ -26,7 +26,9 @@ export function ProjectSection() {
     selectedProject, 
     setSelectedProject, 
     fetchProjects, 
-    setShowConfigEditor
+    setShowConfigEditor,
+    currentGitBranch,  // ✅ Current Git branch from store
+    setManualGitAction  // ✅ Manual Git action setter
   } = useStore();
   const [configExists, setConfigExists] = useState<boolean | null>(null);
   const [config, setConfig] = useState<ProjectConfig | null>(null);
@@ -128,15 +130,29 @@ export function ProjectSection() {
   };
 
   // Git handlers
-  const handleGitAction = async (action: () => Promise<any>, successMsg: string, shouldRefreshGitStatus = true) => {
+  const handleGitAction = async (
+    action: () => Promise<any>, 
+    actionType: 'fetch' | 'push' | 'pull' | 'clone' | 'init',
+    shouldRefreshGitStatus = true
+  ) => {
     if (!selectedProject) return;
     
     setShowGitMenu(false);
     setIsGitProcessing(true);
+    
+    // ✅ For fetch/push/pull, use GitStatusButtons to show status
+    if (actionType === 'fetch' || actionType === 'push' || actionType === 'pull') {
+      setManualGitAction(actionType);
+    }
+    
     try {
       const result = await action();
       if (result.success) {
-        showSuccess(successMsg);
+        // ✅ For fetch/push/pull, status shown via GitStatusButtons (no popup)
+        // For clone/init, still show success popup (one-time operations)
+        if (actionType === 'clone' || actionType === 'init') {
+          showSuccess(`${actionType === 'clone' ? 'Repository cloned' : 'Repository initialized'} successfully`);
+        }
         
         // Refresh Git status after successful operation
         if (shouldRefreshGitStatus) {
@@ -144,40 +160,50 @@ export function ProjectSection() {
           setGitStatus(status);
         }
       } else {
-        showError(result.error || `Failed to ${successMsg.toLowerCase()}`);
+        // ✅ Errors still shown via popup (important to see)
+        showError(result.error || `Failed to ${actionType}`);
       }
     } catch (error: any) {
-      showError(error.message || `Failed to ${successMsg.toLowerCase()}`);
+      showError(error.message || `Failed to ${actionType}`);
     } finally {
       setIsGitProcessing(false);
+      
+      // ✅ Clear manual action status after a short delay
+      if (actionType === 'fetch' || actionType === 'push' || actionType === 'pull') {
+        setTimeout(() => {
+          setManualGitAction(null);
+        }, 500);
+      }
     }
   };
 
   const handleClone = () => handleGitAction(
     () => cloneGitHubRepo(selectedProject!),
-    'Repository cloned successfully'
+    'clone',
+    true  // Refresh Git status after clone
   );
 
   const handleInitialize = () => handleGitAction(
     () => initializeGitHubRepo(selectedProject!),
-    'Repository initialized and pushed to GitHub successfully'
+    'init',
+    true  // Refresh Git status after init
   );
 
   const handlePush = () => handleGitAction(
     () => pushToGitHub(selectedProject!),
-    'Changes pushed successfully',
+    'push',
     false // Don't refresh Git status (hasGit won't change)
   );
 
   const handlePull = () => handleGitAction(
     () => pullFromGitHub(selectedProject!),
-    'Changes pulled successfully',
+    'pull',
     false // Don't refresh Git status (hasGit won't change)
   );
 
   const handleFetch = () => handleGitAction(
     () => fetchFromGitHub(selectedProject!),
-    'Remote refs updated successfully',
+    'fetch',
     false // Don't refresh Git status (hasGit won't change)
   );
 
@@ -302,9 +328,9 @@ export function ProjectSection() {
           </div>
           
           {/* Current Branch Display */}
-          {gitStatus.currentBranch && (
+          {(currentGitBranch || gitStatus.currentBranch) && (
             <div className="px-2 text-[11px] text-gray-500 dark:text-gray-400">
-              Current branch: <span className="font-mono font-medium text-gray-700 dark:text-gray-300">{gitStatus.currentBranch}</span>
+              Current branch: <span className="font-mono font-medium text-gray-700 dark:text-gray-300">{currentGitBranch || gitStatus.currentBranch}</span>
             </div>
           )}
           

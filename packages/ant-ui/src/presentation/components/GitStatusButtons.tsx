@@ -1,12 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { GitCommit, Upload, Download, RefreshCw, Check } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { getGitChanges, commitGitChanges, pushToGitHub, pullFromGitHub, syncWithRemote, fetchProjectConfig } from '@/infrastructure/http/api';
 import { Button } from '@/presentation/components/common/button';
-import { useAlertModal } from '@/application/hooks/ui/useAlertModal';
 
 export function GitStatusButtons() {
-  const { selectedProject, selectedFeature } = useStore();
+  const { selectedProject, selectedFeature, isGitStatusLoading, gitStatusPhase, manualGitAction } = useStore();
+  const prevLoadingRef = useRef(isGitStatusLoading);  // ✅ Track previous loading state
+  const prevManualActionRef = useRef(manualGitAction);  // ✅ Track previous manual action state
   const [hasGitHubRepo, setHasGitHubRepo] = useState<boolean | null>(null); // null = checking, true = configured, false = not configured
   const [gitChanges, setGitChanges] = useState<{
     hasChanges: boolean;
@@ -18,11 +19,11 @@ export function GitStatusButtons() {
     currentBranch?: string;
   } | null>(null);
   const [isGitInitialized, setIsGitInitialized] = useState<boolean | null>(null); // null = checking, true = initialized, false = not initialized
+  const [isFetchingChanges, setIsFetchingChanges] = useState(false);  // ✅ Track if we're actively fetching git changes
   const [isCommitting, setIsCommitting] = useState(false);
   const [isPushing, setIsPushing] = useState(false);
   const [isPulling, setIsPulling] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const { showError, showSuccess, AlertModal } = useAlertModal();
 
   // Check if GitHub repo is configured
   useEffect(() => {
@@ -46,6 +47,20 @@ export function GitStatusButtons() {
     checkConfig();
   }, [selectedProject]);
 
+  // ✅ Detect manual Git action completion and clear stale data
+  useEffect(() => {
+    // Detect if manual action just completed (non-null → null)
+    const actionJustCompleted = prevManualActionRef.current !== null && manualGitAction === null;
+    prevManualActionRef.current = manualGitAction;
+    
+    if (actionJustCompleted) {
+      // ✅ Clear stale gitChanges immediately when manual action completes
+      console.log('[GitStatusButtons] Manual Git action completed - clearing stale data');
+      setGitChanges(null);
+      // The next useEffect (Fetch Git changes periodically) will pick up and fetch new data
+    }
+  }, [manualGitAction]);
+
   // Fetch Git changes periodically (only if GitHub repo is configured)
   useEffect(() => {
     if (!selectedProject || hasGitHubRepo === null || hasGitHubRepo === false) {
@@ -55,6 +70,7 @@ export function GitStatusButtons() {
     }
 
     const fetchChanges = async () => {
+      setIsFetchingChanges(true);  // ✅ Mark as fetching
       try {
         const changes = await getGitChanges(selectedProject);
         console.log('[GitStatusButtons] Git changes fetched:', changes);
@@ -67,23 +83,58 @@ export function GitStatusButtons() {
           setGitChanges(null);
           setIsGitInitialized(false);
         }
+      } finally {
+        setIsFetchingChanges(false);  // ✅ Mark as done
       }
     };
 
-    // ✅ When feature changes, delay initial fetch to allow branch switch to complete
+    // ✅ Detect if loading just started (false → true)
+    const loadingJustStarted = prevLoadingRef.current === false && isGitStatusLoading === true;
+    
+    // ✅ Skip fetching while Git status is loading (branch switch + fetch in progress)
+    if (isGitStatusLoading) {
+      console.log('[GitStatusButtons] Skipping fetch - Git status loading in progress');
+      
+      // ✅ CRITICAL: Clear gitChanges immediately when loading starts to prevent showing stale data
+      if (loadingJustStarted) {
+        console.log('[GitStatusButtons] Loading started - clearing stale git changes');
+        setGitChanges(null);
+      }
+      
+      prevLoadingRef.current = isGitStatusLoading;  // Update ref
+      return;
+    }
+
+    // ✅ Determine if loading just completed (true → false)
+    const loadingJustCompleted = prevLoadingRef.current === true && isGitStatusLoading === false;
+    prevLoadingRef.current = isGitStatusLoading;  // Update ref
+    
     let interval: number | null = null;
     
-    const delayTimer = setTimeout(() => {
+    if (loadingJustCompleted) {
+      // ✅ Loading just completed - fetch immediately (no delay) to prevent showing stale data
+      console.log('[GitStatusButtons] Loading completed - fetching immediately');
       fetchChanges();
       // Then start regular polling
       interval = window.setInterval(fetchChanges, 5000);
-    }, 500); // 500ms delay to ensure branch switch completes
+    } else {
+      // ✅ Normal case - delay initial fetch to allow any transitions to complete
+      const delayTimer = setTimeout(() => {
+        fetchChanges();
+        // Then start regular polling
+        interval = window.setInterval(fetchChanges, 5000);
+      }, 500); // 500ms delay
+      
+      return () => {
+        clearTimeout(delayTimer);
+        if (interval) clearInterval(interval);
+      };
+    }
     
     return () => {
-      clearTimeout(delayTimer);
       if (interval) clearInterval(interval);
     };
-  }, [selectedProject, hasGitHubRepo]); // ✅ Remove selectedFeature dependency - always show current branch
+  }, [selectedProject, hasGitHubRepo, isGitStatusLoading]); // ✅ Add isGitStatusLoading to trigger re-fetch when loading completes
 
   const handleCommit = async () => {
     if (!selectedProject || !gitChanges) return;
@@ -91,16 +142,16 @@ export function GitStatusButtons() {
     setIsCommitting(true);
     try {
       const result = await commitGitChanges(selectedProject);
+      // ✅ Success/error now shown via button state, no popup
       if (result.success) {
-        showSuccess(`Committed successfully (${result.commitHash?.substring(0, 7)})`);
         // Refresh changes
         const changes = await getGitChanges(selectedProject);
         setGitChanges(changes);
       } else {
-        showError(result.error || 'Failed to commit');
+        console.error('[GitStatusButtons] Commit failed:', result.error);
       }
     } catch (error: any) {
-      showError(error.message || 'Failed to commit changes');
+      console.error('[GitStatusButtons] Commit error:', error.message);
     } finally {
       setIsCommitting(false);
     }
@@ -112,16 +163,16 @@ export function GitStatusButtons() {
     setIsPushing(true);
     try {
       const result = await pushToGitHub(selectedProject);
+      // ✅ Success/error now shown via button state, no popup
       if (result.success) {
-        showSuccess('Pushed successfully');
         // Refresh changes
         const changes = await getGitChanges(selectedProject);
         setGitChanges(changes);
       } else {
-        showError(result.error || 'Failed to push');
+        console.error('[GitStatusButtons] Push failed:', result.error);
       }
     } catch (error: any) {
-      showError(error.message || 'Failed to push changes');
+      console.error('[GitStatusButtons] Push error:', error.message);
     } finally {
       setIsPushing(false);
     }
@@ -133,16 +184,16 @@ export function GitStatusButtons() {
     setIsPulling(true);
     try {
       const result = await pullFromGitHub(selectedProject);
+      // ✅ Success/error now shown via button state, no popup
       if (result.success) {
-        showSuccess('Pulled successfully');
         // Refresh changes
         const changes = await getGitChanges(selectedProject);
         setGitChanges(changes);
       } else {
-        showError(result.error || 'Failed to pull');
+        console.error('[GitStatusButtons] Pull failed:', result.error);
       }
     } catch (error: any) {
-      showError(error.message || 'Failed to pull changes');
+      console.error('[GitStatusButtons] Pull error:', error.message);
     } finally {
       setIsPulling(false);
     }
@@ -154,16 +205,16 @@ export function GitStatusButtons() {
     setIsSyncing(true);
     try {
       const result = await syncWithRemote(selectedProject);
+      // ✅ Success/error now shown via button state, no popup
       if (result.success) {
-        showSuccess('Synced successfully');
         // Refresh changes
         const changes = await getGitChanges(selectedProject);
         setGitChanges(changes);
       } else {
-        showError(result.error || 'Failed to sync');
+        console.error('[GitStatusButtons] Sync failed:', result.error);
       }
     } catch (error: any) {
-      showError(error.message || 'Failed to sync with remote');
+      console.error('[GitStatusButtons] Sync error:', error.message);
     } finally {
       setIsSyncing(false);
     }
@@ -177,30 +228,28 @@ export function GitStatusButtons() {
   // If GitHub repo is not configured, show "Configure GitHub repo first" button
   if (hasGitHubRepo === false) {
     return (
-      <>
-        <div className="flex items-center flex-1">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium
-                       opacity-50 cursor-default
-                       text-gray-600 dark:text-gray-400
-                       border-gray-300 dark:border-gray-600
-                       bg-gray-50 dark:bg-gray-800/50"
-          >
-            Configure GitHub repo first
-          </Button>
-        </div>
-        <AlertModal />
-      </>
+      <div className="flex items-center flex-1">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium
+                     opacity-50 cursor-default
+                     text-gray-600 dark:text-gray-400
+                     border-gray-300 dark:border-gray-600
+                     bg-gray-50 dark:bg-gray-800/50"
+        >
+          Configure GitHub repo first
+        </Button>
+      </div>
     );
   }
 
-  // If no feature is selected, show "Select a feature" button
+  // ✅ If no feature is selected, behavior depends on Git connection status
   if (!selectedFeature) {
-    return (
-      <>
+    // If Git is not initialized, show "Select a feature" (can't show base branch without Git)
+    if (isGitInitialized === false) {
+      return (
         <div className="flex items-center flex-1">
           <Button
             variant="outline"
@@ -215,54 +264,90 @@ export function GitStatusButtons() {
             Select a feature
           </Button>
         </div>
-        <AlertModal />
-      </>
+      );
+    }
+    
+    // ✅ Git is initialized - treat as base branch and show status below
+    // (fall through to show Git status for base branch)
+  }
+
+  // If Git is not initialized (and feature is selected), show "Git not initialized" button
+  if (isGitInitialized === false && selectedFeature) {
+    return (
+      <div className="flex items-center flex-1">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium
+                     opacity-50 cursor-default
+                     text-gray-600 dark:text-gray-400
+                     border-gray-300 dark:border-gray-600
+                     bg-gray-50 dark:bg-gray-800/50"
+        >
+          Git not initialized
+        </Button>
+      </div>
     );
   }
 
-  // If Git is not initialized, show "Git not initialized" button
-  if (isGitInitialized === false) {
+  // ✅ If Git status is loading (branch switch + fetch in progress) OR actively fetching changes OR manual action, show loading state
+  if (isGitStatusLoading || (isFetchingChanges && !gitChanges) || manualGitAction) {
+    // ✅ Determine message based on phase or manual action
+    let loadingMessage = 'Updating...';
+    
+    // Priority 1: Manual Git action from dropdown (fetch, push, pull)
+    if (manualGitAction === 'fetch') {
+      loadingMessage = 'Fetching from remote...';
+    } else if (manualGitAction === 'push') {
+      loadingMessage = 'Pushing to remote...';
+    } else if (manualGitAction === 'pull') {
+      loadingMessage = 'Pulling from remote...';
+    }
+    // Priority 2: Feature switch phases
+    else if (gitStatusPhase === 'switching') {
+      loadingMessage = 'Updating upstream...';
+    } else if (gitStatusPhase === 'fetching' || (isFetchingChanges && !isGitStatusLoading)) {
+      // Show "Fetching from remote..." during FeatureSection's fetch OR during our own fetch
+      loadingMessage = 'Fetching from remote...';
+    }
+    
     return (
-      <>
-        <div className="flex items-center flex-1">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium
-                       opacity-50 cursor-default
-                       text-gray-600 dark:text-gray-400
-                       border-gray-300 dark:border-gray-600
-                       bg-gray-50 dark:bg-gray-800/50"
-          >
-            Git not initialized
-          </Button>
-        </div>
-        <AlertModal />
-      </>
+      <div className="flex items-center flex-1">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium
+                     opacity-50 cursor-default
+                     text-gray-600 dark:text-gray-400
+                     border-gray-300 dark:border-gray-600
+                     bg-gray-50 dark:bg-gray-800/50"
+        >
+          <RefreshCw className="w-3 h-3 animate-spin" />
+          {loadingMessage}
+        </Button>
+      </div>
     );
   }
 
   // If data is still loading, show "Checking..." state
   if (!gitChanges || isGitInitialized === null) {
     return (
-      <>
-        <div className="flex items-center flex-1">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium
-                       opacity-50 cursor-default
-                       text-gray-600 dark:text-gray-400
-                       border-gray-300 dark:border-gray-600
-                       bg-gray-50 dark:bg-gray-800/50"
-          >
-            Checking...
-          </Button>
-        </div>
-        <AlertModal />
-      </>
+      <div className="flex items-center flex-1">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium
+                     opacity-50 cursor-default
+                     text-gray-600 dark:text-gray-400
+                     border-gray-300 dark:border-gray-600
+                     bg-gray-50 dark:bg-gray-800/50"
+        >
+          Checking...
+        </Button>
+      </div>
     );
   }
 
@@ -284,13 +369,13 @@ export function GitStatusButtons() {
           variant="outline"
           size="sm"
           className="flex-1 flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-medium
-                     bg-blue-500/10 dark:bg-blue-500/10 
-                     border-blue-500/30 dark:border-blue-500/30
-                     hover:bg-blue-500/20 dark:hover:bg-blue-500/20
-                     text-blue-600 dark:text-blue-400
+                     bg-emerald-500/10 dark:bg-emerald-500/10 
+                     border-emerald-500/30 dark:border-emerald-500/30
+                     hover:bg-emerald-500/20 dark:hover:bg-emerald-500/20
+                     text-emerald-600 dark:text-emerald-400
                      transition-colors"
-          disabled={isCommitting || !selectedFeature}
-          title={!selectedFeature ? 'Select a feature first' : undefined}
+          disabled={isCommitting || isGitStatusLoading}
+          title={isGitStatusLoading ? 'Updating Git status...' : undefined}
         >
           <GitCommit className="w-3.5 h-3.5" />
           {isCommitting ? (
@@ -310,17 +395,17 @@ export function GitStatusButtons() {
           variant="outline"
           size="sm"
           className="flex-1 flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-medium
-                     bg-blue-500/10 dark:bg-blue-500/10 
-                     border-blue-500/30 dark:border-blue-500/30
-                     hover:bg-blue-500/20 dark:hover:bg-blue-500/20
-                     text-blue-600 dark:text-blue-400
+                     bg-emerald-500/10 dark:bg-emerald-500/10 
+                     border-emerald-500/30 dark:border-emerald-500/30
+                     hover:bg-emerald-500/20 dark:hover:bg-emerald-500/20
+                     text-emerald-600 dark:text-emerald-400
                      transition-colors"
-          disabled={isSyncing || !selectedFeature}
-          title={!selectedFeature ? 'Select a feature first' : 'Pull then push'}
+          disabled={isSyncing || isGitStatusLoading}
+          title={isGitStatusLoading ? 'Updating Git status...' : 'Pull then push'}
         >
-          <RefreshCw className="w-3.5 h-3.5" />
+          <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
           {isSyncing ? (
-            'Syncing...'
+            'Syncing from remote'
           ) : (
             <span className="flex items-center gap-2">
               Sync
@@ -346,16 +431,19 @@ export function GitStatusButtons() {
           variant="outline"
           size="sm"
           className="flex-1 flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-medium
-                     bg-blue-500/10 dark:bg-blue-500/10 
-                     border-blue-500/30 dark:border-blue-500/30
-                     hover:bg-blue-500/20 dark:hover:bg-blue-500/20
-                     text-blue-600 dark:text-blue-400
+                     bg-emerald-500/10 dark:bg-emerald-500/10 
+                     border-emerald-500/30 dark:border-emerald-500/30
+                     hover:bg-emerald-500/20 dark:hover:bg-emerald-500/20
+                     text-emerald-600 dark:text-emerald-400
                      transition-colors"
-          disabled={isPushing || !selectedFeature}
-          title={!selectedFeature ? 'Select a feature first' : undefined}
+          disabled={isPushing || isGitStatusLoading}
+          title={isGitStatusLoading ? 'Updating Git status...' : undefined}
         >
           {isPushing ? (
-            'Pushing...'
+            <span className="flex items-center gap-1.5">
+              <Upload className="w-3.5 h-3.5" />
+              Pushing {gitChanges.ahead} {gitChanges.ahead === 1 ? 'commit' : 'commits'}
+            </span>
           ) : (
             <span className="flex items-center gap-1.5">
               Push
@@ -375,16 +463,19 @@ export function GitStatusButtons() {
           variant="outline"
           size="sm"
           className="flex-1 flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-medium
-                     bg-blue-500/10 dark:bg-blue-500/10 
-                     border-blue-500/30 dark:border-blue-500/30
-                     hover:bg-blue-500/20 dark:hover:bg-blue-500/20
-                     text-blue-600 dark:text-blue-400
+                     bg-emerald-500/10 dark:bg-emerald-500/10 
+                     border-emerald-500/30 dark:border-emerald-500/30
+                     hover:bg-emerald-500/20 dark:hover:bg-emerald-500/20
+                     text-emerald-600 dark:text-emerald-400
                      transition-colors"
-          disabled={isPulling || !selectedFeature}
-          title={!selectedFeature ? 'Select a feature first' : undefined}
+          disabled={isPulling || isGitStatusLoading}
+          title={isGitStatusLoading ? 'Updating Git status...' : undefined}
         >
           {isPulling ? (
-            'Pulling...'
+            <span className="flex items-center gap-1.5">
+              <Download className="w-3.5 h-3.5" />
+              Pulling from remote
+            </span>
           ) : (
             <span className="flex items-center gap-1.5">
               Pull
@@ -415,12 +506,9 @@ export function GitStatusButtons() {
   };
 
   return (
-    <>
-      <div className="flex items-center flex-1">
-        {renderButton()}
-      </div>
-      <AlertModal />
-    </>
+    <div className="flex items-center flex-1">
+      {renderButton()}
+    </div>
   );
 }
 
