@@ -113,6 +113,10 @@ export function GitStatusButtons() {
       // ✅ Loading just completed - fetch immediately (no delay) to prevent showing stale data
       console.log('[GitStatusButtons] Loading completed - fetching immediately');
       fetchChanges();
+    } else if (manualGitAction !== null) {
+      // ✅ Manual Git action triggered (e.g., after job completion) - fetch immediately
+      console.log('[GitStatusButtons] Manual Git action triggered - fetching immediately');
+      fetchChanges();
     } else {
       // ✅ Normal case - fetch once on mount (no polling)
       const delayTimer = setTimeout(() => {
@@ -125,7 +129,7 @@ export function GitStatusButtons() {
     }
     
     // ✅ No cleanup needed - no polling interval
-  }, [selectedProject, hasGitHubRepo, isGitStatusLoading]); // ✅ Add isGitStatusLoading to trigger re-fetch when loading completes
+  }, [selectedProject, hasGitHubRepo, isGitStatusLoading, manualGitAction]); // ✅ Add manualGitAction to trigger re-fetch after job completion
 
   const handleCommit = async () => {
     if (!selectedProject || !gitChanges) return;
