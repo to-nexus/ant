@@ -57,7 +57,7 @@ export function ItemDropdown({
   const [isOpen, setIsOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  
+
   // ✅ 로딩 상태 변경 감지
   useEffect(() => {
     if (title === 'Features') {

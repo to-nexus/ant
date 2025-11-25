@@ -56,7 +56,7 @@ Return a JSON object with a "tasks" array.
 {
   "id": "design-ch1-2",
   "name": "Design Document: Architecture & Data Model",
-  "description": "Write chapters 1-2: System overview, todo data model, and database schema. MAX 150 lines for this task! (Total limit: 300 lines across 2 tasks)",
+  "description": "Write chapters 1-2: System overview, todo data model, and database schema. MAX 225 lines for this task! (Total limit: 450 lines across 2 tasks)",
   "priority": 220
 }
 ```
@@ -66,7 +66,7 @@ Return a JSON object with a "tasks" array.
 {
   "id": "design-ch3-4",
   "name": "Design Document: API & UI Components",
-  "description": "Write chapters 3-4: REST API endpoints and UI component specifications. MAX 150 lines for this task! (Total limit: 300 lines, currently ~150 after task 1)",
+  "description": "Write chapters 3-4: REST API endpoints and UI component specifications. MAX 225 lines for this task! (Total limit: 450 lines, currently ~225 after task 1)",
   "priority": 240
 }
 ```

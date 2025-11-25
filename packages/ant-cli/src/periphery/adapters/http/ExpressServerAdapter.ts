@@ -569,14 +569,16 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
           '/api/auth/signup',
           '/api/auth/signin',
           '/api/auth/signout',
-          '/api/internal/task-queue',  // ✅ Internal endpoint for child processes (has ANT_USER_EMAIL env var)
+          '/api/internal/task-queue',        // ✅ Internal endpoint for child processes (has ANT_USER_EMAIL env var)
+          '/api/internal/file-tree-update',  // ✅ Internal endpoint for file tree updates
         ];
         
         // ✅ Specific internal endpoints that should skip auth (child processes)
         const internalEndpoints = [
-          '/api/jobs/queue/next',           // Child process polling
-          '/api/jobs/queue/complete',       // Child process completion
-          '/api/internal/task-queue',       // Already in publicPaths but for clarity
+          '/api/jobs/queue/next',             // Child process polling
+          '/api/jobs/queue/complete',         // Child process completion
+          '/api/internal/task-queue',         // Already in publicPaths but for clarity
+          '/api/internal/file-tree-update',   // File tree update notifications
         ];
         
         // Skip auth for SSE endpoints (EventSource doesn't support headers)
@@ -662,6 +664,20 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         return res.status(400).json({ error: 'taskId is required' });
       }
       this.updateTaskQueue(taskId, currentTask, queue, completedTasks, recursionCount, recursionLimit);
+      res.json({ success: true });
+    });
+    
+    // ✅ Internal endpoint for file tree updates (called by child processes)
+    this.app.post('/api/internal/file-tree-update', express.json(), (req: Request, res: Response) => {
+      const { projectId, featureName } = req.body;
+      if (!projectId || !featureName) {
+        return res.status(400).json({ error: 'projectId and featureName are required' });
+      }
+      
+      // Fire and forget - non-blocking
+      this.notifyFileTreeUpdate(projectId, featureName)
+        .catch(err => console.error('[FileTreeUpdate] Error:', err));
+      
       res.json({ success: true });
     });
     

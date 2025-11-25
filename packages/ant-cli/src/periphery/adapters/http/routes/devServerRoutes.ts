@@ -6,6 +6,39 @@ import { extractUserContext } from './helpers/userContext';
 import { WorkspaceResolver } from '../../../../infrastructure/workspace/WorkspaceResolver';
 import * as path from 'path';
 import * as os from 'os';
+import * as net from 'net';
+
+/**
+ * Find an available port starting from the given port
+ */
+async function findAvailablePort(startPort: number = 5173): Promise<number> {
+  const isPortAvailable = (port: number): Promise<boolean> => {
+    return new Promise((resolve) => {
+      const server = net.createServer();
+      
+      server.once('error', () => {
+        resolve(false);
+      });
+      
+      server.once('listening', () => {
+        server.close();
+        resolve(true);
+      });
+      
+      server.listen(port);
+    });
+  };
+  
+  // Try up to 10 ports
+  for (let port = startPort; port < startPort + 10; port++) {
+    if (await isPortAvailable(port)) {
+      return port;
+    }
+  }
+  
+  // If all ports in range are taken, return a random high port
+  return startPort + Math.floor(Math.random() * 1000) + 10;
+}
 
 /**
  * Dev server routes
@@ -17,6 +50,16 @@ export function createDevServerRoutes(deps: {
   workspaceResolver: WorkspaceResolver;  // ✅ Add WorkspaceResolver for Cloud mode
 }): Router {
   const router = Router();
+  
+  // Get available port
+  router.get('/projects/:id/dev/available-port', async (req: Request, res: Response) => {
+    try {
+      const availablePort = await findAvailablePort(5173);
+      res.json({ port: availablePort });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
   
   // Start dev server for a project
   router.post('/projects/:id/dev/start', async (req: Request, res: Response) => {

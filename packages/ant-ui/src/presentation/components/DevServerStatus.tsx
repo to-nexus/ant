@@ -28,7 +28,7 @@ export function DevServerStatus({
         <div className="flex items-center gap-2">
           <Package className="w-4 h-4 text-purple-600 dark:text-purple-400 animate-pulse" />
           <span className="text-sm font-medium text-purple-900 dark:text-purple-100">
-            Installing dependencies... 잠시만 기다려주세요.
+            Installing dependencies...
           </span>
         </div>
       </div>
@@ -42,7 +42,7 @@ export function DevServerStatus({
         <div className="flex items-center gap-2">
           <Loader2 className="w-4 h-4 text-blue-600 dark:text-blue-400 animate-spin" />
           <span className="text-sm font-medium text-blue-900 dark:text-blue-100">
-            Dev Server 구동을 시도하고 있습니다...
+            Starting Dev Server...
           </span>
         </div>
       </div>

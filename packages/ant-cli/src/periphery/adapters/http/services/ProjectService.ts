@@ -156,14 +156,30 @@ export class ProjectService {
     const projectPath = this.workspaceResolver.getProjectPath(userContext, id);
     const configPath = path.join(projectPath, 'config.json');
     
+    // Get environment variable defaults for LLM
+    const defaultLLMProvider = process.env.AI_MODEL_PROVIDER || process.env.MODEL_PROVIDER || 'openai';
+    const defaultLLMModel = process.env.AI_MODEL_NAME || process.env.MODEL_NAME;
+    
     try {
       const configData = await fs.promises.readFile(configPath, 'utf-8');
-      return JSON.parse(configData);
+      const config = JSON.parse(configData);
+      
+      // ✅ Apply environment variable defaults if not set in config
+      if (!config.llmProvider) {
+        config.llmProvider = defaultLLMProvider;
+      }
+      if (!config.llmModel && defaultLLMModel) {
+        config.llmModel = defaultLLMModel;
+      }
+      
+      return config;
     } catch (error) {
       // Return default config if file doesn't exist
       return {
         repoType: 'local',
-        localPath: `../${id}`
+        localPath: `../${id}`,
+        llmProvider: defaultLLMProvider,
+        llmModel: defaultLLMModel
       };
     }
   }
@@ -523,10 +539,27 @@ export class ProjectService {
       codebasePath = path.join(projectPath, 'codebase');
     }
 
-    // Check if already cloned
+    // ✅ Check if already cloned
     const gitDir = path.join(codebasePath, '.git');
     if (fs.existsSync(gitDir)) {
       throw new Error('Repository already cloned. Delete .git directory to re-clone.');
+    }
+
+    // ✅ Check if features already exist (must be clean workspace)
+    const featuresPath = path.join(projectPath, 'features');
+    if (fs.existsSync(featuresPath)) {
+      const features = fs.readdirSync(featuresPath).filter(f => !f.startsWith('.'));
+      if (features.length > 0) {
+        throw new Error('Cannot clone: Features already exist. Clone requires a clean workspace.');
+      }
+    }
+
+    // ✅ Check if codebase directory has any files (must be clean)
+    if (fs.existsSync(codebasePath)) {
+      const files = fs.readdirSync(codebasePath).filter(f => !f.startsWith('.'));
+      if (files.length > 0) {
+        throw new Error('Cannot clone: Codebase directory is not empty. Clone requires a clean workspace.');
+      }
     }
 
     // Build authenticated URL
@@ -601,6 +634,29 @@ export class ProjectService {
     if (fs.existsSync(finalGitDir)) {
       console.log(`[ProjectService] ✅ Repository ready at ${codebasePath}`);
       console.log(`[ProjectService] ✅ .git confirmed at ${finalGitDir}`);
+      
+      // ✅ Set upstream for default branch (main)
+      try {
+        const git = simpleGit(codebasePath);
+        const currentBranch = await git.revparse(['--abbrev-ref', 'HEAD']);
+        const branchClean = currentBranch.trim();
+        
+        // Check if upstream is already set
+        let hasUpstream = false;
+        try {
+          await git.revparse(['--abbrev-ref', `${branchClean}@{upstream}`]);
+          hasUpstream = true;
+        } catch {
+          hasUpstream = false;
+        }
+        
+        if (!hasUpstream) {
+          await git.branch(['--set-upstream-to', `origin/${branchClean}`, branchClean]);
+          console.log(`[ProjectService] ✅ Set upstream for default branch: ${branchClean} -> origin/${branchClean}`);
+        }
+      } catch (err) {
+        console.warn(`[ProjectService] Could not set upstream for default branch:`, err);
+      }
     } else {
       console.error(`[ProjectService] ❌ WARNING: .git not found at ${finalGitDir}`);
       throw new Error('Clone completed but .git directory is missing. Please try again.');
@@ -803,8 +859,16 @@ export class ProjectService {
       let ahead = status.ahead || 0;
       let behind = status.behind || 0;
       
-      // Check if upstream exists (status.tracking will be null if no upstream)
-      const hasUpstream = !!status.tracking;
+      // ✅ More reliable upstream check using git rev-parse
+      let hasUpstream = false;
+      try {
+        await git.revparse(['--abbrev-ref', `${currentBranch.trim()}@{upstream}`]);
+        hasUpstream = true;
+        console.log(`[ProjectService] ✅ Upstream detected: ahead=${ahead}, behind=${behind}`);
+      } catch {
+        hasUpstream = false;
+        console.log(`[ProjectService] ⚠️  No upstream detected for ${currentBranch.trim()}`);
+      }
       
       // If no upstream, check if there are local commits (unpushed branch)
       if (!hasUpstream) {
@@ -814,8 +878,10 @@ export class ProjectService {
           // If we have commits and no upstream, treat them as "ahead"
           if (log.total > 0) {
             ahead = log.total;
+            console.log(`[ProjectService] No upstream - counting local commits: ${ahead}`);
           }
         } catch (err) {
+          console.log(`[ProjectService] Failed to count local commits:`, err);
         }
       }
 
@@ -1031,6 +1097,19 @@ export class ProjectService {
       throw new Error('Repository already exists on GitHub. Use Clone instead.');
     }
 
+    // ⚠️ Check if features already exist (undefined case)
+    const featuresPath = path.join(projectPath, 'features');
+    if (fs.existsSync(featuresPath)) {
+      const features = fs.readdirSync(featuresPath).filter(f => !f.startsWith('.'));
+      if (features.length > 0) {
+        throw new Error(
+          `Cannot initialize: ${features.length} feature(s) already exist. ` +
+          `Git initialization must be done before creating features. ` +
+          `Please delete features and re-initialize, or clone the repository instead.`
+        );
+      }
+    }
+
     // Ensure codebase directory exists before git init
     if (!fs.existsSync(codebasePath)) {
       await fs.promises.mkdir(codebasePath, { recursive: true });
@@ -1047,9 +1126,12 @@ export class ProjectService {
       await fs.promises.writeFile(readmePath, readmeContent, 'utf-8');
     }
 
-    // Initialize local git repository (with main branch)
+    // Get base branch from config
+    const baseBranch = config.branchBase || 'main';
+    
+    // Initialize local git repository (with base branch)
     const git = simpleGit(codebasePath);
-    await git.init(['--initial-branch=main']);
+    await git.init([`--initial-branch=${baseBranch}`]);
     
     // Verify .git was created in correct location
     const gitDirCreated = path.join(codebasePath, '.git');
@@ -1057,8 +1139,64 @@ export class ProjectService {
       throw new Error(`Git initialization failed: .git not found in ${codebasePath}`);
     }
 
-    // ✅ That's it! No commit, no remote, no push
-    // User will commit and push manually via UI
+    // ✅ Auto-commit and push to create base branch on GitHub
+    try {
+      // Stage all files (either README.md or existing code)
+      await git.add('.');
+      
+      // Create initial commit
+      const commitMessage = hasFiles 
+        ? 'Initial commit with existing code'
+        : 'Initial commit from ANT';
+      await git.commit(commitMessage);
+      
+      console.log(`[ProjectService] ✅ Initial commit created: "${commitMessage}"`);
+      
+      // Build authenticated URL for push
+      const credentialContext = {
+        org: userContext.organizationId,
+        user: userContext.userId
+      };
+      const authenticatedUrl = await this.githubAuthService.buildAuthenticatedUrl(
+        credentialContext,
+        config.githubRepo
+      );
+      
+      // Add remote
+      await git.addRemote('origin', authenticatedUrl);
+      
+      // Create GitHub repo if it doesn't exist
+      console.log(`[ProjectService] Creating GitHub repository...`);
+      await this.githubAuthService.createRepo(userContext, config.githubRepo);
+      console.log(`[ProjectService] ✅ GitHub repository created`);
+      
+      // Push to create base branch on remote
+      await git.push(['-u', 'origin', baseBranch]);
+      console.log(`[ProjectService] ✅ Pushed to origin/${baseBranch}`);
+      
+      // Set upstream
+      await git.branch(['--set-upstream-to', `origin/${baseBranch}`, baseBranch]);
+      console.log(`[ProjectService] ✅ Upstream configured: ${baseBranch} -> origin/${baseBranch}`);
+      
+    } catch (error: any) {
+      const errorMsg = error.message || error.toString();
+      
+      // Handle various error cases
+      if (errorMsg.includes('already exists') && errorMsg.includes('repository')) {
+        // Repo already exists - this is fine, just push
+        console.log(`[ProjectService] Repository already exists, attempting push...`);
+        try {
+          await git.push(['-u', 'origin', baseBranch]);
+          console.log(`[ProjectService] ✅ Pushed to existing repository`);
+        } catch (pushError: any) {
+          throw new Error(`Failed to push to existing repository: ${pushError.message}`);
+        }
+      } else if (errorMsg.includes('authentication failed')) {
+        throw new Error('Authentication failed. Please check your GitHub PAT.');
+      } else {
+        throw new Error(`Failed to initialize and push: ${errorMsg}`);
+      }
+    }
   }
 
   /**
@@ -1166,8 +1304,8 @@ export class ProjectService {
     // ✅ Push with upstream setup for new branches
     try {
       if (!hasUpstream) {
-        // New branch - set upstream
-        await git.push('origin', branch, { '--set-upstream': null });
+        // New branch - set upstream using -u flag
+        await git.push(['-u', 'origin', branch]);
       } else {
         // Existing branch - normal push
         await git.push('origin', branch);
@@ -1262,6 +1400,25 @@ export class ProjectService {
     try {
       const pullResult = await git.pull('origin', branch);
       
+      // ✅ After pull, auto-setup upstream if not configured
+      const branchClean = branch.trim();
+      let hasUpstream = false;
+      try {
+        await git.revparse(['--abbrev-ref', `${branchClean}@{upstream}`]);
+        hasUpstream = true;
+      } catch {
+        hasUpstream = false;
+      }
+      
+      if (!hasUpstream) {
+        try {
+          await git.branch(['--set-upstream-to', `origin/${branchClean}`, branchClean]);
+          console.log(`[ProjectService] ✅ Auto-configured upstream after pull: ${branchClean} -> origin/${branchClean}`);
+        } catch (err) {
+          console.log(`[ProjectService] Could not auto-setup upstream after pull:`, err);
+        }
+      }
+      
       // Check for conflicts (simple-git doesn't expose conflicts directly)
       // We'll rely on status check instead
       const statusAfterPull = await git.status();
@@ -1344,6 +1501,34 @@ export class ProjectService {
     // Get base branch from config
     const baseBranch = config.branchBase || 'main';
     
+    // ✅ Special case: If featureName is 'main' or matches baseBranch, checkout base branch directly
+    if (featureName === 'main' || featureName === baseBranch) {
+      await git.checkout(baseBranch);
+      
+      // Set upstream for main if remote exists
+      try {
+        const remoteBranches = await git.branch(['-r']);
+        if (remoteBranches.all.includes(`origin/${baseBranch}`)) {
+          let hasUpstream = false;
+          try {
+            await git.revparse(['--abbrev-ref', `${baseBranch}@{upstream}`]);
+            hasUpstream = true;
+          } catch {
+            hasUpstream = false;
+          }
+          
+          if (!hasUpstream) {
+            await git.branch(['--set-upstream-to', `origin/${baseBranch}`, baseBranch]);
+            console.log(`[ProjectService] ✅ Set upstream: ${baseBranch} -> origin/${baseBranch}`);
+          }
+        }
+      } catch (err) {
+        console.log(`[ProjectService] Could not set upstream for ${baseBranch}:`, err);
+      }
+      
+      return;
+    }
+    
     // Sanitize feature name for branch (replace spaces with hyphens, lowercase)
     const branchName = `feature/${featureName.toLowerCase().replace(/\s+/g, '-')}`;
 
@@ -1368,6 +1553,35 @@ export class ProjectService {
       
       // Create feature branch
       await git.checkoutLocalBranch(branchName);
+    }
+
+    // ✅ After checkout, set upstream if remote branch exists
+    try {
+      const remoteBranches = await git.branch(['-r']);
+      const remoteBranchName = `origin/${branchName}`;
+      
+      if (remoteBranches.all.includes(remoteBranchName)) {
+        // Remote branch exists - ensure upstream is set
+        const branchClean = branchName.trim();
+        
+        // Check if upstream is already set
+        let hasUpstream = false;
+        try {
+          await git.revparse(['--abbrev-ref', `${branchClean}@{upstream}`]);
+          hasUpstream = true;
+        } catch {
+          hasUpstream = false;
+        }
+        
+        if (!hasUpstream) {
+          await git.branch(['--set-upstream-to', remoteBranchName, branchClean]);
+          console.log(`[ProjectService] ✅ Set upstream: ${branchClean} -> ${remoteBranchName}`);
+        } else {
+          console.log(`[ProjectService] ✅ Upstream already set for ${branchClean}`);
+        }
+      }
+    } catch (err) {
+      console.log(`[ProjectService] Could not set upstream (remote branch may not exist):`, err);
     }
 
   }
@@ -1438,6 +1652,36 @@ export class ProjectService {
     // Fetch
     try {
       await git.fetch('origin');
+      
+      // ✅ After fetch, auto-setup upstream if not configured but remote branch exists
+      const currentBranch = await git.revparse(['--abbrev-ref', 'HEAD']);
+      const currentBranchClean = currentBranch.trim();
+      
+      // Check if current branch has upstream
+      let hasUpstream = false;
+      try {
+        await git.revparse(['--abbrev-ref', `${currentBranchClean}@{upstream}`]);
+        hasUpstream = true;
+      } catch {
+        hasUpstream = false;
+      }
+      
+      // If no upstream, check if remote branch exists with same name
+      if (!hasUpstream) {
+        try {
+          const remoteBranches = await git.branch(['-r']);
+          const remoteBranchName = `origin/${currentBranchClean}`;
+          
+          if (remoteBranches.all.includes(remoteBranchName)) {
+            // Remote branch exists - set up tracking
+            await git.branch(['--set-upstream-to', remoteBranchName, currentBranchClean]);
+            console.log(`[ProjectService] ✅ Auto-configured upstream for ${currentBranchClean} -> ${remoteBranchName}`);
+          }
+        } catch (err) {
+          // Ignore errors in auto-setup
+          console.log(`[ProjectService] Could not auto-setup upstream:`, err);
+        }
+      }
     } catch (error: any) {
       const errorMsg = error.message || error.toString();
       

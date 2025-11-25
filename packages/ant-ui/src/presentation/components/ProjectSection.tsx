@@ -160,7 +160,7 @@ export function ProjectSection() {
 
   const handleInitialize = () => handleGitAction(
     () => initializeGitHubRepo(selectedProject!),
-    'Repository initialized successfully'
+    'Repository initialized and pushed to GitHub successfully'
   );
 
   const handlePush = () => handleGitAction(
@@ -203,7 +203,7 @@ export function ProjectSection() {
       
       {/* Git Status Section */}
       {selectedProject && (
-        <div className="mt-2">
+        <div className="mt-2 space-y-1">
           <div className="flex gap-2 items-center">
             {/* Git Status Buttons (Commit/Push/Pull/Sync) - Takes most space */}
             <div className="flex-1 min-w-0">
@@ -300,6 +300,13 @@ export function ProjectSection() {
               )}
             </div>
           </div>
+          
+          {/* Current Branch Display */}
+          {gitStatus.currentBranch && (
+            <div className="px-2 text-[11px] text-gray-500 dark:text-gray-400">
+              Current branch: <span className="font-mono font-medium text-gray-700 dark:text-gray-300">{gitStatus.currentBranch}</span>
+            </div>
+          )}
           
           {/* Warning Messages */}
           {!configExists && (

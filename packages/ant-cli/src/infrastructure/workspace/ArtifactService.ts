@@ -203,7 +203,7 @@ export class ArtifactService {
     // Try each candidate file
     for (const fileName of candidateFiles) {
       const designFilePath = path.join(designPath, fileName);
-      const exists = await gitPort.fileExists(designFilePath);
+    const exists = await gitPort.fileExists(designFilePath);
 
       if (exists) {
         const content = await gitPort.readFile(designFilePath);

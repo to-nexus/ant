@@ -979,6 +979,25 @@ export async function updateProjectConfig(projectId: string, config: ProjectConf
 }
 
 // Dev server management
+export async function getAvailablePort(projectId: string): Promise<number> {
+  try {
+    const response = await authFetch(
+      `${API_BASE()}/projects/${encodeURIComponent(projectId)}/dev/available-port`
+    );
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get available port: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    return data.port;
+  } catch (error) {
+    console.error('Error getting available port:', error);
+    // Fallback to 5173 if API fails
+    return 5173;
+  }
+}
+
 export async function startDevServer(projectId: string, port?: number): Promise<{ success: boolean; message: string; script: string }> {
   try {
     const response = await authFetch(

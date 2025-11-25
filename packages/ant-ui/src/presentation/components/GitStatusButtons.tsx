@@ -70,13 +70,20 @@ export function GitStatusButtons() {
       }
     };
 
-    fetchChanges();
+    // ✅ When feature changes, delay initial fetch to allow branch switch to complete
+    let interval: number | null = null;
     
-    // Refresh every 5 seconds
-    const interval = setInterval(fetchChanges, 5000);
+    const delayTimer = setTimeout(() => {
+      fetchChanges();
+      // Then start regular polling
+      interval = window.setInterval(fetchChanges, 5000);
+    }, 500); // 500ms delay to ensure branch switch completes
     
-    return () => clearInterval(interval);
-  }, [selectedProject, selectedFeature, hasGitHubRepo]);
+    return () => {
+      clearTimeout(delayTimer);
+      if (interval) clearInterval(interval);
+    };
+  }, [selectedProject, hasGitHubRepo]); // ✅ Remove selectedFeature dependency - always show current branch
 
   const handleCommit = async () => {
     if (!selectedProject || !gitChanges) return;
