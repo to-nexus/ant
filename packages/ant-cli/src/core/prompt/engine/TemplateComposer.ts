@@ -3,6 +3,12 @@ import { CodebaseProfile } from "../../types";
 import { ProjectContext } from "../../types";
 import { PromptModeConfig } from "./ModeController";
 import { AssembledContext } from "./ContextAssembler";
+import Handlebars from 'handlebars';
+
+// Register Handlebars helpers
+Handlebars.registerHelper('add', function(a: number, b: number) {
+  return a + b;
+});
 
 /**
  * Composed prompt parts

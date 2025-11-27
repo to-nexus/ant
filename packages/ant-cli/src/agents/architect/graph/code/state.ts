@@ -238,6 +238,13 @@ export interface ArchitectGraphState extends TaskArtifacts {
   // ✅ Chat Integration
   overrideDirective?: string;  // Chat input as directive (highest priority)
   chatSource?: boolean;         // True if job started from chat (enables Chat SSE)
+  
+  // ✅ Replan Support (continue with new directive)
+  directives?: string[];  // Multiple directives (newest first = highest priority)
+  replanAction?: 'continue' | 'modify' | 'restart';  // LLM decision on how to handle new directive
+  replanReason?: string;  // Explanation for replan decision
+  tasksToModify?: string[];  // Task IDs to modify (if replanAction='modify')
+  isReplanning?: boolean;  // Flag indicating we're in replan process
 
   // Execution
   planText: string;
