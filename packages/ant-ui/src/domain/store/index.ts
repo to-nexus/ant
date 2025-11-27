@@ -419,27 +419,6 @@ export const useStore = create<Store>((set, get) => {
   },
   
   updateChatMessage: (messageId, updates) => {
-    // ✅ DEBUG: Log state updates for file content only (first update)
-    if (updates.contents) {
-      const fileContent = updates.contents.find((c: any) => c.type?.includes('file'));
-      if (fileContent) {
-        const state = get();
-        const oldMessage = state.chatMessages.find(m => m.id === messageId);
-        const oldFileContent = oldMessage?.contents.find((c: any) => c.type?.includes('file'));
-        
-        // Log only when content changes from empty or type changes
-        if (!oldFileContent || oldFileContent.type !== fileContent.type) {
-          console.log('[Store] 📝 State updated:', {
-            messageId,
-            contentType: fileContent.type,
-            filePath: fileContent.metadata?.filePath,
-            contentLength: fileContent.content?.length || 0,
-            isStreaming: updates.isStreaming
-          });
-        }
-      }
-    }
-    
     set((state) => ({
       chatMessages: state.chatMessages.map(msg =>
         msg.id === messageId ? { ...msg, ...updates } : msg
@@ -517,18 +496,6 @@ export const useStore = create<Store>((set, get) => {
         case 'content_update':
           const message = get().chatMessages.find(m => m.id === event.messageId);
           if (message) {
-            // ✅ DEBUG: Log only file operations
-            if (event.content?.type?.includes('file')) {
-              console.log('[Store] 💬 content_update:', {
-                messageId: event.messageId,
-                contentIndex: event.contentIndex,
-                contentType: event.content.type,
-                filePath: event.content.metadata?.filePath,
-                contentLength: event.content.content?.length || 0,
-                isStreaming: true
-              });
-            }
-            
             const updatedContents = [...message.contents];
             updatedContents[event.contentIndex] = event.content;
             // ✅ Set isStreaming=true when receiving content updates (for refresh/reconnect)
@@ -547,19 +514,6 @@ export const useStore = create<Store>((set, get) => {
             if (appendContents[event.contentIndex]) {
               const oldContent = appendContents[event.contentIndex].content;
               const newContent = oldContent + event.delta;
-              
-              // ✅ DEBUG: Log only file operations (first append only to reduce spam)
-              const contentType = appendContents[event.contentIndex].type;
-              if (contentType?.includes('file') && oldContent.length === 0) {
-                console.log('[Store] 💬 content_append (first):', {
-                  messageId: event.messageId,
-                  contentIndex: event.contentIndex,
-                  contentType,
-                  filePath: appendContents[event.contentIndex].metadata?.filePath,
-                  deltaLength: event.delta.length,
-                  totalLength: newContent.length
-                });
-              }
               
               // ✅ Append delta to existing content
               appendContents[event.contentIndex] = {
