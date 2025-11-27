@@ -188,6 +188,14 @@ export class ModeController {
         console.log(`[ModeController] Adding environment-specific injection: ${envPath}`);
       }
       
+      // ✅ Markdown file streaming format (for .md documentation files)
+      // This enables real-time preview of markdown content in file cards
+      // Shared by both design and code jobs (design has its own detailed rules)
+      if (task === 'code') {
+        injections.push(`${commonPrefix}/output-format-markdown`);
+        console.log(`[ModeController] Adding markdown streaming format injection`);
+      }
+      
       // ✅ NEW: Retry context injection (highest priority - only on retries)
       if (context.retryContext) {
         injections.push(`${phasePrefix}/injections/retry-context`);
