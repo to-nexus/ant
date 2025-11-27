@@ -1,7 +1,7 @@
 import { GitBranch, AlertTriangle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useStore } from '@/domain/store';
-import { createFeature, deleteFeature, startDevServer, stopDevServer, getDevServerStatus, switchToFeatureBranch, getAvailablePort, getGitChanges, fetchProjectConfig, fetchFromGitHub } from '@/infrastructure/http/api';
+import { createFeature, deleteFeature, startDevServer, stopDevServer, getDevServerStatus, switchToFeatureBranch, getAvailablePort, getGitChanges, fetchProjectConfig, fetchFromGitHub, getGitStatus } from '@/infrastructure/http/api';
 import { ItemDropdown } from './ItemDropdown';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { DevServerSetup } from './DevServerSetup';
@@ -171,7 +171,7 @@ export function FeatureSection() {
     };
     
     checkoutBranch();
-  }, [selectedProject, selectedFeature, baseBranch, gitStatus.hasGit, setGitStatusLoading, setGitStatusPhase, setCurrentGitBranch]); // ✅ Include gitStatus.hasGit
+  }, [selectedProject, selectedFeature, baseBranch, gitStatus, setGitStatusLoading, setGitStatusPhase, setCurrentGitBranch]); // ✅ Include gitStatus (entire object)
 
   // Auto-show status panel when dev server is running (including after refresh)
   useEffect(() => {
