@@ -37,11 +37,7 @@ export function FeatureSection() {
   const [isInstalling, setIsInstalling] = useState(false);  // ✅ Dependency 설치 중 상태
   const [availablePort, setAvailablePort] = useState<number>(5173);  // ✅ 사용 가능한 포트
   const [baseBranch, setBaseBranch] = useState<string>('main');  // ✅ Base branch from config
-  const [gitStatus, setGitStatus] = useState<{ hasGit: boolean; hasCodebase: boolean; hasFeatures: boolean }>({ 
-    hasGit: false, 
-    hasCodebase: false, 
-    hasFeatures: false 
-  });  // ✅ Git initialization status
+  const [gitStatus, setGitStatus] = useState<{ hasGit: boolean; hasCodebase: boolean; hasFeatures: boolean } | null>(null);  // ✅ null = checking
   const policy = useUIActionPolicy();
   const { showConfirm, AlertModal } = useAlertModal();
 
@@ -73,7 +69,7 @@ export function FeatureSection() {
       try {
         const status = await getGitStatus(selectedProject);
         setGitStatus(status);
-        console.log('[FeatureSection] Git status:', status);
+        console.log('[FeatureSection] Git status loaded:', status);
       } catch (error) {
         console.error('[FeatureSection] Failed to get Git status:', error);
         setGitStatus({ hasGit: false, hasCodebase: false, hasFeatures: false });
@@ -88,9 +84,15 @@ export function FeatureSection() {
     const checkoutBranch = async () => {
       if (!selectedProject) return;
       
+      // ✅ CRITICAL: Wait for Git status check to complete
+      if (gitStatus === null) {
+        console.log('[FeatureSection] Waiting for Git status check...');
+        return;
+      }
+      
       // ✅ CRITICAL: Only proceed if Git is initialized
       if (!gitStatus.hasGit) {
-        console.log('[FeatureSection] Skipping branch operations - Git not initialized');
+        console.log('[FeatureSection] ⏭️  Skipping branch operations - Git not initialized');
         return;
       }
       
