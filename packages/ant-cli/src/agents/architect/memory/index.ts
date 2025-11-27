@@ -52,7 +52,7 @@ export async function retrieve(
             const queryResults = await memory.query(query, project, {
               k: 10,  // Get more results for reranking
               where: { 
-                type: 'learning'
+                type: 'lesson'  // ✅ Changed from 'learning'
               },
               minScore: 0.5  // Filter low-quality results
             });
@@ -107,7 +107,7 @@ export async function retrieve(
               const queryResults = await memory.query(query, project, {
                 k: 10,
                 where: { 
-                  type: 'learning'
+                  type: 'lesson'
                 },
                 minScore: 0.5
               });

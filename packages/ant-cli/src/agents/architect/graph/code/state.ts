@@ -215,8 +215,25 @@ export interface ArchitectGraphState extends TaskArtifacts {
   };
   gitPort?: GitPort;  // For runner to use after graph execution
   
-  // Mode (inferred or explicit)
-  codeMode?: CodeMode;  // generate / refactor / explain
+  // ✅ Mode (inferred)
+  mode?: 'generate' | 'refactor' | 'explain';  // Code mode inferred from directive
+  codeMode?: CodeMode;  // DEPRECATED: use 'mode' instead
+  
+  // ✅ Session Context (compressed for LLM)
+  sessionContext?: {
+    recentTurns: Array<{
+      turnId: number;
+      directive: string;
+      mode: string;
+      output: string;
+    }>;
+    summary?: string;
+    totalTurns: number;
+    currentTurn: number;
+    currentMode: string;
+    windowSize: number;
+    compressionRatio: number;
+  };
   
   // ✅ Chat Integration
   overrideDirective?: string;  // Chat input as directive (highest priority)

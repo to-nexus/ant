@@ -27,7 +27,7 @@ export interface ChunkInput {
  */
 export interface ChunkMetadata {
   /** Type of content */
-  type: 'learning' | 'code' | 'design' | 'spec';
+  type: 'lesson' | 'codebase' | 'design' | 'spec';  // ✅ Changed: learning → lesson
   
   /** Task context */
   task?: 'code' | 'design' | 'learn';

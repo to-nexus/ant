@@ -86,6 +86,15 @@ program
     await runDoc(input, options);
   });
 
+// ✅ Index command (codebase indexing)
+program
+  .command('index <project>')
+  .description('Index codebase into vector database for semantic search')
+  .option('--incremental', 'Only index changed files (not yet implemented)')
+  .action(async (project: string, options: any) => {
+    await runIndex(project, options);
+  });
+
 // Evaluation is integrated into architect workflow via --eval flag
 // No separate eval command needed
 
@@ -313,6 +322,21 @@ async function runDoc(inputPath: string, options: any) {
     
     console.log('\n✅ Documentation updated!');
     console.log('\n--- Result ---\n', JSON.stringify(result, null, 2));
+  } catch (error: any) {
+    console.error('\n❌ Error:', error.message);
+    process.exit(1);
+  }
+}
+
+/**
+ * Run index command
+ */
+async function runIndex(project: string, options: any) {
+  try {
+    const { indexCommand } = await import('../commands/index');
+    await indexCommand(project, {
+      incremental: options.incremental || false
+    });
   } catch (error: any) {
     console.error('\n❌ Error:', error.message);
     process.exit(1);

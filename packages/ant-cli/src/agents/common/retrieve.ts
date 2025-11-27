@@ -44,7 +44,7 @@ export async function retrieveMemoryForAgent(
       const queryResults = await memory.query(query, project, {
         k: 10,
         where: {
-          type: 'learning',
+          type: 'lesson',
           task: agentType
         },
         minScore: 0.5
@@ -75,7 +75,7 @@ export async function retrieveMemoryForAgent(
           k: 10,
           where: {
             feature: feature,
-            type: 'learning'
+            type: 'lesson'
           },
           minScore: 0.5
         });

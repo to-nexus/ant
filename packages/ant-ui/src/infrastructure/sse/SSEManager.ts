@@ -236,6 +236,7 @@ class SSEManager {
       eventSource.addEventListener('end', () => {
         this.routeMessage({
           type: 'workflow',
+          timestamp: new Date().toISOString(),
           data: {
             jobId,
             eventType: 'end',
@@ -271,15 +272,6 @@ class SSEManager {
     
     if (!handlers || handlers.length === 0) {
       return;
-    }
-    
-    // ✅ DEBUG: Log handler execution for file events
-    if (type === 'chat' && data?.type && 
-        (data.type === 'content_add' || data.type === 'content_update' || data.type === 'content_append')) {
-      const content = data.content;
-      if (content?.type?.includes('file')) {
-        console.log(`[SSE] 🔄 Calling ${handlers.length} handler(s) for ${data.type}`);
-      }
     }
     
     handlers.forEach(handler => {

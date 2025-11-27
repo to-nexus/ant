@@ -152,7 +152,7 @@ export function buildDesignGraph() {
       planText: null as any,
       files: null as any,  // ✅ CRITICAL: Must be in channels
       filesToDelete: null as any,  // ✅ CRITICAL: Must be in channels
-      learnings: null as any,
+      lessons: null as any,
       
       // ✅ NEW: Tool Calling Support
       llmResponse: null as any,

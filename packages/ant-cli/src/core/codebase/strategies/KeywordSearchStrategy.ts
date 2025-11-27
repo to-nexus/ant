@@ -1,0 +1,192 @@
+import * as fs from "fs";
+import * as path from "path";
+import { FileSource } from "../types";
+
+/**
+ * Keyword Search Strategy
+ * 
+ * Uses text-based keyword matching (grep-like).
+ */
+export class KeywordSearchStrategy {
+  
+  /**
+   * Search files using keyword matching
+   * 
+   * @param directive - User's directive/query
+   * @param workingDir - Working directory to search
+   * @param options - Search options
+   * @returns Array of file paths with match counts
+   */
+  async search(
+    directive: string,
+    workingDir: string,
+    options: {
+      maxFiles: number;
+      exclude: string[];
+    }
+  ): Promise<Array<{ path: string; source: FileSource }>> {
+    // Extract keywords from directive
+    const keywords = this.extractKeywords(directive);
+    
+    if (keywords.length === 0) {
+      console.log('   ⚡ Keyword search: no keywords extracted');
+      return this.fallbackAllFiles(workingDir, options);
+    }
+
+    // Find files containing keywords
+    const matchedFiles = await this.findFilesByKeywords(
+      workingDir,
+      keywords,
+      options.exclude
+    );
+
+    // Sort by relevance and take top N
+    const topFiles = matchedFiles
+      .sort((a, b) => {
+        const aMatches = a.source.type === 'keyword' ? a.source.matches : 0;
+        const bMatches = b.source.type === 'keyword' ? b.source.matches : 0;
+        return bMatches - aMatches;
+      })
+      .slice(0, options.maxFiles);
+
+    if (topFiles.length === 0) {
+      console.log('   ⚡ Keyword search: no matches, using fallback');
+      return this.fallbackAllFiles(workingDir, options);
+    }
+
+    console.log(`   ⚡ Keyword search: ${topFiles.length} files (keywords: ${keywords.slice(0, 3).join(', ')}...)`);
+    
+    return topFiles;
+  }
+
+  /**
+   * Extract keywords from directive
+   */
+  private extractKeywords(directive: string): string[] {
+    // Extract file names
+    const fileMatches = directive.match(/[\w-]+\.(ts|js|tsx|jsx|py|go|rs|java)/g) || [];
+    
+    // Extract identifiers (functions, classes, variables)
+    const identifierMatches = directive.match(/[A-Z][a-zA-Z0-9]+|[a-z][a-zA-Z0-9]+/g) || [];
+    
+    // Remove common words
+    const commonWords = new Set([
+      'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+      'add', 'update', 'fix', 'remove', 'create', 'delete', 'modify', 'change'
+    ]);
+    const filtered = identifierMatches.filter(w => 
+      !commonWords.has(w.toLowerCase()) && w.length > 2
+    );
+    
+    return [...fileMatches, ...filtered];
+  }
+
+  /**
+   * Find files by keywords (grep-like)
+   */
+  private async findFilesByKeywords(
+    workingDir: string,
+    keywords: string[],
+    exclude: string[]
+  ): Promise<Array<{ path: string; source: FileSource }>> {
+    const results: Array<{ path: string; source: FileSource }> = [];
+    const allFiles = this.findAllSourceFiles(workingDir, exclude);
+
+    for (const filePath of allFiles) {
+      try {
+        const content = fs.readFileSync(filePath, 'utf8').toLowerCase();
+        let matches = 0;
+        
+        for (const keyword of keywords) {
+          const keywordMatches = (content.match(new RegExp(keyword.toLowerCase(), 'g')) || []).length;
+          matches += keywordMatches;
+        }
+        
+        if (matches > 0) {
+          results.push({
+            path: path.relative(workingDir, filePath),
+            source: { type: 'keyword', matches }
+          });
+        }
+      } catch (error) {
+        // Skip files that can't be read
+        continue;
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Fallback: load all source files (when no matches)
+   */
+  private fallbackAllFiles(
+    workingDir: string,
+    options: { maxFiles: number; exclude: string[] }
+  ): Array<{ path: string; source: FileSource }> {
+    const allFiles = this.findAllSourceFiles(workingDir, options.exclude);
+    
+    return allFiles.slice(0, options.maxFiles).map(filePath => ({
+      path: path.relative(workingDir, filePath),
+      source: { type: 'keyword', matches: 0 }
+    }));
+  }
+
+  /**
+   * Find all source files in directory
+   */
+  private findAllSourceFiles(dir: string, exclude: string[]): string[] {
+    const results: string[] = [];
+    const sourceExtensions = [
+      '.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs', '.java',
+      '.c', '.cpp', '.h', '.hpp', '.rb', '.php', '.swift', '.kt'
+    ];
+
+    const walk = (currentPath: string) => {
+      if (!fs.existsSync(currentPath)) return;
+      const stat = fs.statSync(currentPath);
+      const relativePath = path.relative(dir, currentPath);
+
+      if (this.shouldExclude(relativePath, exclude)) return;
+
+      if (stat.isDirectory()) {
+        const entries = fs.readdirSync(currentPath);
+        for (const entry of entries) {
+          if (entry.startsWith('.')) continue;
+          walk(path.join(currentPath, entry));
+        }
+      } else if (stat.isFile()) {
+        const ext = path.extname(currentPath);
+        if (sourceExtensions.includes(ext)) {
+          results.push(currentPath);
+        }
+      }
+    };
+
+    walk(dir);
+    return results;
+  }
+
+  /**
+   * Check if path should be excluded
+   */
+  private shouldExclude(relativePath: string, exclude: string[]): boolean {
+    const normalizedPath = relativePath.replace(/\\/g, '/');
+    
+    for (const pattern of exclude) {
+      if (pattern.includes('*')) {
+        const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+        if (regex.test(normalizedPath)) return true;
+      } else {
+        if (normalizedPath === pattern || 
+            normalizedPath.startsWith(pattern + '/') ||
+            normalizedPath.includes('/' + pattern + '/')) {
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  }
+}
+
