@@ -23,6 +23,27 @@ export class ProjectService {
   }
   
   /**
+   * 🛡️ CRITICAL SAFETY: Get Git instance only if .git exists in EXACT directory
+   * 
+   * Prevents simpleGit from traversing up to parent directories (e.g., ant source code).
+   * Returns null if .git is not found in the specified path.
+   * 
+   * @param targetPath - The exact directory where .git should exist
+   * @returns SimpleGit instance or null if not initialized
+   */
+  private getGitInstanceSafe(targetPath: string): ReturnType<typeof simpleGit> | null {
+    const gitDir = path.join(targetPath, '.git');
+    
+    if (!fs.existsSync(gitDir)) {
+      console.log(`[ProjectService] 🚫 .git not found at: ${targetPath}`);
+      return null;
+    }
+    
+    console.log(`[ProjectService] ✅ .git verified at: ${targetPath}`);
+    return simpleGit(targetPath);
+  }
+  
+  /**
    * List all projects for a user
    */
   async listProjects(userContext: UserContext): Promise<string[]> {
@@ -630,7 +651,12 @@ export class ProjectService {
     if (fs.existsSync(finalGitDir)) {
       // ✅ Set upstream for default branch (main)
       try {
-        const git = simpleGit(codebasePath);
+        const git = this.getGitInstanceSafe(codebasePath);
+        if (!git) {
+          console.warn('[ProjectService] Git not initialized, skipping upstream setup');
+          return;
+        }
+        
         const currentBranch = await git.revparse(['--abbrev-ref', 'HEAD']);
         const branchClean = currentBranch.trim();
         
@@ -768,8 +794,10 @@ export class ProjectService {
       let currentBranch: string | undefined;
       if (hasGit) {
         try {
-          const git = simpleGit(codebasePath);
-          currentBranch = await git.revparse(['--abbrev-ref', 'HEAD']);
+          const git = this.getGitInstanceSafe(codebasePath);
+          if (git) {
+            currentBranch = await git.revparse(['--abbrev-ref', 'HEAD']);
+          }
         } catch (error) {
           console.warn('[ProjectService] Failed to get current branch:', error);
         }
@@ -1349,13 +1377,11 @@ next-env.d.ts
       codebasePath = path.join(projectPath, 'codebase');
     }
 
-    // Check if git initialized
-    const gitDir = path.join(codebasePath, '.git');
-    if (!fs.existsSync(gitDir)) {
+    // ✅ CRITICAL: Safe Git instance (exact path check)
+    const git = this.getGitInstanceSafe(codebasePath);
+    if (!git) {
       throw new Error('Repository not initialized. Please clone or initialize first.');
     }
-
-    const git = simpleGit(codebasePath);
 
     // Check if there are changes to push
     const status = await git.status();
@@ -1474,13 +1500,11 @@ next-env.d.ts
       codebasePath = path.join(projectPath, 'codebase');
     }
 
-    // Check if git initialized
-    const gitDir = path.join(codebasePath, '.git');
-    if (!fs.existsSync(gitDir)) {
+    // ✅ CRITICAL: Safe Git instance (exact path check)
+    const git = this.getGitInstanceSafe(codebasePath);
+    if (!git) {
       throw new Error('Repository not initialized. Please clone or initialize first.');
     }
-
-    const git = simpleGit(codebasePath);
 
     // Check for uncommitted changes
     const status = await git.status();
@@ -1603,13 +1627,12 @@ next-env.d.ts
       codebasePath = path.join(projectPath, 'codebase');
     }
 
-    // Check if git initialized
-    const gitDir = path.join(codebasePath, '.git');
-    if (!fs.existsSync(gitDir)) {
+    // ✅ CRITICAL: Verify Git is initialized in the EXACT codebase path
+    // This prevents simpleGit from traversing up to parent directories (like ant source!)
+    const git = this.getGitInstanceSafe(codebasePath);
+    if (!git) {
       throw new Error('Repository not initialized. Please clone or initialize first.');
     }
-
-    const git = simpleGit(codebasePath);
 
     // Get base branch from config
     const baseBranch = config.branchBase || 'main';
@@ -1838,13 +1861,11 @@ next-env.d.ts
       codebasePath = path.join(projectPath, 'codebase');
     }
 
-    // Check if git initialized
-    const gitDir = path.join(codebasePath, '.git');
-    if (!fs.existsSync(gitDir)) {
+    // ✅ CRITICAL: Safe Git instance (exact path check)
+    const git = this.getGitInstanceSafe(codebasePath);
+    if (!git) {
       throw new Error('Repository not initialized. Please clone or initialize first.');
     }
-
-    const git = simpleGit(codebasePath);
 
     // Build authenticated URL
     const credentialContext = {
