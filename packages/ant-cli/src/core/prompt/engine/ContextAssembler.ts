@@ -42,8 +42,30 @@ export interface AssembledContext {
   } | null;
   
   // Memory
-  memory?: string;              // Vector memory (long-term knowledge)
-  sessionHistory?: string;      // Session history (short-term context)
+  memory?: string;
+  lessons?: Array<{
+    content: string;
+    score: number;
+    relatedFiles: string[];
+    tags: string[];
+    timestamp: string;
+    directive?: string;
+  }>;
+  sessionHistory?: string;
+  sessionContext?: {
+    recentTurns: Array<{
+      turnId: number;
+      directive: string;
+      mode: string;
+      output: string;
+    }>;
+    summary?: string;
+    totalTurns: number;
+    currentTurn: number;
+    currentMode: string;
+    windowSize: number;
+    compressionRatio: number;
+  };
   codebaseProfile?: CodebaseProfile | null;
   
   // Statistics

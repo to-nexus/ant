@@ -113,8 +113,17 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     }
   }
   
-  // 1. Extract learnings
-  const learnings = extractCodeLearnings(state);
+  // 1. Extract lessons
+  const lessons = extractCodeLessons(state);
+  
+  // ✅ Enhanced metadata for lesson storage
+  const lessonMetadata = {
+    relatedFiles: state.files?.map(f => f.path) || [],
+    tags: extractTags(lessons, state.directive || ''),
+    directive: state.directive,
+    taskType: state.currentTask?.type,
+    branch: branch
+  };
   
   // Note: Files are already written to disk in writeFiles node
   // This node focuses on learning artifacts: vector DB + session storage
@@ -283,11 +292,11 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
         
         // Process through chunking pipeline (via ChunkPort)
         const result = await deps.chunk.process({
-          source: 'code-learning',
+          source: 'code-lesson',  // ✅ Changed from 'code-learning'
           sourceType: 'text',
-          content: learnings,
+          content: lessons,
           metadata: {
-            type: 'learning',
+            type: 'lesson',
             task: 'code',
             project: contextData.project,
             feature: contextData.feature,
@@ -295,7 +304,13 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
             taskName: taskName,
             // 🔗 Session tracking for traceability
             sessionId: sessionId,
-            turnId: turnId
+            turnId: turnId,
+            // ✅ Enhanced metadata
+            relatedFiles: lessonMetadata.relatedFiles,
+            tags: lessonMetadata.tags,
+            directive: lessonMetadata.directive,
+            taskType: lessonMetadata.taskType,
+            branch: lessonMetadata.branch
           }
         });
         
@@ -344,9 +359,34 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
 }
 
 /**
+ * Extract tags from lessons and directive
+ */
+function extractTags(lessons: string, directive: string = ''): string[] {
+  const text = (lessons + ' ' + directive).toLowerCase();
+  
+  const keywords = [
+    'auth', 'authentication', 'login', 'jwt', 'bcrypt', 'session',
+    'api', 'endpoint', 'rest', 'graphql', 'http',
+    'database', 'sql', 'orm', 'prisma', 'mongodb',
+    'react', 'component', 'hook', 'state', 'redux',
+    'async', 'await', 'promise', 'callback',
+    'error', 'validation', 'security', 'encryption',
+    'test', 'testing', 'jest', 'unit-test',
+    'performance', 'optimization', 'cache',
+    'ui', 'ux', 'design', 'css', 'style',
+    'typescript', 'javascript', 'python', 'go',
+    'docker', 'kubernetes', 'deploy', 'ci/cd',
+    'git', 'github', 'version-control',
+    'refactor', 'clean-code', 'architecture'
+  ];
+  
+  return keywords.filter(k => text.includes(k));
+}
+
+/**
  * Extract structured learnings from code generation state
  */
-function extractCodeLearnings(state: ArchitectGraphState): string {
+function extractCodeLessons(state: ArchitectGraphState): string {
   const sections: string[] = [];
   
   // 1. Context

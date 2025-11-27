@@ -1449,6 +1449,12 @@ next-env.d.ts
         // Existing branch - normal push
         await git.push('origin', branch);
       }
+      
+      console.log(`✅ Push successful to ${branch}`);
+      
+      // ✅ AUTO-INDEX: Index codebase after successful push
+      await this.autoIndexCodebase(projectId, codebasePath, userContext);
+      
     } catch (error: any) {
       // Parse git error for user-friendly message
       const errorMsg = error.message || error.toString();
@@ -1936,6 +1942,59 @@ next-env.d.ts
       } else {
         throw new Error(`Fetch failed: ${errorMsg}`);
       }
+    }
+  }
+
+  /**
+   * 🤖 Auto-index codebase after successful push
+   * 
+   * ✅ Strategy: Smart Indexing
+   * - Vector DB에 브랜치 존재? → 증분 인덱싱 (변경된 파일만)
+   * - 브랜치 없음? → 전체 인덱싱 (모든 파일)
+   * - 팀원 중복 인덱싱 방지
+   * - Push = 실제 작업 완료 의미
+   * 
+   * @param projectId - Project ID
+   * @param codebasePath - Codebase path
+   * @param userContext - User context
+   */
+  private async autoIndexCodebase(
+    projectId: string,
+    codebasePath: string,
+    userContext: UserContext
+  ): Promise<void> {
+    try {
+      console.log(`\n📇 [Auto-Index] Starting codebase indexing for ${projectId}...`);
+      
+      // Import dependencies
+      const { CodebaseIndexer } = await import('../../../core/codebase/CodebaseIndexer');
+      const { SimpleGitAdapter } = await import('../../../infrastructure/adapters/SimpleGitAdapter');
+      const { ChromaMemoryAdapter } = await import('../../memory/ChromaMemoryAdapter');
+      const { ChunkAdapter } = await import('../../../infrastructure/adapters/ChunkAdapter');
+      
+      // Initialize adapters
+      const git = new SimpleGitAdapter(codebasePath);
+      const vectorDB = new ChromaMemoryAdapter();
+      const chunk = new ChunkAdapter();
+      
+      // Run indexer
+      const indexer = new CodebaseIndexer();
+      const stats = await indexer.index(
+        { git, vectorDB, chunk },
+        {
+          project: projectId,
+          workingDir: codebasePath
+        }
+      );
+      
+      console.log(`✅ [Auto-Index] Codebase indexed successfully!`);
+      console.log(`   Files: ${stats.filesIndexed}, Chunks: ${stats.chunksCreated}, Tokens: ~${stats.estimatedTokens}`);
+      console.log(`   Duration: ${(stats.duration / 1000).toFixed(1)}s\n`);
+      
+    } catch (error) {
+      // ⚠️  Non-blocking: Push는 성공했으므로 에러 로그만
+      console.error('⚠️  [Auto-Index] Failed to index codebase:', error instanceof Error ? error.message : error);
+      console.log('   Push was successful, but indexing failed. You can manually run: ant index ' + projectId + '\n');
     }
   }
 }

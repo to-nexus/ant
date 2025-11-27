@@ -131,6 +131,51 @@ export class ImportGraphAnalyzer {
   }
   
   /**
+   * Check if two files are connected via import relationships
+   * 
+   * @param fileA - First file path
+   * @param fileB - Second file path
+   * @param maxDepth - Maximum depth to search (default: 3)
+   * @returns true if files are connected within maxDepth hops
+   */
+  isConnected(fileA: string, fileB: string, maxDepth: number = 3): boolean {
+    const normalizedA = path.normalize(fileA);
+    const normalizedB = path.normalize(fileB);
+    
+    if (normalizedA === normalizedB) {
+      return true;  // Same file
+    }
+    
+    // BFS to find connection
+    const visited = new Set<string>();
+    const queue: Array<{ file: string; depth: number }> = [{ file: normalizedA, depth: 0 }];
+    
+    while (queue.length > 0) {
+      const { file, depth } = queue.shift()!;
+      
+      if (depth >= maxDepth) continue;
+      if (visited.has(file)) continue;
+      visited.add(file);
+      
+      const node = this.graph.get(file);
+      if (!node) continue;
+      
+      // Check direct connections (both directions)
+      const connections = [...node.imports, ...node.importedBy];
+      
+      for (const connected of connections) {
+        if (connected === normalizedB) {
+          return true;  // Found connection!
+        }
+        
+        queue.push({ file: connected, depth: depth + 1 });
+      }
+    }
+    
+    return false;  // No connection found
+  }
+  
+  /**
    * Extract imports from a TypeScript/JavaScript file
    */
   private async extractImports(filePath: string, rootDir: string): Promise<string[]> {

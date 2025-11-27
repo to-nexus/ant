@@ -248,7 +248,7 @@ export function buildCodeGraph() {
       
       // Evaluation & Learning
       evaluationReport: null as any,
-      learnings: null as any,
+      lessons: null as any,
       
       // Results
       branch: null as any,

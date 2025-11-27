@@ -240,11 +240,10 @@ export class TemplateComposer {
       'prd-spec': { content: this.truncate(assembled.prdSpec || '', 800) },
       'original-files': { files: assembled.originalFiles },
       'current-code': { content: this.truncate(assembled.currentCode || '', 500) },
-      'memory': { content: this.truncate(assembled.memory || '', 1000) },
-      'session-history': { content: this.truncate(assembled.sessionHistory || '', 2000) },
+      'lessons': { lessons: this.formatLessons(assembled.lessons) },
+      'session-context': { sessionContext: this.formatSessionContext(assembled.sessionContext) },
       'modification-warning': {},
       'retry-context': { retryContext: assembled.retryContext }
-      // ✅ REMOVED: modification-details, pre-output-check, previous-design (deleted files)
     };
     
     return varMap[filename] || {};
@@ -282,6 +281,81 @@ export class TemplateComposer {
   private truncate(content: string, maxLength: number): string {
     if (content.length <= maxLength) return content;
     return `${content.substring(0, maxLength)}...\n[truncated]`;
+  }
+  
+  /**
+   * Format session context for prompt injection
+   */
+  private formatSessionContext(sessionContext?: {
+    recentTurns: Array<{
+      turnId: number;
+      directive: string;
+      mode: string;
+      output: string;
+    }>;
+    summary?: string;
+    totalTurns: number;
+    currentTurn: number;
+    currentMode: string;
+  }): string {
+    if (!sessionContext || sessionContext.totalTurns === 0) {
+      return 'This is the first turn of the session.';
+    }
+    
+    let formatted = `You are on Turn ${sessionContext.currentTurn} of ${sessionContext.totalTurns}.\n\n`;
+    
+    // Recent turns
+    if (sessionContext.recentTurns.length > 0) {
+      formatted += '### Recent Work\n\n';
+      for (const turn of sessionContext.recentTurns) {
+        formatted += `**Turn ${turn.turnId}** (${turn.mode}):\n`;
+        formatted += `- Request: ${turn.directive}\n`;
+        if (turn.output) {
+          formatted += `- Output: ${turn.output}\n`;
+        }
+        formatted += '\n';
+      }
+    }
+    
+    // Earlier summary
+    if (sessionContext.summary) {
+      formatted += `### Earlier Work\n${sessionContext.summary}\n\n`;
+    }
+    
+    formatted += '**Important**: Build upon your previous work. Maintain consistency with earlier decisions.\n';
+    
+    return formatted;
+  }
+  
+  /**
+   * Format lessons for prompt
+   */
+  private formatLessons(lessons?: Array<{
+    content: string;
+    score: number;
+    relatedFiles: string[];
+    tags: string[];
+    timestamp: string;
+    directive?: string;
+  }>): string {
+    if (!lessons || lessons.length === 0) {
+      return 'No relevant lessons found.';
+    }
+    
+    const relevantLessons = lessons.filter(l => l.score >= 0.7);
+    
+    if (relevantLessons.length === 0) {
+      return 'No highly relevant lessons found (threshold: 0.7).';
+    }
+    
+    return relevantLessons.map((lesson, idx) => {
+      const tags = lesson.tags.length > 0 ? `[${lesson.tags.join(', ')}]` : '';
+      const files = lesson.relatedFiles.length > 0 
+        ? `\nRelated files: ${lesson.relatedFiles.slice(0, 3).join(', ')}${lesson.relatedFiles.length > 3 ? '...' : ''}`
+        : '';
+      
+      return `## Lesson ${idx + 1} (score: ${lesson.score.toFixed(2)}) ${tags}\n${lesson.content}${files}`;
+    }).join('\n\n---\n\n');
   }
 }
 

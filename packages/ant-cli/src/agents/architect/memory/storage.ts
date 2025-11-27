@@ -1,26 +1,45 @@
 import { MemoryPort } from "../../../core/ports";
 
 /**
- * Store learnings from execution to vector memory
+ * Store lessons from execution to vector memory
+ * 
+ * ✅ Renamed: learnings → lessons (clearer terminology)
  */
-export async function storeLearnings(
-  learnings: string,
+export async function storeLessons(
+  lessons: string,
   project: string,
   feature: string,
-  deps?: { memory: MemoryPort }
+  deps?: { memory: MemoryPort },
+  metadata?: {
+    relatedFiles?: string[];
+    tags?: string[];
+    directive?: string;
+    taskType?: string;
+    branch?: string;
+  }
 ): Promise<void> {
   const memory = deps?.memory;
   if (!memory) return;
   
   await memory.store([
     { 
-      content: learnings, 
+      content: lessons, 
       metadata: { 
-        type: "learning", 
+        type: "lesson",  // ✅ Changed from 'learning'
         project, 
         feature, 
-        timestamp: new Date().toISOString() 
+        timestamp: new Date().toISOString(),
+        // ✅ Enhanced metadata
+        relatedFiles: metadata?.relatedFiles || [],
+        tags: metadata?.tags || [],
+        directive: metadata?.directive,
+        taskType: metadata?.taskType,
+        branch: metadata?.branch
       } 
     }
   ], project);
 }
+
+// ✅ Legacy alias (for backward compatibility during transition)
+export const storeLearnings = storeLessons;
+

@@ -7,7 +7,7 @@ export interface QueryOptions {
   /** Maximum number of results to return */
   k?: number;
   
-  /** Metadata filters (e.g., { type: 'learning', task: 'code' }) */
+  /** Metadata filters (e.g., { type: 'lesson', task: 'code' }) */
   where?: Record<string, any>;
   
   /** Minimum similarity score threshold (0-1) */

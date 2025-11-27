@@ -85,7 +85,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   }
   
   // 1. Extract learnings from design process
-  const learnings = extractDesignLearnings(state);
+  const lessons = extractDesignLessons(state);
   
   // 2. Save turn to session file
   let sessionId: string | undefined;
@@ -217,7 +217,7 @@ async function saveSessionTurn(state: DesignGraphState): Promise<void> {
  */
 async function storeLearningsToMemory(
   state: DesignGraphState,
-  learnings: string,
+  lessons: string,
   sessionId: string | undefined,
   turnId: number | undefined
 ): Promise<void> {
@@ -230,7 +230,7 @@ async function storeLearningsToMemory(
       sourceType: 'text',
       content: learnings,
       metadata: {
-        type: 'learning',
+        type: 'lesson',
         task: 'design',
         project: state.context.project,
         feature: state.context.featureFolder || 'default',
@@ -271,7 +271,7 @@ async function storeLearningsToMemory(
 /**
  * Extract structured learnings from design generation
  */
-function extractDesignLearnings(state: DesignGraphState): string {
+function extractDesignLessons(state: DesignGraphState): string {
   const sections: string[] = [];
   
   // 1. Session context

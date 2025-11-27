@@ -141,7 +141,58 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
         );
   }
 
-  // 3. Retrieve relevant codebase (Phase 1: Smart Retrieval)
+  // 3. Infer mode (session-aware)
+  console.log(`🎯 Inferring code mode...`);
+  
+  const { ModeInferenceEngine } = await import('../../../../../core/mode/ModeInferenceEngine');
+  const { SessionContextBuilder } = await import('../../../../../agents/architect/session/SessionContextBuilder');
+  
+  const modeEngine = new ModeInferenceEngine();
+  const sessionBuilder = new SessionContextBuilder();
+  
+  // Get session history
+  const session = state.deps?.session 
+    ? await state.deps.session.load(context.project, context.featureFolder, 'code')
+    : null;
+  
+  const lastTurn = session?.turns && session.turns.length > 0
+    ? session.turns[session.turns.length - 1]
+    : null;
+  
+  // Build session context for mode inference
+  const sessionContextForInference = lastTurn ? {
+    previousDirective: lastTurn.input?.summary || '',
+    previousMode: (lastTurn as any).mode || 'generate',
+    previousOutput: lastTurn.output?.summary || '',
+    turnsSinceStart: session?.turns?.length || 0
+  } : undefined;
+  
+  const modeResult = await modeEngine.infer({
+    directive: directive || design || '',
+    hasOriginalFiles: false,  // Will be determined by Git
+    hasCurrentCode: true,     // workingDir exists
+    filesChanged: 0,          // Will be determined later
+    totalFiles: 0,            // Will be determined later
+    sessionContext: sessionContextForInference
+  }, state.deps?.llm);
+  
+  console.log(`   Mode: ${modeResult.mode} (confidence: ${modeResult.confidence.toFixed(2)})`);
+  console.log(`   Reasoning: ${modeResult.reasoning}\n`);
+  
+  // Build compressed session context for LLM
+  const sessionContextForLLM = session?.turns && session.turns.length > 0
+    ? sessionBuilder.buildContextForLLM(
+        session.turns,
+        modeResult.mode as any,
+        directive || design || ''
+      )
+    : undefined;
+  
+  if (sessionContextForLLM) {
+    console.log(`💭 Session: ${sessionContextForLLM.totalTurns} turns, window=${sessionContextForLLM.windowSize}, compression=${(sessionContextForLLM.compressionRatio * 100).toFixed(0)}%`);
+  }
+  
+  // 4. Retrieve relevant codebase (Phase 1: Smart Retrieval)
   console.log(`📋 Retrieving relevant codebase...`);
   
   // ✅ Get ChatAPI client for grepping tracking
@@ -160,9 +211,11 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
       vectorDB: state.deps?.memory
     },
     {
+      project: context.project,  // ✅ Pass project for Vector DB namespace
       maxTokens: 100000,  // ~75KB
-      maxFiles: 30,
-      exclude: ['test', 'tests', '__tests__', '*.test.*', '*.spec.*']
+      maxFiles: 15,       // ✅ Reduced from 30
+      exclude: ['test', 'tests', '__tests__', '*.test.*', '*.spec.*'],
+      mode: modeResult.mode  // ✅ Pass inferred mode
     }
   );
 
@@ -197,6 +250,9 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     designDocPath,  // ✅ Add design document file path for environment inference
     code: codeContext.code,
     codeHead: codeContext.codeHead,
+    lessons: codeContext.lessons,  // ✅ Include lessons from unified search
+    mode: modeResult.mode,  // ✅ Include inferred mode
+    sessionContext: sessionContextForLLM,  // ✅ Include compressed session context
     profile,
   };
   

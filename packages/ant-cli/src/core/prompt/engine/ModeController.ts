@@ -142,11 +142,6 @@ export class ModeController {
       injections.push(`${commonPrefix}/memory`);
     }
     
-    // Session history (short-term context about recent work)
-    if (context.stats.hasSessionHistory) {
-      injections.push(`${commonPrefix}/session-history`);
-    }
-    
     if (context.designDoc) {
       injections.push(`${commonPrefix}/design-doc`);
     }
@@ -177,47 +172,49 @@ export class ModeController {
     }
     
     if (phase === 'execute') {
-      // ✅ Environment-aware prompt injections (highest priority - applies to ALL execute tasks)
+      // Environment-specific rules
       const language = this.detectLanguage(context);
       const environment = this.detectEnvironment(context);
       
       if (language && task === 'code') {
-        // Environment-specific rules (always inferred, no fallback)
         const envPath = `${task}/languages/${language}/environments/${environment}/rules`;
         injections.push(envPath);
         console.log(`[ModeController] Adding environment-specific injection: ${envPath}`);
       }
       
-      // ✅ Markdown file streaming format (for .md documentation files)
-      // This enables real-time preview of markdown content in file cards
-      // Shared by both design and code jobs (design has its own detailed rules)
+      // Markdown file streaming format
       if (task === 'code') {
         injections.push(`${commonPrefix}/output-format-markdown`);
         console.log(`[ModeController] Adding markdown streaming format injection`);
       }
       
-      // ✅ NEW: Retry context injection (highest priority - only on retries)
+      // Retry context (only on retries)
       if (context.retryContext) {
         injections.push(`${phasePrefix}/injections/retry-context`);
       }
       
-      // ✅ Missing dependency fix protocol (Critical - language-specific)
+      // Lessons from previous work
+      if (context.lessons && context.lessons.length > 0) {
+        injections.push(`${phasePrefix}/injections/lessons`);
+      }
+      
+      // Session context (compressed history)
+      if (context.sessionContext && context.sessionContext.totalTurns > 0) {
+        injections.push(`${phasePrefix}/injections/session-context`);
+      }
+      
+      // Missing dependency fix (language-specific)
       if (context.stats.hasMissingDependency && language && task === 'code') {
         injections.push(`${task}/languages/${language}/execute/missing-dependency-fix`);
       }
       
-      // ✅ Runtime error fix detection
-      // TypeScript errors are now handled by diagnostics system + LLM's native capability
-      // Only inject runtime-error-fix for complex cases (path alias, etc.)
+      // Runtime error fix
       if (context.directive && this.containsRuntimeError(context.directive)) {
         injections.push(`${phasePrefix}/injections/runtime-error-fix`);
       }
       
-      // New project setup injection (ONLY for setup tasks!)
-      // Note: Setup instructions are now in base.md (dedicated setup section)
-      // Only language-specific config is added as injection
+      // New project setup (only for setup tasks)
       if (!context.stats.hasOriginalFiles && task === 'code' && context.currentTask?.type === 'setup') {
-        // Language-specific setup details
         const languageConfigPath = `${task}/languages/${language}/setup/config`;
         injections.push(languageConfigPath);
       }
