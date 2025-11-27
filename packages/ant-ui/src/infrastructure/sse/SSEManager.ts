@@ -273,6 +273,15 @@ class SSEManager {
       return;
     }
     
+    // ✅ DEBUG: Log handler execution for file events
+    if (type === 'chat' && data?.type && 
+        (data.type === 'content_add' || data.type === 'content_update' || data.type === 'content_append')) {
+      const content = data.content;
+      if (content?.type?.includes('file')) {
+        console.log(`[SSE] 🔄 Calling ${handlers.length} handler(s) for ${data.type}`);
+      }
+    }
+    
     handlers.forEach(handler => {
       try {
         handler(data);

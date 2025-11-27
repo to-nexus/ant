@@ -37,6 +37,28 @@ export function FileCard({ content, operation }: FileCardProps) {
   // ✅ Track if user manually scrolled away from bottom
   const [isUserScrolling, setIsUserScrolling] = useState(false);
   
+  // ✅ DEBUG: Log render state changes (only for .md files in design mode)
+  const isMarkdownFile = filePath.endsWith('.md');
+  const prevContentLengthForLog = useRef(0);
+  
+  useEffect(() => {
+    if (isMarkdownFile && fileContent.length > 0) {
+      // Log only first render and significant changes (every 500 chars)
+      if (prevContentLengthForLog.current === 0 || 
+          fileContent.length - prevContentLengthForLog.current >= 500) {
+        console.log('[FileCard] 🎨 Render:', {
+          filePath,
+          contentType: content.type,
+          isActive,
+          isCompleted,
+          shouldShow: !isCollapsed && (isActive || isCompleted),
+          contentLength: fileContent.length
+        });
+        prevContentLengthForLog.current = fileContent.length;
+      }
+    }
+  }, [fileContent, content.type, isActive, isCompleted, filePath, isMarkdownFile, isCollapsed]);
+  
   
   // ✅ Reset user scrolling state when file operation completes
   useEffect(() => {
@@ -45,14 +67,35 @@ export function FileCard({ content, operation }: FileCardProps) {
     }
   }, [isCompleted]);
   
-  // ✅ Show content when: has content OR is actively streaming
+  // ✅ Show content when: has content OR is actively streaming (even with empty content)
   const hasFileContent = fileContent && fileContent.length > 0;
   const hasDiffContent = diffBefore || diffAfter;
   const hasAnyContent = hasFileContent || hasDiffContent;
   
-  // ✅ UPDATED: Only show content when completed and not collapsed
-  // During loading (isActive), only show header (like collapsed state)
-  const shouldShowContent = !isCollapsed && isCompleted && hasAnyContent;
+  // ✅ CRITICAL: Show content during streaming (isActive) for real-time preview
+  // - For streaming: Show even if empty (file_creating, file_writing, etc.)
+  // - For completed: Show only if has content
+  const shouldShowContent = !isCollapsed && (
+    (isActive) ||  // Always show during streaming (even empty)
+    (isCompleted && hasAnyContent)  // Show completed only if has content
+  );
+  
+  // ✅ DEBUG: Log visibility logic
+  useEffect(() => {
+    if (isMarkdownFile) {
+      console.log('[FileCard] 👁️  Visibility:', {
+        filePath,
+        hasFileContent,
+        hasDiffContent,
+        hasAnyContent,
+        isCollapsed,
+        isActive,
+        isCompleted,
+        shouldShowContent,
+        fileContentLength: fileContent.length
+      });
+    }
+  }, [isMarkdownFile, hasFileContent, hasDiffContent, hasAnyContent, isCollapsed, isActive, isCompleted, shouldShowContent, fileContent.length, filePath]);
   
   // ✅ CRITICAL: Use ref to track previous content length for auto-scroll
   const prevScrollLengthRef = useRef(0);
@@ -268,7 +311,8 @@ export function FileCard({ content, operation }: FileCardProps) {
               onScroll={handleScroll}
             >
               <pre className="whitespace-pre-wrap break-words" style={{ lineHeight: '1.5' }}>
-                {fileContent}
+                {fileContent || ' '}
+                {/* ⬆️ Empty space to show container even when empty (during streaming) */}
               </pre>
             </div>
           )}
