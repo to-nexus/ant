@@ -37,6 +37,11 @@ export function FeatureSection() {
   const [isInstalling, setIsInstalling] = useState(false);  // ✅ Dependency 설치 중 상태
   const [availablePort, setAvailablePort] = useState<number>(5173);  // ✅ 사용 가능한 포트
   const [baseBranch, setBaseBranch] = useState<string>('main');  // ✅ Base branch from config
+  const [gitStatus, setGitStatus] = useState<{ hasGit: boolean; hasCodebase: boolean; hasFeatures: boolean }>({ 
+    hasGit: false, 
+    hasCodebase: false, 
+    hasFeatures: false 
+  });  // ✅ Git initialization status
   const policy = useUIActionPolicy();
   const { showConfirm, AlertModal } = useAlertModal();
 
@@ -57,10 +62,37 @@ export function FeatureSection() {
     loadBaseBranch();
   }, [selectedProject]);
 
+  // Check Git status for the selected project
+  useEffect(() => {
+    const checkGitStatus = async () => {
+      if (!selectedProject) {
+        setGitStatus({ hasGit: false, hasCodebase: false, hasFeatures: false });
+        return;
+      }
+      
+      try {
+        const status = await getGitStatus(selectedProject);
+        setGitStatus(status);
+        console.log('[FeatureSection] Git status:', status);
+      } catch (error) {
+        console.error('[FeatureSection] Failed to get Git status:', error);
+        setGitStatus({ hasGit: false, hasCodebase: false, hasFeatures: false });
+      }
+    };
+    
+    checkGitStatus();
+  }, [selectedProject]);
+
   // Auto-checkout feature branch when feature is selected, or base branch when deselected
   useEffect(() => {
     const checkoutBranch = async () => {
       if (!selectedProject) return;
+      
+      // ✅ CRITICAL: Only proceed if Git is initialized
+      if (!gitStatus.hasGit) {
+        console.log('[FeatureSection] Skipping branch operations - Git not initialized');
+        return;
+      }
       
       // ✅ Start Git status loading
       setGitStatusLoading(true);
@@ -137,7 +169,7 @@ export function FeatureSection() {
     };
     
     checkoutBranch();
-  }, [selectedProject, selectedFeature, baseBranch, setGitStatusLoading, setGitStatusPhase, setCurrentGitBranch]); // ✅ Include all setters
+  }, [selectedProject, selectedFeature, baseBranch, gitStatus.hasGit, setGitStatusLoading, setGitStatusPhase, setCurrentGitBranch]); // ✅ Include gitStatus.hasGit
 
   // Auto-show status panel when dev server is running (including after refresh)
   useEffect(() => {
