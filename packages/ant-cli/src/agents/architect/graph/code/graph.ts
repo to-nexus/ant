@@ -12,6 +12,10 @@ import { enforce } from "./nodes/enforce";
 import { learn } from "./nodes/learn";
 import { routeAfterCodeGen } from "./routers/codeGenRouter";
 import { saveCheckpoint } from "./nodes/checkpoint";
+import { replanDecision } from "./nodes/replanDecision";
+import { modifyTasks } from "./nodes/modifyTasks";
+import { clearStateForReplan } from "./nodes/clearStateForReplan";
+import { routeAfterReplanDecision } from "./routers/replanRouter";
 
 /**
  * Node that handles task completion logic and state mutations.
@@ -279,6 +283,9 @@ export function buildCodeGraph() {
   // ✅ SIMPLIFIED ARCHITECTURE: CodeGen <-> Tool loop, then branch by priority
   graph.addNode("resolve", resolve as any);
   graph.addNode("decompose", decompose as any);
+  graph.addNode("replanDecision", replanDecision as any);  // ✅ NEW: Replan decision (continue/modify/restart)
+  graph.addNode("modifyTasks", modifyTasks as any);        // ✅ NEW: Modify specific tasks
+  graph.addNode("clearStateForReplan", clearStateForReplan as any);  // ✅ NEW: Clear state for restart
   graph.addNode("plan", plan as any);
   graph.addNode("codeGen", codeGen as any);      // ✅ Code generation (LLM reasoning)
   graph.addNode("tool", tool as any);            // ✅ Single tool execution (saves immediately!)
@@ -291,7 +298,42 @@ export function buildCodeGraph() {
 
   graph.addEdge("__start__" as any, "resolve" as any);
   graph.addEdge("resolve" as any, "decompose" as any);
-  graph.addEdge("decompose" as any, "plan" as any);
+  
+  // ✅ Decompose → Replan Decision (check for multiple directives)
+  graph.addConditionalEdges(
+    "decompose" as any,
+    ((state: ArchitectGraphState) => {
+      // Check if this is a resume with multiple directives
+      const hasMultipleDirectives = (state.directives?.length || 0) > 1;
+      const hasTaskQueue = state.taskQueue && state.taskQueue.size() > 0;
+      
+      if (hasMultipleDirectives && hasTaskQueue) {
+        return 'replanDecision';
+      }
+      return 'plan';
+    }) as any,
+    {
+      replanDecision: "replanDecision",
+      plan: "plan"
+    } as any
+  );
+  
+  // ✅ Replan Decision → Router (continue/modify/restart)
+  graph.addConditionalEdges(
+    "replanDecision" as any,
+    routeAfterReplanDecision as any,
+    {
+      plan: "plan",
+      modifyTasks: "modifyTasks",
+      clearStateForReplan: "clearStateForReplan"
+    } as any
+  );
+  
+  // ✅ Modify Tasks → Plan (continue with modified queue)
+  graph.addEdge("modifyTasks" as any, "plan" as any);
+  
+  // ✅ Clear State → Decompose (restart with new plan)
+  graph.addEdge("clearStateForReplan" as any, "decompose" as any);
   
   // ✅ Plan → CodeGen (시작)
   graph.addEdge("plan" as any, "codeGen" as any);
