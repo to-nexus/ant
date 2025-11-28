@@ -855,12 +855,11 @@ export class ProjectService {
         codebasePath = path.join(projectPath, 'codebase');
       }
 
-      const gitDir = path.join(codebasePath, '.git');
-      if (!fs.existsSync(gitDir)) {
+      // ✅ CRITICAL: Use getGitInstanceSafe to prevent parent directory traversal
+      const git = this.getGitInstanceSafe(codebasePath);
+      if (!git) {
         throw new Error('Git repository not initialized');
       }
-
-      const git = simpleGit(codebasePath);
       
       // Get status
       const status = await git.status();
@@ -952,12 +951,11 @@ export class ProjectService {
         codebasePath = path.join(projectPath, 'codebase');
       }
 
-      const gitDir = path.join(codebasePath, '.git');
-      if (!fs.existsSync(gitDir)) {
+      // ✅ CRITICAL: Use getGitInstanceSafe to prevent parent directory traversal
+      const git = this.getGitInstanceSafe(codebasePath);
+      if (!git) {
         throw new Error('Git repository not initialized');
       }
-
-      const git = simpleGit(codebasePath);
       
       // Get changes
       const changes = await this.getGitChanges(projectId, userContext);
@@ -1264,7 +1262,12 @@ next-env.d.ts
     const baseBranch = config.branchBase || 'main';
     
     // Initialize local git repository (with base branch)
-    const git = simpleGit(codebasePath);
+    // ✅ CRITICAL: Use options to prevent parent directory traversal
+    const git = simpleGit({
+      baseDir: codebasePath,
+      binary: 'git',
+      maxConcurrentProcesses: 6
+    });
     await git.init([`--initial-branch=${baseBranch}`]);
     
     // Verify .git was created in correct location
