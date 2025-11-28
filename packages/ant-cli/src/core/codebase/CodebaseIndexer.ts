@@ -59,7 +59,7 @@ export class CodebaseIndexer {
   ): Promise<IndexStats> {
     const startTime = Date.now();
     const exclude = [...this.defaultExclude, ...(options.exclude || [])];
-    const batchSize = options.batchSize || 10;
+    const batchSize = options.batchSize || 10;  // Restore to 10 (CodeSplitter fixed)
 
     console.log(`📇 [Indexer] Starting codebase indexing...`);
     console.log(`   Project: ${options.project}`);
@@ -67,29 +67,42 @@ export class CodebaseIndexer {
 
     // 1. Get current Git state
     const branch = options.branch || await deps.git.getCurrentBranch();
+    const currentCommit = await deps.git.getCurrentCommit();
     
     console.log(`   Branch: ${branch}`);
+    console.log(`   Commit: ${currentCommit.substring(0, 8)}`);
 
-    // 2. Smart indexing: Check if branch exists in Vector DB
-    const branchExists = await this.checkBranchExists(
+    // 2. Smart indexing: Check if branch exists in Vector DB and compare commits
+    const indexStatus = await this.checkBranchIndexStatus(
       deps.vectorDB,
       options.project,
-      branch
+      branch,
+      currentCommit
     );
 
     let filesToIndex: string[];
     let indexingMode: 'full' | 'incremental';
 
-    // ✅ Force full indexing if explicitly requested or if branch doesn't exist
-    if (!branchExists || options.incremental === false) {
+    // Force full indexing if explicitly requested, first time, or commit mismatch
+    if (indexStatus.needsFullIndex || options.incremental === false) {
       // Full: All source files
-      console.log(`   📊 ${!branchExists ? 'Branch not in Vector DB' : 'Full mode requested'} → Full indexing`);
+      console.log(`   📊 ${indexStatus.reason} → Full indexing`);
       filesToIndex = await this.getSourceFiles(options.workingDir, exclude);
       indexingMode = 'full';
       console.log(`   Found ${filesToIndex.length} source files`);
+    } else if (indexStatus.isUpToDate) {
+      // Already indexed at current commit
+      console.log(`   ✅ Already indexed at current commit`);
+      console.log(`   ℹ️  No changes detected, skipping indexing`);
+      return {
+        filesIndexed: 0,
+        chunksCreated: 0,
+        estimatedTokens: 0,
+        duration: Date.now() - startTime
+      };
     } else {
       // Incremental: Only changed files
-      console.log(`   📊 Branch exists in Vector DB → Incremental indexing`);
+      console.log(`   📊 Incremental update (from ${indexStatus.lastCommit?.substring(0, 8)} to ${currentCommit.substring(0, 8)})`);
       filesToIndex = await this.getChangedFiles(deps.git, options.workingDir, exclude);
       indexingMode = 'incremental';
       
@@ -123,7 +136,7 @@ export class CodebaseIndexer {
             options.workingDir,
             options.project,
             branch,
-            'HEAD',
+            currentCommit,
             deps
           );
 
@@ -144,6 +157,17 @@ export class CodebaseIndexer {
     console.log(`   Est. tokens: ${estimatedTokens}`);
     console.log(`   Duration: ${(duration / 1000).toFixed(1)}s`);
 
+    // Store index completion marker
+    // This ensures we can detect incomplete indexing (e.g. due to crash)
+    await this.storeIndexCompletionMarker(
+      deps.vectorDB,
+      options.project,
+      branch,
+      currentCommit,
+      filesIndexed,
+      chunksCreated
+    );
+
     return {
       filesIndexed,
       chunksCreated,
@@ -153,34 +177,122 @@ export class CodebaseIndexer {
   }
 
   /**
-   * Check if branch exists in Vector DB
+   * Check branch index status by comparing commit hashes
+   * 
+   * Uses index completion marker instead of individual file chunks
+   * to ensure indexing was fully completed (not interrupted by errors)
    */
-  private async checkBranchExists(
+  private async checkBranchIndexStatus(
     vectorDB: MemoryPort,
     project: string,
-    branch: string
-  ): Promise<boolean> {
+    branch: string,
+    currentCommit: string
+  ): Promise<{
+    needsFullIndex: boolean;
+    isUpToDate: boolean;
+    lastCommit?: string;
+    reason: string;
+  }> {
     try {
-      // Query for any codebase document with this branch
-      // Use $and operator for multiple conditions
+      // Query for completion marker (not individual file chunks)
+      // This ensures we only consider "complete" indexing sessions
       const results = await vectorDB.query(
-        'check branch exists',
+        'check index completion marker',
         project,
         {
           k: 1,
           where: {
             $and: [
-              { type: 'codebase' },
+              { type: 'index_completion' },
               { branch }
             ]
           }
         }
       );
       
-      return results.length > 0;
+      if (results.length === 0) {
+        // No completion marker exists - need full index
+        return {
+          needsFullIndex: true,
+          isUpToDate: false,
+          reason: 'No index completion marker found'
+        };
+      }
+      
+      const lastCommit = results[0].metadata?.commitHash;
+      
+      if (!lastCommit) {
+        // Marker exists but missing commit hash (shouldn't happen)
+        return {
+          needsFullIndex: true,
+          isUpToDate: false,
+          reason: 'Index marker missing commit hash'
+        };
+      }
+      
+      if (lastCommit === currentCommit) {
+        // Same commit - already fully indexed
+        return {
+          needsFullIndex: false,
+          isUpToDate: true,
+          lastCommit,
+          reason: 'Already indexed at current commit'
+        };
+      }
+      
+      // Different commit - incremental update
+      return {
+        needsFullIndex: false,
+        isUpToDate: false,
+        lastCommit,
+        reason: 'Commit has changed since last index'
+      };
+      
     } catch (error) {
-      console.warn(`   ⚠️  Failed to check branch existence:`, error);
-      return false;  // Default to full indexing on error
+      console.warn(`   ⚠️  Failed to check branch index status:`, error);
+      return {
+        needsFullIndex: true,
+        isUpToDate: false,
+        reason: 'Error checking index (defaulting to full)'
+      };
+    }
+  }
+  
+  /**
+   * Store index completion marker
+   * 
+   * Only called after successful completion of ALL files.
+   * Acts as a "commit" for the indexing transaction.
+   * If indexing crashes, marker won't be stored and next attempt will re-index.
+   */
+  private async storeIndexCompletionMarker(
+    vectorDB: MemoryPort,
+    project: string,
+    branch: string,
+    commitHash: string,
+    filesIndexed: number,
+    chunksCreated: number
+  ): Promise<void> {
+    try {
+      const marker = {
+        content: `Index completion marker for ${project}/${branch} at commit ${commitHash}`,
+        metadata: {
+          type: 'index_completion',
+          project,
+          branch,
+          commitHash,
+          filesIndexed,
+          chunksCreated,
+          timestamp: new Date().toISOString(),
+          feature: 'index'
+        }
+      };
+      
+      await vectorDB.store([marker], project);
+      console.log(`   ✅ Stored index completion marker (commit: ${commitHash.substring(0, 8)})`);
+    } catch (error) {
+      console.warn(`   ⚠️  Failed to store completion marker:`, error);
+      // Don't throw - indexing was successful, just marker storage failed
     }
   }
 
@@ -218,6 +330,8 @@ export class CodebaseIndexer {
 
   /**
    * Index a single file
+   * 
+   * Deletes old chunks before storing new ones for incremental safety.
    */
   private async indexFile(
     filePath: string,
@@ -237,17 +351,34 @@ export class CodebaseIndexer {
     // Read file content
     const content = fs.readFileSync(absolutePath, 'utf8');
     const relativePath = path.relative(workingDir, absolutePath);
+    
+    // Skip very large files (>2MB) to prevent memory issues
+    const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB (reasonable limit)
+    if (content.length > MAX_FILE_SIZE) {
+      console.log(`   ⚠️  Skipping large file (${(content.length / 1024).toFixed(0)}KB): ${relativePath}`);
+      return { chunks: 0, tokens: 0 };
+    }
+    
+    // ✅ Delete old chunks for this file before storing new ones
+    // This prevents duplicate/stale chunks during incremental indexing
+    await deps.vectorDB.delete(project, {
+      $and: [
+        { type: 'codebase' },
+        { filePath: relativePath },
+        { branch }
+      ]
+    });
 
-    // Chunk file content
+    // ✅ Chunk file content using pre-loaded content (avoid double file reading)
     const result = await deps.chunk.process({
       source: relativePath,
-      sourceType: 'file',
+      sourceType: 'text',  // Use TextLoader with pre-loaded content
       content,
       metadata: {
-        type: 'codebase',        // ✅ Type = codebase
+        type: 'codebase',
         filePath: relativePath,
         project,
-        feature: 'index',        // ✅ Required by ChunkMetadata
+        feature: 'index',
         branch,
         commitHash,
         language: this.detectLanguage(filePath),
@@ -255,7 +386,7 @@ export class CodebaseIndexer {
       }
     });
 
-    // Store chunks to Vector DB
+    // Store all chunks at once (CodeSplitter now produces manageable chunk counts)
     const documents = result.chunks.map((chunk: any) => ({
       content: chunk.text,
       metadata: chunk.metadata
@@ -264,8 +395,8 @@ export class CodebaseIndexer {
     await deps.vectorDB.store(documents, project);
 
     return {
-      chunks: result.chunks.length,
-      tokens: result.stats.avgTokens * result.chunks.length
+      chunks: documents.length,
+      tokens: result.stats.avgTokens * documents.length
     };
   }
 

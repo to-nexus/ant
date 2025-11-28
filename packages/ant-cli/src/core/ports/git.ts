@@ -9,6 +9,7 @@
 export interface GitPort {
   // Git operations
   getRepoRoot(): Promise<string>;
+  getRepoName(): Promise<string>;  // Get repository name
   createBranch(name: string, base: string): Promise<void>;
   getChangedFiles(): Promise<string[]>;
   hasChanges(): Promise<boolean>;  // Check if working tree has changes
@@ -16,6 +17,8 @@ export interface GitPort {
   diff(): Promise<string[]>;  // Legacy compatibility
   show(args: string[]): Promise<string>;  // Legacy compatibility
   status(): Promise<{ files: Array<{ path: string }> }>;  // Legacy compatibility
+  getCurrentBranch(): Promise<string>;
+  getCurrentCommit(): Promise<string>;  // Get current commit hash (HEAD)
   
   // GitHub integration
   clone(url: string, targetPath: string, options?: { depth?: number }): Promise<void>;
@@ -25,7 +28,6 @@ export interface GitPort {
   commit(message: string, files?: string[]): Promise<void>;
   stage(files: string[]): Promise<void>;  // git add
   unstage(files: string[]): Promise<void>;  // git reset
-  getCurrentBranch(): Promise<string>;
   getBranches(options?: { remote?: boolean }): Promise<string[]>;
   checkoutBranch(branch: string, options?: { create?: boolean }): Promise<void>;
   getRemotes(): Promise<Array<{ name: string; url: string }>>;

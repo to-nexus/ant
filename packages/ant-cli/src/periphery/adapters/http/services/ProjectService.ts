@@ -1967,15 +1967,13 @@ next-env.d.ts
       console.log(`\n📇 [Auto-Index] Starting codebase indexing for ${projectId}...`);
       
       // Import dependencies
-      const { CodebaseIndexer } = await import('../../../core/codebase/CodebaseIndexer');
-      const { SimpleGitAdapter } = await import('../../../infrastructure/adapters/SimpleGitAdapter');
-      const { ChromaMemoryAdapter } = await import('../../memory/ChromaMemoryAdapter');
-      const { ChunkAdapter } = await import('../../../infrastructure/adapters/ChunkAdapter');
+      const { CodebaseIndexer } = await import('../../../../core/codebase/CodebaseIndexer');
+      const { AdapterFactory } = await import('../../../../infrastructure/adapters/AdapterFactory');
       
-      // Initialize adapters
-      const git = new SimpleGitAdapter(codebasePath);
-      const vectorDB = new ChromaMemoryAdapter();
-      const chunk = new ChunkAdapter();
+      // Initialize adapters using factory
+      const git = AdapterFactory.createGitAdapter(codebasePath, projectId);
+      const vectorDB = AdapterFactory.createMemoryAdapter();
+      const chunk = AdapterFactory.createChunkAdapter();
       
       // Run indexer
       const indexer = new CodebaseIndexer();

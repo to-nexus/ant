@@ -156,70 +156,93 @@ export class ChatAPIClient {
           const exploringFiles = metadata?.filesCount ?? 0;
           const exploringTotal = metadata?.totalFiles ?? 0;
           content = exploringFiles > 0 
-            ? `Exploring codebase... ${exploringFiles}/${exploringTotal} files`
-            : 'Exploring codebase...';
+            ? `Exploring: ${exploringFiles}/${exploringTotal} files`
+            : 'Exploring: codebase...';
           break;
         case 'explored':
           const exploredFiles = metadata?.filesCount ?? 0;
-          content = `Explored ${exploredFiles} files`;
+          const exploredError = metadata?.error;
+          if (exploredError) {
+            content = `❌ Explore Failed: ${exploredError}`;
+          } else {
+            content = `✅ Explored: ${exploredFiles} files`;
+          }
           break;
         case 'grepping':
           const query = metadata?.query ?? '';
           content = query 
-            ? `Searching for '${query}'...`
+            ? `Searching: '${query}'...`
             : 'Searching...';
           break;
         case 'grepped':
           const greppedFiles = metadata?.filesCount ?? 0;
           const strategy = metadata?.strategy ?? 'unknown';
-          content = `Found in ${greppedFiles} files (strategy: ${strategy})`;
+          const greppedError = metadata?.error;
+          if (greppedError) {
+            content = `❌ Search Failed: ${greppedError}`;
+          } else {
+            content = `✅ Found: ${greppedFiles} files (${strategy})`;
+          }
           break;
         case 'reading':
           const readingPath = metadata?.filePath ?? '';
           content = readingPath 
-            ? `Reading ${readingPath}...`
-            : 'Reading file...';
+            ? `Reading: ${readingPath}...`
+            : 'Reading: file...';
           break;
         case 'read':
           const readPath = metadata?.filePath ?? '';
-          const isReadError = metadata?.error === true;
-          if (isReadError) {
-            // Error case: "File not found: path/to/file.tsx"
-            content = `File not found: ${readPath}`;
+          const readError = metadata?.error;
+          if (readError) {
+            content = `❌ Read Failed: ${readPath || readError}`;
           } else {
-            // Success case: "Read path/to/file.tsx"
-            content = readPath ? `Read ${readPath}` : 'Read file';
+            content = readPath ? `✅ Read: ${readPath}` : '✅ Read: file';
           }
           break;
         case 'thinking':
           content = '';  // Empty content, will be filled by LLM tokens
           break;
         case 'indexing':
-          const indexingMsg = metadata?.message ?? 'Indexing codebase...';
-          content = indexingMsg;
+          const indexingMsg = metadata?.message ?? 'codebase...';
+          content = `Indexing: ${indexingMsg}`;
           break;
         case 'indexed':
           const filesIndexed = metadata?.filesIndexed ?? 0;
           const chunks = metadata?.chunks ?? 0;
           const tokens = metadata?.tokens ?? 0;
           const duration = metadata?.duration ? `in ${(metadata.duration / 1000).toFixed(1)}s` : '';
-          content = `Indexed ${filesIndexed} files → ${chunks} chunks (~${Math.round(tokens / 1000)}K tokens) ${duration}`.trim();
+          const indexedError = metadata?.error;
+          if (indexedError) {
+            content = `❌ Indexing Failed: ${indexedError}`;
+          } else {
+            content = `✅ Indexed: ${filesIndexed} files → ${chunks} chunks (~${Math.round(tokens / 1000)}K tokens) ${duration}`.trim();
+          }
           break;
         case 'analyzing':
-          const analyzingMsg = metadata?.message ?? 'Analyzing files...';
-          content = analyzingMsg;
+          const analyzingMsg = metadata?.message ?? 'files...';
+          content = `Analyzing: ${analyzingMsg}`;
           break;
         case 'analyzed':
           const analyzedFiles = metadata?.filesCount ?? 0;
-          content = `Analyzed ${analyzedFiles} files`;
+          const analyzedError = metadata?.error;
+          if (analyzedError) {
+            content = `❌ Analysis Failed: ${analyzedError}`;
+          } else {
+            content = `✅ Analyzed: ${analyzedFiles} files`;
+          }
           break;
         case 'storing':
-          const storingMsg = metadata?.message ?? 'Storing lesson...';
-          content = storingMsg;
+          const storingMsg = metadata?.message ?? 'lesson...';
+          content = `Storing: ${storingMsg}`;
           break;
         case 'stored':
-          const storedMsg = metadata?.message ?? 'Stored lesson successfully';
-          content = storedMsg;
+          const storedMsg = metadata?.message;
+          const storedError = metadata?.error;
+          if (storedError) {
+            content = `❌ Storage Failed: ${storedError}`;
+          } else {
+            content = `✅ Stored: ${storedMsg ?? 'lesson successfully'}`;
+          }
           break;
         default:
           content = 'Processing...';

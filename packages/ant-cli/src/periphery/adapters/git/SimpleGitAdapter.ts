@@ -39,6 +39,12 @@ export class SimpleGitAdapter implements GitPort {
     return (await this.git.revparse(["--show-toplevel"]))?.trim();
   }
 
+  async getRepoName(): Promise<string> {
+    // Return project name as repo name
+    // This is cleaner than parsing .git/config
+    return this.project;
+  }
+
   async createBranch(name: string, base: string): Promise<void> {
     await this.ensure();
     await createBranch(this.git, name, base);
@@ -333,6 +339,12 @@ export class SimpleGitAdapter implements GitPort {
     await this.ensure();
     const result = await this.git.branch();
     return result.current;
+  }
+
+  async getCurrentCommit(): Promise<string> {
+    await this.ensure();
+    const log = await this.git.log({ maxCount: 1 });
+    return log.latest?.hash || 'HEAD';
   }
 
   async getBranches(options?: { remote?: boolean }): Promise<string[]> {

@@ -2,15 +2,13 @@ import { reviewerAgent } from "../agents/reviewer";
 import { architectAgent } from "../agents/architect/index";
 import { plannerAgent } from "../agents/planner";
 import { docAgent } from "../agents/doc";
-import { ChromaMemoryAdapter } from "../periphery/adapters/memory/ChromaMemoryAdapter";
+import { AdapterFactory } from "../infrastructure/adapters/AdapterFactory";
 import { createLLMClient } from "../periphery/adapters/llm/LLMClientFactory";
 import { FilePromptAdapter } from "../periphery/adapters/prompt/FilePromptAdapter";
 import { FileProfileAdapter } from "../periphery/adapters/profile/FileProfileAdapter";
 import { CodebaseAnalyzer } from "../periphery/adapters/analyzer/CodebaseAnalyzer";
-import { SimpleGitAdapter } from "../periphery/adapters/git/SimpleGitAdapter";
 import { FileConfigAdapter } from "../periphery/adapters/config/FileConfigAdapter";
 import { FileSessionAdapter } from "../periphery/adapters/session/FileSessionAdapter";
-import { ChunkAdapter } from "../periphery/adapters/chunk/ChunkingAdapter";
 import { NodeCommandAdapter } from "../periphery/adapters/command/NodeCommandAdapter";
 import { TaskQueueUpdatePort, FileTreeUpdatePort } from "../core/ports";
 import { WorkflowStateUpdatePort } from "../core/ports/workflow";
@@ -53,7 +51,7 @@ export async function orchestrator(params: {
       }
 
       // Common dependencies for architect
-      const memory = new ChromaMemoryAdapter();
+      const memory = AdapterFactory.createMemoryAdapter();
       const config = new FileConfigAdapter();
       
       // Load project config for git/repo and LLM settings
@@ -72,8 +70,8 @@ export async function orchestrator(params: {
 
       if (jobType === 'learn') {
         // Learn task: requires Git and Chunk for indexing
-        const chunk = new ChunkAdapter();
-        const git = projectPath ? new SimpleGitAdapter(project || "default", configData, projectPath) : undefined;
+        const chunk = AdapterFactory.createChunkAdapter();
+        const git = projectPath ? AdapterFactory.createGitAdapterWithConfig(project || "default", configData, projectPath) : undefined;
         
         return await architectAgent(input, project || "default", 'learn', inputFile, { 
           memory, 
@@ -88,7 +86,7 @@ export async function orchestrator(params: {
       // Design and Code tasks: full dependencies
       const promptPort = new FilePromptAdapter();
       const profilePort = new FileProfileAdapter();
-      const chunk = new ChunkAdapter();
+      const chunk = AdapterFactory.createChunkAdapter();
       
       // ✅ Require featurePath and projectPath - no fallback
       if (!featurePath || !projectPath) {
@@ -100,7 +98,7 @@ export async function orchestrator(params: {
 
       if (jobType === 'design') {
         const analyzer = new CodebaseAnalyzer();
-        const git = new SimpleGitAdapter(project || "default", configData, projectPath);  // ✅ Pass projectPath
+        const git = AdapterFactory.createGitAdapterWithConfig(project || "default", configData, projectPath);
         
         // ✅ Get ExpressServerAdapter instance for real-time updates
         let kanbanUpdate: TaskQueueUpdatePort | undefined = undefined;
@@ -148,7 +146,7 @@ export async function orchestrator(params: {
 
       if (jobType === 'code') {
         const analyzer = new CodebaseAnalyzer();
-        const git = new SimpleGitAdapter(project || "default", configData, projectPath);  // ✅ Pass projectPath
+        const git = AdapterFactory.createGitAdapterWithConfig(project || "default", configData, projectPath);
         const command = new NodeCommandAdapter();
         
         // ✅ Get ExpressServerAdapter instance for real-time updates
@@ -200,7 +198,7 @@ export async function orchestrator(params: {
     }
 
     case "reviewer": {
-      const memory = new ChromaMemoryAdapter();
+      const memory = AdapterFactory.createMemoryAdapter();
       const config = new FileConfigAdapter();
       const configData = await config.load(project || "default");
       const llm = createLLMClient('reviewer', {
@@ -212,7 +210,7 @@ export async function orchestrator(params: {
 
     case "planner": {
       const [issues, commits] = input.split("===COMMITS===");
-      const memory = new ChromaMemoryAdapter();
+      const memory = AdapterFactory.createMemoryAdapter();
       const config = new FileConfigAdapter();
       const configData = await config.load(project || "default");
       const llm = createLLMClient('planner', {
@@ -223,7 +221,7 @@ export async function orchestrator(params: {
     }
 
     case "doc": {
-      const memory = new ChromaMemoryAdapter();
+      const memory = AdapterFactory.createMemoryAdapter();
       const config = new FileConfigAdapter();
       const configData = await config.load(project || "default");
       const llm = createLLMClient('doc', {
