@@ -91,6 +91,8 @@ export function findLatestDirective(dirPath: string): string | null {
  * - For design: finds PRD in inputs/sources/prd.md
  * - For code: finds latest design + optional code directive
  * - For learn: finds learn directive
+ * 
+ * ✅ Resume Support: Skips validation if session exists with taskQueue
  */
 export function resolveInputFile(inputPath: string, task: 'design' | 'code' | 'learn'): string {
   const stats = fs.statSync(inputPath);
@@ -100,6 +102,31 @@ export function resolveInputFile(inputPath: string, task: 'design' | 'code' | 'l
   }
   
   if (stats.isDirectory()) {
+    // ✅ CRITICAL: Check for resume scenario (session exists with taskQueue)
+    // If resuming, we don't need design/directive files
+    if (task === 'code' || task === 'learn') {
+      const sessionPath = path.join(inputPath, 'sessions', `${task}.json`);
+      if (fs.existsSync(sessionPath)) {
+        try {
+          const sessionContent = fs.readFileSync(sessionPath, 'utf-8');
+          const session = JSON.parse(sessionContent);
+          
+          // Check if session has taskQueue (indicating work in progress)
+          if (session.state?.taskQueue && Array.isArray(session.state.taskQueue) && session.state.taskQueue.length > 0) {
+            console.log(`\n🔄 [Resolver] Resuming ${task} job from session`);
+            console.log(`   Task queue: ${session.state.taskQueue.length} tasks remaining`);
+            console.log(`   Completed: ${session.state.completedTasks?.length || 0} tasks\n`);
+            
+            // ✅ Return empty string to signal "resume mode" (no file validation needed)
+            return '';
+          }
+        } catch (error) {
+          // Session file exists but couldn't parse - continue with normal flow
+          console.warn(`⚠️  [Resolver] Failed to parse session file: ${error}`);
+        }
+      }
+    }
+    
     switch (task) {
       case 'design': {
         // Design task: automatically find and combine ALL PRD files in sources/

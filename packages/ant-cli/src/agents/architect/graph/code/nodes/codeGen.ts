@@ -154,16 +154,10 @@ export async function codeGen(
       if (event.type === 'tool_use' && event.toolUse) {
         const { id, name, input } = event.toolUse;
         
-        console.log(`🔧 [CodeGen] Tool call detected: ${name}`);
-        console.log(`   Args:`, JSON.stringify(input, null, 2));
-        
         // 🎯 CRITICAL: Only send FIRST tool call to UI (Standard Tool Calling pattern)
         // Other tool calls are collected but not shown to user (they'll be dropped by tool node)
         if (toolCalls.length === 0) {
           await chatAPI.sendLLMEvent(event);
-          console.log(`   ✅ Sent to UI (first tool call)`);
-        } else {
-          console.log(`   ⚠️  Skipped UI display (will be dropped by tool node)`);
         }
         
         toolCalls.push({

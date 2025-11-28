@@ -126,9 +126,16 @@ async function runArchitect(jobType: 'design' | 'code' | 'learn', inputPath: str
       input = overrideDirective;
       resolvedFile = ''; // No file path needed
     } else if (inputPath) {
-      // ✅ Read from file as usual
+      // ✅ Resolve input file (may return '' for resume scenarios)
       resolvedFile = resolveInputFile(inputPath, jobType);
-      input = fs.readFileSync(resolvedFile, 'utf-8');
+      
+      // ✅ If resolvedFile is empty, we're resuming (no file reading needed)
+      if (resolvedFile === '') {
+        console.log('🔄 Resume mode detected - skipping file reading');
+        input = ''; // Empty input for resume
+      } else {
+        input = fs.readFileSync(resolvedFile, 'utf-8');
+      }
     } else {
       throw new Error('No input source available');
     }

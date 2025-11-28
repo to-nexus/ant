@@ -24,6 +24,7 @@ interface ParserContext {
   insideTasks: boolean; // ✅ Changed: Now used to track but will emit to response
   insideLearnCommand: boolean;  // ✅ NEW: <learn_command> tag
   learnCommandContent: string;  // ✅ NEW: Accumulate learn_command content
+  tasksContent: string;  // ✅ NEW: Accumulate tasks content
   currentFilePath: string | null;
   currentAppendPath: string | null;  // ✅ NEW
   currentEditPath: string | null;
@@ -40,6 +41,7 @@ export class XMLStreamParser implements IStreamParser {
     insideTasks: false,
     insideLearnCommand: false,  // ✅ NEW
     learnCommandContent: '',  // ✅ NEW
+    tasksContent: '',  // ✅ NEW
     currentFilePath: null,
     currentAppendPath: null,  // ✅ NEW
     currentEditPath: null
@@ -231,7 +233,57 @@ export class XMLStreamParser implements IStreamParser {
         continue;
       }
       
-      // 7. Check for <file path="..."> opening
+      // 11. Check for <tasks> opening (outside thinking)
+      if (!this.context.insideThinking && !this.context.insideTasks && this.buffer.includes('<tasks>')) {
+        const startIdx = this.buffer.indexOf('<tasks>');
+        
+        // Emit any text before <tasks> as response
+        const beforeTag = this.buffer.substring(0, startIdx);
+        if (beforeTag.trim()) {
+          actions.push({
+            type: 'response',
+            data: { content: beforeTag }
+          });
+        }
+        
+        this.buffer = this.buffer.substring(startIdx + '<tasks>'.length);
+        this.context.insideTasks = true;
+        this.context.tasksContent = '';  // Reset accumulator
+        
+        continueParsingLoop = true;
+        continue;
+      }
+      
+      // 12. Check for </tasks> closing (outside thinking)
+      if (!this.context.insideThinking && this.context.insideTasks && this.buffer.includes('</tasks>')) {
+        const endIdx = this.buffer.indexOf('</tasks>');
+        const fragment = this.buffer.substring(0, endIdx);
+        this.context.tasksContent += fragment;
+        
+        this.buffer = this.buffer.substring(endIdx + '</tasks>'.length);
+        this.context.insideTasks = false;
+        
+        // ✅ Emit complete tasks as ONE response chunk
+        const fullContent = `<tasks>${this.context.tasksContent}</tasks>`;
+        actions.push({
+          type: 'response',
+          data: { content: fullContent }
+        });
+        
+        this.context.tasksContent = '';  // Reset
+        
+        continueParsingLoop = true;
+        continue;
+      }
+      
+      // 13. Accumulate content inside <tasks> (outside thinking)
+      if (!this.context.insideThinking && this.context.insideTasks && this.buffer.length > 0) {
+        this.context.tasksContent += this.buffer;
+        this.buffer = '';
+        continue;
+      }
+      
+      // 15. Check for <file path="..."> opening
       if (!this.context.insideFile) {
         const fileMatch = this.buffer.match(/<file\s+path="([^"]+)">/);
         if (fileMatch) {
@@ -255,7 +307,7 @@ export class XMLStreamParser implements IStreamParser {
         }
       }
       
-      // 8. Check for </file> closing
+      // 16. Check for </file> closing
       if (this.context.insideFile && this.buffer.includes('</file>')) {
         const endIdx = this.buffer.indexOf('</file>');
         const fileContent = this.buffer.substring(0, endIdx);
@@ -283,7 +335,7 @@ export class XMLStreamParser implements IStreamParser {
         continue;
       }
       
-      // 9. Accumulate file content (LINE-BASED STREAMING for real-time rendering)
+      // 17. Accumulate file content (LINE-BASED STREAMING for real-time rendering)
       if (this.context.insideFile && this.buffer.length > 0) {
         const lookahead = '</file>';
         
@@ -313,7 +365,7 @@ export class XMLStreamParser implements IStreamParser {
         continue;
       }
       
-      // 10. Check for <append path="..."> opening
+      // 18. Check for <append path="..."> opening
       if (!this.context.insideAppend) {
         const appendMatch = this.buffer.match(/<append\s+path="([^"]+)">/);
         if (appendMatch) {
@@ -337,7 +389,7 @@ export class XMLStreamParser implements IStreamParser {
         }
       }
       
-      // 11. Check for </append> closing
+      // 19. Check for </append> closing
       if (this.context.insideAppend && this.buffer.includes('</append>')) {
         const endIdx = this.buffer.indexOf('</append>');
         const appendContent = this.buffer.substring(0, endIdx);
@@ -365,7 +417,7 @@ export class XMLStreamParser implements IStreamParser {
         continue;
       }
       
-      // 12. Accumulate append content (LINE-BASED STREAMING for real-time rendering)
+      // 20. Accumulate append content (LINE-BASED STREAMING for real-time rendering)
       if (this.context.insideAppend && this.buffer.length > 0) {
         const lookahead = '</append>';
         
@@ -395,7 +447,7 @@ export class XMLStreamParser implements IStreamParser {
         continue;
       }
       
-      // 13. Check for <edit path="..."> opening
+      // 21. Check for <edit path="..."> opening
       if (!this.context.insideEdit) {
         const editMatch = this.buffer.match(/<edit\s+path="([^"]+)">/);
         if (editMatch) {
@@ -419,7 +471,7 @@ export class XMLStreamParser implements IStreamParser {
         }
       }
       
-      // 11. Inside <edit>, check for <search> and <replace>
+      // 22. Inside <edit>, check for <search> and <replace>
       if (this.context.insideEdit) {
         // <search> opening
         if (!this.context.insideSearch && this.buffer.includes('<search>')) {
@@ -480,7 +532,7 @@ export class XMLStreamParser implements IStreamParser {
         }
       }
       
-      // 12. Check for </edit> closing
+      // 23. Check for </edit> closing
       if (this.context.insideEdit && this.buffer.includes('</edit>')) {
         const endIdx = this.buffer.indexOf('</edit>');
         this.buffer = this.buffer.substring(endIdx + '</edit>'.length);
@@ -496,7 +548,7 @@ export class XMLStreamParser implements IStreamParser {
         continue;
       }
       
-      // 13. Check for <delete path="..." /> (self-closing)
+      // 24. Check for <delete path="..." /> (self-closing)
       const deleteMatch = this.buffer.match(/<delete\s+path="([^"]+)"\s*\/>/);
       if (deleteMatch) {
         const fullMatch = deleteMatch[0];
@@ -518,7 +570,7 @@ export class XMLStreamParser implements IStreamParser {
         continue;
       }
       
-      // 14. General text response handling (outside any XML block)
+      // 25. General text response handling (outside any XML block)
       if (!this.context.insideThinking && 
           !this.context.insideTasks &&
           !this.context.insideLearnCommand &&  // ✅ NEW
@@ -671,6 +723,7 @@ export class XMLStreamParser implements IStreamParser {
       insideTasks: false,
       insideLearnCommand: false,  // ✅ NEW
       learnCommandContent: '',  // ✅ NEW
+      tasksContent: '',  // ✅ NEW
       currentFilePath: null,
       currentAppendPath: null,
       currentEditPath: null
