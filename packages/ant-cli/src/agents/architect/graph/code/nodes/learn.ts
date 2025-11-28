@@ -4,10 +4,10 @@ import { SessionTurn } from "../../../../../core/types";
 import { errorStatsCollector, formatStatistics } from "./diagnostics/errorStats";
 
 /**
- * ✅ Global queue for async learning tasks to prevent memory explosion
- * Limits concurrent learning operations to 2 at a time
+ * ✅ Global queue for async lesson storage tasks to prevent memory explosion
+ * Limits concurrent lesson operations to 2 at a time
  */
-class LearningQueue {
+class LessonQueue {
   private queue: Array<() => Promise<void>> = [];
   private running = 0;
   private readonly maxConcurrent = 2;
@@ -52,20 +52,20 @@ class LearningQueue {
   }
 }
 
-const learningQueue = new LearningQueue();
+const lessonQueue = new LessonQueue();
 
 /**
- * Learn node - Incremental learning after each task completion:
- * 1. Extract learnings from completed task
- * 2. Store learnings to vector DB (ASYNC - non-blocking)
+ * Learn node - Incremental lesson extraction after each task completion:
+ * 1. Extract lessons from completed task
+ * 2. Store lessons to vector DB (ASYNC - non-blocking)
  * 3. Save turn to session file (for context continuity)
  * 4. Route to next task or end
  * 
  * ✅ NEW: Called after EVERY task completion (not just at the end)
- * ✅ NEW: Async learning - doesn't block workflow progression
+ * ✅ NEW: Async lesson storage - doesn't block workflow progression
  * 
  * NOTE: File saving happens in writeFiles node (before validation)
- * This node focuses purely on learning/metadata artifacts.
+ * This node focuses purely on lesson extraction/metadata artifacts.
  * 
  * ✅ Hexagonal Architecture Compliance:
  * - Uses GitPort for branch management (not fs directly)
@@ -116,17 +116,8 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   // 1. Extract lessons
   const lessons = extractCodeLessons(state);
   
-  // ✅ Enhanced metadata for lesson storage
-  const lessonMetadata = {
-    relatedFiles: state.files?.map(f => f.path) || [],
-    tags: extractTags(lessons, state.directive || ''),
-    directive: state.directive,
-    taskType: state.currentTask?.type,
-    branch: branch
-  };
-  
   // Note: Files are already written to disk in writeFiles node
-  // This node focuses on learning artifacts: vector DB + session storage
+  // This node focuses on lesson artifacts: vector DB + session storage
   
   const gitPort = state.gitPort || state.deps?.git;
   if (!gitPort) {
@@ -136,6 +127,15 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   const branch = state.context.featureFolder
     ? `feature/${state.context.featureFolder}`
     : `feature/${state.context.project}-arch-${Date.now()}`;
+  
+  // ✅ Enhanced metadata for lesson storage
+  const lessonMetadata = {
+    relatedFiles: state.files?.map(f => f.path) || [],
+    tags: extractTags(lessons, state.directive || ''),
+    directive: state.directive,
+    taskType: state.currentTask?.type,
+    branch: branch
+  };
   
   const branchBase = state.context.branchBase || 'main';
   await gitPort.createBranch(branch, branchBase);
@@ -266,8 +266,8 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     }
   }
   
-  // 4. 🚀 ASYNC learning - Store to vector DB without blocking workflow
-  // This allows the agent to move to the next task immediately while learning happens in background
+  // 4. 🚀 ASYNC lesson storage - Store to vector DB without blocking workflow
+  // This allows the agent to move to the next task immediately while lesson extraction happens in background
   if (state.deps?.memory && state.deps?.chunk) {
     // ✅ Capture dependencies in closure to avoid holding onto entire state
     const deps = {
@@ -281,12 +281,12 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     };
     
     // ✅ Add to queue instead of firing immediately
-    // Queue limits concurrent learning operations to prevent memory explosion
-    const queueStats = learningQueue.getStats();
-    console.log(`\n🎓 [Async Learning] Queuing learning task for: ${taskName}`);
+    // Queue limits concurrent lesson operations to prevent memory explosion
+    const queueStats = lessonQueue.getStats();
+    console.log(`\n🎓 [Async Lesson] Queuing lesson storage for: ${taskName}`);
     console.log(`   Queue status: ${queueStats.running} running, ${queueStats.queued} queued`);
     
-    learningQueue.add(async () => {
+    lessonQueue.add(async () => {
       try {
         console.log(`\n🎓 [Async Learning] Processing task: ${taskName}`);
         
@@ -331,13 +331,13 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
         }
         await deps.memory.store(documents, contextData.project);
         
-        console.log(`✅ [Async Learning] ${result.chunks.length} learning chunks stored to memory (batch)`);
+        console.log(`✅ [Async Lesson] ${result.chunks.length} lesson chunks stored to memory (batch)`);
         if (sessionId && turnId) {
           console.log(`🔗 [Async Learning] Linked to session: ${sessionId}, turn: ${turnId}`);
         }
       } catch (error) {
         // Non-fatal: log error but don't fail the entire workflow
-        console.error('⚠️  [Async Learning] Failed to store learnings to memory:', error instanceof Error ? error.message : error);
+        console.error('⚠️  [Async Lesson] Failed to store lessons to memory:', error instanceof Error ? error.message : error);
         console.log('   Workflow continues without memory storage...');
       }
     }).catch(() => {
@@ -345,9 +345,9 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     });
     
     // ✅ Don't wait - continue to next task immediately
-    console.log(`🚀 [Learn] Background learning queued, continuing workflow...\n`);
+    console.log(`🚀 [Learn] Background lesson storage queued, continuing workflow...\n`);
   } else {
-    console.log(`ℹ️  [Learn] Memory/Chunk ports not available, skipping learning storage\n`);
+    console.log(`ℹ️  [Learn] Memory/Chunk ports not available, skipping lesson storage\n`);
   }
   
   // ✅ Workflow instrumentation: Exit node (success path)
@@ -355,7 +355,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     state.deps.workflowUpdate.exitNode(state._httpJobId, 'learn');
   }
   
-  return { ...state, learnings, branch, filesWritten };
+  return { ...state, lessons, branch, filesWritten };
 }
 
 /**
@@ -384,7 +384,7 @@ function extractTags(lessons: string, directive: string = ''): string[] {
 }
 
 /**
- * Extract structured learnings from code generation state
+ * Extract structured lessons from code generation state
  */
 function extractCodeLessons(state: ArchitectGraphState): string {
   const sections: string[] = [];

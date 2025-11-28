@@ -21,6 +21,9 @@ export interface MessageContent {
      | 'exploring' | 'explored'   // Codebase scan
      | 'grepping' | 'grepped'     // Search
      | 'reading' | 'read'         // File read
+     | 'indexing' | 'indexed'     // Codebase indexing (learn job)
+     | 'analyzing' | 'analyzed'   // File analysis (learn job)
+     | 'storing' | 'stored'       // Lesson storage (learn job)
      // General content
      | 'text'
      | 'cancelled'      // Task cancelled (with Resume button)
@@ -350,6 +353,9 @@ export class ChatService {
       'exploring', 'explored', 
       'grepping', 'grepped', 
       'reading', 'read',
+      'indexing', 'indexed',
+      'analyzing', 'analyzed',
+      'storing', 'stored',
       'command_running', 'command_streaming', 'command'
       // NOTE: 'thinking' is NOT a Chat Status - it's general content!
       // - Chat Status = progress indicator (placeholder, exploring, grepping, etc.)
@@ -483,6 +489,63 @@ export class ChatService {
       if (found && found.content.type === 'reading' && 
           found.content.metadata?.filePath === content.metadata?.filePath) {
         console.log(`[ChatService] ✅ MERGED: ${found.content.type} → ${content.type} for ${content.metadata?.filePath} (reverse search, index ${found.index})`);
+        found.content.type = content.type;
+        found.content.content = content.content;
+        found.content.metadata = { ...found.content.metadata, ...content.metadata };
+        
+        this.broadcast(projectId, featureName, {
+          type: 'content_update',
+          messageId: session.currentMessage.id,
+          contentIndex: found.index,
+          content: found.content
+        });
+        return found.index;
+      }
+    }
+    
+    // indexing → indexing/indexed
+    if (content.type === 'indexing' || content.type === 'indexed') {
+      const found = findRecentChatStatus(['indexing', 'indexed']);
+      if (found && found.content.type === 'indexing') {
+        console.log(`[ChatService] ✅ MERGED: ${found.content.type} → ${content.type} (reverse search, index ${found.index})`);
+        found.content.type = content.type;
+        found.content.content = content.content;
+        found.content.metadata = { ...found.content.metadata, ...content.metadata };
+        
+        this.broadcast(projectId, featureName, {
+          type: 'content_update',
+          messageId: session.currentMessage.id,
+          contentIndex: found.index,
+          content: found.content
+        });
+        return found.index;
+      }
+    }
+    
+    // analyzing → analyzing/analyzed
+    if (content.type === 'analyzing' || content.type === 'analyzed') {
+      const found = findRecentChatStatus(['analyzing', 'analyzed']);
+      if (found && found.content.type === 'analyzing') {
+        console.log(`[ChatService] ✅ MERGED: ${found.content.type} → ${content.type} (reverse search, index ${found.index})`);
+        found.content.type = content.type;
+        found.content.content = content.content;
+        found.content.metadata = { ...found.content.metadata, ...content.metadata };
+        
+        this.broadcast(projectId, featureName, {
+          type: 'content_update',
+          messageId: session.currentMessage.id,
+          contentIndex: found.index,
+          content: found.content
+        });
+        return found.index;
+      }
+    }
+    
+    // storing → storing/stored
+    if (content.type === 'storing' || content.type === 'stored') {
+      const found = findRecentChatStatus(['storing', 'stored']);
+      if (found && found.content.type === 'storing') {
+        console.log(`[ChatService] ✅ MERGED: ${found.content.type} → ${content.type} (reverse search, index ${found.index})`);
         found.content.type = content.type;
         found.content.content = content.content;
         found.content.metadata = { ...found.content.metadata, ...content.metadata };

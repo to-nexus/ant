@@ -3,7 +3,7 @@ import { MemoryPort } from "../../../core/ports";
 /**
  * Store lessons from execution to vector memory
  * 
- * ✅ Renamed: learnings → lessons (clearer terminology)
+ * Lessons = extracted knowledge from task completion
  */
 export async function storeLessons(
   lessons: string,

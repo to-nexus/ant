@@ -256,7 +256,7 @@ async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       prdSpec: state.prd,
       originalFiles: state.codeHead,  // Git HEAD version
       currentCode: state.code,  // Working tree code
-      lessons: state.lessons,  // ✅ Include lessons from unified search
+      lessons: Array.isArray(state.lessons) ? state.lessons : undefined,  // ✅ Include lessons from unified search
       sessionContext: state.sessionContext,  // ✅ Include compressed session context
       currentTask: {
         name: state.currentTask.name,

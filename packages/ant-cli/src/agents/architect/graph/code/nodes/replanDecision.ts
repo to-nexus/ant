@@ -108,12 +108,9 @@ export async function replanDecision(state: ArchitectGraphState): Promise<Archit
     console.log('🤖 [ReplanDecision] Asking LLM for decision...');
     
     // 6. Call LLM
-    const response = await llm.generateText({
-      prompt,
-      systemPrompt: 'You are a technical project manager analyzing user feedback to decide on plan adjustments. Always respond with valid JSON only.',
-      temperature: 0.3,  // Low temperature for consistent decisions
-      maxTokens: 500
-    });
+    const response = await llm.invoke([
+      { role: 'user', content: prompt }
+    ]);
     
     // 7. Parse JSON response
     let decision: {

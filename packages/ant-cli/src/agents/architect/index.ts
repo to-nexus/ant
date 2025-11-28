@@ -43,17 +43,22 @@ export async function architectAgent(
   // Initialize context
   // ✅ For chat jobs: use provided feature name
   // ✅ For file jobs: extract from inputFile
+  // ✅ For learn jobs: featureFolder is optional (can be "default")
   const featureFolder = deps?.feature || ArtifactService.extractFeatureFolderFromPath(inputFile, project);
   
   if (!project || typeof project !== 'string' || !project.trim()) {
     throw new Error('Project name is required and must be a non-empty string');
   }
-  if (!featureFolder || typeof featureFolder !== 'string' || !featureFolder.trim()) {
-    console.error('❌ featureFolder is undefined or empty.');
-    console.error('  inputFile:', inputFile);
-    console.error('  feature:', deps?.feature);
-    console.error('  project:', project);
-    throw new Error('Feature folder is required and must be a non-empty string');
+  
+  // ✅ Learn job doesn't require featureFolder (uses "default" if not provided)
+  if (task !== 'learn') {
+    if (!featureFolder || typeof featureFolder !== 'string' || !featureFolder.trim()) {
+      console.error('❌ featureFolder is undefined or empty.');
+      console.error('  inputFile:', inputFile);
+      console.error('  feature:', deps?.feature);
+      console.error('  project:', project);
+      throw new Error('Feature folder is required and must be a non-empty string');
+    }
   }
   
   // 1. Load config
@@ -64,20 +69,27 @@ export async function architectAgent(
   
   // 2. Determine working directory (actual code repository path)
   // ✅ Must use GitPort.getRepoRoot() - never fallback to process.cwd()
-  if (!deps?.git) {
+  // ✅ Learn job doesn't require GitPort (works without git)
+  if (!deps?.git && task !== 'learn') {
     throw new Error("GitPort is required to determine working directory (codebase path)");
   }
   
   let workingDir: string;
-  try {
-    // Get the actual repository root from git adapter
-    // Local mode: resolves config.localPath
-    // Cloud mode: returns projectPath/codebase
-    workingDir = await deps.git.getRepoRoot();
-    console.log(`📂 Working directory (codebase): ${workingDir}`);
-  } catch (error) {
-    console.error(`❌ Failed to determine working directory:`, error);
-    throw new Error(`Could not determine codebase path. Ensure config.localPath is set correctly.`);
+  if (deps?.git) {
+    try {
+      // Get the actual repository root from git adapter
+      // Local mode: resolves config.localPath
+      // Cloud mode: returns projectPath/codebase
+      workingDir = await deps.git.getRepoRoot();
+      console.log(`📂 Working directory (codebase): ${workingDir}`);
+    } catch (error) {
+      console.error(`❌ Failed to determine working directory:`, error);
+      throw new Error(`Could not determine codebase path. Ensure config.localPath is set correctly.`);
+    }
+  } else {
+    // Learn job without git - use config path
+    workingDir = config.localPath || process.cwd();
+    console.log(`📂 Working directory (no git): ${workingDir}`);
   }
   
   // 3. Retrieve long-term knowledge from Vector DB
@@ -160,6 +172,12 @@ export async function architectAgent(
       const lInitial: LearnGraphState = {
         context,
         spec,
+        deps: {
+          memory: deps?.memory,
+          chunk: deps?.chunk,
+          git: deps?.git,
+          llm: deps?.llm  // ✅ LLM for analysis
+        },
         targets: [],
         texts: []
       };
@@ -173,7 +191,7 @@ export async function architectAgent(
         success: true,
         task: 'learn',
         reportFile: '',
-        message: `Stored ${l.stored} learning chunk(s) to vector memory.`
+        message: `Stored ${l.stored} lesson chunk(s) to vector memory.`
       };
     case 'design':
       // Run via design graph
@@ -375,7 +393,7 @@ export async function architectAgent(
           interruption: result.interruption,  // ✅ Return interruption details
           message: (result.filesChanged || 0) > 0
             ? `${result.filesChanged} files changed. Review with 'git diff' and commit when ready.`
-            : `No code changes generated. See report for plan and learnings.`
+            : `No code changes generated. See report for plan and lessons.`
         };
     
     default:

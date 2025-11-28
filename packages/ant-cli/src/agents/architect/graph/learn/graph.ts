@@ -10,9 +10,8 @@ export function buildLearnGraph() {
       context: null as any,
       spec: null as any,
       deps: null as any,
-      command: null as any,      // ✅ LLM의 정규화된 명령
+      command: null as any,
       targets: null as any,
-      lessons: null as any,
       texts: null as any,
       reportFilePath: null as any,
     } as any,

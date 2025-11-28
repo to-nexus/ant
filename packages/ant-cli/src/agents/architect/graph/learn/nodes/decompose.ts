@@ -18,11 +18,8 @@ export async function decompose(state: LearnGraphState): Promise<Partial<LearnGr
   const { getChatAPIClient } = await import('../../../../../core/adapters/ChatAPIClient');
   const chatAPI = getChatAPIClient();
 
-  // Show analyzing status
-  await chatAPI.addChatStatus({
-    type: 'thinking',
-    message: 'Analyzing your learning request...'
-  });
+  // Show placeholder while waiting for LLM
+  await chatAPI.showChatStatus('placeholder');
 
   // Load system prompt
   const promptPath = path.join(
@@ -31,21 +28,52 @@ export async function decompose(state: LearnGraphState): Promise<Partial<LearnGr
   );
   const systemPrompt = fs.readFileSync(promptPath, 'utf-8');
 
-  // Call LLM
-  const response = await llm.invoke([
-    { role: 'system', content: systemPrompt },
-    { role: 'user', content: state.spec }
-  ]);
+  // Call LLM with streaming for thinking display
+  const combinedPrompt = `${systemPrompt}\n\n---\n\nUser Request:\n${state.spec}`;
+  
+  if (!llm.stream) {
+    throw new Error('LLM client does not support streaming');
+  }
+  
+  // Setup stream orchestrator for thinking display
+  const { StreamOrchestrator } = await import('../../../../../core/streaming/StreamOrchestrator');
+  const { XMLStreamParser } = await import('../../../../../core/streaming/parsers/XMLStreamParser');
+  const { CommonRenderStrategy } = await import('../../../../../core/streaming/strategies/CommonRenderStrategy');
+  
+  const parser = new XMLStreamParser();
+  const renderStrategy = new CommonRenderStrategy(chatAPI);
+  const orchestrator = new StreamOrchestrator({
+    parser,
+    renderStrategy,
+    existingFiles: new Set(),
+  });
+  
+  let responseText = '';
+  for await (const event of llm.stream([{ role: 'user', content: combinedPrompt }])) {
+    // Pass to orchestrator for UI display
+    await orchestrator.processEvent(event);
+    
+    // Collect text for parsing
+    if (event.type === 'text' && event.text) {
+      responseText += event.text;
+    }
+  }
+  
+  // Finalize orchestrator (this ends the thinking message)
+  await orchestrator.finalize(false);
+  
+  console.log('✅ [Decompose] LLM thinking completed');
 
   // Parse <learn_command> tag
-  const commandMatch = response.content.match(/<learn_command>\s*([\s\S]*?)\s*<\/learn_command>/);
+  const commandMatch = responseText.match(/<learn_command>\s*([\s\S]*?)\s*<\/learn_command>/);
   if (!commandMatch) {
+    console.log('⚠️  [Learn] No <learn_command> tag found, defaulting to learn_text');
     // Fallback: treat as raw text
     return {
       command: {
         action: 'learn_text',
         text: state.spec
-      }
+      } as LearnCommand
     };
   }
 
@@ -62,12 +90,13 @@ export async function decompose(state: LearnGraphState): Promise<Partial<LearnGr
     return { command };
   } catch (error) {
     console.error('⚠️  Failed to parse learn command:', error);
+    console.log('   Falling back to learn_text');
     // Fallback
     return {
       command: {
         action: 'learn_text',
         text: state.spec
-      }
+      } as LearnCommand
     };
   }
 }

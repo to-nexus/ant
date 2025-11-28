@@ -94,7 +94,7 @@ export interface DesignGraphState extends TaskArtifacts {
   }>;
   
   // Results (populated by learn node)
-  learnings?: string;
+  lessons?: string;
   
   // ✅ For tracking and resume
   _httpJobId?: string;  // Job ID for real-time UI updates and job resumption

@@ -2,13 +2,13 @@ import { DesignGraphState } from "../state";
 import { SessionTurn } from "../../../../../core/types";
 
 /**
- * Learn Node - Finalize workflow and store learnings
+ * Learn Node - Finalize workflow and store lessons
  * 
  * Responsibilities:
  * 1. Update Kanban to show completion
- * 2. Extract learnings from design process
+ * 2. Extract lessons from design process
  * 3. Save turn to session file with metadata
- * 4. Chunk and store learnings to vector memory
+ * 4. Chunk and store lessons to vector memory
  * 5. End workflow visualization
  * 
  * Note: File writing is handled by separate writeFiles node (consistency with code job)
@@ -84,7 +84,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     console.warn(`⚠️  [Learn] Failed to clean up metadata (non-critical):`, error);
   }
   
-  // 1. Extract learnings from design process
+  // 1. Extract lessons from design process
   const lessons = extractDesignLessons(state);
   
   // 2. Save turn to session file
@@ -106,9 +106,9 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     console.log(`💾 Session turn saved to workspace/${state.context.project}/${state.context.featureFolder || 'default'}/sessions/design.json`);
   }
   
-  // 3. Store learnings to vector memory
+  // 3. Store lessons to vector memory
   if (state.deps?.memory && state.deps?.chunk) {
-    await storeLearningsToMemory(state, learnings, sessionId, turnId);
+    await storeLessonsToMemory(state, lessons, sessionId, turnId);
   }
   
   // ✅ End workflow visualization
@@ -119,7 +119,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   
   return { 
     ...state, 
-    learnings 
+    lessons
   };
 }
 
@@ -213,9 +213,9 @@ async function saveSessionTurn(state: DesignGraphState): Promise<void> {
 }
 
 /**
- * Store learnings to vector memory with chunking
+ * Store lessons to vector memory with chunking
  */
-async function storeLearningsToMemory(
+async function storeLessonsToMemory(
   state: DesignGraphState,
   lessons: string,
   sessionId: string | undefined,
@@ -226,9 +226,9 @@ async function storeLearningsToMemory(
   try {
     // Process through chunking pipeline
     const result = await state.deps.chunk.process({
-      source: 'design-learning',
+      source: 'design-lesson',
       sourceType: 'text',
-      content: learnings,
+      content: lessons,
       metadata: {
         type: 'lesson',
         task: 'design',
@@ -257,19 +257,19 @@ async function storeLearningsToMemory(
     
     await memory.store(documents, state.context.project);
     
-    console.log(`✅ ${result.chunks.length} learning chunks stored to memory (batch)`);
+    console.log(`✅ ${result.chunks.length} lesson chunks stored to memory (batch)`);
     if (sessionId && turnId) {
       console.log(`🔗 Linked to session: ${sessionId}, turn: ${turnId}`);
     }
   } catch (error) {
     // Non-fatal: log error but don't fail workflow
-    console.error('⚠️  Failed to store learnings to memory:', error instanceof Error ? error.message : error);
+    console.error('⚠️  Failed to store lessons to memory:', error instanceof Error ? error.message : error);
     console.log('   Continuing without memory storage...');
   }
 }
 
 /**
- * Extract structured learnings from design generation
+ * Extract structured lessons from design generation
  */
 function extractDesignLessons(state: DesignGraphState): string {
   const sections: string[] = [];

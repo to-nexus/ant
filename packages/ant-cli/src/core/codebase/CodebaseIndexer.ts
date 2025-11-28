@@ -11,7 +11,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { GitPort, MemoryPort, ChunkPort } from "../../../core/ports";
+import { GitPort, MemoryPort, ChunkPort } from "../ports";
 
 export interface IndexOptions {
   project: string;
@@ -67,10 +67,8 @@ export class CodebaseIndexer {
 
     // 1. Get current Git state
     const branch = options.branch || await deps.git.getCurrentBranch();
-    const commitHash = await deps.git.getHeadCommit();
     
     console.log(`   Branch: ${branch}`);
-    console.log(`   Commit: ${commitHash?.substring(0, 7)}`);
 
     // 2. Smart indexing: Check if branch exists in Vector DB
     const branchExists = await this.checkBranchExists(
@@ -124,7 +122,7 @@ export class CodebaseIndexer {
             options.workingDir,
             options.project,
             branch,
-            commitHash || 'unknown',
+            'HEAD',
             deps
           );
 
@@ -169,8 +167,6 @@ export class CodebaseIndexer {
         {
           k: 1,
           where: {
-            type: 'codebase',
-            project,
             branch
           }
         }
@@ -202,12 +198,12 @@ export class CodebaseIndexer {
       ];
       
       return changedFiles
-        .filter(file => {
+        .filter((file: string) => {
           const ext = path.extname(file);
           return sourceExtensions.includes(ext);
         })
-        .filter(file => !this.shouldExclude(file, exclude))
-        .map(file => path.join(workingDir, file));
+        .filter((file: string) => !this.shouldExclude(file, exclude))
+        .map((file: string) => path.join(workingDir, file));
         
     } catch (error) {
       console.warn(`   ⚠️  Failed to get changed files:`, error);
@@ -230,19 +226,23 @@ export class CodebaseIndexer {
     }
   ): Promise<{ chunks: number; tokens: number }> {
     
+    // Ensure we're reading from absolute path
+    const absolutePath = path.isAbsolute(filePath) ? filePath : path.join(workingDir, filePath);
+    
     // Read file content
-    const content = fs.readFileSync(filePath, 'utf8');
-    const relativePath = path.relative(workingDir, filePath);
+    const content = fs.readFileSync(absolutePath, 'utf8');
+    const relativePath = path.relative(workingDir, absolutePath);
 
     // Chunk file content
     const result = await deps.chunk.process({
       source: relativePath,
-      sourceType: 'code',
+      sourceType: 'file',
       content,
       metadata: {
         type: 'codebase',        // ✅ Type = codebase
         filePath: relativePath,
         project,
+        feature: 'index',        // ✅ Required by ChunkMetadata
         branch,
         commitHash,
         language: this.detectLanguage(filePath),
@@ -251,7 +251,7 @@ export class CodebaseIndexer {
     });
 
     // Store chunks to Vector DB
-    const documents = result.chunks.map(chunk => ({
+    const documents = result.chunks.map((chunk: any) => ({
       content: chunk.text,
       metadata: chunk.metadata
     }));
@@ -260,7 +260,7 @@ export class CodebaseIndexer {
 
     return {
       chunks: result.chunks.length,
-      tokens: result.stats.totalTokens
+      tokens: result.stats.avgTokens * result.chunks.length
     };
   }
 

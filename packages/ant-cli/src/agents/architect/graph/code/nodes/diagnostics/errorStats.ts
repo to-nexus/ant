@@ -2,7 +2,7 @@
  * Error Statistics Collection System
  * 
  * Tracks error patterns, frequencies, and resolution success rates
- * to improve diagnostics and learning over time.
+ * to improve diagnostics and lesson extraction over time.
  */
 
 import { DiagnosisResult, ErrorLayer } from './types';

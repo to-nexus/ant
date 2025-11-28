@@ -8,7 +8,7 @@ import { DesignGraphState } from "../state";
  * Separated from learn node to maintain consistency with code job workflow:
  * - execute: Generate content (in-memory)
  * - writeFiles: Persist to disk
- * - learn: Store learnings and finalize
+ * - learn: Store lessons and finalize
  * 
  * ✅ Hexagonal Architecture Compliance:
  * - Uses GitPort for file operations (not fs directly)

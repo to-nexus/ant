@@ -1,6 +1,6 @@
 import { SessionTurn } from "../types";
 
-export type CodeMode = 'generate' | 'refactor' | 'explain';
+export type CodeMode = 'generate' | 'refactor' | 'explain' | 'ambiguous';
 
 /**
  * Session Context for LLM (Compressed)
@@ -159,7 +159,8 @@ export class SessionContextBuilder {
   private selectiveOutput(turn: SessionTurn, currentMode: CodeMode): string {
     // Refactor mode: need previous output
     if (currentMode === 'refactor') {
-      return turn.output?.summary || turn.output?.files.slice(0, 3).join(', ') || '';
+      const files = turn.output?.files || [];
+      return turn.output?.summary || files.slice(0, 3).join(', ') || '';
     }
     
     // Generate mode: just file list

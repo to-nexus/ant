@@ -21,7 +21,7 @@ export type AgentTask = 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';
  * Code generation modes
  * Defines how code generation should be performed
  */
-export type CodeMode = 'generate' | 'refactor' | 'explain';
+export type CodeMode = 'generate' | 'refactor' | 'explain' | 'ambiguous';
 
 /**
  * Design modes
