@@ -21,7 +21,7 @@ export class CredentialStore {
   constructor(workspaceRoot: string) {
     this.workspaceRoot = workspaceRoot;
     
-    // ✅ Load encryption key from environment or generate
+    // ✅ Load encryption key from environment or generate persistent key
     const keyString = process.env.ANT_ENCRYPTION_KEY;
     
     console.log(`[CredentialStore] Constructor called`);
@@ -30,11 +30,26 @@ export class CredentialStore {
       console.log(`[CredentialStore] Using encryption key from environment (length: ${keyString.length})`);
       this.encryptionKey = Buffer.from(keyString, 'hex');
     } else {
-      console.warn('⚠️  ANT_ENCRYPTION_KEY not set. Generating temporary key.');
-      console.warn('    Set ANT_ENCRYPTION_KEY environment variable for production!');
-      this.encryptionKey = crypto.randomBytes(32);
-      const tempKeyHex = this.encryptionKey.toString('hex');
-      console.warn(`    Generated key: ${tempKeyHex}`);
+      // ✅ Use persistent key file instead of random key
+      const keyFilePath = path.join(this.workspaceRoot, '.ant', 'encryption.key');
+      
+      try {
+        if (fs.existsSync(keyFilePath)) {
+          const keyHex = fs.readFileSync(keyFilePath, 'utf8').trim();
+          this.encryptionKey = Buffer.from(keyHex, 'hex');
+          console.log(`[CredentialStore] Using persistent key from ${keyFilePath}`);
+        } else {
+          // Generate new key and save it
+          this.encryptionKey = crypto.randomBytes(32);
+          const keyHex = this.encryptionKey.toString('hex');
+          fs.mkdirSync(path.dirname(keyFilePath), { recursive: true });
+          fs.writeFileSync(keyFilePath, keyHex, { mode: 0o600 });
+          console.warn(`[CredentialStore] Generated new persistent key: ${keyFilePath}`);
+        }
+      } catch (error) {
+        console.error('[CredentialStore] Failed to load/save persistent key, using temporary key:', error);
+        this.encryptionKey = crypto.randomBytes(32);
+      }
     }
   }
   

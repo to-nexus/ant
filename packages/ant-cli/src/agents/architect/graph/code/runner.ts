@@ -177,7 +177,7 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
     
     // ✅ Try to run learn node for cleanup (optional, can fail safely)
     try {
-      console.log('🧠 Running learn node for cleanup and learning...\n');
+      console.log('🧠 Running learn node for cleanup and lesson extraction...\n');
       const { learn } = await import('./nodes/index');
       state = await learn(state);
       

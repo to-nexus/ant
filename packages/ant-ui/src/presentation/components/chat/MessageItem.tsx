@@ -15,6 +15,7 @@ import { useJobExecution } from '@/application/hooks/features/useJobExecution';
 import { ThinkingCard } from './ThinkingCard';
 import { FileIcon } from '@/shared/utils/file-icons';
 import { FileCard } from './FileCard';
+import { ResultCard } from './ResultCard';
 
 interface MessageItemProps {
   message: ChatMessage;
@@ -229,7 +230,60 @@ function ContentBlock({ content, isStreaming }: ContentBlockProps) {
       );
 
     case 'explored':
-      return <ExplorationCard content={content} />;
+      return <ResultCard content={content} variant="exploration" />;
+    
+    case 'indexing':
+      return (
+        <div className="flex items-center gap-2 px-3 py-2 bg-purple-50 dark:bg-purple-900/20 
+                        border border-purple-200 dark:border-purple-800 rounded-lg">
+          <Loader2 className="w-4 h-4 text-purple-600 dark:text-purple-400 animate-spin" />
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-medium text-purple-800 dark:text-purple-300">
+              {content.content}
+            </div>
+          </div>
+        </div>
+      );
+    
+    case 'indexed':
+      return <ResultCard content={content} variant="indexing" />;
+    
+    case 'analyzing':
+      return (
+        <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 dark:bg-emerald-900/20 
+                        border border-emerald-200 dark:border-emerald-800 rounded-lg">
+          <Loader2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 animate-spin" />
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-medium text-emerald-800 dark:text-emerald-300">
+              {content.content}
+            </div>
+          </div>
+        </div>
+      );
+    
+    case 'analyzed':
+      return <ResultCard content={content} variant="analysis" />;
+    
+    case 'storing':
+      return (
+        <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 
+                        border border-amber-200 dark:border-amber-800 rounded-lg">
+          <Loader2 className="w-4 h-4 text-amber-600 dark:text-amber-400 animate-spin" />
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-medium text-amber-800 dark:text-amber-300">
+              {content.content}
+            </div>
+          </div>
+        </div>
+      );
+    
+    case 'stored':
+      return (
+        <div className="flex items-center gap-2 px-2 py-1 text-xs text-amber-600 dark:text-amber-400">
+          <span className="text-amber-500">📦</span>
+          <span>{content.content}</span>
+        </div>
+      );
 
     case 'reading':
       return (

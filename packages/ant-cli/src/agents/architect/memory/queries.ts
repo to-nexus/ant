@@ -2,11 +2,11 @@
  * Memory query configurations for different agent modes
  */
 
-export type CategoryKey = 'codebase' | 'learnings' | 'architecture' | 'feedback' | 'project';
+export type CategoryKey = 'codebase' | 'lessons' | 'architecture' | 'feedback' | 'project';
 
 export interface MemoryQueries {
   codebase: string[];
-  learnings: string[];
+  lessons: string[];
   architecture: string[];
   feedback: string[];
   project: string[];
@@ -23,11 +23,11 @@ export function getDesignQueries(project: string): MemoryQueries {
       "integration patterns",
       "api interfaces"
     ],
-    learnings: [
+    lessons: [
       "design decisions",
-      "architectural learnings",
+      "architectural lessons",
       "design improvements",
-      "design feedback learnings"
+      "design feedback lessons"
     ],
     architecture: [
       "architecture principles",
@@ -61,11 +61,11 @@ export function getCodeQueries(project: string): MemoryQueries {
       "import/export patterns",
       "module dependencies"
     ],
-    learnings: [
-      "implementation learnings",
+    lessons: [
+      "implementation lessons",
       "code improvements",
       "bug fixes",
-      "optimization learnings"
+      "optimization lessons"
     ],
     architecture: [
       "code architecture",
@@ -96,7 +96,7 @@ export function getFeatureQueries(feature: string): string[] {
     `${feature} implementation`,
     `${feature} structure`,
     `${feature} patterns`,
-    `${feature} learnings`,
+    `${feature} lessons`,
     `${feature} feedback`,
     `${feature} improvements`
   ];

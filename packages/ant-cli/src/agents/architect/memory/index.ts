@@ -78,7 +78,7 @@ export async function retrieve(
       
       // Map category to section
       switch(category) {
-        case 'learnings':
+        case 'lessons':
           sections["📚 Previous Learnings"].push(...validResults);
           break;
         case 'architecture':

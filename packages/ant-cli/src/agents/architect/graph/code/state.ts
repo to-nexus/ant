@@ -216,7 +216,7 @@ export interface ArchitectGraphState extends TaskArtifacts {
   gitPort?: GitPort;  // For runner to use after graph execution
   
   // ✅ Mode (inferred)
-  mode?: 'generate' | 'refactor' | 'explain';  // Code mode inferred from directive
+  mode?: 'generate' | 'refactor' | 'explain' | 'ambiguous';  // Code mode inferred from directive
   codeMode?: CodeMode;  // DEPRECATED: use 'mode' instead
   
   // ✅ Session Context (compressed for LLM)
@@ -350,8 +350,15 @@ export interface ArchitectGraphState extends TaskArtifacts {
   // Evaluation
   evaluationReport?: any;
   
-  // Learning
-  learnings?: string;
+  // Lessons (extracted knowledge from task completion)
+  lessons?: string | Array<{
+    content: string;
+    score: number;
+    relatedFiles: string[];
+    tags: string[];
+    timestamp: string;
+    directive?: string;
+  }>;
   
   // Results (populated by learn node)
   branch?: string;

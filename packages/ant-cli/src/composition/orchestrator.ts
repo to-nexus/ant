@@ -71,8 +71,18 @@ export async function orchestrator(params: {
       });
 
       if (jobType === 'learn') {
-        // Learn task: minimal dependencies
-        return await architectAgent(input, project || "default", 'learn', inputFile, { memory, llm, config, userContext });
+        // Learn task: requires Git and Chunk for indexing
+        const chunk = new ChunkAdapter();
+        const git = projectPath ? new SimpleGitAdapter(project || "default", configData, projectPath) : undefined;
+        
+        return await architectAgent(input, project || "default", 'learn', inputFile, { 
+          memory, 
+          llm, 
+          chunk, 
+          git, 
+          config, 
+          userContext 
+        });
       }
 
       // Design and Code tasks: full dependencies

@@ -372,7 +372,7 @@ export function buildCodeGraph() {
       const hasViolations = (s.violations && s.violations.length > 0);
       
       if (!hasViolations) {
-        // ✅ Task succeeded - ALWAYS go to learn for incremental learning
+        // ✅ Task succeeded - ALWAYS go to learn for incremental lesson extraction
         return "learn";
       }
       

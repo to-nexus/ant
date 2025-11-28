@@ -45,37 +45,59 @@ async function executeIndexing(
   const chatAPI = (await import('../../../../../core/adapters/ChatAPIClient')).getChatAPIClient();
   const branchName = command.branch || 'current';
 
-  // Show indexing status
-  await chatAPI.addChatStatus({
-    type: 'indexing',
-    message: `Indexing codebase from branch: ${branchName}...`
+  // Show indexing status for codebase
+  await chatAPI.showChatStatus('indexing', { 
+    message: `Indexing codebase (${branchName})...` 
   });
+  
+  const git = state.deps?.git;
+  if (!git) {
+    throw new Error("GitPort is required for indexing operations");
+  }
 
   // Import CodebaseIndexer
   const { CodebaseIndexer } = await import('../../../../../core/codebase/CodebaseIndexer');
   const { ChromaMemoryAdapter } = await import('../../../../../periphery/adapters/memory/ChromaMemoryAdapter');
-  const { ChunkAdapter } = await import('../../../../../infrastructure/adapters/ChunkAdapter');
+  const { ChunkAdapter } = await import('../../../../../periphery/adapters/chunk/ChunkingAdapter');
 
-  const git = state.deps?.git;
   const vectorDB = new ChromaMemoryAdapter();
   const chunk = new ChunkAdapter();
 
   // Run indexer
   const indexer = new CodebaseIndexer();
+  
+  // Check if this is first-time indexing by checking if any files exist for this project
+  const hasExistingIndex = await vectorDB.query(
+    'check existing index',
+    state.context.project,
+    { k: 1, where: { type: 'codebase' } }
+  );
+  
+  const forceFullIndexing = hasExistingIndex.length === 0;
+  
+  if (forceFullIndexing) {
+    console.log('   🆕 First-time indexing → Forcing full index');
+  }
+  
   const stats = await indexer.index(
     { git, vectorDB, chunk },
     {
       project: state.context.project,
       workingDir: state.context.workingDir,
       branch: command.branch,
-      incremental: command.mode !== 'full'  // smart = auto, full = force full
+      incremental: !forceFullIndexing && command.mode !== 'full'  // Force full if first time
     }
   );
 
-  // Show completion
-  await chatAPI.addChatStatus({
-    type: 'indexed',
-    message: `✅ Indexed ${stats.filesIndexed} files (${stats.chunksCreated} chunks, ~${stats.estimatedTokens} tokens)`
+  // Show completion with detailed stats
+  console.log(`✅ Indexed ${stats.filesIndexed} files (${stats.chunksCreated} chunks, ~${stats.estimatedTokens} tokens)`);
+  
+  // Send indexed completion status to UI
+  await chatAPI.showChatStatus('indexed', {
+    filesIndexed: stats.filesIndexed,
+    chunks: stats.chunksCreated,
+    tokens: stats.estimatedTokens,
+    duration: stats.duration
   });
 
   return {
@@ -106,6 +128,11 @@ async function executeFileLearn(
   const base = state.context.workingDir;
   const targets = command.files || [];
   const texts: string[] = [];
+
+  // Show analyzing status for files
+  await chatAPI.showChatStatus('analyzing', { 
+    message: `Analyzing ${targets.length} file(s)...` 
+  });
 
   if (targets.length) {
     for (const t of targets) {
@@ -149,6 +176,12 @@ async function executeFileLearn(
     texts.push(state.spec);
   }
 
+  // Show analyzed completion
+  await chatAPI.showChatStatus('analyzed', {
+    filesCount: texts.length,
+    filesList: targets.slice(0, 5)  // First 5 files
+  });
+
   return { targets, texts };
 }
 
@@ -159,8 +192,15 @@ async function executeTextLearn(
   state: LearnGraphState,
   command: { text?: string }
 ): Promise<Partial<LearnGraphState>> {
+  const chatAPI = (await import('../../../../../core/adapters/ChatAPIClient')).getChatAPIClient();
   const text = command.text || state.spec;
 
+  // Show storing status for text
+  await chatAPI.showChatStatus('storing', { 
+    message: 'Storing lesson...' 
+  });
+
+  // Note: 'stored' will be shown by store node
   return {
     targets: ['raw-text'],
     texts: [text]

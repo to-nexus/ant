@@ -129,7 +129,7 @@ export class ChatAPIClient {
    * - Auto-merge or disappear based on next content type (handled by ChatService)
    */
   async showChatStatus(
-    type: 'placeholder' | 'exploring' | 'explored' | 'grepping' | 'grepped' | 'reading' | 'read' | 'thinking',
+    type: 'placeholder' | 'exploring' | 'explored' | 'grepping' | 'grepped' | 'reading' | 'read' | 'thinking' | 'indexing' | 'indexed' | 'analyzing' | 'analyzed' | 'storing' | 'stored',
     metadata?: Record<string, any>
   ): Promise<void> {
     if (!this.enabled) return;
@@ -193,6 +193,33 @@ export class ChatAPIClient {
           break;
         case 'thinking':
           content = '';  // Empty content, will be filled by LLM tokens
+          break;
+        case 'indexing':
+          const indexingMsg = metadata?.message ?? 'Indexing codebase...';
+          content = indexingMsg;
+          break;
+        case 'indexed':
+          const filesIndexed = metadata?.filesIndexed ?? 0;
+          const chunks = metadata?.chunks ?? 0;
+          const tokens = metadata?.tokens ?? 0;
+          const duration = metadata?.duration ? `in ${(metadata.duration / 1000).toFixed(1)}s` : '';
+          content = `Indexed ${filesIndexed} files → ${chunks} chunks (~${Math.round(tokens / 1000)}K tokens) ${duration}`.trim();
+          break;
+        case 'analyzing':
+          const analyzingMsg = metadata?.message ?? 'Analyzing files...';
+          content = analyzingMsg;
+          break;
+        case 'analyzed':
+          const analyzedFiles = metadata?.filesCount ?? 0;
+          content = `Analyzed ${analyzedFiles} files`;
+          break;
+        case 'storing':
+          const storingMsg = metadata?.message ?? 'Storing lesson...';
+          content = storingMsg;
+          break;
+        case 'stored':
+          const storedMsg = metadata?.message ?? 'Stored lesson successfully';
+          content = storedMsg;
           break;
         default:
           content = 'Processing...';

@@ -1,4 +1,4 @@
-import { AgentTask as CoreAgentTask, CodeMode as CoreCodeMode, ProjectContext as CoreProjectContext } from "../../core/types";
+import { AgentTask as CoreAgentTask, CodeMode as CoreCodeMode, ProjectContext as CoreProjectContext, SessionTurn as CoreSessionTurn } from "../../core/types";
 
 export const DIRECTIVE_TYPES = {
   CODE: 'code',
@@ -11,6 +11,7 @@ export type DirectiveType = typeof DIRECTIVE_TYPES[keyof typeof DIRECTIVE_TYPES]
 // Re-export core types for backward compatibility
 export type AgentTask = CoreAgentTask;
 export type CodeMode = CoreCodeMode;
+export type SessionTurn = CoreSessionTurn;
 
 // Extend core ProjectContext with architect-specific fields
 export interface ProjectContext extends CoreProjectContext {

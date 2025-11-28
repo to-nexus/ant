@@ -164,6 +164,28 @@ export class PromptEngine {
       prdSpec?: string;
       originalFiles?: string;
       currentCode?: string;
+      lessons?: Array<{
+        content: string;
+        score: number;
+        relatedFiles: string[];
+        tags: string[];
+        timestamp: string;
+        directive?: string;
+      }>;
+      sessionContext?: {
+        recentTurns: Array<{
+          turnId: number;
+          directive: string;
+          mode: string;
+          output: string;
+        }>;
+        summary?: string;
+        totalTurns: number;
+        currentTurn: number;
+        currentMode: string;
+        windowSize: number;
+        compressionRatio: number;
+      };
       currentTask?: {
         name: string;
         type: string;

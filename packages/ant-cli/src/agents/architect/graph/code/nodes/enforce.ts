@@ -218,7 +218,7 @@ ${formattedViolations}
     console.log('⚠️  Some violations need task decomposition (blocking errors)\n');
   }
   
-  // ===== SAVE ENFORCEMENT FEEDBACK (for learning) =====
+  // ===== SAVE ENFORCEMENT FEEDBACK (for lesson extraction) =====
   const feedback: EnforcementFeedback = {
     taskId: state.currentTask?.id || 'unknown',
     taskName: state.currentTask?.name || 'Unknown Task',
@@ -231,7 +231,7 @@ ${formattedViolations}
   
   const enforcementHistory = [...(state.enforcementHistory || []), feedback];
   
-  console.log('💾 Enforcement feedback saved for learning\n');
+  console.log('💾 Enforcement feedback saved for lesson extraction\n');
   console.log('📨 Passing violations to Plan node for strategy decision...\n');
   
   // ✅ Workflow instrumentation: Exit node (retry path)

@@ -42,6 +42,14 @@ export interface CodeContext {
   codeHead?: string;              // Git HEAD version (for changed files only)
   files: FileWithSource[];        // Files with source tracking
   strategy: 'hybrid';             // Always hybrid now
+  lessons?: Array<{               // Lessons from unified search
+    content: string;
+    score: number;
+    relatedFiles: string[];
+    tags: string[];
+    timestamp: string;
+    directive?: string;
+  }>;
   stats: {
     filesLoaded: number;
     filesChanged: number;         // Number of files with local changes
