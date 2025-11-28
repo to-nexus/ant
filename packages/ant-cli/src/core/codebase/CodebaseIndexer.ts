@@ -80,8 +80,15 @@ export class CodebaseIndexer {
     let filesToIndex: string[];
     let indexingMode: 'full' | 'incremental';
 
-    if (branchExists && options.incremental !== false) {
-      // ✅ Incremental: Only changed files
+    // ✅ Force full indexing if explicitly requested or if branch doesn't exist
+    if (!branchExists || options.incremental === false) {
+      // Full: All source files
+      console.log(`   📊 ${!branchExists ? 'Branch not in Vector DB' : 'Full mode requested'} → Full indexing`);
+      filesToIndex = await this.getSourceFiles(options.workingDir, exclude);
+      indexingMode = 'full';
+      console.log(`   Found ${filesToIndex.length} source files`);
+    } else {
+      // Incremental: Only changed files
       console.log(`   📊 Branch exists in Vector DB → Incremental indexing`);
       filesToIndex = await this.getChangedFiles(deps.git, options.workingDir, exclude);
       indexingMode = 'incremental';
@@ -92,17 +99,11 @@ export class CodebaseIndexer {
           filesIndexed: 0,
           chunksCreated: 0,
           estimatedTokens: 0,
-          duration: 0
+          duration: Date.now() - startTime
         };
       }
       
       console.log(`   Found ${filesToIndex.length} changed files`);
-    } else {
-      // ✅ Full: All source files
-      console.log(`   📊 Branch not in Vector DB → Full indexing`);
-      filesToIndex = await this.getSourceFiles(options.workingDir, exclude);
-      indexingMode = 'full';
-      console.log(`   Found ${filesToIndex.length} source files`);
     }
 
     // 3. Index files in batches
@@ -160,14 +161,18 @@ export class CodebaseIndexer {
     branch: string
   ): Promise<boolean> {
     try {
-      // Query for any document with this project + branch
+      // Query for any codebase document with this branch
+      // Use $and operator for multiple conditions
       const results = await vectorDB.query(
-        'check branch exists',  // Dummy query
+        'check branch exists',
         project,
         {
           k: 1,
           where: {
-            branch
+            $and: [
+              { type: 'codebase' },
+              { branch }
+            ]
           }
         }
       );
