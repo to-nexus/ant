@@ -99,6 +99,29 @@ export class CodebaseRetriever {
       lessons = unifiedResult.lessons;
 
       console.log(`   ✅ Unified search: ${codeFiles.length} files, ${lessons.length} lessons (mode: ${mode})`);
+      
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // 🔥 CRITICAL: Hybrid fallback to keyword search if Vector DB is empty
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      if (codeFiles.length === 0 && deps.git) {
+        console.log(`   🔄 Vector DB empty - falling back to keyword search (hybrid mode)`);
+        const keywordResults = await this.keywordStrategy.search(
+          directive,
+          workingDir,
+          { maxFiles: maxCodeFiles, exclude },
+          deps.git
+        );
+        
+        // Convert keyword results to FileWithSource format
+        codeFiles = keywordResults.map(r => ({
+          path: r.path,
+          sources: [r.source],
+          priority: 'normal' as const,
+          hasLocalChanges: false
+        }));
+        
+        console.log(`   ✅ Keyword fallback: ${codeFiles.length} files found`);
+      }
     } else {
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       // Fallback: Keyword search only (no Vector DB)
@@ -107,7 +130,8 @@ export class CodebaseRetriever {
       const keywordResults = await this.keywordStrategy.search(
         directive,
         workingDir,
-        { maxFiles: maxCodeFiles, exclude }
+        { maxFiles: maxCodeFiles, exclude },
+        deps.git
       );
       
       // Convert keyword results to FileWithSource format

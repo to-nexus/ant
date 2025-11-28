@@ -98,18 +98,21 @@ export async function docGen(
   let textResponse = '';
   
   // ✅ Calculate maxTokens based on task line budget
-  let maxTokens = 16000;  // Default
+  let maxTokens = 16000;  // Default for small tasks
   
   if (state.currentTask?.description) {
     const lineMatch = state.currentTask.description.match(/MAX (\d+) lines/i);
     if (lineMatch) {
       const maxLines = parseInt(lineMatch[1]);
-      // Estimate: ~15 tokens per line (conservative for Markdown with formatting)
-      // Add 2000 tokens buffer for XML tags, metadata, and thinking
-      const estimatedTokens = maxLines * 15 + 2000;
+      // Estimate: ~12 tokens per line (average for Markdown with formatting)
+      // Add 3000 tokens buffer for XML tags, metadata, and thinking
+      const estimatedTokens = maxLines * 12 + 3000;
       
-      maxTokens = Math.max(16000, estimatedTokens);  // Ensure sufficient tokens for thinking
-      console.log(`📏 [DocGen] Task line budget: ${maxLines} lines → maxTokens: ${maxTokens}`);
+      // ✅ Smart minimum based on complexity
+      const minTokens = maxLines <= 150 ? 16000 : 20000;
+      maxTokens = Math.max(minTokens, estimatedTokens);
+      
+      console.log(`📏 [DocGen] Task line budget: ${maxLines} lines → maxTokens: ${maxTokens} (min: ${minTokens})`);
     }
   }
   

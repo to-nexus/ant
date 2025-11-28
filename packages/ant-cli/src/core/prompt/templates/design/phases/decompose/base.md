@@ -71,10 +71,11 @@ Count YES answers:
 - 5+ pages, external integrations
 - **Create 4 tasks, ~112-187 lines each** (buffer for LLM overrun)
 
-**⚠️ NEVER EXCEED 750 LINES - NO EXCEPTIONS!**
-- If requirements seem to need more, you're being too verbose
+**⚠️ STAY WITHIN YOUR BUDGET - BE REALISTIC!**
+- Choose appropriate budget based on actual system complexity
 - Focus on architecture decisions, NOT implementation details
-- Skip obvious sections (e.g., no backend? No database chapter!)
+- Skip non-applicable sections (e.g., no backend? No database chapter!)
+- Balance completeness with conciseness - cover all critical aspects
 
 **STEP 4: Divide Budget Across Tasks**
 - Divide total budget by number of tasks
@@ -104,11 +105,13 @@ Count YES answers:
 ### Length Budgets (MANDATORY)
 
 **Total line budgets based on project scope:**
-- **Simple (frontend-only, 1-2 features)**: 120-180 lines total
-- **Medium (multi-feature OR simple backend)**: 225-375 lines total  
-- **Complex (full-stack, multi-page)**: 450-750 lines total
+- **Minimal (single component/utility)**: 80-150 lines total
+- **Simple (frontend-only, 1-3 features)**: 150-300 lines total
+- **Medium (multi-feature OR simple backend)**: 300-600 lines total  
+- **Complex (full-stack, multi-page)**: 600-1200 lines total
+- **Very Complex (microservices, multi-module)**: 1200-2000 lines total
 
-**⚠️ ABSOLUTE MAXIMUM: 750 lines - NO project should exceed this!**
+**⚠️ RECOMMENDED MAXIMUM: 2000 lines - Only exceed for exceptionally complex systems!**
 
 **Budget allocation per task:**
 - Divide total budget evenly across N tasks
@@ -122,9 +125,11 @@ MAX [N] lines for this task!
 ```
 
 **Examples:**
-- Simple project (150 lines / 1 task): "MAX 150 lines total!"
-- Medium project (300 lines / 3 tasks): "MAX 100 lines for this task! (Total limit: 300 lines)"
-- Complex project (600 lines / 4 tasks): "MAX 150 lines for this task! (Total limit: 600 lines)"
+- Minimal project (120 lines / 1 task): "MAX 120 lines total!"
+- Simple project (240 lines / 2 tasks): "MAX 120 lines for this task! (Total limit: 240 lines)"
+- Medium project (450 lines / 3 tasks): "MAX 150 lines for this task! (Total limit: 450 lines)"
+- Complex project (900 lines / 4 tasks): "MAX 225 lines for this task! (Total limit: 900 lines)"
+- Very Complex project (1600 lines / 5 tasks): "MAX 320 lines for this task! (Total limit: 1600 lines)"
 
 ### Priority Assignment
 - Use 200-299 range
@@ -151,7 +156,7 @@ DO NOT CREATE tasks for:
 
 ## EXAMPLES
 
-**Example 1: Simple (1 task, 150 lines total)**
+**Example 1: Minimal (1 task, 120 lines total)**
 ```
 Input: "Add a counter button that shows current count"
 
@@ -159,13 +164,13 @@ Input: "Add a counter button that shows current count"
   "tasks": [{
     "id": "design-doc",
     "name": "Create Design Document",
-    "description": "Design the simple counter button component with state management. MAX 150 lines total!",
+    "description": "Design the simple counter button component with state management. MAX 120 lines total!",
     "priority": 250
   }]
 }
 ```
 
-**Example 2: Medium (2 tasks, 270 lines total)**
+**Example 2: Simple (2 tasks, 240 lines total)**
 ```
 Input: "Add a todo list feature with localStorage persistence"
 
@@ -174,47 +179,75 @@ Input: "Add a todo list feature with localStorage persistence"
     {
       "id": "design-arch-data",
       "name": "Design Document: Architecture & Data Model",
-      "description": "Write sections on: System overview, todo data model, and localStorage strategy. MAX 135 lines for this task! (Total limit: 270 lines across 2 tasks)",
+      "description": "Write sections on: System overview, todo data model, and localStorage strategy. MAX 120 lines for this task! (Total limit: 240 lines across 2 tasks)",
       "priority": 220
     },
     {
       "id": "design-ui-components",
       "name": "Design Document: UI Components & Interactions",
-      "description": "Write sections on: Component hierarchy, user interactions, and state management. MAX 135 lines for this task! (Total limit: 270 lines, currently ~135 after task 1)",
+      "description": "Write sections on: Component hierarchy, user interactions, and state management. MAX 120 lines for this task! (Total limit: 240 lines, currently ~120 after task 1)",
       "priority": 240
     }
   ]
 }
 ```
 
-**Example 3: Complex (4 tasks, 600 lines total)**
+**Example 3: Medium (3 tasks, 450 lines total)**
 ```
-Input: "Design full-stack e-commerce platform with product catalog, cart, checkout, and admin panel"
+Input: "Design a task management system with user authentication, task CRUD, and real-time notifications"
 
 {
   "tasks": [
     {
       "id": "design-architecture",
       "name": "Design Document: System Architecture",
-      "description": "Write sections on: Architecture pattern selection, layer definitions, technology stack. MAX 150 lines! (Total limit: 600 lines across 4 tasks)",
+      "description": "Write sections on: Architecture pattern selection, layer definitions, technology stack, real-time architecture. MAX 150 lines! (Total limit: 450 lines across 3 tasks)",
       "priority": 220
     },
     {
       "id": "design-data-api",
       "name": "Design Document: Data Models & API",
-      "description": "Write sections on: Database schema (products, orders, users), RESTful API endpoints. MAX 150 lines! (Total limit: 600 lines, currently ~150 after task 1)",
+      "description": "Write sections on: Database schema (users, tasks, notifications), RESTful API endpoints, WebSocket integration. MAX 150 lines! (Total limit: 450 lines, currently ~150 after task 1)",
+      "priority": 240
+    },
+    {
+      "id": "design-frontend-security",
+      "name": "Design Document: Frontend & Security",
+      "description": "Write sections on: Component hierarchy, state management, authentication flow, authorization. MAX 150 lines! (Total limit: 450 lines, currently ~300 after task 2)",
+      "priority": 260
+    }
+  ]
+}
+```
+
+**Example 4: Complex (4 tasks, 900 lines total)**
+```
+Input: "Design full-stack e-commerce platform with product catalog, cart, checkout, payment integration, admin panel, and analytics"
+
+{
+  "tasks": [
+    {
+      "id": "design-architecture",
+      "name": "Design Document: System Architecture",
+      "description": "Write sections on: Overall architecture, microservices design (if applicable), technology stack, scalability considerations. MAX 225 lines! (Total limit: 900 lines across 4 tasks)",
+      "priority": 220
+    },
+    {
+      "id": "design-data-api",
+      "name": "Design Document: Data Models & API",
+      "description": "Write sections on: Database schema (products, orders, users, inventory), RESTful API design, GraphQL endpoints (if applicable). MAX 225 lines! (Total limit: 900 lines, currently ~225 after task 1)",
       "priority": 240
     },
     {
       "id": "design-frontend",
       "name": "Design Document: Frontend Architecture",
-      "description": "Write sections on: Component hierarchy, state management, routing, design system. MAX 150 lines! (Total limit: 600 lines, currently ~300 after task 2)",
+      "description": "Write sections on: Component architecture, routing structure, state management (Redux/Context), design system, responsive design. MAX 225 lines! (Total limit: 900 lines, currently ~450 after task 2)",
       "priority": 260
     },
     {
       "id": "design-integrations",
       "name": "Design Document: Integrations & Security",
-      "description": "Write sections on: Payment gateway integration, authentication, authorization. MAX 150 lines! (Total limit: 600 lines, currently ~450 after task 3)",
+      "description": "Write sections on: Payment gateway integration, authentication & authorization, analytics integration, admin dashboard features. MAX 225 lines! (Total limit: 900 lines, currently ~675 after task 3)",
       "priority": 280
     }
   ]
@@ -238,14 +271,14 @@ Input: "Design full-stack e-commerce platform with product catalog, cart, checko
 **CRITICAL: Each document (FE and BE) gets its OWN independent line budget!**
 
 **Analyze Frontend complexity separately:**
-- Simple frontend (1-2 pages, basic state): 120-180 lines
-- Medium frontend (3-5 pages, complex state): 225-375 lines
-- Complex frontend (5+ pages, advanced patterns): 450-750 lines
+- Simple frontend (1-3 pages, basic state): 150-250 lines
+- Medium frontend (4-6 pages, complex state): 300-500 lines
+- Complex frontend (7+ pages, advanced patterns): 600-1000 lines
 
 **Analyze Backend complexity separately:**
-- Simple backend (CRUD API, 1-3 tables): 120-180 lines
-- Medium backend (auth, business logic, 3-5 tables): 225-375 lines
-- Complex backend (multi-service, complex data, 5+ tables): 450-750 lines
+- Simple backend (CRUD API, 1-3 tables): 150-250 lines
+- Medium backend (auth, business logic, 4-6 tables): 300-500 lines
+- Complex backend (multi-service, complex data, 7+ tables): 600-1000 lines
 
 **Create SEPARATE task groups for FE and BE:**
 
@@ -290,7 +323,7 @@ Example: Medium Frontend (300 lines, 2 tasks) + Medium Backend (330 lines, 2 tas
 
 **KEY RULES for Dual Design Tasks:**
 1. **Separate Task Groups**: Create FE tasks first (complete fe-system-design.md), then BE tasks (complete be-system-design.md)
-2. **Independent Budgets**: FE and BE documents each have their own 120-750 line limit (NOT shared)
+2. **Independent Budgets**: FE and BE documents each have their own 150-1000 line limit (NOT shared, scale based on complexity)
 3. **Explicit File Naming**: 
    - First FE task: "Create fe-system-design.md with..."
    - Subsequent FE tasks: "Append to fe-system-design.md with..."

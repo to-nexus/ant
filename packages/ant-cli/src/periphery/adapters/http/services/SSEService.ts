@@ -85,7 +85,7 @@ export class SSEService {
     const clients = this.clients.get(key);
     
     if (!clients || clients.size === 0) {
-      console.log(`[SSEService] No clients connected for ${key} (type: ${type})`);
+      // Silent return - no clients is a normal scenario (background jobs, API calls, etc.)
       return;
     }
     

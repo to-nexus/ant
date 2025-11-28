@@ -15,6 +15,7 @@ export class KeywordSearchStrategy {
    * @param directive - User's directive/query
    * @param workingDir - Working directory to search
    * @param options - Search options
+   * @param git - Optional GitPort (for signature compatibility, not used in keyword search)
    * @returns Array of file paths with match counts
    */
   async search(
@@ -23,7 +24,8 @@ export class KeywordSearchStrategy {
     options: {
       maxFiles: number;
       exclude: string[];
-    }
+    },
+    git?: any
   ): Promise<Array<{ path: string; source: FileSource }>> {
     // Extract keywords from directive
     const keywords = this.extractKeywords(directive);

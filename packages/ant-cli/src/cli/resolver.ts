@@ -102,7 +102,7 @@ export function resolveInputFile(inputPath: string, task: 'design' | 'code' | 'l
   }
   
   if (stats.isDirectory()) {
-    // ✅ CRITICAL: Check for resume scenario (session exists with taskQueue)
+    // ✅ CRITICAL: Check for resume scenario (session exists with taskQueue OR overrideDirective)
     // If resuming, we don't need design/directive files
     if (task === 'code' || task === 'learn') {
       const sessionPath = path.join(inputPath, 'sessions', `${task}.json`);
@@ -111,11 +111,36 @@ export function resolveInputFile(inputPath: string, task: 'design' | 'code' | 'l
           const sessionContent = fs.readFileSync(sessionPath, 'utf-8');
           const session = JSON.parse(sessionContent);
           
-          // Check if session has taskQueue (indicating work in progress)
-          if (session.state?.taskQueue && Array.isArray(session.state.taskQueue) && session.state.taskQueue.length > 0) {
+          // ✅ Check multiple resume scenarios:
+          // 1. Session has taskQueue with remaining tasks (work in progress)
+          // 2. Session has overrideDirective from chat (new work from chat)
+          // 3. Session has directives array (previous work with directive)
+          const hasTaskQueue = session.state?.taskQueue && 
+                               Array.isArray(session.state.taskQueue) && 
+                               session.state.taskQueue.length > 0;
+          
+          const hasOverrideDirective = session.state?.overrideDirective && 
+                                       typeof session.state.overrideDirective === 'string' &&
+                                       session.state.overrideDirective.trim().length > 0;
+          
+          const hasDirectives = session.state?.directives && 
+                               Array.isArray(session.state.directives) &&
+                               session.state.directives.length > 0;
+          
+          const hasChatSource = session.state?.chatSource === true;
+          
+          if (hasTaskQueue || hasOverrideDirective || (hasDirectives && hasChatSource)) {
             console.log(`\n🔄 [Resolver] Resuming ${task} job from session`);
-            console.log(`   Task queue: ${session.state.taskQueue.length} tasks remaining`);
-            console.log(`   Completed: ${session.state.completedTasks?.length || 0} tasks\n`);
+            if (hasTaskQueue) {
+              console.log(`   Task queue: ${session.state.taskQueue.length} tasks remaining`);
+            }
+            if (hasOverrideDirective) {
+              console.log(`   Override directive: ${session.state.overrideDirective.substring(0, 50)}...`);
+            }
+            if (hasDirectives) {
+              console.log(`   Directives: ${session.state.directives.length} directive(s)`);
+            }
+            console.log(`   Completed: ${session.state.completedTasksDetails?.length || session.state.completedTasks?.length || 0} tasks\n`);
             
             // ✅ Return empty string to signal "resume mode" (no file validation needed)
             return '';
