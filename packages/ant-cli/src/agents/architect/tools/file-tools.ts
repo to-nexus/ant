@@ -152,6 +152,13 @@ export function createListFilesTool(gitPort: GitPort): Tool {
           tree: fileTree,
         };
       } catch (error: any) {
+        // ✅ CRITICAL: Update status to explored (failed) before returning error
+        await chatAPI.showChatStatus('explored', { 
+          filesCount: 0, 
+          totalFiles: 0,
+          error: error.message
+        });
+        
         return {
           error: true,
           message: `Failed to list files: ${error.message}`,

@@ -13,7 +13,7 @@ export class TextLoader implements Loader {
     }
     
     // Detect content type from metadata or content
-    const contentType = this.detectContentType(input.content, input.metadata.type);
+    const contentType = this.detectContentType(input.content, input.metadata);
     
     return {
       text: input.content,
@@ -31,11 +31,30 @@ export class TextLoader implements Loader {
    */
   private detectContentType(
     text: string, 
-    type: string
+    metadata: any
   ): 'markdown' | 'code' | 'plain' {
-    // Check metadata first
-    if (type === 'learning' || type === 'design' || type === 'spec') {
+    // Check metadata.type first
+    const type = metadata.type;
+    if (type === 'lesson' || type === 'design' || type === 'spec') {
       return 'markdown';
+    }
+    
+    // ✅ For codebase type, detect from file extension or language
+    if (type === 'codebase') {
+      const language = metadata.language;
+      const filePath = metadata.filePath || metadata.source;
+      
+      // Check if it's a code file by extension or language
+      if (language && language !== 'unknown') {
+        return 'code';
+      }
+      
+      if (filePath) {
+        const codeExtensions = ['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs', '.java', '.c', '.cpp'];
+        if (codeExtensions.some(ext => filePath.endsWith(ext))) {
+          return 'code';
+        }
+      }
     }
     
     if (type === 'code') {

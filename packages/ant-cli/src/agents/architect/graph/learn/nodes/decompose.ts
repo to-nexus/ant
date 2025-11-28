@@ -39,9 +39,13 @@ export async function decompose(state: LearnGraphState): Promise<Partial<LearnGr
   const { StreamOrchestrator } = await import('../../../../../core/streaming/StreamOrchestrator');
   const { XMLStreamParser } = await import('../../../../../core/streaming/parsers/XMLStreamParser');
   const { CommonRenderStrategy } = await import('../../../../../core/streaming/strategies/CommonRenderStrategy');
+  const { detectUserLanguage } = await import('../../../../../core/utils/languageDetector');
+  
+  // ✅ Detect user language for localized messages
+  const userLanguage = detectUserLanguage(state.spec);
   
   const parser = new XMLStreamParser();
-  const renderStrategy = new CommonRenderStrategy(chatAPI);
+  const renderStrategy = new CommonRenderStrategy(chatAPI, undefined, userLanguage);
   const orchestrator = new StreamOrchestrator({
     parser,
     renderStrategy,

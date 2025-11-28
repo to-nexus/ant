@@ -9,10 +9,8 @@
  */
 
 import { CodebaseIndexer } from '../core/codebase/CodebaseIndexer';
-import { SimpleGitAdapter } from '../infrastructure/adapters/SimpleGitAdapter';
-import { ChromaMemoryAdapter } from '../periphery/adapters/memory/ChromaMemoryAdapter';
-import { ChunkAdapter } from '../infrastructure/adapters/ChunkAdapter';
-import { WorkspaceResolver } from '../infrastructure/workspace/WorkspaceResolver';
+import { AdapterFactory } from '../infrastructure/adapters/AdapterFactory';
+import { LocalWorkspaceResolver } from '../infrastructure/workspace/LocalWorkspaceResolver';
 import { UserContext } from '../core/types/user';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -29,7 +27,7 @@ export async function indexCommand(
 
   try {
     // 1. Resolve workspace path
-    const workspaceResolver = new WorkspaceResolver();
+    const workspaceResolver = new LocalWorkspaceResolver();
     const userContext: UserContext = {
       userId: 'local',
       organizationId: 'local',
@@ -69,10 +67,10 @@ export async function indexCommand(
       throw new Error('Git repository not initialized. Please clone or initialize first.');
     }
 
-    // 5. Initialize adapters
-    const git = new SimpleGitAdapter(codebasePath);
-    const vectorDB = new ChromaMemoryAdapter();
-    const chunk = new ChunkAdapter();
+    // 5. Initialize adapters using factory (hexagonal architecture)
+    const git = AdapterFactory.createGitAdapter(codebasePath, project);
+    const vectorDB = AdapterFactory.createMemoryAdapter();
+    const chunk = AdapterFactory.createChunkAdapter();
 
     // 6. Run indexer
     const indexer = new CodebaseIndexer();

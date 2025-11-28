@@ -43,5 +43,13 @@ export interface MemoryPort {
    * @returns Ranked results with scores and metadata
    */
   query(query: string, namespace: string, options?: QueryOptions): Promise<QueryResult[]>;
+  
+  /**
+   * Delete documents by metadata filter
+   * 
+   * @param namespace - Collection namespace
+   * @param where - Metadata filter (e.g., { filePath: 'src/user.ts', branch: 'main' })
+   */
+  delete(namespace: string, where: Record<string, any>): Promise<void>;
 }
 

@@ -21,7 +21,9 @@ interface ParserContext {
   insideEdit: boolean;
   insideSearch: boolean;
   insideReplace: boolean;
-  insideTasks: boolean; // For <tasks> JSON data (not displayed in UI)
+  insideTasks: boolean; // ✅ Changed: Now used to track but will emit to response
+  insideLearnCommand: boolean;  // ✅ NEW: <learn_command> tag
+  learnCommandContent: string;  // ✅ NEW: Accumulate learn_command content
   currentFilePath: string | null;
   currentAppendPath: string | null;  // ✅ NEW
   currentEditPath: string | null;
@@ -36,6 +38,8 @@ export class XMLStreamParser implements IStreamParser {
     insideSearch: false,
     insideReplace: false,
     insideTasks: false,
+    insideLearnCommand: false,  // ✅ NEW
+    learnCommandContent: '',  // ✅ NEW
     currentFilePath: null,
     currentAppendPath: null,  // ✅ NEW
     currentEditPath: null
@@ -128,7 +132,7 @@ export class XMLStreamParser implements IStreamParser {
         continue;
       }
       
-      // 3. Check for <tasks> inside thinking (조용히 소비, UI 출력 없음)
+      // 3. Check for <tasks> inside thinking (still suppress in thinking blocks)
       if (this.context.insideThinking && !this.context.insideTasks && this.buffer.includes('<tasks>')) {
         const startIdx = this.buffer.indexOf('<tasks>');
         
@@ -143,7 +147,7 @@ export class XMLStreamParser implements IStreamParser {
         
         this.buffer = this.buffer.substring(startIdx + '<tasks>'.length);
         this.context.insideTasks = true;
-        // ❌ UI 출력 제거 (내부 파싱만)
+        // ✅ Still suppress inside thinking (internal planning)
         
         continueParsingLoop = true;
         continue;
@@ -160,40 +164,69 @@ export class XMLStreamParser implements IStreamParser {
         continue;
       }
       
-    // 5. Check for <tasks> opening at top level (조용히 소비, UI 출력 없음)
-    if (!this.context.insideTasks && this.buffer.includes('<tasks>')) {
-        const startIdx = this.buffer.indexOf('<tasks>');
-        // Emit any text before <tasks> as response
-        const beforeTasks = this.buffer.substring(0, startIdx);
-        if (beforeTasks.trim()) {
-          actions.push({
-            type: 'response',
-            data: { content: beforeTasks }
-          });
-        }
-        this.buffer = this.buffer.substring(startIdx + '<tasks>'.length);
-        this.context.insideTasks = true;
-        // ❌ UI 출력 제거 (내부 파싱만)
-        
-        continueParsingLoop = true;
-        continue;
-      }
-      
-    // 6. Check for </tasks> closing (조용히 소비, UI 출력 없음)
-    if (this.context.insideTasks && this.buffer.includes('</tasks>')) {
+      // 6. Check for </tasks> closing inside thinking (suppress)
+      if (this.context.insideThinking && this.context.insideTasks && this.buffer.includes('</tasks>')) {
         const endIdx = this.buffer.indexOf('</tasks>');
-        // ❌ tasksContent 제거 - 더 이상 UI로 전송하지 않음
         this.buffer = this.buffer.substring(endIdx + '</tasks>'.length);
         this.context.insideTasks = false;
-        // ❌ UI 출력 제거 (내부 파싱만)
+        // ✅ Suppress inside thinking
         
         continueParsingLoop = true;
         continue;
       }
       
-      // 7. Accumulate content inside <tasks> (조용히 소비, UI 출력 없음)
-      if (this.context.insideTasks && this.buffer.length > 0) {
-        // ❌ 그냥 버퍼 비우기 (UI 출력 없음)
+      // 7. Accumulate content inside <tasks> in thinking (suppress)
+      if (this.context.insideThinking && this.context.insideTasks && this.buffer.length > 0) {
+        this.buffer = '';  // Suppress
+        continue;
+      }
+      
+      // 8. Check for <learn_command> opening (outside thinking)
+      if (!this.context.insideThinking && !this.context.insideLearnCommand && this.buffer.includes('<learn_command>')) {
+        const startIdx = this.buffer.indexOf('<learn_command>');
+        
+        // Emit any text before <learn_command> as response
+        const beforeTag = this.buffer.substring(0, startIdx);
+        if (beforeTag.trim()) {
+          actions.push({
+            type: 'response',
+            data: { content: beforeTag }
+          });
+        }
+        
+        this.buffer = this.buffer.substring(startIdx + '<learn_command>'.length);
+        this.context.insideLearnCommand = true;
+        this.context.learnCommandContent = '';  // Reset accumulator
+        
+        continueParsingLoop = true;
+        continue;
+      }
+      
+      // 9. Check for </learn_command> closing
+      if (this.context.insideLearnCommand && this.buffer.includes('</learn_command>')) {
+        const endIdx = this.buffer.indexOf('</learn_command>');
+        const fragment = this.buffer.substring(0, endIdx);
+        this.context.learnCommandContent += fragment;
+        
+        this.buffer = this.buffer.substring(endIdx + '</learn_command>'.length);
+        this.context.insideLearnCommand = false;
+        
+        // ✅ Emit complete learn_command as ONE response chunk
+        const fullContent = `<learn_command>${this.context.learnCommandContent}</learn_command>`;
+        actions.push({
+          type: 'response',
+          data: { content: fullContent }
+        });
+        
+        this.context.learnCommandContent = '';  // Reset
+        
+        continueParsingLoop = true;
+        continue;
+      }
+      
+      // 10. Accumulate content inside <learn_command>
+      if (this.context.insideLearnCommand && this.buffer.length > 0) {
+        this.context.learnCommandContent += this.buffer;
         this.buffer = '';
         continue;
       }
@@ -488,6 +521,7 @@ export class XMLStreamParser implements IStreamParser {
       // 14. General text response handling (outside any XML block)
       if (!this.context.insideThinking && 
           !this.context.insideTasks &&
+          !this.context.insideLearnCommand &&  // ✅ NEW
           !this.context.insideFile && 
           !this.context.insideEdit) {
         
@@ -496,7 +530,7 @@ export class XMLStreamParser implements IStreamParser {
           
           // 1️⃣ HIGHEST PRIORITY: Check if there's text BEFORE an XML tag
           // Example: "Here is the code:\n<file path=..." → emit "Here is the code:\n"
-          const beforeTagMatch = this.buffer.match(/^(.+?)(?=<(?:thinking|tasks|file|edit|delete|append)[\s>])/s);
+          const beforeTagMatch = this.buffer.match(/^(.+?)(?=<(?:thinking|tasks|file|edit|delete|append|learn_command|done)[\s>])/s);
           if (beforeTagMatch) {
             const content = beforeTagMatch[1];
             this.buffer = this.buffer.substring(content.length);
@@ -635,6 +669,8 @@ export class XMLStreamParser implements IStreamParser {
       insideSearch: false,
       insideReplace: false,
       insideTasks: false,
+      insideLearnCommand: false,  // ✅ NEW
+      learnCommandContent: '',  // ✅ NEW
       currentFilePath: null,
       currentAppendPath: null,
       currentEditPath: null

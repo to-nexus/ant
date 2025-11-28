@@ -32,102 +32,115 @@ export async function loadContext(
     summary: '',
   };
   
-  // ===== 1. EXPLORE: List all files =====
-  if (strategy.needsExplore) {
-    await chatAPI.showChatStatus('exploring', { filesCount: 0, totalFiles: 0 });
-    
-    const allFiles = await gitPort.listFiles('', [
-      'node_modules',
-      'dist',
-      'build',
-      '.next',
-      'coverage',
-      'package-lock.json',
-      'yarn.lock',
-      'pnpm-lock.yaml',
-      '.git',
-      '*.test.ts',
-      '*.test.tsx',
-      '*.spec.ts',
-      '*.spec.tsx',
-      '*.log',
-    ]);
-    
-    await chatAPI.showChatStatus('explored', { 
-      filesCount: allFiles.length, 
-      totalFiles: allFiles.length 
-    });
-    
-    context.fileTree = buildFileTree(allFiles);
-    console.log(`   ✅ Explored ${allFiles.length} files`);
-  }
-  
-  // ===== 2. GREP: Search for keywords =====
-  if (strategy.needsGrep && strategy.keywords.length > 0) {
-    await chatAPI.showChatStatus('grepping', { totalFiles: 0 });
-    
-    const searchResults = await searchCodebase(
-      gitPort,
-      strategy.keywords,
-      strategy.filePatterns
-    );
-    
-    await chatAPI.showChatStatus('grepped', { 
-      strategy: 'keyword search',
-      filesCount: searchResults.filesMatched,
-      filesList: searchResults.files
-    });
-    
-    context.grepResults = formatGrepResults(searchResults);
-    console.log(`   ✅ Found ${searchResults.totalMatches} matches in ${searchResults.filesMatched} files`);
-  }
-  
-  // ===== 3. READ: Read top relevant files =====
-  if (strategy.needsRead) {
-    // A. Prioritize explicit readFiles (from error context)
-    let filesToRead: string[] = [];
-    
-    if (strategy.readFiles && strategy.readFiles.length > 0) {
-      console.log(`   📖 Reading ${strategy.readFiles.length} error-specific files`);
-      filesToRead = strategy.readFiles;
-    } else if (context.grepResults) {
-      // B. Fallback to top-ranked grep results
-      filesToRead = extractTopFiles(context.grepResults, strategy.maxFilesToRead);
-      console.log(`   📖 Reading top ${filesToRead.length} files from grep results`);
+  try {
+    // ===== 1. EXPLORE: List all files =====
+    if (strategy.needsExplore) {
+      await chatAPI.showChatStatus('exploring', { filesCount: 0, totalFiles: 0 });
+      
+      try {
+        const allFiles = await gitPort.listFiles('', [
+          'node_modules',
+          'dist',
+          'build',
+          '.next',
+          'coverage',
+          'package-lock.json',
+          'yarn.lock',
+          'pnpm-lock.yaml',
+          '.git',
+          '*.test.ts',
+          '*.test.tsx',
+          '*.spec.ts',
+          '*.spec.tsx',
+          '*.log',
+        ]);
+        
+        await chatAPI.showChatStatus('explored', { 
+          filesCount: allFiles.length, 
+          totalFiles: allFiles.length 
+        });
+        
+        context.fileTree = buildFileTree(allFiles);
+        console.log(`   ✅ Explored ${allFiles.length} files`);
+      } catch (error: any) {
+        console.error(`   ❌ Explore failed:`, error);
+        await chatAPI.showChatStatus('explored', { 
+          filesCount: 0, 
+          totalFiles: 0,
+          error: error.message
+        });
+      }
     }
     
-    if (filesToRead.length > 0) {
-      const fileContents: string[] = [];
+    // ===== 2. GREP: Search for keywords =====
+    if (strategy.needsGrep && strategy.keywords.length > 0) {
+      await chatAPI.showChatStatus('grepping', { totalFiles: 0 });
       
-      for (const filePath of filesToRead) {
-        try {
-          await chatAPI.showChatStatus('reading', { file: filePath });
-          
+      try {
+        const searchResults = await searchCodebase(
+          gitPort,
+          strategy.keywords,
+          strategy.filePatterns
+        );
+        
+        await chatAPI.showChatStatus('grepped', { 
+          strategy: 'keyword search',
+          filesCount: searchResults.filesMatched,
+          filesList: searchResults.files
+        });
+        
+        context.grepResults = formatGrepResults(searchResults);
+        console.log(`   ✅ Found ${searchResults.totalMatches} matches in ${searchResults.filesMatched} files`);
+      } catch (error: any) {
+        console.error(`   ❌ Grep failed:`, error);
+        await chatAPI.showChatStatus('grepped', { 
+          strategy: 'keyword search',
+          filesCount: 0,
+          filesList: [],
+          error: error.message
+        });
+      }
+    }
+    
+    // ===== 3. READ: Read files from grep results =====
+    if (strategy.needsRead && context.grepResults) {
+      await chatAPI.showChatStatus('reading', { filesCount: 0 });
+      
+      try {
+        // Extract files from grep results
+        const filesToRead = extractTopFiles(context.grepResults, 10);
+        const fileContents: string[] = [];
+        
+        for (const filePath of filesToRead) {
           const content = await gitPort.readFile(filePath);
           if (content) {
-            fileContents.push(formatFileContent(filePath, content));
+            fileContents.push(`\n### ${filePath}\n\`\`\`\n${content}\n\`\`\``);
           }
-        } catch (error) {
-          console.warn(`   ⚠️  Failed to read ${filePath}:`, error);
         }
+        
+        await chatAPI.showChatStatus('read', { 
+          filesCount: filesToRead.length,
+          filesList: filesToRead
+        });
+        
+        context.fileContents = fileContents.join('\n\n');
+        console.log(`   ✅ Read ${filesToRead.length} files`);
+      } catch (error: any) {
+        console.error(`   ❌ Read failed:`, error);
+        await chatAPI.showChatStatus('read', { 
+          filesCount: 0,
+          filesList: [],
+          error: error.message
+        });
       }
-      
-      context.fileContents = fileContents.join('\n\n');
-      console.log(`   ✅ Read ${fileContents.length} files`);
     }
+    
+    return context;
+  } catch (error: any) {
+    console.error(`❌ loadContext failed:`, error);
+    // Return partial context (what was successfully loaded)
+    return context;
   }
-  
-  // ===== 4. SUMMARY =====
-  const parts: string[] = [];
-  if (context.fileTree) parts.push('file tree');
-  if (context.grepResults) parts.push('search results');
-  if (context.fileContents) parts.push('file contents');
-  
-  context.summary = parts.length > 0 
-    ? `Loaded: ${parts.join(', ')}`
-    : 'No context loaded';
-  
-  return context;
 }
 
 /**

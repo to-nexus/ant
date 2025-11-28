@@ -160,12 +160,16 @@ const ACTOR_MAPPINGS: Record<string, { actors: string[]; description?: string }>
   },
   
   // Architect Learn
+  'architect:learn:decompose': {
+    actors: [COMMON_ACTORS.llm.id],
+    description: 'Analyze learning request and determine action'
+  },
   'architect:learn:resolve': {
-    actors: [COMMON_ACTORS.fileSystem.id],
-    description: 'Identify learning targets'
+    actors: [COMMON_ACTORS.fileSystem.id, COMMON_ACTORS.codeRepo.id],
+    description: 'Execute learning action (index/read files)'
   },
   'architect:learn:store': {
-    actors: [COMMON_ACTORS.embedding.id],
+    actors: [COMMON_ACTORS.embedding.id, COMMON_ACTORS.vectorDb.id],
     description: 'Store learnings in vector DB'
   }
 };

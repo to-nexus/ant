@@ -51,24 +51,16 @@ export class ChunkEngine {
     const loader = this.selectLoader(input.sourceType);
     const loaded = await loader.load(input);
     
-    console.log(`📥 Loaded ${loaded.text.length} chars from ${input.source}`);
-    
     // Stage 2: Split into chunks
     const splitter = this.selectSplitter(loaded.contentType);
     const rawChunks = await splitter.split(loaded, strategy);
-    
-    console.log(`✂️  Split into ${rawChunks.length} raw chunks`);
     
     // Stage 3: Clean chunks
     const cleaner = this.selectCleaner(loaded.contentType);
     const cleanedChunks = await cleaner.clean(rawChunks);
     
-    console.log(`🧹 Cleaned ${cleanedChunks.length} chunks`);
-    
     // Stage 4: Annotate with metadata
     const annotatedChunks = await this.deps.annotator.annotate(cleanedChunks);
-    
-    console.log(`📝 Annotated ${annotatedChunks.length} final chunks`);
     
     // Calculate statistics
     const stats = {
@@ -81,9 +73,6 @@ export class ChunkEngine {
         annotatedChunks.reduce((sum, c) => sum + c.tokens, 0) / annotatedChunks.length
       )
     };
-    
-    const elapsed = Date.now() - startTime;
-    console.log(`⏱️  Chunking completed in ${elapsed}ms`);
     
     return {
       chunks: annotatedChunks,

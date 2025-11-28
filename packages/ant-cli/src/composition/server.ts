@@ -2,7 +2,7 @@
 import "dotenv/config";
 import { ExpressServerAdapter } from "../periphery/adapters/http/ExpressServerAdapter";
 import { WorkspacePathResolver } from "../infrastructure/workspace/WorkspaceResolver";
-import { LocalWorkspaceResolver } from "../infrastructure/workspace/WorkspaceResolver";
+import { LocalWorkspaceResolver } from "../infrastructure/workspace/LocalWorkspaceResolver";
 
 /**
  * Server Entry Point
@@ -41,7 +41,7 @@ async function main() {
   // Use correct resolver for mode
   const resolver = mode === 'cloud'
     ? new (await import('../infrastructure/workspace/WorkspaceResolver')).CloudWorkspaceResolver(workspacesPath)
-    : new LocalWorkspaceResolver(workspacesPath);
+    : new LocalWorkspaceResolver();
   
   const cloudUrl = process.env.CLOUD_URL || DEFAULT_CLOUD_URL;
   

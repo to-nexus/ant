@@ -13,6 +13,8 @@ import { IRenderStrategy } from './IRenderStrategy';
 import { ParsedAction, FileStreamInfo } from '../types';
 import { FileRegistry } from '../state/FileRegistry';
 import { ChatAPIClient } from '../../adapters/ChatAPIClient';
+import { SpecialTagTransformer } from '../transformers/SpecialTagTransformer';
+import { UserLanguage } from '../../utils/languageDetector';
 
 interface EditOperation {
   filePath: string;
@@ -30,17 +32,17 @@ export class CommonRenderStrategy implements IRenderStrategy {
   // ✅ Thinking timing
   private thinkingStartTime?: number;
   
-  // ✅ User language for localized messages
-  private userLanguage?: 'en' | 'ko' | 'ja' | 'zh';
+  // ✅ Special tag transformer for converting XML tags to user-friendly messages
+  private tagTransformer: SpecialTagTransformer;
   
   constructor(
     chatAPI: ChatAPIClient,
     bufferManager?: import('../buffer/StreamBufferManager').StreamBufferManager,
-    userLanguage?: 'en' | 'ko' | 'ja' | 'zh'
+    userLanguage?: UserLanguage
   ) {
     this.chatAPI = chatAPI;
     this.bufferManager = bufferManager;
-    this.userLanguage = userLanguage || 'en';
+    this.tagTransformer = new SpecialTagTransformer(userLanguage || 'en');
   }
   
   async render(action: ParsedAction, registry: FileRegistry): Promise<void> {
@@ -156,31 +158,23 @@ export class CommonRenderStrategy implements IRenderStrategy {
       return;
     }
     
-    // ✅ NEW: Detect and transform <done> tags into user-friendly messages
-    // Inspired by Cursor/Copilot: Turn technical XML into natural, conversational language
-    // <done>true</done> → "All set. Let's move forward."
-    // <done>false</done> → (skip, more work needed)
-    const doneMatch = content.match(/<done>(true|false)<\/done>/i);
-    if (doneMatch) {
-      const isDone = doneMatch[1].toLowerCase() === 'true';
-      if (isDone) {
-        // ✅ Get localized completion message
-        const { getCompletionMessage } = require('../../utils/languageDetector');
-        const randomMessage = getCompletionMessage(this.userLanguage || 'en');
-        
+    // ✅ Transform special tags into user-friendly messages using SpecialTagTransformer
+    const transformed = this.tagTransformer.transform(content);
+    
+    // If transformation consumed the entire content, stop here
+    if (transformed.consumed) {
+      if (transformed.text) {
         await this.chatAPI.sendLLMEvent({
           type: 'text',
-          text: randomMessage
+          text: transformed.text
         });
-        return;
       }
-      // If <done>false</done>, skip rendering (LLM will continue with more work)
       return;
     }
     
     await this.chatAPI.sendLLMEvent({
       type: 'text',
-      text: content  // ✅ NEW: text 필드 사용
+      text: transformed.text || content
     });
   }
   

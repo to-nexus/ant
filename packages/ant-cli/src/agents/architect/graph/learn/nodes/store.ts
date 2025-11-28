@@ -2,17 +2,32 @@ import { LearnGraphState } from "../state";
 import { storeLessons } from "../../../memory/storage";
 
 export async function store(state: LearnGraphState): Promise<Partial<LearnGraphState>> {
-  const joined = state.texts.join("\n\n---\n\n");
-  await storeLessons(joined, state.context.project, state.context.featureFolder || "default");
-  
-  // Show stored completion and end message
   const chatAPI = (await import('../../../../../core/adapters/ChatAPIClient')).getChatAPIClient();
-  await chatAPI.showChatStatus('stored', {
-    message: `Stored ${state.texts.length} lesson(s) successfully`
-  });
   
-  // ✅ End the assistant message
-  await chatAPI.endMessage();
-  
-  return state;
+  try {
+    // Show storing status
+    await chatAPI.showChatStatus('storing', {
+      message: `${state.texts.length} lesson(s)...`
+    });
+    
+    const joined = state.texts.join("\n\n---\n\n");
+    await storeLessons(joined, state.context.project, state.context.featureFolder || "default");
+    
+    // Show stored completion
+    await chatAPI.showChatStatus('stored', {
+      message: `${state.texts.length} lesson(s) successfully`
+    });
+    
+    return state;
+    
+  } catch (error: any) {
+    // ✅ CRITICAL: Update status to stored (failed) before throwing
+    console.error(`❌ Storing lessons failed:`, error);
+    
+    await chatAPI.showChatStatus('stored', {
+      error: error.message
+    });
+    
+    throw error;
+  }
 }
