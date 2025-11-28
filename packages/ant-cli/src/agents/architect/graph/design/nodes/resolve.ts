@@ -154,7 +154,7 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
       query,
       codeContext.stats.filesLoaded,
       codeContext.strategy,
-      codeContext.files || []
+      codeContext.files?.map(f => typeof f === 'string' ? f : f.path) || []
     );
     
     code = codeContext.code;

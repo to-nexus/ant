@@ -215,7 +215,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
       maxTokens: 100000,  // ~75KB
       maxFiles: 15,       // ✅ Reduced from 30
       exclude: ['test', 'tests', '__tests__', '*.test.*', '*.spec.*'],
-      mode: modeResult.mode  // ✅ Pass inferred mode
+      mode: modeResult.mode === 'ambiguous' ? 'generate' : modeResult.mode  // ✅ Pass inferred mode (fallback to generate)
     }
   );
 
@@ -226,7 +226,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     query,
     codeContext.stats.filesLoaded,
     codeContext.strategy,
-    codeContext.files || []
+    codeContext.files?.map(f => typeof f === 'string' ? f : f.path) || []
   );
 
   // 4. Analyze codebase profile
