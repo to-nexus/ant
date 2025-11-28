@@ -254,30 +254,11 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
           
           console.error(`   💡 Fix: ${configDiagnosis.suggestedActions[0]}`);
         } else {
-          result.passed = false;
+          // ✅ CRITICAL FIX: Lint errors should NOT block final task if type check and build passed
+          // Lint is for code quality, not correctness
+          // Only mark as failed if this is NOT a final task OR if type/build also failed
           
-          // ✅ Use diagnostics system for actual code errors
-          const diagnosis = diagnoseError(lintResult.stdout, {
-            command: 'npx eslint',
-            workDir: resolvedPath,
-            output: lintResult.stdout,
-            projectDetection,
-          });
-          
-          if (diagnosis) {
-            result.diagnoses!.push(diagnosis);
-            
-            // ✅ Record error statistics
-            errorStatsCollector.recordError(diagnosis, {
-              command: 'npx eslint',
-              workDir: resolvedPath,
-              language: projectDetection.language,
-              buildTool: projectDetection.buildTool,
-              packageManager: projectDetection.packageManager,
-            });
-          }
-          
-          // ✅ Use new ESLint parser
+          // Parse lint errors for diagnostics
           const lintParser = ErrorParserFactory.create('eslint', {
             projectRoot: resolvedPath,
             maxErrors: 50
@@ -285,12 +266,39 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
           const parsedLintErrors = lintParser.parse(lintResult.stdout);
           result.lintErrors = lintParser.format(parsedLintErrors);
           
-          console.error('⚠️  Lint failed (non-blocking):');
-          result.lintErrors!.slice(0, 10).forEach(err => console.error(`   ${err}`));
-          if (result.lintErrors!.length > 10) {
-            console.error(`   ... and ${result.lintErrors!.length - 10} more errors`);
+          // Only add diagnostic if there are actual errors to report
+          if (result.lintErrors && result.lintErrors.length > 0) {
+            const diagnosis = diagnoseError(lintResult.stdout, {
+              command: 'npx eslint',
+              workDir: resolvedPath,
+              output: lintResult.stdout,
+              projectDetection,
+            });
+            
+            if (diagnosis) {
+              result.diagnoses!.push(diagnosis);
+              
+              // ✅ Record error statistics
+              errorStatsCollector.recordError(diagnosis, {
+                command: 'npx eslint',
+                workDir: resolvedPath,
+                language: projectDetection.language,
+                buildTool: projectDetection.buildTool,
+                packageManager: projectDetection.packageManager,
+              });
+            }
+            
+            console.error('⚠️  Lint failed (non-blocking):');
+            result.lintErrors!.slice(0, 10).forEach(err => console.error(`   ${err}`));
+            if (result.lintErrors!.length > 10) {
+              console.error(`   ... and ${result.lintErrors!.length - 10} more errors`);
+            }
+            console.log('   ℹ️  Lint errors have LOW priority - fix build/deps/types first');
           }
-          console.log('   ℹ️  Lint errors have LOW priority - fix build/deps/types first');
+          
+          // ✅ CRITICAL: Do NOT set result.passed = false for lint-only failures
+          // Let the validation level filtering handle this (FUNCTIONAL level ignores lint)
+          // result.passed stays true unless type check or build failed
         }
       } else {
         console.log('✅ Lint passed');

@@ -12,16 +12,18 @@ YOUR LINE BUDGET: Look for "MAX [N] lines" in task description below.
 - Your task's line budget applies to YOUR specific document only
 
 CHAPTER LIMIT based on budget:
-- Budget ≤ 75 lines → Create EXACTLY 1 chapter
-- Budget 76-120 lines → Create 1-2 chapters MAX
-- Budget 121-180 lines → Create 2-3 chapters MAX
+- Budget ≤ 60 lines → Create EXACTLY 1 chapter
+- Budget 61-120 lines → Create 1-2 chapters MAX
+- Budget 121-200 lines → Create 2-3 chapters MAX
+- Budget 201-300 lines → Create 3-5 chapters MAX
+- Budget 301+ lines → Create 4-8 chapters MAX
 
 STRUCTURE PER CHAPTER:
-- Maximum 5 subsections (###)
-- Each subsection: 3-8 bullet points
-- Each bullet: ONE sentence only
+- Maximum 8 subsections (###) for complex chapters
+- Each subsection: 4-10 bullet points
+- Each bullet: 1-2 sentences (keep concise!)
 
-IF YOU CREATE MORE CHAPTERS THAN ALLOWED, YOU WILL FAIL THIS TASK!
+⚠️ Focus on quality and completeness within your budget, not artificial limits!
 {{/if}}
 
 ════════════════════════════════════════════════════════════════════════════════
@@ -107,17 +109,19 @@ You are creating a **CONCISE SYSTEM DESIGN DOCUMENT** for: **{{project}}**
 
 🚨 STRUCTURAL CONSTRAINTS 🚨
 **Chapter limit based on your line budget:**
-- If budget ≤ 75 lines → Create 1 chapter
-- If budget 76-120 lines → Create 1-2 chapters
-- If budget 121-180 lines → Create 2-3 chapters
+- If budget ≤ 60 lines → Create 1 chapter
+- If budget 61-120 lines → Create 1-2 chapters
+- If budget 121-200 lines → Create 2-3 chapters
+- If budget 201-300 lines → Create 3-5 chapters
+- If budget 301+ lines → Create 4-8 chapters
 
 **For each chapter:**
-- **Maximum 5 subsections (###)**
-- **Each subsection: 3-8 bullet points MAX**
-- **Each bullet: ONE sentence (no sub-bullets)**
-- **NO code blocks > 15 lines**
+- **Maximum 8 subsections (###)** (adjust based on complexity)
+- **Each subsection: 4-10 bullet points** (adjust based on detail needed)
+- **Each bullet: 1-2 sentences** (keep concise but complete)
+- **Code blocks ≤ 20 lines** (use sparingly for critical examples)
 
-These structural limits ensure you stay within your line budget.
+Balance completeness with conciseness - meet your line budget while covering all requirements.
 {{/if}}
 
 ════════════════════════════════════════════════════════════════════════════════
@@ -247,9 +251,10 @@ THIS IS A TUTORIAL, NOT A DESIGN!
 1. ✅ Followed PRD constraints (tech stack, scope)?
 2. ✅ Skipped sections not applicable to project type?
 3. ✅ Stayed within YOUR task's line budget?
-4. ✅ Created only 1-2 chapters MAX (not 3+)?
-5. ✅ Concise (1 sentence per point)?
+4. ✅ Created appropriate number of chapters for your budget?
+5. ✅ Balanced conciseness with completeness (1-2 sentences per point)?
 6. ✅ NO code implementations?
 7. ✅ NO forbidden sections (deployment, ops, monitoring)?
+8. ✅ Covered all critical architectural decisions and components?
 
 **If YES to all → Output using XML tags. If NO → Fix first!**

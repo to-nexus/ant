@@ -3,6 +3,7 @@ import * as path from 'path';
 import { WorkspaceResolver } from '../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../core/types/user';
 import { GitHubAuthService } from '../../auth/GitHubAuthService';
+import { ChatService } from './ChatService';
 import simpleGit from 'simple-git';
 
 /**
@@ -16,10 +17,16 @@ import simpleGit from 'simple-git';
 export class ProjectService {
   private readonly workspaceResolver: WorkspaceResolver;
   private readonly githubAuthService?: GitHubAuthService;
+  private readonly chatService?: ChatService;
   
-  constructor(workspaceResolver: WorkspaceResolver, githubAuthService?: GitHubAuthService) {
+  constructor(
+    workspaceResolver: WorkspaceResolver, 
+    githubAuthService?: GitHubAuthService,
+    chatService?: ChatService
+  ) {
     this.workspaceResolver = workspaceResolver;
     this.githubAuthService = githubAuthService;
+    this.chatService = chatService;
   }
   
   /**
@@ -1453,7 +1460,9 @@ next-env.d.ts
       console.log(`✅ Push successful to ${branch}`);
       
       // ✅ AUTO-INDEX: Index codebase after successful push
-      await this.autoIndexCodebase(projectId, codebasePath, userContext);
+      // Extract feature name from branch (e.g., "feature/skeleton" → "skeleton")
+      const featureName = branch.startsWith('feature/') ? branch.replace('feature/', '') : undefined;
+      await this.autoIndexCodebase(projectId, codebasePath, userContext, featureName);
       
     } catch (error: any) {
       // Parse git error for user-friendly message
@@ -1961,10 +1970,20 @@ next-env.d.ts
   private async autoIndexCodebase(
     projectId: string,
     codebasePath: string,
-    userContext: UserContext
+    userContext: UserContext,
+    featureName?: string
   ): Promise<void> {
+    // ✅ Prepare chat message for UI feedback
+    let messageId: string | undefined;
+    
     try {
       console.log(`\n📇 [Auto-Index] Starting codebase indexing for ${projectId}...`);
+      
+      // ✅ Send indexing status to chat UI (if chat service and feature available)
+      if (this.chatService && featureName) {
+        // Create assistant message for indexing feedback
+        messageId = this.chatService.startAssistantMessage(projectId, featureName, 'push-index-' + Date.now(), userContext);
+      }
       
       // Import dependencies
       const { CodebaseIndexer } = await import('../../../../core/codebase/CodebaseIndexer');
@@ -1974,6 +1993,25 @@ next-env.d.ts
       const git = AdapterFactory.createGitAdapter(codebasePath, projectId);
       const vectorDB = AdapterFactory.createMemoryAdapter();
       const chunk = AdapterFactory.createChunkAdapter();
+      
+      // Get branch and commit info for status message
+      const branch = await git.revparse(['--abbrev-ref', 'HEAD']);
+      const commitLog = await git.log({ maxCount: 1 });
+      const commit = commitLog.latest?.hash.substring(0, 8) || 'HEAD';
+      
+      // ✅ Send "indexing" status to UI
+      if (this.chatService && featureName) {
+        this.chatService.addContentToCurrentMessage(projectId, featureName, {
+          type: 'indexing',
+          content: '',
+          metadata: {
+            message: `${projectId} • ${branch}`,
+            repoName: projectId,
+            branch,
+            commit
+          }
+        });
+      }
       
       // Run indexer
       const indexer = new CodebaseIndexer();
@@ -1989,10 +2027,48 @@ next-env.d.ts
       console.log(`   Files: ${stats.filesIndexed}, Chunks: ${stats.chunksCreated}, Tokens: ~${stats.estimatedTokens}`);
       console.log(`   Duration: ${(stats.duration / 1000).toFixed(1)}s\n`);
       
+      // ✅ Send "indexed" success status to UI
+      if (this.chatService && featureName) {
+        this.chatService.addContentToCurrentMessage(projectId, featureName, {
+          type: 'indexed',
+          content: '',
+          metadata: {
+            filesIndexed: stats.filesIndexed,
+            chunks: stats.chunksCreated,
+            tokens: stats.estimatedTokens,
+            duration: stats.duration,
+            repoName: projectId,
+            branch,
+            commit
+          }
+        });
+        
+        // Complete the message
+        this.chatService.completeCurrentMessage(projectId, featureName);
+      }
+      
     } catch (error) {
       // ⚠️  Non-blocking: Push는 성공했으므로 에러 로그만
       console.error('⚠️  [Auto-Index] Failed to index codebase:', error instanceof Error ? error.message : error);
       console.log('   Push was successful, but indexing failed. You can manually run: ant index ' + projectId + '\n');
+      
+      // ✅ Send "indexed" failure status to UI
+      if (this.chatService && featureName) {
+        this.chatService.addContentToCurrentMessage(projectId, featureName, {
+          type: 'indexed',
+          content: '',
+          metadata: {
+            filesIndexed: 0,
+            chunks: 0,
+            tokens: 0,
+            duration: 0,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          }
+        });
+        
+        // Complete the message
+        this.chatService.completeCurrentMessage(projectId, featureName);
+      }
     }
   }
 }

@@ -1101,19 +1101,20 @@ export class ChatService {
     
     // ✅ Update existing in-progress content instead of adding new ones
     if (session?.currentMessage && phase) {
-      const inProgressTypes = {
-        'create': ['file_creating', 'file_writing'],
-        'edit': ['file_editing', 'file_updating'],
-        'delete': ['file_deleting']
+      // ✅ CRITICAL: Include BOTH in-progress AND completed types to avoid duplicates
+      const allFileTypes = {
+        'create': ['file_creating', 'file_writing', 'file_create'],
+        'edit': ['file_editing', 'file_updating', 'file_edit'],
+        'delete': ['file_deleting', 'file_delete']
       };
       
-      const typesToFind = inProgressTypes[operation] || [];
+      const typesToFind = allFileTypes[operation] || [];
       
       // ✅ 1차 시도: activeFileOperations Map에서 찾기 (tool_use에서 생성한 카드)
       const activeOp = session.activeFileOperations?.get(filePath);
       let existingIndex = activeOp ? activeOp.contentIndex : -1;
       
-      // ✅ 2차 시도: typesToFind로 검색 (fallback)
+      // ✅ 2차 시도: typesToFind로 검색 (fallback - includes completed types!)
       if (existingIndex === -1) {
         existingIndex = session.currentMessage.contents.findIndex(c => 
         typesToFind.includes(c.type) && 
