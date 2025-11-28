@@ -1652,6 +1652,21 @@ next-env.d.ts
     // Get base branch from config
     const baseBranch = config.branchBase || 'main';
     
+    // ✅ Check for uncommitted changes before switching
+    const status = await git.status();
+    const hasChanges = status.files.length > 0;
+    
+    if (hasChanges) {
+      // ✅ CRITICAL: Stash changes to prevent checkout failure
+      console.log(`[ProjectService] ⚠️  Uncommitted changes detected, stashing...`);
+      try {
+        await git.stash(['push', '-u', '-m', `Auto-stash before switching to ${featureName}`]);
+        console.log(`[ProjectService] ✅ Changes stashed successfully`);
+      } catch (stashError) {
+        throw new Error(`Failed to stash changes: ${stashError instanceof Error ? stashError.message : String(stashError)}`);
+      }
+    }
+    
     // ✅ Special case: If featureName is 'main' or matches baseBranch, checkout base branch directly
     if (featureName === 'main' || featureName === baseBranch) {
       await git.checkout(baseBranch);
@@ -1677,6 +1692,17 @@ next-env.d.ts
         console.log(`[ProjectService] Could not set upstream for ${baseBranch}:`, err);
       }
       
+      // ✅ Apply stashed changes if any
+      if (hasChanges) {
+        try {
+          await git.stash(['pop']);
+          console.log(`[ProjectService] ✅ Stashed changes applied successfully`);
+        } catch (popError) {
+          console.warn(`[ProjectService] ⚠️  Could not apply stashed changes:`, popError);
+          // Continue anyway - user can manually resolve
+        }
+      }
+      
       return baseBranch;  // ✅ Return base branch name
     }
     
@@ -1692,6 +1718,17 @@ next-env.d.ts
       // Checkout existing branch
       await git.checkout(branchName);
       console.log(`[ProjectService] ✅ Checked out existing branch: ${branchName}`);
+      
+      // ✅ Apply stashed changes if any
+      if (hasChanges) {
+        try {
+          await git.stash(['pop']);
+          console.log(`[ProjectService] ✅ Stashed changes applied successfully`);
+        } catch (popError) {
+          console.warn(`[ProjectService] ⚠️  Could not apply stashed changes:`, popError);
+          // Continue anyway - user can manually resolve
+        }
+      }
     } else {
       // Create new branch from base
       
@@ -1732,6 +1769,17 @@ next-env.d.ts
       // Create feature branch from base
       await git.checkoutLocalBranch(branchName);
       console.log(`[ProjectService] ✅ Created new local branch: ${branchName}`);
+      
+      // ✅ Apply stashed changes if any
+      if (hasChanges) {
+        try {
+          await git.stash(['pop']);
+          console.log(`[ProjectService] ✅ Stashed changes applied successfully`);
+        } catch (popError) {
+          console.warn(`[ProjectService] ⚠️  Could not apply stashed changes:`, popError);
+          // Continue anyway - user can manually resolve
+        }
+      }
     }
 
     // ✅ After checkout, handle upstream and remote branch
@@ -1995,9 +2043,9 @@ next-env.d.ts
       const chunk = AdapterFactory.createChunkAdapter();
       
       // Get branch and commit info for status message
-      const branch = await git.revparse(['--abbrev-ref', 'HEAD']);
-      const commitLog = await git.log({ maxCount: 1 });
-      const commit = commitLog.latest?.hash.substring(0, 8) || 'HEAD';
+      const branch = await git.getCurrentBranch();
+      const commitHash = await git.getCurrentCommit();
+      const commit = commitHash.substring(0, 8);
       
       // ✅ Send "indexing" status to UI
       if (this.chatService && featureName) {
@@ -2043,8 +2091,8 @@ next-env.d.ts
           }
         });
         
-        // Complete the message
-        this.chatService.completeCurrentMessage(projectId, featureName);
+        // ✅ Complete the message
+        this.chatService.finalizeCurrentMessage(projectId, featureName);
       }
       
     } catch (error) {
@@ -2066,8 +2114,8 @@ next-env.d.ts
           }
         });
         
-        // Complete the message
-        this.chatService.completeCurrentMessage(projectId, featureName);
+        // ✅ Complete the message
+        this.chatService.finalizeCurrentMessage(projectId, featureName);
       }
     }
   }

@@ -156,6 +156,14 @@ const SPECIAL_FILENAME_MAP: Record<string, FileIconConfig> = {
  * @returns Icon configuration with component and color
  */
 export function getFileIcon(filePath: string): FileIconConfig {
+  // ✅ CRITICAL: Handle non-string inputs (FileWithSource objects, etc.)
+  if (!filePath || typeof filePath !== 'string') {
+    return {
+      icon: FileText,
+      color: 'text-gray-500 dark:text-gray-400'
+    };
+  }
+  
   // 0. Check if it's a directory (ends with /)
   if (filePath.endsWith('/')) {
     return {
@@ -199,7 +207,7 @@ export function getFileIcon(filePath: string): FileIconConfig {
 
 /**
  * Render file icon as a React component
- * @param filePath - Full file path or filename
+ * @param filePath - Full file path or filename (can be string or FileWithSource object)
  * @param size - Icon size (default: 16)
  * @param className - Additional CSS classes
  */
@@ -208,11 +216,13 @@ export function FileIcon({
   size = 16, 
   className = '' 
 }: { 
-  filePath: string; 
+  filePath: string | any; 
   size?: number; 
   className?: string;
 }) {
-  const config = getFileIcon(filePath);
+  // ✅ CRITICAL: Handle FileWithSource objects {path, sources, priority, hasLocalChanges}
+  const path = typeof filePath === 'string' ? filePath : filePath?.path || '';
+  const config = getFileIcon(path);
   const Icon = config.icon;
   
   return (

@@ -62,6 +62,16 @@ export interface MessageContent {
     reason?: string;        // For cancelled: cancellation reason
     durationMs?: number;    // For thinking: duration in milliseconds
     collapsed?: boolean;    // For thinking: marks if the block should be collapsed
+    // Indexing metadata (for indexing/indexed types)
+    message?: string;       // For indexing: display message
+    repoName?: string;      // For indexing/indexed: repository name
+    branch?: string;        // For indexing/indexed: branch name
+    commit?: string;        // For indexing/indexed: commit hash
+    filesIndexed?: number;  // For indexed: number of files indexed
+    chunks?: number;        // For indexed: number of chunks created
+    tokens?: number;        // For indexed: estimated tokens
+    duration?: number;      // For indexed: duration in milliseconds
+    error?: string;         // For indexed: error message if failed
     // ❌ tasksJson 제거 (더 이상 사용하지 않음)
   };
 }
