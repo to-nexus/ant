@@ -99,7 +99,9 @@ export function createSSERoutes(deps: {
       const chatMessages = deps.chatService.getMessages(projectId, featureName, userContext);  // ✅ Pass user context
       deps.sseService.sendInitialState(res, 'chat', { 
         type: 'initial_state', 
-        messages: chatMessages 
+        messages: chatMessages,
+        projectId,      // ✅ Include for frontend filtering
+        featureName     // ✅ Include for frontend filtering
       });
       
       // 3. Send initial FileTree

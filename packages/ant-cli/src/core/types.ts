@@ -153,6 +153,7 @@ export type InterruptionReason =
   | 'api_error'            // LLM API error (overloaded, rate limit, etc.)
   | 'process_crash'        // Child process crashed unexpectedly
   | 'timeout'              // Job timeout
+  | 'server_shutdown'      // Server graceful shutdown
   | 'unknown';             // Unknown reason
 
 /**
