@@ -459,8 +459,10 @@ export const useStore = create<Store>((set, get) => {
     // ✅ Job type is now guaranteed to be valid (typed as 'design' | 'code' | 'learn')
     const jobType = state.selectedJobType;
     
-    // ✅ Clear existing handlers to prevent duplicates
-    sseManager.clearHandlers();
+    // ✅ Clear only unified SSE handlers (don't clear workflow handlers!)
+    sseManager.clearHandlers('kanban');
+    sseManager.clearHandlers('chat');
+    sseManager.clearHandlers('fileTree');
     
     // ✅ Register message handlers
     sseManager.registerHandler('kanban', (data) => {
@@ -470,6 +472,18 @@ export const useStore = create<Store>((set, get) => {
     
     sseManager.registerHandler('chat', (event) => {
       // console.log('[Store] 💬 Chat SSE event:', event.type); // ✅ Too verbose
+      
+      // ✅ CRITICAL: Verify message belongs to current project/feature
+      // SSE connections can be shared across tabs, so we must filter messages
+      const currentState = get();
+      const isCorrectContext = 
+        event.projectId === currentState.selectedProject &&
+        event.featureName === currentState.selectedFeature;
+      
+      if (!isCorrectContext) {
+        console.log(`[Store] 💬 Ignoring chat event from different context: ${event.projectId}/${event.featureName}`);
+        return;
+      }
       
       switch (event.type) {
         case 'initial_state':

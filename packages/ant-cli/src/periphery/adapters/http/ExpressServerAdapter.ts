@@ -596,12 +596,15 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         }
         
         try {
-          const email = req.headers['x-user-email'] as string;
+          // ✅ Check both header and query parameter for user email
+          const emailFromHeader = req.headers['x-user-email'] as string;
+          const emailFromQuery = req.query['user-email'] as string;
+          const email = emailFromHeader || emailFromQuery;
           
           if (!email) {
             return res.status(401).json({ 
               error: 'Authentication required', 
-              message: 'x-user-email header is required in cloud mode' 
+              message: 'x-user-email header or user-email query parameter is required in cloud mode' 
             });
           }
           
@@ -1494,27 +1497,260 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     });
   }
   
+  /**
+   * Graceful shutdown with job state preservation
+   * 
+   * Steps:
+   * 1. Save all running jobs to session files
+   * 2. Terminate all child processes
+   * 3. Cleanup services
+   * 4. Close HTTP server
+   * 
+   * Timeout: 5 seconds (force shutdown if exceeded)
+   */
   async stop(): Promise<void> {
+    console.log('\n🛑 [Server] Graceful shutdown initiated...');
+    
+    const SHUTDOWN_TIMEOUT = 5000;  // 5 seconds
+    
     return new Promise((resolve) => {
-      if (this.server) {
-        // Stop all child processes
-        this.childProcesses.forEach((proc) => {
-          proc.kill('SIGTERM');
-        });
-        this.childProcesses.clear();
-        
-        // Cleanup services
-        this.sessionService.cleanup();
-        this.devServerService.cleanup();
-        
-        this.server.close(() => {
-          this.running = false;
+      // Timeout timer - force shutdown if taking too long
+      const timeoutId = setTimeout(() => {
+        console.warn('⚠️  [Server] Shutdown timeout (5s) - forcing exit');
+        this.forceShutdown();
+        resolve();
+      }, SHUTDOWN_TIMEOUT);
+      
+      // Actual shutdown logic
+      this.performGracefulShutdown()
+        .then(() => {
+          clearTimeout(timeoutId);
+          console.log('✅ [Server] Graceful shutdown complete');
+          resolve();
+        })
+        .catch((error) => {
+          console.error('❌ [Server] Shutdown error:', error);
+          clearTimeout(timeoutId);
+          this.forceShutdown();
           resolve();
         });
-      } else {
+    });
+  }
+  
+  /**
+   * Perform graceful shutdown in steps
+   */
+  private async performGracefulShutdown(): Promise<void> {
+    // Step 1: Save all running jobs
+    await this.saveAllRunningJobs();
+    
+    // Step 2: Terminate all child processes
+    await this.terminateAllChildProcesses();
+    
+    // Step 3: Cleanup services
+    this.cleanupServices();
+    
+    // Step 4: Close HTTP server
+    await this.closeHttpServer();
+  }
+  
+  /**
+   * Save all running jobs to session files before shutdown
+   */
+  private async saveAllRunningJobs(): Promise<void> {
+    const jobCount = this.childProcesses.size;
+    
+    if (jobCount === 0) {
+      console.log('💾 [Server] No running jobs to save');
+      return;
+    }
+    
+    console.log(`💾 [Server] Saving ${jobCount} running job(s)...`);
+    
+    const savePromises: Promise<void>[] = [];
+    
+    for (const [jobId, childProcess] of this.childProcesses.entries()) {
+      const mapping = this.jobToProject.get(jobId);
+      
+      if (!mapping) {
+        console.warn(`⚠️  [Server] No mapping found for job ${jobId}, skipping save...`);
+        continue;
+      }
+      
+      console.log(`   Saving job ${jobId} (${mapping.projectId}/${mapping.featureName}/${mapping.jobType})...`);
+      
+      // Call cleanupJobState which saves the session
+      const savePromise = this.cleanupJobState(
+        jobId,
+        mapping.projectId,
+        mapping.featureName,
+        {
+          reason: 'server_shutdown',
+          message: 'Server is shutting down',
+          canResume: true,
+          timestamp: new Date().toISOString()
+        },
+        mapping.jobType
+      ).catch((error) => {
+        console.error(`❌ [Server] Failed to save job ${jobId}:`, error.message);
+        // Continue with other jobs even if one fails
+      });
+      
+      savePromises.push(savePromise);
+    }
+    
+    // Wait for all saves to complete (or fail)
+    await Promise.all(savePromises);
+    console.log(`✅ [Server] All jobs saved (${jobCount} total)`);
+  }
+  
+  /**
+   * Terminate all child processes gracefully
+   */
+  private async terminateAllChildProcesses(): Promise<void> {
+    const processCount = this.childProcesses.size;
+    
+    if (processCount === 0) {
+      console.log('🔪 [Server] No child processes to terminate');
+      return;
+    }
+    
+    console.log(`🔪 [Server] Terminating ${processCount} child process(es)...`);
+    
+    const killPromises: Promise<void>[] = [];
+    
+    for (const [jobId, childProcess] of this.childProcesses.entries()) {
+      const killPromise = this.terminateChildProcess(jobId, childProcess);
+      killPromises.push(killPromise);
+    }
+    
+    await Promise.all(killPromises);
+    this.childProcesses.clear();
+    console.log(`✅ [Server] All child processes terminated (${processCount} total)`);
+  }
+  
+  /**
+   * Terminate a single child process gracefully
+   */
+  private async terminateChildProcess(jobId: string, proc: ChildProcess): Promise<void> {
+    return new Promise((resolve) => {
+      if (!proc.pid) {
+        console.log(`   Job ${jobId}: No PID, skipping...`);
         resolve();
+        return;
+      }
+      
+      const pid = proc.pid;
+      console.log(`   Terminating job ${jobId} (PID: ${pid})...`);
+      
+      // Send SIGTERM for graceful termination
+      proc.kill('SIGTERM');
+      
+      // Wait 2 seconds for graceful exit
+      const forceKillTimer = setTimeout(() => {
+        try {
+          // Check if process is still alive
+          process.kill(pid, 0);
+          console.warn(`   ⚠️  Job ${jobId} didn't exit gracefully, sending SIGKILL...`);
+          process.kill(pid, 'SIGKILL');
+        } catch {
+          // Process already dead
+        }
+        resolve();
+      }, 2000);
+      
+      // Listen for exit event
+      proc.once('exit', (code) => {
+        clearTimeout(forceKillTimer);
+        console.log(`   ✅ Job ${jobId} terminated (exit code: ${code})`);
+        resolve();
+      });
+    });
+  }
+  
+  /**
+   * Cleanup all services and in-memory state
+   */
+  private cleanupServices(): void {
+    console.log('🧹 [Server] Cleaning up services...');
+    
+    // Cleanup SessionService
+    try {
+      this.sessionService?.cleanup();
+      console.log('   ✅ SessionService cleaned');
+    } catch (error) {
+      console.error('   ❌ SessionService cleanup error:', error);
+    }
+    
+    // Cleanup DevServerService
+    try {
+      this.devServerService?.cleanup();
+      console.log('   ✅ DevServerService cleaned');
+    } catch (error) {
+      console.error('   ❌ DevServerService cleanup error:', error);
+    }
+    
+    // Clear in-memory state
+    this.taskQueueSnapshots.clear();
+    this.jobToProject.clear();
+    this.jobs.clear();
+    this.logs.clear();
+    this.logStreams.clear();
+    this.sseResponses.clear();
+    
+    console.log('   ✅ In-memory state cleared');
+  }
+  
+  /**
+   * Close HTTP server
+   */
+  private async closeHttpServer(): Promise<void> {
+    return new Promise((resolve) => {
+      if (!this.server) {
+        resolve();
+        return;
+      }
+      
+      console.log('🌐 [Server] Closing HTTP server...');
+      
+      this.server.close((err?: Error) => {
+        if (err) {
+          console.error('❌ [Server] Error closing HTTP server:', err);
+        } else {
+          console.log('✅ [Server] HTTP server closed');
+        }
+        this.running = false;
+        resolve();
+      });
+    });
+  }
+  
+  /**
+   * Force shutdown (emergency fallback)
+   */
+  private forceShutdown(): void {
+    console.warn('⚡ [Server] Force shutdown initiated...');
+    
+    // Kill all processes immediately with SIGKILL
+    this.childProcesses.forEach((proc) => {
+      if (proc.pid) {
+        try {
+          process.kill(proc.pid, 'SIGKILL');
+          console.warn(`   ⚡ Force killed PID ${proc.pid}`);
+        } catch {
+          // Ignore errors
+        }
       }
     });
+    this.childProcesses.clear();
+    
+    // Close server without waiting
+    if (this.server) {
+      this.server.close();
+      this.running = false;
+    }
+    
+    console.warn('⚡ [Server] Force shutdown complete');
   }
   
   isRunning(): boolean {

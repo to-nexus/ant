@@ -1429,7 +1429,15 @@ export class ChatService {
 
   private broadcast(projectId: string, featureName: string, data: any): void {
     if (this.sseService) {
-      this.sseService.broadcast(projectId, featureName, 'chat', data);
+      // ✅ CRITICAL: Include projectId and featureName in the event data
+      // This allows frontend to filter messages by context (multi-tab support)
+      const enrichedData = {
+        ...data,
+        projectId,
+        featureName
+      };
+      
+      this.sseService.broadcast(projectId, featureName, 'chat', enrichedData);
     }
   }
 }
