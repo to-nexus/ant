@@ -139,15 +139,19 @@ export function ResultCard({ content, variant = 'exploration' }: ResultCardProps
           {hasFiles && (
             <div className="px-4 py-2 text-xs">
               <div className="space-y-1">
-                {filesList.map((file: string, idx: number) => (
-                  <div 
-                    key={idx} 
-                    className="flex items-start gap-2 py-1 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
-                  >
-                    <FileCode className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-gray-400 dark:text-gray-500" />
-                    <span className="font-mono break-all">{file}</span>
-                  </div>
-                ))}
+                {filesList.map((file: any, idx: number) => {
+                  // ✅ Handle both string and FileWithSource object types
+                  const filePath = typeof file === 'string' ? file : file.path;
+                  return (
+                    <div 
+                      key={idx} 
+                      className="flex items-start gap-2 py-1 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
+                    >
+                      <FileCode className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-gray-400 dark:text-gray-500" />
+                      <span className="font-mono break-all">{filePath}</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

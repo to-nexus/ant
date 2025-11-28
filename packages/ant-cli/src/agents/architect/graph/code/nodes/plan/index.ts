@@ -156,6 +156,11 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       
       console.log(`\n🧭 Planning (${state.recursionCount}/${state.recursionLimit || 50})`);
       
+      // ✅ Workflow instrumentation: Exit node (currentTask exists path)
+      if (state.deps?.workflowUpdate && state._httpJobId) {
+        state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan');
+      }
+      
       return {
         ...state,
         currentTask: nextTask,
@@ -170,6 +175,12 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     
     if (!nextTask) {
       console.log('✅ Task queue is empty!');
+      
+      // ✅ Workflow instrumentation: Exit node (empty queue path)
+      if (state.deps?.workflowUpdate && state._httpJobId) {
+        state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan');
+      }
+      
       return state;
     }
     
@@ -410,6 +421,12 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     const newNextTask = state.taskQueue?.pop();
     if (!newNextTask) {
       console.log('✅ Task queue is empty!');
+      
+      // ✅ Workflow instrumentation: Exit node (empty queue after exhaustion path)
+      if (state.deps?.workflowUpdate && state._httpJobId) {
+        state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan');
+      }
+      
       return {
         ...state,
         currentTask: undefined,
@@ -424,6 +441,11 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     console.log(`🚀 Starting task: "${newNextTask.name}"`);
     console.log(`   Type: ${newNextTask.type.toUpperCase()}`);
     console.log(`   Priority: P${newNextTask.priority}\n`);
+    
+    // ✅ Workflow instrumentation: Exit node (next task path)
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan');
+    }
     
     return {
       ...state,
@@ -463,6 +485,11 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       await saveCheckpoint(retryState);
       console.log(`💾 Checkpoint saved (retry ${state.retries + 1})\n`);
       
+      // ✅ Workflow instrumentation: Exit node (retry path)
+      if (state.deps?.workflowUpdate && state._httpJobId) {
+        state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan');
+      }
+      
       return retryState;
     }
     
@@ -480,11 +507,22 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     await saveCheckpoint(retryState);
     console.log(`💾 Checkpoint saved (blocking errors, retry ${state.retries + 1})\n`);
     
+    // ✅ Workflow instrumentation: Exit node (blocking error retry path)
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan');
+    }
+    
     return retryState;
   }
   
   if (!nextTask) {
     console.log('⚠️  No task to execute');
+    
+    // ✅ Workflow instrumentation: Exit node (no task path)
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan');
+    }
+    
     return state;
   }
   

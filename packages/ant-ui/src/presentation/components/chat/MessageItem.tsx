@@ -526,12 +526,16 @@ function ExplorationCard({ content }: { content: MessageContent }) {
       {hasFiles && isExpanded && (
         <div className="border-t border-gray-200/50 dark:border-gray-700/50 max-h-60 overflow-y-auto scrollbar-thin bg-gray-50/20 dark:bg-gray-900/10">
           <div className="px-4 py-2 text-xs">
-            {filesList.map((file, i) => (
-              <div key={i} className="py-1 font-mono text-gray-700 dark:text-gray-300 truncate flex items-center gap-2">
-                <FileIcon filePath={file} size={14} />
-                <span>{file}</span>
-              </div>
-            ))}
+            {filesList.map((file, i) => {
+              // ✅ Handle both string and FileWithSource object types
+              const filePath = typeof file === 'string' ? file : file.path;
+              return (
+                <div key={i} className="py-1 font-mono text-gray-700 dark:text-gray-300 truncate flex items-center gap-2">
+                  <FileIcon filePath={filePath} size={14} />
+                  <span>{filePath}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -573,12 +577,16 @@ function GrepCard({ content }: { content: MessageContent }) {
       {hasFiles && isExpanded && (
         <div className="border-t border-gray-200/50 dark:border-gray-700/50 max-h-60 overflow-y-auto scrollbar-thin bg-gray-50/20 dark:bg-gray-900/10">
           <div className="px-4 py-2 text-xs">
-            {filesList.map((file, i) => (
-              <div key={i} className="py-1 font-mono text-gray-700 dark:text-gray-300 truncate flex items-center gap-2">
-                <FileIcon filePath={file} size={14} />
-                <span>{file}</span>
-              </div>
-            ))}
+            {filesList.map((file, i) => {
+              // ✅ Handle both string and FileWithSource object types
+              const filePath = typeof file === 'string' ? file : file.path;
+              return (
+                <div key={i} className="py-1 font-mono text-gray-700 dark:text-gray-300 truncate flex items-center gap-2">
+                  <FileIcon filePath={filePath} size={14} />
+                  <span>{filePath}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

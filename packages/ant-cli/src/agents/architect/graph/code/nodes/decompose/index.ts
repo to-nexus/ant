@@ -329,6 +329,11 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           }
         }
         
+        // ✅ Workflow instrumentation: Exit node (resume path)
+        if (state.deps?.workflowUpdate && state._httpJobId) {
+          state.deps.workflowUpdate.exitNode(state._httpJobId, 'decompose');
+        }
+        
         return resumedState;
         }  // End of else block (normal resume)
       }  // End of if (session.state && taskQueue)
