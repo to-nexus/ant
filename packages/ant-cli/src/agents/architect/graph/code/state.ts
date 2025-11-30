@@ -2,6 +2,7 @@ import { CodeMode, CodebaseProfile, TaskArtifacts } from "../../../../core/types
 import { GitPort, MemoryPort, LLMClient, CodebaseAnalyzerPort, ChunkPort, SessionPort, CommandPort, TaskQueueUpdatePort } from "../../../../core/ports";
 import { PromptEngine } from "../../../../core/prompt/engine";
 import { ProjectContext } from "../../types";
+import { ReferenceContext } from "../../../../core/codebase/ReferenceLoader";
 
 export interface IntegrationRequirement {
   name: string;
@@ -238,6 +239,9 @@ export interface ArchitectGraphState extends TaskArtifacts {
   // ✅ Chat Integration
   overrideDirective?: string;  // Chat input as directive (highest priority)
   chatSource?: boolean;         // True if job started from chat (enables Chat SSE)
+  
+  // ✅ Reference Contexts (cross-project references for API contracts, etc.)
+  referenceContexts?: ReferenceContext[];
   
   // ✅ Replan Support (continue with new directive)
   directives?: string[];  // Multiple directives (newest first = highest priority)

@@ -138,12 +138,51 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   };
   
   const branchBase = state.context.branchBase || 'main';
-  await gitPort.createBranch(branch, branchBase);
+  
+  // ✅ Safe branch creation with error handling
+  try {
+    await gitPort.createBranch(branch, branchBase);
+    console.log(`\n📌 Branch '${branch}' ready`);
+  } catch (branchError: any) {
+    // ✅ Handle "needs merge" or other Git conflicts
+    if (branchError.message?.includes('needs merge') || 
+        branchError.message?.includes('conflict') ||
+        branchError.message?.includes('현재 인덱스')) {
+      console.warn(`\n⚠️  Git conflict detected during branch operation. Cleaning up...`);
+      
+      try {
+        // ✅ Cleanup: Reset to clean state
+        const simpleGit = await import('simple-git');
+        const git = simpleGit.default({
+          baseDir: await gitPort.getRepoRoot(),
+          binary: 'git',
+          maxConcurrentProcesses: 6
+        });
+        
+        await git.reset(['--hard', 'HEAD']);
+        await git.clean(['-fd']);
+        console.log(`✅ Git workspace cleaned up successfully`);
+        
+        // ✅ Retry branch creation
+        await gitPort.createBranch(branch, branchBase);
+        console.log(`✅ Branch '${branch}' created after cleanup`);
+      } catch (cleanupError) {
+        console.error(`❌ Failed to cleanup Git state:`, cleanupError);
+        // ✅ Continue anyway - lessons can still be saved
+        // Branch operation is not critical for lesson storage
+      }
+    } else {
+      console.error(`❌ Failed to create branch '${branch}':`, branchError.message);
+      // ✅ Continue anyway - branch creation failure shouldn't block lesson storage
+    }
+  }
   
   // Log files that were written in writeFiles
-  console.log(`\n📌 Branch '${branch}' ready with ${state.files.length} files`);
-  for (const f of state.files) {
-    console.log(`✏️  Modified: ${f.path}`);
+  if (state.files && state.files.length > 0) {
+    console.log(`\n✏️  ${state.files.length} files modified:`);
+    for (const f of state.files) {
+      console.log(`   - ${f.path}`);
+    }
   }
   
   const filesWritten = state.files.length;

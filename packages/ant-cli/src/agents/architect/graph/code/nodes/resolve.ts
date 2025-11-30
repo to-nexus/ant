@@ -1,6 +1,7 @@
 import { ArtifactService } from "../../../../../infrastructure/workspace/ArtifactService";
 import { ArchitectGraphState } from "../state";
 import { CodebaseRetriever } from "../../../../../core/codebase/CodebaseRetriever";
+import { ReferenceLoader, parseReferenceFromDirective, ReferenceContext } from "../../../../../core/codebase/ReferenceLoader";
 import * as path from "path";
 
 /**
@@ -267,6 +268,41 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   // 4. Retrieve relevant codebase (Phase 1: Smart Retrieval)
   console.log(`📋 Retrieving relevant codebase...`);
   
+  // ✅ NEW: Parse reference projects from directive (natural language)
+  const referenceProjects = directive ? parseReferenceFromDirective(directive) : [];
+  const referenceContexts: ReferenceContext[] = [];
+  
+  if (referenceProjects.length > 0) {
+    console.log(`\n📚 Loading ${referenceProjects.length} reference project(s)...`);
+    
+    const referenceLoader = new ReferenceLoader(
+      state.deps?.workspaceResolver!,
+      state.deps?.git!
+    );
+    
+    for (const refProj of referenceProjects) {
+      try {
+        const refContext = await referenceLoader.loadReference(
+          refProj.project,
+          refProj.branch,
+          userContext,
+          {
+            maxFiles: 10,
+            maxTokens: 30000
+          }
+        );
+        referenceContexts.push(refContext);
+      } catch (error: any) {
+        console.warn(`   ⚠️  Failed to load reference ${refProj.project}: ${error.message}`);
+        // Continue with other references - non-fatal
+      }
+    }
+    
+    if (referenceContexts.length > 0) {
+      console.log(`   ✅ Loaded ${referenceContexts.length} reference project(s)\n`);
+    }
+  }
+  
   // ✅ Get ChatAPI client for grepping tracking
   const { getChatAPIClient } = await import('../../../../../core/adapters/ChatAPIClient');
   const chatAPI = getChatAPIClient();
@@ -323,9 +359,11 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     code: codeContext.code,
     codeHead: codeContext.codeHead,
     lessons: codeContext.lessons,  // ✅ Include lessons from unified search
+    documents: codeContext.documents,  // ✅ Include documents from unified search
     mode: modeResult.mode,  // ✅ Include inferred mode
     sessionContext: sessionContextForLLM,  // ✅ Include compressed session context
     profile,
+    referenceContexts,  // ✅ NEW: Include reference contexts
   };
   
   // ✅ Workflow instrumentation: Exit node (success path)

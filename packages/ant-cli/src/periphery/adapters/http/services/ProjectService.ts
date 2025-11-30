@@ -1616,6 +1616,66 @@ next-env.d.ts
    * Switch to feature branch (create if not exists)
    * Called when feature is selected or created
    */
+  /**
+   * Safely apply stashed changes with conflict detection and cleanup
+   * @private
+   */
+  private async applyStashSafely(git: any, contextName: string): Promise<void> {
+    try {
+      // ✅ Use apply instead of pop (keeps stash if conflict occurs)
+      console.log(`[ProjectService] 🔄 Applying stashed changes for ${contextName}...`);
+      await git.stash(['apply']);
+      
+      // ✅ Check for conflicts
+      const statusAfterApply = await git.status();
+      const hasConflicts = statusAfterApply.conflicted && statusAfterApply.conflicted.length > 0;
+      
+      if (hasConflicts) {
+        const conflictedFiles = statusAfterApply.conflicted || [];
+        console.error(`[ProjectService] ❌ Stash conflicts detected:`, conflictedFiles);
+        
+        // ✅ Abort: Reset to clean state
+        await git.reset(['--hard', 'HEAD']);
+        await git.clean(['-fd']);
+        
+        throw new Error(
+          `Cannot apply your uncommitted changes to ${contextName} due to conflicts.\n` +
+          `Conflicted files:\n${conflictedFiles.map((f: string) => `  - ${f}`).join('\n')}\n\n` +
+          `Your changes are still saved in git stash. To recover:\n` +
+          `1. Resolve conflicts manually: git stash apply\n` +
+          `2. Or discard stashed changes: git stash drop`
+        );
+      }
+      
+      // ✅ No conflicts: Success! Drop stash
+      await git.stash(['drop']);
+      console.log(`[ProjectService] ✅ Stashed changes applied successfully for ${contextName}`);
+      
+    } catch (error) {
+      // ✅ Check if it's our own conflict error
+      if (error instanceof Error && error.message.includes('conflicts')) {
+        throw error;  // Re-throw our detailed error
+      }
+      
+      // ✅ Other errors: Cleanup and throw
+      console.error(`[ProjectService] ❌ Failed to apply stash:`, error);
+      
+      try {
+        await git.reset(['--hard', 'HEAD']);
+        await git.clean(['-fd']);
+        console.log(`[ProjectService] 🧹 Cleaned up working tree after stash error`);
+      } catch (cleanupError) {
+        console.error(`[ProjectService] ⚠️  Cleanup also failed:`, cleanupError);
+      }
+      
+      throw new Error(
+        `Failed to apply your uncommitted changes. Repository reset to clean state.\n` +
+        `Your changes are still in git stash. To recover: git stash apply\n` +
+        `Original error: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
   async switchToFeatureBranch(
     projectId: string,
     featureName: string,
@@ -1658,56 +1718,53 @@ next-env.d.ts
     // ✅ Check for uncommitted changes before switching
     const status = await git.status();
     const hasChanges = status.files.length > 0;
+    let stashCreated = false;
     
     if (hasChanges) {
       // ✅ CRITICAL: Stash changes to prevent checkout failure
       console.log(`[ProjectService] ⚠️  Uncommitted changes detected, stashing...`);
       try {
         await git.stash(['push', '-u', '-m', `Auto-stash before switching to ${featureName}`]);
+        stashCreated = true;
         console.log(`[ProjectService] ✅ Changes stashed successfully`);
       } catch (stashError) {
         throw new Error(`Failed to stash changes: ${stashError instanceof Error ? stashError.message : String(stashError)}`);
       }
     }
     
-    // ✅ Special case: If featureName is 'main' or matches baseBranch, checkout base branch directly
-    if (featureName === 'main' || featureName === baseBranch) {
-      await git.checkout(baseBranch);
-      
-      // Set upstream for main if remote exists
-      try {
-        const remoteBranches = await git.branch(['-r']);
-        if (remoteBranches.all.includes(`origin/${baseBranch}`)) {
-          let hasUpstream = false;
-          try {
-            await git.revparse(['--abbrev-ref', `${baseBranch}@{upstream}`]);
-            hasUpstream = true;
-          } catch {
-            hasUpstream = false;
-          }
-          
-          if (!hasUpstream) {
-            await git.branch(['--set-upstream-to', `origin/${baseBranch}`, baseBranch]);
-            console.log(`[ProjectService] ✅ Set upstream: ${baseBranch} -> origin/${baseBranch}`);
-          }
-        }
-      } catch (err) {
-        console.log(`[ProjectService] Could not set upstream for ${baseBranch}:`, err);
-      }
-      
-      // ✅ Apply stashed changes if any
-      if (hasChanges) {
+    try {
+      // ✅ Special case: If featureName is 'main' or matches baseBranch, checkout base branch directly
+      if (featureName === 'main' || featureName === baseBranch) {
+        await git.checkout(baseBranch);
+        
+        // Set upstream for main if remote exists
         try {
-          await git.stash(['pop']);
-          console.log(`[ProjectService] ✅ Stashed changes applied successfully`);
-        } catch (popError) {
-          console.warn(`[ProjectService] ⚠️  Could not apply stashed changes:`, popError);
-          // Continue anyway - user can manually resolve
+          const remoteBranches = await git.branch(['-r']);
+          if (remoteBranches.all.includes(`origin/${baseBranch}`)) {
+            let hasUpstream = false;
+            try {
+              await git.revparse(['--abbrev-ref', `${baseBranch}@{upstream}`]);
+              hasUpstream = true;
+            } catch {
+              hasUpstream = false;
+            }
+            
+            if (!hasUpstream) {
+              await git.branch(['--set-upstream-to', `origin/${baseBranch}`, baseBranch]);
+              console.log(`[ProjectService] ✅ Set upstream: ${baseBranch} -> origin/${baseBranch}`);
+            }
+          }
+        } catch (err) {
+          console.log(`[ProjectService] Could not set upstream for ${baseBranch}:`, err);
         }
+        
+        // ✅ Apply stashed changes if any
+        if (stashCreated) {
+          await this.applyStashSafely(git, baseBranch);
+        }
+        
+        return baseBranch;  // ✅ Return base branch name
       }
-      
-      return baseBranch;  // ✅ Return base branch name
-    }
     
     // Sanitize feature name for branch (replace spaces with hyphens, lowercase)
     const branchName = `feature/${featureName.toLowerCase().replace(/\s+/g, '-')}`;
@@ -1723,14 +1780,8 @@ next-env.d.ts
       console.log(`[ProjectService] ✅ Checked out existing branch: ${branchName}`);
       
       // ✅ Apply stashed changes if any
-      if (hasChanges) {
-        try {
-          await git.stash(['pop']);
-          console.log(`[ProjectService] ✅ Stashed changes applied successfully`);
-        } catch (popError) {
-          console.warn(`[ProjectService] ⚠️  Could not apply stashed changes:`, popError);
-          // Continue anyway - user can manually resolve
-        }
+      if (stashCreated) {
+        await this.applyStashSafely(git, branchName);
       }
     } else {
       // Create new branch from base
@@ -1774,14 +1825,8 @@ next-env.d.ts
       console.log(`[ProjectService] ✅ Created new local branch: ${branchName}`);
       
       // ✅ Apply stashed changes if any
-      if (hasChanges) {
-        try {
-          await git.stash(['pop']);
-          console.log(`[ProjectService] ✅ Stashed changes applied successfully`);
-        } catch (popError) {
-          console.warn(`[ProjectService] ⚠️  Could not apply stashed changes:`, popError);
-          // Continue anyway - user can manually resolve
-        }
+      if (stashCreated) {
+        await this.applyStashSafely(git, branchName);
       }
     }
 
@@ -1889,6 +1934,22 @@ next-env.d.ts
     }
     
     return branchName;  // ✅ Return the feature branch name
+    
+    } catch (error) {
+      // ✅ Cleanup on any error during branch switching
+      if (stashCreated) {
+        try {
+          console.log(`[ProjectService] 🧹 Cleaning up after error...`);
+          await git.reset(['--hard', 'HEAD']);
+          await git.clean(['-fd']);
+          console.log(`[ProjectService] ✅ Cleaned up working tree`);
+        } catch (cleanupError) {
+          console.error(`[ProjectService] ⚠️  Cleanup failed:`, cleanupError);
+        }
+      }
+      
+      throw error;
+    }
   }
 
   /**
