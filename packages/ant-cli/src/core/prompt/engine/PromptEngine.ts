@@ -186,6 +186,12 @@ export class PromptEngine {
         windowSize: number;
         compressionRatio: number;
       };
+      referenceContexts?: Array<{  // ✅ NEW
+        project: string;
+        branch: string;
+        files: Array<{ path: string; content: string }>;
+        stats: { filesLoaded: number; estimatedTokens: number };
+      }>;
       currentTask?: {
         name: string;
         type: string;

@@ -252,6 +252,7 @@ async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       currentCode: state.code,  // Working tree code
       lessons: Array.isArray(state.lessons) ? state.lessons : undefined,  // ✅ Include lessons from unified search
       sessionContext: state.sessionContext,  // ✅ Include compressed session context
+      referenceContexts: state.referenceContexts,  // ✅ NEW: Include reference contexts
       currentTask: {
         name: state.currentTask.name,
         type: state.currentTask.type,
