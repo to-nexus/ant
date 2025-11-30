@@ -5,9 +5,10 @@ import { getGitChanges, commitGitChanges, pushToGitHub, pullFromGitHub, syncWith
 import { Button } from '@/presentation/components/common/button';
 
 export function GitStatusButtons() {
-  const { selectedProject, selectedFeature, isGitStatusLoading, gitStatusPhase, manualGitAction } = useStore();
+  const { selectedProject, selectedFeature, isGitStatusLoading, gitStatusPhase, manualGitAction, showConfigEditor } = useStore();
   const prevLoadingRef = useRef(isGitStatusLoading);  // ✅ Track previous loading state
   const prevManualActionRef = useRef(manualGitAction);  // ✅ Track previous manual action state
+  const prevShowConfigEditorRef = useRef(showConfigEditor);  // ✅ Track config editor state
   const [hasGitHubRepo, setHasGitHubRepo] = useState<boolean | null>(null); // null = checking, true = configured, false = not configured
   const [gitChanges, setGitChanges] = useState<{
     hasChanges: boolean;
@@ -31,21 +32,34 @@ export function GitStatusButtons() {
       setHasGitHubRepo(null);
       setGitChanges(null);
       setIsGitInitialized(null);
+      prevShowConfigEditorRef.current = showConfigEditor;
       return;
     }
 
     const checkConfig = async () => {
       try {
         const config = await fetchProjectConfig(selectedProject);
-        setHasGitHubRepo(!!config?.githubRepo);
+        const hasRepo = !!config?.githubRepo;
+        console.log('[GitStatusButtons] Config checked - hasGitHubRepo:', hasRepo);
+        setHasGitHubRepo(hasRepo);
       } catch (error) {
         console.log('[GitStatusButtons] Failed to fetch config:', error);
         setHasGitHubRepo(false);
       }
     };
 
+    // ✅ Check config when:
+    // 1. Project changes
+    // 2. Config editor closes (config might have been saved)
+    const configEditorJustClosed = prevShowConfigEditorRef.current === true && showConfigEditor === false;
+    prevShowConfigEditorRef.current = showConfigEditor;
+    
+    if (configEditorJustClosed) {
+      console.log('[GitStatusButtons] Config editor closed - rechecking config');
+    }
+
     checkConfig();
-  }, [selectedProject]);
+  }, [selectedProject, showConfigEditor]);
 
   // ✅ Detect manual Git action completion and clear stale data
   useEffect(() => {
