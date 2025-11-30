@@ -7,14 +7,12 @@
 
 # 1. 조직도 (Org Structure)
 
-```
-Chief AI Architect (기존 인력: 1명)
- ├── AI Systems Engineer (신규 채용: 1명)
- ├── AI Orchestration Engineer (신규 채용: 1명)
- ├── Platform/Backend Engineer (신규 채용: 1명)
- ├── Frontend Engineer (기존 인력 차출: 1명)
- └── Product Designer (신규 채용: 1명)
-```
+Chief AI Architect (기존 인력: 1명)  
+├── AI Systems Engineer (신규 채용: 1명)  
+├── AI Orchestration Engineer (신규 채용: 1명)  
+├── Platform/Backend Engineer (신규 채용: 1명)  
+├── Frontend Engineer (기존 인력 차출: 1명)  
+└── Product Designer (신규 채용: 1명)  
 
 ---
 
@@ -53,14 +51,16 @@ RAG/Chunking/Embedding/VectorDB 기반의 “지식 품질 담당자”.
 - LLM 입력 데이터 품질 유지 및 개선
 
 **필수 자격 요건**  
-- ML/DL 기반 실무 경험 2~7년  
-- Python 기반 ML 스택(PyTorch/Transformers) 숙련  
-- Vector DB / RAG / Retrieval 경험  
-- 코드 또는 문서 기반 Embedding 경험
+- LLM / RAG / Embedding / Retrieval 구조 이해  
+- TypeScript 기반 환경(Node.js)에서의 개발 경험  
+- Vector DB(Qdrant, Pinecone, Weaviate 등) 사용 경험  
+- 문서·코드 기반 Chunking 전략 설계 또는 구현 경험  
+- LLM 기반 서비스 개발 또는 데이터 파이프라인 경험  
+- 모델 context optimization 또는 prompt routing 경험
 
 **우대 요건 (학력 포함)**  
 - NLP/IR/Information Retrieval 전공 **석사 이상 우대**  
-- LLM-Reranker, Hybrid Retrieval 연구/경험  
+- Hybrid Retrieval 또는 Cross-Encoder reranker 경험  
 - 코드 RAG 프로젝트 경험  
 - AI 연구 경력 또는 논문 실적 보유자 우대
 
