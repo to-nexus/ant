@@ -27,7 +27,7 @@ export interface ChunkInput {
  */
 export interface ChunkMetadata {
   /** Type of content */
-  type: 'lesson' | 'codebase' | 'design' | 'spec';  // ✅ Changed: learning → lesson
+  type: 'lesson' | 'codebase' | 'design' | 'spec' | 'document';  // ✅ Added: document
   
   /** Task context */
   task?: 'code' | 'design' | 'learn';
@@ -36,7 +36,7 @@ export interface ChunkMetadata {
   project: string;
   
   /** Feature/module identifier */
-  feature: string;
+  feature?: string;  // ✅ Made optional for documents
   
   /** Source file path (if applicable) */
   filePath?: string;

@@ -3,6 +3,150 @@ You are analyzing a software specification to break it into executable tasks.
 SPECIFICATION:
 {{spec}}
 
+{{#if mode}}
+════════════════════════════════════════════════════════════════════════════════
+🎯 WORK MODE: {{mode}} {{#if modeConfidence}}(Confidence: {{modeConfidence}}){{/if}}
+════════════════════════════════════════════════════════════════════════════════
+
+{{#if (eq mode "refactor")}}
+**REFACTOR MODE - Fix/Improve Existing Code**
+
+🚨 **CRITICAL: You are FIXING existing code, NOT building from scratch!**
+
+**CORE PRINCIPLES:**
+1. **Minimal Changes**: Make ONLY the changes needed to fix the stated problem
+2. **Preserve Working Code**: DO NOT recreate components that already work
+3. **Focused Tasks**: Create tasks ONLY for the specific issues mentioned
+4. **No Feature Creep**: DO NOT add features not mentioned in the directive
+
+**TASK CREATION RULES:**
+1. **Identify the EXACT problem**:
+   - Which specific file/component is broken?
+   - What is the EXACT error or issue?
+   - What needs to change (be specific: file, function, line)?
+
+2. **Create ONE task per distinct issue**:
+   - ✅ GOOD: "Fix WebSocket URL in websocket.service.ts line 39"
+   - ❌ BAD: "Implement WebSocket system and fix URL"
+   
+3. **Use focused action verbs**:
+   - ✅ Use: "Fix", "Update", "Modify", "Correct", "Adjust", "Change"
+   - ❌ Avoid: "Implement", "Create", "Build", "Develop", "Design"
+
+4. **Reference existing files explicitly**:
+   - ✅ GOOD: "Fix getWebSocketURL() in websocket.service.ts"
+   - ❌ BAD: "Implement WebSocket connection logic"
+
+**WHAT TO AVOID:**
+- ❌ DO NOT bundle multiple fixes into one task
+- ❌ DO NOT add "improvements" not mentioned in directive
+- ❌ DO NOT recreate working infrastructure
+- ❌ DO NOT redesign the architecture
+- ❌ DO NOT add features "while we're at it"
+
+**EXPECTED TASK COUNT:**
+- Single error/bug: 1-2 tasks
+- Multiple related issues: 2-4 tasks
+- Complex refactoring: 3-6 tasks
+- ⚠️ If you're creating >5 tasks in refactor mode, you're probably over-engineering!
+
+════════════════════════════════════════════════════════════════════════════════
+
+{{else}}{{#if (eq mode "explain")}}
+**EXPLAIN MODE - Minimal Bug Fix**
+
+🚨 **CRITICAL: This is a BUG FIX, not a feature implementation!**
+
+**CORE PRINCIPLES:**
+1. **Root Cause**: Identify the EXACT cause of the issue
+2. **Minimal Fix**: Change ONLY what's necessary
+3. **Preserve Behavior**: Keep everything else unchanged
+
+**TASK CREATION RULES:**
+1. **Focus on the bug**:
+   - What is broken?
+   - Why is it broken?
+   - What's the minimal fix?
+
+2. **One bug = One task**:
+   - ✅ GOOD: "Fix null pointer in validateInput() function"
+   - ❌ BAD: "Refactor validation system and fix null pointer"
+
+**EXPECTED TASK COUNT:**
+- Single bug: 1 task
+- Related bugs: 2-3 tasks
+- ⚠️ If you're creating >3 tasks in explain mode, you're over-engineering!
+
+════════════════════════════════════════════════════════════════════════════════
+
+{{else}}{{#if (eq mode "generate")}}
+**GENERATE MODE - New Implementation**
+
+**CREATION MODE: Build from scratch**
+
+You are implementing new features based on the specification.
+Follow the guidelines below for creating tasks.
+
+════════════════════════════════════════════════════════════════════════════════
+
+{{/if}}{{/if}}{{/if}}
+{{/if}}
+
+{{#if hasErrorInDirective}}
+════════════════════════════════════════════════════════════════════════════════
+🚨 ERROR DETECTED IN DIRECTIVE
+════════════════════════════════════════════════════════════════════════════════
+
+**ERROR FIX MODE ACTIVATED**
+
+**CRITICAL INSTRUCTIONS:**
+
+1. **Analyze the error message**:
+   - What EXACTLY is failing?
+   - Which file/line is the error from?
+   - What is the error message saying?
+
+2. **Identify the minimal fix**:
+   - What is the ONE thing that needs to change?
+   - Can this be fixed by changing a single value/config/line?
+   - Is this a typo, wrong URL, missing import, or similar simple fix?
+
+3. **Create a FOCUSED task**:
+   - Task name: State the EXACT fix in 5-10 words
+   - Task description: Specify the exact file, line, and change needed
+   - DO NOT add "and also..." or "plus..." in the description
+   - ONE task = ONE fix
+
+4. **DO NOT over-engineer**:
+   - ❌ Wrong: "Error: URL incorrect" → "Rebuild networking infrastructure"
+   - ✅ Right: "Error: URL incorrect" → "Fix URL constant in config.ts"
+   - ❌ Wrong: "Import missing" → "Restructure module system"
+   - ✅ Right: "Import missing" → "Add missing import statement"
+
+**EXAMPLES OF GOOD ERROR FIX TASKS:**
+
+Example 1 - URL Error:
+```
+Task: "Fix WebSocket Connection URL"
+Description: "Update websocket.service.ts line 39: Change URL from 'ws://localhost:5173/game' to 'ws://localhost:3000/ws' to match backend server port and endpoint."
+```
+
+Example 2 - Import Error:
+```
+Task: "Add Missing React Import"
+Description: "Add 'import React from \"react\"' at the top of Button.tsx to fix 'React is not defined' error."
+```
+
+Example 3 - Config Error:
+```
+Task: "Fix API Base URL in Config"
+Description: "Update API_BASE_URL in config/api.ts from 'http://localhost:8080' to 'http://localhost:3000' to match actual server port."
+```
+
+════════════════════════════════════════════════════════════════════════════════
+
+{{/if}}
+
 {{#if hasExistingCode}}
 ════════════════════════════════════════════════════════════════════════════════
 🚨🚨🚨 CRITICAL: EXISTING CODEBASE DETECTED 🚨🚨🚨
@@ -13,7 +157,7 @@ SPECIFICATION:
 **YOU MUST:**
 - ✅ Create tasks to MODIFY/FIX/COMPLETE existing code
 - ✅ Assume infrastructure (package.json, tsconfig.json) already exists
-- ✅ Build upon existing files shown below (FileStorage.ts, etc.)
+- ✅ Build upon existing files shown below
 - ✅ Use verbs: "Fix", "Complete", "Extend", "Modify", "Add to existing"
 - ❌ DO NOT create "Setup Task (priority 100)"
 - ❌ DO NOT create tasks to "initialize" or "bootstrap" the project
@@ -55,6 +199,62 @@ Current code structure:
 
 {{/if}}
 
+{{#if designDoc}}
+════════════════════════════════════════════════════════════════════════════════
+📐 DESIGN DOCUMENT (REFERENCE ONLY)
+════════════════════════════════════════════════════════════════════════════════
+
+**⚠️ CRITICAL: Design document is for REFERENCE, not a TODO list!**
+
+{{#if (or (eq mode "refactor") (eq mode "explain"))}}
+**IN REFACTOR/FIX MODE:**
+
+The design document describes the INTENDED architecture. Your task is to:
+- ✅ Fix specific issues mentioned in the directive
+- ✅ Use design doc to understand context and architecture
+- ❌ DO NOT create tasks for every component in design doc
+- ❌ DO NOT use design doc as a checklist of things to implement
+
+**CRITICAL DISTINCTION:**
+```
+Design Doc:        "System has 10 components (A, B, C, D, E, F, G, H, I, J)"
+User Directive:    "Fix error in component A"
+
+✅ CORRECT TASKS:
+   - Fix error in component A (1 task)
+   - Final verification (1 task)
+   Total: 2 tasks
+
+❌ WRONG TASKS:
+   - Implement component A (rebuilding)
+   - Implement component B (not mentioned!)
+   - Implement component C (not mentioned!)
+   ...
+   - Implement component J (not mentioned!)
+   - Fix error in component A (finally!)
+   Total: 11 tasks (9 unnecessary!)
+```
+
+**HOW TO USE DESIGN DOC:**
+1. Read it to understand the system architecture
+2. Use it to understand how components should interact
+3. Reference it when making fixes to ensure consistency
+4. **DO NOT use it as a task list!**
+
+{{else}}
+**IN GENERATE MODE:**
+
+The design document is your implementation guide:
+- ✅ Create tasks to implement components described in design
+- ✅ Follow the architecture and structure outlined
+- ✅ Use it as a blueprint for what to build
+
+{{/if}}
+
+════════════════════════════════════════════════════════════════════════════════
+
+{{/if}}
+
 YOUR TASK:
 Break this specification into a prioritized list of implementation tasks.
 
@@ -76,11 +276,13 @@ GUIDELINES:
 
 **1. Setup Task (priority 100)** - OPTIONAL, create only if needed:
    - **⚠️ CRITICAL: If existing code detected above → SKIP THIS ENTIRELY!**
+   - **⚠️ CRITICAL: If mode is "refactor" or "explain" → SKIP THIS ENTIRELY!**
    - **When to create:**
-     - ✅ ONLY for new projects with NO existing code
+     - ✅ ONLY for new projects with NO existing code AND mode is "generate"
      - ✅ Adding new infrastructure explicitly mentioned in spec (e.g., "add Vite", "add TailwindCSS")
    - **When NOT to create (ABSOLUTE RULES):**
      - ❌ If "EXISTING CODEBASE DETECTED" message shown above
+     - ❌ If mode is "refactor" or "explain"
      - ❌ If codePreview shows ANY files (even one file means infrastructure exists)
      - ❌ Feature additions with existing infrastructure
      - ❌ Bug fixes or refactoring
@@ -120,22 +322,26 @@ GUIDELINES:
        - ✅ Missing dependencies causing runtime/compile errors
      - **Keep it minimal:** Only add what's strictly needed for that feature
    
-   - **⚠️ IF EXISTING CODE (shown above):**
+   - **⚠️ IF EXISTING CODE (shown above) OR mode is "refactor"/"explain":**
      - **Task naming convention:**
-       - ✅ Use: "Fix", "Complete", "Extend", "Add", "Update", "Modify"
+       - ✅ Use: "Fix", "Complete", "Extend", "Add", "Update", "Modify", "Correct", "Adjust"
        - ❌ Avoid: "Create", "Implement", "Build" (sounds like from scratch)
      - **Reference existing files:**
        - ✅ GOOD: "Fix main.ts - add NestJS bootstrap using existing FileStorage.ts"
        - ✅ GOOD: "Complete AuthService - add login method to existing service"
        - ✅ GOOD: "Extend User entity with balance field"
+       - ✅ GOOD: "Update WebSocket URL in websocket.service.ts"
        - ❌ BAD: "Implement AuthModule for authentication" (too broad, sounds new)
        - ❌ BAD: "Create UserService with all CRUD operations" (ignoring existing code)
        - ❌ BAD: "Build complete authentication system" (sounds like from scratch)
      - **One fix per task:**
        - If error is "missing main.ts" → ONE task: "Fix: Add missing main.ts entry point"
        - Don't bundle: "Create entry point AND wire modules AND add auth" → Too much!
+     - **Be specific about the fix:**
+       - ✅ GOOD: "Fix WebSocket URL: Change from ws://localhost:5173/game to ws://localhost:3000/ws in websocket.service.ts line 39"
+       - ❌ BAD: "Fix WebSocket connection issues"
    
-   - **IF NEW PROJECT (no code shown):**
+   - **IF NEW PROJECT (no code shown) AND mode is "generate":**
      - ✅ Use: "Create", "Implement", "Build"
      - Example: "Create Button component with variants (primary, secondary, outline) and sizes (sm, md, lg)"
    
@@ -160,9 +366,9 @@ GUIDELINES:
 - Good size: A feature that delivers value (e.g., "Login system")
 
 **Priority Assignment** (LOWER NUMBER = HIGHER PRIORITY):
-- 100: Setup (if needed)
-- 200-219: Critical features
-- 220-249: Important features
+- 100: Setup (if needed, only in generate mode)
+- 200-219: Critical features/fixes
+- 220-249: Important features/fixes
 - 250-899: Nice-to-have features
 - 1000: Final verification (always last)
 

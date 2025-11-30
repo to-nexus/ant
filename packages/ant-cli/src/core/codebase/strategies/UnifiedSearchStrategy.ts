@@ -4,10 +4,15 @@ import { FileWithSource, FileSource } from "../types";
 /**
  * Unified Search Strategy
  * 
- * 통합 검색: code + lesson을 한 번의 쿼리로 검색
- * - 유사도 기반 자동 우선순위
- * - Git 변경사항 boost
- * - 관련성 높은 것만 선택
+ * ✅ Multi-Collection Parallel Search:
+ * - code: codebase-{project}
+ * - lessons: lessons-{project}
+ * - documents: documents-{project} (optional)
+ * 
+ * Features:
+ * - Parallel queries for performance
+ * - Git changes boost
+ * - Cross-collection relevance ranking
  */
 
 export interface LessonResult {
@@ -19,22 +24,37 @@ export interface LessonResult {
   directive?: string;
 }
 
+export interface DocumentResult {
+  content: string;
+  score: number;
+  docType: 'design' | 'prd' | 'directive' | 'spec';
+  title: string;
+  metadata: Record<string, any>;
+}
+
 export interface UnifiedSearchResult {
   codeFiles: FileWithSource[];
   lessons: LessonResult[];
+  documents: DocumentResult[];
   stats: {
-    totalResults: number;
-    codeResults: number;
-    lessonResults: number;
+    totalCodeResults: number;
+    totalLessonResults: number;
+    totalDocumentResults: number;
     avgCodeScore: number;
     avgLessonScore: number;
+    avgDocumentScore: number;
   };
 }
 
 export class UnifiedSearchStrategy {
   
   /**
-   * Unified search for code + lessons
+   * Unified search across multiple collections
+   * 
+   * ✅ Parallel queries:
+   * 1. codebase-{project} → code files
+   * 2. lessons-{project} → lessons
+   * 3. documents-{project} → documents (optional)
    * 
    * @param directive - User's directive/query
    * @param project - Project name
@@ -50,49 +70,59 @@ export class UnifiedSearchStrategy {
       git?: GitPort;
     },
     options: {
-      maxCodeFiles: number;      // 15
-      maxLessons: number;         // 5
-      minCodeScore: number;       // 0.6
-      minLessonScore: number;     // 0.5
-      includeGitChanges: boolean; // true
+      maxCodeFiles: number;       // 15
+      maxLessons: number;          // 5
+      maxDocuments?: number;       // 3 (optional)
+      minCodeScore: number;        // 0.6
+      minLessonScore: number;      // 0.5
+      minDocumentScore?: number;   // 0.5 (optional)
+      includeGitChanges: boolean;  // true
+      includeDocuments?: boolean;  // false (optional)
     }
   ): Promise<UnifiedSearchResult> {
     
-    console.log(`🔍 [Unified Search] Querying: "${directive.substring(0, 50)}..."`);
+    console.log(`🔍 [Unified Search] Multi-collection parallel query...`);
     
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // 1. Single query for ALL types (code + lesson)
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const allResults = await deps.vectorDB.query(directive, project, {
-      k: options.maxCodeFiles + options.maxLessons + 30,  // Extra candidates
-      minScore: Math.min(options.minCodeScore, options.minLessonScore)
-      // ✅ NO where filter! Get both types
-    });
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 1. Parallel search across 3 collections
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    const searchPromises = [
+      // Code search (codebase collection)
+      deps.vectorDB.query(directive, project, {
+        k: options.maxCodeFiles * 2,
+        minScore: options.minCodeScore,
+        collectionType: 'codebase'
+      }),
+      
+      // Lesson search (lessons collection)
+      deps.vectorDB.query(directive, project, {
+        k: options.maxLessons * 2,
+        minScore: options.minLessonScore,
+        collectionType: 'lessons'
+      })
+    ];
     
-    console.log(`   📊 Total results: ${allResults.length}`);
+    // Optional: Document search (documents collection)
+    if (options.includeDocuments && options.maxDocuments) {
+      searchPromises.push(
+        deps.vectorDB.query(directive, project, {
+          k: options.maxDocuments * 2,
+          minScore: options.minDocumentScore || 0.5,
+          collectionType: 'documents'
+        })
+      );
+    }
     
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // 2. Separate by type, maintaining score order
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const codeResults = allResults
-      .filter(r => r.metadata?.type === 'codebase')
-      .filter(r => r.score >= options.minCodeScore);
+    const [codeResults, lessonResults, documentResults = []] = await Promise.all(searchPromises);
     
-    const lessonResults = allResults
-      .filter(r => r.metadata?.type === 'lesson')
-      .filter(r => r.score >= options.minLessonScore);
+    console.log(`   📊 Results: ${codeResults.length} code, ${lessonResults.length} lessons, ${documentResults.length} documents`);
     
-    console.log(`   📁 Code results: ${codeResults.length} (score >= ${options.minCodeScore})`);
-    console.log(`   📚 Lesson results: ${lessonResults.length} (score >= ${options.minLessonScore})`);
-    
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // 3. Extract and format code files
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 2. Process code files
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     let codeFiles = this.extractCodeFiles(codeResults);
     
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // 4. Boost git-changed files
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Boost git-changed files
     if (options.includeGitChanges && deps.git) {
       try {
         const hasChanges = await deps.git.hasChanges();
@@ -106,31 +136,40 @@ export class UnifiedSearchStrategy {
       }
     }
     
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // 5. Limit to top N
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const topCodeFiles = codeFiles.slice(0, options.maxCodeFiles);
-    const topLessons = this.extractLessons(lessonResults).slice(0, options.maxLessons);
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 3. Process lessons and documents
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    const lessons = this.extractLessons(lessonResults);
+    const documents = this.extractDocuments(documentResults);
     
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // 6. Calculate stats
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 4. Limit to top N
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    const topCodeFiles = codeFiles.slice(0, options.maxCodeFiles);
+    const topLessons = lessons.slice(0, options.maxLessons);
+    const topDocuments = documents.slice(0, options.maxDocuments || 0);
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 5. Calculate stats
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     const stats = {
-      totalResults: allResults.length,
-      codeResults: topCodeFiles.length,
-      lessonResults: topLessons.length,
+      totalCodeResults: topCodeFiles.length,
+      totalLessonResults: topLessons.length,
+      totalDocumentResults: topDocuments.length,
       avgCodeScore: this.calculateAvgScore(topCodeFiles.map(f => 
         f.sources.find(s => s.type === 'vector')?.score || 0
       )),
-      avgLessonScore: this.calculateAvgScore(topLessons.map(l => l.score))
+      avgLessonScore: this.calculateAvgScore(topLessons.map(l => l.score)),
+      avgDocumentScore: this.calculateAvgScore(topDocuments.map(d => d.score))
     };
     
-    console.log(`   ✅ Selected: ${stats.codeResults} code files, ${stats.lessonResults} lessons`);
-    console.log(`   📊 Avg scores: code=${stats.avgCodeScore.toFixed(2)}, lesson=${stats.avgLessonScore.toFixed(2)}`);
+    console.log(`   ✅ Selected: ${stats.totalCodeResults} code, ${stats.totalLessonResults} lessons, ${stats.totalDocumentResults} documents`);
+    console.log(`   📊 Avg scores: code=${stats.avgCodeScore.toFixed(2)}, lesson=${stats.avgLessonScore.toFixed(2)}, doc=${stats.avgDocumentScore.toFixed(2)}`);
     
     return {
       codeFiles: topCodeFiles,
       lessons: topLessons,
+      documents: topDocuments,
       stats
     };
   }
@@ -172,6 +211,19 @@ export class UnifiedSearchStrategy {
       tags: r.metadata?.tags || [],
       timestamp: r.metadata?.timestamp || '',
       directive: r.metadata?.directive
+    }));
+  }
+  
+  /**
+   * Extract documents from search results
+   */
+  private extractDocuments(results: any[]): DocumentResult[] {
+    return results.map(r => ({
+      content: r.content || r.document || '',
+      score: r.score || 0,
+      docType: r.metadata?.docType || 'design',
+      title: r.metadata?.title || 'Untitled',
+      metadata: r.metadata || {}
     }));
   }
   

@@ -11,7 +11,7 @@
 
 import { GitPort, MemoryPort } from "../ports";
 import { CodeContext, RetrieveOptions, BatchRetrieveOptions, BatchResult } from "./types";
-import { UnifiedSearchStrategy, LessonResult } from "./strategies/UnifiedSearchStrategy";
+import { UnifiedSearchStrategy, LessonResult, DocumentResult } from "./strategies/UnifiedSearchStrategy";
 import { KeywordSearchStrategy } from "./strategies/KeywordSearchStrategy";
 import { ImportGraphBooster } from "./boosters/ImportGraphBooster";
 import { FileLoader } from "./loaders/FileLoader";
@@ -42,7 +42,7 @@ export class CodebaseRetriever {
     workingDir: string,
     deps: { git?: GitPort; vectorDB?: MemoryPort },
     options: RetrieveOptions = {}
-  ): Promise<CodeContext & { lessons?: LessonResult[] }> {
+  ): Promise<CodeContext & { lessons?: LessonResult[]; documents?: DocumentResult[] }> {
     const maxTokens = options.maxTokens || 100000;
     const exclude = [...this.defaultExclude, ...(options.exclude || [])];
     const project = options.project || 'default';
@@ -77,9 +77,10 @@ export class CodebaseRetriever {
 
     let codeFiles;
     let lessons: LessonResult[] = [];
+    let documents: DocumentResult[] = [];
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // STEP 1: Unified Search (Code + Lesson in single query)
+    // STEP 1: Unified Search (Code + Lesson + Document)
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     if (deps.vectorDB) {
       const unifiedResult = await this.unifiedStrategy.search(
@@ -89,14 +90,17 @@ export class CodebaseRetriever {
         {
           maxCodeFiles,
           maxLessons,
+          maxDocuments: 0,  // Documents disabled by default (retrieved separately if needed)
           minCodeScore,
           minLessonScore,
-          includeGitChanges: true
+          includeGitChanges: true,
+          includeDocuments: false  // Disable for now
         }
       );
 
       codeFiles = unifiedResult.codeFiles;
       lessons = unifiedResult.lessons;
+      documents = unifiedResult.documents;
 
       console.log(`   ✅ Unified search: ${codeFiles.length} files, ${lessons.length} lessons (mode: ${mode})`);
       
@@ -157,7 +161,8 @@ export class CodebaseRetriever {
 
     return {
       ...result,
-      lessons  // ✅ Include lessons in result
+      lessons,    // ✅ Include lessons in result
+      documents   // ✅ Include documents in result
     };
   }
 

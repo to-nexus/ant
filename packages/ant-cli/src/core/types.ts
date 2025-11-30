@@ -18,6 +18,40 @@ export * from './types/environment';
 export type AgentTask = 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';
 
 /**
+ * Vector DB Collection Types
+ * Defines the types of collections in the vector database
+ */
+export type CollectionType = 
+  | 'codebase'     // Source code chunks
+  | 'documents'    // Design docs, PRD, directives, specs
+  | 'lessons'      // Learned patterns, problem-solution-outcome
+  | 'context';     // User preferences, session history (future)
+
+/**
+ * Document Types (for 'documents' collection)
+ * Defines the types of documents that can be stored
+ */
+export type DocumentType = 
+  | 'design'       // Design documents
+  | 'prd'          // Product requirements documents
+  | 'directive'    // User directives/instructions
+  | 'spec';        // Technical specifications
+
+/**
+ * Get collection name from type and project
+ * 
+ * @param type - Collection type
+ * @param project - Project name
+ * @returns Collection name (e.g., 'codebase-myproject')
+ */
+export function getCollectionName(
+  type: CollectionType, 
+  project: string
+): string {
+  return `${type}-${project}`;
+}
+
+/**
  * Code generation modes
  * Defines how code generation should be performed
  */

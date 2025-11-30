@@ -60,6 +60,43 @@ export class DevServerService {
   }
   
   /**
+   * Detect if project is a backend project
+   */
+  private isBackendProject(packageJson: any): boolean {
+    const deps = { 
+      ...packageJson.dependencies, 
+      ...packageJson.devDependencies 
+    };
+    
+    // Backend frameworks
+    const backendFrameworks = [
+      'express', 'koa', 'fastify', 'hapi',
+      '@nestjs/core', '@nestjs/platform-express', '@nestjs/platform-fastify',
+      'ws', 'socket.io', 'uWebSockets.js'
+    ];
+    
+    // Backend dev tools (strong indicators)
+    const backendDevTools = [
+      'tsx', 'nodemon', 'ts-node', 'ts-node-dev'
+    ];
+    
+    // Check for backend indicators
+    const hasBackendFramework = backendFrameworks.some(fw => deps[fw]);
+    const hasBackendDevTool = backendDevTools.some(tool => deps[tool]);
+    
+    // Also check dev script content
+    const devScript = packageJson.scripts?.dev || '';
+    const isNodeServer = devScript.includes('tsx') || 
+                        devScript.includes('nodemon') || 
+                        devScript.includes('ts-node') ||
+                        devScript.includes('nest start') ||
+                        devScript.includes('server.ts') ||
+                        devScript.includes('server.js');
+    
+    return hasBackendFramework || hasBackendDevTool || isNodeServer;
+  }
+  
+  /**
    * Start dev server for a project
    */
   async startDevServer(projectId: string, localPath: string, port?: number): Promise<{ success: boolean; message?: string; error?: string }> {
@@ -200,40 +237,60 @@ export class DevServerService {
     // Determine the best dev server command
     let command: string;
     let args: string[];
-    let needsPortArg = false;
+    let env: Record<string, string> = {
+      ...process.env,
+      BROWSER: 'none',  // Prevent auto-opening browser
+      OPEN: 'false',    // Alternative env var
+      PORT: devPort.toString()  // Always set PORT env var as fallback
+    };
     
-    // Check for specific frameworks first (before generic "dev" script)
-    if (packageJson.devDependencies?.vite || packageJson.dependencies?.vite) {
+    // ✅ NEW PRIORITY: Check package.json scripts FIRST (explicit developer intent)
+    if (packageJson.scripts?.dev) {
+      const isBackend = this.isBackendProject(packageJson);
+      
+      console.log(`[DevServerService] Project type: ${isBackend ? 'Backend' : 'Frontend'}`);
+      console.log(`[DevServerService] Dev script: ${packageJson.scripts.dev}`);
+      
+      if (isBackend) {
+        // ✅ Backend: Use npm run dev with PORT env var (no --port argument)
+        // Backend servers read PORT from environment
+        command = 'npm';
+        args = ['run', 'dev'];
+        console.log(`[DevServerService] Backend detected - using PORT env var: ${devPort}`);
+      } else {
+        // ✅ Frontend: Try npm run dev with --port argument
+        // Most modern frontend dev servers support --port via pass-through
+        command = 'npm';
+        args = ['run', 'dev', '--', '--port', devPort.toString()];
+        console.log(`[DevServerService] Frontend detected - using --port argument: ${devPort}`);
+      }
+    }
+    // ✅ Framework detection (only if no dev script exists)
+    else if (packageJson.devDependencies?.vite || packageJson.dependencies?.vite) {
       // Direct vite command
       command = 'npx';
-      args = ['vite', '--port', devPort.toString()];  // ✅ Vite accepts --port
-      needsPortArg = true;
+      args = ['vite', '--port', devPort.toString()];
+      console.log(`[DevServerService] Vite detected - using npx vite`);
     } else if (packageJson.devDependencies?.['@vitejs/plugin-react'] || packageJson.dependencies?.['@vitejs/plugin-react']) {
       // Vite React project
       command = 'npx';
-      args = ['vite', '--port', devPort.toString()];  // ✅ Vite accepts --port
-      needsPortArg = true;
+      args = ['vite', '--port', devPort.toString()];
+      console.log(`[DevServerService] Vite React detected - using npx vite`);
     } else if (packageJson.devDependencies?.['next'] || packageJson.dependencies?.['next']) {
-      // Next.js project
+      // Next.js project (only if no dev script)
       command = 'npx';
-      args = ['next', 'dev', '-p', devPort.toString()];  // ✅ Next.js accepts -p
-      needsPortArg = true;
+      args = ['next', 'dev', '-p', devPort.toString()];
+      console.log(`[DevServerService] Next.js detected - using npx next dev`);
     } else if (packageJson.devDependencies?.['react-scripts']) {
       // Create React App
       command = 'npx';
       args = ['react-scripts', 'start'];
-      needsPortArg = false;  // Port set via PORT env var
-    } else if (packageJson.scripts?.dev) {
-      // Fallback: Use npm/pnpm/yarn run dev
-      // Try to pass port via -- (works for most modern dev servers)
-      command = 'npm';
-      args = ['run', 'dev', '--', '--port', devPort.toString()];
-      needsPortArg = true;
+      console.log(`[DevServerService] Create React App detected - using PORT env var`);
     } else if (packageJson.scripts?.start) {
       // Last resort: start script
       command = 'npm';
       args = ['run', 'start'];
-      needsPortArg = false;  // Port set via PORT env var
+      console.log(`[DevServerService] Using start script with PORT env var`);
     } else {
       return { 
         success: false,
@@ -244,16 +301,11 @@ export class DevServerService {
     // ✅ Store port for later use
     this.devServerPorts.set(projectId, devPort);
     
-    // Start dev server with BROWSER=none to prevent auto-opening
+    // Start dev server
     const devProcess = spawn(command, args, {
       cwd: localPath,
       shell: true,
-      env: { 
-        ...process.env,
-        PORT: devPort.toString(),  // ✅ Set port via environment variable
-        BROWSER: 'none',           // Prevent Vite/CRA from auto-opening browser
-        OPEN: 'false'              // Alternative env var for some dev servers
-      }
+      env
     });
     
     console.log(`[DevServerService] Process spawned for ${projectId}, PID: ${devProcess.pid}`);

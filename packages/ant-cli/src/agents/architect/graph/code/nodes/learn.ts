@@ -385,148 +385,215 @@ function extractTags(lessons: string, directive: string = ''): string[] {
 
 /**
  * Extract structured lessons from code generation state
+ * 
+ * ✅ NEW FORMAT: Problem-Solution-Outcome
+ * - Focus on actionable knowledge
+ * - Reference documents, don't include full content
+ * - Keep under 1KB to prevent OOM
  */
 function extractCodeLessons(state: ArchitectGraphState): string {
-  const sections: string[] = [];
+  // Extract components
+  const problem = extractProblem(state);
+  const solution = extractSolution(state);
+  const outcome = extractOutcome(state);
+  const patterns = extractPatterns(state);
+  const antipatterns = extractAntipatterns(state);
+  const relatedFiles = extractRelatedFiles(state);
+  const references = extractReferences(state);
+  const tags = extractTags(problem + solution, state.directive || '');
   
-  // 1. Context
-  sections.push(`## Code Generation Session`);
-  sections.push(`**Project**: ${state.context.project}`);
-  sections.push(`**Feature**: ${state.context.featureFolder || 'main'}`);
-  sections.push(`**Mode**: ${state.codeMode || 'auto'}`);
-  sections.push(`**Timestamp**: ${new Date().toISOString()}`);
-  
-  // 2. Codebase Profile
-  if (state.profile) {
-    sections.push(`\n## Codebase Profile`);
-    sections.push(`**Language**: ${state.profile.language}`);
-    sections.push(`**Framework**: ${state.profile.framework || 'N/A'}`);
-    if (state.profile.version) {
-      sections.push(`**Version**: ${state.profile.version}`);
-    }
-    if (state.profile.packageManager) {
-      sections.push(`**Package Manager**: ${state.profile.packageManager}`);
-    }
-    if (state.profile.conventions) {
-      sections.push(`**Conventions**: ${JSON.stringify(state.profile.conventions)}`);
-    }
-  }
-  
-  // 3. Implementation Plan (summarized to reduce memory)
-  if (state.planText) {
-    sections.push(`\n## Implementation Plan Summary`);
-    // Extract key points from plan (first 1000 chars or THINKING section only)
-    const thinkingMatch = state.planText.match(/=== THINKING ===([\s\S]*?)=== END THINKING ===/);
-    if (thinkingMatch) {
-      const thinking = thinkingMatch[1].trim();
-      sections.push(thinking.substring(0, 1500) + (thinking.length > 1500 ? '...' : ''));
-    } else {
-      sections.push(state.planText.substring(0, 1000) + (state.planText.length > 1000 ? '...' : ''));
-    }
-  }
-  
-  // 4. Design Context (keep minimal reference)
-  if (state.design) {
-    sections.push(`\n## Design Reference`);
-    const designSummary = state.design.substring(0, 300);
-    sections.push(designSummary + (state.design.length > 300 ? '...\n[Full design available in session artifacts]' : ''));
-  }
-  
-  // 5. Directive Applied (summarized if too long)
-  if (state.directive) {
-    sections.push(`\n## Directive Applied`);
-    if (state.directive.length > 2000) {
-      sections.push(state.directive.substring(0, 2000) + '\n...\n[Full directive available in session artifacts]');
-    } else {
-      sections.push(state.directive);
-    }
-  }
-  
-  // 6. Files Generated
-  sections.push(`\n## Generated Files (${state.files.length})`);
-  for (const f of state.files) {
-    const lines = f.content.split('\n').length;
-    sections.push(`- \`${f.path}\` (${lines} lines)`);
-  }
-  
-  if (state.filesToDelete.length > 0) {
-    sections.push(`\n## Deleted Files (${state.filesToDelete.length})`);
-    for (const path of state.filesToDelete) {
-      sections.push(`- \`${path}\``);
-    }
-  }
-  
-  // 7. Quality & Violations
-  if (state.violations && state.violations.length > 0) {
-    sections.push(`\n## Quality Issues Encountered`);
-    for (const v of state.violations) {
-      // Handle structured Violation objects
-      const violationText = typeof v === 'string' 
-        ? v 
-        : `[${v.severity}] ${v.type}: ${v.message}${v.file ? ` (${v.file})` : ''}`;
-      sections.push(`- ${violationText}`);
-    }
-    sections.push(`\n**Retries**: ${state.retries}/${state.maxRetries}`);
-    if (state.retries > 0) {
-      sections.push(`**Outcome**: Issues were ${state.violations.length === 0 ? 'resolved' : 'partially resolved'} through enforcement`);
-    }
-  } else {
-    sections.push(`\n## Quality Check`);
-    sections.push(`✅ All guardrails passed on first attempt`);
-  }
-  
-  // 8. Key Patterns Applied
-  sections.push(`\n## Key Patterns`);
-  sections.push(extractPatterns(state));
-  
-  // 9. Integration Requirements
-  if (state.requiredIntegrations.length > 0) {
-    sections.push(`\n## Required Integrations`);
-    for (const integration of state.requiredIntegrations) {
-      sections.push(`- ${integration.name}`);
-    }
-  }
-  
-  return sections.join('\n');
+  // Build structured lesson
+  return `
+## Lesson: ${state.currentTask?.name || 'Unknown Task'}
+
+### Problem
+${problem}
+
+### Solution
+${solution}
+
+### Outcome
+${outcome}
+
+### Patterns Applied
+${patterns.length > 0 ? patterns.map(p => `- ${p}`).join('\n') : '- None'}
+
+### Mistakes Avoided
+${antipatterns.length > 0 ? antipatterns.map(a => `- ${a}`).join('\n') : '- None'}
+
+### Related Files
+${relatedFiles.length > 0 ? relatedFiles.map(f => `- ${f}`).join('\n') : '- None'}
+
+### References
+${references.map(r => `- ${r}`).join('\n')}
+
+### Tags
+${tags.join(', ')}
+
+### Context
+- **Project**: ${state.context.project}
+- **Feature**: ${state.context.featureFolder || 'main'}
+- **Mode**: ${state.codeMode || 'auto'}
+- **Language**: ${state.profile?.language || 'unknown'}
+- **Framework**: ${state.profile?.framework || 'N/A'}
+- **Timestamp**: ${new Date().toISOString()}
+  `.trim();
 }
 
 /**
- * Extract key patterns from the execution
+ * Extract problem description from state
  */
-function extractPatterns(state: ArchitectGraphState): string {
-  const patterns: string[] = [];
+function extractProblem(state: ArchitectGraphState): string {
+  // Use directive as problem description (max 300 chars)
+  const directive = state.directive || state.currentTask?.description || 'No problem description';
+  return directive.substring(0, 300) + (directive.length > 300 ? '...' : '');
+}
+
+/**
+ * Extract solution description from state
+ */
+function extractSolution(state: ArchitectGraphState): string {
+  const parts: string[] = [];
   
-  // Pattern 1: Code mode
-  if (state.codeMode) {
-    patterns.push(`- **Generation Mode**: ${state.codeMode}`);
-  }
-  
-  // Pattern 2: File operations
-  // Note: Without tracking original file list, assume all are modifications if codeHead exists
-  const creates = state.codeHead ? [] : state.files;
-  const modifies = state.codeHead ? state.files : [];
-  
-  if (creates.length > 0) {
-    patterns.push(`- **New Files**: ${creates.length} created`);
-  }
-  if (modifies.length > 0) {
-    patterns.push(`- **Modified Files**: ${modifies.length} updated`);
+  // File operations
+  if (state.files.length > 0) {
+    parts.push(`Generated ${state.files.length} file(s)`);
   }
   if (state.filesToDelete.length > 0) {
-    patterns.push(`- **Deleted Files**: ${state.filesToDelete.length} removed`);
+    parts.push(`deleted ${state.filesToDelete.length} file(s)`);
   }
   
-  // Pattern 3: Codebase conventions
-  if (state.profile?.conventions) {
-    const convs = state.profile.conventions;
-    if (convs.naming) {
-      patterns.push(`- **Naming Convention**: ${convs.naming}`);
-    }
-    if (convs.imports) {
-      patterns.push(`- **Import Style**: ${convs.imports}`);
-    }
+  // Mode applied
+  parts.push(`using ${state.codeMode || 'generate'} mode`);
+  
+  // Profile info
+  if (state.profile) {
+    parts.push(`with ${state.profile.language}${state.profile.framework ? ` + ${state.profile.framework}` : ''}`);
   }
   
-  return patterns.join('\n');
+  return parts.join(', ') + '.';
 }
+
+/**
+ * Extract outcome from state
+ */
+function extractOutcome(state: ArchitectGraphState): string {
+  const violations = state.violations || [];
+  if (violations.length === 0 && state.retries === 0) {
+    return '✅ **Success** - All quality checks passed on first attempt';
+  } else if (state.retries > 0 && violations.length === 0) {
+    return `✅ **Success** - Issues resolved after ${state.retries} retry(ies)`;
+  } else if (state.retries > 0 && violations.length > 0) {
+    return `⚠️ **Partial** - ${violations.length} issue(s) remain after ${state.retries} retry(ies)`;
+  } else {
+    return `❌ **Issues** - ${violations.length} unresolved issue(s)`;
+  }
+}
+
+/**
+ * Extract anti-patterns (mistakes avoided) from violations
+ */
+function extractAntipatterns(state: ArchitectGraphState): string[] {
+  const antipatterns: string[] = [];
+  const violations: any[] = state.violations || [];
+  
+  // Extract from violations (max 3)
+  for (const v of violations.slice(0, 3)) {
+    if (typeof v === 'string') {
+      const text: string = v;
+      antipatterns.push(text.substring(0, 80) + (text.length > 80 ? '...' : ''));
+    } else if (v && typeof v === 'object') {
+      // v is Violation object
+      const msg = `${v.type}: ${v.message}`.substring(0, 80);
+      antipatterns.push(msg + (msg.length >= 80 ? '...' : ''));
+    }
+  }
+  
+  return antipatterns;
+}
+
+/**
+ * Extract related files (max 5)
+ */
+function extractRelatedFiles(state: ArchitectGraphState): string[] {
+  return state.files.slice(0, 5).map(f => f.path);
+}
+
+/**
+ * Extract references to documents
+ */
+function extractReferences(state: ArchitectGraphState): string[] {
+  const refs: string[] = [];
+  
+  // Design document reference
+  if (state.design) {
+    const designTitle = extractDesignTitle(state.design);
+    refs.push(`Design: ${designTitle}`);
+  }
+  
+  // Directive reference
+  if (state.directive) {
+    const directiveId = extractDirectiveId(state);
+    refs.push(`Directive: ${directiveId}`);
+  }
+  
+  // PRD reference
+  if (state.prd) {
+    refs.push(`PRD: Available in documents collection`);
+  }
+  
+  return refs.length > 0 ? refs : ['No references'];
+}
+
+/**
+ * Extract design document title from content
+ */
+function extractDesignTitle(designContent: string): string {
+  // Try to extract title from markdown h1
+  const titleMatch = designContent.match(/^#\s+(.+)$/m);
+  if (titleMatch) {
+    return titleMatch[1].substring(0, 50);
+  }
+  return 'Design Document';
+}
+
+/**
+ * Extract directive ID from state
+ */
+function extractDirectiveId(state: ArchitectGraphState): string {
+  // Generate directive ID from session
+  const sessionId = (state as any).sessionId || 'unknown';
+  const turnId = (state as any).turnId || 0;
+  return `${sessionId.substring(0, 8)}-turn-${turnId}`;
+}
+
+/**
+ * Extract patterns from state
+ */
+function extractPatterns(state: ArchitectGraphState): string[] {
+  const patterns: string[] = [];
+  
+  // Infer patterns from profile and files
+  if (state.profile?.framework) {
+    patterns.push(state.profile.framework);
+  }
+  
+  if (state.codeMode) {
+    patterns.push(state.codeMode);
+  }
+  
+  // Infer from file structures
+  const hasTests = state.files.some(f => f.path.includes('test') || f.path.includes('spec'));
+  if (hasTests) {
+    patterns.push('test-driven-development');
+  }
+  
+  const hasComponents = state.files.some(f => f.path.includes('component'));
+  if (hasComponents) {
+    patterns.push('component-based-architecture');
+  }
+  
+  return patterns.length > 0 ? patterns : ['general-implementation'];
+}
+
 

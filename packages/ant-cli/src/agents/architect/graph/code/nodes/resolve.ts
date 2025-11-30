@@ -4,6 +4,66 @@ import { CodebaseRetriever } from "../../../../../core/codebase/CodebaseRetrieve
 import * as path from "path";
 
 /**
+ * Index directive to documents collection (async, non-blocking)
+ */
+async function indexDirectiveToMemory(
+  directive: string,
+  project: string,
+  feature: string,
+  deps: any
+): Promise<void> {
+  try {
+    const { DocumentIndexer } = await import('../../../../../core/documents');
+    const documentIndexer = new DocumentIndexer(deps.memory, deps.chunk);
+    
+    // Generate directive ID
+    const timestamp = new Date().toISOString();
+    const directiveId = `${project}-${feature}-${timestamp}`;
+    
+    console.log(`📄 [Code Resolve] Indexing directive (async): ${directiveId.substring(0, 30)}...`);
+    
+    await documentIndexer.indexDirective(
+      directive,
+      directiveId,
+      {
+        project,
+        feature,
+        tags: extractDirectiveTags(directive)
+      }
+    );
+    
+    console.log(`   ✅ Directive indexed to documents-${project}`);
+  } catch (error) {
+    // Non-fatal
+    console.warn('⚠️  Directive indexing failed:', error);
+  }
+}
+
+/**
+ * Extract tags from directive
+ */
+function extractDirectiveTags(directive: string): string[] {
+  const text = directive.toLowerCase();
+  const tags: string[] = [];
+  
+  const keywords = [
+    'fix', 'bug', 'error', 'issue',
+    'add', 'implement', 'create',
+    'refactor', 'optimize', 'improve',
+    'ui', 'api', 'database',
+    'test', 'documentation'
+  ];
+  
+  for (const keyword of keywords) {
+    if (text.includes(keyword)) {
+      tags.push(keyword);
+    }
+  }
+  
+  return tags.slice(0, 5);
+}
+
+/**
  * Code Resolve Node
  * 
  * Phase 1: CodebaseRetriever 사용
@@ -127,6 +187,18 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     // ✅ Chat input takes highest priority
     console.log('\n🎯 [Code Resolve] Using override directive from chat input\n');
     directive = state.overrideDirective;
+    
+    // ✅ NEW: Index directive to documents collection (async, non-blocking)
+    if (state.deps?.memory && state.deps?.chunk && directive.length > 50) {
+      indexDirectiveToMemory(
+        directive, 
+        state.context.project, 
+        state.context.featureFolder || 'default',
+        state.deps
+      ).catch(err => {
+        console.warn('⚠️  Failed to index directive (non-blocking):', err);
+      });
+    }
   } else {
     // Load from file system
     directive = await ArtifactService.getDirective(context, 'code', gitPort) || undefined;

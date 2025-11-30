@@ -685,6 +685,9 @@ function applyUnifiedDiff(originalContent: string, patch: string): string | null
 /**
  * Handle run_command tool
  * CRITICAL: Allows LLM to install dependencies, run builds, tests, etc.
+ * 
+ * ❌ BLOCKS: Dev servers (npm run dev, start, serve) - they never exit
+ * ✅ ALLOWS: Build, test, lint commands - they exit immediately
  */
 async function handleRunCommand(
   state: ArchitectGraphState,
@@ -703,6 +706,54 @@ async function handleRunCommand(
   }
   
   const chatAPI = getChatAPIClient();
+  
+  // ✅ CRITICAL: Block long-running dev server commands
+  const longRunningPatterns = [
+    /npm\s+run\s+dev\b/,
+    /npm\s+run\s+serve\b/,
+    /npm\s+start\b/,
+    /yarn\s+dev\b/,
+    /yarn\s+serve\b/,
+    /yarn\s+start\b/,
+    /pnpm\s+dev\b/,
+    /pnpm\s+serve\b/,
+    /pnpm\s+start\b/,
+    /node\s+.*server\.js/,
+    /nodemon\b/,
+    /npx\s+vite\b/,
+    /npx\s+next\s+dev\b/,
+    /npx\s+react-scripts\s+start\b/
+  ];
+  
+  for (const pattern of longRunningPatterns) {
+    if (pattern.test(command)) {
+      const errorMsg = `❌ COMMAND BLOCKED: ${command}
+
+This is a long-running dev server command that never exits.
+It would hang for 10 minutes until timeout.
+
+❌ NEVER use these commands:
+- npm run dev
+- npm run serve  
+- npm start
+- node server.js
+- nodemon
+
+✅ ONLY use these commands for verification:
+- npm run build (compiles and exits)
+- npm run type-check (validates and exits)
+- npm run lint (checks and exits)
+- npm test (tests and exits)
+- npx tsc --noEmit (type checks and exits)
+
+Use build/test commands instead of dev servers.`;
+
+      console.error(`\n   ❌ ${errorMsg}\n`);
+      await chatAPI.commandComplete(command, false, -1, errorMsg);
+      
+      return errorMsg;
+    }
+  }
   
   // Get project path
   const projectPath = await gitPort.getRepoRoot();
