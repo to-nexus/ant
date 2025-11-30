@@ -33,12 +33,14 @@ docs/
 - `SESSION_CONTEXT_COMPRESSION_STRATEGY.md` - 세션 Context 압축 전략
 
 #### Vector DB & 인덱싱
-- `CODEBASE_INDEXING_COMPLETE.md` - **코드베이스 인덱싱 완전 가이드** ⭐
-- `VECTOR_DB_INDEXING_STRATEGY.md` - Vector DB 인덱싱 전략
-- `VECTOR_DB_DUAL_TYPE_ANALYSIS.md` - 이중 타입 구조 분석
+- `VECTOR_DB_STORAGE_AND_RETRIEVAL.md` - **Vector DB 완전 가이드** ⭐ (Storage + Retrieval 통합)
+- `VECTOR_DB_DESIGN_ANALYSIS.md` - Vector DB 설계 분석
+- `VECTOR_DB_MULTI_COLLECTION_REFACTORING.md` - Multi-Collection 리팩토링
+- `VECTOR_DB_MIGRATION_GUIDE.md` - Migration 가이드
+- `COLLECTION_STORAGE_TIMING.md` - 저장 시점 참조
+- `CODEBASE_INDEXING_COMPLETE.md` - 코드베이스 인덱싱 가이드
 
 #### 검색 & 최적화
-- `SMART_IMPORT_GRAPH_RETRIEVAL.md` - Import Graph 기반 검색
 - `PROMPT_TOKEN_OPTIMIZATION.md` - 프롬프트 토큰 최적화
 
 #### Job 설계
@@ -54,13 +56,12 @@ docs/
 
 ### 📚 학습 문서
 
-- `LLM_API_REQUEST_STRUCTURE.md` - LLM API 요청 구조 및 용어 정리
-- `VECTOR_DB_INDEXING_PIPELINE.md` - Vector DB 인덱싱 파이프라인 설명
-- `CODEBASE_TO_LLM_FLOW.md` - 코드베이스 저장 → LLM 컨텍스트 흐름
 - `CODE_JOB_COMPLETE_FLOW.md` - Code Job 전체 흐름 분석
 - `CODEBASE_CHUNKING_STRUCTURE.md` - 코드베이스 청킹 구조 분석
 
 **용도**: 시스템 이해, 온보딩, 개념 학습
+
+**Note**: Vector DB 관련 문서는 architecture로 이동 (VECTOR_DB_STORAGE_AND_RETRIEVAL.md)
 
 ---
 
@@ -123,15 +124,20 @@ docs/
 ## 🚀 빠른 시작
 
 ### 새로운 개발자 온보딩
-1. `lessons/LLM_API_REQUEST_STRUCTURE.md` - 기본 용어 이해
-2. `lessons/VECTOR_DB_INDEXING_PIPELINE.md` - 인덱싱 이해
-3. `architecture/ARCHITECTURE_CODE_JOB.md` - Code Job 아키텍처
-4. `guides/CLI_GUIDE.md` - CLI 사용법
+1. `/VECTOR_DB_STORAGE_AND_RETRIEVAL.md` - **Vector DB 완전 이해** ⭐
+2. `architecture/ARCHITECTURE_CODE_JOB.md` - Code Job 아키텍처
+3. `guides/CLI_GUIDE.md` - CLI 사용법
 
 ### 코드베이스 인덱싱 설정
-1. `architecture/CODEBASE_INDEXING_COMPLETE.md` - **필독!**
-2. `architecture/VECTOR_DB_INDEXING_STRATEGY.md` - 전략 이해
-3. `lessons/VECTOR_DB_INDEXING_PIPELINE.md` - 내부 동작 이해
+1. `/VECTOR_DB_STORAGE_AND_RETRIEVAL.md` - **Storage & Retrieval 가이드** ⭐
+2. `architecture/CODEBASE_INDEXING_COMPLETE.md` - 실전 인덱싱
+3. `architecture/VECTOR_DB_MIGRATION_GUIDE.md` - Migration
+
+### Vector DB 이해
+1. `/VECTOR_DB_STORAGE_AND_RETRIEVAL.md` - **필독!** ⭐
+   - 무엇을 언제 저장하는가
+   - 각 Job별 retrieval 전략
+   - 표준 RAG와의 비교
 
 ### 테스트 실행
 1. `guides/COMPREHENSIVE_TEST_GUIDE.md` - 전체 테스트
@@ -143,7 +149,7 @@ docs/
 ## 📚 추천 학습 순서
 
 ### 레벨 1: 기초 (필수)
-1. `lessons/LLM_API_REQUEST_STRUCTURE.md`
+1. `/VECTOR_DB_STORAGE_AND_RETRIEVAL.md` - **Vector DB 완전 가이드** ⭐
 2. `guides/CLI_GUIDE.md`
 3. `architecture/CODEBASE_INDEXING_COMPLETE.md`
 
@@ -153,9 +159,9 @@ docs/
 3. `architecture/CONTEXT_STRUCTURE.md`
 
 ### 레벨 3: 고급 (심화)
-1. `architecture/MODE_SPECIFIC_CONTEXT_PRIORITY.md`
-2. `architecture/PROMPT_TOKEN_OPTIMIZATION.md`
-3. `architecture/SMART_IMPORT_GRAPH_RETRIEVAL.md`
+1. `architecture/PROMPT_TOKEN_OPTIMIZATION.md`
+2. `architecture/VECTOR_DB_MULTI_COLLECTION_REFACTORING.md`
+3. `architecture/SESSION_CONTEXT_COMPRESSION_STRATEGY.md`
 
 ---
 
@@ -176,6 +182,7 @@ docs/
 - 구현 완료 문서 (`*_COMPLETE.md`)는 통합 후 삭제
 - 리팩토링 완료 문서는 통합 후 삭제
 - 이슈 분석/픽스 문서는 통합 후 삭제
+- ✅ 2025-11-29: Vector DB 관련 레거시 6개 문서 → 1개 통합 문서로 대체
 
 ---
 
@@ -188,6 +195,9 @@ docs/
 
 ---
 
-**최종 업데이트**: 2025-11-28  
-**정리 완료**: ✅ 레거시 문서 삭제, 유사 문서 통합, 카테고리별 정리 완료
+**최종 업데이트**: 2025-11-29  
+**정리 완료**: ✅ Vector DB 문서 통합 (6개 → 1개), 레거시 문서 삭제 완료
+
+**주요 문서**: 
+- 📘 `/VECTOR_DB_STORAGE_AND_RETRIEVAL.md` - Vector DB 완전 가이드 (필독)
 

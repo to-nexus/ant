@@ -1,4 +1,5 @@
 import { MemoryPort, QueryOptions, QueryResult } from "../../../core/ports";
+import { CollectionType, getCollectionName } from "../../../core/types";
 import { ChromaClient } from "chromadb";
 
 class CustomEmbeddingFunction {
@@ -50,63 +51,149 @@ const client = new ChromaClient({
 const embedder = new CustomEmbeddingFunction();
 
 export class ChromaMemoryAdapter implements MemoryPort {
-  async store(documents: Array<{ content: string; metadata?: Record<string, any> }>, namespace: string): Promise<void> {
-    const collection = await client.getOrCreateCollection({ name: namespace, embeddingFunction: embedder });
+  
+  /**
+   * Extract collection type from metadata or explicit parameter
+   * 
+   * Priority:
+   * 1. Explicit collectionType parameter
+   * 2. metadata.type value
+   * 3. Default: 'codebase'
+   */
+  private extractCollectionType(
+    metadata?: Record<string, any>,
+    explicitType?: CollectionType
+  ): CollectionType {
+    if (explicitType) return explicitType;
     
-    // Use for-loop instead of map() to reduce temporary array allocations
-    const docs: string[] = [];
-    const metadatas: Record<string, any>[] = [];
-    const ids: string[] = [];
+    const metaType = metadata?.type;
+    if (metaType === 'lesson') return 'lessons';
+    if (metaType === 'document') return 'documents';
+    if (metaType === 'codebase') return 'codebase';
+    if (metaType === 'context') return 'context';
     
-    const timestamp = Date.now();
-    const randomSeed = Math.random().toString(36).substring(7);
-    
-    for (let i = 0; i < documents.length; i++) {
-      const doc = documents[i];
-      docs.push(doc.content);
-      metadatas.push(doc.metadata || { type: "default", timestamp: new Date().toISOString() });
-      ids.push(`${namespace}-${timestamp}-${randomSeed}-${i}`);
-    }
-    
-    await collection.add({ documents: docs, metadatas, ids });
+    // Default fallback
+    return 'codebase';
   }
   
-  async query(query: string, namespace: string, options?: QueryOptions): Promise<QueryResult[]> {
-    const collection = await client.getOrCreateCollection({ name: namespace, embeddingFunction: embedder });
+  /**
+   * Store documents to appropriate collection(s)
+   * 
+   * Multi-collection support:
+   * - Groups documents by collection type
+   * - Stores each group to its respective collection
+   * - Collection name: {type}-{project}
+   */
+  async store(
+    documents: Array<{ content: string; metadata?: Record<string, any> }>, 
+    project: string,
+    collectionType?: CollectionType
+  ): Promise<void> {
+    // Group documents by collection type
+    const grouped = new Map<CollectionType, typeof documents>();
     
-    const k = options?.k || 5;
-    const where = options?.where;
-    const minScore = options?.minScore || 0;
+    for (const doc of documents) {
+      const type = this.extractCollectionType(doc.metadata, collectionType);
+      if (!grouped.has(type)) {
+        grouped.set(type, []);
+      }
+      grouped.get(type)!.push(doc);
+    }
     
-    // Query with metadata filtering
-    const results = await collection.query({ 
-      queryTexts: [query], 
-      nResults: k,
-      where: where as any  // ChromaDB where clause
-    });
-    
-    const documents = results.documents?.[0] || [];
-    const distances = results.distances?.[0] || [];
-    const metadatas = results.metadatas?.[0] || [];
-    
-    // Convert distance to similarity score (cosine distance -> similarity)
-    // ChromaDB returns L2 distance, convert to similarity: 1 / (1 + distance)
-    const queryResults: QueryResult[] = documents
-      .map((doc, i) => {
-        if (typeof doc !== 'string') return null;
+    // Store to each collection
+    for (const [type, docs] of grouped.entries()) {
+      const collectionName = getCollectionName(type, project);
+      
+      try {
+        const collection = await client.getOrCreateCollection({ 
+          name: collectionName, 
+          embeddingFunction: embedder 
+        });
         
-        const distance = distances[i] || 0;
-        const score = 1 / (1 + distance);  // Normalize to 0-1
+        // Prepare data
+        const contents: string[] = [];
+        const metadatas: Record<string, any>[] = [];
+        const ids: string[] = [];
         
-        return {
-          content: doc,
-          score,
-          metadata: (metadatas[i] as Record<string, any>) || {}
-        };
-      })
-      .filter((result): result is QueryResult => result !== null && result.score >= minScore);
+        const timestamp = Date.now();
+        const randomSeed = Math.random().toString(36).substring(7);
+        
+        for (let i = 0; i < docs.length; i++) {
+          const doc = docs[i];
+          contents.push(doc.content);
+          metadatas.push(doc.metadata || { type, timestamp: new Date().toISOString() });
+          ids.push(`${collectionName}-${timestamp}-${randomSeed}-${i}`);
+        }
+        
+        await collection.add({ documents: contents, metadatas, ids });
+        
+        console.log(`✅ [ChromaMemory] Stored ${docs.length} documents to ${collectionName}`);
+      } catch (error) {
+        console.error(`❌ [ChromaMemory] Failed to store to ${collectionName}:`, error);
+        throw error;
+      }
+    }
+  }
+  
+  /**
+   * Query documents from appropriate collection
+   * 
+   * Collection resolution:
+   * 1. options.collectionType (explicit)
+   * 2. options.where.type (from metadata filter)
+   * 3. Default: 'codebase'
+   */
+  async query(
+    query: string, 
+    project: string,
+    options?: QueryOptions
+  ): Promise<QueryResult[]> {
+    const type = this.extractCollectionType(options?.where, options?.collectionType);
+    const collectionName = getCollectionName(type, project);
     
-    return queryResults;
+    try {
+      const collection = await client.getOrCreateCollection({ 
+        name: collectionName, 
+        embeddingFunction: embedder 
+      });
+      
+      const k = options?.k || 5;
+      const where = options?.where;
+      const minScore = options?.minScore || 0;
+      
+      // Query with metadata filtering
+      const results = await collection.query({ 
+        queryTexts: [query], 
+        nResults: k,
+        where: where as any  // ChromaDB where clause
+      });
+      
+      const documents = results.documents?.[0] || [];
+      const distances = results.distances?.[0] || [];
+      const metadatas = results.metadatas?.[0] || [];
+      
+      // Convert distance to similarity score (cosine distance -> similarity)
+      // ChromaDB returns L2 distance, convert to similarity: 1 / (1 + distance)
+      const queryResults: QueryResult[] = documents
+        .map((doc, i) => {
+          if (typeof doc !== 'string') return null;
+          
+          const distance = distances[i] || 0;
+          const score = 1 / (1 + distance);  // Normalize to 0-1
+          
+          return {
+            content: doc,
+            score,
+            metadata: (metadatas[i] as Record<string, any>) || {}
+          };
+        })
+        .filter((result): result is QueryResult => result !== null && result.score >= minScore);
+      
+      return queryResults;
+    } catch (error) {
+      console.warn(`⚠️  [ChromaMemory] Query failed for ${collectionName}:`, error);
+      return [];
+    }
   }
   
   /**
@@ -114,14 +201,26 @@ export class ChromaMemoryAdapter implements MemoryPort {
    * 
    * ✅ Used for incremental indexing to remove old chunks before adding new ones
    */
-  async delete(namespace: string, where: Record<string, any>): Promise<void> {
+  async delete(
+    project: string, 
+    where: Record<string, any>,
+    collectionType?: CollectionType
+  ): Promise<void> {
+    const type = this.extractCollectionType(where, collectionType);
+    const collectionName = getCollectionName(type, project);
+    
     try {
-      const collection = await client.getOrCreateCollection({ name: namespace, embeddingFunction: embedder });
+      const collection = await client.getOrCreateCollection({ 
+        name: collectionName, 
+        embeddingFunction: embedder 
+      });
       
       // ChromaDB delete requires $and format for multiple conditions
       await collection.delete({ where: where as any });
+      
+      console.log(`🗑️  [ChromaMemory] Deleted documents from ${collectionName}`);
     } catch (error) {
-      console.warn(`⚠️  Failed to delete documents from ${namespace}:`, error);
+      console.warn(`⚠️  [ChromaMemory] Failed to delete from ${collectionName}:`, error);
       // Don't throw - deletion failure shouldn't stop indexing
     }
   }

@@ -247,6 +247,32 @@ Before running `npm run build`:
 
 **Objective**: Fix the errors described in the task description.
 
+🚨 **CRITICAL - COMMAND RESTRICTIONS** 🚨
+
+**❌ NEVER USE THESE COMMANDS (they never exit):**
+```
+npm run dev         ❌ Dev server runs forever
+npm start           ❌ Server runs forever
+npm run serve       ❌ Server runs forever
+node server.js      ❌ Server runs forever
+nodemon            ❌ Watcher runs forever
+```
+
+**✅ ONLY USE THESE COMMANDS (they exit immediately):**
+```
+npm run build       ✅ Compiles and exits
+npm run type-check  ✅ Validates and exits
+npm run lint        ✅ Checks and exits
+npm test            ✅ Tests and exits
+npx tsc --noEmit    ✅ Type checks and exits
+npm install [pkg]   ✅ Installs and exits
+```
+
+**Why?** Dev servers never exit - they'll hang for 10 minutes until timeout.
+Always use build/test commands for verification.
+
+────────────────────────────────────────────────────────────────────────────────
+
 **Actions:**
 1. Read error messages in task description carefully
 2. Fix ONLY the broken code - don't refactor or add features
@@ -266,12 +292,12 @@ Before running `npm run build`:
    <replace>fixed code</replace>
    </edit>
    ```
-5. You CAN run validation commands in error tasks:
+5. **For verification, use build commands (NOT dev servers):**
    ```xml
    <tool_use>
      <name>run_command</name>
      <parameters>
-       <command>npm run type-check</command>
+       <command>npm run build</command>
      </parameters>
    </tool_use>
    ```

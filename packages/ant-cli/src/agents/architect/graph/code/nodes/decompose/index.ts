@@ -4,6 +4,109 @@ import { JobTimingManager } from "../../../common/timing/JobTimingManager";
 import { extractErrorDetails, createErrorViolation, logErrorHeader } from "../shared/errorHandler";
 
 /**
+ * Detect if directive contains error-related keywords
+ */
+function detectErrorInDirective(directive: string | undefined): boolean {
+  if (!directive) return false;
+  
+  const errorKeywords = [
+    'error', 'failed', 'exception', 'bug', 'broken', 'crash',
+    '에러', '실패', '오류', '버그', '안됨', '안돼', '못하고',
+    'not working', 'doesn\'t work', 'issue', 'problem',
+    'fix', 'solve', 'resolve'
+  ];
+  
+  const lowerDirective = directive.toLowerCase();
+  return errorKeywords.some(keyword => lowerDirective.includes(keyword));
+}
+
+/**
+ * Validate tasks after decompose to detect over-engineering
+ */
+function validateTasks(
+  tasks: Task[],
+  mode: string | undefined,
+  directive: string | undefined,
+  hasErrorInDirective: boolean
+): void {
+  // Skip validation for generate mode
+  if (mode === 'generate') return;
+  
+  // ✅ Refactor/Explain mode: Excessive task count warning
+  if ((mode === 'refactor' || mode === 'explain') && tasks.length > 5) {
+    console.warn(`
+⚠️  [Decompose Validation] WARNING: Generated ${tasks.length} tasks in ${mode} mode.
+   This might indicate over-engineering.
+   
+   Mode: ${mode}
+   Directive: ${directive?.substring(0, 100)}...
+   
+   Expected: 1-3 tasks for bug fixes/refactoring
+   Generated: ${tasks.length} tasks
+   
+   Review: Consider if all tasks are truly necessary.
+    `);
+  }
+  
+  // ✅ Error directive: Check if too many tasks
+  if (hasErrorInDirective && tasks.length > 3) {
+    console.warn(`
+⚠️  [Decompose Validation] WARNING: Error detected in directive but ${tasks.length} tasks generated.
+   
+   Directive contains error keywords: ${directive?.substring(0, 100)}...
+   Generated tasks: ${tasks.length}
+   
+   Expected: 1-2 tasks for error fixes
+   Generated: ${tasks.length} tasks
+   
+   Review: Most errors require only 1-2 focused fixes.
+    `);
+  }
+  
+  // ✅ Check first task for over-broad scope in refactor mode
+  if ((mode === 'refactor' || mode === 'explain') && tasks.length > 0) {
+    const firstTask = tasks[0];
+    if (isOverBroadTask(firstTask)) {
+      console.warn(`
+⚠️  [Decompose Validation] WARNING: First task seems too broad for ${mode} mode.
+   
+   Task: ${firstTask.name}
+   Description: ${firstTask.description.substring(0, 150)}...
+   
+   Expected: Focused fix (e.g., "Fix X in file.ts")
+   Detected: Broad implementation (e.g., "Implement entire X system")
+   
+   Review: ${mode} mode should focus on minimal changes.
+      `);
+    }
+  }
+}
+
+/**
+ * Check if task is over-broad (sounds like full implementation)
+ */
+function isOverBroadTask(task: Task): boolean {
+  const broadKeywords = [
+    'implement entire', 'build complete', 'create all',
+    'implement', 'create', 'build', 'setup',
+    'develop', 'design', 'architect'
+  ];
+  
+  const focusedKeywords = [
+    'fix', 'update', 'modify', 'change', 'correct',
+    'adjust', 'tweak', 'patch', 'repair'
+  ];
+  
+  const taskText = `${task.name} ${task.description}`.toLowerCase();
+  
+  const hasBroad = broadKeywords.some(k => taskText.includes(k));
+  const hasFocused = focusedKeywords.some(k => taskText.includes(k));
+  
+  // Over-broad if has broad keywords but no focused keywords
+  return hasBroad && !hasFocused;
+}
+
+/**
  * Decompose Node
  * 
  * Meta-level planning: Break the overall task into executable tasks
@@ -71,6 +174,12 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           (session.state.taskQueue.length > 0 || session.state.currentTask)) {
         console.log('\n🔄 Resuming from previous code session...\n');
         
+        // ✅ Variables needed across multiple scopes
+        let hasAdditionalDirective = false;
+        let mergedDirective = state.directive;
+        let jobId: string;
+        let jobTiming: any;
+        
         // ✅ CRITICAL: Reload codebase from actual disk to detect file deletions
         const gitPort = state.deps?.git;
         let reloadedCode = state.code;
@@ -121,9 +230,72 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           }
         }
         
+        // ✨ Handle jobId and jobTiming for Resume (BEFORE any conditional logic)
+        const existingJobId = session.state.jobId || state._httpJobId || 'unknown-job';
+        const resumeResult = JobTimingManager.resumeJob(existingJobId, session.state.jobTiming);
+        jobId = resumeResult.jobId;
+        jobTiming = resumeResult.jobTiming;
+        
+        // ✅ Build merged directive from directives array (BEFORE any conditional logic)
+        mergedDirective = state.directive;
+        hasAdditionalDirective = false;  // Reset flag
+        
+        if (session.state.directives && session.state.directives.length > 0) {
+          console.log(`\n📝 Merging ${session.state.directives.length} directive(s) (newest first):`);
+          session.state.directives.forEach((dir: string, idx: number) => {
+            console.log(`   ${idx + 1}. ${dir.substring(0, 60)}...`);
+          });
+          
+          // ✅ Detect additional directive: more than 1 directive = user added feedback
+          hasAdditionalDirective = session.state.directives.length > 1;
+          
+          // ✅ Structure directives with context (newest = highest priority)
+          if (session.state.directives.length === 1) {
+            mergedDirective = session.state.directives[0];
+          } else {
+            // Multiple directives: label them clearly
+            const [initial, ...feedbacks] = session.state.directives.slice().reverse(); // oldest first for labeling
+            const parts = [`[Initial Request]\n${initial}`];
+            
+            feedbacks.forEach((feedback, idx) => {
+              parts.push(`[Additional Feedback ${idx + 1}]\n${feedback}`);
+            });
+            
+            // Join with clear separators (newest feedback last = most visible to LLM)
+            mergedDirective = parts.join('\n\n---\n\n');
+            console.log(`   ✅ Structured ${session.state.directives.length} directive(s) with labels`);
+            console.log(`   🔄 Additional directive detected → Will REPLAN tasks\n`);
+          }
+        }
+        
         // If reset detected, skip queue restoration and fall through to decomposition
         if (shouldResetAndDecompose) {
           // Fall through to line 71 (decomposition logic)
+        } else if (hasAdditionalDirective) {
+          // ✅ NEW: Additional directive detected → REPLAN tasks
+          console.log('🔄 [Replan] Additional directive detected - decomposing into NEW tasks');
+          console.log(`   Existing queue: ${session.state.taskQueue.length} task(s)`);
+          console.log(`   Completed: ${session.state.completedTasks?.length || 0} task(s)`);
+          console.log(`   Action: Will create new task queue based on merged directives\n`);
+          
+          // ✅ Preserve completed tasks and timing (jobId/jobTiming handled separately, not in state)
+          state = {
+            ...state,
+            directive: mergedDirective,
+            completedTasks: session.state.completedTasks || [],
+            completedTasksDetails: session.state.completedTasksDetails || [],
+            retries: 0,  // Reset retries for new tasks
+            previousAttempts: [],
+            enforcementHistory: [],
+            lastViolations: [],
+            resolvedCategories: []
+          } as any;
+          
+          // ✅ Save jobId and jobTiming for later use (they'll be used when saving checkpoint)
+          (state as any)._replanJobId = jobId;
+          (state as any)._replanJobTiming = jobTiming;
+          
+          // Fall through to decomposition logic below
         } else {
           // Normal resume - restore queue and return
         
@@ -188,36 +360,6 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         console.log(`   Error:   ${tasksByType.error === 0 ? '✅' : '⚠️ '} ${tasksByType.error} remaining`);
         console.log(`   Final:   ${tasksByType.final === 0 ? '✅' : '⬜'} ${tasksByType.final} remaining`);
         console.log(``);
-        
-        // ✨ Handle jobId and jobTiming for Resume
-        const existingJobId = session.state.jobId || state._httpJobId || 'unknown-job';
-        const { jobId, jobTiming } = JobTimingManager.resumeJob(existingJobId, session.state.jobTiming);
-        
-        // ✅ Build merged directive from directives array (newest first = highest priority)
-        let mergedDirective = state.directive;
-        if (session.state.directives && session.state.directives.length > 0) {
-          console.log(`\n📝 Merging ${session.state.directives.length} directive(s) (newest first):`);
-          session.state.directives.forEach((dir: string, idx: number) => {
-            console.log(`   ${idx + 1}. ${dir.substring(0, 60)}...`);
-          });
-          
-          // ✅ Structure directives with context (newest = highest priority)
-          if (session.state.directives.length === 1) {
-            mergedDirective = session.state.directives[0];
-          } else {
-            // Multiple directives: label them clearly
-            const [initial, ...feedbacks] = session.state.directives.slice().reverse(); // oldest first for labeling
-            const parts = [`[Initial Request]\n${initial}`];
-            
-            feedbacks.forEach((feedback, idx) => {
-              parts.push(`[Additional Feedback ${idx + 1}]\n${feedback}`);
-            });
-            
-            // Join with clear separators (newest feedback last = most visible to LLM)
-            mergedDirective = parts.join('\n\n---\n\n');
-            console.log(`   ✅ Structured ${session.state.directives.length} directive(s) with labels\n`);
-          }
-        }
         
         // ✅ Restore buffer from disk for interruption recovery
         try {
@@ -367,6 +509,17 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     }
   }
   
+  // ✅ Check if this is a replan (additional directive) vs new project
+  const isReplan = (state as any)._replanJobId && (state as any)._replanJobTiming;
+  const useJobId = isReplan ? (state as any)._replanJobId : newJobId;
+  const useJobTiming = isReplan ? (state as any)._replanJobTiming : newJobTiming;
+  
+  if (isReplan) {
+    console.log('🔄 Replan mode detected - using existing jobId and timing');
+    console.log(`   JobId: ${useJobId}`);
+    console.log(`   Previous completed tasks: ${state.completedTasks?.length || 0}\n`);
+  }
+  
   // ✅ NOW send "estimating started" signal with preloaded completed tasks
   if (state._httpJobId && state.deps?.kanbanUpdate) {
     console.log(`\n🎬 [Code Decompose] Signaling estimating started...`);
@@ -383,8 +536,12 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     console.log(`   ✅ Estimating signal sent\n`);
   }
   
-  // Starting fresh - no session or session was reset
-  console.log('🆕 Starting new project - decomposing into tasks...\n');
+  // Starting fresh or replanning
+  if (isReplan) {
+    console.log('🔄 Replanning project based on additional directive...\n');
+  } else {
+    console.log('🆕 Starting new project - decomposing into tasks...\n');
+  }
   
   // Prepare spec
   const specParts = [
@@ -413,15 +570,18 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     featureTasks.set(defaultTask.id, defaultTask);
     
     // ✨ Calculate estimating duration (decompose completed)
-    const finalJobTiming = JobTimingManager.finalizeEstimatingPhase(newJobTiming, estimatingStartTime);
+    const finalJobTiming = isReplan 
+      ? useJobTiming  // Replan: use existing timing
+      : JobTimingManager.finalizeEstimatingPhase(newJobTiming, estimatingStartTime);  // New: finalize
     
     const newState = {
       ...state,
-      jobId: newJobId,  // ✨ Initialize jobId
-      jobTiming: finalJobTiming,  // ✨ Initialize jobTiming with estimatingDuration
+      jobId: useJobId,  // ✨ Initialize or preserve jobId
+      jobTiming: finalJobTiming,  // ✨ Initialize or preserve jobTiming with estimatingDuration
       taskQueue,
       featureTasks,
-      completedTasks: [],
+      completedTasks: state.completedTasks || [],  // ✅ Preserve for replan
+      completedTasksDetails: state.completedTasksDetails || [],  // ✅ Preserve for replan
       overrideDirective: state.overrideDirective,  // ✅ Preserve chat directive
       chatSource: state.chatSource,  // ✅ Preserve chat source flag
       _httpJobId: state._httpJobId  // ✅ Explicitly preserve taskId for next node
@@ -480,6 +640,9 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   const hasExistingCode = Boolean(state.code && state.code.trim().length > 0);
   const codePreview = state.code ? state.code.split('\n').slice(0, 20).join('\n') + '\n...' : '(empty)';
   
+  // ✅ NEW: Detect error in directive
+  const hasErrorInDirective = detectErrorInDirective(state.directive);
+  
   // Load prompt templates
   const promptEngine = state.deps?.promptEngine;
   if (!promptEngine) {
@@ -490,11 +653,19 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   const FilePromptAdapter = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
   const promptAdapter = new FilePromptAdapter.FilePromptAdapter();
   
-  // Render templates with variables
+  // ✅ NEW: Render templates with mode and error information
   const basePrompt = await promptAdapter.render('code/phases/decompose/base', {
     spec,
     hasExistingCode,
-    codePreview
+    codePreview,
+    // ✅ NEW: Mode information
+    mode: state.codeMode,
+    modeConfidence: (state as any).modeConfidence, // Optional field
+    modeReasoning: (state as any).modeReasoning,   // Optional field
+    // ✅ NEW: Error detection
+    hasErrorInDirective,
+    // ✅ NEW: Design doc flag
+    designDoc: state.design ? true : false,
   });
   
   const rules = await promptAdapter.render('code/phases/decompose/rules', {});
@@ -561,6 +732,10 @@ ${rules}`;
         const parsed = JSON.parse(jsonText);
         tasks = parsed.tasks || [];
         console.log(`✅ Parsed ${tasks.length} tasks from LLM response\n`);
+        
+        // ✅ NEW: Validate tasks for over-engineering
+        validateTasks(tasks, state.codeMode, state.directive, hasErrorInDirective);
+        
       } catch (parseError) {
         console.error('❌ Failed to parse task JSON from <tasks> tags:', parseError);
         console.error('JSON text:', tasksMatch[1].substring(0, 500));
@@ -606,21 +781,27 @@ ${rules}`;
       featureTasks.set(defaultTask.id, defaultTask);
       
       // ✨ Calculate estimating duration (decompose completed)
-      const estimatingEndTime = Date.now();
-      const estimatingDuration = estimatingEndTime - new Date(estimatingStartTime).getTime();
-      const finalJobTiming = {
-        ...newJobTiming,
-        estimatingDuration
-      };
-      console.log(`⏰ [Estimating Complete] Duration: ${Math.round(estimatingDuration / 1000)}s\n`);
+      let finalJobTiming;
+      if (isReplan) {
+        finalJobTiming = useJobTiming;  // Replan: use existing timing
+      } else {
+        const estimatingEndTime = Date.now();
+        const estimatingDuration = estimatingEndTime - new Date(estimatingStartTime).getTime();
+        finalJobTiming = {
+          ...newJobTiming,
+          estimatingDuration
+        };
+        console.log(`⏰ [Estimating Complete] Duration: ${Math.round(estimatingDuration / 1000)}s\n`);
+      }
       
       const newState = {
         ...state,
-        jobId: newJobId,  // ✨ Initialize jobId
-        jobTiming: finalJobTiming,  // ✨ Initialize jobTiming with estimatingDuration
+        jobId: useJobId,  // ✨ Initialize or preserve jobId
+        jobTiming: finalJobTiming,  // ✨ Initialize or preserve jobTiming with estimatingDuration
         taskQueue,
         featureTasks,
-        completedTasks: [],
+        completedTasks: state.completedTasks || [],  // ✅ Preserve for replan
+        completedTasksDetails: state.completedTasksDetails || [],  // ✅ Preserve for replan
         overrideDirective: state.overrideDirective,  // ✅ Preserve chat directive
         chatSource: state.chatSource,  // ✅ Preserve chat source flag
         _httpJobId: state._httpJobId  // ✅ Explicitly preserve taskId for next node
@@ -697,15 +878,18 @@ ${rules}`;
     console.log('');
     
     // ✨ Calculate estimating duration (decompose completed)
-    const finalJobTiming = JobTimingManager.finalizeEstimatingPhase(newJobTiming, estimatingStartTime);
+    const finalJobTiming = isReplan 
+      ? useJobTiming  // Replan: use existing timing
+      : JobTimingManager.finalizeEstimatingPhase(newJobTiming, estimatingStartTime);  // New: finalize
     
     const newState = {
       ...state,
-      jobId: newJobId,  // ✨ Initialize jobId
-      jobTiming: finalJobTiming,  // ✨ Initialize jobTiming with estimatingDuration
+      jobId: useJobId,  // ✨ Initialize or preserve jobId
+      jobTiming: finalJobTiming,  // ✨ Initialize or preserve jobTiming with estimatingDuration
       taskQueue,
       featureTasks,
-      completedTasks: [],
+      completedTasks: state.completedTasks || [],  // ✅ Preserve for replan
+      completedTasksDetails: state.completedTasksDetails || [],  // ✅ Preserve for replan
       overrideDirective: state.overrideDirective,  // ✅ Preserve chat directive
       chatSource: state.chatSource,  // ✅ Preserve chat source flag
       _httpJobId: state._httpJobId  // ✅ Explicitly preserve taskId for next node
@@ -788,15 +972,18 @@ ${rules}`;
     featureTasks.set(defaultTask.id, defaultTask);
     
     // ✨ Calculate estimating duration (decompose completed)
-    const finalJobTiming = JobTimingManager.finalizeEstimatingPhase(newJobTiming, estimatingStartTime);
+    const finalJobTiming = isReplan 
+      ? useJobTiming  // Replan: use existing timing
+      : JobTimingManager.finalizeEstimatingPhase(newJobTiming, estimatingStartTime);  // New: finalize
     
     const newState = {
       ...state,
-      jobId: newJobId,  // ✨ Initialize jobId
-      jobTiming: finalJobTiming,  // ✨ Initialize jobTiming with estimatingDuration
+      jobId: useJobId,  // ✨ Initialize or preserve jobId
+      jobTiming: finalJobTiming,  // ✨ Initialize or preserve jobTiming with estimatingDuration
       taskQueue,
       featureTasks,
-      completedTasks: [],
+      completedTasks: state.completedTasks || [],  // ✅ Preserve for replan
+      completedTasksDetails: state.completedTasksDetails || [],  // ✅ Preserve for replan
       overrideDirective: state.overrideDirective,  // ✅ Preserve chat directive
       chatSource: state.chatSource,  // ✅ Preserve chat source flag
       _httpJobId: state._httpJobId  // ✅ Explicitly preserve taskId for next node

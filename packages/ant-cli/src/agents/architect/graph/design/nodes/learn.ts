@@ -106,9 +106,12 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     console.log(`💾 Session turn saved to workspace/${state.context.project}/${state.context.featureFolder || 'default'}/sessions/design.json`);
   }
   
-  // 3. Store lessons to vector memory
+  // 3. Store lessons to vector memory + Index documents
   if (state.deps?.memory && state.deps?.chunk) {
     await storeLessonsToMemory(state, lessons, sessionId, turnId);
+    
+    // ✅ NEW: Index design document and PRD to documents collection
+    await indexDocumentsToMemory(state);
   }
   
   // ✅ End workflow visualization
@@ -210,6 +213,103 @@ async function saveSessionTurn(state: DesignGraphState): Promise<void> {
       }
     }
   );
+}
+
+/**
+ * Index design documents to documents collection
+ * 
+ * ✅ NEW: Design Job stores:
+ * 1. Design document → documents-{project}
+ * 2. PRD (if available) → documents-{project}
+ */
+async function indexDocumentsToMemory(state: DesignGraphState): Promise<void> {
+  if (!state.deps?.chunk || !state.deps?.memory) return;
+  
+  try {
+    const { DocumentIndexer } = await import('../../../../../core/documents');
+    const documentIndexer = new DocumentIndexer(
+      state.deps.memory,
+      state.deps.chunk
+    );
+    
+    // Find design document
+    const designDoc = state.files?.find(f => 
+      f.path.includes('system-design') || f.path.includes('design.md')
+    );
+    
+    if (designDoc) {
+      // Extract title from design doc
+      const titleMatch = designDoc.content.match(/^#\s+(.+)$/m);
+      const title = titleMatch ? titleMatch[1] : 'System Design Document';
+      
+      console.log(`📄 [Design Learn] Indexing design document: ${title}`);
+      
+      await documentIndexer.indexDesignDoc(
+        designDoc.content,
+        title,
+        {
+          project: state.context.project,
+          feature: state.context.featureFolder || 'default',
+          tags: extractDocumentTags(designDoc.content),
+          version: '1.0'
+        }
+      );
+      
+      console.log(`   ✅ Design document indexed to documents-${state.context.project}`);
+    }
+    
+    // Index PRD if available in state.spec
+    if (state.spec && state.spec.length > 100) {
+      console.log(`📄 [Design Learn] Indexing PRD`);
+      
+      const prdTitleMatch = state.spec.match(/^#\s+(.+)$/m);
+      const prdTitle = prdTitleMatch ? prdTitleMatch[1] : 'Product Requirements Document';
+      
+      await documentIndexer.indexPRD(
+        state.spec,
+        prdTitle,
+        {
+          project: state.context.project,
+          feature: state.context.featureFolder || 'default',
+          tags: extractDocumentTags(state.spec),
+          version: '1.0'
+        }
+      );
+      
+      console.log(`   ✅ PRD indexed to documents-${state.context.project}`);
+    }
+    
+  } catch (error) {
+    console.error('⚠️  Failed to index documents to memory:', error instanceof Error ? error.message : error);
+    console.log('   Continuing without document indexing...');
+  }
+}
+
+/**
+ * Extract tags from document content
+ */
+function extractDocumentTags(content: string): string[] {
+  const text = content.toLowerCase();
+  const tags: string[] = [];
+  
+  const keywords = [
+    'react', 'vue', 'angular', 'svelte',
+    'typescript', 'javascript', 'python', 'go',
+    'api', 'rest', 'graphql', 'websocket',
+    'database', 'sql', 'mongodb', 'postgres',
+    'auth', 'authentication', 'security',
+    'realtime', 'sse', 'websocket',
+    'ui', 'ux', 'design-system',
+    'architecture', 'microservices', 'monolith'
+  ];
+  
+  for (const keyword of keywords) {
+    if (text.includes(keyword)) {
+      tags.push(keyword);
+    }
+  }
+  
+  return tags.slice(0, 10);  // Max 10 tags
 }
 
 /**
