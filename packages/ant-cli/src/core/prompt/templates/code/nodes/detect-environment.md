@@ -105,9 +105,11 @@ Examples:
 - Directive: "Call backend API for user data"
   → Reference: {"backend": ["user API", "auth endpoint", "data schema"]}
 
-## Output Format (JSON only)
+## Output Format
 
-```json
+Wrap your JSON response in <detect> tags (NO markdown code blocks):
+
+<detect>
 {
   "mode": "generate" | "refactor" | "explain",
   "modeReasoning": "Why this mode? (1 sentence)",
@@ -124,7 +126,10 @@ Examples:
     ]
   }
 }
-```
+</detect>
 
-**Important**: Output ONLY the JSON. No additional text before or after.
+**CRITICAL:**
+- Use <detect> XML tags directly
+- NO ```json or ``` markdown blocks
+- Just raw XML tags with JSON inside
 

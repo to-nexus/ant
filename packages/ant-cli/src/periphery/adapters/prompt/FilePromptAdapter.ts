@@ -55,6 +55,17 @@ Promise.all([
     .catch(() => {})
 ]).catch(() => {});
 
+// ✅ Register phase-specific rules (decompose, etc.)
+const codeDecomposeRulesPath = join(__dirname, "../../../core/prompt/templates/code/phases/decompose/rules.md");
+fs.readFile(codeDecomposeRulesPath, "utf8")
+  .then(content => Handlebars.registerPartial("code/phases/decompose/rules", content))
+  .catch(() => {});
+
+const designDecomposeRulesPath = join(__dirname, "../../../core/prompt/templates/design/phases/decompose/rules.md");
+fs.readFile(designDecomposeRulesPath, "utf8")
+  .then(content => Handlebars.registerPartial("design/phases/decompose/rules", content))
+  .catch(() => {});
+
 /**
  * FilePromptAdapter - File system implementation of PromptPort
  * Loads template files and renders with Handlebars template engine

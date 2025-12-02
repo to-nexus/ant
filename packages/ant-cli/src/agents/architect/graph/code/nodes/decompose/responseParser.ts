@@ -8,21 +8,53 @@ export interface ParsedDecomposeResponse {
 
 /**
  * Parse LLM response and extract tasks
+ * 
+ * Expected format: <tasks>[...]</tasks>
  */
 export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
   try {
-    // Extract JSON from response
-    const jsonMatch = rawResponse.match(/```json\s*([\s\S]*?)\s*```/) || rawResponse.match(/\{[\s\S]*\}/);
-    const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : rawResponse;
-    const parsed = JSON.parse(jsonStr);
+    // ✅ Extract JSON array from <tasks> XML tag
+    const tasksMatch = rawResponse.match(/<tasks>\s*([\s\S]*?)\s*<\/tasks>/);
     
-    if (!parsed.tasks || !Array.isArray(parsed.tasks)) {
-      throw new Error('Invalid response: tasks array missing');
+    if (!tasksMatch) {
+      // Fallback: Try to find JSON block (for backward compatibility)
+      console.warn('⚠️  [Decompose] No <tasks> tag found, trying fallback JSON extraction');
+      const jsonMatch = rawResponse.match(/```json\s*([\s\S]*?)\s*```/) || rawResponse.match(/\{[\s\S]*\}/);
+      const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : rawResponse;
+      const parsed = JSON.parse(jsonStr);
+      
+      if (!parsed.tasks || !Array.isArray(parsed.tasks)) {
+        throw new Error('Invalid response: tasks array missing');
+      }
+      
+      return {
+        tasks: parsed.tasks,
+        referenceRequests: parsed.referenceProjects || parsed.referenceRequests
+      };
+    }
+    
+    // Parse JSON array from <tasks> tag
+    const tasks = JSON.parse(tasksMatch[1]);
+    
+    if (!Array.isArray(tasks)) {
+      throw new Error('Invalid response: tasks must be an array');
+    }
+    
+    // ✅ Extract references from <references> tag
+    let referenceRequests: Array<{project: string; branch?: string; reason?: string}> | undefined;
+    const referencesMatch = rawResponse.match(/<references>\s*([\s\S]*?)\s*<\/references>/);
+    
+    if (referencesMatch) {
+      try {
+        referenceRequests = JSON.parse(referencesMatch[1]);
+      } catch (error) {
+        console.warn('⚠️  [Decompose] Failed to parse <references> tag:', error);
+      }
     }
     
     return {
-      tasks: parsed.tasks,
-      referenceRequests: parsed.referenceProjects || parsed.referenceRequests
+      tasks,
+      referenceRequests
     };
     
   } catch (error) {

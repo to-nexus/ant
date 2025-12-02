@@ -430,4 +430,6 @@ GUIDELINES:
 - Order tasks logically (foundational features before dependent ones)
 - System handles errors dynamically - don't over-think dependencies
 
+════════════════════════════════════════════════════════════════════════════════
 
+{{> code/phases/decompose/rules}}

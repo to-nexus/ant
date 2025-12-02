@@ -35,6 +35,27 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     }
     
     console.log(`\n📋 [Plan] Next task: ${nextTask.name}\n`);
+    
+    // ✅ CRITICAL: Start timing for the task
+    const { TaskTimingHelper } = await import('../../state');
+    console.log(`⏱️  Starting timer for task: ${nextTask.name}`);
+    nextTask = TaskTimingHelper.startTask(nextTask);
+    
+    // ✅ CRITICAL: Update Kanban snapshot when task starts
+    if (state._httpJobId && state.deps?.kanbanUpdate) {
+      console.log(`\n🔥 [Plan] Updating Kanban → task started`);
+      console.log(`   Current: ${nextTask.name}`);
+      console.log(`   Remaining in queue: ${state.taskQueue?.size() || 0}\n`);
+      
+      state.deps.kanbanUpdate.updateTaskQueue(
+        state._httpJobId,
+        nextTask,                              // ✅ Show current task as in-progress
+        state.taskQueue?.getAll() || [],      // ✅ Remaining queue
+        state.completedTasksDetails || [],
+        state.recursionCount,
+        state.recursionLimit
+      );
+    }
   }
   
   if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -112,7 +133,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       console.log(`   ✅ Found ${projectCodeContext.stats.filesLoaded} files`);
       
       if (git) {
-        const { generateGitDiffSummary } = require('../../../../../core/codebase/GitDiffSummary');
+        const { generateGitDiffSummary } = require('../../../../../../core/codebase/GitDiffSummary');
         projectCodeContext.gitDiff = await generateGitDiffSummary(git, state.context.workingDir, projectCodeContext.filePaths);
       }
       
