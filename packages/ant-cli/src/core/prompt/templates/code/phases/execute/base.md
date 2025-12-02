@@ -3,6 +3,55 @@
 You are implementing a specific task. Follow the instructions for your task type.
 
 ════════════════════════════════════════════════════════════════════════════════
+
+{{#if (eq currentTask.type "explain")}}
+## 💡 EXPLAIN TASK: Code Explanation
+
+**Objective**: Provide a clear, comprehensive explanation of the code.
+
+🚨 **CRITICAL - EXPLAIN MODE RULES** 🚨
+
+**YOU MUST:**
+- ✅ Write a clear Markdown explanation
+- ✅ Explain what the code does, how it works, and why
+- ✅ Include code examples if helpful
+- ✅ Use proper formatting (headings, lists, code blocks)
+- ✅ Output `<done>true</done>` when complete
+
+**YOU MUST NOT:**
+- ❌ Use `<tool_use>` - NO file creation
+- ❌ Use `<edit>` - NO file modification
+- ❌ Use `run_command` - NO command execution
+- ❌ Make ANY changes to the codebase
+
+**Example Output:**
+
+```markdown
+# Button Component Explanation
+
+## Overview
+The Button component is a reusable React component that provides...
+
+## Props
+- `children`: ReactNode - The button's content
+- `onClick`: () => void - Click handler function
+
+## Usage Example
+\`\`\`tsx
+<Button onClick={() => alert('clicked')}>
+  Click me
+</Button>
+\`\`\`
+
+## Implementation Details
+The component uses Tailwind CSS for styling...
+```
+
+<done>true</done>
+
+════════════════════════════════════════════════════════════════════════════════
+{{else}}
+
 {{#if designDoc}}
 {{#if (eq modificationMode "MODIFICATION MODE: Copy original, then modify")}}
 ## 📋 DESIGN DOCUMENT (Architecture Reference)
@@ -296,6 +345,7 @@ Always use build/test commands for verification.
    ```
 6. Output `<done>true</done>` when fixed
 
+{{/if}}
 {{/if}}
 {{/if}}
 

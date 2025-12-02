@@ -278,9 +278,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
   
   // Check if this is a new design or evolution/refactor
   const hasExistingDesign = Boolean(state.design && state.design.trim().length > 0);
-  const hasExistingCode = Boolean(state.code && state.code.trim().length > 0);
   const designPreview = state.design ? state.design.split('\n').slice(0, 50).join('\n') + '\n...' : '';
-  const codePreview = state.code ? state.code.split('\n').slice(0, 20).join('\n') + '\n...' : '';
   
   // ✅ Use FilePromptAdapter for design decompose template
   const FilePromptAdapter = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
@@ -290,9 +288,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
   const prompt = await promptAdapter.render('design/phases/decompose/base', {
     spec,
     hasExistingDesign,
-    hasExistingCode,
-    designPreview,
-    codePreview
+    designPreview
   });
 
   try {

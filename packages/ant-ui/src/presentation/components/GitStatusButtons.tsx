@@ -41,7 +41,15 @@ export function GitStatusButtons() {
         const config = await fetchProjectConfig(selectedProject);
         const hasRepo = !!config?.githubRepo;
         console.log('[GitStatusButtons] Config checked - hasGitHubRepo:', hasRepo);
+        
+        const prevHasRepo = hasGitHubRepo;
         setHasGitHubRepo(hasRepo);
+        
+        if (!prevHasRepo && hasRepo) {
+          console.log('[GitStatusButtons] 🎉 GitHub repo just configured! Fetching Git status immediately...');
+          setGitChanges(null);
+          setIsGitInitialized(null);
+        }
       } catch (error) {
         console.log('[GitStatusButtons] Failed to fetch config:', error);
         setHasGitHubRepo(false);

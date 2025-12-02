@@ -26,6 +26,7 @@ export function ProjectSection() {
     selectedProject, 
     setSelectedProject, 
     fetchProjects, 
+    showConfigEditor,
     setShowConfigEditor,
     currentGitBranch,  // ✅ Current Git branch from store
     setManualGitAction  // ✅ Manual Git action setter
@@ -75,7 +76,7 @@ export function ProjectSection() {
     fetchGitStatus();
   }, [selectedProject]);
 
-  // Check if config exists when project is selected
+  // Check if config exists when project is selected or config editor closes
   useEffect(() => {
     async function checkConfig() {
       if (!selectedProject) {
@@ -86,20 +87,23 @@ export function ProjectSection() {
 
       try {
         const projectConfig = await fetchProjectConfig(selectedProject);
-        // console.log('[ProjectSection] Config check result:', { selectedProject, exists: projectConfig !== null, config: projectConfig }); // ✅ Too verbose
+        const configChanged = JSON.stringify(config) !== JSON.stringify(projectConfig);
+        
+        if (configChanged && !showConfigEditor) {
+          console.log('[ProjectSection] 🎉 Config updated! Refreshing Git status...', projectConfig);
+        }
+        
         setConfigExists(projectConfig !== null);
         setConfig(projectConfig);
       } catch (error) {
         console.error('[ProjectSection] Failed to check config:', error);
-        // On error (network issue, etc.), assume config doesn't exist
-        // This will show the yellow badge, allowing user to create config
         setConfigExists(false);
         setConfig(null);
       }
     }
 
     checkConfig();
-  }, [selectedProject]);
+  }, [selectedProject, showConfigEditor]);
 
   const handleCreateProject = async (projectName: string) => {
     await createProject(projectName);

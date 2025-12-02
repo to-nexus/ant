@@ -6,6 +6,7 @@ import { ModeController, PromptModeConfig } from "./ModeController";
 import { TemplateComposer, ComposedPrompt } from "./TemplateComposer";
 import { PolicyInjector } from "./PolicyInjector";
 import { PromptFormatter, FormattedPrompt } from "./PromptFormatter";
+import { ProjectCodeContext, ReferenceCodeContext } from "../types/CodeContext";
 
 /**
  * Dependencies for PromptEngine
@@ -69,12 +70,10 @@ export class PromptEngine {
     context: ProjectContext,
     artifacts: {
       directive?: string;
-      designDoc?: string;       // For code task: design document
-      previousDesign?: string;  // For design task: previous design
-      prdSpec?: string;
-      originalFiles?: string;   // Git HEAD version (for comparison)
-      currentCode?: string;     // Working tree code
-      currentTask?: {           // Current task being executed
+      designDoc?: string;
+      previousDesign?: string;
+      projectCodeContext?: ProjectCodeContext;
+      currentTask?: {
         name: string;
         type: string;
         priority: number;
@@ -82,7 +81,7 @@ export class PromptEngine {
       };
     },
     mode?: CodeMode,
-    taskType?: string  // 'setup' | 'feature' | 'error' for code tasks
+    taskType?: string
   ): Promise<PromptBuildResult> {
     const startTime = Date.now();
     
@@ -161,9 +160,8 @@ export class PromptEngine {
       designDoc?: string;
       lastSectionNumber?: number;
       previousDesign?: string;
-      prdSpec?: string;
-      originalFiles?: string;
-      currentCode?: string;
+      projectCodeContext?: ProjectCodeContext;
+      referenceCodeContexts?: ReferenceCodeContext[];
       lessons?: Array<{
         content: string;
         score: number;
@@ -186,7 +184,7 @@ export class PromptEngine {
         windowSize: number;
         compressionRatio: number;
       };
-      referenceRequests?: Array<{  // ✅ Reference projects for read_reference_file tool
+      referenceRequests?: Array<{
         project: string;
         branch?: string;
       }>;
@@ -287,6 +285,60 @@ export class PromptEngine {
    */
   extractPromptText(result: PromptBuildResult): string {
     return this.formatter.extractText(result.formatted);
+  }
+
+  /**
+   * Build prompt for DetectEnvironment node
+   * Note: Mode inference is now part of this prompt (LLM-based)
+   */
+  async buildDetectEnvironmentPrompt(
+    directive: string,
+    designDocs: string[],
+    profile: any
+  ): Promise<string> {
+    return await this.deps.promptPort.render('code/nodes/detect-environment', {
+      directive,
+      designDocs: designDocs.join(', '),
+      profile
+    });
+  }
+
+  /**
+   * Build prompt for Decompose node
+   */
+  async buildDecomposePrompt(context: {
+    directive: string;
+    designDoc: string;
+    hasDesignDoc: boolean;
+    mode: string;
+    profile: any;
+    codebaseFilePaths?: string[];
+    gitDiff?: any;
+  }): Promise<string> {
+    return await this.deps.promptPort.render('code/phases/decompose/system', context);
+  }
+
+  /**
+   * Build prompt for Plan node (task keyword generation)
+   */
+  async buildTaskKeywordsPrompt(
+    task: {
+      name: string;
+      description: string;
+    },
+    profile: any,
+    mode: string,
+    referenceProjects?: Array<{project: string}>
+  ): Promise<string> {
+    return await this.deps.promptPort.render('code/nodes/generate-task-keywords', {
+      taskName: task.name,
+      taskDescription: task.description,
+      language: profile?.language || 'unknown',
+      framework: profile?.framework || 'unknown',
+      mode: mode || 'unknown',
+      hasReferences: referenceProjects && referenceProjects.length > 0,
+      referenceProjects: referenceProjects?.map(r => `- ${r.project}`).join('\n') || ''
+    });
   }
 }
 

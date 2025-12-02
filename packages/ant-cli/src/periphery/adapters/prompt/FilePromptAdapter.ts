@@ -17,9 +17,14 @@ Handlebars.registerHelper("add", (a, b) => Number(a) + Number(b));
 
 // ✅ Register base partials (always included for all agents/phases)
 const basePartialsPath = join(__dirname, "../../../core/prompt/templates/base");
+const baseInjectionsPath = join(__dirname, "../../../core/prompt/templates/base/injections");
 Promise.all([
   fs.readFile(join(basePartialsPath, "architect-role.md"), "utf8")
     .then(content => Handlebars.registerPartial("base/architect-role", content))
+    .catch(() => {}),
+  // ✅ NEW: Register git-diff template (base injections)
+  fs.readFile(join(baseInjectionsPath, "git-diff.md"), "utf8")
+    .then(content => Handlebars.registerPartial("base/injections/git-diff", content))
     .catch(() => {})
 ]).catch(() => {});
 

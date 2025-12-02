@@ -68,12 +68,17 @@ export async function codeGen(
   // ✅ Build messages from conversation history + current task
   const messages = await buildMessages(state);
   
-  // ✅ Tool activation control: Only enable for code job
-  // Design job uses XML streaming (not tool calling)
-  const enableTools = state.codeMode !== undefined;  // code job has codeMode
+  // ✅ Tool activation control
+  // - Explain mode: NO tools (just explanation)
+  // - Design job: NO tools (XML streaming)
+  // - Code job (generate/refactor): YES tools
+  const isExplainMode = state.codeMode === 'explain';
+  const enableTools = state.codeMode !== undefined && !isExplainMode;
   const tools = enableTools ? getAvailableTools() : undefined;
   
-  if (enableTools) {
+  if (isExplainMode) {
+    console.log(`💡 [CodeGen] Explain mode - tools disabled (explanation only)`);
+  } else if (enableTools) {
     console.log(`🔧 [CodeGen] Tool calling enabled (code job)`);
   } else {
     console.log(`📝 [CodeGen] Tool calling disabled (design job or other)`);
@@ -217,6 +222,13 @@ export async function codeGen(
     console.log(`   Text: ${textResponse.length} chars`);
     console.log(`   Tool calls: ${toolCalls.length}`);
     
+    // ✅ Explain mode validation
+    if (isExplainMode && toolCalls.length > 0) {
+      console.error('⚠️  [CodeGen] Explain mode should NOT use tools!');
+      console.error('   Tool calls detected:', toolCalls.map(t => t.name).join(', '));
+      throw new Error('[CodeGen] Explain mode should not generate tool calls. Response must be pure text explanation.');
+    }
+    
     // ✅ Workflow instrumentation: Exit node (success path)
     if (state.deps?.workflowUpdate && state._httpJobId) {
       state.deps.workflowUpdate.exitNode(state._httpJobId, 'codeGen');  // ✅ FIX: Must match graph.addNode() name!
@@ -274,28 +286,26 @@ async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     throw new Error('[CodeGen] currentTask is required but not available in state');
   }
   
-  // ✅ Build prompt using PromptEngine
   const promptResult = await promptEngine.buildExecutePrompt(
-    'code',  // ✅ AgentTask type (not the task object!)
+    'code',
     state.context,
     {
       directive: state.directive,
-      designDoc: state.design,  // Code job uses designDoc
-      prdSpec: state.prd,
-      originalFiles: state.codeHead,  // Git HEAD version
-      currentCode: state.code,  // Working tree code
-      lessons: Array.isArray(state.lessons) ? state.lessons : undefined,  // ✅ Include lessons from unified search
-      sessionContext: state.sessionContext,  // ✅ Include compressed session context
-      referenceRequests: state.referenceRequests,  // ✅ Reference projects (LLM uses read_reference_file tool)
+      designDoc: state.design,
+      projectCodeContext: state.projectCodeContext,
+      referenceCodeContexts: state.referenceCodeContexts,
+      lessons: Array.isArray(state.lessons) ? state.lessons : undefined,
+      sessionContext: state.sessionContext,
+      referenceRequests: state.referenceRequests,
       currentTask: {
         name: state.currentTask.name,
         type: state.currentTask.type,
         priority: state.currentTask.priority,
         description: state.currentTask.description,
       },
-    },
+    } as any,
     state.codeMode,
-    state.currentTask.type  // taskType for language-specific constraints
+    state.currentTask.type
   );
   
   // ✅ Extract base prompt from PromptEngine (templates, rules, profiles)
@@ -426,7 +436,6 @@ async function buildMessages(state: ArchitectGraphState): Promise<Array<{
 function buildRuntimeContext(state: ArchitectGraphState): string {
   const lines: string[] = [];
   
-  // ✅ 1. Current Task (CRITICAL: must be repeated for tool call loops!)
   if (state.currentTask) {
     lines.push(`# Current Task`);
     lines.push(`**${state.currentTask.name}**`);
@@ -435,21 +444,12 @@ function buildRuntimeContext(state: ArchitectGraphState): string {
     lines.push(``);
   }
   
-  // ✅ 2. Execution Plan (from plan node)
-  if (state.planText) {
-    lines.push(`# Execution Plan`);
-    lines.push(state.planText);
-    lines.push(``);
-  }
-  
-  // ✅ 3. Enforcement Feedback (retry context)
   if (state.enforcementReason) {
     lines.push(`# Previous Attempt Failed`);
     lines.push(state.enforcementReason);
     lines.push(``);
   }
   
-  // ✅ 4. Codebase File Tree
   const fileTree = generateFileTree(state);
   if (fileTree) {
     lines.push(fileTree);
@@ -464,7 +464,7 @@ function buildRuntimeContext(state: ArchitectGraphState): string {
  * Generate file tree for context
  */
 function generateFileTree(state: ArchitectGraphState): string | null {
-  const files = state.files?.map(f => f.path) || [];
+  const files = state.projectCodeContext?.filePaths || [];
   
   if (files.length === 0) {
     return null;
@@ -479,7 +479,6 @@ function generateFileTree(state: ArchitectGraphState): string | null {
     '',
   ];
   
-  // Group by directory
   const dirs: Record<string, string[]> = {};
   for (const file of files) {
     const parts = file.split('/');

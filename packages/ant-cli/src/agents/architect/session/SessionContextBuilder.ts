@@ -1,6 +1,6 @@
 import { SessionTurn } from "../types";
 
-export type CodeMode = 'generate' | 'refactor' | 'explain' | 'ambiguous';
+export type CodeMode = 'generate' | 'refactor' | 'explain';
 
 /**
  * Session Context for LLM (Compressed)

@@ -1,6 +1,7 @@
 import { StateGraph } from "@langchain/langgraph";
 import { ArchitectGraphState, TASK_PRIORITIES, Task, TaskTimingHelper } from "./state";
 import { resolve } from "./nodes/resolve";
+import { detectEnvironment } from "./nodes/detectEnvironment";  // ✅ NEW
 import { decompose } from "./nodes/decompose";
 import { plan } from "./nodes/plan";
 import { codeGen } from "./nodes/codeGen";
@@ -285,6 +286,7 @@ export function buildCodeGraph() {
   
   // ✅ SIMPLIFIED ARCHITECTURE: CodeGen <-> Tool loop, then branch by priority
   graph.addNode("resolve", resolve as any);
+  graph.addNode("detectEnvironment", detectEnvironment as any);  // ✅ NEW: Detect environment + select design files
   graph.addNode("decompose", decompose as any);
   graph.addNode("replanDecision", replanDecision as any);  // ✅ NEW: Replan decision (continue/modify/restart)
   graph.addNode("modifyTasks", modifyTasks as any);        // ✅ NEW: Modify specific tasks
@@ -300,7 +302,8 @@ export function buildCodeGraph() {
   graph.addNode("learn", learn as any);
 
   graph.addEdge("__start__" as any, "resolve" as any);
-  graph.addEdge("resolve" as any, "decompose" as any);
+  graph.addEdge("resolve" as any, "detectEnvironment" as any);  // ✅ NEW: resolve → detectEnvironment
+  graph.addEdge("detectEnvironment" as any, "decompose" as any);  // ✅ NEW: detectEnvironment → decompose
   
   // ✅ Decompose → Replan Decision (check for multiple directives)
   graph.addConditionalEdges(

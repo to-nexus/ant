@@ -244,6 +244,13 @@ export class KanbanService {
       
       console.log(`\n🔴 [KanbanService] LIVE DATA returned\n`);
       
+      // ✅ Read recursion limit from environment variable (same as other branches)
+      const MIN_RECURSION_LIMIT = 5;
+      const recursionLimit = parseInt(process.env.RECURSION_LIMIT || '', 10);
+      const finalLimit = (isNaN(recursionLimit) || recursionLimit < MIN_RECURSION_LIMIT) 
+        ? MIN_RECURSION_LIMIT 
+        : recursionLimit;
+      
       const totalElapsedTime = this.calculateTotalElapsedTime(
         sessionState.jobTiming,
         liveCompletedTasks,
@@ -262,7 +269,7 @@ export class KanbanService {
         isEstimating: false,
         dataSource: 'live',
         recursionCount: liveSnapshot.recursionCount,
-        recursionLimit: liveSnapshot.recursionLimit,
+        recursionLimit: liveSnapshot.recursionLimit || finalLimit,  // ✅ FIXED: Fallback to env var if not in snapshot
         pausedDueToLimit: sessionState.pausedDueToLimit || false,
         tasksRemaining: sessionState.tasksRemaining || 0,
         totalElapsedTime,

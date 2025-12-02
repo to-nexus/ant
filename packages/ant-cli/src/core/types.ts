@@ -54,8 +54,9 @@ export function getCollectionName(
 /**
  * Code generation modes
  * Defines how code generation should be performed
+ * Note: Mode is now inferred by LLM in detectEnvironment node (no 'ambiguous' state)
  */
-export type CodeMode = 'generate' | 'refactor' | 'explain' | 'ambiguous';
+export type CodeMode = 'generate' | 'refactor' | 'explain';
 
 /**
  * Design modes
@@ -77,22 +78,17 @@ export interface CodebaseProfile {
 }
 
 /**
- * Task artifacts
+ * Task artifacts (REFACTORED)
  * Common input materials for both design and code tasks
- * All fields are optional - resolve nodes load what's available
  */
 export interface TaskArtifacts {
-  // Documents
-  prd?: string;           // PRD document (product requirements)
-  directive?: string;     // User instruction (current work directive)
-  design?: string;        // Latest design document (from previous turn)
-  
-  // Code
-  code?: string;          // Current codebase (working tree)
-  codeHead?: string;      // Git HEAD version (for comparison)
-  
-  // Analysis
-  profile?: CodebaseProfile;  // Detected language/framework
+  prd?: string;
+  directive?: string;
+  design?: string;
+  designDocPath?: string;
+  profile?: CodebaseProfile;
+  lessons?: any[];
+  documents?: any[];
 }
 
 /**

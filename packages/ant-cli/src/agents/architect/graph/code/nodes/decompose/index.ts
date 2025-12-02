@@ -1,133 +1,39 @@
-import { LLMClient } from "../../../../../../core/ports";
-import { ArchitectGraphState, Task, TaskQueue } from "../../state";
-import { JobTimingManager } from "../../../common/timing/JobTimingManager";
-import { extractErrorDetails, createErrorViolation, logErrorHeader } from "../shared/errorHandler";
-import * as path from 'path';
-
 /**
- * Detect if directive contains error-related keywords
- */
-function detectErrorInDirective(directive: string | undefined): boolean {
-  if (!directive) return false;
-  
-  const errorKeywords = [
-    'error', 'failed', 'exception', 'bug', 'broken', 'crash',
-    '에러', '실패', '오류', '버그', '안됨', '안돼', '못하고',
-    'not working', 'doesn\'t work', 'issue', 'problem',
-    'fix', 'solve', 'resolve'
-  ];
-  
-  const lowerDirective = directive.toLowerCase();
-  return errorKeywords.some(keyword => lowerDirective.includes(keyword));
-}
-
-/**
- * Validate tasks after decompose to detect over-engineering
- */
-function validateTasks(
-  tasks: Task[],
-  mode: string | undefined,
-  directive: string | undefined,
-  hasErrorInDirective: boolean
-): void {
-  // Skip validation for generate mode
-  if (mode === 'generate') return;
-  
-  // ✅ Refactor/Explain mode: Excessive task count warning
-  if ((mode === 'refactor' || mode === 'explain') && tasks.length > 5) {
-    console.warn(`
-⚠️  [Decompose Validation] WARNING: Generated ${tasks.length} tasks in ${mode} mode.
-   This might indicate over-engineering.
-   
-   Mode: ${mode}
-   Directive: ${directive?.substring(0, 100)}...
-   
-   Expected: 1-3 tasks for bug fixes/refactoring
-   Generated: ${tasks.length} tasks
-   
-   Review: Consider if all tasks are truly necessary.
-    `);
-  }
-  
-  // ✅ Error directive: Check if too many tasks
-  if (hasErrorInDirective && tasks.length > 3) {
-    console.warn(`
-⚠️  [Decompose Validation] WARNING: Error detected in directive but ${tasks.length} tasks generated.
-   
-   Directive contains error keywords: ${directive?.substring(0, 100)}...
-   Generated tasks: ${tasks.length}
-   
-   Expected: 1-2 tasks for error fixes
-   Generated: ${tasks.length} tasks
-   
-   Review: Most errors require only 1-2 focused fixes.
-    `);
-  }
-  
-  // ✅ Check first task for over-broad scope in refactor mode
-  if ((mode === 'refactor' || mode === 'explain') && tasks.length > 0) {
-    const firstTask = tasks[0];
-    if (isOverBroadTask(firstTask)) {
-      console.warn(`
-⚠️  [Decompose Validation] WARNING: First task seems too broad for ${mode} mode.
-   
-   Task: ${firstTask.name}
-   Description: ${firstTask.description.substring(0, 150)}...
-   
-   Expected: Focused fix (e.g., "Fix X in file.ts")
-   Detected: Broad implementation (e.g., "Implement entire X system")
-   
-   Review: ${mode} mode should focus on minimal changes.
-      `);
-    }
-  }
-}
-
-/**
- * Check if task is over-broad (sounds like full implementation)
- */
-function isOverBroadTask(task: Task): boolean {
-  const broadKeywords = [
-    'implement entire', 'build complete', 'create all',
-    'implement', 'create', 'build', 'setup',
-    'develop', 'design', 'architect'
-  ];
-  
-  const focusedKeywords = [
-    'fix', 'update', 'modify', 'change', 'correct',
-    'adjust', 'tweak', 'patch', 'repair'
-  ];
-  
-  const taskText = `${task.name} ${task.description}`.toLowerCase();
-  
-  const hasBroad = broadKeywords.some(k => taskText.includes(k));
-  const hasFocused = focusedKeywords.some(k => taskText.includes(k));
-  
-  // Over-broad if has broad keywords but no focused keywords
-  return hasBroad && !hasFocused;
-}
-
-/**
- * Decompose Node
+ * Decompose Node (Refactored)
  * 
  * Meta-level planning: Break the overall task into executable tasks
  * This runs ONCE at the beginning to create the initial task queue.
  * 
- * ✅ RESUME SUPPORT: If previous state exists in session, restore it instead of decomposing
- * 
- * Responsibilities:
- * 1. Check for existing session state (for resuming after recursion limit)
- * 2. If state exists → restore task queue and continue
- * 3. If no state → analyze spec and create new task queue
- * 4. Store feature tasks for completion tracking
+ * ✅ MODULAR ARCHITECTURE:
+ * - validation.ts: Task validation logic
+ * - sessionManager.ts: Session restore/save logic
+ * - designSelector.ts: Design document selection (environment-aware)
+ * - llmCaller.ts: LLM prompt building and calling
+ * - responseParser.ts: Parse LLM response into tasks
+ */
+
+import { LLMClient } from "../../../../../../core/ports";
+import { ArchitectGraphState, Task, TaskQueue } from "../../state";
+import { JobTimingManager } from "../../../common/timing/JobTimingManager";
+import { logErrorHeader } from "../shared/errorHandler";
+
+// Import submodules
+import { detectErrorInDirective, validateTasks } from "./validation";
+import { checkSessionRestore, restoreFromSession } from "./sessionManager";
+import { prepareDesignDocument } from "./designSelector";
+import { buildDecomposePrompt, callLLMForDecompose } from "./llmCaller";
+import { parseLLMResponse, createTaskQueue, logTaskSummary } from "./responseParser";
+
+/**
+ * Decompose Node - Main Entry Point
  */
 export async function decompose(state: ArchitectGraphState): Promise<ArchitectGraphState> {
-  // ✅ Increment recursion count (track every node execution)
+  // Increment recursion count
   state.recursionCount = (state.recursionCount || 0) + 1;
   
   const llm = state.deps?.llm as LLMClient;
   
-  // ✅ Workflow instrumentation: Enter node with LLM info
+  // Workflow instrumentation
   if (state.deps?.workflowUpdate && state._httpJobId) {
     const taskInfo = state.currentTask ? {
       id: state.currentTask.id,
@@ -137,7 +43,6 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       priority: state.currentTask.priority
     } : undefined;
     
-    // ✅ Extract LLM info from GenericLLMClient
     const llmInfo = (llm as any)?.provider && (llm as any)?.modelName ? {
       provider: (llm as any).provider,
       model: (llm as any).modelName
@@ -153,979 +58,225 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     );
   }
   
-  // ✅ CRITICAL: Load session FIRST to get completedTasksDetails before signaling
-  let preloadedCompletedTasks: any[] = [];
-  if (state.deps?.session) {
-    try {
-      const session = await state.deps.session.load(
-        state.context.project,
-        state.context.featureFolder || 'default',
-        'code'  // ✅ Specify job type
+  console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('📋 DECOMPOSE: Breaking down specification into tasks');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+  
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 🔥 EXPLAIN MODE: Skip decompose, create single explain task
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (state.mode === 'explain') {
+    console.log('💡 [Decompose] Explain mode detected - creating single explanation task\n');
+    
+    const explainTask: Task = {
+      id: 'explain-1',
+      name: 'Explain code',
+      type: 'explain',
+      priority: 200,
+      description: state.directive || 'Explain the codebase'
+    };
+    
+    const taskQueue = new TaskQueue();
+    taskQueue.push(explainTask);
+    
+    return {
+      ...state,
+      taskQueue,
+      featureTasks: new Map(),
+      referenceRequests: [],
+      projectCodeContext: undefined,
+      referenceCodeContexts: [],
+      totalSubtasks: 1,
+      subtaskIndex: 0,
+      completedTasks: [],
+      completedTasksDetails: []
+    };
+  }
+  
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 1: Check for existing session (resume support)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const sessionCheck = await checkSessionRestore(state);
+  
+  if (sessionCheck.shouldRestore && sessionCheck.session) {
+    if (sessionCheck.hasAdditionalDirective) {
+      // Replan: merge directives and decompose
+      console.log('🔄 [Decompose] Replan mode: merging directives and re-decomposing');
+      state = {
+        ...state,
+        directive: sessionCheck.mergedDirective,
+        completedTasks: sessionCheck.session.state.completedTasks || [],
+        completedTasksDetails: sessionCheck.session.state.completedTasksDetails || [],
+        referenceRequests: sessionCheck.session.state.referenceRequests || [],
+        retries: 0,
+        previousAttempts: [],
+        enforcementHistory: [],
+        lastViolations: [],
+        resolvedCategories: []
+      } as any;
+      
+      (state as any)._replanJobId = sessionCheck.session.jobId;
+      (state as any)._replanJobTiming = sessionCheck.session.jobTiming;
+      
+      // Fall through to decomposition
+    } else {
+      // Normal resume
+      return restoreFromSession(state, sessionCheck.session);
+    }
+  }
+  
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 2: Conditional RAG (if requireRagForDecompose)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  let codebaseFilePaths: string[] | undefined = undefined;
+  let gitDiffResult: any = undefined;
+  
+  if (state.requireRagForDecompose && state.decomposeKeywords?.codebase && state.decomposeKeywords.codebase.length > 0) {
+    console.log(`🔍 [Decompose] RAG required - searching with keywords...`);
+    
+    const retriever = state.deps?.retriever;
+    const vectorDB = state.deps?.vectorDB;
+    const git = state.deps?.git;
+    
+    if (!retriever || !vectorDB) {
+      console.warn(`⚠️  [Decompose] Retriever or VectorDB not available, skipping RAG`);
+    } else {
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // 2a. Vector DB Search (main project) - FILE PATHS ONLY
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      const searchQuery = state.decomposeKeywords.codebase.join(' ');
+      const searchResult = await retriever.retrieve(
+        searchQuery,
+        state.context.workingDir,
+        { vectorDB, git },
+        {
+          project: state.context.project,
+          maxTokens: 5000,
+          maxFiles: 20,
+          mode: state.mode || 'refactor'
+        }
       );
       
-      // ✅ Extract completed tasks for "estimating started" signal
-      if (session.state?.completedTasksDetails) {
-        preloadedCompletedTasks = session.state.completedTasksDetails;
-        console.log(`\n📦 Preloaded ${preloadedCompletedTasks.length} completed tasks from session\n`);
-      }
+      // Extract file paths only (no content)
+      codebaseFilePaths = searchResult.files?.map((f: any) => 
+        typeof f === 'string' ? f : f.path
+      ) || [];
       
-      // ✅ Resume if: taskQueue has tasks OR currentTask exists (task in progress)
-      if (session.state && 
-          session.state.taskQueue && 
-          (session.state.taskQueue.length > 0 || session.state.currentTask)) {
-        console.log('\n🔄 Resuming from previous code session...\n');
-        
-        // ✅ Variables needed across multiple scopes
-        let hasAdditionalDirective = false;
-        let mergedDirective = state.directive;
-        let jobId: string;
-        let jobTiming: any;
-        
-        // ✅ CRITICAL: Reload codebase from actual disk to detect file deletions
-        const gitPort = state.deps?.git;
-        let reloadedCode = state.code;
-        let shouldResetAndDecompose = false;  // Flag to trigger decomposition
-        
-        if (gitPort) {
-          console.log('📂 Checking codebase status for resume...');
-          
-          try {
-            // ✅ SMART RELOAD: Only check file count for deletion detection
-            // Don't load full codebase content - Plan node will do smart context loading
-            const allFiles = await gitPort.listFiles('.', [
-              'node_modules', '.git', 'dist', 'build', '.next', 'out', 
-              'coverage', '.cache', '.turbo', '.vercel', '.netlify'
-            ]);
-            
-            console.log(`   Found ${allFiles.length} files in codebase`);
-            
-            // ✅ Detect full project deletion (not partial edits)
-            const hasCompletedTasks = session.state.completedTasks && session.state.completedTasks.length > 0;
-            const hasNoFiles = allFiles.length === 0;
-            
-            if (hasCompletedTasks && hasNoFiles) {
-              // 🚨 All files deleted - reset and decompose
-              console.log('⚠️  All project files have been deleted');
-              console.log(`   Session shows ${session.state.completedTasks?.length || 0} completed task(s) but 0 files exist`);
-              console.log('🔄 Treating as NEW PROJECT - will decompose into tasks\n');
-              
-              // Set flag and reset state
-              shouldResetAndDecompose = true;
-              state = {
-                ...state,
-                code: "",
-                completedTasks: [],
-                retries: 0,
-                previousAttempts: [],
-                enforcementHistory: [],
-                lastViolations: [],
-                previousFileCount: 0,
-                resolvedCategories: []
-              };
-            } else {
-              // Normal resume - update code
-              state = { ...state, code: reloadedCode };
-            }
-          } catch (error) {
-            console.warn(`⚠️  Could not reload files: ${error}`);
-          }
-        }
-        
-        // ✨ Handle jobId and jobTiming for Resume (BEFORE any conditional logic)
-        const existingJobId = session.state.jobId || state._httpJobId || 'unknown-job';
-        const resumeResult = JobTimingManager.resumeJob(existingJobId, session.state.jobTiming);
-        jobId = resumeResult.jobId;
-        jobTiming = resumeResult.jobTiming;
-        
-        // ✅ Build merged directive from directives array (BEFORE any conditional logic)
-        mergedDirective = state.directive;
-        hasAdditionalDirective = false;  // Reset flag
-        
-        if (session.state.directives && session.state.directives.length > 0) {
-          console.log(`\n📝 Merging ${session.state.directives.length} directive(s) (newest first):`);
-          session.state.directives.forEach((dir: string, idx: number) => {
-            console.log(`   ${idx + 1}. ${dir.substring(0, 60)}...`);
-          });
-          
-          // ✅ Detect additional directive: more than 1 directive = user added feedback
-          hasAdditionalDirective = session.state.directives.length > 1;
-          
-          // ✅ Structure directives with context (newest = highest priority)
-          if (session.state.directives.length === 1) {
-            mergedDirective = session.state.directives[0];
-          } else {
-            // Multiple directives: label them clearly
-            const [initial, ...feedbacks] = session.state.directives.slice().reverse(); // oldest first for labeling
-            const parts = [`[Initial Request]\n${initial}`];
-            
-            feedbacks.forEach((feedback, idx) => {
-              parts.push(`[Additional Feedback ${idx + 1}]\n${feedback}`);
-            });
-            
-            // Join with clear separators (newest feedback last = most visible to LLM)
-            mergedDirective = parts.join('\n\n---\n\n');
-            console.log(`   ✅ Structured ${session.state.directives.length} directive(s) with labels`);
-            console.log(`   🔄 Additional directive detected → Will REPLAN tasks\n`);
-          }
-        }
-        
-        // If reset detected, skip queue restoration and fall through to decomposition
-        if (shouldResetAndDecompose) {
-          // Fall through to line 71 (decomposition logic)
-        } else if (hasAdditionalDirective) {
-          // ✅ NEW: Additional directive detected → REPLAN tasks
-          console.log('🔄 [Replan] Additional directive detected - decomposing into NEW tasks');
-          console.log(`   Existing queue: ${session.state.taskQueue.length} task(s)`);
-          console.log(`   Completed: ${session.state.completedTasks?.length || 0} task(s)`);
-          console.log(`   Action: Will create new task queue based on merged directives\n`);
-          
-          // ✅ Preserve completed tasks and timing (jobId/jobTiming handled separately, not in state)
-          state = {
-            ...state,
-            directive: mergedDirective,
-            completedTasks: session.state.completedTasks || [],
-            completedTasksDetails: session.state.completedTasksDetails || [],
-            referenceRequests: session.state.referenceRequests || [],  // ✅ Preserve reference requests (will be updated if LLM provides new ones)
-            retries: 0,  // Reset retries for new tasks
-            previousAttempts: [],
-            enforcementHistory: [],
-            lastViolations: [],
-            resolvedCategories: []
-          } as any;
-          
-          // ✅ Save jobId and jobTiming for later use (they'll be used when saving checkpoint)
-          (state as any)._replanJobId = jobId;
-          (state as any)._replanJobTiming = jobTiming;
-          
-          // Fall through to decomposition logic below
-        } else {
-          // Normal resume - restore queue and return
-        
-        // Restore TaskQueue from saved state
-        const taskQueue = new TaskQueue();
-        session.state.taskQueue.forEach((task: Task) => {
-          taskQueue.push(task);
-        });
-        
-        // Restore featureTasks map
-        const featureTasks = new Map<string, Task>();
-        session.state.taskQueue.forEach((task: Task) => {
-          if (task.type === 'feature') {
-            featureTasks.set(task.id, task);
-          }
-        });
-        
-        // Calculate task type breakdown (including currentTask if exists)
-        const tasksByType = {
-          setup: 0,
-          feature: 0,
-          error: 0,
-          final: 0
-        };
-        
-        // Count tasks in queue
-        taskQueue.getAll().forEach(task => {
-          if (task.priority === 1000) {
-            tasksByType.final++;
-          } else if (task.type === 'error') {
-            tasksByType.error++;
-          } else if (task.type === 'setup') {
-            tasksByType.setup++;
-          } else if (task.type === 'feature') {
-            tasksByType.feature++;
-          }
-        });
-        
-        // Add currentTask to count (if it exists - task in progress)
-        if (session.state.currentTask) {
-          const currentTask = session.state.currentTask;
-          if (currentTask.priority === 1000) {
-            tasksByType.final++;
-          } else if (currentTask.type === 'error') {
-            tasksByType.error++;
-          } else if (currentTask.type === 'setup') {
-            tasksByType.setup++;
-          } else if (currentTask.type === 'feature') {
-            tasksByType.feature++;
-          }
-        }
-        
-        const completedCount = session.state.completedTasks?.length || 0;
-        const inProgressCount = session.state.currentTask ? 1 : 0;
-        const totalTasks = completedCount + taskQueue.size() + inProgressCount;
-        
-        console.log(`📊 Resuming existing project:`);
-        console.log(`   Progress: ${completedCount}/${totalTasks} tasks (${Math.round(completedCount / totalTasks * 100)}%)`);
-        console.log(`   `);
-        console.log(`   Setup:   ${tasksByType.setup === 0 ? '✅' : '⬜'} ${tasksByType.setup} remaining`);
-        console.log(`   Feature: ${tasksByType.feature === 0 ? '✅' : '⬜'} ${tasksByType.feature} remaining`);
-        console.log(`   Error:   ${tasksByType.error === 0 ? '✅' : '⚠️ '} ${tasksByType.error} remaining`);
-        console.log(`   Final:   ${tasksByType.final === 0 ? '✅' : '⬜'} ${tasksByType.final} remaining`);
-        console.log(``);
-        
-        // ✅ Log reference projects restoration
-        if (session.state.referenceRequests && session.state.referenceRequests.length > 0) {
-          console.log(`📚 Restored ${session.state.referenceRequests.length} reference project(s):`);
-          session.state.referenceRequests.forEach((ref: any) => {
-            console.log(`   - ${ref.project}${ref.branch ? ` (${ref.branch})` : ''}`);
-          });
-          console.log(``);
-        }
-        
-        // ✅ Restore buffer from disk for interruption recovery
-        try {
-          const { StreamBufferManager } = await import('../../../../../../core/streaming/buffer/StreamBufferManager');
-          const featurePath = state.deps?.workspaceResolver?.getFeaturePath(
-            { userId: state.context.userId || 'local', organizationId: state.context.organizationId || 'local', workspacePath: '' },
-            state.context.project,
-            state.context.featureFolder
-          ) || state.context.featurePath || '';
-          const projectPath = featurePath.replace(`/features/${state.context.featureFolder}`, '');
-          const bufferManager = new StreamBufferManager(projectPath, state.context.featureFolder, 'code', jobId);
-          
-          const savedBuffers = bufferManager.loadBuffersFromDisk();
-          if (savedBuffers.size > 0) {
-            console.log(`\n🔄 [Resume] Loaded ${savedBuffers.size} buffer(s) from disk for recovery`);
-            for (const [filePath, buffer] of savedBuffers) {
-              console.log(`   📂 ${filePath}: ${buffer.content.length} chars (${buffer.actionType})`);
-            }
-          }
-        } catch (error) {
-          console.warn(`⚠️  [Resume] Failed to restore buffers (non-critical):`, error);
-        }
-        
-        const resumedState = {
-          ...state,
-          jobId,  // ✨ Restore jobId
-          jobTiming,  // ✨ Restore/update jobTiming
-          taskQueue,
-          featureTasks,
-          currentTask: session.state.currentTask,  // ✅ Restore currentTask (in-progress task)
-          completedTasks: session.state.completedTasks || [],
-          completedTasksDetails: session.state.completedTasksDetails || [],  // ✅ Restore full details
-          retries: session.state.retries || 0,
-          maxRetries: session.state.maxRetries || 3,
-          previousAttempts: session.state.previousAttempts || [],
-          enforcementHistory: session.state.enforcementHistory || [],
-          lastViolations: session.state.lastViolations || [],
-          previousFileCount: session.state.previousFileCount,
-          resolvedCategories: (session.state.resolvedCategories || []) as any,
-          planText: session.state.planText || '',  // ✅ Restore plan to skip LLM call on resume
-          directive: mergedDirective,  // ✅ Merged directives (newest first)
-          overrideDirective: session.state.overrideDirective,  // ✅ Restore chat-initiated directive
-          chatSource: session.state.chatSource,  // ✅ Restore chat source flag
-          referenceRequests: session.state.referenceRequests || [],  // ✅ Restore reference projects for tool calling
-          _httpJobId: state._httpJobId,  // ✅ Explicitly preserve jobId for next node
-          interruption: undefined  // ✅ CRITICAL: Clear interruption when resuming (job is now running again)
-        } as any;
-        
-        // ✅ Start/resume timing for currentTask if exists
-        if (resumedState.currentTask) {
-          const { TaskTimingHelper } = await import('../../state');
-          if (!resumedState.currentTask.timing?.startedAt) {
-            console.log(`⏱️  [Decompose Resume] Starting timer for resumed task: ${resumedState.currentTask.name}`);
-            resumedState.currentTask = TaskTimingHelper.startTask(resumedState.currentTask);
-          } else if (resumedState.currentTask.timing?.pausedAt) {
-            console.log(`⏱️  [Decompose Resume] Resuming timer for task: ${resumedState.currentTask.name}`);
-            resumedState.currentTask = TaskTimingHelper.startTask(resumedState.currentTask);
-          } else {
-            console.log(`⏱️  [Decompose Resume] Timer already running for task: ${resumedState.currentTask.name}`);
-          }
-        }
-        
-        // ✅ Update live snapshot for seamless UI transition (Port or HTTP fallback)
-        if (state._httpJobId) {
-          const completedTasks = resumedState.completedTasksDetails || [];
-          const queueTasks = taskQueue.getAll();
-          
-          // ✅ CRITICAL: Get recursionCount and recursionLimit from resumed state
-          const recursionCount = session.state.recursionCount || 0;
-          const MIN_RECURSION_LIMIT = 5;
-          const envLimit = parseInt(process.env.RECURSION_LIMIT || '', 10);
-          const recursionLimit = (isNaN(envLimit) || envLimit < MIN_RECURSION_LIMIT) 
-            ? MIN_RECURSION_LIMIT 
-            : envLimit;
-          
-          if (state.deps?.kanbanUpdate) {
-            // In-process: use injected port
-            state.deps.kanbanUpdate.updateTaskQueue(
-              state._httpJobId,
-              resumedState.currentTask || null,  // ✅ Now includes timing info
-              queueTasks,
-              completedTasks,
-              recursionCount,  // ✅ Pass recursion tracking
-              recursionLimit   // ✅ Pass recursion limit
-            );
-            console.log(`🔄 [Decompose Resume] Live snapshot updated via PORT`);
-            console.log(`   JobId: ${state._httpJobId}`);
-            console.log(`   CurrentTask: ${resumedState.currentTask?.name || 'none'}`);
-            console.log(`   Queue: ${taskQueue.size()} tasks`);
-            console.log(`   Completed: ${completedTasks.length} tasks`);
-            console.log(`   Recursion: ${recursionCount}/${recursionLimit}`);
-            console.log(`   Live snapshot will be broadcast immediately by updateTaskQueue\n`);
-          } else {
-            // Child process: HTTP API fallback
-            const serverPort = process.env.ANT_SERVER_PORT || '4100';
-            fetch(`http://localhost:${serverPort}/api/internal/task-queue`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                taskId: state._httpJobId,
-                currentTask: resumedState.currentTask || null,
-                queue: queueTasks,
-                completedTasks: completedTasks,
-                recursionCount,
-                recursionLimit
-              })
-            }).then(() => {
-              console.log(`🔄 [Decompose Resume] Live snapshot updated via HTTP (${taskQueue.size()} tasks, current: ${resumedState.currentTask?.name || 'none'})\n`);
-            }).catch(err => console.log(`⚠️  [Decompose Resume] HTTP update failed:`, err.message));
-          }
-        }
-        
-        // ✅ Workflow instrumentation: Exit node (resume path)
-        if (state.deps?.workflowUpdate && state._httpJobId) {
-          state.deps.workflowUpdate.exitNode(state._httpJobId, 'decompose');
-        }
-        
-        return resumedState;
-        }  // End of else block (normal resume)
-      }  // End of if (session.state && taskQueue)
-    } catch (error) {
-      console.log('⚠️  Could not load previous session state, starting fresh');
-    }
-  }
-  
-  // ✨ Initialize jobId and jobTiming for new job
-  const { jobId: newJobId, jobTiming: newJobTiming, estimatingStartTime } = JobTimingManager.initializeNewJob(state._httpJobId!);
-  
-  
-  // 💾 CRITICAL: Save jobTiming to session IMMEDIATELY so frontend can show timer during estimating
-  if (state.deps?.session && state.context.featureFolder) {
-    try {
-      const { saveCheckpoint } = await import('../checkpoint');
-      const tempState = {
-        ...state,
-        jobId: newJobId,
-        jobTiming: newJobTiming,
-        taskQueue: new TaskQueue(), // empty queue
-        completedTasks: [],
-        completedTasksDetails: preloadedCompletedTasks,
-        overrideDirective: state.overrideDirective,  // ✅ Preserve chat directive
-        chatSource: state.chatSource  // ✅ Preserve chat source flag
-      } as any;
-      await saveCheckpoint(tempState);
-      console.log(`💾 [Code Decompose] Initial jobTiming saved to session\n`);
-    } catch (error) {
-      console.warn(`⚠️  [Code Decompose] Failed to save initial jobTiming:`, error);
-    }
-  }
-  
-  // ✅ Check if this is a replan (additional directive) vs new project
-  const isReplan = (state as any)._replanJobId && (state as any)._replanJobTiming;
-  const useJobId = isReplan ? (state as any)._replanJobId : newJobId;
-  const useJobTiming = isReplan ? (state as any)._replanJobTiming : newJobTiming;
-  
-  if (isReplan) {
-    console.log('🔄 Replan mode detected - using existing jobId and timing');
-    console.log(`   JobId: ${useJobId}`);
-    console.log(`   Previous completed tasks: ${state.completedTasks?.length || 0}\n`);
-  }
-  
-  // ✅ NOW send "estimating started" signal with preloaded completed tasks
-  if (state._httpJobId && state.deps?.kanbanUpdate) {
-    console.log(`\n🎬 [Code Decompose] Signaling estimating started...`);
-    console.log(`   Preserving ${preloadedCompletedTasks.length} completed tasks`);
-    
-    state.deps.kanbanUpdate.updateTaskQueue(
-      state._httpJobId,
-      null,    // no currentTask yet
-      [],      // no tasks yet
-      preloadedCompletedTasks,  // ✅ Use preloaded completed tasks
-      0,       // recursionCount
-      undefined // recursionLimit
-    );
-    console.log(`   ✅ Estimating signal sent\n`);
-  }
-  
-  // Prepare spec
-  const specParts = [
-    state.prd ? `PRD:\n${state.prd}` : null,
-    state.design ? `DESIGN:\n${state.design}` : null,
-    state.directive ? `DIRECTIVE:\n${state.directive}` : null
-  ].filter(Boolean);
-  
-  if (specParts.length === 0) {
-    console.log('⚠️  No specification provided, creating minimal task');
-    
-    // Create a single default task
-    const taskQueue = new TaskQueue();
-    const defaultTask: Task = {
-      id: 'default',
-      name: 'Implement Requirements',
-      type: 'feature',
-      priority: 220,
-      description: 'Implement based on directive or design',
-      completed: false
-    };
-    
-    taskQueue.push(defaultTask);
-    
-    const featureTasks = new Map<string, Task>();
-    featureTasks.set(defaultTask.id, defaultTask);
-    
-    // ✨ Calculate estimating duration (decompose completed)
-    const finalJobTiming = isReplan 
-      ? useJobTiming  // Replan: use existing timing
-      : JobTimingManager.finalizeEstimatingPhase(newJobTiming, estimatingStartTime);  // New: finalize
-    
-    const newState = {
-      ...state,
-      jobId: useJobId,  // ✨ Initialize or preserve jobId
-      jobTiming: finalJobTiming,  // ✨ Initialize or preserve jobTiming with estimatingDuration
-      taskQueue,
-      featureTasks,
-      completedTasks: state.completedTasks || [],  // ✅ Preserve for replan
-      completedTasksDetails: state.completedTasksDetails || [],  // ✅ Preserve for replan
-      overrideDirective: state.overrideDirective,  // ✅ Preserve chat directive
-      chatSource: state.chatSource,  // ✅ Preserve chat source flag
-      _httpJobId: state._httpJobId,  // ✅ Explicitly preserve taskId for next node
-      referenceRequests: []  // ✅ No reference requests for fallback/error cases
-    };
-    
-    // ✅ Save checkpoint for default task
-    if (state.deps?.session && state.context.featureFolder) {
-      try {
-        const { saveCheckpoint } = await import('../checkpoint');
-        await saveCheckpoint(newState);
-        console.log(`💾 [Decompose Default] Checkpoint saved (1 default task)\n`);
-      } catch (error) {
-        console.warn(`⚠️  [Decompose] Failed to save checkpoint:`, error);
-      }
-    }
-    
-    // ✅ Update live snapshot (Port or HTTP fallback)
-    if (state._httpJobId) {
-      const completedTasks = state.completedTasksDetails || [];
-      const queueTasks = taskQueue.getAll();
+      console.log(`   ✅ Found ${codebaseFilePaths.length} relevant files`);
       
-      if (state.deps?.kanbanUpdate) {
-        // In-process: use injected port
-        state.deps.kanbanUpdate.updateTaskQueue(
-          state._httpJobId,
-          null,
-          queueTasks,
-          completedTasks
-        );
-        console.log(`🎬 [Decompose Default] Live snapshot updated via PORT (1 default task)\n`);
-      } else {
-        // Child process: HTTP API fallback
-        const serverPort = process.env.ANT_SERVER_PORT || '4100';
-        fetch(`http://localhost:${serverPort}/api/internal/task-queue`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            taskId: state._httpJobId,
-            currentTask: null,
-            queue: queueTasks,
-            completedTasks: completedTasks
-          })
-        }).then(() => {
-          console.log(`🎬 [Decompose Default] Live snapshot updated via HTTP (1 default task)\n`);
-        }).catch(err => console.log(`⚠️  [Decompose Default] HTTP update failed:`, err.message));
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // 2b. Git Diff Summary
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      if (git) {
+        const { generateGitDiffSummary } = require('../../../../../core/codebase/GitDiffSummary');
+        gitDiffResult = await generateGitDiffSummary(git, state.context.workingDir, codebaseFilePaths);
+        
+        if (gitDiffResult?.hasChanges) {
+          console.log(`   ✅ Git diff: ${gitDiffResult.changedFiles.length} changed files`);
+        }
       }
-    }
-    
-    return newState;
-  }
-  
-  const spec = specParts.join('\n\n---\n\n');
-  
-  // Check if this is a new project (no existing code)
-  const isNewProject = !state.code || state.code.trim().length === 0;
-  const hasExistingCode = Boolean(state.code && state.code.trim().length > 0);
-  
-  // 🔍 DEBUG: Log actual values
-  console.log(`\n🔍 [Decompose] DEBUG:`);
-  console.log(`   state.code length: ${state.code?.length || 0}`);
-  console.log(`   state.files count: ${state.files?.length || 0}`);
-  console.log(`   isNewProject: ${isNewProject}`);
-  console.log(`   hasExistingCode: ${hasExistingCode}\n`);
-  
-  // Log status
-  if (isReplan) {
-    console.log(`\n🔄 Replanning with additional directive - re-decomposing tasks...\n`);
-  } else if (hasExistingCode) {
-    console.log(`\n📝 Existing codebase detected (${state.files?.length || 0} files, ${state.code?.length || 0} chars) - decomposing modification tasks...\n`);
-  } else {
-    console.log(`\n🆕 New project detected (0 files, ${state.code?.length || 0} chars) - decomposing implementation tasks...\n`);
-  }
-  
-  // ✅ Generate file list from state.files (preferred) or fallback to parsing state.code
-  let fileList = '(no files yet)';
-  
-  // ✅ PRIORITY 1: Use state.files (from resolve node, most reliable)
-  if (state.files && state.files.length > 0) {
-    fileList = state.files.map(f => f.path).join('\n');
-    console.log(`   📂 File list from state.files: ${state.files.length} file(s)`);
-  }
-  // ✅ FALLBACK: Parse from state.code (for backward compatibility)
-  else if (state.code && state.code.trim().length > 0) {
-    const fileMatches = state.code.match(/FILE:\s*([^\n]+)/g);
-    if (fileMatches && fileMatches.length > 0) {
-      const filePaths = fileMatches.map(m => m.replace('FILE:', '').trim());
-      fileList = filePaths.join('\n');
-      console.log(`   📂 File list from state.code parsing: ${filePaths.length} file(s)`);
-    } else {
-      console.log(`   ⚠️  No "FILE:" pattern found in state.code`);
-    }
-  }
-  
-  // ✅ DEBUG: Log final file list
-  if (fileList !== '(no files yet)') {
-    console.log(`   ✅ Final file list (${fileList.split('\n').length} files):`);
-    fileList.split('\n').slice(0, 10).forEach(f => console.log(`      - ${f}`));
-    if (fileList.split('\n').length > 10) {
-      console.log(`      ... and ${fileList.split('\n').length - 10} more`);
     }
   } else {
-    console.log(`   ⚠️  WARNING: No file list available! LLM will not see existing files!`);
+    console.log(`ℹ️  [Decompose] RAG not required (generate mode or no keywords)`);
   }
   
-  // ✅ NEW: Detect error in directive
-  const hasErrorInDirective = detectErrorInDirective(state.directive);
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 3: Prepare design documents (environment-aware)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const { designDoc, hasDesignDoc } = prepareDesignDocument(state);
   
-  // Load prompt templates
-  const promptEngine = state.deps?.promptEngine;
-  if (!promptEngine) {
-    throw new Error('PromptEngine not available');
-  }
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 4: Build prompt and call LLM
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const prompt = await buildDecomposePrompt(
+    state.deps?.promptEngine,
+    {
+      directive: state.directive || '',
+      designDoc,
+      hasDesignDoc,
+      mode: state.mode || 'unknown',
+      profile: state.profile,
+      codebaseFilePaths,
+      gitDiff: gitDiffResult
+    }
+  );
   
-  // Use FilePromptAdapter directly for decompose templates
-  const FilePromptAdapter = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
-  const promptAdapter = new FilePromptAdapter.FilePromptAdapter();
-  
-  // ✅ NEW: Render templates with mode and error information
-  const basePrompt = await promptAdapter.render('code/phases/decompose/base', {
-    spec,
-    hasExistingCode,
-    fileList,  // ✅ Changed from codePreview to fileList
-    // ✅ NEW: Mode information
-    mode: state.codeMode,
-    modeConfidence: (state as any).modeConfidence, // Optional field
-    modeReasoning: (state as any).modeReasoning,   // Optional field
-    // ✅ NEW: Error detection
-    hasErrorInDirective,
-    // ✅ NEW: Design doc flag
-    designDoc: state.design ? true : false,
-  });
-  
-  const rules = await promptAdapter.render('code/phases/decompose/rules', {});
-  
-  const prompt = `${basePrompt}
-
-${rules}`;
-
+  let rawResponse: string;
   try {
-    console.log('\n📝 Analyzing specification and breaking down tasks...\n');
-    
-    // ✅ Get ChatAPIClient for UI feedback
-    const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
-    const chatAPI = getChatAPIClient();
-    
-    if (!llm.stream) {
-      throw new Error('LLM client does not support streaming');
-    }
-    
-    // 🎯 CRITICAL: Start message BEFORE sending any events!
-    // Without this, all orchestrator events will be silently ignored
-    await chatAPI.startMessage();
-    console.log('✅ [Decompose] Message started for UI streaming');
-    
-    // 🎯 Show placeholder before LLM call
-    await chatAPI.showChatStatus('placeholder');
-    
-    // ✅ Setup XML Parser + StreamOrchestrator for <tasks> tag handling
-    const { StreamOrchestrator } = await import('../../../../../../core/streaming/StreamOrchestrator');
-    const { XMLStreamParser } = await import('../../../../../../core/streaming/parsers/XMLStreamParser');
-    const { CommonRenderStrategy } = await import('../../../../../../core/streaming/strategies/CommonRenderStrategy');
-    
-    const parser = new XMLStreamParser();
-    const renderStrategy = new CommonRenderStrategy(chatAPI);
-    const orchestrator = new StreamOrchestrator({
-      parser,
-      renderStrategy,
-      existingFiles: new Set(),
-    });
-    
-    // ✅ Stream with XML parsing for <tasks> tag
-    let raw = '';
-    for await (const event of llm.stream([{ role: 'user', content: prompt }])) {
-      // ✅ Pass to orchestrator for XML parsing
-      await orchestrator.processEvent(event);
-      
-      // Accumulate raw text for task extraction
-      if (event.type === 'text') {
-        raw += event.text || '';
-      }
-    }
-    
-    // ✅ Finalize orchestrator (no tool calls in decompose, so finalize immediately)
-    await orchestrator.finalize(false);  // false = no tool calls, finalize message
-    console.log('✅ [Decompose] Message finalized');
-    
-    // ✅ Extract JSON from <tasks> tags (more reliable than parsing freeform text)
-    let tasks: Task[] = [];
-    const tasksMatch = raw.match(/<tasks>\s*([\s\S]*?)\s*<\/tasks>/);
-    
-    if (tasksMatch && tasksMatch[1]) {
-      try {
-        const jsonText = tasksMatch[1].trim();
-        const parsed = JSON.parse(jsonText);
-        tasks = parsed.tasks || [];
-        console.log(`✅ Parsed ${tasks.length} tasks from LLM response\n`);
-        
-        // ✅ NEW: Validate tasks for over-engineering
-        validateTasks(tasks, state.codeMode, state.directive, hasErrorInDirective);
-        
-      } catch (parseError) {
-        console.error('❌ Failed to parse task JSON from <tasks> tags:', parseError);
-        console.error('JSON text:', tasksMatch[1].substring(0, 500));
-      }
-    } else {
-      // Fallback: Try to find JSON in raw response (for backward compatibility)
-      console.log('⚠️  No <tasks> tags found, trying fallback JSON extraction...\n');
-      
-      // Remove thinking tags
-      let jsonText = raw.replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
-      
-      // Try to find JSON object
-      const jsonMatch = jsonText.match(/\{[\s\S]*"tasks"[\s\S]*\]/);
-      if (jsonMatch) {
-        try {
-          const parsed = JSON.parse(jsonMatch[0] + '}');
-          tasks = parsed.tasks || [];
-          console.log(`✅ Parsed ${tasks.length} tasks from fallback extraction\n`);
-        } catch (parseError) {
-          console.error('❌ Fallback JSON parsing also failed:', parseError);
-        }
-      }
-    }
-    
-    // ✅ NEW: Extract references from LLM response (learn_command style)
-    let referenceRequests: Array<{project: string; branch?: string}> = [];
-    const referencesMatch = raw.match(/<references>\s*([\s\S]*?)\s*<\/references>/);
-    
-    if (referencesMatch && referencesMatch[1]) {
-      try {
-        const refsText = referencesMatch[1].trim();
-        referenceRequests = JSON.parse(refsText);
-        
-        if (referenceRequests.length > 0) {
-          console.log(`\n📚 LLM detected ${referenceRequests.length} reference project(s):`);
-          referenceRequests.forEach(ref => {
-            console.log(`   - ${ref.project}${ref.branch ? ` (${ref.branch})` : ''}`);
-          });
-        }
-      } catch (parseError) {
-        console.warn('⚠️  Failed to parse <references> tag:', parseError);
-        referenceRequests = [];
-      }
-    } else {
-      console.log(`   ℹ️  No <references> tag found - no external references needed\n`);
-    }
-    
-    if (tasks.length === 0) {
-      console.log('⚠️  Could not extract tasks from LLM response');
-      console.log('Raw response preview:', raw.substring(0, 300), '...');
-      console.log('Creating default task as fallback...\n');
-      
-      const taskQueue = new TaskQueue();
-      const defaultTask: Task = {
-        id: 'impl-spec',
-        name: 'Implement Specification',
-        type: 'feature',
-        priority: 220,
-        description: 'Implement requirements from specification',
-        completed: false
-      };
-      
-      taskQueue.push(defaultTask);
-      
-      const featureTasks = new Map<string, Task>();
-      featureTasks.set(defaultTask.id, defaultTask);
-      
-      // ✨ Calculate estimating duration (decompose completed)
-      let finalJobTiming;
-      if (isReplan) {
-        finalJobTiming = useJobTiming;  // Replan: use existing timing
-      } else {
-        const estimatingEndTime = Date.now();
-        const estimatingDuration = estimatingEndTime - new Date(estimatingStartTime).getTime();
-        finalJobTiming = {
-          ...newJobTiming,
-          estimatingDuration
-        };
-        console.log(`⏰ [Estimating Complete] Duration: ${Math.round(estimatingDuration / 1000)}s\n`);
-      }
-      
-      const newState = {
-        ...state,
-        jobId: useJobId,  // ✨ Initialize or preserve jobId
-        jobTiming: finalJobTiming,  // ✨ Initialize or preserve jobTiming with estimatingDuration
-        taskQueue,
-        featureTasks,
-        completedTasks: state.completedTasks || [],  // ✅ Preserve for replan
-        completedTasksDetails: state.completedTasksDetails || [],  // ✅ Preserve for replan
-        overrideDirective: state.overrideDirective,  // ✅ Preserve chat directive
-        chatSource: state.chatSource,  // ✅ Preserve chat source flag
-        _httpJobId: state._httpJobId,  // ✅ Explicitly preserve taskId for next node
-        referenceContexts: [],  // ✅ NEW: No references for empty task case
-        referenceRequests: []  // ✅ NEW: No reference requests for empty task case
-      };
-      
-      // ✅ Save checkpoint for default task
-      if (state.deps?.session && state.context.featureFolder) {
-        try {
-          const { saveCheckpoint } = await import('../checkpoint');
-          await saveCheckpoint(newState);
-          console.log(`💾 [Decompose EmptyResult] Checkpoint saved (1 default task)\n`);
-        } catch (error) {
-          console.warn(`⚠️  [Decompose] Failed to save checkpoint:`, error);
-        }
-      }
-      
-      // ✅ Update live snapshot (Port or HTTP fallback)
-      if (state._httpJobId) {
-        const completedTasks = state.completedTasksDetails || [];
-        const queueTasks = taskQueue.getAll();
-        
-        if (state.deps?.kanbanUpdate) {
-          // In-process: use injected port
-          state.deps.kanbanUpdate.updateTaskQueue(
-            state._httpJobId,
-            null,
-            queueTasks,
-            completedTasks
-          );
-          console.log(`🎬 [Decompose EmptyResult] Live snapshot updated via PORT (1 default task)\n`);
-        } else {
-          // Child process: HTTP API fallback
-          const serverPort = process.env.ANT_SERVER_PORT || '4100';
-          fetch(`http://localhost:${serverPort}/api/internal/task-queue`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              taskId: state._httpJobId,
-              currentTask: null,
-              queue: queueTasks,
-              completedTasks: completedTasks
-            })
-          }).then(() => {
-            console.log(`🎬 [Decompose EmptyResult] Live snapshot updated via HTTP (1 default task)\n`);
-          }).catch(err => console.log(`⚠️  [Decompose EmptyResult] HTTP update failed:`, err.message));
-        }
-      }
-      
-      return newState;
-    }
-    
-    // Create task queue
-    const taskQueue = new TaskQueue();
-    const featureTasks = new Map<string, Task>();
-    
-    tasks.forEach((task: Task) => {
-      // Ensure task has all required fields
-      const completeTask: Task = {
-        ...task,
-        completed: false
-      };
-      
-      taskQueue.push(completeTask);
-      
-      if (completeTask.type === 'feature') {
-        featureTasks.set(completeTask.id, completeTask);
-      }
-    });
-    
-    console.log(`📊 Created ${tasks.length} tasks:`);
-    tasks.forEach((task, i) => {
-      console.log(`   ${i + 1}. [P${task.priority}] ${task.name} (${task.type})`);
-    });
-    console.log('');
-    
-    // ✅ NEW: Register reference projects for semantic search
-    if (referenceRequests.length > 0) {
-      console.log(`\n📚 Reference project(s) registered:`);
-      referenceRequests.forEach(ref => {
-        console.log(`   - ${ref.project}${ref.branch ? ` (${ref.branch})` : ' (default branch)'}`);
-      });
-      console.log(`   💡 Relevant files will be retrieved from vector DB via search_reference_code tool\n`);
-    }
-    
-    // ✨ Calculate estimating duration (decompose completed)
-    const finalJobTiming = isReplan 
-      ? useJobTiming  // Replan: use existing timing
-      : JobTimingManager.finalizeEstimatingPhase(newJobTiming, estimatingStartTime);  // New: finalize
-    
-    const newState = {
-      ...state,
-      jobId: useJobId,  // ✨ Initialize or preserve jobId
-      jobTiming: finalJobTiming,  // ✨ Initialize or preserve jobTiming with estimatingDuration
-      taskQueue,
-      featureTasks,
-      completedTasks: state.completedTasks || [],  // ✅ Preserve for replan
-      completedTasksDetails: state.completedTasksDetails || [],  // ✅ Preserve for replan
-      overrideDirective: state.overrideDirective,  // ✅ Preserve chat directive
-      chatSource: state.chatSource,  // ✅ Preserve chat source flag
-      _httpJobId: state._httpJobId,  // ✅ Explicitly preserve taskId for next node
-      referenceRequests: referenceRequests  // ✅ Store reference requests (project + branch only)
-    };
-    
-    // ✅ CRITICAL: Save checkpoint immediately after decompose
-    // This triggers file watcher → SSE broadcast → UI update
-    if (state.deps?.session && state.context.featureFolder) {
-      try {
-        const { saveCheckpoint } = await import('../checkpoint');
-        await saveCheckpoint(newState);
-        console.log(`💾 [Decompose] Checkpoint saved (${taskQueue.size()} tasks)\n`);
-      } catch (error) {
-        console.warn(`⚠️  [Decompose] Failed to save checkpoint:`, error);
-      }
-    }
-    
-    // ✅ Update live task queue snapshot (Port or HTTP fallback for child process)
-    if (state._httpJobId) {
-      const completedTasks = state.completedTasksDetails || [];
-      const queueTasks = taskQueue.getAll();
-      
-      if (state.deps?.kanbanUpdate) {
-        // In-process: use injected port
-        state.deps.kanbanUpdate.updateTaskQueue(
-          state._httpJobId,
-          null,
-          queueTasks,
-          completedTasks
-        );
-        console.log(`🎬 [Decompose] Task queue ready! Sent ${taskQueue.size()} tasks to Kanban board via PORT\n`);
-      } else {
-        // Child process: HTTP API fallback
-        const serverPort = process.env.ANT_SERVER_PORT || '4100';
-        fetch(`http://localhost:${serverPort}/api/internal/task-queue`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            taskId: state._httpJobId,
-            currentTask: null,
-            queue: queueTasks,
-            completedTasks: completedTasks
-          })
-        }).then(() => {
-          console.log(`🎬 [Decompose] Task queue ready! Sent ${taskQueue.size()} tasks to Kanban board via HTTP\n`);
-        }).catch(err => console.log(`⚠️  [Decompose] HTTP update failed:`, err.message));
-      }
-    } else {
-      console.log(`⚠️  [Decompose] Live update SKIPPED - no taskId available\n`);
-    }
-    
-    // ✅ Workflow instrumentation: Exit node
-    if (state.deps?.workflowUpdate && state._httpJobId) {
-      state.deps.workflowUpdate.exitNode(state._httpJobId, 'decompose');
-    }
-    
-    return newState;
-    
+    rawResponse = await callLLMForDecompose(llm, prompt);
   } catch (error) {
     logErrorHeader('Decompose');
-    
-    // Extract detailed error information
-    const errorDetails = extractErrorDetails(error);
-    console.error('❌ Failed to decompose tasks:', errorDetails.message);
-    
-    // Fallback: create default task
-    const taskQueue = new TaskQueue();
-    const defaultTask: Task = {
-      id: 'impl-fallback',
-      name: 'Implement Requirements',
-      type: 'feature',
-      priority: 220,
-      description: 'Implement based on specification',
-      completed: false
-    };
-    
-    taskQueue.push(defaultTask);
-    
-    const featureTasks = new Map<string, Task>();
-    featureTasks.set(defaultTask.id, defaultTask);
-    
-    // ✨ Calculate estimating duration (decompose completed)
-    const finalJobTiming = isReplan 
-      ? useJobTiming  // Replan: use existing timing
-      : JobTimingManager.finalizeEstimatingPhase(newJobTiming, estimatingStartTime);  // New: finalize
-    
-    const newState = {
-      ...state,
-      jobId: useJobId,  // ✨ Initialize or preserve jobId
-      jobTiming: finalJobTiming,  // ✨ Initialize or preserve jobTiming with estimatingDuration
-      taskQueue,
-      featureTasks,
-      completedTasks: state.completedTasks || [],  // ✅ Preserve for replan
-      completedTasksDetails: state.completedTasksDetails || [],  // ✅ Preserve for replan
-      overrideDirective: state.overrideDirective,  // ✅ Preserve chat directive
-      chatSource: state.chatSource,  // ✅ Preserve chat source flag
-      _httpJobId: state._httpJobId,  // ✅ Explicitly preserve taskId for next node
-      referenceRequests: []  // ✅ No reference requests for fallback/error cases
-    };
-    
-    // ✅ Save checkpoint for fallback task
-    if (state.deps?.session && state.context.featureFolder) {
-      try {
-        const { saveCheckpoint } = await import('../checkpoint');
-        await saveCheckpoint(newState);
-        console.log(`💾 [Decompose Error] Checkpoint saved (1 fallback task)\n`);
-      } catch (saveError) {
-        console.warn(`⚠️  [Decompose] Failed to save checkpoint:`, saveError);
-      }
-    }
-    
-    // ✅ Update live snapshot (Port or HTTP fallback)
-    if (state._httpJobId) {
-      const completedTasks = state.completedTasksDetails || [];
-      const queueTasks = taskQueue.getAll();
-      
-      if (state.deps?.kanbanUpdate) {
-        // In-process: use injected port
-        state.deps.kanbanUpdate.updateTaskQueue(
-          state._httpJobId,
-          null,
-          queueTasks,
-          completedTasks
-        );
-        console.log(`🎬 [Decompose Error] Live snapshot updated via PORT (1 fallback task)\n`);
-      } else {
-        // Child process: HTTP API fallback
-        const serverPort = process.env.ANT_SERVER_PORT || '4100';
-        fetch(`http://localhost:${serverPort}/api/internal/task-queue`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            taskId: state._httpJobId,
-            currentTask: null,
-            queue: queueTasks,
-            completedTasks: completedTasks
-          })
-        }).then(() => {
-          console.log(`🎬 [Decompose Error] Live snapshot updated via HTTP (1 fallback task)\n`);
-        }).catch(err => console.log(`⚠️  [Decompose Error] HTTP update failed:`, err.message));
-      }
-    }
-    
-    // ✅ Workflow instrumentation: Exit node (error path)
-    if (state.deps?.workflowUpdate && state._httpJobId) {
-      state.deps.workflowUpdate.exitNode(state._httpJobId, 'decompose');
-    }
-    
-    return newState;
+    console.error(error);
+    throw error;
   }
+  
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 5: Parse response and create task queue
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  let parsed;
+  try {
+    parsed = parseLLMResponse(rawResponse);
+  } catch (error) {
+    logErrorHeader('Decompose');
+    console.error(error);
+    throw error;
+  }
+  
+  const { tasks, referenceRequests } = parsed;
+  
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 6: Validate and create task queue
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const hasErrorInDirective = detectErrorInDirective(state.directive);
+  validateTasks(tasks, state.mode, state.directive, hasErrorInDirective);
+  
+  const { taskQueue, featureTasks } = createTaskQueue(tasks);
+  logTaskSummary(tasks, referenceRequests);
+  
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 7: Store codebase context (file paths + gitDiff)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const projectCodeContext = codebaseFilePaths && codebaseFilePaths.length > 0 ? {
+    filePaths: codebaseFilePaths,
+    files: [],
+    gitDiff: gitDiffResult,
+    stats: {
+      filesLoaded: codebaseFilePaths.length,
+      estimatedTokens: 0
+    },
+    source: 'decompose' as const
+  } : undefined;
+  
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 8: Initialize job timing (if new job)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Note: jobId and jobTiming are not part of ArchitectGraphState
+  // They're managed separately by JobTimingManager
+  
+  // Check if replan preserved jobId/jobTiming
+  const replanJobId = (state as any)._replanJobId;
+  const replanJobTiming = (state as any)._replanJobTiming;
+  
+  if (replanJobId) {
+    console.log(`🔄 [Decompose] Replan: Preserving job timing (Job ID: ${replanJobId})`);
+  } else {
+    // New job - timing will be initialized by runner
+    console.log(`⏱️  [Decompose] New job - timing will be managed by runner`);
+  }
+  
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 9: Return updated state
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  return {
+    ...state,
+    taskQueue,
+    featureTasks,
+    referenceRequests: referenceRequests || state.referenceRequests || [],
+    projectCodeContext,
+    referenceCodeContexts: [],
+    totalSubtasks: tasks.length + 1,
+    subtaskIndex: 0,
+    completedTasks: state.completedTasks || [],
+    completedTasksDetails: state.completedTasksDetails || []
+  };
 }
-

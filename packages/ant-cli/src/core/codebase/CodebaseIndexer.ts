@@ -535,5 +535,136 @@ export class CodebaseIndexer {
 
     return langMap[ext] || 'unknown';
   }
+
+  /**
+   * Check if a branch is already indexed
+   */
+  async isBranchIndexed(
+    vectorDB: MemoryPort,
+    project: string,
+    branch: string
+  ): Promise<boolean> {
+    try {
+      const results = await vectorDB.query(
+        'check branch index',
+        project,
+        {
+          k: 1,
+          where: {
+            $and: [
+              { type: 'index_completion' },
+              { branch }
+            ]
+          }
+        }
+      );
+      
+      return results.length > 0;
+    } catch (error) {
+      console.error(`Failed to check branch index:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Copy embeddings from base branch to new branch (fast!)
+   * 
+   * When creating a new feature branch from base:
+   * - Base branch codebase = new branch codebase (same commit initially)
+   * - Instead of re-indexing everything, just copy the embeddings
+   * - Update metadata (branch name, commit hash)
+   * 
+   * This is MUCH faster than full indexing!
+   */
+  async copyBranchEmbeddings(
+    vectorDB: MemoryPort,
+    project: string,
+    sourceBranch: string,
+    targetBranch: string,
+    targetCommit: string
+  ): Promise<{
+    filesIndexed: number;
+    embeddingsCopied: number;
+    estimatedTokens: number;
+    duration: number;
+  }> {
+    const startTime = Date.now();
+    
+    console.log(`📋 [Indexer] Copying embeddings: ${sourceBranch} → ${targetBranch}`);
+    
+    try {
+      const sourceResults = await vectorDB.query(
+        'get all source embeddings',
+        project,
+        {
+          k: 10000,
+          where: {
+            $and: [
+              { type: 'code' },
+              { branch: sourceBranch }
+            ]
+          }
+        }
+      );
+      
+      if (sourceResults.length === 0) {
+        throw new Error(`No embeddings found for source branch: ${sourceBranch}`);
+      }
+      
+      console.log(`   Found ${sourceResults.length} embeddings to copy`);
+      
+      const filePathsSet = new Set<string>();
+      let estimatedTokens = 0;
+      
+      for (const result of sourceResults) {
+        if (result.metadata?.filePath) {
+          filePathsSet.add(result.metadata.filePath);
+        }
+        if (result.metadata?.tokens) {
+          estimatedTokens += result.metadata.tokens;
+        }
+      }
+      
+      const newEmbeddings = sourceResults.map(result => ({
+        content: result.content,
+        metadata: {
+          ...result.metadata,
+          branch: targetBranch,
+          commitHash: targetCommit,
+          copiedFrom: sourceBranch,
+          copiedAt: new Date().toISOString()
+        }
+      }));
+      
+      await vectorDB.store(newEmbeddings, project);
+      
+      await this.storeIndexCompletionMarker(
+        vectorDB,
+        project,
+        targetBranch,
+        targetCommit,
+        filePathsSet.size,
+        sourceResults.length
+      );
+      
+      const duration = Date.now() - startTime;
+      
+      console.log(`✅ [Indexer] Copy complete!`);
+      console.log(`   Files: ${filePathsSet.size}`);
+      console.log(`   Embeddings: ${sourceResults.length}`);
+      console.log(`   Duration: ${(duration / 1000).toFixed(1)}s`);
+      
+      return {
+        filesIndexed: filePathsSet.size,
+        embeddingsCopied: sourceResults.length,
+        estimatedTokens,
+        duration
+      };
+    } catch (error) {
+      console.error(`❌ [Indexer] Copy failed:`, error);
+      throw error;
+    }
+  }
 }
+
 

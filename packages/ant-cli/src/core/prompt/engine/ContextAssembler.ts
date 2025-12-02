@@ -1,34 +1,36 @@
 import { ProjectContext, AgentTask, CodebaseProfile } from "../../types";
 import { CodebaseAnalyzerPort, GitPort, MemoryPort } from "../../ports";
 import { ReferenceContext } from "../../codebase/types";
+import { ProjectCodeContext, ReferenceCodeContext } from "../types/CodeContext";
 
 /**
  * Assembled context from all sources
  * Ready to be injected into prompts
  */
 export interface AssembledContext {
-  // Documents
   directive?: string;
-  designDoc?: string;         // For code task (environment-specific)
-  designDocPath?: string;     // ✅ NEW: Design document file path (for environment inference)
-  lastSectionNumber?: number; // Last section number for continuation
-  previousDesign?: string;    // For design task
-  prdSpec?: string;
+  designDoc?: string;
+  designDocPath?: string;
+  lastSectionNumber?: number;
+  previousDesign?: string;
   
-  // ✅ NEW: Multiple design documents (for environment filtering)
   designDocs?: {
-    apiContract?: string;       // API contract (used by both FE & BE)
-    feDesign?: string;          // Frontend-specific design
-    beDesign?: string;          // Backend-specific design
-    unifiedDesign?: string;     // Unified system design (fallback)
+    apiContract?: string;
+    feDesign?: string;
+    beDesign?: string;
+    unifiedDesign?: string;
   };
   
-  // Code
-  originalFiles?: string;     // Git HEAD version (for comparison)
-  currentCode?: string;       // Working tree code
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Code Context (Unified Structure)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  projectCodeContext?: ProjectCodeContext;       // Main project code (retrieved via RAG)
+  referenceCodeContexts: ReferenceCodeContext[];  // Reference project code (loaded from requests)
   
-  // ✅ Reference Projects (for tool calling)
-  referenceRequests?: Array<{project: string; branch?: string}>;
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Reference Metadata (for tool calling & workflow control)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  referenceRequests?: Array<{project: string; branch?: string}>;  // Requested by decompose, loaded by plan
   
   // Task Context
   currentTask?: {             // Current task being executed
@@ -84,12 +86,12 @@ export interface AssembledContext {
   stats: {
     hasDirective: boolean;
     hasDesign: boolean;
-    hasOriginalFiles: boolean;
-    hasCurrentCode: boolean;
+    hasProjectCode: boolean;          // ✅ Replaces hasOriginalFiles + hasCurrentCode
+    hasReferenceCode: boolean;        // ✅ NEW: Has reference project code
     hasMemory: boolean;
     hasSessionHistory: boolean;
     codebaseDetected: boolean;
-    hasMissingDependency: boolean;  // ✅ For missing dependency injection
+    hasMissingDependency: boolean;
   };
 }
 
@@ -124,9 +126,8 @@ export class ContextAssembler {
       directive?: string;
       designDoc?: string;
       lastSectionNumber?: number;
-      prdSpec?: string;
-      originalFiles?: string;
-      currentCode?: string;
+      projectCodeContext?: ProjectCodeContext;
+      referenceCodeContexts?: ReferenceCodeContext[];
       currentTask?: {
         name: string;
         type: string;
@@ -134,8 +135,8 @@ export class ContextAssembler {
         description: string;
       };
       retryContext?: AssembledContext['retryContext'];
-      referenceRequests?: Array<{project: string; branch?: string}>;  // ✅ Reference projects for tool calling
-      designDocs?: {  // ✅ NEW: Multiple design documents
+      referenceRequests?: Array<{project: string; branch?: string}>;
+      designDocs?: {
         apiContract?: string;
         feDesign?: string;
         beDesign?: string;
@@ -145,19 +146,16 @@ export class ContextAssembler {
   ): Promise<AssembledContext> {
     const assembled: Partial<AssembledContext> = {};
     
-    // 0. Add pre-loaded artifacts if provided
     if (artifacts) {
       assembled.directive = artifacts.directive;
       assembled.designDoc = artifacts.designDoc;
       assembled.lastSectionNumber = artifacts.lastSectionNumber;
-      assembled.prdSpec = artifacts.prdSpec;
-      assembled.originalFiles = artifacts.originalFiles;
-      assembled.currentCode = artifacts.currentCode;
+      assembled.projectCodeContext = artifacts.projectCodeContext;
+      assembled.referenceCodeContexts = artifacts.referenceCodeContexts || [];
       assembled.currentTask = artifacts.currentTask;
       assembled.retryContext = artifacts.retryContext;
-      assembled.referenceRequests = artifacts.referenceRequests;  // ✅ Reference projects for tool calling
-      assembled.designDocs = artifacts.designDocs;  // ✅ NEW: Multiple design documents
-      // Note: originalFiles from artifacts will be overridden by git if available
+      assembled.referenceRequests = artifacts.referenceRequests;
+      assembled.designDocs = artifacts.designDocs;
     }
     
     // 1. Load task-specific documents using provided loader
@@ -166,19 +164,7 @@ export class ContextAssembler {
       Object.assign(assembled, loaded);
     }
     
-    // 2. Load original files from git (if available)
-    if (deps?.git) {
-      assembled.originalFiles = await this.loadOriginalFiles(deps.git);
-      
-      // Analyze codebase if we have original files
-      if (assembled.originalFiles && deps.analyzer) {
-        assembled.codebaseProfile = await this.analyzeCodebase(
-          assembled.originalFiles,
-          context.workingDir,
-          deps.analyzer
-        );
-      }
-    }
+    // Codebase profile (passed from state, not loaded here)
     
     // 3. Load vector memory (from context)
     assembled.memory = context.memory || undefined;
@@ -197,8 +183,14 @@ export class ContextAssembler {
     const stats = {
       hasDirective: Boolean(assembled.directive),
       hasDesign: Boolean(assembled.designDoc || assembled.previousDesign),
-      hasOriginalFiles: Boolean(assembled.originalFiles),
-      hasCurrentCode: Boolean(assembled.currentCode),
+      hasProjectCode: Boolean(
+        assembled.projectCodeContext?.files && 
+        assembled.projectCodeContext.files.length > 0
+      ),
+      hasReferenceCode: Boolean(
+        assembled.referenceCodeContexts && 
+        assembled.referenceCodeContexts.length > 0
+      ),
       hasMemory: Boolean(assembled.memory),
       hasSessionHistory: Boolean(assembled.sessionHistory),
       codebaseDetected: Boolean(assembled.codebaseProfile),
@@ -209,61 +201,6 @@ export class ContextAssembler {
       ...assembled,
       stats
     } as AssembledContext;
-  }
-  
-  /**
-   * Load original files from git HEAD
-   */
-  private async loadOriginalFiles(git: GitPort): Promise<string | undefined> {
-    try {
-      const changedFiles = await git.getChangedFiles();
-      if (changedFiles.length === 0) {
-        return undefined;
-      }
-      
-      const originals: Array<{ path: string; content: string }> = [];
-      
-      for (const p of changedFiles) {
-        const content = await git.getHeadFile(p);
-        if (content !== null) {
-          originals.push({ path: p, content });
-        }
-      }
-      
-      if (originals.length === 0) {
-        return undefined;
-      }
-      
-      return originals
-        .map(f => `FILE: ${f.path}\n${f.content}`)
-        .join("\n\n---\n\n");
-    } catch (error) {
-      console.warn('[ContextAssembler] Failed to load original files:', error);
-      return undefined;
-    }
-  }
-  
-  /**
-   * Analyze codebase to detect language and framework
-   */
-  private async analyzeCodebase(
-    filesBlock: string,
-    workingDir: string,
-    analyzer: CodebaseAnalyzerPort
-  ): Promise<CodebaseProfile | null> {
-    try {
-      const profile = await analyzer.analyze(filesBlock, workingDir);
-      
-      console.log(
-        `📊 Codebase detected: ${profile.language}` +
-        `${profile.framework ? ` + ${profile.framework}` : ''}`
-      );
-      
-      return profile;
-    } catch (error) {
-      console.warn('[ContextAssembler] Failed to analyze codebase:', error);
-      return null;
-    }
   }
 }
 
