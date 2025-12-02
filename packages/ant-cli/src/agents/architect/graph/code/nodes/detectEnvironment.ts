@@ -74,14 +74,44 @@ export async function detectEnvironment(
   const prompt = await buildDetectPrompt(state);
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // 2. Call LLM
+  // 2. Call LLM (with streaming for Chat UI)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const response = await llm.invoke([
+  const { getChatAPIClient } = await import('../../../../../core/adapters/ChatAPIClient');
+  const chatAPI = getChatAPIClient();
+  
+  await chatAPI.showChatStatus('placeholder');
+  
+  // ✅ Setup StreamOrchestrator for XML tag handling
+  const { XMLStreamParser } = await import('../../../../../core/streaming/parsers/XMLStreamParser');
+  const { CommonRenderStrategy } = await import('../../../../../core/streaming/strategies/CommonRenderStrategy');
+  const { StreamOrchestrator } = await import('../../../../../core/streaming/StreamOrchestrator');
+  
+  const parser = new XMLStreamParser();
+  const renderStrategy = new CommonRenderStrategy(chatAPI, undefined, 'en');
+  const orchestrator = new StreamOrchestrator({
+    parser,
+    renderStrategy,
+    existingFiles: new Set()
+  });
+  
+  let response = '';
+  for await (const event of llm.stream([
     { role: 'user', content: prompt }
   ], {
     temperature: 0.3,
-    maxTokens: 1500
-  });
+    maxTokens: 16000  // ✅ Must be > budget_tokens (10000) when thinking enabled
+  })) {
+    // ✅ Process through orchestrator (handles XML tags)
+    await orchestrator.processEvent(event);
+    
+    // Accumulate response text
+    if (event.text) {
+      response += event.text;
+    }
+  }
+  
+  // Finalize streaming
+  await orchestrator.finalize();
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // 3. Parse Response
@@ -171,14 +201,25 @@ async function buildDetectPrompt(state: ArchitectGraphState): Promise<string> {
  */
 function parseDetectResponse(response: string): DetectEnvironmentResponse {
   try {
-    const jsonMatch = response.match(/```json\n([\s\S]*?)\n```/) || 
-                      response.match(/{[\s\S]*}/);
+    // ✅ Priority 1: Extract from <detect> XML tag
+    const detectMatch = response.match(/<detect>\s*([\s\S]*?)\s*<\/detect>/);
     
-    if (!jsonMatch) {
-      throw new Error('No JSON found in response');
+    let jsonStr: string;
+    if (detectMatch) {
+      jsonStr = detectMatch[1];
+    } else {
+      // Fallback: Try ```json or plain JSON
+      const jsonMatch = response.match(/```json\n([\s\S]*?)\n```/) || 
+                        response.match(/{[\s\S]*}/);
+      
+      if (!jsonMatch) {
+        throw new Error('No JSON found in response');
+      }
+      
+      jsonStr = jsonMatch[1] || jsonMatch[0];
     }
     
-    const parsed = JSON.parse(jsonMatch[1] || jsonMatch[0]);
+    const parsed = JSON.parse(jsonStr);
     
     // Validate required fields
     if (!parsed.mode || !parsed.modeReasoning || 

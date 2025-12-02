@@ -344,9 +344,9 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
             // 🔗 Session tracking for traceability
             sessionId: sessionId,
             turnId: turnId,
-            // ✅ Enhanced metadata
-            relatedFiles: lessonMetadata.relatedFiles,
-            tags: lessonMetadata.tags,
+            // ✅ Enhanced metadata (arrays converted to strings for ChromaDB)
+            relatedFiles: (lessonMetadata.relatedFiles || []).join(','),  // ✅ Convert array to string
+            tags: (lessonMetadata.tags || []).join(','),                    // ✅ Convert array to string
             directive: lessonMetadata.directive,
             taskType: lessonMetadata.taskType,
             branch: lessonMetadata.branch

@@ -23,67 +23,63 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
 
 **Example 1: NEW PROJECT (no existing code)**
 <tasks>
-{
-  "tasks": [
-    {
-      "id": "setup-project-config",
-      "name": "Setup Project Configuration",
-      "type": "setup",
-      "priority": 100,
-      "description": "Generate package.json with all dependencies (React, TypeScript, Vite, TailwindCSS, etc.), tsconfig.json, vite.config.ts, tailwind.config.ts, and .gitignore"
-    },
-    {
-      "id": "auth-impl",
-      "name": "Implement User Authentication System",
-      "type": "feature",
-      "priority": 200,
-      "description": "Create login, signup, JWT token handling, protected routes"
-    },
-    {
-      "id": "final-verification",
-      "name": "Final Integration & Verification",
-      "type": "feature",
-      "priority": 1000,
-      "description": "Install all dependencies and build the project to verify compilation."
-    }
-  ]
-}
+[
+  {
+    "id": "setup-project-config",
+    "name": "Setup Project Configuration",
+    "type": "setup",
+    "priority": 100,
+    "description": "Generate package.json with all dependencies (React, TypeScript, Vite, TailwindCSS, etc.), tsconfig.json, vite.config.ts, tailwind.config.ts, and .gitignore"
+  },
+  {
+    "id": "auth-impl",
+    "name": "Implement User Authentication System",
+    "type": "feature",
+    "priority": 200,
+    "description": "Create login, signup, JWT token handling, protected routes"
+  },
+  {
+    "id": "final-verification",
+    "name": "Final Integration & Verification",
+    "type": "feature",
+    "priority": 1000,
+    "description": "Install all dependencies and build the project to verify compilation."
+  }
+]
 </tasks>
 
 **Example 2: EXISTING PROJECT (code already exists - FileStorage.ts, etc.)**
 <tasks>
-{
-  "tasks": [
-    {
-      "id": "fix-entry-point",
-      "name": "Fix Missing Entry Point",
-      "type": "feature",
-      "priority": 200,
-      "description": "Add missing main.ts with NestJS bootstrap - use existing FileStorage.ts for storage"
-    },
-    {
-      "id": "complete-auth",
-      "name": "Complete Authentication Module",
-      "type": "feature",
-      "priority": 220,
-      "description": "Add login and session methods to existing AuthService using FileStorage"
-    },
-    {
-      "id": "extend-user-entity",
-      "name": "Extend User Entity",
-      "type": "feature",
-      "priority": 240,
-      "description": "Add balance field to existing User entity in entities/User.ts"
-    },
-    {
-      "id": "final-verification",
-      "name": "Final Integration & Verification",
-      "type": "feature",
-      "priority": 1000,
-      "description": "Build the project to verify all fixes work correctly."
-    }
-  ]
-}
+[
+  {
+    "id": "fix-entry-point",
+    "name": "Fix Missing Entry Point",
+    "type": "feature",
+    "priority": 200,
+    "description": "Add missing main.ts with NestJS bootstrap - use existing FileStorage.ts for storage"
+  },
+  {
+    "id": "complete-auth",
+    "name": "Complete Authentication Module",
+    "type": "feature",
+    "priority": 220,
+    "description": "Add login and session methods to existing AuthService using FileStorage"
+  },
+  {
+    "id": "extend-user-entity",
+    "name": "Extend User Entity",
+    "type": "feature",
+    "priority": 240,
+    "description": "Add balance field to existing User entity in entities/User.ts"
+  },
+  {
+    "id": "final-verification",
+    "name": "Final Integration & Verification",
+    "type": "feature",
+    "priority": 1000,
+    "description": "Build the project to verify all fixes work correctly."
+  }
+]
 </tasks>
 
 **⚠️ Note the differences:**
@@ -114,23 +110,32 @@ IMPORTANT:
 
 **Output Format:**
 
-1. First, output tasks in <tasks> tags:
-```xml
-<tasks>
-{
-  "tasks": [...]
-}
-</tasks>
-```
+1. Output tasks as JSON array in <tasks> tags (NO markdown code blocks!):
 
-2. Then, output references (even if empty):
-```xml
+<tasks>
+[
+  {
+    "id": "task-1",
+    "name": "Task name",
+    "description": "Task description",
+    "type": "setup|feature|error",
+    "priority": 100
+  }
+]
+</tasks>
+
+2. If references are mentioned in directive, output them in <references> tags (NO markdown code blocks!):
+
 <references>
 [
   { "project": "ant-pong-be", "branch": "feature/skeleton" }
 ]
 </references>
-```
+
+**CRITICAL:**
+- Use XML tags directly, NOT inside markdown code blocks
+- NO ```xml or ``` markers
+- Just raw XML tags with JSON content inside
 
 **Reference extraction rules:**
 - If directive mentions: "ant-pong-be skeleton" → `{ "project": "ant-pong-be", "branch": "feature/skeleton" }`

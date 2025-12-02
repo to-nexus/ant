@@ -305,6 +305,9 @@ export class PromptEngine {
 
   /**
    * Build prompt for Decompose node
+   * 
+   * TEMPORARY: Simple wrapper until full refactoring
+   * Returns string (not PromptBuildResult) for backward compatibility
    */
   async buildDecomposePrompt(context: {
     directive: string;
@@ -313,9 +316,10 @@ export class PromptEngine {
     mode: string;
     profile: any;
     codebaseFilePaths?: string[];
-    gitDiff?: any;
   }): Promise<string> {
-    return await this.deps.promptPort.render('code/phases/decompose/system', context);
+    // ✅ For now, use direct render with partial inclusion
+    // decompose/base.md now includes {{> code/phases/decompose/rules}}
+    return await this.deps.promptPort.render('code/phases/decompose/base', context);
   }
 
   /**

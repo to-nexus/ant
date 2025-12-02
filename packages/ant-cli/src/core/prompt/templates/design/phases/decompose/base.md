@@ -512,4 +512,4 @@ Only output tasks focused on: Architecture, Data Models, API Design, Component D
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Analyze the requirements and output the JSON task breakdown:
+{{> design/phases/decompose/rules}}

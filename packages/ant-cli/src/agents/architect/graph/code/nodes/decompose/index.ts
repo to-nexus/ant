@@ -21,7 +21,7 @@ import { logErrorHeader } from "../shared/errorHandler";
 import { detectErrorInDirective, validateTasks } from "./validation";
 import { checkSessionRestore, restoreFromSession } from "./sessionManager";
 import { prepareDesignDocument } from "./designSelector";
-import { buildDecomposePrompt, callLLMForDecompose } from "./llmCaller";
+import { callLLMForDecompose } from "./llmCaller";
 import { parseLLMResponse, createTaskQueue, logTaskSummary } from "./responseParser";
 
 /**
@@ -168,7 +168,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       // 2b. Git Diff Summary
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       if (git) {
-        const { generateGitDiffSummary } = require('../../../../../core/codebase/GitDiffSummary');
+        const { generateGitDiffSummary } = require('../../../../../../core/codebase/GitDiffSummary');
         gitDiffResult = await generateGitDiffSummary(git, state.context.workingDir, codebaseFilePaths);
         
         if (gitDiffResult?.hasChanges) {
@@ -188,18 +188,19 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 4: Build prompt and call LLM
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const prompt = await buildDecomposePrompt(
-    state.deps?.promptEngine,
-    {
-      directive: state.directive || '',
-      designDoc,
-      hasDesignDoc,
-      mode: state.mode || 'unknown',
-      profile: state.profile,
-      codebaseFilePaths
-      // gitDiff injected via injection file in PromptEngine
-    }
-  );
+  if (!state.deps?.promptEngine) {
+    throw new Error('[Decompose] PromptEngine not available');
+  }
+  
+  const prompt = await state.deps.promptEngine.buildDecomposePrompt({
+    directive: state.directive || '',
+    designDoc,
+    hasDesignDoc,
+    mode: state.mode || 'unknown',
+    profile: state.profile,
+    codebaseFilePaths
+    // gitDiff injected via injection file in PromptEngine
+  });
   
   let rawResponse: string;
   try {
@@ -234,6 +235,13 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   logTaskSummary(tasks, referenceRequests);
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 6.5: Exit decompose node for workflow tracking
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (state.deps?.workflowUpdate && state._httpJobId) {
+    await state.deps.workflowUpdate.exitNode(state._httpJobId, 'decompose');
+  }
+  
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 7: Store codebase context (file paths + gitDiff)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const projectCodeContext = codebaseFilePaths && codebaseFilePaths.length > 0 ? {
@@ -248,26 +256,37 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   } : undefined;
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // STEP 8: Initialize job timing (if new job)
+  // STEP 8: Handle jobId/jobTiming (for replan scenarios)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Note: jobId and jobTiming are not part of ArchitectGraphState
-  // They're managed separately by JobTimingManager
+  const { JobTimingManager } = await import('../../../common/timing/JobTimingManager');
   
   // Check if replan preserved jobId/jobTiming
   const replanJobId = (state as any)._replanJobId;
   const replanJobTiming = (state as any)._replanJobTiming;
   
+  let jobId: string;
+  let jobTiming: any;
+  
   if (replanJobId) {
     console.log(`🔄 [Decompose] Replan: Preserving job timing (Job ID: ${replanJobId})`);
+    jobId = replanJobId;
+    jobTiming = replanJobTiming;
   } else {
-    // New job - timing will be initialized by runner
-    console.log(`⏱️  [Decompose] New job - timing will be managed by runner`);
+    // ✨ Get jobId from session (already initialized in resolve node)
+    const sessionData = await state.deps?.session?.load(
+      state.context.project,
+      state.context.featureFolder || 'default',
+      'code'
+    );
+    jobId = sessionData?.state?.jobId || state._httpJobId!;
+    jobTiming = sessionData?.state?.jobTiming || JobTimingManager.initializeNewJob(state._httpJobId!).jobTiming;
+    console.log(`⏱️  [Decompose] Using job ID from session: ${jobId}`);
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // STEP 9: Return updated state
+  // STEP 9: Save checkpoint with actual tasks
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  return {
+  const updatedState = {
     ...state,
     taskQueue,
     featureTasks,
@@ -277,6 +296,20 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     totalSubtasks: tasks.length + 1,
     subtaskIndex: 0,
     completedTasks: state.completedTasks || [],
-    completedTasksDetails: state.completedTasksDetails || []
+    completedTasksDetails: state.completedTasksDetails || [],
+    jobId,
+    jobTiming
   };
+  
+  // ✅ Save checkpoint with tasks
+  if (state.deps?.session) {
+    const { saveCheckpoint } = await import('../checkpoint');
+    await saveCheckpoint(updatedState);
+    console.log(`✅ [Decompose] Checkpoint saved with ${tasks.length} tasks\n`);
+  }
+  
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 10: Return updated state
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  return updatedState;
 }

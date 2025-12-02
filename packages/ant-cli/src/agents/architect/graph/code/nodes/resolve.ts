@@ -125,6 +125,50 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     return state;
   }
   
+  // ✅ Initialize jobId and jobTiming for NEW job (resolve is first node)
+  const { JobTimingManager } = await import('../../common/timing/JobTimingManager');
+  const { jobId: newJobId, jobTiming: newJobTiming } = JobTimingManager.initializeNewJob(state._httpJobId!);
+  
+  // 💾 Save jobTiming to session IMMEDIATELY so estimating UI can show timer
+  if (state.deps?.session && state.context.featureFolder) {
+    try {
+      await state.deps.session.updateArtifacts(
+        state.context.project,
+        state.context.featureFolder,
+        'code',
+        {
+          state: {
+            jobId: newJobId,
+            jobTiming: newJobTiming,
+            taskQueue: [],
+            completedTasks: [],
+            completedTasksDetails: [],
+            overrideDirective: state.overrideDirective,
+            chatSource: state.chatSource
+          }
+        }
+      );
+      console.log(`💾 [Resolve] Initial jobTiming saved to session\n`);
+    } catch (error) {
+      console.warn(`⚠️  [Resolve] Failed to save initial jobTiming:`, error);
+    }
+  }
+  
+  // ✅ Send "estimating started" signal (empty task list)
+  if (state._httpJobId && state.deps?.kanbanUpdate) {
+    console.log(`\n🎬 [Resolve] Signaling estimating started...`);
+    
+    state.deps.kanbanUpdate.updateTaskQueue(
+      state._httpJobId,
+      null,    // no currentTask yet
+      [],      // no tasks yet
+      [],      // no completed tasks yet
+      0,       // recursionCount
+      undefined // recursionLimit
+    );
+    console.log(`   ✅ Estimating signal sent\n`);
+  }
+  
   const { context } = state;
   const retriever = new CodebaseRetriever();
   

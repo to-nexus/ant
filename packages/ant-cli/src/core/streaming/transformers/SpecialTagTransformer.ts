@@ -69,6 +69,12 @@ export class SpecialTagTransformer {
       pattern: /<references>\s*([\s\S]*?)\s*<\/references>/,
       transform: (match, language) => this.transformReferences(match, language)
     });
+    
+    // 5. <detect> 태그 변환기 (detectEnvironment 노드의 JSON 응답)
+    this.register({
+      pattern: /<detect>\s*([\s\S]*?)\s*<\/detect>/,
+      transform: (match, language) => this.transformDetect(match, language)
+    });
   }
   
   /**
@@ -269,6 +275,53 @@ export class SpecialTagTransformer {
       : `💡 Will use \`search_reference_code\` tool to search code from these repositories.`;
     
     return formatted;
+  }
+  
+  /**
+   * <detect> 태그 변환 (detectEnvironment 노드)
+   * 
+   * 환경 감지 결과를 사용자 친화적인 메시지로 변환
+   */
+  private transformDetect(match: RegExpMatchArray, language: UserLanguage): TransformResult {
+    try {
+      const detectJson = match[1].trim();
+      const parsed = JSON.parse(detectJson);
+      
+      const isKorean = language === 'ko';
+      
+      let formatted = isKorean
+        ? `🔍 **환경 분석 완료**\n\n`
+        : `🔍 **Environment Analysis Complete**\n\n`;
+      
+      // Mode
+      const modeEmoji = parsed.mode === 'generate' ? '✨' : parsed.mode === 'refactor' ? '🔧' : '📖';
+      formatted += isKorean
+        ? `${modeEmoji} **모드**: ${parsed.mode}\n`
+        : `${modeEmoji} **Mode**: ${parsed.mode}\n`;
+      
+      if (parsed.modeReasoning) {
+        formatted += `   └ ${parsed.modeReasoning}\n\n`;
+      }
+      
+      // Environment
+      const envEmoji = parsed.environment === 'frontend' ? '🎨' : 
+                       parsed.environment === 'backend' ? '⚙️' : 
+                       parsed.environment === 'fullstack' ? '🌐' : '❓';
+      formatted += isKorean
+        ? `${envEmoji} **환경**: ${parsed.environment}\n`
+        : `${envEmoji} **Environment**: ${parsed.environment}\n`;
+      
+      if (parsed.environmentReasoning) {
+        formatted += `   └ ${parsed.environmentReasoning}\n`;
+      }
+      
+      return { text: formatted, consumed: true };
+      
+    } catch (error) {
+      console.warn('[SpecialTagTransformer] Failed to parse detect tag:', error);
+      // Hide from chat on error
+      return { consumed: true };
+    }
   }
 }
 
