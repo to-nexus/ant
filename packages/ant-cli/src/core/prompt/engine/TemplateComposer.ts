@@ -4,6 +4,7 @@ import { ProjectContext } from "../../types";
 import { PromptModeConfig } from "./ModeController";
 import { AssembledContext } from "./ContextAssembler";
 import Handlebars from 'handlebars';
+import { formatGitDiffForPrompt } from "../../codebase/GitDiffSummary";
 
 // Register Handlebars helpers
 Handlebars.registerHelper('add', function(a: number, b: number) {
@@ -60,38 +61,16 @@ export class TemplateComposer {
     // Priority: designDoc (backward compat) > filtered designDocs (environment-specific)
     let designDoc = assembled.designDoc || '';
     
-    // If no designDoc but we have designDocs, filter by environment
-    if (!designDoc && assembled.designDocs) {
-      designDoc = this.selectDesignDocByEnvironment(
-        assembled.designDocs,
-        assembled.currentTask
-      );
-      
-      if (designDoc) {
-        console.log(`📄 [TemplateComposer] Using environment-filtered design documents`);
-      }
-    } else if (designDoc && assembled.designDocs) {
-      // ✅ NEW: Even if we have designDoc, prefer filtered version for better token efficiency
-      const filteredDoc = this.selectDesignDocByEnvironment(
-        assembled.designDocs,
-        assembled.currentTask
-      );
-      
-      if (filteredDoc) {
-        console.log(`📄 [TemplateComposer] Using environment-filtered docs (more efficient than unified doc)`);
-        designDoc = filteredDoc;
-      }
-    }
+    // Design doc is already filtered by detectEnvironment node
     
     // 4. Render base template
     const base = await this.renderTemplate(
       modeConfig.templates.base,
       {
         project: context.project,
-        modificationMode: assembled.stats.hasOriginalFiles
-          ? 'MODIFICATION MODE: Copy original, then modify'
+        modificationMode: assembled.projectCodeContext?.files && assembled.projectCodeContext.files.length > 0
+          ? 'MODIFICATION MODE: Modify existing code'
           : 'CREATION MODE: Build from scratch',
-        currentCode: assembled.currentCode || '',
         designDoc,  // ✅ Use filtered design doc
         lastSectionNumber: assembled.lastSectionNumber ?? 0,  // ✅ Last chapter number
         currentTask: assembled.currentTask || null,
@@ -237,141 +216,7 @@ export class TemplateComposer {
     }
     return this.systemPromptCache[task];
   }
-  
-  /**
-   * Select appropriate design document based on task environment
-   * 
-   * Strategy:
-   * - Frontend: api-contract + (fe-system-design OR system-design)
-   * - Backend: api-contract + (be-system-design OR system-design)
-   * - Unknown: api-contract + all available
-   */
-  private selectDesignDocByEnvironment(
-    designDocs: {
-      apiContract?: string;
-      feDesign?: string;
-      beDesign?: string;
-      unifiedDesign?: string;
-    },
-    currentTask?: {
-      name: string;
-      type: string;
-      priority: number;
-      description: string;
-    }
-  ): string {
-    if (!currentTask) {
-      // No task info - return all available
-      return this.combineDesignDocs(designDocs, 'unknown');
-    }
-    
-    // Detect environment from task name and description
-    const taskText = `${currentTask.name} ${currentTask.description}`.toLowerCase();
-    
-    const isFrontend = 
-      taskText.includes('frontend') ||
-      taskText.includes('front-end') ||
-      taskText.includes('fe') ||
-      taskText.includes('ui') ||
-      taskText.includes('component') ||
-      taskText.includes('page') ||
-      taskText.includes('view') ||
-      taskText.includes('react') ||
-      taskText.includes('vue') ||
-      taskText.includes('angular');
-    
-    const isBackend =
-      taskText.includes('backend') ||
-      taskText.includes('back-end') ||
-      taskText.includes('be') ||
-      taskText.includes('api') ||
-      taskText.includes('server') ||
-      taskText.includes('database') ||
-      taskText.includes('endpoint') ||
-      taskText.includes('controller') ||
-      taskText.includes('service') ||
-      taskText.includes('repository');
-    
-    let environment: 'frontend' | 'backend' | 'unknown' = 'unknown';
-    
-    if (isFrontend && !isBackend) {
-      environment = 'frontend';
-    } else if (isBackend && !isFrontend) {
-      environment = 'backend';
-    }
-    
-    console.log(`📄 [TemplateComposer] Task environment detected: ${environment}`);
-    console.log(`   Task: ${currentTask.name}`);
-    
-    return this.combineDesignDocs(designDocs, environment);
-  }
-  
-  /**
-   * Combine design documents based on environment
-   */
-  private combineDesignDocs(
-    designDocs: {
-      apiContract?: string;
-      feDesign?: string;
-      beDesign?: string;
-      unifiedDesign?: string;
-    },
-    environment: 'frontend' | 'backend' | 'unknown'
-  ): string {
-    const parts: string[] = [];
-    
-    // ✅ ALWAYS include API contract (if exists)
-    if (designDocs.apiContract) {
-      parts.push('# API Contract\n\n' + designDocs.apiContract);
-      console.log(`   ✅ Including api-contract.md`);
-    }
-    
-    // ✅ Environment-specific system design
-    if (environment === 'frontend') {
-      // Frontend: prefer fe-system-design.md, fallback to system-design.md
-      if (designDocs.feDesign) {
-        parts.push('# Frontend System Design\n\n' + designDocs.feDesign);
-        console.log(`   ✅ Including fe-system-design.md (frontend task)`);
-      } else if (designDocs.unifiedDesign) {
-        parts.push('# System Design\n\n' + designDocs.unifiedDesign);
-        console.log(`   ✅ Including system-design.md (frontend fallback)`);
-      }
-      // ❌ DO NOT include be-system-design.md for frontend
-      if (designDocs.beDesign) {
-        console.log(`   ⊖ Skipping be-system-design.md (not needed for frontend)`);
-      }
-    } else if (environment === 'backend') {
-      // Backend: prefer be-system-design.md, fallback to system-design.md
-      if (designDocs.beDesign) {
-        parts.push('# Backend System Design\n\n' + designDocs.beDesign);
-        console.log(`   ✅ Including be-system-design.md (backend task)`);
-      } else if (designDocs.unifiedDesign) {
-        parts.push('# System Design\n\n' + designDocs.unifiedDesign);
-        console.log(`   ✅ Including system-design.md (backend fallback)`);
-      }
-      // ❌ DO NOT include fe-system-design.md for backend
-      if (designDocs.feDesign) {
-        console.log(`   ⊖ Skipping fe-system-design.md (not needed for backend)`);
-      }
-    } else {
-      // Unknown: include all available (decompose phase)
-      if (designDocs.feDesign) {
-        parts.push('# Frontend System Design\n\n' + designDocs.feDesign);
-        console.log(`   ✅ Including fe-system-design.md (unknown env)`);
-      }
-      if (designDocs.beDesign) {
-        parts.push('# Backend System Design\n\n' + designDocs.beDesign);
-        console.log(`   ✅ Including be-system-design.md (unknown env)`);
-      }
-      if (designDocs.unifiedDesign && !designDocs.feDesign && !designDocs.beDesign) {
-        parts.push('# System Design\n\n' + designDocs.unifiedDesign);
-        console.log(`   ✅ Including system-design.md (unknown env)`);
-      }
-    }
-    
-    return parts.join('\n\n════════════════════════════════════════════════════════════════════════════════\n\n');
-  }
-  
+
   /**
    * Build language/framework profile section
    */
@@ -442,9 +287,15 @@ export class TemplateComposer {
     const varMap: Record<string, any> = {
       'directive': { content: assembled.directive },
       'design-doc': { content: assembled.designDoc || '' },
-      'prd-spec': { content: this.truncate(assembled.prdSpec || '', 800) },
-      'original-files': { files: assembled.originalFiles },
-      'current-code': { content: this.truncate(assembled.currentCode || '', 500) },
+      'git-diff': { gitDiff: assembled.projectCodeContext?.gitDiff ? formatGitDiffForPrompt(assembled.projectCodeContext.gitDiff) : '' },
+      'retrieved-code': { 
+        files: assembled.projectCodeContext?.files || [],
+        filePaths: assembled.projectCodeContext?.filePaths || [],
+        stats: assembled.projectCodeContext?.stats
+      },
+      'reference-code': {
+        contexts: assembled.referenceCodeContexts || []
+      },
       'lessons': { lessons: this.formatLessons(assembled.lessons) },
       'session-context': { sessionContext: this.formatSessionContext(assembled.sessionContext) },
       'modification-warning': {},

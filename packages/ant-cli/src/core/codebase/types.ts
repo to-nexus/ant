@@ -39,7 +39,8 @@ export interface SearchResult {
  */
 export interface CodeContext {
   code: string;                   // Current working tree (formatted)
-  codeHead?: string;              // Git HEAD version (for changed files only)
+  codeHead?: string;              // DEPRECATED: use gitDiff instead
+  gitDiff?: import('./GitDiffSummary').GitDiffSummary;  // ✅ NEW: Compact git diff summary
   files: FileWithSource[];        // Files with source tracking
   strategy: 'hybrid';             // Always hybrid now
   lessons?: Array<{               // Lessons from unified search

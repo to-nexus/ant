@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { GitPort } from "../../ports";
 import { CodeContext, FileWithSource } from "../types";
+import { generateGitDiffSummary, formatGitDiffForPrompt, GitDiffSummary } from "../GitDiffSummary";
 
 /**
  * File Loader
@@ -82,13 +83,22 @@ export class FileLoader {
     );
 
     console.log(`   📂 Loaded ${currentFiles.length} files (~${totalTokens} tokens)`);
-    if (filesChanged > 0) {
-      console.log(`   🔀 ${filesChanged} files with Git HEAD versions`);
+    
+    // ✅ Generate Git diff summary (replaces codeHead)
+    let gitDiff: GitDiffSummary | undefined = undefined;
+    if (filesChanged > 0 && git) {
+      const filePaths = files.slice(0, currentFiles.length).map(f => f.path);
+      const diffResult = await generateGitDiffSummary(git, workingDir, filePaths);
+      
+      if (diffResult) {
+        gitDiff = diffResult;
+        console.log(`   📊 Git diff: ${diffResult.summary}`);
+      }
     }
 
     return {
       code: this.formatCodeBlock(currentFiles),
-      codeHead: headFiles.length > 0 ? this.formatCodeBlock(headFiles) : undefined,
+      gitDiff,
       files: files.slice(0, currentFiles.length),
       strategy: 'hybrid',
       stats: {

@@ -1824,10 +1824,11 @@ next-env.d.ts
       await git.checkoutLocalBranch(branchName);
       console.log(`[ProjectService] ✅ Created new local branch: ${branchName}`);
       
-      // ✅ Apply stashed changes if any
       if (stashCreated) {
         await this.applyStashSafely(git, branchName);
       }
+      
+      await this.autoIndexNewBranch(projectId, codebasePath, branchName, baseBranch, userContext, featureName);
     }
 
     // ✅ After checkout, handle upstream and remote branch
@@ -2067,6 +2068,158 @@ next-env.d.ts
   }
 
   /**
+   * 🚀 Auto-index new feature branch (fast copy from base)
+   * 
+   * Strategy:
+   * 1. Check if base branch is indexed
+   * 2. If yes → Copy embeddings (fast!)
+   * 3. If no → Full indexing (slower)
+   */
+  private async autoIndexNewBranch(
+    projectId: string,
+    codebasePath: string,
+    newBranch: string,
+    baseBranch: string,
+    userContext: UserContext,
+    featureName: string
+  ): Promise<void> {
+    try {
+      console.log(`\n📇 [Auto-Index] New branch created: ${newBranch}`);
+      
+      if (this.chatService && featureName) {
+        const messageId = this.chatService.startAssistantMessage(
+          projectId,
+          featureName,
+          'branch-index-' + Date.now(),
+          userContext
+        );
+        
+        this.chatService.addContentToCurrentMessage(projectId, featureName, {
+          type: 'indexing',
+          content: 'Indexing new branch...',
+          metadata: {
+            message: `Learning codebase for branch: ${newBranch}`,
+            detail: 'Checking if base branch is already indexed...'
+          }
+        });
+      }
+      
+      const { CodebaseIndexer } = await import('../../../../core/codebase/CodebaseIndexer');
+      const { AdapterFactory } = await import('../../../../infrastructure/adapters/AdapterFactory');
+      
+      const git = AdapterFactory.createGitAdapter(codebasePath, projectId);
+      const vectorDB = AdapterFactory.createMemoryAdapter();
+      const chunk = AdapterFactory.createChunkAdapter();
+      
+      const indexer = new CodebaseIndexer();
+      const baseCommit = await git.getCurrentCommit();
+      
+      const baseBranchIndexed = await indexer.isBranchIndexed(
+        vectorDB,
+        projectId,
+        baseBranch
+      );
+      
+      if (baseBranchIndexed) {
+        console.log(`   ✅ Base branch '${baseBranch}' is indexed → Fast copy!`);
+        
+        if (this.chatService && featureName) {
+          this.chatService.addContentToCurrentMessage(projectId, featureName, {
+            type: 'indexing',
+            content: 'Fast learning...',
+            metadata: {
+              message: `Copying embeddings from ${baseBranch}`,
+              detail: 'This is fast because base branch is already learned!'
+            }
+          });
+        }
+        
+        const copyStats = await indexer.copyBranchEmbeddings(
+          vectorDB,
+          projectId,
+          baseBranch,
+          newBranch,
+          baseCommit
+        );
+        
+        console.log(`   ✅ Copied ${copyStats.embeddingsCopied} embeddings in ${(copyStats.duration / 1000).toFixed(1)}s`);
+        
+        if (this.chatService && featureName) {
+          this.chatService.addContentToCurrentMessage(projectId, featureName, {
+            type: 'indexed',
+            content: 'Branch learned!',
+            metadata: {
+              filesIndexed: copyStats.filesIndexed,
+              chunks: copyStats.embeddingsCopied,
+              tokens: copyStats.estimatedTokens,
+              duration: copyStats.duration
+            }
+          });
+          
+          this.chatService.finalizeCurrentMessage(projectId, featureName);
+        }
+      } else {
+        console.log(`   ⚠️  Base branch '${baseBranch}' not indexed → Full indexing...`);
+        
+        if (this.chatService && featureName) {
+          this.chatService.addContentToCurrentMessage(projectId, featureName, {
+            type: 'indexing',
+            content: 'Learning codebase...',
+            metadata: {
+              message: `Indexing all files for ${newBranch}`,
+              detail: 'This may take a while for first-time indexing...'
+            }
+          });
+        }
+        
+        const stats = await indexer.index(
+          { git, vectorDB, chunk },
+          {
+            project: projectId,
+            workingDir: codebasePath,
+            branch: newBranch
+          }
+        );
+        
+        console.log(`   ✅ Indexed ${stats.filesIndexed} files (${stats.chunksCreated} chunks)`);
+        
+        if (this.chatService && featureName) {
+          this.chatService.addContentToCurrentMessage(projectId, featureName, {
+            type: 'indexed',
+            content: 'Codebase learned!',
+            metadata: {
+              filesIndexed: stats.filesIndexed,
+              chunks: stats.chunksCreated,
+              tokens: stats.estimatedTokens,
+              duration: stats.duration
+            }
+          });
+          
+          this.chatService.finalizeCurrentMessage(projectId, featureName);
+        }
+      }
+    } catch (error) {
+      console.error(`❌ [Auto-Index] Failed:`, error);
+      
+      if (this.chatService && featureName) {
+        this.chatService.addContentToCurrentMessage(projectId, featureName, {
+          type: 'indexed',
+          content: 'Indexing failed',
+          metadata: {
+            filesIndexed: 0,
+            chunks: 0,
+            tokens: 0,
+            duration: 0,
+            error: error instanceof Error ? error.message : String(error)
+          }
+        });
+        
+        this.chatService.finalizeCurrentMessage(projectId, featureName);
+      }
+    }
+  }
+
+  /**
    * 🤖 Auto-index codebase after successful push
    * 
    * ✅ Strategy: Smart Indexing
@@ -2074,10 +2227,6 @@ next-env.d.ts
    * - 브랜치 없음? → 전체 인덱싱 (모든 파일)
    * - 팀원 중복 인덱싱 방지
    * - Push = 실제 작업 완료 의미
-   * 
-   * @param projectId - Project ID
-   * @param codebasePath - Codebase path
-   * @param userContext - User context
    */
   private async autoIndexCodebase(
     projectId: string,

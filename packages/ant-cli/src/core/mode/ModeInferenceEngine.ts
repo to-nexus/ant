@@ -1,9 +1,8 @@
 /**
  * Mode Inference Engine
  * 
- * 2-Stage Hybrid Approach:
- * - Stage 1: Agent-based (Fast, 80% cases)
- * - Stage 2: LLM-based (Slow, 20% ambiguous cases)
+ * ⚠️ DEPRECATED: Mode inference is now handled by LLM in detectEnvironment node.
+ * This file is kept for backward compatibility with ModeController only.
  * 
  * Modes:
  * - generate: Create new features/files
@@ -11,7 +10,7 @@
  * - explain: Understand/document code
  */
 
-export type CodeMode = 'generate' | 'refactor' | 'explain' | 'ambiguous';
+export type CodeMode = 'generate' | 'refactor' | 'explain';
 
 export interface ModeInferenceContext {
   directive: string;
@@ -61,9 +60,9 @@ export class ModeInferenceEngine {
     }
     
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // Stage 2: LLM-based inference (Slow, only if ambiguous)
+    // Stage 2: Fallback (deprecated, should not reach here)
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    if (llmClient && agentResult.mode === 'ambiguous') {
+    if (llmClient && agentResult.confidence < 0.8) {
       console.log(`🤔 [Mode] Agent uncertain (${agentResult.confidence.toFixed(2)}), asking LLM...`);
       const llmResult = await this.inferByLLM(context, llmClient);
       console.log(`🧠 [Mode] LLM inference: ${llmResult.mode} (${llmResult.confidence.toFixed(2)})`);
@@ -241,9 +240,9 @@ export class ModeInferenceEngine {
       
       // Ambiguous case - need LLM
       return {
-        mode: 'ambiguous',
+        mode: 'generate',
         confidence: 0.5,
-        reasoning: 'Cannot determine mode with confidence - needs LLM analysis',
+        reasoning: 'Cannot determine mode with confidence - defaulting to generate',
         stage: 'agent'
       };
     }

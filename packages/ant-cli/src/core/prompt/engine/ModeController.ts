@@ -61,7 +61,7 @@ export class ModeController {
     if (task === 'code' && !mode && context.directive) {
       mode = inferCodeMode(
         context.directive,
-        context.stats.hasOriginalFiles
+        context.stats.hasProjectCode
       );
     }
     
@@ -146,27 +146,35 @@ export class ModeController {
       injections.push(`${commonPrefix}/design-doc`);
     }
     
-    if (context.prdSpec) {
+    // ✅ PRD only for design job (code job uses design doc which already contains PRD)
+    if (context.prdSpec && task === 'design') {
       injections.push(`${commonPrefix}/prd-spec`);
     }
     
-    if (context.originalFiles) {
-      injections.push(`${commonPrefix}/original-files`);
+    // Git diff summary
+    if (context.projectCodeContext?.gitDiff) {
+      injections.push(`${commonPrefix}/git-diff`);
     }
     
-    if (context.currentCode && !context.originalFiles) {
-      injections.push(`${commonPrefix}/current-code`);
+    // Retrieved code (from Plan node's RAG)
+    if (context.projectCodeContext?.files && context.projectCodeContext.files.length > 0) {
+      injections.push(`${commonPrefix}/retrieved-code`);
+    }
+    
+    // Reference code (from reference projects)
+    if (context.referenceCodeContexts && context.referenceCodeContexts.length > 0) {
+      injections.push(`${commonPrefix}/reference-code`);
     }
     
     // Phase-specific injections
     if (phase === 'plan') {
       // New project setup warning (ONLY for setup tasks!)
-      if (!context.stats.hasOriginalFiles && task === 'code' && context.currentTask?.type === 'setup') {
+      if (!context.stats.hasProjectCode && task === 'code' && context.currentTask?.type === 'setup') {
         injections.push(`${phasePrefix}/new-project-warning`);
       }
       
       // Modification warning for existing code
-      if (context.stats.hasOriginalFiles) {
+      if (context.stats.hasProjectCode) {
         injections.push(`${phasePrefix}/modification-warning`);
       }
     }
@@ -220,7 +228,7 @@ export class ModeController {
       }
       
       // New project setup (only for setup tasks)
-      if (!context.stats.hasOriginalFiles && task === 'code' && context.currentTask?.type === 'setup') {
+      if (!context.stats.hasProjectCode && task === 'code' && context.currentTask?.type === 'setup') {
         const languageConfigPath = `${task}/languages/${language}/setup/config`;
         injections.push(languageConfigPath);
       }

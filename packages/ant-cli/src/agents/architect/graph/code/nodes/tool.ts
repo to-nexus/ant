@@ -900,7 +900,6 @@ Please mention the reference project in your directive to register it.`;
     const refCodebasePath = require('path').join(refProjectPath, 'codebase');
     
     // 5. Search vector DB using CodebaseRetriever
-    const codeMode = state.codeMode === 'ambiguous' ? 'generate' : (state.codeMode || 'generate');
     const searchResult = await state.deps.retriever.retrieve(
       query,
       refCodebasePath,
@@ -908,7 +907,7 @@ Please mention the reference project in your directive to register it.`;
       {
         maxFiles: Math.min(maxFiles, 10),  // Cap at 10
         maxTokens: 15000,  // Reasonable limit
-        mode: codeMode
+        mode: state.codeMode || state.mode || 'generate'
       }
     );
     

@@ -109,7 +109,6 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
       // LangGraph will have already executed learn node, so state should be final
       return {
         ...state,
-        code: state.code || '',
         design: state.design || ''
       };
     }

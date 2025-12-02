@@ -214,13 +214,10 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
         );
   }
 
-  // 3. Infer mode (session-aware)
-  console.log(`🎯 Inferring code mode...`);
+  // 3. Build session context for LLM (mode inference moved to detectEnvironment)
+  console.log(`💭 Building session context...`);
   
-  const { ModeInferenceEngine } = await import('../../../../../core/mode/ModeInferenceEngine');
   const { SessionContextBuilder } = await import('../../../../../agents/architect/session/SessionContextBuilder');
-  
-  const modeEngine = new ModeInferenceEngine();
   const sessionBuilder = new SessionContextBuilder();
   
   // Get session history
@@ -228,47 +225,24 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     ? await state.deps.session.load(context.project, context.featureFolder, 'code')
     : null;
   
-  const lastTurn = session?.turns && session.turns.length > 0
-    ? session.turns[session.turns.length - 1]
-    : null;
-  
-  // Build session context for mode inference
-  const sessionContextForInference = lastTurn ? {
-    previousDirective: lastTurn.input?.summary || '',
-    previousMode: (lastTurn as any).mode || 'generate',
-    previousOutput: lastTurn.output?.summary || '',
-    turnsSinceStart: session?.turns?.length || 0
-  } : undefined;
-  
-  const modeResult = await modeEngine.infer({
-    directive: directive || design || '',
-    hasOriginalFiles: false,  // Will be determined by Git
-    hasCurrentCode: true,     // workingDir exists
-    filesChanged: 0,          // Will be determined later
-    totalFiles: 0,            // Will be determined later
-    sessionContext: sessionContextForInference
-  }, state.deps?.llm);
-  
-  console.log(`   Mode: ${modeResult.mode} (confidence: ${modeResult.confidence.toFixed(2)})`);
-  console.log(`   Reasoning: ${modeResult.reasoning}\n`);
-  
   // Build compressed session context for LLM
+  // Note: mode will be determined by detectEnvironment node
   const sessionContextForLLM = session?.turns && session.turns.length > 0
     ? sessionBuilder.buildContextForLLM(
         session.turns,
-        modeResult.mode as any,
+        'generate', // Placeholder, actual mode determined in detectEnvironment
         directive || design || ''
       )
     : undefined;
   
   if (sessionContextForLLM) {
-    console.log(`💭 Session: ${sessionContextForLLM.totalTurns} turns, window=${sessionContextForLLM.windowSize}, compression=${(sessionContextForLLM.compressionRatio * 100).toFixed(0)}%`);
+    console.log(`   Session: ${sessionContextForLLM.totalTurns} turns, window=${sessionContextForLLM.windowSize}, compression=${(sessionContextForLLM.compressionRatio * 100).toFixed(0)}%`);
   }
   
-  // 4. Retrieve relevant codebase (Phase 1: Smart Retrieval)
-  console.log(`📋 Retrieving relevant codebase...`);
+  // 4. Retrieve minimal codebase (Profile analysis only)
+  console.log(`📋 Retrieving codebase for profile analysis...`);
   
-  // ✅ References are now loaded in decompose node, not here
+  // ✅ References are now loaded per-task in plan node
   const referenceContexts: ReferenceContext[] = [];
   
   // ✅ Get ChatAPI client for grepping tracking
@@ -277,7 +251,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   
   // ✅ Send grepping status
   const query = (directive || design || "").slice(0, 100);  // First 100 chars as query
-  await chatAPI.addGreppingStatus(query, 0, 30);  // Max 30 files
+  await chatAPI.addGreppingStatus(query, 0, 5);  // Max 5 files (minimal)
   
   const codeContext = await retriever.retrieve(
     directive || design || "",
@@ -288,10 +262,10 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     },
     {
       project: context.project,  // ✅ Pass project for Vector DB namespace
-      maxTokens: 100000,  // ~75KB
-      maxFiles: 15,       // ✅ Reduced from 30
+      maxTokens: 20000,  // ~15KB (80% reduction from 100K)
+      maxFiles: 5,       // Minimal (67% reduction from 15)
       exclude: ['test', 'tests', '__tests__', '*.test.*', '*.spec.*'],
-      mode: modeResult.mode === 'ambiguous' ? 'generate' : modeResult.mode  // ✅ Pass inferred mode (fallback to generate)
+      mode: 'generate' // Default mode for profile analysis (actual mode determined in detectEnvironment)
     }
   );
 
@@ -305,7 +279,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     codeContext.files?.map(f => typeof f === 'string' ? f : f.path) || []
   );
 
-  // 4. Analyze codebase profile
+  // 4. Analyze codebase profile (only purpose of resolve)
   let profile = undefined;
   const analyzer = state.deps?.analyzer;
   
@@ -318,39 +292,15 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     }
   }
 
-  // ✅ CRITICAL: Explicitly preserve overrideDirective and chatSource
-  // ✅ Extract file list from codeContext.files (metadata only, no content)
-  // Note: codeContext.files is FileWithSource[] (metadata), actual content is in codeContext.code
-  // We need to parse codeContext.code to get both paths and content
-  const files: { path: string; content: string }[] = [];
-  if (codeContext.code) {
-    // Parse "FILE: path\ncontent\n\n---\n\n" format
-    const fileSections = codeContext.code.split(/\n\n---\n\n/);
-    for (const section of fileSections) {
-      const match = section.match(/^FILE:\s*([^\n]+)\n([\s\S]*)/);
-      if (match) {
-        files.push({
-          path: match[1].trim(),
-          content: match[2]
-        });
-      }
-    }
-  }
-  
+  // ✅ Return minimal state (profile only, NO mode - mode determined in detectEnvironment)
   const result = {
     ...state,
     directive,
     design,
     designDocPath,  // ✅ Add design document file path for environment inference
-    code: codeContext.code,
-    codeHead: codeContext.codeHead,
-    files,  // ✅ FIXED: Now passing files list (path + content) for decompose to use
-    lessons: codeContext.lessons,  // ✅ Include lessons from unified search
-    documents: codeContext.documents,  // ✅ Include documents from unified search
-    mode: modeResult.mode,  // ✅ Include inferred mode
     sessionContext: sessionContextForLLM,  // ✅ Include compressed session context
-    profile,
-    referenceContexts,  // ✅ NEW: Include reference contexts
+    profile,  // ✅ ONLY profile!
+    referenceContexts,  // Empty array (references loaded per-task)
   };
   
   // ✅ Workflow instrumentation: Exit node (success path)

@@ -2,6 +2,7 @@ import { CodeMode, CodebaseProfile, TaskArtifacts } from "../../../../core/types
 import { GitPort, MemoryPort, LLMClient, CodebaseAnalyzerPort, ChunkPort, SessionPort, CommandPort, TaskQueueUpdatePort } from "../../../../core/ports";
 import { PromptEngine } from "../../../../core/prompt/engine";
 import { ProjectContext } from "../../types";
+import { ProjectCodeContext, ReferenceCodeContext } from "../../../../core/prompt/types/CodeContext";
 
 export interface IntegrationRequirement {
   name: string;
@@ -89,7 +90,7 @@ export interface TaskTiming {
 export interface Task {
   id: string;                      // Unique identifier (e.g., "auth-impl", "fix-deps-1")
   name: string;                    // e.g., "Implement Authentication" or "Fix Missing Dependencies"
-  type: 'setup' | 'feature' | 'error';  // setup = config (priority 100+), feature = from spec (200-899), error = from violations (900-999)
+  type: 'setup' | 'feature' | 'error' | 'explain';  // setup = config (priority 100+), feature = from spec (200-899), error = from violations (900-999), explain = code explanation
   priority: number;                // Lower = more critical (setup: 100+, features: 200-899, errors: 900-999, final: 1000)
   description: string;             // What needs to be done
   errors?: string[];               // List of error messages (for error tasks)
@@ -182,21 +183,48 @@ export interface ValidationResult {
 }
 
 /**
- * Code Task State
+ * Code Task State (REFACTORED)
  * State for code generation graph (generate/refactor/explain)
  * 
  * Inherits TaskArtifacts which provides:
  * - prd: PRD document
  * - directive: User instruction
  * - design: Latest design document
- * - code: Current codebase (working tree)
- * - codeHead: Git HEAD version (for comparison)
  * - profile: Codebase profile (language/framework)
  */
 export interface ArchitectGraphState extends TaskArtifacts {
   // Context
   context: ProjectContext & { enableEvaluation?: boolean };
   spec: string;  // CLI input
+  
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 🔥 NEW: DetectEnvironment Output
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  selectedDesignFiles?: string[];
+  detectedEnvironment?: 'frontend' | 'backend' | 'fullstack' | 'unknown';
+  environmentReasoning?: string;
+  requireRagForDecompose?: boolean;
+  decomposeKeywords?: {
+    codebase: string[];
+    references: Map<string, string[]>;
+  }
+  
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ✅ REFACTORED: Unified code context structure
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  projectCodeContext?: ProjectCodeContext;      // Main project code
+  referenceCodeContexts: ReferenceCodeContext[]; // Reference projects
+  
+  // ✅ Design Documents (loaded in contextLoader)
+  designDocs?: {
+    apiContract?: string;
+    feDesign?: string;
+    beDesign?: string;
+    unifiedDesign?: string;
+  };
+  
+  // ✅ Reference Requests (registered in decompose, loaded per-task in plan)
+  referenceRequests?: Array<{project: string; branch?: string}>;
   
   // Dependencies
   deps?: { 
@@ -217,9 +245,9 @@ export interface ArchitectGraphState extends TaskArtifacts {
   };
   gitPort?: GitPort;  // For runner to use after graph execution
   
-  // ✅ Mode (inferred)
-  mode?: 'generate' | 'refactor' | 'explain' | 'ambiguous';  // Code mode inferred from directive
-  codeMode?: CodeMode;  // DEPRECATED: use 'mode' instead
+  // ✅ Mode (inferred by detectEnvironment LLM)
+  mode?: 'generate' | 'refactor' | 'explain';  // Code mode inferred by detectEnvironment
+  codeMode?: CodeMode;  // For backward compatibility (used in execute phase)
   
   // ✅ Session Context (compressed for LLM)
   sessionContext?: {
@@ -240,9 +268,6 @@ export interface ArchitectGraphState extends TaskArtifacts {
   // ✅ Chat Integration
   overrideDirective?: string;  // Chat input as directive (highest priority)
   chatSource?: boolean;         // True if job started from chat (enables Chat SSE)
-  
-  // ✅ Reference Requests (registered in decompose, files loaded on-demand via tool calling)
-  referenceRequests?: Array<{project: string; branch?: string}>;
   
   // ✅ Replan Support (continue with new directive)
   directives?: string[];  // Multiple directives (newest first = highest priority)
@@ -356,7 +381,7 @@ export interface ArchitectGraphState extends TaskArtifacts {
   evaluationReport?: any;
   
   // Lessons (extracted knowledge from task completion)
-  lessons?: string | Array<{
+  lessons?: Array<{
     content: string;
     score: number;
     relatedFiles: string[];
