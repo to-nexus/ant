@@ -6,7 +6,16 @@
 
 ### 📋 API Contract (api-contract.md)
 
-**Purpose**: BINDING SPECIFICATION for FE/BE integration
+**Purpose**: SHARED SPECIFICATION for Frontend-Backend integration
+
+**🚨 CRITICAL: This is NOT an external repository!**
+- ✅ API Contract is a SPECIFICATION DOCUMENT in THIS project
+- ✅ It defines the integration interface between Frontend and Backend
+- ✅ Both Frontend and Backend implement their respective sides of this specification
+- ✅ Think of it as a "blueprint" or "interface definition", NOT a codebase
+- ❌ It is NOT an external project repository
+- ❌ You CANNOT search it using `search_reference_code` tool
+- ❌ When you see "api-contract.md", think "specification to follow", NOT "code to reference"
 
 **What it contains:**
 - Exact REST API endpoints with request/response types
@@ -16,25 +25,26 @@
 - Authentication flow
 
 **How to use it (for BOTH Frontend & Backend):**
-- ✅ Use EXACT field names from the contract (camelCase/snake_case must match!)
+- ✅ Use EXACT field names from the specification (camelCase/snake_case must match!)
 - ✅ Implement ALL required fields (no optional fields unless marked with `?`)
 - ✅ Follow validation rules (min/max length, format constraints)
 - ✅ Return exact HTTP status codes specified
-- ❌ DO NOT invent new fields or endpoints not in the contract
+- ❌ DO NOT invent new fields or endpoints not in the specification
 - ❌ DO NOT change field types or names
+- ❌ DO NOT confuse this specification document with an external project repository
 
 **Example:**
 ```typescript
-// ✅ CORRECT: Matches contract exactly
+// ✅ CORRECT: Matches specification exactly
 interface LoginRequest {
-  email: string;      // From api-contract.md
-  password: string;   // From api-contract.md
+  email: string;      // From api-contract.md specification
+  password: string;   // From api-contract.md specification
 }
 
 // ❌ WRONG: Changed field names
 interface LoginRequest {
-  userEmail: string;  // Contract says "email", not "userEmail"
-  pass: string;       // Contract says "password", not "pass"
+  userEmail: string;  // Specification says "email", not "userEmail"
+  pass: string;       // Specification says "password", not "pass"
 }
 ```
 
@@ -55,14 +65,14 @@ interface LoginRequest {
 - ✅ Follow component structure (Pages → Containers → Components)
 - ✅ Use specified state management library
 - ✅ Implement routing as described
-- ✅ Create API client wrappers that reference api-contract.md types
+- ✅ Create API client wrappers using api-contract.md type definitions
 - ✅ Apply UI/UX guidelines (colors, spacing, responsive breakpoints)
-- ❌ DO NOT define API endpoints (they're in api-contract.md!)
+- ❌ DO NOT define API endpoints (they're already specified in api-contract.md!)
 - ❌ DO NOT add backend logic or server-side code
 
 **Example:**
 ```typescript
-// ✅ CORRECT: Frontend consumes API contract
+// ✅ CORRECT: Frontend consumes API specification
 import type { LoginRequest, LoginResponse } from '@/types/api-contract';
 
 export const authAPI = {
@@ -135,24 +145,30 @@ export class AuthController {
 
 ### 🔑 KEY RULES
 
-**1. API Contract is KING**
+**1. API Contract is the SPECIFICATION**
 - If there's a conflict between api-contract.md and system-design.md, follow api-contract.md
 - All FE/BE integration MUST match api-contract.md field names and types
+- **TERMINOLOGY**: "API Contract" = "Integration Specification" (NOT an external repo!)
 
 **2. Know Your Environment**
 - Frontend tasks: Focus on API consumption, UI components, state management
 - Backend tasks: Focus on API implementation, business logic, data persistence
 - NEVER mix concerns: Frontend doesn't define APIs, Backend doesn't do UI
 
-**3. Don't Duplicate Contract**
+**3. Don't Duplicate the Specification**
 - ❌ DON'T copy-paste DTO definitions from api-contract.md
-- ✅ DO import/reference types: `import type { LoginRequest } from 'api-contract'`
+- ✅ DO import/use types: `import type { LoginRequest } from 'api-contract'`
 - ✅ DO focus on HOW to implement, not WHAT the interface is
 
 **4. When in Doubt**
-- Check api-contract.md for interface definitions
-- Check system-design.md for implementation patterns
+- Check api-contract.md for interface definitions (specification)
+- Check system-design.md for implementation patterns (guide)
 - Follow the architecture layers described in system-design.md
+
+**5. CRITICAL: "Reference" Terminology**
+- ❌ DON'T say "reference api-contract.md" (sounds like external code search)
+- ✅ DO say "use api-contract.md types" or "follow api-contract.md specification"
+- ✅ DO say "import from api-contract.md" or "implement according to api-contract.md"
 
 ════════════════════════════════════════════════════════════════════════════════
 

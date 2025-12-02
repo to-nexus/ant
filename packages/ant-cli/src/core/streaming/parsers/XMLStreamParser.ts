@@ -576,6 +576,7 @@ export class XMLStreamParser implements IStreamParser {
           
           // 1️⃣ HIGHEST PRIORITY: Check if there's text BEFORE an XML tag
           // Example: "Here is the code:\n<file path=..." → emit "Here is the code:\n"
+          // Note: detect/references tags are NOT parsed - they flow through as normal response for SpecialTagTransformer
           const beforeTagMatch = this.buffer.match(/^(.+?)(?=<(?:thinking|tasks|file|edit|delete|append|learn_command|done)[\s>])/s);
           if (beforeTagMatch) {
             const content = beforeTagMatch[1];

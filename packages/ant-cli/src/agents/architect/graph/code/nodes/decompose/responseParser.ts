@@ -66,6 +66,9 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
 
 /**
  * Create task queue from parsed tasks
+ * 
+ * ⚠️ CRITICAL: LLM MUST create Final Verification task (priority 1000)
+ * No fallback - if missing, throw error to enforce prompt compliance
  */
 export function createTaskQueue(tasks: Task[]): {
   taskQueue: TaskQueue;
@@ -74,14 +77,16 @@ export function createTaskQueue(tasks: Task[]): {
   const taskQueue = new TaskQueue();
   const featureTasks = new Map<string, Task>();
   
-  // Add Final Verification task
-  const finalTask: Task = {
-    id: `final-verification-${Date.now()}`,
-    name: 'Final Verification',
-    type: 'feature',
-    priority: TASK_PRIORITIES.FINAL_VERIFICATION,
-    description: 'Run final build verification and ensure all features work correctly'
-  };
+  // ✅ Validate that LLM created Final Verification task
+  const hasFinalTask = tasks.some(task => task.priority === TASK_PRIORITIES.FINAL_VERIFICATION);
+  
+  if (!hasFinalTask) {
+    throw new Error(
+      '❌ [Decompose] LLM failed to create Final Verification task (priority 1000)!\n' +
+      'This is a CRITICAL prompt violation. LLM must ALWAYS include final verification task.\n' +
+      'Check decompose prompt compliance.'
+    );
+  }
   
   tasks.forEach(task => {
     // Ensure task has required fields
@@ -102,8 +107,7 @@ export function createTaskQueue(tasks: Task[]): {
     }
   });
   
-  // Add final verification at the end
-  taskQueue.push(finalTask);
+  console.log(`✅ [createTaskQueue] Final Verification task validated (created by LLM)`);
   
   return { taskQueue, featureTasks };
 }
@@ -116,18 +120,20 @@ export function logTaskSummary(
   referenceRequests?: Array<{project: string; branch?: string; reason?: string}>
 ): void {
   console.log(`\n✅ Task breakdown complete:`);
-  console.log(`   Total tasks: ${tasks.length + 1} (including Final Verification)`);
   
+  // ✅ Count actual Final Verification tasks (don't assume +1!)
   const tasksByType = {
     setup: tasks.filter(t => t.type === 'setup').length,
-    feature: tasks.filter(t => t.type === 'feature').length,
-    error: tasks.filter(t => t.type === 'error').length
+    feature: tasks.filter(t => t.type === 'feature' && t.priority !== TASK_PRIORITIES.FINAL_VERIFICATION).length,
+    error: tasks.filter(t => t.type === 'error').length,
+    final: tasks.filter(t => t.priority === TASK_PRIORITIES.FINAL_VERIFICATION).length
   };
   
+  console.log(`   Total tasks: ${tasks.length}`);
   console.log(`   Setup: ${tasksByType.setup}`);
   console.log(`   Feature: ${tasksByType.feature}`);
   console.log(`   Error: ${tasksByType.error}`);
-  console.log(`   Final: 1`);
+  console.log(`   Final: ${tasksByType.final}`);
   
   // Log reference requests
   if (referenceRequests && referenceRequests.length > 0) {

@@ -173,6 +173,9 @@ export class DevServerService {
           const logs = this.devServerLogs.get(projectId) || [];
           logs.push(log);
           this.devServerLogs.set(projectId, logs);
+          
+          // ✅ Notify UI on install progress
+          this.onStatusChange?.(projectId);
         });
         
         installProcess.stderr?.on('data', (data: Buffer) => {
@@ -186,6 +189,9 @@ export class DevServerService {
           const logs = this.devServerLogs.get(projectId) || [];
           logs.push(log);
           this.devServerLogs.set(projectId, logs);
+          
+          // ✅ Notify UI on install progress (errors)
+          this.onStatusChange?.(projectId);
         });
         
         installProcess.on('exit', async (code) => {
@@ -205,6 +211,9 @@ export class DevServerService {
             logs.push(successLog);
             this.devServerLogs.set(projectId, logs);
             
+            // ✅ Notify UI that install completed
+            this.onStatusChange?.(projectId);
+            
             // Now start the dev server by calling this method again
             const result = await this.startDevServer(projectId, localPath, port);
             resolve(result);
@@ -217,6 +226,9 @@ export class DevServerService {
             const logs = this.devServerLogs.get(projectId) || [];
             logs.push(errorLog);
             this.devServerLogs.set(projectId, logs);
+            
+            // ✅ Notify UI on install failure
+            this.onStatusChange?.(projectId);
             
             resolve({
               success: false,

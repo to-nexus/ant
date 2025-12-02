@@ -315,13 +315,17 @@ export class SpecialTagTransformer {
         formatted += `   └ ${parsed.environmentReasoning}\n\n`;
       }
       
-      // ✅ consumed: false → Replace original tag with formatted text
-      return { text: formatted, consumed: false };
+      // ✅ consumed: true → Replace original tag with formatted text
+      return { text: formatted, consumed: true };
       
     } catch (error) {
       console.warn('[SpecialTagTransformer] Failed to parse detect tag:', error);
-      // Show raw content on error (don't hide it)
-      return { consumed: false };
+      // Show formatted message on error
+      const isKorean = language === 'ko';
+      return { 
+        text: isKorean ? '⚠️ 환경 분석 결과 파싱 실패' : '⚠️ Failed to parse environment analysis',
+        consumed: true 
+      };
     }
   }
 }

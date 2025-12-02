@@ -74,44 +74,39 @@ export async function detectEnvironment(
   const prompt = await buildDetectPrompt(state);
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // 2. Call LLM (with streaming for Chat UI)
+  // 2. Call LLM (get complete response, no streaming needed)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const { getChatAPIClient } = await import('../../../../../core/adapters/ChatAPIClient');
   const chatAPI = getChatAPIClient();
   
   await chatAPI.showChatStatus('placeholder');
   
-  // ✅ Setup StreamOrchestrator for XML tag handling
-  const { XMLStreamParser } = await import('../../../../../core/streaming/parsers/XMLStreamParser');
-  const { CommonRenderStrategy } = await import('../../../../../core/streaming/strategies/CommonRenderStrategy');
-  const { StreamOrchestrator } = await import('../../../../../core/streaming/StreamOrchestrator');
-  
-  const parser = new XMLStreamParser();
-  const renderStrategy = new CommonRenderStrategy(chatAPI, undefined, 'en');
-  const orchestrator = new StreamOrchestrator({
-    parser,
-    renderStrategy,
-    existingFiles: new Set()
-  });
-  
+  // ✅ Accumulate complete response
   let response = '';
   for await (const event of llm.stream([
     { role: 'user', content: prompt }
   ], {
     temperature: 0.3,
-    maxTokens: 16000  // ✅ Must be > budget_tokens (10000) when thinking enabled
+    maxTokens: 16000
   })) {
-    // ✅ Process through orchestrator (handles XML tags)
-    await orchestrator.processEvent(event);
-    
-    // Accumulate response text
     if (event.text) {
       response += event.text;
     }
   }
   
-  // Finalize streaming
-  await orchestrator.finalize();
+  // ✅ Transform and display result
+  const { SpecialTagTransformer } = await import('../../../../../core/streaming/transformers/SpecialTagTransformer');
+  const transformer = new SpecialTagTransformer('ko');
+  const transformed = transformer.transform(response);
+  
+  if (transformed.text) {
+    await chatAPI.sendLLMEvent({
+      type: 'text',
+      text: transformed.text
+    });
+  }
+  
+  await chatAPI.finalizeMessage();
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // 3. Parse Response
@@ -166,6 +161,7 @@ export async function detectEnvironment(
   
   return {
     mode: parsed.mode,
+    modeReasoning: parsed.modeReasoning,
     detectedEnvironment: parsed.environment,
     environmentReasoning: parsed.environmentReasoning,
     selectedDesignFiles,

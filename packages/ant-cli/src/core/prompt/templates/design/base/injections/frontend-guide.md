@@ -46,11 +46,11 @@ All DTOs and endpoints are defined in the API contract document.
 
 #### 5. API Integration Layer ⚠️ MOST IMPORTANT
 
-**Reference api-contract.md types!**
+**Use api-contract.md types!**
 
 **⚠️ CRITICAL: NO DTO DUPLICATION!**
 - ❌ DO NOT redefine DTOs from api-contract.md
-- ✅ ONLY import/reference: "Uses LoginRequest from api-contract.md"
+- ✅ ONLY import/use: "Uses LoginRequest from api-contract.md"
 - ✅ Focus on HOW to call APIs, not WHAT the interface is
 
 ```typescript
@@ -118,7 +118,7 @@ export const authAPI = {
 
 **DO:**
 - ✅ Show how to CONSUME APIs (client wrappers, hooks)
-- ✅ Reference api-contract.md types explicitly
+- ✅ Use api-contract.md types explicitly
 - ✅ Component interfaces: props only (≤10 lines each)
 
 **DON'T:**

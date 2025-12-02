@@ -369,7 +369,7 @@ This ensures FE and BE are ALWAYS aligned!
 
 **CRITICAL RULES for Frontend Tasks:**
 1. **First FE task MUST mention**: "MUST USE api-contract.md types"
-2. **Description MUST include**: "import DTOs from api-contract.md" or "reference contract types"
+2. **Description MUST include**: "import DTOs from api-contract.md" or "use contract types"
 3. **File naming**: "Create fe-system-design.md" (first) → "Append to fe-system-design.md" (subsequent)
 4. **NO API definition**: FE tasks NEVER define APIs, only consume them!
 5. **MECE Compliance**: NO DTO duplication - only reference contract!
@@ -429,8 +429,8 @@ This ensures FE and BE are ALWAYS aligned!
 **fe-system-design.md** = HOW (Consumer Implementation):
 - ✅ HOW to call APIs: fetch wrappers, error handling, loading states
 - ✅ Component architecture, routing, state management
-- ✅ Reference contract: "import LoginRequest from api-contract.md"
-- ❌ NO DTO redefinition (reference only!)
+- ✅ Use contract types: "import LoginRequest from api-contract.md"
+- ❌ NO DTO redefinition (import/use only!)
 
 **be-system-design.md** = HOW (Provider Implementation):
 - ✅ HOW to implement: service methods, business logic, DB queries
@@ -471,13 +471,13 @@ POST /api/auth/login
     {
       "id": "design-fe-architecture",
       "name": "Frontend: Architecture & Components",
-      "description": "Create fe-system-design.md with: React component architecture, routing (/, /login), state management (Context API for auth), **API client (REFERENCE api-contract.md types - NO DTO duplication, show HOW to call APIs with fetch wrappers)**, form components (LoginForm, TodoForm). MAX 150 lines! (FE total budget: 150 lines)",
+      "description": "Create fe-system-design.md with: React component architecture, routing (/, /login), state management (Context API for auth), **API client (USE api-contract.md types - NO DTO duplication, show HOW to call APIs with fetch wrappers)**, form components (LoginForm, TodoForm). MAX 150 lines! (FE total budget: 150 lines)",
       "priority": 210
     },
     {
       "id": "design-be-architecture",
       "name": "Backend: Architecture & API",
-      "description": "Create be-system-design.md with: Express layered architecture (routes/controllers/services), **API implementation (REFERENCE api-contract.md - NO DTO duplication, show HOW to implement with service methods and error handling)**, JWT middleware, validation. MAX 150 lines! (BE total budget: 300 lines)",
+      "description": "Create be-system-design.md with: Express layered architecture (routes/controllers/services), **API implementation (USE api-contract.md specification - NO DTO duplication, show HOW to implement with service methods and error handling)**, JWT middleware, validation. MAX 150 lines! (BE total budget: 300 lines)",
       "priority": 230
     },
     {
