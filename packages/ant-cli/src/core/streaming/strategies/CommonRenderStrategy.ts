@@ -161,6 +161,13 @@ export class CommonRenderStrategy implements IRenderStrategy {
     // ✅ Transform special tags into user-friendly messages using SpecialTagTransformer
     const transformed = this.tagTransformer.transform(content);
     
+    // 🐛 DEBUG: Check if detect tag is being transformed
+    if (content.includes('<detect>')) {
+      console.log(`🐛 [Render] DETECT TAG FOUND in chunk (${content.length} chars)`);
+      console.log(`🐛 [Render] transformed.consumed: ${transformed.consumed}`);
+      console.log(`🐛 [Render] transformed.text length: ${transformed.text?.length || 0}`);
+    }
+    
     // If transformation consumed the entire content, stop here
     if (transformed.consumed) {
       if (transformed.text) {

@@ -42,7 +42,7 @@ All request/response DTOs match api-contract.md field names and types.
 
 **⚠️ CRITICAL: NO DTO DUPLICATION!**
 - ❌ DO NOT copy-paste DTOs from api-contract.md
-- ✅ ONLY reference: "See api-contract.md Section X"
+- ✅ ONLY mention: "See api-contract.md Section X"
 - ✅ Focus on HOW to implement, not WHAT the interface is
 
 **For EACH endpoint:**

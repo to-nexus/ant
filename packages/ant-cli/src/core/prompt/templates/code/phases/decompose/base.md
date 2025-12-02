@@ -205,17 +205,26 @@ Existing files:
 
 {{#if designDoc}}
 ════════════════════════════════════════════════════════════════════════════════
-📐 DESIGN DOCUMENT (REFERENCE ONLY)
+📐 DESIGN SPECIFICATION
 ════════════════════════════════════════════════════════════════════════════════
 
-**⚠️ CRITICAL: Design document is for REFERENCE, not a TODO list!**
+**UNDERSTANDING DESIGN DOCUMENTS:**
+
+The design specification may include:
+1. **API Contract** (api-contract.md): Integration specification between Frontend and Backend
+   - **🚨 NOT an external repository!** It's a specification document in THIS project
+   - Defines exact field names, types, endpoints
+   
+2. **System Design** (fe-system-design.md, be-system-design.md): Implementation guidelines
+   - Describes architecture, patterns, components
 
 {{#if (or (eq mode "refactor") (eq mode "explain"))}}
 **IN REFACTOR/FIX MODE:**
 
-The design document describes the INTENDED architecture. Your task is to:
+The design documents describe the INTENDED architecture. Your task is to:
 - ✅ Fix specific issues mentioned in the directive
-- ✅ Use design doc to understand context and architecture
+- ✅ Use design docs to understand context and architecture
+- ✅ Use API Contract to ensure correct integration patterns
 - ❌ DO NOT create tasks for every component in design doc
 - ❌ DO NOT use design doc as a checklist of things to implement
 
@@ -239,33 +248,43 @@ User Directive:    "Fix error in component A"
    Total: 11 tasks (9 unnecessary!)
 ```
 
-**HOW TO USE DESIGN DOC:**
-1. Read it to understand the system architecture
-2. Use it to understand how components should interact
-3. Reference it when making fixes to ensure consistency
-4. **DO NOT use it as a task list!**
+**HOW TO USE DESIGN DOCS:**
+1. Read them to understand the system architecture
+2. Use them to understand how components should interact
+3. Use API Contract specification for exact field names and types
+4. **DO NOT use system design as a task list!**
 
 {{else}}
 **IN GENERATE MODE:**
 
-The design document is your implementation guide:
-- ✅ Create tasks to implement components described in design
-- ✅ Follow the architecture and structure outlined
-- ✅ Use it as a blueprint for what to build
+**HOW TO USE DESIGN DOCUMENTS:**
 
-**DOCUMENT STRUCTURE GUIDE:**
+1. **API Contract (if present)**:
+   - ✅ Use as the integration specification
+   - ✅ Extract exact field names, types, endpoints from it
+   - ❌ NOT an external repository (CANNOT use `search_reference_code` on it)
 
-The design document may contain multiple sections for different parts:
-- **API Contract**: Binding specification for FE/BE integration (exact field names, types, endpoints)
-- **Frontend System Design**: How frontend consumes APIs (components, state, routing, UI)
-- **Backend System Design**: How backend implements APIs (controllers, services, database)
+2. **System Design**:
+   - ✅ Use as implementation guide for architecture
+   - ✅ Create tasks to implement components described
+
+**CRITICAL - Specification vs External Repositories:**
+
+| Type | What is it? | Can search? | Example |
+|------|-------------|-------------|---------|
+| **api-contract.md** | Specification document in THIS project | ❌ NO | Integration interface definition |
+| **External Repos** | Other project codebases | ✅ YES | ant-pong-be, other-service |
+
+**Directive interpretation:**
+- "api-contract.md" or "API Contract" → Specification to follow (NOT searchable)
+- "ant-pong-be를 참조해서" or "refer to ant-pong-be repo" → External codebase (searchable)
 
 **When creating tasks:**
-- ✅ Frontend tasks should focus on components, state management, API consumption
-- ✅ Backend tasks should focus on endpoints, business logic, data persistence
-- ✅ Both should reference the API contract for exact field names and types
-- ❌ DO NOT mix frontend and backend concerns in a single task
-- ❌ DO NOT duplicate API contract definitions (they're already defined)
+- ✅ Frontend: Implement components using API Contract type definitions
+- ✅ Backend: Implement endpoints according to API Contract specification
+- ❌ DO NOT mix frontend/backend in one task
+- ❌ DO NOT duplicate API Contract definitions (already defined)
+- ❌ DO NOT treat API Contract as an external repo
 
 {{/if}}
 

@@ -198,7 +198,16 @@ export function buildCodeGraph() {
       gitPort: null as any,
       
       // Mode
+      mode: null as any,  // ✅ 'generate' | 'refactor' | 'explain' (from detectEnvironment)
+      modeReasoning: null as any,  // ✅ Reasoning for mode selection
       codeMode: null as any,
+      
+      // Environment Detection
+      detectedEnvironment: null as any,  // ✅ 'frontend' | 'backend' | 'fullstack' | 'unknown'
+      environmentReasoning: null as any,  // ✅ Reasoning for environment detection
+      requireRagForDecompose: null as any,  // ✅ Whether decompose needs RAG
+      decomposeKeywords: null as any,  // ✅ Keywords for decompose RAG
+      selectedDesignFiles: null as any,  // ✅ Design files selected based on environment
       
       // Artifacts (from TaskArtifacts)
       prd: null as any,

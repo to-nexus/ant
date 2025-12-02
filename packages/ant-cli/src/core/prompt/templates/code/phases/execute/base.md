@@ -54,18 +54,17 @@ The component uses Tailwind CSS for styling...
 
 {{#if designDoc}}
 {{#if (eq modificationMode "MODIFICATION MODE: Modify existing code")}}
-## 📋 DESIGN DOCUMENT (Architecture Reference)
+## 📋 DESIGN SPECIFICATION
 
-**⚠️ CRITICAL: This design document is for REFERENCE ONLY!**
+**🚨 CRITICAL: When modifying existing code, design documents are for REFERENCE ONLY!**
 
 **YOU MUST:**
 - ✅ Modify the EXISTING code below (see "EXISTING FILES" section)
 - ✅ Keep the same architecture/patterns as existing code
-- ✅ Use design document to understand the intended architecture
+- ✅ Use API Contract for correct field names and types
+- ✅ Use System Design to understand the intended architecture
 - ❌ DO NOT regenerate files from scratch
 - ❌ DO NOT ignore existing code structure
-
-**The design document explains the intended architecture. Your job is to MODIFY existing code to match the task, NOT recreate everything.**
 
 ────────────────────────────────────────────────────────────────────────────────
 
@@ -77,9 +76,7 @@ The component uses Tailwind CSS for styling...
 
 ════════════════════════════════════════════════════════════════════════════════
 {{else}}
-## 📋 DESIGN DOCUMENT (Implementation Guide)
-
-**Follow this design document to create the project:**
+## 📋 DESIGN SPECIFICATION
 
 {{designDoc}}
 

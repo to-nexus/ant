@@ -247,6 +247,7 @@ export interface ArchitectGraphState extends TaskArtifacts {
   
   // ✅ Mode (inferred by detectEnvironment LLM)
   mode?: 'generate' | 'refactor' | 'explain';  // Code mode inferred by detectEnvironment
+  modeReasoning?: string;  // Why this mode was selected
   codeMode?: CodeMode;  // For backward compatibility (used in execute phase)
   
   // ✅ Session Context (compressed for LLM)
