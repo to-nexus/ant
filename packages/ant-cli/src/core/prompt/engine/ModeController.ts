@@ -151,19 +151,22 @@ export class ModeController {
       injections.push(`${commonPrefix}/prd-spec`);
     }
     
-    // Git diff summary
-    if (context.projectCodeContext?.gitDiff) {
-      injections.push(`${commonPrefix}/git-diff`);
-    }
-    
-    // Retrieved code (from Plan node's RAG)
-    if (context.projectCodeContext?.files && context.projectCodeContext.files.length > 0) {
-      injections.push(`${commonPrefix}/retrieved-code`);
-    }
-    
-    // Reference code (from reference projects)
-    if (context.referenceCodeContexts && context.referenceCodeContexts.length > 0) {
-      injections.push(`${commonPrefix}/reference-code`);
+    // Code job specific injections (moved to code/base/injections)
+    if (task === 'code') {
+      // Git diff summary
+      if (context.projectCodeContext?.gitDiff) {
+        injections.push(`${taskPrefix}/git-diff`);
+      }
+      
+      // Retrieved code (from Plan node's RAG - available in Execute phase)
+      if (context.projectCodeContext?.files && context.projectCodeContext.files.length > 0) {
+        injections.push(`${taskPrefix}/retrieved-code`);
+      }
+      
+      // Reference code (only available in Execute phase after Plan loads it)
+      if (context.referenceCodeContexts && context.referenceCodeContexts.length > 0) {
+        injections.push(`${taskPrefix}/reference-code`);
+      }
     }
     
     // Phase-specific injections
@@ -196,11 +199,9 @@ export class ModeController {
         console.log(`[ModeController] Adding compact tool-calling rules`);
       }
       
-      // Markdown file streaming format
-      if (task === 'code') {
-        injections.push(`${commonPrefix}/output-format-markdown`);
-        console.log(`[ModeController] Adding markdown streaming format injection`);
-      }
+      // Markdown file streaming format (used by both code and design jobs)
+      injections.push(`${commonPrefix}/output-format-markdown`);
+      console.log(`[ModeController] Adding markdown streaming format injection`);
       
       // Retry context (only on retries)
       if (context.retryContext) {
@@ -228,7 +229,7 @@ export class ModeController {
       }
       
       // New project setup (only for setup tasks)
-      if (!context.stats.hasProjectCode && task === 'code' && context.currentTask?.type === 'setup') {
+      if (!context.stats.hasProjectCode && task === 'code' && context.currentTask?.type === 'setup' && language) {
         const languageConfigPath = `${task}/languages/${language}/setup/config`;
         injections.push(languageConfigPath);
       }
