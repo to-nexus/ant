@@ -26,11 +26,14 @@ Promise.all([
 // ✅ Register code-specific base injections (conditionally used by code templates)
 const codeBaseInjectionsPath = join(__dirname, "../../../core/prompt/templates/code/base/injections");
 Promise.all([
-  fs.readFile(join(codeBaseInjectionsPath, "text-response-format.md"), "utf8")
-    .then(content => Handlebars.registerPartial("code/base/injections/text-response-format", content))
+  fs.readFile(join(codeBaseInjectionsPath, "text-format-compact.md"), "utf8")
+    .then(content => Handlebars.registerPartial("code/base/injections/text-format-compact", content))
     .catch(() => {}),
-  fs.readFile(join(codeBaseInjectionsPath, "tool-calling-rules.md"), "utf8")
-    .then(content => Handlebars.registerPartial("code/base/injections/tool-calling-rules", content))
+  fs.readFile(join(codeBaseInjectionsPath, "tool-calling-rules-compact.md"), "utf8")
+    .then(content => Handlebars.registerPartial("code/base/injections/tool-calling-rules-compact", content))
+    .catch(() => {}),
+  fs.readFile(join(codeBaseInjectionsPath, "design-document-guide.md"), "utf8")
+    .then(content => Handlebars.registerPartial("code/base/injections/design-document-guide", content))
     .catch(() => {}),
   fs.readFile(join(codeBaseInjectionsPath, "output-format-markdown.md"), "utf8")
     .then(content => Handlebars.registerPartial("code/base/injections/output-format-markdown", content))

@@ -253,7 +253,23 @@ The design document is your implementation guide:
 - ✅ Follow the architecture and structure outlined
 - ✅ Use it as a blueprint for what to build
 
+**DOCUMENT STRUCTURE GUIDE:**
+
+The design document may contain multiple sections for different parts:
+- **API Contract**: Binding specification for FE/BE integration (exact field names, types, endpoints)
+- **Frontend System Design**: How frontend consumes APIs (components, state, routing, UI)
+- **Backend System Design**: How backend implements APIs (controllers, services, database)
+
+**When creating tasks:**
+- ✅ Frontend tasks should focus on components, state management, API consumption
+- ✅ Backend tasks should focus on endpoints, business logic, data persistence
+- ✅ Both should reference the API contract for exact field names and types
+- ❌ DO NOT mix frontend and backend concerns in a single task
+- ❌ DO NOT duplicate API contract definitions (they're already defined)
+
 {{/if}}
+
+{{designDoc}}
 
 ════════════════════════════════════════════════════════════════════════════════
 

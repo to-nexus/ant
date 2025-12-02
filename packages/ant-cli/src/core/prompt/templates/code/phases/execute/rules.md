@@ -1,6 +1,6 @@
 # Output Format Rules
 
-{{> code/base/injections/text-response-format}}
+{{> code/base/injections/text-format-compact}}
 
 ════════════════════════════════════════════════════════════════════════════════
 ## 🎯 XML TAG REFERENCE
@@ -202,40 +202,6 @@ export function Button() {
 </search>
 ```
 (Unique to this function)
-
-════════════════════════════════════════════════════════════════════════════════
-## 📋 SELF-VERIFICATION CHECKLIST
-════════════════════════════════════════════════════════════════════════════════
-
-Before outputting, verify:
-
-### Format ✓
-- [ ] Used `<edit>` for modifying existing files (NOT `<file>`)
-- [ ] Used `<tool_use>` with `write_file` for creating new files
-- [ ] Paths are actual project paths (no "path/to/file.tsx" placeholders)
-- [ ] `<search>` blocks match EXACTLY (including whitespace)
-- [ ] File content is pure source code (no ```, no markdown)
-- [ ] All XML tags properly closed
-
-### Content ✓
-- [ ] All imports present at top of file
-- [ ] Import paths are correct (check tsconfig.json paths)
-- [ ] All types/interfaces defined
-- [ ] No placeholders like "// ... rest of code"
-- [ ] Code is syntactically valid
-- [ ] No incomplete functions or missing closing braces
-
-### Language ✓
-- [ ] All identifiers in English (variables, functions, types)
-- [ ] All comments in English
-- [ ] No non-English text in code
-
-### Task Alignment ✓
-- [ ] Followed task description exactly
-- [ ] Did NOT add features outside scope
-- [ ] For **feature tasks**: Did NOT run validation commands
-- [ ] For **feature tasks**: Did NOT create documentation/examples/tests
-- [ ] For **feature tasks**: Did NOT create config files
 
 ════════════════════════════════════════════════════════════════════════════════
 ## 💡 TIPS FOR SUCCESS

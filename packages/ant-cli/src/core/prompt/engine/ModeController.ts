@@ -182,6 +182,12 @@ export class ModeController {
         console.log(`[ModeController] Adding environment-specific injection: ${envPath}`);
       }
       
+      // ✅ NEW: Compact tool-calling rules (replaces verbose version)
+      if (task === 'code') {
+        injections.push(`${taskPrefix}/tool-calling-rules-compact`);
+        console.log(`[ModeController] Adding compact tool-calling rules`);
+      }
+      
       // Markdown file streaming format
       if (task === 'code') {
         injections.push(`${commonPrefix}/output-format-markdown`);
@@ -219,13 +225,7 @@ export class ModeController {
         injections.push(languageConfigPath);
       }
       
-      // ✅ REMOVED: modification-details and pre-output-check
-      // These injections were:
-      // 1. Duplicating content from base.md's currentCode section
-      // 2. Contradicting our <edit> tag strategy (encouraging full file rewrites)
-      // 3. Causing token waste by instructing LLM to copy entire files
       
-      // ✅ REMOVED: response injection (legacy, no longer needed with new streaming system)
     }
     
     return injections;
