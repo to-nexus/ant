@@ -290,8 +290,8 @@ export class SpecialTagTransformer {
       const isKorean = language === 'ko';
       
       let formatted = isKorean
-        ? `🔍 **환경 분석 완료**\n\n`
-        : `🔍 **Environment Analysis Complete**\n\n`;
+        ? `\n🔍 **환경 분석 완료**\n\n`
+        : `\n🔍 **Environment Analysis Complete**\n\n`;
       
       // Mode
       const modeEmoji = parsed.mode === 'generate' ? '✨' : parsed.mode === 'refactor' ? '🔧' : '📖';
@@ -312,15 +312,16 @@ export class SpecialTagTransformer {
         : `${envEmoji} **Environment**: ${parsed.environment}\n`;
       
       if (parsed.environmentReasoning) {
-        formatted += `   └ ${parsed.environmentReasoning}\n`;
+        formatted += `   └ ${parsed.environmentReasoning}\n\n`;
       }
       
-      return { text: formatted, consumed: true };
+      // ✅ consumed: false → Replace original tag with formatted text
+      return { text: formatted, consumed: false };
       
     } catch (error) {
       console.warn('[SpecialTagTransformer] Failed to parse detect tag:', error);
-      // Hide from chat on error
-      return { consumed: true };
+      // Show raw content on error (don't hide it)
+      return { consumed: false };
     }
   }
 }
