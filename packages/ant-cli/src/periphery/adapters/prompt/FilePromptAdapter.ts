@@ -22,10 +22,6 @@ Promise.all([
   fs.readFile(join(basePartialsPath, "architect-role.md"), "utf8")
     .then(content => Handlebars.registerPartial("base/architect-role", content))
     .catch(() => {}),
-  // ✅ NEW: Register git-diff template (base injections)
-  fs.readFile(join(baseInjectionsPath, "git-diff.md"), "utf8")
-    .then(content => Handlebars.registerPartial("base/injections/git-diff", content))
-    .catch(() => {})
 ]).catch(() => {});
 
 // ✅ Register code-specific base injections (conditionally used by code templates)
@@ -40,8 +36,22 @@ Promise.all([
   fs.readFile(join(codeBaseInjectionsPath, "design-document-guide.md"), "utf8")
     .then(content => Handlebars.registerPartial("code/base/injections/design-document-guide", content))
     .catch(() => {}),
-  fs.readFile(join(codeBaseInjectionsPath, "output-format-markdown.md"), "utf8")
-    .then(content => Handlebars.registerPartial("code/base/injections/output-format-markdown", content))
+  // ✅ Code job specific injections (RAG results)
+  fs.readFile(join(codeBaseInjectionsPath, "retrieved-code.md"), "utf8")
+    .then(content => Handlebars.registerPartial("code/base/injections/retrieved-code", content))
+    .catch(() => {}),
+  fs.readFile(join(codeBaseInjectionsPath, "reference-code.md"), "utf8")
+    .then(content => Handlebars.registerPartial("code/base/injections/reference-code", content))
+    .catch(() => {}),
+  fs.readFile(join(codeBaseInjectionsPath, "git-diff.md"), "utf8")
+    .then(content => Handlebars.registerPartial("code/base/injections/git-diff", content))
+    .catch(() => {})
+]).catch(() => {});
+
+// ✅ Register common base injections (used by both code and design jobs)
+Promise.all([
+  fs.readFile(join(baseInjectionsPath, "output-format-markdown.md"), "utf8")
+    .then(content => Handlebars.registerPartial("base/injections/output-format-markdown", content))
     .catch(() => {})
 ]).catch(() => {});
 
