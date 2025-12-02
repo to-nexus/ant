@@ -248,13 +248,23 @@ Always use build/test commands for verification.
 ════════════════════════════════════════════════════════════════════════════════
 
 {{#if referenceRequests}}
-## 📚 REFERENCE PROJECTS
+## 📚 REFERENCE PROJECTS (Available for search_reference_code tool)
 
 {{#each referenceRequests}}
 - **{{this.project}}**{{#if this.branch}} ({{this.branch}}){{/if}}
 {{/each}}
 
-Use `search_reference_code` tool with semantic queries. Read-only access.
+**CRITICAL:** You may ONLY search these reference projects listed above.
+- Use `search_reference_code` tool ONLY for these projects
+- Read-only access
+- If you need a project NOT listed above, you CANNOT access it
+
+════════════════════════════════════════════════════════════════════════════════
+{{else}}
+## 📚 REFERENCE PROJECTS
+
+**NONE available.** Do NOT use `search_reference_code` tool.
+All required information is in the current project codebase or design documents above.
 
 ════════════════════════════════════════════════════════════════════════════════
 {{/if}}

@@ -74,7 +74,7 @@ export async function codeGen(
   // - Code job (generate/refactor): YES tools
   const isExplainMode = state.codeMode === 'explain';
   const enableTools = state.codeMode !== undefined && !isExplainMode;
-  const tools = enableTools ? getAvailableTools() : undefined;
+  const tools = enableTools ? getAvailableTools(state) : undefined;
   
   if (isExplainMode) {
     console.log(`💡 [CodeGen] Explain mode - tools disabled (explanation only)`);
@@ -506,11 +506,13 @@ function generateFileTree(state: ArchitectGraphState): string | null {
 }
 
 /**
- * Get available tools
+ * Get available tools (filtered by state)
  */
-function getAvailableTools(): import('../../../../../core/ports/llm').ToolDefinition[] {
+function getAvailableTools(state: ArchitectGraphState): import('../../../../../core/ports/llm').ToolDefinition[] {
+  const hasReferences = state.referenceRequests && state.referenceRequests.length > 0;
+  
   // ✅ Return properly typed tool definitions
-  return [
+  const baseTools: import('../../../../../core/ports/llm').ToolDefinition[] = [
     {
       name: 'write_file',
       description: 'Create or overwrite a file with the given content',
@@ -642,8 +644,12 @@ function getAvailableTools(): import('../../../../../core/ports/llm').ToolDefini
         },
         required: ['command'],
       },
-    },
-    {
+    }
+  ];
+  
+  // ✅ Add search_reference_code tool ONLY if references are available
+  if (hasReferences) {
+    baseTools.push({
       name: 'search_reference_code',
       description: 'Search reference project using semantic search (vector DB). This is the ONLY way to access reference project code since you don\'t know the file paths. Describe what you need and relevant files will be returned with their content.',
       input_schema: {
@@ -664,7 +670,9 @@ function getAvailableTools(): import('../../../../../core/ports/llm').ToolDefini
         },
         required: ['project', 'query'],
       },
-    },
-  ];
+    });
+  }
+  
+  return baseTools;
 }
 

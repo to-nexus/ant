@@ -15,9 +15,17 @@ You are analyzing a task to generate semantic search keywords.
 - Mode: {{mode}}
 
 {{#if hasReferences}}
-## Reference Projects Available
+## 📚 Reference Projects Available
 
 {{referenceProjects}}
+
+**IMPORTANT:** You may ONLY generate keywords for these reference projects listed above.
+
+{{else}}
+## 📚 Reference Projects
+
+**NONE available.** Do NOT generate reference keywords.
+
 {{/if}}
 
 ## Guidelines
@@ -25,10 +33,13 @@ You are analyzing a task to generate semantic search keywords.
 Generate semantic search keywords for:
 
 1. **Main Codebase**: Keywords for searching THIS project's code
-2. **Reference Projects** (if needed): Keywords per reference project
+{{#if hasReferences}}
+2. **Reference Projects**: Keywords for each reference project listed above (ONLY if needed for this task)
+{{/if}}
 
 ## Output Format
 
+{{#if hasReferences}}
 ```json
 {
   "codebase": ["keyword1", "keyword2", ...],
@@ -38,6 +49,18 @@ Generate semantic search keywords for:
   }
 }
 ```
+
+**Note:** Only include reference project in `references` if you actually need it for this task. Empty object `{}` is acceptable.
+{{else}}
+```json
+{
+  "codebase": ["keyword1", "keyword2", ...],
+  "references": {}
+}
+```
+
+**CRITICAL:** `references` MUST be empty object `{}` since no reference projects are available.
+{{/if}}
 
 ## Examples
 
