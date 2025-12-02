@@ -149,8 +149,8 @@ const STORAGE_KEYS = {
   RUNNING_TASK: 'ant-ui:running-task',
   TASK_START_TIME: 'ant-ui:task-start-time',
   TASK_MODE: 'ant-ui:task-mode',
-  SELECTED_PROJECT: 'ant-ui:selected-project',
-  SELECTED_FEATURE: 'ant-ui:selected-feature',
+  SELECTED_PROJECT: 'ant-ui:selected-project',  // ✅ Will use sessionStorage
+  SELECTED_FEATURE: 'ant-ui:selected-feature',  // ✅ Will use sessionStorage
   SELECTED_AGENT: 'ant-ui:selected-agent',
   SELECTED_JOB_TYPE: 'ant-ui:selected-job-type',
   THEME: 'ant-ui:theme',
@@ -161,30 +161,39 @@ const STORAGE_KEYS = {
   DISMISSED_INTERRUPT_TIMESTAMP: 'ant-ui:dismissed-interrupt-timestamp',
 };
 
-// Helper functions for localStorage
+// ✅ Keys that should use sessionStorage (tab-specific)
+const SESSION_STORAGE_KEYS = new Set([
+  STORAGE_KEYS.SELECTED_PROJECT,
+  STORAGE_KEYS.SELECTED_FEATURE,
+]);
+
+// Helper functions for storage (localStorage or sessionStorage based on key)
 const saveToStorage = (key: string, value: any) => {
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    const storage = SESSION_STORAGE_KEYS.has(key) ? sessionStorage : localStorage;
+    storage.setItem(key, JSON.stringify(value));
   } catch (error) {
-    console.error('Failed to save to localStorage:', error);
+    console.error('Failed to save to storage:', error);
   }
 };
 
 const loadFromStorage = (key: string): any => {
   try {
-    const stored = localStorage.getItem(key);
-    return stored ? JSON.parse(stored) : undefined;
+    const storage = SESSION_STORAGE_KEYS.has(key) ? sessionStorage : localStorage;
+    const item = storage.getItem(key);
+    return item ? JSON.parse(item) : null;
   } catch (error) {
-    console.error('Failed to load from localStorage:', error);
-    return undefined;
+    console.error('Failed to load from storage:', error);
+    return null;
   }
 };
 
 const removeFromStorage = (key: string) => {
   try {
-    localStorage.removeItem(key);
+    const storage = SESSION_STORAGE_KEYS.has(key) ? sessionStorage : localStorage;
+    storage.removeItem(key);
   } catch (error) {
-    console.error('Failed to remove from localStorage:', error);
+    console.error('Failed to remove from storage:', error);
   }
 };
 

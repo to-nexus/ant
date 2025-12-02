@@ -76,6 +76,11 @@ export interface RetrieveOptions {
   useAST?: boolean;               // Use AST analysis (default: true)
   useImportGraph?: boolean;       // Use import graph (default: true)
   cache?: any;                    // Optional cache instance
+  
+  // ✅ NEW: Reference project support
+  referenceProject?: string;      // Reference another project (for cross-project context)
+  referenceBranch?: string;       // Optional branch for reference project
+  referenceWorkingDir?: string;   // Working directory of reference project
 }
 
 /**
@@ -86,6 +91,19 @@ export interface BatchResult {
   files: string[];
   code: string;
   estimatedTokens: number;
+}
+
+/**
+ * Reference context (cross-project reference)
+ */
+export interface ReferenceContext {
+  project: string;
+  branch: string;
+  files: Array<{ path: string; content: string }>;
+  stats: {
+    filesLoaded: number;
+    estimatedTokens: number;
+  };
 }
 
 /**

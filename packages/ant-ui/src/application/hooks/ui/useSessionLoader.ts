@@ -2,9 +2,10 @@ import { useEffect } from 'react';
 import { useStore } from '@/domain/store';
 
 /**
- * Restores user session from localStorage (project, feature)
+ * Restores user session from storage (project, feature)
  * Only runs after connection is established
  * ✅ Agent and work type are already restored during store initialization
+ * ✅ Project/Feature use sessionStorage (tab-specific)
  */
 export function useSessionLoader(connectionStatus: string) {
   useEffect(() => {
@@ -14,8 +15,9 @@ export function useSessionLoader(connectionStatus: string) {
     // Restore selected project and feature
     (async () => {
       try {
-        const savedProject = localStorage.getItem('ant-ui:selected-project');
-        const savedFeature = localStorage.getItem('ant-ui:selected-feature');
+        // ✅ Use sessionStorage for tab-specific state
+        const savedProject = sessionStorage.getItem('ant-ui:selected-project');
+        const savedFeature = sessionStorage.getItem('ant-ui:selected-feature');
 
         if (savedProject) {
           const projectId = JSON.parse(savedProject);

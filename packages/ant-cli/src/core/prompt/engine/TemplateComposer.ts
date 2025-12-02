@@ -68,7 +68,8 @@ export class TemplateComposer {
         designDoc: assembled.designDoc || '',
         lastSectionNumber: assembled.lastSectionNumber ?? 0,  // ✅ Last chapter number
         currentTask: assembled.currentTask || null,
-        projectPath: (context as any).projectPath || context.workingDir || '/path/to/project'
+        projectPath: (context as any).projectPath || context.workingDir || '/path/to/project',
+        referenceRequests: assembled.referenceRequests || []  // ✅ Reference projects for tool calling
       }
     );
     

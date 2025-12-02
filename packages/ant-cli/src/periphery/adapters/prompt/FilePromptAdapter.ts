@@ -73,7 +73,17 @@ export class FilePromptAdapter implements PromptPort {
     const usedVarsMatches = templateSource.match(/\{\{[\#\/]?(\w+)[^}]*\}\}/g);
     const usedVars = usedVarsMatches 
       ? [...new Set(usedVarsMatches.map(v => {
-          // Extract variable name from {{var}}, {{#if var}}, {{/if}}, etc.
+          // ✅ FIX: Extract actual variable name from conditionals
+          // {{#if hasExistingCode}} → extract "hasExistingCode", not "if"
+          // {{hasExistingCode}} → extract "hasExistingCode"
+          
+          // First, check if it's a conditional ({{#if varName}} or {{#unless varName}})
+          const conditionalMatch = v.match(/\{\{#(?:if|unless)\s+(\w+)/);
+          if (conditionalMatch) {
+            return conditionalMatch[1];  // Return the condition variable
+          }
+          
+          // Otherwise, extract first word after {{ or {{#
           const match = v.match(/\{\{[\#\/]?(\w+)/);
           return match ? match[1] : null;
         }).filter(Boolean))]

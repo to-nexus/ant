@@ -163,7 +163,7 @@ export class DocumentIndexer {
         title: params.title,
         project: params.project,
         feature: params.feature || 'default',  // ✅ Provide default
-        tags: params.tags || [],
+        tags: (params.tags || []).join(','),  // ✅ Convert array to string for ChromaDB
         version: params.version,
         createdAt: new Date().toISOString(),
         lastModified: new Date().toISOString(),

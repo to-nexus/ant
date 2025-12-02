@@ -5,11 +5,11 @@
 {{#if currentTask}}
 YOUR LINE BUDGET: Look for "MAX [N] lines" in task description below.
 
-**IMPORTANT FOR DUAL DESIGN (fe-system-design.md / be-system-design.md):**
-- Each document has its OWN independent line budget (NOT shared)
-- Frontend document: 120-750 lines MAX (based on complexity)
-- Backend document: 120-750 lines MAX (based on complexity)
-- Your task's line budget applies to YOUR specific document only
+**IMPORTANT: Document Type Detection**
+- **API Contract** (api-contract.md): 80-200 lines MAX (binding specification)
+- **Frontend** (fe-system-design.md): 150-750 lines MAX (consumer perspective)
+- **Backend** (be-system-design.md): 150-750 lines MAX (implementation perspective)
+- **Unified** (system-design.md): 150-750 lines MAX (single-tier projects)
 
 CHAPTER LIMIT based on budget:
 - Budget ≤ 60 lines → Create EXACTLY 1 chapter
@@ -39,6 +39,7 @@ STRUCTURE PER CHAPTER:
 **YOUR OUTPUT MUST FOLLOW THIS FORMAT:**
 
 **⚠️ IMPORTANT: Check your task description for the target file name!**
+- If description mentions "api-contract.md", use that file
 - If description mentions "fe-system-design.md", use that file
 - If description mentions "be-system-design.md", use that file
 - Otherwise, use "system-design.md"
@@ -57,7 +58,7 @@ STRUCTURE PER CHAPTER:
 ```
 
 **⚠️ CRITICAL INSTRUCTIONS:**
-1. **USE THE CORRECT FILE NAME** from your task description (fe-system-design.md, be-system-design.md, or system-design.md)
+1. **USE THE CORRECT FILE NAME** from your task description
 2. Start sections from {{add lastSectionNumber 1}}, {{add lastSectionNumber 2}}, etc.
 3. **END your output with metadata comment**: `<!-- LAST_SECTION: N -->` where N is your LAST section number
 4. Remove the old metadata line (it will be at the end of existing document)
@@ -71,20 +72,21 @@ STRUCTURE PER CHAPTER:
 **This is the first task for this document.**
 
 **⚠️ IMPORTANT: Check your task description for the target file name!**
-- If description mentions "Create fe-system-design.md", use `fe-system-design.md`
-- If description mentions "Create be-system-design.md", use `be-system-design.md`
-- Otherwise, use `system-design.md`
+- If description mentions "Create api-contract.md", use `api-contract.md` → **API Contract Document**
+- If description mentions "Create fe-system-design.md", use `fe-system-design.md` → **Frontend Design Document**
+- If description mentions "Create be-system-design.md", use `be-system-design.md` → **Backend Design Document**
+- Otherwise, use `system-design.md` → **System Design Document**
 
 **YOUR OUTPUT MUST FOLLOW THIS FORMAT:**
 ```
 <file path="outputs/design/[FILE-NAME-FROM-TASK-DESCRIPTION]">
 
-# [Frontend/Backend/System] Design Document: [Project Name]
+# [API Contract/Frontend Design/Backend Design/System Design] Document: [Project Name]
 
 ## 1. Overview
 ...
 
-## 2. Architecture
+## 2. [Topic]
 ...
 
 <!-- LAST_SECTION: 2 -->  <!-- ⚠️ This is an EXAMPLE for a 2-section document -->
@@ -92,8 +94,12 @@ STRUCTURE PER CHAPTER:
 ```
 
 **⚠️ CRITICAL INSTRUCTIONS:**
-1. **USE THE CORRECT FILE NAME** from your task description (fe-system-design.md, be-system-design.md, or system-design.md)
-2. **Use appropriate title**: "Frontend Design Document" for FE, "Backend Design Document" for BE, "System Design Document" for unified
+1. **USE THE CORRECT FILE NAME** from your task description
+2. **Use appropriate title**:
+   - `api-contract.md` → "API Contract Document"
+   - `fe-system-design.md` → "Frontend Design Document"
+   - `be-system-design.md` → "Backend Design Document"
+   - `system-design.md` → "System Design Document"
 3. **END your document with**: `<!-- LAST_SECTION: N -->` where N is your LAST section number
 
 {{/if}}
@@ -136,46 +142,28 @@ Balance completeness with conciseness - meet your line budget while covering all
 - For skipped sections, state: "Not Applicable - [reason] per PRD"
 
 ════════════════════════════════════════════════════════════════════════════════
-## 📐 DESIGN DOCUMENT STRUCTURE GUIDE
+## 📐 DOCUMENT TYPE GUIDE
 ════════════════════════════════════════════════════════════════════════════════
 
-**Structure your sections logically** (adapt based on project type):
+**⚠️ CRITICAL: Check your task description to determine document type!**
 
-### Overview Section (if first task)
-- System purpose (2-3 sentences)
-- High-level architecture (text diagram or 1 paragraph)
-- Core use cases (bullet list, ≤5 items)
+- `api-contract.md` → See injection: `api-contract-guide.md`
+- `fe-system-design.md` → See injection: `frontend-guide.md`
+- `be-system-design.md` → See injection: `backend-guide.md`
+- `system-design.md` → Use unified approach (all sections in one document)
 
-### Architecture Section
-- Pattern choice + rationale (e.g., "Layered - separates UI/logic/data")
-- Major components (list with 1-sentence responsibility each)
-- Data flow (how data moves through system)
+**The injection guide for your document type is automatically included above.**
 
-### Component/Module Design
-- List major components/modules (≤5)
-- For each: Purpose (1 sentence) + Interface (type definition ≤10 lines) + Dependencies
+**For unified `system-design.md` (single-tier projects):**
 
-### Data Models (SKIP if no backend)
-- List entities with fields ONLY. NO SQL. NO ORM code.
-- State relationships (e.g., "User 1:N Tasks")
-
-### API Contracts (SKIP if no API)
-- List endpoints with request/response types ONLY. NO handler code.
-
-### Technology Stack
-- Framework: [name + version]
-- Database: [name] (if applicable)
-- Key libraries: [list 3-5]
-- Rationale: "Per PRD" OR "Chosen because [1 sentence]"
-
-### Non-Functional Requirements (ONLY if PRD mentions)
-- Security: Auth mechanism (if needed)
-- Performance: Caching strategy (if needed)
-- Integration: External APIs (if needed)
-
-**⚠️ CRITICAL**: Number your sections based on what already exists in the document!
-- If this is the first task: Start with "## 1. Overview"
-- If continuing: Start with the next available number
+### Structure (adapt based on project type):
+1. **Overview**: System purpose, architecture, use cases
+2. **Architecture**: Pattern choice, major components, data flow
+3. **Component/Module Design**: List (≤5) with purpose + interface + dependencies
+4. **Data Models** (if database): Entities with fields, relationships
+5. **API Design** (if applicable): Endpoints with request/response types, auth
+6. **Technology Stack**: Framework + version, database, key libraries
+7. **Non-Functional Requirements** (if PRD mentions): Security, performance, integrations
 
 ════════════════════════════════════════════════════════════════════════════════
 ## 🚫 ABSOLUTELY FORBIDDEN (Unless PRD EXPLICITLY requests)
@@ -205,47 +193,8 @@ Balance completeness with conciseness - meet your line budget while covering all
 **Focus on WHAT to build and HOW components interact, NOT what you think SHOULD BE there.**
 
 ════════════════════════════════════════════════════════════════════════════════
-## ✍️ WRITING RULES
-════════════════════════════════════════════════════════════════════════════════
 
-### Absolute Rules:
-1. **Conciseness**: 1 sentence per point, NO paragraphs
-2. **Bullet Lists**: Use lists, not prose
-3. **No Code Implementations**: Only interfaces/signatures (≤10 lines each)
-4. **No Tutorials**: Design decisions only, NOT "What is React?" explanations
-5. **Chapter Count**: ONE task = ONE chapter (rarely TWO if task is large)
-6. **Line Budget**: System enforces via token limits - focus on high-value content
-
-### Forbidden:
-- ❌ Function bodies / implementations
-- ❌ React/Vue component code
-- ❌ SQL CREATE statements
-- ❌ Config file contents
-- ❌ "Let me explain..." tutorials
-
-### Allowed:
-- ✅ Interface/type definitions (brief)
-- ✅ API signatures (1 line, NO implementation)
-- ✅ Pseudocode/algorithms (high-level only)
-- ✅ Simple diagrams (ASCII/text)
-
-### Example - GOOD (concise):
-```
-✅ Architecture: Layered (Presentation/Domain/Infrastructure)
-✅ State: React Context API for global user state
-✅ API: REST endpoints - GET /tasks, POST /tasks, DELETE /tasks/:id
-✅ Database: PostgreSQL with tasks, users tables
-```
-
-### Example - BAD (verbose):
-```
-❌ "The architecture follows a layered pattern which separates concerns 
-into three distinct layers. The presentation layer handles UI rendering..."
-
-THIS IS A TUTORIAL, NOT A DESIGN!
-```
-
-════════════════════════════════════════════════════════════════════════════════
+**NOTE**: Universal writing rules and forbidden content are defined in your system prompt.
 
 **FINAL CHECKLIST**:
 1. ✅ Followed PRD constraints (tech stack, scope)?
@@ -258,3 +207,4 @@ THIS IS A TUTORIAL, NOT A DESIGN!
 8. ✅ Covered all critical architectural decisions and components?
 
 **If YES to all → Output using XML tags. If NO → Fix first!**
+

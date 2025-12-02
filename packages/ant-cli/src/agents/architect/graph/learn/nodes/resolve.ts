@@ -252,6 +252,8 @@ async function executeFileLearn(
               texts.push(content);
               await chatAPI.addReadComplete(relativePath);
             } else {
+              // ✅ CRITICAL: Complete reading status even when file is empty!
+              await chatAPI.addReadComplete(relativePath, 'File is empty');
               failedFiles.push(relativePath);
             }
           } catch (readError) {
@@ -270,9 +272,14 @@ async function executeFileLearn(
                       texts.push(fileContent);
                       await chatAPI.addReadComplete(filePath);
                       dirFilesRead++;
+                    } else {
+                      // ✅ CRITICAL: Complete reading status even when file is empty!
+                      await chatAPI.addReadComplete(filePath, 'File is empty');
                     }
                   } catch (fileError) {
                     console.warn(`   ⚠️  Failed to read file in directory: ${filePath}`);
+                    // ✅ CRITICAL: Complete reading status even on error!
+                    await chatAPI.addReadComplete(filePath, 'Read failed');
                     failedFiles.push(filePath);
                   }
                 }
@@ -283,6 +290,8 @@ async function executeFileLearn(
               }
             } catch (dirError) {
               console.warn(`   ⚠️  Failed to read directory: ${relativePath}`, dirError);
+              // ✅ CRITICAL: Complete reading status even on directory error!
+              await chatAPI.addReadComplete(relativePath, 'Not a file or directory');
               failedFiles.push(relativePath);
             }
           }

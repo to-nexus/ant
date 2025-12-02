@@ -103,7 +103,7 @@ export class CodebaseIndexer {
     } else {
       // Incremental: Only changed files
       console.log(`   📊 Incremental update (from ${indexStatus.lastCommit?.substring(0, 8)} to ${currentCommit.substring(0, 8)})`);
-      filesToIndex = await this.getChangedFiles(deps.git, options.workingDir, exclude);
+      filesToIndex = await this.getChangedFiles(deps.git, options.workingDir, exclude, indexStatus.lastCommit);
       indexingMode = 'incremental';
       
       if (filesToIndex.length === 0) {
@@ -297,27 +297,57 @@ export class CodebaseIndexer {
   }
 
   /**
-   * Get changed files (Git diff)
+   * Get changed files (Git diff between commits)
    */
   private async getChangedFiles(
     git: GitPort,
     workingDir: string,
-    exclude: string[]
+    exclude: string[],
+    fromCommit?: string
   ): Promise<string[]> {
     try {
-      const changedFiles = await git.getChangedFiles();
+      let changedFiles: string[];
       
-      // Filter by source extensions and exclude patterns
-      const sourceExtensions = [
+      if (fromCommit) {
+        // ✅ Get diff between commits (for incremental indexing)
+        const { default: simpleGit } = await import('simple-git');
+        const gitInstance = simpleGit({ baseDir: workingDir });
+        const diffSummary = await gitInstance.diffSummary([fromCommit, 'HEAD']);
+        
+        // Extract file paths from diff summary
+        changedFiles = diffSummary.files.map((file: any) => file.file);
+        console.log(`   📊 Git diff: ${changedFiles.length} file(s) changed between ${fromCommit.substring(0, 8)} and HEAD`);
+      } else {
+        // ✅ Fallback: Get working tree changes (for manual indexing)
+        changedFiles = await git.getChangedFiles();
+        console.log(`   📊 Working tree: ${changedFiles.length} file(s) changed`);
+      }
+      
+      // ✅ EXPANDED: Include source code, configs, docs, and project files
+      const indexableExtensions = [
+        // Source code
         '.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs', '.java',
         '.c', '.cpp', '.h', '.hpp', '.rb', '.php', '.swift', '.kt',
-        '.vue', '.svelte'
+        '.vue', '.svelte',
+        // Documentation
+        '.md', '.mdx', '.txt',
+        // Config files
+        '.json', '.yaml', '.yml', '.toml', '.ini', '.env',
+        // Build/Deploy
+        '.dockerfile', '.dockerignore'
+      ];
+      
+      // ✅ Also index files by exact name (without extension)
+      const indexableFileNames = [
+        'Dockerfile', 'Makefile', 'Rakefile', 'Gemfile', 'Procfile',
+        '.gitignore', '.npmrc', '.nvmrc', '.prettierrc', '.eslintrc'
       ];
       
       return changedFiles
         .filter((file: string) => {
           const ext = path.extname(file);
-          return sourceExtensions.includes(ext);
+          const basename = path.basename(file);
+          return indexableExtensions.includes(ext) || indexableFileNames.includes(basename);
         })
         .filter((file: string) => !this.shouldExclude(file, exclude))
         .map((file: string) => path.join(workingDir, file));
@@ -408,10 +438,25 @@ export class CodebaseIndexer {
     exclude: string[]
   ): Promise<string[]> {
     const results: string[] = [];
-    const sourceExtensions = [
+    
+    // ✅ EXPANDED: Include source code, configs, docs, and project files
+    const indexableExtensions = [
+      // Source code
       '.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs', '.java',
       '.c', '.cpp', '.h', '.hpp', '.rb', '.php', '.swift', '.kt',
-      '.vue', '.svelte'
+      '.vue', '.svelte',
+      // Documentation
+      '.md', '.mdx', '.txt',
+      // Config files
+      '.json', '.yaml', '.yml', '.toml', '.ini', '.env',
+      // Build/Deploy
+      '.dockerfile', '.dockerignore'
+    ];
+    
+    // ✅ Also index files by exact name (without extension)
+    const indexableFileNames = [
+      'Dockerfile', 'Makefile', 'Rakefile', 'Gemfile', 'Procfile',
+      '.gitignore', '.npmrc', '.nvmrc', '.prettierrc', '.eslintrc'
     ];
 
     const walk = (currentPath: string) => {
@@ -424,12 +469,13 @@ export class CodebaseIndexer {
       if (stat.isDirectory()) {
         const entries = fs.readdirSync(currentPath);
         for (const entry of entries) {
-          if (entry.startsWith('.')) continue;
+          if (entry.startsWith('.') && !indexableFileNames.includes(entry)) continue;  // ✅ Allow .gitignore etc
           walk(path.join(currentPath, entry));
         }
       } else if (stat.isFile()) {
         const ext = path.extname(currentPath);
-        if (sourceExtensions.includes(ext)) {
+        const basename = path.basename(currentPath);
+        if (indexableExtensions.includes(ext) || indexableFileNames.includes(basename)) {
           results.push(currentPath);
         }
       }

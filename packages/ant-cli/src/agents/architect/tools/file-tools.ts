@@ -41,10 +41,13 @@ export function createReadFileTool(gitPort: GitPort): Tool {
 
       try {
         // ✅ UI: Show reading status
-        await chatAPI.showChatStatus('reading', { file: path });
+        await chatAPI.showChatStatus('reading', { filePath: path });
         
         const content = await gitPort.readFile(path);
         if (!content) {
+          // ✅ CRITICAL: Complete reading status even on failure!
+          await chatAPI.showChatStatus('read', { filePath: path, error: true });
+          
           return {
             error: true,
             message: 'File is empty or does not exist',
@@ -54,8 +57,8 @@ export function createReadFileTool(gitPort: GitPort): Tool {
         
         const lines = content.split('\n');
         
-        // ✅ UI: Complete reading status (accumulated in ChatService)
-        // Note: Multiple read_file calls will accumulate, then ChatService shows 'read' summary
+        // ✅ UI: Complete reading status
+        await chatAPI.showChatStatus('read', { filePath: path });
         
         return {
           path,
@@ -64,6 +67,9 @@ export function createReadFileTool(gitPort: GitPort): Tool {
           size: content.length,
         };
       } catch (error: any) {
+        // ✅ CRITICAL: Complete reading status even on error!
+        await chatAPI.showChatStatus('read', { filePath: path, error: true });
+        
         return {
           error: true,
           message: `Failed to read file: ${error.message}`,
@@ -606,6 +612,15 @@ export function createSearchCodeTool(gitPort: GitPort): Tool {
         };
       } catch (error: any) {
         console.warn(`⚠️  Search failed: ${error.message}`);
+        
+        // ✅ CRITICAL: Complete grepping status even on error!
+        await chatAPI.showChatStatus('grepped', { 
+          strategy: 'grep',
+          filesCount: 0,
+          filesList: [],
+          error: error.message
+        });
+        
         return {
           error: true,
           message: `Search failed: ${error.message}`,

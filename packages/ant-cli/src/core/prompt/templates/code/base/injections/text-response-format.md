@@ -92,6 +92,7 @@ src/presentation/
 3. **Break for clarity, not decoration** - Line breaks for logical sections only
 4. **Markdown lists for 3+ items** - Use `-` or `1.` for structured lists
 5. **Avoid orphan punctuation** - Keep `(`, `)`, `,` attached to content
+6. **Use inline code for technical terms** - Single backticks for variables, file names, function names
 
 ⚠️ **CRITICAL: Parentheses Content Must Stay Inline**
 - ✅ CORRECT: `(aria-label, aria-expanded, aria-controls)`
@@ -160,13 +161,75 @@ RBAC
 
 ---
 
+### 💻 When to Use Inline Code vs Code Blocks
+
+**Use INLINE code (single backticks `code`):**
+- ✅ Variable names: `isCreating`, `error-message`
+- ✅ File names: `api.ts`, `LobbyPage.tsx`
+- ✅ Function/method names: `response.ok`, `fetchData()`
+- ✅ Environment variables: `VITE_BACKEND_URL`
+- ✅ Short expressions: `response.ok`, `status === 200`
+- ✅ HTML attributes: `aria-label`, `data-testid`
+- ✅ CSS classes: `btn-primary`, `flex-col`
+- ✅ Technical terms in a sentence
+
+**Use CODE BLOCKS (triple backticks or indentation):**
+- ✅ Multi-line code snippets (3+ lines)
+- ✅ Complete functions or classes
+- ✅ Configuration file contents
+- ✅ Shell commands with output
+
+**❌ CRITICAL: NEVER use code blocks in explanations or summaries!**
+
+Code blocks should ONLY be used for actual source code that users need to copy/paste, NOT for explanations.
+
+**❌ BAD Examples:**
+```
+❌ DON'T DO THIS:
+HTTP 상태 코드 검증 (
+```
+response.ok
+```
+)
+
+❌ DON'T DO THIS:
+에러 상태 UI 표시 (
+
+```error-message```
+
+컴포넌트)
+
+❌ DON'T DO THIS:
+로딩 상태 관리 (
+```
+isCreating
+```
+,
+```
+isLoading
+```
+)
+```
+
+**✅ CORRECT Examples:**
+```
+✅ DO THIS:
+HTTP 상태 코드 검증 (`response.ok`)
+에러 상태 UI 표시 (`error-message` 컴포넌트)
+로딩 상태 관리 (`isCreating`, `isLoading`)
+```
+
+**Golden Rule:** If it's ONE WORD or a SHORT PHRASE, use inline backticks ` ` `, NEVER triple backticks ` ``` `.
+
+---
+
 ### 🔧 When to Use Line Breaks
 
 **Use line breaks for:**
 - ✅ New paragraphs (logical topic changes)
 - ✅ Markdown list items (3+ items)
 - ✅ Section headers
-- ✅ Code blocks
+- ✅ Multi-line code blocks
 - ✅ Before/after emphasis blocks
 
 **DON'T use line breaks for:**
@@ -176,6 +239,7 @@ RBAC
 - ❌ After commas in inline lists
 - ❌ Between related inline items
 - ❌ To "decorate" or "emphasize" text
+- ❌ **Before or after inline code** - Keep `검증 (response.ok)` on one line
 
 **SPECIAL RULE for Parentheses:**
 If content inside `()` is too long (>100 chars), convert to a proper list instead:
@@ -215,7 +279,53 @@ Before sending your response, verify:
 - □ Line breaks only at logical boundaries
 - □ Commas inside parentheses have NO line breaks after them
 - □ Markdown lists used for 3+ items
+- □ **Single backticks for inline code** - No code blocks for single words/variables
+- □ **No line breaks before/after inline code** - Keep technical terms in sentences
 - □ Text flows naturally when read aloud
 
 **Remember:** Compact, readable text respects the user's time and screen space!
+
+---
+
+### 📝 Korean-Specific Formatting Rules
+
+When responding in Korean:
+
+**✅ GOOD - Inline code in Korean sentences:**
+```
+`api.ts`는 `VITE_BACKEND_URL`과 `VITE_BACKEND_WSURL`을 사용합니다.
+HTTP 상태 코드 검증(`response.ok`)을 추가했습니다.
+로딩 상태 관리(`isCreating`, `isLoading`)를 구현했습니다.
+```
+
+**❌ BAD - Excessive line breaks:**
+```
+api.ts
+는
+VITE_BACKEND_URL
+과
+VITE_BACKEND_WSURL
+을 사용
+
+HTTP 상태 코드 검증 (
+
+response.ok
+
+)
+
+로딩 상태 관리 (
+
+isCreating
+
+,
+
+isLoading
+
+)
+```
+
+**Critical Rule for Korean:**
+- Korean particles (은/는, 이/가, 을/를) MUST stay attached to the preceding word/code
+- ✅ CORRECT: `api.ts`는, `response.ok`을
+- ❌ WRONG: Breaking line after code and before particle
 

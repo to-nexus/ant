@@ -2,6 +2,13 @@ OUTPUT FORMAT:
 
 {{> code/base/injections/text-response-format}}
 
+**Text Formatting Rules:**
+- Use inline code for file names, variables, and technical terms: `api.ts`, `VITE_BACKEND_URL`
+- Write analysis in natural sentences without excessive line breaks
+- Keep related information on the same line
+- Example: "`api.ts` uses `VITE_BACKEND_URL` and `VITE_BACKEND_WSURL`"
+- NOT: "api.ts\n는\nVITE_BACKEND_URL\n과..." (excessive line breaks)
+
 First, analyze step by step (think through):
 - Is this a new project or existing project?
   - ⚠️ If "EXISTING CODEBASE DETECTED" was shown → EXISTING PROJECT
@@ -96,7 +103,7 @@ IMPORTANT:
 - **Setup Task Decision (CRITICAL):**
   - ✅ Create setup task ONLY if "NEW PROJECT (no existing codebase)" was shown above
   - ❌ DO NOT create setup task if "EXISTING CODEBASE DETECTED" was shown above
-  - ❌ DO NOT create setup task if codePreview showed ANY files (even 1 file = setup done)
+  - ❌ DO NOT create setup task if fileList shows ANY files (even 1 file = setup done)
   - ❌ DO NOT create setup task to "fix" missing entry points (that's a bug fix = feature task)
   - If EXISTING PROJECT with errors → create feature tasks to fix bugs, NOT setup
 - If NEW PROJECT: Setup task is typically needed (but verify no code exists!)
@@ -104,4 +111,37 @@ IMPORTANT:
 - Focus on USER-FACING features, not infrastructure (infrastructure = setup task)
 - Each task must have unique id (kebab-case)
 - **ALWAYS include the final verification task as the last task**
+
+**Output Format:**
+
+1. First, output tasks in <tasks> tags:
+```xml
+<tasks>
+{
+  "tasks": [...]
+}
+</tasks>
+```
+
+2. Then, output references (even if empty):
+```xml
+<references>
+[
+  { "project": "ant-pong-be", "branch": "feature/skeleton" }
+]
+</references>
+```
+
+**Reference extraction rules:**
+- If directive mentions: "ant-pong-be skeleton" → `{ "project": "ant-pong-be", "branch": "feature/skeleton" }`
+- If directive mentions: "ant-pong-be main" → `{ "project": "ant-pong-be", "branch": "main" }`
+- If directive mentions: "ant-pong-be" (no feature) → `{ "project": "ant-pong-be" }` (omit branch = use default)
+- Feature names automatically become `feature/{name}` branches
+- Common patterns:
+  - "참고: ant-pong-be/skeleton" → project: ant-pong-be, branch: feature/skeleton
+  - "@ref ant-pong-be skeleton" → project: ant-pong-be, branch: feature/skeleton
+  - "백엔드(ant-pong-be)의 skeleton 피처" → project: ant-pong-be, branch: feature/skeleton
+
+If no references mentioned: `<references>[]</references>`
+
 

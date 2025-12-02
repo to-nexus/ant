@@ -2,7 +2,6 @@ import { CodeMode, CodebaseProfile, TaskArtifacts } from "../../../../core/types
 import { GitPort, MemoryPort, LLMClient, CodebaseAnalyzerPort, ChunkPort, SessionPort, CommandPort, TaskQueueUpdatePort } from "../../../../core/ports";
 import { PromptEngine } from "../../../../core/prompt/engine";
 import { ProjectContext } from "../../types";
-import { ReferenceContext } from "../../../../core/codebase/ReferenceLoader";
 
 export interface IntegrationRequirement {
   name: string;
@@ -209,6 +208,8 @@ export interface ArchitectGraphState extends TaskArtifacts {
     chunk?: ChunkPort;
     session?: SessionPort;
     command?: CommandPort;
+    retriever?: import('../../../../core/codebase/CodebaseRetriever').CodebaseRetriever;  // ✅ NEW: For reference loading
+    vectorDB?: MemoryPort;  // ✅ NEW: Explicit vectorDB port (same as memory)
     workspaceResolver?: import('../../../../infrastructure/workspace/WorkspaceResolver').WorkspaceResolver;  // ✅ For path resolution
     kanbanUpdate?: TaskQueueUpdatePort;  // ✅ For real-time Kanban updates
     fileTreeUpdate?: import('../../../../core/ports').FileTreeUpdatePort;  // ✅ For real-time file tree updates
@@ -240,8 +241,8 @@ export interface ArchitectGraphState extends TaskArtifacts {
   overrideDirective?: string;  // Chat input as directive (highest priority)
   chatSource?: boolean;         // True if job started from chat (enables Chat SSE)
   
-  // ✅ Reference Contexts (cross-project references for API contracts, etc.)
-  referenceContexts?: ReferenceContext[];
+  // ✅ Reference Requests (registered in decompose, files loaded on-demand via tool calling)
+  referenceRequests?: Array<{project: string; branch?: string}>;
   
   // ✅ Replan Support (continue with new directive)
   directives?: string[];  // Multiple directives (newest first = highest priority)

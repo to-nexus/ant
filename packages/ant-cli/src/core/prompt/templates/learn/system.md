@@ -115,10 +115,27 @@ Use when user provides raw text, documentation, or no specific code is mentioned
 - Check if branch/codebase exists in Vector DB
 - If exists → Incremental (only changed files)
 - If not → Full indexing
+- **Use this as the default unless user explicitly indicates otherwise**
 
 ### `full`
 - Force full indexing regardless of Vector DB state
-- Use only when user explicitly says "전체", "모든", "all", "complete"
+- Delete all existing indexed data and re-index from scratch
+- **Use ONLY when user's intent clearly indicates:**
+  - **Re-indexing** (doing it again, despite already being indexed)
+  - **Forcing** (ignoring existing state, starting over)
+  - **Complete refresh** (removing old data, building new index)
+  - **From scratch** (not incremental, but full rebuild)
+
+**Semantic indicators for `full` mode:**
+- User mentions **"again"**, **"re-"**, **"force"**, **"refresh"**, **"rebuild"**
+- User wants to **override** existing indexed data
+- User explicitly says to **ignore** incremental updates
+- User wants **everything** re-indexed, not just changes
+
+**Important:** 
+- Just saying "learn the codebase" → `mode: "smart"` (default)
+- Saying "learn the codebase **again**" or "**re-index**" → `mode: "full"`
+- Saying "**force** full indexing" or "from **scratch**" → `mode: "full"`
 
 ---
 

@@ -20,6 +20,40 @@ import { CommonRenderStrategy } from '../../../../../core/streaming/strategies/C
 import { StreamBufferManager } from '../../../../../core/streaming/buffer/StreamBufferManager';
 import { TokenBudgetManager } from '../../../../../core/utils/tokenBudget';
 import { HistoryManager } from '../../../../../core/utils/historyManager';
+import { ReferenceContext } from '../../../../../core/codebase/types';
+
+/**
+ * Filter reference contexts for current task
+ * Only include references that are relevant to this specific task
+ */
+function filterReferencesForTask(
+  allReferences: ReferenceContext[] | undefined,
+  refsByTask: Map<string, Array<{project: string; branch?: string}>> | undefined,
+  taskId: string
+): ReferenceContext[] | undefined {
+  if (!allReferences || !refsByTask) {
+    return allReferences;  // No filtering needed
+  }
+  
+  const taskRefs = refsByTask.get(taskId);
+  if (!taskRefs || taskRefs.length === 0) {
+    return undefined;  // This task doesn't need any references
+  }
+  
+  // Filter references to only include those needed by this task
+  const filtered = allReferences.filter(ref => {
+    return taskRefs.some(taskRef => 
+      taskRef.project === ref.project && 
+      (!taskRef.branch || taskRef.branch === ref.branch)
+    );
+  });
+  
+  if (filtered.length > 0) {
+    console.log(`   📚 Filtered ${filtered.length}/${allReferences.length} reference(s) for task ${taskId}`);
+  }
+  
+  return filtered.length > 0 ? filtered : undefined;
+}
 
 export async function codeGen(
   state: ArchitectGraphState
@@ -252,7 +286,7 @@ async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       currentCode: state.code,  // Working tree code
       lessons: Array.isArray(state.lessons) ? state.lessons : undefined,  // ✅ Include lessons from unified search
       sessionContext: state.sessionContext,  // ✅ Include compressed session context
-      referenceContexts: state.referenceContexts,  // ✅ NEW: Include reference contexts
+      referenceRequests: state.referenceRequests,  // ✅ Reference projects (LLM uses read_reference_file tool)
       currentTask: {
         name: state.currentTask.name,
         type: state.currentTask.type,
@@ -608,6 +642,28 @@ function getAvailableTools(): import('../../../../../core/ports/llm').ToolDefini
           },
         },
         required: ['command'],
+      },
+    },
+    {
+      name: 'search_reference_code',
+      description: 'Search reference project using semantic search (vector DB). This is the ONLY way to access reference project code since you don\'t know the file paths. Describe what you need and relevant files will be returned with their content.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          project: {
+            type: 'string',
+            description: 'Reference project name (e.g., "ant-pong-be")',
+          },
+          query: {
+            type: 'string',
+            description: 'Detailed description of what code you need. Examples: "WebSocket gateway implementation and message handlers", "room management API endpoints and DTOs", "game state types and interfaces"',
+          },
+          maxFiles: {
+            type: 'number',
+            description: 'Maximum number of files to return (default: 5, max: 10)',
+          },
+        },
+        required: ['project', 'query'],
       },
     },
   ];

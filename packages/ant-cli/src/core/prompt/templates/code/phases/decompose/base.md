@@ -180,8 +180,12 @@ Description: "Update API_BASE_URL in config/api.ts from 'http://localhost:8080' 
 
 **Remember: The code exists. You're FIXING/COMPLETING it, not building from scratch!**
 
-Current code structure:
-{{codePreview}}
+{{#if fileList}}
+Existing files:
+```
+{{fileList}}
+```
+{{/if}}
 
 ════════════════════════════════════════════════════════════════════════════════
 
@@ -270,6 +274,40 @@ If the spec says:
 
 **Your job is to IMPLEMENT THE SPEC, not redesign it!**
 
+════════════════════════════════════════════════════════════════════════════════
+📚 REFERENCE REPOSITORY DETECTION
+════════════════════════════════════════════════════════════════════════════════
+
+**If the directive mentions external repositories to reference** (e.g., backend, API server, other projects):
+
+1. **Identify which repositories to reference**
+2. **Extract project name and branch** (if mentioned)
+3. **Output in structured format**
+
+**Examples of reference mentions:**
+- "ant-pong-be를 참조해서 프론트엔드를 수정"
+- "백엔드(ant-pong-be) API 응답 형식 확인"
+- "ant-pong-be/feature/skeleton 브랜치를 보고 통합"
+- "서버 프로젝트의 엔드포인트를 확인"
+
+**If references detected, output after tasks:**
+```xml
+<references>
+[
+  { "project": "ant-pong-be", "branch": "feature/skeleton" },
+  { "project": "other-service" }
+]
+</references>
+```
+
+**Rules:**
+- Include ONLY if directive explicitly mentions external projects
+- Use exact project names from directive
+- Include branch if mentioned, otherwise omit
+- Empty array if no references: `<references>[]</references>`
+
+════════════════════════════════════════════════════════════════════════════════
+
 GUIDELINES:
 
 ## 📋 Task Type Guidelines
@@ -283,7 +321,7 @@ GUIDELINES:
    - **When NOT to create (ABSOLUTE RULES):**
      - ❌ If "EXISTING CODEBASE DETECTED" message shown above
      - ❌ If mode is "refactor" or "explain"
-     - ❌ If codePreview shows ANY files (even one file means infrastructure exists)
+     - ❌ If fileList shows ANY files (even one file means infrastructure exists)
      - ❌ Feature additions with existing infrastructure
      - ❌ Bug fixes or refactoring
      - ❌ Fixing "entry point missing" or similar errors (create feature task instead)

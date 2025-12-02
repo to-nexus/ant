@@ -34,10 +34,15 @@ export class AnthropicLLMClient implements LLMClient {
   }
 
   async invoke(messages: Array<{ role: string; content: string }>): Promise<string> {
+    // ✅ Extract system message (Anthropic requires it as a separate parameter)
+    const systemMessage = messages.find(m => m.role === 'system');
+    const userMessages = messages.filter(m => m.role !== 'system');
+    
     const response = await this.client.messages.create({
       model: this.modelName,
       max_tokens: 16000,
-      messages: messages.map(m => ({
+      ...(systemMessage && { system: systemMessage.content }),  // ✅ Add system parameter if exists
+      messages: userMessages.map(m => ({
         role: m.role as 'user' | 'assistant',
         content: m.content,
       })),

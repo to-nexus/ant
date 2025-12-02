@@ -45,7 +45,11 @@ export class CodebaseRetriever {
   ): Promise<CodeContext & { lessons?: LessonResult[]; documents?: DocumentResult[] }> {
     const maxTokens = options.maxTokens || 100000;
     const exclude = [...this.defaultExclude, ...(options.exclude || [])];
-    const project = options.project || 'default';
+    
+    // ✅ Support reference projects (use referenceProject if provided, otherwise use project)
+    const project = options.referenceProject || options.project || 'default';
+    const actualWorkingDir = options.referenceWorkingDir || workingDir;
+    
     const mode = options.mode || 'generate';
     
     // ✅ Mode-aware adjustments
@@ -69,10 +73,13 @@ export class CodebaseRetriever {
     }
 
     console.log(`📋 Retrieving codebase + lessons (unified, mode: ${mode})...`);
+    if (options.referenceProject) {
+      console.log(`   📚 Reference project: ${options.referenceProject}${options.referenceBranch ? ` (${options.referenceBranch})` : ''}`);
+    }
 
     // Initialize import graph (if Git is available)
     if (deps.git) {
-      await this.initializeImportGraph(workingDir);
+      await this.initializeImportGraph(actualWorkingDir);
     }
 
     let codeFiles;
@@ -111,7 +118,7 @@ export class CodebaseRetriever {
         console.log(`   🔄 Vector DB empty - falling back to keyword search (hybrid mode)`);
         const keywordResults = await this.keywordStrategy.search(
           directive,
-          workingDir,
+          actualWorkingDir,
           { maxFiles: maxCodeFiles, exclude },
           deps.git
         );
@@ -131,15 +138,15 @@ export class CodebaseRetriever {
       // Fallback: Keyword search only (no Vector DB)
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       console.log(`   ⚠️  No Vector DB, falling back to keyword search`);
-      const keywordResults = await this.keywordStrategy.search(
-        directive,
-        workingDir,
-        { maxFiles: maxCodeFiles, exclude },
-        deps.git
-      );
-      
-      // Convert keyword results to FileWithSource format
-      codeFiles = keywordResults.map(r => ({
+        const keywordResults = await this.keywordStrategy.search(
+          directive,
+          actualWorkingDir,  // ✅ Use actualWorkingDir for reference support
+          { maxFiles: maxCodeFiles, exclude },
+          deps.git
+        );
+        
+        // Convert keyword results to FileWithSource format
+        codeFiles = keywordResults.map(r => ({
         path: r.path,
         sources: [r.source],
         priority: 'normal' as const,
@@ -152,7 +159,7 @@ export class CodebaseRetriever {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     const result = await this.fileLoader.load(
       codeFiles,
-      workingDir,
+      actualWorkingDir,  // ✅ Use actualWorkingDir for reference support
       deps.git,
       maxTokens
     );

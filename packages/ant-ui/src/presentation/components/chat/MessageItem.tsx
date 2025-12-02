@@ -110,8 +110,8 @@ function ContentBlock({ content, isStreaming }: ContentBlockProps) {
                         {children}
                       </code>
                     ) : (
-                      // ✅ overflow-x 제거, word-break로 줄바꿈 처리 (줄 단위 스크롤)
-                      <pre className="my-4 p-0 bg-transparent">
+                      // ✅ Reduced margin (my-2 instead of my-4) to prevent excessive line breaks
+                      <pre className="my-2 p-0 bg-transparent">
                         <code 
                           className="block px-4 py-3 rounded-lg bg-gray-50 dark:bg-gray-900 text-sm font-mono whitespace-pre-wrap break-words"
                           style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
@@ -239,8 +239,13 @@ function ContentBlock({ content, isStreaming }: ContentBlockProps) {
           <Loader2 className="w-4 h-4 text-purple-600 dark:text-purple-400 animate-spin" />
           <div className="flex-1 min-w-0">
             <div className="text-xs font-medium text-purple-800 dark:text-purple-300">
-              {content.content}
+              {content.metadata?.message || content.content || 'Indexing...'}
             </div>
+            {content.metadata?.detail && (
+              <div className="text-xs text-purple-600 dark:text-purple-400 mt-0.5">
+                {content.metadata.detail}
+              </div>
+            )}
           </div>
         </div>
       );
@@ -255,7 +260,7 @@ function ContentBlock({ content, isStreaming }: ContentBlockProps) {
           <Loader2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 animate-spin" />
           <div className="flex-1 min-w-0">
             <div className="text-xs font-medium text-emerald-800 dark:text-emerald-300">
-              {content.content}
+              {content.metadata?.message || content.content || 'Analyzing...'}
             </div>
           </div>
         </div>
@@ -271,7 +276,7 @@ function ContentBlock({ content, isStreaming }: ContentBlockProps) {
           <Loader2 className="w-4 h-4 text-amber-600 dark:text-amber-400 animate-spin" />
           <div className="flex-1 min-w-0">
             <div className="text-xs font-medium text-amber-800 dark:text-amber-300">
-              {content.content}
+              {content.metadata?.message || content.content || 'Storing...'}
             </div>
           </div>
         </div>

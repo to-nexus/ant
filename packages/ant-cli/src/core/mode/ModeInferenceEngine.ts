@@ -293,16 +293,28 @@ export class ModeInferenceEngine {
 }`;
 
     try {
-      const response = await llmClient.chat({
-        messages: [
+      const result = await llmClient.invokeStructured(
+        [
           { role: 'system', content: 'You are a code mode inference expert. Analyze the task and respond with ONLY valid JSON.' },
           { role: 'user', content: prompt }
         ],
-        temperature: 0.1,  // Low temperature for consistent results
-        maxTokens: 200
-      });
-      
-      const result = JSON.parse(response.content);
+        {
+          type: 'object',
+          properties: {
+            mode: { 
+              type: 'string',
+              enum: ['generate', 'refactor', 'explain'],
+              description: 'The inferred code mode'
+            },
+            reasoning: {
+              type: 'string',
+              description: 'Brief explanation for the mode choice'
+            }
+          },
+          required: ['mode', 'reasoning']
+        },
+        'mode_inference'
+      );
       
       return {
         mode: result.mode,
