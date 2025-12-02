@@ -2,6 +2,7 @@ import { LLMClient } from "../../../../../../core/ports";
 import { ArchitectGraphState, Task, TaskQueue } from "../../state";
 import { JobTimingManager } from "../../../common/timing/JobTimingManager";
 import { extractErrorDetails, createErrorViolation, logErrorHeader } from "../shared/errorHandler";
+import * as path from 'path';
 
 /**
  * Detect if directive contains error-related keywords
@@ -284,6 +285,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
             directive: mergedDirective,
             completedTasks: session.state.completedTasks || [],
             completedTasksDetails: session.state.completedTasksDetails || [],
+            referenceRequests: session.state.referenceRequests || [],  // ✅ Preserve reference requests (will be updated if LLM provides new ones)
             retries: 0,  // Reset retries for new tasks
             previousAttempts: [],
             enforcementHistory: [],
@@ -361,6 +363,15 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         console.log(`   Final:   ${tasksByType.final === 0 ? '✅' : '⬜'} ${tasksByType.final} remaining`);
         console.log(``);
         
+        // ✅ Log reference projects restoration
+        if (session.state.referenceRequests && session.state.referenceRequests.length > 0) {
+          console.log(`📚 Restored ${session.state.referenceRequests.length} reference project(s):`);
+          session.state.referenceRequests.forEach((ref: any) => {
+            console.log(`   - ${ref.project}${ref.branch ? ` (${ref.branch})` : ''}`);
+          });
+          console.log(``);
+        }
+        
         // ✅ Restore buffer from disk for interruption recovery
         try {
           const { StreamBufferManager } = await import('../../../../../../core/streaming/buffer/StreamBufferManager');
@@ -403,6 +414,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           directive: mergedDirective,  // ✅ Merged directives (newest first)
           overrideDirective: session.state.overrideDirective,  // ✅ Restore chat-initiated directive
           chatSource: session.state.chatSource,  // ✅ Restore chat source flag
+          referenceRequests: session.state.referenceRequests || [],  // ✅ Restore reference projects for tool calling
           _httpJobId: state._httpJobId,  // ✅ Explicitly preserve jobId for next node
           interruption: undefined  // ✅ CRITICAL: Clear interruption when resuming (job is now running again)
         } as any;
@@ -536,13 +548,6 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     console.log(`   ✅ Estimating signal sent\n`);
   }
   
-  // Starting fresh or replanning
-  if (isReplan) {
-    console.log('🔄 Replanning project based on additional directive...\n');
-  } else {
-    console.log('🆕 Starting new project - decomposing into tasks...\n');
-  }
-  
   // Prepare spec
   const specParts = [
     state.prd ? `PRD:\n${state.prd}` : null,
@@ -584,7 +589,8 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       completedTasksDetails: state.completedTasksDetails || [],  // ✅ Preserve for replan
       overrideDirective: state.overrideDirective,  // ✅ Preserve chat directive
       chatSource: state.chatSource,  // ✅ Preserve chat source flag
-      _httpJobId: state._httpJobId  // ✅ Explicitly preserve taskId for next node
+      _httpJobId: state._httpJobId,  // ✅ Explicitly preserve taskId for next node
+      referenceRequests: []  // ✅ No reference requests for fallback/error cases
     };
     
     // ✅ Save checkpoint for default task
@@ -638,7 +644,53 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // Check if this is a new project (no existing code)
   const isNewProject = !state.code || state.code.trim().length === 0;
   const hasExistingCode = Boolean(state.code && state.code.trim().length > 0);
-  const codePreview = state.code ? state.code.split('\n').slice(0, 20).join('\n') + '\n...' : '(empty)';
+  
+  // 🔍 DEBUG: Log actual values
+  console.log(`\n🔍 [Decompose] DEBUG:`);
+  console.log(`   state.code length: ${state.code?.length || 0}`);
+  console.log(`   state.files count: ${state.files?.length || 0}`);
+  console.log(`   isNewProject: ${isNewProject}`);
+  console.log(`   hasExistingCode: ${hasExistingCode}\n`);
+  
+  // Log status
+  if (isReplan) {
+    console.log(`\n🔄 Replanning with additional directive - re-decomposing tasks...\n`);
+  } else if (hasExistingCode) {
+    console.log(`\n📝 Existing codebase detected (${state.files?.length || 0} files, ${state.code?.length || 0} chars) - decomposing modification tasks...\n`);
+  } else {
+    console.log(`\n🆕 New project detected (0 files, ${state.code?.length || 0} chars) - decomposing implementation tasks...\n`);
+  }
+  
+  // ✅ Generate file list from state.files (preferred) or fallback to parsing state.code
+  let fileList = '(no files yet)';
+  
+  // ✅ PRIORITY 1: Use state.files (from resolve node, most reliable)
+  if (state.files && state.files.length > 0) {
+    fileList = state.files.map(f => f.path).join('\n');
+    console.log(`   📂 File list from state.files: ${state.files.length} file(s)`);
+  }
+  // ✅ FALLBACK: Parse from state.code (for backward compatibility)
+  else if (state.code && state.code.trim().length > 0) {
+    const fileMatches = state.code.match(/FILE:\s*([^\n]+)/g);
+    if (fileMatches && fileMatches.length > 0) {
+      const filePaths = fileMatches.map(m => m.replace('FILE:', '').trim());
+      fileList = filePaths.join('\n');
+      console.log(`   📂 File list from state.code parsing: ${filePaths.length} file(s)`);
+    } else {
+      console.log(`   ⚠️  No "FILE:" pattern found in state.code`);
+    }
+  }
+  
+  // ✅ DEBUG: Log final file list
+  if (fileList !== '(no files yet)') {
+    console.log(`   ✅ Final file list (${fileList.split('\n').length} files):`);
+    fileList.split('\n').slice(0, 10).forEach(f => console.log(`      - ${f}`));
+    if (fileList.split('\n').length > 10) {
+      console.log(`      ... and ${fileList.split('\n').length - 10} more`);
+    }
+  } else {
+    console.log(`   ⚠️  WARNING: No file list available! LLM will not see existing files!`);
+  }
   
   // ✅ NEW: Detect error in directive
   const hasErrorInDirective = detectErrorInDirective(state.directive);
@@ -657,7 +709,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   const basePrompt = await promptAdapter.render('code/phases/decompose/base', {
     spec,
     hasExistingCode,
-    codePreview,
+    fileList,  // ✅ Changed from codePreview to fileList
     // ✅ NEW: Mode information
     mode: state.codeMode,
     modeConfidence: (state as any).modeConfidence, // Optional field
@@ -760,6 +812,29 @@ ${rules}`;
       }
     }
     
+    // ✅ NEW: Extract references from LLM response (learn_command style)
+    let referenceRequests: Array<{project: string; branch?: string}> = [];
+    const referencesMatch = raw.match(/<references>\s*([\s\S]*?)\s*<\/references>/);
+    
+    if (referencesMatch && referencesMatch[1]) {
+      try {
+        const refsText = referencesMatch[1].trim();
+        referenceRequests = JSON.parse(refsText);
+        
+        if (referenceRequests.length > 0) {
+          console.log(`\n📚 LLM detected ${referenceRequests.length} reference project(s):`);
+          referenceRequests.forEach(ref => {
+            console.log(`   - ${ref.project}${ref.branch ? ` (${ref.branch})` : ''}`);
+          });
+        }
+      } catch (parseError) {
+        console.warn('⚠️  Failed to parse <references> tag:', parseError);
+        referenceRequests = [];
+      }
+    } else {
+      console.log(`   ℹ️  No <references> tag found - no external references needed\n`);
+    }
+    
     if (tasks.length === 0) {
       console.log('⚠️  Could not extract tasks from LLM response');
       console.log('Raw response preview:', raw.substring(0, 300), '...');
@@ -804,7 +879,9 @@ ${rules}`;
         completedTasksDetails: state.completedTasksDetails || [],  // ✅ Preserve for replan
         overrideDirective: state.overrideDirective,  // ✅ Preserve chat directive
         chatSource: state.chatSource,  // ✅ Preserve chat source flag
-        _httpJobId: state._httpJobId  // ✅ Explicitly preserve taskId for next node
+        _httpJobId: state._httpJobId,  // ✅ Explicitly preserve taskId for next node
+        referenceContexts: [],  // ✅ NEW: No references for empty task case
+        referenceRequests: []  // ✅ NEW: No reference requests for empty task case
       };
       
       // ✅ Save checkpoint for default task
@@ -877,6 +954,15 @@ ${rules}`;
     });
     console.log('');
     
+    // ✅ NEW: Register reference projects for semantic search
+    if (referenceRequests.length > 0) {
+      console.log(`\n📚 Reference project(s) registered:`);
+      referenceRequests.forEach(ref => {
+        console.log(`   - ${ref.project}${ref.branch ? ` (${ref.branch})` : ' (default branch)'}`);
+      });
+      console.log(`   💡 Relevant files will be retrieved from vector DB via search_reference_code tool\n`);
+    }
+    
     // ✨ Calculate estimating duration (decompose completed)
     const finalJobTiming = isReplan 
       ? useJobTiming  // Replan: use existing timing
@@ -892,7 +978,8 @@ ${rules}`;
       completedTasksDetails: state.completedTasksDetails || [],  // ✅ Preserve for replan
       overrideDirective: state.overrideDirective,  // ✅ Preserve chat directive
       chatSource: state.chatSource,  // ✅ Preserve chat source flag
-      _httpJobId: state._httpJobId  // ✅ Explicitly preserve taskId for next node
+      _httpJobId: state._httpJobId,  // ✅ Explicitly preserve taskId for next node
+      referenceRequests: referenceRequests  // ✅ Store reference requests (project + branch only)
     };
     
     // ✅ CRITICAL: Save checkpoint immediately after decompose
@@ -986,7 +1073,8 @@ ${rules}`;
       completedTasksDetails: state.completedTasksDetails || [],  // ✅ Preserve for replan
       overrideDirective: state.overrideDirective,  // ✅ Preserve chat directive
       chatSource: state.chatSource,  // ✅ Preserve chat source flag
-      _httpJobId: state._httpJobId  // ✅ Explicitly preserve taskId for next node
+      _httpJobId: state._httpJobId,  // ✅ Explicitly preserve taskId for next node
+      referenceRequests: []  // ✅ No reference requests for fallback/error cases
     };
     
     // ✅ Save checkpoint for fallback task

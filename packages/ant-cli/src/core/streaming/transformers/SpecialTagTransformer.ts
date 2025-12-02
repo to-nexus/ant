@@ -63,6 +63,12 @@ export class SpecialTagTransformer {
       pattern: /<tasks>\s*([\s\S]*?)\s*<\/tasks>/,
       transform: (match, language) => this.transformTasks(match, language)
     });
+    
+    // 4. <references> 태그 변환기
+    this.register({
+      pattern: /<references>\s*([\s\S]*?)\s*<\/references>/,
+      transform: (match, language) => this.transformReferences(match, language)
+    });
   }
   
   /**
@@ -190,82 +196,79 @@ export class SpecialTagTransformer {
   /**
    * <tasks> 태그 변환
    * 
-   * Tasks JSON을 보기 좋은 목록으로 포맷팅
+   * ✅ CRITICAL: Tasks는 채팅에 렌더링하지 않음!
+   * - Kanban 보드에 자동으로 표시됨
+   * - decompose 노드에서 이미 파싱하여 사용함
+   * - 채팅에서는 완전히 숨김 (raw text도 안 보여줌)
    */
   private transformTasks(match: RegExpMatchArray, language: UserLanguage): TransformResult {
+    // ✅ consumed: true → 채팅에 아무것도 출력하지 않음
+    // ✅ text: undefined → 변환된 텍스트도 없음
+    return { consumed: true };
+  }
+  
+  /**
+   * <references> 태그 변환
+   * 
+   * References JSON을 사용자 친화적인 메시지로 포맷팅
+   */
+  private transformReferences(match: RegExpMatchArray, language: UserLanguage): TransformResult {
     try {
-      // JSON 파싱
-      const tasksData = JSON.parse(match[1]);
-      const tasks = tasksData.tasks || tasksData;  // Support both { tasks: [...] } and [...]
+      const referencesText = match[1].trim();
       
-      if (!Array.isArray(tasks)) {
-        throw new Error('Tasks must be an array');
+      // Empty array check
+      if (referencesText === '[]') {
+        // Empty references - no output needed
+        return { consumed: true };
       }
       
-      const formatted = this.formatTasks(tasks, language);
+      const references = JSON.parse(referencesText);
+      
+      if (!Array.isArray(references) || references.length === 0) {
+        return { consumed: true };
+      }
+      
+      const formatted = this.formatReferences(references, language);
       return { text: formatted, consumed: true };
     } catch (error) {
-      console.warn('[SpecialTagTransformer] Failed to parse tasks:', error);
+      console.warn('[SpecialTagTransformer] Failed to parse references:', error);
       
-      // Fallback: JSON 형태로 표시
-      const isKorean = language === 'ko';
-      return {
-        text: isKorean
-          ? `**태스크 목록**\n\`\`\`json\n${match[1]}\n\`\`\``
-          : `**Task List**\n\`\`\`json\n${match[1]}\n\`\`\``,
-        consumed: true
-      };
+      // Fallback: just hide it (backend already logged it)
+      return { consumed: true };
     }
   }
   
   /**
-   * Tasks 배열을 사용자 친화적인 목록으로 포맷팅
+   * References 배열을 사용자 친화적인 메시지로 포맷팅
    */
-  private formatTasks(tasks: any[], language: UserLanguage): string {
+  private formatReferences(references: any[], language: UserLanguage): string {
     const isKorean = language === 'ko';
     
     let formatted = isKorean 
-      ? `**📋 태스크 분석 완료** (${tasks.length}개)\n\n`
-      : `**📋 Task Breakdown Complete** (${tasks.length} tasks)\n\n`;
+      ? `**📚 참고 레포지토리 등록**\n\n`
+      : `**📚 Reference Repositories Registered**\n\n`;
     
-    // 우선순위별로 정렬
-    const sortedTasks = [...tasks].sort((a, b) => {
-      const priorityA = a.priority ?? 999;
-      const priorityB = b.priority ?? 999;
-      return priorityA - priorityB;
+    formatted += isKorean
+      ? `다음 레포지토리의 코드를 참고하여 작업합니다:\n\n`
+      : `Will reference code from the following repositories:\n\n`;
+    
+    references.forEach((ref) => {
+      const project = ref.project || '(unknown)';
+      const branch = ref.branch;
+      
+      if (branch) {
+        formatted += `• **${project}** → \`${branch}\` 브랜치\n`;
+      } else {
+        formatted += `• **${project}** → 기본 브랜치\n`;
+      }
     });
     
-    sortedTasks.forEach((task, index) => {
-      const priority = task.priority !== undefined ? `P${task.priority}` : '';
-      const type = task.type ? `[${task.type.toUpperCase()}]` : '';
-      const name = task.name || task.title || `Task ${index + 1}`;
-      const description = task.description || '';
-      
-      // Task 헤더
-      formatted += `${index + 1}. **${name}**`;
-      
-      // 뱃지 추가 (priority, type)
-      const badges = [priority, type].filter(Boolean);
-      if (badges.length > 0) {
-        formatted += ` ${badges.map(b => `\`${b}\``).join(' ')}`;
-      }
-      
-      formatted += '\n';
-      
-      // Description (있으면)
-      if (description) {
-        // 짧으면 한 줄, 길면 줄바꿈
-        if (description.length > 80) {
-          formatted += `   ${description.substring(0, 100)}...\n`;
-        } else {
-          formatted += `   ${description}\n`;
-        }
-      }
-      
-      formatted += '\n';
-    });
+    formatted += '\n';
+    formatted += isKorean
+      ? `💡 필요시 \`search_reference_code\` 도구로 해당 레포의 코드를 검색합니다.`
+      : `💡 Will use \`search_reference_code\` tool to search code from these repositories.`;
     
-    return formatted.trim();
+    return formatted;
   }
 }
 

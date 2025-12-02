@@ -57,7 +57,8 @@ export async function loadContext(
         
         await chatAPI.showChatStatus('explored', { 
           filesCount: allFiles.length, 
-          totalFiles: allFiles.length 
+          totalFiles: allFiles.length,
+          filesList: allFiles  // ✅ Add file list for UI display
         });
         
         context.fileTree = buildFileTree(allFiles);

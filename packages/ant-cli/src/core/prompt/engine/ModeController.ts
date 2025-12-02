@@ -158,11 +158,6 @@ export class ModeController {
       injections.push(`${commonPrefix}/current-code`);
     }
     
-    // ✅ NEW: Reference codebases (cross-project references)
-    if (context.referenceContexts && context.referenceContexts.length > 0) {
-      injections.push(`${commonPrefix}/reference-codebases`);
-    }
-    
     // Phase-specific injections
     if (phase === 'plan') {
       // New project setup warning (ONLY for setup tasks!)

@@ -14,6 +14,13 @@ export default defineConfig({
       '@/shared': '/src/shared',
     },
   },
+  optimizeDeps: {
+    esbuildOptions: {
+      loader: {
+        '.js': 'jsx',  // Allow JSX in .js files
+      },
+    },
+  },
   server: {
     port: 4200,
     open: false,  // 브라우저 자동 열기 방지

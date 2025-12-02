@@ -186,11 +186,9 @@ export class PromptEngine {
         windowSize: number;
         compressionRatio: number;
       };
-      referenceContexts?: Array<{  // ✅ NEW
+      referenceRequests?: Array<{  // ✅ Reference projects for read_reference_file tool
         project: string;
-        branch: string;
-        files: Array<{ path: string; content: string }>;
-        stats: { filesLoaded: number; estimatedTokens: number };
+        branch?: string;
       }>;
       currentTask?: {
         name: string;

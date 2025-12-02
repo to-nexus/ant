@@ -263,13 +263,7 @@ export class XMLStreamParser implements IStreamParser {
         this.buffer = this.buffer.substring(endIdx + '</tasks>'.length);
         this.context.insideTasks = false;
         
-        // ✅ Emit complete tasks as ONE response chunk
-        const fullContent = `<tasks>${this.context.tasksContent}</tasks>`;
-        actions.push({
-          type: 'response',
-          data: { content: fullContent }
-        });
-        
+        // ✅ SKIP: Do NOT emit <tasks> to UI (used only for backend parsing)
         this.context.tasksContent = '';  // Reset
         
         continueParsingLoop = true;

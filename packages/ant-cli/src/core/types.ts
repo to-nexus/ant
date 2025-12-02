@@ -218,6 +218,9 @@ export interface SessionState {
   overrideDirective?: string;     // ✅ Chat-initiated directive (highest priority, from chat input)
   chatSource?: boolean;           // ✅ Flag indicating if job was started from chat interface
   
+  // ✅ Reference Projects (for tool calling)
+  referenceRequests?: Array<{ project: string; branch?: string }>;  // Reference projects for semantic search
+  
   // Task Queue State
   taskQueue?: any[];              // Remaining tasks (Task[] from state.ts)
   currentTask?: any;              // Currently executing task (Task from state.ts)

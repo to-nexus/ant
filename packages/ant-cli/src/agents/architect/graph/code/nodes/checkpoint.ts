@@ -25,7 +25,8 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
     completedTasksDetailsCount: state.completedTasksDetails?.length ?? 0,
     completedTasksDetailsIds: state.completedTasksDetails?.map(t => t.id) ?? [],
     currentTask: state.currentTask?.name,
-    queueSize: state.taskQueue?.size() ?? 0
+    queueSize: state.taskQueue?.size() ?? 0,
+    referenceRequestsCount: state.referenceRequests?.length ?? 0  // ✅ DEBUG: Check if references are present
   });
   
   try {
@@ -59,6 +60,7 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       directives: directivesArray,  // ✅ Save directives array (newest first)
       overrideDirective: state.overrideDirective,  // ✅ Save chat-initiated directive
       chatSource: state.chatSource,  // ✅ Save chat source flag
+      referenceRequests: state.referenceRequests || [],  // ✅ Save reference requests for tool calling
     };
     
     // ✅ Include jobId and jobTiming if present

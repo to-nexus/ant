@@ -308,6 +308,46 @@ Always use build/test commands for verification.
 
 ════════════════════════════════════════════════════════════════════════════════
 
+{{#if referenceRequests}}
+## 📚 REFERENCE PROJECTS AVAILABLE
+
+The following reference projects are registered and searchable:
+
+{{#each referenceRequests}}
+- **{{this.project}}**{{#if this.branch}} (branch: {{this.branch}}){{/if}}
+{{/each}}
+
+**How to access reference project code:**
+
+Use the `search_reference_code` tool with a descriptive query. The tool will search the vector database and return relevant code files.
+
+**Example:**
+```xml
+<tool_use>
+  <name>search_reference_code</name>
+  <parameters>
+    <project>ant-pong-be</project>
+    <query>WebSocket gateway implementation and message handlers for game events</query>
+  </parameters>
+</tool_use>
+```
+
+**Query examples:**
+- "API endpoints for room management"
+- "DTO types for game state and player data"
+- "WebSocket message types and event handlers"
+- "Database models and entity definitions"
+
+**Important:**
+- ✅ Use semantic search with descriptive queries
+- ✅ The tool automatically finds and returns relevant files with their content
+- ✅ You don't need to know exact file paths
+- ❌ DON'T modify reference project files (read-only)
+- ❌ DON'T assume API structure - always search to verify
+
+════════════════════════════════════════════════════════════════════════════════
+{{/if}}
+
 ## 📂 EXISTING FILES
 
 {{#if currentCode}}

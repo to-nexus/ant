@@ -11,31 +11,33 @@
 Use `<file>` tag:
 
 ```xml
-<file path="outputs/design/system-design.md">
-# System Design Document
+<file path="outputs/design/[FILENAME]">
+# [Document Type] Document: [Project Name]
 
 ## 1. Overview
 ...
 
-## 2. Architecture
-...
+<!-- LAST_SECTION: 1 -->
 </file>
 ```
 
+**Filename** based on task description:
+- "api-contract.md" → `api-contract.md`
+- "fe-system-design.md" → `fe-system-design.md`
+- "be-system-design.md" → `be-system-design.md`
+- Otherwise → `system-design.md`
+
 ### Scenario 2: Appending Content (Continuation Task)
 
-Use `<append>` tag. **IMPORTANT**: Continue section numbering from existing document!
+Use `<append>` tag:
 
 ```xml
-<append path="outputs/design/system-design.md">
-## 5. Component Design    <!-- ⚠️ Number depends on existing sections! -->
+<append path="outputs/design/[FILENAME]">
+## N. [Topic]    <!-- ⚠️ N = lastSectionNumber + 1 -->
 
-### 5.1 TaskManager
-- Purpose: CRUD operations for tasks
-- Interface: { getTasks(), addTask(), deleteTask() }
-- Dependencies: Database, ValidationService
+...
 
-<!-- LAST_SECTION: 5 -->
+<!-- LAST_SECTION: N -->
 </append>
 ```
 
@@ -65,9 +67,34 @@ Use `<edit>` tag with `<search>` and `<replace>`:
 ════════════════════════════════════════════════════════════════════════════════
 
 ### Path Requirements
+
+**CRITICAL: Document type determines path!**
+
+**API Contract Document:**
+- ✅ Path MUST be: `outputs/design/api-contract.md`
+- ✅ Used for Contract-First projects (dual design)
+- ✅ Written BEFORE fe-system-design.md and be-system-design.md
+
+**Frontend Design Document:**
+- ✅ Path MUST be: `outputs/design/fe-system-design.md`
+- ✅ Used for Contract-First projects (dual design)
+- ✅ Written AFTER api-contract.md
+
+**Backend Design Document:**
+- ✅ Path MUST be: `outputs/design/be-system-design.md`
+- ✅ Used for Contract-First projects (dual design)
+- ✅ Written AFTER api-contract.md
+
+**Unified Design Document:**
 - ✅ Path MUST be: `outputs/design/system-design.md`
-- ✅ All tasks write to the SAME file
-- ❌ DO NOT create multiple design documents
+- ✅ Used for single-tier projects (frontend-only, backend-only, or tightly coupled fullstack)
+
+**How to determine which path to use:**
+- Check your task description for file name mention (e.g., "Create api-contract.md")
+- API Contract tasks → `api-contract.md`
+- Frontend tasks → `fe-system-design.md`
+- Backend tasks → `be-system-design.md`
+- No mention of dual design → `system-design.md`
 
 ### Tag Selection
 - ✅ Use `<file>` for first task (creating new document)
@@ -100,46 +127,34 @@ If you need to perform multiple operations, use multiple XML tags:
 ## Common Mistakes to Avoid
 ════════════════════════════════════════════════════════════════════════════════
 
-❌ **MISTAKE 1: Outputting text outside XML tags**
+❌ **Text outside XML tags**
 ```
-Here's the design document:
-
-<file path="...">
-...
-</file>
+Here's the document:  ← BAD!
+<file path="...">...</file>
 ```
 
-✅ **CORRECT: Only XML tags**
-```
-<file path="...">
-...
-</file>
-```
-
-❌ **MISTAKE 2: Using markdown code fences inside XML**
+❌ **Markdown code fences inside XML**
 ```xml
 <file path="...">
-```markdown
+```markdown  ← BAD!
 # Title
 ```
 </file>
 ```
 
-✅ **CORRECT: Direct markdown inside XML**
+❌ **Wrong path**
 ```xml
-<file path="...">
-# Title
+<file path="design.md">  ← BAD! Missing outputs/design/
+```
+
+✅ **CORRECT**:
+```xml
+<file path="outputs/design/api-contract.md">
+# API Contract Document
+
+## 1. Overview
+...
 </file>
-```
-
-❌ **MISTAKE 3: Wrong path**
-```xml
-<file path="design.md">
-```
-
-✅ **CORRECT: Standard path**
-```xml
-<file path="outputs/design/system-design.md">
 ```
 
 ════════════════════════════════════════════════════════════════════════════════
@@ -148,11 +163,19 @@ Here's the design document:
 
 Before outputting, verify:
 - ✅ Used correct XML tag (`<file>`, `<append>`, or `<edit>`)?
-- ✅ Path is `outputs/design/system-design.md`?
+- ✅ Path matches document type?
+  - API Contract → `outputs/design/api-contract.md`
+  - Frontend → `outputs/design/fe-system-design.md`
+  - Backend → `outputs/design/be-system-design.md`
+  - Unified → `outputs/design/system-design.md`
+- ✅ File name matches task description?
 - ✅ NO text outside XML tags?
 - ✅ NO markdown code fences inside XML?
 - ✅ Content is valid markdown?
 - ✅ Used `<append>` if continuing existing document?
+- ✅ Section numbering continues from last section?
+- ✅ Added `<!-- LAST_SECTION: N -->` at end?
 
 **If YES to all → Output. If NO → Fix first!**
+
 

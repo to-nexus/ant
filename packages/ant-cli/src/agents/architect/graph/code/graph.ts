@@ -254,6 +254,9 @@ export function buildCodeGraph() {
       evaluationReport: null as any,
       lessons: null as any,
       
+      // Reference Projects (for cross-project tool calling)
+      referenceRequests: null as any,
+      
       // Results
       branch: null as any,
       filesWritten: null as any,

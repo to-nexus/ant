@@ -129,7 +129,7 @@ export class ChatAPIClient {
    * - Auto-merge or disappear based on next content type (handled by ChatService)
    */
   async showChatStatus(
-    type: 'placeholder' | 'exploring' | 'explored' | 'grepping' | 'grepped' | 'reading' | 'read' | 'thinking' | 'indexing' | 'indexed' | 'analyzing' | 'analyzed' | 'storing' | 'stored',
+    type: 'placeholder' | 'exploring' | 'explored' | 'grepping' | 'grepped' | 'reading' | 'read' | 'thinking' | 'indexing' | 'indexed' | 'analyzing' | 'analyzed' | 'storing' | 'stored' | 'searching_reference' | 'searched_reference',
     metadata?: Record<string, any>
   ): Promise<void> {
     if (!this.enabled) return;
@@ -242,6 +242,23 @@ export class ChatAPIClient {
             content = `❌ Storage Failed: ${storedError}`;
           } else {
             content = `✅ Stored: ${storedMsg ?? 'lesson successfully'}`;
+          }
+          break;
+        case 'searching_reference':
+          const refProject = metadata?.project ?? 'reference project';
+          const refQuery = metadata?.query ?? '';
+          content = refQuery 
+            ? `🔍 Searching ${refProject}: "${refQuery}"...`
+            : `🔍 Searching ${refProject}...`;
+          break;
+        case 'searched_reference':
+          const searchedProject = metadata?.project ?? 'reference project';
+          const searchedFiles = metadata?.filesCount ?? 0;
+          const searchedError = metadata?.error;
+          if (searchedError) {
+            content = `❌ Search Failed (${searchedProject}): ${searchedError}`;
+          } else {
+            content = `✅ Found ${searchedFiles} file(s) in ${searchedProject}`;
           }
           break;
         default:

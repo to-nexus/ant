@@ -221,6 +221,121 @@ export class ArtifactService {
   }
 
   /**
+   * Load design documents for Code Job based on environment
+   * 
+   * Strategy:
+   * - Frontend: api-contract.md + (fe-system-design.md OR system-design.md)
+   * - Backend: api-contract.md + (be-system-design.md OR system-design.md)
+   * - Unknown: api-contract.md + all available design docs
+   * 
+   * Returns: { apiContract?, feDesign?, beDesign?, unifiedDesign? }
+   */
+  static async loadDesignDocuments(
+    context: ProjectContext,
+    gitPort: GitPort,
+    environment?: 'frontend' | 'backend' | 'unknown'
+  ): Promise<{
+    apiContract?: string;
+    feDesign?: string;
+    beDesign?: string;
+    unifiedDesign?: string;
+  }> {
+    const featurePath = WorkspacePathResolver.resolveFeaturePath(context);
+    const designPath = path.join(featurePath, "outputs/design");
+    
+    const result: {
+      apiContract?: string;
+      feDesign?: string;
+      beDesign?: string;
+      unifiedDesign?: string;
+    } = {};
+
+    // ✅ ALWAYS try to load api-contract.md (if exists)
+    const apiContractPath = path.join(designPath, 'api-contract.md');
+    if (await gitPort.fileExists(apiContractPath)) {
+      const content = await gitPort.readFile(apiContractPath);
+      if (content) {
+        result.apiContract = content;
+        console.log(`📄 [ArtifactService] Loaded api-contract.md for ${environment || 'unknown'} environment`);
+      }
+    }
+
+    // ✅ Load environment-specific design documents
+    if (environment === 'frontend') {
+      // Frontend: Load fe-system-design.md or fallback to system-design.md
+      const feDesignPath = path.join(designPath, 'fe-system-design.md');
+      if (await gitPort.fileExists(feDesignPath)) {
+        const content = await gitPort.readFile(feDesignPath);
+        if (content) {
+          result.feDesign = content;
+          console.log(`📄 [ArtifactService] Loaded fe-system-design.md`);
+        }
+      } else {
+        // Fallback: system-design.md
+        const unifiedPath = path.join(designPath, 'system-design.md');
+        if (await gitPort.fileExists(unifiedPath)) {
+          const content = await gitPort.readFile(unifiedPath);
+          if (content) {
+            result.unifiedDesign = content;
+            console.log(`📄 [ArtifactService] Loaded system-design.md (frontend fallback)`);
+          }
+        }
+      }
+    } else if (environment === 'backend') {
+      // Backend: Load be-system-design.md or fallback to system-design.md
+      const beDesignPath = path.join(designPath, 'be-system-design.md');
+      if (await gitPort.fileExists(beDesignPath)) {
+        const content = await gitPort.readFile(beDesignPath);
+        if (content) {
+          result.beDesign = content;
+          console.log(`📄 [ArtifactService] Loaded be-system-design.md`);
+        }
+      } else {
+        // Fallback: system-design.md
+        const unifiedPath = path.join(designPath, 'system-design.md');
+        if (await gitPort.fileExists(unifiedPath)) {
+          const content = await gitPort.readFile(unifiedPath);
+          if (content) {
+            result.unifiedDesign = content;
+            console.log(`📄 [ArtifactService] Loaded system-design.md (backend fallback)`);
+          }
+        }
+      }
+    } else {
+      // Unknown environment: Load all available (for decompose phase)
+      const feDesignPath = path.join(designPath, 'fe-system-design.md');
+      const beDesignPath = path.join(designPath, 'be-system-design.md');
+      const unifiedPath = path.join(designPath, 'system-design.md');
+      
+      if (await gitPort.fileExists(feDesignPath)) {
+        const content = await gitPort.readFile(feDesignPath);
+        if (content) {
+          result.feDesign = content;
+          console.log(`📄 [ArtifactService] Loaded fe-system-design.md (unknown env)`);
+        }
+      }
+      
+      if (await gitPort.fileExists(beDesignPath)) {
+        const content = await gitPort.readFile(beDesignPath);
+        if (content) {
+          result.beDesign = content;
+          console.log(`📄 [ArtifactService] Loaded be-system-design.md (unknown env)`);
+        }
+      }
+      
+      if (await gitPort.fileExists(unifiedPath)) {
+        const content = await gitPort.readFile(unifiedPath);
+        if (content) {
+          result.unifiedDesign = content;
+          console.log(`📄 [ArtifactService] Loaded system-design.md (unknown env)`);
+        }
+      }
+    }
+
+    return result;
+  }
+
+  /**
    * Write report file
    */
   static async writeReportFile(

@@ -256,95 +256,252 @@ Input: "Design full-stack e-commerce platform with product catalog, cart, checko
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-## 🔀 DUAL DESIGN MODE: Frontend + Backend Separation
+## 🔀 CONTRACT-FIRST DESIGN: Frontend + Backend Separation
 
-**IF the project requires BOTH distinct Frontend AND Backend components:**
+**⚡ CRITICAL: When project has BOTH Frontend AND Backend, use 3-PHASE approach:**
 
-### Detection Criteria
+### Detection Criteria (Dual Design Required)
 - Project has BOTH UI requirements AND backend/database requirements
 - Mentions "SPA + API server", "React frontend with Express backend", or similar
-- Has API endpoints AND UI components
+- Has REST/GraphQL/WebSocket API endpoints AND UI components
 - Explicitly separates frontend and backend concerns
 
-### Task Breakdown Strategy for Dual Design
+**IF detected → Use CONTRACT-FIRST 3-PHASE approach below**
+**ELSE → Use unified `system-design.md` (standard mode, line 183-254)**
 
-**CRITICAL: Each document (FE and BE) gets its OWN independent line budget!**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-**Analyze Frontend complexity separately:**
-- Simple frontend (1-3 pages, basic state): 150-250 lines
-- Medium frontend (4-6 pages, complex state): 300-500 lines
-- Complex frontend (7+ pages, advanced patterns): 600-1000 lines
+### 📋 CONTRACT-FIRST 3-PHASE STRATEGY
 
-**Analyze Backend complexity separately:**
-- Simple backend (CRUD API, 1-3 tables): 150-250 lines
-- Medium backend (auth, business logic, 4-6 tables): 300-500 lines
-- Complex backend (multi-service, complex data, 7+ tables): 600-1000 lines
+**Philosophy: API Contract is the SINGLE SOURCE OF TRUTH**
 
-**Create SEPARATE task groups for FE and BE:**
+**PHASE 1 (Priority 200-209): API Contract Definition** → `api-contract.md`
+**PHASE 2 (Priority 210-229): Frontend Implementation** → `fe-system-design.md`
+**PHASE 3 (Priority 230-249): Backend Implementation** → `be-system-design.md`
 
-**CRITICAL RULE: Group FE tasks together (priorities 210-229), then BE tasks (priorities 230-249)**
+**⚠️ CRITICAL EXECUTION ORDER:**
+1. **Contract FIRST** (defines interface)
+2. **Frontend SECOND** (consumes contract)
+3. **Backend LAST** (implements contract)
 
-Example: Medium Frontend (300 lines, 2 tasks) + Medium Backend (330 lines, 2 tasks)
+This ensures FE and BE are ALWAYS aligned!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### PHASE 1: API Contract Definition (Priority 200-209)
+
+**Goal: Define ALL communication interfaces between FE and BE**
+
+**Budget: 80-200 lines** (scale based on API complexity)
+
+**Simple API (1-5 endpoints, basic CRUD)**: 80-100 lines → 1 task
+**Medium API (6-15 endpoints, auth, WebSocket)**: 120-150 lines → 1-2 tasks
+**Complex API (16+ endpoints, multiple services)**: 180-200 lines → 2 tasks
+
+**Example: Simple API (1 task)**
+```json
+{
+  "id": "design-api-contract",
+  "name": "API Contract: Complete Specification",
+  "description": "Create api-contract.md with: REST endpoints (all methods, paths, request/response DTOs with EXACT field names and types), WebSocket events (if applicable), error response format, authentication scheme. This is the BINDING CONTRACT for both FE and BE. MAX 100 lines!",
+  "priority": 200
+}
+```
+
+**Example: Complex API (2 tasks)**
 ```json
 {
   "tasks": [
     {
-      "id": "design-fe-overview",
-      "name": "Frontend Design: Overview & Architecture",
-      "description": "Create fe-system-design.md with: System overview, component architecture, routing, state management. MAX 150 lines! (FE total budget: 300 lines)",
+      "id": "design-api-contract-core",
+      "name": "API Contract: Core Endpoints & Auth",
+      "description": "Create api-contract.md with: Authentication endpoints (login, register, refresh), core resource endpoints (users, main entities), request/response DTOs with EXACT types. MAX 100 lines! (Total API contract budget: 180 lines)",
+      "priority": 200
+    },
+    {
+      "id": "design-api-contract-extended",
+      "name": "API Contract: Extended Features & WebSocket",
+      "description": "Append to api-contract.md with: Extended feature endpoints, WebSocket event specifications, error response format, rate limiting. MAX 80 lines! (Total API contract budget: 180 lines, currently ~100 after task 1)",
+      "priority": 205
+    }
+  ]
+}
+```
+
+**REQUIRED SECTIONS in api-contract.md:**
+1. **REST API Endpoints** (method, path, request DTO, response DTO, status codes)
+2. **WebSocket Events** (if applicable: event names, payload schemas)
+3. **Shared Type Definitions** (DTOs, enums, common types)
+4. **Authentication** (token format, headers, refresh flow)
+5. **Error Response Format** (standard error structure)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### PHASE 2: Frontend Implementation (Priority 210-229)
+
+**Goal: Design FE architecture that CONSUMES api-contract.md**
+
+**Budget: 150-750 lines** (scale based on FE complexity)
+
+**Simple FE (1-3 pages, basic state)**: 150-250 lines → 1-2 tasks
+**Medium FE (4-6 pages, complex state)**: 300-500 lines → 2-3 tasks
+**Complex FE (7+ pages, advanced patterns)**: 600-750 lines → 3-4 tasks
+
+**Example: Medium FE (2 tasks)**
+```json
+{
+  "tasks": [
+    {
+      "id": "design-fe-architecture",
+      "name": "Frontend: Architecture & API Integration",
+      "description": "Create fe-system-design.md with: System overview, component architecture, routing structure, state management, **API client layer (MUST USE api-contract.md types - import DTOs, create type-safe API client)**. MAX 250 lines! (FE total budget: 450 lines)",
       "priority": 210
     },
     {
-      "id": "design-fe-api-ui",
-      "name": "Frontend Design: API Integration & UI",
-      "description": "Append to fe-system-design.md with: API integration layer (DTOs, endpoints - consumer view), UI/UX design, styling approach. MAX 150 lines! (FE total budget: 300 lines, currently ~150 after task 1)",
+      "id": "design-fe-components-ui",
+      "name": "Frontend: Components & UI Design",
+      "description": "Append to fe-system-design.md with: Component specifications (props, state, hooks), UI/UX design (layout, styling, responsiveness), form validation, error handling. MAX 200 lines! (FE total budget: 450 lines, currently ~250 after task 1)",
       "priority": 220
-    },
+    }
+  ]
+}
+```
+
+**CRITICAL RULES for Frontend Tasks:**
+1. **First FE task MUST mention**: "MUST USE api-contract.md types"
+2. **Description MUST include**: "import DTOs from api-contract.md" or "reference contract types"
+3. **File naming**: "Create fe-system-design.md" (first) → "Append to fe-system-design.md" (subsequent)
+4. **NO API definition**: FE tasks NEVER define APIs, only consume them!
+5. **MECE Compliance**: NO DTO duplication - only reference contract!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### PHASE 3: Backend Implementation (Priority 230-249)
+
+**Goal: Design BE architecture that IMPLEMENTS api-contract.md**
+
+**Budget: 150-750 lines** (scale based on BE complexity)
+
+**Simple BE (CRUD, 1-3 tables)**: 150-250 lines → 1-2 tasks
+**Medium BE (auth, business logic, 4-6 tables)**: 300-500 lines → 2-3 tasks
+**Complex BE (multi-service, complex data, 7+ tables)**: 600-750 lines → 3-4 tasks
+
+**Example: Medium BE (2 tasks)**
+```json
+{
+  "tasks": [
     {
-      "id": "design-be-overview",
-      "name": "Backend Design: Overview & Data",
-      "description": "Create be-system-design.md with: System overview, architecture layers, database design, entity relationships. MAX 165 lines! (BE total budget: 330 lines)",
+      "id": "design-be-architecture-api",
+      "name": "Backend: Architecture & API Implementation",
+      "description": "Create be-system-design.md with: System overview, architecture layers (controller/service/repository), **API endpoint implementation (MUST IMPLEMENT api-contract.md EXACTLY - map each endpoint, confirm request/response types match 100%)**, authentication middleware. MAX 250 lines! (BE total budget: 480 lines)",
       "priority": 230
     },
     {
-      "id": "design-be-api-service",
-      "name": "Backend Design: API & Services",
-      "description": "Append to be-system-design.md with: API specification (endpoints, DTOs - MUST MATCH FE), service layer, business logic, error handling. MAX 165 lines! (BE total budget: 330 lines, currently ~165 after task 1)",
+      "id": "design-be-data-services",
+      "name": "Backend: Data Layer & Business Logic",
+      "description": "Append to be-system-design.md with: Database schema (entities, relationships, indexes), service layer design (business logic, validation, transactions), error handling strategy. MAX 230 lines! (BE total budget: 480 lines, currently ~250 after task 1)",
       "priority": 240
     }
   ]
 }
 ```
 
-**Task Grouping Strategy:**
-- **Tasks 1-N**: Complete `fe-system-design.md` (priorities 210, 211, 212, ...)
-- **Tasks N+1 onwards**: Complete `be-system-design.md` (priorities 230, 231, 232, ...)
-- This ensures FE document is fully completed before starting BE document
+**CRITICAL RULES for Backend Tasks:**
+1. **First BE task MUST mention**: "MUST IMPLEMENT api-contract.md EXACTLY"
+2. **Description MUST include**: "reference contract for DTOs" or "implement per contract"
+3. **File naming**: "Create be-system-design.md" (first) → "Append to be-system-design.md" (subsequent)
+4. **NO API deviation**: If deviation needed, must document WHY in design doc!
+5. **MECE Compliance**: NO DTO duplication - only reference contract and describe implementation!
 
-**KEY RULES for Dual Design Tasks:**
-1. **Separate Task Groups**: Create FE tasks first (complete fe-system-design.md), then BE tasks (complete be-system-design.md)
-2. **Independent Budgets**: FE and BE documents each have their own 150-1000 line limit (NOT shared, scale based on complexity)
-3. **Explicit File Naming**: 
-   - First FE task: "Create fe-system-design.md with..."
-   - Subsequent FE tasks: "Append to fe-system-design.md with..."
-   - First BE task: "Create be-system-design.md with..."
-   - Subsequent BE tasks: "Append to be-system-design.md with..."
-4. **API Protocol Alignment**: Both FE and BE tasks MUST emphasize DTOs and endpoints must match exactly
-5. **Priority Grouping**: 
-   - FE tasks: 210-229 range
-   - BE tasks: 230-249 range
-6. **Budget Clarity**: Each task description must state its document's total budget and current progress
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-**DO NOT create dual design tasks if:**
-- Project is frontend-only (React app, Vue SPA with no backend) → Use `system-design.md` only
-- Project is backend-only (REST API, microservice, CLI tool) → Use `system-design.md` only
-- Project is fullstack SSR (Next.js, Nuxt) where FE/BE are tightly coupled → Use `system-design.md` only
+### 🎯 MECE PRINCIPLE: Each Document's Distinct Role
 
-**For non-dual design projects (frontend-only, backend-only, or unified):**
-- **ALL tasks must write to `system-design.md`**
-- **First task description must include**: "Write to system-design.md with sections..."
-- **Subsequent task descriptions must include**: "Append to system-design.md with sections..."
-- **NEVER use fe-system-design.md or be-system-design.md** for single-tier projects
+**CRITICAL: Avoid content duplication between api-contract.md and implementation docs!**
+
+**api-contract.md** = WHAT (Interface Definition):
+- ✅ Endpoint specs: paths, methods, status codes
+- ✅ Complete DTO definitions: all fields, types, validations
+- ✅ WebSocket event schemas
+- ❌ NO "how to call" (that's FE's job)
+- ❌ NO "how to implement" (that's BE's job)
+
+**fe-system-design.md** = HOW (Consumer Implementation):
+- ✅ HOW to call APIs: fetch wrappers, error handling, loading states
+- ✅ Component architecture, routing, state management
+- ✅ Reference contract: "import LoginRequest from api-contract.md"
+- ❌ NO DTO redefinition (reference only!)
+
+**be-system-design.md** = HOW (Provider Implementation):
+- ✅ HOW to implement: service methods, business logic, DB queries
+- ✅ Architecture layers, middleware, database schema
+- ✅ Reference contract: "implements LoginRequest → LoginResponse per contract"
+- ❌ NO DTO redefinition (reference only!)
+
+**Example (MECE):**
+```markdown
+# ❌ BAD (in be-system-design.md):
+POST /api/auth/login
+- Request: { email: string, password: string }  ← Duplicates contract!
+
+# ✅ GOOD (in be-system-design.md):
+POST /api/auth/login
+**Contract**: LoginRequest → LoginResponse (api-contract.md §3.1)
+**Implementation**: Controller validates → AuthService.authenticate → JWT.sign
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### 📐 Complete Example: Simple Dual Design (4 tasks total)
+
+**Project: Todo App (Simple CRUD + Auth)**
+- API: 5 endpoints (login, register, CRUD todos)
+- FE: 2 pages (login, todo list)
+- BE: 2 tables (users, todos)
+
+```json
+{
+  "tasks": [
+    {
+      "id": "design-api-contract",
+      "name": "API Contract: Complete Specification",
+      "description": "Create api-contract.md with: Auth endpoints (POST /auth/login, POST /auth/register), Todo CRUD endpoints (GET/POST/PUT/DELETE /todos), request/response DTOs with exact field types (User: {id, email, name}, Todo: {id, title, completed, userId}), JWT auth header format, error response structure. This is BINDING for FE and BE. MAX 100 lines!",
+      "priority": 200
+    },
+    {
+      "id": "design-fe-architecture",
+      "name": "Frontend: Architecture & Components",
+      "description": "Create fe-system-design.md with: React component architecture, routing (/, /login), state management (Context API for auth), **API client (REFERENCE api-contract.md types - NO DTO duplication, show HOW to call APIs with fetch wrappers)**, form components (LoginForm, TodoForm). MAX 150 lines! (FE total budget: 150 lines)",
+      "priority": 210
+    },
+    {
+      "id": "design-be-architecture",
+      "name": "Backend: Architecture & API",
+      "description": "Create be-system-design.md with: Express layered architecture (routes/controllers/services), **API implementation (REFERENCE api-contract.md - NO DTO duplication, show HOW to implement with service methods and error handling)**, JWT middleware, validation. MAX 150 lines! (BE total budget: 300 lines)",
+      "priority": 230
+    },
+    {
+      "id": "design-be-data",
+      "name": "Backend: Database & Services",
+      "description": "Append to be-system-design.md with: PostgreSQL schema (users table: id, email, password_hash, name; todos table: id, title, completed, user_id with FK), service layer (AuthService, TodoService), password hashing (bcrypt). MAX 150 lines! (BE total budget: 300 lines, currently ~150 after task 1)",
+      "priority": 240
+    }
+  ]
+}
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### ⚠️ SPECIAL CASES
+
+**Single-Tier Projects (NO dual design):**
+- **Frontend-only** (React SPA with no backend): Use `system-design.md` only
+- **Backend-only** (REST API, microservice, CLI): Use `system-design.md` only
+- **Fullstack SSR** (Next.js, Nuxt with tightly coupled FE/BE): Use `system-design.md` only
+
+**For single-tier projects:**
+- Create tasks that write to `system-design.md` (standard mode, line 183-254)
+- NEVER create api-contract.md, fe-system-design.md, or be-system-design.md
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

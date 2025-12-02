@@ -334,6 +334,10 @@ export async function architectAgent(
         const resolvedJobId = jobId || process.env.ANT_JOB_ID;
         
         
+        // ✅ Create CodebaseRetriever for reference loading
+        const { CodebaseRetriever } = await import('../../core/codebase/CodebaseRetriever');
+        const retriever = new CodebaseRetriever();
+        
         const initial: ArchitectGraphState = {
           context,
           spec,
@@ -346,6 +350,8 @@ export async function architectAgent(
             chunk: deps?.chunk,
             session: deps?.session,
             command: deps?.command,
+            retriever,  // ✅ NEW: CodebaseRetriever for reference loading
+            vectorDB: deps?.memory,  // ✅ NEW: Same as memory (for reference queries)
             workspaceResolver: deps?.workspaceResolver,  // ✅ For path resolution
             kanbanUpdate: deps?.kanbanUpdate,  // ✅ Pass Kanban update port (undefined in child process)
             fileTreeUpdate: deps?.fileTreeUpdate,  // ✅ Pass file tree update port (undefined in child process)

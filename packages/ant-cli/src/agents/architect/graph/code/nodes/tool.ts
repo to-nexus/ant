@@ -113,6 +113,9 @@ export async function tool(
       case 'run_command':
         result = await handleRunCommand(state, args as { command: string; working_directory?: string });
         break;
+      case 'search_reference_code':
+        result = await handleSearchReferenceCode(state, args as { project: string; query: string; maxFiles?: number });
+        break;
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
@@ -842,6 +845,122 @@ ${streamedStdout}
 ${streamedStderr}
 
 ⚠️  The command timed out or failed to execute. Check the error above.`;
+  }
+}
+
+/**
+ * Handle read_reference_file tool
+ * Read a file from a reference project (e.g., backend when working on frontend)
+ */
+/**
+ * Handle search_reference_code tool
+ * Search reference project using vector DB semantic search
+ */
+async function handleSearchReferenceCode(
+  state: ArchitectGraphState,
+  args: { project: string; query: string; maxFiles?: number }
+): Promise<string> {
+  const { project, query, maxFiles = 5 } = args;
+  
+  console.log(`   🔍 Searching reference project: ${project}`);
+  console.log(`   Query: "${query}"`);
+  
+  const chatAPI = getChatAPIClient();
+  
+  try {
+    // 1. Check if this reference project was registered
+    const refRequest = state.referenceRequests?.find(r => r.project === project);
+    if (!refRequest) {
+      return `❌ ERROR: Reference project "${project}" was not registered.
+
+Available reference projects: ${state.referenceRequests?.map(r => r.project).join(', ') || 'none'}
+
+Please mention the reference project in your directive to register it.`;
+    }
+    
+    // 2. Check dependencies
+    if (!state.deps?.retriever || !state.deps?.vectorDB || !state.deps?.git || !state.deps?.workspaceResolver) {
+      throw new Error('Required dependencies not available (retriever, vectorDB, git, workspaceResolver)');
+    }
+    
+    // 3. UI: Show searching status
+    await chatAPI.showChatStatus('searching_reference', {
+      project: project,
+      query: query
+    });
+    
+    // 4. Resolve reference project path
+    const userContext = {
+      userId: state.context.userId || 'local',
+      organizationId: state.context.organizationId || 'local',
+      workspacePath: ''
+    };
+    
+    const refProjectPath = state.deps.workspaceResolver.getProjectPath(userContext, project);
+    const refCodebasePath = require('path').join(refProjectPath, 'codebase');
+    
+    // 5. Search vector DB using CodebaseRetriever
+    const codeMode = state.codeMode === 'ambiguous' ? 'generate' : (state.codeMode || 'generate');
+    const searchResult = await state.deps.retriever.retrieve(
+      query,
+      refCodebasePath,
+      { git: state.deps.git, vectorDB: state.deps.vectorDB },
+      {
+        maxFiles: Math.min(maxFiles, 10),  // Cap at 10
+        maxTokens: 15000,  // Reasonable limit
+        mode: codeMode
+      }
+    );
+    
+    if (!searchResult.code || searchResult.code.trim().length === 0) {
+      console.log(`   ⚠️  No relevant code found in ${project}\n`);
+      
+      // UI: Show search failed
+      await chatAPI.showChatStatus('searched_reference', {
+        project: project,
+        filesCount: 0,
+        error: 'No relevant code found'
+      });
+      
+      return `⚠️  No relevant code found in reference project "${project}" for query: "${query}"
+
+Try:
+- Using different keywords
+- Being more specific about what you need
+- Searching for broader concepts (e.g., "API endpoints" instead of specific method names)`;
+    }
+    
+    console.log(`   ✅ Found ${searchResult.stats.filesLoaded} relevant files (${searchResult.stats.estimatedTokens} tokens)\n`);
+    
+    // 5. Update UI: Show search complete + explored files
+    const filesList = searchResult.files?.map((f: any) => `[${project}] ${f.path}`) || [];
+    
+    await chatAPI.showChatStatus('searched_reference', {
+      project: project,
+      filesCount: searchResult.stats.filesLoaded
+    });
+    
+    if (filesList.length > 0) {
+      await chatAPI.showChatStatus('explored', {
+        filesCount: searchResult.stats.filesLoaded,
+        filesList: filesList
+      });
+    }
+    
+    // 6. Format result
+    return `✅ Found ${searchResult.stats.filesLoaded} relevant file(s) in "${project}":
+
+${searchResult.code}
+
+**Note:** This code is from the reference project "${project}". Use it to understand APIs, data structures, and implementation patterns. Do NOT modify these files.`;
+    
+  } catch (error) {
+    const errorMessage = (error as Error).message;
+    console.error(`   ❌ Failed to search reference project: ${errorMessage}\n`);
+    
+    return `❌ ERROR: Failed to search reference project "${project}"
+Query: "${query}"
+Error: ${errorMessage}`;
   }
 }
 

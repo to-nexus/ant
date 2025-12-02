@@ -1,6 +1,6 @@
 import { ProjectContext, AgentTask, CodebaseProfile } from "../../types";
 import { CodebaseAnalyzerPort, GitPort, MemoryPort } from "../../ports";
-import { ReferenceContext } from "../../codebase/ReferenceLoader";
+import { ReferenceContext } from "../../codebase/types";
 
 /**
  * Assembled context from all sources
@@ -19,8 +19,8 @@ export interface AssembledContext {
   originalFiles?: string;     // Git HEAD version (for comparison)
   currentCode?: string;       // Working tree code
   
-  // ✅ NEW: Reference Contexts (cross-project references)
-  referenceContexts?: ReferenceContext[];
+  // ✅ Reference Projects (for tool calling)
+  referenceRequests?: Array<{project: string; branch?: string}>;
   
   // Task Context
   currentTask?: {             // Current task being executed
@@ -126,7 +126,7 @@ export class ContextAssembler {
         description: string;
       };
       retryContext?: AssembledContext['retryContext'];
-      referenceContexts?: ReferenceContext[];  // ✅ NEW
+      referenceRequests?: Array<{project: string; branch?: string}>;  // ✅ Reference projects for tool calling
     }
   ): Promise<AssembledContext> {
     const assembled: Partial<AssembledContext> = {};
@@ -141,7 +141,7 @@ export class ContextAssembler {
       assembled.currentCode = artifacts.currentCode;
       assembled.currentTask = artifacts.currentTask;
       assembled.retryContext = artifacts.retryContext;
-      assembled.referenceContexts = artifacts.referenceContexts;  // ✅ NEW
+      assembled.referenceRequests = artifacts.referenceRequests;  // ✅ Reference projects for tool calling
       // Note: originalFiles from artifacts will be overridden by git if available
     }
     
