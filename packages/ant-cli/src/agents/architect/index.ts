@@ -320,12 +320,20 @@ export async function architectAgent(
             if (!gitPort) return {};
             
             const directive = await ArtifactService.getDirective(ctx, agentTask, gitPort);
+            
+            // ✅ Load all available design documents
+            // TemplateComposer will filter by environment before sending to LLM
+            const designDocs = await ArtifactService.loadDesignDocuments(ctx, gitPort, 'unknown');
+            
+            // ✅ Also load unified design for backward compatibility
+            // This will be used if designDocs filtering doesn't find environment-specific docs
             const designResult = await ArtifactService.findLatestDesign(ctx, gitPort);
             
             return {
               directive: directive || undefined,
-              designDoc: designResult?.content || undefined,
-              designDocPath: designResult?.filePath || undefined
+              designDoc: designResult?.content || undefined,  // ✅ Backward compatibility
+              designDocPath: designResult?.filePath || undefined,  // ✅ For environment inference
+              designDocs  // ✅ All docs (filtered later by TemplateComposer)
             };
           }
         });

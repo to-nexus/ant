@@ -1,6 +1,6 @@
 OUTPUT FORMAT:
 
-{{> code/base/injections/text-response-format}}
+{{> code/base/injections/text-format-compact}}
 
 **Text Formatting Rules:**
 - Use inline code for file names, variables, and technical terms: `api.ts`, `VITE_BACKEND_URL`

@@ -34,6 +34,8 @@ You are implementing a specific task. Follow the instructions for your task type
 
 {{designDoc}}
 
+{{> code/base/injections/design-document-guide}}
+
 ════════════════════════════════════════════════════════════════════════════════
 {{/if}}
 {{/if}}
@@ -88,16 +90,7 @@ You are implementing a specific task. Follow the instructions for your task type
 
 **Objective**: Implement the feature described in the task. Code only, no validation.
 
-🚨🚨🚨 **CRITICAL - READ THIS FIRST** 🚨🚨🚨
-
-**YOU CANNOT:**
-- ❌ Run `npm run build` (will fail - happens in final task)
-- ❌ Run `npm run type-check` (will fail - happens in final task)
-- ❌ Run `npm run lint` (will fail - happens in final task)
-- ❌ Run `npm test` (will fail - happens in final task)
-- ❌ Run any validation commands
-
-**DO NOT try to verify your code works. Just implement and finish.**
+🚨 **CRITICAL**: Validation happens in final task (priority 1000). Just implement and finish.
 
 ────────────────────────────────────────────────────────────────────────────────
 
@@ -384,30 +377,6 @@ Use the `search_reference_code` tool with a descriptive query. The tool will sea
 {{else}}
 No existing files detected - this is a fresh project setup.
 {{/if}}
-
-════════════════════════════════════════════════════════════════════════════════
-
-## 🔍 CONSISTENCY CHECKS (Mental Verification)
-
-Before outputting, mentally verify these consistency requirements:
-
-### 1. package.json ↔ Config Files
-- Every import in vite.config.ts must be in package.json devDependencies
-- Example: `import react from '@vitejs/plugin-react'` → needs `"@vitejs/plugin-react": "^4.0.0"`
-
-### 2. Import Paths ↔ tsconfig.json
-- If using `@/components`, ensure tsconfig.json has:
-  ```json
-  "paths": { "@/*": ["./src/*"] }
-  ```
-- Path aliases must match in tsconfig.json AND build tool config
-
-### 3. Dependency Versions
-- Vite 5.x → `@vitejs/plugin-react@^4.0.0`
-- Next.js 14.x → `react@^18.0.0`
-- Check peer dependency requirements
-
-**DO NOT run commands to verify! Just mentally check before outputting.**
 
 ════════════════════════════════════════════════════════════════════════════════
 

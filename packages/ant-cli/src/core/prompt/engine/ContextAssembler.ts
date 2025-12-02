@@ -9,11 +9,19 @@ import { ReferenceContext } from "../../codebase/types";
 export interface AssembledContext {
   // Documents
   directive?: string;
-  designDoc?: string;         // For code task
+  designDoc?: string;         // For code task (environment-specific)
   designDocPath?: string;     // ✅ NEW: Design document file path (for environment inference)
   lastSectionNumber?: number; // Last section number for continuation
   previousDesign?: string;    // For design task
   prdSpec?: string;
+  
+  // ✅ NEW: Multiple design documents (for environment filtering)
+  designDocs?: {
+    apiContract?: string;       // API contract (used by both FE & BE)
+    feDesign?: string;          // Frontend-specific design
+    beDesign?: string;          // Backend-specific design
+    unifiedDesign?: string;     // Unified system design (fallback)
+  };
   
   // Code
   originalFiles?: string;     // Git HEAD version (for comparison)
@@ -127,6 +135,12 @@ export class ContextAssembler {
       };
       retryContext?: AssembledContext['retryContext'];
       referenceRequests?: Array<{project: string; branch?: string}>;  // ✅ Reference projects for tool calling
+      designDocs?: {  // ✅ NEW: Multiple design documents
+        apiContract?: string;
+        feDesign?: string;
+        beDesign?: string;
+        unifiedDesign?: string;
+      };
     }
   ): Promise<AssembledContext> {
     const assembled: Partial<AssembledContext> = {};
@@ -142,6 +156,7 @@ export class ContextAssembler {
       assembled.currentTask = artifacts.currentTask;
       assembled.retryContext = artifacts.retryContext;
       assembled.referenceRequests = artifacts.referenceRequests;  // ✅ Reference projects for tool calling
+      assembled.designDocs = artifacts.designDocs;  // ✅ NEW: Multiple design documents
       // Note: originalFiles from artifacts will be overridden by git if available
     }
     

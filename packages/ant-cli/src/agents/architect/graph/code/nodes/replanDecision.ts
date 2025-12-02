@@ -69,7 +69,7 @@ export async function replanDecision(state: ArchitectGraphState): Promise<Archit
     // 3. Load prompt template
     const templatePath = path.join(
       __dirname,
-      '../../../../../core/prompt/templates/code/replan-decision.md'
+      '../../../../../core/prompt/templates/code/phases/replan/decision.md'
     );
     const templateContent = fs.readFileSync(templatePath, 'utf-8');
     const template = Handlebars.compile(templateContent);

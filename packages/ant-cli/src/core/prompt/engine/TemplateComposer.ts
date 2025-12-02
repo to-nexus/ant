@@ -56,7 +56,34 @@ export class TemplateComposer {
       ? await this.buildProfileSection(assembled.codebaseProfile)
       : '';
     
-    // 3. Render base template
+    // ✅ 3. Determine design document to use
+    // Priority: designDoc (backward compat) > filtered designDocs (environment-specific)
+    let designDoc = assembled.designDoc || '';
+    
+    // If no designDoc but we have designDocs, filter by environment
+    if (!designDoc && assembled.designDocs) {
+      designDoc = this.selectDesignDocByEnvironment(
+        assembled.designDocs,
+        assembled.currentTask
+      );
+      
+      if (designDoc) {
+        console.log(`📄 [TemplateComposer] Using environment-filtered design documents`);
+      }
+    } else if (designDoc && assembled.designDocs) {
+      // ✅ NEW: Even if we have designDoc, prefer filtered version for better token efficiency
+      const filteredDoc = this.selectDesignDocByEnvironment(
+        assembled.designDocs,
+        assembled.currentTask
+      );
+      
+      if (filteredDoc) {
+        console.log(`📄 [TemplateComposer] Using environment-filtered docs (more efficient than unified doc)`);
+        designDoc = filteredDoc;
+      }
+    }
+    
+    // 4. Render base template
     const base = await this.renderTemplate(
       modeConfig.templates.base,
       {
@@ -65,7 +92,7 @@ export class TemplateComposer {
           ? 'MODIFICATION MODE: Copy original, then modify'
           : 'CREATION MODE: Build from scratch',
         currentCode: assembled.currentCode || '',
-        designDoc: assembled.designDoc || '',
+        designDoc,  // ✅ Use filtered design doc
         lastSectionNumber: assembled.lastSectionNumber ?? 0,  // ✅ Last chapter number
         currentTask: assembled.currentTask || null,
         projectPath: (context as any).projectPath || context.workingDir || '/path/to/project',
@@ -73,19 +100,19 @@ export class TemplateComposer {
       }
     );
     
-    // 4. Render rules template
+    // 5. Render rules template
     const rules = await this.renderTemplate(
       modeConfig.templates.rules,
       {}
     );
     
-    // 5. Build injections
+    // 6. Build injections
     const injections = await this.buildInjections(
       modeConfig.templates.injections,
       assembled
     );
     
-    // 6. Load examples (if enabled)
+    // 7. Load examples (if enabled)
     const examples = modeConfig.flags.includeExamples
       ? await this.renderTemplate(`${modeConfig.task}/base/examples`, {})
       : '';
@@ -158,7 +185,44 @@ export class TemplateComposer {
       console.log(`ℹ️  [TemplateComposer] Examples explicitly disabled or empty`);
     }
     
-    return parts.join('\n\n');
+    const finalPrompt = parts.join('\n\n');
+    
+    // ✅ NEW: Estimate and log token count
+    this.logTokenEstimation(composed, finalPrompt);
+    
+    return finalPrompt;
+  }
+  
+  /**
+   * Estimate and log token count for the assembled prompt
+   */
+  private logTokenEstimation(composed: ComposedPrompt, finalPrompt: string): void {
+    const estimateTokens = (text: string) => Math.ceil(text.length / 3.5);
+    
+    const breakdown = {
+      system: estimateTokens(composed.system),
+      profiles: estimateTokens(composed.profiles),
+      base: estimateTokens(composed.base),
+      injections: estimateTokens(composed.injections),
+      rules: estimateTokens(composed.rules),
+      examples: estimateTokens(composed.examples),
+      total: estimateTokens(finalPrompt)
+    };
+    
+    console.log(`\n📊 [TemplateComposer] Token Estimation:`);
+    console.log(`   System: ${breakdown.system.toLocaleString()} tokens`);
+    if (breakdown.profiles > 0) {
+      console.log(`   Profiles: ${breakdown.profiles.toLocaleString()} tokens`);
+    }
+    console.log(`   Base: ${breakdown.base.toLocaleString()} tokens`);
+    console.log(`   Injections: ${breakdown.injections.toLocaleString()} tokens`);
+    console.log(`   Rules: ${breakdown.rules.toLocaleString()} tokens`);
+    if (breakdown.examples > 0) {
+      console.log(`   Examples: ${breakdown.examples.toLocaleString()} tokens`);
+    }
+    console.log(`   ──────────────────────────────────────`);
+    console.log(`   TOTAL: ${breakdown.total.toLocaleString()} tokens (${(finalPrompt.length / 1024).toFixed(1)} KB)`);
+    console.log(``);
   }
   
   /**
@@ -172,6 +236,140 @@ export class TemplateComposer {
       );
     }
     return this.systemPromptCache[task];
+  }
+  
+  /**
+   * Select appropriate design document based on task environment
+   * 
+   * Strategy:
+   * - Frontend: api-contract + (fe-system-design OR system-design)
+   * - Backend: api-contract + (be-system-design OR system-design)
+   * - Unknown: api-contract + all available
+   */
+  private selectDesignDocByEnvironment(
+    designDocs: {
+      apiContract?: string;
+      feDesign?: string;
+      beDesign?: string;
+      unifiedDesign?: string;
+    },
+    currentTask?: {
+      name: string;
+      type: string;
+      priority: number;
+      description: string;
+    }
+  ): string {
+    if (!currentTask) {
+      // No task info - return all available
+      return this.combineDesignDocs(designDocs, 'unknown');
+    }
+    
+    // Detect environment from task name and description
+    const taskText = `${currentTask.name} ${currentTask.description}`.toLowerCase();
+    
+    const isFrontend = 
+      taskText.includes('frontend') ||
+      taskText.includes('front-end') ||
+      taskText.includes('fe') ||
+      taskText.includes('ui') ||
+      taskText.includes('component') ||
+      taskText.includes('page') ||
+      taskText.includes('view') ||
+      taskText.includes('react') ||
+      taskText.includes('vue') ||
+      taskText.includes('angular');
+    
+    const isBackend =
+      taskText.includes('backend') ||
+      taskText.includes('back-end') ||
+      taskText.includes('be') ||
+      taskText.includes('api') ||
+      taskText.includes('server') ||
+      taskText.includes('database') ||
+      taskText.includes('endpoint') ||
+      taskText.includes('controller') ||
+      taskText.includes('service') ||
+      taskText.includes('repository');
+    
+    let environment: 'frontend' | 'backend' | 'unknown' = 'unknown';
+    
+    if (isFrontend && !isBackend) {
+      environment = 'frontend';
+    } else if (isBackend && !isFrontend) {
+      environment = 'backend';
+    }
+    
+    console.log(`📄 [TemplateComposer] Task environment detected: ${environment}`);
+    console.log(`   Task: ${currentTask.name}`);
+    
+    return this.combineDesignDocs(designDocs, environment);
+  }
+  
+  /**
+   * Combine design documents based on environment
+   */
+  private combineDesignDocs(
+    designDocs: {
+      apiContract?: string;
+      feDesign?: string;
+      beDesign?: string;
+      unifiedDesign?: string;
+    },
+    environment: 'frontend' | 'backend' | 'unknown'
+  ): string {
+    const parts: string[] = [];
+    
+    // ✅ ALWAYS include API contract (if exists)
+    if (designDocs.apiContract) {
+      parts.push('# API Contract\n\n' + designDocs.apiContract);
+      console.log(`   ✅ Including api-contract.md`);
+    }
+    
+    // ✅ Environment-specific system design
+    if (environment === 'frontend') {
+      // Frontend: prefer fe-system-design.md, fallback to system-design.md
+      if (designDocs.feDesign) {
+        parts.push('# Frontend System Design\n\n' + designDocs.feDesign);
+        console.log(`   ✅ Including fe-system-design.md (frontend task)`);
+      } else if (designDocs.unifiedDesign) {
+        parts.push('# System Design\n\n' + designDocs.unifiedDesign);
+        console.log(`   ✅ Including system-design.md (frontend fallback)`);
+      }
+      // ❌ DO NOT include be-system-design.md for frontend
+      if (designDocs.beDesign) {
+        console.log(`   ⊖ Skipping be-system-design.md (not needed for frontend)`);
+      }
+    } else if (environment === 'backend') {
+      // Backend: prefer be-system-design.md, fallback to system-design.md
+      if (designDocs.beDesign) {
+        parts.push('# Backend System Design\n\n' + designDocs.beDesign);
+        console.log(`   ✅ Including be-system-design.md (backend task)`);
+      } else if (designDocs.unifiedDesign) {
+        parts.push('# System Design\n\n' + designDocs.unifiedDesign);
+        console.log(`   ✅ Including system-design.md (backend fallback)`);
+      }
+      // ❌ DO NOT include fe-system-design.md for backend
+      if (designDocs.feDesign) {
+        console.log(`   ⊖ Skipping fe-system-design.md (not needed for backend)`);
+      }
+    } else {
+      // Unknown: include all available (decompose phase)
+      if (designDocs.feDesign) {
+        parts.push('# Frontend System Design\n\n' + designDocs.feDesign);
+        console.log(`   ✅ Including fe-system-design.md (unknown env)`);
+      }
+      if (designDocs.beDesign) {
+        parts.push('# Backend System Design\n\n' + designDocs.beDesign);
+        console.log(`   ✅ Including be-system-design.md (unknown env)`);
+      }
+      if (designDocs.unifiedDesign && !designDocs.feDesign && !designDocs.beDesign) {
+        parts.push('# System Design\n\n' + designDocs.unifiedDesign);
+        console.log(`   ✅ Including system-design.md (unknown env)`);
+      }
+    }
+    
+    return parts.join('\n\n════════════════════════════════════════════════════════════════════════════════\n\n');
   }
   
   /**
