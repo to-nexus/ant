@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { Session } from '@/domain/models/session';
-import { Feature, FileNode, FileContent, DevServerStatus, KanbanData } from '@/infrastructure/http/api';
+import { Feature, FileNode, FileContent, DevServerStatus, KanbanData, getApiBase } from '@/infrastructure/http/api';
 import { JobExecution } from '@/infrastructure/http/cli';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
 import type { ChatMessage } from '@/domain/models/chat';
@@ -53,7 +53,8 @@ interface StoreState {
   isGitStatusLoading: boolean;  // ✅ Git status (branch switch + fetch) 중
   gitStatusPhase: 'switching' | 'fetching' | null;  // ✅ Git status 세부 단계
   currentGitBranch: string | undefined;  // ✅ Current Git branch (updated immediately on switch)
-  manualGitAction: 'fetch' | 'push' | 'pull' | null;  // ✅ Manual Git action from ProjectSection dropdown
+  manualGitAction: 'fetch' | 'push' | 'pull' | 'init' | 'clone' | null;  // ✅ Manual Git action from ProjectSection dropdown
+  recursionLimit: number;  // ✅ System recursion limit from backend
   theme: 'light' | 'dark';
   splitLayout: 'horizontal' | 'vertical';
   viewMode: 'agents' | 'editor';  // ✅ View mode toggle (agents view / editor view)
@@ -122,7 +123,9 @@ interface StoreActions {
   setGitStatusLoading: (loading: boolean) => void;  // ✅ Git status 로딩 상태 설정
   setGitStatusPhase: (phase: 'switching' | 'fetching' | null) => void;  // ✅ Git status 세부 단계 설정
   setCurrentGitBranch: (branch: string | undefined) => void;  // ✅ Current Git branch 설정
-  setManualGitAction: (action: 'fetch' | 'push' | 'pull' | null) => void;  // ✅ Manual Git action 설정
+  setManualGitAction: (action: 'fetch' | 'push' | 'pull' | 'init' | 'clone' | null) => void;  // ✅ Manual Git action 설정
+  setRecursionLimit: (limit: number) => void;  // ✅ Set system recursion limit
+  loadSystemConfig: () => Promise<void>;  // ✅ Load system config from backend
   toggleTheme: () => void;
   setTheme: (theme: 'light' | 'dark') => void;
   toggleSplitLayout: (layout: 'horizontal' | 'vertical') => void;
@@ -297,6 +300,7 @@ export const useStore = create<Store>((set, get) => {
   gitStatusPhase: null,  // ✅ 초기값: 단계 없음
   currentGitBranch: undefined,  // ✅ 초기값: 브랜치 미정
   manualGitAction: null,  // ✅ 초기값: 수동 작업 없음
+  recursionLimit: 50,  // ✅ 초기값: 기본값 (백엔드에서 로드됨)
   theme: persistent.theme,
   splitLayout: 'vertical',
   viewMode: persistent.viewMode,
@@ -982,8 +986,25 @@ export const useStore = create<Store>((set, get) => {
     set({ currentGitBranch: branch });
   },
 
-  setManualGitAction: (action: 'fetch' | 'push' | 'pull' | null) => {
+  setManualGitAction: (action: 'fetch' | 'push' | 'pull' | 'init' | 'clone' | null) => {
     set({ manualGitAction: action });
+  },
+
+  setRecursionLimit: (limit: number) => {
+    set({ recursionLimit: limit });
+  },
+
+  loadSystemConfig: async () => {
+    try {
+      const response = await fetch(`${getApiBase()}/system/config`);
+      if (response.ok) {
+        const config = await response.json();
+        set({ recursionLimit: config.recursionLimit });
+        console.log(`[Store] System config loaded: recursionLimit=${config.recursionLimit}`);
+      }
+    } catch (error) {
+      console.error('[Store] Failed to load system config:', error);
+    }
   },
 
   refreshDevServerStatus: async () => {

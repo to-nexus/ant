@@ -15,6 +15,10 @@ export type MessageContentType =
   | 'grepped'        // Search complete
   | 'reading'        // Reading file (in progress)
   | 'read'           // File read complete
+  | 'indexing'       // Codebase indexing (in progress)
+  | 'indexed'        // Codebase indexing complete
+  | 'analyzing'      // Analysis in progress
+  | 'analyzed'       // Analysis complete
   // General content (Chat Status Messages HIDE when these arrive)
   | 'thinking'       // LLM's thought process (collapsible block, accumulates, multiple blocks possible)
   | 'text'           // General text response
@@ -53,6 +57,15 @@ export interface MessageContent {
     tokensCount?: number;   // For explored
     strategy?: string;      // For grepped (git/vector/keyword)
     filesList?: string[];   // List of files (for explored/grepped)
+    // Indexing (for indexing/indexed)
+    filesIndexed?: number;  // Number of files indexed
+    chunks?: number;        // Number of chunks created
+    tokens?: number;        // Estimated tokens
+    duration?: number;      // Indexing duration (ms)
+    repoName?: string;      // Repository name
+    branch?: string;        // Branch name
+    commit?: string;        // Commit hash
+    message?: string;       // Status message
     // Tool Actions
     toolName?: string;      // For tool_action: tool name (mkdir, etc.)
     actionIcon?: string;    // For tool_action: emoji/icon to display

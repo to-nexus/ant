@@ -22,6 +22,12 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
     ? MIN_RECURSION_LIMIT 
     : recursionLimit;
   
+  console.log(`🔍 [CodeRunner] RECURSION_LIMIT debug:`);
+  console.log(`   Raw env: "${process.env.RECURSION_LIMIT}"`);
+  console.log(`   Parsed: ${recursionLimit}`);
+  console.log(`   isNaN: ${isNaN(recursionLimit)}`);
+  console.log(`   Final limit: ${finalLimit}`);
+  
   if (isNaN(recursionLimit) || !process.env.RECURSION_LIMIT) {
     console.warn(`⚠️  RECURSION_LIMIT not set, using minimum: ${MIN_RECURSION_LIMIT}`);
   } else if (recursionLimit < MIN_RECURSION_LIMIT) {

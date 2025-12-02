@@ -11,6 +11,20 @@ export function createHealthRoutes(): Router {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
   
+  // Get system configuration
+  router.get('/system/config', (_req: Request, res: Response) => {
+    const MIN_RECURSION_LIMIT = 5;
+    const recursionLimit = parseInt(process.env.RECURSION_LIMIT || '', 10);
+    const finalLimit = (isNaN(recursionLimit) || recursionLimit < MIN_RECURSION_LIMIT) 
+      ? MIN_RECURSION_LIMIT 
+      : recursionLimit;
+    
+    res.json({ 
+      recursionLimit: finalLimit,
+      serverMode: process.env.ANT_SERVER_MODE || 'local'
+    });
+  });
+  
   // Get available agents
   router.get('/agents', (_req: Request, res: Response) => {
     res.json([

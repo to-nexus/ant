@@ -1,5 +1,15 @@
 #!/usr/bin/env node
-import "dotenv/config";
+import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
+
+// ✅ CRITICAL: Load .env from packages/ant-cli directory (not project root)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const envPath = path.resolve(__dirname, "../../.env");
+dotenv.config({ path: envPath });
+console.log(`[Server] Loading .env from: ${envPath}`);
+
 import { ExpressServerAdapter } from "../periphery/adapters/http/ExpressServerAdapter";
 import { WorkspacePathResolver } from "../infrastructure/workspace/WorkspaceResolver";
 import { LocalWorkspaceResolver } from "../infrastructure/workspace/LocalWorkspaceResolver";
@@ -31,6 +41,7 @@ async function main() {
   } else {
     console.warn('  ⚠️  ANT_ENCRYPTION_KEY not found in environment!');
   }
+  console.log(`  RECURSION_LIMIT: ${process.env.RECURSION_LIMIT || 'NOT SET'}`);
   
   // Environment configuration
   const mode = (process.env.ANT_SERVER_MODE || 'local') as 'local' | 'cloud';

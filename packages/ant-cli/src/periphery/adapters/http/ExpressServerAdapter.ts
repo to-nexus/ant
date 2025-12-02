@@ -473,7 +473,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     this.githubAuthService = new GitHubAuthService(this.workspacesPath);  // ✅ Initialize GitHub Auth service
     this.sseService = new SSEService();
     this.chatService = new ChatService(this.workspacesPath, this.sseService, this.workspaceResolver);  // ✅ Initialize ChatService first
-    this.projectService = new ProjectService(this.workspaceResolver, this.githubAuthService, this.chatService);  // ✅ Inject ChatService
+    this.projectService = new ProjectService(this.workspaceResolver, this.githubAuthService, this.chatService, this.sseService);  // ✅ Inject SSEService for project-level events
     this.devServerService = new DevServerService({
       onStatusChange: (projectId) => {
         // DevServer status broadcasting removed

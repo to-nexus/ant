@@ -187,11 +187,34 @@ export function ProjectSection() {
     true  // Refresh Git status after clone
   );
 
-  const handleInitialize = () => handleGitAction(
-    () => initializeGitHubRepo(selectedProject!),
-    'init',
-    true  // Refresh Git status after init
-  );
+  const handleInitialize = async () => {
+    if (!selectedProject) return;
+    
+    setIsGitProcessing(true);
+    setManualGitAction('init');  // ✅ Show status in GitStatusButtons
+    
+    try {
+      const result = await initializeGitHubRepo(selectedProject);
+      if (result.success) {
+        showSuccess('Repository initialized and codebase indexed successfully');
+        
+        // ✅ Refresh Git status
+        const status = await getGitStatus(selectedProject);
+        setGitStatus(status);
+        
+        // ✅ Trigger manual action to force Git changes fetch
+        setTimeout(() => {
+          setManualGitAction(null);  // This will trigger GitStatusButtons to fetch
+        }, 500);
+      } else {
+        showError(result.error || 'Failed to initialize repository');
+      }
+    } catch (error: any) {
+      showError(error.message || 'Failed to initialize repository');
+    } finally {
+      setIsGitProcessing(false);
+    }
+  };
 
   const handlePush = () => handleGitAction(
     () => pushToGitHub(selectedProject!),

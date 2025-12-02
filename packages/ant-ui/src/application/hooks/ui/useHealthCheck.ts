@@ -28,6 +28,9 @@ export function useHealthCheck() {
           return;
         }
         
+        // ✅ Load system configuration (recursion limit, etc.)
+        await store.loadSystemConfig();
+        
         // Cloud Mode: Skip project loading if not signed in
         if (store.backendMode === 'cloud' && !store.userEmail) {
           store.setConnectionStatus('connected');
