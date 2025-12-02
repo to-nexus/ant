@@ -224,4 +224,26 @@ export class ChromaMemoryAdapter implements MemoryPort {
       // Don't throw - deletion failure shouldn't stop indexing
     }
   }
+  
+  /**
+   * Clear all documents for a project (all collections)
+   * 
+   * ✅ Used when git init creates a new repository
+   */
+  async clear(project: string): Promise<void> {
+    const collectionTypes: CollectionType[] = ['codebase', 'lesson', 'document'];
+    
+    for (const type of collectionTypes) {
+      const collectionName = getCollectionName(type, project);
+      
+      try {
+        // Delete the entire collection
+        await client.deleteCollection({ name: collectionName });
+        console.log(`🗑️  [ChromaMemory] Cleared collection: ${collectionName}`);
+      } catch (error) {
+        // Collection might not exist - that's fine
+        console.log(`   [ChromaMemory] Collection ${collectionName} does not exist (skipped)`);
+      }
+    }
+  }
 }

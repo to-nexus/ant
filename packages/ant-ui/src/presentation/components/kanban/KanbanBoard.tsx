@@ -27,6 +27,7 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
   const selectedFeature = useStore((state) => state.selectedFeature);
   const splitLayout = useStore((state) => state.splitLayout);
   const dismissedInterruptTimestamp = useStore((state) => state.dismissedInterruptTimestamp);  // ✅ Global state (for resume)
+  const systemRecursionLimit = useStore((state) => state.recursionLimit);  // ✅ Get system recursion limit
   const [dismissedKanbanInterrupt, setDismissedKanbanInterrupt] = React.useState<string | null>(null);  // ✅ Local state (for dismiss button only)
   const policy = useUIActionPolicy();
   
@@ -195,7 +196,7 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
       headerActions={
         <GaugesGroup
           recursionCount={kanbanData.recursionCount}
-          recursionLimit={kanbanData.recursionLimit}
+          recursionLimit={kanbanData.recursionLimit || systemRecursionLimit}
           completedCount={completedCount}
           totalTasks={totalTasks}
         />

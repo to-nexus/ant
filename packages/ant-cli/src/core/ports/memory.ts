@@ -84,5 +84,12 @@ export interface MemoryPort {
     where: Record<string, any>,
     collectionType?: CollectionType
   ): Promise<void>;
+  
+  /**
+   * Clear all documents for a project (all collections)
+   * 
+   * @param project - Project name (used for collection naming)
+   */
+  clear(project: string): Promise<void>;
 }
 

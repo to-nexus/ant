@@ -4,6 +4,7 @@ import { WorkspaceResolver } from '../../../../infrastructure/workspace/Workspac
 import { UserContext } from '../../../../core/types/user';
 import { GitHubAuthService } from '../../auth/GitHubAuthService';
 import { ChatService } from './ChatService';
+import { SSEService } from './SSEService';
 import simpleGit from 'simple-git';
 
 /**
@@ -18,15 +19,18 @@ export class ProjectService {
   private readonly workspaceResolver: WorkspaceResolver;
   private readonly githubAuthService?: GitHubAuthService;
   private readonly chatService?: ChatService;
+  private readonly sseService?: SSEService;
   
   constructor(
     workspaceResolver: WorkspaceResolver, 
     githubAuthService?: GitHubAuthService,
-    chatService?: ChatService
+    chatService?: ChatService,
+    sseService?: SSEService
   ) {
     this.workspaceResolver = workspaceResolver;
     this.githubAuthService = githubAuthService;
     this.chatService = chatService;
+    this.sseService = sseService;
   }
   
   /**
@@ -858,7 +862,15 @@ export class ProjectService {
       // ✅ CRITICAL: Use getGitInstanceSafe to prevent parent directory traversal
       const git = this.getGitInstanceSafe(codebasePath);
       if (!git) {
-        throw new Error('Git repository not initialized');
+        // Git not initialized is a normal state (e.g., before git init/clone)
+        return {
+          hasChanges: false,
+          staged: [],
+          unstaged: [],
+          untracked: [],
+          ahead: 0,
+          behind: 0
+        };
       }
       
       // Get status
@@ -1329,6 +1341,28 @@ next-env.d.ts
       await git.branch(['--set-upstream-to', `origin/${baseBranch}`, baseBranch]);
       console.log(`[ProjectService] ✅ Upstream configured: ${baseBranch} -> origin/${baseBranch}`);
       
+      // ✅ CRITICAL: Clear Vector DB before indexing (git init creates NEW repo)
+      console.log(`[ProjectService] 🗑️  Clearing Vector DB for fresh start...`);
+      const { AdapterFactory } = await import('../../../../infrastructure/adapters/AdapterFactory');
+      const vectorDB = AdapterFactory.createMemoryAdapter();
+      await vectorDB.clear(projectId);
+      console.log(`[ProjectService] ✅ Vector DB cleared`);
+      
+      // ✅ Create default feature for chat UI feedback
+      const defaultFeature = 'main';
+      try {
+        await this.createFeature(projectId, defaultFeature, userContext);
+        console.log(`[ProjectService] ✅ Created default feature: ${defaultFeature}`);
+      } catch (error) {
+        // Feature might already exist, ignore
+        console.log(`[ProjectService] Default feature already exists or creation failed (non-critical)`);
+      }
+      
+      // ✅ Index the codebase with chat UI feedback
+      console.log(`[ProjectService] 🔍 Starting codebase indexing...`);
+      await this.autoIndexCodebase(projectId, codebasePath, userContext, defaultFeature);
+      console.log(`[ProjectService] ✅ Codebase indexed successfully`);
+      
     } catch (error: any) {
       const errorMsg = error.message || error.toString();
       
@@ -1339,6 +1373,11 @@ next-env.d.ts
         try {
           await git.push(['-u', 'origin', baseBranch]);
           console.log(`[ProjectService] ✅ Pushed to existing repository`);
+          
+          // ✅ CRITICAL: Index after successful push
+          console.log(`[ProjectService] 🔍 Starting codebase indexing...`);
+          await this.autoIndexCodebase(projectId, codebasePath, userContext);
+          console.log(`[ProjectService] ✅ Codebase indexed successfully`);
         } catch (pushError: any) {
           throw new Error(`Failed to push to existing repository: ${pushError.message}`);
         }
@@ -1714,6 +1753,30 @@ next-env.d.ts
 
     // Get base branch from config
     const baseBranch = config.branchBase || 'main';
+    
+    // ✅ CRITICAL: Check if repository has any commits
+    const log = await git.log({ maxCount: 1 }).catch(() => null);
+    const hasCommits = log && log.latest;
+    
+    if (!hasCommits) {
+      // Empty repository - create initial commit first
+      console.log(`[ProjectService] 📝 Empty repository detected, creating initial commit...`);
+      await git.add('.gitignore').catch(() => {
+        // If .gitignore doesn't exist, create it
+        const gitignorePath = path.join(codebasePath, '.gitignore');
+        if (!fs.existsSync(gitignorePath)) {
+          fs.writeFileSync(gitignorePath, 'node_modules/\n.env\n');
+        }
+      });
+      await git.add('./*').catch(() => {});
+      await git.commit('Initial commit', { '--allow-empty': null });
+      console.log(`[ProjectService] ✅ Initial commit created`);
+      
+      // For base branch checkout, we're done (already on the branch)
+      if (featureName === 'main' || featureName === baseBranch) {
+        return baseBranch;
+      }
+    }
     
     // ✅ Check for uncommitted changes before switching
     const status = await git.status();
@@ -2098,8 +2161,7 @@ next-env.d.ts
           type: 'indexing',
           content: 'Indexing new branch...',
           metadata: {
-            message: `Learning codebase for branch: ${newBranch}`,
-            detail: 'Checking if base branch is already indexed...'
+            message: `Learning codebase for branch: ${newBranch} (checking base branch...)`
           }
         });
       }
@@ -2128,8 +2190,7 @@ next-env.d.ts
             type: 'indexing',
             content: 'Fast learning...',
             metadata: {
-              message: `Copying embeddings from ${baseBranch}`,
-              detail: 'This is fast because base branch is already learned!'
+              message: `Copying embeddings from ${baseBranch} (instant copy)`
             }
           });
         }
@@ -2166,8 +2227,7 @@ next-env.d.ts
             type: 'indexing',
             content: 'Learning codebase...',
             metadata: {
-              message: `Indexing all files for ${newBranch}`,
-              detail: 'This may take a while for first-time indexing...'
+              message: `Indexing all files for ${newBranch} (first-time indexing)`
             }
           });
         }
@@ -2272,6 +2332,18 @@ next-env.d.ts
             commit
           }
         });
+      } else if (this.sseService) {
+        // ✅ CRITICAL: For git init/clone (no feature context), send project-level notification
+        this.sseService.broadcastToProject(projectId, {
+          type: 'indexing_status',
+          status: 'in_progress',
+          data: {
+            projectId,
+            branch,
+            commit,
+            message: `Indexing ${projectId} • ${branch}`
+          }
+        });
       }
       
       // Run indexer
@@ -2292,7 +2364,7 @@ next-env.d.ts
       if (this.chatService && featureName) {
         this.chatService.addContentToCurrentMessage(projectId, featureName, {
           type: 'indexed',
-          content: '',
+          content: `Codebase learned`, // ✅ Add content for ResultCard header
           metadata: {
             filesIndexed: stats.filesIndexed,
             chunks: stats.chunksCreated,
@@ -2306,6 +2378,22 @@ next-env.d.ts
         
         // ✅ Complete the message
         this.chatService.finalizeCurrentMessage(projectId, featureName);
+      } else if (this.sseService) {
+        // ✅ CRITICAL: For git init/clone (no feature context), send project-level notification
+        this.sseService.broadcastToProject(projectId, {
+          type: 'indexing_status',
+          status: 'completed',
+          data: {
+            projectId,
+            branch,
+            commit,
+            filesIndexed: stats.filesIndexed,
+            chunks: stats.chunksCreated,
+            tokens: stats.estimatedTokens,
+            duration: stats.duration,
+            message: `Indexed ${stats.filesIndexed} files (${stats.chunksCreated} chunks, ~${stats.estimatedTokens} tokens)`
+          }
+        });
       }
       
     } catch (error) {

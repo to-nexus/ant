@@ -257,7 +257,7 @@ export class KanbanService {
         liveCurrentTask
       );
       
-      return {
+      const result = {
         jobId: sessionJobId,
         todo: liveQueue,
         inProgress: liveCurrentTask,
@@ -275,6 +275,8 @@ export class KanbanService {
         totalElapsedTime,
         jobTiming: sessionState.jobTiming
       };
+      console.log(`[KanbanService] 🔍 LIVE DATA recursionLimit: ${result.recursionLimit} (snapshot: ${liveSnapshot.recursionLimit}, env: ${finalLimit}, raw env: ${process.env.RECURSION_LIMIT})`);
+      return result;
     }
     
     // Priority 2: ESTIMATING (job running but no live snapshot yet)

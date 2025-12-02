@@ -103,20 +103,30 @@ export class CodebaseIndexer {
     } else {
       // Incremental: Only changed files
       console.log(`   📊 Incremental update (from ${indexStatus.lastCommit?.substring(0, 8)} to ${currentCommit.substring(0, 8)})`);
-      filesToIndex = await this.getChangedFiles(deps.git, options.workingDir, exclude, indexStatus.lastCommit);
-      indexingMode = 'incremental';
+      const changedFiles = await this.getChangedFiles(deps.git, options.workingDir, exclude, indexStatus.lastCommit);
       
-      if (filesToIndex.length === 0) {
-        console.log(`   ℹ️  No changes detected, skipping indexing`);
-        return {
-          filesIndexed: 0,
-          chunksCreated: 0,
-          estimatedTokens: 0,
-          duration: Date.now() - startTime
-        };
+      // ✅ CRITICAL: If getChangedFiles returns null (error), fallback to full indexing
+      if (changedFiles === null) {
+        console.warn(`   ⚠️  Incremental indexing failed, falling back to FULL indexing`);
+        filesToIndex = await this.getSourceFiles(options.workingDir, exclude);
+        indexingMode = 'full';
+        console.log(`   Found ${filesToIndex.length} source files`);
+      } else {
+        filesToIndex = changedFiles;
+        indexingMode = 'incremental';
+        
+        if (filesToIndex.length === 0) {
+          console.log(`   ℹ️  No changes detected, skipping indexing`);
+          return {
+            filesIndexed: 0,
+            chunksCreated: 0,
+            estimatedTokens: 0,
+            duration: Date.now() - startTime
+          };
+        }
+        
+        console.log(`   Found ${filesToIndex.length} changed files`);
       }
-      
-      console.log(`   Found ${filesToIndex.length} changed files`);
     }
 
     // 3. Index files in batches
@@ -304,7 +314,7 @@ export class CodebaseIndexer {
     workingDir: string,
     exclude: string[],
     fromCommit?: string
-  ): Promise<string[]> {
+  ): Promise<string[] | null> {
     try {
       let changedFiles: string[];
       
@@ -354,7 +364,8 @@ export class CodebaseIndexer {
         
     } catch (error) {
       console.warn(`   ⚠️  Failed to get changed files:`, error);
-      return [];  // Return empty to trigger full indexing
+      console.warn(`   🔄 Returning NULL to trigger FULL indexing fallback`);
+      return null;  // ✅ Return null to signal error (triggers full indexing fallback)
     }
   }
 
@@ -600,7 +611,7 @@ export class CodebaseIndexer {
           k: 10000,
           where: {
             $and: [
-              { type: 'code' },
+              { type: 'codebase' },  // ✅ FIXED: Use 'codebase' not 'code'
               { branch: sourceBranch }
             ]
           }

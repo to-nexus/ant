@@ -108,6 +108,41 @@ export class SSEService {
   }
   
   /**
+   * Broadcast message to all features of a project (project-level events)
+   * Used for git init/clone indexing status (no specific feature context)
+   */
+  broadcastToProject(projectId: string, data: any): void {
+    let sentCount = 0;
+    
+    // Find all clients for this project (all features)
+    this.clients.forEach((clients, key) => {
+      if (key.startsWith(`${projectId}/`)) {
+        const message: SSEMessage = {
+          type: 'chat',
+          timestamp: new Date().toISOString(),
+          data
+        };
+        
+        const dataString = JSON.stringify(message);
+        
+        clients.forEach(res => {
+          try {
+            res.write(`data: ${dataString}\n\n`);
+            sentCount++;
+          } catch (error) {
+            console.error(`[SSEService] Failed to send to client:`, error);
+            clients.delete(res);
+          }
+        });
+      }
+    });
+    
+    if (sentCount > 0) {
+      console.log(`[SSEService] Broadcast to ${sentCount} client(s) in project ${projectId}`);
+    }
+  }
+  
+  /**
    * Broadcast workflow message to job clients
    */
   broadcastWorkflow(jobId: string, data: any): void {
