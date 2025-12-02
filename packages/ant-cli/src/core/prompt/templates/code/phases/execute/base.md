@@ -53,7 +53,7 @@ The component uses Tailwind CSS for styling...
 {{else}}
 
 {{#if designDoc}}
-{{#if (eq modificationMode "MODIFICATION MODE: Copy original, then modify")}}
+{{#if (eq modificationMode "MODIFICATION MODE: Modify existing code")}}
 ## 📋 DESIGN DOCUMENT (Architecture Reference)
 
 **⚠️ CRITICAL: This design document is for REFERENCE ONLY!**
@@ -94,37 +94,10 @@ The component uses Tailwind CSS for styling...
 {{#unless (eq currentTask.priority 1000)}}
 ## 🔧 SETUP TASK: Project Configuration
 
-**Objective**: Create configuration files and install dependencies.
+Create config files only. NO source code, NO tests.
 
-**What to create:**
-- Configuration files: package.json, tsconfig.json, build tool configs
-- Linter configs: .eslintrc, .prettierrc (if specified)
-- `.gitignore` file
-- Empty folder structure if needed (e.g., `src/`)
-
-**What NOT to create:**
-- ❌ Source code files (.ts, .tsx, .py, .go, etc.)
-- ❌ Test files (*.test.*, *.spec.*)
-- ❌ Test configuration (jest.config.js, vitest.config.ts, jest.setup.js)
-- ❌ Test infrastructure files (setupTests.ts, test-utils.ts)
-- ❌ Documentation beyond README.md
-- ❌ Component/page/service files
-
-**Important**: If task description mentions "testing libraries":
-- ✅ Add them to package.json devDependencies
-- ❌ DO NOT create jest.config.js, vitest.config.ts, or any test setup files
-- Testing setup will be handled separately if needed
-
-**Required Actions:**
-1. Use `write_file` tool for each config file
-2. Run dependency installation: `npm install` (or `pnpm install`, `yarn install`)
-3. Output `<done>true</done>` when complete
-
-**Mental Checks Before Output:**
-- [ ] All dependencies in package.json are needed for the project
-- [ ] tsconfig.json paths match the project structure
-- [ ] Build tool config imports match package.json devDependencies
-- [ ] No test config files (jest.config.js, vitest.config.ts) created
+**Create:** package.json, tsconfig.json, build configs, .gitignore
+**Actions:** Write files → Run `npm install` → Output `<done>true</done>`
 
 {{/unless}}
 {{/if}}
@@ -137,51 +110,11 @@ The component uses Tailwind CSS for styling...
 {{#unless (eq currentTask.priority 1000)}}
 ## 💻 FEATURE TASK: Source Code Implementation
 
-**Objective**: Implement the feature described in the task. Code only, no validation.
+Implement the feature. Source code only.
 
-🚨 **CRITICAL**: Validation happens in final task (priority 1000). Just implement and finish.
-
-────────────────────────────────────────────────────────────────────────────────
-
-**What to create:**
-- ✅ Application source code files ONLY
-- ✅ Common locations: `src/`, `app/`, `pages/`, `lib/`, `components/`, `utils/`
-- ✅ Monorepo: `packages/*/src/`, `apps/*/src/`
-- ✅ File types: .ts, .tsx, .js, .jsx, .py, .go, .java, etc.
-
-**What NOT to create:**
-- ❌ `*.md` files (README, SUMMARY, IMPLEMENTATION, TASK_COMPLETE, docs/)
-- ❌ `*.test.ts`, `*.spec.ts`, `*.stories.ts` files
-- ❌ `__tests__/`, `tests/` directories
-- ❌ `examples.ts`, `demo.ts` files
-- ❌ Configuration files (package.json, tsconfig.json, vite.config.ts, etc.)
-- ❌ `.eslintrc`, `.prettierrc`, `.gitignore`
-
-**Actions:**
-1. Create/modify source code files using `write_file` or `apply_patch` tools
-2. Output `<done>true</done>` immediately when done
-3. **NO summary, NO explanation** - system tracks everything automatically
-
-────────────────────────────────────────────────────────────────────────────────
-
-**Example Output (CORRECT):**
-```xml
-<tool_use>
-  <name>write_file</name>
-  <parameters>
-    <path>src/components/Button.tsx</path>
-    <content>import React from 'react';
-
-export function Button({ children }: { children: React.ReactNode }) {
-  return <button className="btn">{children}</button>;
-}</content>
-  </parameters>
-</tool_use>
-
-<done>true</done>
-```
-
-**That's it! No summary needed!**
+**Create:** .ts, .tsx, .js, .jsx files in `src/`, `app/`, `components/`, etc.
+**DON'T create:** *.md, *.test.*, config files
+**Actions:** Write/edit code → Output `<done>true</done>`
 
 {{/unless}}
 {{/if}}
@@ -191,52 +124,15 @@ export function Button({ children }: { children: React.ReactNode }) {
 
 {{#if currentTask}}
 {{#if (eq currentTask.priority 1000)}}
-## ✅ FINAL VERIFICATION TASK: Build & Validate
+## ✅ FINAL VERIFICATION: Build & Validate
 
-**Objective**: Verify the entire project compiles successfully.
+🚨 **EXECUTE IN ORDER:** Type-check → Lint → Build
 
-🚨🚨🚨 **CRITICAL - VALIDATION ORDER IS MANDATORY** 🚨🚨🚨
+1. `npx tsc --noEmit` (fix all type errors first)
+2. `npm run lint` (fix all lint errors)
+3. `npm run build` (only after 1 & 2 pass)
 
-**YOU MUST EXECUTE IN THIS EXACT ORDER:**
-
-**Step 1: Type-check FIRST** (fast, ~5-10s)
-```xml
-<tool_use>
-  <name>run_command</name>
-  <parameters>
-    <command>npx tsc --noEmit</command>
-  </parameters>
-</tool_use>
-```
-❌ **FORBIDDEN**: Running build/lint before type-check passes
-✅ **REQUIRED**: Fix all type errors before proceeding to Step 2
-
-**Step 2: Lint SECOND** (fast, ~5-10s)
-```xml
-<tool_use>
-  <name>run_command</name>
-  <parameters>
-    <command>npm run lint</command>
-  </parameters>
-</tool_use>
-```
-❌ **FORBIDDEN**: Running build before lint passes
-✅ **REQUIRED**: Fix all lint errors before proceeding to Step 3
-
-**Step 3: Build LAST** (slow, ~30-60s)
-```xml
-<tool_use>
-  <name>run_command</name>
-  <parameters>
-    <command>npm run build</command>
-  </parameters>
-</tool_use>
-```
-✅ **ONLY run build after type-check AND lint both pass**
-
-────────────────────────────────────────────────────────────────────────────────
-
-**Why this order is MANDATORY:**
+**Why this order:**
 
 1. **Type errors** (tsc) catch 80% of issues in 5-10 seconds
 2. **Lint errors** catch style/quality issues in 5-10 seconds  
@@ -352,41 +248,13 @@ Always use build/test commands for verification.
 ════════════════════════════════════════════════════════════════════════════════
 
 {{#if referenceRequests}}
-## 📚 REFERENCE PROJECTS AVAILABLE
-
-The following reference projects are registered and searchable:
+## 📚 REFERENCE PROJECTS
 
 {{#each referenceRequests}}
-- **{{this.project}}**{{#if this.branch}} (branch: {{this.branch}}){{/if}}
+- **{{this.project}}**{{#if this.branch}} ({{this.branch}}){{/if}}
 {{/each}}
 
-**How to access reference project code:**
-
-Use the `search_reference_code` tool with a descriptive query. The tool will search the vector database and return relevant code files.
-
-**Example:**
-```xml
-<tool_use>
-  <name>search_reference_code</name>
-  <parameters>
-    <project>ant-pong-be</project>
-    <query>WebSocket gateway implementation and message handlers for game events</query>
-  </parameters>
-</tool_use>
-```
-
-**Query examples:**
-- "API endpoints for room management"
-- "DTO types for game state and player data"
-- "WebSocket message types and event handlers"
-- "Database models and entity definitions"
-
-**Important:**
-- ✅ Use semantic search with descriptive queries
-- ✅ The tool automatically finds and returns relevant files with their content
-- ✅ You don't need to know exact file paths
-- ❌ DON'T modify reference project files (read-only)
-- ❌ DON'T assume API structure - always search to verify
+Use `search_reference_code` tool with semantic queries. Read-only access.
 
 ════════════════════════════════════════════════════════════════════════════════
 {{/if}}
@@ -400,29 +268,7 @@ Use the `search_reference_code` tool with a descriptive query. The tool will sea
 
 ────────────────────────────────────────────────────────────────────────────────
 
-{{#if currentTask}}
-{{#if (or (eq currentTask.type "setup") (eq currentTask.type "error") (eq currentTask.priority 1000))}}
-**Modification Rules:**
-- ✅ MODIFY config files if needed (package.json, tsconfig.json, etc.)
-- ✅ CREATE new source files for this task
-- ✅ MODIFY existing files if this task requires changes
-- ❌ DON'T regenerate files that don't need changes
-
-{{else}}
-**Feature Task Rules:**
-- ✅ CREATE application code files (src/, app/, pages/, lib/, components/)
-- ✅ MODIFY existing application code if needed
-- ⚠️ Config files (package.json, tsconfig.json, etc.):
-  - **Preferred:** Setup task handles config files
-  - **BUT:** You CAN modify if absolutely necessary for this feature
-  - **When allowed:** Adding missing dependencies, adding required plugins
-  - **Keep minimal:** Only add what's strictly needed for this feature
-- ❌ DON'T regenerate files that don't need changes
-
-{{/if}}
-{{/if}}
-
-**Resumed Task**: If files from THIS task already exist above, SKIP them and continue with remaining work.
+**Modify only what's needed. Skip files that don't need changes.**
 
 {{else}}
 No existing files detected - this is a fresh project setup.

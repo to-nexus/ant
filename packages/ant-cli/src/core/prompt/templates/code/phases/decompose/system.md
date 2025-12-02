@@ -24,44 +24,17 @@ Create a clear, prioritized task breakdown that developers can execute sequentia
 ## Mode: {{mode}}
 
 {{#if (eq mode 'generate')}}
-**Creating NEW project from scratch:**
-
-- Break into: Setup → Core Features → Polish
-- Typical: 3-8 tasks
-- **Task Types**: `setup`, `feature`, `verification` (priority 1000)
-
-**Example:**
-```json
-{
-  "tasks": [
-    {"type": "setup", "priority": 100, "name": "Project setup"},
-    {"type": "feature", "priority": 200, "name": "Core feature 1"},
-    {"type": "feature", "priority": 300, "name": "Core feature 2"},
-    {"type": "verification", "priority": 1000, "name": "Build & validate"}
-  ]
-}
-```
+- **Scope**: Setup → Core Features → Polish
+- **Typical**: 3-8 tasks
+- **Task Types**: `setup` (100-149), `feature` (200-899), `verification` (1000)
 
 {{else if (eq mode 'refactor')}}
-**Modifying EXISTING code:**
-
-- Focus on minimal changes
-- Typical: 1-3 tasks
-- **Task Types**: `error` (priority 900+)
-- ❌ **NO setup tasks** (config already exists)
-- ❌ **NO verification tasks** (quick fix, no full build needed)
-
-**Example:**
-```json
-{
-  "tasks": [
-    {"type": "error", "priority": 900, "name": "Fix null pointer in Button.tsx"}
-  ]
-}
-```
+- **Scope**: Minimal changes to existing code
+- **Typical**: 1-3 tasks
+- **Task Types**: `error` (900-999)
+- ❌ NO setup or verification tasks
 
 {{else}}
-- General code task
 - Adjust scope based on complexity
 {{/if}}
 
@@ -75,20 +48,6 @@ Create a clear, prioritized task breakdown that developers can execute sequentia
 **Note**: Use these file paths when creating tasks. Specify exact files to modify.
 {{/if}}
 
-{{#if gitDiff.hasChanges}}
-## Recent Changes (Git Diff)
-
-{{gitDiff.summary}}
-
-{{#if gitDiff.changedFiles}}
-**Changed Files:**
-{{#each gitDiff.changedFiles}}
-- `{{this.path}}` ({{this.status}}, +{{this.additions}} -{{this.deletions}})
-{{/each}}
-{{/if}}
-
-**Note**: Consider these changes when planning tasks.
-{{/if}}
 
 {{#if hasDesignDoc}}
 ## Design Document

@@ -13,16 +13,7 @@ export interface DecomposePromptContext {
   mode: string;
   profile: any;
   codebaseFilePaths?: string[];
-  gitDiff?: {
-    hasChanges: boolean;
-    summary: string;
-    changedFiles: Array<{
-      path: string;
-      status: string;
-      additions: number;
-      deletions: number;
-    }>;
-  };
+  // gitDiff removed - now injected via injection file
 }
 
 /**

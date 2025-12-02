@@ -196,8 +196,8 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       hasDesignDoc,
       mode: state.mode || 'unknown',
       profile: state.profile,
-      codebaseFilePaths,
-      gitDiff: gitDiffResult
+      codebaseFilePaths
+      // gitDiff injected via injection file in PromptEngine
     }
   );
   
