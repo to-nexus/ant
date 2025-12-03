@@ -167,6 +167,7 @@ export async function detectEnvironment(
     selectedDesignFiles,
     requireRagForDecompose: parsed.requireRagForDecompose,
     decomposeKeywords,
+    // Note: File list for decompose is retrieved via keywords in decompose node
   };
 }
 

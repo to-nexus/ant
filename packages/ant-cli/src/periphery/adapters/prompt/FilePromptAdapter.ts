@@ -55,11 +55,22 @@ Promise.all([
     .catch(() => {})
 ]).catch(() => {});
 
-// ✅ Register phase-specific rules (decompose, etc.)
-const codeDecomposeRulesPath = join(__dirname, "../../../core/prompt/templates/code/phases/decompose/rules.md");
-fs.readFile(codeDecomposeRulesPath, "utf8")
-  .then(content => Handlebars.registerPartial("code/phases/decompose/rules", content))
-  .catch(() => {});
+// ✅ Register phase-specific rules (decompose, detect, plan, etc.)
+const codePhaseRulesBase = join(__dirname, "../../../core/prompt/templates/code/phases");
+Promise.all([
+  // Decompose rules
+  fs.readFile(join(codePhaseRulesBase, "decompose/rules.md"), "utf8")
+    .then(content => Handlebars.registerPartial("code/phases/decompose/rules", content))
+    .catch(() => {}),
+  // Detect rules (detectEnvironment node)
+  fs.readFile(join(codePhaseRulesBase, "detect/rules.md"), "utf8")
+    .then(content => Handlebars.registerPartial("code/phases/detect/rules", content))
+    .catch(() => {}),
+  // Plan rules (plan node - keyword generation)
+  fs.readFile(join(codePhaseRulesBase, "plan/rules.md"), "utf8")
+    .then(content => Handlebars.registerPartial("code/phases/plan/rules", content))
+    .catch(() => {}),
+]).catch(() => {});
 
 const designDecomposeRulesPath = join(__dirname, "../../../core/prompt/templates/design/phases/decompose/rules.md");
 fs.readFile(designDecomposeRulesPath, "utf8")

@@ -89,7 +89,53 @@ app.get('/data', async (req, res) => {
 // - One-time initialization
 ```
 
-#### 2. **Path Resolution**
+#### 2. **ES Modules Configuration (CRITICAL)**
+
+**When you see errors like:**
+```
+Error [ERR_MODULE_NOT_FOUND]: Cannot find module '...' imported from ...
+```
+
+**DO NOT add `.js` extensions to TypeScript source imports!**
+
+**Instead, check and fix `tsconfig.json`:**
+
+```json
+{
+  "compilerOptions": {
+    "module": "NodeNext",           // ✅ NOT "ESNext"
+    "moduleResolution": "NodeNext", // ✅ NOT "node"
+    "target": "ES2020"
+  }
+}
+```
+
+**Common misconfigurations:**
+```json
+// ❌ BAD - causes ES Module resolution issues
+{
+  "module": "ESNext",
+  "moduleResolution": "node"  // ← This is the problem!
+}
+
+// ✅ GOOD - proper ES Module support
+{
+  "module": "NodeNext",
+  "moduleResolution": "NodeNext"
+}
+```
+
+**Why this matters:**
+- `package.json` has `"type": "module"` → Node.js uses ES Modules
+- `moduleResolution: "node"` → Uses CommonJS-style resolution (no extensions)
+- `moduleResolution: "NodeNext"` → Uses ES Module resolution (handles extensions correctly)
+
+**If `tsconfig.json` is correct but error persists:**
+1. Delete `dist/` folder: `rm -rf dist`
+2. Rebuild: `npm run build`
+3. Check if all `.js` files are generated in `dist/`
+
+#### 3. **Path Resolution**
 
 ```typescript
 // ✅ Use path module for cross-platform compatibility

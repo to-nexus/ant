@@ -222,6 +222,12 @@ export async function getChangedFiles(git: any): Promise<string[]> {
   status.deleted.forEach((f: string) => files.add(f));
   status.renamed.forEach((r: any) => files.add(r.to));
   
+  // ✅ CRITICAL: Include untracked (new) files!
+  // These are files created locally but not yet staged
+  if (status.not_added) {
+    status.not_added.forEach((f: string) => files.add(f));
+  }
+  
   return Array.from(files);
 }
 

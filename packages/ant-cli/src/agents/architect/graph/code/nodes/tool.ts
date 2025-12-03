@@ -10,6 +10,31 @@
  * - LLM 호출
  * - 여러 도구 동시 실행 (한 번에 하나씩)
  * - 루프
+ * 
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * FILE ACCESS STRATEGY
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * 
+ * | Tool                  | Source          | Description                    |
+ * |-----------------------|-----------------|--------------------------------|
+ * | read_file             | Local Disk      | Current project file (GitPort) |
+ * | write_file            | Local Disk      | Write to current project       |
+ * | apply_patch           | Local Disk      | Patch current project file     |
+ * | list_files            | Local Disk      | Directory listing              |
+ * | search_code           | Local Disk      | Grep-style text search         |
+ * | search_reference_code | Vector DB       | Semantic search in ref project |
+ * 
+ * WHY LOCAL DISK for current project:
+ * - Ensures latest state (including uncommitted changes)
+ * - Buffer system tracks in-memory edits
+ * - No indexing delay
+ * 
+ * WHY VECTOR DB for reference projects:
+ * - Semantic search across large codebases
+ * - Pre-indexed for fast retrieval
+ * - Read-only access (no modifications)
+ * 
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  */
 
 import { ArchitectGraphState } from '../state';
@@ -754,7 +779,8 @@ Use build/test commands instead of dev servers.`;
       console.error(`\n   ❌ ${errorMsg}\n`);
       await chatAPI.commandComplete(command, false, -1, errorMsg);
       
-      return errorMsg;
+      // ✅ CRITICAL: Throw error so LLM knows the command failed!
+      throw new Error(errorMsg);
     }
   }
   

@@ -1,31 +1,3 @@
-# Environment Detection & Mode Inference & RAG Strategy
-
-You are analyzing a development directive to determine:
-
-1. **Code Mode** (generate/refactor/explain)
-2. **Development Environment** (frontend/backend/fullstack/unknown)
-3. **RAG Requirement** (does decompose need codebase context?)
-4. **Search Keywords** (if RAG needed)
-
-Your analysis will determine the entire workflow strategy.
-
-## Directive
-
-{{directive}}
-
-{{#if designDocs}}
-## Design Documents Available
-
-{{designDocs}}
-{{/if}}
-
-{{#if profile}}
-## Project Profile
-
-{{#if profile.language}}- Language: {{profile.language}}{{/if}}
-{{#if profile.framework}}- Framework: {{profile.framework}}{{/if}}
-{{/if}}
-
 ## Analysis Guidelines
 
 ### 1. Mode Inference
@@ -90,51 +62,57 @@ Does the `decompose` node need codebase context?
 
 ### 4. Keyword Generation (if RAG required)
 
-**Main Project Keywords** (5-10 semantic keywords):
-- File names, function names, component names
-- Patterns, concepts, APIs
-- Be specific to the directive
+**🎯 PURPOSE OF KEYWORDS:**
+
+Keywords are used to search the Vector DB and find relevant files for the `decompose` node.
+The `decompose` node will receive a **file list** (not full content) based on these keywords.
+This file list helps LLM understand what files exist and plan tasks accurately.
+
+**⚠️ CRITICAL: Generate COMPREHENSIVE keywords!**
+
+The more relevant keywords you provide, the more complete the file list will be.
+If you miss important keywords, the decompose node may incorrectly assume files don't exist.
+
+**Main Project Keywords** (10-20 semantic keywords, be thorough!):
+
+Include ALL of these categories:
+1. **Direct mentions**: File names, function names, component names from directive
+2. **Related concepts**: Patterns, APIs, types that might be relevant
+3. **Potential dependencies**: Files that might import/export related code
+4. **Error context**: If error mentioned, include error-related file patterns
+
+**Keyword Generation Strategy:**
+
+Think: "What files might exist that are related to this directive?"
 
 Examples:
 - Directive: "Add password toggle to login form"
-  → Keywords: ["login form", "password input", "visibility toggle", "eye icon", "input type password"]
+  → Keywords: [
+    "login", "LoginForm", "password", "input", "visibility", "toggle",
+    "eye icon", "form", "auth", "authentication", "user input",
+    "form validation", "password field", "show password", "hide password"
+  ]
   
-- Directive: "Fix null pointer in user service"
-  → Keywords: ["user service", "null pointer", "error handling", "getUserById", "validation"]
+- Directive: "Fix ERR_MODULE_NOT_FOUND in WebSocketServer"
+  → Keywords: [
+    "WebSocketServer", "WebSocket", "EventHandler", "socket", "ws",
+    "import", "module", "server", "connection", "handler",
+    "message handler", "room", "game", "tsconfig", "package.json",
+    "ESM", "module resolution"
+  ]
+
+- Directive: "서버 시작 시 포트 로깅 추가"
+  → Keywords: [
+    "server", "start", "listen", "port", "logging", "console.log",
+    "express", "app.listen", "http server", "startup", "bootstrap",
+    "main", "index", "entry point", "routes", "endpoints"
+  ]
 
 **Reference Project Keywords** (if directive mentions other projects):
-- Per reference project: 3-5 specific keywords
+- Per reference project: 5-10 specific keywords
 - What to look for in that project
 
 Examples:
 - Directive: "Call backend API for user data"
-  → Reference: {"backend": ["user API", "auth endpoint", "data schema"]}
-
-## Output Format
-
-Wrap your JSON response in <detect> tags (NO markdown code blocks):
-
-<detect>
-{
-  "mode": "generate" | "refactor" | "explain",
-  "modeReasoning": "Why this mode? (1 sentence)",
-  "environment": "frontend" | "backend" | "fullstack" | "unknown",
-  "environmentReasoning": "Why this environment? (1 sentence)",
-  "requireRagForDecompose": true | false,
-  "decomposeKeywords": {
-    "codebase": ["keyword1", "keyword2", ...],
-    "references": [
-      {
-        "project": "backend",
-        "keywords": ["user API", "auth endpoint"]
-      }
-    ]
-  }
-}
-</detect>
-
-**CRITICAL:**
-- Use <detect> XML tags directly
-- NO ```json or ``` markdown blocks
-- Just raw XML tags with JSON inside
+  → Reference: {"backend": ["user API", "auth endpoint", "data schema", "routes", "controller", "response type"]}
 

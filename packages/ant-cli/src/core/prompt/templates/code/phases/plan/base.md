@@ -28,15 +28,6 @@ You are analyzing a task to generate semantic search keywords.
 
 {{/if}}
 
-## Guidelines
-
-Generate semantic search keywords for:
-
-1. **Main Codebase**: Keywords for searching THIS project's code
-{{#if hasReferences}}
-2. **Reference Projects**: Keywords for each reference project listed above (ONLY if needed for this task)
-{{/if}}
-
 ## Output Format
 
 {{#if hasReferences}}
@@ -62,15 +53,5 @@ Generate semantic search keywords for:
 **CRITICAL:** `references` MUST be empty object `{}` since no reference projects are available.
 {{/if}}
 
-## Examples
-
-**Task: "Add auth middleware using backend patterns"**
-- Codebase: ["middleware", "auth", "authentication", "request handler", "express"]
-- References: { "backend": ["middleware pattern", "auth guard", "jwt verify"] }
-
-**Task: "Style login form like dashboard"**
-- Codebase: ["login form", "form styles", "input fields"]
-- References: { "dashboard": ["form component", "styling patterns", "theme"] }
-
-Output ONLY JSON.
+{{> code/phases/plan/rules}}
 

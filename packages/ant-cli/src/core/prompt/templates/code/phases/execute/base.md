@@ -135,20 +135,50 @@ Implement the feature. Source code only.
 2. **Lint errors** catch style/quality issues in 5-10 seconds  
 3. **Build** is expensive (30-60s) - only run when type-check + lint are clean
 
-❌ **Running build first wastes time**:
-- Build takes 30-60s to fail
-- Type-check would catch the same error in 5s
-- You'll fix the error and waste another 30-60s rebuilding
+────────────────────────────────────────────────────────────────────────────────
+
+🚨🚨🚨 **CRITICAL: ERROR FIXING RULES** 🚨🚨🚨
+
+**When errors occur, you MUST:**
+- ✅ **FIX the bug** while **PRESERVING the feature**
+- ✅ Keep ALL functionality added by previous tasks
+- ✅ Only modify the specific lines causing the error
+- ✅ If syntax error (missing bracket, semicolon), add the missing syntax
+- ✅ If type error, fix the type annotation
+
+**YOU MUST NOT:**
+- ❌ **DELETE code that was added by previous tasks**
+- ❌ Remove entire functions or interfaces to "fix" errors
+- ❌ Revert changes made by earlier tasks
+- ❌ "Simplify" by removing features
+
+**Example - WRONG approach:**
+```typescript
+// Error: Missing closing brace in extractRoutes function
+// ❌ WRONG: Delete the entire function
+-function extractRoutes(...) { ... }  // DELETED!
+```
+
+**Example - CORRECT approach:**
+```typescript
+// Error: Missing closing brace in extractRoutes function
+// ✅ CORRECT: Add the missing brace
+function extractRoutes(...) {
+  // ... existing code ...
+}  // ← Add missing brace
+```
+
+**Remember: Your job is to FIX bugs, not to UNDO previous work!**
 
 ────────────────────────────────────────────────────────────────────────────────
 
 **When errors occur:**
 
 ```xml
-<!-- Fix the error first -->
+<!-- Fix the error while PRESERVING the feature -->
 <edit path="src/path/to/file.ts">
 <search>code with error</search>
-<replace>fixed code</replace>
+<replace>fixed code (keeping the feature!)</replace>
 </edit>
 
 <!-- Then re-run validation FROM THE FAILED STEP -->

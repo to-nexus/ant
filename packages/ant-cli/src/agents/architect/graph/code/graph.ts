@@ -208,6 +208,7 @@ export function buildCodeGraph() {
       requireRagForDecompose: null as any,  // ✅ Whether decompose needs RAG
       decomposeKeywords: null as any,  // ✅ Keywords for decompose RAG
       selectedDesignFiles: null as any,  // ✅ Design files selected based on environment
+      decomposeFilePaths: null as any,  // ✅ File paths found via keyword search
       
       // Artifacts (from TaskArtifacts)
       prd: null as any,

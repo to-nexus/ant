@@ -283,57 +283,75 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     console.log(`   Session: ${sessionContextForLLM.totalTurns} turns, window=${sessionContextForLLM.windowSize}, compression=${(sessionContextForLLM.compressionRatio * 100).toFixed(0)}%`);
   }
   
-  // 4. Retrieve minimal codebase (Profile analysis only)
-  console.log(`📋 Retrieving codebase for profile analysis...`);
-  
-  // ✅ References are now loaded per-task in plan node
-  const referenceContexts: ReferenceContext[] = [];
-  
-  // ✅ Get ChatAPI client for grepping tracking
-  const { getChatAPIClient } = await import('../../../../../core/adapters/ChatAPIClient');
-  const chatAPI = getChatAPIClient();
-  
-  // ✅ Send grepping status
-  const query = (directive || design || "").slice(0, 100);  // First 100 chars as query
-  await chatAPI.addGreppingStatus(query, 0, 5);  // Max 5 files (minimal)
-  
-  const codeContext = await retriever.retrieve(
-    directive || design || "",
-    context.workingDir,
-    {
-      git: state.deps?.git,
-      vectorDB: state.deps?.memory
-    },
-    {
-      project: context.project,  // ✅ Pass project for Vector DB namespace
-      maxTokens: 20000,  // ~15KB (80% reduction from 100K)
-      maxFiles: 5,       // Minimal (67% reduction from 15)
-      exclude: ['test', 'tests', '__tests__', '*.test.*', '*.spec.*'],
-      mode: 'generate' // Default mode for profile analysis (actual mode determined in detectEnvironment)
-    }
-  );
-
-  console.log(`✅ Strategy: ${codeContext.strategy}, Files: ${codeContext.stats.filesLoaded}, Tokens: ~${codeContext.stats.estimatedTokens}`);
-  
-  // ✅ Send grepped result
-  await chatAPI.addGreppedResult(
-    query,
-    codeContext.stats.filesLoaded,
-    codeContext.strategy,
-    codeContext.files?.map(f => typeof f === 'string' ? f : f.path) || []
-  );
-
-  // 4. Analyze codebase profile (only purpose of resolve)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 4. Profile Analysis (MINIMAL - only for language/framework detection)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 
+  // PURPOSE: Detect language/framework for prompt selection
+  // CONDITION: Only if analyzer is available AND codebase exists
+  // SCOPE: Very minimal - just need package.json, tsconfig.json, main entry files
+  //
+  // ⚠️ This is NOT for task planning (that's detectEnvironment + decompose)
+  // ⚠️ This is NOT for code generation (that's plan + codeGen)
+  //
   let profile = undefined;
   const analyzer = state.deps?.analyzer;
+  const referenceContexts: ReferenceContext[] = [];
   
-  if (codeContext.code && analyzer) {
-    try {
-      profile = await analyzer.analyze(codeContext.code, context.workingDir);
-      console.log(`📊 Detected: ${profile.language}${profile.framework ? ` + ${profile.framework}` : ''}`);
-    } catch (error) {
-      console.warn('⚠️  Failed to analyze codebase:', error);
+  // ✅ Profile analysis conditions:
+  // 1. Analyzer must be available
+  // 2. Working directory must exist
+  // 3. This is a new job (not resume)
+  const shouldAnalyzeProfile = analyzer && context.workingDir && !isResume;
+  
+  if (shouldAnalyzeProfile) {
+    console.log(`📋 [Resolve] Analyzing codebase profile (minimal)...`);
+    
+    const { getChatAPIClient } = await import('../../../../../core/adapters/ChatAPIClient');
+    const chatAPI = getChatAPIClient();
+    
+    // ✅ Profile analysis needs ONLY config files, not code files
+    // Use keyword search for specific files, NOT vector DB
+    const profileKeywords = 'package.json tsconfig.json vite.config main entry index';
+    
+    await chatAPI.addGreppingStatus(profileKeywords, 0, 3);
+    
+    const codeContext = await retriever.retrieve(
+      profileKeywords,  // ✅ Specific keywords for config files
+      context.workingDir,
+      {
+        git: state.deps?.git,
+        vectorDB: state.deps?.memory
+      },
+      {
+        project: context.project,
+        maxTokens: 5000,   // ✅ Reduced from 20000 (profile needs minimal)
+        maxFiles: 3,       // ✅ Reduced from 5 (just config files)
+        exclude: ['test', 'tests', '__tests__', '*.test.*', '*.spec.*', 'node_modules'],
+        mode: 'generate'
+      }
+    );
+    
+    console.log(`   ✅ Found ${codeContext.stats.filesLoaded} files for profile`);
+    
+    await chatAPI.addGreppedResult(
+      profileKeywords,
+      codeContext.stats.filesLoaded,
+      codeContext.strategy,
+      codeContext.files?.map(f => typeof f === 'string' ? f : f.path) || []
+    );
+    
+    // Analyze profile from retrieved code
+    if (codeContext.code) {
+      try {
+        profile = await analyzer.analyze(codeContext.code, context.workingDir);
+        console.log(`   📊 Detected: ${profile.language}${profile.framework ? ` + ${profile.framework}` : ''}`);
+      } catch (error) {
+        console.warn('   ⚠️  Profile analysis failed:', error);
+      }
     }
+  } else {
+    console.log(`📋 [Resolve] Skipping profile analysis (${!analyzer ? 'no analyzer' : 'resume mode'})`);
   }
 
   // ✅ Return minimal state (profile only, NO mode - mode determined in detectEnvironment)

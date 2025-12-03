@@ -315,6 +315,23 @@ export class SpecialTagTransformer {
         formatted += `   └ ${parsed.environmentReasoning}\n\n`;
       }
       
+      // Keywords (if RAG required)
+      if (parsed.requireRagForDecompose && parsed.decomposeKeywords?.codebase?.length > 0) {
+        const keywords = parsed.decomposeKeywords.codebase;
+        const displayKeywords = keywords.slice(0, 8); // Show first 8
+        const remaining = keywords.length - displayKeywords.length;
+        
+        formatted += isKorean
+          ? `🔑 **검색 키워드**: `
+          : `🔑 **Search Keywords**: `;
+        
+        formatted += displayKeywords.join(', ');
+        if (remaining > 0) {
+          formatted += isKorean ? ` 외 ${remaining}개` : ` +${remaining} more`;
+        }
+        formatted += '\n\n';
+      }
+      
       // ✅ consumed: true → Replace original tag with formatted text
       return { text: formatted, consumed: true };
       
