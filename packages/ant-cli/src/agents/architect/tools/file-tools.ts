@@ -386,6 +386,11 @@ function applyUnifiedDiff(originalContent: string, patch: string): string | null
     let currentHunk: typeof hunks[0] | null = null;
 
     for (const line of patchLines) {
+      // Skip file headers (--- and +++ lines)
+      if (line.startsWith('--- ') || line.startsWith('+++ ')) {
+        continue;
+      }
+      
       // Parse hunk header: @@ -10,5 +10,6 @@
       const hunkMatch = line.match(/^@@\s+-(\d+),?(\d*)\s+\+(\d+),?(\d*)\s+@@/);
       if (hunkMatch) {
@@ -423,14 +428,14 @@ function applyUnifiedDiff(originalContent: string, patch: string): string | null
       const hunk = hunks[i];
       const startLine = hunk.originalStart - 1;  // 0-indexed
 
-      // Extract changes from hunk
-      const removals: number[] = [];
+      // Extract changes from hunk with content validation
+      const removals: Array<{offset: number; content: string}> = [];
       const additions: string[] = [];
       let lineOffset = 0;
 
       for (const line of hunk.lines) {
         if (line.startsWith('-')) {
-          removals.push(lineOffset);
+          removals.push({offset: lineOffset, content: line.substring(1)});
           lineOffset++;
         } else if (line.startsWith('+')) {
           additions.push(line.substring(1));
@@ -439,15 +444,26 @@ function applyUnifiedDiff(originalContent: string, patch: string): string | null
         }
       }
 
+      // ✅ CRITICAL: Validate that lines to remove actually match!
+      for (const removal of removals) {
+        const actualLine = result[startLine + removal.offset];
+        if (actualLine !== removal.content) {
+          console.error(`❌ Patch mismatch at line ${startLine + removal.offset + 1}:`);
+          console.error(`   Expected: "${removal.content}"`);
+          console.error(`   Actual:   "${actualLine}"`);
+          return null;  // Fail the patch - don't silently ignore!
+        }
+      }
+
       // Apply removals (in reverse to maintain indices)
       for (let j = removals.length - 1; j >= 0; j--) {
-        const removeIndex = startLine + removals[j];
+        const removeIndex = startLine + removals[j].offset;
         result.splice(removeIndex, 1);
       }
 
       // Apply additions
       if (additions.length > 0) {
-        result.splice(startLine + removals[0] || startLine, 0, ...additions);
+        result.splice(startLine + (removals[0]?.offset ?? 0), 0, ...additions);
       }
     }
 

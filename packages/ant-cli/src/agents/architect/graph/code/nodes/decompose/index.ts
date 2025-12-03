@@ -126,43 +126,66 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // STEP 2: Conditional RAG (if requireRagForDecompose)
+  // STEP 2: Keyword-based RAG (if requireRagForDecompose)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 
+  // PURPOSE: Provide file list to LLM for accurate task planning
+  // - LLM uses this list to know what files exist
+  // - Prevents "Create missing X" when X actually exists
+  // - Keywords from detectEnvironment determine search scope
+  //
   let codebaseFilePaths: string[] | undefined = undefined;
   let gitDiffResult: any = undefined;
   
   if (state.requireRagForDecompose && state.decomposeKeywords?.codebase && state.decomposeKeywords.codebase.length > 0) {
-    console.log(`🔍 [Decompose] RAG required - searching with keywords...`);
+    console.log(`🔍 [Decompose] Searching with ${state.decomposeKeywords.codebase.length} keywords...`);
+    console.log(`   Keywords: ${state.decomposeKeywords.codebase.slice(0, 5).join(', ')}${state.decomposeKeywords.codebase.length > 5 ? '...' : ''}`);
     
     const retriever = state.deps?.retriever;
     const vectorDB = state.deps?.vectorDB;
     const git = state.deps?.git;
     
+    // ✅ Get ChatAPI for status updates
+    const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
+    const chatAPI = getChatAPIClient();
+    
     if (!retriever || !vectorDB) {
       console.warn(`⚠️  [Decompose] Retriever or VectorDB not available, skipping RAG`);
     } else {
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      // 2a. Vector DB Search (main project) - FILE PATHS ONLY
+      // 2a. Vector DB Search - Get comprehensive file list
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       const searchQuery = state.decomposeKeywords.codebase.join(' ');
+      
+      // ✅ Show searching status in Chat UI
+      await chatAPI.addGreppingStatus(searchQuery, 0, 30);
+      
       const searchResult = await retriever.retrieve(
         searchQuery,
         state.context.workingDir,
         { vectorDB, git },
         {
           project: state.context.project,
-          maxTokens: 5000,
-          maxFiles: 20,
+          maxTokens: 8000,   // ✅ Increased for more comprehensive results
+          maxFiles: 30,      // ✅ Increased to capture more relevant files
           mode: state.mode || 'refactor'
         }
       );
       
-      // Extract file paths only (no content)
+      // Extract file paths only (no content - just for task planning)
       codebaseFilePaths = searchResult.files?.map((f: any) => 
         typeof f === 'string' ? f : f.path
       ) || [];
       
-      console.log(`   ✅ Found ${codebaseFilePaths.length} relevant files`);
+      // ✅ Show search results in Chat UI
+      await chatAPI.addGreppedResult(
+        searchQuery,
+        codebaseFilePaths.length,
+        searchResult.strategy || 'vector',
+        codebaseFilePaths.slice(0, 10) // Show first 10 files
+      );
+      
+      console.log(`   ✅ Found ${codebaseFilePaths.length} relevant files for task planning`);
       
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       // 2b. Git Diff Summary
@@ -198,8 +221,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     hasDesignDoc,
     mode: state.mode || 'unknown',
     profile: state.profile,
-    codebaseFilePaths
-    // gitDiff injected via injection file in PromptEngine
+    codebaseFilePaths  // ✅ File paths from keyword search (for task planning)
   });
   
   let rawResponse: string;

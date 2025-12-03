@@ -181,11 +181,36 @@ Description: "Update API_BASE_URL in config/api.ts from 'http://localhost:8080' 
 **Remember: The code exists. You're FIXING/COMPLETING it, not building from scratch!**
 
 {{#if fileList}}
-Existing files:
+📂 **Relevant files found ({{fileCount}} files):**
 ```
 {{fileList}}
 ```
 {{/if}}
+
+🚨 **CRITICAL: UNCERTAINTY IN TASK DESCRIPTIONS** 🚨
+
+**You are planning tasks, NOT executing them!**
+
+The file list above is from a keyword search - it may NOT be complete.
+**DO NOT make definitive claims about file existence!**
+
+**Task Description Guidelines:**
+
+✅ **GOOD - Express intention, not certainty:**
+- "Fix or create EventHandler.ts with proper event handling"
+- "Update WebSocketServer.ts to use correct import paths (create if missing)"
+- "Implement login feature in existing or new auth module"
+- "Add logging to server startup (modify existing server.ts)"
+
+❌ **BAD - Definitive claims about file existence:**
+- "Create missing EventHandler.ts file" (assumes it doesn't exist!)
+- "The EventHandler.ts file is missing, create it" (you don't know for sure!)
+- "Since EventHandler.ts doesn't exist, implement it from scratch"
+
+**Key Principle:**
+- Task describes WHAT to achieve, not WHETHER files exist
+- Actual file existence is verified during task execution (codeGen)
+- Let the executor decide: create vs modify based on actual state
 
 ════════════════════════════════════════════════════════════════════════════════
 

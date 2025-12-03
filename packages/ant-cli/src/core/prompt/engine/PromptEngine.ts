@@ -296,7 +296,8 @@ export class PromptEngine {
     designDocs: string[],
     profile: any
   ): Promise<string> {
-    return await this.deps.promptPort.render('code/nodes/detect-environment', {
+    // ✅ Uses phases/detect/base.md which includes {{> code/phases/detect/rules}}
+    return await this.deps.promptPort.render('code/phases/detect/base', {
       directive,
       designDocs: designDocs.join(', '),
       profile
@@ -315,11 +316,13 @@ export class PromptEngine {
     hasDesignDoc: boolean;
     mode: string;
     profile: any;
-    codebaseFilePaths?: string[];
+    codebaseFilePaths?: string[];  // File paths from keyword search
   }): Promise<string> {
     // ✅ Compute derived variables for the prompt
     const hasExistingCode = context.codebaseFilePaths && context.codebaseFilePaths.length > 0;
-    const fileList = hasExistingCode 
+    
+    // File list from keyword-based RAG search
+    const fileList = hasExistingCode
       ? context.codebaseFilePaths!.map(f => `- ${f}`).join('\n')
       : '';
     
@@ -333,6 +336,7 @@ export class PromptEngine {
       spec,
       hasExistingCode,
       fileList,
+      fileCount: context.codebaseFilePaths?.length || 0,
     };
     
     // decompose/base.md now includes {{> code/phases/decompose/rules}}
@@ -351,7 +355,8 @@ export class PromptEngine {
     mode: string,
     referenceProjects?: Array<{project: string}>
   ): Promise<string> {
-    return await this.deps.promptPort.render('code/nodes/generate-task-keywords', {
+    // ✅ Uses phases/plan/base.md which includes {{> code/phases/plan/rules}}
+    return await this.deps.promptPort.render('code/phases/plan/base', {
       taskName: task.name,
       taskDescription: task.description,
       language: profile?.language || 'unknown',

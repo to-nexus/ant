@@ -1,35 +1,44 @@
 # 📦 Retrieved Codebase Context
 
-The following code files were retrieved using **semantic search keywords** generated from your current task. These files are **highly relevant** to your work.
-
 {{#if files.length}}
-**Retrieved Files** ({{files.length}} files, ~{{stats.estimatedTokens}} tokens):
+## ⚠️ CRITICAL: These Files ALREADY EXIST in the Codebase!
+
+The following {{files.length}} files were retrieved from the **actual codebase** using semantic search.
+**These are REAL files that EXIST on disk right now.**
+
+🚨 **BEFORE creating ANY new file:**
+1. Check if the file you need is listed below
+2. If it exists here → use `apply_patch` or `read_file` + `write_file` to MODIFY it
+3. NEVER create a new file if it already exists below!
+
+---
+
+**Existing Files** ({{files.length}} files, ~{{stats.estimatedTokens}} tokens):
 
 {{#each files}}
-## File: `{{this.path}}`
+### 📄 `{{this.path}}` ← THIS FILE EXISTS!
 
 ```
 {{this.content}}
 ```
 
+---
 {{/each}}
 
-## 📋 How to Use This Code
+## 📋 How to Work With These Files
 
-1. **Read Carefully**: These files were selected because they're relevant to your task
-2. **Understand Context**: See how existing patterns and structures work
-3. **Reuse Patterns**: Follow the coding style and architecture you see here
-4. **Modify as Needed**: Update or extend this code to complete your task
-5. **Maintain Consistency**: Keep the same code quality and patterns
+1. **These files EXIST** - Do NOT recreate them with `write_file`
+2. **To modify**: Use `apply_patch` for targeted changes, or `read_file` + `write_file` for full rewrites
+3. **To add new code**: Extend the existing files shown above
+4. **To create NEW files**: Only if the file is NOT listed above
 
-## ⚠️ Important Notes
+## ❌ Common Mistakes to Avoid
 
-- These files represent the **current state** of the codebase
-- Some files may need modification for your task
-- Look for TODO comments or areas needing improvement
-- Test your changes thoroughly after modification
+- ❌ Creating `EventHandler.ts` when it already exists above
+- ❌ Using `write_file` to create a file that's shown in this list
+- ❌ Ignoring the existing code and starting from scratch
 
 {{else}}
-No code files were retrieved for this task.
+No code files were retrieved for this task. You may need to create new files.
 {{/if}}
 

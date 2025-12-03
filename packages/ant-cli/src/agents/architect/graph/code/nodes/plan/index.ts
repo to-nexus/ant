@@ -130,7 +130,18 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         source: 'plan' as const
       };
       
-      console.log(`   ✅ Found ${projectCodeContext.stats.filesLoaded} files`);
+      // ✅ Log retrieved files for debugging
+      console.log(`   ✅ Found ${projectCodeContext.stats.filesLoaded} files:`);
+      if (projectCodeContext.filePaths.length > 0) {
+        projectCodeContext.filePaths.forEach((f: string) => console.log(`      📄 ${f}`));
+      }
+      
+      // ✅ Debug: Check if file contents were extracted
+      console.log(`   📦 Extracted ${projectCodeContext.files.length} file contents for prompt`);
+      if (projectCodeContext.files.length === 0 && projectCodeContext.filePaths.length > 0) {
+        console.warn(`   ⚠️  WARNING: File paths found but no contents extracted!`);
+        console.warn(`   ⚠️  This means LLM will NOT see the file contents!`);
+      }
       
       if (git) {
         const { generateGitDiffSummary } = require('../../../../../../core/codebase/GitDiffSummary');
@@ -334,3 +345,4 @@ async function loadReferenceContexts(
   
   return contexts;
 }
+

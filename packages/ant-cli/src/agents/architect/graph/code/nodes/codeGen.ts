@@ -462,6 +462,9 @@ function buildRuntimeContext(state: ArchitectGraphState): string {
 
 /**
  * Generate file tree for context
+ * 
+ * CRITICAL: This shows files that EXIST in the codebase.
+ * LLM must check this before creating new files!
  */
 function generateFileTree(state: ArchitectGraphState): string | null {
   const files = state.projectCodeContext?.filePaths || [];
@@ -471,11 +474,13 @@ function generateFileTree(state: ArchitectGraphState): string | null {
   }
   
   const lines = [
-    '=== CODEBASE FILE TREE ===',
+    '════════════════════════════════════════════════════════════════════════════════',
+    '⚠️  EXISTING FILES IN CODEBASE (from RAG search)',
+    '════════════════════════════════════════════════════════════════════════════════',
     '',
-    `Total files: ${files.length}`,
+    `🚨 These ${files.length} files ALREADY EXIST. Do NOT recreate them!`,
     '',
-    '**File Structure:**',
+    '**Existing File Structure:**',
     '',
   ];
   
@@ -495,12 +500,16 @@ function generateFileTree(state: ArchitectGraphState): string | null {
   for (const [dir, filenames] of Object.entries(dirs).sort()) {
     lines.push(`📁 ${dir}/`);
     for (const filename of filenames.sort()) {
-      lines.push(`   📄 ${filename}`);
+      lines.push(`   ✅ ${filename} ← EXISTS`);
     }
     lines.push('');
   }
   
-  lines.push('💡 **Tip:** Use `read_file(path)` to see file contents before modifying.');
+  lines.push('────────────────────────────────────────────────────────────────────────────────');
+  lines.push('📌 BEFORE creating a file, check if it\'s listed above!');
+  lines.push('   - If YES → use apply_patch or read_file + write_file to MODIFY');
+  lines.push('   - If NO → you may create it with write_file');
+  lines.push('────────────────────────────────────────────────────────────────────────────────');
   
   return lines.join('\n');
 }
@@ -629,13 +638,15 @@ function getAvailableTools(state: ArchitectGraphState): import('../../../../../c
     },
     {
       name: 'run_command',
-      description: 'Execute a shell command (npm install, build, test, etc.). CRITICAL for handling dependency errors',
+      description: `Execute a shell command for build/test/install. 
+⚠️ FORBIDDEN commands (will fail): npm start, npm run dev, npm run serve, node server.js, nodemon - these are long-running servers.
+✅ ALLOWED: npm install, npm run build, npm test, npx tsc --noEmit, npm run lint`,
       input_schema: {
         type: 'object' as const,
         properties: {
           command: {
             type: 'string',
-            description: 'Shell command to execute (e.g., "npm install axios", "npm run build")',
+            description: 'Shell command (ONLY: npm install, npm run build, npm test, npx tsc). NEVER use: npm start, npm run dev, node server.js',
           },
           working_directory: {
             type: 'string',

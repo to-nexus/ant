@@ -208,6 +208,8 @@ export interface ArchitectGraphState extends TaskArtifacts {
     codebase: string[];
     references: Map<string, string[]>;
   }
+  // Note: decomposeFilePaths is populated in decompose node via keyword search
+  decomposeFilePaths?: string[];  // File paths found via keyword search for decompose
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // ✅ REFACTORED: Unified code context structure
