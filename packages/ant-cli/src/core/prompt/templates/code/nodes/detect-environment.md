@@ -72,16 +72,21 @@ Determine the **intent** of the directive:
 
 Does the `decompose` node need codebase context?
 
-**Generate mode** (새 프로젝트):
-- Usually NO codebase needed (빈 프로젝트)
-- Exception: Directive mentions "similar to...", "like existing..."
+⚠️ **CRITICAL: Mode ≠ Project Type!**
+- **generate/refactor/explain** = What ACTION to take
+- **NEW vs EXISTING project** = What PROJECT context exists
 
-**Refactor mode** (기존 프로젝트 수정):
-- Usually YES codebase needed (기존 구조 파악 필요)
-- Need to know: existing files, structure, patterns
+**RAG is needed when:**
+- ✅ Modifying existing code (refactor)
+- ✅ Adding to existing project (generate in existing codebase)
+- ✅ Understanding code (explain)
+- ✅ Directive mentions existing files, components, or patterns
 
-**Explain mode** (코드 이해):
-- Usually YES codebase needed (설명할 코드 필요)
+**RAG is NOT needed when:**
+- ❌ Brand new empty project with no code yet
+- ❌ Pure documentation or planning tasks
+
+**In practice:** Almost ALWAYS set `requireRagForDecompose: true` unless you're 100% certain it's an empty project with no existing code.
 
 ### 4. Keyword Generation (if RAG required)
 
