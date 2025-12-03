@@ -317,9 +317,26 @@ export class PromptEngine {
     profile: any;
     codebaseFilePaths?: string[];
   }): Promise<string> {
-    // ✅ For now, use direct render with partial inclusion
+    // ✅ Compute derived variables for the prompt
+    const hasExistingCode = context.codebaseFilePaths && context.codebaseFilePaths.length > 0;
+    const fileList = hasExistingCode 
+      ? context.codebaseFilePaths!.map(f => `- ${f}`).join('\n')
+      : '';
+    
+    // ✅ Build spec from directive + design doc
+    const spec = context.hasDesignDoc 
+      ? `## Directive\n${context.directive}\n\n## Design Document\n${context.designDoc}`
+      : context.directive;
+    
+    const enrichedContext = {
+      ...context,
+      spec,
+      hasExistingCode,
+      fileList,
+    };
+    
     // decompose/base.md now includes {{> code/phases/decompose/rules}}
-    return await this.deps.promptPort.render('code/phases/decompose/base', context);
+    return await this.deps.promptPort.render('code/phases/decompose/base', enrichedContext);
   }
 
   /**
