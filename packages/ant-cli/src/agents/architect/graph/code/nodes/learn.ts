@@ -294,7 +294,8 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
           jobTiming: completedJobTiming,  // ✨ Mark as completed
           directives: directivesArray,  // ✅ Save directives array (newest first)
           overrideDirective: state.overrideDirective,  // ✅ Save chat-initiated directive
-          chatSource: state.chatSource  // ✅ Save chat source flag
+          chatSource: state.chatSource,  // ✅ Save chat source flag
+          referenceRequests: state.referenceRequests || []  // ✅ Save reference repositories for analysis
         }
       }
     );

@@ -131,7 +131,7 @@ IMPORTANT:
 ]
 </tasks>
 
-2. If references are mentioned in directive, output them in <references> tags (NO markdown code blocks!):
+2. **ALWAYS output <references> tags after <tasks> (REQUIRED, even if empty!):**
 
 <references>
 [
@@ -140,6 +140,8 @@ IMPORTANT:
 </references>
 
 **CRITICAL:**
+- ⚠️ **ALWAYS output <references> tag, even if empty array**
+- If no references → output `<references>[]</references>`
 - Use XML tags directly, NOT inside markdown code blocks
 - NO ```xml or ``` markers
 - Just raw XML tags with JSON content inside
@@ -154,6 +156,15 @@ IMPORTANT:
   - "@ref ant-pong-be skeleton" → project: ant-pong-be, branch: feature/skeleton
   - "백엔드(ant-pong-be)의 skeleton 피처" → project: ant-pong-be, branch: feature/skeleton
 
-If no references mentioned: `<references>[]</references>`
+**Example output:**
+```
+<tasks>[...]</tasks>
+
+<references>
+[
+  { "project": "ant-pong-be", "branch": "feature/skeleton" }
+]
+</references>
+```
 
 
