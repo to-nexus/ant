@@ -1,14 +1,15 @@
+````markdown
 ## 🔧 RUNTIME ERROR FIX
 
-**You are fixing runtime errors from actual execution.**
+**Fixing runtime errors from actual execution.**
 
-### Critical: Path Alias Errors
+### Path Alias Errors
 
-**If you see:** `Can't resolve '@/components/X'` or similar import errors
+**Symptom:** `Can't resolve '@/components/X'` or import errors
 
-**Check BOTH:**
-1. Does the file exist at the target path?
-2. Is the path alias configured in `tsconfig.json`?
+**Check:**
+1. File exists at target path?
+2. Path alias configured in `tsconfig.json`?
 
 **Fix tsconfig.json:**
 ```json
@@ -22,31 +23,21 @@
 }
 ```
 
-**For Next.js/React projects using `@/` alias, this is REQUIRED!**
+────────────────────────────────────────────────────────────────────────────────
 
----
+### Quick Fixes
 
-### Common Issues:
+| Issue | Fix |
+|-------|-----|
+| Missing dependency | `npm install <package>` |
+| Wrong import path | Check file path, extension (.ts vs .tsx), export name |
+| DevDeps missing | `npm install --include=dev` |
 
-**Missing dependencies:**
-```bash
-npm install <missing-package>
-```
+────────────────────────────────────────────────────────────────────────────────
 
-**Incorrect imports:**
-- Check file path matches import
-- Check file extension (.ts vs .tsx)
-- Check export name matches import
+### Approach
+1. Read error → Identify root cause
+2. Fix broken code only
+3. Output with `<edit>` tags
 
-**Environment issues:**
-- Check NODE_ENV value
-- Run: `npm install --include=dev` if devDependencies missing
-
----
-
-### Fix Approach:
-
-1. Read error message → Identify root cause
-2. Fix ONLY the broken code
-3. Verify fix will resolve the error
-4. Output fixed files with `<edit>` or `<file>` tags
+````

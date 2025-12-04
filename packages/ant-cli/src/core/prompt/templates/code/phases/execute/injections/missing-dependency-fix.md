@@ -1,42 +1,45 @@
+````markdown
 ## 🚨 MISSING DEPENDENCY FIX
 
-**Your task contains "MISSING DEPENDENCY" errors.**
+**Task contains "MISSING DEPENDENCY" errors.**
 
-### Quick Fix Protocol:
+### Fix Protocol
 
-**1. Extract package names from error messages:**
+**1. Extract package names from errors:**
 ```
 "Cannot find module 'openai'" → openai
 "Cannot find module '@types/react'" → @types/react
 ```
 
-**2. Install ALL missing packages in ONE command:**
+**2. Install ALL in ONE command:**
 ```bash
 npm install openai axios cors
 npm install -D @types/react @types/node
 ```
 
-### Critical Rules:
+────────────────────────────────────────────────────────────────────────────────
+
+### Rules
 
 ✅ **DO:**
-- List ALL missing packages in one command
-- Use `-D` flag for @types packages (devDependencies)
-- npm automatically saves to package.json (npm 5+)
+- List all missing packages in one command
+- Use `-D` for @types packages
+- npm 5+ auto-saves to package.json
 
 ❌ **DON'T:**
-- Run `npm install` without package names (does nothing!)
-- Install packages one by one (inefficient)
+- Run `npm install` without package names
+- Install one by one
 
-### Example:
+────────────────────────────────────────────────────────────────────────────────
 
-**Error:**
+**Example:**
 ```
-Cannot find module 'openai'
-Cannot find module '@types/node'
-```
+Error: Cannot find module 'openai'
+Error: Cannot find module '@types/node'
 
-**Fix:**
-```bash
+Fix:
 npm install openai
 npm install -D @types/node
 ```
+
+````
