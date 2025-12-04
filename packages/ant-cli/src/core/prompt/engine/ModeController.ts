@@ -1,6 +1,5 @@
 import { AgentTask, CodeMode, ProjectEnvironment } from "../../types";
 import { AssembledContext } from "./ContextAssembler";
-import { inferCodeMode } from "../../modeInference";
 
 /**
  * Prompt mode configuration
@@ -55,15 +54,8 @@ export class ModeController {
     explicitMode?: CodeMode,
     taskType?: string  // 'setup' | 'feature' | 'error'
   ): PromptModeConfig {
-    // Infer code mode if not provided
-    let mode: CodeMode | undefined = explicitMode;
-    
-    if (task === 'code' && !mode && context.directive) {
-      mode = inferCodeMode(
-        context.directive,
-        context.stats.hasProjectCode
-      );
-    }
+    // ✅ Use explicit mode only - LLM will infer in detectEnvironment if needed
+    const mode: CodeMode | undefined = explicitMode;
     
     // Build mode config based on task and phase
     return this.buildModeConfig(task, phase, mode, context, taskType);

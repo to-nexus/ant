@@ -263,31 +263,14 @@ export async function architectAgent(
         throw new Error("PromptPort not provided for code generation");
       }
 
-      // === Infer code mode if not explicitly provided ===
-      let inferredMode = codeMode;
-      if (!inferredMode) {
-        const { inferCodeMode } = await import('../../core/modeInference');
-        
-        const gitPort = deps?.git;
-        if (!gitPort) {
-          throw new Error("GitPort not provided for code mode inference");
-        }
-        
-        const directive = await ArtifactService.getDirective(context, 'code', gitPort);
-        const designResult = await ArtifactService.findLatestDesign(context, gitPort);
-        const designDoc = designResult?.content || null;
-        const hasGitChanges = await gitPort.hasChanges();
-        
-        inferredMode = inferCodeMode({
-          directive,
-          designDoc,
-          hasGitChanges,
-          hasExistingCode: true  // We're in a project, so code exists
-        });
-        
-        console.log(`🎯 Code mode inferred: ${inferredMode}`);
-      } else {
+      // === ✅ Mode inference is handled by LLM in detectEnvironment node ===
+      // Do NOT infer mode here - let detectEnvironment decide
+      const inferredMode = codeMode;  // Use explicit mode if provided, otherwise undefined
+      
+      if (inferredMode) {
         console.log(`🎯 Code mode (explicit): ${inferredMode}`);
+      } else {
+        console.log(`🎯 Code mode: Will be determined by LLM in detectEnvironment node`);
       }
 
       // === ✅ UNIFIED: Always use Task Queue Mode with LLM validation ===

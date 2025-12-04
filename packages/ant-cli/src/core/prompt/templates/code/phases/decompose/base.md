@@ -14,41 +14,36 @@ SPECIFICATION:
 🚨 **CRITICAL: You are FIXING existing code, NOT building from scratch!**
 
 **CORE PRINCIPLES:**
-1. **Minimal Changes**: Make ONLY the changes needed to fix the stated problem
-2. **Preserve Working Code**: DO NOT recreate components that already work
-3. **Focused Tasks**: Create tasks ONLY for the specific issues mentioned
-4. **No Feature Creep**: DO NOT add features not mentioned in the directive
+1. **Surgical Fixes**: Target the specific problem, leave everything else untouched
+2. **Preserve Functionality**: All working code remains working
+3. **Focused Tasks**: One issue = one task (don't bundle fixes)
+4. **No Scope Creep**: Fix only what's mentioned, don't add "improvements"
 
-**TASK CREATION RULES:**
-1. **Identify the EXACT problem**:
-   - Which specific file/component is broken?
-   - What is the EXACT error or issue?
-   - What needs to change (be specific: file, function, line)?
+**Task Creation Framework:**
+```
+1. Identify WHAT is broken:
+   - Specific file/component?
+   - Exact error or issue?
+   - What needs to change?
 
-2. **Create ONE task per distinct issue**:
-   - ✅ GOOD: "Fix WebSocket URL in websocket.service.ts line 39"
-   - ❌ BAD: "Implement WebSocket system and fix URL"
-   
-3. **Use focused action verbs**:
-   - ✅ Use: "Fix", "Update", "Modify", "Correct", "Adjust", "Change"
-   - ❌ Avoid: "Implement", "Create", "Build", "Develop", "Design"
+2. Create ONE task per distinct problem:
+   - Use verbs: "Fix", "Update", "Modify", "Correct"
+   - Avoid: "Implement", "Create", "Build"
+   - Reference existing files explicitly
 
-4. **Reference existing files explicitly**:
-   - ✅ GOOD: "Fix getWebSocketURL() in websocket.service.ts"
-   - ❌ BAD: "Implement WebSocket connection logic"
+3. Estimate task count:
+   - Single error: 1-2 tasks
+   - Multiple related issues: 2-4 tasks
+   - Complex refactoring: 3-6 tasks
+   - ⚠️ If >5 tasks → likely over-engineering
+```
 
-**WHAT TO AVOID:**
-- ❌ DO NOT bundle multiple fixes into one task
-- ❌ DO NOT add "improvements" not mentioned in directive
-- ❌ DO NOT recreate working infrastructure
-- ❌ DO NOT redesign the architecture
-- ❌ DO NOT add features "while we're at it"
+**Task Naming Pattern:**
+- Verb: Action to take (Fix, Update, Modify)
+- Target: What to change (specific file/function)
+- Context: Why (optional error message)
 
-**EXPECTED TASK COUNT:**
-- Single error/bug: 1-2 tasks
-- Multiple related issues: 2-4 tasks
-- Complex refactoring: 3-6 tasks
-- ⚠️ If you're creating >5 tasks in refactor mode, you're probably over-engineering!
+Example: "Fix WebSocket URL in websocket.service.ts"
 
 ════════════════════════════════════════════════════════════════════════════════
 
@@ -57,25 +52,21 @@ SPECIFICATION:
 
 🚨 **CRITICAL: This is a BUG FIX, not a feature implementation!**
 
-**CORE PRINCIPLES:**
-1. **Root Cause**: Identify the EXACT cause of the issue
-2. **Minimal Fix**: Change ONLY what's necessary
-3. **Preserve Behavior**: Keep everything else unchanged
-
-**TASK CREATION RULES:**
-1. **Focus on the bug**:
+**Task Creation Framework:**
+```
+1. Identify root cause:
    - What is broken?
    - Why is it broken?
    - What's the minimal fix?
 
-2. **One bug = One task**:
-   - ✅ GOOD: "Fix null pointer in validateInput() function"
-   - ❌ BAD: "Refactor validation system and fix null pointer"
+2. One bug = One task
+   - Describe the bug, not the solution
+   - Include error message (if available)
+   - Let execution phase determine fix approach
 
-**EXPECTED TASK COUNT:**
-- Single bug: 1 task
-- Related bugs: 2-3 tasks
-- ⚠️ If you're creating >3 tasks in explain mode, you're over-engineering!
+3. Estimate: 1-3 tasks max
+   - ⚠️ If >3 tasks → over-engineering
+```
 
 ════════════════════════════════════════════════════════════════════════════════
 
@@ -101,55 +92,35 @@ Follow the guidelines below for creating tasks.
 
 🚨🚨🚨 **CRITICAL: YOU ARE PLANNING, NOT SOLVING!** 🚨🚨🚨
 
-**Your role in decompose:**
-- ✅ Describe WHAT error needs to be fixed
-- ✅ Include the ORIGINAL error message in task description
-- ❌ DO NOT decide HOW to fix it (that's execute's job!)
-- ❌ DO NOT assume the root cause
+**Decompose Phase Role:**
+- Describe WHAT error needs fixing
+- Include ORIGINAL error message
+- DON'T decide HOW to fix it (execute phase's job)
+- DON'T assume root cause
 
-**WHY THIS MATTERS:**
-
-Errors often have multiple possible causes. For example:
+**Why?** Errors often have multiple possible causes:
 ```
 Error: Cannot find module './EventHandler'
+
+Possible causes (unknown at this stage):
+├─ File doesn't exist → Create file
+├─ Wrong import path → Fix import
+├─ Config issue → Fix tsconfig.json
+└─ Build output missing → Rebuild
 ```
 
-Possible causes (you don't know which!):
-- File doesn't exist → Create the file
-- Wrong import path → Fix the import
-- Module resolution config issue → Fix tsconfig.json
-- Build output missing → Rebuild
-
-**If you decide the cause here, you might be WRONG!**
-Let the execute phase analyze and determine the actual fix.
-
-**TASK CREATION RULES:**
-
-1. **Task name**: Describe the ERROR, not the solution
-   - ✅ "Fix ERR_MODULE_NOT_FOUND for EventHandler"
-   - ❌ "Create missing EventHandler.ts file"
-
-2. **Task description**: Include the error message, let execute decide
-   - ✅ "Analyze and resolve: Error [ERR_MODULE_NOT_FOUND]: Cannot find module './EventHandler'. Determine root cause and fix."
-   - ❌ "Create EventHandler.ts file that is missing from the codebase"
-
-3. **DO NOT over-engineer**:
-   - ❌ Wrong: One error → Multiple "fix" tasks
-   - ✅ Right: One error → One "analyze and fix" task
-
-**EXAMPLES:**
-
-✅ **GOOD - Describes problem, lets execute decide:**
+**Task Creation Pattern:**
 ```
-Task: "Fix ERR_MODULE_NOT_FOUND for EventHandler import"
-Description: "Analyze and resolve the module resolution error: 'Cannot find module ./EventHandler imported from WebSocketServer.js'. Determine if this is a missing file, wrong path, or configuration issue, then apply the appropriate fix."
+Name: "Fix [ERROR_TYPE] for [COMPONENT]"
+Description: "Analyze and resolve: '[FULL_ERROR_MESSAGE]'. 
+             Determine root cause and apply fix."
 ```
 
-❌ **BAD - Assumes the solution:**
-```
-Task: "Create missing EventHandler.ts file"
-Description: "Create EventHandler.ts with WebSocket event handling logic..."
-```
+**Rules:**
+- Describe error, not solution
+- Include full error message
+- One error = one "analyze and fix" task
+- Don't create multiple fix tasks for one error
 
 ════════════════════════════════════════════════════════════════════════════════
 
@@ -162,63 +133,37 @@ Description: "Create EventHandler.ts with WebSocket event handling logic..."
 
 **MODIFICATION MODE: The code ALREADY EXISTS!**
 
-**YOU MUST:**
-- ✅ Create tasks to MODIFY/FIX/COMPLETE existing code
-- ✅ Assume infrastructure (package.json, tsconfig.json) already exists
-- ✅ Build upon existing files shown below
-- ✅ Use verbs: "Fix", "Complete", "Extend", "Modify", "Add to existing"
-- ❌ DO NOT create "Setup Task (priority 100)"
-- ❌ DO NOT create tasks to "initialize" or "bootstrap" the project
-- ❌ DO NOT recreate existing infrastructure
-- ❌ DO NOT use verbs: "Create entire", "Implement from scratch", "Build complete"
+**Task Creation Principles:**
+1. **Build on existing**: Modify/extend what exists, don't recreate
+2. **Assume infrastructure exists**: package.json, tsconfig.json already present
+3. **Action verbs matter**:
+   - Use: "Fix", "Complete", "Extend", "Add to", "Update"
+   - Avoid: "Create", "Implement from scratch", "Build complete"
 
-**If you see errors like "entry point missing" or "module not found":**
-- These are BUG FIX tasks (priority 200+), NOT setup tasks
-- Create ONE focused task to fix the specific missing file
-- DO NOT recreate the entire project infrastructure
-- Example: "Fix: Add missing main.ts entry point" (NOT "Create NestJS entry point and bootstrap")
+**Missing Files ≠ Setup Task:**
+- Error "entry point missing" → Feature task to add missing file
+- NOT → Setup task to rebuild infrastructure
+- Principle: Fix the gap, don't rebuild the foundation
 
-**Task Description Guidelines for Existing Code:**
-- ✅ GOOD: "Fix missing main.ts - add NestJS bootstrap using existing FileStorage"
-- ✅ GOOD: "Complete AuthModule - implement login using existing storage layer"
-- ✅ GOOD: "Extend FileStorage to support User and Balance entities"
-- ❌ BAD: "Implement AuthModule for CROSS wallet authentication" (sounds like from scratch)
-- ❌ BAD: "Create repositories using existing FileStorage" (too broad, sounds like full implementation)
-- ❌ BAD: "Implement AppModule to wire all modules together" (sounds like new project)
-
-**Remember: The code exists. You're FIXING/COMPLETING it, not building from scratch!**
-
-{{#if fileList}}
-📂 **Relevant files found ({{fileCount}} files):**
+**Task Description Quality:**
 ```
-{{fileList}}
+Good pattern:
+"[Action] [Target] - [Method using existing]"
+
+Examples:
+├─ "Fix main.ts - add bootstrap using existing FileStorage"
+├─ "Complete AuthService - add login to existing service"
+├─ "Extend User entity with balance field"
+└─ "Update WebSocket URL in websocket.service.ts"
 ```
-{{/if}}
 
-🚨 **CRITICAL: UNCERTAINTY IN TASK DESCRIPTIONS** 🚨
+**File Existence Uncertainty:**
+You're planning, not executing. File list may be incomplete.
 
-**You are planning tasks, NOT executing them!**
-
-The file list above is from a keyword search - it may NOT be complete.
-**DO NOT make definitive claims about file existence!**
-
-**Task Description Guidelines:**
-
-✅ **GOOD - Express intention, not certainty:**
-- "Fix or create EventHandler.ts with proper event handling"
-- "Update WebSocketServer.ts to use correct import paths (create if missing)"
-- "Implement login feature in existing or new auth module"
-- "Add logging to server startup (modify existing server.ts)"
-
-❌ **BAD - Definitive claims about file existence:**
-- "Create missing EventHandler.ts file" (assumes it doesn't exist!)
-- "The EventHandler.ts file is missing, create it" (you don't know for sure!)
-- "Since EventHandler.ts doesn't exist, implement it from scratch"
-
-**Key Principle:**
-- Task describes WHAT to achieve, not WHETHER files exist
-- Actual file existence is verified during task execution (codeGen)
-- Let the executor decide: create vs modify based on actual state
+Task descriptions should express **intention**, not claim file existence:
+- "Fix or create EventHandler.ts..."
+- "Update WebSocketServer.ts (create if missing)..."
+- NOT: "Create missing EventHandler.ts" (assumes it's missing!)
 
 ════════════════════════════════════════════════════════════════════════════════
 
@@ -241,83 +186,57 @@ The file list above is from a keyword search - it may NOT be complete.
 📐 DESIGN SPECIFICATION
 ════════════════════════════════════════════════════════════════════════════════
 
-**UNDERSTANDING DESIGN DOCUMENTS:**
-
-The design specification may include:
-1. **API Contract** (api-contract.md): Integration specification between Frontend and Backend
-   - **🚨 NOT an external repository!** It's a specification document in THIS project
-   - Defines exact field names, types, endpoints
-   
-2. **System Design** (fe-system-design.md, be-system-design.md): Implementation guidelines
-   - Describes architecture, patterns, components
+**Document Types:**
+1. **API Contract** - Integration specification (field names, types, endpoints)
+2. **System Design** - Implementation guidelines (architecture, patterns)
 
 {{#if (or (eq mode "refactor") (eq mode "explain"))}}
 **IN REFACTOR/FIX MODE:**
 
-The design documents describe the INTENDED architecture. Your task is to:
-- ✅ Fix specific issues mentioned in the directive
-- ✅ Use design docs to understand context and architecture
-- ✅ Use API Contract to ensure correct integration patterns
-- ❌ DO NOT create tasks for every component in design doc
-- ❌ DO NOT use design doc as a checklist of things to implement
+**Critical Principle: Design ≠ Task Checklist**
 
-**CRITICAL DISTINCTION:**
+Design documents describe the INTENDED system architecture.
+Your directive specifies WHAT to fix.
+
 ```
-Design Doc:        "System has 10 components (A, B, C, D, E, F, G, H, I, J)"
-User Directive:    "Fix error in component A"
+Relationship:
+Design Document: "System has components A through J"
+User Directive: "Fix error in component A"
 
-✅ CORRECT TASKS:
-   - Fix error in component A (1 task)
-   - Final verification (1 task)
-   Total: 2 tasks
+Task Creation:
+├─ Fix component A (as directed)
+└─ Final verification
+Total: 2 tasks
 
-❌ WRONG TASKS:
-   - Implement component A (rebuilding)
-   - Implement component B (not mentioned!)
-   - Implement component C (not mentioned!)
-   ...
-   - Implement component J (not mentioned!)
-   - Fix error in component A (finally!)
-   Total: 11 tasks (9 unnecessary!)
+DON'T create tasks for B-J (not mentioned in directive)
 ```
 
-**HOW TO USE DESIGN DOCS:**
-1. Read them to understand the system architecture
-2. Use them to understand how components should interact
-3. Use API Contract specification for exact field names and types
-4. **DO NOT use system design as a task list!**
+**How to use design docs:**
+- Understand system architecture
+- See how components should interact
+- Use API Contract for correct type definitions
+- DON'T treat as exhaustive task list
 
 {{else}}
 **IN GENERATE MODE:**
 
-**HOW TO USE DESIGN DOCUMENTS:**
+**Document Interpretation:**
 
-1. **API Contract (if present)**:
-   - ✅ Use as the integration specification
-   - ✅ Extract exact field names, types, endpoints from it
-   - ❌ NOT an external repository (CANNOT use `search_reference_code` on it)
+| Document Type | Purpose | Usage |
+|--------------|---------|-------|
+| API Contract | Integration spec | Extract types, endpoints |
+| System Design | Implementation guide | Create component tasks |
+| External Repo | Reference code | Searchable via tool |
 
-2. **System Design**:
-   - ✅ Use as implementation guide for architecture
-   - ✅ Create tasks to implement components described
+**Critical Distinctions:**
+- api-contract.md = THIS project's specification (not searchable)
+- ant-pong-be = EXTERNAL project (searchable via tool)
 
-**CRITICAL - Specification vs External Repositories:**
-
-| Type | What is it? | Can search? | Example |
-|------|-------------|-------------|---------|
-| **api-contract.md** | Specification document in THIS project | ❌ NO | Integration interface definition |
-| **External Repos** | Other project codebases | ✅ YES | ant-pong-be, other-service |
-
-**Directive interpretation:**
-- "api-contract.md" or "API Contract" → Specification to follow (NOT searchable)
-- "ant-pong-be를 참조해서" or "refer to ant-pong-be repo" → External codebase (searchable)
-
-**When creating tasks:**
-- ✅ Frontend: Implement components using API Contract type definitions
-- ✅ Backend: Implement endpoints according to API Contract specification
-- ❌ DO NOT mix frontend/backend in one task
-- ❌ DO NOT duplicate API Contract definitions (already defined)
-- ❌ DO NOT treat API Contract as an external repo
+**Task Creation:**
+- Frontend: Implement using API Contract types
+- Backend: Implement according to API Contract spec
+- Don't mix frontend/backend in one task
+- Don't duplicate API Contract definitions
 
 {{/if}}
 

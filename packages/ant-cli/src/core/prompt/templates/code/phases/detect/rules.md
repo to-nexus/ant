@@ -2,36 +2,57 @@
 
 ### 1. Mode Inference
 
-Determine the **intent** of the directive:
+Determine the **intent** of the directive by analyzing the **action verbs**:
 
 **generate**: Creating new features/files from scratch
-- Keywords: "create", "add", "new", "implement", "build", "initialize"
-- Context: Empty project or adding completely new components
+- **Action verbs**: "create", "add", "new", "implement", "build", "initialize", "set up"
+- **Context**: Empty project or adding completely new components
+- **Key indicator**: No existing code is being modified
 - Examples:
   - "Create a login page with email and password"
   - "Add a new user management API"
   - "Build a todo list component"
 
 **refactor**: Modifying/improving existing code
-- Keywords: "fix", "update", "change", "improve", "refactor", "optimize"
-- Context: Existing code needs modification
+- **Action verbs**: "fix", "update", "change", "improve", "refactor", "optimize", "modify", "correct", "adjust"
+- **Context**: Existing code needs modification
+- **Key indicator**: Directive mentions fixing, changing, or improving existing code
 - Examples:
   - "Fix the null pointer bug in user service"
   - "Update login form to use new design"
   - "Improve performance of data fetching"
+  - "Check the entry point and fix if needed" ← Has "fix" action
+  - "Investigate the error and update the code" ← Has "update" action
 
 **explain**: Understanding/documenting code (READ-ONLY, NO changes)
-- Keywords: "explain", "what", "why", "how does", "analyze", "understand", "describe", "document"
-- Context: User wants to learn about code
-- Important: **"how to implement X" = generate**, **"how does X work" = explain**
+- **Action verbs**: "explain", "describe", "analyze", "understand", "document", "show", "tell"
+- **Context**: User wants to learn about code (NO modification intended)
+- **Key indicator**: NO action verbs for modification (fix, change, update, etc.)
 - Examples:
   - "Explain how authentication works"
   - "What does the Button component do?"
   - "Analyze the user service architecture"
+  - "Check the entry point configuration" ← Only "check", no fix/modify action
 
-⚠️ **Critical Distinction**:
-- "how to implement" / "how to add" / "how to create" → **generate**
-- "how does it work" / "how is it implemented" → **explain**
+⚠️ **CRITICAL Decision Rules**:
+
+1. **Look for action verbs FIRST**:
+   - If directive contains ANY modification verbs (fix, change, update, modify, correct, improve) → **refactor**
+   - If directive contains ONLY investigation verbs (check, analyze, investigate) with NO modification verbs → **explain**
+   - If directive contains creation verbs (create, add, build, implement) → **generate**
+
+2. **Multi-step directives** (e.g., "check X and fix Y"):
+   - If BOTH investigation AND modification verbs exist → **refactor**
+   - Example: "Check the configuration and update if needed" → **refactor** (has "update")
+
+3. **Ambiguous cases**:
+   - "how to implement X" → **generate** (creating new)
+   - "how does X work" → **explain** (understanding existing)
+   - "how to fix X" → **refactor** (modifying existing)
+
+4. **Language-agnostic**: Works for all languages (English, Korean, etc.)
+   - Focus on detecting action verbs regardless of language
+   - Korean examples: "수정" (modify), "고치" (fix), "확인" (check)
 
 ### 2. Environment Detection
 
