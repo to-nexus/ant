@@ -162,13 +162,20 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     
     console.log(`   finalCompletedTasks length: ${finalCompletedTasks.length}`);
     
+    // ✅ Read recursion limit from environment variable (fallback: existing > 50)
+    const MIN_RECURSION_LIMIT = 5;
+    const envRecursionLimit = parseInt(process.env.RECURSION_LIMIT || '', 10);
+    const defaultRecursionLimit = (isNaN(envRecursionLimit) || envRecursionLimit < MIN_RECURSION_LIMIT) 
+      ? 50  // Default fallback
+      : envRecursionLimit;
+    
     // Update local snapshot for coordination
     this.taskQueueSnapshots.set(jobId, { 
       currentTask, 
       queue,
       completedTasks: finalCompletedTasks,
       recursionCount: recursionCount || existingSnapshot?.recursionCount || 0,
-      recursionLimit: recursionLimit || existingSnapshot?.recursionLimit || 50
+      recursionLimit: recursionLimit || existingSnapshot?.recursionLimit || defaultRecursionLimit
     });
     
     // ✅ Broadcast immediately to Kanban clients via SSE service

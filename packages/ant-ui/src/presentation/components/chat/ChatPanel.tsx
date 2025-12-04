@@ -9,7 +9,6 @@ import { ChatHistory } from './ChatHistory';
 import { ChatInput } from './ChatInput';
 import { useChat } from '@/application/hooks/features/useChat';
 import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
-import { useStore } from '@/domain/store';
 import type { FileStats } from '@/domain/models/chat';
 
 interface ChatPanelProps {

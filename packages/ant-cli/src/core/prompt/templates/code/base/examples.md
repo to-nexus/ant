@@ -46,7 +46,7 @@ Example 4: Feedback Statement
 
 **Response**:
 1. Acknowledge the constraint
-2. Replace inline `style={{...}}` with Tailwind utility classes
+2. Replace inline `style=\{{...}}` with Tailwind utility classes
 3. Explain the mapping (padding → p-4, border-radius → rounded-lg, etc.)
 
 ────────────────────────────────────────────────────────────────────────────────

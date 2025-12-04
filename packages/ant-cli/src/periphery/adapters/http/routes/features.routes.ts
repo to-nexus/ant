@@ -146,6 +146,12 @@ export function createFeaturesRoutes(deps: {
       }
       
       // Clear job-related data but keep structure
+      const MIN_RECURSION_LIMIT = 5;
+      const envRecursionLimit = parseInt(process.env.RECURSION_LIMIT || '', 10);
+      const defaultRecursionLimit = (isNaN(envRecursionLimit) || envRecursionLimit < MIN_RECURSION_LIMIT) 
+        ? 50 
+        : envRecursionLimit;
+      
       const clearedSession = {
         ...sessionData,
         state: {
@@ -156,7 +162,7 @@ export function createFeaturesRoutes(deps: {
           jobId: undefined,
           jobTiming: undefined,
           recursionCount: 0,
-          recursionLimit: sessionData.state?.recursionLimit || 50,
+          recursionLimit: sessionData.state?.recursionLimit || defaultRecursionLimit,
           interruption: undefined
         }
       };
