@@ -9,28 +9,19 @@ export interface ParsedDecomposeResponse {
 /**
  * Parse LLM response and extract tasks
  * 
- * Expected format: <tasks>[...]</tasks>
+ * Expected format: 
+ * <tasks>[...]</tasks>
+ * <references>[...]</references>  (optional, can be empty array)
+ * 
+ * STRICT MODE: No fallback parsing. LLM MUST follow the XML tag format.
  */
 export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
   try {
-    // ✅ Extract JSON array from <tasks> XML tag
+    // ✅ Extract JSON array from <tasks> XML tag (REQUIRED)
     const tasksMatch = rawResponse.match(/<tasks>\s*([\s\S]*?)\s*<\/tasks>/);
     
     if (!tasksMatch) {
-      // Fallback: Try to find JSON block (for backward compatibility)
-      console.warn('⚠️  [Decompose] No <tasks> tag found, trying fallback JSON extraction');
-      const jsonMatch = rawResponse.match(/```json\s*([\s\S]*?)\s*```/) || rawResponse.match(/\{[\s\S]*\}/);
-      const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : rawResponse;
-      const parsed = JSON.parse(jsonStr);
-      
-      if (!parsed.tasks || !Array.isArray(parsed.tasks)) {
-        throw new Error('Invalid response: tasks array missing');
-      }
-      
-      return {
-        tasks: parsed.tasks,
-        referenceRequests: parsed.referenceProjects || parsed.referenceRequests
-      };
+      throw new Error('Invalid response: <tasks> tag is required. LLM must follow the prompt format strictly.');
     }
     
     // Parse JSON array from <tasks> tag
@@ -40,15 +31,21 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
       throw new Error('Invalid response: tasks must be an array');
     }
     
-    // ✅ Extract references from <references> tag
+    // ✅ Extract references from <references> tag (OPTIONAL but must use tag format if present)
     let referenceRequests: Array<{project: string; branch?: string; reason?: string}> | undefined;
     const referencesMatch = rawResponse.match(/<references>\s*([\s\S]*?)\s*<\/references>/);
     
     if (referencesMatch) {
       try {
-        referenceRequests = JSON.parse(referencesMatch[1]);
+        const parsed = JSON.parse(referencesMatch[1]);
+        // ✅ Accept empty array (no references)
+        if (Array.isArray(parsed)) {
+          referenceRequests = parsed.length > 0 ? parsed : undefined;
+        } else {
+          console.warn('⚠️  [Decompose] <references> tag content is not an array, ignoring');
+        }
       } catch (error) {
-        console.warn('⚠️  [Decompose] Failed to parse <references> tag:', error);
+        console.warn('⚠️  [Decompose] Failed to parse <references> tag content:', error);
       }
     }
     

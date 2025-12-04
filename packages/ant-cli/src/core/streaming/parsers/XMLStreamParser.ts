@@ -25,6 +25,8 @@ interface ParserContext {
   insideLearnCommand: boolean;  // ✅ NEW: <learn_command> tag
   learnCommandContent: string;  // ✅ NEW: Accumulate learn_command content
   tasksContent: string;  // ✅ NEW: Accumulate tasks content
+  insideReferences: boolean;  // ✅ NEW: <references> tag
+  referencesContent: string;  // ✅ NEW: Accumulate references content
   currentFilePath: string | null;
   currentAppendPath: string | null;  // ✅ NEW
   currentEditPath: string | null;
@@ -42,6 +44,8 @@ export class XMLStreamParser implements IStreamParser {
     insideLearnCommand: false,  // ✅ NEW
     learnCommandContent: '',  // ✅ NEW
     tasksContent: '',  // ✅ NEW
+    insideReferences: false,  // ✅ NEW
+    referencesContent: '',  // ✅ NEW
     currentFilePath: null,
     currentAppendPath: null,  // ✅ NEW
     currentEditPath: null
@@ -277,7 +281,57 @@ export class XMLStreamParser implements IStreamParser {
         continue;
       }
       
-      // 15. Check for <file path="..."> opening
+      // 14. Check for <references> opening
+      if (!this.context.insideReferences && this.buffer.includes('<references>')) {
+        const startIdx = this.buffer.indexOf('<references>');
+        
+        // Emit any text before <references> as response
+        const beforeTag = this.buffer.substring(0, startIdx);
+        if (beforeTag.trim()) {
+          actions.push({
+            type: 'response',
+            data: { content: beforeTag }
+          });
+        }
+        
+        this.buffer = this.buffer.substring(startIdx + '<references>'.length);
+        this.context.insideReferences = true;
+        this.context.referencesContent = '';  // Reset accumulator
+        
+        continueParsingLoop = true;
+        continue;
+      }
+      
+      // 15. Check for </references> closing
+      if (this.context.insideReferences && this.buffer.includes('</references>')) {
+        const endIdx = this.buffer.indexOf('</references>');
+        const fragment = this.buffer.substring(0, endIdx);
+        this.context.referencesContent += fragment;
+        
+        this.buffer = this.buffer.substring(endIdx + '</references>'.length);
+        this.context.insideReferences = false;
+        
+        // ✅ Emit complete references as ONE response chunk (for SpecialTagTransformer)
+        const fullContent = `<references>${this.context.referencesContent}</references>`;
+        actions.push({
+          type: 'response',
+          data: { content: fullContent }
+        });
+        
+        this.context.referencesContent = '';  // Reset
+        
+        continueParsingLoop = true;
+        continue;
+      }
+      
+      // 16. Accumulate content inside <references>
+      if (this.context.insideReferences && this.buffer.length > 0) {
+        this.context.referencesContent += this.buffer;
+        this.buffer = '';
+        continue;
+      }
+      
+      // 17. Check for <file path="..."> opening
       if (!this.context.insideFile) {
         const fileMatch = this.buffer.match(/<file\s+path="([^"]+)">/);
         if (fileMatch) {
