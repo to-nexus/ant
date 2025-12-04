@@ -83,11 +83,13 @@ export interface CodebaseProfile {
  */
 export interface TaskArtifacts {
   prd?: string;
+  prdSpec?: string;  // ✅ Added for design graph
   directive?: string;
   design?: string;
   designDocPath?: string;
+  code?: string;     // ✅ Added for design graph (codebase context)
   profile?: CodebaseProfile;
-  lessons?: any[];
+  lessons?: any;     // ✅ Changed to any for flexibility (string | array)
   documents?: any[];
 }
 

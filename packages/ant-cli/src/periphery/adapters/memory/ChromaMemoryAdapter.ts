@@ -231,7 +231,7 @@ export class ChromaMemoryAdapter implements MemoryPort {
    * ✅ Used when git init creates a new repository
    */
   async clear(project: string): Promise<void> {
-    const collectionTypes: CollectionType[] = ['codebase', 'lesson', 'document'];
+    const collectionTypes: CollectionType[] = ['codebase', 'lessons', 'documents'];
     
     for (const type of collectionTypes) {
       const collectionName = getCollectionName(type, project);

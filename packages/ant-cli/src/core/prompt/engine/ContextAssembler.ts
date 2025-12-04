@@ -11,6 +11,8 @@ export interface AssembledContext {
   directive?: string;
   designDoc?: string;
   designDocPath?: string;
+  prdSpec?: string;          // ✅ Added for design graph
+  currentCode?: string;      // ✅ Added for design graph
   lastSectionNumber?: number;
   previousDesign?: string;
   

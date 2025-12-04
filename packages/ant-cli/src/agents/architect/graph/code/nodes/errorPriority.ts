@@ -16,7 +16,7 @@ export interface ErrorImpact {
 
 export interface ErrorContext {
   directive: string;
-  taskType: 'setup' | 'feature' | 'error';
+  taskType: 'setup' | 'feature' | 'error' | 'explain';
   taskName: string;
   retryCount: number;
 }

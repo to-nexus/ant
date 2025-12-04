@@ -376,6 +376,7 @@ export async function architectAgent(
           retries: 0,
           maxRetries: 3,  // ✅ Allow multiple retries for dependency fixes
           completedTasksDetails: [],  // ✅ Initialize completedTasksDetails
+          referenceCodeContexts: [],  // ✅ Initialize reference code contexts
           codeMode: codeMode, // Will be inferred in graph nodes
           subtaskIndex: 0,  // Backward compatibility
           totalSubtasks: 0,  // Backward compatibility

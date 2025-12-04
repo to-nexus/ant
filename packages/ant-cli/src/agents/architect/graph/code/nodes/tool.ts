@@ -712,16 +712,24 @@ function applyUnifiedDiff(originalContent: string, patch: string): string | null
 
 /**
  * Handle run_command tool
- * CRITICAL: Allows LLM to install dependencies, run builds, tests, etc.
  * 
- * ❌ BLOCKS: Dev servers (npm run dev, start, serve) - they never exit
- * ✅ ALLOWS: Build, test, lint commands - they exit immediately
+ * Supports both:
+ * - Short-lived commands (build, test, lint) - wait for completion
+ * - Long-running commands (npm start, dev servers) - verify startup then terminate
+ * 
+ * Long-running behavior:
+ * 1. Start the process
+ * 2. Wait up to 10 seconds for startup
+ * 3. If no error, consider it "started successfully"
+ * 4. Terminate process and return success
+ * 
+ * This allows verification of "does the server start?" without hanging forever.
  */
 async function handleRunCommand(
   state: ArchitectGraphState,
-  args: { command: string; working_directory?: string }
+  args: { command: string; working_directory?: string; keep_running?: boolean }
 ): Promise<string> {
-  const { command, working_directory } = args;
+  const { command, working_directory, keep_running } = args;
   const commandPort = state.deps?.command;
   const gitPort = state.deps?.git;
   
@@ -735,54 +743,27 @@ async function handleRunCommand(
   
   const chatAPI = getChatAPIClient();
   
-  // ✅ CRITICAL: Block long-running dev server commands
+  // Detect long-running server commands
   const longRunningPatterns = [
     /npm\s+run\s+dev\b/,
     /npm\s+run\s+serve\b/,
-    /npm\s+start\b/,
+    /npm\s+run\s+start\b/,  // npm run start
+    /npm\s+start\b/,         // npm start (shorthand)
     /yarn\s+dev\b/,
     /yarn\s+serve\b/,
     /yarn\s+start\b/,
     /pnpm\s+dev\b/,
     /pnpm\s+serve\b/,
     /pnpm\s+start\b/,
-    /node\s+.*server\.js/,
+    /node\s+.*server\.(js|ts)\b/,
+    /tsx\s+.*server\.(js|ts)\b/,
     /nodemon\b/,
     /npx\s+vite\b/,
     /npx\s+next\s+dev\b/,
     /npx\s+react-scripts\s+start\b/
   ];
   
-  for (const pattern of longRunningPatterns) {
-    if (pattern.test(command)) {
-      const errorMsg = `❌ COMMAND BLOCKED: ${command}
-
-This is a long-running dev server command that never exits.
-It would hang for 10 minutes until timeout.
-
-❌ NEVER use these commands:
-- npm run dev
-- npm run serve  
-- npm start
-- node server.js
-- nodemon
-
-✅ ONLY use these commands for verification:
-- npm run build (compiles and exits)
-- npm run type-check (validates and exits)
-- npm run lint (checks and exits)
-- npm test (tests and exits)
-- npx tsc --noEmit (type checks and exits)
-
-Use build/test commands instead of dev servers.`;
-
-      console.error(`\n   ❌ ${errorMsg}\n`);
-      await chatAPI.commandComplete(command, false, -1, errorMsg);
-      
-      // ✅ CRITICAL: Throw error so LLM knows the command failed!
-      throw new Error(errorMsg);
-    }
-  }
+  const isLongRunning = longRunningPatterns.some(pattern => pattern.test(command));
   
   // Get project path
   const projectPath = await gitPort.getRepoRoot();
@@ -791,13 +772,107 @@ Use build/test commands instead of dev servers.`;
     : projectPath;
   
   console.log(`\n   🔧 Running command: ${command}`);
-  console.log(`   📁 Working directory: ${workingDir}\n`);
+  console.log(`   📁 Working directory: ${workingDir}`);
+  if (isLongRunning) {
+    console.log(`   ⏱️  Long-running command detected - will verify startup (10s timeout)\n`);
+  } else {
+    console.log('');
+  }
   
   let streamedStdout = '';
   let streamedStderr = '';
   
   try {
-    // ✅ Execute command with timeout (10 minutes for installs/builds)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Long-running command: verify startup, then terminate
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if (isLongRunning && !keep_running) {
+      const { spawn } = await import('child_process');
+      
+      return new Promise((resolve, reject) => {
+        const child = spawn(command, {
+          cwd: workingDir,
+          shell: true,
+          stdio: ['ignore', 'pipe', 'pipe']
+        });
+        
+        let stdout = '';
+        let stderr = '';
+        let hasError = false;
+        
+        child.stdout?.on('data', (data) => {
+          const chunk = data.toString();
+          stdout += chunk;
+          console.log(chunk);
+        });
+        
+        child.stderr?.on('data', (data) => {
+          const chunk = data.toString();
+          stderr += chunk;
+          console.error(chunk);
+          
+          // Check for common error patterns
+          if (/error|Error|ERR_|EADDRINUSE|ENOENT|Cannot find/.test(chunk)) {
+            hasError = true;
+          }
+        });
+        
+        child.on('error', (err) => {
+          hasError = true;
+          stderr += err.message;
+        });
+        
+        // Wait 10 seconds for startup verification
+        const startupTimeout = setTimeout(async () => {
+          // If still running after 10s with no errors = success
+          if (!hasError && child.exitCode === null) {
+            console.log(`\n   ✅ Server started successfully (verified 10s startup)`);
+            console.log(`   🛑 Terminating process (verification complete)\n`);
+            
+            child.kill('SIGTERM');
+            
+            await chatAPI.commandComplete(command, true, 0, 
+              `Server started successfully.\n\nStartup output:\n${stdout}\n\n(Process terminated after verification)`
+            );
+            
+            resolve(`✅ SERVER STARTED SUCCESSFULLY: ${command}
+
+The server started without errors. Process was terminated after 10 seconds of successful operation.
+
+Startup output:
+${stdout.slice(0, 2000)}${stdout.length > 2000 ? '\n...(truncated)' : ''}
+
+Note: The server is NOT currently running. This was a startup verification test.`);
+          }
+        }, 10000);
+        
+        child.on('exit', async (code) => {
+          clearTimeout(startupTimeout);
+          
+          const output = stdout + stderr;
+          
+          if (code === 0 || (!hasError && code === null)) {
+            await chatAPI.commandComplete(command, true, code || 0, output);
+            resolve(`✅ Command completed: ${command}\n\nOutput:\n${output.slice(0, 3000)}`);
+          } else {
+            await chatAPI.commandComplete(command, false, code || 1, output);
+            reject(new Error(`❌ SERVER FAILED TO START: ${command}
+
+Exit code: ${code}
+
+Error output:
+${stderr.slice(0, 2000)}
+
+Stdout:
+${stdout.slice(0, 1000)}`));
+          }
+        });
+      });
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Normal command: wait for completion
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     const result = await commandPort.execute(command, {
       cwd: workingDir,
       timeout: 10 * 60 * 1000, // 10 minutes

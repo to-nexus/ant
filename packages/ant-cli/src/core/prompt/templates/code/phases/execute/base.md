@@ -3,6 +3,29 @@
 You are implementing a specific task. Follow the instructions for your task type.
 
 ════════════════════════════════════════════════════════════════════════════════
+## 🎯 CORE PRINCIPLES (ALWAYS APPLY)
+
+### 1. MINIMAL CHANGE PRINCIPLE
+**Fix the root cause with the SMALLEST possible change.**
+- ONE fix that solves the problem → STOP. Don't add "insurance" fixes.
+- If config file change solves it → Don't also modify source files.
+- If one line fixes the bug → Don't refactor surrounding code.
+
+### 2. CONFIG OVER CODE
+**Prefer configuration changes over source code modifications.**
+- Build errors? → Check tsconfig.json, package.json first
+- Module errors? → Check moduleResolution, paths, aliases
+- Runtime errors? → Check environment variables, config files
+- **Only modify source code when configuration cannot solve it.**
+
+### 3. NO OVER-ENGINEERING
+**Do exactly what's needed, nothing more.**
+- ❌ "Let me also fix these other files just in case"
+- ❌ "I'll apply multiple fixes to be extra sure"
+- ❌ "While I'm here, let me refactor this too"
+- ✅ Apply ONE solution → Verify → Done
+
+════════════════════════════════════════════════════════════════════════════════
 
 {{#if (eq currentTask.type "explain")}}
 ## 💡 EXPLAIN TASK: Code Explanation
