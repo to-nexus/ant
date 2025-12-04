@@ -322,6 +322,13 @@ export class KanbanService {
     console.log(`   Has interruption: ${!!sessionState.interruption}`);
     console.log(`   Interruption reason: ${sessionState.interruption?.reason || 'none'}\n`);
     
+    // ✅ Read recursion limit from environment variable (same as other branches)
+    const MIN_RECURSION_LIMIT = 5;
+    const recursionLimit = parseInt(process.env.RECURSION_LIMIT || '', 10);
+    const finalLimit = (isNaN(recursionLimit) || recursionLimit < MIN_RECURSION_LIMIT) 
+      ? MIN_RECURSION_LIMIT 
+      : recursionLimit;
+    
     const totalElapsedTime = this.calculateTotalElapsedTime(
       sessionState.jobTiming,
       completedTasksDetails,
@@ -344,7 +351,7 @@ export class KanbanService {
       dataSource: 'session',
       interruption: sessionState.interruption,
       recursionCount: sessionState.recursionCount,
-      recursionLimit: sessionState.recursionLimit,
+      recursionLimit: sessionState.recursionLimit || finalLimit,  // ✅ FIXED: Fallback to env var
       totalElapsedTime,
       jobTiming: sessionState.jobTiming
     };

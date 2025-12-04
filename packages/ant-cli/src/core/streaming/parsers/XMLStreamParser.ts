@@ -285,6 +285,8 @@ export class XMLStreamParser implements IStreamParser {
       if (!this.context.insideReferences && this.buffer.includes('<references>')) {
         const startIdx = this.buffer.indexOf('<references>');
         
+        console.log(`🐛 [XMLParser] <references> tag detected! Starting to buffer...`);
+        
         // Emit any text before <references> as response
         const beforeTag = this.buffer.substring(0, startIdx);
         if (beforeTag.trim()) {
@@ -313,6 +315,10 @@ export class XMLStreamParser implements IStreamParser {
         
         // ✅ Emit complete references as ONE response chunk (for SpecialTagTransformer)
         const fullContent = `<references>${this.context.referencesContent}</references>`;
+        
+        console.log(`🐛 [XMLParser] </references> tag closed! Emitting complete tag (${fullContent.length} chars)`);
+        console.log(`🐛 [XMLParser] Content preview: ${fullContent.substring(0, 200)}`);
+        
         actions.push({
           type: 'response',
           data: { content: fullContent }
@@ -773,6 +779,8 @@ export class XMLStreamParser implements IStreamParser {
       insideLearnCommand: false,  // ✅ NEW
       learnCommandContent: '',  // ✅ NEW
       tasksContent: '',  // ✅ NEW
+      insideReferences: false,  // ✅ NEW
+      referencesContent: '',  // ✅ NEW
       currentFilePath: null,
       currentAppendPath: null,
       currentEditPath: null

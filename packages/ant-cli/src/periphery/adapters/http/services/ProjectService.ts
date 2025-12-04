@@ -1348,19 +1348,12 @@ next-env.d.ts
       await vectorDB.clear(projectId);
       console.log(`[ProjectService] ✅ Vector DB cleared`);
       
-      // ✅ Create default feature for chat UI feedback
-      const defaultFeature = 'main';
-      try {
-        await this.createFeature(projectId, defaultFeature, userContext);
-        console.log(`[ProjectService] ✅ Created default feature: ${defaultFeature}`);
-      } catch (error) {
-        // Feature might already exist, ignore
-        console.log(`[ProjectService] Default feature already exists or creation failed (non-critical)`);
-      }
-      
       // ✅ Index the codebase with chat UI feedback
+      // NOTE: We pass 'main' as featureName for chat feedback ONLY (no feature folder created)
+      // This allows autoIndexCodebase to send indexing status to chat UI
       console.log(`[ProjectService] 🔍 Starting codebase indexing...`);
-      await this.autoIndexCodebase(projectId, codebasePath, userContext, defaultFeature);
+      const feedbackFeature = 'main';  // Virtual feature name for chat feedback (not a real feature)
+      await this.autoIndexCodebase(projectId, codebasePath, userContext, feedbackFeature);
       console.log(`[ProjectService] ✅ Codebase indexed successfully`);
       
     } catch (error: any) {

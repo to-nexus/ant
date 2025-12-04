@@ -42,7 +42,9 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
   
   try {
     state = await (app as any).invoke(initial as any, {
-      recursionLimit: finalLimit,
+      configurable: {
+        recursion_limit: finalLimit,  // ✅ LangGraph requires recursion_limit inside configurable
+      }
     }) as ArchitectGraphState;
   } catch (error: any) {
     // ✅ CRITICAL: Recursion limit or other errors

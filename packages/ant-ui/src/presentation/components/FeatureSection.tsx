@@ -435,7 +435,10 @@ export function FeatureSection() {
     }
   };
 
-  const featureItems = features.map((f) => ({ name: f.name, path: f.path }));
+  // ✅ Filter out 'main' feature (internal use only - for indexing feedback)
+  const featureItems = features
+    .filter((f) => f.name !== 'main')
+    .map((f) => ({ name: f.name, path: f.path }));
 
   if (!selectedProject) {
     return null;

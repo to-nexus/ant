@@ -222,19 +222,26 @@ export class SpecialTagTransformer {
     try {
       const referencesText = match[1].trim();
       
+      console.log(`🐛 [SpecialTagTransformer] transformReferences called`);
+      console.log(`🐛 [SpecialTagTransformer] referencesText: ${referencesText}`);
+      
       // Empty array check
       if (referencesText === '[]') {
         // Empty references - no output needed
+        console.log(`🐛 [SpecialTagTransformer] Empty array, consuming without output`);
         return { consumed: true };
       }
       
       const references = JSON.parse(referencesText);
       
       if (!Array.isArray(references) || references.length === 0) {
+        console.log(`🐛 [SpecialTagTransformer] Not an array or empty, consuming`);
         return { consumed: true };
       }
       
       const formatted = this.formatReferences(references, language);
+      console.log(`🐛 [SpecialTagTransformer] Formatted output: ${formatted.substring(0, 200)}`);
+      
       return { text: formatted, consumed: true };
     } catch (error) {
       console.warn('[SpecialTagTransformer] Failed to parse references:', error);

@@ -122,6 +122,12 @@ function App() {
 
   // ✅ Health check (extracted to hook)
   useHealthCheck();
+  
+  // ✅ Load system configuration on mount
+  const loadSystemConfig = useStore((state) => state.loadSystemConfig);
+  useEffect(() => {
+    loadSystemConfig();
+  }, [loadSystemConfig]);
 
   // ✅ Session restoration (extracted to hook)
   useSessionLoader(connectionStatus);
