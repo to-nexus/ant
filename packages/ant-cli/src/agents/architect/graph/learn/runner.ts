@@ -14,9 +14,7 @@ export async function runLearnGraph(initial: LearnGraphState) {
   console.log(`🔍 [LearnRunner] Recursion limit: ${finalLimit}`);
   
   const state = await (app as any).invoke(initial as any, {
-    configurable: {
-      recursion_limit: finalLimit  // ✅ LangGraph requires recursion_limit inside configurable
-    }
+    recursion_limit: finalLimit  // ✅ LangGraph expects recursion_limit at top-level config
   }) as LearnGraphState;
   
   return { stored: state.texts.length };

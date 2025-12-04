@@ -36,15 +36,97 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
     console.log(`⚙️  Recursion limit: ${recursionLimit}\n`);
   }
   
-  // ✅ Initialize recursion tracking in state
-  initial.recursionLimit = finalLimit;
-  initial.recursionCount = 0;
+  // ✅ CRITICAL: Check for resumable session BEFORE invoke
+  // If session has taskQueue with interruption, restore it to initial state
+  if (initial.deps?.session && initial.context.featureFolder) {
+    try {
+      const session = await initial.deps.session.load(
+        initial.context.project,
+        initial.context.featureFolder,
+        'code'
+      );
+      
+      const hasInterruption = Boolean(session?.state?.interruption);
+      const hasTaskQueue = Boolean(session?.state?.taskQueue && session.state.taskQueue.length > 0);
+      
+      if (hasInterruption && hasTaskQueue) {
+        console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('🔄 RESUMING FROM CHECKPOINT');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+        console.log(`   Interruption reason: ${session.state.interruption.reason}`);
+        console.log(`   Tasks in queue: ${session.state.taskQueue.length}`);
+        console.log(`   Completed tasks: ${session.state.completedTasks?.length || 0}\n`);
+        
+        // Reconstruct TaskQueue from saved array
+        const { TaskQueue } = await import('./state');
+        const taskQueue = new TaskQueue();
+        session.state.taskQueue.forEach((task: any) => taskQueue.push(task));
+        
+        // ✅ Restore ALL state from checkpoint
+        initial.taskQueue = taskQueue;
+        initial.currentTask = undefined;  // Already moved to queue in save
+        initial.completedTasks = session.state.completedTasks || [];
+        initial.completedTasksDetails = session.state.completedTasksDetails || [];
+        initial.retries = session.state.retries || 0;
+        initial.maxRetries = session.state.maxRetries || 3;
+        initial.previousAttempts = session.state.previousAttempts || [];
+        initial.enforcementHistory = session.state.enforcementHistory || [];
+        initial.lastViolations = session.state.lastViolations || [];
+        initial.previousFileCount = session.state.previousFileCount;
+        initial.resolvedCategories = (session.state.resolvedCategories || []) as any;
+        initial.recursionCount = session.state.recursionCount || 0;
+        initial.recursionLimit = session.state.recursionLimit || finalLimit;
+        
+        // ✅ CRITICAL: Restore directive/design/spec from session
+        // CodeGen validation requires either directive or design
+        if (session.state.overrideDirective) {
+          initial.directive = session.state.overrideDirective;
+          console.log(`   ✅ Directive restored from overrideDirective`);
+        } else if (session.state.directive) {
+          initial.directive = session.state.directive;
+          console.log(`   ✅ Directive restored from session`);
+        }
+        
+        if (session.state.design) {
+          initial.design = session.state.design;
+          console.log(`   ✅ Design restored from session`);
+        } else if (session.artifacts?.design) {
+          // Try loading from artifacts (if session saved it there)
+          initial.design = session.artifacts.design;
+          console.log(`   ✅ Design restored from artifacts`);
+        }
+        
+        if (session.state.spec) {
+          initial.spec = session.state.spec;
+          console.log(`   ✅ Spec restored from session`);
+        }
+        
+        if (session.state.prd) {
+          initial.prd = session.state.prd;
+          console.log(`   ✅ PRD restored from session`);
+        }
+        
+        if ((session.state as any).jobId) {
+          (initial as any).jobId = (session.state as any).jobId;
+        }
+        if ((session.state as any).jobTiming) {
+          (initial as any).jobTiming = (session.state as any).jobTiming;
+        }
+        
+        console.log('✅ State restored from checkpoint - ready to resume\n');
+      }
+    } catch (err) {
+      console.warn('⚠️  Failed to check for resumable session:', err);
+    }
+  }
+  
+  // ✅ Initialize recursion tracking in state (if not restored)
+  initial.recursionLimit = initial.recursionLimit || finalLimit;
+  initial.recursionCount = initial.recursionCount || 0;
   
   try {
     state = await (app as any).invoke(initial as any, {
-      configurable: {
-        recursion_limit: finalLimit,  // ✅ LangGraph requires recursion_limit inside configurable
-      }
+      recursion_limit: finalLimit  // ✅ LangGraph expects recursion_limit at top-level config
     }) as ArchitectGraphState;
   } catch (error: any) {
     // ✅ CRITICAL: Recursion limit or other errors

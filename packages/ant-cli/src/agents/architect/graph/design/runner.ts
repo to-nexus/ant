@@ -20,9 +20,7 @@ export async function runDesignGraph(initial: DesignGraphState) {
   console.log(`🔍 [DesignRunner] Recursion limit: ${finalLimit}`);
   
   const state = await (app as any).invoke(initial as any, {
-    configurable: {
-      recursion_limit: finalLimit  // ✅ LangGraph requires recursion_limit inside configurable
-    }
+    recursion_limit: finalLimit  // ✅ LangGraph expects recursion_limit at top-level config
   }) as DesignGraphState;
   
   // ✅ Return minimal results (all files were saved in writeFiles node)
