@@ -442,6 +442,7 @@ export function buildCodeGraph() {
   // because it requires thread_id management which complicates the API
   
   // ✅ DON'T set recursionLimit here - it's set in runner.ts invoke() call
-  // (invoke() recursionLimit takes precedence over compile())
+  // LangGraph RunnableConfig uses camelCase: recursionLimit (NOT snake_case recursion_limit)
+  // Default is 25 if not specified - see @langchain/core/runnables/types.d.ts
   return (graph as any).compile();
 }
