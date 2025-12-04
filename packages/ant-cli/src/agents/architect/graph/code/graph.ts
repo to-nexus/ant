@@ -312,7 +312,20 @@ export function buildCodeGraph() {
   graph.addNode("learn", learn as any);
 
   graph.addEdge("__start__" as any, "resolve" as any);
-  graph.addEdge("resolve" as any, "detectEnvironment" as any);  // ✅ NEW: resolve → detectEnvironment
+  
+  // ✅ Resolve → Conditional (skip detection/decompose if resuming)
+  graph.addConditionalEdges(
+    "resolve" as any,
+    ((state: ArchitectGraphState) => {
+      const isResume = state.taskQueue && !state.taskQueue.isEmpty();
+      return isResume ? 'plan' : 'detectEnvironment';
+    }) as any,
+    {
+      plan: "plan",  // Resume: skip to plan
+      detectEnvironment: "detectEnvironment"  // New job: continue normal flow
+    } as any
+  );
+  
   graph.addEdge("detectEnvironment" as any, "decompose" as any);  // ✅ NEW: detectEnvironment → decompose
   
   // ✅ Decompose → Replan Decision (check for multiple directives)

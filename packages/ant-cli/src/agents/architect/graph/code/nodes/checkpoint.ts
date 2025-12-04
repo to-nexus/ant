@@ -65,6 +65,11 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       modeReasoning: state.modeReasoning,  // ✅ Save mode reasoning
       detectedEnvironment: state.detectedEnvironment,  // ✅ Save detected environment (frontend/backend/fullstack/unknown)
       environmentReasoning: state.environmentReasoning,  // ✅ Save environment reasoning
+      // ✅ CRITICAL: Save artifacts for CodeGen validation on resume
+      directive: state.directive,  // ✅ Save directive (for CodeGen validation)
+      design: state.design,  // ✅ Save design document
+      spec: state.spec,  // ✅ Save spec
+      prd: state.prd,  // ✅ Save PRD if exists
     };
     
     // ✅ Include jobId and jobTiming if present

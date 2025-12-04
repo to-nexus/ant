@@ -105,16 +105,15 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     );
   }
   
-  // ✅ CRITICAL: Skip validation if resuming (taskQueue already exists)
+  // ✅ CRITICAL: Skip resolve if resuming (taskQueue already exists from runner restoration)
   const isResume = state.taskQueue && !state.taskQueue.isEmpty();
   if (isResume) {
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('🔄 CODE AGENT - RESUME (Skip Resolve)');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
     console.log('✅ Resuming from previous state (resolve phase skipped)');
-    if (state.taskQueue) {
-      console.log(`   Task queue: ${state.taskQueue.size()} tasks remaining\n`);
-    }
+    console.log(`   Task queue: ${state.taskQueue.size()} tasks remaining`);
+    console.log(`   Completed tasks: ${state.completedTasks?.length || 0}\n`);
     
     // ✅ Workflow instrumentation: Exit node (skip path)
     if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -125,11 +124,11 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     return state;
   }
   
-  // ✅ Initialize jobId and jobTiming for NEW job (resolve is first node)
+  // ✅ NEW JOB: Initialize jobId and jobTiming
   const { JobTimingManager } = await import('../../common/timing/JobTimingManager');
   const { jobId: newJobId, jobTiming: newJobTiming } = JobTimingManager.initializeNewJob(state._httpJobId!);
   
-  // 💾 Save jobTiming to session IMMEDIATELY so estimating UI can show timer
+  // 💾 Save initial jobTiming to session
   if (state.deps?.session && state.context.featureFolder) {
     try {
       await state.deps.session.updateArtifacts(
