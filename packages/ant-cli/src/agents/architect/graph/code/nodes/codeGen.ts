@@ -638,15 +638,23 @@ function getAvailableTools(state: ArchitectGraphState): import('../../../../../c
     },
     {
       name: 'run_command',
-      description: `Execute a shell command for build/test/install. 
-⚠️ FORBIDDEN commands (will fail): npm start, npm run dev, npm run serve, node server.js, nodemon - these are long-running servers.
-✅ ALLOWED: npm install, npm run build, npm test, npx tsc --noEmit, npm run lint`,
+      description: `Execute a shell command. Supports both build commands and server verification.
+
+For servers (npm start, npm run dev, etc.):
+- Starts the server and monitors for 10 seconds
+- If no errors during startup, returns success
+- Automatically terminates after verification
+- Use this to verify "does the fix work?" without hanging
+
+Examples:
+- npm install, npm run build, npm test (runs to completion)
+- npm start, npm run dev (verifies startup, then terminates)`,
       input_schema: {
         type: 'object' as const,
         properties: {
           command: {
             type: 'string',
-            description: 'Shell command (ONLY: npm install, npm run build, npm test, npx tsc). NEVER use: npm start, npm run dev, node server.js',
+            description: 'Shell command to execute',
           },
           working_directory: {
             type: 'string',

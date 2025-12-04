@@ -99,48 +99,56 @@ Follow the guidelines below for creating tasks.
 
 **ERROR FIX MODE ACTIVATED**
 
-**CRITICAL INSTRUCTIONS:**
+🚨🚨🚨 **CRITICAL: YOU ARE PLANNING, NOT SOLVING!** 🚨🚨🚨
 
-1. **Analyze the error message**:
-   - What EXACTLY is failing?
-   - Which file/line is the error from?
-   - What is the error message saying?
+**Your role in decompose:**
+- ✅ Describe WHAT error needs to be fixed
+- ✅ Include the ORIGINAL error message in task description
+- ❌ DO NOT decide HOW to fix it (that's execute's job!)
+- ❌ DO NOT assume the root cause
 
-2. **Identify the minimal fix**:
-   - What is the ONE thing that needs to change?
-   - Can this be fixed by changing a single value/config/line?
-   - Is this a typo, wrong URL, missing import, or similar simple fix?
+**WHY THIS MATTERS:**
 
-3. **Create a FOCUSED task**:
-   - Task name: State the EXACT fix in 5-10 words
-   - Task description: Specify the exact file, line, and change needed
-   - DO NOT add "and also..." or "plus..." in the description
-   - ONE task = ONE fix
-
-4. **DO NOT over-engineer**:
-   - ❌ Wrong: "Error: URL incorrect" → "Rebuild networking infrastructure"
-   - ✅ Right: "Error: URL incorrect" → "Fix URL constant in config.ts"
-   - ❌ Wrong: "Import missing" → "Restructure module system"
-   - ✅ Right: "Import missing" → "Add missing import statement"
-
-**EXAMPLES OF GOOD ERROR FIX TASKS:**
-
-Example 1 - URL Error:
+Errors often have multiple possible causes. For example:
 ```
-Task: "Fix WebSocket Connection URL"
-Description: "Update websocket.service.ts line 39: Change URL from 'ws://localhost:5173/game' to 'ws://localhost:3000/ws' to match backend server port and endpoint."
+Error: Cannot find module './EventHandler'
 ```
 
-Example 2 - Import Error:
+Possible causes (you don't know which!):
+- File doesn't exist → Create the file
+- Wrong import path → Fix the import
+- Module resolution config issue → Fix tsconfig.json
+- Build output missing → Rebuild
+
+**If you decide the cause here, you might be WRONG!**
+Let the execute phase analyze and determine the actual fix.
+
+**TASK CREATION RULES:**
+
+1. **Task name**: Describe the ERROR, not the solution
+   - ✅ "Fix ERR_MODULE_NOT_FOUND for EventHandler"
+   - ❌ "Create missing EventHandler.ts file"
+
+2. **Task description**: Include the error message, let execute decide
+   - ✅ "Analyze and resolve: Error [ERR_MODULE_NOT_FOUND]: Cannot find module './EventHandler'. Determine root cause and fix."
+   - ❌ "Create EventHandler.ts file that is missing from the codebase"
+
+3. **DO NOT over-engineer**:
+   - ❌ Wrong: One error → Multiple "fix" tasks
+   - ✅ Right: One error → One "analyze and fix" task
+
+**EXAMPLES:**
+
+✅ **GOOD - Describes problem, lets execute decide:**
 ```
-Task: "Add Missing React Import"
-Description: "Add 'import React from \"react\"' at the top of Button.tsx to fix 'React is not defined' error."
+Task: "Fix ERR_MODULE_NOT_FOUND for EventHandler import"
+Description: "Analyze and resolve the module resolution error: 'Cannot find module ./EventHandler imported from WebSocketServer.js'. Determine if this is a missing file, wrong path, or configuration issue, then apply the appropriate fix."
 ```
 
-Example 3 - Config Error:
+❌ **BAD - Assumes the solution:**
 ```
-Task: "Fix API Base URL in Config"
-Description: "Update API_BASE_URL in config/api.ts from 'http://localhost:8080' to 'http://localhost:3000' to match actual server port."
+Task: "Create missing EventHandler.ts file"
+Description: "Create EventHandler.ts with WebSocket event handling logic..."
 ```
 
 ════════════════════════════════════════════════════════════════════════════════

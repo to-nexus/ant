@@ -5,7 +5,7 @@
  * to prevent minor issues from blocking valid solutions.
  */
 
-export type TaskType = 'setup' | 'feature' | 'error';
+export type TaskType = 'setup' | 'feature' | 'error' | 'explain';
 
 export interface ValidationLevel {
   type: 'full' | 'functional' | 'build-only' | 'skip';

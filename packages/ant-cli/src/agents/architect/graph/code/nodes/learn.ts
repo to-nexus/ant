@@ -219,7 +219,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
         branch: branch,
         filesWritten: filesWritten,
         files: state.files.map(f => f.path),
-        modifications: state.codeHead ? state.files.map(f => f.path) : []
+        modifications: state.files.length > 0 ? state.files.map(f => f.path) : []
       }
     };
     
@@ -394,7 +394,9 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     state.deps.workflowUpdate.exitNode(state._httpJobId, 'learn');
   }
   
-  return { ...state, lessons, branch, filesWritten };
+  // Note: lessons string is used for session/vector DB storage, not returned in state
+  // State.lessons is for structured lesson objects (different type)
+  return { ...state, branch, filesWritten };
 }
 
 /**

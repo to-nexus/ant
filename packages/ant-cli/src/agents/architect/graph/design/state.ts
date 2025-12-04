@@ -93,6 +93,9 @@ export interface DesignGraphState extends TaskArtifacts {
     content: string | any[];
   }>;
   
+  // Codebase context (for evolution/refactor modes)
+  codeHead?: string;  // ✅ Git HEAD version of codebase
+  
   // Results (populated by learn node)
   lessons?: string;
   

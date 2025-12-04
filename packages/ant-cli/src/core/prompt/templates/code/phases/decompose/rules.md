@@ -48,43 +48,50 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
 ]
 </tasks>
 
-**Example 2: EXISTING PROJECT (code already exists - FileStorage.ts, etc.)**
+**Example 2: EXISTING PROJECT with feature request**
 <tasks>
 [
   {
-    "id": "fix-entry-point",
-    "name": "Fix Missing Entry Point",
+    "id": "add-user-balance",
+    "name": "Add Balance Field to User",
     "type": "feature",
     "priority": 200,
-    "description": "Add missing main.ts with NestJS bootstrap - use existing FileStorage.ts for storage"
-  },
-  {
-    "id": "complete-auth",
-    "name": "Complete Authentication Module",
-    "type": "feature",
-    "priority": 220,
-    "description": "Add login and session methods to existing AuthService using FileStorage"
-  },
-  {
-    "id": "extend-user-entity",
-    "name": "Extend User Entity",
-    "type": "feature",
-    "priority": 240,
-    "description": "Add balance field to existing User entity in entities/User.ts"
+    "description": "Extend User entity with balance field and update related services"
   },
   {
     "id": "final-verification",
-    "name": "Final Integration & Verification",
+    "name": "Final Verification",
     "type": "feature",
     "priority": 1000,
-    "description": "Build the project to verify all fixes work correctly."
+    "description": "Build the project to verify changes work correctly."
   }
 ]
 </tasks>
 
-**⚠️ Note the differences:**
-- NEW PROJECT: "Create", "Implement", "Generate" + Setup task included
-- EXISTING PROJECT: "Fix", "Complete", "Extend", "Add to" + NO setup task, reference existing files
+**Example 3: ERROR FIX (error message in directive)**
+<tasks>
+[
+  {
+    "id": "fix-module-error",
+    "name": "Fix ERR_MODULE_NOT_FOUND for EventHandler",
+    "type": "feature",
+    "priority": 200,
+    "description": "Analyze and resolve: 'Error [ERR_MODULE_NOT_FOUND]: Cannot find module ./EventHandler'. Determine root cause (missing file, wrong path, or config issue) and apply fix."
+  },
+  {
+    "id": "final-verification",
+    "name": "Final Verification",
+    "type": "feature",
+    "priority": 1000,
+    "description": "Build and run to verify the error is resolved."
+  }
+]
+</tasks>
+
+**⚠️ Key differences:**
+- NEW PROJECT: "Create", "Implement" + Setup task
+- EXISTING PROJECT: "Add", "Extend" + NO setup task
+- ERROR FIX: "Analyze and resolve" + Include original error message, DON'T assume cause
 
 **📦 Dependencies Management:**
 - **Preferred:** Include all known dependencies in Setup Task (priority 100)

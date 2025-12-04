@@ -208,6 +208,12 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const { designDoc, hasDesignDoc } = prepareDesignDocument(state);
   
+  // ✅ Detect error in directive BEFORE building prompt
+  const hasErrorInDirective = detectErrorInDirective(state.directive);
+  if (hasErrorInDirective) {
+    console.log(`🚨 [Decompose] Error detected in directive → activating error analysis mode`);
+  }
+  
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 4: Build prompt and call LLM
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -221,7 +227,8 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     hasDesignDoc,
     mode: state.mode || 'unknown',
     profile: state.profile,
-    codebaseFilePaths  // ✅ File paths from keyword search (for task planning)
+    codebaseFilePaths,  // ✅ File paths from keyword search (for task planning)
+    hasErrorInDirective // ✅ Pass to prompt for error analysis mode
   });
   
   let rawResponse: string;
@@ -250,7 +257,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 6: Validate and create task queue
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const hasErrorInDirective = detectErrorInDirective(state.directive);
+  // Note: hasErrorInDirective already calculated in STEP 3
   validateTasks(tasks, state.mode, state.directive, hasErrorInDirective);
   
   const { taskQueue, featureTasks } = createTaskQueue(tasks);

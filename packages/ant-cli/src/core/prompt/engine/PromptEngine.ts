@@ -158,6 +158,8 @@ export class PromptEngine {
     artifacts: {
       directive?: string;
       designDoc?: string;
+      prdSpec?: string;         // ✅ Added for design graph
+      currentCode?: string;     // ✅ Added for design graph
       lastSectionNumber?: number;
       previousDesign?: string;
       projectCodeContext?: ProjectCodeContext;
@@ -317,6 +319,7 @@ export class PromptEngine {
     mode: string;
     profile: any;
     codebaseFilePaths?: string[];  // File paths from keyword search
+    hasErrorInDirective?: boolean; // ✅ Error detected in directive
   }): Promise<string> {
     // ✅ Compute derived variables for the prompt
     const hasExistingCode = context.codebaseFilePaths && context.codebaseFilePaths.length > 0;
@@ -337,6 +340,7 @@ export class PromptEngine {
       hasExistingCode,
       fileList,
       fileCount: context.codebaseFilePaths?.length || 0,
+      hasErrorInDirective: context.hasErrorInDirective || false, // ✅ Pass to template
     };
     
     // decompose/base.md now includes {{> code/phases/decompose/rules}}
