@@ -19,6 +19,9 @@ export interface BufferedFile {
   content: string;         // Current accumulated content
   actionType: 'create' | 'append' | 'edit' | 'delete';
   startedAt: number;       // Timestamp when streaming started
+  // ✅ For edit operations
+  searchContent?: string;  // Search block content
+  replaceContent?: string; // Replace block content
 }
 
 export class StreamBufferManager {
@@ -77,6 +80,34 @@ export class StreamBufferManager {
     buffer.content += content;
     
     // ✅ Write to disk immediately (incremental safety)
+    this.writeBufferFile(filePath, buffer);
+  }
+  
+  /**
+   * ✅ NEW: Set search content for edit operation
+   */
+  setSearchContent(filePath: string, searchContent: string): void {
+    const buffer = this.buffers.get(filePath);
+    if (!buffer) {
+      console.warn(`[StreamBuffer] ⚠️  Attempted to set search for non-existent buffer: ${filePath}`);
+      return;
+    }
+    
+    buffer.searchContent = searchContent;
+    this.writeBufferFile(filePath, buffer);
+  }
+  
+  /**
+   * ✅ NEW: Set replace content for edit operation
+   */
+  setReplaceContent(filePath: string, replaceContent: string): void {
+    const buffer = this.buffers.get(filePath);
+    if (!buffer) {
+      console.warn(`[StreamBuffer] ⚠️  Attempted to set replace for non-existent buffer: ${filePath}`);
+      return;
+    }
+    
+    buffer.replaceContent = replaceContent;
     this.writeBufferFile(filePath, buffer);
   }
   

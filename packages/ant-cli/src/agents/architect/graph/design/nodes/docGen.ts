@@ -83,7 +83,8 @@ export async function docGen(
   const renderStrategy = new CommonRenderStrategy(
     chatAPI,
     state._bufferManager,  // ✅ Pass buffer manager
-    state.context.userLanguage  // ✅ Pass user language for localized messages
+    state.context.userLanguage,  // ✅ Pass user language for localized messages
+    state.deps?.git  // ✅ Pass gitPort (design job doesn't use edit, but keep consistent)
   );
   
   const existingFiles = new Set(state.files?.map(f => f.path) || []);
