@@ -145,7 +145,8 @@ export async function codeGen(
   const renderStrategy = new CommonRenderStrategy(
     chatAPI,
     state._bufferManager,
-    state.context.userLanguage  // ✅ Pass user language for localized messages
+    state.context.userLanguage,  // ✅ Pass user language for localized messages
+    state.deps?.git  // ✅ Pass gitPort for actual file editing
   );
   
   const existingFiles = new Set(state.files?.map(f => f.path) || []);

@@ -6,7 +6,7 @@
  * - response: General text response
  * - file_start: Begin file creation/editing
  * - file_content: Stream file content
- * - file_end: Complete file operation
+ * - file_end: Complete file operation (including actual file edits)
  */
 
 import { IRenderStrategy } from './IRenderStrategy';
@@ -15,11 +15,70 @@ import { FileRegistry } from '../state/FileRegistry';
 import { ChatAPIClient } from '../../adapters/ChatAPIClient';
 import { SpecialTagTransformer } from '../transformers/SpecialTagTransformer';
 import { UserLanguage } from '../../utils/languageDetector';
+import { GitPort } from '../../ports/git';
 
 interface EditOperation {
   filePath: string;
   searchContent: string;
   replaceContent: string;
+}
+
+/**
+ * ✅ Apply search/replace edit to file content
+ * Returns modified content or throws error if search block not found
+ */
+function applySearchReplace(
+  originalContent: string,
+  searchContent: string,
+  replaceContent: string,
+  filePath: string
+): string {
+  // Exact match
+  if (originalContent.includes(searchContent)) {
+    const modifiedContent = originalContent.replace(searchContent, replaceContent);
+    console.log(`✅ [Edit] Applied search/replace to ${filePath}`);
+    return modifiedContent;
+  }
+  
+  // If exact match fails, provide helpful error
+  const searchLines = searchContent.split('\n');
+  const contentLines = originalContent.split('\n');
+  
+  // Try to find similar lines for better error message
+  const firstSearchLine = searchLines[0]?.trim();
+  const matchingLineNumbers: number[] = [];
+  
+  contentLines.forEach((line, index) => {
+    if (line.trim() === firstSearchLine) {
+      matchingLineNumbers.push(index + 1);
+    }
+  });
+  
+  let errorMsg = `❌ [Edit] Search block not found in ${filePath}\n\n`;
+  errorMsg += `Search block (${searchLines.length} lines):\n`;
+  errorMsg += `────────────────────────────────────────\n`;
+  errorMsg += searchContent.substring(0, 500);
+  if (searchContent.length > 500) errorMsg += '\n... (truncated)';
+  errorMsg += `\n────────────────────────────────────────\n\n`;
+  
+  if (matchingLineNumbers.length > 0) {
+    errorMsg += `💡 Found similar first line at: ${matchingLineNumbers.join(', ')}\n`;
+    errorMsg += `   Possible causes:\n`;
+    errorMsg += `   - Whitespace mismatch (spaces vs tabs)\n`;
+    errorMsg += `   - Missing/extra lines in search block\n`;
+    errorMsg += `   - File was modified since LLM saw it\n\n`;
+  } else {
+    errorMsg += `💡 First line "${firstSearchLine}" not found in file\n`;
+    errorMsg += `   The search block may be completely wrong\n\n`;
+  }
+  
+  errorMsg += `File content (first 1000 chars):\n`;
+  errorMsg += `────────────────────────────────────────\n`;
+  errorMsg += originalContent.substring(0, 1000);
+  if (originalContent.length > 1000) errorMsg += '\n... (truncated)';
+  errorMsg += `\n────────────────────────────────────────`;
+  
+  throw new Error(errorMsg);
 }
 
 export class CommonRenderStrategy implements IRenderStrategy {
@@ -28,6 +87,7 @@ export class CommonRenderStrategy implements IRenderStrategy {
   private editOperations: Map<string, EditOperation> = new Map();
   private lineBuffers: Map<string, string> = new Map();  // ✅ Line-based buffering for smooth streaming
   private bufferManager?: import('../buffer/StreamBufferManager').StreamBufferManager;  // ✅ Disk buffer for interruption safety
+  private gitPort?: GitPort;  // ✅ For reading/writing files during edit operations
   
   // ✅ Thinking timing
   private thinkingStartTime?: number;
@@ -38,11 +98,13 @@ export class CommonRenderStrategy implements IRenderStrategy {
   constructor(
     chatAPI: ChatAPIClient,
     bufferManager?: import('../buffer/StreamBufferManager').StreamBufferManager,
-    userLanguage?: UserLanguage
+    userLanguage?: UserLanguage,
+    gitPort?: GitPort
   ) {
     this.chatAPI = chatAPI;
     this.bufferManager = bufferManager;
     this.tagTransformer = new SpecialTagTransformer(userLanguage || 'en');
+    this.gitPort = gitPort;
   }
   
   async render(action: ParsedAction, registry: FileRegistry): Promise<void> {
@@ -416,8 +478,16 @@ export class CommonRenderStrategy implements IRenderStrategy {
       if (editOp) {
         if (metadata.section === 'search') {
           editOp.searchContent += content;
+          // ✅ Update buffer manager
+          if (this.bufferManager) {
+            this.bufferManager.setSearchContent(filePath, editOp.searchContent);
+          }
         } else if (metadata.section === 'replace') {
           editOp.replaceContent += content;
+          // ✅ Update buffer manager
+          if (this.bufferManager) {
+            this.bufferManager.setReplaceContent(filePath, editOp.replaceContent);
+          }
         }
       }
       return;  // Don't stream search/replace sections incrementally
@@ -477,12 +547,38 @@ export class CommonRenderStrategy implements IRenderStrategy {
       } else if (fileInfo.actionType === 'edit') {
         const editOp = this.editOperations.get(filePath);
         if (editOp) {
-          // Complete the edit with search/replace
+          // ✅ CRITICAL: Actually apply the edit to the file!
+          if (!this.gitPort) {
+            throw new Error('[Edit] GitPort not available - cannot apply edits to files');
+          }
+          
+          console.log(`📝 [Edit] Applying search/replace to ${filePath}...`);
+          
+          // 1. Read original file
+          const originalContent = await this.gitPort.readFile(filePath);
+          if (!originalContent) {
+            throw new Error(`[Edit] File not found: ${filePath}`);
+          }
+          
+          // 2. Apply search/replace
+          const modifiedContent = applySearchReplace(
+            originalContent,
+            editOp.searchContent,
+            editOp.replaceContent,
+            filePath
+          );
+          
+          // 3. Write modified file back to disk
+          await this.gitPort.writeFile(filePath, modifiedContent);
+          console.log(`✅ [Edit] Successfully modified ${filePath}`);
+          
+          // 4. UI notification (show diff)
           await this.chatAPI.completeFileEdit(
             filePath,
             editOp.searchContent,
             editOp.replaceContent
           );
+          
           this.editOperations.delete(filePath);
         } else {
           console.warn(`[Render] No edit operation found for: ${filePath}`);
@@ -522,7 +618,23 @@ export class CommonRenderStrategy implements IRenderStrategy {
           await this.chatAPI.completeFileCreation(filePath, fileInfo.contentBuffer);
         } else if (fileInfo.actionType === 'edit') {
           const editOp = this.editOperations.get(filePath);
-          if (editOp) {
+          if (editOp && this.gitPort) {
+            // ✅ CRITICAL: Actually apply the edit!
+            try {
+              const originalContent = await this.gitPort.readFile(filePath);
+              if (originalContent) {
+                const modifiedContent = applySearchReplace(
+                  originalContent,
+                  editOp.searchContent,
+                  editOp.replaceContent,
+                  filePath
+                );
+                await this.gitPort.writeFile(filePath, modifiedContent);
+              }
+            } catch (editError) {
+              console.error(`[Edit] Failed to apply edit to ${filePath}:`, editError);
+            }
+            
             await this.chatAPI.completeFileEdit(
               filePath,
               editOp.searchContent,

@@ -26,7 +26,7 @@ export async function callLLMForDecompose(
   const { StreamOrchestrator } = await import('../../../../../../core/streaming/StreamOrchestrator');
   
   const parser = new XMLStreamParser();
-  const renderStrategy = new CommonRenderStrategy(chatAPI, undefined, 'en');  // No buffer manager needed
+  const renderStrategy = new CommonRenderStrategy(chatAPI, undefined, 'en', undefined);  // No buffer manager or gitPort needed
   const orchestrator = new StreamOrchestrator({
     parser,
     renderStrategy,
