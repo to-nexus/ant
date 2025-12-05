@@ -124,7 +124,42 @@ Output `<done>true</done>` when complete.
 
 Create config files only. NO source code, NO tests.
 
-**Create:** package.json, tsconfig.json, build configs, .gitignore
+**Files to Create:**
+- `package.json` - Dependencies and scripts
+- `tsconfig.json` (if TypeScript) - Compiler configuration
+- Build tool config - vite.config.ts/webpack.config.js/next.config.js
+- `.gitignore` - Version control exclusions
+- `.env.example` - Environment variable template
+- `index.html` (if Vite/SPA) - Entry HTML
+
+**Framework-Specific Requirements:**
+
+**React + Vite:**
+- Include `@vitejs/plugin-react` in devDependencies
+- Configure vite.config.ts with React plugin
+- DO NOT hardcode server port (use env var or CLI flag)
+
+**Vue + Vite:**
+- Include `@vitejs/plugin-vue` in devDependencies
+- Configure vite.config.ts with Vue plugin
+
+**Node.js + Express:**
+- Include typescript, @types/node, @types/express
+- Configure tsconfig.json for Node.js (module: commonjs or ESM)
+- Add build script for TypeScript compilation
+
+**Next.js:**
+- React dependencies included automatically
+- Configure next.config.js for build settings
+- Setup .env.local for environment variables
+
+**General Rules:**
+- ❌ DO NOT hardcode port numbers in configs
+- ✅ Use environment variables: `process.env.PORT || 5173`
+- ❌ DO NOT setup testing infrastructure (excluded)
+- ✅ Install ALL dependencies needed for the project
+- ✅ Use exact versions from design doc if specified
+
 **Actions:** Write files → Run `npm install` → Output `<done>true</done>`
 
 {{/unless}}
