@@ -33,21 +33,6 @@
 - ❌ DO NOT change field types or names
 - ❌ DO NOT confuse this specification document with an external project repository
 
-**Example:**
-```typescript
-// ✅ CORRECT: Matches specification exactly
-interface LoginRequest {
-  email: string;      // From api-contract.md specification
-  password: string;   // From api-contract.md specification
-}
-
-// ❌ WRONG: Changed field names
-interface LoginRequest {
-  userEmail: string;  // Specification says "email", not "userEmail"
-  pass: string;       // Specification says "password", not "pass"
-}
-```
-
 ════════════════════════════════════════════════════════════════════════════════
 
 ### 🎨 Frontend System Design (fe-system-design.md OR system-design.md)
@@ -65,32 +50,10 @@ interface LoginRequest {
 - ✅ Follow component structure (Pages → Containers → Components)
 - ✅ Use specified state management library
 - ✅ Implement routing as described
-- ✅ Create API client wrappers using api-contract.md type definitions
+- ✅ Create API client wrappers calling api-contract.md endpoints
 - ✅ Apply UI/UX guidelines (colors, spacing, responsive breakpoints)
 - ❌ DO NOT define API endpoints (they're already specified in api-contract.md!)
 - ❌ DO NOT add backend logic or server-side code
-
-**Example:**
-```typescript
-// ✅ CORRECT: Frontend consumes API specification
-import type { LoginRequest, LoginResponse } from '@/types/api-contract';
-
-export const authAPI = {
-  async login(credentials: LoginRequest): Promise<LoginResponse> {
-    const response = await fetch(`${API_BASE}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(credentials)
-    });
-    
-    if (!response.ok) {
-      throw new APIError(await response.json());
-    }
-    
-    return response.json();
-  }
-};
-```
 
 ════════════════════════════════════════════════════════════════════════════════
 
@@ -114,40 +77,19 @@ export const authAPI = {
 - ❌ DO NOT change API response structure
 - ❌ DO NOT add frontend code or UI components
 
-**Example:**
-```typescript
-// ✅ CORRECT: Backend implements API contract
-import type { LoginRequest, LoginResponse } from './types/api-contract';
-
-@Controller('/api/auth')
-export class AuthController {
-  @Post('/login')
-  async login(@Body() body: LoginRequest): Promise<LoginResponse> {
-    // Implementation follows be-system-design.md service layer
-    const user = await this.authService.authenticate(body.email, body.password);
-    const tokens = await this.authService.generateTokens(user);
-    
-    // Response matches api-contract.md EXACTLY
-    return {
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-      }
-    };
-  }
-}
-```
-
 ════════════════════════════════════════════════════════════════════════════════
 
 ### 🔑 KEY RULES
 
-**1. API Contract is the SPECIFICATION**
+**1. API Contract is ABSOLUTE LAW - Follow from Initial Implementation**
+- API Contract is IMMUTABLE - implement exactly as specified from the start
 - If there's a conflict between api-contract.md and system-design.md, follow api-contract.md
 - All FE/BE integration MUST match api-contract.md field names and types
+- Your "best practices" or conventions do NOT override specification
+- **Example violations:**
+  - Spec: `POST /rooms/create` → You: `POST /rooms` (❌ "more RESTful")
+  - Spec: `userId` field → You: `user_id` (❌ "more consistent")
+  - Spec: no validation → You: add validation (❌ "safer")
 - **TERMINOLOGY**: "API Contract" = "Integration Specification" (NOT an external repo!)
 
 **2. Know Your Environment**
@@ -156,8 +98,8 @@ export class AuthController {
 - NEVER mix concerns: Frontend doesn't define APIs, Backend doesn't do UI
 
 **3. Don't Duplicate the Specification**
-- ❌ DON'T copy-paste DTO definitions from api-contract.md
-- ✅ DO import/use types: `import type { LoginRequest } from 'api-contract'`
+- ❌ DON'T copy-paste type definitions from api-contract.md into code
+- ✅ DO define types based on specification once, then reuse
 - ✅ DO focus on HOW to implement, not WHAT the interface is
 
 **4. When in Doubt**
@@ -167,8 +109,8 @@ export class AuthController {
 
 **5. CRITICAL: "Reference" Terminology**
 - ❌ DON'T say "reference api-contract.md" (sounds like external code search)
-- ✅ DO say "use api-contract.md types" or "follow api-contract.md specification"
-- ✅ DO say "import from api-contract.md" or "implement according to api-contract.md"
+- ✅ DO say "follow api-contract.md specification" or "implement according to api-contract.md"
+- api-contract.md is a SPECIFICATION DOCUMENT to read, not a code repository to search
 
 ════════════════════════════════════════════════════════════════════════════════
 

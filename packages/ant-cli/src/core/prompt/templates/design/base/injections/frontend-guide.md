@@ -4,6 +4,12 @@
 
 **⚠️ CRITICAL RULE: FRONTEND NEVER DEFINES APIs, ONLY CONSUMES THEM!**
 
+**🚨 MOST IMPORTANT: API Contract is IMMUTABLE - Follow EXACT specifications!**
+- ✅ Copy endpoint paths EXACTLY as written (e.g., `POST /rooms/create` NOT `/rooms`)
+- ✅ Copy field names EXACTLY as written (e.g., `userId` NOT `user_id`)
+- ✅ Your "RESTful conventions" or "best practices" do NOT override the contract
+- ❌ DO NOT simplify, normalize, or "improve" the API contract
+
 **Your first section MUST acknowledge the API contract:**
 ```markdown
 ## 1. Overview

@@ -2,7 +2,18 @@
 
 You are implementing a specific task. Follow the instructions for your task type.
 
+{{#if designDoc}}
 ════════════════════════════════════════════════════════════════════════════════
+## 🚨 CRITICAL: Specification Compliance is MANDATORY
+
+**API Contract in Design Specification below is IMMUTABLE.**
+- Endpoints, field names, types defined in specification cannot be changed
+- Your conventions or "best practices" do NOT override specification
+- Follow specification EXACTLY from initial implementation
+
+════════════════════════════════════════════════════════════════════════════════
+{{/if}}
+
 ## 🎯 CORE PRINCIPLES (ALWAYS APPLY)
 
 ### 1. LAYER-AWARE FIX PRINCIPLE

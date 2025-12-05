@@ -141,6 +141,30 @@ Balance completeness with conciseness - meet your line budget while covering all
 - Skip sections not applicable to PRD (e.g., no backend → skip API/Database sections)
 - For skipped sections, state: "Not Applicable - [reason] per PRD"
 
+{{#if designDoc}}
+════════════════════════════════════════════════════════════════════════════════
+## 🚨 API CONTRACT (IMMUTABLE SPECIFICATION - HIGHEST PRIORITY)
+════════════════════════════════════════════════════════════════════════════════
+
+**⚠️ CRITICAL: This API Contract was already finalized and CANNOT be changed!**
+
+**When writing Frontend or Backend System Design:**
+- ✅ Use EXACT endpoint paths from API Contract (e.g., `POST /rooms/create` NOT `/rooms`)
+- ✅ Use EXACT field names and types (e.g., `userId: string` NOT `user_id`)
+- ✅ Reference DTOs by name: "Uses CreateRoomRequest from api-contract.md"
+- ❌ DO NOT redefine DTOs (no duplication!)
+- ❌ DO NOT change endpoint paths or field names
+- ❌ DO NOT apply your own "best practices" that contradict the contract
+
+**Your job: Design HOW to implement the contract, NOT to redesign the contract.**
+
+────────────────────────────────────────────────────────────────────────────────
+
+{{designDoc}}
+
+────────────────────────────────────────────────────────────────────────────────
+{{/if}}
+
 ════════════════════════════════════════════════════════════════════════════════
 ## 📐 DOCUMENT TYPE GUIDE
 ════════════════════════════════════════════════════════════════════════════════

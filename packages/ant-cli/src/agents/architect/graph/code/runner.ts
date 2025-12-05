@@ -49,18 +49,18 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
       const hasInterruption = Boolean(session?.state?.interruption);
       const hasTaskQueue = Boolean(session?.state?.taskQueue && session.state.taskQueue.length > 0);
       
-      if (hasInterruption && hasTaskQueue) {
+      if (hasInterruption && hasTaskQueue && session.state) {
         console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log('🔄 RESUMING FROM CHECKPOINT');
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-        console.log(`   Interruption reason: ${session.state.interruption.reason}`);
-        console.log(`   Tasks in queue: ${session.state.taskQueue.length}`);
+        console.log(`   Interruption reason: ${session.state.interruption?.reason || 'unknown'}`);
+        console.log(`   Tasks in queue: ${session.state.taskQueue?.length || 0}`);
         console.log(`   Completed tasks: ${session.state.completedTasks?.length || 0}\n`);
         
         // Reconstruct TaskQueue from saved array
         const { TaskQueue } = await import('./state');
         const taskQueue = new TaskQueue();
-        session.state.taskQueue.forEach((task: any) => taskQueue.push(task));
+        session.state.taskQueue?.forEach((task: any) => taskQueue.push(task));
         
         // ✅ Restore ALL state from checkpoint
         initial.taskQueue = taskQueue;
@@ -82,13 +82,13 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
         if (session.state.overrideDirective) {
           initial.directive = session.state.overrideDirective;
           console.log(`   ✅ Directive restored from overrideDirective`);
-        } else if (session.state.directive) {
-          initial.directive = session.state.directive;
+        } else if (session.state.directives && session.state.directives.length > 0) {
+          initial.directive = session.state.directives[0];  // First directive (newest)
           console.log(`   ✅ Directive restored from session`);
         }
         
-        if (session.state.design) {
-          initial.design = session.state.design;
+        if ((session.state as any).design) {
+          initial.design = (session.state as any).design;
           console.log(`   ✅ Design restored from session`);
         } else if (session.artifacts?.design) {
           // Try loading from artifacts (if session saved it there)
@@ -96,13 +96,13 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
           console.log(`   ✅ Design restored from artifacts`);
         }
         
-        if (session.state.spec) {
-          initial.spec = session.state.spec;
+        if ((session.state as any).spec) {
+          initial.spec = (session.state as any).spec;
           console.log(`   ✅ Spec restored from session`);
         }
         
-        if (session.state.prd) {
-          initial.prd = session.state.prd;
+        if ((session.state as any).prd) {
+          initial.prd = (session.state as any).prd;
           console.log(`   ✅ PRD restored from session`);
         }
         

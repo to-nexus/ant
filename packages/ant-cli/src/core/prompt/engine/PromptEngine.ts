@@ -361,6 +361,7 @@ export class PromptEngine {
   ): Promise<string> {
     // ✅ Uses phases/plan/base.md which includes {{> code/phases/plan/rules}}
     return await this.deps.promptPort.render('code/phases/plan/base', {
+      isKeywordGeneration: true,
       taskName: task.name,
       taskDescription: task.description,
       language: profile?.language || 'unknown',
@@ -368,6 +369,32 @@ export class PromptEngine {
       mode: mode || 'unknown',
       hasReferences: referenceProjects && referenceProjects.length > 0,
       referenceProjects: referenceProjects?.map(r => `- ${r.project}`).join('\n') || ''
+    });
+  }
+
+  /**
+   * Build prompt for Plan node (task plan generation)
+   */
+  async buildTaskPlanPrompt(
+    task: {
+      id: string;
+      name: string;
+      description: string;
+      type: string;
+    },
+    designDoc: string | undefined,
+    projectCodeContext: any
+  ): Promise<string> {
+    // ✅ Uses phases/plan/base.md (execution plan section)
+    return await this.deps.promptPort.render('code/phases/plan/base', {
+      isKeywordGeneration: false,
+      taskName: task.name,
+      taskDescription: task.description,
+      taskType: task.type,
+      designDoc: designDoc,
+      projectCodeContext: projectCodeContext?.code || '',
+      hasDesignDoc: !!designDoc,
+      hasProjectCodeContext: !!projectCodeContext?.code
     });
   }
 }
