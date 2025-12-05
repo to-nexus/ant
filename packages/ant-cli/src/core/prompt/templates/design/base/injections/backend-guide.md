@@ -4,6 +4,12 @@
 
 **⚠️ CRITICAL RULE: BACKEND MUST IMPLEMENT api-contract.md EXACTLY!**
 
+**🚨 MOST IMPORTANT: API Contract is IMMUTABLE - Implement EXACT specifications!**
+- ✅ Implement endpoint paths EXACTLY as written (e.g., `POST /rooms/create` NOT `/rooms`)
+- ✅ Return field names EXACTLY as written (e.g., `userId` NOT `user_id`)
+- ✅ Your "RESTful conventions" or "best practices" do NOT override the contract
+- ❌ DO NOT simplify, normalize, or "improve" the API contract
+
 **Your first section MUST verify API contract compliance:**
 
 ```markdown

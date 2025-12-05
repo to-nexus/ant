@@ -287,6 +287,44 @@ async function handleWriteFile(
   const exists = await gitPort.fileExists(filePath);
   const actionType = exists ? 'edit' : 'create';
   
+  // ✅ CRITICAL: BLOCK write_file on existing SOURCE files (LLM should use <edit> tags)
+  // ⚠️  Exception: Config files can be overwritten (package.json, tsconfig.json, etc.)
+  const isConfigFile = /\.(json|ya?ml|toml|ini|env|config\.(js|ts))$/i.test(filePath) ||
+                       /(package\.json|tsconfig\.json|\.eslintrc|\.prettierrc|vite\.config|webpack\.config)/i.test(filePath);
+  
+  if (exists && !isConfigFile) {
+    const errorMsg = `❌ BLOCKED: write_file cannot be used on existing SOURCE file: ${filePath}
+
+This file already exists. You have 3 options:
+
+1. Use <edit> tags to modify specific parts (RECOMMENDED):
+   <edit path="${filePath}">
+   <search>exact code to find</search>
+   <replace>new code</replace>
+   </edit>
+
+2. Delete then recreate (for complete rewrites):
+   <tool_use>
+     <name>delete_file</name>
+     <parameters><path>${filePath}</path></parameters>
+   </tool_use>
+   Then use write_file to create fresh.
+
+3. Use read_file first if you need to see current content.
+
+Note: Config files (*.json, *.yaml, etc.) can be overwritten directly.`;
+    
+    console.error(errorMsg);
+    
+    // Return error to LLM (forces it to retry with <edit>)
+    throw new Error(errorMsg);
+  }
+  
+  // ✅ Log if config file is being overwritten (informational)
+  if (exists && isConfigFile) {
+    console.log(`   ℹ️  Overwriting config file (allowed): ${filePath}`);
+  }
+  
   // ✅ 0. UI notification - START (show writing state for better UX)
   const chatAPI = getChatAPIClient();
   if (actionType === 'create') {
@@ -799,11 +837,36 @@ async function handleRunCommand(
         let stdout = '';
         let stderr = '';
         let hasError = false;
+        let resolved = false;  // ✅ Prevent double resolve/reject
+        
+        // ✅ Helper to safely resolve/reject once
+        const safeResolve = async (message: string) => {
+          if (resolved) return;
+          resolved = true;
+          clearTimeout(startupTimeout);
+          clearTimeout(earlyErrorTimeout);
+          child.kill('SIGTERM');
+          resolve(message);
+        };
+        
+        const safeReject = async (error: Error) => {
+          if (resolved) return;
+          resolved = true;
+          clearTimeout(startupTimeout);
+          clearTimeout(earlyErrorTimeout);
+          child.kill('SIGTERM');
+          reject(error);
+        };
         
         child.stdout?.on('data', (data) => {
           const chunk = data.toString();
           stdout += chunk;
           console.log(chunk);
+          
+          // ✅ Also check stdout for errors (some tools print to stdout)
+          if (/error|Error|ERR_|EADDRINUSE|ENOENT|Cannot find|Transform failed|Unexpected/i.test(chunk)) {
+            hasError = true;
+          }
         });
         
         child.stderr?.on('data', (data) => {
@@ -811,8 +874,8 @@ async function handleRunCommand(
           stderr += chunk;
           console.error(chunk);
           
-          // Check for common error patterns
-          if (/error|Error|ERR_|EADDRINUSE|ENOENT|Cannot find/.test(chunk)) {
+          // ✅ Check for common error patterns (case-insensitive)
+          if (/error|Error|ERR_|EADDRINUSE|ENOENT|Cannot find|Transform failed|Unexpected|Exception/i.test(chunk)) {
             hasError = true;
           }
         });
@@ -820,22 +883,38 @@ async function handleRunCommand(
         child.on('error', (err) => {
           hasError = true;
           stderr += err.message;
+          console.error(`[ERROR] Process error: ${err.message}`);
         });
         
-        // Wait 10 seconds for startup verification
+        // ✅ Early error detection: if error detected within 3 seconds, likely startup failure
+        const earlyErrorTimeout = setTimeout(() => {
+          if (hasError) {
+            console.error(`\n   ❌ Early startup error detected (within 3s) - failing fast\n`);
+            chatAPI.commandComplete(command, false, 1, `Early error:\n${stderr}\n${stdout}`);
+            safeReject(new Error(`❌ SERVER FAILED TO START: ${command}
+
+Early startup failure detected (within 3 seconds).
+
+Error output:
+${stderr.slice(0, 2000)}
+
+Stdout:
+${stdout.slice(0, 1000)}`));
+          }
+        }, 3000);
+        
+        // ✅ Wait 10 seconds for startup verification
         const startupTimeout = setTimeout(async () => {
           // If still running after 10s with no errors = success
           if (!hasError && child.exitCode === null) {
             console.log(`\n   ✅ Server started successfully (verified 10s startup)`);
             console.log(`   🛑 Terminating process (verification complete)\n`);
             
-            child.kill('SIGTERM');
-            
             await chatAPI.commandComplete(command, true, 0, 
               `Server started successfully.\n\nStartup output:\n${stdout}\n\n(Process terminated after verification)`
             );
             
-            resolve(`✅ SERVER STARTED SUCCESSFULLY: ${command}
+            safeResolve(`✅ SERVER STARTED SUCCESSFULLY: ${command}
 
 The server started without errors. Process was terminated after 10 seconds of successful operation.
 
@@ -843,22 +922,34 @@ Startup output:
 ${stdout.slice(0, 2000)}${stdout.length > 2000 ? '\n...(truncated)' : ''}
 
 Note: The server is NOT currently running. This was a startup verification test.`);
+          } else if (hasError) {
+            // ✅ If error detected but process still running after 10s, fail
+            console.error(`\n   ❌ Error detected during startup - failing\n`);
+            await chatAPI.commandComplete(command, false, 1, `Error:\n${stderr}\n${stdout}`);
+            safeReject(new Error(`❌ SERVER FAILED TO START: ${command}
+
+Error detected during startup:
+${stderr.slice(0, 2000)}
+
+Stdout:
+${stdout.slice(0, 1000)}`));
           }
         }, 10000);
         
-        child.on('exit', async (code) => {
-          clearTimeout(startupTimeout);
-          
+        child.on('exit', async (code, signal) => {
           const output = stdout + stderr;
           
-          if (code === 0 || (!hasError && code === null)) {
-            await chatAPI.commandComplete(command, true, code || 0, output);
-            resolve(`✅ Command completed: ${command}\n\nOutput:\n${output.slice(0, 3000)}`);
+          // ✅ Early exit (before 10s) is usually an error
+          if (code === 0 && !hasError) {
+            await chatAPI.commandComplete(command, true, 0, output);
+            safeResolve(`✅ Command completed: ${command}\n\nOutput:\n${output.slice(0, 3000)}`);
           } else {
+            // ✅ Non-zero exit or detected error
             await chatAPI.commandComplete(command, false, code || 1, output);
-            reject(new Error(`❌ SERVER FAILED TO START: ${command}
+            safeReject(new Error(`❌ SERVER FAILED TO START: ${command}
 
-Exit code: ${code}
+Exit code: ${code || 'killed'}
+Signal: ${signal || 'none'}
 
 Error output:
 ${stderr.slice(0, 2000)}

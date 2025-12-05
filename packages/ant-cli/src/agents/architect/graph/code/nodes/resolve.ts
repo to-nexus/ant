@@ -112,7 +112,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     console.log('🔄 CODE AGENT - RESUME (Skip Resolve)');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
     console.log('✅ Resuming from previous state (resolve phase skipped)');
-    console.log(`   Task queue: ${state.taskQueue.size()} tasks remaining`);
+    console.log(`   Task queue: ${state.taskQueue?.size() || 0} tasks remaining`);
     console.log(`   Completed tasks: ${state.completedTasks?.length || 0}\n`);
     
     // ✅ Workflow instrumentation: Exit node (skip path)

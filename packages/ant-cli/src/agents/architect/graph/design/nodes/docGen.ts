@@ -223,12 +223,47 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
       console.error(`[DocGen] Error reading design document:`, error);
     }
     
+    // ✅ CRITICAL: Load api-contract.md if generating system-design
+    // When generating fe/be-system-design.md, LLM MUST see api-contract.md to follow exact specs
+    let apiContractContent: string | undefined;
+    const isSystemDesignTask = 
+      state.currentTask.description.includes('fe-system-design.md') ||
+      state.currentTask.description.includes('be-system-design.md') ||
+      state.currentTask.description.includes('system-design.md');
+    
+    if (isSystemDesignTask) {
+      try {
+        // Try buffer first (in case api-contract was generated in same job)
+        const apiContractBufferContent = state._bufferManager?.getContent('outputs/design/api-contract.md');
+        if (apiContractBufferContent) {
+          apiContractContent = apiContractBufferContent;
+          console.log(`📋 [DocGen] Loaded api-contract.md from buffer (${apiContractContent.length} chars)`);
+        } else {
+          // Try disk (if from previous job)
+          const featurePath = state.context.featurePath;
+          if (featurePath) {
+            const path = await import('path');
+            const apiContractPath = path.join(featurePath, 'outputs/design/api-contract.md');
+            const fs = await import('fs/promises');
+            try {
+              apiContractContent = await fs.readFile(apiContractPath, 'utf-8');
+              console.log(`📋 [DocGen] Loaded api-contract.md from disk (${apiContractContent.length} chars)`);
+            } catch {
+              console.log(`ℹ️  [DocGen] No api-contract.md found (may not be needed)`);
+            }
+          }
+        }
+      } catch (error) {
+        console.warn(`⚠️  [DocGen] Failed to load api-contract.md:`, error);
+      }
+    }
+    
     const promptResult = await promptEngine.buildExecutePrompt(
       'design',  // ✅ AgentTask type (not the task object!)
       state.context,
       {
         directive: state.directive || state.spec,
-        designDoc: undefined,  // ✅ Don't pass full document - not needed
+        designDoc: apiContractContent,  // ✅ Pass api-contract when generating system-design
         lastSectionNumber,  // ✅ Only pass the section number
         previousDesign: state.design,  // Use previousDesign for design job
         prdSpec: state.prd,

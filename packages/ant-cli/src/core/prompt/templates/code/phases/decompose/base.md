@@ -187,8 +187,14 @@ Task descriptions should express **intention**, not claim file existence:
 ════════════════════════════════════════════════════════════════════════════════
 
 **Document Types:**
-1. **API Contract** - Integration specification (field names, types, endpoints)
-2. **System Design** - Implementation guidelines (architecture, patterns)
+1. **API Contract** - Integration specification (for understanding)
+2. **System Design** - Implementation guidelines
+
+**How to use design docs when creating tasks:**
+- Understand overall system architecture
+- Identify major components and their purposes
+- Keep task descriptions focused on GOALS, not implementation details
+- Plan phase will determine specific implementation approaches
 
 {{#if (or (eq mode "refactor") (eq mode "explain"))}}
 **IN REFACTOR/FIX MODE:**
@@ -220,23 +226,65 @@ DON'T create tasks for B-J (not mentioned in directive)
 {{else}}
 **IN GENERATE MODE:**
 
+🚨 **CRITICAL: Keep task descriptions ABSTRACT and GOAL-FOCUSED**
+
+**Task description philosophy:**
+- Describe WHAT to achieve (goal, feature)
+- Do NOT describe HOW to implement (endpoints, fields, methods)
+- Plan phase will determine specific implementation details
+
+**Why abstract descriptions?**
+```
+Decompose phase (now):
+  → Sees entire spec at once
+  → May misinterpret or miss details
+  → Limited context per task
+
+Plan phase (per task):
+  → Has full context for THIS task
+  → Reads API Contract with fresh eyes
+  → Determines exact approach
+```
+
+**Example task descriptions:**
+
+```
+✅ CORRECT (Abstract, goal-focused):
+"Implement room creation form component that allows users to create 
+ a new game room with configuration options"
+
+"Implement API client module for room management operations"
+
+"Add game room state management with create/join/leave actions"
+
+❌ WRONG (Too specific, implementation details):
+"Implement CreateRoomForm.tsx that calls POST /rooms/create endpoint 
+ with CreateRoomRequest body containing name and maxPlayers fields"
+ 
+"Create roomClient.ts with POST /rooms/create calling fetch API"
+```
+
+**What to include in descriptions:**
+- ✅ Component/module purpose
+- ✅ User-facing functionality
+- ✅ Integration points (general)
+- ❌ Specific endpoints or field names
+- ❌ Implementation methods
+- ❌ Technical details from API Contract
+
 **Document Interpretation:**
 
-| Document Type | Purpose | Usage |
-|--------------|---------|-------|
-| API Contract | Integration spec | Extract types, endpoints |
-| System Design | Implementation guide | Create component tasks |
-| External Repo | Reference code | Searchable via tool |
-
-**Critical Distinctions:**
-- api-contract.md = THIS project's specification (not searchable)
-- ant-pong-be = EXTERNAL project (searchable via tool)
+| Document Type | Purpose | Your Usage |
+|--------------|---------|------------|
+| API Contract | Integration spec | Understand WHAT needs integration |
+| System Design | Implementation guide | Understand components/architecture |
+| External Repo | Reference code | Note if referenced in directive |
 
 **Task Creation:**
-- Frontend: Implement using API Contract types
-- Backend: Implement according to API Contract spec
+- Frontend: Describe UI components and user interactions
+- Backend: Describe API capabilities and business logic
 - Don't mix frontend/backend in one task
-- Don't duplicate API Contract definitions
+- Focus on features, not implementation
 
 {{/if}}
 

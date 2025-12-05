@@ -10,7 +10,7 @@
  */
 
 import { LLMClient } from "../../../../../../core/ports";
-import { ArchitectGraphState, Task } from "../../state";
+import { ArchitectGraphState, Task, TASK_PRIORITIES } from "../../state";
 import { extractErrorDetails, createErrorViolation } from "../shared/errorHandler";
 
 export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphState> {
@@ -163,6 +163,56 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     }
   }
   
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 4: Generate task plan (planText)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  let planText = '';
+  
+  // ✅ Determine if this task type REQUIRES a plan
+  const requiresPlan = 
+    nextTask.priority !== TASK_PRIORITIES.FINAL_VERIFICATION &&  
+    nextTask.type !== 'explain';
+  
+  if (!requiresPlan) {
+    // These task types explicitly don't need plans
+    if (nextTask.priority === TASK_PRIORITIES.FINAL_VERIFICATION) {
+      console.log(`   ⊖ Final verification task - no plan needed (build & validate only)`);
+    } else if (nextTask.type === 'explain') {
+      console.log(`   ⊖ Explain task - no plan needed (no code changes)`);
+    }
+    planText = '';  // Explicitly empty (not needed for these task types)
+    
+  } else {
+    // ✅ Plan is REQUIRED for this task type
+    if (!llm) {
+      throw new Error(
+        `[Plan] LLM client is required to generate plan for ${nextTask.type} task, ` +
+        `but not available in state.deps. Task: "${nextTask.name}"`
+      );
+    }
+    
+    console.log(`📋 [Plan] Generating task plan for ${nextTask.type} task...`);
+    
+    // ✅ This will throw if plan generation fails - that's correct behavior!
+    planText = await generateTaskPlan(
+      llm,
+      nextTask,
+      state.design,
+      projectCodeContext,
+      state
+    );
+    
+    console.log(`   ✅ Plan generated (${planText.length} chars)`);
+    
+    // ✅ Log warning if plan seems suspiciously short
+    if (planText.length < 100) {
+      console.warn(
+        `   ⚠️  Warning: Plan is suspiciously short (${planText.length} chars). ` +
+        `This may indicate low-quality planning.`
+      );
+    }
+  }
+  
   const shouldClearEnforcement = !isRetry;
   
   try {
@@ -171,6 +221,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       currentTask: nextTask,
       projectCodeContext,
       referenceCodeContexts,
+      planText,  // ✅ Add generated execution plan
       retries: shouldClearEnforcement ? 0 : state.retries,
       enforcementReason: shouldClearEnforcement ? null : state.enforcementReason,
       completedTasksDetails: state.completedTasksDetails || [],
@@ -193,6 +244,66 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan');
     }
     
+    throw error;
+  }
+}
+
+async function generateTaskPlan(
+  llm: LLMClient,
+  task: Task,
+  designDoc: string | undefined,
+  projectCodeContext: any,
+  state: ArchitectGraphState
+): Promise<string> {
+  const promptEngine = state.deps?.promptEngine;
+  if (!promptEngine) {
+    throw new Error(
+      `[Plan] PromptEngine not available - cannot generate task plan for "${task.name}". ` +
+      `This is required for ${task.type} tasks.`
+    );
+  }
+  
+  try {
+    const prompt = await promptEngine.buildTaskPlanPrompt(
+      task,
+      designDoc,
+      projectCodeContext
+    );
+    
+    const response = await llm.invoke([
+      { role: 'user', content: prompt }
+    ], {
+      temperature: 0.3,
+      maxTokens: 1500
+    });
+    
+    const planText = response.trim();
+    
+    // ✅ Validation: Plan must have meaningful content
+    if (!planText || planText.length < 50) {
+      throw new Error(
+        `[Plan] Generated plan is too short or empty (${planText.length} chars). ` +
+        `This indicates LLM failure or insufficient context.\n` +
+        `Task: "${task.name}" (${task.type})\n` +
+        `Description: ${task.description.substring(0, 100)}...`
+      );
+    }
+    
+    return planText;
+    
+  } catch (error) {
+    // ✅ Re-throw with context for better debugging
+    if (error instanceof Error) {
+      if (error.message.startsWith('[Plan]')) {
+        throw error; // Already formatted
+      }
+      throw new Error(
+        `[Plan] Task plan generation failed for "${task.name}":\n` +
+        `  Task type: ${task.type}\n` +
+        `  Error: ${error.message}\n` +
+        `  Description: ${task.description.substring(0, 100)}...`
+      );
+    }
     throw error;
   }
 }

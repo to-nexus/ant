@@ -13,7 +13,6 @@
 export * from "./ports";
 export * from "./types";
 export * from "./prompt/engine";
-export * from "./modeInference";
 export * from "./policies/validations";
 export * from "./policies/retrieval";
 
