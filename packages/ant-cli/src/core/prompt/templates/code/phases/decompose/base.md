@@ -361,25 +361,37 @@ GUIDELINES:
      - ❌ Bug fixes or refactoring
      - ❌ Fixing "entry point missing" or similar errors (create feature task instead)
    - **What it does (for NEW projects only):**
-     - Generates ONLY config files (package.json, tsconfig.json, build tool configs)
-     - **Include ALL known dependencies** for initial project setup
-     - Folder structure will be created automatically by feature tasks - don't pre-create empty folders
-     - **Note on dependencies:** Setup task should include all dependencies you can anticipate from the spec, but feature tasks CAN add dependencies if absolutely necessary (e.g., new library required for a specific feature)
-     - **CRITICAL - Framework-specific requirements:**
-       - React + Vite → MUST include `@vitejs/plugin-react` in devDependencies
-       - Vue + Vite → MUST include `@vitejs/plugin-vue`
-       - Svelte + Vite → MUST include `@vitejs/plugin-svelte`
-       - Next.js → React already included, no extra plugin needed
-     - **CRITICAL - Dev server ports:**
-       - ❌ DO NOT hardcode port numbers in config files
-       - ❌ BAD: `server: { port: 3000 }` in vite.config.ts
-       - ✅ GOOD: Let CLI options control the port (--port flag)
-       - ✅ GOOD: Use environment variable if needed: `port: process.env.PORT || 5173`
-   - **CRITICAL - Testing:**
-     - ❌ DO NOT mention "testing libraries" or "test setup" in setup task description
-     - ❌ DO NOT request creation of jest.config.js, vitest.config.ts, or test setup files
-     - Testing infrastructure is explicitly excluded from setup
-     - If spec mentions testing: Acknowledge in analysis but don't include in setup task
+     - Generates project configuration and build setup
+     - Installs necessary dependencies and tools
+     - Creates basic project structure
+   
+   - **🚨 CRITICAL: Task description MUST be abstract (WHAT, not HOW):**
+     - ✅ CORRECT: "Setup project configuration"
+     - ✅ CORRECT: "Initialize project infrastructure"
+     - ✅ CORRECT: "Configure development environment"
+     - ❌ WRONG: "Setup React + Vite project configuration" (too specific)
+     - ❌ WRONG: "Generate package.json with react, vite, typescript" (implementation details)
+     - ❌ WRONG: "Create tsconfig.json with strict mode" (file-level details)
+   
+   - **Why abstract?**
+     - Plan phase will analyze design doc to determine:
+       - Which framework/library (React/Vue/Angular/Node.js)
+       - Which build tool (Vite/Webpack/Rollup)
+       - Which language features (TypeScript strict mode, ESM, etc.)
+       - Which dependencies are needed
+     - Execute phase templates already have framework-specific rules:
+       - React + Vite → automatically includes @vitejs/plugin-react
+       - Vue + Vite → automatically includes @vitejs/plugin-vue
+       - Port configuration rules (no hardcoding)
+   
+   - **Benefits of abstract descriptions:**
+     - Works for ANY tech stack (not just React)
+     - Doesn't prescribe implementation details
+     - Allows Plan phase to make informed decisions based on actual codebase
+
+   - **Note:** Dependencies and configuration details will be determined by:
+     - Plan phase: Analyzes design doc for tech stack
+     - Execute phase: Applies framework-specific rules automatically
 
 **2. Feature Tasks (priority 200-899):**
    - Extract features from the specification
