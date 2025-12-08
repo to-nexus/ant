@@ -103,6 +103,22 @@ export async function tool(
     );
   }
   
+  // 🚨 NEW: Notify chat UI about tool execution start
+  const chatAPI = getChatAPIClient();
+  const toolDisplayName = {
+    'read_file': '📖 Reading file',
+    'list_files': '📂 Listing files',
+    'search_code': '🔍 Searching code',
+    'delete_file': '🗑️ Deleting file',
+    'mkdir': '📁 Creating directory',
+    'run_command': '⚙️ Running command',
+    'search_reference_code': '🔎 Searching reference'
+  }[name] || `🔧 ${name}`;
+  
+  await chatAPI.showChatStatus('thinking', {
+    message: toolDisplayName
+  });
+  
   // ✅ CRITICAL: Give UI time to render file card from tool_use event
   // This ensures smooth loading → complete animation for ALL files, not just the first one
   // Why needed:
@@ -475,6 +491,14 @@ async function handleMkdir(
   // Create directory
   await gitPort.createDirectory(dirPath);
   console.log(`   📁 Created directory: ${dirPath}`);
+  
+  // ✅ UI notification: directory created
+  const chatAPI = getChatAPIClient();
+  await chatAPI.showChatStatus('tool_action', {
+    toolName: 'mkdir',
+    actionIcon: '📁',
+    message: `Created directory: ${dirPath}`
+  });
   
   return `Directory created: ${dirPath}`;
 }

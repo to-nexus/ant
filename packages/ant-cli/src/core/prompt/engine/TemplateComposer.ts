@@ -67,15 +67,31 @@ export class TemplateComposer {
     const base = await this.renderTemplate(
       modeConfig.templates.base,
       {
-        project: context.project,
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // Variables used by code/phases/execute/base.md
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        
+        // ✅ Used in multiple conditionals ({{#if currentTask}}, {{currentTask.type}}, etc.)
+        currentTask: assembled.currentTask || null,
+        
+        // ✅ Used in {{#if designDoc}} and {{designDoc}} (multiple places)
+        designDoc,
+        
+        // ✅ Used in {{#if (eq modificationMode "MODIFICATION MODE: ...")}}
         modificationMode: assembled.projectCodeContext?.files && assembled.projectCodeContext.files.length > 0
           ? 'MODIFICATION MODE: Modify existing code'
           : 'CREATION MODE: Build from scratch',
-        designDoc,  // ✅ Use filtered design doc
-        lastSectionNumber: assembled.lastSectionNumber ?? 0,  // ✅ Last chapter number
-        currentTask: assembled.currentTask || null,
-        projectPath: (context as any).projectPath || context.workingDir || '/path/to/project',
-        referenceRequests: assembled.referenceRequests || []  // ✅ Reference projects for tool calling
+        
+        // ✅ Used in {{#if referenceRequests}} and {{#each referenceRequests}}
+        referenceRequests: assembled.referenceRequests || [],
+        
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // Legacy/unused variables (kept for backward compatibility)
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        
+        project: context.project,
+        lastSectionNumber: assembled.lastSectionNumber ?? 0,
+        projectPath: (context as any).projectPath || context.workingDir || '/path/to/project'
       }
     );
     
@@ -277,6 +293,10 @@ export class TemplateComposer {
   
   /**
    * Get variables for a specific injection template
+   * 
+   * ✅ CRITICAL: Variable names MUST match template expectations exactly!
+   * Each injection template declares its own variable names (e.g., {{directive}}, {{designDoc}})
+   * This mapping ensures the correct variables are passed to each template.
    */
   private getInjectionVars(
     path: string,
@@ -284,22 +304,101 @@ export class TemplateComposer {
   ): Record<string, any> {
     const filename = path.split('/').pop() || '';
     
+    // ✅ Variable names match template expectations (verified against all .md files)
     const varMap: Record<string, any> = {
-      'directive': { content: assembled.directive },
-      'design-doc': { content: assembled.designDoc || '' },
-      'git-diff': { gitDiff: assembled.projectCodeContext?.gitDiff ? formatGitDiffForPrompt(assembled.projectCodeContext.gitDiff) : '' },
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // Base injections (base/injections/*.md)
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      
+      // directive.md expects: {{directive}}
+      'directive': { 
+        directive: assembled.directive 
+      },
+      
+      // design-doc.md expects: {{designDoc}}
+      'design-doc': { 
+        designDoc: assembled.designDoc || '' 
+      },
+      
+      // memory.md expects: {{content}} (generic placeholder for any content)
+      'memory': { 
+        content: this.formatLessons(assembled.lessons) || 'No relevant lessons found.' 
+      },
+      
+      // current-code.md expects: {{currentCode}} (deprecated - use retrieved-code injection instead)
+      'current-code': {
+        currentCode: '' // Legacy support only
+      },
+      
+      // original-files.md expects: {{originalFiles}} (deprecated)
+      'original-files': {
+        originalFiles: '' // Legacy support only
+      },
+      
+      // prd-spec.md expects: {{prdSpec}}
+      'prd-spec': {
+        prdSpec: assembled.prdSpec || ''
+      },
+      
+      // session-history.md expects: {{sessionHistory}}
+      'session-history': {
+        sessionHistory: assembled.sessionHistory || ''
+      },
+      
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // Code-specific injections (code/base/injections/*.md)
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      
+      // git-diff.md expects: {{gitDiff}}
+      'git-diff': { 
+        gitDiff: assembled.projectCodeContext?.gitDiff 
+          ? formatGitDiffForPrompt(assembled.projectCodeContext.gitDiff) 
+          : '' 
+      },
+      
+      // retrieved-code.md expects: {{files}}, {{stats}}, {{filePaths}}
       'retrieved-code': { 
         files: assembled.projectCodeContext?.files || [],
         filePaths: assembled.projectCodeContext?.filePaths || [],
         stats: assembled.projectCodeContext?.stats
       },
+      
+      // reference-code.md expects: {{contexts}}
       'reference-code': {
         contexts: assembled.referenceCodeContexts || []
       },
-      'lessons': { lessons: this.formatLessons(assembled.lessons) },
-      'session-context': { sessionContext: this.formatSessionContext(assembled.sessionContext) },
+      
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // Execute phase injections (code/phases/execute/injections/*.md)
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      
+      // lessons.md expects: {{lessons}}
+      'lessons': { 
+        lessons: this.formatLessons(assembled.lessons) 
+      },
+      
+      // session-context.md expects: {{sessionContext}}
+      'session-context': { 
+        sessionContext: this.formatSessionContext(assembled.sessionContext) 
+      },
+      
+      // retry-context.md expects: {{retryContext}}
+      'retry-context': { 
+        retryContext: assembled.retryContext 
+      },
+      
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // Special injections (no variables)
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      
       'modification-warning': {},
-      'retry-context': { retryContext: assembled.retryContext }
+      'output-format-markdown': {},
+      'text-format-compact': {},
+      'tool-calling-rules-compact': {},
+      'design-document-guide': {},
+      'api-contract-guide': {},
+      'backend-guide': {},
+      'frontend-guide': {}
     };
     
     return varMap[filename] || {};

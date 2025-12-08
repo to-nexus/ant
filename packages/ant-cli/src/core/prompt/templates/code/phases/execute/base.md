@@ -268,21 +268,4 @@ NONE available. Do NOT use `search_reference_code` tool.
 ════════════════════════════════════════════════════════════════════════════════
 {{/if}}
 
-## 📂 EXISTING FILES
-
-{{#if currentCode}}
-**These files ALREADY EXIST in the working directory:**
-
-{{currentCode}}
-
-────────────────────────────────────────────────────────────────────────────────
-
-Modify only what's needed. Skip files that don't need changes.
-
-{{else}}
-No existing files detected - this is a fresh project setup.
-{{/if}}
-
-════════════════════════════════════════════════════════════════════════════════
-
 **For XML tag syntax and output format details, see execute/rules.md**

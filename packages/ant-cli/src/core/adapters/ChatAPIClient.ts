@@ -129,21 +129,18 @@ export class ChatAPIClient {
    * - Auto-merge or disappear based on next content type (handled by ChatService)
    */
   async showChatStatus(
-    type: 'placeholder' | 'exploring' | 'explored' | 'retrieving' | 'retrieved' | 'grepping' | 'grepped' | 'reading' | 'read' | 'thinking' | 'indexing' | 'indexed' | 'analyzing' | 'analyzed' | 'storing' | 'stored' | 'searching_reference' | 'searched_reference',
+    type: 'placeholder' | 'exploring' | 'explored' | 'retrieving' | 'retrieved' | 'grepping' | 'grepped' | 'reading' | 'read' | 'thinking' | 'indexing' | 'indexed' | 'analyzing' | 'analyzed' | 'storing' | 'stored' | 'searching_reference' | 'searched_reference' | 'tool_action',
     metadata?: Record<string, any>
   ): Promise<void> {
     if (!this.enabled) return;
 
     try {
-      // ✅ CRITICAL: Always ensure message is started
-      // The messageStarted flag might be true, but the actual currentMessage might be finalized
-      // So we need to verify the message state with the server
-      if (!this.messageStarted) {
-        const messageId = await this.startMessage();
-        if (!messageId) {
-          console.error(`❌ [ChatAPIClient] Cannot show chat status - message start failed`);
-          return;  // ✅ Don't proceed if message start failed
-        }
+      // ✅ CRITICAL: Always verify server state, not just local flag
+      // The messageStarted flag can be out of sync with server's currentMessage state
+      // This happens when a message is finalized between nodes (e.g., decompose → plan)
+      if (!await this.ensureMessageActive()) {
+        console.error(`❌ [ChatAPIClient] Cannot show chat status - no active message`);
+        return;  // ✅ Don't proceed if message is not active
       }
 
       // ✅ Auto-generate content text based on type
@@ -308,26 +305,35 @@ export class ChatAPIClient {
       }
 
       // Send Chat Status Message directly to chat service (NOT an LLM event!)
+      console.log(`🌐 [ChatAPIClient] HTTP POST → /add-content (type: ${type})`);
+      console.log(`   Content: "${content.substring(0, 80)}${content.length > 80 ? '...' : ''}"`);
+      console.log(`   Metadata keys: ${Object.keys(metadata || {}).join(', ')}`);
+      
+      const requestBody = {
+        content: {
+          type,
+          content,
+          metadata: {
+            provider: 'system',
+            timestamp: new Date().toISOString(),
+            ...metadata
+          }
+        }
+      };
+      
       const response = await fetch(`${this.baseUrl}/add-content`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({
-          content: {
-            type,
-            content,
-            metadata: {
-              provider: 'system',
-              timestamp: new Date().toISOString(),
-              ...metadata
-            }
-          }
-        })
+        body: JSON.stringify(requestBody)
       });
 
       if (!response.ok) {
-        console.error(`❌ [ChatAPIClient] Failed to show chat status: ${response.statusText}`);
+        console.error(`❌ [ChatAPIClient] HTTP ${response.status} ${response.statusText}`);
+        console.error(`   Request body:`, JSON.stringify(requestBody, null, 2));
         return;
       }
+      
+      console.log(`✅ [ChatAPIClient] HTTP 200 OK (type: ${type})`);
     } catch (error) {
       console.error('❌ [ChatAPIClient] Error showing chat status:', error);
     }
@@ -387,6 +393,12 @@ export class ChatAPIClient {
   async startFileCreation(filePath: string): Promise<void> {
     if (!this.enabled) return;
     try {
+      // ✅ Ensure message is active before starting file operation
+      if (!await this.ensureMessageActive()) {
+        console.error(`❌ [ChatAPIClient] Cannot start file creation - no active message for: ${filePath}`);
+        return;
+      }
+      
       await fetch(`${this.baseUrl}/file-operation`, {
         method: 'POST',
         headers: this.getHeaders(),
@@ -456,6 +468,12 @@ export class ChatAPIClient {
   async startFileEdit(filePath: string): Promise<void> {
     if (!this.enabled) return;
     try {
+      // ✅ Ensure message is active before starting file operation
+      if (!await this.ensureMessageActive()) {
+        console.error(`❌ [ChatAPIClient] Cannot start file edit - no active message for: ${filePath}`);
+        return;
+      }
+      
       await fetch(`${this.baseUrl}/file-operation`, {
         method: 'POST',
         headers: this.getHeaders(),

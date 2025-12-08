@@ -10,14 +10,13 @@
 import { GitPort } from "../../../../../../core/ports";
 import { ArchitectGraphState } from "../../state";
 import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient";
+import { RETRIEVAL_CONFIG } from "../../config/retrievalConfig";
 
 export interface LoadedFile {
   path: string;
   content: string;
   source: 'vector_db' | 'file_resolver';
 }
-
-const MAX_STACK_TRACE_FILES = 5;
 
 export async function loadStackTraceFiles(
   stackTracePaths: string[],
@@ -32,7 +31,10 @@ export async function loadStackTraceFiles(
   
   if (stackTracePaths.length === 0) return stackFiles;
   
-  console.log(`   📍 Loading ${stackTracePaths.length} stack trace files (max ${MAX_STACK_TRACE_FILES})...`);
+  // ✅ CRITICAL: Stack trace is PRIORITY, so we enforce strict limit
+  const stackLimit = Math.min(stackTracePaths.length, RETRIEVAL_CONFIG.MAX_STACK_TRACE);
+  console.log(`   📍 Stack trace: ${stackTracePaths.length} files → loading ${stackLimit} files (max ${RETRIEVAL_CONFIG.MAX_STACK_TRACE})...`);
+  console.log(`   📊 Remaining quota for semantic: ${RETRIEVAL_CONFIG.TOTAL_MAX - stackLimit} files`);
   
   await chatAPI.showChatStatus('retrieving', {
     query: `Stack trace: ${stackTracePaths.join(', ')}`
@@ -40,11 +42,12 @@ export async function loadStackTraceFiles(
   
   const { resolveStackTraceFile } = await import('../../../../../../core/utils/filePathResolver');
   
-  for (const filePath of stackTracePaths.slice(0, MAX_STACK_TRACE_FILES)) {
+  // Step 1: Try Vector DB for all files
+  for (const filePath of stackTracePaths.slice(0, stackLimit)) {
     let resolvedPath: string | null = null;
     let source: 'vector_db' | 'file_resolver' | null = null;
     
-    // Strategy 1: Vector DB search
+    // Try Vector DB first
     try {
       console.log(`      🔍 Vector DB: ${filePath}`);
       const vectorResult = await retriever.retrieve(
@@ -64,26 +67,26 @@ export async function loadStackTraceFiles(
       console.warn(`      ⚠️  Vector DB failed: ${e.message}`);
     }
     
-    // Strategy 2: File Resolver
+    // If Vector DB failed, mark for local search (grepped)
     if (!resolvedPath) {
       try {
-        console.log(`      🔍 File Resolver: ${filePath}`);
+        console.log(`      🔍 Local file search: ${filePath}`);
         const resolved = await resolveStackTraceFile(filePath, state.context.workingDir, git);
         
         if (resolved.confidence !== 'not_found') {
           resolvedPath = resolved.resolvedPath;
-          source = 'file_resolver';
-          console.log(`      ✅ File Resolver (${resolved.confidence}): ${resolvedPath}`);
+          source = 'file_resolver';  // This will be shown in "grepped"
+          console.log(`      ✅ Local search (${resolved.confidence}): ${resolvedPath}`);
           if (resolved.candidates && resolved.candidates.length > 1) {
             console.log(`         📋 Other candidates: ${resolved.candidates.filter(c => c !== resolvedPath).slice(0, 3).join(', ')}`);
           }
         }
       } catch (e: any) {
-        console.warn(`      ⚠️  File Resolver failed: ${e.message}`);
+        console.warn(`      ⚠️  Local search failed: ${e.message}`);
       }
     }
     
-    // Load from local Git (ALWAYS)
+    // Load content from local Git
     if (resolvedPath && source) {
       try {
         const fullPath = require('path').join(state.context.workingDir, resolvedPath);
@@ -103,64 +106,66 @@ export async function loadStackTraceFiles(
     }
   }
   
-  // Display in Chat UI - 항상 표시
+  // Separate files by source
   const vectorDbFiles = stackFiles.filter(f => f.source === 'vector_db');
-  const resolverFiles = stackFiles.filter(f => f.source === 'file_resolver');
+  const greppedFiles = stackFiles.filter(f => f.source === 'file_resolver');
   
-  let fileListDisplay = '📍 **Stack Trace Files**\n\n';
-  
-  if (stackFiles.length === 0) {
-    fileListDisplay += 'No stack trace files found';
-  } else {
-    if (vectorDbFiles.length > 0) {
-      fileListDisplay += `🗄️ **Retrieved from Vector DB** (${vectorDbFiles.length}):\n`;
-      vectorDbFiles.forEach(f => { fileListDisplay += `  • ${f.path}\n`; });
-      if (resolverFiles.length > 0) fileListDisplay += '\n';
-    }
-    
-    if (resolverFiles.length > 0) {
-      fileListDisplay += `📁 **Resolved via File System** (${resolverFiles.length}):\n`;
-      resolverFiles.forEach(f => { fileListDisplay += `  • ${f.path}\n`; });
-    }
-    
-    fileListDisplay += `\n💾 **All loaded from local Git** (includes uncommitted changes)`;
-  }
-  
-  // Display: 1. Retrieved (Stack trace files)
-  await chatAPI.showChatStatus('retrieved', {
-    content: fileListDisplay,
-    filesCount: stackFiles.length,
-    filesList: stackFiles.map(f => f.path)
-  });
-  
-  // Display: 2. Explored (Git changes for stack trace files) - 항상 표시
-  let gitChangesCount = 0;
-  if (stackFiles.length > 0) {
+  // Check for git changes (only for Vector DB files)
+  let exploredFiles: string[] = [];
+  if (vectorDbFiles.length > 0) {
     try {
       const changedFiles = await git.getChangedFiles();
       const changedFileSet = new Set(changedFiles);
-      gitChangesCount = stackFiles.filter(f => changedFileSet.has(f.path)).length;
+      exploredFiles = vectorDbFiles.filter(f => changedFileSet.has(f.path)).map(f => f.path);
     } catch (e: any) {
       console.warn(`      ⚠️  Git changes check failed: ${e.message}`);
     }
   }
   
-  await chatAPI.showChatStatus('explored', {
-    filesCount: gitChangesCount,
-    content: gitChangesCount > 0 
-      ? `✅ Explored: ${gitChangesCount} stack trace files with uncommitted changes`
-      : `✅ Explored: No uncommitted changes in stack trace files`
-  });
+  // Display: 1. Retrieved (Vector DB only) - 항상 표시
+  console.log(`\n📤 [stackTraceLoader] Sending 'retrieved' status (${vectorDbFiles.length} files)...`);
+  try {
+    await chatAPI.showChatStatus('retrieved', {
+      filesCount: vectorDbFiles.length,
+      filesList: vectorDbFiles.map(f => f.path),
+      content: `Retrieved: ${vectorDbFiles.length} files related to stacktrace from Vector DB`
+    });
+    console.log(`   ✅ 'retrieved' status sent successfully\n`);
+  } catch (error: any) {
+    console.error(`   ❌ 'retrieved' status FAILED:`, error.message);
+  }
   
-  // Display: 3. Grepped (File resolver was the fallback) - 항상 표시
-  await chatAPI.showChatStatus('grepped', {
-    filesCount: resolverFiles.length,
-    keywords: stackTracePaths.filter((_, i) => i < MAX_STACK_TRACE_FILES),
-    filesList: resolverFiles.map(f => f.path),
-    content: resolverFiles.length > 0
-      ? `✅ Grepped: ${resolverFiles.length} files found via local file system`
-      : `✅ Grepped: All files found in Vector DB (no local fallback needed)`
-  });
+  // Display: 2. Explored (Git changes in retrieved files) - 항상 표시
+  console.log(`\n📤 [stackTraceLoader] Sending 'explored' status (${exploredFiles.length} files)...`);
+  try {
+    await chatAPI.showChatStatus('explored', {
+      filesCount: exploredFiles.length,
+      filesList: exploredFiles,
+      content: exploredFiles.length > 0
+        ? `✅ Explored: ${exploredFiles.length} files with uncommitted changes related to stacktrace`
+        : `✅ Explored: No uncommitted changes related to stacktrace`
+    });
+    console.log(`   ✅ 'explored' status sent successfully\n`);
+  } catch (error: any) {
+    console.error(`   ❌ 'explored' status FAILED:`, error.message);
+  }
   
+  // Display: 3. Grepped (Local search - NOT in Vector DB) - 항상 표시
+  console.log(`\n📤 [stackTraceLoader] Sending 'grepped' status (${greppedFiles.length} files)...`);
+  try {
+    await chatAPI.showChatStatus('grepped', {
+      filesCount: greppedFiles.length,
+      keywords: stackTracePaths.slice(0, stackLimit),
+      filesList: greppedFiles.map(f => f.path),
+      content: greppedFiles.length > 0
+        ? `✅ Grepped: ${greppedFiles.length} files found via local search related to stacktrace`
+        : `✅ Grepped: All files found in Vector DB (no local search needed)`
+    });
+    console.log(`   ✅ 'grepped' status sent successfully\n`);
+  } catch (error: any) {
+    console.error(`   ❌ 'grepped' status FAILED:`, error.message);
+  }
+  
+  console.log(`   ✅ Stack trace loader: ${stackFiles.length} files loaded\n`);
   return stackFiles;
 }

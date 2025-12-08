@@ -119,34 +119,56 @@ export async function detectEnvironment(
   console.log(`   Require RAG for Decompose: ${parsed.requireRagForDecompose}`);
   
   // Display keywords in Chat UI - 항상 표시
-  let keywordDisplay = '**Analyzed:** 🔑 Decompose Search Keywords\n\n';
+  const stackTraceCount = decomposeKeywords.stackTrace.length;
+  const semanticCount = decomposeKeywords.keywords.length;
+  const totalCount = stackTraceCount + semanticCount;
   
-  if (decomposeKeywords.stackTrace.length === 0 && decomposeKeywords.keywords.length === 0) {
-    keywordDisplay += 'No keywords generated (proceeding without RAG)';
+  let summary: string;
+  const filesList: string[] = [];
+  
+  if (totalCount === 0) {
+    summary = 'No keywords generated (proceeding without RAG)';
   } else {
-    if (decomposeKeywords.stackTrace.length > 0) {
-      console.log(`   📍 Stack trace: ${decomposeKeywords.stackTrace.join(', ')}`);
-      keywordDisplay += `📍 **Stack Trace Files** (${decomposeKeywords.stackTrace.length}):\n`;
-      keywordDisplay += decomposeKeywords.stackTrace.map(f => `  • ${f}`).join('\n');
-      keywordDisplay += '\n\n';
+    // Build summary
+    const parts: string[] = [];
+    if (stackTraceCount > 0) {
+      parts.push(`${stackTraceCount} from stack traces`);
+    }
+    if (semanticCount > 0) {
+      parts.push(`${semanticCount} semantic keywords`);
+    }
+    summary = `Analyzed: ${parts.join(', ')}`;
+    
+    // Build file list with type tags
+    decomposeKeywords.stackTrace.forEach(file => {
+      filesList.push(`[stacktrace] ${file}`);
+    });
+    
+    // Limit semantic keywords display to 15
+    const displayKeywords = decomposeKeywords.keywords.slice(0, 15);
+    displayKeywords.forEach(keyword => {
+      filesList.push(`[semantic] ${keyword}`);
+    });
+    
+    if (decomposeKeywords.keywords.length > 15) {
+      filesList.push(`[semantic] ... and ${decomposeKeywords.keywords.length - 15} more`);
     }
     
-    if (decomposeKeywords.keywords.length > 0) {
+    // Log to console
+    if (stackTraceCount > 0) {
+      console.log(`   📍 Stack trace: ${decomposeKeywords.stackTrace.join(', ')}`);
+    }
+    if (semanticCount > 0) {
       console.log(`   🔍 Keywords: ${decomposeKeywords.keywords.join(', ')}`);
-      keywordDisplay += `🔍 **Semantic Keywords** (${decomposeKeywords.keywords.length}):\n`;
-      const displayKeywords = decomposeKeywords.keywords.slice(0, 15);
-      keywordDisplay += displayKeywords.map(k => `  • ${k}`).join('\n');
-      if (decomposeKeywords.keywords.length > 15) {
-        keywordDisplay += `\n  ... and ${decomposeKeywords.keywords.length - 15} more`;
-      }
     }
   }
   
   await chatAPI.showChatStatus('analyzed', {
-    content: keywordDisplay,
-    keywordCount: decomposeKeywords.stackTrace.length + decomposeKeywords.keywords.length,
-    stackTraceCount: decomposeKeywords.stackTrace.length,
-    semanticCount: decomposeKeywords.keywords.length
+    content: summary,
+    keywordCount: totalCount,
+    stackTraceCount,
+    semanticCount,
+    filesList
   });
   
   if (decomposeKeywords.references.size > 0) {
