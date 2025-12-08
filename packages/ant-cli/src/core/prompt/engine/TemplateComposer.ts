@@ -68,7 +68,7 @@ export class TemplateComposer {
       modeConfig.templates.base,
       {
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // Variables used by code/phases/execute/base.md
+        // Variables used by code/phases/execute/base.md and design/phases/execute/base.md
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         
         // ✅ Used in multiple conditionals ({{#if currentTask}}, {{currentTask.type}}, etc.)
@@ -76,6 +76,9 @@ export class TemplateComposer {
         
         // ✅ Used in {{#if designDoc}} and {{designDoc}} (multiple places)
         designDoc,
+        
+        // ✅ Used in design/phases/execute/base.md: {{spec}}
+        spec: assembled.directive || '',
         
         // ✅ Used in {{#if (eq modificationMode "MODIFICATION MODE: ...")}}
         modificationMode: assembled.projectCodeContext?.files && assembled.projectCodeContext.files.length > 0
