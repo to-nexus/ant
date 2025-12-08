@@ -10,7 +10,6 @@ export {
   createSearchCodeTool,
   createDeleteFileTool,
   createMkdirTool,
-  createApplyPatchTool,
 } from './file-tools';
 export {
   createRunCommandTool,

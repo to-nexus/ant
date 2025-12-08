@@ -57,7 +57,7 @@ export interface LLMStreamEvent {
   // ---- Tool call ----
   toolUse?: {
     id: string;               // Unique tool invocation ID
-    name: string;             // Tool name (e.g. "read_file", "write_file")
+    name: string;             // Tool name (e.g. "read_file", "delete_file", "run_command")
     input: Record<string, any>;  // Tool arguments
     type?: 'function' | 'command';  // Optional classification
   };

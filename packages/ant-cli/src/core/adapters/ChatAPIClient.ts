@@ -129,7 +129,7 @@ export class ChatAPIClient {
    * - Auto-merge or disappear based on next content type (handled by ChatService)
    */
   async showChatStatus(
-    type: 'placeholder' | 'exploring' | 'explored' | 'grepping' | 'grepped' | 'reading' | 'read' | 'thinking' | 'indexing' | 'indexed' | 'analyzing' | 'analyzed' | 'storing' | 'stored' | 'searching_reference' | 'searched_reference',
+    type: 'placeholder' | 'exploring' | 'explored' | 'retrieving' | 'retrieved' | 'grepping' | 'grepped' | 'reading' | 'read' | 'thinking' | 'indexing' | 'indexed' | 'analyzing' | 'analyzed' | 'storing' | 'stored' | 'searching_reference' | 'searched_reference',
     metadata?: Record<string, any>
   ): Promise<void> {
     if (!this.enabled) return;
@@ -162,26 +162,59 @@ export class ChatAPIClient {
         case 'explored':
           const exploredFiles = metadata?.filesCount ?? 0;
           const exploredError = metadata?.error;
+          const exploredContent = metadata?.content;
           if (exploredError) {
             content = `❌ Explore Failed: ${exploredError}`;
+          } else if (exploredContent) {
+            content = exploredContent;
           } else {
-            content = `✅ Explored: ${exploredFiles} files`;
+            content = `✅ Explored: ${exploredFiles} files with uncommitted changes`;
+          }
+          break;
+        case 'retrieving':
+          const retrievingQuery = metadata?.query ?? '';
+          content = retrievingQuery 
+            ? `Retrieving from Vector DB: '${retrievingQuery}'...`
+            : 'Retrieving from Vector DB...';
+          break;
+        case 'retrieved':
+          const retrievedFiles = metadata?.filesCount ?? 0;
+          const retrievedError = metadata?.error;
+          const retrievedContent = metadata?.content;
+          
+          if (retrievedError) {
+            content = `❌ Retrieval Failed: ${retrievedError}`;
+          } else if (retrievedContent) {
+            // Custom content (e.g., stack trace files display)
+            content = retrievedContent;
+          } else {
+            // Default: Vector DB only
+            content = `✅ Retrieved: ${retrievedFiles} files from Vector DB`;
           }
           break;
         case 'grepping':
-          const query = metadata?.query ?? '';
-          content = query 
-            ? `Searching: '${query}'...`
-            : 'Searching...';
+          const greppingKeywords = metadata?.keywords ?? [];
+          const greppingQuery = metadata?.query ?? '';
+          if (greppingKeywords.length > 0) {
+            content = `Searching local files: ${greppingKeywords.slice(0, 3).join(', ')}${greppingKeywords.length > 3 ? '...' : ''}`;
+          } else if (greppingQuery) {
+            content = `Searching local files: '${greppingQuery}'`;
+          } else {
+            content = 'Searching local files...';
+          }
           break;
         case 'grepped':
           const greppedFiles = metadata?.filesCount ?? 0;
-          const strategy = metadata?.strategy ?? 'unknown';
+          const greppedKeywords = metadata?.keywords ?? [];
           const greppedError = metadata?.error;
           if (greppedError) {
-            content = `❌ Search Failed: ${greppedError}`;
+            content = `❌ Local Search Failed: ${greppedError}`;
+          } else if (greppedKeywords.length > 0) {
+            const keywordList = greppedKeywords.slice(0, 3).join(', ');
+            const more = greppedKeywords.length > 3 ? ` (+${greppedKeywords.length - 3} more)` : '';
+            content = `✅ Grepped: ${greppedFiles} files (local search for: ${keywordList}${more})`;
           } else {
-            content = `✅ Found: ${greppedFiles} files (${strategy})`;
+            content = `✅ Grepped: ${greppedFiles} files (local keyword search)`;
           }
           break;
         case 'reading':
@@ -223,12 +256,21 @@ export class ChatAPIClient {
           content = `Analyzing: ${analyzingMsg}`;
           break;
         case 'analyzed':
-          const analyzedFiles = metadata?.filesCount ?? 0;
+          const analyzedContent = metadata?.content;
+          const keywordCount = metadata?.keywordCount ?? 0;
+          const stackTraceCount = metadata?.stackTraceCount ?? 0;
+          const semanticCount = metadata?.semanticCount ?? 0;
           const analyzedError = metadata?.error;
+          
           if (analyzedError) {
             content = `❌ Analysis Failed: ${analyzedError}`;
+          } else if (analyzedContent) {
+            // Custom content provided (keyword display)
+            content = analyzedContent;
+          } else if (keywordCount > 0) {
+            content = `🔑 Keywords Generated: ${stackTraceCount} stack trace + ${semanticCount} semantic`;
           } else {
-            content = `✅ Analyzed: ${analyzedFiles} files`;
+            content = `✅ Analyzed: ${metadata?.filesCount ?? 0} files`;
           }
           break;
         case 'storing':
@@ -628,26 +670,6 @@ export class ChatAPIClient {
         body: JSON.stringify({ command, output, exitCode, phase: 'complete' })
       });
     } catch (error) { /* Silently fail */ }
-  }
-
-  /**
-   * Add grepping status (searching codebase)
-   * @deprecated Use showChatStatus('grepping', { query, filesCount, totalFiles }) instead
-   */
-  async addGreppingStatus(query: string, current: number, total: number): Promise<void> {
-    await this.showChatStatus('grepping', { query, filesCount: current, totalFiles: total });
-  }
-
-  /**
-   * Add grep result (search complete)
-   */
-  async addGreppedResult(
-    query: string,
-    filesCount: number,
-    strategy: string,
-    filesList?: string[]
-  ): Promise<void> {
-    await this.showChatStatus('grepped', { query, filesCount, strategy, filesList });
   }
 
   /**

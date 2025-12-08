@@ -396,17 +396,35 @@ export class CommonRenderStrategy implements IRenderStrategy {
     
     // Determine final action type
     const isExisting = registry.isExisting(filePath);
-    let finalActionType: 'create' | 'append' | 'edit' | 'delete';
+    let finalActionType: 'create' | 'append' | 'edit';
     
-    if (actionType === 'delete') {
-      finalActionType = 'delete';
-    } else if (actionType === 'append') {
+    if (actionType === 'append') {
       finalActionType = 'append';  // ✅ Keep append as-is
     } else if (actionType === 'edit') {
       finalActionType = 'edit';    // ✅ Keep edit as-is
     } else {
-      // 'create' or undefined - determine from existence
-      finalActionType = isExisting ? 'edit' : 'create';
+      // 'create' or undefined - check if file exists
+      if (isExisting) {
+        // 🚨 CRITICAL ERROR: LLM tried to create a file that already exists!
+        const errorMsg = `❌ ERROR: Attempted to use <file> tag on EXISTING file: ${filePath}
+
+This file ALREADY EXISTS in the codebase!
+You MUST use <edit> tags to modify existing files, NOT <file> tags.
+
+To fix this:
+1. Use <edit path="${filePath}"> with <search> and <replace> blocks
+2. Or use <append path="${filePath}"> to add content at the end
+
+Using <file> on existing files will OVERWRITE the entire file, which is almost never what you want!`;
+        
+        console.error(errorMsg);
+        
+        // 🔴 Throw error to stop execution and force LLM to correct its mistake
+        throw new Error(errorMsg);
+      }
+      
+      // File doesn't exist - OK to create
+      finalActionType = 'create';
     }
     
     // Register in registry
@@ -440,8 +458,6 @@ export class CommonRenderStrategy implements IRenderStrategy {
         searchContent: '',
         replaceContent: ''
       });
-    } else if (finalActionType === 'delete') {
-      await this.chatAPI.completeFileDeletion(filePath);
     }
   }
   

@@ -8,7 +8,7 @@ The following {{files.length}} files were retrieved from the **actual codebase**
 
 🚨 **BEFORE creating ANY new file:**
 1. Check if the file you need is listed below
-2. If it exists here → use `apply_patch` or `read_file` + `write_file` to MODIFY it
+2. If it exists here → use `<edit>` tags to MODIFY it (see Output Format Rules)
 3. NEVER create a new file if it already exists below!
 
 ---
@@ -27,18 +27,32 @@ The following {{files.length}} files were retrieved from the **actual codebase**
 
 ## 📋 How to Work With These Files
 
-1. **These files EXIST** - Do NOT recreate them with `write_file`
-2. **To modify**: Use `apply_patch` for targeted changes, or `read_file` + `write_file` for full rewrites
-3. **To add new code**: Extend the existing files shown above
-4. **To create NEW files**: Only if the file is NOT listed above
+1. **These files EXIST** - Do NOT recreate them with `<file>` tags
+2. **To modify**: Use `<edit>` tags with `<search>` and `<replace>` blocks (see Output Format Rules)
+3. **To add new code**: Use `<edit>` or `<append>` tags on the existing files above
+4. **To create NEW files**: Only if the file is NOT listed above - use `<file>` tags
 
 ## ❌ Common Mistakes to Avoid
 
 - ❌ Creating `EventHandler.ts` when it already exists above
-- ❌ Using `write_file` to create a file that's shown in this list
+- ❌ Using `<file>` tag to create a file that's shown in this list
 - ❌ Ignoring the existing code and starting from scratch
+
+## ✅ Correct Approach
+
+```xml
+<!-- ✅ CORRECT: Modifying existing file -->
+<edit path="src/EventHandler.ts">
+<search>exact code from above</search>
+<replace>modified code</replace>
+</edit>
+
+<!-- ❌ WRONG: Creating file that already exists -->
+<file path="src/EventHandler.ts">
+new code
+</file>
+```
 
 {{else}}
 No code files were retrieved for this task. You may need to create new files.
 {{/if}}
-

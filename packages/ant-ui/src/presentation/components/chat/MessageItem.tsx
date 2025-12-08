@@ -232,6 +232,22 @@ function ContentBlock({ content, isStreaming }: ContentBlockProps) {
     case 'explored':
       return <ResultCard content={content} variant="exploration" />;
     
+    case 'retrieving':
+      return (
+        <div className="flex items-center gap-2 px-3 py-2 bg-indigo-50 dark:bg-indigo-900/20 
+                        border border-indigo-200 dark:border-indigo-800 rounded-lg">
+          <Loader2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400 animate-spin" />
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-medium text-indigo-800 dark:text-indigo-300">
+              {content.content}
+            </div>
+          </div>
+        </div>
+      );
+
+    case 'retrieved':
+      return <ResultCard content={content} variant="retrieval" />;
+    
     case 'indexing':
       return (
         <div className="flex items-center gap-2 px-3 py-2 bg-purple-50 dark:bg-purple-900/20 
@@ -338,7 +354,7 @@ function ContentBlock({ content, isStreaming }: ContentBlockProps) {
       );
 
     case 'grepped':
-      return <GrepCard content={content} />;
+      return <ResultCard content={content} variant="grep" />;
 
     // File Operations - Real-time streaming
     case 'file_creating':

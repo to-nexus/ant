@@ -3,90 +3,107 @@
 {{> code/base/injections/text-format-compact}}
 
 ════════════════════════════════════════════════════════════════════════════════
-## 🎯 XML TAG REFERENCE
+## 🎯 TWO WAYS TO INTERACT
 ════════════════════════════════════════════════════════════════════════════════
 
-### Creating Files & Running Commands
+### 📝 XML STREAMING - For Content Generation (LLM → User)
 
-**write_file** - Create a new file (NOT for existing files!)
+Use XML tags to **create** or **modify** file content:
+
 ```xml
-<tool_use>
-  <name>write_file</name>
-  <parameters>
-    <path>src/components/Button.tsx</path>
-    <content>import React from 'react';
+<!-- Create NEW file -->
+<file path="src/components/Button.tsx">
+import React from 'react';
 
 export function Button({ children }: { children: React.ReactNode }) {
   return <button className="btn">{children}</button>;
-}</content>
-  </parameters>
-</tool_use>
+}
+</file>
+
+<!-- Edit EXISTING file -->
+<edit path="src/App.tsx">
+<search>exact code to find</search>
+<replace>new code</replace>
+</edit>
+
+<!-- Append to EXISTING file -->
+<append path="src/utils.ts">
+export function newFunction() {
+  return true;
+}
+</append>
 ```
 
-**run_command** - Execute shell command
+### 🔧 TOOL CALLING - For Information & Commands (System → LLM)
+
+Use `<tool_use>` for **reading files**, **searching**, **executing commands**:
+
 ```xml
+<!-- Read file to get context -->
+<tool_use>
+  <name>read_file</name>
+  <parameters>
+    <path>src/App.tsx</path>
+  </parameters>
+</tool_use>
+
+<!-- Search codebase -->
+<tool_use>
+  <name>search_code</name>
+  <parameters>
+    <pattern>useState</pattern>
+  </parameters>
+</tool_use>
+
+<!-- Execute command (npm install, delete file, etc) -->
 <tool_use>
   <name>run_command</name>
   <parameters>
     <command>npm install react</command>
   </parameters>
 </tool_use>
+
+<!-- Delete file (system command) -->
+<tool_use>
+  <name>delete_file</name>
+  <parameters>
+    <path>src/old.tsx</path>
+  </parameters>
+</tool_use>
 ```
 
 ────────────────────────────────────────────────────────────────────────────────
 
-### Modifying Existing Files
+## 📋 COMPLETE REFERENCE
 
-**ALWAYS use `<edit>` for existing files** - shows only changes, more efficient.
+### XML Streaming Tags (Content Generation)
 
-**Basic Syntax:**
-```xml
-<edit path="src/components/Button.tsx">
-<search>exact code to find</search>
-<replace>new code</replace>
-</edit>
-```
+| Tag | Purpose | When to Use |
+|-----|---------|-------------|
+| `<file path="...">` | Create NEW file | File doesn't exist yet |
+| `<edit path="...">` | Modify EXISTING file | Change specific parts |
+| `<append path="...">` | Add to EXISTING file | Add content at end |
 
-**Multiple edits to same file:**
-```xml
-<edit path="src/App.tsx">
-<search>import { Header } from './Header';</search>
-<replace>
-import { Header } from './Header';
-import { Footer } from './Footer';
-</replace>
-</edit>
+### Available Tools (Information & Commands)
 
-<edit path="src/App.tsx">
-<search>
-      <Header />
-    </div>
-  );
-}
-</search>
-<replace>
-      <Header />
-      <Footer />
-    </div>
-  );
-}
-</replace>
-</edit>
-```
+| Tool | Purpose | When to Use |
+|------|---------|-------------|
+| `read_file` | Read file content | Need context from existing file |
+| `search_code` | Search codebase | Find where something is used |
+| `list_files` | List directory contents | Explore file structure |
+| `delete_file` | Delete **single file** | Remove one specific file (safe, UI-integrated) |
+| `mkdir` | Create directory | Need new folder |
+| `run_command` | Execute shell command | npm install, build, **delete directory** (`rm -rf`), **delete multiple files** (`rm *.tmp`), **move/copy files** (`mv`, `cp`) |
+
+**🎯 File Deletion Guidelines:**
+- **Single file** (e.g., `src/old.tsx`) → Use `delete_file` (safer, better UI)
+- **Directory** (e.g., `dist/`, `node_modules/`) → Use `run_command` with `rm -rf dirname/`
+- **Multiple files/patterns** (e.g., `*.log`, `test-*.js`) → Use `run_command` with `rm pattern`
+- **Complex operations** (move, copy, rename) → Use `run_command` with `mv`, `cp`, etc.
 
 ────────────────────────────────────────────────────────────────────────────────
 
-### Completion Signal
-
-```xml
-<done>true</done>
-```
-
-Output when task is complete. For feature tasks: code + `<done>true</done>` only, NO summary.
-
-════════════════════════════════════════════════════════════════════════════════
-## ⚠️ CRITICAL: `<search>` BLOCK RULES
-════════════════════════════════════════════════════════════════════════════════
+## ⚠️ CRITICAL: `<edit>` TAG RULES
 
 **The `<search>` block must match EXACTLY:**
 - Whitespace (spaces, tabs, newlines)
@@ -95,75 +112,89 @@ Output when task is complete. For feature tasks: code + `<done>true</done>` only
 - Every character
 
 **How to get it right:**
-1. Copy EXACTLY from ORIGINAL FILES section
+1. Copy EXACTLY from ORIGINAL FILES section or `read_file` result
 2. Include enough context to make search unique (3-5 lines)
 3. If pattern might repeat → add more context
 
-**Common mistakes:**
+**Examples:**
+
 ```xml
 <!-- ❌ FAILS - Missing indentation -->
+<edit path="src/App.tsx">
 <search>
 export function Button() {
 return <button>Click</button>;
 }
 </search>
-
-<!-- ❌ FAILS - Missing space before { -->
-<search>
-export function Button(){
-  return <button>Click</button>;
+<replace>
+export function Button() {
+  return <button className="btn">Click</button>;
 }
-</search>
+</replace>
+</edit>
 
-<!-- ✅ CORRECT - Exact match -->
+<!-- ✅ CORRECT - Exact match with proper indentation -->
+<edit path="src/App.tsx">
 <search>
 export function Button() {
   return <button>Click</button>;
 }
 </search>
+<replace>
+export function Button() {
+  return <button className="btn">Click</button>;
+}
+</replace>
+</edit>
 ```
 
-════════════════════════════════════════════════════════════════════════════════
-## 💡 ESSENTIAL RULES
-════════════════════════════════════════════════════════════════════════════════
+────────────────────────────────────────────────────────────────────────────────
 
-### 1. File Operations
-- ✅ **`<edit>`** for existing files (modify specific parts)
-- ✅ **`write_file`** for NEW files only
-- ❌ NEVER use `write_file` to modify existing files
+## 💡 DECISION TREE
 
-### 2. Code Completeness
-- ✅ All code must be complete (no placeholders)
-- ❌ No `// ... other imports ...` or `// ... component logic ...`
-- ❌ No markdown code fences in `<content>` (```typescript```)
+**Working with files?**
+1. **File exists?** → Read it first with `read_file` tool
+2. **Modifying existing file?** → ALWAYS use `<edit>` tag
+3. **Creating NEW file?** → Use `<file>` tag
+4. **Appending to existing file?** → Use `<append>` tag
 
-### 3. Path Handling
-- ✅ Use exact absolute paths: `src/components/Button.tsx`
-- ❌ No placeholders: `path/to/your/file.tsx`
-- Path aliases (`@/components`) require tsconfig.json configuration
+**Need to GET information?** → Use tools (`read_file`, `search_code`, `list_files`)
 
-### 4. Edit Strategy
-- Only put CHANGED code in `<replace>` block
-- Include 3-5 lines of context for uniqueness
-- Multiple edits execute top-to-bottom
+**Need to EXECUTE command?** → Use tools (`run_command` for complex ops, `delete_file` for single file, `mkdir` for dirs)
 
-### 5. XML Syntax
-- All tags must be properly closed
-- No extra whitespace in tag names
-- Content goes directly inside tags (no markdown wrapping)
+**Examples:**
+- Modify existing file: `<edit path="src/App.tsx">` (NEVER `<file>` for existing files!)
+- Create new file: `<file path="src/NewComponent.tsx">`
+- Delete single file: `delete_file` tool
+- Delete directory: `run_command` with `rm -rf dirname/`
+- Delete multiple files: `run_command` with `rm *.log`
+- Move/copy files: `run_command` with `mv` or `cp`
 
-════════════════════════════════════════════════════════════════════════════════
-## 🚫 COMMON MISTAKES (Quick Reference)
-════════════════════════════════════════════════════════════════════════════════
+────────────────────────────────────────────────────────────────────────────────
+
+## 🚫 COMMON MISTAKES
 
 | Mistake | Wrong | Correct |
 |---------|-------|---------|
-| Modifying existing file | `write_file` on existing | `<edit>` |
+| **CRITICAL: Modifying existing file with `<file>`** | `<file path="src/App.tsx">` when file exists | **ALWAYS** use `<edit path="src/App.tsx">` |
+| Creating new file with `<edit>` | `<edit path="src/NewComponent.tsx">` when file doesn't exist | Use `<file path="src/NewComponent.tsx">` |
+| Reading with XML tag | `<read path="...">` (no such tag) | `<tool_use><name>read_file</name>` |
+| Deleting directory with single file tool | `delete_file` on `dist/` directory | `<tool_use><name>run_command</name><parameters><command>rm -rf dist/</command>` |
+| Deleting multiple files individually | Multiple `delete_file` calls | `<tool_use><name>run_command</name><parameters><command>rm *.log</command>` |
 | Markdown in content | ` ```typescript\ncode\n``` ` | Raw code only |
 | Placeholder paths | `path/to/file.tsx` | `src/components/Button.tsx` |
 | Code placeholders | `// ... logic ...` | Complete implementation |
-| Unclosed tags | Missing `</tool_use>` | All tags closed |
 | Whitespace in search | Missing indentation | Exact match required |
+
+────────────────────────────────────────────────────────────────────────────────
+
+## ✅ COMPLETION
+
+```xml
+<done>true</done>
+```
+
+Output when task is complete. For feature tasks: code + `<done>true</done>` only, NO summary.
 
 ════════════════════════════════════════════════════════════════════════════════
 

@@ -9,10 +9,12 @@ export type MessageRole = 'user' | 'assistant';
 export type MessageContentType = 
   // 🎯 Chat Status Messages (progress indicators only)
   | 'placeholder'    // "Planning next moves..." (system-generated, shown at node start)
-  | 'exploring'      // Scanning codebase (in progress)
-  | 'explored'       // Codebase scan complete
-  | 'grepping'       // Searching codebase (in progress)
-  | 'grepped'        // Search complete
+  | 'exploring'      // Scanning codebase for git changes (in progress)
+  | 'explored'       // Git changes exploration complete
+  | 'retrieving'     // Vector DB search (in progress)
+  | 'retrieved'      // Vector DB search complete
+  | 'grepping'       // Local file search fallback (in progress)
+  | 'grepped'        // Local file search complete
   | 'reading'        // Reading file (in progress)
   | 'read'           // File read complete
   | 'indexing'       // Codebase indexing (in progress)

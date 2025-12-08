@@ -1,7 +1,7 @@
 export { resolve } from "./resolve";
 export { decompose } from "./decompose/index";
 export { plan } from "./plan/index";
-export { codeGen } from "./codeGen";            // ✅ NEW: Code generation (LLM reasoning)
+export { codeGen } from "./codeGen/index";            // ✅ NEW: Code generation (LLM reasoning)
 export { tool } from "./tool";                  // ✅ NEW: Tool execution node
 export { validate } from "./validate";
 export { installDeps } from "./installDeps";

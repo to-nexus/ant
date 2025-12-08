@@ -639,8 +639,10 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
     state.deps.workflowUpdate.exitNode(state._httpJobId, 'runtimeValidate');
   }
   
+  // 🚨 CRITICAL: Clear violations on success
   return {
     ...state,
+    violations: [],  // ← Clear previous violations
     runtimeValidationResult: result,
   };
 }

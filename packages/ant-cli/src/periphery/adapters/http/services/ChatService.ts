@@ -18,8 +18,9 @@ export interface MessageContent {
   type: // 🎯 Chat Status Messages (progress indicators)
      | 'placeholder'
      | 'thinking'       // LLM thinking / reasoning
-     | 'exploring' | 'explored'   // Codebase scan
-     | 'grepping' | 'grepped'     // Search
+     | 'exploring' | 'explored'   // Codebase scan (git changes)
+     | 'retrieving' | 'retrieved' // Vector DB search
+     | 'grepping' | 'grepped'     // Local file search (fallback)
      | 'reading' | 'read'         // File read
      | 'indexing' | 'indexed'     // Codebase indexing (learn job)
      | 'analyzing' | 'analyzed'   // File analysis (learn job)
@@ -361,6 +362,7 @@ export class ChatService {
     const CHAT_STATUS_TYPES = new Set([
       'placeholder', 
       'exploring', 'explored', 
+      'retrieving', 'retrieved',
       'grepping', 'grepped', 
       'reading', 'read',
       'indexing', 'indexed',
@@ -417,9 +419,10 @@ export class ChatService {
     
     // Case 2: Explicit MERGE patterns
     // - placeholder → any (placeholder는 모든 후속 content로 MERGE)
-    // - exploring → exploring/explored (progress update/completion)
-    // - grepping → grepping/grepped (progress update/completion)
-    // - reading → reading/read (progress update/completion)
+    // - exploring → exploring/explored (git changes update/completion)
+    // - retrieving → retrieving/retrieved (vector DB search update/completion)
+    // - grepping → grepping/grepped (local file search update/completion)
+    // - reading → reading/read (file read update/completion)
     // 
     // ✅ NEW: Use reverse search to find the most recent matching status
     // This handles cases where other content was added in between
@@ -458,6 +461,25 @@ export class ChatService {
     if (content.type === 'exploring' || content.type === 'explored') {
       const found = findRecentChatStatus(['exploring', 'explored']);
       if (found && found.content.type === 'exploring') {
+        console.log(`[ChatService] ✅ MERGED: ${found.content.type} → ${content.type} (reverse search, index ${found.index})`);
+        found.content.type = content.type;
+        found.content.content = content.content;
+        found.content.metadata = { ...found.content.metadata, ...content.metadata };
+        
+        this.broadcast(projectId, featureName, {
+          type: 'content_update',
+          messageId: session.currentMessage.id,
+          contentIndex: found.index,
+          content: found.content
+        });
+        return found.index;
+      }
+    }
+    
+    // retrieving → retrieving/retrieved
+    if (content.type === 'retrieving' || content.type === 'retrieved') {
+      const found = findRecentChatStatus(['retrieving', 'retrieved']);
+      if (found && found.content.type === 'retrieving') {
         console.log(`[ChatService] ✅ MERGED: ${found.content.type} → ${content.type} (reverse search, index ${found.index})`);
         found.content.type = content.type;
         found.content.content = content.content;
@@ -948,8 +970,8 @@ export class ChatService {
         if (event.toolUse && session?.currentMessage) {
           const { name, input } = event.toolUse;
           
-          // ✅ FILE OPERATIONS: write_file, apply_patch, delete_file (로딩 카드 생성)
-          if (name === 'write_file' || name === 'apply_patch' || name === 'delete_file') {
+          // ✅ FILE OPERATIONS: delete_file (로딩 카드 생성)
+          if (name === 'delete_file') {
             const filePath = (input as any).path;
             
             if (filePath) {
