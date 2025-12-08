@@ -309,39 +309,38 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     const { getChatAPIClient } = await import('../../../../../core/adapters/ChatAPIClient');
     const chatAPI = getChatAPIClient();
     
-    // ✅ Profile analysis needs ONLY config files, not code files
-    // Use keyword search for specific files, NOT vector DB
-    const profileKeywords = 'package.json tsconfig.json vite.config main entry index';
+    // ✅ Profile analysis: Read ONLY config files directly (no search)
+    const configFiles = ['package.json', 'tsconfig.json', 'vite.config.ts', 'vite.config.js'];
     
-    await chatAPI.showChatStatus('retrieving', { query: profileKeywords });
+    await chatAPI.showChatStatus('retrieving', { query: 'Config files: ' + configFiles.join(', ') });
     
-    const codeContext = await retriever.retrieve(
-      profileKeywords,  // ✅ Specific keywords for config files
-      context.workingDir,
-      {
-        git: state.deps?.git,
-        vectorDB: state.deps?.memory
-      },
-      {
-        project: context.project,
-        maxTokens: 5000,   // ✅ Reduced from 20000 (profile needs minimal)
-        maxFiles: 3,       // ✅ Reduced from 5 (just config files)
-        exclude: ['test', 'tests', '__tests__', '*.test.*', '*.spec.*', 'node_modules'],
-        mode: 'generate'
+    let profileCode = '';
+    const loadedFiles: string[] = [];
+    
+    for (const filename of configFiles) {
+      try {
+        const filePath = path.join(context.workingDir, filename);
+        const content = await gitPort.readFile(filePath);
+        if (content) {
+          profileCode += `\n// ${filename}\n${content}\n`;
+          loadedFiles.push(filename);
+        }
+      } catch (error) {
+        // File doesn't exist, skip
       }
-    );
+    }
     
-    console.log(`   Retrieved ${codeContext.stats.filesLoaded} files for profile`);
+    console.log(`   Retrieved ${loadedFiles.length} config files: ${loadedFiles.join(', ')}`);
     
     await chatAPI.showChatStatus('retrieved', { 
-      filesCount: codeContext.stats.filesLoaded,
-      filesList: codeContext.files?.map(f => typeof f === 'string' ? f : f.path) || []
+      filesCount: loadedFiles.length,
+      filesList: loadedFiles
     });
     
-    // Analyze profile from retrieved code
-    if (codeContext.code) {
+    // Analyze profile from config files
+    if (profileCode) {
       try {
-        profile = await analyzer.analyze(codeContext.code, context.workingDir);
+        profile = await analyzer.analyze(profileCode, context.workingDir);
         console.log(`   📊 Detected: ${profile.language}${profile.framework ? ` + ${profile.framework}` : ''}`);
       } catch (error) {
         console.warn('   ⚠️  Profile analysis failed:', error);
