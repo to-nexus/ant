@@ -157,9 +157,30 @@ export async function docGen(
     
     console.log(`\n✅ [DocGen] XML streaming complete (${files.length} files generated)`);
     
-    // ✅ Return generated files
+    // ✅ Build conversation history for resume
+    // CRITICAL: Must preserve messages for proper resume after interruption
+    const conversationHistory: Array<{ role: 'user' | 'assistant'; content: string | any[] }> = [];
+    
+    // Add all messages used for this generation
+    for (const msg of messages) {
+      conversationHistory.push({
+        role: msg.role,
+        content: msg.content
+      });
+    }
+    
+    // Add assistant's response
+    conversationHistory.push({
+      role: 'assistant',
+      content: textResponse  // XML response content
+    });
+    
+    console.log(`📝 [DocGen] Conversation history updated (${conversationHistory.length} messages)`);
+    
+    // ✅ Return generated files and conversation history
     return {
       files,  // ✅ Files from XML streaming
+      conversationHistory,  // ✅ CRITICAL: For resume after interruption
       _bufferManager: state._bufferManager,
     };
   } catch (error) {
@@ -193,8 +214,12 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
     // CRITICAL: ONLY read from disk file (completed tasks), NOT buffer (in-progress/interrupted tasks)
     let lastSectionNumber = 0;
     
+    // ✅ CRITICAL: Use targetFile from task (determined by decompose)
+    const targetFile = state.currentTask.targetFile || 'system-design.md';
+    console.log(`📄 [DocGen] Target file: ${targetFile}`);
+    
     try {
-      const designDocPath = `${state.context.featurePath}/outputs/design/system-design.md`;
+      const designDocPath = `${state.context.featurePath}/outputs/design/${targetFile}`;
       
       // ✅ ALWAYS read from disk file (source of truth for completed tasks)
       // DO NOT read buffer (may contain incomplete/interrupted work)
@@ -209,30 +234,31 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
             
             if (metadataMatch) {
               lastSectionNumber = parseInt(metadataMatch[1]);
+              console.log(`📄 [DocGen] Found last section: ${lastSectionNumber} (from metadata)`);
             } else {
               // ✅ Fallback: Scan full document for section numbers
               const sectionMatches = fullContent.match(/^## (\d+)\./gm);
               if (sectionMatches) {
                 const numbers = sectionMatches.map(m => parseInt(m.match(/\d+/)?.[0] || '0'));
                 lastSectionNumber = Math.max(...numbers);
+                console.log(`📄 [DocGen] Found last section: ${lastSectionNumber} (from scanning)`);
               }
             }
           }
+        } else {
+          console.log(`📄 [DocGen] ${targetFile} does not exist yet (first task)`);
         }
       }
     } catch (error) {
       console.error(`[DocGen] Error reading design document:`, error);
     }
     
-    // ✅ CRITICAL: Load api-contract.md if generating system-design
+    // ✅ CRITICAL: Load api-contract.md if generating fe/be-system-design
     // When generating fe/be-system-design.md, LLM MUST see api-contract.md to follow exact specs
     let apiContractContent: string | undefined;
-    const isSystemDesignTask = 
-      state.currentTask.description.includes('fe-system-design.md') ||
-      state.currentTask.description.includes('be-system-design.md') ||
-      state.currentTask.description.includes('system-design.md');
+    const isImplementationDesign = targetFile === 'fe-system-design.md' || targetFile === 'be-system-design.md';
     
-    if (isSystemDesignTask) {
+    if (isImplementationDesign) {
       try {
         // Try buffer first (in case api-contract was generated in same job)
         const apiContractBufferContent = state._bufferManager?.getContent('outputs/design/api-contract.md');

@@ -8,6 +8,10 @@
 
 ### Scenario 1: Creating New Document (First Task)
 
+{{#unless lastSectionNumber}}
+**You are in this scenario right now.**
+{{/unless}}
+
 Use `<file>` tag:
 
 ```xml
@@ -21,13 +25,20 @@ Use `<file>` tag:
 </file>
 ```
 
-**Filename** based on task description:
-- "api-contract.md" → `api-contract.md`
-- "fe-system-design.md" → `fe-system-design.md`
-- "be-system-design.md" → `be-system-design.md`
-- Otherwise → `system-design.md`
+**Filename determination:**
+- Check your task description for file name mention
+- "api-contract.md" mentioned → use `api-contract.md`
+- "fe-system-design.md" mentioned → use `fe-system-design.md`
+- "be-system-design.md" mentioned → use `be-system-design.md`
+- No mention → use `system-design.md`
 
 ### Scenario 2: Appending Content (Continuation Task)
+
+{{#if lastSectionNumber}}
+**⚠️ You are in this scenario right now! Last section was: {{lastSectionNumber}}**
+{{/if}}
+
+**⚠️ CRITICAL: If document exists, you MUST use <append>, NOT <file>!**
 
 Use `<append>` tag:
 
@@ -41,7 +52,29 @@ Use `<append>` tag:
 </append>
 ```
 
-### Scenario 3: Modifying Existing Sections
+{{#if lastSectionNumber}}
+**For this task:**
+- Your first section number: {{add lastSectionNumber 1}}
+- Your ending metadata: `<!-- LAST_SECTION: [YOUR_LAST_NUMBER] -->`
+{{/if}}
+
+**❌ FATAL ERROR - Using <file> on existing document:**
+```xml
+<file path="outputs/design/system-design.md">  ← WRONG! Will OVERWRITE!
+## N. [Topic]
+...
+</file>
+```
+
+**✅ CORRECT - Using <append> for continuation:**
+```xml
+<append path="outputs/design/system-design.md">  ← CORRECT! Adds at end
+## N. [Topic]
+...
+</append>
+```
+
+### Scenario 3: Modifying Existing Sections (Rare)
 
 Use `<edit>` tag with `<search>` and `<replace>`:
 
@@ -63,53 +96,66 @@ Use `<edit>` tag with `<search>` and `<replace>`:
 ```
 
 ════════════════════════════════════════════════════════════════════════════════
-## XML Tag Rules
+## Path Requirements
 ════════════════════════════════════════════════════════════════════════════════
 
-### Path Requirements
-
-**CRITICAL: Document type determines path!**
+**CRITICAL: All paths must be in `outputs/design/` directory!**
 
 **API Contract Document:**
-- ✅ Path MUST be: `outputs/design/api-contract.md`
-- ✅ Used for Contract-First projects (dual design)
-- ✅ Written BEFORE fe-system-design.md and be-system-design.md
+- Path: `outputs/design/api-contract.md`
+- Usage: Contract-First projects (dual design)
+- Timing: Written BEFORE fe-system-design.md and be-system-design.md
 
 **Frontend Design Document:**
-- ✅ Path MUST be: `outputs/design/fe-system-design.md`
-- ✅ Used for Contract-First projects (dual design)
-- ✅ Written AFTER api-contract.md
+- Path: `outputs/design/fe-system-design.md`
+- Usage: Contract-First projects (dual design)
+- Timing: Written AFTER api-contract.md
 
 **Backend Design Document:**
-- ✅ Path MUST be: `outputs/design/be-system-design.md`
-- ✅ Used for Contract-First projects (dual design)
-- ✅ Written AFTER api-contract.md
+- Path: `outputs/design/be-system-design.md`
+- Usage: Contract-First projects (dual design)
+- Timing: Written AFTER api-contract.md
 
 **Unified Design Document:**
-- ✅ Path MUST be: `outputs/design/system-design.md`
-- ✅ Used for single-tier projects (frontend-only, backend-only, or tightly coupled fullstack)
+- Path: `outputs/design/system-design.md`
+- Usage: Single-tier projects (frontend-only, backend-only, or tightly coupled)
 
-**How to determine which path to use:**
-- Check your task description for file name mention (e.g., "Create api-contract.md")
-- API Contract tasks → `api-contract.md`
-- Frontend tasks → `fe-system-design.md`
-- Backend tasks → `be-system-design.md`
-- No mention of dual design → `system-design.md`
+════════════════════════════════════════════════════════════════════════════════
+## Tag Selection Decision Tree
+════════════════════════════════════════════════════════════════════════════════
 
-### Tag Selection
-- ✅ Use `<file>` for first task (creating new document)
-- ✅ Use `<append>` for continuation tasks (adding chapters)
-- ✅ Use `<edit>` for modifying existing content
-- ❌ DO NOT mix tags inappropriately
+```
+Is lastSectionNumber provided in context?
+├─ NO  → Use <file> (creating new document)
+└─ YES → Use <append> (continuing existing document)
+           ⚠️ Using <file> will cause FATAL ERROR!
+```
 
-### Content Rules
-- ✅ Write markdown content inside XML tags
-- ❌ NO markdown code fences inside XML tags
-- ❌ NEVER output content outside XML tags
-- ✅ Ensure proper markdown formatting (headers, lists, code blocks)
+**Summary:**
+- ✅ `<file>` → First task only (new document)
+- ✅ `<append>` → Continuation tasks (existing document)
+- ✅ `<edit>` → Modifying existing content (rare)
+- ❌ NEVER use `<file>` when lastSectionNumber exists
+
+════════════════════════════════════════════════════════════════════════════════
+## Content Formatting Rules
+════════════════════════════════════════════════════════════════════════════════
+
+### Inside XML Tags
+
+**✅ DO:**
+- Write markdown content directly inside tags
+- Use proper markdown formatting (headers, lists, code blocks)
+- Include the `<!-- LAST_SECTION: N -->` metadata comment at end
+
+**❌ DON'T:**
+- Add markdown code fences inside XML tags
+- Output text outside XML tags
+- Forget the LAST_SECTION metadata comment
 
 ### Multiple Operations
-If you need to perform multiple operations, use multiple XML tags:
+
+If you need multiple file operations, use multiple XML tags:
 
 ```xml
 <append path="outputs/design/system-design.md">
@@ -127,55 +173,142 @@ If you need to perform multiple operations, use multiple XML tags:
 ## Common Mistakes to Avoid
 ════════════════════════════════════════════════════════════════════════════════
 
-❌ **Text outside XML tags**
+### 🚨 MISTAKE 1: Using <file> on existing document
+
+**❌ WRONG:**
+```xml
+<!-- When lastSectionNumber=2 -->
+<file path="outputs/design/system-design.md">  ← FATAL ERROR!
+## 3. New Chapter
+...
+</file>
 ```
-Here's the document:  ← BAD!
+**Error**: "Attempted to use <file> tag on EXISTING file"
+
+**✅ CORRECT:**
+```xml
+<!-- When lastSectionNumber=2 -->
+<append path="outputs/design/system-design.md">
+## 3. New Chapter
+...
+<!-- LAST_SECTION: 3 -->
+</append>
+```
+
+### ❌ MISTAKE 2: Text outside XML tags
+
+**❌ WRONG:**
+```
+Here's the document:  ← This text will be ignored!
 <file path="...">...</file>
 ```
 
-❌ **Markdown code fences inside XML**
+**✅ CORRECT:**
 ```xml
-<file path="...">
-```markdown  ← BAD!
-# Title
-```
-</file>
-```
-
-❌ **Wrong path**
-```xml
-<file path="design.md">  ← BAD! Missing outputs/design/
-```
-
-✅ **CORRECT**:
-```xml
-<file path="outputs/design/api-contract.md">
-# API Contract Document
+<file path="outputs/design/system-design.md">
+# System Design Document
 
 ## 1. Overview
 ...
 </file>
 ```
 
+### ❌ MISTAKE 3: Markdown code fences inside XML
+
+**❌ WRONG:**
+```xml
+<file path="...">
+```markdown  ← Don't do this!
+# Title
+```
+</file>
+```
+
+**✅ CORRECT:**
+```xml
+<file path="outputs/design/system-design.md">
+# System Design Document
+
+## 1. Overview
+...
+</file>
+```
+
+### ❌ MISTAKE 4: Wrong path
+
+**❌ WRONG:**
+```xml
+<file path="design.md">  ← Missing outputs/design/
+<file path="system-design.md">  ← Missing outputs/design/
+```
+
+**✅ CORRECT:**
+```xml
+<file path="outputs/design/system-design.md">
+```
+
+### ❌ MISTAKE 5: Missing LAST_SECTION metadata
+
+**❌ WRONG:**
+```xml
+<file path="outputs/design/system-design.md">
+# System Design Document
+
+## 1. Overview
+...
+## 2. Architecture
+...
+</file>  ← Missing metadata!
+```
+
+**✅ CORRECT:**
+```xml
+<file path="outputs/design/system-design.md">
+# System Design Document
+
+## 1. Overview
+...
+## 2. Architecture
+...
+
+<!-- LAST_SECTION: 2 -->
+</file>
+```
+
 ════════════════════════════════════════════════════════════════════════════════
-## Final Checklist
+## Pre-Output Checklist
 ════════════════════════════════════════════════════════════════════════════════
 
-Before outputting, verify:
-- ✅ Used correct XML tag (`<file>`, `<append>`, or `<edit>`)?
-- ✅ Path matches document type?
-  - API Contract → `outputs/design/api-contract.md`
-  - Frontend → `outputs/design/fe-system-design.md`
-  - Backend → `outputs/design/be-system-design.md`
-  - Unified → `outputs/design/system-design.md`
-- ✅ File name matches task description?
+Before generating output, verify:
+
+**XML Tag Selection:**
+- ✅ Used `<file>` only if this is first task (no lastSectionNumber)?
+- ✅ Used `<append>` if continuing document (lastSectionNumber exists)?
 - ✅ NO text outside XML tags?
-- ✅ NO markdown code fences inside XML?
-- ✅ Content is valid markdown?
-- ✅ Used `<append>` if continuing existing document?
-- ✅ Section numbering continues from last section?
+
+**Path Correctness:**
+- ✅ Path starts with `outputs/design/`?
+- ✅ Filename matches document type from task description?
+  - API Contract → `api-contract.md`
+  - Frontend → `fe-system-design.md`
+  - Backend → `be-system-design.md`
+  - Unified → `system-design.md`
+
+**Content Format:**
+- ✅ Valid markdown inside XML tags?
+- ✅ NO markdown code fences wrapping the content?
+- ✅ Section numbering correct?
+{{#if lastSectionNumber}}
+  - First section: ## {{add lastSectionNumber 1}}
+  - Last section: ## [YOUR_LAST_NUMBER]
+{{else}}
+  - First section: ## 1
+{{/if}}
+
+**Metadata:**
 - ✅ Added `<!-- LAST_SECTION: N -->` at end?
+{{#if lastSectionNumber}}
+- ✅ Removed old metadata line (was `<!-- LAST_SECTION: {{lastSectionNumber}} -->`)?
+{{/if}}
 
 **If YES to all → Output. If NO → Fix first!**
-
-

@@ -1,11 +1,12 @@
-import { ArchitectGraphState, Task, TaskQueue } from "../../state";
+import { ArchitectGraphState, TaskQueue } from "../../state";
+import { CodeTask } from "../../../../types/task";
 import * as path from 'path';
 
 export interface SessionState {
-  taskQueue: Task[];
+  taskQueue: CodeTask[];
   completedTasks?: string[];
-  completedTasksDetails?: Task[];
-  currentTask?: Task;
+  completedTasksDetails?: CodeTask[];
+  currentTask?: CodeTask;
   referenceRequests?: Array<{project: string; branch?: string}>;
   [key: string]: any;
 }
@@ -113,13 +114,13 @@ export function restoreFromSession(
   state: ArchitectGraphState,
   session: SessionData
 ): ArchitectGraphState {
-  const taskQueue = new TaskQueue();
-  session.state.taskQueue.forEach((task: Task) => {
+  const taskQueue = new TaskQueue<CodeTask>();
+  session.state.taskQueue.forEach((task: CodeTask) => {
     taskQueue.push(task);
   });
   
-  const featureTasks = new Map<string, Task>();
-  session.state.taskQueue.forEach((task: Task) => {
+  const featureTasks = new Map<string, CodeTask>();
+  session.state.taskQueue.forEach((task: CodeTask) => {
     if (task.type === 'feature') {
       featureTasks.set(task.id, task);
     }

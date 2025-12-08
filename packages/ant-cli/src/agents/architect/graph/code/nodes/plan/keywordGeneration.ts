@@ -8,7 +8,8 @@
  */
 
 import { LLMClient } from "../../../../../../core/ports";
-import { ArchitectGraphState, Task } from "../../state";
+import { ArchitectGraphState } from "../../state";
+import { CodeTask } from "../../../../types/task";
 import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient";
 
 export interface TaskKeywords {
@@ -22,7 +23,7 @@ export interface TaskKeywords {
  */
 export async function generateTaskKeywords(
   llm: LLMClient,
-  task: Task,
+  task: CodeTask,
   state: ArchitectGraphState
 ): Promise<TaskKeywords> {
   const promptEngine = state.deps?.promptEngine;

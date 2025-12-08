@@ -3,6 +3,10 @@ import { GitPort, MemoryPort, LLMClient, CodebaseAnalyzerPort, ChunkPort, Sessio
 import { PromptEngine } from "../../../../core/prompt/engine";
 import { ProjectContext } from "../../types";
 import { ProjectCodeContext, ReferenceCodeContext } from "../../../../core/prompt/types/CodeContext";
+import { CodeTask, TaskQueue as BaseTaskQueue } from "../../types/task";
+
+// Re-export for convenience (so files can still import TaskQueue from code/state)
+export { TaskQueue } from "../../types/task";
 
 export interface IntegrationRequirement {
   name: string;
@@ -74,72 +78,9 @@ export const TASK_PRIORITIES = {
   FINAL_VERIFICATION: 1000,     // 최종 검증
 } as const;
 
-/**
- * Task Timing Information
- * Tracks execution time for each task
- */
-export interface TaskTiming {
-  startedAt?: string;              // ISO timestamp when task started
-  completedAt?: string;            // ISO timestamp when task completed
-  pausedAt?: string;               // When paused (recursion limit, etc.)
-  resumedAt?: string;              // When resumed
-  totalPausedDuration: number;     // Total paused time in milliseconds
-  elapsedTime?: number;            // Total elapsed time in milliseconds (excluding paused time)
-}
-
-export interface Task {
-  id: string;                      // Unique identifier (e.g., "auth-impl", "fix-deps-1")
-  name: string;                    // e.g., "Implement Authentication" or "Fix Missing Dependencies"
-  type: 'setup' | 'feature' | 'error' | 'explain';  // setup = config (priority 100+), feature = from spec (200-899), error = from violations (900-999), explain = code explanation
-  priority: number;                // Lower = more critical (setup: 100+, features: 200-899, errors: 900-999, final: 1000)
-  description: string;             // What needs to be done
-  errors?: string[];               // List of error messages (for error tasks)
-  category?: ErrorCategory;        // Type of errors (for error tasks)
-  completed?: boolean;             // Whether this task is done
-  interrupted?: boolean;           // Whether this task was interrupted (stopped manually)
-  timing?: TaskTiming;             // Task timing information
-}
-
-export class TaskQueue {
-  private tasks: Task[] = [];
-  
-  push(task: Task): void {
-    this.tasks.push(task);
-    // Sort by priority (lower number = higher priority)
-    // Error tasks (1-100) execute before feature tasks (200-299)
-    this.tasks.sort((a, b) => a.priority - b.priority);
-  }
-  
-  pop(): Task | undefined {
-    return this.tasks.shift();
-  }
-  
-  peek(): Task | undefined {
-    return this.tasks[0];
-  }
-  
-  isEmpty(): boolean {
-    return this.tasks.length === 0;
-  }
-  
-  size(): number {
-    return this.tasks.length;
-  }
-  
-  // Remove all tasks of specific type
-  removeType(type: 'error' | 'feature'): void {
-    this.tasks = this.tasks.filter(t => t.type !== type);
-  }
-  
-  // Get all tasks (for debugging/logging)
-  getAll(): Task[] {
-    return [...this.tasks];
-  }
-}
-
 // Alias for backward compatibility
-export type Subtask = Task;
-export type ErrorSubtask = Task;
+export type Subtask = CodeTask;
+export type ErrorSubtask = CodeTask;
 
 export type ErrorCategory = 
   | 'missing_files'       // Missing required files (index.html, etc)
@@ -160,7 +101,7 @@ export interface EnforcementFeedback {
   violations: Violation[];           // 발생한 에러들
   enforcementReason: string;         // 왜 enforcement가 발생했는지
   fixStrategy: 'retry' | 'add_tasks' | 'skip';  // 어떤 전략을 선택했는지
-  addedTasks?: Task[];               // 추가된 에러 태스크 (add_tasks인 경우)
+  addedTasks?: CodeTask[];               // 추가된 에러 태스크 (add_tasks인 경우)
   timestamp: number;                 // 언제 발생했는지
 }
 
@@ -342,11 +283,11 @@ export interface ArchitectGraphState extends TaskArtifacts {
   enforcementHistory?: EnforcementFeedback[];  // ✅ 모든 enforcement 이력
   
   // Task Queue System (Divide & Conquer)
-  taskQueue?: TaskQueue;              // Priority queue of all tasks
-  currentTask?: Task;                 // Currently executing task
-  featureTasks?: Map<string, Task>;   // Original feature tasks (for tracking completion)
+  taskQueue?: BaseTaskQueue<CodeTask>;    // Priority queue of all tasks
+  currentTask?: CodeTask;                 // Currently executing task
+  featureTasks?: Map<string, CodeTask>;   // Original feature tasks (for tracking completion)
   completedTasks?: string[];          // Task IDs that finished successfully
-  completedTasksDetails?: Task[];     // ✅ NEW: Full task objects of completed tasks (with timing, etc.)
+  completedTasksDetails?: CodeTask[];     // ✅ NEW: Full task objects of completed tasks (with timing, etc.)
   verifiedTasks?: Map<string, { passed: boolean; timestamp: string; errors?: string[] }>;  // ✅ Verification cache
   resolvedCategories?: ErrorCategory[]; // Categories with 0 errors (successfully resolved)
   
@@ -423,7 +364,7 @@ export class TaskTimingHelper {
   /**
    * Start timing for a task
    */
-  static startTask(task: Task): Task {
+  static startTask(task: CodeTask): CodeTask {
     const now = new Date().toISOString();
     
     if (!task.timing) {
@@ -457,7 +398,7 @@ export class TaskTimingHelper {
   /**
    * Pause timing for a task (recursion limit, etc.)
    */
-  static pauseTask(task: Task): Task {
+  static pauseTask(task: CodeTask): CodeTask {
     if (!task.timing) {
       console.warn('[TaskTiming] Cannot pause task without timing info');
       return task;
@@ -475,7 +416,7 @@ export class TaskTimingHelper {
   /**
    * Complete timing for a task
    */
-  static completeTask(task: Task): Task {
+  static completeTask(task: CodeTask): CodeTask {
     if (!task.timing?.startedAt) {
       console.warn('[TaskTiming] Cannot complete task without start time');
       return { ...task, completed: true };
@@ -499,7 +440,7 @@ export class TaskTimingHelper {
   /**
    * Get current elapsed time for a running task
    */
-  static getCurrentElapsedTime(task: Task): number | null {
+  static getCurrentElapsedTime(task: CodeTask): number | null {
     if (!task.timing?.startedAt) {
       return null;
     }

@@ -1,4 +1,5 @@
-import { ArchitectGraphState, TaskQueue } from "../state";
+import { ArchitectGraphState } from "../state";
+import { TaskQueue, CodeTask } from "../../../types/task";
 
 /**
  * Clear State For Replan Node
@@ -69,7 +70,7 @@ export async function clearStateForReplan(state: ArchitectGraphState): Promise<A
     ...state,
     
     // Task system reset
-    taskQueue: new TaskQueue(),
+    taskQueue: new TaskQueue<CodeTask>(),
     featureTasks: new Map(),
     currentTask: undefined,
     completedTasks: [],

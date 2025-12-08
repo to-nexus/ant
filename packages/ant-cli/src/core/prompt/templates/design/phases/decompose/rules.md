@@ -1,19 +1,38 @@
 ## OUTPUT FORMAT
 
-Return a JSON object with a "tasks" array.
+Return a JSON object with document type and tasks array.
 
-### Task Object Schema
+### Schema
 
 ```typescript
 {
+  "documentType": "unified" | "contract-first";  // Document strategy
+  "targetFiles": string[];  // File(s) to create (e.g., ["system-design.md"] or ["api-contract.md", "fe-system-design.md", "be-system-design.md"])
   "tasks": Array<{
     id: string;        // Unique identifier (e.g., "design-ch1-2")
     name: string;      // Task name (e.g., "Design Document: Architecture & Data")
+    targetFile: string; // Which file this task writes to (MUST match targetFiles array)
     description: string; // What to write + length budget
     priority: number;  // 200-299 range, lower = higher priority
   }>
 }
 ```
+
+### Document Type Rules
+
+**"unified"** - Single document for all content:
+- Use when: Frontend-only, Backend-only, or tightly coupled fullstack
+- targetFiles: `["system-design.md"]`
+- All tasks write to `system-design.md`
+
+**"contract-first"** - Separate documents for contract and implementations:
+- Use when: Frontend AND Backend with clear API separation
+- targetFiles: `["api-contract.md", "fe-system-design.md", "be-system-design.md"]`
+- Phase 1 tasks write to `api-contract.md`
+- Phase 2 tasks write to `fe-system-design.md`
+- Phase 3 tasks write to `be-system-design.md`
+
+**⚠️ CRITICAL: Once documentType is chosen, ALL tasks MUST use the correct targetFile from targetFiles array!**
 
 ### Task Property Rules
 
@@ -28,8 +47,8 @@ Return a JSON object with a "tasks" array.
 - Keep concise (< 60 chars)
 
 **description**:
-- State which chapters/sections to write
-- Specify key topics to cover
+- State WHAT to design (NOT HOW to write)
+- Specify architectural scope (e.g., "Design system architecture and data models")
 - **MUST include length budget**: "MAX [N] lines for this task!"
 - **MUST include total limit**: "(Total doc limit: [Total] lines across N tasks)"
 - For continuation tasks, state current progress: "(currently ~X lines after task N)"
@@ -39,35 +58,60 @@ Return a JSON object with a "tasks" array.
 - Sequential chapters: 220, 240, 260, 280
 - Lower number = executes first
 
-### Example Task Objects
+### Example Outputs
 
-**Single Task**:
+**Example 1: Unified (Frontend-only project)**
 ```json
 {
-  "id": "design-doc",
-  "name": "Create Design Document",
-  "description": "Design the simple counter button component with state management. MAX 150 lines total!",
-  "priority": 250
+  "documentType": "unified",
+  "targetFiles": ["system-design.md"],
+  "tasks": [
+    {
+      "id": "design-arch",
+      "name": "Design Document: Architecture & Data",
+      "targetFile": "system-design.md",
+      "description": "Design system architecture and data models. MAX 100 lines for this task! (Total limit: 200 lines across 2 tasks)",
+      "priority": 220
+    },
+    {
+      "id": "design-ui",
+      "name": "Design Document: UI Components",
+      "targetFile": "system-design.md",
+      "description": "Design component structure and user interactions. MAX 100 lines for this task! (Total limit: 200 lines, currently ~100 after task 1)",
+      "priority": 240
+    }
+  ]
 }
 ```
 
-**Multi-Task (First)**:
+**Example 2: Contract-First (Frontend + Backend)**
 ```json
 {
-  "id": "design-ch1-2",
-  "name": "Design Document: Architecture & Data Model",
-  "description": "Write chapters 1-2: System overview, todo data model, and database schema. MAX 225 lines for this task! (Total limit: 450 lines across 2 tasks)",
-  "priority": 220
-}
-```
-
-**Multi-Task (Continuation)**:
-```json
-{
-  "id": "design-ch3-4",
-  "name": "Design Document: API & UI Components",
-  "description": "Write chapters 3-4: REST API endpoints and UI component specifications. MAX 225 lines for this task! (Total limit: 450 lines, currently ~225 after task 1)",
-  "priority": 240
+  "documentType": "contract-first",
+  "targetFiles": ["api-contract.md", "fe-system-design.md", "be-system-design.md"],
+  "tasks": [
+    {
+      "id": "design-contract",
+      "name": "API Contract Definition",
+      "targetFile": "api-contract.md",
+      "description": "Define API endpoints, DTOs, auth scheme. MAX 120 lines!",
+      "priority": 200
+    },
+    {
+      "id": "design-frontend",
+      "name": "Frontend System Design",
+      "targetFile": "fe-system-design.md",
+      "description": "Design frontend architecture consuming api-contract.md. MAX 200 lines!",
+      "priority": 220
+    },
+    {
+      "id": "design-backend",
+      "name": "Backend System Design",
+      "targetFile": "be-system-design.md",
+      "description": "Design backend architecture implementing api-contract.md. MAX 200 lines!",
+      "priority": 240
+    }
+  ]
 }
 ```
 
@@ -75,9 +119,11 @@ Return a JSON object with a "tasks" array.
 
 Before outputting, verify:
 - ✅ Valid JSON syntax
-- ✅ All required fields present (id, name, description, priority)
+- ✅ `documentType` is either "unified" or "contract-first"
+- ✅ `targetFiles` array matches documentType
+- ✅ Every task's `targetFile` is in `targetFiles` array
+- ✅ All required fields present (id, name, targetFile, description, priority)
 - ✅ Description includes length budget
 - ✅ Priority in 200-299 range
 - ✅ No forbidden task types (deployment, ops, testing)
-- ✅ All tasks target the same document file
 

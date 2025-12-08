@@ -64,18 +64,17 @@ All request/response DTOs match api-contract.md field names and types.
 4. Controller returns response per contract
 
 **Service Methods:**
-- `AuthService.authenticate(email: string, password: string): Promise<User>`
+- `AuthService.authenticate(email, password): Promise<User>`
   - Queries user by email
-  - Verifies password with bcrypt.compare
+  - Verifies password (bcrypt)
   - Throws AuthenticationError if invalid
-- `AuthService.generateTokens(user: User): { accessToken: string; refreshToken: string }`
-  - Signs JWT with secret
-  - Sets expiry per contract
+- `AuthService.generateTokens(user): TokenPair`
+  - Generates JWT with expiry per contract
 
 **Error Handling:**
-- ValidationError → 400 (per contract error format)
-- AuthenticationError → 401 (per contract error format)
-- RateLimitExceeded → 429 (per contract error format)
+- ValidationError → 400, AuthenticationError → 401, RateLimitExceeded → 429
+
+**FORBIDDEN**: Detailed password hashing parameters, JWT algorithm specifics, retry logic pseudocode
 ```
 
 **KEY RULES:**
@@ -86,21 +85,18 @@ All request/response DTOs match api-contract.md field names and types.
 - ❌ NO "Request: { email: string, ... }" (that's duplication!)
 
 #### 4. Database Design
-- Entity schemas (tables, collections)
-- Relationships (1:1, 1:N, N:M with FK constraints)
-- Indexes (for query optimization)
+- Entity schemas (tables/collections with key fields only)
+- Relationships (1:1, 1:N, N:M with FK)
+- Indexes (mention columns, NO detailed strategy)
 
-**Example:**
-```sql
--- Users Table
-CREATE TABLE users (
-  id UUID PRIMARY KEY,
-  email VARCHAR(255) UNIQUE NOT NULL,
-  password_hash VARCHAR(255) NOT NULL,
-  name VARCHAR(100) NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW()
-);
+**Example** (prose, NO DDL):
 ```
+users: id (PK), email (unique), password_hash, name, created_at
+tasks: id (PK), user_id (FK→users), title, completed, created_at
+Index: tasks.user_id for user query performance
+```
+
+**FORBIDDEN**: SQL CREATE statements, detailed column constraints, index algorithms
 
 #### 5. Service Layer Design
 - Service classes and responsibilities

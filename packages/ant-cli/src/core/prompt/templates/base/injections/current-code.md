@@ -1,4 +1,0 @@
-# Current Code
-
-{{currentCode}}
-

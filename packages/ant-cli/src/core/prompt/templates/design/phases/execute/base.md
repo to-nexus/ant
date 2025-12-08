@@ -7,107 +7,63 @@ YOUR LINE BUDGET: Look for "MAX [N] lines" in task description below.
 
 **IMPORTANT: Document Type Detection**
 - **API Contract** (api-contract.md): 80-200 lines MAX (binding specification)
-- **Frontend** (fe-system-design.md): 150-750 lines MAX (consumer perspective)
-- **Backend** (be-system-design.md): 150-750 lines MAX (implementation perspective)
-- **Unified** (system-design.md): 150-750 lines MAX (single-tier projects)
+- **Frontend** (fe-system-design.md): 120-600 lines MAX (consumer perspective)
+- **Backend** (be-system-design.md): 120-600 lines MAX (implementation perspective)
+- **Unified** (system-design.md): 120-600 lines MAX (single-tier projects)
 
 CHAPTER LIMIT based on budget:
 - Budget ≤ 60 lines → Create EXACTLY 1 chapter
 - Budget 61-120 lines → Create 1-2 chapters MAX
 - Budget 121-200 lines → Create 2-3 chapters MAX
-- Budget 201-300 lines → Create 3-5 chapters MAX
-- Budget 301+ lines → Create 4-8 chapters MAX
+- Budget 201-300 lines → Create 3-4 chapters MAX
+- Budget 301+ lines → Create 4-6 chapters MAX
 
 STRUCTURE PER CHAPTER:
-- Maximum 8 subsections (###) for complex chapters
-- Each subsection: 4-10 bullet points
-- Each bullet: 1-2 sentences (keep concise!)
+- Maximum 5-6 subsections (###) for complex chapters
+- Each subsection: 3-8 bullet points
+- Each bullet: 1 sentence (keep ultra-concise!)
 
-⚠️ Focus on quality and completeness within your budget, not artificial limits!
+**CODE BLOCK LIMITS (CRITICAL)**:
+- **Maximum 3 code blocks in ENTIRE document**
+- **Each code block ≤8 lines**
+- Use ONLY for critical interfaces/types
+- Prefer prose descriptions over code
+
+⚠️ Focus on ARCHITECTURE and COMPONENT INTERACTION, not implementation details!
 {{/if}}
 
 ════════════════════════════════════════════════════════════════════════════════
 {{#if lastSectionNumber}}
-🚨 CONTINUE SECTION NUMBERING FROM {{lastSectionNumber}}! 🚨
+🚨 CONTINUING EXISTING DOCUMENT 🚨
 ════════════════════════════════════════════════════════════════════════════════
 
-**EXISTING DOCUMENT DETECTED**
+**Last section in document: ## {{lastSectionNumber}}**
+**Your first section MUST be: ## {{add lastSectionNumber 1}}**
 
-**Last section in document: ## {{lastSectionNumber}}.**
-**Your first section MUST be: ## {{add lastSectionNumber 1}}.**
+{{#if currentTask.targetFile}}
+**Target file: `{{currentTask.targetFile}}`** (defined by decompose, DO NOT change!)
+{{else}}
+**Target file: `system-design.md`** (default)
+{{/if}}
 
-**YOUR OUTPUT MUST FOLLOW THIS FORMAT:**
-
-**⚠️ IMPORTANT: Check your task description for the target file name!**
-- If description mentions "api-contract.md", use that file
-- If description mentions "fe-system-design.md", use that file
-- If description mentions "be-system-design.md", use that file
-- Otherwise, use "system-design.md"
-
-```
-<append path="outputs/design/[FILE-NAME-FROM-TASK-DESCRIPTION]">
-
-## {{add lastSectionNumber 1}}. [Your First Topic]
-...
-
-## {{add lastSectionNumber 2}}. [Your Second Topic]
-...
-
-<!-- LAST_SECTION: {{add lastSectionNumber 2}} -->
-</append>
-```
-
-**⚠️ CRITICAL INSTRUCTIONS:**
-1. **USE THE CORRECT FILE NAME** from your task description
-2. Start sections from {{add lastSectionNumber 1}}, {{add lastSectionNumber 2}}, etc.
-3. **END your output with metadata comment**: `<!-- LAST_SECTION: N -->` where N is your LAST section number
-4. Remove the old metadata line (it will be at the end of existing document)
-5. NEVER reuse numbers 1 through {{lastSectionNumber}}
+⚠️ You MUST append to existing document (see rules.md for HOW)
 
 {{else}}
-════════════════════════════════════════════════════════════════════════════════
 🆕 NEW DOCUMENT - START FROM ## 1.
 ════════════════════════════════════════════════════════════════════════════════
 
 **This is the first task for this document.**
 
-**⚠️ IMPORTANT: Check your task description for the target file name!**
-- If description mentions "Create api-contract.md", use `api-contract.md` → **API Contract Document**
-- If description mentions "Create fe-system-design.md", use `fe-system-design.md` → **Frontend Design Document**
-- If description mentions "Create be-system-design.md", use `be-system-design.md` → **Backend Design Document**
-- Otherwise, use `system-design.md` → **System Design Document**
-
-**YOUR OUTPUT MUST FOLLOW THIS FORMAT:**
-```
-<file path="outputs/design/[FILE-NAME-FROM-TASK-DESCRIPTION]">
-
-# [API Contract/Frontend Design/Backend Design/System Design] Document: [Project Name]
-
-## 1. Overview
-...
-
-## 2. [Topic]
-...
-
-<!-- LAST_SECTION: 2 -->  <!-- ⚠️ This is an EXAMPLE for a 2-section document -->
-</file>
-```
-
-**⚠️ CRITICAL INSTRUCTIONS:**
-1. **USE THE CORRECT FILE NAME** from your task description
-2. **Use appropriate title**:
-   - `api-contract.md` → "API Contract Document"
-   - `fe-system-design.md` → "Frontend Design Document"
-   - `be-system-design.md` → "Backend Design Document"
-   - `system-design.md` → "System Design Document"
-3. **END your document with**: `<!-- LAST_SECTION: N -->` where N is your LAST section number
+{{#if currentTask.targetFile}}
+**Target file: `{{currentTask.targetFile}}`** (defined by decompose, DO NOT change!)
+{{else}}
+**Target file: `system-design.md`** (default)
+{{/if}}
 
 {{/if}}
 ════════════════════════════════════════════════════════════════════════════════
 🎯 CURRENT TASK
 ════════════════════════════════════════════════════════════════════════════════
-
-You are creating a **CONCISE SYSTEM DESIGN DOCUMENT** for: **{{project}}**
 
 {{#if currentTask}}
 **Task**: {{currentTask.name}}
@@ -118,16 +74,16 @@ You are creating a **CONCISE SYSTEM DESIGN DOCUMENT** for: **{{project}}**
 - If budget ≤ 60 lines → Create 1 chapter
 - If budget 61-120 lines → Create 1-2 chapters
 - If budget 121-200 lines → Create 2-3 chapters
-- If budget 201-300 lines → Create 3-5 chapters
-- If budget 301+ lines → Create 4-8 chapters
+- If budget 201-300 lines → Create 3-4 chapters
+- If budget 301+ lines → Create 4-6 chapters
 
 **For each chapter:**
-- **Maximum 8 subsections (###)** (adjust based on complexity)
-- **Each subsection: 4-10 bullet points** (adjust based on detail needed)
-- **Each bullet: 1-2 sentences** (keep concise but complete)
-- **Code blocks ≤ 20 lines** (use sparingly for critical examples)
+- **Maximum 5-6 subsections (###)**
+- **Each subsection: 3-8 bullet points**
+- **Each bullet: 1 sentence**
+- **Code blocks: Max 3 total, each ≤8 lines** (CRITICAL: use sparingly!)
 
-Balance completeness with conciseness - meet your line budget while covering all requirements.
+**Focus**: Architecture decisions, component boundaries, interaction patterns. NOT implementation formulas.
 {{/if}}
 
 ════════════════════════════════════════════════════════════════════════════════
@@ -221,14 +177,16 @@ Balance completeness with conciseness - meet your line budget while covering all
 **NOTE**: Universal writing rules and forbidden content are defined in your system prompt.
 
 **FINAL CHECKLIST**:
-1. ✅ Followed PRD constraints (tech stack, scope)?
-2. ✅ Skipped sections not applicable to project type?
-3. ✅ Stayed within YOUR task's line budget?
-4. ✅ Created appropriate number of chapters for your budget?
-5. ✅ Balanced conciseness with completeness (1-2 sentences per point)?
-6. ✅ NO code implementations?
-7. ✅ NO forbidden sections (deployment, ops, monitoring)?
-8. ✅ Covered all critical architectural decisions and components?
+1. ✅ **Architecture defined**: Clear pattern selection (Layered, MVC, etc.)?
+2. ✅ **Component boundaries**: Modules/layers and responsibilities specified?
+3. ✅ Followed PRD constraints (tech stack, scope)?
+4. ✅ Skipped sections not applicable to project type?
+5. ✅ Stayed within YOUR task's line budget?
+6. ✅ Created appropriate number of chapters for your budget?
+7. ✅ Ultra-concise (1 sentence per point)?
+8. ✅ **Code blocks ≤3 total, each ≤8 lines**?
+9. ✅ **NO implementation details** (formulas, algorithms, detailed pseudocode)?
+10. ✅ NO forbidden sections (deployment, ops, monitoring)?
+11. ✅ Covered all critical architectural decisions and component interactions?
 
-**If YES to all → Output using XML tags. If NO → Fix first!**
-
+**If YES to all → Output using XML tags per rules.md. If NO → Fix first!**
