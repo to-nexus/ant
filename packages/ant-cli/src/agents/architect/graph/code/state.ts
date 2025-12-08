@@ -205,7 +205,8 @@ export interface ArchitectGraphState extends TaskArtifacts {
   environmentReasoning?: string;
   requireRagForDecompose?: boolean;
   decomposeKeywords?: {
-    codebase: string[];
+    stackTrace: string[];  // ✅ Stack trace files (exact paths)
+    keywords: string[];    // ✅ Semantic keywords
     references: Map<string, string[]>;
   }
   // Note: decomposeFilePaths is populated in decompose node via keyword search

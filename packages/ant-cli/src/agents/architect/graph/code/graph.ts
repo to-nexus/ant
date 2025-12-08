@@ -1,10 +1,10 @@
 import { StateGraph } from "@langchain/langgraph";
 import { ArchitectGraphState, TASK_PRIORITIES, Task, TaskTimingHelper } from "./state";
 import { resolve } from "./nodes/resolve";
-import { detectEnvironment } from "./nodes/detectEnvironment";  // ✅ NEW
+import { detectEnvironment } from "./nodes/detectEnvironment/index";  // ✅ NEW
 import { decompose } from "./nodes/decompose";
 import { plan } from "./nodes/plan";
-import { codeGen } from "./nodes/codeGen";
+import { codeGen } from "./nodes/codeGen/index";
 import { tool } from "./nodes/tool";
 // import { validate } from "./nodes/validate";  // ✅ REMOVED: Static validation no longer needed (prompts handle it)
 import { installDeps } from "./nodes/installDeps";

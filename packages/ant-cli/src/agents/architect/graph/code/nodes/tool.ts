@@ -18,11 +18,17 @@
  * | Tool                  | Source          | Description                    |
  * |-----------------------|-----------------|--------------------------------|
  * | read_file             | Local Disk      | Current project file (GitPort) |
- * | write_file            | Local Disk      | Write to current project       |
- * | apply_patch           | Local Disk      | Patch current project file     |
  * | list_files            | Local Disk      | Directory listing              |
  * | search_code           | Local Disk      | Grep-style text search         |
+ * | delete_file           | Local Disk      | Delete single file             |
+ * | mkdir                 | Local Disk      | Create directory               |
+ * | run_command           | Local Disk      | Shell command execution        |
  * | search_reference_code | Vector DB       | Semantic search in ref project |
+ * 
+ * FILE OPERATIONS (XML Streaming - NOT tools):
+ * - <file>: Create NEW file
+ * - <edit>: Modify EXISTING file
+ * - <append>: Append to EXISTING file
  * 
  * WHY LOCAL DISK for current project:
  * - Ensures latest state (including uncommitted changes)
@@ -103,7 +109,7 @@ export async function tool(
   // - First file: LLM thinking provides natural delay → UI has time → animation works ✅
   // - Subsequent files: No thinking (disabled) → tool executes immediately → card rendered as completed ❌
   // - Solution: Intentional 150ms delay for UI card creation (NOT a hack, it's for UX consistency)
-  if (name === 'write_file' || name === 'delete_file' || name === 'apply_patch') {
+  if (name === 'delete_file') {
     await new Promise(resolve => setTimeout(resolve, 150));
     console.log('   ⏱️  UI preparation time provided (150ms) for smooth card animation');
   }
@@ -114,9 +120,6 @@ export async function tool(
   try {
     // ✅ Execute tool
     switch (name) {
-      case 'write_file':
-        result = await handleWriteFile(state, args as { path: string; content: string });
-        break;
       case 'read_file':
         result = await handleReadFile(state, args as { path: string });
         break;
@@ -131,9 +134,6 @@ export async function tool(
         break;
       case 'mkdir':
         result = await handleMkdir(state, args as { path: string });
-        break;
-      case 'apply_patch':
-        result = await handleApplyPatch(state, args as { path: string; patch: string });
         break;
       case 'run_command':
         result = await handleRunCommand(state, args as { command: string; working_directory?: string });
@@ -262,122 +262,6 @@ export async function tool(
     ],
     files,  // ✅ Pass files for validation
   };
-}
-
-/**
- * ✅ Handle write_file tool
- * 💡 TRUE INCREMENTAL SAVING: Writes directly to project disk (Cursor style)
- */
-async function handleWriteFile(
-  state: ArchitectGraphState,
-  args: { path: string; content: string }
-): Promise<string> {
-  const { path: filePath, content } = args;
-  
-  if (!filePath || content === undefined) {
-    throw new Error('write_file requires path and content');
-  }
-  
-  const gitPort = state.deps?.git;
-  if (!gitPort) {
-    throw new Error('GitPort not available');
-  }
-  
-  // Determine action type
-  const exists = await gitPort.fileExists(filePath);
-  const actionType = exists ? 'edit' : 'create';
-  
-  // ✅ CRITICAL: BLOCK write_file on existing SOURCE files (LLM should use <edit> tags)
-  // ⚠️  Exception: Config files can be overwritten (package.json, tsconfig.json, etc.)
-  const isConfigFile = /\.(json|ya?ml|toml|ini|env|config\.(js|ts))$/i.test(filePath) ||
-                       /(package\.json|tsconfig\.json|\.eslintrc|\.prettierrc|vite\.config|webpack\.config)/i.test(filePath);
-  
-  if (exists && !isConfigFile) {
-    const errorMsg = `❌ BLOCKED: write_file cannot be used on existing SOURCE file: ${filePath}
-
-This file already exists. You have 3 options:
-
-1. Use <edit> tags to modify specific parts (RECOMMENDED):
-   <edit path="${filePath}">
-   <search>exact code to find</search>
-   <replace>new code</replace>
-   </edit>
-
-2. Delete then recreate (for complete rewrites):
-   <tool_use>
-     <name>delete_file</name>
-     <parameters><path>${filePath}</path></parameters>
-   </tool_use>
-   Then use write_file to create fresh.
-
-3. Use read_file first if you need to see current content.
-
-Note: Config files (*.json, *.yaml, etc.) can be overwritten directly.`;
-    
-    console.error(errorMsg);
-    
-    // Return error to LLM (forces it to retry with <edit>)
-    throw new Error(errorMsg);
-  }
-  
-  // ✅ Log if config file is being overwritten (informational)
-  if (exists && isConfigFile) {
-    console.log(`   ℹ️  Overwriting config file (allowed): ${filePath}`);
-  }
-  
-  // ✅ 0. UI notification - START (show writing state for better UX)
-  const chatAPI = getChatAPIClient();
-  if (actionType === 'create') {
-    // Update to 'writing' state (shows progress)
-    await chatAPI.updateFileProgress(filePath, 'writing');
-  } else {
-    // For edit, show editing state
-    await chatAPI.startFileEdit(filePath);
-  }
-  
-  // ✅ 1. Read existing content BEFORE writing (for diff) - with error handling
-  let existingContent = '';
-  if (exists) {
-    try {
-      existingContent = await gitPort.readFile(filePath) || '';
-    } catch (readError) {
-      // If read fails, continue with empty diff (file write is more important!)
-      console.warn(`⚠️  Failed to read existing content for diff: ${(readError as Error).message}`);
-      existingContent = '';
-    }
-  }
-  
-  // ✅ 2. IMMEDIATELY write to project disk (점진적 저장!)
-  await gitPort.writeFile(filePath, content);
-  console.log(`   💾 ${actionType === 'create' ? 'Created' : 'Modified'}: ${filePath} (${content.length} bytes)`);
-  console.log(`   ✅ Saved to disk IMMEDIATELY (true incremental saving)`);
-  
-  // ✅ 3. Update buffer in state (for tracking & potential rollback)
-  const fileBuffers = state.fileBuffers || new Map();
-  fileBuffers.set(filePath, {
-    path: filePath,
-    content,
-    actionType,
-    committed: true,  // Already committed to disk!
-  });
-  
-  // ✅ 4. UI notification - COMPLETE
-  if (actionType === 'create') {
-    await chatAPI.completeFileCreation(filePath, content);
-  } else {
-    await chatAPI.completeFileEdit(filePath, existingContent, content);
-  }
-  
-  // ✅ 4. Broadcast file tree update (for "n Files Edited" counter)
-  if (state.deps?.fileTreeUpdate) {
-    const featureName = state.context.featureFolder || 'default';
-    await state.deps.fileTreeUpdate.notifyFileTreeUpdate(
-      state.context.project,
-      featureName
-    );
-  }
-  
-  return `File ${filePath} ${actionType === 'create' ? 'created' : 'updated'} (${content.length} bytes, saved to disk)`;
 }
 
 /**
@@ -593,159 +477,6 @@ async function handleMkdir(
   console.log(`   📁 Created directory: ${dirPath}`);
   
   return `Directory created: ${dirPath}`;
-}
-
-/**
- * Handle apply_patch tool
- */
-async function handleApplyPatch(
-  state: ArchitectGraphState,
-  args: { path: string; patch: string }
-): Promise<string> {
-  const { path: filePath, patch } = args;
-  const gitPort = state.deps?.git;
-  
-  if (!gitPort) {
-    throw new Error('GitPort not available');
-  }
-  
-  const chatAPI = getChatAPIClient();
-  
-  // Check if file exists
-  const exists = await gitPort.fileExists(filePath);
-  if (!exists) {
-    throw new Error(`File does not exist: ${filePath}. Use write_file to create new files.`);
-  }
-  
-  // Read original content
-  const originalContent = await gitPort.readFile(filePath);
-  if (!originalContent) {
-    throw new Error(`Failed to read file: ${filePath}`);
-  }
-  
-  // Apply patch (using the applyUnifiedDiff function from file-tools)
-  const patchedContent = applyUnifiedDiff(originalContent, patch);
-  
-  if (!patchedContent) {
-    throw new Error(`Failed to apply patch: Invalid diff format or patch doesn't match file content`);
-  }
-  
-  // Write patched content
-  await gitPort.writeFile(filePath, patchedContent);
-  
-  const originalLines = originalContent.split('\n').length;
-  const patchedLines = patchedContent.split('\n').length;
-  const delta = patchedLines - originalLines;
-  
-  console.log(`   ✏️  Patched: ${filePath} (${delta > 0 ? '+' : ''}${delta} lines)`);
-  
-  // UI notification
-  await chatAPI.startFileEdit(filePath);
-  await chatAPI.completeFileEdit(filePath, originalContent, patchedContent);
-  
-  // ✅ Broadcast file tree update (for "n Files Edited" counter)
-  if (state.deps?.fileTreeUpdate) {
-    const featureName = state.context.featureFolder || 'default';
-    await state.deps.fileTreeUpdate.notifyFileTreeUpdate(
-      state.context.project,
-      featureName
-    );
-  }
-  
-  return `Patch applied successfully to ${filePath} (${delta > 0 ? '+' : ''}${delta} lines)`;
-}
-
-/**
- * Apply unified diff to content
- * (Copied from file-tools.ts for now - TODO: extract to shared utility)
- */
-function applyUnifiedDiff(originalContent: string, patch: string): string | null {
-  try {
-    const lines = originalContent.split('\n');
-    const patchLines = patch.split('\n');
-
-    // Parse hunks from patch
-    const hunks: Array<{
-      originalStart: number;
-      originalCount: number;
-      newStart: number;
-      newCount: number;
-      lines: string[];
-    }> = [];
-
-    let currentHunk: typeof hunks[0] | null = null;
-
-    for (const line of patchLines) {
-      // Parse hunk header: @@ -10,5 +10,6 @@
-      const hunkMatch = line.match(/^@@\s+-(\d+),?(\d*)\s+\+(\d+),?(\d*)\s+@@/);
-      if (hunkMatch) {
-        if (currentHunk) {
-          hunks.push(currentHunk);
-        }
-        currentHunk = {
-          originalStart: parseInt(hunkMatch[1]),
-          originalCount: parseInt(hunkMatch[2] || '1'),
-          newStart: parseInt(hunkMatch[3]),
-          newCount: parseInt(hunkMatch[4] || '1'),
-          lines: [],
-        };
-        continue;
-      }
-
-      // Add lines to current hunk
-      if (currentHunk) {
-        currentHunk.lines.push(line);
-      }
-    }
-
-    if (currentHunk) {
-      hunks.push(currentHunk);
-    }
-
-    if (hunks.length === 0) {
-      return null;  // No valid hunks found
-    }
-
-    // Apply hunks in reverse order to maintain line numbers
-    let result = [...lines];
-
-    for (let i = hunks.length - 1; i >= 0; i--) {
-      const hunk = hunks[i];
-      const startLine = hunk.originalStart - 1;  // 0-indexed
-
-      // Extract changes from hunk
-      const removals: number[] = [];
-      const additions: string[] = [];
-      let lineOffset = 0;
-
-      for (const line of hunk.lines) {
-        if (line.startsWith('-')) {
-          removals.push(lineOffset);
-          lineOffset++;
-        } else if (line.startsWith('+')) {
-          additions.push(line.substring(1));
-        } else if (line.startsWith(' ')) {
-          lineOffset++;
-        }
-      }
-
-      // Apply removals (in reverse to maintain indices)
-      for (let j = removals.length - 1; j >= 0; j--) {
-        const removeIndex = startLine + removals[j];
-        result.splice(removeIndex, 1);
-      }
-
-      // Apply additions
-      if (additions.length > 0) {
-        result.splice(startLine + removals[0] || startLine, 0, ...additions);
-      }
-    }
-
-    return result.join('\n');
-  } catch (error) {
-    console.error(`❌ Failed to apply patch:`, error);
-    return null;
-  }
 }
 
 /**
@@ -1121,7 +852,7 @@ Try:
 - Searching for broader concepts (e.g., "API endpoints" instead of specific method names)`;
     }
     
-    console.log(`   ✅ Found ${searchResult.stats.filesLoaded} relevant files (${searchResult.stats.estimatedTokens} tokens)\n`);
+    console.log(`   ✅ Retrieved ${searchResult.stats.filesLoaded} relevant files (${searchResult.stats.estimatedTokens} tokens)\n`);
     
     // 5. Update UI: Show search complete + explored files
     const filesList = searchResult.files?.map((f: any) => `[${project}] ${f.path}`) || [];
@@ -1139,7 +870,7 @@ Try:
     }
     
     // 6. Format result
-    return `✅ Found ${searchResult.stats.filesLoaded} relevant file(s) in "${project}":
+    return `✅ Retrieved ${searchResult.stats.filesLoaded} relevant file(s) in "${project}":
 
 ${searchResult.code}
 

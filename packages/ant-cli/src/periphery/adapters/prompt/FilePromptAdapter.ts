@@ -62,6 +62,19 @@ Promise.all([
   fs.readFile(join(codePhaseRulesBase, "decompose/rules.md"), "utf8")
     .then(content => Handlebars.registerPartial("code/phases/decompose/rules", content))
     .catch(() => {}),
+  // Decompose sub-modules (modularized for clarity)
+  fs.readFile(join(codePhaseRulesBase, "decompose/mode-guide.md"), "utf8")
+    .then(content => Handlebars.registerPartial("code/phases/decompose/mode-guide", content))
+    .catch(() => {}),
+  fs.readFile(join(codePhaseRulesBase, "decompose/error-or-general.md"), "utf8")
+    .then(content => Handlebars.registerPartial("code/phases/decompose/error-or-general", content))
+    .catch(() => {}),
+  fs.readFile(join(codePhaseRulesBase, "decompose/existing-code-check.md"), "utf8")
+    .then(content => Handlebars.registerPartial("code/phases/decompose/existing-code-check", content))
+    .catch(() => {}),
+  fs.readFile(join(codePhaseRulesBase, "decompose/design-doc-guide.md"), "utf8")
+    .then(content => Handlebars.registerPartial("code/phases/decompose/design-doc-guide", content))
+    .catch(() => {}),
   // Detect rules (detectEnvironment node)
   fs.readFile(join(codePhaseRulesBase, "detect/rules.md"), "utf8")
     .then(content => Handlebars.registerPartial("code/phases/detect/rules", content))

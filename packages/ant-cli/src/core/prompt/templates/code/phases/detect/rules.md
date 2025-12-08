@@ -6,68 +6,35 @@ Determine the **intent** of the directive by analyzing the **action verbs**:
 
 **generate**: Creating new features/files from scratch
 - **Action verbs**: "create", "add", "new", "implement", "build", "initialize", "set up"
-- **Context**: Empty project or adding completely new components
 - **Key indicator**: No existing code is being modified
-- Examples:
-  - "Create a login page with email and password"
-  - "Add a new user management API"
-  - "Build a todo list component"
 
 **refactor**: Modifying/improving existing code
 - **Action verbs**: "fix", "update", "change", "improve", "refactor", "optimize", "modify", "correct", "adjust"
-- **Context**: Existing code needs modification
 - **Key indicator**: Directive mentions fixing, changing, or improving existing code
-- Examples:
-  - "Fix the null pointer bug in user service"
-  - "Update login form to use new design"
-  - "Improve performance of data fetching"
-  - "Check the entry point and fix if needed" ← Has "fix" action
-  - "Investigate the error and update the code" ← Has "update" action
 
 **explain**: Understanding/documenting code (READ-ONLY, NO changes)
 - **Action verbs**: "explain", "describe", "analyze", "understand", "document", "show", "tell"
-- **Context**: User wants to learn about code (NO modification intended)
-- **Key indicator**: NO action verbs for modification (fix, change, update, etc.)
-- Examples:
-  - "Explain how authentication works"
-  - "What does the Button component do?"
-  - "Analyze the user service architecture"
-  - "Check the entry point configuration" ← Only "check", no fix/modify action
+- **Key indicator**: NO action verbs for modification
 
-⚠️ **CRITICAL Decision Rules**:
+⚠️ **Decision Rules**:
+- If directive contains ANY modification verbs (fix, change, update) → **refactor**
+- If directive contains ONLY investigation verbs (check, analyze) with NO modification → **explain**
+- If directive contains creation verbs (create, add, build) → **generate**
 
-1. **Look for action verbs FIRST**:
-   - If directive contains ANY modification verbs (fix, change, update, modify, correct, improve) → **refactor**
-   - If directive contains ONLY investigation verbs (check, analyze, investigate) with NO modification verbs → **explain**
-   - If directive contains creation verbs (create, add, build, implement) → **generate**
-
-2. **Multi-step directives** (e.g., "check X and fix Y"):
-   - If BOTH investigation AND modification verbs exist → **refactor**
-   - Example: "Check the configuration and update if needed" → **refactor** (has "update")
-
-3. **Ambiguous cases**:
-   - "how to implement X" → **generate** (creating new)
-   - "how does X work" → **explain** (understanding existing)
-   - "how to fix X" → **refactor** (modifying existing)
-
-4. **Language-agnostic**: Works for all languages (English, Korean, etc.)
-   - Focus on detecting action verbs regardless of language
-   - Korean examples: "수정" (modify), "고치" (fix), "확인" (check)
+---
 
 ### 2. Environment Detection
 
 - **frontend**: UI, components, pages, styling, client-side, React, Vue, etc.
 - **backend**: API, database, server, business logic, Node.js, Express, etc.
 - **fullstack**: Both frontend and backend components
-- **unknown**: Unclear or non-code tasks (documentation, planning)
+- **unknown**: Unclear or non-code tasks
+
+---
 
 ### 3. RAG Requirement
 
 Does the `decompose` node need codebase context?
-
-⚠️ **CRITICAL: Mode ≠ Project Type!**
-- **generate/refactor/explain** = What ACTION to take
-- **NEW vs EXISTING project** = What PROJECT context exists
 
 **RAG is needed when:**
 - ✅ Modifying existing code (refactor)
@@ -77,63 +44,141 @@ Does the `decompose` node need codebase context?
 
 **RAG is NOT needed when:**
 - ❌ Brand new empty project with no code yet
-- ❌ Pure documentation or planning tasks
 
-**In practice:** Almost ALWAYS set `requireRagForDecompose: true` unless you're 100% certain it's an empty project with no existing code.
+**In practice:** Almost ALWAYS set `requireRagForDecompose: true` unless you're 100% certain it's an empty project.
+
+---
 
 ### 4. Keyword Generation (if RAG required)
 
-**🎯 PURPOSE OF KEYWORDS:**
+**🎯 PURPOSE:**
 
-Keywords are used to search the Vector DB and find relevant files for the `decompose` node.
-The `decompose` node will receive a **file list** (not full content) based on these keywords.
-This file list helps LLM understand what files exist and plan tasks accurately.
+Keywords search Vector DB to find **file paths** (not full content) for the decompose node.
+The decompose node uses this file list to understand what exists and plan tasks accurately.
 
-**⚠️ CRITICAL: Generate COMPREHENSIVE keywords!**
+**⚠️ CRITICAL PRINCIPLES:**
 
-The more relevant keywords you provide, the more complete the file list will be.
-If you miss important keywords, the decompose node may incorrectly assume files don't exist.
+1. **Quality over quantity**: 8-15 precise keywords, not 30+
+2. **Stack trace priority**: Extract exact file names from error stacks
+3. **Avoid generic terms**: "component", "service", "function" are useless
 
-**Main Project Keywords** (10-20 semantic keywords, be thorough!):
+---
 
-Include ALL of these categories:
-1. **Direct mentions**: File names, function names, component names from directive
-2. **Related concepts**: Patterns, APIs, types that might be relevant
-3. **Potential dependencies**: Files that might import/export related code
-4. **Error context**: If error mentioned, include error-related file patterns
+**Stack Trace Extraction** (if directive contains error):
 
-**Keyword Generation Strategy:**
+Extract EXACT file names from stack trace:
+- ✅ Include file extensions: `"RoomPage.tsx"` (not `"RoomPage"`)
+- ✅ Include relative paths if available: `"src/pages/RoomPage.tsx"`
+- ✅ Maximum 5 files from stack trace
 
-Think: "What files might exist that are related to this directive?"
+Example:
+```
+Directive: "Error at RoomPage.tsx:85 → WebSocketContext.tsx:144"
 
-Examples:
-- Directive: "Add password toggle to login form"
-  → Keywords: [
-    "login", "LoginForm", "password", "input", "visibility", "toggle",
-    "eye icon", "form", "auth", "authentication", "user input",
-    "form validation", "password field", "show password", "hide password"
+Extract:
+- "RoomPage.tsx"
+- "WebSocketContext.tsx"
+```
+
+---
+
+**Semantic Keywords** (8-12 keywords):
+
+1. **Error identifiers** (if error directive):
+   - Error codes: `"GAME_IN_PROGRESS"`, `"NOT_FOUND"`
+   - Error constants
+
+2. **Domain entities**:
+   - Component/class names: `"GameProvider"`, `"RoomService"`
+   - Type/interface names: `"GameState"`, `"Player"`
+
+3. **Operations**:
+   - Action keywords: `"join room"`, `"create user"`
+   - State keywords: `"game status"`, `"player state"`
+
+4. **Framework patterns** (if relevant):
+   - `"useEffect"`, `"WebSocket"`, `"event handler"`
+
+**What NOT to include**:
+- ❌ Generic terms: `"component"`, `"service"`, `"function"`, `"file"`
+- ❌ Framework names: `"React"`, `"Express"`, `"NestJS"`
+- ❌ Language keywords: `"const"`, `"async"`, `"class"`
+- ❌ Redundant variations: Choose one form only
+
+---
+
+**Examples**:
+
+**GOOD** (Error with stack trace):
+```json
+{
+  "codebase": [
+    "RoomPage.tsx",
+    "WebSocketContext.tsx",
+    "GameContext.tsx",
+    "GAME_IN_PROGRESS",
+    "GameProvider",
+    "join room",
+    "room status",
+    "useEffect",
+    "WebSocket event"
   ]
-  
-- Directive: "Fix ERR_MODULE_NOT_FOUND in WebSocketServer"
-  → Keywords: [
-    "WebSocketServer", "WebSocket", "EventHandler", "socket", "ws",
-    "import", "module", "server", "connection", "handler",
-    "message handler", "room", "game", "tsconfig", "package.json",
-    "ESM", "module resolution"
+}
+```
+**Why good**: 9 keywords, exact file names, focused semantic terms.
+
+---
+
+**GOOD** (Feature without stack trace):
+```json
+{
+  "codebase": [
+    "room list",
+    "lobby",
+    "room display",
+    "real-time updates",
+    "WebSocket",
+    "room status",
+    "player count",
+    "list component"
   ]
+}
+```
+**Why good**: 8 keywords, domain-focused, no generic terms.
 
-- Directive: "서버 시작 시 포트 로깅 추가"
-  → Keywords: [
-    "server", "start", "listen", "port", "logging", "console.log",
-    "express", "app.listen", "http server", "startup", "bootstrap",
-    "main", "index", "entry point", "routes", "endpoints"
+---
+
+**BAD** (Over-generating):
+```json
+{
+  "codebase": [
+    "WebSocketContext", "WebSocket", "socket", "ws", "connection",
+    "RoomPage", "room", "page", "component", "React component",
+    "GameContext", "game", "context", "state", "state management",
+    "provider", "GameProvider", "RoomProvider", "context provider",
+    "useEffect", "useContext", "useState", "React hooks", "hooks",
+    "error", "error handling", "try catch", "validation",
+    "room creation", "room join", "room leave", "room management",
+    "player", "user", "client", "server"
   ]
+}
+```
+**Why bad**: 36+ keywords, generic terms ("component", "state"), redundant variations ("WebSocket", "socket", "ws").
 
-**Reference Project Keywords** (if directive mentions other projects):
-- Per reference project: 5-10 specific keywords
-- What to look for in that project
+---
 
-Examples:
-- Directive: "Call backend API for user data"
-  → Reference: {"backend": ["user API", "auth endpoint", "data schema", "routes", "controller", "response type"]}
+**Reference Project Keywords**:
 
+If directive mentions other projects (e.g., "check backend API"):
+```json
+{
+  "references": [
+    {
+      "project": "backend",
+      "keywords": ["room API", "game state", "WebSocket handler", "room service"]
+    }
+  ]
+}
+```
+
+Maximum 8 keywords per reference project.

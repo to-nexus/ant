@@ -355,6 +355,7 @@ export class PromptEngine {
       name: string;
       description: string;
     },
+    directive: string,  // ✅ Original directive for ground truth
     profile: any,
     mode: string,
     referenceProjects?: Array<{project: string}>
@@ -364,6 +365,7 @@ export class PromptEngine {
       isKeywordGeneration: true,
       taskName: task.name,
       taskDescription: task.description,
+      directive: directive,  // ✅ Pass original directive
       language: profile?.language || 'unknown',
       framework: profile?.framework || 'unknown',
       mode: mode || 'unknown',
@@ -382,6 +384,7 @@ export class PromptEngine {
       description: string;
       type: string;
     },
+    directive: string,  // ✅ Original directive for ground truth
     designDoc: string | undefined,
     projectCodeContext: any
   ): Promise<string> {
@@ -390,6 +393,7 @@ export class PromptEngine {
       isKeywordGeneration: false,
       taskName: task.name,
       taskDescription: task.description,
+      directive: directive,  // ✅ Pass original directive
       taskType: task.type,
       designDoc: designDoc,
       projectCodeContext: projectCodeContext?.code || '',

@@ -23,6 +23,7 @@ import { checkSessionRestore, restoreFromSession } from "./sessionManager";
 import { prepareDesignDocument } from "./designSelector";
 import { callLLMForDecompose } from "./llmCaller";
 import { parseLLMResponse, createTaskQueue, logTaskSummary } from "./responseParser";
+import { loadCodebaseFilePaths } from "./codebaseLoader";
 
 /**
  * Decompose Node - Main Entry Point
@@ -137,70 +138,11 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   let codebaseFilePaths: string[] | undefined = undefined;
   let gitDiffResult: any = undefined;
   
-  if (state.requireRagForDecompose && state.decomposeKeywords?.codebase && state.decomposeKeywords.codebase.length > 0) {
-    console.log(`🔍 [Decompose] Searching with ${state.decomposeKeywords.codebase.length} keywords...`);
-    console.log(`   Keywords: ${state.decomposeKeywords.codebase.slice(0, 5).join(', ')}${state.decomposeKeywords.codebase.length > 5 ? '...' : ''}`);
-    
-    const retriever = state.deps?.retriever;
-    const vectorDB = state.deps?.vectorDB;
-    const git = state.deps?.git;
-    
-    // ✅ Get ChatAPI for status updates
-    const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
-    const chatAPI = getChatAPIClient();
-    
-    if (!retriever || !vectorDB) {
-      console.warn(`⚠️  [Decompose] Retriever or VectorDB not available, skipping RAG`);
-    } else {
-      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      // 2a. Vector DB Search - Get comprehensive file list
-      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      const searchQuery = state.decomposeKeywords.codebase.join(' ');
-      
-      // ✅ Show searching status in Chat UI
-      await chatAPI.addGreppingStatus(searchQuery, 0, 30);
-      
-      const searchResult = await retriever.retrieve(
-        searchQuery,
-        state.context.workingDir,
-        { vectorDB, git },
-        {
-          project: state.context.project,
-          maxTokens: 8000,   // ✅ Increased for more comprehensive results
-          maxFiles: 30,      // ✅ Increased to capture more relevant files
-          mode: state.mode || 'refactor'
-        }
-      );
-      
-      // Extract file paths only (no content - just for task planning)
-      codebaseFilePaths = searchResult.files?.map((f: any) => 
-        typeof f === 'string' ? f : f.path
-      ) || [];
-      
-      // ✅ Show search results in Chat UI
-      await chatAPI.addGreppedResult(
-        searchQuery,
-        codebaseFilePaths.length,
-        searchResult.strategy || 'vector',
-        codebaseFilePaths.slice(0, 10) // Show first 10 files
-      );
-      
-      console.log(`   ✅ Found ${codebaseFilePaths.length} relevant files for task planning`);
-      
-      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      // 2b. Git Diff Summary
-      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      if (git) {
-        const { generateGitDiffSummary } = require('../../../../../../core/codebase/GitDiffSummary');
-        gitDiffResult = await generateGitDiffSummary(git, state.context.workingDir, codebaseFilePaths);
-        
-        if (gitDiffResult?.hasChanges) {
-          console.log(`   ✅ Git diff: ${gitDiffResult.changedFiles.length} changed files`);
-        }
-      }
-    }
-  } else {
-    console.log(`ℹ️  [Decompose] RAG not required (generate mode or no keywords)`);
+  
+  if (state.requireRagForDecompose && state.decomposeKeywords) {
+    const result = await loadCodebaseFilePaths(state);
+    codebaseFilePaths = result.filePaths.length > 0 ? result.filePaths : undefined;
+    gitDiffResult = result.gitDiff;
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -104,7 +104,6 @@ export async function plan(state: DesignGraphState) {
       contextParts.push('- `read_file(path)`: Read any file');
       contextParts.push('- `search_code(pattern)`: Search for code');
       contextParts.push('- `list_files(directory)`: List specific directory');
-      contextParts.push('- `write_file(path, content)`: Create/modify files');
       contextParts.push('- `delete_file(path)`: Remove files\n');
       
       currentCode = contextParts.join('\n');

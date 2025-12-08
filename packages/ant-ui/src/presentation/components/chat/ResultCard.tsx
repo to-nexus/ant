@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { FileSearch, ChevronDown, ChevronRight, Database, FileCode, Package } from 'lucide-react';
+import { FileSearch, ChevronDown, ChevronRight, Database, FileCode, Package, Search } from 'lucide-react';
 import type { MessageContent } from '@/domain/models/chat';
 
 interface ResultItem {
@@ -15,7 +15,7 @@ interface ResultItem {
 
 interface ResultCardProps {
   content: MessageContent;
-  variant?: 'exploration' | 'indexing' | 'analysis' | 'storage';
+  variant?: 'exploration' | 'indexing' | 'analysis' | 'storage' | 'retrieval' | 'grep';
 }
 
 /**
@@ -27,6 +27,16 @@ function getVariantConfig(variant: string) {
       return {
         Icon: FileSearch,
         color: 'blue'
+      };
+    case 'retrieval':
+      return {
+        Icon: Database,
+        color: 'indigo'
+      };
+    case 'grep':
+      return {
+        Icon: Search,
+        color: 'purple'
       };
     case 'indexing':
       return {

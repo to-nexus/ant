@@ -3,11 +3,23 @@
 
 You are analyzing a task to generate semantic search keywords.
 
-## Task
+**IMPORTANT**: Task description is a hypothesis. Use original directive as ground truth.
+
+## Task (Hypothesis)
 
 **{{taskName}}**
 
 {{taskDescription}}
+
+**Note**: This task was created based on initial analysis. It may not capture the full picture.
+
+## Original Directive (Ground Truth)
+
+```
+{{directive}}
+```
+
+**Use this for objective facts**: error codes, stack traces, file paths, error messages.
 
 ## Project Context
 
@@ -61,11 +73,51 @@ You are analyzing a task to generate semantic search keywords.
 
 You are planning HOW to implement a specific task.
 
-## Task
+**IMPORTANT**: Task description is a hypothesis. Use original directive for context.
+
+## Task (Hypothesis)
 
 **{{taskName}}**
 
 {{taskDescription}}
+
+## Original Directive (Ground Truth)
+
+```
+{{directive}}
+```
+
+**General Guidance**:
+- This is the user's actual request (ground truth)
+- Task description is a hypothesis - directive is the facts
+- If task description missed something, directive has the answer
+
+────────────────────────────────────────────────────────────────────────────────
+### 🚨 IF DIRECTIVE CONTAINS ERROR/STACK TRACE:
+────────────────────────────────────────────────────────────────────────────────
+
+**CRITICAL - Error Context Analysis**:
+
+1. **Error Message** → PRIMARY symptom to diagnose
+2. **Stack Trace Files** → WHERE the error occurred (prioritize in retrieved files)
+3. **Line Numbers** → EXACT location to investigate
+4. **Error Code/Type** → Classification of the problem
+
+**Your Plan MUST**:
+- ✅ Explicitly reference the error information from directive
+- ✅ Reference specific files and locations from stack trace
+- ✅ Explain HOW the plan addresses the ROOT CAUSE
+- ✅ Connect the error symptom to the proposed solution
+- ❌ DO NOT create generic plans that ignore error details
+- ❌ DO NOT only rely on task description if it contradicts error evidence
+
+**Reasoning Approach**:
+- Start from the error symptom (what broke?)
+- Trace through stack locations (where did it break?)
+- Identify root cause (why did it break?)
+- Propose specific fix (how to prevent it?)
+
+────────────────────────────────────────────────────────────────────────────────
 
 {{#if designDoc}}
 ════════════════════════════════════════════════════════════════════════════════

@@ -6,7 +6,6 @@
  * - <file path="...">...</file>
  * - <append path="...">...</append>
  * - <edit path="..."><search>...</search><replace>...</replace></edit>
- * - <delete path="..." />
  */
 
 import { IStreamParser } from './IStreamParser';
@@ -602,29 +601,7 @@ export class XMLStreamParser implements IStreamParser {
         continue;
       }
       
-      // 24. Check for <delete path="..." /> (self-closing)
-      const deleteMatch = this.buffer.match(/<delete\s+path="([^"]+)"\s*\/>/);
-      if (deleteMatch) {
-        const fullMatch = deleteMatch[0];
-        const filePath = deleteMatch[1];
-        const startIdx = this.buffer.indexOf(fullMatch);
-        
-        this.buffer = this.buffer.substring(startIdx + fullMatch.length);
-        
-        actions.push({
-          type: 'file_start',
-          data: { filePath, actionType: 'delete' }
-        });
-        actions.push({
-          type: 'file_end',
-          data: { filePath }
-        });
-        
-        continueParsingLoop = true;
-        continue;
-      }
-      
-      // 25. General text response handling (outside any XML block)
+      // 24. General text response handling (outside any XML block)
       if (!this.context.insideThinking && 
           !this.context.insideTasks &&
           !this.context.insideLearnCommand &&  // ✅ NEW

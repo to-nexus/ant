@@ -66,7 +66,8 @@ export async function tool(
   // - First file: LLM thinking provides natural delay → UI has time → animation works ✅
   // - Subsequent files: No thinking (disabled) → tool executes immediately → card rendered as completed ❌
   // - Solution: Intentional 150ms delay for UI card creation (NOT a hack, it's for UX consistency)
-  if (name === 'write_file' || name === 'delete_file') {
+  // Note: write_file removed - file creation handled by XML streaming
+  if (name === 'delete_file') {
     await new Promise(resolve => setTimeout(resolve, 150));
     console.log('   ⏱️  UI preparation time provided (150ms) for smooth card animation');
   }
@@ -77,9 +78,6 @@ export async function tool(
   try {
     // ✅ Execute tool
     switch (name) {
-      case 'write_file':
-        result = await handleWriteFile(state, args as { path: string; content: string });
-        break;
       case 'read_file':
         result = await handleReadFile(state, args as { path: string });
         break;
@@ -158,102 +156,6 @@ export async function tool(
     conversationHistory: newHistory,
     files: state.files,  // Updated by handleWriteFile
   };
-}
-
-/**
- * Handle write_file tool
- * ✅ NEW: 버퍼 우선 처리 - content가 없거나 빈 문자열이면 버퍼에서 읽음
- */
-async function handleWriteFile(
-  state: DesignGraphState,
-  args: { path: string; content?: string; useBuffer?: boolean }
-): Promise<string> {
-  const { path: filePath, useBuffer } = args;
-  let { content } = args;
-  
-  const gitPort = state.deps?.git;
-  if (!gitPort) {
-    throw new Error('GitPort not available');
-  }
-  
-  const chatAPI = getChatAPIClient();
-  
-  // ✅ 1. 버퍼 우선 처리
-  const bufferManager = state._bufferManager;
-  
-  if (useBuffer || !content || content.trim() === '') {
-    if (!bufferManager) {
-      throw new Error('BufferManager not available');
-    }
-    
-    const bufferedContent = bufferManager.getContent(filePath);
-    
-    if (bufferedContent) {
-      console.log(`📝 [Tool] Using buffered content for ${filePath} (${bufferedContent.length} chars)`);
-      content = bufferedContent;
-      
-      // ✅ 버퍼 사용 후 정리
-      bufferManager.completeFile(filePath, true);  // cleanup = true
-    } else if (!content) {
-      throw new Error(`No content provided and no buffer found for ${filePath}`);
-    }
-  }
-  
-  // ✅ CRITICAL: Convert relative path to absolute path for design outputs
-  // Design files (outputs/design/*.md) should be saved in features/{feature}/outputs/design
-  // NOT in codebase/outputs/design
-  const path = await import('path');
-  let absolutePath = filePath;
-  
-  if (!path.isAbsolute(filePath)) {
-    // Relative path: resolve to feature directory
-    const featurePath = state.context.featurePath;
-    if (!featurePath) {
-      throw new Error('featurePath not available in context. Ensure resolve node has run.');
-    }
-    absolutePath = path.join(featurePath, filePath);
-    console.log(`📍 [Tool] Resolved path: ${filePath} → ${absolutePath}`);
-  }
-  
-  // Determine action type
-  const exists = await gitPort.fileExists(absolutePath);
-  const actionType = exists ? 'edit' : 'create';
-  
-  // ✅ 2. Read existing content BEFORE writing (for diff) - with error handling
-  let existingContent = '';
-  if (exists) {
-    try {
-      existingContent = await gitPort.readFile(absolutePath) || '';
-    } catch (readError) {
-      // If read fails, continue with empty diff (file write is more important!)
-      console.warn(`⚠️  Failed to read existing content for diff: ${(readError as Error).message}`);
-      existingContent = '';
-    }
-  }
-  
-  // ✅ 3. IMMEDIATELY write to project disk (using absolute path)
-  await gitPort.writeFile(absolutePath, content);
-  console.log(`   💾 ${actionType === 'create' ? 'Created' : 'Modified'}: ${absolutePath} (${content.length} bytes)`);
-  
-  // ✅ 4. Update state.files (use relative path for consistency)
-  const files = state.files || [];
-  const existingFileIndex = files.findIndex(f => f.path === filePath);
-  if (existingFileIndex !== -1) {
-    files[existingFileIndex] = { path: filePath, content };
-  } else {
-    files.push({ path: filePath, content });
-  }
-  state.files = files;
-  
-  // ✅ 5. UI notification (use relative path for display)
-  if (actionType === 'create') {
-    await chatAPI.completeFileCreation(filePath, content);
-  } else {
-    await chatAPI.startFileEdit(filePath);
-    await chatAPI.completeFileEdit(filePath, existingContent, content);
-  }
-  
-  return `File ${filePath} ${actionType === 'create' ? 'created' : 'updated'} (${content.length} bytes)`;
 }
 
 /**

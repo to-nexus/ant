@@ -38,7 +38,8 @@ Wrap your JSON response in <detect> tags (NO markdown code blocks):
   "environmentReasoning": "Why this environment? (1 sentence)",
   "requireRagForDecompose": true | false,
   "decomposeKeywords": {
-    "codebase": ["keyword1", "keyword2", ...],
+    "stackTrace": ["file1.tsx", "file2.tsx"],
+    "keywords": ["keyword1", "keyword2", ...],
     "references": [
       {
         "project": "backend",

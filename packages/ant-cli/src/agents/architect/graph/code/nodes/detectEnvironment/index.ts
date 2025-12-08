@@ -1,0 +1,176 @@
+/**
+ * DetectEnvironment Node (Refactored)
+ * 
+ * Responsibilities:
+ * 1. Detect development environment (frontend/backend/fullstack/unknown)
+ * 2. Determine if decompose needs RAG (requireRagForDecompose)
+ * 3. Generate decompose keywords (used once, then discarded)
+ * 
+ * ✅ MODULAR ARCHITECTURE:
+ * - promptBuilder.ts: Prompt building with PromptEngine
+ * - responseParser.ts: LLM response parsing
+ * - designSelector.ts: Design file selection based on environment
+ */
+
+import { ArchitectGraphState } from '../../state';
+import { LLMClient } from '../../../../../../core/ports';
+
+// Import submodules
+import { buildDetectPrompt } from './promptBuilder';
+import { parseDetectResponse } from './responseParser';
+import { selectDesignFiles } from './designSelector';
+
+export async function detectEnvironment(
+  state: ArchitectGraphState
+): Promise<Partial<ArchitectGraphState>> {
+  
+  state.recursionCount = (state.recursionCount || 0) + 1;
+  
+  const llm = state.deps?.llm as LLMClient;
+  
+  // Workflow instrumentation
+  if (state.deps?.workflowUpdate && state._httpJobId) {
+    const taskInfo = state.currentTask ? {
+      id: state.currentTask.id,
+      name: state.currentTask.name,
+      type: state.currentTask.type,
+      description: state.currentTask.description,
+      priority: state.currentTask.priority
+    } : undefined;
+    
+    const llmInfo = (llm as any)?.provider && (llm as any)?.modelName ? {
+      provider: (llm as any).provider,
+      model: (llm as any).modelName
+    } : undefined;
+    
+    await state.deps.workflowUpdate.enterNode(
+      state._httpJobId,
+      'detectEnvironment',
+      taskInfo,
+      llmInfo,
+      state.recursionCount,
+      state.recursionLimit
+    );
+  }
+  
+  console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('🔍 DETECT ENVIRONMENT: Analyzing development context');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+  
+  // 1. Build Prompt
+  const prompt = await buildDetectPrompt(state);
+  
+  // 2. Call LLM
+  const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
+  const chatAPI = getChatAPIClient();
+  
+  await chatAPI.showChatStatus('placeholder');
+  
+  let response = '';
+  for await (const event of llm.stream([
+    { role: 'user', content: prompt }
+  ], {
+    temperature: 0.3,
+    maxTokens: 16000
+  })) {
+    if (event.text) {
+      response += event.text;
+    }
+  }
+  
+  // Transform and display
+  const { SpecialTagTransformer } = await import('../../../../../../core/streaming/transformers/SpecialTagTransformer');
+  const transformer = new SpecialTagTransformer('ko');
+  const transformed = transformer.transform(response);
+  
+  if (transformed.text) {
+    await chatAPI.sendLLMEvent({
+      type: 'text',
+      text: transformed.text
+    });
+  }
+  
+  await chatAPI.finalizeMessage();
+  
+  // 3. Parse Response
+  const parsed = parseDetectResponse(response);
+  
+  // Build decomposeKeywords
+  const decomposeKeywords = {
+    stackTrace: parsed.decomposeKeywords.stackTrace || [],
+    keywords: parsed.decomposeKeywords.keywords || [],
+    references: new Map<string, string[]>()
+  };
+  
+  if (parsed.decomposeKeywords.references) {
+    for (const ref of parsed.decomposeKeywords.references) {
+      decomposeKeywords.references.set(ref.project, ref.keywords || []);
+    }
+  }
+  
+  // 4. Select design files
+  const selectedDesignFiles = selectDesignFiles(parsed.environment, state.designDocs);
+  
+  // 5. Log & Display
+  console.log(`✅ Mode: ${parsed.mode}`);
+  console.log(`   Mode Reasoning: ${parsed.modeReasoning}`);
+  console.log(`✅ Environment: ${parsed.environment}`);
+  console.log(`   Environment Reasoning: ${parsed.environmentReasoning}`);
+  console.log(`   Require RAG for Decompose: ${parsed.requireRagForDecompose}`);
+  
+  // Display keywords in Chat UI - 항상 표시
+  let keywordDisplay = '**Analyzed:** 🔑 Decompose Search Keywords\n\n';
+  
+  if (decomposeKeywords.stackTrace.length === 0 && decomposeKeywords.keywords.length === 0) {
+    keywordDisplay += 'No keywords generated (proceeding without RAG)';
+  } else {
+    if (decomposeKeywords.stackTrace.length > 0) {
+      console.log(`   📍 Stack trace: ${decomposeKeywords.stackTrace.join(', ')}`);
+      keywordDisplay += `📍 **Stack Trace Files** (${decomposeKeywords.stackTrace.length}):\n`;
+      keywordDisplay += decomposeKeywords.stackTrace.map(f => `  • ${f}`).join('\n');
+      keywordDisplay += '\n\n';
+    }
+    
+    if (decomposeKeywords.keywords.length > 0) {
+      console.log(`   🔍 Keywords: ${decomposeKeywords.keywords.join(', ')}`);
+      keywordDisplay += `🔍 **Semantic Keywords** (${decomposeKeywords.keywords.length}):\n`;
+      const displayKeywords = decomposeKeywords.keywords.slice(0, 15);
+      keywordDisplay += displayKeywords.map(k => `  • ${k}`).join('\n');
+      if (decomposeKeywords.keywords.length > 15) {
+        keywordDisplay += `\n  ... and ${decomposeKeywords.keywords.length - 15} more`;
+      }
+    }
+  }
+  
+  await chatAPI.showChatStatus('analyzed', {
+    content: keywordDisplay,
+    keywordCount: decomposeKeywords.stackTrace.length + decomposeKeywords.keywords.length,
+    stackTraceCount: decomposeKeywords.stackTrace.length,
+    semanticCount: decomposeKeywords.keywords.length
+  });
+  
+  if (decomposeKeywords.references.size > 0) {
+    console.log(`   Decompose Keywords (references):`);
+    decomposeKeywords.references.forEach((keywords, project) => {
+      console.log(`     - ${project}: ${keywords.join(', ')}`);
+    });
+  }
+  
+  console.log(`   Selected Design Files: ${selectedDesignFiles.join(', ')}\n`);
+  
+  // Workflow exit
+  if (state.deps?.workflowUpdate && state._httpJobId) {
+    state.deps.workflowUpdate.exitNode(state._httpJobId, 'detectEnvironment');
+  }
+  
+  return {
+    mode: parsed.mode as 'generate' | 'refactor' | 'explain',
+    modeReasoning: parsed.modeReasoning,
+    detectedEnvironment: parsed.environment as 'frontend' | 'backend' | 'fullstack' | 'unknown',
+    environmentReasoning: parsed.environmentReasoning,
+    selectedDesignFiles,
+    requireRagForDecompose: parsed.requireRagForDecompose,
+    decomposeKeywords,
+  };
+}
+

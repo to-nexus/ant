@@ -313,7 +313,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     // Use keyword search for specific files, NOT vector DB
     const profileKeywords = 'package.json tsconfig.json vite.config main entry index';
     
-    await chatAPI.addGreppingStatus(profileKeywords, 0, 3);
+    await chatAPI.showChatStatus('retrieving', { query: profileKeywords });
     
     const codeContext = await retriever.retrieve(
       profileKeywords,  // ✅ Specific keywords for config files
@@ -331,14 +331,12 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
       }
     );
     
-    console.log(`   ✅ Found ${codeContext.stats.filesLoaded} files for profile`);
+    console.log(`   ✅ Retrieved ${codeContext.stats.filesLoaded} files for profile`);
     
-    await chatAPI.addGreppedResult(
-      profileKeywords,
-      codeContext.stats.filesLoaded,
-      codeContext.strategy,
-      codeContext.files?.map(f => typeof f === 'string' ? f : f.path) || []
-    );
+    await chatAPI.showChatStatus('retrieved', { 
+      filesCount: codeContext.stats.filesLoaded,
+      filesList: codeContext.files?.map(f => typeof f === 'string' ? f : f.path) || []
+    });
     
     // Analyze profile from retrieved code
     if (codeContext.code) {

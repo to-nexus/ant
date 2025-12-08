@@ -129,9 +129,9 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     const { getChatAPIClient } = await import('../../../../../core/adapters/ChatAPIClient');
     const chatAPI = getChatAPIClient();
     
-    // ✅ Send grepping status
+    // ✅ Send retrieving status
     const query = (directive || design || prd || "").slice(0, 100);  // First 100 chars as query
-    await chatAPI.addGreppingStatus(query, 0, 25);  // Max 25 files
+    await chatAPI.showChatStatus('retrieving', { query });  // Max 25 files
     
     const codeContext = await retriever.retrieve(
       directive || design || prd || "",
@@ -149,13 +149,11 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     
     console.log(`✅ Strategy: ${codeContext.strategy}, Files: ${codeContext.stats.filesLoaded}, Tokens: ~${codeContext.stats.estimatedTokens}`);
     
-    // ✅ Send grepped result
-    await chatAPI.addGreppedResult(
-      query,
-      codeContext.stats.filesLoaded,
-      codeContext.strategy,
-      codeContext.files?.map(f => typeof f === 'string' ? f : f.path) || []
-    );
+    // ✅ Send retrieved result
+    await chatAPI.showChatStatus('retrieved', {
+      filesCount: codeContext.stats.filesLoaded,
+      filesList: codeContext.files?.map(f => typeof f === 'string' ? f : f.path) || []
+    });
     
     code = codeContext.code;
     codeHead = codeContext.codeHead;

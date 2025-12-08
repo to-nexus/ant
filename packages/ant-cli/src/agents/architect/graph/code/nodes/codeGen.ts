@@ -510,8 +510,8 @@ function generateFileTree(state: ArchitectGraphState): string | null {
   lines.push('────────────────────────────────────────────────────────────────────────────────');
   lines.push('🚨 CRITICAL: Check if file exists BEFORE writing!');
   lines.push('   - If listed above → MUST use <edit> tags to modify');
-  lines.push('   - If NOT listed → use write_file tool to create');
-  lines.push('   - ❌ NEVER use write_file on existing files (causes duplicate code!)');
+  lines.push('   - If NOT listed → use <file> tags to create');
+  lines.push('   - ❌ NEVER use <file> tags on existing files (causes overwrite!)');
   lines.push('────────────────────────────────────────────────────────────────────────────────');
   
   return lines.join('\n');
@@ -525,24 +525,6 @@ function getAvailableTools(state: ArchitectGraphState): import('../../../../../c
   
   // ✅ Return properly typed tool definitions
   const baseTools: import('../../../../../core/ports/llm').ToolDefinition[] = [
-    {
-      name: 'write_file',
-      description: 'Create a NEW file. NEVER use for existing files - use <edit> tags instead to modify existing files.',
-      input_schema: {
-        type: 'object' as const,
-        properties: {
-          path: {
-            type: 'string',
-            description: 'File path relative to project root (must be a NEW file that does not exist)',
-          },
-          content: {
-            type: 'string',
-            description: 'Complete file content for the new file',
-          },
-        },
-        required: ['path', 'content'],
-      },
-    },
     {
       name: 'read_file',
       description: 'Read the contents of a file',
@@ -619,24 +601,6 @@ function getAvailableTools(state: ArchitectGraphState): import('../../../../../c
           },
         },
         required: ['path'],
-      },
-    },
-    {
-      name: 'apply_patch',
-      description: 'Apply a unified diff (patch) to a file. MORE EFFICIENT than write_file for modifying existing files',
-      input_schema: {
-        type: 'object' as const,
-        properties: {
-          path: {
-            type: 'string',
-            description: 'File path relative to project root',
-          },
-          patch: {
-            type: 'string',
-            description: 'Unified diff patch content (git diff format)',
-          },
-        },
-        required: ['path', 'patch'],
       },
     },
     {
