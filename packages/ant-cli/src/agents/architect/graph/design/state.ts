@@ -2,11 +2,8 @@ import { DesignMode, CodebaseProfile, TaskArtifacts } from "../../../../core/typ
 import { LLMClient, ChunkPort, SessionPort, GitPort, CodebaseAnalyzerPort, MemoryPort, TaskQueueUpdatePort } from "../../../../core/ports";
 import { PromptEngine } from "../../../../core/prompt/engine";
 import { ProjectContext } from "../../types";
-import { Task, TaskQueue } from "../code/state";  // ✅ Reuse Task and TaskQueue from code
-import { StreamBufferManager } from '../../../../core/streaming/buffer/StreamBufferManager';  // ✅ NEW
-
-// ✅ Re-export Task and TaskQueue for use in design nodes
-export { Task, TaskQueue } from "../code/state";
+import { DesignTask, TaskQueue } from "../../types/task";
+import { StreamBufferManager } from '../../../../core/streaming/buffer/StreamBufferManager';
 
 /**
  * Design Task State
@@ -48,10 +45,10 @@ export interface DesignGraphState extends TaskArtifacts {
   chatSource?: boolean;         // True if job started from chat (enables Chat SSE)
 
   // ✅ NEW: Task Queue (for task breakdown like code)
-  taskQueue?: TaskQueue;
-  currentTask?: Task;
+  taskQueue?: TaskQueue<DesignTask>;
+  currentTask?: DesignTask;
   completedTasks?: string[];  // Task IDs
-  completedTasksDetails?: Task[];  // Full task details for resume
+  completedTasksDetails?: DesignTask[];  // Full task details for resume
 
   // ✅ Job tracking (for timing and continuity)
   jobId?: string;  // Current active job ID (persists until completion or reset)

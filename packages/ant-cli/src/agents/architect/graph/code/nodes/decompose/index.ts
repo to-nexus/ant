@@ -13,7 +13,8 @@
  */
 
 import { LLMClient } from "../../../../../../core/ports";
-import { ArchitectGraphState, Task, TaskQueue } from "../../state";
+import { ArchitectGraphState, TaskQueue } from "../../state";
+import { CodeTask } from "../../../../types/task";
 import { JobTimingManager } from "../../../common/timing/JobTimingManager";
 import { logErrorHeader } from "../shared/errorHandler";
 
@@ -69,7 +70,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   if (state.mode === 'explain') {
     console.log('💡 [Decompose] Explain mode detected - creating single explanation task\n');
     
-    const explainTask: Task = {
+    const explainTask: CodeTask = {
       id: 'explain-1',
       name: 'Explain code',
       type: 'explain',
@@ -77,7 +78,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       description: state.directive || 'Explain the codebase'
     };
     
-    const taskQueue = new TaskQueue();
+    const taskQueue = new TaskQueue<CodeTask>();
     taskQueue.push(explainTask);
     
     return {

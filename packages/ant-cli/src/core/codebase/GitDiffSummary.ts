@@ -2,14 +2,9 @@
  * Git Diff Summary
  * 
  * Represents a compact summary of changes between HEAD and Working Tree.
- * This replaces sending full originalFiles + currentCode (which duplicates content).
+ * This replaces sending full file content duplicates by using currentCode + gitDiff.
  * 
- * Instead of:
- *   originalFiles: Button.tsx (100 lines) + App.tsx (50 lines) = 150 lines
- *   currentCode:   Button.tsx (100 lines) + App.tsx (50 lines) + Modal.tsx (20 lines) = 170 lines
- *   Total: 320 lines (significant duplication!)
- * 
- * We send:
+ * Instead of duplicating entire files, we send:
  *   currentCode:   Button.tsx (100 lines) + App.tsx (50 lines) + Modal.tsx (20 lines) = 170 lines
  *   gitDiff:       Summary of what changed (10-20 lines)
  *   Total: ~190 lines (40% reduction!)

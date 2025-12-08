@@ -86,7 +86,6 @@ export async function execute(state: DesignGraphState) {
     prdSpec: state.prd,               // PRD
     previousDesign: state.design,     // Previous design (from git)
     currentCode: state.code,          // Codebase (for evolution/refactor)
-    originalFiles: undefined,         // Design doesn't use git HEAD
     currentTask: state.currentTask ? {  // ✅ Pass current task info
       name: state.currentTask.name,
       type: state.currentTask.type,

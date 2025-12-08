@@ -1,4 +1,5 @@
-import { ArchitectGraphState, Task } from "../../state";
+import { ArchitectGraphState } from "../../state";
+import { CodeTask } from "../../../../types/task";
 
 /**
  * Detect if directive contains error-related keywords
@@ -21,7 +22,7 @@ export function detectErrorInDirective(directive: string | undefined): boolean {
  * Validate tasks after decompose to detect over-engineering
  */
 export function validateTasks(
-  tasks: Task[],
+  tasks: CodeTask[],
   mode: string | undefined,
   directive: string | undefined,
   hasErrorInDirective: boolean
@@ -82,7 +83,7 @@ export function validateTasks(
 /**
  * Check if task is over-broad (sounds like full implementation)
  */
-function isOverBroadTask(task: Task): boolean {
+function isOverBroadTask(task: CodeTask): boolean {
   const broadKeywords = [
     'implement entire', 'build complete', 'create all',
     'implement', 'create', 'build', 'setup',

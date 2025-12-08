@@ -52,30 +52,30 @@ Count YES answers:
 
 **STEP 3: Determine Total Line Budget**
 
-**Score 0 (Simple)**: **120-180 lines MAX**
+**Score 0 (Simple)**: **100-150 lines MAX**
 - Pure frontend, no backend
 - Single page or 2-3 simple views
 - No database, no auth
-- **Create 2 tasks, ~60-90 lines each** (buffer for LLM overrun)
+- **Create 2 tasks, ~50-75 lines each**
 
-**Score 1-2 (Medium)**: **225-375 lines MAX**
+**Score 1-2 (Medium)**: **180-300 lines MAX**
 - Simple backend OR multiple frontend features
 - Basic database (1-3 tables)
 - 3-5 pages/views
-- **Create 3 tasks, ~75-125 lines each** (buffer for LLM overrun)
+- **Create 3 tasks, ~60-100 lines each**
 
-**Score 3+ (Complex)**: **450-750 lines MAX**
+**Score 3+ (Complex)**: **360-600 lines MAX**
 - Full-stack with multiple features
 - Complex database (4+ tables with relationships)
 - Authentication, multiple user roles
 - 5+ pages, external integrations
-- **Create 4 tasks, ~112-187 lines each** (buffer for LLM overrun)
+- **Create 4 tasks, ~90-150 lines each**
 
-**⚠️ STAY WITHIN YOUR BUDGET - BE REALISTIC!**
+**⚠️ FOCUS ON ARCHITECTURE, NOT IMPLEMENTATION!**
 - Choose appropriate budget based on actual system complexity
-- Focus on architecture decisions, NOT implementation details
+- **CRITICAL**: Architecture decisions + component interaction, NOT formulas/algorithms
 - Skip non-applicable sections (e.g., no backend? No database chapter!)
-- Balance completeness with conciseness - cover all critical aspects
+- Ultra-concise: 1 sentence per point, max 3 code blocks (≤8 lines each)
 
 **STEP 4: Divide Budget Across Tasks**
 - Divide total budget by number of tasks
@@ -105,17 +105,17 @@ Count YES answers:
 ### Length Budgets (MANDATORY)
 
 **Total line budgets based on project scope:**
-- **Minimal (single component/utility)**: 80-150 lines total
-- **Simple (frontend-only, 1-3 features)**: 150-300 lines total
-- **Medium (multi-feature OR simple backend)**: 300-600 lines total  
-- **Complex (full-stack, multi-page)**: 600-1200 lines total
-- **Very Complex (microservices, multi-module)**: 1200-2000 lines total
+- **Minimal (single component/utility)**: 60-120 lines total
+- **Simple (frontend-only, 1-3 features)**: 120-240 lines total
+- **Medium (multi-feature OR simple backend)**: 240-480 lines total
+- **Complex (full-stack, multi-page)**: 480-900 lines total
+- **Very Complex (microservices, multi-module)**: 900-1500 lines total
 
-**⚠️ RECOMMENDED MAXIMUM: 2000 lines - Only exceed for exceptionally complex systems!**
+**⚠️ RECOMMENDED MAXIMUM: 1500 lines - Focus on architecture, not implementation!**
 
 **Budget allocation per task:**
 - Divide total budget evenly across N tasks
-- Example: 270 lines / 3 tasks = 90 lines per task MAX
+- Example: 240 lines / 3 tasks = 80 lines per task MAX
 
 **Every task description MUST state:**
 ```
@@ -125,11 +125,11 @@ MAX [N] lines for this task!
 ```
 
 **Examples:**
-- Minimal project (120 lines / 1 task): "MAX 120 lines total!"
-- Simple project (240 lines / 2 tasks): "MAX 120 lines for this task! (Total limit: 240 lines)"
-- Medium project (450 lines / 3 tasks): "MAX 150 lines for this task! (Total limit: 450 lines)"
-- Complex project (900 lines / 4 tasks): "MAX 225 lines for this task! (Total limit: 900 lines)"
-- Very Complex project (1600 lines / 5 tasks): "MAX 320 lines for this task! (Total limit: 1600 lines)"
+- Minimal project (100 lines / 1 task): "MAX 100 lines total!"
+- Simple project (200 lines / 2 tasks): "MAX 100 lines for this task! (Total limit: 200 lines)"
+- Medium project (360 lines / 3 tasks): "MAX 120 lines for this task! (Total limit: 360 lines)"
+- Complex project (720 lines / 4 tasks): "MAX 180 lines for this task! (Total limit: 720 lines)"
+- Very Complex project (1200 lines / 5 tasks): "MAX 240 lines for this task! (Total limit: 1200 lines)"
 
 ### Priority Assignment
 - Use 200-299 range
@@ -154,105 +154,18 @@ DO NOT CREATE tasks for:
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-## EXAMPLES
+## TASK BREAKDOWN PRINCIPLES
 
-**Example 1: Minimal (1 task, 120 lines total)**
-```
-Input: "Add a counter button that shows current count"
+**General Strategy:**
+- **Minimal projects (60-120 lines)**: 1 task covering all aspects
+- **Simple projects (120-240 lines)**: 2 tasks (architecture+data, UI+interaction)
+- **Medium projects (240-480 lines)**: 3 tasks (architecture, data+API, frontend/components)
+- **Complex projects (480-900 lines)**: 4 tasks (architecture, data/API, frontend, integrations)
 
-{
-  "tasks": [{
-    "id": "design-doc",
-    "name": "Create Design Document",
-    "description": "Design the simple counter button component with state management. MAX 120 lines total!",
-    "priority": 250
-  }]
-}
-```
-
-**Example 2: Simple (2 tasks, 240 lines total)**
-```
-Input: "Add a todo list feature with localStorage persistence"
-
-{
-  "tasks": [
-    {
-      "id": "design-arch-data",
-      "name": "Design Document: Architecture & Data Model",
-      "description": "Write sections on: System overview, todo data model, and localStorage strategy. MAX 120 lines for this task! (Total limit: 240 lines across 2 tasks)",
-      "priority": 220
-    },
-    {
-      "id": "design-ui-components",
-      "name": "Design Document: UI Components & Interactions",
-      "description": "Write sections on: Component hierarchy, user interactions, and state management. MAX 120 lines for this task! (Total limit: 240 lines, currently ~120 after task 1)",
-      "priority": 240
-    }
-  ]
-}
-```
-
-**Example 3: Medium (3 tasks, 450 lines total)**
-```
-Input: "Design a task management system with user authentication, task CRUD, and real-time notifications"
-
-{
-  "tasks": [
-    {
-      "id": "design-architecture",
-      "name": "Design Document: System Architecture",
-      "description": "Write sections on: Architecture pattern selection, layer definitions, technology stack, real-time architecture. MAX 150 lines! (Total limit: 450 lines across 3 tasks)",
-      "priority": 220
-    },
-    {
-      "id": "design-data-api",
-      "name": "Design Document: Data Models & API",
-      "description": "Write sections on: Database schema (users, tasks, notifications), RESTful API endpoints, WebSocket integration. MAX 150 lines! (Total limit: 450 lines, currently ~150 after task 1)",
-      "priority": 240
-    },
-    {
-      "id": "design-frontend-security",
-      "name": "Design Document: Frontend & Security",
-      "description": "Write sections on: Component hierarchy, state management, authentication flow, authorization. MAX 150 lines! (Total limit: 450 lines, currently ~300 after task 2)",
-      "priority": 260
-    }
-  ]
-}
-```
-
-**Example 4: Complex (4 tasks, 900 lines total)**
-```
-Input: "Design full-stack e-commerce platform with product catalog, cart, checkout, payment integration, admin panel, and analytics"
-
-{
-  "tasks": [
-    {
-      "id": "design-architecture",
-      "name": "Design Document: System Architecture",
-      "description": "Write sections on: Overall architecture, microservices design (if applicable), technology stack, scalability considerations. MAX 225 lines! (Total limit: 900 lines across 4 tasks)",
-      "priority": 220
-    },
-    {
-      "id": "design-data-api",
-      "name": "Design Document: Data Models & API",
-      "description": "Write sections on: Database schema (products, orders, users, inventory), RESTful API design, GraphQL endpoints (if applicable). MAX 225 lines! (Total limit: 900 lines, currently ~225 after task 1)",
-      "priority": 240
-    },
-    {
-      "id": "design-frontend",
-      "name": "Design Document: Frontend Architecture",
-      "description": "Write sections on: Component architecture, routing structure, state management (Redux/Context), design system, responsive design. MAX 225 lines! (Total limit: 900 lines, currently ~450 after task 2)",
-      "priority": 260
-    },
-    {
-      "id": "design-integrations",
-      "name": "Design Document: Integrations & Security",
-      "description": "Write sections on: Payment gateway integration, authentication & authorization, analytics integration, admin dashboard features. MAX 225 lines! (Total limit: 900 lines, currently ~675 after task 3)",
-      "priority": 280
-    }
-  ]
-}
-```
+**Task Description Guidelines:**
+- State WHAT to design, NOT HOW to write
+- Include line budget and total limit
+- Focus on architectural concerns
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -261,10 +174,26 @@ Input: "Design full-stack e-commerce platform with product catalog, cart, checko
 **⚡ CRITICAL: When project has BOTH Frontend AND Backend, use 3-PHASE approach:**
 
 ### Detection Criteria (Dual Design Required)
-- Project has BOTH UI requirements AND backend/database requirements
-- Mentions "SPA + API server", "React frontend with Express backend", or similar
-- Has REST/GraphQL/WebSocket API endpoints AND UI components
-- Explicitly separates frontend and backend concerns
+
+**⚠️ CRITICAL: Only use dual design if BOTH conditions are true RIGHT NOW:**
+
+1. **Current Requirement (NOT future)**: Project CURRENTLY requires BOTH:
+   - Frontend UI (React/Vue/Angular components, pages, routing)
+   - Backend API (Express/FastAPI/Django server, database, REST/GraphQL endpoints)
+
+2. **Actual Implementation**: The project will ACTUALLY implement both tiers in this iteration
+
+**Examples that REQUIRE dual design:**
+- ✅ "Build SPA frontend + Express API server with PostgreSQL"
+- ✅ "React dashboard calling REST API backed by MySQL database"
+- ✅ "Next.js frontend + separate NestJS backend microservice"
+
+**Examples that DO NOT require dual design (use `system-design.md` only):**
+- ❌ "React SPA with localStorage" → Frontend-only
+- ❌ "Frontend calling EXISTING third-party API" → Frontend-only (no backend to design)
+- ❌ "Design for FUTURE multiplayer support" → Future ≠ Current requirement
+- ❌ "Architecture allowing API expansion later" → Use `system-design.md`, design abstraction layer only
+- ❌ "REST API service only" → Backend-only
 
 **IF detected → Use CONTRACT-FIRST 3-PHASE approach below**
 **ELSE → Use unified `system-design.md` (standard mode, line 183-254)**
@@ -276,8 +205,8 @@ Input: "Design full-stack e-commerce platform with product catalog, cart, checko
 **Philosophy: API Contract is the SINGLE SOURCE OF TRUTH**
 
 **PHASE 1 (Priority 200-209): API Contract Definition** → `api-contract.md`
-**PHASE 2 (Priority 210-229): Frontend Implementation** → `fe-system-design.md`
-**PHASE 3 (Priority 230-249): Backend Implementation** → `be-system-design.md`
+**PHASE 2 (Priority 210-229): Frontend Design** → `fe-system-design.md`
+**PHASE 3 (Priority 230-249): Backend Design** → `be-system-design.md`
 
 **⚠️ CRITICAL EXECUTION ORDER:**
 1. **Contract FIRST** (defines interface)
@@ -290,128 +219,37 @@ This ensures FE and BE are ALWAYS aligned!
 
 ### PHASE 1: API Contract Definition (Priority 200-209)
 
-**Goal: Define ALL communication interfaces between FE and BE**
+**Goal**: Define ALL communication interfaces between FE and BE
 
-**Budget: 80-200 lines** (scale based on API complexity)
+**Budget**: 80-200 lines (scale: simple 80-100, medium 120-150, complex 180-200)
 
-**Simple API (1-5 endpoints, basic CRUD)**: 80-100 lines → 1 task
-**Medium API (6-15 endpoints, auth, WebSocket)**: 120-150 lines → 1-2 tasks
-**Complex API (16+ endpoints, multiple services)**: 180-200 lines → 2 tasks
+**Required Content**: REST endpoints, WebSocket events (if any), DTOs, auth scheme, error format
 
-**Example: Simple API (1 task)**
-```json
-{
-  "id": "design-api-contract",
-  "name": "API Contract: Complete Specification",
-  "description": "Create api-contract.md with: REST endpoints (all methods, paths, request/response DTOs with EXACT field names and types), WebSocket events (if applicable), error response format, authentication scheme. This is the BINDING CONTRACT for both FE and BE. MAX 100 lines!",
-  "priority": 200
-}
-```
-
-**Example: Complex API (2 tasks)**
-```json
-{
-  "tasks": [
-    {
-      "id": "design-api-contract-core",
-      "name": "API Contract: Core Endpoints & Auth",
-      "description": "Create api-contract.md with: Authentication endpoints (login, register, refresh), core resource endpoints (users, main entities), request/response DTOs with EXACT types. MAX 100 lines! (Total API contract budget: 180 lines)",
-      "priority": 200
-    },
-    {
-      "id": "design-api-contract-extended",
-      "name": "API Contract: Extended Features & WebSocket",
-      "description": "Append to api-contract.md with: Extended feature endpoints, WebSocket event specifications, error response format, rate limiting. MAX 80 lines! (Total API contract budget: 180 lines, currently ~100 after task 1)",
-      "priority": 205
-    }
-  ]
-}
-```
-
-**REQUIRED SECTIONS in api-contract.md:**
-1. **REST API Endpoints** (method, path, request DTO, response DTO, status codes)
-2. **WebSocket Events** (if applicable: event names, payload schemas)
-3. **Shared Type Definitions** (DTOs, enums, common types)
-4. **Authentication** (token format, headers, refresh flow)
-5. **Error Response Format** (standard error structure)
+**Task Description Pattern**: "Define API contract: [scope]. This is BINDING for FE/BE. MAX [N] lines!"
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-### PHASE 2: Frontend Implementation (Priority 210-229)
+### PHASE 2: Frontend Design (Priority 210-229)
 
-**Goal: Design FE architecture that CONSUMES api-contract.md**
+**Goal**: Design FE architecture that CONSUMES api-contract.md
 
-**Budget: 150-750 lines** (scale based on FE complexity)
+**Budget**: 120-600 lines (scale: simple 120-200, medium 240-400, complex 480-600)
 
-**Simple FE (1-3 pages, basic state)**: 150-250 lines → 1-2 tasks
-**Medium FE (4-6 pages, complex state)**: 300-500 lines → 2-3 tasks
-**Complex FE (7+ pages, advanced patterns)**: 600-750 lines → 3-4 tasks
+**Required Content**: Architecture, component structure, routing, state management, API client (USE contract types)
 
-**Example: Medium FE (2 tasks)**
-```json
-{
-  "tasks": [
-    {
-      "id": "design-fe-architecture",
-      "name": "Frontend: Architecture & API Integration",
-      "description": "Create fe-system-design.md with: System overview, component architecture, routing structure, state management, **API client layer (MUST USE api-contract.md types - import DTOs, create type-safe API client)**. MAX 250 lines! (FE total budget: 450 lines)",
-      "priority": 210
-    },
-    {
-      "id": "design-fe-components-ui",
-      "name": "Frontend: Components & UI Design",
-      "description": "Append to fe-system-design.md with: Component specifications (props, state, hooks), UI/UX design (layout, styling, responsiveness), form validation, error handling. MAX 200 lines! (FE total budget: 450 lines, currently ~250 after task 1)",
-      "priority": 220
-    }
-  ]
-}
-```
-
-**CRITICAL RULES for Frontend Tasks:**
-1. **First FE task MUST mention**: "MUST USE api-contract.md types"
-2. **Description MUST include**: "import DTOs from api-contract.md" or "use contract types"
-3. **File naming**: "Create fe-system-design.md" (first) → "Append to fe-system-design.md" (subsequent)
-4. **NO API definition**: FE tasks NEVER define APIs, only consume them!
-5. **MECE Compliance**: NO DTO duplication - only reference contract!
+**Critical**: First FE task MUST mention "MUST USE api-contract.md types". NO API definition, only consumption.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-### PHASE 3: Backend Implementation (Priority 230-249)
+### PHASE 3: Backend Design (Priority 230-249)
 
-**Goal: Design BE architecture that IMPLEMENTS api-contract.md**
+**Goal**: Design BE architecture that IMPLEMENTS api-contract.md
 
-**Budget: 150-750 lines** (scale based on BE complexity)
+**Budget**: 120-600 lines (scale: simple 120-200, medium 240-400, complex 480-600)
 
-**Simple BE (CRUD, 1-3 tables)**: 150-250 lines → 1-2 tasks
-**Medium BE (auth, business logic, 4-6 tables)**: 300-500 lines → 2-3 tasks
-**Complex BE (multi-service, complex data, 7+ tables)**: 600-750 lines → 3-4 tasks
+**Required Content**: Architecture layers, API endpoint implementation (reference contract), database schema, service layer, auth middleware
 
-**Example: Medium BE (2 tasks)**
-```json
-{
-  "tasks": [
-    {
-      "id": "design-be-architecture-api",
-      "name": "Backend: Architecture & API Implementation",
-      "description": "Create be-system-design.md with: System overview, architecture layers (controller/service/repository), **API endpoint implementation (MUST IMPLEMENT api-contract.md EXACTLY - map each endpoint, confirm request/response types match 100%)**, authentication middleware. MAX 250 lines! (BE total budget: 480 lines)",
-      "priority": 230
-    },
-    {
-      "id": "design-be-data-services",
-      "name": "Backend: Data Layer & Business Logic",
-      "description": "Append to be-system-design.md with: Database schema (entities, relationships, indexes), service layer design (business logic, validation, transactions), error handling strategy. MAX 230 lines! (BE total budget: 480 lines, currently ~250 after task 1)",
-      "priority": 240
-    }
-  ]
-}
-```
-
-**CRITICAL RULES for Backend Tasks:**
-1. **First BE task MUST mention**: "MUST IMPLEMENT api-contract.md EXACTLY"
-2. **Description MUST include**: "reference contract for DTOs" or "implement per contract"
-3. **File naming**: "Create be-system-design.md" (first) → "Append to be-system-design.md" (subsequent)
-4. **NO API deviation**: If deviation needed, must document WHY in design doc!
-5. **MECE Compliance**: NO DTO duplication - only reference contract and describe implementation!
+**Critical**: First BE task MUST mention "MUST IMPLEMENT api-contract.md EXACTLY". NO API deviation or DTO duplication.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -448,46 +286,6 @@ POST /api/auth/login
 POST /api/auth/login
 **Contract**: LoginRequest → LoginResponse (api-contract.md §3.1)
 **Implementation**: Controller validates → AuthService.authenticate → JWT.sign
-```
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-### 📐 Complete Example: Simple Dual Design (4 tasks total)
-
-**Project: Todo App (Simple CRUD + Auth)**
-- API: 5 endpoints (login, register, CRUD todos)
-- FE: 2 pages (login, todo list)
-- BE: 2 tables (users, todos)
-
-```json
-{
-  "tasks": [
-    {
-      "id": "design-api-contract",
-      "name": "API Contract: Complete Specification",
-      "description": "Create api-contract.md with: Auth endpoints (POST /auth/login, POST /auth/register), Todo CRUD endpoints (GET/POST/PUT/DELETE /todos), request/response DTOs with exact field types (User: {id, email, name}, Todo: {id, title, completed, userId}), JWT auth header format, error response structure. This is BINDING for FE and BE. MAX 100 lines!",
-      "priority": 200
-    },
-    {
-      "id": "design-fe-architecture",
-      "name": "Frontend: Architecture & Components",
-      "description": "Create fe-system-design.md with: React component architecture, routing (/, /login), state management (Context API for auth), **API client (USE api-contract.md types - NO DTO duplication, show HOW to call APIs with fetch wrappers)**, form components (LoginForm, TodoForm). MAX 150 lines! (FE total budget: 150 lines)",
-      "priority": 210
-    },
-    {
-      "id": "design-be-architecture",
-      "name": "Backend: Architecture & API",
-      "description": "Create be-system-design.md with: Express layered architecture (routes/controllers/services), **API implementation (USE api-contract.md specification - NO DTO duplication, show HOW to implement with service methods and error handling)**, JWT middleware, validation. MAX 150 lines! (BE total budget: 300 lines)",
-      "priority": 230
-    },
-    {
-      "id": "design-be-data",
-      "name": "Backend: Database & Services",
-      "description": "Append to be-system-design.md with: PostgreSQL schema (users table: id, email, password_hash, name; todos table: id, title, completed, user_id with FK), service layer (AuthService, TodoService), password hashing (bcrypt). MAX 150 lines! (BE total budget: 300 lines, currently ~150 after task 1)",
-      "priority": 240
-    }
-  ]
-}
 ```
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

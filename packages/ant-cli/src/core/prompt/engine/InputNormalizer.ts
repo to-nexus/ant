@@ -14,7 +14,6 @@ export interface NormalizedPromptInput {
     directive?: string;            // User instruction
     designDoc?: string;            // Design document
     prdSpec?: string;              // PRD specification
-    originalFiles?: string;        // Original code from git
     currentCode?: string;          // Current working code
   };
   
@@ -41,7 +40,6 @@ export class InputNormalizer {
       directive?: string;
       designDoc?: string;
       prdSpec?: string;
-      originalFiles?: string;
       currentCode?: string;
     },
     mode?: CodeMode
@@ -74,7 +72,6 @@ export class InputNormalizer {
       directive?: string;
       designDoc?: string;
       prdSpec?: string;
-      originalFiles?: string;
       currentCode?: string;
     },
     mode?: CodeMode

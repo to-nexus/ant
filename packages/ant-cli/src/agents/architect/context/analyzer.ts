@@ -10,7 +10,7 @@
  * - Focus: Task type, name, description, error context, design relevance
  */
 
-import { Task } from '../graph/code/state';
+import { CodeTask } from '../types/task';
 
 export interface ContextStrategy {
   needsExplore: boolean;      // List all files
@@ -31,7 +31,7 @@ export interface ContextStrategy {
  * @param existingFiles - Current generated files (QUATERNARY for pattern matching)
  */
 export function analyzeContextNeeds(
-  task: Task,
+  task: CodeTask,
   enforcementReason?: string | null,
   design?: string,
   existingFiles?: string[]
@@ -144,7 +144,7 @@ function extractErrorKeywords(errorMessage: string): string[] {
 /**
  * Extract keywords from design document (task-relevant sections)
  */
-function extractDesignKeywords(design: string, task: Task): string[] {
+function extractDesignKeywords(design: string, task: CodeTask): string[] {
   // Extract main words from task name
   const taskWords = task.name
     .toLowerCase()

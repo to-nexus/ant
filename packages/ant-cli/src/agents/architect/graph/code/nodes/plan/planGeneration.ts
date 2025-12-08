@@ -8,11 +8,12 @@
  */
 
 import { LLMClient } from "../../../../../../core/ports";
-import { ArchitectGraphState, Task, TASK_PRIORITIES } from "../../state";
+import { ArchitectGraphState, TASK_PRIORITIES } from "../../state";
+import { CodeTask } from "../../../../types/task";
 
 export async function generatePlanText(
   llm: LLMClient,
-  task: Task,
+  task: CodeTask,
   state: ArchitectGraphState,
   projectCodeContext: any,
   referenceCodeContexts: any[]

@@ -1,4 +1,5 @@
 import { ArchitectGraphState } from "./state";
+import { TaskQueue, CodeTask } from "../../types/task";
 import { buildCodeGraph } from "./graph";
 
 /**
@@ -59,7 +60,7 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
         
         // Reconstruct TaskQueue from saved array
         const { TaskQueue } = await import('./state');
-        const taskQueue = new TaskQueue();
+        const taskQueue = new TaskQueue<CodeTask>();
         session.state.taskQueue?.forEach((task: any) => taskQueue.push(task));
         
         // ✅ Restore ALL state from checkpoint
@@ -157,7 +158,7 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
           console.log(`   ✅ Restored ${session.state.taskQueue.length} tasks from checkpoint`);
           // Reconstruct TaskQueue from saved array
           const { TaskQueue } = await import('./state');
-          const taskQueue = new TaskQueue();
+          const taskQueue = new TaskQueue<CodeTask>();
           session.state.taskQueue.forEach((task: any) => taskQueue.push(task));
           
           state = {
@@ -216,7 +217,7 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
       console.log(`📥 Moving current task "${state.currentTask.name}" back to front of queue`);
       // Create a new task queue with currentTask at the front
       const { TaskQueue } = await import('./state');
-      const newQueue = new TaskQueue();
+      const newQueue = new TaskQueue<CodeTask>();
       newQueue.push(state.currentTask);
       // ✅ Filter out duplicate task IDs to prevent duplicates
       state.taskQueue.getAll().forEach((task: any) => {

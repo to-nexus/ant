@@ -1,5 +1,7 @@
 import { LLMClient } from "../../../../../../core/ports";
-import { DesignGraphState, Task, TaskQueue } from "../../state";
+import { DesignGraphState } from "../../state";
+import { DesignTask } from "../../../../types/task";
+import { TaskQueue } from "../../../code/state";
 import { JobTimingManager } from "../../../common/timing/JobTimingManager";
 import { extractErrorDetails, logErrorHeader } from "../../../code/nodes/shared/errorHandler";
 
@@ -53,8 +55,8 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
         console.log('\n🔄 Resuming from previous design session...\n');
         
         // Restore TaskQueue from saved state
-        const taskQueue = new TaskQueue();
-        session.state.taskQueue.forEach((task: Task) => {
+        const taskQueue = new TaskQueue<DesignTask>();
+        session.state.taskQueue.forEach((task: DesignTask) => {
           taskQueue.push(task);
         });
         
@@ -234,7 +236,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     
     // Create a single default task
     const taskQueue = new TaskQueue();
-    const defaultTask: Task = {
+    const defaultTask: DesignTask = {
       id: 'design-doc',
       name: 'Create Design Document',
       type: 'feature',
@@ -340,7 +342,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     const taskQueue = new TaskQueue();
     
     for (const taskData of response.tasks) {
-      const task: Task = {
+      const task: DesignTask = {
         id: taskData.id,
         name: taskData.name,
         type: 'feature',
@@ -428,7 +430,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     
     // Fallback: create single default task
     const taskQueue = new TaskQueue();
-    const defaultTask: Task = {
+    const defaultTask: DesignTask = {
       id: 'design-doc',
       name: 'Create Design Document',
       type: 'feature',

@@ -1,8 +1,9 @@
-import { Task, TaskQueue, TASK_PRIORITIES } from "../../state";
+import { TaskQueue, TASK_PRIORITIES } from "../../state";
+import { CodeTask } from "../../../../types/task";
 import { extractErrorDetails, createErrorViolation } from "../shared/errorHandler";
 
 export interface ParsedDecomposeResponse {
-  tasks: Task[];
+  tasks: CodeTask[];
   referenceRequests?: Array<{project: string; branch?: string; reason?: string}>;
 }
 
@@ -67,12 +68,12 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
  * ⚠️ CRITICAL: LLM MUST create Final Verification task (priority 1000)
  * No fallback - if missing, throw error to enforce prompt compliance
  */
-export function createTaskQueue(tasks: Task[]): {
-  taskQueue: TaskQueue;
-  featureTasks: Map<string, Task>;
+export function createTaskQueue(tasks: CodeTask[]): {
+  taskQueue: TaskQueue<CodeTask>;
+  featureTasks: Map<string, CodeTask>;
 } {
-  const taskQueue = new TaskQueue();
-  const featureTasks = new Map<string, Task>();
+  const taskQueue = new TaskQueue<CodeTask>();
+  const featureTasks = new Map<string, CodeTask>();
   
   // ✅ Validate that LLM created Final Verification task
   const hasFinalTask = tasks.some(task => task.priority === TASK_PRIORITIES.FINAL_VERIFICATION);
@@ -87,7 +88,7 @@ export function createTaskQueue(tasks: Task[]): {
   
   tasks.forEach(task => {
     // Ensure task has required fields
-    const normalizedTask: Task = {
+    const normalizedTask: CodeTask = {
       id: task.id || `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       name: task.name,
       type: task.type || 'feature',
@@ -113,7 +114,7 @@ export function createTaskQueue(tasks: Task[]): {
  * Log task breakdown summary
  */
 export function logTaskSummary(
-  tasks: Task[],
+  tasks: CodeTask[],
   referenceRequests?: Array<{project: string; branch?: string; reason?: string}>
 ): void {
   console.log(`\n✅ Task breakdown complete:`);

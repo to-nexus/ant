@@ -32,18 +32,20 @@ All DTOs and endpoints are defined in the API contract document.
 #### 2. Component Architecture
 - Component hierarchy (Pages → Containers → Components)
 - Component responsibilities (1 sentence each)
-- Component interfaces (props only, ≤10 lines):
+- Component interfaces (props only, ≤5 fields, NO implementation logic):
   ```typescript
   interface LoginFormProps {
-    onSubmit: (credentials: LoginRequest) => Promise<void>;  // LoginRequest from api-contract.md
+    onSubmit: (credentials: LoginRequest) => Promise<void>;
     isLoading: boolean;
   }
   ```
+- **FORBIDDEN**: State management details, event handler logic, validation formulas
 
 #### 3. State Management
 - State strategy (Context API, Redux, Zustand, React Query)
-- Global state structure (user auth, app settings)
-- Server state management (how API data is cached/synced)
+- Global state structure (user auth, app settings - list keys, NO values)
+- Server state management (caching strategy, NO detailed implementation)
+- **FORBIDDEN**: State machine transitions, reducer logic, detailed action types
 
 #### 4. Routing Structure
 - Route definitions (path → component mapping)
@@ -61,37 +63,19 @@ All DTOs and endpoints are defined in the API contract document.
 
 ```typescript
 // API Client (type-safe wrappers)
-// ✅ CORRECT: Import/reference contract types
 import type { LoginRequest, LoginResponse, User } from 'api-contract-types';
 
 export const authAPI = {
-  async login(credentials: LoginRequest): Promise<LoginResponse> {
-    const response = await fetch(`${API_BASE}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(credentials)
-    });
-    
-    if (!response.ok) {
-      throw new APIError(await response.json());
-    }
-    
-    return response.json();
-  },
-  
-  async getProfile(): Promise<User> {
-    const response = await fetch(`${API_BASE}/users/me`, {
-      headers: { 'Authorization': `Bearer ${getToken()}` }
-    });
-    
-    if (!response.ok) {
-      throw new APIError(await response.json());
-    }
-    
-    return response.json();
-  }
+  login(credentials: LoginRequest): Promise<LoginResponse>;
+  getProfile(): Promise<User>;
 };
 ```
+
+**Implementation Strategy** (describe in prose, NO code):
+- HTTP client: fetch with base URL
+- Headers: Content-Type, Authorization (Bearer token)
+- Error handling: APIError class wraps HTTP errors
+- Token management: Store in localStorage, attach to requests
 
 **List ALL API integrations:**
 - Which components call which endpoints

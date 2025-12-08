@@ -19,7 +19,8 @@
  */
 
 import { LLMClient } from "../../../../../../core/ports";
-import { ArchitectGraphState, Task } from "../../state";
+import { ArchitectGraphState, TASK_PRIORITIES } from "../../state";
+import { CodeTask } from "../../../../types/task";
 import { extractErrorDetails, createErrorViolation } from "../shared/errorHandler";
 
 // Import submodules
@@ -39,7 +40,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   const enforcementReason = state.enforcementReason;
   const isRetry = Boolean(enforcementReason);
   
-  let nextTask: Task | undefined;
+  let nextTask: CodeTask | undefined;
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 0: Pop next task (or retry current)

@@ -85,13 +85,8 @@ export class TemplateComposer {
         // ✅ Used in {{#if referenceRequests}} and {{#each referenceRequests}}
         referenceRequests: assembled.referenceRequests || [],
         
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // Legacy/unused variables (kept for backward compatibility)
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        
-        project: context.project,
-        lastSectionNumber: assembled.lastSectionNumber ?? 0,
-        projectPath: (context as any).projectPath || context.workingDir || '/path/to/project'
+        // ✅ Used in {{#if lastSectionNumber}} for design job continuation
+        lastSectionNumber: assembled.lastSectionNumber ?? undefined
       }
     );
     
@@ -323,16 +318,6 @@ export class TemplateComposer {
       // memory.md expects: {{content}} (generic placeholder for any content)
       'memory': { 
         content: this.formatLessons(assembled.lessons) || 'No relevant lessons found.' 
-      },
-      
-      // current-code.md expects: {{currentCode}} (deprecated - use retrieved-code injection instead)
-      'current-code': {
-        currentCode: '' // Legacy support only
-      },
-      
-      // original-files.md expects: {{originalFiles}} (deprecated)
-      'original-files': {
-        originalFiles: '' // Legacy support only
       },
       
       // prd-spec.md expects: {{prdSpec}}

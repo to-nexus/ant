@@ -1,5 +1,6 @@
 import { StateGraph } from "@langchain/langgraph";
-import { ArchitectGraphState, TASK_PRIORITIES, Task, TaskTimingHelper } from "./state";
+import { ArchitectGraphState, TASK_PRIORITIES, TaskTimingHelper } from "./state";
+import { CodeTask } from "../../types/task";
 import { resolve } from "./nodes/resolve";
 import { detectEnvironment } from "./nodes/detectEnvironment/index";  // ✅ NEW
 import { decompose } from "./nodes/decompose";
@@ -91,16 +92,16 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
     
     // If error task completed, remove remaining error tasks (likely auto-resolved)
     if (state.currentTask.type === 'error' && state.taskQueue) {
-      const errorCount = state.taskQueue.getAll().filter((t: Task) => t.type === 'error').length;
+      const errorCount = state.taskQueue.getAll().filter((t: CodeTask) => t.type === 'error').length;
       if (errorCount > 0) {
         console.log(`🧹 Removing ${errorCount} remaining error task(s) from queue (likely auto-resolved)`);
         state.taskQueue.removeType('error');
         
         // Check if Final Verification already exists in queue
-        const hasFinalTask = state.taskQueue.getAll().some((t: Task) => t.priority === TASK_PRIORITIES.FINAL_VERIFICATION);
+        const hasFinalTask = state.taskQueue.getAll().some((t: CodeTask) => t.priority === TASK_PRIORITIES.FINAL_VERIFICATION);
         
         if (!hasFinalTask) {
-          const finalTask: Task = {
+          const finalTask: CodeTask = {
             id: `final-verification-recheck-${Date.now()}`,
             name: 'Final Verification (Recheck)',
             type: 'feature' as const,
@@ -138,7 +139,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       const nextTask = updatedState.taskQueue.peek(); // ✅ Use peek() for correct next task
       
       // ✅ CRITICAL: Remove nextTask from queue display (it's now in progress)
-      const remainingQueue = nextTask ? allTasks.filter((t: Task) => t.id !== nextTask.id) : allTasks;
+      const remainingQueue = nextTask ? allTasks.filter((t: CodeTask) => t.id !== nextTask.id) : allTasks;
       
       console.log(`\n🔥 [checkTaskStatus] Updating Kanban → next task`);
       console.log(`   Completed: ${completedTask.name}`);
