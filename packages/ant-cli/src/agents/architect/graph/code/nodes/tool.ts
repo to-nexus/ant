@@ -876,7 +876,7 @@ Try:
 - Searching for broader concepts (e.g., "API endpoints" instead of specific method names)`;
     }
     
-    console.log(`   ✅ Retrieved ${searchResult.stats.filesLoaded} relevant files (${searchResult.stats.estimatedTokens} tokens)\n`);
+    console.log(`   Retrieved ${searchResult.stats.filesLoaded} relevant files (${searchResult.stats.estimatedTokens} tokens)\n`);
     
     // 5. Update UI: Show search complete + explored files
     const filesList = searchResult.files?.map((f: any) => `[${project}] ${f.path}`) || [];
@@ -894,7 +894,7 @@ Try:
     }
     
     // 6. Format result
-    return `✅ Retrieved ${searchResult.stats.filesLoaded} relevant file(s) in "${project}":
+    return `Retrieved ${searchResult.stats.filesLoaded} relevant file(s) in "${project}":
 
 ${searchResult.code}
 

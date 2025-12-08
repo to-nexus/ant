@@ -104,6 +104,24 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
         console.error(`      ❌ FAILED to load: ${filePath}`);
       }
     }
+    
+    // Display stack trace results
+    await chatAPI.showChatStatus('retrieved', {
+      filesCount: stackFiles.length,
+      filesList: stackFiles.slice(0, 10),
+      content: `Retrieved: ${stackFiles.length} files from stack traces`
+    });
+    
+    await chatAPI.showChatStatus('explored', {
+      filesCount: 0,
+      content: `Explored: File paths only (no git check for decompose)`
+    });
+    
+    await chatAPI.showChatStatus('grepped', {
+      filesCount: 0,
+      filesList: [],
+      content: `Grepped: All files found via vector search`
+    });
   }
   
   // Tier 2: Semantic search (NO LIMIT - paths are cheap)
@@ -147,8 +165,8 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
       filesCount: vectorDbFiles.length,
       filesList: vectorDbFiles.slice(0, 10),
       content: vectorDbFiles.length > 0
-        ? `✅ Retrieved: ${vectorDbFiles.length} NEW files from semantic search (${duplicatesCount} duplicates excluded)`
-        : `✅ Retrieved: All matching files already in stack trace results`
+        ? `Retrieved: ${vectorDbFiles.length} files from semantic search (${duplicatesCount} duplicates excluded)`
+        : `Retrieved: All matching files already in stack trace results`
     });
     
     // Check for uncommitted changes (explored)
@@ -167,8 +185,8 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
     await chatAPI.showChatStatus('explored', {
       filesCount: gitChangesCount,
       content: gitChangesCount > 0 
-        ? `✅ Explored: ${gitChangesCount} files with uncommitted changes`
-        : `✅ Explored: No uncommitted changes`
+        ? `Explored: ${gitChangesCount} files with uncommitted changes`
+        : `Explored: No uncommitted changes`
     });
     
     // Local file search fallback (grepped) for file-like keywords

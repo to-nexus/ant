@@ -164,8 +164,8 @@ export async function loadSemanticFiles(
       filesCount: vectorDbFiles.length,
       filesList: vectorDbFiles.map(f => f.path),
       content: vectorDbFiles.length > 0
-        ? `✅ Retrieved: ${vectorDbFiles.length} NEW files from semantic search (${duplicatesFromStack} duplicates from stack trace excluded)`
-        : `✅ Retrieved: All matching files already in stack trace results`
+        ? `Retrieved: ${vectorDbFiles.length} NEW files from semantic search (${duplicatesFromStack} duplicates from stack trace excluded)`
+        : `Retrieved: All matching files already in stack trace results`
     });
     console.log(`   ✅ 'retrieved' status sent successfully\n`);
   } catch (error: any) {
@@ -179,10 +179,10 @@ export async function loadSemanticFiles(
       filesCount: exploredFiles.length,
       filesList: exploredFiles,
       content: exploredFiles.length > 0 
-        ? `✅ Explored: ${exploredFiles.length} files with uncommitted changes related to semantic`
-        : `✅ Explored: No uncommitted changes related to semantic`
+        ? `Explored: ${exploredFiles.length} files with uncommitted changes related to semantic`
+        : `Explored: No uncommitted changes related to semantic`
     });
-    console.log(`   ✅ 'explored' status sent successfully\n`);
+    console.log(`   'explored' status sent successfully\n`);
   } catch (error: any) {
     console.error(`   ❌ 'explored' status FAILED:`, error.message);
   }
@@ -195,14 +195,14 @@ export async function loadSemanticFiles(
       keywords: keywords,
       filesList: greppedFiles.map(f => f.path),
       content: greppedFiles.length > 0
-        ? `✅ Grepped: ${greppedFiles.length} files found via local search related to semantic`
-        : `✅ Grepped: All files found in Vector DB (no local search needed)`
+        ? `Grepped: ${greppedFiles.length} files found via local search related to semantic`
+        : `Grepped: All files found in Vector DB (no local search needed)`
     });
-    console.log(`   ✅ 'grepped' status sent successfully\n`);
+    console.log(`   'grepped' status sent successfully\n`);
   } catch (error: any) {
     console.error(`   ❌ 'grepped' status FAILED:`, error.message);
   }
   
-  console.log(`   ✅ Semantic loader: ${semanticFiles.length} files loaded (quota was ${semanticQuota})\n`);
+  console.log(`   Semantic loader: ${semanticFiles.length} files loaded (quota was ${semanticQuota})\n`);
   return semanticFiles;
 }

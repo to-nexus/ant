@@ -331,7 +331,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
       }
     );
     
-    console.log(`   ✅ Retrieved ${codeContext.stats.filesLoaded} files for profile`);
+    console.log(`   Retrieved ${codeContext.stats.filesLoaded} files for profile`);
     
     await chatAPI.showChatStatus('retrieved', { 
       filesCount: codeContext.stats.filesLoaded,

@@ -6,9 +6,11 @@
 ## 🎯 TWO WAYS TO INTERACT
 ════════════════════════════════════════════════════════════════════════════════
 
+**⚠️ CRITICAL: `<file>`, `<edit>`, `<append>` are NOT tools! They are XML streaming tags.**
+
 ### 📝 XML STREAMING - For Content Generation (LLM → User)
 
-Use XML tags to **create** or **modify** file content:
+Use XML tags to **create** or **modify** file content (NO `<tool_use>` wrapper):
 
 ```xml
 <!-- Create NEW file -->
@@ -36,7 +38,7 @@ export function newFunction() {
 
 ### 🔧 TOOL CALLING - For Information & Commands (System → LLM)
 
-Use `<tool_use>` for **reading files**, **searching**, **executing commands**:
+Use `<tool_use>` for **reading**, **searching**, **commands** (NEVER for file creation/modification):
 
 ```xml
 <!-- Read file to get context -->
@@ -176,6 +178,8 @@ export function Button() {
 
 | Mistake | Wrong | Correct |
 |---------|-------|---------|
+| **CRITICAL: Using `<edit>` as a tool** | `<tool_use><name>edit</name>` | Use XML tag directly: `<edit path="...">` (NO tool_use wrapper) |
+| **CRITICAL: Using `<file>` as a tool** | `<tool_use><name>file</name>` or `<tool_use><name>write_file</name>` | Use XML tag directly: `<file path="...">` (NO tool_use wrapper) |
 | **CRITICAL: Modifying existing file with `<file>`** | `<file path="src/App.tsx">` when file exists | **ALWAYS** use `<edit path="src/App.tsx">` |
 | Creating new file with `<edit>` | `<edit path="src/NewComponent.tsx">` when file doesn't exist | Use `<file path="src/NewComponent.tsx">` |
 | Reading with XML tag | `<read path="...">` (no such tag) | `<tool_use><name>read_file</name>` |
