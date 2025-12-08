@@ -142,10 +142,10 @@ export async function loadStackTraceFiles(
       filesCount: exploredFiles.length,
       filesList: exploredFiles,
       content: exploredFiles.length > 0
-        ? `✅ Explored: ${exploredFiles.length} files with uncommitted changes related to stacktrace`
-        : `✅ Explored: No uncommitted changes related to stacktrace`
+        ? `Explored: ${exploredFiles.length} files with uncommitted changes related to stacktrace`
+        : `Explored: No uncommitted changes related to stacktrace`
     });
-    console.log(`   ✅ 'explored' status sent successfully\n`);
+    console.log(`   'explored' status sent successfully\n`);
   } catch (error: any) {
     console.error(`   ❌ 'explored' status FAILED:`, error.message);
   }
@@ -158,14 +158,14 @@ export async function loadStackTraceFiles(
       keywords: stackTracePaths.slice(0, stackLimit),
       filesList: greppedFiles.map(f => f.path),
       content: greppedFiles.length > 0
-        ? `✅ Grepped: ${greppedFiles.length} files found via local search related to stacktrace`
-        : `✅ Grepped: All files found in Vector DB (no local search needed)`
+        ? `Grepped: ${greppedFiles.length} files found via local search related to stacktrace`
+        : `Grepped: All files found in Vector DB (no local search needed)`
     });
-    console.log(`   ✅ 'grepped' status sent successfully\n`);
+    console.log(`   'grepped' status sent successfully\n`);
   } catch (error: any) {
     console.error(`   ❌ 'grepped' status FAILED:`, error.message);
   }
   
-  console.log(`   ✅ Stack trace loader: ${stackFiles.length} files loaded\n`);
+  console.log(`   Stack trace loader: ${stackFiles.length} files loaded\n`);
   return stackFiles;
 }

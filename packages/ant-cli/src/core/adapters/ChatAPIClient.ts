@@ -165,7 +165,7 @@ export class ChatAPIClient {
           } else if (exploredContent) {
             content = exploredContent;
           } else {
-            content = `✅ Explored: ${exploredFiles} files with uncommitted changes`;
+            content = `Explored: ${exploredFiles} files with uncommitted changes`;
           }
           break;
         case 'retrieving':
@@ -186,7 +186,7 @@ export class ChatAPIClient {
             content = retrievedContent;
           } else {
             // Default: Vector DB only
-            content = `✅ Retrieved: ${retrievedFiles} files from Vector DB`;
+            content = `Retrieved: ${retrievedFiles} files from Vector DB`;
           }
           break;
         case 'grepping':
@@ -209,9 +209,9 @@ export class ChatAPIClient {
           } else if (greppedKeywords.length > 0) {
             const keywordList = greppedKeywords.slice(0, 3).join(', ');
             const more = greppedKeywords.length > 3 ? ` (+${greppedKeywords.length - 3} more)` : '';
-            content = `✅ Grepped: ${greppedFiles} files (local search for: ${keywordList}${more})`;
+            content = `Grepped: ${greppedFiles} files (local search for: ${keywordList}${more})`;
           } else {
-            content = `✅ Grepped: ${greppedFiles} files (local keyword search)`;
+            content = `Grepped: ${greppedFiles} files (local keyword search)`;
           }
           break;
         case 'reading':
