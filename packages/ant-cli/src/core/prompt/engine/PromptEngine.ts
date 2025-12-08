@@ -388,6 +388,16 @@ export class PromptEngine {
     designDoc: string | undefined,
     projectCodeContext: any
   ): Promise<string> {
+    // ✅ Format projectCodeContext (files array → formatted string)
+    let formattedCodeContext = '';
+    if (projectCodeContext?.files && Array.isArray(projectCodeContext.files) && projectCodeContext.files.length > 0) {
+      const fileList = projectCodeContext.files.map((f: any) => {
+        return `### 📄 \`${f.path}\`\n\n\`\`\`\n${f.content}\n\`\`\`\n`;
+      }).join('\n');
+      
+      formattedCodeContext = `**Files** (${projectCodeContext.files.length} files):\n\n${fileList}`;
+    }
+    
     // ✅ Uses phases/plan/base.md (execution plan section)
     return await this.deps.promptPort.render('code/phases/plan/base', {
       isKeywordGeneration: false,
@@ -396,9 +406,9 @@ export class PromptEngine {
       directive: directive,  // ✅ Pass original directive
       taskType: task.type,
       designDoc: designDoc,
-      projectCodeContext: projectCodeContext?.code || '',
+      projectCodeContext: formattedCodeContext,  // ✅ Formatted string (not .code property)
       hasDesignDoc: !!designDoc,
-      hasProjectCodeContext: !!projectCodeContext?.code
+      hasProjectCodeContext: !!formattedCodeContext
     });
   }
 }

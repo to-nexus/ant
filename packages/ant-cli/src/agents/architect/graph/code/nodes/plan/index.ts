@@ -143,9 +143,9 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     const git = state.deps?.git;
     
     if (retriever && vectorDB && git) {
-      console.log(`🔍 [Plan] Two-tier search...`);
+      console.log(`🔍 [Plan] Two-tier search (stackTrace → semantic)...`);
       
-      // Load stack trace files
+      // Tier 1: Stack trace files (priority)
       const stackFiles = await loadStackTraceFiles(
         taskKeywords.stackTrace,
         state,
@@ -155,17 +155,19 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         extractFilesFromCode
       );
       
-      // Load semantic files
+      // Tier 2: Semantic files (context, dynamic quota)
       const semanticFiles = await loadSemanticFiles(
         taskKeywords.keywords,
         state,
         retriever,
         vectorDB,
         git,
-        extractFilesFromCode
+        extractFilesFromCode,
+        stackFiles.map(f => f.path)  // ✅ Exclude already loaded - avoid duplicate content
       );
       
-      // Merge & Deduplicate
+      // Merge & Deduplicate (simple)
+      // Stack trace files come first (priority), then semantic
       const allFiles = [...stackFiles, ...semanticFiles];
       const uniqueFiles = Array.from(
         new Map(allFiles.map(f => [f.path, f])).values()

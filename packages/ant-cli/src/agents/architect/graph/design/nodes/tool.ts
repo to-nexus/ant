@@ -66,7 +66,6 @@ export async function tool(
   // - First file: LLM thinking provides natural delay → UI has time → animation works ✅
   // - Subsequent files: No thinking (disabled) → tool executes immediately → card rendered as completed ❌
   // - Solution: Intentional 150ms delay for UI card creation (NOT a hack, it's for UX consistency)
-  // Note: write_file removed - file creation handled by XML streaming
   if (name === 'delete_file') {
     await new Promise(resolve => setTimeout(resolve, 150));
     console.log('   ⏱️  UI preparation time provided (150ms) for smooth card animation');

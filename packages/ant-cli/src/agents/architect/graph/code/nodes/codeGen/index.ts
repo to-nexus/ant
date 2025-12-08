@@ -123,6 +123,13 @@ export async function codeGen(
   );
   
   const existingFiles = new Set(state.files?.map((f: any) => f.path) || []);
+  
+  // 🔍 DEBUG: Log existing files for verification
+  console.log(`🔍 [CodeGen] existingFiles Set initialized with ${existingFiles.size} files`);
+  if (existingFiles.size > 0 && existingFiles.size <= 10) {
+    console.log(`   Files: ${Array.from(existingFiles).join(', ')}`);
+  }
+  
   const orchestrator = new StreamOrchestrator({
     parser,
     renderStrategy,

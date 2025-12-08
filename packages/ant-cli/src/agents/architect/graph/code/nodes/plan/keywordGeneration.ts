@@ -87,31 +87,61 @@ export async function generateTaskKeywords(
  * Display keywords in Chat UI
  */
 export async function displayKeywords(taskKeywords: TaskKeywords): Promise<void> {
+  console.log(`\n🔍 [displayKeywords] Starting Chat UI update...`);
+  console.log(`   Stack trace files: ${taskKeywords.stackTrace.length}`);
+  console.log(`   Semantic keywords: ${taskKeywords.keywords.length}`);
+  
   const chatAPI = getChatAPIClient();
   
   if (taskKeywords.stackTrace.length === 0 && taskKeywords.keywords.length === 0) {
+    console.log(`   ⊖ No keywords to display, skipping Chat UI update`);
     return;
   }
   
-  let keywordDisplay = '**Analyzed:** 🔑 Search Keywords Generated\n\n';
+  const stackTraceCount = taskKeywords.stackTrace.length;
+  const semanticCount = taskKeywords.keywords.length;
+  const totalCount = stackTraceCount + semanticCount;
   
-  if (taskKeywords.stackTrace.length > 0) {
-    keywordDisplay += `📍 **Stack Trace Files** (${taskKeywords.stackTrace.length}):\n`;
-    keywordDisplay += taskKeywords.stackTrace.map(f => `  • ${f}`).join('\n');
-    keywordDisplay += '\n\n';
+  // Build summary for main display
+  const parts: string[] = [];
+  if (stackTraceCount > 0) {
+    parts.push(`${stackTraceCount} from stack traces`);
   }
-  
-  if (taskKeywords.keywords.length > 0) {
-    keywordDisplay += `🔍 **Semantic Keywords** (${taskKeywords.keywords.length}):\n`;
-    keywordDisplay += taskKeywords.keywords.map(k => `  • ${k}`).join('\n');
+  if (semanticCount > 0) {
+    parts.push(`${semanticCount} semantic keywords`);
   }
+  const summary = parts.join(', ');
   
-  await chatAPI.showChatStatus('analyzed', {
-    content: keywordDisplay,
-    keywordCount: taskKeywords.stackTrace.length + taskKeywords.keywords.length,
-    stackTraceCount: taskKeywords.stackTrace.length,
-    semanticCount: taskKeywords.keywords.length
+  // Build file list with type tags for expandable view
+  const filesList: string[] = [];
+  
+  // Add stack trace files with [stacktrace] tag
+  taskKeywords.stackTrace.forEach(file => {
+    filesList.push(`[stacktrace] ${file}`);
   });
+  
+  // Add semantic keywords with [semantic] tag
+  taskKeywords.keywords.forEach(keyword => {
+    filesList.push(`[semantic] ${keyword}`);
+  });
+  
+  console.log(`   📤 Sending 'analyzed' status to Chat UI...`);
+  console.log(`      Summary: "${summary}"`);
+  
+  try {
+    await chatAPI.showChatStatus('analyzed', {
+      content: `Analyzed: ${summary}`,
+      keywordCount: totalCount,
+      stackTraceCount,
+      semanticCount,
+      filesList  // ✅ Expandable list
+    });
+    console.log(`   ✅ Chat UI update successful (analyzed)\n`);
+  } catch (error: any) {
+    console.error(`   ❌ Chat UI update FAILED:`, error.message);
+    console.error(`      Stack:`, error.stack);
+    throw error;
+  }
 }
 
 /**

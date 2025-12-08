@@ -9,25 +9,25 @@
 
 ### Pattern
 ```
-Turn 1: [tool_call: write_file("App.tsx")]     → Wait for result
-Turn 2: [tool_call: write_file("index.tsx")]   → Wait for result
-Turn 3: [tool_call: write_file("types.ts")]    → Wait for result
+Turn 1: [tool_call: read_file("App.tsx")]      → Wait for result
+Turn 2: [tool_call: search_code("Button")]     → Wait for result
+Turn 3: [tool_call: run_command("npm test")]   → Wait for result
 ```
 
 ### ❌ WRONG
 ```
 // All in one turn - ONLY FIRST will execute!
-[tool_call: write_file("App.tsx")]
-[tool_call: write_file("index.tsx")]    ← DROPPED
-[tool_call: write_file("types.ts")]     ← DROPPED
+[tool_call: read_file("App.tsx")]
+[tool_call: read_file("index.tsx")]     ← DROPPED
+[tool_call: read_file("types.ts")]      ← DROPPED
 ```
 
 ### ✅ CORRECT
 ```
-Turn 1: Create first file
-Turn 2: Create second file
-Turn 3: Create third file
+Turn 1: Read first file
+Turn 2: Read second file
+Turn 3: Read third file
 ```
 
-**Rule**: If you need 10 files, that's 10 separate turns. No exceptions.
+**Rule**: One tool call per turn. If you need 10 operations, that's 10 separate turns. No exceptions.
 

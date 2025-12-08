@@ -396,6 +396,10 @@ export class CommonRenderStrategy implements IRenderStrategy {
     
     // Determine final action type
     const isExisting = registry.isExisting(filePath);
+    
+    // 🔍 DEBUG: Log file existence check
+    console.log(`🔍 [Render] File existence check: ${filePath} → isExisting=${isExisting}`);
+    
     let finalActionType: 'create' | 'append' | 'edit';
     
     if (actionType === 'append') {
