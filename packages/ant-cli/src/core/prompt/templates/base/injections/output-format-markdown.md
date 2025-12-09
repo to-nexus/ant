@@ -1,12 +1,10 @@
-## 📝 Markdown File Output Format (Real-time Rendering)
+## 📝 File Output Format (XML Streaming)
 
-**IMPORTANT: Special handling for Markdown (`.md`) files**
+**CRITICAL: Use ONLY XML tags for file operations. NO tool calls!**
 
-### For Markdown Files ONLY:
+### File Operations:
 
-When creating or modifying `.md` files, follow this **two-step process** for real-time preview:
-
-#### Step 1: Stream content with `<file>` tag (for live preview)
+#### 1. Create New File (`<file>`)
 
 ```xml
 <file path="path/to/document.md">
@@ -20,50 +18,52 @@ More content...
 </file>
 ```
 
-- This enables **character-by-character streaming** in the UI
-- Users see the document being written in real-time
-- Content is buffered for saving
+- Use for **new files** that don't exist yet
+- Content is streamed in real-time to the UI
+- File is written to disk immediately upon completion
 
-#### Step 2: Call `write_file()` tool with empty content (to save from buffer)
+#### 2. Append to Existing File (`<append>`)
 
-```json
-{
-  "tool": "write_file",
-  "arguments": {
-    "path": "path/to/document.md",
-    "content": ""
-  }
-}
+```xml
+<append path="outputs/design/system-design.md">
+
+## New Section
+Additional content to add at the end...
+</append>
 ```
 
-- Empty `content` signals: "use buffered content"
-- The system reads from buffer and saves to disk
-- This completes the file operation
+- Use to **add content at the end** of an existing file
+- Preserves all existing content
+- New content is appended seamlessly
+
+#### 3. Edit Existing File (`<edit>`)
+
+```xml
+<edit path="src/App.tsx">
+<search>
+const oldFunction = () => {
+  console.log('old');
+};
+</search>
+<replace>
+const newFunction = () => {
+  console.log('new');
+};
+</replace>
+</edit>
+```
+
+- Use to **modify specific parts** of an existing file
+- `<search>` must **exactly match** the content to replace (including whitespace)
+- `<replace>` contains the new content
 
 ---
 
-### For Non-Markdown Files (`.ts`, `.tsx`, `.json`, etc.):
+### ⚠️ CRITICAL RULES:
 
-**Directly use `write_file()` tool** (no `<file>` tags):
-
-```json
-{
-  "tool": "write_file",
-  "arguments": {
-    "path": "src/App.tsx",
-    "content": "import React from 'react';\n\nexport function App() {\n  return <div>Hello</div>;\n}"
-  }
-}
-```
-
----
-
-### Summary:
-
-| File Type | Method | Live Preview? |
-|-----------|--------|---------------|
-| `.md` files | `<file>` tag + `write_file(content="")` | ✅ Yes (streaming) |
-| Other files | `write_file(content="...")` directly | ❌ No (instant) |
-
-**Why?** Markdown documents benefit from real-time preview for better UX. Code files are displayed instantly when complete.
+1. **NEVER use `<file>` on existing files** - it will overwrite everything!
+2. **NEVER call tools** like `write_file()` - they are not available
+3. **ALWAYS use `<append>`** for adding to existing files
+4. **ALWAYS use `<edit>`** for modifying existing files
+5. **ALL file operations happen via XML tags ONLY**
 

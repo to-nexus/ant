@@ -3,7 +3,6 @@ import { LLMClient, ChunkPort, SessionPort, GitPort, CodebaseAnalyzerPort, Memor
 import { PromptEngine } from "../../../../core/prompt/engine";
 import { ProjectContext } from "../../types";
 import { DesignTask, TaskQueue } from "../../types/task";
-import { StreamBufferManager } from '../../../../core/streaming/buffer/StreamBufferManager';
 
 /**
  * Design Task State
@@ -98,9 +97,6 @@ export interface DesignGraphState extends TaskArtifacts {
   
   // ✅ For tracking and resume
   _httpJobId?: string;  // Job ID for real-time UI updates and job resumption
-  
-  // ✅ NEW: Buffer Manager (for real-time file streaming with <file> tags)
-  _bufferManager?: StreamBufferManager;
 
   // ✅ Design domain detection (game vs service)
   designDomain?: 'game' | 'service';

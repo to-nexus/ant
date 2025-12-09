@@ -3,8 +3,7 @@ import { DesignGraphState } from "./state";
 import { resolve } from "./nodes/resolve";
 import { decompose } from "./nodes/decompose/index";
 import { plan } from "./nodes/plan";
-import { docGen } from "./nodes/docGen";  // ✅ XML streaming to buffer
-import { writeFiles } from "./nodes/writeFiles";  // ✅ Save buffer to disk
+import { docGen } from "./nodes/docGen";  // ✅ XML streaming + immediate file writes
 import { learn } from "./nodes/learn";
 import { detectEnvironment } from "./nodes/detectEnvironment";
 
@@ -110,7 +109,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       completedTasksDetails,
       currentTask: undefined,
       conversationHistory: [],  // ✅ CRITICAL: Reset conversation history between tasks
-      _bufferManager: undefined  // ✅ CRITICAL: Clear buffer manager to force fresh start for next task
+      files: [],  // ✅ CRITICAL: Reset files for next task (each task generates fresh)
     };
   }
   
@@ -172,22 +171,19 @@ export function buildDesignGraph() {
   graph.addNode("detectEnvironment" as const, detectEnvironment as any);
   graph.addNode("decompose" as const, decompose as any);
   graph.addNode("plan" as const, plan as any);
-  graph.addNode("docGen" as const, docGen as any);  // ✅ XML streaming (no tool calling!)
-  graph.addNode("writeFiles" as const, writeFiles as any);  // ✅ Save buffer to disk
+  graph.addNode("docGen" as const, docGen as any);  // ✅ XML streaming + immediate file writes (like code job)
   graph.addNode("checkTaskStatus" as const, checkTaskStatus as any);
   graph.addNode("learn" as const, learn as any);
 
-  // ✅ Simplified flow: resolve → detectDomain → decompose → [plan → docGen → writeFiles → check] → learn
-  // Design job uses PURE XML streaming (<file>, <append>, <edit> tags)
-  // docGen: XML streaming to buffer
-  // writeFiles: Save buffer to actual files
+  // ✅ Unified flow: resolve → detectEnvironment → decompose → [plan → docGen → check] → learn
+  // Design job now writes files immediately like code job (no separate writeFiles node)
+  // docGen: XML streaming + immediate writes to disk (with LAST_SECTION handling)
   (graph as any).addEdge("__start__", "resolve");
   (graph as any).addEdge("resolve", "detectEnvironment");
   (graph as any).addEdge("detectEnvironment", "decompose");
   (graph as any).addEdge("decompose", "plan");
   (graph as any).addEdge("plan", "docGen");
-  (graph as any).addEdge("docGen", "writeFiles");
-  (graph as any).addEdge("writeFiles", "checkTaskStatus");
+  (graph as any).addEdge("docGen", "checkTaskStatus");  // ✅ Direct connection (no writeFiles)
   
   // ✅ Conditional routing: more tasks → plan, all done → learn
   graph.addConditionalEdges(

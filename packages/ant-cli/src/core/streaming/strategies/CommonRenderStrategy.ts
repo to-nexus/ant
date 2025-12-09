@@ -86,9 +86,10 @@ export class CommonRenderStrategy implements IRenderStrategy {
   private activeFiles: Map<string, FileStreamInfo> = new Map();
   private editOperations: Map<string, EditOperation> = new Map();
   private lineBuffers: Map<string, string> = new Map();  // ✅ Line-based buffering for smooth streaming
-  private bufferManager?: import('../buffer/StreamBufferManager').StreamBufferManager;  // ✅ Disk buffer for interruption safety
   private gitPort?: GitPort;  // ✅ For reading/writing files during edit operations
   private writeImmediately: boolean;  // ✅ Whether to write files immediately or defer to writeFiles node
+  private jobType?: 'code' | 'design';  // ✅ Job type for design-specific handling (LAST_SECTION)
+  private featurePath?: string;  // ✅ For design job: absolute path base (to resolve outputs/design/...)
   
   // ✅ Thinking timing
   private thinkingStartTime?: number;
@@ -98,16 +99,18 @@ export class CommonRenderStrategy implements IRenderStrategy {
   
   constructor(
     chatAPI: ChatAPIClient,
-    bufferManager?: import('../buffer/StreamBufferManager').StreamBufferManager,
     userLanguage?: UserLanguage,
     gitPort?: GitPort,
-    writeImmediately: boolean = false  // ✅ Default: false (for backward compatibility with design job)
+    writeImmediately: boolean = false,
+    jobType?: 'code' | 'design',  // ✅ Job type for design-specific handling (LAST_SECTION)
+    featurePath?: string  // ✅ For design job: feature base path
   ) {
     this.chatAPI = chatAPI;
-    this.bufferManager = bufferManager;
     this.tagTransformer = new SpecialTagTransformer(userLanguage || 'en');
     this.gitPort = gitPort;
     this.writeImmediately = writeImmediately;
+    this.jobType = jobType;
+    this.featurePath = featurePath;
   }
   
   async render(action: ParsedAction, registry: FileRegistry): Promise<void> {
@@ -369,12 +372,6 @@ export class CommonRenderStrategy implements IRenderStrategy {
         // Reset everything
         registry.resetFile(filePath);
         
-        if (this.bufferManager) {
-          const isExisting = registry.isExisting(filePath);
-          const finalActionType = isExisting ? 'edit' : 'create';
-          this.bufferManager.resetFile(filePath, finalActionType);
-        }
-        
         this.activeFiles.delete(filePath);
         this.lineBuffers.delete(filePath);
         this.editOperations.delete(filePath);
@@ -448,11 +445,6 @@ Using <file> on existing files will OVERWRITE the entire file, which is almost n
     // ✅ Initialize line buffer for streaming
     this.lineBuffers.set(filePath, '');
     
-    // ✅ Start disk buffer tracking for interruption safety
-    if (this.bufferManager) {
-      this.bufferManager.startFile(filePath, finalActionType);
-    }
-    
     // Send UI notification
     if (finalActionType === 'create' || finalActionType === 'append') {
       // ✅ CRITICAL: Start with 'creating' phase to initialize file card
@@ -490,27 +482,14 @@ Using <file> on existing files will OVERWRITE the entire file, which is almost n
     // Update local buffer
     fileInfo.contentBuffer += content;
     
-    // ✅ Update disk buffer for interruption safety
-    if (this.bufferManager) {
-      this.bufferManager.appendContent(filePath, content);
-    }
-    
     // Handle edit operations (search/replace sections)
     if (fileInfo.actionType === 'edit' && metadata?.section) {
       const editOp = this.editOperations.get(filePath);
       if (editOp) {
         if (metadata.section === 'search') {
           editOp.searchContent += content;
-          // ✅ Update buffer manager
-          if (this.bufferManager) {
-            this.bufferManager.setSearchContent(filePath, editOp.searchContent);
-          }
         } else if (metadata.section === 'replace') {
           editOp.replaceContent += content;
-          // ✅ Update buffer manager
-          if (this.bufferManager) {
-            this.bufferManager.setReplaceContent(filePath, editOp.replaceContent);
-          }
         }
       }
       return;  // Don't stream search/replace sections incrementally
@@ -565,11 +544,58 @@ Using <file> on existing files will OVERWRITE the entire file, which is almost n
       }
       
       if (fileInfo.actionType === 'create' || fileInfo.actionType === 'append') {
-        // ✅ CRITICAL: Write file to disk immediately (code job only)
-        // Design job uses separate writeFiles node with absolute path resolution
+        // ✅ CRITICAL: Write file to disk immediately (when writeImmediately=true)
         if (this.writeImmediately && this.gitPort && fileInfo.contentBuffer) {
-          await this.gitPort.writeFile(filePath, fileInfo.contentBuffer);
-          console.log(`✅ [${fileInfo.actionType === 'create' ? 'Create' : 'Append'}] Successfully wrote ${filePath} to disk`);
+          // ✅ Design job: Convert relative path to absolute path
+          const path = await import('path');
+          let absolutePath = filePath;
+          if (this.jobType === 'design' && this.featurePath && !path.isAbsolute(filePath)) {
+            absolutePath = path.join(this.featurePath, filePath);
+            console.log(`🔄 [Design] Resolved path: ${filePath} → ${absolutePath}`);
+          }
+          
+          // ✅ Design job only: Remove LAST_SECTION metadata before append
+          if (fileInfo.actionType === 'append' && this.jobType === 'design') {
+            try {
+              const fileExists = await this.gitPort.fileExists(absolutePath);
+              if (fileExists) {
+                const existingContent = await this.gitPort.readFile(absolutePath) || '';
+                
+                // Find and remove LAST_SECTION comment (last non-empty line)
+                const lines = existingContent.split('\n');
+                let lastLineIndex = lines.length - 1;
+                while (lastLineIndex >= 0 && lines[lastLineIndex].trim() === '') {
+                  lastLineIndex--;
+                }
+                
+                let cleanedExistingContent = existingContent;
+                if (lastLineIndex >= 0) {
+                  const lastLine = lines[lastLineIndex].trim();
+                  if (lastLine.match(/^<!-- LAST_SECTION: \d+ -->$/)) {
+                    lines.splice(lastLineIndex, 1);
+                    cleanedExistingContent = lines.join('\n');
+                    console.log(`   🧹 Removed LAST_SECTION metadata from line ${lastLineIndex + 1}`);
+                  }
+                }
+                
+                // Merge: cleaned existing + new content
+                const mergedContent = cleanedExistingContent + '\n' + fileInfo.contentBuffer;
+                await this.gitPort.writeFile(absolutePath, mergedContent);
+                console.log(`✅ [Append] Successfully appended to ${absolutePath} (total: ${mergedContent.length} chars)`);
+              } else {
+                // File doesn't exist - create new
+                await this.gitPort.writeFile(absolutePath, fileInfo.contentBuffer);
+                console.log(`✅ [Append] Created new file ${absolutePath}`);
+              }
+            } catch (error) {
+              console.error(`❌ [Append] Failed to append to ${absolutePath}:`, error);
+              throw error;
+            }
+          } else {
+            // Create or non-design append - simple write
+            await this.gitPort.writeFile(absolutePath, fileInfo.contentBuffer);
+            console.log(`✅ [${fileInfo.actionType === 'create' ? 'Create' : 'Append'}] Successfully wrote ${absolutePath} to disk`);
+          }
         }
         // ✅ Both create and append complete as file creation
         await this.chatAPI.completeFileCreation(filePath, fileInfo.contentBuffer);
@@ -621,34 +647,69 @@ Using <file> on existing files will OVERWRITE the entire file, which is almost n
       this.activeFiles.delete(filePath);
       this.editOperations.delete(filePath);
       this.lineBuffers.delete(filePath);  // ✅ Cleanup line buffer
-      
-      // ✅ CRITICAL: Mark as completed but DON'T cleanup buffer yet
-      // Buffer cleanup happens in writeFiles node after successful disk write
-      if (this.bufferManager) {
-        this.bufferManager.completeFile(filePath, false);  // cleanup=false!
-      }
     }
   }
   
   async finalize(hasToolCalls: boolean = false): Promise<void> {
     console.log('[CommonRenderStrategy] 🏁 Finalizing render strategy...');
     
-    // ✅ Preserve buffers on finalization (in case of interruption)
-    if (this.bufferManager) {
-      this.bufferManager.preserveOnInterruption();
-    }
-    
     // Force complete any unfinished files
     for (const [filePath, fileInfo] of this.activeFiles) {
       console.warn(`⚠️  [Render] Force completing ${fileInfo.actionType}: ${filePath}`);
       
       try {
-        if (fileInfo.actionType === 'create') {
-          // ✅ CRITICAL: Write file to disk immediately (code job only)
-          // Design job uses separate writeFiles node with absolute path resolution
+        if (fileInfo.actionType === 'create' || fileInfo.actionType === 'append') {
+          // ✅ CRITICAL: Write file to disk immediately (when writeImmediately=true)
           if (this.writeImmediately && this.gitPort && fileInfo.contentBuffer) {
-            await this.gitPort.writeFile(filePath, fileInfo.contentBuffer);
-            console.log(`✅ [Create] Successfully wrote ${filePath} to disk`);
+            // ✅ Design job: Convert relative path to absolute path
+            const path = await import('path');
+            let absolutePath = filePath;
+            if (this.jobType === 'design' && this.featurePath && !path.isAbsolute(filePath)) {
+              absolutePath = path.join(this.featurePath, filePath);
+              console.log(`🔄 [Finalize/Design] Resolved path: ${filePath} → ${absolutePath}`);
+            }
+            
+            // ✅ Design job only: Remove LAST_SECTION metadata before append
+            if (fileInfo.actionType === 'append' && this.jobType === 'design') {
+              try {
+                const fileExists = await this.gitPort.fileExists(absolutePath);
+                if (fileExists) {
+                  const existingContent = await this.gitPort.readFile(absolutePath) || '';
+                  
+                  // Find and remove LAST_SECTION comment (last non-empty line)
+                  const lines = existingContent.split('\n');
+                  let lastLineIndex = lines.length - 1;
+                  while (lastLineIndex >= 0 && lines[lastLineIndex].trim() === '') {
+                    lastLineIndex--;
+                  }
+                  
+                  let cleanedExistingContent = existingContent;
+                  if (lastLineIndex >= 0) {
+                    const lastLine = lines[lastLineIndex].trim();
+                    if (lastLine.match(/^<!-- LAST_SECTION: \d+ -->$/)) {
+                      lines.splice(lastLineIndex, 1);
+                      cleanedExistingContent = lines.join('\n');
+                      console.log(`   🧹 [Finalize] Removed LAST_SECTION metadata from line ${lastLineIndex + 1}`);
+                    }
+                  }
+                  
+                  // Merge: cleaned existing + new content
+                  const mergedContent = cleanedExistingContent + '\n' + fileInfo.contentBuffer;
+                  await this.gitPort.writeFile(absolutePath, mergedContent);
+                  console.log(`✅ [Finalize/Append] Successfully appended to ${absolutePath}`);
+                } else {
+                  // File doesn't exist - create new
+                  await this.gitPort.writeFile(absolutePath, fileInfo.contentBuffer);
+                  console.log(`✅ [Finalize/Append] Created new file ${absolutePath}`);
+                }
+              } catch (error) {
+                console.error(`❌ [Finalize/Append] Failed to append to ${absolutePath}:`, error);
+              }
+            } else {
+              // Create or non-design append - simple write
+              await this.gitPort.writeFile(absolutePath, fileInfo.contentBuffer);
+              console.log(`✅ [Finalize/${fileInfo.actionType === 'create' ? 'Create' : 'Append'}] Successfully wrote ${absolutePath} to disk`);
+            }
           }
           await this.chatAPI.completeFileCreation(filePath, fileInfo.contentBuffer);
         } else if (fileInfo.actionType === 'edit') {
@@ -656,7 +717,14 @@ Using <file> on existing files will OVERWRITE the entire file, which is almost n
           if (editOp && this.gitPort) {
             // ✅ CRITICAL: Actually apply the edit!
             try {
-              const originalContent = await this.gitPort.readFile(filePath);
+              // ✅ Design job: Convert relative path to absolute path
+              const path = await import('path');
+              let absolutePath = filePath;
+              if (this.jobType === 'design' && this.featurePath && !path.isAbsolute(filePath)) {
+                absolutePath = path.join(this.featurePath, filePath);
+              }
+              
+              const originalContent = await this.gitPort.readFile(absolutePath);
               if (originalContent) {
                 const modifiedContent = applySearchReplace(
                   originalContent,
@@ -664,7 +732,7 @@ Using <file> on existing files will OVERWRITE the entire file, which is almost n
                   editOp.replaceContent,
                   filePath
                 );
-                await this.gitPort.writeFile(filePath, modifiedContent);
+                await this.gitPort.writeFile(absolutePath, modifiedContent);
               }
             } catch (editError) {
               console.error(`[Edit] Failed to apply edit to ${filePath}:`, editError);

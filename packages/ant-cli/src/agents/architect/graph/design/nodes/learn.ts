@@ -45,10 +45,47 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     );
   }
   
-  // ✅ Validate files were generated
-  if (!state.files || state.files.length === 0) {
-    throw new Error("No files generated - execute and writeFiles nodes must run before learn");
+  // ✅ Load files from disk (state.files is reset between tasks)
+  // Read actual design files from outputs/design/ directory
+  const loadedFiles: Array<{ path: string; content: string; actionType: 'create' | 'append' | 'edit' }> = [];
+  
+  if (state.deps?.git && state.context.featurePath) {
+    const path = await import('path');
+    const fs = await import('fs/promises');
+    const designDirPath = path.join(state.context.featurePath, 'outputs/design');
+    
+    try {
+      const dirExists = await state.deps.git.fileExists(designDirPath);
+      if (dirExists) {
+        const files = await fs.readdir(designDirPath);
+        const mdFiles = files.filter(f => f.endsWith('.md'));
+        
+        console.log(`📂 [Learn] Loading ${mdFiles.length} design document(s) from disk...`);
+        
+        for (const filename of mdFiles) {
+          const filePath = path.join(designDirPath, filename);
+          const content = await fs.readFile(filePath, 'utf-8');
+          
+          loadedFiles.push({
+            path: `outputs/design/${filename}`,
+            content,
+            actionType: 'create'
+          });
+          
+          console.log(`   ✅ Loaded: ${filename} (${content.length} chars)`);
+        }
+      }
+    } catch (error) {
+      console.warn(`⚠️  [Learn] Failed to load design files:`, error);
+    }
   }
+  
+  if (loadedFiles.length === 0) {
+    throw new Error("No design files found in outputs/design/ - docGen nodes must have run");
+  }
+  
+  // ✅ Update state.files for downstream processing (lessons extraction, session save, etc.)
+  state.files = loadedFiles;
   
   // ✅ Clean up metadata comment from final output
   // This is the last node, so remove the LAST_SECTION comment
