@@ -41,40 +41,41 @@ It helps you keep System Design documents at the **correct abstraction level** f
 - Do **not** let all business logic live in the Application layer.
 - Define explicit **Domain services / aggregates / policies** that own:
   - Normalization rules (e.g., "how heterogeneous external data becomes a unified model").
-  - Classification rules (e.g., "how categories/tags are derived from raw data").
-  - Calculation rules (e.g., "how statistics, trends, or KPIs are computed from events/logs").
-  - Aggregation policies across providers (e.g., precedence rules when multiple sources disagree, tie-breaking strategies).
-  - Uniqueness and identity rules (e.g., how canonical IDs are derived, how duplicates are detected and resolved).
-  - Consistency constraints (e.g., "timestamps per user/session are monotonic", "article IDs are stable across refreshes").
+  - Classification rules (e.g., "how categories/tags are derived and kept consistent across providers and time").
+  - Calculation rules (e.g., "how statistics, trends, or KPIs are computed from events/logs and over which time windows").
+  - Aggregation policies across providers (e.g., precedence rules when multiple sources disagree, deduplication and merge strategies).
+  - Uniqueness and identity rules (e.g., how canonical IDs are derived, how duplicates are detected and resolved, how idempotency of domain operations is defined).
+  - Consistency constraints (e.g., "timestamps per user/session are monotonic", "article IDs remain stable across re-ingestion").
 - Describe Domain contracts in a **language-agnostic** way:
   - **Name** (e.g., `NewsAggregationService`, `StatisticsPolicy`).
   - **Role** (1 sentence).
   - **Operations** (name + input concepts + output concepts).
-  - **Rules / invariants** (e.g., "no duplicate IDs", "timestamps are monotonic per user").
+  - **Rules / invariants** (e.g., "no duplicate IDs", "no stale data beyond configured freshness window").
 - Application layer should depend on these Domain contracts, not inline ad-hoc logic per screen.
 
 ### 3.1 Service Domain Invariants & Policies (Define Them Explicitly)
 - System Design for service systems MUST explicitly name the **domain-level policies** (values come from PRD; System Design defines their existence and ownership):
-  - **Data freshness**: how "fresh enough" is defined per data type (acceptable staleness windows, when cached data may be reused vs must be refreshed).
-  - **Uniqueness**: how duplicates across providers or sources are detected and resolved (merge vs pick-one vs drop).
-  - **Fallbacks**: when required attributes (category, tags, segments) are missing or ambiguous, how defaults/fallbacks are chosen.
-  - **Canonicalization**: how canonical representations (IDs, slugs, normalized titles) are derived and kept stable over time.
-  - **Event semantics**: what counts as a "view", "click", "conversion", "active user", etc. for statistics and reporting.
+  - **Data freshness**: how "fresh enough" is defined per data type (use conceptual descriptions like "bounded history" or "sliding window", avoid hard-coded numbers unless PRD requires them).
+  - **Uniqueness & de-duplication**: how duplicates across providers or sources are detected (e.g., by URL, canonicalized title, content hash) and what to do when conflicts occur (merge, prefer primary source, drop, mark as conflicting).
+  - **Sorting & ranking**: which primary and secondary sort keys are used for lists (e.g., recency vs relevance) and how ties are broken; express this as policy, not concrete algorithm or query.
+  - **Fallbacks**: when required attributes (category, tags, segments) are missing or ambiguous, how defaults/fallbacks are chosen and which boundary applies them.
+  - **Canonicalization**: how canonical representations (IDs, slugs, normalized titles) are derived and updated over time, and which component owns this responsibility.
+  - **Event semantics**: what counts as a "view", "click", "conversion", "bookmark", "notification", etc. for statistics and reporting; list the key domain events and which boundary emits/consumes each.
 - These invariants and policies live in Domain; Application and Infrastructure must not silently override them with ad-hoc rules per feature or screen.
 
 ### 4. Application Layer Responsibilities (Service)
 - Focus on **orchestration, consistency boundaries, and state ownership**, not on concrete framework APIs:
   - Describe use-case flows: "On search command, Application layer invokes SearchService, normalizes results, updates SearchState, and notifies Presentation."
-  - Describe state ownership: "Application layer owns SearchState, BookmarkState, StatisticsState as separate aggregates or stores."
-  - Describe persistence strategy at contract level: "Application layer persists state using `StorageAdapter`."
-  - Clarify **consistency and transaction boundaries**: which operations must be all-or-nothing vs eventually consistent (per PRD).
-  - Clarify ownership of **aggregation across providers**: Application orchestrates multi-provider calls; Domain decides how results are interpreted/merged.
-  - Clarify ownership of **caching policies**: Application decides when to reuse vs invalidate cached domain read models.
-  - If applicable, clarify whether **read models and write models** are separated (e.g., separate query/read side vs command/write side).
+  - Describe state ownership: "Application layer owns article feed, bookmark collection, and analytics aggregates as separate read models/aggregates," rather than naming specific implementation types like `NewsState` or `StatsSlice`.
+  - Describe persistence strategy at contract level: "Application layer persists state using `StorageAdapter` and `AnalyticsRepository` ports; concrete storage technologies are hidden behind adapters."
+  - Clarify **consistency and transaction boundaries**: which operations must be all-or-nothing vs eventually consistent (per PRD), and which boundary coordinates multi-step workflows.
+  - Clarify ownership of **aggregation across providers**: Application orchestrates multi-provider calls and delegates interpretation/merging to Domain policies.
+  - Clarify ownership of **caching policies**: Application decides when to reuse vs invalidate cached domain read models, and which signals (time, explicit invalidation events) drive cache refresh.
+  - If applicable, clarify whether **read models and write models** are separated (e.g., separate query/read side vs command/write side) and how they are synchronized conceptually (no implementation-level replication logic).
 - Avoid:
-  - Mentioning specific libraries or hooks (`useState`, `useEffect`, `Zustand store`, etc.).
-  - Describing mount/unmount timing or lifecycle events ("on component mount, read localStorage…").
-  - Describing concrete internal state shapes that never cross layer boundaries.
+  - Mentioning specific libraries or hooks (`useState`, `useEffect`, `Zustand store`, etc.) or using their names as state model names.
+  - Describing mount/unmount timing or view lifecycle mechanics ("on component mount, call X API", "on unmount, cancel subscription").
+  - Describing concrete internal state shapes that never cross layer boundaries (e.g., exact fields of in-memory caches, React component state objects).
 
 ### 5. Infrastructure Layer: Contracts & Failure Modes
 - For each major external dependency (APIs, storage, queues), define:
