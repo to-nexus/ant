@@ -12,7 +12,6 @@
 import { GitPort, MemoryPort } from "../ports";
 import { CodeContext, RetrieveOptions, BatchRetrieveOptions, BatchResult } from "./types";
 import { UnifiedSearchStrategy, LessonResult, DocumentResult } from "./strategies/UnifiedSearchStrategy";
-import { KeywordSearchStrategy } from "./strategies/KeywordSearchStrategy";
 import { ImportGraphBooster } from "./boosters/ImportGraphBooster";
 import { FileLoader } from "./loaders/FileLoader";
 import { ImportGraphAnalyzer } from "./ImportGraphAnalyzer";
@@ -28,7 +27,6 @@ export class CodebaseRetriever {
   
   // Strategy instances
   private unifiedStrategy = new UnifiedSearchStrategy();
-  private keywordStrategy = new KeywordSearchStrategy();  // Fallback
   private gitBooster = new ImportGraphBooster();
   private fileLoader = new FileLoader();
 
@@ -82,7 +80,7 @@ export class CodebaseRetriever {
       await this.initializeImportGraph(actualWorkingDir);
     }
 
-    let codeFiles;
+    let codeFiles: import('./types').FileWithSource[];
     let lessons: LessonResult[] = [];
     let documents: DocumentResult[] = [];
 
@@ -112,46 +110,21 @@ export class CodebaseRetriever {
       console.log(`   ✅ Unified search: ${codeFiles.length} files, ${lessons.length} lessons (mode: ${mode})`);
       
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      // 🔥 CRITICAL: Hybrid fallback to keyword search if Vector DB is empty
+      // ✅ Vector DB empty - NO FALLBACK (retrieve only committed code)
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      if (codeFiles.length === 0 && deps.git) {
-        console.log(`   🔄 Vector DB empty - falling back to keyword search (hybrid mode)`);
-        const keywordResults = await this.keywordStrategy.search(
-          directive,
-          actualWorkingDir,
-          { maxFiles: maxCodeFiles, exclude },
-          deps.git
-        );
-        
-        // Convert keyword results to FileWithSource format
-        codeFiles = keywordResults.map(r => ({
-          path: r.path,
-          sources: [r.source],
-          priority: 'normal' as const,
-          hasLocalChanges: false
-        }));
-        
-        console.log(`   ✅ Keyword fallback: ${codeFiles.length} files found`);
+      if (codeFiles.length === 0) {
+        console.log(`   ℹ️  Vector DB is empty (no indexed code yet)`);
+        console.log(`   💡 Tip: Run 'ant index ${project}' after git commit to index your codebase`);
+        // ✅ Don't fallback to keyword search - retrieve should only use Vector DB
+        // Uncommitted files will be handled by explore (local changes check)
       }
     } else {
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      // Fallback: Keyword search only (no Vector DB)
+      // ✅ No Vector DB - return empty result (retrieve requires Vector DB)
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      console.log(`   ⚠️  No Vector DB, falling back to keyword search`);
-        const keywordResults = await this.keywordStrategy.search(
-          directive,
-          actualWorkingDir,  // ✅ Use actualWorkingDir for reference support
-          { maxFiles: maxCodeFiles, exclude },
-          deps.git
-        );
-        
-        // Convert keyword results to FileWithSource format
-        codeFiles = keywordResults.map(r => ({
-        path: r.path,
-        sources: [r.source],
-        priority: 'normal' as const,
-        hasLocalChanges: false
-      }));
+      console.log(`   ⚠️  No Vector DB available - retrieve requires Vector DB`);
+      console.log(`   💡 Configure Vector DB and run 'ant index ${project}' to enable codebase retrieval`);
+      codeFiles = [];  // ✅ Empty result - no fallback to keyword search
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -166,10 +139,14 @@ export class CodebaseRetriever {
 
     console.log(`✅ Retrieval complete: ${result.stats.filesLoaded} files, ${lessons.length} lessons, ~${result.stats.estimatedTokens} tokens`);
 
+    // ✅ Track which search method was actually used
+    const searchMethod = codeFiles.length === 0 ? 'none' : 'vector-db';
+
     return {
       ...result,
       lessons,    // ✅ Include lessons in result
-      documents   // ✅ Include documents in result
+      documents,  // ✅ Include documents in result
+      searchMethod  // ✅ Include search method used (always 'vector-db' or 'none')
     };
   }
 

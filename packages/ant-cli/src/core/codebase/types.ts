@@ -43,6 +43,7 @@ export interface CodeContext {
   gitDiff?: import('./GitDiffSummary').GitDiffSummary;  // ✅ NEW: Compact git diff summary
   files: FileWithSource[];        // Files with source tracking
   strategy: 'hybrid';             // Always hybrid now
+  searchMethod?: 'vector-db' | 'none';  // ✅ Search method used (vector-db only, no keyword fallback)
   lessons?: Array<{               // Lessons from unified search
     content: string;
     score: number;
@@ -57,7 +58,7 @@ export interface CodeContext {
     estimatedTokens: number;
     sourceBreakdown: {            // Source statistics
       vectorSearch: number;
-      keywordSearch: number;
+      keywordSearch: number;      // DEPRECATED: Keyword search no longer used
       gitChanged: number;
       importGraph: number;
     };
