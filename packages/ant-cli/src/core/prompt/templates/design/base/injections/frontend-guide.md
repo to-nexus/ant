@@ -92,9 +92,12 @@ Treat the game engine as an abstract domain service (like a backend API): descri
 **DON'T WRITE** - Action types, reducer switch cases, selector memoization, middleware
 
 #### 4. Routing Structure
-- Route definitions (path → component mapping)
-- Protected routes (auth requirements)
-- Route parameters and navigation flow
+- Logical route/screen definitions (screen name → responsibility), **NOT** concrete URL strings.
+- Navigation and access rules (e.g., which screens require auth), at a conceptual level.
+- High-level navigation flow between screens (e.g., Dashboard → Detail → Settings), without specifying router APIs or path syntax.
+
+**WRITE AT THIS LEVEL** - Describe **which screens exist and why**, and how navigation intent flows.
+**DON'T WRITE** - Exact route patterns (`/game/:roomId`, `/search?q=keyword`), router API usage, history manipulation details.
 
 #### 5. API Integration Layer ⚠️ MOST IMPORTANT
 
