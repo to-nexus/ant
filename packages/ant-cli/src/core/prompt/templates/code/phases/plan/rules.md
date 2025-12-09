@@ -21,11 +21,23 @@ Generate high-quality search keywords to retrieve relevant code files from Vecto
 
 ## Stack Trace Extraction
 
-**When to use**: Directive contains error stack trace or explicit file references.
+**⚠️ CRITICAL: Only use when directive contains ACTUAL ERROR STACK TRACE**
+
+**When to use** (ALL conditions must be met):
+1. Directive contains ERROR or EXCEPTION
+2. Directive includes file paths with line numbers (e.g., `RoomPage.tsx:85`)
+3. Files are explicitly mentioned as part of error stack
+
+**When NOT to use** (return empty array `[]`):
+- ❌ Feature requests ("add room list", "implement chat")
+- ❌ Performance requests ("make it faster", "optimize queries")
+- ❌ Bug fixes WITHOUT stack trace ("button doesn't work", "page is blank")
+- ❌ Refactoring tasks ("clean up code", "improve structure")
+- ❌ You're just guessing which files might be relevant
 
 **How to extract**:
-1. Look for file paths in stack trace
-2. Extract EXACT file names with extensions
+1. Look for file paths in ACTUAL stack trace
+2. Extract EXACT file names with extensions and line numbers
 3. Include relative paths if available
 
 **Examples**:
@@ -44,7 +56,7 @@ or better (if path visible):
 
 **Limit**: Maximum 5 files (most relevant ones from stack trace)
 
-**If no stack trace**: Return empty array `[]`
+**Default**: If no EXPLICIT stack trace with line numbers → Return empty array `[]`
 
 ---
 
@@ -199,6 +211,40 @@ Update automatically when rooms change.
 
 ---
 
+### Example 2.5: Performance/Balance Request (No Stack Trace)
+
+**Directive**:
+```
+Fix the gameplay balance issue where paddle movement speed is too slow.
+Increase paddle speed to allow players to intercept the ball.
+```
+
+**Output**:
+```json
+{
+  "stackTrace": [],
+  "keywords": [
+    "paddle speed",
+    "ball speed",
+    "paddle movement",
+    "gameplay balance",
+    "movement speed",
+    "speed adjustment",
+    "game physics",
+    "player input",
+    "GameEngine"
+  ]
+}
+```
+
+**Why good**:
+- ✅ Empty stack trace (NO error, just performance/balance request)
+- ✅ Keywords focus on domain concepts (paddle, ball, speed, balance)
+- ✅ Technical terms (GameEngine, physics, input)
+- ❌ NO files in stackTrace (not an error trace!)
+
+---
+
 ### Example 3: BAD (What NOT to do)
 
 **Directive**:
@@ -256,6 +302,8 @@ Error: Cannot read property 'map' of undefined in UserList.tsx
 
 Before outputting:
 
+- [ ] Stack trace: **ONLY if directive contains ACTUAL error with file:line format**
+- [ ] Stack trace: If no explicit error trace → **MUST be empty array []**
 - [ ] Stack trace: Exact file names with extensions
 - [ ] Stack trace: Maximum 5 files
 - [ ] Keywords: 8-12 keywords

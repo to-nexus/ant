@@ -199,6 +199,12 @@ export async function codeGen(
     const hasToolCalls = toolCalls.length > 0;
     await orchestrator.finalize(hasToolCalls);
     
+    // ✅ Finalize chat message if no tool calls (task/reasoning complete)
+    if (toolCalls.length === 0) {
+      const chatAPI = getChatAPIClient();
+      await chatAPI.finalizeMessage();
+    }
+    
     console.log(`\n✅ [CodeGen] Reasoning complete`);
     console.log(`   Thinking: ${thinking.length} chars`);
     console.log(`   Text: ${textResponse.length} chars`);
