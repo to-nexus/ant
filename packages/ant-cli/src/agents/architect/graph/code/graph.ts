@@ -215,6 +215,7 @@ export function buildCodeGraph() {
       prd: null as any,
       directive: null as any,
       design: null as any,
+      designDocs: null as any,  // ✅ Structured design docs for environment detection
       code: null as any,
       codeHead: null as any,
       profile: null as any,

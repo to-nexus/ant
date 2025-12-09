@@ -322,6 +322,18 @@ export class SpecialTagTransformer {
         formatted += `   └ ${parsed.environmentReasoning}\n\n`;
       }
       
+      // Profile (Language + Framework)
+      if (parsed.profile?.language) {
+        formatted += isKorean
+          ? `📊 **프로파일**: ${parsed.profile.language}`
+          : `📊 **Profile**: ${parsed.profile.language}`;
+        
+        if (parsed.profile.framework) {
+          formatted += ` + ${parsed.profile.framework}`;
+        }
+        formatted += '\n\n';
+      }
+      
       // Keywords (if RAG required)
       if (parsed.requireRagForDecompose && parsed.decomposeKeywords?.codebase?.length > 0) {
         const keywords = parsed.decomposeKeywords.codebase;

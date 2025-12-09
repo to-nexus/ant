@@ -222,6 +222,45 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   const designResult = await ArtifactService.findLatestDesign(context, gitPort);
   const design = designResult?.content || undefined;
   const designDocPath = designResult?.filePath || undefined;
+  
+  // ✅ Build designDocs object for detectEnvironment (check for separate design files)
+  const designDocs: {
+    apiContract?: string;
+    feDesign?: string;
+    beDesign?: string;
+    unifiedDesign?: string;
+  } = {};
+  
+  // Check for separate design files in outputs/design/
+  const designFolder = `${featurePath}/outputs/design`;
+  
+  try {
+    const feDesignPath = `${designFolder}/fe-system-design.md`;
+    if (await gitPort.fileExists(feDesignPath)) {
+      const content = await gitPort.readFile(feDesignPath);
+      if (content) designDocs.feDesign = content;
+    }
+    
+    const beDesignPath = `${designFolder}/be-system-design.md`;
+    if (await gitPort.fileExists(beDesignPath)) {
+      const content = await gitPort.readFile(beDesignPath);
+      if (content) designDocs.beDesign = content;
+    }
+    
+    const apiContractPath = `${designFolder}/api-contract.md`;
+    if (await gitPort.fileExists(apiContractPath)) {
+      const content = await gitPort.readFile(apiContractPath);
+      if (content) designDocs.apiContract = content;
+    }
+    
+    const unifiedDesignPath = `${designFolder}/system-design.md`;
+    if (await gitPort.fileExists(unifiedDesignPath)) {
+      const content = await gitPort.readFile(unifiedDesignPath);
+      if (content) designDocs.unifiedDesign = content;
+    }
+  } catch (error) {
+    // Ignore if design folder doesn't exist
+  }
 
   // 2. Load directive with override priority
   // ✅ Priority: overrideDirective (from chat) > directive.md > directive-nnn.md
@@ -309,6 +348,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     directive,
     design,
     designDocPath,  // ✅ Add design document file path for environment inference
+    designDocs,     // ✅ Add structured design docs for detectEnvironment
     sessionContext: sessionContextForLLM,  // ✅ Include compressed session context
     profile,  // ✅ ONLY profile!
     referenceContexts,  // Empty array (references loaded per-task)

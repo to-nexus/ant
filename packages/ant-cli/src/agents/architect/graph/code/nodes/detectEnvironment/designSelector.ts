@@ -30,12 +30,17 @@ export function selectDesignFiles(
   } else if (environment === 'fullstack') {
     if (designDocs.feDesign) selectedFiles.push('fe-system-design.md');
     if (designDocs.beDesign) selectedFiles.push('be-system-design.md');
+  } else if (environment === 'unknown') {
+    // ✅ For unknown environment, include ALL available design docs
+    // Better to provide too much context than miss critical information
+    if (designDocs.feDesign) selectedFiles.push('fe-system-design.md');
+    if (designDocs.beDesign) selectedFiles.push('be-system-design.md');
   }
   
   // Fallback to unified design if no environment-specific doc
   if (selectedFiles.length === 0 && designDocs.unifiedDesign) {
     selectedFiles.push('system-design.md');
-  } else if (selectedFiles.length === 1 && designDocs.unifiedDesign) {
+  } else if (selectedFiles.length === 1 && selectedFiles[0] === 'api-contract.md' && designDocs.unifiedDesign) {
     // If only api-contract, add unified design
     selectedFiles.push('system-design.md');
   }

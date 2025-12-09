@@ -296,13 +296,40 @@ export class PromptEngine {
    */
   async buildDetectEnvironmentPrompt(
     directive: string,
-    designDocs: string[],
+    designDocs: {
+      apiContract?: string;
+      feDesign?: string;
+      beDesign?: string;
+      unifiedDesign?: string;
+    } | undefined,
     profile: any
   ): Promise<string> {
+    // ✅ Build design doc content from object
+    const parts: string[] = [];
+    
+    if (designDocs) {
+      if (designDocs.feDesign) {
+        parts.push('# Frontend System Design (fe-system-design.md)\n\n' + designDocs.feDesign);
+      }
+      if (designDocs.beDesign) {
+        parts.push('# Backend System Design (be-system-design.md)\n\n' + designDocs.beDesign);
+      }
+      if (designDocs.unifiedDesign) {
+        parts.push('# System Design (system-design.md)\n\n' + designDocs.unifiedDesign);
+      }
+      if (designDocs.apiContract) {
+        parts.push('# API Contract (api-contract.md)\n\n' + designDocs.apiContract);
+      }
+    }
+    
+    const designDocsContent = parts.length > 0 
+      ? parts.join('\n\n────────────────────────────────────────\n\n')
+      : '';
+    
     // ✅ Uses phases/detect/base.md which includes {{> code/phases/detect/rules}}
     return await this.deps.promptPort.render('code/phases/detect/base', {
       directive,
-      designDocs: designDocs.join(', '),
+      designDocs: designDocsContent,
       profile
     });
   }
