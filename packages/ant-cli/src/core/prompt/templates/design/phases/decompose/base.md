@@ -77,6 +77,22 @@ Count YES answers:
 - Skip non-applicable sections (e.g., no backend? No database chapter!)
 - Ultra-concise: 1 sentence per point, max 3 code blocks (≤8 lines each)
 
+**⚠️ SYSTEM DESIGN = STRUCTURAL THINKING**
+
+**What System Design SHOULD cover:**
+- ✅ **Component boundaries and responsibilities** (WHAT each does, WHY it exists)
+- ✅ **Interface definitions** (WHAT data flows, not HOW it's processed)
+- ✅ **Abstraction layers** (WHY separated, WHAT each layer owns)
+- ✅ **Interaction patterns** (call sequence, data flow direction)
+- ✅ **Design rationale** (WHY this architecture vs alternatives)
+
+**What to EXCLUDE (Implementation Spec level):**
+- ❌ Specific algorithms, formulas, calculation steps
+- ❌ Exact parameter values (timeouts, coefficients, thresholds)
+- ❌ Library/framework usage details (API calls, syntax)
+- ❌ Performance optimization tricks (caching strategies, CSS hacks)
+- ❌ Storage implementation details (key names, serialization format)
+
 **STEP 4: Divide Budget Across Tasks**
 - Divide total budget by number of tasks
 - Example: 200 lines / 3 tasks = ~65 lines per task
@@ -166,6 +182,12 @@ DO NOT CREATE tasks for:
 - State WHAT to design, NOT HOW to write
 - Include line budget and total limit
 - Focus on architectural concerns
+
+**⚠️ CRITICAL: Each task should focus on DESIGN DECISIONS, not implementation specs:**
+- ✅ "Why this pattern?" (layered vs microservice vs modular monolith)
+- ✅ "What owns what?" (component responsibility boundaries)
+- ✅ "How do they talk?" (interface contracts, not implementation)
+- ❌ "How to implement?" (algorithms, formulas, library usage)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

@@ -173,107 +173,12 @@ If you need multiple file operations, use multiple XML tags:
 ## Common Mistakes to Avoid
 ════════════════════════════════════════════════════════════════════════════════
 
-### 🚨 MISTAKE 1: Using <file> on existing document
-
-**❌ WRONG:**
-```xml
-<!-- When lastSectionNumber=2 -->
-<file path="outputs/design/system-design.md">  ← FATAL ERROR!
-## 3. New Chapter
-...
-</file>
-```
-**Error**: "Attempted to use <file> tag on EXISTING file"
-
-**✅ CORRECT:**
-```xml
-<!-- When lastSectionNumber=2 -->
-<append path="outputs/design/system-design.md">
-## 3. New Chapter
-...
-<!-- LAST_SECTION: 3 -->
-</append>
-```
-
-### ❌ MISTAKE 2: Text outside XML tags
-
-**❌ WRONG:**
-```
-Here's the document:  ← This text will be ignored!
-<file path="...">...</file>
-```
-
-**✅ CORRECT:**
-```xml
-<file path="outputs/design/system-design.md">
-# System Design Document
-
-## 1. Overview
-...
-</file>
-```
-
-### ❌ MISTAKE 3: Markdown code fences inside XML
-
-**❌ WRONG:**
-```xml
-<file path="...">
-```markdown  ← Don't do this!
-# Title
-```
-</file>
-```
-
-**✅ CORRECT:**
-```xml
-<file path="outputs/design/system-design.md">
-# System Design Document
-
-## 1. Overview
-...
-</file>
-```
-
-### ❌ MISTAKE 4: Wrong path
-
-**❌ WRONG:**
-```xml
-<file path="design.md">  ← Missing outputs/design/
-<file path="system-design.md">  ← Missing outputs/design/
-```
-
-**✅ CORRECT:**
-```xml
-<file path="outputs/design/system-design.md">
-```
-
-### ❌ MISTAKE 5: Missing LAST_SECTION metadata
-
-**❌ WRONG:**
-```xml
-<file path="outputs/design/system-design.md">
-# System Design Document
-
-## 1. Overview
-...
-## 2. Architecture
-...
-</file>  ← Missing metadata!
-```
-
-**✅ CORRECT:**
-```xml
-<file path="outputs/design/system-design.md">
-# System Design Document
-
-## 1. Overview
-...
-## 2. Architecture
-...
-
-<!-- LAST_SECTION: 2 -->
-</file>
-```
+### Critical Rules:
+1. **lastSectionNumber exists?** → Use `<append>`, NOT `<file>`
+2. **ALL output must be inside XML tags** (no text before/after)
+3. **NO markdown fences inside XML** (just write markdown directly)
+4. **Path MUST start with** `outputs/design/`
+5. **ALWAYS add** `<!-- LAST_SECTION: N -->` at end
 
 ════════════════════════════════════════════════════════════════════════════════
 ## Pre-Output Checklist
@@ -312,3 +217,51 @@ Before generating output, verify:
 {{/if}}
 
 **If YES to all → Output. If NO → Fix first!**
+
+════════════════════════════════════════════════════════════════════════════════
+## 🚨 WRITING QUALITY RULES
+════════════════════════════════════════════════════════════════════════════════
+
+**System Design is about STRUCTURE, not STEPS**
+
+### Write This Way:
+✅ "AuthService handles user authentication and token generation"
+✅ "Renderer converts application state to visual output using the chosen UI framework"
+✅ "Chose an appropriate architecture style (e.g., layered, hexagonal, ECS) and defined clear boundaries"
+✅ "Components communicate through props or input parameters; state flows unidirectionally"
+
+### Never Write This Way:
+❌ Algorithm steps: "Loop through array, calculate distance, find minimum"
+❌ Formulas: "velocity = v - 2(v·n)n where n is normal vector"
+❌ Specific values: "timeout: 3000ms", "angle: 45 degrees", "padding: 16px"
+❌ Library/framework syntax: specific API calls (e.g., storage access functions, UI framework hooks, low-level rendering APIs)
+❌ Implementation details: "hash with bcrypt rounds=10", "JWT HS256 algorithm"
+❌ Language-specific type/contract syntax: `interface GameEngine { ... }`, `type GameState = { ... }`
+❌ Local/internal helper state schemas that never cross a boundary (these belong in implementation, not design)
+
+### Test Your Writing:
+**Question: "Could a developer implement this 10 different ways?"**
+- YES → Good architectural level (structure, not steps)
+- NO → Too detailed (you're writing implementation)
+
+### Domain Guardrail (Game / Physics / Rendering)
+- Treat the engine as a black-box module: Input → Engine (Domain) → State → Renderer (Presentation)
+- Describe responsibilities and interfaces only; DO NOT describe physics behavior
+- No formulas, numeric parameters, timing values, or rendering commands (CSS/Canvas/WebGL)
+- Do NOT list fields of internal game-specific state objects (engine/internal state, field layouts, etc.); describe concepts, roles, and ownership instead
+
+### Responsibility & Boundary Guardrail (Architecture-Style Agnostic)
+- Regardless of architecture pattern (Layered, Hexagonal, ECS, Event-Driven, etc.), you MUST:
+  - Separate **UI-facing concerns** (rendering, user interaction wiring) from **core rules / domain model**
+  - Separate **orchestration / coordination** (who calls whom, in what order) from **pure domain logic**
+  - Isolate **technical capabilities** (storage, network, timers, input devices, rendering backends) behind clear interfaces/ports
+- **Single Source of Truth** for important domain state MUST be explicit:
+  - State is owned in ONE boundary (domain model, aggregate, system, or runtime manager), never “also” in random UI widgets
+  - System Design MUST state which boundary owns authoritative state and which boundaries read/derive from it
+- DO NOT mix framework/DOM details with architecture:
+  - ❌ Avoid naming specific hooks/APIs like `useState`, `useEffect`, `requestAnimationFrame`, DOM tags (`<div>`), CSS properties (`transform`) in System Design
+  - ✅ Instead, use framework-neutral phrases like "UI framework state", "rendering loop", "view components", "rendering surface"
+- For real-time or game-like systems (whatever style you choose: layered, ECS, actor, etc.):
+  - One clearly identified **runtime/orchestrator** owns the main loop / tick scheduling
+  - One or more **domain engines/models** expose pure operations for "advance one tick" or "apply inputs" without depending on timers or UI
+  - UI/presentation observes the current state and maps it to visuals and controls only

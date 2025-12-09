@@ -137,13 +137,14 @@ STRUCTURE PER CHAPTER:
 **For unified `system-design.md` (single-tier projects):**
 
 ### Structure (adapt based on project type):
-1. **Overview**: System purpose, architecture, use cases
-2. **Architecture**: Pattern choice, major components, data flow
-3. **Component/Module Design**: List (≤5) with purpose + interface + dependencies
-4. **Data Models** (if database): Entities with fields, relationships
-5. **API Design** (if applicable): Endpoints with request/response types, auth
-6. **Technology Stack**: Framework + version, database, key libraries
-7. **Non-Functional Requirements** (if PRD mentions): Security, performance, integrations
+1. **Overview**: System purpose, high-level architecture, key use cases
+2. **Architecture & Layers**: Pattern choice, major components, and relationships between layers
+3. **Layer Responsibilities**: For each layer (e.g., Presentation / Application / Domain), specify WHAT it owns and HOW it collaborates (NO internal state schemas, NO UI layout details)
+4. **Domain Concepts & Data Ownership**: Key entities/aggregates and which layer owns/updates them (describe concepts, NOT fields or visual representation)
+5. **Public Interfaces & External Contracts**: APIs, service interfaces, events, or database schemas that cross process boundaries (describe interface names and operations in plain language: purpose + inputs + outputs; NOT language-specific syntax)
+6. **Execution Flow / Runtime Behavior** (if real-time, game, or background processing): High-level loop/flow description (who owns the loop, who calls whom, in which order), without platform-specific APIs or detailed timing logic
+7. **Technology Stack**: Framework + version, database, key libraries
+8. **Non-Functional Requirements** (if PRD mentions): Security, performance, integrations
 
 ════════════════════════════════════════════════════════════════════════════════
 ## 🚫 ABSOLUTELY FORBIDDEN (Unless PRD EXPLICITLY requests)
@@ -185,7 +186,7 @@ STRUCTURE PER CHAPTER:
 6. ✅ Created appropriate number of chapters for your budget?
 7. ✅ Ultra-concise (1 sentence per point)?
 8. ✅ **Code blocks ≤3 total, each ≤8 lines**?
-9. ✅ **NO implementation details** (formulas, algorithms, detailed pseudocode)?
+9. ✅ **NO implementation details** (formulas, algorithms, detailed pseudocode, internal state schemas)?
 10. ✅ NO forbidden sections (deployment, ops, monitoring)?
 11. ✅ Covered all critical architectural decisions and component interactions?
 

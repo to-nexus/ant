@@ -49,21 +49,24 @@ Do NOT add requirements that are NOT in the PRD, even if they are industry "best
 ## 🏛️ SYSTEM DESIGN = ARCHITECTURE + COMPONENT INTERACTION
 ════════════════════════════════════════════════════════════════════════════════
 
-**Definition**: A System Design Document specifies WHAT to build and HOW components interact.
+**Definition**: A System Design Document specifies WHAT to build and HOW components, layers, and contracts interact – NOT how to write the code.
 
 **Focus Areas (REQUIRED):**
 1. **Architecture Pattern**: Which pattern (Layered, Hexagonal, MVC, etc.) and WHY
-2. **Component Boundaries**: Modules, layers, services, and their responsibilities
-3. **Data Flow**: How information moves through the system
-4. **Technology Stack**: Framework choices with justification
-5. **Integration Points**: APIs, events, external systems
+2. **Component/Layer Boundaries**: Modules, layers, services, and their responsibilities
+3. **Contracts**: Shared interfaces and data models between components/layers
+4. **Data Flow**: How information moves through the system
+5. **Technology Stack**: Framework choices with justification
+6. **Integration Points**: APIs, events, external systems
 
 **Abstraction Level**:
 - ✅ **Architecture decisions**: "Use Repository pattern for data access"
 - ✅ **Component interaction**: "Controller calls Service, Service calls Repository"
-- ✅ **Strategy descriptions**: "AABB collision detection for performance"
-- ❌ **Implementation formulas**: "if (rect1.x < rect2.x + rect2.width && ...)"
-- ❌ **Algorithm code**: Detailed loops, calculations, state machine transitions
+- ✅ **Strategy descriptions**: "Cache layer in front of database for read-heavy endpoints"
+- ✅ **Domain concepts**: Name key entities (User, Task, GameSession) and their relationships
+- ✅ **Contracts**: Define shared data models and commands that cross module/layer boundaries (e.g., GameState, Command) as **conceptual schemas** using headings and bullet lists (no language-specific syntax)
+- ❌ **Implementation formulas**: Detailed calculations, physics equations, pricing formulas
+- ❌ **Algorithm code**: Loops, conditionals, state machine transitions
 - ❌ **Configuration values**: Specific timeouts, retry counts, thresholds
 
 ════════════════════════════════════════════════════════════════════════════════
@@ -80,31 +83,58 @@ Do NOT add requirements that are NOT in the PRD, even if they are industry "best
 
 ### Forbidden Content (Implementation Details):
 - ❌ Function bodies / full implementations
-- ❌ Algorithm formulas (e.g., collision math, physics equations)
+- ❌ Algorithm formulas (e.g., collision math, physics equations, pricing formulas)
 - ❌ Method implementation logic (loops, conditionals, calculations)
 - ❌ State machine transition tables with all values
 - ❌ Detailed pseudocode (≥10 lines)
 - ❌ React/Vue component code (only props interface)
 - ❌ SQL DDL statements (only schema description: "users table: id, email, password_hash")
 - ❌ Config file contents (only key decisions: "Use JWT with 1h expiry")
+- ❌ Framework-specific API calls and hooks (e.g., UI framework hooks, browser event APIs)
+- ❌ Platform-specific event wiring details (e.g., how/where listeners are registered)
+- ❌ Styling implementation details (e.g., concrete CSS properties, layout flags)
+- ❌ Local/internal helper state structures that never cross a module/layer boundary
 - ❌ "Let me explain..." tutorials
 - ❌ Paragraphs of prose (use bullet points!)
 
+### Content to Keep OUT of System Design (belongs in PRD or Implementation docs):
+- ❌ Detailed UI behavior narratives (e.g., "user clicks X then Y happens")
+- ❌ Exact component tree/DOM hierarchy (placement, z-index, visual arrangement)
+- ❌ Concrete keyboard mappings (specific keys) – instead, describe abstract commands (e.g., "LeftPaddleUp", "Pause")
+
 ### Allowed Content (Architecture & Interface):
-- ✅ Interface/type definitions (≤8 lines, TypeScript syntax)
-- ✅ Component props (≤5 fields)
-- ✅ API signatures (method + path + DTO names, NO field lists)
+- ✅ External contracts (for **boundaries only**) described as structured text:
+  - Public APIs, service interfaces, DTOs, database entities
+  - Use headings + bullet lists, NOT TypeScript/Java/JSON syntax
+- ✅ Component props (≤5 fields) described as name + purpose (no code fences)
+- ✅ API signatures (operation name + purpose + inputs + outputs, NO DTO field lists)
 - ✅ High-level strategy description (3-5 steps, NO code)
 - ✅ Architecture diagrams (ASCII/text, if helpful)
 
+### Interface Contract Writing Pattern (Language-Neutral)
+- For each important boundary (e.g., `GameEngine`, `StateProvider`, `InputProvider`, services, ports, repositories, systems):
+  - **Name**: contract identifier (e.g., "GameEngine", "MatchmakingPort")
+  - **Role**: 1 sentence describing responsibility
+  - **Operations**: list of operations with **name + input concepts + output concepts** (no language syntax)
+  - **Rules**: optional bullets about invariants or guarantees
+- Example (GOOD, language-neutral, works across patterns):
+  - **Contract**: GameEngine
+  - **Role**: Applies game rules to advance the game state based on player inputs and time progression.
+  - **Operations**:
+    - `init(config)` → produces initial game state for a new session.
+    - `update(commands, elapsedTime)` → returns next game state after applying inputs and time.
+    - `isFinished(state)` → returns whether the game session should end.
+  - **Rules**:
+    - Stateless from caller perspective: caller passes current state, engine returns new state.
+    - Does not depend on UI framework, DOM, or storage.
+
 ### Good Example (Architecture-focused):
 ```
-✅ Architecture: Layered (Presentation/Domain/Infrastructure)
-✅ Game Engine: IGameEngine interface - update(), render() methods
-✅ Physics: AABB collision detection (boundary check + entity overlap)
-✅ State: React Context API for global user state
-✅ API: REST - GET /tasks, POST /tasks, DELETE /tasks/:id
-✅ Database: PostgreSQL - tasks(id, title, user_id FK), users(id, email)
+✅ Architecture: Clear style selected and named (e.g., Layered, Hexagonal, ECS)
+✅ Boundaries: Each responsibility boundary (e.g., controllers, services, ports/adapters, systems) has a single clear role
+✅ API: REST endpoints or messages grouped by resource/use case
+✅ State: Global session/user or game state managed in a dedicated boundary (store/model/aggregate), not scattered in UI
+✅ Persistence: Database/tables or collections named and connected to the appropriate boundary
 ```
 
 ### Bad Example (Implementation-focused):
@@ -117,6 +147,41 @@ Do NOT add requirements that are NOT in the PRD, even if they are industry "best
 
 THIS IS IMPLEMENTATION SPEC, NOT SYSTEM DESIGN!
 ```
+
+════════════════════════════════════════════════════════════════════════════════
+## 🕹️ DOMAIN-SPECIFIC RULES: Game Projects
+════════════════════════════════════════════════════════════════════════════════
+
+**CRITICAL: For game engines, physics, rendering, animation systems (regardless of architecture style: Layered, ECS, Hexagonal, Actor, etc.):**
+
+### What to Write (Architecture Level):
+- ✅ Engine as black-box module: "GameEngine updates game world state based on input and time"
+- ✅ Interface definitions: `GameEngine.update(input, time) → GameState` (names only, no internal fields)
+- ✅ Data flow: "Input → GameEngine → GameState → Renderer"
+- ✅ Subsystem responsibilities: "Renderer maps GameState to visual components"
+- ✅ Domain concepts: "BallState", "FieldLayout", "ScoreState" as **concepts**, not field lists
+ - ✅ For multiplayer-ready designs: introduce abstraction points such as:
+   - **StateProvider**: supplies authoritative game state (local engine vs remote server)
+   - **InputProvider**: converts local/remote user actions into engine commands
+   - **SyncStrategy**: defines sync mode (authoritative server, client prediction, replay)
+   - Document these as contracts (names, roles, operations) without network/transport code
+
+### What NOT to Write (Implementation Details):
+- ❌ Physics behavior descriptions (how gravity/forces/animations are applied)
+- ❌ Physics formulas: numeric equations for motion, collisions, forces
+- ❌ Collision math: Distance calculations, overlap detection algorithms (AABB/OBB 등 구체 알고리즘 이름 포함)
+- ❌ Movement equations: Gravity application, friction coefficients, velocity updates
+- ❌ Animation parameters: Rotation angles, duration values, easing functions
+- ❌ Rendering instructions: CSS properties, Canvas/WebGL commands, transform matrices
+- ❌ Object dimensions and tuning constants: Specific widths, heights, radii, speeds, bounce coefficients
+- ❌ Timing values and curves: Frame rates, delays, animation durations, easing functions
+
+**For frontend-only games:**
+- Treat game engine as abstract domain layer (like a backend service)
+- Specify interfaces only (method names, high-level inputs/outputs)
+- Document state flow and responsibilities, NOT calculation steps or data fields
+
+**Golden Rule for Games**: If it's a number, formula, or step-by-step algorithm → Remove it.
 
 ════════════════════════════════════════════════════════════════════════════════
 
