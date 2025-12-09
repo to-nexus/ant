@@ -88,6 +88,7 @@ export class CommonRenderStrategy implements IRenderStrategy {
   private lineBuffers: Map<string, string> = new Map();  // ✅ Line-based buffering for smooth streaming
   private bufferManager?: import('../buffer/StreamBufferManager').StreamBufferManager;  // ✅ Disk buffer for interruption safety
   private gitPort?: GitPort;  // ✅ For reading/writing files during edit operations
+  private writeImmediately: boolean;  // ✅ Whether to write files immediately or defer to writeFiles node
   
   // ✅ Thinking timing
   private thinkingStartTime?: number;
@@ -99,12 +100,14 @@ export class CommonRenderStrategy implements IRenderStrategy {
     chatAPI: ChatAPIClient,
     bufferManager?: import('../buffer/StreamBufferManager').StreamBufferManager,
     userLanguage?: UserLanguage,
-    gitPort?: GitPort
+    gitPort?: GitPort,
+    writeImmediately: boolean = false  // ✅ Default: false (for backward compatibility with design job)
   ) {
     this.chatAPI = chatAPI;
     this.bufferManager = bufferManager;
     this.tagTransformer = new SpecialTagTransformer(userLanguage || 'en');
     this.gitPort = gitPort;
+    this.writeImmediately = writeImmediately;
   }
   
   async render(action: ParsedAction, registry: FileRegistry): Promise<void> {
@@ -562,6 +565,12 @@ Using <file> on existing files will OVERWRITE the entire file, which is almost n
       }
       
       if (fileInfo.actionType === 'create' || fileInfo.actionType === 'append') {
+        // ✅ CRITICAL: Write file to disk immediately (code job only)
+        // Design job uses separate writeFiles node with absolute path resolution
+        if (this.writeImmediately && this.gitPort && fileInfo.contentBuffer) {
+          await this.gitPort.writeFile(filePath, fileInfo.contentBuffer);
+          console.log(`✅ [${fileInfo.actionType === 'create' ? 'Create' : 'Append'}] Successfully wrote ${filePath} to disk`);
+        }
         // ✅ Both create and append complete as file creation
         await this.chatAPI.completeFileCreation(filePath, fileInfo.contentBuffer);
       } else if (fileInfo.actionType === 'edit') {
@@ -635,6 +644,12 @@ Using <file> on existing files will OVERWRITE the entire file, which is almost n
       
       try {
         if (fileInfo.actionType === 'create') {
+          // ✅ CRITICAL: Write file to disk immediately (code job only)
+          // Design job uses separate writeFiles node with absolute path resolution
+          if (this.writeImmediately && this.gitPort && fileInfo.contentBuffer) {
+            await this.gitPort.writeFile(filePath, fileInfo.contentBuffer);
+            console.log(`✅ [Create] Successfully wrote ${filePath} to disk`);
+          }
           await this.chatAPI.completeFileCreation(filePath, fileInfo.contentBuffer);
         } else if (fileInfo.actionType === 'edit') {
           const editOp = this.editOperations.get(filePath);
