@@ -140,7 +140,13 @@ export async function execute(state: DesignGraphState) {
   
   const orchestrator = new StreamOrchestrator({
     parser: new XMLStreamParser(),
-    renderStrategy: new CommonRenderStrategy(chatAPI, bufferManager, state.context.userLanguage, state.deps?.git),  // ✅ Pass gitPort
+    renderStrategy: new CommonRenderStrategy(
+      chatAPI,
+      bufferManager,
+      state.context.userLanguage,
+      state.deps?.git,
+      false  // ✅ writeImmediately: false for design job (uses separate writeFiles node)
+    ),
     existingFiles: new Set([]) // Design phase doesn't generate code files
   });
   

@@ -119,7 +119,8 @@ export async function codeGen(
     chatAPI,
     state._bufferManager,
     state.context.userLanguage,  // ✅ Pass user language for localized messages
-    state.deps?.git  // ✅ Pass gitPort for actual file editing
+    state.deps?.git,  // ✅ Pass gitPort for actual file editing
+    true  // ✅ writeImmediately: true for code job (no separate writeFiles node)
   );
   
   const existingFiles = new Set(state.files?.map((f: any) => f.path) || []);
