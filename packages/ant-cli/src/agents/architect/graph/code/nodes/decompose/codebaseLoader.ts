@@ -161,12 +161,19 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
     console.log(`   ✅ Vector DB: ${vectorDbFiles.length} NEW files (${duplicatesCount} duplicates from stack trace excluded)`);
     
     // Display: 1. Retrieved (Vector DB results - EXCLUDING duplicates from stack trace)
+    let retrievedMessage: string;
+    if (vectorDbFiles.length > 0) {
+      retrievedMessage = `Retrieved: ${vectorDbFiles.length} files from semantic search (${duplicatesCount} duplicates excluded)`;
+    } else if (stackFiles.length > 0) {
+      retrievedMessage = `Retrieved: All matching files already in stack trace results`;
+    } else {
+      retrievedMessage = `Retrieved: 0 files (Vector DB empty or no matches)`;
+    }
+    
     await chatAPI.showChatStatus('retrieved', {
       filesCount: vectorDbFiles.length,
       filesList: vectorDbFiles.slice(0, 10),
-      content: vectorDbFiles.length > 0
-        ? `Retrieved: ${vectorDbFiles.length} files from semantic search (${duplicatesCount} duplicates excluded)`
-        : `Retrieved: All matching files already in stack trace results`
+      content: retrievedMessage
     });
     
     // Check for uncommitted changes (explored)
