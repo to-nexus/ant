@@ -65,16 +65,15 @@ All request/response DTOs match api-contract.md field names and types.
 
 **Service Methods:**
 - `AuthService.authenticate(email, password): Promise<User>`
-  - Queries user by email
-  - Verifies password (bcrypt)
-  - Throws AuthenticationError if invalid
+  - Queries user by email, verifies password, throws error if invalid
 - `AuthService.generateTokens(user): TokenPair`
   - Generates JWT with expiry per contract
 
 **Error Handling:**
-- ValidationError → 400, AuthenticationError → 401, RateLimitExceeded → 429
+- Maps exceptions to HTTP status codes per contract
 
-**FORBIDDEN**: Detailed password hashing parameters, JWT algorithm specifics, retry logic pseudocode
+**WRITE AT THIS LEVEL** - Describe method responsibilities, not algorithms
+**DON'T WRITE** - Hash rounds, JWT config, retry algorithms, query hints
 ```
 
 **KEY RULES:**

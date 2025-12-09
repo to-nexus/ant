@@ -30,22 +30,66 @@ All DTOs and endpoints are defined in the API contract document.
 - Core user journeys (≤5 flows)
 
 #### 2. Component Architecture
-- Component hierarchy (Pages → Containers → Components)
-- Component responsibilities (1 sentence each)
-- Component interfaces (props only, ≤5 fields, NO implementation logic):
+- Component hierarchy (Pages → Containers → Presentational)
+- Component responsibilities (1 sentence: WHAT it does)
+- Component interfaces (props only, ≤5 key fields):
   ```typescript
   interface LoginFormProps {
     onSubmit: (credentials: LoginRequest) => Promise<void>;
     isLoading: boolean;
   }
   ```
-- **FORBIDDEN**: State management details, event handler logic, validation formulas
+
+**WRITE AT THIS LEVEL** - Component purpose, props interface
+**DON'T WRITE** - useState calls, useEffect logic, event handlers, validation code
+
+#### 2.1 ⚠️ Game-Specific Frontend Constraint
+
+**If this is a game project (physics, rendering, animation):**
+
+Frontend System Design MUST NOT contain game physics or rendering formulas.
+
+**Describe only:**
+- Roles of game screen components (e.g., PlayField: renders game world, HUD: shows score/balls)
+- Engine abstraction interface name and high-level contract (e.g., `GameEngine.update(input, time) → GameState`)
+- State flow: Input → Domain Layer (Engine) → Presentation Layer (Components)
+- Renderer component responsibility: receives GameState and maps it to visual components
+
+**FORBIDDEN in frontend design:**
+- ❌ Physics formulas, collision algorithms, movement equations
+- ❌ Rendering-specific commands (CSS transforms, Canvas API, WebGL calls)
+- ❌ Animation parameters (angles, durations, easing functions)
+- ❌ Game loop implementation details (requestAnimationFrame logic)
+- ❌ Concrete field structures for internal game state (e.g., `{ x, y, vx, vy }`)
+
+Treat the game engine as an abstract domain service (like a backend API): describe **how UI depends on it**, not **how it works internally**.
+
+#### 2.2 Example: Responsibility Boundaries in Frontend-Only Game Architectures
+- This is **one common mapping** when you choose a layered/clean-style separation; you MAY adopt other patterns (e.g., ECS, actor), but you MUST still respect the high-level rules below.
+- **UI/Presentation Boundary**:
+  - Renders visual output based on current game/session state
+  - Handles user input events and translates them into abstract commands (e.g., `MoveLeft`, `PauseGame`)
+  - Does NOT own authoritative game/domain state
+- **Orchestration/Runtime Boundary** (could be "Application layer", "GameRuntime", etc.):
+  - Coordinates game/session lifecycle, navigation, and overall orchestration
+  - Owns the main loop/tick scheduling for real-time games (without mentioning specific APIs like `requestAnimationFrame`)
+  - Invokes domain engine/services and updates stored state
+- **Domain/Rules Boundary** (framework-agnostic):
+  - Encapsulates game rules and state transitions
+  - Exposed via clear, framework-neutral contracts (see system design contract pattern)
+- **Platform/Adapter Boundary**:
+  - Wraps platform details (timers, storage, network, input devices) behind interfaces/ports
+- **Key Rules (pattern-agnostic)**:
+  - Single Source of Truth for game/domain state must be explicitly assigned (in a specific boundary) and never duplicated in multiple components
+  - Avoid naming framework primitives (hooks, specific components, DOM tags) when describing architecture; use neutral terms like "screen component", "UI state store", "rendering loop"
 
 #### 3. State Management
-- State strategy (Context API, Redux, Zustand, React Query)
-- Global state structure (user auth, app settings - list keys, NO values)
-- Server state management (caching strategy, NO detailed implementation)
-- **FORBIDDEN**: State machine transitions, reducer logic, detailed action types
+- State strategy choice (Context API, Redux, Zustand, React Query - pick one)
+- Global state structure (list key categories only: auth, settings, cache)
+- Server state management approach (caching, invalidation strategy)
+
+**WRITE AT THIS LEVEL** - State organization, where state lives
+**DON'T WRITE** - Action types, reducer switch cases, selector memoization, middleware
 
 #### 4. Routing Structure
 - Route definitions (path → component mapping)
@@ -115,4 +159,3 @@ export const authAPI = {
 - ❌ NO API endpoint definitions (those are in api-contract.md!)
 - ❌ NO full component implementations
 - ❌ NO assumptions about API structure (use contract!)
-
