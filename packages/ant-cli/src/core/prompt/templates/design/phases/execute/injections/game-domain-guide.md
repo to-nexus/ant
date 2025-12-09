@@ -14,21 +14,22 @@ It helps you describe **game rules, state ownership, determinism, and synchroniz
   - That Presentation reads state but never becomes the source of truth for rules.
 
 ### 2. Domain Invariants (Game Rules)
-- Define invariants on the **authoritative simulation state**, for example:
-  - The ball and paddles MUST NOT move outside the playable field (boundary crossings become domain events, not silent clamps).
-  - Scores are non-negative integers, and in a single tick/round only one side can score at most once.
-  - Paddles move with bounded speed per tick; acceleration limits are expressed as policies, not formulas.
-  - Game phases (READY / PLAYING / PAUSED / FINISHED) follow valid transitions only (no direct FINISHED → PLAYING without RESET).
-- State invariants MUST be independent of rendering or input APIs.
+- Create a dedicated **Domain Rules & Invariants** subsection that lists the core policies explicitly. It MUST cover at least:
+  - **Field boundaries**: Ball and paddles MUST NOT move outside the playable field; boundary crossings always produce a domain event instead of silent clamping.
+  - **Motion constraints**: Paddles move with bounded speed per tick; document that a maximum movement per tick exists (policy-level only, avoid hard-coded numbers unless the PRD mandates them).
+  - **Scoring rules**: Scores are non‑negative integers; in a single tick/round at most one side can score once; clarify when a point is awarded and how invalid/ambiguous states are handled.
+  - **Phase model**: Enumerate valid phases (e.g., READY, PLAYING, PAUSED, FINISHED) and allowed transitions (e.g., READY → PLAYING → FINISHED; no direct FINISHED → PLAYING without RESET).
+  - **Difficulty scaling (if applicable)**: Whether and how ball/paddle speed or other parameters change over time or based on performance (describe trends/policies, not exact numeric curves).
+- State invariants MUST be independent of rendering, networking, or input device APIs.
 
 ### 3. Simulation Determinism & Timestep Policies
-- If PRD mentions replay, multiplayer, or fairness, you MUST state determinism policies:
-  - Whether the simulation is intended to be **deterministic** across runs (same inputs → same state sequence).
-  - Whether you use **fixed-step**, **variable-step**, or **hybrid** tick policy at a conceptual level.
-  - How floating-point behavior is treated (e.g., “avoid frame-time dependent updates”, “time progresses in fixed quanta”).
-- Do NOT include formulas or numeric constants; instead, describe:
-  - Which boundary controls the tick (Runtime vs Domain) and how time is passed into the Domain engine.
-  - Which parts of the system are required to be deterministic vs allowed to be approximate (e.g., purely cosmetic effects).
+- For any time‑based game (including single‑player), the System Design MUST state high‑level determinism and tick policies, even if the PRD does not mention them:
+  - **Determinism**: Is the simulation intended to be deterministic across runs given the same command sequence? If not, which sources of non‑determinism are acceptable?
+  - **Tick strategy**: Which conceptual strategy is used (fixed‑step, variable‑step, hybrid)? How is time passed into the Domain engine (e.g., `deltaTime`, fixed tick index, real‑time clock vs logical ticks)?
+  - **Time & precision**: How floating‑point/time behavior is treated conceptually (e.g., “physics uses a fixed update rate independent of render rate”, “avoid frame‑time dependent movement formulas”).
+- Do NOT include formulas or exact numeric constants; focus on policies and responsibilities:
+  - Which boundary controls the tick (Runtime vs Domain) and how it schedules/feeds time to the Domain engine.
+  - Which parts of the system must be deterministic (rule application, collision outcomes) versus which may be approximate (purely visual interpolation/effects).
 
 ### 4. Domain Events vs Meta-Rules
 - Domain engine should emit **low-level, rule-focused events**, for example:
