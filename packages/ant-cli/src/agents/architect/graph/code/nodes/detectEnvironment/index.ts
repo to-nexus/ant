@@ -7,7 +7,6 @@
  * 3. Generate decompose keywords (used once, then discarded)
  * 
  * ✅ MODULAR ARCHITECTURE:
- * - promptBuilder.ts: Prompt building with PromptEngine
  * - responseParser.ts: LLM response parsing
  * - designSelector.ts: Design file selection based on environment
  */
@@ -16,7 +15,6 @@ import { ArchitectGraphState } from '../../state';
 import { LLMClient } from '../../../../../../core/ports';
 
 // Import submodules
-import { buildDetectPrompt } from './promptBuilder';
 import { parseDetectResponse } from './responseParser';
 import { selectDesignFiles } from './designSelector';
 
@@ -58,7 +56,16 @@ export async function detectEnvironment(
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   
   // 1. Build Prompt
-  const prompt = await buildDetectPrompt(state);
+  const promptEngine = state.deps?.promptEngine;
+  if (!promptEngine) {
+    throw new Error('[DetectEnvironment] PromptEngine not available');
+  }
+  
+  const prompt = await promptEngine.buildDetectEnvironmentPrompt(
+    state.directive || '',
+    state.designDocs,
+    state.profile
+  );
   
   // 2. Call LLM
   const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
@@ -116,12 +123,8 @@ export async function detectEnvironment(
   console.log(`   Mode Reasoning: ${parsed.modeReasoning}`);
   console.log(`✅ Environment: ${parsed.environment}`);
   console.log(`   Environment Reasoning: ${parsed.environmentReasoning}`);
+  console.log(`✅ Profile: ${parsed.profile?.language || 'unknown'}${parsed.profile?.framework ? ` + ${parsed.profile.framework}` : ''}`);
   console.log(`   Require RAG for Decompose: ${parsed.requireRagForDecompose}`);
-  
-  // ✅ Log profile (language/framework)
-  if (parsed.profile) {
-    console.log(`✅ Profile: ${parsed.profile.language}${parsed.profile.framework ? ` + ${parsed.profile.framework}` : ''}`);
-  }
   
   // Display keywords in Chat UI - 항상 표시
   const stackTraceCount = decomposeKeywords.stackTrace.length;
@@ -185,6 +188,34 @@ export async function detectEnvironment(
   
   console.log(`   Selected Design Files: ${selectedDesignFiles.join(', ')}\n`);
   
+  // ✅ Filter designDocs based on selectedDesignFiles
+  // Update state with filtered docs so subsequent nodes don't need to filter again
+  let filteredDesignDocs: typeof state.designDocs = undefined;
+  let filteredDesign = '';
+  
+  if (selectedDesignFiles.length > 0 && state.designDocs) {
+    filteredDesignDocs = {};
+    const parts: string[] = [];
+    
+    for (const fileName of selectedDesignFiles) {
+      if (fileName === 'api-contract.md' && state.designDocs.apiContract) {
+        filteredDesignDocs.apiContract = state.designDocs.apiContract;
+        parts.push('# API Contract\n\n' + state.designDocs.apiContract);
+      } else if (fileName === 'fe-system-design.md' && state.designDocs.feDesign) {
+        filteredDesignDocs.feDesign = state.designDocs.feDesign;
+        parts.push('# Frontend System Design\n\n' + state.designDocs.feDesign);
+      } else if (fileName === 'be-system-design.md' && state.designDocs.beDesign) {
+        filteredDesignDocs.beDesign = state.designDocs.beDesign;
+        parts.push('# Backend System Design\n\n' + state.designDocs.beDesign);
+      } else if (fileName === 'system-design.md' && state.designDocs.unifiedDesign) {
+        filteredDesignDocs.unifiedDesign = state.designDocs.unifiedDesign;
+        parts.push('# System Design\n\n' + state.designDocs.unifiedDesign);
+      }
+    }
+    
+    filteredDesign = parts.join('\n\n────────────────────────────────────────\n\n');
+  }
+  
   // Workflow exit
   if (state.deps?.workflowUpdate && state._httpJobId) {
     state.deps.workflowUpdate.exitNode(state._httpJobId, 'detectEnvironment');
@@ -199,6 +230,8 @@ export async function detectEnvironment(
     requireRagForDecompose: parsed.requireRagForDecompose,
     decomposeKeywords,
     profile: parsed.profile,  // ✅ Add profile to state (language/framework from LLM)
+    designDocs: filteredDesignDocs || state.designDocs,  // ✅ Update with filtered docs
+    design: filteredDesign || state.design,  // ✅ Update with filtered content
   };
 }
 

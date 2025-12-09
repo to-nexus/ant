@@ -14,7 +14,7 @@ Your analysis will determine the entire workflow strategy.
 {{directive}}
 
 {{#if designDocs}}
-## Design Documents Available
+## Design Documents
 
 {{designDocs}}
 {{/if}}
