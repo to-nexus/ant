@@ -63,6 +63,17 @@ export class FileRegistry {
   }
   
   /**
+   * ✅ Get all streamed files with metadata (for state.files)
+   */
+  getAllFiles(): Array<{ path: string; content: string; actionType: 'create' | 'append' | 'edit' | 'delete' }> {
+    return Array.from(this.streamedFiles.values()).map(file => ({
+      path: file.filePath,
+      content: file.contentBuffer,
+      actionType: file.actionType
+    }));
+  }
+  
+  /**
    * ✅ Reset specific file (for multi-turn overwrites)
    */
   resetFile(filePath: string): void {

@@ -17,7 +17,6 @@ import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
 import { StreamOrchestrator } from '../../../../../core/streaming/StreamOrchestrator';
 import { XMLStreamParser } from '../../../../../core/streaming/parsers/XMLStreamParser';
 import { CommonRenderStrategy } from '../../../../../core/streaming/strategies/CommonRenderStrategy';
-import { StreamBufferManager } from '../../../../../core/streaming/buffer/StreamBufferManager';
 import { TokenBudgetManager } from '../../../../../core/utils/tokenBudget';
 import { HistoryManager } from '../../../../../core/utils/historyManager';
 import { ReferenceContext } from '../../../../../core/codebase/types';
@@ -107,50 +106,46 @@ export async function codeGen(
   const chatAPI = getChatAPIClient();
   await chatAPI.showChatStatus('placeholder');
   
-  // ✅ Initialize BufferManager for MD file streaming (if not exists)
-  if (!state._bufferManager) {
-    // ✅ Code job: Working dir = codebase, Buffer dir = features/{feature}/.buffers
-    const featurePath = state.context?.featurePath;
-    if (!featurePath || typeof featurePath !== 'string') {
-      console.error('[CodeGen] featurePath not available or not a string:', featurePath);
-      throw new Error('[CodeGen] featurePath is required for buffer initialization');
-    }
-    
-    // Extract project root from featurePath
-    // Example: workspaces/to.nexus/probe/ant-landing/features/skeleton
-    // Project root: workspaces/to.nexus/probe/ant-landing
-    const projectPath = featurePath.replace(/\/features\/[^/]+$/, '');
-    
-    // ✅ Validate projectPath
-    if (!projectPath || projectPath === featurePath) {
-      console.error('[CodeGen] Failed to extract project root from featurePath:', featurePath);
-      throw new Error('[CodeGen] Invalid featurePath format');
-    }
-    
-    const featureName = state.context.featureFolder || 'default';
-    const jobId = state._httpJobId || 'unknown';
-    
-    console.log(`📦 [CodeGen] Initializing BufferManager:`, {
-      projectPath,
-      featureName,
-      jobId,
-    });
-    
-    state._bufferManager = new StreamBufferManager(projectPath, featureName, 'code', jobId);
-    console.log(`📦 [CodeGen] BufferManager initialized`);
-  }
-  
   // ✅ Setup XML Parser + StreamOrchestrator for MD file streaming
   const parser = new XMLStreamParser();
   const renderStrategy = new CommonRenderStrategy(
     chatAPI,
-    state._bufferManager,
     state.context.userLanguage,  // ✅ Pass user language for localized messages
     state.deps?.git,  // ✅ Pass gitPort for actual file editing
-    true  // ✅ writeImmediately: true for code job (no separate writeFiles node)
+    true,  // ✅ writeImmediately: true for code job (no separate writeFiles node)
+    'code',  // ✅ jobType: 'code' (no LAST_SECTION handling needed)
+    undefined  // ✅ Code job: no featurePath (uses codebase as working directory)
   );
   
-  const existingFiles = new Set(state.files?.map(f => f.path) || []);
+  // ✅ Code job: Build existingFiles from projectCodeContext + referenceCodeContexts
+  // These contain the actual codebase files loaded by the plan node
+  // This prevents LLM from accidentally using <file> on existing files
+  const existingFiles = new Set<string>();
+  
+  // Add files from projectCodeContext
+  if (state.projectCodeContext?.files) {
+    for (const file of state.projectCodeContext.files) {
+      if (file.path) {
+        existingFiles.add(file.path);
+      }
+    }
+  }
+  
+  // Add files from referenceCodeContexts
+  if (state.referenceCodeContexts) {
+    for (const refContext of state.referenceCodeContexts) {
+      if (refContext?.files) {
+        for (const file of refContext.files) {
+          if (file.path) {
+            existingFiles.add(file.path);
+          }
+        }
+      }
+    }
+  }
+  
+  console.log(`🔍 [CodeGen] existingFiles Set initialized with ${existingFiles.size} files from codebase context`);
+  
   const orchestrator = new StreamOrchestrator({
     parser,
     renderStrategy,
@@ -245,7 +240,6 @@ export async function codeGen(
         toolCalls,        // ✅ For tool execution
         done: toolCalls.length === 0,  // ✅ Tool calls 없을 때만 done = true
       },
-      _bufferManager: state._bufferManager,  // ✅ Preserve buffer manager
     };
   } catch (error) {
     console.error('[ERROR] ❌ [CodeGen] Error during reasoning:');

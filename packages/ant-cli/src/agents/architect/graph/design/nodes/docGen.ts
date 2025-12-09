@@ -20,7 +20,6 @@ import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
 import { StreamOrchestrator } from '../../../../../core/streaming/StreamOrchestrator';
 import { XMLStreamParser } from '../../../../../core/streaming/parsers/XMLStreamParser';
 import { CommonRenderStrategy } from '../../../../../core/streaming/strategies/CommonRenderStrategy';
-import { StreamBufferManager } from '../../../../../core/streaming/buffer/StreamBufferManager';
 import { TokenBudgetManager } from '../../../../../core/utils/tokenBudget';
 import { HistoryManager } from '../../../../../core/utils/historyManager';
 
@@ -35,26 +34,7 @@ export async function docGen(
     throw new Error('LLM client or GitPort not available');
   }
   
-  // ✅ 1. Initialize BufferManager (if not exists)
-  if (!state._bufferManager) {
-    // ✅ CRITICAL: Use featurePath to get projectPath (not codebase!)
-    // featurePath: /workspaces/{org}/{user}/{project}/features/{feature}
-    // projectPath: /workspaces/{org}/{user}/{project}
-    const featurePath = state.context.featurePath;
-    if (!featurePath) {
-      throw new Error('featurePath not available in context. Ensure resolve node has run.');
-    }
-    
-    const path = await import('path');
-    const featureName = state.context.featureFolder || state.context.feature?.name || 'default';
-    const projectPath = featurePath.replace(`/features/${featureName}`, '');
-    const jobId = state._httpJobId || 'unknown';
-    
-    state._bufferManager = new StreamBufferManager(projectPath, featureName, 'design', jobId);
-    console.log(`📦 [DocGen] BufferManager initialized: ${projectPath}/features/${featureName}/.buffers/design`);
-  }
-  
-  // ✅ 2. Build messages from conversation history + current task
+  // ✅ Build messages from conversation history + current task
   const messages = await buildMessages(state);
   
   // ✅ 3. Design job uses PURE XML streaming - no tool calling!
@@ -82,12 +62,48 @@ export async function docGen(
   const parser = new XMLStreamParser();
   const renderStrategy = new CommonRenderStrategy(
     chatAPI,
-    state._bufferManager,  // ✅ Pass buffer manager
     state.context.userLanguage,  // ✅ Pass user language for localized messages
-    state.deps?.git  // ✅ Pass gitPort (design job doesn't use edit, but keep consistent)
+    state.deps?.git,  // ✅ Pass gitPort for immediate file writes
+    true,  // ✅ writeImmediately: true (design job now writes files immediately like code job)
+    'design',  // ✅ jobType: 'design' (for LAST_SECTION metadata handling)
+    state.context.featurePath  // ✅ Feature path for absolute path resolution
   );
   
-  const existingFiles = new Set(state.files?.map(f => f.path) || []);
+  // ✅ Design job: Check actual disk files, not state.files (which accumulates across tasks)
+  // state.files tracks files generated in THIS job session, but existingFiles should reflect disk reality
+  const existingFiles = new Set<string>();
+  if (state.deps?.git && state.context.featurePath) {
+    const path = await import('path');
+    const fs = await import('fs/promises');
+    
+    // Scan entire outputs/design directory for any .md files
+    const designDirPath = path.join(state.context.featurePath, 'outputs/design');
+    
+    try {
+      // Check if directory exists
+      const dirExists = await state.deps.git.fileExists(designDirPath);
+      if (dirExists) {
+        // Read all files in directory
+        const files = await fs.readdir(designDirPath);
+        
+        // Add all .md files to existingFiles (relative to feature path)
+        for (const file of files) {
+          if (file.endsWith('.md')) {
+            const relativePath = `outputs/design/${file}`;
+            existingFiles.add(relativePath);
+          }
+        }
+        
+        console.log(`📋 [DocGen] Existing files on disk: ${existingFiles.size > 0 ? Array.from(existingFiles).join(', ') : 'none'}`);
+      } else {
+        console.log(`📋 [DocGen] outputs/design directory does not exist yet (first task)`);
+      }
+    } catch (error) {
+      console.warn(`⚠️  [DocGen] Failed to scan outputs/design directory:`, error);
+      // Continue with empty existingFiles set
+    }
+  }
+  
   const orchestrator = new StreamOrchestrator({
     parser,
     renderStrategy,
@@ -147,13 +163,9 @@ export async function docGen(
     // ✅ Finalize orchestrator (flush buffer and save files)
     await orchestrator.finalize(false);  // No tool calls in XML streaming
     
-    // ✅ Get generated files from buffer
-    const buffers = state._bufferManager?.getAllBuffers() || new Map();
-    const files = Array.from(buffers.values()).map(buffer => ({
-      path: buffer.filePath,
-      content: buffer.content,
-      actionType: buffer.actionType  // ✅ CRITICAL: Preserve actionType for writeFiles node
-    }));
+    // ✅ Get generated files from registry (in-memory tracking)
+    const registry = orchestrator.getRegistry();
+    const files = registry.getAllFiles();
     
     console.log(`\n✅ [DocGen] XML streaming complete (${files.length} files generated)`);
     
@@ -181,7 +193,6 @@ export async function docGen(
     return {
       files,  // ✅ Files from XML streaming
       conversationHistory,  // ✅ CRITICAL: For resume after interruption
-      _bufferManager: state._bufferManager,
     };
   } catch (error) {
     console.error('❌ [DocGen] Error during reasoning:', error);
@@ -260,24 +271,17 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
     
     if (isImplementationDesign) {
       try {
-        // Try buffer first (in case api-contract was generated in same job)
-        const apiContractBufferContent = state._bufferManager?.getContent('outputs/design/api-contract.md');
-        if (apiContractBufferContent) {
-          apiContractContent = apiContractBufferContent;
-          console.log(`📋 [DocGen] Loaded api-contract.md from buffer (${apiContractContent.length} chars)`);
-        } else {
-          // Try disk (if from previous job)
-          const featurePath = state.context.featurePath;
-          if (featurePath) {
-            const path = await import('path');
-            const apiContractPath = path.join(featurePath, 'outputs/design/api-contract.md');
-            const fs = await import('fs/promises');
-            try {
-              apiContractContent = await fs.readFile(apiContractPath, 'utf-8');
-              console.log(`📋 [DocGen] Loaded api-contract.md from disk (${apiContractContent.length} chars)`);
-            } catch {
-              console.log(`ℹ️  [DocGen] No api-contract.md found (may not be needed)`);
-            }
+        // Try disk (should already be written from previous task)
+        const featurePath = state.context.featurePath;
+        if (featurePath) {
+          const path = await import('path');
+          const apiContractPath = path.join(featurePath, 'outputs/design/api-contract.md');
+          const fs = await import('fs/promises');
+          try {
+            apiContractContent = await fs.readFile(apiContractPath, 'utf-8');
+            console.log(`📋 [DocGen] Loaded api-contract.md from disk (${apiContractContent.length} chars)`);
+          } catch {
+            console.log(`ℹ️  [DocGen] No api-contract.md found (may not be needed)`);
           }
         }
       } catch (error) {

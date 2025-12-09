@@ -343,9 +343,6 @@ export interface ArchitectGraphState extends TaskArtifacts {
   // ✅ Real-time tracking and resume (internal, not persisted)
   _httpJobId?: string;  // Job ID for live updates and job resumption
   
-  // ✅ Buffer Manager (for real-time MD file streaming with <file> tags)
-  _bufferManager?: import('../../../../core/streaming/buffer/StreamBufferManager').StreamBufferManager;
-  
   // ✅ Error repetition tracking (internal)
   _errorIsRepeating?: boolean;  // Flag to indicate if errors are repeating
   
