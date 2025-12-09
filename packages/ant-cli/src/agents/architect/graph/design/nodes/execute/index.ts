@@ -147,7 +147,6 @@ export async function execute(state: DesignGraphState) {
       true,  // ✅ writeImmediately for design job
       'design',  // ✅ jobType
       state.context.featurePath  // ✅ Feature path for absolute path resolution
-      false  // ✅ writeImmediately: false for design job (uses separate writeFiles node)
     ),
     existingFiles: new Set([]) // Design phase doesn't generate code files
   });
