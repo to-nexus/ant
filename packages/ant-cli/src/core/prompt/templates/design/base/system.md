@@ -128,6 +128,14 @@ Do NOT add requirements that are NOT in the PRD, even if they are industry "best
     - Stateless from caller perspective: caller passes current state, engine returns new state.
     - Does not depend on UI framework, DOM, or storage.
 
+### Typical Contracts for Game / Realtime Systems
+- **GameEngine**: pure domain rules for advancing world state based on commands and time.
+- **GameRuntime / SessionManager**: owns current GameState + SessionState, schedules ticks, and orchestrates calls to engines and renderers.
+- **InputProvider / InputAdapter**: converts raw platform events (keyboard, pointer, network messages) into abstract Commands for each tick.
+- **StateProvider**: supplies authoritative state snapshots (local engine vs remote server) to the runtime layer.
+- **SyncStrategy**: chooses and applies the synchronization mode (local-only, server-authoritative, client prediction + reconciliation).
+- **Renderer / ViewBoundary**: maps domain/session state into visual output using the chosen UI framework, without owning authoritative state.
+
 ### Good Example (Architecture-focused):
 ```
 ✅ Architecture: Clear style selected and named (e.g., Layered, Hexagonal, ECS)
@@ -165,6 +173,36 @@ THIS IS IMPLEMENTATION SPEC, NOT SYSTEM DESIGN!
    - **InputProvider**: converts local/remote user actions into engine commands
    - **SyncStrategy**: defines sync mode (authoritative server, client prediction, replay)
    - Document these as contracts (names, roles, operations) without network/transport code
+ - ✅ For layered/frontend-only designs, clearly choose ONE ownership model and keep it consistent:
+   - **Recommended**:
+    - **Domain engines/models** are **stateless** from the caller’s perspective (all game state is passed in and returned; no internal, long-lived session state)
+    - A dedicated **runtime/orchestration boundary** owns long-lived game session state and loop control (single source of truth for current GameState + SessionState)
+    - **UI/view boundaries** do not own authoritative domain state; they render state passed in and emit commands/events upward (local UI state is purely presentational)
+
+### Recommended State Model Normalization (Frontend-Only Games)
+- **GameState**:
+  - Snapshot of the simulated world at a point in time (positions, velocities, scores, phase flags if needed)
+  - Owned by the runtime/orchestration boundary as part of the current session; passed into/out of domain engines
+- **SessionState / GameSession**:
+  - Longer-lived match/session information (target score, current round, match timer, high-level phase)
+  - Owned and mutated only by the runtime/orchestration boundary
+- **UI/View State**:
+  - Purely presentational flags (e.g., which overlay is visible) and transient input focus
+  - Never treated as the authoritative source for domain or session data; always derived from runtime-owned state
+
+### Canonical Control & Call Graph (Frontend-Only Games)
+- **Single Engine Caller**:
+  - ONLY the runtime/orchestration boundary (e.g., `GameRuntime` / `SessionManager`) calls domain engines such as `GameEngine`
+  - UI/View components, StateProvider implementations, and adapters MUST NOT call engines directly in System Design
+- **Canonical Input Pipeline**:
+  - UI/View captures platform events (keyboard, pointer, touch) and forwards them to an InputAdapter/InputProvider boundary
+  - InputAdapter/InputProvider converts raw events into abstract Commands for the current tick/frame
+  - Runtime/SessionManager collects Commands from InputProvider and passes them, together with current state and time, into domain engines
+  - System Design should describe this pipeline at the boundary level only; do NOT mix multiple alternative flows
+- **Routing & Navigation**:
+  - Application/Runtime boundary raises high-level events or exposes state transitions (e.g., "match finished", "error state")
+  - Presentation/UI boundary owns actual navigation/routing decisions (e.g., which screen/route to show) based on these events/state
+  - Domain and Runtime MUST NOT directly depend on concrete routing APIs; they express intent via state or events
 
 ### What NOT to Write (Implementation Details):
 - ❌ Physics behavior descriptions (how gravity/forces/animations are applied)
