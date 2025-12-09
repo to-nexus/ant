@@ -160,12 +160,19 @@ export async function loadSemanticFiles(
   const duplicatesFromStack = allVectorFiles.length - vectorDbPaths.length;
   console.log(`\n📤 [semanticSearch] Sending 'retrieved' status (${vectorDbFiles.length} NEW files, ${duplicatesFromStack} duplicates excluded)...`);
   try {
+    let retrievedMessage: string;
+    if (vectorDbFiles.length > 0) {
+      retrievedMessage = `Retrieved: ${vectorDbFiles.length} NEW files from semantic search (${duplicatesFromStack} duplicates from stack trace excluded)`;
+    } else if (excludePaths.length > 0) {
+      retrievedMessage = `Retrieved: All matching files already in stack trace results`;
+    } else {
+      retrievedMessage = `Retrieved: 0 files (Vector DB empty or no matches)`;
+    }
+    
     await chatAPI.showChatStatus('retrieved', {
       filesCount: vectorDbFiles.length,
       filesList: vectorDbFiles.map(f => f.path),
-      content: vectorDbFiles.length > 0
-        ? `Retrieved: ${vectorDbFiles.length} NEW files from semantic search (${duplicatesFromStack} duplicates from stack trace excluded)`
-        : `Retrieved: All matching files already in stack trace results`
+      content: retrievedMessage
     });
     console.log(`   ✅ 'retrieved' status sent successfully\n`);
   } catch (error: any) {
