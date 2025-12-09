@@ -68,6 +68,7 @@ Do NOT add requirements that are NOT in the PRD, even if they are industry "best
 - ❌ **Implementation formulas**: Detailed calculations, physics equations, pricing formulas
 - ❌ **Algorithm code**: Loops, conditionals, state machine transitions
 - ❌ **Configuration values**: Specific timeouts, retry counts, thresholds
+- ❌ **Implementation wiring details**: Concrete storage key names, URL paths/query formats, component tree structures, state store slice names
 
 ════════════════════════════════════════════════════════════════════════════════
 ## ✍️ UNIVERSAL WRITING RULES (Apply to ALL design documents)
@@ -93,6 +94,10 @@ Do NOT add requirements that are NOT in the PRD, even if they are industry "best
 - ❌ Platform-specific event wiring details (e.g., how/where listeners are registered)
 - ❌ Styling implementation details (e.g., concrete CSS properties, layout flags)
 - ❌ Local/internal helper state structures that never cross a module/layer boundary
+- ❌ Concrete identifiers that belong to configuration/implementation, not System Design:
+-   - Storage key names (e.g., `"bookmarks"`, `"recentSearches"`, `"statsData"`)
+-   - URL paths and query parameter shapes (e.g., `"/ai"`, `"/search?q=..."`)
+-   - Store/slice names and internal state tree layouts (e.g., `useNewsStore`, `statsSlice`)
 - ❌ "Let me explain..." tutorials
 - ❌ Paragraphs of prose (use bullet points!)
 
