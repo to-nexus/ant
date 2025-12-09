@@ -46,9 +46,20 @@ Wrap your JSON response in <detect> tags (NO markdown code blocks):
         "keywords": ["user API", "auth endpoint"]
       }
     ]
+  },
+  "profile": {
+    "language": "typescript" | "javascript" | "python" | "golang" | "rust" | "java",
+    "framework": "react" | "vue" | "next" | "express" | "fastapi" | ... (or null)
   }
 }
 </detect>
+
+**⚠️ IMPORTANT: Profile Language Default**
+
+If you cannot clearly determine the language from the directive or design document:
+- **ALWAYS use `"typescript"` as the default**
+- TypeScript is the correct default for modern web applications
+- Only use other languages if explicitly mentioned (Python/FastAPI, Go, Rust, Java)
 
 **CRITICAL:**
 - Use <detect> XML tags directly

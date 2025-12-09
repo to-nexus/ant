@@ -182,3 +182,78 @@ If directive mentions other projects (e.g., "check backend API"):
 ```
 
 Maximum 8 keywords per reference project.
+
+---
+
+### 5. Profile Detection (Language & Framework)
+
+**🎯 CRITICAL: Determine the programming language and framework from the design document**
+
+**Language Detection:**
+
+Analyze the design document for language indicators:
+- **TypeScript**: Mentions of TypeScript, tsconfig.json, @types/, React, Vue, Next.js, Vite
+- **JavaScript**: Pure JavaScript (ES6+) without TypeScript
+- **Python**: FastAPI, Django, Flask, requirements.txt, pyproject.toml
+- **Go**: Go, Golang, go.mod
+- **Rust**: Rust, Cargo.toml
+- **Java**: Java, Maven, Gradle, Spring
+
+**Framework Detection (if mentioned):**
+
+- **Frontend**: React, Vue, Next.js, Nuxt, SvelteKit, Angular
+- **Backend**: Express, Fastify, NestJS (Node), FastAPI, Django (Python), Gin (Go)
+- **Fullstack**: Next.js, Remix, Nuxt, SvelteKit
+
+**⚠️ DEFAULT BEHAVIOR (CRITICAL):**
+- **If language is unclear or uncertain:** ALWAYS default to `"typescript"`
+- **If no framework mentioned:** Set `framework: null`
+- **When in doubt:** Use TypeScript (most common for modern web/API projects)
+
+**DO NOT guess exotic languages** - TypeScript is the safe default for:
+- Web frontends (React, Vue, etc.)
+- Node.js backends (Express, NestJS, etc.)
+- Fullstack frameworks (Next.js, Remix, etc.)
+- Any project where language is ambiguous
+
+**Examples:**
+
+Design mentions "React + Vite + TypeScript":
+```json
+{
+  "profile": {
+    "language": "typescript",
+    "framework": "react"
+  }
+}
+```
+
+Design mentions "Express API server":
+```json
+{
+  "profile": {
+    "language": "typescript",
+    "framework": "express"
+  }
+}
+```
+
+Design mentions "FastAPI backend":
+```json
+{
+  "profile": {
+    "language": "python",
+    "framework": "fastapi"
+  }
+}
+```
+
+Unclear design:
+```json
+{
+  "profile": {
+    "language": "typescript",
+    "framework": null
+  }
+}
+```
