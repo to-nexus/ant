@@ -527,7 +527,7 @@ export class XMLStreamParser implements IStreamParser {
       // 22. Inside <edit>, check for <search> and <replace>
       if (this.context.insideEdit) {
         // <search> opening
-        if (!this.context.insideSearch && this.buffer.includes('<search>')) {
+        if (!this.context.insideSearch && !this.context.insideReplace && this.buffer.includes('<search>')) {
           const startIdx = this.buffer.indexOf('<search>');
           this.buffer = this.buffer.substring(startIdx + '<search>'.length);
           this.context.insideSearch = true;
@@ -555,8 +555,8 @@ export class XMLStreamParser implements IStreamParser {
           continue;
         }
         
-        // <replace> opening
-        if (!this.context.insideReplace && this.buffer.includes('<replace>')) {
+        // <replace> opening (only check if NOT inside search)
+        if (!this.context.insideSearch && !this.context.insideReplace && this.buffer.includes('<replace>')) {
           const startIdx = this.buffer.indexOf('<replace>');
           this.buffer = this.buffer.substring(startIdx + '<replace>'.length);
           this.context.insideReplace = true;
@@ -582,6 +582,13 @@ export class XMLStreamParser implements IStreamParser {
           });
           continueParsingLoop = true;
           continue;
+        }
+        
+        // ✅ CRITICAL: Accumulate content while inside search/replace
+        // If we're waiting for a closing tag, keep content in buffer
+        if (this.context.insideSearch || this.context.insideReplace) {
+          // Keep waiting for closing tag
+          break;
         }
       }
       
@@ -705,8 +712,27 @@ export class XMLStreamParser implements IStreamParser {
       // ✅ Check if buffer has actual content (not just whitespace)
       const hasActualContent = this.buffer.replace(/[\s\n\r]/g, '').length > 0;
       
+      // ⚠️ If inside search/replace, this is an ERROR (incomplete edit)
+      if (this.context.insideSearch || this.context.insideReplace) {
+        const section = this.context.insideSearch ? 'search' : 'replace';
+        console.error(`[XMLParser] ⚠️  WARNING: Incomplete <edit> detected! Missing closing </${section}> tag.`);
+        console.error(`   Remaining buffer will NOT be included in file content to prevent corruption.`);
+        console.error(`   Buffer: "${this.buffer.substring(0, 200)}..."`);
+        
+        // ✅ Emit as file_content with metadata for debugging
+        if (hasActualContent && this.context.currentEditPath) {
+          actions.push({
+            type: 'file_content',
+            data: {
+              filePath: this.context.currentEditPath,
+              content: this.buffer,
+              metadata: { section, incomplete: true }
+            }
+          });
+        }
+      }
       // If inside thinking, emit as thinking
-      if (this.context.insideThinking) {
+      else if (this.context.insideThinking) {
         if (hasActualContent) {
           actions.push({
             type: 'thinking',
