@@ -297,58 +297,11 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   const analyzer = state.deps?.analyzer;
   const referenceContexts: ReferenceContext[] = [];
   
-  // ✅ Profile analysis conditions:
-  // 1. Analyzer must be available
-  // 2. Working directory must exist
-  // 3. This is a new job (not resume)
-  const shouldAnalyzeProfile = analyzer && context.workingDir && !isResume;
-  
-  if (shouldAnalyzeProfile) {
-    console.log(`📋 [Resolve] Analyzing codebase profile (minimal)...`);
-    
-    const { getChatAPIClient } = await import('../../../../../core/adapters/ChatAPIClient');
-    const chatAPI = getChatAPIClient();
-    
-    // ✅ Profile analysis: Read ONLY config files directly (no search)
-    const configFiles = ['package.json', 'tsconfig.json', 'vite.config.ts', 'vite.config.js'];
-    
-    await chatAPI.showChatStatus('retrieving', { query: 'Config files: ' + configFiles.join(', ') });
-    
-    let profileCode = '';
-    const loadedFiles: string[] = [];
-    
-    for (const filename of configFiles) {
-      try {
-        const filePath = path.join(context.workingDir, filename);
-        const content = await gitPort.readFile(filePath);
-        if (content) {
-          profileCode += `\n// ${filename}\n${content}\n`;
-          loadedFiles.push(filename);
-        }
-      } catch (error) {
-        // File doesn't exist, skip
-      }
-    }
-    
-    console.log(`   Retrieved ${loadedFiles.length} config files: ${loadedFiles.join(', ')}`);
-    
-    await chatAPI.showChatStatus('retrieved', { 
-      filesCount: loadedFiles.length,
-      filesList: loadedFiles
-    });
-    
-    // Analyze profile from config files
-    if (profileCode) {
-      try {
-        profile = await analyzer.analyze(profileCode, context.workingDir);
-        console.log(`   📊 Detected: ${profile.language}${profile.framework ? ` + ${profile.framework}` : ''}`);
-      } catch (error) {
-        console.warn('   ⚠️  Profile analysis failed:', error);
-      }
-    }
-  } else {
-    console.log(`📋 [Resolve] Skipping profile analysis (${!analyzer ? 'no analyzer' : 'resume mode'})`);
-  }
+  // ✅ Profile detection moved to detectEnvironment node (LLM-based)
+  // Resolve no longer analyzes config files for profile
+  // - New projects: No config files exist yet, profile determined from design doc by LLM
+  // - Existing projects: Profile determined from existing code patterns by LLM
+  console.log(`📋 [Resolve] Profile detection delegated to detectEnvironment node (LLM-based analysis)`);
 
   // ✅ Return minimal state (profile only, NO mode - mode determined in detectEnvironment)
   const result = {

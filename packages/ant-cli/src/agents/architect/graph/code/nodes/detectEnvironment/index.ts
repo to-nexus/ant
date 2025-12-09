@@ -118,6 +118,11 @@ export async function detectEnvironment(
   console.log(`   Environment Reasoning: ${parsed.environmentReasoning}`);
   console.log(`   Require RAG for Decompose: ${parsed.requireRagForDecompose}`);
   
+  // ✅ Log profile (language/framework)
+  if (parsed.profile) {
+    console.log(`✅ Profile: ${parsed.profile.language}${parsed.profile.framework ? ` + ${parsed.profile.framework}` : ''}`);
+  }
+  
   // Display keywords in Chat UI - 항상 표시
   const stackTraceCount = decomposeKeywords.stackTrace.length;
   const semanticCount = decomposeKeywords.keywords.length;
@@ -193,6 +198,7 @@ export async function detectEnvironment(
     selectedDesignFiles,
     requireRagForDecompose: parsed.requireRagForDecompose,
     decomposeKeywords,
+    profile: parsed.profile,  // ✅ Add profile to state (language/framework from LLM)
   };
 }
 

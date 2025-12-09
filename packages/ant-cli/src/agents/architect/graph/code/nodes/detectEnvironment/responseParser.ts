@@ -16,6 +16,10 @@ export interface DetectEnvironmentResponse {
       keywords: string[];
     }>;
   };
+  profile?: {
+    language: string;
+    framework?: string;
+  };
 }
 
 export function parseDetectResponse(response: string): DetectEnvironmentResponse {
@@ -57,6 +61,13 @@ export function parseDetectResponse(response: string): DetectEnvironmentResponse
         stackTrace: parsed.decomposeKeywords?.stackTrace || [],
         keywords: parsed.decomposeKeywords?.keywords || [],
         references: parsed.decomposeKeywords?.references || []
+      },
+      profile: parsed.profile ? {
+        language: parsed.profile.language || 'typescript',
+        framework: parsed.profile.framework
+      } : {
+        language: 'typescript',  // Default to TypeScript if not specified
+        framework: undefined
       }
     };
     
@@ -75,6 +86,10 @@ export function parseDetectResponse(response: string): DetectEnvironmentResponse
         stackTrace: [],
         keywords: [],
         references: []
+      },
+      profile: {
+        language: 'typescript',  // Safe default
+        framework: undefined
       }
     };
   }
