@@ -185,7 +185,7 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
     await chatAPI.showChatStatus('explored', {
       filesCount: gitChangesCount,
       content: gitChangesCount > 0 
-        ? `Explored: ${gitChangesCount} files with uncommitted changes`
+        ? `Explored: ${gitChangesCount} files with uncommitted changes related to semantic search`
         : `Explored: No uncommitted changes`
     });
     
