@@ -295,6 +295,7 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
         previousDesign: state.design,  // Use previousDesign for design job
         prdSpec: state.prd,
         currentCode: state.code,
+        designDomain: state.designDomain,
         currentTask: {
           name: state.currentTask.name,
           type: state.currentTask.type,

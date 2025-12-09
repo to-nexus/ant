@@ -83,9 +83,10 @@ export async function execute(state: DesignGraphState) {
   const artifacts = {
     directive: state.directive,
     designDoc: primaryDesign?.content,  // ✅ Pass accumulated design from previous tasks
-    prdSpec: state.prd,               // PRD
-    previousDesign: state.design,     // Previous design (from git)
-    currentCode: state.code,          // Codebase (for evolution/refactor)
+    prdSpec: state.prd,                // PRD
+    previousDesign: state.design,      // Previous design (from git)
+    currentCode: state.code,           // Codebase (for evolution/refactor)
+    designDomain: state.designDomain,  // Detected design domain (game vs service)
     currentTask: state.currentTask ? {  // ✅ Pass current task info
       name: state.currentTask.name,
       type: state.currentTask.type,

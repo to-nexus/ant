@@ -175,7 +175,7 @@ export class ModeController {
     }
     
     if (phase === 'execute') {
-      // Environment-specific rules
+      // Environment-specific rules (code job only)
       const language = this.detectLanguage(context);
       const environment = this.detectEnvironment(context);
       
@@ -194,6 +194,13 @@ export class ModeController {
       // Markdown file streaming format (used by both code and design jobs)
       injections.push(`${commonPrefix}/output-format-markdown`);
       console.log(`[ModeController] Adding markdown streaming format injection`);
+
+      // Domain-specific design guides (design job only)
+      if (task === 'design' && context.designDomain === 'game') {
+        const gameGuidePath = `design/base/injections/game-guide`;
+        injections.push(gameGuidePath);
+        console.log(`[ModeController] Adding game-domain design injection: ${gameGuidePath}`);
+      }
       
       // Retry context (only on retries)
       if (context.retryContext) {

@@ -239,6 +239,16 @@ Before generating output, verify:
 ❌ Language-specific type/contract syntax: `interface GameEngine { ... }`, `type GameState = { ... }`
 ❌ Local/internal helper state schemas that never cross a boundary (these belong in implementation, not design)
 
+### UI / Rendering Detail Guardrail
+- System Design MUST NOT describe UI at the level of implementation details:
+  - ❌ Do NOT list concrete component trees, overlay compositions, or DOM element hierarchies
+  - ❌ Do NOT describe specific CSS properties, layout techniques, animation timelines, or styling libraries
+  - ❌ Do NOT narrate step-by-step UI flows ("user clicks X, then Y happens, then Z...") beyond what is needed to explain core architecture
+- Instead, describe:
+  - ✅ Roles of screens/boundaries (e.g., "Game screen renders the current GameState and forwards user commands")
+  - ✅ How state/view-model flows between boundaries (who owns state, who reads it, who sends commands)
+  - ✅ Any architectural constraints on UI (e.g., "declarative rendering; view is a pure function of state")
+
 ### Test Your Writing:
 **Question: "Could a developer implement this 10 different ways?"**
 - YES → Good architectural level (structure, not steps)
