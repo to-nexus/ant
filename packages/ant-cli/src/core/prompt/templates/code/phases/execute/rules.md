@@ -152,6 +152,37 @@ export function Button() {
 
 ────────────────────────────────────────────────────────────────────────────────
 
+## 🚨 CRITICAL: XML TAG SAFETY
+
+**⚠️ DO NOT include closing XML tags in your code comments or strings!**
+
+The parser looks for the FIRST occurrence of closing tags. If you put them in comments/strings, parsing will break.
+
+**❌ FORBIDDEN - These will break parsing:**
+
+```typescript
+// Bad: comment with closing tag
+// TODO: </replace> this later
+const tag = "</file>";              // String literal
+const html = "</append>";           // Will break parser!
+console.log("</edit>");             // Parser stops here!
+```
+
+**✅ SAFE ALTERNATIVES:**
+
+```typescript
+// Good: use different wording
+// TODO: close-replace this later
+// TODO: finish this replacement
+const tag = "<" + "/file>";         // Split the tag
+const html = "</" + "append>";      // Use concatenation
+console.log("close-edit");          // Use different words
+```
+
+**This applies to ALL XML tags:** `</file>`, `</edit>`, `</append>`, `</search>`, `</replace>`
+
+────────────────────────────────────────────────────────────────────────────────
+
 ## 💡 DECISION TREE
 
 **Working with files?**
@@ -174,6 +205,49 @@ export function Button() {
 
 ────────────────────────────────────────────────────────────────────────────────
 
+## 🎯 CODE QUALITY RULES
+
+### 1. Use Existing Constants (DRY Principle)
+
+**⚠️ CRITICAL: Always check for and use existing constants/config files**
+
+**Before hardcoding any value, check if it exists in**:
+- `constants.ts` / `config.ts` / `settings.ts`
+- Configuration files in the codebase
+- Environment variables
+
+**Examples:**
+
+```typescript
+// ❌ BAD - Hardcoded values
+function updatePaddle() {
+  const speed = 300;              // Magic number!
+  const fieldWidth = 800;         // Duplicated!
+  const paddleHeight = 100;       // Should be constant!
+}
+
+// ✅ GOOD - Use existing constants
+import { PADDLE_SPEED, DEFAULT_FIELD, DEFAULT_PADDLE_HEIGHT } from './constants';
+
+function updatePaddle() {
+  const speed = PADDLE_SPEED;
+  const fieldWidth = DEFAULT_FIELD.width;
+  const paddleHeight = DEFAULT_PADDLE_HEIGHT;
+}
+```
+
+**When editing existing files:**
+1. Check if the file already imports from a constants file
+2. If constants exist → USE THEM (don't duplicate values)
+3. If new constant needed → ADD to constants file first
+
+**When creating new files:**
+1. Check if `constants.ts` or similar exists in the project
+2. Import and use constants from there
+3. DO NOT create duplicate constants in multiple files
+
+────────────────────────────────────────────────────────────────────────────────
+
 ## 🚫 COMMON MISTAKES
 
 | Mistake | Wrong | Correct |
@@ -181,10 +255,12 @@ export function Button() {
 | **CRITICAL: Using `<edit>` as a tool** | `<tool_use><name>edit</name>` | Use XML tag directly: `<edit path="...">` (NO tool_use wrapper) |
 | **CRITICAL: Using `<file>` as a tool** | `<tool_use><name>file</name>` or `<tool_use><name>write_file</name>` | Use XML tag directly: `<file path="...">` (NO tool_use wrapper) |
 | **CRITICAL: Modifying existing file with `<file>`** | `<file path="src/App.tsx">` when file exists | **ALWAYS** use `<edit path="src/App.tsx">` |
+| **CRITICAL: Hardcoding values instead of using constants** | `const speed = 300;` when `PADDLE_SPEED` exists | `import { PADDLE_SPEED } from './constants'; const speed = PADDLE_SPEED;` |
 | Creating new file with `<edit>` | `<edit path="src/NewComponent.tsx">` when file doesn't exist | Use `<file path="src/NewComponent.tsx">` |
 | Reading with XML tag | `<read path="...">` (no such tag) | `<tool_use><name>read_file</name>` |
 | Deleting directory with single file tool | `delete_file` on `dist/` directory | `<tool_use><name>run_command</name><parameters><command>rm -rf dist/</command>` |
 | Deleting multiple files individually | Multiple `delete_file` calls | `<tool_use><name>run_command</name><parameters><command>rm *.log</command>` |
+| Duplicating constants in multiple files | `const API_URL = "..."` in 3 files | Create `config.ts` with single source of truth |
 | Markdown in content | ` ```typescript\ncode\n``` ` | Raw code only |
 | Placeholder paths | `path/to/file.tsx` | `src/components/Button.tsx` |
 | Code placeholders | `// ... logic ...` | Complete implementation |
