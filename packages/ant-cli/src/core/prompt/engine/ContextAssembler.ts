@@ -84,6 +84,9 @@ export interface AssembledContext {
   };
   codebaseProfile?: CodebaseProfile | null;
   
+  // ✅ Design domain (for domain-specific injections, e.g., game vs service)
+  designDomain?: 'game' | 'service';
+  
   // Statistics
   stats: {
     hasDirective: boolean;
@@ -127,6 +130,8 @@ export class ContextAssembler {
     artifacts?: {
       directive?: string;
       designDoc?: string;
+      prdSpec?: string;
+      currentCode?: string;
       lastSectionNumber?: number;
       projectCodeContext?: ProjectCodeContext;
       referenceCodeContexts?: ReferenceCodeContext[];
@@ -144,6 +149,7 @@ export class ContextAssembler {
         beDesign?: string;
         unifiedDesign?: string;
       };
+      designDomain?: 'game' | 'service';
     }
   ): Promise<AssembledContext> {
     const assembled: Partial<AssembledContext> = {};
@@ -151,6 +157,8 @@ export class ContextAssembler {
     if (artifacts) {
       assembled.directive = artifacts.directive;
       assembled.designDoc = artifacts.designDoc;
+      assembled.prdSpec = artifacts.prdSpec;
+      assembled.currentCode = artifacts.currentCode;
       assembled.lastSectionNumber = artifacts.lastSectionNumber;
       assembled.projectCodeContext = artifacts.projectCodeContext;
       assembled.referenceCodeContexts = artifacts.referenceCodeContexts || [];
@@ -158,6 +166,7 @@ export class ContextAssembler {
       assembled.retryContext = artifacts.retryContext;
       assembled.referenceRequests = artifacts.referenceRequests;
       assembled.designDocs = artifacts.designDocs;
+      assembled.designDomain = artifacts.designDomain;
     }
     
     // 1. Load task-specific documents using provided loader

@@ -101,4 +101,8 @@ export interface DesignGraphState extends TaskArtifacts {
   
   // ✅ NEW: Buffer Manager (for real-time file streaming with <file> tags)
   _bufferManager?: StreamBufferManager;
+
+  // ✅ Design domain detection (game vs service)
+  designDomain?: 'game' | 'service';
+  designDomainReasoning?: string;
 }

@@ -6,6 +6,7 @@ import { plan } from "./nodes/plan";
 import { docGen } from "./nodes/docGen";  // ✅ XML streaming to buffer
 import { writeFiles } from "./nodes/writeFiles";  // ✅ Save buffer to disk
 import { learn } from "./nodes/learn";
+import { detectEnvironment } from "./nodes/detectEnvironment";
 
 /**
  * Check task status and handle completion
@@ -168,6 +169,7 @@ export function buildDesignGraph() {
   } as any);
 
   graph.addNode("resolve" as const, resolve as any);
+  graph.addNode("detectEnvironment" as const, detectEnvironment as any);
   graph.addNode("decompose" as const, decompose as any);
   graph.addNode("plan" as const, plan as any);
   graph.addNode("docGen" as const, docGen as any);  // ✅ XML streaming (no tool calling!)
@@ -175,12 +177,13 @@ export function buildDesignGraph() {
   graph.addNode("checkTaskStatus" as const, checkTaskStatus as any);
   graph.addNode("learn" as const, learn as any);
 
-  // ✅ Simplified flow: resolve → decompose → [plan → docGen → writeFiles → check] → learn
+  // ✅ Simplified flow: resolve → detectDomain → decompose → [plan → docGen → writeFiles → check] → learn
   // Design job uses PURE XML streaming (<file>, <append>, <edit> tags)
   // docGen: XML streaming to buffer
   // writeFiles: Save buffer to actual files
   (graph as any).addEdge("__start__", "resolve");
-  (graph as any).addEdge("resolve", "decompose");
+  (graph as any).addEdge("resolve", "detectEnvironment");
+  (graph as any).addEdge("detectEnvironment", "decompose");
   (graph as any).addEdge("decompose", "plan");
   (graph as any).addEdge("plan", "docGen");
   (graph as any).addEdge("docGen", "writeFiles");

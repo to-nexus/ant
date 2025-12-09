@@ -196,6 +196,7 @@ export class PromptEngine {
         priority: number;
         description: string;
       };
+      designDomain?: 'game' | 'service';
     },
     mode?: CodeMode,
     taskType?: string
@@ -290,7 +291,7 @@ export class PromptEngine {
   }
 
   /**
-   * Build prompt for DetectEnvironment node
+   * Build prompt for DetectEnvironment node (code graph)
    * Note: Mode inference is now part of this prompt (LLM-based)
    */
   async buildDetectEnvironmentPrompt(
@@ -303,6 +304,21 @@ export class PromptEngine {
       directive,
       designDocs: designDocs.join(', '),
       profile
+    });
+  }
+
+  /**
+   * Build prompt for Design Domain Detection (design graph)
+   * - Only classifies project domain (e.g., "game" vs "service")
+   * - Uses directive and PRD; existing designDoc is NOT needed here
+   */
+  async buildDesignDomainPrompt(args: {
+    directive: string;
+    prdSpec?: string;
+  }): Promise<string> {
+    return await this.deps.promptPort.render('design/phases/detect/base', {
+      directive: args.directive,
+      prdSpec: args.prdSpec || '',
     });
   }
 

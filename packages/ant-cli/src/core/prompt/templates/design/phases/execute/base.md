@@ -140,18 +140,18 @@ STRUCTURE PER CHAPTER:
 1. **Overview**: System purpose, high-level architecture style, key use cases
 2. **Responsibilities & Boundaries**: Chosen pattern (Layered, Hexagonal, ECS, etc.), major boundaries, and WHAT each owns (UI, orchestration, domain rules, platform dependencies)
 3. **State Model & Ownership**: Normalize state types (e.g., Domain/GameState vs SessionState vs UI-only state) and define exactly which boundary is the single source of truth for each
-4. **Core Domain Concepts & Data Ownership**: Key entities/aggregates and which boundary owns/updates them (describe concepts, NOT full field lists or visual representation)
+4. **Core Domain Concepts & Data Ownership**: Key entities/aggregates and which boundary owns/updates them (describe concepts, NOT full field lists or visual representation). Include key **domain invariants and policies** (rules/constraints), but NOT algorithms.
 5. **Core Interfaces & Contracts (ONE place)**:
    - List ALL important contracts between boundaries (services, engines, ports, providers, repositories, runtime/controllers)
    - For each: Name / Role / Operations / Rules (language-neutral, see system base guide)
-   - For realtime/game systems, this typically includes at least: `GameEngine`, `GameRuntime/SessionManager`, `InputProvider/InputAdapter`, `StateProvider`, `SyncStrategy`, `Renderer/ViewBoundary`
+   - For realtime/game systems, this typically includes at least: `GameEngine`, `GameRuntime/SessionManager`, `InputProvider/InputAdapter`, `StateProvider`, `SyncStrategy`, `ViewBoundary`
    - Other sections MUST reference these contracts instead of redefining them
 6. **Main Execution Flows / Runtime Behavior** (if real-time, game, or background processing):
    - 2–3 key flows only (e.g., "game loop", "screen transition")
    - High-level description: who owns the loop, who calls whom, in which order
    - NO platform-specific APIs or detailed timing logic
 7. **Technology Stack & Platform Constraints**: Framework + version, database (if any), key libraries, and any hard platform constraints (e.g., "HTML/DOM-based rendering, no Canvas/WebGL")
-8. **Non-Functional Requirements** (if PRD mentions): Security, performance, integrations
+8. **Non-Functional Requirements** (if PRD mentions): Security, performance, integrations. For realtime/game systems, include ONLY if present in PRD: FPS/latency targets, determinism requirements, tick strategy (fixed vs variable), and synchronization policies (authoritative vs prediction).
 
 ════════════════════════════════════════════════════════════════════════════════
 ## 🚫 ABSOLUTELY FORBIDDEN (Unless PRD EXPLICITLY requests)
