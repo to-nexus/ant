@@ -254,11 +254,38 @@ Before generating output, verify:
 - YES → Good architectural level (structure, not steps)
 - NO → Too detailed (you're writing implementation)
 
-### Domain Guardrail (Game / Physics / Rendering)
-- Treat the engine as a black-box module: Input → Engine (Domain) → State → Renderer (Presentation)
-- Describe responsibilities and interfaces only; DO NOT describe physics behavior
-- No formulas, numeric parameters, timing values, or rendering commands (CSS/Canvas/WebGL)
-- Do NOT list fields of internal game-specific state objects (engine/internal state, field layouts, etc.); describe concepts, roles, and ownership instead
+════════════════════════════════════════════════════════════════════════════════
+## 🧹 IMPLEMENTATION DETAIL FILTER (Especially for Service / Dashboard / CRUD)
+════════════════════════════════════════════════════════════════════════════════
+
+**Even if the PRD includes these values explicitly, System Design MUST NOT repeat them as low-level implementation details.**
+
+### DO NOT Write (belongs to PRD or implementation docs):
+- ❌ Concrete storage keys or internal persistence shapes:
+  - e.g., `"bookmarks"`, `"recentSearches"`, `"statsData"` and exact JSON layouts.
+- ❌ Concrete URL paths and query formats:
+  - e.g., `"/ai"`, `"/blockchain"`, `"/search?q=keyword"`.
+- ❌ UI component trees, props contracts, or handler names:
+  - e.g., `NewsCardProps`, `onBookmarkToggle(articleId)`, `CategoryFilter`, `SourceFilter` component hierarchies.
+- ❌ State management implementation details:
+  - Store/slice names, selector names, hook usage patterns (e.g., `useNewsStore`, `statsSlice`, `useBookmarkStore`).
+- ❌ Concrete retry/backoff or caching algorithms:
+  - e.g., "exponential backoff with 3 retries", "retry after 100/200/400 ms".
+- ❌ Detailed loading/error UI patterns:
+  - Specific spinners, skeleton layouts, banner text, button placement, toasts, etc.
+
+### INSTEAD, Write at Architecture / Policy Level:
+- ✅ Describe **policies and ownership**, not keys or paths:
+  - "Bookmark collection is persisted via a client-side StorageAdapter; key names and encoding format are implementation details."
+  - "Search terms are kept as a bounded queue in client storage; maximum length and eviction policy are owned by Application/Domain policy."
+- ✅ Describe **navigation and screens** conceptually:
+  - "AI News view", "Search view", "Bookmarks view" and how they map to use cases, without hard-coding routes.
+- ✅ Describe **state responsibilities**:
+  - "Application layer owns SearchState, BookmarkState, StatisticsState and exposes them as read models to Presentation."
+- ✅ Describe **error/retry policies** at a high level:
+  - "Infrastructure wraps external API failures into domain-level error results; Application decides when to retry vs surface an error state."
+
+**Rule of thumb**: If a detail looks like a hard-coded literal or a framework-level symbol (key, path, prop name, slice name, hook), it almost always belongs in PRD or implementation, NOT in System Design.
 
 ### Responsibility & Boundary Guardrail (Architecture-Style Agnostic)
 - Regardless of architecture pattern (Layered, Hexagonal, ECS, Event-Driven, etc.), you MUST:

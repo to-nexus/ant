@@ -195,11 +195,17 @@ export class ModeController {
       injections.push(`${commonPrefix}/output-format-markdown`);
       console.log(`[ModeController] Adding markdown streaming format injection`);
 
-      // Domain-specific design guides (design job only)
-      if (task === 'design' && context.designDomain === 'game') {
-        const gameGuidePath = `design/base/injections/game-guide`;
-        injections.push(gameGuidePath);
-        console.log(`[ModeController] Adding game-domain design injection: ${gameGuidePath}`);
+      // Domain-specific design guides (design job only, execute phase only)
+      if (task === 'design') {
+        if (context.designDomain === 'game') {
+          const gameGuidePath = `design/phases/execute/injections/game-domain-guide`;
+          injections.push(gameGuidePath);
+          console.log(`[ModeController] Adding game-domain design injection: ${gameGuidePath}`);
+        } else if (context.designDomain === 'service') {
+          const serviceGuidePath = `design/phases/execute/injections/service-domain-guide`;
+          injections.push(serviceGuidePath);
+          console.log(`[ModeController] Adding service-domain design injection: ${serviceGuidePath}`);
+        }
       }
       
       // Retry context (only on retries)

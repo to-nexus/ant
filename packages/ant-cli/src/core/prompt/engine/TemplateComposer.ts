@@ -387,7 +387,10 @@ export class TemplateComposer {
       'api-contract-guide': {},
       'backend-guide': {},
       'frontend-guide': {},
-      'game-guide': {}
+      'game-guide': {},
+      'service-guide': {},
+      'game-domain-guide': {},
+      'service-domain-guide': {}
     };
     
     return varMap[filename] || {};

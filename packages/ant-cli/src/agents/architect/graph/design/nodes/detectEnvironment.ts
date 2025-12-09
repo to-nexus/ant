@@ -116,11 +116,11 @@ export async function detectEnvironment(
     console.log(`  Reason: ${parsed.domainReasoning}`);
     if (parsed.domain === "game") {
       console.log(
-        "  Domain-specific injections: Game Domain Design Guide (design/base/injections/game-guide.md)"
+        "  Domain-specific injections: Game Domain Design Guide (design/phases/execute/injections/game-domain-guide.md)"
       );
-    } else {
+    } else if (parsed.domain === "service") {
       console.log(
-        "  Domain-specific injections: none (service domain; no game-specific prompts)"
+        "  Domain-specific injections: Service Domain Design Guide (design/phases/execute/injections/service-domain-guide.md)"
       );
     }
     console.log();
@@ -130,18 +130,18 @@ export async function detectEnvironment(
       const { getChatAPIClient } = await import("../../../../../core/adapters/ChatAPIClient");
       const chatAPI = getChatAPIClient();
 
-      const hasDomainInjection = parsed.domain === "game";
+      const hasDomainInjection = parsed.domain === "game" || parsed.domain === "service";
       let content =
         "🧭 **Design Domain Detection Result**\n\n" +
         `- **Domain**: ${parsed.domain}\n` +
         `- **Reason**: ${parsed.domainReasoning}\n`;
 
-      if (hasDomainInjection) {
+      if (parsed.domain === "game") {
         content +=
-          "- **Domain-specific injections**: `design/base/injections/game-guide.md` (Game Domain Design Guide) will be included in design prompts.\n";
-      } else {
+          "- **Domain-specific injections**: `design/phases/execute/injections/game-domain-guide.md` (Game Domain Design Guide) will be included in design prompts.\n";
+      } else if (parsed.domain === "service") {
         content +=
-          "- **Domain-specific injections**: none (service domain; no game-specific game prompts).\n";
+          "- **Domain-specific injections**: `design/phases/execute/injections/service-domain-guide.md` (Service Domain Design Guide) will be included in design prompts.\n";
       }
 
       await chatAPI.showChatStatus("analyzed", {
