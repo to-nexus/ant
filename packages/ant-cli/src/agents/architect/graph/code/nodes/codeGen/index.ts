@@ -131,6 +131,7 @@ export async function codeGen(
   // Collect LLM output
   let thinking = '';
   let textResponse = '';
+  let isDone = false;  // ✅ Track done event (don't propagate immediately)
   const toolCalls: Array<{
     id: string;
     name: string;
@@ -179,10 +180,23 @@ export async function codeGen(
         });
       }
       
-      // Done
+      // Done (just mark it, don't propagate yet - files might still be saving!)
       if (event.type === 'done') {
-        await chatAPI.sendLLMEvent(event);
+        isDone = true;
+        // ❌ DO NOT propagate yet! Wait for files to be saved first
       }
+    }
+    
+    // ✅ CRITICAL: Wait for all file operations to complete BEFORE finalizing
+    // This ensures files are saved before task is marked as completed
+    console.log(`\n💾 [CodeGen] Waiting for all file operations to complete...`);
+    await orchestrator.waitForAllFileOperations();
+    console.log(`✅ [CodeGen] All files saved successfully`);
+    
+    // ✅ NOW propagate done event (files are guaranteed to be saved)
+    if (isDone) {
+      console.log(`✅ [CodeGen] Files saved, now propagating done event to UI`);
+      await chatAPI.sendLLMEvent({ type: 'done' });
     }
     
     // ✅ Finalize orchestrator (flush buffer)

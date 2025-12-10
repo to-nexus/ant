@@ -12,14 +12,14 @@ import type { MessageContent } from '@/domain/models/chat';
 
 interface WorkingCardProps {
   content: MessageContent;
-  variant: 'exploring' | 'explored' | 'retrieving' | 'retrieved' | 'grepping' | 'grepped' | 'reading' | 'read' | 'indexing' | 'indexed' | 'analyzing' | 'analyzed' | 'storing' | 'stored';
+  variant: 'exploring' | 'explored' | 'retrieving' | 'retrieved' | 'grepping' | 'grepped' | 'listing_files' | 'listed_files' | 'searching_code' | 'searched_code' | 'reading' | 'read' | 'indexing' | 'indexed' | 'analyzing' | 'analyzed' | 'storing' | 'stored';
 }
 
 /**
  * Determine if variant is a progress state (~ing) or complete state (~ed)
  */
 function isProgressState(variant: string): boolean {
-  return ['exploring', 'retrieving', 'grepping', 'reading', 'indexing', 'analyzing', 'storing'].includes(variant);
+  return ['exploring', 'retrieving', 'grepping', 'listing_files', 'searching_code', 'reading', 'indexing', 'analyzing', 'storing'].includes(variant);
 }
 
 /**
@@ -62,6 +62,30 @@ function getVariantConfig(variant: string, isProgress: boolean) {
         iconColorClass: isProgress ? 'text-purple-600 dark:text-purple-400' : 'text-purple-500 dark:text-purple-400',
         textClass: 'text-purple-800 dark:text-purple-300',
         detailClass: 'text-purple-600 dark:text-purple-400'
+      };
+    case 'listing_files':
+    case 'listed_files':
+      return {
+        Icon: isProgress ? Loader2 : FileSearch,
+        iconClass: isProgress ? 'animate-spin' : '',
+        containerClass: isProgress 
+          ? 'bg-cyan-50 dark:bg-cyan-900/20 border border-cyan-200 dark:border-cyan-800'
+          : 'bg-cyan-50/30 dark:bg-cyan-900/20 hover:bg-cyan-100/50 dark:hover:bg-cyan-800/30',
+        iconColorClass: isProgress ? 'text-cyan-600 dark:text-cyan-400' : 'text-cyan-500 dark:text-cyan-400',
+        textClass: 'text-cyan-800 dark:text-cyan-300',
+        detailClass: 'text-cyan-600 dark:text-cyan-400'
+      };
+    case 'searching_code':
+    case 'searched_code':
+      return {
+        Icon: isProgress ? Loader2 : Search,
+        iconClass: isProgress ? 'animate-spin' : '',
+        containerClass: isProgress 
+          ? 'bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800'
+          : 'bg-violet-50/30 dark:bg-violet-900/20 hover:bg-violet-100/50 dark:hover:bg-violet-800/30',
+        iconColorClass: isProgress ? 'text-violet-600 dark:text-violet-400' : 'text-violet-500 dark:text-violet-400',
+        textClass: 'text-violet-800 dark:text-violet-300',
+        detailClass: 'text-violet-600 dark:text-violet-400'
       };
     case 'read':
       return {

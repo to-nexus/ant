@@ -178,6 +178,12 @@ function ContentBlock({ content, isStreaming }: ContentBlockProps) {
     case 'grepping':
       return <WorkingCard content={content} variant="grepping" />;
     
+    case 'listing_files':
+      return <WorkingCard content={content} variant="listing_files" />;
+    
+    case 'searching_code':
+      return <WorkingCard content={content} variant="searching_code" />;
+    
     case 'reading':
       return <WorkingCard content={content} variant="reading" />;
     
@@ -199,6 +205,12 @@ function ContentBlock({ content, isStreaming }: ContentBlockProps) {
     
     case 'grepped':
       return <WorkingCard content={content} variant="grepped" />;
+    
+    case 'listed_files':
+      return <WorkingCard content={content} variant="listed_files" />;
+    
+    case 'searched_code':
+      return <WorkingCard content={content} variant="searched_code" />;
     
     case 'read':
       return <WorkingCard content={content} variant="read" />;

@@ -82,4 +82,12 @@ export class CommonRenderStrategy implements IRenderStrategy {
       console.log('[CommonRenderStrategy] ⏸️  Keeping message open (tool calls pending)');
     }
   }
+  
+  /**
+   * Get FileRenderer instance for direct access
+   * Used by StreamOrchestrator to wait for file operations
+   */
+  getFileRenderer(): FileRenderer {
+    return this.fileRenderer;
+  }
 }

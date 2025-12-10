@@ -129,7 +129,7 @@ export class ChatAPIClient {
    * - Auto-merge or disappear based on next content type (handled by ChatService)
    */
   async showChatStatus(
-    type: 'placeholder' | 'exploring' | 'explored' | 'retrieving' | 'retrieved' | 'grepping' | 'grepped' | 'reading' | 'read' | 'thinking' | 'indexing' | 'indexed' | 'analyzing' | 'analyzed' | 'storing' | 'stored' | 'searching_reference' | 'searched_reference' | 'tool_action',
+    type: 'placeholder' | 'exploring' | 'explored' | 'retrieving' | 'retrieved' | 'grepping' | 'grepped' | 'listing_files' | 'listed_files' | 'searching_code' | 'searched_code' | 'reading' | 'read' | 'thinking' | 'indexing' | 'indexed' | 'analyzing' | 'analyzed' | 'storing' | 'stored' | 'searching_reference' | 'searched_reference' | 'tool_action',
     metadata?: Record<string, any>
   ): Promise<number | undefined> {
     if (!this.enabled) return;
@@ -207,6 +207,45 @@ export class ChatAPIClient {
             content = `❌ Local Search Failed: ${greppedError}`;
           } else {
             content = `Grepped: ${greppedFiles} files`;
+          }
+          break;
+        case 'listing_files':
+          const listingDir = metadata?.directory ?? '.';
+          const listingPattern = metadata?.pattern;
+          content = listingPattern 
+            ? `📂 Listing files in ${listingDir} (${listingPattern})...`
+            : `📂 Listing files in ${listingDir}...`;
+          break;
+        case 'listed_files':
+          const listedFilesCount = metadata?.filesCount ?? 0;
+          const listedTotal = metadata?.totalFiles;
+          const listedPattern = metadata?.pattern;
+          const listedError = metadata?.error;
+          if (listedError) {
+            content = `❌ File Listing Failed: ${listedError}`;
+          } else if (listedPattern) {
+            content = `Listed: ${listedFilesCount}/${listedTotal} files (${listedPattern})`;
+          } else {
+            content = `Listed: ${listedFilesCount}/${listedTotal} files`;
+          }
+          break;
+        case 'searching_code':
+          const searchPattern = metadata?.pattern ?? '';
+          const filePattern = metadata?.file_pattern;
+          content = filePattern
+            ? `🔍 Searching code: "${searchPattern}" in ${filePattern}...`
+            : `🔍 Searching code: "${searchPattern}"...`;
+          break;
+        case 'searched_code':
+          const matchedFiles = metadata?.filesCount ?? 0;
+          const totalMatches = metadata?.totalMatches ?? 0;
+          const codeSearchError = metadata?.error;
+          if (codeSearchError) {
+            content = `❌ Code Search Failed: ${codeSearchError}`;
+          } else if (totalMatches > 0) {
+            content = `✅ Found: ${totalMatches} matches in ${matchedFiles} files`;
+          } else {
+            content = `✅ Found: ${matchedFiles} files`;
           }
           break;
         case 'reading':

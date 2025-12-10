@@ -120,5 +120,21 @@ export class StreamOrchestrator {
   getRaw(): string {
     return this.state.getRaw();
   }
+  
+  /**
+   * Wait for all file operations to complete
+   * ✅ CRITICAL: Call this before marking task as completed
+   * Ensures all files are saved before proceeding
+   */
+  async waitForAllFileOperations(): Promise<void> {
+    // Access FileRenderer through render strategy
+    const fileRenderer = (this.renderStrategy as any).getFileRenderer?.();
+    
+    if (fileRenderer && typeof fileRenderer.waitForAllFileOperations === 'function') {
+      await fileRenderer.waitForAllFileOperations();
+    } else {
+      console.warn('[StreamOrchestrator] FileRenderer not available or does not support waitForAllFileOperations');
+    }
+  }
 }
 

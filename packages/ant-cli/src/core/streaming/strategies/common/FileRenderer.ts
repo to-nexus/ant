@@ -28,6 +28,11 @@ export class FileRenderer {
   private editOps: EditOperationManager = new EditOperationManager();
   private lineBuffers: LineBufferManager = new LineBufferManager();
   
+  // ✅ Track file operation completion
+  private completionPromises: Map<string, Promise<void>> = new Map();
+  private completionResolvers: Map<string, (value: void | PromiseLike<void>) => void> = new Map();
+  private completionRejectors: Map<string, (reason?: any) => void> = new Map();
+  
   constructor(config: FileRendererConfig) {
     this.chatAPI = config.chatAPI;
     this.gitPort = config.gitPort;
@@ -136,6 +141,13 @@ Using <file> on existing files will OVERWRITE the entire file, which is almost n
     
     this.lineBuffers.init(filePath);
     
+    // ✅ Create completion promise for this file
+    const completionPromise = new Promise<void>((resolve, reject) => {
+      this.completionResolvers.set(filePath, resolve);
+      this.completionRejectors.set(filePath, reject);
+    });
+    this.completionPromises.set(filePath, completionPromise);
+    
     if (finalActionType === 'create' || finalActionType === 'append') {
       await this.chatAPI.startFileCreation(filePath);
     } else if (finalActionType === 'edit') {
@@ -227,9 +239,26 @@ Using <file> on existing files will OVERWRITE the entire file, which is almost n
       }
     } catch (error) {
       await this.handleError(filePath, fileInfo, error);
-    } finally {
+      
+      // ❌ CRITICAL: Reject completion promise on error
+      const rejector = this.completionRejectors.get(filePath);
+      if (rejector) {
+        rejector(error);
+      }
+      
       this.cleanup(filePath);
+      
+      // ✅ Re-throw error to stop task execution
+      throw error;
     }
+    
+    // ✅ Success: Resolve completion promise
+    const resolver = this.completionResolvers.get(filePath);
+    if (resolver) {
+      resolver();
+    }
+    
+    this.cleanup(filePath);
   }
   
   /**
@@ -373,6 +402,32 @@ Using <file> on existing files will OVERWRITE the entire file, which is almost n
     this.activeFiles.delete(filePath);
     this.editOps.deleteOperation(filePath);
     this.lineBuffers.clear(filePath);
+    this.completionPromises.delete(filePath);
+    this.completionResolvers.delete(filePath);
+    this.completionRejectors.delete(filePath);
+  }
+  
+  /**
+   * Wait for all file operations to complete
+   * ✅ This must be called BEFORE marking task as completed
+   */
+  async waitForAllFileOperations(): Promise<void> {
+    const pendingOperations = Array.from(this.completionPromises.values());
+    
+    if (pendingOperations.length > 0) {
+      console.log(`⏳ [FileRenderer] Waiting for ${pendingOperations.length} file operation(s) to complete...`);
+      await Promise.all(pendingOperations);
+      console.log(`✅ [FileRenderer] All file operations completed`);
+    } else {
+      console.log(`✅ [FileRenderer] No file operations pending, proceeding immediately`);
+    }
+  }
+  
+  /**
+   * Check if there are active file operations
+   */
+  hasActiveFiles(): boolean {
+    return this.activeFiles.size > 0;
   }
   
   /**
@@ -386,12 +441,34 @@ Using <file> on existing files will OVERWRITE the entire file, which is almost n
       console.warn(`   File will NOT be saved to prevent corruption.`);
       
       // ❌ Do NOT save incomplete files
-      // Only cleanup resources
+      // ✅ But notify UI that operation was cancelled
+      const completePhase = 'complete' as const;
+      const completeType = fileInfo.actionType === 'create' ? 'file_create' :
+                          fileInfo.actionType === 'edit' ? 'file_edit' :
+                          fileInfo.actionType === 'delete' ? 'file_delete' : null;
+      
+      if (completeType) {
+        await this.chatAPI.sendLLMEvent({
+          type: completeType,
+          filePath: filePath,
+          content: '',
+          reason: 'Incomplete operation - missing closing tag'
+        });
+      }
+      
+      // ✅ Reject completion promise for incomplete files (missing closing tag = error!)
+      const rejector = this.completionRejectors.get(filePath);
+      if (rejector) {
+        rejector(new Error(`Incomplete operation - missing closing tag for ${filePath}`));
+      }
     }
     
     this.activeFiles.clear();
     this.editOps.clear();
     this.lineBuffers.clearAll();
+    this.completionPromises.clear();
+    this.completionResolvers.clear();
+    this.completionRejectors.clear();
   }
 }
 
