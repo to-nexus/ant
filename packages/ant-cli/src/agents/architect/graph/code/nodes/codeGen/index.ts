@@ -117,7 +117,17 @@ export async function codeGen(
     }
   }
   
-  console.log(`🔍 [CodeGen] existingFiles Set initialized with ${existingFiles.size} files from codebase context`);
+  // ✅ CRITICAL: Add files created in this session
+  // This prevents "isExisting=false" for files created in previous turns
+  if (state.files) {
+    for (const file of state.files) {
+      if (file.path) {
+        existingFiles.add(file.path);
+      }
+    }
+  }
+  
+  console.log(`🔍 [CodeGen] existingFiles Set initialized with ${existingFiles.size} files (${state.projectCodeContext?.files?.length || 0} from plan + ${state.files?.length || 0} from session)`);
   if (existingFiles.size > 0 && existingFiles.size <= 10) {
     console.log(`   Files: ${Array.from(existingFiles).join(', ')}`);
   }
@@ -190,10 +200,18 @@ export async function codeGen(
     // ✅ CRITICAL: Wait for all file operations to complete BEFORE finalizing
     // This ensures files are saved before task is marked as completed
     console.log(`\n💾 [CodeGen] Waiting for all file operations to complete...`);
-    await orchestrator.waitForAllFileOperations();
-    console.log(`✅ [CodeGen] All files saved successfully`);
+    const fileErrors: string[] = [];
+    try {
+      await orchestrator.waitForAllFileOperations();
+      console.log(`✅ [CodeGen] All files saved successfully`);
+    } catch (fileError) {
+      // ❌ Do NOT throw! Let validation handle it
+      const errorMsg = fileError instanceof Error ? fileError.message : String(fileError);
+      fileErrors.push(errorMsg);
+      console.error(`⚠️ [CodeGen] File operation failed (will be caught by validation): ${errorMsg}`);
+    }
     
-    // ✅ NOW propagate done event (files are guaranteed to be saved)
+    // ✅ NOW propagate done event (files are guaranteed to be saved OR errors recorded)
     if (isDone) {
       console.log(`✅ [CodeGen] Files saved, now propagating done event to UI`);
       await chatAPI.sendLLMEvent({ type: 'done' });
@@ -236,6 +254,7 @@ export async function codeGen(
         toolCalls,        // ✅ For tool execution
         done: toolCalls.length === 0,  // ✅ Tool calls 없을 때만 done = true
       },
+      fileErrors: fileErrors.length > 0 ? fileErrors : undefined,  // ✅ 파일 작업 실패를 validation으로 전달
     };
   } catch (error) {
     console.error('[ERROR] ❌ [CodeGen] Error during reasoning:');

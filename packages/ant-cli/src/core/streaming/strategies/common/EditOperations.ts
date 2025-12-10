@@ -69,7 +69,9 @@ export function applySearchReplace(
   errorMsg += `💡 Solution: LLM should read the file again before attempting to edit it.`;
   
   console.error(errorMsg);
-  throw new Error(errorMsg);
+  
+  // ✅ Throw simple error (detailed log already printed to console)
+  throw new Error(`Search block not found in ${filePath}`);
 }
 
 /**
