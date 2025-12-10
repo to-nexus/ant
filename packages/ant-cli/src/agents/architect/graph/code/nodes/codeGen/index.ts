@@ -272,7 +272,7 @@ export async function codeGen(
         toolCalls,        // ✅ For tool execution
         done: toolCalls.length === 0,  // ✅ Tool calls 없을 때만 done = true
       },
-      files: files.length > 0 ? files : undefined,  // ✅ CRITICAL: 생성된 파일을 state에 추가
+      ...(files.length > 0 ? { files } : {}),  // ✅ CRITICAL: 파일이 있을 때만 추가 (빈 배열로 덮어쓰지 않음)
       fileErrors: fileErrors.length > 0 ? fileErrors : undefined,  // ✅ 파일 작업 실패를 validation으로 전달
     };
   } catch (error) {
