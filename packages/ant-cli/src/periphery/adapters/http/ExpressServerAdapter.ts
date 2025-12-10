@@ -792,36 +792,9 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       ? params.jobType 
       : 'code';
     
-    // ✨ Determine jobId with priority: explicit params.jobId > session jobId > new jobId
-    let jobId: string;
-    let isResume = false;
-    
-    if (params.jobId) {
-      // ✅ PRIORITY 1: Explicit jobId from Resume API (highest priority)
-      jobId = params.jobId;
-      isResume = true;
-      console.log(`\n🔄 [ExecuteJob] Using explicit Job ID from Resume API: ${jobId}`);
-    } else {
-      // ✅ PRIORITY 2: Auto-resume from session (if interrupted job exists)
-      try {
-        const sessionData = await this.sessionService.readSessionData(projectId, featureName, jobType);
-        
-        // Resume if: session has jobId AND job is not completed
-        if (sessionData?.state?.jobId && !this.isJobCompleted(sessionData.state)) {
-          jobId = sessionData.state.jobId;
-          isResume = true;
-          console.log(`\n🔄 [ExecuteJob] Auto-resuming with existing Job ID: ${jobId}`);
-        } else {
-          // Create new jobId
-          jobId = `${Date.now().toString(36)}${Math.random().toString(36).substr(2, 6)}`;
-          console.log(`\n🆕 [ExecuteJob] Creating new Job ID: ${jobId}`);
-        }
-      } catch (error) {
-        // Session doesn't exist or error reading - create new jobId
-        jobId = `${Date.now().toString(36)}${Math.random().toString(36).substr(2, 6)}`;
-        console.log(`\n🆕 [ExecuteJob] No session found, creating new Job ID: ${jobId}`);
-      }
-    }
+    // Generate jobId (use explicit jobId from params if provided, e.g., from Resume API)
+    const jobId = params.jobId || `${Date.now().toString(36)}${Math.random().toString(36).substr(2, 6)}`;
+    const isResume = !!params.jobId;  // Resume if jobId was explicitly provided
     
     console.log(`   Project: ${projectId}`);
     console.log(`   Feature: ${featureName}`);
@@ -886,40 +859,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     
     console.log(`   ✅ Session file watcher started`);
     
-    // ✅ If this is a resume, create initial snapshot for immediate UI sync
-    if (isResume) {
-      try {
-        const sessionData = await this.sessionService.readSessionData(
-          projectId,
-          featureName,
-          jobType,
-          params.userContext
-        );
-        
-        if (sessionData?.state?.taskQueue && sessionData.state.taskQueue.length > 0) {
-          console.log(`   🔄 Resume detected - creating initial snapshot (${sessionData.state.taskQueue.length} tasks in queue)`);
-          
-          // ✅ Update job status to show resume instead of estimating
-          this.jobs.set(jobId, {
-            ...this.jobs.get(jobId)!,
-            status: 'running'  // Set to running immediately for resume
-          });
-          
-          // ✅ Create initial snapshot from session for resume
-          this.taskQueueSnapshots.set(jobId, {
-            currentTask: sessionData.state.currentTask || sessionData.state.taskQueue[0],
-            queue: sessionData.state.taskQueue.slice(sessionData.state.currentTask ? 0 : 1),
-            completedTasks: sessionData.state.completedTasksDetails || []
-          });
-          
-          console.log(`   ✅ Initial resume snapshot created`);
-        }
-      } catch (error) {
-        console.log(`   ⚠️  Failed to create resume snapshot (non-critical):`, error);
-      }
-    }
-    
-    // Broadcast immediately to show state (estimating for new, resume for existing)
+    // Broadcast immediately to show "estimating" state
     this.kanbanService.getKanbanData(
       projectId, 
       featureName,
@@ -930,7 +870,6 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       params.userContext  // ✅ Pass user context for Cloud mode
     ).then(kanbanData => {
       this.sseService.broadcast(projectId, featureName, 'kanban', kanbanData);
-      console.log(`   ✅ Initial Kanban broadcast: ${isResume ? 'resume' : 'estimating'} state`);
     });
     
     // Start job execution in child process (non-blocking)

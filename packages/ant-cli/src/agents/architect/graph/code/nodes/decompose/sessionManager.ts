@@ -180,23 +180,13 @@ export function restoreFromSession(
     console.log('');
   }
   
-  const restoredState = {
+  return {
     ...state,
     ...session.state,
     taskQueue,
     featureTasks,
     totalSubtasks: totalTasks
+    // Note: jobId and jobTiming are managed separately by runner/JobTimingManager
   };
-  
-  // ✅ Restore jobId and jobTiming from session
-  if (session.state.jobId) {
-    (restoredState as any).jobId = session.state.jobId;
-    console.log(`🆔 [Restore] Restored jobId: ${session.state.jobId}`);
-  }
-  if (session.state.jobTiming) {
-    (restoredState as any).jobTiming = session.state.jobTiming;
-  }
-  
-  return restoredState;
 }
 
