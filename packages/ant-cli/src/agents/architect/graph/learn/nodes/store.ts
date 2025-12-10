@@ -5,17 +5,18 @@ export async function store(state: LearnGraphState): Promise<Partial<LearnGraphS
   const chatAPI = (await import('../../../../../core/adapters/ChatAPIClient')).getChatAPIClient();
   
   try {
-    // Show storing status
-    await chatAPI.showChatStatus('storing', {
+    // Show storing status and get index
+    const mergeIndex = await chatAPI.showChatStatus('storing', {
       message: `${state.texts.length} lesson(s)...`
     });
     
     const joined = state.texts.join("\n\n---\n\n");
     await storeLessons(joined, state.context.project, state.context.featureFolder || "default");
     
-    // Show stored completion
+    // Show stored completion with merge
     await chatAPI.showChatStatus('stored', {
-      message: `${state.texts.length} lesson(s) successfully`
+      message: `${state.texts.length} lesson(s) successfully`,
+      _mergeIndex: mergeIndex
     });
     
     return state;
@@ -24,6 +25,7 @@ export async function store(state: LearnGraphState): Promise<Partial<LearnGraphS
     // ✅ CRITICAL: Update status to stored (failed) before throwing
     console.error(`❌ Storing lessons failed:`, error);
     
+    // Note: mergeIndex might be undefined if storing status wasn't shown yet
     await chatAPI.showChatStatus('stored', {
       error: error.message
     });

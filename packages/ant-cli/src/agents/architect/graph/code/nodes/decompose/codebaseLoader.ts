@@ -43,8 +43,10 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
     allKeywords.push(...keywords.map(k => `[semantic] ${k}`));
   }
   
+  // Declare retrieving index outside the if block so it's accessible later
+  let retrievingIndex: number | undefined;
   if (allKeywords.length > 0) {
-    await chatAPI.showChatStatus('retrieving', {
+    retrievingIndex = await chatAPI.showChatStatus('retrieving', {
       query: allKeywords.slice(0, 20).join(', ') + (allKeywords.length > 20 ? '...' : '')
     });
   }
@@ -109,18 +111,24 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
     await chatAPI.showChatStatus('retrieved', {
       filesCount: stackFiles.length,
       filesList: stackFiles.slice(0, 10),
-      content: `Retrieved: ${stackFiles.length} files from stack traces`
+      content: `Retrieved: ${stackFiles.length} files from stack traces`,
+      _mergeIndex: retrievingIndex
     });
     
+    // ✅ CRITICAL: Must send 'exploring' first for proper merge!
+    const exploringIndex1 = await chatAPI.showChatStatus('exploring', { filesCount: 0, totalFiles: 0 });
     await chatAPI.showChatStatus('explored', {
       filesCount: 0,
-      content: `Explored: File paths only (no git check for decompose)`
+      content: `Explored: File paths only (no git check for decompose)`,
+      _mergeIndex: exploringIndex1
     });
     
+    const greppingIndex1 = await chatAPI.showChatStatus('grepping', { totalFiles: 0 });
     await chatAPI.showChatStatus('grepped', {
       filesCount: 0,
       filesList: [],
-      content: `Grepped: All files found via vector search`
+      content: `Grepped: All files found via vector search`,
+      _mergeIndex: greppingIndex1
     });
   }
   
@@ -173,7 +181,8 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
     await chatAPI.showChatStatus('retrieved', {
       filesCount: vectorDbFiles.length,
       filesList: vectorDbFiles.slice(0, 10),
-      content: retrievedMessage
+      content: retrievedMessage,
+      _mergeIndex: retrievingIndex
     });
     
     // Check for uncommitted changes (explored)
@@ -189,11 +198,14 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
     }
     
     // Display: 2. Explored (Git changes) - 항상 표시
+    // ✅ CRITICAL: Must send 'exploring' first for proper merge!
+    const exploringIndex2 = await chatAPI.showChatStatus('exploring', { filesCount: 0, totalFiles: 0 });
     await chatAPI.showChatStatus('explored', {
       filesCount: gitChangesCount,
       content: gitChangesCount > 0 
         ? `Explored: ${gitChangesCount} files with uncommitted changes related to semantic search`
-        : `Explored: No uncommitted changes`
+        : `Explored: No uncommitted changes`,
+      _mergeIndex: exploringIndex2
     });
     
     // Local file search fallback (grepped) for file-like keywords
@@ -222,10 +234,12 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
     }
     
     // Display: 3. Grepped (Local fallback) - 항상 표시
+    const greppingIndex2 = await chatAPI.showChatStatus('grepping', { filesCount: 0, totalFiles: 0 });
     await chatAPI.showChatStatus('grepped', {
       filesCount: localFiles.length,
       keywords: missedKeywords,
-      filesList: localFiles
+      filesList: localFiles,
+      _mergeIndex: greppingIndex2
     });
     
     semanticFilePaths = [...vectorDbFiles, ...localFiles];

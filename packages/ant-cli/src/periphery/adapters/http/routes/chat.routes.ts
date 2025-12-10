@@ -122,6 +122,7 @@ export function createChatRoutes(deps: {
   /**
    * POST /projects/:id/features/:feature/chat/add-content
    * Add content to current message (for Chat Status Messages)
+   * Returns the contentIndex for merging
    */
   router.post('/projects/:id/features/:feature/chat/add-content', (req: Request, res: Response) => {
     const projectId = req.params.id;
@@ -138,8 +139,8 @@ export function createChatRoutes(deps: {
       return;
     }
 
-    deps.chatService.addContentToCurrentMessage(projectId, featureName, content);
-    res.json({ success: true });
+    const contentIndex = deps.chatService.addContentToCurrentMessage(projectId, featureName, content);
+    res.json({ success: true, contentIndex });
   });
 
   /**
@@ -212,7 +213,7 @@ export function createChatRoutes(deps: {
   router.post('/projects/:id/features/:feature/chat/command-execution', (req: Request, res: Response) => {
     const projectId = req.params.id;
     const featureName = req.params.feature;
-    const { command, output, exitCode, phase } = req.body;
+    const { command, output, exitCode, phase, _mergeIndex } = req.body;
 
     if (!deps.chatService) {
       res.status(503).json({ error: 'Chat service not available' });
@@ -224,8 +225,8 @@ export function createChatRoutes(deps: {
       return;
     }
 
-    deps.chatService.addCommandExecution(projectId, featureName, command, output, exitCode, phase);
-    res.json({ success: true });
+    const contentIndex = deps.chatService.addCommandExecution(projectId, featureName, command, output, exitCode, phase, _mergeIndex);
+    res.json({ success: true, contentIndex });
   });
 
   /**

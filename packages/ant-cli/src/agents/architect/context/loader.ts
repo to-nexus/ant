@@ -35,7 +35,7 @@ export async function loadContext(
   try {
     // ===== 1. EXPLORE: List all files =====
     if (strategy.needsExplore) {
-      await chatAPI.showChatStatus('exploring', { filesCount: 0, totalFiles: 0 });
+      const mergeIndex = await chatAPI.showChatStatus('exploring', { filesCount: 0, totalFiles: 0 });
       
       try {
         const allFiles = await gitPort.listFiles('', [
@@ -58,7 +58,8 @@ export async function loadContext(
         await chatAPI.showChatStatus('explored', { 
           filesCount: allFiles.length, 
           totalFiles: allFiles.length,
-          filesList: allFiles  // ✅ Add file list for UI display
+          filesList: allFiles,  // ✅ Add file list for UI display
+          _mergeIndex: mergeIndex
         });
         
         context.fileTree = buildFileTree(allFiles);
@@ -68,14 +69,15 @@ export async function loadContext(
         await chatAPI.showChatStatus('explored', { 
           filesCount: 0, 
           totalFiles: 0,
-          error: error.message
+          error: error.message,
+          _mergeIndex: mergeIndex
         });
       }
     }
     
     // ===== 2. GREP: Search for keywords =====
     if (strategy.needsGrep && strategy.keywords.length > 0) {
-      await chatAPI.showChatStatus('grepping', { totalFiles: 0 });
+      const mergeIndex = await chatAPI.showChatStatus('grepping', { totalFiles: 0 });
       
       try {
         const searchResults = await searchCodebase(
@@ -87,7 +89,8 @@ export async function loadContext(
         await chatAPI.showChatStatus('grepped', { 
           strategy: 'keyword search',
           filesCount: searchResults.filesMatched,
-          filesList: searchResults.files
+          filesList: searchResults.files,
+          _mergeIndex: mergeIndex
         });
         
         context.grepResults = formatGrepResults(searchResults);
@@ -98,14 +101,15 @@ export async function loadContext(
           strategy: 'keyword search',
           filesCount: 0,
           filesList: [],
-          error: error.message
+          error: error.message,
+          _mergeIndex: mergeIndex
         });
       }
     }
     
     // ===== 3. READ: Read files from grep results =====
     if (strategy.needsRead && context.grepResults) {
-      await chatAPI.showChatStatus('reading', { filesCount: 0 });
+      const mergeIndex = await chatAPI.showChatStatus('reading', { filesCount: 0 });
       
       try {
         // Extract files from grep results
@@ -121,7 +125,8 @@ export async function loadContext(
         
         await chatAPI.showChatStatus('read', { 
           filesCount: filesToRead.length,
-          filesList: filesToRead
+          filesList: filesToRead,
+          _mergeIndex: mergeIndex
         });
         
         context.fileContents = fileContents.join('\n\n');
@@ -131,7 +136,8 @@ export async function loadContext(
         await chatAPI.showChatStatus('read', { 
           filesCount: 0,
           filesList: [],
-          error: error.message
+          error: error.message,
+          _mergeIndex: mergeIndex
         });
       }
     }

@@ -377,52 +377,21 @@ Using <file> on existing files will OVERWRITE the entire file, which is almost n
   
   /**
    * Finalize all pending file operations
+   * ⚠️ CRITICAL: Do NOT save incomplete files (missing closing tags)
    */
   async finalize(): Promise<void> {
     for (const [filePath, fileInfo] of this.activeFiles) {
-      console.warn(`⚠️  [Render] Force completing ${fileInfo.actionType}: ${filePath}`);
+      console.warn(`⚠️  [Render] Incomplete operation detected: ${fileInfo.actionType} on ${filePath}`);
+      console.warn(`   Missing closing tag: </${fileInfo.actionType === 'create' ? 'file' : fileInfo.actionType}>`);
+      console.warn(`   File will NOT be saved to prevent corruption.`);
       
-      try {
-        if (fileInfo.actionType === 'create' || fileInfo.actionType === 'append') {
-          await this.handleCreateOrAppend(filePath, fileInfo);
-        } else if (fileInfo.actionType === 'edit') {
-          const editOp = this.editOps.getOperation(filePath);
-          if (editOp && this.gitPort) {
-            try {
-              const path = await import('path');
-              let absolutePath = filePath;
-              
-              if (this.jobType === 'design' && this.featurePath && !path.isAbsolute(filePath)) {
-                absolutePath = path.join(this.featurePath, filePath);
-              }
-              
-              const originalContent = await this.gitPort.readFile(absolutePath);
-              if (originalContent) {
-                const modifiedContent = applySearchReplace(
-                  originalContent,
-                  editOp.searchContent,
-                  editOp.replaceContent,
-                  filePath
-                );
-                await this.gitPort.writeFile(absolutePath, modifiedContent);
-              }
-            } catch (editError) {
-              console.error(`[Edit] Failed to apply edit to ${filePath}:`, editError);
-            }
-            
-            await this.chatAPI.completeFileEdit(
-              filePath,
-              editOp.searchContent,
-              editOp.replaceContent
-            );
-          }
-        }
-      } catch (error) {
-        console.error(`[Render] Error finalizing ${filePath}:`, error);
-      }
+      // ❌ Do NOT save incomplete files
+      // Only cleanup resources
     }
     
     this.activeFiles.clear();
     this.editOps.clear();
+    this.lineBuffers.clearAll();
   }
 }
+

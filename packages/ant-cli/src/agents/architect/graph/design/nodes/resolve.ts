@@ -131,7 +131,7 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     
     // ✅ Send retrieving status
     const query = (directive || design || prd || "").slice(0, 100);  // First 100 chars as query
-    await chatAPI.showChatStatus('retrieving', { query });  // Max 25 files
+    const mergeIndex = await chatAPI.showChatStatus('retrieving', { query });  // Max 25 files
     
     const codeContext = await retriever.retrieve(
       directive || design || prd || "",
@@ -152,7 +152,8 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     // ✅ Send retrieved result
     await chatAPI.showChatStatus('retrieved', {
       filesCount: codeContext.stats.filesLoaded,
-      filesList: codeContext.files?.map(f => typeof f === 'string' ? f : f.path) || []
+      filesList: codeContext.files?.map(f => typeof f === 'string' ? f : f.path) || [],
+      _mergeIndex: mergeIndex
     });
     
     code = codeContext.code;

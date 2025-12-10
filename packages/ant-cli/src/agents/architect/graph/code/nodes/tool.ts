@@ -301,6 +301,9 @@ async function handleReadFile(
   
   const chatAPI = getChatAPIClient();
   
+  // ✅ Add reading status and get index
+  const mergeIndex = await chatAPI.addReadingFile(filePath);
+  
   try {
     // ✅ Check buffer first (uncommitted changes)
     const fileBuffers = state.fileBuffers || new Map();
@@ -308,7 +311,7 @@ async function handleReadFile(
     
     if (buffered && !buffered.committed) {
       console.log(`   📦 Reading from buffer: ${filePath}`);
-      await chatAPI.addReadComplete(filePath);
+      await chatAPI.addReadComplete(filePath, mergeIndex);
       return buffered.content;
     }
     
@@ -322,12 +325,12 @@ async function handleReadFile(
     console.log(`   💾 Read from disk: ${filePath} (${content.length} bytes)`);
     
     // ✅ UI notification: read complete (success)
-    await chatAPI.addReadComplete(filePath);
+    await chatAPI.addReadComplete(filePath, mergeIndex);
     
     return content;
   } catch (error) {
     // ✅ Update reading status with error message
-    await chatAPI.addReadComplete(filePath, (error as Error).message);
+    await chatAPI.addReadComplete(filePath, mergeIndex, (error as Error).message);
     throw error;
   }
 }
@@ -346,6 +349,14 @@ async function handleListFiles(
     throw new Error('GitPort not available');
   }
   
+  const chatAPI = getChatAPIClient();
+  
+  // ✅ UI: Show grepping status (local file search)
+  const mergeIndex = await chatAPI.showChatStatus('grepping', { 
+    filesCount: 0, 
+    totalFiles: 0 
+  });
+  
   // ✅ Use GitPort instead of direct fs access (Hexagonal Architecture)
   const items = await gitPort.readDirectory(directory);
   
@@ -361,11 +372,11 @@ async function handleListFiles(
   
   console.log(`   📁 Listed ${filtered.length} items in ${directory}`);
   
-  // ✅ UI notification: exploration complete
-  const chatAPI = getChatAPIClient();
-  await chatAPI.showChatStatus('explored', { 
+  // ✅ UI notification: grep complete (local search)
+  await chatAPI.showChatStatus('grepped', { 
     filesCount: filtered.length,
-    filesList: filtered 
+    filesList: filtered,
+    _mergeIndex: mergeIndex
   });
   
   return filtered;
@@ -388,6 +399,14 @@ async function handleSearchCode(
   if (!gitPort) {
     throw new Error('GitPort not available');
   }
+  
+  const chatAPI = getChatAPIClient();
+  
+  // ✅ UI: Show grepping status (local file search)
+  const mergeIndex = await chatAPI.showChatStatus('grepping', { 
+    filesCount: 0, 
+    totalFiles: 0 
+  });
   
   // ✅ Use GitPort to list files (Hexagonal Architecture)
   const files = await gitPort.listFiles('.', ['node_modules', '.git', 'dist', 'build']);
@@ -413,12 +432,12 @@ async function handleSearchCode(
   
   console.log(`   🔍 Found ${results.length} matches for "${pattern}"`);
   
-  // ✅ UI notification: search complete
-  const chatAPI = getChatAPIClient();
+  // ✅ UI notification: grep complete (local search)
   const matchedFiles = [...new Set(results.map(r => r.split(':')[0]))];
-  await chatAPI.showChatStatus('explored', { 
+  await chatAPI.showChatStatus('grepped', { 
     filesCount: matchedFiles.length,
-    filesList: matchedFiles 
+    filesList: matchedFiles,
+    _mergeIndex: mergeIndex
   });
   
   return results.join('\n');
@@ -537,6 +556,9 @@ async function handleRunCommand(
   
   const chatAPI = getChatAPIClient();
   
+  // ✅ UI: Show command_running status (loading card)
+  const mergeIndex = await chatAPI.commandStart(command);
+  
   // Detect long-running server commands
   const longRunningPatterns = [
     /npm\s+run\s+dev\b/,
@@ -646,7 +668,7 @@ async function handleRunCommand(
         const earlyErrorTimeout = setTimeout(() => {
           if (hasError) {
             console.error(`\n   ❌ Early startup error detected (within 3s) - failing fast\n`);
-            chatAPI.commandComplete(command, false, 1, `Early error:\n${stderr}\n${stdout}`);
+            chatAPI.commandComplete(command, false, 1, `Early error:\n${stderr}\n${stdout}`, mergeIndex);
             safeReject(new Error(`❌ SERVER FAILED TO START: ${command}
 
 Early startup failure detected (within 3 seconds).
@@ -667,7 +689,8 @@ ${stdout.slice(0, 1000)}`));
             console.log(`   🛑 Terminating process (verification complete)\n`);
             
             await chatAPI.commandComplete(command, true, 0, 
-              `Server started successfully.\n\nStartup output:\n${stdout}\n\n(Process terminated after verification)`
+              `Server started successfully.\n\nStartup output:\n${stdout}\n\n(Process terminated after verification)`,
+              mergeIndex
             );
             
             safeResolve(`✅ SERVER STARTED SUCCESSFULLY: ${command}
@@ -681,7 +704,7 @@ Note: The server is NOT currently running. This was a startup verification test.
           } else if (hasError) {
             // ✅ If error detected but process still running after 10s, fail
             console.error(`\n   ❌ Error detected during startup - failing\n`);
-            await chatAPI.commandComplete(command, false, 1, `Error:\n${stderr}\n${stdout}`);
+            await chatAPI.commandComplete(command, false, 1, `Error:\n${stderr}\n${stdout}`, mergeIndex);
             safeReject(new Error(`❌ SERVER FAILED TO START: ${command}
 
 Error detected during startup:
@@ -697,11 +720,11 @@ ${stdout.slice(0, 1000)}`));
           
           // ✅ Early exit (before 10s) is usually an error
           if (code === 0 && !hasError) {
-            await chatAPI.commandComplete(command, true, 0, output);
+            await chatAPI.commandComplete(command, true, 0, output, mergeIndex);
             safeResolve(`✅ Command completed: ${command}\n\nOutput:\n${output.slice(0, 3000)}`);
           } else {
             // ✅ Non-zero exit or detected error
-            await chatAPI.commandComplete(command, false, code || 1, output);
+            await chatAPI.commandComplete(command, false, code || 1, output, mergeIndex);
             safeReject(new Error(`❌ SERVER FAILED TO START: ${command}
 
 Exit code: ${code || 'killed'}
@@ -747,7 +770,7 @@ ${stdout.slice(0, 1000)}`));
     }
     
     // ✅ UI notification: command complete
-    await chatAPI.commandComplete(command, success, exitCode, output);
+    await chatAPI.commandComplete(command, success, exitCode, output, mergeIndex);
     
     // ✅ Format result - emphasize errors for LLM attention
     if (!success) {
@@ -782,7 +805,7 @@ Exit Code: 0
     console.error(`\n   ❌ Command execution error: ${errorMessage}\n`);
     
     // ✅ UI notification: command failed
-    await chatAPI.commandComplete(command, false, -1, errorMessage);
+    await chatAPI.commandComplete(command, false, -1, errorMessage, mergeIndex);
     
     // ✅ Timeout/execution error - Return error-first format
     return `❌ COMMAND EXECUTION ERROR: ${command}
@@ -887,7 +910,12 @@ Try:
       filesCount: searchResult.stats.filesLoaded
     });
     
+    // ✅ Show explored files from reference project (with exploring first for proper merge)
     if (filesList.length > 0) {
+      await chatAPI.showChatStatus('exploring', {
+        filesCount: 0,
+        totalFiles: 0
+      });
       await chatAPI.showChatStatus('explored', {
         filesCount: searchResult.stats.filesLoaded,
         filesList: filesList

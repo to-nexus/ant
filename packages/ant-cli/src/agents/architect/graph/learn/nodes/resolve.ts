@@ -61,6 +61,7 @@ async function executeIndexing(
     throw new Error(errorMsg);
   }
 
+  let indexingIndex: number | undefined;
   try {
     // ✅ Get repo and branch info for better UI display
     const repoName = await git.getRepoName();
@@ -73,7 +74,7 @@ async function executeIndexing(
       ? `${currentBranch} (HEAD)`
       : currentBranch;
     
-    await chatAPI.showChatStatus('indexing', { 
+    indexingIndex = await chatAPI.showChatStatus('indexing', { 
       message: `${repoName} • ${branchDisplay}`,
       detail: `Commit: ${currentCommit.substring(0, 8)}`
     });
@@ -140,7 +141,8 @@ async function executeIndexing(
           filesIndexed: 0,
           chunks: 0,
           tokens: 0,
-          duration: 0
+          duration: 0,
+          _mergeIndex: indexingIndex
         });
         
         return {
@@ -174,7 +176,8 @@ async function executeIndexing(
     filesIndexed: stats.filesIndexed,
     chunks: stats.chunksCreated,
     tokens: stats.estimatedTokens,
-    duration: stats.duration
+    duration: stats.duration,
+    _mergeIndex: indexingIndex
   });
 
     return {
@@ -199,7 +202,8 @@ async function executeIndexing(
       chunks: 0,
       tokens: 0,
       duration: 0,
-      error: error.message
+      error: error.message,
+      _mergeIndex: indexingIndex
     });
     
     // Re-throw to trigger job failure handling
@@ -225,12 +229,12 @@ async function executeFileLearn(
   const texts: string[] = [];
   const failedFiles: string[] = [];
 
+  const analyzingIndex = await chatAPI.showChatStatus('analyzing', { 
+    message: `Analyzing ${targets.length} file(s)...` 
+  });
+  
   try {
     // Show analyzing status for files
-    await chatAPI.showChatStatus('analyzing', { 
-      message: `Analyzing ${targets.length} file(s)...` 
-    });
-
     if (targets.length) {
       for (const t of targets) {
         try {
@@ -245,19 +249,24 @@ async function executeFileLearn(
             continue;
           }
 
+          let readingIdx: number | undefined;
           try {
-            await chatAPI.addReadingFile(relativePath);
+            readingIdx = await chatAPI.addReadingFile(relativePath);
             const content = await gitPort.readFile(relativePath);
             if (content) {
               texts.push(content);
-              await chatAPI.addReadComplete(relativePath);
+              await chatAPI.addReadComplete(relativePath, readingIdx);
             } else {
               // ✅ CRITICAL: Complete reading status even when file is empty!
-              await chatAPI.addReadComplete(relativePath, 'File is empty');
+              await chatAPI.addReadComplete(relativePath, readingIdx, 'File is empty');
               failedFiles.push(relativePath);
             }
           } catch (readError) {
-            // Might be a directory
+            // Might be a directory - complete the initial reading status first
+            if (readingIdx !== undefined) {
+              await chatAPI.addReadComplete(relativePath, readingIdx, 'Is a directory');
+            }
+            
             try {
               const entries = await gitPort.readDirectory(relativePath);
               let dirFilesRead = 0;
@@ -265,21 +274,24 @@ async function executeFileLearn(
               for (const entry of entries) {
                 if (!entry.isDirectory) {
                   const filePath = path.join(relativePath, entry.name);
+                  let fileReadingIdx: number | undefined;
                   try {
-                    await chatAPI.addReadingFile(filePath);
+                    fileReadingIdx = await chatAPI.addReadingFile(filePath);
                     const fileContent = await gitPort.readFile(filePath);
                     if (fileContent) {
                       texts.push(fileContent);
-                      await chatAPI.addReadComplete(filePath);
+                      await chatAPI.addReadComplete(filePath, fileReadingIdx);
                       dirFilesRead++;
                     } else {
                       // ✅ CRITICAL: Complete reading status even when file is empty!
-                      await chatAPI.addReadComplete(filePath, 'File is empty');
+                      await chatAPI.addReadComplete(filePath, fileReadingIdx, 'File is empty');
                     }
                   } catch (fileError) {
                     console.warn(`   ⚠️  Failed to read file in directory: ${filePath}`);
                     // ✅ CRITICAL: Complete reading status even on error!
-                    await chatAPI.addReadComplete(filePath, 'Read failed');
+                    if (fileReadingIdx !== undefined) {
+                      await chatAPI.addReadComplete(filePath, fileReadingIdx, 'Read failed');
+                    }
                     failedFiles.push(filePath);
                   }
                 }
@@ -290,8 +302,6 @@ async function executeFileLearn(
               }
             } catch (dirError) {
               console.warn(`   ⚠️  Failed to read directory: ${relativePath}`, dirError);
-              // ✅ CRITICAL: Complete reading status even on directory error!
-              await chatAPI.addReadComplete(relativePath, 'Not a file or directory');
               failedFiles.push(relativePath);
             }
           }
@@ -316,7 +326,8 @@ async function executeFileLearn(
       filesCount: texts.length,
       filesList: targets.slice(0, 5),  // First 5 files
       failedCount: failedFiles.length,
-      failedFiles: failedFiles.length > 0 ? failedFiles.slice(0, 3) : undefined
+      failedFiles: failedFiles.length > 0 ? failedFiles.slice(0, 3) : undefined,
+      _mergeIndex: analyzingIndex
     });
 
     return { targets, texts };
@@ -329,7 +340,8 @@ async function executeFileLearn(
       filesCount: 0,
       filesList: [],
       failedCount: targets.length,
-      error: error.message
+      error: error.message,
+      _mergeIndex: analyzingIndex
     });
     
     throw error;
@@ -343,15 +355,9 @@ async function executeTextLearn(
   state: LearnGraphState,
   command: { text?: string }
 ): Promise<Partial<LearnGraphState>> {
-  const chatAPI = (await import('../../../../../core/adapters/ChatAPIClient')).getChatAPIClient();
   const text = command.text || state.spec;
 
-  // Show storing status for text
-  await chatAPI.showChatStatus('storing', { 
-    message: 'Storing lesson...' 
-  });
-
-  // Note: 'stored' will be shown by store node
+  // Note: 'storing' → 'stored' will be shown by store node
   return {
     targets: ['raw-text'],
     texts: [text]
