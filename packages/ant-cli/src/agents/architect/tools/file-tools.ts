@@ -39,14 +39,13 @@ export function createReadFileTool(gitPort: GitPort): Tool {
         };
       }
 
+      const readingIndex = await chatAPI.showChatStatus('reading', { filePath: path });
       try {
-        // ✅ UI: Show reading status
-        await chatAPI.showChatStatus('reading', { filePath: path });
         
         const content = await gitPort.readFile(path);
         if (!content) {
           // ✅ CRITICAL: Complete reading status even on failure!
-          await chatAPI.showChatStatus('read', { filePath: path, error: true });
+          await chatAPI.showChatStatus('read', { filePath: path, error: true, _mergeIndex: readingIndex });
           
           return {
             error: true,
@@ -58,7 +57,7 @@ export function createReadFileTool(gitPort: GitPort): Tool {
         const lines = content.split('\n');
         
         // ✅ UI: Complete reading status
-        await chatAPI.showChatStatus('read', { filePath: path });
+        await chatAPI.showChatStatus('read', { filePath: path, _mergeIndex: readingIndex });
         
         return {
           path,
@@ -68,7 +67,7 @@ export function createReadFileTool(gitPort: GitPort): Tool {
         };
       } catch (error: any) {
         // ✅ CRITICAL: Complete reading status even on error!
-        await chatAPI.showChatStatus('read', { filePath: path, error: true });
+        await chatAPI.showChatStatus('read', { filePath: path, error: true, _mergeIndex: readingIndex });
         
         return {
           error: true,
@@ -107,10 +106,8 @@ export function createListFilesTool(gitPort: GitPort): Tool {
       const { directory, pattern } = input;
       const chatAPI = getChatAPIClient();
       
+      const greppingIndex = await chatAPI.showChatStatus('grepping', { filesCount: 0, totalFiles: 0 });
       try {
-        // ✅ UI: Show exploring status
-        await chatAPI.showChatStatus('exploring', { filesCount: 0, totalFiles: 0 });
-        
         // Get all files from the codebase
         const allFiles = await gitPort.listFiles('.', [
           'node_modules',
@@ -143,10 +140,13 @@ export function createListFilesTool(gitPort: GitPort): Tool {
           fileTree[dir].push(file);
         });
 
-        // ✅ UI: Complete exploring status
-        await chatAPI.showChatStatus('explored', { 
+        // ✅ UI: Complete grepping status
+        console.log(`[list_files] ✅ Calling showChatStatus(grepped) with ${files.length} files`);
+        await chatAPI.showChatStatus('grepped', { 
           filesCount: files.length, 
-          totalFiles: allFiles.length 
+          totalFiles: allFiles.length,
+          filesList: files.slice(0, 20),  // Show first 20 files
+          _mergeIndex: greppingIndex
         });
 
         return {
@@ -158,11 +158,12 @@ export function createListFilesTool(gitPort: GitPort): Tool {
           tree: fileTree,
         };
       } catch (error: any) {
-        // ✅ CRITICAL: Update status to explored (failed) before returning error
-        await chatAPI.showChatStatus('explored', { 
+        // ✅ CRITICAL: Update status to grepped (failed) before returning error
+        await chatAPI.showChatStatus('grepped', { 
           filesCount: 0, 
           totalFiles: 0,
-          error: error.message
+          error: error.message,
+          _mergeIndex: greppingIndex
         });
         
         return {
@@ -429,9 +430,8 @@ export function createSearchCodeTool(gitPort: GitPort): Tool {
         };
       }
 
+      const greppingIndex = await chatAPI.showChatStatus('grepping', { totalFiles: 0 });
       try {
-        // ✅ UI: Show grepping status
-        await chatAPI.showChatStatus('grepping', { totalFiles: 0 });
         
         // Simple file search (grep may not be implemented yet)
         const allFiles = await gitPort.listFiles('.', [
@@ -480,7 +480,8 @@ export function createSearchCodeTool(gitPort: GitPort): Tool {
         await chatAPI.showChatStatus('grepped', { 
           strategy: case_sensitive ? 'case-sensitive grep' : 'grep',
           filesCount: filesWithMatches.length,
-          filesList: filesWithMatches
+          filesList: filesWithMatches,
+          _mergeIndex: greppingIndex
         });
 
         return {
@@ -501,7 +502,8 @@ export function createSearchCodeTool(gitPort: GitPort): Tool {
           strategy: 'grep',
           filesCount: 0,
           filesList: [],
-          error: error.message
+          error: error.message,
+          _mergeIndex: greppingIndex
         });
         
         return {

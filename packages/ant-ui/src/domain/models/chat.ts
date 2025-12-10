@@ -21,6 +21,8 @@ export type MessageContentType =
   | 'indexed'        // Codebase indexing complete
   | 'analyzing'      // Analysis in progress
   | 'analyzed'       // Analysis complete
+  | 'storing'        // Storing lessons (in progress)
+  | 'stored'         // Storing lessons complete
   // General content (Chat Status Messages HIDE when these arrive)
   | 'thinking'       // LLM's thought process (collapsible block, accumulates, multiple blocks possible)
   | 'text'           // General text response
@@ -68,6 +70,7 @@ export interface MessageContent {
     branch?: string;        // Branch name
     commit?: string;        // Commit hash
     message?: string;       // Status message
+    detail?: string;        // Additional detail message (for indexing, analyzing, etc.)
     // Tool Actions
     toolName?: string;      // For tool_action: tool name (mkdir, etc.)
     actionIcon?: string;    // For tool_action: emoji/icon to display

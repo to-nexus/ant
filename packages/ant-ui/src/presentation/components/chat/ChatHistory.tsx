@@ -3,7 +3,7 @@
  * Uses react-virtuoso for efficient rendering of large message lists
  */
 
-import React, { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import type { ChatMessage } from '@/domain/models/chat';
 import { MessageItem } from './MessageItem';
@@ -13,7 +13,7 @@ interface ChatHistoryProps {
   isStreaming: boolean;
 }
 
-export function ChatHistory({ messages, isStreaming }: ChatHistoryProps) {
+export function ChatHistory({ messages }: ChatHistoryProps) {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   
   // Auto-scroll to bottom when new messages arrive
@@ -28,7 +28,7 @@ export function ChatHistory({ messages, isStreaming }: ChatHistoryProps) {
   }, [messages.length]);
   
   // ✅ CRITICAL: Memoize itemContent to prevent Virtuoso from re-rendering on every parent render
-  const itemContent = useCallback((index: number, message: ChatMessage) => (
+  const itemContent = useCallback((_index: number, message: ChatMessage) => (
     <div className="px-4 py-2">
       <MessageItem message={message} />
     </div>

@@ -171,12 +171,19 @@ export async function detectEnvironment(
     }
   }
   
+  // ✅ Send analyzing status first
+  const analyzingIndex = await chatAPI.showChatStatus('analyzing', {
+    keywordCount: 0,
+    filesList: []
+  });
+  
   await chatAPI.showChatStatus('analyzed', {
     content: summary,
     keywordCount: totalCount,
     stackTraceCount,
     semanticCount,
-    filesList
+    filesList,
+    _mergeIndex: analyzingIndex
   });
   
   if (decomposeKeywords.references.size > 0) {

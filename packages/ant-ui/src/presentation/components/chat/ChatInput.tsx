@@ -237,7 +237,6 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
         throw new Error('Failed to add user message to chat');
       }
       
-      let pendingJobId: string | undefined;
       try {
         // Start assistant message placeholder (without real jobId yet)
         const startResponse = await authFetch(
@@ -249,8 +248,9 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
         );
         
         if (startResponse.ok) {
-          const { pendingJobId: returnedPendingJobId } = await startResponse.json();
-          pendingJobId = returnedPendingJobId;
+          const { pendingJobId: _pendingJobId } = await startResponse.json();
+          // pendingJobId is available but not currently used
+          console.log('[ChatInput] Started message with pendingJobId:', _pendingJobId);
         }
       } catch (error) {
         console.error('[ChatInput] Failed to start assistant message:', error);

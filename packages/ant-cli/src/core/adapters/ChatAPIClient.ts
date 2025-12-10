@@ -131,7 +131,7 @@ export class ChatAPIClient {
   async showChatStatus(
     type: 'placeholder' | 'exploring' | 'explored' | 'retrieving' | 'retrieved' | 'grepping' | 'grepped' | 'reading' | 'read' | 'thinking' | 'indexing' | 'indexed' | 'analyzing' | 'analyzed' | 'storing' | 'stored' | 'searching_reference' | 'searched_reference' | 'tool_action',
     metadata?: Record<string, any>
-  ): Promise<void> {
+  ): Promise<number | undefined> {
     if (!this.enabled) return;
 
     try {
@@ -221,7 +221,8 @@ export class ChatAPIClient {
           if (readError) {
             content = `❌ Read Failed: ${readPath || readError}`;
           } else {
-            content = readPath ? `✅ Read: ${readPath}` : '✅ Read: file';
+            // ✅ No icon prefix - ResultCard already has Eye icon on the left
+            content = readPath ? `Read: ${readPath}` : 'Read: file';
           }
           break;
         case 'thinking':
@@ -325,12 +326,17 @@ export class ChatAPIClient {
       if (!response.ok) {
         console.error(`❌ [ChatAPIClient] HTTP ${response.status} ${response.statusText}`);
         console.error(`   Request body:`, JSON.stringify(requestBody, null, 2));
-        return;
+        return undefined;
       }
       
       console.log(`✅ [ChatAPIClient] HTTP 200 OK (type: ${type})`);
+      
+      // ✅ Return contentIndex for _mergeIndex
+      const result = await response.json();
+      return result.contentIndex;
     } catch (error) {
       console.error('❌ [ChatAPIClient] Error showing chat status:', error);
+      return undefined;
     }
   }
 
@@ -653,34 +659,76 @@ export class ChatAPIClient {
 
   /**
    * Add reading file status
+   * Returns the content index for merging
    */
-  async addReadingFile(filePath: string): Promise<void> {
-    await this.showChatStatus('reading', { filePath });
+  async addReadingFile(filePath: string): Promise<number | undefined> {
+    // Store the current message contents length to get the index
+    const response = await fetch(`${this.baseUrl}/add-content`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({
+        content: {
+          type: 'reading',
+          content: `Reading: ${filePath}...`,
+          metadata: {
+            provider: 'system',
+            timestamp: new Date().toISOString(),
+            filePath
+          }
+        }
+      })
+    });
+    
+    if (response.ok) {
+      const result = await response.json();
+      return result.contentIndex;
+    }
+    return undefined;
   }
 
   /**
    * Add file read complete
    */
-  async addReadComplete(filePath: string, error?: string): Promise<void> {
+  async addReadComplete(filePath: string, readingIndex?: number, error?: string): Promise<void> {
     if (error) {
       // Error case: signal error without including the message (showChatStatus will format it)
-      await this.showChatStatus('read', { filePath, error: true });
+      await this.showChatStatus('read', { filePath, error: true, _mergeIndex: readingIndex });
     } else {
       // Success case
-      await this.showChatStatus('read', { filePath });
+      await this.showChatStatus('read', { filePath, _mergeIndex: readingIndex });
     }
+  }
+
+  /**
+   * Start command execution (loading card)
+   * Returns the content index for merging
+   */
+  async commandStart(command: string): Promise<number | undefined> {
+    if (!this.enabled) return undefined;
+    try {
+      const response = await fetch(`${this.baseUrl}/command-execution`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ command, output: '', phase: 'running' })
+      });
+      if (response.ok) {
+        const result = await response.json();
+        return result.contentIndex;
+      }
+    } catch (error) { /* Silently fail */ }
+    return undefined;
   }
 
   /**
    * Complete command execution
    */
-  async commandComplete(command: string, success: boolean, exitCode: number, output: string): Promise<void> {
+  async commandComplete(command: string, success: boolean, exitCode: number, output: string, commandIndex?: number): Promise<void> {
     if (!this.enabled) return;
     try {
       await fetch(`${this.baseUrl}/command-execution`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ command, output, exitCode, phase: 'complete' })
+        body: JSON.stringify({ command, output, exitCode, phase: 'complete', _mergeIndex: commandIndex })
       });
     } catch (error) { /* Silently fail */ }
   }

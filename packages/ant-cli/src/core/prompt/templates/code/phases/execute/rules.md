@@ -177,9 +177,24 @@ export function Button() {
 
 ## 🚨 CRITICAL: XML TAG SAFETY
 
-**⚠️ DO NOT include closing XML tags in your code comments or strings!**
+**⚠️ NEVER NEST FILE TAGS!**
 
-The parser looks for the FIRST occurrence of closing tags. If you put them in comments/strings, parsing will break.
+`<file>`, `<edit>`, `<append>` are independent operations. Do NOT nest them:
+
+```xml
+<!-- ❌ WRONG -->
+<file path="App.tsx">
+<edit path="...">  ← Parser will treat this as literal text!
+</file>
+
+<!-- ✅ CORRECT -->
+<file path="App.tsx">...</file>
+<edit path="App.tsx">...</edit>
+```
+
+**⚠️ DO NOT include closing tags in code strings/comments!**
+
+Parser looks for FIRST occurrence of `</file>`, `</edit>`, `</append>`. Use string concatenation if needed: `"</" + "file>"`
 
 **❌ FORBIDDEN - These will break parsing:**
 

@@ -56,3 +56,4 @@ export class LineBufferManager {
     this.buffers.clear();
   }
 }
+

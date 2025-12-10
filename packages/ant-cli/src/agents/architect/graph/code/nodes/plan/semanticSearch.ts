@@ -38,7 +38,7 @@ export async function loadSemanticFiles(
   
   const searchQuery = keywords.join(' ');
   
-  await chatAPI.showChatStatus('retrieving', {
+  const mergeIndex = await chatAPI.showChatStatus('retrieving', {
     query: searchQuery
   });
   
@@ -194,7 +194,8 @@ export async function loadSemanticFiles(
     await chatAPI.showChatStatus('retrieved', {
       filesCount: vectorDbFiles.length,
       filesList: vectorDbFiles.map(f => f.path),
-      content: retrievedMessage
+      content: retrievedMessage,
+      _mergeIndex: mergeIndex
     });
     console.log(`   ✅ 'retrieved' status sent successfully\n`);
   } catch (error: any) {
@@ -202,23 +203,36 @@ export async function loadSemanticFiles(
   }
   
   // Display: 2. Explored (Git changes in retrieved files) - 항상 표시
-  console.log(`\n📤 [semanticSearch] Sending 'explored' status (${exploredFiles.length} files)...`);
+  // ✅ CRITICAL: Must send 'exploring' first for proper merge!
+  console.log(`\n📤 [semanticSearch] Sending 'exploring' → 'explored' status (${exploredFiles.length} files)...`);
   try {
+    const mergeIndex = await chatAPI.showChatStatus('exploring', {
+      filesCount: 0,
+      totalFiles: 0
+    });
+    
     await chatAPI.showChatStatus('explored', {
       filesCount: exploredFiles.length,
       filesList: exploredFiles,
       content: exploredFiles.length > 0 
         ? `Explored: ${exploredFiles.length} files with uncommitted changes related to semantic`
-        : `Explored: No uncommitted changes related to semantic`
+        : `Explored: No uncommitted changes related to semantic`,
+      _mergeIndex: mergeIndex
     });
-    console.log(`   'explored' status sent successfully\n`);
+    console.log(`   'exploring' → 'explored' status sent successfully\n`);
   } catch (error: any) {
-    console.error(`   ❌ 'explored' status FAILED:`, error.message);
+    console.error(`   ❌ 'exploring/explored' status FAILED:`, error.message);
   }
   
   // Display: 3. Grepped (Local files - NOT in Vector DB) - 항상 표시
-  console.log(`\n📤 [semanticSearch] Sending 'grepped' status (${localFiles.length} files)...`);
+  console.log(`\n📤 [semanticSearch] Sending 'grepping' → 'grepped' status (${localFiles.length} files)...`);
   try {
+    // ✅ Send grepping first and get index
+    const mergeIndex = await chatAPI.showChatStatus('grepping', {
+      filesCount: 0,
+      totalFiles: 0
+    });
+    
     let greppedMessage: string;
     
     if (localFiles.length > 0) {
@@ -233,11 +247,12 @@ export async function loadSemanticFiles(
       filesCount: localFiles.length,
       keywords: keywords,
       filesList: localFiles.map(f => f.path),
-      content: greppedMessage
+      content: greppedMessage,
+      _mergeIndex: mergeIndex
     });
-    console.log(`   'grepped' status sent successfully\n`);
+    console.log(`   'grepping' → 'grepped' status sent successfully\n`);
   } catch (error: any) {
-    console.error(`   ❌ 'grepped' status FAILED:`, error.message);
+    console.error(`   ❌ 'grepping/grepped' status FAILED:`, error.message);
   }
   
   console.log(`   Semantic loader: ${semanticFiles.length} files loaded (quota was ${semanticQuota})\n`);

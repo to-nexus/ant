@@ -126,18 +126,26 @@ export async function displayKeywords(taskKeywords: TaskKeywords): Promise<void>
     filesList.push(`[semantic] ${keyword}`);
   });
   
-  console.log(`   📤 Sending 'analyzed' status to Chat UI...`);
+  console.log(`   📤 Sending 'analyzing' → 'analyzed' status to Chat UI...`);
   console.log(`      Summary: "${summary}"`);
   
   try {
+    // ✅ Send analyzing first and get index
+    const mergeIndex = await chatAPI.showChatStatus('analyzing', {
+      keywordCount: 0,
+      filesList: []
+    });
+    
+    // Then send analyzed with _mergeIndex
     await chatAPI.showChatStatus('analyzed', {
       content: `Analyzed: ${summary}`,
       keywordCount: totalCount,
       stackTraceCount,
       semanticCount,
-      filesList  // ✅ Expandable list
+      filesList,  // ✅ Expandable list
+      _mergeIndex: mergeIndex
     });
-    console.log(`   ✅ Chat UI update successful (analyzed)\n`);
+    console.log(`   ✅ Chat UI update successful (analyzing → analyzed)\n`);
   } catch (error: any) {
     console.error(`   ❌ Chat UI update FAILED:`, error.message);
     console.error(`      Stack:`, error.stack);

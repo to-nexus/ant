@@ -184,6 +184,9 @@ async function handleReadFile(
     absolutePath = path.join(featurePath, filePath);
   }
   
+  // ✅ Add reading status and get index
+  const mergeIndex = await chatAPI.addReadingFile(filePath);
+  
   try {
     const content = await gitPort.readFile(absolutePath);
     if (!content) {
@@ -193,12 +196,12 @@ async function handleReadFile(
     console.log(`   📖 Read: ${absolutePath} (${content.length} bytes)`);
     
     // ✅ UI notification: read complete (success)
-    await chatAPI.addReadComplete(filePath);
+    await chatAPI.addReadComplete(filePath, mergeIndex);
     
     return content;
   } catch (error) {
     // ✅ Update reading status with error message
-    await chatAPI.addReadComplete(filePath, (error as Error).message);
+    await chatAPI.addReadComplete(filePath, mergeIndex, (error as Error).message);
     throw error;
   }
 }
@@ -247,11 +250,13 @@ async function handleListFiles(
   
   console.log(`   📂 Listed: ${filteredFiles.length} files in ${directory || '.'}`);
   
-  // ✅ UI notification: exploration complete
+  // ✅ UI notification: grepping complete (local file list)
   const chatAPI = getChatAPIClient();
-  await chatAPI.showChatStatus('explored', { 
+  const mergeIndex = await chatAPI.showChatStatus('grepping', { filesCount: 0, totalFiles: 0 });
+  await chatAPI.showChatStatus('grepped', { 
     filesCount: filteredFiles.length,
-    filesList: filteredFiles 
+    filesList: filteredFiles,
+    _mergeIndex: mergeIndex
   });
   
   return JSON.stringify({
@@ -317,9 +322,11 @@ async function handleSearchCode(
   // ✅ UI notification: search complete
   const chatAPI = getChatAPIClient();
   const matchedFiles = [...new Set(results.map(r => r.file))];
-  await chatAPI.showChatStatus('explored', { 
+  const mergeIndex = await chatAPI.showChatStatus('grepping', { filesCount: 0, totalFiles: 0 });
+  await chatAPI.showChatStatus('grepped', { 
     filesCount: matchedFiles.length,
-    filesList: matchedFiles 
+    filesList: matchedFiles,
+    _mergeIndex: mergeIndex
   });
   
   return JSON.stringify({

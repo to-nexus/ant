@@ -73,6 +73,8 @@ export interface MessageContent {
     tokens?: number;        // For indexed: estimated tokens
     duration?: number;      // For indexed: duration in milliseconds
     error?: string;         // For indexed: error message if failed
+    // Merge control
+    _mergeIndex?: number;   // ✅ Explicit merge target index
     // ❌ tasksJson 제거 (더 이상 사용하지 않음)
   };
 }
@@ -375,20 +377,6 @@ export class ChatService {
       // When thinking arrives, Chat Status (if any) will HIDE via Case 3
     ]);
     
-    /**
-     * ✅ Find the most recent Chat Status of a specific type (reverse search)
-     * This ensures we can merge status updates even if other content was added in between
-     */
-    const findRecentChatStatus = (type: MessageContent['type'] | MessageContent['type'][]): { content: MessageContent; index: number } | null => {
-      const types = Array.isArray(type) ? type : [type];
-      for (let i = existingContents.length - 1; i >= 0; i--) {
-        if (types.includes(existingContents[i].type)) {
-          return { content: existingContents[i], index: i };
-        }
-      }
-      return null;
-    };
-    
     const isLastChatStatus = lastContent && CHAT_STATUS_TYPES.has(lastContent.type);
     const isNewChatStatus = CHAT_STATUS_TYPES.has(content.type);
     
@@ -456,161 +444,24 @@ export class ChatService {
       return lastContentIndex;
     }
     
-    // ✅ Check if we should merge with a specific progress status (reverse search)
-    // exploring → exploring/explored
-    if (content.type === 'exploring' || content.type === 'explored') {
-      const found = findRecentChatStatus(['exploring', 'explored']);
-      if (found && found.content.type === 'exploring') {
-        console.log(`[ChatService] ✅ MERGED: ${found.content.type} → ${content.type} (reverse search, index ${found.index})`);
-        found.content.type = content.type;
-        found.content.content = content.content;
-        found.content.metadata = { ...found.content.metadata, ...content.metadata };
+    // ✅ PRIORITY: Check for explicit _mergeIndex first (direct merge)
+    if (content.metadata?._mergeIndex !== undefined) {
+      const targetIndex = content.metadata._mergeIndex;
+      if (targetIndex >= 0 && targetIndex < existingContents.length) {
+        const target = existingContents[targetIndex];
+        console.log(`[ChatService] ✅ MERGED: ${target.type} → ${content.type} (explicit _mergeIndex: ${targetIndex})`);
+        target.type = content.type;
+        target.content = content.content;
+        target.metadata = { ...target.metadata, ...content.metadata };
+        delete target.metadata._mergeIndex;  // Clean up
         
         this.broadcast(projectId, featureName, {
           type: 'content_update',
           messageId: session.currentMessage.id,
-          contentIndex: found.index,
-          content: found.content
+          contentIndex: targetIndex,
+          content: target
         });
-        return found.index;
-      }
-    }
-    
-    // retrieving → retrieving/retrieved
-    if (content.type === 'retrieving' || content.type === 'retrieved') {
-      const found = findRecentChatStatus(['retrieving', 'retrieved']);
-      if (found && found.content.type === 'retrieving') {
-        console.log(`[ChatService] ✅ MERGED: ${found.content.type} → ${content.type} (reverse search, index ${found.index})`);
-        found.content.type = content.type;
-        found.content.content = content.content;
-        found.content.metadata = { ...found.content.metadata, ...content.metadata };
-        
-        this.broadcast(projectId, featureName, {
-          type: 'content_update',
-          messageId: session.currentMessage.id,
-          contentIndex: found.index,
-          content: found.content
-        });
-        return found.index;
-      }
-    }
-    
-    // grepping → grepping/grepped
-    if (content.type === 'grepping' || content.type === 'grepped') {
-      const found = findRecentChatStatus(['grepping', 'grepped']);
-      if (found && found.content.type === 'grepping') {
-        console.log(`[ChatService] ✅ MERGED: ${found.content.type} → ${content.type} (reverse search, index ${found.index})`);
-        found.content.type = content.type;
-        found.content.content = content.content;
-        found.content.metadata = { ...found.content.metadata, ...content.metadata };
-        
-        this.broadcast(projectId, featureName, {
-          type: 'content_update',
-          messageId: session.currentMessage.id,
-          contentIndex: found.index,
-          content: found.content
-        });
-        return found.index;
-      }
-    }
-    
-    // reading → reading/read (✅ CRITICAL: Must match filePath)
-    if (content.type === 'reading' || content.type === 'read') {
-      const found = findRecentChatStatus(['reading', 'read']);
-      // ✅ Only merge if it's the SAME FILE
-      if (found && found.content.type === 'reading' && 
-          found.content.metadata?.filePath === content.metadata?.filePath) {
-        console.log(`[ChatService] ✅ MERGED: ${found.content.type} → ${content.type} for ${content.metadata?.filePath} (reverse search, index ${found.index})`);
-        found.content.type = content.type;
-        found.content.content = content.content;
-        found.content.metadata = { ...found.content.metadata, ...content.metadata };
-        
-        this.broadcast(projectId, featureName, {
-          type: 'content_update',
-          messageId: session.currentMessage.id,
-          contentIndex: found.index,
-          content: found.content
-        });
-        return found.index;
-      }
-    }
-    
-    // indexing → indexing/indexed
-    if (content.type === 'indexing' || content.type === 'indexed') {
-      const found = findRecentChatStatus(['indexing', 'indexed']);
-      if (found && found.content.type === 'indexing') {
-        console.log(`[ChatService] ✅ MERGED: ${found.content.type} → ${content.type} (reverse search, index ${found.index})`);
-        found.content.type = content.type;
-        found.content.content = content.content;
-        found.content.metadata = { ...found.content.metadata, ...content.metadata };
-        
-        this.broadcast(projectId, featureName, {
-          type: 'content_update',
-          messageId: session.currentMessage.id,
-          contentIndex: found.index,
-          content: found.content
-        });
-        return found.index;
-      }
-    }
-    
-    // analyzing → analyzing/analyzed
-    if (content.type === 'analyzing' || content.type === 'analyzed') {
-      const found = findRecentChatStatus(['analyzing', 'analyzed']);
-      if (found && found.content.type === 'analyzing') {
-        console.log(`[ChatService] ✅ MERGED: ${found.content.type} → ${content.type} (reverse search, index ${found.index})`);
-        found.content.type = content.type;
-        found.content.content = content.content;
-        found.content.metadata = { ...found.content.metadata, ...content.metadata };
-        
-        this.broadcast(projectId, featureName, {
-          type: 'content_update',
-          messageId: session.currentMessage.id,
-          contentIndex: found.index,
-          content: found.content
-        });
-        return found.index;
-      }
-    }
-    
-    // storing → storing/stored
-    if (content.type === 'storing' || content.type === 'stored') {
-      const found = findRecentChatStatus(['storing', 'stored']);
-      if (found && found.content.type === 'storing') {
-        console.log(`[ChatService] ✅ MERGED: ${found.content.type} → ${content.type} (reverse search, index ${found.index})`);
-        found.content.type = content.type;
-        found.content.content = content.content;
-        found.content.metadata = { ...found.content.metadata, ...content.metadata };
-        
-        this.broadcast(projectId, featureName, {
-          type: 'content_update',
-          messageId: session.currentMessage.id,
-          contentIndex: found.index,
-          content: found.content
-        });
-        return found.index;
-      }
-    }
-    
-    // command_running → command_streaming → command
-    if (content.type === 'command_running' || content.type === 'command_streaming' || content.type === 'command') {
-      const found = findRecentChatStatus(['command_running', 'command_streaming', 'command']);
-      // ✅ Only merge if it's the SAME COMMAND
-      if (found && 
-          (found.content.type === 'command_running' || found.content.type === 'command_streaming') &&
-          found.content.metadata?.command === content.metadata?.command) {
-        console.log(`[ChatService] ✅ MERGED: ${found.content.type} → ${content.type} for command "${content.metadata?.command}" (reverse search, index ${found.index})`);
-        found.content.type = content.type;
-        found.content.content = content.content;
-        found.content.metadata = { ...found.content.metadata, ...content.metadata };
-        
-        this.broadcast(projectId, featureName, {
-          type: 'content_update',
-          messageId: session.currentMessage.id,
-          contentIndex: found.index,
-          content: found.content
-        });
-        return found.index;
+        return targetIndex;
       }
     }
     
@@ -1008,46 +859,19 @@ export class ChatService {
           }
           // ✅ COMMAND EXECUTION: run_command
           else if (name === 'run_command') {
-            const command = (input as any).command;
-            
-            if (command) {
-              console.log(`[ChatService] 💻 Creating loading command card for: ${command}`);
-              
-              // Add loading command card
-              this.addContentToCurrentMessage(projectId, featureName, {
-                type: 'command_running',  // Loading state
-                content: '',  // Output will be streamed
-                metadata: {
-                  command,
-                  timestamp: new Date().toISOString()
-                }
-              });
-            }
+            // Do nothing - handled by tool.ts (commandComplete will handle merge via addCommandExecution)
+            console.log(`[ChatService] ⏭️  Tool: ${name} (command output will be shown on completion)`);
           }
           // ✅ CODEBASE EXPLORATION: read_file, list_files, search_code, etc.
           else if (name === 'read_file') {
-            const filePath = (input as any).path;
-            if (filePath) {
-              console.log(`[ChatService] 👁️  Reading file: ${filePath}`);
-              this.addContentToCurrentMessage(projectId, featureName, {
-                type: 'reading',
-                content: `Reading ${filePath}...`,
-                metadata: {
-                  filePath,
-                  timestamp: new Date().toISOString()
-                }
-              });
-            }
+            // Do nothing - handled by tool.ts with reading/read (WorkingCard/ResultCard)
+            console.log(`[ChatService] ⏭️  Tool: ${name} (handled by tool.ts with WorkingCard/ResultCard)`);
           }
+          // ✅ SKIP: list_files and search_code are handled by file-tools.ts
+          // They use WorkingCard/ResultCard (grepping/grepped), not tool_action
           else if (name === 'list_files' || name === 'search_code') {
-            console.log(`[ChatService] 🔍 Tool: ${name}`);
-            this.addContentToCurrentMessage(projectId, featureName, {
-              type: 'exploring',
-              content: 'Exploring...',
-              metadata: {
-                timestamp: new Date().toISOString()
-              }
-            });
+            // Do nothing - these are handled by file-tools.ts with grepping/grepped
+            console.log(`[ChatService] ⏭️  Tool: ${name} (handled by file-tools.ts with WorkingCard/ResultCard)`);
           }
           // ✅ SIMPLE TOOLS: mkdir (Cursor/Copilot style - minimal one-line display)
           else if (name === 'mkdir') {
@@ -1064,10 +888,9 @@ export class ChatService {
               }
             });
           }
-          // ✅ OTHER TOOLS: Fallback (should rarely be used)
+          // ✅ OTHER TOOLS: Fallback to tool_action (for tools not explicitly handled above)
           else {
-            // Generic tool call display
-            console.log(`[ChatService] 🔧 Tool: ${name}`);
+            console.log(`[ChatService] 🔧 Tool: ${name} (fallback to tool_action)`);
             this.addContentToCurrentMessage(projectId, featureName, {
               type: 'tool_action',
               content: `${name}: ${JSON.stringify(input)}`,
@@ -1289,8 +1112,9 @@ export class ChatService {
     command: string,
     output?: string,
     exitCode?: number,
-    phase?: 'running' | 'streaming' | 'complete'
-  ): void {
+    phase?: 'running' | 'streaming' | 'complete',
+    _mergeIndex?: number
+  ): number {
     // Determine content type based on phase
     let type: MessageContent['type'];
     
@@ -1303,13 +1127,14 @@ export class ChatService {
       type = 'command';
     }
 
-    this.addContentToCurrentMessage(projectId, featureName, {
+    return this.addContentToCurrentMessage(projectId, featureName, {
       type,
       content: output || '',
       metadata: {
         command,
         exitCode,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        _mergeIndex
       }
     });
   }
