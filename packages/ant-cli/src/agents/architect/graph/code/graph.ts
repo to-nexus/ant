@@ -403,11 +403,11 @@ export function buildCodeGraph() {
       const hasViolations = (s.violations && s.violations.length > 0);
       
       if (!hasViolations) {
-        // ✅ Task succeeded - ALWAYS go to learn for incremental lesson extraction
-        return "learn";
-      }
-      
-      // Has violations - check if we should retry
+  // ✅ Task succeeded - ALWAYS go to learn for incremental lesson extraction
+      return "learn";
+    }
+    
+    // Has violations - check if we should retry
       if (s.retries < s.maxRetries) {
         return "enforce";
       }

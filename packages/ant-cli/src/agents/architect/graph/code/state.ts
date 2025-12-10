@@ -46,6 +46,7 @@ export type ViolationType =
   | 'config_error'          // 설정 파일 에러
   | 'environment_issue'     // 환경 설정 문제 (NODE_ENV, PATH 등)
   | 'no_files'              // 파일 생성 안 됨
+  | 'file_operation_failed' // 파일 작업 실패 (edit search block not found 등)
   | 'other';                // 기타
 
 /**
@@ -267,6 +268,7 @@ export interface ArchitectGraphState extends TaskArtifacts {
 
   requiredIntegrations: IntegrationRequirement[];
   violations?: Violation[];  // ✅ 구조화된 violation 배열
+  fileErrors?: string[];     // ✅ 파일 작업 실패 에러 메시지 (checkTaskStatus에서 violation으로 변환)
 
   retries: number;
   maxRetries: number;
