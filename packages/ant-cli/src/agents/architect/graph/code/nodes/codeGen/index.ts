@@ -220,7 +220,24 @@ export async function codeGen(
     // ✅ Finalize orchestrator (flush buffer)
     // Pass hasToolCalls flag to prevent premature message finalization
     const hasToolCalls = toolCalls.length > 0;
-    await orchestrator.finalize(hasToolCalls);
+    const finalizeResult = await orchestrator.finalize(hasToolCalls);
+    
+    // ✅ CRITICAL: Extract files from FileRegistry for state.files
+    const files: Array<{ path: string; content: string; actionType: 'create' | 'edit' | 'append' | 'delete' }> = [];
+    if (finalizeResult?.streamedFiles) {
+      for (const filePath of finalizeResult.streamedFiles) {
+        // Try to get file info from registry (has actionType)
+        const fileInfo = (orchestrator as any).registry?.getFileInfo?.(filePath);
+        if (fileInfo) {
+          files.push({
+            path: filePath,
+            content: fileInfo.contentBuffer || '',
+            actionType: fileInfo.actionType as any
+          });
+        }
+      }
+    }
+    console.log(`📝 [CodeGen] Extracted ${files.length} file(s) from streaming session`);
     
     // ✅ Finalize chat message if no tool calls (task/reasoning complete)
     if (toolCalls.length === 0) {
@@ -232,6 +249,7 @@ export async function codeGen(
     console.log(`   Thinking: ${thinking.length} chars`);
     console.log(`   Text: ${textResponse.length} chars`);
     console.log(`   Tool calls: ${toolCalls.length}`);
+    console.log(`   Files: ${files.length}`);
     
     // ✅ Explain mode validation
     if (isExplainMode && toolCalls.length > 0) {
@@ -254,6 +272,7 @@ export async function codeGen(
         toolCalls,        // ✅ For tool execution
         done: toolCalls.length === 0,  // ✅ Tool calls 없을 때만 done = true
       },
+      files: files.length > 0 ? files : undefined,  // ✅ CRITICAL: 생성된 파일을 state에 추가
       fileErrors: fileErrors.length > 0 ? fileErrors : undefined,  // ✅ 파일 작업 실패를 validation으로 전달
     };
   } catch (error) {
