@@ -343,7 +343,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   console.log(`📋 [Resolve] Profile detection delegated to detectEnvironment node (LLM-based analysis)`);
 
   // ✅ Return minimal state (profile only, NO mode - mode determined in detectEnvironment)
-  const result = {
+  const result: any = {
     ...state,
     directive,
     design,
@@ -352,6 +352,9 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     sessionContext: sessionContextForLLM,  // ✅ Include compressed session context
     profile,  // ✅ ONLY profile!
     referenceContexts,  // Empty array (references loaded per-task)
+    // ✅ CRITICAL: Add jobId and jobTiming to state (not just session)
+    jobId: newJobId,
+    jobTiming: newJobTiming
   };
   
   // ✅ Workflow instrumentation: Exit node (success path)

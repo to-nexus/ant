@@ -351,10 +351,10 @@ async function handleListFiles(
   
   const chatAPI = getChatAPIClient();
   
-  // ✅ UI: Show grepping status (local file search)
-  const mergeIndex = await chatAPI.showChatStatus('grepping', { 
-    filesCount: 0, 
-    totalFiles: 0 
+  // ✅ UI: Show listing_files status
+  const listingIndex = await chatAPI.showChatStatus('listing_files', { 
+    directory: directory || '.', 
+    pattern 
   });
   
   // ✅ Use GitPort instead of direct fs access (Hexagonal Architecture)
@@ -372,11 +372,13 @@ async function handleListFiles(
   
   console.log(`   📁 Listed ${filtered.length} items in ${directory}`);
   
-  // ✅ UI notification: grep complete (local search)
-  await chatAPI.showChatStatus('grepped', { 
+  // ✅ UI notification: listed_files complete
+  await chatAPI.showChatStatus('listed_files', { 
     filesCount: filtered.length,
-    filesList: filtered,
-    _mergeIndex: mergeIndex
+    totalFiles: items.length,
+    pattern,
+    filesList: filtered.slice(0, 20),
+    _mergeIndex: listingIndex
   });
   
   return filtered;
@@ -402,10 +404,10 @@ async function handleSearchCode(
   
   const chatAPI = getChatAPIClient();
   
-  // ✅ UI: Show grepping status (local file search)
-  const mergeIndex = await chatAPI.showChatStatus('grepping', { 
-    filesCount: 0, 
-    totalFiles: 0 
+  // ✅ UI: Show searching_code status
+  const searchingIndex = await chatAPI.showChatStatus('searching_code', { 
+    pattern, 
+    file_pattern 
   });
   
   // ✅ Use GitPort to list files (Hexagonal Architecture)
@@ -432,12 +434,14 @@ async function handleSearchCode(
   
   console.log(`   🔍 Found ${results.length} matches for "${pattern}"`);
   
-  // ✅ UI notification: grep complete (local search)
+  // ✅ UI notification: searched_code complete
   const matchedFiles = [...new Set(results.map(r => r.split(':')[0]))];
-  await chatAPI.showChatStatus('grepped', { 
+  await chatAPI.showChatStatus('searched_code', { 
+    pattern,
     filesCount: matchedFiles.length,
+    totalMatches: results.length,
     filesList: matchedFiles,
-    _mergeIndex: mergeIndex
+    _mergeIndex: searchingIndex
   });
   
   return results.join('\n');
@@ -512,13 +516,8 @@ async function handleMkdir(
   await gitPort.createDirectory(dirPath);
   console.log(`   📁 Created directory: ${dirPath}`);
   
-  // ✅ UI notification: directory created
-  const chatAPI = getChatAPIClient();
-  await chatAPI.showChatStatus('tool_action', {
-    toolName: 'mkdir',
-    actionIcon: '📁',
-    message: `Created directory: ${dirPath}`
-  });
+  // ✅ UI notification is handled by ChatService via tool_use event
+  // No need to manually add tool_action here
   
   return `Directory created: ${dirPath}`;
 }

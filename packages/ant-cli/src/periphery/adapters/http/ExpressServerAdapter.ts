@@ -886,7 +886,40 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     
     console.log(`   ✅ Session file watcher started`);
     
-    // Broadcast immediately to show "estimating" state
+    // ✅ If this is a resume, create initial snapshot for immediate UI sync
+    if (isResume) {
+      try {
+        const sessionData = await this.sessionService.readSessionData(
+          projectId,
+          featureName,
+          jobType,
+          params.userContext
+        );
+        
+        if (sessionData?.state?.taskQueue && sessionData.state.taskQueue.length > 0) {
+          console.log(`   🔄 Resume detected - creating initial snapshot (${sessionData.state.taskQueue.length} tasks in queue)`);
+          
+          // ✅ Update job status to show resume instead of estimating
+          this.jobs.set(jobId, {
+            ...this.jobs.get(jobId)!,
+            status: 'running'  // Set to running immediately for resume
+          });
+          
+          // ✅ Create initial snapshot from session for resume
+          this.taskQueueSnapshots.set(jobId, {
+            currentTask: sessionData.state.currentTask || sessionData.state.taskQueue[0],
+            queue: sessionData.state.taskQueue.slice(sessionData.state.currentTask ? 0 : 1),
+            completedTasks: sessionData.state.completedTasksDetails || []
+          });
+          
+          console.log(`   ✅ Initial resume snapshot created`);
+        }
+      } catch (error) {
+        console.log(`   ⚠️  Failed to create resume snapshot (non-critical):`, error);
+      }
+    }
+    
+    // Broadcast immediately to show state (estimating for new, resume for existing)
     this.kanbanService.getKanbanData(
       projectId, 
       featureName,
@@ -897,6 +930,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       params.userContext  // ✅ Pass user context for Cloud mode
     ).then(kanbanData => {
       this.sseService.broadcast(projectId, featureName, 'kanban', kanbanData);
+      console.log(`   ✅ Initial Kanban broadcast: ${isResume ? 'resume' : 'estimating'} state`);
     });
     
     // Start job execution in child process (non-blocking)

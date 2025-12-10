@@ -15,6 +15,10 @@ export type MessageContentType =
   | 'retrieved'      // Vector DB search complete
   | 'grepping'       // Local file search fallback (in progress)
   | 'grepped'        // Local file search complete
+  | 'listing_files'  // Listing files in directory (in progress)
+  | 'listed_files'   // File listing complete
+  | 'searching_code' // Searching code patterns (in progress)
+  | 'searched_code'  // Code search complete
   | 'reading'        // Reading file (in progress)
   | 'read'           // File read complete
   | 'indexing'       // Codebase indexing (in progress)
