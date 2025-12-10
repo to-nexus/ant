@@ -76,41 +76,70 @@ export async function loadSemanticFiles(
     console.warn(`   ⚠️  Vector DB failed: ${e.message}`);
   }
   
-  // Step 2: Local file search for remaining keywords (if Vector DB didn't find enough)
-  const remainingQuota = semanticQuota - vectorDbPaths.length;
+  // Step 2: Local files (Git changes + Keyword fallback)
+  // Priority: Git uncommitted files (faster, more accurate)
+  // Fallback: Keyword-based file search
+  let localFilePaths: string[] = [];
+  
+  try {
+    const hasChanges = await git.hasChanges();
+    if (hasChanges) {
+      const changedFiles = await git.getChangedFiles();
+      // Filter to only include files not already in excludePaths or vectorDbPaths
+      const gitChangedPaths = changedFiles.filter(f => 
+        !excludePaths.includes(f) && 
+        !vectorDbPaths.includes(f)
+      );
+      
+      if (gitChangedPaths.length > 0) {
+        console.log(`   📝 Git uncommitted files: ${gitChangedPaths.length} files found`);
+        console.log(`      Loading uncommitted files for context...`);
+        localFilePaths.push(...gitChangedPaths);
+      }
+    }
+  } catch (e: any) {
+    console.warn(`   ⚠️  Git changes check failed: ${e.message}`);
+  }
+  
+  // Step 3: Local file search for remaining keywords (if still need more files)
+  const remainingQuota = semanticQuota - vectorDbPaths.length - localFilePaths.length;
   if (remainingQuota > 0 && keywords.length > 0) {
-    console.log(`   🔍 Local file search: ${remainingQuota} slots remaining...`);
+    console.log(`   🔍 Local keyword search: ${remainingQuota} slots remaining...`);
     
     const { resolveStackTraceFile } = await import('../../../../../../core/utils/filePathResolver');
     
+    const keywordSearchPaths: string[] = [];
     for (const keyword of keywords) {
-      if (greppedPaths.length >= remainingQuota) break;
+      if (keywordSearchPaths.length >= remainingQuota) break;
       if (!keyword.includes('.') || keyword.length < 5) continue;
       
       try {
         const resolved = await resolveStackTraceFile(keyword, state.context.workingDir, git);
         
         if (resolved.confidence !== 'not_found') {
-          // ✅ Check if not already loaded (from stacktrace or vectorDB)
+          // ✅ Check if not already loaded (from stacktrace, vectorDB, or git changes)
           if (!excludePaths.includes(resolved.resolvedPath) && 
-              !vectorDbPaths.includes(resolved.resolvedPath) && 
-              !greppedPaths.includes(resolved.resolvedPath)) {
-            greppedPaths.push(resolved.resolvedPath);
-            console.log(`      ✅ Local search: ${resolved.resolvedPath}`);
+              !vectorDbPaths.includes(resolved.resolvedPath) &&
+              !localFilePaths.includes(resolved.resolvedPath)) {
+            keywordSearchPaths.push(resolved.resolvedPath);
+            console.log(`      ✅ Keyword search: ${resolved.resolvedPath}`);
           }
         }
       } catch (e: any) {
         // Silent fail
       }
     }
+    
+    localFilePaths.push(...keywordSearchPaths);
   }
   
-  // Step 3: Load all files from local Git and categorize
-  console.log(`   📄 Loading ${vectorDbPaths.length + greppedPaths.length} files from local Git...`);
+  // Step 4: Load all files from local Git and categorize
+  const totalFilesToLoad = vectorDbPaths.length + localFilePaths.length;
+  console.log(`   📄 Loading ${totalFilesToLoad} files from local Git...`);
   
   const vectorDbFiles: LoadedFile[] = [];
-  const greppedFiles: LoadedFile[] = [];
-  const allPaths = [...vectorDbPaths, ...greppedPaths];
+  const localFiles: LoadedFile[] = [];
+  const allPaths = [...vectorDbPaths, ...localFilePaths];
   
   for (const filePath of allPaths) {
     try {
@@ -122,13 +151,13 @@ export async function loadSemanticFiles(
         const file: LoadedFile = { 
           path: filePath, 
           content, 
-          source: isVectorDb ? 'vector_db' : 'file_resolver'
+          source: isVectorDb ? 'vector_db' : 'local'
         };
         
         if (isVectorDb) {
           vectorDbFiles.push(file);
         } else {
-          greppedFiles.push(file);
+          localFiles.push(file);
         }
       } else {
         console.warn(`      ⚠️  Empty or unreadable: ${filePath}`);
@@ -138,22 +167,15 @@ export async function loadSemanticFiles(
     }
   }
   
-  const semanticFiles = [...vectorDbFiles, ...greppedFiles];
+  const semanticFiles = [...vectorDbFiles, ...localFiles];
   console.log(`   ✅ Loaded ${semanticFiles.length} files from local`);
   
-  // Check for git changes (only for Vector DB files)
+  // exploredFiles = subset of Vector DB files that have uncommitted changes
+  // (for Chat UI display to show which retrieved files were modified)
   let exploredFiles: string[] = [];
-  if (vectorDbFiles.length > 0) {
-    try {
-      const hasChanges = await git.hasChanges();
-      if (hasChanges) {
-        const changedFiles = await git.getChangedFiles();
-        const changedFileSet = new Set(changedFiles);
-        exploredFiles = vectorDbFiles.filter(f => changedFileSet.has(f.path)).map(f => f.path);
-      }
-    } catch (e: any) {
-      console.warn(`      ⚠️  Git changes check failed: ${e.message}`);
-    }
+  if (localFiles.length > 0 && vectorDbFiles.length > 0) {
+    const localSet = new Set(localFiles.map(f => f.path));
+    exploredFiles = vectorDbFiles.filter(f => localSet.has(f.path)).map(f => f.path);
   }
   
   // Display: 1. Retrieved (Vector DB ONLY - EXCLUDING duplicates from stack trace) - 항상 표시
@@ -194,16 +216,24 @@ export async function loadSemanticFiles(
     console.error(`   ❌ 'explored' status FAILED:`, error.message);
   }
   
-  // Display: 3. Grepped (Local search - NOT in Vector DB) - 항상 표시
-  console.log(`\n📤 [semanticSearch] Sending 'grepped' status (${greppedFiles.length} files)...`);
+  // Display: 3. Grepped (Local files - NOT in Vector DB) - 항상 표시
+  console.log(`\n📤 [semanticSearch] Sending 'grepped' status (${localFiles.length} files)...`);
   try {
+    let greppedMessage: string;
+    
+    if (localFiles.length > 0) {
+      greppedMessage = `Grepped: ${localFiles.length} local files`;
+    } else {
+      greppedMessage = vectorDbFiles.length > 0 
+        ? `Grepped: All files found in Vector DB (no local search needed)`
+        : `Grepped: 0 files (no matches)`;
+    }
+    
     await chatAPI.showChatStatus('grepped', {
-      filesCount: greppedFiles.length,
+      filesCount: localFiles.length,
       keywords: keywords,
-      filesList: greppedFiles.map(f => f.path),
-      content: greppedFiles.length > 0
-        ? `Grepped: ${greppedFiles.length} files found via local search related to semantic`
-        : `Grepped: All files found in Vector DB (no local search needed)`
+      filesList: localFiles.map(f => f.path),
+      content: greppedMessage
     });
     console.log(`   'grepped' status sent successfully\n`);
   } catch (error: any) {

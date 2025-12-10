@@ -148,17 +148,43 @@ export class FilePromptAdapter implements PromptPort {
     const templateVars = (usedVars as string[]).filter(v => 
       !handlebarsKeywords.includes(v) && !handlebarsHelpers.includes(v)
     );
-    const missingVars = templateVars.filter(v => !(v in vars));
+    
+    // ✅ Only validate variables that would actually be rendered
+    // To avoid false positives from conditional blocks, only warn if:
+    // 1. Variable is used outside conditionals, OR
+    // 2. The condition for that variable is true in provided vars
+    const shouldValidate = (varName: string): boolean => {
+      // Check if variable is inside a conditional block
+      const conditionalPattern = new RegExp(`\\{\\{#if\\s+(\\w+)[^}]*\\}\\}[\\s\\S]*?\\{\\{${varName}[^}]*\\}\\}[\\s\\S]*?\\{\\{\\/if\\}\\}`, 'g');
+      const conditionalMatch = templateSource.match(conditionalPattern);
+      
+      if (!conditionalMatch) {
+        // Not in conditional, should validate
+        return true;
+      }
+      
+      // Extract condition variable
+      const conditionMatch = conditionalMatch[0].match(/\{\{#if\s+(\w+)/);
+      if (!conditionMatch) return true;
+      
+      const conditionVar = conditionMatch[1];
+      // Only validate if condition is true in provided vars
+      return !!vars[conditionVar];
+    };
+    
+    const varsToValidate = templateVars.filter(shouldValidate);
+    const missingVars = varsToValidate.filter(v => !(v in vars));
     const providedVars = Object.keys(vars);
     const unusedVars = providedVars.filter(v => !templateVars.includes(v));
     
-    // 5. Log warnings for maintenance
+    // 5. Log warnings for maintenance (only for actually missing vars)
     if (missingVars.length > 0) {
       console.warn(`[PromptAdapter] Template "${templateName}": Missing variables [${missingVars.join(', ')}]`);
     }
-    if (unusedVars.length > 0) {
-      console.warn(`[PromptAdapter] Template "${templateName}": Unused variables [${unusedVars.join(', ')}]`);
-    }
+    // ✅ Don't warn about unused vars - they might be for other conditional branches
+    // if (unusedVars.length > 0) {
+    //   console.warn(`[PromptAdapter] Template "${templateName}": Unused variables [${unusedVars.join(', ')}]`);
+    // }
     
     // 6. Render template with Handlebars
     return template(vars);

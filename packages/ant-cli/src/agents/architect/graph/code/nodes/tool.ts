@@ -115,8 +115,9 @@ export async function tool(
     'search_reference_code': '🔎 Searching reference'
   }[name] || `🔧 ${name}`;
   
-  await chatAPI.showChatStatus('thinking', {
-    message: toolDisplayName
+  // Use placeholder instead, which will auto-merge or disappear
+  await chatAPI.showChatStatus('placeholder', {
+    content: toolDisplayName
   });
   
   // ✅ CRITICAL: Give UI time to render file card from tool_use event
