@@ -392,6 +392,64 @@ export class XMLStreamParser implements IStreamParser {
       if (this.context.insideFile && this.buffer.length > 0) {
         const lookahead = '</file>';
         
+        // ✅ SAFETY CHECK: Detect invalid XML tags inside file content
+        // If we encounter other XML tags (tooling, etc), force-close the file
+        const invalidTagPatterns = [
+          '</parameter>',
+          '<parameter',
+          '</invoke>',
+          '<invoke',
+          '<tool_call>',
+          '</tool_call>',
+          '<thinking>',
+          '<tasks>',
+          '<done>'
+        ];
+        
+        for (const invalidTag of invalidTagPatterns) {
+          if (this.buffer.includes(invalidTag)) {
+            console.error(`🚨 [XMLParser] CRITICAL: Found invalid tag "${invalidTag}" inside file content!`);
+            console.error(`   File: ${this.context.currentFilePath}`);
+            console.error(`   This likely means </file> tag was missing from LLM output.`);
+            console.error(`   Forcing file close to prevent corruption.`);
+            
+            // Extract content BEFORE the invalid tag
+            const invalidIdx = this.buffer.indexOf(invalidTag);
+            const validContent = this.buffer.substring(0, invalidIdx).trimEnd();
+            
+            // Emit valid content if any
+            if (validContent.length > 0) {
+              actions.push({
+                type: 'file_content',
+                data: {
+                  filePath: this.context.currentFilePath!,
+                  content: validContent
+                }
+              });
+            }
+            
+            // Force file close
+            actions.push({
+              type: 'file_end',
+              data: { filePath: this.context.currentFilePath! }
+            });
+            
+            this.context.insideFile = false;
+            this.context.currentFilePath = null;
+            
+            // Keep buffer (don't consume the invalid tag, let other parsers handle it)
+            this.buffer = this.buffer.substring(invalidIdx);
+            
+            continueParsingLoop = true;
+            break;
+          }
+        }
+        
+        // If we already handled the invalid tag, skip normal processing
+        if (!this.context.insideFile) {
+          continue;
+        }
+        
         // ✅ AGGRESSIVE STREAMING: Emit complete lines immediately
         // Only keep incomplete last line + lookahead in buffer
         if (this.buffer.length > lookahead.length) {
@@ -473,6 +531,56 @@ export class XMLStreamParser implements IStreamParser {
       // 20. Accumulate append content (LINE-BASED STREAMING for real-time rendering)
       if (this.context.insideAppend && this.buffer.length > 0) {
         const lookahead = '</append>';
+        
+        // ✅ SAFETY CHECK: Detect invalid XML tags inside append content
+        const invalidTagPatterns = [
+          '</parameter>',
+          '<parameter',
+          '</invoke>',
+          '<invoke',
+          '<tool_call>',
+          '</tool_call>',
+          '<thinking>',
+          '<tasks>',
+          '<done>'
+        ];
+        
+        for (const invalidTag of invalidTagPatterns) {
+          if (this.buffer.includes(invalidTag)) {
+            console.error(`🚨 [XMLParser] CRITICAL: Found invalid tag "${invalidTag}" inside append content!`);
+            console.error(`   File: ${this.context.currentAppendPath}`);
+            console.error(`   Forcing append close to prevent corruption.`);
+            
+            const invalidIdx = this.buffer.indexOf(invalidTag);
+            const validContent = this.buffer.substring(0, invalidIdx).trimEnd();
+            
+            if (validContent.length > 0) {
+              actions.push({
+                type: 'file_content',
+                data: {
+                  filePath: this.context.currentAppendPath!,
+                  content: validContent
+                }
+              });
+            }
+            
+            actions.push({
+              type: 'file_end',
+              data: { filePath: this.context.currentAppendPath! }
+            });
+            
+            this.context.insideAppend = false;
+            this.context.currentAppendPath = null;
+            this.buffer = this.buffer.substring(invalidIdx);
+            
+            continueParsingLoop = true;
+            break;
+          }
+        }
+        
+        if (!this.context.insideAppend) {
+          continue;
+        }
         
         // ✅ AGGRESSIVE STREAMING: Emit complete lines immediately
         // Only keep incomplete last line + lookahead in buffer
