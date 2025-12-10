@@ -37,6 +37,7 @@ function applySearchReplace(
   if (originalContent.includes(searchContent)) {
     const modifiedContent = originalContent.replace(searchContent, replaceContent);
     console.log(`✅ [Edit] Applied search/replace to ${filePath}`);
+    console.log(`   Replaced ${searchContent.length} chars with ${replaceContent.length} chars`);
     return modifiedContent;
   }
   
@@ -55,29 +56,34 @@ function applySearchReplace(
   });
   
   let errorMsg = `❌ [Edit] Search block not found in ${filePath}\n\n`;
-  errorMsg += `Search block (${searchLines.length} lines):\n`;
+  errorMsg += `🔍 Search block (${searchLines.length} lines, ${searchContent.length} chars):\n`;
   errorMsg += `────────────────────────────────────────\n`;
   errorMsg += searchContent.substring(0, 500);
   if (searchContent.length > 500) errorMsg += '\n... (truncated)';
   errorMsg += `\n────────────────────────────────────────\n\n`;
   
   if (matchingLineNumbers.length > 0) {
-    errorMsg += `💡 Found similar first line at: ${matchingLineNumbers.join(', ')}\n`;
+    errorMsg += `💡 Found similar first line at line(s): ${matchingLineNumbers.join(', ')}\n`;
     errorMsg += `   Possible causes:\n`;
     errorMsg += `   - Whitespace mismatch (spaces vs tabs)\n`;
     errorMsg += `   - Missing/extra lines in search block\n`;
-    errorMsg += `   - File was modified since LLM saw it\n\n`;
+    errorMsg += `   - File was already modified in previous edit\n`;
+    errorMsg += `   - Search block contains outdated code\n\n`;
   } else {
     errorMsg += `💡 First line "${firstSearchLine}" not found in file\n`;
-    errorMsg += `   The search block may be completely wrong\n\n`;
+    errorMsg += `   The search block may be completely outdated or wrong\n\n`;
   }
   
-  errorMsg += `File content (first 1000 chars):\n`;
+  errorMsg += `📄 Current file content (first 1000 chars):\n`;
   errorMsg += `────────────────────────────────────────\n`;
   errorMsg += originalContent.substring(0, 1000);
   if (originalContent.length > 1000) errorMsg += '\n... (truncated)';
-  errorMsg += `\n────────────────────────────────────────`;
+  errorMsg += `\n────────────────────────────────────────\n\n`;
   
+  errorMsg += `⚠️  This error means the file content has changed since the LLM last saw it.\n`;
+  errorMsg += `💡 Solution: LLM should read the file again before attempting to edit it.`;
+  
+  console.error(errorMsg);
   throw new Error(errorMsg);
 }
 
@@ -350,6 +356,8 @@ export class CommonRenderStrategy implements IRenderStrategy {
     }
     
     // ✅ Check for duplicates (multi-turn overwrites)
+    console.log(`[Render] 🔍 Duplicate check for ${filePath}: hasStreamed=${registry.hasStreamed(filePath)}, actionType=${actionType}`);
+    
     if (registry.hasStreamed(filePath)) {
       const previousInfo = registry.getFileInfo(filePath);
       const previousActionType = previousInfo?.actionType;
@@ -380,16 +388,31 @@ export class CommonRenderStrategy implements IRenderStrategy {
       } else if (isIncrementalChange) {
         // ✅ Case 2: Incremental change (Turn 1: <file>, Turn 2: <edit>/<append>)
         console.log(`[Render] ✏️  Incremental ${actionType} on top of previous content (multi-turn)`);
-        
-        // ❌ DON'T reset buffer! 
-        // <edit> and <append> need the previous content from Turn 1
-        // They will be handled separately in execute node (applyEdits/applyAppends)
-        
         // Skip duplicate file_start (already initialized)
         return;
       } else {
         // ✅ Case 3: Same turn duplicate or invalid combination
-        console.log(`[Render] ⏭️  Skipping duplicate file_start (same turn)`);
+        // ⚠️ CRITICAL: All duplicates in same turn should be skipped
+        console.log(`[Render] ⏭️  Skipping duplicate file_start (same turn): ${previousActionType} → ${actionType}`);
+        
+        // ⚠️ CRITICAL: For ANY duplicate, mark as "skip" to prevent renderFileEnd from processing
+        // This is especially important for edit → edit, where the second edit will ALWAYS fail
+        // because the first edit already changed the file
+        if (previousActionType === 'edit' && actionType === 'edit') {
+          console.error(`[Render] ❌ CRITICAL ERROR: Duplicate edit for ${filePath} in same turn!`);
+          console.error(`   The LLM is trying to edit the same file twice.`);
+          console.error(`   The second edit will fail because the file was already modified.`);
+          console.error(`   This edit will be COMPLETELY SKIPPED to prevent cascading failures.`);
+        }
+        
+        // Mark file as "skip" to prevent renderFileContent and renderFileEnd from processing
+        this.activeFiles.set(filePath, {
+          filePath: filePath,
+          actionType: 'skip' as any,
+          contentBuffer: '',
+          startedAt: Date.now()
+        });
+        
         return;
       }
     }
@@ -476,6 +499,11 @@ Using <file> on existing files will OVERWRITE the entire file, which is almost n
       return;
     }
     
+    // ⚠️ CRITICAL: Skip if this file was marked as duplicate edit
+    if (fileInfo.actionType === 'skip' as any) {
+      return;  // Silently skip content accumulation
+    }
+    
     // Update registry buffer
     registry.appendContent(filePath, content);
     
@@ -530,6 +558,15 @@ Using <file> on existing files will OVERWRITE the entire file, which is almost n
     const fileInfo = this.activeFiles.get(filePath);
     if (!fileInfo) {
       console.warn(`[Render] file_end for non-started file: ${filePath}`);
+      return;
+    }
+    
+    // ⚠️ CRITICAL: Skip if this file was marked as duplicate edit
+    if (fileInfo.actionType === 'skip' as any) {
+      console.log(`[Render] ⏭️  Skipping file_end for duplicate edit: ${filePath}`);
+      this.activeFiles.delete(filePath);
+      this.editOperations.delete(filePath);
+      this.lineBuffers.delete(filePath);
       return;
     }
     
@@ -641,7 +678,34 @@ Using <file> on existing files will OVERWRITE the entire file, which is almost n
       }
       // delete action is already completed in file_start
     } catch (error) {
-      console.error(`[Render] Error completing ${fileInfo.actionType} for ${filePath}:`, error);
+      console.error(`[ERROR] [Render] Error completing ${fileInfo.actionType} for ${filePath}:`);
+      if (error instanceof Error) {
+        console.error(`   Message: ${error.message}`);
+        console.error(`   Stack: ${error.stack}`);
+      } else {
+        console.error(`   Error:`, error);
+      }
+      
+      // ⚠️ CRITICAL: Show error in UI AND provide actionable feedback to LLM
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      // Send to UI
+      await this.chatAPI.sendLLMEvent({
+        type: 'error',
+        error: { message: errorMessage }
+      });
+      
+      // ⚠️ CRITICAL: If this is a "search block not found" error, 
+      // the LLM MUST read the file again before attempting another edit
+      if (errorMessage.includes('Search block not found')) {
+        console.error(`\n${'='.repeat(80)}`);
+        console.error(`⚠️  CRITICAL: LLM attempted to edit ${filePath} with outdated code!`);
+        console.error(`\n💡 REQUIRED ACTION FOR LLM:`);
+        console.error(`   1. Use read_file tool to get the CURRENT file content`);
+        console.error(`   2. Then create a NEW <edit> with EXACT matching search block`);
+        console.error(`   3. DO NOT attempt to edit this file again without reading it first!`);
+        console.error(`${'='.repeat(80)}\n`);
+      }
     } finally {
       // Cleanup
       this.activeFiles.delete(filePath);
