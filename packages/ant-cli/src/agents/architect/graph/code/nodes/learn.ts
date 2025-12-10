@@ -178,14 +178,15 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   }
   
   // Log files that were written in writeFiles
-  if (state.files && state.files.length > 0) {
-    console.log(`\n✏️  ${state.files.length} files modified:`);
-    for (const f of state.files) {
+  const files = state.files || [];
+  if (files.length > 0) {
+    console.log(`\n✏️  ${files.length} files modified:`);
+    for (const f of files) {
       console.log(`   - ${f.path}`);
     }
   }
   
-  const filesWritten = state.files.length;
+  const filesWritten = files.length;
   
   // 3. Save turn to session file first (to get sessionId and turnId)
   let sessionId: string | undefined;
@@ -218,8 +219,8 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       output: {
         branch: branch,
         filesWritten: filesWritten,
-        files: state.files.map(f => f.path),
-        modifications: state.files.length > 0 ? state.files.map(f => f.path) : []
+        files: files.map(f => f.path),
+        modifications: files.length > 0 ? files.map(f => f.path) : []
       }
     };
     
@@ -498,11 +499,13 @@ function extractSolution(state: ArchitectGraphState): string {
   const parts: string[] = [];
   
   // File operations
-  if (state.files.length > 0) {
-    parts.push(`Generated ${state.files.length} file(s)`);
+  const files = state.files || [];
+  const filesToDelete = state.filesToDelete || [];
+  if (files.length > 0) {
+    parts.push(`Generated ${files.length} file(s)`);
   }
-  if (state.filesToDelete.length > 0) {
-    parts.push(`deleted ${state.filesToDelete.length} file(s)`);
+  if (filesToDelete.length > 0) {
+    parts.push(`deleted ${filesToDelete.length} file(s)`);
   }
   
   // Mode applied
@@ -558,7 +561,7 @@ function extractAntipatterns(state: ArchitectGraphState): string[] {
  * Extract related files (max 5)
  */
 function extractRelatedFiles(state: ArchitectGraphState): string[] {
-  return state.files.slice(0, 5).map(f => f.path);
+  return (state.files || []).slice(0, 5).map(f => f.path);
 }
 
 /**
@@ -625,12 +628,13 @@ function extractPatterns(state: ArchitectGraphState): string[] {
   }
   
   // Infer from file structures
-  const hasTests = state.files.some(f => f.path.includes('test') || f.path.includes('spec'));
+  const files = state.files || [];
+  const hasTests = files.some(f => f.path.includes('test') || f.path.includes('spec'));
   if (hasTests) {
     patterns.push('test-driven-development');
   }
   
-  const hasComponents = state.files.some(f => f.path.includes('component'));
+  const hasComponents = files.some(f => f.path.includes('component'));
   if (hasComponents) {
     patterns.push('component-based-architecture');
   }
