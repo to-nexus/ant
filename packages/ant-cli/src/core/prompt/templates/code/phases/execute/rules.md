@@ -36,6 +36,25 @@ export function newFunction() {
 </append>
 ```
 
+**🚨 CRITICAL FILE MODIFICATION RULES:**
+
+1. **ONE EDIT PER FILE PER TURN**
+   - Edit each file ONLY ONCE in a single response
+   - After you `<edit>` a file, its content has changed
+   - Second `<edit>` on the same file will FAIL (search block won't match)
+   - ❌ WRONG: Multiple `<edit>` tags for same file
+   - ✅ RIGHT: One `<edit>` per file, combining all changes
+
+2. **Read Before Edit (if uncertain)**
+   - If a file might have changed, use `read_file` tool first
+   - Then apply `<edit>` with up-to-date search block
+   - This prevents "search block not found" errors
+
+3. **Combine Multiple Changes**
+   - If you need multiple changes in one file, combine them:
+   - Option A: Use a larger `<search>` block covering all changes
+   - Option B: Read the file first, then make one comprehensive edit
+
 ### 🔧 TOOL CALLING - For Information & Commands (System → LLM)
 
 Use `<tool_use>` for **reading**, **searching**, **commands** (NEVER for file creation/modification):
@@ -106,6 +125,10 @@ Use `<tool_use>` for **reading**, **searching**, **commands** (NEVER for file cr
 ────────────────────────────────────────────────────────────────────────────────
 
 ## ⚠️ CRITICAL: `<edit>` TAG RULES
+
+**🚨 MOST CRITICAL: Edit each file ONLY ONCE per response!**
+
+After you edit a file, its content has changed. A second edit will FAIL because the search block won't match.
 
 **The `<search>` block must match EXACTLY:**
 - Whitespace (spaces, tabs, newlines)
@@ -255,6 +278,7 @@ function updatePaddle() {
 | **CRITICAL: Using `<edit>` as a tool** | `<tool_use><name>edit</name>` | Use XML tag directly: `<edit path="...">` (NO tool_use wrapper) |
 | **CRITICAL: Using `<file>` as a tool** | `<tool_use><name>file</name>` or `<tool_use><name>write_file</name>` | Use XML tag directly: `<file path="...">` (NO tool_use wrapper) |
 | **CRITICAL: Modifying existing file with `<file>`** | `<file path="src/App.tsx">` when file exists | **ALWAYS** use `<edit path="src/App.tsx">` |
+| **CRITICAL: Editing same file multiple times** | Two `<edit path="src/App.tsx">` in one response | Edit each file ONLY ONCE (combine all changes into one edit) |
 | **CRITICAL: Hardcoding values instead of using constants** | `const speed = 300;` when `PADDLE_SPEED` exists | `import { PADDLE_SPEED } from './constants'; const speed = PADDLE_SPEED;` |
 | Creating new file with `<edit>` | `<edit path="src/NewComponent.tsx">` when file doesn't exist | Use `<file path="src/NewComponent.tsx">` |
 | Reading with XML tag | `<read path="...">` (no such tag) | `<tool_use><name>read_file</name>` |

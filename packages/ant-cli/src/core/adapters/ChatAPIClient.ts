@@ -202,16 +202,11 @@ export class ChatAPIClient {
           break;
         case 'grepped':
           const greppedFiles = metadata?.filesCount ?? 0;
-          const greppedKeywords = metadata?.keywords ?? [];
           const greppedError = metadata?.error;
           if (greppedError) {
             content = `❌ Local Search Failed: ${greppedError}`;
-          } else if (greppedKeywords.length > 0) {
-            const keywordList = greppedKeywords.slice(0, 3).join(', ');
-            const more = greppedKeywords.length > 3 ? ` (+${greppedKeywords.length - 3} more)` : '';
-            content = `Grepped: ${greppedFiles} files (local search for: ${keywordList}${more})`;
           } else {
-            content = `Grepped: ${greppedFiles} files (local keyword search)`;
+            content = `Grepped: ${greppedFiles} files`;
           }
           break;
         case 'reading':
