@@ -15,7 +15,7 @@ import { RETRIEVAL_CONFIG } from "../../config/retrievalConfig";
 export interface LoadedFile {
   path: string;
   content: string;
-  source: 'vector_db' | 'file_resolver';
+  source: 'vector_db' | 'local';
 }
 
 export async function loadStackTraceFiles(
@@ -45,7 +45,7 @@ export async function loadStackTraceFiles(
   // Step 1: Try Vector DB for all files
   for (const filePath of stackTracePaths.slice(0, stackLimit)) {
     let resolvedPath: string | null = null;
-    let source: 'vector_db' | 'file_resolver' | null = null;
+    let source: 'vector_db' | 'local' | null = null;
     
     // Try Vector DB first
     try {
@@ -67,7 +67,7 @@ export async function loadStackTraceFiles(
       console.warn(`      ⚠️  Vector DB failed: ${e.message}`);
     }
     
-    // If Vector DB failed, mark for local search (grepped)
+    // If Vector DB failed, use local search
     if (!resolvedPath) {
       try {
         console.log(`      🔍 Local file search: ${filePath}`);
@@ -75,7 +75,7 @@ export async function loadStackTraceFiles(
         
         if (resolved.confidence !== 'not_found') {
           resolvedPath = resolved.resolvedPath;
-          source = 'file_resolver';  // This will be shown in "grepped"
+          source = 'local';
           console.log(`      ✅ Local search (${resolved.confidence}): ${resolvedPath}`);
           if (resolved.candidates && resolved.candidates.length > 1) {
             console.log(`         📋 Other candidates: ${resolved.candidates.filter(c => c !== resolvedPath).slice(0, 3).join(', ')}`);
@@ -108,7 +108,7 @@ export async function loadStackTraceFiles(
   
   // Separate files by source
   const vectorDbFiles = stackFiles.filter(f => f.source === 'vector_db');
-  const greppedFiles = stackFiles.filter(f => f.source === 'file_resolver');
+  const localFiles = stackFiles.filter(f => f.source === 'local');
   
   // Check for git changes (only for Vector DB files)
   let exploredFiles: string[] = [];
@@ -150,15 +150,15 @@ export async function loadStackTraceFiles(
     console.error(`   ❌ 'explored' status FAILED:`, error.message);
   }
   
-  // Display: 3. Grepped (Local search - NOT in Vector DB) - 항상 표시
-  console.log(`\n📤 [stackTraceLoader] Sending 'grepped' status (${greppedFiles.length} files)...`);
+  // Display: 3. Grepped (Local files - NOT in Vector DB) - 항상 표시
+  console.log(`\n📤 [stackTraceLoader] Sending 'grepped' status (${localFiles.length} files)...`);
   try {
     await chatAPI.showChatStatus('grepped', {
-      filesCount: greppedFiles.length,
+      filesCount: localFiles.length,
       keywords: stackTracePaths.slice(0, stackLimit),
-      filesList: greppedFiles.map(f => f.path),
-      content: greppedFiles.length > 0
-        ? `Grepped: ${greppedFiles.length} files found via local search related to stacktrace`
+      filesList: localFiles.map(f => f.path),
+      content: localFiles.length > 0
+        ? `Grepped: ${localFiles.length} local files related to stacktrace`
         : `Grepped: All files found in Vector DB (no local search needed)`
     });
     console.log(`   'grepped' status sent successfully\n`);
