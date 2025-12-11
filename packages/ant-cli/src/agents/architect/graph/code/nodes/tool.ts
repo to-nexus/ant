@@ -133,11 +133,13 @@ export async function tool(
   
   let result: any;
   let error: string | undefined;
+  let readFilePath: string | undefined;  // ✅ Track read_file path for projectCodeContext
   
   try {
     // ✅ Execute tool
     switch (name) {
       case 'read_file':
+        readFilePath = (args as { path: string }).path;
         result = await handleReadFile(state, args as { path: string });
         break;
       case 'list_files':
@@ -266,6 +268,23 @@ export async function tool(
   // ✅ CRITICAL: Update projectCodeContext.files (single source of truth)
   // Tool node CAN create files (e.g., delete_file operations)
   let updatedProjectCodeContext = state.projectCodeContext;
+  
+  // ✅ NEW: Add read_file result to projectCodeContext.filePaths
+  if (name === 'read_file' && readFilePath && !error) {
+    if (!updatedProjectCodeContext) {
+      updatedProjectCodeContext = { ...state.projectCodeContext, source: 'plan', filePaths: [], files: [], stats: { filesLoaded: 0, estimatedTokens: 0 } };
+    }
+    if (!updatedProjectCodeContext.filePaths) {
+      updatedProjectCodeContext.filePaths = [];
+    }
+    if (!updatedProjectCodeContext.filePaths.includes(readFilePath)) {
+      updatedProjectCodeContext = {
+        ...updatedProjectCodeContext,
+        filePaths: [...updatedProjectCodeContext.filePaths, readFilePath]
+      };
+      console.log(`📝 [Tool] Added read file to projectCodeContext.filePaths: ${readFilePath} (total: ${updatedProjectCodeContext.filePaths.length})`);
+    }
+  }
   
   if (files.length > 0 && state.projectCodeContext) {
     const contextFiles = state.projectCodeContext.files || [];

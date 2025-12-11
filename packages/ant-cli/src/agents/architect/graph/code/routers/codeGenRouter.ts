@@ -6,6 +6,7 @@
  * - 다음 노드 결정 (tool / checkTaskStatus / installDeps / codeGen)
  * 
  * 라우팅 로직:
+ * 0. File errors 있으면 → checkTaskStatus (바로 self-healing, tool 불필요)
  * 1. Tool calls 있으면 → tool 노드
  * 2. Done이면:
  *    - Final task (priority=1000) → installDeps 노드
@@ -23,6 +24,12 @@ export function routeAfterCodeGen(state: ArchitectGraphState): string {
     return '__end__';
   }
   
+  // ✅ 0. File errors 있으면 → checkTaskStatus (tool 실행 불필요, 바로 self-healing)
+  if (state.fileErrors && state.fileErrors.length > 0) {
+    console.log(`⚠️  [Router] ${state.fileErrors.length} file error(s) detected → checkTaskStatus (skip tool execution)`);
+    return 'checkTaskStatus';
+  }
+
   // ✅ 1. Tool calls 있으면 → tool 노드
   if (response.toolCalls && response.toolCalls.length > 0) {
     console.log(`🔧 [Router] ${response.toolCalls.length} tool call(s) detected → tool node`);

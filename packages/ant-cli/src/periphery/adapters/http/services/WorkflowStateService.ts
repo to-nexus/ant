@@ -290,7 +290,6 @@ export class WorkflowStateService {
   private broadcast(jobId: string): void {
     const state = this.states.get(jobId);
     if (!state) {
-      console.log(`   ⚠️ [WorkflowStateService] No state to broadcast for job ${jobId}`);
       return;
     }
     
@@ -304,10 +303,6 @@ export class WorkflowStateService {
       ...state,
       activeActors: Array.from(state.activeActors)
     };
-    
-    console.log(`   📡 [WorkflowStateService] Broadcasting workflow state`);
-    console.log(`      Current node: ${state.currentNode || 'null'}`);
-    console.log(`      Active actors: ${state.activeActors.size}`);
     
     this.sseService.broadcastWorkflow(jobId, serializedState);
   }

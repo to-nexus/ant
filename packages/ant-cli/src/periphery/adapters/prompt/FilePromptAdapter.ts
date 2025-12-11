@@ -143,7 +143,7 @@ export class FilePromptAdapter implements PromptPort {
       : [];
     
     // 4. Validate variables (filter out Handlebars keywords and helpers)
-    const handlebarsKeywords = ['if', 'unless', 'each', 'with', 'else'];
+    const handlebarsKeywords = ['if', 'unless', 'each', 'with', 'else', 'this'];  // ✅ 'this' is special keyword in {{#each}} blocks
     const handlebarsHelpers = ['eq', 'ne', 'and', 'or', 'add'];  // ✅ Registered helpers
     const templateVars = (usedVars as string[]).filter(v => 
       !handlebarsKeywords.includes(v) && !handlebarsHelpers.includes(v)
