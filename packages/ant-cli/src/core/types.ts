@@ -263,6 +263,20 @@ export interface SessionState {
     estimatingDuration?: number;    // Estimating 단계 소요 시간 (ms, decompose 완료까지)
     totalElapsedTime?: number;      // 총 실 소요 시간 (ms, 일시정지 제외)
   };
+  
+  // ✅ Project Code Context (for LLM RAG)
+  projectCodeContext?: {
+    source: 'plan' | 'stackTrace' | 'semantic';
+    filePaths: string[];            // File paths only (lightweight)
+    files: any[];                   // Content (empty in checkpoint)
+    stats?: {
+      filesLoaded: number;
+      stackTraceCount?: number;
+      semanticCount?: number;
+      deduplicatedCount?: number;
+      estimatedTokens?: number;
+    };
+  };
 }
 
 /**
