@@ -315,7 +315,7 @@ export class ChatAPIClient {
           if (storedError) {
             content = `❌ Storage Failed: ${storedError}`;
           } else {
-            content = `✅ Stored: ${storedMsg ?? 'lesson successfully'}`;
+            content = `Stored: ${storedMsg ?? 'lesson successfully'}`;
           }
           break;
         case 'learning':
@@ -332,7 +332,7 @@ export class ChatAPIClient {
           } else if (learnedContent) {
             content = learnedContent;
           } else {
-            content = `✅ Learned: ${learnedFiles} files (${learnedBranch})`;
+            content = `Learned: ${learnedFiles} files (${learnedBranch})`;
           }
           break;
         case 'searching_reference':
