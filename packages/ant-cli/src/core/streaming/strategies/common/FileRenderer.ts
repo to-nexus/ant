@@ -430,17 +430,19 @@ export class FileRenderer {
       for (const [filePath, fileInfo] of this.activeFiles) {
         console.error(`   - ${fileInfo.actionType}: ${filePath} (missing closing tag)`);
         
-        // ✅ Create self-healing error for LLM feedback
+        // ✅ Create self-healing error for LLM feedback (will become violation)
         const errorMsg = `⚠️ File operation incomplete: <${fileInfo.actionType}> tag for "${filePath}" was never closed. ` +
           `This usually means the LLM output was interrupted or malformed. ` +
           `If you need to modify this file, use read_file("${filePath}") first, then use proper <edit> tags.`;
         
         this.fileErrors.push(errorMsg);
         
-        // ✅ Reject the pending promise to unblock waitForAllFileOperations
-        const rejector = this.completionRejectors.get(filePath);
-        if (rejector) {
-          rejector(new Error(`Incomplete operation: missing closing tag for ${filePath}`));
+        // ✅ CRITICAL: Resolve (not reject!) the pending promise with error recorded
+        // This is a retryable violation, not a crash-worthy error!
+        // The error is already in fileErrors array for self-healing
+        const resolver = this.completionResolvers.get(filePath);
+        if (resolver) {
+          resolver();  // ✅ Resolve to allow workflow to continue (violation will be handled)
         }
         
         // Cleanup
@@ -499,10 +501,12 @@ export class FileRenderer {
         } as any);  // ✅ Type cast for UI event without filePath field
       }
       
-      // ✅ Reject completion promise for incomplete files (missing closing tag = error!)
-      const rejector = this.completionRejectors.get(filePath);
-      if (rejector) {
-        rejector(new Error(`Incomplete operation - missing closing tag for ${filePath}`));
+      // ✅ CRITICAL: Resolve (not reject!) completion promise for incomplete files
+      // Missing closing tag is a violation (retryable), not a crash-worthy error
+      // Error is already recorded in self-healing message above
+      const resolver = this.completionResolvers.get(filePath);
+      if (resolver) {
+        resolver();  // ✅ Resolve to allow workflow to continue (violation will be handled)
       }
     }
     

@@ -45,17 +45,13 @@ export function calculateErrorImpact(
     shouldRetry = true;
   }
   
-  // 🎯 Rule 1.5: Search block not found = CRITICAL (LLM has outdated code)
-  // This means LLM is trying to edit with old/hallucinated code
-  // MUST force read_file and retry regardless of retry count
-  else if (error.type === 'file_operation_failed' && error.message.includes('Search block not found')) {
-    score = 100;  // ✅ Maximum priority
-    category = 'blocking';
-    explanation = 'LLM has outdated code - MUST read_file first';
-    shouldRetry = true;  // ✅ ALWAYS retry
-  }
-  
-  // 🎯 Rule 1.6: Other file operation failures (duplicate edits, etc.)
+  // 🎯 Rule 1.5: File operation failures = CRITICAL
+  // Covers all file operation errors that prevent task completion:
+  // - Search block not found (LLM has outdated code, needs read_file)
+  // - Missing closing tag (LLM output interrupted, incomplete operation)
+  // - Duplicate edit (LLM tried to edit same file twice in one response)
+  // - Cannot edit non-existing file (file doesn't exist, needs <file> creation)
+  // All of these are retryable and must be handled by LLM
   else if (error.type === 'file_operation_failed') {
     score = 90;
     category = 'blocking';
@@ -153,13 +149,14 @@ export function calculateErrorImpact(
     ];
     const isCritical = criticalTypes.includes(error.type);
     
-    // ✅ SPECIAL CASE: "Search block not found" NEVER gets retry penalty
-    // This means LLM has outdated code - MUST retry to force read_file
-    const isSearchBlockError = error.message.includes('Search block not found');
-    if (isSearchBlockError) {
-      score = 100;  // Override any score reduction
+    // ✅ SPECIAL CASE: file_operation_failed NEVER gets retry penalty
+    // All file operation errors are critical and must be retried
+    // (Search block not found, missing closing tag, duplicate edits, etc.)
+    const isFileOperationError = error.type === 'file_operation_failed';
+    if (isFileOperationError) {
+      score = 90;  // Override any score reduction, maintain consistent priority
       shouldRetry = true;  // Force retry
-      explanation = explanation.replace(' | Priority lowered (retry ', ' | CRITICAL: Outdated code (retry ');
+      explanation = explanation.replace(' | Priority lowered (retry ', ' | CRITICAL: File operation error (retry ');
     }
     
     // After 2 retries, only block on critical issues OR non-critical with score >= 80
