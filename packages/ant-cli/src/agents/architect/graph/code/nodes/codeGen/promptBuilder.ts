@@ -125,7 +125,23 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         continue;
       }
       
-      filteredHistory.push(msg);
+      // ✅ CRITICAL: Remove code XML tags from assistant messages (causes outdated code issues)
+      if (msg.role === 'assistant' && typeof msg.content === 'string') {
+        // Remove <edit>, <file>, <append> blocks (keep thinking and text)
+        let cleanedContent = msg.content;
+        
+        // Remove all XML code generation tags
+        cleanedContent = cleanedContent.replace(/<edit[^>]*>[\s\S]*?<\/edit>/g, '[code edit removed]');
+        cleanedContent = cleanedContent.replace(/<file[^>]*>[\s\S]*?<\/file>/g, '[file creation removed]');
+        cleanedContent = cleanedContent.replace(/<append[^>]*>[\s\S]*?<\/append>/g, '[code append removed]');
+        
+        filteredHistory.push({
+          ...msg,
+          content: cleanedContent
+        });
+      } else {
+        filteredHistory.push(msg);
+      }
     }
     
     // ✅ Prune filtered history to fit token budget

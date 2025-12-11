@@ -219,8 +219,9 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
     state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus');
   }
   
-  // Task failed or has violations - propagate recursion tracking
+  // Task failed or has violations - propagate violations and recursion tracking
   return {
+    violations,  // ✅ CRITICAL: Must return violations for router to see them!
     recursionCount: state.recursionCount,  // ✅ Propagate recursion count
     recursionLimit: state.recursionLimit,  // ✅ Propagate recursion limit
   };
