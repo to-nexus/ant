@@ -45,6 +45,24 @@ export function calculateErrorImpact(
     shouldRetry = true;
   }
   
+  // 🎯 Rule 1.5: Search block not found = CRITICAL (LLM has outdated code)
+  // This means LLM is trying to edit with old/hallucinated code
+  // MUST force read_file and retry regardless of retry count
+  else if (error.type === 'file_operation_failed' && error.message.includes('Search block not found')) {
+    score = 100;  // ✅ Maximum priority
+    category = 'blocking';
+    explanation = 'LLM has outdated code - MUST read_file first';
+    shouldRetry = true;  // ✅ ALWAYS retry
+  }
+  
+  // 🎯 Rule 1.6: Other file operation failures (duplicate edits, etc.)
+  else if (error.type === 'file_operation_failed') {
+    score = 90;
+    category = 'blocking';
+    explanation = 'File operation failed - critical for task completion';
+    shouldRetry = true;
+  }
+  
   // 🎯 Rule 2: Type errors - Context dependent
   else if (error.type === 'type_error') {
     // Minor type errors (unused variables, etc.)
@@ -130,9 +148,19 @@ export function calculateErrorImpact(
       'build_error',
       'environment_error',
       'module_not_found',
-      'edit_failed'  // ✅ EDIT failures must be retried (LLM needs to switch to FILE format)
+      'edit_failed',  // ✅ EDIT failures must be retried (LLM needs to switch to FILE format)
+      'file_operation_failed'  // ✅ CRITICAL: File edits failed (Search block, duplicate edits, etc.)
     ];
     const isCritical = criticalTypes.includes(error.type);
+    
+    // ✅ SPECIAL CASE: "Search block not found" NEVER gets retry penalty
+    // This means LLM has outdated code - MUST retry to force read_file
+    const isSearchBlockError = error.message.includes('Search block not found');
+    if (isSearchBlockError) {
+      score = 100;  // Override any score reduction
+      shouldRetry = true;  // Force retry
+      explanation = explanation.replace(' | Priority lowered (retry ', ' | CRITICAL: Outdated code (retry ');
+    }
     
     // After 2 retries, only block on critical issues OR non-critical with score >= 80
     if (context.retryCount >= 2 && score < 80 && !isCritical) {

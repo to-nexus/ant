@@ -2,6 +2,7 @@ import * as path from "path";
 import { ArchitectGraphState } from "../state";
 import { SessionTurn } from "../../../../../core/types";
 import { errorStatsCollector, formatStatistics } from "./diagnostics/errorStats";
+import { getChatAPIClient } from "../../../../../core/adapters/ChatAPIClient";
 
 /**
  * ✅ Global queue for async lesson storage tasks to prevent memory explosion
@@ -96,6 +97,12 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       state.recursionLimit
     );
   }
+  
+  // ✅ Chat UI: Show learning status
+  const chatAPI = getChatAPIClient();
+  const learningIndex = await chatAPI.showChatStatus('learning', {
+    taskName: state.currentTask?.name || 'Unknown task'
+  });
   
   // 0. Generate quality evaluation report (optional, if files were generated)
   const files = state.projectCodeContext?.files || [];
@@ -402,6 +409,14 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   } else {
     console.log(`ℹ️  [Learn] Memory/Chunk ports not available, skipping lesson storage\n`);
   }
+  
+  // ✅ Chat UI: Show learned status (merge with learning)
+  await chatAPI.showChatStatus('learned', {
+    filesWritten: filesWritten,
+    branch: branch,
+    content: `Codebase learned!`,
+    _mergeIndex: learningIndex
+  });
   
   // ✅ Workflow instrumentation: Exit node (success path)
   if (state.deps?.workflowUpdate && state._httpJobId) {
