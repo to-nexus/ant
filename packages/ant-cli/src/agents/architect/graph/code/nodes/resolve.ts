@@ -128,6 +128,12 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   const { JobTimingManager } = await import('../../common/timing/JobTimingManager');
   const { jobId: newJobId, jobTiming: newJobTiming } = JobTimingManager.initializeNewJob(state._httpJobId!);
   
+  // ✅ CRITICAL: Clear conversation history for NEW JOB
+  // Previous job's conversationHistory contains outdated code (read_file results, etc.)
+  // This causes "Search block not found" errors when LLM tries to edit with old code
+  console.log(`🧹 [Resolve] Clearing conversation history for NEW JOB`);
+  state.conversationHistory = [];
+  
   // 💾 Save initial jobTiming to session
   if (state.deps?.session && state.context.featureFolder) {
     try {

@@ -94,7 +94,7 @@ export async function loadContext(
         });
         
         context.grepResults = formatGrepResults(searchResults);
-        console.log(`   ✅ Found ${searchResults.totalMatches} matches in ${searchResults.filesMatched} files`);
+        console.log(`   Found ${searchResults.totalMatches} matches in ${searchResults.filesMatched} files`);
       } catch (error: any) {
         console.error(`   ❌ Grep failed:`, error);
         await chatAPI.showChatStatus('grepped', { 

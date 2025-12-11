@@ -243,9 +243,9 @@ export class ChatAPIClient {
           if (codeSearchError) {
             content = `❌ Code Search Failed: ${codeSearchError}`;
           } else if (totalMatches > 0) {
-            content = `✅ Found: ${totalMatches} matches in ${matchedFiles} files`;
+            content = `Found: ${totalMatches} matches in ${matchedFiles} files`;
           } else {
-            content = `✅ Found: ${matchedFiles} files`;
+            content = `Found: ${matchedFiles} files`;
           }
           break;
         case 'reading':
@@ -349,7 +349,7 @@ export class ChatAPIClient {
           if (searchedError) {
             content = `❌ Search Failed (${searchedProject}): ${searchedError}`;
           } else {
-            content = `✅ Found ${searchedFiles} file(s) in ${searchedProject}`;
+            content = `Found ${searchedFiles} file(s) in ${searchedProject}`;
           }
           break;
         default:

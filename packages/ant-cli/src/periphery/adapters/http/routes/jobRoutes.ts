@@ -259,7 +259,7 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
             jobType = type;
             sessionJobId = data.state.jobId;
             sessionData = data;  // ✅ Save session data for later use
-            console.log(`   ✅ Found interrupted job in ${type}.json`);
+            console.log(`   Found interrupted job in ${type}.json`);
             console.log(`   Session jobId: ${sessionJobId}`);
             break;
           }
@@ -357,7 +357,7 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
           if (sessionData.state?.jobId === jobId) {
             jobType = type;
             sessionPath = candidatePath;
-            console.log(`   ✅ Found job in ${type}.json`);
+            console.log(`   Found job in ${type}.json`);
             break;
           }
         }

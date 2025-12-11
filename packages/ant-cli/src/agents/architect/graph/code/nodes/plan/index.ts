@@ -60,6 +60,12 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       );
     }
     
+    // ✅ CRITICAL: Clear previous violations when starting retry
+    // Previous violations are from the LAST attempt, not the CURRENT attempt
+    // If we don't clear them, checkTaskStatus will see stale violations
+    console.log(`🧹 [Plan] Clearing ${state.violations?.length || 0} previous violation(s) for fresh retry`);
+    state.violations = [];
+    
     console.log(`\n🔄 [Plan] Retry task: ${nextTask.name} (attempt ${(state.retries || 0) + 1}/${state.maxRetries})\n`);
   } else {
     nextTask = state.taskQueue?.pop();

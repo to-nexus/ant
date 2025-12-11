@@ -193,7 +193,7 @@ export class KanbanService {
       liveSnapshot = snapshots.get(sessionJobId);
       if (liveSnapshot) {
         const taskCount = liveSnapshot?.queue?.length || 0;
-        console.log(`   ✅ Found live snapshot for ${sessionJobId} (${taskCount} tasks)`);
+        console.log(`   Found live snapshot for ${sessionJobId} (${taskCount} tasks)`);
       } else {
         console.log(`   ⏳ No live snapshot yet for jobId: ${sessionJobId}`);
         console.log(`   📋 Available snapshot keys: ${Array.from(snapshots.keys()).join(', ')}`);
