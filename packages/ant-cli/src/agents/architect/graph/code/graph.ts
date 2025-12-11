@@ -258,6 +258,11 @@ export function buildCodeGraph() {
       codeHead: null as any,
       profile: null as any,
       
+      
+      // ✅ Code Context (CRITICAL for file operations!)
+      projectCodeContext: null as any,      // Main project code
+      referenceCodeContexts: null as any,   // Reference projects
+      sessionContext: null as any,          // Session context
       // Execution
       planText: null as any,
       codePrompt: null as any,
@@ -266,10 +271,12 @@ export function buildCodeGraph() {
       // ✅ REMOVED: files (replaced by projectCodeContext.files)
       filesToDelete: null as any,
       modifications: null as any,
+      featureName: null as any,          // Feature name for buffer manager
       
       // Integrations & Validation
       requiredIntegrations: null as any,
       violations: null as any,
+      fileErrors: null as any,  // ✅ CRITICAL: File operation errors for self-healing
       retries: null as any,
       maxRetries: null as any,
       runtimeValidationResult: null as any,
@@ -316,6 +323,13 @@ export function buildCodeGraph() {
       // Real-time Kanban tracking
       _httpJobId: null as any,  // ✅ HTTP task ID for live updates
       
+      
+      // ✅ Replan Support
+      directives: null as any,       // Multiple directives
+      replanAction: null as any,     // Replan decision
+      replanReason: null as any,     // Replan explanation
+      tasksToModify: null as any,    // Tasks to modify
+      isReplanning: null as any,     // Replan flag
       // ✅ Chat integration
       overrideDirective: null as any,  // ✅ Chat input as directive (highest priority)
       chatSource: null as any,  // ✅ Flag for Chat SSE
@@ -331,6 +345,8 @@ export function buildCodeGraph() {
       llmResponse: null as any,     // LLM response (thinking, text, tool calls)
       toolResults: null as any,     // Tool execution results
       conversationHistory: null as any,  // Multi-turn conversation
+      fileBuffers: null as any,          // File buffers
+      interruption: null as any,         // Interruption details
     } as any,
   } as any);
   
