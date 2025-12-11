@@ -85,23 +85,38 @@ export async function loadSemanticFiles(
     const hasChanges = await git.hasChanges();
     if (hasChanges) {
       const changedFiles = await git.getChangedFiles();
-      // ✅ CRITICAL: Apply quota limit to git changed files
-      const remainingQuotaForGit = semanticQuota - vectorDbPaths.length;
-      const gitChangedPaths = changedFiles
-        .filter(f => 
-          !excludePaths.includes(f) && 
-          !vectorDbPaths.includes(f)
-        )
-        .slice(0, remainingQuotaForGit);  // ✅ Respect quota!
       
-      if (gitChangedPaths.length > 0) {
-        const totalChanged = changedFiles.filter(f => 
-          !excludePaths.includes(f) && 
-          !vectorDbPaths.includes(f)
-        ).length;
-        console.log(`   📝 Git uncommitted files: ${gitChangedPaths.length}/${totalChanged} files (quota limited to ${remainingQuotaForGit})`);
+      // ✅ CRITICAL: Git changed files override Vector DB files for latest content!
+      // Split into two groups:
+      // 1. Files already in vectorDB → will overwrite with latest version
+      // 2. New files not in vectorDB → add to context
+      const gitChangedInVectorDb = changedFiles.filter(f => 
+        !excludePaths.includes(f) && 
+        vectorDbPaths.includes(f)  // ✅ Files that are ALSO in vectorDB
+      );
+      
+      const gitChangedNewFiles = changedFiles.filter(f => 
+        !excludePaths.includes(f) && 
+        !vectorDbPaths.includes(f)  // ✅ Files NOT in vectorDB
+      );
+      
+      // Add files already in vectorDB (these will overwrite old versions)
+      localFilePaths.push(...gitChangedInVectorDb);
+      
+      // Add new files (respect quota)
+      const remainingQuotaForGit = semanticQuota - vectorDbPaths.length;
+      const gitChangedNewFilesLimited = gitChangedNewFiles.slice(0, remainingQuotaForGit);
+      localFilePaths.push(...gitChangedNewFilesLimited);
+      
+      if (localFilePaths.length > 0) {
+        console.log(`   📝 Git uncommitted files: ${localFilePaths.length} files`);
+        if (gitChangedInVectorDb.length > 0) {
+          console.log(`      ✅ ${gitChangedInVectorDb.length} files will override Vector DB (latest version)`);
+        }
+        if (gitChangedNewFilesLimited.length > 0) {
+          console.log(`      ✅ ${gitChangedNewFilesLimited.length} new files added (quota limited to ${remainingQuotaForGit})`);
+        }
         console.log(`      Loading uncommitted files for context...`);
-        localFilePaths.push(...gitChangedPaths);
       }
     }
   } catch (e: any) {

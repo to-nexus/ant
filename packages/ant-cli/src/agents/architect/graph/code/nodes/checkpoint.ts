@@ -26,7 +26,8 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
     completedTasksDetailsIds: state.completedTasksDetails?.map(t => t.id) ?? [],
     currentTask: state.currentTask?.name,
     queueSize: state.taskQueue?.size() ?? 0,
-    referenceRequestsCount: state.referenceRequests?.length ?? 0  // ✅ DEBUG: Check if references are present
+    referenceRequestsCount: state.referenceRequests?.length ?? 0,
+    projectCodeContextFilesCount: state.projectCodeContext?.filePaths?.length ?? 0  // ✅ DEBUG: Check if projectCodeContext is present
   });
   
   try {
@@ -73,12 +74,18 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       // ✅ CRITICAL: Save projectCodeContext (filePaths only, NOT files content)
       // Why: files content is heavy (~500KB) and redundant (already on disk)
       // Solution: Save filePaths (~5KB) only, LLM can read_file when needed
+      // ALWAYS save as object (even if empty) to ensure field exists in JSON
       projectCodeContext: state.projectCodeContext ? {
         source: state.projectCodeContext.source,
         filePaths: state.projectCodeContext.filePaths || [],
         files: [],  // ❌ DON'T save content (too heavy!)
         stats: state.projectCodeContext.stats || { filesLoaded: 0, estimatedTokens: 0 }
-      } : undefined,
+      } : {
+        source: 'plan' as const,
+        filePaths: [],
+        files: [],
+        stats: { filesLoaded: 0, stackTraceCount: 0, semanticCount: 0, deduplicatedCount: 0, estimatedTokens: 0 }
+      },
     };
     
     // ✅ Include jobId and jobTiming if present

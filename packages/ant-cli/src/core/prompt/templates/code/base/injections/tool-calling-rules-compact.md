@@ -31,3 +31,27 @@ Turn 3: Read third file
 
 **Rule**: One tool call per turn. If you need 10 operations, that's 10 separate turns. No exceptions.
 
+### 🚨 CRITICAL: NEVER Output Tool Tags as Text
+
+**FORBIDDEN**: Do NOT write `<tool_use>` tags inside markdown text blocks or code blocks.
+
+### ❌ WRONG - Tool tags in text
+```
+Now I will install all dependencies:
+
+<tool_use>
+<name>run_command</name>
+<parameters><command>npm install</command></parameters>
+</tool_use>
+```
+
+### ✅ CORRECT - Tool tags directly
+```
+<tool_use>
+<name>run_command</name>
+<parameters><command>npm install</command></parameters>
+</tool_use>
+```
+
+**Rule**: Tool calls must be standalone XML tags, NEVER embedded in text or markdown blocks.
+
