@@ -98,12 +98,6 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     );
   }
   
-  // ✅ Chat UI: Show learning status
-  const chatAPI = getChatAPIClient();
-  const learningIndex = await chatAPI.showChatStatus('learning', {
-    taskName: state.currentTask?.name || 'Unknown task'
-  });
-  
   // 0. Generate quality evaluation report (optional, if files were generated)
   const files = state.projectCodeContext?.files || [];
   if (files.length > 0) {
@@ -410,7 +404,12 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     console.log(`ℹ️  [Learn] Memory/Chunk ports not available, skipping lesson storage\n`);
   }
   
-  // ✅ Chat UI: Show learned status (merge with learning)
+  // ✅ Chat UI: Show learning → learned status (must be consecutive for proper merge!)
+  const chatAPI = getChatAPIClient();
+  const learningIndex = await chatAPI.showChatStatus('learning', {
+    taskName: state.currentTask?.name || 'Unknown task'
+  });
+  
   await chatAPI.showChatStatus('learned', {
     filesWritten: filesWritten,
     branch: branch,
