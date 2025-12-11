@@ -103,35 +103,34 @@ export class FileRenderer {
     }
     
     // Determine final action type
-    const isExisting = await registry.isExisting(filePath);
-    console.log(`🔍 [Render] File existence check: ${filePath} → isExisting=${isExisting}`);
-    
     let finalActionType: 'create' | 'append' | 'edit';
     
     if (actionType === 'append') {
       finalActionType = 'append';
     } else if (actionType === 'edit') {
+      // ✅ ONLY check file existence for edit operations
+      const isExisting = await registry.isExisting(filePath);
+      console.log(`🔍 [Render] File existence check (edit): ${filePath} → isExisting=${isExisting}`);
+      
+      if (!isExisting) {
+        const errorMsg = `Cannot edit non-existing file "${filePath}". You must create it first with <file> tag, or check if the path is correct.`;
+        console.error(`❌ [FileRenderer] ${errorMsg}`);
+        this.fileErrors.push(errorMsg);
+        
+        // ❌ Skip this file operation
+        this.activeFiles.set(filePath, {
+          filePath,
+          actionType: 'skip' as any,
+          contentBuffer: '',
+          startedAt: Date.now()
+        });
+        return;
+      }
       finalActionType = 'edit';
     } else {
-      if (isExisting) {
-        const errorMsg = `❌ ERROR: Attempted to use <file> tag on EXISTING file: ${filePath}
-
-This file ALREADY EXISTS in the codebase!
-You MUST use <edit> tags to modify existing files, NOT <file> tags.
-
-To fix this:
-1. Use <edit path="${filePath}"> with <search> and <replace> blocks
-2. Or use <append path="${filePath}"> to add content at the end
-
-Using <file> on existing files will OVERWRITE the entire file, which is almost never what you want!`;
-        
-        console.error(errorMsg);
-        throw new Error(errorMsg);
-      }
-      
+      // <file> tag: No existence check needed (intentional overwrite)
       finalActionType = 'create';
     }
-    
     registry.markAsStreamed(filePath, finalActionType);
     
     this.activeFiles.set(filePath, {

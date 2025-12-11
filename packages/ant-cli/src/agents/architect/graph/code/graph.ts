@@ -47,7 +47,20 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
     );
   }
   
-  const hasViolations = (state.violations && state.violations.length > 0);
+  // ✅ Convert fileErrors to violations
+  const violations = [...(state.violations || [])];
+  if (state.fileErrors && state.fileErrors.length > 0) {
+    console.log(`⚠️  [checkTaskStatus] Converting ${state.fileErrors.length} file error(s) to violations`);
+    for (const errorMsg of state.fileErrors) {
+      violations.push({
+        type: 'missing_file',
+        message: errorMsg,
+        severity: 'critical'
+      });
+    }
+  }
+  
+  const hasViolations = (violations && violations.length > 0);
   
   if (!hasViolations && state.currentTask) {
     // ✅ Task succeeded - mark as completed and record timing
