@@ -129,7 +129,7 @@ export class ChatAPIClient {
    * - Auto-merge or disappear based on next content type (handled by ChatService)
    */
   async showChatStatus(
-    type: 'placeholder' | 'exploring' | 'explored' | 'retrieving' | 'retrieved' | 'grepping' | 'grepped' | 'listing_files' | 'listed_files' | 'searching_code' | 'searched_code' | 'reading' | 'read' | 'thinking' | 'indexing' | 'indexed' | 'analyzing' | 'analyzed' | 'storing' | 'stored' | 'searching_reference' | 'searched_reference' | 'tool_action',
+    type: 'placeholder' | 'exploring' | 'explored' | 'retrieving' | 'retrieved' | 'grepping' | 'grepped' | 'listing_files' | 'listed_files' | 'searching_code' | 'searched_code' | 'reading' | 'read' | 'thinking' | 'indexing' | 'indexed' | 'analyzing' | 'analyzed' | 'storing' | 'stored' | 'searching_reference' | 'searched_reference' | 'tool_action' | 'learning' | 'learned',
     metadata?: Record<string, any>
   ): Promise<number | undefined> {
     if (!this.enabled) return;
@@ -316,6 +316,23 @@ export class ChatAPIClient {
             content = `❌ Storage Failed: ${storedError}`;
           } else {
             content = `✅ Stored: ${storedMsg ?? 'lesson successfully'}`;
+          }
+          break;
+        case 'learning':
+          const learningTask = metadata?.taskName ?? 'task';
+          content = `Learning from: ${learningTask}...`;
+          break;
+        case 'learned':
+          const learnedFiles = metadata?.filesWritten ?? 0;
+          const learnedBranch = metadata?.branch ?? '';
+          const learnedContent = metadata?.content;
+          const learnedError = metadata?.error;
+          if (learnedError) {
+            content = `❌ Learning Failed: ${learnedError}`;
+          } else if (learnedContent) {
+            content = learnedContent;
+          } else {
+            content = `✅ Learned: ${learnedFiles} files (${learnedBranch})`;
           }
           break;
         case 'searching_reference':

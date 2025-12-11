@@ -466,9 +466,9 @@ export class ChatService {
     }
     
     // Case 2.5: Direct duplicate of completed Chat Status = IGNORE
-    // e.g., grepped → grepped, explored → explored, read → read
+    // e.g., grepped → grepped, explored → explored, read → read, learned → learned
     // But grepped → grepping → grepped = NEW grepped (independent search)
-    const completedChatStatusTypes = new Set(['grepped', 'explored', 'read', 'command']);
+    const completedChatStatusTypes = new Set(['grepped', 'explored', 'read', 'command', 'learned']);
     const shouldIgnore = 
       lastContent &&
       completedChatStatusTypes.has(lastContent.type) &&
