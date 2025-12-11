@@ -139,12 +139,24 @@ export async function enforce(state: ArchitectGraphState): Promise<ArchitectGrap
     };
   }
   
-  // Focus on top priority error
+  // Focus on top priority error(s)
   const topError = retryableErrors[0];
   console.log(`🎯 Focusing on highest priority error (score: ${topError.impact.score}/100)\n`);
   
-  // Use only top priority for retry (avoid overwhelming LLM)
-  const focusedViolations = [topError.violation];
+  // ✅ CRITICAL: Include ALL errors of the same type as top priority
+  // Reason: If LLM needs to fix "Search block not found" for 4 files,
+  //         showing only 1 will cause infinite retry loop (fix 1 per retry)
+  const topErrorType = topError.violation.type;
+  const sameTypeErrors = retryableErrors.filter(
+    err => err.violation.type === topErrorType
+  );
+  
+  // ✅ Strategy: Show all same-type errors, max 5 to avoid overwhelming LLM
+  const focusedViolations = sameTypeErrors.slice(0, 5).map(err => err.violation);
+  
+  if (focusedViolations.length > 1) {
+    console.log(`   Including ${focusedViolations.length} errors of type "${topErrorType}"\n`);
+  }
   
   // ✅ Check for repeated errors
   const isRepeating = areErrorsRepeating(focusedViolations, state.lastViolations);
