@@ -70,6 +70,15 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       design: state.design,  // ✅ Save design document
       spec: state.spec,  // ✅ Save spec
       prd: state.prd,  // ✅ Save PRD if exists
+      // ✅ CRITICAL: Save projectCodeContext (filePaths only, NOT files content)
+      // Why: files content is heavy (~500KB) and redundant (already on disk)
+      // Solution: Save filePaths (~5KB) only, LLM can read_file when needed
+      projectCodeContext: state.projectCodeContext ? {
+        source: state.projectCodeContext.source,
+        filePaths: state.projectCodeContext.filePaths || [],
+        files: [],  // ❌ DON'T save content (too heavy!)
+        stats: state.projectCodeContext.stats || { filesLoaded: 0, estimatedTokens: 0 }
+      } : undefined,
     };
     
     // ✅ Include jobId and jobTiming if present

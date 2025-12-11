@@ -37,7 +37,7 @@ export class HistoryManager {
   ) {
     this.tokenManager = tokenManager;
     this.config = {
-      maxTokens: config?.maxTokens || 100000,  // History limit (half of total)
+      maxTokens: config?.maxTokens || 15000,  // History limit (reduced to trigger pruning in retry scenarios)
       minTurnsToKeep: config?.minTurnsToKeep || 3,
       prioritizeErrors: config?.prioritizeErrors !== false,
       prioritizeSetup: config?.prioritizeSetup !== false,

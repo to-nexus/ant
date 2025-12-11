@@ -54,8 +54,6 @@ export class FileRenderer {
       return;
     }
     
-    console.log(`[Render] 🔍 Duplicate check for ${filePath}: hasStreamed=${registry.hasStreamed(filePath)}, actionType=${actionType}`);
-    
     // Check for duplicates
     if (registry.hasStreamed(filePath)) {
       const previousInfo = registry.getFileInfo(filePath);
@@ -85,10 +83,18 @@ export class FileRenderer {
         console.log(`[Render] ⏭️  Skipping duplicate file_start (same turn): ${previousActionType} → ${actionType}`);
         
         if (previousActionType === 'edit' && actionType === 'edit') {
+          const errorMsg = `Duplicate ${actionType} for "${filePath}" in same response! ` +
+            `Rule violation: You MUST edit each file ONLY ONCE per response (see 🚨 CRITICAL FILE MODIFICATION RULES). ` +
+            `After first <edit>, the file content changed - second <edit> search block cannot match. ` +
+            `Solution: Combine all changes for this file into ONE <edit> block with a comprehensive search/replace.`;
+
           console.error(`[Render] ❌ CRITICAL ERROR: Duplicate edit for ${filePath} in same turn!`);
           console.error(`   The LLM is trying to edit the same file twice.`);
           console.error(`   The second edit will fail because the file was already modified.`);
           console.error(`   This edit will be COMPLETELY SKIPPED to prevent cascading failures.`);
+
+          // ✅ Add to fileErrors for self-healing
+          this.fileErrors.push(errorMsg);
         }
         
         this.activeFiles.set(filePath, {
@@ -110,7 +116,6 @@ export class FileRenderer {
     } else if (actionType === 'edit') {
       // ✅ ONLY check file existence for edit operations
       const isExisting = await registry.isExisting(filePath);
-      console.log(`🔍 [Render] File existence check (edit): ${filePath} → isExisting=${isExisting}`);
       
       if (!isExisting) {
         const errorMsg = `Cannot edit non-existing file "${filePath}". You must create it first with <file> tag, or check if the path is correct.`;
