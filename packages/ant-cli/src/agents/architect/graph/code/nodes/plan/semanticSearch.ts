@@ -66,12 +66,20 @@ export async function loadSemanticFiles(
     
     const files = extractFilesFromCode(searchResult.code);
     allVectorFiles = files.map(f => f.path);
-    const duplicatesCount = allVectorFiles.filter(p => excludePaths.includes(p)).length;
+    
+    // ✅ CRITICAL: Remove duplicates from Vector DB results (same file from multiple keywords)
+    const uniqueVectorFiles = Array.from(new Set(allVectorFiles));
+    const internalDuplicates = allVectorFiles.length - uniqueVectorFiles.length;
+    const duplicatesCount = uniqueVectorFiles.filter(p => excludePaths.includes(p)).length;
     
     // ✅ Filter out stack trace files and apply quota
-    vectorDbPaths = allVectorFiles.filter(p => !excludePaths.includes(p)).slice(0, semanticQuota);
+    vectorDbPaths = uniqueVectorFiles.filter(p => !excludePaths.includes(p)).slice(0, semanticQuota);
     
-    console.log(`   ✅ Vector DB: ${vectorDbPaths.length} NEW files (${duplicatesCount} duplicates from stack trace excluded, requested ${requestCount} files)`);
+    if (internalDuplicates > 0) {
+      console.log(`   ✅ Vector DB: ${vectorDbPaths.length} NEW files (${internalDuplicates} internal duplicates + ${duplicatesCount} stack trace duplicates removed, requested ${requestCount} files)`);
+    } else {
+      console.log(`   ✅ Vector DB: ${vectorDbPaths.length} NEW files (${duplicatesCount} duplicates from stack trace excluded, requested ${requestCount} files)`);
+    }
   } catch (e: any) {
     console.warn(`   ⚠️  Vector DB failed: ${e.message}`);
   }
