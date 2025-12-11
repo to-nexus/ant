@@ -129,6 +129,8 @@ export function buildDesignGraph() {
       
       // Mode
       designMode: null as any,
+      designDomain: null as any,          // ✅ Design domain (game vs service)
+      designDomainReasoning: null as any, // ✅ Reasoning for domain detection
       
       // Artifacts (from TaskArtifacts)
       prd: null as any,
