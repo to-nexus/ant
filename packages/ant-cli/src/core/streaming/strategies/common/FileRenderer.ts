@@ -384,6 +384,10 @@ export class FileRenderer {
     });
     
     if (errorMessage.includes('Search block not found')) {
+      // ✅ Add to fileErrors for self-healing
+      const selfHealingMsg = `File "${filePath}" edit failed: Search block not found. The file content has changed since you last saw it. You MUST use read_file("${filePath}") tool first to get the current content, then create a new <edit> with an EXACT matching search block from the current content.`;
+      this.fileErrors.push(selfHealingMsg);
+      
       console.error(`\n${'='.repeat(80)}`);
       console.error(`⚠️  CRITICAL: LLM attempted to edit ${filePath} with outdated code!`);
       console.error(`\n💡 REQUIRED ACTION FOR LLM:`);
