@@ -352,7 +352,7 @@ export async function architectAgent(
           planText: "",
           codePrompt: "",
           rawResponse: "",
-          files: [],
+          // ✅ REMOVED: files (replaced by projectCodeContext.files)
           filesToDelete: [],
           requiredIntegrations: [],
           violations: [],  // ✅ Initialize violations array

@@ -37,7 +37,7 @@ export async function generateQualityReport(
 
   try {
     // Collect generated files from state
-    const generatedFiles = state.files.map(f => ({
+    const generatedFiles = (state.projectCodeContext?.files || []).map(f => ({
       path: f.path,
       content: f.content
     }));

@@ -121,7 +121,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     references: new Map<string, string[]>()
   };
   
-  if (llm && nextTask.type !== 'setup') {
+  if (llm) {
     console.log(`🔑 [Plan] Generating search keywords...`);
     taskKeywords = await generateTaskKeywords(llm, nextTask, state);
     

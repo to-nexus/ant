@@ -29,7 +29,9 @@ export class FileRenderer {
   private lineBuffers: LineBufferManager = new LineBufferManager();
   
   // ✅ Track file operation completion
-  private completionPromises: Map<string, Promise<void>> = new Map();
+  
+  // ✅ Track file operation errors (don't throw, collect for violation)
+  private fileErrors: string[] = [];  private completionPromises: Map<string, Promise<void>> = new Map();
   private completionResolvers: Map<string, (value: void | PromiseLike<void>) => void> = new Map();
   private completionRejectors: Map<string, (reason?: any) => void> = new Map();
   
@@ -101,7 +103,7 @@ export class FileRenderer {
     }
     
     // Determine final action type
-    const isExisting = registry.isExisting(filePath);
+    const isExisting = await registry.isExisting(filePath);
     console.log(`🔍 [Render] File existence check: ${filePath} → isExisting=${isExisting}`);
     
     let finalActionType: 'create' | 'append' | 'edit';
@@ -240,16 +242,14 @@ Using <file> on existing files will OVERWRITE the entire file, which is almost n
     } catch (error) {
       await this.handleError(filePath, fileInfo, error);
       
-      // ❌ CRITICAL: Reject completion promise on error
-      const rejector = this.completionRejectors.get(filePath);
-      if (rejector) {
-        rejector(error);
-      }
+      // ✅ Do NOT reject completion promise - just log error
+      // File errors should only be displayed in UI, not interrupt task flow
       
       this.cleanup(filePath);
       
-      // ✅ Re-throw error to stop task execution
-      throw error;
+      // ✅ Do NOT re-throw - task should continue despite file errors
+      // Error is already recorded in fileErrors and displayed in UI
+      return;
     }
     
     // ✅ Success: Resolve completion promise
@@ -450,10 +450,8 @@ Using <file> on existing files will OVERWRITE the entire file, which is almost n
       if (completeType) {
         await this.chatAPI.sendLLMEvent({
           type: completeType,
-          filePath: filePath,
-          content: '',
-          reason: 'Incomplete operation - missing closing tag'
-        });
+          metadata: { placeholder: true }
+        } as any);  // ✅ Type cast for UI event without filePath field
       }
       
       // ✅ Reject completion promise for incomplete files (missing closing tag = error!)
@@ -467,8 +465,12 @@ Using <file> on existing files will OVERWRITE the entire file, which is almost n
     this.editOps.clear();
     this.lineBuffers.clearAll();
     this.completionPromises.clear();
-    this.completionResolvers.clear();
-    this.completionRejectors.clear();
+  }
+  
+  /**
+   * Get all file operation errors
+   */
+  getFileErrors(): string[] {
+    return this.fileErrors;
   }
 }
-

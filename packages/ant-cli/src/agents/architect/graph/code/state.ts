@@ -114,10 +114,8 @@ export interface AttemptHistory {
   errorsAttemptedToFix: string[];  // Which errors this attempt tried to fix
 }
 
-export interface GeneratedFile {
-  path: string;
-  content: string;
-}
+// ✅ REMOVED: GeneratedFile interface (replaced by projectCodeContext.files)
+// projectCodeContext.files uses: Array<{ path: string; content: string }>
 
 export interface ValidationResult {
   ok: boolean;
@@ -227,7 +225,6 @@ export interface ArchitectGraphState extends TaskArtifacts {
   codePrompt: string;
   rawResponse: string;
   responseSection?: string | null;
-  files: GeneratedFile[];
   filesToDelete: string[];
   modifications?: any[];  // For evaluation
   featureName?: string;  // ✅ For buffer manager initialization
