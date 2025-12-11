@@ -211,8 +211,8 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
 /**
  * Generate file tree for context
  * 
- * CRITICAL: This shows files that EXIST in the codebase.
- * LLM must check this before creating new files!
+ * Shows files loaded from RAG search for this task.
+ * Self-healing will handle file operation errors automatically.
  */
 export function generateFileTree(state: ArchitectGraphState): string | null {
   const files = state.projectCodeContext?.filePaths || [];
@@ -223,12 +223,8 @@ export function generateFileTree(state: ArchitectGraphState): string | null {
   
   const lines = [
     '════════════════════════════════════════════════════════════════════════════════',
-    '⚠️  EXISTING FILES IN CODEBASE (from RAG search)',
+    '📋 Files in Context',
     '════════════════════════════════════════════════════════════════════════════════',
-    '',
-    `🚨 These ${files.length} files ALREADY EXIST. Do NOT recreate them!`,
-    '',
-    '**Existing File Structure:**',
     '',
   ];
   
@@ -248,17 +244,10 @@ export function generateFileTree(state: ArchitectGraphState): string | null {
   for (const [dir, filenames] of Object.entries(dirs).sort()) {
     lines.push(`📁 ${dir}/`);
     for (const filename of filenames.sort()) {
-      lines.push(`   ✅ ${filename} ← EXISTS`);
+      lines.push(`   📄 ${filename}`);
     }
     lines.push('');
   }
-  
-  lines.push('────────────────────────────────────────────────────────────────────────────────');
-  lines.push('🚨 CRITICAL: Check if file exists BEFORE writing!');
-  lines.push('   - If listed above → MUST use <edit> tags to modify');
-  lines.push('   - If NOT listed → use <file> tags to create');
-  lines.push('   - ❌ NEVER use <file> tags on existing files (causes overwrite!)');
-  lines.push('────────────────────────────────────────────────────────────────────────────────');
   
   return lines.join('\n');
 }
