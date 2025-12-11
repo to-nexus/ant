@@ -3,20 +3,48 @@
  */
 
 import { FileStreamInfo } from '../types';
+import type { GitPort } from '../../ports/git';
 
 export class FileRegistry {
   private existingFiles: Set<string>;
   private streamedFiles: Map<string, FileStreamInfo> = new Map();
+  private gitPort?: GitPort;  // ✅ For real-time disk checks
   
-  constructor(existingFiles: Set<string>) {
+  constructor(existingFiles: Set<string>, gitPort?: GitPort) {
     this.existingFiles = existingFiles;
+    this.gitPort = gitPort;
   }
   
   /**
    * Check if file exists in codebase
+   * ✅ ENHANCED: Falls back to disk check if not in existingFiles Set
    */
-  isExisting(filePath: string): boolean {
-    return this.existingFiles.has(filePath);
+  async isExisting(filePath: string): Promise<boolean> {
+    // 1. Fast path: Check in-memory Set (from plan + session)
+    if (this.existingFiles.has(filePath)) {
+      return true;
+    }
+    
+    // 2. Slow path: Check disk for files not loaded by plan
+    if (this.gitPort) {
+      try {
+        const exists = await this.gitPort.fileExists(filePath);
+        if (exists) {
+          console.warn(`⚠️  [FileRegistry] File ${filePath} exists on disk but not in plan context`);
+          console.warn(`   This will trigger self-healing: LLM must read_file first, then use <edit>.`);
+          
+          // ✅ Add to Set for future checks
+          this.existingFiles.add(filePath);
+          
+          // ✅ Return true to trigger error handling
+          return true;
+        }
+      } catch (error) {
+        console.warn(`⚠️  [FileRegistry] Disk check failed for ${filePath}:`, error);
+      }
+    }
+    
+    return false;
   }
   
   /**

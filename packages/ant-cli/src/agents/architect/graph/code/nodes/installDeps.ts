@@ -66,7 +66,8 @@ export async function installDeps(state: ArchitectGraphState): Promise<Architect
 
   try {
     // 1. Check if package.json was generated or modified
-    const hasPackageJson = state.files.some(f => 
+    const files = state.projectCodeContext?.files || [];
+    const hasPackageJson = files.some(f => 
       f.path.endsWith('package.json')
     );
 

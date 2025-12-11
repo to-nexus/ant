@@ -242,7 +242,7 @@ export async function tool(
   // This ensures LLM has full context to decide what to do next
   const remainingToolCalls: any[] = [];
   
-  // ✅ Convert fileBuffers to state.files for validation
+  // ✅ Convert fileBuffers to files list for projectCodeContext update
   const files: Array<{ path: string; content: string; actionType: 'create' | 'edit' | 'append' | 'delete' }> = [];
   if (state.fileBuffers) {
     for (const [path, buffer] of state.fileBuffers.entries()) {
@@ -263,6 +263,39 @@ export async function tool(
     state.deps.workflowUpdate.exitNode(state._httpJobId, 'tool');
   }
   
+  // ✅ CRITICAL: Update projectCodeContext.files (single source of truth)
+  // Tool node CAN create files (e.g., delete_file operations)
+  let updatedProjectCodeContext = state.projectCodeContext;
+  
+  if (files.length > 0 && state.projectCodeContext) {
+    const contextFiles = state.projectCodeContext.files || [];
+    const fileMap = new Map<string, { path: string; content: string }>();
+    
+    // Add existing context files first
+    for (const file of contextFiles) {
+      if (file.path) {
+        fileMap.set(file.path, file);
+      }
+    }
+    
+    // Overwrite with new files (latest version wins)
+    for (const file of files) {
+      if (file.path) {
+        fileMap.set(file.path, {
+          path: file.path,
+          content: file.content
+        });
+      }
+    }
+    
+    updatedProjectCodeContext = {
+      ...state.projectCodeContext,
+      files: Array.from(fileMap.values())
+    };
+    
+    console.log(`📝 [Tool] Updated projectCodeContext.files: ${contextFiles.length} existing + ${files.length} new = ${updatedProjectCodeContext.files.length} total`);
+  }
+  
   return {
     conversationHistory: newHistory,
     llmResponse: {
@@ -277,7 +310,7 @@ export async function tool(
         error,
       },
     ],
-    files,  // ✅ Pass files for validation
+    projectCodeContext: updatedProjectCodeContext,  // ✅ Single source of truth
   };
 }
 

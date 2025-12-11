@@ -225,7 +225,7 @@ export function buildCodeGraph() {
       codePrompt: null as any,
       rawResponse: null as any,
       responseSection: null as any,
-      files: null as any,
+      // ✅ REMOVED: files (replaced by projectCodeContext.files)
       filesToDelete: null as any,
       modifications: null as any,
       

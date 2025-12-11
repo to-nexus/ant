@@ -46,7 +46,8 @@ export async function validate(state: ArchitectGraphState): Promise<ArchitectGra
 
   // ✅ IMPROVED: Check if no files generated
   // But don't fail immediately - check if files already exist in working directory
-  if (!state.files || state.files.length === 0) {
+  const files = state.projectCodeContext?.files || [];
+  if (files.length === 0) {
     // Check if this is a verification/completion task where files might already exist
     const gitPort = state.deps?.git;
     if (gitPort) {
@@ -106,7 +107,7 @@ export async function validate(state: ArchitectGraphState): Promise<ArchitectGra
     return { ...state, violations };
   }
 
-  for (const f of state.files) {
+  for (const f of files) {
     // ✅ Only check ellipsis in source code files (not documentation)
     const isSourceCode = /\.(ts|tsx|js|jsx|py|java|go|rs|cpp|c|h)$/i.test(f.path);
     

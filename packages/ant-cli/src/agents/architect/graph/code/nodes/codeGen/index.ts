@@ -117,17 +117,7 @@ export async function codeGen(
     }
   }
   
-  // ✅ CRITICAL: Add files created in this session
-  // This prevents "isExisting=false" for files created in previous turns
-  if (state.files) {
-    for (const file of state.files) {
-      if (file.path) {
-        existingFiles.add(file.path);
-      }
-    }
-  }
-  
-  console.log(`🔍 [CodeGen] existingFiles Set initialized with ${existingFiles.size} files (${state.projectCodeContext?.files?.length || 0} from plan + ${state.files?.length || 0} from session)`);
+  console.log(`🔍 [CodeGen] existingFiles Set initialized with ${existingFiles.size} files from projectCodeContext`);
   if (existingFiles.size > 0 && existingFiles.size <= 10) {
     console.log(`   Files: ${Array.from(existingFiles).join(', ')}`);
   }
@@ -136,6 +126,7 @@ export async function codeGen(
     parser,
     renderStrategy,
     existingFiles,
+    gitPort: state.deps?.git,  // ✅ Pass gitPort for disk checks
   });
   
   // Collect LLM output
@@ -265,6 +256,40 @@ export async function codeGen(
     
     // ✅ Return LLM response (state에 저장)
     // 🔴 FIX: done should be false if there are tool calls (LLM is NOT done yet!)
+    
+    // ✅ CRITICAL: Update projectCodeContext.files (single source of truth)
+    // Files are already written to disk, now update in-memory context
+    let updatedProjectCodeContext = state.projectCodeContext;
+    
+    if (files.length > 0 && state.projectCodeContext) {
+      const contextFiles = state.projectCodeContext.files || [];
+      const fileMap = new Map<string, { path: string; content: string }>();
+      
+      // Add existing context files first
+      for (const file of contextFiles) {
+        if (file.path) {
+          fileMap.set(file.path, file);
+        }
+      }
+      
+      // Overwrite with newly written files (latest version wins)
+      for (const file of files) {
+        if (file.path) {
+          fileMap.set(file.path, {
+            path: file.path,
+            content: file.content
+          });
+        }
+      }
+      
+      updatedProjectCodeContext = {
+        ...state.projectCodeContext,
+        files: Array.from(fileMap.values())
+      };
+      
+      console.log(`📝 [CodeGen] Updated projectCodeContext.files: ${contextFiles.length} existing + ${files.length} new = ${updatedProjectCodeContext.files.length} total`);
+    }
+    
     return {
       llmResponse: {
         thinking,         // ✅ For UI display only (not in conversation history)
@@ -272,7 +297,7 @@ export async function codeGen(
         toolCalls,        // ✅ For tool execution
         done: toolCalls.length === 0,  // ✅ Tool calls 없을 때만 done = true
       },
-      ...(files.length > 0 ? { files } : {}),  // ✅ CRITICAL: 파일이 있을 때만 추가 (빈 배열로 덮어쓰지 않음)
+      projectCodeContext: updatedProjectCodeContext,  // ✅ Single source of truth
       fileErrors: fileErrors.length > 0 ? fileErrors : undefined,  // ✅ 파일 작업 실패를 validation으로 전달
     };
   } catch (error) {
