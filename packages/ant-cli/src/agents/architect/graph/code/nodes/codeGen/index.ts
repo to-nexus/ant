@@ -289,9 +289,11 @@ export async function codeGen(
         }
       }
       
+      const updatedFiles = Array.from(fileMap.values());
       updatedProjectCodeContext = {
         ...state.projectCodeContext,
-        files: Array.from(fileMap.values())
+        files: updatedFiles,
+        filePaths: updatedFiles.map(f => f.path)  // ✅ CRITICAL: Update filePaths for checkpoint!
       };
       
       console.log(`📝 [CodeGen] Updated projectCodeContext.files: ${contextFiles.length} existing + ${files.length} new = ${updatedProjectCodeContext.files.length} total`);

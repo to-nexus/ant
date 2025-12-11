@@ -135,10 +135,44 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   let projectCodeContext: any = undefined;
   let referenceCodeContexts: any[] = [];
   
+  // ✅ CRITICAL: On retry, reuse existing projectCodeContext to avoid outdated vector DB content
+  // We'll reload files from disk to get latest changes
+  if (isRetry && state.projectCodeContext && state.projectCodeContext.filePaths && state.projectCodeContext.filePaths.length > 0) {
+    const git = state.deps?.git;
+    console.log(`🔄 [Plan] Retry detected - reloading ${state.projectCodeContext.filePaths.length} files from disk for latest content...`);
+    
+    if (git) {
+      const reloadedFiles: any[] = [];
+      for (const filePath of state.projectCodeContext.filePaths) {
+        try {
+          const fullPath = require('path').join(state.context.workingDir, filePath);
+          const content = await git.readFile(fullPath);
+          if (content) {
+            reloadedFiles.push({ path: filePath, content });
+          }
+        } catch (e: any) {
+          console.warn(`   ⚠️  Failed to reload ${filePath}: ${e.message}`);
+        }
+      }
+      
+      projectCodeContext = {
+        ...state.projectCodeContext,
+        files: reloadedFiles,
+        filePaths: reloadedFiles.map(f => f.path),
+        stats: {
+          ...state.projectCodeContext.stats,
+          filesLoaded: reloadedFiles.length
+        }
+      };
+      
+      console.log(`   ✅ Reloaded ${reloadedFiles.length} files from disk (latest version)`);
+    }
+  }
+  
   const hasStackTrace = taskKeywords.stackTrace.length > 0;
   const hasKeywords = taskKeywords.keywords.length > 0;
   
-  if (hasStackTrace || hasKeywords) {
+  if (!projectCodeContext && (hasStackTrace || hasKeywords)) {
     const retriever = state.deps?.retriever;
     const vectorDB = state.deps?.vectorDB;
     const git = state.deps?.git;
