@@ -216,6 +216,26 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 2.5: Ensure projectCodeContext is always defined
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Even if no files were loaded, create empty context for checkpoint
+  if (!projectCodeContext) {
+    projectCodeContext = {
+      source: 'plan' as const,
+      filePaths: [],
+      files: [],
+      stats: {
+        filesLoaded: 0,
+        stackTraceCount: 0,
+        semanticCount: 0,
+        deduplicatedCount: 0,
+        estimatedTokens: 0
+      }
+    };
+    console.log(`   ℹ️  No files loaded - using empty projectCodeContext`);
+  }
+  
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 3: Generate implementation plan
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const planText = await generatePlanText(

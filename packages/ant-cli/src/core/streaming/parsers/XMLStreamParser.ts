@@ -29,7 +29,6 @@ interface ParserContext {
   currentFilePath: string | null;
   currentAppendPath: string | null;  // ✅ NEW
   currentEditPath: string | null;
-  editDebugBuffer: string;  // 🐛 DEBUG: Full <edit> content for logging
 }
 
 export class XMLStreamParser implements IStreamParser {
@@ -49,7 +48,6 @@ export class XMLStreamParser implements IStreamParser {
     currentFilePath: null,
     currentAppendPath: null,  // ✅ NEW
     currentEditPath: null,
-    editDebugBuffer: ''  // 🐛 DEBUG
   };
   
   private buffer: string = '';
@@ -616,10 +614,6 @@ export class XMLStreamParser implements IStreamParser {
           this.buffer = this.buffer.substring(startIdx + fullMatch.length);
           this.context.insideEdit = true;
           this.context.currentEditPath = filePath;
-
-          // 🐛 DEBUG: Start buffering full <edit> content for logging
-          this.context.editDebugBuffer = fullMatch;
-          console.log(`🐛 [XMLParser] <edit> tag detected: ${filePath}`);
           
           actions.push({
             type: 'file_start',
@@ -650,9 +644,6 @@ export class XMLStreamParser implements IStreamParser {
           const searchContent = this.buffer.substring(0, endIdx);
           this.buffer = this.buffer.substring(endIdx + '</search>'.length);
           this.context.insideSearch = false;
-
-          // 🐛 DEBUG: Accumulate to editDebugBuffer
-          this.context.editDebugBuffer += '<search>' + searchContent + '</search>';
           
           // Store search content (will be combined with replace later)
           actions.push({
@@ -682,9 +673,6 @@ export class XMLStreamParser implements IStreamParser {
           const replaceContent = this.buffer.substring(0, endIdx);
           this.buffer = this.buffer.substring(endIdx + '</replace>'.length);
           this.context.insideReplace = false;
-
-          // 🐛 DEBUG: Accumulate to editDebugBuffer
-          this.context.editDebugBuffer += '<replace>' + replaceContent + '</replace>';
           
           // Store replace content
           actions.push({
@@ -711,15 +699,6 @@ export class XMLStreamParser implements IStreamParser {
       if (this.context.insideEdit && this.buffer.includes('</edit>')) {
         const endIdx = this.buffer.indexOf('</edit>');
         this.buffer = this.buffer.substring(endIdx + '</edit>'.length);
-
-        // 🐛 DEBUG: Log complete <edit> tag
-        this.context.editDebugBuffer += '</edit>';
-        console.log(`\n${'='.repeat(80)}`);
-        console.log(`🐛 [XMLParser] Complete <edit> tag received for: ${this.context.currentEditPath}`);
-        console.log(`🐛 [XMLParser] Total length: ${this.context.editDebugBuffer.length} chars`);
-        console.log(`🐛 [XMLParser] Full content:\n${this.context.editDebugBuffer}`);
-        console.log(`${'='.repeat(80)}\n`);
-        this.context.editDebugBuffer = '';  // Reset for next edit
         
         actions.push({
           type: 'file_end',
@@ -824,17 +803,6 @@ export class XMLStreamParser implements IStreamParser {
   finalize(): ParsedAction[] {
     const actions: ParsedAction[] = [];
     
-    // 🐛 DEBUG: Log incomplete <edit> if still open
-    if (this.context.insideEdit && this.context.editDebugBuffer.length > 0) {
-      console.log(`\n${'='.repeat(80)}`);
-      console.error(`🐛 [XMLParser] ⚠️  INCOMPLETE <edit> tag detected in finalize()!`);
-      console.error(`🐛 [XMLParser] File: ${this.context.currentEditPath}`);
-      console.error(`🐛 [XMLParser] Missing </edit> closing tag!`);
-      console.error(`🐛 [XMLParser] Partial content (${this.context.editDebugBuffer.length} chars):\n${this.context.editDebugBuffer}`);
-      console.log(`${'='.repeat(80)}\n`);
-      this.context.editDebugBuffer = '';  // Reset
-    }
-    
     // ✅ CRITICAL: Flush any remaining buffer content
     if (this.buffer.length > 0) {
       console.log(`[XMLStreamParser] 🔚 Flushing ${this.buffer.length} chars: "${this.buffer.substring(0, 50)}..."`);
@@ -917,7 +885,6 @@ export class XMLStreamParser implements IStreamParser {
       currentFilePath: null,
       currentAppendPath: null,
       currentEditPath: null,
-      editDebugBuffer: ''  // 🐛 DEBUG
     };
     this.buffer = '';
   }

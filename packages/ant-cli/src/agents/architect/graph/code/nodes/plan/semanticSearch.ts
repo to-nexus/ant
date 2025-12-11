@@ -85,14 +85,21 @@ export async function loadSemanticFiles(
     const hasChanges = await git.hasChanges();
     if (hasChanges) {
       const changedFiles = await git.getChangedFiles();
-      // Filter to only include files not already in excludePaths or vectorDbPaths
-      const gitChangedPaths = changedFiles.filter(f => 
-        !excludePaths.includes(f) && 
-        !vectorDbPaths.includes(f)
-      );
+      // ✅ CRITICAL: Apply quota limit to git changed files
+      const remainingQuotaForGit = semanticQuota - vectorDbPaths.length;
+      const gitChangedPaths = changedFiles
+        .filter(f => 
+          !excludePaths.includes(f) && 
+          !vectorDbPaths.includes(f)
+        )
+        .slice(0, remainingQuotaForGit);  // ✅ Respect quota!
       
       if (gitChangedPaths.length > 0) {
-        console.log(`   📝 Git uncommitted files: ${gitChangedPaths.length} files found`);
+        const totalChanged = changedFiles.filter(f => 
+          !excludePaths.includes(f) && 
+          !vectorDbPaths.includes(f)
+        ).length;
+        console.log(`   📝 Git uncommitted files: ${gitChangedPaths.length}/${totalChanged} files (quota limited to ${remainingQuotaForGit})`);
         console.log(`      Loading uncommitted files for context...`);
         localFilePaths.push(...gitChangedPaths);
       }
