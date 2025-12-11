@@ -411,18 +411,55 @@ export class FileRenderer {
   }
   
   /**
+  /**
    * Wait for all file operations to complete
    * ✅ This must be called BEFORE marking task as completed
+   * ✅ NEW: Immediately cleanup incomplete operations (missing closing tags)
    */
   async waitForAllFileOperations(): Promise<void> {
+    // ✅ CRITICAL: First check for incomplete operations (activeFiles without closing tags)
+    // This happens when LLM starts <edit> but never sends </edit> (e.g., outputs <tool_call> instead)
+    if (this.activeFiles.size > 0) {
+      console.warn(`⚠️  [FileRenderer] ${this.activeFiles.size} incomplete file operation(s) detected before waiting!`);
+      
+      for (const [filePath, fileInfo] of this.activeFiles) {
+        console.error(`   - ${fileInfo.actionType}: ${filePath} (missing closing tag)`);
+        
+        // ✅ Create self-healing error for LLM feedback
+        const errorMsg = `⚠️ File operation incomplete: <${fileInfo.actionType}> tag for "${filePath}" was never closed. ` +
+          `This usually means the LLM output was interrupted or malformed. ` +
+          `If you need to modify this file, use read_file("${filePath}") first, then use proper <edit> tags.`;
+        
+        this.fileErrors.push(errorMsg);
+        
+        // ✅ Reject the pending promise to unblock waitForAllFileOperations
+        const rejector = this.completionRejectors.get(filePath);
+        if (rejector) {
+          rejector(new Error(`Incomplete operation: missing closing tag for ${filePath}`));
+        }
+        
+        // Cleanup
+        this.cleanup(filePath);
+      }
+    }
+    
     const pendingOperations = Array.from(this.completionPromises.values());
     
-    if (pendingOperations.length > 0) {
-      console.log(`⏳ [FileRenderer] Waiting for ${pendingOperations.length} file operation(s) to complete...`);
+    if (pendingOperations.length === 0) {
+      console.log(`✅ [FileRenderer] No file operations pending, proceeding immediately`);
+      return;
+    }
+    
+    console.log(`⏳ [FileRenderer] Waiting for ${pendingOperations.length} file operation(s) to complete...`);
+    
+    try {
       await Promise.all(pendingOperations);
       console.log(`✅ [FileRenderer] All file operations completed`);
-    } else {
-      console.log(`✅ [FileRenderer] No file operations pending, proceeding immediately`);
+    } catch (error) {
+      // ✅ File operation errors are non-blocking (recorded in fileErrors)
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error(`⚠️  [FileRenderer] File operation error (non-blocking): ${errorMsg}`);
+      // Don't re-throw - errors are already in fileErrors for self-healing
     }
   }
   

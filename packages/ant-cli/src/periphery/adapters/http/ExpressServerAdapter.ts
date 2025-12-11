@@ -210,7 +210,8 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     projectId?: string, 
     featureName?: string,
     interruptionReason?: InterruptionDetails,
-    explicitJobType?: 'design' | 'code' | 'learn'
+    explicitJobType?: 'design' | 'code' | 'learn',
+    userContext?: { userId: string; organizationId: string; workspacePath: string }
   ): Promise<void> {
     console.log(`\n🧹 [ExpressServerAdapter] cleanupJobState called for ${jobId}`);
     console.log(`   projectId: ${projectId || 'undefined'}, featureName: ${featureName || 'undefined'}`);
@@ -225,7 +226,8 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       mapping = { 
         projectId, 
         featureName, 
-        jobType: explicitJobType || 'code'  // Fallback to explicit or default
+        jobType: explicitJobType || 'code',  // Fallback to explicit or default
+        userContext  // ✅ CRITICAL: Include userContext for Cloud mode
       };
       console.log(`   Using provided mapping: ${projectId}/${featureName}/${mapping.jobType}`);
     }
@@ -269,14 +271,14 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   if (mapping) {
     try {
       // ✅ Use WorkspaceResolver to get correct path (Cloud/Local)
-      const userContext = mapping.userContext || {
+      const effectiveUserContext = userContext || mapping.userContext || {
         userId: 'local',
         organizationId: 'local',
         workspacePath: ''
       };
       
       const featurePath = this.workspaceResolver.getFeaturePath(
-        userContext,
+        effectiveUserContext,
         mapping.projectId,
         mapping.featureName || 'skeleton'
       );
@@ -288,7 +290,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         mapping.projectId, 
         mapping.featureName || 'skeleton',
         jobType,
-        userContext  // ✅ Pass user context
+        effectiveUserContext  // ✅ Pass user context
       );
       
       // ✅ CRITICAL: Always broadcast, even if no session file exists yet
@@ -399,7 +401,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
           this.jobToProject,
           this.jobs,
           this.taskQueueSnapshots,
-          mapping.userContext  // ✅ Pass user context for Cloud mode
+          effectiveUserContext  // ✅ Use effectiveUserContext (supports fallback mapping)
         ).then(kanbanData => {
           console.log(`   ✅ Kanban data source: ${kanbanData.dataSource}`);
           this.sseService.broadcast(mapping.projectId, mapping.featureName, 'kanban', kanbanData);
@@ -417,7 +419,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
           jobId,
           interruptionReason.reason,
           interruptionReason.message,
-          mapping.userContext  // ✅ Pass user context
+          effectiveUserContext  // ✅ Use effectiveUserContext (supports fallback mapping)
         );
         console.log(`   ✅ Added cancelled message to chat (reason: ${interruptionReason.reason})`);
       }

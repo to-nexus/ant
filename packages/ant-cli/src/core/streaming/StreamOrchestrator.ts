@@ -88,10 +88,15 @@ export class StreamOrchestrator {
       // Pass hasToolCalls to prevent premature message finalization
       await this.renderStrategy.finalize(hasToolCalls);
       
+      // ✅ CRITICAL: Get file errors from FileRenderer for self-healing
+      const fileRenderer = (this.renderStrategy as any).getFileRenderer?.();
+      const fileErrors = fileRenderer?.getFileErrors?.() || [];
+      
       return {
         raw: this.state.getRaw(),
         streamedFiles: this.registry.getStreamedFiles(),
-        completedActions: []  // TODO: track if needed
+        completedActions: [],  // TODO: track if needed
+        fileErrors  // ✅ Include file errors for self-healing
       };
     } catch (error) {
       console.error('[StreamOrchestrator] Error finalizing:', error);

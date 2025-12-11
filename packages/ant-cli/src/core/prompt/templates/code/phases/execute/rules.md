@@ -45,12 +45,7 @@ export function newFunction() {
    - ❌ WRONG: Multiple `<edit>` tags for same file
    - ✅ RIGHT: One `<edit>` per file, combining all changes
 
-2. **Read Before Edit (if uncertain)**
-   - If a file might have changed, use `read_file` tool first
-   - Then apply `<edit>` with up-to-date search block
-   - This prevents "search block not found" errors
-
-3. **Combine Multiple Changes**
+2. **Combine Multiple Changes**
    - If you need multiple changes in one file, combine them:
    - Option A: Use a larger `<search>` block covering all changes
    - Option B: Read the file first, then make one comprehensive edit
@@ -139,7 +134,7 @@ After you edit a file, its content has changed. A second edit will FAIL because 
 **How to get it right:**
 1. Copy EXACTLY from ORIGINAL FILES section or `read_file` result
 2. Include enough context to make search unique (3-5 lines)
-3. If pattern might repeat → add more context
+2. If pattern might repeat → add more context
 
 **Examples:**
 
@@ -226,8 +221,8 @@ console.log("close-edit");          // Use different words
 **Working with files?**
 1. **File exists?** → Read it first with `read_file` tool
 2. **Modifying existing file?** → ALWAYS use `<edit>` tag
-3. **Creating NEW file?** → Use `<file>` tag
-4. **Appending to existing file?** → Use `<append>` tag
+2. **Creating NEW file?** → Use `<file>` tag
+3. **Appending to existing file?** → Use `<append>` tag
 
 **Need to GET information?** → Use tools (`read_file`, `search_code`, `list_files`)
 
@@ -277,12 +272,12 @@ function updatePaddle() {
 **When editing existing files:**
 1. Check if the file already imports from a constants file
 2. If constants exist → USE THEM (don't duplicate values)
-3. If new constant needed → ADD to constants file first
+2. If new constant needed → ADD to constants file first
 
 **When creating new files:**
 1. Check if `constants.ts` or similar exists in the project
 2. Import and use constants from there
-3. DO NOT create duplicate constants in multiple files
+2. DO NOT create duplicate constants in multiple files
 
 ────────────────────────────────────────────────────────────────────────────────
 
