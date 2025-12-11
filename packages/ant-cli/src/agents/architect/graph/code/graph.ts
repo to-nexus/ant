@@ -208,6 +208,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       violations: [],
       enforcementReason: undefined,
       conversationHistory: [],  // ✅ Clear for next task
+      projectCodeContext: undefined,  // ✅ Clear for next task - Plan will load new context
       recursionCount: state.recursionCount,  // ✅ Propagate recursion count
       recursionLimit: state.recursionLimit,  // ✅ Propagate recursion limit
     };
