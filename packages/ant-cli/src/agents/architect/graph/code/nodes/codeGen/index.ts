@@ -191,14 +191,12 @@ export async function codeGen(
     // ✅ CRITICAL: Wait for all file operations to complete BEFORE finalizing
     // This ensures files are saved before task is marked as completed
     console.log(`\n💾 [CodeGen] Waiting for all file operations to complete...`);
-    const fileErrors: string[] = [];
     try {
       await orchestrator.waitForAllFileOperations();
       console.log(`✅ [CodeGen] All files saved successfully`);
     } catch (fileError) {
       // ❌ Do NOT throw! Let validation handle it
       const errorMsg = fileError instanceof Error ? fileError.message : String(fileError);
-      fileErrors.push(errorMsg);
       console.error(`⚠️ [CodeGen] File operation failed (will be caught by validation): ${errorMsg}`);
     }
     
@@ -212,6 +210,15 @@ export async function codeGen(
     // Pass hasToolCalls flag to prevent premature message finalization
     const hasToolCalls = toolCalls.length > 0;
     const finalizeResult = await orchestrator.finalize(hasToolCalls);
+    
+    // ✅ CRITICAL: Extract file errors from finalize result for self-healing
+    const fileErrors = finalizeResult.fileErrors || [];
+    if (fileErrors.length > 0) {
+      console.error(`⚠️  [CodeGen] ${fileErrors.length} file error(s) detected for self-healing`);
+      for (const error of fileErrors) {
+        console.error(`   - ${error}`);
+      }
+    }
     
     // ✅ CRITICAL: Extract files from FileRegistry for state.files
     const files: Array<{ path: string; content: string; actionType: 'create' | 'edit' | 'append' | 'delete' }> = [];

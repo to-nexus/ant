@@ -21,7 +21,7 @@ export function createJobRoutes(deps: {
   jobs: Map<string, any>;
   jobToProject: Map<string, { projectId: string; featureName: string; jobType: 'design' | 'code' | 'learn'; userContext?: any }>;  // ✅ For checking duplicate jobs
   userStoppedJobs: Set<string>;  // ✅ Track user-stopped jobs
-  cleanupJobState: (jobId: string, projectId?: string, featureName?: string, interruptionReason?: InterruptionDetails, explicitJobType?: 'design' | 'code' | 'learn') => Promise<void>;
+  cleanupJobState: (jobId: string, projectId?: string, featureName?: string, interruptionReason?: InterruptionDetails, explicitJobType?: 'design' | 'code' | 'learn', userContext?: { userId: string; organizationId: string; workspacePath: string }) => Promise<void>;
   workflowStateService: import('../services/WorkflowStateService').WorkflowStateService;  // ✅ For node tracking
   chatService: import('../services/ChatService').ChatService;  // ✅ For adding cancelled messages
 }): Router {
@@ -130,6 +130,15 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
   
   console.log(`\n🛑 [StopRoute] Stop request received for job: ${jobId}`);
   console.log(`   Project: ${projectId}, Feature: ${featureName}, JobType: ${jobType || 'not provided'}`);
+  
+  // ✅ CRITICAL: Build userContext from authenticated user
+  const userContext = req.user && req.organization ? {
+    userId: req.user.id,
+    organizationId: req.organization.id,
+    workspacePath: ''
+  } : { userId: 'local', organizationId: 'local', workspacePath: '' };
+  
+  console.log(`   UserContext: ${userContext.userId}@${userContext.organizationId}`);
     
     const childProcess = deps.childProcesses.get(jobId);
     
@@ -196,7 +205,7 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
     };
     
     console.log(`   Calling cleanupJobState with jobType: ${jobType || 'auto-detect'}...`);
-    await deps.cleanupJobState(jobId, projectId, featureName, interruption, jobType);
+    await deps.cleanupJobState(jobId, projectId, featureName, interruption, jobType, userContext);
     console.log(`   ✅ cleanupJobState completed (cleanupJobState handles adding cancelled message)`);
     
     // ✅ cleanupJobState already calls addCancelledMessage, so no need to call it again here

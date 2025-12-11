@@ -39,6 +39,7 @@ export interface StreamResult {
   raw: string;
   streamedFiles: string[];
   completedActions: ParsedAction[];
+  fileErrors?: string[];  // ✅ File operation errors for self-healing
 }
 
 // ============================================================================

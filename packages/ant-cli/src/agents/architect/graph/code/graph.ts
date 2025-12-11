@@ -1,5 +1,5 @@
 import { StateGraph } from "@langchain/langgraph";
-import { ArchitectGraphState, TASK_PRIORITIES, TaskTimingHelper } from "./state";
+import { ArchitectGraphState, TASK_PRIORITIES, TaskTimingHelper, ViolationType } from "./state";
 import { CodeTask } from "../../types/task";
 import { resolve } from "./nodes/resolve";
 import { detectEnvironment } from "./nodes/detectEnvironment/index";  // ✅ NEW
@@ -52,10 +52,35 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
   if (state.fileErrors && state.fileErrors.length > 0) {
     console.log(`⚠️  [checkTaskStatus] Converting ${state.fileErrors.length} file error(s) to violations`);
     for (const errorMsg of state.fileErrors) {
+      // ✅ Extract file path from error message if available
+      const fileMatch = errorMsg.match(/File "([^"]+)"|file "([^"]+)"/);
+      const filePath = fileMatch ? (fileMatch[1] || fileMatch[2]) : undefined;
+      
+      // ✅ Determine violation type based on error message
+      let violationType: ViolationType;
+      let suggestedFix: string | undefined;
+      
+      if (errorMsg.includes('Cannot edit non-existing file') || errorMsg.includes('non-existing file')) {
+        // File doesn't exist but LLM tried to edit it
+        violationType = 'missing_file';
+        suggestedFix = filePath ? `File does not exist. Use <file path="${filePath}"> to create it first, or verify the file path is correct.` : undefined;
+      } else if (errorMsg.includes('Search block not found')) {
+        // File exists but search block doesn't match (outdated content)
+        violationType = 'file_operation_failed';
+        suggestedFix = filePath ? `Use read_file("${filePath}") to get current content before editing` : undefined;
+      } else {
+        // Other file operation errors
+        violationType = 'file_operation_failed';
+        suggestedFix = undefined;
+      }
+      
       violations.push({
-        type: 'missing_file',
+        type: violationType,
         message: errorMsg,
-        severity: 'critical'
+        severity: 'critical',
+        file: filePath,
+        isRetryable: true,  // ✅ All file errors are retryable
+        suggestedFix
       });
     }
   }
