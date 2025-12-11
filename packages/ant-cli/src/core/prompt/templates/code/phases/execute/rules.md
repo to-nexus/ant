@@ -10,7 +10,7 @@
 
 ### 📝 XML STREAMING - For Content Generation (LLM → User)
 
-Use XML tags to **create** or **modify** file content (NO `<tool_use>` wrapper):
+Use XML tags **directly** to create or modify file content:
 
 ```xml
 <!-- Create NEW file -->
@@ -89,41 +89,18 @@ export function newFunction() {
 
 ### 🔧 TOOL CALLING - For Information & Commands (System → LLM)
 
-Use `<tool_use>` for **reading**, **searching**, **commands** (NEVER for file creation/modification):
+Use **system tools** for **reading**, **searching**, **commands** (NEVER for file creation/modification):
 
-```xml
-<!-- Read file to get context -->
-<tool_use>
-  <name>read_file</name>
-  <parameters>
-    <path>src/App.tsx</path>
-  </parameters>
-</tool_use>
+**Available Tools** (provided by the system):
 
-<!-- Search codebase -->
-<tool_use>
-  <name>search_code</name>
-  <parameters>
-    <pattern>useState</pattern>
-  </parameters>
-</tool_use>
+- `read_file(path)`: Read file contents
+- `search_code(pattern, file_pattern?)`: Search codebase
+- `run_command(command)`: Execute shell command
+- `delete_file(path)`: Delete a file
+- `list_files(directory?, pattern?)`: List files
+- `mkdir(path)`: Create directory
 
-<!-- Execute command (npm install, delete file, etc) -->
-<tool_use>
-  <name>run_command</name>
-  <parameters>
-    <command>npm install react</command>
-  </parameters>
-</tool_use>
-
-<!-- Delete file (system command) -->
-<tool_use>
-  <name>delete_file</name>
-  <parameters>
-    <path>src/old.tsx</path>
-  </parameters>
-</tool_use>
-```
+**How to use tools**: Call them using the system's native interface - NO XML tags, NO text descriptions. Just invoke the tool directly.
 
 ────────────────────────────────────────────────────────────────────────────────
 
@@ -322,15 +299,15 @@ function updatePaddle() {
 
 | Mistake | Wrong | Correct |
 |---------|-------|---------|
-| **CRITICAL: Using `<edit>` as a tool** | `<tool_use><name>edit</name>` | Use XML tag directly: `<edit path="...">` (NO tool_use wrapper) |
-| **CRITICAL: Using `<file>` as a tool** | `<tool_use><name>file</name>` or `<tool_use><name>write_file</name>` | Use XML tag directly: `<file path="...">` (NO tool_use wrapper) |
+| **CRITICAL: Using `<edit>` as a tool** | Wrapping edit in tool syntax | Use XML tag directly: `<edit path="...">` (standalone, no wrapper) |
+| **CRITICAL: Using `<file>` as a tool** | Wrapping file in tool syntax | Use XML tag directly: `<file path="...">` (standalone, no wrapper) |
 | **CRITICAL: Modifying existing file with `<file>`** | `<file path="src/App.tsx">` when file exists | **ALWAYS** use `<edit path="src/App.tsx">` |
 | **CRITICAL: Editing same file multiple times** | Two `<edit path="src/App.tsx">` in one response | Edit each file ONLY ONCE (combine all changes into one edit) |
 | **CRITICAL: Hardcoding values instead of using constants** | `const speed = 300;` when `PADDLE_SPEED` exists | `import { PADDLE_SPEED } from './constants'; const speed = PADDLE_SPEED;` |
 | Creating new file with `<edit>` | `<edit path="src/NewComponent.tsx">` when file doesn't exist | Use `<file path="src/NewComponent.tsx">` |
-| Reading with XML tag | `<read path="...">` (no such tag) | `<tool_use><name>read_file</name>` |
-| Deleting directory with single file tool | `delete_file` on `dist/` directory | `<tool_use><name>run_command</name><parameters><command>rm -rf dist/</command>` |
-| Deleting multiple files individually | Multiple `delete_file` calls | `<tool_use><name>run_command</name><parameters><command>rm *.log</command>` |
+| Reading with tool as text | Writing tool call as text/XML in response | Use system's native tool interface (automatic) |
+| Deleting directory with single file tool | Using `delete_file` on `dist/` directory | Use `run_command` tool: `rm -rf dist/` |
+| Deleting multiple files individually | Multiple `delete_file` calls | Use `run_command` tool: `rm *.log` |
 | Duplicating constants in multiple files | `const API_URL = "..."` in 3 files | Create `config.ts` with single source of truth |
 | Markdown in content | ` ```typescript\ncode\n``` ` | Raw code only |
 | Placeholder paths | `path/to/file.tsx` | `src/components/Button.tsx` |

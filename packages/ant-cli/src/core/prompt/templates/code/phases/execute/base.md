@@ -78,7 +78,7 @@ When error occurs:
 
 **Rules:**
 - ✅ Use proper formatting (headings, lists, code examples)
-- ❌ Do NOT use tools (`<tool_use>`, `<edit>`, `run_command`)
+- ❌ Do NOT use tools or XML tags for editing (use pure text explanation)
 - ❌ Do NOT modify the codebase
 
 Output `<done>true</done>` when complete.
