@@ -139,45 +139,8 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     branch: branch
   };
   
-  const branchBase = state.context.branchBase || 'main';
-  
-  // ✅ Safe branch creation with error handling
-  try {
-    await gitPort.createBranch(branch, branchBase);
-    console.log(`\n📌 Branch '${branch}' ready`);
-  } catch (branchError: any) {
-    // ✅ Handle "needs merge" or other Git conflicts
-    if (branchError.message?.includes('needs merge') || 
-        branchError.message?.includes('conflict') ||
-        branchError.message?.includes('현재 인덱스')) {
-      console.warn(`\n⚠️  Git conflict detected during branch operation. Cleaning up...`);
-      
-      try {
-        // ✅ Cleanup: Reset to clean state
-        const simpleGit = await import('simple-git');
-        const git = simpleGit.default({
-          baseDir: await gitPort.getRepoRoot(),
-          binary: 'git',
-          maxConcurrentProcesses: 6
-        });
-        
-        await git.reset(['--hard', 'HEAD']);
-        await git.clean(['-fd']);
-        console.log(`✅ Git workspace cleaned up successfully`);
-        
-        // ✅ Retry branch creation
-        await gitPort.createBranch(branch, branchBase);
-        console.log(`✅ Branch '${branch}' created after cleanup`);
-      } catch (cleanupError) {
-        console.error(`❌ Failed to cleanup Git state:`, cleanupError);
-        // ✅ Continue anyway - lessons can still be saved
-        // Branch operation is not critical for lesson storage
-      }
-    } else {
-      console.error(`❌ Failed to create branch '${branch}':`, branchError.message);
-      // ✅ Continue anyway - branch creation failure shouldn't block lesson storage
-    }
-  }
+  // ✅ Branch is already created by ProjectService.createFeature() when feature is initialized
+  // learn node only handles lesson extraction and metadata storage
   
   // Log files that were written in writeFiles
   if (files.length > 0) {
