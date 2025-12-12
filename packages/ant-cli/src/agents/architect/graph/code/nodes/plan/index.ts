@@ -25,11 +25,9 @@ import { extractErrorDetails, createErrorViolation } from "../shared/errorHandle
 
 // Import submodules
 import { generateTaskKeywords, displayKeywords, logKeywords } from "./keywordGeneration";
-import { loadStackTraceFiles } from "./stackTraceLoader";
-import { loadSemanticFiles } from "./semanticSearch";
+import { combineCodeContext } from "./combineCodeContext";
 import { loadReferenceContexts } from "./referenceLoader";
 import { generatePlanText } from "./planGeneration";
-import { extractFilesFromCode } from "./utils";
 
 export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   
@@ -136,122 +134,39 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // STEP 2: Load code context (Stack Trace + Semantic)
+  // STEP 2: Combine code context (RAG: Vector DB + Git + Local)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   let projectCodeContext: any = undefined;
   let referenceCodeContexts: any[] = [];
   
-  // ✅ CRITICAL: On retry, reuse existing projectCodeContext to avoid outdated vector DB content
-  // We'll reload files from disk to get latest changes
-  if (isRetry && state.projectCodeContext && state.projectCodeContext.filePaths && state.projectCodeContext.filePaths.length > 0) {
-    const git = state.deps?.git;
-    console.log(`🔄 [Plan] Retry detected - reloading ${state.projectCodeContext.filePaths.length} files from disk for latest content...`);
-    
-    if (git) {
-      const reloadedFiles: any[] = [];
-      for (const filePath of state.projectCodeContext.filePaths) {
-        try {
-          const fullPath = require('path').join(state.context.workingDir, filePath);
-          const content = await git.readFile(fullPath);
-          if (content) {
-            reloadedFiles.push({ path: filePath, content });
-          }
-        } catch (e: any) {
-          console.warn(`   ⚠️  Failed to reload ${filePath}: ${e.message}`);
-        }
-      }
-      
-      projectCodeContext = {
-        ...state.projectCodeContext,
-        files: reloadedFiles,
-        filePaths: reloadedFiles.map(f => f.path),
-        stats: {
-          ...state.projectCodeContext.stats,
-          filesLoaded: reloadedFiles.length
-        }
-      };
-      
-      console.log(`   ✅ Reloaded ${reloadedFiles.length} files from disk (latest version)`);
-    }
-  }
+  // ✅ CRITICAL: Always perform fresh RAG (even on retry)
+  // - Combines files from Vector DB, Git changes, and local reads
+  // - Ensures latest content from all sources
+  // - Local RAG is fast enough to run every time
+  const retriever = state.deps?.retriever;
+  const vectorDB = state.deps?.vectorDB;
+  const git = state.deps?.git;
   
-  const hasStackTrace = taskKeywords.stackTrace.length > 0;
-  const hasKeywords = taskKeywords.keywords.length > 0;
-  
-  if (!projectCodeContext && (hasStackTrace || hasKeywords)) {
-    const retriever = state.deps?.retriever;
-    const vectorDB = state.deps?.vectorDB;
-    const git = state.deps?.git;
+  if (retriever && vectorDB && git) {
+    projectCodeContext = await combineCodeContext(
+      taskKeywords,
+      state,
+      retriever,
+      vectorDB,
+      git
+    );
     
-    if (retriever && vectorDB && git) {
-      console.log(`🔍 [Plan] Two-tier search (stackTrace → semantic)...`);
-      
-      // Tier 1: Stack trace files (priority)
-      const stackFiles = await loadStackTraceFiles(
-        taskKeywords.stackTrace,
+    // Load reference projects if needed
+    if (projectCodeContext && state.referenceRequests && state.referenceRequests.length > 0) {
+      const { extractFilesFromCode } = await import('./utils');
+      referenceCodeContexts = await loadReferenceContexts(
         state,
+        taskKeywords,
         retriever,
         vectorDB,
         git,
         extractFilesFromCode
       );
-      
-      // Tier 2: Semantic files (context, dynamic quota)
-      const semanticFiles = await loadSemanticFiles(
-        taskKeywords.keywords,
-        state,
-        retriever,
-        vectorDB,
-        git,
-        extractFilesFromCode,
-        stackFiles.map(f => f.path)  // ✅ Exclude already loaded - avoid duplicate content
-      );
-      
-      // Merge & Deduplicate (simple)
-      // Stack trace files come first (priority), then semantic
-      const allFiles = [...stackFiles, ...semanticFiles];
-      const uniqueFiles = Array.from(
-        new Map(allFiles.map(f => [f.path, f])).values()
-      );
-      
-      projectCodeContext = {
-        filePaths: uniqueFiles.map(f => f.path),
-        files: uniqueFiles,
-        stats: {
-          filesLoaded: uniqueFiles.length,
-          stackTraceCount: stackFiles.length,
-          semanticCount: semanticFiles.length,
-          deduplicatedCount: allFiles.length - uniqueFiles.length
-        },
-        source: 'plan' as const
-      };
-      
-      console.log(`   ✅ Total: ${projectCodeContext.stats.filesLoaded} files (${stackFiles.length} stack + ${semanticFiles.length} semantic)`);
-      if (projectCodeContext.stats.deduplicatedCount > 0) {
-        console.log(`   🔄 Deduplicated: ${projectCodeContext.stats.deduplicatedCount} duplicates removed`);
-      }
-      
-      if (projectCodeContext.filePaths.length > 0) {
-        projectCodeContext.filePaths.forEach((f: string) => console.log(`      📄 ${f}`));
-      }
-      
-      // Git diff summary
-      if (git) {
-        const { generateGitDiffSummary } = require('../../../../../../core/codebase/GitDiffSummary');
-        projectCodeContext.gitDiff = await generateGitDiffSummary(git, state.context.workingDir, projectCodeContext.filePaths);
-      }
-      
-      // Load reference projects
-      if (state.referenceRequests && state.referenceRequests.length > 0) {
-        referenceCodeContexts = await loadReferenceContexts(
-          state,
-          taskKeywords,
-          retriever,
-          vectorDB,
-          git,
-          extractFilesFromCode
-        );
-      }
     }
   }
   

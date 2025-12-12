@@ -1,58 +1,69 @@
 # 📦 Retrieved Codebase Context
 
 {{#if files.length}}
-## ⚠️ CRITICAL: These Files ALREADY EXIST in the Codebase!
+## ⚠️ CRITICAL: These Files ALREADY EXIST!
 
-The following {{files.length}} files were retrieved from the **actual codebase** using semantic search.
-**These are REAL files that EXIST on disk right now.**
+The following {{files.length}} files were retrieved from the **actual codebase**.
 
-🚨 **BEFORE creating ANY new file:**
-1. Check if the file you need is listed below
-2. If it exists here → use `<edit>` tags to MODIFY it (see Output Format Rules)
-3. NEVER create a new file if it already exists below!
+🚨 **Before creating any file, check if it exists below!**
 
 ---
 
-**Existing Files** ({{files.length}} files, ~{{stats.estimatedTokens}} tokens):
+**Existing Files:**
 
 {{#each files}}
-### 📄 `{{this.path}}` ← THIS FILE EXISTS!
+{{#if this.content}}
+### 📄 `{{this.path}}`
 
 ```
 {{this.content}}
 ```
 
 ---
+{{else}}
+- 📄 `{{this.path}}` ← Call `read_file("{{this.path}}")` to see content
+{{/if}}
 {{/each}}
 
-## 📋 How to Work With These Files
+---
 
-1. **These files EXIST** - Do NOT recreate them with `<file>` tags
-2. **To modify**: Use `<edit>` tags with `<search>` and `<replace>` blocks (see Output Format Rules)
-3. **To add new code**: Use `<edit>` or `<append>` tags on the existing files above
-4. **To create NEW files**: Only if the file is NOT listed above - use `<file>` tags
+## 🔧 Working with These Files
 
-## ❌ Common Mistakes to Avoid
+### To Modify:
+1. **Always call `read_file("path")` first**
+2. Use `<edit>` with EXACT search block from read result
+3. Never edit without reading - content may have changed!
 
-- ❌ Creating `EventHandler.ts` when it already exists above
-- ❌ Using `<file>` tag to create a file that's shown in this list
-- ❌ Ignoring the existing code and starting from scratch
+### To Create New Files:
+- Only if NOT listed above
+- Use `<file>` tags
 
-## ✅ Correct Approach
+---
+
+## ✅ Correct Pattern
 
 ```xml
-<!-- ✅ CORRECT: Modifying existing file -->
-<edit path="src/EventHandler.ts">
-<search>exact code from above</search>
-<replace>modified code</replace>
-</edit>
+<!-- Step 1: Read current content -->
+Tool: read_file
+Args: { "path": "src/Example.ts" }
 
-<!-- ❌ WRONG: Creating file that already exists -->
-<file path="src/EventHandler.ts">
-new code
-</file>
+<!-- Step 2: Edit with exact search block -->
+<edit path="src/Example.ts">
+<search>exact code from read_file</search>
+<replace>new code</replace>
+</edit>
+```
+
+## ❌ Wrong Pattern
+
+```xml
+<!-- DON'T: Edit without reading -->
+<edit path="src/Example.ts">
+<search>assumed code</search>
+<replace>new code</replace>
+</edit>
 ```
 
 {{else}}
-No code files were retrieved for this task. You may need to create new files.
+No code files were retrieved. You may create new files as needed.
 {{/if}}

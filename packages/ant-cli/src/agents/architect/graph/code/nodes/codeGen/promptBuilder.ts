@@ -34,13 +34,25 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     throw new Error('[CodeGen] currentTask is required but not available in state');
   }
   
+  // ✅ CRITICAL: Remove file content from projectCodeContext to prevent LLM hallucination
+  // - Plan node provides full content for RAG (understanding codebase structure)
+  // - CodeGen node only provides file paths (forces LLM to use read_file tool)
+  // - This prevents "Search block not found" errors caused by outdated code in context
+  const codeGenProjectCodeContext = state.projectCodeContext ? {
+    ...state.projectCodeContext,
+    files: state.projectCodeContext.files?.map((f: any) => ({
+      path: f.path,
+      content: null  // ← Remove content, keep path only
+    })) || []
+  } : undefined;
+  
   const promptResult = await promptEngine.buildExecutePrompt(
     'code',
     state.context,
     {
       directive: state.directive,
       designDoc: state.design,
-      projectCodeContext: state.projectCodeContext,
+      projectCodeContext: codeGenProjectCodeContext,  // ← Use filtered context
       referenceCodeContexts: state.referenceCodeContexts,
       lessons: Array.isArray(state.lessons) ? state.lessons : undefined,
       sessionContext: state.sessionContext,
