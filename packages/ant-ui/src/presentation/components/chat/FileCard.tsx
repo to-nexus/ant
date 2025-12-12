@@ -29,7 +29,8 @@ export function FileCard({ content, operation }: FileCardProps) {
   const isUpdating = content.type === 'file_updating';
   const isDeleting = content.type === 'file_deleting';
   const isActive = isCreating || isWriting || isEditing || isUpdating || isDeleting;
-  const isCompleted = content.type === 'file_create' || content.type === 'file_edit' || content.type === 'file_delete';
+  const isFailed = content.type === 'file_create_failed' || content.type === 'file_edit_failed' || content.type === 'file_delete_failed';
+  const isCompleted = content.type === 'file_create' || content.type === 'file_edit' || content.type === 'file_delete' || isFailed;
   
   // ✅ Cursor/Copilot style: Default to expanded (show content), allow user to collapse
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -48,13 +49,16 @@ export function FileCard({ content, operation }: FileCardProps) {
   // ✅ Show content when: has content OR is actively streaming (even with empty content)
   const hasFileContent = fileContent && fileContent.length > 0;
   const hasDiffContent = diffBefore || diffAfter;
-  const hasAnyContent = hasFileContent || hasDiffContent;
+  const hasErrorMessage = isFailed && content.metadata?.reason;
+  const hasAnyContent = hasFileContent || hasDiffContent || hasErrorMessage;
   
   // ✅ CRITICAL: Show content during streaming (isActive) for real-time preview
   // - For streaming: Show even if empty (file_creating, file_writing, etc.)
   // - For completed: Show only if has content
+  // - For failed: Always show (to display error message)
   const shouldShowContent = !isCollapsed && (
     (isActive) ||  // Always show during streaming (even empty)
+    (isFailed) ||  // Always show failed (to display error)
     (isCompleted && hasAnyContent)  // Show completed only if has content
   );
   
@@ -121,33 +125,33 @@ export function FileCard({ content, operation }: FileCardProps) {
   // Determine operation details (Copilot/Cursor style - subtle, modern)
   const operationConfig = {
     create: {
-      labelCompleted: 'Created',
+      labelCompleted: isFailed ? 'Failed' : 'Created',
       labelActive: isCreating ? 'Creating...' : 'Writing...',
-      bgColor: 'bg-white dark:bg-gray-800/50',
-      borderColor: 'border-gray-200 dark:border-gray-700',
-      textColor: 'text-gray-700 dark:text-gray-300',
-      iconColor: 'text-green-500 dark:text-green-400',
-      headerBg: 'bg-gray-50/50 dark:bg-gray-800/30',
+      bgColor: isFailed ? 'bg-red-50/50 dark:bg-red-900/10' : 'bg-white dark:bg-gray-800/50',
+      borderColor: isFailed ? 'border-red-300 dark:border-red-800' : 'border-gray-200 dark:border-gray-700',
+      textColor: isFailed ? 'text-red-700 dark:text-red-300' : 'text-gray-700 dark:text-gray-300',
+      iconColor: isFailed ? 'text-red-600 dark:text-red-400' : 'text-green-500 dark:text-green-400',
+      headerBg: isFailed ? 'bg-red-100/50 dark:bg-red-900/20' : 'bg-gray-50/50 dark:bg-gray-800/30',
       hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50'
     },
     edit: {
-      labelCompleted: 'Modified',
+      labelCompleted: isFailed ? 'Failed' : 'Modified',
       labelActive: isEditing ? 'Editing...' : 'Updating...',
-      bgColor: 'bg-white dark:bg-gray-800/50',
-      borderColor: 'border-gray-200 dark:border-gray-700',
-      textColor: 'text-gray-700 dark:text-gray-300',
-      iconColor: 'text-blue-500 dark:text-blue-400',
-      headerBg: 'bg-gray-50/50 dark:bg-gray-800/30',
+      bgColor: isFailed ? 'bg-red-50/50 dark:bg-red-900/10' : 'bg-white dark:bg-gray-800/50',
+      borderColor: isFailed ? 'border-red-300 dark:border-red-800' : 'border-gray-200 dark:border-gray-700',
+      textColor: isFailed ? 'text-red-700 dark:text-red-300' : 'text-gray-700 dark:text-gray-300',
+      iconColor: isFailed ? 'text-red-600 dark:text-red-400' : 'text-blue-500 dark:text-blue-400',
+      headerBg: isFailed ? 'bg-red-100/50 dark:bg-red-900/20' : 'bg-gray-50/50 dark:bg-gray-800/30',
       hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50'
     },
     delete: {
-      labelCompleted: 'Deleted',
+      labelCompleted: isFailed ? 'Failed' : 'Deleted',
       labelActive: 'Deleting...',
-      bgColor: 'bg-white dark:bg-gray-800/50',
-      borderColor: 'border-gray-200 dark:border-gray-700',
-      textColor: 'text-gray-700 dark:text-gray-300',
-      iconColor: 'text-red-500 dark:text-red-400',
-      headerBg: 'bg-gray-50/50 dark:bg-gray-800/30',
+      bgColor: isFailed ? 'bg-red-50/50 dark:bg-red-900/10' : 'bg-white dark:bg-gray-800/50',
+      borderColor: isFailed ? 'border-red-300 dark:border-red-800' : 'border-gray-200 dark:border-gray-700',
+      textColor: isFailed ? 'text-red-700 dark:text-red-300' : 'text-gray-700 dark:text-gray-300',
+      iconColor: isFailed ? 'text-red-600 dark:text-red-400' : 'text-red-500 dark:text-red-400',
+      headerBg: isFailed ? 'bg-red-100/50 dark:bg-red-900/20' : 'bg-gray-50/50 dark:bg-gray-800/30',
       hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50'
     }
   };
@@ -180,8 +184,15 @@ export function FileCard({ content, operation }: FileCardProps) {
             {filePath}
           </span>
           
-          {/* Cancelled Indicator or Line Stats */}
-          {isCompleted && content.metadata?.reason ? (
+          {/* Failed/Cancelled Indicator or Line Stats */}
+          {isFailed ? (
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <Ban className="w-3 h-3 text-red-500 dark:text-red-400" />
+              <span className="text-[10px] text-red-600 dark:text-red-400 font-medium">
+                Failed
+              </span>
+            </div>
+          ) : isCompleted && content.metadata?.reason ? (
             <div className="flex items-center gap-1 flex-shrink-0">
               <Ban className="w-3 h-3 text-orange-500 dark:text-orange-400" />
               <span className="text-[10px] text-orange-600 dark:text-orange-400 font-medium">
@@ -233,7 +244,15 @@ export function FileCard({ content, operation }: FileCardProps) {
       {/* ✅ CRITICAL: Always render container when shouldShowContent is true (like ThinkingCard) */}
       {shouldShowContent && (
         <div className="border-t border-gray-200 dark:border-gray-700">
-          {operation === 'edit' && (diffBefore || diffAfter) ? (
+          {isFailed && content.metadata?.reason ? (
+            // Error message for failed operations
+            <div className="px-4 py-3 text-xs bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200">
+              <div className="font-semibold mb-1">Error:</div>
+              <div className="whitespace-pre-wrap break-words font-mono">
+                {content.metadata.reason}
+              </div>
+            </div>
+          ) : operation === 'edit' && (diffBefore || diffAfter) ? (
             // Diff view for edits - 4 lines visible (96px)
             <div ref={contentRef} className="max-h-[96px] overflow-y-auto scrollbar-thin" style={{ overflowAnchor: 'none', lineHeight: '1.5' }} onScroll={handleScroll}>
               {diffBefore && (

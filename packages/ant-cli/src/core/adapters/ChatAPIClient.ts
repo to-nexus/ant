@@ -129,7 +129,7 @@ export class ChatAPIClient {
    * - Auto-merge or disappear based on next content type (handled by ChatService)
    */
   async showChatStatus(
-    type: 'placeholder' | 'exploring' | 'explored' | 'retrieving' | 'retrieved' | 'grepping' | 'grepped' | 'listing_files' | 'listed_files' | 'searching_code' | 'searched_code' | 'reading' | 'read' | 'thinking' | 'indexing' | 'indexed' | 'analyzing' | 'analyzed' | 'storing' | 'stored' | 'searching_reference' | 'searched_reference' | 'tool_action' | 'learning' | 'learned',
+    type: 'placeholder' | 'exploring' | 'explored' | 'retrieving' | 'retrieved' | 'grepping' | 'grepped' | 'listing_files' | 'listed_files' | 'searching_code' | 'searched_code' | 'reading' | 'read' | 'thinking' | 'indexing' | 'indexed' | 'analyzing' | 'analyzed' | 'storing' | 'stored' | 'searching_reference' | 'searched_reference' | 'tool_action' | 'learning' | 'learned' | 'file_create_failed' | 'file_edit_failed' | 'file_delete_failed',
     metadata?: Record<string, any>
   ): Promise<number | undefined> {
     if (!this.enabled) return;
@@ -351,6 +351,13 @@ export class ChatAPIClient {
           } else {
             content = `Found ${searchedFiles} file(s) in ${searchedProject}`;
           }
+          break;
+        case 'file_create_failed':
+        case 'file_edit_failed':
+        case 'file_delete_failed':
+          const filePath = metadata?.filePath ?? 'file';
+          const reason = metadata?.reason ?? 'Unknown error';
+          content = `❌ ${filePath}: ${reason}`;
           break;
         default:
           content = 'Processing...';

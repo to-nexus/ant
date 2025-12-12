@@ -67,23 +67,24 @@ or better (if path visible):
 **What to include**:
 
 1. **Error identifiers**
-   - Error codes: `"GAME_IN_PROGRESS"`, `"NOT_FOUND"`
-   - Error constants: `"ERROR_TYPES"`, `"ValidationError"`
+   - Error codes from directive/logs
+   - Error constant names
+   - Exception type names
 
 2. **Technical identifiers**
-   - Component names (without extensions): `"RoomPage"`, `"GameProvider"`
-   - Function/method names: `"joinRoom"`, `"handleConnect"`
-   - Type/interface names: `"GameState"`, `"Player"`
+   - Component/class names mentioned in task
+   - Function/method names that implement the feature
+   - Type/interface names related to data structures
 
 3. **Domain concepts**
-   - Features: `"room management"`, `"player connection"`
-   - Operations: `"join room"`, `"game start"`
-   - States: `"room status"`, `"game state"`
+   - Feature names from task description
+   - Business operations being implemented
+   - State/status concepts in the domain
 
 4. **Framework/technical patterns**
-   - Lifecycle: `"useEffect"`, `"componentDidMount"`
-   - State management: `"useState"`, `"dispatch"`
-   - Async patterns: `"WebSocket"`, `"event handler"`
+   - Lifecycle hooks if state management is involved
+   - State management patterns if data flow is complex
+   - Async patterns if network/IO operations exist
 
 **What NOT to include**:
 - ❌ Generic terms: `"function"`, `"variable"`, `"React"`

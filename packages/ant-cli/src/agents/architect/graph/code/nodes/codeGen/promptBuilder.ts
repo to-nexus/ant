@@ -10,6 +10,7 @@
 import { ArchitectGraphState } from "../../state";
 import { TokenBudgetManager } from "../../../../../../core/utils/tokenBudget";
 import { HistoryManager } from "../../../../../../core/utils/historyManager";
+import { formatViolations } from "../shared/violationFormatter";
 
 /**
  * Build messages for LLM using PromptEngine
@@ -34,10 +35,6 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     throw new Error('[CodeGen] currentTask is required but not available in state');
   }
   
-  // ✅ CRITICAL: Remove file content from projectCodeContext to prevent LLM hallucination
-  // - Plan node provides full content for RAG (understanding codebase structure)
-  // - CodeGen node only provides file paths (forces LLM to use read_file tool)
-  // - This prevents "Search block not found" errors caused by outdated code in context
   const codeGenProjectCodeContext = state.projectCodeContext ? {
     ...state.projectCodeContext,
     files: state.projectCodeContext.files?.map((f: any) => ({
@@ -86,14 +83,15 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     }
   }
   
-  // ✅ Inject enforcement feedback at the VERY TOP (highest priority for retries)
+  // ✅ Inject violations at the VERY TOP (highest priority for retries)
   let finalPrompt = basePrompt;
   
-  if (state.enforcementReason) {
+  if (state.violations && state.violations.length > 0) {
+    const violationsText = formatViolations(state.violations);
     const enforcementHeader = `════════════════════════════════════════════════════════════════════════════════\n` +
       `⚠️  CRITICAL: PREVIOUS ATTEMPT FAILED - READ THIS FIRST!\n` +
       `════════════════════════════════════════════════════════════════════════════════\n\n` +
-      `${state.enforcementReason}\n\n` +
+      `${violationsText}\n\n` +
       `YOU MUST FIX THE ABOVE ISSUE BEFORE PROCEEDING!\n` +
       `════════════════════════════════════════════════════════════════════════════════\n\n`;
     
@@ -137,7 +135,9 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         continue;
       }
       
-      // ✅ CRITICAL: Remove code XML tags from assistant messages (causes outdated code issues)
+      // ✅ Remove code XML tags from assistant messages for token efficiency
+      // Keeping large code blocks in history wastes tokens and creates duplication
+      // LLM can read_file when needed for latest content
       if (msg.role === 'assistant' && typeof msg.content === 'string') {
         // Remove <edit>, <file>, <append> blocks (keep thinking and text)
         let cleanedContent = msg.content;
@@ -221,11 +221,7 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
     }
   }
   
-  if (state.enforcementReason) {
-    lines.push(`# Previous Attempt Failed`);
-    lines.push(state.enforcementReason);
-    lines.push(``);
-  }
+  // Note: Violations are injected at the top of prompt, not here
   
   const fileTree = generateFileTree(state);
   if (fileTree) {

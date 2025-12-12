@@ -2,7 +2,7 @@
  * Keyword Generation for Plan Node
  * 
  * Generates task-specific keywords for:
- * - Stack trace files (exact paths from error traces)
+ * - Error files (exact paths from build/operation errors)
  * - Semantic keywords (context for understanding)
  * - Reference project keywords
  */
@@ -13,8 +13,8 @@ import { CodeTask } from "../../../../types/task";
 import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient";
 
 export interface TaskKeywords {
-  stackTrace: string[];
-  keywords: string[];
+  errorFiles: string[];  // Files that caused errors (build errors, file operation errors)
+  keywords: string[];    // Semantic keywords for search
   references: Map<string, string[]>;
 }
 
@@ -30,7 +30,7 @@ export async function generateTaskKeywords(
   if (!promptEngine) {
     console.warn('[Plan] PromptEngine not available, using fallback keywords');
     return {
-      stackTrace: [],
+      errorFiles: [],
       keywords: task.name.toLowerCase().split(' ').filter(w => w.length > 3),
       references: new Map()
     };
@@ -68,7 +68,7 @@ export async function generateTaskKeywords(
       }
 
       return {
-        stackTrace: Array.isArray(parsed.stackTrace) ? parsed.stackTrace : [],
+        errorFiles: Array.isArray(parsed.errorFiles) ? parsed.errorFiles : [],
         keywords: Array.isArray(parsed.keywords) ? parsed.keywords : [],
         references
       };
@@ -78,7 +78,7 @@ export async function generateTaskKeywords(
   }
 
   return {
-    stackTrace: [],
+    errorFiles: [],
     keywords: task.name.toLowerCase().split(' ').filter(w => w.length > 3),
     references: new Map()
   };
@@ -89,24 +89,24 @@ export async function generateTaskKeywords(
  */
 export async function displayKeywords(taskKeywords: TaskKeywords): Promise<void> {
   console.log(`\n🔍 [displayKeywords] Starting Chat UI update...`);
-  console.log(`   Stack trace files: ${taskKeywords.stackTrace.length}`);
+  console.log(`   Error files: ${taskKeywords.errorFiles.length}`);
   console.log(`   Semantic keywords: ${taskKeywords.keywords.length}`);
   
   const chatAPI = getChatAPIClient();
   
-  if (taskKeywords.stackTrace.length === 0 && taskKeywords.keywords.length === 0) {
+  if (taskKeywords.errorFiles.length === 0 && taskKeywords.keywords.length === 0) {
     console.log(`   ⊖ No keywords to display, skipping Chat UI update`);
     return;
   }
   
-  const stackTraceCount = taskKeywords.stackTrace.length;
+  const errorFilesCount = taskKeywords.errorFiles.length;
   const semanticCount = taskKeywords.keywords.length;
-  const totalCount = stackTraceCount + semanticCount;
+  const totalCount = errorFilesCount + semanticCount;
   
   // Build summary for main display
   const parts: string[] = [];
-  if (stackTraceCount > 0) {
-    parts.push(`${stackTraceCount} from stack traces`);
+  if (errorFilesCount > 0) {
+    parts.push(`${errorFilesCount} error files`);
   }
   if (semanticCount > 0) {
     parts.push(`${semanticCount} semantic keywords`);
@@ -116,9 +116,9 @@ export async function displayKeywords(taskKeywords: TaskKeywords): Promise<void>
   // Build file list with type tags for expandable view
   const filesList: string[] = [];
   
-  // Add stack trace files with [stacktrace] tag
-  taskKeywords.stackTrace.forEach(file => {
-    filesList.push(`[stacktrace] ${file}`);
+  // Add error files with [error] tag
+  taskKeywords.errorFiles.forEach(file => {
+    filesList.push(`[error] ${file}`);
   });
   
   // Add semantic keywords with [semantic] tag
@@ -140,7 +140,7 @@ export async function displayKeywords(taskKeywords: TaskKeywords): Promise<void>
     await chatAPI.showChatStatus('analyzed', {
       content: `Analyzed: ${summary}`,
       keywordCount: totalCount,
-      stackTraceCount,
+      errorFilesCount,
       semanticCount,
       filesList,  // ✅ Expandable list
       _mergeIndex: mergeIndex
@@ -157,8 +157,8 @@ export async function displayKeywords(taskKeywords: TaskKeywords): Promise<void>
  * Log keywords to console
  */
 export function logKeywords(taskKeywords: TaskKeywords): void {
-  if (taskKeywords.stackTrace.length > 0) {
-    console.log(`   📍 Stack trace: ${taskKeywords.stackTrace.join(', ')}`);
+  if (taskKeywords.errorFiles.length > 0) {
+    console.log(`   📍 Error files: ${taskKeywords.errorFiles.join(', ')}`);
   }
   if (taskKeywords.keywords.length > 0) {
     console.log(`   🔍 Keywords: ${taskKeywords.keywords.join(', ')}`);

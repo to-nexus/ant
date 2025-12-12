@@ -3,6 +3,7 @@
  */
 
 import { ArchitectGraphState } from "../../state";
+import { formatViolations } from "./violationFormatter";
 
 export interface RetryContext {
   attemptNumber: number;
@@ -35,8 +36,10 @@ export function buildRetryContext(state: ArchitectGraphState): RetryContext | nu
     wasCloseToSuccess: attempt.filesGenerated.length > 0
   }));
   
-  // Current error (from enforcementReason)
-  const currentError = state.enforcementReason || 'See violations below';
+  // Current error (from violations)
+  const currentError = state.violations && state.violations.length > 0
+    ? formatViolations(state.violations)
+    : 'See violations below';
   
   return {
     attemptNumber: state.retries,

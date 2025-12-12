@@ -18,8 +18,8 @@ export interface LoadedFile {
   source: 'vector_db' | 'local';
 }
 
-export async function loadStackTraceFiles(
-  stackTracePaths: string[],
+export async function loadErrorFiles(
+  errorFilePaths: string[],
   state: ArchitectGraphState,
   retriever: any,
   vectorDB: any,
@@ -29,21 +29,21 @@ export async function loadStackTraceFiles(
   const stackFiles: LoadedFile[] = [];
   const chatAPI = getChatAPIClient();
   
-  if (stackTracePaths.length === 0) return stackFiles;
+  if (errorFilePaths.length === 0) return stackFiles;
   
-  // ✅ CRITICAL: Stack trace is PRIORITY, so we enforce strict limit
-  const stackLimit = Math.min(stackTracePaths.length, RETRIEVAL_CONFIG.MAX_STACK_TRACE);
-  console.log(`   📍 Stack trace: ${stackTracePaths.length} files → loading ${stackLimit} files (max ${RETRIEVAL_CONFIG.MAX_STACK_TRACE})...`);
+  // ✅ CRITICAL: Error files is PRIORITY, so we enforce strict limit
+  const stackLimit = Math.min(errorFilePaths.length, RETRIEVAL_CONFIG.MAX_STACK_TRACE);
+  console.log(`   📍 Error files: ${errorFilePaths.length} files → loading ${stackLimit} files (max ${RETRIEVAL_CONFIG.MAX_STACK_TRACE})...`);
   console.log(`   📊 Remaining quota for semantic: ${RETRIEVAL_CONFIG.TOTAL_MAX - stackLimit} files`);
   
   await chatAPI.showChatStatus('retrieving', {
-    query: `Stack trace: ${stackTracePaths.join(', ')}`
+    query: `Error files: ${errorFilePaths.join(', ')}`
   });
   
   const { resolveStackTraceFile } = await import('../../../../../../core/utils/filePathResolver');
   
   // Step 1: Try Vector DB for all files
-  for (const filePath of stackTracePaths.slice(0, stackLimit)) {
+  for (const filePath of errorFilePaths.slice(0, stackLimit)) {
     let resolvedPath: string | null = null;
     let source: 'vector_db' | 'local' | null = null;
     
@@ -168,7 +168,7 @@ export async function loadStackTraceFiles(
     
     await chatAPI.showChatStatus('grepped', {
       filesCount: localFiles.length,
-      keywords: stackTracePaths.slice(0, stackLimit),
+      keywords: errorFilePaths.slice(0, stackLimit),
       filesList: localFiles.map(f => f.path),
       content: localFiles.length > 0
         ? `Grepped: ${localFiles.length} local files related to stacktrace`
@@ -180,6 +180,6 @@ export async function loadStackTraceFiles(
     console.error(`   ❌ 'grepping/grepped' status FAILED:`, error.message);
   }
   
-  console.log(`   Stack trace loader: ${stackFiles.length} files loaded\n`);
+  console.log(`   Error files loader: ${stackFiles.length} files loaded\n`);
   return stackFiles;
 }

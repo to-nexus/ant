@@ -273,42 +273,9 @@ export async function codeGen(
     }
     
     // ✅ Return LLM response (state에 저장)
-    // 🔴 FIX: done should be false if there are tool calls (LLM is NOT done yet!)
     
-    // ✅ CRITICAL: Update projectCodeContext.files (single source of truth)
-    // Files are already written to disk, now update in-memory context
-    let updatedProjectCodeContext = state.projectCodeContext;
-    
-    if (files.length > 0 && state.projectCodeContext) {
-      const contextFiles = state.projectCodeContext.files || [];
-      const fileMap = new Map<string, { path: string; content: string }>();
-      
-      // Add existing context files first
-      for (const file of contextFiles) {
-        if (file.path) {
-          fileMap.set(file.path, file);
-        }
-      }
-      
-      // Overwrite with newly written files (latest version wins)
-      for (const file of files) {
-        if (file.path) {
-          fileMap.set(file.path, {
-            path: file.path,
-            content: file.content
-          });
-        }
-      }
-      
-      const updatedFiles = Array.from(fileMap.values());
-      updatedProjectCodeContext = {
-        ...state.projectCodeContext,
-        files: updatedFiles,
-        filePaths: updatedFiles.map(f => f.path)  // ✅ CRITICAL: Update filePaths for checkpoint!
-      };
-      
-      console.log(`📝 [CodeGen] Updated projectCodeContext.files: ${contextFiles.length} existing + ${files.length} new = ${updatedProjectCodeContext.files.length} total`);
-    }
+    // ✅ projectCodeContext is plan-only data (immutable after plan node)
+    // Plan node always regenerates it via RAG on retry - no need to update here
     
     return {
       llmResponse: {
@@ -317,7 +284,6 @@ export async function codeGen(
         toolCalls,        // ✅ For tool execution
         done: toolCalls.length === 0,  // ✅ Tool calls 없을 때만 done = true
       },
-      projectCodeContext: updatedProjectCodeContext,  // ✅ Single source of truth
       fileErrors: fileErrors.length > 0 ? fileErrors : undefined,  // ✅ 파일 작업 실패를 validation으로 전달
     };
   } catch (error) {

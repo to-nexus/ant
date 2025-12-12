@@ -93,6 +93,27 @@ You are planning HOW to implement a specific task.
 - If task description missed something, directive has the answer
 
 ────────────────────────────────────────────────────────────────────────────────
+{{#if isRetry}}
+### ⚠️  RETRY CONTEXT: PREVIOUS ATTEMPT FAILED
+────────────────────────────────────────────────────────────────────────────────
+
+**The following violations occurred in the previous attempt:**
+
+```
+{{violationsText}}
+```
+
+**Your plan MUST address these failures:**
+- ✅ Analyze root cause of each violation
+- ✅ Understand WHY the previous approach failed
+- ✅ Propose fundamentally different approach (not just tweaking the same method)
+- ✅ Consider trade-offs: simpler vs complete, safe vs efficient
+- ❌ DO NOT blindly retry the exact same operations that failed
+- ❌ DO NOT just apply generic fixes without understanding the context
+
+────────────────────────────────────────────────────────────────────────────────
+{{/if}}
+────────────────────────────────────────────────────────────────────────────────
 ### 🚨 IF DIRECTIVE CONTAINS ERROR/STACK TRACE:
 ────────────────────────────────────────────────────────────────────────────────
 

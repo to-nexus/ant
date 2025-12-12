@@ -29,10 +29,13 @@ export type LLMStreamEventType =
   // UI events (for file operations, commands)
   | 'file_creating'
   | 'file_create'
+  | 'file_create_failed'
   | 'file_editing'
   | 'file_edit'
+  | 'file_edit_failed'
   | 'file_deleting'
   | 'file_delete'
+  | 'file_delete_failed'
   | 'command_running'
   | 'command_streaming'
   | 'command';

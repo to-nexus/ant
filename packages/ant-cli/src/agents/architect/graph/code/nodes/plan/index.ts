@@ -28,6 +28,7 @@ import { generateTaskKeywords, displayKeywords, logKeywords } from "./keywordGen
 import { combineCodeContext } from "./combineCodeContext";
 import { loadReferenceContexts } from "./referenceLoader";
 import { generatePlanText } from "./planGeneration";
+import { extractFilesFromViolations } from "../shared/violationFormatter";
 
 export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   
@@ -35,8 +36,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   
   const llm = state.deps?.llm as LLMClient;
 
-  const enforcementReason = state.enforcementReason;
-  const isRetry = Boolean(enforcementReason);
+  const isRetry = state.violations && state.violations.length > 0;
   
   let nextTask: CodeTask | undefined;
   
@@ -57,12 +57,6 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         `Cannot proceed with automatic fixes.`
       );
     }
-    
-    // ✅ CRITICAL: Clear previous violations when starting retry
-    // Previous violations are from the LAST attempt, not the CURRENT attempt
-    // If we don't clear them, checkTaskStatus will see stale violations
-    console.log(`🧹 [Plan] Clearing ${state.violations?.length || 0} previous violation(s) for fresh retry`);
-    state.violations = [];
     
     console.log(`\n🔄 [Plan] Retry task: ${nextTask.name} (attempt ${(state.retries || 0) + 1}/${state.maxRetries})\n`);
   } else {
@@ -117,20 +111,38 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // STEP 1: Generate task-specific keywords
+  // STEP 1: Generate task-specific keywords (LLM 1st request)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  let taskKeywords = {
-    stackTrace: [] as string[],
-    keywords: [] as string[],
-    references: new Map<string, string[]>()
-  };
+  let taskKeywords;
   
   if (llm) {
     console.log(`🔑 [Plan] Generating search keywords...`);
-    taskKeywords = await generateTaskKeywords(llm, nextTask, state);
+    const generatedKeywords = await generateTaskKeywords(llm, nextTask, state);
     
+    // ✅ STEP 1.5: Merge with violation files (after LLM response)
+    const errorFilesFromViolations = extractFilesFromViolations(state.violations);
+    
+    if (errorFilesFromViolations.length > 0) {
+      console.log(`🔍 [Plan] Merging ${errorFilesFromViolations.length} file(s) from violations:`);
+      errorFilesFromViolations.forEach(f => console.log(`   - ${f}`));
+    }
+    
+    taskKeywords = {
+      errorFiles: [...errorFilesFromViolations, ...generatedKeywords.errorFiles],
+      keywords: generatedKeywords.keywords,
+      references: generatedKeywords.references
+    };
+    
+    // ✅ Display merged keywords to UI
     await displayKeywords(taskKeywords);
     logKeywords(taskKeywords);
+  } else {
+    // Fallback without LLM
+    taskKeywords = {
+      errorFiles: extractFilesFromViolations(state.violations),
+      keywords: [],
+      references: new Map<string, string[]>()
+    };
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -191,21 +203,26 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // STEP 3: Generate implementation plan
+  // STEP 3: Generate implementation plan (LLM 2nd request)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const planText = await generatePlanText(
     llm,
     nextTask,
     state,
     projectCodeContext,
-    referenceCodeContexts
+    referenceCodeContexts,
+    state.violations  // ✅ Pass violations for retry context
   );
+  
+  // ✅ Clear violations after plan generation (consumed)
+  if (state.violations && state.violations.length > 0) {
+    console.log(`🧹 [Plan] Clearing ${state.violations.length} violation(s) after plan generation`);
+    state.violations = [];
+  }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 4: Update state
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const shouldClearEnforcement = !isRetry;
-  
   try {
     const updatedState = { 
       ...state,
@@ -213,8 +230,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       projectCodeContext,
       referenceCodeContexts,
       planText,
-      retries: shouldClearEnforcement ? 0 : state.retries,
-      enforcementReason: shouldClearEnforcement ? null : state.enforcementReason,
+      retries: isRetry ? state.retries : 0,  // ✅ Clear retries for new task
       completedTasksDetails: state.completedTasksDetails || [],
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit

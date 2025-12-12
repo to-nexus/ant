@@ -244,18 +244,6 @@ export async function tool(
   // This ensures LLM has full context to decide what to do next
   const remainingToolCalls: any[] = [];
   
-  // ✅ Convert fileBuffers to files list for projectCodeContext update
-  const files: Array<{ path: string; content: string; actionType: 'create' | 'edit' | 'append' | 'delete' }> = [];
-  if (state.fileBuffers) {
-    for (const [path, buffer] of state.fileBuffers.entries()) {
-      files.push({
-        path: buffer.path,
-        content: buffer.content,
-        actionType: buffer.actionType as 'create' | 'edit' | 'append' | 'delete',
-      });
-    }
-  }
-  
   // ❌ REMOVED: Don't finalize message here! 
   // Message finalize should only happen when the entire job completes (learn node, etc.)
   // Tool node continues the loop back to codeGen, so message must stay open
@@ -265,55 +253,8 @@ export async function tool(
     state.deps.workflowUpdate.exitNode(state._httpJobId, 'tool');
   }
   
-  // ✅ CRITICAL: Update projectCodeContext.files (single source of truth)
-  // Tool node CAN create files (e.g., delete_file operations)
-  let updatedProjectCodeContext = state.projectCodeContext;
-  
-  // ✅ NEW: Add read_file result to projectCodeContext.filePaths
-  if (name === 'read_file' && readFilePath && !error) {
-    if (!updatedProjectCodeContext) {
-      updatedProjectCodeContext = { ...state.projectCodeContext, source: 'plan', filePaths: [], files: [], stats: { filesLoaded: 0, estimatedTokens: 0 } };
-    }
-    if (!updatedProjectCodeContext.filePaths) {
-      updatedProjectCodeContext.filePaths = [];
-    }
-    if (!updatedProjectCodeContext.filePaths.includes(readFilePath)) {
-      updatedProjectCodeContext = {
-        ...updatedProjectCodeContext,
-        filePaths: [...updatedProjectCodeContext.filePaths, readFilePath]
-      };
-      console.log(`📝 [Tool] Added read file to projectCodeContext.filePaths: ${readFilePath} (total: ${updatedProjectCodeContext.filePaths.length})`);
-    }
-  }
-  
-  if (files.length > 0 && state.projectCodeContext) {
-    const contextFiles = state.projectCodeContext.files || [];
-    const fileMap = new Map<string, { path: string; content: string }>();
-    
-    // Add existing context files first
-    for (const file of contextFiles) {
-      if (file.path) {
-        fileMap.set(file.path, file);
-      }
-    }
-    
-    // Overwrite with new files (latest version wins)
-    for (const file of files) {
-      if (file.path) {
-        fileMap.set(file.path, {
-          path: file.path,
-          content: file.content
-        });
-      }
-    }
-    
-    updatedProjectCodeContext = {
-      ...state.projectCodeContext,
-      files: Array.from(fileMap.values())
-    };
-    
-    console.log(`📝 [Tool] Updated projectCodeContext.files: ${contextFiles.length} existing + ${files.length} new = ${updatedProjectCodeContext.files.length} total`);
-  }
+  // ✅ projectCodeContext is plan-only data (immutable after plan node)
+  // Plan node always regenerates it via RAG on retry - no need to update here
   
   return {
     conversationHistory: newHistory,
@@ -329,7 +270,6 @@ export async function tool(
         error,
       },
     ],
-    projectCodeContext: updatedProjectCodeContext,  // ✅ Single source of truth
   };
 }
 

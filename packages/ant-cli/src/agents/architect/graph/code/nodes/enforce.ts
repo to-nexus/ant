@@ -2,41 +2,19 @@
  * Enforce Node
  * 
  * Handles validation failures by:
- * 1. Formatting structured violations for LLM
+ * 1. Prioritizing violations by impact
  * 2. Saving enforcement feedback for learning
  * 3. Managing retry logic
- * 4. Preparing focused enforcement reason for re-planning
+ * 4. Passing violations to Plan node for retry strategy
  * 
  * ✅ Self-Healing Planner Pattern:
  * - Captures error patterns for learning
- * - Provides structured feedback to Plan node
+ * - Provides structured violations to Plan node
  * - Enables pattern matching for future errors
  */
 
 import { ArchitectGraphState, Violation, EnforcementFeedback } from "../state";
-
-/**
- * Format violations into human-readable text
- */
-function formatViolations(violations: Violation[]): string {
-  if (violations.length === 0) return 'No specific violations detected';
-  
-  return violations.map((v, idx) => {
-    const parts = [
-      `${idx + 1}. [${v.severity.toUpperCase()}] ${v.type}`,
-      `   Message: ${v.message}`
-    ];
-    
-    if (v.file) parts.push(`   File: ${v.file}`);
-    if (v.module) parts.push(`   Module: ${v.module}`);
-    if (v.suggestedFix) parts.push(`   💡 Suggested Fix: ${v.suggestedFix}`);
-    if (v.isRetryable !== undefined) {
-      parts.push(`   ♻️  Retryable: ${v.isRetryable ? 'YES' : 'NO (needs task decomposition)'}`);
-    }
-    
-    return parts.join('\n');
-  }).join('\n\n');
-}
+import { formatViolations } from "./shared/violationFormatter";
 
 /**
  * Check if violations are retryable (재시도로 해결 가능한지)
@@ -177,6 +155,41 @@ export async function enforce(state: ArchitectGraphState): Promise<ArchitectGrap
   // Format violations for LLM (use focused violations only)
   let formattedViolations = formatViolations(focusedViolations);
   
+  // ✅ CRITICAL: Make enforcement message CONCISE and ACTIONABLE
+  // - LLM ignores long walls of text
+  // - Focus on ONE clear instruction per error type
+  const errorType = focusedViolations[0]?.type;
+  const fileCount = focusedViolations.length;
+  
+  if (errorType === 'file_operation_failed') {
+    // Search block errors need special handling
+    const searchBlockErrors = focusedViolations.filter(v => 
+      v.message.includes('Search block not found') || 
+      v.message.includes('Duplicate edit')
+    );
+    
+    if (searchBlockErrors.length > 0) {
+      const files = searchBlockErrors
+        .map(v => v.file)
+        .filter(Boolean)
+        .join(', ');
+      
+      // ✅ REPLACE verbose message with concise, actionable one
+      formattedViolations = `
+🚨 PREVIOUS ATTEMPT FAILED: ${searchBlockErrors.length} file edit error(s)
+
+Files: ${files}
+
+REASON: Search block mismatch or duplicate edit
+
+✅ REQUIRED FIX (3 steps):
+1. BEFORE editing: Call read_file("path")
+2. Copy EXACT search block (character-perfect)
+3. ONE edit per file
+`;
+    }
+  }
+  
   // ✅ Add escalation notice if errors are repeating
   if (isRepeating && state.retries > 0) {
     const hasMissingDependency = focusedViolations.some(v => v.type === 'missing_dependency');
@@ -236,7 +249,6 @@ ${formattedViolations}
     taskName: state.currentTask?.name || 'Unknown Task',
     attemptNumber: state.retries + 1,
     violations: focusedViolations,  // Use focused violations
-    enforcementReason: formattedViolations,
     fixStrategy: 'retry',  // Will be updated by Plan node
     timestamp: Date.now()
   };
@@ -253,8 +265,7 @@ ${formattedViolations}
   
   return {
     ...state,
-    violations: focusedViolations,  // ✅ Pass violations to next node (execute needs this!)
-    enforcementReason: formattedViolations,
+    violations: focusedViolations,  // ✅ Pass violations to next node for retry strategy
     retries: state.retries + 1,
     lastViolations: focusedViolations,
     enforcementHistory,

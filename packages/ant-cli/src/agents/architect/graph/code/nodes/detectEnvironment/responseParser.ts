@@ -9,7 +9,7 @@ export interface DetectEnvironmentResponse {
   environmentReasoning: string;
   requireRagForDecompose: boolean;
   decomposeKeywords: {
-    stackTrace: string[];
+    errorFiles: string[];
     keywords: string[];
     references: Array<{
       project: string;
@@ -58,7 +58,7 @@ export function parseDetectResponse(response: string): DetectEnvironmentResponse
       environmentReasoning: parsed.environmentReasoning,
       requireRagForDecompose: parsed.requireRagForDecompose,
       decomposeKeywords: {
-        stackTrace: parsed.decomposeKeywords?.stackTrace || [],
+        errorFiles: parsed.decomposeKeywords?.errorFiles || [],
         keywords: parsed.decomposeKeywords?.keywords || [],
         references: parsed.decomposeKeywords?.references || []
       },
@@ -83,7 +83,7 @@ export function parseDetectResponse(response: string): DetectEnvironmentResponse
       environmentReasoning: 'Failed to parse LLM response',
       requireRagForDecompose: false,
       decomposeKeywords: {
-        stackTrace: [],
+        errorFiles: [],
         keywords: [],
         references: []
       },

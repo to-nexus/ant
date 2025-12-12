@@ -383,10 +383,18 @@ export class FileRenderer {
     
     const errorMessage = error instanceof Error ? error.message : String(error);
     
-    await this.chatAPI.sendLLMEvent({
-      type: 'error',
-      error: { message: errorMessage }
+    // ✅ Send file operation failed status to UI (FileCard will display this)
+    const failedType = fileInfo.actionType === 'create' ? 'file_create_failed' :
+                       fileInfo.actionType === 'edit' ? 'file_edit_failed' :
+                       'file_delete_failed';
+    
+    await this.chatAPI.showChatStatus(failedType as any, {
+      filePath,
+      reason: errorMessage
     });
+    
+    // ❌ DO NOT send generic error event - it causes duplicate error display
+    // FileCard already shows the error with red styling and error message
     
     if (errorMessage.includes('Search block not found')) {
       // ✅ Add to fileErrors for self-healing

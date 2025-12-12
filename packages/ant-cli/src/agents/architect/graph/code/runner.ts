@@ -114,38 +114,8 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
           (initial as any).jobTiming = (session.state as any).jobTiming;
         }
         
-        
-        // ✅ CRITICAL: Restore projectCodeContext.files from filePaths
-        // Why: We only save filePaths to checkpoint (lightweight), but need files for LLM prompt
-        if ((session.state as any).projectCodeContext && 
-            (session.state as any).projectCodeContext.filePaths?.length > 0 &&
-            (!(session.state as any).projectCodeContext.files || 
-             (session.state as any).projectCodeContext.files.length === 0)) {
-          
-          console.log('🔄 Restoring projectCodeContext.files from disk...');
-          const filePaths = (session.state as any).projectCodeContext.filePaths;
-          const files = [];
-          
-          for (const path of filePaths) {
-            try {
-              const content = await initial.deps!.git!.readFile(path);
-              files.push({ path, content });
-            } catch (err) {
-              console.warn(`   ⚠️  Could not read ${path}: ${(err as Error).message}`);
-            }
-          }
-          
-          initial.projectCodeContext = {
-            ...(session.state as any).projectCodeContext,
-            files
-          };
-          
-          console.log(`   ✅ Restored ${files.length}/${filePaths.length} files from disk`);
-        } else if ((session.state as any).projectCodeContext) {
-          // projectCodeContext exists but no filePaths (or files already present)
-          initial.projectCodeContext = (session.state as any).projectCodeContext;
-          console.log(`   ✅ projectCodeContext restored (${((session.state as any).projectCodeContext.files || []).length} files)`);
-        }
+        // ✅ projectCodeContext is NOT restored from checkpoint
+        // Plan node always regenerates it via RAG - no need to restore
         
         console.log('✅ State restored from checkpoint - ready to resume\n');
       }
