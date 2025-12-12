@@ -38,54 +38,64 @@ export function newFunction() {
 
 **🚨 CRITICAL FILE MODIFICATION RULES:**
 
-1. **ONE EDIT PER FILE PER RESPONSE**
+1. **`<edit>` vs `<file>` - When to Use Which**
    
-   **Why this rule exists:**
-   - Once you output `<edit>`, the file is IMMEDIATELY modified on disk
-   - Your second `<edit>` will use outdated search block (won't match modified content)
-   - You cannot "see" the result of your first edit during the same response
-   - This is a fundamental limitation of streaming generation
+   **ONE file modification per file in this response**
    
-   **How to follow this rule:**
-   - **THINK COMPLETELY** about all changes needed for a file BEFORE outputting any `<edit>`
-   - Only output `<edit>` when your thinking about that file is **FULLY COMPLETE**
-   - If you realize you need more changes mid-response, it's TOO LATE
-   - Better: Plan all changes → Output ONE comprehensive `<edit>`
+   - **Small localized change (< 20 lines)?** → `<edit>`
+   - **Large change (≥ 20 lines) OR multiple locations?** → `<file>` (overwrite entire file)
    
-   **Examples:**
-   
-   ❌ **WRONG - Incremental thinking while outputting:**
-   ```
-   [Thinking] "I should change the type here..."
-   <edit>Change type A → B</edit>
-   
-   [Thinking] "Oh wait, I also need to update the function signature..."
-   <edit>Update function signature</edit>  ← WILL FAIL! File already changed
-   ```
-   
-   ✅ **RIGHT - Complete thinking first, then output:**
-   ```
-   [Thinking] "Let me analyze this file completely..."
-   [Thinking] "I need to: 1) Change type A → B, 2) Update function signature, 3) Fix imports"
-   [Thinking] "All changes identified. Now I'll make ONE comprehensive edit."
-   
-   <edit>
-     <search>Large block covering all areas to change</search>
-     <replace>All changes applied together</replace>
-   </edit>
-   ```
+   **Why:**
+   - `<edit>` modifies disk immediately. A second `<edit>` for same file will have outdated search block → "Search block not found" error.
+   - **Large search blocks (≥ 20 lines) prone to LLM copy errors → Use `<file>` instead!**
 
-2. **When You Need Multiple Changes in One File**
+2. **When to Call `read_file` for File Content**
    
-   **Option A: Comprehensive edit block**
-   - Identify ALL changes needed
-   - Create a large `<search>` block that includes all areas
-   - Apply all changes in the `<replace>` block at once
+   **🚨 Check `📦 Retrieved Codebase Context` for file existence:**
+   - File listed? → Exists in codebase
+   - Not listed? → New file, use `<file>` to create
    
-   **Option B: Read first, then edit**
-   - Use `read_file` tool to get current content
-   - Analyze and plan ALL changes needed
-   - Output ONE `<edit>` with all changes combined
+   **🚨 Before using file content for `<edit>`, check conversation history:**
+   
+   ```
+   Did you (or previous response) <edit> this file?
+   
+   YES → Check: Did you read_file AFTER that edit?
+         - NO → MUST call read_file NOW
+         - YES → Can use that read_file result
+   
+   NO edit yet → Check: Do you have read_file result?
+         - YES → Can use it
+         - NO → MUST call read_file NOW
+   ```
+   
+   **Why:** `<edit>` modifies file immediately. Any content from BEFORE the edit is outdated.
+   
+   **⚠️ EXACT MATCH REQUIRED:**
+   - `<search>` block must be **character-perfect** copy from `read_file` result
+   - Spaces, tabs, newlines must match exactly
+   - Missing/extra lines → "Search block not found" error
+   
+   **Example (WRONG):**
+   ```
+   History:
+   1. read_file("X") → content A
+   2. <edit path="X"> → file changed!
+   3. [Current response] Use content A for another <edit>
+   
+   ❌ FAILS! Content A is outdated (from before step 2)
+   ```
+   
+   **Example (CORRECT):**
+   ```
+   History:
+   1. read_file("X") → content A
+   2. <edit path="X"> → file changed!
+   3. [Current response] Call read_file("X") → content B
+   4. Use content B for <edit>
+   
+   ✅ Works! Content B is current (after step 2 edit)
+   ```
 
 ### 🔧 TOOL CALLING - For Information & Commands (System → LLM)
 

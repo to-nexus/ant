@@ -75,7 +75,7 @@ export function SessionView({ session }: SessionViewProps) {
           {session.description && (
             <div>
               <p className="text-sm font-medium text-muted-foreground">Description</p>
-              <p className="text-sm mt-1">{session.description}</p>
+              <p className="text-sm mt-1 break-words whitespace-pre-wrap">{session.description}</p>
             </div>
           )}
 

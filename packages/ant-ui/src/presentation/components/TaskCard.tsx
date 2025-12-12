@@ -185,6 +185,7 @@ export function TaskCard({
             <div 
               className={cn(
                 'mt-2 p-2 rounded border text-xs select-text relative z-20',
+                'break-words whitespace-pre-wrap',  // ✅ Break long words (file paths) + preserve line breaks
                 colors.border,
                 'bg-white dark:bg-gray-900',
                 colors.text.secondary

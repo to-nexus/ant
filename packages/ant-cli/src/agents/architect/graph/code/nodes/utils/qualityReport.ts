@@ -51,7 +51,11 @@ export async function generateQualityReport(
     const metrics = analyzeFiles(generatedFiles);
     
     // Load requirements (if available)
-    const requirements = await loadRequirements(state.context.project, state.context.featureFolder, gitPort);
+    const featurePath = state.context.featurePath;
+    if (!featurePath) {
+      throw new Error('featurePath not available in context');
+    }
+    const requirements = await loadRequirements(state.context.project, state.context.featureFolder, featurePath, gitPort);
 
     // Generate recommendations
     const allRecommendations = new Set<string>();
@@ -72,14 +76,14 @@ export async function generateQualityReport(
     };
 
     // Save report
-    const reportPath = await saveReport(state.context.project, state.context.featureFolder, report, gitPort);
+    const reportPath = await saveReport(state.context.project, state.context.featureFolder, featurePath, report, gitPort);
     console.log(`📄 Evaluation report saved: ${reportPath}`);
 
     // Print summary
     printSummary(report);
 
     // Check quality thresholds
-    await checkQualityThresholds(state.context.project, state.context.featureFolder, report, gitPort);
+    await checkQualityThresholds(state.context.project, state.context.featureFolder, featurePath, report, gitPort);
 
     return report;
   } catch (error: any) {
@@ -90,16 +94,10 @@ export async function generateQualityReport(
 
 /**
  * Load requirements checklist from eval directive
- * ⚠️ Note: This function cannot access WorkspaceResolver directly.
- * It receives paths that should already be resolved by the caller.
- * TODO: Refactor to accept resolved featurePath instead of project/featureFolder
  */
-async function loadRequirements(project: string, featureFolder: string, gitPort: GitPort): Promise<RequirementChecklistItem[] | undefined> {
+async function loadRequirements(project: string, featureFolder: string, featurePath: string, gitPort: GitPort): Promise<RequirementChecklistItem[] | undefined> {
   try {
-    // ⚠️ TEMPORARY: Using hardcoded path structure
-    // This should be refactored to receive featurePath from caller
-    // For now, using 'workspaces' (plural) to match project structure
-    const testsPath = path.join('workspaces', 'local', 'user', project, 'features', featureFolder, 'inputs/directives/eval/tests.json');
+    const testsPath = path.join(featurePath, 'inputs/directives/eval/tests.json');
 
     const exists = await gitPort.fileExists(testsPath);
     if (!exists) {
@@ -126,13 +124,9 @@ async function loadRequirements(project: string, featureFolder: string, gitPort:
 
 /**
  * Save evaluation report
- * ⚠️ Note: This function cannot access WorkspaceResolver directly.
- * TODO: Refactor to accept resolved featurePath instead of project/featureFolder
  */
-async function saveReport(project: string, featureFolder: string, report: EvaluationReport, gitPort: GitPort): Promise<string> {
-  // ⚠️ TEMPORARY: Using hardcoded path structure
-  // This should be refactored to receive featurePath from caller
-  const outputDir = path.join('workspaces', 'local', 'user', project, 'features', featureFolder, 'outputs/eval');
+async function saveReport(project: string, featureFolder: string, featurePath: string, report: EvaluationReport, gitPort: GitPort): Promise<string> {
+  const outputDir = path.join(featurePath, 'outputs/eval');
   
   // Create directory if needed
   await gitPort.createDirectory(outputDir);
@@ -231,14 +225,10 @@ function printSummary(report: EvaluationReport): void {
 
 /**
  * Check quality thresholds
- * ⚠️ Note: This function cannot access WorkspaceResolver directly.
- * TODO: Refactor to accept resolved featurePath instead of project/featureFolder
  */
-async function checkQualityThresholds(project: string, featureFolder: string, report: EvaluationReport, gitPort: GitPort): Promise<void> {
+async function checkQualityThresholds(project: string, featureFolder: string, featurePath: string, report: EvaluationReport, gitPort: GitPort): Promise<void> {
   try {
-    // ⚠️ TEMPORARY: Using hardcoded path structure
-    // This should be refactored to receive featurePath from caller
-    const thresholdsPath = path.join('workspaces', 'local', 'user', project, 'features', featureFolder, 'inputs/directives/eval/quality-thresholds.json');
+    const thresholdsPath = path.join(featurePath, 'inputs/directives/eval/quality-thresholds.json');
 
     const exists = await gitPort.fileExists(thresholdsPath);
     if (!exists) {

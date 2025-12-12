@@ -27,16 +27,10 @@ The following {{files.length}} files were retrieved from the **actual codebase**
 
 ---
 
-## 🔧 Working with These Files
+## 🔧 How to Work with These Files
 
-### To Modify:
-1. **Always call `read_file("path")` first**
-2. Use `<edit>` with EXACT search block from read result
-3. Never edit without reading - content may have changed!
-
-### To Create New Files:
-- Only if NOT listed above
-- Use `<file>` tags
+- **To modify:** Call `read_file("path")` to see content, then use `<edit>`
+- **To create new:** Only if NOT listed above, use `<file>` tags
 
 ---
 
