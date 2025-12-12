@@ -8,15 +8,17 @@
  */
 
 import { LLMClient } from "../../../../../../core/ports";
-import { ArchitectGraphState, TASK_PRIORITIES } from "../../state";
+import { ArchitectGraphState, TASK_PRIORITIES, Violation } from "../../state";
 import { CodeTask } from "../../../../types/task";
+import { formatViolations } from "../shared/violationFormatter";
 
 export async function generatePlanText(
   llm: LLMClient,
   task: CodeTask,
   state: ArchitectGraphState,
   projectCodeContext: any,
-  referenceCodeContexts: any[]
+  referenceCodeContexts: any[],
+  violations?: Violation[]
 ): Promise<string> {
   const requiresPlan = 
     task.priority !== TASK_PRIORITIES.FINAL_VERIFICATION &&  
@@ -44,11 +46,21 @@ export async function generatePlanText(
   
   const designDoc = state.design || '';
   
+  // ✅ Format violations for retry context
+  const violationsText = violations && violations.length > 0 
+    ? formatViolations(violations) 
+    : undefined;
+  
+  if (violationsText) {
+    console.log(`⚠️  [Plan] Including retry context (${violations?.length} violation(s))`);
+  }
+  
   const prompt = await promptEngine.buildTaskPlanPrompt(
     task,
     state.directive || '',
     designDoc,
-    projectCodeContext
+    projectCodeContext,
+    violationsText
   );
   
   const response = await llm.invoke([

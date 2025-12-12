@@ -2,7 +2,7 @@
  * RAG Search for Decompose Node
  * 
  * Loads file paths (not content) for task planning
- * Uses two-tier search: stackTrace (priority) + semantic (context)
+ * Uses two-tier search: errorFiles (priority) + semantic (context)
  */
 
 import { ArchitectGraphState } from "../../state";
@@ -13,14 +13,14 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
   filePaths: string[];
   gitDiff: any;
 }> {
-  const stackTrace = state.decomposeKeywords?.stackTrace || [];
+  const errorFiles = state.decomposeKeywords?.errorFiles || [];
   const keywords = state.decomposeKeywords?.keywords || [];
   
-  if (stackTrace.length === 0 && keywords.length === 0) {
+  if (errorFiles.length === 0 && keywords.length === 0) {
     return { filePaths: [], gitDiff: undefined };
   }
   
-  console.log(`🔍 [Decompose] Two-tier search: ${stackTrace.length} stack trace + ${keywords.length} semantic keywords...`);
+  console.log(`🔍 [Decompose] Two-tier search: ${errorFiles.length} error files + ${keywords.length} semantic keywords...`);
   console.log(`   📊 File paths only (NO limit - paths are cheap!)...`);
   
   const retriever = state.deps?.retriever;
@@ -36,11 +36,11 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
   
   // ✅ Show retrieving status ONCE at the start (before any search)
   const allKeywords: string[] = [];
-  if (stackTrace.length > 0) {
-    allKeywords.push(...stackTrace.map(f => `[stack] ${f}`));
+  if (errorFiles.length > 0) {
+    allKeywords.push(...errorFiles.map((f: string) => `[error] ${f}`));
   }
   if (keywords.length > 0) {
-    allKeywords.push(...keywords.map(k => `[semantic] ${k}`));
+    allKeywords.push(...keywords.map((k: string) => `[semantic] ${k}`));
   }
   
   // Declare retrieving index outside the if block so it's accessible later
@@ -52,15 +52,15 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
   }
   
   // Tier 1: Stack trace files (priority, NO LIMIT)
-  const stackFiles: string[] = [];
+  const errorFilesResult: string[] = [];
   
-  if (stackTrace.length > 0) {
-    console.log(`   📍 Stack trace search: ${stackTrace.length} files (loading ALL)...`);
+  if (errorFiles.length > 0) {
+    console.log(`   📍 Error files search: ${errorFiles.length} files (loading ALL)...`);
     
     const { resolveStackTraceFile } = await import('../../../../../../core/utils/filePathResolver');
     
-    // ✅ Load ALL stack trace files (no limit - paths are cheap)
-    for (const filePath of stackTrace) {
+    // ✅ Load ALL error files (no limit - paths are cheap)
+    for (const filePath of errorFiles) {
       let loaded = false;
       
       // Strategy 1: Vector DB search
@@ -75,7 +75,7 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
         
         const files = vectorResult.files?.map((f: any) => typeof f === 'string' ? f : f.path) || [];
         if (files.length > 0) {
-          stackFiles.push(files[0]);
+          errorFilesResult.push(files[0]);
           console.log(`      ✅ Vector DB: ${files[0]}`);
           loaded = true;
         }
@@ -90,7 +90,7 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
           const resolved = await resolveStackTraceFile(filePath, state.context.workingDir, git);
           
           if (resolved.confidence !== 'not_found') {
-            stackFiles.push(resolved.resolvedPath);
+            errorFilesResult.push(resolved.resolvedPath);
             console.log(`      ✅ File resolver (${resolved.confidence}): ${resolved.resolvedPath}`);
             if (resolved.candidates && resolved.candidates.length > 1) {
               console.log(`         📋 Other candidates: ${resolved.candidates.filter(c => c !== resolved.resolvedPath).slice(0, 3).join(', ')}`);
@@ -109,9 +109,9 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
     
     // Display stack trace results
     await chatAPI.showChatStatus('retrieved', {
-      filesCount: stackFiles.length,
-      filesList: stackFiles.slice(0, 10),
-      content: `Retrieved: ${stackFiles.length} files from stack traces`,
+      filesCount: errorFilesResult.length,
+      filesList: errorFilesResult.slice(0, 10),
+      content: `Retrieved: ${errorFilesResult.length} files from stack traces`,
       _mergeIndex: retrievingIndex
     });
     
@@ -139,11 +139,11 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
   let missedKeywords: string[] = [];
   
   if (keywords.length > 0) {
-    console.log(`   🔍 Semantic search: ${keywords.length} keywords (excluding ${stackFiles.length} stack trace files)...`);
+    console.log(`   🔍 Semantic search: ${keywords.length} keywords (excluding ${errorFilesResult.length} stack trace files)...`);
     const searchQuery = keywords.join(' ');
     
     // ✅ Request extra files to compensate for duplicates
-    const requestCount = 100 + stackFiles.length;
+    const requestCount = 100 + errorFilesResult.length;
     
     const searchResult = await retriever.retrieve(
       searchQuery,
@@ -161,10 +161,10 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
       typeof f === 'string' ? f : f.path
     ) || [];
     
-    const duplicatesCount = allVectorFiles.filter(f => stackFiles.includes(f)).length;
+    const duplicatesCount = allVectorFiles.filter(f => errorFilesResult.includes(f)).length;
     
     // ✅ CRITICAL: Exclude stack trace files to avoid duplicates
-    vectorDbFiles = allVectorFiles.filter(f => !stackFiles.includes(f));
+    vectorDbFiles = allVectorFiles.filter(f => !errorFilesResult.includes(f));
     
     console.log(`   ✅ Vector DB: ${vectorDbFiles.length} NEW files (${duplicatesCount} duplicates from stack trace excluded)`);
     
@@ -172,7 +172,7 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
     let retrievedMessage: string;
     if (vectorDbFiles.length > 0) {
       retrievedMessage = `Retrieved: ${vectorDbFiles.length} files from semantic search (${duplicatesCount} duplicates excluded)`;
-    } else if (stackFiles.length > 0) {
+    } else if (errorFilesResult.length > 0) {
       retrievedMessage = `Retrieved: All matching files already in stack trace results`;
     } else {
       retrievedMessage = `Retrieved: 0 files (Vector DB empty or no matches)`;
@@ -246,10 +246,10 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
   }
   
   // ✅ Merge (already deduplicated - semantic excluded stack trace files)
-  const allFiles = [...stackFiles, ...semanticFilePaths];
+  const allFiles = [...errorFilesResult, ...semanticFilePaths];
   const codebaseFilePaths = allFiles;  // No need for Map - already unique!
   
-  console.log(`   ✅ Total: ${codebaseFilePaths.length} files (${stackFiles.length} stack trace + ${semanticFilePaths.length} semantic)`);
+  console.log(`   ✅ Total: ${codebaseFilePaths.length} files (${errorFilesResult.length} stack trace + ${semanticFilePaths.length} semantic)`);
   
   // Git diff summary
   let gitDiffResult: any = undefined;

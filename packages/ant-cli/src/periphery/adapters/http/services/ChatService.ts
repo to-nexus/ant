@@ -29,9 +29,9 @@ export interface MessageContent {
      | 'text'
      | 'cancelled'      // Task cancelled (with Resume button)
      // File Operations - Real-time streaming
-     | 'file_creating' | 'file_writing' | 'file_create'
-     | 'file_editing' | 'file_updating' | 'file_edit'
-     | 'file_deleting' | 'file_delete'
+     | 'file_creating' | 'file_writing' | 'file_create' | 'file_create_failed'
+     | 'file_editing' | 'file_updating' | 'file_edit' | 'file_edit_failed'
+     | 'file_deleting' | 'file_delete' | 'file_delete_failed'
      // Tool Actions - Cursor/Copilot style
      | 'tool_action'    // Simple tool actions (mkdir, etc.)
      // Command Execution - Real-time streaming

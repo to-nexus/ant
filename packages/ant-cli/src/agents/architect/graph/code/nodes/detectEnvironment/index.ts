@@ -104,7 +104,7 @@ export async function detectEnvironment(
   
   // Build decomposeKeywords
   const decomposeKeywords = {
-    stackTrace: parsed.decomposeKeywords.stackTrace || [],
+    errorFiles: parsed.decomposeKeywords.errorFiles || [],
     keywords: parsed.decomposeKeywords.keywords || [],
     references: new Map<string, string[]>()
   };
@@ -127,9 +127,9 @@ export async function detectEnvironment(
   console.log(`   Require RAG for Decompose: ${parsed.requireRagForDecompose}`);
   
   // Display keywords in Chat UI - 항상 표시
-  const stackTraceCount = decomposeKeywords.stackTrace.length;
+  const errorFileCount = decomposeKeywords.errorFiles.length;
   const semanticCount = decomposeKeywords.keywords.length;
-  const totalCount = stackTraceCount + semanticCount;
+  const totalCount = errorFileCount + semanticCount;
   
   let summary: string;
   const filesList: string[] = [];
@@ -139,8 +139,8 @@ export async function detectEnvironment(
   } else {
     // Build summary
     const parts: string[] = [];
-    if (stackTraceCount > 0) {
-      parts.push(`${stackTraceCount} from stack traces`);
+    if (errorFileCount > 0) {
+      parts.push(`${errorFileCount} from errors`);
     }
     if (semanticCount > 0) {
       parts.push(`${semanticCount} semantic keywords`);
@@ -148,7 +148,7 @@ export async function detectEnvironment(
     summary = `Analyzed: ${parts.join(', ')}`;
     
     // Build file list with type tags
-    decomposeKeywords.stackTrace.forEach(file => {
+    decomposeKeywords.errorFiles.forEach(file => {
       filesList.push(`[stacktrace] ${file}`);
     });
     
@@ -163,8 +163,8 @@ export async function detectEnvironment(
     }
     
     // Log to console
-    if (stackTraceCount > 0) {
-      console.log(`   📍 Stack trace: ${decomposeKeywords.stackTrace.join(', ')}`);
+    if (errorFileCount > 0) {
+      console.log(`   📍 Stack trace: ${decomposeKeywords.errorFiles.join(', ')}`);
     }
     if (semanticCount > 0) {
       console.log(`   🔍 Keywords: ${decomposeKeywords.keywords.join(', ')}`);
@@ -180,7 +180,7 @@ export async function detectEnvironment(
   await chatAPI.showChatStatus('analyzed', {
     content: summary,
     keywordCount: totalCount,
-    stackTraceCount,
+    errorFileCount,
     semanticCount,
     filesList,
     _mergeIndex: analyzingIndex

@@ -35,11 +35,14 @@ export type MessageContentType =
   | 'file_creating'  // File creation started (header only)
   | 'file_writing'   // File being written (real-time code streaming)
   | 'file_create'    // File creation complete (collapsible)
+  | 'file_create_failed'  // File creation failed
   | 'file_editing'   // File edit started (header only)
   | 'file_updating'  // File being updated (real-time diff streaming)
   | 'file_edit'      // File edit complete (collapsible)
+  | 'file_edit_failed'    // File edit failed (search block not found, etc.)
   | 'file_deleting'  // File deletion started
   | 'file_delete'    // File deletion complete
+  | 'file_delete_failed'  // File deletion failed
   // Tool Actions - Cursor/Copilot style (minimal, one-line display)
   | 'tool_action'    // Simple tool actions (mkdir, etc.) - ✓ Created organisms/, templates/
   // Command Execution - Real-time streaming

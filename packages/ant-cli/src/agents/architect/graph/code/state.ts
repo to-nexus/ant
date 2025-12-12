@@ -99,8 +99,7 @@ export interface EnforcementFeedback {
   taskId: string;                    // 어떤 task에서 발생했는지
   taskName: string;
   attemptNumber: number;             // 몇 번째 시도인지
-  violations: Violation[];           // 발생한 에러들
-  enforcementReason: string;         // 왜 enforcement가 발생했는지
+  violations: Violation[];           // 발생한 에러들 (구조화된 형식)
   fixStrategy: 'retry' | 'add_tasks' | 'skip';  // 어떤 전략을 선택했는지
   addedTasks?: CodeTask[];               // 추가된 에러 태스크 (add_tasks인 경우)
   timestamp: number;                 // 언제 발생했는지
@@ -145,7 +144,7 @@ export interface ArchitectGraphState extends TaskArtifacts {
   environmentReasoning?: string;
   requireRagForDecompose?: boolean;
   decomposeKeywords?: {
-    stackTrace: string[];  // ✅ Stack trace files (exact paths)
+    errorFiles: string[];  // ✅ Files that caused errors (build errors, file operation errors)
     keywords: string[];    // ✅ Semantic keywords
     references: Map<string, string[]>;
   }
@@ -269,7 +268,6 @@ export interface ArchitectGraphState extends TaskArtifacts {
 
   retries: number;
   maxRetries: number;
-  enforcementReason?: string | null;  // Validation errors passed from enforce to plan
   
   // Progress tracking (for smart retry reset)
   lastViolations?: Violation[];  // ✅ 구조화된 이전 violations

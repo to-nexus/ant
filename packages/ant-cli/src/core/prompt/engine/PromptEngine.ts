@@ -429,7 +429,8 @@ export class PromptEngine {
     },
     directive: string,  // ✅ Original directive for ground truth
     designDoc: string | undefined,
-    projectCodeContext: any
+    projectCodeContext: any,
+    violationsText?: string  // ✅ Formatted violations for retry context
   ): Promise<string> {
     // ✅ Format projectCodeContext (files array → formatted string)
     let formattedCodeContext = '';
@@ -451,7 +452,9 @@ export class PromptEngine {
       designDoc: designDoc,
       projectCodeContext: formattedCodeContext,  // ✅ Formatted string (not .code property)
       hasDesignDoc: !!designDoc,
-      hasProjectCodeContext: !!formattedCodeContext
+      hasProjectCodeContext: !!formattedCodeContext,
+      violationsText: violationsText,  // ✅ Formatted violations for retry
+      isRetry: !!violationsText  // ✅ Flag for template conditional
     });
   }
 }

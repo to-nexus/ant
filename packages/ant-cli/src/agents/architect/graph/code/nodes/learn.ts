@@ -298,18 +298,8 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
           overrideDirective: state.overrideDirective,  // ✅ Save chat-initiated directive
           chatSource: state.chatSource,  // ✅ Save chat source flag
           referenceRequests: state.referenceRequests || [],  // ✅ Save reference repositories for analysis
-          // ✅ CRITICAL: Preserve projectCodeContext (filePaths only, NOT content)
-          projectCodeContext: existingSession.state?.projectCodeContext || (state.projectCodeContext ? {
-            source: state.projectCodeContext.source,
-            filePaths: state.projectCodeContext.filePaths || [],
-            files: [],  // Don't save heavy content
-            stats: state.projectCodeContext.stats || { filesLoaded: 0, estimatedTokens: 0 }
-          } : {
-            source: 'plan' as const,
-            filePaths: [],
-            files: [],
-            stats: { filesLoaded: 0, stackTraceCount: 0, semanticCount: 0, deduplicatedCount: 0, estimatedTokens: 0 }
-          })
+          // ✅ projectCodeContext is NOT saved to checkpoint
+          // Plan node always regenerates it via RAG - no need to persist
         }
       }
     );

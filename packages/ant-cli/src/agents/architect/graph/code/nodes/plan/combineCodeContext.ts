@@ -18,7 +18,7 @@
 
 import { GitPort } from "../../../../../../core/ports";
 import { ArchitectGraphState } from "../../state";
-import { loadStackTraceFiles, LoadedFile } from "./stackTraceLoader";
+import { loadErrorFiles, LoadedFile } from "./stackTraceLoader";
 import { loadSemanticFiles } from "./semanticSearch";
 import { extractFilesFromCode } from "./utils";
 
@@ -37,8 +37,9 @@ export interface ProjectCodeContext {
 }
 
 export interface TaskKeywords {
-  stackTrace: string[];
+  errorFiles: string[];
   keywords: string[];
+  references?: Map<string, string[]>;  // Optional reference project keywords
 }
 
 /**
@@ -65,7 +66,7 @@ export async function combineCodeContext(
   vectorDB: any,
   git: GitPort
 ): Promise<ProjectCodeContext | null> {
-  const hasStackTrace = taskKeywords.stackTrace.length > 0;
+  const hasStackTrace = taskKeywords.errorFiles.length > 0;
   const hasKeywords = taskKeywords.keywords.length > 0;
   
   // If no keywords, return null (caller will create empty context)
@@ -79,8 +80,8 @@ export async function combineCodeContext(
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Tier 1: Stack trace files (priority)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const stackFiles = await loadStackTraceFiles(
-    taskKeywords.stackTrace,
+  const stackFiles = await loadErrorFiles(
+    taskKeywords.errorFiles,
     state,
     retriever,
     vectorDB,

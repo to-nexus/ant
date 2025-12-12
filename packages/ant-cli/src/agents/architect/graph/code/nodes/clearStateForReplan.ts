@@ -82,7 +82,6 @@ export async function clearStateForReplan(state: ArchitectGraphState): Promise<A
     enforcementHistory: [],
     lastViolations: [],
     violations: undefined,
-    enforcementReason: undefined,
     
     // Plan reset
     planText: '',

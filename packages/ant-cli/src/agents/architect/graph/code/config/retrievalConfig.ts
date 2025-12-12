@@ -14,28 +14,27 @@ export const RETRIEVAL_CONFIG = {
    * Absolute maximum total files (for plan node only)
    * Decompose has no limit (file paths are cheap)
    * 
-   * ✅ Increased to 25 to handle projects with many files
-   * - Most projects: 15-20 uncommitted files during development
-   * - Need higher quota to include all generated files
+   * ✅ Increased to 20 to handle projects with many files
+   * - Most projects have 15-20 uncommitted files during development
    */
-  TOTAL_MAX: 25,
+  TOTAL_MAX: 20,
   
   /**
    * Calculate semantic quota based on stack trace count
    * 
    * CRITICAL: Semantic search MUST exclude stack trace files to avoid wasting quota!
    * 
-   * @param stackTraceCount - Number of files already loaded from stack trace
+   * @param errorFileCount - Number of files already loaded from stack trace
    * @returns Maximum number of NEW semantic files to load (after excluding stack trace files)
    * 
    * @example
-   * - stackTrace: 0 → semantic: 15 (use full quota)
-   * - stackTrace: 3 → semantic: 12 (15 - 3) ← Can load 12 NEW files
-   * - stackTrace: 5 → semantic: 10 (15 - 5) ← Can load 10 NEW files
-   * - stackTrace: 10 → semantic: 5  (15 - 10)
-   * - stackTrace: 15 → semantic: 0  (quota exhausted)
+   * - errorFiles: 0 → semantic: 15 (use full quota)
+   * - errorFiles: 3 → semantic: 12 (15 - 3) ← Can load 12 NEW files
+   * - errorFiles: 5 → semantic: 10 (15 - 5) ← Can load 10 NEW files
+   * - errorFiles: 10 → semantic: 5  (15 - 10)
+   * - errorFiles: 15 → semantic: 0  (quota exhausted)
    */
-  getSemanticQuota(stackTraceCount: number): number {
-    return Math.max(0, this.TOTAL_MAX - stackTraceCount);
+  getSemanticQuota(errorFileCount: number): number {
+    return Math.max(0, this.TOTAL_MAX - errorFileCount);
   }
 } as const;
