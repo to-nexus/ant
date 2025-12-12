@@ -64,6 +64,8 @@ or better (if path visible):
 
 **Purpose**: Find related code through semantic similarity search.
 
+**Format**: Single tokens only (no spaces). Use camelCase, PascalCase, or snake_case for compound concepts.
+
 **What to include**:
 
 1. **Error identifiers**
@@ -77,7 +79,7 @@ or better (if path visible):
    - Type/interface names related to data structures
 
 3. **Domain concepts**
-   - Feature names from task description
+   - Feature names from task description (as single words or camelCase)
    - Business operations being implemented
    - State/status concepts in the domain
 
@@ -90,7 +92,8 @@ or better (if path visible):
 - ❌ Generic terms: `"function"`, `"variable"`, `"React"`
 - ❌ Language keywords: `"const"`, `"async"`, `"class"`
 - ❌ Non-existent files (don't guess file names)
-- ❌ Redundant variations: If you have `"join room"`, don't add `"joining room"`, `"room join"`
+- ❌ Multi-word phrases with spaces: `"join room"` (use `"joinRoom"` instead)
+- ❌ Redundant variations: If you have `"joinRoom"`, don't add `"joiningRoom"`, `"roomJoin"`
 
 **Limit**: 8-12 keywords maximum
 
@@ -190,112 +193,44 @@ Update automatically when rooms change.
 {
   "stackTrace": [],
   "keywords": [
-    "room list",
-    "room display",
-    "real-time updates",
-    "room status",
-    "player count",
+    "roomList",
+    "roomDisplay",
+    "realTimeUpdates",
+    "roomStatus",
+    "playerCount",
     "WebSocket",
-    "room management",
-    "list component",
-    "auto refresh"
+    "roomManagement",
+    "listComponent",
+    "autoRefresh"
   ]
 }
 ```
 
 **Why good**:
 - ✅ Empty stack trace (no error)
-- ✅ Feature keywords (room list, display)
-- ✅ Technical requirements (real-time, WebSocket)
-- ✅ Domain concepts (room status, player count)
+- ✅ Feature keywords (roomList, display)
+- ✅ Technical requirements (realTimeUpdates, WebSocket)
+- ✅ Domain concepts (roomStatus, playerCount)
+- ✅ Single-token format (camelCase for compound concepts)
 - ✅ 9 keywords (within limit)
 
 ---
 
-### Example 2.5: Performance/Balance Request (No Stack Trace)
+### Example 3: Common Mistakes
 
-**Directive**:
-```
-Fix the gameplay balance issue where paddle movement speed is too slow.
-Increase paddle speed to allow players to intercept the ball.
-```
+**❌ Don't**:
+- Add file extensions incorrectly: `"UserList"` instead of `"UserList.tsx"`
+- Guess files that might not exist
+- Use generic terms: `"map"`, `"undefined"`, `"error"`
+- Use language keywords: `"property"`, `"const"`, `"async"`
+- Add too many keywords (40+)
+- Use multi-word phrases with spaces: `"user data"`, `"array null check"`
 
-**Output**:
-```json
-{
-  "stackTrace": [],
-  "keywords": [
-    "paddle speed",
-    "ball speed",
-    "paddle movement",
-    "gameplay balance",
-    "movement speed",
-    "speed adjustment",
-    "game physics",
-    "player input",
-    "GameEngine"
-  ]
-}
-```
-
-**Why good**:
-- ✅ Empty stack trace (NO error, just performance/balance request)
-- ✅ Keywords focus on domain concepts (paddle, ball, speed, balance)
-- ✅ Technical terms (GameEngine, physics, input)
-- ❌ NO files in stackTrace (not an error trace!)
-
----
-
-### Example 3: BAD (What NOT to do)
-
-**Directive**:
-```
-Error: Cannot read property 'map' of undefined in UserList.tsx
-```
-
-**BAD Output**:
-```json
-{
-  "stackTrace": [
-    "UserList",                    ❌ Missing .tsx
-    "useUserList.ts"               ❌ Guessed file (doesn't exist)
-  ],
-  "keywords": [
-    "map",                         ❌ Too generic
-    "undefined",                   ❌ Too generic
-    "property",                    ❌ Language keyword
-    "read",                        ❌ Too generic
-    "error",                       ❌ Too generic
-    "TypeError",                   ❌ Generic error type
-    "user",                        ❌ Too broad
-    "list",                        ❌ Too broad
-    "array",                       ❌ Generic
-    "iteration",
-    "foreach",
-    "loop",
-    ... 40 more keywords           ❌ Way too many!
-  ]
-}
-```
-
-**GOOD Output**:
-```json
-{
-  "stackTrace": [
-    "UserList.tsx"                 ✅ Exact file name
-  ],
-  "keywords": [
-    "UserList",                    ✅ Component name
-    "map undefined",               ✅ Specific error pattern
-    "array null check",            ✅ Related concept
-    "user data",                   ✅ Domain concept
-    "data loading",                ✅ Likely cause
-    "useState",                    ✅ State management
-    "useEffect",                   ✅ Data fetching
-    "API response"                 ✅ Data source
-  ]
-}
-```
+**✅ Do**:
+- Use exact file names from error messages
+- Use specific component/function names: `"UserList"`, `"mapUndefined"`
+- Keep 8-12 keywords maximum
+- Use single-token format (camelCase): `"userData"`, `"arrayNullCheck"`
 
 ---
 
