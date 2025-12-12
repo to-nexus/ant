@@ -88,11 +88,18 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   
   if (state.violations && state.violations.length > 0) {
     const violationsText = formatViolations(state.violations);
+    
     const enforcementHeader = `════════════════════════════════════════════════════════════════════════════════\n` +
-      `⚠️  CRITICAL: PREVIOUS ATTEMPT FAILED - READ THIS FIRST!\n` +
+      `🚨 CRITICAL: PREVIOUS ATTEMPT FAILED - VIOLATIONS BELOW ARE MANDATORY TO FIX!\n` +
       `════════════════════════════════════════════════════════════════════════════════\n\n` +
+      `**VIOLATIONS ARE NOT SUGGESTIONS - THEY ARE ABSOLUTE REQUIREMENTS:**\n\n` +
       `${violationsText}\n\n` +
-      `YOU MUST FIX THE ABOVE ISSUE BEFORE PROCEEDING!\n` +
+      `🚨 YOU MUST:\n` +
+      `1. READ EACH VIOLATION ABOVE CAREFULLY\n` +
+      `2. UNDERSTAND THE ROOT CAUSE\n` +
+      `3. FOLLOW THE EXACT FIX INSTRUCTIONS IN EACH VIOLATION MESSAGE\n` +
+      `4. DO NOT PROCEED WITH YOUR ORIGINAL PLAN UNTIL ALL VIOLATIONS ARE FIXED\n\n` +
+      `⚠️  Ignoring violations = Task fails permanently!\n` +
       `════════════════════════════════════════════════════════════════════════════════\n\n`;
     
     finalPrompt = enforcementHeader + finalPrompt;
