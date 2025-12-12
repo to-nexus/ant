@@ -95,7 +95,18 @@ export async function codeGen(
   // This prevents LLM from accidentally using <file> on existing files
   const existingFiles = new Set<string>();
   
-  // Add files from projectCodeContext
+  // ✅ CRITICAL: Use filePaths instead of files array
+  // - files array may be empty (content not saved to session for memory optimization)
+  // - filePaths array always contains the list of known files
+  if (state.projectCodeContext?.filePaths) {
+    for (const filePath of state.projectCodeContext.filePaths) {
+      if (filePath) {
+        existingFiles.add(filePath);
+      }
+    }
+  }
+  
+  // ✅ FALLBACK: Also add files from files array if available (for backward compatibility)
   if (state.projectCodeContext?.files) {
     for (const file of state.projectCodeContext.files) {
       if (file.path) {

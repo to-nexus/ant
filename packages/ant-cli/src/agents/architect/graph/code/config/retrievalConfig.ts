@@ -13,8 +13,12 @@ export const RETRIEVAL_CONFIG = {
   /**
    * Absolute maximum total files (for plan node only)
    * Decompose has no limit (file paths are cheap)
+   * 
+   * ✅ Increased to 25 to handle projects with many files
+   * - Most projects: 15-20 uncommitted files during development
+   * - Need higher quota to include all generated files
    */
-  TOTAL_MAX: 15,
+  TOTAL_MAX: 25,
   
   /**
    * Calculate semantic quota based on stack trace count
