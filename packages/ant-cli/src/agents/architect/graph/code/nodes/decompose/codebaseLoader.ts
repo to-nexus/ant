@@ -55,63 +55,35 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
   const errorFilesResult: string[] = [];
   
   if (errorFiles.length > 0) {
-    console.log(`   📍 Error files search: ${errorFiles.length} files (loading ALL)...`);
+    console.log(`   📍 Error files: ${errorFiles.length} files (loading from local)...`);
     
     const { resolveStackTraceFile } = await import('../../../../../../core/utils/filePathResolver');
     
-    // ✅ Load ALL error files (no limit - paths are cheap)
+    // ✅ Load error files directly from local (no Vector DB - exact paths!)
     for (const filePath of errorFiles) {
-      let loaded = false;
-      
-      // Strategy 1: Vector DB search
       try {
-        console.log(`      🔍 Vector search: ${filePath}`);
-        const vectorResult = await retriever.retrieve(
-          filePath,
-          state.context.workingDir,
-          { vectorDB, git },
-          { project: state.context.project, maxTokens: 8000, maxFiles: 1, mode: 'refactor' }
-        );
+        console.log(`      🔍 Local file: ${filePath}`);
+        const resolved = await resolveStackTraceFile(filePath, state.context.workingDir, git);
         
-        const files = vectorResult.files?.map((f: any) => typeof f === 'string' ? f : f.path) || [];
-        if (files.length > 0) {
-          errorFilesResult.push(files[0]);
-          console.log(`      ✅ Vector DB: ${files[0]}`);
-          loaded = true;
+        if (resolved.confidence !== 'not_found') {
+          errorFilesResult.push(resolved.resolvedPath);
+          console.log(`      ✅ Loaded (${resolved.confidence}): ${resolved.resolvedPath}`);
+          if (resolved.candidates && resolved.candidates.length > 1) {
+            console.log(`         📋 Other candidates: ${resolved.candidates.filter(c => c !== resolved.resolvedPath).slice(0, 3).join(', ')}`);
+          }
+        } else {
+          console.error(`      ❌ FAILED to resolve: ${filePath}`);
         }
       } catch (e: any) {
-        console.warn(`      ⚠️  Vector search failed: ${e.message}`);
-      }
-      
-      // Strategy 2: File Path Resolver
-      if (!loaded) {
-        try {
-          console.log(`      🔍 File resolver: ${filePath}`);
-          const resolved = await resolveStackTraceFile(filePath, state.context.workingDir, git);
-          
-          if (resolved.confidence !== 'not_found') {
-            errorFilesResult.push(resolved.resolvedPath);
-            console.log(`      ✅ File resolver (${resolved.confidence}): ${resolved.resolvedPath}`);
-            if (resolved.candidates && resolved.candidates.length > 1) {
-              console.log(`         📋 Other candidates: ${resolved.candidates.filter(c => c !== resolved.resolvedPath).slice(0, 3).join(', ')}`);
-            }
-            loaded = true;
-          }
-        } catch (e: any) {
-          console.warn(`      ⚠️  File resolver failed: ${e.message}`);
-        }
-      }
-      
-      if (!loaded) {
-        console.error(`      ❌ FAILED to load: ${filePath}`);
+        console.warn(`      ⚠️  Failed to load: ${e.message}`);
       }
     }
     
-    // Display stack trace results
+    // Display error files results
     await chatAPI.showChatStatus('retrieved', {
-      filesCount: errorFilesResult.length,
-      filesList: errorFilesResult.slice(0, 10),
-      content: `Retrieved: ${errorFilesResult.length} files from stack traces`,
+      filesCount: 0,
+      filesList: [],
+      content: `Retrieved: Error files loaded from local only (no Vector DB)`,
       _mergeIndex: retrievingIndex
     });
     
@@ -119,15 +91,15 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
     const exploringIndex1 = await chatAPI.showChatStatus('exploring', { filesCount: 0, totalFiles: 0 });
     await chatAPI.showChatStatus('explored', {
       filesCount: 0,
-      content: `Explored: File paths only (no git check for decompose)`,
+      content: `Explored: No git check for decompose`,
       _mergeIndex: exploringIndex1
     });
     
     const greppingIndex1 = await chatAPI.showChatStatus('grepping', { totalFiles: 0 });
     await chatAPI.showChatStatus('grepped', {
-      filesCount: 0,
-      filesList: [],
-      content: `Grepped: All files found via vector search`,
+      filesCount: errorFilesResult.length,
+      filesList: errorFilesResult.slice(0, 10),
+      content: `Grepped: ${errorFilesResult.length} error files from local`,
       _mergeIndex: greppingIndex1
     });
   }

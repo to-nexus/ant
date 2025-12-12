@@ -238,15 +238,18 @@ function ContentBlock({ content, isStreaming }: ContentBlockProps) {
     case 'file_creating':
     case 'file_writing':
     case 'file_create':
+    case 'file_create_failed':
       return <FileCard content={content} operation="create" isStreaming={isStreaming} />;
 
     case 'file_editing':
     case 'file_updating':
     case 'file_edit':
+    case 'file_edit_failed':
       return <FileCard content={content} operation="edit" isStreaming={isStreaming} />;
 
     case 'file_deleting':
     case 'file_delete':
+    case 'file_delete_failed':
       return <FileCard content={content} operation="delete" isStreaming={isStreaming} />;
 
     default:

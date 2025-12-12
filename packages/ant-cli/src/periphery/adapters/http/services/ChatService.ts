@@ -576,18 +576,45 @@ export class ChatService {
       const inProgressTypes = {
         'file_create': ['file_creating', 'file_writing'],
         'file_edit': ['file_editing', 'file_updating'],
-        'file_delete': ['file_deleting']
+        'file_delete': ['file_deleting'],
+        'file_create_failed': ['file_creating', 'file_writing'],
+        'file_edit_failed': ['file_editing', 'file_updating'],
+        'file_delete_failed': ['file_deleting']
       };
       
       const typesToFind = inProgressTypes[content.type] || [];
-      const existingIndex = existingContents.findIndex(c => 
-        typesToFind.includes(c.type) && 
-        c.metadata?.filePath === content.metadata?.filePath
-      );
+      
+      // ✅ 1st: Try to find via activeFileOperations (most reliable - tracks actual index)
+      let existingIndex = -1;
+      if (content.metadata?.filePath && session.activeFileOperations) {
+        const activeOp = session.activeFileOperations.get(content.metadata.filePath);
+        if (activeOp) {
+          existingIndex = activeOp.contentIndex;
+          console.log(`[ChatService] 🎯 Found file card via activeFileOperations: ${content.metadata.filePath} at index ${existingIndex}`);
+        }
+      }
+      
+      // ✅ 2nd: Fallback to type-based search (if activeFileOperations not found)
+      if (existingIndex === -1) {
+        existingIndex = existingContents.findIndex(c => 
+          typesToFind.includes(c.type) && 
+          c.metadata?.filePath === content.metadata?.filePath
+        );
+      }
       
       if (existingIndex !== -1) {
         // Update existing in-progress content
         existingContents[existingIndex] = content;
+        
+        // ✅ Clear from activeFileOperations if it's a final state (failed or completed)
+        if (content.metadata?.filePath && session.activeFileOperations) {
+          const isFinalState = content.type.includes('_failed') || 
+                              (content.type === 'file_create' || content.type === 'file_edit' || content.type === 'file_delete');
+          if (isFinalState) {
+            session.activeFileOperations.delete(content.metadata.filePath);
+            console.log(`[ChatService] 🧹 Removed ${content.metadata.filePath} from activeFileOperations (final state: ${content.type})`);
+          }
+        }
         
         // Broadcast content update
         this.broadcast(projectId, featureName, {

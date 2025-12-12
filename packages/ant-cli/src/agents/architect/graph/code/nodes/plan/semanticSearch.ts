@@ -11,7 +11,7 @@ import { GitPort } from "../../../../../../core/ports";
 import { ArchitectGraphState } from "../../state";
 import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient";
 import { RETRIEVAL_CONFIG } from "../../config/retrievalConfig";
-import type { LoadedFile } from "./stackTraceLoader";
+import type { LoadedFile } from "./errorFilesLoader";
 
 export async function loadSemanticFiles(
   keywords: string[],
@@ -84,9 +84,8 @@ export async function loadSemanticFiles(
     console.warn(`   ⚠️  Vector DB failed: ${e.message}`);
   }
   
-  // Step 2: Local files (Git changes + Keyword fallback)
-  // Priority: Git uncommitted files (faster, more accurate)
-  // Fallback: Keyword-based file search
+  // Step 2: Git changed files that are ALREADY in Vector DB
+  // (These will override old versions with latest content)
   let localFilePaths: string[] = [];
   
   try {
@@ -94,73 +93,72 @@ export async function loadSemanticFiles(
     if (hasChanges) {
       const changedFiles = await git.getChangedFiles();
       
-      // ✅ CRITICAL: Git changed files override Vector DB files for latest content!
-      // Split into two groups:
-      // 1. Files already in vectorDB → will overwrite with latest version
-      // 2. New files not in vectorDB → add to context
+      // ✅ ONLY add Git changed files that are ALREADY in vectorDB
+      // (to override with latest version)
       const gitChangedInVectorDb = changedFiles.filter(f => 
         !excludePaths.includes(f) && 
-        vectorDbPaths.includes(f)  // ✅ Files that are ALSO in vectorDB
+        vectorDbPaths.includes(f)
       );
       
-      const gitChangedNewFiles = changedFiles.filter(f => 
-        !excludePaths.includes(f) && 
-        !vectorDbPaths.includes(f)  // ✅ Files NOT in vectorDB
-      );
-      
-      // Add files already in vectorDB (these will overwrite old versions)
       localFilePaths.push(...gitChangedInVectorDb);
       
-      // Add new files (respect quota)
-      const remainingQuotaForGit = semanticQuota - vectorDbPaths.length;
-      const gitChangedNewFilesLimited = gitChangedNewFiles.slice(0, remainingQuotaForGit);
-      localFilePaths.push(...gitChangedNewFilesLimited);
-      
       if (localFilePaths.length > 0) {
-        console.log(`   📝 Git uncommitted files: ${localFilePaths.length} files`);
-        if (gitChangedInVectorDb.length > 0) {
-          console.log(`      ✅ ${gitChangedInVectorDb.length} files will override Vector DB (latest version)`);
-        }
-        if (gitChangedNewFilesLimited.length > 0) {
-          console.log(`      ✅ ${gitChangedNewFilesLimited.length} new files added (quota limited to ${remainingQuotaForGit})`);
-        }
-        console.log(`      Loading uncommitted files for context...`);
+        console.log(`   📝 Git uncommitted files: ${localFilePaths.length} files (overriding Vector DB with latest version)`);
       }
     }
   } catch (e: any) {
     console.warn(`   ⚠️  Git changes check failed: ${e.message}`);
   }
   
-  // Step 3: Local file search for remaining keywords (if still need more files)
+  // Step 3: Keyword-based local file search (if still need more files)
   const remainingQuota = semanticQuota - vectorDbPaths.length - localFilePaths.length;
   if (remainingQuota > 0 && keywords.length > 0) {
     console.log(`   🔍 Local keyword search: ${remainingQuota} slots remaining...`);
     
-    const { resolveStackTraceFile } = await import('../../../../../../core/utils/filePathResolver');
-    
-    const keywordSearchPaths: string[] = [];
-    for (const keyword of keywords) {
-      if (keywordSearchPaths.length >= remainingQuota) break;
-      if (!keyword.includes('.') || keyword.length < 5) continue;
+    try {
+      const { KeywordSearchStrategy } = await import('../../../../../../core/codebase/strategies/KeywordSearchStrategy');
+      const keywordStrategy = new KeywordSearchStrategy();
       
-      try {
-        const resolved = await resolveStackTraceFile(keyword, state.context.workingDir, git);
-        
-        if (resolved.confidence !== 'not_found') {
-          // ✅ Check if not already loaded (from stacktrace, vectorDB, or git changes)
-          if (!excludePaths.includes(resolved.resolvedPath) && 
-              !vectorDbPaths.includes(resolved.resolvedPath) &&
-              !localFilePaths.includes(resolved.resolvedPath)) {
-            keywordSearchPaths.push(resolved.resolvedPath);
-            console.log(`      ✅ Keyword search: ${resolved.resolvedPath}`);
-          }
-        }
-      } catch (e: any) {
-        // Silent fail
+      // Build directive from keywords
+      const directive = keywords.join(' ');
+      
+      // Search files by content matching
+      const keywordResults = await keywordStrategy.search(
+        directive,
+        state.context.workingDir,
+        {
+          maxFiles: remainingQuota,
+          exclude: [
+            'node_modules',
+            '.git',
+            'dist',
+            'build',
+            '.next',
+            'coverage',
+            '.turbo'
+          ]
+        },
+        git
+      );
+      
+      // Extract paths and filter out already loaded files
+      const keywordSearchPaths = keywordResults
+        .map(r => r.path)
+        .filter(p => 
+          !excludePaths.includes(p) && 
+          !vectorDbPaths.includes(p) &&
+          !localFilePaths.includes(p)
+        );
+      
+      if (keywordSearchPaths.length > 0) {
+        console.log(`      ✅ Found ${keywordSearchPaths.length} files by keyword matching`);
+        keywordSearchPaths.forEach(p => console.log(`         - ${p}`));
       }
+      
+      localFilePaths.push(...keywordSearchPaths);
+    } catch (e: any) {
+      console.warn(`      ⚠️  Keyword search failed: ${e.message}`);
     }
-    
-    localFilePaths.push(...keywordSearchPaths);
   }
   
   // Step 4: Load all files from local Git and categorize
