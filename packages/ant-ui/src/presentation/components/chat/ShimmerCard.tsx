@@ -147,7 +147,7 @@ function ThinkingVariant({ content }: { content: MessageContent }) {
 }
 
 /**
- * Cancelled variant - Task cancelled with Resume button
+ * Cancelled variant - Task cancelled with original work type context
  */
 function CancelledVariant({ content }: { content: MessageContent }) {
   const selectedProject = useStore(state => state.selectedProject);
@@ -160,6 +160,7 @@ function CancelledVariant({ content }: { content: MessageContent }) {
 
   const { runJob } = useJobExecution();
   const jobId = content.metadata?.jobId;
+  const originalType = content.metadata?.originalType; // The work that was cancelled
 
   const handleResume = async () => {
     if (!jobId || isRunning || !selectedProject || !selectedFeature) return;
@@ -177,6 +178,27 @@ function CancelledVariant({ content }: { content: MessageContent }) {
       setIsResuming(false);
     }
   };
+
+  // Get display text based on original work type
+  const getWorkTypeLabel = (type: string | undefined): string => {
+    if (!type) return 'Task';
+    
+    const labels: Record<string, string> = {
+      'analyzing': 'Analysis',
+      'exploring': 'Exploration',
+      'retrieving': 'Retrieval',
+      'grepping': 'Search',
+      'reading': 'Reading',
+      'indexing': 'Indexing',
+      'storing': 'Storage',
+      'listing_files': 'File Listing',
+      'searching_code': 'Code Search'
+    };
+    
+    return labels[type] || 'Task';
+  };
+
+  const workLabel = getWorkTypeLabel(originalType);
 
   // interruption.reason이 'api_error' 등일 때도 Resume 버튼 노출
   const reason = content.metadata?.reason;
@@ -197,7 +219,7 @@ function CancelledVariant({ content }: { content: MessageContent }) {
         {/* Content */}
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium text-orange-900 dark:text-orange-100">
-            Task cancelled
+            {originalType ? `${workLabel} cancelled` : 'Task cancelled'}
           </div>
           <div className="text-xs text-orange-700 dark:text-orange-300 mt-0.5">
             {content.content || 'The task was stopped by user'}

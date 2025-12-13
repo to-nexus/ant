@@ -29,7 +29,7 @@ export function ChatHistory({ messages }: ChatHistoryProps) {
   
   // ✅ CRITICAL: Memoize itemContent to prevent Virtuoso from re-rendering on every parent render
   const itemContent = useCallback((_index: number, message: ChatMessage) => (
-    <div className="px-4 py-2">
+    <div className="px-8 py-2">
       <MessageItem message={message} />
     </div>
   ), []); // Empty deps - function logic doesn't change

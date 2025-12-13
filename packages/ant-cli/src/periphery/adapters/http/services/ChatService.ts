@@ -60,7 +60,8 @@ export interface MessageContent {
     blockEnd?: boolean;     // For thinking: marks </thinking> tag closed (block end)
     // Cancelled metadata
     jobId?: string;         // For cancelled: job ID to resume
-    reason?: string;        // For cancelled: cancellation reason
+    reason?: string;        // For cancelled/file operations: cancellation/failure reason
+    originalType?: string;  // For cancelled: original work type that was cancelled
     durationMs?: number;    // For thinking: duration in milliseconds
     collapsed?: boolean;    // For thinking: marks if the block should be collapsed
     // Indexing metadata (for indexing/indexed types)
@@ -703,6 +704,41 @@ export class ChatService {
       session.lastThinkingContentIndex = undefined;
     }
 
+    // ✅ Finalize any in-progress work states (analyzing, retrieving, grepping, etc.)
+    if (cancelled && session.currentMessage) {
+      const inProgressWorkTypes = new Set([
+        'analyzing', 'exploring', 'retrieving', 'grepping', 'reading', 
+        'indexing', 'storing', 'searching_code', 'listing_files'
+      ]);
+      
+      session.currentMessage.contents.forEach((content, index) => {
+        if (inProgressWorkTypes.has(content.type) && session.currentMessage) {
+          // Convert in-progress work state to cancelled
+          const cancelledContent = {
+            ...content,
+            type: 'cancelled' as const,
+            metadata: {
+              ...content.metadata,
+              originalType: content.type,  // Preserve original type for reference
+              reason: 'user_stopped'
+            }
+          };
+          
+          session.currentMessage.contents[index] = cancelledContent;
+          
+          // Broadcast cancellation
+          this.broadcast(projectId, featureName, {
+            type: 'content_update',
+            messageId: session.currentMessage.id,
+            contentIndex: index,
+            content: cancelledContent
+          });
+          
+          console.log(`[ChatService] 🚫 Cancelled in-progress work: ${content.type}`);
+        }
+      });
+    }
+
     // ✅ Finalize any active file operations (interrupted/incomplete)
     if (session.activeFileOperations && session.activeFileOperations.size > 0) {
       for (const [filePath, fileOp] of session.activeFileOperations.entries()) {
@@ -849,23 +885,25 @@ export class ChatService {
         if (event.toolUse && session?.currentMessage) {
           const { name, input } = event.toolUse;
           
-          // ✅ FILE OPERATIONS: delete_file (로딩 카드 생성)
-          if (name === 'delete_file') {
+          // ✅ FILE OPERATIONS: edit_file, delete_file (로딩 카드 생성)
+          if (name === 'edit_file' || name === 'delete_file') {
             const filePath = (input as any).path;
             
             if (filePath) {
-              console.log(`[ChatService] 📄 Creating loading file card for: ${filePath}`);
+              console.log(`[ChatService] 📄 Creating loading file card for: ${filePath} (${name})`);
               
               // Determine operation type
               let contentType: MessageContent['type'];
               if (name === 'delete_file') {
                 contentType = 'file_deleting';
+              } else if (name === 'edit_file') {
+                contentType = 'file_editing';
               } else {
-                // Default to creating (tool node will update based on file existence)
+                // Fallback (should not reach here)
                 contentType = 'file_creating';
               }
               
-              // ✅ CRITICAL: Get the actual index after MERGE (placeholder → file_creating)
+              // ✅ CRITICAL: Get the actual index after MERGE (placeholder → file_creating/editing/deleting)
               const actualIndex = this.addContentToCurrentMessage(projectId, featureName, {
                 type: contentType,
                 content: '',  // Empty initially, will be filled by tool node
@@ -956,7 +994,8 @@ export class ChatService {
     content?: string,
     diffBefore?: string,
     diffAfter?: string,
-    phase?: 'creating' | 'writing' | 'editing' | 'updating' | 'deleting' | 'complete'
+    phase?: 'creating' | 'writing' | 'editing' | 'updating' | 'deleting' | 'complete' | 'failed',
+    error?: string
   ): void {
     const key = this.getSessionKey(projectId, featureName);
     const session = this.sessions.get(key);
@@ -1024,6 +1063,10 @@ export class ChatService {
           newType = operation === 'create' ? 'file_create' :
                     operation === 'edit' ? 'file_edit' :
                     'file_delete';
+        } else if (phase === 'failed') {
+          newType = operation === 'create' ? 'file_create_failed' :
+                    operation === 'edit' ? 'file_edit_failed' :
+                    'file_delete_failed';
         } else {
           newType = session.currentMessage.contents[existingIndex].type;
         }
@@ -1045,6 +1088,7 @@ export class ChatService {
             filePath,
             diffBefore,
             diffAfter,
+            reason: (phase === 'failed' && error) ? error : existingContent.metadata?.reason,
             timestamp: new Date().toISOString()
           }
         };
@@ -1099,8 +1143,22 @@ export class ChatService {
       type = 'file_updating';
     } else if (phase === 'deleting') {
       type = 'file_deleting';
+    } else if (phase === 'complete') {
+      const typeMap = {
+        edit: 'file_edit' as const,
+        create: 'file_create' as const,
+        delete: 'file_delete' as const
+      };
+      type = typeMap[operation];
+    } else if (phase === 'failed') {
+      const typeMap = {
+        edit: 'file_edit_failed' as const,
+        create: 'file_create_failed' as const,
+        delete: 'file_delete_failed' as const
+      };
+      type = typeMap[operation];
     } else {
-      // phase === 'complete' or legacy (no phase)
+      // legacy (no phase)
       const typeMap = {
         edit: 'file_edit' as const,
         create: 'file_create' as const,
@@ -1116,6 +1174,7 @@ export class ChatService {
         filePath,
         diffBefore,  // ✅ For edit operations
         diffAfter,   // ✅ For edit operations
+        reason: (phase === 'failed' && error) ? error : undefined,
         timestamp: new Date().toISOString()
       }
     });
