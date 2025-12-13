@@ -87,7 +87,9 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   let finalPrompt = basePrompt;
   
   if (state.violations && state.violations.length > 0) {
-    const violationsText = formatViolations(state.violations);
+    // ✅ Use the enhanced violation message from enforce node if available
+    // Otherwise fallback to default formatting
+    const violationsText = state.violationMessage || formatViolations(state.violations);
     
     const enforcementHeader = `════════════════════════════════════════════════════════════════════════════════\n` +
       `🚨 CRITICAL: PREVIOUS ATTEMPT FAILED - VIOLATIONS BELOW ARE MANDATORY TO FIX!\n` +
@@ -99,7 +101,16 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       `2. UNDERSTAND THE ROOT CAUSE\n` +
       `3. FOLLOW THE EXACT FIX INSTRUCTIONS IN EACH VIOLATION MESSAGE\n` +
       `4. DO NOT PROCEED WITH YOUR ORIGINAL PLAN UNTIL ALL VIOLATIONS ARE FIXED\n\n` +
-      `⚠️  Ignoring violations = Task fails permanently!\n` +
+      `⚠️  Ignoring violations = Task fails permanently!\n\n` +
+      `════════════════════════════════════════════════════════════════════════════════\n` +
+      `🔴 MANDATORY RESPONSE FORMAT:\n` +
+      `════════════════════════════════════════════════════════════════════════════════\n\n` +
+      `YOU MUST START YOUR RESPONSE WITH THE FOLLOWING:\n\n` +
+      `"⚠️ VIOLATION ACKNOWLEDGED: I have read the ${state.violations.length} violation(s) above.\n` +
+      `I will now fix: [briefly describe what you will fix]\n` +
+      `Fix approach: [briefly describe your approach]"\n\n` +
+      `If you do NOT start your response with "⚠️ VIOLATION ACKNOWLEDGED", \n` +
+      `it means you did not see the violations and your response will be rejected!\n` +
       `════════════════════════════════════════════════════════════════════════════════\n\n`;
     
     finalPrompt = enforcementHeader + finalPrompt;
