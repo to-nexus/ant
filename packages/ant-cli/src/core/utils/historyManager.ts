@@ -37,7 +37,7 @@ export class HistoryManager {
   ) {
     this.tokenManager = tokenManager;
     this.config = {
-      maxTokens: config?.maxTokens || 50000,  // History limit (increased to 50K for better context retention - 25% of 200K context window)
+      maxTokens: config?.maxTokens || 75000,  // History limit (increased to 50K for better context retention - 25% of 200K context window)
       minTurnsToKeep: config?.minTurnsToKeep || 3,
       prioritizeErrors: config?.prioritizeErrors !== false,
       prioritizeSetup: config?.prioritizeSetup !== false,

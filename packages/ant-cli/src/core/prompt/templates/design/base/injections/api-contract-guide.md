@@ -37,42 +37,29 @@
 **Choose ONE protocol per project:**
 
 #### Option A: REST API
-**For EACH endpoint**:
+**For EACH endpoint, specify (binding; exact values):**
+- **Method + Path**: exact HTTP method and path
+- **Purpose**: 1 sentence
+- **Auth**: required/optional + which scheme (reference §2)
+- **Request**:
+  - Body (if any): reference a DTO (defined in §6) OR inline minimal field list
+  - Path/query params (if any): names + types + validation
+- **Success Response(s)**:
+  - Status code + response DTO (or empty)
+- **Error Responses**:
+  - Status code + error code(s) + error DTO shape (reference §6)
 
-```markdown
-### POST /api/auth/login
-**Request Body**: `{ email: string, password: string }`
-**Success (200)**: `{ accessToken: string, user: User }`
-**Errors**: 
-- 400: Invalid input
-- 401: Invalid credentials
-```
-
-**Required**: Exact path, method, field names, all types, status codes
+**Required**: Exact path, method, field names, all types, status codes; no placeholders.
 
 #### Option B: JSON-RPC (for blockchain/RPC projects)
 **Single endpoint** (e.g., `/rpc` or `/api`), method-based calls:
 
-```markdown
-### Method: `eth_getBalance`
-**Request**: 
-```json
-{ "jsonrpc": "2.0", "method": "eth_getBalance", "params": ["0x407d73...", "latest"], "id": 1 }
-```
-**Success**: 
-```json
-{ "jsonrpc": "2.0", "result": "0x0234c8a3397aab58", "id": 1 }
-```
-**Error**: 
-```json
-{ "jsonrpc": "2.0", "error": { "code": -32602, "message": "Invalid params" }, "id": 1 }
-```
-
-### Method: `user.login`
-**Params**: `{ email: string, password: string }`
-**Result**: `{ accessToken: string, user: User }`
-**Error codes**: -32600 (Invalid Request), -32601 (Method not found), -32602 (Invalid params)
-```
+**For EACH method, specify (binding; exact values):**
+- **Method name**
+- **Purpose**
+- **Params schema**: either positional list or named object (choose one style, be consistent)
+- **Result schema** (or “no result”)
+- **Error schema**: JSON-RPC standard errors + application errors (if any)
 
 **JSON-RPC Standard**:
 - `jsonrpc`: "2.0"
@@ -103,33 +90,31 @@ Document schema, queries, mutations, subscriptions.
 - No bidirectional communication needed
 
 **If needed, document event schemas:**
-```markdown
-### WebSocket Events (or SSE, etc.)
-
-#### Client → Server: `room:join`
-**Payload**: `{ roomId: string }`
-**Ack**: `{ success: boolean }`
-
-#### Server → Client: `room:updated`
-**Payload**: `{ roomId: string, players: Player[] }`
-```
+For EACH event:
+- **Direction**: Client→Server or Server→Client
+- **Event name**: exact string
+- **Payload DTO**: reference §6 (or inline field list)
+- **Ack/Response** (if any): DTO + error shapes
 
 ### 6. Shared Type Definitions
-**Define common DTOs ONCE**:
-```typescript
-interface User {
-  id: string;
-  email: string;
-  name: string;
-  createdAt: string; // ISO 8601
-}
+**Define common DTOs ONCE (language-neutral):**
+- Use headings + bullet lists (NOT TypeScript/JSON syntax)
+- For each DTO: **Name / Fields / Validation / Notes**
+- Field format: `fieldName: type` + optional marker + validation
 
-interface ErrorResponse {
-  error: { code: string; message: string; }
-}
-```
+Example (language-neutral):
+- **DTO**: User
+  - **Fields**:
+    - `id: string` - identifier
+    - `email: string` - email format
+    - `name: string` - display name
+    - `createdAt: string` - ISO 8601 timestamp
+- **DTO**: ErrorResponse
+  - **Fields**:
+    - `error.code: string` - stable machine-readable code
+    - `error.message: string` - human-readable message
 
-### 6. Error Handling Conventions
+### 7. Error Handling Conventions
 
 **For REST**:
 - Standard error format
@@ -144,10 +129,9 @@ interface ErrorResponse {
 
 ## ⚠️ CRITICAL RULES
 
-**DTO Standards**:
-- Exact TypeScript types
-- Inline validation (e.g., `// Min 8 chars`)
-- Mark optional with `?`
+**Precision (Binding)**:
+- This document may include exact URL paths, status codes, and field names; they are part of the contract.
+- Do not write “TBD”, “etc.”, “…”, or leave any shape implicit.
 
 **Naming Consistency**:
 - Pick ONE: camelCase OR snake_case
@@ -169,12 +153,14 @@ interface ErrorResponse {
 
 ## ✅ Example
 
-```markdown
 ### POST /api/rooms/create
-**Request**: `{ name: string (1-50 chars), maxPlayers: number (2-8) }`
-**Response (201)**: `{ roomId: string, name: string, createdAt: string }`
-**Errors**: 400 (validation), 401 (unauthorized)
-```
+- **Purpose**: Creates a room for a new session.
+- **Auth**: Required (see §2)
+- **Request Body DTO**: CreateRoomRequest
+- **Success**: 201 + CreateRoomResponse
+- **Errors**:
+  - 400 + ErrorResponse (VALIDATION_*)
+  - 401 + ErrorResponse (AUTH_UNAUTHORIZED)
 
 ---
 

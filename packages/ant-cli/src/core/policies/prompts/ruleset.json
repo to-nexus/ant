@@ -15,10 +15,10 @@
       "NEVER use // or /* */ in JSON - it will cause parsing errors"
     ],
     "quality": [
-      "Always include complete imports",
-      "Always include all type definitions",
-      "Verify all paths and references are correct",
-      "Ensure no unused imports or variables"
+      "Avoid placeholders and ambiguity; be specific and complete for the chosen document type",
+      "Verify internal consistency across sections (terms, names, responsibilities, contracts)",
+      "Use precise terminology and define cross-boundary contracts once, then reference them",
+      "Verify all paths/references are correct when you do include them (e.g., file paths, document names)"
     ],
     "dependencies": [
       "When adding npm packages, ALWAYS check for peer dependencies",

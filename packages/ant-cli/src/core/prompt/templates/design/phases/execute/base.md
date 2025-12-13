@@ -6,11 +6,19 @@
 YOUR LINE BUDGET: Look for "MAX [N] lines" in task description below.
 
 **IMPORTANT: Document Type Detection**
-- **API Contract** (api-contract.md): 80-200 lines MAX (binding specification)
-- **Frontend** (fe-system-design.md): 120-600 lines MAX (consumer perspective)
-- **Backend** (be-system-design.md): 120-600 lines MAX (implementation perspective)
-- **Unified** (system-design.md): 120-600 lines MAX (single-tier projects)
+- **API Contract** (api-contract.md): typically 120-350 lines (binding specification)
+- **Frontend** (fe-system-design.md): typically 150-450 lines (consumer architecture)
+- **Backend** (be-system-design.md): typically 150-450 lines (provider architecture)
+- **Unified** (system-design.md): typically 150-450 lines (single doc)
 
+**Absolute rule**: The task description line budget ("MAX [N] lines") is the real cap; the ranges above are guidance.
+
+{{#if (includes currentTask.targetFile "api-contract")}}
+API Contract structure rules (ignore generic "chapter limits"):
+- Use the required sections from the injected `api-contract.md` guide
+- Prefer endpoint-by-endpoint specification, grouped by resource/use case
+- Be precise; this document is a binding spec, not an architecture essay
+{{else}}
 CHAPTER LIMIT based on budget:
 - Budget ≤ 60 lines → Create EXACTLY 1 chapter
 - Budget 61-120 lines → Create 1-2 chapters MAX
@@ -21,13 +29,20 @@ CHAPTER LIMIT based on budget:
 STRUCTURE PER CHAPTER:
 - Maximum 5-6 subsections (###) for complex chapters
 - Each subsection: 3-8 bullet points
-- Each bullet: 1 sentence (keep ultra-concise!)
+- Each bullet: 1-2 sentences MAX (keep ultra-concise!)
+{{/if}}
 
 **CODE BLOCK LIMITS (CRITICAL)**:
+{{#if (includes currentTask.targetFile "api-contract")}}
+- Code blocks are allowed for DTO/schema clarity
+- Keep them short and consistent (avoid nested code fences)
+- Prefer one canonical definition per shared type (define once, reference elsewhere)
+{{else}}
 - **Maximum 3 code blocks in ENTIRE document**
 - **Each code block ≤8 lines**
-- Use ONLY for critical interfaces/types
+- Use ONLY for critical interfaces/types that cross boundaries
 - Prefer prose descriptions over code
+{{/if}}
 
 ⚠️ Focus on ARCHITECTURE and COMPONENT INTERACTION, not implementation details!
 {{/if}}
@@ -90,12 +105,28 @@ STRUCTURE PER CHAPTER:
 ## 📋 REQUIREMENTS (SOURCE OF TRUTH)
 ════════════════════════════════════════════════════════════════════════════════
 
+{{#if prdSpec}}
+## PRD (ABSOLUTE TRUTH)
+{{prdSpec}}
+{{else}}
+## Requirements (Fallback)
 {{spec}}
+{{/if}}
 
 **⚠️ PRD = ABSOLUTE TRUTH**
 - Follow PRD's technical constraints exactly (e.g., "React + Vite", "useState only")
 - Skip sections not applicable to PRD (e.g., no backend → skip API/Database sections)
 - For skipped sections, state: "Not Applicable - [reason] per PRD"
+
+{{#if directive}}
+════════════════════════════════════════════════════════════════════════════════
+## 📝 USER DIRECTIVE (CONTEXT ONLY - NOT SOURCE OF TRUTH)
+════════════════════════════════════════════════════════════════════════════════
+
+{{directive}}
+
+**Rule**: If directive conflicts with PRD, PRD wins.
+{{/if}}
 
 {{#if designDoc}}
 ════════════════════════════════════════════════════════════════════════════════

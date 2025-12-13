@@ -49,6 +49,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     {
       directive: state.directive,
       designDoc: state.design,
+      prdSpec: state.prd,  // ✅ Include PRD for context verification and completeness check
       projectCodeContext: codeGenProjectCodeContext,  // ← Use filtered context
       referenceCodeContexts: state.referenceCodeContexts,
       lessons: Array.isArray(state.lessons) ? state.lessons : undefined,

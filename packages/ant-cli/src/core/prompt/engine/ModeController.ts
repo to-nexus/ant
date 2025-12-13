@@ -138,8 +138,8 @@ export class ModeController {
       injections.push(`${commonPrefix}/design-doc`);
     }
     
-    // ✅ PRD only for design job (code job uses design doc which already contains PRD)
-    if (context.prdSpec && task === 'design') {
+    // ✅ PRD for both design and code jobs (prevents information loss in design transformation)
+    if (context.prdSpec) {
       injections.push(`${commonPrefix}/prd-spec`);
     }
     

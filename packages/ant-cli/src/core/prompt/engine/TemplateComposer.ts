@@ -11,6 +11,36 @@ Handlebars.registerHelper('add', function(a: number, b: number) {
   return a + b;
 });
 
+// Basic comparison / boolean helpers (for doc-type specific prompt rules)
+Handlebars.registerHelper('eq', function(a: any, b: any) {
+  return a === b;
+});
+
+Handlebars.registerHelper('and', function(...args: any[]) {
+  // Last arg is Handlebars options object
+  const values = args.slice(0, -1);
+  return values.every(Boolean);
+});
+
+Handlebars.registerHelper('or', function(...args: any[]) {
+  // Last arg is Handlebars options object
+  const values = args.slice(0, -1);
+  return values.some(Boolean);
+});
+
+// Case-insensitive substring match (safe on null/undefined)
+Handlebars.registerHelper('includes', function(haystack: any, needle: any) {
+  if (haystack == null || needle == null) return false;
+  const h = String(haystack).toLowerCase();
+  const n = String(needle).toLowerCase();
+  return h.includes(n);
+});
+
+Handlebars.registerHelper('lower', function(value: any) {
+  if (value == null) return '';
+  return String(value).toLowerCase();
+});
+
 /**
  * Composed prompt parts
  */
@@ -77,7 +107,13 @@ export class TemplateComposer {
         // ✅ Used in {{#if designDoc}} and {{designDoc}} (multiple places)
         designDoc,
         
-        // ✅ Used in design/phases/execute/base.md: {{spec}}
+        // ✅ Requirements inputs (design job)
+        // - prdSpec is the source of truth when present
+        // - directive is non-authoritative user instruction/context
+        prdSpec: assembled.prdSpec || '',
+        directive: assembled.directive || '',
+        
+        // Backward compatibility: some templates still read {{spec}}
         spec: assembled.directive || '',
         
         // ✅ Used in {{#if (eq modificationMode "MODIFICATION MODE: ...")}}
