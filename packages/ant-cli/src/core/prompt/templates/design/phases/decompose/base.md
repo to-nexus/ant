@@ -253,62 +253,32 @@ This ensures FE and BE are ALWAYS aligned!
 
 ### PHASE 2: Frontend Design (Priority 210-229)
 
-**Goal**: Design FE architecture that CONSUMES api-contract.md
+**Goal**: Design Frontend that CONSUMES api-contract.md
 
 **Budget**: 120-600 lines (scale: simple 120-200, medium 240-400, complex 480-600)
 
-**Required Content**: Architecture, component structure, routing, state management, API client (USE contract types)
-
-**Critical**: First FE task MUST mention "MUST USE api-contract.md types". NO API definition, only consumption.
+**Required Content**: Component architecture, routing, state management, API integration
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ### PHASE 3: Backend Design (Priority 230-249)
 
-**Goal**: Design BE architecture that IMPLEMENTS api-contract.md
+**Goal**: Design Backend that IMPLEMENTS api-contract.md
 
 **Budget**: 120-600 lines (scale: simple 120-200, medium 240-400, complex 480-600)
 
-**Required Content**: Architecture layers, API endpoint implementation (reference contract), database schema, service layer, auth middleware
-
-**Critical**: First BE task MUST mention "MUST IMPLEMENT api-contract.md EXACTLY". NO API deviation or DTO duplication.
+**Required Content**: Architecture layers, endpoint implementation, database schema, service layer
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-### 🎯 MECE PRINCIPLE: Each Document's Distinct Role
+### ⚠️ Document Type Roles
 
-**CRITICAL: Avoid content duplication between api-contract.md and implementation docs!**
+**Type-specific rules and examples are provided in execute phase automatically.**
 
-**api-contract.md** = WHAT (Interface Definition):
-- ✅ Endpoint specs: paths, methods, status codes
-- ✅ Complete DTO definitions: all fields, types, validations
-- ✅ WebSocket event schemas
-- ❌ NO "how to call" (that's FE's job)
-- ❌ NO "how to implement" (that's BE's job)
-
-**fe-system-design.md** = HOW (Consumer Implementation):
-- ✅ HOW to call APIs: fetch wrappers, error handling, loading states
-- ✅ Component architecture, routing, state management
-- ✅ Use contract types: "import LoginRequest from api-contract.md"
-- ❌ NO DTO redefinition (import/use only!)
-
-**be-system-design.md** = HOW (Provider Implementation):
-- ✅ HOW to implement: service methods, business logic, DB queries
-- ✅ Architecture layers, middleware, database schema
-- ✅ Reference contract: "implements LoginRequest → LoginResponse per contract"
-- ❌ NO DTO redefinition (reference only!)
-
-**Example (MECE):**
-```markdown
-# ❌ BAD (in be-system-design.md):
-POST /api/auth/login
-- Request: { email: string, password: string }  ← Duplicates contract!
-
-# ✅ GOOD (in be-system-design.md):
-POST /api/auth/login
-**Contract**: LoginRequest → LoginResponse (api-contract.md §3.1)
-**Implementation**: Controller validates → AuthService.authenticate → JWT.sign
-```
+**api-contract.md**: Interface specification (WHAT)
+**fe-system-design.md**: Frontend implementation (HOW to consume)
+**be-system-design.md**: Backend implementation (HOW to provide)
+**system-design.md**: Unified design (single-tier projects)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

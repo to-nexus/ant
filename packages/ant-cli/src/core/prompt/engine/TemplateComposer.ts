@@ -305,7 +305,7 @@ export class TemplateComposer {
     // ✅ Variable names match template expectations (verified against all .md files)
     const varMap: Record<string, any> = {
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      // Base injections (base/injections/*.md)
+      // Common injections (common/injections/*.md)
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       
       // directive.md expects: {{directive}}
@@ -380,7 +380,6 @@ export class TemplateComposer {
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       
       'modification-warning': {},
-      'output-format-markdown': {},
       'text-format-compact': {},
       'tool-calling-rules-compact': {},
       'design-document-guide': {},

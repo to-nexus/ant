@@ -240,7 +240,7 @@ Why? Type-check (5s) and lint (5s) catch 80% of issues. Build (30-60s) is expens
 **Actions:**
 1. Identify root cause from error message
 2. Fix ONLY broken code (no refactoring)
-3. Use `<edit>` for code, `run_command` for deps/build
+3. Use `edit_file` tool for code, `run_command` for deps/build
 4. Verify with build commands, not dev servers
 5. Output `<done>true</done>`
 

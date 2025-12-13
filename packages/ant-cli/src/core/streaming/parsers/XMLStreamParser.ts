@@ -5,7 +5,6 @@
  * - <thinking>...</thinking>
  * - <file path="...">...</file>
  * - <append path="...">...</append>
- * - <edit path="..."><search>...</search><replace>...</replace></edit>
  */
 
 import { IStreamParser } from './IStreamParser';
@@ -17,9 +16,6 @@ interface ParserContext {
   insideThinking: boolean;
   insideFile: boolean;
   insideAppend: boolean;  // ✅ NEW: <append> tag
-  insideEdit: boolean;
-  insideSearch: boolean;
-  insideReplace: boolean;
   insideTasks: boolean; // ✅ Changed: Now used to track but will emit to response
   insideLearnCommand: boolean;  // ✅ NEW: <learn_command> tag
   learnCommandContent: string;  // ✅ NEW: Accumulate learn_command content
@@ -28,7 +24,6 @@ interface ParserContext {
   referencesContent: string;  // ✅ NEW: Accumulate references content
   currentFilePath: string | null;
   currentAppendPath: string | null;  // ✅ NEW
-  currentEditPath: string | null;
 }
 
 export class XMLStreamParser implements IStreamParser {
@@ -36,9 +31,6 @@ export class XMLStreamParser implements IStreamParser {
     insideThinking: false,
     insideFile: false,
     insideAppend: false,  // ✅ NEW
-    insideEdit: false,
-    insideSearch: false,
-    insideReplace: false,
     insideTasks: false,
     insideLearnCommand: false,  // ✅ NEW
     learnCommandContent: '',  // ✅ NEW
@@ -47,7 +39,6 @@ export class XMLStreamParser implements IStreamParser {
     referencesContent: '',  // ✅ NEW
     currentFilePath: null,
     currentAppendPath: null,  // ✅ NEW
-    currentEditPath: null,
   };
   
   private buffer: string = '';
@@ -603,120 +594,11 @@ export class XMLStreamParser implements IStreamParser {
         continue;
       }
       
-      // 21. Check for <edit path="..."> opening
-      if (!this.context.insideEdit) {
-        const editMatch = this.buffer.match(/<edit\s+path="([^"]+)">/);
-        if (editMatch) {
-          const fullMatch = editMatch[0];
-          const filePath = editMatch[1];
-          const startIdx = this.buffer.indexOf(fullMatch);
-          
-          this.buffer = this.buffer.substring(startIdx + fullMatch.length);
-          this.context.insideEdit = true;
-          this.context.currentEditPath = filePath;
-          
-          actions.push({
-            type: 'file_start',
-            data: {
-              filePath,
-              actionType: 'edit'
-            }
-          });
-          continueParsingLoop = true;
-          continue;
-        }
-      }
-      
-      // 22. Inside <edit>, check for <search> and <replace>
-      if (this.context.insideEdit) {
-        // <search> opening
-        if (!this.context.insideSearch && !this.context.insideReplace && this.buffer.includes('<search>')) {
-          const startIdx = this.buffer.indexOf('<search>');
-          this.buffer = this.buffer.substring(startIdx + '<search>'.length);
-          this.context.insideSearch = true;
-          continueParsingLoop = true;
-          continue;
-        }
-        
-        // </search> closing
-        if (this.context.insideSearch && this.buffer.includes('</search>')) {
-          const endIdx = this.buffer.indexOf('</search>');
-          const searchContent = this.buffer.substring(0, endIdx);
-          this.buffer = this.buffer.substring(endIdx + '</search>'.length);
-          this.context.insideSearch = false;
-          
-          // Store search content (will be combined with replace later)
-          actions.push({
-            type: 'file_content',
-            data: {
-              filePath: this.context.currentEditPath!,
-              content: searchContent,
-              metadata: { section: 'search' }
-            }
-          });
-          continueParsingLoop = true;
-          continue;
-        }
-        
-        // <replace> opening (only check if NOT inside search)
-        if (!this.context.insideSearch && !this.context.insideReplace && this.buffer.includes('<replace>')) {
-          const startIdx = this.buffer.indexOf('<replace>');
-          this.buffer = this.buffer.substring(startIdx + '<replace>'.length);
-          this.context.insideReplace = true;
-          continueParsingLoop = true;
-          continue;
-        }
-        
-        // </replace> closing
-        if (this.context.insideReplace && this.buffer.includes('</replace>')) {
-          const endIdx = this.buffer.indexOf('</replace>');
-          const replaceContent = this.buffer.substring(0, endIdx);
-          this.buffer = this.buffer.substring(endIdx + '</replace>'.length);
-          this.context.insideReplace = false;
-          
-          // Store replace content
-          actions.push({
-            type: 'file_content',
-            data: {
-              filePath: this.context.currentEditPath!,
-              content: replaceContent,
-              metadata: { section: 'replace' }
-            }
-          });
-          continueParsingLoop = true;
-          continue;
-        }
-        
-        // ✅ CRITICAL: Accumulate content while inside search/replace
-        // If we're waiting for a closing tag, keep content in buffer
-        if (this.context.insideSearch || this.context.insideReplace) {
-          // Keep waiting for closing tag
-          break;
-        }
-      }
-      
-      // 23. Check for </edit> closing
-      if (this.context.insideEdit && this.buffer.includes('</edit>')) {
-        const endIdx = this.buffer.indexOf('</edit>');
-        this.buffer = this.buffer.substring(endIdx + '</edit>'.length);
-        
-        actions.push({
-          type: 'file_end',
-          data: { filePath: this.context.currentEditPath! }
-        });
-        
-        this.context.insideEdit = false;
-        this.context.currentEditPath = null;
-        continueParsingLoop = true;
-        continue;
-      }
-      
-      // 24. General text response handling (outside any XML block)
+      // 21. General text response handling (outside any XML block)
       if (!this.context.insideThinking && 
           !this.context.insideTasks &&
           !this.context.insideLearnCommand &&  // ✅ NEW
-          !this.context.insideFile && 
-          !this.context.insideEdit) {
+          !this.context.insideFile) {
         
         if (this.buffer.length > 0) {
           // 🎯 STRATEGY: Only emit text when it's SAFE (won't break XML tag parsing)
@@ -724,7 +606,7 @@ export class XMLStreamParser implements IStreamParser {
           // 1️⃣ HIGHEST PRIORITY: Check if there's text BEFORE an XML tag
           // Example: "Here is the code:\n<file path=..." → emit "Here is the code:\n"
           // Note: detect/references tags are NOT parsed - they flow through as normal response for SpecialTagTransformer
-          const beforeTagMatch = this.buffer.match(/^(.+?)(?=<(?:thinking|tasks|file|edit|delete|append|learn_command|done)[\s>])/s);
+          const beforeTagMatch = this.buffer.match(/^(.+?)(?=<(?:thinking|tasks|file|delete|append|learn_command|done)[\s>])/s);
           if (beforeTagMatch) {
             const content = beforeTagMatch[1];
             this.buffer = this.buffer.substring(content.length);
@@ -812,27 +694,8 @@ export class XMLStreamParser implements IStreamParser {
       // ✅ Check if buffer has actual content (not just whitespace)
       const hasActualContent = this.buffer.replace(/[\s\n\r]/g, '').length > 0;
       
-      // ⚠️ If inside search/replace, this is an ERROR (incomplete edit)
-      if (this.context.insideSearch || this.context.insideReplace) {
-        const section = this.context.insideSearch ? 'search' : 'replace';
-        console.error(`[XMLParser] ⚠️  WARNING: Incomplete <edit> detected! Missing closing </${section}> tag.`);
-        console.error(`   Remaining buffer will NOT be included in file content to prevent corruption.`);
-        console.error(`   Buffer: "${this.buffer.substring(0, 200)}..."`);
-        
-        // ✅ Emit as file_content with metadata for debugging
-        if (hasActualContent && this.context.currentEditPath) {
-          actions.push({
-            type: 'file_content',
-            data: {
-              filePath: this.context.currentEditPath,
-              content: this.buffer,
-              metadata: { section, incomplete: true }
-            }
-          });
-        }
-      }
       // If inside thinking, emit as thinking
-      else if (this.context.insideThinking) {
+      if (this.context.insideThinking) {
         if (hasActualContent) {
           actions.push({
             type: 'thinking',
@@ -873,9 +736,6 @@ export class XMLStreamParser implements IStreamParser {
       insideThinking: false,
       insideFile: false,
       insideAppend: false,
-      insideEdit: false,
-      insideSearch: false,
-      insideReplace: false,
       insideTasks: false,
       insideLearnCommand: false,  // ✅ NEW
       learnCommandContent: '',  // ✅ NEW
@@ -884,7 +744,6 @@ export class XMLStreamParser implements IStreamParser {
       referencesContent: '',  // ✅ NEW
       currentFilePath: null,
       currentAppendPath: null,
-      currentEditPath: null,
     };
     this.buffer = '';
   }

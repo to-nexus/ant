@@ -75,7 +75,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
             `CORRECT workflow:\n` +
             `   1. Check "📦 Retrieved Codebase Context" - ${filePath} is listed there\n` +
             `   2. Call read_file("${filePath}") to get CURRENT content\n` +
-            `   3. Use the EXACT code from THAT read_file result for <edit>\n` +
+            `   3. Use the EXACT code from THAT read_file result for edit_file tool\n` +
             `\n` +
             `DO NOT:\n` +
             `   ❌ Use file content from conversation history (messages above)\n` +

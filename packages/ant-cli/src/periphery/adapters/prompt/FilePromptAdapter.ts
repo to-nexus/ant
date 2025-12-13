@@ -15,12 +15,15 @@ Handlebars.registerHelper("and", (a, b) => a && b);
 Handlebars.registerHelper("or", (a, b) => a || b);
 Handlebars.registerHelper("add", (a, b) => Number(a) + Number(b));
 
-// ✅ Register base partials (always included for all agents/phases)
-const basePartialsPath = join(__dirname, "../../../core/prompt/templates/base");
-const baseInjectionsPath = join(__dirname, "../../../core/prompt/templates/base/injections");
+// ✅ Register common partials (shared across all jobs)
+const commonPartialsPath = join(__dirname, "../../../core/prompt/templates/common");
+const commonInjectionsPath = join(__dirname, "../../../core/prompt/templates/common/injections");
 Promise.all([
-  fs.readFile(join(basePartialsPath, "architect-role.md"), "utf8")
-    .then(content => Handlebars.registerPartial("base/architect-role", content))
+  fs.readFile(join(commonPartialsPath, "architect-role.md"), "utf8")
+    .then(content => Handlebars.registerPartial("common/architect-role", content))
+    .catch(() => {}),
+  fs.readFile(join(commonPartialsPath, "rules.md"), "utf8")
+    .then(content => Handlebars.registerPartial("common/rules", content))
     .catch(() => {}),
 ]).catch(() => {});
 
@@ -48,10 +51,10 @@ Promise.all([
     .catch(() => {})
 ]).catch(() => {});
 
-// ✅ Register common base injections (used by both code and design jobs)
+// ✅ Register common injections (shared across all jobs)
 Promise.all([
-  fs.readFile(join(baseInjectionsPath, "output-format-markdown.md"), "utf8")
-    .then(content => Handlebars.registerPartial("base/injections/output-format-markdown", content))
+  fs.readFile(join(commonInjectionsPath, "text-format-compact.md"), "utf8")
+    .then(content => Handlebars.registerPartial("common/injections/text-format-compact", content))
     .catch(() => {})
 ]).catch(() => {});
 
@@ -89,6 +92,7 @@ const designDecomposeRulesPath = join(__dirname, "../../../core/prompt/templates
 fs.readFile(designDecomposeRulesPath, "utf8")
   .then(content => Handlebars.registerPartial("design/phases/decompose/rules", content))
   .catch(() => {});
+
 
 /**
  * FilePromptAdapter - File system implementation of PromptPort

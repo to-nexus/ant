@@ -89,6 +89,9 @@ export async function tool(
       case 'delete_file':
         result = await handleDeleteFile(state, args as { path: string });
         break;
+      case 'edit_file':
+        result = await handleEditFile(state, args as { path: string; old_str: string; new_str: string });
+        break;
       case 'mkdir':
         result = await handleMkdir(state, args as { path: string });
         break;
@@ -379,6 +382,80 @@ async function handleDeleteFile(
   state.files = (state.files || []).filter(f => f.path !== filePath);
   
   return `File deleted successfully: ${filePath}`;
+}
+
+/**
+ * Handle edit_file tool (Design job)
+ */
+async function handleEditFile(
+  state: DesignGraphState,
+  args: { path: string; old_str: string; new_str: string }
+): Promise<string> {
+  const { path: filePath, old_str, new_str } = args;
+  const gitPort = state.deps?.git;
+  
+  if (!gitPort) {
+    throw new Error('GitPort not available');
+  }
+  
+  if (!filePath || old_str === undefined || new_str === undefined) {
+    throw new Error('edit_file requires path, old_str, and new_str');
+  }
+  
+  const chatAPI = getChatAPIClient();
+  
+  // ✅ Convert relative path to absolute path for design outputs
+  const path = await import('path');
+  let absolutePath = filePath;
+  
+  if (!path.isAbsolute(filePath)) {
+    const featurePath = state.context.featurePath;
+    if (!featurePath) {
+      throw new Error('featurePath not available in context');
+    }
+    absolutePath = path.join(featurePath, filePath);
+  }
+  
+  // ✅ Start file edit UI notification
+  await chatAPI.startFileEdit(filePath);
+  
+  try {
+    // ✅ Check if file exists
+    const exists = await gitPort.fileExists(absolutePath);
+    if (!exists) {
+      throw new Error(`File does not exist: ${filePath}. Use <file> tag to create new files.`);
+    }
+    
+    // ✅ Read current file content (always from disk to ensure latest state)
+    const originalContent = await gitPort.readFile(absolutePath);
+    if (!originalContent) {
+      throw new Error(`Failed to read file: ${filePath}`);
+    }
+    
+    // ✅ Apply search/replace using existing logic
+    const { applySearchReplace } = await import('../../../../../core/streaming/strategies/common/EditOperations');
+    const modifiedContent = applySearchReplace(
+      originalContent,
+      old_str,
+      new_str,
+      filePath
+    );
+    
+    // ✅ Write modified content back to disk
+    await gitPort.writeFile(absolutePath, modifiedContent);
+    
+    console.log(`✅ [EditFile] Successfully edited ${absolutePath}`);
+    console.log(`   Replaced ${old_str.length} chars with ${new_str.length} chars`);
+    
+    // ✅ UI notification: file edit complete
+    await chatAPI.completeFileEdit(filePath, old_str, new_str);
+    
+    return `File edited successfully: ${filePath}\nReplaced ${old_str.length} characters with ${new_str.length} characters.`;
+  } catch (error) {
+    // ✅ UI notification: file edit failed
+    await chatAPI.failFileEdit(filePath, (error as Error).message);
+    throw error;
+  }
 }
 
 /**

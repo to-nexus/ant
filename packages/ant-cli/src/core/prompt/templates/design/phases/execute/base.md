@@ -104,16 +104,6 @@ STRUCTURE PER CHAPTER:
 
 **⚠️ CRITICAL: This API Contract was already finalized and CANNOT be changed!**
 
-**When writing Frontend or Backend System Design:**
-- ✅ Use EXACT endpoint paths from API Contract (e.g., `POST /rooms/create` NOT `/rooms`)
-- ✅ Use EXACT field names and types (e.g., `userId: string` NOT `user_id`)
-- ✅ Reference DTOs by name: "Uses CreateRoomRequest from api-contract.md"
-- ❌ DO NOT redefine DTOs (no duplication!)
-- ❌ DO NOT change endpoint paths or field names
-- ❌ DO NOT apply your own "best practices" that contradict the contract
-
-**Your job: Design HOW to implement the contract, NOT to redesign the contract.**
-
 ────────────────────────────────────────────────────────────────────────────────
 
 {{designDoc}}
@@ -122,36 +112,42 @@ STRUCTURE PER CHAPTER:
 {{/if}}
 
 ════════════════════════════════════════════════════════════════════════════════
-## 📐 DOCUMENT TYPE GUIDE
+## 📐 DOCUMENT TYPE-SPECIFIC GUIDE
 ════════════════════════════════════════════════════════════════════════════════
 
-**⚠️ CRITICAL: Check your task description to determine document type!**
+**Your document type is determined by task.targetFile:**
+- `api-contract.md` - Binding API specification (WHAT interfaces exist)
+- `fe-system-design.md` - Frontend architecture (HOW to consume APIs)
+- `be-system-design.md` - Backend architecture (HOW to implement APIs)
+- `system-design.md` - Unified design (single-tier or full-stack in one doc)
 
-- `api-contract.md` → See injection: `api-contract-guide.md`
-- `fe-system-design.md` → See injection: `frontend-guide.md`
-- `be-system-design.md` → See injection: `backend-guide.md`
-- `system-design.md` → Use unified approach (all sections in one document)
+**A document type-specific guide has been automatically injected above** with:
+- Required sections tailored to this document type
+- Critical MECE rules (no duplication between docs)
+- Code examples and anti-patterns
+- Common mistakes to avoid
 
-**The injection guide for your document type is automatically included above.**
+**If no type-specific guide appears above**, you're writing **`system-design.md` (unified)**:
 
-**For unified `system-design.md` (single-tier projects):**
+### Unified System Design Structure
 
-### Structure (adapt based on project type, keep it SHORT and NON-DUPLICATIVE):
-1. **Overview**: System purpose, high-level architecture style, key use cases
-2. **Responsibilities & Boundaries**: Chosen pattern (Layered, Hexagonal, ECS, etc.), major boundaries, and WHAT each owns (UI, orchestration, domain rules, platform dependencies)
-3. **State Model & Ownership**: Normalize state types (e.g., Domain/GameState vs SessionState vs UI-only state) and define exactly which boundary is the single source of truth for each
-4. **Core Domain Concepts & Data Ownership**: Key entities/aggregates and which boundary owns/updates them (describe concepts, NOT full field lists or visual representation). Include key **domain invariants and policies** (rules/constraints), but NOT algorithms.
-5. **Core Interfaces & Contracts (ONE place)**:
-   - List ALL important contracts between boundaries (services, engines, ports, providers, repositories, runtime/controllers)
-   - For each: Name / Role / Operations / Rules (language-neutral, see system base guide)
-   - For realtime/game systems, this typically includes at least: `GameEngine`, `GameRuntime/SessionManager`, `InputProvider/InputAdapter`, `StateProvider`, `SyncStrategy`, `ViewBoundary`
-   - Other sections MUST reference these contracts instead of redefining them
-6. **Main Execution Flows / Runtime Behavior** (if real-time, game, or background processing):
-   - 2–3 key flows only (e.g., "game loop", "screen transition")
-   - High-level description: who owns the loop, who calls whom, in which order
-   - NO platform-specific APIs or detailed timing logic
-7. **Technology Stack & Platform Constraints**: Framework + version, database (if any), key libraries, and any hard platform constraints (e.g., "HTML/DOM-based rendering, no Canvas/WebGL")
-8. **Non-Functional Requirements** (if PRD mentions): Security, performance, integrations. For realtime/game systems, include ONLY if present in PRD: FPS/latency targets, determinism requirements, tick strategy (fixed vs variable), and synchronization policies (authoritative vs prediction).
+**Use this for:**
+- Single-tier projects (frontend-only, backend-only, CLI tool)
+- Full-stack projects that prefer one unified document
+- Projects without separate FE/BE split
+
+**Adapt sections based on project type** (skip non-applicable sections):
+
+1. **Overview**: System purpose, architecture style, key use cases
+2. **Responsibilities & Boundaries**: Architecture pattern (Layered, Hexagonal, MVC, ECS, etc.), component/layer boundaries
+3. **State Model & Ownership**: State classification (Domain/Session/UI), single source of truth per state type
+4. **Core Domain Concepts**: Key entities, relationships, domain invariants (describe concepts, NOT full schemas)
+5. **Core Interfaces & Contracts**: Boundary contracts (services, engines, ports, providers) - define once, reference elsewhere
+6. **Main Execution Flows**: Key flows (e.g., "user action flow", "game loop") - high-level who-calls-whom
+7. **Technology Stack**: Framework, database (if any), key libraries, platform constraints
+8. **Non-Functional Requirements** (if PRD specifies): Security, performance, integrations
+
+**Critical**: Focus on architecture decisions and component interaction, NOT implementation formulas.
 
 ════════════════════════════════════════════════════════════════════════════════
 ## 🚫 ABSOLUTELY FORBIDDEN (Unless PRD EXPLICITLY requests)

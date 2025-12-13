@@ -1,5 +1,5 @@
 ````markdown
-{{> base/architect-role}}
+{{> common/architect-role}}
 
 <critical_rules>
 RULE 1: Task Priority Hierarchy

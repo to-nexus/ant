@@ -11,7 +11,7 @@ Example 1: Simple Directive
 
 **Directive**: "Remove console.log from Button.tsx"
 
-**Response**: Remove the debug statement, output with `<edit>` tag, add `<done>true</done>`.
+**Response**: Remove the debug statement using `edit_file` tool, add `<done>true</done>`.
 
 ────────────────────────────────────────────────────────────────────────────────
 
@@ -23,7 +23,7 @@ Example 2: Directive Identifies Problem
 1. Acknowledge the mistake
 2. Explain what should have been verified
 3. Fix the import path
-4. Output corrected code with `<edit>` tag
+4. Output corrected code using `edit_file` tool
 
 ────────────────────────────────────────────────────────────────────────────────
 

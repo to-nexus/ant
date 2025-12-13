@@ -6,11 +6,11 @@
 ## 🎯 TWO WAYS TO INTERACT
 ════════════════════════════════════════════════════════════════════════════════
 
-**⚠️ CRITICAL: `<file>`, `<edit>`, `<append>` are NOT tools! They are XML streaming tags.**
+**⚠️ CRITICAL: `<file>`, `<append>` are XML streaming tags. File editing uses tool calls.**
 
 ### 📝 XML STREAMING - For Content Generation (LLM → User)
 
-Use XML tags **directly** to create or modify file content:
+Use XML tags **directly** to create or append file content:
 
 ```xml
 <!-- Create NEW file -->
@@ -22,12 +22,6 @@ export function Button({ children }: { children: React.ReactNode }) {
 }
 </file>
 
-<!-- Edit EXISTING file -->
-<edit path="src/App.tsx">
-<search>exact code to find</search>
-<replace>new code</replace>
-</edit>
-
 <!-- Append to EXISTING file -->
 <append path="src/utils.ts">
 export function newFunction() {
@@ -36,74 +30,14 @@ export function newFunction() {
 </append>
 ```
 
-**🚨 CRITICAL FILE MODIFICATION RULES:**
+### 🔧 TOOL CALLING - For File Operations & Commands (System → LLM)
 
-1. **`<edit>` vs `<file>` - When to Use Which**
-   
-   **ONE file modification per file in this response**
-   
-   - **Small localized change (< 20 lines)?** → `<edit>`
-   - **Large change (≥ 20 lines) OR multiple locations?** → `<file>` (overwrite entire file)
-   
-   **Why:**
-   - `<edit>` modifies disk immediately. A second `<edit>` for same file will have outdated search block → "Search block not found" error.
-   - **Large search blocks (≥ 20 lines) prone to LLM copy errors → Use `<file>` instead!**
-
-2. **When to Call `read_file` for File Content**
-   
-   **🚨 Check `📦 Retrieved Codebase Context` for file existence:**
-   - File listed? → Exists in codebase
-   - Not listed? → New file, use `<file>` to create
-   
-   **🚨 Before using file content for `<edit>`, check conversation history:**
-   
-   ```
-   Did you (or previous response) <edit> this file?
-   
-   YES → Check: Did you read_file AFTER that edit?
-         - NO → MUST call read_file NOW
-         - YES → Can use that read_file result
-   
-   NO edit yet → Check: Do you have read_file result?
-         - YES → Can use it
-         - NO → MUST call read_file NOW
-   ```
-   
-   **Why:** `<edit>` modifies file immediately. Any content from BEFORE the edit is outdated.
-   
-   **⚠️ EXACT MATCH REQUIRED:**
-   - `<search>` block must be **character-perfect** copy from `read_file` result
-   - Spaces, tabs, newlines must match exactly
-   - Missing/extra lines → "Search block not found" error
-   
-   **Example (WRONG):**
-   ```
-   History:
-   1. read_file("X") → content A
-   2. <edit path="X"> → file changed!
-   3. [Current response] Use content A for another <edit>
-   
-   ❌ FAILS! Content A is outdated (from before step 2)
-   ```
-   
-   **Example (CORRECT):**
-   ```
-   History:
-   1. read_file("X") → content A
-   2. <edit path="X"> → file changed!
-   3. [Current response] Call read_file("X") → content B
-   4. Use content B for <edit>
-   
-   ✅ Works! Content B is current (after step 2 edit)
-   ```
-
-### 🔧 TOOL CALLING - For Information & Commands (System → LLM)
-
-Use **system tools** for **reading**, **searching**, **commands** (NEVER for file creation/modification):
+Use **system tools** for **editing**, **reading**, **searching**, **commands**:
 
 **Available Tools** (provided by the system):
 
 - `read_file(path)`: Read file contents
+- `edit_file(path, old_str, new_str)`: Edit existing file with search/replace
 - `search_code(pattern, file_pattern?)`: Search codebase
 - `run_command(command)`: Execute shell command
 - `delete_file(path)`: Delete a file
@@ -111,6 +45,15 @@ Use **system tools** for **reading**, **searching**, **commands** (NEVER for fil
 - `mkdir(path)`: Create directory
 
 **How to use tools**: Call them using the system's native interface - NO XML tags, NO text descriptions. Just invoke the tool directly.
+
+**🎯 When to Use What:**
+
+| Operation | Method | Example |
+|-----------|--------|---------|
+| Create NEW file | `<file>` tag | `<file path="src/App.tsx">content</file>` |
+| Edit EXISTING file | `edit_file` tool | `edit_file(path, old_str, new_str)` |
+| Append to file | `<append>` tag | `<append path="src/utils.ts">content</append>` |
+| Read file | `read_file` tool | `read_file("src/App.tsx")` |
 
 ────────────────────────────────────────────────────────────────────────────────
 
@@ -121,14 +64,14 @@ Use **system tools** for **reading**, **searching**, **commands** (NEVER for fil
 | Tag | Purpose | When to Use |
 |-----|---------|-------------|
 | `<file path="...">` | Create NEW file | File doesn't exist yet |
-| `<edit path="...">` | Modify EXISTING file | Change specific parts |
 | `<append path="...">` | Add to EXISTING file | Add content at end |
 
-### Available Tools (Information & Commands)
+### Available Tools (File Operations & Commands)
 
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
 | `read_file` | Read file content | Need context from existing file |
+| `edit_file` | Edit EXISTING file | Modify specific parts of existing file |
 | `search_code` | Search codebase | Find where something is used |
 | `list_files` | List directory contents | Explore file structure |
 | `delete_file` | Delete **single file** | Remove one specific file (safe, UI-integrated) |
@@ -143,53 +86,45 @@ Use **system tools** for **reading**, **searching**, **commands** (NEVER for fil
 
 ────────────────────────────────────────────────────────────────────────────────
 
-## ⚠️ CRITICAL: `<edit>` TAG RULES
+## ⚠️ CRITICAL: `edit_file` TOOL RULES
 
-**🚨 MOST CRITICAL: Edit each file ONLY ONCE per response!**
+**How to use `edit_file` correctly:**
 
-After you edit a file, its content has changed. A second edit will FAIL because the search block won't match.
+1. **Always read the file first** if you don't have recent content
+   - Call `read_file(path)` to get current content
+   - Use the exact content for `old_str` parameter
 
-**The `<search>` block must match EXACTLY:**
-- Whitespace (spaces, tabs, newlines)
-- Indentation
-- Comments
-- Every character
+2. **The `old_str` must match EXACTLY:**
+   - Whitespace (spaces, tabs, newlines)
+   - Indentation
+   - Comments
+   - Every character
 
-**How to get it right:**
-1. Copy EXACTLY from ORIGINAL FILES section or `read_file` result
-2. Include enough context to make search unique (3-5 lines)
-2. If pattern might repeat → add more context
+3. **Include enough context (3-5 lines)** to make the search unique
+   - If the pattern might repeat, add more surrounding lines
+   - Copy EXACTLY from the `read_file` result
+
+4. **If search block not found:**
+   - The file content has changed since you last saw it
+   - Call `read_file` again to get the latest content
+   - Update your `old_str` with the new content
 
 **Examples:**
 
-```xml
-<!-- ❌ FAILS - Missing indentation -->
-<edit path="src/App.tsx">
-<search>
-export function Button() {
-return <button>Click</button>;
-}
-</search>
-<replace>
-export function Button() {
-  return <button className="btn">Click</button>;
-}
-</replace>
-</edit>
+```python
+# ❌ WRONG - Might not match exact whitespace
+edit_file(
+  path="src/App.tsx",
+  old_str="export function Button() {\nreturn <button>Click</button>;\n}",
+  new_str="export function Button() {\n  return <button className='btn'>Click</button>;\n}"
+)
 
-<!-- ✅ CORRECT - Exact match with proper indentation -->
-<edit path="src/App.tsx">
-<search>
-export function Button() {
-  return <button>Click</button>;
-}
-</search>
-<replace>
-export function Button() {
-  return <button className="btn">Click</button>;
-}
-</replace>
-</edit>
+# ✅ CORRECT - Exact match with proper indentation (copied from read_file result)
+edit_file(
+  path="src/App.tsx",
+  old_str="export function Button() {\n  return <button>Click</button>;\n}",
+  new_str="export function Button() {\n  return <button className='btn'>Click</button>;\n}"
+)
 ```
 
 ────────────────────────────────────────────────────────────────────────────────
@@ -198,22 +133,22 @@ export function Button() {
 
 **⚠️ NEVER NEST FILE TAGS!**
 
-`<file>`, `<edit>`, `<append>` are independent operations. Do NOT nest them:
+`<file>`, `<append>` are independent operations. Do NOT nest them:
 
 ```xml
 <!-- ❌ WRONG -->
 <file path="App.tsx">
-<edit path="...">  ← Parser will treat this as literal text!
+<append path="...">  ← Parser will treat this as literal text!
 </file>
 
 <!-- ✅ CORRECT -->
 <file path="App.tsx">...</file>
-<edit path="App.tsx">...</edit>
+<append path="utils.ts">...</append>
 ```
 
 **⚠️ DO NOT include closing tags in code strings/comments!**
 
-Parser looks for FIRST occurrence of `</file>`, `</edit>`, `</append>`. Use string concatenation if needed: `"</" + "file>"`
+Parser looks for FIRST occurrence of `</file>`, `</append>`. Use string concatenation if needed: `"</" + "file>"`
 
 **❌ FORBIDDEN - These will break parsing:**
 
@@ -222,7 +157,7 @@ Parser looks for FIRST occurrence of `</file>`, `</edit>`, `</append>`. Use stri
 // TODO: </replace> this later
 const tag = "</file>";              // String literal
 const html = "</append>";           // Will break parser!
-console.log("</edit>");             // Parser stops here!
+console.log("</file>");             // Parser stops here!
 ```
 
 **✅ SAFE ALTERNATIVES:**
@@ -233,19 +168,18 @@ console.log("</edit>");             // Parser stops here!
 // TODO: finish this replacement
 const tag = "<" + "/file>";         // Split the tag
 const html = "</" + "append>";      // Use concatenation
-console.log("close-edit");          // Use different words
+console.log("close-file");          // Use different words
 ```
 
-**This applies to ALL XML tags:** `</file>`, `</edit>`, `</append>`, `</search>`, `</replace>`
+**This applies to ALL XML tags:** `</file>`, `</append>`
 
 ────────────────────────────────────────────────────────────────────────────────
 
 ## 💡 DECISION TREE
 
 **Working with files?**
-1. **File exists?** → Read it first with `read_file` tool
-2. **Modifying existing file?** → ALWAYS use `<edit>` tag
-2. **Creating NEW file?** → Use `<file>` tag
+1. **Creating NEW file?** → Use `<file>` tag
+2. **Modifying existing file?** → Use `edit_file` tool (after `read_file` if needed)
 3. **Appending to existing file?** → Use `<append>` tag
 
 **Need to GET information?** → Use tools (`read_file`, `search_code`, `list_files`)
@@ -253,8 +187,9 @@ console.log("close-edit");          // Use different words
 **Need to EXECUTE command?** → Use tools (`run_command` for complex ops, `delete_file` for single file, `mkdir` for dirs)
 
 **Examples:**
-- Modify existing file: `<edit path="src/App.tsx">` (NEVER `<file>` for existing files!)
 - Create new file: `<file path="src/NewComponent.tsx">`
+- Edit existing file: `edit_file("src/App.tsx", old_str, new_str)` 
+- Append to file: `<append path="src/utils.ts">`
 - Delete single file: `delete_file` tool
 - Delete directory: `run_command` with `rm -rf dirname/`
 - Delete multiple files: `run_command` with `rm *.log`
@@ -296,12 +231,12 @@ function updatePaddle() {
 **When editing existing files:**
 1. Check if the file already imports from a constants file
 2. If constants exist → USE THEM (don't duplicate values)
-2. If new constant needed → ADD to constants file first
+3. If new constant needed → ADD to constants file first
 
 **When creating new files:**
 1. Check if `constants.ts` or similar exists in the project
 2. Import and use constants from there
-2. DO NOT create duplicate constants in multiple files
+3. DO NOT create duplicate constants in multiple files
 
 ────────────────────────────────────────────────────────────────────────────────
 
@@ -309,12 +244,10 @@ function updatePaddle() {
 
 | Mistake | Wrong | Correct |
 |---------|-------|---------|
-| **CRITICAL: Using `<edit>` as a tool** | Wrapping edit in tool syntax | Use XML tag directly: `<edit path="...">` (standalone, no wrapper) |
-| **CRITICAL: Using `<file>` as a tool** | Wrapping file in tool syntax | Use XML tag directly: `<file path="...">` (standalone, no wrapper) |
-| **CRITICAL: Modifying existing file with `<file>`** | `<file path="src/App.tsx">` when file exists | **ALWAYS** use `<edit path="src/App.tsx">` |
-| **CRITICAL: Editing same file multiple times** | Two `<edit path="src/App.tsx">` in one response | Edit each file ONLY ONCE (combine all changes into one edit) |
+| **CRITICAL: Using `<file>` for existing file** | `<file path="src/App.tsx">` when file exists | Use `edit_file` tool |
+| **CRITICAL: Editing without reading first** | `edit_file` with outdated old_str | `read_file` first, then `edit_file` |
 | **CRITICAL: Hardcoding values instead of using constants** | `const speed = 300;` when `PADDLE_SPEED` exists | `import { PADDLE_SPEED } from './constants'; const speed = PADDLE_SPEED;` |
-| Creating new file with `<edit>` | `<edit path="src/NewComponent.tsx">` when file doesn't exist | Use `<file path="src/NewComponent.tsx">` |
+| Creating new file without `<file>` | Using tool syntax | Use `<file path="...">` tag |
 | Reading with tool as text | Writing tool call as text/XML in response | Use system's native tool interface (automatic) |
 | Deleting directory with single file tool | Using `delete_file` on `dist/` directory | Use `run_command` tool: `rm -rf dist/` |
 | Deleting multiple files individually | Multiple `delete_file` calls | Use `run_command` tool: `rm *.log` |
@@ -322,7 +255,7 @@ function updatePaddle() {
 | Markdown in content | ` ```typescript\ncode\n``` ` | Raw code only |
 | Placeholder paths | `path/to/file.tsx` | `src/components/Button.tsx` |
 | Code placeholders | `// ... logic ...` | Complete implementation |
-| Whitespace in search | Missing indentation | Exact match required |
+| Whitespace in edit_file old_str | Missing indentation | Exact match required |
 
 ────────────────────────────────────────────────────────────────────────────────
 

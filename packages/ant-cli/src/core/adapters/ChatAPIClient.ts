@@ -589,6 +589,20 @@ export class ChatAPIClient {
   }
 
   /**
+   * Fail file edit (error occurred)
+   */
+  async failFileEdit(filePath: string, errorMessage: string): Promise<void> {
+    if (!this.enabled) return;
+    try {
+      await fetch(`${this.baseUrl}/file-operation`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ phase: 'failed', operation: 'edit', filePath, error: errorMessage })
+      });
+    } catch (error) { /* Silently fail */ }
+  }
+
+  /**
    * Complete file deletion
    */
   async completeFileDeletion(filePath: string, content?: string): Promise<void> {

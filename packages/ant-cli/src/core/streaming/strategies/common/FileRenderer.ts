@@ -1,12 +1,11 @@
 /**
- * FileRenderer - Handle file operations (create, edit, append, delete)
+ * FileRenderer - Handle file operations (create, append, delete)
  */
 
 import { ChatAPIClient } from '../../../adapters/ChatAPIClient';
 import { GitPort } from '../../../ports/git';
 import { ParsedAction, FileStreamInfo } from '../../types';
 import { FileRegistry } from '../../state/FileRegistry';
-import { EditOperationManager, applySearchReplace } from './EditOperations';
 import { LineBufferManager } from './LineBuffer';
 
 export interface FileRendererConfig {
@@ -25,7 +24,6 @@ export class FileRenderer {
   private featurePath?: string;
   
   private activeFiles: Map<string, FileStreamInfo> = new Map();
-  private editOps: EditOperationManager = new EditOperationManager();
   private lineBuffers: LineBufferManager = new LineBufferManager();
   
   // ✅ Track file operation completion
@@ -62,12 +60,12 @@ export class FileRenderer {
       console.log(`[Render] ⚠️  File ${filePath} already streamed (previous: ${previousActionType}, new: ${actionType})`);
       
       const isFullReplacement = 
-        (previousActionType === 'create' || previousActionType === 'edit') &&
+        previousActionType === 'create' &&
         (actionType === 'create' || !actionType);
       
       const isIncrementalChange = 
         previousActionType === 'create' && 
-        (actionType === 'edit' || actionType === 'append');
+        actionType === 'append';
       
       if (isFullReplacement) {
         console.log(`[Render] 🔄 Full overwrite - replacing entire file (multi-turn)`);
@@ -75,27 +73,11 @@ export class FileRenderer {
         registry.resetFile(filePath);
         this.activeFiles.delete(filePath);
         this.lineBuffers.clear(filePath);
-        this.editOps.deleteOperation(filePath);
       } else if (isIncrementalChange) {
         console.log(`[Render] ✏️  Incremental ${actionType} on top of previous content (multi-turn)`);
         return;
       } else {
         console.log(`[Render] ⏭️  Skipping duplicate file_start (same turn): ${previousActionType} → ${actionType}`);
-        
-        if (previousActionType === 'edit' && actionType === 'edit') {
-          const errorMsg = `Duplicate ${actionType} for "${filePath}" in same response! ` +
-            `Rule violation: You MUST edit each file ONLY ONCE per response (see 🚨 CRITICAL FILE MODIFICATION RULES). ` +
-            `After first <edit>, the file content changed - second <edit> search block cannot match. ` +
-            `Solution: Combine all changes for this file into ONE <edit> block with a comprehensive search/replace.`;
-
-          console.error(`[Render] ❌ CRITICAL ERROR: Duplicate edit for ${filePath} in same turn!`);
-          console.error(`   The LLM is trying to edit the same file twice.`);
-          console.error(`   The second edit will fail because the file was already modified.`);
-          console.error(`   This edit will be COMPLETELY SKIPPED to prevent cascading failures.`);
-
-          // ✅ Add to fileErrors for self-healing
-          this.fileErrors.push(errorMsg);
-        }
         
         this.activeFiles.set(filePath, {
           filePath: filePath,
@@ -109,29 +91,10 @@ export class FileRenderer {
     }
     
     // Determine final action type
-    let finalActionType: 'create' | 'append' | 'edit';
+    let finalActionType: 'create' | 'append';
     
     if (actionType === 'append') {
       finalActionType = 'append';
-    } else if (actionType === 'edit') {
-      // ✅ ONLY check file existence for edit operations
-      const isExisting = await registry.isExisting(filePath);
-      
-      if (!isExisting) {
-        const errorMsg = `Cannot edit non-existing file "${filePath}". You must create it first with <file> tag, or check if the path is correct.`;
-        console.error(`❌ [FileRenderer] ${errorMsg}`);
-        this.fileErrors.push(errorMsg);
-        
-        // ❌ Skip this file operation
-        this.activeFiles.set(filePath, {
-          filePath,
-          actionType: 'skip' as any,
-          contentBuffer: '',
-          startedAt: Date.now()
-        });
-        return;
-      }
-      finalActionType = 'edit';
     } else {
       // <file> tag: No existence check needed (intentional overwrite)
       finalActionType = 'create';
@@ -154,12 +117,7 @@ export class FileRenderer {
     });
     this.completionPromises.set(filePath, completionPromise);
     
-    if (finalActionType === 'create' || finalActionType === 'append') {
-      await this.chatAPI.startFileCreation(filePath);
-    } else if (finalActionType === 'edit') {
-      await this.chatAPI.startFileEdit(filePath);
-      this.editOps.initEdit(filePath);
-    }
+    await this.chatAPI.startFileCreation(filePath);
   }
   
   /**
@@ -185,24 +143,12 @@ export class FileRenderer {
     registry.appendContent(filePath, content);
     fileInfo.contentBuffer += content;
     
-    // Handle edit operations (search/replace sections)
-    if (fileInfo.actionType === 'edit' && metadata?.section) {
-      if (metadata.section === 'search') {
-        this.editOps.addSearchContent(filePath, content);
-      } else if (metadata.section === 'replace') {
-        this.editOps.addReplaceContent(filePath, content);
-      }
-      return;
-    }
-    
     // Real-time streaming for create and append
-    if (fileInfo.actionType === 'create' || fileInfo.actionType === 'append') {
-      const completeLines = this.lineBuffers.addContent(filePath, content);
-      
-      if (completeLines.length > 0) {
-        const newContent = completeLines.join('\n') + '\n';
-        await this.chatAPI.streamFileContent(filePath, newContent);
-      }
+    const completeLines = this.lineBuffers.addContent(filePath, content);
+    
+    if (completeLines.length > 0) {
+      const newContent = completeLines.join('\n') + '\n';
+      await this.chatAPI.streamFileContent(filePath, newContent);
     }
   }
   
@@ -234,15 +180,11 @@ export class FileRenderer {
     try {
       // Flush remaining buffer
       const remainingBuffer = this.lineBuffers.getRemainingBuffer(filePath);
-      if (remainingBuffer && (fileInfo.actionType === 'create' || fileInfo.actionType === 'append')) {
+      if (remainingBuffer) {
         await this.chatAPI.streamFileContent(filePath, remainingBuffer);
       }
       
-      if (fileInfo.actionType === 'create' || fileInfo.actionType === 'append') {
-        await this.handleCreateOrAppend(filePath, fileInfo);
-      } else if (fileInfo.actionType === 'edit') {
-        await this.handleEdit(filePath);
-      }
+      await this.handleCreateOrAppend(filePath, fileInfo);
     } catch (error) {
       await this.handleError(filePath, fileInfo, error);
       
@@ -331,44 +273,6 @@ export class FileRenderer {
   }
   
   /**
-   * Handle edit operation
-   */
-  private async handleEdit(filePath: string): Promise<void> {
-    const editOp = this.editOps.getOperation(filePath);
-    if (!editOp) {
-      console.warn(`[Render] No edit operation found for: ${filePath}`);
-      return;
-    }
-    
-    if (!this.gitPort) {
-      throw new Error('[Edit] GitPort not available - cannot apply edits to files');
-    }
-    
-    console.log(`📝 [Edit] Applying search/replace to ${filePath}...`);
-    
-    const originalContent = await this.gitPort.readFile(filePath);
-    if (!originalContent) {
-      throw new Error(`[Edit] File not found: ${filePath}`);
-    }
-    
-    const modifiedContent = applySearchReplace(
-      originalContent,
-      editOp.searchContent,
-      editOp.replaceContent,
-      filePath
-    );
-    
-    await this.gitPort.writeFile(filePath, modifiedContent);
-    console.log(`✅ [Edit] Successfully modified ${filePath}`);
-    
-    await this.chatAPI.completeFileEdit(
-      filePath,
-      editOp.searchContent,
-      editOp.replaceContent
-    );
-  }
-  
-  /**
    * Handle errors during file operations
    */
   private async handleError(filePath: string, fileInfo: FileStreamInfo, error: unknown): Promise<void> {
@@ -384,9 +288,7 @@ export class FileRenderer {
     const errorMessage = error instanceof Error ? error.message : String(error);
     
     // ✅ Send file operation failed status to UI (FileCard will display this)
-    const failedType = fileInfo.actionType === 'create' ? 'file_create_failed' :
-                       fileInfo.actionType === 'edit' ? 'file_edit_failed' :
-                       'file_delete_failed';
+    const failedType = fileInfo.actionType === 'create' ? 'file_create_failed' : 'file_delete_failed';
     
     await this.chatAPI.showChatStatus(failedType as any, {
       filePath,
@@ -395,20 +297,6 @@ export class FileRenderer {
     
     // ❌ DO NOT send generic error event - it causes duplicate error display
     // FileCard already shows the error with red styling and error message
-    
-    if (errorMessage.includes('Search block not found')) {
-      // ✅ Add to fileErrors for self-healing
-      const selfHealingMsg = `File "${filePath}" edit failed: Search block not found. The file content has changed since you last saw it. You MUST use read_file("${filePath}") tool first to get the current content, then create a new <edit> with an EXACT matching search block from the current content.`;
-      this.fileErrors.push(selfHealingMsg);
-      
-      console.error(`\n${'='.repeat(80)}`);
-      console.error(`⚠️  CRITICAL: LLM attempted to edit ${filePath} with outdated code!`);
-      console.error(`\n💡 REQUIRED ACTION FOR LLM:`);
-      console.error(`   1. Use read_file tool to get the CURRENT file content`);
-      console.error(`   2. Then create a NEW <edit> with EXACT matching search block`);
-      console.error(`   3. DO NOT attempt to edit this file again without reading it first!`);
-      console.error(`${'='.repeat(80)}\n`);
-    }
   }
   
   /**
@@ -416,7 +304,6 @@ export class FileRenderer {
    */
   private cleanup(filePath: string): void {
     this.activeFiles.delete(filePath);
-    this.editOps.deleteOperation(filePath);
     this.lineBuffers.clear(filePath);
     this.completionPromises.delete(filePath);
     this.completionResolvers.delete(filePath);
@@ -440,8 +327,7 @@ export class FileRenderer {
         
         // ✅ Create self-healing error for LLM feedback (will become violation)
         const errorMsg = `⚠️ File operation incomplete: <${fileInfo.actionType}> tag for "${filePath}" was never closed. ` +
-          `This usually means the LLM output was interrupted or malformed. ` +
-          `If you need to modify this file, use read_file("${filePath}") first, then use proper <edit> tags.`;
+          `This usually means the LLM output was interrupted or malformed.`;
         
         this.fileErrors.push(errorMsg);
         
@@ -499,7 +385,6 @@ export class FileRenderer {
       // ✅ But notify UI that operation was cancelled
       const completePhase = 'complete' as const;
       const completeType = fileInfo.actionType === 'create' ? 'file_create' :
-                          fileInfo.actionType === 'edit' ? 'file_edit' :
                           fileInfo.actionType === 'delete' ? 'file_delete' : null;
       
       if (completeType) {
@@ -519,7 +404,6 @@ export class FileRenderer {
     }
     
     this.activeFiles.clear();
-    this.editOps.clear();
     this.lineBuffers.clearAll();
     this.completionPromises.clear();
   }
