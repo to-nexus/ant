@@ -62,6 +62,7 @@ export interface MessageContent {
     timestamp?: string;
     jobId?: string;         // For cancelled: job ID to resume
     reason?: string;        // For cancelled/interrupted: interruption reason (also used for file operations)
+    originalType?: string;  // For cancelled: original work type that was cancelled
     // Exploration & Analysis
     filesCount?: number;    // For explored/grepped
     totalFiles?: number;    // For exploring/grepping progress

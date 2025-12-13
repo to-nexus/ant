@@ -514,8 +514,8 @@ async function handleEditFile(
   
   const chatAPI = getChatAPIClient();
   
-  // ✅ Start file edit UI notification
-  await chatAPI.startFileEdit(filePath);
+  // ✅ NOTE: Loading card (file_editing) is already created by tool_use event handler
+  // No need to call startFileEdit here - it would be redundant
   
   try {
     // ✅ Check if file exists

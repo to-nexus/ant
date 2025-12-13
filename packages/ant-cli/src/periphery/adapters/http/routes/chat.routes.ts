@@ -190,7 +190,7 @@ export function createChatRoutes(deps: {
   router.post('/projects/:id/features/:feature/chat/file-operation', (req: Request, res: Response) => {
     const projectId = req.params.id;
     const featureName = req.params.feature;
-    const { operation, filePath, content, diffBefore, diffAfter, phase } = req.body;
+    const { operation, filePath, content, diffBefore, diffAfter, phase, error } = req.body;
 
     if (!deps.chatService) {
       res.status(503).json({ error: 'Chat service not available' });
@@ -202,7 +202,7 @@ export function createChatRoutes(deps: {
       return;
     }
 
-    deps.chatService.addFileOperation(projectId, featureName, operation, filePath, content, diffBefore, diffAfter, phase);
+    deps.chatService.addFileOperation(projectId, featureName, operation, filePath, content, diffBefore, diffAfter, phase, error);
     res.json({ success: true });
   });
 
