@@ -328,11 +328,6 @@ export class TemplateComposer {
         prdSpec: assembled.prdSpec || ''
       },
       
-      // session-history.md expects: {{sessionHistory}}
-      'session-history': {
-        sessionHistory: assembled.sessionHistory || ''
-      },
-      
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       // Code-specific injections (code/base/injections/*.md)
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
