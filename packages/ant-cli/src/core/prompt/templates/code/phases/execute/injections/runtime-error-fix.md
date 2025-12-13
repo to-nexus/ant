@@ -38,6 +38,6 @@
 ### Approach
 1. Read error → Identify root cause
 2. Fix broken code only
-3. Output with `<edit>` tags
+3. Output with `edit_file` tool
 
 ````

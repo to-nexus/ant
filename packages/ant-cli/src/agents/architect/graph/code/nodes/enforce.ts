@@ -180,12 +180,11 @@ export async function enforce(state: ArchitectGraphState): Promise<ArchitectGrap
 
 Files: ${files}
 
-REASON: Search block mismatch or duplicate edit
+REASON: Search block mismatch (outdated content)
 
-✅ REQUIRED FIX (3 steps):
-1. BEFORE editing: Call read_file("path")
-2. Copy EXACT search block (character-perfect)
-3. ONE edit per file
+✅ REQUIRED FIX (2 steps):
+1. Call read_file("path") to get CURRENT content
+2. Use EXACT old_str from read_file result in edit_file tool
 `;
     }
   }

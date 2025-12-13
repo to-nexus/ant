@@ -1,164 +1,282 @@
 ## 🎨 FRONTEND DESIGN DOCUMENT GUIDE
 
-**Purpose**: HOW FRONTEND CONSUMES api-contract.md
+**Document Type**: `fe-system-design.md`
+**Role**: HOW Frontend CONSUMES api-contract.md
+**Phase**: Written AFTER api-contract.md is finalized
 
-**⚠️ CRITICAL RULE: FRONTEND NEVER DEFINES APIs, ONLY CONSUMES THEM!**
+### 🎯 What This Document IS
 
-**🚨 MOST IMPORTANT: API Contract is IMMUTABLE - Follow EXACT specifications!**
-- ✅ Copy endpoint paths EXACTLY as written (e.g., `POST /rooms/create` NOT `/rooms`)
-- ✅ Copy field names EXACTLY as written (e.g., `userId` NOT `user_id`)
-- ✅ Your "RESTful conventions" or "best practices" do NOT override the contract
-- ❌ DO NOT simplify, normalize, or "improve" the API contract
+**Frontend Implementation Architecture:**
+- ✅ HOW to consume APIs (client wrappers, error handling)
+- ✅ Component architecture (hierarchy, responsibilities, interfaces)
+- ✅ State management (strategy, global state, server state)
+- ✅ Routing structure (pages, navigation, guards)
+- ✅ UI/UX patterns (layout, forms, loading states)
 
-**Your first section MUST acknowledge the API contract:**
+**Characteristics:**
+- CONSUMER perspective: How to call APIs, not define them
+- REFERENCE contract types: "Uses LoginRequest from api-contract.md"
+- ARCHITECTURE focus: Component boundaries, data flow, patterns
+
+### 🚫 What This Document is NOT
+
+- ❌ NO API definitions (already in api-contract.md)
+- ❌ NO DTO redefinition (import/reference only!)
+- ❌ NO full component implementations (only interfaces)
+- ❌ NO detailed event handlers (only high-level flow)
+
+---
+
+## 📐 REQUIRED SECTIONS
+
+### 1. Overview & API Contract Compliance (mandatory)
+
+**MUST acknowledge api-contract.md:**
 ```markdown
 ## 1. Overview
-...
 
-### API Contract
-This frontend implements the consumer side of `api-contract.md`.
-All DTOs and endpoints are defined in the API contract document.
+### System Purpose
+[User-facing description of what this frontend does]
+
+### Architecture
+[High-level: component tree, state flow strategy]
+
+### API Contract Compliance
+This frontend implements the **consumer side** of `api-contract.md`.
+All API calls use types defined in the contract.
+NO DTOs are redefined in this document.
 ```
 
-════════════════════════════════════════════════════════════════════════════════
+### 2. Component Architecture
 
-### REQUIRED SECTIONS
+**Component Hierarchy:**
+- Page components (top-level routes)
+- Container components (data fetching, business logic)
+- Presentational components (pure UI, props-driven)
 
-#### 1. Overview
-- System purpose (user-facing description)
-- High-level architecture (component tree, state flow)
-- Core user journeys (≤5 flows)
+**For EACH major component, specify:**
+- **Responsibility**: 1 sentence describing WHAT it does
+- **Props interface**: ≤5 key fields with types
 
-#### 2. Component Architecture
-- Component hierarchy (Pages → Containers → Presentational)
-- Component responsibilities (1 sentence: WHAT it does)
-- Component interfaces (props only, ≤5 key fields):
-  ```typescript
-  interface LoginFormProps {
-    onSubmit: (credentials: LoginRequest) => Promise<void>;
-    isLoading: boolean;
-  }
-  ```
+**Example:**
+```markdown
+### LoginPage
+**Responsibility**: Handles user authentication flow and redirects on success
 
-**WRITE AT THIS LEVEL** - Component purpose, props interface
-**DON'T WRITE** - useState calls, useEffect logic, event handlers, validation code
+**Interface** (props):
+- `onLoginSuccess: (user: User) => void` - Callback after successful login
+- `redirectTo?: string` - Optional redirect path after login
 
-#### 2.1 ⚠️ Game-Specific Frontend Constraint
-
-**If this is a game project (physics, rendering, animation):**
-
-Frontend System Design MUST NOT contain game physics or rendering formulas.
-
-**Describe only:**
-- Roles of game screen components (e.g., PlayField/GameField: renders game world, HUD: shows score/balls)
-- Engine abstraction interface name and high-level contract (e.g., `GameEngine.update(input, time) → GameState`)
-- State flow at boundary level: Input → InputAdapter/InputProvider → Runtime/Orchestration → Domain Engine → GameState → Presentation components
-- React components as the concrete renderer for GameState (no separate “Renderer layer” beyond the Presentation components)
-
-**FORBIDDEN in frontend design:**
-- ❌ Physics formulas, collision algorithms, movement equations
-- ❌ Rendering-specific commands (CSS transforms, Canvas API, WebGL calls)
-- ❌ Animation parameters (angles, durations, easing functions)
-- ❌ Game loop implementation details (requestAnimationFrame logic)
-- ❌ Concrete field structures for internal game state (e.g., `{ x, y, vx, vy }`)
-
-Treat the game engine as an abstract domain service (like a backend API): describe **how UI depends on it**, not **how it works internally**.
-
-#### 2.2 Example: Responsibility Boundaries in Frontend-Only Game Architectures
-- This is **one common mapping** when you choose a layered/clean-style separation; you MAY adopt other patterns (e.g., ECS, actor), but you MUST still respect the high-level rules below.
-- **View / Presentation Boundary** (e.g., `GameRoomView`, `GameFieldView`):
-  - Renders visual output based on current game/session state passed in as props
-  - Handles user input events and translates them into abstract commands (e.g., `MoveLeft`, `PauseGame`) via callbacks to an InputAdapter/InputProvider or container boundary
-  - Does NOT own authoritative game/domain state or the main loop
-- **Container / Orchestration / Runtime Boundary** (e.g., `GameRuntime`, `GameRoomController`):
-  - Coordinates game/session lifecycle, navigation events, and overall orchestration
-  - Owns the main loop/tick scheduling for real-time games (without mentioning specific APIs like `requestAnimationFrame`)
-  - Invokes domain engine/services and updates stored state, then passes state/handlers down to views
-- **Domain / Rules Boundary** (framework-agnostic):
-  - Encapsulates game rules and state transitions; exposed via clear, framework-neutral contracts (see system design contract pattern)
-- **Platform / Adapter Boundary**:
-  - Wraps platform details (timers, storage, network, input devices) behind interfaces/ports; may host InputAdapter implementations
-- **Key Rules (pattern-agnostic)**:
-  - Single Source of Truth for game/domain state must be explicitly assigned (in a specific boundary) and never duplicated in multiple components
-  - Routing/navigation APIs live in the Presentation layer; Application/Runtime emits high-level events or state changes only
-  - Avoid naming framework primitives (hooks, specific components, DOM tags) when describing architecture; use neutral terms like "screen component", "UI state store", "rendering loop"
-
-#### 3. State Management
-- State strategy choice (Context API, Redux, Zustand, React Query - pick one)
-- Global state structure (list key categories only: auth, settings, cache)
-- Server state management approach (caching, invalidation strategy)
-
-**WRITE AT THIS LEVEL** - State organization, where state lives
-**DON'T WRITE** - Action types, reducer switch cases, selector memoization, middleware
-
-#### 4. Routing Structure
-- Logical route/screen definitions (screen name → responsibility), **NOT** concrete URL strings.
-- Navigation and access rules (e.g., which screens require auth), at a conceptual level.
-- High-level navigation flow between screens (e.g., Dashboard → Detail → Settings), without specifying router APIs or path syntax.
-
-**WRITE AT THIS LEVEL** - Describe **which screens exist and why**, and how navigation intent flows.
-**DON'T WRITE** - Exact route patterns (`/game/:roomId`, `/search?q=keyword`), router API usage, history manipulation details.
-
-#### 5. API Integration Layer ⚠️ MOST IMPORTANT
-
-**Use api-contract.md types!**
-
-**⚠️ CRITICAL: NO DTO DUPLICATION!**
-- ❌ DO NOT redefine DTOs from api-contract.md
-- ✅ ONLY import/use: "Uses LoginRequest from api-contract.md"
-- ✅ Focus on HOW to call APIs, not WHAT the interface is
-
-```typescript
-// API Client (type-safe wrappers)
-import type { LoginRequest, LoginResponse, User } from 'api-contract-types';
-
-export const authAPI = {
-  login(credentials: LoginRequest): Promise<LoginResponse>;
-  getProfile(): Promise<User>;
-};
+**Children**:
+- LoginForm - Captures credentials, validates, submits
+- ErrorDisplay - Shows authentication errors
 ```
 
-**Implementation Strategy** (describe in prose, NO code):
-- HTTP client: fetch with base URL
-- Headers: Content-Type, Authorization (Bearer token)
-- Error handling: APIError class wraps HTTP errors
-- Token management: Store in localStorage, attach to requests
+**Focus**: Component purpose and contract (props), NOT implementation (useState, useEffect, handlers)
 
-**List ALL API integrations:**
-- Which components call which endpoints
-- Error handling strategy (display errors, retry logic)
-- Loading states management
-- Token refresh flow (if applicable)
+### 3. State Management
 
-**KEY RULES:**
-- ✅ Show HOW to call: fetch, headers, error handling
-- ✅ Import contract types: "LoginRequest", "User"
-- ✅ Error handling: APIError class, retry logic
-- ❌ NO DTO redefinition (that's in contract!)
-- ❌ NO "LoginRequest = { email: string, ... }" (that's duplication!)
+**State Strategy:**
+- Global state solution (Context API, Redux, Zustand, Jotai, etc.)
+- Server state solution (React Query, SWR, RTK Query, etc.)
+- Local state pattern (when to use useState)
 
-#### 6. UI/UX Design
+**Global State Structure:**
+```markdown
+- `auth`: User authentication state (user, token, isAuthenticated)
+- `app`: Application-level state (theme, locale, notifications)
+```
+
+**Server State:**
+- Which queries are cached
+- Invalidation strategy
+- Optimistic updates (if applicable)
+
+**Focus**: State ownership and boundaries, NOT implementation (reducer logic, selectors)
+
+### 4. Routing Structure
+
+**Routes:**
+```markdown
+- `/` - HomePage (public)
+- `/login` - LoginPage (public)
+- `/dashboard` - DashboardPage (protected, requires auth)
+- `/profile` - ProfilePage (protected)
+```
+
+**Route Guards:**
+- Protected routes require authentication
+- Redirect strategy (unauthenticated → `/login`)
+
+**Focus**: Route definitions and access rules, NOT router API specifics
+
+### 5. API Integration Layer ⚠️ MOST CRITICAL
+
+**🚨 CRITICAL RULES:**
+1. **NEVER redefine DTOs** - Import/reference from api-contract.md
+2. **Reference contract explicitly**: "Uses LoginRequest from api-contract.md §3.1"
+3. **Focus on HOW to call**, not WHAT the interface is
+
+**API Client Pattern:**
+```markdown
+### API Client Architecture
+**Pattern**: Type-safe wrapper functions around fetch
+
+**Shared Logic**:
+- Base URL configuration
+- Request headers (Content-Type, Authorization)
+- Response parsing and error extraction
+- Token attachment for authenticated requests
+
+**Error Handling**:
+- APIError class wraps HTTP errors
+- Includes status code, error code, message
+- Thrown errors bubble to UI error boundaries
+
+**For EACH API endpoint group**:
+- **Auth API** (`/api/auth/*`):
+  - `login(credentials: LoginRequest): Promise<LoginResponse>` - Uses LoginRequest from api-contract.md §3.1
+  - `logout(): Promise<void>` - Uses api-contract.md §3.2
+  - Token management: Store in localStorage, attach to requests
+  
+- **User API** (`/api/users/*`):
+  - `getProfile(): Promise<User>` - Uses User from api-contract.md §3.3
+  - Error handling: 401 → redirect to login
+
+**Loading States**:
+- Per-request loading indicators
+- Global loading state (for navigation)
+
+**Token Refresh**:
+- Detect 401 responses
+- Attempt refresh with refreshToken
+- Retry original request or redirect to login
+```
+
+**Focus**: API client architecture and error handling strategy
+
+### 6. UI/UX Design (if specified in PRD)
+
 - Layout structure (header, sidebar, main content)
-- Design system (colors, typography, spacing if specified)
-- Responsive breakpoints (if mobile support required)
-- Form validation (client-side validation matching API constraints)
+- Design system tokens (if specified)
+- Responsive breakpoints (if mobile required)
+- Form validation (client-side matching API constraints)
 
-#### 7. Technology Stack
-- Framework (React 18, Vue 3, etc.) - per PRD
-- Build tool (Vite, webpack) - per PRD
-- Key libraries (react-router, axios, react-query, etc.)
-- Styling approach (Tailwind, CSS Modules, styled-components)
+### 7. Technology Stack
 
-════════════════════════════════════════════════════════════════════════════════
+**Framework & Version**: (per PRD, e.g., React 18, Vue 3, Svelte 4)
+**Build Tool**: (per PRD, e.g., Vite, webpack, Next.js)
+**Key Libraries**:
+- Routing: react-router, @tanstack/router, etc.
+- HTTP client: fetch (native), axios, ky
+- State: As chosen in Section 3
+- UI: Component library if specified in PRD
 
-### WRITING RULES for Frontend
+---
 
-**DO:**
-- ✅ Show how to CONSUME APIs (client wrappers, hooks)
-- ✅ Use api-contract.md types explicitly
-- ✅ Component interfaces: props only (≤10 lines each)
+## ⚠️ CRITICAL RULES FOR FRONTEND
 
-**DON'T:**
-- ❌ NO API endpoint definitions (those are in api-contract.md!)
-- ❌ NO full component implementations
-- ❌ NO assumptions about API structure (use contract!)
+### Rule 1: NO API Definition
+**Frontend NEVER defines APIs, only consumes them!**
+
+**❌ WRONG**:
+```markdown
+### API: POST /api/auth/login
+Request: { email, password }  ← This is API definition!
+```
+
+**✅ CORRECT**:
+```markdown
+### API Integration: Authentication
+- Uses `login(LoginRequest): LoginResponse` from api-contract.md §3.1
+- Stores accessToken in localStorage
+- Redirects to /dashboard on success
+```
+
+### Rule 2: NO DTO Duplication
+
+**❌ WRONG**:
+```typescript
+interface LoginRequest {  ← Duplicating contract!
+  email: string;
+  password: string;
+}
+```
+
+**✅ CORRECT**:
+```typescript
+import type { LoginRequest, LoginResponse } from 'api-contract-types';
+// Or simply: "Uses LoginRequest from api-contract.md"
+```
+
+### Rule 3: Reference Contract Explicitly
+
+**Every API usage must reference contract:**
+```markdown
+- `authAPI.login()` uses LoginRequest → LoginResponse (api-contract.md §3.1)
+- `userAPI.getProfile()` returns User (api-contract.md §4.1)
+```
+
+---
+
+## ✅ GOOD vs BAD Examples
+
+**✅ GOOD (Frontend HOW)**:
+```markdown
+## 5. API Integration
+
+### Authentication Flow
+1. LoginForm captures credentials
+2. Call `authAPI.login(credentials)` - uses LoginRequest from api-contract.md §3.1
+3. On success: Store tokens, update auth state, redirect
+4. On error: Display error message from ErrorResponse
+
+### Error Handling Strategy
+- Wrap all API calls in try/catch
+- 401 errors → trigger token refresh or logout
+- Network errors → show retry button
+- Validation errors → display per-field messages
+```
+
+**❌ BAD (API definition or implementation)**:
+```markdown
+## 5. API Integration
+
+### POST /api/auth/login  ← This is API definition, not Frontend!
+Request: { email, password }
+Response: { accessToken, user }
+
+const login = async (email, password) => {  ← This is implementation code!
+  const res = await fetch(...);
+  return res.json();
+}
+```
+
+---
+
+## 🎮 Game-Specific Constraint
+
+**If this is a game frontend:**
+
+**FORBIDDEN in Frontend Design**:
+- ❌ Game physics formulas (ball trajectory, collision detection)
+- ❌ Game state update logic (score calculation, win conditions)
+- ❌ Rendering algorithms (sprite positioning, animation frames)
+
+**ALLOWED**:
+- ✅ Game screen components (PlayField renders game world, HUD shows score)
+- ✅ Input handling (keyboard → command mapping)
+- ✅ Game state visualization (state → visual representation)
+
+**Treat game engine as abstract service:**
+```markdown
+### Game State Integration
+- Game engine provides state updates
+- PlayField component renders state visually
+- Input system sends commands to engine
+- HUD displays derived metrics (score, timer)
+```
+
+---
+
+**Purpose**: This guide ensures fe-system-design.md focuses on HOW to build the frontend architecture that consumes the API contract, without duplicating interface definitions.

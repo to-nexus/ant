@@ -22,6 +22,7 @@ import { XMLStreamParser } from '../../../../../core/streaming/parsers/XMLStream
 import { CommonRenderStrategy } from '../../../../../core/streaming/strategies/CommonRenderStrategy';
 import { TokenBudgetManager } from '../../../../../core/utils/tokenBudget';
 import { HistoryManager } from '../../../../../core/utils/historyManager';
+import { getToolsByNames, TOOL_SETS } from '../../../tools/definitions';
 
 export async function docGen(
   state: DesignGraphState
@@ -37,11 +38,10 @@ export async function docGen(
   // ✅ Build messages from conversation history + current task
   const messages = await buildMessages(state);
   
-  // ✅ 3. Design job uses PURE XML streaming - no tool calling!
-  // All file operations are done via <file>, <append>, <edit> tags
-  const tools = undefined;
+  // ✅ Tool activation: Design job now supports tools for file editing
+  const tools = getToolsByNames(TOOL_SETS.design);
   
-  console.log(`📝 [DocGen] Pure XML streaming mode (no tool calling)`);
+  console.log(`📝 [DocGen] Tool calling enabled (${tools.length} tools available)`);
   
   // ✅ 4. Workflow update
   if (state.deps?.workflowUpdate && state._httpJobId) {

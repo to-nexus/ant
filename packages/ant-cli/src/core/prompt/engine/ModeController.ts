@@ -112,7 +112,7 @@ export class ModeController {
     context: AssembledContext,
     taskType?: string
   ): string[] {
-    const commonPrefix = `base/injections`;  // ✅ All jobs (templates/base/injections)
+    const commonPrefix = `common/injections`;  // ✅ All jobs (templates/common/injections)
     const taskPrefix = `${task}/base/injections`;  // ✅ Task-specific (templates/{task}/base/injections)
     const phasePrefix = `${task}/phases/${phase}/injections`;  // ✅ Phase-specific
     const injections: string[] = [];
@@ -191,12 +191,24 @@ export class ModeController {
         console.log(`[ModeController] Adding compact tool-calling rules`);
       }
       
-      // Markdown file streaming format (used by both code and design jobs)
-      injections.push(`${commonPrefix}/output-format-markdown`);
-      console.log(`[ModeController] Adding markdown streaming format injection`);
-
       // Domain-specific design guides (design job only, execute phase only)
       if (task === 'design') {
+        // ✅ Document type-specific guides (api-contract, frontend, backend)
+        const targetFile = context.currentTask?.targetFile;
+        if (targetFile) {
+          if (targetFile.includes('api-contract')) {
+            injections.push(`design/base/injections/api-contract-guide`);
+            console.log(`[ModeController] Adding api-contract-guide for targetFile: ${targetFile}`);
+          } else if (targetFile.includes('fe-system-design') || targetFile.includes('frontend')) {
+            injections.push(`design/base/injections/frontend-guide`);
+            console.log(`[ModeController] Adding frontend-guide for targetFile: ${targetFile}`);
+          } else if (targetFile.includes('be-system-design') || targetFile.includes('backend')) {
+            injections.push(`design/base/injections/backend-guide`);
+            console.log(`[ModeController] Adding backend-guide for targetFile: ${targetFile}`);
+          }
+        }
+        
+        // ✅ Domain-specific guides (game vs service)
         if (context.designDomain === 'game') {
           const gameGuidePath = `design/phases/execute/injections/game-domain-guide`;
           injections.push(gameGuidePath);
@@ -225,7 +237,7 @@ export class ModeController {
       
       // Missing dependency fix (language-specific)
       if (context.stats.hasMissingDependency && language && task === 'code') {
-        injections.push(`${task}/languages/${language}/execute/missing-dependency-fix`);
+        injections.push(`code/phases/execute/injections/missing-dependency-fix`);
       }
       
       // Runtime error fix

@@ -40,6 +40,7 @@ export interface AssembledContext {
     type: string;
     priority: number;
     description: string;
+    targetFile?: string;      // ✅ Target file for design job (api-contract.md, fe-system-design.md, etc.)
   };
   
   // ✅ NEW: Retry and Plan Context

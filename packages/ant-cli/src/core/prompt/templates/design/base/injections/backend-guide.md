@@ -1,132 +1,357 @@
 ## ⚙️ BACKEND DESIGN DOCUMENT GUIDE
 
-**Purpose**: HOW BACKEND IMPLEMENTS api-contract.md
+**Document Type**: `be-system-design.md`
+**Role**: HOW Backend IMPLEMENTS api-contract.md
+**Phase**: Written AFTER api-contract.md is finalized
 
-**⚠️ CRITICAL RULE: BACKEND MUST IMPLEMENT api-contract.md EXACTLY!**
+### 🎯 What This Document IS
 
-**🚨 MOST IMPORTANT: API Contract is IMMUTABLE - Implement EXACT specifications!**
-- ✅ Implement endpoint paths EXACTLY as written (e.g., `POST /rooms/create` NOT `/rooms`)
-- ✅ Return field names EXACTLY as written (e.g., `userId` NOT `user_id`)
-- ✅ Your "RESTful conventions" or "best practices" do NOT override the contract
-- ❌ DO NOT simplify, normalize, or "improve" the API contract
+**Backend Implementation Architecture:**
+- ✅ HOW to implement endpoints (controllers, services, business logic)
+- ✅ Architecture layers (Controller → Service → Repository pattern, etc.)
+- ✅ Database design (schema, relationships, indexes)
+- ✅ Business logic placement (validation, authorization, calculations)
+- ✅ Integration patterns (external APIs, message queues, caching)
 
-**Your first section MUST verify API contract compliance:**
+**Characteristics:**
+- PROVIDER perspective: How to implement APIs, not define them
+- REFERENCE contract: "Implements LoginRequest → LoginResponse per api-contract.md §3.1"
+- ARCHITECTURE focus: Layer boundaries, data flow, patterns
+
+### 🚫 What This Document is NOT
+
+- ❌ NO API definitions (already in api-contract.md)
+- ❌ NO DTO redefinition (reference contract only!)
+- ❌ NO full method implementations (only signatures + purpose)
+- ❌ NO detailed SQL queries (only schema + relationships)
+
+---
+
+## 📐 REQUIRED SECTIONS
+
+### 1. Overview & API Contract Compliance (mandatory)
+
+**MUST acknowledge api-contract.md:**
+```markdown
+## 1. Overview
+
+### System Purpose
+[Backend capabilities and business domain]
+
+### Architecture Pattern
+[Layered, Hexagonal, Clean Architecture, etc.]
+
+### API Contract Compliance
+This backend implements the **provider side** of `api-contract.md` EXACTLY.
+All endpoints, DTOs, and status codes match the contract specification.
+NO deviations from the contract are permitted.
+
+**Contract Implementation Checklist**:
+- ✅ All endpoints from §3 implemented
+- ✅ All request/response DTOs validated per contract
+- ✅ All error codes from §6 implemented
+- ✅ Authentication per §2 implemented
+```
+
+### 2. Architecture Layers
+
+**Layer Definition:**
+```markdown
+### Layered Architecture (example)
+
+**Controller Layer**:
+- Handles HTTP requests/responses
+- Input validation (matches contract DTOs)
+- Delegates to Service layer
+- Returns contract-compliant responses
+
+**Service Layer**:
+- Business logic implementation
+- Authorization checks
+- Transaction management
+- Delegates to Repository layer
+
+**Repository Layer**:
+- Database access abstraction
+- Query building
+- Data mapping (DB entities ↔ Domain models)
+
+**Data Flow**: Request → Controller validates → Service processes → Repository persists → Response
+```
+
+**Focus**: Clear boundaries and responsibilities per layer
+
+### 3. Database Design
+
+**Schema Design:**
+```markdown
+### Users Table
+- `id`: UUID (PK)
+- `email`: VARCHAR(255), unique, indexed
+- `password_hash`: VARCHAR(255)
+- `name`: VARCHAR(100)
+- `role`: ENUM('user', 'admin')
+- `created_at`: TIMESTAMP
+
+**Relationships**:
+- users (1) → (N) sessions
+- users (1) → (N) posts
+
+**Indexes**:
+- email (unique)
+- created_at (for pagination queries)
+```
+
+**Focus**: Table structure, relationships, and key indexes (NOT SQL DDL)
+
+### 4. Endpoint Implementation Mapping ⚠️ MOST CRITICAL
+
+**🚨 CRITICAL RULES:**
+1. **NEVER redefine DTOs** - Reference api-contract.md only
+2. **Reference contract explicitly**: "Implements LoginRequest → LoginResponse (api-contract.md §3.1)"
+3. **Focus on HOW to implement**, not WHAT the interface is
+
+**For EACH endpoint, specify:**
 
 ```markdown
-## 1. Overview & API Contract Compliance
-...
+### Authentication Endpoints
 
-### API Contract Implementation Status
-This backend implements the provider side of `api-contract.md`.
+#### POST /api/auth/login
+**Contract**: LoginRequest → LoginResponse (api-contract.md §3.1)
 
-**Endpoint Implementation Checklist:**
-- ✅ POST /api/auth/login - Implemented (see Section 3.1)
-- ✅ GET /api/users/me - Implemented (see Section 3.2)
-- ✅ POST /api/rooms/create - Implemented (see Section 3.3)
+**Implementation Flow**:
+1. Controller receives LoginRequest, validates DTO
+2. AuthService.authenticate(email, password):
+   - Query user by email from Repository
+   - Verify password hash using bcrypt
+   - If invalid: throw INVALID_CREDENTIALS error
+3. AuthService.generateTokens(userId):
+   - Sign JWT with 1h expiration (accessToken)
+   - Sign JWT with 7d expiration (refreshToken)
+4. Return LoginResponse with tokens and user data
 
-All request/response DTOs match api-contract.md field names and types.
+**Error Handling**:
+- 400: ValidationError if DTO validation fails
+- 401: INVALID_CREDENTIALS if authentication fails
+- 429: RATE_LIMIT if too many attempts (use Redis counter, 5/min)
+
+**Business Rules**:
+- Password must be hashed with bcrypt (cost factor 12)
+- Failed attempts increment Redis counter with 1min TTL
+- Successful login clears attempt counter
+
+**Authorization**: Public endpoint (no auth required)
+
+---
+
+#### GET /api/users/profile
+**Contract**: Returns User (api-contract.md §4.1)
+
+**Implementation Flow**:
+1. Controller extracts userId from JWT token
+2. UserService.getProfile(userId):
+   - Query user by id from Repository
+   - If not found: throw NOT_FOUND error
+3. Map DB entity to User DTO per contract
+4. Return User response
+
+**Error Handling**:
+- 401: UNAUTHORIZED if token missing/invalid
+- 404: NOT_FOUND if user doesn't exist
+
+**Authorization**: Requires valid JWT token
 ```
 
-════════════════════════════════════════════════════════════════════════════════
+**Focus**: Implementation strategy, business rules, error mapping
 
-### REQUIRED SECTIONS
+### 5. Authentication & Authorization Implementation
 
-#### 1. Overview
-- System purpose (technical description)
-- High-level architecture (layers: controller/service/repository)
-- Core responsibilities
-
-#### 2. Architecture Layers
-- **Controller Layer**: HTTP request handling, validation, serialization
-- **Service Layer**: Business logic, orchestration, transactions
-- **Repository Layer**: Data access, query building
-- **Middleware**: Auth, error handling, logging
-
-#### 3. API Endpoint Implementation ⚠️ MOST IMPORTANT
-
-**Map to api-contract.md!**
-
-**⚠️ CRITICAL: NO DTO DUPLICATION!**
-- ❌ DO NOT copy-paste DTOs from api-contract.md
-- ✅ ONLY mention: "See api-contract.md Section X"
-- ✅ Focus on HOW to implement, not WHAT the interface is
-
-**For EACH endpoint:**
-
+**Authentication Strategy:**
 ```markdown
-### 3.1 POST /api/auth/login
-**Contract**: api-contract.md Section 3.1 (LoginRequest → LoginResponse)
+### JWT Token Strategy
+- Signing algorithm: HS256
+- Secret: From environment variable
+- Token payload: { userId, role, iat, exp }
 
-**Implementation Flow:**
-1. `AuthController.login(req)` validates request body
-2. `AuthService.authenticate(email, password)` checks password hash
-3. `AuthService.generateTokens(user)` creates JWT tokens
-4. Controller returns response per contract
+### Token Validation Middleware
+- Extract token from Authorization header
+- Verify signature and expiration
+- Attach userId to request context
+- Reject invalid/expired tokens with 401
 
-**Service Methods:**
-- `AuthService.authenticate(email, password): Promise<User>`
-  - Queries user by email, verifies password, throws error if invalid
-- `AuthService.generateTokens(user): TokenPair`
-  - Generates JWT with expiry per contract
-
-**Error Handling:**
-- Maps exceptions to HTTP status codes per contract
-
-**WRITE AT THIS LEVEL** - Describe method responsibilities, not algorithms
-**DON'T WRITE** - Hash rounds, JWT config, retry algorithms, query hints
+### Refresh Token Flow
+- Store refresh tokens in database with expiry
+- On refresh: Validate refresh token → Issue new access token
+- Revoke refresh tokens on logout
 ```
 
-**KEY RULES:**
-- ✅ Reference contract for DTOs: "LoginRequest → LoginResponse"
-- ✅ Describe implementation: Service methods, error handling
-- ✅ Database queries: "Queries user by email"
-- ❌ NO DTO field list (that's in contract!)
-- ❌ NO "Request: { email: string, ... }" (that's duplication!)
-
-#### 4. Database Design
-- Entity schemas (tables/collections with key fields only)
-- Relationships (1:1, 1:N, N:M with FK)
-- Indexes (mention columns, NO detailed strategy)
-
-**Example** (prose, NO DDL):
-```
-users: id (PK), email (unique), password_hash, name, created_at
-tasks: id (PK), user_id (FK→users), title, completed, created_at
-Index: tasks.user_id for user query performance
+**Authorization Strategy:**
+```markdown
+### Role-Based Access Control (RBAC)
+- Roles: 'user', 'admin'
+- Middleware checks user.role against required role
+- Admin endpoints require role: 'admin'
 ```
 
-**FORBIDDEN**: SQL CREATE statements, detailed column constraints, index algorithms
+### 6. Business Logic Placement
 
-#### 5. Service Layer Design
-- Service classes and responsibilities
-- Business logic flows (algorithms, rules)
-- Transaction boundaries
-- External service integrations (if any)
+**Service Layer Responsibilities:**
+```markdown
+### AuthService
+- `authenticate(email, password): User` - Validates credentials
+- `generateTokens(userId): { accessToken, refreshToken }` - Creates JWT tokens
+- `refreshAccessToken(refreshToken): { accessToken }` - Issues new token
 
-#### 6. Authentication & Authorization
-- JWT generation/validation
-- Password hashing (bcrypt, argon2)
-- Middleware implementation
-- Session management (if using sessions)
+### UserService  
+- `getProfile(userId): User` - Fetches user data
+- `updateProfile(userId, updates): User` - Updates user with validation
+```
 
-#### 7. Technology Stack
-- Framework (Express, Nest.js, Fastify) - per PRD
-- Database (PostgreSQL, MongoDB, etc.) - per PRD
-- ORM/Query Builder (Prisma, TypeORM, Sequelize)
-- Key libraries (jsonwebtoken, bcrypt, validator)
+**Focus**: Service method signatures and responsibilities (NOT full implementations)
 
-════════════════════════════════════════════════════════════════════════════════
+### 7. External Integrations (if applicable)
 
-### WRITING RULES for Backend
+- Third-party APIs (payment, email, etc.)
+- Message queues (RabbitMQ, Kafka)
+- Caching (Redis strategy)
+- File storage (S3, local filesystem)
 
-**DO:**
-- ✅ FIRST verify api-contract.md compliance (checklist!)
-- ✅ Map EVERY endpoint to implementation details
-- ✅ Show service method signatures (≤10 lines each)
-- ✅ Database schemas: DDL or entity definitions (concise!)
+### 8. Technology Stack
 
-**DON'T:**
-- ❌ NO full implementations (only signatures and flow descriptions)
-- ❌ NO API deviations (if deviation needed, document WHY!)
-- ❌ NO assumptions about contract (reference it explicitly!)
+**Framework & Version**: (per PRD, e.g., Express.js, NestJS, FastAPI, Spring Boot)
+**Database**: (per PRD, e.g., PostgreSQL, MongoDB, MySQL)
+**Key Libraries**:
+- ORM/Query builder: Prisma, TypeORM, Sequelize, etc.
+- Auth: JWT library, Passport, etc.
+- Validation: class-validator, zod, joi, etc.
 
+---
+
+## ⚠️ CRITICAL RULES FOR BACKEND
+
+### Rule 1: NO API Redefinition
+**Backend NEVER redefines APIs, only implements them!**
+
+**❌ WRONG**:
+```markdown
+### POST /api/auth/login
+Request: { email, password }  ← This is API definition!
+Response: { accessToken, user }
+```
+
+**✅ CORRECT**:
+```markdown
+### POST /api/auth/login
+**Contract**: LoginRequest → LoginResponse (api-contract.md §3.1)
+**Implementation**: AuthService validates credentials → JWT signing → Response mapping
+```
+
+### Rule 2: NO DTO Duplication
+
+**❌ WRONG**:
+```typescript
+interface LoginRequest {  ← Duplicating contract!
+  email: string;
+  password: string;
+}
+```
+
+**✅ CORRECT**:
+```typescript
+import { LoginRequest, LoginResponse } from 'api-contract-types';
+// Or simply: "Validates LoginRequest per api-contract.md"
+```
+
+### Rule 3: Reference Contract Explicitly
+
+**Every endpoint implementation must reference contract:**
+```markdown
+- POST /api/auth/login implements LoginRequest → LoginResponse (api-contract.md §3.1)
+- GET /api/users/profile returns User (api-contract.md §4.1)
+```
+
+### Rule 4: Implementation Details ARE Allowed Here
+
+**Unlike Frontend, Backend CAN include:**
+- ✅ Database queries (high-level, not full SQL)
+- ✅ Hashing algorithms (bcrypt, argon2)
+- ✅ Business rule calculations (within reason)
+- ✅ Validation logic (matching contract constraints)
+
+**But NOT:**
+- ❌ Full method bodies with all code
+- ❌ Detailed SQL DDL statements
+- ❌ Framework-specific boilerplate
+
+---
+
+## ✅ GOOD vs BAD Examples
+
+**✅ GOOD (Backend HOW)**:
+```markdown
+## 4. Endpoint Implementation
+
+### POST /api/auth/login
+**Contract**: LoginRequest → LoginResponse (api-contract.md §3.1)
+
+**Implementation**:
+1. Validate DTO (email format, password min length)
+2. Query users table by email
+3. Compare password with bcrypt.compare()
+4. Generate JWT tokens (access: 1h, refresh: 7d)
+5. Return LoginResponse with tokens + user
+
+**Error Mapping**:
+- Email not found → 401 INVALID_CREDENTIALS
+- Password mismatch → 401 INVALID_CREDENTIALS
+- Rate limited → 429 RATE_LIMIT
+```
+
+**❌ BAD (API definition or full code)**:
+```markdown
+## 4. API Endpoints
+
+### POST /api/auth/login  ← This is API definition, not Backend!
+Request: { email, password }
+Response: { accessToken, user }
+
+async function login(req, res) {  ← This is full implementation code!
+  const user = await User.findOne({ email: req.body.email });
+  if (!user) return res.status(401).json({ error: 'Invalid' });
+  // ... 20 more lines of code
+}
+```
+
+---
+
+## 🎮 Game-Specific Constraint
+
+**If this is a game backend:**
+
+**ALLOWED in Backend Design**:
+- ✅ Game state management (server-authoritative game loop)
+- ✅ Game logic (collision detection, score calculation, win conditions)
+- ✅ State synchronization (broadcast strategy, tick rate)
+- ✅ Matchmaking logic (room creation, player matching)
+
+**FORBIDDEN**:
+- ❌ Detailed physics formulas (high-level only: "detect collision → adjust position")
+- ❌ Full state machine implementations (describe states, not every transition)
+
+**Example:**
+```markdown
+### Game Room Management
+- RoomService.createRoom(config): Creates room, initializes game state
+- GameEngine.update(roomId, inputs): Applies inputs, updates state, detects collisions
+- BroadcastService.syncState(roomId, state): Emits state to all clients via WebSocket
+
+### Game Loop (Server-Authoritative)
+- 60 tick/sec fixed update rate
+- Accumulate player inputs per tick
+- GameEngine processes inputs → new state
+- Broadcast state to clients
+```
+
+---
+
+**Purpose**: This guide ensures be-system-design.md focuses on HOW to build the backend architecture that implements the API contract, without duplicating interface definitions.

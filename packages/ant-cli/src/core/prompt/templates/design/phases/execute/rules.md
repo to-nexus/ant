@@ -1,5 +1,9 @@
 ## OUTPUT FORMAT
 
+{{> common/rules}}
+
+════════════════════════════════════════════════════════════════════════════════
+
 **CRITICAL: You MUST use XML tags for ALL file operations!**
 
 ════════════════════════════════════════════════════════════════════════════════
@@ -76,24 +80,23 @@ Use `<append>` tag:
 
 ### Scenario 3: Modifying Existing Sections (Rare)
 
-Use `<edit>` tag with `<search>` and `<replace>`:
+Use `edit_file` tool to modify existing sections:
 
-```xml
-<edit path="outputs/design/system-design.md">
-<search>
-## 2. Architecture
-
-### 2.1 System Overview
-...existing content...
-</search>
-<replace>
-## 2. Architecture
+```python
+edit_file(
+  path="outputs/design/system-design.md",
+  old_str="""## 2. Architecture
 
 ### 2.1 System Overview
-...updated content...
-</replace>
-</edit>
+...existing content...""",
+  new_str="""## 2. Architecture
+
+### 2.1 System Overview
+...updated content..."""
+)
 ```
+
+**CRITICAL**: Call `read_file` first to get the exact current content!
 
 ════════════════════════════════════════════════════════════════════════════════
 ## Path Requirements
@@ -134,7 +137,7 @@ Is lastSectionNumber provided in context?
 **Summary:**
 - ✅ `<file>` → First task only (new document)
 - ✅ `<append>` → Continuation tasks (existing document)
-- ✅ `<edit>` → Modifying existing content (rare)
+- ✅ `edit_file` tool → Modifying existing content (rare)
 - ❌ NEVER use `<file>` when lastSectionNumber exists
 
 ════════════════════════════════════════════════════════════════════════════════
