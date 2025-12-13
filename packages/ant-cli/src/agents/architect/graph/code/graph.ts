@@ -121,6 +121,12 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
     state.conversationHistory = [];
     console.log(`🧹 [checkTaskStatus] Cleared conversation history for next task`);
     
+    // ✅ CRITICAL: Clear violations for next task
+    // Previous task's violations should not carry over to new task
+    state.violations = [];
+    state.violationMessage = undefined;
+    console.log(`🧹 [checkTaskStatus] Cleared violations for next task`);
+    
     // Update completedTasks (IDs only - for backward compatibility)
     const completedTasks = state.completedTasks || [];
     completedTasks.push(completedTask.id);

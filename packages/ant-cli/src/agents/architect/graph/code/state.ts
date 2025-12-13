@@ -264,6 +264,7 @@ export interface ArchitectGraphState extends TaskArtifacts {
 
   requiredIntegrations: IntegrationRequirement[];
   violations?: Violation[];  // ✅ 구조화된 violation 배열
+  violationMessage?: string; // ✅ enforce node에서 생성한 강화된 violation 메시지 (promptBuilder에서 사용)
   fileErrors?: string[];     // ✅ 파일 작업 실패 에러 메시지 (checkTaskStatus에서 violation으로 변환)
 
   retries: number;

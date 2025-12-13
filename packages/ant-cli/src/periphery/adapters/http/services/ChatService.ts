@@ -571,7 +571,8 @@ export class ChatService {
     }
     // ✅ File operations: Find and update in-progress content
     else if (content.metadata?.filePath && 
-               (content.type === 'file_create' || content.type === 'file_edit' || content.type === 'file_delete')) {
+              (content.type === 'file_create' || content.type === 'file_edit' || content.type === 'file_delete' ||
+               content.type === 'file_create_failed' || content.type === 'file_edit_failed' || content.type === 'file_delete_failed')) {
       // ✅ File operation completion: find and update the in-progress content
       const inProgressTypes = {
         'file_create': ['file_creating', 'file_writing'],

@@ -214,10 +214,11 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     state.violations  // ✅ Pass violations for retry context
   );
   
-  // ✅ Clear violations after plan generation (consumed)
+  // ✅ DO NOT clear violations here! They need to be passed to CodeGen node for retry context
+  // Plan node consumes violations to generate retry context, but CodeGen also needs them
+  // to inject violation warnings into the LLM prompt
   if (state.violations && state.violations.length > 0) {
-    console.log(`🧹 [Plan] Clearing ${state.violations.length} violation(s) after plan generation`);
-    state.violations = [];
+    console.log(`📋 [Plan] Passing ${state.violations.length} violation(s) to CodeGen for prompt injection`);
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -234,6 +235,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       completedTasksDetails: state.completedTasksDetails || [],
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit
+      // ✅ violations and violationMessage are preserved in state (not cleared)
     };
     
     // Exit node for workflow tracking

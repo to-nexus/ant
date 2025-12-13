@@ -266,6 +266,7 @@ ${formattedViolations}
   return {
     ...state,
     violations: focusedViolations,  // ✅ Pass violations to next node for retry strategy
+    violationMessage: formattedViolations,  // ✅ Pass the enhanced, formatted message to promptBuilder
     retries: state.retries + 1,
     lastViolations: focusedViolations,
     enforcementHistory,
