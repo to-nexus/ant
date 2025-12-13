@@ -70,6 +70,10 @@ Do NOT add requirements that are NOT in the PRD, even if they are industry "best
 - ❌ **Configuration values**: Specific timeouts, retry counts, thresholds
 - ❌ **Implementation wiring details**: Concrete storage key names, URL paths/query formats, component tree structures, state store slice names
 
+**Important exception (Document Types)**:
+- For `api-contract.md`, **exact URL paths/methods/status codes/field names are REQUIRED** because they *are the contract*, not "implementation wiring".
+- For `fe-system-design.md` / `be-system-design.md` / `system-design.md`, avoid hard-coded paths/keys unless the PRD explicitly requires them.
+
 ════════════════════════════════════════════════════════════════════════════════
 ## ✍️ UNIVERSAL WRITING RULES (Apply to ALL design documents)
 ════════════════════════════════════════════════════════════════════════════════
@@ -77,7 +81,7 @@ Do NOT add requirements that are NOT in the PRD, even if they are industry "best
 ### Absolute Rules:
 1. **Conciseness**: 1 sentence per point, NO paragraphs
 2. **Bullet Lists**: Use lists, not prose
-3. **Minimal Code**: Max 3 code blocks per document, each ≤8 lines
+3. **Minimal Code**: Prefer prose; use code blocks only when necessary for cross-boundary clarity (doc-type guides may override)
 4. **No Tutorials**: Design decisions only, NOT "What is React?" explanations
 5. **Chapter Count**: Balance completeness with line budget
 6. **Technical Precision**: Use exact terms, avoid vague language

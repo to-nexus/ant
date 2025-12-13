@@ -7,10 +7,10 @@
 ### 🎯 What This Document IS
 
 **Backend Implementation Architecture:**
-- ✅ HOW to implement endpoints (controllers, services, business logic)
+- ✅ HOW to implement endpoints at an architectural level (controllers, services, domain/application boundaries)
 - ✅ Architecture layers (Controller → Service → Repository pattern, etc.)
-- ✅ Database design (schema, relationships, indexes)
-- ✅ Business logic placement (validation, authorization, calculations)
+- ✅ Database design (conceptual schema, relationships, key constraints)
+- ✅ Business logic placement (validation, authorization, domain rules location)
 - ✅ Integration patterns (external APIs, message queues, caching)
 
 **Characteristics:**
@@ -24,6 +24,7 @@
 - ❌ NO DTO redefinition (reference contract only!)
 - ❌ NO full method implementations (only signatures + purpose)
 - ❌ NO detailed SQL queries (only schema + relationships)
+- ❌ NO implementation literals unless PRD explicitly specifies them (token TTLs, exact retry counts, exact cache keys, exact route strings)
 
 ---
 
@@ -109,81 +110,24 @@ NO deviations from the contract are permitted.
 **🚨 CRITICAL RULES:**
 1. **NEVER redefine DTOs** - Reference api-contract.md only
 2. **Reference contract explicitly**: "Implements LoginRequest → LoginResponse (api-contract.md §3.1)"
-3. **Focus on HOW to implement**, not WHAT the interface is
+3. **Focus on architecture-level mapping**, not step-by-step algorithms or library calls
 
-**For EACH endpoint, specify:**
-
-```markdown
-### Authentication Endpoints
-
-#### POST /api/auth/login
-**Contract**: LoginRequest → LoginResponse (api-contract.md §3.1)
-
-**Implementation Flow**:
-1. Controller receives LoginRequest, validates DTO
-2. AuthService.authenticate(email, password):
-   - Query user by email from Repository
-   - Verify password hash using bcrypt
-   - If invalid: throw INVALID_CREDENTIALS error
-3. AuthService.generateTokens(userId):
-   - Sign JWT with 1h expiration (accessToken)
-   - Sign JWT with 7d expiration (refreshToken)
-4. Return LoginResponse with tokens and user data
-
-**Error Handling**:
-- 400: ValidationError if DTO validation fails
-- 401: INVALID_CREDENTIALS if authentication fails
-- 429: RATE_LIMIT if too many attempts (use Redis counter, 5/min)
-
-**Business Rules**:
-- Password must be hashed with bcrypt (cost factor 12)
-- Failed attempts increment Redis counter with 1min TTL
-- Successful login clears attempt counter
-
-**Authorization**: Public endpoint (no auth required)
-
----
-
-#### GET /api/users/profile
-**Contract**: Returns User (api-contract.md §4.1)
-
-**Implementation Flow**:
-1. Controller extracts userId from JWT token
-2. UserService.getProfile(userId):
-   - Query user by id from Repository
-   - If not found: throw NOT_FOUND error
-3. Map DB entity to User DTO per contract
-4. Return User response
-
-**Error Handling**:
-- 401: UNAUTHORIZED if token missing/invalid
-- 404: NOT_FOUND if user doesn't exist
-
-**Authorization**: Requires valid JWT token
-```
-
-**Focus**: Implementation strategy, business rules, error mapping
+**For EACH endpoint group, specify (repeatable template):**
+- **Contract reference**: exact endpoint/method from `api-contract.md` section
+- **Controller responsibility**: request binding + DTO validation + auth context extraction + error translation
+- **Application/Service responsibility**: orchestration of use case; transactional boundary (if any)
+- **Domain responsibility** (if applicable): pure business rules / invariants
+- **Persistence responsibility**: repositories/DAOs used and what they own
+- **Error mapping policy**: how domain/application errors map to contract error codes/status codes
+- **Idempotency / concurrency notes** (only if PRD requires or risk is obvious from contract)
 
 ### 5. Authentication & Authorization Implementation
 
-**Authentication Strategy:**
-```markdown
-### JWT Token Strategy
-- Signing algorithm: HS256
-- Secret: From environment variable
-- Token payload: { userId, role, iat, exp }
-
-### Token Validation Middleware
-- Extract token from Authorization header
-- Verify signature and expiration
-- Attach userId to request context
-- Reject invalid/expired tokens with 401
-
-### Refresh Token Flow
-- Store refresh tokens in database with expiry
-- On refresh: Validate refresh token → Issue new access token
-- Revoke refresh tokens on logout
-```
+**Only if PRD requires auth**:
+- **Auth boundary**: where authentication is enforced (middleware/filter vs controller vs gateway)
+- **Auth context propagation**: how user identity/roles become available to application layer
+- **Token/session strategy**: name the approach at a high level; leave algorithms/TTL/claims to implementation unless PRD mandates them
+- **Refresh/revocation policy**: describe responsibilities and persistence needs, not exact mechanics
 
 **Authorization Strategy:**
 ```markdown
@@ -272,16 +216,9 @@ import { LoginRequest, LoginResponse } from 'api-contract-types';
 
 ### Rule 4: Implementation Details ARE Allowed Here
 
-**Unlike Frontend, Backend CAN include:**
-- ✅ Database queries (high-level, not full SQL)
-- ✅ Hashing algorithms (bcrypt, argon2)
-- ✅ Business rule calculations (within reason)
-- ✅ Validation logic (matching contract constraints)
-
-**But NOT:**
-- ❌ Full method bodies with all code
-- ❌ Detailed SQL DDL statements
-- ❌ Framework-specific boilerplate
+**Backend may include implementation *boundaries* (what lives where), but should avoid implementation *recipes*:**
+- ✅ Allowed: where validation/auth/domain rules/persistence live; transactions; error mapping; consistency model
+- ❌ Forbidden (unless PRD mandates): concrete libraries/algorithms, numeric constants, retry/backoff math, TTLs, exact cache keys
 
 ---
 
@@ -294,17 +231,15 @@ import { LoginRequest, LoginResponse } from 'api-contract-types';
 ### POST /api/auth/login
 **Contract**: LoginRequest → LoginResponse (api-contract.md §3.1)
 
-**Implementation**:
-1. Validate DTO (email format, password min length)
-2. Query users table by email
-3. Compare password with bcrypt.compare()
-4. Generate JWT tokens (access: 1h, refresh: 7d)
-5. Return LoginResponse with tokens + user
+**Mapping**:
+- Controller: binds LoginRequest, validates per contract, translates errors to contract ErrorResponse
+- AuthService (application): orchestrates authentication use case; returns domain result or domain error
+- UserRepository: reads user credential record; mapping boundary converts persistence record to domain model
 
 **Error Mapping**:
 - Email not found → 401 INVALID_CREDENTIALS
 - Password mismatch → 401 INVALID_CREDENTIALS
-- Rate limited → 429 RATE_LIMIT
+- Rate limited → contract-defined error (only if PRD/contract specifies)
 ```
 
 **❌ BAD (API definition or full code)**:

@@ -7,7 +7,7 @@
 ### 🎯 What This Document IS
 
 **Frontend Implementation Architecture:**
-- ✅ HOW to consume APIs (client wrappers, error handling)
+- ✅ HOW to consume APIs at an architectural level (client boundary, error policy, caching/state ownership)
 - ✅ Component architecture (hierarchy, responsibilities, interfaces)
 - ✅ State management (strategy, global state, server state)
 - ✅ Routing structure (pages, navigation, guards)
@@ -24,6 +24,7 @@
 - ❌ NO DTO redefinition (import/reference only!)
 - ❌ NO full component implementations (only interfaces)
 - ❌ NO detailed event handlers (only high-level flow)
+- ❌ NO hard-coded route strings/storage keys unless PRD explicitly requires them
 
 ---
 
@@ -96,17 +97,13 @@ NO DTOs are redefined in this document.
 
 ### 4. Routing Structure
 
-**Routes:**
-```markdown
-- `/` - HomePage (public)
-- `/login` - LoginPage (public)
-- `/dashboard` - DashboardPage (protected, requires auth)
-- `/profile` - ProfilePage (protected)
-```
+**Screens/Routes (conceptual):**
+- List major screens and access rules
+- If PRD provides exact route paths, you may include them; otherwise keep route strings abstract
 
 **Route Guards:**
 - Protected routes require authentication
-- Redirect strategy (unauthenticated → `/login`)
+- Redirect strategy (unauthenticated → login screen)
 
 **Focus**: Route definitions and access rules, NOT router API specifics
 
@@ -134,10 +131,10 @@ NO DTOs are redefined in this document.
 - Thrown errors bubble to UI error boundaries
 
 **For EACH API endpoint group**:
-- **Auth API** (`/api/auth/*`):
+- **Auth API** (from `api-contract.md`):
   - `login(credentials: LoginRequest): Promise<LoginResponse>` - Uses LoginRequest from api-contract.md §3.1
   - `logout(): Promise<void>` - Uses api-contract.md §3.2
-  - Token management: Store in localStorage, attach to requests
+  - Auth persistence: choose a storage strategy consistent with PRD/security constraints (implementation detail)
   
 - **User API** (`/api/users/*`):
   - `getProfile(): Promise<User>` - Uses User from api-contract.md §3.3
@@ -189,8 +186,8 @@ Request: { email, password }  ← This is API definition!
 ```markdown
 ### API Integration: Authentication
 - Uses `login(LoginRequest): LoginResponse` from api-contract.md §3.1
-- Stores accessToken in localStorage
-- Redirects to /dashboard on success
+- Stores auth state using a chosen persistence boundary (details left to implementation unless PRD mandates)
+- Redirects to the authenticated landing screen on success
 ```
 
 ### Rule 2: NO DTO Duplication
