@@ -1,7 +1,6 @@
 import { ProjectContext, AgentTask, CodeMode, ArchitectResult } from "./types";
 import { retrieve } from "./memory";
 import { ArtifactService } from "../../infrastructure/workspace/ArtifactService";
-import { formatSessionContext } from "./session-formatter";
 import { MemoryPort, LLMClient, PromptPort, GitPort, ConfigPort, CodebaseAnalyzerPort, ProfilePort, SessionPort, ChunkPort, CommandPort, TaskQueueUpdatePort } from "../../core/ports";
 import { runCodeGraph } from "./graph/code/runner";
 import { ArchitectGraphState } from "./graph/code/state";
@@ -103,27 +102,7 @@ export async function architectAgent(
   const userLanguage = detectUserLanguage(inputText);
   console.log(`🌍 Detected user language: ${userLanguage}`);
   
-  // 5. Load short-term context from Session
-  let sessionHistory = "";
-  if (deps?.session && featureFolder) {
-    try {
-      console.log(`📖 Loading session history for feature: ${featureFolder}...`);
-      // ✅ Only load session for supported job types
-      const jobType: 'design' | 'code' | 'learn' = (task === 'design' || task === 'code' || task === 'learn') ? task : 'code';
-      const session = await deps.session.load(project, featureFolder, jobType);
-      if (session.turns.length > 0) {
-        sessionHistory = formatSessionContext(session);
-        console.log(`✅ Loaded ${session.turns.length} previous turn(s)`);
-      } else {
-        console.log(`ℹ️  This is the first turn in this feature`);
-      }
-    } catch (error) {
-      console.warn(`⚠️  Could not load session history:`, error);
-      // Continue without session history (graceful degradation)
-    }
-  }
-  
-  // 6. Extract UserContext for path resolution
+  // 5. Extract UserContext for path resolution
   // ✅ Get from deps (passed by orchestrator)
   const userContext = deps?.userContext || { userId: 'local', organizationId: 'local', workspacePath: '' };
   const { userId, organizationId } = userContext;
@@ -152,7 +131,6 @@ export async function architectAgent(
     branchBase: config.branchBase,         // ✅ For learn node branch creation (primitive string)
     strictValidation: config.strictValidation ?? true, // ✅ For runtime validation (boolean)
     memory: vectorMemory,                  // Long-term knowledge (string)
-    sessionHistory: sessionHistory,        // Short-term context (string)
     userLanguage,                          // ✅ User's language for this job (string)
     enableEvaluation,                      // Evaluation flag (boolean)
     userId,                                // ✅ For path resolution (string)

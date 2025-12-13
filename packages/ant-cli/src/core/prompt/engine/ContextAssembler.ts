@@ -68,7 +68,6 @@ export interface AssembledContext {
     timestamp: string;
     directive?: string;
   }>;
-  sessionHistory?: string;
   sessionContext?: {
     recentTurns: Array<{
       turnId: number;
@@ -181,10 +180,7 @@ export class ContextAssembler {
     // 3. Load vector memory (from context)
     assembled.memory = context.memory || undefined;
     
-    // 4. Load session history (from context)
-    assembled.sessionHistory = context.sessionHistory || undefined;
-    
-    // 5. Generate statistics
+    // 4. Generate statistics
     const hasMissingDependency = Boolean(
       assembled.currentTask?.name?.toLowerCase().includes('missing') ||
       assembled.currentTask?.name?.toLowerCase().includes('dependency') ||
@@ -204,7 +200,6 @@ export class ContextAssembler {
         assembled.referenceCodeContexts.length > 0
       ),
       hasMemory: Boolean(assembled.memory),
-      hasSessionHistory: Boolean(assembled.sessionHistory),
       codebaseDetected: Boolean(assembled.codebaseProfile),
       hasMissingDependency
     };

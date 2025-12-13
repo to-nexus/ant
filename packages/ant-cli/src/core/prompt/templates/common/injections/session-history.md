@@ -1,4 +1,0 @@
-# Session History
-
-{{sessionHistory}}
-
