@@ -20,6 +20,33 @@ additional content...
 ```
 **Use when**: Adding content at the end of an existing file
 
+#### ⚠️ CRITICAL: Close XML Tags BEFORE `<done>`
+
+**RULE**: Complete ALL `<file>` and `<append>` operations before outputting `<done>true</done>`
+
+```xml
+<!-- ❌ WRONG - Tag not closed -->
+<file path="App.tsx">
+content...
+<done>true</done>  ← Missing </file>!
+
+<!-- ❌ WRONG - Append not closed -->
+<append path="utils.ts">
+content...
+<done>true</done>  ← Missing </append>!
+
+<!-- ✅ CORRECT - Close all tags first -->
+<file path="App.tsx">
+content...
+</file>
+
+<append path="utils.ts">
+content...
+</append>
+
+<done>true</done>  ← Now safe to output done
+```
+
 ---
 
 ### Tool Actions (Request/Response)
@@ -66,4 +93,5 @@ list_files(directory="src", pattern="*.tsx")
 | Remove file | `delete_file` tool |
 
 **CRITICAL**: Never use `<file>` on existing files - it overwrites everything!
+
 
