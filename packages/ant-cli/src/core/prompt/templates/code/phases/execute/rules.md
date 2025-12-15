@@ -175,6 +175,27 @@ console.log("close-file");          // Use different words
 
 ────────────────────────────────────────────────────────────────────────────────
 
+## 🚫 DO NOT REGENERATE EXISTING FILES
+
+**If file was already created in this conversation, use `edit_file` tool instead!**
+
+```xml
+<!-- ❌ WRONG - Recreating existing file -->
+Turn 1: <file path="App.tsx">...</file>  ← Created
+Turn 2: <file path="App.tsx">...</file>  ← Recreating same file!
+
+<!-- ✅ CORRECT - Edit existing file -->
+Turn 1: <file path="App.tsx">...</file>  ← Created
+Turn 2: edit_file("App.tsx", old_str, new_str)  ← Modify
+```
+
+**How to check if file exists:**
+- Look in "📦 Retrieved Codebase Context" section
+- Check recent `<file>` tags in conversation
+- When unsure, call `read_file` first
+
+────────────────────────────────────────────────────────────────────────────────
+
 ## 💡 DECISION TREE
 
 **Working with files?**

@@ -311,35 +311,44 @@ export class FileRenderer {
   }
   
   /**
-  /**
    * Wait for all file operations to complete
    * ✅ This must be called BEFORE marking task as completed
-   * ✅ NEW: Immediately cleanup incomplete operations (missing closing tags)
+   * ✅ CRITICAL: Generate violations for incomplete operations (missing closing tags)
    */
   async waitForAllFileOperations(): Promise<void> {
-    // ✅ CRITICAL: First check for incomplete operations (activeFiles without closing tags)
-    // This happens when LLM starts <edit> but never sends </edit> (e.g., outputs <tool_call> instead)
+    // ✅ CRITICAL: Check for incomplete operations (activeFiles without closing tags)
+    // This happens when LLM starts <file> but never sends </file>
+    // For feature tasks, this is the ONLY error detection mechanism (no validation phase)
     if (this.activeFiles.size > 0) {
-      console.warn(`⚠️  [FileRenderer] ${this.activeFiles.size} incomplete file operation(s) detected before waiting!`);
+      console.warn(`⚠️  [FileRenderer] ${this.activeFiles.size} incomplete file operation(s) detected!`);
       
       for (const [filePath, fileInfo] of this.activeFiles) {
         console.error(`   - ${fileInfo.actionType}: ${filePath} (missing closing tag)`);
         
-        // ✅ Create self-healing error for LLM feedback (will become violation)
-        const errorMsg = `⚠️ File operation incomplete: <${fileInfo.actionType}> tag for "${filePath}" was never closed. ` +
-          `This usually means the LLM output was interrupted or malformed.`;
+        // ✅ Create violation for self-healing (REQUIRED for feature tasks)
+        const errorMsg = `⚠️ File operation incomplete: <${fileInfo.actionType}> tag for "${filePath}" was never closed.\n` +
+          `\n` +
+          `CRITICAL: You MUST close ALL XML tags before outputting <done>!\n` +
+          `\n` +
+          `❌ WRONG:\n` +
+          `<file path="App.tsx">\n` +
+          `content...\n` +
+          `<done>true</done>  ← Missing </file>!\n` +
+          `\n` +
+          `✅ CORRECT:\n` +
+          `<file path="App.tsx">\n` +
+          `content...\n` +
+          `</file>  ← Close tag FIRST!\n` +
+          `<done>true</done>  ← Then output done`;
         
         this.fileErrors.push(errorMsg);
         
-        // ✅ CRITICAL: Resolve (not reject!) the pending promise with error recorded
-        // This is a retryable violation, not a crash-worthy error!
-        // The error is already in fileErrors array for self-healing
+        // ✅ Resolve promise to allow workflow to continue (violation will trigger retry)
         const resolver = this.completionResolvers.get(filePath);
         if (resolver) {
-          resolver();  // ✅ Resolve to allow workflow to continue (violation will be handled)
+          resolver();
         }
         
-        // Cleanup
         this.cleanup(filePath);
       }
     }
