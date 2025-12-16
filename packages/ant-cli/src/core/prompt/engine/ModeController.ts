@@ -79,7 +79,7 @@ export class ModeController {
     const templates = {
       base: `${phasePrefix}/base`,
       rules: `${phasePrefix}/rules`,
-      injections: this.selectInjections(task, phase, context, taskType)
+      injections: this.selectInjections(task, phase, context, taskType, mode)
     };
     
     // LLM parameters based on task
@@ -110,7 +110,8 @@ export class ModeController {
     task: AgentTask,
     phase: "plan" | "execute",
     context: AssembledContext,
-    taskType?: string
+    taskType?: string,
+    mode?: CodeMode
   ): string[] {
     const commonPrefix = `common/injections`;  // ✅ All jobs (templates/common/injections)
     const taskPrefix = `${task}/base/injections`;  // ✅ Task-specific (templates/{task}/base/injections)
@@ -158,6 +159,12 @@ export class ModeController {
       // Reference code (only available in Execute phase after Plan loads it)
       if (context.referenceCodeContexts && context.referenceCodeContexts.length > 0) {
         injections.push(`${taskPrefix}/reference-code`);
+      }
+      
+      // Behavioral debugging (only for refactor mode)
+      if (this.isRefactorMode(mode, context)) {
+        injections.push(`${taskPrefix}/behavioral-debugging`);
+        console.log('[ModeController] Adding behavioral-debugging for refactor mode');
       }
     }
     
@@ -487,6 +494,24 @@ export class ModeController {
     ];
     
     return errorPatterns.some(pattern => pattern.test(directive));
+  }
+  
+  /**
+   * Check if this is refactor mode (fixing existing code)
+   */
+  private isRefactorMode(mode: CodeMode | undefined, context: AssembledContext): boolean {
+    // Explicit mode takes precedence
+    if (mode === 'refactor') {
+      return true;
+    }
+    
+    // Fallback: Infer from context
+    // If there's existing code and the task is error-related, likely refactor
+    if (context.stats.hasProjectCode && context.currentTask?.type === 'error') {
+      return true;
+    }
+    
+    return false;
   }
   
   /**

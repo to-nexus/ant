@@ -139,6 +139,54 @@ You are planning HOW to implement a specific task.
 - Propose specific fix (how to prevent it?)
 
 ────────────────────────────────────────────────────────────────────────────────
+### 🔬 IF BEHAVIORAL BUG (Compiles but behaves incorrectly):
+────────────────────────────────────────────────────────────────────────────────
+
+**CRITICAL - Empirical Diagnosis Required**
+
+**Classification Indicators:**
+System produces incorrect behavior despite passing static analysis.
+
+**Core Principle:**
+Behavioral bugs require observation of runtime system state, not code inspection.
+Your plan must specify the empirical method for diagnosis.
+
+**Your Plan MUST Include:**
+
+**1. Hypothesis Structure**
+- State 2-3 falsifiable hypotheses about causal mechanism
+- For each hypothesis:
+  - What specific mechanism causes observed symptom?
+  - What runtime evidence would validate/invalidate this?
+  - What values or sequences would distinguish this from alternatives?
+
+**2. Observation Strategy**
+- Which system boundaries to instrument
+- What values/states/sequences to capture
+- How to trigger symptom in controlled manner
+- What environmental conditions to maintain
+
+**3. Evidence Evaluation Criteria**
+- What patterns in runtime data indicate each hypothesis?
+- What magnitude/frequency/sequence deviations signal root cause?
+- How to distinguish root cause from cascading symptoms?
+
+**4. Verification Protocol**
+- How to confirm mechanism correction (not just symptom suppression)
+- What behavioral metrics validate fix
+- What edge cases to test
+
+**Meta-Principle:**
+Plan must enable hypothesis testing through runtime observation.
+Speculation without empirical validation is insufficient.
+
+**Anti-Patterns to Avoid:**
+- ❌ Proposing fix without diagnostic plan
+- ❌ Generic "add logging" without specifying what to observe
+- ❌ Assuming code review reveals behavioral issues
+- ❌ Skipping runtime verification step
+
+────────────────────────────────────────────────────────────────────────────────
 
 {{#if designDoc}}
 ════════════════════════════════════════════════════════════════════════════════
