@@ -233,16 +233,62 @@ Why? Type-check (5s) and lint (5s) catch 80% of issues. Build (30-60s) is expens
 {{#if (eq currentTask.type "error")}}
 ## 🔧 ERROR TASK: Fix Specific Issues
 
-**Command Restrictions:**
-- ❌ NEVER: `npm run dev`, `npm start`, `nodemon` (never exit)
-- ✅ ONLY: `npm run build`, `npm test`, `npx tsc --noEmit`, `npm install`
+### Error Classification Principle
 
-**Actions:**
-1. Identify root cause from error message
-2. Fix ONLY broken code (no refactoring)
-3. Use `edit_file` tool for code, `run_command` for deps/build
-4. Verify with build commands, not dev servers
-5. Output `<done>true</done>`
+**Errors divide into two fundamental categories based on detection method:**
+
+**Category 1: Structural Errors**
+- Detectable through static analysis (parsing, type checking, compilation)
+- Manifest as: Type mismatches, syntax violations, unresolved references
+- Verification: Static analysis tools suffice
+- Fix approach: Code structure correction
+
+**Category 2: Behavioral Errors**
+- Detectable only through runtime observation
+- Manifest as: Wrong values, unexpected sequences, incorrect state transitions
+- Verification: Runtime observation mandatory
+- Fix approach: Mechanism correction validated by behavioral evidence
+
+**Critical distinction:** The verification method determines the debugging approach.
+
+────────────────────────────────────────────────────────────────────────────────
+
+### Diagnostic Strategy by Category
+
+**For Structural Errors:**
+
+**Principle:** Static analysis reveals the problem completely.
+
+**Approach:**
+1. Error message identifies exact issue (type mismatch, missing import)
+2. Locate problematic code structure
+3. Apply minimal structural correction
+4. Re-verify with static analysis
+5. Complete when static analysis passes
+
+**Tools:** Type checkers, linters, compilers
+
+────────────────────────────────────────────────────────────────────────────────
+
+**For Behavioral Errors:**
+
+**Principle:** Runtime observation required to understand mechanism.
+
+**Approach:**
+1. Classify behavioral symptom (magnitude error, temporal issue, state problem)
+2. Form hypothesis about causal mechanism
+3. Instrument system to gather runtime evidence
+4. Execute system and observe behavior
+5. Analyze evidence against hypothesis
+6. Apply fix to mechanism (not symptom)
+7. Verify through runtime observation
+
+**Tools:** Runtime environments, logging systems, observation tools
+
+**Critical:** Do not skip runtime verification for behavioral bugs.
+Static analysis cannot validate behavioral correctness.
+
+**Note:** Detailed behavioral debugging guidance is conditionally included by ModeController for refactor mode.
 
 {{/if}}
 {{/if}}
