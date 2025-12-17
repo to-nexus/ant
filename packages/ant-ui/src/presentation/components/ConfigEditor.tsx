@@ -3,12 +3,10 @@ import {
   ProjectConfig, 
   checkGitHubPATStatus, 
   saveGitHubPAT, 
-  deleteGitHubPAT, 
-  initializeGitHubRepo,
+  deleteGitHubPAT,
   checkFigmaConfigStatus,
-  saveFigmaConfig,
-  deleteFigmaConfig,
-  validateFigmaConnection
+  startFigmaOAuth,
+  disconnectFigma
 } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
 import { useAlertModal } from '@/application/hooks/ui/useAlertModal';
@@ -125,12 +123,13 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   const [isCheckingPAT, setIsCheckingPAT] = useState(true);
   const [isSavingPAT, setIsSavingPAT] = useState(false);
   
-  // Figma MCP state (separate from config)
-  const [figmaToken, setFigmaToken] = useState('');
-  const [figmaServerUrl, setFigmaServerUrl] = useState('https://figma-mcp.figma.com');
+  // Figma OAuth state (separate from config)
   const [figmaConfigured, setFigmaConfigured] = useState(false);
+  const [figmaUserEmail, setFigmaUserEmail] = useState<string | undefined>();
+  const [figmaUserId, setFigmaUserId] = useState<string | undefined>();
+  const [figmaConnectedAt, setFigmaConnectedAt] = useState<string | undefined>();
   const [isCheckingFigma, setIsCheckingFigma] = useState(true);
-  const [isSavingFigma, setIsSavingFigma] = useState(false);
+  const [isDisconnectingFigma, setIsDisconnectingFigma] = useState(false);
 
   // ✅ Cloud 모드일 때 repoType을 'cloud'로 강제 설정
   useEffect(() => {
@@ -169,23 +168,69 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
     loadGitHubPATStatus();
   }, []);
   
-  // Load Figma config status on mount
+  // Load Figma config status on mount (페이지 새로고침 시)
   useEffect(() => {
     async function loadFigmaConfigStatus() {
+      console.log('[ConfigEditor] Loading initial Figma config status...');
       setIsCheckingFigma(true);
       try {
         const status = await checkFigmaConfigStatus();
+        console.log('[ConfigEditor] Initial Figma status:', status);
+        
         setFigmaConfigured(status.configured);
-        if (status.configured && status.serverUrl) {
-          setFigmaServerUrl(status.serverUrl);
+        setFigmaUserEmail(status.email);
+        setFigmaUserId(status.userId);
+        setFigmaConnectedAt(status.updatedAt);
+        
+        if (status.configured) {
+          console.log('[ConfigEditor] Figma is already connected:', status.email);
+        } else {
+          console.log('[ConfigEditor] Figma is not connected');
         }
       } catch (error) {
-        console.error('Failed to check Figma config status:', error);
+        console.error('[ConfigEditor] Failed to check Figma config status:', error);
       } finally {
         setIsCheckingFigma(false);
       }
     }
     loadFigmaConfigStatus();
+  }, []);
+  
+  // Listen for OAuth completion via postMessage (NO POLLING!)
+  useEffect(() => {
+    const reloadFigmaStatus = async () => {
+      try {
+        console.log('[ConfigEditor] Reloading Figma status...');
+        const status = await checkFigmaConfigStatus();
+        console.log('[ConfigEditor] Figma status:', status);
+        
+        setFigmaConfigured(status.configured);
+        setFigmaUserEmail(status.email);
+        setFigmaUserId(status.userId);
+        setFigmaConnectedAt(status.updatedAt);
+        
+        if (status.configured) {
+          showSuccess(`Figma connected as ${status.email}!`);
+        }
+      } catch (error) {
+        console.error('[ConfigEditor] Failed to reload Figma status:', error);
+      }
+    };
+    
+    // Handle postMessage from OAuth popup
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'figma-oauth-success') {
+        console.log('[ConfigEditor] ✅ Received OAuth success message:', event.data);
+        // Wait a bit for backend to save, then reload once
+        setTimeout(() => reloadFigmaStatus(), 500);
+      }
+    };
+    
+    window.addEventListener('message', handleMessage);
+    
+    return () => {
+      window.removeEventListener('message', handleMessage);
+    };
   }, []);
 
   const handleChange = (key: keyof ProjectConfig, value: any) => {
@@ -292,72 +337,34 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
     }
   };
   
-  // Figma MCP handlers
-  const handleFigmaConfigSave = async () => {
-    if (!figmaToken || !figmaToken.trim()) {
-      showError('Please enter a valid Figma MCP Token');
-      return;
-    }
-    
-    if (!figmaServerUrl || !figmaServerUrl.trim()) {
-      showError('Please enter a valid Server URL');
-      return;
-    }
-    
-    setIsSavingFigma(true);
-    try {
-      // Validate connection first
-      const validation = await validateFigmaConnection(figmaToken.trim(), figmaServerUrl.trim());
-      if (!validation.valid) {
-        showError(validation.error || 'Failed to connect to Figma MCP server');
-        setIsSavingFigma(false);
-        return;
-      }
-      
-      // Save configuration
-      const result = await saveFigmaConfig({
-        token: figmaToken.trim(),
-        serverUrl: figmaServerUrl.trim(),
-        serverType: 'remote',
-        autoExtractTokens: true,
-        autoGenerateCode: false,
-        defaultFileFormat: 'svg'
-      });
-      
-      if (result.success) {
-        showSuccess('Figma MCP configured successfully!');
-        setFigmaConfigured(true);
-        setFigmaToken(''); // Clear token input after save
-      } else {
-        showError(result.error || 'Failed to save Figma configuration');
-      }
-    } catch (error) {
-      showError('Failed to save Figma configuration. Please try again.');
-    } finally {
-      setIsSavingFigma(false);
-    }
+  // Figma OAuth handlers
+  const handleFigmaConnect = () => {
+    console.log('[ConfigEditor] Starting Figma OAuth...');
+    startFigmaOAuth();
+    // Note: OAuth window will open automatically
   };
   
-  const handleFigmaConfigDelete = async () => {
-    if (!confirm('Are you sure you want to delete your Figma MCP configuration?')) {
+  const handleFigmaDisconnect = async () => {
+    if (!confirm('Are you sure you want to disconnect your Figma account?')) {
       return;
     }
     
-    setIsSavingFigma(true);
+    setIsDisconnectingFigma(true);
     try {
-      const result = await deleteFigmaConfig();
+      const result = await disconnectFigma();
       if (result.success) {
-        showSuccess('Figma MCP configuration deleted successfully');
+        showSuccess('Figma disconnected successfully');
         setFigmaConfigured(false);
-        setFigmaToken('');
-        setFigmaServerUrl('https://figma-mcp.figma.com');
+        setFigmaUserEmail(undefined);
+        setFigmaUserId(undefined);
+        setFigmaConnectedAt(undefined);
       } else {
-        showError(result.error || 'Failed to delete Figma configuration');
+        showError(result.error || 'Failed to disconnect Figma');
       }
     } catch (error) {
-      showError('Failed to delete Figma configuration. Please try again.');
+      showError('Failed to disconnect Figma. Please try again.');
     } finally {
-      setIsSavingFigma(false);
+      setIsDisconnectingFigma(false);
     }
   };
 
@@ -551,7 +558,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
       <div className="space-y-4 pt-6 mt-6 border-t border-gray-200 dark:border-gray-700">
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <h4 className="text-sm font-semibold text-gray-900 dark:text-white">Figma MCP Integration</h4>
+            <h4 className="text-sm font-semibold text-gray-900 dark:text-white">Figma Integration</h4>
             {isCheckingFigma ? (
               <span className="text-xs text-gray-500">Checking...</span>
             ) : (
@@ -560,78 +567,72 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
                   ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' 
                   : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
               }`}>
-                {figmaConfigured ? '✓ Configured' : 'Not configured'}
+                {figmaConfigured ? '✓ Connected' : 'Not connected'}
               </span>
             )}
           </div>
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            🔐 User-level setting • Connect Figma designs to code generation
+            🔐 User-level setting • OAuth authentication to access your Figma files
           </p>
         </div>
         
         <div className="space-y-3">
-          {/* Server URL */}
-          <div>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-2">
-              Server URL
-            </label>
-            <input
-              type="text"
-              value={figmaServerUrl}
-              onChange={(e) => setFigmaServerUrl(e.target.value)}
-              placeholder="https://figma-mcp.figma.com"
-              disabled={figmaConfigured || isSavingFigma}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-            />
-          </div>
-          
-          {/* MCP Token */}
-          <div>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-2">
-              MCP Token
-            </label>
-            {figmaConfigured ? (
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value="figd_************************************"
-                  disabled
-                  className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-sm"
-                />
-                <button
-                  onClick={handleFigmaConfigDelete}
-                  disabled={isSavingFigma}
-                  className="px-4 py-2 bg-red-600 dark:bg-red-700 text-white rounded-md hover:bg-red-700 dark:hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
-                >
-                  {isSavingFigma ? 'Deleting...' : 'Delete'}
-                </button>
+          {figmaConfigured ? (
+            <>
+              <div>
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-2">
+                  Connected Account
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={figmaUserEmail || 'Connected'}
+                    disabled
+                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-sm"
+                  />
+                  <button
+                    onClick={handleFigmaDisconnect}
+                    disabled={isDisconnectingFigma}
+                    className="px-4 py-2 bg-red-600 dark:bg-red-700 text-white rounded-md hover:bg-red-700 dark:hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                  >
+                    {isDisconnectingFigma ? 'Disconnecting...' : 'Disconnect'}
+                  </button>
+                </div>
               </div>
-            ) : (
-              <>
-                <input
-                  type="password"
-                  value={figmaToken}
-                  onChange={(e) => setFigmaToken(e.target.value)}
-                  placeholder="figd_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                  disabled={isSavingFigma}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                />
-                <button
-                  onClick={handleFigmaConfigSave}
-                  disabled={!figmaToken.trim() || !figmaServerUrl.trim() || isSavingFigma}
-                  className="mt-2 w-full px-4 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded-md hover:bg-blue-700 dark:hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
-                >
-                  {isSavingFigma ? 'Saving...' : 'Save Configuration'}
-                </button>
-              </>
-            )}
-          </div>
+              
+              {/* Connection Details */}
+              <div className="bg-gray-50 dark:bg-gray-800 rounded-md p-3 space-y-2">
+                {figmaUserId && (
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-600 dark:text-gray-400">User ID:</span>
+                    <span className="text-gray-900 dark:text-gray-100 font-mono">{figmaUserId}</span>
+                  </div>
+                )}
+                {figmaConnectedAt && (
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-600 dark:text-gray-400">Connected:</span>
+                    <span className="text-gray-900 dark:text-gray-100">
+                      {new Date(figmaConnectedAt).toLocaleString()}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={handleFigmaConnect}
+                className="w-full px-4 py-3 bg-blue-600 dark:bg-blue-700 text-white rounded-md hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors text-sm font-medium"
+              >
+                Connect with Figma
+              </button>
+            </>
+          )}
           
           <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
-            <p>• Join waitlist at: <a href="https://www.figma.com/ko-kr/mcp-catalog/" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">figma.com/mcp-catalog</a></p>
-            <p>• Get Remote MCP Server access and token</p>
-            <p>• Token is stored encrypted in <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">.ant/credentials.json</code></p>
-            <p>• Settings stored in <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">.ant/integrations.json</code></p>
+            <p>• OAuth 2.0 authentication with your Figma account</p>
+            <p>• Access only to files you have permission to view</p>
+            <p>• Credentials stored encrypted in <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">.ant/credentials.json</code></p>
           </div>
         </div>
       </div>

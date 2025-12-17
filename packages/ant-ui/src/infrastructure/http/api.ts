@@ -77,33 +77,34 @@ function getAuthHeaders(): HeadersInit {
   // ✅ Skip auth headers for Local mode
   const backendMode = getBackendMode();
   
-  // console.log('[getAuthHeaders] backendMode:', backendMode); // ✅ Too verbose
+  console.log('[getAuthHeaders] backendMode:', backendMode);
   
   if (backendMode === 'local') {
-    // console.log('[getAuthHeaders] Local mode - no auth headers'); // ✅ Too verbose
+    console.log('[getAuthHeaders] Local mode - no auth headers');
     return {};
   }
   
   // Get user email from localStorage (Cloud mode only)
   try {
     const userEmail = localStorage.getItem('ant-ui:user-email');
-    // console.log('[getAuthHeaders] userEmail from localStorage:', userEmail); // ✅ Too verbose
+    console.log('[getAuthHeaders] Raw userEmail from localStorage:', userEmail);
     
     if (userEmail) {
       const email = JSON.parse(userEmail);
-      // console.log('[getAuthHeaders] Parsed email:', email); // ✅ Too verbose
-      // console.log('[getAuthHeaders] Returning header:', { 'x-user-email': email }); // ✅ Too verbose
+      console.log('[getAuthHeaders] Parsed email:', email);
+      console.log('[getAuthHeaders] Returning header:', { 'x-user-email': email });
       return {
         'x-user-email': email
       };
     } else {
-      console.warn('[getAuthHeaders] No userEmail in localStorage!');
+      console.warn('[getAuthHeaders] ❌ No userEmail in localStorage!');
+      console.warn('[getAuthHeaders] localStorage keys:', Object.keys(localStorage));
     }
   } catch (error) {
-    console.warn('[API] Failed to get user email from localStorage:', error);
+    console.error('[getAuthHeaders] ❌ Failed to get user email:', error);
   }
   
-  console.warn('[getAuthHeaders] Returning empty headers (no auth)');
+  console.error('[getAuthHeaders] ❌ No auth - returning empty headers');
   return {};
 }
 
@@ -1439,45 +1440,35 @@ export async function pushToGitHub(projectId: string): Promise<{ success: boolea
 export interface FigmaConfigStatus {
   configured: boolean;
   enabled?: boolean;
-  serverUrl?: string;
-  serverType?: 'remote' | 'local';
   userId?: string;
+  email?: string;
   autoExtractTokens?: boolean;
   autoGenerateCode?: boolean;
   defaultFileFormat?: string;
   updatedAt?: string;
 }
 
-export interface SaveFigmaConfigRequest {
-  token: string;
-  serverUrl: string;
-  serverType?: 'remote' | 'local';
-  userId?: string;
-  autoExtractTokens?: boolean;
-  autoGenerateCode?: boolean;
-  defaultFileFormat?: 'svg' | 'png' | 'pdf';
-}
-
-export interface SaveFigmaConfigResult {
-  success: boolean;
-  message?: string;
-  error?: string;
-}
-
 /**
- * Check if Figma MCP is configured
+ * Check if Figma OAuth is configured
  */
 export async function checkFigmaConfigStatus(): Promise<FigmaConfigStatus> {
   try {
+    console.log('[checkFigmaConfigStatus] Calling /api/figma/config...');
     const response = await authFetch(`${API_BASE()}/figma/config`);
     
+    console.log('[checkFigmaConfigStatus] Response status:', response.status);
+    
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+      const errorText = await response.text();
+      console.error('[checkFigmaConfigStatus] Error response:', errorText);
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
     }
     
-    return await response.json();
+    const data = await response.json();
+    console.log('[checkFigmaConfigStatus] Success:', data);
+    return data;
   } catch (error: any) {
-    console.error('Error checking Figma config status:', error);
+    console.error('[checkFigmaConfigStatus] ❌ Error:', error);
     return {
       configured: false
     };
@@ -1485,41 +1476,60 @@ export async function checkFigmaConfigStatus(): Promise<FigmaConfigStatus> {
 }
 
 /**
- * Save Figma MCP configuration
+ * Start Figma OAuth flow
+ * Opens OAuth window and returns immediately
+ * 
+ * Note: This opens Figma's OAuth login page, separate from ANT authentication
  */
-export async function saveFigmaConfig(config: SaveFigmaConfigRequest): Promise<SaveFigmaConfigResult> {
-  try {
-    const response = await authFetch(`${API_BASE()}/figma/config`, {
-      method: 'POST',
-      body: JSON.stringify(config)
-    });
-    
-    const result = await response.json();
-    
-    if (!response.ok) {
-      return {
-        success: false,
-        error: result.error || `HTTP ${response.status}`
-      };
+export async function startFigmaOAuth(): Promise<void> {
+  // Get ANT user context for storing the token after OAuth completes
+  // Use same logic as getAuthHeaders() to ensure consistency
+  const backendMode = getBackendMode();
+  let userEmail = 'local@local'; // Default for Local mode
+  
+  console.log('[Figma OAuth] Backend mode:', backendMode);
+  
+  if (backendMode === 'cloud') {
+    try {
+      const stored = localStorage.getItem('ant-ui:user-email');
+      console.log('[Figma OAuth] localStorage ant-ui:user-email:', stored);
+      if (stored) {
+        userEmail = JSON.parse(stored);
+        console.log('[Figma OAuth] ✅ Parsed user email:', userEmail);
+      } else {
+        console.error('[Figma OAuth] ❌ No user email in localStorage for cloud mode!');
+        throw new Error('User email not found. Please log in again.');
+      }
+    } catch (error) {
+      console.error('[Figma OAuth] Failed to get user email:', error);
+      throw error;
     }
-    
-    return result;
-  } catch (error: any) {
-    console.error('Error saving Figma config:', error);
-    return {
-      success: false,
-      error: error.message || 'Network error'
-    };
   }
+  
+  console.log('[Figma OAuth] Using user email:', userEmail);
+  const authUrl = `${API_BASE()}/figma/oauth/authorize?user-email=${encodeURIComponent(userEmail)}`;
+  console.log('[Figma OAuth] Opening URL:', authUrl);
+  
+  // Open Figma OAuth in popup window
+  const width = 600;
+  const height = 700;
+  const left = (window.screen.width - width) / 2;
+  const top = (window.screen.height - height) / 2;
+  
+  window.open(
+    authUrl,
+    'FigmaOAuth',
+    `width=${width},height=${height},left=${left},top=${top}`
+  );
 }
 
 /**
- * Delete Figma MCP configuration
+ * Disconnect Figma OAuth
  */
-export async function deleteFigmaConfig(): Promise<{ success: boolean; error?: string }> {
+export async function disconnectFigma(): Promise<{ success: boolean; error?: string }> {
   try {
-    const response = await authFetch(`${API_BASE()}/figma/config`, {
-      method: 'DELETE'
+    const response = await authFetch(`${API_BASE()}/figma/oauth/disconnect`, {
+      method: 'POST'
     });
     
     if (!response.ok) {
@@ -1532,30 +1542,9 @@ export async function deleteFigmaConfig(): Promise<{ success: boolean; error?: s
     
     return { success: true };
   } catch (error: any) {
-    console.error('Error deleting Figma config:', error);
+    console.error('Error disconnecting Figma:', error);
     return {
       success: false,
-      error: error.message || 'Network error'
-    };
-  }
-}
-
-/**
- * Validate Figma MCP connection
- */
-export async function validateFigmaConnection(token: string, serverUrl: string): Promise<{ valid: boolean; error?: string }> {
-  try {
-    const response = await authFetch(`${API_BASE()}/figma/validate`, {
-      method: 'POST',
-      body: JSON.stringify({ token, serverUrl })
-    });
-    
-    const result = await response.json();
-    return result;
-  } catch (error: any) {
-    console.error('Error validating Figma connection:', error);
-    return {
-      valid: false,
       error: error.message || 'Network error'
     };
   }

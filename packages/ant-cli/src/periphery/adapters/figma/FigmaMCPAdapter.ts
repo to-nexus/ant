@@ -20,35 +20,38 @@ import {
   ShadowToken
 } from '../../../core/ports/figma';
 
-export interface FigmaMCPConfig {
-  token: string;
-  serverUrl: string;
-  serverType: 'remote' | 'local';
-}
-
 /**
  * Figma MCP Adapter
  * 
- * TODO: Integrate with actual MCP SDK when available
- * For now, uses Figma REST API as fallback
+ * Uses Figma REST API with:
+ * - Server MCP Token (from .env): ANT의 MCP 클라이언트 등록 토큰
+ * - User Access Token (from credentials): 사용자의 OAuth Access Token
  */
 export class FigmaMCPAdapter implements FigmaPort {
-  private config?: FigmaMCPConfig;
+  private userAccessToken?: string;
+  private mcpToken: string;
+  private mcpServerUrl: string;
   private connected: boolean = false;
   
-  async connect(token: string, serverUrl: string): Promise<void> {
-    console.log(`[FigmaMCPAdapter] Connecting to MCP server: ${serverUrl}`);
+  constructor() {
+    // Load MCP Token from environment (Server-level)
+    this.mcpToken = process.env.FIGMA_MCP_TOKEN || '';
+    this.mcpServerUrl = process.env.FIGMA_MCP_SERVER_URL || 'https://mcp.figma.com';
     
-    this.config = {
-      token,
-      serverUrl,
-      serverType: serverUrl.includes('figma.com') ? 'remote' : 'local'
-    };
+    if (!this.mcpToken) {
+      console.warn('[FigmaMCPAdapter] FIGMA_MCP_TOKEN not set in .env');
+    }
+  }
+  
+  async connect(userAccessToken: string, _serverUrl?: string): Promise<void> {
+    console.log(`[FigmaMCPAdapter] Connecting with user access token`);
+    
+    this.userAccessToken = userAccessToken;
     
     // Test connection
     const isValid = await this.testConnection();
     if (!isValid) {
-      throw new Error('Failed to connect to Figma MCP server');
+      throw new Error('Failed to connect to Figma with user access token');
     }
     
     this.connected = true;
@@ -56,7 +59,7 @@ export class FigmaMCPAdapter implements FigmaPort {
   }
   
   async disconnect(): Promise<void> {
-    this.config = undefined;
+    this.userAccessToken = undefined;
     this.connected = false;
     console.log(`[FigmaMCPAdapter] Disconnected`);
   }
@@ -246,13 +249,13 @@ export class FigmaMCPAdapter implements FigmaPort {
   // Private helper methods
   
   private ensureConnected(): void {
-    if (!this.connected || !this.config) {
-      throw new Error('Not connected to Figma MCP server. Call connect() first.');
+    if (!this.connected || !this.userAccessToken) {
+      throw new Error('Not connected to Figma. Call connect() first with user access token.');
     }
   }
   
   private async testConnection(): Promise<boolean> {
-    if (!this.config) return false;
+    if (!this.userAccessToken) return false;
     
     try {
       // Test with a simple API call to check token validity
@@ -265,17 +268,17 @@ export class FigmaMCPAdapter implements FigmaPort {
   }
   
   private async figmaApiRequest(endpoint: string): Promise<any> {
-    if (!this.config) {
-      throw new Error('Not connected');
+    if (!this.userAccessToken) {
+      throw new Error('Not connected - no user access token');
     }
     
-    // Use Figma REST API as fallback
+    // Use Figma REST API
     const baseUrl = 'https://api.figma.com';
     const url = `${baseUrl}${endpoint}`;
     
     const response = await fetch(url, {
       headers: {
-        'X-Figma-Token': this.config.token,
+        'Authorization': `Bearer ${this.userAccessToken}`,
         'Content-Type': 'application/json'
       }
     });
