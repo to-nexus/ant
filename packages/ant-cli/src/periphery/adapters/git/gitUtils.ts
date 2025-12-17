@@ -3,7 +3,7 @@ import path from "path";
 import simpleGit from "simple-git";
 import { Octokit } from "@octokit/rest";
 import os from "os";
-import { CredentialStore } from "../../../utils/credentialStore";
+import { UserConfigManager, GitHubCredentials } from "../../../utils/userConfig";
 import { UserContext } from "../../../core/types/user";
 
 const GIT_DEFAULT_BASE = process.env.GIT_DEFAULT_BASE || "main";
@@ -174,13 +174,15 @@ export async function openPullRequest(
 ) {
   if (config.repoType !== "remote") return;
   
-  // Get PAT from credential store
-  const credentialStore = new CredentialStore(workspaceRoot);
-  const pat = await credentialStore.getPAT(userContext);
+  // Get PAT from UserConfigManager
+  const userConfig = new UserConfigManager(workspaceRoot);
+  const credentials = await userConfig.credentials.get<GitHubCredentials>(userContext, 'github');
   
-  if (!pat) {
+  if (!credentials?.token) {
     throw new Error('GitHub PAT not configured. Please configure it in project settings.');
   }
+  
+  const pat = credentials.token;
   
   // Parse owner and repo from githubRepo URL if available
   let owner = config.owner;

@@ -191,8 +191,10 @@ export class CodebaseIndexer {
    * 
    * Uses index completion marker instead of individual file chunks
    * to ensure indexing was fully completed (not interrupted by errors)
+   * 
+   * Public method - used by ProjectService for smart branch copying
    */
-  private async checkBranchIndexStatus(
+  async checkBranchIndexStatus(
     vectorDB: MemoryPort,
     project: string,
     branch: string,
