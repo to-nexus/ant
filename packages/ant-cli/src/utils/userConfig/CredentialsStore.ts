@@ -63,8 +63,15 @@ export class CredentialsStore {
     userContext: UserContext,
     service: ServiceType
   ): Promise<T | undefined> {
+    console.log(`[CredentialsStore] Getting ${service} credentials for ${userContext.userId}@${userContext.organizationId}`);
+    const credPath = this.getCredentialsPath(userContext);
+    console.log(`[CredentialsStore] Path: ${credPath}`);
+    
     const all = await this.getAll(userContext);
-    return all[service] as T | undefined;
+    const result = all[service] as T | undefined;
+    console.log(`[CredentialsStore] Found ${service}:`, result ? 'YES' : 'NO');
+    
+    return result;
   }
   
   /**
@@ -75,6 +82,10 @@ export class CredentialsStore {
     service: ServiceType,
     credentials: Omit<T, 'updatedAt'>
   ): Promise<void> {
+    console.log(`[CredentialsStore] Setting ${service} credentials for ${userContext.userId}@${userContext.organizationId}`);
+    const credPath = this.getCredentialsPath(userContext);
+    console.log(`[CredentialsStore] Path: ${credPath}`);
+    
     const all = await this.getAll(userContext);
     
     all[service] = {
@@ -83,7 +94,7 @@ export class CredentialsStore {
     } as any;
     
     await this.saveAll(userContext, all);
-    console.log(`[CredentialsStore] ✅ ${service} credentials saved`);
+    console.log(`[CredentialsStore] ✅ ${service} credentials saved to ${credPath}`);
   }
   
   /**

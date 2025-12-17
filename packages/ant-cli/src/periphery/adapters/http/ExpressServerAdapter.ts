@@ -573,6 +573,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         // Skip auth for public pages, auth endpoints, and metadata APIs
         const publicPaths = [
           '/api/health',
+          '/api/system/config',              // ✅ System configuration (backendMode, recursionLimit)
           '/api/agents',  // Agent list is public
           '/',
           '/local',
@@ -581,6 +582,8 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
           '/api/auth/signout',
           '/api/internal/task-queue',        // ✅ Internal endpoint for child processes (has ANT_USER_EMAIL env var)
           '/api/internal/file-tree-update',  // ✅ Internal endpoint for file tree updates
+          '/api/figma/oauth/authorize',      // ✅ Figma OAuth start (needs userContext from query)
+          '/api/figma/oauth/callback',       // ✅ Figma OAuth callback (userContext from state)
         ];
         
         // ✅ Specific internal endpoints that should skip auth (child processes)
@@ -703,11 +706,13 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       this.app.use('/api', authRoutes);
     }
     
-    // ✅ NEW: Unified API routes (health, agents, projects, features, files, chat, github)
+    // ✅ NEW: Unified API routes (health, agents, projects, features, files, chat, github, figma)
     const apiRoutes = createApiRoutes({
       projectService: this.projectService,
       chatService: this.chatService,
-      githubAuthService: this.githubAuthService  // ✅ Pass GitHub Auth service
+      githubAuthService: this.githubAuthService,  // ✅ Pass GitHub Auth service
+      workspaceRoot: this.workspacesPath,  // ✅ Pass workspace root for Figma OAuth
+      workspaceResolver: this.workspaceResolver  // ✅ Pass workspace resolver for Figma Files
     });
     this.app.use('/api', apiRoutes);
     

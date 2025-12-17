@@ -7,6 +7,8 @@ import { createFeaturesRoutes } from './features.routes';
 import { createFilesRoutes } from './files.routes';
 import { createChatRoutes } from './chat.routes';
 import { createGitHubRoutes } from './github.routes';
+import { createFigmaOAuthRoutes } from './figma-oauth.routes';
+import { createFigmaFilesRoutes } from './figma-files.routes';
 
 // ✅ Re-export existing routes (for backward compatibility)
 export { createJobRoutes } from './jobRoutes';
@@ -24,6 +26,8 @@ export interface RoutesDeps {
   projectService: ProjectService;
   chatService?: ChatService;
   githubAuthService?: GitHubAuthService;
+  workspaceRoot?: string;  // For Figma OAuth
+  workspaceResolver?: any;  // For Figma Files (WorkspaceResolver)
 }
 
 /**
@@ -60,6 +64,17 @@ export function createApiRoutes(deps: RoutesDeps): Router {
   if (deps.githubAuthService) {
     router.use('/github', createGitHubRoutes({
       githubAuthService: deps.githubAuthService
+    }));
+  }
+  
+  // Figma OAuth integration
+  router.use('/figma', createFigmaOAuthRoutes(deps.workspaceRoot || process.cwd()));
+  
+  // Figma Files integration
+  if (deps.workspaceRoot && deps.workspaceResolver) {
+    router.use('/figma', createFigmaFilesRoutes({
+      workspaceRoot: deps.workspaceRoot,
+      workspaceResolver: deps.workspaceResolver
     }));
   }
   

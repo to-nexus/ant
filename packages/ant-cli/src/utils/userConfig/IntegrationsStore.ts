@@ -170,8 +170,6 @@ export class IntegrationsStore {
       },
       figma: {
         enabled: false,
-        serverUrl: 'https://figma-mcp.figma.com',
-        serverType: 'remote',
         defaultFileFormat: 'svg',
         autoExtractTokens: false,
         autoGenerateCode: false

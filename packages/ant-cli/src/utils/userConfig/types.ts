@@ -26,8 +26,11 @@ export interface GitHubCredentials {
 }
 
 export interface FigmaCredentials {
-  token: string;              // MCP Token 또는 Personal Access Token (암호화됨)
-  tokenType: 'mcp' | 'pat';
+  accessToken: string;        // OAuth Access Token (암호화됨)
+  refreshToken?: string;      // OAuth Refresh Token (암호화됨)
+  userId?: string;            // Figma User ID
+  email?: string;             // Figma User Email
+  expiresAt?: string;         // Token expiration time
   updatedAt: string;
 }
 
@@ -65,9 +68,6 @@ export interface GitHubIntegration {
 
 export interface FigmaIntegration {
   enabled: boolean;
-  serverUrl: string;            // MCP Server URL
-  serverType: 'remote' | 'local';
-  userId?: string;              // Figma User ID
   defaultFileFormat?: 'svg' | 'png' | 'pdf';
   autoExtractTokens?: boolean;  // 자동으로 디자인 토큰 추출
   autoGenerateCode?: boolean;   // 자동으로 컴포넌트 코드 생성
