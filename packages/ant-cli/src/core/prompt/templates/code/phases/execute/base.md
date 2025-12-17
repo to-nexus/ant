@@ -187,42 +187,48 @@ Implement the feature. Source code only.
 
 {{#if currentTask}}
 {{#if (eq currentTask.priority 1000)}}
-## ✅ FINAL VERIFICATION: Build & Validate
+## ✅ FINAL VERIFICATION: Complete Implementation
 
 {{#if designDoc}}
 ────────────────────────────────────────────────────────────────────────────────
-## 📋 API SPECIFICATION (Error Fixing Reference)
+## 📋 DESIGN SPECIFICATION
 
 {{designDoc}}
 
-**🚨 When fixing errors, this is your SOURCE OF TRUTH!**
-- API endpoints, request/response types are CORRECT AS SPECIFIED
-- Fix TYPE DEFINITIONS, not implementation contracts
-- The design document defines correctness
+**Reference this when implementing final features or fixing errors.**
 
 ────────────────────────────────────────────────────────────────────────────────
 {{/if}}
 
-**Validation Order:** `npx tsc --noEmit` → `npm run lint` → `npm run build`
-
-Why? Type-check (5s) and lint (5s) catch 80% of issues. Build (30-60s) is expensive - only run when clean.
-
-────────────────────────────────────────────────────────────────────────────────
-
-🚨 **ERROR FIXING STRATEGY** 🚨
-
-**Apply Layer-Aware Fix (from CORE PRINCIPLES):**
+**Your tasks:**
+1. ✅ Complete any remaining features or fixes
+2. ✅ Ensure all imports and dependencies are correct
+3. ✅ Clean up TODOs and temporary code
+4. ✅ Apply LAYER-AWARE FIX principle (from CORE PRINCIPLES above)
 {{#if designDoc}}
-1. API SPECIFICATION above = source of truth for contracts
+5. ✅ Use DESIGN SPECIFICATION above as reference for contracts
 {{/if}}
-2. Identify layer: CONTRACT (endpoint/signature/schema) vs IMPLEMENTATION (types/logic/config)
-3. Fix in correct layer:
-   - Contract error → Fix implementation to match spec
-   - Implementation → Add/fix types, logic, config
-   - Syntax → Add missing brackets/semicolons
-4. Preserve ALL functionality from previous tasks
 
-**Execution:** Fix error → Re-run validation → Repeat → `<done>true</done>`
+**What happens after completion:**
+
+After you output `<done>true</done>`, automated validation will run:
+- Dependency installation (if package.json changed)
+- Type checking (`npx tsc --noEmit`)
+- Build verification (`npm run build`)
+- Code quality check (`npx eslint`)
+
+**If validation errors occur:**
+- You'll receive structured violations with file locations and error details
+- You'll be asked to analyze the root cause and create a fix plan
+- Then implement the fixes and validation will run again
+- Repeat until all validations pass
+
+**Output:** `<done>true</done>` when implementation is complete.
+
+────────────────────────────────────────────────────────────────────────────────
+**Note:** Focus on implementation. Do NOT manually run validation commands 
+(tsc, build, lint) - they execute automatically after completion.
+────────────────────────────────────────────────────────────────────────────────
 
 {{/if}}
 {{/if}}

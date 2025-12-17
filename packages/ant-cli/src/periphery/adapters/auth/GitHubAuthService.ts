@@ -1,4 +1,4 @@
-import { CredentialStore } from '../../../utils/credentialStore';
+import { UserConfigManager, GitHubCredentials } from '../../../utils/userConfig';
 import { UserContext } from '../../../core/types/user';
 
 // Simplified user context for GitHub operations (only org and user needed)
@@ -18,10 +18,10 @@ export interface SavePATResult {
  * Manages GitHub Personal Access Tokens (PAT) for users
  */
 export class GitHubAuthService {
-  private readonly credentialStore: CredentialStore;
+  private readonly userConfig: UserConfigManager;
   
   constructor(workspaceRoot: string) {
-    this.credentialStore = new CredentialStore(workspaceRoot);
+    this.userConfig = new UserConfigManager(workspaceRoot);
   }
   
   /**
@@ -32,6 +32,32 @@ export class GitHubAuthService {
       org: userContext.organizationId,
       user: userContext.userId
     };
+  }
+
+  /**
+   * Validate PAT with GitHub API
+   */
+  private async validatePAT(pat: string): Promise<{ valid: boolean; username?: string; error?: string }> {
+    try {
+      const response = await fetch('https://api.github.com/user', {
+        headers: {
+          'Authorization': `Bearer ${pat}`,
+          'Accept': 'application/vnd.github+json',
+          'User-Agent': 'ANT-CLI'
+        }
+      });
+      
+      if (response.ok) {
+        const userData = await response.json();
+        return { valid: true, username: userData.login };
+      } else if (response.status === 401) {
+        return { valid: false, error: 'Invalid or expired PAT' };
+      } else {
+        return { valid: false, error: `GitHub API error: ${response.status}` };
+      }
+    } catch (error: any) {
+      return { valid: false, error: `Network error: ${error?.message || 'Unknown error'}` };
+    }
   }
 
   /**
@@ -47,7 +73,7 @@ export class GitHubAuthService {
     }
     
     // 2. Validate with GitHub API
-    const validation = await this.credentialStore.validatePAT(pat);
+    const validation = await this.validatePAT(pat);
     if (!validation.valid) {
       return { 
         success: false, 
@@ -55,14 +81,21 @@ export class GitHubAuthService {
       };
     }
     
-    // 3. Save encrypted PAT
-    // Convert to UserContext format
+    // 3. Save encrypted PAT using UserConfigManager
     const credContext: UserContext = {
       organizationId: userContext.org,
       userId: userContext.user,
       workspacePath: ''
     };
-    await this.credentialStore.savePAT(credContext, pat);
+    
+    await this.userConfig.credentials.set<GitHubCredentials>(
+      credContext,
+      'github',
+      {
+        token: pat,
+        tokenType: 'pat'
+      }
+    );
     
     return { 
       success: true, 
@@ -74,39 +107,40 @@ export class GitHubAuthService {
    * Get PAT for user
    */
   async getPAT(userContext: CredentialUserContext): Promise<string | null> {
-    // Convert to UserContext format
     const credContext: UserContext = {
       organizationId: userContext.org,
       userId: userContext.user,
       workspacePath: ''
     };
-    return await this.credentialStore.getPAT(credContext);
+    
+    const credentials = await this.userConfig.credentials.get<GitHubCredentials>(credContext, 'github');
+    return credentials?.token || null;
   }
   
   /**
    * Check if user has configured PAT
    */
   async hasPAT(userContext: CredentialUserContext): Promise<boolean> {
-    // Convert to UserContext format
     const credContext: UserContext = {
       organizationId: userContext.org,
       userId: userContext.user,
       workspacePath: ''
     };
-    return await this.credentialStore.hasPAT(credContext);
+    
+    return await this.userConfig.credentials.has(credContext, 'github');
   }
   
   /**
    * Delete PAT for user
    */
   async deletePAT(userContext: CredentialUserContext): Promise<void> {
-    // Convert to UserContext format
     const credContext: UserContext = {
       organizationId: userContext.org,
       userId: userContext.user,
       workspacePath: ''
     };
-    await this.credentialStore.deletePAT(credContext);
+    
+    await this.userConfig.credentials.delete(credContext, 'github');
   }
   
   /**

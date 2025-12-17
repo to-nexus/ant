@@ -1432,6 +1432,135 @@ export async function pushToGitHub(projectId: string): Promise<{ success: boolea
   }
 }
 
+// ========================================
+// Figma MCP Integration APIs
+// ========================================
+
+export interface FigmaConfigStatus {
+  configured: boolean;
+  enabled?: boolean;
+  serverUrl?: string;
+  serverType?: 'remote' | 'local';
+  userId?: string;
+  autoExtractTokens?: boolean;
+  autoGenerateCode?: boolean;
+  defaultFileFormat?: string;
+  updatedAt?: string;
+}
+
+export interface SaveFigmaConfigRequest {
+  token: string;
+  serverUrl: string;
+  serverType?: 'remote' | 'local';
+  userId?: string;
+  autoExtractTokens?: boolean;
+  autoGenerateCode?: boolean;
+  defaultFileFormat?: 'svg' | 'png' | 'pdf';
+}
+
+export interface SaveFigmaConfigResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+}
+
+/**
+ * Check if Figma MCP is configured
+ */
+export async function checkFigmaConfigStatus(): Promise<FigmaConfigStatus> {
+  try {
+    const response = await authFetch(`${API_BASE()}/figma/config`);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error: any) {
+    console.error('Error checking Figma config status:', error);
+    return {
+      configured: false
+    };
+  }
+}
+
+/**
+ * Save Figma MCP configuration
+ */
+export async function saveFigmaConfig(config: SaveFigmaConfigRequest): Promise<SaveFigmaConfigResult> {
+  try {
+    const response = await authFetch(`${API_BASE()}/figma/config`, {
+      method: 'POST',
+      body: JSON.stringify(config)
+    });
+    
+    const result = await response.json();
+    
+    if (!response.ok) {
+      return {
+        success: false,
+        error: result.error || `HTTP ${response.status}`
+      };
+    }
+    
+    return result;
+  } catch (error: any) {
+    console.error('Error saving Figma config:', error);
+    return {
+      success: false,
+      error: error.message || 'Network error'
+    };
+  }
+}
+
+/**
+ * Delete Figma MCP configuration
+ */
+export async function deleteFigmaConfig(): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await authFetch(`${API_BASE()}/figma/config`, {
+      method: 'DELETE'
+    });
+    
+    if (!response.ok) {
+      const result = await response.json();
+      return {
+        success: false,
+        error: result.error || `HTTP ${response.status}`
+      };
+    }
+    
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error deleting Figma config:', error);
+    return {
+      success: false,
+      error: error.message || 'Network error'
+    };
+  }
+}
+
+/**
+ * Validate Figma MCP connection
+ */
+export async function validateFigmaConnection(token: string, serverUrl: string): Promise<{ valid: boolean; error?: string }> {
+  try {
+    const response = await authFetch(`${API_BASE()}/figma/validate`, {
+      method: 'POST',
+      body: JSON.stringify({ token, serverUrl })
+    });
+    
+    const result = await response.json();
+    return result;
+  } catch (error: any) {
+    console.error('Error validating Figma connection:', error);
+    return {
+      valid: false,
+      error: error.message || 'Network error'
+    };
+  }
+}
+
 /**
  * Pull changes from GitHub
  */

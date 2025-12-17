@@ -2124,12 +2124,15 @@ next-env.d.ts
   }
 
   /**
-   * 🚀 Auto-index new feature branch (fast copy from base)
+   * 🚀 Auto-index new feature branch (smart strategy with auto-update)
    * 
    * Strategy:
    * 1. Check if base branch is indexed
-   * 2. If yes → Copy embeddings (fast!)
-   * 3. If no → Full indexing (slower)
+   * 2. If not indexed → Full indexing
+   * 3. If indexed but outdated → Auto-update base branch first (incremental)
+   * 4. If indexed and up-to-date → Fast copy embeddings
+   * 
+   * This ensures new branches always learn from the latest codebase!
    */
   private async autoIndexNewBranch(
     projectId: string,
@@ -2143,7 +2146,7 @@ next-env.d.ts
       console.log(`\n📇 [Auto-Index] New branch created: ${newBranch}`);
       
       if (this.chatService && featureName) {
-        const messageId = this.chatService.startAssistantMessage(
+        this.chatService.startAssistantMessage(
           projectId,
           featureName,
           'branch-index-' + Date.now(),
@@ -2167,90 +2170,84 @@ next-env.d.ts
       const chunk = AdapterFactory.createChunkAdapter();
       
       const indexer = new CodebaseIndexer();
-      const baseCommit = await git.getCurrentCommit();
+      const currentCommit = await git.getCurrentCommit();
       
+      // Step 1: Check if base branch is indexed
       const baseBranchIndexed = await indexer.isBranchIndexed(
         vectorDB,
         projectId,
         baseBranch
       );
       
-      if (baseBranchIndexed) {
-        console.log(`   ✅ Base branch '${baseBranch}' is indexed → Fast copy!`);
-        
-        if (this.chatService && featureName) {
-          this.chatService.addContentToCurrentMessage(projectId, featureName, {
-            type: 'indexing',
-            content: 'Fast learning...',
-            metadata: {
-              message: `Copying embeddings from ${baseBranch} (instant copy)`
-            }
-          });
-        }
-        
-        const copyStats = await indexer.copyBranchEmbeddings(
-          vectorDB,
-          projectId,
-          baseBranch,
-          newBranch,
-          baseCommit
-        );
-        
-        console.log(`   ✅ Copied ${copyStats.embeddingsCopied} embeddings in ${(copyStats.duration / 1000).toFixed(1)}s`);
-        
-        if (this.chatService && featureName) {
-          this.chatService.addContentToCurrentMessage(projectId, featureName, {
-            type: 'indexed',
-            content: 'Branch learned!',
-            metadata: {
-              filesIndexed: copyStats.filesIndexed,
-              chunks: copyStats.embeddingsCopied,
-              tokens: copyStats.estimatedTokens,
-              duration: copyStats.duration
-            }
-          });
-          
-          this.chatService.finalizeCurrentMessage(projectId, featureName);
-        }
-      } else {
+      if (!baseBranchIndexed) {
+        // Base branch not indexed → Full indexing required
         console.log(`   ⚠️  Base branch '${baseBranch}' not indexed → Full indexing...`);
+        await this.performFullIndexing(
+          projectId,
+          codebasePath,
+          newBranch,
+          featureName,
+          indexer,
+          git,
+          vectorDB,
+          chunk
+        );
+        return;
+      }
+      
+      // Step 2: Check if base branch is up-to-date
+      const baseIndexStatus = await indexer.checkBranchIndexStatus(
+        vectorDB,
+        projectId,
+        baseBranch,
+        currentCommit
+      );
+      
+      if (baseIndexStatus.lastCommit !== currentCommit) {
+        // Base branch is outdated → Auto-update first
+        console.log(`   🔄 Base branch is outdated, updating first...`);
+        console.log(`      Indexed at: ${baseIndexStatus.lastCommit?.substring(0, 8) || 'unknown'}`);
+        console.log(`      Current: ${currentCommit.substring(0, 8)}`);
         
         if (this.chatService && featureName) {
           this.chatService.addContentToCurrentMessage(projectId, featureName, {
             type: 'indexing',
-            content: 'Learning codebase...',
+            content: 'Updating base branch...',
             metadata: {
-              message: `Indexing all files for ${newBranch} (first-time indexing)`
+              message: `Updating ${baseBranch} to latest (incremental update)`
             }
           });
         }
         
-        const stats = await indexer.index(
-          { git, vectorDB, chunk },
-          {
-            project: projectId,
-            workingDir: codebasePath,
-            branch: newBranch
-          }
+        await this.updateBaseBranch(
+          projectId,
+          codebasePath,
+          baseBranch,
+          currentCommit,
+          indexer,
+          git,
+          vectorDB,
+          chunk
         );
         
-        console.log(`   ✅ Indexed ${stats.filesIndexed} files (${stats.chunksCreated} chunks)`);
-        
-        if (this.chatService && featureName) {
-          this.chatService.addContentToCurrentMessage(projectId, featureName, {
-            type: 'indexed',
-            content: 'Codebase learned!',
-            metadata: {
-              filesIndexed: stats.filesIndexed,
-              chunks: stats.chunksCreated,
-              tokens: stats.estimatedTokens,
-              duration: stats.duration
-            }
-          });
-          
-          this.chatService.finalizeCurrentMessage(projectId, featureName);
-        }
+        console.log(`   ✅ Base branch updated to ${currentCommit.substring(0, 8)}`);
+      } else {
+        console.log(`   ✅ Base branch is up-to-date (${currentCommit.substring(0, 8)})`);
       }
+      
+      // Step 3: Fast copy from up-to-date base branch
+      console.log(`   📋 Fast copying embeddings from ${baseBranch}...`);
+      
+      await this.performFastCopy(
+        projectId,
+        baseBranch,
+        newBranch,
+        currentCommit,
+        featureName,
+        indexer,
+        vectorDB
+      );
+      
     } catch (error) {
       console.error(`❌ [Auto-Index] Failed:`, error);
       
@@ -2269,6 +2266,142 @@ next-env.d.ts
         
         this.chatService.finalizeCurrentMessage(projectId, featureName);
       }
+    }
+  }
+  
+  /**
+   * Helper: Perform full indexing for a branch
+   */
+  private async performFullIndexing(
+    projectId: string,
+    codebasePath: string,
+    branch: string,
+    featureName: string,
+    indexer: any,
+    git: any,
+    vectorDB: any,
+    chunk: any
+  ): Promise<void> {
+    if (this.chatService && featureName) {
+      this.chatService.addContentToCurrentMessage(projectId, featureName, {
+        type: 'indexing',
+        content: 'Learning codebase...',
+        metadata: {
+          message: `Full indexing for ${branch}`
+        }
+      });
+    }
+    
+    const stats = await indexer.index(
+      { git, vectorDB, chunk },
+      {
+        project: projectId,
+        workingDir: codebasePath,
+        branch
+      }
+    );
+    
+    console.log(`   ✅ Indexed ${stats.filesIndexed} files (${stats.chunksCreated} chunks)`);
+    
+    if (this.chatService && featureName) {
+      this.chatService.addContentToCurrentMessage(projectId, featureName, {
+        type: 'indexed',
+        content: 'Codebase learned!',
+        metadata: {
+          filesIndexed: stats.filesIndexed,
+          chunks: stats.chunksCreated,
+          tokens: stats.estimatedTokens,
+          duration: stats.duration
+        }
+      });
+      
+      this.chatService.finalizeCurrentMessage(projectId, featureName);
+    }
+  }
+  
+  /**
+   * Helper: Fast copy embeddings from source branch to target branch
+   */
+  private async performFastCopy(
+    projectId: string,
+    sourceBranch: string,
+    targetBranch: string,
+    targetCommit: string,
+    featureName: string,
+    indexer: any,
+    vectorDB: any
+  ): Promise<void> {
+    if (this.chatService && featureName) {
+      this.chatService.addContentToCurrentMessage(projectId, featureName, {
+        type: 'indexing',
+        content: 'Fast learning...',
+        metadata: {
+          message: `Copying embeddings from ${sourceBranch} (instant copy)`
+        }
+      });
+    }
+    
+    const copyStats = await indexer.copyBranchEmbeddings(
+      vectorDB,
+      projectId,
+      sourceBranch,
+      targetBranch,
+      targetCommit
+    );
+    
+    console.log(`   ✅ Copied ${copyStats.embeddingsCopied} embeddings in ${(copyStats.duration / 1000).toFixed(1)}s`);
+    
+    if (this.chatService && featureName) {
+      this.chatService.addContentToCurrentMessage(projectId, featureName, {
+        type: 'indexed',
+        content: 'Branch learned!',
+        metadata: {
+          filesIndexed: copyStats.filesIndexed,
+          chunks: copyStats.embeddingsCopied,
+          tokens: copyStats.estimatedTokens,
+          duration: copyStats.duration
+        }
+      });
+      
+      this.chatService.finalizeCurrentMessage(projectId, featureName);
+    }
+  }
+  
+  /**
+   * Helper: Update base branch to current commit (incremental indexing)
+   */
+  private async updateBaseBranch(
+    projectId: string,
+    codebasePath: string,
+    baseBranch: string,
+    targetCommit: string,
+    indexer: any,
+    git: any,
+    vectorDB: any,
+    chunk: any
+  ): Promise<void> {
+    // Save current branch
+    const currentBranch = await git.getCurrentBranch();
+    
+    try {
+      // Checkout base branch
+      await git.checkoutBranch(baseBranch);
+      
+      // Incremental indexing (only changed files)
+      const updateStats = await indexer.index(
+        { git, vectorDB, chunk },
+        {
+          project: projectId,
+          workingDir: codebasePath,
+          branch: baseBranch,
+          incremental: true
+        }
+      );
+      
+      console.log(`   ✅ Updated ${updateStats.filesIndexed} files (incremental)`);
+    } finally {
+      // Always return to original branch
+      await git.checkoutBranch(currentBranch);
     }
   }
 

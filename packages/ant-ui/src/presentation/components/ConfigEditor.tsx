@@ -1,5 +1,15 @@
 import { useState, useEffect } from 'react';
-import { ProjectConfig, checkGitHubPATStatus, saveGitHubPAT, deleteGitHubPAT, initializeGitHubRepo } from '@/infrastructure/http/api';
+import { 
+  ProjectConfig, 
+  checkGitHubPATStatus, 
+  saveGitHubPAT, 
+  deleteGitHubPAT, 
+  initializeGitHubRepo,
+  checkFigmaConfigStatus,
+  saveFigmaConfig,
+  deleteFigmaConfig,
+  validateFigmaConnection
+} from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
 import { useAlertModal } from '@/application/hooks/ui/useAlertModal';
 
@@ -114,6 +124,13 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   const [githubPATConfigured, setGithubPATConfigured] = useState(false);
   const [isCheckingPAT, setIsCheckingPAT] = useState(true);
   const [isSavingPAT, setIsSavingPAT] = useState(false);
+  
+  // Figma MCP state (separate from config)
+  const [figmaToken, setFigmaToken] = useState('');
+  const [figmaServerUrl, setFigmaServerUrl] = useState('https://figma-mcp.figma.com');
+  const [figmaConfigured, setFigmaConfigured] = useState(false);
+  const [isCheckingFigma, setIsCheckingFigma] = useState(true);
+  const [isSavingFigma, setIsSavingFigma] = useState(false);
 
   // ✅ Cloud 모드일 때 repoType을 'cloud'로 강제 설정
   useEffect(() => {
@@ -150,6 +167,25 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
       }
     }
     loadGitHubPATStatus();
+  }, []);
+  
+  // Load Figma config status on mount
+  useEffect(() => {
+    async function loadFigmaConfigStatus() {
+      setIsCheckingFigma(true);
+      try {
+        const status = await checkFigmaConfigStatus();
+        setFigmaConfigured(status.configured);
+        if (status.configured && status.serverUrl) {
+          setFigmaServerUrl(status.serverUrl);
+        }
+      } catch (error) {
+        console.error('Failed to check Figma config status:', error);
+      } finally {
+        setIsCheckingFigma(false);
+      }
+    }
+    loadFigmaConfigStatus();
   }, []);
 
   const handleChange = (key: keyof ProjectConfig, value: any) => {
@@ -253,6 +289,75 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
       showError('Failed to delete PAT. Please try again.');
     } finally {
       setIsSavingPAT(false);
+    }
+  };
+  
+  // Figma MCP handlers
+  const handleFigmaConfigSave = async () => {
+    if (!figmaToken || !figmaToken.trim()) {
+      showError('Please enter a valid Figma MCP Token');
+      return;
+    }
+    
+    if (!figmaServerUrl || !figmaServerUrl.trim()) {
+      showError('Please enter a valid Server URL');
+      return;
+    }
+    
+    setIsSavingFigma(true);
+    try {
+      // Validate connection first
+      const validation = await validateFigmaConnection(figmaToken.trim(), figmaServerUrl.trim());
+      if (!validation.valid) {
+        showError(validation.error || 'Failed to connect to Figma MCP server');
+        setIsSavingFigma(false);
+        return;
+      }
+      
+      // Save configuration
+      const result = await saveFigmaConfig({
+        token: figmaToken.trim(),
+        serverUrl: figmaServerUrl.trim(),
+        serverType: 'remote',
+        autoExtractTokens: true,
+        autoGenerateCode: false,
+        defaultFileFormat: 'svg'
+      });
+      
+      if (result.success) {
+        showSuccess('Figma MCP configured successfully!');
+        setFigmaConfigured(true);
+        setFigmaToken(''); // Clear token input after save
+      } else {
+        showError(result.error || 'Failed to save Figma configuration');
+      }
+    } catch (error) {
+      showError('Failed to save Figma configuration. Please try again.');
+    } finally {
+      setIsSavingFigma(false);
+    }
+  };
+  
+  const handleFigmaConfigDelete = async () => {
+    if (!confirm('Are you sure you want to delete your Figma MCP configuration?')) {
+      return;
+    }
+    
+    setIsSavingFigma(true);
+    try {
+      const result = await deleteFigmaConfig();
+      if (result.success) {
+        showSuccess('Figma MCP configuration deleted successfully');
+        setFigmaConfigured(false);
+        setFigmaToken('');
+        setFigmaServerUrl('https://figma-mcp.figma.com');
+      } else {
+        showError(result.error || 'Failed to delete Figma configuration');
+      }
+    } catch (error) {
+      showError('Failed to delete Figma configuration. Please try again.');
+    } finally {
+      setIsSavingFigma(false);
     }
   };
 
@@ -434,7 +539,99 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
           <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
             <p>• Create a PAT at: <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">github.com/settings/tokens</a></p>
             <p>• Required scopes: <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">repo</code></p>
-            <p>• PAT is stored encrypted in <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">.github-credentials</code></p>
+            <p>• PAT is stored encrypted in <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">.ant/credentials.json</code></p>
+          </div>
+        </div>
+      </div>
+    );
+  };
+  
+  const renderFigmaSection = () => {
+    return (
+      <div className="space-y-4 pt-6 mt-6 border-t border-gray-200 dark:border-gray-700">
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <h4 className="text-sm font-semibold text-gray-900 dark:text-white">Figma MCP Integration</h4>
+            {isCheckingFigma ? (
+              <span className="text-xs text-gray-500">Checking...</span>
+            ) : (
+              <span className={`text-xs px-2 py-0.5 rounded ${
+                figmaConfigured 
+                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' 
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+              }`}>
+                {figmaConfigured ? '✓ Configured' : 'Not configured'}
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            🔐 User-level setting • Connect Figma designs to code generation
+          </p>
+        </div>
+        
+        <div className="space-y-3">
+          {/* Server URL */}
+          <div>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-2">
+              Server URL
+            </label>
+            <input
+              type="text"
+              value={figmaServerUrl}
+              onChange={(e) => setFigmaServerUrl(e.target.value)}
+              placeholder="https://figma-mcp.figma.com"
+              disabled={figmaConfigured || isSavingFigma}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+            />
+          </div>
+          
+          {/* MCP Token */}
+          <div>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-2">
+              MCP Token
+            </label>
+            {figmaConfigured ? (
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value="figd_************************************"
+                  disabled
+                  className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-sm"
+                />
+                <button
+                  onClick={handleFigmaConfigDelete}
+                  disabled={isSavingFigma}
+                  className="px-4 py-2 bg-red-600 dark:bg-red-700 text-white rounded-md hover:bg-red-700 dark:hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                >
+                  {isSavingFigma ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
+            ) : (
+              <>
+                <input
+                  type="password"
+                  value={figmaToken}
+                  onChange={(e) => setFigmaToken(e.target.value)}
+                  placeholder="figd_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                  disabled={isSavingFigma}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                />
+                <button
+                  onClick={handleFigmaConfigSave}
+                  disabled={!figmaToken.trim() || !figmaServerUrl.trim() || isSavingFigma}
+                  className="mt-2 w-full px-4 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded-md hover:bg-blue-700 dark:hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                >
+                  {isSavingFigma ? 'Saving...' : 'Save Configuration'}
+                </button>
+              </>
+            )}
+          </div>
+          
+          <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
+            <p>• Join waitlist at: <a href="https://www.figma.com/ko-kr/mcp-catalog/" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">figma.com/mcp-catalog</a></p>
+            <p>• Get Remote MCP Server access and token</p>
+            <p>• Token is stored encrypted in <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">.ant/credentials.json</code></p>
+            <p>• Settings stored in <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">.ant/integrations.json</code></p>
           </div>
         </div>
       </div>
@@ -485,6 +682,9 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
           
           {/* GitHub Integration Section */}
           {renderGitHubSection()}
+          
+          {/* Figma MCP Integration Section */}
+          {renderFigmaSection()}
         </div>
       </div>
       
