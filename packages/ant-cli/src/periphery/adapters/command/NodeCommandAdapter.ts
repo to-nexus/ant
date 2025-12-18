@@ -39,6 +39,7 @@ export class NodeCommandAdapter implements CommandPort {
     'cp',      // Copy files
     'mv',      // Move files
     'touch',   // Create empty files
+    'cd',      // Change directory
     
     // File inspection
     'ls',      // List directory contents
@@ -60,6 +61,10 @@ export class NodeCommandAdapter implements CommandPort {
     'uniq',    // Remove duplicates
     'awk',     // Text processing
     'sed',     // Stream editor
+    
+    // Network
+    'curl',    // HTTP requests / API testing
+    'wget',    // Download files
     
     // System info
     'pwd',     // Print working directory

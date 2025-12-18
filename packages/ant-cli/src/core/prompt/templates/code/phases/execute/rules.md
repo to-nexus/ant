@@ -46,6 +46,29 @@ Use **system tools** for **editing**, **reading**, **searching**, **commands**:
 
 **How to use tools**: Call them using the system's native interface - NO XML tags, NO text descriptions. Just invoke the tool directly.
 
+**🚨 CRITICAL: Package Manager Detection**
+
+**Before running install/build commands, check which package manager is used:**
+
+| Indicator File | Package Manager | Command |
+|----------------|----------------|---------|
+| `pnpm-workspace.yaml` exists | pnpm | `pnpm install`, `pnpm --filter @pkg/name dev` |
+| `yarn.lock` exists | yarn | `yarn install`, `yarn workspace @pkg/name dev` |
+| `package-lock.json` exists | npm | `npm install`, `npm run dev --workspace=@pkg/name` |
+
+**How to check:**
+```
+1. list_files(".") → Check root directory
+2. See pnpm-workspace.yaml? → Use pnpm commands
+3. See yarn.lock? → Use yarn commands  
+4. See package-lock.json? → Use npm commands
+```
+
+**Examples:**
+- ✅ `pnpm install` (if pnpm-workspace.yaml exists)
+- ✅ `pnpm --filter @project/backend dev` (monorepo with pnpm)
+- ❌ `npm install` (if pnpm-workspace.yaml exists) → Will fail!
+
 **🎯 When to Use What:**
 
 | Operation | Method | Example |
@@ -76,13 +99,21 @@ Use **system tools** for **editing**, **reading**, **searching**, **commands**:
 | `list_files` | List directory contents | Explore file structure |
 | `delete_file` | Delete **single file** | Remove one specific file (safe, UI-integrated) |
 | `mkdir` | Create directory | Need new folder |
-| `run_command` | Execute shell command | npm install, build, **delete directory** (`rm -rf`), **delete multiple files** (`rm *.tmp`), **move/copy files** (`mv`, `cp`) |
+| `run_command` | Execute shell command | Install deps, build, test API endpoints, delete/move files |
+
+**🎯 Common Commands:**
+- **Install**: `pnpm install` / `npm install` (check package manager first)
+- **Build**: `pnpm build` / `npm run build`
+- **Test API**: `curl -I "https://api.example.com/endpoint"` (check endpoint availability)
+- **Delete dir**: `rm -rf dirname/`
+- **Move files**: `mv old.ts new.ts`
 
 **🎯 File Deletion Guidelines:**
 - **Single file** (e.g., `src/old.tsx`) → Use `delete_file` (safer, better UI)
 - **Directory** (e.g., `dist/`, `node_modules/`) → Use `run_command` with `rm -rf dirname/`
 - **Multiple files/patterns** (e.g., `*.log`, `test-*.js`) → Use `run_command` with `rm pattern`
 - **Complex operations** (move, copy, rename) → Use `run_command` with `mv`, `cp`, etc.
+- **Test API endpoint** (e.g., RSS feed availability) → Use `run_command` with `curl -I "https://..."`
 
 ────────────────────────────────────────────────────────────────────────────────
 
@@ -215,6 +246,7 @@ Turn 2: edit_file("App.tsx", old_str, new_str)  ← Modify
 - Delete directory: `run_command` with `rm -rf dirname/`
 - Delete multiple files: `run_command` with `rm *.log`
 - Move/copy files: `run_command` with `mv` or `cp`
+- Test API endpoint: `run_command` with `curl -I "https://api.example.com/endpoint"`
 
 ────────────────────────────────────────────────────────────────────────────────
 
@@ -267,6 +299,7 @@ function updatePaddle() {
 |---------|-------|---------|
 | **CRITICAL: Using `<file>` for existing file** | `<file path="src/App.tsx">` when file exists | Use `edit_file` tool |
 | **CRITICAL: Editing without reading first** | `edit_file` with outdated old_str | `read_file` first, then `edit_file` |
+| **CRITICAL: Wrong package manager** | `npm install` in pnpm project | Check for `pnpm-workspace.yaml` → use `pnpm install` |
 | **CRITICAL: Hardcoding values instead of using constants** | `const speed = 300;` when `PADDLE_SPEED` exists | `import { PADDLE_SPEED } from './constants'; const speed = PADDLE_SPEED;` |
 | Creating new file without `<file>` | Using tool syntax | Use `<file path="...">` tag |
 | Reading with tool as text | Writing tool call as text/XML in response | Use system's native tool interface (automatic) |

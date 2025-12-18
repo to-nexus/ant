@@ -160,7 +160,7 @@ Create config files only. NO source code, NO tests.
 - ✅ Install ALL dependencies needed for the project
 - ✅ Use exact versions from design doc if specified
 
-**Actions:** Write files → Run `npm install` → Output `<done>true</done>`
+**Actions:** Write files → Run install command (check package manager) → Output `<done>true</done>`
 
 {{/unless}}
 {{/if}}
