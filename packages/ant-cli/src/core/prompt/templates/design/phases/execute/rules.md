@@ -261,34 +261,54 @@ Before generating output, verify:
 ## 🧹 IMPLEMENTATION DETAIL FILTER (Especially for Service / Dashboard / CRUD)
 ════════════════════════════════════════════════════════════════════════════════
 
-**Even if the PRD includes these values explicitly, System Design MUST NOT repeat them as low-level implementation details.**
+**CRITICAL DISTINCTION: Who specified this detail?**
 
-### DO NOT Write (belongs to PRD or implementation docs):
-- ❌ Concrete storage keys or internal persistence shapes:
-  - e.g., `"bookmarks"`, `"recentSearches"`, `"statsData"` and exact JSON layouts.
-- ❌ Concrete URL paths and query formats:
-  - e.g., `"/ai"`, `"/blockchain"`, `"/search?q=keyword"`.
-- ❌ UI component trees, props contracts, or handler names:
-  - e.g., `NewsCardProps`, `onBookmarkToggle(articleId)`, `CategoryFilter`, `SourceFilter` component hierarchies.
-- ❌ State management implementation details:
-  - Store/slice names, selector names, hook usage patterns (e.g., `useNewsStore`, `statsSlice`, `useBookmarkStore`).
-- ❌ Concrete retry/backoff or caching algorithms:
-  - e.g., "exponential backoff with 3 retries", "retry after 100/200/400 ms".
-- ❌ Detailed loading/error UI patterns:
-  - Specific spinners, skeleton layouts, banner text, button placement, toasts, etc.
+### The Deciding Question: "Did PRD specify this, or did I choose it?"
+
+**If PRD specified it → Document it (architectural constraint)**
+**If YOU chose it → Omit it (implementation detail)**
+
+### DO NOT Write (LLM-chosen implementation details):
+- ❌ Internal identifiers YOU invent:
+  - Storage keys: `"bookmarks"`, `"recentSearches"`, `"statsData"`
+  - Route paths: `"/ai"`, `"/blockchain"`, `"/search?q=keyword"` (unless PRD defines them)
+  - Component names: `NewsCard`, `CategoryFilter`, `BookmarkButton`
+  - Function names: `onBookmarkToggle`, `handleSearch`, `fetchArticles`
+  - Store names: `useNewsStore`, `statsSlice`, `bookmarkStore`
+  
+- ❌ Algorithms/patterns YOU choose:
+  - "Exponential backoff with 3 retries" (unless PRD specifies)
+  - "Cache for 5 minutes" (unless PRD specifies)
+  - "Debounce search by 300ms" (unless PRD specifies)
+  
+- ❌ UI implementation YOU design:
+  - Specific component hierarchies
+  - Exact prop interfaces
+  - Loading spinner types
+  - Error message templates
+
+### ALWAYS Write (PRD-specified constraints):
+- ✅ **Platform constraints**: Client-side only, No backend, Serverless, Browser-based
+- ✅ **External services**: Exact service names from PRD (not LLM examples)
+- ✅ **Architecture patterns**: Exact patterns from PRD
+- ✅ **Technology prohibitions**: What PRD forbids
+
+### ABSTRACT these (even if PRD specifies concrete tech):
+- 🔄 **Storage**: "LocalStorage", "Redis", "IndexedDB" → "Persistence adapter", "Cache layer"
+- 🔄 **Database**: "PostgreSQL", "MongoDB" → "Database", "Data store"
+- 🔄 **State management**: "Zustand", "Redux" → "Global state management"
+- 🔄 **Why**: System Design describes WHAT, not specific HOW implementation
 
 ### INSTEAD, Write at Architecture / Policy Level:
-- ✅ Describe **policies and ownership**, not keys or paths:
-  - "Bookmark collection is persisted via a client-side StorageAdapter; key names and encoding format are implementation details."
-  - "Search terms are kept as a bounded queue in client storage; maximum length and eviction policy are owned by Application/Domain policy."
-- ✅ Describe **navigation and screens** conceptually:
-  - "AI News view", "Search view", "Bookmarks view" and how they map to use cases, without hard-coding routes.
-- ✅ Describe **state responsibilities**:
-  - "Application layer owns SearchState, BookmarkState, StatisticsState and exposes them as read models to Presentation."
-- ✅ Describe **error/retry policies** at a high level:
-  - "Infrastructure wraps external API failures into domain-level error results; Application decides when to retry vs surface an error state."
+- ✅ **Ownership & boundaries**: "Application layer owns search state; Presentation consumes it"
+- ✅ **Policies & strategies**: "Failed API calls are retried based on error type; transient errors use exponential backoff"
+- ✅ **Conceptual screens**: "News Feed view", "Search Results view" (no hardcoded routes unless PRD defines them)
+- ✅ **Abstract flows**: "User initiates search → Application queries services → Presentation displays results"
 
-**Rule of thumb**: If a detail looks like a hard-coded literal or a framework-level symbol (key, path, prop name, slice name, hook), it almost always belongs in PRD or implementation, NOT in System Design.
+**Rule of thumb**: 
+- Concrete literal YOU chose → Omit
+- Constraint PRD gave you → Document
+- Policy/pattern YOU designed at architecture level → Document abstractly
 
 ### Responsibility & Boundary Guardrail (Architecture-Style Agnostic)
 - Regardless of architecture pattern (Layered, Hexagonal, ECS, Event-Driven, etc.), you MUST:
@@ -299,7 +319,7 @@ Before generating output, verify:
   - State is owned in ONE boundary (domain model, aggregate, system, or runtime manager), never “also” in random UI widgets
   - System Design MUST state which boundary owns authoritative state and which boundaries read/derive from it
 - DO NOT mix framework/DOM details with architecture:
-  - ❌ Avoid naming specific hooks/APIs like `useState`, `useEffect`, `requestAnimationFrame`, DOM tags (`<div>`), CSS properties (`transform`) in System Design
+  - ❌ Avoid naming specific framework hooks/APIs, DOM element names, or CSS property names in System Design
   - ✅ Instead, use framework-neutral phrases like "UI framework state", "rendering loop", "view components", "rendering surface"
 - For real-time or game-like systems (whatever style you choose: layered, ECS, actor, etc.):
   - One clearly identified **runtime/orchestrator** owns the main loop / tick scheduling
@@ -356,3 +376,38 @@ Before generating output, verify:
 - For unified `system-design.md`:
   - Keep **Execution Flows** to 2–3 essential flows (no step-by-step gameplay narratives)
   - Keep technology/platform constraints (framework, DOM vs Canvas, etc.) in the **Technology Stack & Platform Constraints** chapter; avoid repeating them in UI/Domain sections
+
+════════════════════════════════════════════════════════════════════════════════
+## 🚨 FINAL SELF-VALIDATION CHECKLIST
+════════════════════════════════════════════════════════════════════════════════
+
+**Before submitting your output, verify:**
+
+### Abstraction Level Check (Self-Reasoning)
+- [ ] **For EVERY sentence I wrote, I verified:**
+  - "Could this be implemented 10+ different ways?" (YES = good)
+  - "Am I describing WHAT/WHO or HOW?" (WHAT/WHO = good)
+  - "Is this a library/framework/tool name?" (YES = abstract to role)
+  - "Is this a platform-specific API/feature?" (YES = abstract to interface)
+  - "Did I extract INTENT from PRD, not copy wording?" (YES = good)
+
+### Task Description vs Prompt Rules
+- [ ] **Task description provides TOPICS (WHAT to cover)**
+- [ ] **Prompt rules dictate ABSTRACTION LEVEL (HOW to write)**
+- [ ] **When conflict: Prompt rules win, task description loses**
+- [ ] **If task says "Design LocalStorage integration":**
+  - I wrote: "Design client-side persistence strategy" ✅
+  - NOT: "Design LocalStorage integration" ❌
+
+### PRD Alignment
+- [ ] **External services listed exactly as in PRD** (with § references)
+- [ ] **Exclusions respected** (if PRD says "X is excluded", X is NOT mentioned anywhere)
+- [ ] **Platform constraints documented verbatim** ("client-side only", "no backend")
+
+### Document Quality
+- [ ] **Layered architecture clearly defined** (Presentation/Application/Domain/Infrastructure)
+- [ ] **Responsibilities non-overlapping** (each layer owns distinct concerns)
+- [ ] **Domain rules explicit** (normalization, validation, business policies)
+- [ ] **Extension points clear** (adapters, ports, strategies)
+
+**If ANY checklist item fails → REWRITE that section before submitting!**

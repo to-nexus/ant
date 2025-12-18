@@ -642,7 +642,8 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
   // 🚨 CRITICAL: Clear violations on success
   return {
     ...state,
-    violations: [],  // ← Clear previous violations
+    violations: [],  // ← Clear current violations
+    lastViolations: [],  // ← Clear last violations
     runtimeValidationResult: result,
   };
 }

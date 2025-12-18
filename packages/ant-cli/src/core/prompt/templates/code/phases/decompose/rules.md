@@ -40,10 +40,10 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
   },
   {
     "id": "final-verification",
-    "name": "Final Integration & Verification",
+    "name": "Final Integration and Build Verification",
     "type": "feature",
     "priority": 1000,
-    "description": "Install all dependencies and build the project to verify compilation."
+    "description": "Review implementation completeness: verify all requirements from the design are implemented, all components are properly integrated, no features are missing, and all files are correctly connected. If anything is incomplete, implement the missing parts."
   }
 ]
 </tasks>
@@ -60,10 +60,10 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
   },
   {
     "id": "final-verification",
-    "name": "Final Verification",
+    "name": "Final Build Verification",
     "type": "feature",
     "priority": 1000,
-    "description": "Build the project to verify changes work correctly."
+    "description": "Review all changes: ensure requested modifications are complete, verify integration with existing code, and check nothing is missing or broken. Fix any gaps found."
   }
 ]
 </tasks>
@@ -80,10 +80,10 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
   },
   {
     "id": "final-verification",
-    "name": "Final Verification",
+    "name": "Verify Error Resolution",
     "type": "feature",
     "priority": 1000,
-    "description": "Build and run to verify the error is resolved."
+    "description": "Verify the error is completely resolved: check the fix addresses the root cause, ensure no related issues remain, and confirm all affected code works correctly. Address any remaining problems."
   }
 ]
 </tasks>

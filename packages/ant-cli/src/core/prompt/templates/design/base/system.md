@@ -45,11 +45,68 @@ Do NOT add requirements that are NOT in the PRD, even if they are industry "best
 **Focus on WHAT to build and HOW components interact, NOT what you think SHOULD BE there.**
 </critical_constraint>
 
-════════════════════════════════════════════════════════════════════════════════
 ## 🏛️ SYSTEM DESIGN = ARCHITECTURE + COMPONENT INTERACTION
 ════════════════════════════════════════════════════════════════════════════════
 
-**Definition**: A System Design Document specifies WHAT to build and HOW components, layers, and contracts interact – NOT how to write the code.
+**Definition**: System Design specifies WHAT to build and HOW components interact – NOT how to write the code.
+
+**Core Principle: WHAT vs HOW**
+
+**System Design describes WHAT the system does and WHO is responsible.**
+**System Design does NOT describe HOW implementation is done.**
+
+**Golden Test for Every Sentence:**
+```
+❓ "Could this be implemented 10+ different ways?"
+   ✅ YES → Keep it (architectural concern)
+   ❌ NO  → Too specific (abstract or omit)
+
+❓ "Is this a proper noun (library/vendor/API)?"
+   ✅ External service from PRD → Keep exact name
+   ✅ Internal tech choice → Abstract to role
+   ❌ Implementation detail → Omit
+
+❓ "Am I describing WHAT or HOW?"
+   ✅ WHAT component does → Keep
+   ❌ HOW it's coded → Abstract or omit
+
+❓ "Did I extract INTENT from PRD, not copy wording?"
+   ✅ PRD: "브라우저 저장소" → Intent: "Client-side persistence"
+   ✅ PRD: "CORS 제약" → Intent: "Access restrictions"
+   ❌ System Design: "브라우저 저장소" → WRONG (copied verbatim)
+```
+
+**Three-Tier Abstraction Model:**
+
+**Tier 1: Architectural Constraints (Document Exactly)**
+- **External services from PRD**: "Stripe API", "NewsData.io" (exact names with PRD §reference)
+- **Platform constraint INTENT**: Extract WHY, not implementation wording
+  - PRD: "브라우저 저장소" → Intent: "Client-side persistence required"
+  - PRD: "브라우저 직접 API 호출" → Intent: "Client-direct integration (no backend proxy)"
+  - PRD: "정적 호스팅" → Intent: "Stateless deployment required"
+- **Required patterns**: "Event-driven required", "Layered only", "No microservices"
+- **Technology prohibitions**: "No MongoDB", "No GraphQL"
+- **Rule**: Extract INTENT, abstract the wording
+
+**Tier 2: Technology Choices (Abstract to Role)**
+- **Heuristic: Any library/framework/tool name → Its architectural role**
+- **Heuristic: Any platform-specific API → Generic interface**
+- **Why**: System Design describes contracts/boundaries, not vendor choices
+- **Examples of transformation:**
+  - Storage tech → "Persistence adapter" / "Cache layer" / "Data store"
+  - State tech → "State management approach"
+  - Routing tech → "Routing mechanism"
+  - Platform APIs → "Platform interface" / "Client-side capability"
+- **Rule**: Even if PRD specifies concrete tech, use architectural term
+
+**Tier 3: Implementation Details (Omit Entirely)**
+- Config values: timeouts (5000ms), retry counts (3), TTL (300s)
+- Code constructs: variable names, function signatures, type definitions
+- UI specifics: CSS properties, component props, styling libraries
+- Data formats: "JSON", "XML" (except when defining cross-boundary contract format)
+- Algorithms: loops, conditions, formulas
+- Platform mechanisms: "CORS", "same-origin policy", "browser history API"
+- **Rule**: These belong in code, not design
 
 **Focus Areas (REQUIRED):**
 1. **Architecture Pattern**: Which pattern (Layered, Hexagonal, MVC, ECS, Event-Driven, etc.) and WHY
@@ -65,10 +122,11 @@ Do NOT add requirements that are NOT in the PRD, even if they are industry "best
 - ✅ **Strategy descriptions**: "Cache layer in front of database for read-heavy endpoints"
 - ✅ **Domain concepts**: Name key entities (User, Task, GameSession) and their relationships
 - ✅ **Contracts**: Define shared data models and commands that cross module/layer boundaries (e.g., GameState, Command) as **conceptual schemas** using headings and bullet lists (no language-specific syntax)
+- ✅ **PRD-specified constraints**: Document ALL technologies, services, patterns, libraries that PRD explicitly requires or forbids
 - ❌ **Implementation formulas**: Detailed calculations, physics equations, pricing formulas
 - ❌ **Algorithm code**: Loops, conditionals, state machine transitions
-- ❌ **Configuration values**: Specific timeouts, retry counts, thresholds
-- ❌ **Implementation wiring details**: Concrete storage key names, URL paths/query formats, component tree structures, state store slice names
+- ❌ **Configuration values**: Specific timeouts, retry counts, thresholds (unless PRD specifies them)
+- ❌ **LLM-chosen identifiers**: Route paths, storage keys, component names, function names YOU invent (unless PRD defines them)
 
 **Important exception (Document Types)**:
 - For `api-contract.md`, **exact URL paths/methods/status codes/field names are REQUIRED** because they *are the contract*, not "implementation wiring".
@@ -86,24 +144,40 @@ Do NOT add requirements that are NOT in the PRD, even if they are industry "best
 5. **Chapter Count**: Balance completeness with line budget
 6. **Technical Precision**: Use exact terms, avoid vague language
 
-### Forbidden Content (Implementation Details):
-- ❌ Function bodies / full implementations
-- ❌ Algorithm formulas (e.g., collision math, physics equations, pricing formulas)
-- ❌ Method implementation logic (loops, conditionals, calculations)
-- ❌ State machine transition tables with all values
-- ❌ Detailed pseudocode (≥10 lines)
-- ❌ UI framework component code (only props/interfaces at most)
-- ❌ SQL DDL statements (only schema description: "users table: id, email, password_hash")
-- ❌ Framework-specific API calls and hooks (e.g., UI framework hooks, browser event APIs)
-- ❌ Platform-specific event wiring details (e.g., how/where listeners are registered)
-- ❌ Styling implementation details (e.g., concrete CSS properties, layout flags)
-- ❌ Local/internal helper state structures that never cross a module/layer boundary
-- ❌ Concrete identifiers that belong to configuration/implementation, not System Design:
--   - Storage key names (e.g., `"bookmarks"`, `"recentSearches"`, `"statsData"`)
--   - URL paths and query parameter shapes (e.g., `"/ai"`, `"/search?q=..."`)
--   - Store/slice names and internal state tree layouts (e.g., `useNewsStore`, `statsSlice`)
-- ❌ "Let me explain..." tutorials
-- ❌ Paragraphs of prose (use bullet points!)
+### Forbidden Content (LLM-Chosen Implementation Details):
+
+**CRITICAL: Apply "Who decided?" test to every detail**
+- If PRD specified it → Include it (architectural constraint)
+- If YOU are choosing it → Exclude it (implementation detail)
+
+**❌ DO NOT document details YOU choose:**
+- Function bodies / full implementations
+- Algorithm formulas (e.g., collision math, physics equations, pricing formulas) unless PRD specifies the algorithm
+- Method implementation logic (loops, conditionals, calculations)
+- State machine transition tables with all values (unless PRD defines the states)
+- Detailed pseudocode (≥10 lines)
+- UI framework component code (only props/interfaces at most)
+- SQL DDL statements (only schema description: "users table: id, email, password_hash")
+- Framework-specific API calls and hooks (e.g., UI framework hooks, browser event APIs) unless PRD mandates them
+- Platform-specific event wiring details (e.g., how/where listeners are registered)
+- Styling implementation details (e.g., concrete CSS properties, layout flags)
+- Local/internal helper state structures that never cross a module/layer boundary
+- Internal identifiers YOU invent:
+  - Storage key names (e.g., `"bookmarks"`, `"userData"`)
+  - Internal route paths (e.g., `"/dashboard"`, `"/settings"`) unless PRD defines them
+  - Component names (e.g., `NewsCard`, `UserProfile`)
+  - Function names (e.g., `handleClick`, `fetchData`)
+  - Store/slice names (e.g., `useAuthStore`, `postsSlice`)
+- "Let me explain..." tutorials
+- Paragraphs of prose (use bullet points!)
+
+**✅ ALWAYS document PRD-specified constraints:**
+- Platform constraints (Client-side only, No backend, Serverless)
+- Required external services/APIs (copy exact names from PRD)
+- Required/forbidden architecture patterns (copy exact names from PRD)
+- Technology prohibitions (what PRD forbids)
+- **But ABSTRACT implementation technologies** (LocalStorage → Persistence, PostgreSQL → Database)
+- **Rule**: Copy architectural constraints VERBATIM, abstract implementation technologies
 
 ### Content to Keep OUT of System Design (belongs in PRD or Implementation docs):
 - ❌ Detailed UI behavior narratives (e.g., "user clicks X then Y happens")

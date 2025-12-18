@@ -300,38 +300,93 @@ export class SpecialTagTransformer {
         ? `\n🔍 **환경 분석 완료**\n\n`
         : `\n🔍 **Environment Analysis Complete**\n\n`;
       
-      // Mode
-      const modeEmoji = parsed.mode === 'generate' ? '✨' : parsed.mode === 'refactor' ? '🔧' : '📖';
-      formatted += isKorean
-        ? `${modeEmoji} **모드**: ${parsed.mode}\n`
-        : `${modeEmoji} **Mode**: ${parsed.mode}\n`;
+      // ✅ Detect job type: Code job (has mode) vs Design job (has domain)
+      const isCodeJob = 'mode' in parsed;
+      const isDesignJob = 'domain' in parsed;
       
-      if (parsed.modeReasoning) {
-        formatted += `   └ ${parsed.modeReasoning}\n\n`;
-      }
-      
-      // Environment
-      const envEmoji = parsed.environment === 'frontend' ? '🎨' : 
-                       parsed.environment === 'backend' ? '⚙️' : 
-                       parsed.environment === 'fullstack' ? '🌐' : '❓';
-      formatted += isKorean
-        ? `${envEmoji} **환경**: ${parsed.environment}\n`
-        : `${envEmoji} **Environment**: ${parsed.environment}\n`;
-      
-      if (parsed.environmentReasoning) {
-        formatted += `   └ ${parsed.environmentReasoning}\n\n`;
-      }
-      
-      // Profile (Language + Framework)
-      if (parsed.profile?.language) {
+      if (isCodeJob) {
+        // CODE JOB: mode, environment, profile
+        const modeEmoji = parsed.mode === 'generate' ? '✨' : parsed.mode === 'refactor' ? '🔧' : '📖';
         formatted += isKorean
-          ? `📊 **프로파일**: ${parsed.profile.language}`
-          : `📊 **Profile**: ${parsed.profile.language}`;
+          ? `${modeEmoji} **모드**: ${parsed.mode}\n`
+          : `${modeEmoji} **Mode**: ${parsed.mode}\n`;
         
-        if (parsed.profile.framework) {
-          formatted += ` + ${parsed.profile.framework}`;
+        if (parsed.modeReasoning) {
+          formatted += `   └ ${parsed.modeReasoning}\n\n`;
         }
-        formatted += '\n\n';
+        
+        const envEmoji = parsed.environment === 'frontend' ? '🎨' : 
+                         parsed.environment === 'backend' ? '⚙️' : 
+                         parsed.environment === 'fullstack' ? '🌐' : '❓';
+        formatted += isKorean
+          ? `${envEmoji} **환경**: ${parsed.environment}\n`
+          : `${envEmoji} **Environment**: ${parsed.environment}\n`;
+        
+        if (parsed.environmentReasoning) {
+          formatted += `   └ ${parsed.environmentReasoning}\n\n`;
+        }
+        
+        // Profile (Code job only)
+        if (parsed.profile?.language) {
+          formatted += isKorean
+            ? `📊 **프로파일**: ${parsed.profile.language}`
+            : `📊 **Profile**: ${parsed.profile.language}`;
+          
+          if (parsed.profile.framework) {
+            formatted += ` + ${parsed.profile.framework}`;
+          }
+          formatted += '\n\n';
+        }
+      } else if (isDesignJob) {
+        // DESIGN JOB: domain, environment
+        const domainEmoji = parsed.domain === 'game' ? '🎮' : '🔧';
+        formatted += isKorean
+          ? `${domainEmoji} **도메인**: ${parsed.domain}\n`
+          : `${domainEmoji} **Domain**: ${parsed.domain}\n`;
+        
+        if (parsed.domainReasoning) {
+          formatted += `   └ ${parsed.domainReasoning}\n\n`;
+        }
+        
+        const env = parsed.environment || parsed.designEnvironment || 'fullstack';
+        const envEmoji = env === 'frontend' ? '🎨' : 
+                         env === 'backend' ? '⚙️' : 
+                         env === 'fullstack' ? '🌐' : '❓';
+        formatted += isKorean
+          ? `${envEmoji} **환경**: ${env}\n`
+          : `${envEmoji} **Environment**: ${env}\n`;
+        
+        const envReasoning = parsed.environmentReasoning || parsed.designEnvironmentReasoning;
+        if (envReasoning) {
+          formatted += `   └ ${envReasoning}\n\n`;
+        }
+        
+        // Design-specific: Show which guide will be applied
+        if (parsed.domain === 'game') {
+          formatted += isKorean
+            ? '   → 🎮 Game Domain Design Guide 적용\n'
+            : '   → 🎮 Game Domain Design Guide applied\n';
+        } else {
+          formatted += isKorean
+            ? '   → 🔧 Service Domain Design Guide 적용\n'
+            : '   → 🔧 Service Domain Design Guide applied\n';
+        }
+        
+        // Show output file
+        if (env === 'frontend') {
+          formatted += isKorean
+            ? '   → 🎨 `fe-system-design.md` 생성\n'
+            : '   → 🎨 Generate `fe-system-design.md`\n';
+        } else if (env === 'backend') {
+          formatted += isKorean
+            ? '   → ⚙️ `be-system-design.md` 생성\n'
+            : '   → ⚙️ Generate `be-system-design.md`\n';
+        } else {
+          formatted += isKorean
+            ? '   → 🔄 `system-design.md` 생성\n'
+            : '   → 🔄 Generate `system-design.md`\n';
+        }
+        formatted += '\n';
       }
       
       // Keywords (if RAG required)

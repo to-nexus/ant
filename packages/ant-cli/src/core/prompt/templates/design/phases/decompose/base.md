@@ -102,6 +102,39 @@ Count YES answers:
 
 ## TASK CREATION RULES
 
+### ⚠️ CRITICAL: Task Descriptions Must Be ABSTRACT (WHAT, not HOW)
+
+**Task descriptions guide what to design, NOT how to implement.**
+
+**❌ FORBIDDEN in Task Descriptions:**
+- Concrete technology names: "LocalStorage", "React Router", "Zustand", "Redux"
+- Library/framework specifics: "useEffect", "useState", "Context API"
+- Implementation details: "key names", "prop types", "CSS classes"
+
+**✅ REQUIRED in Task Descriptions:**
+- Architectural concepts: "client-side persistence", "routing mechanism", "state management"
+- WHAT to design: "bookmark storage strategy", "navigation structure", "application state"
+- Business concerns: "multi-source integration", "user interaction patterns", "data normalization"
+
+**Examples:**
+
+❌ BAD:
+"Design bookmark storage using LocalStorage, React Router for navigation, and Zustand for state"
+
+✅ GOOD:
+"Design bookmark persistence strategy, routing structure for navigation, and application state management approach"
+
+❌ BAD:
+"Define API integration with NewsData.io and TheNewsAPI using fetch"
+
+✅ GOOD:
+"Define multi-source API integration strategy and data fetching patterns"
+
+**Why?**
+- Task descriptions flow into docGen prompts
+- If descriptions contain concrete tech, LLM will copy them into System Design
+- Keep descriptions at WHAT level → Execute phase handles abstraction
+
 ### Incremental Document Building
 - ALL tasks write to the SAME design document file
 - Task 1: Creates document with first sections

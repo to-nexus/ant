@@ -34,7 +34,7 @@
     "handlebars": "^4.7.8",
     "langchain": "^1.0.1",
     "multer": "^2.0.2",
-    "openai": "^6.5.0",
+    "openai": "^6.14.0",
     "simple-git": "^3.28.0",
     "zod": "^4.1.12"
   },
