@@ -6,9 +6,9 @@ It helps you keep System Design documents at the **correct abstraction level** f
 ### 1. System Design vs Implementation (Service Projects)
 - System Design describes **architecture, boundaries, data flow, and domain rules** – **NOT** framework hooks, UI props, storage keys, or concrete data structures.
 - Avoid low-level **HOW** details such as:
-  - Exact storage keys (`recentSearches`, `bookmarks`), array/object layouts, or query parameter formats (`/search?q=keyword`).
-  - Specific chart types or libraries (Pie vs Bar vs Line, `Recharts`, `Chart.js`).
-  - Concrete state management tools (`Zustand`, `Redux`, `Context API`) or when exactly components mount/unmount.
+  - Exact storage keys, array/object layouts, or query parameter formats.
+  - Specific chart types or visualization library names.
+  - Concrete state management tool names or component lifecycle details.
 - Instead, describe:
   - **What** data is persisted or visualized.
   - **Which layer** is responsible for owning or transforming that data.
@@ -73,9 +73,9 @@ It helps you keep System Design documents at the **correct abstraction level** f
   - Clarify ownership of **caching policies**: Application decides when to reuse vs invalidate cached domain read models, and which signals (time, explicit invalidation events) drive cache refresh.
   - If applicable, clarify whether **read models and write models** are separated (e.g., separate query/read side vs command/write side) and how they are synchronized conceptually (no implementation-level replication logic).
 - Avoid:
-  - Mentioning specific libraries or hooks (`useState`, `useEffect`, `Zustand store`, etc.) or using their names as state model names.
-  - Describing mount/unmount timing or view lifecycle mechanics ("on component mount, call X API", "on unmount, cancel subscription").
-  - Describing concrete internal state shapes that never cross layer boundaries (e.g., exact fields of in-memory caches, React component state objects).
+  - Mentioning specific framework hooks, lifecycle methods, or state management library names.
+  - Describing mount/unmount timing or view lifecycle mechanics.
+  - Describing concrete internal state shapes that never cross layer boundaries.
 
 ### 5. Infrastructure Layer: Contracts & Failure Modes
 - For each major external dependency (APIs, storage, queues), define:

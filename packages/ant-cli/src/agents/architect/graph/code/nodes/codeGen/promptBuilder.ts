@@ -178,8 +178,20 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     // ✅ Prune filtered history to fit token budget
     const { prunedHistory } = historyManager.pruneHistory(filteredHistory);
     
-    // Add pruned history to messages
-    messages.push(...prunedHistory);
+    // ✅ CRITICAL: Convert Anthropic format to OpenAI format for OpenAI models
+    // Anthropic uses content array with tool_use/tool_result blocks
+    // OpenAI uses tool_calls field and separate tool role messages
+    const llmClient = state.deps?.llmClient;
+    const isOpenAI = llmClient?.provider === 'openai';
+    
+    if (isOpenAI) {
+      // Convert Anthropic format to OpenAI format
+      const convertedHistory = convertAnthropicToOpenAI(prunedHistory);
+      messages.push(...convertedHistory);
+    } else {
+      // Keep Anthropic format as-is
+      messages.push(...prunedHistory);
+    }
     
     // ✅ Check final token budget
     const estimation = tokenManager.checkBudget(messages);
@@ -293,4 +305,91 @@ export function generateFileTree(state: ArchitectGraphState): string | null {
   }
   
   return lines.join('\n');
+}
+
+/**
+ * Convert Anthropic conversation format to OpenAI format
+ * 
+ * Anthropic format:
+ * - Assistant: { role: 'assistant', content: [{ type: 'text' }, { type: 'tool_use', ... }] }
+ * - User: { role: 'user', content: [{ type: 'tool_result', ... }] }
+ * 
+ * OpenAI format:
+ * - Assistant: { role: 'assistant', content: '...', tool_calls: [...] }
+ * - Tool result: { role: 'tool', tool_call_id: '...', content: '...' }
+ */
+function convertAnthropicToOpenAI(messages: Array<{ role: string; content: string | any[] }>): Array<{
+  role: 'user' | 'assistant' | 'tool';
+  content: string | null;
+  tool_calls?: any[];
+  tool_call_id?: string;
+}> {
+  const converted: any[] = [];
+  
+  for (const msg of messages) {
+    if (msg.role === 'assistant') {
+      if (typeof msg.content === 'string') {
+        // Simple text response
+        converted.push({
+          role: 'assistant',
+          content: msg.content,
+        });
+      } else if (Array.isArray(msg.content)) {
+        // Anthropic format with content blocks
+        const textBlocks: string[] = [];
+        const toolUseBlocks: any[] = [];
+        
+        for (const block of msg.content) {
+          if (block.type === 'text') {
+            textBlocks.push(block.text);
+          } else if (block.type === 'tool_use') {
+            toolUseBlocks.push({
+              id: block.id,
+              type: 'function',
+              function: {
+                name: block.name,
+                arguments: JSON.stringify(block.input),
+              },
+            });
+          }
+        }
+        
+        converted.push({
+          role: 'assistant',
+          content: textBlocks.join('\n') || null,
+          ...(toolUseBlocks.length > 0 && { tool_calls: toolUseBlocks }),
+        });
+      }
+    } else if (msg.role === 'user') {
+      if (typeof msg.content === 'string') {
+        // Simple user message
+        converted.push({
+          role: 'user',
+          content: msg.content,
+        });
+      } else if (Array.isArray(msg.content)) {
+        // Check for tool_result blocks
+        for (const block of msg.content) {
+          if (block.type === 'tool_result') {
+            // Convert to OpenAI tool role
+            converted.push({
+              role: 'tool',
+              tool_call_id: block.tool_use_id,
+              content: typeof block.content === 'string' 
+                ? block.content 
+                : JSON.stringify(block.content),
+            });
+          } else if (block.type === 'text') {
+            // Regular text in user message
+            converted.push({
+              role: 'user',
+              content: block.text,
+            });
+          }
+        }
+      }
+    }
+  }
+  
+  return converted;
 }

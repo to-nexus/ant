@@ -49,6 +49,11 @@ Return a JSON object with document type and tasks array.
 **description**:
 - State WHAT to design (NOT HOW to write)
 - Specify architectural scope (e.g., "Design system architecture and data models")
+- **⚠️ CRITICAL: Use ABSTRACT architectural terms, NOT concrete technology names**
+  - ❌ "LocalStorage" → ✅ "client-side persistence"
+  - ❌ "React Router" → ✅ "routing mechanism"
+  - ❌ "Zustand/Redux" → ✅ "state management"
+  - ❌ "NewsData.io, TheNewsAPI" → ✅ "multi-source news APIs"
 - **MUST include length budget**: "MAX [N] lines for this task!"
 - **MUST include total limit**: "(Total doc limit: [Total] lines across N tasks)"
 - For continuation tasks, state current progress: "(currently ~X lines after task N)"
@@ -70,14 +75,14 @@ Return a JSON object with document type and tasks array.
       "id": "design-arch",
       "name": "Design Document: Architecture & Data",
       "targetFile": "system-design.md",
-      "description": "Design system architecture and data models. MAX 100 lines for this task! (Total limit: 200 lines across 2 tasks)",
+      "description": "Design system architecture, multi-source API integration strategy, and unified data models. MAX 100 lines for this task! (Total limit: 200 lines across 2 tasks)",
       "priority": 220
     },
     {
       "id": "design-ui",
       "name": "Design Document: UI Components",
       "targetFile": "system-design.md",
-      "description": "Design component structure and user interactions. MAX 100 lines for this task! (Total limit: 200 lines, currently ~100 after task 1)",
+      "description": "Design component structure, routing architecture, and user interaction patterns. MAX 100 lines for this task! (Total limit: 200 lines, currently ~100 after task 1)",
       "priority": 240
     }
   ]
@@ -94,21 +99,21 @@ Return a JSON object with document type and tasks array.
       "id": "design-contract",
       "name": "API Contract Definition",
       "targetFile": "api-contract.md",
-      "description": "Define API endpoints, DTOs, auth scheme. MAX 120 lines!",
+      "description": "Define REST endpoints, data transfer objects, authentication scheme, and error handling format. MAX 120 lines!",
       "priority": 200
     },
     {
       "id": "design-frontend",
       "name": "Frontend System Design",
       "targetFile": "fe-system-design.md",
-      "description": "Design frontend architecture consuming api-contract.md. MAX 200 lines!",
+      "description": "Design frontend architecture consuming the API contract: component structure, state management approach, and API integration patterns. MAX 200 lines!",
       "priority": 220
     },
     {
       "id": "design-backend",
       "name": "Backend System Design",
       "targetFile": "be-system-design.md",
-      "description": "Design backend architecture implementing api-contract.md. MAX 200 lines!",
+      "description": "Design backend architecture implementing the API contract: service layers, data persistence strategy, and endpoint implementations. MAX 200 lines!",
       "priority": 240
     }
   ]
@@ -124,6 +129,8 @@ Before outputting, verify:
 - ✅ Every task's `targetFile` is in `targetFiles` array
 - ✅ All required fields present (id, name, targetFile, description, priority)
 - ✅ Description includes length budget
+- ✅ **Description uses ABSTRACT terms (no LocalStorage, React Router, Zustand, etc.)**
 - ✅ Priority in 200-299 range
 - ✅ No forbidden task types (deployment, ops, testing)
+
 

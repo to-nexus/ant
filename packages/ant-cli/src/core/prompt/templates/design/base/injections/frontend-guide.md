@@ -73,14 +73,14 @@ NO DTOs are redefined in this document.
 - ErrorDisplay - Shows authentication errors
 ```
 
-**Focus**: Component purpose and contract (props), NOT implementation (useState, useEffect, handlers)
+**Focus**: Component purpose and contract (props), NOT implementation (framework hooks, lifecycle, handlers)
 
 ### 3. State Management
 
 **State Strategy:**
-- Global state solution (Context API, Redux, Zustand, Jotai, etc.)
-- Server state solution (React Query, SWR, RTK Query, etc.)
-- Local state pattern (when to use useState)
+- Global state solution (if needed; choice left to implementation unless PRD specifies)
+- Server state solution (if needed; choice left to implementation unless PRD specifies)
+- Local state pattern (when to use component-local state)
 
 **Global State Structure:**
 ```markdown
@@ -114,10 +114,35 @@ NO DTOs are redefined in this document.
 2. **Reference contract explicitly**: "Uses LoginRequest from api-contract.md §3.1"
 3. **Focus on HOW to call**, not WHAT the interface is
 
+**⚠️ TWO TYPES OF APIs - Different Documentation Rules:**
+
+#### A. Internal Backend API (when api-contract.md exists)
+- **Rule**: Reference api-contract.md types, do NOT redefine
+- **Focus**: Error handling, state synchronization, token refresh
+- **Format**: "Uses [DTO Name] from api-contract.md §X.Y"
+
+#### B. External Public APIs (when PRD specifies external services)
+- **Rule**: Document ALL PRD-specified external services/APIs
+- **Why**: These are architectural constraints, not implementation choices
+- **Format**: `[Service name from PRD]: [Purpose from PRD] (PRD §X.Y)`
+- **Example format only**: 
+  ```markdown
+  ### External Services (Per PRD Requirements)
+  - [Service A per PRD]: [Purpose per PRD] (PRD §X.Y)
+  - [Service B per PRD]: [Purpose per PRD] (PRD §X.Y)
+  - [Service C per PRD]: [Purpose per PRD] (PRD §X.Y)
+  ```
+
+**🚨 CRITICAL: "PRD-Specified" vs "You Choose"**
+- ✅ PRD says "Use [Service Name]" → Document it exactly as written in PRD
+- ✅ PRD says "Integrate with [Service]" → Copy service name from PRD
+- ❌ YOU chose implementation library (axios vs fetch) → Don't document (detail)
+- ❌ YOU designed API client class structure → Describe abstractly only
+
 **API Client Pattern:**
 ```markdown
 ### API Client Architecture
-**Pattern**: Type-safe wrapper functions around fetch
+**Pattern**: Type-safe wrapper functions around fetch/HTTP client
 
 **Shared Logic**:
 - Base URL configuration
@@ -126,31 +151,43 @@ NO DTOs are redefined in this document.
 - Token attachment for authenticated requests
 
 **Error Handling**:
-- APIError class wraps HTTP errors
-- Includes status code, error code, message
-- Thrown errors bubble to UI error boundaries
+- Typed error wrapper (status code, error code, message)
+- Errors propagate to error boundaries or state
+- Retry logic for transient failures
 
-**For EACH API endpoint group**:
-- **Auth API** (from `api-contract.md`):
-  - `login(credentials: LoginRequest): Promise<LoginResponse>` - Uses LoginRequest from api-contract.md §3.1
-  - `logout(): Promise<void>` - Uses api-contract.md §3.2
-  - Auth persistence: choose a storage strategy consistent with PRD/security constraints (implementation detail)
+**For Internal Backend APIs** (from `api-contract.md`):
+- **Auth Operations**:
+  - Login: Uses LoginRequest → LoginResponse (api-contract.md §3.1)
+  - Logout: Uses api-contract.md §3.2
   
-- **User API** (`/api/users/*`):
-  - `getProfile(): Promise<User>` - Uses User from api-contract.md §3.3
-  - Error handling: 401 → redirect to login
+- **User Operations**:
+  - Get profile: Returns User (api-contract.md §4.1)
+  - Error handling: 401 → trigger token refresh or logout flow
 
-**Loading States**:
+**For External Services** (if PRD specifies):
+- List ONLY services/APIs that PRD explicitly requires
+- Format: `[Service Name from PRD]: [Purpose from PRD] (PRD §X.Y)`
+- Do NOT invent service names - copy exact names from PRD
+- Example format:
+  ```markdown
+  ### External Service Integration (Per PRD)
+  - [Service A per PRD]: [Purpose per PRD] (PRD §X.Y)
+  - [Service B per PRD]: [Purpose per PRD] (PRD §X.Y)
+  - [Service C per PRD]: [Purpose per PRD] (PRD §X.Y)
+  ```
+
+**Loading & Error States**:
 - Per-request loading indicators
-- Global loading state (for navigation)
+- Global loading state for navigation
+- Retry UI for failed requests
 
-**Token Refresh**:
+**Token Refresh Strategy** (if backend auth exists):
 - Detect 401 responses
-- Attempt refresh with refreshToken
+- Attempt token refresh
 - Retry original request or redirect to login
 ```
 
-**Focus**: API client architecture and error handling strategy
+**Focus**: Integration architecture and policies, not implementation code
 
 ### 6. UI/UX Design (if specified in PRD)
 

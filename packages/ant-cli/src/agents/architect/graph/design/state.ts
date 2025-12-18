@@ -101,4 +101,8 @@ export interface DesignGraphState extends TaskArtifacts {
   // ✅ Design domain detection (game vs service)
   designDomain?: 'game' | 'service';
   designDomainReasoning?: string;
+  
+  // ✅ Design environment detection (frontend vs backend vs fullstack)
+  designEnvironment?: 'frontend' | 'backend' | 'fullstack';
+  designEnvironmentReasoning?: string;
 }

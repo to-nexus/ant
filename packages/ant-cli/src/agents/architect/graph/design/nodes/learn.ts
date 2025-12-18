@@ -324,9 +324,10 @@ async function indexDocumentsToMemory(state: DesignGraphState): Promise<void> {
 
 /**
  * Extract tags from document content
+ * 
+ * ✅ Memory-efficient: Uses regex instead of toLowerCase() to avoid copying entire document
  */
 function extractDocumentTags(content: string): string[] {
-  const text = content.toLowerCase();
   const tags: string[] = [];
   
   const keywords = [
@@ -340,8 +341,10 @@ function extractDocumentTags(content: string): string[] {
     'architecture', 'microservices', 'monolith'
   ];
   
+  // ✅ Use case-insensitive regex (no memory copying)
   for (const keyword of keywords) {
-    if (text.includes(keyword)) {
+    const regex = new RegExp(`\\b${keyword}\\b`, 'i');
+    if (regex.test(content)) {
       tags.push(keyword);
     }
   }

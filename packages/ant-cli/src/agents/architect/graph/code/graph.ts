@@ -124,6 +124,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
     // ✅ CRITICAL: Clear violations for next task
     // Previous task's violations should not carry over to new task
     state.violations = [];
+    state.lastViolations = [];  // ✅ Also clear lastViolations
     state.violationMessage = undefined;
     console.log(`🧹 [checkTaskStatus] Cleared violations for next task`);
     

@@ -118,7 +118,7 @@ export async function detectEnvironment(
   // 4. Select design files
   const selectedDesignFiles = selectDesignFiles(parsed.environment, state.designDocs);
   
-  // 5. Log & Display
+  // 5. Log & Display Environment Analysis
   console.log(`✅ Mode: ${parsed.mode}`);
   console.log(`   Mode Reasoning: ${parsed.modeReasoning}`);
   console.log(`✅ Environment: ${parsed.environment}`);
@@ -126,7 +126,32 @@ export async function detectEnvironment(
   console.log(`✅ Profile: ${parsed.profile?.language || 'unknown'}${parsed.profile?.framework ? ` + ${parsed.profile.framework}` : ''}`);
   console.log(`   Require RAG for Decompose: ${parsed.requireRagForDecompose}`);
   
-  // Display keywords in Chat UI - 항상 표시
+  // ✅ Display Environment Analysis Result in Chat UI (separate from keywords)
+  await chatAPI.startMessage();
+  
+  let envSummary = `📖 **모드**: ${parsed.mode}\n`;
+  envSummary += `❓ **환경**: ${parsed.environment}\n\n`;
+  
+  if (parsed.profile?.language) {
+    envSummary += `**프로필**: ${parsed.profile.language}`;
+    if (parsed.profile.framework) {
+      envSummary += ` + ${parsed.profile.framework}`;
+    }
+    envSummary += '\n';
+  }
+  
+  if (parsed.requireRagForDecompose) {
+    envSummary += '\n🔍 RAG 검색이 필요합니다';
+  }
+  
+  await chatAPI.sendLLMEvent({
+    type: 'text',
+    text: envSummary
+  });
+  
+  await chatAPI.finalizeMessage();
+  
+  // ✅ Display keywords in Chat UI (analyzed status - keywords only)
   const errorFileCount = decomposeKeywords.errorFiles.length;
   const semanticCount = decomposeKeywords.keywords.length;
   const totalCount = errorFileCount + semanticCount;
