@@ -358,6 +358,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   }
   
   // ✅ Chat UI: Show learning → learned status (must be consecutive for proper merge!)
+  // NOTE: This node extracts/stores "lessons" (vector DB), not full codebase indexing.
   const chatAPI = getChatAPIClient();
   
   try {
@@ -372,7 +373,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     await chatAPI.showChatStatus('learned', {
       filesWritten: filesWritten,
       branch: branch,
-      content: `Codebase learned!`,
+      content: `Lessons learned!`,
       _mergeIndex: learningIndex
     });
     console.log(`   ✅ Chat UI update successful (learning → learned)\n`);

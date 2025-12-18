@@ -320,7 +320,7 @@ export class ChatAPIClient {
           break;
         case 'learning':
           const learningTask = metadata?.taskName ?? 'task';
-          content = `Learning from: ${learningTask}...`;
+          content = `Learning lessons from: ${learningTask}...`;
           break;
         case 'learned':
           const learnedFiles = metadata?.filesWritten ?? 0;
@@ -332,7 +332,7 @@ export class ChatAPIClient {
           } else if (learnedContent) {
             content = learnedContent;
           } else {
-            content = `Learned: ${learnedFiles} files (${learnedBranch})`;
+            content = `Lessons learned: ${learnedFiles} file(s) (${learnedBranch})`;
           }
           break;
         case 'searching_reference':
