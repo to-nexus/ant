@@ -32,6 +32,9 @@ export async function codeGen(
 ): Promise<Partial<ArchitectGraphState>> {
   console.log('\n💭 [CodeGen] Starting reasoning...\n');
   
+  // ✅ Increment recursion count (track every node execution)
+  state.recursionCount = (state.recursionCount || 0) + 1;
+  
   const llmClient = state.deps?.llm;
   if (!llmClient) {
     throw new Error('LLM client not available');

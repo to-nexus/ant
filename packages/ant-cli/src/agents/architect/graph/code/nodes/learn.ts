@@ -359,16 +359,27 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   
   // ✅ Chat UI: Show learning → learned status (must be consecutive for proper merge!)
   const chatAPI = getChatAPIClient();
-  const learningIndex = await chatAPI.showChatStatus('learning', {
-    taskName: state.currentTask?.name || 'Unknown task'
-  });
   
-  await chatAPI.showChatStatus('learned', {
-    filesWritten: filesWritten,
-    branch: branch,
-    content: `Codebase learned!`,
-    _mergeIndex: learningIndex
-  });
+  try {
+    // ✅ Send learning first and get index
+    const learningIndex = await chatAPI.showChatStatus('learning', {
+      taskName: state.currentTask?.name || 'Unknown task',
+      filesWritten: 0,  // ✅ Initialize with 0 for progress
+      branch: null
+    });
+    
+    // Then send learned with _mergeIndex
+    await chatAPI.showChatStatus('learned', {
+      filesWritten: filesWritten,
+      branch: branch,
+      content: `Codebase learned!`,
+      _mergeIndex: learningIndex
+    });
+    console.log(`   ✅ Chat UI update successful (learning → learned)\n`);
+  } catch (error: any) {
+    console.error(`   ❌ Chat UI update FAILED:`, error.message);
+    // Continue execution even if chat update fails
+  }
   
   // ✅ Workflow instrumentation: Exit node (success path)
   if (state.deps?.workflowUpdate && state._httpJobId) {

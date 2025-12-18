@@ -138,7 +138,7 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
     // ✅ CRITICAL: Exclude stack trace files to avoid duplicates
     vectorDbFiles = allVectorFiles.filter(f => !errorFilesResult.includes(f));
     
-    console.log(`   ✅ Vector DB: ${vectorDbFiles.length} NEW files (${duplicatesCount} duplicates from stack trace excluded)`);
+    console.log(`   ✅ Vector DB: ${vectorDbFiles.length} files (${duplicatesCount} duplicates from stack trace excluded)`);
     
     // Display: 1. Retrieved (Vector DB results - EXCLUDING duplicates from stack trace)
     let retrievedMessage: string;

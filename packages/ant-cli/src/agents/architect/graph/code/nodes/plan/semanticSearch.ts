@@ -76,9 +76,9 @@ export async function loadSemanticFiles(
     vectorDbPaths = uniqueVectorFiles.filter(p => !excludePaths.includes(p)).slice(0, semanticQuota);
     
     if (internalDuplicates > 0) {
-      console.log(`   ✅ Vector DB: ${vectorDbPaths.length} NEW files (${internalDuplicates} internal duplicates + ${duplicatesCount} stack trace duplicates removed, requested ${requestCount} files)`);
+      console.log(`   ✅ Vector DB: ${vectorDbPaths.length} files (${internalDuplicates} internal duplicates + ${duplicatesCount} stack trace duplicates removed, requested ${requestCount} files)`);
     } else {
-      console.log(`   ✅ Vector DB: ${vectorDbPaths.length} NEW files (${duplicatesCount} duplicates from stack trace excluded, requested ${requestCount} files)`);
+      console.log(`   ✅ Vector DB: ${vectorDbPaths.length} files (${duplicatesCount} duplicates from stack trace excluded, requested ${requestCount} files)`);
     }
   } catch (e: any) {
     console.warn(`   ⚠️  Vector DB failed: ${e.message}`);
@@ -212,7 +212,7 @@ export async function loadSemanticFiles(
   try {
     let retrievedMessage: string;
     if (vectorDbFiles.length > 0) {
-      retrievedMessage = `Retrieved: ${vectorDbFiles.length} NEW files from semantic search (${duplicatesFromStack} duplicates from stack trace excluded)`;
+      retrievedMessage = `Retrieved: ${vectorDbFiles.length} files from semantic search (${duplicatesFromStack} duplicates from stack trace excluded)`;
     } else if (excludePaths.length > 0) {
       retrievedMessage = `Retrieved: All matching files already in stack trace results`;
     } else {

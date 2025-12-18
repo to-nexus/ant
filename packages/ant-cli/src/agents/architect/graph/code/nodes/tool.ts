@@ -61,6 +61,9 @@ export async function tool(
 ): Promise<Partial<ArchitectGraphState>> {
   console.log('\n🔧 [Tool] Executing tool...\n');
   
+  // ✅ Increment recursion count (track every node execution)
+  state.recursionCount = (state.recursionCount || 0) + 1;
+  
   // ✅ Get first tool call from llmResponse
   const toolCalls = state.llmResponse?.toolCalls || [];
   

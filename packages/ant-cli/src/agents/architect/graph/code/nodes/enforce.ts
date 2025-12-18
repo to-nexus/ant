@@ -121,16 +121,17 @@ export async function enforce(state: ArchitectGraphState): Promise<ArchitectGrap
   const topError = retryableErrors[0];
   console.log(`🎯 Focusing on highest priority error (score: ${topError.impact.score}/100)\n`);
   
-  // ✅ CRITICAL: Include ALL errors of the same type as top priority
-  // Reason: If LLM needs to fix "Search block not found" for 4 files,
-  //         showing only 1 will cause infinite retry loop (fix 1 per retry)
+  // ✅ CRITICAL: Focus on top 1-2 errors of the same type
+  // Reason: Better to fix 1-2 completely than 5 partially
+  // Strategy: Sequential fixing with clear focus
   const topErrorType = topError.violation.type;
   const sameTypeErrors = retryableErrors.filter(
     err => err.violation.type === topErrorType
   );
   
-  // ✅ Strategy: Show all same-type errors, max 5 to avoid overwhelming LLM
-  const focusedViolations = sameTypeErrors.slice(0, 5).map(err => err.violation);
+  // ✅ Strategy: Show max 2 same-type errors for clear focus
+  // LLM works better with focused scope than trying to fix many at once
+  const focusedViolations = sameTypeErrors.slice(0, 2).map(err => err.violation);
   
   if (focusedViolations.length > 1) {
     console.log(`   Including ${focusedViolations.length} errors of type "${topErrorType}"\n`);
@@ -189,44 +190,21 @@ REASON: Search block mismatch (outdated content)
     }
   }
   
-  // ✅ Add escalation notice if errors are repeating
+  // ✅ Add concise escalation notice if errors are repeating
   if (isRepeating && state.retries > 0) {
     const hasMissingDependency = focusedViolations.some(v => v.type === 'missing_dependency');
     
-    const dependencyInstructions = hasMissingDependency ? `
+    const dependencyHint = hasMissingDependency ? `
 
-🚨 SPECIFIC FIX FOR MISSING DEPENDENCY:
-Your previous attempts to run npm commands DID NOT WORK.
-
-✅ CORRECT APPROACH - MODIFY package.json DIRECTLY:
-1. Find the missing package name (e.g., "@types/react")
-2. Output the COMPLETE package.json file with the dependency added
-3. Format: <file path="package.json">...</file>
-
-❌ DO NOT output npm commands in bash blocks - they did not execute!
-❌ DO NOT create separate "Terminal Commands" files
-✅ MODIFY package.json file DIRECTLY - system will auto-install
+💡 Missing dependency? Modify package.json directly with <file> tag.
 ` : '';
     
     formattedViolations = `
-⚠️⚠️⚠️ CRITICAL: REPEATED ERRORS DETECTED ⚠️⚠️⚠️
-
-You have seen these EXACT SAME ERRORS before and your previous fix DID NOT WORK.
-This means your previous approach was WRONG.
-
-🔴 YOU MUST:
-1. **STOP and READ** the error messages MORE CAREFULLY
-2. **THINK DIFFERENTLY** - your previous approach failed
-3. **CHECK YOUR ASSUMPTIONS** - you may have misunderstood the problem
-4. **BE MORE PRECISE** - follow the error message LITERALLY
-${dependencyInstructions}
-
-For example:
-- If error says "Property 'X' does not exist on type 'Y'" → Add property 'X' to type 'Y'
-- If error says "Variable 'Z' is declared but never read" → Remove variable 'Z'
-- DO NOT try to fix something else - fix EXACTLY what the error says
+⚠️  REPEATED ERROR - Previous fix didn't work.
 
 ${formattedViolations}
+
+Try a different approach. Read error message literally.${dependencyHint}
 `;
   }
   
