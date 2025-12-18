@@ -88,31 +88,17 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   let finalPrompt = basePrompt;
   
   if (state.violations && state.violations.length > 0) {
-    // ✅ Use the enhanced violation message from enforce node if available
-    // Otherwise fallback to default formatting
+    // ✅ Use enhanced violation message from enforce node if available
     const violationsText = state.violationMessage || formatViolations(state.violations);
     
-    const enforcementHeader = `════════════════════════════════════════════════════════════════════════════════\n` +
-      `🚨 CRITICAL: PREVIOUS ATTEMPT FAILED - VIOLATIONS BELOW ARE MANDATORY TO FIX!\n` +
-      `════════════════════════════════════════════════════════════════════════════════\n\n` +
-      `**VIOLATIONS ARE NOT SUGGESTIONS - THEY ARE ABSOLUTE REQUIREMENTS:**\n\n` +
+    // ✅ Simple, clear header - Trust LLM to understand and fix
+    // No format enforcement, no excessive warnings, just clear diagnosis
+    const enforcementHeader = `──────────────────────────────────────────────────────────────\n` +
+      `⚠️  PREVIOUS ATTEMPT FAILED - FIX REQUIRED\n` +
+      `──────────────────────────────────────────────────────────────\n\n` +
       `${violationsText}\n\n` +
-      `🚨 YOU MUST:\n` +
-      `1. READ EACH VIOLATION ABOVE CAREFULLY\n` +
-      `2. UNDERSTAND THE ROOT CAUSE\n` +
-      `3. FOLLOW THE EXACT FIX INSTRUCTIONS IN EACH VIOLATION MESSAGE\n` +
-      `4. DO NOT PROCEED WITH YOUR ORIGINAL PLAN UNTIL ALL VIOLATIONS ARE FIXED\n\n` +
-      `⚠️  Ignoring violations = Task fails permanently!\n\n` +
-      `════════════════════════════════════════════════════════════════════════════════\n` +
-      `🔴 MANDATORY RESPONSE FORMAT:\n` +
-      `════════════════════════════════════════════════════════════════════════════════\n\n` +
-      `YOU MUST START YOUR RESPONSE WITH THE FOLLOWING:\n\n` +
-      `"⚠️ VIOLATION ACKNOWLEDGED: I have read the ${state.violations.length} violation(s) above.\n` +
-      `I will now fix: [briefly describe what you will fix]\n` +
-      `Fix approach: [briefly describe your approach]"\n\n` +
-      `If you do NOT start your response with "⚠️ VIOLATION ACKNOWLEDGED", \n` +
-      `it means you did not see the violations and your response will be rejected!\n` +
-      `════════════════════════════════════════════════════════════════════════════════\n\n`;
+      `Focus on fixing the root cause, not workarounds.\n\n` +
+      `──────────────────────────────────────────────────────────────\n\n`;
     
     finalPrompt = enforcementHeader + finalPrompt;
   }
@@ -178,20 +164,8 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     // ✅ Prune filtered history to fit token budget
     const { prunedHistory } = historyManager.pruneHistory(filteredHistory);
     
-    // ✅ CRITICAL: Convert Anthropic format to OpenAI format for OpenAI models
-    // Anthropic uses content array with tool_use/tool_result blocks
-    // OpenAI uses tool_calls field and separate tool role messages
-    const llmClient = state.deps?.llmClient;
-    const isOpenAI = llmClient?.provider === 'openai';
-    
-    if (isOpenAI) {
-      // Convert Anthropic format to OpenAI format
-      const convertedHistory = convertAnthropicToOpenAI(prunedHistory);
-      messages.push(...convertedHistory);
-    } else {
-      // Keep Anthropic format as-is
-      messages.push(...prunedHistory);
-    }
+    // ✅ Add pruned history to messages
+    messages.push(...prunedHistory);
     
     // ✅ Check final token budget
     const estimation = tokenManager.checkBudget(messages);
@@ -305,91 +279,4 @@ export function generateFileTree(state: ArchitectGraphState): string | null {
   }
   
   return lines.join('\n');
-}
-
-/**
- * Convert Anthropic conversation format to OpenAI format
- * 
- * Anthropic format:
- * - Assistant: { role: 'assistant', content: [{ type: 'text' }, { type: 'tool_use', ... }] }
- * - User: { role: 'user', content: [{ type: 'tool_result', ... }] }
- * 
- * OpenAI format:
- * - Assistant: { role: 'assistant', content: '...', tool_calls: [...] }
- * - Tool result: { role: 'tool', tool_call_id: '...', content: '...' }
- */
-function convertAnthropicToOpenAI(messages: Array<{ role: string; content: string | any[] }>): Array<{
-  role: 'user' | 'assistant' | 'tool';
-  content: string | null;
-  tool_calls?: any[];
-  tool_call_id?: string;
-}> {
-  const converted: any[] = [];
-  
-  for (const msg of messages) {
-    if (msg.role === 'assistant') {
-      if (typeof msg.content === 'string') {
-        // Simple text response
-        converted.push({
-          role: 'assistant',
-          content: msg.content,
-        });
-      } else if (Array.isArray(msg.content)) {
-        // Anthropic format with content blocks
-        const textBlocks: string[] = [];
-        const toolUseBlocks: any[] = [];
-        
-        for (const block of msg.content) {
-          if (block.type === 'text') {
-            textBlocks.push(block.text);
-          } else if (block.type === 'tool_use') {
-            toolUseBlocks.push({
-              id: block.id,
-              type: 'function',
-              function: {
-                name: block.name,
-                arguments: JSON.stringify(block.input),
-              },
-            });
-          }
-        }
-        
-        converted.push({
-          role: 'assistant',
-          content: textBlocks.join('\n') || null,
-          ...(toolUseBlocks.length > 0 && { tool_calls: toolUseBlocks }),
-        });
-      }
-    } else if (msg.role === 'user') {
-      if (typeof msg.content === 'string') {
-        // Simple user message
-        converted.push({
-          role: 'user',
-          content: msg.content,
-        });
-      } else if (Array.isArray(msg.content)) {
-        // Check for tool_result blocks
-        for (const block of msg.content) {
-          if (block.type === 'tool_result') {
-            // Convert to OpenAI tool role
-            converted.push({
-              role: 'tool',
-              tool_call_id: block.tool_use_id,
-              content: typeof block.content === 'string' 
-                ? block.content 
-                : JSON.stringify(block.content),
-            });
-          } else if (block.type === 'text') {
-            // Regular text in user message
-            converted.push({
-              role: 'user',
-              content: block.text,
-            });
-          }
-        }
-      }
-    }
-  }
-  
-  return converted;
 }
