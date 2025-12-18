@@ -84,6 +84,11 @@ Extract:
 
 **Semantic Keywords** (8-12 keywords):
 
+**⚠️ CRITICAL: Single-token principle**
+- All keywords MUST be single tokens (no spaces)
+- Use camelCase, PascalCase, or kebab-case
+- Spaces break Vector DB search efficiency
+
 1. **Error identifiers** (if error directive):
    - Error codes: `"GAME_IN_PROGRESS"`, `"NOT_FOUND"`
    - Error constants
@@ -92,18 +97,20 @@ Extract:
    - Component/class names: `"GameProvider"`, `"RoomService"`
    - Type/interface names: `"GameState"`, `"Player"`
 
-3. **Operations**:
-   - Action keywords: `"join room"`, `"create user"`
-   - State keywords: `"game status"`, `"player state"`
+3. **Operations** (single tokens only):
+   - ✅ `"joinRoom"`, `"createUser"`, `"fetchNews"`
+   - ❌ `"join room"`, `"create user"`, `"fetch news"`
 
 4. **Framework patterns** (if relevant):
-   - `"useEffect"`, `"WebSocket"`, `"event handler"`
+   - ✅ `"useEffect"`, `"WebSocket"`, `"eventHandler"`
+   - ❌ `"event handler"`, `"web socket"`
 
 **What NOT to include**:
 - ❌ Generic terms: `"component"`, `"service"`, `"function"`, `"file"`
 - ❌ Framework names: `"React"`, `"Express"`, `"NestJS"`
 - ❌ Language keywords: `"const"`, `"async"`, `"class"`
 - ❌ Redundant variations: Choose one form only
+- ❌ Multi-word phrases with spaces: `"Korean news"` → use `"KoreanNews"`
 
 ---
 

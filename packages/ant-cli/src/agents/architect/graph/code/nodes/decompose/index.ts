@@ -164,6 +164,41 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     throw new Error('[Decompose] PromptEngine not available');
   }
   
+  // ✅ CRITICAL: Check if project has existing code via git (fallback if Vector DB empty)
+  // Vector DB might be empty even when code exists (user hasn't run 'ant index')
+  let hasProjectCode = false;
+  if (state.deps?.git) {
+    try {
+      const repoRoot = await state.deps.git.getRepoRoot();
+      const fs = await import('fs/promises');
+      const path = await import('path');
+      
+      // Simple check: does src/ or lib/ or any .ts/.js file exist?
+      const entries = await fs.readdir(repoRoot, { withFileTypes: true });
+      
+      // Check for common source directories
+      const hasSourceDir = entries.some((e: any) => 
+        e.isDirectory() && (e.name === 'src' || e.name === 'lib' || e.name === 'app')
+      );
+      
+      // Check for package.json (strong indicator of existing project)
+      const hasPackageJson = entries.some((e: any) => 
+        e.isFile() && e.name === 'package.json'
+      );
+      
+      hasProjectCode = hasSourceDir || hasPackageJson;
+      
+      if (hasProjectCode && (!codebaseFilePaths || codebaseFilePaths.length === 0)) {
+        console.log(`⚠️  [Decompose] Project has code but Vector DB is empty`);
+        console.log(`   Tip: Run 'ant index ${state.context.project}' to enable semantic search\n`);
+      }
+    } catch (error) {
+      console.warn(`⚠️  [Decompose] Failed to check project code existence:`, error);
+      // Don't fail the entire decompose, just assume no code
+      hasProjectCode = false;
+    }
+  }
+  
   const prompt = await state.deps.promptEngine.buildDecomposePrompt({
     directive: state.directive || '',
     designDoc,
@@ -171,6 +206,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     mode: state.mode || 'unknown',
     profile: state.profile,
     codebaseFilePaths,  // ✅ File paths from keyword search (for task planning)
+    hasProjectCode,     // ✅ CRITICAL: Actual codebase existence (git-based, not Vector DB)
     hasErrorInDirective // ✅ Pass to prompt for error analysis mode
   });
   

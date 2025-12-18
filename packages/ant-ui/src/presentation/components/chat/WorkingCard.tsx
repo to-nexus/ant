@@ -12,14 +12,14 @@ import type { MessageContent } from '@/domain/models/chat';
 
 interface WorkingCardProps {
   content: MessageContent;
-  variant: 'exploring' | 'explored' | 'retrieving' | 'retrieved' | 'grepping' | 'grepped' | 'listing_files' | 'listed_files' | 'searching_code' | 'searched_code' | 'reading' | 'read' | 'indexing' | 'indexed' | 'analyzing' | 'analyzed' | 'storing' | 'stored';
+  variant: 'exploring' | 'explored' | 'retrieving' | 'retrieved' | 'grepping' | 'grepped' | 'listing_files' | 'listed_files' | 'searching_code' | 'searched_code' | 'reading' | 'read' | 'indexing' | 'indexed' | 'analyzing' | 'analyzed' | 'storing' | 'stored' | 'learning' | 'learned';
 }
 
 /**
  * Determine if variant is a progress state (~ing) or complete state (~ed)
  */
 function isProgressState(variant: string): boolean {
-  return ['exploring', 'retrieving', 'grepping', 'listing_files', 'searching_code', 'reading', 'indexing', 'analyzing', 'storing'].includes(variant);
+  return ['exploring', 'retrieving', 'grepping', 'listing_files', 'searching_code', 'reading', 'indexing', 'analyzing', 'storing', 'learning'].includes(variant);
 }
 
 /**
@@ -130,6 +130,17 @@ function getVariantConfig(variant: string, isProgress: boolean) {
         iconColorClass: isProgress ? 'text-amber-600 dark:text-amber-400' : 'text-amber-500 dark:text-amber-400',
         textClass: 'text-amber-800 dark:text-amber-300',
         detailClass: 'text-amber-600 dark:text-amber-400'
+      };
+    case 'learn':
+      return {
+        Icon: isProgress ? Loader2 : Database,
+        iconClass: isProgress ? 'animate-spin' : '',
+        containerClass: isProgress
+          ? 'bg-fuchsia-50 dark:bg-fuchsia-900/20 border border-fuchsia-200 dark:border-fuchsia-800'
+          : 'bg-fuchsia-50/30 dark:bg-fuchsia-900/20 hover:bg-fuchsia-100/50 dark:hover:bg-fuchsia-800/30',
+        iconColorClass: isProgress ? 'text-fuchsia-600 dark:text-fuchsia-400' : 'text-fuchsia-500 dark:text-fuchsia-400',
+        textClass: 'text-fuchsia-800 dark:text-fuchsia-300',
+        detailClass: 'text-fuchsia-600 dark:text-fuchsia-400'
       };
     default:
       return {

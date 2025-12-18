@@ -27,6 +27,8 @@ export type MessageContentType =
   | 'analyzed'       // Analysis complete
   | 'storing'        // Storing lessons (in progress)
   | 'stored'         // Storing lessons complete
+  | 'learning'       // Learning from code changes (in progress)
+  | 'learned'        // Learning complete
   // General content (Chat Status Messages HIDE when these arrive)
   | 'thinking'       // LLM's thought process (collapsible block, accumulates, multiple blocks possible)
   | 'text'           // General text response

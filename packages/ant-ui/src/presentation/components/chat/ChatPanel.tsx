@@ -55,11 +55,11 @@ export function ChatPanel({ projectId: _projectId, featureName: _featureName, en
   const fileStats = useMemo((): FileStats => {
     if (!lastAssistantMessage) return { filesEdited: 0, filesCreated: 0, filesDeleted: 0 };
     
-    const uniqueFilePaths = new Set<string>();
-    const filesList: Array<{ path: string; operation: 'create' | 'edit' | 'delete' }> = [];
-    let createCount = 0;
-    let editCount = 0;
-    let deleteCount = 0;
+    // ✅ Dedup by file path:
+    // Even if the same file emits multiple final operations in one message,
+    // the UI should show it once (latest operation wins).
+    const operationByPath = new Map<string, 'create' | 'edit' | 'delete'>();
+    const orderedPaths: string[] = []; // preserve first-seen order for display
     
     lastAssistantMessage.contents.forEach(content => {
       const filePath = content.metadata?.filePath;
@@ -67,25 +67,38 @@ export function ChatPanel({ projectId: _projectId, featureName: _featureName, en
       
       // Count by operation type (final state only)
       if (content.type === 'file_create') {
-        uniqueFilePaths.add(filePath);
-        filesList.push({ path: filePath, operation: 'create' });
-        createCount++;
+        if (!operationByPath.has(filePath)) orderedPaths.push(filePath);
+        operationByPath.set(filePath, 'create');
       } else if (content.type === 'file_edit') {
-        uniqueFilePaths.add(filePath);
-        filesList.push({ path: filePath, operation: 'edit' });
-        editCount++;
+        if (!operationByPath.has(filePath)) orderedPaths.push(filePath);
+        operationByPath.set(filePath, 'edit');
       } else if (content.type === 'file_delete') {
-        uniqueFilePaths.add(filePath);
-        filesList.push({ path: filePath, operation: 'delete' });
-        deleteCount++;
+        if (!operationByPath.has(filePath)) orderedPaths.push(filePath);
+        operationByPath.set(filePath, 'delete');
       }
     });
+    
+    const filesList: Array<{ path: string; operation: 'create' | 'edit' | 'delete' }> = orderedPaths
+      .map((p) => {
+        const op = operationByPath.get(p);
+        return op ? { path: p, operation: op } : null;
+      })
+      .filter((v): v is { path: string; operation: 'create' | 'edit' | 'delete' } => v !== null);
+    
+    let createCount = 0;
+    let editCount = 0;
+    let deleteCount = 0;
+    for (const op of operationByPath.values()) {
+      if (op === 'create') createCount++;
+      else if (op === 'edit') editCount++;
+      else deleteCount++;
+    }
     
     return {
       filesEdited: editCount,
       filesCreated: createCount,
       filesDeleted: deleteCount,
-      totalFiles: uniqueFilePaths.size,
+      totalFiles: operationByPath.size,
       files: filesList  // ✅ Include file list for collapsible view
     };
   }, [lastAssistantMessage?.id, fileOperationCount]);  // ✅ 파일 operation 개수만 추적

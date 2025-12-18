@@ -9,8 +9,9 @@
  * 0. File errors 있으면 → checkTaskStatus (바로 self-healing, tool 불필요)
  * 1. Tool calls 있으면 → tool 노드
  * 2. Done이면:
- *    - Final task (priority=1000) → installDeps 노드
- *    - Other tasks → checkTaskStatus 노드
+ *    - Final task (priority=1000) → installDeps → runtimeValidate
+ *    - Error task (type=error) → installDeps → runtimeValidate
+ *    - Feature task → checkTaskStatus (validation skip)
  * 3. 그 외 → codeGen 노드 (재추론)
  */
 
@@ -36,16 +37,20 @@ export function routeAfterCodeGen(state: ArchitectGraphState): string {
     return 'tool';
   }
   
-  // ✅ 2. Done이면 → priority 기반 분기
+  // ✅ 2. Done이면 → priority & task type 기반 분기
   if (response.done) {
     const currentTask = state.currentTask;
     const isFinalTask = currentTask?.priority === TASK_PRIORITIES.FINAL_VERIFICATION;
+    const isErrorTask = currentTask?.type === 'error';
     
     if (isFinalTask) {
       console.log(`✅ [Router] Final task done → installDeps (build verification)`);
       return 'installDeps';
+    } else if (isErrorTask) {
+      console.log(`✅ [Router] Error task done → installDeps (runtime validation for bug fix)`);
+      return 'installDeps';
     } else {
-      console.log(`✅ [Router] Task done → checkTaskStatus (skip validation for ${currentTask?.type} task)`);
+      console.log(`✅ [Router] Feature task done → checkTaskStatus (skip validation)`);
       return 'checkTaskStatus';
     }
   }
