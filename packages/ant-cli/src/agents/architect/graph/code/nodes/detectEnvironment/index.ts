@@ -126,30 +126,16 @@ export async function detectEnvironment(
   console.log(`✅ Profile: ${parsed.profile?.language || 'unknown'}${parsed.profile?.framework ? ` + ${parsed.profile.framework}` : ''}`);
   console.log(`   Require RAG for Decompose: ${parsed.requireRagForDecompose}`);
   
-  // ✅ Display Environment Analysis Result in Chat UI (separate from keywords)
-  await chatAPI.startMessage();
-  
-  let envSummary = `📖 **모드**: ${parsed.mode}\n`;
-  envSummary += `❓ **환경**: ${parsed.environment}\n\n`;
-  
-  if (parsed.profile?.language) {
-    envSummary += `**프로필**: ${parsed.profile.language}`;
-    if (parsed.profile.framework) {
-      envSummary += ` + ${parsed.profile.framework}`;
-    }
-    envSummary += '\n';
+  // ✅ CRITICAL: Log selected design files (for debugging fullstack)
+  if (selectedDesignFiles.length > 0) {
+    console.log(`📄 Selected Design Documents (${selectedDesignFiles.length}):`);
+    selectedDesignFiles.forEach(file => console.log(`   - ${file}`));
+  } else {
+    console.log(`⚠️  No design documents selected`);
   }
-  
-  if (parsed.requireRagForDecompose) {
-    envSummary += '\n🔍 RAG 검색이 필요합니다';
-  }
-  
-  await chatAPI.sendLLMEvent({
-    type: 'text',
-    text: envSummary
-  });
-  
-  await chatAPI.finalizeMessage();
+  // NOTE:
+  // Environment analysis is already displayed via <detect> tag transformation above.
+  // Do not emit a second summary block here (it causes duplicate UI in code job).
   
   // ✅ Display keywords in Chat UI (analyzed status - keywords only)
   const errorFileCount = decomposeKeywords.errorFiles.length;
@@ -246,6 +232,10 @@ export async function detectEnvironment(
     }
     
     filteredDesign = parts.join('\n\n────────────────────────────────────────\n\n');
+    
+    // ✅ Log combined design size (for debugging)
+    const tokenEstimate = Math.ceil(filteredDesign.length / 4);
+    console.log(`   📊 Combined Design Context: ${tokenEstimate.toLocaleString()} tokens (${selectedDesignFiles.length} documents)\n`);
   }
   
   // Workflow exit

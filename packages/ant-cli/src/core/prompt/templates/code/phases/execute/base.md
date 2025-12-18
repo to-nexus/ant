@@ -187,7 +187,7 @@ Implement the feature. Source code only.
 
 {{#if currentTask}}
 {{#if (eq currentTask.priority 1000)}}
-## ✅ FINAL VERIFICATION: Complete Implementation
+## ✅ FINAL VERIFICATION: Integration Check
 
 {{#if designDoc}}
 ────────────────────────────────────────────────────────────────────────────────
@@ -195,39 +195,46 @@ Implement the feature. Source code only.
 
 {{designDoc}}
 
-**Reference this when implementing final features or fixing errors.**
-
 ────────────────────────────────────────────────────────────────────────────────
 {{/if}}
 
-**Your tasks:**
-1. ✅ Complete any remaining features or fixes
-2. ✅ Ensure all imports and dependencies are correct
-3. ✅ Clean up TODOs and temporary code
-4. ✅ Apply LAYER-AWARE FIX principle (from CORE PRINCIPLES above)
-{{#if designDoc}}
-5. ✅ Use DESIGN SPECIFICATION above as reference for contracts
-{{/if}}
+**🎯 Purpose:** Quick check for critical missing files, then immediately finish.
 
-**What happens after completion:**
+**🚨 CRITICAL: Create files using `<file>` XML tag!**
 
-After you output `<done>true</done>`, automated validation will run:
-- Dependency installation (if package.json changed)
-- Type checking (`npx tsc --noEmit`)
-- Build verification (`npm run build`)
-- Code quality check (`npx eslint`)
+**Example:**
+```xml
+<file path="packages/backend/src/index.ts">
+import express from 'express';
+const app = express();
+app.listen(3000);
+</file>
 
-**If validation errors occur:**
-- You'll receive structured violations with file locations and error details
-- You'll be asked to analyze the root cause and create a fix plan
-- Then implement the fixes and validation will run again
-- Repeat until all validations pass
+<done>true</done>
+```
 
-**Output:** `<done>true</done>` when implementation is complete.
+**✅ CORRECT Pattern:**
+```
+1. Check: Is critical entry point missing? (use list_files/read_file if needed)
+2. If YES → Create using <file> tag immediately
+3. If NO → <done>true</done> immediately
+
+Example:
+- list_files("packages/backend/src") → No index.ts found
+- <file path="packages/backend/src/index.ts">...</file>
+- <done>true</done>
+```
+
+**🚫 FORBIDDEN Pattern:**
+```
+❌ Read file → "I will create..." → Read another file → "I will create..." → Repeat
+✅ Read file → Realize missing → <file> tag immediately → <done>
+```
+
+**Key rule:** If you find missing file → Create it NOW with `<file>` tag. Don't just say you will.
 
 ────────────────────────────────────────────────────────────────────────────────
-**Note:** Focus on implementation. Do NOT manually run validation commands 
-(tsc, build, lint) - they execute automatically after completion.
+**Default: `<done>true</done>` if no critical file missing. Build validation catches real issues.**
 ────────────────────────────────────────────────────────────────────────────────
 
 {{/if}}
