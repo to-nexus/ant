@@ -362,14 +362,17 @@ export class PromptEngine {
     mode: string;
     profile: any;
     codebaseFilePaths?: string[];  // File paths from keyword search
+    hasProjectCode?: boolean;      // ✅ CRITICAL: Actual project code existence (git-based)
     hasErrorInDirective?: boolean; // ✅ Error detected in directive
   }): Promise<string> {
-    // ✅ Compute derived variables for the prompt
-    const hasExistingCode = context.codebaseFilePaths && context.codebaseFilePaths.length > 0;
+    // ✅ CRITICAL: Use hasProjectCode (git-based) as primary indicator
+    // Fallback to codebaseFilePaths only if hasProjectCode not provided
+    const hasExistingCode = context.hasProjectCode ?? 
+                           (context.codebaseFilePaths && context.codebaseFilePaths.length > 0);
     
-    // File list from keyword-based RAG search
-    const fileList = hasExistingCode
-      ? context.codebaseFilePaths!.map(f => `- ${f}`).join('\n')
+    // ✅ File list from keyword-based RAG search (only if codebaseFilePaths exists)
+    const fileList = (context.codebaseFilePaths && context.codebaseFilePaths.length > 0)
+      ? context.codebaseFilePaths.map(f => `- ${f}`).join('\n')
       : '';
     
     // ✅ Build spec from directive + design doc

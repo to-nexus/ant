@@ -74,7 +74,7 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
   {
     "id": "fix-module-error",
     "name": "Fix ERR_MODULE_NOT_FOUND for EventHandler",
-    "type": "feature",
+    "type": "error",
     "priority": 200,
     "description": "Analyze and resolve: 'Error [ERR_MODULE_NOT_FOUND]: Cannot find module ./EventHandler'. Determine root cause (missing file, wrong path, or config issue) and apply fix."
   },
@@ -89,9 +89,26 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
 </tasks>
 
 **⚠️ Key differences:**
-- NEW PROJECT: "Create", "Implement" + Setup task
-- EXISTING PROJECT: "Add", "Extend" + NO setup task
-- ERROR FIX: "Analyze and resolve" + Include original error message, DON'T assume cause
+- NEW PROJECT: "Create", "Implement" + Setup task + type: "setup"/"feature"
+- EXISTING PROJECT: "Add", "Extend" + NO setup task + type: "feature"
+- ERROR FIX: **Broken behavior that needs fixing** + **type: "error"** (CRITICAL!)
+
+**🚨 CRITICAL: Error vs Feature Distinction**
+
+**Type: "error"** - Existing functionality is BROKEN or FAILING:
+- Core principle: Something that **worked before** is now **not working**
+- Indicators: Crashes, exceptions, incorrect behavior, missing output
+- Action focus: **Restore** working state
+
+**Type: "feature"** - NEW functionality or IMPROVEMENT to existing:
+- Core principle: Adding capability that **didn't exist** or **enhancing** what works
+- Indicators: New requirements, performance optimization, UX enhancement
+- Action focus: **Extend** or **improve** capabilities
+
+**Decision framework:**
+1. Does the problem describe something that should work but doesn't? → **error**
+2. Does the request add new capability or improve existing working code? → **feature**
+3. Ambiguous "fix" without clear broken state? → Default to **feature** (likely improvement)
 
 **📦 Dependencies Management:**
 - **Preferred:** Include all known dependencies in Setup Task (priority 100)
@@ -113,7 +130,12 @@ IMPORTANT:
 - If the spec only mentions "build a React app" with no specific features → return setup task + empty array for features
 - Focus on USER-FACING features, not infrastructure (infrastructure = setup task)
 - Each task must have unique id (kebab-case)
-- **ALWAYS include the final verification task as the last task**
+- **Final Verification Task Decision:**
+  - ✅ ALWAYS include final verification task if there are feature tasks (features don't get individual validation)
+  - ❌ SKIP final verification task if ALL tasks are error tasks (error tasks already get runtime validation)
+  - Example: [error1, error2] → no final task needed (both errors get validated)
+  - Example: [feature1, feature2] → final task needed (features skip validation)
+  - Example: [error1, feature1] → final task needed (feature needs validation)
 
 **Output Format:**
 

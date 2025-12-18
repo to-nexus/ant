@@ -65,8 +65,9 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
 /**
  * Create task queue from parsed tasks
  * 
- * ⚠️ CRITICAL: LLM MUST create Final Verification task (priority 1000)
- * No fallback - if missing, throw error to enforce prompt compliance
+ * ⚠️ CRITICAL: Final Verification task rules
+ * - Required if there are feature tasks (features don't get individual validation)
+ * - Optional if ALL tasks are error tasks (errors already get runtime validation)
  */
 export function createTaskQueue(tasks: CodeTask[]): {
   taskQueue: TaskQueue<CodeTask>;
@@ -75,15 +76,32 @@ export function createTaskQueue(tasks: CodeTask[]): {
   const taskQueue = new TaskQueue<CodeTask>();
   const featureTasks = new Map<string, CodeTask>();
   
-  // ✅ Validate that LLM created Final Verification task
+  // ✅ Validate Final Verification task conditionally
   const hasFinalTask = tasks.some(task => task.priority === TASK_PRIORITIES.FINAL_VERIFICATION);
+  const hasFeatureTasks = tasks.some(task => 
+    task.type === 'feature' && task.priority !== TASK_PRIORITIES.FINAL_VERIFICATION
+  );
+  const allTasksAreErrors = tasks.length > 0 && tasks.every(task => 
+    task.type === 'error' || task.priority === TASK_PRIORITIES.FINAL_VERIFICATION
+  );
   
-  if (!hasFinalTask) {
+  // Final task is required only if there are feature tasks
+  if (!hasFinalTask && hasFeatureTasks) {
     throw new Error(
       '❌ [Decompose] LLM failed to create Final Verification task (priority 1000)!\n' +
-      'This is a CRITICAL prompt violation. LLM must ALWAYS include final verification task.\n' +
-      'Check decompose prompt compliance.'
+      '\n' +
+      'Feature tasks detected but no final verification task.\n' +
+      'Final task is required when there are feature tasks (they skip individual validation).\n' +
+      '\n' +
+      'This is a CRITICAL prompt violation. Check decompose prompt compliance.'
     );
+  }
+  
+  // Log decision
+  if (!hasFinalTask && allTasksAreErrors) {
+    console.log(`✅ [createTaskQueue] Final task skipped (all tasks are error tasks with individual validation)`);
+  } else if (hasFinalTask) {
+    console.log(`✅ [createTaskQueue] Final Verification task validated (created by LLM)`);
   }
   
   tasks.forEach(task => {
@@ -104,8 +122,6 @@ export function createTaskQueue(tasks: CodeTask[]): {
       featureTasks.set(normalizedTask.id, normalizedTask);
     }
   });
-  
-  console.log(`✅ [createTaskQueue] Final Verification task validated (created by LLM)`);
   
   return { taskQueue, featureTasks };
 }

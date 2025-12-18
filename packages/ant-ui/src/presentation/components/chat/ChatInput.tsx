@@ -324,7 +324,8 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
 
   // Calculate file stats summary for display
   const hasFileChanges = fileStats && (fileStats.filesEdited > 0 || fileStats.filesCreated > 0 || fileStats.filesDeleted > 0);
-  const totalChangedFiles = (fileStats?.filesCreated || 0) + (fileStats?.filesEdited || 0) + (fileStats?.filesDeleted || 0);
+  // ✅ totalFiles is unique-by-path (deduped). Fall back to sum if not present.
+  const totalChangedFiles = (fileStats?.totalFiles ?? ((fileStats?.filesCreated || 0) + (fileStats?.filesEdited || 0) + (fileStats?.filesDeleted || 0)));
 
   // ✅ Show placeholder if not authenticated in cloud mode
   if (!isAuthenticated) {

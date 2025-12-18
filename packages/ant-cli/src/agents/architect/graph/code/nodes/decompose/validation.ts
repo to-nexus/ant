@@ -3,19 +3,52 @@ import { CodeTask } from "../../../../types/task";
 
 /**
  * Detect if directive contains error-related keywords
+ * 
+ * ⚠️ CRITICAL: Error = BROKEN existing functionality
+ * NOT just "fix" keyword (could be feature improvement)
  */
 export function detectErrorInDirective(directive: string | undefined): boolean {
   if (!directive) return false;
   
-  const errorKeywords = [
-    'error', 'failed', 'exception', 'bug', 'broken', 'crash',
-    '에러', '실패', '오류', '버그', '안됨', '안돼', '못하고',
-    'not working', 'doesn\'t work', 'issue', 'problem',
-    'fix', 'solve', 'resolve'
+  // ✅ Strong error indicators (existing functionality is BROKEN)
+  const strongErrorKeywords = [
+    'broken', 'crash', 'crashing', 'crashed',
+    'not working', 'doesn\'t work', 'not displayed', 'doesn\'t display',
+    'failing', 'failed to', 'exception', 'error:',
+    '안 나오', '안나오', '작동 안', '작동하지 않', '동작 안',
+    '깨진', '오류', '에러', '버그'
+  ];
+  
+  // ⚠️ Ambiguous keywords (could be error OR feature)
+  // Only treat as error if combined with strong indicators
+  const ambiguousKeywords = [
+    'fix', 'solve', 'resolve', 'correct',
+    '수정', '해결', '고치'
   ];
   
   const lowerDirective = directive.toLowerCase();
-  return errorKeywords.some(keyword => lowerDirective.includes(keyword));
+  
+  // Strong error keyword found → definitely error
+  if (strongErrorKeywords.some(keyword => lowerDirective.includes(keyword))) {
+    return true;
+  }
+  
+  // Ambiguous keyword found → check context
+  if (ambiguousKeywords.some(keyword => lowerDirective.includes(keyword))) {
+    // If mentions "add", "implement", "create" → likely feature improvement
+    const featureKeywords = ['add', 'implement', 'create', 'new', '추가', '구현', '생성'];
+    const hasFeatureIntent = featureKeywords.some(k => lowerDirective.includes(k));
+    
+    if (hasFeatureIntent) {
+      // "Fix by adding X" = feature, not error
+      return false;
+    }
+    
+    // "Fix X" without adding new things → likely error
+    return true;
+  }
+  
+  return false;
 }
 
 /**

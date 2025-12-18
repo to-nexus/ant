@@ -195,6 +195,9 @@ function ContentBlock({ content, isStreaming }: ContentBlockProps) {
     
     case 'storing':
       return <WorkingCard content={content} variant="storing" />;
+    
+    case 'learning':
+      return <WorkingCard content={content} variant="learning" />;
 
     // ===== Result States (~ed) =====
     case 'explored':
@@ -223,6 +226,9 @@ function ContentBlock({ content, isStreaming }: ContentBlockProps) {
     
     case 'stored':
       return <WorkingCard content={content} variant="stored" />;
+    
+    case 'learned':
+      return <WorkingCard content={content} variant="learned" />;
 
     // ===== Tool Actions =====
     case 'tool_action':

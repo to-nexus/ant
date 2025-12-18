@@ -25,6 +25,7 @@ export interface MessageContent {
      | 'indexing' | 'indexed'     // Codebase indexing (learn job)
      | 'analyzing' | 'analyzed'   // File analysis (learn job)
      | 'storing' | 'stored'       // Lesson storage (learn job)
+     | 'learning' | 'learned'     // Codebase learning (code job - post task)
      // General content
      | 'text'
      | 'cancelled'      // Task cancelled (with Resume button)
@@ -371,6 +372,7 @@ export class ChatService {
       'indexing', 'indexed',
       'analyzing', 'analyzed',
       'storing', 'stored',
+      'learning', 'learned',
       'command_running', 'command_streaming', 'command'
       // NOTE: 'thinking' is NOT a Chat Status - it's general content!
       // - Chat Status = progress indicator (placeholder, exploring, grepping, etc.)
@@ -461,6 +463,55 @@ export class ChatService {
           messageId: session.currentMessage.id,
           contentIndex: targetIndex,
           content: target
+        });
+        return targetIndex;
+      }
+    }
+
+    // ✅ FALLBACK MERGE (when _mergeIndex is missing/invalid)
+    // Some producers may fail to pass _mergeIndex (or it can become invalid across message boundaries).
+    // For completion states, try to merge into the most recent matching in-progress state.
+    const completionToInProgress: Record<string, string> = {
+      explored: 'exploring',
+      retrieved: 'retrieving',
+      grepped: 'grepping',
+      read: 'reading',
+      indexed: 'indexing',
+      analyzed: 'analyzing',
+      stored: 'storing',
+      learned: 'learning',
+      searched_code: 'searching_code',
+      listed_files: 'listing_files',
+      searched_reference: 'searching_reference',
+      command: 'command_running'
+    };
+    
+    const inProgressForCompletion = completionToInProgress[content.type];
+    if (inProgressForCompletion) {
+      let targetIndex = -1;
+      // Reverse search: find the most recent matching in-progress status
+      for (let i = existingContents.length - 1; i >= 0; i--) {
+        if (existingContents[i]?.type === (inProgressForCompletion as any)) {
+          targetIndex = i;
+          break;
+        }
+      }
+      
+      if (targetIndex !== -1) {
+        const target = existingContents[targetIndex];
+        console.log(`[ChatService] ✅ MERGED: ${target.type} → ${content.type} (fallback by type match @ ${targetIndex})`);
+        target.type = content.type as any;
+        target.content = content.content;
+        target.metadata = { ...target.metadata, ...content.metadata };
+        if (target.metadata) {
+          delete (target.metadata as any)._mergeIndex; // Clean up if present
+        }
+        
+        this.broadcast(projectId, featureName, {
+          type: 'content_update',
+          messageId: session.currentMessage.id,
+          contentIndex: targetIndex,
+          content: target as any
         });
         return targetIndex;
       }
@@ -708,7 +759,7 @@ export class ChatService {
     if (cancelled && session.currentMessage) {
       const inProgressWorkTypes = new Set([
         'analyzing', 'exploring', 'retrieving', 'grepping', 'reading', 
-        'indexing', 'storing', 'searching_code', 'listing_files'
+        'indexing', 'storing', 'learning', 'searching_code', 'listing_files'
       ]);
       
       session.currentMessage.contents.forEach((content, index) => {
