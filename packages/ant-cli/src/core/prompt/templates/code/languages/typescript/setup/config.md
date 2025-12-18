@@ -2,6 +2,41 @@
 📘 TYPESCRIPT PROJECT SETUP - CRITICAL CONFIGURATION
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+## 0. Project Structure Decision ⭐⭐⭐
+
+**Monorepo vs Single Package:**
+
+Use **monorepo** (multiple packages) if:
+- Multiple related applications/libraries (even single-stack)
+- Shared code between packages (types, utils, domain logic)
+- Need independent versioning or deployment
+
+Use **single package** if:
+- Single application, simple domain, no sharing needed
+
+**🚨 CRITICAL: Fullstack projects MUST use monorepo**
+- Frontend + Backend = Always separate packages
+- Mandatory structure: `packages/frontend`, `packages/backend`, `packages/shared`
+- No exceptions for fullstack
+
+**Monorepo tool:** Use **pnpm workspaces** (not npm - faster, stricter)
+
+**🚨 CRITICAL: For monorepo, you MUST create `pnpm-workspace.yaml`:**
+
+```yaml
+packages:
+  - 'packages/*'
+```
+
+**Critical rules:**
+- ✅ Always create `pnpm-workspace.yaml` file first
+- Use scoped package names: `@project/backend`, `@project/frontend`, `@project/shared`
+- Cross-package refs: `"@project/shared": "workspace:*"` (not `"*"`)
+- Root scripts: `pnpm --filter`, `pnpm -r`, `pnpm --parallel`
+- ❌ Do NOT use npm workspaces (slower, less strict)
+
+---
+
 ## 1. package.json ⭐
 
 **EXAMPLE** (for Vite + React):
@@ -12,9 +47,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "lint": "eslint . --ext .ts,.tsx"
+    "build": "vite build"
   },
   "dependencies": {
     "react": "^18.2.0",
@@ -24,173 +57,65 @@
     "vite": "^5.0.0",
     "typescript": "^5.3.0",
     "@vitejs/plugin-react": "^4.0.0",
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0"
+    "@types/react": "^18.2.0"
   }
 }
 ```
 
-**CRITICAL POINTS:**
-- Always include `@types/xxx` for type definitions
-- Set `"type": "module"` for ES modules
-- Match build tool in scripts (vite/next/webpack)
+**Key points:**
+- Include `@types/xxx` for type definitions
+- `"type": "module"` for ES modules
+- Match build tool in scripts
 
 ## 2. tsconfig.json ⭐⭐⭐
 
-**CRITICAL: Must include "moduleResolution"!**
+**CRITICAL:** Must include `"moduleResolution": "node"`
 
-**REQUIRED FIELDS:**
-- `"target"`: "ESNext" (or ES2020, ES2022)
-- `"module"`: "ESNext"
-- `"moduleResolution"`: "node" ← **CRITICAL! Without this: Cannot find module 'react' error**
-- `"jsx"`: "react-jsx" (for React projects)
-- `"strict"`: true
-- `"esModuleInterop"`: true
-- `"skipLibCheck"`: true
-
-**EXAMPLE:**
+**Required fields:**
 ```json
 {
   "compilerOptions": {
     "target": "ESNext",
     "module": "ESNext",
-    "moduleResolution": "node",  ← DON'T FORGET THIS!
+    "moduleResolution": "node",  // ← CRITICAL!
     "jsx": "react-jsx",
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "baseUrl": "./",
-    "paths": {
-      "@/*": ["src/*"]
-    }
-  },
-  "include": ["src"],
-  "exclude": ["node_modules", "dist"]
+    "skipLibCheck": true
+  }
 }
 ```
 
-**WITHOUT "moduleResolution":**
-→ `Cannot find module 'react'` error
-→ Cannot resolve any imports
-→ TypeScript compilation FAILS
+**Without "moduleResolution":** Cannot resolve imports, compilation fails.
 
 ## 3. Build Tool Configuration
 
-### Vite (vite.config.ts)
-```typescript
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
+Set up according to chosen framework (Vite/Next.js/etc). Match your project's needs.
 
-export default defineConfig({
-  plugins: [react()],
-  resolve: {
-    alias: {
-      '@': '/src'
-    }
-  }
-});
-```
+## 4. Style/Linting Configuration
 
-### Next.js (next.config.js)
-```javascript
-module.exports = {
-  reactStrictMode: true,
-  swcMinify: true
-};
-```
+Configure as needed for project (Tailwind, ESLint, etc). Standard setup.
 
-### Webpack (webpack.config.js)
-```javascript
-module.exports = {
-  entry: './src/index.ts',
-  module: {
-    rules: [
-      {
-        test: /\.tsx?$/,
-        use: 'ts-loader',
-        exclude: /node_modules/
-      }
-    ]
-  },
-  resolve: {
-    extensions: ['.tsx', '.ts', '.js'],
-    alias: {
-      '@': path.resolve(__dirname, 'src')
-    }
-  }
-};
-```
+## 5. .gitignore
 
-## 4. Style Configuration (if using Tailwind)
-
-### tailwind.config.js
-```javascript
-module.exports = {
-  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
-  theme: {
-    extend: {}
-  },
-  plugins: []
-};
-```
-
-### postcss.config.js
-```javascript
-module.exports = {
-  plugins: {
-    tailwindcss: {},
-    autoprefixer: {}
-  }
-};
-```
-
-## 5. Linting (if ESLint)
-
-### .eslintrc.json
-```json
-{
-  "parser": "@typescript-eslint/parser",
-  "parserOptions": {
-    "ecmaVersion": 2020,
-    "sourceType": "module",
-    "ecmaFeatures": {
-      "jsx": true
-    }
-  },
-  "extends": [
-    "eslint:recommended",
-    "plugin:@typescript-eslint/recommended",
-    "plugin:react/recommended"
-  ],
-  "plugins": ["@typescript-eslint", "react"],
-  "rules": {
-    "react/react-in-jsx-scope": "off"
-  }
-}
-```
-
-## 6. .gitignore
 ```
 node_modules
 dist
 build
 .env
-.DS_Store
-.idea
-.vscode
 *.log
 ```
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-**COMMON MISTAKES TO AVOID:**
+**COMMON MISTAKES:**
 
+❌ Using npm workspaces instead of pnpm for monorepos
+❌ Using `"*"` instead of `"workspace:*"` for monorepo package refs
 ❌ Forgetting `"moduleResolution": "node"` in tsconfig.json
 ❌ Missing `@types/` packages in devDependencies
-❌ Wrong `"module"` setting (use "ESNext" not "CommonJS" for modern projects)
-❌ Missing path alias configuration in both tsconfig.json AND vite.config.ts
-❌ Not setting `"type": "module"` in package.json for ES modules
+❌ Wrong `"module"` setting (use "ESNext" not "CommonJS")
+❌ Not setting `"type": "module"` in package.json
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

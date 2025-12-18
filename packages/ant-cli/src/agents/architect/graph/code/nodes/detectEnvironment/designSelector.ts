@@ -23,16 +23,14 @@ export function selectDesignFiles(
   }
   
   // Environment-specific design docs
-  if (environment === 'frontend' && designDocs.feDesign) {
-    selectedFiles.push('fe-system-design.md');
-  } else if (environment === 'backend' && designDocs.beDesign) {
-    selectedFiles.push('be-system-design.md');
+  if (environment === 'frontend') {
+    if (designDocs.feDesign) selectedFiles.push('fe-system-design.md');
+  } else if (environment === 'backend') {
+    if (designDocs.beDesign) selectedFiles.push('be-system-design.md');
   } else if (environment === 'fullstack') {
     if (designDocs.feDesign) selectedFiles.push('fe-system-design.md');
     if (designDocs.beDesign) selectedFiles.push('be-system-design.md');
   } else if (environment === 'unknown') {
-    // ✅ For unknown environment, include ALL available design docs
-    // Better to provide too much context than miss critical information
     if (designDocs.feDesign) selectedFiles.push('fe-system-design.md');
     if (designDocs.beDesign) selectedFiles.push('be-system-design.md');
   }
