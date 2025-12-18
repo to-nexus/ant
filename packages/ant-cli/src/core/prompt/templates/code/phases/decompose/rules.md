@@ -43,7 +43,7 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
     "name": "Final Integration and Build Verification",
     "type": "feature",
     "priority": 1000,
-    "description": "Review implementation completeness: verify all requirements from the design are implemented, all components are properly integrated, no features are missing, and all files are correctly connected. If anything is incomplete, implement the missing parts."
+    "description": "Verify critical files exist for build. Create missing entry points if needed."
   }
 ]
 </tasks>
@@ -63,7 +63,7 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
     "name": "Final Build Verification",
     "type": "feature",
     "priority": 1000,
-    "description": "Review all changes: ensure requested modifications are complete, verify integration with existing code, and check nothing is missing or broken. Fix any gaps found."
+    "description": "Check for critical missing files. Create if build-blocking."
   }
 ]
 </tasks>
@@ -83,7 +83,7 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
     "name": "Verify Error Resolution",
     "type": "feature",
     "priority": 1000,
-    "description": "Verify the error is completely resolved: check the fix addresses the root cause, ensure no related issues remain, and confirm all affected code works correctly. Address any remaining problems."
+    "description": "Confirm error fix is complete. Address any remaining issues."
   }
 ]
 </tasks>
