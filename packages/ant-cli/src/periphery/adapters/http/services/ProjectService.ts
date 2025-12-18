@@ -2306,7 +2306,7 @@ next-env.d.ts
     if (this.chatService && featureName) {
       this.chatService.addContentToCurrentMessage(projectId, featureName, {
         type: 'indexed',
-        content: 'Codebase learned!',
+        content: 'Codebase indexed!',
         metadata: {
           filesIndexed: stats.filesIndexed,
           chunks: stats.chunksCreated,
@@ -2490,7 +2490,7 @@ next-env.d.ts
       if (this.chatService && featureName) {
         this.chatService.addContentToCurrentMessage(projectId, featureName, {
           type: 'indexed',
-          content: `Codebase learned`, // ✅ Add content for ResultCard header
+          content: `Codebase indexed`, // ✅ Add content for ResultCard header
           metadata: {
             filesIndexed: stats.filesIndexed,
             chunks: stats.chunksCreated,
