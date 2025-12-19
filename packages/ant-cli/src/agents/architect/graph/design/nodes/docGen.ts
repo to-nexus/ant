@@ -305,6 +305,7 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
           type: state.currentTask.type,
           priority: state.currentTask.priority,
           description: state.currentTask.description,
+          targetFile: state.currentTask.targetFile,  // ✅ Include targetFile for template
         },
       },
       undefined,
@@ -397,7 +398,17 @@ function buildRuntimeContext(state: DesignGraphState): string {
   const task = state.currentTask;
   const lines: string[] = [];
   
-  // ✅ 1. Current Task
+  // ✅ 1. Target File (CRITICAL for CONTRACT-FIRST design)
+  if (task?.targetFile) {
+    lines.push(`# Target Document`);
+    lines.push(`Write to: \`outputs/design/${task.targetFile}\``);
+    lines.push('');
+    lines.push(`⚠️ CRITICAL: You MUST write to this file in your XML output!`);
+    lines.push(`Use: <file path="outputs/design/${task.targetFile}">...</file>`);
+    lines.push('');
+  }
+  
+  // ✅ 2. Current Task
   if (task) {
     lines.push(`# Current Task`);
     lines.push(`**${task.name}**`);
@@ -405,14 +416,14 @@ function buildRuntimeContext(state: DesignGraphState): string {
     lines.push('');
   }
   
-  // ✅ 2. Directive (user requirements)
+  // ✅ 3. Directive (user requirements)
   if (state.directive || state.spec) {
     lines.push(`# Directive`);
     lines.push(state.directive || state.spec);
     lines.push('');
   }
   
-  // ✅ 3. Existing Design Document (ONLY for evolution/refactor modes)
+  // ✅ 4. Existing Design Document (ONLY for evolution/refactor modes)
   // - greenfield: NO document needed (lastSectionNumber is sufficient for sequential chapter generation)
   // - evolution/refactor: FULL document needed (LLM must understand structure to modify specific sections)
   if (state.designMode === 'evolution' || state.designMode === 'refactor') {

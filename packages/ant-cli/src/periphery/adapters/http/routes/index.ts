@@ -48,7 +48,8 @@ export function createApiRoutes(deps: RoutesDeps): Router {
   
   // Feature CRUD
   router.use(createFeaturesRoutes({
-    projectService: deps.projectService
+    projectService: deps.projectService,
+    chatService: deps.chatService
   }));
   
   // File operations

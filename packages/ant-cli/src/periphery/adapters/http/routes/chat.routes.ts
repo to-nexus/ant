@@ -51,7 +51,7 @@ export function createChatRoutes(deps: {
     }
 
     const userContext = extractUserContext(req);
-    deps.chatService.clearMessages(projectId, featureName, userContext);
+    deps.chatService.clearMessages(projectId, featureName, userContext);  // ✅ Correct method name
     res.json({ success: true });
   });
 

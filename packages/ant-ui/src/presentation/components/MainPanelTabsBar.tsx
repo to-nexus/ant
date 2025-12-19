@@ -3,6 +3,7 @@ import { useStore } from '@/domain/store';
 import { textColors, cn } from '@/shared/utils/design-system';
 import { Bar } from './Bar';
 import { X, Briefcase, Settings, FileEdit, Columns, Rows, User } from 'lucide-react';
+import { useAlertModal } from '@/application/hooks/ui/useAlertModal';
 
 /**
  * MainPanelTabsBar - Tab navigation for Main Panel
@@ -24,7 +25,7 @@ export function MainPanelTabsBar() {
   const selectMainPanelTab = useStore((state) => state.selectMainPanelTab);
   const closeMainPanelTab = useStore((state) => state.closeMainPanelTab);
   const clearJobTab = useStore((state) => state.clearJobTab);
-  const restoreJobTab = useStore((state) => state.restoreJobTab);
+  const { showConfirm, AlertModal } = useAlertModal();
 
   // Job tab label: show full ID when active, abbreviated when inactive
   const getJobTabLabel = () => {
@@ -41,14 +42,28 @@ export function MainPanelTabsBar() {
   const jobTabLabel = getJobTabLabel();
 
   const handleJobTabClose = () => {
-    if (currentJobId && !isJobTabCleared) {
-      // Has job and not cleared yet - clear it
-      clearJobTab();
-    } else if (isJobTabCleared) {
-      // Already cleared - restore it
-      restoreJobTab();
-    }
-    // If no job at all, do nothing
+    // ✅ Job ID 제거 전 확인 팝업
+    showConfirm(
+      <>
+        <p>This will remove the current job and clear all session data:</p>
+        <ul className="list-disc list-inside mt-2 space-y-1 text-sm">
+          <li>Job ID and progress will be removed</li>
+          <li>Task board will be cleared</li>
+          <li>Chat history will be deleted</li>
+          <li>Session files will be reset</li>
+        </ul>
+        <p className="mt-3 font-medium">Are you sure you want to continue?</p>
+      </>,
+      {
+        type: 'warning',
+        title: 'Remove Job?',
+        confirmText: 'Remove',
+        cancelText: 'Cancel',
+        onConfirm: async () => {
+          await clearJobTab();
+        }
+      }
+    );
   };
   
   // ✅ 탭 렌더링 헬퍼 함수
@@ -109,7 +124,7 @@ export function MainPanelTabsBar() {
     );
   };
 
-  return Bar.render({
+  const controls = Bar.render({
     left: (
       <div className="flex items-center gap-1">
         {/* Job Tab - Always visible */}
@@ -132,13 +147,8 @@ export function MainPanelTabsBar() {
                 e.stopPropagation();
                 handleJobTabClose();
               }}
-              className={cn(
-                'p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors',
-                isJobTabCleared 
-                  ? 'text-gray-400 dark:text-gray-500' 
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-              )}
-              title={isJobTabCleared ? 'Restore job content' : 'Clear job content (tab remains)'}
+              className="p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+              title="Remove job ID"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -160,6 +170,13 @@ export function MainPanelTabsBar() {
     ),
     className: 'border-b border-gray-200 dark:border-[#30363d]'
   });
+  
+  return (
+    <>
+      {controls}
+      <AlertModal />
+    </>
+  );
 }
 
 /**

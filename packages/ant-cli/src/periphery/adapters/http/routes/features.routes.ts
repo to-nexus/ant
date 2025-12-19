@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { ProjectService } from '../services';
+import { ProjectService, ChatService } from '../services';
 import { extractUserContext } from './helpers/userContext';
 
 /**
@@ -7,6 +7,7 @@ import { extractUserContext } from './helpers/userContext';
  */
 export function createFeaturesRoutes(deps: {
   projectService: ProjectService;
+  chatService?: ChatService;
 }): Router {
   const router = Router();
   
@@ -177,6 +178,17 @@ export function createFeaturesRoutes(deps: {
       await fs.promises.writeFile(sessionPath, JSON.stringify(clearedSession, null, 2), 'utf-8');
       
       console.log(`[Session] ✅ Cleared session data: ${projectId}/${featureName}/${jobType}.json`);
+      
+      // ✅ CRITICAL: Also clear chat.json (chat session should reset when job is cleared)
+      if (deps.chatService) {
+        try {
+          deps.chatService.clearMessages(projectId, featureName, userContext);
+          console.log(`[Session] ✅ Cleared chat session: ${projectId}/${featureName}/chat.json`);
+        } catch (error) {
+          console.warn(`[Session] ⚠️  Failed to clear chat session (non-critical):`, error);
+        }
+      }
+      
       res.json({ success: true, message: 'Session data cleared' });
     } catch (error: any) {
       console.error('[Session] ❌ Error clearing session:', error);

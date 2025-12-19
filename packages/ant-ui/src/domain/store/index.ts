@@ -148,7 +148,7 @@ interface StoreActions {
   selectMainPanelTab: (tab: 'job' | 'projectConfig' | 'accountConfig' | 'fileEdit') => void;
   openMainPanelTab: (tab: 'projectConfig' | 'accountConfig' | 'fileEdit') => void;
   closeMainPanelTab: (tab: 'projectConfig' | 'accountConfig' | 'fileEdit') => void;
-  clearJobTab: () => void;
+  clearJobTab: () => Promise<void>;  // ✅ async function
   restoreJobTab: () => void;
   
   // ==================
@@ -444,11 +444,17 @@ export const useStore = create<Store>((set, get) => {
       
       // ✅ CRITICAL: Always sync jobId (including undefined)
       // This handles job type changes (design → code)
+      // BUT skip update if user manually cleared the job
       if (kanbanJobId !== state.currentJobId) {
-        console.log('[Store] 🔄 Job ID changed via Kanban update');
-        console.log(`   Previous: ${state.currentJobId}`);
-        console.log(`   New: ${kanbanJobId || 'undefined'}`);
-        newState.currentJobId = kanbanJobId;
+        // ✅ Don't restore jobId if user manually cleared it (currentJobId is undefined AND kanban has no jobId)
+        if (state.currentJobId === undefined && !kanbanJobId) {
+          // Skip update - user cleared the job and there's no new job
+        } else {
+          console.log('[Store] 🔄 Job ID changed via Kanban update');
+          console.log(`   Previous: ${state.currentJobId}`);
+          console.log(`   New: ${kanbanJobId || 'undefined'}`);
+          newState.currentJobId = kanbanJobId;
+        }
       }
       
       set(newState);
@@ -632,6 +638,12 @@ export const useStore = create<Store>((set, get) => {
           
         case 'message_complete':
           get().updateChatMessage(event.messageId, { isStreaming: false });
+          break;
+          
+        case 'messages_cleared':
+          // ✅ Chat session cleared - reset all messages
+          console.log('[Store] 🧹 Chat session cleared');
+          set({ chatMessages: [] });
           break;
           
         case 'cancelled_message':
@@ -886,7 +898,7 @@ export const useStore = create<Store>((set, get) => {
         // ✅ Open FileEdit tab when a file is selected
         set((s) => {
           // ✅ 탭 순서 업데이트: fileEdit을 마지막에 추가
-          const newOrder = s.mainPanelTabOrder.filter(t => t !== 'fileEdit');
+          const newOrder = s.mainPanelTabOrder.filter(t => t !== 'fileEdit') as Array<'projectConfig' | 'accountConfig' | 'fileEdit'>;
           newOrder.push('fileEdit');
           
           return {
@@ -1015,7 +1027,7 @@ export const useStore = create<Store>((set, get) => {
   openMainPanelTab: (tab) => {
     set((s) => {
       // ✅ 탭 순서 업데이트: 이미 있으면 제거하고 마지막에 추가
-      const newOrder = s.mainPanelTabOrder.filter(t => t !== tab);
+      const newOrder = s.mainPanelTabOrder.filter(t => t !== tab) as Array<'projectConfig' | 'accountConfig' | 'fileEdit'>;
       newOrder.push(tab);
       
       return {
@@ -1044,8 +1056,68 @@ export const useStore = create<Store>((set, get) => {
     });
   },
   
-  clearJobTab: () => {
-    set({ mainPanelActiveTab: 'job', isJobTabCleared: true });
+  clearJobTab: async () => {
+    const state = get();
+    const prevJobId = state.currentJobId;  // ✅ CRITICAL: set() 호출 전에 저장
+    const { selectedProject, selectedFeature, selectedJobType } = state;
+    
+    // ✅ Job을 완전히 제거 (currentJobId도 제거)
+    set({ 
+      mainPanelActiveTab: 'job', 
+      isJobTabCleared: false,  // ✅ cleared 상태 해제 (이제 "no job" 상태)
+      currentJobId: undefined,
+      isRunning: false,
+      currentJob: null,
+      taskStartTime: undefined,
+      elapsedTime: 0,
+      currentMode: undefined,
+      chatMessages: [],  // ✅ 채팅 메시지도 제거
+      kanban: {  // ✅ Kanban 데이터 완전 초기화
+        jobId: undefined,
+        todo: [],
+        inProgress: null,
+        completed: [],
+        isEstimating: false,
+        dataSource: 'session',
+        interruption: undefined,
+        recursionCount: undefined,
+        recursionLimit: undefined,
+        totalElapsedTime: undefined,
+        jobTiming: undefined
+      }
+    });
+    
+    // ✅ localStorage에서도 제거
+    removeFromStorage(STORAGE_KEYS.RUNNING_TASK);
+    removeFromStorage(STORAGE_KEYS.TASK_START_TIME);
+    removeFromStorage(STORAGE_KEYS.TASK_MODE);
+    
+    // ✅ SSE 연결 해제
+    if (prevJobId) {
+      sseManager.disconnectWorkflow(prevJobId);
+    }
+    
+    // ✅ CRITICAL: 세션 파일에서도 jobId 제거
+    if (selectedProject && selectedFeature) {
+      try {
+        const { clearSessionData } = await import('@/infrastructure/http/api');
+        await clearSessionData(selectedProject, selectedFeature, selectedJobType);
+        console.log(`[Store] ✅ Cleared session data for ${selectedProject}/${selectedFeature} (${selectedJobType})`);
+        
+        // ✅ Unified SSE 재연결하여 백엔드의 최신 상태(빈 상태) 받기
+        sseManager.disconnect();
+        // 약간의 지연 후 재연결 (백엔드가 세션 파일 쓰기 완료할 시간)
+        setTimeout(() => {
+          if (selectedProject && selectedFeature) {
+            sseManager.connect(selectedProject, selectedFeature, selectedJobType);
+            console.log(`[Store] 🔄 Reconnected SSE to get fresh state`);
+          }
+        }, 100);
+      } catch (error) {
+        console.error('[Store] ❌ Failed to clear session data:', error);
+        // Don't throw - UI state is already cleared
+      }
+    }
   },
   
   restoreJobTab: () => {

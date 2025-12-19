@@ -31,8 +31,6 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
   const isRunning = useStore((state) => state.isRunning);
   const [dismissedKanbanInterrupt, setDismissedKanbanInterrupt] = React.useState<string | null>(null);  // ✅ Local state (for dismiss button only)
   const policy = useUIActionPolicy();
-  
-  // ✅ Animation state management
   const [newlyCompletedIds, setNewlyCompletedIds] = useState<Set<string>>(new Set());
   const [previousCompletedIds, setPreviousCompletedIds] = useState<Set<string>>(new Set());
   const [newlyInProgressId, setNewlyInProgressId] = useState<string | null>(null);
@@ -176,16 +174,6 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
       title="Task Board"
       titleActions={
         <>
-          {selectedProject && (
-            <span className="text-xs px-2 py-1 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium">
-              {selectedProject}
-            </span>
-          )}
-          {selectedFeature && (
-            <span className="text-xs px-2 py-1 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 font-medium">
-              {selectedFeature}
-            </span>
-          )}
           <DataSourceIndicator dataSource={kanbanData.dataSource} />
           <ElapsedTimeBadge
             totalElapsedTime={kanbanData.totalElapsedTime}

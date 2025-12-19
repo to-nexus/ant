@@ -422,6 +422,27 @@ export async function clearSessionData(
   return response.json();
 }
 
+/**
+ * Clear chat history for a feature (chat.json only)
+ */
+export async function clearChatHistory(
+  projectId: string,
+  featureName: string
+): Promise<void> {
+  const response = await authFetch(
+    `${API_BASE()}/projects/${projectId}/features/${featureName}/chat/messages`,
+    {
+      method: 'DELETE',
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to clear chat history: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
 export async function stopJob(
   jobId: string, 
   projectId?: string, 
