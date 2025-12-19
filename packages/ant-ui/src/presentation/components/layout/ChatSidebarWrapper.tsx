@@ -1,6 +1,9 @@
-import { ChevronRight, WifiOff } from 'lucide-react';
+import { ChevronRight, WifiOff, Trash2 } from 'lucide-react';
 import { Bar } from '../Bar';
 import { ChatPanel } from '../chat/ChatPanel';
+import { useStore } from '@/domain/store';
+import { useAlertModal } from '@/application/hooks/ui/useAlertModal';
+import { useState } from 'react';
 
 interface ChatSidebarWrapperProps {
   isCollapsed: boolean;
@@ -25,6 +28,41 @@ export function ChatSidebarWrapper({
   onCollapse,
   onResizeStart,
 }: ChatSidebarWrapperProps) {
+  const chatMessages = useStore((state) => state.chatMessages);
+  const isRunning = useStore((state) => state.isRunning);
+  const { showConfirm, AlertModal } = useAlertModal();
+  const [isClearing, setIsClearing] = useState(false);
+  
+  // ✅ Clear chat history handler
+  const handleClearChat = async () => {
+    if (!selectedProject || !selectedFeature) return;
+    
+    showConfirm(
+      <>
+        <p>This will permanently delete all chat messages for this feature.</p>
+        <p className="mt-2 font-medium">Are you sure?</p>
+      </>,
+      {
+        type: 'warning',
+        title: 'Clear Chat History?',
+        confirmText: 'Clear',
+        cancelText: 'Cancel',
+        onConfirm: async () => {
+          try {
+            setIsClearing(true);
+            const { clearChatHistory } = await import('@/infrastructure/http/api');
+            await clearChatHistory(selectedProject, selectedFeature);
+            console.log('[ChatSidebar] ✅ Chat history cleared');
+          } catch (error) {
+            console.error('[ChatSidebar] Failed to clear chat:', error);
+          } finally {
+            setIsClearing(false);
+          }
+        }
+      }
+    );
+  };
+  
   // Collapsed state
   if (isCollapsed) {
     return (
@@ -75,13 +113,28 @@ export function ChatSidebarWrapper({
           </>
         ),
         right: (
-          <button
-            onClick={onCollapse}
-            className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors flex items-center justify-center w-10 h-10 -mr-4 -my-4"
-            title="Collapse Chat"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            {/* Clear Chat Button */}
+            {chatMessages.length > 0 && !isRunning && (
+              <button
+                onClick={handleClearChat}
+                disabled={isClearing}
+                className="text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors flex items-center justify-center w-8 h-8 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Clear Chat History"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
+            
+            {/* Collapse Button */}
+            <button
+              onClick={onCollapse}
+              className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors flex items-center justify-center w-10 h-10 -mr-4 -my-4"
+              title="Collapse Chat"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
         )
       })}
       
@@ -92,6 +145,9 @@ export function ChatSidebarWrapper({
           enabled={!isCollapsed}
         />
       </div>
+      
+      {/* Alert Modal */}
+      <AlertModal />
     </aside>
   );
 }

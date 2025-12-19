@@ -116,6 +116,7 @@ export class ChatService {
   private sseService?: SSEService;
   private workspaceResolver?: WorkspaceResolver;  // ✅ Add WorkspaceResolver
   private defaultUserContext?: UserContext;  // ✅ Store default user context from request
+  private fileWatchers = new Map<string, fs.FSWatcher>();  // ✅ Track file watchers per session
 
   constructor(workspaceRoot: string, sseService?: SSEService, workspaceResolver?: WorkspaceResolver) {
     this.workspaceRoot = workspaceRoot;
@@ -236,6 +237,9 @@ export class ChatService {
       if (fileSession) {
         console.log(`💬 [ChatService] Loaded ${fileSession.messages.length} messages from file for ${key}`);
       }
+      
+      // ✅ Start watching the chat file for external changes
+      this.startWatchingChatFile(projectId, featureName, userContext);
     }
 
     const session = this.sessions.get(key)!;
@@ -251,6 +255,70 @@ export class ChatService {
     }
 
     return session;
+  }
+
+  /**
+   * Start watching chat file for external changes (e.g., manual deletion)
+   */
+  private startWatchingChatFile(projectId: string, featureName: string, userContext?: UserContext): void {
+    const key = this.getSessionKey(projectId, featureName);
+    
+    // Don't create duplicate watchers
+    if (this.fileWatchers.has(key)) {
+      return;
+    }
+    
+    try {
+      const filePath = this.getChatFilePath(projectId, featureName, userContext);
+      const dirPath = path.dirname(filePath);
+      
+      // Watch the sessions directory (file might not exist yet)
+      const watcher = fs.watch(dirPath, { persistent: false }, (eventType, filename) => {
+        if (filename === 'chat.json') {
+          // Check if file was deleted
+          if (!fs.existsSync(filePath)) {
+            console.log(`🗑️  [ChatService] Detected external deletion of chat file: ${key}`);
+            
+            // Clear in-memory session
+            const session = this.sessions.get(key);
+            if (session) {
+              session.messages = [];
+              session.currentMessage = undefined;
+            }
+            
+            // Broadcast to frontend
+            this.broadcast(projectId, featureName, {
+              type: 'messages_cleared'
+            });
+          }
+        }
+      });
+      
+      this.fileWatchers.set(key, watcher);
+      console.log(`👁️  [ChatService] Started watching chat file: ${key}`);
+      
+      // Clean up watcher on error
+      watcher.on('error', (error) => {
+        console.error(`❌ [ChatService] File watcher error for ${key}:`, error);
+        this.stopWatchingChatFile(projectId, featureName);
+      });
+    } catch (error) {
+      console.warn(`⚠️  [ChatService] Failed to start watching chat file for ${key}:`, error);
+    }
+  }
+
+  /**
+   * Stop watching chat file
+   */
+  private stopWatchingChatFile(projectId: string, featureName: string): void {
+    const key = this.getSessionKey(projectId, featureName);
+    const watcher = this.fileWatchers.get(key);
+    
+    if (watcher) {
+      watcher.close();
+      this.fileWatchers.delete(key);
+      console.log(`👁️❌ [ChatService] Stopped watching chat file: ${key}`);
+    }
   }
 
   /**
@@ -1406,10 +1474,32 @@ export class ChatService {
         console.error(`❌ [ChatService] Failed to delete chat file for ${key}:`, error);
       }
       
+      // Broadcast to frontend
       this.broadcast(projectId, featureName, {
         type: 'messages_cleared'
       });
     }
+    
+    // ✅ Note: We don't stop the watcher here, it will detect the deletion and handle it
+  }
+
+  /**
+   * Cleanup method - stop all watchers (call on server shutdown)
+   */
+  cleanup(): void {
+    console.log(`🧹 [ChatService] Cleaning up ${this.fileWatchers.size} file watchers...`);
+    
+    for (const [key, watcher] of this.fileWatchers.entries()) {
+      try {
+        watcher.close();
+        console.log(`👁️❌ [ChatService] Closed watcher: ${key}`);
+      } catch (error) {
+        console.warn(`⚠️  [ChatService] Error closing watcher for ${key}:`, error);
+      }
+    }
+    
+    this.fileWatchers.clear();
+    console.log(`✅ [ChatService] Cleanup complete`);
   }
 
   private broadcast(projectId: string, featureName: string, data: any): void {
