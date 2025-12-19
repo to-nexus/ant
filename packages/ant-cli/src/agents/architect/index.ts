@@ -303,7 +303,6 @@ export async function architectAgent(
         // ✅ Resolve jobId: orchestrator param > env var (child process) > undefined
         const resolvedJobId = jobId || process.env.ANT_JOB_ID;
         
-        
         // ✅ Create CodebaseRetriever for reference loading
         const { CodebaseRetriever } = await import('../../core/codebase/CodebaseRetriever');
         const retriever = new CodebaseRetriever();

@@ -25,25 +25,25 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
 <tasks>
 [
   {
-    "id": "setup-project-config",
-    "name": "Setup Project Configuration",
+    "id": "project-setup",
+    "name": "Setup Project",
     "type": "setup",
     "priority": 100,
-    "description": "Generate package.json with all dependencies (React, TypeScript, Vite, TailwindCSS, etc.), tsconfig.json, vite.config.ts, tailwind.config.ts, and .gitignore"
+    "description": "Create project structure, configuration files, and install dependencies based on detected language and framework"
   },
   {
-    "id": "auth-impl",
-    "name": "Implement User Authentication System",
+    "id": "feature-impl",
+    "name": "Implement Feature",
     "type": "feature",
     "priority": 200,
-    "description": "Create login, signup, JWT token handling, protected routes"
+    "description": "..."
   },
   {
     "id": "final-verification",
-    "name": "Final Integration and Build Verification",
+    "name": "Final Build Verification",
     "type": "feature",
     "priority": 1000,
-    "description": "Verify critical files exist for build. Create missing entry points if needed."
+    "description": "Verify build succeeds and all critical files exist"
   }
 ]
 </tasks>
@@ -121,21 +121,23 @@ CRITICAL:
 
 IMPORTANT:
 - **Setup Task Decision (CRITICAL):**
-  - ✅ Create setup task ONLY if "NEW PROJECT (no existing codebase)" was shown above
+  - ✅ Create setup task(s) ONLY if "NEW PROJECT (no existing codebase)" was shown above
   - ❌ DO NOT create setup task if "EXISTING CODEBASE DETECTED" was shown above
-  - ❌ DO NOT create setup task if fileList shows ANY files (even 1 file = setup done)
-  - ❌ DO NOT create setup task to "fix" missing entry points (that's a bug fix = feature task)
-  - If EXISTING PROJECT with errors → create feature tasks to fix bugs, NOT setup
-- If NEW PROJECT: Setup task is typically needed (but verify no code exists!)
-- If the spec only mentions "build a React app" with no specific features → return setup task + empty array for features
-- Focus on USER-FACING features, not infrastructure (infrastructure = setup task)
-- Each task must have unique id (kebab-case)
-- **Final Verification Task Decision:**
-  - ✅ ALWAYS include final verification task if there are feature tasks (features don't get individual validation)
-  - ❌ SKIP final verification task if ALL tasks are error tasks (error tasks already get runtime validation)
-  - Example: [error1, error2] → no final task needed (both errors get validated)
-  - Example: [feature1, feature2] → final task needed (features skip validation)
-  - Example: [error1, feature1] → final task needed (feature needs validation)
+  - ❌ DO NOT create setup task if fileList shows ANY files
+  - ❌ DO NOT create setup task to "fix" missing entry points (that's a feature task)
+- **Repository Structure & Setup Tasks:**
+  - FIRST: Decide monorepo vs monolithic based on project characteristics (see above)
+  - Monorepo → Multiple setup tasks (root + each package/app)
+  - Monolithic → Single setup task
+  - Language-agnostic: Don't mention specific files
+  - Assign sequential priorities (100, 101, 102, ...)
+- **Task Granularity:**
+  - Setup = infrastructure/configuration
+  - Features = user-facing functionality
+  - Each task must have unique id (kebab-case)
+- **Final Verification:**
+  - ✅ Include if there are feature tasks
+  - ❌ Skip if ALL tasks are error tasks
 
 **Output Format:**
 

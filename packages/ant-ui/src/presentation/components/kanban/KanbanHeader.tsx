@@ -96,7 +96,10 @@ export function ElapsedTimeBadge({
     }
     
     // If job is paused or completed, don't tick
-    if (jobTiming?.pausedAt || jobTiming?.completedAt) {
+    const isPaused = !!jobTiming?.pausedAt;
+    const isCompleted = !!jobTiming?.completedAt;
+    
+    if (isPaused || isCompleted) {
       return;
     }
     
@@ -105,10 +108,15 @@ export function ElapsedTimeBadge({
       setRealtimeElapsed(prev => (prev !== null ? prev + 1000 : 0));
     }, 1000);
     
-    return () => clearInterval(intervalId);
-  }, [isInitialized, jobTiming?.pausedAt, jobTiming?.completedAt]);
-  // ✅ CRITICAL: Don't include realtimeElapsed in deps!
-  // Including it would cause interval to reset every second → timer never advances
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [isInitialized, jobTiming?.pausedAt, jobTiming?.completedAt, jobTiming?.lastResumedAt]);
+  // ✅ CRITICAL: Track pause/resume state changes
+  // - pausedAt: becomes truthy when paused → stops interval
+  // - completedAt: becomes truthy when completed → stops interval  
+  // - lastResumedAt: changes when resumed → restarts interval
+  // Do NOT include realtimeElapsed to avoid recreating interval every second
   
   // ✅ Show badge if job has timing data
   if (!jobTiming) {

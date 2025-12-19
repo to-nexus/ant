@@ -115,6 +115,21 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     console.log(`   Task queue: ${state.taskQueue?.size() || 0} tasks remaining`);
     console.log(`   Completed tasks: ${state.completedTasks?.length || 0}\n`);
     
+    // ✅ CRITICAL FIX: workspaceConfig missing due to LangGraph state serialization!
+    // Reload config from disk if missing
+    if (!state.workspaceConfig) {
+      console.log(`⚠️  [Resolve] workspaceConfig missing! Reloading from disk...`);
+      try {
+        const { FileConfigAdapter } = await import('../../../../../periphery/adapters/config/FileConfigAdapter');
+        const configAdapter = new FileConfigAdapter();
+        const config = await configAdapter.load(state.context.project);
+        state.workspaceConfig = config;
+        console.log(`✅ [Resolve] workspaceConfig restored from disk\n`);
+      } catch (error) {
+        console.error(`❌ [Resolve] Failed to reload workspaceConfig:`, error);
+      }
+    }
+    
     // ✅ Workflow instrumentation: Exit node (skip path)
     if (state.deps?.workflowUpdate && state._httpJobId) {
       state.deps.workflowUpdate.exitNode(state._httpJobId, 'resolve');

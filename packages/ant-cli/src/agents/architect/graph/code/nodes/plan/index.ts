@@ -234,7 +234,8 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       retries: isRetry ? state.retries : 0,  // ✅ Clear retries for new task
       completedTasksDetails: state.completedTasksDetails || [],
       recursionCount: state.recursionCount,
-      recursionLimit: state.recursionLimit
+      recursionLimit: state.recursionLimit,
+      workspaceConfig: state.workspaceConfig,  // ✅ CRITICAL: Explicitly preserve workspaceConfig
       // ✅ violations and violationMessage are preserved in state (not cleared)
     };
     

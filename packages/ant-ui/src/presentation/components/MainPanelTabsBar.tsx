@@ -91,21 +91,25 @@ export function MainPanelTabsBar() {
     const Icon = tabConfig.icon;
     
     return (
-      <button
+      <div
         key={tabKey}
-        onClick={() => selectMainPanelTab(tabKey)}
         className={cn(
           'flex items-center gap-2 py-1.5 rounded-t transition-all text-sm font-medium',
           // Job tab이 선택되었을 때는 아이콘만 표시 (px-2), 아니면 전체 표시 (px-3)
           activeTab === 'job' ? 'px-2' : 'px-3',
           activeTab === tabKey
             ? 'bg-white dark:bg-[#0d1117] text-gray-900 dark:text-white border-t border-x border-gray-200 dark:border-[#30363d]'
-            : 'bg-gray-100 dark:bg-[#161b22] text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-[#1c2128]'
+            : 'bg-gray-100 dark:bg-[#161b22] text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-[#1c2128] cursor-pointer'
         )}
       >
-        <Icon className="w-4 h-4 flex-shrink-0" />
-        {/* Job tab 선택 시 텍스트 숨김 */}
-        {activeTab !== 'job' && <span>{tabConfig.label}</span>}
+        <div 
+          onClick={() => selectMainPanelTab(tabKey)}
+          className="flex items-center gap-2 flex-1"
+        >
+          <Icon className="w-4 h-4 flex-shrink-0" />
+          {/* Job tab 선택 시 텍스트 숨김 */}
+          {activeTab !== 'job' && <span>{tabConfig.label}</span>}
+        </div>
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -120,7 +124,7 @@ export function MainPanelTabsBar() {
         >
           <X className="w-3.5 h-3.5" />
         </button>
-      </button>
+      </div>
     );
   };
 
@@ -128,18 +132,22 @@ export function MainPanelTabsBar() {
     left: (
       <div className="flex items-center gap-1">
         {/* Job Tab - Always visible */}
-        <button
-          onClick={() => selectMainPanelTab('job')}
+        <div
           className={cn(
             'flex items-center gap-2 px-3 py-1.5 rounded-t transition-all text-sm font-medium',
             activeTab === 'job'
               ? 'bg-white dark:bg-[#0d1117] text-gray-900 dark:text-white border-t border-x border-gray-200 dark:border-[#30363d]'
-              : 'bg-gray-100 dark:bg-[#161b22] text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-[#1c2128]'
+              : 'bg-gray-100 dark:bg-[#161b22] text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-[#1c2128] cursor-pointer'
           )}
           title={currentJobId && !isJobTabCleared ? `Job ID: ${currentJobId}` : 'Job'}
         >
-          <Briefcase className="w-4 h-4 flex-shrink-0" />
-          <span className="whitespace-nowrap">{jobTabLabel}</span>
+          <div 
+            onClick={() => selectMainPanelTab('job')}
+            className="flex items-center gap-2 flex-1"
+          >
+            <Briefcase className="w-4 h-4 flex-shrink-0" />
+            <span className="whitespace-nowrap">{jobTabLabel}</span>
+          </div>
           {/* ✅ Job ID가 있을 때만 닫기 버튼 표시 */}
           {currentJobId && (
             <button
@@ -153,7 +161,7 @@ export function MainPanelTabsBar() {
               <X className="w-3.5 h-3.5" />
             </button>
           )}
-        </button>
+        </div>
 
         {/* ✅ 동적으로 탭 순서대로 렌더링 */}
         {tabOrder.map(tabKey => renderTab(tabKey))}
@@ -194,6 +202,7 @@ function MainPanelJobControls() {
   
   const [modelName, setModelName] = React.useState<string | null>(null);
   const [availableModels, setAvailableModels] = React.useState<Map<string, string>>(new Map());
+  const [currentTask, setCurrentTask] = React.useState<any>(null);
   
   // Load available models
   React.useEffect(() => {
@@ -215,7 +224,32 @@ function MainPanelJobControls() {
     loadAvailableModels();
   }, []);
   
-  // Load model name from project config
+  // Subscribe to workflow state for current task updates
+  React.useEffect(() => {
+    if (!currentJobId || !isRunning) {
+      setCurrentTask(null);
+      return;
+    }
+    
+    // Dynamic import to avoid SSR issues
+    import('@/infrastructure/sse/SSEManager').then(({ sseManager }) => {
+      const handleWorkflowUpdate = (data: any) => {
+        // Backend sends the entire workflow state
+        if (data.currentTask) {
+          setCurrentTask(data.currentTask);
+        }
+      };
+      
+      sseManager.registerHandler('workflow', handleWorkflowUpdate);
+      
+      // Cleanup on unmount or when jobId changes
+      return () => {
+        sseManager.unregisterHandler('workflow', handleWorkflowUpdate);
+      };
+    });
+  }, [currentJobId, isRunning]);
+  
+  // Load model name based on job type, current task type, and priority
   React.useEffect(() => {
     const loadModelName = async () => {
       if (!selectedProject || availableModels.size === 0) {
@@ -231,10 +265,33 @@ function MainPanelJobControls() {
           let modelId: string | undefined;
           
           if (selectedJobType === 'design') {
-            modelId = config.llmModels.designDecompose || config.llmModels.designDefault;
+            // Design job: decompose or default
+            if (currentTask) {
+              modelId = config.llmModels.designDefault;
+            } else {
+              modelId = config.llmModels.designDecompose || config.llmModels.designDefault;
+            }
           } else if (selectedJobType === 'code') {
-            modelId = config.llmModels.codeDecompose || config.llmModels.codeDefault;
+            // Code job: task type에 따라 선택
+            if (currentTask) {
+              const taskType = currentTask.type;
+              const taskPriority = currentTask.priority;
+              
+              if (taskType === 'error') {
+                modelId = config.llmModels.codeError || config.llmModels.codeDefault;
+              } else if (taskType === 'setup') {
+                modelId = config.llmModels.codeSetup || config.llmModels.codeDefault;
+              } else if (taskType === 'feature' && taskPriority === 1000) {
+                modelId = config.llmModels.codeFinal || config.llmModels.codeDefault;
+              } else {
+                modelId = config.llmModels.codeDefault;
+              }
+            } else {
+              // No current task = decompose phase
+              modelId = config.llmModels.codeDecompose || config.llmModels.codeDefault;
+            }
           } else {
+            // Unknown job type, use decompose or default
             modelId = config.llmModels.codeDecompose || 
                      config.llmModels.codeDefault || 
                      config.llmModels.designDecompose ||
@@ -257,7 +314,7 @@ function MainPanelJobControls() {
     };
     
     loadModelName();
-  }, [selectedProject, selectedJobType, availableModels]);
+  }, [selectedProject, selectedJobType, availableModels, currentTask]);
 
   return (
     <>
