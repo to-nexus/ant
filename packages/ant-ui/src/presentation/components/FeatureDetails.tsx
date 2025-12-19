@@ -242,7 +242,6 @@ export function FeatureDetails() {
   const setFileTree = useStore((state) => state.setFileTree);
   const selectFile = useStore((state) => state.selectFile);
   const refreshFileTree = useStore((state) => state.refreshFileTree);
-  const setShowFileEditor = useStore((state) => state.setShowFileEditor);
   
   const [loading] = useState(false);
   const [fileContent, setFileContent] = useState('');
@@ -308,7 +307,6 @@ export function FeatureDetails() {
         setFileContent('');
         setEditedContent('');
         setHasChanges(false);
-        setShowFileEditor(false); // Close the file editor
       }
     } catch (error) {
       console.error('Failed to delete item:', error);

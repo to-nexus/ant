@@ -2,6 +2,10 @@ import { useEffect, useState } from 'react';
 import { useStore } from '@/domain/store';
 import { fetchFileContent, saveFileContent } from '@/infrastructure/http/api';
 import { Button } from '@/presentation/components/common/button';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
+import { Eye, FileText } from 'lucide-react';
 
 interface FileEditorPanelProps {
   onClose?: () => void;
@@ -17,6 +21,17 @@ export function FileEditorPanel({ onClose }: FileEditorPanelProps) {
   const [hasChanges, setHasChanges] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [viewMode, setViewMode] = useState<'raw' | 'preview'>('raw');
+  
+  // Check if file is markdown
+  const isMarkdownFile = selectedFile?.toLowerCase().match(/\.(md|markdown)$/);
+  
+  // Reset view mode when file changes or if it's not markdown
+  useEffect(() => {
+    if (!isMarkdownFile) {
+      setViewMode('raw');
+    }
+  }, [selectedFile, isMarkdownFile]);
 
   useEffect(() => {
     if (!selectedProject || !selectedFeature || !selectedFile) {
@@ -67,24 +82,11 @@ export function FileEditorPanel({ onClose }: FileEditorPanelProps) {
   };
 
   return (
-    <div className="w-96 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 p-4 flex flex-col h-full">
+    <div className="w-full bg-white dark:bg-gray-800 p-4 flex flex-col h-full">
       {/* Header */}
       <div className="pb-3 flex-shrink-0 border-b border-gray-200 dark:border-gray-700">
-        <div className="flex items-center gap-2">
-          {/* Close button on the left */}
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="text-gray-500 hover:text-gray-700 dark:text-gray-300 hover:bg-gray-100 p-1.5 rounded transition-colors flex-shrink-0"
-              title="Hide Editor"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-          )}
-          
-          {/* File path - takes full width */}
+        <div className="flex items-center justify-between">
+          {/* File path */}
           <div className="flex-1 min-w-0">
             <div className="text-sm text-gray-700 dark:text-gray-300 truncate" title={selectedFile}>
               {selectedFile}
@@ -93,6 +95,36 @@ export function FileEditorPanel({ onClose }: FileEditorPanelProps) {
               <div className="text-xs text-orange-500 mt-0.5">● Modified</div>
             )}
           </div>
+          
+          {/* Preview/Raw Toggle - Only for markdown files */}
+          {isMarkdownFile && (
+            <div className="flex items-center gap-1 ml-4 bg-gray-100 dark:bg-gray-900 rounded-md p-1">
+              <button
+                onClick={() => setViewMode('raw')}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${
+                  viewMode === 'raw'
+                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                }`}
+                title="Raw (Edit mode)"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                Raw
+              </button>
+              <button
+                onClick={() => setViewMode('preview')}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${
+                  viewMode === 'preview'
+                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                }`}
+                title="Preview (Read-only)"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                Preview
+              </button>
+            </div>
+          )}
         </div>
       </div>
       
@@ -100,8 +132,19 @@ export function FileEditorPanel({ onClose }: FileEditorPanelProps) {
       <div className="flex-1 flex flex-col overflow-hidden pt-4">
         {loading ? (
           <div className="text-sm text-gray-500 dark:text-gray-400 p-4">Loading...</div>
+        ) : viewMode === 'preview' && isMarkdownFile ? (
+          /* Markdown Preview - Read-only */
+          <div className="flex-1 overflow-y-auto prose prose-sm dark:prose-invert max-w-none p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              rehypePlugins={[rehypeRaw]}
+            >
+              {editedContent}
+            </ReactMarkdown>
+          </div>
         ) : (
           <>
+            {/* Raw Editor */}
             <textarea
               value={editedContent}
               onChange={(e) => handleContentChange(e.target.value)}

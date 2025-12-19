@@ -43,8 +43,6 @@ interface StoreState {
   // Used to call .kill() for client-side stop requests
   currentJob: JobExecution | null;
   connectionStatus: 'connected' | 'disconnected' | 'error';
-  showConfigEditor: boolean;
-  showFileEditor: boolean;
   taskStartTime: number | undefined;
   elapsedTime: number;
   currentMode: 'generate' | 'refactor' | 'explain' | undefined;
@@ -57,8 +55,20 @@ interface StoreState {
   recursionLimit: number;  // ✅ System recursion limit from backend
   theme: 'light' | 'dark';
   splitLayout: 'horizontal' | 'vertical';
-  viewMode: 'agents' | 'editor';  // ✅ View mode toggle (agents view / editor view)
+  mainView: 'agents' | 'codeIde';  // ✅ App-level view (agents UI vs Code IDE)
   ideWorkspacePath: string | undefined;  // ✅ IDE workspace path (for folder parameter)
+
+  // ==================
+  // Main Panel Tabs
+  // ==================
+  mainPanelActiveTab: 'job' | 'projectConfig' | 'accountConfig' | 'fileEdit';
+  mainPanelOpenTabs: {
+    projectConfig: boolean;
+    accountConfig: boolean;
+    fileEdit: boolean;
+  };
+  // ✅ Job tab cannot be closed, but can be cleared (show empty state)
+  isJobTabCleared: boolean;
   
   // ==================
   // User Authentication (Cloud Mode)
@@ -115,8 +125,6 @@ interface StoreActions {
   setCurrentJob: (job: JobExecution | null) => void;
   reset: () => void;
   setConnectionStatus: (status: 'connected' | 'disconnected' | 'error') => void;
-  setShowConfigEditor: (show: boolean) => void;
-  setShowFileEditor: (show: boolean) => void;
   setDevServerStatus: (status: DevServerStatus | undefined) => void;
   setDevServerLoading: (loading: boolean) => void;  // ✅ Dev server 로딩 상태 설정
   refreshDevServerStatus: () => Promise<void>;
@@ -129,9 +137,18 @@ interface StoreActions {
   toggleTheme: () => void;
   setTheme: (theme: 'light' | 'dark') => void;
   toggleSplitLayout: (layout: 'horizontal' | 'vertical') => void;
-  setViewMode: (mode: 'agents' | 'editor') => void;  // ✅ Set view mode
+  setMainView: (mode: 'agents' | 'codeIde') => void;  // ✅ Set app-level view
   setIdeWorkspacePath: (path: string | undefined) => void;  // ✅ Set IDE workspace path
-  switchToEditorView: (workspacePath: string) => void;  // ✅ Switch to editor view with workspace path (batch update)
+  switchToCodeIdeView: (workspacePath: string) => void;  // ✅ Switch to Code IDE view
+  
+  // ==================
+  // Main Panel Tabs
+  // ==================
+  selectMainPanelTab: (tab: 'job' | 'projectConfig' | 'accountConfig' | 'fileEdit') => void;
+  openMainPanelTab: (tab: 'projectConfig' | 'accountConfig' | 'fileEdit') => void;
+  closeMainPanelTab: (tab: 'projectConfig' | 'accountConfig' | 'fileEdit') => void;
+  clearJobTab: () => void;
+  restoreJobTab: () => void;
   
   // ==================
   // User Authentication
@@ -157,7 +174,7 @@ const STORAGE_KEYS = {
   SELECTED_AGENT: 'ant-ui:selected-agent',
   SELECTED_JOB_TYPE: 'ant-ui:selected-job-type',
   THEME: 'ant-ui:theme',
-  VIEW_MODE: 'ant-ui:view-mode',
+  MAIN_VIEW: 'ant-ui:main-view',
   USER_EMAIL: 'ant-ui:user-email',
   USER_ORGANIZATION: 'ant-ui:user-organization',
   BACKEND_MODE: 'ant-ui:backend-mode',
@@ -233,7 +250,10 @@ const applyTheme = (theme: 'light' | 'dark') => {
 // ✅ Centralized initialization for all localStorage-persisted state
 function initializePersistentState() {
   const theme = getInitialTheme();
-  const viewMode = (loadFromStorage(STORAGE_KEYS.VIEW_MODE) as 'agents' | 'editor') || 'agents';
+  const storedMainView = loadFromStorage(STORAGE_KEYS.MAIN_VIEW);
+  // Backward-compat mapping (safe): 'editor' -> 'codeIde'
+  const normalizedMainView = storedMainView === 'editor' ? 'codeIde' : storedMainView;
+  const mainView = (normalizedMainView === 'codeIde' || normalizedMainView === 'agents') ? normalizedMainView : 'agents';
   const userEmail = loadFromStorage(STORAGE_KEYS.USER_EMAIL);
   const userOrganization = loadFromStorage(STORAGE_KEYS.USER_ORGANIZATION);
   const selectedAgent = loadFromStorage(STORAGE_KEYS.SELECTED_AGENT) || 'architect';
@@ -249,7 +269,7 @@ function initializePersistentState() {
   
   return {
     theme,
-    viewMode,
+    mainView,
     userEmail,
     userOrganization,
     selectedAgent,
@@ -289,8 +309,6 @@ export const useStore = create<Store>((set, get) => {
   currentJobId: undefined,
   currentJob: null,
   connectionStatus: 'disconnected',
-  showConfigEditor: false,
-  showFileEditor: false,
   taskStartTime: undefined,
   elapsedTime: 0,
   currentMode: undefined,
@@ -303,8 +321,13 @@ export const useStore = create<Store>((set, get) => {
   recursionLimit: 50,  // ✅ 초기값: 기본값 (백엔드에서 로드됨)
   theme: persistent.theme,
   splitLayout: 'vertical',
-  viewMode: persistent.viewMode,
+  mainView: persistent.mainView,
   ideWorkspacePath: undefined,
+  
+  // Main Panel Tabs
+  mainPanelActiveTab: 'job',
+  mainPanelOpenTabs: { projectConfig: false, accountConfig: false, fileEdit: false },
+  isJobTabCleared: false,
   
   // User Authentication (Cloud Mode)
   userEmail: persistent.userEmail,
@@ -411,6 +434,11 @@ export const useStore = create<Store>((set, get) => {
         runningJobsByFeature: updatedRunningJobs,
         isRunning: currentFeatureIsRunning
       };
+      
+      // ✅ If a new job becomes available, restore Job tab view automatically
+      if (kanbanJobId && state.isJobTabCleared) {
+        newState.isJobTabCleared = false;
+      }
       
       // ✅ CRITICAL: Always sync jobId (including undefined)
       // This handles job type changes (design → code)
@@ -842,16 +870,26 @@ export const useStore = create<Store>((set, get) => {
   },
 
   selectFile: (filePath: string | undefined) => {
-    if (filePath === undefined) {
-      // 명시적으로 선택 해제
+    const normalized = filePath && filePath.length > 0 ? filePath : undefined;
+    if (normalized === undefined) {
+      // 명시적으로 선택 해제 -> fileEdit 탭도 닫기
       set({ selectedFile: undefined });
+      useStore.getState().closeMainPanelTab('fileEdit');
     } else {
       const { selectedFile } = get();
       // Toggle: 같은 파일을 다시 클릭하면 선택 해제
-      if (selectedFile === filePath) {
+      if (selectedFile === normalized) {
         set({ selectedFile: undefined });
       } else {
-        set({ selectedFile: filePath });
+        // ✅ Open FileEdit tab when a file is selected
+        set((s) => ({
+          selectedFile: normalized,
+          mainPanelActiveTab: 'fileEdit',
+          mainPanelOpenTabs: {
+            ...s.mainPanelOpenTabs,
+            fileEdit: true
+          }
+        }));
       }
     }
   },
@@ -957,13 +995,41 @@ export const useStore = create<Store>((set, get) => {
   setConnectionStatus: (status: 'connected' | 'disconnected' | 'error') => {
     set({ connectionStatus: status });
   },
-
-  setShowConfigEditor: (show: boolean) => {
-    set({ showConfigEditor: show });
+  
+  // ==================
+  // Main Panel Tabs
+  // ==================
+  selectMainPanelTab: (tab) => {
+    set({ mainPanelActiveTab: tab });
   },
-
-  setShowFileEditor: (show: boolean) => {
-    set({ showFileEditor: show });
+  
+  openMainPanelTab: (tab) => {
+    set((s) => ({
+      mainPanelActiveTab: tab,
+      mainPanelOpenTabs: {
+        ...s.mainPanelOpenTabs,
+        [tab]: true
+      }
+    }));
+  },
+  
+  closeMainPanelTab: (tab) => {
+    set((s) => {
+      const nextOpen = { ...s.mainPanelOpenTabs, [tab]: false } as StoreState['mainPanelOpenTabs'];
+      const nextActive = s.mainPanelActiveTab === tab ? 'job' : s.mainPanelActiveTab;
+      return {
+        mainPanelOpenTabs: nextOpen,
+        mainPanelActiveTab: nextActive
+      };
+    });
+  },
+  
+  clearJobTab: () => {
+    set({ mainPanelActiveTab: 'job', isJobTabCleared: true });
+  },
+  
+  restoreJobTab: () => {
+    set({ isJobTabCleared: false });
   },
 
   setDevServerStatus: (status: DevServerStatus | undefined) => {
@@ -1047,6 +1113,10 @@ export const useStore = create<Store>((set, get) => {
       currentJob: null,
       connectionStatus: 'disconnected',
       chatMessages: [],  // ✅ Clear chat messages on logout
+      // Reset main panel tabs (Job only)
+      mainPanelActiveTab: 'job',
+      mainPanelOpenTabs: { projectConfig: false, accountConfig: false, fileEdit: false },
+      isJobTabCleared: false,
     });
     
     // ✅ Clear job-related localStorage (transient data)
@@ -1080,9 +1150,9 @@ export const useStore = create<Store>((set, get) => {
   // ==================
   // View Mode
   // ==================
-  setViewMode: (mode: 'agents' | 'editor') => {
-    set({ viewMode: mode });
-    saveToStorage(STORAGE_KEYS.VIEW_MODE, mode);
+  setMainView: (mode: 'agents' | 'codeIde') => {
+    set({ mainView: mode });
+    saveToStorage(STORAGE_KEYS.MAIN_VIEW, mode);
   },
   
   // ==================
@@ -1093,12 +1163,12 @@ export const useStore = create<Store>((set, get) => {
   },
   
   // ✅ Switch to editor view with workspace path (batch update to prevent double render)
-  switchToEditorView: (workspacePath: string) => {
+  switchToCodeIdeView: (workspacePath: string) => {
     set({ 
       ideWorkspacePath: workspacePath,
-      viewMode: 'editor'
+      mainView: 'codeIde'
     });
-    saveToStorage(STORAGE_KEYS.VIEW_MODE, 'editor');
+    saveToStorage(STORAGE_KEYS.MAIN_VIEW, 'codeIde');
   },
   
   // ==================

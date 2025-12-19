@@ -2,7 +2,7 @@
  * LLMClientFactory
  * 
  * Creates provider-specific LLM clients based on configuration.
- * Replaces GenericLLMClient with direct provider implementations.
+ * Provider is auto-detected from model name (claude-* = anthropic, gpt-* = openai).
  */
 
 import { LLMClient } from '../../../core/ports/llm';
@@ -20,35 +20,78 @@ interface LLMConfig {
 }
 
 /**
- * Resolve provider from environment variables
+ * Job/Node context for model selection
  */
-function resolveProvider(agentType?: string): ModelProvider {
-  const prefix = agentType ? `${agentType.toUpperCase()}_` : '';
-  const provider = (process.env[`${prefix}MODEL_PROVIDER`] as ModelProvider) 
-    || (process.env.AI_MODEL_PROVIDER as ModelProvider) 
-    || 'anthropic';  // Default to Anthropic
-  
-  return provider;
+export interface LLMContext {
+  jobType: 'design' | 'code';
+  nodeType?: 'decompose' | 'error' | 'final' | 'default';
 }
 
 /**
- * Resolve model name from environment variables
+ * Detect provider from model name
+ * - claude-* → anthropic
+ * - gpt-* → openai
  */
-function resolveModelName(provider: ModelProvider, agentType?: string): string {
-  const prefix = agentType ? `${agentType.toUpperCase()}_` : '';
+export function detectProviderFromModel(modelName: string): ModelProvider {
+  const normalized = modelName.toLowerCase();
   
-  let modelName: string;
-  if (provider === 'anthropic') {
-    modelName = process.env[`${prefix}MODEL_NAME`] 
-      || process.env.AI_MODEL_NAME 
-      || 'claude-sonnet-4-20250514';
-  } else {
-    modelName = process.env[`${prefix}MODEL_NAME`] 
-      || process.env.AI_MODEL_NAME 
-      || 'gpt-4-turbo-preview';
+  if (normalized.startsWith('claude')) {
+    return 'anthropic';
   }
   
-  return modelName;
+  if (normalized.startsWith('gpt') || normalized.startsWith('o1') || normalized.startsWith('o3')) {
+    return 'openai';
+  }
+  
+  // Default to anthropic
+  console.warn(`[LLM] Unknown model prefix: ${modelName}, defaulting to anthropic`);
+  return 'anthropic';
+}
+
+/**
+ * Resolve model name based on job/node context
+ * Priority: workspaceConfig.llmModels > env var (AI_MODEL_NAME) > hardcoded defaults
+ */
+function resolveModelForContext(
+  context: LLMContext | undefined,
+  workspaceConfig: any
+): string {
+  const defaultModel = process.env.AI_MODEL_NAME || 'claude-sonnet-4-5-20250929';  // ✅ Latest default
+  
+  // If no context provided, use default
+  if (!context) {
+    return workspaceConfig?.llmModel || defaultModel;
+  }
+  
+  const llmModels = workspaceConfig?.llmModels;
+  
+  // If no llmModels config, fall back to old config or env var
+  if (!llmModels) {
+    return workspaceConfig?.llmModel || defaultModel;
+  }
+  
+  // Select model based on job and node type
+  if (context.jobType === 'design') {
+    if (context.nodeType === 'decompose') {
+      return llmModels.designDecompose || llmModels.designDefault || defaultModel;
+    }
+    return llmModels.designDefault || defaultModel;
+  }
+  
+  if (context.jobType === 'code') {
+    if (context.nodeType === 'decompose') {
+      return llmModels.codeDecompose || llmModels.codeDefault || defaultModel;
+    }
+    if (context.nodeType === 'error') {
+      return llmModels.codeError || llmModels.codeDefault || defaultModel;
+    }
+    if (context.nodeType === 'final') {
+      return llmModels.codeFinal || llmModels.codeDefault || defaultModel;
+    }
+    return llmModels.codeDefault || defaultModel;
+  }
+  
+  return defaultModel;
 }
 
 /**
@@ -70,21 +113,32 @@ function resolveMaxTokens(agentType?: string, fallback = 16000): number {
 }
 
 /**
- * Create LLM client based on provider configuration
+ * Create LLM client based on job/node context
+ * Provider is auto-detected from model name
  */
 export function createLLMClient(
   agentType?: string,
-  config?: LLMConfig
+  config?: LLMConfig,
+  context?: LLMContext,
+  workspaceConfig?: any
 ): LLMClient {
-  // Priority: config > env vars
-  const provider = (config?.llmProvider as ModelProvider) || resolveProvider(agentType);
-  const modelName = config?.llmModel || resolveModelName(provider, agentType);
+  // Resolve model name based on context
+  const modelName = config?.llmModel || resolveModelForContext(context, workspaceConfig);
+  
+  // Auto-detect provider from model name
+  const provider = config?.llmProvider 
+    ? (config.llmProvider as ModelProvider)
+    : detectProviderFromModel(modelName);
+  
   const temperature = config?.temperature ?? resolveTemperature(agentType);
   const maxTokens = config?.maxTokens ?? resolveMaxTokens(agentType);
   const timeout = config?.timeout ?? 180000; // 3 minutes
 
-  // Minimal logging - only provider and model
-  console.log(`🤖 [LLM] ${provider}/${modelName}`);
+  // Log with context info
+  const contextStr = context 
+    ? ` [${context.jobType}/${context.nodeType || 'default'}]`
+    : '';
+  console.log(`🤖 [LLM]${contextStr} ${provider}/${modelName}`);
 
   switch (provider) {
     case 'anthropic':

@@ -9,6 +9,7 @@ import { createChatRoutes } from './chat.routes';
 import { createGitHubRoutes } from './github.routes';
 import { createFigmaOAuthRoutes } from './figma-oauth.routes';
 import { createFigmaFilesRoutes } from './figma-files.routes';
+import { createModelsRoutes } from './models.routes';
 
 // ✅ Re-export existing routes (for backward compatibility)
 export { createJobRoutes } from './jobRoutes';
@@ -77,6 +78,9 @@ export function createApiRoutes(deps: RoutesDeps): Router {
       workspaceResolver: deps.workspaceResolver
     }));
   }
+  
+  // Models API
+  router.use(createModelsRoutes());
   
   return router;
 }

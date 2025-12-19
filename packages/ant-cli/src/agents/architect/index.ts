@@ -205,6 +205,7 @@ export async function architectAgent(
       const dInitial: DesignGraphState = {
         context,
         spec,
+        workspaceConfig: config,  // ✅ NEW: Pass workspace config for job/node-specific model selection
         deps: {
           llm: deps?.llm,
           promptEngine: designEngine,
@@ -310,6 +311,7 @@ export async function architectAgent(
         const initial: ArchitectGraphState = {
           context,
           spec,
+          workspaceConfig: config,  // ✅ NEW: Pass workspace config for job/node-specific model selection
           deps: { 
             memory: deps?.memory, 
             llm: deps?.llm,

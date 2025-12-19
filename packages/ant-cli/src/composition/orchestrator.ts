@@ -61,12 +61,9 @@ export async function orchestrator(params: {
         configData.projectPath = projectPath;
       }
       
-      // LLM configuration priority: workspace config > environment variables
-      // Environment variables: ARCHITECT_MODEL_PROVIDER, ARCHITECT_MODEL_NAME, AI_MODEL_PROVIDER, AI_MODEL_NAME
-      const llm = createLLMClient('architect', {
-        llmProvider: configData.llmProvider,
-        llmModel: configData.llmModel
-      });
+      // LLM configuration - pass workspaceConfig for job/node-specific model selection
+      // Context will be provided by each node when creating LLM instances
+      const llm = createLLMClient('architect', undefined, undefined, configData);
 
       if (jobType === 'learn') {
         // Learn task: requires Git and Chunk for indexing

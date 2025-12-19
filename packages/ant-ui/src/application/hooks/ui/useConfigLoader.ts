@@ -2,46 +2,46 @@ import { useState, useEffect } from 'react';
 import { fetchProjectConfig, updateProjectConfig, ProjectConfig } from '@/infrastructure/http/api';
 
 interface UseConfigLoaderReturn {
-  configData: ProjectConfig | null;
-  isLoadingConfig: boolean;
-  handleSaveConfig: (config: ProjectConfig) => Promise<{ success: boolean; error?: string }>;
+  projectConfigData: ProjectConfig | null;
+  isLoadingProjectConfig: boolean;
+  handleSaveProjectConfig: (config: ProjectConfig) => Promise<{ success: boolean; error?: string }>;
 }
 
 /**
  * Manages project configuration loading and saving
  */
 export function useConfigLoader(
-  showConfigEditor: boolean,
+  shouldLoad: boolean,
   selectedProject: string | null
 ): UseConfigLoaderReturn {
-  const [configData, setConfigData] = useState<ProjectConfig | null>(null);
-  const [isLoadingConfig, setIsLoadingConfig] = useState(false);
+  const [projectConfigData, setProjectConfigData] = useState<ProjectConfig | null>(null);
+  const [isLoadingProjectConfig, setIsLoadingProjectConfig] = useState(false);
 
   // Load config when editor is opened
   useEffect(() => {
-    async function loadConfig() {
-      if (!showConfigEditor || !selectedProject) {
-        setConfigData(null);
+    async function loadProjectConfig() {
+      if (!shouldLoad || !selectedProject) {
+        setProjectConfigData(null);
         return;
       }
 
-      setIsLoadingConfig(true);
+      setIsLoadingProjectConfig(true);
       try {
         const config = await fetchProjectConfig(selectedProject);
         if (config) {
-          setConfigData(config);
+          setProjectConfigData(config);
         }
       } catch (error) {
-        console.error('[useConfigLoader] Failed to load config:', error);
+        console.error('[useConfigLoader] Failed to load project config:', error);
       } finally {
-        setIsLoadingConfig(false);
+        setIsLoadingProjectConfig(false);
       }
     }
 
-    loadConfig();
-  }, [showConfigEditor, selectedProject]);
+    loadProjectConfig();
+  }, [shouldLoad, selectedProject]);
 
-  const handleSaveConfig = async (config: ProjectConfig): Promise<{ success: boolean; error?: string }> => {
+  const handleSaveProjectConfig = async (config: ProjectConfig): Promise<{ success: boolean; error?: string }> => {
     if (!selectedProject) {
       return { success: false, error: 'No project selected' };
     }
@@ -50,22 +50,22 @@ export function useConfigLoader(
       // Backend now returns the saved config directly
       const savedConfig = await updateProjectConfig(selectedProject, config);
       if (savedConfig) {
-        setConfigData(savedConfig);
+        setProjectConfigData(savedConfig);
       }
       return { success: true };
     } catch (error) {
-      console.error('[useConfigLoader] Failed to save config:', error);
+      console.error('[useConfigLoader] Failed to save project config:', error);
       return { 
         success: false, 
-        error: error instanceof Error ? error.message : 'Failed to save configuration'
+        error: error instanceof Error ? error.message : 'Failed to save project configuration'
       };
     }
   };
 
   return {
-    configData,
-    isLoadingConfig,
-    handleSaveConfig,
+    projectConfigData,
+    isLoadingProjectConfig,
+    handleSaveProjectConfig,
   };
 }
 

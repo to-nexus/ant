@@ -135,8 +135,7 @@ export class ProjectService {
     const configPath = path.join(projectPath, 'config.json');
     
     // ✅ Get LLM config from environment variables
-    const llmProvider = process.env.AI_MODEL_PROVIDER || process.env.MODEL_PROVIDER || 'openai';
-    const llmModel = process.env.AI_MODEL_NAME || process.env.MODEL_NAME;
+    const defaultModel = process.env.AI_MODEL_NAME || 'claude-sonnet-4-5-20250929';  // ✅ Latest default
     
     // ✅ Determine if Cloud Mode
     const isCloudMode = userContext.userId !== 'local' && userContext.organizationId !== 'local';
@@ -144,6 +143,7 @@ export class ProjectService {
     console.log('[ProjectService] Creating project config:');
     console.log('  - userContext:', userContext);
     console.log('  - isCloudMode:', isCloudMode);
+    console.log('  - defaultModel:', defaultModel);
     
     // ✅ Create config based on mode
     const config = {
@@ -153,8 +153,14 @@ export class ProjectService {
       ...(isCloudMode ? {} : { localPath: `../${sanitizedName}` }),
       branchBase: 'main',
       autoLearn: true,
-      llmProvider,
-      ...(llmModel && { llmModel })
+      llmModels: {
+        designDecompose: defaultModel,
+        designDefault: defaultModel,
+        codeDecompose: defaultModel,
+        codeError: defaultModel,
+        codeFinal: defaultModel,
+        codeDefault: defaultModel,
+      }
     };
     
     await fs.promises.writeFile(
@@ -2142,6 +2148,9 @@ next-env.d.ts
     userContext: UserContext,
     featureName: string
   ): Promise<void> {
+    // ✅ Keep a single indexing card by merging all subsequent updates into it
+    // Without this, multiple indexing/indexed cards remain in the chat (e.g., "Indexing new branch..." + "Branch learned!")
+    let mergeIndex: number | undefined;
     try {
       console.log(`\n📇 [Auto-Index] New branch created: ${newBranch}`);
       
@@ -2153,7 +2162,7 @@ next-env.d.ts
           userContext
         );
         
-        this.chatService.addContentToCurrentMessage(projectId, featureName, {
+        mergeIndex = this.chatService.addContentToCurrentMessage(projectId, featureName, {
           type: 'indexing',
           content: 'Indexing new branch...',
           metadata: {
@@ -2190,7 +2199,8 @@ next-env.d.ts
           indexer,
           git,
           vectorDB,
-          chunk
+          chunk,
+          mergeIndex
         );
         return;
       }
@@ -2214,7 +2224,8 @@ next-env.d.ts
             type: 'indexing',
             content: 'Updating base branch...',
             metadata: {
-              message: `Updating ${baseBranch} to latest (incremental update)`
+              message: `Updating ${baseBranch} to latest (incremental update)`,
+              _mergeIndex: mergeIndex
             }
           });
         }
@@ -2245,7 +2256,8 @@ next-env.d.ts
         currentCommit,
         featureName,
         indexer,
-        vectorDB
+        vectorDB,
+        mergeIndex
       );
       
     } catch (error) {
@@ -2260,7 +2272,8 @@ next-env.d.ts
             chunks: 0,
             tokens: 0,
             duration: 0,
-            error: error instanceof Error ? error.message : String(error)
+            error: error instanceof Error ? error.message : String(error),
+            _mergeIndex: mergeIndex
           }
         });
         
@@ -2280,14 +2293,16 @@ next-env.d.ts
     indexer: any,
     git: any,
     vectorDB: any,
-    chunk: any
+    chunk: any,
+    mergeIndex?: number
   ): Promise<void> {
     if (this.chatService && featureName) {
       this.chatService.addContentToCurrentMessage(projectId, featureName, {
         type: 'indexing',
         content: 'Learning codebase...',
         metadata: {
-          message: `Full indexing for ${branch}`
+          message: `Full indexing for ${branch}`,
+          _mergeIndex: mergeIndex
         }
       });
     }
@@ -2311,7 +2326,8 @@ next-env.d.ts
           filesIndexed: stats.filesIndexed,
           chunks: stats.chunksCreated,
           tokens: stats.estimatedTokens,
-          duration: stats.duration
+          duration: stats.duration,
+          _mergeIndex: mergeIndex
         }
       });
       
@@ -2329,14 +2345,16 @@ next-env.d.ts
     targetCommit: string,
     featureName: string,
     indexer: any,
-    vectorDB: any
+    vectorDB: any,
+    mergeIndex?: number
   ): Promise<void> {
     if (this.chatService && featureName) {
       this.chatService.addContentToCurrentMessage(projectId, featureName, {
         type: 'indexing',
         content: 'Fast learning...',
         metadata: {
-          message: `Copying embeddings from ${sourceBranch} (instant copy)`
+          message: `Copying embeddings from ${sourceBranch} (instant copy)`,
+          _mergeIndex: mergeIndex
         }
       });
     }
@@ -2359,7 +2377,8 @@ next-env.d.ts
           filesIndexed: copyStats.filesIndexed,
           chunks: copyStats.embeddingsCopied,
           tokens: copyStats.estimatedTokens,
-          duration: copyStats.duration
+          duration: copyStats.duration,
+          _mergeIndex: mergeIndex
         }
       });
       

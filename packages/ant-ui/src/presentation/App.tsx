@@ -33,7 +33,6 @@ function App() {
   // ✅ Development: Render tracking for debugging
   const renderCountRef = useRef(0);
   const prevPropsRef = useRef<Record<string, any>>({});
-  const prevSelectedFileRef = useRef<string | undefined>(undefined);
   renderCountRef.current += 1;
   
   // ✅ Layout state management (extracted to hook)
@@ -62,14 +61,9 @@ function App() {
   const selectedAgent = useStore((state) => state.selectedAgent);
   const isRunning = useStore((state) => state.isRunning);
   const connectionStatus = useStore((state) => state.connectionStatus);
-  const showConfigEditor = useStore((state) => state.showConfigEditor);
-  const showFileEditor = useStore((state) => state.showFileEditor);
-  const setShowConfigEditor = useStore((state) => state.setShowConfigEditor);
-  const setShowFileEditor = useStore((state) => state.setShowFileEditor);
-  const selectFile = useStore((state) => state.selectFile);
   const setSession = useStore((state) => state.setSession);
   const splitLayout = useStore((state) => state.splitLayout);
-  const viewMode = useStore((state) => state.viewMode);
+  const mainView = useStore((state) => state.mainView);
   const ideWorkspacePath = useStore((state) => state.ideWorkspacePath);
   const setIdeWorkspacePath = useStore((state) => state.setIdeWorkspacePath);
   
@@ -77,10 +71,10 @@ function App() {
   const { kanbanData } = useKanban();
   const { workflowData } = useWorkflow();
   
-  // ✅ Load IDE workspace path when switching to editor view
-  // Only run when viewMode changes to 'editor', not when ideWorkspacePath changes
+  // ✅ Load IDE workspace path when switching to Code IDE view
+  // Only run when mainView changes to 'codeIde', not when ideWorkspacePath changes
   useEffect(() => {
-    if (viewMode === 'editor' && !ideWorkspacePath && selectedProject) {
+    if (mainView === 'codeIde' && !ideWorkspacePath && selectedProject) {
       // Lazy load workspace path when editor is opened
       (async () => {
         try {
@@ -115,7 +109,7 @@ function App() {
     }
   // ✅ Remove ideWorkspacePath from dependencies to prevent double render
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode, selectedProject]);
+  }, [mainView, selectedProject]);
   
   // ✅ Chat SSE는 Store에서 자동 관리 (ChatPanel에서만 사용)
   // App.tsx에서는 불필요하므로 제거 → 불필요한 리렌더링 방지
@@ -140,8 +134,8 @@ function App() {
   });
 
   // ✅ Config loading (extracted to hook)
-  const { configData, isLoadingConfig, handleSaveConfig } = useConfigLoader(
-    showConfigEditor,
+  const { projectConfigData, isLoadingProjectConfig, handleSaveProjectConfig } = useConfigLoader(
+    useStore((state) => state.mainPanelOpenTabs.projectConfig),
     selectedProject || null
   );
 
@@ -155,8 +149,8 @@ function App() {
       isRunning,
       kanbanDataSource: kanbanData?.dataSource,
       workflowNode: workflowData?.currentNode,
-      configData: !!configData,
-      isLoadingConfig,
+      projectConfigData: !!projectConfigData,
+      isLoadingProjectConfig,
       isExplorerCollapsed,
       explorerWidth,
       isResizingExplorer,
@@ -205,22 +199,7 @@ function App() {
     loadSession();
   }, [selectedProject, selectedFeature, isRunning, setSession]);
 
-  // Auto-open/close file editor when file is selected/deselected
-  useEffect(() => {
-    const prevFile = prevSelectedFileRef.current;
-    const fileChanged = prevFile !== selectedFile;
-    
-    if (selectedFile && fileChanged) {
-      // 새 파일이 선택되면 에디터 자동 열기 (토글로 닫은 경우는 존중)
-      setShowFileEditor(true);
-    } else if (!selectedFile && showFileEditor) {
-      // 파일이 선택 해제되면 에디터 자동 닫기
-      setShowFileEditor(false);
-    }
-    
-    // 현재 파일을 다음 비교를 위해 저장
-    prevSelectedFileRef.current = selectedFile;
-  }, [selectedFile, showFileEditor, setShowFileEditor]);
+  // ✅ File editor is now a MainPanel tab (FileEdit). No side panel toggling here.
 
   // ✅ Show local setup guide for /local path
   if (currentPath === '/local') {
@@ -238,7 +217,7 @@ function App() {
       <GlobalNavBar />
       
       {/* Main Layout */}
-      {viewMode === 'editor' ? (
+      {mainView === 'codeIde' ? (
         // ✅ Editor View: OpenVSCode Server iframe
         <div className="flex-1 pt-16">
           <iframe
@@ -255,11 +234,8 @@ function App() {
         <ExplorerPanel
           isCollapsed={isExplorerCollapsed}
           width={explorerWidth}
-          selectedFile={selectedFile || null}
-          showFileEditor={showFileEditor}
           connectionStatus={connectionStatus}
           onCollapse={() => setIsExplorerCollapsed(true)}
-          onToggleFileEditor={() => setShowFileEditor(!showFileEditor)}
           onResizeStart={() => setIsResizingExplorer(true)}
         />
         
@@ -281,17 +257,9 @@ function App() {
 
         {/* Main Content Area */}
         <MainContentArea
-          showConfigEditor={showConfigEditor}
-          configData={configData}
-          isLoadingConfig={isLoadingConfig}
-          onSaveConfig={handleSaveConfig}
-          onCloseConfig={() => setShowConfigEditor(false)}
-          showFileEditor={showFileEditor}
-          selectedFile={selectedFile || null}
-          onCloseFileEditor={() => {
-            // 에디터 닫기 버튼: 에디터 닫고 + 파일 선택 해제
-            selectFile(undefined);
-          }}
+          projectConfigData={projectConfigData}
+          isLoadingProjectConfig={isLoadingProjectConfig}
+          onSaveProjectConfig={handleSaveProjectConfig}
           connectionStatus={connectionStatus}
           splitLayout={splitLayout}
           kanbanData={kanbanData}
