@@ -40,6 +40,31 @@ export async function codeGen(
     throw new Error('LLM client not available');
   }
   
+  // ✅ NEW: Select model based on current task type and priority
+  let llmToUse = llmClient;
+  if (state.workspaceConfig && state.currentTask) {
+    const { createLLMClient } = await import('../../../../../../periphery/adapters/llm/LLMClientFactory');
+    
+    // Determine node type based on task type and priority
+    // - error task → 'error'
+    // - feature task with priority 1000 → 'final'
+    // - otherwise → 'default'
+    let nodeType: 'error' | 'final' | 'default' = 'default';
+    
+    if (state.currentTask.type === 'error') {
+      nodeType = 'error';
+    } else if (state.currentTask.type === 'feature' && state.currentTask.priority === 1000) {
+      nodeType = 'final';
+    }
+    
+    llmToUse = createLLMClient(
+      'architect',
+      undefined,
+      { jobType: 'code', nodeType },
+      state.workspaceConfig
+    );
+  }
+  
   // ✅ Build messages from conversation history + current task
   const messages = await buildMessages(state);
   
@@ -158,7 +183,7 @@ export async function codeGen(
   
   try {
     // ✅ Single stream (no loop!)
-    for await (const event of llmClient.stream(messages, {
+    for await (const event of llmToUse.stream(messages, {
       tools,
       maxTokens: 16000,
       enableThinking: !isAfterToolCall,  // ✅ Disable thinking after tool call

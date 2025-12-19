@@ -135,6 +135,7 @@ export interface ArchitectGraphState extends TaskArtifacts {
   // Context
   context: ProjectContext & { enableEvaluation?: boolean };
   spec: string;  // CLI input
+  workspaceConfig?: any;  // ✅ NEW: Workspace config for job/node-specific model selection
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // 🔥 NEW: DetectEnvironment Output

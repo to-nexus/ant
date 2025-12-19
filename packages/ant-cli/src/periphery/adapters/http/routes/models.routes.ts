@@ -1,0 +1,120 @@
+import { Router, Request, Response } from 'express';
+
+/**
+ * Available LLM Models API
+ * 
+ * Returns list of available models with display names and metadata
+ */
+
+export interface LLMModelInfo {
+  id: string;                    // Model identifier (e.g., "claude-sonnet-4-20250929")
+  displayName: string;           // Human-readable name (e.g., "CLAUDE SONNET 4")
+  provider: 'anthropic' | 'openai';
+  description?: string;          // Brief description
+  recommended?: boolean;         // Whether this is a recommended model
+  capabilities?: string[];       // e.g., ["coding", "reasoning", "fast"]
+}
+
+// Available models registry
+const AVAILABLE_MODELS: LLMModelInfo[] = [
+  // Anthropic Models
+  {
+    id: 'claude-sonnet-4-5-20250929',
+    displayName: 'CLAUDE SONNET 4.5',
+    provider: 'anthropic',
+    description: 'Latest Claude Sonnet model, best for coding',
+    recommended: true,
+    capabilities: ['coding', 'reasoning', 'large-context']
+  },
+  {
+    id: 'claude-haiku-4-5-20251001',
+    displayName: 'CLAUDE HAIKU 4.5',
+    provider: 'anthropic',
+    description: 'Fast and efficient Claude model',
+    capabilities: ['coding', 'fast']
+  },
+  
+  // OpenAI Models
+  {
+    id: 'gpt-4o',
+    displayName: 'GPT 4O',
+    provider: 'openai',
+    description: 'Optimized GPT-4 model',
+    capabilities: ['coding', 'reasoning']
+  },
+  {
+    id: 'gpt-4o-mini',
+    displayName: 'GPT 4O MINI',
+    provider: 'openai',
+    description: 'Fast and efficient GPT-4 variant',
+    capabilities: ['coding', 'fast']
+  },
+  {
+    id: 'o1-preview',
+    displayName: 'O1 PREVIEW',
+    provider: 'openai',
+    description: 'Advanced reasoning model',
+    capabilities: ['reasoning', 'complex-problems']
+  },
+  {
+    id: 'o1-mini',
+    displayName: 'O1 MINI',
+    provider: 'openai',
+    description: 'Efficient reasoning model',
+    capabilities: ['reasoning', 'fast']
+  },
+];
+
+/**
+ * Create models routes
+ */
+export function createModelsRoutes(): Router {
+  const router = Router();
+  
+  /**
+   * GET /models
+   * Returns list of available models
+   */
+  router.get('/models', (req: Request, res: Response) => {
+    try {
+      res.json({
+        models: AVAILABLE_MODELS,
+        default: 'claude-sonnet-4-5-20250929'  // ✅ Latest Claude Sonnet 4.5 as default
+      });
+    } catch (error) {
+      console.error('[Models API] Error:', error);
+      res.status(500).json({
+        error: 'Failed to fetch available models',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+  
+  /**
+   * GET /models/:modelId
+   * Returns detailed information about a specific model
+   */
+  router.get('/models/:modelId', (req: Request, res: Response) => {
+    try {
+      const { modelId } = req.params;
+      const model = AVAILABLE_MODELS.find(m => m.id === modelId);
+      
+      if (!model) {
+        return res.status(404).json({
+          error: 'Model not found',
+          modelId
+        });
+      }
+      
+      res.json(model);
+    } catch (error) {
+      console.error('[Models API] Error:', error);
+      res.status(500).json({
+        error: 'Failed to fetch model information',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+  
+  return router;
+}

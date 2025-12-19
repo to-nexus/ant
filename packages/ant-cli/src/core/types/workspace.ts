@@ -11,6 +11,40 @@
 export type RepoType = 'local' | 'cloud' | 'github';
 
 /**
+ * LLM Model Configuration per Job/Node
+ * Provider is auto-detected from model name (claude-* = anthropic, gpt-* = openai)
+ */
+export interface LLMModels {
+  // Design Job
+  designDecompose?: string;    // Design job decompose phase
+  designDefault?: string;      // Design job default (all other nodes)
+  
+  // Code Job
+  codeDecompose?: string;      // Code job decompose phase
+  codeError?: string;          // Code job error tasks
+  codeFinal?: string;          // Code job final verification task
+  codeDefault?: string;        // Code job default (detect env, feature, tool, etc)
+}
+
+/**
+ * Generate display name from model name
+ * Removes version suffix and capitalizes words
+ * 
+ * Examples:
+ * - "claude-sonnet-4-20250929" → "Claude Sonnet 4"
+ * - "gpt-4-turbo-preview" → "GPT 4 Turbo Preview"
+ * - "o1-preview" → "O1 Preview"
+ */
+export function getModelDisplayName(modelName: string): string {
+  return modelName
+    .replace(/-\d{8}.*$/, '')  // Remove -20250929 and anything after
+    .replace(/-\d{4}-\d{2}-\d{2}.*$/, '')  // Remove -2025-09-29 and anything after
+    .split('-')
+    .map(word => word.toUpperCase())  // Uppercase for better readability (GPT, O1, etc.)
+    .join(' ');
+}
+
+/**
  * Workspace Configuration
  * Defines project settings and repository location
  */
@@ -40,11 +74,13 @@ export interface WorkspaceConfig {
   runTests?: boolean;               // Run tests during validation (default: false)
   
   // LLM settings
-  // Priority: workspace config > agent-specific env vars > generic env vars > hardcoded defaults
-  // Agent-specific env vars: {AGENT}_MODEL_PROVIDER, {AGENT}_MODEL_NAME (e.g., ARCHITECT_MODEL_PROVIDER)
-  // Generic env vars: AI_MODEL_PROVIDER, AI_MODEL_NAME
-  llmProvider?: 'anthropic' | 'openai';  // Default: 'anthropic'
-  llmModel?: string;                     // Default: 'claude-sonnet-4-5'
+  // Priority: workspace config > env vars (AI_MODEL_NAME) > hardcoded defaults
+  // Provider is auto-detected from model name (claude-* = anthropic, gpt-* = openai)
+  llmModels?: LLMModels;            // Job/Node-specific model configuration
+  
+  // DEPRECATED: Use llmModels instead
+  llmProvider?: 'anthropic' | 'openai';  
+  llmModel?: string;
 }
 
 /**
@@ -86,37 +122,33 @@ export function validateWorkspaceConfig(config: any): WorkspaceConfig {
     owner: config.owner,
     repo: config.repo,
     autoLearn: config.autoLearn ?? true,
-    llmProvider: config.llmProvider,
-    llmModel: config.llmModel,
+    llmModels: config.llmModels,
+    llmProvider: config.llmProvider,  // DEPRECATED
+    llmModel: config.llmModel,        // DEPRECATED
   };
 }
 
 /**
  * Default workspace config
- * Reads from environment variables if available:
- * - ARCHITECT_MODEL_PROVIDER or AI_MODEL_PROVIDER
- * - ARCHITECT_MODEL_NAME or AI_MODEL_NAME
+ * Reads default model from environment variable AI_MODEL_NAME
  */
 export function getDefaultWorkspaceConfig(projectName: string): WorkspaceConfig {
-  // Read from environment variables (agent-specific or generic)
-  const llmProvider = (
-    process.env.ARCHITECT_MODEL_PROVIDER || 
-    process.env.AI_MODEL_PROVIDER || 
-    'anthropic'
-  ) as 'anthropic' | 'openai';
-  
-  const llmModel = (
-    process.env.ARCHITECT_MODEL_NAME || 
-    process.env.AI_MODEL_NAME
-  );
+  // Read default model from environment variable
+  const defaultModel = process.env.AI_MODEL_NAME || 'claude-sonnet-4-5-20250929';  // ✅ Latest default
   
   return {
     projectName,
     repoType: 'local',
     branchBase: 'main',
     autoLearn: true,
-    llmProvider,
-    llmModel
+    llmModels: defaultModel ? {
+      designDecompose: defaultModel,
+      designDefault: defaultModel,
+      codeDecompose: defaultModel,
+      codeError: defaultModel,
+      codeFinal: defaultModel,
+      codeDefault: defaultModel,
+    } : undefined,
   };
 }
 

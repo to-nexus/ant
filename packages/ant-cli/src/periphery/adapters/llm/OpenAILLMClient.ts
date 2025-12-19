@@ -29,9 +29,15 @@ export class OpenAILLMClient implements LLMClient {
       timeout: config?.timeout || 180000, // 3 minutes
     });
 
-    this.modelName = config?.modelName || 
-      process.env[`${agentType?.toUpperCase()}_MODEL_NAME`] || 
-      'gpt-4-turbo-preview';
+    // ✅ modelName은 반드시 명시적으로 제공되어야 함
+    if (!config?.modelName) {
+      throw new Error(
+        'OpenAILLMClient: modelName is required. ' +
+        'Please provide it via config or ensure workspaceConfig.llmModels is properly configured.'
+      );
+    }
+    
+    this.modelName = config.modelName;
   }
 
   async invoke(messages: Array<{ role: string; content: string }>): Promise<string> {

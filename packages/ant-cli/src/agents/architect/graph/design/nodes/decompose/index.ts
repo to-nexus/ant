@@ -301,15 +301,47 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     const chatAPI = getChatAPIClient();
     await chatAPI.showChatStatus('placeholder');
     
-    // Call LLM with structured output
-    let response: { tasks: Array<{ id: string; name: string; description: string; priority: number }> };
+    // ✅ NEW: Use design decompose-specific model if configured
+    let llmToUse = llm;
+    if (state.workspaceConfig) {
+      const { createLLMClient } = await import('../../../../../../periphery/adapters/llm/LLMClientFactory');
+      llmToUse = createLLMClient(
+        'architect',
+        undefined,
+        { jobType: 'design', nodeType: 'decompose' },
+        state.workspaceConfig
+      );
+    }
     
-    if (llm.invokeStructured) {
-      response = await llm.invokeStructured(
+    // Call LLM with structured output
+    let response: { 
+      documentType: 'unified' | 'contract-first';
+      targetFiles: string[];
+      tasks: Array<{ 
+        id: string; 
+        name: string; 
+        targetFile: string;
+        description: string; 
+        priority: number;
+      }> 
+    };
+    
+    if (llmToUse.invokeStructured) {
+      response = await llmToUse.invokeStructured(
         [{ role: 'user', content: prompt }],
         {
           type: 'object',
           properties: {
+            documentType: {
+              type: 'string',
+              enum: ['unified', 'contract-first'],
+              description: 'Document strategy: unified (single system-design.md) or contract-first (api-contract.md, fe-system-design.md, be-system-design.md)'
+            },
+            targetFiles: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Files to create (e.g., ["system-design.md"] or ["api-contract.md", "fe-system-design.md", "be-system-design.md"])'
+            },
             tasks: {
               type: 'array',
               items: {
@@ -317,37 +349,71 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
                 properties: {
                   id: { type: 'string' },
                   name: { type: 'string' },
+                  targetFile: { 
+                    type: 'string',
+                    description: 'Target design document: must match one from targetFiles array'
+                  },
                   description: { type: 'string' },
                   priority: { type: 'number' }
                 },
-                required: ['id', 'name', 'description', 'priority']
+                required: ['id', 'name', 'targetFile', 'description', 'priority']
               }
             }
           },
-          required: ['tasks']
+          required: ['documentType', 'targetFiles', 'tasks']
         },
         'design_task_decomposition'
       );
     } else {
       // Fallback: parse JSON from text response
-      const textResponse = await llm.invoke([{ role: 'user', content: prompt }]);
+      const textResponse = await llmToUse.invoke([{ role: 'user', content: prompt }]);
       const jsonMatch = textResponse.match(/\{[\s\S]*"tasks"[\s\S]*\}/);
       if (!jsonMatch) {
         throw new Error('Could not parse task breakdown from LLM response');
       }
-      response = JSON.parse(jsonMatch[0]);
+      const parsedResponse = JSON.parse(jsonMatch[0]);
+      
+      // ✅ Handle both old format (tasks only) and new format (documentType + targetFiles + tasks)
+      if (parsedResponse.documentType && parsedResponse.targetFiles && parsedResponse.tasks) {
+        response = parsedResponse;
+      } else if (parsedResponse.tasks) {
+        // Old format fallback: assume unified mode
+        response = {
+          documentType: 'unified',
+          targetFiles: ['system-design.md'],
+          tasks: parsedResponse.tasks.map((task: any) => ({
+            ...task,
+            targetFile: task.targetFile || 'system-design.md'
+          }))
+        };
+      } else {
+        throw new Error('Invalid task breakdown format from LLM');
+      }
     }
+    
+    // ✅ Validate targetFiles consistency
+    console.log(`\n📊 Design Strategy: ${response.documentType}`);
+    console.log(`📄 Target Files: ${response.targetFiles.join(', ')}`);
     
     // Create TaskQueue and populate
     const taskQueue = new TaskQueue();
     
     for (const taskData of response.tasks) {
+      // ✅ Validate targetFile is in targetFiles array
+      if (!response.targetFiles.includes(taskData.targetFile)) {
+        console.warn(`⚠️  Task "${taskData.name}" has invalid targetFile: ${taskData.targetFile}`);
+        console.warn(`   Expected one of: ${response.targetFiles.join(', ')}`);
+        console.warn(`   Using default: ${response.targetFiles[0]}`);
+        taskData.targetFile = response.targetFiles[0];
+      }
+      
       const task: DesignTask = {
         id: taskData.id,
         name: taskData.name,
         type: 'feature',
         priority: taskData.priority || 250,
         description: taskData.description,
+        targetFile: taskData.targetFile,  // ✅ Use LLM-specified targetFile
         completed: false
       };
       

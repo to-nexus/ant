@@ -26,8 +26,7 @@ export function ProjectSection() {
     selectedProject, 
     setSelectedProject, 
     fetchProjects, 
-    showConfigEditor,
-    setShowConfigEditor,
+    openMainPanelTab,
     currentGitBranch,  // ✅ Current Git branch from store
     setManualGitAction  // ✅ Manual Git action setter
   } = useStore();
@@ -89,7 +88,7 @@ export function ProjectSection() {
         const projectConfig = await fetchProjectConfig(selectedProject);
         const configChanged = JSON.stringify(config) !== JSON.stringify(projectConfig);
         
-        if (configChanged && !showConfigEditor) {
+        if (configChanged) {
           console.log('[ProjectSection] 🎉 Config updated! Refreshing Git status...', projectConfig);
         }
         
@@ -103,7 +102,7 @@ export function ProjectSection() {
     }
 
     checkConfig();
-  }, [selectedProject, showConfigEditor]);
+  }, [selectedProject]);
 
   const handleCreateProject = async (projectName: string) => {
     await createProject(projectName);
@@ -130,7 +129,7 @@ export function ProjectSection() {
       }
     }
 
-    setShowConfigEditor(true);
+    openMainPanelTab('projectConfig');
   };
 
   // Git handlers

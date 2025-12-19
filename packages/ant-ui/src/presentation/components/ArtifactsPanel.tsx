@@ -260,9 +260,8 @@ export function ArtifactsPanel() {
   const selectedFile = useStore((state) => state.selectedFile);
   const fileTree = useStore((state) => state.fileTree);
   const selectFile = useStore((state) => state.selectFile);
-  const setShowFileEditor = useStore((state) => state.setShowFileEditor);
+  const openMainPanelTab = useStore((state) => state.openMainPanelTab);
   const refreshFileTree = useStore((state) => state.refreshFileTree);
-  const setFileTree = useStore((state) => state.setFileTree);
   
   // ✅ UI Action Policy
   const policy = useUIActionPolicy();
@@ -310,11 +309,18 @@ export function ArtifactsPanel() {
       await refreshFileTree();
       if (selectedFile === itemPath) {
         selectFile('');
-        setShowFileEditor(false);
       }
     } catch (error) {
       console.error('Failed to delete item:', error);
       alert('Failed to delete item');
+    }
+  };
+
+  const handleFileSelect = (path: string) => {
+    // DirectoryView uses '' to mean deselect
+    selectFile(path);
+    if (path && path.length > 0) {
+      openMainPanelTab('fileEdit');
     }
   };
 
@@ -357,7 +363,7 @@ export function ArtifactsPanel() {
         <DirectoryView
           title="Inputs"
           nodes={inputsNodes}
-          onFileSelect={selectFile}
+          onFileSelect={handleFileSelect}
           selectedFile={selectedFile}
           // ✅ UI Policy: 파일 조작은 작업 진행 중에 비활성화
           onCreateFile={policy.canCreateFile ? handleCreateFile : undefined}
@@ -368,7 +374,7 @@ export function ArtifactsPanel() {
         <DirectoryView
           title="Outputs"
           nodes={outputsNodes}
-          onFileSelect={selectFile}
+          onFileSelect={handleFileSelect}
           selectedFile={selectedFile}
           // ✅ UI Policy: 파일 조작은 작업 진행 중에 비활성화
           onCreateFile={policy.canCreateFile ? handleCreateFile : undefined}

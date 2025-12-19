@@ -44,11 +44,11 @@ export function useGraphLayout(
       return { nodes: [], edges: [] };
     }
     
-    // ✅ LLM 정보 결정: realtimeState 우선, 없으면 config 사용
-    const llmInfo = realtimeState?.llmInfo || (config ? {
+    // ✅ LLM 정보는 config에서만 가져옴 (realtimeState에 llmInfo 없음)
+    const llmInfo = config ? {
       provider: config.llmProvider,
       model: config.llmModel
-    } : null);
+    } : null;
     
     // 화면 분할 방향에 따라 워크플로우 방향 결정
     // horizontal (좌우 분할) → 워크플로우는 세로로 (TB)

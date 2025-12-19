@@ -5,10 +5,10 @@ import { getGitChanges, commitGitChanges, pushToGitHub, pullFromGitHub, syncWith
 import { Button } from '@/presentation/components/common/button';
 
 export function GitStatusButtons() {
-  const { selectedProject, selectedFeature, isGitStatusLoading, gitStatusPhase, manualGitAction, showConfigEditor } = useStore();
+  const { selectedProject, selectedFeature, isGitStatusLoading, gitStatusPhase, manualGitAction, mainPanelOpenTabs } = useStore();
   const prevLoadingRef = useRef(isGitStatusLoading);  // ✅ Track previous loading state
   const prevManualActionRef = useRef(manualGitAction);  // ✅ Track previous manual action state
-  const prevShowConfigEditorRef = useRef(showConfigEditor);  // ✅ Track config editor state
+  const prevProjectConfigTabOpenRef = useRef(mainPanelOpenTabs.projectConfig);  // ✅ Track project config tab state
   const [hasGitHubRepo, setHasGitHubRepo] = useState<boolean | null>(null); // null = checking, true = configured, false = not configured
   const [gitChanges, setGitChanges] = useState<{
     hasChanges: boolean;
@@ -32,7 +32,7 @@ export function GitStatusButtons() {
       setHasGitHubRepo(null);
       setGitChanges(null);
       setIsGitInitialized(null);
-      prevShowConfigEditorRef.current = showConfigEditor;
+      prevProjectConfigTabOpenRef.current = mainPanelOpenTabs.projectConfig;
       return;
     }
 
@@ -58,16 +58,16 @@ export function GitStatusButtons() {
 
     // ✅ Check config when:
     // 1. Project changes
-    // 2. Config editor closes (config might have been saved)
-    const configEditorJustClosed = prevShowConfigEditorRef.current === true && showConfigEditor === false;
-    prevShowConfigEditorRef.current = showConfigEditor;
+    // 2. Project Config tab closes (config might have been saved)
+    const projectConfigTabJustClosed = prevProjectConfigTabOpenRef.current === true && mainPanelOpenTabs.projectConfig === false;
+    prevProjectConfigTabOpenRef.current = mainPanelOpenTabs.projectConfig;
     
-    if (configEditorJustClosed) {
-      console.log('[GitStatusButtons] Config editor closed - rechecking config');
+    if (projectConfigTabJustClosed) {
+      console.log('[GitStatusButtons] Project Config tab closed - rechecking config');
     }
 
     checkConfig();
-  }, [selectedProject, showConfigEditor]);
+  }, [selectedProject, mainPanelOpenTabs.projectConfig]);
 
   // ✅ Detect manual Git action completion and clear stale data
   useEffect(() => {

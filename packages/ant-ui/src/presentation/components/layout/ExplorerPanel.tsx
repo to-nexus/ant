@@ -8,22 +8,16 @@ import { useStore } from '@/domain/store';
 interface ExplorerPanelProps {
   isCollapsed: boolean;
   width: number;
-  selectedFile: string | null;
-  showFileEditor: boolean;
   connectionStatus: 'connected' | 'disconnected' | 'error';
   onCollapse: () => void;
-  onToggleFileEditor: () => void;
   onResizeStart: (e: React.MouseEvent) => void;
 }
 
 export function ExplorerPanel({
   isCollapsed,
   width,
-  selectedFile,
-  showFileEditor,
   connectionStatus,
   onCollapse,
-  onToggleFileEditor,
   onResizeStart,
 }: ExplorerPanelProps) {
   const backendMode = useStore((state) => state.backendMode);
@@ -53,19 +47,7 @@ export function ExplorerPanel({
             <span className="text-gray-700 dark:text-gray-200 font-medium">📁 Explorer</span>
           </>
         ),
-        right: selectedFile ? (
-          <button
-            onClick={onToggleFileEditor}
-            className={`text-xs px-2 py-1 rounded transition-colors ${
-              showFileEditor 
-                ? 'bg-blue-500 text-white hover:bg-blue-600' 
-                : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600'
-            }`}
-            title="Toggle Editor"
-          >
-            Editor
-          </button>
-        ) : undefined
+        right: undefined
       })}
       
       <div className="flex-1 px-3 py-3 space-y-3 overflow-y-auto">

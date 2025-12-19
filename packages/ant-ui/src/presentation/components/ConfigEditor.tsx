@@ -1,13 +1,5 @@
 import { useState, useEffect } from 'react';
-import { 
-  ProjectConfig, 
-  checkGitHubPATStatus, 
-  saveGitHubPAT, 
-  deleteGitHubPAT,
-  checkFigmaConfigStatus,
-  startFigmaOAuth,
-  disconnectFigma
-} from '@/infrastructure/http/api';
+import { ProjectConfig } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
 import { useAlertModal } from '@/application/hooks/ui/useAlertModal';
 
@@ -90,22 +82,6 @@ const CONFIG_SCHEMA: ConfigField[] = [
     type: 'boolean',
     required: false,
     description: 'Enable strict validation mode'
-  },
-  {
-    key: 'llmProvider',
-    label: 'LLM Provider',
-    type: 'select',
-    required: false,
-    options: ['anthropic', 'openai'],
-    description: 'LLM provider to use'
-  },
-  {
-    key: 'llmModel',
-    label: 'LLM Model',
-    type: 'select',
-    required: false,
-    options: [], // Dynamic options based on provider
-    description: 'Specific LLM model for code generation'
   }
 ];
 
@@ -117,19 +93,44 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   const [hasChanges, setHasChanges] = useState(false);
   const { showSuccess, showError, AlertModal } = useAlertModal();
   
-  // GitHub PAT state (separate from config)
-  const [githubPAT, setGithubPAT] = useState('');
-  const [githubPATConfigured, setGithubPATConfigured] = useState(false);
-  const [isCheckingPAT, setIsCheckingPAT] = useState(true);
-  const [isSavingPAT, setIsSavingPAT] = useState(false);
+  // ✅ Available models from backend
+  const [availableModels, setAvailableModels] = useState<Array<{ id: string; displayName: string; provider: string }>>([]);
+  const [isLoadingModels, setIsLoadingModels] = useState(true);
   
-  // Figma OAuth state (separate from config)
-  const [figmaConfigured, setFigmaConfigured] = useState(false);
-  const [figmaUserEmail, setFigmaUserEmail] = useState<string | undefined>();
-  const [figmaUserId, setFigmaUserId] = useState<string | undefined>();
-  const [figmaConnectedAt, setFigmaConnectedAt] = useState<string | undefined>();
-  const [isCheckingFigma, setIsCheckingFigma] = useState(true);
-  const [isDisconnectingFigma, setIsDisconnectingFigma] = useState(false);
+  useEffect(() => {
+    async function loadModels() {
+      setIsLoadingModels(true);
+      try {
+        const response = await import('@/infrastructure/http/api').then(m => m.fetchAvailableModels());
+        setAvailableModels(response.models.map(m => ({
+          id: m.id,
+          displayName: m.displayName,
+          provider: m.provider
+        })));
+        
+        // ✅ Set default model from backend if config has empty llmModels
+        if (!editedConfig.llmModels || Object.keys(editedConfig.llmModels).filter(k => editedConfig.llmModels![k as keyof typeof editedConfig.llmModels]).length === 0) {
+          const defaultModelId = response.default;
+          setEditedConfig(prev => ({
+            ...prev,
+            llmModels: {
+              designDecompose: defaultModelId,
+              designDefault: defaultModelId,
+              codeDecompose: defaultModelId,
+              codeError: defaultModelId,
+              codeFinal: defaultModelId,
+              codeDefault: defaultModelId,
+            }
+          }));
+        }
+      } catch (error) {
+        console.error('Failed to load available models:', error);
+      } finally {
+        setIsLoadingModels(false);
+      }
+    }
+    loadModels();
+  }, []);
 
   // ✅ Cloud 모드일 때 repoType을 'cloud'로 강제 설정
   useEffect(() => {
@@ -151,88 +152,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
     const configChanged = JSON.stringify(editedConfig) !== JSON.stringify(config);
     setHasChanges(configChanged);
   }, [editedConfig, config]);
-
-  // Load GitHub PAT status on mount
-  useEffect(() => {
-    async function loadGitHubPATStatus() {
-      setIsCheckingPAT(true);
-      try {
-        const status = await checkGitHubPATStatus();
-        setGithubPATConfigured(status.configured);
-      } catch (error) {
-        console.error('Failed to check GitHub PAT status:', error);
-      } finally {
-        setIsCheckingPAT(false);
-      }
-    }
-    loadGitHubPATStatus();
-  }, []);
   
-  // Load Figma config status on mount (페이지 새로고침 시)
-  useEffect(() => {
-    async function loadFigmaConfigStatus() {
-      console.log('[ConfigEditor] Loading initial Figma config status...');
-      setIsCheckingFigma(true);
-      try {
-        const status = await checkFigmaConfigStatus();
-        console.log('[ConfigEditor] Initial Figma status:', status);
-        
-        setFigmaConfigured(status.configured);
-        setFigmaUserEmail(status.email);
-        setFigmaUserId(status.userId);
-        setFigmaConnectedAt(status.updatedAt);
-        
-        if (status.configured) {
-          console.log('[ConfigEditor] Figma is already connected:', status.email);
-        } else {
-          console.log('[ConfigEditor] Figma is not connected');
-        }
-      } catch (error) {
-        console.error('[ConfigEditor] Failed to check Figma config status:', error);
-      } finally {
-        setIsCheckingFigma(false);
-      }
-    }
-    loadFigmaConfigStatus();
-  }, []);
-  
-  // Listen for OAuth completion via postMessage (NO POLLING!)
-  useEffect(() => {
-    const reloadFigmaStatus = async () => {
-      try {
-        console.log('[ConfigEditor] Reloading Figma status...');
-        const status = await checkFigmaConfigStatus();
-        console.log('[ConfigEditor] Figma status:', status);
-        
-        setFigmaConfigured(status.configured);
-        setFigmaUserEmail(status.email);
-        setFigmaUserId(status.userId);
-        setFigmaConnectedAt(status.updatedAt);
-        
-        if (status.configured) {
-          showSuccess(`Figma connected as ${status.email}!`);
-        }
-      } catch (error) {
-        console.error('[ConfigEditor] Failed to reload Figma status:', error);
-      }
-    };
-    
-    // Handle postMessage from OAuth popup
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'figma-oauth-success') {
-        console.log('[ConfigEditor] ✅ Received OAuth success message:', event.data);
-        // Wait a bit for backend to save, then reload once
-        setTimeout(() => reloadFigmaStatus(), 500);
-      }
-    };
-    
-    window.addEventListener('message', handleMessage);
-    
-    return () => {
-      window.removeEventListener('message', handleMessage);
-    };
-  }, []);
-
   const handleChange = (key: keyof ProjectConfig, value: any) => {
     setEditedConfig(prev => {
       const newConfig = {
@@ -290,84 +210,27 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
       setIsSaving(false);
     }
   };
-
-  // GitHub PAT handlers
-  const handleGitHubPATSave = async () => {
-    if (!githubPAT || !githubPAT.trim()) {
-      showError('Please enter a valid PAT');
-      return;
-    }
-    
-    setIsSavingPAT(true);
-    try {
-      const result = await saveGitHubPAT(githubPAT.trim());
-      if (result.success) {
-        showSuccess(`GitHub PAT saved successfully!${result.username ? ` (${result.username})` : ''}`);
-        setGithubPATConfigured(true);
-        setGithubPAT(''); // Clear input after save
-      } else {
-        showError(result.error || 'Failed to save PAT');
+  
+  // ✅ Handle LLM model changes
+  const handleModelChange = (nodeType: string, modelId: string) => {
+    setEditedConfig(prev => ({
+      ...prev,
+      llmModels: {
+        ...prev.llmModels,
+        [nodeType]: modelId
       }
-    } catch (error) {
-      showError('Failed to save PAT. Please try again.');
-    } finally {
-      setIsSavingPAT(false);
-    }
+    }));
   };
-
-  const handleGitHubPATDelete = async () => {
-    if (!confirm('Are you sure you want to delete your GitHub PAT?')) {
-      return;
-    }
+  
+  const handleDiscardChanges = () => {
+    if (!hasChanges) return;
     
-    setIsSavingPAT(true);
-    try {
-      const result = await deleteGitHubPAT();
-      if (result.success) {
-        showSuccess('GitHub PAT deleted successfully');
-        setGithubPATConfigured(false);
-        setGithubPAT('');
-      } else {
-        showError(result.error || 'Failed to delete PAT');
-      }
-    } catch (error) {
-      showError('Failed to delete PAT. Please try again.');
-    } finally {
-      setIsSavingPAT(false);
+    if (confirm('Are you sure you want to discard all changes?')) {
+      setEditedConfig(config);
+      setErrors({});
     }
   };
   
-  // Figma OAuth handlers
-  const handleFigmaConnect = () => {
-    console.log('[ConfigEditor] Starting Figma OAuth...');
-    startFigmaOAuth();
-    // Note: OAuth window will open automatically
-  };
-  
-  const handleFigmaDisconnect = async () => {
-    if (!confirm('Are you sure you want to disconnect your Figma account?')) {
-      return;
-    }
-    
-    setIsDisconnectingFigma(true);
-    try {
-      const result = await disconnectFigma();
-      if (result.success) {
-        showSuccess('Figma disconnected successfully');
-        setFigmaConfigured(false);
-        setFigmaUserEmail(undefined);
-        setFigmaUserId(undefined);
-        setFigmaConnectedAt(undefined);
-      } else {
-        showError(result.error || 'Failed to disconnect Figma');
-      }
-    } catch (error) {
-      showError('Failed to disconnect Figma. Please try again.');
-    } finally {
-      setIsDisconnectingFigma(false);
-    }
-  };
-
   const renderField = (field: ConfigField) => {
     const value = editedConfig[field.key];
     const hasError = !!errors[field.key];
@@ -477,164 +340,56 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
       </div>
     );
   };
-
-  const renderGitHubSection = () => {
-    return (
-      <div className="space-y-4 pt-6 mt-6 border-t border-gray-200 dark:border-gray-700">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <h4 className="text-sm font-semibold text-gray-900 dark:text-white">GitHub Integration</h4>
-            {isCheckingPAT ? (
-              <span className="text-xs text-gray-500">Checking...</span>
-            ) : (
-              <span className={`text-xs px-2 py-0.5 rounded ${
-                githubPATConfigured 
-                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' 
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
-              }`}>
-                {githubPATConfigured ? '✓ Configured' : 'Not configured'}
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            🔐 User-level setting • Shared across all projects
-          </p>
-        </div>
-        
-        <div className="space-y-3">
-          <div>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-2">
-              Personal Access Token
-            </label>
-            {githubPATConfigured ? (
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value="ghp_************************************"
-                  disabled
-                  className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-sm"
-                />
-                <button
-                  onClick={handleGitHubPATDelete}
-                  disabled={isSavingPAT}
-                  className="px-4 py-2 bg-red-600 dark:bg-red-700 text-white rounded-md hover:bg-red-700 dark:hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
-                >
-                  {isSavingPAT ? 'Deleting...' : 'Delete'}
-                </button>
-              </div>
-            ) : (
-              <>
-                <input
-                  type="password"
-                  value={githubPAT}
-                  onChange={(e) => setGithubPAT(e.target.value)}
-                  placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                  disabled={isSavingPAT}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                />
-                <button
-                  onClick={handleGitHubPATSave}
-                  disabled={!githubPAT.trim() || isSavingPAT}
-                  className="mt-2 w-full px-4 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded-md hover:bg-blue-700 dark:hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
-                >
-                  {isSavingPAT ? 'Saving...' : 'Save PAT'}
-                </button>
-              </>
-            )}
-          </div>
-          
-          <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
-            <p>• Create a PAT at: <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">github.com/settings/tokens</a></p>
-            <p>• Required scopes: <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">repo</code></p>
-            <p>• PAT is stored encrypted in <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">.ant/credentials.json</code></p>
-          </div>
-        </div>
-      </div>
-    );
-  };
   
-  const renderFigmaSection = () => {
+  const renderLLMModelsSection = () => {
+    const nodeTypes = [
+      { key: 'designDecompose', label: 'Design Decompose', description: 'Model for design job decomposition phase' },
+      { key: 'designDefault', label: 'Design Default', description: 'Default model for design job nodes' },
+      { key: 'codeDecompose', label: 'Code Decompose', description: 'Model for code job decomposition phase' },
+      { key: 'codeError', label: 'Code Error', description: 'Model for error task handling' },
+      { key: 'codeFinal', label: 'Code Final', description: 'Model for final feature tasks (priority=1000)' },
+      { key: 'codeDefault', label: 'Code Default', description: 'Default model for code job nodes' },
+    ];
+    
     return (
       <div className="space-y-4 pt-6 mt-6 border-t border-gray-200 dark:border-gray-700">
         <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <h4 className="text-sm font-semibold text-gray-900 dark:text-white">Figma Integration</h4>
-            {isCheckingFigma ? (
-              <span className="text-xs text-gray-500">Checking...</span>
-            ) : (
-              <span className={`text-xs px-2 py-0.5 rounded ${
-                figmaConfigured 
-                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' 
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
-              }`}>
-                {figmaConfigured ? '✓ Connected' : 'Not connected'}
-              </span>
-            )}
-          </div>
+          <h4 className="text-sm font-semibold text-gray-900 dark:text-white">LLM Models by Task Type</h4>
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            🔐 User-level setting • OAuth authentication to access your Figma files
+            Configure different models for different job phases and task types. Leave empty to use default model.
           </p>
         </div>
         
-        <div className="space-y-3">
-          {figmaConfigured ? (
-            <>
-              <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-2">
-                  Connected Account
+        {isLoadingModels ? (
+          <div className="text-sm text-gray-500 dark:text-gray-400">Loading available models...</div>
+        ) : (
+          <div className="space-y-3">
+            {nodeTypes.map(nodeType => (
+              <div key={nodeType.key} className="space-y-2">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {nodeType.label}
                 </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={figmaUserEmail || 'Connected'}
-                    disabled
-                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-sm"
-                  />
-                  <button
-                    onClick={handleFigmaDisconnect}
-                    disabled={isDisconnectingFigma}
-                    className="px-4 py-2 bg-red-600 dark:bg-red-700 text-white rounded-md hover:bg-red-700 dark:hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
-                  >
-                    {isDisconnectingFigma ? 'Disconnecting...' : 'Disconnect'}
-                  </button>
-                </div>
-              </div>
-              
-              {/* Connection Details */}
-              <div className="bg-gray-50 dark:bg-gray-800 rounded-md p-3 space-y-2">
-                {figmaUserId && (
-                  <div className="flex justify-between text-xs">
-                    <span className="text-gray-600 dark:text-gray-400">User ID:</span>
-                    <span className="text-gray-900 dark:text-gray-100 font-mono">{figmaUserId}</span>
-                  </div>
+                {nodeType.description && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{nodeType.description}</p>
                 )}
-                {figmaConnectedAt && (
-                  <div className="flex justify-between text-xs">
-                    <span className="text-gray-600 dark:text-gray-400">Connected:</span>
-                    <span className="text-gray-900 dark:text-gray-100">
-                      {new Date(figmaConnectedAt).toLocaleString()}
-                    </span>
-                  </div>
-                )}
+                <select
+                  value={editedConfig.llmModels?.[nodeType.key as keyof typeof editedConfig.llmModels] || ''}
+                  onChange={(e) => handleModelChange(nodeType.key, e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md 
+                    bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm
+                    focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+                >
+                  <option value="">-- Use Default --</option>
+                  {availableModels.map(model => (
+                    <option key={model.id} value={model.id}>
+                      {model.displayName}
+                    </option>
+                  ))}
+                </select>
               </div>
-            </>
-          ) : (
-            <>
-              <button
-                onClick={handleFigmaConnect}
-                className="w-full px-4 py-3 bg-blue-600 dark:bg-blue-700 text-white rounded-md hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors text-sm font-medium"
-              >
-                Connect with Figma
-              </button>
-            </>
-          )}
-          
-          <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
-            <p>• OAuth 2.0 authentication with your Figma account</p>
-            <p>• Access only to files you have permission to view</p>
-            <p>• Credentials stored encrypted in <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">.ant/credentials.json</code></p>
+            ))}
           </div>
-        </div>
+        )}
       </div>
     );
   };
@@ -645,16 +400,32 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold flex items-center gap-2 text-gray-900 dark:text-white">
             <span>⚙️</span>
-            <span>Configuration</span>
+            <span>Project Configuration</span>
           </h3>
           <div className="flex items-center gap-4">
+            <button
+              onClick={handleDiscardChanges}
+              disabled={!hasChanges}
+              className={`transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-xl ${
+                hasChanges
+                  ? 'text-yellow-600 dark:text-yellow-400 hover:text-yellow-700 dark:hover:text-yellow-300'
+                  : 'text-gray-400 dark:text-gray-600'
+              }`}
+              title={
+                !hasChanges
+                  ? 'No changes to discard'
+                  : 'Discard Changes'
+              }
+            >
+              ↺
+            </button>
             <button
               onClick={handleSave}
               disabled={isSaving || !hasChanges}
               className={`transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-xl ${
                 hasChanges && !isSaving
-                  ? 'text-green-600 hover:text-green-700'
-                  : 'text-gray-400'
+                  ? 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300'
+                  : 'text-gray-400 dark:text-gray-600'
               }`}
               title={
                 isSaving
@@ -666,13 +437,6 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
             >
               ✓
             </button>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 transition-colors text-xl"
-              title="Close"
-            >
-              ✕
-            </button>
           </div>
         </div>
       </div>
@@ -681,11 +445,8 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
         <div className="space-y-6">
           {CONFIG_SCHEMA.map(field => renderField(field))}
           
-          {/* GitHub Integration Section */}
-          {renderGitHubSection()}
-          
-          {/* Figma MCP Integration Section */}
-          {renderFigmaSection()}
+          {/* LLM Models Section */}
+          {renderLLMModelsSection()}
         </div>
       </div>
       

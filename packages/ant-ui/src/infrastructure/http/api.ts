@@ -196,6 +196,22 @@ export interface DevServerStatus {
   logs?: LogEntry[];
 }
 
+// ========== Models ==========
+
+export interface LLMModelInfo {
+  id: string;
+  displayName: string;
+  provider: 'anthropic' | 'openai';
+  description?: string;
+  recommended?: boolean;
+  capabilities?: string[];
+}
+
+export interface AvailableModelsResponse {
+  models: LLMModelInfo[];
+  default: string;
+}
+
 // Health check function to verify API connection
 export async function checkHealth(): Promise<boolean> {
   try {
@@ -216,6 +232,28 @@ export async function checkHealth(): Promise<boolean> {
   } catch (error) {
     console.error('Health check failed:', error);
     return false;
+  }
+}
+
+/**
+ * Fetch available LLM models
+ */
+export async function fetchAvailableModels(): Promise<AvailableModelsResponse> {
+  try {
+    const response = await authFetch(`${API_BASE()}/models`);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch available models: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching available models:', error);
+    // Return empty list on error
+    return {
+      models: [],
+      default: 'claude-sonnet-4-5-20250929'  // ✅ Latest default
+    };
   }
 }
 
@@ -881,6 +919,15 @@ export interface ProjectConfig {
   branchBase: string;
   autoLearn: boolean;
   strictValidation?: boolean;
+  llmModels?: {
+    designDecompose?: string;
+    designDefault?: string;
+    codeDecompose?: string;
+    codeError?: string;
+    codeFinal?: string;
+    codeDefault?: string;
+  };
+  // Deprecated fields (for backward compatibility)
   llmProvider?: string;
   llmModel?: string;
 }

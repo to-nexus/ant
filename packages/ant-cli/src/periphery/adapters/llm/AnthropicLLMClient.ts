@@ -28,9 +28,15 @@ export class AnthropicLLMClient implements LLMClient {
       apiKey: config?.apiKey || process.env.ANTHROPIC_API_KEY,
     });
 
-    this.modelName = config?.modelName || 
-      process.env[`${agentType?.toUpperCase()}_MODEL_NAME`] || 
-      'claude-sonnet-4-20250514';
+    // ✅ modelName은 반드시 명시적으로 제공되어야 함
+    if (!config?.modelName) {
+      throw new Error(
+        'AnthropicLLMClient: modelName is required. ' +
+        'Please provide it via config or ensure workspaceConfig.llmModels is properly configured.'
+      );
+    }
+    
+    this.modelName = config.modelName;
   }
 
   async invoke(messages: Array<{ role: string; content: string }>): Promise<string> {

@@ -23,24 +23,14 @@ interface KanbanBoardProps {
  * - 애니메이션과 UI 로직만 관리 (Single Responsibility)
  */
 export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
-  const selectedProject = useStore((state) => state.selectedProject);
-  const selectedFeature = useStore((state) => state.selectedFeature);
   const splitLayout = useStore((state) => state.splitLayout);
   const dismissedInterruptTimestamp = useStore((state) => state.dismissedInterruptTimestamp);  // ✅ Global state (for resume)
   const systemRecursionLimit = useStore((state) => state.recursionLimit);  // ✅ Get system recursion limit
+  const selectedProject = useStore((state) => state.selectedProject);
+  const selectedFeature = useStore((state) => state.selectedFeature);
+  const isRunning = useStore((state) => state.isRunning);
   const [dismissedKanbanInterrupt, setDismissedKanbanInterrupt] = React.useState<string | null>(null);  // ✅ Local state (for dismiss button only)
   const policy = useUIActionPolicy();
-  
-  // ✅ DEBUG: Log when kanbanData.isEstimating changes
-  useEffect(() => {
-    // console.log('[KanbanBoard] 📊 kanbanData changed:', { // ✅ Too verbose
-    //   isEstimating: kanbanData.isEstimating,
-    //   dataSource: kanbanData.dataSource,
-    //   completedCount: kanbanData.completed?.length || 0,
-    //   todoCount: kanbanData.todo?.length || 0,
-    //   inProgress: kanbanData.inProgress?.name || null
-    // });
-  }, [kanbanData.isEstimating, kanbanData.dataSource, kanbanData.completed, kanbanData.todo, kanbanData.inProgress]);
   
   // ✅ Animation state management
   const [newlyCompletedIds, setNewlyCompletedIds] = useState<Set<string>>(new Set());
@@ -186,6 +176,16 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
       title="Task Board"
       titleActions={
         <>
+          {selectedProject && (
+            <span className="text-xs px-2 py-1 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium">
+              {selectedProject}
+            </span>
+          )}
+          {selectedFeature && (
+            <span className="text-xs px-2 py-1 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 font-medium">
+              {selectedFeature}
+            </span>
+          )}
           <DataSourceIndicator dataSource={kanbanData.dataSource} />
           <ElapsedTimeBadge
             totalElapsedTime={kanbanData.totalElapsedTime}

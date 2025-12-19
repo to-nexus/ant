@@ -212,7 +212,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   
   let rawResponse: string;
   try {
-    rawResponse = await callLLMForDecompose(llm, prompt);
+    rawResponse = await callLLMForDecompose(llm, prompt, state.workspaceConfig);
   } catch (error) {
     logErrorHeader('Decompose');
     console.error(error);

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Sun, Moon, Monitor, Cloud, Bot, Code2, User, LogOut } from 'lucide-react';
+import { Sun, Moon, Monitor, Cloud, Bot, Code2, User, LogOut, Settings } from 'lucide-react';
 import { ConnectionStatus } from './ConnectionStatus';
 import { useStore } from '@/domain/store';
 import { SignUpModal } from './auth/SignUpModal';
@@ -25,8 +25,8 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
   const connectionStatus = useStore((state) => state.connectionStatus);
   const theme = useStore((state) => state.theme);
   const toggleTheme = useStore((state) => state.toggleTheme);
-  const viewMode = useStore((state) => state.viewMode);
-  const setViewMode = useStore((state) => state.setViewMode);
+  const mainView = useStore((state) => state.mainView);
+  const setMainView = useStore((state) => state.setMainView);
   const selectedProject = useStore((state) => state.selectedProject);
   const userEmail = useStore((state) => state.userEmail);
   const userOrganization = useStore((state) => state.userOrganization);
@@ -36,6 +36,7 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
   const frontendMode = useStore((state) => state.frontendMode);
   const backendMode = useStore((state) => state.backendMode);
   const setBackendMode = useStore((state) => state.setBackendMode);
+  const openMainPanelTab = useStore((state) => state.openMainPanelTab);
   
   // Auth modal state
   const [showSignUpModal, setShowSignUpModal] = useState(false);
@@ -139,7 +140,7 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
   };
   
   // Handle Editor mode switch
-  const handleEditorViewSwitch = async () => {
+  const handleCodeIdeViewSwitch = async () => {
     // ✅ Check if project is selected
     if (!selectedProject) {
       setEditorTooltip('Please select a project first');
@@ -180,8 +181,8 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
       
       console.log('[GlobalNavBar] Opening editor with path:', workspacePath);
       
-      // ✅ Set IDE workspace path and switch to editor view
-      useStore.getState().switchToEditorView(workspacePath);
+      // ✅ Set IDE workspace path and switch to Code IDE view
+      useStore.getState().switchToCodeIdeView(workspacePath);
     } catch (error: any) {
       console.error('[GlobalNavBar] Failed to open IDE:', error);
       setEditorTooltip('Failed to open IDE');
@@ -242,10 +243,10 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
             <div className="view-mode-selector flex items-center gap-1 ml-4 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg relative">
               {/* Agents Button */}
               <button
-                onClick={() => setViewMode('agents')}
+                onClick={() => setMainView('agents')}
                 className={`
                   px-3 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 border
-                  ${viewMode === 'agents'
+                  ${mainView === 'agents'
                     ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-white shadow-md border-blue-200 dark:border-transparent'
                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 opacity-60 border-transparent'
                   }
@@ -257,10 +258,10 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
               
               {/* Editor Button */}
               <button
-                onClick={handleEditorViewSwitch}
+                onClick={handleCodeIdeViewSwitch}
                 className={`
                   px-3 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 border
-                  ${viewMode === 'editor'
+                  ${mainView === 'codeIde'
                     ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-white shadow-md border-blue-200 dark:border-transparent'
                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 opacity-60 border-transparent'
                   }
@@ -268,7 +269,7 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
                 title={selectedProject ? 'Open codebase in editor' : 'Select a project first'}
               >
                 <Code2 className="w-3.5 h-3.5" />
-                Editor
+                Code
               </button>
               
               {/* Tooltip for Editor button */}
@@ -359,9 +360,22 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
                     
                     {/* User Menu Dropdown */}
                     {showUserMenu && (
-                      <div className="absolute top-full right-0 mt-2 w-48 bg-white dark:bg-gray-800 
+                      <div className="absolute top-full right-0 mt-2 w-56 bg-white dark:bg-gray-800 
                                     rounded-md shadow-lg border border-gray-200 dark:border-gray-700 
                                     py-1 z-50">
+                        <button
+                          onClick={() => {
+                            openMainPanelTab('accountConfig');
+                            setShowUserMenu(false);
+                          }}
+                          className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 
+                                   hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 
+                                   transition-colors"
+                        >
+                          <Settings className="w-4 h-4" />
+                          Account Configuration
+                        </button>
+                        <div className="border-t border-gray-200 dark:border-gray-700 my-1"></div>
                         <button
                           onClick={handleSignOut}
                           className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 
