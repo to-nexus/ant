@@ -18,6 +18,7 @@ import { X, Briefcase, Settings, FileEdit, Columns, Rows, User } from 'lucide-re
 export function MainPanelTabsBar() {
   const activeTab = useStore((state) => state.mainPanelActiveTab);
   const openTabs = useStore((state) => state.mainPanelOpenTabs);
+  const tabOrder = useStore((state) => state.mainPanelTabOrder);  // ✅ 탭 순서 가져오기
   const isJobTabCleared = useStore((state) => state.isJobTabCleared);
   const currentJobId = useStore((state) => state.currentJobId);
   const selectMainPanelTab = useStore((state) => state.selectMainPanelTab);
@@ -49,6 +50,64 @@ export function MainPanelTabsBar() {
     }
     // If no job at all, do nothing
   };
+  
+  // ✅ 탭 렌더링 헬퍼 함수
+  const renderTab = (tabKey: 'projectConfig' | 'accountConfig' | 'fileEdit') => {
+    if (!openTabs[tabKey]) return null;
+    
+    const tabConfig = {
+      projectConfig: {
+        icon: Settings,
+        label: 'Project Config',
+        title: 'Close project config tab'
+      },
+      accountConfig: {
+        icon: User,
+        label: 'Account Config',
+        title: 'Close account config tab'
+      },
+      fileEdit: {
+        icon: FileEdit,
+        label: 'FileEdit',
+        title: 'Close file editor tab'
+      }
+    }[tabKey];
+    
+    const Icon = tabConfig.icon;
+    
+    return (
+      <button
+        key={tabKey}
+        onClick={() => selectMainPanelTab(tabKey)}
+        className={cn(
+          'flex items-center gap-2 py-1.5 rounded-t transition-all text-sm font-medium',
+          // Job tab이 선택되었을 때는 아이콘만 표시 (px-2), 아니면 전체 표시 (px-3)
+          activeTab === 'job' ? 'px-2' : 'px-3',
+          activeTab === tabKey
+            ? 'bg-white dark:bg-[#0d1117] text-gray-900 dark:text-white border-t border-x border-gray-200 dark:border-[#30363d]'
+            : 'bg-gray-100 dark:bg-[#161b22] text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-[#1c2128]'
+        )}
+      >
+        <Icon className="w-4 h-4 flex-shrink-0" />
+        {/* Job tab 선택 시 텍스트 숨김 */}
+        {activeTab !== 'job' && <span>{tabConfig.label}</span>}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            closeMainPanelTab(tabKey);
+          }}
+          className={cn(
+            'p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200',
+            // Job tab 선택 시 close 버튼도 숨김
+            activeTab === 'job' && 'hidden'
+          )}
+          title={tabConfig.title}
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </button>
+    );
+  };
 
   return Bar.render({
     left: (
@@ -66,121 +125,28 @@ export function MainPanelTabsBar() {
         >
           <Briefcase className="w-4 h-4 flex-shrink-0" />
           <span className="whitespace-nowrap">{jobTabLabel}</span>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleJobTabClose();
-            }}
-            className={cn(
-              'p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors',
-              isJobTabCleared 
-                ? 'text-gray-400 dark:text-gray-500' 
-                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-            )}
-            title={isJobTabCleared ? 'Restore job content' : 'Clear job content (tab remains)'}
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
+          {/* ✅ Job ID가 있을 때만 닫기 버튼 표시 */}
+          {currentJobId && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleJobTabClose();
+              }}
+              className={cn(
+                'p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors',
+                isJobTabCleared 
+                  ? 'text-gray-400 dark:text-gray-500' 
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+              )}
+              title={isJobTabCleared ? 'Restore job content' : 'Clear job content (tab remains)'}
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </button>
 
-        {/* Project Config Tab - Only visible when open */}
-        {openTabs.projectConfig && (
-          <button
-            onClick={() => selectMainPanelTab('projectConfig')}
-            className={cn(
-              'flex items-center gap-2 py-1.5 rounded-t transition-all text-sm font-medium',
-              // Job tab이 선택되었을 때는 아이콘만 표시 (px-2), 아니면 전체 표시 (px-3)
-              activeTab === 'job' ? 'px-2' : 'px-3',
-              activeTab === 'projectConfig'
-                ? 'bg-white dark:bg-[#0d1117] text-gray-900 dark:text-white border-t border-x border-gray-200 dark:border-[#30363d]'
-                : 'bg-gray-100 dark:bg-[#161b22] text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-[#1c2128]'
-            )}
-          >
-            <Settings className="w-4 h-4 flex-shrink-0" />
-            {/* Job tab 선택 시 텍스트 숨김 */}
-            {activeTab !== 'job' && <span>Project Config</span>}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                closeMainPanelTab('projectConfig');
-              }}
-              className={cn(
-                'p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200',
-                // Job tab 선택 시 close 버튼도 숨김
-                activeTab === 'job' && 'hidden'
-              )}
-              title="Close project config tab"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </button>
-        )}
-
-        {/* Account Config Tab - Only visible when open */}
-        {openTabs.accountConfig && (
-          <button
-            onClick={() => selectMainPanelTab('accountConfig')}
-            className={cn(
-              'flex items-center gap-2 py-1.5 rounded-t transition-all text-sm font-medium',
-              // Job tab이 선택되었을 때는 아이콘만 표시 (px-2), 아니면 전체 표시 (px-3)
-              activeTab === 'job' ? 'px-2' : 'px-3',
-              activeTab === 'accountConfig'
-                ? 'bg-white dark:bg-[#0d1117] text-gray-900 dark:text-white border-t border-x border-gray-200 dark:border-[#30363d]'
-                : 'bg-gray-100 dark:bg-[#161b22] text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-[#1c2128]'
-            )}
-          >
-            <User className="w-4 h-4 flex-shrink-0" />
-            {/* Job tab 선택 시 텍스트 숨김 */}
-            {activeTab !== 'job' && <span>Account Config</span>}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                closeMainPanelTab('accountConfig');
-              }}
-              className={cn(
-                'p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200',
-                // Job tab 선택 시 close 버튼도 숨김
-                activeTab === 'job' && 'hidden'
-              )}
-              title="Close account config tab"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </button>
-        )}
-
-        {/* FileEdit Tab - Only visible when open */}
-        {openTabs.fileEdit && (
-          <button
-            onClick={() => selectMainPanelTab('fileEdit')}
-            className={cn(
-              'flex items-center gap-2 py-1.5 rounded-t transition-all text-sm font-medium',
-              // Job tab이 선택되었을 때는 아이콘만 표시 (px-2), 아니면 전체 표시 (px-3)
-              activeTab === 'job' ? 'px-2' : 'px-3',
-              activeTab === 'fileEdit'
-                ? 'bg-white dark:bg-[#0d1117] text-gray-900 dark:text-white border-t border-x border-gray-200 dark:border-[#30363d]'
-                : 'bg-gray-100 dark:bg-[#161b22] text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-[#1c2128]'
-            )}
-          >
-            <FileEdit className="w-4 h-4 flex-shrink-0" />
-            {/* Job tab 선택 시 텍스트 숨김 */}
-            {activeTab !== 'job' && <span>FileEdit</span>}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                closeMainPanelTab('fileEdit');
-              }}
-              className={cn(
-                'p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200',
-                // Job tab 선택 시 close 버튼도 숨김
-                activeTab === 'job' && 'hidden'
-              )}
-              title="Close file editor tab"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </button>
-        )}
+        {/* ✅ 동적으로 탭 순서대로 렌더링 */}
+        {tabOrder.map(tabKey => renderTab(tabKey))}
       </div>
     ),
     right: (

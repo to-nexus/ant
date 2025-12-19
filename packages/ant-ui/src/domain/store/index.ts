@@ -67,6 +67,7 @@ interface StoreState {
     accountConfig: boolean;
     fileEdit: boolean;
   };
+  mainPanelTabOrder: Array<'projectConfig' | 'accountConfig' | 'fileEdit'>;  // ✅ 탭이 열린 순서 (Job은 항상 첫번째)
   // ✅ Job tab cannot be closed, but can be cleared (show empty state)
   isJobTabCleared: boolean;
   
@@ -327,6 +328,7 @@ export const useStore = create<Store>((set, get) => {
   // Main Panel Tabs
   mainPanelActiveTab: 'job',
   mainPanelOpenTabs: { projectConfig: false, accountConfig: false, fileEdit: false },
+  mainPanelTabOrder: [],  // ✅ 빈 배열로 시작
   isJobTabCleared: false,
   
   // User Authentication (Cloud Mode)
@@ -882,14 +884,21 @@ export const useStore = create<Store>((set, get) => {
         set({ selectedFile: undefined });
       } else {
         // ✅ Open FileEdit tab when a file is selected
-        set((s) => ({
-          selectedFile: normalized,
-          mainPanelActiveTab: 'fileEdit',
-          mainPanelOpenTabs: {
-            ...s.mainPanelOpenTabs,
-            fileEdit: true
-          }
-        }));
+        set((s) => {
+          // ✅ 탭 순서 업데이트: fileEdit을 마지막에 추가
+          const newOrder = s.mainPanelTabOrder.filter(t => t !== 'fileEdit');
+          newOrder.push('fileEdit');
+          
+          return {
+            selectedFile: normalized,
+            mainPanelActiveTab: 'fileEdit',
+            mainPanelOpenTabs: {
+              ...s.mainPanelOpenTabs,
+              fileEdit: true
+            },
+            mainPanelTabOrder: newOrder
+          };
+        });
       }
     }
   },
@@ -1004,22 +1013,33 @@ export const useStore = create<Store>((set, get) => {
   },
   
   openMainPanelTab: (tab) => {
-    set((s) => ({
-      mainPanelActiveTab: tab,
-      mainPanelOpenTabs: {
-        ...s.mainPanelOpenTabs,
-        [tab]: true
-      }
-    }));
+    set((s) => {
+      // ✅ 탭 순서 업데이트: 이미 있으면 제거하고 마지막에 추가
+      const newOrder = s.mainPanelTabOrder.filter(t => t !== tab);
+      newOrder.push(tab);
+      
+      return {
+        mainPanelActiveTab: tab,
+        mainPanelOpenTabs: {
+          ...s.mainPanelOpenTabs,
+          [tab]: true
+        },
+        mainPanelTabOrder: newOrder
+      };
+    });
   },
   
   closeMainPanelTab: (tab) => {
     set((s) => {
       const nextOpen = { ...s.mainPanelOpenTabs, [tab]: false } as StoreState['mainPanelOpenTabs'];
       const nextActive = s.mainPanelActiveTab === tab ? 'job' : s.mainPanelActiveTab;
+      // ✅ 탭 순서에서 제거
+      const nextOrder = s.mainPanelTabOrder.filter(t => t !== tab);
+      
       return {
         mainPanelOpenTabs: nextOpen,
-        mainPanelActiveTab: nextActive
+        mainPanelActiveTab: nextActive,
+        mainPanelTabOrder: nextOrder
       };
     });
   },
@@ -1116,6 +1136,7 @@ export const useStore = create<Store>((set, get) => {
       // Reset main panel tabs (Job only)
       mainPanelActiveTab: 'job',
       mainPanelOpenTabs: { projectConfig: false, accountConfig: false, fileEdit: false },
+      mainPanelTabOrder: [],  // ✅ 탭 순서도 초기화
       isJobTabCleared: false,
     });
     
