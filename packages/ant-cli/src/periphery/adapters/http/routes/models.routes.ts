@@ -20,7 +20,7 @@ const AVAILABLE_MODELS: LLMModelInfo[] = [
   // Anthropic Models
   {
     id: 'claude-sonnet-4-5-20250929',
-    displayName: 'CLAUDE SONNET 4.5',
+    displayName: 'Sonnet 4.5',
     provider: 'anthropic',
     description: 'Latest Claude Sonnet model, best for coding',
     recommended: true,
@@ -28,7 +28,7 @@ const AVAILABLE_MODELS: LLMModelInfo[] = [
   },
   {
     id: 'claude-haiku-4-5-20251001',
-    displayName: 'CLAUDE HAIKU 4.5',
+    displayName: 'Haiku 4.5',
     provider: 'anthropic',
     description: 'Fast and efficient Claude model',
     capabilities: ['coding', 'fast']
@@ -37,28 +37,28 @@ const AVAILABLE_MODELS: LLMModelInfo[] = [
   // OpenAI Models
   {
     id: 'gpt-4o',
-    displayName: 'GPT 4O',
+    displayName: 'GPT 4o',
     provider: 'openai',
     description: 'Optimized GPT-4 model',
     capabilities: ['coding', 'reasoning']
   },
   {
     id: 'gpt-4o-mini',
-    displayName: 'GPT 4O MINI',
+    displayName: 'GPT 4o Mini',
     provider: 'openai',
     description: 'Fast and efficient GPT-4 variant',
     capabilities: ['coding', 'fast']
   },
   {
     id: 'o1-preview',
-    displayName: 'O1 PREVIEW',
+    displayName: 'O1 Preview',
     provider: 'openai',
     description: 'Advanced reasoning model',
     capabilities: ['reasoning', 'complex-problems']
   },
   {
     id: 'o1-mini',
-    displayName: 'O1 MINI',
+    displayName: 'O1 Mini',
     provider: 'openai',
     description: 'Efficient reasoning model',
     capabilities: ['reasoning', 'fast']
