@@ -40,27 +40,27 @@ export async function codeGen(
     throw new Error('LLM client not available');
   }
   
-  // ✅ NEW: Select model based on current task type and priority
+  // ✅ NEW: Select model based on current TASK type and priority
   let llmToUse = llmClient;
   if (state.workspaceConfig && state.currentTask) {
     const { createLLMClient } = await import('../../../../../../periphery/adapters/llm/LLMClientFactory');
     
-    // Determine node type based on task type and priority
-    // - error task → 'error'
-    // - feature task with priority 1000 → 'final'
-    // - otherwise → 'default'
-    let nodeType: 'error' | 'final' | 'default' = 'default';
+    // Determine model based on TASK type (not node type!)
+    // All nodes processing this task will use the same model
+    let taskType: 'error' | 'final' | 'setup' | 'default' = 'default';
     
     if (state.currentTask.type === 'error') {
-      nodeType = 'error';
+      taskType = 'error';
+    } else if (state.currentTask.type === 'setup') {
+      taskType = 'setup';
     } else if (state.currentTask.type === 'feature' && state.currentTask.priority === 1000) {
-      nodeType = 'final';
+      taskType = 'final';
     }
     
     llmToUse = createLLMClient(
       'architect',
       undefined,
-      { jobType: 'code', nodeType },
+      { jobType: 'code', taskType },  // ✅ Pass taskType, not nodeType!
       state.workspaceConfig
     );
   }

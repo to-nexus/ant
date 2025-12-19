@@ -78,6 +78,10 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
         initial.recursionCount = session.state.recursionCount || 0;
         initial.recursionLimit = session.state.recursionLimit || finalLimit;
         
+        // ✅ CRITICAL: workspaceConfig is already set in initial state (from orchestrator)
+        // DO NOT restore from session - keep the fresh config from orchestrator
+        console.log(`   ✅ WorkspaceConfig preserved from orchestrator (not from session)`);
+        
         // ✅ CRITICAL: Restore directive/design/spec from session
         // CodeGen validation requires either directive or design
         if (session.state.overrideDirective) {

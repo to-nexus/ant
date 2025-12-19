@@ -182,7 +182,10 @@ export class FilePromptAdapter implements PromptPort {
     const unusedVars = providedVars.filter(v => !templateVars.includes(v));
     
     // 5. Log warnings for maintenance (only for actually missing vars)
-    if (missingVars.length > 0) {
+    // ✅ Skip validation warning for known conditional templates
+    const isConditionalTemplate = templateName.includes('plan/base') && vars.isKeywordGeneration !== undefined;
+    
+    if (missingVars.length > 0 && !isConditionalTemplate) {
       console.warn(`[PromptAdapter] Template "${templateName}": Missing variables [${missingVars.join(', ')}]`);
     }
     // ✅ Don't warn about unused vars - they might be for other conditional branches

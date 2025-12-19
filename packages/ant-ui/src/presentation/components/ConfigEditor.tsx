@@ -119,6 +119,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
               codeDecompose: defaultModelId,
               codeError: defaultModelId,
               codeFinal: defaultModelId,
+              codeSetup: defaultModelId,  // ✅ Setup tasks
               codeDefault: defaultModelId,
             }
           }));
@@ -345,10 +346,11 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
     const nodeTypes = [
       { key: 'designDecompose', label: 'Design Decompose', description: 'Model for design job decomposition phase' },
       { key: 'designDefault', label: 'Design Default', description: 'Default model for design job nodes' },
-      { key: 'codeDecompose', label: 'Code Decompose', description: 'Model for code job decomposition phase' },
-      { key: 'codeError', label: 'Code Error', description: 'Model for error task handling' },
-      { key: 'codeFinal', label: 'Code Final', description: 'Model for final feature tasks (priority=1000)' },
-      { key: 'codeDefault', label: 'Code Default', description: 'Default model for code job nodes' },
+      { key: 'codeDecompose', label: 'Code Decompose', description: 'Model for code job decomposition phase (task planning)' },
+      { key: 'codeError', label: 'Code Error', description: 'Model for error tasks' },
+      { key: 'codeFinal', label: 'Code Final', description: 'Model for final verification tasks (priority=1000)' },
+      { key: 'codeSetup', label: 'Code Setup', description: 'Model for setup tasks' },
+      { key: 'codeDefault', label: 'Code Default', description: 'Default model for all other code tasks' },
     ];
     
     return (

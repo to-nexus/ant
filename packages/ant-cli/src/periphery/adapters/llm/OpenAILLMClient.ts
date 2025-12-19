@@ -41,6 +41,9 @@ export class OpenAILLMClient implements LLMClient {
   }
 
   async invoke(messages: Array<{ role: string; content: string }>): Promise<string> {
+    // ✅ LOG: Actual API call with model name
+    console.log(`🔥 [API CALL] provider=openai model=${this.modelName} method=invoke messages=${messages.length}`);
+    
     const response = await this.client.chat.completions.create({
       model: this.modelName,
       messages: messages.map(m => ({
@@ -89,6 +92,10 @@ export class OpenAILLMClient implements LLMClient {
       [key: string]: any;
     }
   ): AsyncIterable<LLMStreamEvent> {
+    // ✅ LOG: Actual API call with model name
+    const toolsCount = options?.tools?.length || 0;
+    console.log(`🔥 [API CALL] provider=openai model=${this.modelName} method=stream messages=${messages.length} tools=${toolsCount}`);
+    
     // ✅ Check if this is a Codex model that requires /v1/responses API
     const isCodexModel = this.modelName.includes('codex') || this.modelName.startsWith('gpt-5');
     

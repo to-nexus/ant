@@ -77,22 +77,16 @@ function getAuthHeaders(): HeadersInit {
   // ✅ Skip auth headers for Local mode
   const backendMode = getBackendMode();
   
-  console.log('[getAuthHeaders] backendMode:', backendMode);
-  
   if (backendMode === 'local') {
-    console.log('[getAuthHeaders] Local mode - no auth headers');
     return {};
   }
   
   // Get user email from localStorage (Cloud mode only)
   try {
     const userEmail = localStorage.getItem('ant-ui:user-email');
-    console.log('[getAuthHeaders] Raw userEmail from localStorage:', userEmail);
     
     if (userEmail) {
       const email = JSON.parse(userEmail);
-      console.log('[getAuthHeaders] Parsed email:', email);
-      console.log('[getAuthHeaders] Returning header:', { 'x-user-email': email });
       return {
         'x-user-email': email
       };
@@ -495,7 +489,6 @@ export async function resumeJob(
     }
     
     const data = await response.json();
-    console.log(`[api.ts] Resume successful:`, data);
     return data;
   } catch (error) {
     console.error('Error resuming job:', error);
@@ -529,7 +522,6 @@ export async function continueJob(
     }
     
     const data = await response.json();
-    console.log(`[api.ts] Continue successful:`, data);
     return data;
   } catch (error) {
     console.error('Error continuing job:', error);
@@ -946,6 +938,7 @@ export interface ProjectConfig {
     codeDecompose?: string;
     codeError?: string;
     codeFinal?: string;
+    codeSetup?: string;  // ✅ Setup tasks
     codeDefault?: string;
   };
   // Deprecated fields (for backward compatibility)
@@ -1521,10 +1514,7 @@ export interface FigmaConfigStatus {
  */
 export async function checkFigmaConfigStatus(): Promise<FigmaConfigStatus> {
   try {
-    console.log('[checkFigmaConfigStatus] Calling /api/figma/config...');
     const response = await authFetch(`${API_BASE()}/figma/config`);
-    
-    console.log('[checkFigmaConfigStatus] Response status:', response.status);
     
     if (!response.ok) {
       const errorText = await response.text();
@@ -1533,7 +1523,6 @@ export async function checkFigmaConfigStatus(): Promise<FigmaConfigStatus> {
     }
     
     const data = await response.json();
-    console.log('[checkFigmaConfigStatus] Success:', data);
     return data;
   } catch (error: any) {
     console.error('[checkFigmaConfigStatus] ❌ Error:', error);
@@ -1555,15 +1544,11 @@ export async function startFigmaOAuth(): Promise<void> {
   const backendMode = getBackendMode();
   let userEmail = 'local@local'; // Default for Local mode
   
-  console.log('[Figma OAuth] Backend mode:', backendMode);
-  
   if (backendMode === 'cloud') {
     try {
       const stored = localStorage.getItem('ant-ui:user-email');
-      console.log('[Figma OAuth] localStorage ant-ui:user-email:', stored);
       if (stored) {
         userEmail = JSON.parse(stored);
-        console.log('[Figma OAuth] ✅ Parsed user email:', userEmail);
       } else {
         console.error('[Figma OAuth] ❌ No user email in localStorage for cloud mode!');
         throw new Error('User email not found. Please log in again.');
@@ -1574,9 +1559,7 @@ export async function startFigmaOAuth(): Promise<void> {
     }
   }
   
-  console.log('[Figma OAuth] Using user email:', userEmail);
   const authUrl = `${API_BASE()}/figma/oauth/authorize?user-email=${encodeURIComponent(userEmail)}`;
-  console.log('[Figma OAuth] Opening URL:', authUrl);
   
   // Open Figma OAuth in popup window
   const width = 600;

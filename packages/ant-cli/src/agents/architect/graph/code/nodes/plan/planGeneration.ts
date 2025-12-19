@@ -12,6 +12,43 @@ import { ArchitectGraphState, TASK_PRIORITIES, Violation } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { formatViolations } from "../shared/violationFormatter";
 
+/**
+ * Select appropriate LLM based on task type
+ * All nodes processing the same task use the same model
+ */
+async function selectLLMForTask(
+  defaultLLM: LLMClient,
+  task: CodeTask,
+  state: ArchitectGraphState
+): Promise<LLMClient> {
+  // If no workspaceConfig, use default LLM
+  if (!state.workspaceConfig) {
+    return defaultLLM;
+  }
+  
+  const { createLLMClient } = await import('../../../../../../periphery/adapters/llm/LLMClientFactory');
+  
+  // Determine model based on TASK type (not node type!)
+  // All nodes processing this task will use the same model
+  let taskType: 'error' | 'final' | 'setup' | 'default' = 'default';
+  
+  if (task.type === 'error') {
+    taskType = 'error';
+  } else if (task.type === 'setup') {
+    taskType = 'setup';
+  } else if (task.type === 'feature' && task.priority === TASK_PRIORITIES.FINAL_VERIFICATION) {
+    taskType = 'final';
+  }
+  // All other tasks (feature with lower priority, tool, etc.) use 'default'
+  
+  return createLLMClient(
+    'architect',
+    undefined,
+    { jobType: 'code', taskType },  // ✅ Pass taskType, not nodeType!
+    state.workspaceConfig
+  );
+}
+
 export async function generatePlanText(
   llm: LLMClient,
   task: CodeTask,
@@ -36,6 +73,9 @@ export async function generatePlanText(
   if (!llm) {
     throw new Error('[Plan] LLM not available but plan is required');
   }
+  
+  // ✅ Select appropriate LLM based on task type
+  const llmToUse = await selectLLMForTask(llm, task, state);
   
   const promptEngine = state.deps?.promptEngine;
   if (!promptEngine) {
@@ -63,7 +103,7 @@ export async function generatePlanText(
     violationsText
   );
   
-  const response = await llm.invoke([
+  const response = await llmToUse.invoke([
     { role: 'user', content: prompt }
   ], {
     temperature: 0.5,

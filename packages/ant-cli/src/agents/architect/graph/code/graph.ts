@@ -256,6 +256,7 @@ export function buildCodeGraph() {
       // Context & Input
       context: null as any,
       spec: null as any,
+      workspaceConfig: null as any,  // ✅ CRITICAL: Workspace config for LLM model selection
       
       // Dependencies
       deps: null as any,

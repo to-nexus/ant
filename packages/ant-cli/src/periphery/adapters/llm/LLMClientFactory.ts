@@ -20,11 +20,12 @@ interface LLMConfig {
 }
 
 /**
- * Job/Node context for model selection
+ * Job/Task context for model selection
  */
 export interface LLMContext {
   jobType: 'design' | 'code';
-  nodeType?: 'decompose' | 'error' | 'final' | 'default';
+  taskType?: 'error' | 'final' | 'setup' | 'default';  // ✅ Task type, not node type!
+  nodeType?: 'decompose';  // ✅ Only for decompose node (no task yet)
 }
 
 /**
@@ -49,7 +50,7 @@ export function detectProviderFromModel(modelName: string): ModelProvider {
 }
 
 /**
- * Resolve model name based on job/node context
+ * Resolve model name based on job/task context
  * Priority: workspaceConfig.llmModels > env var (AI_MODEL_NAME) > hardcoded defaults
  */
 function resolveModelForContext(
@@ -70,7 +71,7 @@ function resolveModelForContext(
     return workspaceConfig?.llmModel || defaultModel;
   }
   
-  // Select model based on job and node type
+  // Select model based on job and task/node type
   if (context.jobType === 'design') {
     if (context.nodeType === 'decompose') {
       return llmModels.designDecompose || llmModels.designDefault || defaultModel;
@@ -79,15 +80,22 @@ function resolveModelForContext(
   }
   
   if (context.jobType === 'code') {
+    // Decompose node has no task yet - use codeDecompose
     if (context.nodeType === 'decompose') {
       return llmModels.codeDecompose || llmModels.codeDefault || defaultModel;
     }
-    if (context.nodeType === 'error') {
+    
+    // All other nodes: select based on TASK type
+    if (context.taskType === 'error') {
       return llmModels.codeError || llmModels.codeDefault || defaultModel;
     }
-    if (context.nodeType === 'final') {
+    if (context.taskType === 'final') {
       return llmModels.codeFinal || llmModels.codeDefault || defaultModel;
     }
+    if (context.taskType === 'setup') {
+      return llmModels.codeSetup || llmModels.codeDefault || defaultModel;
+    }
+    // taskType === 'default' or undefined
     return llmModels.codeDefault || defaultModel;
   }
   
@@ -133,12 +141,6 @@ export function createLLMClient(
   const temperature = config?.temperature ?? resolveTemperature(agentType);
   const maxTokens = config?.maxTokens ?? resolveMaxTokens(agentType);
   const timeout = config?.timeout ?? 180000; // 3 minutes
-
-  // Log with context info
-  const contextStr = context 
-    ? ` [${context.jobType}/${context.nodeType || 'default'}]`
-    : '';
-  console.log(`🤖 [LLM]${contextStr} ${provider}/${modelName}`);
 
   switch (provider) {
     case 'anthropic':

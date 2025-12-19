@@ -159,6 +159,7 @@ export class ProjectService {
         codeDecompose: defaultModel,
         codeError: defaultModel,
         codeFinal: defaultModel,
+        codeSetup: defaultModel,  // ✅ Setup tasks
         codeDefault: defaultModel,
       }
     };

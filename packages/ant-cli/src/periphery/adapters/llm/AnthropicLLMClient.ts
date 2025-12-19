@@ -40,6 +40,9 @@ export class AnthropicLLMClient implements LLMClient {
   }
 
   async invoke(messages: Array<{ role: string; content: string }>): Promise<string> {
+    // ✅ LOG: Actual API call with model name
+    console.log(`🔥 [API CALL] provider=anthropic model=${this.modelName} method=invoke messages=${messages.length}`);
+    
     // ✅ Extract system message (Anthropic requires it as a separate parameter)
     const systemMessage = messages.find(m => m.role === 'system');
     const userMessages = messages.filter(m => m.role !== 'system');
@@ -96,6 +99,10 @@ export class AnthropicLLMClient implements LLMClient {
       [key: string]: any;
     }
   ): AsyncIterable<LLMStreamEvent> {
+    // ✅ LOG: Actual API call with model name
+    const toolsCount = options?.tools?.length || 0;
+    console.log(`🔥 [API CALL] provider=anthropic model=${this.modelName} method=stream messages=${messages.length} tools=${toolsCount} thinking=${options?.enableThinking !== false}`);
+    
     // ✅ Conditionally enable Extended Thinking (default: true)
     const enableThinking = options?.enableThinking !== false;
     

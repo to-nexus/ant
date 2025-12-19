@@ -62,8 +62,8 @@ export async function orchestrator(params: {
       }
       
       // LLM configuration - pass workspaceConfig for job/node-specific model selection
-      // Context will be provided by each node when creating LLM instances
-      const llm = createLLMClient('architect', undefined, undefined, configData);
+      // ✅ Create LLM specifically for decompose phase (will be overridden by nodes for task-specific models)
+      const llm = createLLMClient('architect', undefined, { jobType: jobType as 'design' | 'code', nodeType: 'decompose' }, configData);
 
       if (jobType === 'learn') {
         // Learn task: requires Git and Chunk for indexing

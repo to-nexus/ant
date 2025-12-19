@@ -22,7 +22,8 @@ export interface LLMModels {
   // Code Job
   codeDecompose?: string;      // Code job decompose phase
   codeError?: string;          // Code job error tasks
-  codeFinal?: string;          // Code job final verification task
+  codeFinal?: string;          // Code job final verification task (priority 1000)
+  codeSetup?: string;          // Code job setup tasks (backend-project-setup, frontend-project-setup)
   codeDefault?: string;        // Code job default (detect env, feature, tool, etc)
 }
 
@@ -147,6 +148,7 @@ export function getDefaultWorkspaceConfig(projectName: string): WorkspaceConfig 
       codeDecompose: defaultModel,
       codeError: defaultModel,
       codeFinal: defaultModel,
+      codeSetup: defaultModel,  // ✅ Setup tasks
       codeDefault: defaultModel,
     } : undefined,
   };
