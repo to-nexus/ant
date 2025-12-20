@@ -270,6 +270,7 @@ export async function detectEnvironment(
     profile: parsed.profile,  // ✅ Add profile to state (language/framework from LLM)
     designDocs: filteredDesignDocs || state.designDocs,  // ✅ Update with filtered docs
     design: filteredDesign || state.design,  // ✅ Update with filtered content
+    tokenUsage: (state as any).tokenUsage,  // ✅ CRITICAL: Preserve job-level token usage from detectEnvironment
   };
 }
 

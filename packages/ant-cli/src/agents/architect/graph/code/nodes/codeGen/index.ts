@@ -214,9 +214,12 @@ export async function codeGen(
       if (event.type === 'done') {
         isDone = true;
         
-        // ✅ Extract token usage
-        const { extractTokenUsageFromStreamEvent } = await import('../../../common/llmHelpers');
+        // ✅ Extract token usage and accumulate to task-level
+        const { extractTokenUsageFromStreamEvent, accumulateTokenUsage } = await import('../../../common/llmHelpers');
         capturedUsage = extractTokenUsageFromStreamEvent(event);
+        if (capturedUsage) {
+          accumulateTokenUsage(state as any, capturedUsage, { taskLevel: true, jobLevel: true });
+        }
       }
     }
     

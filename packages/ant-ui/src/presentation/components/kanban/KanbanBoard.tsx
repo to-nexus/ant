@@ -77,8 +77,20 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
             <ElapsedTimeBadge
               totalElapsedTime={kanbanData.totalElapsedTime}
               jobTiming={kanbanData.jobTiming}
+              completedTasks={kanbanData.completed?.map(task => ({
+                id: task.id || task.name,
+                name: task.name,
+                timing: task.timing
+              }))}
             />
-            <TokenUsageBadge tokenUsage={kanbanData.tokenUsage} />
+            <TokenUsageBadge 
+              tokenUsage={kanbanData.tokenUsage}
+              completedTasks={kanbanData.completed?.map(task => ({
+                id: task.id || task.name,
+                name: task.name,
+                tokenUsage: task.tokenUsage
+              }))}
+            />
           </>
         }
         headerActions={
@@ -104,8 +116,20 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
           <ElapsedTimeBadge
             totalElapsedTime={kanbanData.totalElapsedTime}
             jobTiming={kanbanData.jobTiming}
+            completedTasks={kanbanData.completed?.map(task => ({
+              id: task.id || task.name,
+              name: task.name,
+              timing: task.timing
+            }))}
           />
-          <TokenUsageBadge tokenUsage={kanbanData.tokenUsage} />
+          <TokenUsageBadge 
+            tokenUsage={kanbanData.tokenUsage}
+            completedTasks={kanbanData.completed?.map(task => ({
+              id: task.id || task.name,
+              name: task.name,
+              tokenUsage: task.tokenUsage
+            }))}
+          />
         </>
       }
         headerActions={
