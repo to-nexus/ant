@@ -296,15 +296,21 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       'code'
     );
     jobId = sessionData?.state?.jobId || state._httpJobId!;
-    jobTiming = sessionData?.state?.jobTiming || JobTimingManager.initializeNewJob(state._httpJobId!).jobTiming;
+    const existingJobTiming = sessionData?.state?.jobTiming || JobTimingManager.initializeNewJob(state._httpJobId!).jobTiming;
+    
+    // ✅ CRITICAL: Finalize estimating phase (detectEnvironment + decompose)
+    const estimatingStartTime = existingJobTiming.startedAt || new Date().toISOString();
+    jobTiming = JobTimingManager.finalizeEstimatingPhase(existingJobTiming, estimatingStartTime);
+    
     console.log(`⏱️  [Decompose] Using job ID from session: ${jobId}`);
+    console.log(`⏰  [Decompose] Estimating phase finalized: ${Math.round((jobTiming.estimatingDuration || 0) / 1000)}s`);
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 9: Save checkpoint with actual tasks
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const updatedState = {
-    ...state,
+    ...state,  // ✅ Includes tokenUsage accumulated from decompose LLM call
     taskQueue,
     featureTasks,
     referenceRequests: referenceRequests || state.referenceRequests || [],

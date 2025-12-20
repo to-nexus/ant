@@ -52,10 +52,9 @@ export function formatTokenUsage(tokenUsage: TaskTokenUsage): string {
  * Format compact token usage (total only)
  * 
  * @param tokenUsage - Token usage object
- * @returns Formatted string (e.g., "1.2K tokens")
+ * @returns Formatted string (e.g., "1.2K")
  */
 export function formatTokenUsageCompact(tokenUsage: TaskTokenUsage): string {
-  const total = formatTokenCount(tokenUsage.totalTokens);
-  return `${total} tokens`;
+  return formatTokenCount(tokenUsage.totalTokens);
 }
 

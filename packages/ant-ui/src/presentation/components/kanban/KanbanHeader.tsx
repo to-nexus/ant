@@ -4,6 +4,7 @@ import { StatusChip, ChipVariant } from '../StatusChip';
 import { formatElapsedTime } from '@/shared/utils/timeUtils';
 import { formatTokenUsageCompact } from '@/shared/utils/tokenUtils';
 import { JobTiming, TaskTokenUsage } from '@/domain/models/types';
+import { Tooltip } from '../common/Tooltip';
 
 interface DataSourceIndicatorProps {
   dataSource?: string;
@@ -38,14 +39,22 @@ export function DataSourceIndicator({ dataSource, isStopping = false }: DataSour
 interface ElapsedTimeBadgeProps {
   totalElapsedTime?: number;
   jobTiming?: JobTiming;
+  completedTasks?: Array<{
+    id: string;
+    name: string;
+    timing?: {
+      elapsedTime?: number;
+    };
+  }>;
 }
 
 /**
- * ElapsedTimeBadge - Real-time 뱃지 우측에 위치할 경과 시간 뱃지
+ * ElapsedTimeBadge - Real-time 뱃지 우측에 위치할 경과 시간 뱃지 (with breakdown tooltip)
  */
 export function ElapsedTimeBadge({
   totalElapsedTime,
-  jobTiming
+  jobTiming,
+  completedTasks
 }: ElapsedTimeBadgeProps) {
   // ✨ Real-time elapsed time calculation
   const [realtimeElapsed, setRealtimeElapsed] = useState<number | null>(null);
@@ -126,40 +135,201 @@ export function ElapsedTimeBadge({
   // Format elapsed time (include seconds for real-time updates)
   const formattedTime = formatElapsedTime(realtimeElapsed, true);
   
-  return (
-    <div className="h-7 min-h-7 max-h-7 px-2.5 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-300 dark:border-blue-800">
-      <div className="flex items-center justify-center gap-1.5 h-7">
-        <Timer className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-        <span className="text-xs text-blue-700 dark:text-blue-300 font-medium leading-none">
+  // Calculate breakdown
+  const estimatingTime = jobTiming.estimatingDuration || 0;
+  const tasksTotal = completedTasks?.reduce((sum, task) => {
+    return sum + (task.timing?.elapsedTime || 0);
+  }, 0) || 0;
+  
+  // Build tooltip content
+  const tooltipContent = (
+    <div className="space-y-2 min-w-[320px] max-h-[80vh] overflow-y-auto">
+      <div className="font-semibold border-b pb-1.5 border-amber-300 dark:border-slate-600">
+        Time Breakdown
+      </div>
+      
+      {/* Total */}
+      <div className="flex justify-between items-center">
+        <span className="text-gray-800 dark:text-gray-100 font-semibold">Total:</span>
+        <span className="font-mono font-semibold text-lg text-gray-900 dark:text-white">
           {formattedTime}
         </span>
       </div>
+      
+      {/* Estimating Phase */}
+      <div className="pl-2 border-l-2 border-purple-400 dark:border-purple-500">
+        <div className="flex justify-between items-center font-semibold">
+          <span className="text-gray-800 dark:text-gray-100">Estimating Phase:</span>
+          <span className="font-mono text-gray-800 dark:text-gray-100">
+            {formatElapsedTime(estimatingTime, true)}
+          </span>
+        </div>
+      </div>
+      
+      {/* Tasks */}
+      {completedTasks && completedTasks.length > 0 && (
+        <div className="pl-2 border-l-2 border-blue-400 dark:border-blue-500">
+          <div className="flex justify-between items-center font-semibold">
+            <span className="text-gray-800 dark:text-gray-100">Tasks ({completedTasks.length}):</span>
+            <span className="font-mono text-gray-800 dark:text-gray-100">
+              {formatElapsedTime(tasksTotal, true)}
+            </span>
+          </div>
+          <div className="pl-2 space-y-1 mt-1">
+            {completedTasks.map((task) => (
+              <div
+                key={task.id}
+                className="flex justify-between items-center text-sm"
+              >
+                <span className="text-gray-700 dark:text-gray-300 truncate max-w-[200px]" title={task.name}>
+                  • {task.name}
+                </span>
+                <span className="font-mono text-gray-700 dark:text-gray-300">
+                  {task.timing?.elapsedTime
+                    ? formatElapsedTime(task.timing.elapsedTime, true)
+                    : '0s'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      
+      {/* Paused Duration */}
+      {jobTiming.totalPausedDuration > 0 && (
+        <div className="pt-1.5 mt-1.5 border-t border-amber-300 dark:border-slate-600 text-xs">
+          <div className="flex justify-between">
+            <span className="text-gray-700 dark:text-gray-300">Paused:</span>
+            <span className="font-mono text-gray-700 dark:text-gray-300">{formatElapsedTime(jobTiming.totalPausedDuration, true)}</span>
+          </div>
+        </div>
+      )}
     </div>
+  );
+  
+  return (
+    <Tooltip content={tooltipContent} placement="bottom">
+      <div className="h-7 min-h-7 max-h-7 px-2.5 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-300 dark:border-blue-800 cursor-pointer">
+        <div className="flex items-center justify-center gap-1.5 h-7">
+          <Timer className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+          <span className="text-xs text-blue-700 dark:text-blue-300 font-medium leading-none">
+            {formattedTime}
+          </span>
+        </div>
+      </div>
+    </Tooltip>
   );
 }
 
 interface TokenUsageBadgeProps {
   tokenUsage?: TaskTokenUsage;
+  completedTasks?: Array<{
+    id: string;
+    name: string;
+    tokenUsage?: TaskTokenUsage;
+  }>;
 }
 
 /**
- * TokenUsageBadge - Display total token usage for the job
+ * TokenUsageBadge - Display total token usage for the job with breakdown tooltip
  */
-export function TokenUsageBadge({ tokenUsage }: TokenUsageBadgeProps) {
+export function TokenUsageBadge({ tokenUsage, completedTasks }: TokenUsageBadgeProps) {
   // ✅ Show badge if token usage data is available
   if (!tokenUsage || tokenUsage.totalTokens === 0) {
     return null;
   }
+
+  // Calculate breakdown
+  const tasksTotal = completedTasks?.reduce((sum, task) => {
+    return sum + (task.tokenUsage?.totalTokens || 0);
+  }, 0) || 0;
+
+  // Estimating nodes (detectEnv + decompose) = total - tasks
+  const estimatingNodesTotal = tokenUsage.totalTokens - tasksTotal;
   
-  return (
-    <div className="h-7 min-h-7 max-h-7 px-2.5 rounded-md bg-purple-50 dark:bg-purple-950/30 border border-purple-300 dark:border-purple-800">
-      <div className="flex items-center justify-center gap-1.5 h-7">
-        <Coins className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-        <span className="text-xs text-purple-700 dark:text-purple-300 font-medium leading-none">
+  const tooltipContent = (
+    <div className="space-y-2 min-w-[320px] max-h-[80vh] overflow-y-auto">
+      <div className="font-semibold border-b pb-1.5 border-amber-300 dark:border-slate-600">
+        Token Usage Breakdown
+      </div>
+      
+      {/* Total */}
+      <div className="flex justify-between items-center">
+        <span className="text-gray-800 dark:text-gray-100 font-semibold">Total:</span>
+        <span className="font-mono font-semibold text-lg text-gray-900 dark:text-white">
           {formatTokenUsageCompact(tokenUsage)}
         </span>
       </div>
+      
+      {/* Breakdown = Estimating + Tasks */}
+      <div className="text-xs text-gray-600 dark:text-gray-400 -mt-1 mb-1 italic">
+        = Estimating Phase ({(estimatingNodesTotal / 1000).toFixed(1)}K) + Tasks ({(tasksTotal / 1000).toFixed(1)}K)
+      </div>
+      
+      {/* Estimating Phase (Job-level nodes) */}
+      <div className="pl-2 border-l-2 border-purple-400 dark:border-purple-500">
+        <div className="flex justify-between items-center font-semibold">
+          <span className="text-gray-800 dark:text-gray-100">Estimating Phase:</span>
+          <span className="font-mono text-gray-800 dark:text-gray-100">
+            {(estimatingNodesTotal / 1000).toFixed(1)}K
+          </span>
+        </div>
+      </div>
+      
+      {/* Tasks */}
+      {completedTasks && completedTasks.length > 0 && (
+        <div className="pl-2 space-y-1 border-l-2 border-blue-400 dark:border-blue-500">
+          <div className="flex justify-between items-center font-semibold">
+            <span className="text-gray-800 dark:text-gray-100">Tasks ({completedTasks.length}):</span>
+            <span className="font-mono text-gray-800 dark:text-gray-100">
+              {(tasksTotal / 1000).toFixed(1)}K
+            </span>
+          </div>
+          <div className="pl-2 space-y-1">
+            {completedTasks.map((task) => (
+              <div
+                key={task.id}
+                className="flex justify-between items-center text-sm"
+              >
+                <span className="text-gray-700 dark:text-gray-300 truncate max-w-[200px]" title={task.name}>
+                  • {task.name}
+                </span>
+                <span className="font-mono text-gray-700 dark:text-gray-300">
+                  {task.tokenUsage
+                    ? `${(task.tokenUsage.totalTokens / 1000).toFixed(1)}K`
+                    : '0K'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      
+      {/* Input/Output Split */}
+      <div className="pt-1.5 mt-1.5 border-t border-amber-300 dark:border-slate-600 text-xs space-y-0.5">
+        <div className="flex justify-between">
+          <span className="text-gray-700 dark:text-gray-300">Input:</span>
+          <span className="font-mono text-gray-700 dark:text-gray-300">{(tokenUsage.inputTokens / 1000).toFixed(1)}K</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-700 dark:text-gray-300">Output:</span>
+          <span className="font-mono text-gray-700 dark:text-gray-300">{(tokenUsage.outputTokens / 1000).toFixed(1)}K</span>
+        </div>
+      </div>
     </div>
+  );
+  
+  return (
+    <Tooltip content={tooltipContent} placement="bottom">
+      <div className="h-7 min-h-7 max-h-7 px-2.5 rounded-md bg-purple-50 dark:bg-purple-950/30 border border-purple-300 dark:border-purple-800 cursor-pointer">
+        <div className="flex items-center justify-center gap-1.5 h-7">
+          <Coins className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+          <span className="text-xs text-purple-700 dark:text-purple-300 font-medium leading-none">
+            {formatTokenUsageCompact(tokenUsage)}
+          </span>
+        </div>
+      </div>
+    </Tooltip>
   );
 }
 

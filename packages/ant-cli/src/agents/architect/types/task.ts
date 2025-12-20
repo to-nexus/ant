@@ -30,6 +30,18 @@ export interface TaskTokenUsage {
 }
 
 /**
+ * Token Usage Breakdown (for job-level analytics)
+ */
+export interface TokenUsageBreakdown {
+  detectEnvironment?: TaskTokenUsage;  // detectEnvironment node
+  decompose?: TaskTokenUsage;          // decompose node
+  tasks: {                             // Per-task breakdown
+    [taskId: string]: TaskTokenUsage;
+  };
+  total: TaskTokenUsage;               // Total job usage
+}
+
+/**
  * Base Task Interface
  * Common structure for all job tasks
  */
