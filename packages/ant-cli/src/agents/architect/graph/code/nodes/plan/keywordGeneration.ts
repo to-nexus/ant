@@ -45,12 +45,14 @@ export async function generateTaskKeywords(
   );
 
   try {
-    const response = await llm.invoke([
-      { role: 'user', content: prompt }
-    ], {
-      temperature: 0.3,
-      maxTokens: 800
-    });
+    // ✅ Use centralized LLM wrapper with automatic token tracking
+    const { invokeWithTracking } = await import('../../../common/llmHelpers');
+    const response = await invokeWithTracking(
+      llm,
+      [{ role: 'user', content: prompt }],
+      state as any,
+      { temperature: 0.3, maxTokens: 800 }
+    );
 
     const jsonMatch = response.match(/```json\n([\s\S]*?)\n```/) ||
                       response.match(/\{[\s\S]*\}/);

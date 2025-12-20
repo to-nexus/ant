@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { Badge } from '@/presentation/components/common/badge';
 import { TaskTimer } from './TaskTimer';
-import { ChevronDown, ChevronRight, Timer } from 'lucide-react';
+import { ChevronDown, ChevronRight, Timer, Coins } from 'lucide-react';
 import { UnifiedTask } from '@/domain/models/task';
 import { useStore } from '@/domain/store';
 import { statusColors, badgeColors, cn } from '@/shared/utils/design-system';
+import { formatTokenUsageCompact } from '@/shared/utils/tokenUtils';
 
 interface TaskCardProps {
   task: UnifiedTask;
@@ -165,7 +166,7 @@ export function TaskCard({
               {typeBadge.label}
             </Badge>
             
-            {/* Timer - Show for in-progress and completed */}
+            {            /* Timer - Show for in-progress and completed */}
             {status === 'in-progress' && (
               <span className={cn('font-medium flex items-center gap-1 text-xs flex-shrink-0', colors.text.secondary)}>
                 <Timer className="w-3.5 h-3.5" />
@@ -176,6 +177,14 @@ export function TaskCard({
               <span className={cn('flex items-center gap-1 text-xs flex-shrink-0', colors.text.secondary)}>
                 <Timer className="w-3.5 h-3.5" />
                 <TaskTimer timing={task.timing} />
+              </span>
+            )}
+            
+            {/* Token Usage - Show for completed tasks */}
+            {status === 'completed' && task.tokenUsage && (
+              <span className={cn('flex items-center gap-1 text-xs flex-shrink-0', colors.text.secondary)}>
+                <Coins className="w-3.5 h-3.5" />
+                {formatTokenUsageCompact(task.tokenUsage)}
               </span>
             )}
           </div>

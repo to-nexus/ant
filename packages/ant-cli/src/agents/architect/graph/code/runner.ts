@@ -222,10 +222,16 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
     // This ensures state is correct even if learn node fails
     if (state.currentTask && state.taskQueue) {
       console.log(`📥 Moving current task "${state.currentTask.name}" back to front of queue`);
-      // Create a new task queue with currentTask at the front
+      
+      // ✅ Mark task as interrupted and pause timing
+      const { TaskTimingHelper } = await import('./state');
+      const pausedTask = TaskTimingHelper.pauseTask(state.currentTask);
+      pausedTask.interrupted = true;
+      
+      // Create a new task queue with pausedTask at the front
       const { TaskQueue } = await import('./state');
       const newQueue = new TaskQueue<CodeTask>();
-      newQueue.push(state.currentTask);
+      newQueue.push(pausedTask);
       // ✅ Filter out duplicate task IDs to prevent duplicates
       state.taskQueue.getAll().forEach((task: any) => {
         if (task.id !== state.currentTask!.id) {

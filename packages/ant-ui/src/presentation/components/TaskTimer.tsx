@@ -1,14 +1,8 @@
 import { useEffect, useState } from 'react';
+import { TaskTiming } from '@/domain/models/types';
 
 interface TaskTimerProps {
-  timing?: {
-    startedAt?: string;
-    completedAt?: string;
-    pausedAt?: string;
-    resumedAt?: string;
-    totalPausedDuration: number;
-    elapsedTime?: number;
-  };
+  timing?: TaskTiming;
   isRunning?: boolean;
   className?: string;
 }

@@ -1,3 +1,5 @@
+import { TaskTiming, TaskTokenUsage, JobTiming } from './types';
+
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'failed' | 'blocked';
 
 export type TaskType = 
@@ -26,15 +28,9 @@ export interface Task {
   notes?: string;
   tags?: string[];
   priority?: 'low' | 'medium' | 'high' | 'critical' | number;
-  timing?: {
-    startedAt?: string;
-    completedAt?: string;
-    pausedAt?: string;
-    resumedAt?: string;
-    totalPausedDuration: number;
-    elapsedTime?: number;
-  };
+  timing?: TaskTiming;
   completed?: boolean;
+  tokenUsage?: TaskTokenUsage;
 }
 
 export type SessionStatus = 'active' | 'paused' | 'completed' | 'cancelled';
@@ -82,14 +78,10 @@ export interface SessionState {
   interruption?: InterruptionDetails;
   
   // ✅ Job Timing
-  jobTiming?: {
-    startedAt: string;
-    lastResumedAt?: string;
-    pausedAt?: string;
-    completedAt?: string;
-    totalPausedDuration: number;
-    estimatingDuration?: number;
-  };
+  jobTiming?: JobTiming;
+  
+  // ✅ Job Token Usage
+  tokenUsage?: TaskTokenUsage;
   
   // Recursion Tracking
   recursionCount?: number;

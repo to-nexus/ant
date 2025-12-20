@@ -238,7 +238,8 @@ export class KanbanService {
           recursionCount: sessionState.recursionCount || 0,
           recursionLimit: sessionState.recursionLimit || finalLimit,
           totalElapsedTime,
-          jobTiming: sessionState.jobTiming
+          jobTiming: sessionState.jobTiming,
+          tokenUsage: sessionState.tokenUsage
         };
       }
       
@@ -273,7 +274,8 @@ export class KanbanService {
         pausedDueToLimit: sessionState.pausedDueToLimit || false,
         tasksRemaining: sessionState.tasksRemaining || 0,
         totalElapsedTime,
-        jobTiming: sessionState.jobTiming
+        jobTiming: sessionState.jobTiming,
+        tokenUsage: sessionState.tokenUsage
       };
       console.log(`[KanbanService] 🔍 LIVE DATA recursionLimit: ${result.recursionLimit} (snapshot: ${liveSnapshot.recursionLimit}, env: ${finalLimit}, raw env: ${process.env.RECURSION_LIMIT})`);
       return result;
@@ -310,7 +312,8 @@ export class KanbanService {
         recursionCount: sessionState.recursionCount || 0,
         recursionLimit: sessionState.recursionLimit || finalLimit,
         totalElapsedTime,
-        jobTiming: sessionState.jobTiming
+        jobTiming: sessionState.jobTiming,
+        tokenUsage: sessionState.tokenUsage
       };
     }
     
@@ -353,7 +356,8 @@ export class KanbanService {
       recursionCount: sessionState.recursionCount,
       recursionLimit: sessionState.recursionLimit || finalLimit,  // ✅ FIXED: Fallback to env var
       totalElapsedTime,
-      jobTiming: sessionState.jobTiming
+      jobTiming: sessionState.jobTiming,
+      tokenUsage: sessionState.tokenUsage
     };
   }
 }

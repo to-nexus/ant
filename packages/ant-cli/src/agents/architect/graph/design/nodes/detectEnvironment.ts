@@ -122,6 +122,8 @@ export async function detectEnvironment(
 
     // LLM call (single turn, no extra streaming orchestrator)
     let response = "";
+    let capturedUsage: any = undefined;
+    
     for await (const event of llm.stream(
       [{ role: "user", content: prompt }],
       {
@@ -132,6 +134,20 @@ export async function detectEnvironment(
       if (event.text) {
         response += event.text;
       }
+      
+      // ✅ Extract token usage from done event
+      const { extractTokenUsageFromStreamEvent } = await import("../../common/llmHelpers");
+      const usage = extractTokenUsageFromStreamEvent(event);
+      if (usage) {
+        capturedUsage = usage;
+      }
+    }
+    
+    // ✅ Accumulate token usage to job-level (not task-level, as detectEnvironment runs before tasks)
+    if (capturedUsage) {
+      const { accumulateTokenUsage } = await import("../../common/llmHelpers");
+      accumulateTokenUsage(state as any, capturedUsage, { taskLevel: false, jobLevel: true });
+      console.log(`   Tokens: ${capturedUsage.totalTokens} total (${capturedUsage.inputTokens} in, ${capturedUsage.outputTokens} out)`);
     }
 
     // ✅ Transform and display response using SpecialTagTransformer (now supports Design job)
@@ -168,13 +184,14 @@ export async function detectEnvironment(
     
     if (parsed.environment === "frontend") {
       console.log("   Environment-specific injections: Frontend Guide");
-      console.log("   Output file: fe-system-design.md");
+      console.log("   Strategy: Single document (fe-system-design.md)");
     } else if (parsed.environment === "backend") {
       console.log("   Environment-specific injections: Backend Guide");
-      console.log("   Output file: be-system-design.md");
+      console.log("   Strategy: Single document (be-system-design.md)");
     } else {
       console.log("   Environment-specific injections: Frontend + Backend Guides");
-      console.log("   Output file: system-design.md (unified)");
+      console.log("   Strategy: Contract-first (api-contract.md, fe-system-design.md, be-system-design.md) or Unified (system-design.md)");
+      console.log("   → Final decision will be made during task decomposition");
     }
     console.log();
 
@@ -183,6 +200,7 @@ export async function detectEnvironment(
       designDomainReasoning: parsed.domainReasoning,
       designEnvironment: parsed.environment,
       designEnvironmentReasoning: parsed.environmentReasoning,
+      tokenUsage: (state as any).tokenUsage,  // ✅ CRITICAL: Return accumulated job-level token usage
     };
   } finally {
     // Ensure workflow node is marked as completed in UI

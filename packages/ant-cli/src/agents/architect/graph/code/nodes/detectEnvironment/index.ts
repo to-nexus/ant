@@ -74,6 +74,8 @@ export async function detectEnvironment(
   await chatAPI.showChatStatus('placeholder');
   
   let response = '';
+  let capturedUsage: any = undefined;
+  
   for await (const event of llm.stream([
     { role: 'user', content: prompt }
   ], {
@@ -83,6 +85,20 @@ export async function detectEnvironment(
     if (event.text) {
       response += event.text;
     }
+    
+    // ✅ Extract token usage from done event
+    const { extractTokenUsageFromStreamEvent } = await import('../../../common/llmHelpers');
+    const usage = extractTokenUsageFromStreamEvent(event);
+    if (usage) {
+      capturedUsage = usage;
+    }
+  }
+  
+  // ✅ Accumulate token usage to job-level (not task-level, as detectEnvironment runs before tasks)
+  if (capturedUsage) {
+    const { accumulateTokenUsage } = await import('../../../common/llmHelpers');
+    accumulateTokenUsage(state as any, capturedUsage, { taskLevel: false, jobLevel: true });
+    console.log(`   Tokens: ${capturedUsage.totalTokens} total (${capturedUsage.inputTokens} in, ${capturedUsage.outputTokens} out)`);
   }
   
   // Transform and display

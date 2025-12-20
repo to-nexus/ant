@@ -103,12 +103,14 @@ export async function generatePlanText(
     violationsText
   );
   
-  const response = await llmToUse.invoke([
-    { role: 'user', content: prompt }
-  ], {
-    temperature: 0.5,
-    maxTokens: 2000
-  });
+  // ✅ Use centralized LLM wrapper with automatic token tracking
+  const { invokeWithTracking } = await import('../../../common/llmHelpers');
+  const response = await invokeWithTracking(
+    llmToUse,
+    [{ role: 'user', content: prompt }],
+    state as any,
+    { temperature: 0.5, maxTokens: 2000 }
+  );
   
   const planMatch = response.match(/<plan>([\s\S]*?)<\/plan>/);
   const planText = planMatch ? planMatch[1].trim() : response.trim();

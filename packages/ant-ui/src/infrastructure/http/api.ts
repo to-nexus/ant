@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 import { Session } from '@/domain/models/session';
+import { TaskTiming, TaskTokenUsage, JobTiming } from '@/domain/models/types';
 
 // Backend URLs from environment
 const LOCAL_BACKEND_BASE = import.meta.env.VITE_LOCAL_BACKEND_BASE || 'http://localhost:4000/api';
@@ -534,27 +535,13 @@ export interface QueueStatus {
     name: string;
     type: string;
     status: string;
-    timing?: {
-      startedAt?: string;
-      completedAt?: string;
-      pausedAt?: string;
-      resumedAt?: string;
-      totalPausedDuration: number;
-      elapsedTime?: number;
-    };
+    timing?: TaskTiming;
   } | null;
   queue: Array<{
     name: string;
     type: string;
     status: string;
-    timing?: {
-      startedAt?: string;
-      completedAt?: string;
-      pausedAt?: string;
-      resumedAt?: string;
-      totalPausedDuration: number;
-      elapsedTime?: number;
-    };
+    timing?: TaskTiming;
   }>;
   totalRemaining: number;
   estimatingMessage?: string | null;
@@ -677,14 +664,8 @@ export interface KanbanTask {
   priority?: number;
   status?: 'todo' | 'in-progress' | 'completed';
   completed?: boolean;
-  timing?: {
-    startedAt?: string;
-    completedAt?: string;
-    pausedAt?: string;
-    resumedAt?: string;
-    totalPausedDuration: number;
-    elapsedTime?: number;
-  };
+  timing?: TaskTiming;
+  tokenUsage?: TaskTokenUsage;
 }
 
 export interface KanbanData {
@@ -705,15 +686,11 @@ export interface KanbanData {
   recursionLimit?: number;
   
   // ✨ Job Timing
-  totalElapsedTime?: number;  // Total elapsed time in milliseconds (excluding paused time)
-  jobTiming?: {
-    startedAt: string;
-    lastResumedAt?: string;
-    pausedAt?: string;
-    completedAt?: string;
-    totalPausedDuration: number;
-    estimatingDuration?: number;
-  };
+  totalElapsedTime?: number;
+  jobTiming?: JobTiming;
+  
+  // ✅ Token usage tracking (for entire job)
+  tokenUsage?: TaskTokenUsage;
 }
 
 /**

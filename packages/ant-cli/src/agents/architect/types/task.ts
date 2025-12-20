@@ -19,6 +19,17 @@ export interface TaskTiming {
 }
 
 /**
+ * Task Token Usage Information
+ */
+export interface TaskTokenUsage {
+  inputTokens: number;         // Total input tokens for this task
+  outputTokens: number;        // Total output tokens for this task
+  totalTokens: number;         // Total tokens (input + output)
+  cacheReadTokens?: number;    // Total cached tokens read (Anthropic)
+  cacheCreationTokens?: number; // Total cached tokens created (Anthropic)
+}
+
+/**
  * Base Task Interface
  * Common structure for all job tasks
  */
@@ -31,6 +42,7 @@ export interface BaseTask {
   completed?: boolean;             // Whether done
   interrupted?: boolean;           // Whether interrupted
   timing?: TaskTiming;             // Timing information
+  tokenUsage?: TaskTokenUsage;     // Token usage information
 }
 
 /**

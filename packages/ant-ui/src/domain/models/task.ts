@@ -8,6 +8,8 @@
  * Session data has: id, name, type, description, priority, etc.
  */
 
+import { TaskTokenUsage, TaskTiming } from './types';
+
 export interface UnifiedTask {
   // Core fields (always present)
   name: string;
@@ -23,14 +25,10 @@ export interface UnifiedTask {
   interrupted?: boolean;  // Whether this task was interrupted (stopped manually)
   
   // Live timing data (optional)
-  timing?: {
-    startedAt?: string;
-    completedAt?: string;
-    pausedAt?: string;
-    resumedAt?: string;
-    totalPausedDuration: number;
-    elapsedTime?: number;
-  };
+  timing?: TaskTiming;
+  
+  // ✅ Token usage data (optional)
+  tokenUsage?: TaskTokenUsage;
   
   // Additional metadata
   assignee?: string;

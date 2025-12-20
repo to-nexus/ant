@@ -181,49 +181,42 @@ export async function codeGen(
   // ✅ Check if this is a continuation after tool calling
   const isAfterToolCall = state.conversationHistory && state.conversationHistory.length > 0;
   
+  // ✅ Track token usage for this LLM call
+  let capturedUsage: any = undefined;
+  
   try {
     // ✅ Single stream (no loop!)
     for await (const event of llmToUse.stream(messages, {
       tools,
       maxTokens: 16000,
-      enableThinking: !isAfterToolCall,  // ✅ Disable thinking after tool call
+      enableThinking: !isAfterToolCall,
     })) {
-      // ✅ Pass to orchestrator for XML parsing (MD file streaming)
       await orchestrator.processEvent(event);
       
-      // Thinking (UI only - NOT included in conversation history!)
       if (event.type === 'thinking') {
-        thinking += event.thinking || '';  // ✅ For UI display only
-        // Don't send directly - orchestrator handles it
+        thinking += event.thinking || '';
       }
       
-      // Text
       if (event.type === 'text') {
-        textResponse += event.text || '';  // ✅ NEW: text 필드 사용
-        // Don't send directly - orchestrator handles it
+        textResponse += event.text || '';
       }
       
-      // Tool call (감지만, 실행 안함!)
       if (event.type === 'tool_use' && event.toolUse) {
         const { id, name, input } = event.toolUse;
         
-        // 🎯 CRITICAL: Only send FIRST tool call to UI (Standard Tool Calling pattern)
-        // Other tool calls are collected but not shown to user (they'll be dropped by tool node)
         if (toolCalls.length === 0) {
           await chatAPI.sendLLMEvent(event);
         }
         
-        toolCalls.push({
-          id,
-          name,
-          args: input,
-        });
+        toolCalls.push({ id, name, args: input });
       }
       
-      // Done (just mark it, don't propagate yet - files might still be saving!)
       if (event.type === 'done') {
         isDone = true;
-        // ❌ DO NOT propagate yet! Wait for files to be saved first
+        
+        // ✅ Extract token usage
+        const { extractTokenUsageFromStreamEvent } = await import('../../../common/llmHelpers');
+        capturedUsage = extractTokenUsageFromStreamEvent(event);
       }
     }
     
@@ -287,6 +280,15 @@ export async function codeGen(
     console.log(`   Text: ${textResponse.length} chars`);
     console.log(`   Tool calls: ${toolCalls.length}`);
     console.log(`   Files: ${files.length}`);
+    if (capturedUsage) {
+      console.log(`   Tokens: ${capturedUsage.totalTokens} total (${capturedUsage.inputTokens} in, ${capturedUsage.outputTokens} out)`);
+      if (capturedUsage.cacheReadTokens) {
+        console.log(`   Cache read: ${capturedUsage.cacheReadTokens} tokens`);
+      }
+      if (capturedUsage.cacheCreationTokens) {
+        console.log(`   Cache creation: ${capturedUsage.cacheCreationTokens} tokens`);
+      }
+    }
     
     // ✅ Explain mode validation
     if (isExplainMode && toolCalls.length > 0) {
@@ -307,12 +309,13 @@ export async function codeGen(
     
     return {
       llmResponse: {
-        thinking,         // ✅ For UI display only (not in conversation history)
-        textResponse,     // ✅ For conversation history (if no tool calls)
-        toolCalls,        // ✅ For tool execution
-        done: toolCalls.length === 0,  // ✅ Tool calls 없을 때만 done = true
+        thinking,
+        textResponse,
+        toolCalls,
+        done: toolCalls.length === 0,
+        tokenUsage: capturedUsage,
       },
-      fileErrors: fileErrors.length > 0 ? fileErrors : undefined,  // ✅ 파일 작업 실패를 validation으로 전달
+      fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
     };
   } catch (error) {
     console.error('[ERROR] ❌ [CodeGen] Error during reasoning:');

@@ -6,7 +6,8 @@
  */
 
 import OpenAI from 'openai';
-import { LLMClient, LLMStreamEvent, ToolDefinition } from '../../../core/ports/llm';
+import { LLMClient, LLMStreamEvent, ToolDefinition, LLMInvokeResult } from '../../../core/ports/llm';
+import { TaskTokenUsage } from '../../../agents/architect/types/task';
 import { withRetryStream } from '../../../core/utils/retry';
 
 export class OpenAILLMClient implements LLMClient {
@@ -41,6 +42,11 @@ export class OpenAILLMClient implements LLMClient {
   }
 
   async invoke(messages: Array<{ role: string; content: string }>): Promise<string> {
+    const result = await this.invokeWithUsage(messages);
+    return result.content;
+  }
+  
+  async invokeWithUsage(messages: Array<{ role: string; content: string }>, options?: Record<string, any>): Promise<import('../../../core/ports/llm').LLMInvokeResult> {
     // ✅ LOG: Actual API call with model name
     console.log(`🔥 [API CALL] provider=openai model=${this.modelName} method=invoke messages=${messages.length}`);
     
@@ -51,10 +57,19 @@ export class OpenAILLMClient implements LLMClient {
         content: m.content,
       })),
       temperature: 0.7,
-      max_tokens: 16000,
+      max_tokens: options?.maxTokens || 16000,
     });
 
-    return response.choices[0]?.message?.content || '';
+    const content = response.choices[0]?.message?.content || '';
+    
+    // ✅ Extract token usage
+    const usage = response.usage ? {
+      inputTokens: response.usage.prompt_tokens || 0,
+      outputTokens: response.usage.completion_tokens || 0,
+      totalTokens: response.usage.total_tokens || 0,
+    } : undefined;
+    
+    return { content, usage };
   }
 
   /**
@@ -157,6 +172,9 @@ export class OpenAILLMClient implements LLMClient {
   private async *_processChatCompletionsStream(stream: any): AsyncIterable<LLMStreamEvent> {
     // ✅ Buffer for accumulating tool call arguments (OpenAI streams them incrementally)
     const toolCallBuffers = new Map<number, { id: string; name: string; arguments: string }>();
+    
+    // ✅ Track token usage
+    let tokenUsage: TaskTokenUsage | undefined;
 
     for await (const chunk of stream) {
       const content = chunk.choices[0]?.delta?.content;
@@ -206,6 +224,15 @@ export class OpenAILLMClient implements LLMClient {
 
       // Check for finish - emit accumulated tool calls
       if (chunk.choices[0]?.finish_reason) {
+        // ✅ Capture usage from final chunk
+        if (chunk.usage) {
+          tokenUsage = {
+            inputTokens: chunk.usage.prompt_tokens || 0,
+            outputTokens: chunk.usage.completion_tokens || 0,
+            totalTokens: chunk.usage.total_tokens || 0,
+          };
+        }
+        
         // Emit all accumulated tool calls
         for (const [index, buffer] of toolCallBuffers.entries()) {
           if (buffer.name && buffer.arguments) {
@@ -236,6 +263,7 @@ export class OpenAILLMClient implements LLMClient {
         yield {
           type: 'done',
           done: true,
+          usage: tokenUsage,  // ✅ Include final token usage
           metadata: {
             provider: 'openai',
             model: this.modelName,
@@ -272,6 +300,14 @@ export class OpenAILLMClient implements LLMClient {
     });
 
     const content = response.choices[0]?.message?.content || '{}';
+    
+    // ✅ Token usage is tracked in invokeWithUsage, but for structured output we need to track it separately
+    // Since invokeStructured doesn't use invokeWithUsage, we'll log token usage here but won't return it
+    // This is acceptable because invokeStructured is used less frequently (mainly in decompose)
+    if (response.usage) {
+      console.log(`   Tokens: ${response.usage.total_tokens} total (${response.usage.prompt_tokens} in, ${response.usage.completion_tokens} out)`);
+    }
+    
     return JSON.parse(content) as T;
   }
 }

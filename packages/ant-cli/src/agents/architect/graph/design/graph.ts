@@ -28,15 +28,30 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
     await state.deps.workflowUpdate.enterNode(state._httpJobId, 'checkTaskStatus', taskInfo);
   }
   
-  // ✅ Current task completed successfully (design has no validation failures)
+  // ✅ Current task completed successfully
   if (state.currentTask) {
-    // Mark as completed with timing
+    // ✅ Get helpers
     const { TaskTimingHelper } = await import('../code/state');
-    const completedTask = TaskTimingHelper.completeTask(state.currentTask);
+    const { getTaskTokenUsage, accumulateTokenUsage } = await import('../common/llmHelpers');
     
+    // ✅ Get task-level token usage
+    const taskTokenUsage = getTaskTokenUsage(state as any);
+    
+    // ✅ Complete task with timing and token usage
+    const completedTask = TaskTimingHelper.completeTask(state.currentTask, taskTokenUsage);
+    
+    // ✅ Accumulate task tokens into job-level tokenUsage
+    if (taskTokenUsage) {
+      accumulateTokenUsage(state as any, taskTokenUsage, { taskLevel: false, jobLevel: true });
+    }
+    
+    // ✅ Log completion
     if (completedTask.timing?.elapsedTime) {
       const formattedTime = TaskTimingHelper.formatElapsedTime(completedTask.timing.elapsedTime);
       console.log(`✅ Task "${completedTask.name}" completed in ${formattedTime}!`);
+      if (completedTask.tokenUsage) {
+        console.log(`   Tokens: ${completedTask.tokenUsage.totalTokens} total (${completedTask.tokenUsage.inputTokens} in, ${completedTask.tokenUsage.outputTokens} out)`);
+      }
     } else {
       console.log(`✅ Task "${completedTask.name}" completed!`);
     }
@@ -69,6 +84,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
               filesToDelete: state.filesToDelete || [],
               jobId: (state as any).jobId,
               jobTiming: (state as any).jobTiming,
+              tokenUsage: (state as any).tokenUsage,  // ✅ Save job-level token usage
               overrideDirective: state.overrideDirective,  // ✅ Save chat-initiated directive
               chatSource: state.chatSource  // ✅ Save chat source flag
             }
@@ -110,6 +126,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       currentTask: undefined,
       conversationHistory: [],  // ✅ CRITICAL: Reset conversation history between tasks
       files: [],  // ✅ CRITICAL: Reset files for next task (each task generates fresh)
+      tokenUsage: (state as any).tokenUsage,  // ✅ CRITICAL: Return accumulated job-level token usage
     };
   }
   
@@ -151,6 +168,10 @@ export function buildDesignGraph() {
       // ✅ Job tracking (for timing and continuity)
       jobId: null as any,
       jobTiming: null as any,
+      
+      // ✅ Token usage tracking (task-level and job-level)
+      _currentTaskTokenUsage: null as any,  // Reset per task
+      tokenUsage: null as any,              // Job-level accumulation
       
       // Execution
       planText: null as any,

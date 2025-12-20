@@ -326,6 +326,8 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
       }> 
     };
     
+    // ⚠️ NOTE: invokeStructured doesn't return token usage (Anthropic limitation)
+    // Token tracking only works with fallback invoke/stream methods
     if (llmToUse.invokeStructured) {
       response = await llmToUse.invokeStructured(
         [{ role: 'user', content: prompt }],
@@ -364,9 +366,21 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
         },
         'design_task_decomposition'
       );
+      
+      // ⚠️ Token tracking not available with invokeStructured
+      console.log(`   ⚠️  Token usage not tracked (invokeStructured limitation)`);
     } else {
-      // Fallback: parse JSON from text response
-      const textResponse = await llmToUse.invoke([{ role: 'user', content: prompt }]);
+      // Fallback: parse JSON from text response with token tracking
+      const result = await llmToUse.invokeWithUsage?.([{ role: 'user', content: prompt }]);
+      const textResponse = result?.content || await llmToUse.invoke([{ role: 'user', content: prompt }]);
+      
+      // ✅ Track token usage from fallback method
+      if (result?.usage) {
+        const { accumulateTokenUsage } = await import('../../../common/llmHelpers');
+        accumulateTokenUsage(state as any, result.usage, { taskLevel: false, jobLevel: true });
+        console.log(`   Tokens: ${result.usage.totalTokens} total (${result.usage.inputTokens} in, ${result.usage.outputTokens} out)`);
+      }
+      
       const jsonMatch = textResponse.match(/\{[\s\S]*"tasks"[\s\S]*\}/);
       if (!jsonMatch) {
         throw new Error('Could not parse task breakdown from LLM response');
@@ -433,6 +447,11 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     console.log(`⏱️  Starting timer for first task: ${firstTask.name}`);
     const currentTask = TaskTimingHelper.startTask(firstTask);
     
+    // ✅ CRITICAL: Reset task-level token usage for first task
+    const { resetTaskTokenUsage } = await import('../../../common/llmHelpers');
+    resetTaskTokenUsage(state as any);
+    console.log(`🔄 [Design Decompose] Reset task-level token usage for first task`);
+    
     // ✨ Calculate estimating duration
     const finalJobTiming = JobTimingManager.finalizeEstimatingPhase(newJobTiming, estimatingStartTime);
     
@@ -460,7 +479,8 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
               completedTasks: [],
               completedTasksDetails: [],
               jobId: newJobId,
-              jobTiming: finalJobTiming
+              jobTiming: finalJobTiming,
+              tokenUsage: (state as any).tokenUsage  // ✅ Save job-level token usage from decompose
             }
           }
         );

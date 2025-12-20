@@ -3,6 +3,8 @@ import { LLMClient, ChunkPort, SessionPort, GitPort, CodebaseAnalyzerPort, Memor
 import { PromptEngine } from "../../../../core/prompt/engine";
 import { ProjectContext } from "../../types";
 import { DesignTask, TaskQueue } from "../../types/task";
+import { TokenUsage } from '../common/llmHelpers';
+import { JobTiming } from '../common/timing/JobTimingManager';
 
 /**
  * Design Task State
@@ -51,16 +53,8 @@ export interface DesignGraphState extends TaskArtifacts {
   completedTasksDetails?: DesignTask[];  // Full task details for resume
 
   // ✅ Job tracking (for timing and continuity)
-  jobId?: string;  // Current active job ID (persists until completion or reset)
-  jobTiming?: {
-    startedAt: string;              // Job 최초 시작 시간 (Resume 후에도 유지)
-    lastResumedAt?: string;         // 마지막 Resume 시간
-    pausedAt?: string;              // 중단 시간 (Stop 또는 recursion limit)
-    completedAt?: string;           // 완료 시간
-    totalPausedDuration: number;    // 총 일시정지 시간 (ms)
-    estimatingDuration?: number;    // Estimating 단계 소요 시간 (ms, decompose 완료까지)
-    totalElapsedTime?: number;      // 총 실 소요 시간 (ms, 일시정지 제외)
-  };
+  jobId?: string;
+  jobTiming?: JobTiming;
 
   // Execution
   planText: string;
@@ -90,8 +84,12 @@ export interface DesignGraphState extends TaskArtifacts {
     content: string | any[];
   }>;
   
+  // ✅ Token usage (per-turn and job-level)
+  tokenUsage?: TokenUsage;
+  jobTokenUsage?: TokenUsage;
+  
   // Codebase context (for evolution/refactor modes)
-  codeHead?: string;  // ✅ Git HEAD version of codebase
+  codeHead?: string;
   
   // Results (populated by learn node)
   lessons?: string;

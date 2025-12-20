@@ -4,6 +4,7 @@ import { PromptEngine } from "../../../../core/prompt/engine";
 import { ProjectContext } from "../../types";
 import { ProjectCodeContext, ReferenceCodeContext } from "../../../../core/prompt/types/CodeContext";
 import { CodeTask, TaskQueue as BaseTaskQueue } from "../../types/task";
+import { TokenUsage } from '../common/llmHelpers';
 
 // Re-export for convenience (so files can still import TaskQueue from code/state)
 export { TaskQueue } from "../../types/task";
@@ -231,14 +232,15 @@ export interface ArchitectGraphState extends TaskArtifacts {
   
   // ✅ NEW: LLM Response (tool calling 지원)
   llmResponse?: {
-    thinking?: string;           // LLM의 사고 과정 (UI 전용, conversation history에는 포함 안 함!)
-    textResponse?: string;       // 일반 텍스트 응답
-    toolCalls?: Array<{          // 도구 호출 목록
+    thinking?: string;
+    textResponse?: string;
+    toolCalls?: Array<{
       id: string;
       name: string;
       args: Record<string, any>;
     }>;
-    done: boolean;               // 작업 완료 여부
+    done: boolean;
+    tokenUsage?: TokenUsage;
   };
   
   // ✅ NEW: Tool Results (도구 실행 결과)
@@ -345,6 +347,12 @@ export interface ArchitectGraphState extends TaskArtifacts {
   // ✅ Error repetition tracking (internal)
   _errorIsRepeating?: boolean;  // Flag to indicate if errors are repeating
   
+  // ✅ Token tracking for current task (internal, accumulated across LLM calls within a task)
+  _currentTaskTokenUsage?: TokenUsage;
+  
+  // ✅ Job-level token usage (accumulated across all tasks + decompose/detectEnv)
+  tokenUsage?: TokenUsage;
+  
   // ✅ Recursion tracking
   recursionCount?: number;  // Current iteration count
   recursionLimit?: number;  // Maximum allowed iterations
@@ -412,10 +420,10 @@ export class TaskTimingHelper {
   /**
    * Complete timing for a task
    */
-  static completeTask(task: CodeTask): CodeTask {
+  static completeTask(task: CodeTask, tokenUsage?: TokenUsage): CodeTask {
     if (!task.timing?.startedAt) {
       console.warn('[TaskTiming] Cannot complete task without start time');
-      return { ...task, completed: true };
+      return { ...task, completed: true, tokenUsage };
     }
     
     const completedAt = new Date().toISOString();
@@ -429,7 +437,8 @@ export class TaskTimingHelper {
         ...task.timing,
         completedAt,
         elapsedTime
-      }
+      },
+      tokenUsage  // ✅ Include token usage
     };
   }
   

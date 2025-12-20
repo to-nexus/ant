@@ -113,9 +113,10 @@ export async function docGen(
   // ✅ 6. Collect LLM output
   let thinking = '';
   let textResponse = '';
+  let capturedUsage: any = undefined;
   
   // ✅ Calculate maxTokens based on task line budget
-  let maxTokens = 16000;  // Default for small tasks
+  let maxTokens = 16000;
   
   if (state.currentTask?.description) {
     const lineMatch = state.currentTask.description.match(/MAX (\d+) lines/i);
@@ -154,8 +155,11 @@ export async function docGen(
         textResponse += event.text || '';
       }
       
-      // Done
       if (event.type === 'done') {
+        // ✅ Extract token usage
+        const { extractTokenUsageFromStreamEvent } = await import('../../common/llmHelpers');
+        capturedUsage = extractTokenUsageFromStreamEvent(event);
+        
         await chatAPI.sendLLMEvent(event);
       }
     }
@@ -189,10 +193,23 @@ export async function docGen(
     
     console.log(`📝 [DocGen] Conversation history updated (${conversationHistory.length} messages)`);
     
-    // ✅ Return generated files and conversation history
+    // ✅ Accumulate token usage to state
+    if (capturedUsage) {
+      const { accumulateTokenUsage } = await import('../../common/llmHelpers');
+      accumulateTokenUsage(state as any, capturedUsage, { taskLevel: true, jobLevel: true });
+      
+      console.log(`   Tokens: ${capturedUsage.totalTokens} total (${capturedUsage.inputTokens} in, ${capturedUsage.outputTokens} out)`);
+      if (capturedUsage.cacheReadTokens) {
+        console.log(`   Cache read: ${capturedUsage.cacheReadTokens} tokens`);
+      }
+      if (capturedUsage.cacheCreationTokens) {
+        console.log(`   Cache creation: ${capturedUsage.cacheCreationTokens} tokens`);
+      }
+    }
+    
     return {
-      files,  // ✅ Files from XML streaming
-      conversationHistory,  // ✅ CRITICAL: For resume after interruption
+      files,
+      conversationHistory,
     };
   } catch (error) {
     console.error('❌ [DocGen] Error during reasoning:', error);
@@ -305,7 +322,7 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
           type: state.currentTask.type,
           priority: state.currentTask.priority,
           description: state.currentTask.description,
-          targetFile: state.currentTask.targetFile,  // ✅ Include targetFile for template
+          ...(state.currentTask.targetFile && { targetFile: state.currentTask.targetFile }),  // ✅ Conditionally include targetFile
         },
       },
       undefined,

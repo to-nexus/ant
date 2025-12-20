@@ -259,34 +259,4 @@ async function login(req, res) {  ← This is full implementation code!
 
 ---
 
-## 🎮 Game-Specific Constraint
-
-**If this is a game backend:**
-
-**ALLOWED in Backend Design**:
-- ✅ Game state management (server-authoritative game loop)
-- ✅ Game logic (collision detection, score calculation, win conditions)
-- ✅ State synchronization (broadcast strategy, tick rate)
-- ✅ Matchmaking logic (room creation, player matching)
-
-**FORBIDDEN**:
-- ❌ Detailed physics formulas (high-level only: "detect collision → adjust position")
-- ❌ Full state machine implementations (describe states, not every transition)
-
-**Example:**
-```markdown
-### Game Room Management
-- RoomService.createRoom(config): Creates room, initializes game state
-- GameEngine.update(roomId, inputs): Applies inputs, updates state, detects collisions
-- BroadcastService.syncState(roomId, state): Emits state to all clients via WebSocket
-
-### Game Loop (Server-Authoritative)
-- 60 tick/sec fixed update rate
-- Accumulate player inputs per tick
-- GameEngine processes inputs → new state
-- Broadcast state to clients
-```
-
----
-
 **Purpose**: This guide ensures be-system-design.md focuses on HOW to build the backend architecture that implements the API contract, without duplicating interface definitions.

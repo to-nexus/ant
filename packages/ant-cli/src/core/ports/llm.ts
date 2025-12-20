@@ -3,6 +3,8 @@
  * Interface for Large Language Model interactions
  */
 
+import { TaskTokenUsage } from '../../agents/architect/types/task';
+
 /**
  * LLM Stream Event Types
  * 
@@ -74,6 +76,9 @@ export interface LLMStreamEvent {
   // ---- Done ----
   done?: boolean;             // Stream complete flag (type === 'done')
   
+  // ---- Usage ----
+  usage?: TaskTokenUsage;
+  
   // ---- Metadata ----
   metadata?: {
     model?: string;           // Model name (e.g. "claude-3-5-sonnet")
@@ -103,8 +108,22 @@ export interface ToolDefinition {
   };
 }
 
+/**
+ * LLM invocation result with token usage
+ */
+export interface LLMInvokeResult {
+  content: string;
+  usage?: TaskTokenUsage;
+}
+
 export interface LLMClient {
   invoke(messages: Array<{ role: string; content: string }>, options?: Record<string, any>): Promise<string>;
+  
+  /**
+   * Invoke with token usage tracking
+   * Returns both content and token usage information
+   */
+  invokeWithUsage?(messages: Array<{ role: string; content: string }>, options?: Record<string, any>): Promise<LLMInvokeResult>;
   
   /**
    * 🎯 Unified streaming interface
