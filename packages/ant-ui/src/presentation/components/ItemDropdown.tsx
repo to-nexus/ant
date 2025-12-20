@@ -58,13 +58,6 @@ export function ItemDropdown({
   const [isCreating, setIsCreating] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // ✅ 로딩 상태 변경 감지
-  useEffect(() => {
-    if (title === 'Features') {
-      console.log('[ItemDropdown] 📊 playButtonLoading changed:', playButtonLoading);
-    }
-  }, [playButtonLoading, title]);
-
   // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -271,10 +264,7 @@ export function ItemDropdown({
                 }
               >
                 {playButtonLoading ? (
-                  <>
-                    {console.log('[ItemDropdown] 🔄 Rendering Loader2 spinner!')}
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  </>
+                  <Loader2 className="h-4 w-4 animate-spin" />
                 ) : isPlaying ? (
                   <Square className="h-4 w-4" />
                 ) : (

@@ -638,6 +638,7 @@ async function handleRunCommand(
   const mergeIndex = await chatAPI.commandStart(command);
   
   // Detect long-running server commands
+  // ✅ FIXED: Check anywhere in command (not just start) to handle "cd ... && npm run dev"
   const longRunningPatterns = [
     /npm\s+run\s+dev\b/,
     /npm\s+run\s+serve\b/,
@@ -654,9 +655,11 @@ async function handleRunCommand(
     /nodemon\b/,
     /npx\s+vite\b/,
     /npx\s+next\s+dev\b/,
-    /npx\s+react-scripts\s+start\b/
+    /npx\s+react-scripts\s+start\b/,
+    /vite\s*$/,              // vite (bare command)
   ];
   
+  // ✅ FIXED: Test against full command (handles "cd dir && npm run dev")
   const isLongRunning = longRunningPatterns.some(pattern => pattern.test(command));
   
   // Get project path
@@ -684,11 +687,19 @@ async function handleRunCommand(
       const { spawn } = await import('child_process');
       
       return new Promise((resolve, reject) => {
-        const child = spawn(command, {
+        // ✅ FIXED: Use shell to execute compound commands (cd ... && ...)
+        const isWindows = process.platform === 'win32';
+        const shell = isWindows ? 'cmd' : 'sh';
+        const shellArgs = isWindows ? ['/c', command] : ['-c', command];
+        
+        console.log(`   🐚 Spawning: ${shell} ${shellArgs[0]} "${command}"`);
+        
+        const child = spawn(shell, shellArgs, {
           cwd: workingDir,
-          shell: true,
           stdio: ['ignore', 'pipe', 'pipe']
         });
+        
+        console.log(`   📋 Process spawned with PID: ${child.pid}`);
         
         let stdout = '';
         let stderr = '';
@@ -739,7 +750,19 @@ async function handleRunCommand(
         child.on('error', (err) => {
           hasError = true;
           stderr += err.message;
-          console.error(`[ERROR] Process error: ${err.message}`);
+          console.error(`   ❌ [SPAWN ERROR] ${err.message}`);
+          
+          // ✅ Immediate rejection for spawn errors (command not found, etc.)
+          safeReject(new Error(`❌ FAILED TO SPAWN PROCESS: ${command}
+
+Spawn error: ${err.message}
+
+This usually means:
+- Command not found in PATH
+- Permission denied
+- Invalid working directory
+
+Working directory: ${workingDir}`));
         });
         
         // ✅ Early error detection: if error detected within 3 seconds, likely startup failure
