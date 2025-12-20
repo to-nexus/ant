@@ -263,6 +263,9 @@ export interface SessionState {
     totalElapsedTime?: number;      // 총 실 소요 시간 (ms, 일시정지 제외)
   };
   
+  // ✅ Token usage tracking (for entire job)
+  tokenUsage?: import('../agents/architect/types/task').TaskTokenUsage;
+  
   // ✅ Project Code Context (for LLM RAG)
   projectCodeContext?: {
     source: 'plan' | 'stackTrace' | 'semantic';

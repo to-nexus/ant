@@ -1,5 +1,6 @@
 import { Timer, Brain } from 'lucide-react';
 import { TaskTimer } from '../TaskTimer';
+import { JobTiming } from '@/domain/models/types';
 import { KanbanStatusBanner } from './KanbanStatusBanner';
 
 /**
@@ -39,12 +40,7 @@ function ColumnHeader({ icon, title, count }: { icon: string; title: string; cou
 }
 
 interface KanbanEstimatingProps {
-  jobTiming?: {
-    startedAt?: string;
-    completedAt?: string;
-    pausedAt?: string;
-    totalPausedDuration?: number;
-  };
+  jobTiming?: JobTiming;
 }
 
 /**

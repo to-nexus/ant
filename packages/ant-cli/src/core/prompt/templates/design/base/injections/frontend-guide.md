@@ -48,32 +48,31 @@ All API calls use types defined in the contract.
 NO DTOs are redefined in this document.
 ```
 
-### 2. Component Architecture
+### 2. Component Architecture & Presentation Boundaries
 
-**Component Hierarchy:**
-- Page components (top-level routes)
-- Container components (data fetching, business logic)
-- Presentational components (pure UI, props-driven)
+**Presentation Layer Structure:**
+- **Screen/Page Boundaries**: Top-level route handlers; orchestrate screen flows
+- **Form/Input Boundaries**: Capture user intent; emit commands to Application layer
+- **Display Boundaries**: Render Application state as views; no business logic
 
-**For EACH major component, specify:**
-- **Responsibility**: 1 sentence describing WHAT it does
-- **Props interface**: ≤5 key fields with types
+**For EACH boundary, specify:**
+- **Responsibility**: 1 sentence describing WHAT it does (use case or display purpose)
+- **Application Dependencies**: Which Application layer contracts it consumes (services, state, commands)
+- **Flow**: How user actions become Application commands; how Application state becomes views
 
-**Example:**
-```markdown
-### LoginPage
-**Responsibility**: Handles user authentication flow and redirects on success
+**Critical Rules:**
+- ❌ DO NOT invent component names (`LoginPage`, `UserProfile`, `NewsCard`)
+- ❌ DO NOT specify props/interfaces (`onSuccess`, `userId`, `items`)
+- ❌ DO NOT describe component hierarchies or children
+- ❌ DO NOT mention framework hooks or lifecycle events
+- ✅ DESCRIBE responsibilities using domain/use-case terms
+- ✅ REFERENCE Application layer contracts by their architectural roles
+- ✅ FOCUS on "what happens when user acts" and "what state drives this view"
 
-**Interface** (props):
-- `onLoginSuccess: (user: User) => void` - Callback after successful login
-- `redirectTo?: string` - Optional redirect path after login
-
-**Children**:
-- LoginForm - Captures credentials, validates, submits
-- ErrorDisplay - Shows authentication errors
-```
-
-**Focus**: Component purpose and contract (props), NOT implementation (framework hooks, lifecycle, handlers)
+**Self-Test:**
+- "Did I name a specific component YOU invented?" → DELETE IT
+- "Did I describe a boundary's responsibility without naming it?" → CORRECT
+- "Could this work with any UI framework?" → CORRECT
 
 ### 3. State Management
 
@@ -139,55 +138,47 @@ NO DTOs are redefined in this document.
 - ❌ YOU chose implementation library (axios vs fetch) → Don't document (detail)
 - ❌ YOU designed API client class structure → Describe abstractly only
 
-**API Client Pattern:**
-```markdown
-### API Client Architecture
-**Pattern**: Type-safe wrapper functions around fetch/HTTP client
+**API Client Architecture Pattern:**
+- **Shared Infrastructure Responsibilities**:
+  - Request/response serialization boundary
+  - Error translation from HTTP to domain error codes
+  - Authentication token attachment policy
+  - Base configuration (URLs, headers) encapsulation
 
-**Shared Logic**:
-- Base URL configuration
-- Request headers (Content-Type, Authorization)
-- Response parsing and error extraction
-- Token attachment for authenticated requests
+- **Error Handling Policy**:
+  - HTTP status codes mapped to domain-level errors
+  - Transient failures (network, timeout) separated from semantic errors (validation, authorization)
+  - Retry policy coordinated with Application layer
+  - Error propagation to Presentation layer (error boundaries or state)
 
-**Error Handling**:
-- Typed error wrapper (status code, error code, message)
-- Errors propagate to error boundaries or state
-- Retry logic for transient failures
+- **For Internal Backend APIs** (from `api-contract.md`):
+  - Infrastructure layer provides client boundary
+  - Application layer invokes operations using contract types (e.g., LoginRequest → LoginResponse from api-contract.md §X)
+  - ❌ DO NOT redefine DTOs or endpoints
+  - ✅ REFERENCE contract sections explicitly
+  - ✅ DESCRIBE error mapping policy (401 → authentication failure, 403 → authorization failure)
 
-**For Internal Backend APIs** (from `api-contract.md`):
-- **Auth Operations**:
-  - Login: Uses LoginRequest → LoginResponse (api-contract.md §3.1)
-  - Logout: Uses api-contract.md §3.2
-  
-- **User Operations**:
-  - Get profile: Returns User (api-contract.md §4.1)
-  - Error handling: 401 → trigger token refresh or logout flow
+- **For External Services** (if PRD specifies):
+  - List ONLY services/APIs that PRD explicitly requires
+  - Format: `[Exact Service Name from PRD]: [Purpose from PRD] (PRD §X.Y)`
+  - ❌ DO NOT invent service names or examples
+  - ✅ COPY exact names from PRD
 
-**For External Services** (if PRD specifies):
-- List ONLY services/APIs that PRD explicitly requires
-- Format: `[Service Name from PRD]: [Purpose from PRD] (PRD §X.Y)`
-- Do NOT invent service names - copy exact names from PRD
-- Example format:
-  ```markdown
-  ### External Service Integration (Per PRD)
-  - [Service A per PRD]: [Purpose per PRD] (PRD §X.Y)
-  - [Service B per PRD]: [Purpose per PRD] (PRD §X.Y)
-  - [Service C per PRD]: [Purpose per PRD] (PRD §X.Y)
-  ```
+- **State Synchronization**:
+  - Loading/error/success states owned by Application layer
+  - Presentation observes these states
+  - Optimistic updates policy (if applicable per PRD)
 
-**Loading & Error States**:
-- Per-request loading indicators
-- Global loading state for navigation
-- Retry UI for failed requests
+- **Authentication Flow** (if applicable):
+  - Token refresh triggered on 401 detection
+  - Retry original request or redirect based on refresh result
+  - Session expiry handling coordinated with Application layer
 
-**Token Refresh Strategy** (if backend auth exists):
-- Detect 401 responses
-- Attempt token refresh
-- Retry original request or redirect to login
-```
-
-**Focus**: Integration architecture and policies, not implementation code
+**Critical Rules:**
+- ❌ DO NOT name API client classes or methods YOU invented
+- ❌ DO NOT show code examples with function calls
+- ✅ DESCRIBE responsibilities and error mappings
+- ✅ REFERENCE api-contract.md sections
 
 ### 6. UI/UX Design (if specified in PRD)
 
@@ -255,61 +246,52 @@ import type { LoginRequest, LoginResponse } from 'api-contract-types';
 
 ## ✅ GOOD vs BAD Examples
 
-**✅ GOOD (Frontend HOW)**:
+**✅ GOOD (Architecture-Level Description)**:
 ```markdown
 ## 5. API Integration
 
-### Authentication Flow
-1. LoginForm captures credentials
-2. Call `authAPI.login(credentials)` - uses LoginRequest from api-contract.md §3.1
-3. On success: Store tokens, update auth state, redirect
-4. On error: Display error message from ErrorResponse
+### Authentication Flow (Architecture)
+- Presentation boundary captures credential input
+- Application layer invokes authentication service using LoginRequest from api-contract.md §3.1
+- On success: Application layer updates authentication state; Presentation observes state change and navigates
+- On error: Application layer exposes error; Presentation displays message
 
 ### Error Handling Strategy
-- Wrap all API calls in try/catch
-- 401 errors → trigger token refresh or logout
-- Network errors → show retry button
-- Validation errors → display per-field messages
+- Infrastructure layer translates HTTP errors to domain error types
+- Application layer decides retry vs propagation based on error type
+- 401 errors trigger authentication refresh or session termination
+- Validation errors propagated to Presentation for field-level display
 ```
 
-**❌ BAD (API definition or implementation)**:
+**❌ BAD (Implementation Details or API Redefinition)**:
 ```markdown
 ## 5. API Integration
 
-### POST /api/auth/login  ← This is API definition, not Frontend!
+### POST /api/auth/login  ← API definition belongs in api-contract.md!
 Request: { email, password }
 Response: { accessToken, user }
 
-const login = async (email, password) => {  ← This is implementation code!
-  const res = await fetch(...);
+### LoginForm Component  ← Component name YOU invented!
+Props:
+- onSubmit: (credentials) => void  ← Props interface is implementation!
+- errorMessage?: string
+
+const login = async (email, password) => {  ← Full implementation code!
+  const res = await fetch('/api/auth/login', { ... });
   return res.json();
 }
+
+### API Client Methods  ← Method names YOU invented!
+- authAPI.login(credentials)
+- userAPI.getProfile()
 ```
 
----
-
-## 🎮 Game-Specific Constraint
-
-**If this is a game frontend:**
-
-**FORBIDDEN in Frontend Design**:
-- ❌ Game physics formulas (ball trajectory, collision detection)
-- ❌ Game state update logic (score calculation, win conditions)
-- ❌ Rendering algorithms (sprite positioning, animation frames)
-
-**ALLOWED**:
-- ✅ Game screen components (PlayField renders game world, HUD shows score)
-- ✅ Input handling (keyboard → command mapping)
-- ✅ Game state visualization (state → visual representation)
-
-**Treat game engine as abstract service:**
-```markdown
-### Game State Integration
-- Game engine provides state updates
-- PlayField component renders state visually
-- Input system sends commands to engine
-- HUD displays derived metrics (score, timer)
-```
+**Key Mistakes in BAD Example:**
+1. Redefining API contract (already in api-contract.md)
+2. Naming components YOU invented (LoginForm)
+3. Specifying props interfaces (implementation detail)
+4. Showing implementation code (NOT System Design)
+5. Naming methods/functions YOU chose (authAPI.login)
 
 ---
 

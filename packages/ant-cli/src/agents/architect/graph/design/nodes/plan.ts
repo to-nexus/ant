@@ -24,6 +24,10 @@ export async function plan(state: DesignGraphState) {
       console.log(`⏱️  Starting timer for task: ${currentTask.name}`);
       currentTask = TaskTimingHelper.startTask(currentTask);
       
+      // ✅ Reset task-level token usage tracking
+      const { resetTaskTokenUsage } = await import('../../common/llmHelpers');
+      resetTaskTokenUsage(state as any);
+      
       // ✅ CRITICAL: Update Kanban snapshot when task starts
       if (state._httpJobId && state.deps?.kanbanUpdate) {
         console.log(`\n🔥 [Plan] Updating Kanban → task started`);

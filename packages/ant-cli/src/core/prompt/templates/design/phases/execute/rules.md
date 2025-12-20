@@ -269,12 +269,24 @@ Before generating output, verify:
 **If YOU chose it → Omit it (implementation detail)**
 
 ### DO NOT Write (LLM-chosen implementation details):
-- ❌ Internal identifiers YOU invent:
+- ❌ **STRICTLY FORBIDDEN - Internal identifiers YOU invent**:
   - Storage keys: `"bookmarks"`, `"recentSearches"`, `"statsData"`
   - Route paths: `"/ai"`, `"/blockchain"`, `"/search?q=keyword"` (unless PRD defines them)
-  - Component names: `NewsCard`, `CategoryFilter`, `BookmarkButton`
-  - Function names: `onBookmarkToggle`, `handleSearch`, `fetchArticles`
-  - Store names: `useNewsStore`, `statsSlice`, `bookmarkStore`
+  - **Component names**: `NewsCard`, `CategoryFilter`, `BookmarkButton`, `LoginPage`, `UserProfile`, `DashboardHeader`
+  - **Function/method names**: `onBookmarkToggle`, `handleSearch`, `fetchArticles`, `authAPI.login()`, `userService.getProfile()`
+  - **Props/parameters**: `onSuccess`, `userId`, `items`, `errorMessage`, `isLoading`
+  - **Store/state names**: `useNewsStore`, `statsSlice`, `bookmarkStore`, `authState`
+  - **Service/class names YOU invented**: `AuthService`, `NewsAPIClient`, `BookmarkManager` (describe architectural roles instead)
+  
+- ❌ **Component hierarchies and relationships**:
+  - "LoginPage contains LoginForm and ErrorDisplay" (unless describing layer boundaries)
+  - "NewsCard receives props from NewsList" (props are implementation)
+  - "Parent component passes callback to child" (wiring details)
+  
+- ❌ **Framework-specific APIs**:
+  - React hooks: `useState`, `useEffect`, `useCallback`, `useMemo`
+  - Lifecycle: `componentDidMount`, `onMounted`, `ngOnInit`
+  - Router APIs: `useNavigate`, `useParams`, `router.push`
   
 - ❌ Algorithms/patterns YOU choose:
   - "Exponential backoff with 3 retries" (unless PRD specifies)
@@ -282,10 +294,11 @@ Before generating output, verify:
   - "Debounce search by 300ms" (unless PRD specifies)
   
 - ❌ UI implementation YOU design:
-  - Specific component hierarchies
-  - Exact prop interfaces
-  - Loading spinner types
-  - Error message templates
+  - **Component hierarchies**: "LoginPage > LoginForm > InputField"
+  - **Props/interfaces**: `interface LoginPageProps { onSuccess: () => void; redirectTo?: string; }`
+  - **Framework hooks or events**: `onClick`, `onChange`, `useEffect`, `componentDidMount`
+  - Loading spinner types, modal implementations, toast notification details
+  - Error message templates, validation rules (unless domain invariants)
 
 ### ALWAYS Write (PRD-specified constraints):
 - ✅ **Platform constraints**: Client-side only, No backend, Serverless, Browser-based
@@ -300,8 +313,10 @@ Before generating output, verify:
 - 🔄 **Why**: System Design describes WHAT, not specific HOW implementation
 
 ### INSTEAD, Write at Architecture / Policy Level:
-- ✅ **Ownership & boundaries**: "Application layer owns search state; Presentation consumes it"
-- ✅ **Policies & strategies**: "Failed API calls are retried based on error type; transient errors use exponential backoff"
+- ✅ **Boundary responsibilities** (without naming): "Authentication boundary captures credentials and delegates to Application layer"
+- ✅ **Ownership & data flow**: "Application layer owns search state; Presentation observes state and emits search commands"
+- ✅ **Policies & strategies**: "Failed API calls are retried based on error type; transient errors use exponential backoff strategy"
+- ✅ **Layer interactions**: "User action → Presentation emits command → Application coordinates use case → Domain applies rules → Presentation observes state"
 - ✅ **Conceptual screens**: "News Feed view", "Search Results view" (no hardcoded routes unless PRD defines them)
 - ✅ **Abstract flows**: "User initiates search → Application queries services → Presentation displays results"
 

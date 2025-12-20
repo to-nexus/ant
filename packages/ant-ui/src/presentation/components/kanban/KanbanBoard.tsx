@@ -1,12 +1,10 @@
 import { useStore } from '@/domain/store';
-import React, { useEffect, useState } from 'react';
-import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
+import { useEffect, useState } from 'react';
 import { KanbanData } from '@/infrastructure/http/api';
 import { WorkflowRealtimeState } from '@/domain/models/workflow';
 import { BoardContainer } from '../BoardContainer';
-import { DataSourceIndicator, ElapsedTimeBadge, GaugesGroup } from './KanbanHeader';
+import { DataSourceIndicator, ElapsedTimeBadge, TokenUsageBadge, GaugesGroup } from './KanbanHeader';
 import { KanbanEstimating } from './KanbanEstimating';
-import { KanbanPausedPrompt } from './KanbanPausedPrompt';
 import { KanbanColumns } from './KanbanColumns';
 
 interface KanbanBoardProps {
@@ -24,26 +22,14 @@ interface KanbanBoardProps {
  */
 export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
   const splitLayout = useStore((state) => state.splitLayout);
-  const dismissedInterruptTimestamp = useStore((state) => state.dismissedInterruptTimestamp);  // ✅ Global state (for resume)
   const systemRecursionLimit = useStore((state) => state.recursionLimit);  // ✅ Get system recursion limit
-  const selectedProject = useStore((state) => state.selectedProject);
-  const selectedFeature = useStore((state) => state.selectedFeature);
-  const isRunning = useStore((state) => state.isRunning);
-  const [dismissedKanbanInterrupt, setDismissedKanbanInterrupt] = React.useState<string | null>(null);  // ✅ Local state (for dismiss button only)
-  const policy = useUIActionPolicy();
   const [newlyCompletedIds, setNewlyCompletedIds] = useState<Set<string>>(new Set());
   const [previousCompletedIds, setPreviousCompletedIds] = useState<Set<string>>(new Set());
   const [newlyInProgressId, setNewlyInProgressId] = useState<string | null>(null);
   const [previousInProgressId, setPreviousInProgressId] = useState<string | null>(null);
   const [isInitialLoad, setIsInitialLoad] = useState(true);  // ✅ Track initial load
   
-  // ✅ Reset local dismissed state when interruption changes (new interruption appeared)
-  useEffect(() => {
-    if (kanbanData.interruption?.timestamp && 
-        dismissedKanbanInterrupt !== kanbanData.interruption.timestamp) {
-      setDismissedKanbanInterrupt(null);  // Reset local dismiss state for new interruption
-    }
-  }, [kanbanData.interruption?.timestamp, dismissedKanbanInterrupt]);
+  // ✅ Remove unused interruption UI logic (now handled in chat only)
 
   // ✅ Detect newly completed tasks (skip animation on initial load)
   useEffect(() => {
@@ -79,65 +65,6 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
       setPreviousInProgressId(currentInProgressId);
     }
   }, [kanbanData.inProgress, previousInProgressId]);
-
-  // ✅ Handle Resume Task (user-initiated action)
-  const handleResumeTask = async () => {
-    if (!selectedProject || !selectedFeature) {
-      console.error('[KanbanBoard] Cannot resume: missing project/feature');
-      return;
-    }
-
-    // ✅ CRITICAL: Resume requires jobId from kanban data
-    const jobId = kanbanData.jobId;
-    if (!jobId) {
-      console.error('[KanbanBoard] Cannot resume: missing jobId in kanban data');
-      return;
-    }
-
-    try {
-      
-      // ✅ CRITICAL: Dismiss interruption FIRST before setting running state
-      // This prevents SSE initial state from auto-stopping the job
-      if (interruption) {
-        useStore.getState().setDismissedInterruptTimestamp(interruption.timestamp);
-      }
-      
-      // ✅ Set running state immediately
-      useStore.getState().setRunning(true, jobId);
-      
-      // ✅ Use new resumeJob API - server will auto-detect job type
-      const { resumeJob } = await import('@/infrastructure/http/api');
-      const result = await resumeJob(jobId, selectedProject, selectedFeature, true);  // chatSource: true
-      
-      
-      // ✅ Update with new jobId from server
-      useStore.getState().setRunning(true, result.jobId);
-      
-      // ✅ CRITICAL: Mark current interruption as dismissed globally (hide both task board and chat)
-      // This prevents it from reappearing when job completes
-      if (interruption) {
-        useStore.getState().setDismissedInterruptTimestamp(interruption.timestamp);
-        setDismissedKanbanInterrupt(interruption.timestamp);  // Also update local state
-      }
-    } catch (error) {
-      console.error('[KanbanBoard] Failed to resume task:', error);
-      useStore.getState().setRunning(false);  // ✅ Clear running state on error
-      alert(`Failed to resume task: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  };
-
-  // ✅ Check if interruption should be shown (task board only checks local dismiss + global resume)
-  const interruption = kanbanData.interruption;
-  const shouldShowInterruption = 
-    interruption &&
-    interruption.timestamp !== dismissedKanbanInterrupt &&  // ✅ Local dismiss (task board only)
-    interruption.timestamp !== dismissedInterruptTimestamp &&  // ✅ Global resume (both task board and chat)
-    !policy.isRunning &&
-    !policy.isStopping;
-
-  // ✅ Calculate gauges
-  const completedCount = kanbanData.completed?.length ?? 0;
-  const totalTasks = (kanbanData.todo?.length ?? 0) + (kanbanData.inProgress ? 1 : 0) + completedCount;
   
   // ✅ Estimating state: Show estimating UI instead of Kanban board
   if (kanbanData.isEstimating) {
@@ -151,14 +78,13 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
               totalElapsedTime={kanbanData.totalElapsedTime}
               jobTiming={kanbanData.jobTiming}
             />
+            <TokenUsageBadge tokenUsage={kanbanData.tokenUsage} />
           </>
         }
         headerActions={
           <GaugesGroup
             recursionCount={kanbanData.recursionCount}
-            recursionLimit={kanbanData.recursionLimit}
-            completedCount={completedCount}
-            totalTasks={totalTasks}
+            recursionLimit={kanbanData.recursionLimit || systemRecursionLimit}
           />
         }
         className={`kanban-board ${splitLayout}`}  // ✅ Pass splitLayout
@@ -179,16 +105,15 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
             totalElapsedTime={kanbanData.totalElapsedTime}
             jobTiming={kanbanData.jobTiming}
           />
+          <TokenUsageBadge tokenUsage={kanbanData.tokenUsage} />
         </>
       }
-      headerActions={
-        <GaugesGroup
-          recursionCount={kanbanData.recursionCount}
-          recursionLimit={kanbanData.recursionLimit || systemRecursionLimit}
-          completedCount={completedCount}
-          totalTasks={totalTasks}
-        />
-      }
+        headerActions={
+          <GaugesGroup
+            recursionCount={kanbanData.recursionCount}
+            recursionLimit={kanbanData.recursionLimit || systemRecursionLimit}
+          />
+        }
       className={`kanban-board ${splitLayout}`}  // ✅ Pass splitLayout
     >
       <div className={splitLayout === 'horizontal' ? 

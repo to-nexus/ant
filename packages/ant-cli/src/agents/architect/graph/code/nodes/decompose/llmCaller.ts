@@ -14,7 +14,7 @@ export async function callLLMForDecompose(
   llm: LLMClient,
   prompt: string,
   workspaceConfig?: any
-): Promise<string> {
+): Promise<{ response: string; tokenUsage?: any }> {
   console.log('🤖 [Decompose] Calling LLM for task breakdown...');
   
   // ✅ NEW: Use decompose-specific model if configured
@@ -48,23 +48,29 @@ export async function callLLMForDecompose(
   });
   
   let response = '';
+  let capturedUsage: any = undefined;
+  
   for await (const event of llmToUse.stream([
     { role: 'user', content: prompt }
   ], {
     temperature: 0.3,
-    maxTokens: 16000  // ✅ Must be > budget_tokens (10000) when thinking enabled
+    maxTokens: 16000
   })) {
-    // ✅ Process through orchestrator (handles XML tags, special tag transformation)
     await orchestrator.processEvent(event);
     
-    // Accumulate raw response text for parsing
     if (event.text) {
       response += event.text;
     }
+    
+    // ✅ Extract token usage from done event
+    const { extractTokenUsageFromStreamEvent } = await import('../../../common/llmHelpers');
+    const usage = extractTokenUsageFromStreamEvent(event);
+    if (usage) {
+      capturedUsage = usage;
+    }
   }
   
-  // Finalize streaming
   await orchestrator.finalize();
   
-  return response;
+  return { response, tokenUsage: capturedUsage };
 }

@@ -73,6 +73,10 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     console.log(`⏱️  Starting timer for task: ${nextTask.name}`);
     nextTask = TaskTimingHelper.startTask(nextTask);
     
+    // ✅ Initialize token usage tracking for new task
+    const { resetTaskTokenUsage } = await import('../../../common/llmHelpers');
+    resetTaskTokenUsage(state as any);
+    
     // Update Kanban UI
     if (state._httpJobId && state.deps?.kanbanUpdate) {
       console.log(`\n🔥 [Plan] Updating Kanban → task started`);

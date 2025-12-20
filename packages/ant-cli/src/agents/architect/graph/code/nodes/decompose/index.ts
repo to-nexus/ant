@@ -211,8 +211,17 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   });
   
   let rawResponse: string;
+  let decomposeTokenUsage: any;
   try {
-    rawResponse = await callLLMForDecompose(llm, prompt, state.workspaceConfig);
+    const result = await callLLMForDecompose(llm, prompt, state.workspaceConfig);
+    rawResponse = result.response;
+    decomposeTokenUsage = result.tokenUsage;
+    
+    // ✅ Accumulate decompose token usage to job-level (not task-level, as decompose runs before tasks)
+    if (decomposeTokenUsage) {
+      const { finalizeStreamTokenUsage } = await import('../../../common/llmHelpers');
+      finalizeStreamTokenUsage(state as any, decomposeTokenUsage, { taskLevel: false, jobLevel: true });
+    }
   } catch (error) {
     logErrorHeader('Decompose');
     console.error(error);

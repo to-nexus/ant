@@ -7,7 +7,8 @@
 
 // @ts-ignore
 import Anthropic from '@anthropic-ai/sdk';
-import { LLMClient, LLMStreamEvent, ToolDefinition } from '../../../core/ports/llm';
+import { LLMClient, LLMStreamEvent, ToolDefinition, LLMInvokeResult } from '../../../core/ports/llm';
+import { TaskTokenUsage } from '../../../agents/architect/types/task';
 import { withRetryStream } from '../../../core/utils/retry';
 
 export class AnthropicLLMClient implements LLMClient {
@@ -40,6 +41,11 @@ export class AnthropicLLMClient implements LLMClient {
   }
 
   async invoke(messages: Array<{ role: string; content: string }>): Promise<string> {
+    const result = await this.invokeWithUsage(messages);
+    return result.content;
+  }
+  
+  async invokeWithUsage(messages: Array<{ role: string; content: string }>, options?: Record<string, any>): Promise<import('../../../core/ports/llm').LLMInvokeResult> {
     // ✅ LOG: Actual API call with model name
     console.log(`🔥 [API CALL] provider=anthropic model=${this.modelName} method=invoke messages=${messages.length}`);
     
@@ -49,7 +55,7 @@ export class AnthropicLLMClient implements LLMClient {
     
     const response = await this.client.messages.create({
       model: this.modelName,
-      max_tokens: 16000,
+      max_tokens: options?.maxTokens || 16000,
       ...(systemMessage && { system: systemMessage.content }),  // ✅ Add system parameter if exists
       messages: userMessages.map(m => ({
         role: m.role as 'user' | 'assistant',
@@ -59,7 +65,18 @@ export class AnthropicLLMClient implements LLMClient {
 
     // Extract text content (ignore thinking blocks for non-streaming)
     const textBlocks = response.content.filter((block: any) => block.type === 'text');
-    return textBlocks.map((block: any) => block.text).join('');
+    const content = textBlocks.map((block: any) => block.text).join('');
+    
+    // ✅ Extract token usage
+    const usage = (response as any).usage ? {
+      inputTokens: (response as any).usage.input_tokens || 0,
+      outputTokens: (response as any).usage.output_tokens || 0,
+      totalTokens: ((response as any).usage.input_tokens || 0) + ((response as any).usage.output_tokens || 0),
+      cacheReadTokens: (response as any).usage.cache_read_input_tokens,
+      cacheCreationTokens: (response as any).usage.cache_creation_input_tokens,
+    } : undefined;
+    
+    return { content, usage };
   }
 
   /**
@@ -134,7 +151,41 @@ export class AnthropicLLMClient implements LLMClient {
     const toolUseBuffer: Map<number, { id: string; name: string; input: string }> = new Map();
     const thinkingBlocks: Map<number, { startTime: number; content: string }> = new Map();
     
+    // ✅ Track token usage (accumulate from message_start and message_delta)
+    let tokenUsage: TaskTokenUsage | undefined;
+    
     for await (const event of stream) {
+      // ✅ Capture usage from message_start (initial usage snapshot)
+      if (event.type === 'message_start' && (event as any).message?.usage) {
+        const usage = (event as any).message.usage;
+        const inputTokens = usage.input_tokens || 0;
+        const outputTokens = usage.output_tokens || 0;
+        tokenUsage = {
+          inputTokens,
+          outputTokens,
+          totalTokens: inputTokens + outputTokens,
+          cacheReadTokens: usage.cache_read_input_tokens,
+          cacheCreationTokens: usage.cache_creation_input_tokens,
+        };
+      }
+      
+      // ✅ Update usage from message_delta (incremental updates)
+      if (event.type === 'message_delta' && (event as any).usage) {
+        const usage = (event as any).usage;
+        if (tokenUsage) {
+          const newOutputTokens = usage.output_tokens || tokenUsage.outputTokens;
+          tokenUsage.outputTokens = newOutputTokens;
+          tokenUsage.totalTokens = tokenUsage.inputTokens + newOutputTokens;
+        } else {
+          const outputTokens = usage.output_tokens || 0;
+          tokenUsage = {
+            inputTokens: 0,
+            outputTokens,
+            totalTokens: outputTokens,
+          };
+        }
+      }
+      
       // Thinking block - START
       if (event.type === 'content_block_start' && event.content_block.type === 'thinking') {
         thinkingBlocks.set(event.index, {
@@ -250,6 +301,7 @@ export class AnthropicLLMClient implements LLMClient {
         yield {
           type: 'done',
           done: true,  // ✅ NEW: 명시적 done 플래그
+          usage: tokenUsage,  // ✅ Include final token usage
           metadata: {
             provider: 'anthropic',
             model: this.modelName,
@@ -283,7 +335,8 @@ Do not include any explanatory text before or after the JSON. Start your respons
       }
     ];
     
-    const response = await this.invoke(enhancedMessages);
+    const result = await this.invokeWithUsage(enhancedMessages);
+    const response = result.content;
     
     try {
       // Try to extract JSON from response (in case there's extra text)

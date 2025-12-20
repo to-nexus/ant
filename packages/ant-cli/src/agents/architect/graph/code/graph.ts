@@ -106,12 +106,55 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
   const hasViolations = (violations && violations.length > 0);
   
   if (!hasViolations && state.currentTask) {
-    // ✅ Task succeeded - mark as completed and record timing
-    const completedTask = TaskTimingHelper.completeTask(state.currentTask);
+    // ✅ Task succeeded - mark as completed and record timing & token usage
+    const { getTaskTokenUsage, accumulateTokenUsage } = await import('../common/llmHelpers');
+    
+    // Gather token usage from llmResponse (codeGen) and accumulated task tokens (plan)
+    const codeGenTokenUsage = state.llmResponse?.tokenUsage;
+    const planTokenUsage = getTaskTokenUsage(state as any);
+    
+    // Merge all token sources
+    let taskTokenUsage = state.currentTask.tokenUsage;
+    
+    if (codeGenTokenUsage) {
+      if (taskTokenUsage) {
+        accumulateTokenUsage({ tokenUsage: taskTokenUsage } as any, codeGenTokenUsage, { taskLevel: false, jobLevel: false });
+        taskTokenUsage.inputTokens += codeGenTokenUsage.inputTokens;
+        taskTokenUsage.outputTokens += codeGenTokenUsage.outputTokens;
+        taskTokenUsage.totalTokens += codeGenTokenUsage.totalTokens;
+        taskTokenUsage.cacheReadTokens = (taskTokenUsage.cacheReadTokens || 0) + (codeGenTokenUsage.cacheReadTokens || 0);
+        taskTokenUsage.cacheCreationTokens = (taskTokenUsage.cacheCreationTokens || 0) + (codeGenTokenUsage.cacheCreationTokens || 0);
+      } else {
+        taskTokenUsage = codeGenTokenUsage;
+      }
+    }
+    
+    if (planTokenUsage.totalTokens > 0) {
+      if (taskTokenUsage) {
+        taskTokenUsage.inputTokens += planTokenUsage.inputTokens;
+        taskTokenUsage.outputTokens += planTokenUsage.outputTokens;
+        taskTokenUsage.totalTokens += planTokenUsage.totalTokens;
+        taskTokenUsage.cacheReadTokens = (taskTokenUsage.cacheReadTokens || 0) + (planTokenUsage.cacheReadTokens || 0);
+        taskTokenUsage.cacheCreationTokens = (taskTokenUsage.cacheCreationTokens || 0) + (planTokenUsage.cacheCreationTokens || 0);
+      } else {
+        taskTokenUsage = planTokenUsage;
+      }
+    }
+    
+    // Accumulate to job-level
+    if (taskTokenUsage) {
+      accumulateTokenUsage(state as any, taskTokenUsage, { taskLevel: false, jobLevel: true });
+    }
+    
+    const { TaskTimingHelper } = await import('./state');
+    const completedTask = TaskTimingHelper.completeTask(state.currentTask, taskTokenUsage);
     
     if (completedTask.timing?.elapsedTime) {
       const formattedTime = TaskTimingHelper.formatElapsedTime(completedTask.timing.elapsedTime);
       console.log(`✅ Task "${completedTask.name}" completed in ${formattedTime}!`);
+      if (completedTask.tokenUsage) {
+        console.log(`   Tokens: ${completedTask.tokenUsage.totalTokens} total (${completedTask.tokenUsage.inputTokens} in, ${completedTask.tokenUsage.outputTokens} out)`);
+      }
     } else {
       console.log(`✅ Task "${completedTask.name}" completed!`);
     }
@@ -361,6 +404,10 @@ export function buildCodeGraph() {
       
       // ✅ Error repetition tracking
       _errorIsRepeating: null as any,  // Flag to indicate if errors are repeating
+      
+      // ✅ Token tracking (internal, accumulated across LLM calls)
+      _currentTaskTokenUsage: null as any,  // Task-level token usage (reset per task)
+      tokenUsage: null as any,              // Job-level token usage (accumulated across all tasks + decompose)
       
       // Recursion tracking
       recursionCount: null as any,  // ✅ Current iteration count

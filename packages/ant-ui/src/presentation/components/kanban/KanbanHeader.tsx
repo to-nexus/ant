@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Timer } from 'lucide-react';
+import { Timer, Coins } from 'lucide-react';
 import { StatusChip, ChipVariant } from '../StatusChip';
 import { formatElapsedTime } from '@/shared/utils/timeUtils';
+import { formatTokenUsageCompact } from '@/shared/utils/tokenUtils';
+import { JobTiming, TaskTokenUsage } from '@/domain/models/types';
 
 interface DataSourceIndicatorProps {
   dataSource?: string;
@@ -35,14 +37,7 @@ export function DataSourceIndicator({ dataSource, isStopping = false }: DataSour
 
 interface ElapsedTimeBadgeProps {
   totalElapsedTime?: number;
-  jobTiming?: {
-    startedAt: string;
-    lastResumedAt?: string;
-    pausedAt?: string;
-    completedAt?: string;
-    totalPausedDuration: number;
-    estimatingDuration?: number;
-  };
+  jobTiming?: JobTiming;
 }
 
 /**
@@ -143,21 +138,42 @@ export function ElapsedTimeBadge({
   );
 }
 
-interface GaugesGroupProps {
-  recursionCount?: number;
-  recursionLimit?: number;
-  completedCount: number;
-  totalTasks: number;
+interface TokenUsageBadgeProps {
+  tokenUsage?: TaskTokenUsage;
 }
 
 /**
- * GaugesGroup - 우측 정렬될 리커전/태스크 게이지
+ * TokenUsageBadge - Display total token usage for the job
+ */
+export function TokenUsageBadge({ tokenUsage }: TokenUsageBadgeProps) {
+  // ✅ Show badge if token usage data is available
+  if (!tokenUsage || tokenUsage.totalTokens === 0) {
+    return null;
+  }
+  
+  return (
+    <div className="h-7 min-h-7 max-h-7 px-2.5 rounded-md bg-purple-50 dark:bg-purple-950/30 border border-purple-300 dark:border-purple-800">
+      <div className="flex items-center justify-center gap-1.5 h-7">
+        <Coins className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+        <span className="text-xs text-purple-700 dark:text-purple-300 font-medium leading-none">
+          {formatTokenUsageCompact(tokenUsage)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+interface GaugesGroupProps {
+  recursionCount?: number;
+  recursionLimit?: number;
+}
+
+/**
+ * GaugesGroup - Recursion limit gauge only
  */
 export function GaugesGroup({
   recursionCount = 0,
   recursionLimit = 50,
-  completedCount,
-  totalTasks
 }: GaugesGroupProps) {
   return (
     <>
@@ -176,21 +192,6 @@ export function GaugesGroup({
         <div className="relative z-10 flex items-center justify-center h-7">
           <span className="text-xs text-purple-700 dark:text-purple-300 font-medium leading-none">
             {recursionCount}/{recursionLimit} Recursion
-          </span>
-        </div>
-      </div>
-
-      {/* Tasks Gauge */}
-      <div className="relative h-7 min-h-7 max-h-7 px-3 rounded-md bg-green-50 dark:bg-green-950/30 border border-green-300 dark:border-green-800 min-w-[120px] overflow-hidden">
-        <div className="absolute inset-0 rounded-md">
-          <div 
-            className="h-full bg-green-300 dark:bg-green-800/50 transition-all duration-500 ease-out"
-            style={{ width: `${totalTasks > 0 ? Math.min((completedCount / totalTasks) * 100, 100) : 0}%` }}
-          />
-        </div>
-        <div className="relative z-10 flex items-center justify-center h-7">
-          <span className="text-xs text-green-700 dark:text-green-300 font-medium leading-none">
-            {completedCount}/{totalTasks} Tasks
           </span>
         </div>
       </div>
