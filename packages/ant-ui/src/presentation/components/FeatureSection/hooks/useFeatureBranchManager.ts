@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { switchToFeatureBranch, fetchFromGitHub } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
 
@@ -17,6 +17,10 @@ export function useFeatureBranchManager(
   const setGitStatusLoading = useStore((state) => state.setGitStatusLoading);
   const setGitStatusPhase = useStore((state) => state.setGitStatusPhase);
   const setCurrentGitBranch = useStore((state) => state.setCurrentGitBranch);
+  
+  // ✅ FIXED: Prevent concurrent Git operations
+  const isProcessing = useRef(false);
+  const lastProcessed = useRef<string>('');
 
   useEffect(() => {
     const checkoutBranch = async () => {
@@ -24,40 +28,44 @@ export function useFeatureBranchManager(
       
       // Wait for Git status check to complete
       if (gitStatus === null) {
-        console.log('[useFeatureBranchManager] Waiting for Git status check...');
         return;
       }
       
       // Only proceed if Git is initialized
       if (!gitStatus.hasGit) {
-        console.log('[useFeatureBranchManager] ⏭️  Skipping branch operations - Git not initialized');
+        return;
+      }
+      
+      // ✅ FIXED: Prevent duplicate operations
+      const operationKey = `${selectedProject}:${selectedFeature || baseBranch}`;
+      if (isProcessing.current) {
+        return;
+      }
+      if (lastProcessed.current === operationKey) {
         return;
       }
       
       // Start Git status loading
+      isProcessing.current = true;
       setGitStatusLoading(true);
       
       try {
         if (selectedFeature) {
           // Phase 1: Switch to feature branch
           setGitStatusPhase('switching');
-          console.log(`[useFeatureBranchManager] Switching to branch for feature: ${selectedFeature}`);
           const result = await switchToFeatureBranch(selectedProject, selectedFeature);
           
           if (result.success) {
-            console.log(`[useFeatureBranchManager] ✅ Branch switched for ${selectedFeature}`);
             if (result.branchName) {
               setCurrentGitBranch(result.branchName);
             }
+            lastProcessed.current = operationKey;
             
             // Phase 2: Fetch from remote
             setGitStatusPhase('fetching');
-            console.log(`[useFeatureBranchManager] 🔄 Auto-fetching for ${selectedFeature}...`);
             try {
               const fetchResult = await fetchFromGitHub(selectedProject);
-              if (fetchResult.success) {
-                console.log(`[useFeatureBranchManager] ✅ Fetch completed for ${selectedFeature}`);
-              } else {
+              if (!fetchResult.success) {
                 console.warn(`[useFeatureBranchManager] Fetch failed:`, fetchResult.error);
               }
             } catch (fetchError) {
@@ -69,23 +77,19 @@ export function useFeatureBranchManager(
         } else {
           // Phase 1: Switch to base branch
           setGitStatusPhase('switching');
-          console.log(`[useFeatureBranchManager] Switching to base branch (${baseBranch}) - no feature selected`);
           const result = await switchToFeatureBranch(selectedProject, baseBranch);
           
           if (result.success) {
-            console.log(`[useFeatureBranchManager] ✅ Switched to base branch (${baseBranch})`);
             if (result.branchName) {
               setCurrentGitBranch(result.branchName);
             }
+            lastProcessed.current = operationKey;
             
             // Phase 2: Fetch from remote
             setGitStatusPhase('fetching');
-            console.log(`[useFeatureBranchManager] 🔄 Auto-fetching for ${baseBranch}...`);
             try {
               const fetchResult = await fetchFromGitHub(selectedProject);
-              if (fetchResult.success) {
-                console.log(`[useFeatureBranchManager] ✅ Fetch completed for ${baseBranch}`);
-              } else {
+              if (!fetchResult.success) {
                 console.warn(`[useFeatureBranchManager] Fetch failed:`, fetchResult.error);
               }
             } catch (fetchError) {
@@ -101,9 +105,16 @@ export function useFeatureBranchManager(
         // End Git status loading
         setGitStatusPhase(null);
         setGitStatusLoading(false);
+        isProcessing.current = false;
       }
     };
     
     checkoutBranch();
   }, [selectedProject, selectedFeature, baseBranch, gitStatus, setGitStatusLoading, setGitStatusPhase, setCurrentGitBranch]);
+  
+  // ✅ FIXED: Reset when project changes
+  useEffect(() => {
+    lastProcessed.current = '';
+    isProcessing.current = false;
+  }, [selectedProject]);
 }

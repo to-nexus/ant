@@ -1,5 +1,5 @@
 import { X, LucideIcon } from 'lucide-react';
-import { cn, textColors } from '@/shared/utils/design-system';
+import { cn } from '@/shared/utils/design-system';
 
 interface TabButtonProps {
   icon: LucideIcon;
@@ -27,7 +27,7 @@ export function TabButton({
   return (
     <div
       className={cn(
-        'flex items-center gap-2 py-1.5 rounded-t transition-all text-sm font-medium',
+        'flex items-center gap-2 py-1.5 rounded-t text-sm font-medium',
         showText ? 'px-3' : 'px-2',
         isActive
           ? 'bg-white dark:bg-[#0d1117] text-gray-900 dark:text-white border-t border-x border-gray-200 dark:border-[#30363d]'
@@ -49,7 +49,7 @@ export function TabButton({
             onClose?.();
           }}
           className={cn(
-            'p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200',
+            'p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200',
             !showText && 'hidden'
           )}
           title={isJobTab ? "Remove job ID" : `Close ${label.toLowerCase()} tab`}

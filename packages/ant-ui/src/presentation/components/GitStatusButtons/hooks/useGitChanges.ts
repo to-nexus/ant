@@ -23,15 +23,16 @@ export function useGitChanges(
   const [gitChanges, setGitChanges] = useState<GitChanges | null>(null);
   const [isGitInitialized, setIsGitInitialized] = useState<boolean | null>(null);
   const [isFetchingChanges, setIsFetchingChanges] = useState(false);
+  const [triggerFetch, setTriggerFetch] = useState(0);  // ✅ Trigger for manual refetch
 
-  // Detect manual Git action completion and clear stale data
+  // Detect manual Git action completion and trigger refetch
   useEffect(() => {
     const actionJustCompleted = prevManualActionRef.current !== null && manualGitAction === null;
     prevManualActionRef.current = manualGitAction;
     
     if (actionJustCompleted) {
-      console.log('[useGitChanges] Manual Git action completed - clearing stale data');
       setGitChanges(null);
+      setTriggerFetch(prev => prev + 1);  // ✅ Trigger refetch
     }
   }, [manualGitAction]);
 
@@ -47,11 +48,9 @@ export function useGitChanges(
       setIsFetchingChanges(true);
       try {
         const changes = await getGitChanges(selectedProject);
-        console.log('[useGitChanges] Git changes fetched:', changes);
         setGitChanges(changes);
         setIsGitInitialized(true);
       } catch (error: any) {
-        console.log('[useGitChanges] Failed to fetch Git changes:', error.message);
         if (error.message?.includes('not initialized')) {
           setGitChanges(null);
           setIsGitInitialized(false);
@@ -65,10 +64,7 @@ export function useGitChanges(
     
     // Skip fetching while Git status is loading
     if (isGitStatusLoading) {
-      console.log('[useGitChanges] Skipping fetch - Git status loading in progress');
-      
       if (loadingJustStarted) {
-        console.log('[useGitChanges] Loading started - clearing stale git changes');
         setGitChanges(null);
       }
       
@@ -79,22 +75,32 @@ export function useGitChanges(
     const loadingJustCompleted = prevLoadingRef.current === true && isGitStatusLoading === false;
     prevLoadingRef.current = isGitStatusLoading;
     
+    // ✅ Priority 1: Loading just completed
     if (loadingJustCompleted) {
-      console.log('[useGitChanges] Loading completed - fetching immediately');
       fetchChanges();
-    } else if (manualGitAction !== null) {
-      console.log('[useGitChanges] Manual Git action triggered - fetching immediately');
-      fetchChanges();
-    } else {
-      const delayTimer = setTimeout(() => {
-        fetchChanges();
-      }, 500);
-      
-      return () => {
-        clearTimeout(delayTimer);
-      };
+      return;
     }
-  }, [selectedProject, hasGitHubRepo, isGitStatusLoading, manualGitAction]);
+    
+    // ✅ Priority 2: Manual action in progress (show loading state)
+    if (manualGitAction !== null) {
+      return;
+    }
+    
+    // ✅ Priority 3: Trigger fetch was incremented (manual action completed)
+    if (triggerFetch > 0) {
+      fetchChanges();
+      return;
+    }
+    
+    // ✅ Priority 4: Periodic polling (normal case)
+    const delayTimer = setTimeout(() => {
+      fetchChanges();
+    }, 500);
+    
+    return () => {
+      clearTimeout(delayTimer);
+    };
+  }, [selectedProject, hasGitHubRepo, isGitStatusLoading, manualGitAction, triggerFetch]);
 
   return {
     gitChanges,

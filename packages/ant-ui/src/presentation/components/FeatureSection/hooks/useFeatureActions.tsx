@@ -36,21 +36,35 @@ export function useFeatureActions(
   };
 
   const handleFeatureChange = async (featureName: string | null) => {
-    if (!selectedProject) return;
+    // ✅ FIXED: Always use latest selectedProject from store
+    const currentProject = useStore.getState().selectedProject;
+    const currentFeature = useStore.getState().selectedFeature;
+    
+    // ✅ FIXED: Handle empty string as null
+    const normalizedFeatureName = featureName === '' ? null : featureName;
+    
+    if (!currentProject) {
+      return;
+    }
     
     // Same feature selected - do nothing
-    if (featureName === selectedFeature) return;
+    if (normalizedFeatureName === currentFeature) {
+      return;
+    }
     
     // Convert null to undefined for setSelectedFeature
-    const targetFeature = featureName === null ? undefined : featureName;
+    const targetFeature = normalizedFeatureName === null ? undefined : normalizedFeatureName;
     
     try {
       // Check for uncommitted changes in current branch
-      const changes = await getGitChanges(selectedProject);
+      const changes = await getGitChanges(currentProject);
       
-      if (changes.hasChanges) {
-        const totalChanges = changes.staged.length + changes.unstaged.length + changes.untracked.length;
-        const targetBranch = featureName ? `feature/${featureName}` : baseBranch;
+      // ✅ FIXED: Only check staged/unstaged (untracked files are safe to ignore)
+      const hasRelevantChanges = changes.staged.length > 0 || changes.unstaged.length > 0;
+      
+      if (hasRelevantChanges) {
+        const totalChanges = changes.staged.length + changes.unstaged.length;
+        const targetBranch = normalizedFeatureName ? `feature/${normalizedFeatureName}` : baseBranch;
         
         // Show confirmation dialog
         showConfirm(
@@ -65,10 +79,7 @@ export function useFeatureActions(
                   You have <strong>{totalChanges} uncommitted change{totalChanges > 1 ? 's' : ''}</strong> in the current branch.
                 </p>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Switching to <strong>{targetBranch}</strong> may cause file loss or conflicts.
-                </p>
-                <p className="text-sm text-yellow-600 dark:text-yellow-400 mt-2">
-                  ⚠️ Please commit or stash your changes before switching branches.
+                  Switching to <strong>{targetBranch}</strong> will automatically stash your changes.
                 </p>
               </div>
             </div>
@@ -81,7 +92,7 @@ export function useFeatureActions(
               setSelectedFeature(targetFeature);
             },
             onCancel: () => {
-              console.log('[useFeatureActions] Feature switch cancelled by user');
+              // User cancelled
             }
           }
         );

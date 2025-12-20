@@ -18,16 +18,11 @@ export function useGitHubRepoConfig(selectedProject: string | undefined) {
       try {
         const config = await fetchProjectConfig(selectedProject);
         const hasRepo = !!config?.githubRepo;
-        console.log('[useGitHubRepoConfig] Config checked - hasGitHubRepo:', hasRepo);
         
         const prevHasRepo = hasGitHubRepo;
         setHasGitHubRepo(hasRepo);
-        
-        if (!prevHasRepo && hasRepo) {
-          console.log('[useGitHubRepoConfig] 🎉 GitHub repo just configured!');
-        }
       } catch (error) {
-        console.log('[useGitHubRepoConfig] Failed to fetch config:', error);
+        console.error('[useGitHubRepoConfig] Failed to fetch config:', error);
         setHasGitHubRepo(false);
       }
     };
@@ -38,10 +33,6 @@ export function useGitHubRepoConfig(selectedProject: string | undefined) {
       mainPanelOpenTabs.projectConfig === false;
     
     prevProjectConfigTabOpenRef.current = mainPanelOpenTabs.projectConfig;
-    
-    if (projectConfigTabJustClosed) {
-      console.log('[useGitHubRepoConfig] Project Config tab closed - rechecking config');
-    }
 
     checkConfig();
   }, [selectedProject, mainPanelOpenTabs.projectConfig]);

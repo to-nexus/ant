@@ -141,6 +141,10 @@ Examples:
           type: 'string',
           description: 'Working directory (optional, defaults to project root)',
         },
+        keep_running: {
+          type: 'boolean',
+          description: 'For long-running servers: set to true to keep server running (rare). Default: false (auto-terminates after startup verification)',
+        },
       },
       required: ['command'],
     },

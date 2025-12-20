@@ -1655,17 +1655,119 @@ next-env.d.ts
    * Switch to feature branch (create if not exists)
    * Called when feature is selected or created
    */
+  
   /**
-   * Safely apply stashed changes with conflict detection and cleanup
+   * 🔍 Find stash entry for a specific branch
+   * 
+   * Parses `git stash list` to find the stash entry matching the branch name.
+   * Uses the stash message format: "Auto-stash for <branchName>"
+   * 
+   * @param git - SimpleGit instance
+   * @param branchName - Target branch name (e.g., 'main', 'feature/skeleton')
+   * @returns Stash index (e.g., 0, 1, 2) or null if not found
    * @private
    */
-  private async applyStashSafely(git: any, contextName: string): Promise<void> {
+  private async findStashForBranch(git: any, branchName: string): Promise<number | null> {
     try {
-      // ✅ Use apply instead of pop (keeps stash if conflict occurs)
-      console.log(`[ProjectService] 🔄 Applying stashed changes for ${contextName}...`);
-      await git.stash(['apply']);
+      const stashList = await git.stash(['list']);
       
-      // ✅ Check for conflicts
+      if (!stashList) {
+        return null;
+      }
+      
+      // Parse stash list output
+      // Format: stash@{0}: On feature/skeleton: Auto-stash for feature/skeleton
+      const lines = stashList.split('\n').filter((line: string) => line.trim());
+      
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        
+        // Extract stash message (after the colon)
+        // Example: "stash@{0}: On main: Auto-stash for main"
+        const messageMatch = line.match(/stash@\{(\d+)\}:\s*(.+)/);
+        if (!messageMatch) continue;
+        
+        const stashIndex = parseInt(messageMatch[1], 10);
+        const message = messageMatch[2];
+        
+        // Check if message contains our branch identifier
+        // Format: "Auto-stash for <branchName>"
+        if (message.includes(`Auto-stash for ${branchName}`)) {
+          console.log(`[ProjectService] 🔍 Found stash for ${branchName}: stash@{${stashIndex}}`);
+          return stashIndex;
+        }
+      }
+      
+      console.log(`[ProjectService] ℹ️  No stash found for ${branchName}`);
+      return null;
+      
+    } catch (error) {
+      console.error(`[ProjectService] ⚠️  Error finding stash:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * 💾 Create branch-specific stash
+   * 
+   * Stashes uncommitted changes with a branch-specific message for easy identification.
+   * Uses format: "Auto-stash for <branchName>"
+   * 
+   * @param git - SimpleGit instance
+   * @param branchName - Current branch name
+   * @returns true if stash was created, false if no changes to stash
+   * @private
+   */
+  private async createBranchStash(git: any, branchName: string): Promise<boolean> {
+    try {
+      const status = await git.status();
+      const hasChanges = status.files.length > 0;
+      
+      if (!hasChanges) {
+        console.log(`[ProjectService] ℹ️  No changes to stash for ${branchName}`);
+        return false;
+      }
+      
+      // Create stash with branch-specific message
+      const stashMessage = `Auto-stash for ${branchName}`;
+      await git.stash(['push', '-u', '-m', stashMessage]);
+      
+      console.log(`[ProjectService] ✅ Created stash for ${branchName}: "${stashMessage}"`);
+      return true;
+      
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to create stash for ${branchName}: ${errorMsg}`);
+    }
+  }
+
+  /**
+   * 📦 Apply branch-specific stash with conflict detection
+   * 
+   * Finds and applies the stash entry for the target branch.
+   * Handles conflicts gracefully and provides detailed error messages.
+   * On success, drops the applied stash. On error, preserves stash for manual recovery.
+   * 
+   * @param git - SimpleGit instance
+   * @param branchName - Target branch name
+   * @private
+   */
+  private async applyBranchStash(git: any, branchName: string): Promise<void> {
+    try {
+      // Find stash for this branch
+      const stashIndex = await this.findStashForBranch(git, branchName);
+      
+      if (stashIndex === null) {
+        console.log(`[ProjectService] ℹ️  No stash to apply for ${branchName}`);
+        return;
+      }
+      
+      console.log(`[ProjectService] 🔄 Applying stash@{${stashIndex}} for ${branchName}...`);
+      
+      // Apply the specific stash (without dropping it first)
+      await git.stash(['apply', `stash@{${stashIndex}}`]);
+      
+      // Check for conflicts
       const statusAfterApply = await git.status();
       const hasConflicts = statusAfterApply.conflicted && statusAfterApply.conflicted.length > 0;
       
@@ -1673,30 +1775,34 @@ next-env.d.ts
         const conflictedFiles = statusAfterApply.conflicted || [];
         console.error(`[ProjectService] ❌ Stash conflicts detected:`, conflictedFiles);
         
-        // ✅ Abort: Reset to clean state
+        // Abort: Reset to clean state
         await git.reset(['--hard', 'HEAD']);
         await git.clean(['-fd']);
         
         throw new Error(
-          `Cannot apply your uncommitted changes to ${contextName} due to conflicts.\n` +
-          `Conflicted files:\n${conflictedFiles.map((f: string) => `  - ${f}`).join('\n')}\n\n` +
-          `Your changes are still saved in git stash. To recover:\n` +
-          `1. Resolve conflicts manually: git stash apply\n` +
-          `2. Or discard stashed changes: git stash drop`
+          `❌ Cannot apply your uncommitted changes to "${branchName}" due to conflicts.\n\n` +
+          `Conflicted files:\n${conflictedFiles.map((f: string) => `  • ${f}`).join('\n')}\n\n` +
+          `Your changes are still saved in git stash@{${stashIndex}}.\n\n` +
+          `To recover manually:\n` +
+          `  1. git stash apply stash@{${stashIndex}}\n` +
+          `  2. Resolve conflicts\n` +
+          `  3. git stash drop stash@{${stashIndex}}\n\n` +
+          `Or to discard:\n` +
+          `  git stash drop stash@{${stashIndex}}`
         );
       }
       
-      // ✅ No conflicts: Success! Drop stash
-      await git.stash(['drop']);
-      console.log(`[ProjectService] ✅ Stashed changes applied successfully for ${contextName}`);
+      // Success! Drop the applied stash
+      await git.stash(['drop', `stash@{${stashIndex}}`]);
+      console.log(`[ProjectService] ✅ Stash applied and dropped for ${branchName}`);
       
     } catch (error) {
-      // ✅ Check if it's our own conflict error
+      // Re-throw our detailed conflict errors
       if (error instanceof Error && error.message.includes('conflicts')) {
-        throw error;  // Re-throw our detailed error
+        throw error;
       }
       
-      // ✅ Other errors: Cleanup and throw
+      // Other errors: Cleanup and provide detailed message
       console.error(`[ProjectService] ❌ Failed to apply stash:`, error);
       
       try {
@@ -1707,10 +1813,12 @@ next-env.d.ts
         console.error(`[ProjectService] ⚠️  Cleanup also failed:`, cleanupError);
       }
       
+      const errorMsg = error instanceof Error ? error.message : String(error);
       throw new Error(
-        `Failed to apply your uncommitted changes. Repository reset to clean state.\n` +
-        `Your changes are still in git stash. To recover: git stash apply\n` +
-        `Original error: ${error instanceof Error ? error.message : String(error)}`
+        `❌ Failed to apply your uncommitted changes to "${branchName}".\n\n` +
+        `The repository has been reset to a clean state.\n` +
+        `Your changes are still in git stash. To view: git stash list\n\n` +
+        `Error: ${errorMsg}`
       );
     }
   }
@@ -1754,6 +1862,10 @@ next-env.d.ts
     // Get base branch from config
     const baseBranch = config.branchBase || 'main';
     
+    // ✅ Get current branch for branch-specific stash management
+    const currentBranch = await git.revparse(['--abbrev-ref', 'HEAD']).catch(() => baseBranch);
+    console.log(`[ProjectService] 📍 Current branch: ${currentBranch}`);
+    
     // ✅ CRITICAL: Check if repository has any commits
     const log = await git.log({ maxCount: 1 }).catch(() => null);
     const hasCommits = log && log.latest;
@@ -1778,22 +1890,8 @@ next-env.d.ts
       }
     }
     
-    // ✅ Check for uncommitted changes before switching
-    const status = await git.status();
-    const hasChanges = status.files.length > 0;
-    let stashCreated = false;
-    
-    if (hasChanges) {
-      // ✅ CRITICAL: Stash changes to prevent checkout failure
-      console.log(`[ProjectService] ⚠️  Uncommitted changes detected, stashing...`);
-      try {
-        await git.stash(['push', '-u', '-m', `Auto-stash before switching to ${featureName}`]);
-        stashCreated = true;
-        console.log(`[ProjectService] ✅ Changes stashed successfully`);
-      } catch (stashError) {
-        throw new Error(`Failed to stash changes: ${stashError instanceof Error ? stashError.message : String(stashError)}`);
-      }
-    }
+    // ✅ NEW: Create branch-specific stash for current branch
+    await this.createBranchStash(git, currentBranch);
     
     try {
       // ✅ Special case: If featureName is 'main' or matches baseBranch, checkout base branch directly
@@ -1821,10 +1919,8 @@ next-env.d.ts
           console.log(`[ProjectService] Could not set upstream for ${baseBranch}:`, err);
         }
         
-        // ✅ Apply stashed changes if any
-        if (stashCreated) {
-          await this.applyStashSafely(git, baseBranch);
-        }
+        // ✅ NEW: Apply base branch's stash (if any)
+        await this.applyBranchStash(git, baseBranch);
         
         return baseBranch;  // ✅ Return base branch name
       }
@@ -1842,10 +1938,8 @@ next-env.d.ts
       await git.checkout(branchName);
       console.log(`[ProjectService] ✅ Checked out existing branch: ${branchName}`);
       
-      // ✅ Apply stashed changes if any
-      if (stashCreated) {
-        await this.applyStashSafely(git, branchName);
-      }
+      // ✅ NEW: Apply target branch's stash (if any)
+      await this.applyBranchStash(git, branchName);
     } else {
       // Create new branch from base
       
@@ -1887,9 +1981,7 @@ next-env.d.ts
       await git.checkoutLocalBranch(branchName);
       console.log(`[ProjectService] ✅ Created new local branch: ${branchName}`);
       
-      if (stashCreated) {
-        await this.applyStashSafely(git, branchName);
-      }
+      // ✅ NEW: New branch has no stash, nothing to apply
       
       await this.autoIndexNewBranch(projectId, codebasePath, branchName, baseBranch, userContext, featureName);
     }
@@ -2000,18 +2092,9 @@ next-env.d.ts
     return branchName;  // ✅ Return the feature branch name
     
     } catch (error) {
-      // ✅ Cleanup on any error during branch switching
-      if (stashCreated) {
-        try {
-          console.log(`[ProjectService] 🧹 Cleaning up after error...`);
-          await git.reset(['--hard', 'HEAD']);
-          await git.clean(['-fd']);
-          console.log(`[ProjectService] ✅ Cleaned up working tree`);
-        } catch (cleanupError) {
-          console.error(`[ProjectService] ⚠️  Cleanup failed:`, cleanupError);
-        }
-      }
-      
+      // ✅ Error during branch switching
+      // Note: Stash is preserved in case of error, user can manually recover
+      console.error(`[ProjectService] ❌ Error during branch switch:`, error);
       throw error;
     }
   }

@@ -51,7 +51,7 @@ interface StoreState {
   isGitStatusLoading: boolean;  // ✅ Git status (branch switch + fetch) 중
   gitStatusPhase: 'switching' | 'fetching' | null;  // ✅ Git status 세부 단계
   currentGitBranch: string | undefined;  // ✅ Current Git branch (updated immediately on switch)
-  manualGitAction: 'fetch' | 'push' | 'pull' | 'init' | 'clone' | null;  // ✅ Manual Git action from ProjectSection dropdown
+  manualGitAction: 'fetch' | 'push' | 'pull' | 'commit' | 'sync' | 'init' | 'clone' | null;  // ✅ Manual Git action from ProjectSection dropdown
   recursionLimit: number;  // ✅ System recursion limit from backend
   theme: 'light' | 'dark';
   splitLayout: 'horizontal' | 'vertical';
@@ -132,7 +132,7 @@ interface StoreActions {
   setGitStatusLoading: (loading: boolean) => void;  // ✅ Git status 로딩 상태 설정
   setGitStatusPhase: (phase: 'switching' | 'fetching' | null) => void;  // ✅ Git status 세부 단계 설정
   setCurrentGitBranch: (branch: string | undefined) => void;  // ✅ Current Git branch 설정
-  setManualGitAction: (action: 'fetch' | 'push' | 'pull' | 'init' | 'clone' | null) => void;  // ✅ Manual Git action 설정
+  setManualGitAction: (action: 'fetch' | 'push' | 'pull' | 'commit' | 'sync' | 'init' | 'clone' | null) => void;  // ✅ Manual Git action 설정
   setRecursionLimit: (limit: number) => void;  // ✅ Set system recursion limit
   loadSystemConfig: () => Promise<void>;  // ✅ Load system config from backend
   toggleTheme: () => void;
@@ -1144,7 +1144,7 @@ export const useStore = create<Store>((set, get) => {
     set({ currentGitBranch: branch });
   },
 
-  setManualGitAction: (action: 'fetch' | 'push' | 'pull' | 'init' | 'clone' | null) => {
+  setManualGitAction: (action: 'fetch' | 'push' | 'pull' | 'commit' | 'sync' | 'init' | 'clone' | null) => {
     set({ manualGitAction: action });
   },
 
