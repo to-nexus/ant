@@ -187,15 +187,39 @@ NO DTOs are redefined in this document.
 - Responsive breakpoints (if mobile required)
 - Form validation (client-side matching API constraints)
 
-### 7. Technology Stack
+### 7. Technology Stack ⚠️ MANDATORY
 
-**Framework & Version**: (per PRD, e.g., React 18, Vue 3, Svelte 4)
-**Build Tool**: (per PRD, e.g., Vite, webpack, Next.js)
+**🚨 CRITICAL: You MUST specify technology stack**
+
+**Default Stack (if PRD does not specify):**
+- **Language**: TypeScript
+- **Framework**: React 18
+- **Build Tool**: Vite
+- **Styling**: Tailwind CSS (unless PRD specifies otherwise)
+
+**If PRD explicitly specifies different technologies:**
+- Use exactly what PRD specifies
+- Reference PRD section: "(per PRD §X)"
+
+**Required Format:**
+```markdown
+### Technology Stack
+
+**Language**: TypeScript
+**Framework**: [React 18 | Vue 3 | Svelte 4 | Next.js]
+**Build Tool**: [Vite | webpack | Next.js (if fullstack SSR)]
+
 **Key Libraries**:
-- Routing: react-router, @tanstack/router, etc.
-- HTTP client: fetch (native), axios, ky
-- State: As chosen in Section 3
-- UI: Component library if specified in PRD
+- Routing: [react-router | @tanstack/router | Next.js routing]
+- HTTP Client: [fetch (native) | axios]
+- State Management: [As chosen in Section 3]
+- Styling: [Tailwind CSS | styled-components | CSS Modules]
+- UI Components: [Only if PRD specifies, e.g., shadcn/ui, MUI]
+```
+
+**Decision Rule:**
+1. PRD mentions frontend framework/library? → Use it
+2. PRD silent on frontend tech? → **Default to React 18 + Vite + TypeScript**
 
 ---
 

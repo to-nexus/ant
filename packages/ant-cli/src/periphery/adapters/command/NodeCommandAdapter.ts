@@ -69,6 +69,11 @@ export class NodeCommandAdapter implements CommandPort {
     // System info
     'pwd',     // Print working directory
     'tree',    // Directory tree (if installed)
+    
+    // Process management
+    'lsof',    // List open files (for port checking)
+    'kill',    // Kill processes
+    'xargs',   // Build and execute commands from stdin
   ];
 
   private readonly DEFAULT_TIMEOUT = 5 * 60 * 1000; // 5 minutes

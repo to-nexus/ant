@@ -160,14 +160,38 @@ NO deviations from the contract are permitted.
 - Caching (Redis strategy)
 - File storage (S3, local filesystem)
 
-### 8. Technology Stack
+### 8. Technology Stack ⚠️ MANDATORY
 
-**Framework & Version**: (per PRD, e.g., Express.js, NestJS, FastAPI, Spring Boot)
-**Database**: (per PRD, e.g., PostgreSQL, MongoDB, MySQL)
+**🚨 CRITICAL: You MUST specify technology stack**
+
+**Default Stack (if PRD does not specify):**
+- **Language**: TypeScript
+- **Runtime**: Node.js
+- **Framework**: Express.js or NestJS (choose based on complexity)
+- **Database**: PostgreSQL (if persistence needed)
+
+**If PRD explicitly specifies different technologies:**
+- Use exactly what PRD specifies
+- Reference PRD section: "(per PRD §X)"
+
+**Required Format:**
+```markdown
+### Technology Stack
+
+**Language & Runtime**: [TypeScript + Node.js | Go | Python | Java]
+**Framework**: [Express.js | NestJS | Gin | FastAPI | Spring Boot]
+**Database**: [PostgreSQL | MongoDB | MySQL | None (if PRD §X excludes persistence)]
+
 **Key Libraries**:
-- ORM/Query builder: Prisma, TypeORM, Sequelize, etc.
-- Auth: JWT library, Passport, etc.
-- Validation: class-validator, zod, joi, etc.
+- [Based on language choice]
+- TypeScript: Prisma/TypeORM, class-validator, etc.
+- Go: standard library + gin-gonic
+- Python: SQLAlchemy, Pydantic, etc.
+```
+
+**Decision Rule:**
+1. PRD mentions backend language/framework? → Use it
+2. PRD silent on backend tech? → **Default to TypeScript + Node.js**
 
 ---
 
