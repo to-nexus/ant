@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Timer, Coins } from 'lucide-react';
 import { StatusChip, ChipVariant } from '../StatusChip';
 import { formatElapsedTime } from '@/shared/utils/timeUtils';
-import { formatTokenUsageCompact } from '@/shared/utils/tokenUtils';
+import { formatTokenUsageCompact, formatTokenCount } from '@/shared/utils/tokenUtils';
 import { JobTiming, TaskTokenUsage } from '@/domain/models/types';
 import { Tooltip } from '../common/Tooltip';
 
@@ -263,7 +263,7 @@ export function TokenUsageBadge({ tokenUsage, completedTasks }: TokenUsageBadgeP
       
       {/* Breakdown = Estimating + Tasks */}
       <div className="text-xs text-gray-600 dark:text-gray-400 -mt-1 mb-1 italic">
-        = Estimating Phase ({(estimatingNodesTotal / 1000).toFixed(1)}K) + Tasks ({(tasksTotal / 1000).toFixed(1)}K)
+        = Estimating Phase ({formatTokenCount(estimatingNodesTotal)}) + Tasks ({formatTokenCount(tasksTotal)})
       </div>
       
       {/* Estimating Phase (Job-level nodes) */}
@@ -271,7 +271,7 @@ export function TokenUsageBadge({ tokenUsage, completedTasks }: TokenUsageBadgeP
         <div className="flex justify-between items-center font-semibold">
           <span className="text-gray-800 dark:text-gray-100">Estimating Phase:</span>
           <span className="font-mono text-gray-800 dark:text-gray-100">
-            {(estimatingNodesTotal / 1000).toFixed(1)}K
+            {formatTokenCount(estimatingNodesTotal)}
           </span>
         </div>
       </div>
@@ -282,7 +282,7 @@ export function TokenUsageBadge({ tokenUsage, completedTasks }: TokenUsageBadgeP
           <div className="flex justify-between items-center font-semibold">
             <span className="text-gray-800 dark:text-gray-100">Tasks ({completedTasks.length}):</span>
             <span className="font-mono text-gray-800 dark:text-gray-100">
-              {(tasksTotal / 1000).toFixed(1)}K
+              {formatTokenCount(tasksTotal)}
             </span>
           </div>
           <div className="pl-2 space-y-1">
@@ -296,8 +296,8 @@ export function TokenUsageBadge({ tokenUsage, completedTasks }: TokenUsageBadgeP
                 </span>
                 <span className="font-mono text-gray-700 dark:text-gray-300">
                   {task.tokenUsage
-                    ? `${(task.tokenUsage.totalTokens / 1000).toFixed(1)}K`
-                    : '0K'}
+                    ? formatTokenCount(task.tokenUsage.totalTokens)
+                    : '0'}
                 </span>
               </div>
             ))}
@@ -309,11 +309,11 @@ export function TokenUsageBadge({ tokenUsage, completedTasks }: TokenUsageBadgeP
       <div className="pt-1.5 mt-1.5 border-t border-amber-300 dark:border-slate-600 text-xs space-y-0.5">
         <div className="flex justify-between">
           <span className="text-gray-700 dark:text-gray-300">Input:</span>
-          <span className="font-mono text-gray-700 dark:text-gray-300">{(tokenUsage.inputTokens / 1000).toFixed(1)}K</span>
+          <span className="font-mono text-gray-700 dark:text-gray-300">{formatTokenCount(tokenUsage.inputTokens)}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-gray-700 dark:text-gray-300">Output:</span>
-          <span className="font-mono text-gray-700 dark:text-gray-300">{(tokenUsage.outputTokens / 1000).toFixed(1)}K</span>
+          <span className="font-mono text-gray-700 dark:text-gray-300">{formatTokenCount(tokenUsage.outputTokens)}</span>
         </div>
       </div>
     </div>
