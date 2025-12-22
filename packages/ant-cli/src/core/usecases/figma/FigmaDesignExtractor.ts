@@ -19,9 +19,9 @@ export interface ExtractedDesign {
     properties: any;
   }[];
   styles: {
-    colors: Record<string, string>;
+    colors: Record<string, any>;  // Can be string or ColorToken
     typography: Record<string, any>;
-    spacing: Record<string, string>;
+    spacing: Record<string, any>;  // Can be string or number
   };
   assets: {
     id: string;

@@ -683,9 +683,12 @@ Port ${ORCHESTRATOR_PORT} is the orchestrator. Any process in /ant/packages/ant-
     /yarn\s+dev\b/,
     /yarn\s+serve\b/,
     /yarn\s+start\b/,
-    /pnpm\s+dev\b/,
-    /pnpm\s+serve\b/,
-    /pnpm\s+start\b/,
+    /yarn\s+run\s+dev\b/,
+    /yarn\s+run\s+serve\b/,
+    /yarn\s+run\s+start\b/,
+    /pnpm.*\s+dev\b/,        // pnpm dev / pnpm --filter xxx dev / pnpm run dev
+    /pnpm.*\s+serve\b/,      // pnpm serve / pnpm --filter xxx serve
+    /pnpm.*\s+start\b/,      // pnpm start / pnpm --filter xxx start
     /node\s+.*server\.(js|ts)\b/,
     /tsx\s+.*server\.(js|ts)\b/,
     /nodemon\b/,
