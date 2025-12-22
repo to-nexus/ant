@@ -96,6 +96,11 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       (sessionState as any).jobTiming = (state as any).jobTiming;
     }
     
+    // ✅ CRITICAL: Include job-level token usage
+    if ((state as any).tokenUsage) {
+      (sessionState as any).tokenUsage = (state as any).tokenUsage;
+    }
+    
     // ✅ Include interruption details if present
     if ((state as any).interruption) {
       (sessionState as any).interruption = (state as any).interruption;

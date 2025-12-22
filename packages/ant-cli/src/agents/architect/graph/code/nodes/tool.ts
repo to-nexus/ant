@@ -633,7 +633,7 @@ async function handleRunCommand(
   }
   
   // 🚨 CRITICAL SAFEGUARD: Prevent killing orchestrator port
-  const ORCHESTRATOR_PORT = process.env.PORT || process.env.ANT_SERVER_PORT || '4100';
+  const ORCHESTRATOR_PORT = process.env.ANT_CLI_PORT || '4100';
   const killPortPattern = /lsof\s+-ti:(\d+)/;
   const match = command.match(killPortPattern);
   

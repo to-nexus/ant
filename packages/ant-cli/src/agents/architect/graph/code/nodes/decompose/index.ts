@@ -19,7 +19,7 @@ import { JobTimingManager } from "../../../common/timing/JobTimingManager";
 import { logErrorHeader } from "../shared/errorHandler";
 
 // Import submodules
-import { detectErrorInDirective, validateTasks } from "./validation";
+import { validateTasks } from "./validation";
 import { checkSessionRestore, restoreFromSession } from "./sessionManager";
 import { prepareDesignDocument } from "./designSelector";
 import { callLLMForDecompose } from "./llmCaller";
@@ -151,12 +151,6 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const { designDoc, hasDesignDoc } = prepareDesignDocument(state);
   
-  // ✅ Detect error in directive BEFORE building prompt
-  const hasErrorInDirective = detectErrorInDirective(state.directive);
-  if (hasErrorInDirective) {
-    console.log(`🚨 [Decompose] Error detected in directive → activating error analysis mode`);
-  }
-  
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 4: Build prompt and call LLM
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -206,8 +200,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     mode: state.mode || 'unknown',
     profile: state.profile,
     codebaseFilePaths,  // ✅ File paths from keyword search (for task planning)
-    hasProjectCode,     // ✅ CRITICAL: Actual codebase existence (git-based, not Vector DB)
-    hasErrorInDirective // ✅ Pass to prompt for error analysis mode
+    hasProjectCode      // ✅ CRITICAL: Actual codebase existence (git-based, not Vector DB)
   });
   
   let rawResponse: string;
@@ -245,8 +238,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 6: Validate and create task queue
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Note: hasErrorInDirective already calculated in STEP 3
-  validateTasks(tasks, state.mode, state.directive, hasErrorInDirective);
+  validateTasks(tasks, state.mode, state.directive);
   
   const { taskQueue, featureTasks } = createTaskQueue(tasks);
   logTaskSummary(tasks, referenceRequests);

@@ -155,7 +155,9 @@ Create config files only. NO source code, NO tests.
 
 **General Rules:**
 - ❌ DO NOT hardcode port numbers in configs
-- ✅ Use environment variables: `process.env.PORT || 5173`
+- ✅ Use project-specific defaults in source code: `const PORT = 3000;` (backend), `port: 5173` (vite.config)
+- ⚠️ AVOID generic `process.env.PORT` (conflicts when running multiple projects)
+- ✅ If using env var, use framework-specific: `VITE_PORT`, `NEXT_PUBLIC_PORT`, or read from project's .env
 - ❌ DO NOT setup testing infrastructure (excluded)
 - ✅ Install ALL dependencies needed for the project
 - ✅ Use exact versions from design doc if specified
@@ -187,7 +189,7 @@ Implement the feature. Source code only.
 
 {{#if currentTask}}
 {{#if (eq currentTask.priority 1000)}}
-## ✅ FINAL VERIFICATION: Integration Check
+## ✅ FINAL VERIFICATION: Build & Startup Check
 
 {{#if designDoc}}
 ────────────────────────────────────────────────────────────────────────────────
@@ -198,43 +200,33 @@ Implement the feature. Source code only.
 ────────────────────────────────────────────────────────────────────────────────
 {{/if}}
 
-**🎯 Purpose:** Quick check for critical missing files, then immediately finish.
+**🎯 Purpose:** Verify the application builds and starts successfully.
 
-**🚨 CRITICAL: Create files using `<file>` XML tag!**
+**Verification Sequence:**
 
-**Example:**
-```xml
-<file path="packages/backend/src/index.ts">
-import express from 'express';
-const app = express();
-app.listen(3000);
-</file>
+1. **Build Verification**
+   - Run build command
+   - If fails: Fix error, retry
 
-<done>true</done>
-```
+2. **Entry Point Check**
+   - Verify critical files exist
+   - If missing: Create them
 
-**✅ CORRECT Pattern:**
-```
-1. Check: Is critical entry point missing? (use list_files/read_file if needed)
-2. If YES → Create using <file> tag immediately
-3. If NO → <done>true</done> immediately
+3. **Startup Verification**
+   - Run application
+   - ✅ Success: Application starts, prints logs, no crash
+   - ❌ Failure: Crashes, errors, missing config → **Fix and retry**
 
-Example:
-- list_files("packages/backend/src") → No index.ts found
-- <file path="packages/backend/src/index.ts">...</file>
-- <done>true</done>
-```
+**🚨 CRITICAL: Runtime errors ARE failures**
+- Configuration errors (missing env vars, credentials) → **Create config template, retry**
+- Module errors, crashes → **Fix the cause, retry**
+- "Expected" errors do NOT exist - all errors must be resolved
 
-**🚫 FORBIDDEN Pattern:**
-```
-❌ Read file → "I will create..." → Read another file → "I will create..." → Repeat
-✅ Read file → Realize missing → <file> tag immediately → <done>
-```
+**Completion Criteria:**
+- ✅ Build succeeds
+- ✅ Application starts without crashing
+- ✅ Configuration template provided (if needed)
 
-**Key rule:** If you find missing file → Create it NOW with `<file>` tag. Don't just say you will.
-
-────────────────────────────────────────────────────────────────────────────────
-**Default: `<done>true</done>` if no critical file missing. Build validation catches real issues.**
 ────────────────────────────────────────────────────────────────────────────────
 
 {{/if}}

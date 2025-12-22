@@ -216,9 +216,9 @@ Enable child processes to communicate with parent server.
 ### Usage
 ```typescript
 // In orchestrator (child process detection)
-if (process.env.ANT_SERVER_PORT) {
+if (process.env.ANT_CLI_PORT) {
   const { WorkflowHttpClient } = await import('./clients');
-  workflowUpdate = new WorkflowHttpClient(process.env.ANT_SERVER_PORT);
+  workflowUpdate = new WorkflowHttpClient(process.env.ANT_CLI_PORT);
 }
 ```
 

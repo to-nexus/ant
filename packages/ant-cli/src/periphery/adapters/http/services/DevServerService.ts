@@ -249,11 +249,25 @@ export class DevServerService {
     // Determine the best dev server command
     let command: string;
     let args: string[];
+    
+    // ✅ CRITICAL: Filter out ant-cli environment variables to prevent pollution
+    // Do NOT pass ant-cli's PORT (4100) to user's dev server!
+    const cleanEnv = Object.entries(process.env).reduce((acc, [key, value]) => {
+      // Exclude ant-cli specific env vars
+      if (key === 'PORT' || key.startsWith('ANT_')) {
+        return acc;
+      }
+      if (value !== undefined) {
+        acc[key] = value;
+      }
+      return acc;
+    }, {} as Record<string, string>);
+    
     let env: Record<string, string> = {
-      ...process.env,
+      ...cleanEnv,
       BROWSER: 'none',  // Prevent auto-opening browser
       OPEN: 'false',    // Alternative env var
-      PORT: devPort.toString()  // Always set PORT env var as fallback
+      PORT: devPort.toString()  // Set user's dev server port
     };
     
     // ✅ NEW PRIORITY: Check package.json scripts FIRST (explicit developer intent)
