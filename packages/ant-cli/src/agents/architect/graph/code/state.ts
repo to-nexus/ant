@@ -359,6 +359,14 @@ export interface ArchitectGraphState extends TaskArtifacts {
   
   // ✅ Interruption tracking
   interruption?: import('../../../../core/types').InterruptionDetails;  // Details about why and how the job was interrupted
+  
+  // ✅ Running Servers (for automatic cleanup)
+  runningServers?: Array<{
+    pid: number;
+    command: string;
+    workingDir: string;
+    startedAt: number;
+  }>;
 }
 
 /**

@@ -123,7 +123,7 @@ export const ARCHITECT_TOOLS = {
   
   run_command: {
     name: 'run_command',
-    description: 'Execute a shell command. Supports both build commands and server verification (starts server, monitors for 10s, terminates if successful).',
+    description: 'Execute a shell command. Dev servers are automatically verified (10s) then left running for testing. System auto-cleans them up when task completes.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -137,7 +137,7 @@ export const ARCHITECT_TOOLS = {
         },
         keep_running: {
           type: 'boolean',
-          description: 'For long-running servers: set to true to keep server running (rare). Default: false (auto-terminates after startup verification)',
+          description: 'For long-running servers: set to true to keep server running beyond task completion (very rare). Default: false (auto-cleanup)',
         },
       },
       required: ['command'],
