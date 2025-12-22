@@ -112,12 +112,12 @@ export async function orchestrator(params: {
             fileTreeUpdate = instance;
             workflowUpdate = instance;
             console.log('✅ Real-time updates enabled (Direct - Kanban + File Tree + Workflow) [Design]');
-          } else if (process.env.ANT_SERVER_PORT) {
+          } else if (process.env.ANT_CLI_PORT) {
             // 자식 프로세스: HTTP 클라이언트 사용
             const { WorkflowHttpClient, KanbanHttpClient, FileTreeHttpClient } = await import('../periphery/adapters/http/clients');
-            kanbanUpdate = new KanbanHttpClient(process.env.ANT_SERVER_PORT);
-            fileTreeUpdate = new FileTreeHttpClient(process.env.ANT_SERVER_PORT);
-            workflowUpdate = new WorkflowHttpClient(process.env.ANT_SERVER_PORT);
+            kanbanUpdate = new KanbanHttpClient(process.env.ANT_CLI_PORT || '4100');
+            fileTreeUpdate = new FileTreeHttpClient(process.env.ANT_CLI_PORT || '4100');
+            workflowUpdate = new WorkflowHttpClient(process.env.ANT_CLI_PORT || '4100');
             console.log('✅ Real-time updates enabled (HTTP - Kanban + File Tree + Workflow) [Design]');
           } else {
             console.log('ℹ️  Real-time updates disabled (no server instance or port) [Design]');
@@ -161,12 +161,12 @@ export async function orchestrator(params: {
             fileTreeUpdate = instance;
             workflowUpdate = instance;
             console.log('✅ Real-time updates enabled (Direct - Kanban + File Tree + Workflow)');
-          } else if (process.env.ANT_SERVER_PORT) {
+          } else if (process.env.ANT_CLI_PORT) {
             // 자식 프로세스: HTTP 클라이언트 사용
             const { WorkflowHttpClient, KanbanHttpClient, FileTreeHttpClient } = await import('../periphery/adapters/http/clients');
-            kanbanUpdate = new KanbanHttpClient(process.env.ANT_SERVER_PORT);
-            fileTreeUpdate = new FileTreeHttpClient(process.env.ANT_SERVER_PORT);
-            workflowUpdate = new WorkflowHttpClient(process.env.ANT_SERVER_PORT);
+            kanbanUpdate = new KanbanHttpClient(process.env.ANT_CLI_PORT || '4100');
+            fileTreeUpdate = new FileTreeHttpClient(process.env.ANT_CLI_PORT || '4100');
+            workflowUpdate = new WorkflowHttpClient(process.env.ANT_CLI_PORT || '4100');
             console.log('✅ Real-time updates enabled (HTTP - Kanban + File Tree + Workflow)');
           } else {
             console.log('ℹ️  Real-time updates disabled (no server instance or port)');

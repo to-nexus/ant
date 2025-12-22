@@ -99,6 +99,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
           _httpJobId: state._httpJobId,
           jobId,
           jobTiming: resumedJobTiming,
+          tokenUsage: session.state.tokenUsage,  // ✅ CRITICAL: Restore job-level token usage
           directive: mergedDirective,  // ✅ Merged directives (newest first)
           overrideDirective: session.state.overrideDirective,  // ✅ Restore chat-initiated directive
           chatSource: session.state.chatSource,  // ✅ Restore chat source flag

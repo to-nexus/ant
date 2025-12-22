@@ -967,7 +967,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
           ...process.env,
           PATH: ensuredPath,  // ✅ Explicitly ensure PATH includes standard locations
           ANT_JOB_ID: jobId,  // ✅ Pass jobId via environment variable
-          ANT_SERVER_PORT: '4100',  // ✅ Pass server port for HTTP updates
+          ANT_CLI_PORT: process.env.ANT_CLI_PORT || '4100',  // ✅ Pass ant-cli server port (NOT PORT!)
           ANT_PROJECT_ID: params.project || '',  // ✅ Pass project ID
           ANT_FEATURE_NAME: params.feature || '',  // ✅ Pass feature name
           ANT_PROJECT_PATH: projectPath,  // ✅ Pass full project path for config.json

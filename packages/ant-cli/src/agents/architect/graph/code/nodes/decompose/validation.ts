@@ -2,95 +2,80 @@ import { ArchitectGraphState } from "../../state";
 import { CodeTask } from "../../../../types/task";
 
 /**
- * Detect if directive contains error-related keywords
+ * Post-validation: Check if LLM correctly classified error vs feature
  * 
- * ⚠️ CRITICAL: Error = BROKEN existing functionality
- * NOT just "fix" keyword (could be feature improvement)
+ * This is a sanity check AFTER LLM decomposition, not pre-classification.
+ * LLM should make the decision based on directive content.
  */
-export function detectErrorInDirective(directive: string | undefined): boolean {
-  if (!directive) return false;
-  
-  // ✅ Strong error indicators (existing functionality is BROKEN)
-  const strongErrorKeywords = [
-    'broken', 'crash', 'crashing', 'crashed',
-    'not working', 'doesn\'t work', 'not displayed', 'doesn\'t display',
-    'failing', 'failed to', 'exception', 'error:',
-    '안 나오', '안나오', '작동 안', '작동하지 않', '동작 안',
-    '깨진', '오류', '에러', '버그'
-  ];
-  
-  // ⚠️ Ambiguous keywords (could be error OR feature)
-  // Only treat as error if combined with strong indicators
-  const ambiguousKeywords = [
-    'fix', 'solve', 'resolve', 'correct',
-    '수정', '해결', '고치'
-  ];
-  
-  const lowerDirective = directive.toLowerCase();
-  
-  // Strong error keyword found → definitely error
-  if (strongErrorKeywords.some(keyword => lowerDirective.includes(keyword))) {
-    return true;
+export function detectPotentialMisclassification(
+  directive: string | undefined,
+  tasks: CodeTask[]
+): { hasMisclassification: boolean; reason?: string } {
+  if (!directive) {
+    return { hasMisclassification: false };
   }
   
-  // Ambiguous keyword found → check context
-  if (ambiguousKeywords.some(keyword => lowerDirective.includes(keyword))) {
-    // If mentions "add", "implement", "create" → likely feature improvement
-    const featureKeywords = ['add', 'implement', 'create', 'new', '추가', '구현', '생성'];
-    const hasFeatureIntent = featureKeywords.some(k => lowerDirective.includes(k));
-    
-    if (hasFeatureIntent) {
-      // "Fix by adding X" = feature, not error
-      return false;
+  // ✅ Check 1: Explicit error messages in directive
+  const hasErrorMessage = 
+    /error:\s*/i.test(directive) ||
+    /exception/i.test(directive) ||
+    /\s+at\s+.*\(.*:\d+:\d+\)/.test(directive) ||  // Stack trace
+    /exit code:\s*[1-9]/i.test(directive) ||
+    /failed to compile/i.test(directive) ||
+    /build failed/i.test(directive);
+  
+  // ✅ Check 2: If error message exists but no error-type tasks → potential issue
+  if (hasErrorMessage) {
+    const hasErrorTypeTasks = tasks.some(t => t.type === 'error');
+    if (!hasErrorTypeTasks) {
+      return {
+        hasMisclassification: true,
+        reason: 'Directive contains error messages/stack traces but all tasks are non-error type'
+      };
     }
-    
-    // "Fix X" without adding new things → likely error
-    return true;
   }
   
-  return false;
+  return { hasMisclassification: false };
 }
 
 /**
- * Validate tasks after decompose to detect over-engineering
+ * Validate tasks after decompose to detect issues
  */
 export function validateTasks(
   tasks: CodeTask[],
   mode: string | undefined,
-  directive: string | undefined,
-  hasErrorInDirective: boolean
+  directive: string | undefined
 ): void {
   // Skip validation for generate mode
   if (mode === 'generate') return;
   
-  // ✅ Refactor/Explain mode: Excessive task count warning
-  if ((mode === 'refactor' || mode === 'explain') && tasks.length > 5) {
+  // ✅ Check for potential misclassification
+  const misclassification = detectPotentialMisclassification(directive, tasks);
+  if (misclassification.hasMisclassification) {
     console.warn(`
-⚠️  [Decompose Validation] WARNING: Generated ${tasks.length} tasks in ${mode} mode.
-   This might indicate over-engineering.
+⚠️  [Decompose Validation] POTENTIAL MISCLASSIFICATION
    
-   Mode: ${mode}
-   Directive: ${directive?.substring(0, 100)}...
+   ${misclassification.reason}
    
-   Expected: 1-3 tasks for bug fixes/refactoring
-   Generated: ${tasks.length} tasks
+   Directive (first 200 chars):
+   ${directive?.substring(0, 200)}...
    
-   Review: Consider if all tasks are truly necessary.
+   Generated tasks:
+   ${tasks.map(t => `  - ${t.type}: ${t.name}`).join('\n')}
+   
+   → LLM may have incorrectly classified error as feature tasks.
     `);
   }
   
-  // ✅ Error directive: Check if too many tasks
-  if (hasErrorInDirective && tasks.length > 3) {
+  // ✅ Refactor/Explain mode: Excessive task count warning
+  if ((mode === 'refactor' || mode === 'explain') && tasks.length > 5) {
     console.warn(`
-⚠️  [Decompose Validation] WARNING: Error detected in directive but ${tasks.length} tasks generated.
+⚠️  [Decompose Validation] Excessive tasks in ${mode} mode
    
-   Directive contains error keywords: ${directive?.substring(0, 100)}...
-   Generated tasks: ${tasks.length}
-   
-   Expected: 1-2 tasks for error fixes
+   Expected: 1-3 tasks for focused changes
    Generated: ${tasks.length} tasks
    
-   Review: Most errors require only 1-2 focused fixes.
+   → Review if all tasks are necessary
     `);
   }
   
@@ -99,15 +84,12 @@ export function validateTasks(
     const firstTask = tasks[0];
     if (isOverBroadTask(firstTask)) {
       console.warn(`
-⚠️  [Decompose Validation] WARNING: First task seems too broad for ${mode} mode.
+⚠️  [Decompose Validation] First task too broad for ${mode} mode
    
    Task: ${firstTask.name}
    Description: ${firstTask.description.substring(0, 150)}...
    
-   Expected: Focused fix (e.g., "Fix X in file.ts")
-   Detected: Broad implementation (e.g., "Implement entire X system")
-   
-   Review: ${mode} mode should focus on minimal changes.
+   → ${mode} mode should focus on minimal changes
       `);
     }
   }

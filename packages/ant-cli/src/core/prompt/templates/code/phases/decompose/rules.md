@@ -40,10 +40,10 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
   },
   {
     "id": "final-verification",
-    "name": "Final Build Verification",
+    "name": "Final Build & Startup Verification",
     "type": "feature",
     "priority": 1000,
-    "description": "Verify build succeeds and all critical files exist"
+    "description": "Verify build succeeds and application starts without runtime errors"
   }
 ]
 </tasks>
@@ -60,10 +60,10 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
   },
   {
     "id": "final-verification",
-    "name": "Final Build Verification",
+    "name": "Final Build & Startup Verification",
     "type": "feature",
     "priority": 1000,
-    "description": "Check for critical missing files. Create if build-blocking."
+    "description": "Verify build succeeds and application starts without runtime errors"
   }
 ]
 </tasks>
@@ -95,20 +95,32 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
 
 **🚨 CRITICAL: Error vs Feature Distinction**
 
-**Type: "error"** - Existing functionality is BROKEN or FAILING:
-- Core principle: Something that **worked before** is now **not working**
-- Indicators: Crashes, exceptions, incorrect behavior, missing output
-- Action focus: **Restore** working state
+**Type: "error"** - Code is BROKEN, FAILING, or CRASHING:
+- Core principle: **Expected behavior is not happening** due to bugs, build failures, or runtime errors
+- Indicators:
+  - Build failures, compilation errors
+  - Runtime crashes, exceptions, MODULE_NOT_FOUND, ENOENT
+  - Missing critical files that prevent execution
+  - Broken imports, incorrect behavior, failed tests
+- Action focus: **Fix** the broken code to restore expected behavior
+- Examples: "Error: Cannot find module", "Build failed", "Server crashes on startup"
 
-**Type: "feature"** - NEW functionality or IMPROVEMENT to existing:
-- Core principle: Adding capability that **didn't exist** or **enhancing** what works
-- Indicators: New requirements, performance optimization, UX enhancement
+**Type: "feature"** - NEW functionality or IMPROVEMENT:
+- Core principle: Adding capability that **didn't exist** or **enhancing** working code
+- Indicators: New requirements, performance optimization, UX enhancement, new endpoints
 - Action focus: **Extend** or **improve** capabilities
+- Examples: "Add user authentication", "Optimize database queries", "Add new API endpoint"
 
 **Decision framework:**
-1. Does the problem describe something that should work but doesn't? → **error**
-2. Does the request add new capability or improve existing working code? → **feature**
-3. Ambiguous "fix" without clear broken state? → Default to **feature** (likely improvement)
+1. Is there an error message, crash, or build failure? → **error**
+2. Does the code fail to run or compile? → **error**
+3. Does the request add NEW capability to working code? → **feature**
+4. Ambiguous "fix" without clear error/crash? → Default to **feature**
+
+**CRITICAL: "worked before" is NOT required for error type!**
+- First-time build failures ARE errors (broken code from the start)
+- Missing entry points that prevent execution ARE errors
+- Any crash or exception IS an error, regardless of history
 
 **📦 Dependencies Management:**
 - **Preferred:** Include all known dependencies in Setup Task (priority 100)

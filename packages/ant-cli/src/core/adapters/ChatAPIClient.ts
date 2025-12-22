@@ -2,7 +2,7 @@
  * ChatAPIClient - HTTP client for sending LLM events to Chat UI
  * 
  * Uses environment variables set by parent process:
- * - ANT_SERVER_PORT: Server port (default: 4100)
+ * - ANT_CLI_PORT: Ant CLI server port (default: 4100)
  * - ANT_PROJECT_ID: Current project ID
  * - ANT_FEATURE_NAME: Current feature name
  * - ANT_JOB_ID: Current job ID
@@ -20,7 +20,8 @@ export class ChatAPIClient {
   private messageStarted: boolean = false;  // ✅ Track if message is active
 
   constructor() {
-    this.serverPort = process.env.ANT_SERVER_PORT || '4100';
+    // ✅ Use ANT_CLI_PORT
+    this.serverPort = process.env.ANT_CLI_PORT || '4100';
     this.projectId = process.env.ANT_PROJECT_ID || '';
     this.featureName = process.env.ANT_FEATURE_NAME || '';
     this.jobId = process.env.ANT_JOB_ID || '';

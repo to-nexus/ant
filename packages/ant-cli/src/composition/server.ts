@@ -25,7 +25,7 @@ import { LocalWorkspaceResolver } from "../infrastructure/workspace/LocalWorkspa
  *
  * Environment Variables:
  * - ANT_SERVER_MODE: 'local' (default) or 'cloud'
- * - PORT: Server port (default: 4100)
+ * - ANT_CLI_PORT: Ant CLI server port (default: 4100)
  * - CLOUD_URL: Cloud service URL (for redirect)
  */
 
@@ -45,11 +45,13 @@ async function main() {
   
   // Environment configuration
   const mode = (process.env.ANT_SERVER_MODE || 'local') as 'local' | 'cloud';
-  const port = process.env.PORT ? parseInt(process.env.PORT) : DEFAULT_PORT;
   
-  // 🚨 CRITICAL: Set ANT_SERVER_PORT for child processes to use
-  // This allows run_command safeguard to protect orchestrator port
-  process.env.ANT_SERVER_PORT = port.toString();
+  // ✅ ONLY use ANT_CLI_PORT (NEVER use PORT to avoid collision with user projects)
+  const port = process.env.ANT_CLI_PORT ? parseInt(process.env.ANT_CLI_PORT) : DEFAULT_PORT;
+  
+  // 🚨 CRITICAL: Unset PORT to prevent child processes from inheriting it
+  // User projects should use their own PORT, not ant-cli's port
+  delete process.env.PORT;
   
   // ✅ Get physical workspaces path (centralized in WorkspacePathResolver)
   const workspacesPath = WorkspacePathResolver.getPhysicalWorkspacesPath();

@@ -77,6 +77,7 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
         initial.resolvedCategories = (session.state.resolvedCategories || []) as any;
         initial.recursionCount = session.state.recursionCount || 0;
         initial.recursionLimit = session.state.recursionLimit || finalLimit;
+        initial.tokenUsage = session.state.tokenUsage;  // ✅ CRITICAL: Restore job-level token usage
         
         // ✅ CRITICAL: workspaceConfig is already set in initial state (from orchestrator)
         // DO NOT restore from session - keep the fresh config from orchestrator

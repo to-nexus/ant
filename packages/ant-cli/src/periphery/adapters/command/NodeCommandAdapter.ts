@@ -116,10 +116,23 @@ export class NodeCommandAdapter implements CommandPort {
     return new Promise((resolve) => {
       const [cmd, ...args] = command.split(/\s+/);
       
+      // ✅ CRITICAL: Filter out ant-cli environment variables to prevent pollution
+      // Do NOT pass ant-cli's PORT (4100) to user's commands!
+      const cleanEnv = Object.entries(process.env).reduce((acc, [key, value]) => {
+        // Exclude ant-cli specific env vars (except ANT_* which are intentional)
+        if (key === 'PORT') {
+          return acc;  // Don't pass ant-cli's PORT to user commands
+        }
+        if (value !== undefined) {
+          acc[key] = value;
+        }
+        return acc;
+      }, {} as Record<string, string>);
+      
       // ✅ Spawn with process group for proper cleanup
       const child = spawn(cmd, args, {
         cwd,
-        env: { ...process.env, ...options.env },
+        env: { ...cleanEnv, ...options.env },
         shell: true,  // Need shell for npm run, etc.
         detached: false,  // Stay in same process group for easier kill
       });

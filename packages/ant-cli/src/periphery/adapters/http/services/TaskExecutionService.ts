@@ -147,7 +147,7 @@ export class TaskExecutionService {
           ...process.env,
           PATH: ensuredPath,  // ✅ Explicitly ensure PATH includes standard locations
           ANT_JOB_ID: jobId,  // For tracking
-          ANT_SERVER_PORT: process.env.PORT || '4100',  // For HTTP client updates
+          ANT_CLI_PORT: process.env.ANT_CLI_PORT || '4100',  // ✅ Ant CLI server port (NOT PORT!)
           ANT_OVERRIDE_DIRECTIVE: params.overrideDirective || '',  // ✅ Chat input as directive
           ANT_CHAT_SOURCE: params.chatSource ? 'true' : 'false'    // ✅ Chat SSE flag
         },
