@@ -180,11 +180,14 @@ export function TaskCard({
               </span>
             )}
             
-            {/* Token Usage - Show for completed tasks */}
-            {status === 'completed' && task.tokenUsage && (
+            {/* Token Usage - Show for in-progress (real-time) and completed tasks */}
+            {(status === 'in-progress' || status === 'completed') && task.tokenUsage && task.tokenUsage.totalTokens > 0 && (
               <span className={cn('flex items-center gap-1 text-xs flex-shrink-0', colors.text.secondary)}>
                 <Coins className="w-3.5 h-3.5" />
                 {formatTokenUsageCompact(task.tokenUsage)}
+                {status === 'in-progress' && (
+                  <span className="ml-0.5 opacity-70 animate-pulse">↻</span>
+                )}
               </span>
             )}
           </div>

@@ -103,7 +103,13 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
     
     // ✅ Only include currentTask if it exists
     if (state.currentTask) {
-      sessionState.currentTask = state.currentTask;
+      // ✅ CRITICAL: Include real-time token usage for in-progress task
+      // This allows UI to show token consumption even before task completes
+      const currentTaskWithTokens = {
+        ...state.currentTask,
+        tokenUsage: (state as any)._currentTaskTokenUsage || state.currentTask.tokenUsage
+      };
+      sessionState.currentTask = currentTaskWithTokens;
     }
     
     await state.deps.session.updateArtifacts(
