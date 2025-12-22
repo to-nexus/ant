@@ -79,6 +79,41 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   // ✅ Increment recursion count (track every node execution)
   state.recursionCount = (state.recursionCount || 0) + 1;
   
+  // ✅ CRITICAL: Clean up running servers before completing
+  if (state.runningServers && state.runningServers.length > 0) {
+    console.log(`\n🧹 [Learn] Cleaning up ${state.runningServers.length} running server(s)...`);
+    
+    for (const server of state.runningServers) {
+      try {
+        // Try to kill the process
+        process.kill(server.pid, 'SIGTERM');
+        console.log(`   ✅ Killed: ${server.command} (PID ${server.pid})`);
+        
+        // Give it a moment to terminate
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Check if still running, escalate to SIGKILL
+        try {
+          process.kill(server.pid, 0);  // Check if process exists
+          console.log(`   ⚠️  Process still running, escalating to SIGKILL...`);
+          process.kill(server.pid, 'SIGKILL');
+        } catch (e) {
+          // Process already terminated
+        }
+      } catch (e: any) {
+        if (e.code === 'ESRCH') {
+          console.log(`   ℹ️  Already stopped: ${server.command} (PID ${server.pid})`);
+        } else {
+          console.log(`   ⚠️  Failed to kill ${server.command} (PID ${server.pid}): ${e.message}`);
+        }
+      }
+    }
+    
+    // Clear the list
+    state.runningServers = [];
+    console.log(`   ✅ Server cleanup complete\n`);
+  }
+  
   // ✅ Workflow instrumentation: Enter node
   if (state.deps?.workflowUpdate && state._httpJobId) {
     const taskInfo = state.currentTask ? {

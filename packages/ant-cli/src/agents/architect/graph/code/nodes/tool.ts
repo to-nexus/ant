@@ -746,12 +746,18 @@ Port ${ORCHESTRATOR_PORT} is the orchestrator. Any process in /ant/packages/ant-
         let resolved = false;  // ✅ Prevent double resolve/reject
         
         // ✅ Helper to safely resolve/reject once
-        const safeResolve = async (message: string) => {
+        const safeResolve = async (message: string, shouldKill = false) => {
           if (resolved) return;
           resolved = true;
           clearTimeout(startupTimeout);
           clearTimeout(earlyErrorTimeout);
-          child.kill('SIGTERM');
+          
+          // ✅ Only kill if needed (errors or early completion)
+          if (shouldKill) {
+            child.kill('SIGTERM');
+          }
+          // Otherwise, leave it running (will be cleaned up in learn node)
+          
           resolve(message);
         };
         
@@ -760,7 +766,7 @@ Port ${ORCHESTRATOR_PORT} is the orchestrator. Any process in /ant/packages/ant-
           resolved = true;
           clearTimeout(startupTimeout);
           clearTimeout(earlyErrorTimeout);
-          child.kill('SIGTERM');
+          child.kill('SIGTERM');  // Always kill on errors
           reject(error);
         };
         
@@ -826,21 +832,42 @@ ${stdout.slice(0, 1000)}`));
           // If still running after 10s with no errors = success
           if (!hasError && child.exitCode === null) {
             console.log(`\n   ✅ Server started successfully (verified 10s startup)`);
-            console.log(`   🛑 Terminating process (verification complete)\n`);
+            console.log(`   🔄 Server will continue running (PID: ${child.pid})`);
+            console.log(`   🧹 Will be automatically cleaned up when task completes\n`);
+            
+            // ✅ Store server process for cleanup later
+            if (child.pid) {
+              const serverProcess = {
+                pid: child.pid,
+                command,
+                workingDir,
+                startedAt: Date.now()
+              };
+              
+              state.runningServers = state.runningServers || [];
+              state.runningServers.push(serverProcess);
+              
+              console.log(`   📋 Registered server for cleanup: PID ${child.pid}`);
+              console.log(`   Total running servers: ${state.runningServers.length}\n`);
+            }
             
             await chatAPI.commandComplete(command, true, 0, 
-              `Server started successfully.\n\nStartup output:\n${stdout}\n\n(Process terminated after verification)`,
+              `Server started successfully.\n\nStartup output:\n${stdout}\n\n✅ Server is running in background (PID: ${child.pid}).\n🧹 Will be automatically cleaned up when task completes.`,
               mergeIndex
             );
             
             safeResolve(`✅ SERVER STARTED SUCCESSFULLY: ${command}
 
-The server started without errors. Process was terminated after 10 seconds of successful operation.
+The server started without errors and is running in background.
+
+PID: ${child.pid}
+Working Directory: ${workingDir}
 
 Startup output:
 ${stdout.slice(0, 2000)}${stdout.length > 2000 ? '\n...(truncated)' : ''}
 
-Note: The server is NOT currently running. This was a startup verification test.`);
+✅ The server will continue running for testing.
+🧹 It will be automatically cleaned up when the task completes.`);
           } else if (hasError) {
             // ✅ If error detected but process still running after 10s, fail
             console.error(`\n   ❌ Error detected during startup - failing\n`);
@@ -861,7 +888,7 @@ ${stdout.slice(0, 1000)}`));
           // ✅ Early exit (before 10s) is usually an error
           if (code === 0 && !hasError) {
             await chatAPI.commandComplete(command, true, 0, output, mergeIndex);
-            safeResolve(`✅ Command completed: ${command}\n\nOutput:\n${output.slice(0, 3000)}`);
+            safeResolve(`✅ Command completed: ${command}\n\nOutput:\n${output.slice(0, 3000)}`, true);  // Kill on early completion
           } else {
             // ✅ Non-zero exit or detected error
             await chatAPI.commandComplete(command, false, code || 1, output, mergeIndex);
