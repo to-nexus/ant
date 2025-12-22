@@ -47,6 +47,10 @@ async function main() {
   const mode = (process.env.ANT_SERVER_MODE || 'local') as 'local' | 'cloud';
   const port = process.env.PORT ? parseInt(process.env.PORT) : DEFAULT_PORT;
   
+  // 🚨 CRITICAL: Set ANT_SERVER_PORT for child processes to use
+  // This allows run_command safeguard to protect orchestrator port
+  process.env.ANT_SERVER_PORT = port.toString();
+  
   // ✅ Get physical workspaces path (centralized in WorkspacePathResolver)
   const workspacesPath = WorkspacePathResolver.getPhysicalWorkspacesPath();
   // Use correct resolver for mode

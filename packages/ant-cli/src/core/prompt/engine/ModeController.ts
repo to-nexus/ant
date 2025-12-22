@@ -196,6 +196,10 @@ export class ModeController {
       if (task === 'code') {
         injections.push(`${taskPrefix}/tool-calling-rules-compact`);
         console.log(`[ModeController] Adding compact tool-calling rules`);
+        
+        // ✅ Port management guide (CRITICAL for run_command safety)
+        injections.push(`code/phases/execute/injections/port-management`);
+        console.log(`[ModeController] Adding port-management guide`);
       }
       
       // Domain-specific design guides (design job only, execute phase only)
@@ -229,17 +233,17 @@ export class ModeController {
       
       // Retry context (only on retries)
       if (context.retryContext) {
-        injections.push(`${phasePrefix}/injections/retry-context`);
+        injections.push(`code/phases/execute/injections/retry-context`);
       }
       
       // Lessons from previous work
       if (context.lessons && context.lessons.length > 0) {
-        injections.push(`${phasePrefix}/injections/lessons`);
+        injections.push(`code/phases/execute/injections/lessons`);
       }
       
       // Session context (compressed history)
       if (context.sessionContext && context.sessionContext.totalTurns > 0) {
-        injections.push(`${phasePrefix}/injections/session-context`);
+        injections.push(`code/phases/execute/injections/session-context`);
       }
       
       // Missing dependency fix (language-specific)
@@ -249,7 +253,7 @@ export class ModeController {
       
       // Runtime error fix
       if (context.directive && this.containsRuntimeError(context.directive)) {
-        injections.push(`${phasePrefix}/injections/runtime-error-fix`);
+        injections.push(`code/phases/execute/injections/runtime-error-fix`);
       }
       
       // New project setup (only for setup tasks)

@@ -3,6 +3,10 @@
  * 
  * Shared tool definitions used by both Code and Design jobs.
  * Each job can filter which tools to expose based on their needs.
+ * 
+ * Tool descriptions are kept simple here.
+ * Detailed usage rules are in templates/code/phases/execute/rules.md
+ * Context-specific guidance (like port management) is in execute/injections/
  */
 
 import type { ToolDefinition } from '../../../core/ports/llm';
@@ -119,17 +123,7 @@ export const ARCHITECT_TOOLS = {
   
   run_command: {
     name: 'run_command',
-    description: `Execute a shell command. Supports both build commands and server verification.
-
-For servers (npm start, npm run dev, etc.):
-- Starts the server and monitors for 10 seconds
-- If no errors during startup, returns success
-- Automatically terminates after verification
-- Use this to verify "does the fix work?" without hanging
-
-Examples:
-- npm install, npm run build, npm test (runs to completion)
-- npm start, npm run dev (verifies startup, then terminates)`,
+    description: 'Execute a shell command. Supports both build commands and server verification (starts server, monitors for 10s, terminates if successful).',
     input_schema: {
       type: 'object' as const,
       properties: {

@@ -476,6 +476,10 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
           {
             state: {
               taskQueue: taskQueue.getAll(),
+              currentTask: {
+                ...currentTask,
+                tokenUsage: (state as any)._currentTaskTokenUsage || currentTask.tokenUsage  // ✅ Real-time token usage
+              },
               completedTasks: [],
               completedTasksDetails: [],
               jobId: newJobId,

@@ -413,6 +413,7 @@ export class TemplateComposer {
       'modification-warning': {},
       'text-format-compact': {},
       'tool-calling-rules-compact': {},
+      'port-management': {},  // ✅ Port management guide (no vars needed)
       'design-document-guide': {},
       'api-contract-guide': {},
       'backend-guide': {},

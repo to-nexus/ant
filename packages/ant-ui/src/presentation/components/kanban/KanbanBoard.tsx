@@ -90,6 +90,11 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
                 name: task.name,
                 tokenUsage: task.tokenUsage
               }))}
+              inProgressTask={kanbanData.inProgress ? {
+                id: kanbanData.inProgress.id || kanbanData.inProgress.name,
+                name: kanbanData.inProgress.name,
+                tokenUsage: kanbanData.inProgress.tokenUsage
+              } : undefined}
             />
           </>
         }
@@ -129,6 +134,11 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
               name: task.name,
               tokenUsage: task.tokenUsage
             }))}
+            inProgressTask={kanbanData.inProgress ? {
+              id: kanbanData.inProgress.id || kanbanData.inProgress.name,
+              name: kanbanData.inProgress.name,
+              tokenUsage: kanbanData.inProgress.tokenUsage
+            } : undefined}
           />
         </>
       }

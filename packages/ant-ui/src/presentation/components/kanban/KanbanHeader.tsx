@@ -228,21 +228,29 @@ interface TokenUsageBadgeProps {
     name: string;
     tokenUsage?: TaskTokenUsage;
   }>;
+  inProgressTask?: {
+    id: string;
+    name: string;
+    tokenUsage?: TaskTokenUsage;
+  };
 }
 
 /**
  * TokenUsageBadge - Display total token usage for the job with breakdown tooltip
  */
-export function TokenUsageBadge({ tokenUsage, completedTasks }: TokenUsageBadgeProps) {
+export function TokenUsageBadge({ tokenUsage, completedTasks, inProgressTask }: TokenUsageBadgeProps) {
   // ✅ Show badge if token usage data is available
   if (!tokenUsage || tokenUsage.totalTokens === 0) {
     return null;
   }
 
   // Calculate breakdown
-  const tasksTotal = completedTasks?.reduce((sum, task) => {
+  const completedTasksTotal = completedTasks?.reduce((sum, task) => {
     return sum + (task.tokenUsage?.totalTokens || 0);
   }, 0) || 0;
+  
+  const inProgressTokens = inProgressTask?.tokenUsage?.totalTokens || 0;
+  const tasksTotal = completedTasksTotal + inProgressTokens;
 
   // Estimating nodes (detectEnv + decompose) = total - tasks
   const estimatingNodesTotal = tokenUsage.totalTokens - tasksTotal;
@@ -277,16 +285,32 @@ export function TokenUsageBadge({ tokenUsage, completedTasks }: TokenUsageBadgeP
       </div>
       
       {/* Tasks */}
-      {completedTasks && completedTasks.length > 0 && (
+      {(completedTasks && completedTasks.length > 0) || inProgressTask ? (
         <div className="pl-2 space-y-1 border-l-2 border-blue-400 dark:border-blue-500">
           <div className="flex justify-between items-center font-semibold">
-            <span className="text-gray-800 dark:text-gray-100">Tasks ({completedTasks.length}):</span>
+            <span className="text-gray-800 dark:text-gray-100">
+              Tasks ({(completedTasks?.length || 0) + (inProgressTask ? 1 : 0)}):
+            </span>
             <span className="font-mono text-gray-800 dark:text-gray-100">
               {formatTokenCount(tasksTotal)}
             </span>
           </div>
           <div className="pl-2 space-y-1">
-            {completedTasks.map((task) => (
+            {/* In-Progress Task (show first) */}
+            {inProgressTask && inProgressTask.tokenUsage && inProgressTask.tokenUsage.totalTokens > 0 && (
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-gray-700 dark:text-gray-300 truncate max-w-[200px]" title={inProgressTask.name}>
+                  • {inProgressTask.name}
+                </span>
+                <span className="font-mono text-gray-700 dark:text-gray-300 flex items-center gap-1">
+                  {formatTokenCount(inProgressTask.tokenUsage.totalTokens)}
+                  <span className="text-xs opacity-70 animate-pulse">↻</span>
+                </span>
+              </div>
+            )}
+            
+            {/* Completed Tasks */}
+            {completedTasks?.map((task) => (
               <div
                 key={task.id}
                 className="flex justify-between items-center text-sm"
@@ -303,7 +327,7 @@ export function TokenUsageBadge({ tokenUsage, completedTasks }: TokenUsageBadgeP
             ))}
           </div>
         </div>
-      )}
+      ) : null}
       
       {/* Input/Output Split */}
       <div className="pt-1.5 mt-1.5 border-t border-amber-300 dark:border-slate-600 text-xs space-y-0.5">
