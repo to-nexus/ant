@@ -1,30 +1,32 @@
 /**
  * Prompt Building for CodeGen Node
  * 
- * Extracts from original codeGen.ts:
- * - buildMessages: Build LLM messages with PromptEngine + history
- * - buildRuntimeContext: Build dynamic runtime context
- * - generateFileTree: Generate file tree display
+ * ✅ Supports Anthropic Prompt Caching for cost reduction:
+ * - System prompts, rules, profiles (cached)
+ * - Project context, design docs (cached)
+ * - Current task, user directive (not cached - changes frequently)
  */
 
 import { ArchitectGraphState } from "../../state";
 import { TokenBudgetManager } from "../../../../../../core/utils/tokenBudget";
 import { HistoryManager } from "../../../../../../core/utils/historyManager";
 import { formatViolations } from "../shared/violationFormatter";
+import { CacheableContent } from "../../../../../../core/ports/llm";
 
 /**
- * Build messages for LLM using PromptEngine
+ * Build messages for LLM using PromptEngine with Prompt Caching
  * 
- * ✅ NEW: Integrated token budget management and history pruning
+ * ✅ Caching Strategy:
+ * 1. System prompt + rules + profiles (cached - rarely changes)
+ * 2. Project code context + design doc (cached - changes per task)
+ * 3. Current task + directive (not cached - changes every turn)
  */
 export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   role: 'user' | 'assistant';
-  content: string | any[];
+  content: CacheableContent[];
 }>> {
-  const messages: Array<{ role: 'user' | 'assistant'; content: string | any[] }> = [];
+  const messages: Array<{ role: 'user' | 'assistant'; content: CacheableContent[] }> = [];
   
-  // ✅ ALWAYS build fresh prompt with PromptEngine
-  // This ensures task constraints are present in EVERY turn, not just the first
   const promptEngine = state.deps?.promptEngine;
   
   if (!promptEngine) {
@@ -39,7 +41,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     ...state.projectCodeContext,
     files: state.projectCodeContext.files?.map((f: any) => ({
       path: f.path,
-      content: null  // ← Remove content, keep path only
+      content: null
     })) || []
   } : undefined;
   
@@ -49,8 +51,8 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     {
       directive: state.directive,
       designDoc: state.design,
-      prdSpec: state.prd,  // ✅ Include PRD for context verification and completeness check
-      projectCodeContext: codeGenProjectCodeContext,  // ← Use filtered context
+      prdSpec: state.prd,
+      projectCodeContext: codeGenProjectCodeContext,
       referenceCodeContexts: state.referenceCodeContexts,
       lessons: Array.isArray(state.lessons) ? state.lessons : undefined,
       sessionContext: state.sessionContext,
@@ -66,61 +68,86 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     state.currentTask.type
   );
   
-  // ✅ Extract base prompt from PromptEngine (templates, rules, profiles)
-  const systemMessage = promptResult.formatted.messages.find(m => m.role === 'system' || m.role === 'user');
+  // ✅ Extract composed sections for granular caching
+  const composed = promptResult.composed;
   
-  // ✅ CRITICAL: content can be string OR array (Anthropic format)
-  let basePrompt = '';
-  if (systemMessage) {
-    if (typeof systemMessage.content === 'string') {
-      basePrompt = systemMessage.content;
-    } else if (Array.isArray(systemMessage.content)) {
-      // Anthropic format: [{ type: 'text', text: '...' }]
-      const contentArray = systemMessage.content as any[];
-      basePrompt = contentArray
-        .filter((c: any) => c.type === 'text')
-        .map((c: any) => c.text)
-        .join('\n');
-    }
-  }
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Block 1: System Prompt + Rules + Profiles (CACHED - static)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const systemPromptParts = [
+    composed.system,
+    composed.profiles,
+    composed.rules,
+    composed.examples
+  ].filter(Boolean);
   
-  // ✅ Inject violations at the VERY TOP (highest priority for retries)
-  let finalPrompt = basePrompt;
+  const systemPromptBlock: CacheableContent = {
+    type: 'text',
+    text: systemPromptParts.join('\n\n'),
+    cache_control: { type: 'ephemeral' }
+  };
   
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Block 2: Project Context (CACHED - changes per task)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const projectContextParts = [
+    composed.injections,
+    state.prd ? `# Requirements\n\n${state.prd}` : null,
+    state.design ? `# Design Document\n\n${state.design}` : null,
+  ].filter(Boolean);
+  
+  const projectContextBlock: CacheableContent = {
+    type: 'text',
+    text: projectContextParts.join('\n\n'),
+    cache_control: { type: 'ephemeral' }
+  };
+  
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Block 3: Task Context (NOT CACHED - changes frequently)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const taskContextParts = [];
+  
+  // Add violations if present (retry scenario)
   if (state.violations && state.violations.length > 0) {
-    // ✅ Use enhanced violation message from enforce node if available
     const violationsText = state.violationMessage || formatViolations(state.violations);
-    
-    // ✅ Simple, clear header - Trust LLM to understand and fix
-    // No format enforcement, no excessive warnings, just clear diagnosis
-    const enforcementHeader = `──────────────────────────────────────────────────────────────\n` +
+    const enforcementHeader = 
+      `──────────────────────────────────────────────────────────────\n` +
       `⚠️  PREVIOUS ATTEMPT FAILED - FIX REQUIRED\n` +
       `──────────────────────────────────────────────────────────────\n\n` +
       `${violationsText}\n\n` +
       `Focus on fixing the root cause, not workarounds.\n\n` +
       `──────────────────────────────────────────────────────────────\n\n`;
-    
-    finalPrompt = enforcementHeader + finalPrompt;
+    taskContextParts.push(enforcementHeader);
   }
   
-  // ✅ Append runtime context (task, planText, file tree) at the end
+  // Add runtime context (task description, plan, file tree)
   const runtimeContext = buildRuntimeContext(state);
+  if (runtimeContext) {
+    taskContextParts.push(runtimeContext);
+  }
   
-  const fullContent = `${finalPrompt}${runtimeContext ? '\n\n' + runtimeContext : ''}`;
+  const taskContextBlock: CacheableContent = {
+    type: 'text',
+    text: taskContextParts.join('\n\n')
+    // No cache_control - changes every turn
+  };
   
-  // ✅ First message: Always the full prompt
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Assemble First Message with Caching
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const contentBlocks: CacheableContent[] = [
+    systemPromptBlock,
+    projectContextBlock,
+    taskContextBlock
+  ];
+  
   messages.push({
     role: 'user',
-    content: fullContent,
+    content: contentBlocks
   });
   
   // ✅ Add conversation history (if exists)
-  // CRITICAL: We need to handle Anthropic's tool calling format correctly
-  // - Assistant messages contain tool_use blocks
-  // - Following user messages contain tool_result blocks
-  // - They must be paired correctly!
   if (state.conversationHistory && state.conversationHistory.length > 0) {
-    // ✅ NEW: Prune history to prevent token overflow
     const tokenManager = new TokenBudgetManager();
     const historyManager = new HistoryManager(tokenManager);
     
@@ -129,25 +156,17 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     const filteredHistory: typeof state.conversationHistory = [];
     
     for (const msg of state.conversationHistory) {
-      // Once we see an assistant message, start including everything
       if (msg.role === 'assistant') {
         skipInitialUserMessages = false;
       }
       
-      // Skip initial user prompts (they're replaced by our fresh prompt)
-      // But keep user messages that follow assistant messages (tool results)
       if (skipInitialUserMessages && msg.role === 'user') {
         continue;
       }
       
-      // ✅ Remove code XML tags from assistant messages for token efficiency
-      // Keeping large code blocks in history wastes tokens and creates duplication
-      // LLM can read_file when needed for latest content
+      // Remove code XML tags from assistant messages for token efficiency
       if (msg.role === 'assistant' && typeof msg.content === 'string') {
-        // Remove <edit>, <file>, <append> blocks (keep thinking and text)
         let cleanedContent = msg.content;
-        
-        // Remove all XML code generation tags
         cleanedContent = cleanedContent.replace(/<edit[^>]*>[\s\S]*?<\/edit>/g, '[code edit removed]');
         cleanedContent = cleanedContent.replace(/<file[^>]*>[\s\S]*?<\/file>/g, '[file creation removed]');
         cleanedContent = cleanedContent.replace(/<append[^>]*>[\s\S]*?<\/append>/g, '[code append removed]');
@@ -161,28 +180,42 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       }
     }
     
-    // ✅ Prune filtered history to fit token budget
+    // Prune filtered history to fit token budget
     const { prunedHistory } = historyManager.pruneHistory(filteredHistory);
     
-    // ✅ Add pruned history to messages
-    messages.push(...prunedHistory);
+    // Convert history to CacheableContent format (no caching for history)
+    for (const msg of prunedHistory) {
+      if (typeof msg.content === 'string') {
+        messages.push({
+          role: msg.role as 'user' | 'assistant',
+          content: [{
+            type: 'text',
+            text: msg.content
+          }]
+        });
+      } else {
+        // Already in array format (tool results)
+        messages.push({
+          role: msg.role as 'user' | 'assistant',
+          content: msg.content
+        });
+      }
+    }
     
-    // ✅ Check final token budget
-    const estimation = tokenManager.checkBudget(messages);
+    // Check final token budget
+    const estimation = tokenManager.checkBudget(messages as any);
     
-    // 🚨 If still over budget, throw error (should not happen with proper pruning)
     if (estimation.isOverBudget) {
       throw new Error(
         `[CodeGen] Token budget exceeded after pruning! ` +
         `${estimation.totalTokens.toLocaleString()} tokens > ` +
-        `${tokenManager['config'].maxTokens.toLocaleString()} limit. ` +
-        `This should not happen - please report this bug.`
+        `${tokenManager['config'].maxTokens.toLocaleString()} limit.`
       );
     }
   } else {
     // No history - just check base prompt tokens
     const tokenManager = new TokenBudgetManager();
-    tokenManager.checkBudget(messages);
+    tokenManager.checkBudget(messages as any);
   }
   
   return messages;

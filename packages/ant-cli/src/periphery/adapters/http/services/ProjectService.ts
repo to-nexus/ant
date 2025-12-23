@@ -329,6 +329,9 @@ export class ProjectService {
       return [];
     }
     
+    // Base branch names that should not appear as features
+    const baseBranchNames = ['main', 'master', 'develop'];
+    
     const items = await fs.promises.readdir(featuresPath);
     const features = await Promise.all(
       items
@@ -340,7 +343,8 @@ export class ProjectService {
         })
     );
     
-    return features.filter(Boolean) as string[];
+    // Filter out base branches and null values
+    return features.filter(f => f && !baseBranchNames.includes(f.toLowerCase())) as string[];
   }
   
   /**
@@ -1360,8 +1364,16 @@ next-env.d.ts
       // This allows autoIndexCodebase to send indexing status to chat UI
       console.log(`[ProjectService] 🔍 Starting codebase indexing...`);
       const feedbackFeature = 'main';  // Virtual feature name for chat feedback (not a real feature)
-      await this.autoIndexCodebase(projectId, codebasePath, userContext, feedbackFeature);
-      console.log(`[ProjectService] ✅ Codebase indexed successfully`);
+      
+      // ✅ BACKGROUND INDEXING: Run indexing in background (non-blocking)
+      setImmediate(() => {
+        this.autoIndexCodebase(projectId, codebasePath, userContext, feedbackFeature)
+          .catch(err => {
+            console.error('⚠️  [Background] Indexing failed after git init:', err);
+          });
+      });
+      
+      console.log(`[ProjectService] ✅ Git initialization complete, indexing started in background`);
       
     } catch (error: any) {
       const errorMsg = error.message || error.toString();
@@ -1374,10 +1386,14 @@ next-env.d.ts
           await git.push(['-u', 'origin', baseBranch]);
           console.log(`[ProjectService] ✅ Pushed to existing repository`);
           
-          // ✅ CRITICAL: Index after successful push
+          // ✅ BACKGROUND INDEXING: Index after successful push (non-blocking)
           console.log(`[ProjectService] 🔍 Starting codebase indexing...`);
-          await this.autoIndexCodebase(projectId, codebasePath, userContext);
-          console.log(`[ProjectService] ✅ Codebase indexed successfully`);
+          setImmediate(() => {
+            this.autoIndexCodebase(projectId, codebasePath, userContext)
+              .catch(err => {
+                console.error('⚠️  [Background] Indexing failed after push:', err);
+              });
+          });
         } catch (pushError: any) {
           throw new Error(`Failed to push to existing repository: ${pushError.message}`);
         }
@@ -1501,10 +1517,17 @@ next-env.d.ts
       
       console.log(`✅ Push successful to ${branch}`);
       
-      // ✅ AUTO-INDEX: Index codebase after successful push
+      // ✅ BACKGROUND INDEXING: Run indexing in background (non-blocking)
       // Extract feature name from branch (e.g., "feature/skeleton" → "skeleton")
       const featureName = branch.startsWith('feature/') ? branch.replace('feature/', '') : undefined;
-      await this.autoIndexCodebase(projectId, codebasePath, userContext, featureName);
+      
+      // Run indexing asynchronously without blocking HTTP response
+      setImmediate(() => {
+        this.autoIndexCodebase(projectId, codebasePath, userContext, featureName)
+          .catch(err => {
+            console.error('⚠️  [Background] Indexing failed after push:', err);
+          });
+      });
       
     } catch (error: any) {
       // Parse git error for user-friendly message

@@ -222,6 +222,7 @@ export function ElapsedTimeBadge({
 }
 
 interface TokenUsageBadgeProps {
+  jobId?: string;  // ✅ Job identity to determine if badge should be shown
   tokenUsage?: TaskTokenUsage;
   completedTasks?: Array<{
     id: string;
@@ -237,23 +238,29 @@ interface TokenUsageBadgeProps {
 
 /**
  * TokenUsageBadge - Display total token usage for the job with breakdown tooltip
+ * 
+ * ✅ Shows badge whenever jobId exists (like ElapsedTimeBadge with jobTiming)
+ * ✅ Handles stopped/interrupted jobs gracefully (shows accumulated usage)
  */
-export function TokenUsageBadge({ tokenUsage, completedTasks, inProgressTask }: TokenUsageBadgeProps) {
-  // ✅ Show badge if token usage data is available
-  if (!tokenUsage || tokenUsage.totalTokens === 0) {
+export function TokenUsageBadge({ jobId, tokenUsage, completedTasks, inProgressTask }: TokenUsageBadgeProps) {
+  // ✅ Show badge if job exists (like ElapsedTimeBadge)
+  if (!jobId) {
     return null;
   }
 
-  // Calculate breakdown
-  const completedTasksTotal = completedTasks?.reduce((sum, task) => {
+  // ✅ Handle case where tokenUsage is not available yet
+  const hasTokenData = tokenUsage && tokenUsage.totalTokens > 0;
+
+  // Calculate breakdown (only if we have data)
+  const completedTasksTotal = hasTokenData ? (completedTasks?.reduce((sum, task) => {
     return sum + (task.tokenUsage?.totalTokens || 0);
-  }, 0) || 0;
+  }, 0) || 0) : 0;
   
-  const inProgressTokens = inProgressTask?.tokenUsage?.totalTokens || 0;
+  const inProgressTokens = hasTokenData ? (inProgressTask?.tokenUsage?.totalTokens || 0) : 0;
   const tasksTotal = completedTasksTotal + inProgressTokens;
 
   // Estimating nodes (detectEnv + decompose) = total - tasks
-  const estimatingNodesTotal = tokenUsage.totalTokens - tasksTotal;
+  const estimatingNodesTotal = hasTokenData ? (tokenUsage.totalTokens - tasksTotal) : 0;
   
   const tooltipContent = (
     <div className="space-y-2 min-w-[320px] max-h-[80vh] overflow-y-auto">
@@ -261,31 +268,39 @@ export function TokenUsageBadge({ tokenUsage, completedTasks, inProgressTask }: 
         Token Usage Breakdown
       </div>
       
-      {/* Total */}
-      <div className="flex justify-between items-center">
-        <span className="text-gray-800 dark:text-gray-100 font-semibold">Total:</span>
-        <span className="font-mono font-semibold text-lg text-gray-900 dark:text-white">
-          {formatTokenUsageCompact(tokenUsage)}
-        </span>
-      </div>
-      
-      {/* Breakdown = Estimating + Tasks */}
-      <div className="text-xs text-gray-600 dark:text-gray-400 -mt-1 mb-1 italic">
-        = Estimating Phase ({formatTokenCount(estimatingNodesTotal)}) + Tasks ({formatTokenCount(tasksTotal)})
-      </div>
-      
-      {/* Estimating Phase (Job-level nodes) */}
-      <div className="pl-2 border-l-2 border-purple-400 dark:border-purple-500">
-        <div className="flex justify-between items-center font-semibold">
-          <span className="text-gray-800 dark:text-gray-100">Estimating Phase:</span>
-          <span className="font-mono text-gray-800 dark:text-gray-100">
-            {formatTokenCount(estimatingNodesTotal)}
-          </span>
+      {hasTokenData ? (
+        <>
+          {/* Total */}
+          <div className="flex justify-between items-center">
+            <span className="text-gray-800 dark:text-gray-100 font-semibold">Total:</span>
+            <span className="font-mono font-semibold text-lg text-gray-900 dark:text-white">
+              {formatTokenUsageCompact(tokenUsage)}
+            </span>
+          </div>
+          
+          {/* Breakdown = Estimating + Tasks */}
+          <div className="text-xs text-gray-600 dark:text-gray-400 -mt-1 mb-1 italic">
+            = Estimating Phase ({formatTokenCount(estimatingNodesTotal)}) + Tasks ({formatTokenCount(tasksTotal)})
+          </div>
+          
+          {/* Estimating Phase (Job-level nodes) */}
+          <div className="pl-2 border-l-2 border-purple-400 dark:border-purple-500">
+            <div className="flex justify-between items-center font-semibold">
+              <span className="text-gray-800 dark:text-gray-100">Estimating Phase:</span>
+              <span className="font-mono text-gray-800 dark:text-gray-100">
+                {formatTokenCount(estimatingNodesTotal)}
+              </span>
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="text-gray-600 dark:text-gray-400 text-sm italic">
+          No token usage data yet
         </div>
-      </div>
+      )}
       
-      {/* Tasks */}
-      {(completedTasks && completedTasks.length > 0) || inProgressTask ? (
+      {/* Tasks - only show if we have token data */}
+      {hasTokenData && ((completedTasks && completedTasks.length > 0) || inProgressTask) ? (
         <div className="pl-2 space-y-1 border-l-2 border-blue-400 dark:border-blue-500">
           <div className="flex justify-between items-center font-semibold">
             <span className="text-gray-800 dark:text-gray-100">
@@ -329,17 +344,86 @@ export function TokenUsageBadge({ tokenUsage, completedTasks, inProgressTask }: 
         </div>
       ) : null}
       
-      {/* Input/Output Split */}
-      <div className="pt-1.5 mt-1.5 border-t border-amber-300 dark:border-slate-600 text-xs space-y-0.5">
-        <div className="flex justify-between">
-          <span className="text-gray-700 dark:text-gray-300">Input:</span>
-          <span className="font-mono text-gray-700 dark:text-gray-300">{formatTokenCount(tokenUsage.inputTokens)}</span>
-        </div>
+      {/* Input/Output Split - Show COST-EQUIVALENT tokens (only if hasTokenData) */}
+      {hasTokenData && (
+        <div className="pt-1.5 mt-1.5 border-t border-amber-300 dark:border-slate-600 text-xs space-y-0.5">
+          <div className="flex justify-between">
+            <span className="text-gray-700 dark:text-gray-300">Input (cost equiv.):</span>
+            <span className="font-mono text-gray-700 dark:text-gray-300">
+              {formatTokenCount(
+                // 비용 등가 계산: input×1 + cache_creation×1.25 + cache_read×0.1
+                tokenUsage.inputTokens + 
+                Math.floor((tokenUsage.cacheCreationTokens || 0) * 1.25) + 
+                Math.floor((tokenUsage.cacheReadTokens || 0) * 0.1)
+              )}
+            </span>
+          </div>
+        {/* Show actual processed tokens as secondary info */}
+        {(tokenUsage.cacheCreationTokens || tokenUsage.cacheReadTokens) && (
+          <div className="flex justify-between text-xs text-gray-500 dark:text-gray-600">
+            <span>(processed: {formatTokenCount(
+              tokenUsage.inputTokens + 
+              (tokenUsage.cacheCreationTokens || 0) + 
+              (tokenUsage.cacheReadTokens || 0)
+            )})</span>
+          </div>
+        )}
         <div className="flex justify-between">
           <span className="text-gray-700 dark:text-gray-300">Output:</span>
           <span className="font-mono text-gray-700 dark:text-gray-300">{formatTokenCount(tokenUsage.outputTokens)}</span>
         </div>
+        
+        {/* Cache Usage - Show investment and savings */}
+        {(tokenUsage.cacheReadTokens || tokenUsage.cacheCreationTokens) ? (
+          <>
+            <div className="pt-1.5 mt-1.5 border-t border-emerald-300 dark:border-emerald-700">
+              <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-semibold mb-1">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                <span>Prompt Cache</span>
+              </div>
+              
+              {/* Show Cache Creation (투자) */}
+              {tokenUsage.cacheCreationTokens && tokenUsage.cacheCreationTokens > 0 && (
+                <div className="flex justify-between pl-2 text-xs">
+                  <span className="text-gray-700 dark:text-gray-300">Total Created:</span>
+                  <span className="font-mono text-gray-700 dark:text-gray-300">
+                    {formatTokenCount(tokenUsage.cacheCreationTokens)}
+                  </span>
+                </div>
+              )}
+              
+              {/* Show Cache Hit Savings (실제 절약) */}
+              {tokenUsage.cacheReadTokens && tokenUsage.cacheReadTokens > 0 && (
+                <>
+                  <div className="flex justify-between pl-2">
+                    <span className="text-emerald-600 dark:text-emerald-400 font-semibold">💰 Saved:</span>
+                    <span className="font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
+                      {formatTokenCount(Math.floor(tokenUsage.cacheReadTokens * 0.9))}
+                    </span>
+                  </div>
+                  <div className="flex justify-between pl-2 text-xs text-gray-500 dark:text-gray-600">
+                    <span>Cache Hit:</span>
+                    <span className="font-mono">
+                      {formatTokenCount(tokenUsage.cacheReadTokens)} 
+                      <span className="ml-1">→ {formatTokenCount(Math.floor(tokenUsage.cacheReadTokens * 0.1))}</span>
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+          </>
+        ) : (
+          // ℹ️ Show hint when no cache data (for debugging)
+          process.env.NODE_ENV === 'development' && (
+            <div className="pt-1.5 mt-1.5 text-gray-500 dark:text-gray-600 text-xs italic">
+              No cache data (first turn or non-cached nodes)
+            </div>
+          )
+        )}
       </div>
+      )}
     </div>
   );
   
@@ -349,7 +433,7 @@ export function TokenUsageBadge({ tokenUsage, completedTasks, inProgressTask }: 
         <div className="flex items-center justify-center gap-1.5 h-7">
           <Coins className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
           <span className="text-xs text-purple-700 dark:text-purple-300 font-medium leading-none">
-            {formatTokenUsageCompact(tokenUsage)}
+            {hasTokenData ? formatTokenUsageCompact(tokenUsage) : '0'}
           </span>
         </div>
       </div>

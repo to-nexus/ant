@@ -22,6 +22,7 @@ import { XMLStreamParser } from '../../../../../core/streaming/parsers/XMLStream
 import { CommonRenderStrategy } from '../../../../../core/streaming/strategies/CommonRenderStrategy';
 import { TokenBudgetManager } from '../../../../../core/utils/tokenBudget';
 import { HistoryManager } from '../../../../../core/utils/historyManager';
+import { CacheableContent } from '../../../../../core/ports/llm';
 import { getToolsByNames, TOOL_SETS } from '../../../tools/definitions';
 
 export async function docGen(
@@ -218,13 +219,13 @@ export async function docGen(
 }
 
 /**
- * Build messages for LLM using PromptEngine
+ * Build messages for LLM using PromptEngine with Prompt Caching
  */
 async function buildMessages(state: DesignGraphState): Promise<Array<{
   role: 'user' | 'assistant';
-  content: string | any[];
+  content: CacheableContent[];
 }>> {
-  const messages: Array<{ role: 'user' | 'assistant'; content: string | any[] }> = [];
+  const messages: Array<{ role: 'user' | 'assistant'; content: CacheableContent[] }> = [];
   
   // ✅ Use PromptEngine for system prompt (if no conversation history)
   if (!state.conversationHistory || state.conversationHistory.length === 0) {
@@ -239,24 +240,19 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
       throw new Error('[DocGen] currentTask is required but not available in state');
     }
     // ✅ Load existing design document's last section number
-    // CRITICAL: ONLY read from disk file (completed tasks), NOT buffer (in-progress/interrupted tasks)
     let lastSectionNumber = 0;
     
-    // ✅ CRITICAL: Use targetFile from task (determined by decompose)
     const targetFile = state.currentTask.targetFile || 'system-design.md';
     console.log(`📄 [DocGen] Target file: ${targetFile}`);
     
     try {
       const designDocPath = `${state.context.featurePath}/outputs/design/${targetFile}`;
       
-      // ✅ ALWAYS read from disk file (source of truth for completed tasks)
-      // DO NOT read buffer (may contain incomplete/interrupted work)
       if (state.deps?.git) {
         const fileExists = await state.deps.git.fileExists(designDocPath);
         if (fileExists) {
           const fullContent = await state.deps.git.readFile(designDocPath) || '';
           if (fullContent) {
-            // ✅ Strategy 1: Check last line for metadata comment
             const lastLine = fullContent.trim().split('\n').pop() || '';
             const metadataMatch = lastLine.match(/<!-- LAST_SECTION: (\d+) -->/);
             
@@ -264,7 +260,6 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
               lastSectionNumber = parseInt(metadataMatch[1]);
               console.log(`📄 [DocGen] Found last section: ${lastSectionNumber} (from metadata)`);
             } else {
-              // ✅ Fallback: Scan full document for section numbers
               const sectionMatches = fullContent.match(/^## (\d+)\./gm);
               if (sectionMatches) {
                 const numbers = sectionMatches.map(m => parseInt(m.match(/\d+/)?.[0] || '0'));
@@ -282,13 +277,11 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
     }
     
     // ✅ CRITICAL: Load api-contract.md if generating fe/be-system-design
-    // When generating fe/be-system-design.md, LLM MUST see api-contract.md to follow exact specs
     let apiContractContent: string | undefined;
     const isImplementationDesign = targetFile === 'fe-system-design.md' || targetFile === 'be-system-design.md';
     
     if (isImplementationDesign) {
       try {
-        // Try disk (should already be written from previous task)
         const featurePath = state.context.featurePath;
         if (featurePath) {
           const path = await import('path');
@@ -307,13 +300,13 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
     }
     
     const promptResult = await promptEngine.buildExecutePrompt(
-      'design',  // ✅ AgentTask type (not the task object!)
+      'design',
       state.context,
       {
         directive: state.directive || state.spec,
-        designDoc: apiContractContent,  // ✅ Pass api-contract when generating system-design
-        lastSectionNumber,  // ✅ Only pass the section number
-        previousDesign: state.design,  // Use previousDesign for design job
+        designDoc: apiContractContent,
+        lastSectionNumber,
+        previousDesign: state.design,
         prdSpec: state.prd,
         currentCode: state.code,
         designDomain: state.designDomain,
@@ -322,81 +315,112 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
           type: state.currentTask.type,
           priority: state.currentTask.priority,
           description: state.currentTask.description,
-          ...(state.currentTask.targetFile && { targetFile: state.currentTask.targetFile }),  // ✅ Conditionally include targetFile
+          ...(state.currentTask.targetFile && { targetFile: state.currentTask.targetFile }),
         },
       },
       undefined,
       undefined
     );
     
+    // ✅ Extract composed sections for granular caching
+    const composed = promptResult.composed;
     
-    // ✅ Extract base prompt from PromptEngine (templates, rules, profiles)
-    const systemMessage = promptResult.formatted.messages.find(m => m.role === 'system' || m.role === 'user');
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Block 1: System Prompt + Rules (CACHED - static)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    const systemPromptParts = [
+      composed.system,
+      composed.profiles,
+      composed.rules,
+      composed.examples
+    ].filter(Boolean);
     
-    // ✅ CRITICAL: content can be string OR array (Anthropic format)
-    let basePrompt = '';
-    if (systemMessage) {
-      if (typeof systemMessage.content === 'string') {
-        basePrompt = systemMessage.content;
-      } else if (Array.isArray(systemMessage.content)) {
-        // Anthropic format: [{ type: 'text', text: '...' }]
-        const contentArray = systemMessage.content as any[];
-        basePrompt = contentArray
-          .filter((c: any) => c.type === 'text')
-          .map((c: any) => c.text)
-          .join('\n');
-      }
-    }
+    const systemPromptBlock: CacheableContent = {
+      type: 'text',
+      text: systemPromptParts.join('\n\n'),
+      cache_control: { type: 'ephemeral' }
+    };
     
-    // ✅ CRITICAL: Add runtime context (task, plan, existing design, file format)
-    // PromptEngine provides templates, buildRuntimeContext adds execution context
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Block 2: Context (CACHED - changes per task)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    const contextParts = [
+      composed.injections,
+      state.prd ? `# Requirements\n\n${state.prd}` : null,
+      apiContractContent ? `# API Contract\n\n${apiContractContent}` : null,
+    ].filter(Boolean);
+    
+    const contextBlock: CacheableContent = {
+      type: 'text',
+      text: contextParts.join('\n\n'),
+      cache_control: { type: 'ephemeral' }
+    };
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Block 3: Runtime Context (NOT CACHED - changes frequently)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     const runtimeContext = buildRuntimeContext(state);
     
-    // ✅ Merge: PromptEngine base + runtime context
-    const mergedContent = `${basePrompt}\n\n${runtimeContext}`;
+    const runtimeBlock: CacheableContent = {
+      type: 'text',
+      text: runtimeContext
+      // No cache_control - changes every turn
+    };
     
     // ✅ Validate: Ensure XML output format instructions are present
-    const hasMarkdownFormat = mergedContent.includes('<file path=') || mergedContent.includes('Markdown File Output Format');
+    const allContent = [systemPromptParts.join(''), contextParts.join(''), runtimeContext].join('');
+    const hasMarkdownFormat = allContent.includes('<file path=') || allContent.includes('Markdown File Output Format');
     
     if (!hasMarkdownFormat) {
-      console.warn(`⚠️  WARNING: Markdown output format NOT found in prompt! (length: ${mergedContent.length} chars)`);
+      console.warn(`⚠️  WARNING: Markdown output format NOT found in prompt! (length: ${allContent.length} chars)`);
     }
     
     messages.push({
       role: 'user',
-      content: mergedContent,
+      content: [systemPromptBlock, contextBlock, runtimeBlock]
     });
   }
   
   // ✅ Add conversation history (if exists)
-  // CRITICAL: Conversation history from LLM may have content as arrays (tool_use, tool_result)
-  // We need to pass them as-is for proper context continuation
   if (state.conversationHistory && state.conversationHistory.length > 0) {
     console.log(`📄 [DocGen] Using existing conversation history (${state.conversationHistory.length} messages)`);
     
-    // ✅ NEW: Prune history to prevent token overflow
     const tokenManager = new TokenBudgetManager();
     const historyManager = new HistoryManager(tokenManager);
     
     const { prunedHistory } = historyManager.pruneHistory(state.conversationHistory);
-    messages.push(...prunedHistory);
     
-    // ✅ Check final token budget
-    const estimation = tokenManager.checkBudget(messages);
+    // Convert history to CacheableContent format
+    for (const msg of prunedHistory) {
+      if (typeof msg.content === 'string') {
+        messages.push({
+          role: msg.role as 'user' | 'assistant',
+          content: [{
+            type: 'text',
+            text: msg.content
+          }]
+        });
+      } else {
+        // Already in array format (tool results)
+        messages.push({
+          role: msg.role as 'user' | 'assistant',
+          content: msg.content
+        });
+      }
+    }
     
-    // 🚨 If still over budget, throw error (should not happen with proper pruning)
+    const estimation = tokenManager.checkBudget(messages as any);
+    
     if (estimation.isOverBudget) {
       throw new Error(
         `[DocGen] Token budget exceeded after pruning! ` +
         `${estimation.totalTokens.toLocaleString()} tokens > ` +
-        `${tokenManager['config'].maxTokens.toLocaleString()} limit. ` +
-        `This should not happen - please report this bug.`
+        `${tokenManager['config'].maxTokens.toLocaleString()} limit.`
       );
     }
   } else {
-    // No history - just check base prompt tokens
     const tokenManager = new TokenBudgetManager();
-    tokenManager.checkBudget(messages);
+    tokenManager.checkBudget(messages as any);
   }
   
   return messages;

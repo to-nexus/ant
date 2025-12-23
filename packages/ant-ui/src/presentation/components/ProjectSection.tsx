@@ -110,6 +110,16 @@ export function ProjectSection() {
 
   const handleDeleteProject = async (projectName: string) => {
     await deleteProject(projectName);
+    
+    // ✅ Clean up localStorage: Remove last feature entry for this project
+    try {
+      const lastFeatures = JSON.parse(localStorage.getItem('ant-ui:project-last-features') || '{}');
+      delete lastFeatures[projectName];
+      localStorage.setItem('ant-ui:project-last-features', JSON.stringify(lastFeatures));
+      console.log(`[ProjectSection] 🧹 Cleaned up last feature for deleted project: ${projectName}`);
+    } catch (error) {
+      console.error('[ProjectSection] Failed to clean up localStorage:', error);
+    }
   };
 
   const handleConfigClick = async () => {
