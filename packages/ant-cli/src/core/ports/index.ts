@@ -6,6 +6,7 @@
 export * from "./llm";
 export * from "./memory";
 export * from "./git";
+export * from "./filesystem";  // ✅ NEW: FileSystemPort
 export * from "./prompt";
 export * from "./reporter";
 export * from "./validation";

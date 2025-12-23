@@ -31,7 +31,8 @@ export interface RequirementChecklistItem {
  */
 export async function generateQualityReport(
   state: ArchitectGraphState, 
-  gitPort: GitPort
+  gitPort: GitPort,
+  fileSystem: import('../../../../../../core/ports').FileSystemPort  // ✅ Add fileSystem parameter
 ): Promise<EvaluationReport | null> {
   console.log('\n🔬 Generating code quality report...\n');
 
@@ -55,7 +56,7 @@ export async function generateQualityReport(
     if (!featurePath) {
       throw new Error('featurePath not available in context');
     }
-    const requirements = await loadRequirements(state.context.project, state.context.featureFolder, featurePath, gitPort);
+    const requirements = await loadRequirements(state.context.project, state.context.featureFolder, featurePath, gitPort, fileSystem);
 
     // Generate recommendations
     const allRecommendations = new Set<string>();
@@ -76,14 +77,14 @@ export async function generateQualityReport(
     };
 
     // Save report
-    const reportPath = await saveReport(state.context.project, state.context.featureFolder, featurePath, report, gitPort);
+    const reportPath = await saveReport(state.context.project, state.context.featureFolder, featurePath, report, gitPort, fileSystem);
     console.log(`📄 Evaluation report saved: ${reportPath}`);
 
     // Print summary
     printSummary(report);
 
     // Check quality thresholds
-    await checkQualityThresholds(state.context.project, state.context.featureFolder, featurePath, report, gitPort);
+    await checkQualityThresholds(state.context.project, state.context.featureFolder, featurePath, report, gitPort, fileSystem);
 
     return report;
   } catch (error: any) {
@@ -95,16 +96,22 @@ export async function generateQualityReport(
 /**
  * Load requirements checklist from eval directive
  */
-async function loadRequirements(project: string, featureFolder: string, featurePath: string, gitPort: GitPort): Promise<RequirementChecklistItem[] | undefined> {
+async function loadRequirements(
+  project: string, 
+  featureFolder: string, 
+  featurePath: string, 
+  gitPort: GitPort,
+  fileSystem: import('../../../../../../core/ports').FileSystemPort  // ✅ Add fileSystem parameter
+): Promise<RequirementChecklistItem[] | undefined> {
   try {
     const testsPath = path.join(featurePath, 'inputs/directives/eval/tests.json');
 
-    const exists = await gitPort.fileExists(testsPath);
+    const exists = await fileSystem.fileExists(testsPath);
     if (!exists) {
       return undefined;
     }
 
-    const content = await gitPort.readFile(testsPath);
+    const content = await fileSystem.readFile(testsPath);
     if (!content) {
       return undefined;
     }
@@ -125,20 +132,27 @@ async function loadRequirements(project: string, featureFolder: string, featureP
 /**
  * Save evaluation report
  */
-async function saveReport(project: string, featureFolder: string, featurePath: string, report: EvaluationReport, gitPort: GitPort): Promise<string> {
+async function saveReport(
+  project: string, 
+  featureFolder: string, 
+  featurePath: string, 
+  report: EvaluationReport, 
+  gitPort: GitPort,
+  fileSystem: import('../../../../../../core/ports').FileSystemPort  // ✅ Add fileSystem parameter
+): Promise<string> {
   const outputDir = path.join(featurePath, 'outputs/eval');
   
   // Create directory if needed
-  await gitPort.createDirectory(outputDir);
+  await fileSystem.createDirectory(outputDir);
 
   // Save JSON report
   const jsonPath = path.join(outputDir, 'report.json');
-  await gitPort.writeFile(jsonPath, JSON.stringify(report, null, 2));
+  await fileSystem.writeFile(jsonPath, JSON.stringify(report, null, 2));
 
   // Save Markdown report
   const mdPath = path.join(outputDir, 'report.md');
   const markdown = generateMarkdownReport(report);
-  await gitPort.writeFile(mdPath, markdown);
+  await fileSystem.writeFile(mdPath, markdown);
 
   return mdPath;
 }
@@ -226,16 +240,23 @@ function printSummary(report: EvaluationReport): void {
 /**
  * Check quality thresholds
  */
-async function checkQualityThresholds(project: string, featureFolder: string, featurePath: string, report: EvaluationReport, gitPort: GitPort): Promise<void> {
+async function checkQualityThresholds(
+  project: string, 
+  featureFolder: string, 
+  featurePath: string, 
+  report: EvaluationReport, 
+  gitPort: GitPort,
+  fileSystem: import('../../../../../../core/ports').FileSystemPort  // ✅ Add fileSystem parameter
+): Promise<void> {
   try {
     const thresholdsPath = path.join(featurePath, 'inputs/directives/eval/quality-thresholds.json');
 
-    const exists = await gitPort.fileExists(thresholdsPath);
+    const exists = await fileSystem.fileExists(thresholdsPath);
     if (!exists) {
       return; // No thresholds defined
     }
 
-    const content = await gitPort.readFile(thresholdsPath);
+    const content = await fileSystem.readFile(thresholdsPath);
     if (!content) {
       return;
     }

@@ -93,7 +93,11 @@ export async function plan(state: DesignGraphState) {
       });
       
       // Load context (with UI)
-      const context = await loadContext(strategy, gitPort);
+      const fileSystem = state.deps?.fileSystem;
+      if (!fileSystem) {
+        throw new Error('FileSystemPort is required for context loading');
+      }
+      const context = await loadContext(strategy, gitPort, fileSystem);
       
       console.log(`   ✅ ${context.summary}`);
       

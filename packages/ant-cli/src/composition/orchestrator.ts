@@ -92,10 +92,14 @@ export async function orchestrator(params: {
       
       // ✅ Extract featureName from featurePath
       const featureName = featurePath.split(path.sep).filter(Boolean).pop() || 'unknown';
+      
+      // ✅ Get FileSystemPort and GitPort (separated responsibilities)
+      const codebasePath = path.join(projectPath, 'codebase');
+      const fileSystem = AdapterFactory.createFileSystemAdapterWithPath(projectPath);  // ✅ NEW: FileSystemPort scoped to projectPath
+      const git = AdapterFactory.createGitAdapterWithConfig(project || "default", configData, codebasePath);  // ✅ Git only
 
       if (jobType === 'design') {
         const analyzer = new CodebaseAnalyzer();
-        const git = AdapterFactory.createGitAdapterWithConfig(project || "default", configData, projectPath);
         
         // ✅ Get ExpressServerAdapter instance for real-time updates
         let kanbanUpdate: TaskQueueUpdatePort | undefined = undefined;
@@ -134,7 +138,7 @@ export async function orchestrator(params: {
           project || "default", 
           'design', 
           inputFile, 
-          { memory, llm, promptPort, profilePort, config, chunk, session, git, analyzer, kanbanUpdate, fileTreeUpdate, workflowUpdate, workspaceResolver, userContext, overrideDirective, chatSource, feature },
+          { memory, llm, promptPort, profilePort, config, chunk, session, git, fileSystem, analyzer, kanbanUpdate, fileTreeUpdate, workflowUpdate, workspaceResolver, userContext, overrideDirective, chatSource, feature },
           undefined,  // codeMode
           undefined,  // enableEvaluation
           jobId       // ✅ Pass jobId for real-time Kanban and resume
@@ -143,7 +147,6 @@ export async function orchestrator(params: {
 
       if (jobType === 'code') {
         const analyzer = new CodebaseAnalyzer();
-        const git = AdapterFactory.createGitAdapterWithConfig(project || "default", configData, projectPath);
         const command = new NodeCommandAdapter();
         
         // ✅ Get ExpressServerAdapter instance for real-time updates
@@ -184,7 +187,7 @@ export async function orchestrator(params: {
           project || "default", 
           'code', 
           inputFile, 
-          { memory, llm, promptPort, profilePort, analyzer, git, config, chunk, session, command, kanbanUpdate, fileTreeUpdate, workflowUpdate, workspaceResolver, userContext, overrideDirective, chatSource, feature },
+          { memory, llm, promptPort, profilePort, analyzer, git, fileSystem, config, chunk, session, command, kanbanUpdate, fileTreeUpdate, workflowUpdate, workspaceResolver, userContext, overrideDirective, chatSource, feature },
           mode,              // Can be undefined (auto-infer) or explicit
           enableEvaluation,  // Pass evaluation flag
           jobId              // ✅ Pass jobId for real-time updates and resume

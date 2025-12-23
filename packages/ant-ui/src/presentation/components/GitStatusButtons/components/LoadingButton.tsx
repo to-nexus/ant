@@ -7,20 +7,29 @@ interface LoadingButtonProps {
 }
 
 export function LoadingButton({ isFetchingChanges }: LoadingButtonProps) {
-  const { isGitStatusLoading, gitStatusPhase, manualGitAction } = useStore();
+  const { isGitStatusLoading, gitStatusPhase } = useStore();
   
   let loadingMessage = 'Updating...';
   
-  if (manualGitAction === 'fetch') {
-    loadingMessage = 'Fetching from remote...';
-  } else if (manualGitAction === 'push') {
-    loadingMessage = 'Pushing to remote...';
-  } else if (manualGitAction === 'pull') {
-    loadingMessage = 'Pulling from remote...';
+  // ✅ Unified phase-based messages
+  if (gitStatusPhase === 'fetching') {
+    loadingMessage = 'Fetching...';
+  } else if (gitStatusPhase === 'pushing') {
+    loadingMessage = 'Pushing...';
+  } else if (gitStatusPhase === 'pulling') {
+    loadingMessage = 'Pulling...';
+  } else if (gitStatusPhase === 'committing') {
+    loadingMessage = 'Committing...';
+  } else if (gitStatusPhase === 'syncing') {
+    loadingMessage = 'Syncing...';
   } else if (gitStatusPhase === 'switching') {
-    loadingMessage = 'Updating upstream...';
-  } else if (gitStatusPhase === 'fetching' || (isFetchingChanges && !isGitStatusLoading)) {
-    loadingMessage = 'Fetching from remote...';
+    loadingMessage = 'Switching...';
+  } else if (gitStatusPhase === 'initializing') {
+    loadingMessage = 'Initializing...';
+  } else if (gitStatusPhase === 'cloning') {
+    loadingMessage = 'Cloning...';
+  } else if (isFetchingChanges && !isGitStatusLoading) {
+    loadingMessage = 'Checking...';
   }
   
   return (

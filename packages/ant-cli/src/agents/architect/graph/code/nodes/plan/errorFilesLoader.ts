@@ -8,7 +8,7 @@
  * Note: No Vector DB search - error files have exact paths!
  */
 
-import { GitPort } from "../../../../../../core/ports";
+import { GitPort, FileSystemPort } from "../../../../../../core/ports";
 import { ArchitectGraphState } from "../../state";
 import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient";
 import { RETRIEVAL_CONFIG } from "../../config/retrievalConfig";
@@ -25,12 +25,14 @@ export interface LoadedFile {
  * @param errorFilePaths - Array of file paths from error violations
  * @param state - Current graph state
  * @param git - Git port for file operations
+ * @param fileSystem - FileSystem port for file operations
  * @returns Array of loaded files with content
  */
 export async function loadErrorFiles(
   errorFilePaths: string[],
   state: ArchitectGraphState,
-  git: GitPort
+  git: GitPort,
+  fileSystem: FileSystemPort
 ): Promise<LoadedFile[]> {
   const loadedFiles: LoadedFile[] = [];
   const chatAPI = getChatAPIClient();
@@ -48,7 +50,7 @@ export async function loadErrorFiles(
   for (const filePath of errorFilePaths.slice(0, fileLimit)) {
     try {
       console.log(`      🔍 Local file: ${filePath}`);
-      const resolved = await resolveStackTraceFile(filePath, state.context.workingDir, git);
+      const resolved = await resolveStackTraceFile(filePath, state.context.workingDir, git, fileSystem);
       
       if (resolved.confidence === 'not_found') {
         console.error(`      ❌ FAILED to resolve: ${filePath}`);
@@ -64,7 +66,7 @@ export async function loadErrorFiles(
       
       // Load file content
       const fullPath = require('path').join(state.context.workingDir, resolvedPath);
-      const content = await git.readFile(fullPath);
+      const content = await fileSystem.readFile(fullPath);
       
       if (content) {
         loadedFiles.push({ path: resolvedPath, content, source: 'local' });

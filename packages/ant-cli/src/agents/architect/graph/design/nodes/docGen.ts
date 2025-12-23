@@ -65,6 +65,7 @@ export async function docGen(
     chatAPI,
     state.context.userLanguage,  // ✅ Pass user language for localized messages
     state.deps?.git,  // ✅ Pass gitPort for immediate file writes
+    state.deps?.fileSystem,  // ✅ Pass fileSystem for file operations
     true,  // ✅ writeImmediately: true (design job now writes files immediately like code job)
     'design',  // ✅ jobType: 'design' (for LAST_SECTION metadata handling)
     state.context.featurePath  // ✅ Feature path for absolute path resolution
@@ -73,7 +74,7 @@ export async function docGen(
   // ✅ Design job: Check actual disk files, not state.files (which accumulates across tasks)
   // state.files tracks files generated in THIS job session, but existingFiles should reflect disk reality
   const existingFiles = new Set<string>();
-  if (state.deps?.git && state.context.featurePath) {
+  if (state.deps?.fileSystem && state.context.featurePath) {
     const path = await import('path');
     const fs = await import('fs/promises');
     
@@ -82,7 +83,7 @@ export async function docGen(
     
     try {
       // Check if directory exists
-      const dirExists = await state.deps.git.fileExists(designDirPath);
+      const dirExists = await state.deps.fileSystem.fileExists(designDirPath);
       if (dirExists) {
         // Read all files in directory
         const files = await fs.readdir(designDirPath);
@@ -248,10 +249,10 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
     try {
       const designDocPath = `${state.context.featurePath}/outputs/design/${targetFile}`;
       
-      if (state.deps?.git) {
-        const fileExists = await state.deps.git.fileExists(designDocPath);
+      if (state.deps?.fileSystem) {
+        const fileExists = await state.deps.fileSystem.fileExists(designDocPath);
         if (fileExists) {
-          const fullContent = await state.deps.git.readFile(designDocPath) || '';
+          const fullContent = await state.deps.fileSystem.readFile(designDocPath) || '';
           if (fullContent) {
             const lastLine = fullContent.trim().split('\n').pop() || '';
             const metadataMatch = lastLine.match(/<!-- LAST_SECTION: (\d+) -->/);
@@ -262,7 +263,7 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
             } else {
               const sectionMatches = fullContent.match(/^## (\d+)\./gm);
               if (sectionMatches) {
-                const numbers = sectionMatches.map(m => parseInt(m.match(/\d+/)?.[0] || '0'));
+                const numbers = sectionMatches.map((m: string) => parseInt(m.match(/\d+/)?.[0] || '0'));
                 lastSectionNumber = Math.max(...numbers);
                 console.log(`📄 [DocGen] Found last section: ${lastSectionNumber} (from scanning)`);
               }

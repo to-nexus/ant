@@ -12,7 +12,8 @@ interface UseConfigLoaderReturn {
  */
 export function useConfigLoader(
   shouldLoad: boolean,
-  selectedProject: string | null
+  selectedProject: string | null,
+  onSaveSuccess?: () => void  // ✅ NEW: Callback for save success
 ): UseConfigLoaderReturn {
   const [projectConfigData, setProjectConfigData] = useState<ProjectConfig | null>(null);
   const [isLoadingProjectConfig, setIsLoadingProjectConfig] = useState(false);
@@ -51,6 +52,11 @@ export function useConfigLoader(
       const savedConfig = await updateProjectConfig(selectedProject, config);
       if (savedConfig) {
         setProjectConfigData(savedConfig);
+        
+        // ✅ NEW: Trigger callback on successful save
+        if (onSaveSuccess) {
+          onSaveSuccess();
+        }
       }
       return { success: true };
     } catch (error) {

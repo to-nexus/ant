@@ -7,6 +7,7 @@
  */
 
 import { GitPort } from '../../../core/ports';
+import { FileSystemPort } from '../../../core/ports/filesystem';
 
 /**
  * Common exclusion patterns for file listing
@@ -37,7 +38,7 @@ export const DEFAULT_EXCLUDES = [
  * Simple, straightforward loading of all files
  */
 export async function loadFullCodebase(
-  gitPort: GitPort,
+  fileSystem: FileSystemPort,
   options: {
     maxFiles?: number;
     maxTokens?: number;
@@ -52,7 +53,7 @@ export async function loadFullCodebase(
   
   console.log('📂 Loading full codebase from disk...');
   
-  const allFiles = await gitPort.listFiles('', DEFAULT_EXCLUDES);
+  const allFiles = await fileSystem.listFiles('', DEFAULT_EXCLUDES);
   
   const fileContents: string[] = [];
   let totalTokens = 0;
@@ -60,7 +61,7 @@ export async function loadFullCodebase(
   
   for (const file of allFiles.slice(0, maxFiles)) {
     try {
-      const content = await gitPort.readFile(file);
+      const content = await fileSystem.readFile(file);
       if (content && content.length > 0) {
         fileContents.push(`=== ${file} ===\n${content}\n`);
         totalTokens += Math.ceil(content.length / 4);
@@ -88,9 +89,9 @@ export async function loadFullCodebase(
 /**
  * Check if codebase exists (has files)
  */
-export async function hasCodebase(gitPort: GitPort): Promise<boolean> {
+export async function hasCodebase(fileSystem: FileSystemPort): Promise<boolean> {
   try {
-    const allFiles = await gitPort.listFiles('', DEFAULT_EXCLUDES);
+    const allFiles = await fileSystem.listFiles('', DEFAULT_EXCLUDES);
     return allFiles.length > 0;
   } catch {
     return false;
@@ -100,12 +101,11 @@ export async function hasCodebase(gitPort: GitPort): Promise<boolean> {
 /**
  * Get file count (for statistics)
  */
-export async function getFileCount(gitPort: GitPort): Promise<number> {
+export async function getFileCount(fileSystem: FileSystemPort): Promise<number> {
   try {
-    const allFiles = await gitPort.listFiles('', DEFAULT_EXCLUDES);
+    const allFiles = await fileSystem.listFiles('', DEFAULT_EXCLUDES);
     return allFiles.length;
   } catch {
     return 0;
   }
 }
-

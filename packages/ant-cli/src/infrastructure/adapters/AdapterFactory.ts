@@ -7,9 +7,11 @@
  */
 
 import { GitPort } from '../../core/ports/git';
+import { FileSystemPort } from '../../core/ports/filesystem';
 import { MemoryPort } from '../../core/ports/memory';
 import { ChunkPort } from '../../core/ports';
 import { SimpleGitAdapter } from '../../periphery/adapters/git/SimpleGitAdapter';
+import { LocalFileSystemAdapter } from '../../periphery/adapters/filesystem/LocalFileSystemAdapter';
 import { ChromaMemoryAdapter } from '../../periphery/adapters/memory/ChromaMemoryAdapter';
 import { ChunkAdapter } from '../../periphery/adapters/chunk/ChunkingAdapter';
 
@@ -31,6 +33,23 @@ export class AdapterFactory {
   }
 
   /**
+   * Create FileSystem adapter (local filesystem)
+   * ✅ NEW: Separated from GitPort
+   */
+  static createFileSystemAdapter(): FileSystemPort {
+    // For simple use cases without workspace context
+    return new LocalFileSystemAdapter(process.cwd());
+  }
+
+  /**
+   * Create FileSystem adapter with specific base path
+   * ✅ NEW: For workspace-scoped file operations
+   */
+  static createFileSystemAdapterWithPath(basePath: string): FileSystemPort {
+    return new LocalFileSystemAdapter(basePath);
+  }
+
+  /**
    * Create Memory (Vector DB) adapter
    */
   static createMemoryAdapter(): MemoryPort {
@@ -44,4 +63,3 @@ export class AdapterFactory {
     return new ChunkAdapter();
   }
 }
-

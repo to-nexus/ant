@@ -8,7 +8,7 @@ import { LoadingButton } from './components/LoadingButton';
 import { ActionButton } from './components/ActionButton';
 
 export function GitStatusButtons() {
-  const { selectedProject, selectedFeature, isGitStatusLoading, manualGitAction } = useStore();
+  const { selectedProject, selectedFeature, isGitStatusLoading, gitStatusPhase } = useStore();
   
   const hasGitHubRepo = useGitHubRepoConfig(selectedProject);
   const { gitChanges, isGitInitialized, isFetchingChanges } = useGitChanges(selectedProject, hasGitHubRepo);
@@ -35,26 +35,23 @@ export function GitStatusButtons() {
     return null;
   }
 
-  // If GitHub repo is not configured
+  // ✅ STEP 1: If GitHub repo is not configured
   if (hasGitHubRepo === false) {
     return <PlaceholderButton message="Configure GitHub repo first" />;
   }
 
-  // If no feature is selected
-  if (!selectedFeature) {
-    if (isGitInitialized === false) {
-      return <PlaceholderButton message="Select a feature" />;
-    }
-    // Git is initialized - treat as base branch and show status below
-  }
-
-  // If Git is not initialized (and feature is selected)
-  if (isGitInitialized === false && selectedFeature) {
+  // ✅ STEP 2: If Git is not initialized (repo configured, but not cloned/initialized)
+  if (isGitInitialized === false) {
     return <PlaceholderButton message="Git not initialized" />;
   }
 
-  // If Git status is loading OR actively fetching changes OR manual action
-  if (isGitStatusLoading || (isFetchingChanges && !gitChanges) || manualGitAction) {
+  // If no feature is selected
+  if (!selectedFeature) {
+    // Git is initialized - treat as base branch and show status below
+  }
+
+  // If Git status is loading OR actively fetching changes OR any Git operation in progress
+  if (isGitStatusLoading || (isFetchingChanges && !gitChanges) || gitStatusPhase !== null) {
     return <LoadingButton isFetchingChanges={isFetchingChanges} />;
   }
 

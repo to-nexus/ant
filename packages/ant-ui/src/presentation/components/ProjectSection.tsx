@@ -19,6 +19,7 @@ import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { useAlertModal } from '@/application/hooks/ui/useAlertModal';
 import { GitStatusButtons } from './GitStatusButtons';
 import { Button } from '@/presentation/components/common/button';
+import { Tooltip } from '@/presentation/components/common/Tooltip';
 
 export function ProjectSection() {
   const { 
@@ -28,7 +29,8 @@ export function ProjectSection() {
     fetchProjects, 
     openMainPanelTab,
     currentGitBranch,  // ✅ Current Git branch from store
-    setManualGitAction  // ✅ Manual Git action setter
+    setGitStatusPhase,  // ✅ Git status phase setter
+    gitStatusRefreshTrigger  // ✅ NEW: Git status refresh trigger
   } = useStore();
   const [configExists, setConfigExists] = useState<boolean | null>(null);
   const [config, setConfig] = useState<ProjectConfig | null>(null);
@@ -75,7 +77,27 @@ export function ProjectSection() {
     fetchGitStatus();
   }, [selectedProject]);
 
-  // Check if config exists when project is selected or config editor closes
+  // ✅ NEW: Refresh Git status when trigger changes (e.g., after config save)
+  useEffect(() => {
+    const fetchGitStatus = async () => {
+      // Skip if trigger is 0 (initial state, never triggered)
+      if (gitStatusRefreshTrigger === 0) return;
+      
+      // Skip if no project selected
+      if (!selectedProject) return;
+      
+      try {
+        const status = await getGitStatus(selectedProject);
+        setGitStatus(status);
+      } catch (error) {
+        console.error('[ProjectSection] Failed to refresh Git status:', error);
+      }
+    };
+    
+    fetchGitStatus();
+  }, [gitStatusRefreshTrigger, selectedProject]);
+
+  // Check if config exists when project is selected or config editor closes or git status refresh
   useEffect(() => {
     async function checkConfig() {
       if (!selectedProject) {
@@ -86,12 +108,6 @@ export function ProjectSection() {
 
       try {
         const projectConfig = await fetchProjectConfig(selectedProject);
-        const configChanged = JSON.stringify(config) !== JSON.stringify(projectConfig);
-        
-        if (configChanged) {
-          console.log('[ProjectSection] 🎉 Config updated! Refreshing Git status...', projectConfig);
-        }
-        
         setConfigExists(projectConfig !== null);
         setConfig(projectConfig);
       } catch (error) {
@@ -102,24 +118,18 @@ export function ProjectSection() {
     }
 
     checkConfig();
-  }, [selectedProject]);
+  }, [selectedProject, gitStatusRefreshTrigger]); // ✅ Also refresh config when gitStatusRefreshTrigger changes
 
   const handleCreateProject = async (projectName: string) => {
     await createProject(projectName);
+    // ✅ Auto-switch to the newly created project
+    setSelectedProject(projectName);
   };
 
   const handleDeleteProject = async (projectName: string) => {
     await deleteProject(projectName);
     
-    // ✅ Clean up localStorage: Remove last feature entry for this project
-    try {
-      const lastFeatures = JSON.parse(localStorage.getItem('ant-ui:project-last-features') || '{}');
-      delete lastFeatures[projectName];
-      localStorage.setItem('ant-ui:project-last-features', JSON.stringify(lastFeatures));
-      console.log(`[ProjectSection] 🧹 Cleaned up last feature for deleted project: ${projectName}`);
-    } catch (error) {
-      console.error('[ProjectSection] Failed to clean up localStorage:', error);
-    }
+    console.log(`[ProjectSection] ✅ Project deleted: ${projectName}`);
   };
 
   const handleConfigClick = async () => {
@@ -153,16 +163,21 @@ export function ProjectSection() {
     setShowGitMenu(false);
     setIsGitProcessing(true);
     
-    // ✅ For fetch/push/pull, use GitStatusButtons to show status
-    if (actionType === 'fetch' || actionType === 'push' || actionType === 'pull') {
-      setManualGitAction(actionType);
-    }
+    // ✅ Set Git operation phase
+    const phaseMap = {
+      'fetch': 'fetching',
+      'push': 'pushing',
+      'pull': 'pulling',
+      'clone': 'cloning',
+      'init': 'initializing'
+    } as const;
+    
+    setGitStatusPhase(phaseMap[actionType]);
     
     try {
       const result = await action();
       if (result.success) {
-        // ✅ For fetch/push/pull, status shown via GitStatusButtons (no popup)
-        // For clone/init, still show success popup (one-time operations)
+        // ✅ For clone/init, show success popup (one-time operations)
         if (actionType === 'clone' || actionType === 'init') {
           showSuccess(`${actionType === 'clone' ? 'Repository cloned' : 'Repository initialized'} successfully`);
         }
@@ -180,13 +195,7 @@ export function ProjectSection() {
       showError(error.message || `Failed to ${actionType}`);
     } finally {
       setIsGitProcessing(false);
-      
-      // ✅ Clear manual action status after a short delay
-      if (actionType === 'fetch' || actionType === 'push' || actionType === 'pull') {
-        setTimeout(() => {
-          setManualGitAction(null);
-        }, 500);
-      }
+      setGitStatusPhase(null);
     }
   };
 
@@ -196,34 +205,11 @@ export function ProjectSection() {
     true  // Refresh Git status after clone
   );
 
-  const handleInitialize = async () => {
-    if (!selectedProject) return;
-    
-    setIsGitProcessing(true);
-    setManualGitAction('init');  // ✅ Show status in GitStatusButtons
-    
-    try {
-      const result = await initializeGitHubRepo(selectedProject);
-      if (result.success) {
-        showSuccess('Repository initialized and codebase indexed successfully');
-        
-        // ✅ Refresh Git status
-        const status = await getGitStatus(selectedProject);
-        setGitStatus(status);
-        
-        // ✅ Trigger manual action to force Git changes fetch
-        setTimeout(() => {
-          setManualGitAction(null);  // This will trigger GitStatusButtons to fetch
-        }, 500);
-      } else {
-        showError(result.error || 'Failed to initialize repository');
-      }
-    } catch (error: any) {
-      showError(error.message || 'Failed to initialize repository');
-    } finally {
-      setIsGitProcessing(false);
-    }
-  };
+  const handleInitialize = () => handleGitAction(
+    () => initializeGitHubRepo(selectedProject!),
+    'init',
+    true  // Refresh Git status after init
+  );
 
   const handlePush = () => handleGitAction(
     () => pushToGitHub(selectedProject!),
@@ -237,11 +223,36 @@ export function ProjectSection() {
     false // Don't refresh Git status (hasGit won't change)
   );
 
-  const handleFetch = () => handleGitAction(
-    () => fetchFromGitHub(selectedProject!),
-    'fetch',
-    false // Don't refresh Git status (hasGit won't change)
-  );
+  const handleFetch = async () => {
+    if (!selectedProject) return;
+    
+    setShowGitMenu(false);
+    setIsGitProcessing(true);
+    setGitStatusPhase('fetching');
+    
+    console.log('[ProjectSection] 📡 Starting fetch...');
+    
+    try {
+      const result = await fetchFromGitHub(selectedProject);
+      console.log('[ProjectSection] 📡 Fetch result:', result);
+      
+      if (result.success) {
+        // ✅ Trigger Git status refresh (bypasses timer)
+        useStore.setState((state) => ({ 
+          gitStatusRefreshTrigger: state.gitStatusRefreshTrigger + 1 
+        }));
+        console.log('[ProjectSection] ✅ Fetch completed successfully');
+      } else {
+        showError(result.error || 'Failed to fetch');
+      }
+    } catch (error: any) {
+      showError(error.message || 'Failed to fetch');
+    } finally {
+      setIsGitProcessing(false);
+      setGitStatusPhase(null);
+      console.log('[ProjectSection] 🏁 Fetch finished');
+    }
+  };
 
   const projectItems = projects.map((p: string) => ({ name: p }));
 
@@ -274,17 +285,44 @@ export function ProjectSection() {
             
             {/* Git Management Button - Compact */}
             <div className="relative" ref={gitMenuRef}>
-              <Button
-                onClick={() => setShowGitMenu(!showGitMenu)}
-                variant="outline"
-                size="sm"
-                className="px-2.5 py-1.5"
-                disabled={!config?.githubRepo || isGitProcessing}
-                title={!config?.githubRepo ? 'Configure GitHub repo first' : 'Git management'}
-              >
-                <Github className="w-4 h-4" />
-                <ChevronDown className="w-3 h-3 ml-1" />
-              </Button>
+              {!config?.githubRepo ? (
+                // ✅ Disabled state: Show tooltip on click
+                <Tooltip
+                  content={
+                    <div className="max-w-xs space-y-2">
+                      <p className="font-semibold">Git 저장소 설정이 필요합니다</p>
+                      <ol className="list-decimal list-inside space-y-1 text-xs">
+                        <li><strong>GitHub PAT 설정:</strong> 우측 상단 Settings → GitHub PAT</li>
+                        <li><strong>Repository URL 설정:</strong> 프로젝트 선택 → 우측 상단 톱니바퀴 아이콘 → GitHub Repo URL 입력</li>
+                      </ol>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">설정 완료 후 Clone/Initialize 버튼이 활성화됩니다</p>
+                    </div>
+                  }
+                  placement="bottom"
+                >
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="px-2.5 py-1.5 opacity-50 cursor-pointer"
+                  >
+                    <Github className="w-4 h-4" />
+                    <ChevronDown className="w-3 h-3 ml-1" />
+                  </Button>
+                </Tooltip>
+              ) : (
+                // ✅ Enabled state: Normal button with menu
+                <Button
+                  onClick={() => setShowGitMenu(!showGitMenu)}
+                  variant="outline"
+                  size="sm"
+                  className="px-2.5 py-1.5"
+                  disabled={isGitProcessing}
+                  title="Git management"
+                >
+                  <Github className="w-4 h-4" />
+                  <ChevronDown className="w-3 h-3 ml-1" />
+                </Button>
+              )}
               
               {/* Git Menu Dropdown */}
               {showGitMenu && (

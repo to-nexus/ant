@@ -144,6 +144,7 @@ export async function execute(state: DesignGraphState) {
       chatAPI,
       state.context.userLanguage,
       state.deps?.git,
+      state.deps?.fileSystem,  // ✅ Add fileSystem
       true,  // ✅ writeImmediately for design job
       'design',  // ✅ jobType
       state.context.featurePath  // ✅ Feature path for absolute path resolution

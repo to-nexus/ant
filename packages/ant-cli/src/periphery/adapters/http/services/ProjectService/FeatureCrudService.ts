@@ -1,0 +1,167 @@
+import * as fs from 'fs';
+import * as path from 'path';
+import { WorkspaceResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
+import { UserContext } from '../../../../../core/types/user';
+
+/**
+ * FeatureCrudService
+ * 
+ * Handles feature CRUD operations and session management
+ */
+export class FeatureCrudService {
+  private readonly workspaceResolver: WorkspaceResolver;
+  private switchToFeatureBranchFn?: (projectId: string, featureName: string, userContext: UserContext) => Promise<string>;
+  
+  constructor(workspaceResolver: WorkspaceResolver) {
+    this.workspaceResolver = workspaceResolver;
+  }
+  
+  /**
+   * Set the switchToFeatureBranch function (injected from GitBranchService)
+   */
+  setSwitchToFeatureBranchFn(fn: (projectId: string, featureName: string, userContext: UserContext) => Promise<string>) {
+    this.switchToFeatureBranchFn = fn;
+  }
+  
+  /**
+   * Get session data for a feature
+   */
+  async getSession(
+    projectId: string,
+    featureName: string = 'skeleton',
+    job: 'design' | 'code' | 'learn' = 'code',
+    userContext: UserContext
+  ): Promise<any> {
+    const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+    const sessionPath = path.join(featurePath, `sessions/${job}.json`);
+    
+    // Check if session file exists
+    const exists = await fs.promises.access(sessionPath)
+      .then(() => true)
+      .catch(() => false);
+    
+    if (!exists) {
+      throw new Error('Session file not found');
+    }
+    
+    const sessionData = await fs.promises.readFile(sessionPath, 'utf-8');
+    return JSON.parse(sessionData);
+  }
+  
+  /**
+   * Reset job state (remove jobId, timing, and all task data from session)
+   */
+  async resetJobState(
+    projectId: string,
+    featureName: string,
+    jobType: 'design' | 'code' | 'learn',
+    userContext: UserContext
+  ): Promise<void> {
+    const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+    const sessionPath = path.join(featurePath, `sessions/${jobType}.json`);
+    
+    try {
+      // Read existing session
+      const sessionData = JSON.parse(await fs.promises.readFile(sessionPath, 'utf-8'));
+      
+      // Reset state
+      const resetSession = {
+        ...sessionData,
+        state: {
+          taskQueue: [],
+          completedTasks: [],
+          completedTasksDetails: [],
+          currentTask: null,
+          jobTiming: null,
+          interruption: null
+        }
+      };
+      
+      // Write back
+      await fs.promises.writeFile(sessionPath, JSON.stringify(resetSession, null, 2), 'utf-8');
+      console.log(`✅ [FeatureCrudService] Reset ${jobType} job state for ${projectId}/${featureName}`);
+    } catch (error) {
+      console.error(`❌ [FeatureCrudService] Failed to reset ${jobType} job state:`, error);
+      throw error;
+    }
+  }
+  
+  /**
+   * List all features for a project
+   */
+  async listFeatures(projectId: string, userContext: UserContext): Promise<string[]> {
+    const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
+    const featuresPath = path.join(projectPath, 'features');
+    
+    try {
+      await fs.promises.access(featuresPath);
+    } catch {
+      // features directory doesn't exist yet
+      return [];
+    }
+    
+    // Base branch names that should not appear as features
+    const baseBranchNames = ['main', 'master', 'develop'];
+    
+    const items = await fs.promises.readdir(featuresPath);
+    const features = await Promise.all(
+      items
+        .filter(item => !item.startsWith('.'))
+        .map(async (item) => {
+          const itemPath = path.join(featuresPath, item);
+          const stat = await fs.promises.stat(itemPath);
+          return stat.isDirectory() ? item : null;
+        })
+    );
+    
+    // Filter out base branches and null values
+    return features.filter(f => f && !baseBranchNames.includes(f.toLowerCase())) as string[];
+  }
+  
+  /**
+   * Create a new feature
+   */
+  async createFeature(projectId: string, featureName: string, userContext: UserContext): Promise<void> {
+    const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+    
+    // Create feature directory structure
+    await fs.promises.mkdir(path.join(featurePath, 'inputs/directives/design'), { recursive: true });
+    await fs.promises.mkdir(path.join(featurePath, 'inputs/directives/code'), { recursive: true });
+    await fs.promises.mkdir(path.join(featurePath, 'inputs/directives/learn'), { recursive: true });
+    await fs.promises.mkdir(path.join(featurePath, 'inputs/sources'), { recursive: true });
+    await fs.promises.mkdir(path.join(featurePath, 'outputs/design'), { recursive: true });
+    await fs.promises.mkdir(path.join(featurePath, 'outputs/reports'), { recursive: true });
+    await fs.promises.mkdir(path.join(featurePath, 'sessions'), { recursive: true });
+    
+    // ✅ Create Git branch for feature (if Git is initialized and function is injected)
+    if (this.switchToFeatureBranchFn) {
+      try {
+        await this.switchToFeatureBranchFn(projectId, featureName, userContext);
+      } catch (error: any) {
+        // If Git not initialized, silently skip (not an error for feature creation)
+        if (error.message?.includes('not initialized')) {
+          // Silently skip
+        } else {
+          console.error(`[FeatureCrudService] Failed to create branch for ${featureName}:`, error);
+          // Don't throw - feature directories are created successfully
+        }
+      }
+    }
+  }
+  
+  /**
+   * Delete a feature
+   */
+  async deleteFeature(projectId: string, featureName: string, userContext: UserContext): Promise<void> {
+    const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+    
+    try {
+      await fs.promises.access(featurePath);
+    } catch {
+      throw new Error('Feature not found');
+    }
+    
+    await fs.promises.rm(featurePath, { recursive: true, force: true });
+  }
+}
+

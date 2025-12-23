@@ -6,6 +6,7 @@
  */
 
 import { GitPort } from '../../../core/ports';
+import { FileSystemPort } from '../../../core/ports/filesystem';
 import { getChatAPIClient } from '../../../core/adapters/ChatAPIClient';
 import { ContextStrategy } from './analyzer';
 
@@ -21,7 +22,8 @@ export interface LoadedContext {
  */
 export async function loadContext(
   strategy: ContextStrategy,
-  gitPort: GitPort
+  gitPort: GitPort,
+  fileSystem: FileSystemPort  // ✅ NEW: FileSystemPort parameter
 ): Promise<LoadedContext> {
   const chatAPI = getChatAPIClient();
   
@@ -38,7 +40,7 @@ export async function loadContext(
       const mergeIndex = await chatAPI.showChatStatus('exploring', { filesCount: 0, totalFiles: 0 });
       
       try {
-        const allFiles = await gitPort.listFiles('', [
+        const allFiles = await fileSystem.listFiles('', [
           'node_modules',
           'dist',
           'build',
@@ -82,6 +84,7 @@ export async function loadContext(
       try {
         const searchResults = await searchCodebase(
           gitPort,
+          fileSystem,  // ✅ Pass fileSystem
           strategy.keywords,
           strategy.filePatterns
         );
@@ -117,7 +120,7 @@ export async function loadContext(
         const fileContents: string[] = [];
         
         for (const filePath of filesToRead) {
-          const content = await gitPort.readFile(filePath);
+          const content = await fileSystem.readFile(filePath);
           if (content) {
             fileContents.push(`\n### ${filePath}\n\`\`\`\n${content}\n\`\`\``);
           }
@@ -183,6 +186,7 @@ function buildFileTree(files: string[]): string {
  */
 async function searchCodebase(
   gitPort: GitPort,
+  fileSystem: FileSystemPort,  // ✅ Add fileSystem parameter
   keywords: string[],
   filePatterns: string[]
 ): Promise<{
@@ -191,7 +195,7 @@ async function searchCodebase(
   files: string[];
   matches: Array<{ file: string; line: number; snippet: string }>;
 }> {
-  const allFiles = await gitPort.listFiles('.', [
+  const allFiles = await fileSystem.listFiles('.', [
     'node_modules',
     '.git',
     'dist',
@@ -217,7 +221,7 @@ async function searchCodebase(
           if (!matchesPattern) continue;
         }
         
-        const content = await gitPort.readFile(file);
+        const content = await fileSystem.readFile(file);
         if (!content) continue;
         
         const lines = content.split('\n');

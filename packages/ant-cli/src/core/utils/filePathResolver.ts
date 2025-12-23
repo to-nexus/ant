@@ -14,7 +14,7 @@
  */
 
 import * as path from 'path';
-import { GitPort } from '../ports';
+import { GitPort, FileSystemPort } from '../ports';
 
 export interface FilePathMatch {
   originalPath: string;    // Stack trace 원본 경로
@@ -29,10 +29,11 @@ export interface FilePathMatch {
 export async function resolveStackTraceFile(
   stackTraceFile: string,
   workingDir: string,
-  git: GitPort
+  git: GitPort,
+  fileSystem: FileSystemPort
 ): Promise<FilePathMatch> {
   // 1. 이미 전체 경로인 경우 (절대 경로 또는 상대 경로)
-  if (await git.fileExists(path.join(workingDir, stackTraceFile))) {
+  if (await fileSystem.fileExists(path.join(workingDir, stackTraceFile))) {
     return {
       originalPath: stackTraceFile,
       resolvedPath: stackTraceFile,
@@ -172,12 +173,13 @@ async function listGitFiles(git: GitPort, workingDir: string): Promise<string[]>
 export async function resolveStackTraceFiles(
   stackTraceFiles: string[],
   workingDir: string,
-  git: GitPort
+  git: GitPort,
+  fileSystem: FileSystemPort
 ): Promise<Map<string, FilePathMatch>> {
   const results = new Map<string, FilePathMatch>();
   
   for (const file of stackTraceFiles) {
-    const match = await resolveStackTraceFile(file, workingDir, git);
+    const match = await resolveStackTraceFile(file, workingDir, git, fileSystem);
     results.set(file, match);
   }
   

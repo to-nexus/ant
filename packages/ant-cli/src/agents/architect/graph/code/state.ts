@@ -172,7 +172,8 @@ export interface ArchitectGraphState extends TaskArtifacts {
   
   // Dependencies
   deps?: { 
-    git?: GitPort; 
+    git?: GitPort;          // ✅ REFACTORED: Git operations only (no file I/O)
+    fileSystem?: import('../../../../core/ports/filesystem').FileSystemPort;  // ✅ NEW: File I/O operations
     memory?: MemoryPort; 
     llm?: LLMClient;
     promptEngine?: PromptEngine;
@@ -180,9 +181,11 @@ export interface ArchitectGraphState extends TaskArtifacts {
     chunk?: ChunkPort;
     session?: SessionPort;
     command?: CommandPort;
-    retriever?: import('../../../../core/codebase/CodebaseRetriever').CodebaseRetriever;  // ✅ NEW: For reference loading
-    vectorDB?: MemoryPort;  // ✅ NEW: Explicit vectorDB port (same as memory)
-    workspaceResolver?: import('../../../../infrastructure/workspace/WorkspaceResolver').WorkspaceResolver;  // ✅ For path resolution
+    retriever?: import('../../../../core/codebase/CodebaseRetriever').CodebaseRetriever;  // ✅ For reference loading
+    vectorDB?: MemoryPort;  // ✅ Explicit vectorDB port (same as memory)
+    workspaceService?: import('../../../../core/ports/workspace').WorkspaceServicePort;  // ✅ NEW: Workspace management
+    workspaceHandle?: import('../../../../core/ports/workspace').WorkspaceHandle;  // ✅ NEW: Current workspace
+    workspaceResolver?: import('../../../../infrastructure/workspace/WorkspaceResolver').WorkspaceResolver;  // ✅ Legacy workspace resolver
     kanbanUpdate?: TaskQueueUpdatePort;  // ✅ For real-time Kanban updates
     fileTreeUpdate?: import('../../../../core/ports').FileTreeUpdatePort;  // ✅ For real-time file tree updates
     workflowUpdate?: import('../../../../core/ports').WorkflowStateUpdatePort;  // ✅ For real-time workflow visualization

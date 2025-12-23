@@ -28,6 +28,7 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
   const mainView = useStore((state) => state.mainView);
   const setMainView = useStore((state) => state.setMainView);
   const selectedProject = useStore((state) => state.selectedProject);
+  const selectedFeature = useStore((state) => state.selectedFeature);
   const userEmail = useStore((state) => state.userEmail);
   const userOrganization = useStore((state) => state.userOrganization);
   const setUser = useStore((state) => state.setUser);
@@ -165,10 +166,12 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
       
       if (config.repoType === 'cloud') {
         // Cloud Mode: Use codebase directory
-        // Build codebase path from user context
+        // Docker mount: $HOME:/workspace → /Users/probe → /workspace
+        // Workspace path: /Users/probe/ant-workspaces/...
+        // IDE path: /workspace/ant-workspaces/...
         const org = userOrganization || 'default';
         const user = userEmail?.split('@')[0] || 'user';
-        workspacePath = `/workspace/dev/ant/workspaces/${org}/${user}/${selectedProject}/codebase`;
+        workspacePath = `/workspace/ant-workspaces/${org}/${user}/${selectedProject}/codebase`;
       } else {
         // Local Mode: Use localPath from config
         if (!config.localPath) {
@@ -182,6 +185,7 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
       console.log('[GlobalNavBar] Opening editor with path:', workspacePath);
       
       // ✅ Set IDE workspace path and switch to Code IDE view
+      // The iframe key in App.tsx will force VS Code to read fresh Git state
       useStore.getState().switchToCodeIdeView(workspacePath);
     } catch (error: any) {
       console.error('[GlobalNavBar] Failed to open IDE:', error);

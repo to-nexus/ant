@@ -4,6 +4,7 @@
 
 import { ChatAPIClient } from '../../../adapters/ChatAPIClient';
 import { GitPort } from '../../../ports/git';
+import { FileSystemPort } from '../../../ports/filesystem';
 import { ParsedAction, FileStreamInfo } from '../../types';
 import { FileRegistry } from '../../state/FileRegistry';
 import { LineBufferManager } from './LineBuffer';
@@ -11,6 +12,7 @@ import { LineBufferManager } from './LineBuffer';
 export interface FileRendererConfig {
   chatAPI: ChatAPIClient;
   gitPort?: GitPort;
+  fileSystem?: FileSystemPort;  // ✅ Add fileSystem
   writeImmediately: boolean;
   jobType?: 'code' | 'design';
   featurePath?: string;
@@ -19,6 +21,7 @@ export interface FileRendererConfig {
 export class FileRenderer {
   private chatAPI: ChatAPIClient;
   private gitPort?: GitPort;
+  private fileSystem?: FileSystemPort;  // ✅ Add fileSystem property
   private writeImmediately: boolean;
   private jobType?: 'code' | 'design';
   private featurePath?: string;
@@ -29,13 +32,15 @@ export class FileRenderer {
   // ✅ Track file operation completion
   
   // ✅ Track file operation errors (don't throw, collect for violation)
-  private fileErrors: string[] = [];  private completionPromises: Map<string, Promise<void>> = new Map();
+  private fileErrors: string[] = [];  
+  private completionPromises: Map<string, Promise<void>> = new Map();
   private completionResolvers: Map<string, (value: void | PromiseLike<void>) => void> = new Map();
   private completionRejectors: Map<string, (reason?: any) => void> = new Map();
   
   constructor(config: FileRendererConfig) {
     this.chatAPI = config.chatAPI;
     this.gitPort = config.gitPort;
+    this.fileSystem = config.fileSystem;  // ✅ Store fileSystem
     this.writeImmediately = config.writeImmediately;
     this.jobType = config.jobType;
     this.featurePath = config.featurePath;
@@ -223,7 +228,8 @@ export class FileRenderer {
       if (fileInfo.actionType === 'append' && this.jobType === 'design') {
         await this.handleDesignAppend(absolutePath, fileInfo.contentBuffer);
       } else {
-        await this.gitPort.writeFile(absolutePath, fileInfo.contentBuffer);
+        if (!this.fileSystem) throw new Error('FileSystemPort not available');
+        await this.fileSystem.writeFile(absolutePath, fileInfo.contentBuffer);
         console.log(`✅ [${fileInfo.actionType === 'create' ? 'Create' : 'Append'}] Successfully wrote ${absolutePath} to disk`);
       }
     }
@@ -235,13 +241,13 @@ export class FileRenderer {
    * Handle design job append with LAST_SECTION cleanup
    */
   private async handleDesignAppend(absolutePath: string, newContent: string): Promise<void> {
-    if (!this.gitPort) return;
+    if (!this.gitPort || !this.fileSystem) return;
     
     try {
-      const fileExists = await this.gitPort.fileExists(absolutePath);
+      const fileExists = await this.fileSystem.fileExists(absolutePath);
       
       if (fileExists) {
-        const existingContent = await this.gitPort.readFile(absolutePath) || '';
+        const existingContent = await this.fileSystem.readFile(absolutePath) || '';
         const lines = existingContent.split('\n');
         let lastLineIndex = lines.length - 1;
         
@@ -260,10 +266,10 @@ export class FileRenderer {
         }
         
         const mergedContent = cleanedExistingContent + '\n' + newContent;
-        await this.gitPort.writeFile(absolutePath, mergedContent);
+        await this.fileSystem!.writeFile(absolutePath, mergedContent);
         console.log(`✅ [Append] Successfully appended to ${absolutePath} (total: ${mergedContent.length} chars)`);
       } else {
-        await this.gitPort.writeFile(absolutePath, newContent);
+        await this.fileSystem!.writeFile(absolutePath, newContent);
         console.log(`✅ [Append] Created new file ${absolutePath}`);
       }
     } catch (error) {

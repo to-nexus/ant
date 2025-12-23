@@ -3,16 +3,16 @@
  */
 
 import { FileStreamInfo } from '../types';
-import type { GitPort } from '../../ports/git';
+import type { FileSystemPort } from '../../ports/filesystem';
 
 export class FileRegistry {
   private existingFiles: Set<string>;
   private streamedFiles: Map<string, FileStreamInfo> = new Map();
-  private gitPort?: GitPort;  // ✅ For real-time disk checks
+  private fileSystem?: FileSystemPort;  // ✅ For real-time disk checks
   
-  constructor(existingFiles: Set<string>, gitPort?: GitPort) {
+  constructor(existingFiles: Set<string>, fileSystem?: FileSystemPort) {
     this.existingFiles = existingFiles;
-    this.gitPort = gitPort;
+    this.fileSystem = fileSystem;
   }
   
   /**
@@ -26,9 +26,9 @@ export class FileRegistry {
     }
     
     // 2. Slow path: Check disk for files not loaded by plan
-    if (this.gitPort) {
+    if (this.fileSystem) {
       try {
-        const exists = await this.gitPort.fileExists(filePath);
+        const exists = await this.fileSystem.fileExists(filePath);
         if (exists) {
           console.warn(`⚠️  [FileRegistry] File ${filePath} exists on disk but not in plan context`);
           console.warn(`   This will trigger self-healing: LLM must read_file first, then use <edit>.`);

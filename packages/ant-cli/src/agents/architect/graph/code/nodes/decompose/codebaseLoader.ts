@@ -26,11 +26,12 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
   const retriever = state.deps?.retriever;
   const vectorDB = state.deps?.vectorDB;
   const git = state.deps?.git;
+  const fileSystem = state.deps?.fileSystem;
   
   const chatAPI = getChatAPIClient();
   
-  if (!retriever || !vectorDB || !git) {
-    console.warn(`⚠️  [Decompose] Retriever, VectorDB, or Git not available, skipping RAG`);
+  if (!retriever || !vectorDB || !git || !fileSystem) {
+    console.warn(`⚠️  [Decompose] Retriever, VectorDB, Git, or FileSystem not available, skipping RAG`);
     return { filePaths: [], gitDiff: undefined };
   }
   
@@ -63,7 +64,7 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
     for (const filePath of errorFiles) {
       try {
         console.log(`      🔍 Local file: ${filePath}`);
-        const resolved = await resolveStackTraceFile(filePath, state.context.workingDir, git);
+        const resolved = await resolveStackTraceFile(filePath, state.context.workingDir, git, fileSystem);
         
         if (resolved.confidence !== 'not_found') {
           errorFilesResult.push(resolved.resolvedPath);
@@ -191,7 +192,7 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
         if (!foundInVector) {
           // Try to resolve locally
           try {
-            const resolved = await resolveStackTraceFile(keyword, state.context.workingDir, git);
+            const resolved = await resolveStackTraceFile(keyword, state.context.workingDir, git, fileSystem);
             if (resolved.confidence !== 'not_found') {
               localFiles.push(resolved.resolvedPath);
               console.log(`      ✅ Local fallback: ${resolved.resolvedPath} (${keyword})`);

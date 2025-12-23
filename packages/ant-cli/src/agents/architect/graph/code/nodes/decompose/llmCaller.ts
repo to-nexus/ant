@@ -40,7 +40,7 @@ export async function callLLMForDecompose(
   const { StreamOrchestrator } = await import('../../../../../../core/streaming/StreamOrchestrator');
   
   const parser = new XMLStreamParser();
-  const renderStrategy = new CommonRenderStrategy(chatAPI, 'en', undefined, false, 'code', undefined);  // No gitPort needed for decompose
+  const renderStrategy = new CommonRenderStrategy(chatAPI, 'en', undefined, undefined, false, 'code', undefined);  // No gitPort or fileSystem needed for decompose
   const orchestrator = new StreamOrchestrator({
     parser,
     renderStrategy,

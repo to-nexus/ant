@@ -1,49 +1,87 @@
 /**
- * Workspace Port
+ * WorkspacePort
  * 
- * 사용자별 작업 공간 경로 관리를 위한 인터페이스
+ * Multi-tenant workspace management interface.
+ * Provides isolated file systems for each tenant/project.
  */
 
-export interface WorkspacePort {
-  /**
-   * 사용자의 workspace 루트 경로 반환
-   * @example workspaces/nexus/alice
-   */
-  getUserWorkspacePath(organizationId: string, userId: string): string;
-  
-  /**
-   * 프로젝트 경로 반환
-   * @example workspaces/nexus/alice/my-project
-   */
-  getProjectPath(org: string, user: string, project: string): string;
-  
-  /**
-   * 피처 경로 반환
-   * @example workspaces/nexus/alice/my-project/features/auth-system
-   */
-  getFeaturePath(org: string, user: string, project: string, feature: string): string;
-  
-  /**
-   * Artifacts 경로 반환
-   * @example workspaces/nexus/alice/my-project/features/auth-system/artifacts
-   */
-  getArtifactsPath(org: string, user: string, project: string, feature: string): string;
-  
-  /**
-   * 코드베이스 경로 반환
-   * @example workspaces/nexus/alice/my-project/codebase
-   */
-  getCodebasePath(org: string, user: string, project: string): string;
-  
-  /**
-   * Config 파일 경로 반환
-   * @example workspaces/nexus/alice/my-project/config.json
-   */
-  getConfigPath(org: string, user: string, project: string): string;
-  
-  /**
-   * 경로 보안 검증 (Path Traversal 방지)
-   */
-  validatePath(basePath: string, targetPath: string): boolean;
+import { FileSystemPort } from './filesystem';
+
+/**
+ * Workspace handle - opaque identifier for a workspace
+ */
+export interface WorkspaceHandle {
+  tenantId: string;      // Organization:User (e.g., "acme:alice")
+  projectId: string;     // Project name
+  storageType: 'local' | 's3' | 'nfs';
+  storagePath: string;   // Physical path (opaque - do not access directly)
 }
 
+/**
+ * Workspace metadata
+ */
+export interface WorkspaceInfo {
+  handle: WorkspaceHandle;
+  createdAt: Date;
+  lastAccessedAt: Date;
+  sizeBytes: number;
+}
+
+/**
+ * Mount point for job execution
+ * Provides temporary local access to workspace
+ */
+export interface MountPoint {
+  path: string;          // Local filesystem path
+  expiresAt: Date;       // Auto-unmount time
+  readonly: boolean;     // Read-only mount
+}
+
+/**
+ * Workspace Service Port
+ * 
+ * Manages tenant workspaces and provides isolated file systems.
+ */
+export interface WorkspaceServicePort {
+  /**
+   * Create or get workspace for tenant/project
+   * @returns Workspace handle
+   */
+  createWorkspace(tenantId: string, projectId: string): Promise<WorkspaceHandle>;
+  
+  /**
+   * Delete workspace and all contents
+   * ⚠️ Destructive operation
+   */
+  deleteWorkspace(tenantId: string, projectId: string): Promise<void>;
+  
+  /**
+   * Get FileSystemPort for workspace
+   * This is the primary way to access workspace files.
+   * @returns Isolated FileSystemPort scoped to this workspace
+   */
+  getFileSystem(handle: WorkspaceHandle): FileSystemPort;
+  
+  /**
+   * Get workspace metadata
+   */
+  getWorkspaceInfo(handle: WorkspaceHandle): Promise<WorkspaceInfo>;
+  
+  /**
+   * Mount workspace to local filesystem (for job execution)
+   * Used when spawning child processes that need direct file access.
+   * @returns Mount point with local path
+   */
+  mountWorkspace(handle: WorkspaceHandle, readonly?: boolean): Promise<MountPoint>;
+  
+  /**
+   * Unmount workspace
+   * Cleanup temporary mounts and sync changes back to storage.
+   */
+  unmountWorkspace(mountPoint: MountPoint): Promise<void>;
+  
+  /**
+   * List all workspaces for a tenant
+   */
+  listWorkspaces(tenantId: string): Promise<WorkspaceHandle[]>;
+}

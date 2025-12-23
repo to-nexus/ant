@@ -292,9 +292,9 @@ async function handleReadFile(
     throw new Error('read_file requires path');
   }
   
-  const gitPort = state.deps?.git;
-  if (!gitPort) {
-    throw new Error('GitPort not available');
+  const fileSystem = state.deps?.fileSystem;
+  if (!fileSystem) {
+    throw new Error('FileSystemPort not available');
   }
   
   const chatAPI = getChatAPIClient();
@@ -313,8 +313,8 @@ async function handleReadFile(
       return buffered.content;
     }
     
-    // ✅ Read from disk
-    const content = await gitPort.readFile(filePath);
+    // ✅ Read from filesystem
+    const content = await fileSystem.readFile(filePath);
     
     if (!content) {
       throw new Error(`File not found: ${filePath}`);
@@ -342,9 +342,9 @@ async function handleListFiles(
 ): Promise<string[]> {
   const { directory = '.', pattern } = args;
   
-  const gitPort = state.deps?.git;
-  if (!gitPort) {
-    throw new Error('GitPort not available');
+  const fileSystem = state.deps?.fileSystem;
+  if (!fileSystem) {
+    throw new Error('FileSystemPort not available');
   }
   
   const chatAPI = getChatAPIClient();
@@ -356,7 +356,7 @@ async function handleListFiles(
   });
   
   // ✅ Use GitPort instead of direct fs access (Hexagonal Architecture)
-  const items = await gitPort.readDirectory(directory);
+  const items = await fileSystem.readDirectory(directory);
   
   // ✅ Add type suffix for directories so UI can distinguish them
   const itemsWithType = items.map(item => 
@@ -395,9 +395,9 @@ async function handleSearchCode(
     throw new Error('search_code requires pattern');
   }
   
-  const gitPort = state.deps?.git;
-  if (!gitPort) {
-    throw new Error('GitPort not available');
+  const fileSystem = state.deps?.fileSystem;
+  if (!fileSystem) {
+    throw new Error('FileSystemPort not available');
   }
   
   const chatAPI = getChatAPIClient();
@@ -409,7 +409,7 @@ async function handleSearchCode(
   });
   
   // ✅ Use GitPort to list files (Hexagonal Architecture)
-  const files = await gitPort.listFiles('.', ['node_modules', '.git', 'dist', 'build']);
+  const files = await fileSystem.listFiles('.', ['node_modules', '.git', 'dist', 'build']);
   
   // Filter by file pattern if provided
   const filteredFiles = file_pattern
@@ -419,7 +419,7 @@ async function handleSearchCode(
   // Search through files
   const results: string[] = [];
   for (const file of filteredFiles.slice(0, 50)) {  // Limit to 50 files
-    const content = await gitPort.readFile(file);
+    const content = await fileSystem.readFile(file);
     if (!content) continue;
     
     const lines = content.split('\n');
@@ -463,22 +463,22 @@ async function handleDeleteFile(
   args: { path: string }
 ): Promise<string> {
   const { path: filePath } = args;
-  const gitPort = state.deps?.git;
+  const fileSystem = state.deps?.fileSystem;
   
-  if (!gitPort) {
-    throw new Error('GitPort not available');
+  if (!fileSystem) {
+    throw new Error('FileSystemPort not available');
   }
   
   const chatAPI = getChatAPIClient();
   
   // Check if file exists
-  const exists = await gitPort.fileExists(filePath);
+  const exists = await fileSystem.fileExists(filePath);
   if (!exists) {
     throw new Error(`File does not exist: ${filePath}`);
   }
   
   // Delete file
-  await gitPort.deleteFile(filePath);
+  await fileSystem.deleteFile(filePath);
   console.log(`   🗑️  Deleted: ${filePath}`);
   
   // UI notification
@@ -505,10 +505,10 @@ async function handleEditFile(
   args: { path: string; old_str: string; new_str: string }
 ): Promise<string> {
   const { path: filePath, old_str, new_str } = args;
-  const gitPort = state.deps?.git;
+  const fileSystem = state.deps?.fileSystem;
   
-  if (!gitPort) {
-    throw new Error('GitPort not available');
+  if (!fileSystem) {
+    throw new Error('FileSystemPort not available');
   }
   
   if (!filePath || old_str === undefined || new_str === undefined) {
@@ -522,13 +522,13 @@ async function handleEditFile(
   
   try {
     // ✅ Check if file exists
-    const exists = await gitPort.fileExists(filePath);
+    const exists = await fileSystem.fileExists(filePath);
     if (!exists) {
       throw new Error(`File does not exist: ${filePath}. Use <file> tag to create new files.`);
     }
     
     // ✅ Read current file content (always from disk to ensure latest state)
-    const originalContent = await gitPort.readFile(filePath);
+    const originalContent = await fileSystem.readFile(filePath);
     if (!originalContent) {
       throw new Error(`Failed to read file: ${filePath}`);
     }
@@ -543,7 +543,7 @@ async function handleEditFile(
     );
     
     // ✅ Write modified content back to disk
-    await gitPort.writeFile(filePath, modifiedContent);
+    await fileSystem.writeFile(filePath, modifiedContent);
     
     console.log(`✅ [EditFile] Successfully edited ${filePath}`);
     console.log(`   Replaced ${old_str.length} chars with ${new_str.length} chars`);
@@ -585,14 +585,14 @@ async function handleMkdir(
   args: { path: string }
 ): Promise<string> {
   const { path: dirPath } = args;
-  const gitPort = state.deps?.git;
+  const fileSystem = state.deps?.fileSystem;
   
-  if (!gitPort) {
-    throw new Error('GitPort not available');
+  if (!fileSystem) {
+    throw new Error('FileSystemPort not available');
   }
   
   // Create directory
-  await gitPort.createDirectory(dirPath);
+  await fileSystem.createDirectory(dirPath);
   console.log(`   📁 Created directory: ${dirPath}`);
   
   // ✅ UI notification is handled by ChatService via tool_use event
@@ -622,14 +622,14 @@ async function handleRunCommand(
 ): Promise<string> {
   const { command, working_directory, keep_running } = args;
   const commandPort = state.deps?.command;
-  const gitPort = state.deps?.git;
+  const fileSystem = state.deps?.fileSystem;
   
   if (!commandPort) {
     throw new Error('CommandPort not available');
   }
   
-  if (!gitPort) {
-    throw new Error('GitPort not available');
+  if (!fileSystem) {
+    throw new Error('FileSystemPort not available');
   }
   
   // 🚨 CRITICAL SAFEGUARD: Prevent killing orchestrator port
@@ -701,8 +701,13 @@ Port ${ORCHESTRATOR_PORT} is the orchestrator. Any process in /ant/packages/ant-
   // ✅ FIXED: Test against full command (handles "cd dir && npm run dev")
   const isLongRunning = longRunningPatterns.some(pattern => pattern.test(command));
   
-  // Get project path
-  const projectPath = await gitPort.getRepoRoot();
+  // Get project path from FileSystemPort
+  const fileSystemPort = state.deps?.fileSystem;
+  if (!fileSystemPort) {
+    throw new Error('FileSystemPort not available');
+  }
+  
+  const projectPath = fileSystemPort.getWorkspaceRoot();
   const workingDir = working_directory 
     ? `${projectPath}/${working_directory}`
     : projectPath;
@@ -1017,8 +1022,8 @@ Please mention the reference project in your directive to register it.`;
     }
     
     // 2. Check dependencies
-    if (!state.deps?.retriever || !state.deps?.vectorDB || !state.deps?.git || !state.deps?.workspaceResolver) {
-      throw new Error('Required dependencies not available (retriever, vectorDB, git, workspaceResolver)');
+    if (!state.deps?.retriever || !state.deps?.vectorDB || !state.deps?.git || !state.deps?.workspaceService) {
+      throw new Error('Required dependencies not available (retriever, vectorDB, git, workspaceService)');
     }
     
     // 3. UI: Show searching status
@@ -1027,14 +1032,16 @@ Please mention the reference project in your directive to register it.`;
       query: query
     });
     
-    // 4. Resolve reference project path
+    // 4. Resolve reference project path using WorkspaceService
     const userContext = {
       userId: state.context.userId || 'local',
       organizationId: state.context.organizationId || 'local',
       workspacePath: ''
     };
     
-    const refProjectPath = state.deps.workspaceResolver.getProjectPath(userContext, project);
+    const tenantId = `${userContext.organizationId}:${userContext.userId}`;
+    const refHandle = await state.deps.workspaceService.createWorkspace(tenantId, project);
+    const refProjectPath = refHandle.storagePath;
     const refCodebasePath = require('path').join(refProjectPath, 'codebase');
     
     // 5. Search vector DB using CodebaseRetriever

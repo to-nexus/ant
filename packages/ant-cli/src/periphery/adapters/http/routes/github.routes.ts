@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { GitHubAuthService } from '../../auth/GitHubAuthService';
 import { extractUserContext } from './helpers/userContext';
 
@@ -12,7 +12,7 @@ export function createGitHubRoutes(deps: {
    * POST /api/github/pat
    * Body: { pat: string }
    */
-  router.post('/pat', async (req, res) => {
+  router.post('/pat', async (req: Request, res: Response) => {
     try {
       const { pat } = req.body;
       
@@ -57,7 +57,7 @@ export function createGitHubRoutes(deps: {
    * Get PAT status (configured or not)
    * GET /api/github/pat/status
    */
-  router.get('/pat/status', async (req, res) => {
+  router.get('/pat/status', async (req: Request, res: Response) => {
     try {
       const userContextFull = extractUserContext(req);
       const userContext = {
@@ -84,7 +84,7 @@ export function createGitHubRoutes(deps: {
    * Delete PAT
    * DELETE /api/github/pat
    */
-  router.delete('/pat', async (req, res) => {
+  router.delete('/pat', async (req: Request, res: Response) => {
     try {
       const userContextFull = extractUserContext(req);
       const userContext = {

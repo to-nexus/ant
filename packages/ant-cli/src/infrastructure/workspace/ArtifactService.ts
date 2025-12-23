@@ -8,12 +8,12 @@
  * - outputs/reports/: 실행 리포트
  * 
  * ✅ Hexagonal Architecture:
- * - GitPort를 통한 파일 I/O (테스트 가능)
+ * - FileSystemPort를 통한 파일 I/O (테스트 가능)
  * - WorkspacePathResolver로 경로 계산
  */
 
 import * as path from "path";
-import { GitPort } from "../../core/ports";
+import { GitPort, FileSystemPort } from "../../core/ports";
 import { WorkspacePathResolver } from "./WorkspaceResolver";
 
 export type AgentTask = 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';
@@ -63,28 +63,29 @@ export class ArtifactService {
   static async getDirective(
     context: ProjectContext,
     task: AgentTask,
-    gitPort: GitPort
+    gitPort: GitPort,
+    fileSystem: FileSystemPort
   ): Promise<string | null> {
     const featurePath = WorkspacePathResolver.resolveFeaturePath(context);
     const directiveDir = path.join(featurePath, "inputs/directives", task);
 
-    const exists = await gitPort.fileExists(directiveDir);
+    const exists = await fileSystem.fileExists(directiveDir);
     if (!exists) {
       return null;
     }
 
     // 1. Check directive.md (default)
     const defaultPath = path.join(directiveDir, "directive.md");
-    const defaultExists = await gitPort.fileExists(defaultPath);
+    const defaultExists = await fileSystem.fileExists(defaultPath);
     if (defaultExists) {
-      const content = await gitPort.readFile(defaultPath);
+      const content = await fileSystem.readFile(defaultPath);
       if (content && content.trim().length > 0) {
         return content.trim();
       }
     }
 
     // 2. Find latest directive-nnn.md
-    const entries = await gitPort.readDirectory(directiveDir);
+    const entries = await fileSystem.readDirectory(directiveDir);
     const files = entries
       .filter(e => !e.isDirectory && /^directive-\d+\.md$/.test(e.name))
       .map(e => {
@@ -95,7 +96,7 @@ export class ArtifactService {
       .sort((a, b) => b.number - a.number);
 
     if (files.length > 0) {
-      const content = await gitPort.readFile(path.join(directiveDir, files[0].name));
+      const content = await fileSystem.readFile(path.join(directiveDir, files[0].name));
       if (content && content.trim().length > 0) {
         return content.trim();
       }
@@ -109,7 +110,8 @@ export class ArtifactService {
    */
   static async getSource(
     context: ProjectContext,
-    gitPort: GitPort
+    gitPort: GitPort,
+    fileSystem: FileSystemPort
   ): Promise<{
     prd?: string;
     figmaLink?: string;
@@ -121,17 +123,17 @@ export class ArtifactService {
     const featurePath = WorkspacePathResolver.resolveFeaturePath(context);
     const sourceDir = path.join(featurePath, "inputs/sources");
     
-    const sourceDirExists = await gitPort.fileExists(sourceDir);
+    const sourceDirExists = await fileSystem.fileExists(sourceDir);
     if (!sourceDirExists) {
       return result;
     }
 
-    const entries = await gitPort.readDirectory(sourceDir);
+    const entries = await fileSystem.readDirectory(sourceDir);
 
     // 1. PRD (combined or individual files)
     const combinedPrd = path.join(sourceDir, ".combined-prd.tmp.md");
-    if (await gitPort.fileExists(combinedPrd)) {
-      result.prd = await gitPort.readFile(combinedPrd);
+    if (await fileSystem.fileExists(combinedPrd)) {
+      result.prd = await fileSystem.readFile(combinedPrd);
     } else {
       const prdFiles = entries
         .filter(e => !e.isDirectory && e.name.endsWith(".md") && e.name !== ".combined-prd.tmp.md")
@@ -141,7 +143,7 @@ export class ArtifactService {
       if (prdFiles.length > 0) {
         const prdContents = await Promise.all(
           prdFiles.map(async (file) => {
-            const content = await gitPort.readFile(path.join(sourceDir, file));
+            const content = await fileSystem.readFile(path.join(sourceDir, file));
             return `# ${file}\n\n${content}`;
           })
         );
@@ -174,6 +176,7 @@ export class ArtifactService {
   static async findLatestDesign(
     context: ProjectContext,
     gitPort: GitPort,
+    fileSystem: FileSystemPort,
     preferredEnvironment?: 'frontend' | 'backend' | 'any'
   ): Promise<{ content: string; filePath: string } | null> {
     const featurePath = WorkspacePathResolver.resolveFeaturePath(context);
@@ -203,10 +206,10 @@ export class ArtifactService {
     // Try each candidate file
     for (const fileName of candidateFiles) {
       const designFilePath = path.join(designPath, fileName);
-    const exists = await gitPort.fileExists(designFilePath);
+    const exists = await fileSystem.fileExists(designFilePath);
 
       if (exists) {
-        const content = await gitPort.readFile(designFilePath);
+        const content = await fileSystem.readFile(designFilePath);
         if (content) {
           console.log(`📄 [ArtifactService] Found design document: ${fileName}`);
           return {
@@ -233,6 +236,7 @@ export class ArtifactService {
   static async loadDesignDocuments(
     context: ProjectContext,
     gitPort: GitPort,
+    fileSystem: FileSystemPort,
     environment?: 'frontend' | 'backend' | 'unknown'
   ): Promise<{
     apiContract?: string;
@@ -252,8 +256,8 @@ export class ArtifactService {
 
     // ✅ ALWAYS try to load api-contract.md (if exists)
     const apiContractPath = path.join(designPath, 'api-contract.md');
-    if (await gitPort.fileExists(apiContractPath)) {
-      const content = await gitPort.readFile(apiContractPath);
+    if (await fileSystem.fileExists(apiContractPath)) {
+      const content = await fileSystem.readFile(apiContractPath);
       if (content) {
         result.apiContract = content;
         console.log(`📄 [ArtifactService] Loaded api-contract.md for ${environment || 'unknown'} environment`);
@@ -264,8 +268,8 @@ export class ArtifactService {
     if (environment === 'frontend') {
       // Frontend: Load fe-system-design.md or fallback to system-design.md
       const feDesignPath = path.join(designPath, 'fe-system-design.md');
-      if (await gitPort.fileExists(feDesignPath)) {
-        const content = await gitPort.readFile(feDesignPath);
+      if (await fileSystem.fileExists(feDesignPath)) {
+        const content = await fileSystem.readFile(feDesignPath);
         if (content) {
           result.feDesign = content;
           console.log(`📄 [ArtifactService] Loaded fe-system-design.md`);
@@ -273,8 +277,8 @@ export class ArtifactService {
       } else {
         // Fallback: system-design.md
         const unifiedPath = path.join(designPath, 'system-design.md');
-        if (await gitPort.fileExists(unifiedPath)) {
-          const content = await gitPort.readFile(unifiedPath);
+        if (await fileSystem.fileExists(unifiedPath)) {
+          const content = await fileSystem.readFile(unifiedPath);
           if (content) {
             result.unifiedDesign = content;
             console.log(`📄 [ArtifactService] Loaded system-design.md (frontend fallback)`);
@@ -284,8 +288,8 @@ export class ArtifactService {
     } else if (environment === 'backend') {
       // Backend: Load be-system-design.md or fallback to system-design.md
       const beDesignPath = path.join(designPath, 'be-system-design.md');
-      if (await gitPort.fileExists(beDesignPath)) {
-        const content = await gitPort.readFile(beDesignPath);
+      if (await fileSystem.fileExists(beDesignPath)) {
+        const content = await fileSystem.readFile(beDesignPath);
         if (content) {
           result.beDesign = content;
           console.log(`📄 [ArtifactService] Loaded be-system-design.md`);
@@ -293,8 +297,8 @@ export class ArtifactService {
       } else {
         // Fallback: system-design.md
         const unifiedPath = path.join(designPath, 'system-design.md');
-        if (await gitPort.fileExists(unifiedPath)) {
-          const content = await gitPort.readFile(unifiedPath);
+        if (await fileSystem.fileExists(unifiedPath)) {
+          const content = await fileSystem.readFile(unifiedPath);
           if (content) {
             result.unifiedDesign = content;
             console.log(`📄 [ArtifactService] Loaded system-design.md (backend fallback)`);
@@ -307,24 +311,24 @@ export class ArtifactService {
       const beDesignPath = path.join(designPath, 'be-system-design.md');
       const unifiedPath = path.join(designPath, 'system-design.md');
       
-      if (await gitPort.fileExists(feDesignPath)) {
-        const content = await gitPort.readFile(feDesignPath);
+      if (await fileSystem.fileExists(feDesignPath)) {
+        const content = await fileSystem.readFile(feDesignPath);
         if (content) {
           result.feDesign = content;
           console.log(`📄 [ArtifactService] Loaded fe-system-design.md (unknown env)`);
         }
       }
       
-      if (await gitPort.fileExists(beDesignPath)) {
-        const content = await gitPort.readFile(beDesignPath);
+      if (await fileSystem.fileExists(beDesignPath)) {
+        const content = await fileSystem.readFile(beDesignPath);
         if (content) {
           result.beDesign = content;
           console.log(`📄 [ArtifactService] Loaded be-system-design.md (unknown env)`);
         }
       }
       
-      if (await gitPort.fileExists(unifiedPath)) {
-        const content = await gitPort.readFile(unifiedPath);
+      if (await fileSystem.fileExists(unifiedPath)) {
+        const content = await fileSystem.readFile(unifiedPath);
         if (content) {
           result.unifiedDesign = content;
           console.log(`📄 [ArtifactService] Loaded system-design.md (unknown env)`);
@@ -342,14 +346,15 @@ export class ArtifactService {
     context: ProjectContext,
     fileName: string,
     content: string,
-    gitPort: GitPort
+    gitPort: GitPort,
+    fileSystem: FileSystemPort
   ): Promise<string> {
     const featurePath = WorkspacePathResolver.resolveFeaturePath(context);
     const reportDir = path.join(featurePath, "outputs/reports");
-    await gitPort.createDirectory(reportDir);
+    await fileSystem.createDirectory(reportDir);
     
     const reportFile = path.join(reportDir, fileName);
-    await gitPort.writeFile(reportFile, content);
+    await fileSystem.writeFile(reportFile, content);
     
     return reportFile;
   }
@@ -360,16 +365,17 @@ export class ArtifactService {
   static async writeDesignDocument(
     context: ProjectContext,
     content: string,
-    gitPort: GitPort
+    gitPort: GitPort,
+    fileSystem: FileSystemPort
   ): Promise<string> {
     const featurePath = WorkspacePathResolver.resolveFeaturePath(context);
     const designDir = path.join(featurePath, "outputs/design");
-    await gitPort.createDirectory(designDir);
+    await fileSystem.createDirectory(designDir);
     
     const timestamp = Date.now();
     const fileName = `system-design-${context.project}-${timestamp}.md`;
     const designFile = path.join(designDir, fileName);
-    await gitPort.writeFile(designFile, content);
+    await fileSystem.writeFile(designFile, content);
     
     return designFile;
   }

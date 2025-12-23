@@ -45,7 +45,7 @@ export async function decompose(state: LearnGraphState): Promise<Partial<LearnGr
   const userLanguage = detectUserLanguage(state.spec);
   
   const parser = new XMLStreamParser();
-  const renderStrategy = new CommonRenderStrategy(chatAPI, userLanguage, undefined, false, undefined);
+  const renderStrategy = new CommonRenderStrategy(chatAPI, userLanguage, undefined, undefined, false, undefined);
   const orchestrator = new StreamOrchestrator({
     parser,
     renderStrategy,

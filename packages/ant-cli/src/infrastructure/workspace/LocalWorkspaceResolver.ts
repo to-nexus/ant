@@ -11,10 +11,15 @@ import { UserContext } from '../../core/types/user';
 export class LocalWorkspaceResolver implements WorkspaceResolver {
   private workspacesPath: string;
 
-  constructor() {
-    // Get workspaces directory (5 levels up from dist/infrastructure/workspace)
-    const projectRoot = path.resolve(__dirname, '../../../../..');
-    this.workspacesPath = path.join(projectRoot, 'workspaces');
+  constructor(workspacesPath?: string) {
+    // Use provided path or default to project root
+    if (workspacesPath) {
+      this.workspacesPath = workspacesPath;
+    } else {
+      // Get workspaces directory (5 levels up from dist/infrastructure/workspace)
+      const projectRoot = path.resolve(__dirname, '../../../../..');
+      this.workspacesPath = path.join(projectRoot, 'workspaces');
+    }
   }
 
   getWorkspacePath(userContext: UserContext): string {
@@ -27,7 +32,7 @@ export class LocalWorkspaceResolver implements WorkspaceResolver {
   }
 
   getFeaturePath(userContext: UserContext, projectId: string, featureId: string): string {
-    return path.join(this.getProjectPath(userContext, projectId), featureId);
+    return path.join(this.getProjectPath(userContext, projectId), 'features', featureId);
   }
 
   getPhysicalWorkspacesPath(): string {
