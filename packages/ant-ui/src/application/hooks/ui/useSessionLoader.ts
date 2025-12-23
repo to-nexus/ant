@@ -24,41 +24,68 @@ export function useSessionLoader(connectionStatus: string) {
           
           // Verify project still exists
           const currentProjects = useStore.getState().projects;
-          if (currentProjects.includes(projectId)) {
-            // console.log('[useSessionLoader] Restoring selected project:', projectId); // ✅ Too verbose
-            useStore.getState().setSelectedProject(projectId);
+          if (!currentProjects.includes(projectId)) {
+            console.log('[useSessionLoader] Saved project no longer exists, clearing');
+            sessionStorage.removeItem('ant-ui:selected-project');
+            sessionStorage.removeItem('ant-ui:selected-feature');
+            return;
+          }
+          
+          console.log('[useSessionLoader] Restoring project:', projectId);
+          
+          // ✅ Step 1: Set project (will trigger fetchFeatures)
+          useStore.getState().setSelectedProject(projectId);
+          
+          // ✅ Step 2: Wait for features to load, then set feature
+          if (savedFeature) {
+            const featureName = JSON.parse(savedFeature);
+            console.log('[useSessionLoader] Waiting for features to restore:', featureName);
             
-            // ✅ Wait for features to load instead of setTimeout
-            if (savedFeature) {
-              const featureName = JSON.parse(savedFeature);
+            // Poll for features (max 5 seconds)
+            const maxAttempts = 50;
+            let attempts = 0;
+            
+            const checkFeatures = setInterval(() => {
+              const currentFeatures = useStore.getState().features;
               
-              // Poll for features (max 5 seconds)
-              const maxAttempts = 50;
-              let attempts = 0;
-              
-              const checkFeatures = setInterval(() => {
-                const currentFeatures = useStore.getState().features;
+              if (currentFeatures.length > 0 || attempts >= maxAttempts) {
+                clearInterval(checkFeatures);
                 
-                if (currentFeatures.length > 0 || attempts >= maxAttempts) {
-                  clearInterval(checkFeatures);
+                if (currentFeatures.some(f => f.name === featureName)) {
+                  console.log('[useSessionLoader] ✅ Restoring feature:', featureName);
+                  useStore.getState().setSelectedFeature(featureName);
+                } else if (currentFeatures.length > 0) {
+                  console.log('[useSessionLoader] ⚠️ Feature not found, trying localStorage');
                   
-                  // Verify feature exists
-                  if (currentFeatures.some(f => f.name === featureName)) {
-                    // console.log('[useSessionLoader] Restoring selected feature:', featureName); // ✅ Too verbose
-                    useStore.getState().setSelectedFeature(featureName);
-                  } else {
-                    console.log('[useSessionLoader] Saved feature no longer exists, clearing');
-                    localStorage.removeItem('ant-ui:selected-feature');
+                  // Fallback: Try localStorage last feature
+                  const lastFeatures = JSON.parse(localStorage.getItem('ant-ui:project-last-features') || '{}');
+                  const lastFeature = lastFeatures[projectId];
+                  
+                  if (lastFeature && currentFeatures.some(f => f.name === lastFeature)) {
+                    console.log('[useSessionLoader] ✅ Restoring last feature:', lastFeature);
+                    useStore.getState().setSelectedFeature(lastFeature);
                   }
                 }
-                
-                attempts++;
-              }, 100);
-            }
+              }
+              
+              attempts++;
+            }, 100);
           } else {
-            console.log('[useSessionLoader] Saved project no longer exists, clearing');
-            localStorage.removeItem('ant-ui:selected-project');
-            localStorage.removeItem('ant-ui:selected-feature');
+            // No sessionStorage feature - try localStorage
+            console.log('[useSessionLoader] No session feature, checking localStorage');
+            
+            setTimeout(() => {
+              const lastFeatures = JSON.parse(localStorage.getItem('ant-ui:project-last-features') || '{}');
+              const lastFeature = lastFeatures[projectId];
+              
+              if (lastFeature) {
+                const currentFeatures = useStore.getState().features;
+                if (currentFeatures.some(f => f.name === lastFeature)) {
+                  console.log('[useSessionLoader] ✅ Restoring last feature from localStorage:', lastFeature);
+                  useStore.getState().setSelectedFeature(lastFeature);
+                }
+              }
+            }, 500);
           }
         }
       } catch (error) {

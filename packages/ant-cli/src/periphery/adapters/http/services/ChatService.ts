@@ -182,6 +182,13 @@ export class ChatService {
    * Save chat session to file
    */
   private saveSessionToFile(projectId: string, featureName: string, messages: ChatMessage[], userContext?: UserContext): void {
+    // ✅ Skip saving chat for base branches (learning only, no chat history needed)
+    const baseBranchNames = ['main', 'master', 'develop'];
+    if (baseBranchNames.includes(featureName.toLowerCase())) {
+      console.log(`[ChatService] Skipping chat save for base branch: ${featureName}`);
+      return;
+    }
+    
     const filePath = this.getChatFilePath(projectId, featureName, userContext);
     
     try {

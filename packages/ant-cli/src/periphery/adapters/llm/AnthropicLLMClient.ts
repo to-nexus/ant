@@ -7,7 +7,7 @@
 
 // @ts-ignore
 import Anthropic from '@anthropic-ai/sdk';
-import { LLMClient, LLMStreamEvent, ToolDefinition, LLMInvokeResult } from '../../../core/ports/llm';
+import { LLMClient, LLMStreamEvent, ToolDefinition, LLMInvokeResult, CacheableContent } from '../../../core/ports/llm';
 import { TaskTokenUsage } from '../../../agents/architect/types/task';
 import { withRetryStream } from '../../../core/utils/retry';
 
@@ -40,26 +40,42 @@ export class AnthropicLLMClient implements LLMClient {
     this.modelName = config.modelName;
   }
 
-  async invoke(messages: Array<{ role: string; content: string }>): Promise<string> {
-    const result = await this.invokeWithUsage(messages);
+  async invoke(messages: Array<{ role: string; content: string | CacheableContent[] }>, options?: Record<string, any>): Promise<string> {
+    const result = await this.invokeWithUsage(messages, options);
     return result.content;
   }
   
-  async invokeWithUsage(messages: Array<{ role: string; content: string }>, options?: Record<string, any>): Promise<import('../../../core/ports/llm').LLMInvokeResult> {
-    // ✅ LOG: Actual API call with model name
-    console.log(`🔥 [API CALL] provider=anthropic model=${this.modelName} method=invoke messages=${messages.length}`);
+  async invokeWithUsage(
+    messages: Array<{ role: string; content: string | CacheableContent[] }>, 
+    options?: Record<string, any>
+  ): Promise<LLMInvokeResult> {
+    // Count cacheable blocks for logging
+    let cacheableBlocks = 0;
+    for (const msg of messages) {
+      if (Array.isArray(msg.content)) {
+        cacheableBlocks += msg.content.filter(c => c.cache_control).length;
+      }
+    }
+    
+    console.log(`🔥 [API CALL] provider=anthropic model=${this.modelName} method=invoke messages=${messages.length} cacheable=${cacheableBlocks}`);
     
     // ✅ Extract system message (Anthropic requires it as a separate parameter)
     const systemMessage = messages.find(m => m.role === 'system');
     const userMessages = messages.filter(m => m.role !== 'system');
     
+    // Process system message for caching
+    let systemParam: string | CacheableContent[] | undefined;
+    if (systemMessage) {
+      systemParam = systemMessage.content;
+    }
+    
     const response = await this.client.messages.create({
       model: this.modelName,
       max_tokens: options?.maxTokens || 16000,
-      ...(systemMessage && { system: systemMessage.content }),  // ✅ Add system parameter if exists
+      ...(systemParam && { system: systemParam }),
       messages: userMessages.map(m => ({
         role: m.role as 'user' | 'assistant',
-        content: m.content,
+        content: m.content,  // API directly accepts CacheableContent[]
       })),
     });
 
@@ -67,25 +83,35 @@ export class AnthropicLLMClient implements LLMClient {
     const textBlocks = response.content.filter((block: any) => block.type === 'text');
     const content = textBlocks.map((block: any) => block.text).join('');
     
-    // ✅ Extract token usage
+    // ✅ Extract token usage with cache metrics
     const usage = (response as any).usage ? {
       inputTokens: (response as any).usage.input_tokens || 0,
       outputTokens: (response as any).usage.output_tokens || 0,
-      totalTokens: ((response as any).usage.input_tokens || 0) + ((response as any).usage.output_tokens || 0),
+      // ✅ totalTokens = input + cache_creation + cache_read + output
+      totalTokens: 
+        ((response as any).usage.input_tokens || 0) + 
+        ((response as any).usage.cache_creation_input_tokens || 0) +
+        ((response as any).usage.cache_read_input_tokens || 0) +
+        ((response as any).usage.output_tokens || 0),
       cacheReadTokens: (response as any).usage.cache_read_input_tokens,
       cacheCreationTokens: (response as any).usage.cache_creation_input_tokens,
     } : undefined;
+    
+    // Log cache effectiveness
+    if (usage?.cacheReadTokens || usage?.cacheCreationTokens) {
+      console.log(`💰 [CACHE] read=${usage.cacheReadTokens || 0} create=${usage.cacheCreationTokens || 0}`);
+    }
     
     return { content, usage };
   }
 
   /**
    * 🎯 Unified streaming interface with automatic retry
-   * Handles thinking blocks, tool calling, and regular text
+   * Handles thinking blocks, tool calling, prompt caching, and regular text
    * ✅ Retries on overloaded_error and api_error
    */
   async *stream(
-    messages: Array<{ role: string; content: string | any[] }>,
+    messages: Array<{ role: string; content: string | CacheableContent[] | any[] }>,
     options?: {
       tools?: ToolDefinition[];
       maxTokens?: number;
@@ -105,10 +131,10 @@ export class AnthropicLLMClient implements LLMClient {
   }
 
   /**
-   * Internal streaming implementation
+   * Internal streaming implementation with prompt caching support
    */
   private async *_streamInternal(
-    messages: Array<{ role: string; content: string | any[] }>,
+    messages: Array<{ role: string; content: string | CacheableContent[] | any[] }>,
     options?: {
       tools?: ToolDefinition[];
       maxTokens?: number;
@@ -116,17 +142,22 @@ export class AnthropicLLMClient implements LLMClient {
       [key: string]: any;
     }
   ): AsyncIterable<LLMStreamEvent> {
-    // ✅ LOG: Actual API call with model name
     const toolsCount = options?.tools?.length || 0;
-    console.log(`🔥 [API CALL] provider=anthropic model=${this.modelName} method=stream messages=${messages.length} tools=${toolsCount} thinking=${options?.enableThinking !== false}`);
-    
-    // ✅ Conditionally enable Extended Thinking (default: true)
     const enableThinking = options?.enableThinking !== false;
+    
+    // Count cacheable blocks for logging
+    let cacheableBlocks = 0;
+    for (const msg of messages) {
+      if (Array.isArray(msg.content)) {
+        cacheableBlocks += msg.content.filter((c: any) => c.cache_control).length;
+      }
+    }
+    
+    console.log(`🔥 [API CALL] provider=anthropic model=${this.modelName} method=stream messages=${messages.length} tools=${toolsCount} thinking=${enableThinking} cacheable=${cacheableBlocks}`);
     
     const stream = await this.client.messages.create({
       model: this.modelName,
       max_tokens: options?.maxTokens || 16000,
-      // ✅ Conditionally enable Extended Thinking
       ...(enableThinking ? {
         thinking: {
           type: 'enabled',
@@ -135,7 +166,7 @@ export class AnthropicLLMClient implements LLMClient {
       } : {}),
       messages: messages.map(m => ({
         role: m.role as 'user' | 'assistant',
-        content: m.content,
+        content: m.content,  // API directly accepts CacheableContent[]
       })),
       ...(options?.tools && options.tools.length > 0 ? {
         tools: options.tools.map(t => ({
@@ -160,13 +191,22 @@ export class AnthropicLLMClient implements LLMClient {
         const usage = (event as any).message.usage;
         const inputTokens = usage.input_tokens || 0;
         const outputTokens = usage.output_tokens || 0;
+        const cacheReadTokens = usage.cache_read_input_tokens || 0;
+        const cacheCreationTokens = usage.cache_creation_input_tokens || 0;
+        
         tokenUsage = {
           inputTokens,
           outputTokens,
-          totalTokens: inputTokens + outputTokens,
+          // ✅ totalTokens = input + cache_creation + cache_read + output
+          totalTokens: inputTokens + cacheCreationTokens + cacheReadTokens + outputTokens,
           cacheReadTokens: usage.cache_read_input_tokens,
           cacheCreationTokens: usage.cache_creation_input_tokens,
         };
+        
+        // Log cache effectiveness immediately
+        if (tokenUsage.cacheReadTokens || tokenUsage.cacheCreationTokens) {
+          console.log(`💰 [CACHE] read=${tokenUsage.cacheReadTokens || 0} create=${tokenUsage.cacheCreationTokens || 0}`);
+        }
       }
       
       // ✅ Update usage from message_delta (incremental updates)
@@ -175,7 +215,12 @@ export class AnthropicLLMClient implements LLMClient {
         if (tokenUsage) {
           const newOutputTokens = usage.output_tokens || tokenUsage.outputTokens;
           tokenUsage.outputTokens = newOutputTokens;
-          tokenUsage.totalTokens = tokenUsage.inputTokens + newOutputTokens;
+          // ✅ totalTokens = input + cache + output
+          tokenUsage.totalTokens = 
+            tokenUsage.inputTokens + 
+            (tokenUsage.cacheCreationTokens || 0) + 
+            (tokenUsage.cacheReadTokens || 0) + 
+            newOutputTokens;
         } else {
           const outputTokens = usage.output_tokens || 0;
           tokenUsage = {
@@ -203,7 +248,7 @@ export class AnthropicLLMClient implements LLMClient {
         
         yield {
           type: 'thinking',
-          thinking: event.delta.thinking,  // ✅ NEW: 명시적 thinking 필드
+          thinking: event.delta.thinking,
           index: event.index,
           metadata: {
             provider: 'anthropic',
@@ -217,7 +262,7 @@ export class AnthropicLLMClient implements LLMClient {
       if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
         yield {
           type: 'text',
-          text: event.delta.text,  // ✅ NEW: 명시적 text 필드
+          text: event.delta.text,
           index: event.index,
           metadata: {
             provider: 'anthropic',
@@ -232,7 +277,7 @@ export class AnthropicLLMClient implements LLMClient {
         toolUseBuffer.set(event.index, {
           id: event.content_block.id,
           name: event.content_block.name,
-          input: '',  // ✅ Start empty, will accumulate from deltas
+          input: '',
         });
       }
 
@@ -240,7 +285,7 @@ export class AnthropicLLMClient implements LLMClient {
       if (event.type === 'content_block_delta' && event.delta.type === 'input_json_delta') {
         const buffer = toolUseBuffer.get(event.index);
         if (buffer) {
-          buffer.input += event.delta.partial_json;  // ✅ Accumulate JSON
+          buffer.input += event.delta.partial_json;
         }
       }
 
@@ -251,34 +296,33 @@ export class AnthropicLLMClient implements LLMClient {
         if (thinkingBlock) {
           const durationMs = Date.now() - thinkingBlock.startTime;
           
-          // ✅ Emit thinking end signal
           yield {
             type: 'thinking',
-            thinking: '',  // Empty content
+            thinking: '',
             index: event.index,
             metadata: {
               provider: 'anthropic',
               model: this.modelName,
               timestamp: new Date().toISOString(),
-              blockEnd: true,  // ✅ Signal end
+              blockEnd: true,
               durationMs,
             },
           };
           
-          thinkingBlocks.delete(event.index);  // Clean up
+          thinkingBlocks.delete(event.index);
         }
         
         // ✅ Check if this is a tool_use ending
         const buffer = toolUseBuffer.get(event.index);
         if (buffer) {
           try {
-            const parsedInput = JSON.parse(buffer.input);  // ✅ Parse complete JSON
+            const parsedInput = JSON.parse(buffer.input);
             yield {
               type: 'tool_use',
               toolUse: {
                 id: buffer.id,
                 name: buffer.name,
-                input: parsedInput,  // ✅ Complete parsed input!
+                input: parsedInput,
                 type: 'function' as const,
               },
               index: event.index,
@@ -288,7 +332,7 @@ export class AnthropicLLMClient implements LLMClient {
                 timestamp: new Date().toISOString(),
               },
             };
-            toolUseBuffer.delete(event.index);  // ✅ Clean up
+            toolUseBuffer.delete(event.index);
           } catch (error) {
             console.error(`[AnthropicLLM] Failed to parse tool input:`, buffer.input);
             console.error(error);
@@ -300,8 +344,8 @@ export class AnthropicLLMClient implements LLMClient {
       if (event.type === 'message_stop') {
         yield {
           type: 'done',
-          done: true,  // ✅ NEW: 명시적 done 플래그
-          usage: tokenUsage,  // ✅ Include final token usage
+          done: true,
+          usage: tokenUsage,
           metadata: {
             provider: 'anthropic',
             model: this.modelName,
@@ -313,18 +357,32 @@ export class AnthropicLLMClient implements LLMClient {
   }
 
   async invokeStructured<T = any>(
-    messages: Array<{ role: string; content: string }>,
+    messages: Array<{ role: string; content: string | CacheableContent[] }>,
     schema: Record<string, any>,
     schemaName: string
   ): Promise<T> {
     // Anthropic doesn't have native structured output yet
     // Add JSON schema to prompt
     const lastMessage = messages[messages.length - 1];
-    const enhancedMessages = [
-      ...messages.slice(0, -1),
-      {
-        role: lastMessage.role,
-        content: `${lastMessage.content}
+    
+    // Handle both string and CacheableContent[] formats
+    let enhancedContent: string | CacheableContent[];
+    if (typeof lastMessage.content === 'string') {
+      enhancedContent = `${lastMessage.content}
+
+Please respond with ONLY a valid JSON object that matches this schema:
+\`\`\`json
+${JSON.stringify(schema, null, 2)}
+\`\`\`
+
+Do not include any explanatory text before or after the JSON. Start your response with { and end with }.`;
+    } else {
+      // Array format - append JSON instruction as new block
+      enhancedContent = [
+        ...lastMessage.content,
+        {
+          type: 'text' as const,
+          text: `
 
 Please respond with ONLY a valid JSON object that matches this schema:
 \`\`\`json
@@ -332,10 +390,19 @@ ${JSON.stringify(schema, null, 2)}
 \`\`\`
 
 Do not include any explanatory text before or after the JSON. Start your response with { and end with }.`
+        }
+      ];
+    }
+    
+    const enhancedMessages = [
+      ...messages.slice(0, -1),
+      {
+        role: lastMessage.role,
+        content: enhancedContent
       }
     ];
     
-    const result = await this.invokeWithUsage(enhancedMessages);
+    const result = await this.invokeWithUsage(enhancedMessages as any);
     const response = result.content;
     
     try {

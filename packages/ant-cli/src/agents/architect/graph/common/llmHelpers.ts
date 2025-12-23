@@ -5,7 +5,7 @@
  * and accumulate to state, eliminating code duplication across nodes.
  */
 
-import { LLMClient, LLMInvokeResult } from '../../../../core/ports/llm';
+import { LLMClient, LLMInvokeResult, CacheableContent } from '../../../../core/ports/llm';
 import { TaskTokenUsage } from '../../types/task';
 
 /**
@@ -55,10 +55,12 @@ export function accumulateTokenUsage(
       state._currentTaskTokenUsage = initTokenUsage();
     }
     
+    // ✅ inputTokens는 cache 제외한 "새로운" 토큰만 포함
     state._currentTaskTokenUsage.inputTokens += usage.inputTokens;
     state._currentTaskTokenUsage.outputTokens += usage.outputTokens;
     state._currentTaskTokenUsage.totalTokens += usage.totalTokens;
     
+    // ✅ 캐시 토큰은 별도 누적
     if (usage.cacheReadTokens) {
       state._currentTaskTokenUsage.cacheReadTokens = 
         (state._currentTaskTokenUsage.cacheReadTokens || 0) + usage.cacheReadTokens;
@@ -92,16 +94,17 @@ export function accumulateTokenUsage(
 
 /**
  * Invoke LLM with automatic token tracking
+ * Supports both simple string prompts and cacheable content blocks
  * 
  * @param llm - LLM client
- * @param messages - Messages to send
+ * @param messages - Messages to send (string or CacheableContent[])
  * @param state - State object for token accumulation
  * @param options - Invoke options and tracking options
  * @returns LLM response content
  */
 export async function invokeWithTracking(
   llm: LLMClient,
-  messages: Array<{ role: string; content: string }>,
+  messages: Array<{ role: string; content: string | CacheableContent[] }>,
   state: TokenTrackingState,
   options: {
     // LLM options

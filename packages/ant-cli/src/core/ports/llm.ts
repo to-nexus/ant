@@ -6,6 +6,21 @@
 import { TaskTokenUsage } from '../../agents/architect/types/task';
 
 /**
+ * Cacheable content block for Anthropic Prompt Caching
+ * 
+ * Allows marking specific content blocks for caching (5 min TTL)
+ * Use for: system prompts, codebase context, rules, examples
+ * Don't cache: user questions, changing state, recent responses
+ */
+export interface CacheableContent {
+  type: 'text';
+  text: string;
+  cache_control?: {
+    type: 'ephemeral';
+  };
+}
+
+/**
  * LLM Stream Event Types
  * 
  * Core events:
@@ -117,13 +132,15 @@ export interface LLMInvokeResult {
 }
 
 export interface LLMClient {
-  invoke(messages: Array<{ role: string; content: string }>, options?: Record<string, any>): Promise<string>;
+  invoke(messages: Array<{ role: string; content: string | CacheableContent[] }>, options?: Record<string, any>): Promise<string>;
   
   /**
    * Invoke with token usage tracking
    * Returns both content and token usage information
+   * 
+   * ✅ Supports Prompt Caching via CacheableContent[]
    */
-  invokeWithUsage?(messages: Array<{ role: string; content: string }>, options?: Record<string, any>): Promise<LLMInvokeResult>;
+  invokeWithUsage?(messages: Array<{ role: string; content: string | CacheableContent[] }>, options?: Record<string, any>): Promise<LLMInvokeResult>;
   
   /**
    * 🎯 Unified streaming interface
@@ -132,15 +149,16 @@ export interface LLMClient {
    * - Thinking blocks (Anthropic)
    * - Tool calling (when tools provided)
    * - Regular text generation
+   * - Prompt caching (Anthropic)
    * 
-   * @param messages - Chat messages (content can be string or array for tool results)
+   * @param messages - Chat messages (content can be string, CacheableContent[], or tool results)
    * @param options - Optional configuration
    * @param options.tools - Available tools (enables tool calling)
    * @param options.maxTokens - Maximum tokens to generate
    * @returns AsyncIterable of structured events (thinking, text, tool_use, done)
    */
   stream(
-    messages: Array<{ role: string; content: string | any[] }>,
+    messages: Array<{ role: string; content: string | CacheableContent[] | any[] }>,
     options?: {
       tools?: ToolDefinition[];
       maxTokens?: number;
@@ -152,13 +170,13 @@ export interface LLMClient {
    * Invoke with structured output (JSON schema enforcement)
    * Forces LLM to return valid JSON matching the schema
    * 
-   * @param messages - Chat messages
+   * @param messages - Chat messages (supports prompt caching)
    * @param schema - JSON schema for the expected output
    * @param schemaName - Name of the schema (for tool calling)
    * @returns Parsed object matching the schema
    */
   invokeStructured<T = any>(
-    messages: Array<{ role: string; content: string }>,
+    messages: Array<{ role: string; content: string | CacheableContent[] }>,
     schema: Record<string, any>,
     schemaName: string
   ): Promise<T>;

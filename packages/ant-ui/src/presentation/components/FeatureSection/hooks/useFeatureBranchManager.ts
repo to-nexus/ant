@@ -8,6 +8,9 @@ interface GitStatus {
   hasFeatures: boolean;
 }
 
+// ✅ GLOBAL lock per project to prevent concurrent Git operations
+const projectLocks = new Map<string, Promise<void>>();
+
 export function useFeatureBranchManager(
   selectedProject: string | undefined,
   selectedFeature: string | undefined,
@@ -21,6 +24,7 @@ export function useFeatureBranchManager(
   // ✅ FIXED: Prevent concurrent Git operations
   const isProcessing = useRef(false);
   const lastProcessed = useRef<string>('');
+  const currentOperation = useRef<string>('');  // ✅ Track what we're actually processing
 
   useEffect(() => {
     const checkoutBranch = async () => {
@@ -38,75 +42,108 @@ export function useFeatureBranchManager(
       
       // ✅ FIXED: Prevent duplicate operations
       const operationKey = `${selectedProject}:${selectedFeature || baseBranch}`;
-      if (isProcessing.current) {
+      
+      // ✅ Check if already processed
+      if (lastProcessed.current === operationKey) {
+        console.log(`[useFeatureBranchManager] ✅ Already processed: ${operationKey}`);
         return;
       }
-      if (lastProcessed.current === operationKey) {
-        return;
+      
+      // ✅ CRITICAL: Wait for any existing lock on this project
+      const existingLock = projectLocks.get(selectedProject);
+      if (existingLock) {
+        console.log(`[useFeatureBranchManager] ⏳ Waiting for existing Git operation on ${selectedProject}...`);
+        try {
+          await existingLock;
+        } catch (err) {
+          console.warn(`[useFeatureBranchManager] Previous operation failed, continuing...`);
+        }
+        
+        // After waiting, check if this operation is still needed
+        if (lastProcessed.current === operationKey) {
+          console.log(`[useFeatureBranchManager] ✅ Already processed while waiting: ${operationKey}`);
+          return;
+        }
       }
       
       // Start Git status loading
+      console.log(`[useFeatureBranchManager] 🚀 Starting operation: ${operationKey}`);
       isProcessing.current = true;
+      currentOperation.current = operationKey;
       setGitStatusLoading(true);
       
-      try {
-        if (selectedFeature) {
-          // Phase 1: Switch to feature branch
-          setGitStatusPhase('switching');
-          const result = await switchToFeatureBranch(selectedProject, selectedFeature);
-          
-          if (result.success) {
-            if (result.branchName) {
-              setCurrentGitBranch(result.branchName);
-            }
-            lastProcessed.current = operationKey;
+      // ✅ Create lock for this operation
+      const executeLock = async () => {
+        try {
+          if (selectedFeature) {
+            // Phase 1: Switch to feature branch
+            setGitStatusPhase('switching');
+            const result = await switchToFeatureBranch(selectedProject, selectedFeature);
             
-            // Phase 2: Fetch from remote
-            setGitStatusPhase('fetching');
-            try {
-              const fetchResult = await fetchFromGitHub(selectedProject);
-              if (!fetchResult.success) {
-                console.warn(`[useFeatureBranchManager] Fetch failed:`, fetchResult.error);
+            if (result.success) {
+              if (result.branchName) {
+                setCurrentGitBranch(result.branchName);
               }
-            } catch (fetchError) {
-              console.warn('[useFeatureBranchManager] Fetch error (non-critical):', fetchError);
+              lastProcessed.current = operationKey;
+              
+              // Phase 2: Fetch from remote
+              setGitStatusPhase('fetching');
+              try {
+                const fetchResult = await fetchFromGitHub(selectedProject);
+                if (!fetchResult.success) {
+                  console.warn(`[useFeatureBranchManager] Fetch failed:`, fetchResult.error);
+                }
+              } catch (fetchError) {
+                console.warn('[useFeatureBranchManager] Fetch error (non-critical):', fetchError);
+              }
+            } else {
+              console.error('[useFeatureBranchManager] Branch switch failed:', result.error);
             }
           } else {
-            console.error('[useFeatureBranchManager] Branch switch failed:', result.error);
-          }
-        } else {
-          // Phase 1: Switch to base branch
-          setGitStatusPhase('switching');
-          const result = await switchToFeatureBranch(selectedProject, baseBranch);
-          
-          if (result.success) {
-            if (result.branchName) {
-              setCurrentGitBranch(result.branchName);
-            }
-            lastProcessed.current = operationKey;
+            // Phase 1: Switch to base branch
+            setGitStatusPhase('switching');
+            const result = await switchToFeatureBranch(selectedProject, baseBranch);
             
-            // Phase 2: Fetch from remote
-            setGitStatusPhase('fetching');
-            try {
-              const fetchResult = await fetchFromGitHub(selectedProject);
-              if (!fetchResult.success) {
-                console.warn(`[useFeatureBranchManager] Fetch failed:`, fetchResult.error);
+            if (result.success) {
+              if (result.branchName) {
+                setCurrentGitBranch(result.branchName);
               }
-            } catch (fetchError) {
-              console.warn('[useFeatureBranchManager] Fetch error (non-critical):', fetchError);
+              lastProcessed.current = operationKey;
+              
+              // Phase 2: Fetch from remote
+              setGitStatusPhase('fetching');
+              try {
+                const fetchResult = await fetchFromGitHub(selectedProject);
+                if (!fetchResult.success) {
+                  console.warn(`[useFeatureBranchManager] Fetch failed:`, fetchResult.error);
+                }
+              } catch (fetchError) {
+                console.warn('[useFeatureBranchManager] Fetch error (non-critical):', fetchError);
+              }
+            } else {
+              console.error(`[useFeatureBranchManager] Failed to switch to ${baseBranch}:`, result.error);
             }
-          } else {
-            console.error(`[useFeatureBranchManager] Failed to switch to ${baseBranch}:`, result.error);
           }
+        } catch (error) {
+          console.error('[useFeatureBranchManager] Branch switch error:', error);
+          throw error;  // Re-throw to mark lock as failed
+        } finally {
+          // End Git status loading
+          setGitStatusPhase(null);
+          setGitStatusLoading(false);
+          isProcessing.current = false;
+          
+          // ✅ Remove lock when done
+          projectLocks.delete(selectedProject);
         }
-      } catch (error) {
-        console.error('[useFeatureBranchManager] Branch switch error:', error);
-      } finally {
-        // End Git status loading
-        setGitStatusPhase(null);
-        setGitStatusLoading(false);
-        isProcessing.current = false;
-      }
+      };
+      
+      // ✅ Store and execute lock
+      const lockPromise = executeLock();
+      projectLocks.set(selectedProject, lockPromise);
+      
+      // Wait for completion
+      await lockPromise;
     };
     
     checkoutBranch();
@@ -114,7 +151,9 @@ export function useFeatureBranchManager(
   
   // ✅ FIXED: Reset when project changes
   useEffect(() => {
+    console.log(`[useFeatureBranchManager] 🔄 Project changed, resetting state`);
     lastProcessed.current = '';
+    currentOperation.current = '';
     isProcessing.current = false;
   }, [selectedProject]);
 }

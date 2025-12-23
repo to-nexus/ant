@@ -310,7 +310,7 @@ export function ItemDropdown({
                 <button
                   className="flex-1 text-left"
                   onClick={() => {
-                    onSelect('');
+                    onSelect(null as any);  // ✅ Pass null to deselect (cast needed for type compatibility)
                     setIsOpen(false);
                   }}
                 >

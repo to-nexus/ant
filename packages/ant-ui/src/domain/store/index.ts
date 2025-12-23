@@ -112,7 +112,7 @@ interface StoreActions {
   setSelectedFeature: (featureName: string | undefined) => void;
   setSelectedAgent: (agent: string) => void;
   setSelectedJobType: (jobType: 'design' | 'code' | 'learn') => void;
-  fetchFeatures: () => Promise<void>;
+  fetchFeatures: (projectId?: string) => Promise<Feature[]>;
   selectFile: (filePath: string | undefined) => void;
   setFeatures: (features: Feature[]) => void;
   setFileTree: (tree: FileNode[]) => void;
@@ -172,6 +172,7 @@ const STORAGE_KEYS = {
   TASK_MODE: 'ant-ui:task-mode',
   SELECTED_PROJECT: 'ant-ui:selected-project',  // ✅ Will use sessionStorage
   SELECTED_FEATURE: 'ant-ui:selected-feature',  // ✅ Will use sessionStorage
+  PROJECT_LAST_FEATURES: 'ant-ui:project-last-features',  // ✅ NEW: { [projectId]: featureName }
   SELECTED_AGENT: 'ant-ui:selected-agent',
   SELECTED_JOB_TYPE: 'ant-ui:selected-job-type',
   THEME: 'ant-ui:theme',
@@ -748,23 +749,22 @@ export const useStore = create<Store>((set, get) => {
         features: [],
         fileTree: [],
         fileContent: undefined,
-        isRunning: false,  // ✅ No feature selected = not running
+        isRunning: false,
       });
       removeFromStorage(STORAGE_KEYS.SELECTED_PROJECT);
       removeFromStorage(STORAGE_KEYS.SELECTED_FEATURE);
     } else {
+      // ✅ SIMPLE: Just set the project, features will be loaded separately
       set({ 
         selectedProject: projectId,
-        selectedFeature: undefined,
         selectedFile: undefined,
-        features: [],
         fileTree: [],
         fileContent: undefined,
-        isRunning: false,  // ✅ Feature deselected = not running
       });
       saveToStorage(STORAGE_KEYS.SELECTED_PROJECT, projectId);
-      removeFromStorage(STORAGE_KEYS.SELECTED_FEATURE);
-      get().fetchFeatures();
+      
+      // Fetch features list (async, non-blocking)
+      get().fetchFeatures(projectId);
     }
   },
 
@@ -791,6 +791,14 @@ export const useStore = create<Store>((set, get) => {
     
     if (featureName) {
       saveToStorage(STORAGE_KEYS.SELECTED_FEATURE, featureName);
+      
+      // ✅ NEW: Save as last feature for this project (in localStorage)
+      if (state.selectedProject) {
+        const lastFeatures = loadFromStorage(STORAGE_KEYS.PROJECT_LAST_FEATURES) || {};
+        lastFeatures[state.selectedProject] = featureName;
+        saveToStorage(STORAGE_KEYS.PROJECT_LAST_FEATURES, lastFeatures);
+        console.log(`[Store] 💾 Saved last feature for ${state.selectedProject}: ${featureName}`);
+      }
       
       // Load session.json when feature is selected
       const { selectedProject, selectedJobType } = get();
@@ -861,25 +869,44 @@ export const useStore = create<Store>((set, get) => {
     }
   },
 
-  fetchFeatures: async () => {
+  fetchFeatures: async (projectId?: string) => {
     const state = get();
-    const { selectedProject, backendMode, userEmail } = state;
-    if (!selectedProject) return;
+    // ✅ Use provided projectId or fall back to store's selectedProject
+    const targetProject = projectId || state.selectedProject;
+    const { backendMode, userEmail } = state;
+    
+    if (!targetProject) {
+      set({ features: [] });
+      return [];
+    }
     
     // ✅ Cloud mode requires authentication - skip if not signed in
     if (backendMode === 'cloud' && !userEmail) {
       console.log('[Store] Skipping fetchFeatures: Cloud mode requires authentication');
       set({ features: [] });
-      return;
+      return [];
     }
     
     try {
       const { fetchFeatures: apiFetchFeatures } = await import('@/infrastructure/http/api');
-      const featureList = await apiFetchFeatures(selectedProject);
-      set({ features: featureList });
+      const featureList = await apiFetchFeatures(targetProject);
+      
+      // ✅ CRITICAL: Filter out base branch names (main, master, develop)
+      // These should not appear as features
+      const baseBranchNames = ['main', 'master', 'develop'];
+      const filteredFeatures = featureList.filter(f => !baseBranchNames.includes(f.name.toLowerCase()));
+      
+      console.log(`[Store] 📋 Fetched ${filteredFeatures.length} features for ${targetProject}:`, filteredFeatures.map(f => f.name));
+      if (featureList.length !== filteredFeatures.length) {
+        console.log(`[Store] ⚠️ Filtered out base branches:`, featureList.filter(f => baseBranchNames.includes(f.name.toLowerCase())).map(f => f.name));
+      }
+      
+      set({ features: filteredFeatures });
+      return filteredFeatures;  // ✅ Return the fetched features
     } catch (error) {
-      console.error('Failed to fetch features:', error);
+      console.error('[Store] Failed to fetch features:', error);
       set({ features: [] });
+      return [];  // ✅ Return empty array on error
     }
   },
 
