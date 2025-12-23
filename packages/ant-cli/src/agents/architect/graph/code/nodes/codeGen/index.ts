@@ -113,6 +113,7 @@ export async function codeGen(
     chatAPI,
     state.context.userLanguage,  // ✅ Pass user language for localized messages
     state.deps?.git,  // ✅ Pass gitPort for actual file editing
+    state.deps?.fileSystem,  // ✅ Pass fileSystem for file operations
     true,  // ✅ writeImmediately: true for code job (no separate writeFiles node)
     'code',  // ✅ jobType: 'code' (no LAST_SECTION handling needed)
     undefined  // ✅ Code job: no featurePath (uses codebase as working directory)
@@ -164,8 +165,7 @@ export async function codeGen(
   const orchestrator = new StreamOrchestrator({
     parser,
     renderStrategy,
-    existingFiles,
-    gitPort: state.deps?.git,  // ✅ Pass gitPort for disk checks
+    existingFiles
   });
   
   // Collect LLM output

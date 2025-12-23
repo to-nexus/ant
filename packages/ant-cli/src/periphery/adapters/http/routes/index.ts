@@ -12,13 +12,13 @@ import { createFigmaFilesRoutes } from './figma-files.routes';
 import { createModelsRoutes } from './models.routes';
 
 // ✅ Re-export existing routes (for backward compatibility)
-export { createJobRoutes } from './jobRoutes';
-export { createKanbanRoutes } from './kanbanRoutes';
-export { createDevServerRoutes } from './devServerRoutes';
-export { createWorkflowRoutes } from './workflowRoutes';
-export { createSSERoutes } from './sseRoutes';
-export { createAuthRoutes } from './authRoutes';
-export { createIDERoutes } from './ideRoutes';
+export { createJobRoutes } from './job.routes';
+export { createKanbanRoutes } from './kanban.routes';
+export { createDevServerRoutes } from './dev-server.routes';
+export { createWorkflowRoutes } from './workflow.routes';
+export { createSSERoutes } from './sse.routes';
+export { createAuthRoutes } from './auth.routes';
+export { createIDERoutes } from './ide.routes';
 
 /**
  * Dependencies for route creation

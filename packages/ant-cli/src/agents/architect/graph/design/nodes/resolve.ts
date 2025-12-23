@@ -60,8 +60,14 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     workspacePath: ''
   };
   
+  // ✅ Get fileSystem from state
+  const fileSystem = state.deps?.fileSystem;
+  if (!fileSystem) {
+    throw new Error('FileSystemPort is required for workspace resolution');
+  }
+  
   const workspacePath = workspaceResolver.getProjectPath(userContext, context.project);
-  const workspaceExists = await gitPort.fileExists(workspacePath);
+  const workspaceExists = await fileSystem.fileExists(workspacePath);
   if (!workspaceExists) {
     throw new Error(
       `Workspace not found: ${workspacePath}\n\n` +
@@ -74,7 +80,7 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
 
   // Validate feature exists and store resolved path in context
   const featurePath = workspaceResolver.getFeaturePath(userContext, context.project, context.featureFolder);
-  const featureExists = await gitPort.fileExists(featurePath);
+  const featureExists = await fileSystem.fileExists(featurePath);
   if (!featureExists) {
     throw new Error(
       `Feature directory not found: ${featurePath}\n\n` +
@@ -91,7 +97,7 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
   // 1. Load PRD (optional)
   let prd: string | undefined;
   try {
-    const source = await ArtifactService.getSource(context, gitPort);
+    const source = await ArtifactService.getSource(context, gitPort, fileSystem);
     prd = source?.prd || undefined;
   } catch (error) {
     // PRD not found - might be refactor mode without PRD
@@ -108,11 +114,11 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     directive = state.overrideDirective;
   } else {
     // Load from file system
-    directive = await ArtifactService.getDirective(context, 'design', gitPort) || undefined;
+    directive = await ArtifactService.getDirective(context, 'design', gitPort, fileSystem) || undefined;
   }
 
   // 3. Load previous design (optional)
-  const designResult = await ArtifactService.findLatestDesign(context, gitPort);
+  const designResult = await ArtifactService.findLatestDesign(context, gitPort, fileSystem);
   const design = designResult?.content || undefined;
 
   // 4. Load codebase (conditional on mode - Phase 1: CodebaseRetriever)

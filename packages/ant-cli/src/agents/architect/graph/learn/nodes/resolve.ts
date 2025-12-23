@@ -223,6 +223,11 @@ async function executeFileLearn(
     throw new Error("GitPort not provided for file operations");
   }
 
+  const fileSystem = state.deps?.fileSystem;
+  if (!fileSystem) {
+    throw new Error("FileSystemPort not provided for file operations");
+  }
+
   const chatAPI = (await import('../../../../../core/adapters/ChatAPIClient')).getChatAPIClient();
   const base = state.context.workingDir;
   const targets = command.files || [];
@@ -242,7 +247,7 @@ async function executeFileLearn(
           const repoRoot = await gitPort.getRepoRoot();
           const relativePath = path.relative(repoRoot, abs);
 
-          const exists = await gitPort.fileExists(relativePath);
+          const exists = await fileSystem.fileExists(relativePath);
           if (!exists) {
             console.warn(`   ⚠️  File not found: ${relativePath}`);
             failedFiles.push(relativePath);
@@ -252,7 +257,7 @@ async function executeFileLearn(
           let readingIdx: number | undefined;
           try {
             readingIdx = await chatAPI.addReadingFile(relativePath);
-            const content = await gitPort.readFile(relativePath);
+            const content = await fileSystem.readFile(relativePath);
             if (content) {
               texts.push(content);
               await chatAPI.addReadComplete(relativePath, readingIdx);
@@ -268,7 +273,7 @@ async function executeFileLearn(
             }
             
             try {
-              const entries = await gitPort.readDirectory(relativePath);
+              const entries = await fileSystem.readDirectory(relativePath);
               let dirFilesRead = 0;
               
               for (const entry of entries) {
@@ -277,7 +282,7 @@ async function executeFileLearn(
                   let fileReadingIdx: number | undefined;
                   try {
                     fileReadingIdx = await chatAPI.addReadingFile(filePath);
-                    const fileContent = await gitPort.readFile(filePath);
+                    const fileContent = await fileSystem.readFile(filePath);
                     if (fileContent) {
                       texts.push(fileContent);
                       await chatAPI.addReadComplete(filePath, fileReadingIdx);

@@ -193,8 +193,9 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   
   // Get GitPort for file operations
   const gitPort = state.deps?.git;
-  if (!gitPort) {
-    throw new Error("GitPort not provided for file operations");
+  const fileSystem = state.deps?.fileSystem;
+  if (!gitPort || !fileSystem) {
+    throw new Error("GitPort and FileSystemPort not provided for file operations");
   }
 
   // 0. Validate workspace exists (WorkspaceResolver 기반)
@@ -211,7 +212,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   };
   
   const workspacePath = workspaceResolver.getProjectPath(userContext, context.project);
-  const workspaceExists = await gitPort.fileExists(workspacePath);
+  const workspaceExists = await fileSystem.fileExists(workspacePath);
   if (!workspaceExists) {
     throw new Error(
       `Workspace not found: ${workspacePath}\n\n` +
@@ -224,7 +225,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
 
   // Validate feature exists and store resolved path in context
   const featurePath = workspaceResolver.getFeaturePath(userContext, context.project, context.featureFolder);
-  const featureExists = await gitPort.fileExists(featurePath);
+  const featureExists = await fileSystem.fileExists(featurePath);
   if (!featureExists) {
     throw new Error(
       `Feature directory not found: ${featurePath}\n\n` +
@@ -239,7 +240,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   context.featurePath = featurePath;
 
   // 1. Load design document (optional)
-  const designResult = await ArtifactService.findLatestDesign(context, gitPort);
+  const designResult = await ArtifactService.findLatestDesign(context, gitPort, fileSystem);
   const design = designResult?.content || undefined;
   const designDocPath = designResult?.filePath || undefined;
   
@@ -256,26 +257,26 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   
   try {
     const feDesignPath = `${designFolder}/fe-system-design.md`;
-    if (await gitPort.fileExists(feDesignPath)) {
-      const content = await gitPort.readFile(feDesignPath);
+    if (await fileSystem.fileExists(feDesignPath)) {
+      const content = await fileSystem.readFile(feDesignPath);
       if (content) designDocs.feDesign = content;
     }
     
     const beDesignPath = `${designFolder}/be-system-design.md`;
-    if (await gitPort.fileExists(beDesignPath)) {
-      const content = await gitPort.readFile(beDesignPath);
+    if (await fileSystem.fileExists(beDesignPath)) {
+      const content = await fileSystem.readFile(beDesignPath);
       if (content) designDocs.beDesign = content;
     }
     
     const apiContractPath = `${designFolder}/api-contract.md`;
-    if (await gitPort.fileExists(apiContractPath)) {
-      const content = await gitPort.readFile(apiContractPath);
+    if (await fileSystem.fileExists(apiContractPath)) {
+      const content = await fileSystem.readFile(apiContractPath);
       if (content) designDocs.apiContract = content;
     }
     
     const unifiedDesignPath = `${designFolder}/system-design.md`;
-    if (await gitPort.fileExists(unifiedDesignPath)) {
-      const content = await gitPort.readFile(unifiedDesignPath);
+    if (await fileSystem.fileExists(unifiedDesignPath)) {
+      const content = await fileSystem.readFile(unifiedDesignPath);
       if (content) designDocs.unifiedDesign = content;
     }
   } catch (error) {
@@ -304,7 +305,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     }
   } else {
     // Load from file system
-    directive = await ArtifactService.getDirective(context, 'code', gitPort) || undefined;
+    directive = await ArtifactService.getDirective(context, 'code', gitPort, fileSystem) || undefined;
   }
   
   // Validate: Must have either design doc OR directive

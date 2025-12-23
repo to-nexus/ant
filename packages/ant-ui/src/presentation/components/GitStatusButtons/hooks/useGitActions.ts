@@ -14,7 +14,7 @@ export function useGitActions(
   gitChanges: GitChanges | null,
   setGitChanges: (changes: GitChanges | null) => void
 ) {
-  const setManualGitAction = useStore((state) => state.setManualGitAction);
+  const setGitStatusPhase = useStore((state) => state.setGitStatusPhase);
   const [isCommitting, setIsCommitting] = useState(false);
   const [isPushing, setIsPushing] = useState(false);
   const [isPulling, setIsPulling] = useState(false);
@@ -24,16 +24,12 @@ export function useGitActions(
     if (!selectedProject || !gitChanges) return;
 
     setIsCommitting(true);
+    setGitStatusPhase('committing');
     
     try {
       const result = await commitGitChanges(selectedProject);
       if (result.success) {
         setGitChanges(null);
-        setManualGitAction('commit');
-        
-        setTimeout(() => {
-          setManualGitAction(null);
-        }, 100);
       } else {
         console.error('[useGitActions] Commit failed:', result.error);
       }
@@ -41,6 +37,7 @@ export function useGitActions(
       console.error('[useGitActions] Commit error:', error.message);
     } finally {
       setIsCommitting(false);
+      setGitStatusPhase(null);
     }
   };
 
@@ -48,16 +45,12 @@ export function useGitActions(
     if (!selectedProject) return;
 
     setIsPushing(true);
+    setGitStatusPhase('pushing');
     
     try {
       const result = await pushToGitHub(selectedProject);
       if (result.success) {
         setGitChanges(null);
-        setManualGitAction('push');
-        
-        setTimeout(() => {
-          setManualGitAction(null);
-        }, 100);
       } else {
         console.error('[useGitActions] Push failed:', result.error);
       }
@@ -65,6 +58,7 @@ export function useGitActions(
       console.error('[useGitActions] Push error:', error.message);
     } finally {
       setIsPushing(false);
+      setGitStatusPhase(null);
     }
   };
 
@@ -72,16 +66,12 @@ export function useGitActions(
     if (!selectedProject) return;
 
     setIsPulling(true);
+    setGitStatusPhase('pulling');
     
     try {
       const result = await pullFromGitHub(selectedProject);
       if (result.success) {
         setGitChanges(null);
-        setManualGitAction('pull');
-        
-        setTimeout(() => {
-          setManualGitAction(null);
-        }, 100);
       } else {
         console.error('[useGitActions] Pull failed:', result.error);
       }
@@ -89,6 +79,7 @@ export function useGitActions(
       console.error('[useGitActions] Pull error:', error.message);
     } finally {
       setIsPulling(false);
+      setGitStatusPhase(null);
     }
   };
 
@@ -96,16 +87,12 @@ export function useGitActions(
     if (!selectedProject) return;
 
     setIsSyncing(true);
+    setGitStatusPhase('syncing');
     
     try {
       const result = await syncWithRemote(selectedProject);
       if (result.success) {
         setGitChanges(null);
-        setManualGitAction('sync');
-        
-        setTimeout(() => {
-          setManualGitAction(null);
-        }, 100);
       } else {
         console.error('[useGitActions] Sync failed:', result.error);
       }
@@ -113,6 +100,7 @@ export function useGitActions(
       console.error('[useGitActions] Sync error:', error.message);
     } finally {
       setIsSyncing(false);
+      setGitStatusPhase(null);
     }
   };
 

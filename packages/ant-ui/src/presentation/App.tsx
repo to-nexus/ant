@@ -66,6 +66,7 @@ function App() {
   const mainView = useStore((state) => state.mainView);
   const ideWorkspacePath = useStore((state) => state.ideWorkspacePath);
   const setIdeWorkspacePath = useStore((state) => state.setIdeWorkspacePath);
+  const ideReloadTimestamp = useStore((state) => state.ideReloadTimestamp);
   
   // ✅ Domain data (via Application Hooks)
   const { kanbanData } = useKanban();
@@ -90,8 +91,11 @@ function App() {
           let workspacePath: string;
           
           if (config.repoType === 'cloud') {
+            // Docker mount: $HOME:/workspace → /Users/probe → /workspace
+            // Backend workspace: /Users/probe/ant-workspaces/...
+            // IDE workspace: /workspace/ant-workspaces/...
             const codebasePath = getCodebasePath(selectedProject, config);
-            workspacePath = `/workspace/dev/ant/${codebasePath}`;
+            workspacePath = `/workspace/${codebasePath}`;
           } else {
             if (!config.localPath) return;
             workspacePath = config.localPath.startsWith('~/')
@@ -136,7 +140,13 @@ function App() {
   // ✅ Config loading (extracted to hook)
   const { projectConfigData, isLoadingProjectConfig, handleSaveProjectConfig } = useConfigLoader(
     useStore((state) => state.mainPanelOpenTabs.projectConfig),
-    selectedProject || null
+    selectedProject || null,
+    // ✅ Callback: Trigger Git status refresh in ProjectSection
+    () => {
+      // Force Git status refresh by incrementing trigger
+      const currentTrigger = useStore.getState().gitStatusRefreshTrigger || 0;
+      useStore.setState({ gitStatusRefreshTrigger: currentTrigger + 1 });
+    }
   );
 
   // ✅ Development: Render tracking for debugging
@@ -219,10 +229,12 @@ function App() {
       {/* Main Layout */}
       {mainView === 'codeIde' ? (
         // ✅ Editor View: OpenVSCode Server iframe
+        // ✅ CRITICAL: Use ideReloadTimestamp in key and src to force reload
+        // Docker container is shared, timestamp forces VS Code to reload workspace
         <div className="flex-1 pt-16">
           <iframe
-            key={`ide-${ideWorkspacePath || 'default'}`}
-            src={`http://localhost:4400/?folder=${encodeURIComponent(ideWorkspacePath || '/workspace')}`}
+            key={`ide-${selectedFeature || 'base'}-${ideReloadTimestamp}`}
+            src={`http://localhost:4400/?folder=${encodeURIComponent(ideWorkspacePath || '/workspace')}&tk=${ideReloadTimestamp}`}
             className="w-full h-full border-0"
             title="ANT Code Editor"
           />

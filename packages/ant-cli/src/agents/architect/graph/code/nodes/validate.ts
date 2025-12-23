@@ -56,6 +56,12 @@ export async function validate(state: ArchitectGraphState): Promise<ArchitectGra
         const repoRoot = await gitPort.getRepoRoot();
         const workDir = state.context.workDir || '.';
         const resolvedPath = p.resolve(repoRoot, workDir);
+        const fileSystem = state.deps?.fileSystem;
+        
+        if (!fileSystem) {
+          console.warn('⚠️  FileSystemPort not available for validation');
+          return { ...state, violations };
+        }
         
         // Check if source files already exist in working directory
         const commonSourceDirs = ['src', 'lib', 'app', 'components'];
@@ -64,7 +70,7 @@ export async function validate(state: ArchitectGraphState): Promise<ArchitectGra
         let hasExistingSourceFiles = false;
         for (const dir of commonSourceDirs) {
           const dirPath = p.join(workDir, dir);
-          const exists = await gitPort.fileExists(dirPath);
+          const exists = await fileSystem.fileExists(dirPath);
           if (exists) {
             // Directory exists, assume it has source files
             hasExistingSourceFiles = true;

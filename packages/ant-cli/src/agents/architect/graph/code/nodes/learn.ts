@@ -138,9 +138,10 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   if (files.length > 0) {
     try {
       const gitPort = state.gitPort || state.deps?.git;
-      if (gitPort) {
+      const fileSystem = state.deps?.fileSystem;
+      if (gitPort && fileSystem) {
         const { generateQualityReport } = await import('./utils/qualityReport');
-        const report = await generateQualityReport(state, gitPort);
+        const report = await generateQualityReport(state, gitPort, fileSystem);
         if (report) {
           state.evaluationReport = report;
         }

@@ -5,7 +5,7 @@
  * Provides structured error analysis with actionable suggestions.
  */
 
-import { GitPort } from '../../../../../../core/ports';
+import { GitPort, FileSystemPort } from '../../../../../../core/ports';
 import {
   Language,
   BuildTool,
@@ -104,24 +104,25 @@ const CROSS_DOMAIN_PATTERNS: ErrorPattern[] = [
  */
 export async function detectProject(
   projectPath: string,
-  gitPort: GitPort
+  gitPort: GitPort,
+  fileSystem: FileSystemPort  // ✅ Use proper import
 ): Promise<ProjectDetection> {
   let packageManager = PackageManager.UNKNOWN;
 
   // Check Node.js/TypeScript
-  const hasPackageJson = await gitPort.fileExists('package.json');
+  const hasPackageJson = await fileSystem.fileExists('package.json');
   if (hasPackageJson) {
-    const content = await gitPort.readFile('package.json');
+    const content = await fileSystem.readFile('package.json');
     if (content) {
       try {
         const pkg = JSON.parse(content);
 
         // Detect package manager
-        if (await gitPort.fileExists('pnpm-lock.yaml')) {
+        if (await fileSystem.fileExists('pnpm-lock.yaml')) {
           packageManager = PackageManager.PNPM;
-        } else if (await gitPort.fileExists('yarn.lock')) {
+        } else if (await fileSystem.fileExists('yarn.lock')) {
           packageManager = PackageManager.YARN;
-        } else if (await gitPort.fileExists('package-lock.json')) {
+        } else if (await fileSystem.fileExists('package-lock.json')) {
           packageManager = PackageManager.NPM;
         } else {
           packageManager = PackageManager.NPM; // Default for Node projects
@@ -140,7 +141,7 @@ export async function detectProject(
         // Detect TypeScript
         const hasTypeScript = !!(
           pkg.devDependencies?.typescript ||
-          (await gitPort.fileExists('tsconfig.json'))
+          (await fileSystem.fileExists('tsconfig.json'))
         );
 
         // Detect React
@@ -161,9 +162,9 @@ export async function detectProject(
 
   // Check Python
   if (
-    (await gitPort.fileExists('requirements.txt')) ||
-    (await gitPort.fileExists('pyproject.toml')) ||
-    (await gitPort.fileExists('setup.py'))
+    (await fileSystem.fileExists('requirements.txt')) ||
+    (await fileSystem.fileExists('pyproject.toml')) ||
+    (await fileSystem.fileExists('setup.py'))
   ) {
     return {
       language: Language.PYTHON,
@@ -175,7 +176,7 @@ export async function detectProject(
   }
 
   // Check Java
-  if (await gitPort.fileExists('pom.xml')) {
+  if (await fileSystem.fileExists('pom.xml')) {
     return {
       language: Language.JAVA,
       buildTool: BuildTool.MAVEN,
@@ -186,8 +187,8 @@ export async function detectProject(
   }
 
   if (
-    (await gitPort.fileExists('build.gradle')) ||
-    (await gitPort.fileExists('build.gradle.kts'))
+    (await fileSystem.fileExists('build.gradle')) ||
+    (await fileSystem.fileExists('build.gradle.kts'))
   ) {
     return {
       language: Language.JAVA,
@@ -199,7 +200,7 @@ export async function detectProject(
   }
 
   // Check Go
-  if (await gitPort.fileExists('go.mod')) {
+  if (await fileSystem.fileExists('go.mod')) {
     return {
       language: Language.GO,
       buildTool: BuildTool.NONE,
@@ -210,7 +211,7 @@ export async function detectProject(
   }
 
   // Check Rust
-  if (await gitPort.fileExists('Cargo.toml')) {
+  if (await fileSystem.fileExists('Cargo.toml')) {
     return {
       language: Language.RUST,
       buildTool: BuildTool.CARGO,

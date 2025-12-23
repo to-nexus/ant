@@ -165,6 +165,12 @@ export async function loadSemanticFiles(
   const totalFilesToLoad = vectorDbPaths.length + localFilePaths.length;
   console.log(`   📄 Loading ${totalFilesToLoad} files from local Git...`);
   
+  const fileSystem = state.deps?.fileSystem;
+  if (!fileSystem) {
+    console.warn(`   ⚠️  FileSystemPort not available, skipping file loading`);
+    return [];
+  }
+  
   const vectorDbFiles: LoadedFile[] = [];
   const localFiles: LoadedFile[] = [];
   const allPaths = [...vectorDbPaths, ...localFilePaths];
@@ -172,7 +178,7 @@ export async function loadSemanticFiles(
   for (const filePath of allPaths) {
     try {
       const fullPath = require('path').join(state.context.workingDir, filePath);
-      const content = await git.readFile(fullPath);
+      const content = await fileSystem.readFile(fullPath);
       
       if (content) {
         const isVectorDb = vectorDbPaths.includes(filePath);

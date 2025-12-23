@@ -1672,6 +1672,7 @@ export async function getGitChanges(projectId: string): Promise<{
   ahead: number;
   behind: number;
   currentBranch?: string;
+  isGitInitialized?: boolean; // ✅ NEW: From backend
 }> {
   const response = await authFetch(`${API_BASE()}/projects/${encodeURIComponent(projectId)}/git/changes`);
   

@@ -12,7 +12,7 @@ import { FileRegistry } from '../state/FileRegistry';
 import { ChatAPIClient } from '../../adapters/ChatAPIClient';
 import { SpecialTagTransformer } from '../transformers/SpecialTagTransformer';
 import { UserLanguage } from '../../utils/languageDetector';
-import { GitPort } from '../../ports/git';
+import { GitPort, FileSystemPort } from '../../ports';
 import { ResponseRenderer } from './common/ResponseRenderer';
 import { FileRenderer } from './common/FileRenderer';
 
@@ -25,6 +25,7 @@ export class CommonRenderStrategy implements IRenderStrategy {
     chatAPI: ChatAPIClient,
     userLanguage?: UserLanguage,
     gitPort?: GitPort,
+    fileSystem?: FileSystemPort,
     writeImmediately: boolean = false,
     jobType?: 'code' | 'design',
     featurePath?: string
@@ -37,6 +38,7 @@ export class CommonRenderStrategy implements IRenderStrategy {
     this.fileRenderer = new FileRenderer({
       chatAPI,
       gitPort,
+      fileSystem,
       writeImmediately,
       jobType,
       featurePath

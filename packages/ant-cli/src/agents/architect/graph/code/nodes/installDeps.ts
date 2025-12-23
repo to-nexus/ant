@@ -39,6 +39,7 @@ export async function installDeps(state: ArchitectGraphState): Promise<Architect
   
   const commandPort = state.deps?.command;
   const gitPort = state.deps?.git;
+  const fileSystem = state.deps?.fileSystem!;
   const violations: Violation[] = [];
 
   // Skip if no command port (optional dependency)
@@ -73,7 +74,7 @@ export async function installDeps(state: ArchitectGraphState): Promise<Architect
 
     // ✅ CRITICAL: Also check if node_modules exists (for first-time setup or after cleanup)
     const nodeModulesPath = p.join(resolvedPath, 'node_modules');
-    const nodeModulesExists = await gitPort.fileExists(p.relative(repoRoot, nodeModulesPath));
+    const nodeModulesExists = await fileSystem.fileExists(p.relative(repoRoot, nodeModulesPath));
 
     // ✅ Detect final/integration tasks
     const isFinalTask = state.currentTask?.name?.toLowerCase().includes('final') ||
@@ -104,7 +105,7 @@ export async function installDeps(state: ArchitectGraphState): Promise<Architect
     if (shouldInstall) {
       // Check if package.json exists in target directory
       const pkgJsonPath = p.join(resolvedPath, 'package.json');
-      const pkgExists = await gitPort.fileExists(p.relative(repoRoot, pkgJsonPath));
+      const pkgExists = await fileSystem.fileExists(p.relative(repoRoot, pkgJsonPath));
 
       if (pkgExists) {
         // Detect package manager
@@ -154,7 +155,7 @@ export async function installDeps(state: ArchitectGraphState): Promise<Architect
               
               // ✅ CRITICAL FIX: Check if TypeScript exists in LOCAL node_modules (not global)
               const tscPath = p.join(resolvedPath, 'node_modules', 'typescript');
-              const tscExists = await gitPort.fileExists(p.relative(repoRoot, tscPath));
+              const tscExists = await fileSystem.fileExists(p.relative(repoRoot, tscPath));
               
               if (!tscExists) {
                 console.error('❌ CRITICAL: TypeScript not found after npm install');
@@ -177,7 +178,7 @@ export async function installDeps(state: ArchitectGraphState): Promise<Architect
                   
                   // Verify TypeScript again in LOCAL node_modules
                   const tscPathAgain = p.join(resolvedPath, 'node_modules', 'typescript');
-                  const tscExistsAgain = await gitPort.fileExists(p.relative(repoRoot, tscPathAgain));
+                  const tscExistsAgain = await fileSystem.fileExists(p.relative(repoRoot, tscPathAgain));
                   
                   if (tscExistsAgain) {
                     console.log('\n✅ TypeScript successfully installed in local node_modules');

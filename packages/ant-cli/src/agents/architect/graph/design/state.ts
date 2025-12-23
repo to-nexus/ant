@@ -30,10 +30,13 @@ export interface DesignGraphState extends TaskArtifacts {
     promptEngine?: PromptEngine;
     chunk?: ChunkPort;
     session?: SessionPort;
-    git?: GitPort;
+    git?: GitPort;          // ✅ REFACTORED: Git operations only (no file I/O)
+    fileSystem?: import('../../../../core/ports/filesystem').FileSystemPort;  // ✅ NEW: File I/O operations
     analyzer?: CodebaseAnalyzerPort;
     memory?: MemoryPort;
-    workspaceResolver?: import('../../../../infrastructure/workspace/WorkspaceResolver').WorkspaceResolver;  // ✅ For path resolution
+    workspaceService?: import('../../../../core/ports/workspace').WorkspaceServicePort;  // ✅ NEW: Workspace management
+    workspaceHandle?: import('../../../../core/ports/workspace').WorkspaceHandle;  // ✅ NEW: Current workspace
+    workspaceResolver?: import('../../../../infrastructure/workspace/WorkspaceResolver').WorkspaceResolver;  // ✅ Legacy workspace resolver
     kanbanUpdate?: TaskQueueUpdatePort;  // ✅ For real-time Kanban updates
     fileTreeUpdate?: import('../../../../core/ports').FileTreeUpdatePort;
     workflowUpdate?: import('../../../../core/ports/workflow').WorkflowStateUpdatePort;

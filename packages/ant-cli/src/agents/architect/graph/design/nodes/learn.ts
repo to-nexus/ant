@@ -49,13 +49,13 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   // Read actual design files from outputs/design/ directory
   const loadedFiles: Array<{ path: string; content: string; actionType: 'create' | 'append' | 'edit' }> = [];
   
-  if (state.deps?.git && state.context.featurePath) {
+  if (state.deps?.fileSystem && state.context.featurePath) {
     const path = await import('path');
     const fs = await import('fs/promises');
     const designDirPath = path.join(state.context.featurePath, 'outputs/design');
     
     try {
-      const dirExists = await state.deps.git.fileExists(designDirPath);
+      const dirExists = await state.deps.fileSystem.fileExists(designDirPath);
       if (dirExists) {
         const files = await fs.readdir(designDirPath);
         const mdFiles = files.filter(f => f.endsWith('.md'));
@@ -92,10 +92,10 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   try {
     const designDocPath = `${state.context.featurePath}/outputs/design/system-design.md`;
     
-    if (state.deps?.git) {
-      const fileExists = await state.deps.git.fileExists(designDocPath);
+    if (state.deps?.fileSystem) {
+      const fileExists = await state.deps.fileSystem.fileExists(designDocPath);
       if (fileExists) {
-        const content = await state.deps.git.readFile(designDocPath);
+        const content = await state.deps.fileSystem.readFile(designDocPath);
         if (content) {
           const lines = content.split('\n');
           
@@ -110,7 +110,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
             if (lastLine.match(/^<!-- LAST_SECTION: \d+ -->$/)) {
               lines.splice(lastLineIndex, 1);
               const cleanedContent = lines.join('\n');
-              await state.deps.git.writeFile(designDocPath, cleanedContent);
+              await state.deps.fileSystem.writeFile(designDocPath, cleanedContent);
               console.log(`🧹 [Learn] Removed metadata comment from final document`);
             }
           }

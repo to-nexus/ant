@@ -4,6 +4,7 @@ import { useStore } from '@/domain/store';
 
 export function useGitHubRepoConfig(selectedProject: string | undefined) {
   const mainPanelOpenTabs = useStore((state) => state.mainPanelOpenTabs);
+  const gitStatusRefreshTrigger = useStore((state) => state.gitStatusRefreshTrigger); // ✅ NEW: Listen to config changes
   const prevProjectConfigTabOpenRef = useRef(mainPanelOpenTabs.projectConfig);
   const [hasGitHubRepo, setHasGitHubRepo] = useState<boolean | null>(null);
 
@@ -35,7 +36,7 @@ export function useGitHubRepoConfig(selectedProject: string | undefined) {
     prevProjectConfigTabOpenRef.current = mainPanelOpenTabs.projectConfig;
 
     checkConfig();
-  }, [selectedProject, mainPanelOpenTabs.projectConfig]);
+  }, [selectedProject, mainPanelOpenTabs.projectConfig, gitStatusRefreshTrigger]); // ✅ Added gitStatusRefreshTrigger
 
   return hasGitHubRepo;
 }

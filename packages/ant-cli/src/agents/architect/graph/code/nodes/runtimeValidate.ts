@@ -72,6 +72,7 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
   
   const commandPort = state.deps?.command;
   const gitPort = state.deps?.git;
+  const fileSystem = state.deps?.fileSystem;
   const currentTask = state.currentTask;
 
   // Skip if explicitly disabled (default is enabled)
@@ -81,9 +82,9 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
     return state;
   }
 
-  // Skip if no command port
-  if (!commandPort || !gitPort) {
-    console.log('⚠️  CommandPort not available, skipping dynamic validation');
+  // Skip if no command port or fileSystem
+  if (!commandPort || !gitPort || !fileSystem) {
+    console.log('⚠️  CommandPort or FileSystemPort not available, skipping dynamic validation');
     return state;
   }
 
@@ -111,7 +112,7 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
   console.log('   ✅ Lint checks\n');
 
   // ✅ Detect project type first
-  const projectDetection = await detectProject(resolvedPath, gitPort);
+  const projectDetection = await detectProject(resolvedPath, gitPort, fileSystem);
   console.log(`🔍 Detected: ${projectDetection.language} + ${projectDetection.buildTool} (${projectDetection.packageManager})`);
 
   const result: RuntimeValidationResult = {
@@ -127,7 +128,7 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
 
   try {
     // 1. Type Check (tsc --noEmit)
-    const hasTypeScript = await gitPort.fileExists(
+    const hasTypeScript = await fileSystem.fileExists(
       p.relative(repoRoot, p.join(resolvedPath, 'tsconfig.json'))
     );
 
@@ -210,9 +211,9 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
     }
 
     // 2. Lint (if .eslintrc exists)
-    const hasESLint = await gitPort.fileExists(
+    const hasESLint = await fileSystem.fileExists(
       p.relative(repoRoot, p.join(resolvedPath, '.eslintrc.json'))
-    ) || await gitPort.fileExists(
+    ) || await fileSystem.fileExists(
       p.relative(repoRoot, p.join(resolvedPath, '.eslintrc.js'))
     );
 
@@ -309,10 +310,10 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
 
     // 3. Build (package.json scripts)
     const pkgJsonPath = p.join(resolvedPath, 'package.json');
-    const pkgExists = await gitPort.fileExists(p.relative(repoRoot, pkgJsonPath));
+    const pkgExists = await fileSystem.fileExists(p.relative(repoRoot, pkgJsonPath));
 
     if (pkgExists) {
-      const pkgContent = await gitPort.readFile(p.relative(repoRoot, pkgJsonPath));
+      const pkgContent = await fileSystem.readFile(p.relative(repoRoot, pkgJsonPath));
       if (pkgContent) {
         try {
           const pkg = JSON.parse(pkgContent);

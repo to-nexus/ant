@@ -21,11 +21,14 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^20.0.0",
     "concurrently": "^9.2.1",
     "dotenv": "^16.4.5",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3",
-    "@types/node": "^20.0.0"
+    "typescript": "^5.9.3"
   },
   "pnpm": {
     "ignoredBuiltDependencies": [

@@ -128,12 +128,12 @@ export function useJobExecution() {
         refreshFileTree();
         
         // ✅ Refresh Git status to show uncommitted changes (non-blocking)
-        // Trigger Git status refresh by toggling manualGitAction
+        // Trigger Git status refresh after job completion
         console.log('[useJobExecution] Triggering Git status refresh after job completion');
         const store = useStore.getState();
-        store.setManualGitAction('fetch');  // Trigger refresh
-        // Clear after a short delay to allow GitStatusButtons to detect the change
-        setTimeout(() => store.setManualGitAction(null), 100);
+        store.setGitStatusPhase('fetching');  // Trigger refresh
+        // Clear after completion
+        setTimeout(() => store.setGitStatusPhase(null), 100);
       });
       
       console.log('[useJobExecution] Job execution started successfully');

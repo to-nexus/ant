@@ -25,7 +25,7 @@ export interface StreamOrchestratorConfig {
   parser: IStreamParser;
   renderStrategy: IRenderStrategy;
   existingFiles: Set<string>;
-  gitPort?: any;  // ✅ GitPort for disk checks (optional for backward compat)
+  fileSystem?: any;  // ✅ FileSystemPort for disk checks (optional for backward compat)
 }
 
 export class StreamOrchestrator {
@@ -37,7 +37,7 @@ export class StreamOrchestrator {
   constructor(config: StreamOrchestratorConfig) {
     this.parser = config.parser;
     this.renderStrategy = config.renderStrategy;
-    this.registry = new FileRegistry(config.existingFiles, config.gitPort);
+    this.registry = new FileRegistry(config.existingFiles, config.fileSystem);
     this.state = new StreamState();
   }
   

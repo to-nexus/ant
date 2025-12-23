@@ -75,6 +75,12 @@ export async function combineCodeContext(
     return null;
   }
   
+  const fileSystem = state.deps?.fileSystem;
+  if (!fileSystem) {
+    console.warn(`   ⚠️  FileSystemPort not available, skipping RAG`);
+    return null;
+  }
+  
   console.log(`🔍 [RAG] Two-tier search (errorFiles → semantic)...`);
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -83,7 +89,8 @@ export async function combineCodeContext(
   const errorFiles = await loadErrorFiles(
     taskKeywords.errorFiles,
     state,
-    git
+    git,
+    fileSystem
   );
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -38,8 +38,15 @@ export interface WorkspaceResolver {
 export class WorkspacePathResolver {
   /**
    * Get physical workspaces directory path
+   * ✅ NEW: Supports ANT_WORKSPACE_BASE_PATH for physical separation
    */
   static getPhysicalWorkspacesPath(): string {
+    // ⭐ 환경변수로 물리적 위치 결정 (ant 소스와 분리 가능)
+    if (process.env.ANT_WORKSPACE_BASE_PATH) {
+      return path.resolve(process.env.ANT_WORKSPACE_BASE_PATH);
+    }
+    
+    // Fallback: 기존 방식 (ant 소스 내부)
     const projectRoot = path.resolve(__dirname, '../../../../..');
     return path.join(projectRoot, 'workspaces');
   }

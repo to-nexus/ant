@@ -17,6 +17,7 @@ export interface LearnGraphState {
     memory?: any;
     chunk?: any;
     git?: any;
+    fileSystem?: import('../../../../core/ports').FileSystemPort;  // ✅ NEW: FileSystemPort
     llm?: any;  // ✅ LLM for analysis
   };
 

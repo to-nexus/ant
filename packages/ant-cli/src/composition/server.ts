@@ -13,6 +13,7 @@ console.log(`[Server] Loading .env from: ${envPath}`);
 import { ExpressServerAdapter } from "../periphery/adapters/http/ExpressServerAdapter";
 import { WorkspacePathResolver } from "../infrastructure/workspace/WorkspaceResolver";
 import { LocalWorkspaceResolver } from "../infrastructure/workspace/LocalWorkspaceResolver";
+import { LocalWorkspaceService } from "../infrastructure/workspace/LocalWorkspaceService";
 
 /**
  * Server Entry Point
@@ -26,6 +27,7 @@ import { LocalWorkspaceResolver } from "../infrastructure/workspace/LocalWorkspa
  * Environment Variables:
  * - ANT_SERVER_MODE: 'local' (default) or 'cloud'
  * - ANT_CLI_PORT: Ant CLI server port (default: 4100)
+ * - ANT_WORKSPACE_BASE_PATH: Physical workspace storage path (for separation from ant source)
  * - CLOUD_URL: Cloud service URL (for redirect)
  */
 
@@ -55,22 +57,31 @@ async function main() {
   
   // ✅ Get physical workspaces path (centralized in WorkspacePathResolver)
   const workspacesPath = WorkspacePathResolver.getPhysicalWorkspacesPath();
-  // Use correct resolver for mode
+  
+  // ✅ Initialize WorkspaceService for multi-tenant workspace management
+  const workspaceService = new LocalWorkspaceService(workspacesPath);
+  
+  // Use correct resolver for mode (legacy, will be replaced by WorkspaceService)
   const resolver = mode === 'cloud'
     ? new (await import('../infrastructure/workspace/WorkspaceResolver')).CloudWorkspaceResolver(workspacesPath)
-    : new LocalWorkspaceResolver();
+    : new LocalWorkspaceResolver(workspacesPath);
   
   const cloudUrl = process.env.CLOUD_URL || DEFAULT_CLOUD_URL;
   
   console.log(`\n${mode === 'cloud' ? '🌐' : '💻'} Starting in ${mode.toUpperCase()} mode`);
   console.log(`   Workspaces: ${workspacesPath}`);
+  if (process.env.ANT_WORKSPACE_BASE_PATH) {
+    console.log(`   ✅ Physical separation enabled (custom path)`);
+  } else {
+    console.log(`   ⚠️  Using default workspace path (inside ant source)`);
+  }
   console.log(`   Port: ${port}`);
   if (mode === 'local') {
     console.log(`   Cloud URL: ${cloudUrl}`);
   }
   
-  // Create server with mode configuration
-  const server = new ExpressServerAdapter(mode, workspacesPath, cloudUrl);
+  // Create server with mode configuration and WorkspaceService
+  const server = new ExpressServerAdapter(mode, workspacesPath, cloudUrl, workspaceService);
   
   try {
     // Start server

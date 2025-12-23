@@ -168,11 +168,11 @@ async function handleReadFile(
   args: { path: string }
 ): Promise<string> {
   const { path: filePath } = args;
-  const gitPort = state.deps?.git;
+  const fileSystem = state.deps?.fileSystem;
   const chatAPI = getChatAPIClient();
   
-  if (!gitPort) {
-    throw new Error('GitPort not available');
+  if (!fileSystem) {
+    throw new Error('FileSystemPort not available');
   }
   
   // ✅ Convert relative path to absolute path for design outputs
@@ -191,7 +191,7 @@ async function handleReadFile(
   const mergeIndex = await chatAPI.addReadingFile(filePath);
   
   try {
-    const content = await gitPort.readFile(absolutePath);
+    const content = await fileSystem.readFile(absolutePath);
     if (!content) {
       throw new Error(`File not found or empty: ${filePath}`);
     }
@@ -217,10 +217,10 @@ async function handleListFiles(
   args: { directory?: string; pattern?: string }
 ): Promise<string> {
   const { directory, pattern } = args;
-  const gitPort = state.deps?.git;
+  const fileSystem = state.deps?.fileSystem;
   
-  if (!gitPort) {
-    throw new Error('GitPort not available');
+  if (!fileSystem) {
+    throw new Error('FileSystemPort not available');
   }
   
   // ✅ Convert relative directory path to absolute path for design job
@@ -235,7 +235,7 @@ async function handleListFiles(
     absoluteDir = path.join(featurePath, absoluteDir);
   }
   
-  const files = await gitPort.listFiles(absoluteDir, [
+  const files = await fileSystem.listFiles(absoluteDir, [
     'node_modules',
     '.git',
     'dist',
@@ -278,10 +278,10 @@ async function handleSearchCode(
   args: { pattern: string; file_pattern?: string }
 ): Promise<string> {
   const { pattern, file_pattern } = args;
-  const gitPort = state.deps?.git;
+  const fileSystem = state.deps?.fileSystem;
   
-  if (!gitPort) {
-    throw new Error('GitPort not available');
+  if (!fileSystem) {
+    throw new Error('FileSystemPort not available');
   }
   
   // ✅ Convert relative path to absolute path for design job
@@ -293,14 +293,14 @@ async function handleSearchCode(
   const absoluteDir = path.join(featurePath, '.');
   
   // Simple search implementation
-  const files = await gitPort.listFiles(absoluteDir, ['node_modules', '.git']);
+  const files = await fileSystem.listFiles(absoluteDir, ['node_modules', '.git']);
   const results: any[] = [];
   
   for (const file of files.slice(0, 50)) {
     if (file_pattern && !file.includes(file_pattern)) continue;
     
     try {
-      const content = await gitPort.readFile(file);
+      const content = await fileSystem.readFile(file);
       if (!content) continue;
       
       const lines = content.split('\n');
@@ -348,10 +348,10 @@ async function handleDeleteFile(
   args: { path: string }
 ): Promise<string> {
   const { path: filePath } = args;
-  const gitPort = state.deps?.git;
+  const fileSystem = state.deps?.fileSystem;
   
-  if (!gitPort) {
-    throw new Error('GitPort not available');
+  if (!fileSystem) {
+    throw new Error('FileSystemPort not available');
   }
   
   const chatAPI = getChatAPIClient();
@@ -368,12 +368,12 @@ async function handleDeleteFile(
     absolutePath = path.join(featurePath, filePath);
   }
   
-  const exists = await gitPort.fileExists(absolutePath);
+  const exists = await fileSystem.fileExists(absolutePath);
   if (!exists) {
     throw new Error(`File does not exist: ${filePath}`);
   }
   
-  await gitPort.deleteFile(absolutePath);
+  await fileSystem.deleteFile(absolutePath);
   console.log(`   🗑️  Deleted: ${absolutePath}`);
   
   await chatAPI.completeFileDeletion(filePath);
@@ -392,10 +392,10 @@ async function handleEditFile(
   args: { path: string; old_str: string; new_str: string }
 ): Promise<string> {
   const { path: filePath, old_str, new_str } = args;
-  const gitPort = state.deps?.git;
+  const fileSystem = state.deps?.fileSystem;
   
-  if (!gitPort) {
-    throw new Error('GitPort not available');
+  if (!fileSystem) {
+    throw new Error('FileSystemPort not available');
   }
   
   if (!filePath || old_str === undefined || new_str === undefined) {
@@ -421,13 +421,13 @@ async function handleEditFile(
   
   try {
     // ✅ Check if file exists
-    const exists = await gitPort.fileExists(absolutePath);
+    const exists = await fileSystem.fileExists(absolutePath);
     if (!exists) {
       throw new Error(`File does not exist: ${filePath}. Use <file> tag to create new files.`);
     }
     
     // ✅ Read current file content (always from disk to ensure latest state)
-    const originalContent = await gitPort.readFile(absolutePath);
+    const originalContent = await fileSystem.readFile(absolutePath);
     if (!originalContent) {
       throw new Error(`Failed to read file: ${filePath}`);
     }
@@ -442,7 +442,7 @@ async function handleEditFile(
     );
     
     // ✅ Write modified content back to disk
-    await gitPort.writeFile(absolutePath, modifiedContent);
+    await fileSystem.writeFile(absolutePath, modifiedContent);
     
     console.log(`✅ [EditFile] Successfully edited ${absolutePath}`);
     console.log(`   Replaced ${old_str.length} chars with ${new_str.length} chars`);
@@ -466,10 +466,10 @@ async function handleMkdir(
   args: { path: string }
 ): Promise<string> {
   const { path: dirPath } = args;
-  const gitPort = state.deps?.git;
+  const fileSystem = state.deps?.fileSystem;
   
-  if (!gitPort) {
-    throw new Error('GitPort not available');
+  if (!fileSystem) {
+    throw new Error('FileSystemPort not available');
   }
   
   // ✅ Convert relative path to absolute path for design outputs
@@ -484,7 +484,7 @@ async function handleMkdir(
     absolutePath = path.join(featurePath, dirPath);
   }
   
-  await gitPort.createDirectory(absolutePath);
+  await fileSystem.createDirectory(absolutePath);
   console.log(`   📁 Created directory: ${absolutePath}`);
   
   return `Directory created: ${dirPath}`;

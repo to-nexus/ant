@@ -34,17 +34,7 @@ export function useFeatureActions(
     await deleteFeature(selectedProject, featureName);
     await refreshFileTree();
     
-    // ✅ Clean up localStorage: Remove last feature entry if it was this feature
-    try {
-      const lastFeatures = JSON.parse(localStorage.getItem('ant-ui:project-last-features') || '{}');
-      if (lastFeatures[selectedProject] === featureName) {
-        delete lastFeatures[selectedProject];
-        localStorage.setItem('ant-ui:project-last-features', JSON.stringify(lastFeatures));
-        console.log(`[useFeatureActions] 🧹 Cleaned up last feature for ${selectedProject}: ${featureName}`);
-      }
-    } catch (error) {
-      console.error('[useFeatureActions] Failed to clean up localStorage:', error);
-    }
+    console.log(`[useFeatureActions] ✅ Feature deleted: ${featureName}`);
   };
 
   const handleFeatureChange = async (featureName: string | null) => {

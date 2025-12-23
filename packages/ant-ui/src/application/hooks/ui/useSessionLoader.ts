@@ -1,23 +1,27 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useStore } from '@/domain/store';
 
 /**
  * Restores user session from storage (project, feature)
- * Only runs after connection is established
+ * Only runs ONCE after connection is established
  * ✅ Agent and work type are already restored during store initialization
  * ✅ Project/Feature use sessionStorage (tab-specific)
  */
 export function useSessionLoader(connectionStatus: string) {
+  const hasRestoredRef = useRef(false);
+  
   useEffect(() => {
-    // Only restore session after successful connection
-    if (connectionStatus !== 'connected') return;
+    // Only restore session after successful connection AND only once
+    if (connectionStatus !== 'connected' || hasRestoredRef.current) return;
+    
+    hasRestoredRef.current = true;
+    console.log('[useSessionLoader] 🚀 Starting session restoration (one-time)');
 
     // Restore selected project and feature
     (async () => {
       try {
         // ✅ Use sessionStorage for tab-specific state
         const savedProject = sessionStorage.getItem('ant-ui:selected-project');
-        const savedFeature = sessionStorage.getItem('ant-ui:selected-feature');
 
         if (savedProject) {
           const projectId = JSON.parse(savedProject);
@@ -27,7 +31,7 @@ export function useSessionLoader(connectionStatus: string) {
           if (!currentProjects.includes(projectId)) {
             console.log('[useSessionLoader] Saved project no longer exists, clearing');
             sessionStorage.removeItem('ant-ui:selected-project');
-            sessionStorage.removeItem('ant-ui:selected-feature');
+            sessionStorage.removeItem('ant-ui:project-last-features');
             return;
           }
           
@@ -36,10 +40,12 @@ export function useSessionLoader(connectionStatus: string) {
           // ✅ Step 1: Set project (will trigger fetchFeatures)
           useStore.getState().setSelectedProject(projectId);
           
-          // ✅ Step 2: Wait for features to load, then set feature
-          if (savedFeature) {
-            const featureName = JSON.parse(savedFeature);
-            console.log('[useSessionLoader] Waiting for features to restore:', featureName);
+          // ✅ Step 2: Check project-last-features mapping
+          const projectFeatures = JSON.parse(sessionStorage.getItem('ant-ui:project-last-features') || '{}');
+          const lastFeature = projectFeatures[projectId];
+          
+          if (lastFeature) {
+            console.log('[useSessionLoader] Found last feature for project:', lastFeature);
             
             // Poll for features (max 5 seconds)
             const maxAttempts = 50;
@@ -51,41 +57,22 @@ export function useSessionLoader(connectionStatus: string) {
               if (currentFeatures.length > 0 || attempts >= maxAttempts) {
                 clearInterval(checkFeatures);
                 
-                if (currentFeatures.some(f => f.name === featureName)) {
-                  console.log('[useSessionLoader] ✅ Restoring feature:', featureName);
-                  useStore.getState().setSelectedFeature(featureName);
-                } else if (currentFeatures.length > 0) {
-                  console.log('[useSessionLoader] ⚠️ Feature not found, trying localStorage');
-                  
-                  // Fallback: Try localStorage last feature
-                  const lastFeatures = JSON.parse(localStorage.getItem('ant-ui:project-last-features') || '{}');
-                  const lastFeature = lastFeatures[projectId];
-                  
-                  if (lastFeature && currentFeatures.some(f => f.name === lastFeature)) {
-                    console.log('[useSessionLoader] ✅ Restoring last feature:', lastFeature);
-                    useStore.getState().setSelectedFeature(lastFeature);
-                  }
+                if (currentFeatures.some(f => f.name === lastFeature)) {
+                  console.log('[useSessionLoader] ✅ Restoring feature:', lastFeature);
+                  useStore.getState().setSelectedFeature(lastFeature);
+                } else {
+                  console.log('[useSessionLoader] ⚠️ Feature not found, setting to undefined');
+                  useStore.getState().setSelectedFeature(undefined);
                 }
               }
               
               attempts++;
             }, 100);
           } else {
-            // No sessionStorage feature - try localStorage
-            console.log('[useSessionLoader] No session feature, checking localStorage');
-            
-            setTimeout(() => {
-              const lastFeatures = JSON.parse(localStorage.getItem('ant-ui:project-last-features') || '{}');
-              const lastFeature = lastFeatures[projectId];
-              
-              if (lastFeature) {
-                const currentFeatures = useStore.getState().features;
-                if (currentFeatures.some(f => f.name === lastFeature)) {
-                  console.log('[useSessionLoader] ✅ Restoring last feature from localStorage:', lastFeature);
-                  useStore.getState().setSelectedFeature(lastFeature);
-                }
-              }
-            }, 500);
+            // ✅ No last feature → set to undefined (don't sync with Git)
+            // Git branch sync is handled by useFeatureBranchManager
+            console.log('[useSessionLoader] No last feature for project, setting to undefined');
+            useStore.getState().setSelectedFeature(undefined);
           }
         }
       } catch (error) {

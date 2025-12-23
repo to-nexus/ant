@@ -2,6 +2,7 @@ import { ProjectContext, AgentTask, CodeMode, ArchitectResult } from "./types";
 import { retrieve } from "./memory";
 import { ArtifactService } from "../../infrastructure/workspace/ArtifactService";
 import { MemoryPort, LLMClient, PromptPort, GitPort, ConfigPort, CodebaseAnalyzerPort, ProfilePort, SessionPort, ChunkPort, CommandPort, TaskQueueUpdatePort } from "../../core/ports";
+import { FileSystemPort } from "../../core/ports/filesystem";
 import { runCodeGraph } from "./graph/code/runner";
 import { ArchitectGraphState } from "./graph/code/state";
 import { runDesignGraph } from "./graph/design/runner";
@@ -21,7 +22,8 @@ export async function architectAgent(
     promptPort?: PromptPort; 
     profilePort?: ProfilePort;
     analyzer?: CodebaseAnalyzerPort;
-    git?: GitPort; 
+    git?: GitPort;
+    fileSystem?: FileSystemPort;  // ✅ NEW: FileSystemPort for file I/O
     config?: ConfigPort;
     chunk?: ChunkPort;
     session?: SessionPort;
@@ -188,11 +190,12 @@ export async function architectAgent(
           const agentTask: AgentTask = 'design';
           
           const gitPort = deps.git;
-          if (!gitPort) return {};
+          const fileSystem = deps.fileSystem;
+          if (!gitPort || !fileSystem) return {};
           
-          const directive = await ArtifactService.getDirective(ctx, agentTask, gitPort);
-          const designResult = await ArtifactService.findLatestDesign(ctx, gitPort);
-          const source = await ArtifactService.getSource(ctx, gitPort);
+          const directive = await ArtifactService.getDirective(ctx, agentTask, gitPort, fileSystem);
+          const designResult = await ArtifactService.findLatestDesign(ctx, gitPort, fileSystem);
+          const source = await ArtifactService.getSource(ctx, gitPort, fileSystem);
           
           return {
             directive: directive || undefined,
@@ -212,6 +215,7 @@ export async function architectAgent(
           chunk: deps?.chunk,
           session: deps?.session,
           git: deps?.git,
+          fileSystem: deps?.fileSystem,  // ✅ NEW: FileSystemPort
           analyzer: deps?.analyzer,
           memory: deps?.memory,
           workspaceResolver: deps?.workspaceResolver,  // ✅ For path resolution
@@ -279,17 +283,18 @@ export async function architectAgent(
             const agentTask: AgentTask = 'code';
             
             const gitPort = deps.git;
-            if (!gitPort) return {};
+            const fileSystem = deps.fileSystem;
+            if (!gitPort || !fileSystem) return {};
             
-            const directive = await ArtifactService.getDirective(ctx, agentTask, gitPort);
+            const directive = await ArtifactService.getDirective(ctx, agentTask, gitPort, fileSystem);
             
             // ✅ Load all available design documents
             // TemplateComposer will filter by environment before sending to LLM
-            const designDocs = await ArtifactService.loadDesignDocuments(ctx, gitPort, 'unknown');
+            const designDocs = await ArtifactService.loadDesignDocuments(ctx, gitPort, fileSystem, 'unknown');
             
             // ✅ Also load unified design for backward compatibility
             // This will be used if designDocs filtering doesn't find environment-specific docs
-            const designResult = await ArtifactService.findLatestDesign(ctx, gitPort);
+            const designResult = await ArtifactService.findLatestDesign(ctx, gitPort, fileSystem);
             
             return {
               directive: directive || undefined,
@@ -317,6 +322,7 @@ export async function architectAgent(
             promptEngine: codeEngine,
             analyzer: deps?.analyzer,
             git: deps?.git,
+            fileSystem: deps?.fileSystem,  // ✅ NEW: FileSystemPort
             chunk: deps?.chunk,
             session: deps?.session,
             command: deps?.command,

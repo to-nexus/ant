@@ -40,6 +40,7 @@ import {
 } from './routes';
 import { FileJobPrerequisitesAdapter } from '../prerequisites/FileJobPrerequisitesAdapter';
 import { WorkspaceResolver, LocalWorkspaceResolver, CloudWorkspaceResolver } from '../../../infrastructure/workspace/WorkspaceResolver';
+import { WorkspaceServicePort } from '../../../core/ports/workspace';
 import { AuthService } from '../../../infrastructure/auth/AuthService';
 import { GitHubAuthService } from '../auth/GitHubAuthService';
 
@@ -64,6 +65,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   private readonly workspacesPath: string;  // ✅ Physical workspaces directory path
   private readonly cloudUrl: string;
   private readonly workspaceResolver: WorkspaceResolver;
+  private readonly workspaceService: WorkspaceServicePort;  // ✅ NEW: Multi-tenant workspace service
   private readonly authService?: AuthService;
   
   // Services
@@ -432,15 +434,21 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   console.log(`   ✅ cleanupJobState completed`);
   }
   
-  constructor(mode: 'local' | 'cloud' = 'local', workspacesPath: string, cloudUrl: string = 'https://ant.nexus.ai') {
+  constructor(
+    mode: 'local' | 'cloud' = 'local', 
+    workspacesPath: string, 
+    cloudUrl: string = 'https://ant.nexus.ai',
+    workspaceService: WorkspaceServicePort  // ✅ NEW: Inject WorkspaceService
+  ) {
     this.app = express();
     
     // Mode configuration
     this.mode = mode;
     this.workspacesPath = workspacesPath;
     this.cloudUrl = cloudUrl;
+    this.workspaceService = workspaceService;  // ✅ Store WorkspaceService
     
-    // Initialize WorkspaceResolver
+    // Initialize WorkspaceResolver (legacy, gradually being replaced by WorkspaceService)
     this.workspaceResolver = mode === 'cloud'
       ? new CloudWorkspaceResolver(this.workspacesPath)
       : new LocalWorkspaceResolver(this.workspacesPath);
@@ -452,6 +460,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     
     console.log(`[ExpressServerAdapter] Initialized in ${mode.toUpperCase()} mode`);
     console.log(`   Workspaces: ${this.workspacesPath}`);
+    console.log(`   WorkspaceService: ${this.workspaceService.constructor.name}`);
     
     // Initialize services
     // ✅ Services now use WorkspaceResolver for path generation
