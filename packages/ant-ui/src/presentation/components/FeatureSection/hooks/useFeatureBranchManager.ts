@@ -33,10 +33,7 @@ function shouldSkipFetch(projectName: string, featureName: string | undefined): 
 function recordFetchTime(projectName: string, featureName: string | undefined): void {
   const featureKey = featureName || 'base';
   const lastFetchKey = `git-fetch-time:${projectName}:${featureKey}`;
-  const now = Date.now();
-  const nowTime = new Date(now).toLocaleTimeString('ko-KR');
-  sessionStorage.setItem(lastFetchKey, now.toString());
-  console.log(`[Timer] ⏰ Fetch timer set for ${projectName}/${featureKey} at ${nowTime}`);
+  sessionStorage.setItem(lastFetchKey, Date.now().toString());
 }
 
 /**
@@ -84,22 +81,13 @@ export function useFeatureBranchManager(
       
       // ✅ CRITICAL: Wait for session restore to complete
       if (isSessionRestoring) {
-        console.log(`[useFeatureBranchManager] ⏸️ Session restore in progress, waiting... (expected: ${expectedFeatureAfterRestore || 'undefined'})`);
         return;
       }
       
       // ✅ Determine target branch based on SSOT (project-feature)
       const targetBranch = selectedFeature ? `feature/${selectedFeature}` : baseBranch;
       const currentBranch = gitStatus.currentBranch;
-      const operationKey = `${selectedProject}:${selectedFeature || 'base'}`;
-      
-      console.log(`[useFeatureBranchManager] 🎯 SSOT Check:`, {
-        project: selectedProject,
-        feature: selectedFeature || 'undefined (base)',
-        targetBranch,
-        currentBranch,
-        sessionRestoreCompleted,
-      });
+      const operationKey = `${selectedProject}:${selectedFeature || 'base'}:${bypassFetchTimer}`;
       
       // ✅ Already processed this operation
       if (lastProcessed.current === operationKey) {
@@ -108,22 +96,17 @@ export function useFeatureBranchManager(
       
       // ✅ Already on target branch
       if (currentBranch === targetBranch) {
-        console.log(`[useFeatureBranchManager] ✅ Already on target branch: ${targetBranch}`);
-        
         // ✅ CRITICAL: Even if on target branch, check if we need to fetch
         const shouldBypass = bypassFetchTimer;
         const skipResult = shouldSkipFetch(selectedProject, selectedFeature);
         
         // Only skip if we've already processed this operation AND timer not expired
         if (lastProcessed.current === operationKey && skipResult.skip && !shouldBypass) {
-          console.log(`[useFeatureBranchManager] ⏸️ Operation already processed and timer active, skipping`);
           return;
         }
         
         // Need to fetch (timer expired or bypass flag set)
         if (shouldBypass || !skipResult.skip) {
-          console.log(`[useFeatureBranchManager] 🔄 Branch unchanged but fetch needed`);
-          
           // Perform fetch without branch switch
           isProcessing.current = true;
           setGitStatusLoading(true);
@@ -136,22 +119,16 @@ export function useFeatureBranchManager(
                 setGitStatusPhase('fetching');
                 
                 if (shouldBypass) {
-                  console.log(`[useFeatureBranchManager] 🔄 Fetching from GitHub (timer bypassed)...`);
                   setBypassFetchTimer(false);
-                } else {
-                  console.log(`[useFeatureBranchManager] 🔄 Fetching from GitHub...`);
                 }
                 
                 try {
                   const fetchResult = await fetchFromGitHub(selectedProject);
                   if (fetchResult.success) {
-                    console.log(`[useFeatureBranchManager] ✅ Fetch succeeded`);
                     recordFetchTime(selectedProject, selectedFeature);
-                  } else {
-                    console.warn(`[useFeatureBranchManager] ⚠️ Fetch failed:`, fetchResult.error);
                   }
                 } catch (fetchError) {
-                  console.warn('[useFeatureBranchManager] ⚠️ Fetch error:', fetchError);
+                  console.warn('[useFeatureBranchManager] Fetch error:', fetchError);
                 }
               }
             } finally {
@@ -173,7 +150,6 @@ export function useFeatureBranchManager(
       
       // ✅ Check for concurrent operations
       if (isProcessing.current) {
-        console.log(`[useFeatureBranchManager] ⏸️ Operation already in progress, skipping`);
         return;
       }
       
@@ -182,8 +158,8 @@ export function useFeatureBranchManager(
       if (existingLock) {
         try {
           await existingLock;
-        } catch (err) {
-          console.warn(`[useFeatureBranchManager] Previous operation failed, continuing...`);
+        } catch {
+          // Previous operation failed, continuing...
         }
         
         // After waiting, check if still needed
@@ -198,8 +174,6 @@ export function useFeatureBranchManager(
       
       const executeLock = async () => {
         try {
-          console.log(`[useFeatureBranchManager] 🔀 Switching branch: ${currentBranch} → ${targetBranch}`);
-          
           // ✅ Phase 1: Branch switch
           setGitStatusPhase('switching');
           
@@ -209,13 +183,9 @@ export function useFeatureBranchManager(
           );
           
           if (!result.success) {
-            console.error('[useFeatureBranchManager] ❌ Branch switch failed:', result.error);
+            console.error('[useFeatureBranchManager] Branch switch failed:', result.error);
             return;
           }
-          
-          // ✅ Branch switch succeeded - immediately refresh store Git status
-          const actualBranch = result.currentBranch || result.branchName;
-          console.log(`[useFeatureBranchManager] ✅ Branch switch succeeded: ${actualBranch}`);
           
           // ✅ Immediately fetch and update Git status in store
           await fetchGitStatus(selectedProject);
@@ -234,30 +204,21 @@ export function useFeatureBranchManager(
             setGitStatusPhase('fetching');
             
             if (shouldBypass) {
-              console.log(`[useFeatureBranchManager] 🔄 Fetching from GitHub (timer bypassed)...`);
-              // ✅ Reset bypass flag after use
               setBypassFetchTimer(false);
-            } else {
-              console.log(`[useFeatureBranchManager] 🔄 Fetching from GitHub...`);
             }
             
             try {
               const fetchResult = await fetchFromGitHub(selectedProject);
               if (fetchResult.success) {
-                console.log(`[useFeatureBranchManager] ✅ Fetch succeeded`);
                 recordFetchTime(selectedProject, selectedFeature);
-              } else {
-                console.warn(`[useFeatureBranchManager] ⚠️ Fetch failed:`, fetchResult.error);
               }
             } catch (fetchError) {
-              console.warn('[useFeatureBranchManager] ⚠️ Fetch error:', fetchError);
+              console.warn('[useFeatureBranchManager] Fetch error:', fetchError);
             }
-          } else {
-            console.log(`[useFeatureBranchManager] ⏸️ Skipping fetch - ${skipResult.remainingSeconds}s remaining (last fetch: ${skipResult.lastFetchTime})`);
           }
           
         } catch (error) {
-          console.error('[useFeatureBranchManager] ❌ Branch operation error:', error);
+          console.error('[useFeatureBranchManager] Branch operation error:', error);
           throw error;
         } finally {
           setGitStatusPhase(null);
@@ -284,11 +245,11 @@ export function useFeatureBranchManager(
     gitStatus,
     isSessionRestoring,
     sessionRestoreCompleted,
+    bypassFetchTimer, // ← Fetch 버튼 클릭 시 재실행
   ]);
 
   // ✅ Reset on project change
   useEffect(() => {
-    console.log('[useFeatureBranchManager] 🔄 Project changed, resetting state');
     lastProcessed.current = '';
   }, [selectedProject]);
 }
