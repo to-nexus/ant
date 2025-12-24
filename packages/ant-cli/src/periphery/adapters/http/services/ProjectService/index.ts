@@ -165,7 +165,7 @@ export class ProjectService {
     projectId: string,
     featureName: string,
     userContext: UserContext
-  ): Promise<string> {
+  ): Promise<{ branchName: string; currentBranch: string }> {
     return this.gitBranch.switchToFeatureBranch(projectId, featureName, userContext);
   }
   

@@ -2,7 +2,6 @@ import { useEffect } from 'react';
 import { useStore } from '@/domain/store';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { useAlertModal } from '@/application/hooks/ui/useAlertModal';
-import { useGitStatus } from './hooks/useGitStatus';
 import { useBaseBranch } from './hooks/useBaseBranch';
 import { useFeatureBranchManager } from './hooks/useFeatureBranchManager';
 import { useDevServerManager } from './hooks/useDevServerManager';
@@ -15,14 +14,14 @@ export function FeatureSection() {
     features, 
     selectedProject, 
     selectedFeature,
-    fetchFeatures
+    fetchFeatures,
+    gitStatus  // ✅ Use unified Git status from store
   } = useStore();
   
   const policy = useUIActionPolicy();
   const { AlertModal } = useAlertModal();
   
   // Custom hooks
-  const gitStatus = useGitStatus(selectedProject);
   const baseBranch = useBaseBranch(selectedProject);
   const {
     devServerStatus,
@@ -48,7 +47,7 @@ export function FeatureSection() {
   } = useFeatureActions(selectedProject, selectedFeature, baseBranch);
   
   // Branch manager (auto-checkout)
-  useFeatureBranchManager(selectedProject, selectedFeature, baseBranch, gitStatus);
+  useFeatureBranchManager(selectedProject, selectedFeature, baseBranch);
 
   if (!selectedProject) {
     return null;

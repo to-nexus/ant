@@ -46,3 +46,10 @@ export function getAgentName(jobValue: string): string {
   return job?.agent || 'Agent';
 }
 
+/**
+ * Git fetch interval (in milliseconds)
+ * Controls how often Git status is auto-refreshed per feature
+ */
+export const GIT_FETCH_INTERVAL = 30 * 1000; // 30 seconds (for testing)
+// export const GIT_FETCH_INTERVAL = 5 * 60 * 1000; // 5 minutes (production)
+

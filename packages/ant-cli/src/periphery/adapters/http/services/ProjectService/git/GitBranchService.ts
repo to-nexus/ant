@@ -120,12 +120,13 @@ export class GitBranchService {
   
   /**
    * Switch to feature branch (main entry point)
+   * @returns Object containing branchName and current Git status
    */
   async switchToFeatureBranch(
     projectId: string,
     featureName: string,
     userContext: UserContext
-  ): Promise<string> {
+  ): Promise<{ branchName: string; currentBranch: string }> {
     const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
     const configPath = path.join(projectPath, 'config.json');
     
@@ -218,7 +219,7 @@ export class GitBranchService {
         const finalBranch = await git.revparse(['--abbrev-ref', 'HEAD']);
         console.log(`[GitBranchService] 🎯 Final branch: ${finalBranch}`);
         
-        return baseBranch;
+        return { branchName: baseBranch, currentBranch: finalBranch };
       }
     
       // Feature branch handling
@@ -268,7 +269,11 @@ export class GitBranchService {
         await git.checkout(branchName);
         console.log(`[GitBranchService] ✅ Checked out existing local branch: ${branchName}`);
         await this.applyBranchStash(git, branchName);
-        return branchName;  // ✅ Early return!
+        
+        // Verify current branch
+        const currentBranch = await git.revparse(['--abbrev-ref', 'HEAD']);
+        console.log(`[GitBranchService] 🎯 Current branch after checkout: ${currentBranch}`);
+        return { branchName, currentBranch };  // ✅ Early return!
       } else if (remoteExists) {
         // Case 2: Remote exists → checkout from remote
         console.log(`[GitBranchService] ✅ Remote branch exists, creating local tracking branch: ${branchName}`);
@@ -375,7 +380,11 @@ export class GitBranchService {
         }
       }
       
-      return branchName;
+      // Final verification of current branch
+      const currentBranch = await git.revparse(['--abbrev-ref', 'HEAD']);
+      console.log(`[GitBranchService] 🎯 Final current branch: ${currentBranch}`);
+      
+      return { branchName, currentBranch };
     } catch (error) {
       console.error(`[GitBranchService] ❌ Error during branch switch:`, error);
       throw error;

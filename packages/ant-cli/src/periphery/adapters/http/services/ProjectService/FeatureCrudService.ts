@@ -10,7 +10,7 @@ import { UserContext } from '../../../../../core/types/user';
  */
 export class FeatureCrudService {
   private readonly workspaceResolver: WorkspaceResolver;
-  private switchToFeatureBranchFn?: (projectId: string, featureName: string, userContext: UserContext) => Promise<string>;
+  private switchToFeatureBranchFn?: (projectId: string, featureName: string, userContext: UserContext) => Promise<{ branchName: string; currentBranch: string }>;
   
   constructor(workspaceResolver: WorkspaceResolver) {
     this.workspaceResolver = workspaceResolver;
@@ -19,7 +19,7 @@ export class FeatureCrudService {
   /**
    * Set the switchToFeatureBranch function (injected from GitBranchService)
    */
-  setSwitchToFeatureBranchFn(fn: (projectId: string, featureName: string, userContext: UserContext) => Promise<string>) {
+  setSwitchToFeatureBranchFn(fn: (projectId: string, featureName: string, userContext: UserContext) => Promise<{ branchName: string; currentBranch: string }>) {
     this.switchToFeatureBranchFn = fn;
   }
   

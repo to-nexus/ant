@@ -10,9 +10,7 @@ import {
   cloneGitHubRepo,
   initializeGitHubRepo,
   pushToGitHub,
-  pullFromGitHub,
-  fetchFromGitHub,
-  getGitStatus
+  pullFromGitHub
 } from '@/infrastructure/http/api';
 import { ItemDropdown } from './ItemDropdown';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
@@ -28,20 +26,15 @@ export function ProjectSection() {
     setSelectedProject, 
     fetchProjects, 
     openMainPanelTab,
-    currentGitBranch,  // ✅ Current Git branch from store
+    gitStatus,  // ✅ Use unified Git status from store
+    fetchGitStatus,  // ✅ Fetch Git status action
     setGitStatusPhase,  // ✅ Git status phase setter
-    gitStatusRefreshTrigger  // ✅ NEW: Git status refresh trigger
+    gitStatusRefreshTrigger  // ✅ Git status refresh trigger
   } = useStore();
   const [configExists, setConfigExists] = useState<boolean | null>(null);
   const [config, setConfig] = useState<ProjectConfig | null>(null);
   const [showGitMenu, setShowGitMenu] = useState(false);
   const [isGitProcessing, setIsGitProcessing] = useState(false);
-  const [gitStatus, setGitStatus] = useState<{
-    hasGit: boolean;
-    hasCodebase: boolean;
-    hasFeatures: boolean;
-    currentBranch?: string;
-  }>({ hasGit: false, hasCodebase: false, hasFeatures: false });
   const gitMenuRef = useRef<HTMLDivElement>(null);
   const policy = useUIActionPolicy();
   const { showError, showSuccess, AlertModal } = useAlertModal();
@@ -57,44 +50,18 @@ export function ProjectSection() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
   
-  // Fetch Git status when project/feature changes
+  // ✅ Fetch Git status when project changes
   useEffect(() => {
-    const fetchGitStatus = async () => {
-      if (!selectedProject) {
-        setGitStatus({ hasGit: false, hasCodebase: false, hasFeatures: false });
-        return;
-      }
-      
-      try {
-        const status = await getGitStatus(selectedProject);
-        setGitStatus(status);
-      } catch (error) {
-        console.error('Failed to fetch Git status:', error);
-        setGitStatus({ hasGit: false, hasCodebase: false, hasFeatures: false });
-      }
-    };
-    
-    fetchGitStatus();
+    if (selectedProject) {
+      fetchGitStatus(selectedProject);
+    }
   }, [selectedProject]);
 
-  // ✅ NEW: Refresh Git status when trigger changes (e.g., after config save)
+  // ✅ Refresh Git status when trigger changes
   useEffect(() => {
-    const fetchGitStatus = async () => {
-      // Skip if trigger is 0 (initial state, never triggered)
-      if (gitStatusRefreshTrigger === 0) return;
-      
-      // Skip if no project selected
-      if (!selectedProject) return;
-      
-      try {
-        const status = await getGitStatus(selectedProject);
-        setGitStatus(status);
-      } catch (error) {
-        console.error('[ProjectSection] Failed to refresh Git status:', error);
-      }
-    };
-    
-    fetchGitStatus();
+    if (gitStatusRefreshTrigger > 0 && selectedProject) {
+      fetchGitStatus(selectedProject);
+    }
   }, [gitStatusRefreshTrigger, selectedProject]);
 
   // Check if config exists when project is selected or config editor closes or git status refresh
@@ -183,9 +150,8 @@ export function ProjectSection() {
         }
         
         // Refresh Git status after successful operation
-        if (shouldRefreshGitStatus) {
-          const status = await getGitStatus(selectedProject);
-          setGitStatus(status);
+        if (shouldRefreshGitStatus && selectedProject) {
+          await fetchGitStatus(selectedProject);
         }
       } else {
         // ✅ Errors still shown via popup (important to see)
@@ -227,31 +193,14 @@ export function ProjectSection() {
     if (!selectedProject) return;
     
     setShowGitMenu(false);
-    setIsGitProcessing(true);
-    setGitStatusPhase('fetching');
     
-    console.log('[ProjectSection] 📡 Starting fetch...');
+    console.log('[ProjectSection] 📡 Triggering explicit fetch (bypassing timer)...');
     
-    try {
-      const result = await fetchFromGitHub(selectedProject);
-      console.log('[ProjectSection] 📡 Fetch result:', result);
-      
-      if (result.success) {
-        // ✅ Trigger Git status refresh (bypasses timer)
-        useStore.setState((state) => ({ 
-          gitStatusRefreshTrigger: state.gitStatusRefreshTrigger + 1 
-        }));
-        console.log('[ProjectSection] ✅ Fetch completed successfully');
-      } else {
-        showError(result.error || 'Failed to fetch');
-      }
-    } catch (error: any) {
-      showError(error.message || 'Failed to fetch');
-    } finally {
-      setIsGitProcessing(false);
-      setGitStatusPhase(null);
-      console.log('[ProjectSection] 🏁 Fetch finished');
-    }
+    // ✅ Just trigger refresh - useGitChanges will handle the actual fetch
+    // This avoids double-fetching and ensures timer is properly managed
+    useStore.setState((state) => ({ 
+      gitStatusRefreshTrigger: state.gitStatusRefreshTrigger + 1 
+    }));
   };
 
   const projectItems = projects.map((p: string) => ({ name: p }));
@@ -327,7 +276,7 @@ export function ProjectSection() {
               {/* Git Menu Dropdown */}
               {showGitMenu && (
                 <div className="absolute top-full right-0 mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-[9999]">
-                  {!gitStatus.hasGit && !gitStatus.hasFeatures ? (
+                  {!gitStatus?.hasGit && !gitStatus?.hasFeatures ? (
                     // Case 1: No Git, No Features → Show Clone/Initialize
                     <>
                       <button
@@ -351,7 +300,7 @@ export function ProjectSection() {
                         </div>
                       </button>
                     </>
-                  ) : !gitStatus.hasGit && gitStatus.hasFeatures ? (
+                  ) : !gitStatus?.hasGit && gitStatus?.hasFeatures ? (
                     // Case 2: No Git, Has Features → Show warning
                     <div className="px-3 py-4 text-center">
                       <div className="text-sm text-gray-600 dark:text-gray-400">
@@ -402,9 +351,9 @@ export function ProjectSection() {
           </div>
           
           {/* Current Branch Display */}
-          {(currentGitBranch || gitStatus.currentBranch) && (
+          {gitStatus?.currentBranch && (
             <div className="px-2 text-[11px] text-gray-500 dark:text-gray-400">
-              Current branch: <span className="font-mono font-medium text-gray-700 dark:text-gray-300">{currentGitBranch || gitStatus.currentBranch}</span>
+              Current branch: <span className="font-mono font-medium text-gray-700 dark:text-gray-300">{gitStatus.currentBranch}</span>
             </div>
           )}
           

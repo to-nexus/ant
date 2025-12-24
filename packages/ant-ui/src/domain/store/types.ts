@@ -12,6 +12,10 @@ export interface ProjectState {
   selectedProject: string | undefined;
   selectedFeature: string | undefined;
   features: Feature[];
+  // ✅ Session restore tracking
+  isSessionRestoring: boolean;  // Session restore가 진행 중인지
+  sessionRestoreCompleted: boolean;  // Session restore가 완료되었는지 (한 번만 true)
+  expectedFeatureAfterRestore: string | undefined;  // Session restore 시 기대하는 feature
 }
 
 export interface FileState {
@@ -57,11 +61,19 @@ export interface UIState {
   isJobTabCleared: boolean;
 }
 
+export interface GitStatus {
+  hasGit: boolean;
+  hasCodebase: boolean;
+  hasFeatures: boolean;
+  currentBranch?: string;
+}
+
 export interface GitState {
   isGitStatusLoading: boolean;
   gitStatusPhase: 'switching' | 'fetching' | 'pushing' | 'pulling' | 'committing' | 'syncing' | 'initializing' | 'cloning' | null;
-  currentGitBranch: string | undefined;
+  gitStatus: GitStatus | null;  // ✅ Single source of truth for Git state
   gitStatusRefreshTrigger: number;
+  bypassFetchTimer: boolean;  // ✅ Flag to bypass timer for next fetch
 }
 
 export interface DevServerState {
