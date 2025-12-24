@@ -4,14 +4,14 @@ import { SimpleGit } from 'simple-git';
 import { WorkspaceResolver } from '../../../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../../../core/types/user';
 import { GitHubAuthService } from '../../../../auth/GitHubAuthService';
-import { GitHelper } from './GitHelper';
+import { GitHelper } from '../helper/GitHelper';
 
 /**
- * GitBranchService
+ * BranchService
  * 
  * Handles Git branch operations including creation, switching, and stash management
  */
-export class GitBranchService {
+export class BranchService {
   private readonly workspaceResolver: WorkspaceResolver;
   private readonly githubAuthService?: GitHubAuthService;
   
@@ -251,10 +251,11 @@ export class GitBranchService {
             console.log(`[GitBranchService] Could not update remote:`, remoteError);
           }
           
-          // ✅ Check remote branch existence using ls-remote (no fetch needed)
-          const lsRemote = await git.listRemote(['--heads', 'origin', branchName]);
-          remoteExists = lsRemote.trim().length > 0;
-          console.log(`[GitBranchService] Remote branch check for ${branchName}: ${remoteExists ? 'EXISTS' : 'NOT FOUND'}`);
+          // ✅ Check remote branch existence using branch -r after fetch
+          await git.fetch(['origin']);
+          const remoteBranches = await git.branch(['-r']);
+          remoteExists = remoteBranches.all.includes(`origin/${branchName}`);
+          console.log(`[BranchService] Remote branch check for ${branchName}: ${remoteExists ? 'EXISTS' : 'NOT FOUND'}`);
         } catch (fetchError) {
           console.log(`[GitBranchService] Could not check remote (non-critical):`, fetchError);
         }
@@ -267,26 +268,26 @@ export class GitBranchService {
       if (branchExists) {
         // Case 1: Local branch exists → checkout
         await git.checkout(branchName);
-        console.log(`[GitBranchService] ✅ Checked out existing local branch: ${branchName}`);
+        console.log(`[BranchService] ✅ Checked out existing local branch: ${branchName}`);
         await this.applyBranchStash(git, branchName);
         
         // Verify current branch
         const currentBranch = await git.revparse(['--abbrev-ref', 'HEAD']);
-        console.log(`[GitBranchService] 🎯 Current branch after checkout: ${currentBranch}`);
-        return { branchName, currentBranch };  // ✅ Early return!
+        console.log(`[BranchService] 🎯 Current branch after checkout: ${currentBranch}`);
+        // Don't return yet - need to check upstream below
       } else if (remoteExists) {
         // Case 2: Remote exists → checkout from remote
-        console.log(`[GitBranchService] ✅ Remote branch exists, creating local tracking branch: ${branchName}`);
+        console.log(`[BranchService] ✅ Remote branch exists, creating local tracking branch: ${branchName}`);
         try {
           await git.checkout(['-b', branchName, '--track', `origin/${branchName}`]);
-          console.log(`[GitBranchService] ✅ Checked out remote branch with tracking: origin/${branchName}`);
+          console.log(`[BranchService] ✅ Checked out remote branch with tracking: origin/${branchName}`);
         } catch (checkoutErr: any) {
-          console.log(`[GitBranchService] Checkout with tracking failed:`, checkoutErr.message);
+          console.log(`[BranchService] Checkout with tracking failed:`, checkoutErr.message);
           try {
             await git.checkoutBranch(branchName, `origin/${branchName}`);
-            console.log(`[GitBranchService] ✅ Checked out remote branch: origin/${branchName}`);
+            console.log(`[BranchService] ✅ Checked out remote branch: origin/${branchName}`);
           } catch (fallbackErr) {
-            console.log(`[GitBranchService] ❌ All checkout attempts failed:`, fallbackErr);
+            console.log(`[BranchService] ❌ All checkout attempts failed:`, fallbackErr);
             throw fallbackErr;
           }
         }
@@ -297,13 +298,13 @@ export class GitBranchService {
         const baseBranchExists = localBranches.all.includes(baseBranch);
         
         if (!baseBranchExists) {
-          console.log(`[GitBranchService] Base branch '${baseBranch}' not found locally, checking remote...`);
+          console.log(`[BranchService] Base branch '${baseBranch}' not found locally, checking remote...`);
           try {
             await git.fetch(['origin', baseBranch]);
             const remoteBranches = await git.branch(['-r']);
             if (remoteBranches.all.includes(`origin/${baseBranch}`)) {
               await git.checkout(['-b', baseBranch, `origin/${baseBranch}`]);
-              console.log(`[GitBranchService] ✅ Created local '${baseBranch}' from origin/${baseBranch}`);
+              console.log(`[BranchService] ✅ Created local '${baseBranch}' from origin/${baseBranch}`);
             } else {
               throw new Error(`Base branch '${baseBranch}' not found on remote`);
             }
@@ -312,17 +313,17 @@ export class GitBranchService {
           }
         } else {
           await git.checkout(baseBranch);
-          console.log(`[GitBranchService] ✅ Checked out base branch: ${baseBranch}`);
+          console.log(`[BranchService] ✅ Checked out base branch: ${baseBranch}`);
         }
         
         // Create feature branch from base
         await git.checkoutLocalBranch(branchName);
-        console.log(`[GitBranchService] ✅ Created new local branch: ${branchName}`);
+        console.log(`[BranchService] ✅ Created new local branch: ${branchName}`);
       }
 
       // Handle upstream and push for new branches
-      if (!remoteExists && config.githubRepo && this.githubAuthService) {
-        console.log(`[GitBranchService] 🚀 Remote branch not found, pushing to create: ${branchName}`);
+      if (!branchExists && !remoteExists && config.githubRepo && this.githubAuthService) {
+        console.log(`[BranchService] 🚀 Remote branch not found, pushing to create: ${branchName}`);
         try {
           const credentialContext = {
             org: userContext.organizationId,
@@ -334,26 +335,26 @@ export class GitBranchService {
           );
           await git.remote(['set-url', 'origin', authenticatedUrl]).catch(() => git.addRemote('origin', authenticatedUrl));
           await git.push(['-u', 'origin', branchName]);
-          console.log(`[GitBranchService] ✅ Pushed ${branchName} to remote and set upstream`);
+          console.log(`[BranchService] ✅ Pushed ${branchName} to remote and set upstream`);
         } catch (pushError: any) {
-          console.error(`[GitBranchService] Failed to push new branch:`, pushError.message);
+          console.error(`[BranchService] Failed to push new branch:`, pushError.message);
           // Recovery logic for push rejection
           if (pushError.message.includes('rejected') || pushError.message.includes('fetch first')) {
-            console.log(`[GitBranchService] 🔄 Push rejected - remote branch exists but wasn't detected`);
-            console.log(`[GitBranchService] 🔄 Fetching again and switching to remote branch...`);
+            console.log(`[BranchService] 🔄 Push rejected - remote branch exists but wasn't detected`);
+            console.log(`[BranchService] 🔄 Fetching again and switching to remote branch...`);
             
             await git.fetch(['--all', '--prune']);
             const remoteBranches = await git.branch(['-r']);
             const remoteBranchName = `origin/${branchName}`;
             
             if (remoteBranches.all.includes(remoteBranchName)) {
-              console.log(`[GitBranchService] ✅ Confirmed remote branch exists: ${remoteBranchName}`);
+              console.log(`[BranchService] ✅ Confirmed remote branch exists: ${remoteBranchName}`);
               
               // Delete local branch and checkout remote
               try {
                 await git.checkout(baseBranch);
                 await git.deleteLocalBranch(branchName, true);
-                console.log(`[GitBranchService] 🗑️  Deleted out-of-sync local branch: ${branchName}`);
+                console.log(`[BranchService] 🗑️  Deleted out-of-sync local branch: ${branchName}`);
               } catch (deleteError) {
                 console.log(`[GitBranchService] Could not delete local branch:`, deleteError);
               }
@@ -363,30 +364,36 @@ export class GitBranchService {
             }
           }
         }
-      } else if (remoteExists) {
-        // Remote exists, try to ensure upstream is set
+      } else if (branchExists || remoteExists) {
+        // Branch exists locally or remote exists, try to ensure upstream is set
         try {
           const branchClean = branchName.trim();
           const hasUpstream = await git.revparse(['--abbrev-ref', `${branchClean}@{upstream}`]).then(() => true).catch(() => false);
           if (!hasUpstream) {
-            await git.branch(['--set-upstream-to', `origin/${branchName}`, branchClean]);
-            console.log(`[GitBranchService] ✅ Set upstream: ${branchClean} -> origin/${branchName}`);
+            // Check if remote branch exists
+            const remoteBranches = await git.branch(['-r']);
+            if (remoteBranches.all.includes(`origin/${branchName}`)) {
+              await git.branch(['--set-upstream-to', `origin/${branchName}`, branchClean]);
+              console.log(`[BranchService] ✅ Set upstream: ${branchClean} -> origin/${branchName}`);
+            } else {
+              console.log(`[BranchService] ℹ️  Remote branch not found, skipping upstream setup`);
+            }
           } else {
-            console.log(`[GitBranchService] ✅ Upstream already set for ${branchClean}`);
+            console.log(`[BranchService] ✅ Upstream already set for ${branchClean}`);
           }
         } catch (upstreamError: any) {
           // Non-critical: upstream setting failed (remote might not actually exist)
-          console.log(`[GitBranchService] ⚠️ Could not set upstream (non-critical):`, upstreamError.message);
+          console.log(`[BranchService] ⚠️ Could not set upstream (non-critical):`, upstreamError.message);
         }
       }
       
       // Final verification of current branch
       const currentBranch = await git.revparse(['--abbrev-ref', 'HEAD']);
-      console.log(`[GitBranchService] 🎯 Final current branch: ${currentBranch}`);
+      console.log(`[BranchService] 🎯 Final current branch: ${currentBranch}`);
       
       return { branchName, currentBranch };
     } catch (error) {
-      console.error(`[GitBranchService] ❌ Error during branch switch:`, error);
+      console.error(`[BranchService] ❌ Error during branch switch:`, error);
       throw error;
     }
   }
