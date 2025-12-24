@@ -53,8 +53,6 @@ export const createProjectSlice: StateCreator<
   },
 
   setSelectedProject: (projectId) => {
-    console.log(`[Store] 🔀 Project changed to: ${projectId || 'none'}`);
-    
     const state = get() as any;
     
     if (!projectId) {
