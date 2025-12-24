@@ -3,14 +3,14 @@ import * as path from 'path';
 import { SimpleGit } from 'simple-git';
 import { WorkspaceResolver } from '../../../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../../../core/types/user';
-import { GitHelper } from './GitHelper';
+import { GitHelper } from '../helper/GitHelper';
 
 /**
- * GitStatusService
+ * StatusService
  * 
  * Handles Git status queries and change detection
  */
-export class GitStatusService {
+export class StatusService {
   private readonly workspaceResolver: WorkspaceResolver;
   
   constructor(workspaceResolver: WorkspaceResolver) {

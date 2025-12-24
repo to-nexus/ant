@@ -8,11 +8,7 @@ import { SSEService } from '../SSEService';
 import { ProjectCrudService } from './ProjectCrudService';
 import { FeatureCrudService } from './FeatureCrudService';
 import { FileOperationService } from './FileOperationService';
-import { GitHelper } from './git/GitHelper';
-import { GitBranchService } from './git/GitBranchService';
-import { GitStatusService } from './git/GitStatusService';
-import { GitRemoteService } from './git/GitRemoteService';
-import { GitIndexService } from './git/GitIndexService';
+import { GitService } from '../GitService';
 
 /**
  * ProjectService (Facade)
@@ -24,10 +20,7 @@ import { GitIndexService } from './git/GitIndexService';
  * - ProjectCrudService: Project CRUD operations
  * - FeatureCrudService: Feature CRUD operations
  * - FileOperationService: File operations within features
- * - GitBranchService: Branch switching and stash management
- * - GitStatusService: Git status queries
- * - GitRemoteService: Remote operations (clone, push, pull, fetch)
- * - GitIndexService: AI/LLM indexing operations
+ * - GitService: All Git-related operations (branch, status, remote, indexing)
  */
 export class ProjectService {
   private readonly workspaceResolver: WorkspaceResolver;
@@ -39,10 +32,7 @@ export class ProjectService {
   private readonly projectCrud: ProjectCrudService;
   private readonly featureCrud: FeatureCrudService;
   private readonly fileOps: FileOperationService;
-  private readonly gitBranch: GitBranchService;
-  private readonly gitStatus: GitStatusService;
-  private readonly gitRemote: GitRemoteService;
-  private readonly gitIndex: GitIndexService;
+  private readonly git: GitService;
   
   constructor(
     workspaceResolver: WorkspaceResolver,
@@ -59,14 +49,11 @@ export class ProjectService {
     this.projectCrud = new ProjectCrudService(workspaceResolver);
     this.featureCrud = new FeatureCrudService(workspaceResolver);
     this.fileOps = new FileOperationService(workspaceResolver);
-    this.gitBranch = new GitBranchService(workspaceResolver, githubAuthService);
-    this.gitStatus = new GitStatusService(workspaceResolver);
-    this.gitRemote = new GitRemoteService(workspaceResolver, githubAuthService, sseService);
-    this.gitIndex = new GitIndexService(workspaceResolver, sseService, chatService);
+    this.git = new GitService(workspaceResolver, githubAuthService, chatService, sseService);
     
-    // ✅ Inject GitBranchService.switchToFeatureBranch into FeatureCrudService
+    // ✅ Inject GitService.switchToFeatureBranch into FeatureCrudService
     this.featureCrud.setSwitchToFeatureBranchFn(
-      this.gitBranch.switchToFeatureBranch.bind(this.gitBranch)
+      this.git.switchToFeatureBranch.bind(this.git)
     );
   }
   
@@ -158,7 +145,7 @@ export class ProjectService {
   }
   
   // =====================================
-  // Git Branch Operations (delegated)
+  // Git Branch Operations (delegated to GitService)
   // =====================================
   
   async switchToFeatureBranch(
@@ -166,11 +153,11 @@ export class ProjectService {
     featureName: string,
     userContext: UserContext
   ): Promise<{ branchName: string; currentBranch: string }> {
-    return this.gitBranch.switchToFeatureBranch(projectId, featureName, userContext);
+    return this.git.switchToFeatureBranch(projectId, featureName, userContext);
   }
   
   // =====================================
-  // Git Status Operations (delegated - TO BE IMPLEMENTED)
+  // Git Status Operations (delegated to GitService)
   // =====================================
   
   async getGitStatus(projectId: string, userContext: UserContext): Promise<{
@@ -179,7 +166,7 @@ export class ProjectService {
     hasFeatures: boolean;
     currentBranch?: string;
   }> {
-    return this.gitStatus.getGitStatus(projectId, userContext);
+    return this.git.getGitStatus(projectId, userContext);
   }
   
   async getGitChanges(projectId: string, userContext: UserContext): Promise<{
@@ -192,35 +179,35 @@ export class ProjectService {
     currentBranch?: string;
     isGitInitialized?: boolean;
   }> {
-    return this.gitStatus.getGitChanges(projectId, userContext);
+    return this.git.getGitChanges(projectId, userContext);
   }
   
   async checkCloneStatus(projectId: string, userContext: UserContext): Promise<boolean> {
-    return this.gitStatus.checkCloneStatus(projectId, userContext);
+    return this.git.checkCloneStatus(projectId, userContext);
   }
   
   // =====================================
-  // Git Remote Operations (delegated - TO BE IMPLEMENTED)
+  // Git Remote Operations (delegated to GitService)
   // =====================================
   
   async cloneGitHubRepo(projectId: string, userContext: UserContext): Promise<void> {
-    return this.gitRemote.cloneGitHubRepo(projectId, userContext);
+    return this.git.cloneGitHubRepo(projectId, userContext);
   }
   
   async initializeGitHubRepo(projectId: string, userContext: UserContext): Promise<void> {
-    return this.gitRemote.initializeGitHubRepo(projectId, userContext);
+    return this.git.initializeGitHubRepo(projectId, userContext);
   }
   
   async pushToGitHub(projectId: string, userContext: UserContext): Promise<void> {
-    return this.gitRemote.pushToGitHub(projectId, userContext);
+    return this.git.pushToGitHub(projectId, userContext);
   }
   
   async pullFromGitHub(projectId: string, userContext: UserContext): Promise<void> {
-    return this.gitRemote.pullFromGitHub(projectId, userContext);
+    return this.git.pullFromGitHub(projectId, userContext);
   }
   
   async fetchFromGitHub(projectId: string, userContext: UserContext): Promise<void> {
-    return this.gitRemote.fetchFromGitHub(projectId, userContext);
+    return this.git.fetchFromGitHub(projectId, userContext);
   }
   
   async syncWithRemote(projectId: string, userContext: UserContext): Promise<{
@@ -228,7 +215,7 @@ export class ProjectService {
     pulledChanges?: boolean;
     pushedChanges?: boolean;
   }> {
-    return this.gitRemote.syncWithRemote(projectId, userContext);
+    return this.git.syncWithRemote(projectId, userContext);
   }
   
   async commitChanges(
@@ -236,7 +223,7 @@ export class ProjectService {
     userContext: UserContext,
     message?: string
   ): Promise<{ success: boolean; commitHash?: string }> {
-    return this.gitRemote.commitChanges(projectId, userContext, message);
+    return this.git.commitChanges(projectId, userContext, message);
   }
 }
 
