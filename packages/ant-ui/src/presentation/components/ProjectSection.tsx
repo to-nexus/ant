@@ -196,10 +196,10 @@ export function ProjectSection() {
     
     console.log('[ProjectSection] 📡 Triggering explicit fetch (bypassing timer)...');
     
-    // ✅ Just trigger refresh - useGitChanges will handle the actual fetch
-    // This avoids double-fetching and ensures timer is properly managed
+    // ✅ Set bypass flag and trigger both useGitChanges and useFeatureBranchManager
     useStore.setState((state) => ({ 
-      gitStatusRefreshTrigger: state.gitStatusRefreshTrigger + 1 
+      bypassFetchTimer: true, // ← useFeatureBranchManager will fetch from GitHub
+      gitStatusRefreshTrigger: state.gitStatusRefreshTrigger + 1 // ← useGitChanges will update status
     }));
   };
 
