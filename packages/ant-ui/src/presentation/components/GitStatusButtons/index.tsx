@@ -11,7 +11,7 @@ export function GitStatusButtons() {
   const { selectedProject, selectedFeature, isGitStatusLoading, gitStatusPhase } = useStore();
   
   const hasGitHubRepo = useGitHubRepoConfig(selectedProject);
-  const { gitChanges, isGitInitialized, isFetchingChanges } = useGitChanges(selectedProject, hasGitHubRepo);
+  const { gitChanges, isGitInitialized, isFetchingChanges } = useGitChanges(selectedProject, selectedFeature, hasGitHubRepo);
   const [localGitChanges, setLocalGitChanges] = useState(gitChanges);
   
   // Sync local state with hook state

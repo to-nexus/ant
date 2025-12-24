@@ -10,6 +10,9 @@ export interface ProjectActions {
   setSelectedFeature: (featureName: string | undefined) => void;
   fetchFeatures: (projectId?: string) => Promise<Feature[]>;
   setFeatures: (features: Feature[]) => void;
+  // ✅ Session restore actions
+  startSessionRestore: (expectedFeature: string | undefined) => void;
+  completeSessionRestore: () => void;
 }
 
 export type ProjectSlice = ProjectState & ProjectActions;
@@ -27,6 +30,10 @@ export const createProjectSlice: StateCreator<
   selectedProject: undefined,
   selectedFeature: undefined,
   features: [],
+  // ✅ Session restore tracking
+  isSessionRestoring: false,
+  sessionRestoreCompleted: false,
+  expectedFeatureAfterRestore: undefined,
 
   // ==================
   // Actions
@@ -75,6 +82,17 @@ export const createProjectSlice: StateCreator<
         saveToStorage(STORAGE_KEYS.PROJECT_LAST_FEATURES, projectFeatures);
       }
     } else {
+      // ✅ Check if we need to restore last feature
+      const projectFeatures = loadFromStorage(STORAGE_KEYS.PROJECT_LAST_FEATURES) || {};
+      const lastFeature = projectFeatures[projectId];
+      const needsRestore = lastFeature !== undefined;
+      
+      // ✅ If restoring, start session restore to block branch manager
+      if (needsRestore) {
+        console.log(`[Store] 🚀 Starting restore for ${projectId}, expected feature: ${lastFeature || 'undefined (base)'}`);
+        get().startSessionRestore(lastFeature);
+      }
+      
       // Just set the project, features will be loaded separately
       set({ 
         selectedProject: projectId,
@@ -88,6 +106,58 @@ export const createProjectSlice: StateCreator<
       
       // Fetch features list (async, non-blocking)
       get().fetchFeatures(projectId);
+      
+      // ✅ Restore last selected feature for this project (if exists)
+      if (needsRestore) {
+        console.log(`[Store] 🔄 Will restore last feature for ${projectId}: ${lastFeature || 'undefined (base)'}`);
+        
+        // Wait for features to load, then set the feature
+        const maxAttempts = 50;
+        let attempts = 0;
+        
+        const pollForFeatures = setInterval(() => {
+          const currentState = get() as any;
+          const currentFeatures = currentState.features;
+          
+          if (attempts >= maxAttempts) {
+            console.warn('[Store] ⚠️ Feature restore timeout');
+            clearInterval(pollForFeatures);
+            currentState.setSelectedFeature(undefined);
+            currentState.completeSessionRestore();
+            return;
+          }
+          
+          // Check if features loaded
+          const featuresLoaded = currentFeatures.length > 0 || lastFeature === undefined;
+          
+          if (featuresLoaded) {
+            clearInterval(pollForFeatures);
+            
+            if (lastFeature === undefined) {
+              // Restore to base branch
+              console.log('[Store] ✅ Restoring to base branch (undefined)');
+              currentState.setSelectedFeature(undefined);
+              currentState.completeSessionRestore();
+            } else {
+              // Check if feature exists
+              const featureExists = currentFeatures.some((f: any) => f.name === lastFeature);
+              if (featureExists) {
+                console.log(`[Store] ✅ Restoring feature: ${lastFeature}`);
+                currentState.setSelectedFeature(lastFeature);
+                currentState.completeSessionRestore();
+              } else {
+                console.warn(`[Store] ⚠️ Last feature "${lastFeature}" not found, staying on undefined`);
+                currentState.setSelectedFeature(undefined);
+                currentState.completeSessionRestore();
+              }
+            }
+          }
+          
+          attempts++;
+        }, 100);
+      } else {
+        console.log(`[Store] ℹ️ No last feature found for ${projectId}, staying on undefined`);
+      }
     }
   },
 
@@ -215,5 +285,24 @@ export const createProjectSlice: StateCreator<
   },
 
   setFeatures: (features) => set({ features }),
+  
+  // ✅ Session restore actions
+  startSessionRestore: (expectedFeature) => {
+    console.log(`[Store] 🚀 Starting session restore, expected feature: ${expectedFeature || 'undefined'}`);
+    set({
+      isSessionRestoring: true,
+      sessionRestoreCompleted: false,
+      expectedFeatureAfterRestore: expectedFeature,
+    });
+  },
+  
+  completeSessionRestore: () => {
+    console.log(`[Store] ✅ Session restore completed`);
+    set({
+      isSessionRestoring: false,
+      sessionRestoreCompleted: true,
+      expectedFeatureAfterRestore: undefined,
+    });
+  },
 });
 

@@ -1,22 +1,27 @@
 import { StateCreator } from 'zustand';
-import { GitState } from '../types';
+import { GitState, GitStatus } from '../types';
+import { getGitStatus } from '@/infrastructure/http/api';
 
 export interface GitActions {
   setGitStatusLoading: (loading: boolean) => void;
   setGitStatusPhase: (phase: 'switching' | 'fetching' | 'pushing' | 'pulling' | 'committing' | 'syncing' | 'initializing' | 'cloning' | null) => void;
-  setCurrentGitBranch: (branch: string | undefined) => void;
+  setGitStatus: (status: GitStatus | null) => void;  // ✅ Single setter for Git status
+  fetchGitStatus: (projectId: string) => Promise<void>;  // ✅ Fetch and update Git status
+  refreshGitStatus: () => void;  // ✅ Helper to trigger refresh
+  setBypassFetchTimer: (bypass: boolean) => void;
 }
 
 export type GitSlice = GitState & GitActions;
 
-export const createGitSlice: StateCreator<any, [], [], GitSlice> = (set) => ({
+export const createGitSlice: StateCreator<any, [], [], GitSlice> = (set, get) => ({
   // ==================
   // State
   // ==================
   isGitStatusLoading: false,
   gitStatusPhase: null,
-  currentGitBranch: undefined,
+  gitStatus: null,  // ✅ Single source of truth
   gitStatusRefreshTrigger: 0,
+  bypassFetchTimer: false,  // ✅ Default: respect timer
 
   // ==================
   // Actions
@@ -29,8 +34,32 @@ export const createGitSlice: StateCreator<any, [], [], GitSlice> = (set) => ({
     set({ gitStatusPhase: phase });
   },
 
-  setCurrentGitBranch: (branch) => {
-    set({ currentGitBranch: branch });
+  setGitStatus: (status) => {
+    set({ gitStatus: status });
+  },
+  
+  fetchGitStatus: async (projectId: string) => {
+    if (!projectId) {
+      set({ gitStatus: { hasGit: false, hasCodebase: false, hasFeatures: false } });
+      return;
+    }
+    
+    try {
+      const status = await getGitStatus(projectId);
+      set({ gitStatus: status });
+      console.log('[GitSlice] Git status loaded:', status);
+    } catch (error) {
+      console.error('[GitSlice] Failed to get Git status:', error);
+      set({ gitStatus: { hasGit: false, hasCodebase: false, hasFeatures: false } });
+    }
+  },
+  
+  refreshGitStatus: () => {
+    set((state) => ({ gitStatusRefreshTrigger: state.gitStatusRefreshTrigger + 1 }));
+  },
+  
+  setBypassFetchTimer: (bypass) => {
+    set({ bypassFetchTimer: bypass });
   },
 });
 

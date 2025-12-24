@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { getGitChanges } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
+import { GIT_FETCH_INTERVAL } from '@/shared/utils/constants';
 
 export interface GitChanges {
   hasChanges: boolean;
@@ -15,9 +16,10 @@ export interface GitChanges {
 
 export function useGitChanges(
   selectedProject: string | undefined,
+  selectedFeature: string | undefined,
   hasGitHubRepo: boolean | null
 ) {
-  const { isGitStatusLoading, gitStatusPhase, gitStatusRefreshTrigger } = useStore();
+  const { isGitStatusLoading, gitStatusPhase, gitStatusRefreshTrigger, gitStatus } = useStore();
   const prevLoadingRef = useRef(isGitStatusLoading);
   const prevPhaseRef = useRef(gitStatusPhase);
   const prevTriggerRef = useRef(gitStatusRefreshTrigger);
@@ -26,17 +28,24 @@ export function useGitChanges(
   const [gitChanges, setGitChanges] = useState<GitChanges | null>(() => {
     // Initialize with cached data on mount
     if (!selectedProject) return null;
+    const featureKey = selectedFeature || 'base';
     try {
-      const cached = sessionStorage.getItem(`git-cache:${selectedProject}`);
-      return cached ? JSON.parse(cached) : null;
+      const cached = sessionStorage.getItem(`git-cache:${selectedProject}:${featureKey}`);
+      const parsed = cached ? JSON.parse(cached) : null;
+      // ✅ Inject currentBranch from store if available
+      if (parsed && gitStatus?.currentBranch) {
+        parsed.currentBranch = gitStatus.currentBranch;
+      }
+      return parsed;
     } catch {
       return null;
     }
   });
   const [isGitInitialized, setIsGitInitialized] = useState<boolean | null>(() => {
     if (!selectedProject) return null;
+    const featureKey = selectedFeature || 'base';
     try {
-      const cached = sessionStorage.getItem(`git-cache:${selectedProject}`);
+      const cached = sessionStorage.getItem(`git-cache:${selectedProject}:${featureKey}`);
       const parsed = cached ? JSON.parse(cached) : null;
       return parsed?.isGitInitialized ?? null;
     } catch {
@@ -46,10 +55,11 @@ export function useGitChanges(
   const [isFetchingChanges, setIsFetchingChanges] = useState(false);
   const [triggerFetch, setTriggerFetch] = useState(0);
 
-  const FETCH_INTERVAL = 5 * 60 * 1000; // 5 minutes
-
-  // Storage helpers
-  const getStorageKey = (key: string) => `${key}:${selectedProject || 'none'}`;
+  // Storage helpers - ✅ Feature 단위로 타이머 관리
+  const getStorageKey = (key: string) => {
+    const featureKey = selectedFeature || 'base';
+    return `${key}:${selectedProject || 'none'}:${featureKey}`;
+  };
   
   const getLastFetchTime = (): number => {
     try {
@@ -62,7 +72,10 @@ export function useGitChanges(
   
   const setLastFetchTime = (time: number) => {
     try {
+      const timeString = new Date(time).toLocaleTimeString('ko-KR');
+      const featureKey = selectedFeature || 'base';
       sessionStorage.setItem(getStorageKey('git-fetch-time'), time.toString());
+      console.log(`[Timer] ⏰ Fetch timer set for ${selectedProject}/${featureKey} at ${timeString}`);
     } catch {}
   };
   
@@ -81,21 +94,35 @@ export function useGitChanges(
     } catch {}
   };
 
-  // Load cache when project changes
+  // Load cache when project or feature changes
   useEffect(() => {
-    console.log('[useGitChanges] Project changed, selectedProject:', selectedProject);
+    console.log('[useGitChanges] Context changed, project:', selectedProject, 'feature:', selectedFeature);
     if (selectedProject) {
       const cached = getCachedChanges();
       console.log('[useGitChanges] Cached data:', cached);
       if (cached) {
-        console.log('[useGitChanges] Loading cached data for project:', selectedProject);
+        console.log('[useGitChanges] Loading cached data for project/feature:', selectedProject, selectedFeature);
+        // ✅ Inject currentBranch from store
+        if (gitStatus?.currentBranch) {
+          cached.currentBranch = gitStatus.currentBranch;
+        }
         setGitChanges(cached);
         setIsGitInitialized(cached.isGitInitialized ?? null);
       } else {
-        console.log('[useGitChanges] No cached data found for project:', selectedProject);
+        console.log('[useGitChanges] No cached data found for project/feature:', selectedProject, selectedFeature);
       }
     }
-  }, [selectedProject]);
+  }, [selectedProject, selectedFeature]);
+
+  // ✅ NEW: Sync currentBranch from store.gitStatus to gitChanges
+  useEffect(() => {
+    if (gitStatus?.currentBranch && gitChanges) {
+      if (gitChanges.currentBranch !== gitStatus.currentBranch) {
+        console.log(`[useGitChanges] 🔄 Syncing currentBranch from store: ${gitChanges.currentBranch} → ${gitStatus.currentBranch}`);
+        setGitChanges(prev => prev ? { ...prev, currentBranch: gitStatus.currentBranch } : prev);
+      }
+    }
+  }, [gitStatus?.currentBranch, gitChanges]);
 
   // Detect Git operation completion and trigger refetch
   useEffect(() => {
@@ -120,16 +147,12 @@ export function useGitChanges(
 
   // Main fetch logic
   useEffect(() => {
-    console.log('[useGitChanges] Main effect triggered, selectedProject:', selectedProject, 'hasGitHubRepo:', hasGitHubRepo, 'gitChanges:', gitChanges, 'isGitInitialized:', isGitInitialized);
-    
     if (!selectedProject || hasGitHubRepo === null) {
-      console.log('[useGitChanges] Early return: no project or hasGitHubRepo is null');
       // DON'T reset gitChanges here - keep cached data visible
       return;
     }
 
     if (hasGitHubRepo === false) {
-      console.log('[useGitChanges] GitHub repo not configured');
       setGitChanges(null);
       setIsGitInitialized(false);
       return;
@@ -137,22 +160,30 @@ export function useGitChanges(
 
     const fetchChanges = async () => {
       setIsFetchingChanges(true);
+      console.log(`[useGitChanges] 🔄 Starting fetch for ${selectedProject}/${selectedFeature || 'base'}...`);
       try {
         const changes = await getGitChanges(selectedProject);
         setGitChanges(changes);
         setIsGitInitialized(changes.isGitInitialized ?? true);
-        setLastFetchTime(Date.now());
         setCachedChanges(changes);
+        
+        // ✅ CRITICAL: Only record fetch time AFTER successful completion
+        const now = Date.now();
+        console.log(`[useGitChanges] ✅ Fetch succeeded, recording time: ${now}`);
+        setLastFetchTime(now);
       } catch (error: any) {
+        console.warn(`[useGitChanges] ⚠️ Fetch failed:`, error);
         if (error.message?.includes('not initialized')) {
           setGitChanges(null);
           setIsGitInitialized(false);
         }
+        // ❌ DO NOT record time on failure - allow retry without waiting
       } finally {
         setIsFetchingChanges(false);
       }
     };
 
+    // Skip if Git operation in progress
     if (isGitStatusLoading) {
       prevLoadingRef.current = isGitStatusLoading;
       return;
@@ -161,52 +192,61 @@ export function useGitChanges(
     const loadingJustCompleted = prevLoadingRef.current === true && isGitStatusLoading === false;
     prevLoadingRef.current = isGitStatusLoading;
     
-    // Priority 1: Git operation in progress
+    // Priority 1: Git operation phase in progress (switching/fetching)
     if (gitStatusPhase !== null) {
       return;
     }
     
     // Priority 2: Explicit user action (Fetch/Clone/Init button) - bypass timer
     const internalTriggerChanged = prevInternalTriggerRef.current !== triggerFetch && triggerFetch > 0;
-    prevInternalTriggerRef.current = triggerFetch;
     
     if (internalTriggerChanged) {
-      console.log(`[useGitChanges] 🔄 Explicit user action detected (triggerFetch: ${triggerFetch}) → fetching immediately`);
+      console.log(`[useGitChanges] 🎯 Priority 2: Explicit user action (trigger: ${prevInternalTriggerRef.current} → ${triggerFetch}) → bypassing timer`);
+      prevInternalTriggerRef.current = triggerFetch;
       fetchChanges();
       return;
     }
+    
+    // Update ref even if not changed (for next comparison)
+    prevInternalTriggerRef.current = triggerFetch;
     
     // Priority 3: Initial load (gitChanges is null) - bypass timer
-    // This happens on first load or when cache failed to load
     if (gitChanges === null && !isFetchingChanges) {
-      console.log(`[useGitChanges] 🔄 Initial load (no data) → fetching immediately`);
+      console.log(`[useGitChanges] 🎯 Priority 3: Initial load (no data) → bypassing timer`);
       fetchChanges();
       return;
     }
     
-    // Priority 4: Auto-refresh with timer check (including loadingJustCompleted)
-    const timeSinceLastFetch = Date.now() - getLastFetchTime();
-    if (timeSinceLastFetch < FETCH_INTERVAL) {
-      console.log(`[useGitChanges] ⏸️ Skipping fetch - within interval (${Math.floor(timeSinceLastFetch / 1000)}s / ${FETCH_INTERVAL / 1000}s)`);
+    // Priority 4: Auto-refresh with timer check
+    const lastFetchTime = getLastFetchTime();
+    const now = Date.now();
+    const timeSinceLastFetch = now - lastFetchTime;
+    const timeRemainingMs = GIT_FETCH_INTERVAL - timeSinceLastFetch;
+    
+    if (timeSinceLastFetch < GIT_FETCH_INTERVAL) {
+      const remainingSeconds = Math.ceil(timeRemainingMs / 1000);
+      const lastFetchTimeString = lastFetchTime ? new Date(lastFetchTime).toLocaleTimeString('ko-KR') : 'never';
+      console.log(`[useGitChanges] ⏸️ Priority 4: Timer not expired - ${remainingSeconds}s remaining (last fetch: ${lastFetchTimeString}) → skipping`);
       return;
     }
     
     // Timer passed - now check if we should fetch
     if (loadingJustCompleted) {
-      console.log(`[useGitChanges] ⏰ Timer passed + loadingJustCompleted → fetching`);
+      console.log(`[useGitChanges] 🎯 Priority 4: Timer expired + loading completed → fetching`);
       fetchChanges();
       return;
     }
     
+    // Delayed polling (debounce rapid re-renders)
+    console.log(`[useGitChanges] 🎯 Priority 4: Timer expired + polling → fetching after 500ms`);
     const delayTimer = setTimeout(() => {
-      console.log(`[useGitChanges] ⏰ Timer passed + delayed polling → fetching`);
       fetchChanges();
     }, 500);
     
     return () => {
       clearTimeout(delayTimer);
     };
-  }, [selectedProject, hasGitHubRepo, isGitStatusLoading, gitStatusPhase, triggerFetch]);
+  }, [selectedProject, selectedFeature, hasGitHubRepo, isGitStatusLoading, gitStatusPhase, triggerFetch]);
 
   return {
     gitChanges,

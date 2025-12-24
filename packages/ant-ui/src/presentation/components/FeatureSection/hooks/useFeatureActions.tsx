@@ -9,21 +9,38 @@ import { useAlertModal } from '@/application/hooks/ui/useAlertModal';
 
 export function useFeatureActions(
   selectedProject: string | undefined,
-  selectedFeature: string | undefined,
+  _selectedFeature: string | undefined,  // Used by parent
   baseBranch: string
 ) {
   const setSelectedFeature = useStore((state) => state.setSelectedFeature);
+  const fetchFeatures = useStore((state) => state.fetchFeatures);
   const refreshFileTree = useStore((state) => state.refreshFileTree);
+  const setBypassFetchTimer = useStore((state) => state.setBypassFetchTimer);
   const { showConfirm } = useAlertModal();
 
   const handleCreateFeature = async (featureName: string) => {
     if (!selectedProject) {
       throw new Error('No project selected');
     }
+    
+    console.log(`[useFeatureActions] 🆕 Creating feature: ${featureName}`);
+    
+    // ✅ Create feature
     await createFeature(selectedProject, featureName);
+    
+    // ✅ Refresh features list to include new feature
+    await fetchFeatures(selectedProject);
+    
+    // ✅ Refresh file tree
     await refreshFileTree();
     
-    // After creating feature, directly select it
+    // ✅ CRITICAL: Bypass fetch timer for newly created feature
+    // New features need immediate fetch to get remote tracking info
+    console.log(`[useFeatureActions] ✅ Feature created, setting bypass flag and auto-selecting: ${featureName}`);
+    setBypassFetchTimer(true);
+    
+    // ✅ Select the newly created feature
+    // This will trigger useFeatureBranchManager to switch to the new branch
     setSelectedFeature(featureName);
   };
 
@@ -31,10 +48,26 @@ export function useFeatureActions(
     if (!selectedProject) {
       throw new Error('No project selected');
     }
+    
+    console.log(`[useFeatureActions] 🗑️ Deleting feature: ${featureName}`);
+    
+    // ✅ Delete feature
     await deleteFeature(selectedProject, featureName);
+    
+    // ✅ Refresh features list to remove deleted feature
+    await fetchFeatures(selectedProject);
+    
+    // ✅ Refresh file tree
     await refreshFileTree();
     
     console.log(`[useFeatureActions] ✅ Feature deleted: ${featureName}`);
+    
+    // ✅ CRITICAL: If deleted feature was currently selected, switch to base
+    const currentFeature = useStore.getState().selectedFeature;
+    if (currentFeature === featureName) {
+      console.log(`[useFeatureActions] ⚠️ Deleted feature was selected, switching to base branch`);
+      setSelectedFeature(undefined);
+    }
   };
 
   const handleFeatureChange = async (featureName: string | null) => {
