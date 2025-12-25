@@ -69,10 +69,11 @@ export class CloneOperation {
       await fs.promises.rm(tempPath, { recursive: true, force: true });
     }
 
-    // Clone to temp directory with --depth 1 for faster clone
+    // Clone to temp directory
+    // Note: Removing --depth 1 to allow full history and all branches
     const git = simpleGit();
     try {
-      await git.clone(authenticatedUrl, tempPath, ['--depth', '1']);
+      await git.clone(authenticatedUrl, tempPath);
       console.log(`[CloneOperation] ✅ Clone completed, analyzing structure...`);
     } catch (error: any) {
       const errorMsg = error.message || error.toString();
