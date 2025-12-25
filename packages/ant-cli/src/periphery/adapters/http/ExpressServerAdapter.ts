@@ -18,8 +18,7 @@ import { UserContext } from '../../../core/types/user';
 import * as fs from 'fs';
 import * as path from 'path';
 import { 
-  KanbanService, 
-  TaskExecutionService, 
+  KanbanService,
   SessionService, 
   DevServerService, 
   ProjectService,
@@ -36,13 +35,20 @@ import {
   createSSERoutes,
   createAuthRoutes,
   createIDERoutes,
+  createCloudIDERoutes,  // ✅ Cloud IDE routes
   createApiRoutes  // ✅ NEW: Unified API routes
 } from './routes';
+import { createDevServerProxyMiddleware } from './middleware/devServerProxy';
 import { FileJobPrerequisitesAdapter } from '../prerequisites/FileJobPrerequisitesAdapter';
 import { WorkspaceResolver, LocalWorkspaceResolver, CloudWorkspaceResolver } from '../../../infrastructure/workspace/WorkspaceResolver';
+import { WorkspaceServiceAdapter } from '../../../infrastructure/workspace/WorkspaceServiceAdapter';
 import { WorkspaceServicePort } from '../../../core/ports/workspace';
 import { AuthService } from '../../../infrastructure/auth/AuthService';
 import { GitHubAuthService } from '../auth/GitHubAuthService';
+import { PortManager } from '../../../infrastructure/networking/PortManager';
+import { InMemoryPortRegistry } from '../../../infrastructure/networking/InMemoryPortRegistry';
+import { PortRegistryPort } from '../../../core/ports/portRegistry';
+import { IDEService } from '../ide/IDEService';
 
 /**
  * ExpressServerAdapter
@@ -64,13 +70,15 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   private readonly mode: 'local' | 'cloud';
   private readonly workspacesPath: string;  // ✅ Physical workspaces directory path
   private readonly cloudUrl: string;
-  private readonly workspaceResolver: WorkspaceResolver;
-  private readonly workspaceService: WorkspaceServicePort;  // ✅ NEW: Multi-tenant workspace service
+  private readonly workspaceService: WorkspaceServicePort;  // ✅ Multi-tenant workspace service
+  private readonly workspaceResolver: WorkspaceResolver;  // ✅ Adapter for legacy services
   private readonly authService?: AuthService;
+  private readonly portManager: PortManager;  // ✅ Dynamic port allocation
+  private readonly portRegistry: PortRegistryPort;  // ✅ Port mapping storage
+  private readonly ideService: IDEService;  // ✅ IDE container management
   
   // Services
   private kanbanService: KanbanService;
-  private taskExecutionService: TaskExecutionService;
   private sessionService: SessionService;
   private devServerService: DevServerService;
   private projectService: ProjectService;
@@ -448,10 +456,14 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     this.cloudUrl = cloudUrl;
     this.workspaceService = workspaceService;  // ✅ Store WorkspaceService
     
-    // Initialize WorkspaceResolver (legacy, gradually being replaced by WorkspaceService)
-    this.workspaceResolver = mode === 'cloud'
-      ? new CloudWorkspaceResolver(this.workspacesPath)
-      : new LocalWorkspaceResolver(this.workspacesPath);
+    // ✅ Create WorkspaceResolver adapter for legacy services
+    this.workspaceResolver = new WorkspaceServiceAdapter(workspaceService, workspacesPath);
+    
+    // ✅ Initialize PortManager, PortRegistry, and IDEService
+    this.portManager = new PortManager();
+    this.portRegistry = new InMemoryPortRegistry();
+    this.ideService = new IDEService(this.portManager, this.portRegistry);
+    this.ideService.startIdleChecker();  // Auto-shutdown idle containers
     
     // Initialize AuthService for Cloud mode
     if (mode === 'cloud') {
@@ -461,42 +473,26 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     console.log(`[ExpressServerAdapter] Initialized in ${mode.toUpperCase()} mode`);
     console.log(`   Workspaces: ${this.workspacesPath}`);
     console.log(`   WorkspaceService: ${this.workspaceService.constructor.name}`);
+    console.log(`   PortManager: ${this.portManager.constructor.name} (30000-35000)`);
+    console.log(`   PortRegistry: ${this.portRegistry.constructor.name}`);
+    console.log(`   IDEService: ${this.ideService.constructor.name} (with auto-shutdown)`);
     
     // Initialize services
     // ✅ Services now use WorkspaceResolver for path generation
     this.kanbanService = new KanbanService(this.workspacesPath, this.workspaceResolver);
-    this.taskExecutionService = new TaskExecutionService(
-      this.workspaceResolver,  // ✅ Pass WorkspaceResolver
-      {
-        onJobStatusChange: (jobId, status) => {
-          // ✅ CRITICAL: Don't re-add completed/failed jobs to Map
-          // cleanupJobState already handles removal, and re-adding causes
-          // frontend to see "estimating" state again
-          if (status.status === 'completed' || status.status === 'failed') {
-            console.log(`[TaskExecutionService] ⏭️  Skipping jobs.set for ${status.status} job: ${jobId}`);
-            return;
-          }
-          this.jobs.set(jobId, status);
-        },
-      onLogEntry: (jobId, log) => {
-        const logs = this.logs.get(jobId) || [];
-        logs.push(log);
-        this.logs.set(jobId, logs);
-      },
-      onJobCompleted: async (jobId) => {
-        // ✅ Clean up job state when job completes successfully
-        await this.cleanupJobState(jobId);
-      }
-    });
     this.githubAuthService = new GitHubAuthService(this.workspacesPath);  // ✅ Initialize GitHub Auth service
     this.sseService = new SSEService();
     this.chatService = new ChatService(this.workspacesPath, this.sseService, this.workspaceResolver);  // ✅ Initialize ChatService first
     this.projectService = new ProjectService(this.workspaceResolver, this.githubAuthService, this.chatService, this.sseService);  // ✅ Inject SSEService for project-level events
-    this.devServerService = new DevServerService({
-      onStatusChange: (projectId) => {
-        // DevServer status broadcasting removed
+    this.devServerService = new DevServerService(
+      this.portManager,  // ✅ Pass PortManager for dynamic port allocation
+      this.portRegistry,  // ✅ Pass PortRegistry for port mapping storage
+      {
+        onStatusChange: (projectId) => {
+          // DevServer status broadcasting removed
+        }
       }
-    });
+    );
     
     this.sessionService = new SessionService(this.workspacesPath, {
       onSessionChange: async (projectId, featureName, jobType) => {
@@ -575,6 +571,12 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       credentials: true  // Allow credentials (cookies)
     }));
     this.app.use(express.json({ limit: '50mb' }));
+    
+    // ✅ Dev Server Proxy Middleware (handles /dev/:serverKey requests)
+    this.app.use(createDevServerProxyMiddleware({
+      portRegistry: this.portRegistry,
+      pathPrefix: '/dev'
+    }));
     
     // Cloud mode: Add authentication middleware
     if (this.mode === 'cloud' && this.authService) {
@@ -729,6 +731,10 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     if (this.mode === 'local') {
       const ideRoutes = createIDERoutes();
       this.app.use('/api', ideRoutes);
+      
+      // Cloud IDE routes (code-server containers)
+      const cloudIDERoutes = createCloudIDERoutes(this.ideService, this.workspaceResolver);
+      this.app.use('/api/cloud-ide', cloudIDERoutes);
     }
     
     // Kanban routes
@@ -921,11 +927,10 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       if (params.inputFile) {
         args.push(params.inputFile);
       } else if (params.feature && params.userContext) {
-        const featurePath = this.workspaceResolver.getFeaturePath(
-          params.userContext,
-          params.project,
-          params.feature
-        );
+        // Calculate feature path using WorkspaceService
+        const tenantId = `${params.userContext.organizationId}:${params.userContext.userId}`;
+        const handle = await this.workspaceService.createWorkspace(tenantId, params.project);
+        const featurePath = path.join(handle.storagePath, 'features', params.feature);
         args.push(featurePath);
       }
       
@@ -951,12 +956,16 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         throw new Error('userContext is required to run jobs. Authentication failed.');
       }
       
-      // Generate full project path and feature path using WorkspaceResolver
-      const projectPath = this.workspaceResolver.getProjectPath(params.userContext, params.project);
-      const featurePath = params.feature
-        ? this.workspaceResolver.getFeaturePath(params.userContext, params.project, params.feature)
-        : projectPath;  // If no feature, use project path
+      // ✅ Use WorkspaceService to get workspace handle and paths
+      const tenantId = `${params.userContext.organizationId}:${params.userContext.userId}`;
+      const handle = await this.workspaceService.createWorkspace(tenantId, params.project);
       
+      const projectPath = handle.storagePath;
+      const featurePath = params.feature
+        ? path.join(handle.storagePath, 'features', params.feature)
+        : projectPath;
+      
+      console.log(`[ExpressServerAdapter.runJob] 📂 Workspace handle: ${tenantId}/${params.project}`);
       console.log(`[ExpressServerAdapter.runJob] 📂 Project path: ${projectPath}`);
       console.log(`[ExpressServerAdapter.runJob] 📂 Feature path: ${featurePath}`);
       
@@ -970,23 +979,37 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         ? `${params.userContext.userId}@${params.userContext.organizationId}` 
         : undefined;
       
+      // ✅ Build isolated environment for child process
+      // Only whitelist safe system variables, avoid copying all process.env
+      const childEnv: Record<string, string> = {
+        // System essentials
+        PATH: ensuredPath,
+        HOME: process.env.HOME || '/tmp',
+        USER: process.env.USER || 'ant',
+        LANG: process.env.LANG || 'en_US.UTF-8',
+        
+        // Node.js configuration
+        NODE_ENV: process.env.NODE_ENV || 'production',
+        
+        // Ant-specific (job-scoped)
+        ANT_JOB_ID: jobId,
+        ANT_CLI_PORT: process.env.ANT_CLI_PORT || '4100',
+        ANT_PROJECT_ID: params.project || '',
+        ANT_FEATURE_NAME: params.feature || '',
+        ANT_PROJECT_PATH: projectPath,
+        ANT_FEATURE_PATH: featurePath,
+        
+        // Optional parameters
+        ...(userEmail && { ANT_USER_EMAIL: userEmail }),
+        ...(params.overrideDirective && { ANT_OVERRIDE_DIRECTIVE: params.overrideDirective }),
+        ...(params.chatSource && { ANT_CHAT_SOURCE: 'true' })
+      };
+      
       const childProcess = spawn('npx', ['tsx', ...args], {
         cwd: process.cwd(),
-        env: { 
-          ...process.env,
-          PATH: ensuredPath,  // ✅ Explicitly ensure PATH includes standard locations
-          ANT_JOB_ID: jobId,  // ✅ Pass jobId via environment variable
-          ANT_CLI_PORT: process.env.ANT_CLI_PORT || '4100',  // ✅ Pass ant-cli server port (NOT PORT!)
-          ANT_PROJECT_ID: params.project || '',  // ✅ Pass project ID
-          ANT_FEATURE_NAME: params.feature || '',  // ✅ Pass feature name
-          ANT_PROJECT_PATH: projectPath,  // ✅ Pass full project path for config.json
-          ANT_FEATURE_PATH: featurePath,  // ✅ Pass full feature path for outputs (used by command.ts for logging)
-          ...(userEmail && { ANT_USER_EMAIL: userEmail }),  // ✅ Pass user email for HTTP client auth (Cloud mode)
-          ...(params.overrideDirective && { ANT_OVERRIDE_DIRECTIVE: params.overrideDirective }),  // ✅ Pass chat directive
-          ...(params.chatSource && { ANT_CHAT_SOURCE: 'true' })  // ✅ Pass chat source flag
-        },
+        env: childEnv,  // ✅ Use isolated environment
         stdio: ['ignore', 'pipe', 'pipe'],
-        detached: false  // ✅ Keep in same process group for easier killing
+        detached: false
       });
       
       this.childProcesses.set(jobId, childProcess);

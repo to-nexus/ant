@@ -54,44 +54,57 @@ export class InitOperation {
     // Validate workspace
     await this.validateWorkspace(projectPath, codebasePath, config.githubRepo, userContext);
 
-    // Prepare codebase
-    const hasFiles = await this.prepareCodebase(codebasePath, projectId);
+    let gitInitialized = false;
 
-    console.log(`[InitOperation] Initializing new Git repository at ${codebasePath}...`);
+    try {
+      // Prepare codebase
+      const hasFiles = await this.prepareCodebase(codebasePath, projectId);
 
-    // Get base branch from config
-    const baseBranch = config.branchBase || 'main';
-    
-    // Initialize Git
-    const git = await this.initializeGit(codebasePath, baseBranch);
+      console.log(`[InitOperation] Initializing new Git repository at ${codebasePath}...`);
 
-    // Create .gitignore
-    await this.createGitignore(codebasePath);
+      // Get base branch from config
+      const baseBranch = config.branchBase || 'main';
+      
+      // Initialize Git
+      const git = await this.initializeGit(codebasePath, baseBranch);
+      gitInitialized = true;
 
-    // Create initial commit
-    await this.createInitialCommit(git, codebasePath, hasFiles);
+      // Create .gitignore
+      await this.createGitignore(codebasePath);
 
-    // Ensure on default branch
-    const defaultBranch = await this.ensureDefaultBranch(git, baseBranch);
+      // Create initial commit
+      await this.createInitialCommit(git, codebasePath, hasFiles);
 
-    // Build authenticated URL and add remote
-    const credentialContext = {
-      org: userContext.organizationId,
-      user: userContext.userId
-    };
-    const authenticatedUrl = await this.githubAuthService.buildAuthenticatedUrl(
-      credentialContext,
-      config.githubRepo
-    );
+      // Ensure on default branch
+      const defaultBranch = await this.ensureDefaultBranch(git, baseBranch);
 
-    await git.addRemote('origin', authenticatedUrl);
-    console.log('[InitOperation] ✅ Remote added');
+      // Build authenticated URL and add remote
+      const credentialContext = {
+        org: userContext.organizationId,
+        user: userContext.userId
+      };
+      const authenticatedUrl = await this.githubAuthService.buildAuthenticatedUrl(
+        credentialContext,
+        config.githubRepo
+      );
 
-    // Create GitHub repository
-    await this.createGitHubRepo(config.githubRepo, projectId, userContext);
+      await git.addRemote('origin', authenticatedUrl);
+      console.log('[InitOperation] ✅ Remote added');
 
-    // Push and index
-    await this.pushAndIndex(git, defaultBranch, projectId, codebasePath, userContext);
+      // Create GitHub repository
+      await this.createGitHubRepo(config.githubRepo, projectId, userContext);
+
+      // Push and index
+      await this.pushAndIndex(git, defaultBranch, projectId, codebasePath, userContext);
+      
+    } catch (error) {
+      // Rollback: Remove Git initialization if it was created
+      if (gitInitialized) {
+        console.error('[InitOperation] ❌ Initialization failed, rolling back Git setup...');
+        await this.rollback(codebasePath);
+      }
+      throw error;
+    }
   }
 
   private resolveCodebasePath(projectPath: string, config: any): string {
@@ -316,6 +329,34 @@ export class InitOperation {
       } else {
         throw new Error(`Failed to initialize and push: ${errorMsg}`);
       }
+    }
+  }
+
+  /**
+   * Rollback Git initialization
+   * Removes .git directory and .gitignore file
+   */
+  private async rollback(codebasePath: string): Promise<void> {
+    try {
+      // Remove .git directory
+      const gitDir = path.join(codebasePath, '.git');
+      if (fs.existsSync(gitDir)) {
+        await fs.promises.rm(gitDir, { recursive: true, force: true });
+        console.log('[InitOperation] 🔄 Rolled back: .git directory removed');
+      }
+
+      // Remove .gitignore
+      const gitignorePath = path.join(codebasePath, '.gitignore');
+      if (fs.existsSync(gitignorePath)) {
+        await fs.promises.unlink(gitignorePath);
+        console.log('[InitOperation] 🔄 Rolled back: .gitignore removed');
+      }
+
+      // Keep README.md as it might have been user-created
+      console.log('[InitOperation] ✅ Rollback complete');
+    } catch (error) {
+      console.error('[InitOperation] ⚠️ Rollback failed:', error);
+      // Don't throw - rollback is best-effort
     }
   }
 }

@@ -166,12 +166,12 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
       
       if (config.repoType === 'cloud') {
         // Cloud Mode: Use codebase directory
-        // Docker mount: $HOME:/workspace → /Users/probe → /workspace
-        // Workspace path: /Users/probe/ant-workspaces/...
-        // IDE path: /workspace/ant-workspaces/...
+        // ant-ide Docker: ANT_WORKSPACE_BASE_PATH → /workspace
+        // Host: /Users/probe/dev/ant-workspaces/org/user/project/codebase
+        // Docker: /workspace/org/user/project/codebase
         const org = userOrganization || 'default';
         const user = userEmail?.split('@')[0] || 'user';
-        workspacePath = `/workspace/ant-workspaces/${org}/${user}/${selectedProject}/codebase`;
+        workspacePath = `/workspace/${org}/${user}/${selectedProject}/codebase`;
       } else {
         // Local Mode: Use localPath from config
         if (!config.localPath) {

@@ -1,8 +1,8 @@
 /**
- * LocalWorkspaceService
+ * WorkspaceService
  * 
- * Local filesystem-based workspace service implementation.
- * Manages multi-tenant workspaces on local disk.
+ * Workspace service implementation for multi-tenant workspace management.
+ * Manages workspaces on local disk.
  * 
  * Structure:
  *   <basePath>/<tenantId>/<projectId>/
@@ -20,13 +20,12 @@ import * as path from 'path';
 import { 
   WorkspaceServicePort, 
   WorkspaceHandle, 
-  WorkspaceInfo, 
-  MountPoint 
+  WorkspaceInfo
 } from '../../core/ports/workspace';
 import { FileSystemPort } from '../../core/ports/filesystem';
 import { LocalFileSystemAdapter } from '../../periphery/adapters/filesystem/LocalFileSystemAdapter';
 
-export class LocalWorkspaceService implements WorkspaceServicePort {
+export class WorkspaceService implements WorkspaceServicePort {
   private readonly basePath: string;
   private readonly fileSystemCache: Map<string, FileSystemPort>;
   
@@ -40,7 +39,7 @@ export class LocalWorkspaceService implements WorkspaceServicePort {
     // Ensure base path exists
     if (!fs.existsSync(this.basePath)) {
       fs.mkdirSync(this.basePath, { recursive: true });
-      console.log(`[LocalWorkspaceService] Created workspace base: ${this.basePath}`);
+      console.log(`[WorkspaceService] Created workspace base: ${this.basePath}`);
     }
   }
   
@@ -74,9 +73,13 @@ export class LocalWorkspaceService implements WorkspaceServicePort {
   
   /**
    * Get workspace directory path
+   * Converts tenantId colon to slash for proper directory structure
    */
   private getWorkspacePath(tenantId: string, projectId: string): string {
-    return path.join(this.basePath, tenantId, projectId);
+    // ✅ CRITICAL: Replace colon with slash to create proper directory structure
+    // tenantId format: "org:user" → path: "workspaces/org/user/project"
+    const sanitizedTenantId = tenantId.replace(':', '/');
+    return path.join(this.basePath, sanitizedTenantId, projectId);
   }
   
   async createWorkspace(tenantId: string, projectId: string): Promise<WorkspaceHandle> {
@@ -93,7 +96,7 @@ export class LocalWorkspaceService implements WorkspaceServicePort {
       await fs.promises.mkdir(path.join(workspacePath, 'features'), { recursive: true });
       await fs.promises.mkdir(path.join(workspacePath, 'codebase'), { recursive: true });
       
-      console.log(`[LocalWorkspaceService] Created workspace: ${tenantId}/${projectId}`);
+      console.log(`[WorkspaceService] Created workspace: ${tenantId}/${projectId}`);
     }
     
     return {
@@ -112,7 +115,7 @@ export class LocalWorkspaceService implements WorkspaceServicePort {
     
     if (fs.existsSync(workspacePath)) {
       await fs.promises.rm(workspacePath, { recursive: true, force: true });
-      console.log(`[LocalWorkspaceService] Deleted workspace: ${tenantId}/${projectId}`);
+      console.log(`[WorkspaceService] Deleted workspace: ${tenantId}/${projectId}`);
     }
     
     // Remove from cache
@@ -171,26 +174,12 @@ export class LocalWorkspaceService implements WorkspaceServicePort {
     return totalSize;
   }
   
-  async mountWorkspace(handle: WorkspaceHandle, readonly: boolean = false): Promise<MountPoint> {
-    // For local filesystem, mounting is a no-op (already local)
-    // Just return the path directly
-    
-    return {
-      path: handle.storagePath,
-      expiresAt: new Date(Date.now() + 86400000), // 24 hours
-      readonly
-    };
-  }
-  
-  async unmountWorkspace(mountPoint: MountPoint): Promise<void> {
-    // For local filesystem, unmounting is a no-op
-    // No cleanup needed
-  }
-  
   async listWorkspaces(tenantId: string): Promise<WorkspaceHandle[]> {
     this.validateIdentifier(tenantId, 'tenantId');
     
-    const tenantPath = path.join(this.basePath, tenantId);
+    // ✅ CRITICAL: Replace colon with slash for proper directory structure
+    const sanitizedTenantId = tenantId.replace(':', '/');
+    const tenantPath = path.join(this.basePath, sanitizedTenantId);
     
     if (!fs.existsSync(tenantPath)) {
       return [];

@@ -91,10 +91,13 @@ export class WorkspacePathResolver {
 
 
 /**
- * Local Mode Workspace Resolver
+ * Local Mode Workspace Resolver (Legacy - for CLI commands)
  * 
  * 구조: workspaces/local/user/<project>/features/<feature>
  * Local 모드에서는 단일 사용자이므로 UserContext 무시
+ * 
+ * ⚠️ NOTE: Server mode now uses WorkspaceServiceAdapter instead.
+ * This class is kept for backward compatibility with CLI commands.
  */
 export class LocalWorkspaceResolver implements WorkspaceResolver {
   constructor(private readonly workspacesPath: string) {}
@@ -120,10 +123,13 @@ export class LocalWorkspaceResolver implements WorkspaceResolver {
 }
 
 /**
- * Cloud Mode Workspace Resolver
+ * Cloud Mode Workspace Resolver (Legacy - for CLI commands)
  * 
  * 구조: workspaces/<org>/<user>/<project>/features/<feature>
- * Cloud 모드에서는 요청마다 UserContext 검증
+ * 각 organization과 user별로 분리된 workspace 구조
+ * 
+ * ⚠️ NOTE: Server mode now uses WorkspaceServiceAdapter instead.
+ * This class is kept for backward compatibility with CLI commands.
  */
 export class CloudWorkspaceResolver implements WorkspaceResolver {
   constructor(private readonly workspacesPath: string) {}

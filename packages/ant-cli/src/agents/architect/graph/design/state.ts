@@ -34,9 +34,8 @@ export interface DesignGraphState extends TaskArtifacts {
     fileSystem?: import('../../../../core/ports/filesystem').FileSystemPort;  // ✅ NEW: File I/O operations
     analyzer?: CodebaseAnalyzerPort;
     memory?: MemoryPort;
-    workspaceService?: import('../../../../core/ports/workspace').WorkspaceServicePort;  // ✅ NEW: Workspace management
-    workspaceHandle?: import('../../../../core/ports/workspace').WorkspaceHandle;  // ✅ NEW: Current workspace
-    workspaceResolver?: import('../../../../infrastructure/workspace/WorkspaceResolver').WorkspaceResolver;  // ✅ Legacy workspace resolver
+    workspaceService?: import('../../../../core/ports/workspace').WorkspaceServicePort;  // ✅ Workspace management
+    workspaceHandle?: import('../../../../core/ports/workspace').WorkspaceHandle;  // ✅ Current workspace
     kanbanUpdate?: TaskQueueUpdatePort;  // ✅ For real-time Kanban updates
     fileTreeUpdate?: import('../../../../core/ports').FileTreeUpdatePort;
     workflowUpdate?: import('../../../../core/ports/workflow').WorkflowStateUpdatePort;

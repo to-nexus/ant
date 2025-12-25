@@ -194,8 +194,6 @@ export function ProjectSection() {
     
     setShowGitMenu(false);
     
-    console.log('[ProjectSection] 📡 Triggering explicit fetch (bypassing timer)...');
-    
     // ✅ Set bypass flag and trigger both useGitChanges and useFeatureBranchManager
     useStore.setState((state) => ({ 
       bypassFetchTimer: true, // ← useFeatureBranchManager will fetch from GitHub
