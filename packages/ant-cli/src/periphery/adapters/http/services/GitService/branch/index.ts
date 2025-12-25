@@ -244,11 +244,27 @@ export class BranchService {
             const originExists = remotes.some(r => r.name === 'origin');
             if (originExists) {
               await git.remote(['set-url', 'origin', authenticatedUrl]);
+              
+              // ✅ Fix shallow clone: Update fetch refspec to get all branches
+              await git.raw(['config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*']);
+              console.log(`[BranchService] Updated fetch refspec to fetch all branches`);
             } else {
               await git.addRemote('origin', authenticatedUrl);
             }
           } catch (remoteError) {
             console.log(`[GitBranchService] Could not update remote:`, remoteError);
+          }
+          
+          // ✅ Unshallow if needed
+          try {
+            const isShallow = await git.revparse(['--is-shallow-repository']).then(r => r.trim() === 'true').catch(() => false);
+            if (isShallow) {
+              console.log(`[BranchService] Detected shallow clone, converting to full...`);
+              await git.fetch(['--unshallow']);
+              console.log(`[BranchService] ✅ Converted to full repository`);
+            }
+          } catch (unshallowError) {
+            console.log(`[BranchService] Could not unshallow (non-critical):`, unshallowError);
           }
           
           // ✅ Check remote branch existence using branch -r after fetch
