@@ -18,7 +18,8 @@ export { createDevServerRoutes } from './dev-server.routes';
 export { createWorkflowRoutes } from './workflow.routes';
 export { createSSERoutes } from './sse.routes';
 export { createAuthRoutes } from './auth.routes';
-export { createIDERoutes } from './ide.routes';
+export { createIDERoutes } from './ide.routes';  // Local IDE
+export { createCloudIDERoutes } from './cloud-ide.routes';  // Cloud IDE (containers)
 
 /**
  * Dependencies for route creation

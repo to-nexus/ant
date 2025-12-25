@@ -12,8 +12,7 @@ console.log(`[Server] Loading .env from: ${envPath}`);
 
 import { ExpressServerAdapter } from "../periphery/adapters/http/ExpressServerAdapter";
 import { WorkspacePathResolver } from "../infrastructure/workspace/WorkspaceResolver";
-import { LocalWorkspaceResolver } from "../infrastructure/workspace/LocalWorkspaceResolver";
-import { LocalWorkspaceService } from "../infrastructure/workspace/LocalWorkspaceService";
+import { WorkspaceService } from "../infrastructure/workspace/WorkspaceService";
 
 /**
  * Server Entry Point
@@ -59,12 +58,7 @@ async function main() {
   const workspacesPath = WorkspacePathResolver.getPhysicalWorkspacesPath();
   
   // ✅ Initialize WorkspaceService for multi-tenant workspace management
-  const workspaceService = new LocalWorkspaceService(workspacesPath);
-  
-  // Use correct resolver for mode (legacy, will be replaced by WorkspaceService)
-  const resolver = mode === 'cloud'
-    ? new (await import('../infrastructure/workspace/WorkspaceResolver')).CloudWorkspaceResolver(workspacesPath)
-    : new LocalWorkspaceResolver(workspacesPath);
+  const workspaceService = new WorkspaceService(workspacesPath);
   
   const cloudUrl = process.env.CLOUD_URL || DEFAULT_CLOUD_URL;
   

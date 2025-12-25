@@ -118,7 +118,6 @@ export function useGitChanges(
   useEffect(() => {
     if (gitStatus?.currentBranch && gitChanges) {
       if (gitChanges.currentBranch !== gitStatus.currentBranch) {
-        console.log(`[useGitChanges] 🔄 Syncing currentBranch from store: ${gitChanges.currentBranch} → ${gitStatus.currentBranch}`);
         setGitChanges(prev => prev ? { ...prev, currentBranch: gitStatus.currentBranch } : prev);
       }
     }
@@ -140,7 +139,6 @@ export function useGitChanges(
     prevTriggerRef.current = gitStatusRefreshTrigger;
     
     if (triggerChanged) {
-      console.log(`[useGitChanges] 🔄 Explicit refresh trigger: ${gitStatusRefreshTrigger}`);
       setTriggerFetch(prev => prev + 1);
     }
   }, [gitStatusRefreshTrigger]);
@@ -160,7 +158,6 @@ export function useGitChanges(
 
     const fetchChanges = async () => {
       setIsFetchingChanges(true);
-      console.log(`[useGitChanges] 🔄 Starting fetch for ${selectedProject}/${selectedFeature || 'base'}...`);
       try {
         const changes = await getGitChanges(selectedProject);
         setGitChanges(changes);
@@ -168,11 +165,9 @@ export function useGitChanges(
         setCachedChanges(changes);
         
         // ✅ CRITICAL: Only record fetch time AFTER successful completion
-        const now = Date.now();
-        console.log(`[useGitChanges] ✅ Fetch succeeded, recording time: ${now}`);
-        setLastFetchTime(now);
+        setLastFetchTime(Date.now());
       } catch (error: any) {
-        console.warn(`[useGitChanges] ⚠️ Fetch failed:`, error);
+        console.warn('[useGitChanges] Fetch failed:', error);
         if (error.message?.includes('not initialized')) {
           setGitChanges(null);
           setIsGitInitialized(false);
@@ -201,7 +196,6 @@ export function useGitChanges(
     const internalTriggerChanged = prevInternalTriggerRef.current !== triggerFetch && triggerFetch > 0;
     
     if (internalTriggerChanged) {
-      console.log(`[useGitChanges] 🎯 Priority 2: Explicit user action (trigger: ${prevInternalTriggerRef.current} → ${triggerFetch}) → bypassing timer`);
       prevInternalTriggerRef.current = triggerFetch;
       fetchChanges();
       return;
@@ -212,7 +206,6 @@ export function useGitChanges(
     
     // Priority 3: Initial load (gitChanges is null) - bypass timer
     if (gitChanges === null && !isFetchingChanges) {
-      console.log(`[useGitChanges] 🎯 Priority 3: Initial load (no data) → bypassing timer`);
       fetchChanges();
       return;
     }
@@ -221,24 +214,18 @@ export function useGitChanges(
     const lastFetchTime = getLastFetchTime();
     const now = Date.now();
     const timeSinceLastFetch = now - lastFetchTime;
-    const timeRemainingMs = GIT_FETCH_INTERVAL - timeSinceLastFetch;
     
     if (timeSinceLastFetch < GIT_FETCH_INTERVAL) {
-      const remainingSeconds = Math.ceil(timeRemainingMs / 1000);
-      const lastFetchTimeString = lastFetchTime ? new Date(lastFetchTime).toLocaleTimeString('ko-KR') : 'never';
-      console.log(`[useGitChanges] ⏸️ Priority 4: Timer not expired - ${remainingSeconds}s remaining (last fetch: ${lastFetchTimeString}) → skipping`);
       return;
     }
     
     // Timer passed - now check if we should fetch
     if (loadingJustCompleted) {
-      console.log(`[useGitChanges] 🎯 Priority 4: Timer expired + loading completed → fetching`);
       fetchChanges();
       return;
     }
     
     // Delayed polling (debounce rapid re-renders)
-    console.log(`[useGitChanges] 🎯 Priority 4: Timer expired + polling → fetching after 500ms`);
     const delayTimer = setTimeout(() => {
       fetchChanges();
     }, 500);

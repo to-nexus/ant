@@ -3,24 +3,62 @@ import { Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import { LogEntry } from '../../../../core/ports/http';
+import { PortManager } from '../../../../infrastructure/networking/PortManager';
+import { PortRegistryPort } from '../../../../core/ports/portRegistry';
 
 /**
  * DevServerService
  * 
- * Manages development servers for projects.
+ * Manages development servers for projects at feature/branch level.
  * Handles spawning, monitoring, and stopping dev servers.
+ * Uses PortManager for dynamic port allocation.
+ * Uses PortRegistry for proxy port mappings (in-memory or Redis).
  */
 export class DevServerService {
   private devServers: Map<string, ChildProcess> = new Map();
   private devServerPorts: Map<string, number> = new Map();
   private devServerLogs: Map<string, LogEntry[]> = new Map();
-  private installingProjects: Set<string> = new Set();  // ✅ Track installing projects
+  private installingProjects: Set<string> = new Set();
   private onStatusChange?: (projectId: string) => void;
+  private portManager?: PortManager;
+  private portRegistry?: PortRegistryPort;  // ✅ Port registry (in-memory or Redis)
   
-  constructor(callbacks?: {
-    onStatusChange?: (projectId: string) => void;
-  }) {
+  constructor(
+    portManager?: PortManager,
+    portRegistry?: PortRegistryPort,
+    callbacks?: {
+      onStatusChange?: (projectId: string) => void;
+    }
+  ) {
+    this.portManager = portManager;
+    this.portRegistry = portRegistry;
     this.onStatusChange = callbacks?.onStatusChange;
+  }
+  
+  /**
+   * Create unique server key
+   * Format: tenantId:userId:projectId:feature
+   */
+  private createServerKey(tenantId: string, userId: string, projectId: string, feature: string): string {
+    return `${tenantId}:${userId}:${projectId}:${feature}`;
+  }
+  
+  /**
+   * Parse server key into components
+   */
+  private parseServerKey(serverKey: string): { 
+    tenantId: string; 
+    userId: string;
+    projectId: string; 
+    feature: string;
+  } {
+    const [tenantId, userId, projectId, ...featureParts] = serverKey.split(':');
+    return {
+      tenantId,
+      userId,
+      projectId,
+      feature: featureParts.join(':')  // Feature might contain ':'
+    };
   }
   
   /**
@@ -97,20 +135,50 @@ export class DevServerService {
   }
   
   /**
-   * Start dev server for a project
+   * Start dev server for a project feature
+   * @param tenantId - Organization/tenant identifier
+   * @param userId - User identifier within the organization
+   * @param projectId - Project identifier
+   * @param feature - Feature/branch identifier
+   * @param localPath - Local filesystem path to project
+   * @param port - Optional port override
    */
-  async startDevServer(projectId: string, localPath: string, port?: number): Promise<{ success: boolean; message?: string; error?: string }> {
+  async startDevServer(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    feature: string,
+    localPath: string,
+    port?: number
+  ): Promise<{ 
+    success: boolean; 
+    message?: string; 
+    error?: string; 
+    port?: number;
+    serverKey?: string;
+    url?: string;           // ✅ 통합된 URL (로컬/프로덕션 모두 /dev/xxx 사용)
+  }> {
+    const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
+    const proxyUrl = `/dev/${serverKey}`;
+    
     // Check if dev server is already running
-    if (this.devServers.has(projectId)) {
-      return { success: false, error: 'Dev server already running' };
+    if (this.devServers.has(serverKey)) {
+      const existingPort = this.devServerPorts.get(serverKey);
+      return { 
+        success: false, 
+        error: 'Dev server already running', 
+        port: existingPort,
+        serverKey,
+        url: proxyUrl
+      };
     }
     
     // ✅ CRITICAL: Check and add ATOMICALLY (before any await!)
-    if (this.installingProjects.has(projectId)) {
+    if (this.installingProjects.has(serverKey)) {
       return { success: false, error: 'Dependencies are being installed. Please wait...' };
     }
     // ✅ Add immediately to prevent race condition with concurrent requests
-    this.installingProjects.add(projectId);
+    this.installingProjects.add(serverKey);
     
     // Check if package.json exists
     const packageJsonPath = path.join(localPath, 'package.json');
@@ -134,11 +202,33 @@ export class DevServerService {
     // ✅ Smart dependency check: install if missing OR outdated
     const needsInstall = await this.checkIfInstallNeeded(localPath, hasNodeModules);
     
-    // ✅ Use provided port or default
-    const devPort = port || 4200;
+    // ✅ Use PortManager for dynamic allocation, fallback to provided/default port
+    let devPort: number;
+    if (this.portManager) {
+      try {
+        devPort = await this.portManager.allocate();
+        console.log(`[DevServerService] Allocated dynamic port: ${devPort} for ${serverKey}`);
+      } catch (error) {
+        console.warn(`[DevServerService] Failed to allocate port, using fallback`);
+        devPort = port || 4200;
+      }
+    } else {
+      devPort = port || 4200;
+    }
+    
+    // ✅ Register port in PortRegistry (in-memory or Redis)
+    if (this.portRegistry) {
+      try {
+        await this.portRegistry.registerDevServer(tenantId, userId, projectId, feature, devPort);
+        console.log(`[DevServerService] Registered: ${serverKey} → ${devPort}`);
+      } catch (error) {
+        console.warn(`[DevServerService] Failed to register in PortRegistry:`, error);
+        // Continue anyway - dev server can still work locally
+      }
+    }
     
     // Clear previous logs
-    this.devServerLogs.set(projectId, []);
+    this.devServerLogs.set(serverKey, []);
     
     // ✅ Auto-install dependencies if needed
     if (needsInstall) {
@@ -460,6 +550,16 @@ export class DevServerService {
       // Cleanup
       this.devServers.delete(projectId);
       this.devServerPorts.delete(projectId);
+      
+      // ✅ Unregister from Redis
+      if (this.portRegistry) {
+        const [tenantId, ...projectIdParts] = projectId.split(':');
+        const actualProjectId = projectIdParts.join(':');
+        this.portRegistry.unregisterDevServer(tenantId, actualProjectId).catch(err => {
+          console.warn(`[DevServerService] Failed to unregister from Redis:`, err);
+        });
+      }
+      
       this.onStatusChange?.(projectId);
     });
     
@@ -479,27 +579,62 @@ export class DevServerService {
       // Cleanup
       this.devServers.delete(projectId);
       this.devServerPorts.delete(projectId);
+      
+      // ✅ Unregister from Redis
+      if (this.portRegistry) {
+        const [tenantId, ...projectIdParts] = projectId.split(':');
+        const actualProjectId = projectIdParts.join(':');
+        this.portRegistry.unregisterDevServer(tenantId, actualProjectId).catch(err => {
+          console.warn(`[DevServerService] Failed to unregister from Redis:`, err);
+        });
+      }
+      
       this.onStatusChange?.(projectId);
     });
     
-    return { success: true, message: 'Dev server starting...' };
+    return { 
+      success: true, 
+      message: 'Dev server starting...', 
+      port: devPort,
+      serverKey,
+      url: `/dev/${serverKey}`  // ✅ 로컬/프로덕션 모두 동일한 프록시 URL
+    };
   }
   
   /**
-   * Stop dev server for a project
+   * Stop dev server
    */
-  stopDevServer(projectId: string): { success: boolean; message?: string; error?: string } {
-    const devProcess = this.devServers.get(projectId);
+  stopDevServer(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    feature: string
+  ): { success: boolean; message?: string; error?: string } {
+    const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
+    const devProcess = this.devServers.get(serverKey);
     
     if (!devProcess) {
       return { success: false, error: 'Dev server not running' };
+    }
+    
+    // Release port if using PortManager
+    const port = this.devServerPorts.get(serverKey);
+    if (port && this.portManager) {
+      this.portManager.release(port);
+    }
+    
+    // ✅ Unregister from PortRegistry
+    if (this.portRegistry) {
+      this.portRegistry.unregisterDevServer(tenantId, userId, projectId, feature).catch(err => {
+        console.warn(`[DevServerService] Failed to unregister from PortRegistry:`, err);
+      });
     }
     
     devProcess.kill('SIGTERM');
     
     // Add a timeout to force kill if graceful shutdown fails
     setTimeout(() => {
-      if (this.devServers.has(projectId)) {
+      if (this.devServers.has(serverKey)) {
         devProcess.kill('SIGKILL');
       }
     }, 5000);
@@ -510,13 +645,21 @@ export class DevServerService {
   /**
    * Get dev server status
    */
-  getDevServerStatus(projectId: string): {
+  getDevServerStatus(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    feature: string
+  ): {
     running: boolean;
     port?: number;
     pid?: number;
+    serverKey?: string;
+    url?: string;           // ✅ 통합된 URL
   } {
-    const devProcess = this.devServers.get(projectId);
-    const port = this.devServerPorts.get(projectId);
+    const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
+    const devProcess = this.devServers.get(serverKey);
+    const port = this.devServerPorts.get(serverKey);
     
     // ✅ Check if process is actually alive (not killed or exited)
     const isActuallyRunning = devProcess && 
@@ -525,23 +668,31 @@ export class DevServerService {
     
     // ✅ If process is dead but still in map, clean it up
     if (devProcess && !isActuallyRunning) {
-      console.log(`[DevServerService] Cleaning up dead process for ${projectId}`);
-      this.devServers.delete(projectId);
-      this.devServerPorts.delete(projectId);
+      console.log(`[DevServerService] Cleaning up dead process for ${serverKey}`);
+      this.devServers.delete(serverKey);
+      this.devServerPorts.delete(serverKey);
     }
     
     return {
       running: !!isActuallyRunning,
       port: isActuallyRunning ? port : undefined,
-      pid: isActuallyRunning ? devProcess?.pid : undefined
+      pid: isActuallyRunning ? devProcess?.pid : undefined,
+      serverKey: isActuallyRunning ? serverKey : undefined,
+      url: isActuallyRunning ? `/dev/${serverKey}` : undefined
     };
   }
   
   /**
    * Get dev server logs
    */
-  getDevServerLogs(projectId: string): LogEntry[] {
-    return this.devServerLogs.get(projectId) || [];
+  getDevServerLogs(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    feature: string
+  ): LogEntry[] {
+    const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
+    return this.devServerLogs.get(serverKey) || [];
   }
   
   /**

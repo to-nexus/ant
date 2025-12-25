@@ -14,7 +14,7 @@ export interface WorkspaceHandle {
   tenantId: string;      // Organization:User (e.g., "acme:alice")
   projectId: string;     // Project name
   storageType: 'local' | 's3' | 'nfs';
-  storagePath: string;   // Physical path (opaque - do not access directly)
+  storagePath: string;   // Physical path for direct access
 }
 
 /**
@@ -25,16 +25,6 @@ export interface WorkspaceInfo {
   createdAt: Date;
   lastAccessedAt: Date;
   sizeBytes: number;
-}
-
-/**
- * Mount point for job execution
- * Provides temporary local access to workspace
- */
-export interface MountPoint {
-  path: string;          // Local filesystem path
-  expiresAt: Date;       // Auto-unmount time
-  readonly: boolean;     // Read-only mount
 }
 
 /**
@@ -66,19 +56,6 @@ export interface WorkspaceServicePort {
    * Get workspace metadata
    */
   getWorkspaceInfo(handle: WorkspaceHandle): Promise<WorkspaceInfo>;
-  
-  /**
-   * Mount workspace to local filesystem (for job execution)
-   * Used when spawning child processes that need direct file access.
-   * @returns Mount point with local path
-   */
-  mountWorkspace(handle: WorkspaceHandle, readonly?: boolean): Promise<MountPoint>;
-  
-  /**
-   * Unmount workspace
-   * Cleanup temporary mounts and sync changes back to storage.
-   */
-  unmountWorkspace(mountPoint: MountPoint): Promise<void>;
   
   /**
    * List all workspaces for a tenant

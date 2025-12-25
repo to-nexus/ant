@@ -183,9 +183,8 @@ export interface ArchitectGraphState extends TaskArtifacts {
     command?: CommandPort;
     retriever?: import('../../../../core/codebase/CodebaseRetriever').CodebaseRetriever;  // ✅ For reference loading
     vectorDB?: MemoryPort;  // ✅ Explicit vectorDB port (same as memory)
-    workspaceService?: import('../../../../core/ports/workspace').WorkspaceServicePort;  // ✅ NEW: Workspace management
-    workspaceHandle?: import('../../../../core/ports/workspace').WorkspaceHandle;  // ✅ NEW: Current workspace
-    workspaceResolver?: import('../../../../infrastructure/workspace/WorkspaceResolver').WorkspaceResolver;  // ✅ Legacy workspace resolver
+    workspaceService?: import('../../../../core/ports/workspace').WorkspaceServicePort;  // ✅ Workspace management
+    workspaceHandle?: import('../../../../core/ports/workspace').WorkspaceHandle;  // ✅ Current workspace
     kanbanUpdate?: TaskQueueUpdatePort;  // ✅ For real-time Kanban updates
     fileTreeUpdate?: import('../../../../core/ports').FileTreeUpdatePort;  // ✅ For real-time file tree updates
     workflowUpdate?: import('../../../../core/ports').WorkflowStateUpdatePort;  // ✅ For real-time workflow visualization
