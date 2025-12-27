@@ -262,21 +262,6 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       console.log(`   ✅ Chat message finalized (file cards marked as cancelled)`);
     }
     
-    // Clear live data
-    this.taskQueueSnapshots.delete(jobId);
-    this.jobToProject.delete(jobId);
-    this.jobs.delete(jobId);  // ✅ CRITICAL: Delete job status to prevent UI from detecting it as active
-    console.log(`   ✅ Cleared live data (snapshot, jobToProject, jobs)`);
-    console.log(`   ✅ jobs.size after delete: ${this.jobs.size}`);
-    console.log(`   ✅ jobToProject.size after delete: ${this.jobToProject.size}`);
-    console.log(`   ✅ taskQueueSnapshots.size after delete: ${this.taskQueueSnapshots.size}`);
-    
-    if (this.currentJobId === jobId) {
-      this.currentJobId = null;
-      console.log(`   ✅ Cleared currentJobId`);
-    }
-    
-    
   // ✅ Move in-progress task back to queue in session file
   if (mapping) {
     try {
@@ -416,9 +401,38 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
           console.log(`   ✅ Kanban data source: ${kanbanData.dataSource}`);
           this.sseService.broadcast(mapping.projectId, mapping.featureName, 'kanban', kanbanData);
           console.log(`   ✅ Broadcast complete`);
+          
+          // ✅ CRITICAL: Clear live data AFTER broadcast (so UI can see final state)
+          this.taskQueueSnapshots.delete(jobId);
+          this.jobToProject.delete(jobId);
+          this.jobs.delete(jobId);
+          console.log(`   ✅ Cleared live data (snapshot, jobToProject, jobs)`);
+          
+          if (this.currentJobId === jobId) {
+            this.currentJobId = null;
+            console.log(`   ✅ Cleared currentJobId`);
+          }
         }).catch(err => {
           console.error(`   ❌ Failed to broadcast Kanban update:`, err);
+          
+          // ✅ Clean up even if broadcast fails
+          this.taskQueueSnapshots.delete(jobId);
+          this.jobToProject.delete(jobId);
+          this.jobs.delete(jobId);
+          
+          if (this.currentJobId === jobId) {
+            this.currentJobId = null;
+          }
         });
+      } else {
+        // ✅ If not broadcasting, still need to clear data
+        this.taskQueueSnapshots.delete(jobId);
+        this.jobToProject.delete(jobId);
+        this.jobs.delete(jobId);
+        
+        if (this.currentJobId === jobId) {
+          this.currentJobId = null;
+        }
       }
       
       // ✅ Add cancelled message to chat if interruption occurred

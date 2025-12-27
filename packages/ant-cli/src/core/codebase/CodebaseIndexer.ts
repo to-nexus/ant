@@ -395,6 +395,8 @@ export class CodebaseIndexer {
     const content = fs.readFileSync(absolutePath, 'utf8');
     const relativePath = path.relative(workingDir, absolutePath);
     
+    console.log(`   📄 Indexing: ${relativePath} (workingDir: ${workingDir})`);
+    
     // Skip very large files (>2MB) to prevent memory issues
     const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB (reasonable limit)
     if (content.length > MAX_FILE_SIZE) {
@@ -434,6 +436,8 @@ export class CodebaseIndexer {
       content: chunk.text,
       metadata: chunk.metadata
     }));
+
+    console.log(`      → ${documents.length} chunks, metadata.filePath="${relativePath}"`);
 
     await deps.vectorDB.store(documents, project);
 

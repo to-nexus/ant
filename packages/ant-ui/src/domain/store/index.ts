@@ -9,6 +9,7 @@ import { createDevServerSlice, DevServerSlice } from './slices/devServerSlice';
 import { createAuthSlice, AuthSlice } from './slices/authSlice';
 import { createConfigSlice, ConfigSlice } from './slices/configSlice';
 import { createResetSlice, ResetSlice } from './slices/resetSlice';
+import { createChatSlice, ChatSlice } from './slices/chatSlice';
 import { loadFromStorage, STORAGE_KEYS } from './storage';
 
 // Combined store type
@@ -21,7 +22,8 @@ export type Store = ProjectSlice &
   DevServerSlice & 
   AuthSlice & 
   ConfigSlice & 
-  ResetSlice;
+  ResetSlice &
+  ChatSlice;
 
 // Initialize persistent state from localStorage
 function initializePersistentState() {
@@ -56,6 +58,7 @@ export const useStore = create<Store>((set, get, store) => {
     ...createAuthSlice(set, get, store),
     ...createConfigSlice(set, get, store),
     ...createResetSlice(set, get, store),
+    ...createChatSlice(set, get, store),
     
     // Override with persistent state
     userEmail: persistent.userEmail,

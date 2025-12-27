@@ -421,7 +421,8 @@ export class TemplateComposer {
       'game-guide': {},
       'service-guide': {},
       'game-domain-guide': {},
-      'service-domain-guide': {}
+      'service-domain-guide': {},
+      'dev-server-setup': {}  // ✅ Dev server basename setup for frontend routing
     };
     
     return varMap[filename] || {};

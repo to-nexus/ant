@@ -66,7 +66,8 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
         return;
       }
       
-      console.log(`[Store] ✅ Job completed for ${currentFeatureKey}`);
+      // Debug logging (disabled for production)
+      // console.log(`[Store] ✅ Job completed for ${currentFeatureKey}`);
       set({ 
         kanban: data,
         runningJobsByFeature: updatedRunningJobs,
@@ -199,6 +200,13 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
           break;
           
         case 'content_update':
+          console.log('[Store] 💬 content_update:', {
+            messageId: event.messageId,
+            contentIndex: event.contentIndex,
+            oldType: get().chatMessages.find((m: ChatMessage) => m.id === event.messageId)?.contents[event.contentIndex]?.type,
+            newType: event.content.type
+          });
+          
           const message = get().chatMessages.find((m: ChatMessage) => m.id === event.messageId);
           if (message) {
             const updatedContents = [...message.contents];

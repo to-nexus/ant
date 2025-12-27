@@ -164,6 +164,8 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   if (state.deps?.git) {
     try {
       const repoRoot = await state.deps.git.getRepoRoot();
+      console.log(`   🔍 [Decompose] Checking project code at: ${repoRoot}`);
+      
       const fs = await import('fs/promises');
       const path = await import('path');
       
@@ -181,6 +183,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       );
       
       hasProjectCode = hasSourceDir || hasPackageJson;
+      console.log(`   ${hasProjectCode ? '✅' : '❌'} Project code exists: ${hasProjectCode} (hasSourceDir=${hasSourceDir}, hasPackageJson=${hasPackageJson})`);
       
       if (hasProjectCode && (!codebaseFilePaths || codebaseFilePaths.length === 0)) {
         console.log(`⚠️  [Decompose] Project has code but Vector DB is empty`);

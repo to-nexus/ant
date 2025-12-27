@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as ts from "typescript";
+import { FileSystemPort } from "../ports";
 
 /**
  * Import relationship
@@ -25,17 +26,29 @@ export interface ImportNode {
  * 
  * Builds and analyzes import dependency graph
  * Helps find related files based on import relationships
+ * 
+ * ✅ REFACTORED: Optional FileSystemPort support
  */
 export class ImportGraphAnalyzer {
   private graph: Map<string, ImportNode> = new Map();
+  private fileSystem?: FileSystemPort;
+  
+  /**
+   * Constructor
+   * @param fileSystem - Optional FileSystemPort for file operations
+   */
+  constructor(fileSystem?: FileSystemPort) {
+    this.fileSystem = fileSystem;
+  }
   
   /**
    * Build import graph for a directory
+   * ✅ Uses FileSystemPort if available, falls back to fs
    */
   async buildGraph(rootDir: string, extensions: string[] = ['.ts', '.tsx', '.js', '.jsx']): Promise<void> {
     console.log('🔍 Building import graph...');
     
-    const files = this.findSourceFiles(rootDir, extensions);
+    const files = await this.findSourceFiles(rootDir, extensions);
     
     // Parse each file and extract imports
     for (const file of files) {

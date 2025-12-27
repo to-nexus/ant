@@ -32,9 +32,9 @@ export class SimpleGitAdapter implements GitPort {
     if (this.config.repoType === "local") {
       return resolveLocalPath(this.config.localPath, this.project);
     }
-    // For cloud repos, codebase is in projectPath/codebase
+    // For cloud repos, projectPath is already the codebase path
     if (this.config.repoType === "cloud") {
-      return path.join(this.projectPath, 'codebase');
+      return this.projectPath;
     }
     return (await this.git.revparse(["--show-toplevel"]))?.trim();
   }

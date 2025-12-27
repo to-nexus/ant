@@ -1,4 +1,3 @@
-import * as fs from "fs";
 import * as path from "path";
 import { GitPort } from "../../ports";
 import { CodeContext, FileWithSource } from "../types";
@@ -8,22 +7,27 @@ import { generateGitDiffSummary, formatGitDiffForPrompt, GitDiffSummary } from "
  * File Loader
  * 
  * Loads file contents from disk (current + Git HEAD versions).
+ * ✅ REFACTORED: Uses GitPort for all file operations (no direct fs)
  */
 export class FileLoader {
   
   /**
    * Load file versions (current + original for changed files)
    * 
+   * ✅ CRITICAL: GitPort is now REQUIRED (not optional)
+   * - GitPort provides readFile() which works through FileSystemPort internally
+   * - No more direct fs access
+   * 
    * @param files - Files to load with source tracking
-   * @param workingDir - Working directory
-   * @param git - Git port (optional, for HEAD versions)
+   * @param workingDir - Working directory (for relative path calculation)
+   * @param git - Git port (REQUIRED for file reading)
    * @param maxTokens - Maximum tokens to load
    * @returns Code context with loaded files
    */
   async load(
     files: FileWithSource[],
     workingDir: string,
-    git: GitPort | undefined,
+    git: GitPort,  // ✅ No longer optional
     maxTokens: number
   ): Promise<CodeContext> {
     
@@ -34,25 +38,23 @@ export class FileLoader {
     let filesChanged = 0;
 
     for (const fileInfo of files) {
-      const fullPath = path.isAbsolute(fileInfo.path)
-        ? fileInfo.path
-        : path.join(workingDir, fileInfo.path);
+      // ✅ GitPort.readFile() expects relative paths
+      const relativePath = fileInfo.path;
 
-      if (!fs.existsSync(fullPath)) {
+      // ✅ Use GitPort to read file (works through FileSystemPort)
+      const currentContent = await git.readFile(relativePath);
+      
+      if (currentContent === null) {
         console.warn(`   ⚠️  File not found: ${fileInfo.path}`);
         continue;
       }
 
-      // Load current version (working tree)
-      const currentContent = fs.readFileSync(fullPath, 'utf8');
       const tokens = this.estimateTokens(currentContent);
 
       if (totalTokens + tokens > maxTokens) {
         console.warn(`   ⚠️  Token budget exceeded, stopping at ${currentFiles.length} files`);
         break;
       }
-
-      const relativePath = path.relative(workingDir, fullPath);
       
       currentFiles.push({
         path: relativePath,
@@ -60,8 +62,8 @@ export class FileLoader {
       });
       totalTokens += tokens;
 
-      // ✅ Load Git HEAD version (if file has local changes AND Git is available)
-      if (fileInfo.hasLocalChanges && git) {
+      // ✅ Load Git HEAD version (if file has local changes)
+      if (fileInfo.hasLocalChanges) {
         try {
           const headContent = await git.getHeadFile(relativePath);
           if (headContent !== null) {
@@ -86,7 +88,7 @@ export class FileLoader {
     
     // ✅ Generate Git diff summary (replaces codeHead)
     let gitDiff: GitDiffSummary | undefined = undefined;
-    if (filesChanged > 0 && git) {
+    if (filesChanged > 0) {
       const filePaths = files.slice(0, currentFiles.length).map(f => f.path);
       const diffResult = await generateGitDiffSummary(git, workingDir, filePaths);
       

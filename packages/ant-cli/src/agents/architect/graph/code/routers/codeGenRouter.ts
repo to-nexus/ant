@@ -13,9 +13,30 @@
  *    - Error task (type=error) → installDeps → runtimeValidate
  *    - Feature task → checkTaskStatus (validation skip)
  * 3. 그 외 → codeGen 노드 (재추론)
+ * 
+ * Safety Nets:
+ * A. Final task approaching recursion limit → Force validation
+ * B. Repeated tool failures detected → Force validation
  */
 
 import { ArchitectGraphState, TASK_PRIORITIES } from '../state';
+
+/**
+ * Detect recent tool failures from command history
+ */
+function detectRecentToolFailures(state: ArchitectGraphState): number {
+  if (!state.commandHistory || state.commandHistory.length === 0) {
+    return 0;
+  }
+  
+  const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+  const recentFailures = state.commandHistory.filter(h => 
+    !h.success && 
+    h.timestamp > fiveMinutesAgo
+  );
+  
+  return recentFailures.length;
+}
 
 export function routeAfterCodeGen(state: ArchitectGraphState): string {
   const response = state.llmResponse;
@@ -23,6 +44,58 @@ export function routeAfterCodeGen(state: ArchitectGraphState): string {
   if (!response) {
     console.log('⚠️  [Router] No LLM response, ending');
     return '__end__';
+  }
+  
+  const currentTask = state.currentTask;
+  const isFinalTask = currentTask?.priority === TASK_PRIORITIES.FINAL_VERIFICATION;
+  const isErrorTask = currentTask?.type === 'error';
+  
+  // ✅ DEBUG: Log task info
+  console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+  console.log(`📍 [codeGenRouter] Current Task Info:`);
+  console.log(`   Task: ${currentTask?.name || 'none'}`);
+  console.log(`   Type: ${currentTask?.type || 'none'}`);
+  console.log(`   Priority: ${currentTask?.priority || 'none'}`);
+  console.log(`   isFinalTask: ${isFinalTask}`);
+  console.log(`   isErrorTask: ${isErrorTask}`);
+  console.log(`   response.done: ${response.done}`);
+  console.log(`   response.toolCalls: ${response.toolCalls?.length || 0}`);
+  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+  
+  // ✅ Safety Net A: Check recursion limit for final task
+  if (isFinalTask && state.recursionLimit && state.recursionCount) {
+    const remaining = state.recursionLimit - state.recursionCount;
+    
+    if (remaining < 50) {
+      console.warn(`⚠️  [Router] Final task recursion limit approaching (${state.recursionCount}/${state.recursionLimit})`);
+      console.warn(`   🚨 Forcing validation regardless of LLM response`);
+      return 'installDeps';
+    }
+  }
+  
+  // ✅ Safety Net B: Check for repeated tool failures
+  if (isFinalTask || isErrorTask) {
+    const recentFailures = detectRecentToolFailures(state);
+    
+    if (recentFailures >= 5) {
+      console.warn(`⚠️  [Router] ${recentFailures} recent tool failures detected`);
+      console.warn(`   🚨 Forcing validation to create proper violations`);
+      return 'installDeps';
+    }
+  }
+  
+  // ✅ Safety Net C: Final task without progress (no done, no tools, just looping)
+  if (isFinalTask && !response.done && (!response.toolCalls || response.toolCalls.length === 0)) {
+    // Count how many times we've been in this state
+    const loopCount = (state as any)._finalTaskLoopCount || 0;
+    (state as any)._finalTaskLoopCount = loopCount + 1;
+    
+    if (loopCount >= 3) {
+      console.warn(`⚠️  [Router] Final task stuck in loop (${loopCount} iterations, no tools, no done)`);
+      console.warn(`   🚨 Forcing validation to break the loop`);
+      delete (state as any)._finalTaskLoopCount;  // Reset counter
+      return 'installDeps';
+    }
   }
   
   // ✅ 0. File errors 있으면 → checkTaskStatus (tool 실행 불필요, 바로 self-healing)
@@ -39,18 +112,15 @@ export function routeAfterCodeGen(state: ArchitectGraphState): string {
   
   // ✅ 2. Done이면 → priority & task type 기반 분기
   if (response.done) {
-    const currentTask = state.currentTask;
-    const isFinalTask = currentTask?.priority === TASK_PRIORITIES.FINAL_VERIFICATION;
-    const isErrorTask = currentTask?.type === 'error';
-    
     if (isFinalTask) {
-      console.log(`✅ [Router] Final task done → installDeps (build verification)`);
+      console.log(`\n🎯 [Router] ✅ FINAL TASK DONE → installDeps (will lead to runtimeValidate)`);
+      console.log(`   Expected flow: codeGen → installDeps → runtimeValidate → checkTaskStatus\n`);
       return 'installDeps';
     } else if (isErrorTask) {
-      console.log(`✅ [Router] Error task done → installDeps (runtime validation for bug fix)`);
+      console.log(`\n🎯 [Router] ✅ ERROR TASK DONE → installDeps (runtime validation for bug fix)\n`);
       return 'installDeps';
     } else {
-      console.log(`✅ [Router] Feature task done → checkTaskStatus (skip validation)`);
+      console.log(`\n🎯 [Router] ✅ FEATURE TASK DONE → checkTaskStatus (skip validation)\n`);
       return 'checkTaskStatus';
     }
   }

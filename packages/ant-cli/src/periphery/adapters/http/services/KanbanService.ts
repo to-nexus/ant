@@ -206,10 +206,14 @@ export class KanbanService {
       const liveCurrentTask = liveSnapshot.currentTask || null;
       const liveCompletedTasks = liveSnapshot.completedTasks || [];
       
-      // ✅ SPECIAL CASE: Empty snapshot = "estimating started" signal
-      // If queue is empty and no current task → still estimating (decompose in progress)
-      if (liveQueue.length === 0 && !liveCurrentTask) {
-        console.log(`\n🎬 [KanbanService] ESTIMATING STARTED (empty live snapshot)`);
+      // ✅ SPECIAL CASE: Empty snapshot with NO completed tasks = "estimating started"
+      // Distinguish between:
+      // 1. Estimating: queue=0, currentTask=null, completedTasks=0 (decompose in progress)
+      // 2. All done: queue=0, currentTask=null, completedTasks>0 (work finished, going to learn)
+      const isEstimating = liveQueue.length === 0 && !liveCurrentTask && liveCompletedTasks.length === 0;
+      
+      if (isEstimating) {
+        console.log(`\n🎬 [KanbanService] ESTIMATING STARTED (empty live snapshot, no completed tasks)`);
         console.log(`   Preserving completed tasks from session: ${completedTasksDetails.length}\n`);
         
         const MIN_RECURSION_LIMIT = 5;

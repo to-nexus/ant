@@ -3,18 +3,38 @@
  * Uses react-virtuoso for efficient rendering of large message lists
  */
 
-import { useEffect, useRef, useCallback } from 'react';
-import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
+import { useEffect, useRef, useCallback, useMemo } from 'react';
+import { Virtuoso, VirtuosoHandle, ListRange } from 'react-virtuoso';
 import type { ChatMessage } from '@/domain/models/chat';
 import { MessageItem } from './MessageItem';
 
 interface ChatHistoryProps {
   messages: ChatMessage[];
   isStreaming: boolean;
+  onLastUserMessageVisibilityChange?: (isVisible: boolean) => void;
 }
 
-export function ChatHistory({ messages }: ChatHistoryProps) {
+export function ChatHistory({ messages, onLastUserMessageVisibilityChange }: ChatHistoryProps) {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
+  
+  // Find the last user message index
+  const lastUserMessageIndex = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        return i;
+      }
+    }
+    return -1;
+  }, [messages]);
+  
+  // Track visible range to determine if last user message is visible
+  const handleRangeChanged = useCallback((range: ListRange) => {
+    if (!onLastUserMessageVisibilityChange || lastUserMessageIndex === -1) return;
+    
+    // Check if last user message is in the visible range
+    const isVisible = lastUserMessageIndex >= range.startIndex && lastUserMessageIndex <= range.endIndex;
+    onLastUserMessageVisibilityChange(isVisible);
+  }, [lastUserMessageIndex, onLastUserMessageVisibilityChange]);
   
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -56,6 +76,7 @@ export function ChatHistory({ messages }: ChatHistoryProps) {
       style={{ height: '100%' }}
       initialTopMostItemIndex={messages.length - 1}  // Start at bottom
       followOutput="smooth"  // Auto-scroll to new messages
+      rangeChanged={handleRangeChanged}  // Track visible range
       itemContent={itemContent}
     />
   );

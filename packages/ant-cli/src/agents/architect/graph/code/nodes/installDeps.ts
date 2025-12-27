@@ -18,6 +18,13 @@ export async function installDeps(state: ArchitectGraphState): Promise<Architect
   // ✅ Increment recursion count (track every node execution)
   state.recursionCount = (state.recursionCount || 0) + 1;
   
+  console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+  console.log(`📦 [installDeps] NODE ENTERED`);
+  console.log(`   Task: ${state.currentTask?.name || 'none'}`);
+  console.log(`   Priority: ${state.currentTask?.priority || 'none'}`);
+  console.log(`   Next: runtimeValidate (via graph edge)`);
+  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+  
   // ✅ Workflow instrumentation: Enter node
   if (state.deps?.workflowUpdate && state._httpJobId) {
     const taskInfo = state.currentTask ? {
@@ -74,7 +81,10 @@ export async function installDeps(state: ArchitectGraphState): Promise<Architect
 
     // ✅ CRITICAL: Also check if node_modules exists (for first-time setup or after cleanup)
     const nodeModulesPath = p.join(resolvedPath, 'node_modules');
-    const nodeModulesExists = await fileSystem.fileExists(p.relative(repoRoot, nodeModulesPath));
+    // ✅ FIXED: fileSystem.basePath might be projectPath, so get full relative path from basePath
+    const fileSystemBase = fileSystem.getWorkspaceRoot();
+    const nodeModulesRelative = p.relative(fileSystemBase, nodeModulesPath);
+    const nodeModulesExists = await fileSystem.fileExists(nodeModulesRelative);
 
     // ✅ Detect final/integration tasks
     const isFinalTask = state.currentTask?.name?.toLowerCase().includes('final') ||
@@ -105,7 +115,10 @@ export async function installDeps(state: ArchitectGraphState): Promise<Architect
     if (shouldInstall) {
       // Check if package.json exists in target directory
       const pkgJsonPath = p.join(resolvedPath, 'package.json');
-      const pkgExists = await fileSystem.fileExists(p.relative(repoRoot, pkgJsonPath));
+      // ✅ FIXED: Use fileSystem basePath for relative path
+      const fileSystemBase = fileSystem.getWorkspaceRoot();
+      const pkgJsonRelative = p.relative(fileSystemBase, pkgJsonPath);
+      const pkgExists = await fileSystem.fileExists(pkgJsonRelative);
 
       if (pkgExists) {
         // Detect package manager

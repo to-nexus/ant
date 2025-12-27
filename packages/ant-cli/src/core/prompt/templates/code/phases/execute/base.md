@@ -202,30 +202,15 @@ Implement the feature. Source code only.
 
 **🎯 Purpose:** Verify the application builds and starts successfully.
 
-**Verification Sequence:**
-
-1. **Build Verification**
-   - Run build command
-   - If fails: Fix error, retry
-
-2. **Entry Point Check**
-   - Verify critical files exist
-   - If missing: Create them
-
-3. **Startup Verification**
-   - Run application
-   - ✅ Success: Application starts, prints logs, no crash
-   - ❌ Failure: Crashes, errors, missing config → **Fix and retry**
-
-**🚨 CRITICAL: Runtime errors ARE failures**
-- Configuration errors (missing env vars, credentials) → **Create config template, retry**
-- Module errors, crashes → **Fix the cause, retry**
-- "Expected" errors do NOT exist - all errors must be resolved
+**Verification Steps:**
+1. Check if build succeeds
+2. Verify critical files exist
+3. Test if application starts without crashing
 
 **Completion Criteria:**
-- ✅ Build succeeds
-- ✅ Application starts without crashing
-- ✅ Configuration template provided (if needed)
+- ✅ Build succeeds (or no build needed)
+- ✅ Application starts without runtime errors
+- ✅ Configuration templates provided if needed
 
 ────────────────────────────────────────────────────────────────────────────────
 

@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { FileSource } from "../types";
+import { FileSystemPort } from "../../ports";
 
 /**
  * Keyword Search Strategy
@@ -16,6 +17,7 @@ export class KeywordSearchStrategy {
    * @param workingDir - Working directory to search
    * @param options - Search options
    * @param git - Optional GitPort (for signature compatibility, not used in keyword search)
+   * @param fileSystem - Optional FileSystemPort for file operations
    * @returns Array of file paths with match counts
    */
   async search(
@@ -25,7 +27,8 @@ export class KeywordSearchStrategy {
       maxFiles: number;
       exclude: string[];
     },
-    git?: any
+    git?: any,
+    fileSystem?: FileSystemPort
   ): Promise<Array<{ path: string; source: FileSource }>> {
     // Extract keywords from directive
     const keywords = this.extractKeywords(directive);
@@ -39,7 +42,8 @@ export class KeywordSearchStrategy {
     const matchedFiles = await this.findFilesByKeywords(
       workingDir,
       keywords,
-      options.exclude
+      options.exclude,
+      fileSystem
     );
 
     // Sort by relevance and take top N
@@ -89,10 +93,11 @@ export class KeywordSearchStrategy {
   private async findFilesByKeywords(
     workingDir: string,
     keywords: string[],
-    exclude: string[]
+    exclude: string[],
+    fileSystem?: FileSystemPort
   ): Promise<Array<{ path: string; source: FileSource }>> {
     const results: Array<{ path: string; source: FileSource }> = [];
-    const allFiles = this.findAllSourceFiles(workingDir, exclude);
+    const allFiles = await this.findAllSourceFiles(workingDir, exclude, fileSystem);
 
     for (const filePath of allFiles) {
       try {
@@ -131,36 +136,80 @@ export class KeywordSearchStrategy {
 
   /**
    * Find all source files in directory
+   * ✅ REFACTORED: Use FileSystemPort instead of direct fs calls
    */
-  private findAllSourceFiles(dir: string, exclude: string[]): string[] {
+  private async findAllSourceFiles(
+    dir: string, 
+    exclude: string[], 
+    fileSystem?: FileSystemPort
+  ): Promise<string[]> {
     const results: string[] = [];
     const sourceExtensions = [
       '.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs', '.java',
       '.c', '.cpp', '.h', '.hpp', '.rb', '.php', '.swift', '.kt'
     ];
 
-    const walk = (currentPath: string) => {
-      if (!fs.existsSync(currentPath)) return;
-      const stat = fs.statSync(currentPath);
-      const relativePath = path.relative(dir, currentPath);
+    // ✅ Use FileSystemPort if available, otherwise fallback to fs
+    if (fileSystem) {
+      const walk = async (currentPath: string): Promise<void> => {
+        const relativePath = path.relative(dir, currentPath);
+        
+        if (this.shouldExclude(relativePath, exclude)) return;
 
-      if (this.shouldExclude(relativePath, exclude)) return;
+        const exists = await fileSystem.fileExists(currentPath);
+        if (!exists) return;
 
-      if (stat.isDirectory()) {
-        const entries = fs.readdirSync(currentPath);
-        for (const entry of entries) {
-          if (entry.startsWith('.')) continue;
-          walk(path.join(currentPath, entry));
+        try {
+          const entries = await fileSystem.readDirectory(currentPath);
+          
+          // Process files
+          for (const entry of entries) {
+            if (entry.name.startsWith('.')) continue;
+            
+            const fullPath = path.join(currentPath, entry.name);
+            
+            if (entry.isDirectory) {
+              await walk(fullPath);
+            } else {
+              const ext = path.extname(entry.name);
+              if (sourceExtensions.includes(ext)) {
+                results.push(fullPath);
+              }
+            }
+          }
+        } catch (error) {
+          // Directory might not exist or not readable, skip
+          return;
         }
-      } else if (stat.isFile()) {
-        const ext = path.extname(currentPath);
-        if (sourceExtensions.includes(ext)) {
-          results.push(currentPath);
-        }
-      }
-    };
+      };
 
-    walk(dir);
+      await walk(dir);
+    } else {
+      // ✅ Fallback to direct fs (for backward compatibility)
+      const walk = (currentPath: string) => {
+        if (!fs.existsSync(currentPath)) return;
+        const stat = fs.statSync(currentPath);
+        const relativePath = path.relative(dir, currentPath);
+
+        if (this.shouldExclude(relativePath, exclude)) return;
+
+        if (stat.isDirectory()) {
+          const entries = fs.readdirSync(currentPath);
+          for (const entry of entries) {
+            if (entry.startsWith('.')) continue;
+            walk(path.join(currentPath, entry));
+          }
+        } else if (stat.isFile()) {
+          const ext = path.extname(currentPath);
+          if (sourceExtensions.includes(ext)) {
+            results.push(currentPath);
+          }
+        }
+      };
+
+      walk(dir);
+    }
+    
     return results;
   }
 

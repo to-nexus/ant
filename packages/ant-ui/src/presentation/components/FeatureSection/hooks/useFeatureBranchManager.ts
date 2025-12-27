@@ -65,7 +65,6 @@ export function useFeatureBranchManager(
     bypassFetchTimer,
     isSessionRestoring,
     sessionRestoreCompleted,
-    expectedFeatureAfterRestore,
   } = useStore();
   
   // ✅ Track operations

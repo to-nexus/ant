@@ -1,15 +1,40 @@
 /**
  * Dev Server Types
+ * 
+ * ✅ REFACTORED: Unified types aligned with Backend API contract
+ * Single source of truth for dev server state management
  */
 
 export type DevServerState = 'idle' | 'installing' | 'starting' | 'running' | 'error';
 
+/**
+ * Dev Server setup failure reasoning codes
+ * 
+ * ✅ ALIGNED with Backend: packages/ant-cli/.../DevServerService/types.ts
+ * Categorizes different types of setup failures for appropriate handling
+ * 
+ * @see DevServerService/types.ts SetupFailureReasoning
+ */
+export type SetupFailureReasoning = 
+  | 'basename-missing'      // Frontend: Missing basename configuration for proxy
+  | 'port-conflict'         // Port already in use
+  | 'dependency-error'      // npm/pnpm install failed
+  | 'config-invalid'        // Invalid vite/webpack config
+  | 'framework-unsupported' // Unsupported framework
+  | 'unknown';              // Unclassified error
+
+/**
+ * Dev Server Status
+ * Represents current state and configuration
+ */
 export interface DevServerStatus {
   running: boolean;
-  ready?: boolean;  // ✅ NEW: Health check result
-  port?: number;
-  url?: string;
+  ready?: boolean;  // Health check result
+  port?: number | null;
+  url?: string | null;
   logs?: DevServerLog[];
+  setupReasoning?: SetupFailureReasoning;  // ✅ Categorized failure code
+  setupReason?: string;                     // ✅ Human-readable message
 }
 
 export interface DevServerLog {
@@ -22,6 +47,21 @@ export interface DevServerError {
   message: string;
   code?: string;
   details?: string;
+}
+
+/**
+ * Dev server setup validation result
+ * 
+ * ✅ ALIGNED with Backend ValidationResult
+ * @see DevServerService/types.ts ValidationResult
+ */
+export interface DevServerValidation {
+  valid: boolean;
+  framework?: string;
+  reasoning?: SetupFailureReasoning;  // ✅ NEW: Added to match backend
+  reason?: string;                     // ✅ DEPRECATED: Use reasoning instead
+  missingFiles?: string[];
+  suggestedFix?: string;
 }
 
 /**
@@ -43,13 +83,26 @@ export interface DevServerProgress {
   totalCount: number;
 }
 
+/**
+ * Dismissed message tracking
+ * Persisted in localStorage (dismissed until user clicks Play button again)
+ */
+export interface DismissedMessage {
+  serverKey: string;
+  reasoning: SetupFailureReasoning;
+  dismissedAt: number;
+}
+
 export interface UseDevServerManagerResult {
   // State
   state: DevServerState;
   status: DevServerStatus | undefined;
-  ready: boolean;  // ✅ NEW: Health check result
+  ready: boolean;  // Health check result
+  setupReasoning: SetupFailureReasoning | undefined;  // Categorized failure code
+  setupReason: string | undefined;  // Human-readable message
+  suggestedFix: string | undefined;  // Suggested fix prompt
   error: DevServerError | undefined;
-  progress: DevServerProgress | undefined;  // ✅ Multi-package progress
+  progress: DevServerProgress | undefined;  // Multi-package progress
   
   // Actions
   startServer: () => Promise<void>;
@@ -57,4 +110,8 @@ export interface UseDevServerManagerResult {
   
   // UI Control
   isLoading: boolean;
+  
+  // ✅ NEW: Dismiss tracking
+  isDismissed: boolean;
+  dismissMessage: () => void;
 }

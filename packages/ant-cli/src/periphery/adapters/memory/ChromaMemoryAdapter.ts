@@ -151,11 +151,19 @@ export class ChromaMemoryAdapter implements MemoryPort {
     const type = this.extractCollectionType(options?.where, options?.collectionType);
     const collectionName = getCollectionName(type, project);
     
+    console.log(`   🗄️  [ChromaMemory] Query collection: "${collectionName}"`);
+    console.log(`      Query text: "${query.substring(0, 100)}..."`);
+    console.log(`      Options: k=${options?.k}, minScore=${options?.minScore}`);
+    
     try {
       const collection = await client.getOrCreateCollection({ 
         name: collectionName, 
         embeddingFunction: embedder 
       });
+      
+      // ✅ Check collection size
+      const count = await collection.count();
+      console.log(`      Collection "${collectionName}" has ${count} documents`);
       
       const k = options?.k || 5;
       const where = options?.where;
@@ -171,6 +179,19 @@ export class ChromaMemoryAdapter implements MemoryPort {
       const documents = results.documents?.[0] || [];
       const distances = results.distances?.[0] || [];
       const metadatas = results.metadatas?.[0] || [];
+      
+      console.log(`      Raw results: ${documents.length} documents`);
+      if (metadatas.length > 0) {
+        console.log(`      Sample metadata:`, JSON.stringify(metadatas[0]).substring(0, 200));
+      }
+      
+      // ✅ DEBUG: Log distance values
+      if (distances.length > 0) {
+        const sampleDistances = distances.slice(0, 5).map(d => (d ?? 0).toFixed(3));
+        console.log(`      Sample distances (L2): [${sampleDistances.join(', ')}]`);
+        const sampleScores = distances.slice(0, 5).map(d => (1 / (1 + (d ?? 0))).toFixed(3));
+        console.log(`      Converted scores: [${sampleScores.join(', ')}] (minScore=${minScore})`);
+      }
       
       // Convert distance to similarity score (cosine distance -> similarity)
       // ChromaDB returns L2 distance, convert to similarity: 1 / (1 + distance)
@@ -188,6 +209,8 @@ export class ChromaMemoryAdapter implements MemoryPort {
           };
         })
         .filter((result): result is QueryResult => result !== null && result.score >= minScore);
+      
+      console.log(`      Filtered results: ${queryResults.length} documents (minScore=${minScore})`);
       
       return queryResults;
     } catch (error) {

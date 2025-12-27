@@ -190,6 +190,12 @@ export class ModeController {
         const envPath = `${task}/languages/${language}/environments/${environment}/rules`;
         injections.push(envPath);
         console.log(`[ModeController] Adding environment-specific injection: ${envPath}`);
+        
+        // ✅ NEW: Dev server setup for frontend projects
+        if (environment === 'browser' || environment === 'fullstack') {
+          injections.push(`${taskPrefix}/dev-server-setup`);
+          console.log(`[ModeController] Adding dev-server-setup for frontend environment`);
+        }
       }
       
       // ✅ NEW: Compact tool-calling rules (replaces verbose version)

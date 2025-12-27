@@ -183,8 +183,7 @@ export interface ArchitectGraphState extends TaskArtifacts {
     command?: CommandPort;
     retriever?: import('../../../../core/codebase/CodebaseRetriever').CodebaseRetriever;  // ✅ For reference loading
     vectorDB?: MemoryPort;  // ✅ Explicit vectorDB port (same as memory)
-    workspaceService?: import('../../../../core/ports/workspace').WorkspaceServicePort;  // ✅ Workspace management
-    workspaceHandle?: import('../../../../core/ports/workspace').WorkspaceHandle;  // ✅ Current workspace
+    workspaceResolver?: import('../../../../infrastructure/workspace/WorkspaceResolver').WorkspaceResolver;  // ✅ For path resolution (tenant-aware)
     kanbanUpdate?: TaskQueueUpdatePort;  // ✅ For real-time Kanban updates
     fileTreeUpdate?: import('../../../../core/ports').FileTreeUpdatePort;  // ✅ For real-time file tree updates
     workflowUpdate?: import('../../../../core/ports').WorkflowStateUpdatePort;  // ✅ For real-time workflow visualization
@@ -348,6 +347,15 @@ export interface ArchitectGraphState extends TaskArtifacts {
   
   // ✅ Error repetition tracking (internal)
   _errorIsRepeating?: boolean;  // Flag to indicate if errors are repeating
+  
+  // ✅ Command history tracking (for loop detection)
+  commandHistory?: Array<{
+    command: string;
+    timestamp: number;
+    success: boolean;
+    exitCode?: number;
+    errorSnippet?: string;
+  }>;
   
   // ✅ Token tracking for current task (internal, accumulated across LLM calls within a task)
   _currentTaskTokenUsage?: TokenUsage;

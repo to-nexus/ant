@@ -22,8 +22,8 @@ export function MessageItem({ message }: MessageItemProps) {
   const isUser = message.role === 'user';
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div className={`w-full ${isUser ? 'bg-blue-50 dark:bg-blue-900/20 max-w-[85%]' : ''}`}>
+    <div className="w-full">
+      <div className={`w-full ${isUser ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}>
         {/* User messages */}
         {isUser && (
           <div className="px-4 py-3 rounded-lg">

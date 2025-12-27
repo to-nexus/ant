@@ -4,9 +4,10 @@
  * Note: Header is managed by parent (App.tsx) using Bar component
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { ChatHistory } from './ChatHistory';
 import { ChatInput } from './ChatInput';
+import { PinnedQuery } from './PinnedQuery';
 import { useChat } from '@/application/hooks/features/useChat';
 import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
 import type { FileStats } from '@/domain/models/chat';
@@ -23,6 +24,21 @@ export function ChatPanel({ projectId: _projectId, featureName: _featureName, en
   const { messages, isStreaming } = useChat();
   
   const chatPolicy = useChatPolicy(messages.length);
+
+  // ✅ Track visibility of last user message for pinned query
+  const [isLastUserMessageVisible, setIsLastUserMessageVisible] = useState(true);
+  
+  const handleLastUserMessageVisibilityChange = useCallback((isVisible: boolean) => {
+    setIsLastUserMessageVisible(isVisible);
+  }, []);
+
+  // ✅ Get last user query for pinned display
+  const lastUserQuery = useMemo(() => {
+    const userMessages = messages.filter(m => m.role === 'user');
+    return userMessages.length > 0 
+      ? userMessages[userMessages.length - 1].contents[0]?.content || ''
+      : '';
+  }, [messages.length, messages[messages.length - 1]?.id]);
 
   // ✅ CRITICAL: Extract stable values for dependency tracking
   // messages 배열 자체는 매번 새 참조이므로, 실제 변경사항만 추적
@@ -107,6 +123,11 @@ export function ChatPanel({ projectId: _projectId, featureName: _featureName, en
     <div className="flex flex-col h-full">
       {/* Chat History (scrollable) */}
       <div className="flex-1 overflow-y-auto scrollbar-thin">
+        {/* Pinned Query - Only show when last user message is NOT visible */}
+        {messages.length > 0 && lastUserQuery && !isLastUserMessageVisible && (
+          <PinnedQuery query={lastUserQuery} />
+        )}
+        
         {/* Empty State Message - Not Ready */}
         {messages.length === 0 && chatPolicy.emptyStateMessage && (
           <div className="flex items-center justify-center h-full p-8">
@@ -137,7 +158,11 @@ export function ChatPanel({ projectId: _projectId, featureName: _featureName, en
         
         {/* Chat Messages */}
         {messages.length > 0 && (
-          <ChatHistory messages={messages} isStreaming={isStreaming} />
+          <ChatHistory 
+            messages={messages} 
+            isStreaming={isStreaming}
+            onLastUserMessageVisibilityChange={handleLastUserMessageVisibilityChange}
+          />
         )}
       </div>
 
