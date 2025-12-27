@@ -1,4 +1,4 @@
-import { StateGraph } from "@langchain/langgraph";
+import { StateGraph, END } from "@langchain/langgraph";
 import { ArchitectGraphState, TASK_PRIORITIES, TaskTimingHelper, ViolationType } from "./state";
 import { CodeTask } from "../../types/task";
 import { resolve } from "./nodes/resolve";
@@ -507,7 +507,9 @@ export function buildCodeGraph() {
     } as any
   );
   
-  // ✅ Tool → CodeGen (도구 결과 가지고 다시 추론)
+  // ✅ Tool → CodeGen (unconditional - LLM handles all tool results including errors)
+  // Tool errors are passed to LLM via conversation history as tool_result with error field
+  // LLM decides whether to retry, try alternative approach, or handle the error
   graph.addEdge("tool" as any, "codeGen" as any);
 
   // ✅ REMOVED: validate 노드 관련 로직 제거

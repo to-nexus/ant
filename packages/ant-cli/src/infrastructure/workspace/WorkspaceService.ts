@@ -64,10 +64,10 @@ export class WorkspaceService implements WorkspaceServicePort {
       throw new Error(`${name} contains invalid characters: ${id}`);
     }
     
-    // Only allow alphanumeric, hyphen, underscore, colon
-    const validPattern = /^[a-zA-Z0-9_:-]+$/;
+    // Only allow alphanumeric, hyphen, underscore, colon, dot
+    const validPattern = /^[a-zA-Z0-9_:.-]+$/;
     if (!validPattern.test(id)) {
-      throw new Error(`${name} must contain only alphanumeric characters, hyphens, underscores, or colons: ${id}`);
+      throw new Error(`${name} must contain only alphanumeric characters, hyphens, underscores, colons, or dots: ${id}`);
     }
   }
   

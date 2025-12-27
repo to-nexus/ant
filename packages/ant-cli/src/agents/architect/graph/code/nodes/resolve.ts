@@ -212,7 +212,10 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   };
   
   const workspacePath = workspaceResolver.getProjectPath(userContext, context.project);
-  const workspaceExists = await fileSystem.fileExists(workspacePath);
+  
+  // ✅ Use Node.js fs directly for absolute paths (FileSystemPort expects relative paths)
+  const fs = await import('fs');
+  const workspaceExists = fs.existsSync(workspacePath);
   if (!workspaceExists) {
     throw new Error(
       `Workspace not found: ${workspacePath}\n\n` +
@@ -225,7 +228,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
 
   // Validate feature exists and store resolved path in context
   const featurePath = workspaceResolver.getFeaturePath(userContext, context.project, context.featureFolder);
-  const featureExists = await fileSystem.fileExists(featurePath);
+  const featureExists = fs.existsSync(featurePath);
   if (!featureExists) {
     throw new Error(
       `Feature directory not found: ${featurePath}\n\n` +

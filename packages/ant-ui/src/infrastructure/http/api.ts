@@ -186,9 +186,13 @@ export interface LogEntry {
 
 export interface DevServerStatus {
   running: boolean;
-  port: number | null;
-  url: string | null;
+  ready?: boolean;  // Health check result
+  port?: number | null;
+  url?: string | null;
   logs?: LogEntry[];
+  setupReasoning?: string;  // Categorized failure code (e.g., 'basename-missing')
+  setupReason?: string;     // Human-readable message
+  suggestedFix?: string;    // Suggested fix prompt
 }
 
 // ========== Models ==========
@@ -1039,8 +1043,13 @@ export async function startDevServer(
     );
     
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || `Failed to start dev server: ${response.statusText}`);
+      const errorData = await response.json();
+      const err: any = new Error(errorData.error || `Failed to start dev server: ${response.statusText}`);
+      // Attach validation info to error for frontend to display Fix button
+      err.setupReasoning = errorData.setupReasoning;  // Categorized failure code
+      err.setupReason = errorData.setupReason;        // Human-readable message
+      err.suggestedFix = errorData.suggestedFix;
+      throw err;
     }
     
     return await response.json();

@@ -2,31 +2,15 @@ import { spawn, ChildProcess } from 'child_process';
 import { Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
-import { LogEntry } from '../../../../core/ports/http';
-import { PortManager } from '../../../../infrastructure/networking/PortManager';
-import { PortRegistryPort } from '../../../../core/ports/portRegistry';
-import { SSEService } from './SSEService';  // ✅ Import SSEService
-
-/**
- * Package information for dev server
- */
-interface PackageInfo {
-  name: string;
-  path: string;
-  type: 'frontend' | 'backend' | 'other';
-  packageJson: any;
-  port?: number;
-  process?: ChildProcess;
-}
-
-/**
- * Project structure detection result
- */
-interface ProjectStructure {
-  type: 'frontend-only' | 'backend-only' | 'fullstack' | 'monorepo';
-  packages: PackageInfo[];
-  entry?: PackageInfo;  // Entry point for Open button (usually frontend)
-}
+import { LogEntry } from '../../../../../core/ports/http';
+import { PortManager } from '../../../../../infrastructure/networking/PortManager';
+import { PortRegistryPort } from '../../../../../core/ports/portRegistry';
+import { SSEService } from '../SSEService';
+import { PackageInfo, ProjectStructure, ValidationResult } from './types';
+import { createServerKey, parseServerKey } from './utils/serverKeyUtils';
+import { LogManager } from './managers/LogManager';
+import { PackageDetector } from './detectors/PackageDetector';
+import { ProjectValidator } from './validators/ProjectValidator';
 
 /**
  * DevServerService
@@ -44,12 +28,16 @@ export class DevServerService {
   private devServers: Map<string, ChildProcess[]> = new Map();  // Multiple processes per serverKey
   private devServerPorts: Map<string, number> = new Map();  // Entry port for proxy
   private devServerReady: Map<string, boolean> = new Map();  // ✅ Track ready state
-  private devServerLogs: Map<string, LogEntry[]> = new Map();
   private installingProjects: Set<string> = new Set();
   private onStatusChange?: (serverKey: string) => void;
   private portManager?: PortManager;
   private portRegistry?: PortRegistryPort;
   private sseService?: SSEService;  // ✅ Use shared SSEService
+  
+  // ✅ Refactored modules
+  private logManager: LogManager;
+  private packageDetector: PackageDetector;
+  private projectValidator: ProjectValidator;
   
   constructor(
     portManager?: PortManager,
@@ -63,42 +51,32 @@ export class DevServerService {
     this.portRegistry = portRegistry;
     this.onStatusChange = callbacks?.onStatusChange;
     this.sseService = sseService;  // ✅ Store SSEService
+    
+    // ✅ Initialize refactored modules
+    this.logManager = new LogManager();
+    this.packageDetector = new PackageDetector();
+    this.projectValidator = new ProjectValidator();
   }
   
   /**
    * Create unique server key: tenantId:userId:projectId:feature
    */
   private createServerKey(tenantId: string, userId: string, projectId: string, feature: string): string {
-    return `${tenantId}:${userId}:${projectId}:${feature}`;
+    return createServerKey(tenantId, userId, projectId, feature);
   }
   
   /**
    * Parse server key into components
    */
   private parseServerKey(serverKey: string): { tenantId: string; userId: string; projectId: string; feature: string } {
-    const [tenantId, userId, projectId, feature] = serverKey.split(':');
-    return { tenantId, userId, projectId, feature };
+    return parseServerKey(serverKey);
   }
   
   /**
    * Append log entry and broadcast via SSEService
    */
   private appendLog(serverKey: string, type: 'stdout' | 'stderr', message: string): void {
-    const logEntry: LogEntry = {
-      timestamp: new Date().toISOString(),
-      type,
-      message: message.trim()
-    };
-    
-    const logs = this.devServerLogs.get(serverKey) || [];
-    logs.push(logEntry);
-    
-    // Keep last 1000 lines
-    if (logs.length > 1000) {
-      logs.shift();
-    }
-    
-    this.devServerLogs.set(serverKey, logs);
+    const logEntry = this.logManager.appendLog(serverKey, type, message);
     
     // ✅ Broadcast via SSEService (if available)
     if (this.sseService) {
@@ -135,72 +113,29 @@ export class DevServerService {
    * Detect if package is a frontend project
    */
   private isFrontendPackage(packageJson: any): boolean {
-    const deps = { 
-      ...packageJson.dependencies, 
-      ...packageJson.devDependencies 
-    };
-    
-    // Frontend frameworks
-    const frontendFrameworks = [
-      'react', 'react-dom',
-      'vue', '@vue/runtime-core',
-      'svelte',
-      '@angular/core',
-      'solid-js'
-    ];
-    
-    // Build tools (strong indicators)
-    const frontendBuildTools = [
-      'vite', '@vitejs/plugin-react', '@vitejs/plugin-vue',
-      'next', 'nuxt',
-      'webpack', '@angular/cli',
-      'parcel-bundler', 'parcel',
-      '@remix-run/dev',
-      'astro'
-    ];
-    
-    const hasFrontend = frontendFrameworks.some(fw => deps[fw]) || 
-                       frontendBuildTools.some(tool => deps[tool]);
-    
-    // Check dev script
-    const devScript = packageJson.scripts?.dev || packageJson.scripts?.start || '';
-    const isFrontendScript = devScript.includes('vite') || 
-                            devScript.includes('next') || 
-                            devScript.includes('webpack') ||
-                            devScript.includes('react-scripts') ||
-                            devScript.includes('vue-cli-service') ||
-                            devScript.includes('ng serve') ||
-                            devScript.includes('astro');
-    
-    return hasFrontend || isFrontendScript;
+    return this.packageDetector.isFrontendPackage(packageJson);
+  }
+  
+  /**
+   * Detect framework type from package.json
+   */
+  private detectFrameworkType(packageJson: any): 'react' | 'vue' | 'svelte' | 'next' | 'nuxt' | 'unknown' {
+    return this.packageDetector.detectFrameworkType(packageJson);
+  }
+  
+  /**
+   * Validate dev server setup for frontend projects
+   * Checks if basename configuration is present in router setup
+   */
+  async validateDevServerSetup(codebasePath: string): Promise<ValidationResult> {
+    return await this.projectValidator.validate(codebasePath);
   }
   
   /**
    * Detect if package is a backend project
    */
   private isBackendPackage(packageJson: any): boolean {
-    const deps = { 
-      ...packageJson.dependencies, 
-      ...packageJson.devDependencies 
-    };
-    
-    // Backend frameworks
-    const backendFrameworks = [
-      'express', 'koa', 'fastify', 'hapi',
-      '@nestjs/core', '@nestjs/platform-express',
-      'ws', 'socket.io'
-    ];
-    
-    const hasBackend = backendFrameworks.some(fw => deps[fw]);
-    
-    // Check dev script
-    const devScript = packageJson.scripts?.dev || '';
-    const isBackendScript = devScript.includes('tsx') || 
-                           devScript.includes('nodemon') || 
-                           devScript.includes('ts-node') ||
-                           devScript.includes('nest start');
-    
-    return hasBackend || isBackendScript;
+    return this.packageDetector.isBackendPackage(packageJson);
   }
   
   /**
@@ -379,22 +314,35 @@ export class DevServerService {
   }
   
   /**
-   * Install dependencies if needed
+   * Identify critical dependencies that must be present for dev server
    */
-  private async installDependenciesIfNeeded(packagePath: string, serverKey: string): Promise<void> {
-    const nodeModulesPath = path.join(packagePath, 'node_modules');
-    if (fs.existsSync(nodeModulesPath)) {
-      console.log(`[DevServerService] Dependencies already installed: ${packagePath}`);
-      return;
-    }
+  private identifyCriticalDeps(packageJson: any): string[] {
+    const deps = { ...packageJson.dependencies, ...packageJson.devDependencies };
+    const critical = [];
     
-    const relativePath = path.basename(packagePath);
-    console.log(`[DevServerService] Installing dependencies: ${relativePath}...`);
+    // Build tools (must have for dev server)
+    if (deps['vite']) critical.push('vite');
+    if (deps['webpack']) critical.push('webpack');
+    if (deps['next']) critical.push('next');
+    if (deps['@vue/cli-service']) critical.push('@vue/cli-service');
     
+    // Frameworks (must have)
+    if (deps['react']) critical.push('react');
+    if (deps['vue']) critical.push('vue');
+    if (deps['svelte']) critical.push('svelte');
+    
+    return critical;
+  }
+  
+  /**
+   * Run npm install with proper flags
+   */
+  private async runNpmInstall(packagePath: string, serverKey: string, relativePath: string): Promise<void> {
     this.appendLog(serverKey, 'stdout', `📦 Installing dependencies for ${relativePath}...`);
     
     return new Promise((resolve, reject) => {
-      const installProcess = spawn('npm', ['install'], {
+      // ✅ CRITICAL: Include devDependencies for dev server
+      const installProcess = spawn('npm', ['install', '--include=dev'], {
         cwd: packagePath,
         shell: true,
         stdio: 'pipe'
@@ -419,6 +367,47 @@ export class DevServerService {
       
       installProcess.on('error', reject);
     });
+  }
+  
+  /**
+   * Install dependencies if needed
+   * 
+   * Enhanced to verify critical dependencies are actually installed,
+   * not just check if node_modules directory exists.
+   */
+  private async installDependenciesIfNeeded(packagePath: string, serverKey: string): Promise<void> {
+    const nodeModulesPath = path.join(packagePath, 'node_modules');
+    const relativePath = path.basename(packagePath);
+    
+    // Check if node_modules exists
+    if (!fs.existsSync(nodeModulesPath)) {
+      console.log(`[DevServerService] No node_modules found, installing: ${relativePath}`);
+      return this.runNpmInstall(packagePath, serverKey, relativePath);
+    }
+    
+    // ✅ NEW: Verify critical dependencies are actually installed
+    const packageJsonPath = path.join(packagePath, 'package.json');
+    if (!fs.existsSync(packageJsonPath)) {
+      console.warn(`[DevServerService] No package.json found at ${packagePath}`);
+      return;
+    }
+    
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+    const criticalDeps = this.identifyCriticalDeps(packageJson);
+    
+    // Check if critical deps exist in node_modules
+    const missingDeps = criticalDeps.filter(dep => 
+      !fs.existsSync(path.join(nodeModulesPath, dep))
+    );
+    
+    if (missingDeps.length > 0) {
+      console.log(`[DevServerService] Missing critical dependencies for ${relativePath}: ${missingDeps.join(', ')}`);
+      console.log(`[DevServerService] Re-installing dependencies with --include=dev...`);
+      this.appendLog(serverKey, 'stdout', `⚠️  Missing critical dependencies: ${missingDeps.join(', ')}`);
+      return this.runNpmInstall(packagePath, serverKey, relativePath);
+    }
+    
+    console.log(`[DevServerService] Dependencies already installed: ${packagePath}`);
   }
   
   /**
@@ -560,6 +549,9 @@ export class DevServerService {
     port?: number;
     serverKey?: string;
     url?: string;
+    setupReasoning?: string;  // Categorized failure code (e.g., 'basename-missing')
+    setupReason?: string;     // Human-readable message
+    suggestedFix?: string;
   }> {
     const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
     const proxyUrl = `/dev/${serverKey}`;
@@ -582,7 +574,7 @@ export class DevServerService {
     }
     
     this.installingProjects.add(serverKey);
-    this.devServerLogs.set(serverKey, []);
+    // Logs are now managed by logManager
     
     try {
       // 1. Detect project structure
@@ -629,7 +621,51 @@ export class DevServerService {
       
       this.appendLog(serverKey, 'stdout', '✅ All dev servers started successfully!');
       
-      // ✅ 6. Health check for entry package (async, don't block response)
+      // ✅ 6. Validate dev server setup for frontend entry package ONLY
+      // This happens AFTER server is running to allow Fix workflow
+      let validation: ValidationResult = { valid: true };
+      
+      if (structure.entry?.type === 'frontend') {
+        // Validate entry package path (not root)
+        const entryPath = structure.entry.path;
+        validation = await this.validateDevServerSetup(entryPath);
+        console.log(`[DevServerService] 🔍 Frontend entry validation:`, validation);
+        
+        // ❌ If validation fails, stop the server and return error
+        if (!validation.valid) {
+          console.log(`[DevServerService] ❌ Frontend setup validation failed - stopping server`);
+          
+          // Stop all processes
+          for (const process of processes) {
+            if (process && !process.killed) {
+              process.kill();
+            }
+          }
+          
+          // Clean up
+          this.devServers.delete(serverKey);
+          this.devServerPorts.delete(serverKey);
+          this.devServerReady.delete(serverKey);
+          this.logManager.clearLogs(serverKey);
+          
+          if (this.portRegistry) {
+            await this.portRegistry.unregisterDevServer(tenantId, userId, projectId, feature);
+          }
+          
+          return {
+            success: false,
+            error: 'Dev server setup validation failed',
+            setupReasoning: validation.reasoning || 'unknown',
+            setupReason: validation.reason,
+            suggestedFix: validation.suggestedFix,
+            serverKey,
+          };
+        }
+      } else {
+        console.log(`[DevServerService] ⏭️ Skipping validation (entry is not frontend)`);
+      }
+      
+      // ✅ 7. Health check for entry package (async, don't block response)
       const entryPort = structure.entry?.port || structure.packages[0].port!;
       this.healthCheck(entryPort, serverKey).then(ready => {
         this.devServerReady.set(serverKey, ready);
@@ -649,7 +685,10 @@ export class DevServerService {
         message: `Started ${structure.packages.length} package(s)`,
         port: structure.entry?.port || structure.packages[0].port!,
         serverKey,
-        url: proxyUrl
+        url: proxyUrl,
+        setupReasoning: validation.reasoning,  // Only set if validation failed
+        setupReason: validation.reason,        // Only set if validation failed
+        suggestedFix: validation.suggestedFix  // Only set if validation failed
       };
       
     } catch (error: any) {
@@ -705,7 +744,7 @@ export class DevServerService {
     this.devServers.delete(serverKey);
     this.devServerPorts.delete(serverKey);
     this.devServerReady.delete(serverKey);  // ✅ Clear ready state
-    this.devServerLogs.delete(serverKey);
+    this.logManager.clearLogs(serverKey);  // ✅ Clear logs via logManager
     
     console.log(`[DevServerService] ✅ Stopped all servers for ${serverKey}`);
     
@@ -760,7 +799,7 @@ export class DevServerService {
     feature: string
   ): LogEntry[] {
     const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
-    return this.devServerLogs.get(serverKey) || [];
+    return this.logManager.getLogs(serverKey);
   }
   
   /**
@@ -790,9 +829,9 @@ export class DevServerService {
     res.write(`data: ${JSON.stringify({ type: 'status', data: status })}\n\n`);
     
     // Send existing logs
-    const existingLogs = this.devServerLogs.get(serverKey) || [];
+    const existingLogs = this.logManager.getLogs(serverKey);
     console.log(`[DevServerService] 📤 Sending ${existingLogs.length} existing logs`);
-    existingLogs.forEach(log => {
+    existingLogs.forEach((log: LogEntry) => {
       res.write(`data: ${JSON.stringify({ type: 'log', data: log })}\n\n`);
     });
     

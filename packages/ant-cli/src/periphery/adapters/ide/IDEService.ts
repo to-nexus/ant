@@ -7,7 +7,7 @@
 
 import Docker from 'dockerode';
 import { UserContext } from '../../../core/types/user';
-import { PortManager } from '../../networking/PortManager';
+import { PortManager } from '../../../infrastructure/networking/PortManager';
 import { PortRegistryPort } from '../../../core/ports/portRegistry';
 
 export interface IDEInstance {

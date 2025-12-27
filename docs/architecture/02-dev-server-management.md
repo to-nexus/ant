@@ -180,8 +180,33 @@ async startDevServer(tenantId, userId, projectId, feature, localPath) {
     structure.entry.port  // 30001 (Frontend)
   );
   
-  // 5. 로그: "✅ All dev servers started successfully!"
-  return { success: true, port: structure.entry.port, url: `/dev/${serverKey}` };
+  // ✅ 5. Basename validation (Frontend Entry만)
+  let validation = { valid: true };
+  if (structure.entry?.type === 'frontend') {
+    validation = await validateDevServerSetup(structure.entry.path);
+    
+    if (!validation.valid) {
+      // 서버 중단 + 정리
+      processes.forEach(p => p.kill());
+      await portRegistry.unregisterDevServer(...);
+      
+      return {
+        success: false,
+        error: 'Dev server setup validation failed',
+        setupReasoning: validation.reasoning || 'unknown',  // Categorized code
+        setupReason: validation.reason,                     // Human-readable message
+        suggestedFix: validation.suggestedFix
+      };
+    }
+  }
+  
+  // 6. 로그: "✅ All dev servers started successfully!"
+  return { 
+    success: true, 
+    port: structure.entry.port, 
+    url: `/dev/${serverKey}`,
+    setupReasoning: validation.reasoning  // Only set if validation failed
+  };
 }
 ```
 
@@ -235,12 +260,272 @@ Response: {
 
 ---
 
-## 4. Frontend 구현
+## 4. Basename Validation & Fix 워크플로우
 
-### 4.1 상태 관리
+### 4.1 개요
+
+Frontend Entry 패키지의 Router basename 설정을 자동 검증하여, 프록시 환경에서 올바르게 작동하도록 보장합니다.
+
+### 4.2 검증 대상
+
+| 프로젝트 타입 | Entry 타입 | Validation 실행 여부 |
+|--------------|-----------|-------------------|
+| Frontend-Only | frontend | ✅ 실행 |
+| Fullstack | frontend | ✅ 실행 (Entry만) |
+| Fullstack | backend | ⏭️ Skip |
+| Monorepo | frontend | ✅ 실행 (Entry만) |
+| Backend-Only | backend | ⏭️ Skip |
+
+### 4.3 검증 로직
+
+#### React
+```typescript
+// ReactValidator.ts
+async validate(codebasePath: string): Promise<ValidationResult> {
+  const appTsx = await fs.readFile(path.join(codebasePath, 'src/App.tsx'), 'utf-8');
+  
+  // 1. BrowserRouter basename 체크
+  const hasBasename = appTsx.includes('window.__BASENAME__') && 
+                     appTsx.includes('<BrowserRouter') &&
+                     appTsx.includes('basename=');
+  
+  // 2. Window 타입 선언 체크
+  const hasTypeDeclaration = appTsx.includes('interface Window') && 
+                            appTsx.includes('__BASENAME__');
+  
+  if (!hasBasename || !hasTypeDeclaration) {
+    return {
+      valid: false,
+      framework: 'react',
+      reasoning: 'basename-missing',  // ✅ Categorized failure code
+      reason: 'Missing basename configuration for dev server proxy',
+      suggestedFix: `
+개발서버 프록시 지원을 위해 다음 설정을 추가해주세요:
+
+1. App.tsx의 <BrowserRouter>에 basename 추가:
+   <BrowserRouter basename={window.__BASENAME__ || ''}>
+
+2. Window 타입 선언 추가:
+   declare global {
+     interface Window {
+       __BASENAME__?: string;
+     }
+   }
+
+이 설정은 Ant 플랫폼의 개발서버 프록시(/dev/:serverKey/)가 
+정상적으로 작동하기 위해 필요합니다.
+      `
+    };
+  }
+  
+  return { valid: true, framework: 'react' };
+}
+```
+
+#### Vue
+```typescript
+// VueValidator.ts
+async validate(codebasePath: string): Promise<ValidationResult> {
+  const mainTs = await fs.readFile(path.join(codebasePath, 'src/main.ts'), 'utf-8');
+  
+  const hasBasename = mainTs.includes('createWebHistory') && 
+                     mainTs.includes('__BASENAME__');
+  
+  if (!hasBasename) {
+    return {
+      valid: false,
+      framework: 'vue',
+      reasoning: 'basename-missing',  // ✅ Categorized failure code
+      reason: 'Missing basename configuration for dev server proxy',
+      suggestedFix: `
+개발서버 프록시 지원을 위해 Vue Router 설정을 수정해주세요:
+
+import { createRouter, createWebHistory } from 'vue-router';
+
+const router = createRouter({
+  history: createWebHistory((window as any).__BASENAME__ || '/'),
+  routes: [...]
+});
+      `
+    };
+  }
+  
+  return { valid: true, framework: 'vue' };
+}
+```
+
+### 4.4 Proxy에서 window.__BASENAME__ 주입
+
+프록시 미들웨어는 HTML 응답에 `window.__BASENAME__`를 자동 주입합니다:
+
+```typescript
+// devServerProxy.ts
+const basenameScript = `<script>window.__BASENAME__ = "${pathPrefix}/${serverKey}";</script>`;
+
+if (contentType.includes('text/html')) {
+  let html = text
+    .replace(/((?:src|href|action)=["'])\/(?!\/)/g, `$1${pathPrefix}/${serverKey}/`)
+    .replace(/((?:^|\n|;)\s*import\s+["'])\/(?!\/)/gm, `$1${pathPrefix}/${serverKey}/`);
+  
+  // <head> 태그 안에 basename script 주입
+  const headEndIndex = html.indexOf('</head>');
+  if (headEndIndex !== -1) {
+    html = html.substring(0, headEndIndex) + basenameScript + html.substring(headEndIndex);
+  }
+  
+  res.send(html);
+}
+```
+
+### 4.5 실행 흐름
+
+```
+1. 사용자: "Start Server" 클릭
+   ↓
+2. Backend: 의존성 설치
+   ↓
+3. Backend: 개발서버 기동 (모든 패키지)
+   ↓
+4. Backend: Validation 체크 (Entry가 Frontend인 경우)
+   ├─ ✅ 통과 → Health Check → Success
+   └─ ❌ 실패 → 서버 중단 → 400 에러 반환
+   ↓
+5. Frontend: setupReasoning 존재 여부 감지
+   ↓
+6. UI: 노란색 경고 + Fix 버튼 표시
+   ┌─────────────────────────────────────────────┐
+   │ ⚠️  개발서버 프록시 설정 미완료                │
+   │                                             │
+   │ Missing basename configuration for          │
+   │ dev server proxy                            │
+   │                                             │
+   │ [Fix 🔧]                                    │
+   └─────────────────────────────────────────────┘
+   ↓
+7. 사용자: Fix 버튼 클릭
+   → suggestedFix를 클립보드에 복사
+   → 채팅창에 자동 붙여넣기 준비 + job type 'code' 자동 선택
+   ↓
+8. AI: basename 설정 코드 생성
+   (dev-server-setup.md injection 포함)
+   ↓
+9. 사용자: "Start Server" 재시도
+   → ✅ Validation 통과
+   → ✅ 정상 작동
+```
+
+### 4.6 AI 프롬프트 Injection
+
+Frontend 프로젝트의 code job 실행 시, `dev-server-setup.md` 가이드가 자동 주입됩니다:
+
+```typescript
+// ModeController.ts
+if (phase === 'execute' && task === 'code') {
+  if (environment === ProjectEnvironment.BROWSER || 
+      environment === ProjectEnvironment.FULLSTACK) {
+    injections.push(`code/base/injections/dev-server-setup`);
+  }
+}
+```
+
+**dev-server-setup.md 내용:**
+- React Router의 `<BrowserRouter basename>` 설정 가이드
+- Vue Router의 `createWebHistory` base 설정 가이드
+- `window.__BASENAME__` 타입 선언 가이드
+
+### 4.7 API 응답
+
+```typescript
+// Success (Validation 통과)
+{
+  success: true,
+  port: 30001,
+  url: "/dev/tenant:user:project:feature"
+  // setupReasoning은 undefined (실패 시만 설정됨)
+}
+
+// Failure (Validation 실패)
+{
+  success: false,
+  error: "Dev server setup validation failed",
+  setupReasoning: "basename-missing",  // Categorized failure code
+  setupReason: "Missing basename configuration for dev server proxy",
+  suggestedFix: "개발서버 프록시 지원을 위해..."
+}
+```
+
+**Reasoning Codes:**
+- `basename-missing`: Frontend Router의 basename 설정 누락
+- `port-conflict`: 포트 충돌 (향후 확장)
+- `dependency-error`: 의존성 설치 실패 (향후 확장)
+- `config-invalid`: 설정 파일 오류 (향후 확장)
+- `unknown`: 미분류 에러
+
+### 4.8 Reasoning 기반 오류 분류 시스템
+
+#### 개요
+`setupReasoning`은 오류를 프로그래밍 방식으로 분류하기 위한 코드입니다. `setupReason`은 사람이 읽을 수 있는 상세 메시지입니다.
+
+#### 장점
+1. **프로그래밍 처리**: `if (setupReasoning === 'basename-missing')` 조건 분기 가능
+2. **확장성**: 새로운 오류 유형 추가 시 기존 코드 수정 불필요
+3. **다국어 지원**: Reasoning code로 메시지 매핑 가능
+4. **로깅 & 분석**: 구조화된 데이터로 통계 수집 가능
+
+#### Frontend에서의 사용
+```typescript
+// DevServerStatusPanel.tsx
+function getSetupFailureTitle(reasoning?: SetupFailureReasoning): string {
+  switch (reasoning) {
+    case 'basename-missing':
+      return '⚠️ 개발서버 프록시 설정 미완료';
+    case 'port-conflict':
+      return '⚠️ 포트 충돌';
+    case 'dependency-error':
+      return '⚠️ 의존성 설치 실패';
+    default:
+      return '⚠️ 개발서버 설정 미완료';
+  }
+}
+
+// State 분석
+function analyzeDevServerState(status: DevServerStatus): DevServerState {
+  if (status.setupReasoning) {  // ✅ 간결한 체크
+    return 'error';
+  }
+  // ...
+}
+```
+
+#### Validator 구조
+```
+ProjectValidator (Orchestrator)
+    ├─ 프레임워크 감지 (React, Vue, Next, etc.)
+    └─ 프레임워크별 Validator 위임
+         ├─ ReactValidator → reasoning: 'basename-missing'
+         ├─ VueValidator → reasoning: 'basename-missing'
+         └─ (향후) PortValidator → reasoning: 'port-conflict'
+```
+
+---
+
+## 5. Frontend 구현
+
+### 5.1 상태 관리
 
 ```typescript
 export type DevServerState = 'idle' | 'installing' | 'starting' | 'running' | 'error';
+
+export interface DevServerStatus {
+  running: boolean;
+  ready?: boolean;
+  port?: number | null;
+  url?: string | null;
+  logs?: LogEntry[];
+  setupReasoning?: string;  // ✅ Categorized failure code (e.g., 'basename-missing')
+  setupReason?: string;     // ✅ Human-readable message
+  suggestedFix?: string;    // ✅ Suggested fix prompt
+}
 
 export interface PackageProgress {
   name: string;                  // 'web-client', 'api-server'
@@ -256,7 +541,7 @@ export interface DevServerProgress {
 }
 ```
 
-### 4.2 로그 파싱
+### 5.2 로그 파싱
 
 ```typescript
 // utils/devServer.ts
@@ -282,7 +567,7 @@ export function extractProgress(logs: DevServerLog[]): DevServerProgress {
 }
 ```
 
-### 4.3 UI 컴포넌트
+### 5.3 UI 컴포넌트
 
 #### DevServerStatusPanel
 
@@ -318,14 +603,18 @@ export function extractProgress(logs: DevServerLog[]): DevServerProgress {
 | `running` | ✅ | "All servers running (2/2)" | [Open] 버튼 |
 | `error` | ⚠️ | "Dev Server Failed to Start" | Error details |
 
-### 4.4 Hook 사용
+### 5.4 Hook 사용
 
 ```typescript
 const {
-  state,      // 'installing' | 'starting' | 'running' | ...
-  status,     // { running: true, port: 30001, logs: [...] }
-  progress,   // { packages: [...], currentPhase: 'starting', ... }
-  error,      // { message: "..." }
+  state,           // 'installing' | 'starting' | 'running' | ...
+  status,          // { running: true, port: 30001, logs: [...], setupReasoning: 'basename-missing' }
+  ready,           // Health check 결과
+  setupReasoning,  // ✅ Categorized failure code (e.g., 'basename-missing')
+  setupReason,     // ✅ Human-readable message
+  suggestedFix,    // ✅ Suggested fix prompt
+  progress,        // { packages: [...], currentPhase: 'starting', ... }
+  error,           // { message: "..." }
   startServer,
   stopServer,
   isLoading
@@ -334,9 +623,9 @@ const {
 
 ---
 
-## 5. 사용자 경험
+## 6. 사용자 경험
 
-### 5.1 단일 패키지 (Frontend-Only)
+### 6.1 단일 패키지 (Frontend-Only)
 
 ```
 1. Play 버튼 클릭
@@ -345,10 +634,12 @@ const {
    ↓
 3. "Starting dev server..."
    ↓
-4. "Dev Server Running" + [Open]
+4. Basename Validation
+   ├─ ✅ 통과 → "Dev Server Running" + [Open]
+   └─ ❌ 실패 → "Setup 미완료" + [Fix 🔧]
 ```
 
-### 5.2 멀티 패키지 (Fullstack)
+### 6.2 멀티 패키지 (Fullstack)
 
 ```
 1. Play 버튼 클릭
@@ -369,7 +660,7 @@ const {
    [■■] Progress: 완료
 ```
 
-### 5.3 에러 발생
+### 6.3 에러 발생
 
 ```
 "Dev Server Failed to Start"
@@ -378,9 +669,9 @@ const {
 
 ---
 
-## 6. 실행 예시
+## 7. 실행 예시
 
-### 6.1 Fullstack
+### 7.1 Fullstack
 
 ```typescript
 ant-news-desk/
@@ -394,7 +685,7 @@ ant-news-desk/
 ✅ PortRegistry: /dev/acme:alice:ant-news-desk:feature → 30001
 ```
 
-### 6.2 Monorepo
+### 7.2 Monorepo
 
 ```typescript
 turborepo/
@@ -416,9 +707,9 @@ turborepo/
 
 ---
 
-## 7. 배포
+## 8. 배포
 
-### Express만 사용 (권장)
+### 8.1 Express만 사용 (권장)
 
 ```
 브라우저 → Express (HTTPS) → Dev Server
@@ -427,7 +718,7 @@ turborepo/
 - ✅ 단순, 추가 인프라 불필요
 - ✅ 중소 규모 충분
 
-### Nginx + Express (대규모)
+### 8.2 Nginx + Express (대규모)
 
 ```
 브라우저 → Nginx (로드밸런싱) → Express → Dev Server
@@ -439,11 +730,11 @@ turborepo/
 
 ---
 
-## 8. Graceful Shutdown
+## 9. Graceful Shutdown
 
 서버 종료 시 모든 개발서버를 안전하게 정리합니다.
 
-### 8.1 Shutdown 순서
+### 9.1 Shutdown 순서
 
 ```typescript
 1. Save all running jobs        // Job 상태 저장
@@ -455,7 +746,7 @@ turborepo/
 4. Close HTTP server            // Express 서버 종료
 ```
 
-### 8.2 DevServerService Cleanup
+### 9.2 DevServerService Cleanup
 
 ```typescript
 async cleanup(): Promise<void> {
@@ -480,7 +771,7 @@ async cleanup(): Promise<void> {
 }
 ```
 
-### 8.3 실행 로그
+### 9.3 실행 로그
 
 ```bash
 ^C
@@ -512,7 +803,7 @@ async cleanup(): Promise<void> {
 ✅ [Server] Graceful shutdown complete
 ```
 
-### 8.4 타임아웃
+### 9.4 타임아웃
 
 - **Timeout**: 5초
 - 5초 내 완료 못하면 강제 종료 (force shutdown)
@@ -520,38 +811,53 @@ async cleanup(): Promise<void> {
 
 ---
 
-## 9. 파일 구조
+## 10. 파일 구조
 
 ```
 packages/
 ├── ant-cli/src/
-│   ├── core/ports/
-│   │   └── portRegistry.ts
+│   ├── core/
+│   │   ├── ports/
+│   │   │   └── portRegistry.ts
+│   │   └── prompt/templates/code/base/injections/
+│   │       └── dev-server-setup.md        # ✅ Basename 가이드
 │   ├── infrastructure/networking/
 │   │   ├── PortManager.ts
 │   │   └── InMemoryPortRegistry.ts
 │   └── periphery/adapters/http/
 │       ├── services/
-│       │   └── DevServerService.ts
+│       │   └── DevServerService/
+│       │       ├── DevServerService.ts    # 메인 로직
+│       │       ├── types.ts               # 타입 정의
+│       │       ├── utils/
+│       │       │   └── serverKeyUtils.ts
+│       │       ├── managers/
+│       │       │   └── LogManager.ts
+│       │       ├── detectors/
+│       │       │   └── PackageDetector.ts # Frontend/Backend 감지
+│       │       └── validators/
+│       │           ├── ProjectValidator.ts # 통합 validator (Orchestrator)
+│       │           ├── ReactValidator.ts   # ✅ React basename 검증
+│       │           └── VueValidator.ts     # ✅ Vue basename 검증
 │       └── middleware/
-│           └── devServerProxy.ts
+│           └── devServerProxy.ts           # ✅ window.__BASENAME__ 주입
 │
 └── ant-ui/src/presentation/components/FeatureSection/
     ├── constants/
-    │   └── devServer.ts                 # 텍스트 상수
+    │   └── devServer.ts                    # 텍스트 상수
     ├── types/
-    │   └── devServer.ts                 # 타입 정의
+    │   └── devServer.ts                    # ✅ setupReasoning, suggestedFix
     ├── utils/
-    │   └── devServer.ts                 # 로그 파싱, 상태 분석
+    │   └── devServer.ts                    # 로그 파싱, 상태 분석
     ├── hooks/
-    │   └── useDevServerManager.ts       # 상태 관리 & 폴링
+    │   └── useDevServerManager.ts          # ✅ setupReasoning 상태 관리
     └── components/
-        └── DevServerStatusPanel.tsx     # UI 렌더링
+        └── DevServerStatusPanel.tsx        # ✅ Fix 버튼 표시
 ```
 
 ---
 
-## 10. 핵심 요약
+## 11. 핵심 요약
 
 | 항목 | 설명 |
 |------|------|
@@ -561,4 +867,7 @@ packages/
 | **Key** | `tenantId:userId:projectId:feature` |
 | **Port** | 30000-35000 동적 할당 |
 | **Proxy** | `/dev/:serverKey` → Entry 포트 |
+| **Basename** | Frontend Entry만 자동 검증 + Fix 워크플로우 |
+| **Reasoning** | `basename-missing`, `port-conflict` 등 코드 기반 오류 분류 |
+| **AI Injection** | Frontend code job에 dev-server-setup 가이드 자동 포함 |
 | **Shutdown** | 모든 dev server, port, registry 안전하게 정리 |

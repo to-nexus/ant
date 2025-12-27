@@ -8,13 +8,14 @@ import { useFeatureActions } from './hooks/useFeatureActions.tsx';
 import { FeatureDropdown } from './components/FeatureDropdown';
 import { DevServerStatusPanel } from './components/DevServerStatusPanel';
 import { getApiBase } from '@/infrastructure/http/api';
+import { useState, useEffect } from 'react';  // ✅ Add useEffect
 
 export function FeatureSection() {
   const { 
     features, 
     selectedProject, 
     selectedFeature,
-    fetchFeatures
+    fetchFeatures,
   } = useStore();
   
   const policy = useUIActionPolicy();
@@ -25,12 +26,16 @@ export function FeatureSection() {
   const {
     state,
     status,
-    ready,  // ✅ Get ready state from health check
+    ready,  // Health check result
+    setupReasoning,  // Categorized failure code
+    suggestedFix,    // Suggested fix prompt
     error,
     progress,
     startServer,
     stopServer,
-    isLoading
+    isLoading,
+    isDismissed,     // ✅ NEW: Dismissal state from hook
+    dismissMessage   // ✅ NEW: Dismiss handler from hook
   } = useDevServerManager(selectedProject, selectedFeature);
   
   const {
@@ -41,6 +46,39 @@ export function FeatureSection() {
   
   // Branch manager (auto-checkout)
   useFeatureBranchManager(selectedProject, selectedFeature, baseBranch);
+  
+  // ✅ Get setPendingChatInput from Chat service
+  const setPendingChatInput = useStore((state) => state.setPendingChatInput);
+  
+  // ✅ Track fix button click state
+  const [fixButtonClicked, setFixButtonClicked] = useState(false);
+
+  // Fix dev server setup handler (uses Chat service)
+  const handleFixSetup = () => {
+    if (!suggestedFix) {
+      alert('수정 제안을 가져올 수 없습니다.');
+      return;
+    }
+    
+    console.log('[FeatureSection] Fix button clicked, using Chat service');
+    
+    // ✅ Mark fix button as clicked (removes button)
+    setFixButtonClicked(true);
+    
+    // ✅ Use Chat service for programmatic input
+    setPendingChatInput({
+      message: suggestedFix,
+      jobType: 'code',
+      source: `dev-server-fix:${setupReasoning}`,
+    });
+    
+    console.log('[FeatureSection] ✅ Chat input set via Chat service');
+  };
+  
+  // ✅ Reset fix button state when feature changes or dev server starts successfully
+  useEffect(() => {
+    setFixButtonClicked(false);
+  }, [selectedFeature, state]);
 
   if (!selectedProject) {
     return null;
@@ -67,19 +105,21 @@ export function FeatureSection() {
       
       {/* Status Panel - show for all non-idle states */}
       {(() => {
-        const shouldShow = state !== 'idle' && selectedFeature;
-        console.log('[FeatureSection] DevServerStatusPanel render decision:', {
-          state,
-          selectedFeature,
-          shouldShow,
-          statusUrl: status?.url
-        });
+        const shouldShow = state !== 'idle' && selectedFeature && !isDismissed;  // ✅ Use hook's dismissal state
+        // Debug logging (disabled for production)
+        // console.log('[FeatureSection] DevServerStatusPanel render decision:', {
+        //   state,
+        //   selectedFeature,
+        //   shouldShow,
+        //   statusUrl: status?.url
+        // });
         return shouldShow ? (
           <div className="mt-2">
             <DevServerStatusPanel
               state={state}
-              ready={ready}  // ✅ Pass health check result
-              url={status?.url}
+              ready={ready}  // Health check result
+              setupReasoning={setupReasoning}  // Categorized failure code
+              url={status?.url || undefined}   // Convert null to undefined
               error={error}
               progress={progress}
               onOpen={() => {
@@ -92,6 +132,9 @@ export function FeatureSection() {
                   window.open(`${backendBase}${status.url}`, '_blank');
                 }
               }}
+              onFix={handleFixSetup}  // ✅ Pass fix handler
+              onDismiss={dismissMessage}  // ✅ Use hook's dismiss handler
+              fixButtonClicked={fixButtonClicked}  // ✅ Pass fix button state
             />
           </div>
         ) : null;

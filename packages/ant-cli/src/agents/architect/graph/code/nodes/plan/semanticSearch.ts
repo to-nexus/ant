@@ -122,6 +122,13 @@ export async function loadSemanticFiles(
       // Build directive from keywords
       const directive = keywords.join(' ');
       
+      // ✅ Get FileSystemPort and validate
+      const fileSystem = state.deps?.fileSystem;
+      if (!fileSystem) {
+        console.warn(`   ⚠️  FileSystemPort not available, skipping keyword search`);
+        return { vectorDbPaths: [], localFilePaths: [] };
+      }
+      
       // Search files by content matching
       const keywordResults = await keywordStrategy.search(
         directive,
@@ -138,7 +145,8 @@ export async function loadSemanticFiles(
             '.turbo'
           ]
         },
-        git
+        git,
+        fileSystem  // ✅ Pass FileSystemPort
       );
       
       // Extract paths and filter out already loaded files

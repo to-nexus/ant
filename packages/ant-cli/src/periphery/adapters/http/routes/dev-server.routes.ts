@@ -171,6 +171,39 @@ export function createDevServerRoutes(deps: {
     }
   });
   
+  // ✅ NEW: Validate dev server setup
+  router.get('/projects/:id/dev/validate', async (req: Request, res: Response) => {
+    try {
+      const projectId = req.params.id;
+      const userContext = extractUserContext(req);
+      const config = await deps.projectService.getProjectConfig(projectId, userContext);
+      
+      // ✅ Determine codebase path based on repoType
+      let codebasePath: string;
+      
+      if (config?.repoType === 'cloud') {
+        const projectPath = deps.workspaceResolver.getProjectPath(userContext, projectId);
+        codebasePath = path.join(projectPath, 'codebase');
+      } else {
+        if (!config?.localPath) {
+          res.status(400).json({ error: 'Project localPath not configured' });
+          return;
+        }
+        
+        codebasePath = config.localPath.startsWith('~') 
+          ? path.join(os.homedir(), config.localPath.slice(1))
+          : path.resolve(config.localPath);
+      }
+      
+      // ✅ Validate dev server setup
+      const validation = await deps.devServerService.validateDevServerSetup(codebasePath);
+      
+      res.json(validation);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+  
   // SSE stream for dev server logs
   router.get('/projects/:id/dev/logs', (req: Request, res: Response) => {
     try {

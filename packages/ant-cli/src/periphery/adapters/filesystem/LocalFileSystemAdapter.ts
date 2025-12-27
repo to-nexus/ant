@@ -12,11 +12,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { glob as globCallback } from 'glob';
-import { promisify } from 'util';
 import { FileSystemPort } from '../../../core/ports/filesystem';
-
-const glob = promisify(globCallback);
 
 export class LocalFileSystemAdapter implements FileSystemPort {
   private readonly basePath: string;
@@ -120,29 +116,62 @@ export class LocalFileSystemAdapter implements FileSystemPort {
   async listFiles(relativePath: string, exclude: string[] = []): Promise<string[]> {
     const fullPath = this.resolvePath(relativePath);
     
-    // Build glob pattern
-    const pattern = path.join(fullPath, '**/*');
-    
     // Default excludes
     const defaultExcludes = [
-      '**/node_modules/**',
-      '**/.git/**',
-      '**/dist/**',
-      '**/build/**',
-      '**/.next/**',
+      'node_modules',
+      '.git',
+      'dist',
+      'build',
+      '.next',
     ];
     
     const allExcludes = [...defaultExcludes, ...exclude];
     
-    // Find all files
-    const files: string[] = await glob(pattern, {
-      ignore: allExcludes,
-      nodir: true,  // Only files, not directories
-      dot: false,   // Exclude hidden files
-    }) as string[];
+    // ✅ Use direct fs.readdirSync (faster and more reliable than glob)
+    const results: string[] = [];
     
-    // Convert to relative paths
-    return files.map((file: string) => path.relative(this.basePath, file));
+    const walk = (currentPath: string) => {
+      try {
+        if (!fs.existsSync(currentPath)) return;
+        
+        const stat = fs.statSync(currentPath);
+        if (!stat.isDirectory()) {
+          // If it's a file, add it
+          results.push(path.relative(this.basePath, currentPath));
+          return;
+        }
+        
+        const entries = fs.readdirSync(currentPath, { withFileTypes: true });
+        
+        for (const entry of entries) {
+          // Skip hidden files and excluded directories
+          if (entry.name.startsWith('.')) continue;
+          
+          const fullEntryPath = path.join(currentPath, entry.name);
+          const relativeEntryPath = path.relative(fullPath, fullEntryPath);
+          
+          // Check if this path should be excluded
+          const shouldExclude = allExcludes.some(pattern => {
+            // Simple pattern matching (exact name or contains)
+            return relativeEntryPath.includes(pattern) || entry.name === pattern;
+          });
+          
+          if (shouldExclude) continue;
+          
+          if (entry.isDirectory()) {
+            walk(fullEntryPath);
+          } else {
+            results.push(path.relative(this.basePath, fullEntryPath));
+          }
+        }
+      } catch (error) {
+        // Skip directories that can't be read
+        return;
+      }
+    };
+    
+    walk(fullPath);
+    return results;
   }
   
   getWorkspaceRoot(): string {

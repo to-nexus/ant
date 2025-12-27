@@ -82,6 +82,9 @@ export class UnifiedSearchStrategy {
   ): Promise<UnifiedSearchResult> {
     
     console.log(`🔍 [Unified Search] Multi-collection parallel query...`);
+    console.log(`   🔑 Project: "${project}" (collection: codebase-${project})`);
+    console.log(`   📝 Directive: "${directive.substring(0, 100)}..."`);
+    console.log(`   📊 Params: k=${options.maxCodeFiles * 2}, minScore=${options.minCodeScore}`);
     
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // 1. Parallel search across 3 collections
@@ -180,11 +183,16 @@ export class UnifiedSearchStrategy {
   private extractCodeFiles(results: any[]): FileWithSource[] {
     const filesMap = new Map<string, FileWithSource>();
     
+    console.log(`   🔎 [extractCodeFiles] Processing ${results.length} raw results...`);
+    
     for (const result of results) {
       const filePath = result.metadata?.filePath || result.metadata?.file;
       const score = result.score || 0;
       
-      if (!filePath) continue;
+      if (!filePath) {
+        console.log(`   ⚠️  Skipping result without filePath:`, JSON.stringify(result.metadata).substring(0, 200));
+        continue;
+      }
       
       const existing = filesMap.get(filePath);
       if (!existing || score > (existing.sources[0] as any).score) {
@@ -197,7 +205,13 @@ export class UnifiedSearchStrategy {
       }
     }
     
-    return Array.from(filesMap.values());
+    const files = Array.from(filesMap.values());
+    console.log(`   ✅ Extracted ${files.length} unique files`);
+    if (files.length > 0) {
+      console.log(`   📄 Sample files:`, files.slice(0, 3).map(f => f.path));
+    }
+    
+    return files;
   }
   
   /**

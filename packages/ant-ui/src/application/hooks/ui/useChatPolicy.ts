@@ -15,6 +15,9 @@ export interface ChatPolicy {
   canSendMessage: boolean;
   inputPlaceholder: string;
   
+  // Resize - Always enabled
+  canResizeInput: boolean;  // ✅ 항상 true, 작업 진행 중에도 가능
+  
   // History Message
   emptyStateMessage: string | null;
   readyEmptyStateMessage: string | null;  // ✅ Ready 상태의 empty state
@@ -54,6 +57,7 @@ export function useChatPolicy(messageCount: number = 0): ChatPolicy {
       isOffline: true,
       canSendMessage: false,
       inputPlaceholder: 'Please sign in to start chatting...',
+      canResizeInput: true,  // ✅ Always allow resize
       emptyStateMessage: 'Please sign in from the navigation bar to continue',
       readyEmptyStateMessage: null,
       jobButtonLabel: selectedJobType || 'Job',
@@ -69,6 +73,7 @@ export function useChatPolicy(messageCount: number = 0): ChatPolicy {
       isOffline: true,
       canSendMessage: false,
       inputPlaceholder: 'Select an agent to start chatting...',
+      canResizeInput: true,  // ✅ Always allow resize
       emptyStateMessage: 'Please select an agent from the navigation bar',
       readyEmptyStateMessage: null,
       jobButtonLabel: selectedJobType || 'Job',
@@ -84,6 +89,7 @@ export function useChatPolicy(messageCount: number = 0): ChatPolicy {
       isOffline: false,
       canSendMessage: false,
       inputPlaceholder: 'Select a workspace to continue...',
+      canResizeInput: true,  // ✅ Always allow resize
       emptyStateMessage: 'Please select a workspace from the navigation bar',
       readyEmptyStateMessage: null,
       jobButtonLabel: selectedJobType || 'Job',
@@ -99,6 +105,7 @@ export function useChatPolicy(messageCount: number = 0): ChatPolicy {
       isOffline: false,
       canSendMessage: false,
       inputPlaceholder: 'Select a project to continue...',
+      canResizeInput: true,  // ✅ Always allow resize
       emptyStateMessage: 'Please select a project from the navigation bar',
       readyEmptyStateMessage: null,
       jobButtonLabel: selectedJobType || 'Job',
@@ -114,6 +121,7 @@ export function useChatPolicy(messageCount: number = 0): ChatPolicy {
       isOffline: false,
       canSendMessage: false,
       inputPlaceholder: 'Select a job type to continue...',
+      canResizeInput: true,  // ✅ Always allow resize
       emptyStateMessage: 'Please select a job type from the selector below',
       readyEmptyStateMessage: null,
       jobButtonLabel: 'Job',
@@ -122,13 +130,14 @@ export function useChatPolicy(messageCount: number = 0): ChatPolicy {
     };
   }
 
-  // ✅ Job 진행 중 - 입력 차단
+  // ✅ Job 진행 중 - 입력 차단 BUT Resize 가능
   if (isRunning) {
     return {
       headerText: `Chat with ${getAgentDisplayName(selectedAgent)}`,
       isOffline: false,
       canSendMessage: false,  // ❌ 입력 차단
       inputPlaceholder: 'Job is running. Stop the job to send a new message...',
+      canResizeInput: true,  // ✅ 작업 중에도 resize 가능
       emptyStateMessage: null,
       readyEmptyStateMessage: null,
       jobButtonLabel: selectedJobType,
@@ -144,6 +153,7 @@ export function useChatPolicy(messageCount: number = 0): ChatPolicy {
       isOffline: false,
       canSendMessage: true,  // ✅ Send로 Continue 가능 (directive 추가)
       inputPlaceholder: 'Send a message to continue with additional feedback...',
+      canResizeInput: true,  // ✅ Always allow resize
       emptyStateMessage: null,
       readyEmptyStateMessage: null,
       jobButtonLabel: selectedJobType,
@@ -162,6 +172,7 @@ export function useChatPolicy(messageCount: number = 0): ChatPolicy {
     inputPlaceholder: isFirstMessage 
       ? 'Start your conversation with the agent...' 
       : 'Continue your conversation...',
+    canResizeInput: true,  // ✅ Always allow resize
     emptyStateMessage: null,
     readyEmptyStateMessage: 'Start chatting to collaborate with the agent',
     jobButtonLabel: selectedJobType,

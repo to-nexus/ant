@@ -323,6 +323,6 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
     branch: state.branch!, 
     reportFile: reportMessage,
     filesChanged: filesGenerated,
-    interruption: isRecursionLimit ? state.interruption : undefined
+    interruption: isRecursionLimit ? state.interruption : undefined,
   };
 }

@@ -27,22 +27,24 @@ export class RedisPortRegistry implements PortRegistryPort {
   /**
    * Create storage key from identifiers
    */
-  private createKey(tenantId: string, projectId: string, feature: string): string {
-    return `${tenantId}:${projectId}:${feature}`;
+  private createKey(tenantId: string, userId: string, projectId: string, feature: string): string {
+    return `${tenantId}:${userId}:${projectId}:${feature}`;
   }
   
   /**
    * Register dev server port
    */
   async registerDevServer(
-    tenantId: string, 
+    tenantId: string,
+    userId: string,
     projectId: string,
     feature: string,
     port: number
   ): Promise<void> {
-    const key = this.createKey(tenantId, projectId, feature);
+    const key = this.createKey(tenantId, userId, projectId, feature);
     const mapping: PortMapping = {
       tenantId,
+      userId,
       projectId,
       feature,
       port,
@@ -59,13 +61,15 @@ export class RedisPortRegistry implements PortRegistryPort {
    */
   async registerIDE(
     tenantId: string,
+    userId: string,
     projectId: string,
     feature: string,
     port: number
   ): Promise<void> {
-    const key = this.createKey(tenantId, projectId, feature);
+    const key = this.createKey(tenantId, userId, projectId, feature);
     const mapping: PortMapping = {
       tenantId,
+      userId,
       projectId,
       feature,
       port,
@@ -82,10 +86,11 @@ export class RedisPortRegistry implements PortRegistryPort {
    */
   async getDevServerPort(
     tenantId: string,
+    userId: string,
     projectId: string,
     feature: string
   ): Promise<number | null> {
-    const key = this.createKey(tenantId, projectId, feature);
+    const key = this.createKey(tenantId, userId, projectId, feature);
     const data = await this.redis.hget('dev-servers', key);
     
     if (!data) {
@@ -106,10 +111,11 @@ export class RedisPortRegistry implements PortRegistryPort {
    */
   async getIDEPort(
     tenantId: string,
+    userId: string,
     projectId: string,
     feature: string
   ): Promise<number | null> {
-    const key = this.createKey(tenantId, projectId, feature);
+    const key = this.createKey(tenantId, userId, projectId, feature);
     const data = await this.redis.hget('ides', key);
     
     if (!data) {
@@ -130,10 +136,11 @@ export class RedisPortRegistry implements PortRegistryPort {
    */
   async unregisterDevServer(
     tenantId: string,
+    userId: string,
     projectId: string,
     feature: string
   ): Promise<void> {
-    const key = this.createKey(tenantId, projectId, feature);
+    const key = this.createKey(tenantId, userId, projectId, feature);
     await this.redis.hdel('dev-servers', key);
     console.log(`[RedisPortRegistry] Unregistered dev server: ${key}`);
   }
@@ -143,10 +150,11 @@ export class RedisPortRegistry implements PortRegistryPort {
    */
   async unregisterIDE(
     tenantId: string,
+    userId: string,
     projectId: string,
     feature: string
   ): Promise<void> {
-    const key = this.createKey(tenantId, projectId, feature);
+    const key = this.createKey(tenantId, userId, projectId, feature);
     await this.redis.hdel('ides', key);
     console.log(`[RedisPortRegistry] Unregistered IDE: ${key}`);
   }
@@ -158,8 +166,8 @@ export class RedisPortRegistry implements PortRegistryPort {
     const entries = await this.redis.hgetall('dev-servers');
     const result: PortMapping[] = [];
     
-    for (const [key, data] of Object.entries(entries)) {
-      result.push(JSON.parse(data));
+    for (const [, data] of Object.entries(entries)) {
+      result.push(JSON.parse(data as string));
     }
     
     return result;
@@ -172,8 +180,8 @@ export class RedisPortRegistry implements PortRegistryPort {
     const entries = await this.redis.hgetall('ides');
     const result: PortMapping[] = [];
     
-    for (const [key, data] of Object.entries(entries)) {
-      result.push(JSON.parse(data));
+    for (const [, data] of Object.entries(entries)) {
+      result.push(JSON.parse(data as string));
     }
     
     return result;
@@ -184,11 +192,12 @@ export class RedisPortRegistry implements PortRegistryPort {
    */
   async updateLastAccess(
     tenantId: string,
+    userId: string,
     projectId: string,
     feature: string,
     type: 'dev-server' | 'ide'
   ): Promise<void> {
-    const key = this.createKey(tenantId, projectId, feature);
+    const key = this.createKey(tenantId, userId, projectId, feature);
     const hashKey = type === 'dev-server' ? 'dev-servers' : 'ides';
     const data = await this.redis.hget(hashKey, key);
     

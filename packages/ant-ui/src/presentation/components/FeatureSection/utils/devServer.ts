@@ -24,6 +24,11 @@ export function analyzeDevServerState(
   
   const logs = status.logs || [];
   
+  // Check for setup validation failure FIRST
+  if (status.setupReasoning) {  // If reasoning exists, validation failed
+    return 'error';
+  }
+  
   // Check for installing state
   if (hasLogPattern(logs, DEV_SERVER_LOG_PATTERNS.INSTALLING)) {
     const hasSuccess = hasLogPattern(logs, DEV_SERVER_LOG_PATTERNS.INSTALL_SUCCESS);
@@ -32,7 +37,7 @@ export function analyzeDevServerState(
     }
   }
   
-  // Check for error state
+  // Check for error state in logs
   if (hasErrorInLogs(logs)) {
     return 'error';
   }

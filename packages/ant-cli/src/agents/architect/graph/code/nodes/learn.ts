@@ -424,6 +424,23 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     state.deps.workflowUpdate.exitNode(state._httpJobId, 'learn');
   }
   
+  // ✅ CRITICAL: Update Kanban when transitioning to learn (all tasks completed)
+  // This clears the live snapshot and ensures UI shows completed state
+  if (state.deps?.kanbanUpdate && state._httpJobId) {
+    console.log(`\n📋 [Learn] Updating Kanban → All tasks completed`);
+    console.log(`   Completed: ${state.completedTasksDetails?.length || 0} tasks`);
+    console.log(`   Queue: 0 (all done)\n`);
+    
+    state.deps.kanbanUpdate.updateTaskQueue(
+      state._httpJobId,
+      null,  // No current task (all done)
+      [],    // Empty queue (all done)
+      state.completedTasksDetails || [],
+      state.recursionCount,
+      state.recursionLimit
+    );
+  }
+  
   // Note: lessons string is used for session/vector DB storage, not returned in state
   // State.lessons is for structured lesson objects (different type)
   return { ...state, branch, filesWritten };

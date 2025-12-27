@@ -27,6 +27,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   const isStopping = useStore((state) => state.isStopping);  // ✅ Use global state
   const backendMode = useStore((state) => state.backendMode);
   const userEmail = useStore((state) => state.userEmail);
+  const pendingChatInput = useStore((state) => state.pendingChatInput);  // ✅ Subscribe to Chat service
   const [showJobMenu, setShowJobMenu] = useState(false);
   const [showAgentMenu, setShowAgentMenu] = useState(false);  // ✅ Agent menu state
   const [message, setMessage] = useState('');
@@ -41,6 +42,15 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
     ]}
   ]);
   const [showFileList, setShowFileList] = useState(false);  // ✅ Cursor-style file list toggle
+  
+  // ✅ Resizable textarea state
+  const MIN_HEIGHT = 80; // 최소 높이 (rows=3 기준 약 80px)
+  const [textareaHeight, setTextareaHeight] = useState(() => {
+    const saved = localStorage.getItem('chatInputHeight');
+    return saved ? parseInt(saved, 10) : MIN_HEIGHT;
+  });
+  const [isResizing, setIsResizing] = useState(false);
+  
   const menuRef = useRef<HTMLDivElement>(null);
   const agentMenuRef = useRef<HTMLDivElement>(null);  // ✅ Agent menu ref
   
@@ -52,6 +62,30 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   
   // ✅ Get stop handler from useJobExecution hook
   const { stopJob } = useJobExecution();
+
+  // ✅ Consume pending chat input (from any source: fix, quick action, template, etc.)
+  useEffect(() => {
+    if (pendingChatInput) {
+      console.log('[ChatInput] 💬 Consuming pending input from Chat service:', {
+        messageLength: pendingChatInput.message.length,
+        source: pendingChatInput.source,
+      });
+      
+      // 1. Update chat input message
+      setMessage(pendingChatInput.message);
+      
+      // 2. Clear input (one-time consumption)
+      useStore.setState({ pendingChatInput: null });
+      
+      console.log('[ChatInput] ✅ Input consumed, submit button enabled');
+      
+      // 3. Auto-submit if requested (future feature)
+      if (pendingChatInput.autoSubmit) {
+        console.log('[ChatInput] 🚀 Auto-submitting...');
+        // handleSubmit(); // TODO: Implement auto-submit
+      }
+    }
+  }, [pendingChatInput]);
 
   // ✅ Fetch agents to get available jobs for selected agent
   useEffect(() => {
@@ -73,6 +107,24 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
     }
     loadAgents();
   }, []);
+
+  // ✅ Handle resize - Using overlay approach for reliable mouse capture
+  // No need for document event listeners, overlay handles everything
+  useEffect(() => {
+    // Cleanup only: prevent text selection during resize
+    if (isResizing) {
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'ns-resize';
+    } else {
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    }
+    
+    return () => {
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    };
+  }, [isResizing]);
 
   // ✅ Add emoji and description for each agent
   const agentsWithMetadata = agents.map((agent: Agent) => {
@@ -466,11 +518,53 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
         </div>
       )}
       
+      {/* Resize Overlay - Captures all mouse events during resize */}
+      {isResizing && (
+        <div 
+          className="fixed inset-0 cursor-ns-resize"
+          style={{ zIndex: 9999 }}
+          onMouseMove={(e) => {
+            e.preventDefault();
+            const containerBottom = window.innerHeight;
+            const newHeight = Math.max(MIN_HEIGHT, containerBottom - e.clientY);
+            setTextareaHeight(newHeight);
+          }}
+          onMouseUp={(e) => {
+            e.preventDefault();
+            setIsResizing(false);
+            localStorage.setItem('chatInputHeight', textareaHeight.toString());
+          }}
+        />
+      )}
+      
       {/* Unified Frame - Cursor Chat Style */}
-      <div className="border border-gray-300 dark:border-gray-600 rounded-lg 
+      <div className="relative border border-gray-300 dark:border-gray-600 rounded-lg 
                       bg-white dark:bg-gray-800">
-        {/* Input Area */}
+        {/* Resize Handle - Always enabled per UI policy (chatPolicy.canResizeInput) */}
+        <div
+          className="absolute top-0 left-0 right-0 cursor-ns-resize hover:bg-blue-500/20 
+                     transition-colors group"
+          style={{ 
+            height: '8px',  // Larger hit area
+            marginTop: '-4px',  // Center on border
+            zIndex: 999,
+            pointerEvents: 'auto'  // Force pointer events always
+          }}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation(); // Prevent any parent interference
+            setIsResizing(true);
+          }}
+          title={`Drag to resize (always available)`}
+        >
+          <div className="absolute top-1/2 -translate-y-1/2 left-1/2 -translate-x-1/2 w-12 h-1 
+                         bg-gray-300 dark:bg-gray-600 rounded-full
+                         group-hover:bg-blue-500 transition-colors" />
+        </div>
+        
+        {/* Input Area - Disabled during job run, but resize always works */}
         <textarea
+          style={{ height: `${textareaHeight}px` }}
           className="w-full px-3 py-2.5 text-sm
                      bg-transparent text-gray-900 dark:text-gray-100
                      placeholder-gray-400 dark:placeholder-gray-500
@@ -493,7 +587,6 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
           }}
           onCompositionStart={() => setIsComposing(true)}
           onCompositionEnd={() => setIsComposing(false)}
-          rows={3}
           disabled={disabled || isRunning}
         />
         

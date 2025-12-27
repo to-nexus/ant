@@ -37,10 +37,12 @@ export async function orchestrator(params: {
   jobId?: string;  // ✅ Existing jobId for resume or tracking
   featurePath?: string;  // ✅ Full feature path
   projectPath?: string;  // ✅ Full project path
+  workspaceResolver?: any;  // ✅ Workspace resolver for tenant-aware path resolution
+  userContext?: any;  // ✅ User context
   overrideDirective?: string;  // ✅ Chat input as directive (highest priority)
   chatSource?: boolean;  // ✅ Flag for Chat SSE
 }) {
-  const { agent, jobType, input, project, feature, inputFile, mode, enableEvaluation, jobId, featurePath, projectPath, overrideDirective, chatSource } = params;
+  const { agent, jobType, input, project, feature, inputFile, mode, enableEvaluation, jobId, featurePath, projectPath, workspaceResolver, userContext, overrideDirective, chatSource } = params;
 
   switch (agent) {
     case "architect": {
@@ -92,8 +94,8 @@ export async function orchestrator(params: {
       
       // ✅ Get FileSystemPort and GitPort (separated responsibilities)
       const codebasePath = path.join(projectPath, 'codebase');
-      const fileSystem = AdapterFactory.createFileSystemAdapterWithPath(projectPath);  // ✅ NEW: FileSystemPort scoped to projectPath
-      const git = AdapterFactory.createGitAdapterWithConfig(project || "default", configData, codebasePath);  // ✅ Git only
+      const fileSystem = AdapterFactory.createFileSystemAdapterWithPath(projectPath);  // ✅ Use projectPath for full workspace access
+      const git = AdapterFactory.createGitAdapterWithConfig(project || "default", configData, codebasePath);
 
       if (jobType === 'design') {
         const analyzer = new CodebaseAnalyzer();
@@ -135,7 +137,7 @@ export async function orchestrator(params: {
           project || "default", 
           'design', 
           inputFile, 
-          { memory, llm, promptPort, profilePort, config, chunk, session, git, fileSystem, analyzer, kanbanUpdate, fileTreeUpdate, workflowUpdate, overrideDirective, chatSource, feature },
+          { memory, llm, promptPort, profilePort, config, chunk, session, git, fileSystem, analyzer, kanbanUpdate, fileTreeUpdate, workflowUpdate, workspaceResolver, userContext, overrideDirective, chatSource, feature },
           undefined,  // codeMode
           undefined,  // enableEvaluation
           jobId       // ✅ Pass jobId for real-time Kanban and resume
@@ -184,7 +186,7 @@ export async function orchestrator(params: {
           project || "default", 
           'code', 
           inputFile, 
-          { memory, llm, promptPort, profilePort, analyzer, git, fileSystem, config, chunk, session, command, kanbanUpdate, fileTreeUpdate, workflowUpdate, overrideDirective, chatSource, feature },
+          { memory, llm, promptPort, profilePort, analyzer, git, fileSystem, config, chunk, session, command, kanbanUpdate, fileTreeUpdate, workflowUpdate, workspaceResolver, userContext, overrideDirective, chatSource, feature },
           mode,              // Can be undefined (auto-infer) or explicit
           enableEvaluation,  // Pass evaluation flag
           jobId              // ✅ Pass jobId for real-time updates and resume
