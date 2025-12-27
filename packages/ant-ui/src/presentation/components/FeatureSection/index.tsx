@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { useStore } from '@/domain/store';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { useAlertModal } from '@/application/hooks/ui/useAlertModal';
@@ -7,15 +6,15 @@ import { useFeatureBranchManager } from './hooks/useFeatureBranchManager';
 import { useDevServerManager } from './hooks/useDevServerManager';
 import { useFeatureActions } from './hooks/useFeatureActions.tsx';
 import { FeatureDropdown } from './components/FeatureDropdown';
-import { DevServerPanel } from './components/DevServerPanel';
+import { DevServerStatusPanel } from './components/DevServerStatusPanel';
+import { getApiBase } from '@/infrastructure/http/api';
 
 export function FeatureSection() {
   const { 
     features, 
     selectedProject, 
     selectedFeature,
-    fetchFeatures,
-    gitStatus  // ✅ Use unified Git status from store
+    fetchFeatures
   } = useStore();
   
   const policy = useUIActionPolicy();
@@ -24,21 +23,15 @@ export function FeatureSection() {
   // Custom hooks
   const baseBranch = useBaseBranch(selectedProject);
   const {
-    devServerStatus,
-    isDevServerLoading,
-    showSetupPanel,
-    showStatusPanel,
-    startError,
-    isInstalling,
-    availablePort,
-    handlePlayButtonClick,
-    handleStartDevServer,
-    handleStopDevServer,
-    setShowSetupPanel,
-    setShowStatusPanel,
-    setStartError,
-    setIsInstalling
-  } = useDevServerManager(selectedProject);
+    state,
+    status,
+    ready,  // ✅ Get ready state from health check
+    error,
+    progress,
+    startServer,
+    stopServer,
+    isLoading
+  } = useDevServerManager(selectedProject, selectedFeature);
   
   const {
     handleCreateFeature,
@@ -57,39 +50,52 @@ export function FeatureSection() {
     <div>
       <FeatureDropdown
         features={features}
-        selectedFeature={selectedFeature}
-        isDevServerLoading={isDevServerLoading}
-        devServerRunning={devServerStatus?.running || false}
+        selectedFeature={selectedFeature || undefined}
+        isDevServerLoading={isLoading}
+        devServerRunning={state === 'running'}
         canChangeFeature={policy.canChangeFeature}
         canStartDevServer={policy.canStartDevServer}
         canStopDevServer={policy.canStopDevServer}
-        disabledReason={policy.disabledReason}
+        disabledReason={policy.disabledReason || undefined}
         onFeatureChange={handleFeatureChange}
         onCreate={handleCreateFeature}
         onDelete={handleDeleteFeature}
         onItemCreated={fetchFeatures}
-        onPlayClick={handlePlayButtonClick}
-        onStopClick={handleStopDevServer}
+        onPlayClick={startServer}
+        onStopClick={stopServer}
       />
       
-      <DevServerPanel
-        selectedProject={selectedProject}
-        selectedFeature={selectedFeature}
-        showSetupPanel={showSetupPanel}
-        showStatusPanel={showStatusPanel}
-        availablePort={availablePort}
-        isDevServerLoading={isDevServerLoading}
-        startError={startError}
-        isInstalling={isInstalling}
-        devServerStatus={devServerStatus}
-        onStart={handleStartDevServer}
-        onCloseSetup={() => setShowSetupPanel(false)}
-        onCloseStatus={() => {
-          setShowStatusPanel(false);
-          setStartError(undefined);
-          setIsInstalling(false);
-        }}
-      />
+      {/* Status Panel - show for all non-idle states */}
+      {(() => {
+        const shouldShow = state !== 'idle' && selectedFeature;
+        console.log('[FeatureSection] DevServerStatusPanel render decision:', {
+          state,
+          selectedFeature,
+          shouldShow,
+          statusUrl: status?.url
+        });
+        return shouldShow ? (
+          <div className="mt-2">
+            <DevServerStatusPanel
+              state={state}
+              ready={ready}  // ✅ Pass health check result
+              url={status?.url}
+              error={error}
+              progress={progress}
+              onOpen={() => {
+                if (status?.url) {
+                  // ✅ Remove /api suffix from getApiBase() for dev server proxy
+                  // getApiBase() returns 'http://localhost:4100/api'
+                  // But dev server proxy is at 'http://localhost:4100/dev/...'
+                  const apiBase = getApiBase();
+                  const backendBase = apiBase.replace(/\/api$/, '');  // Remove /api suffix
+                  window.open(`${backendBase}${status.url}`, '_blank');
+                }
+              }}
+            />
+          </div>
+        ) : null;
+      })()}
       
       {/* Alert Modal for uncommitted changes warning */}
       <AlertModal />

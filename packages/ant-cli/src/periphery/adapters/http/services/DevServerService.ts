@@ -5,39 +5,68 @@ import * as path from 'path';
 import { LogEntry } from '../../../../core/ports/http';
 import { PortManager } from '../../../../infrastructure/networking/PortManager';
 import { PortRegistryPort } from '../../../../core/ports/portRegistry';
+import { SSEService } from './SSEService';  // ✅ Import SSEService
+
+/**
+ * Package information for dev server
+ */
+interface PackageInfo {
+  name: string;
+  path: string;
+  type: 'frontend' | 'backend' | 'other';
+  packageJson: any;
+  port?: number;
+  process?: ChildProcess;
+}
+
+/**
+ * Project structure detection result
+ */
+interface ProjectStructure {
+  type: 'frontend-only' | 'backend-only' | 'fullstack' | 'monorepo';
+  packages: PackageInfo[];
+  entry?: PackageInfo;  // Entry point for Open button (usually frontend)
+}
 
 /**
  * DevServerService
  * 
  * Manages development servers for projects at feature/branch level.
- * Handles spawning, monitoring, and stopping dev servers.
- * Uses PortManager for dynamic port allocation.
- * Uses PortRegistry for proxy port mappings (in-memory or Redis).
+ * 
+ * Key Features:
+ * - Multi-package support: Starts ALL runnable packages (frontend, backend, etc.)
+ * - Smart detection: Identifies project structure (fullstack, monorepo, etc.)
+ * - Entry point: Only the entry package (usually frontend) is registered for proxy
+ * - Port management: Dynamic port allocation for all servers
+ * - Process management: Tracks and manages all running processes
  */
 export class DevServerService {
-  private devServers: Map<string, ChildProcess> = new Map();
-  private devServerPorts: Map<string, number> = new Map();
+  private devServers: Map<string, ChildProcess[]> = new Map();  // Multiple processes per serverKey
+  private devServerPorts: Map<string, number> = new Map();  // Entry port for proxy
+  private devServerReady: Map<string, boolean> = new Map();  // ✅ Track ready state
   private devServerLogs: Map<string, LogEntry[]> = new Map();
   private installingProjects: Set<string> = new Set();
-  private onStatusChange?: (projectId: string) => void;
+  private onStatusChange?: (serverKey: string) => void;
   private portManager?: PortManager;
-  private portRegistry?: PortRegistryPort;  // ✅ Port registry (in-memory or Redis)
+  private portRegistry?: PortRegistryPort;
+  private sseService?: SSEService;  // ✅ Use shared SSEService
   
   constructor(
     portManager?: PortManager,
     portRegistry?: PortRegistryPort,
     callbacks?: {
-      onStatusChange?: (projectId: string) => void;
-    }
+      onStatusChange?: (serverKey: string) => void;
+    },
+    sseService?: SSEService  // ✅ Accept SSEService
   ) {
     this.portManager = portManager;
     this.portRegistry = portRegistry;
     this.onStatusChange = callbacks?.onStatusChange;
+    this.sseService = sseService;  // ✅ Store SSEService
   }
   
   /**
-   * Create unique server key
-   * Format: tenantId:userId:projectId:feature
+   * Create unique server key: tenantId:userId:projectId:feature
    */
   private createServerKey(tenantId: string, userId: string, projectId: string, feature: string): string {
     return `${tenantId}:${userId}:${projectId}:${feature}`;
@@ -46,61 +75,110 @@ export class DevServerService {
   /**
    * Parse server key into components
    */
-  private parseServerKey(serverKey: string): { 
-    tenantId: string; 
-    userId: string;
-    projectId: string; 
-    feature: string;
-  } {
-    const [tenantId, userId, projectId, ...featureParts] = serverKey.split(':');
-    return {
-      tenantId,
-      userId,
-      projectId,
-      feature: featureParts.join(':')  // Feature might contain ':'
-    };
+  private parseServerKey(serverKey: string): { tenantId: string; userId: string; projectId: string; feature: string } {
+    const [tenantId, userId, projectId, feature] = serverKey.split(':');
+    return { tenantId, userId, projectId, feature };
   }
   
   /**
-   * Check if npm install is needed
-   * ✅ CRITICAL FIX: Use marker file instead of mtime
-   * Directory mtime is UNRELIABLE (only updates on add/remove, not modify!)
+   * Append log entry and broadcast via SSEService
    */
-  private async checkIfInstallNeeded(localPath: string, hasNodeModules: boolean): Promise<boolean> {
-    if (!hasNodeModules) {
-      console.log('[DevServerService] node_modules not found - install needed');
-      return true;
+  private appendLog(serverKey: string, type: 'stdout' | 'stderr', message: string): void {
+    const logEntry: LogEntry = {
+      timestamp: new Date().toISOString(),
+      type,
+      message: message.trim()
+    };
+    
+    const logs = this.devServerLogs.get(serverKey) || [];
+    logs.push(logEntry);
+    
+    // Keep last 1000 lines
+    if (logs.length > 1000) {
+      logs.shift();
     }
     
-    // ✅ Use marker file to track install completion
-    const markerPath = path.join(localPath, 'node_modules', '.install-complete');
-    try {
-      await fs.promises.access(markerPath);
-      console.log('[DevServerService] ✅ Dependencies up to date (marker found)');
-      return false;
-    } catch {
-      console.log('[DevServerService] Marker file missing - install needed');
-      return true;
+    this.devServerLogs.set(serverKey, logs);
+    
+    // ✅ Broadcast via SSEService (if available)
+    if (this.sseService) {
+      const { projectId, feature } = this.parseServerKey(serverKey);
+      this.sseService.broadcast(projectId, feature, 'devServer', {
+        type: 'log',
+        data: logEntry
+      });
     }
   }
   
   /**
-   * Mark installation as complete
+   * Broadcast status update via SSEService
    */
-  private async markInstallComplete(localPath: string): Promise<void> {
-    const markerPath = path.join(localPath, 'node_modules', '.install-complete');
-    try {
-      await fs.promises.writeFile(markerPath, new Date().toISOString(), 'utf-8');
-      console.log('[DevServerService] ✅ Install marker created');
-    } catch (error) {
-      console.warn('[DevServerService] ⚠️  Failed to create marker:', error);
+  private broadcastStatus(serverKey: string, status: any): void {
+    console.log(`[DevServerService] 📤 Broadcasting status update for ${serverKey}:`, status);
+    
+    // ✅ Broadcast via SSEService (if available)
+    if (this.sseService) {
+      const { projectId, feature } = this.parseServerKey(serverKey);
+      this.sseService.broadcast(projectId, feature, 'devServer', {
+        type: 'status',
+        data: status
+      });
+    }
+    
+    // Also trigger onStatusChange callback
+    if (this.onStatusChange) {
+      this.onStatusChange(serverKey);
     }
   }
   
   /**
-   * Detect if project is a backend project
+   * Detect if package is a frontend project
    */
-  private isBackendProject(packageJson: any): boolean {
+  private isFrontendPackage(packageJson: any): boolean {
+    const deps = { 
+      ...packageJson.dependencies, 
+      ...packageJson.devDependencies 
+    };
+    
+    // Frontend frameworks
+    const frontendFrameworks = [
+      'react', 'react-dom',
+      'vue', '@vue/runtime-core',
+      'svelte',
+      '@angular/core',
+      'solid-js'
+    ];
+    
+    // Build tools (strong indicators)
+    const frontendBuildTools = [
+      'vite', '@vitejs/plugin-react', '@vitejs/plugin-vue',
+      'next', 'nuxt',
+      'webpack', '@angular/cli',
+      'parcel-bundler', 'parcel',
+      '@remix-run/dev',
+      'astro'
+    ];
+    
+    const hasFrontend = frontendFrameworks.some(fw => deps[fw]) || 
+                       frontendBuildTools.some(tool => deps[tool]);
+    
+    // Check dev script
+    const devScript = packageJson.scripts?.dev || packageJson.scripts?.start || '';
+    const isFrontendScript = devScript.includes('vite') || 
+                            devScript.includes('next') || 
+                            devScript.includes('webpack') ||
+                            devScript.includes('react-scripts') ||
+                            devScript.includes('vue-cli-service') ||
+                            devScript.includes('ng serve') ||
+                            devScript.includes('astro');
+    
+    return hasFrontend || isFrontendScript;
+  }
+  
+  /**
+   * Detect if package is a backend project
+   */
+  private isBackendPackage(packageJson: any): boolean {
     const deps = { 
       ...packageJson.dependencies, 
       ...packageJson.devDependencies 
@@ -109,39 +187,364 @@ export class DevServerService {
     // Backend frameworks
     const backendFrameworks = [
       'express', 'koa', 'fastify', 'hapi',
-      '@nestjs/core', '@nestjs/platform-express', '@nestjs/platform-fastify',
-      'ws', 'socket.io', 'uWebSockets.js'
+      '@nestjs/core', '@nestjs/platform-express',
+      'ws', 'socket.io'
     ];
     
-    // Backend dev tools (strong indicators)
-    const backendDevTools = [
-      'tsx', 'nodemon', 'ts-node', 'ts-node-dev'
-    ];
+    const hasBackend = backendFrameworks.some(fw => deps[fw]);
     
-    // Check for backend indicators
-    const hasBackendFramework = backendFrameworks.some(fw => deps[fw]);
-    const hasBackendDevTool = backendDevTools.some(tool => deps[tool]);
-    
-    // Also check dev script content
+    // Check dev script
     const devScript = packageJson.scripts?.dev || '';
-    const isNodeServer = devScript.includes('tsx') || 
-                        devScript.includes('nodemon') || 
-                        devScript.includes('ts-node') ||
-                        devScript.includes('nest start') ||
-                        devScript.includes('server.ts') ||
-                        devScript.includes('server.js');
+    const isBackendScript = devScript.includes('tsx') || 
+                           devScript.includes('nodemon') || 
+                           devScript.includes('ts-node') ||
+                           devScript.includes('nest start');
     
-    return hasBackendFramework || hasBackendDevTool || isNodeServer;
+    return hasBackend || isBackendScript;
+  }
+  
+  /**
+   * Find immediate subdirectories
+   */
+  private async findSubdirectories(parentPath: string): Promise<string[]> {
+    try {
+      const entries = await fs.promises.readdir(parentPath, { withFileTypes: true });
+      return entries
+        .filter(entry => entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules')
+        .map(entry => entry.name);
+    } catch (error) {
+      return [];
+    }
+  }
+  
+  /**
+   * Resolve workspace pattern (e.g., "packages/*")
+   */
+  private async resolveWorkspacePattern(basePath: string, pattern: string): Promise<string[]> {
+    if (!pattern.includes('*')) {
+      const fullPath = path.join(basePath, pattern);
+      return fs.existsSync(fullPath) ? [fullPath] : [];
+    }
+    
+    const baseDir = pattern.replace('/*', '');
+    const baseDirPath = path.join(basePath, baseDir);
+    
+    if (!fs.existsSync(baseDirPath)) return [];
+    
+    const subdirs = await this.findSubdirectories(baseDirPath);
+    return subdirs.map(subdir => path.join(baseDirPath, subdir));
+  }
+  
+  /**
+   * Detect monorepo structure
+   */
+  private async detectMonorepoStructure(localPath: string, rootPkgJson: any): Promise<ProjectStructure> {
+    const packages: PackageInfo[] = [];
+    const workspacePatterns = Array.isArray(rootPkgJson.workspaces) 
+      ? rootPkgJson.workspaces 
+      : (rootPkgJson.workspaces.packages || []);
+    
+    for (const pattern of workspacePatterns) {
+      const resolvedPaths = await this.resolveWorkspacePattern(localPath, pattern);
+      
+      for (const wsPath of resolvedPaths) {
+        const pkgJsonPath = path.join(wsPath, 'package.json');
+        if (!fs.existsSync(pkgJsonPath)) continue;
+        
+        try {
+          const pkgJson = JSON.parse(await fs.promises.readFile(pkgJsonPath, 'utf-8'));
+          const pkgName = path.relative(localPath, wsPath);
+          
+          let pkgType: 'frontend' | 'backend' | 'other' = 'other';
+          if (this.isFrontendPackage(pkgJson)) {
+            pkgType = 'frontend';
+          } else if (this.isBackendPackage(pkgJson)) {
+            pkgType = 'backend';
+          }
+          
+          // Only include packages with dev script
+          if (pkgJson.scripts?.dev || pkgJson.scripts?.start) {
+            packages.push({
+              name: pkgName,
+              path: wsPath,
+              type: pkgType,
+              packageJson: pkgJson
+            });
+          }
+        } catch (error) {
+          continue;
+        }
+      }
+    }
+    
+    // Entry is the first frontend package
+    const entry = packages.find(p => p.type === 'frontend');
+    
+    console.log(`[DevServerService] Monorepo detected: ${packages.length} packages`);
+    packages.forEach(pkg => {
+      console.log(`  - ${pkg.name} (${pkg.type})${pkg === entry ? ' ← ENTRY' : ''}`);
+    });
+    
+    return { type: 'monorepo', packages, entry };
+  }
+  
+  /**
+   * Detect project structure
+   */
+  private async detectProjectStructure(localPath: string): Promise<ProjectStructure> {
+    const rootPkgPath = path.join(localPath, 'package.json');
+    if (!fs.existsSync(rootPkgPath)) {
+      throw new Error('package.json not found');
+    }
+    
+    const rootPkgJson = JSON.parse(await fs.promises.readFile(rootPkgPath, 'utf-8'));
+    
+    // Check if monorepo
+    if (rootPkgJson.workspaces) {
+      return await this.detectMonorepoStructure(localPath, rootPkgJson);
+    }
+    
+    // Check subdirectories for fullstack
+    const subdirs = await this.findSubdirectories(localPath);
+    const packages: PackageInfo[] = [];
+    
+    for (const subdir of subdirs) {
+      const subdirPath = path.join(localPath, subdir);
+      const pkgJsonPath = path.join(subdirPath, 'package.json');
+      
+      if (!fs.existsSync(pkgJsonPath)) continue;
+      
+      try {
+        const pkgJson = JSON.parse(await fs.promises.readFile(pkgJsonPath, 'utf-8'));
+        
+        // Only include packages with dev script
+        if (!pkgJson.scripts?.dev && !pkgJson.scripts?.start) continue;
+        
+        let pkgType: 'frontend' | 'backend' | 'other' = 'other';
+        if (this.isFrontendPackage(pkgJson)) {
+          pkgType = 'frontend';
+        } else if (this.isBackendPackage(pkgJson)) {
+          pkgType = 'backend';
+        }
+        
+        packages.push({
+          name: subdir,
+          path: subdirPath,
+          type: pkgType,
+          packageJson: pkgJson
+        });
+      } catch (error) {
+        continue;
+      }
+    }
+    
+    // Determine type
+    const hasFrontend = packages.some(p => p.type === 'frontend');
+    const hasBackend = packages.some(p => p.type === 'backend');
+    
+    if (hasFrontend && hasBackend) {
+      const entry = packages.find(p => p.type === 'frontend');
+      console.log(`[DevServerService] Fullstack detected: ${packages.length} packages`);
+      packages.forEach(pkg => {
+        console.log(`  - ${pkg.name} (${pkg.type})${pkg === entry ? ' ← ENTRY' : ''}`);
+      });
+      return { type: 'fullstack', packages, entry };
+    }
+    
+    if (packages.length > 0) {
+      const entry = packages[0];
+      const type = hasFrontend ? 'frontend-only' : hasBackend ? 'backend-only' : 'frontend-only';
+      console.log(`[DevServerService] ${type} detected: ${packages.length} package(s)`);
+      return { type, packages, entry };
+    }
+    
+    // Treat root as single package
+    const pkgType = this.isFrontendPackage(rootPkgJson) ? 'frontend' : 
+                   this.isBackendPackage(rootPkgJson) ? 'backend' : 'frontend';
+    
+    const pkg: PackageInfo = {
+      name: 'root',
+      path: localPath,
+      type: pkgType,
+      packageJson: rootPkgJson
+    };
+    
+    console.log(`[DevServerService] Single package detected (${pkgType})`);
+    
+    return { 
+      type: pkgType === 'backend' ? 'backend-only' : 'frontend-only', 
+      packages: [pkg], 
+      entry: pkg 
+    };
+  }
+  
+  /**
+   * Install dependencies if needed
+   */
+  private async installDependenciesIfNeeded(packagePath: string, serverKey: string): Promise<void> {
+    const nodeModulesPath = path.join(packagePath, 'node_modules');
+    if (fs.existsSync(nodeModulesPath)) {
+      console.log(`[DevServerService] Dependencies already installed: ${packagePath}`);
+      return;
+    }
+    
+    const relativePath = path.basename(packagePath);
+    console.log(`[DevServerService] Installing dependencies: ${relativePath}...`);
+    
+    this.appendLog(serverKey, 'stdout', `📦 Installing dependencies for ${relativePath}...`);
+    
+    return new Promise((resolve, reject) => {
+      const installProcess = spawn('npm', ['install'], {
+        cwd: packagePath,
+        shell: true,
+        stdio: 'pipe'
+      });
+      
+      installProcess.stdout?.on('data', (data) => {
+        this.appendLog(serverKey, 'stdout', data.toString());
+      });
+      
+      installProcess.stderr?.on('data', (data) => {
+        this.appendLog(serverKey, 'stderr', data.toString());
+      });
+      
+      installProcess.on('close', (code) => {
+        if (code === 0) {
+          this.appendLog(serverKey, 'stdout', `✅ Dependencies installed for ${relativePath}`);
+          resolve();
+        } else {
+          reject(new Error(`npm install failed with code ${code}`));
+        }
+      });
+      
+      installProcess.on('error', reject);
+    });
+  }
+  
+  /**
+   * Health check: Try to connect to dev server
+   */
+  private async healthCheck(port: number, serverKey: string, maxAttempts = 20, delayMs = 500): Promise<boolean> {
+    console.log(`[DevServerService] 🏥 Health check starting for port ${port}...`);
+    
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const response = await fetch(`http://localhost:${port}/`, {
+          method: 'GET',
+          signal: AbortSignal.timeout(2000)  // 2s timeout per attempt
+        });
+        
+        // Any response (even 404) means server is up
+        console.log(`[DevServerService] ✅ Health check passed (attempt ${attempt}/${maxAttempts}): ${response.status}`);
+        this.appendLog(serverKey, 'stdout', `✅ Dev server is ready on port ${port}`);
+        return true;
+      } catch (error: any) {
+        console.log(`[DevServerService] ⚠️ Health check attempt ${attempt}/${maxAttempts} failed:`, error.message);
+        
+        if (attempt < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+      }
+    }
+    
+    console.error(`[DevServerService] ❌ Health check failed after ${maxAttempts} attempts`);
+    this.appendLog(serverKey, 'stderr', `❌ Dev server failed to respond on port ${port} after ${maxAttempts * delayMs / 1000}s`);
+    return false;
+  }
+  
+  /**
+   * Spawn dev process for a package
+   */
+  private async spawnDevProcess(pkg: PackageInfo, port: number, serverKey: string): Promise<ChildProcess> {
+    const pkgJson = pkg.packageJson;
+    const devScript = pkgJson.scripts?.dev || pkgJson.scripts?.start;
+    
+    let command: string;
+    let args: string[] = [];
+    
+    // Determine command based on package type and script content
+    if (pkg.type === 'frontend') {
+      if (devScript?.includes('vite')) {
+        command = 'npx';
+        // ✅ No --base: Let proxy handle path rewriting
+        args = ['vite', '--port', port.toString(), '--host'];
+      } else if (devScript?.includes('next')) {
+        command = 'npx';
+        args = ['next', 'dev', '-p', port.toString()];
+      } else if (devScript?.includes('react-scripts')) {
+        command = 'npm';
+        args = ['run', 'dev'];
+      } else {
+        command = 'npm';
+        args = ['run', 'dev'];
+      }
+    } else if (pkg.type === 'backend') {
+      command = 'npm';
+      args = ['run', 'dev'];
+    } else {
+      command = 'npm';
+      args = ['run', 'dev'];
+    }
+    
+    const env = {
+      PATH: process.env.PATH,
+      HOME: process.env.HOME,
+      USER: process.env.USER,
+      PORT: port.toString(),
+      NODE_ENV: 'development',
+      // ✅ Prevent auto-opening browser (Vite, CRA, Next.js)
+      BROWSER: 'none',
+      BROWSER_ARGS: '--no-sandbox',
+    };
+    
+    console.log(`[DevServerService] Starting ${pkg.type}: ${pkg.name} on port ${port}`);
+    this.appendLog(serverKey, 'stdout', `🚀 Starting ${pkg.name} (${pkg.type}) on port ${port}...`);
+    
+    console.log(`[DevServerService] 🔧 Spawning: ${command} ${args.join(' ')} in ${pkg.path}`);
+    
+    const childProcess = spawn(command, args, {
+      cwd: pkg.path,
+      shell: true,
+      env,
+      stdio: 'pipe'
+    });
+    
+    console.log(`[DevServerService] ✅ Process spawned with PID: ${childProcess.pid}`);
+    
+    // Setup logging
+    childProcess.stdout?.on('data', (data) => {
+      const output = data.toString();
+      console.log(`[DevServerService] 📤 stdout (PID ${childProcess.pid}):`, output.substring(0, 100));
+      this.appendLog(serverKey, 'stdout', output);
+    });
+    
+    childProcess.stderr?.on('data', (data) => {
+      const output = data.toString();
+      console.log(`[DevServerService] 📤 stderr (PID ${childProcess.pid}):`, output.substring(0, 100));
+      this.appendLog(serverKey, 'stderr', output);
+    });
+    
+    childProcess.on('close', (code) => {
+      console.log(`[DevServerService] ❌ Process ${childProcess.pid} exited with code ${code}`);
+      this.appendLog(serverKey, 'stdout', `⚠️  ${pkg.name} exited with code ${code}`);
+    });
+    
+    childProcess.on('error', (error) => {
+      console.error(`[DevServerService] ❌ Process ${childProcess.pid} error:`, error);
+      this.appendLog(serverKey, 'stderr', `❌ ${pkg.name} error: ${error.message}`);
+    });
+    
+    return childProcess;
   }
   
   /**
    * Start dev server for a project feature
-   * @param tenantId - Organization/tenant identifier
-   * @param userId - User identifier within the organization
-   * @param projectId - Project identifier
-   * @param feature - Feature/branch identifier
-   * @param localPath - Local filesystem path to project
-   * @param port - Optional port override
+   * 
+   * This method:
+   * 1. Detects project structure (fullstack, monorepo, etc.)
+   * 2. Installs dependencies for ALL packages
+   * 3. Starts dev servers for ALL packages
+   * 4. Registers only the ENTRY package in PortRegistry (for proxy)
    */
   async startDevServer(
     tenantId: string,
@@ -150,18 +553,18 @@ export class DevServerService {
     feature: string,
     localPath: string,
     port?: number
-  ): Promise<{ 
-    success: boolean; 
-    message?: string; 
-    error?: string; 
+  ): Promise<{
+    success: boolean;
+    message?: string;
+    error?: string;
     port?: number;
     serverKey?: string;
-    url?: string;           // ✅ 통합된 URL (로컬/프로덕션 모두 /dev/xxx 사용)
+    url?: string;
   }> {
     const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
     const proxyUrl = `/dev/${serverKey}`;
     
-    // Check if dev server is already running
+    // Check if already running
     if (this.devServers.has(serverKey)) {
       const existingPort = this.devServerPorts.get(serverKey);
       return { 
@@ -173,473 +576,147 @@ export class DevServerService {
       };
     }
     
-    // ✅ CRITICAL: Check and add ATOMICALLY (before any await!)
+    // Check if installing
     if (this.installingProjects.has(serverKey)) {
       return { success: false, error: 'Dependencies are being installed. Please wait...' };
     }
-    // ✅ Add immediately to prevent race condition with concurrent requests
+    
     this.installingProjects.add(serverKey);
-    
-    // Check if package.json exists
-    const packageJsonPath = path.join(localPath, 'package.json');
-    const packageJsonExists = await fs.promises.access(packageJsonPath)
-      .then(() => true)
-      .catch(() => false);
-    
-    if (!packageJsonExists) {
-      return { success: false, error: 'package.json not found in project' };
-    }
-    
-    // Read package.json to get dev script
-    const packageJson = JSON.parse(await fs.promises.readFile(packageJsonPath, 'utf-8'));
-    
-    // Check if node_modules exists
-    const nodeModulesPath = path.join(localPath, 'node_modules');
-    const hasNodeModules = await fs.promises.access(nodeModulesPath)
-      .then(() => true)
-      .catch(() => false);
-    
-    // ✅ Smart dependency check: install if missing OR outdated
-    const needsInstall = await this.checkIfInstallNeeded(localPath, hasNodeModules);
-    
-    // ✅ Use PortManager for dynamic allocation, fallback to provided/default port
-    let devPort: number;
-    if (this.portManager) {
-      try {
-        devPort = await this.portManager.allocate();
-        console.log(`[DevServerService] Allocated dynamic port: ${devPort} for ${serverKey}`);
-      } catch (error) {
-        console.warn(`[DevServerService] Failed to allocate port, using fallback`);
-        devPort = port || 4200;
-      }
-    } else {
-      devPort = port || 4200;
-    }
-    
-    // ✅ Register port in PortRegistry (in-memory or Redis)
-    if (this.portRegistry) {
-      try {
-        await this.portRegistry.registerDevServer(tenantId, userId, projectId, feature, devPort);
-        console.log(`[DevServerService] Registered: ${serverKey} → ${devPort}`);
-      } catch (error) {
-        console.warn(`[DevServerService] Failed to register in PortRegistry:`, error);
-        // Continue anyway - dev server can still work locally
-      }
-    }
-    
-    // Clear previous logs
     this.devServerLogs.set(serverKey, []);
     
-    // ✅ Auto-install dependencies if needed
-    if (needsInstall) {
-      const reason = !hasNodeModules 
-        ? 'Dependencies not found' 
-        : 'Dependencies outdated (package.json or lock file changed)';
+    try {
+      // 1. Detect project structure
+      const structure = await this.detectProjectStructure(localPath);
       
-      const installLog: LogEntry = {
-        timestamp: new Date().toISOString(),
-        type: 'stdout',
-        message: `📦 ${reason}. Installing dependencies... This may take a few minutes.`
-      };
-      const logs = this.devServerLogs.get(projectId) || [];
-      logs.push(installLog);
-      this.devServerLogs.set(projectId, logs);
+      if (structure.packages.length === 0) {
+        throw new Error('No runnable packages found');
+      }
       
-      // Run npm install
-      return new Promise((resolve) => {
-        const installProcess = spawn('npm', ['install'], {
-          cwd: localPath,
-          shell: true
-        });
+      // 2. Install dependencies for all packages
+      for (const pkg of structure.packages) {
+        await this.installDependenciesIfNeeded(pkg.path, serverKey);
+      }
+      
+      this.installingProjects.delete(serverKey);
+      
+      // 3. Allocate ports and start all dev servers
+      const processes: ChildProcess[] = [];
+      
+      for (const pkg of structure.packages) {
+        const pkgPort = this.portManager 
+          ? await this.portManager.allocate() 
+          : 3000 + processes.length;
         
-        installProcess.stdout?.on('data', (data: Buffer) => {
-          const message = data.toString();
-          const log: LogEntry = {
-            timestamp: new Date().toISOString(),
-            type: 'stdout',
-            message: message.trim()
-          };
-          
-          const logs = this.devServerLogs.get(projectId) || [];
-          logs.push(log);
-          this.devServerLogs.set(projectId, logs);
-          
-          // ✅ Notify UI on install progress
-          this.onStatusChange?.(projectId);
-        });
+        pkg.port = pkgPort;
         
-        installProcess.stderr?.on('data', (data: Buffer) => {
-          const message = data.toString();
-          const log: LogEntry = {
-            timestamp: new Date().toISOString(),
-            type: 'stderr',
-            message: message.trim()
-          };
-          
-          const logs = this.devServerLogs.get(projectId) || [];
-          logs.push(log);
-          this.devServerLogs.set(projectId, logs);
-          
-          // ✅ Notify UI on install progress (errors)
-          this.onStatusChange?.(projectId);
-        });
+        const process = await this.spawnDevProcess(pkg, pkgPort, serverKey);
+        pkg.process = process;
+        processes.push(process);
+      }
+      
+      // 4. Register only the ENTRY in PortRegistry
+      if (structure.entry && this.portRegistry) {
+        await this.portRegistry.registerDevServer(
+          tenantId, userId, projectId, feature,
+          structure.entry.port!
+        );
+        console.log(`[DevServerService] ✅ Registered entry: ${serverKey} → ${structure.entry.port}`);
+      }
+      
+      // 5. Store processes and entry port
+      this.devServers.set(serverKey, processes);
+      this.devServerPorts.set(serverKey, structure.entry?.port || structure.packages[0].port!);
+      
+      this.appendLog(serverKey, 'stdout', '✅ All dev servers started successfully!');
+      
+      // ✅ 6. Health check for entry package (async, don't block response)
+      const entryPort = structure.entry?.port || structure.packages[0].port!;
+      this.healthCheck(entryPort, serverKey).then(ready => {
+        this.devServerReady.set(serverKey, ready);
         
-        installProcess.on('exit', async (code) => {
-          // ✅ Remove from installing set
-          this.installingProjects.delete(projectId);
-          
-          if (code === 0) {
-            // ✅ CRITICAL: Create marker file BEFORE recursive call!
-            await this.markInstallComplete(localPath);
-            
-            const successLog: LogEntry = {
-              timestamp: new Date().toISOString(),
-              type: 'stdout',
-              message: '✅ Dependencies installed successfully. Starting dev server...'
-            };
-            const logs = this.devServerLogs.get(projectId) || [];
-            logs.push(successLog);
-            this.devServerLogs.set(projectId, logs);
-            
-            // ✅ Notify UI that install completed
-            this.onStatusChange?.(projectId);
-            
-            // Now start the dev server by calling this method again
-            const result = await this.startDevServer(projectId, localPath, port);
-            resolve(result);
-          } else {
-            const errorLog: LogEntry = {
-              timestamp: new Date().toISOString(),
-              type: 'stderr',
-              message: `❌ Failed to install dependencies (exit code ${code})`
-            };
-            const logs = this.devServerLogs.get(projectId) || [];
-            logs.push(errorLog);
-            this.devServerLogs.set(projectId, logs);
-            
-            // ✅ Notify UI on install failure
-            this.onStatusChange?.(projectId);
-            
-            resolve({
-              success: false,
-              error: `Failed to install dependencies (exit code ${code})`
-            });
-          }
-        });
-      });
-    }
-    
-    // ✅ If install not needed, remove from installing set
-    if (!needsInstall) {
-      this.installingProjects.delete(projectId);
-    }
-    
-    console.log(`[DevServerService] Starting dev server on port ${devPort}`);
-    
-    // Determine the best dev server command
-    let command: string;
-    let args: string[];
-    
-    // ✅ CRITICAL: Filter out ant-cli environment variables to prevent pollution
-    // Do NOT pass ant-cli's PORT (4100) to user's dev server!
-    const cleanEnv = Object.entries(process.env).reduce((acc, [key, value]) => {
-      // Exclude ant-cli specific env vars
-      if (key === 'PORT' || key.startsWith('ANT_')) {
-        return acc;
-      }
-      if (value !== undefined) {
-        acc[key] = value;
-      }
-      return acc;
-    }, {} as Record<string, string>);
-    
-    let env: Record<string, string> = {
-      ...cleanEnv,
-      BROWSER: 'none',  // Prevent auto-opening browser
-      OPEN: 'false',    // Alternative env var
-      PORT: devPort.toString()  // Set user's dev server port
-    };
-    
-    // ✅ NEW PRIORITY: Check package.json scripts FIRST (explicit developer intent)
-    if (packageJson.scripts?.dev) {
-      const isBackend = this.isBackendProject(packageJson);
-      
-      console.log(`[DevServerService] Project type: ${isBackend ? 'Backend' : 'Frontend'}`);
-      console.log(`[DevServerService] Dev script: ${packageJson.scripts.dev}`);
-      
-      if (isBackend) {
-        // ✅ Backend: Use npm run dev with PORT env var (no --port argument)
-        // Backend servers read PORT from environment
-        command = 'npm';
-        args = ['run', 'dev'];
-        console.log(`[DevServerService] Backend detected - using PORT env var: ${devPort}`);
-      } else {
-        // ✅ Frontend: Try npm run dev with --port argument
-        // Most modern frontend dev servers support --port via pass-through
-        command = 'npm';
-        args = ['run', 'dev', '--', '--port', devPort.toString()];
-        console.log(`[DevServerService] Frontend detected - using --port argument: ${devPort}`);
-      }
-    }
-    // ✅ Framework detection (only if no dev script exists)
-    else if (packageJson.devDependencies?.vite || packageJson.dependencies?.vite) {
-      // Direct vite command
-      command = 'npx';
-      args = ['vite', '--port', devPort.toString()];
-      console.log(`[DevServerService] Vite detected - using npx vite`);
-    } else if (packageJson.devDependencies?.['@vitejs/plugin-react'] || packageJson.dependencies?.['@vitejs/plugin-react']) {
-      // Vite React project
-      command = 'npx';
-      args = ['vite', '--port', devPort.toString()];
-      console.log(`[DevServerService] Vite React detected - using npx vite`);
-    } else if (packageJson.devDependencies?.['next'] || packageJson.dependencies?.['next']) {
-      // Next.js project (only if no dev script)
-      command = 'npx';
-      args = ['next', 'dev', '-p', devPort.toString()];
-      console.log(`[DevServerService] Next.js detected - using npx next dev`);
-    } else if (packageJson.devDependencies?.['react-scripts']) {
-      // Create React App
-      command = 'npx';
-      args = ['react-scripts', 'start'];
-      console.log(`[DevServerService] Create React App detected - using PORT env var`);
-    } else if (packageJson.scripts?.start) {
-      // Last resort: start script
-      command = 'npm';
-      args = ['run', 'start'];
-      console.log(`[DevServerService] Using start script with PORT env var`);
-    } else {
-      return { 
-        success: false,
-        error: 'No suitable dev server command found. Please add a "dev" script to package.json' 
-      };
-    }
-    
-    // ✅ Store port for later use
-    this.devServerPorts.set(projectId, devPort);
-    
-    // Start dev server
-    const devProcess = spawn(command, args, {
-      cwd: localPath,
-      shell: true,
-      env
-    });
-    
-    console.log(`[DevServerService] Process spawned for ${projectId}, PID: ${devProcess.pid}`);
-    console.log(`[DevServerService] Command: ${command} ${args.join(' ')}`);
-    
-    this.devServers.set(projectId, devProcess);
-    
-    // Log when process starts
-    
-    // Capture stdout
-    devProcess.stdout?.on('data', (data: Buffer) => {
-      const message = data.toString();
-      
-      // ✅ Log to console for debugging
-      console.log(`[DevServer:${projectId}] ${message.trim()}`);
-      
-      const log: LogEntry = {
-        timestamp: new Date().toISOString(),
-        type: 'stdout',
-        message: message.trim()
-      };
-      
-      const logs = this.devServerLogs.get(projectId) || [];
-      logs.push(log);
-      this.devServerLogs.set(projectId, logs);
-      
-      // ✅ Detect when server is ready (various dev server patterns)
-      const readyPatterns = [
-        /ready in \d+/i,           // Next.js: "Ready in 1771ms"
-        /ready - started/i,         // Next.js (older): "ready - started server"
-        /local:.*http/i,            // Vite: "Local: http://localhost:5173"
-        /compiled successfully/i,   // Webpack: "Compiled successfully"
-        /server running at/i,       // Generic
-      ];
-      
-      const isReady = readyPatterns.some(pattern => pattern.test(message));
-      
-      if (isReady) {
-        // Server is ready - notify UI immediately
-        console.log(`[DevServerService] ✅ Dev server ready for ${projectId}`);
-        this.onStatusChange?.(projectId);
-      }
-      
-      // Also try to extract port from output (fallback)
-      const portPatterns = [
-        /localhost:(\d+)/i,
-        /127\.0\.0\.1:(\d+)/i,
-        /port\s+(\d+)/i,
-        /0\.0\.0\.0:(\d+)/i,
-      ];
-      
-      if (!this.devServerPorts.has(projectId)) {
-        for (const pattern of portPatterns) {
-          const match = message.match(pattern);
-          if (match) {
-            const port = parseInt(match[1]);
-            this.devServerPorts.set(projectId, port);
-            break;
-          }
+        // ✅ Broadcast updated status via SSE
+        const updatedStatus = this.getDevServerStatus(tenantId, userId, projectId, feature);
+        console.log(`[DevServerService] 📡 Broadcasting ready status: ${ready}`);
+        this.broadcastStatus(serverKey, updatedStatus);
+        
+        if (this.onStatusChange) {
+          this.onStatusChange(serverKey);
         }
-      }
-    });
-    
-    // Capture stderr
-    devProcess.stderr?.on('data', (data: Buffer) => {
-      const message = data.toString();
+      });
       
-      // ✅ Log to console for debugging
-      console.error(`[DevServer:${projectId}] ${message.trim()}`);
-      
-      // Check for port already in use error
-      const portInUsePatterns = [
-        /EADDRINUSE/i,
-        /address already in use/i,
-        /port.*already.*allocated/i,
-        /bind.*EADDRINUSE/i,
-        /Port \d+ is already in use/i
-      ];
-      
-      const isPortInUse = portInUsePatterns.some(pattern => pattern.test(message));
-      
-      if (isPortInUse) {
-        // Add clear error message for port in use
-        const errorLog: LogEntry = {
-          timestamp: new Date().toISOString(),
-          type: 'stderr',
-          message: `❌ Port ${devPort} is already in use. Please stop the other process using this port or choose a different port.`
-        };
-        
-        const logs = this.devServerLogs.get(projectId) || [];
-        logs.push(errorLog);
-        this.devServerLogs.set(projectId, logs);
-        
-        // ✅ Kill the process - the 'exit' handler will do cleanup
-        devProcess.kill();
-        // Don't return here - let other stderr output be logged too
-      }
-      
-      const log: LogEntry = {
-        timestamp: new Date().toISOString(),
-        type: 'stderr',
-        message: message.trim()
+      return {
+        success: true,
+        message: `Started ${structure.packages.length} package(s)`,
+        port: structure.entry?.port || structure.packages[0].port!,
+        serverKey,
+        url: proxyUrl
       };
       
-      const logs = this.devServerLogs.get(projectId) || [];
-      logs.push(log);
-      this.devServerLogs.set(projectId, logs);
-    });
-    
-    // Handle process exit
-    devProcess.on('exit', (code, signal) => {
-      console.log(`[DevServerService] Process exited for ${projectId}, code: ${code}, signal: ${signal}`);
+    } catch (error: any) {
+      this.installingProjects.delete(serverKey);
+      console.error('[DevServerService] Error starting dev server:', error);
+      this.appendLog(serverKey, 'stderr', `❌ Error: ${error.message}`);
       
-      const log: LogEntry = {
-        timestamp: new Date().toISOString(),
-        type: code === 0 ? 'stdout' : 'stderr',
-        message: signal 
-          ? `Dev server stopped (${signal})`
-          : `Dev server exited with code ${code}`
+      return {
+        success: false,
+        error: error.message || 'Failed to start dev server'
       };
-      
-      const logs = this.devServerLogs.get(projectId) || [];
-      logs.push(log);
-      this.devServerLogs.set(projectId, logs);
-      
-      // Cleanup
-      this.devServers.delete(projectId);
-      this.devServerPorts.delete(projectId);
-      
-      // ✅ Unregister from Redis
-      if (this.portRegistry) {
-        const [tenantId, ...projectIdParts] = projectId.split(':');
-        const actualProjectId = projectIdParts.join(':');
-        this.portRegistry.unregisterDevServer(tenantId, actualProjectId).catch(err => {
-          console.warn(`[DevServerService] Failed to unregister from Redis:`, err);
-        });
-      }
-      
-      this.onStatusChange?.(projectId);
-    });
-    
-    devProcess.on('error', (error) => {
-      console.error(`[DevServerService] Process error for ${projectId}:`, error);
-      
-      const log: LogEntry = {
-        timestamp: new Date().toISOString(),
-        type: 'stderr',
-        message: `Error: ${error.message}`
-      };
-      
-      const logs = this.devServerLogs.get(projectId) || [];
-      logs.push(log);
-      this.devServerLogs.set(projectId, logs);
-      
-      // Cleanup
-      this.devServers.delete(projectId);
-      this.devServerPorts.delete(projectId);
-      
-      // ✅ Unregister from Redis
-      if (this.portRegistry) {
-        const [tenantId, ...projectIdParts] = projectId.split(':');
-        const actualProjectId = projectIdParts.join(':');
-        this.portRegistry.unregisterDevServer(tenantId, actualProjectId).catch(err => {
-          console.warn(`[DevServerService] Failed to unregister from Redis:`, err);
-        });
-      }
-      
-      this.onStatusChange?.(projectId);
-    });
-    
-    return { 
-      success: true, 
-      message: 'Dev server starting...', 
-      port: devPort,
-      serverKey,
-      url: `/dev/${serverKey}`  // ✅ 로컬/프로덕션 모두 동일한 프록시 URL
-    };
+    }
   }
   
   /**
    * Stop dev server
+   * Kills ALL processes associated with the serverKey
    */
-  stopDevServer(
+  async stopDevServer(
     tenantId: string,
     userId: string,
     projectId: string,
     feature: string
-  ): { success: boolean; message?: string; error?: string } {
+  ): Promise<{ success: boolean; message?: string; error?: string }> {
     const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
-    const devProcess = this.devServers.get(serverKey);
     
-    if (!devProcess) {
+    const processes = this.devServers.get(serverKey);
+    if (!processes || processes.length === 0) {
       return { success: false, error: 'Dev server not running' };
     }
     
-    // Release port if using PortManager
+    // Kill all processes
+    for (const process of processes) {
+      try {
+        process.kill();
+      } catch (error) {
+        console.warn(`[DevServerService] Failed to kill process:`, error);
+      }
+    }
+    
+    // Release ports
     const port = this.devServerPorts.get(serverKey);
     if (port && this.portManager) {
-      this.portManager.release(port);
+      await this.portManager.release(port);
     }
     
-    // ✅ Unregister from PortRegistry
+    // Unregister from PortRegistry
     if (this.portRegistry) {
-      this.portRegistry.unregisterDevServer(tenantId, userId, projectId, feature).catch(err => {
-        console.warn(`[DevServerService] Failed to unregister from PortRegistry:`, err);
-      });
+      await this.portRegistry.unregisterDevServer(tenantId, userId, projectId, feature);
     }
     
-    devProcess.kill('SIGTERM');
+    // Cleanup
+    this.devServers.delete(serverKey);
+    this.devServerPorts.delete(serverKey);
+    this.devServerReady.delete(serverKey);  // ✅ Clear ready state
+    this.devServerLogs.delete(serverKey);
     
-    // Add a timeout to force kill if graceful shutdown fails
-    setTimeout(() => {
-      if (this.devServers.has(serverKey)) {
-        devProcess.kill('SIGKILL');
-      }
-    }, 5000);
+    console.log(`[DevServerService] ✅ Stopped all servers for ${serverKey}`);
     
-    return { success: true, message: 'Dev server stopping...' };
+    if (this.onStatusChange) {
+      this.onStatusChange(serverKey);
+    }
+    
+    return { 
+      success: true, 
+      message: `Stopped ${processes.length} process(es)` 
+    };
   }
   
   /**
@@ -651,39 +728,30 @@ export class DevServerService {
     projectId: string,
     feature: string
   ): {
-    running: boolean;
+    running: boolean;  // ✅ Changed from isRunning to running
+    ready: boolean;    // ✅ NEW: Health check passed
     port?: number;
-    pid?: number;
-    serverKey?: string;
-    url?: string;           // ✅ 통합된 URL
+    url?: string;
+    processCount?: number;
   } {
     const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
-    const devProcess = this.devServers.get(serverKey);
+    const processes = this.devServers.get(serverKey);
     const port = this.devServerPorts.get(serverKey);
+    const ready = this.devServerReady.get(serverKey) || false;  // ✅ Get health check status
     
-    // ✅ Check if process is actually alive (not killed or exited)
-    const isActuallyRunning = devProcess && 
-                               !devProcess.killed && 
-                               devProcess.exitCode === null;
-    
-    // ✅ If process is dead but still in map, clean it up
-    if (devProcess && !isActuallyRunning) {
-      console.log(`[DevServerService] Cleaning up dead process for ${serverKey}`);
-      this.devServers.delete(serverKey);
-      this.devServerPorts.delete(serverKey);
-    }
+    const running = !!processes && processes.length > 0;
     
     return {
-      running: !!isActuallyRunning,
-      port: isActuallyRunning ? port : undefined,
-      pid: isActuallyRunning ? devProcess?.pid : undefined,
-      serverKey: isActuallyRunning ? serverKey : undefined,
-      url: isActuallyRunning ? `/dev/${serverKey}` : undefined
+      running,
+      ready,  // ✅ Real health check result
+      port,
+      url: port ? `/dev/${serverKey}` : undefined,
+      processCount: processes?.length || 0
     };
   }
   
   /**
-   * Get dev server logs
+   * Get logs for a dev server
    */
   getDevServerLogs(
     tenantId: string,
@@ -696,14 +764,87 @@ export class DevServerService {
   }
   
   /**
-   * Cleanup all dev servers
+   * Stream logs via SSE (using shared SSEService)
+   * 
+   * Note: This method is now deprecated in favor of unified SSE endpoint
+   * DevServer updates are now sent via SSEService.broadcast()
    */
-  cleanup(): void {
-    for (const [projectId, devProcess] of this.devServers.entries()) {
-      devProcess.kill('SIGTERM');
+  streamDevServerLogs(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    feature: string,
+    res: Response
+  ): void {
+    const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
+    
+    console.log(`[DevServerService] 📡 SSE connection opened for ${serverKey}`);
+    
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    
+    // Send initial status
+    const status = this.getDevServerStatus(tenantId, userId, projectId, feature);
+    console.log(`[DevServerService] 📤 Sending initial status:`, status);
+    res.write(`data: ${JSON.stringify({ type: 'status', data: status })}\n\n`);
+    
+    // Send existing logs
+    const existingLogs = this.devServerLogs.get(serverKey) || [];
+    console.log(`[DevServerService] 📤 Sending ${existingLogs.length} existing logs`);
+    existingLogs.forEach(log => {
+      res.write(`data: ${JSON.stringify({ type: 'log', data: log })}\n\n`);
+    });
+    
+    // ✅ Register client with SSEService for future updates
+    // Updates will come via SSEService.broadcast() calls from appendLog() and broadcastStatus()
+    if (this.sseService) {
+      this.sseService.registerClient(projectId, feature, res);
+      console.log(`[DevServerService] ✅ Client registered with SSEService`);
     }
-    this.devServers.clear();
-    this.devServerPorts.clear();
+  }
+  
+  /**
+   * Cleanup all dev servers (called on server shutdown)
+   */
+  async cleanup(): Promise<void> {
+    const serverKeys = Array.from(this.devServers.keys());
+    
+    if (serverKeys.length === 0) {
+      console.log('[DevServerService] No running dev servers to cleanup');
+      return;
+    }
+    
+    console.log(`[DevServerService] 🧹 Cleaning up ${serverKeys.length} dev server(s)...`);
+    
+    const cleanupPromises: Promise<void>[] = [];
+    
+    for (const serverKey of serverKeys) {
+      const { tenantId, userId, projectId, feature } = this.parseServerKey(serverKey);
+      
+      const cleanupPromise = this.stopDevServer(tenantId, userId, projectId, feature)
+        .then(() => {
+          console.log(`[DevServerService]    ✅ Stopped: ${serverKey}`);
+        })
+        .catch((error) => {
+          console.error(`[DevServerService]    ❌ Failed to stop ${serverKey}:`, error.message);
+        });
+      
+      cleanupPromises.push(cleanupPromise);
+    }
+    
+    await Promise.all(cleanupPromises);
+    
+    // Close PortRegistry connection if exists
+    if (this.portRegistry && typeof this.portRegistry.close === 'function') {
+      try {
+        await this.portRegistry.close();
+        console.log('[DevServerService]    ✅ PortRegistry closed');
+      } catch (error: any) {
+        console.error('[DevServerService]    ❌ PortRegistry close error:', error.message);
+      }
+    }
+    
+    console.log(`[DevServerService] ✅ Cleanup complete (${serverKeys.length} server(s) stopped)`);
   }
 }
-

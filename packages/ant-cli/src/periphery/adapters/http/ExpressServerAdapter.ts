@@ -491,7 +491,8 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         onStatusChange: (projectId) => {
           // DevServer status broadcasting removed
         }
-      }
+      },
+      this.sseService  // ✅ Pass SSEService for unified SSE management
     );
     
     this.sessionService = new SessionService(this.workspacesPath, {
@@ -609,12 +610,15 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         // TODO: Implement query-based auth for SSE endpoints
         const isSSEEndpoint = req.path.includes('/stream');
         
+        // ✅ Skip auth for dev server proxy requests
+        const isDevServerRequest = req.path.startsWith('/dev/');
+        
         // Check if path should skip auth
         const isPublicPath = publicPaths.includes(req.path);
         const isInternalEndpoint = internalEndpoints.some(p => req.path.startsWith(p));
         const isGraphMetadata = req.path.includes('/graph-metadata');
         
-        if (isPublicPath || isInternalEndpoint || isGraphMetadata || isSSEEndpoint) {
+        if (isPublicPath || isInternalEndpoint || isGraphMetadata || isSSEEndpoint || isDevServerRequest) {
           return next();
         }
         
@@ -1566,8 +1570,8 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     // Step 2: Terminate all child processes
     await this.terminateAllChildProcesses();
     
-    // Step 3: Cleanup services
-    this.cleanupServices();
+    // Step 3: Cleanup services (async now)
+    await this.cleanupServices();
     
     // Step 4: Close HTTP server
     await this.closeHttpServer();
@@ -1690,7 +1694,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   /**
    * Cleanup all services and in-memory state
    */
-  private cleanupServices(): void {
+  private async cleanupServices(): Promise<void> {
     console.log('🧹 [Server] Cleaning up services...');
     
     // Cleanup SessionService
@@ -1703,10 +1707,22 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     
     // Cleanup DevServerService
     try {
-      this.devServerService?.cleanup();
-      console.log('   ✅ DevServerService cleaned');
+      if (this.devServerService && typeof (this.devServerService as any).cleanup === 'function') {
+        await (this.devServerService as any).cleanup();
+        console.log('   ✅ DevServerService cleaned');
+      }
     } catch (error) {
       console.error('   ❌ DevServerService cleanup error:', error);
+    }
+    
+    // Cleanup IDEService
+    try {
+      if (this.ideService && typeof (this.ideService as any).cleanup === 'function') {
+        await (this.ideService as any).cleanup();
+        console.log('   ✅ IDEService cleaned');
+      }
+    } catch (error) {
+      console.error('   ❌ IDEService cleanup error:', error);
     }
     
     // Clear in-memory state

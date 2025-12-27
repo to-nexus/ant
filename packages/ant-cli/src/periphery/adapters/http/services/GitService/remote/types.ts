@@ -1,4 +1,5 @@
 import { UserContext } from '../../../../../../../core/types/user';
+import { EnvironmentDetection } from '../../../../../../core/types/environment';
 
 /**
  * Common types for Git remote operations
@@ -20,5 +21,6 @@ export interface ProjectConfig {
   repoType?: 'local' | 'cloud';
   localPath?: string;
   branchBase?: string;
+  environment?: EnvironmentDetection;  // ✅ 환경 감지 결과 저장
 }
 
