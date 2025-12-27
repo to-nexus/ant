@@ -1018,26 +1018,11 @@ export async function updateProjectConfig(projectId: string, config: ProjectConf
 }
 
 // Dev server management
-export async function getAvailablePort(projectId: string): Promise<number> {
-  try {
-    const response = await authFetch(
-      `${API_BASE()}/projects/${encodeURIComponent(projectId)}/dev/available-port`
-    );
-    
-    if (!response.ok) {
-      throw new Error(`Failed to get available port: ${response.statusText}`);
-    }
-    
-    const data = await response.json();
-    return data.port;
-  } catch (error) {
-    console.error('Error getting available port:', error);
-    // Fallback to 5173 if API fails
-    return 5173;
-  }
-}
-
-export async function startDevServer(projectId: string, port?: number): Promise<{ success: boolean; message: string; script: string }> {
+export async function startDevServer(
+  projectId: string, 
+  feature?: string,
+  port?: number
+): Promise<{ success: boolean; message: string; script: string }> {
   try {
     const response = await authFetch(
       `${API_BASE()}/projects/${encodeURIComponent(projectId)}/dev/start`,
@@ -1046,7 +1031,10 @@ export async function startDevServer(projectId: string, port?: number): Promise<
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ port }),
+        body: JSON.stringify({ 
+          feature: feature || 'main',
+          port 
+        }),
       }
     );
     
@@ -1062,12 +1050,16 @@ export async function startDevServer(projectId: string, port?: number): Promise<
   }
 }
 
-export async function stopDevServer(projectId: string): Promise<{ success: boolean; message: string }> {
+export async function stopDevServer(projectId: string, feature?: string): Promise<{ success: boolean; message: string }> {
   try {
     const response = await authFetch(
       `${API_BASE()}/projects/${encodeURIComponent(projectId)}/dev/stop`,
       {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ feature: feature || 'main' }),
       }
     );
     
@@ -1083,10 +1075,11 @@ export async function stopDevServer(projectId: string): Promise<{ success: boole
   }
 }
 
-export async function getDevServerStatus(projectId: string): Promise<DevServerStatus> {
+export async function getDevServerStatus(projectId: string, feature?: string): Promise<DevServerStatus> {
   try {
+    const featureParam = feature ? `?feature=${encodeURIComponent(feature)}` : '';
     const response = await authFetch(
-      `${API_BASE()}/projects/${encodeURIComponent(projectId)}/dev/status`
+      `${API_BASE()}/projects/${encodeURIComponent(projectId)}/dev/status${featureParam}`
     );
     
     if (!response.ok) {

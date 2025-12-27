@@ -51,16 +51,6 @@ export function createDevServerRoutes(deps: {
 }): Router {
   const router = Router();
   
-  // Get available port
-  router.get('/projects/:id/dev/available-port', async (req: Request, res: Response) => {
-    try {
-      const availablePort = await findAvailablePort(5173);
-      res.json({ port: availablePort });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-  
   // Start dev server for a project
   router.post('/projects/:id/dev/start', async (req: Request, res: Response) => {
     try {
@@ -70,9 +60,13 @@ export function createDevServerRoutes(deps: {
       
       // ✅ Get port from request body (optional)
       const port = req.body?.port;
+      // ✅ Get feature from request body (default: 'main')
+      const feature = req.body?.feature || 'main';
+      
       if (port !== undefined) {
         console.log(`[DevServer] Requested port: ${port}`);
       }
+      console.log(`[DevServer] Feature: ${feature}`);
       
       // ✅ Determine codebase path based on repoType
       let codebasePath: string;
@@ -99,8 +93,15 @@ export function createDevServerRoutes(deps: {
         console.log(`[DevServer] Local mode - using config localPath: ${codebasePath}`);
       }
       
-      // Start dev server with optional port
-      const result = await deps.devServerService.startDevServer(projectId, codebasePath, port);
+      // ✅ Start dev server with multi-tenancy support
+      const result = await deps.devServerService.startDevServer(
+        userContext.organizationId,
+        userContext.userId,
+        projectId,
+        feature,
+        codebasePath,
+        port
+      );
       
       if (result.success) {
         res.json(result);
@@ -113,10 +114,18 @@ export function createDevServerRoutes(deps: {
   });
   
   // Stop dev server
-  router.post('/projects/:id/dev/stop', (req: Request, res: Response) => {
+  router.post('/projects/:id/dev/stop', async (req: Request, res: Response) => {
     try {
       const projectId = req.params.id;
-      const result = deps.devServerService.stopDevServer(projectId);
+      const userContext = extractUserContext(req);
+      const feature = req.body?.feature || 'main';
+      
+      const result = await deps.devServerService.stopDevServer(
+        userContext.organizationId,
+        userContext.userId,
+        projectId,
+        feature
+      );
       
       if (result.success) {
         res.json(result);
@@ -132,16 +141,29 @@ export function createDevServerRoutes(deps: {
   router.get('/projects/:id/dev/status', (req: Request, res: Response) => {
     try {
       const projectId = req.params.id;
-      const status = deps.devServerService.getDevServerStatus(projectId);
-      const logs = deps.devServerService.getDevServerLogs(projectId);
+      const userContext = extractUserContext(req);
+      const feature = (req.query.feature as string) || 'main';
+      
+      const status = deps.devServerService.getDevServerStatus(
+        userContext.organizationId,
+        userContext.userId,
+        projectId,
+        feature
+      );
+      const logs = deps.devServerService.getDevServerLogs(
+        userContext.organizationId,
+        userContext.userId,
+        projectId,
+        feature
+      );
       
       const fullStatus = {
-        running: status.running,
+        running: status.running,  // ✅ Changed from status.isRunning
         port: status.port || null,
-        url: status.port ? `http://localhost:${status.port}` : null,
+        url: status.url || null,
+        processCount: status.processCount || 0,
         logs: logs.slice(-50) // Last 50 logs
       };
-      
       
       res.json(fullStatus);
     } catch (error: any) {
@@ -149,11 +171,30 @@ export function createDevServerRoutes(deps: {
     }
   });
   
-  // SSE stream for dev server status (deprecated)
+  // SSE stream for dev server logs
+  router.get('/projects/:id/dev/logs', (req: Request, res: Response) => {
+    try {
+      const projectId = req.params.id;
+      const userContext = extractUserContext(req);
+      const feature = (req.query.feature as string) || 'main';
+      
+      deps.devServerService.streamDevServerLogs(
+        userContext.organizationId,
+        userContext.userId,
+        projectId,
+        feature,
+        res
+      );
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+  
+  // Deprecated SSE endpoint
   router.get('/projects/:id/dev/stream', (req: Request, res: Response) => {
     res.status(410).json({ 
       error: 'Endpoint deprecated',
-      message: 'Dev server SSE is no longer supported'
+      message: 'Use /projects/:id/dev/logs instead'
     });
   });
   

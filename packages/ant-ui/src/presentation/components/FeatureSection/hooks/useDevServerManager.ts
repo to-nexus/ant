@@ -1,202 +1,268 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useStore } from '@/domain/store';
 import { 
   startDevServer, 
   stopDevServer, 
-  getDevServerStatus, 
-  getAvailablePort 
+  getDevServerStatus
 } from '@/infrastructure/http/api';
+import { DEV_SERVER_MESSAGES, DEV_SERVER_POLLING } from '../constants/devServer';
+import { analyzeDevServerState, extractErrorFromLogs, extractProgress } from '../utils/devServer';
+import type { DevServerState, DevServerStatus, DevServerError, DevServerProgress, DevServerLog, UseDevServerManagerResult } from '../types/devServer';
 
-export function useDevServerManager(selectedProject: string | undefined) {
+/**
+ * useDevServerManager
+ * 
+ * Manages dev server lifecycle and state
+ * 
+ * Features:
+ * - Initial status check on mount/feature change
+ * - Real-time updates via SSE (no polling)
+ * - State analysis from logs
+ * - Multi-package progress tracking
+ */
+export function useDevServerManager(
+  selectedProject: string | undefined,
+  selectedFeature: string | undefined
+): UseDevServerManagerResult {
   const devServerStatus = useStore((state) => state.devServerStatus);
   const setDevServerStatus = useStore((state) => state.setDevServerStatus);
   const setDevServerLoading = useStore((state) => state.setDevServerLoading);
   const isDevServerLoading = useStore((state) => state.isDevServerLoading);
   
-  const [showSetupPanel, setShowSetupPanel] = useState(false);
-  const [showStatusPanel, setShowStatusPanel] = useState(false);
-  const [startError, setStartError] = useState<string | undefined>();
-  const [isInitialMount, setIsInitialMount] = useState(true);
-  const [isInstalling, setIsInstalling] = useState(false);
-  const [availablePort, setAvailablePort] = useState<number>(5173);
+  const [error, setError] = useState<DevServerError | undefined>();
+  const [progress, setProgress] = useState<DevServerProgress | undefined>();
+  const eventSourceRef = useRef<EventSource | null>(null);
 
-  // Auto-show status panel when dev server is running
+  // Derive state from status and logs
+  const state: DevServerState = analyzeDevServerState(devServerStatus, isDevServerLoading);
+  
+  // ✅ Get ready state from backend (health check result)
+  const ready = devServerStatus?.ready || false;
+  
+  // Debug logging
+  console.log('[useDevServerManager] 🔍 Current state:', {
+    state,
+    devServerStatus,
+    isDevServerLoading,
+    hasLogs: devServerStatus?.logs?.length || 0
+  });
+
+  // Extract progress from logs
   useEffect(() => {
-    if (devServerStatus?.running) {
-      setShowStatusPanel(true);
+    if (devServerStatus?.logs && devServerStatus.logs.length > 0) {
+      const extractedProgress = extractProgress(devServerStatus.logs);
+      setProgress(extractedProgress);
+    } else {
+      setProgress(undefined);
     }
-  }, [devServerStatus?.running]);
+  }, [devServerStatus?.logs]);
 
-  // Initial status check on mount
+  // Extract error from logs if in error state
   useEffect(() => {
-    if (!selectedProject || !isInitialMount) return;
-    
-    setIsInitialMount(false);
-    
-    const checkInitialStatus = async () => {
-      try {
-        const status = await getDevServerStatus(selectedProject);
-        setDevServerStatus(status);
-      } catch (error) {
-        console.error('[useDevServerManager] Failed to get initial status:', error);
+    if (state === 'error' && devServerStatus?.logs) {
+      const errorMessage = extractErrorFromLogs(devServerStatus.logs);
+      if (errorMessage && errorMessage !== error?.message) {
+        setError({ message: errorMessage });
       }
-    };
-    
-    checkInitialStatus();
-  }, [selectedProject, isInitialMount, setDevServerStatus]);
+    } else if (state !== 'error' && error) {
+      setError(undefined);
+    }
+  }, [state, devServerStatus?.logs, error]);
 
-  // Poll dev server status periodically
+  // Initial status check and SSE connection
   useEffect(() => {
-    if (!selectedProject) {
+    if (!selectedProject || !selectedFeature) {
+      // Cleanup SSE
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
       setDevServerStatus(undefined);
       return;
     }
-    
-    const pollStatus = async () => {
-      try {
-        const status = await getDevServerStatus(selectedProject);
+
+    // Initial status check
+    console.log(`[useDevServerManager] Initial status check for ${selectedProject}/${selectedFeature}`);
+    getDevServerStatus(selectedProject, selectedFeature)
+      .then(status => {
         setDevServerStatus(status);
         
-        // Check logs for various states
-        if (status.logs && status.logs.length > 0) {
-          const installingLog = status.logs.find(log => 
-            log.message.includes('Installing dependencies')
-          );
-          
-          if (installingLog) {
-            setIsInstalling(true);
-            setShowStatusPanel(true);
-            return;
-          }
-          
-          const installSuccessLog = status.logs.find(log =>
-            log.message.includes('Dependencies installed successfully')
-          );
-          
-          if (installSuccessLog) {
-            setIsInstalling(false);
-          }
-          
-          const portErrorLog = status.logs.find(log => 
-            log.type === 'stderr' && 
-            log.message.includes('Port') && 
-            log.message.includes('already in use')
-          );
-          
-          if (portErrorLog) {
-            setStartError(portErrorLog.message);
-            setIsInstalling(false);
-            setShowStatusPanel(true);
-          }
-          
-          const installErrorLog = status.logs.find(log =>
-            log.type === 'stderr' &&
-            log.message.includes('Failed to install dependencies')
-          );
-          
-          if (installErrorLog) {
-            setStartError(installErrorLog.message);
-            setIsInstalling(false);
-            setShowStatusPanel(true);
-          }
+        // Setup SSE only if dev server is running or starting
+        if (status.running || status.logs?.length > 0) {
+          setupSSE(selectedProject, selectedFeature);
         }
-      } catch (error) {
-        console.error('[useDevServerManager] Failed to fetch dev server status:', error);
+      })
+      .catch(err => {
+        console.error('[useDevServerManager]', DEV_SERVER_MESSAGES.LOG_STATUS_CHECK_FAILED, err);
+      });
+
+    return () => {
+      // Cleanup SSE on unmount or dependency change
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
       }
     };
-    
-    // Poll every 5 seconds
-    const interval = setInterval(pollStatus, 5000);
-    pollStatus(); // Initial poll
-    
-    return () => {
-      clearInterval(interval);
-    };
-  }, [selectedProject, setDevServerStatus]);
+  }, [selectedProject, selectedFeature, setDevServerStatus]);
 
-  const handlePlayButtonClick = async () => {
-    if (!selectedProject) return;
+  // Setup SSE connection for real-time updates
+  const setupSSE = useCallback((projectId: string, feature: string) => {
+    // Close existing connection
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+    }
+
+    const featureParam = encodeURIComponent(feature);
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4100';
+    
+    // ✅ Add user-email query param for authentication (EventSource doesn't support custom headers)
+    let url = `${apiUrl}/api/projects/${projectId}/dev/logs?feature=${featureParam}`;
     
     try {
-      const port = await getAvailablePort(selectedProject);
-      setAvailablePort(port);
-      console.log(`[useDevServerManager] Available port found: ${port}`);
+      const userEmail = localStorage.getItem('ant-ui:user-email');
+      if (userEmail) {
+        const email = JSON.parse(userEmail);
+        url += `&user-email=${encodeURIComponent(email)}`;
+      }
     } catch (error) {
-      console.error('[useDevServerManager] Failed to get available port, using default:', error);
-      setAvailablePort(5173);
+      console.warn('[useDevServerManager] Could not add user-email to SSE URL:', error);
     }
     
-    setShowSetupPanel(true);
-    setShowStatusPanel(false);
-    setStartError(undefined);
-    setIsInstalling(false);
-  };
+    console.log(`[useDevServerManager] Connecting SSE: ${url}`);
+    
+    const eventSource = new EventSource(url);
+    eventSourceRef.current = eventSource;
 
-  const handleStartDevServer = async (port: number) => {
-    if (!selectedProject) return;
-    
-    console.log(`[useDevServerManager] 🔄 Starting dev server on port ${port}, setting loading=true`);
-    setDevServerLoading(true);
-    setStartError(undefined);
-    setIsInstalling(false);
-    
-    try {
-      await startDevServer(selectedProject, port);
-      setShowSetupPanel(false);
-      setShowStatusPanel(true);
-      
-      setTimeout(async () => {
-        try {
-          const status = await getDevServerStatus(selectedProject);
-          setDevServerStatus(status);
-          console.log('[useDevServerManager] ✅ Dev server status polled:', status);
-        } catch (pollError) {
-          console.error('[useDevServerManager] Failed to poll dev server status:', pollError);
+    eventSource.onopen = () => {
+      console.log('[useDevServerManager] ✅ SSE connection opened');
+    };
+
+    eventSource.onmessage = (event) => {
+      console.log('[useDevServerManager] 📩 SSE message received:', event.data);
+      try {
+        const message = JSON.parse(event.data);
+        
+        // ✅ Handle both old format (direct type/data) and new format (wrapped in message.type='devServer')
+        let messageType = message.type;
+        let messageData = message.data;
+        
+        // If message.type is 'devServer', unwrap the inner data
+        if (messageType === 'devServer' && messageData) {
+          messageType = messageData.type;
+          messageData = messageData.data;
         }
-      }, 1000);
-    } catch (error: any) {
-      console.error('Failed to start dev server:', error);
-      setStartError(error.message || 'Unknown error');
-      setShowSetupPanel(false);
-      setShowStatusPanel(true);
-    } finally {
-      console.log('[useDevServerManager] ✅ Dev server start complete, setting loading=false');
+        
+        if (messageType === 'status') {
+          // Initial or updated status
+          console.log('[useDevServerManager] 🔄 Updating status:', messageData);
+          setDevServerStatus(messageData);
+          // ✅ Release loading state once we get initial status
+          console.log('[useDevServerManager] 🔓 Releasing loading state');
+          setDevServerLoading(false);
+        } else if (messageType === 'log') {
+          // New log entry - append to existing logs
+          console.log('[useDevServerManager] 📝 Appending log');
+          // ✅ Get fresh state directly from store
+          const currentStatus = useStore.getState().devServerStatus;
+          if (!currentStatus) {
+            console.log('[useDevServerManager] ⚠️ No previous status, cannot append log');
+            return;
+          }
+          const updated = {
+            ...currentStatus,
+            logs: [...(currentStatus.logs || []), messageData]
+          };
+          console.log('[useDevServerManager] 🔄 Updated status with log, total logs:', updated.logs.length);
+          setDevServerStatus(updated);
+        }
+      } catch (err) {
+        console.error('[useDevServerManager] SSE parse error:', err);
+      }
+    };
+
+    eventSource.onerror = (err) => {
+      console.error('[useDevServerManager] ❌ SSE error:', err);
+      console.error('[useDevServerManager] EventSource readyState:', eventSource.readyState);
+      console.error('[useDevServerManager] EventSource url:', eventSource.url);
+      eventSource.close();
+      eventSourceRef.current = null;
+      
+      // Release loading on error
+      setDevServerLoading(false);
+    };
+  }, [setDevServerStatus]);
+
+  // Start dev server
+  const startServer = useCallback(async () => {
+    if (!selectedProject || !selectedFeature) {
+      setError({ 
+        message: DEV_SERVER_MESSAGES.ERROR_NO_PROJECT_FEATURE 
+      });
+      return;
+    }
+    
+    console.log('[useDevServerManager]', DEV_SERVER_MESSAGES.LOG_STARTING(selectedFeature));
+    setDevServerLoading(true);
+    setError(undefined);
+    setProgress(undefined);
+    
+    try {
+      const result = await startDevServer(selectedProject, selectedFeature);
+      console.log('[useDevServerManager]', DEV_SERVER_MESSAGES.LOG_STARTED);
+      console.log('[useDevServerManager] 📋 Start result:', result);
+      
+      // Setup SSE for real-time updates
+      setupSSE(selectedProject, selectedFeature);
+      
+      // ✅ Keep loading until SSE sends first status update
+      // Don't auto-release loading - let SSE connection establish first
+    } catch (err: any) {
+      console.error('[useDevServerManager]', DEV_SERVER_MESSAGES.ERROR_START_FAILED, err);
+      setError({
+        message: err.message || DEV_SERVER_MESSAGES.ERROR_UNKNOWN,
+        details: err.response?.data?.error
+      });
       setDevServerLoading(false);
     }
-  };
+  }, [selectedProject, selectedFeature, setDevServerLoading, setupSSE]);
 
-  const handleStopDevServer = async () => {
-    if (!selectedProject) return;
+  // Stop dev server
+  const stopServer = useCallback(async () => {
+    if (!selectedProject || !selectedFeature) return;
     
     setDevServerLoading(true);
+    setError(undefined);
+    setProgress(undefined);
+    
     try {
-      await stopDevServer(selectedProject);
-      setShowStatusPanel(false);
-      setStartError(undefined);
-      setIsInstalling(false);
-      console.log('[useDevServerManager] Dev server stopped successfully');
-    } catch (error: any) {
-      console.error('[useDevServerManager] Failed to stop dev server:', error);
-      alert(`Failed to stop dev server: ${error.message}`);
+      await stopDevServer(selectedProject, selectedFeature);  // ✅ Pass feature
+      console.log('[useDevServerManager]', DEV_SERVER_MESSAGES.LOG_STOPPED);
+      
+      // Close SSE connection
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+      
+      setDevServerStatus(undefined);
+    } catch (err: any) {
+      console.error('[useDevServerManager]', DEV_SERVER_MESSAGES.ERROR_STOP_FAILED(err.message));
+      setError({
+        message: DEV_SERVER_MESSAGES.ERROR_STOP_FAILED(err.message || DEV_SERVER_MESSAGES.ERROR_UNKNOWN)
+      });
     } finally {
       setDevServerLoading(false);
     }
-  };
+  }, [selectedProject, selectedFeature, setDevServerLoading, setDevServerStatus]);
 
   return {
-    devServerStatus,
-    isDevServerLoading,
-    showSetupPanel,
-    showStatusPanel,
-    startError,
-    isInstalling,
-    availablePort,
-    handlePlayButtonClick,
-    handleStartDevServer,
-    handleStopDevServer,
-    setShowSetupPanel,
-    setShowStatusPanel,
-    setStartError,
-    setIsInstalling
+    state,
+    status: devServerStatus,
+    ready,  // ✅ NEW: expose ready state
+    error,
+    progress,
+    startServer,
+    stopServer,
+    isLoading: isDevServerLoading
   };
 }

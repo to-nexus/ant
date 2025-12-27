@@ -3,7 +3,7 @@ import { Response } from 'express';
 /**
  * Message types for unified SSE stream
  */
-export type SSEMessageType = 'kanban' | 'chat' | 'fileTree' | 'workflow';
+export type SSEMessageType = 'kanban' | 'chat' | 'fileTree' | 'workflow' | 'devServer';  // ✅ Add devServer
 
 export interface SSEMessage {
   type: SSEMessageType;
