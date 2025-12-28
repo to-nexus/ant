@@ -32,6 +32,9 @@ export class DevServerService {
   private installingProjects: Set<string> = new Set();
   private devServerPackagePorts: Map<string, Array<{ name: string; type: 'frontend' | 'backend' | 'other'; port: number }>> = new Map();
   private devServerIssues: Map<string, DevServerIssue[]> = new Map();
+  private stoppingServers: Set<string> = new Set();
+  private stoppingPidsByServer: Map<string, Set<number>> = new Map();
+  private stoppingCleanupTimers: Map<string, NodeJS.Timeout> = new Map();
   private onStatusChange?: (serverKey: string) => void;
   private portManager?: PortManager;
   private portRegistry?: PortRegistryPort;
@@ -580,7 +583,34 @@ export class DevServerService {
     
     childProcess.on('close', (code) => {
       logger.info(`Process exited PID=${childProcess.pid} code=${code}`, { component: 'DevServerService' });
-      // ✅ Treat non-zero exits as errors so UI can surface failure reliably
+      
+      // ✅ If this exit was caused by an explicit stop action, do NOT surface as an error.
+      // IMPORTANT: stop() may clear state BEFORE child 'close' fires, so track PIDs as well.
+      const pid = childProcess.pid;
+      const stoppingPids = this.stoppingPidsByServer.get(serverKey);
+      const isExpectedStop =
+        this.stoppingServers.has(serverKey) ||
+        (pid != null && stoppingPids?.has(pid));
+      
+      if (isExpectedStop) {
+        // Don't append logs after stop (stopDevServer clears logs; avoid re-adding noise)
+        if (pid != null && stoppingPids) {
+          stoppingPids.delete(pid);
+          if (stoppingPids.size === 0) {
+            this.stoppingPidsByServer.delete(serverKey);
+            this.stoppingServers.delete(serverKey);
+            
+            const t = this.stoppingCleanupTimers.get(serverKey);
+            if (t) {
+              clearTimeout(t);
+              this.stoppingCleanupTimers.delete(serverKey);
+            }
+          }
+        }
+        return;
+      }
+      
+      // ✅ Treat non-zero exits as errors so UI can surface failures reliably
       if (code !== 0 && code !== null) {
         this.appendLog(serverKey, 'stderr', `❌ ${pkg.name} exited with code ${code}`);
       } else {
@@ -594,11 +624,6 @@ export class DevServerService {
         this.broadcastStatus(serverKey, updatedStatus);
       } catch (e: any) {
         // Don't crash on exit handler
-      }
-      
-      // ✅ Best-effort: release the port if we allocated it
-      if (this.portManager) {
-        void Promise.resolve(this.portManager.release(port)).catch(() => {});
       }
     });
     
@@ -881,6 +906,28 @@ export class DevServerService {
     if (!processes || processes.length === 0) {
       return { success: false, error: 'Dev server not running' };
     }
+
+    // ✅ Mark stopping to avoid surfacing SIGTERM exits as errors
+    this.stoppingServers.add(serverKey);
+    const pidSet = new Set<number>();
+    for (const p of processes) {
+      if (p?.pid != null) pidSet.add(p.pid);
+    }
+    if (pidSet.size > 0) {
+      this.stoppingPidsByServer.set(serverKey, pidSet);
+    }
+    
+    // Fallback cleanup in case close events never arrive (or already fired)
+    const existingTimer = this.stoppingCleanupTimers.get(serverKey);
+    if (existingTimer) clearTimeout(existingTimer);
+    this.stoppingCleanupTimers.set(
+      serverKey,
+      setTimeout(() => {
+        this.stoppingServers.delete(serverKey);
+        this.stoppingPidsByServer.delete(serverKey);
+        this.stoppingCleanupTimers.delete(serverKey);
+      }, 10_000)
+    );
     
     // Kill all processes
     for (const process of processes) {
@@ -909,6 +956,7 @@ export class DevServerService {
     this.logManager.clearLogs(serverKey);  // ✅ Clear logs via logManager
     this.devServerPackagePorts.delete(serverKey);
     this.devServerIssues.delete(serverKey);
+    // NOTE: Do NOT clear stoppingServers here. close() may fire after cleanup and needs this flag.
     
     logger.info(`Stopped all servers for ${serverKey}`, { component: 'DevServerService' });
     

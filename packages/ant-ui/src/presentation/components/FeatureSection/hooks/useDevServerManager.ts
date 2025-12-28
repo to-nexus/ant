@@ -243,7 +243,11 @@ export function useDevServerManager(
       // Type guard: setupReasoning from backend is already SetupFailureReasoning type
       saveDismissedMessage(serverKey, reasoning as SetupFailureReasoning);
       setIsDismissed(true);
+      return;
     }
+    
+    // ✅ Allow dismissing non-setup errors as well (session-only)
+    setIsDismissed(true);
   }, [devServerStatus?.setupReasoning, serverKey]);
 
   // ✅ Build "Fix All" payload from issues (extensible)
