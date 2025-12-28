@@ -203,6 +203,7 @@ export function useDevServerManager(
           setupReasoning: err.setupReasoning,
           setupReason: err.setupReason,
           suggestedFix: err.suggestedFix,
+          issues: err.issues,
           logs: []
         });
       }
@@ -245,13 +246,27 @@ export function useDevServerManager(
     }
   }, [devServerStatus?.setupReasoning, serverKey]);
 
+  // ✅ Build "Fix All" payload from issues (extensible)
+  const effectiveSuggestedFix = (() => {
+    const issues = devServerStatus?.issues || [];
+    const withFix = issues.filter(i => i.suggestedFix && i.suggestedFix.trim().length > 0);
+    if (withFix.length === 0) return devServerStatus?.suggestedFix;
+    
+    const ordered = [...withFix].sort((a, b) => {
+      if (a.severity === b.severity) return 0;
+      return a.severity === 'fatal' ? -1 : 1;
+    });
+    
+    return ordered.map(i => i.suggestedFix!.trim()).join('\n\n---\n\n');
+  })();
+
   return {
     state,
     status: devServerStatus as any,  // Type cast for compatibility
     ready,  // Health check result
     setupReasoning: devServerStatus?.setupReasoning as SetupFailureReasoning | undefined,
     setupReason: devServerStatus?.setupReason,
-    suggestedFix: devServerStatus?.suggestedFix,
+    suggestedFix: effectiveSuggestedFix,
     error,
     progress,
     startServer,

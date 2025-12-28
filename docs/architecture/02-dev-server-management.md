@@ -59,7 +59,7 @@ Express DevServerProxy
   ↓ PortRegistry 조회: acme:alice:project:feature → 30001
   ↓ HTML 응답 Rewrite: /main.tsx → /dev/acme:alice:project:feature/main.tsx
 http://localhost:30001 (web-client, Entry)
-  ↓ vite.config.ts: proxy: { '/api': 'http://localhost:30002' }
+  ↓ Frontend uses runtime-injected API base (dynamic backend port)
 http://localhost:30002 (api-server)
 ```
 
@@ -259,6 +259,20 @@ Response: {
 ```
 
 ---
+
+### 3.5 Runtime Injection Contract (Platform)
+
+Ant-managed dev servers can run fullstack projects with **dynamic ports**. The platform provides a runtime contract so projects can run both:
+- under Ant (dynamic ports, proxy prefix)
+- outside Ant (project-defined defaults)
+
+**Frontend: API base URL injection**
+- Ant injects an API base URL into the frontend process at dev-server start time (based on the dynamically allocated backend port).
+- Frontend code SHOULD support a runtime-configurable API base URL (Vite projects typically read via `import.meta.env`).
+
+**Backend: port injection**
+- Ant injects a port for backend packages (dynamic).
+- Backend services MUST be able to bind to the injected port.
 
 ## 4. Basename Validation & Fix 워크플로우
 

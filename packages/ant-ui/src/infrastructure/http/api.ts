@@ -188,11 +188,14 @@ export interface DevServerStatus {
   running: boolean;
   ready?: boolean;  // Health check result
   port?: number | null;
+  backendPort?: number | null;
   url?: string | null;
   logs?: LogEntry[];
   setupReasoning?: string;  // Categorized failure code (e.g., 'basename-missing')
   setupReason?: string;     // Human-readable message
   suggestedFix?: string;    // Suggested fix prompt
+  packages?: Array<{ name: string; type: 'frontend' | 'backend' | 'other'; port: number }>;
+  issues?: Array<{ reasoning: string; severity: 'fatal' | 'warning'; reason: string; suggestedFix?: string }>;
 }
 
 // ========== Models ==========
@@ -1049,6 +1052,8 @@ export async function startDevServer(
       err.setupReasoning = errorData.setupReasoning;  // Categorized failure code
       err.setupReason = errorData.setupReason;        // Human-readable message
       err.suggestedFix = errorData.suggestedFix;
+      // ✅ Unified issue queue (fatal + warnings) for Fix All
+      err.issues = errorData.issues;
       throw err;
     }
     

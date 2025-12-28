@@ -34,6 +34,27 @@ export type SetupFailureReasoning =
   | 'unknown';              // Unclassified error
 
 /**
+ * Dev server issue reasoning codes (extensible)
+ * - Includes fatal setup failures AND non-fatal runtime warnings.
+ */
+export type DevServerIssueReasoning =
+  | SetupFailureReasoning
+  | 'api-base-missing';     // Fullstack: frontend API base not configurable for dynamic backend ports
+
+export type DevServerIssueSeverity = 'fatal' | 'warning';
+
+/**
+ * Unified issue model for dev server "Fix" workflow.
+ * The system can push multiple issues over time; UI can offer "Fix All".
+ */
+export interface DevServerIssue {
+  reasoning: DevServerIssueReasoning;
+  severity: DevServerIssueSeverity;
+  reason: string;                 // Human-readable summary
+  suggestedFix?: string;          // LLM-ready instruction (optional)
+}
+
+/**
  * Dev server validation result
  * 
  * ✅ REFACTORED: Unified validation interface

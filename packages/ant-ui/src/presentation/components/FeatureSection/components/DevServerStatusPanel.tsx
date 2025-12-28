@@ -30,6 +30,7 @@ interface DevServerStatusPanelProps {
   url?: string;
   error?: DevServerError;
   progress?: DevServerProgress;
+  issues?: Array<{ reasoning: string; severity: 'fatal' | 'warning'; reason: string; suggestedFix?: string }>;
   onOpen?: () => void;
   onFix?: () => void;  // Fix setup handler
   onDismiss?: () => void;  // ✅ NEW: Dismiss panel
@@ -53,6 +54,7 @@ export function DevServerStatusPanel({
   url,
   error,
   progress,
+  issues,
   onOpen,
   onFix,
   onDismiss,  // ✅ NEW: Dismiss handler
@@ -147,6 +149,7 @@ export function DevServerStatusPanel({
   // Running successfully
   if (state === 'running') {
     const progressMsg = progress ? getProgressMessage(progress) : DEV_SERVER_MESSAGES.STATUS_RUNNING;
+    const warning = issues?.find(i => i.severity === 'warning');
     
     return (
       <div className="space-y-2">
@@ -182,6 +185,41 @@ export function DevServerStatusPanel({
                     <X size={14} />
                   </button>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Non-fatal warning (e.g. API base not configured for dynamic backend port) */}
+        {!setupReasoning && warning?.suggestedFix && onFix && !fixButtonClicked && (
+          <div className="p-3 bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 rounded-md">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-2 flex-1 min-w-0">
+                <AlertCircle className="w-4 h-4 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-yellow-900 dark:text-yellow-100">
+                    {warning.reasoning === 'api-base-missing'
+                      ? 'API 호출 설정이 동적 백엔드 포트(풀스택 dev server)에 맞지 않을 수 있습니다'
+                      : '개발서버 실행 환경에서 추가 설정이 필요할 수 있습니다'}
+                  </div>
+                  {warning.reason && (
+                    <div className="mt-1 text-xs text-yellow-800/80 dark:text-yellow-200/80">
+                      {warning.reason}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <button
+                  onClick={onFix}
+                  className="px-3 py-1.5 text-xs font-medium bg-yellow-600 dark:bg-yellow-700 text-white rounded 
+                           hover:bg-yellow-700 dark:hover:bg-yellow-600 transition-colors 
+                           flex items-center gap-1.5"
+                  title="Fix dev server setup"
+                >
+                  <Wrench size={12} />
+                  Fix
+                </button>
               </div>
             </div>
           </div>
@@ -223,6 +261,9 @@ export function DevServerStatusPanel({
 
   // Error state
   if (state === 'error') {
+    const fixableIssues = (issues || []).filter(i => i.suggestedFix && i.suggestedFix.trim().length > 0);
+    const issueCount = (issues || []).length;
+    
     // If setupReasoning exists, this is a validation failure (not a general error)
     if (setupReasoning && onFix && !fixButtonClicked) {
       return (
@@ -234,6 +275,19 @@ export function DevServerStatusPanel({
                 <div className="text-sm font-medium text-yellow-900 dark:text-yellow-100">
                   {getSetupFailureTitle(setupReasoning)}
                 </div>
+                {/* ✅ Show issue queue details when available (extensible) */}
+                {issueCount > 1 && (
+                  <div className="mt-1 space-y-1">
+                    {(issues || [])
+                      .filter(i => i.severity === 'warning')
+                      .slice(0, 3)
+                      .map((i, idx) => (
+                        <div key={idx} className="text-xs text-yellow-800/80 dark:text-yellow-200/80">
+                          - {i.reason}
+                        </div>
+                      ))}
+                  </div>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -245,7 +299,7 @@ export function DevServerStatusPanel({
                 title="Fix dev server setup"
               >
                 <Wrench size={12} />
-                Fix
+                {fixableIssues.length > 1 ? `Fix all (${fixableIssues.length})` : 'Fix'}
               </button>
               {onDismiss && (
                 <button

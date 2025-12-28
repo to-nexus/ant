@@ -6,7 +6,7 @@ import { LogEntry } from '../../../../../core/ports/http';
 import { PortManager } from '../../../../../infrastructure/networking/PortManager';
 import { PortRegistryPort } from '../../../../../core/ports/portRegistry';
 import { SSEService } from '../SSEService';
-import { PackageInfo, ProjectStructure, ValidationResult } from './types';
+import { DevServerIssue, DevServerIssueReasoning, PackageInfo, ProjectStructure, ValidationResult } from './types';
 import { createServerKey, parseServerKey } from './utils/serverKeyUtils';
 import { LogManager } from './managers/LogManager';
 import { PackageDetector } from './detectors/PackageDetector';
@@ -30,6 +30,8 @@ export class DevServerService {
   private devServerPorts: Map<string, number> = new Map();  // Entry port for proxy
   private devServerReady: Map<string, boolean> = new Map();  // ✅ Track ready state
   private installingProjects: Set<string> = new Set();
+  private devServerPackagePorts: Map<string, Array<{ name: string; type: 'frontend' | 'backend' | 'other'; port: number }>> = new Map();
+  private devServerIssues: Map<string, DevServerIssue[]> = new Map();
   private onStatusChange?: (serverKey: string) => void;
   private portManager?: PortManager;
   private portRegistry?: PortRegistryPort;
@@ -643,6 +645,7 @@ export class DevServerService {
     setupReasoning?: string;  // Categorized failure code (e.g., 'basename-missing')
     setupReason?: string;     // Human-readable message
     suggestedFix?: string;
+    issues?: DevServerIssue[];
   }> {
     const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
     const proxyUrl = `/dev/${serverKey}`;
@@ -715,6 +718,12 @@ export class DevServerService {
         pkg.process = process;
         processes.push(process);
       }
+
+      // ✅ Persist package ports for UI/diagnostics (entry + backend port awareness)
+      const packagePorts = orderedPackages
+        .filter(p => typeof p.port === 'number')
+        .map(p => ({ name: p.name, type: p.type, port: p.port as number }));
+      this.devServerPackagePorts.set(serverKey, packagePorts);
       
       // 4. Register only the ENTRY in PortRegistry
       if (structure.entry && this.portRegistry) {
@@ -757,22 +766,65 @@ export class DevServerService {
           this.devServerPorts.delete(serverKey);
           this.devServerReady.delete(serverKey);
           this.logManager.clearLogs(serverKey);
+          this.devServerPackagePorts.delete(serverKey);
+          this.devServerIssues.delete(serverKey);
           
           if (this.portRegistry) {
             await this.portRegistry.unregisterDevServer(tenantId, userId, projectId, feature);
           }
+
+          // ✅ Build issues stack (fatal + optional warning) so UI can "Fix All"
+          const issues: DevServerIssue[] = [];
+          issues.push({
+            reasoning: (validation.reasoning || 'unknown') as DevServerIssueReasoning,
+            severity: 'fatal',
+            reason: validation.reason || 'Dev server setup validation failed',
+            suggestedFix: validation.suggestedFix,
+          });
+          
+          try {
+            const hasBackend = orderedPackages.some(p => p.type === 'backend');
+            const apiIssue = hasBackend ? await this.detectApiBaseIssue(entryPath) : null;
+            if (apiIssue) issues.push(apiIssue);
+          } catch {
+            // Best-effort only
+          }
+          
+          this.devServerIssues.set(serverKey, issues);
+          const combinedSuggestedFix = this.combineIssueFixes(issues);
           
           return {
             success: false,
             error: 'Dev server setup validation failed',
             setupReasoning: validation.reasoning || 'unknown',
             setupReason: validation.reason,
-            suggestedFix: validation.suggestedFix,
+            suggestedFix: combinedSuggestedFix,
             serverKey,
+            // Provide issues for richer UI in future (optional)
+            issues,
           };
         }
       } else {
         logger.debug(`Skipping validation (entry is not frontend)`, { component: 'DevServerService' });
+      }
+
+      // ✅ 6.5 Non-fatal issues (do NOT stop the server)
+      // Best-effort heuristic: if fullstack backend exists but frontend isn't configured for dynamic API base.
+      const issues: DevServerIssue[] = [];
+      const entryFrontendPath = structure.entry?.type === 'frontend' ? structure.entry.path : undefined;
+      const hasBackend = orderedPackages.some(p => p.type === 'backend' && typeof p.port === 'number');
+      
+      if (entryFrontendPath && hasBackend) {
+        const apiIssue = await this.detectApiBaseIssue(entryFrontendPath);
+        if (apiIssue) issues.push(apiIssue);
+      }
+      
+      if (issues.length > 0) {
+        this.devServerIssues.set(serverKey, issues);
+        const updatedStatus = this.getDevServerStatus(tenantId, userId, projectId, feature);
+        this.broadcastStatus(serverKey, updatedStatus);
+      } else {
+        this.devServerIssues.delete(serverKey);
       }
       
       // ✅ 7. Health check for entry package (async, don't block response)
@@ -855,6 +907,8 @@ export class DevServerService {
     this.devServerPorts.delete(serverKey);
     this.devServerReady.delete(serverKey);  // ✅ Clear ready state
     this.logManager.clearLogs(serverKey);  // ✅ Clear logs via logManager
+    this.devServerPackagePorts.delete(serverKey);
+    this.devServerIssues.delete(serverKey);
     
     logger.info(`Stopped all servers for ${serverKey}`, { component: 'DevServerService' });
     
@@ -882,11 +936,17 @@ export class DevServerService {
     port?: number;
     url?: string;
     processCount?: number;
+    backendPort?: number;
+    packages?: Array<{ name: string; type: 'frontend' | 'backend' | 'other'; port: number }>;
+    issues?: DevServerIssue[];
   } {
     const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
     const processes = this.devServers.get(serverKey);
     const port = this.devServerPorts.get(serverKey);
     const ready = this.devServerReady.get(serverKey) || false;  // ✅ Get health check status
+    const packages = this.devServerPackagePorts.get(serverKey) || [];
+    const backendPort = packages.find(p => p.type === 'backend')?.port;
+    const issues = this.devServerIssues.get(serverKey) || [];
     
     const running = !!processes && processes.length > 0;
     
@@ -895,8 +955,107 @@ export class DevServerService {
       ready,  // ✅ Real health check result
       port,
       url: port ? `/dev/${serverKey}` : undefined,
-      processCount: processes?.length || 0
+      processCount: processes?.length || 0,
+      backendPort,
+      packages,
+      issues
     };
+  }
+
+  /**
+   * Detect non-fatal issue when frontend API base isn't compatible with dynamic backend ports.
+   * This is best-effort (heuristic) and should NOT block dev server startup.
+   */
+  private async detectApiBaseIssue(frontendPath: string): Promise<DevServerIssue | null> {
+    try {
+      const srcPath = path.join(frontendPath, 'src');
+      const viteConfigCandidates = [
+        path.join(frontendPath, 'vite.config.ts'),
+        path.join(frontendPath, 'vite.config.js'),
+      ];
+      
+      let hasConfigurableApiBase = false;
+      for (const p of viteConfigCandidates) {
+        if (!fs.existsSync(p)) continue;
+        const c = await fs.promises.readFile(p, 'utf8');
+        if (c.includes('VITE_API_BASE_URL') || c.includes("'/api'") || c.includes('\"/api\"')) {
+          hasConfigurableApiBase = true;
+        }
+      }
+      
+      // Scan a limited subset of src files for API base usage patterns
+      const files: string[] = [];
+      const stack = [srcPath];
+      const maxFiles = 200;
+      while (stack.length && files.length < maxFiles) {
+        const dir = stack.pop()!;
+        let entries: fs.Dirent[] = [];
+        try {
+          entries = await fs.promises.readdir(dir, { withFileTypes: true });
+        } catch {
+          continue;
+        }
+        for (const e of entries) {
+          if (files.length >= maxFiles) break;
+          if (e.name.startsWith('.')) continue;
+          if (e.name === 'node_modules' || e.name === 'dist' || e.name === 'build') continue;
+          const full = path.join(dir, e.name);
+          if (e.isDirectory()) stack.push(full);
+          else if (/\.(ts|tsx|js|jsx)$/.test(e.name)) files.push(full);
+        }
+      }
+      
+      let hasEnvApiBase = false;
+      let hasHardcodedHttpLocal = false;
+      let usesRelativeApi = false;
+      
+      for (const f of files) {
+        try {
+          const c = await fs.promises.readFile(f, 'utf8');
+          if (c.includes('VITE_API_BASE_URL')) hasEnvApiBase = true;
+          if (c.includes("'/api/") || c.includes('\"/api/')) usesRelativeApi = true;
+          if (/https?:\/\/localhost:\d+/.test(c)) hasHardcodedHttpLocal = true;
+        } catch {
+          // ignore
+        }
+      }
+      
+      // If they already use env or relative /api or configure proxy, assume OK
+      if (hasEnvApiBase || usesRelativeApi || hasConfigurableApiBase) {
+        return null;
+      }
+      
+      const reason = hasHardcodedHttpLocal
+        ? 'Frontend API client appears to use a fixed localhost URL and may not work with dynamic backend ports.'
+        : 'Frontend API client may not be configured for dynamic backend ports in Ant-managed dev servers.';
+      
+      return {
+        reasoning: 'api-base-missing',
+        severity: 'warning',
+        reason,
+        suggestedFix: [
+          'This project runs as a fullstack dev server under the Ant platform with dynamic backend ports.',
+          'Please update the frontend so API requests can target the backend address injected at runtime.',
+          '',
+          '- Prefer reading a runtime-injected API base URL (Vite projects typically use `import.meta.env` variables).',
+          '- Alternatively, route API calls through a stable relative path (e.g., `/api`) and rely on dev/proxy routing.',
+          '- Keep non-Ant execution working by preserving the project’s existing defaults/behavior.',
+        ].join('\n')
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Combine multiple issue fixes into a single LLM-ready prompt.
+   * Order: fatal first, then warnings (stable).
+   */
+  private combineIssueFixes(issues: DevServerIssue[]): string | undefined {
+    const withFix = issues.filter(i => i.suggestedFix && i.suggestedFix.trim().length > 0);
+    if (withFix.length === 0) return undefined;
+    const ordered = [...withFix].sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'fatal' ? -1 : 1));
+    return ordered.map(i => i.suggestedFix!.trim()).join('\n\n---\n\n');
   }
   
   /**

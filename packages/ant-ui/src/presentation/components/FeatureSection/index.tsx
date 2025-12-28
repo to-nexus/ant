@@ -69,7 +69,7 @@ export function FeatureSection() {
     setPendingChatInput({
       message: suggestedFix,
       jobType: 'code',
-      source: `dev-server-fix:${setupReasoning}`,
+      source: `dev-server-fix:${setupReasoning || (status as any)?.issues?.map((i: any) => i.reasoning).join(',') || 'unknown'}`,
     });
     
     console.log('[FeatureSection] ✅ Chat input set via Chat service');
@@ -119,6 +119,7 @@ export function FeatureSection() {
               state={state}
               ready={ready}  // Health check result
               setupReasoning={setupReasoning}  // Categorized failure code
+              issues={status?.issues}
               url={status?.url || undefined}   // Convert null to undefined
               error={error}
               progress={progress}
