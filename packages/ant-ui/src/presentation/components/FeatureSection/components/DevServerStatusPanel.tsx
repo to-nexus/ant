@@ -61,6 +61,10 @@ export function DevServerStatusPanel({
   const startingWithCounts = progress
     ? `${DEV_SERVER_MESSAGES.STATUS_STARTING} (${progress.completedCount}/${progress.totalCount})`
     : DEV_SERVER_MESSAGES.STATUS_STARTING;
+  
+  const installingWithCounts = progress
+    ? `${DEV_SERVER_MESSAGES.STATUS_INSTALLING} (${progress.completedCount}/${progress.totalCount})`
+    : DEV_SERVER_MESSAGES.STATUS_INSTALLING;
 
   // Idle state - show nothing
   if (state === 'idle') {
@@ -69,7 +73,9 @@ export function DevServerStatusPanel({
   
   // Installing dependencies
   if (state === 'installing') {
-    const progressMsg = progress ? getProgressMessage(progress) : DEV_SERVER_MESSAGES.STATUS_INSTALLING;
+    // ✅ Keep message consistent: installing phase should not show "Starting..."
+    // Show (n/m) when we have multi-package progress.
+    const progressMsg = progress ? installingWithCounts : DEV_SERVER_MESSAGES.STATUS_INSTALLING;
     
     return (
       <div className="p-3 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded-md">
