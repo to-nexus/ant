@@ -172,7 +172,15 @@ export function useDevServerManager(
         let messageData = message.data?.data;
         
         if (messageType === 'status') {
-          setDevServerStatus(messageData);
+          // ✅ IMPORTANT: Preserve existing logs when receiving status updates.
+          // Status payloads typically omit logs, and overwriting would reset progress-derived UI messages.
+          const currentStatus = useStore.getState().devServerStatus;
+          const mergedStatus = {
+            ...(currentStatus || {}),
+            ...(messageData || {}),
+            logs: (messageData && messageData.logs) ? messageData.logs : (currentStatus?.logs || [])
+          };
+          setDevServerStatus(mergedStatus);
           setDevServerLoading(false);
         } else if (messageType === 'log') {
           const currentStatus = useStore.getState().devServerStatus;

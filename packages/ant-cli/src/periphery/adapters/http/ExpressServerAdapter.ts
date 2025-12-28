@@ -80,6 +80,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   // Services
   private kanbanService: KanbanService;
   private sessionService: SessionService;
+  private gitWatcherService: any;  // ✅ Git watcher service
   private devServerService: DevServerService;
   private projectService: ProjectService;
   private chatService: ChatService;
@@ -496,6 +497,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     this.kanbanService = new KanbanService(this.workspacesPath, this.workspaceResolver);
     this.githubAuthService = new GitHubAuthService(this.workspacesPath);  // ✅ Initialize GitHub Auth service
     this.sseService = new SSEService();
+    this.gitWatcherService = new (require('./services/GitWatcherService').GitWatcherService)(this.sseService, this.workspaceResolver);  // ✅ Initialize Git watcher
     this.chatService = new ChatService(this.workspacesPath, this.sseService, this.workspaceResolver);  // ✅ Initialize ChatService first
     this.projectService = new ProjectService(this.workspaceResolver, this.githubAuthService, this.chatService, this.sseService);  // ✅ Inject SSEService for project-level events
     this.devServerService = new DevServerService(
@@ -788,6 +790,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       chatService: this.chatService,
       projectService: this.projectService,
       workflowStateService: this.workflowStateService,
+      gitWatcherService: this.gitWatcherService,  // ✅ Pass Git watcher service
       jobToProject: this.jobToProject,
       jobs: this.jobs,
       taskQueueSnapshots: this.taskQueueSnapshots

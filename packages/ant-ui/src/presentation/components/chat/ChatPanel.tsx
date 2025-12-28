@@ -122,8 +122,7 @@ export function ChatPanel({ projectId: _projectId, featureName: _featureName, en
   return (
     <div className="flex flex-col h-full">
       {/* Chat History (scrollable) */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin">
-        {/* Pinned Query - Only show when last user message is NOT visible */}
+      <div className="flex-1 overflow-y-auto scrollbar-thin min-h-0">{/* Pinned Query - Only show when last user message is NOT visible */}
         {messages.length > 0 && lastUserQuery && !isLastUserMessageVisible && (
           <PinnedQuery query={lastUserQuery} />
         )}
@@ -167,7 +166,7 @@ export function ChatPanel({ projectId: _projectId, featureName: _featureName, en
       </div>
 
       {/* Input Area - Fixed at bottom */}
-      <div className="border-t border-gray-200 dark:border-gray-700 shrink-0">
+      <div className="border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
         <ChatInput 
           messageCount={messages.length}
           fileStats={fileStats}

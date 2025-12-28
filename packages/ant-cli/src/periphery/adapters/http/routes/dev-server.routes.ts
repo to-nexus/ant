@@ -159,6 +159,7 @@ export function createDevServerRoutes(deps: {
       
       const fullStatus = {
         running: status.running,  // ✅ Changed from status.isRunning
+        ready: status.ready,      // ✅ Include health-check readiness (fixes refresh showing "Starting...")
         port: status.port || null,
         url: status.url || null,
         processCount: status.processCount || 0,

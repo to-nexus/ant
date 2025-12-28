@@ -19,6 +19,7 @@ export function createSSERoutes(deps: {
   chatService: ChatService;
   projectService: ProjectService;
   workflowStateService: WorkflowStateService;
+  gitWatcherService?: any;  // ✅ Git watcher service
   // workspaceRoot: string;  // ❌ 제거 - 사용하지 않음
   jobToProject?: Map<string, { projectId: string; featureName: string }>;
   jobs?: Map<string, any>;
@@ -117,6 +118,12 @@ export function createSSERoutes(deps: {
       console.log(`✅ [SSE] Initial states sent to ${projectId}/${featureName}`);
     } catch (error) {
       console.error(`❌ [SSE] Failed to send initial states:`, error);
+    }
+    
+    // ✅ Start watching Git changes
+    if (deps.gitWatcherService && userContext) {
+      const sseClientChecker = () => deps.sseService.getClientCount(projectId, featureName) > 0;
+      deps.gitWatcherService.watchGitChanges(projectId, featureName, userContext, sseClientChecker);
     }
     
     // Keep connection alive

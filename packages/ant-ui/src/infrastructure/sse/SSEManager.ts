@@ -27,7 +27,7 @@
 
 import { getApiBase } from '../http/api';
 
-export type SSEMessageType = 'kanban' | 'chat' | 'fileTree' | 'workflow';
+export type SSEMessageType = 'kanban' | 'chat' | 'fileTree' | 'workflow' | 'gitChange';
 export type SSEMessageHandler = (data: any) => void;
 
 interface SSEMessage {
