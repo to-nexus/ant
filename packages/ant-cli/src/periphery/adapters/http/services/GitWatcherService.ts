@@ -3,6 +3,7 @@ import * as path from 'path';
 import { WorkspaceResolver } from '../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../core/types/user';
 import type { SSEService } from './SSEService';
+import { logger } from '../../../../utils/logger';
 
 /**
  * GitWatcherService
@@ -34,7 +35,7 @@ export class GitWatcherService {
     userContext: UserContext,
     sseClientChecker: () => boolean
   ): void {
-    const key = `${projectId}/${featureName}`;
+    const key = `${userContext.organizationId}:${userContext.userId}:${projectId}/${featureName}`;
     
     // Don't create duplicate watchers
     if (this.gitWatchers.has(key)) {
@@ -42,7 +43,7 @@ export class GitWatcherService {
     }
     
     if (!this.workspaceResolver) {
-      console.warn('[GitWatcher] WorkspaceResolver not available');
+      logger.warn('WorkspaceResolver not available', { component: 'GitWatcher', projectId, featureName, organizationId: userContext.organizationId, userId: userContext.userId });
       return;
     }
     
@@ -53,7 +54,7 @@ export class GitWatcherService {
     
     // Check if Git repo exists
     if (!fs.existsSync(gitIndexPath)) {
-      console.log(`[GitWatcher] No Git repo found for ${key}`);
+      logger.debug(`No Git repo found for ${key}`, { component: 'GitWatcher', projectId, featureName });
       return;
     }
     
@@ -72,19 +73,19 @@ export class GitWatcherService {
           // Git index changed - something was staged/unstaged/committed
           lastModified = mtime;
           
-          console.log(`[GitWatcher] 🔄 Git changes detected for ${key}`);
+          logger.debug(`Git changes detected for ${key}`, { component: 'GitWatcher', projectId, featureName });
           
           // Broadcast to frontend
           this.sseService?.broadcast(projectId, featureName, 'gitChange', {
             timestamp: new Date().toISOString(),
             project: projectId,
             feature: featureName
-          });
+          }, userContext);
         }
       } catch (error: any) {
         // File doesn't exist anymore - repo deleted
         if (error.code === 'ENOENT') {
-          console.log(`[GitWatcher] Git repo deleted for ${key}, stopping watcher`);
+          logger.debug(`Git repo deleted for ${key}, stopping watcher`, { component: 'GitWatcher', projectId, featureName });
           clearInterval(intervalId);
           this.gitWatchers.delete(key);
         }
@@ -94,12 +95,12 @@ export class GitWatcherService {
       if (!sseClientChecker()) {
         clearInterval(intervalId);
         this.gitWatchers.delete(key);
-        console.log(`[GitWatcher] No SSE clients, stopped watching ${key}`);
+        logger.debug(`No SSE clients, stopped watching ${key}`, { component: 'GitWatcher', projectId, featureName });
       }
     }, 1000); // Check every 1 second
     
     this.gitWatchers.set(key, intervalId);
-    console.log(`[GitWatcher] 👁️  Started watching Git changes for ${key}`);
+    logger.debug(`Started watching Git changes for ${key}`, { component: 'GitWatcher', projectId, featureName });
   }
   
   /**
@@ -111,7 +112,7 @@ export class GitWatcherService {
     if (intervalId) {
       clearInterval(intervalId);
       this.gitWatchers.delete(key);
-      console.log(`[GitWatcher] Stopped watching ${key}`);
+      logger.debug(`Stopped watching ${key}`, { component: 'GitWatcher', projectId, featureName });
     }
   }
   
@@ -123,7 +124,7 @@ export class GitWatcherService {
       clearInterval(intervalId);
     }
     this.gitWatchers.clear();
-    console.log('[GitWatcher] Cleaned up all watchers');
+    logger.debug('Cleaned up all watchers', { component: 'GitWatcher' });
   }
 }
 

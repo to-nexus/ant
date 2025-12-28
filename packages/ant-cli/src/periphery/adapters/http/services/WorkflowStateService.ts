@@ -11,6 +11,7 @@
 
 import { Response } from 'express';
 import type { SSEService } from './SSEService';
+import { logger } from '../../../../utils/logger';
 
 export interface NodeHistoryEntry {
   nodeId: string;
@@ -90,10 +91,7 @@ export class WorkflowStateService {
    * Job 시작 (초기 상태 생성)
    */
   startJob(jobId: string, llmInfo?: LLMInfo): void {
-    console.log(`\n🚀 [WorkflowStateService] startJob called for ${jobId}`);
-    if (llmInfo) {
-      console.log(`   🤖 LLM: ${llmInfo.provider} / ${llmInfo.model}`);
-    }
+    logger.debug(`startJob`, { component: 'WorkflowStateService', jobId }, llmInfo);
     
     this.states.set(jobId, {
       jobId,
@@ -107,7 +105,7 @@ export class WorkflowStateService {
       activeActors: new Set()
     });
     
-    console.log(`   ✅ Initial state created`);
+    logger.debug(`Initial state created`, { component: 'WorkflowStateService', jobId });
   }
   
   /**
@@ -116,7 +114,7 @@ export class WorkflowStateService {
   updateLLMInfo(jobId: string, llmInfo: LLMInfo): void {
     const state = this.states.get(jobId);
     if (state && !state.llmInfo) {
-      console.log(`\n🤖 [WorkflowStateService] Updating LLM info for ${jobId}:`, llmInfo);
+      logger.debug(`Updating LLM info`, { component: 'WorkflowStateService', jobId }, llmInfo);
       state.llmInfo = llmInfo;
       this.broadcast(jobId);
     }
@@ -170,14 +168,8 @@ export class WorkflowStateService {
       enteredAt
     });
     
-    // ✅ 간결한 노드 전환 로그 (stdout으로 전송)
-    const time = new Date(enteredAt).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    const nodeEmoji = getNodeEmoji(nodeId);
-    let logMsg = `${nodeEmoji} ${nodeId}`;
-    if (taskInfo) {
-      logMsg += ` → ${taskInfo.name}`;
-    }
-    console.log(logMsg);
+    // ✅ Node transitions are already visible via SSE; keep server console clean
+    logger.debug(`Node enter: ${nodeId}${taskInfo ? ` -> ${taskInfo.name}` : ''}`, { component: 'WorkflowStateService', jobId });
     
     // ✅ CRITICAL: Broadcast synchronously (writes to buffer)
     // TCP guarantees order, so this SSE will arrive before any subsequent SSE
@@ -266,7 +258,7 @@ export class WorkflowStateService {
   getInitialState(jobId: string): WorkflowRealtimeState | null {
     const state = this.states.get(jobId);
     if (!state) {
-      console.log(`   ⚠️ No state found for job ${jobId}`);
+      logger.debug(`No state found for job`, { component: 'WorkflowStateService', jobId });
       return null;
     }
     
@@ -294,7 +286,7 @@ export class WorkflowStateService {
     }
     
     if (!this.sseService) {
-      console.warn(`   ⚠️ [WorkflowStateService] SSEService not available, skipping broadcast`);
+      logger.warn(`SSEService not available, skipping broadcast`, { component: 'WorkflowStateService', jobId });
       return;
     }
     

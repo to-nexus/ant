@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { WorkspaceResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../../core/types/user';
+import { logger } from '../../../../../utils/logger';
 
 /**
  * ProjectCrudService
@@ -101,10 +102,10 @@ export class ProjectCrudService {
     // ✅ Determine if Cloud Mode
     const isCloudMode = userContext.userId !== 'local' && userContext.organizationId !== 'local';
     
-    console.log('[ProjectCrudService] Creating project config:');
-    console.log('  - userContext:', userContext);
-    console.log('  - isCloudMode:', isCloudMode);
-    console.log('  - defaultModel:', defaultModel);
+    logger.debug('Creating project config', { component: 'ProjectCrudService', organizationId: userContext.organizationId, userId: userContext.userId, projectId: id }, {
+      isCloudMode,
+      defaultModel
+    });
     
     // ✅ Create config based on mode
     const config = {

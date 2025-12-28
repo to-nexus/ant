@@ -1274,6 +1274,43 @@ export async function checkIDEInstalled(ide: 'cursor' | 'vscode'): Promise<Check
   }
 }
 
+// ========================================
+// Cloud IDE APIs (Docker per project/feature)
+// ========================================
+
+export interface CloudIDEInstance {
+  url: string;          // proxy url (e.g. /ide/org:user:project:feature)
+  directUrl?: string;   // ✅ local direct access (e.g. http://localhost:45xxx) - optional for backward compatibility
+  port: number;
+  status: string;
+  workspacePath?: string;
+}
+
+export interface StartCloudIDEResponse {
+  success: boolean;
+  instance: CloudIDEInstance;
+}
+
+/**
+ * Start cloud IDE container for a project/feature and return directUrl for embedding.
+ */
+export async function startCloudIDE(projectId: string, featureName: string = 'main'): Promise<StartCloudIDEResponse> {
+  const response = await authFetch(`${API_BASE()}/cloud-ide/start`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders()
+    },
+    body: JSON.stringify({ projectId, featureName }),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data?.error || data?.message || 'Failed to start cloud IDE');
+  }
+  return data;
+}
+
 // ============================================
 // GitHub Integration
 // ============================================

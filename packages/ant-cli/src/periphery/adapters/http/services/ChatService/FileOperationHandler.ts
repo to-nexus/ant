@@ -7,6 +7,7 @@
 import type { MessageContent, FileOperationPhase, ChatSession } from './types';
 import type { SessionManager } from './SessionManager';
 import type { MessageBroadcaster } from './MessageBroadcaster';
+import { logger } from '../../../../../utils/logger';
 
 export class FileOperationHandler {
   constructor(
@@ -32,17 +33,17 @@ export class FileOperationHandler {
     
     // Validate session and current message
     if (!session) {
-      console.error(`❌ [FileOperationHandler] No session found for ${projectId}/${featureName}`);
+      logger.warn(`No session found`, { component: 'FileOperationHandler', projectId, featureName });
       return;
     }
     
     if (!session.currentMessage) {
-      console.error(`❌ [FileOperationHandler] No currentMessage in session for ${projectId}/${featureName}`);
+      logger.warn(`No currentMessage in session`, { component: 'FileOperationHandler', projectId, featureName });
       return;
     }
     
     if (!phase) {
-      console.warn(`⚠️  [FileOperationHandler] No phase provided for ${filePath}`);
+      logger.warn(`No phase provided`, { component: 'FileOperationHandler', projectId, featureName }, { filePath });
       return;
     }
     
@@ -125,7 +126,7 @@ export class FileOperationHandler {
     // Update existing content
     const existingContent = session.currentMessage!.contents[existingIndex];
     if (!existingContent) {
-      console.error(`[FileOperationHandler] ❌ Content at index ${existingIndex} is undefined!`);
+      logger.warn(`Content at index ${existingIndex} is undefined`, { component: 'FileOperationHandler', projectId, featureName }, { filePath });
       return false;
     }
     
@@ -154,7 +155,7 @@ export class FileOperationHandler {
         messageId: session.currentMessage!.id,
         contentIndex: existingIndex,
         delta: delta
-      });
+      }, session.userContext);
     } else {
       // Full content update for other phases
       this.broadcaster.broadcast(projectId, featureName, {
@@ -162,7 +163,7 @@ export class FileOperationHandler {
         messageId: session.currentMessage!.id,
         contentIndex: existingIndex,
         content: session.currentMessage!.contents[existingIndex]
-      });
+      }, session.userContext);
     }
     
     // Track active file operations for real-time streaming
@@ -215,7 +216,7 @@ export class FileOperationHandler {
       type: 'content_add',
       messageId: session.currentMessage!.id,
       content: messageContent
-    });
+    }, session.userContext);
 
     // Track active file operations for real-time streaming
     if ((phase === 'writing' || phase === 'updating') && contentIndex !== -1) {
@@ -223,7 +224,7 @@ export class FileOperationHandler {
         session.activeFileOperations = new Map();
       }
       session.activeFileOperations.set(filePath, { filePath, contentIndex });
-      console.log(`[FileOperationHandler] ✅ Tracked NEW file operation at index ${contentIndex} for: ${filePath}`);
+      logger.debug(`Tracked NEW file operation @${contentIndex}`, { component: 'FileOperationHandler', projectId, featureName }, { filePath });
     }
   }
 

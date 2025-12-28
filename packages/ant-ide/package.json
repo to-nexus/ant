@@ -4,7 +4,7 @@
   "description": "ANT IDE Server - using Docker openvscode-server",
   "scripts": {
     "predev": "docker ps -a | grep ant-openvscode && (docker stop ant-openvscode; docker rm ant-openvscode) || true",
-    "dev": "docker run -d --name ant-openvscode -p 4400:3000 -v \"${ANT_WORKSPACE_BASE_PATH:-/Users/probe/dev/ant-workspaces}:/workspace:cached\" gitpod/openvscode-server && echo '✅ OpenVSCode Server started on http://localhost:4400'",
+    "dev": "docker run -d --name ant-openvscode --hostname ant-openvscode -p ${ANT_IDE_PORT:-4400}:3000 -v \"${ANT_IDE_CODEBASE_PATH:-${ANT_WORKSPACE_BASE_PATH:-/Users/probe/dev/ant-workspaces}}:/workspace:cached\" -w /workspace gitpod/openvscode-server && echo \"✅ OpenVSCode Server started on http://localhost:${ANT_IDE_PORT:-4400} (mounted: ${ANT_IDE_CODEBASE_PATH:-${ANT_WORKSPACE_BASE_PATH:-/Users/probe/dev/ant-workspaces}} → /workspace)\"",
     "stop": "docker stop ant-openvscode && docker rm ant-openvscode",
     "start": "npm run dev",
     "build": "echo 'No build step required for Docker-based IDE'"

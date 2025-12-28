@@ -64,9 +64,42 @@ function App() {
   const setSession = useStore((state) => state.setSession);
   const splitLayout = useStore((state) => state.splitLayout);
   const mainView = useStore((state) => state.mainView);
+  const ideBaseUrl = useStore((state) => state.ideBaseUrl);
   const ideWorkspacePath = useStore((state) => state.ideWorkspacePath);
   const setIdeWorkspacePath = useStore((state) => state.setIdeWorkspacePath);
   const ideReloadTimestamp = useStore((state) => state.ideReloadTimestamp);
+  const ideConnecting = useStore((state) => state.ideConnecting);
+  const ideConnectError = useStore((state) => state.ideConnectError);
+  const ideFrameLoaded = useStore((state) => state.ideFrameLoaded);
+
+  // ✅ Auto-retry IDE iframe load ONLY if iframe didn't finish loading
+  const ideRetryCountRef = useRef(0);
+  const lastIdeBaseUrlRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (mainView !== 'codeIde') return;
+    if (!ideBaseUrl || ideConnecting) return;
+
+    if (lastIdeBaseUrlRef.current !== ideBaseUrl) {
+      lastIdeBaseUrlRef.current = ideBaseUrl;
+      ideRetryCountRef.current = 0;
+    }
+
+    // Stop retries once iframe successfully loaded
+    if (ideFrameLoaded) return;
+
+    // Do at most 2 automatic reloads while still not loaded
+    if (ideRetryCountRef.current >= 2) return;
+
+    const t = setTimeout(() => {
+      // Only retry if still not loaded at the time the timer fires
+      if (!useStore.getState().ideFrameLoaded) {
+        ideRetryCountRef.current += 1;
+        useStore.getState().reloadIdeFrame();
+      }
+    }, ideRetryCountRef.current === 0 ? 1200 : 3500);
+
+    return () => clearTimeout(t);
+  }, [mainView, ideBaseUrl, ideConnecting, ideFrameLoaded]);
   
   // ✅ Domain data (via Application Hooks)
   const { kanbanData } = useKanban();
@@ -232,12 +265,31 @@ function App() {
         // ✅ CRITICAL: Use ideReloadTimestamp in key and src to force reload
         // Docker container is shared, timestamp forces VS Code to reload workspace
         <div className="flex-1 pt-16">
-          <iframe
-            key={`ide-${selectedFeature || 'base'}-${ideReloadTimestamp}`}
-            src={`http://localhost:4400/?folder=${encodeURIComponent(ideWorkspacePath || '/workspace')}&tk=${ideReloadTimestamp}`}
-            className="w-full h-full border-0"
-            title="ANT Code Editor"
-          />
+          {ideConnecting || !ideBaseUrl ? (
+            <div className="w-full h-full flex items-center justify-center">
+              <div className="max-w-lg w-full px-6">
+                <div className="rounded-xl border border-gray-200 dark:border-[#30363d] bg-white dark:bg-[#161b22] p-6 shadow-sm">
+                  <div className="h-4 w-44 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-4" />
+                  <div className="h-3 w-full bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-2" />
+                  <div className="h-3 w-5/6 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-6" />
+                  <div className="text-sm text-gray-600 dark:text-gray-300">
+                    {ideConnectError ? `IDE 로딩 실패: ${ideConnectError}` : 'IDE 컨테이너를 시작하는 중입니다...'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <iframe
+              key={`ide-${selectedFeature || 'base'}-${ideReloadTimestamp}`}
+              src={`${ideBaseUrl}/?folder=${encodeURIComponent(ideWorkspacePath || '/workspace')}&tk=${ideReloadTimestamp}`}
+              className="w-full h-full border-0"
+              title="ANT Code Editor"
+              onLoad={() => {
+                // Mark as loaded to stop auto-retries and prevent flicker
+                useStore.getState().setIdeFrameLoaded(true);
+              }}
+            />
+          )}
         </div>
       ) : (
         // ✅ Agents View: Original UI

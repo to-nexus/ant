@@ -8,8 +8,12 @@ export interface UIActions {
   setTheme: (theme: 'light' | 'dark') => void;
   toggleSplitLayout: (layout: 'horizontal' | 'vertical') => void;
   setMainView: (mode: 'agents' | 'codeIde') => void;
+  setIdeBaseUrl: (url: string | undefined) => void;
   setIdeWorkspacePath: (path: string | undefined) => void;
   switchToCodeIdeView: (workspacePath: string) => void;
+  setIdeConnecting: (connecting: boolean, error?: string) => void;
+  setIdeFrameLoaded: (loaded: boolean) => void;
+  reloadIdeFrame: () => void;
   selectMainPanelTab: (tab: 'job' | 'projectConfig' | 'accountConfig' | 'fileEdit') => void;
   openMainPanelTab: (tab: 'projectConfig' | 'accountConfig' | 'fileEdit') => void;
   closeMainPanelTab: (tab: 'projectConfig' | 'accountConfig' | 'fileEdit') => void;
@@ -55,8 +59,12 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   theme: getInitialTheme(),
   splitLayout: 'vertical',
   mainView: 'agents',
+  ideBaseUrl: undefined,
   ideWorkspacePath: undefined,
   ideReloadTimestamp: 0,
+  ideConnecting: false,
+  ideConnectError: undefined,
+  ideFrameLoaded: false,
   mainPanelActiveTab: 'job',
   mainPanelOpenTabs: { projectConfig: false, accountConfig: false, fileEdit: false },
   mainPanelTabOrder: [],
@@ -88,6 +96,10 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
     saveToStorage(STORAGE_KEYS.MAIN_VIEW, mode);
   },
 
+  setIdeBaseUrl: (url) => {
+    set({ ideBaseUrl: url });
+  },
+
   setIdeWorkspacePath: (path) => {
     set({ ideWorkspacePath: path });
   },
@@ -98,6 +110,18 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
       mainView: 'codeIde'
     });
     saveToStorage(STORAGE_KEYS.MAIN_VIEW, 'codeIde');
+  },
+
+  setIdeConnecting: (connecting, error) => {
+    set({ ideConnecting: connecting, ideConnectError: error });
+  },
+
+  setIdeFrameLoaded: (loaded) => {
+    set({ ideFrameLoaded: loaded });
+  },
+
+  reloadIdeFrame: () => {
+    set({ ideReloadTimestamp: Date.now() } as any);
   },
 
   selectMainPanelTab: (tab) => {

@@ -49,6 +49,7 @@ import { PortManager } from '../../../infrastructure/networking/PortManager';
 import { InMemoryPortRegistry } from '../../../infrastructure/networking/InMemoryPortRegistry';
 import { PortRegistryPort } from '../../../core/ports/portRegistry';
 import { IDEService } from '../ide/IDEService';
+import { logger } from '../../../utils/logger';
 
 /**
  * ExpressServerAdapter
@@ -156,14 +157,19 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     queue: any[], 
     completedTasks?: any[],
     recursionCount?: number,
-    recursionLimit?: number
+    recursionLimit?: number,
+    tokenUsage?: { inputTokens: number; outputTokens: number; totalTokens: number; cacheReadTokens?: number; cacheCreationTokens?: number }
   ): void {
-    
-    console.log(`\n🔄 [updateTaskQueue] Called for job ${jobId}`);
-    console.log(`   currentTask: ${currentTask?.name || 'null'}`);
-    console.log(`   currentTask.timing: ${currentTask?.timing ? JSON.stringify(currentTask.timing) : 'null'}`);
-    console.log(`   queue length: ${queue.length}`);
-    console.log(`   completedTasks param: ${completedTasks !== undefined ? completedTasks.length : 'undefined'}`);
+    logger.debug(`updateTaskQueue`, {
+      component: 'ExpressServerAdapter',
+      jobId
+    }, {
+      currentTask: currentTask?.name || null,
+      queueLength: queue.length,
+      completedTasks: completedTasks !== undefined ? completedTasks.length : undefined,
+      recursionCount,
+      recursionLimit
+    });
     
     // ✅ CRITICAL: Preserve existing completed tasks if not provided
     const existingSnapshot = this.taskQueueSnapshots.get(jobId);
@@ -171,7 +177,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       ? completedTasks 
       : (existingSnapshot?.completedTasks || []);
     
-    console.log(`   finalCompletedTasks length: ${finalCompletedTasks.length}`);
+    logger.debug(`finalCompletedTasks length=${finalCompletedTasks.length}`, { component: 'ExpressServerAdapter', jobId });
     
     // ✅ Read recursion limit from environment variable (fallback: existing > 50)
     const MIN_RECURSION_LIMIT = 5;
@@ -182,7 +188,10 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     
     // Update local snapshot for coordination
     this.taskQueueSnapshots.set(jobId, { 
-      currentTask, 
+      currentTask: currentTask ? {
+        ...currentTask,
+        tokenUsage: tokenUsage || currentTask.tokenUsage  // ✅ Real-time token usage
+      } : null,
       queue,
       completedTasks: finalCompletedTasks,
       recursionCount: recursionCount || existingSnapshot?.recursionCount || 0,
@@ -206,7 +215,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         this.taskQueueSnapshots,
         mapping.userContext  // ✅ Pass user context for Cloud mode
       ).then(kanbanData => {
-        this.sseService.broadcast(mapping.projectId, mapping.featureName, 'kanban', kanbanData);
+        this.sseService.broadcast(mapping.projectId, mapping.featureName, 'kanban', kanbanData, mapping.userContext);
       });
     }
   }
@@ -224,10 +233,12 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     explicitJobType?: 'design' | 'code' | 'learn',
     userContext?: { userId: string; organizationId: string; workspacePath: string }
   ): Promise<void> {
-    console.log(`\n🧹 [ExpressServerAdapter] cleanupJobState called for ${jobId}`);
-    console.log(`   projectId: ${projectId || 'undefined'}, featureName: ${featureName || 'undefined'}`);
-    console.log(`   interruptionReason: ${interruptionReason?.reason || 'none'}`);
-    console.log(`   explicitJobType: ${explicitJobType || 'undefined'}`);
+    logger.info(`cleanupJobState`, { component: 'ExpressServerAdapter', jobId }, {
+      projectId,
+      featureName,
+      interruptionReason: interruptionReason?.reason,
+      explicitJobType
+    });
     
     // ✅ Get mapping before deletion (includes jobType!)
     let mapping = this.jobToProject.get(jobId);
@@ -240,27 +251,24 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         jobType: explicitJobType || 'code',  // Fallback to explicit or default
         userContext  // ✅ CRITICAL: Include userContext for Cloud mode
       };
-      console.log(`   Using provided mapping: ${projectId}/${featureName}/${mapping.jobType}`);
+      logger.debug(`Using provided mapping`, { component: 'ExpressServerAdapter', jobId }, mapping);
     }
     
     // Get current snapshot to return in-progress task to queue
     const snapshot = this.taskQueueSnapshots.get(jobId);
-    console.log(`   Snapshot exists: ${!!snapshot}`);
     
     // ✅ CRITICAL: Determine job type (priority: mapping > explicit > jobStatus > default)
     const jobStatus = this.jobs.get(jobId);
     const jobType = mapping?.jobType || explicitJobType || (jobStatus?.task as 'design' | 'code' | 'learn') || 'code';
     const jobTypeSource = mapping?.jobType ? 'mapping' : explicitJobType ? 'explicit' : jobStatus?.task ? 'jobStatus' : 'default';
-    console.log(`   Job type determined: ${jobType} (source: ${jobTypeSource})`);
+    logger.debug(`Job type determined: ${jobType} (source: ${jobTypeSource})`, { component: 'ExpressServerAdapter', jobId });
     
     // ✅ End workflow tracking
     this.workflowStateService.endJob(jobId);
-    console.log(`   ✅ Workflow state ended`);
     
     // ✅ Finalize any active chat message (converts streaming file cards to completed with cancelled flag)
     if (mapping && this.chatService) {
       this.chatService.finalizeCurrentMessage(mapping.projectId, mapping.featureName || 'skeleton', true);  // cancelled: true
-      console.log(`   ✅ Chat message finalized (file cards marked as cancelled)`);
     }
     
   // ✅ Move in-progress task back to queue in session file
@@ -279,8 +287,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         mapping.featureName || 'skeleton'
       );
       const sessionPath = path.join(featurePath, 'sessions', `${jobType}.json`);
-      
-      console.log(`   📄 Session file: ${sessionPath}`);
+      logger.debug(`Session file resolved`, { component: 'ExpressServerAdapter', jobId }, { sessionPath });
       
       const sessionData = await this.sessionService.readSessionData(
         mapping.projectId, 
@@ -320,9 +327,9 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
             currentTask: undefined  // Remove currentTask
           };
           
-          console.log(`   ✅ Moved interrupted task back to queue: "${interruptedTask.name}"`);
+          logger.debug(`Moved interrupted task back to queue`, { component: 'ExpressServerAdapter', jobId }, { taskName: interruptedTask.name });
         } else {
-          console.log(`   ℹ️  No currentTask to return (already completed or not started)`);
+          logger.debug(`No currentTask to return`, { component: 'ExpressServerAdapter', jobId });
           
           // ✅ Even if no task to return, preserve all state fields
           sessionData.state = {
@@ -336,21 +343,21 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
             ...sessionData.state.jobTiming,
             pausedAt: new Date().toISOString()
           };
-          console.log(`   ⏰ Updated jobTiming.pausedAt`);
+          logger.debug(`Updated jobTiming.pausedAt`, { component: 'ExpressServerAdapter', jobId });
         }
         
         // ✅ NEW: Save interruption details if provided
         if (interruptionReason) {
           sessionData.state.interruption = interruptionReason;
-          console.log(`   ✅ Saved interruption reason: ${interruptionReason.reason}`);
+          logger.debug(`Saved interruption reason: ${interruptionReason.reason}`, { component: 'ExpressServerAdapter', jobId });
           
           // ✅ NOTE: Keep jobId in session (needed for UI display)
           // Auto-restore prevention is handled by frontend userStoppedJobId check
         }
         
         // ✅ Log preserved state for debugging
-        console.log(`   ✅ Preserving state:`, {
-          jobId: sessionData.state.jobId,  // ✅ CRITICAL: Check if jobId is preserved
+        logger.debug(`Preserving session state`, { component: 'ExpressServerAdapter', jobId }, {
+          sessionJobId: sessionData.state.jobId,
           hasInterruption: !!sessionData.state.interruption,
           interruptionReason: sessionData.state.interruption?.reason,
           recursionCount: sessionData.state.recursionCount,
@@ -362,7 +369,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         await fs.promises.writeFile(sessionPath, JSON.stringify(sessionData, null, 2), 'utf-8');
       } else {
         // ✅ No session file yet - create minimal session with interruption if provided
-        console.log(`   ⚠️  No session file found - creating minimal session with interruption`);
+        logger.debug(`No session file found - creating minimal session with interruption`, { component: 'ExpressServerAdapter', jobId });
         
         if (interruptionReason) {
           const minimalSession = {
@@ -383,13 +390,13 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
           // Ensure directory exists
           await fs.promises.mkdir(path.dirname(sessionPath), { recursive: true });
           await fs.promises.writeFile(sessionPath, JSON.stringify(minimalSession, null, 2), 'utf-8');
-          console.log(`   ✅ Created minimal session with interruption: ${interruptionReason.reason}`);
+          logger.debug(`Created minimal session with interruption: ${interruptionReason.reason}`, { component: 'ExpressServerAdapter', jobId });
         }
       }
       
       // Broadcast final update to notify UI that job has stopped
       if (shouldBroadcast) {
-        console.log(`   📡 Broadcasting final Kanban update...`);
+        logger.debug(`Broadcasting final Kanban update`, { component: 'ExpressServerAdapter', jobId });
         this.kanbanService.getKanbanData(
           mapping.projectId, 
           mapping.featureName,
@@ -399,22 +406,18 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
           this.taskQueueSnapshots,
           effectiveUserContext  // ✅ Use effectiveUserContext (supports fallback mapping)
         ).then(kanbanData => {
-          console.log(`   ✅ Kanban data source: ${kanbanData.dataSource}`);
-          this.sseService.broadcast(mapping.projectId, mapping.featureName, 'kanban', kanbanData);
-          console.log(`   ✅ Broadcast complete`);
+          this.sseService.broadcast(mapping.projectId, mapping.featureName, 'kanban', kanbanData, effectiveUserContext);
           
           // ✅ CRITICAL: Clear live data AFTER broadcast (so UI can see final state)
           this.taskQueueSnapshots.delete(jobId);
           this.jobToProject.delete(jobId);
           this.jobs.delete(jobId);
-          console.log(`   ✅ Cleared live data (snapshot, jobToProject, jobs)`);
           
           if (this.currentJobId === jobId) {
             this.currentJobId = null;
-            console.log(`   ✅ Cleared currentJobId`);
           }
         }).catch(err => {
-          console.error(`   ❌ Failed to broadcast Kanban update:`, err);
+          logger.warn(`Failed to broadcast Kanban update`, { component: 'ExpressServerAdapter', jobId }, err);
           
           // ✅ Clean up even if broadcast fails
           this.taskQueueSnapshots.delete(jobId);
@@ -446,15 +449,15 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
           interruptionReason.message,
           effectiveUserContext  // ✅ Use effectiveUserContext (supports fallback mapping)
         );
-        console.log(`   ✅ Added cancelled message to chat (reason: ${interruptionReason.reason})`);
+        logger.debug(`Added cancelled message to chat (reason: ${interruptionReason.reason})`, { component: 'ExpressServerAdapter', jobId });
       }
     } catch (error) {
-      console.error(`   ❌ Error in cleanupJobState:`, error);
+      logger.error(`Error in cleanupJobState`, { component: 'ExpressServerAdapter', jobId }, error);
     }
   } else {
-    console.warn(`   ⚠️  No mapping found for ${jobId}, cannot broadcast Kanban update`);
+    logger.warn(`No mapping found, cannot broadcast Kanban update`, { component: 'ExpressServerAdapter', jobId });
   }
-  console.log(`   ✅ cleanupJobState completed`);
+  logger.debug(`cleanupJobState completed`, { component: 'ExpressServerAdapter', jobId });
   }
   
   constructor(
@@ -485,12 +488,13 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       this.authService = new AuthService();
     }
     
-    console.log(`[ExpressServerAdapter] Initialized in ${mode.toUpperCase()} mode`);
-    console.log(`   Workspaces: ${this.workspacesPath}`);
-    console.log(`   WorkspaceService: ${this.workspaceService.constructor.name}`);
-    console.log(`   PortManager: ${this.portManager.constructor.name} (30000-35000)`);
-    console.log(`   PortRegistry: ${this.portRegistry.constructor.name}`);
-    console.log(`   IDEService: ${this.ideService.constructor.name} (with auto-shutdown)`);
+    logger.info(`Initialized in ${mode.toUpperCase()} mode`, { component: 'ExpressServerAdapter' }, {
+      workspacesPath: this.workspacesPath,
+      workspaceService: this.workspaceService.constructor.name,
+      portManager: this.portManager.constructor.name,
+      portRegistry: this.portRegistry.constructor.name,
+      ideService: this.ideService.constructor.name
+    });
     
     // Initialize services
     // ✅ Services now use WorkspaceResolver for path generation
@@ -541,8 +545,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
           const hasLiveSnapshot = sessionJobId ? this.taskQueueSnapshots.has(sessionJobId) : false;
           
           if (hasLiveSnapshot) {
-            console.log(`[SessionWatcher] 🔴 Skipping broadcast - live snapshot exists for ${sessionJobId}`);
-            console.log(`[SessionWatcher] Live snapshot will be used instead of session file\n`);
+            logger.debug(`[SessionWatcher] Skipping broadcast - live snapshot exists for ${sessionJobId}`, { component: 'SessionWatcher', jobId: sessionJobId });
             // ✅ Still broadcast to trigger UI update, but getKanbanData will use live data
           }
           
@@ -555,10 +558,10 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
             this.taskQueueSnapshots,
             userContext  // ✅ Pass user context for Cloud mode
           );
-          this.sseService.broadcast(projectId, featureName, 'kanban', kanbanData);
+          this.sseService.broadcast(projectId, featureName, 'kanban', kanbanData, userContext);
           
           const fileTree = await this.projectService.getFileTree(projectId, featureName, userContext);
-          this.sseService.broadcast(projectId, featureName, 'fileTree', { type: 'update', tree: fileTree });
+          this.sseService.broadcast(projectId, featureName, 'fileTree', { type: 'update', tree: fileTree }, userContext);
         }, 50);
       }
     }, this.workspaceResolver);  // ✅ Pass WorkspaceResolver to SessionService
@@ -628,13 +631,16 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         
         // ✅ Skip auth for dev server proxy requests
         const isDevServerRequest = req.path.startsWith('/dev/');
+
+        // ✅ Skip auth for IDE proxy requests (IDE itself does not attach headers)
+        const isIDERequest = req.path.startsWith('/ide/');
         
         // Check if path should skip auth
         const isPublicPath = publicPaths.includes(req.path);
         const isInternalEndpoint = internalEndpoints.some(p => req.path.startsWith(p));
         const isGraphMetadata = req.path.includes('/graph-metadata');
         
-        if (isPublicPath || isInternalEndpoint || isGraphMetadata || isSSEEndpoint || isDevServerRequest) {
+        if (isPublicPath || isInternalEndpoint || isGraphMetadata || isSSEEndpoint || isDevServerRequest || isIDERequest) {
           return next();
         }
         
@@ -659,12 +665,12 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
           
           // ✅ Only log auth for non-polling endpoints (reduce noise)
           if (!req.path.includes('/projects') && !req.path.includes('/session') && !req.path.includes('/stream')) {
-            console.log(`[Auth] ${authContext.user.id}@${authContext.organization.id}`);
+            logger.debug(`[Auth] ${authContext.user.id}@${authContext.organization.id}`, { component: 'Auth', organizationId: authContext.organization.id, userId: authContext.user.id });
           }
           
           next();
         } catch (error: any) {
-          console.error('[Auth] Authentication failed:', error);
+          logger.warn(`[Auth] Authentication failed: ${error.message}`, { component: 'Auth' }, error);
           return res.status(401).json({ 
             error: 'Authentication failed', 
             message: error.message 
@@ -723,7 +729,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       
       // Fire and forget - non-blocking
       this.notifyFileTreeUpdate(projectId, featureName)
-        .catch(err => console.error('[FileTreeUpdate] Error:', err));
+        .catch(err => logger.warn('[FileTreeUpdate] Error', { component: 'FileTreeUpdate', projectId, featureName }, err));
       
       res.json({ success: true });
     });
@@ -751,11 +757,12 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     if (this.mode === 'local') {
       const ideRoutes = createIDERoutes();
       this.app.use('/api', ideRoutes);
-      
-      // Cloud IDE routes (code-server containers)
-      const cloudIDERoutes = createCloudIDERoutes(this.ideService, this.workspaceResolver);
-      this.app.use('/api/cloud-ide', cloudIDERoutes);
     }
+    
+    // Cloud IDE routes (code-server containers)
+    // ✅ Available in BOTH local & cloud mode (cloud mode needs this to ensure project-level isolation)
+    const cloudIDERoutes = createCloudIDERoutes(this.ideService, this.workspaceResolver);
+    this.app.use('/api/cloud-ide', cloudIDERoutes);
     
     // Kanban routes
     const kanbanRoutes = createKanbanRoutes({
@@ -838,16 +845,22 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     // Generate jobId (use explicit jobId from params if provided, e.g., from Resume API)
     const jobId = params.jobId || `${Date.now().toString(36)}${Math.random().toString(36).substr(2, 6)}`;
     const isResume = !!params.jobId;  // Resume if jobId was explicitly provided
-    
-    console.log(`   Project: ${projectId}`);
-    console.log(`   Feature: ${featureName}`);
-    console.log(`   Agent: ${params.agent}`);
-    console.log(`   Job Type: ${params.jobType}`);
-    console.log(`   Resume: ${isResume ? 'Yes' : 'No'}`);
+    logger.info(`executeJob`, {
+      component: 'ExpressServerAdapter',
+      organizationId: params.userContext?.organizationId,
+      userId: params.userContext?.userId,
+      projectId,
+      featureName,
+      jobId
+    }, {
+      agent: params.agent,
+      jobType: params.jobType,
+      resume: isResume
+    });
     
     // ✅ VALIDATE PREREQUISITES (skip if resuming - already validated)
     if (!isResume) {
-      console.log(`\n📋 [Prerequisites] Validating required materials...`);
+      logger.debug(`Validating prerequisites`, { component: 'Prerequisites', jobId, projectId, featureName });
       
       const validationResult = await this.jobPrerequisitesAdapter.validate(
         projectId,
@@ -858,8 +871,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       );
       
       if (!validationResult.isValid) {
-        console.log(`\n❌ [Prerequisites] Validation failed!`);
-        console.log(validationResult.errorMessage);
+        logger.warn(`Prerequisites validation failed`, { component: 'Prerequisites', jobId, projectId, featureName }, { errorMessage: validationResult.errorMessage });
         
         // Return validation error
         return {
@@ -869,10 +881,9 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
           missingMaterials: validationResult.missingMaterials
         };
       }
-      
-      console.log(`✅ [Prerequisites] All required materials present\n`);
+      logger.debug(`Prerequisites OK`, { component: 'Prerequisites', jobId, projectId, featureName });
     } else {
-      console.log(`\n⏭️  [Prerequisites] Skipping validation (resuming interrupted job)\n`);
+      logger.debug(`Skipping prerequisites (resume)`, { component: 'Prerequisites', jobId, projectId, featureName });
     }
     
     // Initialize job tracking
@@ -884,23 +895,21 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     });
     this.logs.set(jobId, []);
     
-    console.log(`   ✅ Job status set to 'pending'`);
+    logger.debug(`Job status set to pending`, { component: 'ExpressServerAdapter', jobId, projectId, featureName });
     
     // Map jobId to project/feature/jobType for Kanban tracking
     this.jobToProject.set(jobId, { projectId, featureName, jobType, userContext: params.userContext });  // ✅ Store userContext
     
-    console.log(`   ✅ Job mapped: ${projectId}/${featureName}/${jobType} -> ${jobId}`);
-    console.log(`   Total jobs in map: ${this.jobToProject.size}`);
+    logger.debug(`Job mapped`, { component: 'ExpressServerAdapter', jobId, projectId, featureName }, { totalJobs: this.jobToProject.size });
     
     
     // ✅ Start workflow tracking for Agent Workflow visualization
     this.startJob(jobId);
-    console.log(`   ✅ Workflow tracking started`);
+    logger.debug(`Workflow tracking started`, { component: 'ExpressServerAdapter', jobId, projectId, featureName });
     
     // Start session file watcher for real-time Kanban updates
     this.watchSessionFile(jobId, projectId, featureName, jobType);  // ✅ Use narrowed jobType
-    
-    console.log(`   ✅ Session file watcher started`);
+    logger.debug(`Session file watcher started`, { component: 'ExpressServerAdapter', jobId, projectId, featureName });
     
     // Broadcast immediately to show "estimating" state
     this.kanbanService.getKanbanData(
@@ -912,12 +921,12 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       this.taskQueueSnapshots,
       params.userContext  // ✅ Pass user context for Cloud mode
     ).then(kanbanData => {
-      this.sseService.broadcast(projectId, featureName, 'kanban', kanbanData);
+      this.sseService.broadcast(projectId, featureName, 'kanban', kanbanData, params.userContext);
     });
     
     // Start job execution in child process (non-blocking)
     this.runJob(jobId, params).catch(error => {
-      console.error(`Job ${jobId} failed:`, error);
+      logger.error(`Job ${jobId} failed`, { component: 'ExpressServerAdapter', jobId, projectId, featureName }, error);
     });
 
     return {
@@ -967,7 +976,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         args.push('--eval');
       }
       
-      console.log(`[ExpressServerAdapter.runJob] 🚀 Final CLI args:`, args);
+      logger.debug(`[runJob] Final CLI args`, { component: 'ExpressServerAdapter', jobId }, args);
       
       
       const { spawn } = await import('child_process');
@@ -986,9 +995,11 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         ? path.join(handle.storagePath, 'features', params.feature)
         : projectPath;
       
-      console.log(`[ExpressServerAdapter.runJob] 📂 Workspace handle: ${tenantId}/${params.project}`);
-      console.log(`[ExpressServerAdapter.runJob] 📂 Project path: ${projectPath}`);
-      console.log(`[ExpressServerAdapter.runJob] 📂 Feature path: ${featurePath}`);
+      logger.debug(`[runJob] Workspace paths resolved`, { component: 'ExpressServerAdapter', jobId, organizationId: params.userContext.organizationId, userId: params.userContext.userId, projectId: params.project, featureName: params.feature }, {
+        tenantId,
+        projectPath,
+        featurePath
+      });
       
       // ✅ Ensure PATH includes common locations for git and other tools
       const ensuredPath = process.env.PATH 
@@ -1102,7 +1113,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
                 if (sessionData?.state?.interruption) {
                   const sessionInterruption = sessionData.state.interruption;
                   interruption = sessionInterruption;
-                  console.log(`   ⏸️  Session has interruption: ${sessionInterruption.reason}`);
+                  logger.debug(`Session has interruption: ${sessionInterruption.reason}`, { component: 'ExpressServerAdapter', jobId });
                   
                   // Update status to 'paused' instead of 'completed'
                   status.status = 'paused';
@@ -1129,7 +1140,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
                   this.logStreams.get(jobId)?.forEach(listener => listener(logEntry));
                 }
               } catch (error) {
-                console.warn(`   ⚠️  Failed to read session for interruption check:`, error);
+                logger.warn(`Failed to read session for interruption check`, { component: 'ExpressServerAdapter', jobId }, error);
                 // Fallback to completed
                 status.status = 'completed';
                 status.completedAt = new Date().toISOString();
@@ -1157,10 +1168,9 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
             }
             
             // ✅ Clean up job state (pass interruption if exists)
-            console.log(`\n🧹 [ExpressServerAdapter.runJob] Job ${jobId} completed, calling cleanupJobState...`);
-            console.log(`   interruption: ${interruption ? interruption.reason : 'none'}`);
+            logger.debug(`Job completed, calling cleanupJobState (interruption=${interruption ? interruption.reason : 'none'})`, { component: 'ExpressServerAdapter', jobId });
             await this.cleanupJobState(jobId, params.project, params.feature, interruption);
-            console.log(`   ✅ cleanupJobState completed\n`);
+            logger.debug(`cleanupJobState completed`, { component: 'ExpressServerAdapter', jobId });
             
             resolve();
           } else {
@@ -1183,7 +1193,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
               this.logs.get(jobId)!.push(logEntry);
               this.logStreams.get(jobId)?.forEach(listener => listener(logEntry));
             } else {
-              console.log(`   ⚠️  Exit code 143 (SIGTERM) detected - user stop, skipping error message (cleanupJobState will handle it)`);
+              logger.debug(`Exit code 143/SIGTERM detected - user stop; skipping error message`, { component: 'ExpressServerAdapter', jobId });
             }
             
             // ✅ Analyze logs to determine interruption reason
@@ -1304,16 +1314,16 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
             
             // ✅ CRITICAL: Don't cleanup if user explicitly stopped (already handled in Stop API)
             if (this.userStoppedJobs.has(jobId)) {
-              console.log(`\n⏭️  [ExpressServerAdapter.runJob] Job ${jobId} was user-stopped, skipping exit handler cleanup (Stop API already handled it)\n`);
+              logger.debug(`Job was user-stopped; skipping exit handler cleanup`, { component: 'ExpressServerAdapter', jobId });
               this.userStoppedJobs.delete(jobId);  // Clean up flag
               resolve();  // ✅ Resolve (not reject) since Stop API already handled cleanup
               return;
             }
             
             // Only cleanup for natural failures (not user stops)
-            console.log(`\n🧹 [ExpressServerAdapter.runJob] Job ${jobId} failed naturally, calling cleanupJobState...`);
+            logger.debug(`Job failed naturally, calling cleanupJobState`, { component: 'ExpressServerAdapter', jobId });
             await this.cleanupJobState(jobId, params.project, params.feature, interruption);
-            console.log(`   ✅ cleanupJobState completed\n`);
+            logger.debug(`cleanupJobState completed`, { component: 'ExpressServerAdapter', jobId });
             
             reject(new Error(status.error));
           }
@@ -1366,7 +1376,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       
       // ✅ Only cleanup if not already cleaned up (check if job still exists in maps)
       if (this.jobs.has(jobId) || this.jobToProject.has(jobId)) {
-        console.log(`\n🧹 [ExpressServerAdapter.runJob.catch] Job ${jobId} failed in try-catch, calling cleanupJobState...`);
+        logger.debug(`runJob.catch -> calling cleanupJobState`, { component: 'ExpressServerAdapter', jobId });
         
         // ✅ Create interruption details for job startup/execution failure
         const interruption: InterruptionDetails = {
@@ -1383,7 +1393,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         
         await this.cleanupJobState(jobId, params.project, params.feature, interruption);
       } else {
-        console.log(`\n⏭️  [ExpressServerAdapter.runJob.catch] Job ${jobId} already cleaned up, skipping duplicate cleanup`);
+        logger.debug(`runJob.catch -> already cleaned up; skipping duplicate cleanup`, { component: 'ExpressServerAdapter', jobId });
       }
     } finally {
       if (this.currentJobId === jobId) {
@@ -1419,7 +1429,8 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   private watchSessionFile(jobId: string, projectId: string, featureName: string, task: string): void {
     const key = `${projectId}/${featureName}`;
     const sseClientChecker = () => {
-      return this.sseService.getClientCount(projectId, featureName) > 0;
+      const mapping = this.jobToProject.get(jobId);
+      return this.sseService.getClientCount(projectId, featureName, mapping?.userContext) > 0;
     };
     
     // Map task to job type
@@ -1433,7 +1444,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
    */
   async notifyFileTreeUpdate(projectId: string, featureName: string): Promise<void> {
     try {
-      console.log(`[FileTreeUpdate] Updating for ${projectId}/${featureName}`);
+      logger.debug(`[FileTreeUpdate] Updating`, { component: 'FileTreeUpdate', projectId, featureName });
       
       // ✅ Find userContext from jobToProject map
       let userContext: UserContext | undefined;
@@ -1454,11 +1465,11 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       }
       
       const fileTree = await this.projectService.getFileTree(projectId, featureName, userContext);
-      const clientCount = this.sseService.getClientCount(projectId, featureName);
-      console.log(`[FileTreeUpdate] Broadcasting to ${clientCount} client(s)`);
-      this.sseService.broadcast(projectId, featureName, 'fileTree', { type: 'update', tree: fileTree });
+      const clientCount = this.sseService.getClientCount(projectId, featureName, userContext);
+      logger.debug(`[FileTreeUpdate] Broadcasting to ${clientCount} client(s)`, { component: 'ExpressServerAdapter', projectId, featureName, organizationId: userContext.organizationId, userId: userContext.userId });
+      this.sseService.broadcast(projectId, featureName, 'fileTree', { type: 'update', tree: fileTree }, userContext);
     } catch (error) {
-      console.error(`[FileTreeUpdate] Error:`, error);
+      logger.warn(`[FileTreeUpdate] Error`, { component: 'FileTreeUpdate', projectId, featureName }, error);
     }
   }
   
@@ -1470,10 +1481,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
    * Start workflow tracking for a job
    */
   startJob(jobId: string, llmInfo?: import('../../../core/ports/workflow').LLMInfo): void {
-    console.log(`\n🚀 [ExpressServerAdapter] startJob called: ${jobId}`);
-    if (llmInfo) {
-      console.log(`   🤖 LLM: ${llmInfo.provider} / ${llmInfo.model}`);
-    }
+    logger.debug(`startJob`, { component: 'ExpressServerAdapter', jobId }, llmInfo);
     this.workflowStateService.startJob(jobId, llmInfo);
   }
   
@@ -1482,13 +1490,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
    * ✅ Returns Promise to ensure SSE ordering
    */
   async enterNode(jobId: string, nodeId: string, taskInfo?: import('../../../core/ports/workflow').TaskInfo, llmInfo?: import('../../../core/ports/workflow').LLMInfo, recursionCount?: number, recursionLimit?: number): Promise<void> {
-    console.log(`\n🎯 [ExpressServerAdapter] enterNode called: ${nodeId} (job: ${jobId})`);
-    if (taskInfo) {
-      console.log(`   📋 Task: ${taskInfo.name}`);
-    }
-    if (llmInfo) {
-      console.log(`   🤖 LLM: ${llmInfo.provider} / ${llmInfo.model}`);
-    }
+    logger.debug(`enterNode: ${nodeId}`, { component: 'ExpressServerAdapter', jobId }, { task: taskInfo?.name, llm: llmInfo });
     await this.workflowStateService.enterNode(jobId, nodeId, taskInfo, llmInfo, recursionCount, recursionLimit);
   }
   
@@ -1549,14 +1551,14 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
    * Timeout: 5 seconds (force shutdown if exceeded)
    */
   async stop(): Promise<void> {
-    console.log('\n🛑 [Server] Graceful shutdown initiated...');
+    logger.info('Graceful shutdown initiated', { component: 'Server' });
     
     const SHUTDOWN_TIMEOUT = 5000;  // 5 seconds
     
     return new Promise((resolve) => {
       // Timeout timer - force shutdown if taking too long
       const timeoutId = setTimeout(() => {
-        console.warn('⚠️  [Server] Shutdown timeout (5s) - forcing exit');
+        logger.warn('Shutdown timeout (5s) - forcing exit', { component: 'Server' });
         this.forceShutdown();
         resolve();
       }, SHUTDOWN_TIMEOUT);
@@ -1565,11 +1567,11 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       this.performGracefulShutdown()
         .then(() => {
           clearTimeout(timeoutId);
-          console.log('✅ [Server] Graceful shutdown complete');
+          logger.info('Graceful shutdown complete', { component: 'Server' });
           resolve();
         })
         .catch((error) => {
-          console.error('❌ [Server] Shutdown error:', error);
+          logger.error('Shutdown error', { component: 'Server' }, error);
           clearTimeout(timeoutId);
           this.forceShutdown();
           resolve();
@@ -1601,11 +1603,11 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     const jobCount = this.childProcesses.size;
     
     if (jobCount === 0) {
-      console.log('💾 [Server] No running jobs to save');
+      logger.debug('No running jobs to save', { component: 'Server' });
       return;
     }
     
-    console.log(`💾 [Server] Saving ${jobCount} running job(s)...`);
+    logger.info(`Saving ${jobCount} running job(s)...`, { component: 'Server' });
     
     const savePromises: Promise<void>[] = [];
     
@@ -1613,11 +1615,11 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       const mapping = this.jobToProject.get(jobId);
       
       if (!mapping) {
-        console.warn(`⚠️  [Server] No mapping found for job ${jobId}, skipping save...`);
+        logger.warn(`No mapping found for job ${jobId}, skipping save`, { component: 'Server', jobId });
         continue;
       }
       
-      console.log(`   Saving job ${jobId} (${mapping.projectId}/${mapping.featureName}/${mapping.jobType})...`);
+      logger.debug(`Saving job`, { component: 'Server', jobId, projectId: mapping.projectId, featureName: mapping.featureName });
       
       // Call cleanupJobState which saves the session
       const savePromise = this.cleanupJobState(
@@ -1632,7 +1634,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         },
         mapping.jobType
       ).catch((error) => {
-        console.error(`❌ [Server] Failed to save job ${jobId}:`, error.message);
+        logger.warn(`Failed to save job: ${error.message}`, { component: 'Server', jobId }, error);
         // Continue with other jobs even if one fails
       });
       
@@ -1641,7 +1643,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     
     // Wait for all saves to complete (or fail)
     await Promise.all(savePromises);
-    console.log(`✅ [Server] All jobs saved (${jobCount} total)`);
+    logger.info(`All jobs saved (${jobCount} total)`, { component: 'Server' });
   }
   
   /**
@@ -1651,11 +1653,11 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     const processCount = this.childProcesses.size;
     
     if (processCount === 0) {
-      console.log('🔪 [Server] No child processes to terminate');
+      logger.debug('No child processes to terminate', { component: 'Server' });
       return;
     }
     
-    console.log(`🔪 [Server] Terminating ${processCount} child process(es)...`);
+    logger.info(`Terminating ${processCount} child process(es)...`, { component: 'Server' });
     
     const killPromises: Promise<void>[] = [];
     
@@ -1666,7 +1668,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     
     await Promise.all(killPromises);
     this.childProcesses.clear();
-    console.log(`✅ [Server] All child processes terminated (${processCount} total)`);
+    logger.info(`All child processes terminated (${processCount} total)`, { component: 'Server' });
   }
   
   /**
@@ -1675,13 +1677,13 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   private async terminateChildProcess(jobId: string, proc: ChildProcess): Promise<void> {
     return new Promise((resolve) => {
       if (!proc.pid) {
-        console.log(`   Job ${jobId}: No PID, skipping...`);
+        logger.debug(`Job ${jobId}: No PID, skipping...`, { component: 'Server', jobId });
         resolve();
         return;
       }
       
       const pid = proc.pid;
-      console.log(`   Terminating job ${jobId} (PID: ${pid})...`);
+      logger.debug(`Terminating job (PID: ${pid})...`, { component: 'Server', jobId });
       
       // Send SIGTERM for graceful termination
       proc.kill('SIGTERM');
@@ -1691,7 +1693,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         try {
           // Check if process is still alive
           process.kill(pid, 0);
-          console.warn(`   ⚠️  Job ${jobId} didn't exit gracefully, sending SIGKILL...`);
+          logger.warn(`Job didn't exit gracefully, sending SIGKILL...`, { component: 'Server', jobId });
           process.kill(pid, 'SIGKILL');
         } catch {
           // Process already dead
@@ -1702,7 +1704,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       // Listen for exit event
       proc.once('exit', (code) => {
         clearTimeout(forceKillTimer);
-        console.log(`   ✅ Job ${jobId} terminated (exit code: ${code})`);
+        logger.debug(`Job terminated (exit code: ${code})`, { component: 'Server', jobId });
         resolve();
       });
     });
@@ -1712,34 +1714,34 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
    * Cleanup all services and in-memory state
    */
   private async cleanupServices(): Promise<void> {
-    console.log('🧹 [Server] Cleaning up services...');
+    logger.info('Cleaning up services...', { component: 'Server' });
     
     // Cleanup SessionService
     try {
       this.sessionService?.cleanup();
-      console.log('   ✅ SessionService cleaned');
+      logger.debug('SessionService cleaned', { component: 'Server' });
     } catch (error) {
-      console.error('   ❌ SessionService cleanup error:', error);
+      logger.warn('SessionService cleanup error', { component: 'Server' }, error);
     }
     
     // Cleanup DevServerService
     try {
       if (this.devServerService && typeof (this.devServerService as any).cleanup === 'function') {
         await (this.devServerService as any).cleanup();
-        console.log('   ✅ DevServerService cleaned');
+        logger.debug('DevServerService cleaned', { component: 'Server' });
       }
     } catch (error) {
-      console.error('   ❌ DevServerService cleanup error:', error);
+      logger.warn('DevServerService cleanup error', { component: 'Server' }, error);
     }
     
     // Cleanup IDEService
     try {
       if (this.ideService && typeof (this.ideService as any).cleanup === 'function') {
         await (this.ideService as any).cleanup();
-        console.log('   ✅ IDEService cleaned');
+        logger.debug('IDEService cleaned', { component: 'Server' });
       }
     } catch (error) {
-      console.error('   ❌ IDEService cleanup error:', error);
+      logger.warn('IDEService cleanup error', { component: 'Server' }, error);
     }
     
     // Clear in-memory state
@@ -1750,7 +1752,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     this.logStreams.clear();
     this.sseResponses.clear();
     
-    console.log('   ✅ In-memory state cleared');
+    logger.debug('In-memory state cleared', { component: 'Server' });
   }
   
   /**
@@ -1763,13 +1765,13 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         return;
       }
       
-      console.log('🌐 [Server] Closing HTTP server...');
+      logger.info('Closing HTTP server...', { component: 'Server' });
       
       this.server.close((err?: Error) => {
         if (err) {
-          console.error('❌ [Server] Error closing HTTP server:', err);
+          logger.warn('Error closing HTTP server', { component: 'Server' }, err);
         } else {
-          console.log('✅ [Server] HTTP server closed');
+          logger.info('HTTP server closed', { component: 'Server' });
         }
         this.running = false;
         resolve();
@@ -1781,14 +1783,14 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
    * Force shutdown (emergency fallback)
    */
   private forceShutdown(): void {
-    console.warn('⚡ [Server] Force shutdown initiated...');
+    logger.warn('Force shutdown initiated...', { component: 'Server' });
     
     // Kill all processes immediately with SIGKILL
     this.childProcesses.forEach((proc) => {
       if (proc.pid) {
         try {
           process.kill(proc.pid, 'SIGKILL');
-          console.warn(`   ⚡ Force killed PID ${proc.pid}`);
+          logger.warn(`Force killed PID ${proc.pid}`, { component: 'Server' });
         } catch {
           // Ignore errors
         }
@@ -1802,7 +1804,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       this.running = false;
     }
     
-    console.warn('⚡ [Server] Force shutdown complete');
+    logger.warn('Force shutdown complete', { component: 'Server' });
   }
   
   isRunning(): boolean {

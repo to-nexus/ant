@@ -9,6 +9,7 @@ import type { MessageContent } from './types';
 import type { SessionManager } from './SessionManager';
 import type { MessageManager } from './MessageManager';
 import type { MessageBroadcaster } from './MessageBroadcaster';
+import { logger } from '../../../../../utils/logger';
 
 export class LLMEventHandler {
   constructor(
@@ -98,7 +99,7 @@ export class LLMEventHandler {
           messageId: session.currentMessage.id,
           contentIndex: thinkingIndex,
           content: thinkingContent
-        });
+        }, session.userContext);
         
         // Trigger collapse
         this.broadcaster.broadcast(projectId, featureName, {
@@ -106,13 +107,13 @@ export class LLMEventHandler {
           messageId: session.currentMessage.id,
           contentIndex: thinkingIndex,
           durationMs
-        });
+        }, session.userContext);
         
         // Reset tracking
         session.thinkingStartTime = undefined;
         session.lastThinkingContentIndex = undefined;
       } else {
-        console.warn(`[LLMEventHandler] ⚠️  blockEnd received but no thinking content found`);
+        logger.warn(`blockEnd received but no thinking content found`, { component: 'LLMEventHandler', projectId, featureName });
       }
     } else {
       // Regular thinking content
@@ -162,11 +163,11 @@ export class LLMEventHandler {
     }
     // COMMAND EXECUTION: run_command
     else if (name === 'run_command') {
-      console.log(`[LLMEventHandler] ⏭️  Tool: ${name} (command output will be shown on completion)`);
+      logger.debug(`Tool: ${name} (command output shown on completion)`, { component: 'LLMEventHandler', projectId, featureName });
     }
     // CODEBASE EXPLORATION: read_file, list_files, search_code
     else if (name === 'read_file' || name === 'list_files' || name === 'search_code') {
-      console.log(`[LLMEventHandler] ⏭️  Tool: ${name} (handled by tool.ts with WorkingCard/ResultCard)`);
+      logger.debug(`Tool: ${name} (handled by tool node)`, { component: 'LLMEventHandler', projectId, featureName });
     }
     // SIMPLE TOOLS: mkdir
     else if (name === 'mkdir') {
@@ -194,7 +195,7 @@ export class LLMEventHandler {
       return;
     }
 
-    console.log(`[LLMEventHandler] 📄 Creating loading file card for: ${filePath} (${toolName})`);
+    logger.debug(`Creating loading file card`, { component: 'LLMEventHandler', projectId, featureName }, { filePath, toolName });
     
     // Determine operation type
     let contentType: MessageContent['type'];
@@ -222,7 +223,7 @@ export class LLMEventHandler {
         session.activeFileOperations = new Map();
       }
       session.activeFileOperations.set(filePath, { filePath, contentIndex: actualIndex });
-      console.log(`[LLMEventHandler] ✅ Tracked file operation at actual index ${actualIndex} for: ${filePath}`);
+      logger.debug(`Tracked file operation @${actualIndex}`, { component: 'LLMEventHandler', projectId, featureName }, { filePath });
     }
   }
 
@@ -235,7 +236,7 @@ export class LLMEventHandler {
     input: any
   ): void {
     const dirPath = input.path;
-    console.log(`[LLMEventHandler] 📁 Tool: mkdir (${dirPath})`);
+    logger.debug(`Tool: mkdir`, { component: 'LLMEventHandler', projectId, featureName }, { dirPath });
     
     this.messageManager.addContentToCurrentMessage(projectId, featureName, {
       type: 'tool_action',
@@ -258,7 +259,7 @@ export class LLMEventHandler {
     toolName: string,
     input: any
   ): void {
-    console.log(`[LLMEventHandler] 🔧 Tool: ${toolName} (fallback to tool_action)`);
+    logger.debug(`Tool: ${toolName} (fallback to tool_action)`, { component: 'LLMEventHandler', projectId, featureName });
     
     this.messageManager.addContentToCurrentMessage(projectId, featureName, {
       type: 'tool_action',
