@@ -59,9 +59,10 @@ export const createFileSlice: StateCreator<any, [], [], FileSlice> = (set, get) 
 
   refreshFileTree: async () => {
     const state = get();
-    const { selectedProject, selectedFeature, backendMode, userEmail } = state;
+    const { selectedProject, selectedFeature, backendMode, userEmail, connectionStatus } = state;
     
     if (!selectedProject || !selectedFeature) return;
+    if (connectionStatus !== 'connected') return;
     
     if (backendMode === 'cloud' && !userEmail) {
       console.log('[Store] Skipping refreshFileTree: Cloud mode requires authentication');

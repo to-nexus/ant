@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useStore } from '@/domain/store';
+import { loadFromStorage, removeFromStorage, STORAGE_KEYS } from '@/domain/store/storage';
 
 /**
  * ✅ 완전히 리팩토링된 Session Loader
@@ -30,24 +31,22 @@ export function useSessionLoader(connectionStatus: string) {
     // Restore selected project and feature
     (async () => {
       try {
-        // ✅ Step 1: Load saved project from sessionStorage
-        const savedProject = sessionStorage.getItem('ant-ui:selected-project');
+        // ✅ Step 1: Load saved project (prefer sessionStorage, fallback to localStorage backup)
+        const projectId = loadFromStorage(STORAGE_KEYS.SELECTED_PROJECT) as string | null;
 
-        if (!savedProject) {
+        if (!projectId) {
           console.log('[useSessionLoader] No saved project found');
           // No session to restore, complete immediately
           useStore.getState().completeSessionRestore();
           return;
         }
-
-        const projectId = JSON.parse(savedProject);
         
         // Verify project still exists
         const currentProjects = useStore.getState().projects;
         if (!currentProjects.includes(projectId)) {
           console.log('[useSessionLoader] Saved project no longer exists, clearing');
-          sessionStorage.removeItem('ant-ui:selected-project');
-          sessionStorage.removeItem('ant-ui:project-last-features');
+          removeFromStorage(STORAGE_KEYS.SELECTED_PROJECT);
+          removeFromStorage(STORAGE_KEYS.PROJECT_LAST_FEATURES);
           useStore.getState().completeSessionRestore();
           return;
         }
@@ -55,8 +54,8 @@ export function useSessionLoader(connectionStatus: string) {
         console.log('[useSessionLoader] Restoring project:', projectId);
         
         // ✅ Step 2: Check project-last-features mapping to get expected feature
-        const projectFeatures = JSON.parse(sessionStorage.getItem('ant-ui:project-last-features') || '{}');
-        const expectedFeature = projectFeatures[projectId];  // Can be undefined (base branch)
+        const projectFeatures = (loadFromStorage(STORAGE_KEYS.PROJECT_LAST_FEATURES) || {}) as Record<string, string | undefined>;
+        const expectedFeature = projectFeatures[projectId]; // Can be undefined (base branch)
         
         console.log('[useSessionLoader] Expected feature for project:', expectedFeature || 'undefined (base)');
         
