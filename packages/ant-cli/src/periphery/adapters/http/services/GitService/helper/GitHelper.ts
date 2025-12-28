@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import simpleGit, { SimpleGit } from 'simple-git';
+import { logger } from '../../../../../../utils/logger';
 
 /**
  * GitHelper
@@ -21,11 +22,13 @@ export class GitHelper {
     const gitDir = path.join(targetPath, '.git');
     
     if (!fs.existsSync(gitDir)) {
-      console.log(`[GitHelper] 🚫 .git not found at: ${targetPath}`);
+      // Keep this visible at info because it often explains downstream git failures.
+      logger.info(`.git not found`, { component: 'GitHelper' }, { targetPath });
       return null;
     }
     
-    console.log(`[GitHelper] ✅ .git verified at: ${targetPath}`);
+    // Too noisy in normal operation; keep for debug only.
+    logger.debug(`.git verified`, { component: 'GitHelper' }, { targetPath });
     return simpleGit(targetPath);
   }
 
