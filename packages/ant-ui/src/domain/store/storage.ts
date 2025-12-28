@@ -24,8 +24,18 @@ const SESSION_STORAGE_KEYS = new Set<string>([
 // Helper functions for storage (localStorage or sessionStorage based on key)
 export const saveToStorage = (key: string, value: any) => {
   try {
-    const storage = SESSION_STORAGE_KEYS.has(key as any) ? sessionStorage : localStorage;
-    storage.setItem(key, JSON.stringify(value));
+    // NOTE:
+    // Some embedded webviews / hard reload flows can behave inconsistently with sessionStorage.
+    // To make refresh resilient, we store "session keys" in BOTH sessionStorage and localStorage,
+    // and prefer sessionStorage on read (falling back to localStorage).
+    const isSessionKey = SESSION_STORAGE_KEYS.has(key as any);
+    const serialized = JSON.stringify(value);
+    if (isSessionKey) {
+      sessionStorage.setItem(key, serialized);
+      localStorage.setItem(key, serialized);
+    } else {
+      localStorage.setItem(key, serialized);
+    }
   } catch (error) {
     console.error('Failed to save to storage:', error);
   }
@@ -33,9 +43,17 @@ export const saveToStorage = (key: string, value: any) => {
 
 export const loadFromStorage = (key: string): any => {
   try {
-    const storage = SESSION_STORAGE_KEYS.has(key as any) ? sessionStorage : localStorage;
-    const item = storage.getItem(key);
-    return item ? JSON.parse(item) : null;
+    const isSessionKey = SESSION_STORAGE_KEYS.has(key as any);
+    const primary = isSessionKey ? sessionStorage.getItem(key) : localStorage.getItem(key);
+    if (primary) return JSON.parse(primary);
+
+    // Fallback: session keys also live in localStorage as a backup for refresh resiliency
+    if (isSessionKey) {
+      const backup = localStorage.getItem(key);
+      return backup ? JSON.parse(backup) : null;
+    }
+
+    return null;
   } catch (error) {
     console.error('Failed to load from storage:', error);
     return null;
@@ -44,8 +62,13 @@ export const loadFromStorage = (key: string): any => {
 
 export const removeFromStorage = (key: string) => {
   try {
-    const storage = SESSION_STORAGE_KEYS.has(key as any) ? sessionStorage : localStorage;
-    storage.removeItem(key);
+    const isSessionKey = SESSION_STORAGE_KEYS.has(key as any);
+    if (isSessionKey) {
+      sessionStorage.removeItem(key);
+      localStorage.removeItem(key);
+    } else {
+      localStorage.removeItem(key);
+    }
   } catch (error) {
     console.error('Failed to remove from storage:', error);
   }

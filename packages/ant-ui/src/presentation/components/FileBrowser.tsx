@@ -70,6 +70,7 @@ export function FileBrowser() {
   const fileTree = useStore((state) => state.fileTree);
   const setFileTree = useStore((state) => state.setFileTree);
   const selectFile = useStore((state) => state.selectFile);
+  const connectionStatus = useStore((state) => state.connectionStatus);
   
   const [loading, setLoading] = useState(false);
 
@@ -79,8 +80,10 @@ export function FileBrowser() {
       return;
     }
 
+    if (connectionStatus !== 'connected') return;
+
     loadFileTree();
-  }, [selectedProject, selectedFeature]);
+  }, [selectedProject, selectedFeature, connectionStatus]);
 
   const loadFileTree = async () => {
     if (!selectedProject || !selectedFeature) return;

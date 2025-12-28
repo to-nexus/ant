@@ -262,16 +262,25 @@ export function ArtifactsPanel() {
   const selectFile = useStore((state) => state.selectFile);
   const openMainPanelTab = useStore((state) => state.openMainPanelTab);
   const refreshFileTree = useStore((state) => state.refreshFileTree);
+  const connectionStatus = useStore((state) => state.connectionStatus);
+  const isSessionRestoring = useStore((state) => state.isSessionRestoring);
   
   // ✅ UI Action Policy
   const policy = useUIActionPolicy();
 
   // Refresh file tree when project or feature changes
   useEffect(() => {
-    if (selectedProject && selectedFeature) {
-      refreshFileTree();
-    }
-  }, [selectedProject, selectedFeature, refreshFileTree]);
+    if (!selectedProject || !selectedFeature) return;
+
+    // ✅ Refresh-safe: wait for backend connection and (if applicable) session restore completion.
+    // On hard refresh, project/feature can be restored before connection is ready, and the first
+    // refresh attempt can be skipped. Also, during session restore, Git branch switching may be
+    // in-flight; we refresh after it completes.
+    if (connectionStatus !== 'connected') return;
+    if (isSessionRestoring) return;
+
+    refreshFileTree();
+  }, [selectedProject, selectedFeature, connectionStatus, isSessionRestoring, refreshFileTree]);
 
   // Note: Real-time file tree updates are now handled by the unified SSE connection in the store
 

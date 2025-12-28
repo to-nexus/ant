@@ -75,12 +75,9 @@ export const createProjectSlice: StateCreator<
       if (state.setRunning) state.setRunning(false);
       
       removeFromStorage(STORAGE_KEYS.SELECTED_PROJECT);
-      // Clear project-last-features mapping when clearing project
-      const projectFeatures = loadFromStorage(STORAGE_KEYS.PROJECT_LAST_FEATURES) || {};
-      if (projectId) {
-        delete projectFeatures[projectId];
-        saveToStorage(STORAGE_KEYS.PROJECT_LAST_FEATURES, projectFeatures);
-      }
+      // Clear project-last-features mapping when clearing project selection
+      // (projectId is undefined here, so just remove the mapping key entirely)
+      removeFromStorage(STORAGE_KEYS.PROJECT_LAST_FEATURES);
     } else {
       // ✅ Check if we need to restore last feature
       const projectFeatures = loadFromStorage(STORAGE_KEYS.PROJECT_LAST_FEATURES) || {};
