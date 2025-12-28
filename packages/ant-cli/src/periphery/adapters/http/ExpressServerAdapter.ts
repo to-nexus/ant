@@ -591,6 +591,12 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       credentials: true  // Allow credentials (cookies)
     }));
     this.app.use(express.json({ limit: '50mb' }));
+
+    // ✅ Avoid noisy 401s for browsers requesting a favicon on the platform origin (cloud auth mode).
+    // Dev servers typically serve their own favicon under /dev/:serverKey/, but browsers still probe /favicon.ico.
+    this.app.get('/favicon.ico', (_req: Request, res: Response) => {
+      res.status(204).end();
+    });
     
     // ✅ Dev Server Proxy Middleware (handles /dev/:serverKey requests)
     this.app.use(createDevServerProxyMiddleware({

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useStore } from '@/domain/store';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
 import { 
@@ -40,6 +40,7 @@ export function useDevServerManager(
   const [error, setError] = useState<DevServerError | undefined>();
   const [progress, setProgress] = useState<DevServerProgress | undefined>();
   const [isDismissed, setIsDismissed] = useState(false);
+  const stopGuardUntilRef = useRef<number>(0);
 
   // Generate stable server key
   const serverKey = selectedProject && selectedFeature 
@@ -132,6 +133,11 @@ export function useDevServerManager(
         const messageData = payload?.data;
 
         if (messageType === 'status') {
+          // ✅ If user just pressed Stop, ignore any transient running:true status that may arrive late.
+          if (Date.now() < stopGuardUntilRef.current && messageData?.running === true) {
+            return;
+          }
+
           // ✅ Preserve logs on status updates
           const currentStatus = useStore.getState().devServerStatus;
           const mergedStatus = {
@@ -220,18 +226,29 @@ export function useDevServerManager(
   // Stop dev server
   const stopServer = useCallback(async () => {
     if (!selectedProject || !selectedFeature) return;
-    
-    setDevServerLoading(true);
+
+    // ✅ Optimistically drop status immediately so the UI stops showing "Running".
+    // Also guard against late SSE status updates re-marking it as running.
+    stopGuardUntilRef.current = Date.now() + 5000;
+    setDevServerStatus(undefined);
+    setDevServerLoading(false);
+
     setError(undefined);
     setProgress(undefined);
     
     try {
       await stopDevServer(selectedProject, selectedFeature);
-      setDevServerStatus(undefined);
     } catch (err: any) {
       setError({
         message: DEV_SERVER_MESSAGES.ERROR_STOP_FAILED(err.message || DEV_SERVER_MESSAGES.ERROR_UNKNOWN)
       });
+      // Re-sync status if stop failed
+      try {
+        const status = await getDevServerStatus(selectedProject, selectedFeature);
+        setDevServerStatus(status);
+      } catch {
+        // ignore
+      }
     } finally {
       setDevServerLoading(false);
     }
