@@ -1653,10 +1653,14 @@ export async function pullFromGitHub(projectId: string): Promise<{ success: bool
 /**
  * Fetch from GitHub (update remote refs)
  */
-export async function fetchFromGitHub(projectId: string): Promise<{ success: boolean; error?: string }> {
+export async function fetchFromGitHub(projectId: string, feature?: string): Promise<{ success: boolean; error?: string }> {
   try {
     const response = await authFetch(`${API_BASE()}/projects/${encodeURIComponent(projectId)}/fetch`, {
-      method: 'POST'
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ feature })
     });
     
     const result = await response.json();

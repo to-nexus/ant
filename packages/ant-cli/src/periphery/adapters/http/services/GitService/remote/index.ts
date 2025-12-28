@@ -16,6 +16,9 @@ import { CommitOperation } from './operations/CommitOperation';
  * Delegates to specific operation classes.
  */
 export class RemoteService {
+  // ✅ In-flight dedupe to prevent redundant concurrent fetches (e.g., multiple UI effects)
+  private readonly inFlightFetch = new Map<string, Promise<void>>();
+
   private readonly cloneOp: CloneOperation;
   private readonly initOp: InitOperation;
   private readonly pushOp: PushOperation;
@@ -69,8 +72,20 @@ export class RemoteService {
   /**
    * Fetch from GitHub
    */
-  async fetchFromGitHub(projectId: string, userContext: UserContext): Promise<void> {
-    return this.fetchOp.execute(projectId, userContext);
+  async fetchFromGitHub(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {
+    const key = `${userContext.organizationId}:${userContext.userId}:${projectId}`;
+    const existing = this.inFlightFetch.get(key);
+    if (existing) {
+      return existing;
+    }
+
+    const promise = this.fetchOp.execute(projectId, userContext, featureName)
+      .finally(() => {
+        this.inFlightFetch.delete(key);
+      });
+
+    this.inFlightFetch.set(key, promise);
+    return promise;
   }
 
   /**

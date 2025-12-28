@@ -12,6 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { UserContext } from '../../core/types/user';
+import { logger } from '../logger';
 import { 
   UserCredentials, 
   GitHubCredentials, 
@@ -22,6 +23,8 @@ import {
 } from './types';
 
 export class CredentialsStore {
+  private static loggedKeySource: Set<string> = new Set();
+
   private readonly workspaceRoot: string;
   private readonly encryptionKey: Buffer;
   
@@ -45,10 +48,18 @@ export class CredentialsStore {
       const decrypted = this.decrypt(encrypted);
       return JSON.parse(decrypted);
     } catch (error: any) {
-      console.error('[CredentialsStore] Error reading credentials:', error);
+      logger.error('Error reading credentials', {
+        component: 'CredentialsStore',
+        organizationId: userContext.organizationId,
+        userId: userContext.userId
+      }, error);
       
       if (this.isDecryptionError(error)) {
-        console.warn('[CredentialsStore] Corrupted credentials file, deleting...');
+        logger.warn('Corrupted credentials file detected; deleting', {
+          component: 'CredentialsStore',
+          organizationId: userContext.organizationId,
+          userId: userContext.userId
+        }, { credentialsPath });
         await fs.promises.unlink(credentialsPath);
       }
       
@@ -63,13 +74,20 @@ export class CredentialsStore {
     userContext: UserContext,
     service: ServiceType
   ): Promise<T | undefined> {
-    console.log(`[CredentialsStore] Getting ${service} credentials for ${userContext.userId}@${userContext.organizationId}`);
     const credPath = this.getCredentialsPath(userContext);
-    console.log(`[CredentialsStore] Path: ${credPath}`);
+    logger.debug(`Getting ${service} credentials`, {
+      component: 'CredentialsStore',
+      organizationId: userContext.organizationId,
+      userId: userContext.userId
+    }, { credPath });
     
     const all = await this.getAll(userContext);
     const result = all[service] as T | undefined;
-    console.log(`[CredentialsStore] Found ${service}:`, result ? 'YES' : 'NO');
+    logger.debug(`Found ${service}: ${result ? 'YES' : 'NO'}`, {
+      component: 'CredentialsStore',
+      organizationId: userContext.organizationId,
+      userId: userContext.userId
+    });
     
     return result;
   }
@@ -82,9 +100,12 @@ export class CredentialsStore {
     service: ServiceType,
     credentials: Omit<T, 'updatedAt'>
   ): Promise<void> {
-    console.log(`[CredentialsStore] Setting ${service} credentials for ${userContext.userId}@${userContext.organizationId}`);
     const credPath = this.getCredentialsPath(userContext);
-    console.log(`[CredentialsStore] Path: ${credPath}`);
+    logger.info(`Setting ${service} credentials`, {
+      component: 'CredentialsStore',
+      organizationId: userContext.organizationId,
+      userId: userContext.userId
+    }, { credPath });
     
     const all = await this.getAll(userContext);
     
@@ -94,7 +115,11 @@ export class CredentialsStore {
     } as any;
     
     await this.saveAll(userContext, all);
-    console.log(`[CredentialsStore] ✅ ${service} credentials saved to ${credPath}`);
+    logger.info(`✅ ${service} credentials saved`, {
+      component: 'CredentialsStore',
+      organizationId: userContext.organizationId,
+      userId: userContext.userId
+    }, { credPath });
   }
   
   /**
@@ -104,7 +129,11 @@ export class CredentialsStore {
     const all = await this.getAll(userContext);
     delete all[service];
     await this.saveAll(userContext, all);
-    console.log(`[CredentialsStore] ✅ ${service} credentials deleted`);
+    logger.info(`✅ ${service} credentials deleted`, {
+      component: 'CredentialsStore',
+      organizationId: userContext.organizationId,
+      userId: userContext.userId
+    });
   }
   
   /**
@@ -131,7 +160,11 @@ export class CredentialsStore {
     
     if (fs.existsSync(credentialsPath)) {
       await fs.promises.unlink(credentialsPath);
-      console.log('[CredentialsStore] ✅ All credentials deleted');
+      logger.info('✅ All credentials deleted', {
+        component: 'CredentialsStore',
+        organizationId: userContext.organizationId,
+        userId: userContext.userId
+      }, { credentialsPath });
     }
   }
   
@@ -173,7 +206,11 @@ export class CredentialsStore {
     const keyString = process.env.ANT_ENCRYPTION_KEY;
     
     if (keyString) {
-      console.log('[CredentialsStore] ✅ Using ANT_ENCRYPTION_KEY from environment');
+      // ✅ Avoid noisy duplicate logs when multiple CredentialsStore instances are created.
+      if (!CredentialsStore.loggedKeySource.has('env')) {
+        CredentialsStore.loggedKeySource.add('env');
+        logger.info('✅ Using ANT_ENCRYPTION_KEY from environment', { component: 'CredentialsStore' });
+      }
       return Buffer.from(keyString, 'hex');
     }
     
@@ -183,26 +220,29 @@ export class CredentialsStore {
     try {
       if (fs.existsSync(keyFilePath)) {
         const keyHex = fs.readFileSync(keyFilePath, 'utf8').trim();
-        console.log('[CredentialsStore] ✅ Using encryption key from file:', keyFilePath);
+        if (!CredentialsStore.loggedKeySource.has('file')) {
+          CredentialsStore.loggedKeySource.add('file');
+          logger.info('✅ Using encryption key from file', { component: 'CredentialsStore' }, { keyFilePath });
+        }
         return Buffer.from(keyHex, 'hex');
       }
       
       // 3. Generate new key as fallback
-      console.warn('[CredentialsStore] ⚠️  No encryption key found, generating new one...');
-      console.warn('[CredentialsStore] ⚠️  Consider setting ANT_ENCRYPTION_KEY in .env file');
+      logger.warn('⚠️  No encryption key found; generating new one', { component: 'CredentialsStore' }, { keyFilePath });
+      logger.warn('⚠️  Consider setting ANT_ENCRYPTION_KEY in environment for stable credentials', { component: 'CredentialsStore' });
       
       const key = crypto.randomBytes(32);
       const keyHex = key.toString('hex');
       fs.mkdirSync(path.dirname(keyFilePath), { recursive: true });
       fs.writeFileSync(keyFilePath, keyHex, { mode: 0o600 });
       
-      console.log('[CredentialsStore] ✅ Generated new encryption key:', keyFilePath);
-      console.log('[CredentialsStore] ℹ️  Copy this to .env: ANT_ENCRYPTION_KEY=' + keyHex);
+      logger.warn('✅ Generated new encryption key file', { component: 'CredentialsStore' }, { keyFilePath });
+      logger.warn('ℹ️  Set ANT_ENCRYPTION_KEY to persist credentials across restarts', { component: 'CredentialsStore' });
       
       return key;
     } catch (error) {
-      console.error('[CredentialsStore] ❌ Failed to load/save encryption key:', error);
-      console.error('[CredentialsStore] ⚠️  Using temporary key (credentials will not persist!)');
+      logger.error('❌ Failed to load/save encryption key', { component: 'CredentialsStore' }, error);
+      logger.error('⚠️  Using temporary key (credentials will not persist!)', { component: 'CredentialsStore' });
       return crypto.randomBytes(32);
     }
   }

@@ -4,6 +4,7 @@ import { WorkspaceResolver } from '../../../../../../../infrastructure/workspace
 import { UserContext } from '../../../../../../../core/types/user';
 import { GitHubAuthService } from '../../../../../auth/GitHubAuthService';
 import { GitHelper } from '../../helper/GitHelper';
+import { logger } from '../../../../../../../utils/logger';
 
 /**
  * FetchOperation
@@ -16,7 +17,7 @@ export class FetchOperation {
     private readonly githubAuthService?: GitHubAuthService
   ) {}
 
-  async execute(projectId: string, userContext: UserContext): Promise<void> {
+  async execute(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {
     if (!this.githubAuthService) {
       throw new Error('GitHub integration not configured');
     }
@@ -41,9 +42,26 @@ export class FetchOperation {
     await git.remote(['set-url', 'origin', authenticatedUrl]).catch(() => {});
 
     // Fetch
-    console.log(`[FetchOperation] Fetching from origin...`);
+    logger.info(`[FetchOperation] Fetching from origin...`, {
+      component: 'FetchOperation',
+      organizationId: userContext.organizationId,
+      userId: userContext.userId,
+      projectId,
+      feature: featureName
+    }, {
+      githubRepo: config.githubRepo,
+      codebasePath
+    });
     await git.fetch('origin');
-    console.log('[FetchOperation] ✅ Fetch completed');
+    logger.info('[FetchOperation] ✅ Fetch completed', {
+      component: 'FetchOperation',
+      organizationId: userContext.organizationId,
+      userId: userContext.userId,
+      projectId,
+      feature: featureName
+    }, {
+      githubRepo: config.githubRepo
+    });
   }
 
   private async loadProjectConfig(projectId: string, userContext: UserContext) {

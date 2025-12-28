@@ -12,6 +12,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { UserContext } from '../../core/types/user';
+import { logger } from '../logger';
 import {
   UserIntegrations,
   GitHubIntegration,
@@ -43,7 +44,11 @@ export class IntegrationsStore {
       const stored = JSON.parse(content);
       return { ...this.getDefaults(), ...stored };
     } catch (error) {
-      console.error('[IntegrationsStore] Error reading integrations:', error);
+      logger.error('Error reading integrations', {
+        component: 'IntegrationsStore',
+        organizationId: userContext.organizationId,
+        userId: userContext.userId
+      }, error);
       return this.getDefaults();
     }
   }
@@ -73,7 +78,11 @@ export class IntegrationsStore {
     all[service] = { ...current, ...settings } as any;
     
     await this.saveAll(userContext, all);
-    console.log(`[IntegrationsStore] ✅ ${service} integration settings updated`);
+    logger.info(`✅ ${service} integration settings updated`, {
+      component: 'IntegrationsStore',
+      organizationId: userContext.organizationId,
+      userId: userContext.userId
+    });
   }
   
   /**
@@ -83,7 +92,11 @@ export class IntegrationsStore {
     const all = await this.getAll(userContext);
     delete all[service];
     await this.saveAll(userContext, all);
-    console.log(`[IntegrationsStore] ✅ ${service} integration settings deleted`);
+    logger.info(`✅ ${service} integration settings deleted`, {
+      component: 'IntegrationsStore',
+      organizationId: userContext.organizationId,
+      userId: userContext.userId
+    });
   }
   
   /**
@@ -94,7 +107,11 @@ export class IntegrationsStore {
     
     if (fs.existsSync(integrationsPath)) {
       await fs.promises.unlink(integrationsPath);
-      console.log('[IntegrationsStore] ✅ All integration settings reset');
+      logger.info('✅ All integration settings reset', {
+        component: 'IntegrationsStore',
+        organizationId: userContext.organizationId,
+        userId: userContext.userId
+      }, { integrationsPath });
     }
   }
   

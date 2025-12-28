@@ -122,7 +122,7 @@ export function useFeatureBranchManager(
                 }
                 
                 try {
-                  const fetchResult = await fetchFromGitHub(selectedProject);
+                  const fetchResult = await fetchFromGitHub(selectedProject, selectedFeature);
                   if (fetchResult.success) {
                     recordFetchTime(selectedProject, selectedFeature);
                   }
@@ -207,7 +207,7 @@ export function useFeatureBranchManager(
             }
             
             try {
-              const fetchResult = await fetchFromGitHub(selectedProject);
+              const fetchResult = await fetchFromGitHub(selectedProject, selectedFeature);
               if (fetchResult.success) {
                 recordFetchTime(selectedProject, selectedFeature);
               }
