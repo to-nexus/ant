@@ -51,28 +51,37 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   
   if (state.deps?.fileSystem && state.context.featurePath) {
     const path = await import('path');
-    const fs = await import('fs/promises');
-    const designDirPath = path.join(state.context.featurePath, 'outputs/design');
+    const fileSystem = state.deps.fileSystem;
+    
+    // FileSystemPort expects paths relative to workspace root.
+    // featurePath is an absolute path, so convert it.
+    const workspaceRoot = fileSystem.getWorkspaceRoot?.() || '';
+    const featureDirRel = workspaceRoot
+      ? path.relative(workspaceRoot, state.context.featurePath)
+      : state.context.featurePath.replace(/^\//, '');
+    const designDirRel = path.join(featureDirRel, 'outputs/design');
     
     try {
-      const dirExists = await state.deps.fileSystem.fileExists(designDirPath);
+      const dirExists = await fileSystem.fileExists(designDirRel);
       if (dirExists) {
-        const files = await fs.readdir(designDirPath);
-        const mdFiles = files.filter(f => f.endsWith('.md'));
+        const entries = await fileSystem.readDirectory(designDirRel);
+        const mdFiles = entries
+          .filter(e => !e.isDirectory && e.name.endsWith('.md'))
+          .map(e => e.name);
         
         console.log(`📂 [Learn] Loading ${mdFiles.length} design document(s) from disk...`);
         
         for (const filename of mdFiles) {
-          const filePath = path.join(designDirPath, filename);
-          const content = await fs.readFile(filePath, 'utf-8');
+          const filePath = path.join(designDirRel, filename);
+          const content = await fileSystem.readFile(filePath);
           
           loadedFiles.push({
             path: `outputs/design/${filename}`,
-            content,
+            content: content || '',
             actionType: 'create'
           });
           
-          console.log(`   ✅ Loaded: ${filename} (${content.length} chars)`);
+          console.log(`   ✅ Loaded: ${filename} (${(content || '').length} chars)`);
         }
       }
     } catch (error) {
@@ -90,12 +99,18 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   // ✅ Clean up metadata comment from final output
   // This is the last node, so remove the LAST_SECTION comment
   try {
-    const designDocPath = `${state.context.featurePath}/outputs/design/system-design.md`;
+    const path = await import('path');
+    const fileSystem = state.deps?.fileSystem;
+    const workspaceRoot = fileSystem?.getWorkspaceRoot?.() || '';
+    const featureDirRel = (fileSystem && workspaceRoot)
+      ? path.relative(workspaceRoot, state.context.featurePath as string)
+      : (state.context.featurePath as string).replace(/^\//, '');
+    const designDocPath = path.join(featureDirRel, 'outputs/design/system-design.md');
     
-    if (state.deps?.fileSystem) {
-      const fileExists = await state.deps.fileSystem.fileExists(designDocPath);
+    if (fileSystem) {
+      const fileExists = await fileSystem.fileExists(designDocPath);
       if (fileExists) {
-        const content = await state.deps.fileSystem.readFile(designDocPath);
+        const content = await fileSystem.readFile(designDocPath);
         if (content) {
           const lines = content.split('\n');
           
@@ -110,7 +125,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
             if (lastLine.match(/^<!-- LAST_SECTION: \d+ -->$/)) {
               lines.splice(lastLineIndex, 1);
               const cleanedContent = lines.join('\n');
-              await state.deps.fileSystem.writeFile(designDocPath, cleanedContent);
+              await fileSystem.writeFile(designDocPath, cleanedContent);
               console.log(`🧹 [Learn] Removed metadata comment from final document`);
             }
           }

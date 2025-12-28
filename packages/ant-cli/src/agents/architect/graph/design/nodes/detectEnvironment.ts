@@ -184,14 +184,16 @@ export async function detectEnvironment(
     
     if (parsed.environment === "frontend") {
       console.log("   Environment-specific injections: Frontend Guide");
-      console.log("   Strategy: Single document (fe-system-design.md)");
+      // ✅ Naming policy: single-tier jobs write to system-design.md
+      console.log("   Strategy: Single-tier → unified document (system-design.md)");
     } else if (parsed.environment === "backend") {
       console.log("   Environment-specific injections: Backend Guide");
-      console.log("   Strategy: Single document (be-system-design.md)");
+      // ✅ Naming policy: single-tier jobs write to system-design.md
+      console.log("   Strategy: Single-tier → unified document (system-design.md)");
     } else {
       console.log("   Environment-specific injections: Frontend + Backend Guides");
-      console.log("   Strategy: Contract-first (api-contract.md, fe-system-design.md, be-system-design.md) or Unified (system-design.md)");
-      console.log("   → Final decision will be made during task decomposition");
+      // ✅ Naming policy: fullstack jobs use contract-first split docs
+      console.log("   Strategy: Fullstack → contract-first (api-contract.md, fe-system-design.md, be-system-design.md)");
     }
     console.log();
 

@@ -94,7 +94,6 @@ export async function architectAgent(
   }
   
   // 3. Retrieve long-term knowledge from Vector DB
-  console.log(`🔍 Retrieving vector memory for ${task}...`);
   const vectorMemory = await retrieve(task, project, featureFolder, deps?.memory ? { memory: deps.memory } : undefined);
   
   // 4. Detect user language from input (directive > spec)
