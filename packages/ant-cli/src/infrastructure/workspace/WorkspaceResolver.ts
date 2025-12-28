@@ -5,6 +5,7 @@
  */
 
 import * as path from 'path';
+import * as fs from 'fs';
 import { UserContext } from '../../core/types/user';
 
 export interface WorkspaceResolver {
@@ -46,8 +47,22 @@ export class WorkspacePathResolver {
       return path.resolve(process.env.ANT_WORKSPACE_BASE_PATH);
     }
     
-    // Fallback: 기존 방식 (ant 소스 내부)
-    const projectRoot = path.resolve(__dirname, '../../../../..');
+    // ✅ Heuristic fallback: prefer sibling "ant-workspaces" if present.
+    // This matches the common repo layout:
+    //   <dev>/ant
+    //   <dev>/ant-workspaces
+    // and prevents silent regressions when ANT_WORKSPACE_BASE_PATH is not set.
+    const projectRoot = path.resolve(__dirname, '../../../../..'); // .../ant
+    const siblingWorkspaces = path.resolve(projectRoot, '../ant-workspaces');
+    try {
+      if (fs.existsSync(siblingWorkspaces)) {
+        return siblingWorkspaces;
+      }
+    } catch {
+      // ignore
+    }
+    
+    // Fallback: legacy 방식 (ant 소스 내부)
     return path.join(projectRoot, 'workspaces');
   }
   

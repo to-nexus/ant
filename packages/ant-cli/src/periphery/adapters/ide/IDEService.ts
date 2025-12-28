@@ -13,6 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as net from 'net';
 import { logger } from '../../../utils/logger';
+import { WorkspacePathResolver } from '../../../infrastructure/workspace/WorkspaceResolver';
 
 export interface IDEInstance {
   containerId: string;
@@ -91,7 +92,7 @@ export class IDEService {
     // 3) Delete IDE home directory (host) if requested
     if (deleteHome) {
       const ideHomeBase = process.env.ANT_IDE_HOME_BASE_PATH
-        || path.join(process.env.ANT_WORKSPACE_BASE_PATH || '/Users/probe/dev/ant-workspaces', '.ide-homes');
+        || path.join(WorkspacePathResolver.getPhysicalWorkspacesPath(), '.ide-homes');
       const ideHomeProjectPath = path.join(ideHomeBase, userContext.organizationId, userContext.userId, projectId);
       try {
         await fs.promises.rm(ideHomeProjectPath, { recursive: true, force: true });
@@ -257,7 +258,7 @@ export class IDEService {
     logger.debug(`IDE workspace path resolved`, { component: 'IDEService', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature }, { dockerWorkspacePath });
     
     const ideHomeBase = process.env.ANT_IDE_HOME_BASE_PATH
-      || path.join(process.env.ANT_WORKSPACE_BASE_PATH || '/Users/probe/dev/ant-workspaces', '.ide-homes');
+      || path.join(WorkspacePathResolver.getPhysicalWorkspacesPath(), '.ide-homes');
     const ideHomeHostPath = path.join(
       ideHomeBase,
       userContext.organizationId,

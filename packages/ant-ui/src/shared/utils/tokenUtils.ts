@@ -5,6 +5,95 @@
 
 import { TaskTokenUsage } from '@/domain/models/types';
 
+export interface TokenUsageMetrics {
+  rawInputTokens: number;          // non-cache "new" input tokens
+  rawOutputTokens: number;
+  rawTotalTokens: number;          // rawInput + rawOutput (non-cache total)
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  processedInputTokens: number;    // rawInput + cacheRead + cacheCreation
+  billableInputTokens: number;     // rawInput + 1.25*cacheCreation + 0.1*cacheRead
+  billableTotalTokens: number;     // billableInput + rawOutput
+  cacheSavedTokens: number;        // approx saved vs non-cached input (= 0.9*cacheRead)
+}
+
+/**
+ * Compute consistent metrics from our TaskTokenUsage schema.
+ *
+ * IMPORTANT:
+ * - rawInputTokens excludes cache reads/creation (see ant-cli TokenTracking comment).
+ * - cacheRead/cacheCreation are tracked separately (Anthropic prompt caching).
+ * - rawTotalTokens should be rawInput + rawOutput (this matches task-level totals in sessions).
+ * - billableInputTokens approximates cost-equivalent input tokens using Anthropic pricing:
+ *   rawInput×1 + cache_creation×1.25 + cache_read×0.1
+ */
+export function getTokenUsageMetrics(tokenUsage?: TaskTokenUsage | null): TokenUsageMetrics {
+  const rawInputTokens = tokenUsage?.inputTokens || 0;
+  const rawOutputTokens = tokenUsage?.outputTokens || 0;
+  const cacheReadTokens = tokenUsage?.cacheReadTokens || 0;
+  const cacheCreationTokens = tokenUsage?.cacheCreationTokens || 0;
+
+  const rawTotalTokens = rawInputTokens + rawOutputTokens;
+  const processedInputTokens = rawInputTokens + cacheReadTokens + cacheCreationTokens;
+
+  const billableInputTokens =
+    rawInputTokens +
+    Math.floor(cacheCreationTokens * 1.25) +
+    Math.floor(cacheReadTokens * 0.1);
+
+  const billableTotalTokens = billableInputTokens + rawOutputTokens;
+  const cacheSavedTokens = Math.floor(cacheReadTokens * 0.9);
+
+  return {
+    rawInputTokens,
+    rawOutputTokens,
+    rawTotalTokens,
+    cacheReadTokens,
+    cacheCreationTokens,
+    processedInputTokens,
+    billableInputTokens,
+    billableTotalTokens,
+    cacheSavedTokens,
+  };
+}
+
+/**
+ * Safely sum multiple TaskTokenUsage objects.
+ * Returns undefined if no usage data exists.
+ */
+export function sumTokenUsages(usages: Array<TaskTokenUsage | undefined | null>): TaskTokenUsage | undefined {
+  let hasAny = false;
+  const acc: TaskTokenUsage = {
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+  };
+
+  for (const u of usages) {
+    if (!u) continue;
+    hasAny = true;
+    acc.inputTokens += u.inputTokens || 0;
+    acc.outputTokens += u.outputTokens || 0;
+    acc.totalTokens += u.totalTokens || 0;
+    acc.cacheReadTokens = (acc.cacheReadTokens || 0) + (u.cacheReadTokens || 0);
+    acc.cacheCreationTokens = (acc.cacheCreationTokens || 0) + (u.cacheCreationTokens || 0);
+  }
+
+  if (!hasAny) return undefined;
+
+  // Normalize optional fields: if both are 0, omit them for cleaner downstream checks
+  const normalized: TaskTokenUsage = {
+    inputTokens: acc.inputTokens,
+    outputTokens: acc.outputTokens,
+    totalTokens: acc.totalTokens,
+  };
+  if ((acc.cacheReadTokens || 0) > 0) normalized.cacheReadTokens = acc.cacheReadTokens;
+  if ((acc.cacheCreationTokens || 0) > 0) normalized.cacheCreationTokens = acc.cacheCreationTokens;
+  return normalized;
+}
+
 /**
  * Format token count with K/M/B/T notation
  * 

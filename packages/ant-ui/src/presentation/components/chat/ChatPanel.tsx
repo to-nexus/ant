@@ -120,16 +120,19 @@ export function ChatPanel({ projectId: _projectId, featureName: _featureName, en
   }, [lastAssistantMessage?.id, fileOperationCount]);  // ✅ 파일 operation 개수만 추적
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Chat History (scrollable) */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin min-h-0">{/* Pinned Query - Only show when last user message is NOT visible */}
+    <div className="flex flex-col h-full min-h-0">
+      {/* Chat History (Virtuoso owns scrolling; avoid nested overflow containers) */}
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+        {/* Pinned Query - Only show when last user message is NOT visible */}
         {messages.length > 0 && lastUserQuery && !isLastUserMessageVisible && (
-          <PinnedQuery query={lastUserQuery} />
+          <div className="shrink-0">
+            <PinnedQuery query={lastUserQuery} />
+          </div>
         )}
-        
+
         {/* Empty State Message - Not Ready */}
         {messages.length === 0 && chatPolicy.emptyStateMessage && (
-          <div className="flex items-center justify-center h-full p-8">
+          <div className="flex-1 min-h-0 flex items-center justify-center p-8">
             <div className="text-center max-w-sm">
               <div className="text-4xl mb-4">💬</div>
               <p className="text-sm text-gray-600 dark:text-gray-300 shimmer-text">
@@ -138,10 +141,10 @@ export function ChatPanel({ projectId: _projectId, featureName: _featureName, en
             </div>
           </div>
         )}
-        
+
         {/* Empty State Message - Ready to Chat */}
         {messages.length === 0 && !chatPolicy.emptyStateMessage && chatPolicy.readyEmptyStateMessage && (
-          <div className="flex items-center justify-center h-full p-8">
+          <div className="flex-1 min-h-0 flex items-center justify-center p-8">
             <div className="text-center max-w-sm">
               {/* ✨ Animated sparkle with float effect (크기 + 위치 + 회전) */}
               <div className="text-5xl mb-4 animate-sparkle-float inline-block">✨</div>
@@ -154,14 +157,16 @@ export function ChatPanel({ projectId: _projectId, featureName: _featureName, en
             </div>
           </div>
         )}
-        
+
         {/* Chat Messages */}
         {messages.length > 0 && (
-          <ChatHistory 
-            messages={messages} 
-            isStreaming={isStreaming}
-            onLastUserMessageVisibilityChange={handleLastUserMessageVisibilityChange}
-          />
+          <div className="flex-1 min-h-0">
+            <ChatHistory
+              messages={messages}
+              isStreaming={isStreaming}
+              onLastUserMessageVisibilityChange={handleLastUserMessageVisibilityChange}
+            />
+          </div>
         )}
       </div>
 

@@ -40,7 +40,6 @@ export function useDevServerManager(
   const [error, setError] = useState<DevServerError | undefined>();
   const [progress, setProgress] = useState<DevServerProgress | undefined>();
   const [isDismissed, setIsDismissed] = useState(false);
-  const selectedJobType = useStore((state) => state.selectedJobType);
 
   // Generate stable server key
   const serverKey = selectedProject && selectedFeature 
@@ -162,13 +161,16 @@ export function useDevServerManager(
     };
 
     sseManager.registerHandler('devServer', handler);
-    // Ensure unified SSE connection is active for current context (idempotent)
-    sseManager.connect(selectedProject, selectedFeature, (selectedJobType as any) || 'code');
+    // IMPORTANT:
+    // Do NOT call sseManager.connect() here.
+    // The unified SSE connection must be owned by the Domain Store (`initializeSSE`).
+    // If we connect early (before kanban/chat handlers are registered), the initial kanban
+    // message can be dropped and never replayed because SSEManager.connect is idempotent.
 
     return () => {
       sseManager.unregisterHandler('devServer', handler);
     };
-  }, [selectedProject, selectedFeature, selectedJobType, setDevServerStatus, setDevServerLoading]);
+  }, [selectedProject, selectedFeature, setDevServerStatus, setDevServerLoading]);
 
   // Start dev server
   const startServer = useCallback(async () => {
@@ -190,7 +192,6 @@ export function useDevServerManager(
     try {
       // ✅ Ensure we can show install/start progress immediately
       setDevServerStatus({ running: false, ready: false, logs: [] } as any);
-      sseManager.connect(selectedProject, selectedFeature, (selectedJobType as any) || 'code');
       
       await startDevServer(selectedProject, selectedFeature);
       // Keep loading until backend reports running/ready or an error state is detected from logs.
@@ -214,7 +215,7 @@ export function useDevServerManager(
       });
       setDevServerLoading(false);
     }
-  }, [selectedProject, selectedFeature, serverKey, setDevServerLoading, setDevServerStatus, selectedJobType]);
+  }, [selectedProject, selectedFeature, serverKey, setDevServerLoading, setDevServerStatus]);
 
   // Stop dev server
   const stopServer = useCallback(async () => {

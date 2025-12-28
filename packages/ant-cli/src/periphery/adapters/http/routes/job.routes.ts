@@ -3,6 +3,7 @@ import * as path from 'path';
 import { ExecuteJobParams, LogEntry } from '../../../../core/ports/http';
 import type { InterruptionDetails } from '../../../../core/types';
 import { WorkspaceResolver } from '../../../../infrastructure/workspace/WorkspaceResolver';
+import { extractUserContext } from './helpers/userContext';
 
 /**
  * Job execution routes
@@ -62,12 +63,8 @@ export function createJobRoutes(deps: {
       
       console.log(`   ✅ No running job found for feature ${featureKey}, proceeding...`);
       
-      // ✅ Build context for WorkspaceResolver
-      const userContext = req.user && req.organization ? {
-        userId: req.user.id,
-        organizationId: req.organization.id,
-        workspacePath: ''  // Not used by WorkspaceResolver
-      } : { userId: 'local', organizationId: 'local', workspacePath: '' };
+      // ✅ Build context for WorkspaceResolver (supports query + header + auth)
+      const userContext = extractUserContext(req);
       
       // ✅ Use WorkspaceResolver to get proper path
       // ✅ Only set inputFile if NOT using override directive (file-based job)
@@ -131,12 +128,8 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
   console.log(`\n🛑 [StopRoute] Stop request received for job: ${jobId}`);
   console.log(`   Project: ${projectId}, Feature: ${featureName}, JobType: ${jobType || 'not provided'}`);
   
-  // ✅ CRITICAL: Build userContext from authenticated user
-  const userContext = req.user && req.organization ? {
-    userId: req.user.id,
-    organizationId: req.organization.id,
-    workspacePath: ''
-  } : { userId: 'local', organizationId: 'local', workspacePath: '' };
+  // ✅ CRITICAL: Resolve userContext consistently (query + header + auth)
+  const userContext = extractUserContext(req);
   
   console.log(`   UserContext: ${userContext.userId}@${userContext.organizationId}`);
     
@@ -232,12 +225,8 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
     let sessionJobId: string | null = null;  // ✅ Declare outside try-catch for error handling
     
     try {
-      // ✅ Build context for WorkspaceResolver
-      const userContext = req.user && req.organization ? {
-        userId: req.user.id,
-        organizationId: req.organization.id,
-        workspacePath: ''  // Not used by WorkspaceResolver
-      } : { userId: 'local', organizationId: 'local', workspacePath: '' };
+      // ✅ Build context for WorkspaceResolver (supports query + header + auth)
+      const userContext = extractUserContext(req);
       
       // ✅ Use WorkspaceResolver to get proper path
       const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);

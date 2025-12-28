@@ -13,6 +13,12 @@ Your analysis will determine the entire workflow strategy.
 
 {{directive}}
 
+{{#if prdSpec}}
+## Requirements (PRD)
+
+{{prdSpec}}
+{{/if}}
+
 {{#if designDocs}}
 ## Design Documents
 

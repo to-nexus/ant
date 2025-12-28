@@ -17,6 +17,7 @@ export interface FileRendererConfig {
   writeImmediately: boolean;
   jobType?: 'code' | 'design';
   featurePath?: string;
+  codebasePath?: string; // ✅ For code jobs: absolute path to repo root (codebase dir)
 }
 
 export class FileRenderer {
@@ -26,6 +27,7 @@ export class FileRenderer {
   private writeImmediately: boolean;
   private jobType?: 'code' | 'design';
   private featurePath?: string;
+  private codebasePath?: string;
   
   private activeFiles: Map<string, FileStreamInfo> = new Map();
   private lineBuffers: LineBufferManager = new LineBufferManager();
@@ -45,6 +47,7 @@ export class FileRenderer {
     this.writeImmediately = config.writeImmediately;
     this.jobType = config.jobType;
     this.featurePath = config.featurePath;
+    this.codebasePath = config.codebasePath;
   }
   
   /**
@@ -72,6 +75,27 @@ export class FileRenderer {
       if (workspaceRoot && path.isAbsolute(this.featurePath)) {
         const featureDirRel = path.relative(workspaceRoot, this.featurePath);
         return path.join(featureDirRel, originalPath);
+      }
+    }
+
+    // ✅ Code jobs must write into repoRoot (codebase directory), not project root.
+    // LLM typically emits paths like "package.json" or "src/main.ts".
+    // We transparently prefix with codebaseDirRel so files land in {project}/codebase/...
+    if (this.jobType === 'code' && this.codebasePath) {
+      const workspaceRoot = this.fileSystem.getWorkspaceRoot?.();
+      if (workspaceRoot && path.isAbsolute(this.codebasePath)) {
+        const codebaseDirRel = path.relative(workspaceRoot, this.codebasePath);
+
+        // Avoid double-prefix if LLM already included "codebase/" or the computed relative prefix.
+        if (
+          originalPath === codebaseDirRel ||
+          originalPath.startsWith(codebaseDirRel + path.sep) ||
+          originalPath.startsWith('codebase' + path.sep)
+        ) {
+          return originalPath;
+        }
+
+        return path.join(codebaseDirRel, originalPath);
       }
     }
 

@@ -107,6 +107,9 @@ export async function codeGen(
   const chatAPI = getChatAPIClient();
   await chatAPI.showChatStatus('placeholder');
   
+  // ✅ Code jobs must write into repoRoot (codebase directory)
+  const repoRootForWrites = state.deps?.git ? await state.deps.git.getRepoRoot() : undefined;
+
   // ✅ Setup XML Parser + StreamOrchestrator for MD file streaming
   const parser = new XMLStreamParser();
   const renderStrategy = new CommonRenderStrategy(
@@ -116,7 +119,8 @@ export async function codeGen(
     state.deps?.fileSystem,  // ✅ Pass fileSystem for file operations
     true,  // ✅ writeImmediately: true for code job (no separate writeFiles node)
     'code',  // ✅ jobType: 'code' (no LAST_SECTION handling needed)
-    undefined  // ✅ Code job: no featurePath (uses codebase as working directory)
+    undefined,  // ✅ Code job: no featurePath
+    repoRootForWrites  // ✅ Code job: write files under repoRoot (codebase)
   );
   
   // ✅ Code job: Build existingFiles from projectCodeContext + referenceCodeContexts

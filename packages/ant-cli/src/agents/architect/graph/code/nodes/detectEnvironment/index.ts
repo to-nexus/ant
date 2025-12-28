@@ -64,7 +64,8 @@ export async function detectEnvironment(
   const prompt = await promptEngine.buildDetectEnvironmentPrompt(
     state.directive || '',
     state.designDocs,
-    state.profile
+    state.profile,
+    state.prd
   );
   
   // 2. Call LLM

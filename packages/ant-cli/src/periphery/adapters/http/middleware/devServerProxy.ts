@@ -21,13 +21,24 @@ function escapeRegExp(input: string): string {
 export interface DevServerProxyConfig {
   portRegistry: PortRegistryPort;
   pathPrefix?: string;  // Default: '/dev'
+  /**
+   * Optional resolver for backend port (fullstack).
+   * If provided, /dev/:serverKey/api/* can be routed to backend instead of the entry (frontend) port.
+   */
+  getBackendPort?: (args: {
+    tenantId: string;
+    userId: string;
+    projectId: string;
+    feature: string;
+    serverKey: string;
+  }) => number | undefined | null | Promise<number | undefined | null>;
 }
 
 /**
  * Create dev server proxy middleware
  */
 export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
-  const { portRegistry, pathPrefix = '/dev' } = config;
+  const { portRegistry, pathPrefix = '/dev', getBackendPort } = config;
   
   return async (req: Request, res: ExpressResponse, next: NextFunction) => {
     // Only handle paths starting with /dev/
@@ -80,7 +91,7 @@ export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
       featureName: feature
     });
     
-    // Lookup port from registry
+    // Lookup entry (frontend) port from registry
     let port: number | null;
     try {
       port = await portRegistry.getDevServerPort(tenantId, userId, projectId, feature);
@@ -128,8 +139,27 @@ export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
     while (targetPath.startsWith(prefix)) {
       targetPath = targetPath.slice(prefix.length) || '/';
     }
+
+    // ✅ Fullstack support: route /dev/:serverKey/api/* to backend port (if available)
+    let targetPort = port;
+    if (typeof getBackendPort === 'function') {
+      const isApiRequest = targetPath === '/api' || targetPath.startsWith('/api/');
+      if (isApiRequest) {
+        try {
+          const backendPort = await getBackendPort({ tenantId, userId, projectId, feature, serverKey });
+          if (typeof backendPort === 'number' && backendPort > 0) {
+            targetPort = backendPort;
+            logger.debug(`Routing API request to backend port: ${backendPort}`, { component: 'DevProxy' });
+          }
+        } catch {
+          // best-effort
+        }
+      }
+    }
+
     const targetUrl = `http://localhost:${port}${targetPath}`;
-    logger.debug(`Target URL: ${targetUrl}`, { component: 'DevProxy' });
+    const effectiveTargetUrl = `http://localhost:${targetPort}${targetPath}`;
+    logger.debug(`Target URL: ${effectiveTargetUrl}`, { component: 'DevProxy' });
     
     try {
       // ✅ Retry logic for dev server startup race condition
@@ -140,11 +170,14 @@ export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
       
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-          response = await fetch(targetUrl, {
+          response = await fetch(effectiveTargetUrl, {
             method: req.method,
             headers: {
               ...req.headers,
-              host: `localhost:${port}`,
+              host: `localhost:${targetPort}`,
+              // ✅ Avoid upstream compression. We may rewrite/rehydrate bodies and must not forward
+              // compressed responses with stale Content-Encoding headers to the browser.
+              'accept-encoding': 'identity',
               // ✅ Force full response (no 304)
               'if-none-match': undefined,
               'if-modified-since': undefined
@@ -170,10 +203,15 @@ export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
       // Copy status and headers
       res.status(response.status);
       response.headers.forEach((value: string, key: string) => {
+        const lower = key.toLowerCase();
         // ✅ Don't copy cache headers to prevent browser caching unrewritten content
-        if (!['etag', 'if-none-match', 'if-modified-since', 'last-modified'].includes(key.toLowerCase())) {
-          res.setHeader(key, value);
-        }
+        if (['etag', 'if-none-match', 'if-modified-since', 'last-modified'].includes(lower)) return;
+
+        // ✅ We buffer and sometimes rewrite response bodies. Never forward hop-by-hop or encoding/length
+        // headers from upstream; they can become incorrect and cause ERR_CONTENT_DECODING_FAILED.
+        if (['content-encoding', 'content-length', 'transfer-encoding', 'connection', 'keep-alive'].includes(lower)) return;
+
+        res.setHeader(key, value);
       });
       
       // ✅ Set cache control to prevent caching
@@ -229,12 +267,23 @@ export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
         // This prevents requests from leaking to the Ant UI origin (/assets -> 401 in cloud mode).
         const assetLiteralRe = new RegExp(`(["'])\\/(?!\\/|${escapedAlready})(assets\\/[^"']*)\\1`, 'g');
         rewritten = rewritten.replace(assetLiteralRe, `$1${replacement}$2$1`);
+
+        // ✅ Fullstack convenience: rewrite frontend relative API calls '/api/...'
+        // so they go through the dev proxy namespace: '/dev/:serverKey/api/...'
+        // (Avoid rewriting '/api-docs' etc — only match '/api' or '/api/')
+        const apiSlashRe = new RegExp(`(["'])\\/(?!\\/|${escapedAlready})api\\/`, 'g');
+        const apiExactRe = new RegExp(`(["'])\\/(?!\\/|${escapedAlready})api\\1`, 'g');
+        rewritten = rewritten
+          .replace(apiSlashRe, `$1${replacement}api/`)
+          .replace(apiExactRe, `$1${replacement}api$1`);
         
         res.setHeader('content-length', Buffer.byteLength(rewritten));
         res.send(rewritten);
       } else {
         // Pass through binary content
         const buffer = Buffer.from(await response.arrayBuffer());
+        // ✅ Ensure correct length for buffered responses
+        res.setHeader('content-length', buffer.length);
         res.send(buffer);
       }
     } catch (error: any) {

@@ -533,6 +533,9 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
             e.preventDefault();
             setIsResizing(false);
             localStorage.setItem('chatInputHeight', textareaHeight.toString());
+            // ✅ Ensure virtualized history (react-virtuoso) recalculates viewport after input height changes
+            // Some browsers/layouts may not propagate ResizeObserver updates reliably through nested flex layouts.
+            window.dispatchEvent(new Event('resize'));
           }}
         />
       )}

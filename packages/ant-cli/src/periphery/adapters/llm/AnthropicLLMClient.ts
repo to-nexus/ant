@@ -87,11 +87,11 @@ export class AnthropicLLMClient implements LLMClient {
     const usage = (response as any).usage ? {
       inputTokens: (response as any).usage.input_tokens || 0,
       outputTokens: (response as any).usage.output_tokens || 0,
-      // ✅ totalTokens = input + cache_creation + cache_read + output
-      totalTokens: 
-        ((response as any).usage.input_tokens || 0) + 
-        ((response as any).usage.cache_creation_input_tokens || 0) +
-        ((response as any).usage.cache_read_input_tokens || 0) +
+      // ✅ IMPORTANT (Unified semantics across design/code):
+      // totalTokens = "new non-cache" tokens = input + output
+      // Cache metrics are tracked separately (cacheReadTokens/cacheCreationTokens).
+      totalTokens:
+        ((response as any).usage.input_tokens || 0) +
         ((response as any).usage.output_tokens || 0),
       cacheReadTokens: (response as any).usage.cache_read_input_tokens,
       cacheCreationTokens: (response as any).usage.cache_creation_input_tokens,
@@ -197,8 +197,8 @@ export class AnthropicLLMClient implements LLMClient {
         tokenUsage = {
           inputTokens,
           outputTokens,
-          // ✅ totalTokens = input + cache_creation + cache_read + output
-          totalTokens: inputTokens + cacheCreationTokens + cacheReadTokens + outputTokens,
+          // ✅ IMPORTANT (Unified semantics): totalTokens = input + output (non-cache)
+          totalTokens: inputTokens + outputTokens,
           cacheReadTokens: usage.cache_read_input_tokens,
           cacheCreationTokens: usage.cache_creation_input_tokens,
         };
@@ -215,11 +215,9 @@ export class AnthropicLLMClient implements LLMClient {
         if (tokenUsage) {
           const newOutputTokens = usage.output_tokens || tokenUsage.outputTokens;
           tokenUsage.outputTokens = newOutputTokens;
-          // ✅ totalTokens = input + cache + output
-          tokenUsage.totalTokens = 
-            tokenUsage.inputTokens + 
-            (tokenUsage.cacheCreationTokens || 0) + 
-            (tokenUsage.cacheReadTokens || 0) + 
+          // ✅ IMPORTANT (Unified semantics): totalTokens = input + output (non-cache)
+          tokenUsage.totalTokens =
+            tokenUsage.inputTokens +
             newOutputTokens;
         } else {
           const outputTokens = usage.output_tokens || 0;

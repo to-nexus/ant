@@ -196,6 +196,10 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
     if (jobId !== previousJobIdRef.current) {
       previousJobIdRef.current = jobId;
       setStableJobId(jobId);
+      // ✅ IMPORTANT: Job이 바뀌면 글로벌 큐/표시 상태를 리셋해야 함.
+      // 그렇지 않으면 멀티 프로젝트/멀티 job에서 서로 다른 job의 노드 연출이 섞여 보일 수 있음.
+      clearGlobalQueue();
+      globalDisplayedState = null;
     } else {
     }
   }, [jobId]);
@@ -243,6 +247,7 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
       // ✅ CRITICAL: jobEndedRef는 초기화하지 않음! (learn 노드 cleanup을 위해 유지)
       setRawState(null);
       setDisplayedState(null);
+      globalDisplayedState = null;
       return;
     }
     
@@ -250,6 +255,12 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
     
     // ✅ SSEManager 핸들러 등록 (Store가 이미 connectWorkflow 호출함)
     const handleWorkflowMessage = (data: any) => {
+      // ✅ CRITICAL: Workflow 이벤트는 jobId 단위로 스코프됨.
+      // 멀티 프로젝트/멀티 job 환경에서 jobId 필터링이 없으면 서로 다른 workflow가 섞여 보임.
+      if (data?.jobId && data.jobId !== stableJobId) {
+        return;
+      }
+
       // ✅ Handle 'end' event
       if (data.eventType === 'end') {
         jobEndedRef.current = true;

@@ -302,7 +302,8 @@ export class PromptEngine {
       beDesign?: string;
       unifiedDesign?: string;
     } | undefined,
-    profile: any
+    profile: any,
+    prdSpec?: string
   ): Promise<string> {
     // ✅ Build design doc content from object
     const parts: string[] = [];
@@ -330,7 +331,8 @@ export class PromptEngine {
     return await this.deps.promptPort.render('code/phases/detect/base', {
       directive,
       designDocs: designDocsContent,
-      profile
+      profile,
+      prdSpec: prdSpec || ''
     });
   }
 
