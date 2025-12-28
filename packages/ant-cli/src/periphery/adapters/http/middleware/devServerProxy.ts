@@ -14,6 +14,10 @@ import { createProxyMiddleware, Options } from 'http-proxy-middleware';
 import { PortRegistryPort } from '../../../../core/ports/portRegistry';
 import { logger } from '../../../../utils/logger';
 
+function escapeRegExp(input: string): string {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export interface DevServerProxyConfig {
   portRegistry: PortRegistryPort;
   pathPrefix?: string;  // Default: '/dev'
@@ -118,8 +122,12 @@ export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
     
     logger.debug(`Proxy to localhost:${port}`, { component: 'DevProxy' });
     
-    // ✅ Strip /dev/:serverKey from path for Vite
-    const targetPath = req.url.replace(`${pathPrefix}/${serverKey}`, '') || '/';
+    // ✅ Strip /dev/:serverKey from path for Vite (handle accidental double-prefix)
+    const prefix = `${pathPrefix}/${serverKey}`;
+    let targetPath = req.url;
+    while (targetPath.startsWith(prefix)) {
+      targetPath = targetPath.slice(prefix.length) || '/';
+    }
     const targetUrl = `http://localhost:${port}${targetPath}`;
     logger.debug(`Target URL: ${targetUrl}`, { component: 'DevProxy' });
     
@@ -193,22 +201,28 @@ export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
           }
         }
         
-        // Rewrite all absolute paths to include /dev/:serverKey/ prefix
+        // Rewrite absolute paths to include /dev/:serverKey/ prefix (idempotent)
+        // ✅ IMPORTANT: Do not rewrite if it is already prefixed with /dev/:serverKey/
+        const prefixNoLeadingSlash = `${pathPrefix.replace(/^\//, '')}/${serverKey}/`; // e.g. "dev/<serverKey>/"
+        const escapedAlready = escapeRegExp(prefixNoLeadingSlash);
+        const replacement = `${pathPrefix}/${serverKey}/`;
+        
+        const htmlAttrRe = new RegExp(`((?:src|href|action)=["'])\\/(?!\\/|${escapedAlready})`, 'g');
+        const fromRe = new RegExp(`((?:import\\s+[^"']+\\s+)?from\\s+["'])\\/(?!\\/|${escapedAlready})`, 'g');
+        const importLineRe = new RegExp(`((?:^|\\n|;)\\s*import\\s+["'])\\/(?!\\/|${escapedAlready})`, 'gm');
+        const importFnRe = new RegExp(`(import\\s*\\(\\s*["'])\\/(?!\\/|${escapedAlready})`, 'g');
+        const exportFromRe = new RegExp(`(export\\s+\\*\\s+from\\s+["'])\\/(?!\\/|${escapedAlready})`, 'g');
+        const globRe = new RegExp(`(import\\.meta\\.glob\\s*\\(\\s*["'])\\/(?!\\/|${escapedAlready})`, 'g');
+        const newUrlRe = new RegExp(`(new\\s+URL\\s*\\(\\s*["'])\\/(?!\\/|${escapedAlready})`, 'g');
+        
         rewritten = rewritten
-          // HTML: src="/...", href="/..."
-          .replace(/((?:src|href|action)=["'])\/(?!\/)/g, `$1${pathPrefix}/${serverKey}/`)
-          // JS: from "/..."
-          .replace(/((?:import\s+[^"']+\s+)?from\s+["'])\/(?!\/)/g, `$1${pathPrefix}/${serverKey}/`)
-          // JS: import "/..."
-          .replace(/((?:^|\n|;)\s*import\s+["'])\/(?!\/)/gm, `$1${pathPrefix}/${serverKey}/`)
-          // JS: import("/...")
-          .replace(/(import\s*\(\s*["'])\/(?!\/)/g, `$1${pathPrefix}/${serverKey}/`)
-          // JS: export * from "/..."
-          .replace(/(export\s+\*\s+from\s+["'])\/(?!\/)/g, `$1${pathPrefix}/${serverKey}/`)
-          // JS: import.meta.glob("/...")
-          .replace(/(import\.meta\.glob\s*\(\s*["'])\/(?!\/)/g, `$1${pathPrefix}/${serverKey}/`)
-          // JS: new URL("/...")
-          .replace(/(new\s+URL\s*\(\s*["'])\/(?!\/)/g, `$1${pathPrefix}/${serverKey}/`);
+          .replace(htmlAttrRe, `$1${replacement}`)
+          .replace(fromRe, `$1${replacement}`)
+          .replace(importLineRe, `$1${replacement}`)
+          .replace(importFnRe, `$1${replacement}`)
+          .replace(exportFromRe, `$1${replacement}`)
+          .replace(globRe, `$1${replacement}`)
+          .replace(newUrlRe, `$1${replacement}`);
         
         res.setHeader('content-length', Buffer.byteLength(rewritten));
         res.send(rewritten);

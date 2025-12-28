@@ -27,7 +27,8 @@
 
 import { getApiBase } from '../http/api';
 
-export type SSEMessageType = 'kanban' | 'chat' | 'fileTree' | 'workflow' | 'gitChange';
+// ✅ NOTE: backend unified SSE stream also emits 'devServer' events
+export type SSEMessageType = 'kanban' | 'chat' | 'fileTree' | 'workflow' | 'devServer' | 'gitChange';
 export type SSEMessageHandler = (data: any) => void;
 
 interface SSEMessage {

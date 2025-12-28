@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useStore } from '@/domain/store';
+import { sseManager } from '@/infrastructure/sse/SSEManager';
 import { 
   startDevServer, 
   stopDevServer, 
@@ -39,7 +40,7 @@ export function useDevServerManager(
   const [error, setError] = useState<DevServerError | undefined>();
   const [progress, setProgress] = useState<DevServerProgress | undefined>();
   const [isDismissed, setIsDismissed] = useState(false);
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const selectedJobType = useStore((state) => state.selectedJobType);
 
   // Generate stable server key
   const serverKey = selectedProject && selectedFeature 
@@ -88,10 +89,6 @@ export function useDevServerManager(
   // Initial status check and SSE connection
   useEffect(() => {
     if (!selectedProject || !selectedFeature) {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
       setDevServerStatus(undefined);
       return;
     }
@@ -99,21 +96,10 @@ export function useDevServerManager(
     getDevServerStatus(selectedProject, selectedFeature)
       .then(status => {
         setDevServerStatus(status);
-        
-        if (status.running || (status.logs && status.logs.length > 0)) {
-          setupSSE(selectedProject, selectedFeature);
-        }
       })
       .catch(err => {
         console.error('[useDevServerManager] Status check failed:', err);
       });
-
-    return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
-    };
   }, [selectedProject, selectedFeature, setDevServerStatus]);
 
   // Check dismissal state when status changes
@@ -135,45 +121,19 @@ export function useDevServerManager(
     }
   }, [devServerStatus?.setupReasoning, serverKey, selectedProject, selectedFeature]);
 
-  // Setup SSE connection for real-time updates
-  const setupSSE = useCallback((projectId: string, feature: string) => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
+  // ✅ Subscribe to devServer events via existing unified SSEManager
+  useEffect(() => {
+    if (!selectedProject || !selectedFeature) {
+      return;
     }
 
-    const featureParam = encodeURIComponent(feature);
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4100';
-    
-    let url = `${apiUrl}/api/projects/${projectId}/dev/logs?feature=${featureParam}`;
-    
-    try {
-      const userEmail = localStorage.getItem('ant-ui:user-email');
-      if (userEmail) {
-        const email = JSON.parse(userEmail);
-        url += `&user-email=${encodeURIComponent(email)}`;
-      }
-    } catch (error) {
-      // Silent fail
-    }
-    
-    const eventSource = new EventSource(url);
-    eventSourceRef.current = eventSource;
-
-    eventSource.onmessage = (event) => {
+    const handler = (payload: any) => {
       try {
-        const message = JSON.parse(event.data);
-        
-        // Filter out non-devServer messages
-        if (message.type !== 'devServer') {
-          return;
-        }
-        
-        let messageType = message.data?.type;
-        let messageData = message.data?.data;
-        
+        const messageType = payload?.type;
+        const messageData = payload?.data;
+
         if (messageType === 'status') {
-          // ✅ IMPORTANT: Preserve existing logs when receiving status updates.
-          // Status payloads typically omit logs, and overwriting would reset progress-derived UI messages.
+          // ✅ Preserve logs on status updates
           const currentStatus = useStore.getState().devServerStatus;
           const mergedStatus = {
             ...(currentStatus || {}),
@@ -181,11 +141,15 @@ export function useDevServerManager(
             logs: (messageData && messageData.logs) ? messageData.logs : (currentStatus?.logs || [])
           };
           setDevServerStatus(mergedStatus);
-          setDevServerLoading(false);
+
+          // Stop loading when we have a steady/terminal signal.
+          if (mergedStatus.ready || mergedStatus.running || (mergedStatus as any).setupReasoning) {
+            setDevServerLoading(false);
+          }
         } else if (messageType === 'log') {
           const currentStatus = useStore.getState().devServerStatus;
           if (!currentStatus) return;
-          
+
           const updated = {
             ...currentStatus,
             logs: [...(currentStatus.logs || []), messageData]
@@ -193,17 +157,18 @@ export function useDevServerManager(
           setDevServerStatus(updated);
         }
       } catch (err) {
-        console.error('[useDevServerManager] SSE parse error:', err);
+        console.error('[useDevServerManager] devServer handler error:', err);
       }
     };
 
-    eventSource.onerror = (err) => {
-      console.error('[useDevServerManager] SSE error:', err);
-      eventSource.close();
-      eventSourceRef.current = null;
-      setDevServerLoading(false);
+    sseManager.registerHandler('devServer', handler);
+    // Ensure unified SSE connection is active for current context (idempotent)
+    sseManager.connect(selectedProject, selectedFeature, (selectedJobType as any) || 'code');
+
+    return () => {
+      sseManager.unregisterHandler('devServer', handler);
     };
-  }, [setDevServerStatus, setDevServerLoading]);
+  }, [selectedProject, selectedFeature, selectedJobType, setDevServerStatus, setDevServerLoading]);
 
   // Start dev server
   const startServer = useCallback(async () => {
@@ -223,12 +188,12 @@ export function useDevServerManager(
     setProgress(undefined);
     
     try {
+      // ✅ Ensure we can show install/start progress immediately
+      setDevServerStatus({ running: false, ready: false, logs: [] } as any);
+      sseManager.connect(selectedProject, selectedFeature, (selectedJobType as any) || 'code');
+      
       await startDevServer(selectedProject, selectedFeature);
-      
-      // Setup SSE for real-time updates
-      setupSSE(selectedProject, selectedFeature);
-      
-      // Keep loading until SSE sends first status update
+      // Keep loading until backend reports running/ready or an error state is detected from logs.
     } catch (err: any) {
       // If validation failed, set status with validation info (for Fix button)
       if (err.setupReasoning) {
@@ -248,7 +213,7 @@ export function useDevServerManager(
       });
       setDevServerLoading(false);
     }
-  }, [selectedProject, selectedFeature, serverKey, setDevServerLoading, setupSSE, setDevServerStatus]);
+  }, [selectedProject, selectedFeature, serverKey, setDevServerLoading, setDevServerStatus, selectedJobType]);
 
   // Stop dev server
   const stopServer = useCallback(async () => {
@@ -260,12 +225,6 @@ export function useDevServerManager(
     
     try {
       await stopDevServer(selectedProject, selectedFeature);
-      
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
-      
       setDevServerStatus(undefined);
     } catch (err: any) {
       setError({

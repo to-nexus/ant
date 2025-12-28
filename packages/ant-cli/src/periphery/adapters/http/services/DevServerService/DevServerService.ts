@@ -505,7 +505,12 @@ export class DevServerService {
   /**
    * Spawn dev process for a package
    */
-  private async spawnDevProcess(pkg: PackageInfo, port: number, serverKey: string): Promise<ChildProcess> {
+  private async spawnDevProcess(
+    pkg: PackageInfo,
+    port: number,
+    serverKey: string,
+    extraEnv?: Record<string, string | undefined>
+  ): Promise<ChildProcess> {
     const pkgJson = pkg.packageJson;
     const devScript = pkgJson.scripts?.dev || pkgJson.scripts?.start;
     
@@ -537,14 +542,13 @@ export class DevServerService {
     }
     
     const env = {
-      PATH: process.env.PATH,
-      HOME: process.env.HOME,
-      USER: process.env.USER,
+      ...process.env,
       PORT: port.toString(),
       NODE_ENV: 'development',
       // ✅ Prevent auto-opening browser (Vite, CRA, Next.js)
       BROWSER: 'none',
       BROWSER_ARGS: '--no-sandbox',
+      ...(extraEnv || {})
     };
     
     logger.info(`Starting ${pkg.type}: ${pkg.name} on port ${port}`, { component: 'DevServerService' });
@@ -680,15 +684,34 @@ export class DevServerService {
       
       // 3. Allocate ports and start all dev servers
       const processes: ChildProcess[] = [];
+      let backendPort: number | undefined;
       
-      for (const pkg of structure.packages) {
+      // ✅ Start backend first so frontend can be configured with the correct API port
+      const orderedPackages = [...structure.packages].sort((a, b) => {
+        const prio = (p: PackageInfo) => (p.type === 'backend' ? 0 : p.type === 'frontend' ? 1 : 2);
+        return prio(a) - prio(b);
+      });
+      
+      for (const pkg of orderedPackages) {
         const pkgPort = this.portManager 
           ? await this.portManager.allocate() 
           : 3000 + processes.length;
         
         pkg.port = pkgPort;
         
-        const process = await this.spawnDevProcess(pkg, pkgPort, serverKey);
+        if (!backendPort && pkg.type === 'backend') {
+          backendPort = pkgPort;
+        }
+        
+        const extraEnv: Record<string, string | undefined> = {};
+        
+        // ✅ Inject backend port into frontend so in-app API clients can call the correct backend
+        // Keeps project source unchanged; only affects Ant-managed dev server sessions.
+        if (pkg.type === 'frontend' && backendPort) {
+          extraEnv.VITE_API_BASE_URL = `http://localhost:${backendPort}`;
+        }
+        
+        const process = await this.spawnDevProcess(pkg, pkgPort, serverKey, extraEnv);
         pkg.process = process;
         processes.push(process);
       }
