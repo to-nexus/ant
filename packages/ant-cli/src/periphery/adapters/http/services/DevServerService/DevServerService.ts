@@ -960,6 +960,14 @@ export class DevServerService {
     
     logger.info(`Stopped all servers for ${serverKey}`, { component: 'DevServerService' });
     
+    // ✅ Broadcast running:false so UI can immediately reflect stopped state without requiring refresh.
+    try {
+      const updatedStatus = this.getDevServerStatus(tenantId, userId, projectId, feature);
+      this.broadcastStatus(serverKey, updatedStatus);
+    } catch {
+      // Best-effort only
+    }
+    
     if (this.onStatusChange) {
       this.onStatusChange(serverKey);
     }
