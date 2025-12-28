@@ -176,9 +176,7 @@ export class DevServerService {
    */
   private async detectMonorepoStructure(localPath: string, rootPkgJson: any): Promise<ProjectStructure> {
     const packages: PackageInfo[] = [];
-    const workspacePatterns = Array.isArray(rootPkgJson.workspaces) 
-      ? rootPkgJson.workspaces 
-      : (rootPkgJson.workspaces.packages || []);
+    const workspacePatterns = this.getWorkspacePatterns(localPath, rootPkgJson);
     
     for (const pattern of workspacePatterns) {
       const resolvedPaths = await this.resolveWorkspacePattern(localPath, pattern);
@@ -222,6 +220,72 @@ export class DevServerService {
   }
   
   /**
+   * Get workspace patterns from package.json workspaces or pnpm-workspace.yaml
+   *
+   * ✅ Server-side source of truth for monorepo detection (UI should not special-case)
+   */
+  private getWorkspacePatterns(localPath: string, rootPkgJson: any): string[] {
+    // 1) package.json workspaces (yarn/npm/pnpm)
+    if (rootPkgJson?.workspaces) {
+      return Array.isArray(rootPkgJson.workspaces)
+        ? rootPkgJson.workspaces
+        : (rootPkgJson.workspaces.packages || []);
+    }
+    
+    // 2) pnpm-workspace.yaml
+    const pnpmWsPath = path.join(localPath, 'pnpm-workspace.yaml');
+    if (fs.existsSync(pnpmWsPath)) {
+      try {
+        const raw = fs.readFileSync(pnpmWsPath, 'utf8');
+        return this.parsePnpmWorkspaceYaml(raw);
+      } catch {
+        return [];
+      }
+    }
+    
+    return [];
+  }
+  
+  /**
+   * Minimal parser for pnpm-workspace.yaml
+   * We only need the "packages:" list (e.g. apps/*, packages/*).
+   *
+   * Example:
+   * packages:
+   *   - 'apps/*'
+   *   - "packages/*"
+   */
+  private parsePnpmWorkspaceYaml(yamlText: string): string[] {
+    const lines = yamlText.split(/\r?\n/);
+    const patterns: string[] = [];
+    let inPackages = false;
+    
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      
+      if (!inPackages) {
+        if (/^packages\s*:/.test(trimmed)) {
+          inPackages = true;
+        }
+        continue;
+      }
+      
+      // Stop when we hit another top-level key (non-list and no indentation)
+      if (!/^- /.test(trimmed) && /^[a-zA-Z0-9_-]+\s*:/.test(trimmed)) {
+        break;
+      }
+      
+      const m = trimmed.match(/^- \s*['"]?([^'"]+)['"]?\s*$/);
+      if (m?.[1]) {
+        patterns.push(m[1]);
+      }
+    }
+    
+    return patterns;
+  }
+  
+  /**
    * Detect project structure
    */
   private async detectProjectStructure(localPath: string): Promise<ProjectStructure> {
@@ -232,8 +296,9 @@ export class DevServerService {
     
     const rootPkgJson = JSON.parse(await fs.promises.readFile(rootPkgPath, 'utf-8'));
     
-    // Check if monorepo
-    if (rootPkgJson.workspaces) {
+    // Check if monorepo (package.json workspaces OR pnpm-workspace.yaml)
+    const workspacePatterns = this.getWorkspacePatterns(localPath, rootPkgJson);
+    if (workspacePatterns.length > 0) {
       return await this.detectMonorepoStructure(localPath, rootPkgJson);
     }
     
@@ -370,9 +435,11 @@ export class DevServerService {
    * Enhanced to verify critical dependencies are actually installed,
    * not just check if node_modules directory exists.
    */
-  private async installDependenciesIfNeeded(packagePath: string, serverKey: string): Promise<void> {
+  private async installDependenciesIfNeeded(packagePath: string, serverKey: string, displayName?: string): Promise<void> {
     const nodeModulesPath = path.join(packagePath, 'node_modules');
-    const relativePath = path.basename(packagePath);
+    // ✅ Use stable package name from structure detection to avoid UI progress double-counting
+    // (e.g., cloud projects where basename(packagePath) === "codebase" but package name is "root")
+    const relativePath = displayName || path.basename(packagePath);
     
     // Check if node_modules exists
     if (!fs.existsSync(nodeModulesPath)) {
@@ -507,12 +574,40 @@ export class DevServerService {
     
     childProcess.on('close', (code) => {
       logger.info(`Process exited PID=${childProcess.pid} code=${code}`, { component: 'DevServerService' });
-      this.appendLog(serverKey, 'stdout', `⚠️  ${pkg.name} exited with code ${code}`);
+      // ✅ Treat non-zero exits as errors so UI can surface failure reliably
+      if (code !== 0 && code !== null) {
+        this.appendLog(serverKey, 'stderr', `❌ ${pkg.name} exited with code ${code}`);
+      } else {
+        this.appendLog(serverKey, 'stdout', `⚠️  ${pkg.name} exited with code ${code}`);
+      }
+      
+      // ✅ Proactively broadcast status so frontend can stop "Starting..." even if health-check never completes
+      try {
+        const { tenantId, userId, projectId, feature } = this.parseServerKey(serverKey);
+        const updatedStatus = this.getDevServerStatus(tenantId, userId, projectId, feature);
+        this.broadcastStatus(serverKey, updatedStatus);
+      } catch (e: any) {
+        // Don't crash on exit handler
+      }
+      
+      // ✅ Best-effort: release the port if we allocated it
+      if (this.portManager) {
+        void Promise.resolve(this.portManager.release(port)).catch(() => {});
+      }
     });
     
     childProcess.on('error', (error) => {
       logger.error(`Process error PID=${childProcess.pid}: ${error.message}`, { component: 'DevServerService' }, error);
       this.appendLog(serverKey, 'stderr', `❌ ${pkg.name} error: ${error.message}`);
+      
+      // ✅ Broadcast status on process error as well
+      try {
+        const { tenantId, userId, projectId, feature } = this.parseServerKey(serverKey);
+        const updatedStatus = this.getDevServerStatus(tenantId, userId, projectId, feature);
+        this.broadcastStatus(serverKey, updatedStatus);
+      } catch (e: any) {
+        // Ignore
+      }
     });
     
     return childProcess;
@@ -578,7 +673,7 @@ export class DevServerService {
       
       // 2. Install dependencies for all packages
       for (const pkg of structure.packages) {
-        await this.installDependenciesIfNeeded(pkg.path, serverKey);
+        await this.installDependenciesIfNeeded(pkg.path, serverKey, pkg.name);
       }
       
       this.installingProjects.delete(serverKey);
@@ -840,7 +935,8 @@ export class DevServerService {
     // ✅ Register client with SSEService for future updates
     // Updates will come via SSEService.broadcast() calls from appendLog() and broadcastStatus()
     if (this.sseService) {
-      this.sseService.registerClient(projectId, feature, res);
+      // ✅ IMPORTANT: pass tenant/user to match broadcast scoping keys (cloud workspace isolation)
+      this.sseService.registerClient(projectId, feature, res, { organizationId: tenantId, userId, workspacePath: '' });
       logger.debug(`Client registered with SSEService`, { component: 'DevServerService', projectId, featureName: feature });
     }
   }

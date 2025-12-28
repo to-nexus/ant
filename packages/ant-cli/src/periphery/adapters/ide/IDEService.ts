@@ -43,6 +43,65 @@ export class IDEService {
     this.portRegistry = portRegistry;
   }
 
+  /**
+   * Stop+remove all IDE containers for a project (all features) and optionally delete the IDE home directory.
+   * This is the "Docker dashboard trash" equivalent triggered by project deletion.
+   */
+  async cleanupProject(userContext: UserContext, projectId: string, options?: { deleteHome?: boolean }): Promise<void> {
+    const tenantId = `${userContext.organizationId}:${userContext.userId}`;
+    const deleteHome = options?.deleteHome !== false; // default: true
+
+    // 1) Stop tracked instances (normal path)
+    const trackedKeys = Array.from(this.instances.keys()).filter(k => k.startsWith(`${tenantId}:${projectId}:`));
+    for (const key of trackedKeys) {
+      const parts = key.split(':');
+      const [orgId, userId, projId, ...featureParts] = parts;
+      const feat = featureParts.join(':') || 'main';
+      await this.stopIDE(`${orgId}:${userId}`, projId, feat).catch((e) => {
+        logger.warn(`Failed to stop tracked IDE during project cleanup`, { component: 'IDEService', organizationId: orgId, userId, projectId: projId, featureName: feat }, e);
+      });
+    }
+
+    // 2) Best-effort: remove any remaining containers by labels (covers server restarts)
+    // IMPORTANT: Do NOT use name-prefix matching. Project IDs like "ant-news" and "ant-news-desk"
+    // collide under prefix matching and can delete the wrong project's containers.
+    try {
+      const containers = await this.docker.listContainers({ all: true });
+      const matches = containers.filter(c => {
+        const labels = (c as any).Labels || {};
+        return labels['ant.kind'] === 'ide'
+          && labels['ant.org'] === userContext.organizationId
+          && labels['ant.user'] === userContext.userId
+          && labels['ant.project'] === projectId;
+      });
+      for (const cInfo of matches) {
+        try {
+          const c = this.docker.getContainer(cInfo.Id);
+          await c.stop().catch(() => undefined);
+          await c.remove({ force: true }).catch(() => undefined);
+          logger.info(`Removed IDE container (project cleanup)`, { component: 'IDEService', organizationId: userContext.organizationId, userId: userContext.userId, projectId }, { containerId: cInfo.Id, name: (cInfo.Names || [])[0] });
+        } catch (e) {
+          logger.warn(`Failed to remove IDE container (project cleanup)`, { component: 'IDEService', organizationId: userContext.organizationId, userId: userContext.userId, projectId }, e);
+        }
+      }
+    } catch (e) {
+      logger.warn(`Failed to scan/remove IDE containers (project cleanup)`, { component: 'IDEService', organizationId: userContext.organizationId, userId: userContext.userId, projectId }, e);
+    }
+
+    // 3) Delete IDE home directory (host) if requested
+    if (deleteHome) {
+      const ideHomeBase = process.env.ANT_IDE_HOME_BASE_PATH
+        || path.join(process.env.ANT_WORKSPACE_BASE_PATH || '/Users/probe/dev/ant-workspaces', '.ide-homes');
+      const ideHomeProjectPath = path.join(ideHomeBase, userContext.organizationId, userContext.userId, projectId);
+      try {
+        await fs.promises.rm(ideHomeProjectPath, { recursive: true, force: true });
+        logger.info(`Deleted IDE home directory (project cleanup)`, { component: 'IDEService', organizationId: userContext.organizationId, userId: userContext.userId, projectId }, { ideHomeProjectPath });
+      } catch (e) {
+        logger.warn(`Failed to delete IDE home directory (project cleanup)`, { component: 'IDEService', organizationId: userContext.organizationId, userId: userContext.userId, projectId }, e);
+      }
+    }
+  }
+
   private getProjectRootPath(projectId: string): string {
     // Always project mode:
     // - mount project codebase to /{projectId} (sanitized)
@@ -251,6 +310,13 @@ export class IDEService {
         // ✅ Make hostname human-readable so shell prompt isn't confusing across projects
         // NOTE: Hostname cannot contain ":" so we use a sanitized dash-separated form
         Hostname: hostname,
+        Labels: {
+          'ant.kind': 'ide',
+          'ant.org': userContext.organizationId,
+          'ant.user': userContext.userId,
+          'ant.project': projectId,
+          'ant.feature': feature,
+        },
         Env: [
           `USER_ID=${userContext.userId}`,
           `ORG_ID=${userContext.organizationId}`,

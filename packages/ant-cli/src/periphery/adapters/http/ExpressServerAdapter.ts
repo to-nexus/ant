@@ -503,7 +503,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     this.sseService = new SSEService();
     this.gitWatcherService = new (require('./services/GitWatcherService').GitWatcherService)(this.sseService, this.workspaceResolver);  // ✅ Initialize Git watcher
     this.chatService = new ChatService(this.workspacesPath, this.sseService, this.workspaceResolver);  // ✅ Initialize ChatService first
-    this.projectService = new ProjectService(this.workspaceResolver, this.githubAuthService, this.chatService, this.sseService);  // ✅ Inject SSEService for project-level events
+    this.projectService = new ProjectService(this.workspaceResolver, this.githubAuthService, this.chatService, this.sseService, this.ideService);  // ✅ Inject IDEService for project deletion cleanup
     this.devServerService = new DevServerService(
       this.portManager,  // ✅ Pass PortManager for dynamic port allocation
       this.portRegistry,  // ✅ Pass PortRegistry for port mapping storage

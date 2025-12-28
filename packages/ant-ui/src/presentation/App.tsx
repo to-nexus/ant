@@ -100,6 +100,35 @@ function App() {
 
     return () => clearTimeout(t);
   }, [mainView, ideBaseUrl, ideConnecting, ideFrameLoaded]);
+
+  // ✅ Refresh-safe: if we reload while in codeIde view, re-connect to IDE automatically.
+  useEffect(() => {
+    if (mainView !== 'codeIde') return;
+    if (!selectedProject) return;
+    if (ideBaseUrl) return;
+    if (ideConnecting) return;
+
+    (async () => {
+      try {
+        useStore.getState().setIdeConnecting(true);
+        useStore.getState().setIdeFrameLoaded(false);
+        useStore.getState().setIdeWorkspacePath(`/${selectedProject}`);
+
+        const { startCloudIDE } = await import('@/infrastructure/http/api');
+        const featureName = selectedFeature || 'main';
+        const { instance } = await startCloudIDE(selectedProject, featureName);
+
+        const fallbackDirectUrl = `${window.location.protocol}//${window.location.hostname}:${instance.port}`;
+        useStore.getState().setIdeBaseUrl(instance.directUrl || fallbackDirectUrl);
+        useStore.getState().setIdeWorkspacePath(instance.workspacePath || `/${selectedProject}`);
+        useStore.getState().reloadIdeFrame();
+      } catch (e: any) {
+        useStore.getState().setIdeConnecting(false, e?.message || 'Failed to reconnect IDE');
+        return;
+      }
+      useStore.getState().setIdeConnecting(false);
+    })();
+  }, [mainView, selectedProject, selectedFeature, ideBaseUrl, ideConnecting]);
   
   // ✅ Domain data (via Application Hooks)
   const { kanbanData } = useKanban();
@@ -109,40 +138,9 @@ function App() {
   // Only run when mainView changes to 'codeIde', not when ideWorkspacePath changes
   useEffect(() => {
     if (mainView === 'codeIde' && !ideWorkspacePath && selectedProject) {
-      // Lazy load workspace path when editor is opened
-      (async () => {
-        try {
-          const { fetchProjectConfig } = await import('@/infrastructure/http/api');
-          const { getCodebasePath } = await import('@/shared/utils/workspace-path');
-          
-          const config = await fetchProjectConfig(selectedProject);
-          if (!config) {
-            console.error('[App] Failed to load project config');
-            return;
-          }
-          
-          let workspacePath: string;
-          
-          if (config.repoType === 'cloud') {
-            // Docker mount: $HOME:/workspace → /Users/probe → /workspace
-            // Backend workspace: /Users/probe/ant-workspaces/...
-            // IDE workspace: /workspace/ant-workspaces/...
-            const codebasePath = getCodebasePath(selectedProject, config);
-            workspacePath = `/workspace/${codebasePath}`;
-          } else {
-            if (!config.localPath) return;
-            workspacePath = config.localPath.startsWith('~/')
-              ? config.localPath.replace('~', '/workspace')
-              : config.localPath.startsWith('~')
-              ? config.localPath.replace('~', '/workspace')
-              : `/workspace${config.localPath}`;
-          }
-          
-          setIdeWorkspacePath(workspacePath);
-        } catch (error) {
-          console.error('[App] Failed to load IDE workspace path:', error);
-        }
-      })();
+      // ✅ Cloud IDE containers mount the project at /{projectId} (project-mode fixed).
+      // Avoid legacy /workspace/... mapping which causes "Workspace does not exist" after refresh.
+      setIdeWorkspacePath(`/${selectedProject}`);
     }
   // ✅ Remove ideWorkspacePath from dependencies to prevent double render
   // eslint-disable-next-line react-hooks/exhaustive-deps

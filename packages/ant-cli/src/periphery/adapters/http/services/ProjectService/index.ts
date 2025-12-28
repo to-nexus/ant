@@ -3,6 +3,7 @@ import { UserContext } from '../../../../../core/types/user';
 import { GitHubAuthService } from '../../../auth/GitHubAuthService';
 import { ChatService } from '../ChatService';
 import { SSEService } from '../SSEService';
+import type { IDEService } from '../../ide/IDEService';
 
 // Import sub-services
 import { ProjectCrudService } from './ProjectCrudService';
@@ -27,6 +28,7 @@ export class ProjectService {
   private readonly githubAuthService?: GitHubAuthService;
   private readonly chatService?: ChatService;
   private readonly sseService?: SSEService;
+  private readonly ideService?: IDEService;
   
   // Sub-services
   private readonly projectCrud: ProjectCrudService;
@@ -38,12 +40,14 @@ export class ProjectService {
     workspaceResolver: WorkspaceResolver,
     githubAuthService?: GitHubAuthService,
     chatService?: ChatService,
-    sseService?: SSEService
+    sseService?: SSEService,
+    ideService?: IDEService
   ) {
     this.workspaceResolver = workspaceResolver;
     this.githubAuthService = githubAuthService;
     this.chatService = chatService;
     this.sseService = sseService;
+    this.ideService = ideService;
     
     // Initialize sub-services
     this.projectCrud = new ProjectCrudService(workspaceResolver);
@@ -70,6 +74,10 @@ export class ProjectService {
   }
   
   async deleteProject(id: string, userContext: UserContext): Promise<void> {
+    // ✅ Cleanup IDE resources first (stop+remove containers, delete IDE home) to avoid dangling resources
+    if (this.ideService) {
+      await this.ideService.cleanupProject(userContext, id, { deleteHome: true });
+    }
     return this.projectCrud.deleteProject(id, userContext);
   }
   

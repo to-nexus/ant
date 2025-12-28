@@ -31,6 +31,9 @@ function initializePersistentState() {
   const userOrganization = loadFromStorage(STORAGE_KEYS.USER_ORGANIZATION);
   const dismissedInterruptTimestamp = loadFromStorage(STORAGE_KEYS.DISMISSED_INTERRUPT_TIMESTAMP);
   const storedMainView = loadFromStorage(STORAGE_KEYS.MAIN_VIEW);
+  const selectedProject = loadFromStorage(STORAGE_KEYS.SELECTED_PROJECT) as string | null;
+  const projectLastFeatures = loadFromStorage(STORAGE_KEYS.PROJECT_LAST_FEATURES) as Record<string, string | undefined> | null;
+  const selectedFeature = selectedProject && projectLastFeatures ? (projectLastFeatures[selectedProject] as any) : undefined;
   // Backward-compat mapping: 'editor' -> 'codeIde'
   const normalizedMainView = storedMainView === 'editor' ? 'codeIde' : storedMainView;
   const mainView = (normalizedMainView === 'codeIde' || normalizedMainView === 'agents') ? normalizedMainView : 'agents';
@@ -40,6 +43,8 @@ function initializePersistentState() {
     userOrganization,
     dismissedInterruptTimestamp,
     mainView,
+    selectedProject: selectedProject || undefined,
+    selectedFeature,
   };
 }
 
@@ -65,6 +70,8 @@ export const useStore = create<Store>((set, get, store) => {
     userOrganization: persistent.userOrganization,
     dismissedInterruptTimestamp: persistent.dismissedInterruptTimestamp,
     mainView: persistent.mainView,
+    selectedProject: persistent.selectedProject,
+    selectedFeature: persistent.selectedFeature,
   };
 });
 
