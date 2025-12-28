@@ -7,6 +7,7 @@ import { WorkspaceResolver } from '../../../../infrastructure/workspace/Workspac
 import * as path from 'path';
 import * as os from 'os';
 import * as net from 'net';
+import { logger } from '../../../../utils/logger';
 
 /**
  * Find an available port starting from the given port
@@ -64,9 +65,9 @@ export function createDevServerRoutes(deps: {
       const feature = req.body?.feature || 'main';
       
       if (port !== undefined) {
-        console.log(`[DevServer] Requested port: ${port}`);
+        logger.debug(`Requested port: ${port}`, { component: 'DevServerRoutes', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature });
       }
-      console.log(`[DevServer] Feature: ${feature}`);
+      logger.debug(`Feature: ${feature}`, { component: 'DevServerRoutes', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature });
       
       // ✅ Determine codebase path based on repoType
       let codebasePath: string;
@@ -77,7 +78,7 @@ export function createDevServerRoutes(deps: {
         const projectPath = deps.workspaceResolver.getProjectPath(userContext, projectId);
         codebasePath = path.join(projectPath, 'codebase');
         
-        console.log(`[DevServer] Cloud mode - calculated codebase path: ${codebasePath}`);
+        logger.debug(`Cloud mode - codebase path calculated`, { component: 'DevServerRoutes', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature }, { codebasePath });
       } else {
         // ✅ Local Mode: Use localPath from config
         if (!config?.localPath) {
@@ -90,7 +91,7 @@ export function createDevServerRoutes(deps: {
           ? path.join(os.homedir(), config.localPath.slice(1))
           : path.resolve(config.localPath);
         
-        console.log(`[DevServer] Local mode - using config localPath: ${codebasePath}`);
+        logger.debug(`Local mode - codebase path resolved`, { component: 'DevServerRoutes', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature }, { codebasePath });
       }
       
       // ✅ Start dev server with multi-tenancy support

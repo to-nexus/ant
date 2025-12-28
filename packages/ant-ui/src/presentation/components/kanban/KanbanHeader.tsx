@@ -241,6 +241,7 @@ interface TokenUsageBadgeProps {
  * 
  * ✅ Shows badge whenever jobId exists (like ElapsedTimeBadge with jobTiming)
  * ✅ Handles stopped/interrupted jobs gracefully (shows accumulated usage)
+ * ✅ Shows even with 0 tokens to indicate tracking is active
  */
 export function TokenUsageBadge({ jobId, tokenUsage, completedTasks, inProgressTask }: TokenUsageBadgeProps) {
   // ✅ Show badge if job exists (like ElapsedTimeBadge)
@@ -248,15 +249,15 @@ export function TokenUsageBadge({ jobId, tokenUsage, completedTasks, inProgressT
     return null;
   }
 
-  // ✅ Handle case where tokenUsage is not available yet
-  const hasTokenData = tokenUsage && tokenUsage.totalTokens > 0;
+  // ✅ Show badge even if no token data yet (will show 0)
+  const hasTokenData = tokenUsage && tokenUsage.totalTokens >= 0;
 
-  // Calculate breakdown (only if we have data)
-  const completedTasksTotal = hasTokenData ? (completedTasks?.reduce((sum, task) => {
+  // Calculate breakdown (include all tasks, even if no token data yet)
+  const completedTasksTotal = completedTasks?.reduce((sum, task) => {
     return sum + (task.tokenUsage?.totalTokens || 0);
-  }, 0) || 0) : 0;
+  }, 0) || 0;
   
-  const inProgressTokens = hasTokenData ? (inProgressTask?.tokenUsage?.totalTokens || 0) : 0;
+  const inProgressTokens = inProgressTask?.tokenUsage?.totalTokens || 0;
   const tasksTotal = completedTasksTotal + inProgressTokens;
 
   // Estimating nodes (detectEnv + decompose) = total - tasks

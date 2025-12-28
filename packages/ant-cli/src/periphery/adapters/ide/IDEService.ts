@@ -9,6 +9,10 @@ import Docker from 'dockerode';
 import { UserContext } from '../../../core/types/user';
 import { PortManager } from '../../../infrastructure/networking/PortManager';
 import { PortRegistryPort } from '../../../core/ports/portRegistry';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as net from 'net';
+import { logger } from '../../../utils/logger';
 
 export interface IDEInstance {
   containerId: string;
@@ -30,12 +34,128 @@ export class IDEService {
   private idleCheckInterval?: NodeJS.Timeout;
   
   private readonly IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes
-  private readonly IMAGE = 'codercom/code-server:latest';
+  // ✅ Default to OpenVSCode Server (matches @ant/ide usage). Override via ANT_IDE_IMAGE.
+  private readonly IMAGE = process.env.ANT_IDE_IMAGE || 'gitpod/openvscode-server:latest';
   
   constructor(portManager: PortManager, portRegistry: PortRegistryPort) {
     this.docker = new Docker();
     this.portManager = portManager;
     this.portRegistry = portRegistry;
+  }
+
+  private getProjectRootPath(projectId: string): string {
+    // Always project mode:
+    // - mount project codebase to /{projectId} (sanitized)
+    // - avoid colliding with system directory names
+    const reserved = new Set([
+      'bin', 'sbin', 'etc', 'usr', 'lib', 'lib64', 'proc', 'sys', 'dev', 'run', 'var', 'tmp', 'opt', 'home', 'root',
+    ]);
+    const safeProject = projectId
+      .replace(/[^a-zA-Z0-9_.-]/g, '-')
+      .replace(/^\.+/, '')
+      .slice(0, 48) || 'project';
+    const normalized = reserved.has(safeProject) ? `project-${safeProject}` : safeProject;
+    return `/${normalized}`;
+  }
+
+  private getInitialHostname(userContext: UserContext, projectId: string): string {
+    // Hostname constraints:
+    // - cannot contain ":"
+    // - if it contains ".", bash prompt (\h) may display only first label before "."
+    // Modes:
+    // - (default): {user} only (requested) - keep prompt minimal; project is visible via cwd
+    // - containerid: initial ant-ide, then best-effort exec to set containerId after start
+    const mode = (process.env.ANT_IDE_HOSTNAME_MODE || '').toLowerCase();
+    if (mode === 'containerid') return 'ant-ide';
+
+    const raw = `${userContext.userId}`;
+    return raw
+      .replace(/[^a-zA-Z0-9-]/g, '-') // also converts dots to dashes
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 63) || 'ant-ide';
+  }
+
+  private withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+      promise
+        .then((v) => {
+          clearTimeout(t);
+          resolve(v);
+        })
+        .catch((e) => {
+          clearTimeout(t);
+          reject(e);
+        });
+    });
+  }
+
+  private async setContainerHostname(container: Docker.Container, hostname: string): Promise<void> {
+    // Best-effort: not all images allow changing hostname at runtime, but with root it usually works.
+    try {
+      const safe = hostname.replace(/[^a-zA-Z0-9_.-]/g, '-').slice(0, 63);
+      const exec = await container.exec({
+        Cmd: ['/bin/sh', '-lc', `hostname ${safe}`],
+        AttachStdout: true,
+        AttachStderr: true,
+        User: 'root',
+      });
+      await new Promise<void>((resolve, reject) => {
+        exec.start({} as any, (err: any, stream: any) => {
+          if (err) return reject(err);
+          if (!stream) return resolve();
+          // Drain stream so 'end' reliably fires
+          try { stream.resume?.(); } catch {}
+          stream.on('end', resolve);
+          stream.on('error', reject);
+        });
+      });
+    } catch (e) {
+      logger.debug(`Failed to set container hostname (ignored)`, { component: 'IDEService' }, e);
+    }
+  }
+
+  private async waitForIdePortReady(port: number, timeoutMs: number = 30_000): Promise<void> {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const ok = await new Promise<boolean>((resolve) => {
+        const socket = net.createConnection({ host: '127.0.0.1', port });
+        const done = (result: boolean) => {
+          socket.removeAllListeners();
+          socket.destroy();
+          resolve(result);
+        };
+        socket.setTimeout(800);
+        socket.once('connect', () => done(true));
+        socket.once('timeout', () => done(false));
+        socket.once('error', () => done(false));
+      });
+      if (ok) return;
+      await new Promise(r => setTimeout(r, 300));
+    }
+    throw new Error(`IDE port not ready in ${timeoutMs}ms (port=${port})`);
+  }
+
+  // ✅ More strict readiness: confirm the HTTP server responds (prevents "connection reset" first load)
+  private async waitForIdeHttpReady(port: number, timeoutMs: number = 15_000): Promise<void> {
+    const start = Date.now();
+    const url = `http://127.0.0.1:${port}/`;
+    while (Date.now() - start < timeoutMs) {
+      const controller = new AbortController();
+      const t = setTimeout(() => controller.abort(), 1000);
+      try {
+        const res = await fetch(url, { method: 'GET', signal: controller.signal });
+        // 200/302/401 etc are fine; we just want the server to be alive and speaking HTTP.
+        if (res.status > 0 && res.status < 500) return;
+      } catch {
+        // ignore until ready
+      } finally {
+        clearTimeout(t);
+      }
+      await new Promise(r => setTimeout(r, 300));
+    }
+    throw new Error(`IDE HTTP not ready in ${timeoutMs}ms (port=${port})`);
   }
   
   /**
@@ -44,6 +164,10 @@ export class IDEService {
   async startIDE(userContext: UserContext, projectId: string, workspacePath: string, feature: string = 'main'): Promise<IDEInstance> {
     const tenantId = `${userContext.organizationId}:${userContext.userId}`;
     const key = `${tenantId}:${projectId}:${feature}`;
+
+    const sanitize = (value: string) => value.replace(/[^a-zA-Z0-9_.-]/g, '-');
+    const containerName = sanitize(`ant-ide-${userContext.organizationId}-${userContext.userId}-${projectId}-${feature}`);
+    const hostname = this.getInitialHostname(userContext, projectId);
     
     // Check if already running
     const existing = this.instances.get(key);
@@ -59,25 +183,32 @@ export class IDEService {
         'ide'
       );
       
-      console.log(`[IDEService] IDE already running: ${key}`);
+      logger.info(`IDE already running`, { component: 'IDEService', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature });
       return existing;
     }
     
-    console.log(`[IDEService] Starting IDE: ${key}`);
-    console.log(`[IDEService] Host workspace path: ${workspacePath}`);
+    logger.info(`Starting IDE`, { component: 'IDEService', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature }, { workspacePath });
     
     // Allocate port
     const port = await this.portManager.allocate();
+    logger.debug(`IDE port allocated`, { component: 'IDEService', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature }, { port });
     
-    // ✅ Get workspace base path from environment
-    const workspaceBasePath = process.env.ANT_WORKSPACE_BASE_PATH || '/Users/probe/dev/ant-workspaces';
-    console.log(`[IDEService] Workspace base path: ${workspaceBasePath}`);
+    // ✅ Always project mode (requested): /{projectId}
+    const dockerWorkspacePath = this.getProjectRootPath(projectId);
+    logger.debug(`IDE workspace path resolved`, { component: 'IDEService', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature }, { dockerWorkspacePath });
     
-    // ✅ Calculate Docker internal path
-    // Host: /Users/probe/dev/ant-workspaces/org/user/project/codebase
-    // Docker: /workspace/org/user/project/codebase
-    const dockerWorkspacePath = workspacePath.replace(workspaceBasePath, '/workspace');
-    console.log(`[IDEService] Docker workspace path: ${dockerWorkspacePath}`);
+    const ideHomeBase = process.env.ANT_IDE_HOME_BASE_PATH
+      || path.join(process.env.ANT_WORKSPACE_BASE_PATH || '/Users/probe/dev/ant-workspaces', '.ide-homes');
+    const ideHomeHostPath = path.join(
+      ideHomeBase,
+      userContext.organizationId,
+      userContext.userId,
+      projectId,
+      feature
+    );
+    
+    // Ensure per-project home exists (persists extensions/settings per project)
+    await fs.promises.mkdir(ideHomeHostPath, { recursive: true });
     
     try {
       // Register in PortRegistry
@@ -88,25 +219,65 @@ export class IDEService {
         feature,
         port
       );
+      logger.debug(`IDE registered in PortRegistry`, { component: 'IDEService', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature }, { port });
+
+      // ✅ Defensive: if a previous container with the same name exists (server restart),
+      // remove it to avoid "Conflict. The container name is already in use".
+      try {
+        const existingContainers = await this.docker.listContainers({ all: true });
+        const sameName = existingContainers.find(c => (c.Names || []).includes(`/${containerName}`));
+        if (sameName) {
+          logger.warn(`Removing existing IDE container with same name`, {
+            component: 'IDEService',
+            organizationId: userContext.organizationId,
+            userId: userContext.userId,
+            projectId,
+            featureName: feature
+          }, { containerName, containerId: sameName.Id });
+          const c = this.docker.getContainer(sameName.Id);
+          // stop may fail if not running
+          await c.stop().catch(() => undefined);
+          await c.remove({ force: true }).catch(() => undefined);
+        }
+      } catch (e) {
+        logger.debug(`Container pre-cleanup skipped`, { component: 'IDEService' }, e);
+      }
       
       // Create container
-      const container = await this.docker.createContainer({
+      const createContainer = async () => {
+        return await this.docker.createContainer({
         Image: this.IMAGE,
+        name: containerName,
+        // ✅ Make hostname human-readable so shell prompt isn't confusing across projects
+        // NOTE: Hostname cannot contain ":" so we use a sanitized dash-separated form
+        Hostname: hostname,
         Env: [
           `USER_ID=${userContext.userId}`,
           `ORG_ID=${userContext.organizationId}`,
           `PROJECT_ID=${projectId}`,
           `FEATURE=${feature}`,
-          'PASSWORD=temp123', // TODO: Generate secure password
+          // ✅ Ensure the IDE opens the mounted project as the workspace root
+          // (Some code-server/openvscode distributions honor DEFAULT_WORKSPACE)
+          `DEFAULT_WORKSPACE=${dockerWorkspacePath}`,
+          `WORKSPACE=${dockerWorkspacePath}`,
+          // NOTE: openvscode-server doesn't require PASSWORD by default.
         ],
         ExposedPorts: {
-          '8080/tcp': {}
+          // gitpod/openvscode-server listens on 3000 by default
+          '3000/tcp': {}
         },
         HostConfig: {
-          // ✅ Mount entire workspace base directory
-          Binds: [`${workspaceBasePath}:/workspace:rw`],
+          // ✅ Mount ONLY this project (project isolation)
+          // workspacePath is expected to be the project root directory in host
+          Binds: [
+            `${workspacePath}:${dockerWorkspacePath}:rw`,
+            // ✅ Support both images: some use /home/coder, others use /home/openvscode (openvscode-server)
+            `${ideHomeHostPath}:/home/coder:rw`,
+            `${ideHomeHostPath}:/home/openvscode:rw`,
+            `${ideHomeHostPath}:/home/openvscode-server:rw`
+          ],
           PortBindings: {
-            '8080/tcp': [{ HostPort: port.toString() }]
+            '3000/tcp': [{ HostPort: port.toString() }]
           },
           Memory: 2 * 1024 * 1024 * 1024, // 2GB
           NanoCpus: 2 * 1000000000, // 2 CPUs
@@ -114,9 +285,50 @@ export class IDEService {
         // ✅ Set working directory to specific project
         WorkingDir: dockerWorkspacePath
       });
+      };
+
+      let container: Docker.Container;
+      try {
+        container = await this.withTimeout(createContainer(), 20_000, 'docker.createContainer');
+      } catch (err: any) {
+        const msg = String(err?.message || err);
+        // ✅ Auto-pull image if missing, then retry once
+        if (msg.includes('No such image') || msg.includes('no such image')) {
+          logger.warn(`IDE image missing. Pulling...`, { component: 'IDEService' }, { image: this.IMAGE });
+          await new Promise<void>((resolve, reject) => {
+            this.docker.pull(this.IMAGE, (pullErr: any, stream: any) => {
+              if (pullErr) return reject(pullErr);
+              if (!stream) return resolve();
+              this.docker.modem.followProgress(stream, (progressErr: any) => {
+                if (progressErr) reject(progressErr);
+                else resolve();
+              });
+            });
+          });
+          container = await this.withTimeout(createContainer(), 20_000, 'docker.createContainer(afterPull)');
+        } else {
+          throw err;
+        }
+      }
+      
+      logger.debug(`IDE container created`, { component: 'IDEService', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature }, { containerId: (container as any)?.id, containerName, image: this.IMAGE });
       
       // Start container
-      await container.start();
+      await this.withTimeout(container.start(), 30_000, 'docker.container.start');
+      logger.debug(`IDE container started`, { component: 'IDEService', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature }, { port });
+      
+      // ✅ Optional: set hostname to containerId (best-effort, never blocks)
+      if ((process.env.ANT_IDE_HOSTNAME_MODE || '').toLowerCase() === 'containerid') {
+        this.setContainerHostname(container, container.id.slice(0, 12)).catch(() => undefined);
+      }
+      
+      // ✅ Wait until the port is accepting connections (prevents iframe race)
+      await this.withTimeout(this.waitForIdePortReady(port), 30_000, 'ide.portReady');
+      logger.debug(`IDE port is ready`, { component: 'IDEService', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature }, { port });
+
+      // ✅ Then wait for HTTP response (short bounded) to avoid first-load "connection reset" in iframe.
+      await this.withTimeout(this.waitForIdeHttpReady(port), 20_000, 'ide.httpReady');
+      logger.debug(`IDE HTTP is ready`, { component: 'IDEService', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature }, { port });
       
       const instance: IDEInstance = {
         containerId: container.id,
@@ -132,11 +344,12 @@ export class IDEService {
       
       this.instances.set(key, instance);
       
-      console.log(`[IDEService] ✅ IDE started: ${key} on port ${port}`);
+      logger.info(`IDE started on port ${port}`, { component: 'IDEService', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature });
       
       return instance;
       
     } catch (error) {
+      logger.error(`Failed to start IDE`, { component: 'IDEService', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature }, error);
       // Rollback port allocation and registry
       this.portManager.release(port);
       await this.portRegistry.unregisterIDE(
@@ -157,11 +370,11 @@ export class IDEService {
     const instance = this.instances.get(key);
     
     if (!instance) {
-      console.log(`[IDEService] IDE not found: ${key}`);
+      logger.debug(`IDE not found: ${key}`, { component: 'IDEService' });
       return;
     }
     
-    console.log(`[IDEService] Stopping IDE: ${key}`);
+    logger.info(`Stopping IDE: ${key}`, { component: 'IDEService' });
     
     try {
       const container = this.docker.getContainer(instance.containerId);
@@ -177,10 +390,10 @@ export class IDEService {
       
       this.instances.delete(key);
       
-      console.log(`[IDEService] ✅ IDE stopped: ${key}`);
+      logger.info(`IDE stopped: ${key}`, { component: 'IDEService' });
       
     } catch (error) {
-      console.error(`[IDEService] ❌ Failed to stop IDE: ${key}`, error);
+      logger.error(`Failed to stop IDE: ${key}`, { component: 'IDEService' }, error);
       throw error;
     }
   }
@@ -225,7 +438,7 @@ export class IDEService {
       await this.checkIdleContainers();
     }, 60 * 1000); // Check every minute
     
-    console.log(`[IDEService] Idle checker started (timeout: ${this.IDLE_TIMEOUT / 1000}s)`);
+    logger.info(`Idle checker started (timeout: ${this.IDLE_TIMEOUT / 1000}s)`, { component: 'IDEService' });
   }
   
   /**
@@ -235,7 +448,7 @@ export class IDEService {
     if (this.idleCheckInterval) {
       clearInterval(this.idleCheckInterval);
       this.idleCheckInterval = undefined;
-      console.log(`[IDEService] Idle checker stopped`);
+      logger.info(`Idle checker stopped`, { component: 'IDEService' });
     }
   }
   
@@ -249,14 +462,18 @@ export class IDEService {
       const idleTime = now - instance.lastAccessedAt.getTime();
       
       if (idleTime > this.IDLE_TIMEOUT) {
-        console.log(`[IDEService] 💤 Stopping idle IDE: ${key} (idle: ${Math.round(idleTime / 1000)}s)`);
+        logger.info(`Stopping idle IDE: ${key} (idle: ${Math.round(idleTime / 1000)}s)`, { component: 'IDEService' });
         
         try {
-          const [tenantId, projectId, feature] = key.split(':');
-          const fullTenantId = `${tenantId}:${projectId}`;  // Reconstruct full tenantId
-          await this.stopIDE(fullTenantId, feature || 'main', feature || 'main');
+          const parts = key.split(':');
+          if (parts.length >= 3) {
+            const [orgId, userId, projId, ...featureParts] = parts;
+            const tenantId = `${orgId}:${userId}`;
+            const feat = featureParts.join(':') || 'main';
+            await this.stopIDE(tenantId, projId, feat);
+          }
         } catch (error) {
-          console.error(`[IDEService] Failed to stop idle IDE: ${key}`, error);
+          logger.warn(`Failed to stop idle IDE: ${key}`, { component: 'IDEService' }, error);
         }
       }
     }
@@ -266,7 +483,7 @@ export class IDEService {
    * Cleanup all IDEs
    */
   async cleanup(): Promise<void> {
-    console.log(`[IDEService] Cleaning up all IDEs...`);
+    logger.info(`Cleaning up all IDEs...`, { component: 'IDEService' });
     
     this.stopIdleChecker();
     
@@ -282,12 +499,12 @@ export class IDEService {
         try {
           await this.stopIDE(tenantId, projectId, feature);
         } catch (error) {
-          console.error(`[IDEService] Failed to cleanup IDE: ${key}`, error);
+          logger.warn(`Failed to cleanup IDE: ${key}`, { component: 'IDEService' }, error);
         }
       }
     }
     
-    console.log(`[IDEService] ✅ Cleanup complete`);
+    logger.info(`Cleanup complete`, { component: 'IDEService' });
   }
 }
 

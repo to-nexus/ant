@@ -10,6 +10,7 @@ import type { SessionPersistence } from './SessionPersistence';
 import type { MessageBroadcaster } from './MessageBroadcaster';
 import type { ContentMerger } from './ContentMerger';
 import type { UserContext } from '../../../../../core/types/user';
+import { logger } from '../../../../../utils/logger';
 
 export class MessageManager {
   constructor(
@@ -52,7 +53,7 @@ export class MessageManager {
     this.broadcaster.broadcast(projectId, featureName, {
       type: 'user_message',
       message: userMessage
-    });
+    }, session.userContext);
     
     return messageId;
   }
@@ -89,7 +90,7 @@ export class MessageManager {
     this.broadcaster.broadcast(projectId, featureName, {
       type: 'message_start',
       message: newMessage
-    });
+    }, session.userContext);
 
     return messageId;
   }
@@ -105,7 +106,7 @@ export class MessageManager {
   ): number {
     const session = this.sessionManager.getSession(projectId, featureName);
     if (!session) {
-      console.warn('⚠️  [MessageManager] No session found');
+      logger.warn('No session found', { component: 'MessageManager', projectId, featureName });
       return -1;
     }
 
@@ -135,7 +136,7 @@ export class MessageManager {
     this.broadcaster.broadcast(projectId, featureName, {
       type: 'message_complete',
       messageId: session.currentMessage.id
-    });
+    }, session.userContext);
 
     session.currentMessage = undefined;
   }
@@ -173,9 +174,9 @@ export class MessageManager {
     this.broadcaster.broadcast(projectId, featureName, {
       type: 'error_message',
       message: errorMsg
-    });
+    }, session.userContext);
     
-    console.log(`❌ [MessageManager] Added job error message: ${messageId}`);
+    logger.debug(`Added job error message: ${messageId}`, { component: 'MessageManager', projectId, featureName, jobId });
     return messageId;
   }
 
@@ -217,9 +218,9 @@ export class MessageManager {
     this.broadcaster.broadcast(projectId, featureName, {
       type: 'cancelled_message',
       message: cancelledMsg
-    });
+    }, session.userContext);
     
-    console.log(`🛑 [MessageManager] Added cancelled message: ${messageId} (reason: ${reason})`);
+    logger.debug(`Added cancelled message: ${messageId} (reason: ${reason})`, { component: 'MessageManager', projectId, featureName, jobId });
     return messageId;
   }
 }

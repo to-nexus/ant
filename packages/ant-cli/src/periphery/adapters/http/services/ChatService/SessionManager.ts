@@ -10,6 +10,7 @@ import type { ChatSession, ChatMessage } from './types';
 import type { UserContext } from '../../../../../core/types/user';
 import type { SessionPersistence } from './SessionPersistence';
 import type { MessageBroadcaster } from './MessageBroadcaster';
+import { logger } from '../../../../../utils/logger';
 
 export class SessionManager {
   private sessions = new Map<string, ChatSession>();
@@ -52,7 +53,7 @@ export class SessionManager {
       });
       
       if (fileSession) {
-        console.log(`💬 [SessionManager] Loaded ${fileSession.messages.length} messages from file for ${key}`);
+        logger.debug(`Loaded ${fileSession.messages.length} messages from file`, { component: 'SessionManager', projectId, featureName });
       }
       
       // Start watching the chat file for external changes
@@ -129,7 +130,7 @@ export class SessionManager {
       // Broadcast to frontend
       this.broadcaster?.broadcast(projectId, featureName, {
         type: 'messages_cleared'
-      });
+      }, session.userContext);
     }
   }
 
@@ -153,7 +154,7 @@ export class SessionManager {
         if (filename === 'chat.json') {
           // Check if file was deleted
           if (!fs.existsSync(filePath)) {
-            console.log(`🗑️  [SessionManager] Detected external deletion of chat file: ${key}`);
+            logger.info(`Detected external deletion of chat file`, { component: 'SessionManager', projectId, featureName });
             
             // Clear in-memory session
             const session = this.sessions.get(key);
@@ -165,21 +166,21 @@ export class SessionManager {
             // Broadcast to frontend
             this.broadcaster?.broadcast(projectId, featureName, {
               type: 'messages_cleared'
-            });
+            }, session?.userContext);
           }
         }
       });
       
       this.fileWatchers.set(key, watcher);
-      console.log(`👁️  [SessionManager] Started watching chat file: ${key}`);
+      logger.debug(`Started watching chat file`, { component: 'SessionManager', projectId, featureName });
       
       // Clean up watcher on error
       watcher.on('error', (error) => {
-        console.error(`❌ [SessionManager] File watcher error for ${key}:`, error);
+        logger.warn(`File watcher error`, { component: 'SessionManager', projectId, featureName }, error);
         this.stopWatchingChatFile(projectId, featureName);
       });
     } catch (error) {
-      console.warn(`⚠️  [SessionManager] Failed to start watching chat file for ${key}:`, error);
+      logger.warn(`Failed to start watching chat file`, { component: 'SessionManager', projectId, featureName }, error);
     }
   }
 
@@ -193,7 +194,7 @@ export class SessionManager {
     if (watcher) {
       watcher.close();
       this.fileWatchers.delete(key);
-      console.log(`👁️❌ [SessionManager] Stopped watching chat file: ${key}`);
+      logger.debug(`Stopped watching chat file`, { component: 'SessionManager', projectId, featureName });
     }
   }
 
@@ -201,19 +202,19 @@ export class SessionManager {
    * Cleanup method - stop all watchers (call on server shutdown)
    */
   cleanup(): void {
-    console.log(`🧹 [SessionManager] Cleaning up ${this.fileWatchers.size} file watchers...`);
+    logger.info(`Cleaning up ${this.fileWatchers.size} file watchers...`, { component: 'SessionManager' });
     
     for (const [key, watcher] of this.fileWatchers.entries()) {
       try {
         watcher.close();
-        console.log(`👁️❌ [SessionManager] Closed watcher: ${key}`);
+        logger.debug(`Closed watcher: ${key}`, { component: 'SessionManager' });
       } catch (error) {
-        console.warn(`⚠️  [SessionManager] Error closing watcher for ${key}:`, error);
+        logger.warn(`Error closing watcher for ${key}`, { component: 'SessionManager' }, error);
       }
     }
     
     this.fileWatchers.clear();
-    console.log(`✅ [SessionManager] Cleanup complete`);
+    logger.info(`Cleanup complete`, { component: 'SessionManager' });
   }
 }
 

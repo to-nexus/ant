@@ -8,6 +8,7 @@
 import type { MessageContent, ChatSession } from './types';
 import { CHAT_STATUS_TYPES, COMPLETED_CHAT_STATUS_TYPES } from './types';
 import type { MessageBroadcaster } from './MessageBroadcaster';
+import { logger } from '../../../../../utils/logger';
 
 export class ContentMerger {
   constructor(private broadcaster?: MessageBroadcaster) {}
@@ -23,7 +24,7 @@ export class ContentMerger {
     content: MessageContent
   ): number {
     if (!session.currentMessage) {
-      console.warn('⚠️  [ContentMerger] No current message to add content to');
+      logger.warn('No current message to add content to', { component: 'ContentMerger', projectId, featureName });
       return -1;
     }
 
@@ -63,7 +64,7 @@ export class ContentMerger {
 
     // Case 5: Direct duplicate of completed status = IGNORE
     if (this.shouldIgnoreDuplicate(lastContent, content)) {
-      console.log(`[ContentMerger] ⏭️ IGNORED: ${content.type} → ${content.type} (direct duplicate)`);
+      logger.debug(`IGNORED duplicate: ${content.type}`, { component: 'ContentMerger', projectId, featureName });
       return lastContentIndex;
     }
 
@@ -95,7 +96,7 @@ export class ContentMerger {
     index: number,
     content: MessageContent
   ): number {
-    console.log('[ContentMerger] 🔄 Node transition: Old placeholder → New placeholder');
+    logger.debug('Node transition: placeholder -> placeholder', { component: 'ContentMerger', projectId, featureName });
     
     const target = session.currentMessage!.contents[index];
     target.type = content.type;
@@ -107,7 +108,7 @@ export class ContentMerger {
       messageId: session.currentMessage!.id,
       contentIndex: index,
       content: target
-    });
+    }, session.userContext);
     
     return index;
   }
@@ -123,7 +124,7 @@ export class ContentMerger {
     content: MessageContent
   ): number {
     const target = session.currentMessage!.contents[placeholderIndex];
-    console.log(`[ContentMerger] ✅ MERGED: ${target.type} → ${content.type} (placeholder merge)`);
+    logger.debug(`MERGED (placeholder): ${target.type} -> ${content.type}`, { component: 'ContentMerger', projectId, featureName });
     
     target.type = content.type;
     // Special case: placeholder → thinking = clear placeholder content
@@ -145,7 +146,7 @@ export class ContentMerger {
       messageId: session.currentMessage!.id,
       contentIndex: placeholderIndex,
       content: target
-    });
+    }, session.userContext);
     
     return placeholderIndex;
   }
@@ -164,7 +165,7 @@ export class ContentMerger {
     
     if (targetIndex >= 0 && targetIndex < existingContents.length) {
       const target = existingContents[targetIndex];
-      console.log(`[ContentMerger] ✅ MERGED: ${target.type} → ${content.type} (explicit _mergeIndex: ${targetIndex})`);
+        logger.debug(`MERGED (explicit): ${target.type} -> ${content.type} @${targetIndex}`, { component: 'ContentMerger', projectId, featureName });
       
       target.type = content.type;
       target.content = content.content;
@@ -176,7 +177,7 @@ export class ContentMerger {
         messageId: session.currentMessage!.id,
         contentIndex: targetIndex,
         content: target
-      });
+      }, session.userContext);
       
       return targetIndex;
     }
@@ -219,7 +220,7 @@ export class ContentMerger {
     for (let i = existingContents.length - 1; i >= 0; i--) {
       if (existingContents[i]?.type === (inProgressForCompletion as any)) {
         const target = existingContents[i];
-        console.log(`[ContentMerger] ✅ MERGED: ${target.type} → ${content.type} (fallback by type match @ ${i})`);
+        logger.debug(`MERGED (fallback): ${target.type} -> ${content.type} @${i}`, { component: 'ContentMerger', projectId, featureName });
         
         target.type = content.type as any;
         target.content = content.content;
@@ -233,7 +234,7 @@ export class ContentMerger {
           messageId: session.currentMessage!.id,
           contentIndex: i,
           content: target as any
-        });
+        }, session.userContext);
         
         return i;
       }
@@ -290,7 +291,7 @@ export class ContentMerger {
           messageId: session.currentMessage!.id,
           contentIndex: session.lastThinkingContentIndex,
           content: thinkingContent
-        });
+        }, session.userContext);
         
         // Broadcast collapse signal
         this.broadcaster?.broadcast(projectId, featureName, {
@@ -298,7 +299,7 @@ export class ContentMerger {
           messageId: session.currentMessage!.id,
           contentIndex: session.lastThinkingContentIndex,
           durationMs
-        });
+        }, session.userContext);
       }
       
       // Reset tracking
@@ -357,7 +358,7 @@ export class ContentMerger {
       messageId: session.currentMessage!.id,
       contentIndex: lastIndex,
       content: target
-    });
+    }, session.userContext);
     
     return lastIndex;
   }
@@ -399,7 +400,7 @@ export class ContentMerger {
       const activeOp = session.activeFileOperations.get(content.metadata.filePath);
       if (activeOp) {
         existingIndex = activeOp.contentIndex;
-        console.log(`[ContentMerger] 🎯 Found file card via activeFileOperations: ${content.metadata.filePath} at index ${existingIndex}`);
+        logger.debug(`Found file card via activeFileOperations @${existingIndex}`, { component: 'ContentMerger', projectId, featureName }, { filePath: content.metadata.filePath });
       }
     }
     
@@ -421,7 +422,7 @@ export class ContentMerger {
                             (content.type === 'file_create' || content.type === 'file_edit' || content.type === 'file_delete');
         if (isFinalState) {
           session.activeFileOperations.delete(content.metadata.filePath!);
-          console.log(`[ContentMerger] 🧹 Removed ${content.metadata.filePath} from activeFileOperations (final state: ${content.type})`);
+          logger.debug(`Removed from activeFileOperations (final=${content.type})`, { component: 'ContentMerger', projectId, featureName }, { filePath: content.metadata.filePath });
         }
       }
       
@@ -431,7 +432,7 @@ export class ContentMerger {
         messageId: session.currentMessage!.id,
         contentIndex: existingIndex,
         content
-      });
+      }, session.userContext);
       
       return existingIndex;
     }
@@ -450,7 +451,7 @@ export class ContentMerger {
     isNewThinkingBlock: boolean
   ): number {
     if (isNewThinkingBlock) {
-      console.log('[ContentMerger] 🆕 New thinking block (<thinking> opened)');
+      logger.debug('New thinking block', { component: 'ContentMerger', projectId, featureName });
     }
     
     const newIndex = session.currentMessage!.contents.length;
@@ -467,7 +468,7 @@ export class ContentMerger {
       type: 'content_add',
       messageId: session.currentMessage!.id,
       content
-    });
+    }, session.userContext);
     
     return newIndex;
   }
@@ -496,14 +497,14 @@ export class ContentMerger {
           messageId: session.currentMessage.id,
           contentIndex: session.lastThinkingContentIndex,
           content: thinkingContent
-        });
+        }, session.userContext);
         
         this.broadcaster?.broadcast(projectId, featureName, {
           type: 'thinking_collapse',
           messageId: session.currentMessage.id,
           contentIndex: session.lastThinkingContentIndex,
           durationMs
-        });
+        }, session.userContext);
       }
       
       session.thinkingStartTime = undefined;
@@ -545,9 +546,9 @@ export class ContentMerger {
           messageId: session.currentMessage!.id,
           contentIndex: index,
           content: cancelledContent
-        });
+        }, session.userContext);
         
-        console.log(`[ContentMerger] 🚫 Cancelled in-progress work: ${content.type}`);
+        logger.debug(`Cancelled in-progress work: ${content.type}`, { component: 'ContentMerger', projectId, featureName });
       }
     });
   }
@@ -585,7 +586,7 @@ export class ContentMerger {
           messageId: session.currentMessage!.id,
           contentIndex: fileOp.contentIndex,
           content: fileContent
-        });
+        }, session.userContext);
       }
     }
     

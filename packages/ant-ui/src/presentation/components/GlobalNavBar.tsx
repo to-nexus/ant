@@ -149,47 +149,29 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
       return;
     }
     
-    // ✅ Open IDE with the correct workspace path
+    // ✅ Open IDE via ant-cli (project/feature docker) and embed via directUrl
     try {
-      // Get project config first
-      const { fetchProjectConfig } = await import('@/infrastructure/http/api');
-      const config = await fetchProjectConfig(selectedProject);
-      
-      if (!config) {
-        setEditorTooltip('Project config not found');
-        setTimeout(() => setEditorTooltip(null), 3000);
-        return;
-      }
-      
-      // Determine workspace path based on repoType
-      let workspacePath: string;
-      
-      if (config.repoType === 'cloud') {
-        // Cloud Mode: Use codebase directory
-        // ant-ide Docker: ANT_WORKSPACE_BASE_PATH → /workspace
-        // Host: /Users/probe/dev/ant-workspaces/org/user/project/codebase
-        // Docker: /workspace/org/user/project/codebase
-        const org = userOrganization || 'default';
-        const user = userEmail?.split('@')[0] || 'user';
-        workspacePath = `/workspace/${org}/${user}/${selectedProject}/codebase`;
-      } else {
-        // Local Mode: Use localPath from config
-        if (!config.localPath) {
-          setEditorTooltip('Local path not configured');
-          setTimeout(() => setEditorTooltip(null), 3000);
-          return;
-        }
-        workspacePath = config.localPath;
-      }
-      
-      console.log('[GlobalNavBar] Opening editor with path:', workspacePath);
-      
-      // ✅ Set IDE workspace path and switch to Code IDE view
-      // The iframe key in App.tsx will force VS Code to read fresh Git state
-      useStore.getState().switchToCodeIdeView(workspacePath);
+      // Show skeleton immediately (avoid "blank iframe" race)
+      useStore.getState().setIdeBaseUrl(undefined);
+      useStore.getState().setIdeConnecting(true);
+      useStore.getState().setIdeFrameLoaded(false);
+      useStore.getState().switchToCodeIdeView(`/${selectedProject}`);
+
+      const { startCloudIDE } = await import('@/infrastructure/http/api');
+      const featureName = selectedFeature || 'main';
+      const { instance } = await startCloudIDE(selectedProject, featureName);
+
+      const fallbackDirectUrl = `${window.location.protocol}//${window.location.hostname}:${instance.port}`;
+      useStore.getState().setIdeBaseUrl(instance.directUrl || fallbackDirectUrl);
+      useStore.getState().setIdeWorkspacePath(instance.workspacePath || `/${selectedProject}`);
+      useStore.getState().reloadIdeFrame();
+      useStore.getState().setIdeConnecting(false);
+      useStore.getState().setIdeFrameLoaded(false);
+      useStore.getState().switchToCodeIdeView(instance.workspacePath || `/${selectedProject}`);
     } catch (error: any) {
       console.error('[GlobalNavBar] Failed to open IDE:', error);
       setEditorTooltip('Failed to open IDE');
+      useStore.getState().setIdeConnecting(false, error?.message || 'Failed to open IDE');
       setTimeout(() => setEditorTooltip(null), 3000);
     }
   };

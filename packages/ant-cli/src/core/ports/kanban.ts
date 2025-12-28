@@ -21,6 +21,7 @@ export interface TaskQueueUpdatePort {
    * @param completedTasks - Array of completed task details
    * @param recursionCount - Current recursion iteration count (optional)
    * @param recursionLimit - Maximum recursion limit (optional)
+   * @param tokenUsage - Real-time token usage for current task (optional)
    */
   updateTaskQueue(
     taskId: string,
@@ -28,7 +29,8 @@ export interface TaskQueueUpdatePort {
     queue: any[],
     completedTasks: any[],
     recursionCount?: number,
-    recursionLimit?: number
+    recursionLimit?: number,
+    tokenUsage?: { inputTokens: number; outputTokens: number; totalTokens: number; cacheReadTokens?: number; cacheCreationTokens?: number }
   ): void;
 }
 

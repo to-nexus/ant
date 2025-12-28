@@ -10,6 +10,7 @@ import type { WorkspaceResolver } from '../../../../../infrastructure/workspace/
 import type { UserContext } from '../../../../../core/types/user';
 import type { ChatSessionFile, ChatMessage } from './types';
 import { BASE_BRANCH_NAMES } from './types';
+import { logger } from '../../../../../utils/logger';
 
 export class SessionPersistence {
   constructor(
@@ -51,7 +52,7 @@ export class SessionPersistence {
       
       return sessionFile;
     } catch (error) {
-      console.error(`❌ [SessionPersistence] Failed to load chat file for ${projectId}/${featureName}:`, error);
+      logger.warn(`Failed to load chat file`, { component: 'SessionPersistence', projectId, featureName }, error);
       return null;
     }
   }
@@ -67,7 +68,7 @@ export class SessionPersistence {
   ): void {
     // Skip saving chat for base branches (learning only, no chat history needed)
     if (BASE_BRANCH_NAMES.includes(featureName.toLowerCase())) {
-      console.log(`[SessionPersistence] Skipping chat save for base branch: ${featureName}`);
+      logger.debug(`Skipping chat save for base branch: ${featureName}`, { component: 'SessionPersistence', projectId, featureName });
       return;
     }
     
@@ -100,7 +101,7 @@ export class SessionPersistence {
 
       fs.writeFileSync(filePath, JSON.stringify(sessionFile, null, 2), 'utf-8');
     } catch (error) {
-      console.error(`❌ [SessionPersistence] Failed to save chat file for ${projectId}/${featureName}:`, error);
+      logger.warn(`Failed to save chat file`, { component: 'SessionPersistence', projectId, featureName }, error);
     }
   }
 
@@ -113,12 +114,12 @@ export class SessionPersistence {
     try {
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
-        console.log(`🗑️  [SessionPersistence] Deleted chat file for ${projectId}/${featureName}`);
+        logger.info(`Deleted chat file`, { component: 'SessionPersistence', projectId, featureName });
         return true;
       }
       return false;
     } catch (error) {
-      console.error(`❌ [SessionPersistence] Failed to delete chat file for ${projectId}/${featureName}:`, error);
+      logger.warn(`Failed to delete chat file`, { component: 'SessionPersistence', projectId, featureName }, error);
       return false;
     }
   }

@@ -5,6 +5,7 @@
  */
 
 import type { SSEService } from '../SSEService';
+import type { UserContext } from '../../../../../core/types/user';
 
 export class MessageBroadcaster {
   constructor(private sseService?: SSEService) {}
@@ -12,7 +13,7 @@ export class MessageBroadcaster {
   /**
    * Broadcast chat event to frontend
    */
-  broadcast(projectId: string, featureName: string, data: any): void {
+  broadcast(projectId: string, featureName: string, data: any, userContext?: UserContext): void {
     if (!this.sseService) {
       return;
     }
@@ -25,7 +26,7 @@ export class MessageBroadcaster {
       featureName
     };
     
-    this.sseService.broadcast(projectId, featureName, 'chat', enrichedData);
+    this.sseService.broadcast(projectId, featureName, 'chat', enrichedData, userContext);
   }
 }
 

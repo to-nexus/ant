@@ -7,9 +7,20 @@
 import { Router, Request, Response } from 'express';
 import { IDEService } from '../../ide/IDEService';
 import { UserContext } from '../../../../core/types/user';
+import { extractUserContext } from './helpers/userContext';
+import * as path from 'path';
+import { logger } from '../../../../utils/logger';
 
 export function createCloudIDERoutes(ideService: IDEService, workspaceResolver: any): Router {
   const router = Router();
+
+  function getDirectUrl(req: Request, port: number): string {
+    const forwardedProto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
+    const forwardedHost = (req.headers['x-forwarded-host'] as string) || (req.headers.host as string) || 'localhost';
+    const hostWithoutPort = forwardedHost.includes(':') ? forwardedHost.split(':')[0] : forwardedHost;
+    // For local dev, the IDE container is bound to a host port. Direct access is simplest.
+    return `${forwardedProto}://${hostWithoutPort}:${port}`;
+  }
   
   /**
    * POST /cloud-ide/start
@@ -17,35 +28,61 @@ export function createCloudIDERoutes(ideService: IDEService, workspaceResolver: 
    */
   router.post('/start', async (req: Request, res: Response) => {
     try {
-      const { projectId } = req.body;
-      const userContext: UserContext = req.body.userContext || {
-        userId: 'local',
-        organizationId: 'local',
-        workspacePath: ''
-      };
+      const { projectId, featureName } = req.body;
+      const userContext: UserContext = req.body.userContext || extractUserContext(req);
       
       if (!projectId) {
         return res.status(400).json({ error: 'projectId is required' });
       }
       
       // Get workspace path
-      const workspacePath = workspaceResolver.getProjectPath(userContext, projectId);
+      const projectPath = workspaceResolver.getProjectPath(userContext, projectId);
+      // ✅ IDE should only see codebase (project-level isolation of codebase in IDE)
+      const workspacePath = path.join(projectPath, 'codebase');
       
       // Start IDE
-      const instance = await ideService.startIDE(userContext, projectId, workspacePath);
+      const instance = await ideService.startIDE(userContext, projectId, workspacePath, featureName || 'main');
       
       res.json({
         success: true,
         instance: {
           url: instance.url,
+          directUrl: getDirectUrl(req, instance.port),
           port: instance.port,
           status: instance.status,
           workspacePath: instance.workspacePath  // ✅ Docker 내부 경로 반환
+        },
+        debug: {
+          ideImage: process.env.ANT_IDE_IMAGE || 'gitpod/openvscode-server:latest',
+          workspaceMode: 'project', // ✅ fixed (always /{projectId})
+          hostnameMode: process.env.ANT_IDE_HOSTNAME_MODE || 'user'
         }
       });
       
     } catch (error: any) {
-      console.error('[Cloud IDE Routes] Start failed:', error);
+      logger.warn(`Start failed: ${error.message}`, { component: 'CloudIDERoutes', projectId: req.body?.projectId, featureName: req.body?.featureName }, error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * GET /cloud-ide/open/:projectId?feature=main
+   * Convenience endpoint: ensure IDE is running then redirect to directUrl.
+   * (Useful in local dev where /ide proxy may not be configured.)
+   */
+  router.get('/open/:projectId', async (req: Request, res: Response) => {
+    try {
+      const { projectId } = req.params;
+      const featureName = (req.query.feature as string) || 'main';
+      const userContext: UserContext = extractUserContext(req);
+
+      const projectPath = workspaceResolver.getProjectPath(userContext, projectId);
+      const workspacePath = path.join(projectPath, 'codebase');
+
+      const instance = await ideService.startIDE(userContext, projectId, workspacePath, featureName);
+      res.redirect(302, getDirectUrl(req, instance.port));
+    } catch (error: any) {
+      logger.warn(`Open failed: ${error.message}`, { component: 'CloudIDERoutes', projectId: req.params?.projectId, featureName: req.query?.feature as any }, error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -56,12 +93,8 @@ export function createCloudIDERoutes(ideService: IDEService, workspaceResolver: 
    */
   router.post('/stop', async (req: Request, res: Response) => {
     try {
-      const { projectId } = req.body;
-      const userContext: UserContext = req.body.userContext || {
-        userId: 'local',
-        organizationId: 'local',
-        workspacePath: ''
-      };
+      const { projectId, featureName } = req.body;
+      const userContext: UserContext = req.body.userContext || extractUserContext(req);
       
       if (!projectId) {
         return res.status(400).json({ error: 'projectId is required' });
@@ -69,12 +102,12 @@ export function createCloudIDERoutes(ideService: IDEService, workspaceResolver: 
       
       const tenantId = `${userContext.organizationId}:${userContext.userId}`;
       
-      await ideService.stopIDE(tenantId, projectId);
+      await ideService.stopIDE(tenantId, projectId, featureName || 'main');
       
       res.json({ success: true });
       
     } catch (error: any) {
-      console.error('[Cloud IDE Routes] Stop failed:', error);
+      logger.warn(`Stop failed: ${error.message}`, { component: 'CloudIDERoutes', projectId: req.body?.projectId, featureName: req.body?.featureName }, error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -86,15 +119,12 @@ export function createCloudIDERoutes(ideService: IDEService, workspaceResolver: 
   router.get('/status/:projectId', async (req: Request, res: Response) => {
     try {
       const { projectId } = req.params;
-      const userContext: UserContext = (req as any).userContext || {
-        userId: 'local',
-        organizationId: 'local',
-        workspacePath: ''
-      };
+      const featureName = (req.query.feature as string) || 'main';
+      const userContext: UserContext = extractUserContext(req);
       
       const tenantId = `${userContext.organizationId}:${userContext.userId}`;
       
-      const instance = await ideService.getIDEStatus(tenantId, projectId);
+      const instance = await ideService.getIDEStatus(tenantId, projectId, featureName);
       
       if (!instance) {
         return res.json({ running: false });
@@ -112,7 +142,7 @@ export function createCloudIDERoutes(ideService: IDEService, workspaceResolver: 
       });
       
     } catch (error: any) {
-      console.error('[Cloud IDE Routes] Status check failed:', error);
+      logger.warn(`Status check failed: ${error.message}`, { component: 'CloudIDERoutes', projectId: req.params?.projectId, featureName: req.query?.feature as any }, error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -138,7 +168,7 @@ export function createCloudIDERoutes(ideService: IDEService, workspaceResolver: 
       });
       
     } catch (error: any) {
-      console.error('[Cloud IDE Routes] List failed:', error);
+      logger.warn(`List failed: ${error.message}`, { component: 'CloudIDERoutes' }, error);
       res.status(500).json({ error: error.message });
     }
   });

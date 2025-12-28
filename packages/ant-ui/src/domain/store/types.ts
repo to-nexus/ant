@@ -49,8 +49,12 @@ export interface UIState {
   theme: 'light' | 'dark';
   splitLayout: 'horizontal' | 'vertical';
   mainView: 'agents' | 'codeIde';
+  ideBaseUrl: string | undefined; // ✅ Cloud IDE: direct URL returned from /api/cloud-ide/start
   ideWorkspacePath: string | undefined;
   ideReloadTimestamp: number; // ✅ Add timestamp to force IDE reload
+  ideConnecting: boolean; // ✅ show skeleton while IDE container is starting
+  ideConnectError: string | undefined;
+  ideFrameLoaded: boolean; // ✅ iframe onLoad succeeded (prevents unnecessary auto-retries)
   mainPanelActiveTab: 'job' | 'projectConfig' | 'accountConfig' | 'fileEdit';
   mainPanelOpenTabs: {
     projectConfig: boolean;

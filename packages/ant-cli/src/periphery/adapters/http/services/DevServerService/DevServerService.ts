@@ -11,6 +11,7 @@ import { createServerKey, parseServerKey } from './utils/serverKeyUtils';
 import { LogManager } from './managers/LogManager';
 import { PackageDetector } from './detectors/PackageDetector';
 import { ProjectValidator } from './validators/ProjectValidator';
+import { logger } from '../../../../../utils/logger';
 
 /**
  * DevServerService
@@ -80,11 +81,11 @@ export class DevServerService {
     
     // ✅ Broadcast via SSEService (if available)
     if (this.sseService) {
-      const { projectId, feature } = this.parseServerKey(serverKey);
+      const { tenantId, userId, projectId, feature } = this.parseServerKey(serverKey);
       this.sseService.broadcast(projectId, feature, 'devServer', {
         type: 'log',
         data: logEntry
-      });
+      }, { organizationId: tenantId, userId, workspacePath: '' });
     }
   }
   
@@ -92,15 +93,15 @@ export class DevServerService {
    * Broadcast status update via SSEService
    */
   private broadcastStatus(serverKey: string, status: any): void {
-    console.log(`[DevServerService] 📤 Broadcasting status update for ${serverKey}:`, status);
+    logger.debug('Broadcasting status update', { component: 'DevServerService' }, { serverKey, status });
     
     // ✅ Broadcast via SSEService (if available)
     if (this.sseService) {
-      const { projectId, feature } = this.parseServerKey(serverKey);
+      const { tenantId, userId, projectId, feature } = this.parseServerKey(serverKey);
       this.sseService.broadcast(projectId, feature, 'devServer', {
         type: 'status',
         data: status
-      });
+      }, { organizationId: tenantId, userId, workspacePath: '' });
     }
     
     // Also trigger onStatusChange callback
@@ -215,10 +216,7 @@ export class DevServerService {
     // Entry is the first frontend package
     const entry = packages.find(p => p.type === 'frontend');
     
-    console.log(`[DevServerService] Monorepo detected: ${packages.length} packages`);
-    packages.forEach(pkg => {
-      console.log(`  - ${pkg.name} (${pkg.type})${pkg === entry ? ' ← ENTRY' : ''}`);
-    });
+    logger.debug(`Monorepo detected (${packages.length} packages)`, { component: 'DevServerService' });
     
     return { type: 'monorepo', packages, entry };
   }
@@ -279,17 +277,14 @@ export class DevServerService {
     
     if (hasFrontend && hasBackend) {
       const entry = packages.find(p => p.type === 'frontend');
-      console.log(`[DevServerService] Fullstack detected: ${packages.length} packages`);
-      packages.forEach(pkg => {
-        console.log(`  - ${pkg.name} (${pkg.type})${pkg === entry ? ' ← ENTRY' : ''}`);
-      });
+      logger.debug(`Fullstack detected (${packages.length} packages)`, { component: 'DevServerService' });
       return { type: 'fullstack', packages, entry };
     }
     
     if (packages.length > 0) {
       const entry = packages[0];
       const type = hasFrontend ? 'frontend-only' : hasBackend ? 'backend-only' : 'frontend-only';
-      console.log(`[DevServerService] ${type} detected: ${packages.length} package(s)`);
+      logger.debug(`${type} detected (${packages.length} package(s))`, { component: 'DevServerService' });
       return { type, packages, entry };
     }
     
@@ -304,7 +299,7 @@ export class DevServerService {
       packageJson: rootPkgJson
     };
     
-    console.log(`[DevServerService] Single package detected (${pkgType})`);
+    logger.debug(`Single package detected (${pkgType})`, { component: 'DevServerService' });
     
     return { 
       type: pkgType === 'backend' ? 'backend-only' : 'frontend-only', 
@@ -381,14 +376,14 @@ export class DevServerService {
     
     // Check if node_modules exists
     if (!fs.existsSync(nodeModulesPath)) {
-      console.log(`[DevServerService] No node_modules found, installing: ${relativePath}`);
+      logger.info(`Installing dependencies (no node_modules): ${relativePath}`, { component: 'DevServerService' });
       return this.runNpmInstall(packagePath, serverKey, relativePath);
     }
     
     // ✅ NEW: Verify critical dependencies are actually installed
     const packageJsonPath = path.join(packagePath, 'package.json');
     if (!fs.existsSync(packageJsonPath)) {
-      console.warn(`[DevServerService] No package.json found at ${packagePath}`);
+      logger.warn(`No package.json found at ${packagePath}`, { component: 'DevServerService' });
       return;
     }
     
@@ -401,20 +396,19 @@ export class DevServerService {
     );
     
     if (missingDeps.length > 0) {
-      console.log(`[DevServerService] Missing critical dependencies for ${relativePath}: ${missingDeps.join(', ')}`);
-      console.log(`[DevServerService] Re-installing dependencies with --include=dev...`);
+      logger.info(`Missing critical deps for ${relativePath}: ${missingDeps.join(', ')} (re-install)`, { component: 'DevServerService' });
       this.appendLog(serverKey, 'stdout', `⚠️  Missing critical dependencies: ${missingDeps.join(', ')}`);
       return this.runNpmInstall(packagePath, serverKey, relativePath);
     }
     
-    console.log(`[DevServerService] Dependencies already installed: ${packagePath}`);
+    logger.debug(`Dependencies already installed: ${packagePath}`, { component: 'DevServerService' });
   }
   
   /**
    * Health check: Try to connect to dev server
    */
   private async healthCheck(port: number, serverKey: string, maxAttempts = 20, delayMs = 500): Promise<boolean> {
-    console.log(`[DevServerService] 🏥 Health check starting for port ${port}...`);
+    logger.debug(`Health check starting for port ${port}`, { component: 'DevServerService' });
     
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
@@ -424,11 +418,11 @@ export class DevServerService {
         });
         
         // Any response (even 404) means server is up
-        console.log(`[DevServerService] ✅ Health check passed (attempt ${attempt}/${maxAttempts}): ${response.status}`);
+        logger.debug(`Health check passed (${attempt}/${maxAttempts}): ${response.status}`, { component: 'DevServerService' });
         this.appendLog(serverKey, 'stdout', `✅ Dev server is ready on port ${port}`);
         return true;
       } catch (error: any) {
-        console.log(`[DevServerService] ⚠️ Health check attempt ${attempt}/${maxAttempts} failed:`, error.message);
+        logger.debug(`Health check failed (${attempt}/${maxAttempts}): ${error.message}`, { component: 'DevServerService' });
         
         if (attempt < maxAttempts) {
           await new Promise(resolve => setTimeout(resolve, delayMs));
@@ -436,7 +430,7 @@ export class DevServerService {
       }
     }
     
-    console.error(`[DevServerService] ❌ Health check failed after ${maxAttempts} attempts`);
+    logger.warn(`Health check failed after ${maxAttempts} attempts`, { component: 'DevServerService' });
     this.appendLog(serverKey, 'stderr', `❌ Dev server failed to respond on port ${port} after ${maxAttempts * delayMs / 1000}s`);
     return false;
   }
@@ -486,10 +480,10 @@ export class DevServerService {
       BROWSER_ARGS: '--no-sandbox',
     };
     
-    console.log(`[DevServerService] Starting ${pkg.type}: ${pkg.name} on port ${port}`);
+    logger.info(`Starting ${pkg.type}: ${pkg.name} on port ${port}`, { component: 'DevServerService' });
     this.appendLog(serverKey, 'stdout', `🚀 Starting ${pkg.name} (${pkg.type}) on port ${port}...`);
     
-    console.log(`[DevServerService] 🔧 Spawning: ${command} ${args.join(' ')} in ${pkg.path}`);
+    logger.debug(`Spawning: ${command} ${args.join(' ')} in ${pkg.path}`, { component: 'DevServerService' });
     
     const childProcess = spawn(command, args, {
       cwd: pkg.path,
@@ -498,28 +492,26 @@ export class DevServerService {
       stdio: 'pipe'
     });
     
-    console.log(`[DevServerService] ✅ Process spawned with PID: ${childProcess.pid}`);
+    logger.debug(`Process spawned PID=${childProcess.pid}`, { component: 'DevServerService' });
     
     // Setup logging
     childProcess.stdout?.on('data', (data) => {
       const output = data.toString();
-      console.log(`[DevServerService] 📤 stdout (PID ${childProcess.pid}):`, output.substring(0, 100));
       this.appendLog(serverKey, 'stdout', output);
     });
     
     childProcess.stderr?.on('data', (data) => {
       const output = data.toString();
-      console.log(`[DevServerService] 📤 stderr (PID ${childProcess.pid}):`, output.substring(0, 100));
       this.appendLog(serverKey, 'stderr', output);
     });
     
     childProcess.on('close', (code) => {
-      console.log(`[DevServerService] ❌ Process ${childProcess.pid} exited with code ${code}`);
+      logger.info(`Process exited PID=${childProcess.pid} code=${code}`, { component: 'DevServerService' });
       this.appendLog(serverKey, 'stdout', `⚠️  ${pkg.name} exited with code ${code}`);
     });
     
     childProcess.on('error', (error) => {
-      console.error(`[DevServerService] ❌ Process ${childProcess.pid} error:`, error);
+      logger.error(`Process error PID=${childProcess.pid}: ${error.message}`, { component: 'DevServerService' }, error);
       this.appendLog(serverKey, 'stderr', `❌ ${pkg.name} error: ${error.message}`);
     });
     
@@ -612,7 +604,7 @@ export class DevServerService {
           tenantId, userId, projectId, feature,
           structure.entry.port!
         );
-        console.log(`[DevServerService] ✅ Registered entry: ${serverKey} → ${structure.entry.port}`);
+        logger.info(`Registered entry: ${serverKey} -> ${structure.entry.port}`, { component: 'DevServerService' });
       }
       
       // 5. Store processes and entry port
@@ -629,11 +621,11 @@ export class DevServerService {
         // Validate entry package path (not root)
         const entryPath = structure.entry.path;
         validation = await this.validateDevServerSetup(entryPath);
-        console.log(`[DevServerService] 🔍 Frontend entry validation:`, validation);
+        logger.debug(`Frontend entry validation result`, { component: 'DevServerService' }, validation);
         
         // ❌ If validation fails, stop the server and return error
         if (!validation.valid) {
-          console.log(`[DevServerService] ❌ Frontend setup validation failed - stopping server`);
+          logger.info(`Frontend setup validation failed - stopping server`, { component: 'DevServerService' });
           
           // Stop all processes
           for (const process of processes) {
@@ -662,7 +654,7 @@ export class DevServerService {
           };
         }
       } else {
-        console.log(`[DevServerService] ⏭️ Skipping validation (entry is not frontend)`);
+        logger.debug(`Skipping validation (entry is not frontend)`, { component: 'DevServerService' });
       }
       
       // ✅ 7. Health check for entry package (async, don't block response)
@@ -672,7 +664,7 @@ export class DevServerService {
         
         // ✅ Broadcast updated status via SSE
         const updatedStatus = this.getDevServerStatus(tenantId, userId, projectId, feature);
-        console.log(`[DevServerService] 📡 Broadcasting ready status: ${ready}`);
+        logger.debug(`Broadcasting ready status: ${ready}`, { component: 'DevServerService' });
         this.broadcastStatus(serverKey, updatedStatus);
         
         if (this.onStatusChange) {
@@ -693,7 +685,7 @@ export class DevServerService {
       
     } catch (error: any) {
       this.installingProjects.delete(serverKey);
-      console.error('[DevServerService] Error starting dev server:', error);
+      logger.error(`Error starting dev server: ${error.message}`, { component: 'DevServerService' }, error);
       this.appendLog(serverKey, 'stderr', `❌ Error: ${error.message}`);
       
       return {
@@ -725,7 +717,7 @@ export class DevServerService {
       try {
         process.kill();
       } catch (error) {
-        console.warn(`[DevServerService] Failed to kill process:`, error);
+        logger.warn(`Failed to kill process`, { component: 'DevServerService' }, error);
       }
     }
     
@@ -746,7 +738,7 @@ export class DevServerService {
     this.devServerReady.delete(serverKey);  // ✅ Clear ready state
     this.logManager.clearLogs(serverKey);  // ✅ Clear logs via logManager
     
-    console.log(`[DevServerService] ✅ Stopped all servers for ${serverKey}`);
+    logger.info(`Stopped all servers for ${serverKey}`, { component: 'DevServerService' });
     
     if (this.onStatusChange) {
       this.onStatusChange(serverKey);
@@ -817,7 +809,7 @@ export class DevServerService {
   ): void {
     const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
     
-    console.log(`[DevServerService] 📡 SSE connection opened for ${serverKey}`);
+    logger.debug(`SSE connection opened for ${serverKey}`, { component: 'DevServerService' });
     
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -825,7 +817,7 @@ export class DevServerService {
     
     // Send initial status
     const status = this.getDevServerStatus(tenantId, userId, projectId, feature);
-    console.log(`[DevServerService] 📤 Sending initial status:`, status);
+    logger.debug(`Sending initial status`, { component: 'DevServerService' }, { serverKey, status });
     // ✅ Match unified SSEService envelope so frontend can consume it consistently
     if (this.sseService) {
       this.sseService.sendInitialState(res, 'devServer', { type: 'status', data: status });
@@ -836,7 +828,7 @@ export class DevServerService {
     
     // Send existing logs
     const existingLogs = this.logManager.getLogs(serverKey);
-    console.log(`[DevServerService] 📤 Sending ${existingLogs.length} existing logs`);
+    logger.debug(`Sending ${existingLogs.length} existing logs`, { component: 'DevServerService' }, { serverKey });
     existingLogs.forEach((log: LogEntry) => {
       if (this.sseService) {
         this.sseService.sendInitialState(res, 'devServer', { type: 'log', data: log });
@@ -849,7 +841,7 @@ export class DevServerService {
     // Updates will come via SSEService.broadcast() calls from appendLog() and broadcastStatus()
     if (this.sseService) {
       this.sseService.registerClient(projectId, feature, res);
-      console.log(`[DevServerService] ✅ Client registered with SSEService`);
+      logger.debug(`Client registered with SSEService`, { component: 'DevServerService', projectId, featureName: feature });
     }
   }
   
@@ -860,11 +852,11 @@ export class DevServerService {
     const serverKeys = Array.from(this.devServers.keys());
     
     if (serverKeys.length === 0) {
-      console.log('[DevServerService] No running dev servers to cleanup');
+      logger.debug('No running dev servers to cleanup', { component: 'DevServerService' });
       return;
     }
     
-    console.log(`[DevServerService] 🧹 Cleaning up ${serverKeys.length} dev server(s)...`);
+    logger.info(`Cleaning up ${serverKeys.length} dev server(s)...`, { component: 'DevServerService' });
     
     const cleanupPromises: Promise<void>[] = [];
     
@@ -873,10 +865,10 @@ export class DevServerService {
       
       const cleanupPromise = this.stopDevServer(tenantId, userId, projectId, feature)
         .then(() => {
-          console.log(`[DevServerService]    ✅ Stopped: ${serverKey}`);
+          logger.debug(`Stopped: ${serverKey}`, { component: 'DevServerService' });
         })
         .catch((error) => {
-          console.error(`[DevServerService]    ❌ Failed to stop ${serverKey}:`, error.message);
+          logger.warn(`Failed to stop ${serverKey}: ${error.message}`, { component: 'DevServerService' });
         });
       
       cleanupPromises.push(cleanupPromise);
@@ -888,12 +880,12 @@ export class DevServerService {
     if (this.portRegistry && typeof this.portRegistry.close === 'function') {
       try {
         await this.portRegistry.close();
-        console.log('[DevServerService]    ✅ PortRegistry closed');
+        logger.debug('PortRegistry closed', { component: 'DevServerService' });
       } catch (error: any) {
-        console.error('[DevServerService]    ❌ PortRegistry close error:', error.message);
+        logger.warn(`PortRegistry close error: ${error.message}`, { component: 'DevServerService' });
       }
     }
     
-    console.log(`[DevServerService] ✅ Cleanup complete (${serverKeys.length} server(s) stopped)`);
+    logger.info(`Cleanup complete (${serverKeys.length} server(s) stopped)`, { component: 'DevServerService' });
   }
 }

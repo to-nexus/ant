@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { ProjectService } from '../services';
 import { extractUserContext } from './helpers/userContext';
+import { logger } from '../../../../utils/logger';
 
 /**
  * Project CRUD operations
@@ -17,7 +18,7 @@ export function createProjectsRoutes(deps: {
       const projects = await deps.projectService.listProjects(userContext);
       
       if (req.user) {
-        console.log(`[Projects] Listed ${projects.length} projects for ${req.user.id}@${req.organization?.id}`);
+        logger.debug(`Listed ${projects.length} projects`, { component: 'Projects', organizationId: req.organization?.id, userId: req.user.id });
       }
       
       res.json(projects);
@@ -38,7 +39,7 @@ export function createProjectsRoutes(deps: {
       const userContext = extractUserContext(req);
       
       if (req.user) {
-        console.log(`[Projects] Creating project '${id}' for ${req.user.id}@${req.organization?.id}`);
+        logger.info(`Creating project '${id}'`, { component: 'Projects', organizationId: req.organization?.id, userId: req.user.id, projectId: id });
       }
       
       await deps.projectService.createProject(id, userContext);
@@ -131,17 +132,12 @@ export function createProjectsRoutes(deps: {
     const projectId = req.params.id;
     try {
       const userContext = extractUserContext(req);
-      
-      console.log(`[Projects] ========================================`);
-      console.log(`[Projects] Clone request for project: ${projectId}`);
-      console.log(`[Projects] UserContext: org="${userContext.organizationId}", user="${userContext.userId}"`);
+      logger.info(`Clone request`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
       
       await deps.projectService.cloneGitHubRepo(projectId, userContext);
       res.json({ success: true, message: 'Repository cloned successfully' });
     } catch (error: any) {
-      console.error(`[Projects] ❌ Clone failed for ${projectId}`);
-      console.error(`[Projects] Error message: ${error.message}`);
-      console.error(`[Projects] Error stack:`, error.stack);
+      logger.warn(`Clone failed: ${error.message}`, { component: 'Projects', projectId }, error);
       
       if (error.message.includes('not configured') || error.message.includes('not found')) {
         res.status(400).json({ success: false, error: error.message });
@@ -162,7 +158,7 @@ export function createProjectsRoutes(deps: {
       const cloned = await deps.projectService.checkCloneStatus(projectId, userContext);
       res.json({ cloned });
     } catch (error: any) {
-      console.error(`[Projects] Clone status check failed for ${projectId}:`, error);
+      logger.warn(`Clone status check failed: ${error.message}`, { component: 'Projects', projectId }, error);
       res.status(500).json({ cloned: false, error: error.message });
     }
   });
@@ -173,12 +169,12 @@ export function createProjectsRoutes(deps: {
     try {
       const userContext = extractUserContext(req);
       
-      console.log(`[Projects] Initializing GitHub repo for project '${projectId}'`);
+      logger.info(`Initializing GitHub repo`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
       
       await deps.projectService.initializeGitHubRepo(projectId, userContext);
       res.json({ success: true, message: 'Repository initialized and pushed successfully' });
     } catch (error: any) {
-      console.error(`[Projects] Initialize failed for ${projectId}:`, error);
+      logger.warn(`Initialize failed: ${error.message}`, { component: 'Projects', projectId }, error);
       
       if (error.message.includes('not configured') || error.message.includes('not found')) {
         res.status(400).json({ success: false, error: error.message });
@@ -196,12 +192,12 @@ export function createProjectsRoutes(deps: {
     try {
       const userContext = extractUserContext(req);
       
-      console.log(`[Projects] Pushing to GitHub for project '${projectId}'`);
+      logger.info(`Pushing to GitHub`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
       
       await deps.projectService.pushToGitHub(projectId, userContext);
       res.json({ success: true, message: 'Changes pushed successfully' });
     } catch (error: any) {
-      console.error(`[Projects] Push failed for ${projectId}:`, error);
+      logger.warn(`Push failed: ${error.message}`, { component: 'Projects', projectId }, error);
       
       // Return user-friendly error message
       res.status(400).json({ success: false, error: error.message });
@@ -214,12 +210,12 @@ export function createProjectsRoutes(deps: {
     try {
       const userContext = extractUserContext(req);
       
-      console.log(`[Projects] Pulling from GitHub for project '${projectId}'`);
+      logger.info(`Pulling from GitHub`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
       
       await deps.projectService.pullFromGitHub(projectId, userContext);
       res.json({ success: true, message: 'Changes pulled successfully' });
     } catch (error: any) {
-      console.error(`[Projects] Pull failed for ${projectId}:`, error);
+      logger.warn(`Pull failed: ${error.message}`, { component: 'Projects', projectId }, error);
       
       // Return user-friendly error message (including conflict info)
       res.status(400).json({ success: false, error: error.message });
@@ -232,12 +228,12 @@ export function createProjectsRoutes(deps: {
     try {
       const userContext = extractUserContext(req);
       
-      console.log(`[Projects] Fetching from GitHub for project '${projectId}'`);
+      logger.info(`Fetching from GitHub`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
       
       await deps.projectService.fetchFromGitHub(projectId, userContext);
       res.json({ success: true, message: 'Remote refs updated successfully' });
     } catch (error: any) {
-      console.error(`[Projects] Fetch failed for ${projectId}:`, error);
+      logger.warn(`Fetch failed: ${error.message}`, { component: 'Projects', projectId }, error);
       
       res.status(400).json({ success: false, error: error.message });
     }
@@ -252,7 +248,7 @@ export function createProjectsRoutes(deps: {
       const status = await deps.projectService.getGitStatus(projectId, userContext);
       res.json(status);
     } catch (error: any) {
-      console.error(`[Projects] Get Git status failed for ${projectId}:`, error);
+      logger.warn(`Get Git status failed: ${error.message}`, { component: 'Projects', projectId }, error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -266,7 +262,7 @@ export function createProjectsRoutes(deps: {
       const changes = await deps.projectService.getGitChanges(projectId, userContext);
       res.json(changes);
     } catch (error: any) {
-      console.error(`[Projects] Get Git changes failed for ${projectId}:`, error);
+      logger.warn(`Get Git changes failed: ${error.message}`, { component: 'Projects', projectId }, error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -278,12 +274,12 @@ export function createProjectsRoutes(deps: {
       const userContext = extractUserContext(req);
       const { message } = req.body;
       
-      console.log(`[Projects] Committing changes for project '${projectId}'`);
+      logger.info(`Committing changes`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
       
       const result = await deps.projectService.commitChanges(projectId, userContext, message);
       res.json(result);
     } catch (error: any) {
-      console.error(`[Projects] Commit failed for ${projectId}:`, error);
+      logger.warn(`Commit failed: ${error.message}`, { component: 'Projects', projectId }, error);
       res.status(400).json({ success: false, error: error.message });
     }
   });
@@ -294,12 +290,12 @@ export function createProjectsRoutes(deps: {
     try {
       const userContext = extractUserContext(req);
       
-      console.log(`[Projects] Syncing with remote for project '${projectId}'`);
+      logger.info(`Syncing with remote`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
       
       const result = await deps.projectService.syncWithRemote(projectId, userContext);
       res.json(result);
     } catch (error: any) {
-      console.error(`[Projects] Sync failed for ${projectId}:`, error);
+      logger.warn(`Sync failed: ${error.message}`, { component: 'Projects', projectId }, error);
       res.status(400).json({ success: false, error: error.message });
     }
   });
@@ -310,7 +306,7 @@ export function createProjectsRoutes(deps: {
     try {
       const userContext = extractUserContext(req);
       
-      console.log(`[Projects] Switching to feature branch for ${projectId}/${featureName}`);
+      logger.info(`Switching to feature branch`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName });
       
       const result = await deps.projectService.switchToFeatureBranch(projectId, featureName, userContext);
       res.json({ 
@@ -320,7 +316,7 @@ export function createProjectsRoutes(deps: {
         currentBranch: result.currentBranch
       });
     } catch (error: any) {
-      console.error(`[Projects] Branch switch failed for ${projectId}/${featureName}:`, error);
+      logger.warn(`Branch switch failed: ${error.message}`, { component: 'Projects', projectId, featureName }, error);
       
       res.status(400).json({ success: false, error: error.message });
     }

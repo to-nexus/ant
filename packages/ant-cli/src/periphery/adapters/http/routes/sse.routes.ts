@@ -8,6 +8,7 @@ import {
 } from '../services';
 import { UserContext } from '../../../../core/types/user';
 import { extractUserContext } from './helpers/userContext';
+import { logger } from '../../../../utils/logger';
 
 /**
  * Unified SSE Routes
@@ -35,8 +36,7 @@ export function createSSERoutes(deps: {
     const projectId = req.params.id;
     const featureName = req.params.feature;
     const job = (req.query.job as 'design' | 'code' | 'learn') || 'code';
-    
-    console.log(`\n📡 [SSE] Client connecting: ${projectId}/${featureName} (job: ${job})`);
+    logger.debug(`Client connecting (job: ${job})`, { component: 'SSE', projectId, featureName });
     
     // ✅ Extract user context from query parameter (for EventSource) or request (for regular auth)
     let userContext: UserContext;
@@ -44,7 +44,6 @@ export function createSSERoutes(deps: {
     
     if (userEmailQuery) {
       // EventSource sent user-email as query parameter
-      console.log(`[SSE] 🔐 User email from query: ${userEmailQuery}`);
       const userId = userEmailQuery.split('@')[0];
       const domain = userEmailQuery.split('@')[1];
       userContext = {
@@ -67,8 +66,7 @@ export function createSSERoutes(deps: {
         workspacePath: ''
       };
     }
-    
-    console.log(`[SSE] User context:`, userContext);
+    logger.debug(`User context resolved`, { component: 'SSE', projectId, featureName, organizationId: userContext.organizationId, userId: userContext.userId });
     
     // Set SSE headers
     res.writeHead(200, {
@@ -79,8 +77,8 @@ export function createSSERoutes(deps: {
     });
     
     // Register client
-    deps.sseService.registerClient(projectId, featureName, res);
-    console.log(`[SSE] Client registered. Total clients: ${deps.sseService.getClientCount(projectId, featureName)}`);
+    deps.sseService.registerClient(projectId, featureName, res, userContext);
+    logger.debug(`Client registered (total: ${deps.sseService.getClientCount(projectId, featureName, userContext)})`, { component: 'SSE', projectId, featureName });
     
     // Send initial states
     try {
@@ -106,23 +104,19 @@ export function createSSERoutes(deps: {
       });
       
       // 3. Send initial FileTree
-      console.log(`[SSE] Fetching file tree for ${projectId}/${featureName}...`);
       const fileTree = await deps.projectService.getFileTree(projectId, featureName, userContext);  // ✅ Pass user context
-      console.log(`[SSE] File tree fetched: ${fileTree?.length || 0} items`);
       deps.sseService.sendInitialState(res, 'fileTree', { 
         type: 'initial', 
         tree: fileTree 
       });
-      console.log(`[SSE] File tree sent to client`);
-      
-      console.log(`✅ [SSE] Initial states sent to ${projectId}/${featureName}`);
+      logger.debug(`Initial states sent`, { component: 'SSE', projectId, featureName });
     } catch (error) {
-      console.error(`❌ [SSE] Failed to send initial states:`, error);
+      logger.warn(`Failed to send initial states`, { component: 'SSE', projectId, featureName }, error);
     }
     
     // ✅ Start watching Git changes
     if (deps.gitWatcherService && userContext) {
-      const sseClientChecker = () => deps.sseService.getClientCount(projectId, featureName) > 0;
+      const sseClientChecker = () => deps.sseService.getClientCount(projectId, featureName, userContext) > 0;
       deps.gitWatcherService.watchGitChanges(projectId, featureName, userContext, sseClientChecker);
     }
     
@@ -138,7 +132,7 @@ export function createSSERoutes(deps: {
     // Handle disconnect
     res.on('close', () => {
       clearInterval(keepAliveInterval);
-      console.log(`🔌 [SSE] Client disconnected: ${projectId}/${featureName}`);
+      logger.debug(`Client disconnected`, { component: 'SSE', projectId, featureName });
     });
   });
   
@@ -148,8 +142,7 @@ export function createSSERoutes(deps: {
    */
   router.get('/jobs/:jobId/workflow/stream', (req: Request, res: Response) => {
     const jobId = req.params.jobId;
-    
-    console.log(`\n📡 [SSE] Workflow client connecting: ${jobId}`);
+    logger.debug(`Workflow client connecting`, { component: 'SSE', jobId });
     
     // ✅ Extract user context from query parameter (for EventSource) or request (for regular auth)
     let userContext: UserContext;
@@ -157,7 +150,6 @@ export function createSSERoutes(deps: {
     
     if (userEmailQuery) {
       // EventSource sent user-email as query parameter
-      console.log(`[SSE Workflow] 🔐 User email from query: ${userEmailQuery}`);
       const userId = userEmailQuery.split('@')[0];
       const domain = userEmailQuery.split('@')[1];
       userContext = {
@@ -180,8 +172,7 @@ export function createSSERoutes(deps: {
         workspacePath: ''
       };
     }
-    
-    console.log(`[SSE Workflow] User context:`, userContext);
+    logger.debug(`Workflow user context resolved`, { component: 'SSE', jobId, organizationId: userContext.organizationId, userId: userContext.userId });
     
     // Set SSE headers
     res.writeHead(200, {
@@ -202,10 +193,9 @@ export function createSSERoutes(deps: {
         activeActors: Array.from(initialState.activeActors)
       };
       deps.sseService.sendInitialState(res, 'workflow', serializedState);
-      console.log(`✅ [SSE] Sent initial workflow state for ${jobId}`);
+      logger.debug(`Sent initial workflow state`, { component: 'SSE', jobId });
     }
-    
-    console.log(`✅ [SSE] Workflow client registered: ${jobId}`);
+    logger.debug(`Workflow client registered`, { component: 'SSE', jobId });
     
     // Keep connection alive
     const keepAliveInterval = setInterval(() => {
@@ -219,7 +209,7 @@ export function createSSERoutes(deps: {
     // Handle disconnect
     res.on('close', () => {
       clearInterval(keepAliveInterval);
-      console.log(`🔌 [SSE] Workflow client disconnected: ${jobId}`);
+      logger.debug(`Workflow client disconnected`, { component: 'SSE', jobId });
     });
   });
   

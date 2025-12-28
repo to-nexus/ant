@@ -12,6 +12,7 @@
 import { Request, Response as ExpressResponse, NextFunction } from 'express';
 import { createProxyMiddleware, Options } from 'http-proxy-middleware';
 import { PortRegistryPort } from '../../../../core/ports/portRegistry';
+import { logger } from '../../../../utils/logger';
 
 export interface DevServerProxyConfig {
   portRegistry: PortRegistryPort;
@@ -30,7 +31,7 @@ export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
       return next();
     }
     
-    console.log(`[DevProxy] 1️⃣ ENTRY: ${req.method} ${req.url}`);
+    logger.debug(`${req.method} ${req.url}`, { component: 'DevProxy' });
     
     // ✅ Use req.url instead of req.path to preserve query params
     // Extract serverKey from path: /dev/tenantId:userId:projectId:feature/...
@@ -42,7 +43,7 @@ export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
       : pathWithoutPrefix.substring(0, firstSlashIndex);  // Everything before first slash
     
     if (!serverKey) {
-      console.log('[DevProxy] ❌ No serverKey');
+      logger.warn('No serverKey', { component: 'DevProxy' });
       res.status(404).json({
         error: 'Server key not provided',
         message: `Usage: ${pathPrefix}/:serverKey`
@@ -50,12 +51,12 @@ export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
       return;  // ✅ Don't return the result, just return
     }
     
-    console.log(`[DevProxy] 2️⃣ serverKey: ${serverKey}`);
+    logger.debug(`serverKey=${serverKey}`, { component: 'DevProxy' });
     
     // Parse serverKey: tenantId:userId:projectId:feature
     const parts = serverKey.split(':');
     if (parts.length < 4) {
-      console.log(`[DevProxy] ❌ Invalid serverKey format: ${serverKey}`);
+      logger.warn(`Invalid serverKey format: ${serverKey}`, { component: 'DevProxy' });
       res.status(400).json({
         error: 'Invalid server key format',
         message: 'Expected format: tenantId:userId:projectId:feature',
@@ -67,7 +68,13 @@ export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
     const [tenantId, userId, projectId, ...featureParts] = parts;
     const feature = featureParts.join(':');
     
-    console.log(`[DevProxy] 3️⃣ Parsed: ${tenantId}/${userId}/${projectId}/${feature}`);
+    logger.debug(`Parsed ${tenantId}/${userId}/${projectId}/${feature}`, {
+      component: 'DevProxy',
+      organizationId: tenantId,
+      userId,
+      projectId,
+      featureName: feature
+    });
     
     // Lookup port from registry
     let port: number | null;
@@ -75,7 +82,13 @@ export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
       port = await portRegistry.getDevServerPort(tenantId, userId, projectId, feature);
       
       if (!port) {
-        console.log(`[DevProxy] ❌ No port found for ${serverKey}`);
+        logger.info(`No port found for ${serverKey}`, {
+          component: 'DevProxy',
+          organizationId: tenantId,
+          userId,
+          projectId,
+          featureName: feature
+        });
         res.status(404).json({
           error: 'Dev server not found',
           message: `No dev server running for ${serverKey}`,
@@ -83,14 +96,19 @@ export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
         });
         return;  // ✅ Don't return the result
       }
-      
-      console.log(`[DevProxy] 4️⃣ Port found: ${port}`);
+      logger.debug(`Port found: ${port}`, {
+        component: 'DevProxy',
+        organizationId: tenantId,
+        userId,
+        projectId,
+        featureName: feature
+      });
       
       // Update last access time
       await portRegistry.updateLastAccess(tenantId, userId, projectId, feature, 'dev-server');
       
     } catch (error) {
-      console.error('[DevProxy] ❌ Port lookup error:', error);
+      logger.error('Port lookup error', { component: 'DevProxy' }, error);
       res.status(500).json({
         error: 'Failed to lookup dev server port',
         message: error instanceof Error ? error.message : 'Unknown error'
@@ -98,12 +116,12 @@ export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
       return;  // ✅ Don't return the result
     }
     
-    console.log(`[DevProxy] 5️⃣ Creating proxy for ${serverKey} → localhost:${port}`);
+    logger.debug(`Proxy to localhost:${port}`, { component: 'DevProxy' });
     
     // ✅ Strip /dev/:serverKey from path for Vite
     const targetPath = req.url.replace(`${pathPrefix}/${serverKey}`, '') || '/';
     const targetUrl = `http://localhost:${port}${targetPath}`;
-    console.log(`[DevProxy] 6️⃣ Target URL: ${targetUrl}`);
+    logger.debug(`Target URL: ${targetUrl}`, { component: 'DevProxy' });
     
     try {
       // ✅ Retry logic for dev server startup race condition
@@ -128,7 +146,7 @@ export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
         } catch (error: any) {
           lastError = error;
           if (attempt < maxRetries) {
-            console.log(`[DevProxy] ⚠️ Attempt ${attempt}/${maxRetries} failed, retrying in ${retryDelay}ms...`);
+            logger.debug(`Retry ${attempt}/${maxRetries} in ${retryDelay}ms`, { component: 'DevProxy' });
             await new Promise(resolve => setTimeout(resolve, retryDelay));
           }
         }
@@ -139,7 +157,7 @@ export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
       }
       
       const contentType = response.headers.get('content-type') || '';
-      console.log(`[DevProxy] 7️⃣ Response: ${response.status}, Content-Type: ${contentType}`);
+      logger.debug(`Upstream response: ${response.status} (${contentType})`, { component: 'DevProxy' });
       
       // Copy status and headers
       res.status(response.status);
@@ -161,7 +179,7 @@ export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
       
       if (needsRewrite) {
         const text = await response.text();
-        console.log(`[DevProxy] 8️⃣ Rewriting ${text.length} bytes...`);
+        logger.debug(`Rewriting ${text.length} bytes`, { component: 'DevProxy' });
         
         let rewritten = text;
         
@@ -171,7 +189,7 @@ export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
           const headEndIndex = text.indexOf('</head>');
           if (headEndIndex !== -1) {
             rewritten = text.substring(0, headEndIndex) + basenameScript + text.substring(headEndIndex);
-            console.log(`[DevProxy] 💉 Injected window.__BASENAME__`);
+            logger.debug(`Injected window.__BASENAME__`, { component: 'DevProxy' });
           }
         }
         
@@ -200,7 +218,7 @@ export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
         res.send(buffer);
       }
     } catch (error: any) {
-      console.error(`[DevProxy] ❌ Fetch error:`, error.message);
+      logger.error(`Fetch error: ${error.message}`, { component: 'DevProxy' });
       res.status(502).json({
         error: 'Bad Gateway',
         message: `Failed to connect to dev server on port ${port}`,

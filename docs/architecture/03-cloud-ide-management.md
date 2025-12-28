@@ -5,6 +5,27 @@
 IDEService는 **유저별 독립된 code-server(VSCode) 컨테이너**를 Docker로 관리합니다.
 각 사용자는 완전히 격리된 개발 환경을 가지며, 리소스 제한이 적용됩니다.
 
+## ✅ 단계적 적용/검증 순서 (Side-effect 최소화)
+
+IDE는 “컨테이너는 떴는데 iframe 첫 로딩이 실패(연결 재설정)” 같은 레이스가 생길 수 있으므로,
+아래 순서대로 **하나씩만** 켜고 검증합니다.
+
+### Step 0 (Baseline, 안정)
+- **Workspace mount**: `/{projectId}` (✅ 고정: 항상 project mode)
+- **Hostname**: `ant-ide` (기본)
+
+### Step 1 (Hostname: `{org}-{user}-{project}`)
+```bash
+export ANT_IDE_HOSTNAME_MODE=org-user-project
+```
+
+### Step 2 (Hostname: `containerId` 12자리, best-effort)
+```bash
+export ANT_IDE_HOSTNAME_MODE=containerid
+```
+
+> 적용 팁: 각 step마다 IDE 컨테이너를 **stop → start(IDE 버튼 클릭)** 해서 새 컨테이너로 확인합니다.
+
 ## 유저별 독립 환경
 
 ### IDE 인스턴스 키

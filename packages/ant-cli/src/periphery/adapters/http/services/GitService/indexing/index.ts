@@ -6,6 +6,7 @@ import { UserContext } from '../../../../../../core/types/user';
 import { SSEService } from '../../SSEService';
 import { ChatService } from '../../ChatService';
 import { GitHelper } from '../helper/GitHelper';
+import { logger } from '../../../../../../utils/logger';
 
 /**
  * IndexService
@@ -64,7 +65,7 @@ export class IndexService {
     let messageId: string | undefined;
     
     try {
-      console.log(`\n📇 [GitIndexService] Starting codebase indexing for ${projectId}...`);
+      logger.info(`Starting codebase indexing`, { component: 'GitIndexService', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
       
       // ✅ Send indexing status to chat UI (if chat service and feature available)
       if (this.chatService && featureName) {
@@ -109,7 +110,7 @@ export class IndexService {
             commit,
             message: `Indexing ${projectId} • ${branch}`
           }
-        });
+        }, userContext);
       }
       
       // Run indexer
@@ -122,9 +123,10 @@ export class IndexService {
         }
       );
       
-      console.log(`✅ [GitIndexService] Codebase indexed successfully!`);
-      console.log(`   Files: ${stats.filesIndexed}, Chunks: ${stats.chunksCreated}, Tokens: ~${stats.estimatedTokens}`);
-      console.log(`   Duration: ${(stats.duration / 1000).toFixed(1)}s\n`);
+      logger.info(
+        `Codebase indexed successfully (files=${stats.filesIndexed}, chunks=${stats.chunksCreated}, tokens~=${stats.estimatedTokens}, durationSec=${(stats.duration / 1000).toFixed(1)})`,
+        { component: 'GitIndexService', organizationId: userContext.organizationId, userId: userContext.userId, projectId }
+      );
       
       // ✅ Send "indexed" success status to UI
       if (this.chatService && featureName) {
@@ -159,13 +161,16 @@ export class IndexService {
             duration: stats.duration,
             message: `Indexed ${stats.filesIndexed} files (${stats.chunksCreated} chunks, ~${stats.estimatedTokens} tokens)`
           }
-        });
+        }, userContext);
       }
       
     } catch (error) {
       // ⚠️  Non-blocking: Operation was successful, but indexing failed
-      console.error('⚠️  [GitIndexService] Failed to index codebase:', error instanceof Error ? error.message : error);
-      console.log('   Operation was successful, but indexing failed. You can manually run: ant index ' + projectId + '\n');
+      logger.warn(
+        `Failed to index codebase (non-blocking): ${error instanceof Error ? error.message : String(error)}`,
+        { component: 'GitIndexService', organizationId: userContext.organizationId, userId: userContext.userId, projectId },
+        error
+      );
       
       // ✅ Send "indexed" failure status to UI
       if (this.chatService && featureName) {
@@ -192,7 +197,7 @@ export class IndexService {
             projectId,
             error: error instanceof Error ? error.message : 'Unknown error'
           }
-        });
+        }, userContext);
       }
     }
   }

@@ -211,3 +211,39 @@ export function finalizeStreamTokenUsage(
   }
 }
 
+/**
+ * Update Kanban with real-time token usage for in-progress task
+ * Call this after each LLM interaction to reflect token consumption immediately
+ */
+export function updateKanbanTokenUsage(
+  state: any  // ArchitectGraphState or DesignGraphState
+): void {
+  if (!state._httpJobId || !state.deps?.kanbanUpdate || !state.currentTask) {
+    return;
+  }
+  
+  const tokenUsage = getTaskTokenUsage(state);
+  
+  // Only update if there's actual token usage
+  if (tokenUsage.totalTokens === 0) {
+    return;
+  }
+  
+  // Get current snapshot to preserve other data
+  const taskQueue = (state as any).taskQueue;
+  const queue = taskQueue ? taskQueue.getRemaining() : [];
+  const completedTasks = (state as any).completedTasksDetails || [];
+  
+  console.log(`[Token Usage] 📊 Updating Kanban with real-time tokens: ${tokenUsage.totalTokens} total`);
+  
+  state.deps.kanbanUpdate.updateTaskQueue(
+    state._httpJobId,
+    state.currentTask,
+    queue,
+    completedTasks,
+    (state as any).recursionCount,
+    (state as any).recursionLimit,
+    tokenUsage  // ✅ Real-time token usage
+  );
+}
+
