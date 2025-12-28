@@ -58,6 +58,10 @@ export function DevServerStatusPanel({
   onDismiss,  // ✅ NEW: Dismiss handler
   fixButtonClicked = false  // ✅ NEW: Track fix button state
 }: DevServerStatusPanelProps) {
+  const startingWithCounts = progress
+    ? `${DEV_SERVER_MESSAGES.STATUS_STARTING} (${progress.completedCount}/${progress.totalCount})`
+    : DEV_SERVER_MESSAGES.STATUS_STARTING;
+
   // Idle state - show nothing
   if (state === 'idle') {
     return null;
@@ -100,7 +104,8 @@ export function DevServerStatusPanel({
   
   // Starting dev server
   if (state === 'starting') {
-    const progressMsg = progress ? getProgressMessage(progress) : DEV_SERVER_MESSAGES.STATUS_STARTING;
+    // ✅ Per spec: keep "Starting dev server..." but add (n/m) based on completed/total packages
+    const progressMsg = startingWithCounts;
     
     return (
       <div className="p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-md">
@@ -186,7 +191,8 @@ export function DevServerStatusPanel({
                 <Loader2 className="w-4 h-4 text-green-600 dark:text-green-400 animate-spin" />
               )}
               <span className="text-sm font-medium text-green-900 dark:text-green-100">
-                {ready ? progressMsg : 'Starting dev server...'}
+                {/* ✅ If processes are up but health-check isn't ready yet, show starting message with (n/m) */}
+                {ready ? progressMsg : startingWithCounts}
               </span>
             </div>
             

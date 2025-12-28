@@ -122,7 +122,8 @@ export function extractProgress(logs: DevServerLog[]): DevServerProgress | undef
     return undefined;
   }
   
-  const completedCount = packages.filter(p => p.state === 'running' || p.state === 'error').length;
+  // ✅ "completed" means successfully started (running), not failed (error)
+  const completedCount = packages.filter(p => p.state === 'running').length;
   
   return {
     packages,

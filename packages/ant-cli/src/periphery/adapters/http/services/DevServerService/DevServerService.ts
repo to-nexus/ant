@@ -826,13 +826,23 @@ export class DevServerService {
     // Send initial status
     const status = this.getDevServerStatus(tenantId, userId, projectId, feature);
     console.log(`[DevServerService] 📤 Sending initial status:`, status);
-    res.write(`data: ${JSON.stringify({ type: 'status', data: status })}\n\n`);
+    // ✅ Match unified SSEService envelope so frontend can consume it consistently
+    if (this.sseService) {
+      this.sseService.sendInitialState(res, 'devServer', { type: 'status', data: status });
+    } else {
+      // Fallback: legacy (no envelope)
+      res.write(`data: ${JSON.stringify({ type: 'status', data: status })}\n\n`);
+    }
     
     // Send existing logs
     const existingLogs = this.logManager.getLogs(serverKey);
     console.log(`[DevServerService] 📤 Sending ${existingLogs.length} existing logs`);
     existingLogs.forEach((log: LogEntry) => {
-      res.write(`data: ${JSON.stringify({ type: 'log', data: log })}\n\n`);
+      if (this.sseService) {
+        this.sseService.sendInitialState(res, 'devServer', { type: 'log', data: log });
+      } else {
+        res.write(`data: ${JSON.stringify({ type: 'log', data: log })}\n\n`);
+      }
     });
     
     // ✅ Register client with SSEService for future updates

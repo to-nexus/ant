@@ -143,6 +143,39 @@ export function useGitChanges(
     }
   }, [gitStatusRefreshTrigger]);
 
+  // ✅ NEW: Listen to Git change events from SSE
+  useEffect(() => {
+    if (!selectedProject || !selectedFeature) {
+      return;
+    }
+
+    // Dynamic import to avoid SSR issues
+    const setupGitChangeListener = async () => {
+      const { sseManager } = await import('@/infrastructure/sse/SSEManager');
+      
+      const handleGitChange = (data: any) => {
+        // Only handle events for current project/feature
+        if (data.project === selectedProject && data.feature === selectedFeature) {
+          console.log('[useGitChanges] 🔄 Git changes detected from SSE, triggering immediate fetch');
+          setTriggerFetch(prev => prev + 1);
+        }
+      };
+      
+      sseManager.registerHandler('gitChange', handleGitChange);
+      
+      return () => {
+        sseManager.unregisterHandler('gitChange', handleGitChange);
+      };
+    };
+    
+    let cleanup: (() => void) | undefined;
+    setupGitChangeListener().then(fn => { cleanup = fn; });
+    
+    return () => {
+      cleanup?.();
+    };
+  }, [selectedProject, selectedFeature]);
+
   // Main fetch logic
   useEffect(() => {
     if (!selectedProject || hasGitHubRepo === null) {
@@ -192,7 +225,7 @@ export function useGitChanges(
       return;
     }
     
-    // Priority 2: Explicit user action (Fetch/Clone/Init button) - bypass timer
+    // Priority 2: Explicit user action - bypass timer
     const internalTriggerChanged = prevInternalTriggerRef.current !== triggerFetch && triggerFetch > 0;
     
     if (internalTriggerChanged) {
