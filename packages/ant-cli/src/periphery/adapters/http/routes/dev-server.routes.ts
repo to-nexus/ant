@@ -164,6 +164,9 @@ export function createDevServerRoutes(deps: {
         port: status.port || null,
         url: status.url || null,
         processCount: status.processCount || 0,
+        backendPort: status.backendPort || null,
+        packages: status.packages || [],
+        issues: status.issues || [],
         logs: logs.slice(-50) // Last 50 logs
       };
       
@@ -208,28 +211,17 @@ export function createDevServerRoutes(deps: {
   
   // SSE stream for dev server logs
   router.get('/projects/:id/dev/logs', (req: Request, res: Response) => {
-    try {
-      const projectId = req.params.id;
-      const userContext = extractUserContext(req);
-      const feature = (req.query.feature as string) || 'main';
-      
-      deps.devServerService.streamDevServerLogs(
-        userContext.organizationId,
-        userContext.userId,
-        projectId,
-        feature,
-        res
-      );
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
+    res.status(410).json({
+      error: 'Endpoint deprecated',
+      message: 'Use /projects/:id/features/:feature/stream (unified SSE) instead'
+    });
   });
   
   // Deprecated SSE endpoint
   router.get('/projects/:id/dev/stream', (req: Request, res: Response) => {
     res.status(410).json({ 
       error: 'Endpoint deprecated',
-      message: 'Use /projects/:id/dev/logs instead'
+      message: 'Use /projects/:id/features/:feature/stream (unified SSE) instead'
     });
   });
   

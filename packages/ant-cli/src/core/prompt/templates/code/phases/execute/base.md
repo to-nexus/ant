@@ -155,9 +155,9 @@ Create config files only. NO source code, NO tests.
 
 **General Rules:**
 - ❌ DO NOT hardcode port numbers in configs
-- ✅ Use project-specific defaults in source code: `const PORT = 3000;` (backend), `port: 5173` (vite.config)
-- ⚠️ AVOID generic `process.env.PORT` (conflicts when running multiple projects)
-- ✅ If using env var, use framework-specific: `VITE_PORT`, `NEXT_PUBLIC_PORT`, or read from project's .env
+- ✅ Use project-specific defaults for ports (avoid baking platform-specific values into code)
+- ✅ Backend services SHOULD be able to bind to a port provided by the environment in managed runtimes
+- ✅ If using env vars in frontend/build tools, use framework-specific keys (e.g. `VITE_*`, `NEXT_PUBLIC_*`) or project-defined keys
 - ❌ DO NOT setup testing infrastructure (excluded)
 - ✅ Install ALL dependencies needed for the project
 - ✅ Use exact versions from design doc if specified

@@ -223,6 +223,12 @@ export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
           .replace(exportFromRe, `$1${replacement}`)
           .replace(globRe, `$1${replacement}`)
           .replace(newUrlRe, `$1${replacement}`);
+
+        // ✅ Also rewrite common runtime absolute asset references in JS/CSS (string literals)
+        // Example: '/assets/fallback-ai.svg' should become '/dev/:serverKey/assets/fallback-ai.svg'
+        // This prevents requests from leaking to the Ant UI origin (/assets -> 401 in cloud mode).
+        const assetLiteralRe = new RegExp(`(["'])\\/(?!\\/|${escapedAlready})(assets\\/[^"']*)\\1`, 'g');
+        rewritten = rewritten.replace(assetLiteralRe, `$1${replacement}$2$1`);
         
         res.setHeader('content-length', Buffer.byteLength(rewritten));
         res.send(rewritten);

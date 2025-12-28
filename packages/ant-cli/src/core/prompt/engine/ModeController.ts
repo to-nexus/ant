@@ -195,6 +195,8 @@ export class ModeController {
         if (environment === 'browser' || environment === 'fullstack') {
           injections.push(`${taskPrefix}/dev-server-setup`);
           console.log(`[ModeController] Adding dev-server-setup for frontend environment`);
+          // ✅ NEW: Dev server runtime contract (dynamic env injection: API base, ports)
+          injections.push(`${taskPrefix}/dev-server-env-contract`);
         }
       }
       
