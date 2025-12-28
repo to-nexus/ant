@@ -327,83 +327,53 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
       }> 
     };
     
-    // ⚠️ NOTE: invokeStructured doesn't return token usage (Anthropic limitation)
-    // Token tracking only works with fallback invoke/stream methods
-    if (llmToUse.invokeStructured) {
-      response = await llmToUse.invokeStructured(
-        [{ role: 'user', content: prompt }],
-        {
-          type: 'object',
-          properties: {
-            documentType: {
-              type: 'string',
-              enum: ['unified', 'contract-first'],
-              description: 'Document strategy: unified (single system-design.md) or contract-first (api-contract.md, fe-system-design.md, be-system-design.md)'
-            },
-            targetFiles: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'Files to create (e.g., ["system-design.md"] or ["api-contract.md", "fe-system-design.md", "be-system-design.md"])'
-            },
-            tasks: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  id: { type: 'string' },
-                  name: { type: 'string' },
-                  targetFile: { 
-                    type: 'string',
-                    description: 'Target design document: must match one from targetFiles array'
-                  },
-                  description: { type: 'string' },
-                  priority: { type: 'number' }
-                },
-                required: ['id', 'name', 'targetFile', 'description', 'priority']
-              }
-            }
-          },
-          required: ['documentType', 'targetFiles', 'tasks']
-        },
-        'design_task_decomposition'
-      );
-      
-      // ⚠️ Token tracking not available with invokeStructured
-      console.log(`   ⚠️  Token usage not tracked (invokeStructured limitation)`);
+    // ✅ IMPORTANT:
+    // We intentionally avoid invokeStructured here because it cannot provide token usage
+    // for some providers (notably Anthropic). Estimating token usage must include decompose.
+    const result = await llmToUse.invokeWithUsage?.(
+      [{ role: 'user', content: prompt }],
+      { temperature: 0.2, maxTokens: 16000 }
+    );
+    const textResponse = result?.content || await llmToUse.invoke([{ role: 'user', content: prompt }]);
+    
+    // ✅ Track token usage (job-level only; decompose runs before tasks start)
+    if (result?.usage) {
+      const { accumulateTokenUsage } = await import('../../../common/llmHelpers');
+      accumulateTokenUsage(state as any, result.usage, { taskLevel: false, jobLevel: true });
+      console.log(`   Tokens: ${result.usage.totalTokens} total (${result.usage.inputTokens} in, ${result.usage.outputTokens} out)`);
     } else {
-      // Fallback: parse JSON from text response with token tracking
-      const result = await llmToUse.invokeWithUsage?.([{ role: 'user', content: prompt }]);
-      const textResponse = result?.content || await llmToUse.invoke([{ role: 'user', content: prompt }]);
-      
-      // ✅ Track token usage from fallback method
-      if (result?.usage) {
-        const { accumulateTokenUsage } = await import('../../../common/llmHelpers');
-        accumulateTokenUsage(state as any, result.usage, { taskLevel: false, jobLevel: true });
-        console.log(`   Tokens: ${result.usage.totalTokens} total (${result.usage.inputTokens} in, ${result.usage.outputTokens} out)`);
-      }
-      
-      const jsonMatch = textResponse.match(/\{[\s\S]*"tasks"[\s\S]*\}/);
-      if (!jsonMatch) {
+      console.log(`   ⚠️  Token usage not available (invokeWithUsage not supported by client)`);
+    }
+    
+    // Parse JSON (support raw JSON, ```json fenced, or embedded object)
+    const trimmed = (textResponse || '').trim();
+    let parsedResponse: any | undefined;
+    try {
+      parsedResponse = JSON.parse(trimmed);
+    } catch {
+      const fenced = trimmed.match(/```json\s*([\s\S]*?)\s*```/);
+      const candidate = fenced?.[1] || trimmed.match(/\{[\s\S]*"tasks"[\s\S]*\}/)?.[0];
+      if (!candidate) {
         throw new Error('Could not parse task breakdown from LLM response');
       }
-      const parsedResponse = JSON.parse(jsonMatch[0]);
-      
-      // ✅ Handle both old format (tasks only) and new format (documentType + targetFiles + tasks)
-      if (parsedResponse.documentType && parsedResponse.targetFiles && parsedResponse.tasks) {
-        response = parsedResponse;
-      } else if (parsedResponse.tasks) {
-        // Old format fallback: assume unified mode
-        response = {
-          documentType: 'unified',
-          targetFiles: ['system-design.md'],
-          tasks: parsedResponse.tasks.map((task: any) => ({
-            ...task,
-            targetFile: task.targetFile || 'system-design.md'
-          }))
-        };
-      } else {
-        throw new Error('Invalid task breakdown format from LLM');
-      }
+      parsedResponse = JSON.parse(candidate);
+    }
+    
+    // ✅ Handle both old format (tasks only) and new format (documentType + targetFiles + tasks)
+    if (parsedResponse.documentType && parsedResponse.targetFiles && parsedResponse.tasks) {
+      response = parsedResponse;
+    } else if (parsedResponse.tasks) {
+      // Old format fallback: assume unified mode
+      response = {
+        documentType: 'unified',
+        targetFiles: ['system-design.md'],
+        tasks: parsedResponse.tasks.map((task: any) => ({
+          ...task,
+          targetFile: task.targetFile || 'system-design.md'
+        }))
+      };
+    } else {
+      throw new Error('Invalid task breakdown format from LLM');
     }
     
     // ✅ Enforce naming policy for consistency:

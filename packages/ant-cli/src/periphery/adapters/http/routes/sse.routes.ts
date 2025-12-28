@@ -38,34 +38,10 @@ export function createSSERoutes(deps: {
     const job = (req.query.job as 'design' | 'code' | 'learn') || 'code';
     logger.debug(`Client connecting (job: ${job})`, { component: 'SSE', projectId, featureName });
     
-    // ✅ Extract user context from query parameter (for EventSource) or request (for regular auth)
-    let userContext: UserContext;
-    const userEmailQuery = req.query['user-email'] as string | undefined;
-    
-    if (userEmailQuery) {
-      // EventSource sent user-email as query parameter
-      const userId = userEmailQuery.split('@')[0];
-      const domain = userEmailQuery.split('@')[1];
-      userContext = {
-        userId,
-        organizationId: domain,
-        workspacePath: ''
-      };
-    } else if (req.user && req.organization) {
-      // Regular auth middleware
-      userContext = {
-        userId: req.user.id,
-        organizationId: req.organization.id,
-        workspacePath: ''
-      };
-    } else {
-      // Fallback for Local mode
-      userContext = {
-        userId: 'local',
-        organizationId: 'local',
-        workspacePath: ''
-      };
-    }
+    // ✅ Resolve user context consistently.
+    // NOTE: EventSource cannot set headers, so frontend should pass user-email as query param.
+    // This helper keeps that as priority #1, with fallbacks for other call sites.
+    const userContext: UserContext = extractUserContext(req);
     logger.debug(`User context resolved`, { component: 'SSE', projectId, featureName, organizationId: userContext.organizationId, userId: userContext.userId });
     
     // Set SSE headers
@@ -144,34 +120,9 @@ export function createSSERoutes(deps: {
     const jobId = req.params.jobId;
     logger.debug(`Workflow client connecting`, { component: 'SSE', jobId });
     
-    // ✅ Extract user context from query parameter (for EventSource) or request (for regular auth)
-    let userContext: UserContext;
-    const userEmailQuery = req.query['user-email'] as string | undefined;
-    
-    if (userEmailQuery) {
-      // EventSource sent user-email as query parameter
-      const userId = userEmailQuery.split('@')[0];
-      const domain = userEmailQuery.split('@')[1];
-      userContext = {
-        userId,
-        organizationId: domain,
-        workspacePath: ''
-      };
-    } else if (req.user && req.organization) {
-      // Regular auth middleware
-      userContext = {
-        userId: req.user.id,
-        organizationId: req.organization.id,
-        workspacePath: ''
-      };
-    } else {
-      // Fallback for Local mode
-      userContext = {
-        userId: 'local',
-        organizationId: 'local',
-        workspacePath: ''
-      };
-    }
+    // ✅ Resolve user context consistently (query + header + auth).
+    // Workflow stream also uses query in the browser (EventSource).
+    const userContext: UserContext = extractUserContext(req);
     logger.debug(`Workflow user context resolved`, { component: 'SSE', jobId, organizationId: userContext.organizationId, userId: userContext.userId });
     
     // Set SSE headers

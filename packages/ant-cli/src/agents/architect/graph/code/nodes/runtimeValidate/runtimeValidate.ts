@@ -158,8 +158,21 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
 
   } catch (error: any) {
     console.error('⚠️  Dynamic validation error:', error.message);
-    // Don't fail the workflow, just return current state
-    return state;
+
+    // 🚨 CRITICAL: Do not silently succeed.
+    // If runtime validation cannot run (e.g., missing package.json), surface a violation so the job cannot be marked "success".
+    return {
+      ...state,
+      violations: [
+        {
+          type: 'build_error',
+          severity: 'critical',
+          message: `Runtime validation failed to execute:\n${error?.message || String(error)}\n\nCommon cause: missing package.json in codebase root.`,
+          suggestedFix: 'Ensure package.json exists in the codebase root and rerun final verification.',
+          isRetryable: false
+        }
+      ]
+    };
   }
 
   // Handle validation failure

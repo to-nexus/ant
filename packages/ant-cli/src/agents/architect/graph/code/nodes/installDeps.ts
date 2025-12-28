@@ -252,6 +252,17 @@ Please check:
         }
       } else {
         console.log('⚠️  package.json not found in target directory');
+        // 🚨 For final verification, missing package.json means the project is not runnable.
+        // This MUST surface as a violation; otherwise the job can be incorrectly marked as success.
+        if (isFinalTask) {
+          violations.push({
+            type: 'missing_file',
+            severity: 'critical',
+            message: `Final verification requires a runnable Node-based project, but package.json was not found in the codebase.\n\nExpected at:\n- ${pkgJsonPath}\n\nThis usually means setup task wrote files to the wrong directory (project root instead of codebase) or skipped dependency scaffolding.`,
+            suggestedFix: 'Create package.json in the codebase root and ensure all generated files are written under the codebase directory.',
+            isRetryable: false
+          });
+        }
       }
     } else {
       // ✅ Skip install: package.json unchanged AND node_modules exists

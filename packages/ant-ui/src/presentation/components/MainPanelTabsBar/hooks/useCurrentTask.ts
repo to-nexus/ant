@@ -9,20 +9,26 @@ export function useCurrentTask(currentJobId: string | undefined, isRunning: bool
       return;
     }
     
+    let cancelled = false;
+    const handleWorkflowUpdate = (data: any) => {
+      // ✅ Filter by jobId to avoid cross-job contamination in multi-project environments.
+      if (data?.jobId && data.jobId !== currentJobId) return;
+      if (data.currentTask) setCurrentTask(data.currentTask);
+    };
+
     // Dynamic import to avoid SSR issues
-    import('@/infrastructure/sse/SSEManager').then(({ sseManager }) => {
-      const handleWorkflowUpdate = (data: any) => {
-        if (data.currentTask) {
-          setCurrentTask(data.currentTask);
-        }
-      };
-      
+    (async () => {
+      const { sseManager } = await import('@/infrastructure/sse/SSEManager');
+      if (cancelled) return;
       sseManager.registerHandler('workflow', handleWorkflowUpdate);
-      
-      return () => {
+    })();
+    
+    return () => {
+      cancelled = true;
+      import('@/infrastructure/sse/SSEManager').then(({ sseManager }) => {
         sseManager.unregisterHandler('workflow', handleWorkflowUpdate);
-      };
-    });
+      });
+    };
   }, [currentJobId, isRunning]);
   
   return currentTask;

@@ -34,15 +34,16 @@ export class SessionService {
     projectId: string, 
     featureName: string,
     job: 'design' | 'code' | 'learn',
+    userContext: UserContext,
     sseClientChecker: () => boolean
   ): void {
-    const key = `${projectId}/${featureName}/${job}`;  // ✅ Include job in key
-    const sessionPath = path.join(
-      this.workspaceRoot,
-      projectId,
-      featureName,
-      `sessions/${job}.json`  // ✅ Use job-specific path
-    );
+    if (!this.workspaceResolver) {
+      throw new Error('WorkspaceResolver is required');
+    }
+    // ✅ Multi-tenant safe key (org/user/project/feature/job)
+    const key = `${userContext.organizationId}/${userContext.userId}/${projectId}/${featureName}/${job}`;
+    const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+    const sessionPath = path.join(featurePath, `sessions/${job}.json`);
     
     // Don't create duplicate watchers
     if (this.sessionWatchers.has(key)) {
@@ -108,8 +109,8 @@ export class SessionService {
   /**
    * Stop watching session file
    */
-  stopWatchingSessionFile(projectId: string, featureName: string): void {
-    const key = `${projectId}/${featureName}`;
+  stopWatchingSessionFile(projectId: string, featureName: string, job: 'design' | 'code' | 'learn', userContext: UserContext): void {
+    const key = `${userContext.organizationId}/${userContext.userId}/${projectId}/${featureName}/${job}`;
     const intervalId = this.sessionWatchers.get(key);
     if (intervalId) {
       clearInterval(intervalId);

@@ -11,6 +11,53 @@ export class ReactValidator {
   private maxFilesToScan = 250;
   private maxFileSizeBytes = 512 * 1024; // 512KB
   
+  private async usesReactRouter(codebasePath: string): Promise<boolean> {
+    // Prefer package.json detection (fast, accurate)
+    const pkgPath = path.join(codebasePath, 'package.json');
+    try {
+      if (fs.existsSync(pkgPath)) {
+        const raw = await fs.promises.readFile(pkgPath, 'utf-8');
+        const pkg = JSON.parse(raw);
+        const deps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
+        // React Router v6+ typical packages
+        if (deps['react-router-dom'] || deps['react-router']) return true;
+      }
+    } catch {
+      // ignore and fall back to code scan
+    }
+    
+    // Fallback: source scan for imports/usages (handles unusual monorepo setups)
+    const srcPath = path.join(codebasePath, 'src');
+    if (!fs.existsSync(srcPath)) return false;
+    
+    try {
+      const files = await this.collectSourceFiles(srcPath);
+      for (const filePath of files) {
+        try {
+          const stat = await fs.promises.stat(filePath);
+          if (stat.size > this.maxFileSizeBytes) continue;
+          const content = await fs.promises.readFile(filePath, 'utf-8');
+          if (
+            content.includes('react-router-dom') ||
+            content.includes('BrowserRouter') ||
+            content.includes('createBrowserRouter') ||
+            content.includes('RouterProvider') ||
+            content.includes('<Routes') ||
+            content.includes('<Route')
+          ) {
+            return true;
+          }
+        } catch {
+          // skip
+        }
+      }
+    } catch {
+      // ignore
+    }
+    
+    return false;
+  }
+
   private async collectSourceFiles(dir: string): Promise<string[]> {
     const result: string[] = [];
     const stack: string[] = [dir];
@@ -73,6 +120,13 @@ export class ReactValidator {
    * Validate React project for basename configuration
    */
   async validate(codebasePath: string): Promise<ValidationResult> {
+    // ✅ If the project does not use React Router, basename configuration is NOT required.
+    // This avoids false positives for single-page React apps without client-side routing.
+    const hasRouter = await this.usesReactRouter(codebasePath);
+    if (!hasRouter) {
+      return { valid: true, framework: 'react' };
+    }
+
     const srcPath = path.join(codebasePath, 'src');
     const possibleFiles = ['App.tsx', 'App.jsx', 'main.tsx', 'main.jsx', 'index.tsx', 'index.jsx'];
     const missingFiles: string[] = [];

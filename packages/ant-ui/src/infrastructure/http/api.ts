@@ -50,10 +50,12 @@ export async function checkLocalBackend(): Promise<boolean> {
 // Helper to get current API_BASE
 const API_BASE = () => getApiBase();
 
-console.log('[API] FRONTEND_MODE:', FRONTEND_MODE);
-console.log('[API] LOCAL_BACKEND_BASE:', LOCAL_BACKEND_BASE);
-console.log('[API] CLOUD_BACKEND_BASE:', CLOUD_BACKEND_BASE);
-console.log('[API] Environment variables:', import.meta.env);
+if (import.meta.env.DEV) {
+  console.log('[API] FRONTEND_MODE:', FRONTEND_MODE);
+  console.log('[API] LOCAL_BACKEND_BASE:', LOCAL_BACKEND_BASE);
+  console.log('[API] CLOUD_BACKEND_BASE:', CLOUD_BACKEND_BASE);
+  console.log('[API] Environment variables:', import.meta.env);
+}
 
 /**
  * Get backend mode from localStorage

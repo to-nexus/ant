@@ -247,43 +247,20 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   const design = designResult?.content || undefined;
   const designDocPath = designResult?.filePath || undefined;
   
-  // ✅ Build designDocs object for detectEnvironment (check for separate design files)
-  const designDocs: {
-    apiContract?: string;
-    feDesign?: string;
-    beDesign?: string;
-    unifiedDesign?: string;
-  } = {};
-  
-  // Check for separate design files in outputs/design/
-  const designFolder = `${featurePath}/outputs/design`;
-  
-  try {
-    const feDesignPath = `${designFolder}/fe-system-design.md`;
-    if (await fileSystem.fileExists(feDesignPath)) {
-      const content = await fileSystem.readFile(feDesignPath);
-      if (content) designDocs.feDesign = content;
-    }
-    
-    const beDesignPath = `${designFolder}/be-system-design.md`;
-    if (await fileSystem.fileExists(beDesignPath)) {
-      const content = await fileSystem.readFile(beDesignPath);
-      if (content) designDocs.beDesign = content;
-    }
-    
-    const apiContractPath = `${designFolder}/api-contract.md`;
-    if (await fileSystem.fileExists(apiContractPath)) {
-      const content = await fileSystem.readFile(apiContractPath);
-      if (content) designDocs.apiContract = content;
-    }
-    
-    const unifiedDesignPath = `${designFolder}/system-design.md`;
-    if (await fileSystem.fileExists(unifiedDesignPath)) {
-      const content = await fileSystem.readFile(unifiedDesignPath);
-      if (content) designDocs.unifiedDesign = content;
-    }
-  } catch (error) {
-    // Ignore if design folder doesn't exist
+  // ✅ Load PRD (inputs/sources) for detectEnvironment & downstream prompts
+  const source = await ArtifactService.getSource(context, gitPort, fileSystem);
+  const prd = source?.prd || undefined;
+
+  // ✅ Load all available design documents (api-contract / fe / be / system-design)
+  // Use ArtifactService to ensure FileSystemPort receives workspace-relative paths
+  const designDocs = await ArtifactService.loadDesignDocuments(context, gitPort, fileSystem, 'unknown');
+
+  // ✅ Fallback: if structured designDocs are missing but a legacy/unified design exists, keep it usable
+  if (
+    (!designDocs.apiContract && !designDocs.feDesign && !designDocs.beDesign && !designDocs.unifiedDesign) &&
+    design
+  ) {
+    designDocs.unifiedDesign = design;
   }
 
   // 2. Load directive with override priority
@@ -370,6 +347,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   const result = {
     ...state,
     directive,
+    prd,
     design,
     designDocPath,  // ✅ Add design document file path for environment inference
     designDocs,     // ✅ Add structured design docs for detectEnvironment

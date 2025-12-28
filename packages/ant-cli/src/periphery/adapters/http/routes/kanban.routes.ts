@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { KanbanService } from '../services/KanbanService';
 import { UserContext } from '../../../../core/types/user';
+import { extractUserContext } from './helpers/userContext';
 
 /**
  * Kanban board routes
@@ -22,35 +23,8 @@ export function createKanbanRoutes(deps: {
       const projectId = req.params.id;
       const featureName = req.params.feature;
       const job = (req.query.job as 'design' | 'code' | 'learn') || 'code';  // ✅ Get job from query param
-      
-      // ✅ Extract user context from query parameter (for frontend) or request (for auth)
-      let userContext: UserContext;
-      const userEmailQuery = req.query['user-email'] as string | undefined;
-      
-      if (userEmailQuery) {
-        // Frontend sent user-email as query parameter
-        const userId = userEmailQuery.split('@')[0];
-        const domain = userEmailQuery.split('@')[1];
-        userContext = {
-          userId,
-          organizationId: domain,
-          workspacePath: ''
-        };
-      } else if (req.user && req.organization) {
-        // Auth middleware set user context
-        userContext = {
-          userId: req.user.id,
-          organizationId: req.organization.id,
-          workspacePath: ''
-        };
-      } else {
-        // Fallback for Local mode
-        userContext = {
-          userId: 'local',
-          organizationId: 'local',
-          workspacePath: ''
-        };
-      }
+      // ✅ Resolve userContext consistently (query + header + auth)
+      const userContext: UserContext = extractUserContext(req);
       
       const kanbanData = await deps.kanbanService.getKanbanData(
         projectId,

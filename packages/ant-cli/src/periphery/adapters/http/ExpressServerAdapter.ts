@@ -595,7 +595,15 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     // ✅ Dev Server Proxy Middleware (handles /dev/:serverKey requests)
     this.app.use(createDevServerProxyMiddleware({
       portRegistry: this.portRegistry,
-      pathPrefix: '/dev'
+      pathPrefix: '/dev',
+      // ✅ Fullstack: allow /dev/:serverKey/api/* to target the backend port
+      getBackendPort: ({ tenantId, userId, projectId, feature }) => {
+        try {
+          return this.devServerService.getDevServerStatus(tenantId, userId, projectId, feature).backendPort;
+        } catch {
+          return undefined;
+        }
+      }
     }));
     
     // Cloud mode: Add authentication middleware
@@ -1427,7 +1435,6 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
    * Watch session file for changes
    */
   private watchSessionFile(jobId: string, projectId: string, featureName: string, task: string): void {
-    const key = `${projectId}/${featureName}`;
     const sseClientChecker = () => {
       const mapping = this.jobToProject.get(jobId);
       return this.sseService.getClientCount(projectId, featureName, mapping?.userContext) > 0;
@@ -1435,8 +1442,14 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     
     // Map task to job type
     const job = (task === 'design' || task === 'code' || task === 'learn') ? task : 'code';
+    const mapping = this.jobToProject.get(jobId);
+    const userContext: UserContext = mapping?.userContext || {
+      userId: 'local',
+      organizationId: 'local',
+      workspacePath: ''
+    };
     
-    this.sessionService.watchSessionFile(projectId, featureName, job, sseClientChecker);
+    this.sessionService.watchSessionFile(projectId, featureName, job, userContext, sseClientChecker);
   }
   
   /**
