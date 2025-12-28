@@ -111,8 +111,8 @@ export class GitService {
     return this.remote.pullFromGitHub(projectId, userContext);
   }
 
-  async fetchFromGitHub(projectId: string, userContext: UserContext): Promise<void> {
-    return this.remote.fetchFromGitHub(projectId, userContext);
+  async fetchFromGitHub(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {
+    return this.remote.fetchFromGitHub(projectId, userContext, featureName);
   }
 
   async syncWithRemote(projectId: string, userContext: UserContext): Promise<{
