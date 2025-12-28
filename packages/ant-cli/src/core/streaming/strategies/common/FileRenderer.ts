@@ -2,6 +2,7 @@
  * FileRenderer - Handle file operations (create, append, delete)
  */
 
+import * as path from 'path';
 import { ChatAPIClient } from '../../../adapters/ChatAPIClient';
 import { GitPort } from '../../../ports/git';
 import { FileSystemPort } from '../../../ports/filesystem';
@@ -46,6 +47,37 @@ export class FileRenderer {
     this.featurePath = config.featurePath;
   }
   
+  /**
+   * Resolve a path that is safe to pass to FileSystemPort.
+   *
+   * FileSystemPort expects paths relative to its workspace root.
+   * In design jobs, LLM emits paths like `outputs/design/system-design.md` which
+   * are relative to the feature directory, so we must prefix with the feature dir
+   * *relative to workspace root* (NOT an absolute path).
+   */
+  private resolveFileSystemPath(originalPath: string): string {
+    if (!this.fileSystem) return originalPath;
+
+    // If caller accidentally passed an absolute path, normalize it back to workspace-relative.
+    if (path.isAbsolute(originalPath)) {
+      const workspaceRoot = this.fileSystem.getWorkspaceRoot?.();
+      if (workspaceRoot) {
+        return path.relative(workspaceRoot, originalPath);
+      }
+      return originalPath.startsWith('/') ? originalPath.slice(1) : originalPath;
+    }
+
+    if (this.jobType === 'design' && this.featurePath) {
+      const workspaceRoot = this.fileSystem.getWorkspaceRoot?.();
+      if (workspaceRoot && path.isAbsolute(this.featurePath)) {
+        const featureDirRel = path.relative(workspaceRoot, this.featurePath);
+        return path.join(featureDirRel, originalPath);
+      }
+    }
+
+    return originalPath;
+  }
+
   /**
    * Handle file_start action
    */
@@ -217,20 +249,13 @@ export class FileRenderer {
    */
   private async handleCreateOrAppend(filePath: string, fileInfo: FileStreamInfo): Promise<void> {
     if (this.writeImmediately && this.gitPort && fileInfo.contentBuffer) {
-      const path = await import('path');
-      let absolutePath = filePath;
-      
-      if (this.jobType === 'design' && this.featurePath && !path.isAbsolute(filePath)) {
-        absolutePath = path.join(this.featurePath, filePath);
-        console.log(`🔄 [Design] Resolved path: ${filePath} → ${absolutePath}`);
-      }
-      
+      const fsPath = this.resolveFileSystemPath(filePath);
+
       if (fileInfo.actionType === 'append' && this.jobType === 'design') {
-        await this.handleDesignAppend(absolutePath, fileInfo.contentBuffer);
+        await this.handleDesignAppend(fsPath, fileInfo.contentBuffer);
       } else {
         if (!this.fileSystem) throw new Error('FileSystemPort not available');
-        await this.fileSystem.writeFile(absolutePath, fileInfo.contentBuffer);
-        console.log(`✅ [${fileInfo.actionType === 'create' ? 'Create' : 'Append'}] Successfully wrote ${absolutePath} to disk`);
+        await this.fileSystem.writeFile(fsPath, fileInfo.contentBuffer);
       }
     }
     
@@ -240,14 +265,14 @@ export class FileRenderer {
   /**
    * Handle design job append with LAST_SECTION cleanup
    */
-  private async handleDesignAppend(absolutePath: string, newContent: string): Promise<void> {
+  private async handleDesignAppend(fileSystemPath: string, newContent: string): Promise<void> {
     if (!this.gitPort || !this.fileSystem) return;
     
     try {
-      const fileExists = await this.fileSystem.fileExists(absolutePath);
+      const fileExists = await this.fileSystem.fileExists(fileSystemPath);
       
       if (fileExists) {
-        const existingContent = await this.fileSystem.readFile(absolutePath) || '';
+        const existingContent = await this.fileSystem.readFile(fileSystemPath) || '';
         const lines = existingContent.split('\n');
         let lastLineIndex = lines.length - 1;
         
@@ -266,14 +291,12 @@ export class FileRenderer {
         }
         
         const mergedContent = cleanedExistingContent + '\n' + newContent;
-        await this.fileSystem!.writeFile(absolutePath, mergedContent);
-        console.log(`✅ [Append] Successfully appended to ${absolutePath} (total: ${mergedContent.length} chars)`);
+        await this.fileSystem!.writeFile(fileSystemPath, mergedContent);
       } else {
-        await this.fileSystem!.writeFile(absolutePath, newContent);
-        console.log(`✅ [Append] Created new file ${absolutePath}`);
+        await this.fileSystem!.writeFile(fileSystemPath, newContent);
       }
     } catch (error) {
-      console.error(`❌ [Append] Failed to append to ${absolutePath}:`, error);
+      console.error(`❌ [Append] Failed to append to ${fileSystemPath}:`, error);
       throw error;
     }
   }

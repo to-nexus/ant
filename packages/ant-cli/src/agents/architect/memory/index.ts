@@ -68,7 +68,6 @@ export async function retrieve(
             const result = formattedResults.join("\n\n");
             return result ? `### ${query}\n${result}` : '';
           } catch (error) {
-            console.warn(`⚠️  Failed to query "${query}":`, error instanceof Error ? error.message : error);
             return '';
           }
         })
@@ -121,7 +120,6 @@ export async function retrieve(
               const result = formattedResults.join("\n\n");
               return result ? `### ${query}\n${result}` : '';
             } catch (error) {
-              console.warn(`⚠️  Failed feature query "${query}":`, error instanceof Error ? error.message : error);
               return '';
             }
           })
@@ -129,7 +127,6 @@ export async function retrieve(
 
         sections["🎯 Feature-Specific Context"] = featureResults.filter(Boolean);
       } catch (error) {
-        console.warn(`⚠️  Failed to query feature-specific context:`, error instanceof Error ? error.message : error);
       }
     }
 
@@ -143,7 +140,6 @@ ${results.join('\n\n')}
 `)
       .join('\n\n');
   } catch (error) {
-    console.warn(`⚠️  Vector memory retrieval failed (continuing without memory):`, error instanceof Error ? error.message : error);
     return "";
   }
 }

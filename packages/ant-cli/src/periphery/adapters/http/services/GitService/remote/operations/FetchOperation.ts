@@ -47,7 +47,7 @@ export class FetchOperation {
       organizationId: userContext.organizationId,
       userId: userContext.userId,
       projectId,
-      feature: featureName
+      featureName
     }, {
       githubRepo: config.githubRepo,
       codebasePath
@@ -58,7 +58,7 @@ export class FetchOperation {
       organizationId: userContext.organizationId,
       userId: userContext.userId,
       projectId,
-      feature: featureName
+      featureName
     }, {
       githubRepo: config.githubRepo
     });

@@ -406,6 +406,59 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
       }
     }
     
+    // ✅ Enforce naming policy for consistency:
+    // - frontend-only or backend-only → ALWAYS `system-design.md`
+    // - fullstack → ALWAYS contract-first split docs
+    const detectedEnv = state.designEnvironment;
+    if (detectedEnv === 'frontend' || detectedEnv === 'backend') {
+      response.documentType = 'unified';
+      response.targetFiles = ['system-design.md'];
+      response.tasks = response.tasks.map(t => ({ ...t, targetFile: 'system-design.md' }));
+    } else if (detectedEnv === 'fullstack') {
+      response.documentType = 'contract-first';
+      response.targetFiles = ['api-contract.md', 'fe-system-design.md', 'be-system-design.md'];
+      
+      const hasRequiredTargets = (targets: string[]) =>
+        targets.includes('api-contract.md') &&
+        targets.includes('fe-system-design.md') &&
+        targets.includes('be-system-design.md');
+      
+      const taskTargets = response.tasks.map(t => t.targetFile);
+      if (!hasRequiredTargets(taskTargets) || response.tasks.length < 3) {
+        // If the LLM didn't split tasks properly, create a deterministic 3-task breakdown.
+        // Keep it concise (line budgets are handled in execute phase; decompose only sets structure).
+        response.tasks = [
+          {
+            id: 'design-api-contract',
+            name: 'Design Document: API Contract',
+            targetFile: 'api-contract.md',
+            priority: 200,
+            description: 'Define FE↔BE API contract (endpoints/events, DTOs, error format, auth if any). MAX 120 lines total!'
+          },
+          {
+            id: 'design-fe',
+            name: 'Design Document: Frontend System Design',
+            targetFile: 'fe-system-design.md',
+            priority: 220,
+            description: 'Design frontend architecture consuming api-contract.md (components, routing, state, loading/error UX, API integration). MAX 180 lines total!'
+          },
+          {
+            id: 'design-be',
+            name: 'Design Document: Backend System Design',
+            targetFile: 'be-system-design.md',
+            priority: 240,
+            description: 'Design backend architecture implementing api-contract.md (layers, endpoints, storage, validation, error handling). MAX 180 lines total!'
+          }
+        ];
+      } else {
+        // Normalize task targetFile to one of the contract-first files.
+        response.tasks = response.tasks.map(t => ({
+          ...t,
+          targetFile: response.targetFiles.includes(t.targetFile) ? t.targetFile : 'api-contract.md'
+        }));
+      }
+    }
+    
     // ✅ Validate targetFiles consistency
     console.log(`\n📊 Design Strategy: ${response.documentType}`);
     console.log(`📄 Target Files: ${response.targetFiles.join(', ')}`);

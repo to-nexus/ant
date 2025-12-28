@@ -30,6 +30,24 @@ export interface ProjectContext {
 
 export class ArtifactService {
   /**
+   * FileSystemPort는 워크스페이스 루트 기준 "상대경로"만 허용한다.
+   * 그런데 WorkspaceResolver/WorkspacePathResolver는 절대경로를 반환하므로,
+   * 여기서 일관되게 상대경로로 변환해서 FileSystemPort에 전달한다.
+   */
+  private static toWorkspaceRelative(fileSystem: FileSystemPort, p: string): string {
+    if (!p) return p;
+    if (!path.isAbsolute(p)) return p;
+
+    const root = (fileSystem as any).getWorkspaceRoot?.();
+    if (root && typeof root === 'string') {
+      return path.relative(root, p);
+    }
+
+    // Worst-case fallback: strip leading slash.
+    return p.startsWith('/') ? p.slice(1) : p;
+  }
+
+  /**
    * Extract feature folder name from artifact file path
    * 
    * Examples:
@@ -66,8 +84,9 @@ export class ArtifactService {
     gitPort: GitPort,
     fileSystem: FileSystemPort
   ): Promise<string | null> {
-    const featurePath = WorkspacePathResolver.resolveFeaturePath(context);
-    const directiveDir = path.join(featurePath, "inputs/directives", task);
+    const featurePathAbs = WorkspacePathResolver.resolveFeaturePath(context);
+    const directiveDirAbs = path.join(featurePathAbs, "inputs/directives", task);
+    const directiveDir = ArtifactService.toWorkspaceRelative(fileSystem, directiveDirAbs);
 
     const exists = await fileSystem.fileExists(directiveDir);
     if (!exists) {
@@ -120,8 +139,9 @@ export class ArtifactService {
   }> {
     const result: any = {};
     
-    const featurePath = WorkspacePathResolver.resolveFeaturePath(context);
-    const sourceDir = path.join(featurePath, "inputs/sources");
+    const featurePathAbs = WorkspacePathResolver.resolveFeaturePath(context);
+    const sourceDirAbs = path.join(featurePathAbs, "inputs/sources");
+    const sourceDir = ArtifactService.toWorkspaceRelative(fileSystem, sourceDirAbs);
     
     const sourceDirExists = await fileSystem.fileExists(sourceDir);
     if (!sourceDirExists) {
@@ -179,8 +199,9 @@ export class ArtifactService {
     fileSystem: FileSystemPort,
     preferredEnvironment?: 'frontend' | 'backend' | 'any'
   ): Promise<{ content: string; filePath: string } | null> {
-    const featurePath = WorkspacePathResolver.resolveFeaturePath(context);
-    const designPath = path.join(featurePath, "outputs/design");
+    const featurePathAbs = WorkspacePathResolver.resolveFeaturePath(context);
+    const designPathAbs = path.join(featurePathAbs, "outputs/design");
+    const designPath = ArtifactService.toWorkspaceRelative(fileSystem, designPathAbs);
 
     // ✅ Try design documents in priority order
     const candidateFiles: string[] = [];
@@ -206,7 +227,7 @@ export class ArtifactService {
     // Try each candidate file
     for (const fileName of candidateFiles) {
       const designFilePath = path.join(designPath, fileName);
-    const exists = await fileSystem.fileExists(designFilePath);
+      const exists = await fileSystem.fileExists(designFilePath);
 
       if (exists) {
         const content = await fileSystem.readFile(designFilePath);
@@ -244,8 +265,9 @@ export class ArtifactService {
     beDesign?: string;
     unifiedDesign?: string;
   }> {
-    const featurePath = WorkspacePathResolver.resolveFeaturePath(context);
-    const designPath = path.join(featurePath, "outputs/design");
+    const featurePathAbs = WorkspacePathResolver.resolveFeaturePath(context);
+    const designPathAbs = path.join(featurePathAbs, "outputs/design");
+    const designPath = ArtifactService.toWorkspaceRelative(fileSystem, designPathAbs);
     
     const result: {
       apiContract?: string;
@@ -349,8 +371,9 @@ export class ArtifactService {
     gitPort: GitPort,
     fileSystem: FileSystemPort
   ): Promise<string> {
-    const featurePath = WorkspacePathResolver.resolveFeaturePath(context);
-    const reportDir = path.join(featurePath, "outputs/reports");
+    const featurePathAbs = WorkspacePathResolver.resolveFeaturePath(context);
+    const reportDirAbs = path.join(featurePathAbs, "outputs/reports");
+    const reportDir = ArtifactService.toWorkspaceRelative(fileSystem, reportDirAbs);
     await fileSystem.createDirectory(reportDir);
     
     const reportFile = path.join(reportDir, fileName);
@@ -368,8 +391,9 @@ export class ArtifactService {
     gitPort: GitPort,
     fileSystem: FileSystemPort
   ): Promise<string> {
-    const featurePath = WorkspacePathResolver.resolveFeaturePath(context);
-    const designDir = path.join(featurePath, "outputs/design");
+    const featurePathAbs = WorkspacePathResolver.resolveFeaturePath(context);
+    const designDirAbs = path.join(featurePathAbs, "outputs/design");
+    const designDir = ArtifactService.toWorkspaceRelative(fileSystem, designDirAbs);
     await fileSystem.createDirectory(designDir);
     
     const timestamp = Date.now();

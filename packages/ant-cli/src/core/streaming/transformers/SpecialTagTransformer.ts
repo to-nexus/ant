@@ -372,19 +372,17 @@ export class SpecialTagTransformer {
             : '   → 🔧 Service Domain Design Guide applied\n';
         }
         
-        // Show output file
-        if (env === 'frontend') {
+        // Show output file (Naming policy)
+        // - single-tier (frontend-only / backend-only) → system-design.md
+        // - fullstack → split docs (api-contract, fe, be)
+        if (env === 'fullstack') {
           formatted += isKorean
-            ? '   → 🎨 `fe-system-design.md` 생성\n'
-            : '   → 🎨 Generate `fe-system-design.md`\n';
-        } else if (env === 'backend') {
-          formatted += isKorean
-            ? '   → ⚙️ `be-system-design.md` 생성\n'
-            : '   → ⚙️ Generate `be-system-design.md`\n';
+            ? '   → 🔄 `api-contract.md`, `fe-system-design.md`, `be-system-design.md` 생성\n'
+            : '   → 🔄 Generate `api-contract.md`, `fe-system-design.md`, `be-system-design.md`\n';
         } else {
           formatted += isKorean
-            ? '   → 🔄 `system-design.md` 생성\n'
-            : '   → 🔄 Generate `system-design.md`\n';
+            ? '   → 🧾 `system-design.md` 생성\n'
+            : '   → 🧾 Generate `system-design.md`\n';
         }
         formatted += '\n';
       }
