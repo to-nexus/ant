@@ -197,8 +197,9 @@ export class ArtifactService {
     if (!sourceDirExists) return {};
 
     // Known UI doc files (optional)
+    // ✅ Canonical: ui-spec.md (ONLY)
     const uiDocFiles = [
-      'design-spec.md',
+      'ui-spec.md',
       'components.md',
       'tokens.md',
       'ui-assets.md',
@@ -222,19 +223,27 @@ export class ArtifactService {
     const componentsDir = path.join(assetsDir, 'components');
     const iconsDir = path.join(assetsDir, 'icons');
 
-    const listFiles = async (dir: string): Promise<string[] | undefined> => {
+    const listFiles = async (dir: string, allowExts?: string[]): Promise<string[] | undefined> => {
       if (!(await fileSystem.fileExists(dir))) return undefined;
       const entries = await fileSystem.readDirectory(dir);
       const files = entries
         .filter(e => !e.isDirectory)
-        .map(e => path.join(dir, e.name))
+        .map(e => e.name)
+        .filter(name => !name.startsWith('.')) // exclude .gitkeep and other dotfiles
+        .filter(name => name.toLowerCase() !== 'readme.md')
+        .filter(name => {
+          if (!allowExts || allowExts.length === 0) return true;
+          const ext = path.extname(name).toLowerCase();
+          return allowExts.includes(ext);
+        })
+        .map(name => path.join(dir, name))
         .sort();
       return files.length > 0 ? files : undefined;
     };
 
-    const screens = await listFiles(screensDir);
-    const components = await listFiles(componentsDir);
-    const icons = await listFiles(iconsDir);
+    const screens = await listFiles(screensDir, ['.png', '.jpg', '.jpeg', '.webp', '.gif']);
+    const components = await listFiles(componentsDir, ['.png', '.jpg', '.jpeg', '.webp', '.gif']);
+    const icons = await listFiles(iconsDir, ['.svg']);
 
     const uiAssets =
       (screens || components || icons)

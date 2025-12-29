@@ -6,7 +6,7 @@
  */
 
 import OpenAI from 'openai';
-import { LLMClient, LLMStreamEvent, ToolDefinition, LLMInvokeResult } from '../../../core/ports/llm';
+import { LLMClient, LLMStreamEvent, ToolDefinition, LLMInvokeResult, CacheableContent } from '../../../core/ports/llm';
 import { TaskTokenUsage } from '../../../agents/architect/types/task';
 import { withRetryStream } from '../../../core/utils/retry';
 
@@ -41,20 +41,52 @@ export class OpenAILLMClient implements LLMClient {
     this.modelName = config.modelName;
   }
 
-  async invoke(messages: Array<{ role: string; content: string }>): Promise<string> {
-    const result = await this.invokeWithUsage(messages);
+  async invoke(messages: Array<{ role: string; content: string | CacheableContent[] }>, options?: Record<string, any>): Promise<string> {
+    const result = await this.invokeWithUsage(messages as any, options);
     return result.content;
   }
   
-  async invokeWithUsage(messages: Array<{ role: string; content: string }>, options?: Record<string, any>): Promise<import('../../../core/ports/llm').LLMInvokeResult> {
+  async invokeWithUsage(
+    messages: Array<{ role: string; content: string | CacheableContent[] }>,
+    options?: Record<string, any>
+  ): Promise<LLMInvokeResult> {
     // ✅ LOG: Actual API call with model name
     console.log(`🔥 [API CALL] provider=openai model=${this.modelName} method=invoke messages=${messages.length}`);
+    
+    const toDataUrl = (img: any): string => {
+      const mediaType = img?.source?.media_type;
+      const data = img?.source?.data;
+      if (!mediaType || !data) throw new Error(`[OpenAILLMClient] Invalid image block (missing media_type/data)`);
+      return `data:${mediaType};base64,${data}`;
+    };
+
+    // OpenAI supports multimodal content as an array of parts (text + image_url) in chat completions.
+    const normalizeChatContent = (content: string | CacheableContent[]): any => {
+      if (typeof content === 'string') return content;
+      if (!Array.isArray(content)) return String(content);
+
+      const hasImage = content.some((c: any) => c?.type === 'image');
+      if (!hasImage) {
+        // Preserve old behavior: join text blocks
+        return content
+          .filter((c: any) => c?.type === 'text')
+          .map((c: any) => c.text)
+          .join('');
+      }
+
+      // Build ordered parts
+      return content.map((c: any) => {
+        if (c?.type === 'text') return { type: 'text', text: c.text };
+        if (c?.type === 'image') return { type: 'image_url', image_url: { url: toDataUrl(c) } };
+        return { type: 'text', text: String(c) };
+      });
+    };
     
     const response = await this.client.chat.completions.create({
       model: this.modelName,
       messages: messages.map(m => ({
         role: m.role as 'user' | 'assistant' | 'system',
-        content: m.content,
+        content: normalizeChatContent(m.content),
       })),
       temperature: 0.7,
       max_tokens: options?.maxTokens || 16000,
@@ -78,7 +110,7 @@ export class OpenAILLMClient implements LLMClient {
    * ✅ Retries on overloaded_error and api_error
    */
   async *stream(
-    messages: Array<{ role: string; content: string | any[] }>,
+    messages: Array<{ role: string; content: string | CacheableContent[] | any[] }>,
     options?: {
       tools?: ToolDefinition[];
       maxTokens?: number;
@@ -100,7 +132,7 @@ export class OpenAILLMClient implements LLMClient {
    * Internal streaming implementation
    */
   private async *_streamInternal(
-    messages: Array<{ role: string; content: string | any[] }>,
+    messages: Array<{ role: string; content: string | CacheableContent[] | any[] }>,
     options?: {
       tools?: ToolDefinition[];
       maxTokens?: number;
@@ -114,13 +146,71 @@ export class OpenAILLMClient implements LLMClient {
     // ✅ Check if this is a Codex model that requires /v1/responses API
     const isCodexModel = this.modelName.includes('codex') || this.modelName.startsWith('gpt-5');
     
+    const toDataUrl = (img: any): string => {
+      const mediaType = img?.source?.media_type;
+      const data = img?.source?.data;
+      if (!mediaType || !data) throw new Error(`[OpenAILLMClient] Invalid image block (missing media_type/data)`);
+      return `data:${mediaType};base64,${data}`;
+    };
+
+    const normalizeChatContent = (content: any): any => {
+      if (typeof content === 'string') return content;
+      if (!Array.isArray(content)) return content;
+
+      const hasImage = content.some((c: any) => c?.type === 'image');
+      if (!hasImage) {
+        // If it's CacheableContent[] text blocks, join into a single string
+        if (content.every((c: any) => c?.type === 'text')) {
+          return content.map((c: any) => c.text).join('');
+        }
+        return content;
+      }
+
+      // Multimodal parts (chat.completions)
+      return content.map((c: any) => {
+        if (c?.type === 'text') return { type: 'text', text: c.text };
+        if (c?.type === 'image') return { type: 'image_url', image_url: { url: toDataUrl(c) } };
+        return { type: 'text', text: String(c) };
+      });
+    };
+    
     if (isCodexModel) {
-      // Use newer responses API for Codex models
+      // Use newer responses API for Codex models.
+      // NOTE: If multimodal blocks are present, we fall back to chat.completions for now.
+      // Reason: responses API payload shape differs across SDK versions; chat.completions multimodal is stable here.
+      const hasImage = messages.some(m => Array.isArray(m.content) && (m.content as any[]).some((c: any) => c?.type === 'image'));
+      if (hasImage) {
+        console.warn(`⚠️  [OpenAILLMClient] Multimodal input detected. Falling back to chat.completions stream for model=${this.modelName}.`);
+        const stream = await this.client.chat.completions.create({
+          model: this.modelName,
+          messages: messages.map(m => ({
+            role: m.role as 'user' | 'assistant' | 'system',
+            content: normalizeChatContent(m.content),
+          })),
+          ...(options?.tools && options.tools.length > 0 ? {
+            tools: options.tools.map(t => ({
+              type: 'function' as const,
+              function: {
+                name: t.name,
+                description: t.description,
+                parameters: t.input_schema,
+              },
+            })),
+          } : {}),
+          temperature: 0.7,
+          max_tokens: options?.maxTokens || 16000,
+          stream: true,
+        });
+        yield* this._processChatCompletionsStream(stream);
+        return;
+      }
+
+      // Text-only: keep existing responses API usage
       const stream = await (this.client as any).responses.create({
         model: this.modelName,
         messages: messages.map(m => ({
           role: m.role as 'user' | 'assistant' | 'system',
-          content: m.content,
+          content: normalizeChatContent(m.content),
         })),
         ...(options?.tools && options.tools.length > 0 ? {
           tools: options.tools.map(t => ({
@@ -145,7 +235,7 @@ export class OpenAILLMClient implements LLMClient {
         model: this.modelName,
         messages: messages.map(m => ({
           role: m.role as 'user' | 'assistant' | 'system',
-          content: m.content,
+          content: normalizeChatContent(m.content),
         })),
         ...(options?.tools && options.tools.length > 0 ? {
           tools: options.tools.map(t => ({

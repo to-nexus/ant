@@ -126,7 +126,7 @@ export async function loadSemanticFiles(
       const fileSystem = state.deps?.fileSystem;
       if (!fileSystem) {
         console.warn(`   ⚠️  FileSystemPort not available, skipping keyword search`);
-        return { vectorDbPaths: [], localFilePaths: [] };
+        return [];
       }
       
       // Search files by content matching

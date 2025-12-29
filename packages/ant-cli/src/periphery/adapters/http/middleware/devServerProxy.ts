@@ -167,6 +167,8 @@ export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
       let lastError: Error | null = null;
       const maxRetries = 3;
       const retryDelay = 500; // ms
+      const method = (req.method || 'GET').toUpperCase();
+      const hasRequestBody = !['GET', 'HEAD', 'OPTIONS'].includes(method);
       
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
@@ -181,7 +183,10 @@ export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
               // ✅ Force full response (no 304)
               'if-none-match': undefined,
               'if-modified-since': undefined
-            } as any
+            } as any,
+            // ✅ Stream original request body through to upstream (fullstack API calls).
+            // NOTE: Requires this middleware to be registered before express.json/body parsers.
+            ...(hasRequestBody ? { body: req as any, duplex: 'half' as any } : {})
           });
           break; // Success!
         } catch (error: any) {

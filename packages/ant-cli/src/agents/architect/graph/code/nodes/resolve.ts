@@ -40,6 +40,36 @@ async function indexDirectiveToMemory(
   }
 }
 
+async function indexFeatureInputsGuideToMemory(
+  project: string,
+  feature: string,
+  deps: any
+): Promise<void> {
+  if (!deps?.memory || !deps?.chunk) return;
+  try {
+    const { DocumentIndexer } = await import('../../../../../core/documents');
+    const { getFeatureInputsGuideMarkdown } = await import('../../../../../core/documents/featureInputsGuide');
+    const documentIndexer = new DocumentIndexer(deps.memory, deps.chunk);
+
+    const title = 'Feature Inputs Guide';
+    const content = getFeatureInputsGuideMarkdown();
+
+    // Best-effort idempotency: delete any previous versions for this feature/title
+    try {
+      await deps.memory.delete(project, { type: 'document', docType: 'spec', title, feature }, 'documents');
+    } catch {}
+
+    await documentIndexer.indexSpec(content, title, {
+      project,
+      feature,
+      tags: ['inputs', 'prd', 'ui', 'guide'],
+      version: '1.0'
+    });
+  } catch (error) {
+    console.warn('⚠️  Failed to index feature inputs guide (non-blocking):', error instanceof Error ? error.message : error);
+  }
+}
+
 /**
  * Extract tags from directive
  */
@@ -255,6 +285,15 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   const uiContext = await ArtifactService.loadUiContext(context, gitPort, fileSystem);
   const uiDoc = uiContext.uiDoc;
   const uiAssets = uiContext.uiAssets;
+
+  // ✅ Index inputs guide to documents collection (for RAG-based chat guidance)
+  if (state.deps?.memory && state.deps?.chunk) {
+    indexFeatureInputsGuideToMemory(
+      state.context.project,
+      state.context.featureFolder || 'default',
+      state.deps
+    ).catch(() => {});
+  }
 
   // ✅ Load all available design documents (api-contract / fe / be / system-design)
   // Use ArtifactService to ensure FileSystemPort receives workspace-relative paths

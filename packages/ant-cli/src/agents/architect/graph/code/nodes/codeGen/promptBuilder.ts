@@ -124,6 +124,95 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     text: projectContextParts.join('\n\n'),
     cache_control: { type: 'ephemeral' }
   };
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Block 2.5: UI Images (NOT CACHED - multimodal blocks)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const uiImageBlocks: CacheableContent[] = [];
+  try {
+    const llmProvider = (state.deps?.llm as any)?.provider;
+    const canSendImages = llmProvider === 'anthropic';
+
+    if (shouldInjectUiDoc && canSendImages && state.uiAssets && state.deps?.fileSystem) {
+      const fs = await import('fs');
+      const path = await import('path');
+
+      const workspaceRoot = state.deps.fileSystem.getWorkspaceRoot();
+
+      const maxImages = parseInt(process.env.ANT_UI_IMAGE_MAX || '4', 10);
+      const maxBytesPerImage = parseInt(process.env.ANT_UI_IMAGE_MAX_BYTES || `${2 * 1024 * 1024}`, 10); // 2MB
+      const maxTotalBytes = parseInt(process.env.ANT_UI_IMAGE_TOTAL_MAX_BYTES || `${8 * 1024 * 1024}`, 10); // 8MB
+
+      const candidates: string[] = [
+        ...(state.uiAssets.screens || []),
+        ...(state.uiAssets.components || []),
+      ]
+        .filter(Boolean)
+        .filter(p => !p.includes('/.gitkeep') && !p.endsWith('/.gitkeep'));
+
+      let totalBytes = 0;
+
+      // Add a small text header before images (helps LLM interpret upcoming blocks)
+      if (candidates.length > 0) {
+        const previewList = candidates.slice(0, maxImages).map(p => `- ${p}`).join('\n');
+        uiImageBlocks.push({
+          type: 'text',
+          text:
+            `# UI Images (Figma-derived)\n` +
+            `The following image blocks are screenshots/component states from \`inputs/sources/assets\`.\n` +
+            `Use them to match layout/spacing/visual states.\n\n` +
+            `${previewList}\n`
+        });
+      }
+
+      for (const rel of candidates) {
+        if (uiImageBlocks.filter(b => (b as any).type === 'image').length >= maxImages) break;
+
+        // Resolve to absolute path safely within workspace root
+        const abs = path.resolve(workspaceRoot, rel);
+        if (!abs.startsWith(workspaceRoot)) continue;
+        if (!fs.existsSync(abs)) continue;
+
+        const stat = fs.statSync(abs);
+        if (stat.size > maxBytesPerImage) {
+          console.log(`⚠️  [UI Images] Skip (too large): ${rel} (${stat.size} bytes)`);
+          continue;
+        }
+        if (totalBytes + stat.size > maxTotalBytes) {
+          console.log(`⚠️  [UI Images] Skip (total budget exceeded): ${rel}`);
+          continue;
+        }
+
+        const ext = path.extname(abs).toLowerCase();
+        const mediaType =
+          ext === '.png' ? 'image/png' :
+          (ext === '.jpg' || ext === '.jpeg') ? 'image/jpeg' :
+          ext === '.webp' ? 'image/webp' :
+          ext === '.gif' ? 'image/gif' :
+          null;
+
+        if (!mediaType) continue;
+
+        const data = fs.readFileSync(abs).toString('base64');
+        totalBytes += stat.size;
+
+        uiImageBlocks.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: mediaType as any,
+            data
+          }
+        });
+      }
+
+      if (uiImageBlocks.some(b => (b as any).type === 'image')) {
+        console.log(`🖼️  [UI Images] Injected ${uiImageBlocks.filter(b => (b as any).type === 'image').length} image(s) (total=${totalBytes} bytes)`);
+      }
+    }
+  } catch (e) {
+    console.warn(`⚠️  [UI Images] Failed to build image blocks (non-fatal):`, e);
+  }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Block 3: Task Context (NOT CACHED - changes frequently)
@@ -161,6 +250,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   const contentBlocks: CacheableContent[] = [
     systemPromptBlock,
     projectContextBlock,
+    ...uiImageBlocks,
     taskContextBlock
   ];
   

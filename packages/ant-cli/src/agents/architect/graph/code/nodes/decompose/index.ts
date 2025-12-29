@@ -75,6 +75,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       name: 'Explain code',
       type: 'explain',
       priority: 200,
+      ui: false,
       description: state.directive || 'Explain the codebase'
     };
     
