@@ -9,6 +9,7 @@ import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
 import { useJobExecution } from '@/application/hooks/features/useJobExecution';
 import { fetchAgents, type Agent, getApiBase, authFetch } from '@/infrastructure/http/api';
 import type { FileStats } from '@/domain/models/chat';
+import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 
 const API_BASE = () => getApiBase();
 
@@ -19,6 +20,7 @@ interface ChatInputProps {
 }
 
 export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputProps) {
+  const { showError } = useAlertModalContext();
   const selectedJobType = useStore((state) => state.selectedJobType);
   const setSelectedJobType = useStore((state) => state.setSelectedJobType);
   const selectedAgent = useStore((state) => state.selectedAgent);  // ✅ Reactive selectedAgent
@@ -269,7 +271,10 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
       } catch (error) {
         console.error('[ChatInput] Failed to continue job:', error);
         useStore.getState().setRunning(false);
-        alert(`Failed to continue job: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        showError(
+          `Continue 실패: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          { title: '오류' }
+        );
       }
       return;
     }

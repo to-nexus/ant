@@ -7,9 +7,11 @@ interface FeatureDropdownProps {
   isDevServerLoading: boolean;
   devServerRunning: boolean;
   canChangeFeature: boolean;
+  canCreateFeature: boolean;
   canStartDevServer: boolean;
   canStopDevServer: boolean;
   disabledReason?: string;
+  createDisabledReason?: string;
   onFeatureChange: (featureName: string | null) => void;
   onCreate: (featureName: string) => Promise<void>;
   onDelete: (featureName: string) => Promise<void>;
@@ -24,9 +26,11 @@ export function FeatureDropdown({
   isDevServerLoading,
   devServerRunning,
   canChangeFeature,
+  canCreateFeature,
   canStartDevServer,
   canStopDevServer,
   disabledReason,
+  createDisabledReason,
   onFeatureChange,
   onCreate,
   onDelete,
@@ -56,6 +60,8 @@ export function FeatureDropdown({
       isPlaying={devServerRunning}
       disabled={!canChangeFeature}
       disabledReason={disabledReason}
+      canCreate={canCreateFeature}
+      createDisabledReason={createDisabledReason}
       playButtonDisabled={!canStartDevServer && !canStopDevServer}
       playButtonLoading={isDevServerLoading}
     />

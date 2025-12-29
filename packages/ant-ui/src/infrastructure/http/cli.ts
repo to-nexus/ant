@@ -108,9 +108,17 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
           .join('\n');
         
         const errorMessage = `Cannot start ${jobType} job. The following required materials are missing:\n\n${materialsList}\n\nAll of these materials must be provided before starting the job.`;
-        
-        // Show error to user
-        alert(errorMessage);
+        // ✅ No window.alert() (legacy). Surface this in the chat stream instead.
+        try {
+          store.addChatMessage({
+            id: `msg-prereq-${Date.now()}`,
+            role: 'assistant',
+            contents: [{ type: 'text', content: `❌ ${errorMessage}` }],
+            timestamp: new Date().toISOString()
+          });
+        } catch (e) {
+          console.warn('[cli.ts] Failed to add chat message for prerequisites error:', e);
+        }
         
         // Notify exit listener
         if (exitListener) {
@@ -119,6 +127,7 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
         
         // Reset running state
         store.setRunning(false);
+        store.setLastJobFailed(true);
         return;
       }
       

@@ -3,6 +3,7 @@ import { Folder, FolderOpen } from 'lucide-react';
 import { FileNode } from '@/infrastructure/http/api';
 import { Button } from '../../common/button';
 import { FileIcon } from '@/shared/utils/file-icons';
+import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 
 interface DirectoryViewProps {
   title: string;
@@ -29,6 +30,7 @@ export function DirectoryView({
   const [showCreateForm, setShowCreateForm] = useState<string | null>(null);
   const [createType, setCreateType] = useState<'file' | 'directory'>('file');
   const [newFileName, setNewFileName] = useState('');
+  const { showConfirm } = useAlertModalContext();
 
   const toggleDirectory = (path: string) => {
     const newExpanded = new Set(expandedDirs);
@@ -140,9 +142,13 @@ export function DirectoryView({
                 className="h-6 w-6 p-0 text-gray-600 hover:text-red-600 hover:bg-red-50"
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (confirm(`Delete ${node.type} "${node.name}"?`)) {
-                    onDelete(node.path);
-                  }
+                  showConfirm(`Delete ${node.type} "${node.name}"?`, {
+                    type: 'warning',
+                    title: 'Delete?',
+                    confirmText: 'Delete',
+                    cancelText: 'Cancel',
+                    onConfirm: () => onDelete(node.path)
+                  });
                 }}
                 title={`Delete ${node.type}`}
               >

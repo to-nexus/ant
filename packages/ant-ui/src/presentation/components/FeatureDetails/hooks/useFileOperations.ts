@@ -5,6 +5,7 @@ import {
   deleteFileOrDirectory 
 } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
+import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 
 export function useFileOperations(
   selectedProject: string | undefined,
@@ -13,6 +14,7 @@ export function useFileOperations(
 ) {
   const selectFile = useStore((state) => state.selectFile);
   const selectedFile = useStore((state) => state.selectedFile);
+  const { showError } = useAlertModalContext();
 
   const handleCreateFile = async (dirPath: string, fileName: string) => {
     if (!selectedProject || !selectedFeature) return;
@@ -23,7 +25,7 @@ export function useFileOperations(
       await refreshFileTree();
     } catch (error) {
       console.error('Failed to create file:', error);
-      alert('Failed to create file');
+      showError('파일 생성에 실패했습니다.', { title: '오류' });
     }
   };
 
@@ -36,7 +38,7 @@ export function useFileOperations(
       await refreshFileTree();
     } catch (error) {
       console.error('Failed to create directory:', error);
-      alert('Failed to create directory');
+      showError('폴더 생성에 실패했습니다.', { title: '오류' });
     }
   };
 
@@ -53,7 +55,7 @@ export function useFileOperations(
       }
     } catch (error) {
       console.error('Failed to delete item:', error);
-      alert('Failed to delete item');
+      showError('삭제에 실패했습니다.', { title: '오류' });
     }
   };
 
@@ -65,7 +67,7 @@ export function useFileOperations(
       await refreshFileTree();
     } catch (error) {
       console.error('Failed to upload files:', error);
-      alert('Failed to upload files. Note: File upload is not fully implemented yet.');
+      showError('업로드에 실패했습니다. 잠시 후 다시 시도해주세요.', { title: '오류' });
     }
   };
 

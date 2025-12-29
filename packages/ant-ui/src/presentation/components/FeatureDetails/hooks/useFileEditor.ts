@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { fetchFileContent, saveFileContent } from '@/infrastructure/http/api';
+import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 
 export function useFileEditor(
   selectedProject: string | undefined,
@@ -10,6 +11,7 @@ export function useFileEditor(
   const [editedContent, setEditedContent] = useState('');
   const [hasChanges, setHasChanges] = useState(false);
   const [saving, setSaving] = useState(false);
+  const { showError } = useAlertModalContext();
 
   useEffect(() => {
     if (!selectedProject || !selectedFeature || !selectedFile) {
@@ -45,7 +47,7 @@ export function useFileEditor(
       setHasChanges(false);
     } catch (error) {
       console.error('Failed to save file:', error);
-      alert('Failed to save file');
+      showError('저장에 실패했습니다.', { title: '오류' });
     } finally {
       setSaving(false);
     }

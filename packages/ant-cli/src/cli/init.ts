@@ -129,7 +129,10 @@ export function initFeature(workspaceName: string, featureName: string): void {
   const sourcesDir = path.join(featureDir, "inputs/sources");
 
   // ✅ PRD is canonical single file: prd.md
-  const prdTemplate = `# ${featureName} - PRD
+  const prdTemplate = `<!-- ant:template -->
+<!-- 작성 후 이 줄(ant:template)을 삭제하세요. 남아있으면 시스템이 "비어있는 입력"으로 취급합니다. -->
+
+# ${featureName} - PRD
 
 > ✅ 필수: 이 파일은 항상 존재해야 합니다. (단일 입력 파일: \`inputs/sources/prd.md\`)
 
@@ -162,7 +165,10 @@ export function initFeature(workspaceName: string, featureName: string): void {
   );
 
   // ✅ UI spec docs (optional but recommended for UI features)
-  const uiSpecTemplate = `# ui-spec.md (UI 스펙)
+  const uiSpecTemplate = `<!-- ant:template -->
+<!-- 작성 후 이 줄(ant:template)을 삭제하세요. 남아있으면 시스템이 "비어있는 입력"으로 취급합니다. -->
+
+# ui-spec.md (UI 스펙)
 
 > 옵션(권장): UI/FE 구현을 위한 실행 가능한 스펙
 
@@ -187,7 +193,10 @@ export function initFeature(workspaceName: string, featureName: string): void {
 `;
   fs.writeFileSync(path.join(sourcesDir, "ui-spec.md"), uiSpecTemplate, "utf8");
 
-  const componentsTemplate = `# components.md (UI 컴포넌트 인벤토리)
+  const componentsTemplate = `<!-- ant:template -->
+<!-- 작성 후 이 줄(ant:template)을 삭제하세요. 남아있으면 시스템이 "비어있는 입력"으로 취급합니다. -->
+
+# components.md (UI 컴포넌트 인벤토리)
 
 > 옵션(권장): 컴포넌트 variants/sizes/states를 명시해 구현 추측을 줄임
 
@@ -202,7 +211,10 @@ export function initFeature(workspaceName: string, featureName: string): void {
 `;
   fs.writeFileSync(path.join(sourcesDir, "components.md"), componentsTemplate, "utf8");
 
-  const tokensTemplate = `# tokens.md (디자인 토큰)
+  const tokensTemplate = `<!-- ant:template -->
+<!-- 작성 후 이 줄(ant:template)을 삭제하세요. 남아있으면 시스템이 "비어있는 입력"으로 취급합니다. -->
+
+# tokens.md (디자인 토큰)
 
 > 옵션(권장): 색/타이포/스페이싱을 토큰으로 고정 (코드에서 바로 사용)
 
@@ -222,7 +234,10 @@ export function initFeature(workspaceName: string, featureName: string): void {
   fs.writeFileSync(path.join(sourcesDir, "tokens.md"), tokensTemplate, "utf8");
 
   // ✅ Optional: UI assets note file (kept empty by default)
-  const uiAssetsTemplate = `# ui-assets.md (UI 에셋 메모)
+  const uiAssetsTemplate = `<!-- ant:template -->
+<!-- 작성 후 이 줄(ant:template)을 삭제하세요. 남아있으면 시스템이 "비어있는 입력"으로 취급합니다. -->
+
+# ui-assets.md (UI 에셋 메모)
 
 > 옵션: 이미지/아이콘 파일만으로는 의도가 불명확할 수 있어, 필요 시 캡션/주의사항을 기록
 
@@ -243,7 +258,8 @@ export function initFeature(workspaceName: string, featureName: string): void {
   fs.mkdirSync(path.join(sourcesDir, "assets/icons"), { recursive: true });
 
   // Create placeholder directive.md files
-  const directiveTemplate = `<!-- Add your directive here -->
+  const directiveTemplate = `<!-- ant:template -->
+<!-- Add your directive here -->
 `;
   
   const directiveDirs = [

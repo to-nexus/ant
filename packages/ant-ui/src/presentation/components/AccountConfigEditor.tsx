@@ -7,14 +7,14 @@ import {
   startFigmaOAuth,
   disconnectFigma
 } from '@/infrastructure/http/api';
-import { useAlertModal } from '@/application/hooks/ui/useAlertModal';
+import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 
 interface AccountConfigEditorProps {
   onClose: () => void;
 }
 
 export function AccountConfigEditor({ onClose }: AccountConfigEditorProps) {
-  const { showSuccess, showError, AlertModal } = useAlertModal();
+  const { showSuccess, showError, showConfirm } = useAlertModalContext();
   
   // GitHub PAT state
   const [githubPAT, setGithubPAT] = useState('');
@@ -132,22 +132,26 @@ export function AccountConfigEditor({ onClose }: AccountConfigEditorProps) {
   };
 
   const handleDeleteGitHubPAT = async () => {
-    if (!confirm('Are you sure you want to delete your GitHub PAT? This will affect all projects.')) {
-      return;
-    }
-    
-    setIsSavingPAT(true);
-    try {
-      await deleteGitHubPAT();
-      setGithubPATConfigured(false);
-      setGithubPAT('');
-      showSuccess('GitHub PAT deleted successfully');
-    } catch (error: any) {
-      console.error('Failed to delete GitHub PAT:', error);
-      showError(error.message || 'Failed to delete GitHub PAT. Please try again.');
-    } finally {
-      setIsSavingPAT(false);
-    }
+    showConfirm('GitHub PAT을 삭제할까요? 모든 프로젝트에 영향이 있습니다.', {
+      type: 'warning',
+      title: 'Delete GitHub PAT?',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        setIsSavingPAT(true);
+        try {
+          await deleteGitHubPAT();
+          setGithubPATConfigured(false);
+          setGithubPAT('');
+          showSuccess('GitHub PAT deleted successfully');
+        } catch (error: any) {
+          console.error('Failed to delete GitHub PAT:', error);
+          showError(error.message || 'Failed to delete GitHub PAT. Please try again.');
+        } finally {
+          setIsSavingPAT(false);
+        }
+      }
+    });
   };
 
   const handleConnectFigma = async () => {
@@ -162,25 +166,29 @@ export function AccountConfigEditor({ onClose }: AccountConfigEditorProps) {
   };
 
   const handleDisconnectFigma = async () => {
-    if (!confirm('Are you sure you want to disconnect Figma? This will affect all projects using Figma integration.')) {
-      return;
-    }
-    
-    setIsDisconnectingFigma(true);
-    try {
-      console.log('[AccountConfigEditor] Disconnecting Figma...');
-      await disconnectFigma();
-      setFigmaConfigured(false);
-      setFigmaUserEmail(undefined);
-      setFigmaUserId(undefined);
-      setFigmaConnectedAt(undefined);
-      showSuccess('Figma disconnected successfully');
-    } catch (error: any) {
-      console.error('[AccountConfigEditor] Failed to disconnect Figma:', error);
-      showError(error.message || 'Failed to disconnect Figma. Please try again.');
-    } finally {
-      setIsDisconnectingFigma(false);
-    }
+    showConfirm('Figma 연결을 해제할까요? Figma 연동을 사용하는 모든 프로젝트에 영향이 있습니다.', {
+      type: 'warning',
+      title: 'Disconnect Figma?',
+      confirmText: 'Disconnect',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        setIsDisconnectingFigma(true);
+        try {
+          console.log('[AccountConfigEditor] Disconnecting Figma...');
+          await disconnectFigma();
+          setFigmaConfigured(false);
+          setFigmaUserEmail(undefined);
+          setFigmaUserId(undefined);
+          setFigmaConnectedAt(undefined);
+          showSuccess('Figma disconnected successfully');
+        } catch (error: any) {
+          console.error('[AccountConfigEditor] Failed to disconnect Figma:', error);
+          showError(error.message || 'Failed to disconnect Figma. Please try again.');
+        } finally {
+          setIsDisconnectingFigma(false);
+        }
+      }
+    });
   };
 
   const renderGitHubSection = () => {
@@ -374,9 +382,6 @@ export function AccountConfigEditor({ onClose }: AccountConfigEditorProps) {
           </div>
         </div>
       </div>
-      
-      {/* Alert Modal */}
-      <AlertModal />
     </div>
   );
 }

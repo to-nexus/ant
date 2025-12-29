@@ -3,6 +3,7 @@ import { ChevronDown, LucideIcon, Settings, Play, Square, Loader2 } from 'lucide
 import { Button } from '@/presentation/components/common/button';
 import { CreateItemForm } from './CreateItemForm';
 import { textColors, cn } from '@/shared/utils/design-system';
+import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 
 interface ItemDropdownProps {
   title: string;
@@ -30,6 +31,8 @@ interface ItemDropdownProps {
   playButtonLoading?: boolean;   // ✅ Play 버튼 로딩 중 여부
   disabled?: boolean;  // ✅ 작업 진행 중 선택 변경 불가
   disabledReason?: string;  // ✅ 비활성화 이유 (tooltip)
+  canCreate?: boolean;  // ✅ + New 가능 여부
+  createDisabledReason?: string; // ✅ + New 비활성화 이유
 }
 
 export function ItemDropdown({
@@ -53,10 +56,13 @@ export function ItemDropdown({
   playButtonLoading = false,   // ✅ 기본값: 로딩 아님
   disabled = false,
   disabledReason,
+  canCreate = true,
+  createDisabledReason,
 }: ItemDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const { showConfirm, showError } = useAlertModalContext();
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -88,6 +94,7 @@ export function ItemDropdown({
   const handleOpenCreate = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (disabled || !canCreate) return;
     setIsCreating(true);
   };
 
@@ -99,24 +106,39 @@ export function ItemDropdown({
 
   const handleDelete = async (itemName: string) => {
     if (!onDelete) return;
-    
-    if (!confirm(`Are you sure you want to delete "${itemName}"? This action cannot be undone.`)) {
-      return;
-    }
-    
-    try {
-      await onDelete(itemName);
-      if (selectedItem === itemName) {
-        onSelect('');
+
+    showConfirm(
+      <>
+        <p className="text-sm">
+          정말 <strong>"{itemName}"</strong>을(를) 삭제할까요?
+        </p>
+        <p className="text-sm mt-2 text-gray-600 dark:text-gray-400">
+          이 작업은 되돌릴 수 없습니다.
+        </p>
+      </>,
+      {
+        type: 'warning',
+        title: 'Delete?',
+        confirmText: 'Delete',
+        cancelText: 'Cancel',
+        onConfirm: async () => {
+          try {
+            await onDelete(itemName);
+            if (selectedItem === itemName) {
+              onSelect('');
+            }
+            onItemCreated?.(); // Refresh list
+          } catch (error) {
+            console.error('Failed to delete item:', error);
+            showError('삭제에 실패했습니다. 잠시 후 다시 시도해주세요.', { title: '오류' });
+          }
+        }
       }
-      onItemCreated?.(); // Refresh list
-    } catch (error) {
-      console.error('Failed to delete item:', error);
-      alert('Failed to delete item. Please try again.');
-    }
+    );
   };
 
   if (items.length === 0) {
+    const createDisabled = disabled || !canCreate;
     return (
       <div className="space-y-2">
         {/* Header */}
@@ -131,6 +153,8 @@ export function ItemDropdown({
               variant="ghost"
               size="sm" 
               onClick={handleOpenCreate}
+              disabled={createDisabled}
+              title={createDisabled ? (createDisabledReason || disabledReason || undefined) : undefined}
             >
               + New
             </Button>
@@ -173,6 +197,7 @@ export function ItemDropdown({
     );
   }
 
+  const createDisabled = disabled || !canCreate;
   return (
     <div className="space-y-2">
       {/* Header */}
@@ -187,6 +212,8 @@ export function ItemDropdown({
             variant="ghost"
             size="sm" 
             onClick={handleOpenCreate}
+            disabled={createDisabled}
+            title={createDisabled ? (createDisabledReason || disabledReason || undefined) : undefined}
           >
             + New
           </Button>

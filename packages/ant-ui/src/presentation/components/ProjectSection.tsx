@@ -14,7 +14,7 @@ import {
 } from '@/infrastructure/http/api';
 import { ItemDropdown } from './ItemDropdown';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
-import { useAlertModal } from '@/application/hooks/ui/useAlertModal';
+import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { GitStatusButtons } from './GitStatusButtons';
 import { Button } from '@/presentation/components/common/button';
 import { Tooltip } from '@/presentation/components/common/Tooltip';
@@ -37,7 +37,7 @@ export function ProjectSection() {
   const [isGitProcessing, setIsGitProcessing] = useState(false);
   const gitMenuRef = useRef<HTMLDivElement>(null);
   const policy = useUIActionPolicy();
-  const { showError, showSuccess, AlertModal } = useAlertModal();
+  const { showError, showSuccess } = useAlertModalContext();
   
   // Click outside to close Git menu
   useEffect(() => {
@@ -386,7 +386,6 @@ export function ProjectSection() {
       )}
       
       {/* Alert Modal */}
-      <AlertModal />
     </div>
   );
 }

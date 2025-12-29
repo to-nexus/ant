@@ -3,6 +3,11 @@ export function getFeatureInputsGuideMarkdown(): string {
 
 이 문서는 "피처 inputs/sources에 무엇을 넣어야 하는가?"를 채팅에서 RAG로 안내하기 위한 가이드입니다.
 
+## 템플릿/플레이스홀더 처리 규칙 (중요)
+- 피처 생성 시 만들어지는 입력 파일에는 기본적으로 **\`<!-- ant:template -->\`** 마커가 들어있습니다.
+- 이 마커가 남아있으면 시스템은 해당 파일을 **"아직 비어있는 입력"** 으로 간주하여 프롬프트/컨텍스트에 넣지 않습니다.
+- 작성이 끝나면 파일 상단의 **\`<!-- ant:template -->\`** 줄을 삭제하세요.
+
 ## 필수(항상)
 - **\`inputs/sources/prd.md\`**
   - **design job**: 설계 생성의 주 입력

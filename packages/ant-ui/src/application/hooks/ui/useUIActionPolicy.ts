@@ -34,6 +34,7 @@ export interface UIActionPolicy {
   canChangeFeature: boolean;
   canChangeAgent: boolean;
   canChangeWorkType: boolean;  // job 타입 (code, design 등)
+  canCreateFeature: boolean;   // ✅ Feature 생성 가능 여부
   
   // ============================================
   // Execution Actions (실행/중단)
@@ -79,6 +80,7 @@ export interface UIActionPolicy {
   // Disabled Reason (비활성화 이유)
   // ============================================
   disabledReason: string | null;
+  createFeatureDisabledReason: string | null; // ✅ Feature 생성 전용 사유
 }
 
 /**
@@ -96,6 +98,8 @@ export function useUIActionPolicy(): UIActionPolicy {
   const userEmail = useStore(state => state.userEmail);
   const isDevServerLoading = useStore(state => state.isDevServerLoading);
   const devServerStatus = useStore(state => state.devServerStatus);
+  const gitStatus = useStore(state => state.gitStatus);
+  const isGitStatusLoading = useStore(state => state.isGitStatusLoading);
   
   // ============================================
   // Policy Rules (정책 규칙)
@@ -154,6 +158,19 @@ export function useUIActionPolicy(): UIActionPolicy {
    * - NOT disconnected
    */
   const canStopDevServer = (devServerStatus?.running ?? false) && !isDevServerLoading && canPerformAnyAction;
+
+  /**
+   * Rule 7: Feature 생성 조건
+   * - 작업 중이 아니고(파일/브랜치 변화),
+   * - project 선택됨,
+   * - Cloud 모드에서는 Git repo가 init/clone 되어 있어야 함
+   */
+  const canCreateFeature =
+    !isWorkInProgress &&
+    canPerformAnyAction &&
+    !!selectedProject &&
+    (backendMode !== 'cloud' ? true : !!gitStatus?.hasGit) &&
+    (backendMode !== 'cloud' ? true : !isGitStatusLoading);
   
   // ============================================
   // Disabled Reason (비활성화 사유 메시지)
@@ -171,6 +188,24 @@ export function useUIActionPolicy(): UIActionPolicy {
   } else if (!hasValidSelection) {
     disabledReason = 'Select project and feature first';
   }
+
+  // Feature 생성 전용 사유 (더 구체적으로)
+  let createFeatureDisabledReason: string | null = null;
+  if (!isAuthenticated) {
+    createFeatureDisabledReason = 'Please sign in to continue';
+  } else if (isDisconnected) {
+    createFeatureDisabledReason = 'Server disconnected';
+  } else if (isStopping) {
+    createFeatureDisabledReason = 'Stopping in progress...';
+  } else if (isRunning) {
+    createFeatureDisabledReason = 'Task is running';
+  } else if (!selectedProject) {
+    createFeatureDisabledReason = 'Select workspace first';
+  } else if (backendMode === 'cloud' && isGitStatusLoading) {
+    createFeatureDisabledReason = 'Checking Git status...';
+  } else if (backendMode === 'cloud' && !gitStatus?.hasGit) {
+    createFeatureDisabledReason = 'Clone/Initialize Git repo first';
+  }
   
   // ============================================
   // Policy Object (정책 객체)
@@ -181,6 +216,7 @@ export function useUIActionPolicy(): UIActionPolicy {
     canChangeFeature: canPerformAnyAction,  // ✅ Always allow (can work on different features)
     canChangeAgent: !isWorkInProgress && canPerformAnyAction,
     canChangeWorkType: !isWorkInProgress && canPerformAnyAction,
+    canCreateFeature,
     
     // Execution Actions
     canRun,
@@ -212,7 +248,8 @@ export function useUIActionPolicy(): UIActionPolicy {
     isDisconnected,
     
     // Disabled Reason
-    disabledReason
+    disabledReason,
+    createFeatureDisabledReason
   };
 }
 
