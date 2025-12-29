@@ -144,6 +144,11 @@ export class ModeController {
       injections.push(`${commonPrefix}/prd-spec`);
     }
     
+    // ✅ Optional UI doc (Figma-derived) - pass only when caller decides it's UI-relevant
+    if (context.uiDoc) {
+      injections.push(`${commonPrefix}/ui-doc`);
+    }
+    
     // Code job specific injections (moved to code/base/injections)
     if (task === 'code') {
       // Git diff summary

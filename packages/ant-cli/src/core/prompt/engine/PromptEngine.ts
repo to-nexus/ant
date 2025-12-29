@@ -160,6 +160,8 @@ export class PromptEngine {
       designDoc?: string;
       prdSpec?: string;         // ✅ Added for design graph
       currentCode?: string;     // ✅ Added for design graph
+      uiDoc?: string;           // ✅ Optional UI spec (Figma-derived)
+      uiAssets?: any;           // ✅ Optional UI assets index (text-only manifest)
       lastSectionNumber?: number;
       previousDesign?: string;
       projectCodeContext?: ProjectCodeContext;

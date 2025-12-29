@@ -6,7 +6,9 @@ Agent Workflow Board는 Agent의 실행 흐름을 시각화하는 컴포넌트�
 
 ## 현재 상태
 
-**Placeholder**: 현재는 기본 UI만 구현되어 있으며, 실제 워크플로우 시각화 기능은 향후 구현 예정입니다.
+- Workflow UI는 **jobId 단위 Workflow SSE**(`/jobs/:jobId/workflow/stream`)를 통해 실시간으로 노드 전환을 표시합니다.
+- **멀티 프로젝트/멀티 job 환경**에서 섞이지 않도록, 클라이언트는 반드시 **`data.jobId`로 필터링**해야 합니다.
+- 서버의 workflow 상태는 현재 **메모리 기반**이므로, **페이지/서버 새로고침 후 “과거 nodeHistory” 완전 복구는 불가**합니다(실행 중 job은 stream으로 재구독 가능).
 
 ## 향후 구현 계획
 

@@ -44,6 +44,27 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       content: null
     })) || []
   } : undefined;
+
+  // ✅ Decide whether to inject UI context for THIS task only (token optimization)
+  // Primary source of truth: decompose LLM sets currentTask.ui
+  // Fallback: lightweight heuristics for backward compatibility.
+  const shouldInjectUiDoc = (() => {
+    if (!state.uiDoc) return false;
+    if (!state.currentTask) return false;
+    // Explanations generally don't need heavy UI specs
+    if (state.currentTask.type === 'explain') return false;
+    // ✅ 1) Primary: task metadata from decompose
+    if (state.currentTask.ui === true) return true;
+    if (state.currentTask.ui === false) return false;
+    // ✅ 2) Fallback: Strong signals in task title/description
+    const text = `${state.currentTask.name}\n${state.currentTask.description}`.toLowerCase();
+    const keywordHit = /(ui|ux|figma|design|layout|style|styling|css|tailwind|theme|token|component|screen|page|frontend|react|tsx|모달|버튼|인풋|화면|레이아웃|디자인)/.test(text);
+    // Environment signal (best-effort, not mandatory)
+    const envHit = state.detectedEnvironment === 'frontend' || state.detectedEnvironment === 'fullstack';
+    // Code context signal (RAG retrieved TSX)
+    const tsxHit = Boolean(state.projectCodeContext?.filePaths?.some(p => p.toLowerCase().endsWith('.tsx')));
+    return keywordHit || (envHit && tsxHit);
+  })();
   
   const promptResult = await promptEngine.buildExecutePrompt(
     'code',
@@ -52,6 +73,8 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       directive: state.directive,
       designDoc: state.design,
       prdSpec: state.prd,
+      uiDoc: shouldInjectUiDoc ? state.uiDoc : undefined,
+      uiAssets: shouldInjectUiDoc ? state.uiAssets : undefined,
       projectCodeContext: codeGenProjectCodeContext,
       referenceCodeContexts: state.referenceCodeContexts,
       lessons: Array.isArray(state.lessons) ? state.lessons : undefined,

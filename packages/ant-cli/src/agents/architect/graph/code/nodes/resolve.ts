@@ -250,6 +250,11 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   // ✅ Load PRD (inputs/sources) for detectEnvironment & downstream prompts
   const source = await ArtifactService.getSource(context, gitPort, fileSystem);
   const prd = source?.prd || undefined;
+  
+  // ✅ Load optional UI context (Figma-derived docs/assets). Injection is decided later per-task.
+  const uiContext = await ArtifactService.loadUiContext(context, gitPort, fileSystem);
+  const uiDoc = uiContext.uiDoc;
+  const uiAssets = uiContext.uiAssets;
 
   // ✅ Load all available design documents (api-contract / fe / be / system-design)
   // Use ArtifactService to ensure FileSystemPort receives workspace-relative paths
@@ -348,6 +353,8 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     ...state,
     directive,
     prd,
+    uiDoc,
+    uiAssets,
     design,
     designDocPath,  // ✅ Add design document file path for environment inference
     designDocs,     // ✅ Add structured design docs for detectEnvironment

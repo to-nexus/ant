@@ -150,28 +150,13 @@ export class ArtifactService {
 
     const entries = await fileSystem.readDirectory(sourceDir);
 
-    // 1. PRD (combined or individual files)
-    const combinedPrd = path.join(sourceDir, ".combined-prd.tmp.md");
-    if (await fileSystem.fileExists(combinedPrd)) {
-      result.prd = await fileSystem.readFile(combinedPrd);
-    } else {
-      const prdFiles = entries
-        .filter(e => !e.isDirectory && e.name.endsWith(".md") && e.name !== ".combined-prd.tmp.md")
-        .map(e => e.name)
-        .sort();
-
-      if (prdFiles.length > 0) {
-        const prdContents = await Promise.all(
-          prdFiles.map(async (file) => {
-            const content = await fileSystem.readFile(path.join(sourceDir, file));
-            return `# ${file}\n\n${content}`;
-          })
-        );
-        result.prd = prdContents.join("\n\n---\n\n");
-      }
+    // 1. PRD (single canonical file: prd.md)
+    const canonicalPrd = path.join(sourceDir, "prd.md");
+    if (await fileSystem.fileExists(canonicalPrd)) {
+      result.prd = await fileSystem.readFile(canonicalPrd);
     }
 
-    // 2. Wireframes (images)
+    // 2. Wireframes (images) - legacy: direct images in inputs/sources/
     const imageExtensions = [".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"];
     const wireframes = entries
       .filter(e => !e.isDirectory && imageExtensions.some(ext => e.name.toLowerCase().endsWith(ext)))
@@ -182,6 +167,105 @@ export class ArtifactService {
     }
 
     return result;
+  }
+
+  /**
+   * Load UI-specific documents/assets (Figma-derived) for optional injection into code prompts.
+   *
+   * Design goal:
+   * - Keep PRD clean (single canonical: prd.md)
+   * - Provide UI spec only when a task is UI-related (promptBuilder decides)
+   * - Represent images as an index/manifest (LLM prompt is text-only)
+   */
+  static async loadUiContext(
+    context: ProjectContext,
+    gitPort: GitPort,
+    fileSystem: FileSystemPort
+  ): Promise<{
+    uiDoc?: string;
+    uiAssets?: {
+      screens?: string[];
+      components?: string[];
+      icons?: string[];
+    };
+  }> {
+    const featurePathAbs = WorkspacePathResolver.resolveFeaturePath(context);
+    const sourceDirAbs = path.join(featurePathAbs, "inputs/sources");
+    const sourceDir = ArtifactService.toWorkspaceRelative(fileSystem, sourceDirAbs);
+
+    const sourceDirExists = await fileSystem.fileExists(sourceDir);
+    if (!sourceDirExists) return {};
+
+    // Known UI doc files (optional)
+    const uiDocFiles = [
+      'design-spec.md',
+      'components.md',
+      'tokens.md',
+      'ui-assets.md',
+    ];
+
+    const uiDocParts: string[] = [];
+
+    for (const name of uiDocFiles) {
+      const p = path.join(sourceDir, name);
+      if (await fileSystem.fileExists(p)) {
+        const content = (await fileSystem.readFile(p))?.trim();
+        if (content) {
+          uiDocParts.push(`<!-- UI Source: ${name} -->\n\n${content}`);
+        }
+      }
+    }
+
+    // Assets index (optional)
+    const assetsDir = path.join(sourceDir, 'assets');
+    const screensDir = path.join(assetsDir, 'screens');
+    const componentsDir = path.join(assetsDir, 'components');
+    const iconsDir = path.join(assetsDir, 'icons');
+
+    const listFiles = async (dir: string): Promise<string[] | undefined> => {
+      if (!(await fileSystem.fileExists(dir))) return undefined;
+      const entries = await fileSystem.readDirectory(dir);
+      const files = entries
+        .filter(e => !e.isDirectory)
+        .map(e => path.join(dir, e.name))
+        .sort();
+      return files.length > 0 ? files : undefined;
+    };
+
+    const screens = await listFiles(screensDir);
+    const components = await listFiles(componentsDir);
+    const icons = await listFiles(iconsDir);
+
+    const uiAssets =
+      (screens || components || icons)
+        ? { screens, components, icons }
+        : undefined;
+
+    // If we have assets but no explicit ui-assets.md, add a lightweight manifest section.
+    const hasExplicitUiAssetsDoc = await fileSystem.fileExists(path.join(sourceDir, 'ui-assets.md'));
+    if (uiAssets && !hasExplicitUiAssetsDoc) {
+      const lines: string[] = [];
+      lines.push(`# UI Assets (Index)`);
+      lines.push(`> Note: Prompt input is text-only. These are file paths to reference artifacts.`);
+      if (screens?.length) {
+        lines.push(`\n## screens`);
+        screens.forEach(p => lines.push(`- ${p}`));
+      }
+      if (components?.length) {
+        lines.push(`\n## components`);
+        components.forEach(p => lines.push(`- ${p}`));
+      }
+      if (icons?.length) {
+        lines.push(`\n## icons`);
+        icons.forEach(p => lines.push(`- ${p}`));
+      }
+      uiDocParts.push(lines.join('\n'));
+    }
+
+    return {
+      uiDoc: uiDocParts.length > 0 ? uiDocParts.join("\n\n---\n\n") : undefined,
+      uiAssets,
+    };
   }
 
   /**

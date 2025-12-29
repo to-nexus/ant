@@ -113,7 +113,8 @@ export function createTaskQueue(tasks: CodeTask[]): {
       priority: task.priority || TASK_PRIORITIES.FEATURE_NORMAL,
       description: task.description,
       errors: task.errors,
-      category: task.category
+      category: task.category,
+      ui: typeof (task as any).ui === 'boolean' ? (task as any).ui : undefined
     };
     
     taskQueue.push(normalizedTask);

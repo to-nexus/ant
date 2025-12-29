@@ -88,6 +88,13 @@ export interface TaskArtifacts {
   design?: string;
   designDocPath?: string;
   code?: string;     // ✅ Added for design graph (codebase context)
+  // ✅ Optional UI context (Figma-derived) - injected only for UI-related tasks
+  uiDoc?: string;
+  uiAssets?: {
+    screens?: string[];
+    components?: string[];
+    icons?: string[];
+  };
   profile?: CodebaseProfile;
   lessons?: any;     // ✅ Changed to any for flexibility (string | array)
   documents?: any[];

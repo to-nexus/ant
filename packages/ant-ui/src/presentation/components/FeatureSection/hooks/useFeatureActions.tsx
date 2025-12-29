@@ -5,18 +5,29 @@ import {
   deleteFeature, 
   getGitChanges 
 } from '@/infrastructure/http/api';
-import { useAlertModal } from '@/application/hooks/ui/useAlertModal';
+import type { ReactNode } from 'react';
+
+export type ShowConfirmFn = (
+  message: string | ReactNode,
+  options?: {
+    title?: string;
+    confirmText?: string;
+    cancelText?: string;
+    onConfirm?: () => void | Promise<void>;
+    onCancel?: () => void;
+  }
+) => void;
 
 export function useFeatureActions(
   selectedProject: string | undefined,
   _selectedFeature: string | undefined,  // Used by parent
-  baseBranch: string
+  baseBranch: string,
+  showConfirm: ShowConfirmFn
 ) {
   const setSelectedFeature = useStore((state) => state.setSelectedFeature);
   const fetchFeatures = useStore((state) => state.fetchFeatures);
   const refreshFileTree = useStore((state) => state.refreshFileTree);
   const setBypassFetchTimer = useStore((state) => state.setBypassFetchTimer);
-  const { showConfirm } = useAlertModal();
 
   const handleCreateFeature = async (featureName: string) => {
     if (!selectedProject) {

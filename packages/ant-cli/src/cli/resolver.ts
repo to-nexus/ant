@@ -154,38 +154,14 @@ export function resolveInputFile(inputPath: string, task: 'design' | 'code' | 'l
     
     switch (task) {
       case 'design': {
-        // Design task: automatically find and combine ALL PRD files in sources/
+        // Design task: PRD must be a single canonical file: prd.md
         const sourcesDir = path.join(inputPath, "inputs", "sources");
         
         if (fs.existsSync(sourcesDir)) {
-          const files = fs.readdirSync(sourcesDir);
-          const mdFiles = files
-            .filter(f => f.endsWith('.md') && !f.endsWith('.tmp.md')) // Exclude temporary files
-            .sort(); // Alphabetical order for consistency
-          
-          if (mdFiles.length > 0) {
-            // Create a temporary combined PRD file
-            const combinedContent: string[] = [];
-            
-            for (const mdFile of mdFiles) {
-              const filePath = path.join(sourcesDir, mdFile);
-              const content = fs.readFileSync(filePath, 'utf-8');
-              
-              // Add file header for multi-file PRDs
-              if (mdFiles.length > 1) {
-                combinedContent.push(`\n<!-- Source: ${mdFile} -->\n`);
-              }
-              combinedContent.push(content.trim());
-            }
-            
-            // Write to temporary combined file
-            const tmpFile = path.join(sourcesDir, '.combined-prd.tmp.md');
-            fs.writeFileSync(tmpFile, combinedContent.join('\n\n'));
-            
-            console.log(`📄 Using ${mdFiles.length} PRD file(s):`);
-            mdFiles.forEach(f => console.log(`   - ${f}`));
-            
-            return tmpFile;
+          const canonical = path.join(sourcesDir, 'prd.md');
+          if (fs.existsSync(canonical)) {
+            console.log(`📄 Using PRD: prd.md`);
+            return canonical;
           }
         }
         

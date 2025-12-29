@@ -63,6 +63,11 @@ export interface BaseTask {
 export interface CodeTask extends BaseTask {
   errors?: string[];               // Error messages (for error tasks)
   category?: string;               // Error category (for error tasks)
+  /**
+   * UI task hint (set by decompose LLM).
+   * When true, UI docs/assets (Figma-derived) may be injected into prompts.
+   */
+  ui?: boolean;
 }
 
 /**

@@ -19,7 +19,7 @@ export function FeatureSection() {
   } = useStore();
   
   const policy = useUIActionPolicy();
-  const { AlertModal } = useAlertModal();
+  const { AlertModal, showConfirm } = useAlertModal();
   
   // Custom hooks
   const baseBranch = useBaseBranch(selectedProject);
@@ -42,7 +42,7 @@ export function FeatureSection() {
     handleCreateFeature,
     handleDeleteFeature,
     handleFeatureChange
-  } = useFeatureActions(selectedProject, selectedFeature, baseBranch);
+  } = useFeatureActions(selectedProject, selectedFeature, baseBranch, showConfirm);
   
   // Branch manager (auto-checkout)
   useFeatureBranchManager(selectedProject, selectedFeature, baseBranch);
