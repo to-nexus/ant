@@ -85,8 +85,29 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     
     for (const server of state.runningServers) {
       try {
-        // Try to kill the process
-        process.kill(server.pid, 'SIGTERM');
+        // Try to kill the entire process tree/group (shell wrappers can leave child servers orphaned)
+        if (process.platform === 'win32') {
+          try {
+            const { spawn } = await import('child_process');
+            await new Promise<void>((resolve) => {
+              const child = spawn('taskkill', ['/PID', String(server.pid), '/T', '/F'], {
+                stdio: 'ignore',
+                windowsHide: true
+              });
+              child.on('exit', () => resolve());
+              child.on('error', () => resolve());
+            });
+          } catch {
+            process.kill(server.pid, 'SIGTERM');
+          }
+        } else {
+          // POSIX: first try process group (requires detached=true at spawn)
+          try {
+            process.kill(-server.pid, 'SIGTERM');
+          } catch {
+            process.kill(server.pid, 'SIGTERM');
+          }
+        }
         console.log(`   ✅ Killed: ${server.command} (PID ${server.pid})`);
         
         // Give it a moment to terminate
@@ -96,7 +117,27 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
         try {
           process.kill(server.pid, 0);  // Check if process exists
           console.log(`   ⚠️  Process still running, escalating to SIGKILL...`);
-          process.kill(server.pid, 'SIGKILL');
+          if (process.platform === 'win32') {
+            try {
+              const { spawn } = await import('child_process');
+              await new Promise<void>((resolve) => {
+                const child = spawn('taskkill', ['/PID', String(server.pid), '/T', '/F'], {
+                  stdio: 'ignore',
+                  windowsHide: true
+                });
+                child.on('exit', () => resolve());
+                child.on('error', () => resolve());
+              });
+            } catch {
+              process.kill(server.pid, 'SIGKILL');
+            }
+          } else {
+            try {
+              process.kill(-server.pid, 'SIGKILL');
+            } catch {
+              process.kill(server.pid, 'SIGKILL');
+            }
+          }
         } catch (e) {
           // Process already terminated
         }

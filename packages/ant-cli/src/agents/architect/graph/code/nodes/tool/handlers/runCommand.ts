@@ -3,7 +3,7 @@
  * 
  * Supports both:
  * - Short-lived commands (build, test, lint) - wait for completion
- * - Long-running commands (npm start, dev servers) - verify startup then terminate
+ * - Long-running commands (npm start, dev servers) - verify startup then terminate (default)
  * 
  * Long-running behavior:
  * 1. Start the process
@@ -74,10 +74,17 @@ export async function handleRunCommand(
   
   try {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // Long-running command: verify startup, then terminate
+    // Long-running command: verify startup, then terminate (default)
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    if (isLongRunning && !keep_running) {
-      return await handleLongRunningCommand(state, command, workingDir, mergeIndex || 0, chatAPI);
+    if (isLongRunning) {
+      return await handleLongRunningCommand(
+        state,
+        command,
+        workingDir,
+        mergeIndex || 0,
+        chatAPI,
+        Boolean(keep_running)
+      );
     }
     
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -159,6 +166,52 @@ ${streamedStderr}
   }
 }
 
+async function terminateProcessTree(pid: number): Promise<void> {
+  if (!pid || pid <= 0) return;
+  // Windows: best-effort kill process tree
+  if (process.platform === 'win32') {
+    try {
+      const { spawn } = await import('child_process');
+      await new Promise<void>((resolve) => {
+        const child = spawn('taskkill', ['/PID', String(pid), '/T', '/F'], {
+          stdio: 'ignore',
+          windowsHide: true
+        });
+        child.on('exit', () => resolve());
+        child.on('error', () => resolve());
+      });
+      return;
+    } catch {
+      // fallback below
+    }
+  }
+
+  // POSIX: kill process group first (works well with detached=true)
+  try {
+    process.kill(-pid, 'SIGTERM');
+  } catch {
+    try {
+      process.kill(pid, 'SIGTERM');
+    } catch {
+      return;
+    }
+  }
+
+  // Give it a moment, then escalate
+  await new Promise(resolve => setTimeout(resolve, 500));
+  try {
+    process.kill(-pid, 0);
+    process.kill(-pid, 'SIGKILL');
+  } catch {
+    try {
+      process.kill(pid, 0);
+      process.kill(pid, 'SIGKILL');
+    } catch {
+      // already stopped
+    }
+  }
+}
+
 /**
  * Handle long-running command (e.g., dev servers)
  */
@@ -167,7 +220,8 @@ async function handleLongRunningCommand(
   command: string,
   workingDir: string,
   mergeIndex: number,
-  chatAPI: any
+  chatAPI: any,
+  keepRunning: boolean
 ): Promise<string> {
   const { spawn } = await import('child_process');
   
@@ -181,7 +235,9 @@ async function handleLongRunningCommand(
     
     const child = spawn(shell, shellArgs, {
       cwd: workingDir,
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe'],
+      // ✅ Important: create a new process group so we can terminate the whole tree later
+      detached: process.platform !== 'win32'
     });
     
     console.log(`   📋 Process spawned with PID: ${child.pid}`);
@@ -200,7 +256,11 @@ async function handleLongRunningCommand(
       
       // ✅ Only kill if needed (errors or early completion)
       if (shouldKill) {
-        child.kill('SIGTERM');
+        if (child.pid) {
+          await terminateProcessTree(child.pid);
+        } else {
+          child.kill('SIGTERM');
+        }
       }
       // Otherwise, leave it running (will be cleaned up in learn node)
       
@@ -212,7 +272,12 @@ async function handleLongRunningCommand(
       resolved = true;
       clearTimeout(startupTimeout);
       clearTimeout(earlyErrorTimeout);
-      child.kill('SIGTERM');  // Always kill on errors
+      // Always kill on errors
+      if (child.pid) {
+        await terminateProcessTree(child.pid);
+      } else {
+        child.kill('SIGTERM');
+      }
       reject(error);
     };
     
@@ -278,11 +343,15 @@ ${stdout.slice(0, 1000)}`));
       // If still running after 5s with no errors = success
       if (!hasError && child.exitCode === null) {
         console.log(`\n   ✅ Server started successfully (verified 5s startup)`);
-        console.log(`   🔄 Server will continue running (PID: ${child.pid})`);
-        console.log(`   🧹 Will be automatically cleaned up when task completes\n`);
+        if (keepRunning) {
+          console.log(`   🔄 Server will continue running (PID: ${child.pid})`);
+          console.log(`   🧹 Will be automatically cleaned up when task completes\n`);
+        } else {
+          console.log(`   🧹 Server will be terminated after verification (PID: ${child.pid})\n`);
+        }
         
-        // ✅ Store server process for cleanup later
-        if (child.pid) {
+        // ✅ Store server process for cleanup later (keepRunning only)
+        if (keepRunning && child.pid) {
           const serverProcess: ServerProcess = {
             pid: child.pid,
             command,
@@ -298,11 +367,14 @@ ${stdout.slice(0, 1000)}`));
         }
         
         await chatAPI.commandComplete(command, true, 0, 
-          `Server started successfully.\n\nStartup output:\n${stdout}\n\n✅ Server is running in background (PID: ${child.pid}).\n🧹 Will be automatically cleaned up when task completes.`,
+          keepRunning
+            ? `Server started successfully.\n\nStartup output:\n${stdout}\n\n✅ Server is running in background (PID: ${child.pid}).\n🧹 Will be automatically cleaned up when task completes.`
+            : `Server started successfully.\n\nStartup output:\n${stdout}\n\n✅ Server started without errors.\n🧹 Server was terminated after verification.`,
           mergeIndex
         );
-        
-        safeResolve(`✅ SERVER STARTED SUCCESSFULLY: ${command}
+
+        if (keepRunning) {
+          safeResolve(`✅ SERVER STARTED SUCCESSFULLY: ${command}
 
 The server started without errors and is running in background.
 
@@ -314,6 +386,19 @@ ${stdout.slice(0, 2000)}${stdout.length > 2000 ? '\n...(truncated)' : ''}
 
 ✅ The server will continue running for testing.
 🧹 It will be automatically cleaned up when the task completes.`);
+        } else {
+          safeResolve(`✅ SERVER STARTED SUCCESSFULLY: ${command}
+
+The server started without errors.
+
+PID: ${child.pid}
+Working Directory: ${workingDir}
+
+Startup output:
+${stdout.slice(0, 2000)}${stdout.length > 2000 ? '\n...(truncated)' : ''}
+
+🧹 Server was terminated after verification (default behavior).`, true);
+        }
       } else if (hasError) {
         // ✅ If error detected but process still running after 10s, fail
         console.error(`\n   ❌ Error detected during startup - failing\n`);
@@ -334,7 +419,7 @@ ${stdout.slice(0, 1000)}`));
       // ✅ Early exit (before 10s) is usually an error
       if (code === 0 && !hasError) {
         await chatAPI.commandComplete(command, true, 0, output, mergeIndex);
-        safeResolve(`✅ Command completed: ${command}\n\nOutput:\n${output.slice(0, 3000)}`, true);  // Kill on early completion
+        safeResolve(`✅ Command completed: ${command}\n\nOutput:\n${output.slice(0, 3000)}`, true);  // Ensure termination
       } else {
         // ✅ Non-zero exit or detected error
         await chatAPI.commandComplete(command, false, code || 1, output, mergeIndex);

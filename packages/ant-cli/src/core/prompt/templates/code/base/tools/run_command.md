@@ -3,7 +3,9 @@ Execute a shell command. Supports both build commands and server verification.
 For servers (npm start, npm run dev, etc.):
 - Starts the server and monitors for 10 seconds
 - If no errors during startup, returns success
-- Automatically terminates after verification
+- Automatically terminates after verification (default)
+- If you need the server to stay up temporarily for testing, pass keep_running=true
+- Any keep_running=true servers will be cleaned up automatically when the task completes
 - Use this to verify "does the fix work?" without hanging
 
 ⚠️ CRITICAL: Port Management Rules
