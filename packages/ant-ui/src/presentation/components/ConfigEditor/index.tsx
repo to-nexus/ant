@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ProjectConfig } from '@/infrastructure/http/api';
-import { useAlertModal } from '@/application/hooks/ui/useAlertModal';
+import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useAvailableModels } from './hooks/useAvailableModels';
 import { useConfigEditor } from './hooks/useConfigEditor';
 import { CONFIG_SCHEMA } from './configSchema';
@@ -15,6 +15,8 @@ interface ConfigEditorProps {
 }
 
 export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
+  // onClose is handled by MainPanel tab close button (kept for API compatibility)
+  void onClose;
   const { availableModels, isLoadingModels, defaultModelId } = useAvailableModels();
   const {
     editedConfig,
@@ -26,7 +28,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   } = useConfigEditor(config, defaultModelId);
   
   const [isSaving, setIsSaving] = useState(false);
-  const { showSuccess, showError, AlertModal } = useAlertModal();
+  const { showSuccess, showError, showConfirm } = useAlertModalContext();
 
   const handleChange = (key: keyof ProjectConfig, value: any) => {
     setEditedConfig(prev => {
@@ -98,11 +100,16 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
 
   const handleDiscardChanges = () => {
     if (!hasChanges) return;
-    
-    if (confirm('Are you sure you want to discard all changes?')) {
-      setEditedConfig(config);
-      setErrors({});
-    }
+    showConfirm('변경사항을 모두 되돌릴까요?', {
+      type: 'warning',
+      title: 'Discard changes?',
+      confirmText: 'Discard',
+      cancelText: 'Cancel',
+      onConfirm: () => {
+        setEditedConfig(config);
+        setErrors({});
+      }
+    });
   };
 
   // Cloud 모드에서 repoType 비활성화 여부

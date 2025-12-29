@@ -40,6 +40,20 @@ export function createFeaturesRoutes(deps: {
       }
       
       const userContext = extractUserContext(req);
+
+      // ✅ Cloud mode enforcement: require Git repo init/clone before creating features
+      // This prevents creating feature folders/branches before the codebase exists.
+      const serverMode = (process.env.ANT_SERVER_MODE || 'local') as 'local' | 'cloud';
+      if (serverMode === 'cloud') {
+        const gitStatus = await deps.projectService.getGitStatus(projectId, userContext);
+        if (!gitStatus?.hasGit) {
+          res.status(412).json({
+            error: 'Git repository is not initialized. Please init/clone the repo before creating features.',
+            code: 'git-not-initialized'
+          });
+          return;
+        }
+      }
       
       await deps.projectService.createFeature(projectId, featureName, userContext);
       

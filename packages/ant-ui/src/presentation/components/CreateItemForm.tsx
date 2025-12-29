@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 
 interface CreateItemFormProps {
   placeholder: string;
@@ -11,6 +12,7 @@ export function CreateItemForm({ placeholder, onSubmit, onCancel, isOpen }: Crea
   const [itemName, setItemName] = useState('');
   const [loading, setLoading] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
+  const { showError } = useAlertModalContext();
 
   // Reset state when form opens/closes
   useEffect(() => {
@@ -51,7 +53,10 @@ export function CreateItemForm({ placeholder, onSubmit, onCancel, isOpen }: Crea
       onCancel(); // Close form after successful creation
     } catch (error) {
       console.error('Failed to create item:', error);
-      alert('Failed to create item. Please check the name and try again.');
+      const anyErr = error as any;
+      if (!anyErr?.silent) {
+        showError('생성에 실패했습니다. 이름을 확인하고 다시 시도해주세요.', { title: '오류' });
+      }
     } finally {
       setLoading(false);
     }

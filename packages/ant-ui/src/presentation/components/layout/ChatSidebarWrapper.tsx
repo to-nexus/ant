@@ -2,7 +2,7 @@ import { ChevronRight, WifiOff, Trash2 } from 'lucide-react';
 import { Bar } from '../Bar';
 import { ChatPanel } from '../chat/ChatPanel';
 import { useStore } from '@/domain/store';
-import { useAlertModal } from '@/application/hooks/ui/useAlertModal';
+import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useState } from 'react';
 
 interface ChatSidebarWrapperProps {
@@ -30,7 +30,7 @@ export function ChatSidebarWrapper({
 }: ChatSidebarWrapperProps) {
   const chatMessages = useStore((state) => state.chatMessages);
   const isRunning = useStore((state) => state.isRunning);
-  const { showConfirm, AlertModal } = useAlertModal();
+  const { showConfirm, showError } = useAlertModalContext();
   const [isClearing, setIsClearing] = useState(false);
   
   // ✅ Clear chat history handler
@@ -55,6 +55,7 @@ export function ChatSidebarWrapper({
             console.log('[ChatSidebar] ✅ Chat history cleared');
           } catch (error) {
             console.error('[ChatSidebar] Failed to clear chat:', error);
+            showError('채팅 기록 삭제에 실패했습니다. 잠시 후 다시 시도해주세요.', { title: '오류' });
           } finally {
             setIsClearing(false);
           }
@@ -145,9 +146,6 @@ export function ChatSidebarWrapper({
           enabled={!isCollapsed}
         />
       </div>
-      
-      {/* Alert Modal */}
-      <AlertModal />
     </aside>
   );
 }

@@ -617,7 +617,14 @@ export async function createFeature(projectId: string, featureName: string): Pro
     });
     
     if (!response.ok) {
-      throw new Error(`Failed to create feature: ${response.statusText}`);
+      const errBody = await response.json().catch(() => null as any);
+      const message =
+        errBody?.error ||
+        errBody?.message ||
+        `Failed to create feature: ${response.statusText}`;
+      const err: any = new Error(message);
+      if (errBody?.code) err.code = errBody.code;
+      throw err;
     }
   } catch (error) {
     console.error('Error creating feature:', error);

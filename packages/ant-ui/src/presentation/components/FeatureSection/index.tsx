@@ -1,6 +1,6 @@
 import { useStore } from '@/domain/store';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
-import { useAlertModal } from '@/application/hooks/ui/useAlertModal';
+import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useBaseBranch } from './hooks/useBaseBranch';
 import { useFeatureBranchManager } from './hooks/useFeatureBranchManager';
 import { useDevServerManager } from './hooks/useDevServerManager';
@@ -19,7 +19,7 @@ export function FeatureSection() {
   } = useStore();
   
   const policy = useUIActionPolicy();
-  const { AlertModal, showConfirm } = useAlertModal();
+  const { showConfirm, showWarning, showError } = useAlertModalContext();
   
   // Custom hooks
   const baseBranch = useBaseBranch(selectedProject);
@@ -42,7 +42,7 @@ export function FeatureSection() {
     handleCreateFeature,
     handleDeleteFeature,
     handleFeatureChange
-  } = useFeatureActions(selectedProject, selectedFeature, baseBranch, showConfirm);
+  } = useFeatureActions(selectedProject, selectedFeature, baseBranch, showConfirm, showWarning);
   
   // Branch manager (auto-checkout)
   useFeatureBranchManager(selectedProject, selectedFeature, baseBranch);
@@ -56,7 +56,7 @@ export function FeatureSection() {
   // Fix dev server setup handler (uses Chat service)
   const handleFixSetup = () => {
     if (!suggestedFix) {
-      alert('수정 제안을 가져올 수 없습니다.');
+      showError('수정 제안을 가져올 수 없습니다.', { title: '오류' });
       return;
     }
     
@@ -92,9 +92,11 @@ export function FeatureSection() {
         isDevServerLoading={isLoading}
         devServerRunning={state === 'running'}
         canChangeFeature={policy.canChangeFeature}
+        canCreateFeature={policy.canCreateFeature}
         canStartDevServer={policy.canStartDevServer}
         canStopDevServer={policy.canStopDevServer}
         disabledReason={policy.disabledReason || undefined}
+        createDisabledReason={policy.createFeatureDisabledReason || undefined}
         onFeatureChange={handleFeatureChange}
         onCreate={handleCreateFeature}
         onDelete={handleDeleteFeature}
@@ -141,8 +143,6 @@ export function FeatureSection() {
         ) : null;
       })()}
       
-      {/* Alert Modal for uncommitted changes warning */}
-      <AlertModal />
     </div>
   );
 }

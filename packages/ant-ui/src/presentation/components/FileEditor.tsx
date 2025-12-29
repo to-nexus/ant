@@ -3,8 +3,10 @@ import { useStore } from '@/domain/store';
 import { fetchFileContent, saveFileContent } from '@/infrastructure/http/api';
 import { Card, CardHeader, CardTitle, CardContent } from '@/presentation/components/common/card';
 import { Button } from '@/presentation/components/common/button';
+import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 
 export function FileEditor() {
+  const { showError } = useAlertModalContext();
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);
   const selectedFile = useStore((state) => state.selectedFile);
@@ -53,7 +55,7 @@ export function FileEditor() {
       setHasChanges(false);
     } catch (error) {
       console.error('Failed to save file:', error);
-      alert('Failed to save file');
+      showError('저장에 실패했습니다.', { title: '오류' });
     } finally {
       setSaving(false);
     }

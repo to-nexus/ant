@@ -107,6 +107,24 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     prd = undefined;
   }
 
+  // ✅ If PRD exists but is still a template placeholder, fail fast with a clear message (greenfield only).
+  if (designMode === 'greenfield' && !prd) {
+    const featurePathAbs = WorkspacePathResolver.resolveFeaturePath(context);
+    const sourceDirAbs = path.join(featurePathAbs, "inputs/sources");
+    const sourceDir = ArtifactService.toWorkspaceRelative(fileSystem, sourceDirAbs);
+    const prdPath = path.join(sourceDir, 'prd.md');
+    if (await fileSystem.fileExists(prdPath)) {
+      const raw = await fileSystem.readFile(prdPath);
+      if (raw && raw.includes('<!-- ant:template -->')) {
+        throw new Error(
+          "PRD(prd.md)가 아직 템플릿 상태입니다.\n" +
+          "- prd.md 상단의 `<!-- ant:template -->` 줄을 삭제하고 내용을 채워주세요.\n" +
+          "- 해당 마커가 남아있으면 시스템은 '비어있는 입력'으로 취급합니다."
+        );
+      }
+    }
+  }
+
   // 2. Load directive with override priority
   // ✅ Priority: overrideDirective (from chat) > directive.md > directive-nnn.md
   let directive: string | undefined;

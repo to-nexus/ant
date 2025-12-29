@@ -16,6 +16,7 @@ import { MainContentArea } from '@/presentation/components/layout/MainContentAre
 import { ChatSidebarWrapper } from '@/presentation/components/layout/ChatSidebarWrapper';
 import { LocalSetupGuide } from '@/presentation/pages/LocalSetupGuide';
 import { ChevronRight } from 'lucide-react';
+import { AlertModalProvider } from '@/presentation/providers/AlertModalProvider';
 
 function App() {
   // ✅ Route handling: Track current path
@@ -245,104 +246,108 @@ function App() {
   // ✅ Show local setup guide for /local path
   if (currentPath === '/local') {
     return (
-      <>
-        <GlobalNavBar />
-        <LocalSetupGuide />
-      </>
+      <AlertModalProvider>
+        <>
+          <GlobalNavBar />
+          <LocalSetupGuide />
+        </>
+      </AlertModalProvider>
     );
   }
 
   return (
-    <div className="h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-colors">
-      {/* ✅ GNB uses hooks directly - no props needed */}
-      <GlobalNavBar />
-      
-      {/* Main Layout */}
-      {mainView === 'codeIde' ? (
-        // ✅ Editor View: OpenVSCode Server iframe
-        // ✅ CRITICAL: Use ideReloadTimestamp in key and src to force reload
-        // Docker container is shared, timestamp forces VS Code to reload workspace
-        <div className="flex-1 pt-16">
-          {ideConnecting || !ideBaseUrl ? (
-            <div className="w-full h-full flex items-center justify-center">
-              <div className="max-w-lg w-full px-6">
-                <div className="rounded-xl border border-gray-200 dark:border-[#30363d] bg-white dark:bg-[#161b22] p-6 shadow-sm">
-                  <div className="h-4 w-44 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-4" />
-                  <div className="h-3 w-full bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-2" />
-                  <div className="h-3 w-5/6 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-6" />
-                  <div className="text-sm text-gray-600 dark:text-gray-300">
-                    {ideConnectError ? `IDE 로딩 실패: ${ideConnectError}` : 'IDE 컨테이너를 시작하는 중입니다...'}
+    <AlertModalProvider>
+      <div className="h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-colors">
+        {/* ✅ GNB uses hooks directly - no props needed */}
+        <GlobalNavBar />
+        
+        {/* Main Layout */}
+        {mainView === 'codeIde' ? (
+          // ✅ Editor View: OpenVSCode Server iframe
+          // ✅ CRITICAL: Use ideReloadTimestamp in key and src to force reload
+          // Docker container is shared, timestamp forces VS Code to reload workspace
+          <div className="flex-1 pt-16">
+            {ideConnecting || !ideBaseUrl ? (
+              <div className="w-full h-full flex items-center justify-center">
+                <div className="max-w-lg w-full px-6">
+                  <div className="rounded-xl border border-gray-200 dark:border-[#30363d] bg-white dark:bg-[#161b22] p-6 shadow-sm">
+                    <div className="h-4 w-44 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-4" />
+                    <div className="h-3 w-full bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-2" />
+                    <div className="h-3 w-5/6 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-6" />
+                    <div className="text-sm text-gray-600 dark:text-gray-300">
+                      {ideConnectError ? `IDE 로딩 실패: ${ideConnectError}` : 'IDE 컨테이너를 시작하는 중입니다...'}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ) : (
-            <iframe
-              key={`ide-${selectedFeature || 'base'}-${ideReloadTimestamp}`}
-              src={`${ideBaseUrl}/?folder=${encodeURIComponent(ideWorkspacePath || '/workspace')}&tk=${ideReloadTimestamp}`}
-              className="w-full h-full border-0"
-              title="ANT Code Editor"
-              onLoad={() => {
-                // Mark as loaded to stop auto-retries and prevent flicker
-                useStore.getState().setIdeFrameLoaded(true);
-              }}
-            />
-          )}
-        </div>
-      ) : (
-        // ✅ Agents View: Original UI
-      <div className="flex-1 flex gap-0 overflow-hidden pt-16">
-        {/* Explorer Panel */}
-        <ExplorerPanel
-          isCollapsed={isExplorerCollapsed}
-          width={explorerWidth}
-          connectionStatus={connectionStatus}
-          onCollapse={() => setIsExplorerCollapsed(true)}
-          onResizeStart={() => setIsResizingExplorer(true)}
-        />
-        
-        {/* Collapsed Explorer Button */}
-        {isExplorerCollapsed && (
-          <div className="w-10 bg-white dark:bg-[#161b22] border-r border-gray-200 dark:border-[#30363d] flex flex-col items-center shrink-0 transition-colors shadow-sm">
-            <button
-              onClick={() => {
-                setIsExplorerCollapsed(false);
-                setExplorerWidth(320);
-              }}
-              className="h-10 w-10 flex items-center justify-center border-b border-gray-200 dark:border-[#30363d] bg-gray-50 dark:bg-[#0d1117] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
-              title="Expand Explorer"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
+            ) : (
+              <iframe
+                key={`ide-${selectedFeature || 'base'}-${ideReloadTimestamp}`}
+                src={`${ideBaseUrl}/?folder=${encodeURIComponent(ideWorkspacePath || '/workspace')}&tk=${ideReloadTimestamp}`}
+                className="w-full h-full border-0"
+                title="ANT Code Editor"
+                onLoad={() => {
+                  // Mark as loaded to stop auto-retries and prevent flicker
+                  useStore.getState().setIdeFrameLoaded(true);
+                }}
+              />
+            )}
           </div>
+        ) : (
+          // ✅ Agents View: Original UI
+        <div className="flex-1 flex gap-0 overflow-hidden pt-16">
+          {/* Explorer Panel */}
+          <ExplorerPanel
+            isCollapsed={isExplorerCollapsed}
+            width={explorerWidth}
+            connectionStatus={connectionStatus}
+            onCollapse={() => setIsExplorerCollapsed(true)}
+            onResizeStart={() => setIsResizingExplorer(true)}
+          />
+          
+          {/* Collapsed Explorer Button */}
+          {isExplorerCollapsed && (
+            <div className="w-10 bg-white dark:bg-[#161b22] border-r border-gray-200 dark:border-[#30363d] flex flex-col items-center shrink-0 transition-colors shadow-sm">
+              <button
+                onClick={() => {
+                  setIsExplorerCollapsed(false);
+                  setExplorerWidth(320);
+                }}
+                className="h-10 w-10 flex items-center justify-center border-b border-gray-200 dark:border-[#30363d] bg-gray-50 dark:bg-[#0d1117] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+                title="Expand Explorer"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Main Content Area */}
+          <MainContentArea
+            projectConfigData={projectConfigData}
+            isLoadingProjectConfig={isLoadingProjectConfig}
+            onSaveProjectConfig={handleSaveProjectConfig}
+            connectionStatus={connectionStatus}
+            splitLayout={splitLayout}
+            kanbanData={kanbanData}
+            workflowState={workflowData}
+          />
+
+          {/* Chat Panel */}
+          <ChatSidebarWrapper
+            isCollapsed={isChatCollapsed}
+            width={chatWidth}
+            isResizing={isResizingChat}
+            selectedAgent={selectedAgent || ''}
+            selectedProject={selectedProject || null}
+            selectedFeature={selectedFeature || null}
+            onExpand={() => setIsChatCollapsed(false)}
+            onCollapse={() => setIsChatCollapsed(true)}
+            onResizeStart={() => setIsResizingChat(true)}
+          />
+        </div>
         )}
-
-        {/* Main Content Area */}
-        <MainContentArea
-          projectConfigData={projectConfigData}
-          isLoadingProjectConfig={isLoadingProjectConfig}
-          onSaveProjectConfig={handleSaveProjectConfig}
-          connectionStatus={connectionStatus}
-          splitLayout={splitLayout}
-          kanbanData={kanbanData}
-          workflowState={workflowData}
-        />
-
-        {/* Chat Panel */}
-        <ChatSidebarWrapper
-          isCollapsed={isChatCollapsed}
-          width={chatWidth}
-          isResizing={isResizingChat}
-          selectedAgent={selectedAgent || ''}
-          selectedProject={selectedProject || null}
-          selectedFeature={selectedFeature || null}
-          onExpand={() => setIsChatCollapsed(false)}
-          onCollapse={() => setIsChatCollapsed(true)}
-          onResizeStart={() => setIsResizingChat(true)}
-        />
       </div>
-      )}
-    </div>
+    </AlertModalProvider>
   );
 }
 

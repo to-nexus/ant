@@ -6,6 +6,7 @@ import { Button } from '@/presentation/components/common/button';
 import { textColors, cn } from '@/shared/utils/design-system';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { FileIcon } from '@/shared/utils/file-icons';
+import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 
 interface DirectoryViewProps {
   title: string;
@@ -23,6 +24,7 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
   const [showCreateForm, setShowCreateForm] = useState<string | null>(null);
   const [createType, setCreateType] = useState<'file' | 'directory'>('file');
   const [newFileName, setNewFileName] = useState('');
+  const { showConfirm } = useAlertModalContext();
 
   const toggleDirectory = (path: string) => {
     const newExpanded = new Set(expandedDirs);
@@ -155,9 +157,13 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
                 className="h-6 w-6 p-0 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950"
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (confirm(`Delete ${node.type} "${node.name}"?`)) {
-                    onDelete(node.path);
-                  }
+                  showConfirm(`Delete ${node.type} "${node.name}"?`, {
+                    type: 'warning',
+                    title: 'Delete?',
+                    confirmText: 'Delete',
+                    cancelText: 'Cancel',
+                    onConfirm: () => onDelete(node.path)
+                  });
                 }}
                 title={`Delete ${node.type}`}
               >
@@ -267,6 +273,7 @@ export function ArtifactsPanel() {
   
   // ✅ UI Action Policy
   const policy = useUIActionPolicy();
+  const { showError } = useAlertModalContext();
 
   // Refresh file tree when project or feature changes
   useEffect(() => {
@@ -293,7 +300,7 @@ export function ArtifactsPanel() {
       await refreshFileTree();
     } catch (error) {
       console.error('Failed to create file:', error);
-      alert('Failed to create file');
+      showError('파일 생성에 실패했습니다.', { title: '오류' });
     }
   };
 
@@ -306,7 +313,7 @@ export function ArtifactsPanel() {
       await refreshFileTree();
     } catch (error) {
       console.error('Failed to create directory:', error);
-      alert('Failed to create directory');
+      showError('폴더 생성에 실패했습니다.', { title: '오류' });
     }
   };
 
@@ -321,7 +328,7 @@ export function ArtifactsPanel() {
       }
     } catch (error) {
       console.error('Failed to delete item:', error);
-      alert('Failed to delete item');
+      showError('삭제에 실패했습니다.', { title: '오류' });
     }
   };
 
@@ -341,7 +348,7 @@ export function ArtifactsPanel() {
       await refreshFileTree();
     } catch (error) {
       console.error('Failed to upload files:', error);
-      alert('Failed to upload files. Note: File upload is not fully implemented yet.');
+      showError('업로드에 실패했습니다. 잠시 후 다시 시도해주세요.', { title: '오류' });
     }
   };
 

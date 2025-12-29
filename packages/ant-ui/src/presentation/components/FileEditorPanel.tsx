@@ -6,12 +6,14 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import { Eye, FileText } from 'lucide-react';
+import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 
 interface FileEditorPanelProps {
   onClose?: () => void;
 }
 
 export function FileEditorPanel({ onClose }: FileEditorPanelProps) {
+  const { showError } = useAlertModalContext();
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);
   const selectedFile = useStore((state) => state.selectedFile);
@@ -70,7 +72,7 @@ export function FileEditorPanel({ onClose }: FileEditorPanelProps) {
       setHasChanges(false);
     } catch (error) {
       console.error('Failed to save file:', error);
-      alert('Failed to save file');
+      showError('저장에 실패했습니다.', { title: '오류' });
     } finally {
       setSaving(false);
     }

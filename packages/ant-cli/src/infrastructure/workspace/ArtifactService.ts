@@ -29,6 +29,24 @@ export interface ProjectContext {
 }
 
 export class ArtifactService {
+  private static readonly TEMPLATE_MARKER = '<!-- ant:template -->';
+
+  /**
+   * Treat "template/placeholder" docs as empty to avoid misleading prompts.
+   * - If TEMPLATE_MARKER is present, it's considered not user-filled yet.
+   * - If content is only HTML comments, it's considered empty as well.
+   */
+  private static normalizeUserDoc(raw: string | null | undefined): string | null {
+    if (!raw) return null;
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    if (trimmed.includes(ArtifactService.TEMPLATE_MARKER)) return null;
+
+    // If user left only HTML comments (e.g. "<!-- Add your directive here -->"), treat as empty.
+    const withoutComments = trimmed.replace(/<!--[\s\S]*?-->/g, '').trim();
+    if (!withoutComments) return null;
+    return trimmed;
+  }
   /**
    * FileSystemPort는 워크스페이스 루트 기준 "상대경로"만 허용한다.
    * 그런데 WorkspaceResolver/WorkspacePathResolver는 절대경로를 반환하므로,
@@ -98,9 +116,8 @@ export class ArtifactService {
     const defaultExists = await fileSystem.fileExists(defaultPath);
     if (defaultExists) {
       const content = await fileSystem.readFile(defaultPath);
-      if (content && content.trim().length > 0) {
-        return content.trim();
-      }
+      const normalized = ArtifactService.normalizeUserDoc(content);
+      if (normalized) return normalized;
     }
 
     // 2. Find latest directive-nnn.md
@@ -116,9 +133,8 @@ export class ArtifactService {
 
     if (files.length > 0) {
       const content = await fileSystem.readFile(path.join(directiveDir, files[0].name));
-      if (content && content.trim().length > 0) {
-        return content.trim();
-      }
+      const normalized = ArtifactService.normalizeUserDoc(content);
+      if (normalized) return normalized;
     }
 
     return null;
@@ -153,7 +169,11 @@ export class ArtifactService {
     // 1. PRD (single canonical file: prd.md)
     const canonicalPrd = path.join(sourceDir, "prd.md");
     if (await fileSystem.fileExists(canonicalPrd)) {
-      result.prd = await fileSystem.readFile(canonicalPrd);
+      const content = await fileSystem.readFile(canonicalPrd);
+      const normalized = ArtifactService.normalizeUserDoc(content);
+      if (normalized) {
+        result.prd = normalized;
+      }
     }
 
     // 2. Wireframes (images) - legacy: direct images in inputs/sources/
@@ -210,9 +230,10 @@ export class ArtifactService {
     for (const name of uiDocFiles) {
       const p = path.join(sourceDir, name);
       if (await fileSystem.fileExists(p)) {
-        const content = (await fileSystem.readFile(p))?.trim();
-        if (content) {
-          uiDocParts.push(`<!-- UI Source: ${name} -->\n\n${content}`);
+        const content = await fileSystem.readFile(p);
+        const normalized = ArtifactService.normalizeUserDoc(content);
+        if (normalized) {
+          uiDocParts.push(`<!-- UI Source: ${name} -->\n\n${normalized}`);
         }
       }
     }

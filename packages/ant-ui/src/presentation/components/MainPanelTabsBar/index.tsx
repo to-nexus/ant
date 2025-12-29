@@ -1,7 +1,7 @@
 import { useStore } from '@/domain/store';
 import { Bar } from '../Bar';
 import { Briefcase, Settings, FileEdit, User } from 'lucide-react';
-import { useAlertModal } from '@/application/hooks/ui/useAlertModal';
+import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { TabButton } from './components/TabButton';
 import { JobControls } from './components/JobControls';
 
@@ -25,7 +25,7 @@ export function MainPanelTabsBar() {
   const selectMainPanelTab = useStore((state) => state.selectMainPanelTab);
   const closeMainPanelTab = useStore((state) => state.closeMainPanelTab);
   const clearJobTab = useStore((state) => state.clearJobTab);
-  const { showConfirm, AlertModal } = useAlertModal();
+  const { showConfirm } = useAlertModalContext();
 
   // Job tab label: show full ID when active, abbreviated when inactive
   const getJobTabLabel = () => {
@@ -128,7 +128,6 @@ export function MainPanelTabsBar() {
   return (
     <>
       {controls}
-      <AlertModal />
     </>
   );
 }
