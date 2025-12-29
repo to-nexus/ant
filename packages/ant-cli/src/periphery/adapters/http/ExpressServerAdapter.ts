@@ -590,7 +590,6 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       origin: true,  // Allow the requesting origin (supports localhost:4200, etc.)
       credentials: true  // Allow credentials (cookies)
     }));
-    this.app.use(express.json({ limit: '50mb' }));
 
     // ✅ Avoid noisy 401s for browsers requesting a favicon on the platform origin (cloud auth mode).
     // Dev servers typically serve their own favicon under /dev/:serverKey/, but browsers still probe /favicon.ico.
@@ -599,6 +598,8 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     });
     
     // ✅ Dev Server Proxy Middleware (handles /dev/:serverKey requests)
+    // IMPORTANT: Must be registered BEFORE body parsers, so we can stream the original request
+    // body to upstream dev servers (fullstack API calls, file uploads, etc.).
     this.app.use(createDevServerProxyMiddleware({
       portRegistry: this.portRegistry,
       pathPrefix: '/dev',
@@ -611,6 +612,9 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         }
       }
     }));
+
+    // Body parsers for Ant platform APIs (must come AFTER /dev proxy)
+    this.app.use(express.json({ limit: '50mb' }));
     
     // Cloud mode: Add authentication middleware
     if (this.mode === 'cloud' && this.authService) {

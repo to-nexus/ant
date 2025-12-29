@@ -53,7 +53,8 @@ export class AnthropicLLMClient implements LLMClient {
     let cacheableBlocks = 0;
     for (const msg of messages) {
       if (Array.isArray(msg.content)) {
-        cacheableBlocks += msg.content.filter(c => c.cache_control).length;
+        // ✅ Only text blocks can have cache_control
+        cacheableBlocks += msg.content.filter(c => c.type === 'text' && (c as any).cache_control).length;
       }
     }
     
@@ -149,7 +150,8 @@ export class AnthropicLLMClient implements LLMClient {
     let cacheableBlocks = 0;
     for (const msg of messages) {
       if (Array.isArray(msg.content)) {
-        cacheableBlocks += msg.content.filter((c: any) => c.cache_control).length;
+        // ✅ Only text blocks can have cache_control
+        cacheableBlocks += msg.content.filter((c: any) => c?.type === 'text' && c?.cache_control).length;
       }
     }
     

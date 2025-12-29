@@ -12,13 +12,37 @@ import { TaskTokenUsage } from '../../agents/architect/types/task';
  * Use for: system prompts, codebase context, rules, examples
  * Don't cache: user questions, changing state, recent responses
  */
-export interface CacheableContent {
+export type TextContentBlock = {
   type: 'text';
   text: string;
   cache_control?: {
     type: 'ephemeral';
   };
-}
+};
+
+/**
+ * Image content block (Multimodal)
+ *
+ * Notes:
+ * - Currently used for Anthropic Messages API (supports image blocks in `content`).
+ * - Not cacheable (Anthropic prompt caching applies to text blocks).
+ * - Only base64 is supported here to keep transport self-contained.
+ */
+export type ImageContentBlock = {
+  type: 'image';
+  source: {
+    type: 'base64';
+    media_type: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
+    data: string; // base64 (no data: prefix)
+  };
+};
+
+/**
+ * Content blocks for LLM messages.
+ * Historically this was text-only for Anthropic prompt caching.
+ * Now expanded to support multimodal image blocks.
+ */
+export type CacheableContent = TextContentBlock | ImageContentBlock;
 
 /**
  * LLM Stream Event Types

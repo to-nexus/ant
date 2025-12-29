@@ -6,8 +6,8 @@ import { generateGitDiffSummary, formatGitDiffForPrompt, GitDiffSummary } from "
 /**
  * File Loader
  * 
- * Loads file contents from disk (current + Git HEAD versions).
- * ✅ REFACTORED: Uses GitPort for all file operations (no direct fs)
+ * Loads file contents from disk (working tree) + Git HEAD versions (history).
+ * ✅ NOTE: Working tree reads use Node fs for now (workspace-scoped FileSystemPort refactor pending).
  */
 export class FileLoader {
   
@@ -27,7 +27,7 @@ export class FileLoader {
   async load(
     files: FileWithSource[],
     workingDir: string,
-    git: GitPort,  // ✅ No longer optional
+    git: GitPort | undefined,
     maxTokens: number
   ): Promise<CodeContext> {
     
@@ -41,8 +41,17 @@ export class FileLoader {
       // ✅ GitPort.readFile() expects relative paths
       const relativePath = fileInfo.path;
 
-      // ✅ Use GitPort to read file (works through FileSystemPort)
-      const currentContent = await git.readFile(relativePath);
+      // ✅ Read current file from working tree (disk)
+      let currentContent: string | null = null;
+      try {
+        const fs = await import('fs/promises');
+        const abs = path.isAbsolute(relativePath)
+          ? relativePath
+          : path.join(workingDir, relativePath);
+        currentContent = await fs.readFile(abs, 'utf-8');
+      } catch {
+        currentContent = null;
+      }
       
       if (currentContent === null) {
         console.warn(`   ⚠️  File not found: ${fileInfo.path}`);
@@ -63,7 +72,7 @@ export class FileLoader {
       totalTokens += tokens;
 
       // ✅ Load Git HEAD version (if file has local changes)
-      if (fileInfo.hasLocalChanges) {
+      if (fileInfo.hasLocalChanges && git) {
         try {
           const headContent = await git.getHeadFile(relativePath);
           if (headContent !== null) {
@@ -88,7 +97,7 @@ export class FileLoader {
     
     // ✅ Generate Git diff summary (replaces codeHead)
     let gitDiff: GitDiffSummary | undefined = undefined;
-    if (filesChanged > 0) {
+    if (filesChanged > 0 && git) {
       const filePaths = files.slice(0, currentFiles.length).map(f => f.path);
       const diffResult = await generateGitDiffSummary(git, workingDir, filePaths);
       

@@ -45,42 +45,38 @@ export class RemoteChecker {
         user: userContext.userId
       };
 
+      const token = await githubAuthService.getToken(credentialContext);
+      const octokit = new Octokit({ auth: token });
+
       try {
-        const token = await githubAuthService.getToken(credentialContext);
-        const octokit = new Octokit({ auth: token });
-
         // Try to get repository info via GitHub API
-        await octokit.repos.get({
-          owner,
-          repo
-        });
-
+        await octokit.repos.get({ owner, repo });
         console.log(`[RemoteChecker] ✅ Repository exists: ${owner}/${repo}`);
         return true;
-        
       } catch (error: any) {
-        if (error.status === 404) {
+        if (error?.status === 404) {
           console.log(`[RemoteChecker] ❌ Repository does not exist: ${owner}/${repo}`);
           return false;
         }
-        
-        if (error.status === 403 || error.status === 401) {
-          console.warn(`[RemoteChecker] ⚠️ Authentication issue (${error.status}): ${owner}/${repo}`);
-          // Conservative: assume exists to prevent accidental overwrite
-          console.warn(`[RemoteChecker] Assuming repository exists (cannot verify due to auth issue)`);
-          return true;
+
+        if (error?.status === 401 || error?.status === 403) {
+          // Do not "assume exists" (that causes false positives). Fail with actionable error instead.
+          throw new Error(
+            `GitHub authentication failed while verifying repository existence (${error.status}). ` +
+            `Please check your GitHub PAT (and scopes) in Configuration.`
+          );
         }
-        
-        // Other errors
-        console.warn(`[RemoteChecker] ⚠️ Could not verify repository (${error.status || 'unknown'}): ${owner}/${repo}`);
-        console.warn(`[RemoteChecker] Error: ${error.message}`);
-        // Conservative: assume exists
-        return true;
+
+        throw new Error(
+          `Could not verify repository existence (${error?.status || 'unknown'}): ${owner}/${repo}. ` +
+          `${error?.message || ''}`.trim()
+        );
       }
-    } catch (error) {
-      console.error('[RemoteChecker] Error checking repository:', error);
-      // Conservative: assume exists to prevent accidental overwrite
-      return true;
+    } catch (error: any) {
+      // Bubble up with a clean error message; callers can decide how to handle this.
+      const msg = error?.message || String(error);
+      console.error('[RemoteChecker] Error checking repository:', msg);
+      throw new Error(msg);
     }
   }
 }

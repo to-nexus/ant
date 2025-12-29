@@ -7,6 +7,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ChatSession, ChatMessage } from './types';
+import { BASE_BRANCH_NAMES } from './types';
 import type { UserContext } from '../../../../../core/types/user';
 import type { SessionPersistence } from './SessionPersistence';
 import type { MessageBroadcaster } from './MessageBroadcaster';
@@ -138,6 +139,11 @@ export class SessionManager {
    * Start watching chat file for external changes (e.g., manual deletion)
    */
   private startWatchingChatFile(projectId: string, featureName: string, userContext?: UserContext): void {
+    // Base branches don't persist chat history; watching can fail because sessions dir won't be created.
+    if (BASE_BRANCH_NAMES.includes(featureName.toLowerCase())) {
+      return;
+    }
+
     const key = this.getSessionKey(projectId, featureName);
     
     // Don't create duplicate watchers
@@ -148,6 +154,11 @@ export class SessionManager {
     try {
       const filePath = this.persistence.getChatFilePath(projectId, featureName, userContext);
       const dirPath = path.dirname(filePath);
+
+      // Ensure sessions directory exists before watching (fs.watch throws ENOENT otherwise)
+      if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath, { recursive: true });
+      }
       
       // Watch the sessions directory (file might not exist yet)
       const watcher = fs.watch(dirPath, { persistent: false }, (eventType, filename) => {

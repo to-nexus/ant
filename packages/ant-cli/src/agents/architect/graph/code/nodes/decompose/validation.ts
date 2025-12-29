@@ -46,6 +46,18 @@ export function validateTasks(
   mode: string | undefined,
   directive: string | undefined
 ): void {
+  // ✅ STRICT: UI flag must be explicitly provided (decompose is the source of truth)
+  // Rationale: UI doc/image injection should be deterministic, not heuristic-driven.
+  for (const t of tasks) {
+    if (typeof (t as any).ui !== 'boolean') {
+      throw new Error(
+        `❌ [Decompose Validation] Missing required field "ui" on task.\n` +
+        `Each task must include: "ui": true|false\n` +
+        `Task: ${t.id || '(no id)'} / ${t.name}\n`
+      );
+    }
+  }
+
   // Skip validation for generate mode
   if (mode === 'generate') return;
   

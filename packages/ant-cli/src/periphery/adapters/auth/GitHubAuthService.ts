@@ -116,6 +116,20 @@ export class GitHubAuthService {
     const credentials = await this.userConfig.credentials.get<GitHubCredentials>(credContext, 'github');
     return credentials?.token || null;
   }
+
+  /**
+   * Backward-compatible alias used by some older callers.
+   * Prefer `getPAT()` for new code.
+   */
+  async getToken(userContext: CredentialUserContext): Promise<string> {
+    const pat = await this.getPAT(userContext);
+    if (!pat) {
+      throw new Error(
+        'GitHub PAT not configured. Please save your PAT in the Configuration screen (GitHub Integration section).'
+      );
+    }
+    return pat;
+  }
   
   /**
    * Check if user has configured PAT
