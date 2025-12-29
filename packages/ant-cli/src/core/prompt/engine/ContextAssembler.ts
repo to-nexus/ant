@@ -13,6 +13,13 @@ export interface AssembledContext {
   designDocPath?: string;
   prdSpec?: string;          // ✅ Added for design graph
   currentCode?: string;      // ✅ Added for design graph
+  // ✅ Optional UI context (Figma-derived) - injected only for UI-related tasks
+  uiDoc?: string;
+  uiAssets?: {
+    screens?: string[];
+    components?: string[];
+    icons?: string[];
+  };
   lastSectionNumber?: number;
   previousDesign?: string;
   
@@ -132,6 +139,8 @@ export class ContextAssembler {
       designDoc?: string;
       prdSpec?: string;
       currentCode?: string;
+      uiDoc?: string;
+      uiAssets?: AssembledContext['uiAssets'];
       lastSectionNumber?: number;
       projectCodeContext?: ProjectCodeContext;
       referenceCodeContexts?: ReferenceCodeContext[];
@@ -159,6 +168,8 @@ export class ContextAssembler {
       assembled.designDoc = artifacts.designDoc;
       assembled.prdSpec = artifacts.prdSpec;
       assembled.currentCode = artifacts.currentCode;
+      assembled.uiDoc = artifacts.uiDoc;
+      assembled.uiAssets = artifacts.uiAssets;
       assembled.lastSectionNumber = artifacts.lastSectionNumber;
       assembled.projectCodeContext = artifacts.projectCodeContext;
       assembled.referenceCodeContexts = artifacts.referenceCodeContexts || [];

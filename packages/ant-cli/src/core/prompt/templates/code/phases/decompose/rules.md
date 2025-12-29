@@ -29,6 +29,7 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
     "name": "Setup Project",
     "type": "setup",
     "priority": 100,
+    "ui": false,
     "description": "Create project structure, configuration files, and install dependencies based on detected language and framework"
   },
   {
@@ -36,6 +37,7 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
     "name": "Implement Feature",
     "type": "feature",
     "priority": 200,
+    "ui": true,
     "description": "..."
   },
   {
@@ -43,6 +45,7 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
     "name": "Final Build & Startup Verification",
     "type": "feature",
     "priority": 1000,
+    "ui": false,
     "description": "Verify build succeeds and application starts without runtime errors"
   }
 ]
@@ -56,6 +59,7 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
     "name": "Add Balance Field to User",
     "type": "feature",
     "priority": 200,
+    "ui": false,
     "description": "Extend User entity with balance field and update related services"
   },
   {
@@ -63,6 +67,7 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
     "name": "Final Build & Startup Verification",
     "type": "feature",
     "priority": 1000,
+    "ui": false,
     "description": "Verify build succeeds and application starts without runtime errors"
   }
 ]
@@ -76,6 +81,7 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
     "name": "Fix ERR_MODULE_NOT_FOUND for EventHandler",
     "type": "error",
     "priority": 200,
+    "ui": false,
     "description": "Analyze and resolve: 'Error [ERR_MODULE_NOT_FOUND]: Cannot find module ./EventHandler'. Determine root cause (missing file, wrong path, or config issue) and apply fix."
   },
   {
@@ -83,6 +89,7 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
     "name": "Verify Error Resolution",
     "type": "feature",
     "priority": 1000,
+    "ui": false,
     "description": "Confirm error fix is complete. Address any remaining issues."
   }
 ]
@@ -131,6 +138,15 @@ CRITICAL:
 - The JSON inside <tasks> tags MUST be valid JSON (no trailing commas, proper quotes)
 - Use <tasks> wrapper so the JSON can be reliably extracted
 
+**UI TASK FLAG (IMPORTANT):**
+- Add `"ui": true|false` to EVERY task object.
+- Set `"ui": true` ONLY when the task requires frontend UI work, such as:
+  - UI components (Button/Input/Modal/Table), layout, styling/CSS/Tailwind
+  - Screen/page implementation, UI state (loading/empty/error), UX interactions
+  - Theme/tokens/typography/colors
+  - React/TSX view layer changes
+- Otherwise set `"ui": false` (backend-only, infra, API contract, server fixes, dependency fixes).
+
 IMPORTANT:
 - **Setup Task Decision (CRITICAL):**
   - ✅ Create setup task(s) ONLY if "NEW PROJECT (no existing codebase)" was shown above
@@ -162,7 +178,8 @@ IMPORTANT:
     "name": "Task name",
     "description": "Task description",
     "type": "setup|feature|error",
-    "priority": 100
+    "priority": 100,
+    "ui": false
   }
 ]
 </tasks>

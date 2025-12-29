@@ -363,6 +363,11 @@ export class TemplateComposer {
       'prd-spec': {
         prdSpec: assembled.prdSpec || ''
       },
+
+      // ui-doc.md expects: {{uiDoc}}
+      'ui-doc': {
+        uiDoc: assembled.uiDoc || ''
+      },
       
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       // Code-specific injections (code/base/injections/*.md)
