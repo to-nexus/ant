@@ -22,9 +22,10 @@ export class FileOperationService {
     const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
 
     const buildTree = async (dirPath: string, relativePath: string = ''): Promise<any> => {
-      let items: string[] = [];
+      let items: fs.Dirent[] = [];
       try {
-        items = await fs.promises.readdir(dirPath);
+        // ✅ Use Dirent to sort directories-first without extra stat calls
+        items = await fs.promises.readdir(dirPath, { withFileTypes: true });
       } catch (err) {
         // 폴더가 없으면 빈 배열 반환
         return [];
@@ -38,24 +39,32 @@ export class FileOperationService {
         return [];
       }
 
-      for (const item of items) {
-        if (item.startsWith('.')) continue;
+      // ✅ Sort: directories first, then files; both by name
+      const sorted = items
+        .filter(d => !d.name.startsWith('.'))
+        .sort((a, b) => {
+          const ad = a.isDirectory();
+          const bd = b.isDirectory();
+          if (ad !== bd) return ad ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        });
 
-        const fullPath = path.join(dirPath, item);
-        const itemRelativePath = relativePath ? `${relativePath}/${item}` : item;
-        const stat = await fs.promises.stat(fullPath);
+      for (const item of sorted) {
 
-        if (stat.isDirectory()) {
+        const fullPath = path.join(dirPath, item.name);
+        const itemRelativePath = relativePath ? `${relativePath}/${item.name}` : item.name;
+
+        if (item.isDirectory()) {
           const children = await buildTree(fullPath, itemRelativePath);
           tree.push({
-            name: item,
+            name: item.name,
             path: itemRelativePath,
             type: 'directory',
             children
           });
         } else {
           tree.push({
-            name: item,
+            name: item.name,
             path: itemRelativePath,
             type: 'file'
           });

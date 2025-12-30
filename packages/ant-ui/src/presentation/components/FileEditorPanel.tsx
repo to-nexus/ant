@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '@/domain/store';
-import { fetchFileContent, saveFileContent } from '@/infrastructure/http/api';
+import { fetchFileBlob, fetchFileContent, isBinaryImageFilePath, isSvgFilePath, saveFileContent } from '@/infrastructure/http/api';
 import { Button } from '@/presentation/components/common/button';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -17,6 +17,8 @@ export function FileEditorPanel({ onClose }: FileEditorPanelProps) {
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);
   const selectedFile = useStore((state) => state.selectedFile);
+  const fileReloadTrigger = useStore((state) => state.fileReloadTrigger);
+  const fileReloadTarget = useStore((state) => state.fileReloadTarget);
   
   const [fileContent, setFileContent] = useState('');
   const [editedContent, setEditedContent] = useState('');
@@ -24,37 +26,106 @@ export function FileEditorPanel({ onClose }: FileEditorPanelProps) {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
   const [viewMode, setViewMode] = useState<'raw' | 'preview'>('raw');
+  const [binaryPreviewUrl, setBinaryPreviewUrl] = useState<string | null>(null);
+  const [svgPreviewUrl, setSvgPreviewUrl] = useState<string | null>(null);
   
   // Check if file is markdown
   const isMarkdownFile = selectedFile?.toLowerCase().match(/\.(md|markdown)$/);
+  const isSvgFile = isSvgFilePath(selectedFile);
+  const isBinaryImageFile = isBinaryImageFilePath(selectedFile);
   
   // Reset view mode when file changes or if it's not markdown
   useEffect(() => {
-    if (!isMarkdownFile) {
+    if (!isMarkdownFile && !isSvgFile) {
       setViewMode('raw');
     }
-  }, [selectedFile, isMarkdownFile]);
+  }, [selectedFile, isMarkdownFile, isSvgFile]);
 
   useEffect(() => {
     if (!selectedProject || !selectedFeature || !selectedFile) {
       setFileContent('');
       setEditedContent('');
       setHasChanges(false);
+      if (binaryPreviewUrl) {
+        URL.revokeObjectURL(binaryPreviewUrl);
+        setBinaryPreviewUrl(null);
+      }
+      if (svgPreviewUrl) {
+        URL.revokeObjectURL(svgPreviewUrl);
+        setSvgPreviewUrl(null);
+      }
       return;
     }
 
     loadFileContent();
   }, [selectedProject, selectedFeature, selectedFile]);
 
+  // ✅ Force reload when upload overwrote this file (even if selectedFile didn't change)
+  useEffect(() => {
+    if (!selectedProject || !selectedFeature || !selectedFile) return;
+    if (!fileReloadTrigger) return;
+    if (fileReloadTarget && fileReloadTarget !== selectedFile) return;
+    loadFileContent();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fileReloadTrigger]);
+
+  // Cleanup blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (binaryPreviewUrl) {
+        URL.revokeObjectURL(binaryPreviewUrl);
+      }
+      if (svgPreviewUrl) {
+        URL.revokeObjectURL(svgPreviewUrl);
+      }
+    };
+  }, [binaryPreviewUrl, svgPreviewUrl]);
+
+  // Build/refresh SVG preview URL from edited content (preview mode only)
+  useEffect(() => {
+    if (!isSvgFile) return;
+    if (viewMode !== 'preview') return;
+    if (!editedContent) return;
+
+    if (svgPreviewUrl) {
+      URL.revokeObjectURL(svgPreviewUrl);
+      setSvgPreviewUrl(null);
+    }
+
+    const blob = new Blob([editedContent], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    setSvgPreviewUrl(url);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSvgFile, viewMode, editedContent]);
+
   const loadFileContent = async () => {
     if (!selectedProject || !selectedFeature || !selectedFile) return;
     
     try {
       setLoading(true);
-      const content = await fetchFileContent(selectedProject, selectedFeature, selectedFile);
-      setFileContent(content.content);
-      setEditedContent(content.content);
-      setHasChanges(false);
+      // Reset previous image preview URL if any
+      if (binaryPreviewUrl) {
+        URL.revokeObjectURL(binaryPreviewUrl);
+        setBinaryPreviewUrl(null);
+      }
+      if (svgPreviewUrl) {
+        URL.revokeObjectURL(svgPreviewUrl);
+        setSvgPreviewUrl(null);
+      }
+
+      if (isBinaryImageFile) {
+        const blob = await fetchFileBlob(selectedProject, selectedFeature, selectedFile);
+        const url = URL.createObjectURL(blob);
+        setBinaryPreviewUrl(url);
+        setFileContent('');
+        setEditedContent('');
+        setHasChanges(false);
+      } else {
+        const content = await fetchFileContent(selectedProject, selectedFeature, selectedFile);
+        setFileContent(content.content);
+        setEditedContent(content.content);
+        setHasChanges(false);
+      }
     } catch (error) {
       console.error('Failed to load file content:', error);
     } finally {
@@ -64,6 +135,7 @@ export function FileEditorPanel({ onClose }: FileEditorPanelProps) {
 
   const handleSave = async () => {
     if (!selectedProject || !selectedFeature || !selectedFile) return;
+    if (isBinaryImageFile) return; // Binary files are not editable here
     
     try {
       setSaving(true);
@@ -98,8 +170,33 @@ export function FileEditorPanel({ onClose }: FileEditorPanelProps) {
             )}
           </div>
           
-          {/* Preview/Raw Toggle - Only for markdown files */}
-          {isMarkdownFile && (
+          {/* Binary image actions (Reload / Open) */}
+          {isBinaryImageFile && (
+            <div className="flex items-center gap-2 ml-4">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={loadFileContent}
+                disabled={loading || saving}
+              >
+                Reload
+              </Button>
+              {binaryPreviewUrl && (
+                <a
+                  href={binaryPreviewUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                  title="새 탭에서 열기"
+                >
+                  Open
+                </a>
+              )}
+            </div>
+          )}
+
+          {/* Preview/Raw Toggle - Markdown or SVG only */}
+          {(isMarkdownFile || isSvgFile) && !isBinaryImageFile && (
             <div className="flex items-center gap-1 ml-4 bg-gray-100 dark:bg-gray-900 rounded-md p-1">
               <button
                 onClick={() => setViewMode('raw')}
@@ -134,6 +231,34 @@ export function FileEditorPanel({ onClose }: FileEditorPanelProps) {
       <div className="flex-1 flex flex-col overflow-hidden pt-4">
         {loading ? (
           <div className="text-sm text-gray-500 dark:text-gray-400 p-4">Loading...</div>
+        ) : isBinaryImageFile ? (
+          <div className="flex-1 overflow-auto p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
+            {binaryPreviewUrl ? (
+              <div className="w-full flex justify-center">
+                <img
+                  src={binaryPreviewUrl}
+                  alt={selectedFile || 'image'}
+                  className="max-w-full max-h-[70vh] object-contain rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"
+                />
+              </div>
+            ) : (
+              <div className="text-sm text-gray-500 dark:text-gray-400">이미지 프리뷰를 불러오지 못했습니다.</div>
+            )}
+          </div>
+        ) : viewMode === 'preview' && isSvgFile ? (
+          <div className="flex-1 overflow-auto p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
+            {svgPreviewUrl ? (
+              <div className="w-full flex justify-center">
+                <img
+                  src={svgPreviewUrl}
+                  alt={selectedFile || 'svg'}
+                  className="max-w-full max-h-[70vh] object-contain rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"
+                />
+              </div>
+            ) : (
+              <div className="text-sm text-gray-500 dark:text-gray-400">SVG 프리뷰를 불러오지 못했습니다.</div>
+            )}
+          </div>
         ) : viewMode === 'preview' && isMarkdownFile ? (
           /* Markdown Preview - Read-only */
           <div className="flex-1 overflow-y-auto prose prose-sm dark:prose-invert max-w-none p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">

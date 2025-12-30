@@ -148,6 +148,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         ...(state.uiAssets.components || []),
       ]
         .filter(Boolean)
+        .map(p => (typeof p === 'string' ? p.replace(/\\/g, '/') : p))
         .filter(p => !p.includes('/.gitkeep') && !p.endsWith('/.gitkeep'));
 
       let totalBytes = 0;
@@ -159,8 +160,10 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
           type: 'text',
           text:
             `# UI Images (Figma-derived)\n` +
-            `The following image blocks are screenshots/component states from \`inputs/sources/assets\`.\n` +
-            `Use them to match layout/spacing/visual states.\n\n` +
+            `The following image blocks are screenshots/component states from \`inputs/references\`.\n` +
+            `Use them to match layout/spacing/visual states.\n` +
+            `IMPORTANT: Treat these as reference only. Do NOT assume these files are available in the app runtime (e.g. not copied into \`public/\` automatically).\n` +
+            `If the implementation needs runtime images/icons, either (a) generate placeholders in the codebase or (b) require explicit instructions in \`inputs/sources/ui-assets.md\` (including destination paths).\n\n` +
             `${previewList}\n`
         });
       }

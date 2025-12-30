@@ -214,6 +214,25 @@ export interface ArchitectGraphState extends TaskArtifacts {
   // ✅ Chat Integration
   overrideDirective?: string;  // Chat input as directive (highest priority)
   chatSource?: boolean;         // True if job started from chat (enables Chat SSE)
+
+  // ✅ UI Runtime Assets (opt-in copy/sync)
+  // - inputs/assets/** is treated as "runtime assets" and synced into codebase root (context.workingDir)
+  // - Existing files are NOT overwritten if content is identical; overwritten (updated) if content differs
+  uiRuntimeAssets?: {
+    items: Array<{
+      sourceRel: string;
+      destRel: string;
+      action: 'copied' | 'updated' | 'skipped' | 'failed';
+      reason?: string;
+    }>;
+    stats: {
+      total: number;
+      copied: number;
+      updated: number;
+      skipped: number;
+      failed: number;
+    };
+  };
   
   // ✅ Replan Support (continue with new directive)
   directives?: string[];  // Multiple directives (newest first = highest priority)

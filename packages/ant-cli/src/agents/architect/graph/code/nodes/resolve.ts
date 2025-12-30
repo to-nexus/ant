@@ -159,6 +159,39 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
         console.error(`❌ [Resolve] Failed to reload workspaceConfig:`, error);
       }
     }
+
+    // ✅ Runtime assets sync: mirror inputs/assets/** into codebase root
+    // Run even on resume to ensure codebase has required files.
+    try {
+      const codebaseRootAbs = state.context.workingDir;
+      let featurePathAbs = state.context.featurePath;
+
+      // Fallback: resolve featurePath if missing (resume states can be partial)
+      if (!featurePathAbs && state.deps?.workspaceResolver) {
+        const userContext = {
+          userId: state.context.userId || 'local',
+          organizationId: state.context.organizationId || 'local',
+          workspacePath: ''
+        };
+        featurePathAbs = state.deps.workspaceResolver.getFeaturePath(userContext as any, state.context.project, state.context.featureFolder);
+        state.context.featurePath = featurePathAbs;
+      }
+
+      if (featurePathAbs && state.deps?.fileSystem?.getWorkspaceRoot && codebaseRootAbs) {
+        const { syncRuntimeAssetsFolder } = await import('../../../../../infrastructure/workspace/runtimeAssetsFolderSync');
+        const sync = syncRuntimeAssetsFolder({ featurePathAbs, codebaseRootAbs });
+
+        if (sync.stats.total > 0) {
+          console.log(
+            `📦 [Runtime Assets] total=${sync.stats.total} copied=${sync.stats.copied} updated=${sync.stats.updated} skipped=${sync.stats.skipped} failed=${sync.stats.failed}`
+          );
+        }
+
+        state.uiRuntimeAssets = { items: sync.items, stats: sync.stats };
+      }
+    } catch (e) {
+      console.warn(`⚠️  [Runtime Assets] Sync failed (non-fatal):`, e);
+    }
     
     // ✅ Workflow instrumentation: Exit node (skip path)
     if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -271,6 +304,25 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   
   // ✅ Store resolved featurePath in context for use by other nodes
   context.featurePath = featurePath;
+
+  // ✅ Runtime assets sync: mirror inputs/assets/** into codebase root
+  try {
+    const codebaseRootAbs = context.workingDir;
+    if (codebaseRootAbs) {
+      const { syncRuntimeAssetsFolder } = await import('../../../../../infrastructure/workspace/runtimeAssetsFolderSync');
+      const sync = syncRuntimeAssetsFolder({ featurePathAbs: featurePath, codebaseRootAbs });
+
+      if (sync.stats.total > 0) {
+        console.log(
+          `📦 [Runtime Assets] total=${sync.stats.total} copied=${sync.stats.copied} updated=${sync.stats.updated} skipped=${sync.stats.skipped} failed=${sync.stats.failed}`
+        );
+      }
+
+      state.uiRuntimeAssets = { items: sync.items, stats: sync.stats };
+    }
+  } catch (e) {
+    console.warn(`⚠️  [Runtime Assets] Sync failed (non-fatal):`, e);
+  }
 
   // 1. Load design document (optional)
   const designResult = await ArtifactService.findLatestDesign(context, gitPort, fileSystem);

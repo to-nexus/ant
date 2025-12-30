@@ -358,9 +358,11 @@ export function ArtifactsPanel() {
   }
 
   // Separate inputs, outputs, and sessions with filtering
-  // inputs: only show 'sources' directory
+  // inputs: show 'sources' + 'assets' + 'references'
   const allInputsNodes = fileTree?.find(node => node.name === 'inputs')?.children || [];
-  const inputsNodes = allInputsNodes.filter(node => node.name === 'sources');
+  const inputsNodes = allInputsNodes.filter(node =>
+    node.name === 'sources' || node.name === 'assets' || node.name === 'references'
+  );
   
   // outputs: only show 'design' and 'reports' directories
   const allOutputsNodes = fileTree?.find(node => node.name === 'outputs')?.children || [];

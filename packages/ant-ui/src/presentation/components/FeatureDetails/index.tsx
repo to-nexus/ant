@@ -19,6 +19,8 @@ export function FeatureDetails() {
     editedContent,
     hasChanges,
     saving,
+    isImageFile,
+    binaryPreviewUrl,
     handleSave,
     handleContentChange,
     loadFileContent
@@ -76,6 +78,8 @@ export function FeatureDetails() {
           editedContent={editedContent}
           hasChanges={hasChanges}
           saving={saving}
+          isImageFile={isImageFile}
+          binaryPreviewUrl={binaryPreviewUrl}
           onContentChange={handleContentChange}
           onSave={handleSave}
           onRevert={loadFileContent}

@@ -241,6 +241,12 @@ export function initFeature(workspaceName: string, featureName: string): void {
 
 > 옵션: 이미지/아이콘 파일만으로는 의도가 불명확할 수 있어, 필요 시 캡션/주의사항을 기록
 
+## 중요: 참고용 vs 런타임 리소스 구분
+- \`inputs/references/**\`의 파일은 **참고용(레퍼런스)** 입니다. (LLM이 UI를 맞추는 용도로만 사용)
+- \`inputs/assets/**\`의 파일은 **런타임 리소스** 입니다. (code job 시작 시 codebase 루트로 미러링 복사됨)
+  - 예: \`inputs/assets/public/brand/logo.svg\` → \`<codebase>/public/brand/logo.svg\`
+  - 대상 파일이 이미 존재하고 내용이 같으면 **복사하지 않음**, 내용이 다르면 **업데이트(덮어쓰기)** 함
+
 ## screens
 - 
 
@@ -252,10 +258,13 @@ export function initFeature(workspaceName: string, featureName: string): void {
 `;
   fs.writeFileSync(path.join(sourcesDir, "ui-assets.md"), uiAssetsTemplate, "utf8");
 
-  // ✅ Assets folders
-  fs.mkdirSync(path.join(sourcesDir, "assets/screens"), { recursive: true });
-  fs.mkdirSync(path.join(sourcesDir, "assets/components"), { recursive: true });
-  fs.mkdirSync(path.join(sourcesDir, "assets/icons"), { recursive: true });
+  // ✅ Runtime assets folder (mirrored into codebase root)
+  fs.mkdirSync(path.join(featureDir, "inputs/assets"), { recursive: true });
+
+  // ✅ Reference images folder (may be sent to LLM as multimodal blocks)
+  fs.mkdirSync(path.join(featureDir, "inputs/references/screens"), { recursive: true });
+  fs.mkdirSync(path.join(featureDir, "inputs/references/components"), { recursive: true });
+  // NOTE: icons are treated as runtime assets by default → place under inputs/assets/** (e.g. inputs/assets/public/icons/*)
 
   // Create placeholder directive.md files
   const directiveTemplate = `<!-- ant:template -->
@@ -286,7 +295,8 @@ export function initFeature(workspaceName: string, featureName: string): void {
   console.log(`  - inputs/sources/components.md (template)`);
   console.log(`  - inputs/sources/tokens.md (template)`);
   console.log(`  - inputs/sources/ui-assets.md (template)`);
-  console.log(`  - inputs/sources/assets/{screens,components,icons}/`);
+  console.log(`  - inputs/assets/ (runtime assets; mirrored into codebase root)`);
+  console.log(`  - inputs/references/{screens,components}/ (reference images)`);
   console.log(`  - inputs/directives/design/`);
   console.log(`  - inputs/directives/code/`);
   console.log(`  - inputs/directives/learn/`);
