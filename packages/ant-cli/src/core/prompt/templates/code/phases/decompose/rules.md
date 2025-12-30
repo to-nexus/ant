@@ -147,6 +147,14 @@ CRITICAL:
   - React/TSX view layer changes
 - Otherwise set `"ui": false` (backend-only, infra, API contract, server fixes, dependency fixes).
 
+**RUNTIME ASSETS (IMPORTANT):**
+- If the spec contains a "Runtime Assets Available (inputs/assets)" section (file list), those files are **NOT auto-copied**.
+- You MUST include at least one task to:
+  1) Decide the correct static asset root for the target app (monorepo-aware: e.g., `apps/<app>/public`, `packages/<app>/public`, etc.)
+  2) Copy assets from `inputs/assets/**` into that static root, preserving relative paths
+  3) Update the code to reference the copied assets (e.g. `/icons/...` or imported assets) so they are actually used
+- Do NOT inline/encode binary assets into the prompt. Use file operations / shell copy in implementation.
+
 IMPORTANT:
 - **Setup Task Decision (CRITICAL):**
   - ✅ Create setup task(s) ONLY if "NEW PROJECT (no existing codebase)" was shown above

@@ -17,28 +17,36 @@ export const LONG_RUNNING_PATTERNS = [
   /npm\s+run\s+dev\b/,
   /npm\s+run\s+serve\b/,
   /npm\s+run\s+start\b/,
+  /npm\s+run\s+preview\b/,
   /npm\s+start\b/,
   /yarn\s+dev\b/,
   /yarn\s+serve\b/,
   /yarn\s+start\b/,
+  /yarn\s+preview\b/,
   /yarn\s+run\s+dev\b/,
   /yarn\s+run\s+serve\b/,
   /yarn\s+run\s+start\b/,
+  /yarn\s+run\s+preview\b/,
   /pnpm.*\s+dev\b/,
   /pnpm.*\s+serve\b/,
   /pnpm.*\s+start\b/,
+  /pnpm.*\s+preview\b/,
   /node\s+.*server\.(js|ts)\b/,
   /tsx\s+.*server\.(js|ts)\b/,
   /nodemon\b/,
   /npx\s+vite\b/,
+  /npx\s+vite\s+preview\b/,
   /npx\s+next\s+dev\b/,
   /npx\s+react-scripts\s+start\b/,
   /vite\s*$/,
+  /vite\s+preview\b/,
 ];
 
 export const ERROR_PATTERNS = /error|Error|ERR_|EADDRINUSE|ENOENT|Cannot find|Transform failed|Unexpected|Exception/i;
 
-export const COMMAND_TIMEOUT = 3 * 60 * 1000; // 3 minutes
+// Many real-world commands (npm install, pnpm install, building large bundles)
+// frequently exceed 3 minutes. Keep a more forgiving default to avoid partial installs.
+export const COMMAND_TIMEOUT = 10 * 60 * 1000; // 10 minutes
 export const EARLY_ERROR_TIMEOUT = 3000; // 3 seconds
 export const STARTUP_VERIFICATION_TIMEOUT = 5000; // 5 seconds
 export const UI_CARD_ANIMATION_DELAY = 150; // 150ms

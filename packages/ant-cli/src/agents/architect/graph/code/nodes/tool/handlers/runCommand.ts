@@ -19,6 +19,7 @@ import { ArchitectGraphState } from '../../../state';
 import { getChatAPIClient } from '../../../../../../../core/adapters/ChatAPIClient';
 import { RunCommandArgs, ServerProcess } from '../types';
 import { checkOrchestratorPortSafeguard } from '../utils/helpers';
+import { terminateProcessTree } from '../../../../../../../periphery/adapters/command/processTree';
 import { 
   LONG_RUNNING_PATTERNS, 
   ERROR_PATTERNS, 
@@ -50,10 +51,28 @@ export async function handleRunCommand(
   const chatAPI = getChatAPIClient();
   
   // ✅ UI: Show command_running status (loading card)
-  const mergeIndex = await chatAPI.commandStart(command);
+  // Normalize install commands to avoid "vite missing" when npm is configured with omit=dev.
+  // Many environments set: npm config set omit dev
+  // If user did not explicitly request production-only, force dev deps for install/ci.
+  const shouldForceIncludeDev =
+    /\bnpm\s+(ci|install)\b/.test(command) &&
+    !/\s--include=dev\b/.test(command) &&
+    !/\s--omit=/.test(command) &&
+    !/\s--production\b/.test(command) &&
+    !/\s--only=prod\b/.test(command);
+
+  const normalizedCommand = shouldForceIncludeDev
+    ? `${command} --include=dev`
+    : command;
+
+  const mergeIndex = await chatAPI.commandStart(normalizedCommand);
   
   // ✅ FIXED: Test against full command (handles "cd dir && npm run dev")
-  const isLongRunning = LONG_RUNNING_PATTERNS.some(pattern => pattern.test(command));
+  const isLongRunning = LONG_RUNNING_PATTERNS.some(pattern => pattern.test(normalizedCommand));
+
+  // Longer timeouts for dependency installation (frequently > 10 minutes on cold caches)
+  const isInstallCommand = /\b(npm|pnpm|yarn)\s+(ci|install)\b/.test(normalizedCommand);
+  const effectiveTimeout = isInstallCommand ? 20 * 60 * 1000 : COMMAND_TIMEOUT;
   
   // Get project path from FileSystemPort
   const projectPath = fileSystem.getWorkspaceRoot();
@@ -61,7 +80,7 @@ export async function handleRunCommand(
     ? `${projectPath}/${working_directory}`
     : projectPath;
   
-  console.log(`\n   🔧 Running command: ${command}`);
+  console.log(`\n   🔧 Running command: ${normalizedCommand}`);
   console.log(`   📁 Working directory: ${workingDir}`);
   if (isLongRunning) {
     console.log(`   ⏱️  Long-running command detected - will verify startup (10s timeout)\n`);
@@ -79,7 +98,7 @@ export async function handleRunCommand(
     if (isLongRunning) {
       return await handleLongRunningCommand(
         state,
-        command,
+        normalizedCommand,
         workingDir,
         mergeIndex || 0,
         chatAPI,
@@ -90,9 +109,9 @@ export async function handleRunCommand(
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // Normal command: wait for completion
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const result = await commandPort.execute(command, {
+    const result = await commandPort.execute(normalizedCommand, {
       cwd: workingDir,
-      timeout: COMMAND_TIMEOUT,
+      timeout: effectiveTimeout,
       onStdout: (chunk: string) => {
         streamedStdout += chunk;
         console.log(chunk);
@@ -117,12 +136,12 @@ export async function handleRunCommand(
     }
     
     // ✅ UI notification: command complete
-    await chatAPI.commandComplete(command, success, exitCode, output, mergeIndex);
+    await chatAPI.commandComplete(normalizedCommand, success, exitCode, output, mergeIndex);
     
     // ✅ Format result - emphasize errors for LLM attention
     if (!success) {
       // ❌ BUILD FAILED - Return error-first format
-      return `❌ COMMAND FAILED: ${command}
+      return `❌ COMMAND FAILED: ${normalizedCommand}
 Exit Code: ${exitCode}
 
 📋 ERROR OUTPUT:
@@ -136,13 +155,13 @@ DO NOT guess - the error tells you exactly what's wrong.`;
     const hasOutput = output.trim().length > 0;
     
     if (hasOutput) {
-      return `✅ COMMAND SUCCEEDED: ${command}
+      return `✅ COMMAND SUCCEEDED: ${normalizedCommand}
 Exit Code: 0
 
 Output:
 ${output}`;
     } else {
-      return `✅ COMMAND SUCCEEDED: ${command}
+      return `✅ COMMAND SUCCEEDED: ${normalizedCommand}
 Exit Code: 0
 (No output)`;
     }
@@ -152,10 +171,10 @@ Exit Code: 0
     console.error(`\n   ❌ Command execution error: ${errorMessage}\n`);
     
     // ✅ UI notification: command failed
-    await chatAPI.commandComplete(command, false, -1, errorMessage, mergeIndex);
+    await chatAPI.commandComplete(normalizedCommand, false, -1, errorMessage, mergeIndex);
     
     // ✅ Timeout/execution error - Return error-first format
-    return `❌ COMMAND EXECUTION ERROR: ${command}
+    return `❌ COMMAND EXECUTION ERROR: ${normalizedCommand}
 Error: ${errorMessage}
 
 Captured output:
@@ -163,52 +182,6 @@ ${streamedStdout}
 ${streamedStderr}
 
 ⚠️  The command timed out or failed to execute. Check the error above.`;
-  }
-}
-
-async function terminateProcessTree(pid: number): Promise<void> {
-  if (!pid || pid <= 0) return;
-  // Windows: best-effort kill process tree
-  if (process.platform === 'win32') {
-    try {
-      const { spawn } = await import('child_process');
-      await new Promise<void>((resolve) => {
-        const child = spawn('taskkill', ['/PID', String(pid), '/T', '/F'], {
-          stdio: 'ignore',
-          windowsHide: true
-        });
-        child.on('exit', () => resolve());
-        child.on('error', () => resolve());
-      });
-      return;
-    } catch {
-      // fallback below
-    }
-  }
-
-  // POSIX: kill process group first (works well with detached=true)
-  try {
-    process.kill(-pid, 'SIGTERM');
-  } catch {
-    try {
-      process.kill(pid, 'SIGTERM');
-    } catch {
-      return;
-    }
-  }
-
-  // Give it a moment, then escalate
-  await new Promise(resolve => setTimeout(resolve, 500));
-  try {
-    process.kill(-pid, 0);
-    process.kill(-pid, 'SIGKILL');
-  } catch {
-    try {
-      process.kill(pid, 0);
-      process.kill(pid, 'SIGKILL');
-    } catch {
-      // already stopped
-    }
   }
 }
 

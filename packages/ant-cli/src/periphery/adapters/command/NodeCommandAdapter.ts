@@ -17,8 +17,22 @@ import { CommandPort, CommandResult, CommandOptions } from "../../../core/ports"
 import { spawn } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+import { isProcessGroupAlive } from "./processTree";
 
 export class NodeCommandAdapter implements CommandPort {
+  /**
+   * Emergency escape hatch.
+   *
+   * When true, disables command allowlist checks entirely.
+   * This is useful in controlled environments where allowlist false-positives
+   * block legitimate workflows.
+   *
+   * NOTE: This increases risk (shell execution). Prefer extending allowlist first.
+   */
+  private readonly ALLOW_ALL_COMMANDS =
+    process.env.ANT_UNSAFE_ALLOW_ALL_COMMANDS === 'true' ||
+    process.env.ANT_UNSAFE_ALLOW_ALL_COMMANDS === '1';
+
   private readonly ALLOWED_COMMANDS = [
     // Package managers
     'npm',
@@ -74,6 +88,11 @@ export class NodeCommandAdapter implements CommandPort {
     'lsof',    // List open files (for port checking)
     'kill',    // Kill processes
     'xargs',   // Build and execute commands from stdin
+
+    // Common shell builtins / env helpers used in compound commands
+    'env',
+    'export',
+    'unset',
   ];
 
   private readonly DEFAULT_TIMEOUT = 5 * 60 * 1000; // 5 minutes
@@ -82,8 +101,43 @@ export class NodeCommandAdapter implements CommandPort {
    * Check if a command is allowed
    */
   isAllowed(command: string): boolean {
-    const cmd = command.trim().split(/\s+/)[0];
-    return this.ALLOWED_COMMANDS.includes(cmd);
+    // If the project explicitly opted out of allowlisting, allow everything.
+    if (this.ALLOW_ALL_COMMANDS) return true;
+
+    const normalized = command.trim();
+    if (!normalized) return false;
+
+    // Split on common shell operators to validate each segment.
+    // This is not a full shell parser, but prevents the common false-positive
+    // where a safe command is preceded by "cd dir &&".
+    const segments = normalized.split(/\s*(?:&&|\|\||;|\|)\s*/g);
+
+    const isAssignment = (token: string) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(token);
+
+    const firstExecutableToken = (segment: string): string | null => {
+      const tokens = segment.trim().split(/\s+/).filter(Boolean);
+      if (tokens.length === 0) return null;
+
+      // Skip leading env var assignments: FOO=bar npm install
+      let i = 0;
+      while (i < tokens.length && isAssignment(tokens[i])) i++;
+      if (i >= tokens.length) return null;
+
+      // Allow common builtins explicitly (export/unset)
+      if (tokens[i] === 'export' || tokens[i] === 'unset') return tokens[i];
+
+      // Strip wrapping parentheses occasionally used in subshell-like patterns
+      const token = tokens[i].replace(/^\(+/, '').replace(/\)+$/, '');
+      return token || null;
+    };
+
+    for (const seg of segments) {
+      const cmd = firstExecutableToken(seg);
+      if (!cmd) continue;
+      if (!this.ALLOWED_COMMANDS.includes(cmd)) return false;
+    }
+
+    return true;
   }
 
   /**
@@ -114,7 +168,25 @@ export class NodeCommandAdapter implements CommandPort {
     console.log(`   Timeout: ${timeout}ms`);
 
     return new Promise((resolve) => {
-      const [cmd, ...args] = command.split(/\s+/);
+      const trimmed = command.trim();
+      if (!trimmed) {
+        resolve({ stdout: '', stderr: 'Empty command', exitCode: 1, success: false });
+        return;
+      }
+
+      // If the command includes shell operators / redirection / pipelines, we MUST run it as a single
+      // shell string. Splitting into [cmd, ...args] and enabling shell=true breaks constructs like:
+      //   cd codebase && npm install
+      // because the shell only receives "cd" as the -c string.
+      const needsShell =
+        /(\|\||&&|;|\||[<>])/.test(trimmed) ||
+        /^\s*cd\b/.test(trimmed);
+
+      const isWindows = process.platform === 'win32';
+      const shell = isWindows ? 'cmd' : 'sh';
+      const shellArgs = isWindows ? ['/c', trimmed] : ['-lc', trimmed];
+
+      const [cmd, ...args] = needsShell ? [shell, ...shellArgs] : trimmed.split(/\s+/);
       
       // ✅ CRITICAL: Filter out ant-cli environment variables to prevent pollution
       // Do NOT pass ant-cli's PORT (4100) to user's commands!
@@ -129,79 +201,111 @@ export class NodeCommandAdapter implements CommandPort {
         return acc;
       }, {} as Record<string, string>);
       
-      // ✅ Spawn with process group for proper cleanup
+      // ✅ Spawn with a dedicated process group for proper cleanup
       const child = spawn(cmd, args, {
         cwd,
         env: { ...cleanEnv, ...options.env },
-        shell: true,  // Need shell for npm run, etc.
-        detached: false,  // Stay in same process group for easier kill
+        // We only use an explicit shell process when needed; otherwise spawn directly.
+        // This avoids subtle quoting bugs and improves safety.
+        shell: false,
+        detached: process.platform !== 'win32', // create new process group (POSIX)
       });
 
       let stdout = '';
       let stderr = '';
-      let killed = false;
+      let timeoutOccurred = false;
       let timeoutId: NodeJS.Timeout | null = null;
+      let sigkillTimer: NodeJS.Timeout | null = null;
+      let forceResolveTimer: NodeJS.Timeout | null = null;
+      let settled = false;
 
       // Collect stdout
       child.stdout?.on('data', (data: Buffer) => {
-        stdout += data.toString();
+        const chunk = data.toString();
+        stdout += chunk;
+        options.onStdout?.(chunk);
       });
 
       // Collect stderr
       child.stderr?.on('data', (data: Buffer) => {
-        stderr += data.toString();
+        const chunk = data.toString();
+        stderr += chunk;
+        options.onStderr?.(chunk);
       });
 
-      // Handle timeout with escalating signals
-      const killProcess = (signal: NodeJS.Signals = 'SIGTERM') => {
-        if (killed) return;
-        killed = true;
+      const cleanupTimers = () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        timeoutId = null;
+        if (sigkillTimer) clearTimeout(sigkillTimer);
+        sigkillTimer = null;
+        if (forceResolveTimer) clearTimeout(forceResolveTimer);
+        forceResolveTimer = null;
+      };
 
+      const finish = (result: CommandResult) => {
+        if (settled) return;
+        settled = true;
+        cleanupTimers();
+        resolve(result);
+      };
+
+      const isProcessGroupAlive = (pid: number): boolean => {
+        return isProcessGroupAlive(pid);
+      };
+
+      const signalProcessTree = (signal: NodeJS.Signals) => {
+        if (!child.pid) return;
         try {
-          // Kill process and its children
-          if (child.pid) {
-            console.log(`⏰ Timeout (${timeout}ms) - sending ${signal} to PID ${child.pid}`);
-            
-            // Kill process group if possible
-            try {
-              process.kill(-child.pid, signal);  // Negative PID kills process group
-            } catch (e) {
-              // If process group kill fails, try individual process
-              child.kill(signal);
-            }
+          console.log(`⏰ Timeout (${timeout}ms) - sending ${signal} to PID ${child.pid}`);
+          try {
+            process.kill(-child.pid, signal); // process group (preferred)
+          } catch {
+            child.kill(signal); // fallback
           }
         } catch (error) {
           console.error(`Failed to kill process:`, error);
-        }
-
-        // Escalate to SIGKILL after 2 seconds if SIGTERM didn't work
-        if (signal === 'SIGTERM') {
-          setTimeout(() => {
-            if (!child.killed) {
-              console.log(`⚠️  Process didn't respond to SIGTERM, escalating to SIGKILL`);
-              killProcess('SIGKILL');
-            }
-          }, 2000);
         }
       };
 
       // Set timeout
       timeoutId = setTimeout(() => {
-        killProcess('SIGTERM');
+        timeoutOccurred = true;
+
+        // 1) Try graceful termination
+        signalProcessTree('SIGTERM');
+
+        // 2) Escalate to SIGKILL if still alive after a short grace period
+        sigkillTimer = setTimeout(() => {
+          if (child.pid && isProcessGroupAlive(child.pid)) {
+            console.log(`⚠️  Process didn't respond to SIGTERM, escalating to SIGKILL`);
+            signalProcessTree('SIGKILL');
+          }
+        }, 2000);
+
+        // 3) Absolute safety: never hang waiting for 'close' if kill didn't work
+        forceResolveTimer = setTimeout(() => {
+          if (child.pid && isProcessGroupAlive(child.pid)) {
+            console.log(`⚠️  Process still alive after SIGKILL attempt; returning timeout result to avoid hang`);
+          }
+          finish({
+            stdout: stdout.trim(),
+            stderr: `Command timed out after ${timeout}ms\n${stderr}`.trim(),
+            exitCode: 124,
+            success: false,
+          });
+        }, 8000);
       }, timeout);
 
       // Handle process exit
       child.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          timeoutId = null;
-        }
+        cleanupTimers();
 
         const exitCode = code ?? (signal ? 1 : 0);
+        options.onExit?.(exitCode);
 
-        if (killed) {
+        if (timeoutOccurred) {
           // Timeout occurred
-          resolve({
+          finish({
             stdout: stdout.trim(),
             stderr: `Command timed out after ${timeout}ms\n${stderr}`.trim(),
             exitCode: 124,  // Standard timeout exit code
@@ -209,7 +313,7 @@ export class NodeCommandAdapter implements CommandPort {
           });
         } else {
           // Normal exit
-          resolve({
+          finish({
             stdout: stdout.trim(),
             stderr: stderr.trim(),
             exitCode,
@@ -220,12 +324,9 @@ export class NodeCommandAdapter implements CommandPort {
 
       // Handle errors
       child.on('error', (error: Error) => {
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          timeoutId = null;
-        }
+        cleanupTimers();
 
-        resolve({
+        finish({
           stdout: stdout.trim(),
           stderr: error.message,
           exitCode: 1,

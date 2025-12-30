@@ -33,6 +33,37 @@ function normalizeSlash(p: string): string {
   return p.replace(/\\/g, '/');
 }
 
+function detectRuntimeAssetRoot(codebaseRootAbs: string): { rootAbs: string; label: string } {
+  const publicAbs = path.join(codebaseRootAbs, 'public');
+  if (fs.existsSync(publicAbs) && fs.statSync(publicAbs).isDirectory()) {
+    return { rootAbs: publicAbs, label: 'public' };
+  }
+
+  const staticAbs = path.join(codebaseRootAbs, 'static');
+  if (fs.existsSync(staticAbs) && fs.statSync(staticAbs).isDirectory()) {
+    return { rootAbs: staticAbs, label: 'static' };
+  }
+
+  const srcAbs = path.join(codebaseRootAbs, 'src');
+  const srcAssetsAbs = path.join(codebaseRootAbs, 'src', 'assets');
+  if (fs.existsSync(srcAssetsAbs) && fs.statSync(srcAssetsAbs).isDirectory()) {
+    return { rootAbs: srcAssetsAbs, label: 'src/assets' };
+  }
+  if (fs.existsSync(srcAbs) && fs.statSync(srcAbs).isDirectory()) {
+    // If there's src/ but no src/assets yet, prefer creating src/assets as a reasonable fallback.
+    return { rootAbs: srcAssetsAbs, label: 'src/assets (created)' };
+  }
+
+  const packageJsonAbs = path.join(codebaseRootAbs, 'package.json');
+  if (fs.existsSync(packageJsonAbs) && fs.statSync(packageJsonAbs).isFile()) {
+    // Most JS web projects can safely use public/ as static root.
+    return { rootAbs: publicAbs, label: 'public (created)' };
+  }
+
+  // Ultimate fallback: codebase root (legacy behavior)
+  return { rootAbs: codebaseRootAbs, label: 'codebase-root (fallback)' };
+}
+
 export function syncRuntimeAssetsFolder(params: {
   featurePathAbs: string;   // absolute feature directory
   codebaseRootAbs: string;  // absolute codebase root (repo root)
@@ -41,6 +72,16 @@ export function syncRuntimeAssetsFolder(params: {
 
   const assetsRootAbs = path.join(featurePathAbs, 'inputs', 'assets');
   const items: RuntimeAssetSyncItem[] = [];
+  const destRoot = detectRuntimeAssetRoot(codebaseRootAbs);
+  // Ensure destination root exists if we picked a subdirectory.
+  try {
+    if (destRoot.rootAbs !== codebaseRootAbs) {
+      fs.mkdirSync(destRoot.rootAbs, { recursive: true });
+    }
+  } catch {
+    // If creation fails, fall back to codebase root.
+  }
+  const effectiveDestRootAbs = fs.existsSync(destRoot.rootAbs) ? destRoot.rootAbs : codebaseRootAbs;
 
   if (!fs.existsSync(assetsRootAbs)) {
     return {
@@ -59,9 +100,9 @@ export function syncRuntimeAssetsFolder(params: {
         const relFromAssets = normalizeSlash(path.relative(assetsRootAbs, abs));
         if (!relFromAssets || relFromAssets.startsWith('..')) continue;
 
-        // Mirror into codebase root. Users can place files under assets/public/... or assets/src/... etc.
-        const destRel = normalizeSlash(relFromAssets);
-        const destAbs = path.resolve(codebaseRootAbs, destRel);
+        // Mirror into detected runtime asset root (prefer public/).
+        const destAbs = path.resolve(effectiveDestRootAbs, relFromAssets);
+        const destRel = normalizeSlash(path.relative(codebaseRootAbs, destAbs));
 
         // Safety: prevent escaping codebase root
         if (!destAbs.startsWith(codebaseRootAbs)) {

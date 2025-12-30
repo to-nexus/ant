@@ -69,7 +69,7 @@ export function FileEditor({
         {isImageFile ? (
           <div className="w-full">
             {binaryPreviewUrl ? (
-              <div className="w-full flex justify-center">
+              <div className="w-full min-h-[16rem] flex items-center justify-center">
                 <img
                   src={binaryPreviewUrl}
                   alt={selectedFile}

@@ -368,6 +368,11 @@ export class PromptEngine {
     codebaseFilePaths?: string[];  // File paths from keyword search
     hasProjectCode?: boolean;      // ✅ CRITICAL: Actual project code existence (git-based)
     hasErrorInDirective?: boolean; // ✅ Error detected in directive
+    uiDocSources?: string[];       // ✅ Optional: which UI docs exist (tokens/ui-spec/etc). Avoids injecting full UI doc.
+    runtimeAssetsIndex?: {         // ✅ Optional: runtime asset files list (text-only)
+      count: number;
+      files: string[];
+    };
   }): Promise<string> {
     // ✅ CRITICAL: Use hasProjectCode (git-based) as primary indicator
     // Fallback to codebaseFilePaths only if hasProjectCode not provided
@@ -384,9 +389,32 @@ export class PromptEngine {
       ? `## Directive\n${context.directive}\n\n## Design Document\n${context.designDoc}`
       : context.directive;
     
+    // ✅ Optional UI-doc hint for better UI task classification (WITHOUT injecting full uiDoc)
+    const uiHint =
+      context.uiDocSources && context.uiDocSources.length > 0
+        ? `\n\n## UI Docs Available (do NOT embed full content here)\n` +
+          `The following UI docs exist under inputs/sources and should be used for UI work:\n` +
+          `${context.uiDocSources.map(n => `- ${n}`).join('\n')}\n\n` +
+          `When creating tasks: if a task touches UI/layout/styling/tokens, set "ui": true.\n` +
+          `If tokens are present, include a UI task to establish and apply the design token system (colors/typography/spacing) consistently.\n`
+        : '';
+
+    const assetsHint =
+      context.runtimeAssetsIndex && context.runtimeAssetsIndex.count > 0
+        ? `\n\n## Runtime Assets Available (inputs/assets)\n` +
+          `There are ${context.runtimeAssetsIndex.count} runtime asset file(s) under inputs/assets.\n` +
+          `These are NOT auto-copied. You MUST add a task to copy them into the correct static asset root for the target app (monorepo-aware).\n` +
+          `Copy rule: preserve relative paths under inputs/assets.\n` +
+          `Examples (choose correct root for the target app):\n` +
+          `- inputs/assets/icons/x.svg -> <app>/public/icons/x.svg\n` +
+          `- inputs/assets/bg/hero.webp -> <app>/public/bg/hero.webp\n` +
+          `Asset file list (first 50):\n` +
+          `${context.runtimeAssetsIndex.files.slice(0, 50).map(f => `- ${f}`).join('\n')}\n`
+        : '';
+    
     const enrichedContext = {
       ...context,
-      spec,
+      spec: `${spec}${uiHint}${assetsHint}`,
       hasExistingCode,
       fileList,
       fileCount: context.codebaseFilePaths?.length || 0,

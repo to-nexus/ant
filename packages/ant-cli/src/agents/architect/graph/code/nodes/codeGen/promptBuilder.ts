@@ -374,6 +374,27 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
       lines.push(``);
     }
   }
+
+  // ✅ Runtime assets reminder (text-only, small)
+  if ((state as any).runtimeAssetsIndex?.count > 0) {
+    const idx = (state as any).runtimeAssetsIndex as { count: number; files: string[] };
+    lines.push(`════════════════════════════════════════════════════════════════════════════════`);
+    lines.push(`📦 Runtime Assets (inputs/assets)`);
+    lines.push(`════════════════════════════════════════════════════════════════════════════════`);
+    lines.push(`- Auto-copy: NO`);
+    lines.push(`- You must choose the correct static root for the target app (monorepo-aware) and copy assets.`);
+    lines.push(`- Preserve relative paths under inputs/assets, then reference them in code.`);
+    if (state.context?.featurePath) {
+      lines.push(`- Source dir (feature): ${state.context.featurePath.replace(/\\/g, '/')}/inputs/assets`);
+    }
+    if ((state.context as any)?.workingDir) {
+      lines.push(`- Codebase root: ${(state.context as any).workingDir}`); // repo root (string)
+    }
+    lines.push(`- Copy mechanism: use tooling (e.g., run_command cp/rsync) as a dedicated task BEFORE using assets in code.`);
+    lines.push(`- Files (first 20):`);
+    idx.files.slice(0, 20).forEach((f) => lines.push(`  - ${f}`));
+    lines.push(``);
+  }
   
   // Note: Violations are injected at the top of prompt, not here
   

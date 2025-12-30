@@ -244,8 +244,8 @@ export class FeatureCrudService {
 
 ## 중요: 참고용 vs 런타임 리소스 구분
 - \`inputs/references/**\`의 파일은 **참고용(레퍼런스)** 입니다. (LLM이 UI를 맞추는 용도로만 사용)
-- \`inputs/assets/**\`의 파일은 **런타임 리소스** 입니다. (code job 시작 시 codebase 루트로 미러링 복사됨)
-  - 예: \`inputs/assets/public/brand/logo.svg\` → \`<codebase>/public/brand/logo.svg\`
+- \`inputs/assets/**\`의 파일은 **런타임 리소스** 입니다. (LLM이 타겟 앱의 정적 에셋 루트(public 등)를 선택해 복사해야 함)
+  - 예(일반): \`inputs/assets/icons/logo.svg\` → \`<target-app>/public/icons/logo.svg\`
   - 대상 파일이 이미 존재하고 내용이 같으면 **복사하지 않음**, 내용이 다르면 **업데이트(덮어쓰기)** 함
 
 ## screens
@@ -262,7 +262,7 @@ export class FeatureCrudService {
     await fs.promises.mkdir(path.join(featurePath, 'inputs/assets'), { recursive: true });
     await fs.promises.mkdir(path.join(featurePath, 'inputs/references/screens'), { recursive: true });
     await fs.promises.mkdir(path.join(featurePath, 'inputs/references/components'), { recursive: true });
-    // NOTE: icons are treated as runtime assets by default → place under inputs/assets/** (e.g. inputs/assets/public/icons/*)
+    // NOTE: icons are treated as runtime assets by default → place under inputs/assets/** (e.g. inputs/assets/icons/*)
 
     // ✅ Create Git branch for feature (if Git is initialized and function is injected)
     if (this.switchToFeatureBranchFn) {

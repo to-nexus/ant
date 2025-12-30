@@ -205,6 +205,21 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     profile: state.profile,
     codebaseFilePaths,  // ✅ File paths from keyword search (for task planning)
     hasProjectCode      // ✅ CRITICAL: Actual codebase existence (git-based, not Vector DB)
+    ,
+    // ✅ Provide only the list of UI-doc sources to improve UI task classification (no token-heavy content)
+    uiDocSources: (() => {
+      const uiDoc = (state as any).uiDoc as string | undefined;
+      if (!uiDoc) return [];
+      const sources: string[] = [];
+      const re = /<!--\s*UI Source:\s*([^>]+?)\s*-->/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(uiDoc))) {
+        const name = m[1]?.trim();
+        if (name) sources.push(name);
+      }
+      return Array.from(new Set(sources));
+    })(),
+    runtimeAssetsIndex: (state as any).runtimeAssetsIndex
   });
   
   let rawResponse: string;
