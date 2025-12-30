@@ -216,22 +216,11 @@ export interface ArchitectGraphState extends TaskArtifacts {
   chatSource?: boolean;         // True if job started from chat (enables Chat SSE)
 
   // ✅ UI Runtime Assets (opt-in copy/sync)
-  // - inputs/assets/** is treated as "runtime assets" and synced into codebase root (context.workingDir)
-  // - Existing files are NOT overwritten if content is identical; overwritten (updated) if content differs
-  uiRuntimeAssets?: {
-    items: Array<{
-      sourceRel: string;
-      destRel: string;
-      action: 'copied' | 'updated' | 'skipped' | 'failed';
-      reason?: string;
-    }>;
-    stats: {
-      total: number;
-      copied: number;
-      updated: number;
-      skipped: number;
-      failed: number;
-    };
+  // - inputs/assets/** are runtime assets (NOT injected to LLM).
+  // - In monorepos/multi-app repos, the correct static root must be chosen by the LLM and copied as a task.
+  runtimeAssetsIndex?: {
+    files: string[]; // paths relative to feature root (e.g., inputs/assets/icons/x.svg)
+    count: number;
   };
   
   // ✅ Replan Support (continue with new directive)

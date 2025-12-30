@@ -182,25 +182,26 @@ export function FileEditorPanel({ onClose }: FileEditorPanelProps) {
                 Reload
               </Button>
               {binaryPreviewUrl && (
-                <a
-                  href={binaryPreviewUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                  title="새 탭에서 열기"
-                >
-                  Open
-                </a>
+                <Button size="sm" variant="ghost" asChild>
+                  <a
+                    href={binaryPreviewUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="새 탭에서 열기"
+                  >
+                    Open
+                  </a>
+                </Button>
               )}
             </div>
           )}
 
           {/* Preview/Raw Toggle - Markdown or SVG only */}
           {(isMarkdownFile || isSvgFile) && !isBinaryImageFile && (
-            <div className="flex items-center gap-1 ml-4 bg-gray-100 dark:bg-gray-900 rounded-md p-1">
+            <div className="flex items-center gap-1 ml-4 bg-gray-100 dark:bg-gray-900 rounded-md h-9 p-0.5">
               <button
                 onClick={() => setViewMode('raw')}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${
+                className={`flex items-center gap-1.5 h-8 px-3 rounded text-xs font-medium transition-colors ${
                   viewMode === 'raw'
                     ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
                     : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
@@ -212,7 +213,7 @@ export function FileEditorPanel({ onClose }: FileEditorPanelProps) {
               </button>
               <button
                 onClick={() => setViewMode('preview')}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${
+                className={`flex items-center gap-1.5 h-8 px-3 rounded text-xs font-medium transition-colors ${
                   viewMode === 'preview'
                     ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
                     : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
@@ -234,7 +235,7 @@ export function FileEditorPanel({ onClose }: FileEditorPanelProps) {
         ) : isBinaryImageFile ? (
           <div className="flex-1 overflow-auto p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
             {binaryPreviewUrl ? (
-              <div className="w-full flex justify-center">
+              <div className="w-full min-h-full flex items-center justify-center">
                 <img
                   src={binaryPreviewUrl}
                   alt={selectedFile || 'image'}
@@ -248,7 +249,7 @@ export function FileEditorPanel({ onClose }: FileEditorPanelProps) {
         ) : viewMode === 'preview' && isSvgFile ? (
           <div className="flex-1 overflow-auto p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
             {svgPreviewUrl ? (
-              <div className="w-full flex justify-center">
+              <div className="w-full min-h-full flex items-center justify-center">
                 <img
                   src={svgPreviewUrl}
                   alt={selectedFile || 'svg'}

@@ -209,7 +209,7 @@ export class ArtifactService {
       icons?: string[];
     };
   }> {
-    const featurePathAbs = WorkspacePathResolver.resolveFeaturePath(context);
+    const featurePathAbs = context.featurePath || WorkspacePathResolver.resolveFeaturePath(context);
     const sourceDirAbs = path.join(featurePathAbs, "inputs/sources");
     const sourceDir = ArtifactService.toWorkspaceRelative(fileSystem, sourceDirAbs);
 
@@ -229,19 +229,18 @@ export class ArtifactService {
 
     for (const name of uiDocFiles) {
       const p = path.join(sourceDir, name);
-      if (await fileSystem.fileExists(p)) {
-        const content = await fileSystem.readFile(p);
-        const normalized = ArtifactService.normalizeUserDoc(content);
-        if (normalized) {
-          uiDocParts.push(`<!-- UI Source: ${name} -->\n\n${normalized}`);
-        }
+      if (!(await fileSystem.fileExists(p))) continue;
+      const content = await fileSystem.readFile(p);
+      const normalized = ArtifactService.normalizeUserDoc(content);
+      if (normalized) {
+        uiDocParts.push(`<!-- UI Source: ${name} -->\n\n${normalized}`);
       }
     }
 
     // UI reference images index (optional)
     // ✅ Separate runtime assets vs references
-    // - inputs/assets/**: runtime assets (synced into codebase root, NOT sent to LLM)
-    // - inputs/references/**: reference screenshots/states/icons (may be sent to LLM)
+    // - inputs/assets/**: runtime assets (NOT sent to LLM; LLM must copy into correct app static root)
+    // - inputs/references/**: reference screenshots/states (may be sent to LLM)
     const inputsDirAbs = path.join(featurePathAbs, "inputs");
     const inputsDir = ArtifactService.toWorkspaceRelative(fileSystem, inputsDirAbs);
 
@@ -281,7 +280,7 @@ export class ArtifactService {
       const lines: string[] = [];
       lines.push(`# UI References (Index)`);
       lines.push(`> Note: These are reference file paths under inputs/references (not runtime assets).`);
-      lines.push(`> IMPORTANT: Runtime assets must be placed under inputs/assets and will be synced into the codebase root.`);
+      lines.push(`> IMPORTANT: Runtime assets must be placed under inputs/assets and must be copied into the correct app static root (public/, apps/*/public, etc.) as part of implementation tasks.`);
       if (screens?.length) {
         lines.push(`\n## screens`);
         screens.forEach(p => lines.push(`- ${p}`));

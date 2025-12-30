@@ -127,10 +127,19 @@ export async function installDeps(state: ArchitectGraphState): Promise<Architect
         if (pm) {
           console.log(`📦 Installing dependencies with ${pm}...`);
           
-          // ✅ CRITICAL FIX: Always use --include=dev if NODE_ENV=production
+          // ✅ Modern install policy (refactor):
+          // - Many environments set `npm config set omit dev`, causing Vite/TS to disappear.
+          // - For our code+UI workflows we almost always need devDependencies.
+          // - Therefore force dev deps unless explicitly running production-only.
           let installCommand = `${pm} install`;
+          const forceDevDeps =
+            pm === 'npm' &&
+            process.env.NODE_ENV !== 'production';
+
           if (process.env.NODE_ENV === 'production') {
             console.warn('⚠️  NODE_ENV=production detected - forcing devDependencies installation');
+            installCommand = `${pm} install --include=dev`;
+          } else if (forceDevDeps) {
             installCommand = `${pm} install --include=dev`;
           }
           

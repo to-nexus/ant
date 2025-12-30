@@ -226,7 +226,8 @@ export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
       const needsRewrite = contentType.includes('text/html') || 
                            contentType.includes('javascript') || 
                            contentType.includes('text/javascript') ||
-                           contentType.includes('application/javascript');
+                           contentType.includes('application/javascript') ||
+                           contentType.includes('text/css');
       
       if (needsRewrite) {
         const text = await response.text();
@@ -267,11 +268,23 @@ export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
           .replace(globRe, `$1${replacement}`)
           .replace(newUrlRe, `$1${replacement}`);
 
-        // ✅ Also rewrite common runtime absolute asset references in JS/CSS (string literals)
-        // Example: '/assets/fallback-ai.svg' should become '/dev/:serverKey/assets/fallback-ai.svg'
-        // This prevents requests from leaking to the Ant UI origin (/assets -> 401 in cloud mode).
+        // ✅ Also rewrite runtime absolute asset references inside code (JS/CSS).
+        // Reason: when the app is served under /dev/:serverKey/, an absolute '/ogf/..' will otherwise
+        // leak to the platform origin and may hit auth (401) in cloud mode.
+        //
+        // 1) Common case: '/assets/...'
         const assetLiteralRe = new RegExp(`(["'])\\/(?!\\/|${escapedAlready})(assets\\/[^"']*)\\1`, 'g');
         rewritten = rewritten.replace(assetLiteralRe, `$1${replacement}$2$1`);
+
+        // 2) Generic static resources (quoted absolute paths ending with a known static extension)
+        // Avoid rewriting routes like '/about' by requiring a file extension.
+        const staticExt = '(?:png|jpg|jpeg|gif|webp|svg|ico|mp4|webm|woff2?|ttf|otf|eot)';
+        const staticLiteralRe = new RegExp(`(["'\`])\\/(?!\\/|${escapedAlready})([^"'\`]+\\.${staticExt})\\1`, 'g');
+        rewritten = rewritten.replace(staticLiteralRe, `$1${replacement}$2$1`);
+
+        // 3) CSS url(/...) (with or without quotes)
+        const cssUrlRe = new RegExp(`url\\(\\s*(["']?)\\/(?!\\/|${escapedAlready})([^"')]+\\.${staticExt})\\1\\s*\\)`, 'g');
+        rewritten = rewritten.replace(cssUrlRe, `url($1${replacement}$2$1)`);
 
         // ✅ Fullstack convenience: rewrite frontend relative API calls '/api/...'
         // so they go through the dev proxy namespace: '/dev/:serverKey/api/...'

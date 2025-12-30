@@ -160,37 +160,65 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
       }
     }
 
-    // ✅ Runtime assets sync: mirror inputs/assets/** into codebase root
-    // Run even on resume to ensure codebase has required files.
-    try {
-      const codebaseRootAbs = state.context.workingDir;
-      let featurePathAbs = state.context.featurePath;
+    // ✅ NOTE: Runtime assets are NOT auto-synced here.
+    // Rationale: In monorepos/multi-app repos, the correct static root (public/, apps/*/public, etc.)
+    // must be chosen by the LLM as part of the implementation tasks.
 
-      // Fallback: resolve featurePath if missing (resume states can be partial)
+    // ✅ Index runtime assets (text-only) for LLM task planning (do NOT auto-copy)
+    try {
+      const path = await import('path');
+      const fs = await import('fs');
+
+      let featurePathAbs = state.context.featurePath;
       if (!featurePathAbs && state.deps?.workspaceResolver) {
         const userContext = {
           userId: state.context.userId || 'local',
           organizationId: state.context.organizationId || 'local',
           workspacePath: ''
         };
-        featurePathAbs = state.deps.workspaceResolver.getFeaturePath(userContext as any, state.context.project, state.context.featureFolder);
+        featurePathAbs = state.deps.workspaceResolver.getFeaturePath(
+          userContext as any,
+          state.context.project,
+          state.context.featureFolder
+        );
         state.context.featurePath = featurePathAbs;
       }
 
-      if (featurePathAbs && state.deps?.fileSystem?.getWorkspaceRoot && codebaseRootAbs) {
-        const { syncRuntimeAssetsFolder } = await import('../../../../../infrastructure/workspace/runtimeAssetsFolderSync');
-        const sync = syncRuntimeAssetsFolder({ featurePathAbs, codebaseRootAbs });
+      if (featurePathAbs) {
+        const assetsRootAbs = path.join(featurePathAbs, 'inputs', 'assets');
+        const files: string[] = [];
+        const maxFiles = parseInt(process.env.ANT_RUNTIME_ASSETS_INDEX_MAX || '200', 10);
 
-        if (sync.stats.total > 0) {
-          console.log(
-            `📦 [Runtime Assets] total=${sync.stats.total} copied=${sync.stats.copied} updated=${sync.stats.updated} skipped=${sync.stats.skipped} failed=${sync.stats.failed}`
-          );
+        const walk = (dirAbs: string) => {
+          if (files.length >= maxFiles) return;
+          let entries: any[] = [];
+          try {
+            entries = fs.readdirSync(dirAbs, { withFileTypes: true });
+          } catch {
+            return;
+          }
+          for (const e of entries) {
+            if (files.length >= maxFiles) break;
+            if (e.name.startsWith('.')) continue;
+            const abs = path.join(dirAbs, e.name);
+            if (e.isDirectory()) walk(abs);
+            else if (e.isFile()) {
+              const relToFeature = path.relative(featurePathAbs, abs).replace(/\\/g, '/');
+              if (relToFeature && !relToFeature.startsWith('..')) files.push(relToFeature);
+            }
+          }
+        };
+
+        if (fs.existsSync(assetsRootAbs)) {
+          walk(assetsRootAbs);
         }
 
-        state.uiRuntimeAssets = { items: sync.items, stats: sync.stats };
+        state.runtimeAssetsIndex = { files, count: files.length };
+      } else {
+        state.runtimeAssetsIndex = { files: [], count: 0 };
       }
-    } catch (e) {
-      console.warn(`⚠️  [Runtime Assets] Sync failed (non-fatal):`, e);
+    } catch {
+      state.runtimeAssetsIndex = { files: [], count: 0 };
     }
     
     // ✅ Workflow instrumentation: Exit node (skip path)
@@ -305,24 +333,47 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   // ✅ Store resolved featurePath in context for use by other nodes
   context.featurePath = featurePath;
 
-  // ✅ Runtime assets sync: mirror inputs/assets/** into codebase root
+  // ✅ Index runtime assets (text-only) for LLM task planning (do NOT auto-copy)
   try {
-    const codebaseRootAbs = context.workingDir;
-    if (codebaseRootAbs) {
-      const { syncRuntimeAssetsFolder } = await import('../../../../../infrastructure/workspace/runtimeAssetsFolderSync');
-      const sync = syncRuntimeAssetsFolder({ featurePathAbs: featurePath, codebaseRootAbs });
+    const path = await import('path');
+    const fs = await import('fs');
 
-      if (sync.stats.total > 0) {
-        console.log(
-          `📦 [Runtime Assets] total=${sync.stats.total} copied=${sync.stats.copied} updated=${sync.stats.updated} skipped=${sync.stats.skipped} failed=${sync.stats.failed}`
-        );
+    const assetsRootAbs = path.join(featurePath, 'inputs', 'assets');
+    const files: string[] = [];
+    const maxFiles = parseInt(process.env.ANT_RUNTIME_ASSETS_INDEX_MAX || '200', 10);
+
+    const walk = (dirAbs: string) => {
+      if (files.length >= maxFiles) return;
+      let entries: any[] = [];
+      try {
+        entries = fs.readdirSync(dirAbs, { withFileTypes: true });
+      } catch {
+        return;
       }
+      for (const e of entries) {
+        if (files.length >= maxFiles) break;
+        if (e.name.startsWith('.')) continue;
+        const abs = path.join(dirAbs, e.name);
+        if (e.isDirectory()) walk(abs);
+        else if (e.isFile()) {
+          const relToFeature = path.relative(featurePath, abs).replace(/\\/g, '/');
+          if (relToFeature && !relToFeature.startsWith('..')) files.push(relToFeature);
+        }
+      }
+    };
 
-      state.uiRuntimeAssets = { items: sync.items, stats: sync.stats };
+    if (fs.existsSync(assetsRootAbs)) {
+      walk(assetsRootAbs);
     }
-  } catch (e) {
-    console.warn(`⚠️  [Runtime Assets] Sync failed (non-fatal):`, e);
+
+    state.runtimeAssetsIndex = { files, count: files.length };
+  } catch {
+    state.runtimeAssetsIndex = { files: [], count: 0 };
   }
+
+  // ✅ NOTE: Runtime assets are NOT auto-synced here.
+  // Rationale: In monorepos/multi-app repos, the correct static root (public/, apps/*/public, etc.)
+  // must be chosen by the LLM as part of the implementation tasks.
 
   // 1. Load design document (optional)
   const designResult = await ArtifactService.findLatestDesign(context, gitPort, fileSystem);

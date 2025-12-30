@@ -26,6 +26,7 @@ import { CommonRenderStrategy } from '../../../../../../core/streaming/strategie
 // Import submodules
 import { buildMessages } from './promptBuilder';
 import { getAvailableTools } from './toolDefinitions';
+import { ArtifactService } from '../../../../../../infrastructure/workspace/ArtifactService';
 
 export async function codeGen(
   state: ArchitectGraphState
@@ -65,6 +66,76 @@ export async function codeGen(
     );
   }
   
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Guardrail: UI task requires UI-doc injection contract
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Principle:
+  // - If the task is explicitly marked UI (from decompose), then the UI docs must be available for injection.
+  // - If UI docs EXIST in inputs/sources but are missing/unloaded, we must FAIL FAST to avoid silent drift.
+  // - If UI docs truly do NOT exist for this feature, do NOT fail: proceed with defaults derived from PRD/design.
+  // - Use the existing self-healing path: fileErrors → checkTaskStatus → enforce → plan.
+  if (state.currentTask?.ui === true) {
+    const path = await import('path');
+
+    const fileSystemRoot = (state.deps?.fileSystem as any)?.getWorkspaceRoot?.();
+    const featurePathAbs = state.context.featurePath;
+    const featurePathRel = (() => {
+      if (!featurePathAbs) return undefined;
+      if (fileSystemRoot && typeof fileSystemRoot === 'string') {
+        return path.relative(fileSystemRoot, featurePathAbs);
+      }
+      // Worst-case: assume FileSystemPort root already equals featurePathAbs parent (cloud project root)
+      return featurePathAbs.startsWith('/') ? featurePathAbs.slice(1) : featurePathAbs;
+    })();
+
+    // Detect whether UI docs exist (canonical only: inputs/sources/*).
+    // This distinguishes:
+    // - "Docs truly absent" (allowed)
+    // - "Docs present but not injected/loaded" (bug; fail fast)
+    const uiDocsExist = await (async () => {
+      const fsPort = state.deps?.fileSystem as any;
+      if (!fsPort || !featurePathRel) return false;
+      const candidates = [
+        'ui-spec.md',
+        'ui-assets.md',
+        'tokens.md',
+        'components.md',
+      ].map(name => path.join(featurePathRel, 'inputs', 'sources', name));
+      for (const p of candidates) {
+        try {
+          if (await fsPort.fileExists(p)) return true;
+        } catch {
+          // ignore
+        }
+      }
+      return false;
+    })();
+
+    // Best-effort: (re)load uiDoc once, in case state was restored without it or inputs changed.
+    if (!state.uiDoc && state.deps?.git && state.deps?.fileSystem) {
+      try {
+        const ui = await ArtifactService.loadUiContext(state.context, state.deps.git, state.deps.fileSystem);
+        state.uiDoc = ui.uiDoc;
+        state.uiAssets = ui.uiAssets;
+      } catch {
+        // ignore (we'll fail below if still missing)
+      }
+    }
+
+    if (uiDocsExist && !state.uiDoc) {
+      const msg =
+        `UI task requires UI specification docs to be loaded and injected, but none were available.\n` +
+        `Docs appear to exist under inputs/sources, but UI-doc injection did not occur.\n` +
+        `This would cause implementation drift (e.g., placeholders instead of mapped assets).\n` +
+        `Fix: ensure inputs/sources documents are user-filled (not templates/comments-only) and that featurePath/workspace resolution is correct, then retry.`;
+      return {
+        ...state,
+        fileErrors: [msg],
+        llmResponse: { done: false, textResponse: '', thinking: '', toolCalls: [] }
+      };
+    }
+  }
+
   // ✅ Build messages from conversation history + current task
   const messages = await buildMessages(state);
   
