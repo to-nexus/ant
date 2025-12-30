@@ -113,11 +113,22 @@ function getAuthHeaders(): HeadersInit {
  * ✅ Cloud mode: Adds x-user-email header
  */
 export async function authFetch(url: string, options?: RequestInit): Promise<Response> {
+  const isFormDataBody =
+    typeof FormData !== 'undefined' && options?.body instanceof FormData;
+
+  // Default headers:
+  // - JSON requests: add Content-Type: application/json
+  // - FormData: DO NOT set Content-Type (browser must set multipart boundary)
+  const baseHeaders: Record<string, string> = {};
+  if (!isFormDataBody) {
+    baseHeaders['Content-Type'] = 'application/json';
+  }
+
   const headers = {
-    'Content-Type': 'application/json',
-    ...getAuthHeaders(),  // ✅ Empty for local mode
+    ...baseHeaders,
+    ...getAuthHeaders(), // ✅ Empty for local mode
     ...(options?.headers || {})
-  };
+  } as HeadersInit;
   
   return fetch(url, {
     ...options,
@@ -166,6 +177,53 @@ export interface FileNode {
 export interface FileContent {
   path: string;
   content: string;
+}
+
+// ========= Binary File Helpers (Images, etc.) =========
+
+const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
+
+export function isImageFilePath(filePath: string | undefined | null): boolean {
+  if (!filePath) return false;
+  const lower = filePath.toLowerCase();
+  const ext = lower.lastIndexOf('.') >= 0 ? lower.slice(lower.lastIndexOf('.')) : '';
+  return IMAGE_EXTENSIONS.has(ext);
+}
+
+export function isSvgFilePath(filePath: string | undefined | null): boolean {
+  if (!filePath) return false;
+  return filePath.toLowerCase().endsWith('.svg');
+}
+
+/**
+ * Binary image files (non-text). Note: SVG is excluded because it is text-editable.
+ */
+export function isBinaryImageFilePath(filePath: string | undefined | null): boolean {
+  return isImageFilePath(filePath) && !isSvgFilePath(filePath);
+}
+
+/**
+ * Fetch raw file as Blob (binary-safe)
+ * Uses /files-raw/<path> endpoint.
+ */
+export async function fetchFileBlob(
+  projectId: string,
+  featureName: string,
+  filePath: string
+): Promise<Blob> {
+  const url = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/files-raw/${filePath}`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      ...getAuthHeaders()
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch file blob: ${response.statusText}`);
+  }
+
+  return await response.blob();
 }
 
 export interface AgentTask {
@@ -838,7 +896,7 @@ export async function uploadFiles(
   featureName: string,
   dirPath: string,
   files: FileList
-): Promise<void> {
+): Promise<{ uploadedFiles: string[]; count: number }> {
   try {
     const formData = new FormData();
     Array.from(files).forEach((file) => {
@@ -857,6 +915,11 @@ export async function uploadFiles(
     if (!response.ok) {
       throw new Error(`Failed to upload files: ${response.statusText}`);
     }
+    const data = await response.json();
+    return {
+      uploadedFiles: data?.uploadedFiles || [],
+      count: data?.count || 0
+    };
   } catch (error) {
     console.error('Error uploading files:', error);
     throw error;
@@ -897,13 +960,13 @@ export async function createDirectory(
 ): Promise<void> {
   try {
     const response = await authFetch(
-      `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/directories`,
+      `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/directory`,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ dirPath }),
+        body: JSON.stringify({ path: dirPath }),
       }
     );
     

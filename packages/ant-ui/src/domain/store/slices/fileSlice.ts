@@ -7,6 +7,7 @@ export interface FileActions {
   setFileTree: (tree: FileNode[]) => void;
   refreshFileTree: () => Promise<void>;
   setFileContent: (content: FileContent | undefined) => void;
+  triggerFileReload: (filePath?: string | undefined) => void;
 }
 
 export type FileSlice = FileState & FileActions;
@@ -18,6 +19,8 @@ export const createFileSlice: StateCreator<any, [], [], FileSlice> = (set, get) 
   selectedFile: undefined,
   fileTree: [],
   fileContent: undefined,
+  fileReloadTrigger: 0,
+  fileReloadTarget: undefined,
 
   // ==================
   // Actions
@@ -81,6 +84,14 @@ export const createFileSlice: StateCreator<any, [], [], FileSlice> = (set, get) 
 
   setFileContent: (content) => {
     set({ fileContent: content });
+  },
+
+  triggerFileReload: (filePath) => {
+    const target = filePath && filePath.length > 0 ? filePath : get().selectedFile;
+    set((s: any) => ({
+      fileReloadTrigger: (s.fileReloadTrigger || 0) + 1,
+      fileReloadTarget: target
+    }));
   },
 });
 

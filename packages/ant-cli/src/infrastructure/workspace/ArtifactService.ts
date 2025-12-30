@@ -238,11 +238,16 @@ export class ArtifactService {
       }
     }
 
-    // Assets index (optional)
-    const assetsDir = path.join(sourceDir, 'assets');
-    const screensDir = path.join(assetsDir, 'screens');
-    const componentsDir = path.join(assetsDir, 'components');
-    const iconsDir = path.join(assetsDir, 'icons');
+    // UI reference images index (optional)
+    // ✅ Separate runtime assets vs references
+    // - inputs/assets/**: runtime assets (synced into codebase root, NOT sent to LLM)
+    // - inputs/references/**: reference screenshots/states/icons (may be sent to LLM)
+    const inputsDirAbs = path.join(featurePathAbs, "inputs");
+    const inputsDir = ArtifactService.toWorkspaceRelative(fileSystem, inputsDirAbs);
+
+    const referencesDir = path.join(inputsDir, 'references');
+    const screensDir = path.join(referencesDir, 'screens');
+    const componentsDir = path.join(referencesDir, 'components');
 
     const listFiles = async (dir: string, allowExts?: string[]): Promise<string[] | undefined> => {
       if (!(await fileSystem.fileExists(dir))) return undefined;
@@ -264,19 +269,19 @@ export class ArtifactService {
 
     const screens = await listFiles(screensDir, ['.png', '.jpg', '.jpeg', '.webp', '.gif']);
     const components = await listFiles(componentsDir, ['.png', '.jpg', '.jpeg', '.webp', '.gif']);
-    const icons = await listFiles(iconsDir, ['.svg']);
 
     const uiAssets =
-      (screens || components || icons)
-        ? { screens, components, icons }
+      (screens || components)
+        ? { screens, components }
         : undefined;
 
-    // If we have assets but no explicit ui-assets.md, add a lightweight manifest section.
+    // If we have references but no explicit ui-assets.md, add a lightweight manifest section.
     const hasExplicitUiAssetsDoc = await fileSystem.fileExists(path.join(sourceDir, 'ui-assets.md'));
     if (uiAssets && !hasExplicitUiAssetsDoc) {
       const lines: string[] = [];
-      lines.push(`# UI Assets (Index)`);
-      lines.push(`> Note: Prompt input is text-only. These are file paths to reference artifacts.`);
+      lines.push(`# UI References (Index)`);
+      lines.push(`> Note: These are reference file paths under inputs/references (not runtime assets).`);
+      lines.push(`> IMPORTANT: Runtime assets must be placed under inputs/assets and will be synced into the codebase root.`);
       if (screens?.length) {
         lines.push(`\n## screens`);
         screens.forEach(p => lines.push(`- ${p}`));
@@ -284,10 +289,6 @@ export class ArtifactService {
       if (components?.length) {
         lines.push(`\n## components`);
         components.forEach(p => lines.push(`- ${p}`));
-      }
-      if (icons?.length) {
-        lines.push(`\n## icons`);
-        icons.forEach(p => lines.push(`- ${p}`));
       }
       uiDocParts.push(lines.join('\n'));
     }

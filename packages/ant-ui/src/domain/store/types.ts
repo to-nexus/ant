@@ -22,6 +22,8 @@ export interface FileState {
   selectedFile: string | undefined;
   fileTree: FileNode[];
   fileContent: FileContent | undefined;
+  fileReloadTrigger: number;
+  fileReloadTarget: string | undefined;
 }
 
 export interface JobState {

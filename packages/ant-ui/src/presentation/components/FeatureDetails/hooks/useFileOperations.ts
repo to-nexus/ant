@@ -14,6 +14,7 @@ export function useFileOperations(
 ) {
   const selectFile = useStore((state) => state.selectFile);
   const selectedFile = useStore((state) => state.selectedFile);
+  const triggerFileReload = useStore((state) => state.triggerFileReload);
   const { showError } = useAlertModalContext();
 
   const handleCreateFile = async (dirPath: string, fileName: string) => {
@@ -63,8 +64,19 @@ export function useFileOperations(
     if (!selectedProject || !selectedFeature) return;
     
     try {
-      await uploadFiles(selectedProject, selectedFeature, dirPath, files);
+      const result = await uploadFiles(selectedProject, selectedFeature, dirPath, files);
       await refreshFileTree();
+
+      // ✅ If upload overwrote the currently selected file, immediately refresh editor/preview.
+      // Backend returns base filenames; we reconstruct full paths under dirPath.
+      const normalizedDir = dirPath && dirPath.length > 0 ? dirPath.replace(/\/+$/, '') : '';
+      const uploadedPaths = (result.uploadedFiles || []).map((name) =>
+        normalizedDir ? `${normalizedDir}/${name}` : name
+      );
+
+      if (selectedFile && uploadedPaths.includes(selectedFile)) {
+        triggerFileReload(selectedFile);
+      }
     } catch (error) {
       console.error('Failed to upload files:', error);
       showError('업로드에 실패했습니다. 잠시 후 다시 시도해주세요.', { title: '오류' });

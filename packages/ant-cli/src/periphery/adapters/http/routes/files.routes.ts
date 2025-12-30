@@ -12,6 +12,36 @@ export function createFilesRoutes(deps: {
   projectService: ProjectService;
 }): Router {
   const router = Router();
+
+  const getMimeTypeFromPath = (filePath: string): string => {
+    const ext = path.extname(filePath).toLowerCase();
+    switch (ext) {
+      case '.png':
+        return 'image/png';
+      case '.jpg':
+      case '.jpeg':
+        return 'image/jpeg';
+      case '.gif':
+        return 'image/gif';
+      case '.webp':
+        return 'image/webp';
+      case '.svg':
+        return 'image/svg+xml';
+      default:
+        return 'application/octet-stream';
+    }
+  };
+
+  const resolveSafePath = (rootDir: string, relativeFilePath: string): string => {
+    const root = path.resolve(rootDir);
+    const full = path.resolve(rootDir, relativeFilePath);
+    // Prevent path traversal: full must be inside root
+    if (full === root) return full;
+    if (!full.startsWith(root + path.sep)) {
+      throw new Error('Invalid file path');
+    }
+    return full;
+  };
   
   // Configure multer for file uploads (use memory storage)
   const upload = multer({
@@ -43,6 +73,53 @@ export function createFilesRoutes(deps: {
       newEndpoint: `/projects/${req.params.id}/features/${req.params.feature}/stream`
     });
   });
+
+  /**
+   * Get raw file bytes (binary-safe)
+   * - Useful for images (png/jpg/webp/gif/svg) and other non-text files
+   *
+   * GET /projects/:id/features/:feature/files-raw/<path>
+   */
+  router.get(/^\/projects\/([^\/]+)\/features\/([^\/]+)\/files-raw\/(.+)$/, async (req: Request, res: Response) => {
+    try {
+      const projectId = req.params[0];
+      const featureName = req.params[1];
+      const filePath = req.params[2];
+
+      if (!filePath) {
+        res.status(400).json({ error: 'File path is required' });
+        return;
+      }
+
+      const userContext = extractUserContext(req);
+      const workspaceResolver = (deps.projectService as any).workspaceResolver;
+      const featurePath = workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+      const fullPath = resolveSafePath(featurePath, filePath);
+
+      try {
+        const stat = await fs.promises.stat(fullPath);
+        if (stat.isDirectory()) {
+          res.status(400).json({ error: 'Path is a directory, not a file' });
+          return;
+        }
+
+        const buf = await fs.promises.readFile(fullPath);
+        res.setHeader('Content-Type', getMimeTypeFromPath(filePath));
+        res.setHeader('Cache-Control', 'no-store');
+        // Inline rendering in browser (useful for images)
+        res.setHeader('Content-Disposition', `inline; filename="${path.basename(filePath)}"`);
+        res.status(200).send(buf);
+      } catch (error: any) {
+        if (error.code === 'ENOENT') {
+          res.status(404).json({ error: 'File not found' });
+        } else {
+          throw error;
+        }
+      }
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
   
   // Get file content
   router.get(/^\/projects\/([^\/]+)\/features\/([^\/]+)\/files\/(.+)$/, async (req: Request, res: Response) => {
@@ -59,7 +136,7 @@ export function createFilesRoutes(deps: {
       const userContext = extractUserContext(req);
       const workspaceResolver = (deps.projectService as any).workspaceResolver;
       const featurePath = workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-      const fullPath = path.join(featurePath, filePath);
+      const fullPath = resolveSafePath(featurePath, filePath);
       
       try {
         const content = await fs.promises.readFile(fullPath, 'utf-8');
@@ -164,6 +241,7 @@ export function createFilesRoutes(deps: {
   router.post('/projects/:id/features/:feature/directory', async (req: Request, res: Response) => {
     try {
       const projectId = req.params.id;
+      const featureName = req.params.feature;
       const { path: dirPath } = req.body;
       
       if (!dirPath) {
@@ -172,8 +250,13 @@ export function createFilesRoutes(deps: {
       
       const userContext = extractUserContext(req);
       const workspaceResolver = (deps.projectService as any).workspaceResolver;
-      const projectPath = workspaceResolver.getProjectPath(userContext, projectId);
-      const fullPath = path.join(projectPath, dirPath);
+      const featurePath = workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+      const fullPath = path.join(featurePath, dirPath);
+
+      // Security: prevent path traversal (must stay within feature directory)
+      if (!fullPath.startsWith(featurePath)) {
+        return res.status(400).json({ error: 'Invalid directory path' });
+      }
       
       // Create directory recursively
       await fs.promises.mkdir(fullPath, { recursive: true });

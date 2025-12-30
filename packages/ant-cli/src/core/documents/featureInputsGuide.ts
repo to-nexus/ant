@@ -20,9 +20,12 @@ export function getFeatureInputsGuideMarkdown(): string {
 - **\`inputs/sources/ui-assets.md\`**: (선택) 이미지 캡션/주의사항 메모 (비워도 됨)
 
 ## 옵션(UI 에셋)
-- **\`inputs/sources/assets/screens/*\`**: 화면 스크린샷 (png/jpg/webp/gif)
-- **\`inputs/sources/assets/components/*\`**: 컴포넌트 상태 스냅샷 (png/jpg/webp/gif)
-- **\`inputs/sources/assets/icons/*\`**: 아이콘 (svg)
+- **\`inputs/references/screens/*\`**: 화면 스크린샷 (png/jpg/webp/gif) — 참고용(LLM에 이미지로 주입될 수 있음)
+- **\`inputs/references/components/*\`**: 컴포넌트 상태 스냅샷 (png/jpg/webp/gif) — 참고용(LLM에 이미지로 주입될 수 있음)
+- **\`inputs/assets/**\`**: 런타임 리소스 (code job 시작 시 codebase 루트로 미러링 복사)
+  - 예: \`inputs/assets/public/brand/logo.svg\` → \`<codebase>/public/brand/logo.svg\`
+  - 규칙: 대상 파일이 이미 존재하고 내용이 같으면 **복사하지 않음**, 내용이 다르면 **업데이트(덮어쓰기)** 함
+  - 권장: 아이콘/로고 등 “실제 사용될 파일”도 여기에 둔다 (예: \`inputs/assets/public/icons/*\`)
 
 ## directives는 언제 쓰나?
 - **\`inputs/directives/design/directive.md\`**: PRD에 없는 추가 요구/제약을 design job에 전달(옵션)
