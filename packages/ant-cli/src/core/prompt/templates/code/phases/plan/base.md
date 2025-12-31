@@ -208,6 +208,26 @@ Speculation without empirical validation is insufficient.
 ════════════════════════════════════════════════════════════════════════════════
 {{/if}}
 
+{{#if hasUiDoc}}
+════════════════════════════════════════════════════════════════════════════════
+## 🎨 UI SPECIFICATION & ASSETS
+════════════════════════════════════════════════════════════════════════════════
+
+**All paths are relative to PROJECT ROOT.**
+
+**Your plan MUST include:**
+- ✅ Which assets to copy (source → destination)
+- ✅ How to reference assets in code
+
+**Asset Copy Rule:**
+- Source: `features/<feature>/inputs/assets/...`
+- Destination: `codebase/public/...`
+
+{{uiDoc}}
+
+════════════════════════════════════════════════════════════════════════════════
+{{/if}}
+
 {{#if projectCodeContext}}
 ════════════════════════════════════════════════════════════════════════════════
 ## 📁 CURRENT CODEBASE

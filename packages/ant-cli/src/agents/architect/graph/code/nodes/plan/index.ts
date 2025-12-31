@@ -154,6 +154,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   let projectCodeContext: any = undefined;
   let referenceCodeContexts: any[] = [];
+  let lessons: any[] = [];  // ✅ Lessons from RAG
   
   // ✅ CRITICAL: Always perform fresh RAG (even on retry)
   // - Combines files from Vector DB, Git changes, and local reads
@@ -164,13 +165,19 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   const git = state.deps?.git;
   
   if (retriever && vectorDB && git) {
-    projectCodeContext = await combineCodeContext(
+    const combinedResult = await combineCodeContext(
       taskKeywords,
       state,
       retriever,
       vectorDB,
       git
     );
+    
+    // ✅ Extract context and lessons from result
+    if (combinedResult) {
+      projectCodeContext = combinedResult.context;
+      lessons = combinedResult.lessons || [];
+    }
     
     // Load reference projects if needed
     if (projectCodeContext && state.referenceRequests && state.referenceRequests.length > 0) {
@@ -209,13 +216,30 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 3: Generate implementation plan (LLM 2nd request)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  
+  // ✅ Determine if uiDoc should be included in plan (UI-related tasks only)
+  const shouldIncludeUiDoc = (() => {
+    if (nextTask.type === 'setup') return false;  // Setup tasks don't need UI spec
+    if (nextTask.ui === true) return true;  // Explicit UI flag
+    if (nextTask.ui === false) return false;  // Explicit non-UI flag
+    // Fallback: check task name/description for UI keywords
+    const text = `${nextTask.name}\n${nextTask.description}`.toLowerCase();
+    return /(ui|ux|header|footer|layout|component|section|hero|card|button|nav|style|css)/.test(text);
+  })();
+  
+  const uiDocForPlan = shouldIncludeUiDoc ? state.uiDoc : undefined;
+  if (uiDocForPlan) {
+    console.log(`🎨 [Plan] Including uiDoc in plan (${uiDocForPlan.length} chars)`);
+  }
+  
   const planText = await generatePlanText(
     llm,
     nextTask,
     state,
     projectCodeContext,
     referenceCodeContexts,
-    state.violations  // ✅ Pass violations for retry context
+    state.violations,  // ✅ Pass violations for retry context
+    uiDocForPlan  // ✅ Pass uiDoc for UI-related tasks
   );
   
   // ✅ DO NOT clear violations here! They need to be passed to CodeGen node for retry context
@@ -234,6 +258,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       currentTask: nextTask,
       projectCodeContext,
       referenceCodeContexts,
+      lessons,  // ✅ Include lessons from RAG for prompt injection
       planText,
       retries: isRetry ? state.retries : 0,  // ✅ Clear retries for new task
       completedTasksDetails: state.completedTasksDetails || [],

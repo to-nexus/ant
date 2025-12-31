@@ -2,6 +2,15 @@
 
 You are implementing a specific task. Follow the instructions for your task type.
 
+## 📁 PATH CONVENTION (PROJECT ROOT)
+
+**All paths are relative to PROJECT ROOT.**
+- Code files: `codebase/...` (e.g., `codebase/src/App.tsx`, `codebase/package.json`)
+- Assets source: `features/<feature>/inputs/assets/...`
+- Assets destination: `codebase/public/...`
+
+When writing files, use `codebase/` prefix for all code files.
+
 {{#if designDoc}}
 ════════════════════════════════════════════════════════════════════════════════
 ## 🚨 CRITICAL: Specification Compliance is MANDATORY

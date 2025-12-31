@@ -87,8 +87,13 @@ export class ModeController {
     
     // Feature flags
     const flags = {
-      includeExamples: phase === 'execute' && task === 'code',
-      includeProfiles: phase === 'execute' && task === 'code' && context.stats.codebaseDetected,
+      // Examples are helpful for feature/error tasks but are counterproductive for setup:
+      // they increase the chance the model scaffolds extra files (components/sections) despite setup constraints.
+      includeExamples: phase === 'execute' && task === 'code' && context.currentTask?.type !== 'setup',
+      // ✅ CRITICAL: Include profiles for BOTH new and existing projects
+      // Profile is detected by detectEnvironment node from design doc (new) or existing code (existing)
+      // Without this, new projects have no TypeScript/React guidance and generate vanilla JS!
+      includeProfiles: phase === 'execute' && task === 'code',
       includeMemory: context.stats.hasMemory,
       strictValidation: task === 'code'
     };
@@ -174,18 +179,6 @@ export class ModeController {
     }
     
     // Phase-specific injections
-    if (phase === 'plan') {
-      // New project setup warning (ONLY for setup tasks!)
-      if (!context.stats.hasProjectCode && task === 'code' && context.currentTask?.type === 'setup') {
-        injections.push(`${phasePrefix}/new-project-warning`);
-      }
-      
-      // Modification warning for existing code
-      if (context.stats.hasProjectCode) {
-        injections.push(`${phasePrefix}/modification-warning`);
-      }
-    }
-    
     if (phase === 'execute') {
       // Environment-specific rules (code job only)
       const language = this.detectLanguage(context);
@@ -286,7 +279,23 @@ export class ModeController {
    * Always returns an inferred environment (never null)
    */
   private detectEnvironment(context: AssembledContext): string {
-    // 0. ✨ HIGHEST PRIORITY: Design document file name convention (fe-*, be-*)
+    // 0. ✨ HIGHEST PRIORITY: Use pre-detected environment from detectEnvironment node (LLM-based)
+    // This is more accurate than heuristics as it analyzed the full design document
+    const preDetected = (context as any).detectedEnvironment;
+    if (preDetected) {
+      const envMap: Record<string, string> = {
+        'frontend': 'browser',
+        'backend': 'node-api',
+        'fullstack': 'fullstack',
+      };
+      const mapped = envMap[preDetected];
+      if (mapped) {
+        console.log(`[ModeController] Using pre-detected environment from LLM: ${preDetected} -> ${mapped}`);
+        return mapped;
+      }
+    }
+
+    // 1. Fallback: Design document file name convention (fe-*, be-*)
     if (context.designDocPath) {
       const fileName = context.designDocPath.toLowerCase();
       

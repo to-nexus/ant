@@ -6,6 +6,7 @@
 import { ArchitectGraphState } from '../../../state';
 import { getChatAPIClient } from '../../../../../../../core/adapters/ChatAPIClient';
 import { EditFileArgs } from '../types';
+import { resolveToolPath } from './utils';
 
 export async function handleEditFile(
   state: ArchitectGraphState,
@@ -28,16 +29,18 @@ export async function handleEditFile(
   // No need to call startFileEdit here - it would be redundant
   
   try {
+    const resolved = await resolveToolPath(state, filePath);
+
     // ✅ Check if file exists
-    const exists = await fileSystem.fileExists(filePath);
+    const exists = await fileSystem.fileExists(resolved.fsPath);
     if (!exists) {
-      throw new Error(`File does not exist: ${filePath}. Use <file> tag to create new files.`);
+      throw new Error(`File does not exist: ${resolved.displayPath}. Use <file> tag to create new files.`);
     }
     
     // ✅ Read current file content (always from disk to ensure latest state)
-    const originalContent = await fileSystem.readFile(filePath);
+    const originalContent = await fileSystem.readFile(resolved.fsPath);
     if (!originalContent) {
-      throw new Error(`Failed to read file: ${filePath}`);
+      throw new Error(`Failed to read file: ${resolved.displayPath}`);
     }
     
     // ✅ Apply search/replace using existing logic
@@ -46,22 +49,22 @@ export async function handleEditFile(
       originalContent,
       old_str,
       new_str,
-      filePath
+      resolved.displayPath
     );
     
     // ✅ Write modified content back to disk
-    await fileSystem.writeFile(filePath, modifiedContent);
+    await fileSystem.writeFile(resolved.fsPath, modifiedContent);
     
-    console.log(`✅ [EditFile] Successfully edited ${filePath}`);
+    console.log(`✅ [EditFile] Successfully edited ${resolved.displayPath}`);
     console.log(`   Replaced ${old_str.length} chars with ${new_str.length} chars`);
     
     // ✅ UI notification: file edit complete
-    await chatAPI.completeFileEdit(filePath, old_str, new_str);
+    await chatAPI.completeFileEdit(resolved.displayPath, old_str, new_str);
     
     // ✅ Update file buffer (for subsequent read_file calls)
     const fileBuffers = state.fileBuffers || new Map();
-    fileBuffers.set(filePath, {
-      filePath,
+    fileBuffers.set(resolved.displayPath, {
+      filePath: resolved.displayPath,
       content: modifiedContent,
       committed: false,
       lastModified: Date.now()
@@ -76,7 +79,7 @@ export async function handleEditFile(
       );
     }
     
-    return `File edited successfully: ${filePath}\nReplaced ${old_str.length} characters with ${new_str.length} characters.`;
+    return `File edited successfully: ${resolved.displayPath}\nReplaced ${old_str.length} characters with ${new_str.length} characters.`;
   } catch (error) {
     // ✅ UI notification: file edit failed
     await chatAPI.failFileEdit(filePath, (error as Error).message);

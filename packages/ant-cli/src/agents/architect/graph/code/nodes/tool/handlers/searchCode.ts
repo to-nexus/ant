@@ -5,7 +5,7 @@
 import { ArchitectGraphState } from '../../../state';
 import { getChatAPIClient } from '../../../../../../../core/adapters/ChatAPIClient';
 import { SearchCodeArgs } from '../types';
-import { getFileSystem, withErrorHandling, logFileOperation } from './utils';
+import { getFileSystem, withErrorHandling, logFileOperation, resolveToolDirectory } from './utils';
 
 export async function handleSearchCode(
   state: ArchitectGraphState,
@@ -19,6 +19,15 @@ export async function handleSearchCode(
   
   const fileSystem = getFileSystem(state, 'searchCode');
   const chatAPI = getChatAPIClient();
+
+  // Default search root:
+  // - code jobs: repo root (codebase)
+  // - if user explicitly targets workspace paths (features/inputs/outputs/sessions), search from workspace root
+  const wantsWorkspaceScope = (() => {
+    const fp = (file_pattern || '').replace(/\\/g, '/').replace(/^\.?\//, '');
+    return fp.startsWith('features/') || fp.startsWith('inputs/') || fp.startsWith('outputs/') || fp.startsWith('sessions/');
+  })();
+  const resolvedRoot = await resolveToolDirectory(state, wantsWorkspaceScope ? 'features' : '.');
   
   // UI: Show searching_code status
   const searchingIndex = await chatAPI.showChatStatus('searching_code', { 
@@ -28,11 +37,12 @@ export async function handleSearchCode(
   
   return withErrorHandling('searchCode', async () => {
     // Use FileSystemPort to list files
-    logFileOperation('searchCode', 'Listing files from workspace root', '.', { 
+    logFileOperation('searchCode', 'Listing files', resolvedRoot.displayPath, { 
+      fsPath: resolvedRoot.fsPath,
       excludes: ['node_modules', '.git', 'dist', 'build'] 
     });
     
-    const files = await fileSystem.listFiles('.', ['node_modules', '.git', 'dist', 'build']);
+    const files = await fileSystem.listFiles(resolvedRoot.fsPath, ['node_modules', '.git', 'dist', 'build']);
     console.log(`[searchCode] Found ${files.length} files total`);
     
     // Filter by file pattern if provided

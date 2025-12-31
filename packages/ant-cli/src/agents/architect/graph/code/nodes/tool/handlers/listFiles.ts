@@ -5,7 +5,7 @@
 import { ArchitectGraphState } from '../../../state';
 import { getChatAPIClient } from '../../../../../../../core/adapters/ChatAPIClient';
 import { ListFilesArgs } from '../types';
-import { getFileSystem, withErrorHandling, logFileOperation } from './utils';
+import { getFileSystem, withErrorHandling, logFileOperation, resolveToolDirectory } from './utils';
 
 export async function handleListFiles(
   state: ArchitectGraphState,
@@ -15,17 +15,19 @@ export async function handleListFiles(
   
   const fileSystem = getFileSystem(state, 'listFiles');
   const chatAPI = getChatAPIClient();
+
+  const resolvedDir = await resolveToolDirectory(state, directory);
   
   // UI: Show listing_files status
   const listingIndex = await chatAPI.showChatStatus('listing_files', { 
-    directory: directory || '.', 
+    directory: resolvedDir.displayPath || '.', 
     pattern 
   });
   
   return withErrorHandling('listFiles', async () => {
-    logFileOperation('listFiles', 'Listing directory', directory, { pattern });
+    logFileOperation('listFiles', 'Listing directory', resolvedDir.displayPath, { pattern, fsPath: resolvedDir.fsPath, scope: resolvedDir.scope });
     
-    const items = await fileSystem.readDirectory(directory);
+    const items = await fileSystem.readDirectory(resolvedDir.fsPath);
     
     // Add type suffix for directories so UI can distinguish them
     const itemsWithType = items.map(item => 
@@ -49,6 +51,6 @@ export async function handleListFiles(
     });
     
     return filtered;
-  }, { directory, pattern });
+  }, { directory: resolvedDir.displayPath, pattern });
 }
 

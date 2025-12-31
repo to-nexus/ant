@@ -19,7 +19,7 @@
 import { GitPort } from "../../../../../../core/ports";
 import { ArchitectGraphState } from "../../state";
 import { loadErrorFiles, LoadedFile } from "./errorFilesLoader";
-import { loadSemanticFiles } from "./semanticSearch";
+import { loadSemanticFiles, LessonResult } from "./semanticSearch";
 import { extractFilesFromCode } from "./utils";
 
 export interface ProjectCodeContext {
@@ -34,6 +34,12 @@ export interface ProjectCodeContext {
   };
   gitDiff?: string;
   source: 'plan';
+}
+
+// ✅ Extended return type to include lessons
+export interface CombinedCodeContextResult {
+  context: ProjectCodeContext;
+  lessons: LessonResult[];
 }
 
 export interface TaskKeywords {
@@ -57,7 +63,7 @@ export interface TaskKeywords {
  * @param retriever - Vector DB retriever
  * @param vectorDB - Vector database instance
  * @param git - Git port for file operations
- * @returns ProjectCodeContext with combined files (latest local content)
+ * @returns CombinedCodeContextResult with combined files (latest local content) and lessons
  */
 export async function combineCodeContext(
   taskKeywords: TaskKeywords,
@@ -65,7 +71,7 @@ export async function combineCodeContext(
   retriever: any,
   vectorDB: any,
   git: GitPort
-): Promise<ProjectCodeContext | null> {
+): Promise<CombinedCodeContextResult | null> {
   const hasStackTrace = taskKeywords.errorFiles.length > 0;
   const hasKeywords = taskKeywords.keywords.length > 0;
   
@@ -96,7 +102,7 @@ export async function combineCodeContext(
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Tier 2: Semantic files (context, dynamic quota)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const semanticFiles = await loadSemanticFiles(
+  const semanticResult = await loadSemanticFiles(
     taskKeywords.keywords,
     state,
     retriever,
@@ -105,6 +111,9 @@ export async function combineCodeContext(
     extractFilesFromCode,
     errorFiles.map(f => f.path)  // ✅ Exclude already loaded - avoid duplicate content
   );
+  
+  const semanticFiles = semanticResult.files;
+  const lessons = semanticResult.lessons;
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Merge & Deduplicate
@@ -151,5 +160,9 @@ export async function combineCodeContext(
     );
   }
   
-  return projectCodeContext;
+  // ✅ Return both context and lessons
+  return {
+    context: projectCodeContext,
+    lessons
+  };
 }

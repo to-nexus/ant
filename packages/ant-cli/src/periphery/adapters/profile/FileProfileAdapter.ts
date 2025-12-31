@@ -1,5 +1,6 @@
 import { promises as fs } from "fs";
-import { join } from "path";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import { ProfilePort } from "../../../core/ports";
 
 /**
@@ -9,9 +10,20 @@ import { ProfilePort } from "../../../core/ports";
  * Returns empty string if profile not found (graceful degradation)
  */
 export class FileProfileAdapter implements ProfilePort {
-  constructor(
-    private baseDir = join(process.cwd(), "src", "periphery", "profiles")
-  ) {}
+  private baseDir: string;
+  
+  constructor(baseDir?: string) {
+    if (baseDir) {
+      this.baseDir = baseDir;
+    } else {
+      // ✅ Resolve path relative to THIS file
+      // From adapters/profile/ go up to periphery/profiles/
+      // Works in both src/ (development) and dist/ (production)
+      const __filename = fileURLToPath(import.meta.url);
+      const __dirname = dirname(__filename);
+      this.baseDir = join(__dirname, "..", "..", "profiles");
+    }
+  }
   
   /**
    * Load language profile from file

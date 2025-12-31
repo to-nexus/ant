@@ -13,6 +13,8 @@ interface RetryOptions {
   maxDelayMs?: number;
   backoffMultiplier?: number;
   retryableErrors?: string[];
+  /** Callback invoked before each retry attempt (for cleanup/reset) */
+  onBeforeRetry?: () => void;
 }
 
 interface RetryableError {
@@ -30,6 +32,7 @@ const DEFAULT_OPTIONS: Required<RetryOptions> = {
   maxDelayMs: 30000,
   backoffMultiplier: 2,
   retryableErrors: ['overloaded_error', 'api_error'],
+  onBeforeRetry: undefined as any,  // Optional callback
 };
 
 /**
@@ -220,6 +223,11 @@ export async function* withRetryStream<T>(
       
       // Wait before retry
       await new Promise(resolve => setTimeout(resolve, delay));
+      
+      // ✅ Call onBeforeRetry callback if provided (for cleanup/reset)
+      if (opts.onBeforeRetry) {
+        opts.onBeforeRetry();
+      }
       
       console.log(`[Retry] 🔄 Retrying (attempt ${attempt + 1}/${opts.maxAttempts})...`);
     }

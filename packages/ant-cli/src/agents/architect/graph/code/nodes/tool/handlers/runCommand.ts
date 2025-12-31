@@ -74,10 +74,15 @@ export async function handleRunCommand(
   const isInstallCommand = /\b(npm|pnpm|yarn)\s+(ci|install)\b/.test(normalizedCommand);
   const effectiveTimeout = isInstallCommand ? 20 * 60 * 1000 : COMMAND_TIMEOUT;
   
-  // Get project path from FileSystemPort
-  const projectPath = fileSystem.getWorkspaceRoot();
+  // ✅ Resolve working directory - PROJECT ROOT is the base
+  // All paths are relative to project root (e.g., ant-ogf/)
+  // - codebase/... for code
+  // - features/<feature>/inputs/assets/... for assets
+  const p = await import('path');
+  const projectPath = fileSystem.getWorkspaceRoot();  // Project root (e.g., ant-ogf/)
+  
   const workingDir = working_directory 
-    ? `${projectPath}/${working_directory}`
+    ? (p.isAbsolute(working_directory) ? working_directory : p.join(projectPath, working_directory))
     : projectPath;
   
   console.log(`\n   🔧 Running command: ${normalizedCommand}`);

@@ -53,6 +53,8 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     if (!state.currentTask) return false;
     // Explanations generally don't need heavy UI specs
     if (state.currentTask.type === 'explain') return false;
+    // Setup tasks must be config-only; skip UI spec injection to avoid scaffolding product UI
+    if (state.currentTask.type === 'setup') return false;
     // ✅ 1) Primary: task metadata from decompose
     if (state.currentTask.ui === true) return true;
     if (state.currentTask.ui === false) return false;
@@ -66,9 +68,16 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     return keywordHit || (envHit && tsxHit);
   })();
   
+  // Pass profile to context for TypeScript/React templates on new projects
+  const contextWithProfile = {
+    ...state.context,
+    codebaseProfile: state.profile,
+    detectedEnvironment: state.detectedEnvironment,
+  };
+  
   const promptResult = await promptEngine.buildExecutePrompt(
     'code',
-    state.context,
+    contextWithProfile,
     {
       directive: state.directive,
       designDoc: state.design,
