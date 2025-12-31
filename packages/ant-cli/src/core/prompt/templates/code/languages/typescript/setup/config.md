@@ -2,6 +2,21 @@
 📘 TYPESCRIPT PROJECT SETUP - CRITICAL CONFIGURATION
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+## 📁 PATH CONVENTION (CRITICAL!)
+
+**All files MUST be created under `codebase/` directory.**
+
+```
+✅ codebase/package.json
+✅ codebase/tsconfig.json
+✅ codebase/vite.config.ts
+✅ codebase/pnpm-workspace.yaml
+
+❌ package.json (WRONG - missing codebase/ prefix)
+```
+
+---
+
 ## 0. Project Structure Decision ⭐⭐⭐
 
 **Monorepo vs Single Package:**

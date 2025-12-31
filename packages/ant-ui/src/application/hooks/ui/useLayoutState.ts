@@ -40,7 +40,7 @@ export function useLayoutState(): LayoutState {
   const [isResizingExplorer, setIsResizingExplorer] = useState(false);
   
   // Chat state
-  const [chatWidth, setChatWidth] = useState(400);
+  const [chatWidth, setChatWidth] = useState(500); // 400px → 500px (25% 증가)
   const [isChatCollapsed, setIsChatCollapsed] = useState(false);
   const [isResizingChat, setIsResizingChat] = useState(false);
   

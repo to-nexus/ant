@@ -388,20 +388,19 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
   if ((state as any).runtimeAssetsIndex?.count > 0) {
     const idx = (state as any).runtimeAssetsIndex as { count: number; files: string[] };
     lines.push(`════════════════════════════════════════════════════════════════════════════════`);
-    lines.push(`📦 Runtime Assets (inputs/assets)`);
+    lines.push(`📦 Available Assets (inputs/assets)`);
     lines.push(`════════════════════════════════════════════════════════════════════════════════`);
-    lines.push(`- Auto-copy: NO`);
-    lines.push(`- You must choose the correct static root for the target app (monorepo-aware) and copy assets.`);
-    lines.push(`- Preserve relative paths under inputs/assets, then reference them in code.`);
+    lines.push(`Check if this task needs any assets from the list below.`);
+    lines.push(`If needed: copy the asset to codebase/public/, then reference it in code.`);
+    lines.push(``);
     if (state.context?.featurePath) {
-      lines.push(`- Source dir (feature): ${state.context.featurePath.replace(/\\/g, '/')}/inputs/assets`);
+      lines.push(`Source: ${state.context.featurePath.replace(/\\/g, '/')}/inputs/assets/`);
     }
-    if ((state.context as any)?.workingDir) {
-      lines.push(`- Codebase root: ${(state.context as any).workingDir}`); // repo root (string)
-    }
-    lines.push(`- Copy mechanism: use tooling (e.g., run_command cp/rsync) as a dedicated task BEFORE using assets in code.`);
-    lines.push(`- Files (first 20):`);
+    lines.push(`Destination: codebase/public/ogf/ (or app-specific static root)`);
+    lines.push(``);
+    lines.push(`Available files (${idx.count} total):`);
     idx.files.slice(0, 20).forEach((f) => lines.push(`  - ${f}`));
+    if (idx.count > 20) lines.push(`  ... and ${idx.count - 20} more`);
     lines.push(``);
   }
   

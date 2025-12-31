@@ -78,6 +78,12 @@ When error occurs:
 - ❌ "While I'm here, let me refactor this too"
 - ✅ Apply the CORRECT solution → Verify → Done
 
+### 4. ASSET-FIRST FOR UI (When UI spec exists)
+**Before implementing UI elements, check the asset mapping table.**
+- If asset mapping exists for this element → MUST use the asset file
+- Asset specified in mapping → NOT a text substitute
+- Copy asset BEFORE referencing in code
+
 ════════════════════════════════════════════════════════════════════════════════
 
 {{#if (eq currentTask.type "explain")}}
@@ -186,8 +192,7 @@ Create config files only. NO source code, NO tests.
 
 Implement the feature. Source code only.
 
-**Create:** .ts, .tsx, .js, .jsx files in `src/`, `app/`, `components/`, etc.
-**DON'T create:** *.md, *.test.*, config files
+**DON'T create:** Documentation files, test files
 **Actions:** Write/edit code → Output `<done>true</done>`
 
 {{/unless}}

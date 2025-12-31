@@ -213,14 +213,24 @@ Speculation without empirical validation is insufficient.
 ## 🎨 UI SPECIFICATION & ASSETS
 ════════════════════════════════════════════════════════════════════════════════
 
-**MANDATORY: If spec contains asset mapping tables:**
-1. **List ALL assets** that this task needs (from the mapping table)
-2. **Plan cp commands** for each asset (Source → Runtime Path)
-3. Assets NOT copied = 404 error at runtime
+### 🔍 ASSET DISCOVERY PRINCIPLE
 
-**Your plan MUST explicitly include:**
-- ✅ Which assets to copy (list every file from mapping table relevant to this task)
-- ✅ Exact cp commands: `cp features/<feature>/inputs/assets/... codebase/public/...`
+**Before planning UI implementation:**
+1. Identify the visual elements in this task
+2. Search the asset mapping table for those elements
+3. If asset exists → Plan to copy and use it
+
+**Planning Rule:**
+- Asset found in mapping → Include `cp` command in plan
+- No asset found → May proceed without asset copy
+
+### ⚠️ MANDATORY DECLARATION
+
+Your plan MUST state one of:
+- "Assets needed: [list elements] → [copy plan]"
+- "No assets needed for this task"
+
+Silent omission of asset planning is NOT acceptable.
 
 {{uiDoc}}
 
