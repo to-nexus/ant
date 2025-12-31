@@ -15,6 +15,7 @@
  * - Uses GitPort for file operations
  */
 
+import path from "path";
 import { ArchitectGraphState } from "../../state";
 import { 
   detectProject, 
@@ -156,6 +157,41 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
       return handleEnvironmentError(state, result);
     }
 
+    // 4. Static asset integrity check (principle-based, catches silent runtime 404)
+    // - Build can succeed even when runtime assets 404 (e.g., '/x.webp' referenced but file missing in public/)
+    // - This prevents regressions like "background image missing" without breaking compilation.
+    const missingStaticAssets = await findMissingPublicAssetReferences(repoRoot, fileSystem, p);
+    if (missingStaticAssets.length > 0) {
+      const preview = missingStaticAssets.slice(0, 12);
+      const lines = preview.map(m => `- ${m.file}: ${m.assetPath} (expected: public/${m.assetPath.replace(/^\//, '')})`);
+      const more = missingStaticAssets.length > preview.length
+        ? `\n... and ${missingStaticAssets.length - preview.length} more`
+        : '';
+
+      return {
+        ...state,
+        violations: [
+          ...(state.violations || []),
+          {
+            type: 'missing_static_asset',
+            severity: 'major',
+            message:
+              `Static asset reference(s) are missing from the app's public static root.\n` +
+              `This causes silent runtime 404s (e.g., missing backgrounds/icons) even if build passes.\n\n` +
+              `Missing references (sample):\n${lines.join('\n')}${more}\n\n` +
+              `Principle: If code references an absolute asset path like '/foo/bar.png', the file MUST exist under 'public/foo/bar.png' (or the project’s static root).\n` +
+              `Fix: either copy the referenced asset into the correct static root OR change code to reference an existing asset path (do not invent extensions like .webp unless the file exists).`,
+            suggestedFix:
+              `Copy required assets into public/ (or detected static root), or update references to existing assets.\n` +
+              `Avoid changing image extensions unless the target files exist.`,
+            isRetryable: true,
+            metadata: { count: missingStaticAssets.length }
+          }
+        ],
+        runtimeValidationResult: { ...result, passed: false }
+      };
+    }
+
   } catch (error: any) {
     console.error('⚠️  Dynamic validation error:', error.message);
 
@@ -199,6 +235,96 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
     lastViolations: [],  // ← Clear last violations
     runtimeValidationResult: result,
   };
+}
+
+/**
+ * Find missing public static assets referenced by absolute paths in source files.
+ * Principle-based: absolute '/x.ext' should exist under public/x.ext.
+ */
+async function findMissingPublicAssetReferences(
+  repoRoot: string,
+  fileSystem: any,
+  p: any
+): Promise<Array<{ file: string; assetPath: string }>> {
+  const assetExt = '(?:png|jpe?g|gif|svg|webp|ico|woff2?|ttf|eot)';
+  const jsStringRe = new RegExp(`(["'])\\/(?!\\/|dev\\/)([^"'\\n\\r?#]+?\\.${assetExt})(?:\\?[^"']*)?\\1`, 'g');
+  const cssUrlRe = new RegExp(`url\\(\\s*['"]?\\/(?!\\/|dev\\/)([^'")\\n\\r?#]+?\\.${assetExt})(?:\\?[^'")]+)?['"]?\\s*\\)`, 'g');
+
+  const publicRel = 'public';
+  const candidates: string[] = [];
+
+  // Gather likely source files
+  const roots = ['src', 'index.html'];
+  for (const r of roots) {
+    // index.html is a file, src is a directory
+    const maybeDir = r;
+    const maybeFile = r;
+    if (await fileSystem.fileExists(maybeFile)) {
+      candidates.push(maybeFile);
+      continue;
+    }
+    if (await fileSystem.fileExists(maybeDir)) {
+      const files = await collectFilesRecursive(maybeDir, fileSystem);
+      candidates.push(...files);
+    }
+  }
+
+  // Filter to text-ish files
+  const textFiles = candidates.filter(f => /\.(ts|tsx|js|jsx|css|html)$/.test(f));
+
+  const missing: Array<{ file: string; assetPath: string }> = [];
+
+  for (const file of textFiles) {
+    let content = '';
+    try {
+      content = await fileSystem.readFile(file);
+    } catch {
+      continue;
+    }
+
+    const found = new Set<string>();
+    for (const re of [jsStringRe, cssUrlRe]) {
+      re.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(content)) !== null) {
+        const relPath = m[2] || m[1]; // jsStringRe uses group 2, cssUrlRe uses group 1
+        if (!relPath) continue;
+        const assetPath = `/${relPath}`;
+        found.add(assetPath);
+      }
+    }
+
+    for (const assetPath of found) {
+      const expected = p.join(publicRel, assetPath.replace(/^\//, ''));
+      try {
+        const exists = await fileSystem.fileExists(expected);
+        if (!exists) {
+          missing.push({ file, assetPath });
+        }
+      } catch {
+        // If filesystem check fails, treat as missing to avoid silent pass
+        missing.push({ file, assetPath });
+      }
+    }
+  }
+
+  return missing;
+}
+
+async function collectFilesRecursive(dir: string, fileSystem: any): Promise<string[]> {
+  const out: string[] = [];
+  const entries = await fileSystem.readDirectory(dir);
+  for (const e of entries) {
+    if (!e?.name) continue;
+    if (e.name.startsWith('.')) continue;
+    const full = path.join(dir, e.name);
+    if (e.isDirectory) {
+      out.push(...(await collectFilesRecursive(full, fileSystem)));
+    } else {
+      out.push(full);
+    }
+  }
+  return out;
 }
 
 /**

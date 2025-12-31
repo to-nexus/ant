@@ -13,6 +13,22 @@ import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient"
 import { RETRIEVAL_CONFIG } from "../../config/retrievalConfig";
 import type { LoadedFile } from "./errorFilesLoader";
 
+// ✅ Lesson type from CodebaseRetriever
+export interface LessonResult {
+  content: string;
+  score: number;
+  relatedFiles: string[];
+  tags: string[];
+  timestamp: string;
+  directive?: string;
+}
+
+// ✅ Extended return type to include lessons
+export interface SemanticSearchResult {
+  files: LoadedFile[];
+  lessons: LessonResult[];
+}
+
 export async function loadSemanticFiles(
   keywords: string[],
   state: ArchitectGraphState,
@@ -21,16 +37,16 @@ export async function loadSemanticFiles(
   git: GitPort,
   extractFilesFromCode: (code: string) => Array<{path: string; content: string}>,
   excludePaths: string[] = []  // Exclude already loaded (from stacktrace)
-): Promise<LoadedFile[]> {
+): Promise<SemanticSearchResult> {
   const chatAPI = getChatAPIClient();
   
-  if (keywords.length === 0) return [];
+  if (keywords.length === 0) return { files: [], lessons: [] };
   
   const semanticQuota = RETRIEVAL_CONFIG.getSemanticQuota(excludePaths.length);
   
   if (semanticQuota === 0) {
     console.log(`   ⚠️  Semantic search skipped: quota exhausted (${excludePaths.length}/${RETRIEVAL_CONFIG.TOTAL_MAX} files already loaded from stack trace)`);
-    return [];
+    return { files: [], lessons: [] };
   }
   
   console.log(`   🔍 Semantic search: ${keywords.length} keywords → quota ${semanticQuota} NEW files (${excludePaths.length} stack trace will be excluded)...`);
@@ -45,6 +61,7 @@ export async function loadSemanticFiles(
   let vectorDbPaths: string[] = [];
   let greppedPaths: string[] = [];
   let allVectorFiles: string[] = [];  // ✅ Track all results before filtering
+  let retrievedLessons: LessonResult[] = [];  // ✅ Capture lessons from Vector DB
   
   // Step 1: Vector DB search
   try {
@@ -66,6 +83,11 @@ export async function loadSemanticFiles(
     
     const files = extractFilesFromCode(searchResult.code);
     allVectorFiles = files.map(f => f.path);
+    
+    // ✅ Capture lessons from retriever (will be propagated to state)
+    if (searchResult.lessons && Array.isArray(searchResult.lessons)) {
+      retrievedLessons = searchResult.lessons;
+    }
     
     // ✅ CRITICAL: Remove duplicates from Vector DB results (same file from multiple keywords)
     const uniqueVectorFiles = Array.from(new Set(allVectorFiles));
@@ -126,7 +148,7 @@ export async function loadSemanticFiles(
       const fileSystem = state.deps?.fileSystem;
       if (!fileSystem) {
         console.warn(`   ⚠️  FileSystemPort not available, skipping keyword search`);
-        return [];
+        return { files: [], lessons: retrievedLessons };
       }
       
       // Search files by content matching
@@ -176,7 +198,7 @@ export async function loadSemanticFiles(
   const fileSystem = state.deps?.fileSystem;
   if (!fileSystem) {
     console.warn(`   ⚠️  FileSystemPort not available, skipping file loading`);
-    return [];
+    return { files: [], lessons: retrievedLessons };
   }
   
   const vectorDbFiles: LoadedFile[] = [];
@@ -298,5 +320,10 @@ export async function loadSemanticFiles(
   }
   
   console.log(`   Semantic loader: ${semanticFiles.length} files loaded (quota was ${semanticQuota})\n`);
-  return semanticFiles;
+  
+  // ✅ Return both files and lessons
+  return {
+    files: semanticFiles,
+    lessons: retrievedLessons
+  };
 }

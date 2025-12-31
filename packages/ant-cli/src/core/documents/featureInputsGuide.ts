@@ -22,8 +22,8 @@ export function getFeatureInputsGuideMarkdown(): string {
 ## 옵션(UI 에셋)
 - **\`inputs/references/screens/*\`**: 화면 스크린샷 (png/jpg/webp/gif) — 참고용(LLM에 이미지로 주입될 수 있음)
 - **\`inputs/references/components/*\`**: 컴포넌트 상태 스냅샷 (png/jpg/webp/gif) — 참고용(LLM에 이미지로 주입될 수 있음)
-- **\`inputs/assets/**\`**: 런타임 리소스 (정적 에셋 루트는 프로젝트/모노레포 구조에 따라 다름)
-  - 동작: **자동 복사되지 않음** → code job이 \`inputs/assets\` 파일 목록을 보고, LLM이 태스크로 “타겟 앱의 정적 에셋 루트(public 등) 결정 → 복사 → 코드에서 사용”을 수행해야 함
+- **\`inputs/assets/**\`**: 런타임 리소스 (**feature 폴더 하위**)
+  - 동작: **자동 복사되지 않음** → code job이 *feature*의 \`inputs/assets\` 파일 목록을 보고, LLM이 태스크로 “타겟 앱의 정적 에셋 루트(public 등) 결정 → 복사 → 코드에서 사용”을 수행해야 함
   - 권장: 아이콘/로고/배경 등 실제 사용될 파일을 여기에 둔다 (예: \`inputs/assets/icons/*\`, \`inputs/assets/bg/*\`)
 
 ## directives는 언제 쓰나?

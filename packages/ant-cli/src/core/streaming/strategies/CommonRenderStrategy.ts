@@ -94,4 +94,11 @@ export class CommonRenderStrategy implements IRenderStrategy {
   getFileRenderer(): FileRenderer {
     return this.fileRenderer;
   }
+  
+  /**
+   * Reset state for stream retry
+   */
+  reset(): void {
+    this.fileRenderer.reset();
+  }
 }

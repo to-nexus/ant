@@ -38,7 +38,10 @@
     "langchain": "^1.0.1",
     "multer": "^2.0.2",
     "openai": "^6.14.0",
+    "jpeg-js": "^0.4.4",
+    "pngjs": "^7.0.0",
     "simple-git": "^3.28.0",
+    "sharp": "^0.34.3",
     "zod": "^4.1.12"
   },
   "devDependencies": {

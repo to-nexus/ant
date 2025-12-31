@@ -461,11 +461,13 @@ export class PromptEngine {
       name: string;
       description: string;
       type: string;
+      ui?: boolean;  // ✅ UI flag for determining uiDoc injection
     },
     directive: string,  // ✅ Original directive for ground truth
     designDoc: string | undefined,
     projectCodeContext: any,
-    violationsText?: string  // ✅ Formatted violations for retry context
+    violationsText?: string,  // ✅ Formatted violations for retry context
+    uiDoc?: string  // ✅ UI spec/assets doc for UI-related tasks
   ): Promise<string> {
     // ✅ Format projectCodeContext (files array → formatted string)
     let formattedCodeContext = '';
@@ -485,6 +487,8 @@ export class PromptEngine {
       directive: directive,  // ✅ Pass original directive
       taskType: task.type,
       designDoc: designDoc,
+      uiDoc: uiDoc,  // ✅ UI spec for UI-related tasks
+      hasUiDoc: !!uiDoc,  // ✅ Flag for template conditional
       projectCodeContext: formattedCodeContext,  // ✅ Formatted string (not .code property)
       hasDesignDoc: !!designDoc,
       hasProjectCodeContext: !!formattedCodeContext,

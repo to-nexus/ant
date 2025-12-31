@@ -39,6 +39,7 @@ export type ViolationType =
   | 'excessive_deletion'    // 과도한 삭제
   | 'missing_dependency'    // 의존성 누락
   | 'missing_file'          // 필수 파일 누락
+  | 'missing_static_asset'  // 정적 에셋 경로가 public/static root에 없음 (런타임 404 유발)
   | 'type_error'            // TypeScript 타입 에러
   | 'import_error'          // Import 에러
   | 'syntax_error'          // 문법 에러

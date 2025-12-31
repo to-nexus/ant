@@ -33,6 +33,7 @@ export class StreamOrchestrator {
   private renderStrategy: IRenderStrategy;
   private state: StreamState;
   private registry: FileRegistry;
+  private streamStarted: boolean = false;  // ✅ Track if stream has started
   
   constructor(config: StreamOrchestratorConfig) {
     this.parser = config.parser;
@@ -49,6 +50,31 @@ export class StreamOrchestrator {
    */
   async processEvent(event: LLMStreamEvent): Promise<void> {
     try {
+      // ✅ CRITICAL: Reset on first event of a new stream (after previous stream ended)
+      // This handles stream retry scenarios where a network error interrupted mid-stream
+      // and withRetryStream starts a new stream without resetting the orchestrator
+      if (!this.streamStarted) {
+        // Check if there are incomplete file operations from a previous failed stream
+        const fileRenderer = (this.renderStrategy as any).getFileRenderer?.();
+        if (fileRenderer?.hasActiveFiles?.()) {
+          console.log(`[StreamOrchestrator] 🔄 Detected incomplete files from previous failed stream - resetting`);
+          // Reset everything except streamStarted
+          this.parser.reset();
+          this.state.reset();
+          this.registry.reset();
+          const renderStrategy = this.renderStrategy as any;
+          if (renderStrategy.reset && typeof renderStrategy.reset === 'function') {
+            renderStrategy.reset();
+          }
+        }
+        this.streamStarted = true;
+      }
+      
+      // ✅ Mark stream as ended on 'done' event (for next retry detection)
+      if (event.type === 'done') {
+        this.streamStarted = false;
+      }
+      
       // 1. Parse event → actions
       const actions = this.parser.parse(event, this.state);
       
@@ -58,6 +84,8 @@ export class StreamOrchestrator {
       }
     } catch (error) {
       console.error('[StreamOrchestrator] Error processing event:', error);
+      // ✅ Mark stream as ended on error (for next retry detection)
+      this.streamStarted = false;
       throw error;
     }
   }
@@ -105,12 +133,20 @@ export class StreamOrchestrator {
   }
   
   /**
-   * Reset orchestrator state (for reuse)
+   * Reset orchestrator state (for reuse or stream retry)
+   * ✅ CRITICAL: Also resets FileRenderer to clear incomplete file operations
    */
   reset(): void {
     this.parser.reset();
     this.state.reset();
     this.registry.reset();
+    this.streamStarted = false;  // ✅ Reset stream tracking
+    
+    // ✅ Reset FileRenderer to clear incomplete file operations (for stream retry)
+    const renderStrategy = this.renderStrategy as any;
+    if (renderStrategy.reset && typeof renderStrategy.reset === 'function') {
+      renderStrategy.reset();
+    }
   }
   
   /**

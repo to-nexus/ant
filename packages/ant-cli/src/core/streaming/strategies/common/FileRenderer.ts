@@ -53,15 +53,14 @@ export class FileRenderer {
   /**
    * Resolve a path that is safe to pass to FileSystemPort.
    *
-   * FileSystemPort expects paths relative to its workspace root.
-   * In design jobs, LLM emits paths like `outputs/design/system-design.md` which
-   * are relative to the feature directory, so we must prefix with the feature dir
-   * *relative to workspace root* (NOT an absolute path).
+   * ✅ PROJECT ROOT based - all paths are relative to project root.
+   * - Code files: LLM should use "codebase/..." paths
+   * - Design files: LLM should use "features/<feature>/outputs/..." paths
    */
   private resolveFileSystemPath(originalPath: string): string {
     if (!this.fileSystem) return originalPath;
 
-    // If caller accidentally passed an absolute path, normalize it back to workspace-relative.
+    // If caller accidentally passed an absolute path, normalize it back to project-root-relative.
     if (path.isAbsolute(originalPath)) {
       const workspaceRoot = this.fileSystem.getWorkspaceRoot?.();
       if (workspaceRoot) {
@@ -70,6 +69,7 @@ export class FileRenderer {
       return originalPath.startsWith('/') ? originalPath.slice(1) : originalPath;
     }
 
+    // Design jobs: prefix with feature directory relative path
     if (this.jobType === 'design' && this.featurePath) {
       const workspaceRoot = this.fileSystem.getWorkspaceRoot?.();
       if (workspaceRoot && path.isAbsolute(this.featurePath)) {
@@ -78,28 +78,20 @@ export class FileRenderer {
       }
     }
 
-    // ✅ Code jobs must write into repoRoot (codebase directory), not project root.
-    // LLM typically emits paths like "package.json" or "src/main.ts".
-    // We transparently prefix with codebaseDirRel so files land in {project}/codebase/...
-    if (this.jobType === 'code' && this.codebasePath) {
-      const workspaceRoot = this.fileSystem.getWorkspaceRoot?.();
-      if (workspaceRoot && path.isAbsolute(this.codebasePath)) {
-        const codebaseDirRel = path.relative(workspaceRoot, this.codebasePath);
-
-        // Avoid double-prefix if LLM already included "codebase/" or the computed relative prefix.
-        if (
-          originalPath === codebaseDirRel ||
-          originalPath.startsWith(codebaseDirRel + path.sep) ||
-          originalPath.startsWith('codebase' + path.sep)
-        ) {
-          return originalPath;
-        }
-
-        return path.join(codebaseDirRel, originalPath);
-      }
-    }
-
+    // Code jobs: use path as-is (LLM should provide "codebase/..." paths)
     return originalPath;
+  }
+
+  /**
+   * Canonicalize a streamed file path into a stable key.
+   *
+   * ✅ PROJECT ROOT based - paths are used as-is (just normalize separators).
+   * LLM should use consistent paths:
+   * - "codebase/package.json" for code files
+   * - "features/<feature>/outputs/..." for design files
+   */
+  private canonicalizePath(originalPath: string): string {
+    return originalPath.replace(/\\/g, '/').replace(/^\.?\//, '');
   }
 
   /**
@@ -112,13 +104,21 @@ export class FileRenderer {
       console.error('[FileRenderer] file_start without filePath');
       return;
     }
+
+    const canonicalPath = this.canonicalizePath(filePath);
+    if (!canonicalPath) {
+      const msg = `[FileRenderer] Invalid/empty canonical path derived from: "${filePath}"`;
+      console.error(msg);
+      this.fileErrors.push(msg);
+      return;
+    }
     
     // Check for duplicates
-    if (registry.hasStreamed(filePath)) {
-      const previousInfo = registry.getFileInfo(filePath);
+    if (registry.hasStreamed(canonicalPath)) {
+      const previousInfo = registry.getFileInfo(canonicalPath);
       const previousActionType = previousInfo?.actionType;
       
-      console.log(`[Render] ⚠️  File ${filePath} already streamed (previous: ${previousActionType}, new: ${actionType})`);
+      console.log(`[Render] ⚠️  File ${canonicalPath} already streamed (previous: ${previousActionType}, new: ${actionType})`);
       
       const isFullReplacement = 
         previousActionType === 'create' &&
@@ -131,17 +131,17 @@ export class FileRenderer {
       if (isFullReplacement) {
         console.log(`[Render] 🔄 Full overwrite - replacing entire file (multi-turn)`);
         
-        registry.resetFile(filePath);
-        this.activeFiles.delete(filePath);
-        this.lineBuffers.clear(filePath);
+        registry.resetFile(canonicalPath);
+        this.activeFiles.delete(canonicalPath);
+        this.lineBuffers.clear(canonicalPath);
       } else if (isIncrementalChange) {
         console.log(`[Render] ✏️  Incremental ${actionType} on top of previous content (multi-turn)`);
         return;
       } else {
         console.log(`[Render] ⏭️  Skipping duplicate file_start (same turn): ${previousActionType} → ${actionType}`);
         
-        this.activeFiles.set(filePath, {
-          filePath: filePath,
+        this.activeFiles.set(canonicalPath, {
+          filePath: canonicalPath,
           actionType: 'skip' as any,
           contentBuffer: '',
           startedAt: Date.now()
@@ -160,25 +160,25 @@ export class FileRenderer {
       // <file> tag: No existence check needed (intentional overwrite)
       finalActionType = 'create';
     }
-    registry.markAsStreamed(filePath, finalActionType);
+    registry.markAsStreamed(canonicalPath, finalActionType);
     
-    this.activeFiles.set(filePath, {
-      filePath,
+    this.activeFiles.set(canonicalPath, {
+      filePath: canonicalPath,
       actionType: finalActionType,
       startedAt: Date.now(),
       contentBuffer: ''
     });
     
-    this.lineBuffers.init(filePath);
+    this.lineBuffers.init(canonicalPath);
     
     // ✅ Create completion promise for this file
     const completionPromise = new Promise<void>((resolve, reject) => {
-      this.completionResolvers.set(filePath, resolve);
-      this.completionRejectors.set(filePath, reject);
+      this.completionResolvers.set(canonicalPath, resolve);
+      this.completionRejectors.set(canonicalPath, reject);
     });
-    this.completionPromises.set(filePath, completionPromise);
+    this.completionPromises.set(canonicalPath, completionPromise);
     
-    await this.chatAPI.startFileCreation(filePath);
+    await this.chatAPI.startFileCreation(canonicalPath);
   }
   
   /**
@@ -190,10 +190,13 @@ export class FileRenderer {
     if (!filePath || content === undefined) {
       return;
     }
+
+    const canonicalPath = this.canonicalizePath(filePath);
+    if (!canonicalPath) return;
     
-    const fileInfo = this.activeFiles.get(filePath);
+    const fileInfo = this.activeFiles.get(canonicalPath);
     if (!fileInfo) {
-      console.warn(`[Render] file_content for non-started file: ${filePath}`);
+      console.warn(`[Render] file_content for non-started file: ${canonicalPath}`);
       return;
     }
     
@@ -201,15 +204,15 @@ export class FileRenderer {
       return;
     }
     
-    registry.appendContent(filePath, content);
+    registry.appendContent(canonicalPath, content);
     fileInfo.contentBuffer += content;
     
     // Real-time streaming for create and append
-    const completeLines = this.lineBuffers.addContent(filePath, content);
+    const completeLines = this.lineBuffers.addContent(canonicalPath, content);
     
     if (completeLines.length > 0) {
       const newContent = completeLines.join('\n') + '\n';
-      await this.chatAPI.streamFileContent(filePath, newContent);
+      await this.chatAPI.streamFileContent(canonicalPath, newContent);
     }
   }
   
@@ -223,36 +226,44 @@ export class FileRenderer {
       console.error('[FileRenderer] file_end without filePath');
       return;
     }
+
+    const canonicalPath = this.canonicalizePath(filePath);
+    if (!canonicalPath) {
+      const msg = `[FileRenderer] Invalid/empty canonical path derived from: "${filePath}"`;
+      console.error(msg);
+      this.fileErrors.push(msg);
+      return;
+    }
     
-    const fileInfo = this.activeFiles.get(filePath);
+    const fileInfo = this.activeFiles.get(canonicalPath);
     if (!fileInfo) {
-      console.warn(`[Render] file_end for non-started file: ${filePath}`);
+      console.warn(`[Render] file_end for non-started file: ${canonicalPath}`);
       return;
     }
     
     if (fileInfo.actionType === 'skip' as any) {
-      console.log(`[Render] ⏭️  Skipping file_end for duplicate edit: ${filePath}`);
-      this.cleanup(filePath);
+      console.log(`[Render] ⏭️  Skipping file_end for duplicate edit: ${canonicalPath}`);
+      this.cleanup(canonicalPath);
       return;
     }
     
-    console.log(`✅ [Render] Completing ${fileInfo.actionType.toUpperCase()}: ${filePath}`);
+    console.log(`✅ [Render] Completing ${fileInfo.actionType.toUpperCase()}: ${canonicalPath}`);
     
     try {
       // Flush remaining buffer
-      const remainingBuffer = this.lineBuffers.getRemainingBuffer(filePath);
+      const remainingBuffer = this.lineBuffers.getRemainingBuffer(canonicalPath);
       if (remainingBuffer) {
-        await this.chatAPI.streamFileContent(filePath, remainingBuffer);
+        await this.chatAPI.streamFileContent(canonicalPath, remainingBuffer);
       }
       
-      await this.handleCreateOrAppend(filePath, fileInfo);
+      await this.handleCreateOrAppend(canonicalPath, fileInfo);
     } catch (error) {
-      await this.handleError(filePath, fileInfo, error);
+      await this.handleError(canonicalPath, fileInfo, error);
       
       // ✅ Do NOT reject completion promise - just log error
       // File errors should only be displayed in UI, not interrupt task flow
       
-      this.cleanup(filePath);
+      this.cleanup(canonicalPath);
       
       // ✅ Do NOT re-throw - task should continue despite file errors
       // Error is already recorded in fileErrors and displayed in UI
@@ -260,12 +271,12 @@ export class FileRenderer {
     }
     
     // ✅ Success: Resolve completion promise
-    const resolver = this.completionResolvers.get(filePath);
+    const resolver = this.completionResolvers.get(canonicalPath);
     if (resolver) {
       resolver();
     }
     
-    this.cleanup(filePath);
+    this.cleanup(canonicalPath);
   }
   
   /**
@@ -475,5 +486,27 @@ export class FileRenderer {
    */
   getFileErrors(): string[] {
     return this.fileErrors;
+  }
+  
+  /**
+   * Reset state for stream retry
+   * ✅ CRITICAL: Called when API stream fails and retries
+   * Clears incomplete file operations to prevent false "missing closing tag" errors
+   */
+  reset(): void {
+    // Log incomplete files that will be discarded
+    if (this.activeFiles.size > 0) {
+      console.log(`[FileRenderer] 🔄 Resetting ${this.activeFiles.size} incomplete file operation(s) for retry`);
+      for (const [filePath] of this.activeFiles) {
+        console.log(`   - Discarding incomplete: ${filePath}`);
+      }
+    }
+    
+    this.activeFiles.clear();
+    this.lineBuffers.clearAll();
+    this.completionPromises.clear();
+    this.completionResolvers.clear();
+    this.completionRejectors.clear();
+    this.fileErrors = [];
   }
 }

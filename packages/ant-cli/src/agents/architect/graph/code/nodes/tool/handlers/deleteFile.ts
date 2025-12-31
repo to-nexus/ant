@@ -5,7 +5,7 @@
 import { ArchitectGraphState } from '../../../state';
 import { getChatAPIClient } from '../../../../../../../core/adapters/ChatAPIClient';
 import { DeleteFileArgs } from '../types';
-import { getFileSystem, withErrorHandling, logFileOperation } from './utils';
+import { getFileSystem, withErrorHandling, logFileOperation, resolveToolPath } from './utils';
 
 export async function handleDeleteFile(
   state: ArchitectGraphState,
@@ -17,20 +17,21 @@ export async function handleDeleteFile(
   const chatAPI = getChatAPIClient();
   
   return withErrorHandling('deleteFile', async () => {
-    logFileOperation('deleteFile', 'Deleting file', filePath);
+    const resolved = await resolveToolPath(state, filePath);
+    logFileOperation('deleteFile', 'Deleting file', resolved.displayPath, { fsPath: resolved.fsPath, scope: resolved.scope });
     
     // Check if file exists
-    const exists = await fileSystem.fileExists(filePath);
+    const exists = await fileSystem.fileExists(resolved.fsPath);
     if (!exists) {
-      throw new Error(`File does not exist: ${filePath}`);
+      throw new Error(`File does not exist: ${resolved.displayPath}`);
     }
     
     // Delete file
-    await fileSystem.deleteFile(filePath);
-    console.log(`[deleteFile] ✅ Deleted: ${filePath}`);
+    await fileSystem.deleteFile(resolved.fsPath);
+    console.log(`[deleteFile] ✅ Deleted: ${resolved.displayPath}`);
     
     // UI notification
-    await chatAPI.completeFileDeletion(filePath);
+    await chatAPI.completeFileDeletion(resolved.displayPath);
     
     // Broadcast file tree update (for "n Files Edited" counter)
     if (state.deps?.fileTreeUpdate) {
@@ -41,7 +42,7 @@ export async function handleDeleteFile(
       );
     }
     
-    return `File deleted successfully: ${filePath}`;
+    return `File deleted successfully: ${resolved.displayPath}`;
   }, { filePath });
 }
 

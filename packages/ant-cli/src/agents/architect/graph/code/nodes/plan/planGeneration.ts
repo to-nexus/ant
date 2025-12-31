@@ -55,7 +55,8 @@ export async function generatePlanText(
   state: ArchitectGraphState,
   projectCodeContext: any,
   referenceCodeContexts: any[],
-  violations?: Violation[]
+  violations?: Violation[],
+  uiDoc?: string  // ✅ UI spec/assets doc for UI-related tasks
 ): Promise<string> {
   const requiresPlan = 
     task.priority !== TASK_PRIORITIES.FINAL_VERIFICATION &&  
@@ -100,7 +101,8 @@ export async function generatePlanText(
     state.directive || '',
     designDoc,
     projectCodeContext,
-    violationsText
+    violationsText,
+    uiDoc  // ✅ Pass uiDoc for UI-related tasks
   );
   
   // ✅ Use centralized LLM wrapper with automatic token tracking

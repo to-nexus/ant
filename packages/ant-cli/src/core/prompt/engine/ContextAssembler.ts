@@ -20,6 +20,8 @@ export interface AssembledContext {
     components?: string[];
     icons?: string[];
   };
+  // ✅ Feature path for runtime asset resolution (e.g., features/skeleton)
+  featurePath?: string;
   lastSectionNumber?: number;
   previousDesign?: string;
   
@@ -186,7 +188,16 @@ export class ContextAssembler {
       Object.assign(assembled, loaded);
     }
     
-    // Codebase profile (passed from state, not loaded here)
+    // ✅ CRITICAL: Read codebaseProfile from context (passed by promptBuilder)
+    // This enables TypeScript/React templates for new projects!
+    if ((context as any).codebaseProfile) {
+      assembled.codebaseProfile = (context as any).codebaseProfile;
+    }
+    
+    // ✅ Pass featurePath for runtime asset path resolution in templates
+    if ((context as any).featurePath) {
+      assembled.featurePath = (context as any).featurePath;
+    }
     
     // 3. Load vector memory (from context)
     assembled.memory = context.memory || undefined;
