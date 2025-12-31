@@ -213,15 +213,14 @@ Speculation without empirical validation is insufficient.
 ## 🎨 UI SPECIFICATION & ASSETS
 ════════════════════════════════════════════════════════════════════════════════
 
-**All paths are relative to PROJECT ROOT.**
+**MANDATORY: If spec contains asset mapping tables:**
+1. **List ALL assets** that this task needs (from the mapping table)
+2. **Plan cp commands** for each asset (Source → Runtime Path)
+3. Assets NOT copied = 404 error at runtime
 
-**Your plan MUST include:**
-- ✅ Which assets to copy (source → destination)
-- ✅ How to reference assets in code
-
-**Asset Copy Rule:**
-- Source: `features/<feature>/inputs/assets/...`
-- Destination: `codebase/public/...`
+**Your plan MUST explicitly include:**
+- ✅ Which assets to copy (list every file from mapping table relevant to this task)
+- ✅ Exact cp commands: `cp features/<feature>/inputs/assets/... codebase/public/...`
 
 {{uiDoc}}
 
