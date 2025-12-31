@@ -247,9 +247,17 @@ async function buildMessages(state: DesignGraphState): Promise<Array<{
     console.log(`📄 [DocGen] Target file: ${targetFile}`);
     
     try {
-      const designDocPath = `${state.context.featurePath}/outputs/design/${targetFile}`;
+      // ✅ FIX: Convert absolute path to workspace-relative path for FileSystemPort
+      // FileSystemPort expects relative paths - absolute paths cause path resolution issues
+      const pathModule = await import('path');
+      let designDocPath = `${state.context.featurePath}/outputs/design/${targetFile}`;
       
       if (state.deps?.fileSystem) {
+        const workspaceRoot = state.deps.fileSystem.getWorkspaceRoot?.();
+        if (workspaceRoot && pathModule.isAbsolute(designDocPath)) {
+          designDocPath = pathModule.relative(workspaceRoot, designDocPath);
+        }
+        
         const fileExists = await state.deps.fileSystem.fileExists(designDocPath);
         if (fileExists) {
           const fullContent = await state.deps.fileSystem.readFile(designDocPath) || '';

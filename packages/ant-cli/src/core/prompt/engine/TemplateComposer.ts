@@ -130,9 +130,14 @@ export class TemplateComposer {
     );
     
     // 5. Render rules template
+    // ✅ FIX: Pass lastSectionNumber and currentTask to rules template
+    // rules.md uses {{#if lastSectionNumber}} for continuation task detection
     const rules = await this.renderTemplate(
       modeConfig.templates.rules,
-      {}
+      {
+        lastSectionNumber: assembled.lastSectionNumber ?? undefined,
+        currentTask: assembled.currentTask || null
+      }
     );
     
     // 6. Build injections

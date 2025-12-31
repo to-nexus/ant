@@ -144,13 +144,17 @@ export class ToolResultManager {
   
   /**
    * read_file 결과 truncation
-   * 전략: 파일의 시작과 끝 보존, 중간 생략
+   * 전략: maxReadFileTokens 기준으로 시작과 끝 보존, 중간 생략
+   * 
+   * 버그 수정: 이전에는 라인 수 기반 40%/40%로 자르면서 토큰 제한을 무시했음.
+   * 이제 토큰 기반으로 비율을 계산하여 maxReadFileTokens 내로 맞춤.
    */
   private truncateReadFile(result: any): TruncationResult {
     const resultStr = typeof result === 'string' ? result : JSON.stringify(result);
     const originalTokens = this.tokenManager.estimateTokens(resultStr);
+    const maxTokens = this.config.maxReadFileTokens;
     
-    if (originalTokens <= this.config.maxReadFileTokens) {
+    if (originalTokens <= maxTokens) {
       return {
         content: resultStr,
         wasTruncated: false,
@@ -159,14 +163,22 @@ export class ToolResultManager {
       };
     }
     
-    // 시작 40%, 끝 40% 보존 (중간 20% 생략)
     const lines = resultStr.split('\n');
-    const keepStart = Math.floor(lines.length * 0.4);
-    const keepEnd = Math.floor(lines.length * 0.4);
+    
+    // 토큰 기반 비율 계산: 목표 토큰 / 원본 토큰
+    // 시작/끝 각각 절반씩 할당
+    const keepRatio = maxTokens / originalTokens;
+    const keepLines = Math.max(10, Math.floor(lines.length * keepRatio / 2));
+    
+    // 최소 10줄, 최대 원본의 40%
+    const keepStart = Math.min(keepLines, Math.floor(lines.length * 0.4));
+    const keepEnd = Math.min(keepLines, Math.floor(lines.length * 0.4));
+    
+    const omittedLines = lines.length - keepStart - keepEnd;
     
     const truncated = [
       ...lines.slice(0, keepStart),
-      `\n... (${lines.length - keepStart - keepEnd} lines omitted) ...\n`,
+      `\n... (${omittedLines} lines omitted, file too large: ${originalTokens.toLocaleString()} tokens → ${maxTokens.toLocaleString()} limit) ...\n`,
       ...lines.slice(-keepEnd),
     ].join('\n');
     
@@ -175,7 +187,7 @@ export class ToolResultManager {
     console.log(`\n✂️  [ToolResult] Truncated read_file:`);
     console.log(`   Original: ${originalTokens.toLocaleString()} tokens (${lines.length} lines)`);
     console.log(`   Truncated: ${truncatedTokens.toLocaleString()} tokens`);
-    console.log(`   Kept: First ${keepStart} + Last ${keepEnd} lines`);
+    console.log(`   Kept: First ${keepStart} + Last ${keepEnd} lines (target: ${maxTokens} tokens)`);
     
     return {
       content: truncated,
