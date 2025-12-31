@@ -71,3 +71,12 @@ Before retrying a failed command, gather information:
 
 **Remember**: Your goal is understanding, not just execution. Each command failure is information.
 
+---
+
+## 🖼️ Binary File Rule
+
+**Never `read_file` on binary files** (images, fonts, archives, etc.)
+
+- Check existence: `list_files`
+- Use in code: reference path directly
+
