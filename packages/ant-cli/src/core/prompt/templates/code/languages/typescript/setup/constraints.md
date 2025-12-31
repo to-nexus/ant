@@ -2,10 +2,25 @@
 
 ⛔ **CRITICAL: Configuration files ONLY - No application code** ⛔
 
+## 📁 PATH CONVENTION (CRITICAL!)
+
+**All files MUST be created under `codebase/` directory.**
+
+```
+✅ CORRECT:
+  codebase/package.json
+  codebase/tsconfig.json
+  codebase/vite.config.ts
+
+❌ WRONG:
+  package.json          ← Missing codebase/ prefix!
+  tsconfig.json         ← Missing codebase/ prefix!
+```
+
 **Setup Task Scope:**
 ```
-PHASE 1 (Setup):    Config files → npm install → Ready for code
-PHASE 2 (Feature):  Application code → Build → Done
+PHASE 1 (Setup):    Config files in codebase/ → npm install → Ready for code
+PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 ```
 
 ### File Categories:

@@ -214,7 +214,10 @@ export class ArtifactService {
     const sourceDir = ArtifactService.toWorkspaceRelative(fileSystem, sourceDirAbs);
 
     const sourceDirExists = await fileSystem.fileExists(sourceDir);
-    if (!sourceDirExists) return {};
+    if (!sourceDirExists) {
+      console.log(`⚠️  [ArtifactService] loadUiContext: sourceDir not found: ${sourceDir}`);
+      return {};
+    }
 
     // Known UI doc files (optional)
     // ✅ Canonical: ui-spec.md (ONLY)
@@ -250,12 +253,20 @@ export class ArtifactService {
 
     for (const name of uiDocFiles) {
       const p = path.join(sourceDir, name);
-      if (!(await fileSystem.fileExists(p))) continue;
+      const exists = await fileSystem.fileExists(p);
+      if (!exists) {
+        // Debug: log missing files
+        console.log(`   📄 [loadUiContext] ${name}: not found`);
+        continue;
+      }
       const content = await fileSystem.readFile(p);
       const normalized = ArtifactService.normalizeUserDoc(content);
       if (normalized) {
         const header = sectionHeaders[name] || `## 📄 ${name}\n`;
         uiDocParts.push(`${header}\n${normalized}`);
+        console.log(`   ✅ [loadUiContext] ${name}: loaded (${normalized.length} chars)`);
+      } else {
+        console.log(`   ⚠️  [loadUiContext] ${name}: skipped (template marker or empty)`);
       }
     }
 

@@ -162,8 +162,19 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   if (state.deps?.memory && state.deps?.chunk) {
     await storeLessonsToMemory(state, lessons, sessionId, turnId);
     
+    // ✅ Request GC if available (helps with memory pressure before document indexing)
+    if (global.gc) {
+      global.gc();
+      console.log(`🧹 [Design Learn] Requested garbage collection before document indexing`);
+    }
+    
     // ✅ NEW: Index design document and PRD to documents collection
-    await indexDocumentsToMemory(state);
+    // Skip if disabled via env var (for memory-constrained environments)
+    if (process.env.SKIP_DOCUMENT_INDEXING !== 'true') {
+      await indexDocumentsToMemory(state);
+    } else {
+      console.log(`⏭️  [Design Learn] Skipping document indexing (SKIP_DOCUMENT_INDEXING=true)`);
+    }
   }
   
   // ✅ End workflow visualization

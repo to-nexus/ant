@@ -150,9 +150,6 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
           />
         </div>
       </div>
-      
-      {/* Alert Modal */}
-      <AlertModal />
     </div>
   );
 }

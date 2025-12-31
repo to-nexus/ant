@@ -388,6 +388,13 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   const uiContext = await ArtifactService.loadUiContext(context, gitPort, fileSystem);
   const uiDoc = uiContext.uiDoc;
   const uiAssets = uiContext.uiAssets;
+  
+  // Debug: Log UI context loading result
+  if (uiDoc) {
+    console.log(`📄 [Resolve] uiDoc loaded (${uiDoc.length} chars)`);
+  } else {
+    console.log(`⚠️  [Resolve] uiDoc NOT loaded - check inputs/sources for ui-spec.md, components.md, tokens.md, ui-assets.md`);
+  }
 
   // ✅ Index inputs guide to documents collection (for RAG-based chat guidance)
   if (state.deps?.memory && state.deps?.chunk) {
