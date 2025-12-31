@@ -227,13 +227,35 @@ export class ArtifactService {
 
     const uiDocParts: string[] = [];
 
+    // ✅ Section headers to help LLM understand each file's role
+    const sectionHeaders: Record<string, string> = {
+      'ui-spec.md': `## 🎨 UI SPECIFICATION
+> This section defines screen layouts, sections, states, and visual rules.
+> Follow these specs exactly when implementing UI components.
+`,
+      'components.md': `## 🧩 COMPONENT INVENTORY
+> This section lists reusable UI components with their props, states, and styling rules.
+> Use these definitions when creating shared components.
+`,
+      'tokens.md': `## 🎯 DESIGN TOKENS
+> This section defines colors, typography, spacing, and other design constants.
+> Reference these tokens in your CSS/styles for consistency.
+`,
+      'ui-assets.md': `## 📦 ASSET MAPPING (MANDATORY COPY)
+> **CRITICAL**: This section contains Source → Runtime Path mappings.
+> You MUST copy ALL mapped assets from \`inputs/assets/\` to \`public/\` before referencing them in code.
+> Uncopied assets = 404 error at runtime.
+`,
+    };
+
     for (const name of uiDocFiles) {
       const p = path.join(sourceDir, name);
       if (!(await fileSystem.fileExists(p))) continue;
       const content = await fileSystem.readFile(p);
       const normalized = ArtifactService.normalizeUserDoc(content);
       if (normalized) {
-        uiDocParts.push(`<!-- UI Source: ${name} -->\n\n${normalized}`);
+        const header = sectionHeaders[name] || `## 📄 ${name}\n`;
+        uiDocParts.push(`${header}\n${normalized}`);
       }
     }
 

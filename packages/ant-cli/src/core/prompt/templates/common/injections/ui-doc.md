@@ -3,22 +3,20 @@
 ## 🎨 UI SPEC (Figma-derived)
 
 Use this for UI behavior/layout/components/tokens.
-If it conflicts with immutable API contract, the API contract wins.
 
-### ⚠️ RUNTIME ASSETS (CRITICAL)
+### ⚠️ RUNTIME ASSETS - MANDATORY COPY (CRITICAL)
 
-**All paths are relative to PROJECT ROOT.**
-- Code files: `codebase/...` (e.g., `codebase/src/App.tsx`)
-- Asset source: `features/{{featureFolder}}/inputs/assets/...`
-- Asset destination: `codebase/public/...`
+**If this spec contains asset mapping tables (Source → Runtime Path):**
+1. **ALL mapped assets MUST be copied** from `features/{{featureFolder}}/inputs/assets/` to `codebase/public/`
+2. Copy BEFORE referencing in code (or code will 404)
+3. Use exact Runtime Path from the mapping table
 
-To use runtime assets (logos, icons, images):
 ```bash
-# Copy from feature inputs to codebase public/
-cp features/{{featureFolder}}/inputs/assets/logos/logo.svg codebase/public/logos/
+# Example: copy logo
+cp features/{{featureFolder}}/inputs/assets/logos/logo.svg codebase/public/ogf/logos/
 ```
 
-**DO NOT** assume assets are auto-copied. You MUST explicitly copy them!
+**Assets are NOT auto-copied. YOU MUST run cp commands for EVERY asset in the mapping table.**
 
 ────────────────────────────────────────────────────────────────────────────────
 

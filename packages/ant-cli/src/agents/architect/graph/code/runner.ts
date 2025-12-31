@@ -107,6 +107,22 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
           console.log(`   ✅ Spec restored from session`);
         }
         
+        // ✅ CRITICAL: Restore PRD for downstream prompts
+        if ((session.state as any).prd) {
+          initial.prd = (session.state as any).prd;
+          console.log(`   ✅ PRD restored from session`);
+        }
+        
+        // ✅ CRITICAL: Restore UI context for asset mapping
+        if ((session.state as any).uiDoc) {
+          initial.uiDoc = (session.state as any).uiDoc;
+          console.log(`   ✅ uiDoc restored from session (${initial.uiDoc?.length || 0} chars)`);
+        }
+        if ((session.state as any).uiAssets) {
+          initial.uiAssets = (session.state as any).uiAssets;
+          console.log(`   ✅ uiAssets restored from session`);
+        }
+        
         if ((session.state as any).prd) {
           initial.prd = (session.state as any).prd;
           console.log(`   ✅ PRD restored from session`);
