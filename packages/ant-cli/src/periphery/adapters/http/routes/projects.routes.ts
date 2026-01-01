@@ -229,7 +229,7 @@ export function createProjectsRoutes(deps: {
       const userContext = extractUserContext(req);
       const featureName = typeof req.body?.feature === 'string' ? req.body.feature : undefined;
       
-      logger.info(`Fetching from GitHub`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId, feature: featureName });
+      logger.info(`Fetching from GitHub (feature: ${featureName || 'all'})`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
       
       await deps.projectService.fetchFromGitHub(projectId, userContext, featureName);
       res.json({ success: true, message: 'Remote refs updated successfully' });

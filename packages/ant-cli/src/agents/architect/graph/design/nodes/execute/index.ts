@@ -87,6 +87,7 @@ export async function execute(state: DesignGraphState) {
     previousDesign: state.design,      // Previous design (from git)
     currentCode: state.code,           // Codebase (for evolution/refactor)
     designDomain: state.designDomain,  // Detected design domain (game vs service)
+    hasUiDoc: state.hasUiDoc,          // ✅ UI specification existence flag
     currentTask: state.currentTask ? {  // ✅ Pass current task info
       name: state.currentTask.name,
       type: state.currentTask.type,

@@ -1,4 +1,5 @@
 import { ArtifactService } from "../../../../../infrastructure/workspace/ArtifactService";
+import { WorkspacePathResolver } from "../../../../../infrastructure/workspace/WorkspaceResolver";
 import { DesignGraphState } from "../state";
 import { CodebaseRetriever } from "../../../../../core/codebase/CodebaseRetriever";
 import * as path from "path";
@@ -111,7 +112,9 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
   if (designMode === 'greenfield' && !prd) {
     const featurePathAbs = WorkspacePathResolver.resolveFeaturePath(context);
     const sourceDirAbs = path.join(featurePathAbs, "inputs/sources");
-    const sourceDir = ArtifactService.toWorkspaceRelative(fileSystem, sourceDirAbs);
+    // toWorkspaceRelative is private, use relative path directly
+    const root = (fileSystem as any).getWorkspaceRoot?.() || '';
+    const sourceDir = root ? path.relative(root, sourceDirAbs) : sourceDirAbs;
     const prdPath = path.join(sourceDir, 'prd.md');
     if (await fileSystem.fileExists(prdPath)) {
       const raw = await fileSystem.readFile(prdPath);
@@ -142,7 +145,20 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
   const designResult = await ArtifactService.findLatestDesign(context, gitPort, fileSystem);
   const design = designResult?.content || undefined;
 
-  // 4. Load codebase (conditional on mode - Phase 1: CodebaseRetriever)
+  // 4. Check if UI specification exists (for conditional prompt guidance)
+  let hasUiDoc = false;
+  try {
+    const uiContext = await ArtifactService.loadUiContext(context, gitPort, fileSystem);
+    hasUiDoc = !!(uiContext?.uiDoc && uiContext.uiDoc.trim().length > 100);  // Non-trivial content
+    if (hasUiDoc) {
+      console.log('✅ UI specification detected - system-design will defer UI details to uiDoc');
+    }
+  } catch (error) {
+    // uiDoc not found - that's fine, proceed without it
+    hasUiDoc = false;
+  }
+
+  // 5. Load codebase (conditional on mode - Phase 1: CodebaseRetriever)
   let code: string | undefined;
   let codeHead: string | undefined;
   let profile = undefined;
@@ -215,6 +231,7 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     code,
     codeHead,
     profile,
+    hasUiDoc,  // ✅ UI specification existence flag
     overrideDirective: state.overrideDirective,  // ✅ Preserve chat directive
     chatSource: state.chatSource,  // ✅ Preserve chat source flag
     _httpJobId: state._httpJobId  // ✅ Preserve jobId

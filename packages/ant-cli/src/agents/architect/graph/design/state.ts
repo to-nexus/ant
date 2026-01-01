@@ -105,4 +105,8 @@ export interface DesignGraphState extends TaskArtifacts {
   // ✅ Design environment detection (frontend vs backend vs fullstack)
   designEnvironment?: 'frontend' | 'backend' | 'fullstack';
   designEnvironmentReasoning?: string;
+  
+  // ✅ UI specification existence flag
+  // When true, system-design should defer UI implementation details to uiDoc
+  hasUiDoc?: boolean;
 }

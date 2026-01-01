@@ -223,7 +223,6 @@ export class ArtifactService {
     // ✅ Canonical: ui-spec.md (ONLY)
     const uiDocFiles = [
       'ui-spec.md',
-      'components.md',
       'tokens.md',
       'ui-assets.md',
     ];
@@ -233,12 +232,8 @@ export class ArtifactService {
     // ✅ Section headers to help LLM understand each file's role
     const sectionHeaders: Record<string, string> = {
       'ui-spec.md': `## 🎨 UI SPECIFICATION
-> This section defines screen layouts, sections, states, and visual rules.
+> This section defines screen layouts, component props, states, and interaction rules.
 > Follow these specs exactly when implementing UI components.
-`,
-      'components.md': `## 🧩 COMPONENT INVENTORY
-> This section lists reusable UI components with their props, states, and styling rules.
-> Use these definitions when creating shared components.
 `,
       'tokens.md': `## 🎯 DESIGN TOKENS
 > This section defines colors, typography, spacing, and other design constants.

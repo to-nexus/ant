@@ -1,4 +1,4 @@
-import { UserContext } from '../../../../../../../core/types/user';
+import { UserContext } from '../../../../../../core/types/user';
 import { EnvironmentDetection } from '../../../../../../core/types/environment';
 
 /**

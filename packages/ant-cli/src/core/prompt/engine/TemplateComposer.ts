@@ -125,7 +125,10 @@ export class TemplateComposer {
         referenceRequests: assembled.referenceRequests || [],
         
         // ✅ Used in {{#if lastSectionNumber}} for design job continuation
-        lastSectionNumber: assembled.lastSectionNumber ?? undefined
+        lastSectionNumber: assembled.lastSectionNumber ?? undefined,
+        
+        // ✅ Used in {{#if hasUiDoc}} for UI specification existence
+        hasUiDoc: (assembled as any).hasUiDoc || false
       }
     );
     
