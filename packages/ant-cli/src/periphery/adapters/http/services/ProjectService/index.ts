@@ -3,7 +3,7 @@ import { UserContext } from '../../../../../core/types/user';
 import { GitHubAuthService } from '../../../auth/GitHubAuthService';
 import { ChatService } from '../ChatService';
 import { SSEService } from '../SSEService';
-import type { IDEService } from '../../ide/IDEService';
+import type { IDEService } from '../../../ide/IDEService';
 
 // Import sub-services
 import { ProjectCrudService } from './ProjectCrudService';

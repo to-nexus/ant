@@ -13,15 +13,17 @@
  * - Redis server
  */
 
-import Redis from 'ioredis';
+// NOTE: ioredis not installed - this file is not currently used (InMemoryPortRegistry is used instead)
+// import Redis from 'ioredis';
 import { PortRegistryPort, PortMapping } from '../../core/ports/portRegistry';
 
 export class RedisPortRegistry implements PortRegistryPort {
-  private redis: Redis;
+  private redis: any;  // Redis type when ioredis is installed
   
   constructor(redisUrl?: string) {
-    this.redis = new Redis(redisUrl || 'redis://localhost:6379');
-    console.log('[RedisPortRegistry] Connected to Redis');
+    // NOTE: Requires 'ioredis' package to be installed
+    // this.redis = new Redis(redisUrl || 'redis://localhost:6379');
+    throw new Error('RedisPortRegistry requires ioredis package. Use InMemoryPortRegistry instead.');
   }
   
   /**

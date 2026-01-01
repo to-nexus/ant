@@ -189,6 +189,9 @@ export function buildDesignGraph() {
       // ✅ Chat integration
       overrideDirective: null as any,  // ✅ Chat input as directive (highest priority)
       chatSource: null as any,  // ✅ Flag for Chat SSE
+      
+      // ✅ UI specification flag (for conditional prompt guidance)
+      hasUiDoc: null as any,
     } as any,
   } as any);
 

@@ -180,6 +180,10 @@ export class ContextAssembler {
       assembled.referenceRequests = artifacts.referenceRequests;
       assembled.designDocs = artifacts.designDocs;
       assembled.designDomain = artifacts.designDomain;
+      // ✅ UI specification existence flag (for conditional prompt guidance)
+      if ((artifacts as any).hasUiDoc !== undefined) {
+        (assembled as any).hasUiDoc = (artifacts as any).hasUiDoc;
+      }
     }
     
     // 1. Load task-specific documents using provided loader

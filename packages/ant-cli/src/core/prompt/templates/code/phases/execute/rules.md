@@ -179,7 +179,7 @@ edit_file(
 
 **⚠️ DO NOT include closing tags in code strings/comments!**
 
-Parser looks for FIRST occurrence of `</file>`, `</append>`. Use string concatenation if needed: `"</" + "file>"`
+Parser looks for FIRST occurrence of `</file>`, `</append>`, `</parameter>`, `</invoke>`. Use string concatenation if needed: `"</" + "file>"`
 
 **❌ FORBIDDEN - These will break parsing:**
 
@@ -188,6 +188,7 @@ Parser looks for FIRST occurrence of `</file>`, `</append>`. Use string concaten
 // TODO: </replace> this later
 const tag = "</file>";              // String literal
 const html = "</append>";           // Will break parser!
+const xml = "</parameter>";         // System tag - not valid code!
 console.log("</file>");             // Parser stops here!
 ```
 
@@ -202,7 +203,7 @@ const html = "</" + "append>";      // Use concatenation
 console.log("close-file");          // Use different words
 ```
 
-**This applies to ALL XML tags:** `</file>`, `</append>`
+**This applies to ALL XML tags:** `</file>`, `</append>`, `</parameter>`, `</invoke>`
 
 ────────────────────────────────────────────────────────────────────────────────
 
@@ -293,6 +294,31 @@ function updatePaddle() {
 
 ────────────────────────────────────────────────────────────────────────────────
 
+### 2. Static Assets - Copy BEFORE Reference
+
+**⚠️ CRITICAL: Asset files MUST exist before code references them!**
+
+**Step 1: COPY assets first**
+- Check `ui-assets.md` for Source → Runtime Path mappings
+- Copy ALL mapped assets from `inputs/assets/` to `codebase/public/`
+- **If asset file doesn't exist at destination → 404 error at runtime!**
+
+**Step 2: Reference copied assets**
+- Use Runtime Paths (e.g., `/ogf/logos/logo.svg`) in code
+- NEVER reference `inputs/assets/` paths in code (won't work at runtime!)
+
+**Step 3: Verify**
+- Asset file must exist at destination before code is written
+- If you see an image path in code but no file in public/ → COPY IT!
+
+**Single Path Principle:**
+- Choose ONE directory for static assets and use it consistently
+- If you copy assets to a location, reference ONLY that location
+- Never create parallel/duplicate folder structures for the same assets
+- If you define asset path constants, actually USE them in components
+
+────────────────────────────────────────────────────────────────────────────────
+
 ## 🚫 COMMON MISTAKES
 
 | Mistake | Wrong | Correct |
@@ -301,6 +327,8 @@ function updatePaddle() {
 | **CRITICAL: Editing without reading first** | `edit_file` with outdated old_str | `read_file` first, then `edit_file` |
 | **CRITICAL: Wrong package manager** | `npm install` in pnpm project | Check for `pnpm-workspace.yaml` → use `pnpm install` |
 | **CRITICAL: Hardcoding values instead of using constants** | `const speed = 300;` when `PADDLE_SPEED` exists | `import { PADDLE_SPEED } from './constants'; const speed = PADDLE_SPEED;` |
+| **CRITICAL: Duplicate asset paths** | Same assets in multiple directories | One asset, one location, one path |
+| **CRITICAL: Unused asset constants** | Define constants but hardcode paths in components | Import and use defined constants |
 | Creating new file without `<file>` | Using tool syntax | Use `<file path="...">` tag |
 | Reading with tool as text | Writing tool call as text/XML in response | Use system's native tool interface (automatic) |
 | Deleting directory with single file tool | Using `delete_file` on `dist/` directory | Use `run_command` tool: `rm -rf dist/` |
