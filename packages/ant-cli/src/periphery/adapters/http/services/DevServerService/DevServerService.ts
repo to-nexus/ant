@@ -396,18 +396,94 @@ export class DevServerService {
     if (deps['vue']) critical.push('vue');
     if (deps['svelte']) critical.push('svelte');
     
+    // Backend/Node dev tools (must have for backend dev server)
+    if (deps['nodemon']) critical.push('nodemon');
+    if (deps['tsx']) critical.push('tsx');
+    if (deps['ts-node']) critical.push('ts-node');
+    if (deps['ts-node-dev']) critical.push('ts-node-dev');
+    
+    // Core backend dependencies
+    if (deps['express']) critical.push('express');
+    if (deps['fastify']) critical.push('fastify');
+    if (deps['koa']) critical.push('koa');
+    
     return critical;
   }
   
   /**
-   * Run npm install with proper flags
+   * Find project root by looking for package.json with workspaces or lock files
+   */
+  private findProjectRoot(packagePath: string): string {
+    let current = packagePath;
+    while (current !== path.dirname(current)) {
+      // Check for lock files (indicates root)
+      if (
+        fs.existsSync(path.join(current, 'pnpm-lock.yaml')) ||
+        fs.existsSync(path.join(current, 'yarn.lock')) ||
+        fs.existsSync(path.join(current, 'package-lock.json'))
+      ) {
+        return current;
+      }
+      // Check for workspaces in package.json
+      const pkgPath = path.join(current, 'package.json');
+      if (fs.existsSync(pkgPath)) {
+        try {
+          const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+          if (pkg.workspaces) {
+            return current;
+          }
+        } catch {
+          // ignore
+        }
+      }
+      current = path.dirname(current);
+    }
+    // Fallback to package path
+    return packagePath;
+  }
+  
+  /**
+   * Detect package manager for a project
+   */
+  private detectPackageManager(projectPath: string): 'pnpm' | 'yarn' | 'npm' {
+    // Check for lock files to determine package manager
+    if (fs.existsSync(path.join(projectPath, 'pnpm-lock.yaml'))) {
+      return 'pnpm';
+    }
+    if (fs.existsSync(path.join(projectPath, 'yarn.lock'))) {
+      return 'yarn';
+    }
+    return 'npm';
+  }
+  
+  /**
+   * Run package manager install with proper flags
    */
   private async runNpmInstall(packagePath: string, serverKey: string, relativePath: string): Promise<void> {
+    // ✅ Detect package manager from project root (not package path)
+    // For monorepos, lock file is at root level
+    const projectRoot = this.findProjectRoot(packagePath);
+    const pm = this.detectPackageManager(projectRoot);
+    
     this.appendLog(serverKey, 'stdout', `📦 Installing dependencies for ${relativePath}...`);
     
+    // Build install command based on package manager
+    let command: string;
+    let args: string[];
+    
+    if (pm === 'pnpm') {
+      command = 'pnpm';
+      args = ['install'];
+    } else if (pm === 'yarn') {
+      command = 'yarn';
+      args = ['install'];
+    } else {
+      command = 'npm';
+      args = ['install', '--include=dev'];
+    }
+    
     return new Promise((resolve, reject) => {
-      // ✅ CRITICAL: Include devDependencies for dev server
-      const installProcess = spawn('npm', ['install', '--include=dev'], {
+      const installProcess = spawn(command, args, {
         cwd: packagePath,
         shell: true,
         stdio: 'pipe'
@@ -426,7 +502,7 @@ export class DevServerService {
           this.appendLog(serverKey, 'stdout', `✅ Dependencies installed for ${relativePath}`);
           resolve();
         } else {
-          reject(new Error(`npm install failed with code ${code}`));
+          reject(new Error(`${pm} install failed with code ${code}`));
         }
       });
       
@@ -671,6 +747,7 @@ export class DevServerService {
     setupReason?: string;     // Human-readable message
     suggestedFix?: string;
     issues?: DevServerIssue[];
+    status?: { running: boolean; ready: boolean; port?: number; logs?: any[]; packages?: any[]; backendPort?: number; issues?: any[] };  // ✅ Full status for immediate UI update
   }> {
     const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
     const proxyUrl = `/dev/${serverKey}`;
@@ -734,7 +811,8 @@ export class DevServerService {
         const extraEnv: Record<string, string | undefined> = {};
         
         // ✅ Inject backend port into frontend so in-app API clients can call the correct backend
-        // Keeps project source unchanged; only affects Ant-managed dev server sessions.
+        // Frontend will use absolute URL (http://localhost:30000/api/...) directly.
+        // Backend must have CORS enabled for cross-origin requests.
         if (pkg.type === 'frontend' && backendPort) {
           extraEnv.VITE_API_BASE_URL = `http://localhost:${backendPort}`;
         }
@@ -852,20 +930,26 @@ export class DevServerService {
         this.devServerIssues.delete(serverKey);
       }
       
-      // ✅ 7. Health check for entry package (async, don't block response)
+      // ✅ 7. Immediately broadcast "running" status (before health check)
+      const runningStatus = this.getDevServerStatus(tenantId, userId, projectId, feature);
+      this.broadcastStatus(serverKey, runningStatus);
+      
+      // ✅ 8. Health check for entry package (async, don't block response)
       const entryPort = structure.entry?.port || structure.packages[0].port!;
       this.healthCheck(entryPort, serverKey).then(ready => {
         this.devServerReady.set(serverKey, ready);
         
-        // ✅ Broadcast updated status via SSE
+        // ✅ Broadcast updated status via SSE (with ready flag)
         const updatedStatus = this.getDevServerStatus(tenantId, userId, projectId, feature);
-        logger.debug(`Broadcasting ready status: ${ready}`, { component: 'DevServerService' });
         this.broadcastStatus(serverKey, updatedStatus);
         
         if (this.onStatusChange) {
           this.onStatusChange(serverKey);
         }
       });
+      
+      // ✅ Include full status in response (for immediate UI update)
+      const finalStatus = this.getDevServerStatus(tenantId, userId, projectId, feature);
       
       return {
         success: true,
@@ -875,7 +959,8 @@ export class DevServerService {
         url: proxyUrl,
         setupReasoning: validation.reasoning,  // Only set if validation failed
         setupReason: validation.reason,        // Only set if validation failed
-        suggestedFix: validation.suggestedFix  // Only set if validation failed
+        suggestedFix: validation.suggestedFix, // Only set if validation failed
+        status: finalStatus  // ✅ Full status for immediate UI update
       };
       
     } catch (error: any) {

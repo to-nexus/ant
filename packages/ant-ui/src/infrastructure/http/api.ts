@@ -1101,7 +1101,7 @@ export async function startDevServer(
   projectId: string, 
   feature?: string,
   port?: number
-): Promise<{ success: boolean; message: string; script: string }> {
+): Promise<{ success: boolean; message: string; script?: string; status?: any }> {
   try {
     const response = await authFetch(
       `${API_BASE()}/projects/${encodeURIComponent(projectId)}/dev/start`,

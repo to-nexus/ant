@@ -31,6 +31,10 @@ import { getApiBase } from '../http/api';
 export type SSEMessageType = 'kanban' | 'chat' | 'fileTree' | 'workflow' | 'devServer' | 'gitChange';
 export type SSEMessageHandler = (data: any) => void;
 
+// ✅ 핸들러 식별을 위한 고유 ID (중복 등록 방지 및 정확한 해제)
+let handlerIdCounter = 0;
+export type HandlerId = number;
+
 interface SSEMessage {
   type: SSEMessageType;
   timestamp: string;
@@ -63,16 +67,53 @@ class SSEManager {
   // Message handlers by type
   private handlers: Map<SSEMessageType, SSEMessageHandler[]> = new Map();
   
+  // ✅ 핸들러 ID 기반 관리 (중복 방지 및 정확한 해제)
+  private handlerRegistry: Map<HandlerId, { type: SSEMessageType; handler: SSEMessageHandler }> = new Map();
+  
   private maxReconnectAttempts = 5;
   
   /**
    * Register message handler for a specific type
+   * @deprecated Use registerHandlerWithId for better cleanup support
    */
   registerHandler(type: SSEMessageType, handler: SSEMessageHandler): void {
     if (!this.handlers.has(type)) {
       this.handlers.set(type, []);
     }
     this.handlers.get(type)!.push(handler);
+  }
+  
+  /**
+   * ✅ Register handler with ID - enables reliable cleanup
+   * Returns a HandlerId that must be used for unregistration
+   */
+  registerHandlerWithId(type: SSEMessageType, handler: SSEMessageHandler): HandlerId {
+    const id = ++handlerIdCounter;
+    
+    if (!this.handlers.has(type)) {
+      this.handlers.set(type, []);
+    }
+    this.handlers.get(type)!.push(handler);
+    this.handlerRegistry.set(id, { type, handler });
+    
+    return id;
+  }
+  
+  /**
+   * ✅ Unregister handler by ID - guaranteed correct removal
+   */
+  unregisterHandlerById(id: HandlerId): void {
+    const entry = this.handlerRegistry.get(id);
+    if (!entry) return;
+    
+    const handlers = this.handlers.get(entry.type);
+    if (handlers) {
+      const index = handlers.indexOf(entry.handler);
+      if (index > -1) {
+        handlers.splice(index, 1);
+      }
+    }
+    this.handlerRegistry.delete(id);
   }
   
   /**
