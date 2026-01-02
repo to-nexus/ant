@@ -17,6 +17,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { WorkflowRealtimeState } from '@/domain/models/workflow';
+import type { HandlerId } from '@/infrastructure/sse/SSEManager';
 
 // 노드별 최소 표시 시간 (ms)
 // ✅ 모든 노드를 사용자가 인식할 수 있도록 충분한 시간 확보
@@ -53,6 +54,7 @@ interface WorkflowStateWithQueue {
 interface QueuedNode {
   nodeId: string;
   state: WorkflowRealtimeState;
+  jobId: string;    // ✅ CRITICAL: job ID (멀티 프로젝트/탭 환경에서 필수)
   taskId?: string;  // ✅ 태스크 ID (태스크 경계 인식용)
   taskName?: string;  // ✅ 태스크 이름 (디버깅용)
   timestamp: number;
@@ -176,6 +178,20 @@ export function waitForTaskQueueDrain(taskId: string | undefined): Promise<void>
   });
 }
 
+/**
+ * ✅ 특정 jobId의 노드만 필터링하여 큐에서 제거
+ * 멀티 탭/프로젝트 환경에서 job 전환 시 이전 job 노드 정리
+ */
+export function clearQueueForJob(jobId: string): void {
+  const before = globalNodeQueue.length;
+  globalNodeQueue = globalNodeQueue.filter(node => node.jobId !== jobId);
+  const after = globalNodeQueue.length;
+  if (before !== after) {
+    console.log(`[clearQueueForJob] Removed ${before - after} nodes for job ${jobId}`);
+    notifyQueueChange();
+  }
+}
+
 export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueue {
   
   const [rawState, setRawState] = useState<WorkflowRealtimeState | null>(null);
@@ -238,7 +254,10 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
     };
   }, []);
   
-  // SSE 구독 - ✅ SSEManager 핸들러 등록 (중복 EventSource 방지)
+  // ✅ CRITICAL: 핸들러 ID를 ref로 관리하여 비동기 cleanup 문제 해결
+  const handlerIdRef = useRef<HandlerId | null>(null);
+  
+  // SSE 구독 - ✅ SSEManager 핸들러 등록 (ID 기반으로 정확한 cleanup 보장)
   useEffect(() => {
     
     if (!stableJobId) {
@@ -252,6 +271,17 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
     }
     
     jobEndedRef.current = false;  // ✅ Reset for new job
+    
+    // ✅ CRITICAL: 이전 핸들러가 있으면 즉시 해제 (비동기 cleanup 문제 방지)
+    if (handlerIdRef.current !== null) {
+      // 동기적으로 import된 모듈에서 해제
+      import('@/infrastructure/sse/SSEManager').then(({ sseManager }) => {
+        if (handlerIdRef.current !== null) {
+          sseManager.unregisterHandlerById(handlerIdRef.current);
+          handlerIdRef.current = null;
+        }
+      });
+    }
     
     // ✅ SSEManager 핸들러 등록 (Store가 이미 connectWorkflow 호출함)
     const handleWorkflowMessage = (data: any) => {
@@ -275,10 +305,11 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
       if (data.currentNode) {
         const newNode = data.currentNode;
         const newTaskId = data.currentTask?.id;
+        const messageJobId = data.jobId || stableJobId;  // ✅ jobId 확보
         
-        // Check duplicates in queue
+        // Check duplicates in queue (jobId도 함께 비교)
         const isDuplicate = globalNodeQueue.some(item => 
-          item.nodeId === newNode && item.taskId === newTaskId
+          item.nodeId === newNode && item.taskId === newTaskId && item.jobId === messageJobId
         );
         
         if (!isDuplicate) {
@@ -290,6 +321,7 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
             globalNodeQueue.push({
               nodeId: newNode,
               state: data,
+              jobId: messageJobId,  // ✅ CRITICAL: jobId 포함
               taskId: newTaskId,
               taskName: data.currentTask?.name,
               timestamp: Date.now()
@@ -302,16 +334,22 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
       setRawState(data);
     };
     
-    // ✅ Import sseManager and register handler
+    // ✅ Import sseManager and register handler with ID
     import('@/infrastructure/sse/SSEManager').then(({ sseManager }) => {
-      sseManager.registerHandler('workflow', handleWorkflowMessage);
+      // ✅ ID 기반 등록으로 정확한 해제 보장
+      const id = sseManager.registerHandlerWithId('workflow', handleWorkflowMessage);
+      handlerIdRef.current = id;
     });
     
     return () => {
-      // ✅ Cleanup: unregister handler
-      import('@/infrastructure/sse/SSEManager').then(({ sseManager }) => {
-        sseManager.unregisterHandler('workflow', handleWorkflowMessage);
-      });
+      // ✅ Cleanup: ID 기반 해제 (비동기지만 ref로 정확한 핸들러 식별)
+      const idToRemove = handlerIdRef.current;
+      if (idToRemove !== null) {
+        import('@/infrastructure/sse/SSEManager').then(({ sseManager }) => {
+          sseManager.unregisterHandlerById(idToRemove);
+        });
+        handlerIdRef.current = null;
+      }
       
       // ✅ 연출 개선: 타이머 취소 안함, 큐 유지 (글로벌이므로)
       // → 이전 Task의 노드들을 모두 소비한 후에 새 Task로 전환
@@ -331,12 +369,28 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
   useEffect(() => {
     if (globalProcessing || globalNodeQueue.length === 0) return;
     
+    // ✅ CRITICAL: 현재 stableJobId에 해당하는 노드만 처리
+    // 멀티 탭 환경에서 다른 job의 노드가 표시되는 것을 방지
+    const myJobNodes = globalNodeQueue.filter(node => node.jobId === stableJobId);
+    if (myJobNodes.length === 0) {
+      // 내 job의 노드가 없으면 다른 job 노드는 무시 (다른 탭에서 처리)
+      return;
+    }
+    
     const processNext = async () => {
       globalProcessing = true;
       
-      const nextItem = globalNodeQueue[0];
+      // ✅ 내 job의 첫 번째 노드 찾기
+      const myJobIndex = globalNodeQueue.findIndex(node => node.jobId === stableJobId);
+      if (myJobIndex === -1) {
+        globalProcessing = false;
+        return;
+      }
+      
+      const nextItem = globalNodeQueue[myJobIndex];
       const nextNode = nextItem.nodeId;
-      const currentNodeMinTime = NODE_MIN_DISPLAY_TIME[nextNode] || DEFAULT_MIN_DISPLAY_TIME;
+      // currentNodeMinTime은 아래에서 최소 표시 시간 계산에 사용됨
+      void (NODE_MIN_DISPLAY_TIME[nextNode] || DEFAULT_MIN_DISPLAY_TIME);
       
       // ✅ FIX: 이전 노드의 최소 표시 시간 보장
       if (globalDisplayStartTime) {
@@ -383,8 +437,16 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
         }
       });
       
-      // 글로벌 큐에서 제거
-      globalNodeQueue.shift();
+      // ✅ 글로벌 큐에서 해당 노드 제거 (인덱스 기반으로 정확히)
+      const removeIndex = globalNodeQueue.findIndex(node => 
+        node.jobId === nextItem.jobId && 
+        node.nodeId === nextItem.nodeId && 
+        node.taskId === nextItem.taskId &&
+        node.timestamp === nextItem.timestamp
+      );
+      if (removeIndex !== -1) {
+        globalNodeQueue.splice(removeIndex, 1);
+      }
       notifyQueueChange();
       
       // ✅ CRITICAL: 큐가 비었고 job이 종료되었으면 cleanup

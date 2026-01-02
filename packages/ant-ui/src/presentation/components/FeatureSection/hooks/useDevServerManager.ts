@@ -199,8 +199,17 @@ export function useDevServerManager(
       // ✅ Ensure we can show install/start progress immediately
       setDevServerStatus({ running: false, ready: false, logs: [] } as any);
       
-      await startDevServer(selectedProject, selectedFeature);
-      // Keep loading until backend reports running/ready or an error state is detected from logs.
+      const response = await startDevServer(selectedProject, selectedFeature);
+      
+      // ✅ Use status from response (backend includes full status)
+      if (response.status) {
+        setDevServerStatus(response.status);
+      } else {
+        // Fallback: set running: true manually
+        const currentStatus = useStore.getState().devServerStatus;
+        setDevServerStatus({ ...currentStatus, running: true });
+      }
+      setDevServerLoading(false);
     } catch (err: any) {
       // If validation failed, set status with validation info (for Fix button)
       if (err.setupReasoning) {

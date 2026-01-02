@@ -140,20 +140,25 @@ export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
       targetPath = targetPath.slice(prefix.length) || '/';
     }
 
-    // ✅ Fullstack support: route /dev/:serverKey/api/* to backend port (if available)
+    // ✅ Fullstack support: check if project has a backend
     let targetPort = port;
+    let isFullstack = false;  // ✅ Track if project has backend (affects /api/ rewrite)
+    
     if (typeof getBackendPort === 'function') {
-      const isApiRequest = targetPath === '/api' || targetPath.startsWith('/api/');
-      if (isApiRequest) {
-        try {
-          const backendPort = await getBackendPort({ tenantId, userId, projectId, feature, serverKey });
-          if (typeof backendPort === 'number' && backendPort > 0) {
+      try {
+        const backendPort = await getBackendPort({ tenantId, userId, projectId, feature, serverKey });
+        if (typeof backendPort === 'number' && backendPort > 0) {
+          isFullstack = true;  // ✅ Project has backend
+          
+          // Route /api/* requests to backend port
+          const isApiRequest = targetPath === '/api' || targetPath.startsWith('/api/');
+          if (isApiRequest) {
             targetPort = backendPort;
             logger.debug(`Routing API request to backend port: ${backendPort}`, { component: 'DevProxy' });
           }
-        } catch {
-          // best-effort
         }
+      } catch {
+        // best-effort
       }
     }
 
@@ -286,14 +291,16 @@ export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
         const cssUrlRe = new RegExp(`url\\(\\s*(["']?)\\/(?!\\/|${escapedAlready})([^"')]+\\.${staticExt})\\1\\s*\\)`, 'g');
         rewritten = rewritten.replace(cssUrlRe, `url($1${replacement}$2$1)`);
 
-        // ✅ Fullstack convenience: rewrite frontend relative API calls '/api/...'
+        // ✅ Frontend-only convenience: rewrite relative API calls '/api/...'
         // so they go through the dev proxy namespace: '/dev/:serverKey/api/...'
-        // (Avoid rewriting '/api-docs' etc — only match '/api' or '/api/')
-        const apiSlashRe = new RegExp(`(["'])\\/(?!\\/|${escapedAlready})api\\/`, 'g');
-        const apiExactRe = new RegExp(`(["'])\\/(?!\\/|${escapedAlready})api\\1`, 'g');
-        rewritten = rewritten
-          .replace(apiSlashRe, `$1${replacement}api/`)
-          .replace(apiExactRe, `$1${replacement}api$1`);
+        // SKIP for fullstack projects (they use VITE_API_BASE_URL to call backend directly)
+        if (!isFullstack) {
+          const apiSlashRe = new RegExp(`(["'])\\/(?!\\/|${escapedAlready})api\\/`, 'g');
+          const apiExactRe = new RegExp(`(["'])\\/(?!\\/|${escapedAlready})api\\1`, 'g');
+          rewritten = rewritten
+            .replace(apiSlashRe, `$1${replacement}api/`)
+            .replace(apiExactRe, `$1${replacement}api$1`);
+        }
         
         res.setHeader('content-length', Buffer.byteLength(rewritten));
         res.send(rewritten);
