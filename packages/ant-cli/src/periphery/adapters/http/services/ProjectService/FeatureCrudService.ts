@@ -195,28 +195,10 @@ export class FeatureCrudService {
 `;
     await fs.promises.writeFile(path.join(sourcesDir, 'ui-spec.md'), uiSpecTemplate, 'utf-8');
 
-    const componentsTemplate = `<!-- ant:template -->
+    const uiTokensTemplate = `<!-- ant:template -->
 <!-- 작성 후 이 줄(ant:template)을 삭제하세요. 남아있으면 시스템이 "비어있는 입력"으로 취급합니다. -->
 
-# components.md (UI 컴포넌트 인벤토리)
-
-> 옵션(권장): 컴포넌트 variants/sizes/states를 명시해 구현 추측을 줄임
-
-## Button
-- variants:
-- sizes:
-- states:
-
-## Input
-- states:
-- validation:
-`;
-    await fs.promises.writeFile(path.join(sourcesDir, 'components.md'), componentsTemplate, 'utf-8');
-
-    const tokensTemplate = `<!-- ant:template -->
-<!-- 작성 후 이 줄(ant:template)을 삭제하세요. 남아있으면 시스템이 "비어있는 입력"으로 취급합니다. -->
-
-# tokens.md (디자인 토큰)
+# ui-tokens.md (디자인 토큰)
 
 > 옵션(권장): 색/타이포/스페이싱을 토큰으로 고정 (코드에서 바로 사용)
 
@@ -233,7 +215,7 @@ export class FeatureCrudService {
 ## Spacing / Radius / Breakpoints
 - 
 `;
-    await fs.promises.writeFile(path.join(sourcesDir, 'tokens.md'), tokensTemplate, 'utf-8');
+    await fs.promises.writeFile(path.join(sourcesDir, 'ui-tokens.md'), uiTokensTemplate, 'utf-8');
 
     const uiAssetsTemplate = `<!-- ant:template -->
 <!-- 작성 후 이 줄(ant:template)을 삭제하세요. 남아있으면 시스템이 "비어있는 입력"으로 취급합니다. -->

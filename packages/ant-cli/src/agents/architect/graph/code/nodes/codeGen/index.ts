@@ -98,8 +98,7 @@ export async function codeGen(
       const candidates = [
         'ui-spec.md',
         'ui-assets.md',
-        'tokens.md',
-        'components.md',
+        'ui-tokens.md',
       ].map(name => path.join(featurePathRel, 'inputs', 'sources', name));
       for (const p of candidates) {
         try {

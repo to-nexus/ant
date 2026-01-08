@@ -46,7 +46,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   }
   
   // ✅ Load files from disk (state.files is reset between tasks)
-  // - UI Design: inputs/sources/ (tokens.md, ui-assets.md, ui-spec.md)
+  // - UI Design: inputs/sources/ (ui-tokens.md, ui-assets.md, ui-spec.md)
   // - System Design: outputs/design/ (system-design.md, etc.)
   const loadedFiles: Array<{ path: string; content: string; actionType: 'create' | 'append' | 'edit' }> = [];
   
@@ -68,7 +68,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       : path.join(featureDirRel, 'outputs/design');
     
     const expectedFiles = isUiDesign
-      ? ['tokens.md', 'ui-assets.md', 'ui-spec.md']
+      ? ['ui-tokens.md', 'ui-assets.md', 'ui-spec.md']
       : undefined;  // Any .md files for system design
     
     console.log(`📂 [Learn] Checking ${isUiDesign ? 'UI Design' : 'System Design'} files in ${isUiDesign ? 'inputs/sources' : 'outputs/design'}...`);

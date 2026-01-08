@@ -19,7 +19,7 @@ import { extractErrorDetails, logErrorHeader } from "../../../code/nodes/shared/
  * 
  * ✅ NEW: UI Design mode (designWorkType === 'ui-design')
  * - Requires reference images in inputs/references/
- * - Creates tasks for tokens.md, ui-assets.md, ui-spec.md generation
+ * - Creates tasks for ui-tokens.md, ui-assets.md, ui-spec.md generation
  */
 export async function decompose(state: DesignGraphState): Promise<DesignGraphState> {
   // ✅ NEW: Validate UI design prerequisites
@@ -264,42 +264,47 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     
     const taskQueue = new TaskQueue<DesignTask>();
     
-    // Task 1: Generate tokens.md (colors, typography, spacing from screenshots)
+    // ✅ Task order: ui-tokens → ui-assets → ui-spec (lower priority = earlier execution)
+    // Each subsequent task MUST reference previously generated documents
+    
+    // Task 1: Generate ui-tokens.md (FIRST - foundation for other documents)
     taskQueue.push({
       id: 'ui-tokens',
       name: 'Generate Design Tokens',
       type: 'feature',
-      priority: 300,
-      description: 'Analyze reference screenshots to extract colors, typography, spacing, and other design tokens. Output: tokens.md',
+      priority: 100,  // ✅ Lowest = First
+      description: 'Analyze reference screenshots to extract design tokens (colors, typography, spacing). Output: ui-tokens.md',
       completed: false,
-      ui: true,  // ✅ Mark as UI task for multimodal processing
-      targetFile: 'tokens.md',  // ✅ Output to inputs/sources/
+      ui: true,
+      targetFile: 'ui-tokens.md',
     } as DesignTask);
     
-    // Task 2: Generate ui-assets.md (asset mapping from inputs/assets)
+    // Task 2: Generate ui-assets.md (SECOND - references tokens)
     if (state.uiAssetsList) {
       taskQueue.push({
         id: 'ui-assets',
         name: 'Generate Asset Mapping',
         type: 'feature',
-        priority: 200,
-        description: 'Create asset mapping document from inputs/assets. Document file paths, usage hints, and copy instructions. Output: ui-assets.md',
+        priority: 200,  // ✅ Middle = Second
+        description: 'Create asset mapping document. MUST read ui-tokens.md first to reference token names. Output: ui-assets.md',
         completed: false,
         ui: true,
-        targetFile: 'ui-assets.md',  // ✅ Output to inputs/sources/
+        targetFile: 'ui-assets.md',
+        dependencies: ['ui-tokens'],  // ✅ Explicit dependency
       } as DesignTask);
     }
     
-    // Task 3: Generate ui-spec.md (layout, components, interactions from screenshots)
+    // Task 3: Generate ui-spec.md (LAST - references both previous documents)
     taskQueue.push({
       id: 'ui-spec',
       name: 'Generate UI Specification',
       type: 'feature',
-      priority: 100,
-      description: 'Analyze reference screenshots to document screen layouts, component specs, and interaction patterns. Output: ui-spec.md',
+      priority: 300,  // ✅ Highest = Last
+      description: 'Document UI specifications. MUST read ui-tokens.md and ui-assets.md first to reference tokens and assets. Output: ui-spec.md',
       completed: false,
       ui: true,
-      targetFile: 'ui-spec.md',  // ✅ Output to inputs/sources/
+      targetFile: 'ui-spec.md',
+      dependencies: ['ui-tokens', 'ui-assets'],  // ✅ Explicit dependencies
     } as DesignTask);
     
     console.log(`✅ Created ${taskQueue.size()} UI doc generation tasks:`);

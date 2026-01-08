@@ -13,7 +13,7 @@
 export { resolve } from "./resolve";
 export { decompose } from "./decompose/index";
 export { plan } from "./plan";
-export { docGen } from "./docGen";  // ✅ NEW: LLM reasoning
+export { docGen } from "./docGen/index";  // ✅ Refactored: docGen/ directory
 export { tool } from "./tool";      // ✅ NEW: Tool execution
 export { learn } from "./learn";
 

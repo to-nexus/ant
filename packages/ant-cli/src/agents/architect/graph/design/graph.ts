@@ -3,7 +3,7 @@ import { DesignGraphState } from "./state";
 import { resolve } from "./nodes/resolve";
 import { decompose } from "./nodes/decompose/index";
 import { plan } from "./nodes/plan";
-import { docGen } from "./nodes/docGen";  // ✅ XML streaming + immediate file writes
+import { docGen } from "./nodes/docGen/index";  // ✅ XML streaming + immediate file writes
 import { tool } from "./nodes/tool";  // ✅ Tool execution node (for UI Design multimodal)
 import { learn } from "./nodes/learn";
 import { detectEnvironment } from "./nodes/detectEnvironment";
