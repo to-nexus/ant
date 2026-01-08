@@ -5,8 +5,8 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 
 interface DetectEnvironmentDesignResponse {
-  // ✅ NEW: Work type (first-level classification)
-  workType: "ui-design" | "system-design";
+  // ✅ Work type (first-level classification)
+  workType: "ui-design" | "system-design" | "error";
   workTypeReasoning: string;
   
   // ✅ Only for system-design
@@ -14,6 +14,11 @@ interface DetectEnvironmentDesignResponse {
   domainReasoning?: string;
   environment?: "frontend" | "backend" | "fullstack";
   environmentReasoning?: string;
+  
+  // ✅ NEW: Error handling for modification requests without documents
+  errorMessage?: string;
+  errorType?: string;
+  suggestedAction?: string;
 }
 
 function parseDetectEnvironmentDesignResponse(raw: string): DetectEnvironmentDesignResponse {
@@ -36,8 +41,21 @@ function parseDetectEnvironmentDesignResponse(raw: string): DetectEnvironmentDes
     const parsed = JSON.parse(jsonStr);
     
     // ✅ Parse workType (required)
-    const workType: "ui-design" | "system-design" =
-      parsed.workType === "ui-design" ? "ui-design" : "system-design";
+    const workType: "ui-design" | "system-design" | "error" =
+      parsed.workType === "ui-design" ? "ui-design" : 
+      parsed.workType === "error" ? "error" :
+      "system-design";
+    
+    // ✅ NEW: Handle error case (modification request without documents)
+    if (workType === "error") {
+      return {
+        workType: "error",
+        workTypeReasoning: parsed.workTypeReasoning || "Error occurred during work type detection",
+        errorMessage: parsed.errorMessage || "문서가 존재하지 않습니다",
+        errorType: parsed.errorType || "missing_documents",
+        suggestedAction: parsed.suggestedAction || "먼저 문서를 생성해주세요",
+      };
+    }
     
     // ✅ For system-design, parse domain and environment
     if (workType === "system-design") {
@@ -282,6 +300,41 @@ export async function detectEnvironment(
       console.log(`   - other: ${other.length}`);
     }
     
+    // ✅ Check for existing design documents (CRITICAL for decision making)
+    const outputsDir = path.join(featurePath, 'outputs/design');
+    
+    // UI Design documents
+    const hasUiTokens = await dirHasFiles(outputsDir) && await fs.access(path.join(outputsDir, 'ui-tokens.md')).then(() => true).catch(() => false);
+    const hasUiAssets = await dirHasFiles(outputsDir) && await fs.access(path.join(outputsDir, 'ui-assets.md')).then(() => true).catch(() => false);
+    const hasUiSpec = await dirHasFiles(outputsDir) && await fs.access(path.join(outputsDir, 'ui-spec.md')).then(() => true).catch(() => false);
+    const hasUiDocs = hasUiTokens && hasUiAssets && hasUiSpec;
+    
+    // System Design documents
+    const hasSystemDesign = await dirHasFiles(outputsDir) && await fs.access(path.join(outputsDir, 'system-design.md')).then(() => true).catch(() => false);
+    const hasApiContract = await dirHasFiles(outputsDir) && await fs.access(path.join(outputsDir, 'api-contract.md')).then(() => true).catch(() => false);
+    const hasFeSystemDesign = await dirHasFiles(outputsDir) && await fs.access(path.join(outputsDir, 'fe-system-design.md')).then(() => true).catch(() => false);
+    const hasBeSystemDesign = await dirHasFiles(outputsDir) && await fs.access(path.join(outputsDir, 'be-system-design.md')).then(() => true).catch(() => false);
+    const hasSystemDocs = hasSystemDesign || hasApiContract || hasFeSystemDesign || hasBeSystemDesign;
+    
+    if (hasUiDocs) {
+      console.log(`✅ UI design documents already completed:`);
+      if (hasUiTokens) console.log(`   - ui-tokens.md`);
+      if (hasUiAssets) console.log(`   - ui-assets.md`);
+      if (hasUiSpec) console.log(`   - ui-spec.md`);
+    }
+    
+    if (hasSystemDocs) {
+      console.log(`✅ System design documents already exist:`);
+      if (hasSystemDesign) console.log(`   - system-design.md`);
+      if (hasApiContract) console.log(`   - api-contract.md`);
+      if (hasFeSystemDesign) console.log(`   - fe-system-design.md`);
+      if (hasBeSystemDesign) console.log(`   - be-system-design.md`);
+    }
+    
+    if (hasUiDocs && !hasSystemDocs) {
+      console.log(`🎯 UI design complete → System design should be next`);
+    }
+    
     // Build UI references list for state
     let uiReferences: DesignGraphState['uiReferences'] = undefined;
     if (hasReferences) {
@@ -302,6 +355,16 @@ export async function detectEnvironment(
       hasAssets,
       referencesList,
       assetsList,
+      // ✅ NEW: Pass document completion status
+      hasUiDocs,
+      hasUiTokens,
+      hasUiAssets,
+      hasUiSpec,
+      hasSystemDocs,
+      hasSystemDesign,
+      hasApiContract,
+      hasFeSystemDesign,
+      hasBeSystemDesign,
     });
 
     // ✅ Chat UI 준비
@@ -355,6 +418,32 @@ export async function detectEnvironment(
     await chatAPI.finalizeMessage();
 
     const parsed = parseDetectEnvironmentDesignResponse(response);
+
+    // ✅ NEW: Handle error case (modification request without documents)
+    if (parsed.workType === 'error') {
+      console.log(`\n❌ Error: ${parsed.errorType}`);
+      console.log(`   Message: ${parsed.errorMessage}`);
+      console.log(`   Suggested Action: ${parsed.suggestedAction}`);
+      console.log();
+      
+      // Send error message to chat
+      const errorText = `❌ **${parsed.errorMessage}**\n\n${parsed.suggestedAction}`;
+      await chatAPI.sendLLMEvent({
+        type: 'text',
+        text: errorText
+      });
+      
+      // Return error state to terminate the design graph
+      return {
+        designWorkType: undefined,
+        designWorkTypeReasoning: parsed.workTypeReasoning,
+        designError: {
+          type: parsed.errorType || 'unknown_error',
+          message: parsed.errorMessage || 'An error occurred',
+          suggestedAction: parsed.suggestedAction,
+        },
+      };
+    }
 
     // Log result to console (for debugging)
     console.log(`\n✅ Work Type: ${parsed.workType}`);

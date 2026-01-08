@@ -210,12 +210,12 @@ export class ArtifactService {
     };
   }> {
     const featurePathAbs = context.featurePath || WorkspacePathResolver.resolveFeaturePath(context);
-    const sourceDirAbs = path.join(featurePathAbs, "inputs/sources");
-    const sourceDir = ArtifactService.toWorkspaceRelative(fileSystem, sourceDirAbs);
+    const designDirAbs = path.join(featurePathAbs, "outputs/design");
+    const designDir = ArtifactService.toWorkspaceRelative(fileSystem, designDirAbs);
 
-    const sourceDirExists = await fileSystem.fileExists(sourceDir);
-    if (!sourceDirExists) {
-      console.log(`⚠️  [ArtifactService] loadUiContext: sourceDir not found: ${sourceDir}`);
+    const designDirExists = await fileSystem.fileExists(designDir);
+    if (!designDirExists) {
+      console.log(`⚠️  [ArtifactService] loadUiContext: designDir not found: ${designDir}`);
       return {};
     }
 
@@ -247,7 +247,7 @@ export class ArtifactService {
     };
 
     for (const name of uiDocFiles) {
-      const p = path.join(sourceDir, name);
+      const p = path.join(designDir, name);
       const exists = await fileSystem.fileExists(p);
       if (!exists) {
         // Debug: log missing files
@@ -303,7 +303,7 @@ export class ArtifactService {
         : undefined;
 
     // If we have references but no explicit ui-assets.md, add a lightweight manifest section.
-    const hasExplicitUiAssetsDoc = await fileSystem.fileExists(path.join(sourceDir, 'ui-assets.md'));
+    const hasExplicitUiAssetsDoc = await fileSystem.fileExists(path.join(designDir, 'ui-assets.md'));
     if (uiAssets && !hasExplicitUiAssetsDoc) {
       const lines: string[] = [];
       lines.push(`# UI References (Index)`);

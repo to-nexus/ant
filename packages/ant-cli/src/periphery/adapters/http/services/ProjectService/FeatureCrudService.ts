@@ -135,6 +135,7 @@ export class FeatureCrudService {
 
     // Create inputs/sources templates (so users know what to fill)
     const sourcesDir = path.join(featurePath, 'inputs/sources');
+    const designOutputDir = path.join(featurePath, 'outputs/design');
 
     const prdTemplate = `<!-- ant:template -->
 <!-- 작성 후 이 줄(ant:template)을 삭제하세요. 남아있으면 시스템이 "비어있는 입력"으로 취급합니다. -->
@@ -193,7 +194,7 @@ export class FeatureCrudService {
 ## 접근성(A11y)
 - 
 `;
-    await fs.promises.writeFile(path.join(sourcesDir, 'ui-spec.md'), uiSpecTemplate, 'utf-8');
+    await fs.promises.writeFile(path.join(designOutputDir, 'ui-spec.md'), uiSpecTemplate, 'utf-8');
 
     const uiTokensTemplate = `<!-- ant:template -->
 <!-- 작성 후 이 줄(ant:template)을 삭제하세요. 남아있으면 시스템이 "비어있는 입력"으로 취급합니다. -->
@@ -215,7 +216,7 @@ export class FeatureCrudService {
 ## Spacing / Radius / Breakpoints
 - 
 `;
-    await fs.promises.writeFile(path.join(sourcesDir, 'ui-tokens.md'), uiTokensTemplate, 'utf-8');
+    await fs.promises.writeFile(path.join(designOutputDir, 'ui-tokens.md'), uiTokensTemplate, 'utf-8');
 
     const uiAssetsTemplate = `<!-- ant:template -->
 <!-- 작성 후 이 줄(ant:template)을 삭제하세요. 남아있으면 시스템이 "비어있는 입력"으로 취급합니다. -->
@@ -239,7 +240,7 @@ export class FeatureCrudService {
 ## icons
 - 
 `;
-    await fs.promises.writeFile(path.join(sourcesDir, 'ui-assets.md'), uiAssetsTemplate, 'utf-8');
+    await fs.promises.writeFile(path.join(designOutputDir, 'ui-assets.md'), uiAssetsTemplate, 'utf-8');
 
     await fs.promises.mkdir(path.join(featurePath, 'inputs/assets'), { recursive: true });
     await fs.promises.mkdir(path.join(featurePath, 'inputs/references/screens'), { recursive: true });

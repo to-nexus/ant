@@ -231,12 +231,12 @@ async function loadPreviousUiDocs(
     ? path.relative(workspaceRoot, state.context.featurePath)
     : state.context.featurePath.replace(/^\//, '');
   
-  const sourcesDir = path.join(featureDirRel, 'inputs/sources');
+  const designOutputDir = path.join(featureDirRel, 'outputs/design');
   let injectedDocs = '';
   
   // Load ui-tokens.md for both ui-assets and ui-spec
   try {
-    const tokensPath = path.join(sourcesDir, 'ui-tokens.md');
+    const tokensPath = path.join(designOutputDir, 'ui-tokens.md');
     const tokensContent = await fileSystem.readFile(tokensPath);
     if (tokensContent && !tokensContent.includes('ant:template')) {
       injectedDocs += `\n\n════════════════════════════════════════════════════════════════════════════════\n`;
@@ -253,7 +253,7 @@ async function loadPreviousUiDocs(
   // Load ui-assets.md only for ui-spec
   if (taskId === 'ui-spec') {
     try {
-      const assetsPath = path.join(sourcesDir, 'ui-assets.md');
+      const assetsPath = path.join(designOutputDir, 'ui-assets.md');
       const assetsContent = await fileSystem.readFile(assetsPath);
       if (assetsContent && !assetsContent.includes('ant:template')) {
         injectedDocs += `\n\n════════════════════════════════════════════════════════════════════════════════\n`;

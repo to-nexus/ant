@@ -127,6 +127,7 @@ export function initFeature(workspaceName: string, featureName: string): void {
   // Inputs (sources) templates
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const sourcesDir = path.join(featureDir, "inputs/sources");
+  const designOutputDir = path.join(featureDir, "outputs/design");
 
   // ✅ PRD is canonical single file: prd.md
   const prdTemplate = `<!-- ant:template -->
@@ -191,7 +192,7 @@ export function initFeature(workspaceName: string, featureName: string): void {
 ## 접근성(A11y)
 - 
 `;
-  fs.writeFileSync(path.join(sourcesDir, "ui-spec.md"), uiSpecTemplate, "utf8");
+  fs.writeFileSync(path.join(designOutputDir, "ui-spec.md"), uiSpecTemplate, "utf8");
 
   const uiTokensTemplate = `<!-- ant:template -->
 <!-- 작성 후 이 줄(ant:template)을 삭제하세요. 남아있으면 시스템이 "비어있는 입력"으로 취급합니다. -->
@@ -213,7 +214,7 @@ export function initFeature(workspaceName: string, featureName: string): void {
 ## Spacing / Radius / Breakpoints
 - 
 `;
-  fs.writeFileSync(path.join(sourcesDir, "ui-tokens.md"), uiTokensTemplate, "utf8");
+  fs.writeFileSync(path.join(designOutputDir, "ui-tokens.md"), uiTokensTemplate, "utf8");
 
   // ✅ Optional: UI assets note file (kept empty by default)
   const uiAssetsTemplate = `<!-- ant:template -->
@@ -238,7 +239,7 @@ export function initFeature(workspaceName: string, featureName: string): void {
 ## icons
 - 
 `;
-  fs.writeFileSync(path.join(sourcesDir, "ui-assets.md"), uiAssetsTemplate, "utf8");
+  fs.writeFileSync(path.join(designOutputDir, "ui-assets.md"), uiAssetsTemplate, "utf8");
 
   // ✅ Runtime assets folder (mirrored into codebase root)
   fs.mkdirSync(path.join(featureDir, "inputs/assets"), { recursive: true });
@@ -273,9 +274,9 @@ export function initFeature(workspaceName: string, featureName: string): void {
   console.log("");
   console.log("📁 Created structure:");
   console.log(`  - inputs/sources/prd.md (template)`);
-  console.log(`  - inputs/sources/ui-spec.md (template)`);
-  console.log(`  - inputs/sources/ui-tokens.md (template)`);
-  console.log(`  - inputs/sources/ui-assets.md (template)`);
+  console.log(`  - outputs/design/ui-spec.md (template)`);
+  console.log(`  - outputs/design/ui-tokens.md (template)`);
+  console.log(`  - outputs/design/ui-assets.md (template)`);
   console.log(`  - inputs/assets/ (runtime assets; mirrored into codebase root)`);
   console.log(`  - inputs/references/{screens,components}/ (reference images)`);
   console.log(`  - inputs/directives/design/`);

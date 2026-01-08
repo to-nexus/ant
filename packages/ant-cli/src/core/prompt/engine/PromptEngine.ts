@@ -343,15 +343,26 @@ export class PromptEngine {
    * - First classifies work type: "ui-design" vs "system-design"
    * - For system-design: classifies domain (game/service) and environment (frontend/backend/fullstack)
    * - Uses directive, PRD, and optional references/assets info
+   * - ✅ NEW: Document completion status determines next phase
    */
   async buildDesignDomainPrompt(args: {
     directive: string;
     prdSpec?: string;
-    // ✅ NEW: UI document detection context
+    // UI document detection context
     hasReferences?: boolean;
     hasAssets?: boolean;
     referencesList?: string;
     assetsList?: string;
+    // ✅ NEW: Document completion status (CRITICAL for decision)
+    hasUiDocs?: boolean;
+    hasUiTokens?: boolean;
+    hasUiAssets?: boolean;
+    hasUiSpec?: boolean;
+    hasSystemDocs?: boolean;
+    hasSystemDesign?: boolean;
+    hasApiContract?: boolean;
+    hasFeSystemDesign?: boolean;
+    hasBeSystemDesign?: boolean;
   }): Promise<string> {
     return await this.deps.promptPort.render('design/phases/detect/base', {
       directive: args.directive,
@@ -360,6 +371,16 @@ export class PromptEngine {
       hasAssets: args.hasAssets || false,
       referencesList: args.referencesList || '',
       assetsList: args.assetsList || '',
+      // ✅ Pass document completion status to prompt
+      hasUiDocs: args.hasUiDocs || false,
+      hasUiTokens: args.hasUiTokens || false,
+      hasUiAssets: args.hasUiAssets || false,
+      hasUiSpec: args.hasUiSpec || false,
+      hasSystemDocs: args.hasSystemDocs || false,
+      hasSystemDesign: args.hasSystemDesign || false,
+      hasApiContract: args.hasApiContract || false,
+      hasFeSystemDesign: args.hasFeSystemDesign || false,
+      hasBeSystemDesign: args.hasBeSystemDesign || false,
     });
   }
 

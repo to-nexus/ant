@@ -46,8 +46,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   }
   
   // ✅ Load files from disk (state.files is reset between tasks)
-  // - UI Design: inputs/sources/ (ui-tokens.md, ui-assets.md, ui-spec.md)
-  // - System Design: outputs/design/ (system-design.md, etc.)
+  // - All Design documents: outputs/design/ (system-design, ui-design both go here)
   const loadedFiles: Array<{ path: string; content: string; actionType: 'create' | 'append' | 'edit' }> = [];
   
   if (state.deps?.fileSystem && state.context.featurePath) {
@@ -61,17 +60,15 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       ? path.relative(workspaceRoot, state.context.featurePath)
       : state.context.featurePath.replace(/^\//, '');
     
-    // ✅ Determine which directory to check based on work type
-    const isUiDesign = state.designWorkType === 'ui-design';
-    const designDirRel = isUiDesign
-      ? path.join(featureDirRel, 'inputs/sources')
-      : path.join(featureDirRel, 'outputs/design');
+    // ✅ All design documents go to outputs/design
+    const designDirRel = path.join(featureDirRel, 'outputs/design');
     
+    const isUiDesign = state.designWorkType === 'ui-design';
     const expectedFiles = isUiDesign
       ? ['ui-tokens.md', 'ui-assets.md', 'ui-spec.md']
       : undefined;  // Any .md files for system design
     
-    console.log(`📂 [Learn] Checking ${isUiDesign ? 'UI Design' : 'System Design'} files in ${isUiDesign ? 'inputs/sources' : 'outputs/design'}...`);
+    console.log(`📂 [Learn] Checking ${isUiDesign ? 'UI Design' : 'System Design'} files in outputs/design...`);
     
     try {
       const dirExists = await fileSystem.fileExists(designDirRel);
@@ -92,9 +89,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
           const filePath = path.join(designDirRel, filename);
           const content = await fileSystem.readFile(filePath);
           
-          const relativePath = isUiDesign
-            ? `inputs/sources/${filename}`
-            : `outputs/design/${filename}`;
+          const relativePath = `outputs/design/${filename}`;
           
           loadedFiles.push({
             path: relativePath,
@@ -111,8 +106,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   }
   
   if (loadedFiles.length === 0) {
-    const targetDir = state.designWorkType === 'ui-design' ? 'inputs/sources/' : 'outputs/design/';
-    throw new Error(`No design files found in ${targetDir} - docGen nodes must have run`);
+    throw new Error(`No design files found in outputs/design/ - docGen nodes must have run`);
   }
   
   // ✅ Update state.files for downstream processing (lessons extraction, session save, etc.)

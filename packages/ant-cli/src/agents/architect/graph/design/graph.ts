@@ -218,7 +218,22 @@ export function buildDesignGraph() {
   // docGen: XML streaming + immediate writes to disk (with LAST_SECTION handling)
   (graph as any).addEdge("__start__", "resolve");
   (graph as any).addEdge("resolve", "detectEnvironment");
-  (graph as any).addEdge("detectEnvironment", "decompose");
+  
+  // ✅ NEW: Conditional routing from detectEnvironment
+  // If error occurred (e.g., modification without documents), go to END
+  // Otherwise, proceed to decompose
+  graph.addConditionalEdges(
+    "detectEnvironment" as any,
+    ((s: DesignGraphState) => {
+      if (s.designError) {
+        console.log(`❌ [Graph] Design error detected, terminating job`);
+        return "__end__";  // Terminate graph
+      }
+      return "decompose";  // Normal flow
+    }) as any,
+    { __end__: "__end__", decompose: "decompose" } as any
+  );
+  
   (graph as any).addEdge("decompose", "plan");
   (graph as any).addEdge("plan", "docGen");
   

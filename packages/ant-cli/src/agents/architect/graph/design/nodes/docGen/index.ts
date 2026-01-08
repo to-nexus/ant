@@ -209,7 +209,7 @@ async function scanExistingFiles(state: DesignGraphState, isUiDesign: boolean): 
     const path = await import('path');
     
     // Determine target directory based on work type
-    const targetDir = isUiDesign ? 'inputs/sources' : 'outputs/design';
+    const targetDir = 'outputs/design';
     const designDirAbs = path.join(state.context.featurePath, targetDir);
     
     // ✅ Convert to workspace-relative path for fileSystem port
