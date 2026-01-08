@@ -166,6 +166,51 @@ export const ARCHITECT_TOOLS = {
       required: ['project', 'query'],
     },
   },
+  // ✅ NEW: UI Design specific tools
+  read_reference_image: {
+    name: 'read_reference_image',
+    description: 'Load a reference screenshot or component image for visual analysis. Returns image in base64 format. Use this to analyze Figma screenshots for color extraction, typography, spacing, and layout.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Image path relative to feature folder (e.g., "inputs/references/screens/Desktop.png" or "inputs/references/components/card.png")',
+        },
+      },
+      required: ['path'],
+    },
+  },
+  
+  list_reference_images: {
+    name: 'list_reference_images',
+    description: 'List all available reference images in inputs/references/. Use this first to discover what screenshots are available for analysis. Optional category filter: "screens" for full screen captures, "components" for component snapshots.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        category: {
+          type: 'string',
+          description: 'Optional category filter: "screens" or "components"',
+        },
+      },
+      required: [],
+    },
+  },
+  
+  list_assets: {
+    name: 'list_assets',
+    description: 'List all runtime asset files in inputs/assets/. Use this to document asset mappings for ui-assets.md. Optional category filter: "logos", "icons", "backgrounds", or "other".',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        category: {
+          type: 'string',
+          description: 'Optional category filter: "logos", "icons", "backgrounds", or "other"',
+        },
+      },
+      required: [],
+    },
+  },
 } as const satisfies Record<string, ToolDefinition>;
 
 /**
@@ -201,5 +246,17 @@ export const TOOL_SETS = {
   
   // Full set for design job (no run_command, no reference)
   design: ['read_file', 'edit_file', 'list_files', 'search_code', 'delete_file', 'mkdir'] as ToolName[],
+  
+  // UI Design job - includes image/asset tools for multimodal document generation
+  uiDesign: [
+    'read_file',
+    'edit_file',
+    'list_files',
+    'delete_file',
+    'mkdir',
+    'read_reference_image',
+    'list_reference_images',
+    'list_assets',
+  ] as ToolName[],
 } as const;
 

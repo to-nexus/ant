@@ -2,40 +2,63 @@
 
 This is a **platform contract** for projects that run via Ant-managed development servers.
 
-The Ant platform can run multiple packages (frontend + backend) with **dynamic ports** and serve them through a proxy.
+The Ant platform runs multiple packages (frontend + backend) with **dynamic ports** through a proxy.
 Your project MUST be compatible with runtime injection so that:
-- running via Ant works (dynamic ports)
-- running outside Ant still works (project-defined defaults / developer setup)
+- Running via Ant works (dynamic ports, proxy routing)
+- Running outside Ant still works (project-defined defaults)
 
-## 1) Frontend: API Base URL is injected at runtime
+---
 
-When Ant starts a fullstack dev server, it starts the backend first, allocates a port, then **injects** that backend address into the frontend process environment.
+## 1) Frontend: API Base URL
 
-### Contract
-- Frontend MUST support a runtime-configurable API base URL.
-- In Vite-based frontends, this is typically exposed as `import.meta.env` variables (e.g. `VITE_API_BASE_URL`).
+### Principle
+**API calls MUST go through the proxy, not directly to backend.**
 
-### Implementation requirement (project-side)
-- Prefer configuring your API client to read an injected value (if present).
-- Do NOT assume a fixed backend port when running under Ant.
-
-**Note:** The exact variable name is a platform integration detail. If the project uses a different key, Ant can support it only if it is part of the project's declared convention.
-
-## 2) Backend: bind to injected port
-
-Ant allocates backend ports dynamically. Backend servers MUST bind to the injected port (commonly via `process.env.PORT` or an equivalent mechanism supported by the framework).
+Ant injects `VITE_API_BASE_URL` as a **relative proxy path**. This ensures API calls work regardless of where the browser is running (local or remote).
 
 ### Contract
-- Backend MUST be able to start on a port provided by the environment.
-- Do not require a single fixed port to be hard-coded for the application to run.
+- Frontend MUST read `VITE_API_BASE_URL` from environment
+- Frontend MUST use it as a **prefix** for all API calls
+- Frontend MUST define its own API path structure (e.g., `/api/v1`)
+- Frontend MUST provide a sensible default when running outside Ant
 
-## 3) Frontend router proxy prefix (basename)
+### Pattern
+```typescript
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+const API_PREFIX = '/api/v1';  // Project-defined
 
-When running through Ant's dev proxy, the frontend is served under:
-`/dev/{tenantId}:{userId}:{projectId}:{feature}/`
+fetch(`${API_BASE}${API_PREFIX}/endpoint`);
+```
 
-Frontends with client-side routing MUST support a dynamic router basename. Ant injects the basename at runtime (e.g., `window.__BASENAME__` in the proxied HTML).
+### Why
+- Browser cannot reach server's internal network directly
+- Proxy handles routing to the correct backend port
+- Works in any deployment environment
 
-If you see routing failures under `/dev/...`, apply the router basename configuration described in `dev-server-setup.md`.
+---
 
+## 2) Backend: Port Binding
 
+### Principle
+**Backend MUST bind to the injected port, not a hardcoded one.**
+
+Ant allocates ports dynamically and injects via `process.env.PORT`.
+
+### Contract
+- Backend MUST read port from environment variable
+- Backend MUST NOT require a specific hardcoded port
+
+---
+
+## 3) Frontend: Router Basename
+
+### Principle
+**Frontend router MUST support dynamic basename for proxy prefix.**
+
+Ant serves frontend under `/dev/{serverKey}/` and injects `window.__BASENAME__` at runtime.
+
+### Contract
+- Frontend router MUST read basename from `window.__BASENAME__`
+- Frontend MUST provide empty string as default
+
+See `dev-server-setup.md` for framework-specific implementation.

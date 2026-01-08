@@ -46,7 +46,8 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   }
   
   // ✅ Load files from disk (state.files is reset between tasks)
-  // Read actual design files from outputs/design/ directory
+  // - UI Design: inputs/sources/ (tokens.md, ui-assets.md, ui-spec.md)
+  // - System Design: outputs/design/ (system-design.md, etc.)
   const loadedFiles: Array<{ path: string; content: string; actionType: 'create' | 'append' | 'edit' }> = [];
   
   if (state.deps?.fileSystem && state.context.featurePath) {
@@ -59,15 +60,31 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     const featureDirRel = workspaceRoot
       ? path.relative(workspaceRoot, state.context.featurePath)
       : state.context.featurePath.replace(/^\//, '');
-    const designDirRel = path.join(featureDirRel, 'outputs/design');
+    
+    // ✅ Determine which directory to check based on work type
+    const isUiDesign = state.designWorkType === 'ui-design';
+    const designDirRel = isUiDesign
+      ? path.join(featureDirRel, 'inputs/sources')
+      : path.join(featureDirRel, 'outputs/design');
+    
+    const expectedFiles = isUiDesign
+      ? ['tokens.md', 'ui-assets.md', 'ui-spec.md']
+      : undefined;  // Any .md files for system design
+    
+    console.log(`📂 [Learn] Checking ${isUiDesign ? 'UI Design' : 'System Design'} files in ${isUiDesign ? 'inputs/sources' : 'outputs/design'}...`);
     
     try {
       const dirExists = await fileSystem.fileExists(designDirRel);
       if (dirExists) {
         const entries = await fileSystem.readDirectory(designDirRel);
-        const mdFiles = entries
+        let mdFiles = entries
           .filter(e => !e.isDirectory && e.name.endsWith('.md'))
           .map(e => e.name);
+        
+        // For UI Design, only load expected files
+        if (expectedFiles) {
+          mdFiles = mdFiles.filter(f => expectedFiles.includes(f));
+        }
         
         console.log(`📂 [Learn] Loading ${mdFiles.length} design document(s) from disk...`);
         
@@ -75,8 +92,12 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
           const filePath = path.join(designDirRel, filename);
           const content = await fileSystem.readFile(filePath);
           
+          const relativePath = isUiDesign
+            ? `inputs/sources/${filename}`
+            : `outputs/design/${filename}`;
+          
           loadedFiles.push({
-            path: `outputs/design/${filename}`,
+            path: relativePath,
             content: content || '',
             actionType: 'create'
           });
@@ -90,7 +111,8 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   }
   
   if (loadedFiles.length === 0) {
-    throw new Error("No design files found in outputs/design/ - docGen nodes must have run");
+    const targetDir = state.designWorkType === 'ui-design' ? 'inputs/sources/' : 'outputs/design/';
+    throw new Error(`No design files found in ${targetDir} - docGen nodes must have run`);
   }
   
   // ✅ Update state.files for downstream processing (lessons extraction, session save, etc.)

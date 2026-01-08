@@ -71,9 +71,9 @@ Do NOT add requirements that are NOT in the PRD, even if they are industry "best
    ❌ HOW it's coded → Abstract or omit
 
 ❓ "Did I extract INTENT from PRD, not copy wording?"
-   ✅ PRD: "브라우저 저장소" → Intent: "Client-side persistence"
-   ✅ PRD: "CORS 제약" → Intent: "Access restrictions"
-   ❌ System Design: "브라우저 저장소" → WRONG (copied verbatim)
+   ✅ PRD: "browser storage" → Intent: "Client-side persistence"
+   ✅ PRD: "CORS restrictions" → Intent: "Access restrictions"
+   ❌ System Design: "browser storage" → WRONG (copied verbatim)
 ```
 
 **Three-Tier Abstraction Model:**
@@ -81,9 +81,9 @@ Do NOT add requirements that are NOT in the PRD, even if they are industry "best
 **Tier 1: Architectural Constraints (Document Exactly)**
 - **External services from PRD**: "Stripe API", "NewsData.io" (exact names with PRD §reference)
 - **Platform constraint INTENT**: Extract WHY, not implementation wording
-  - PRD: "브라우저 저장소" → Intent: "Client-side persistence required"
-  - PRD: "브라우저 직접 API 호출" → Intent: "Client-direct integration (no backend proxy)"
-  - PRD: "정적 호스팅" → Intent: "Stateless deployment required"
+  - PRD: "browser storage" → Intent: "Client-side persistence required"
+  - PRD: "call API directly from browser" → Intent: "Client-direct integration (no backend proxy)"
+  - PRD: "static hosting" → Intent: "Stateless deployment required"
 - **Required patterns**: "Event-driven required", "Layered only", "No microservices"
 - **Technology prohibitions**: "No MongoDB", "No GraphQL"
 - **Rule**: Extract INTENT, abstract the wording

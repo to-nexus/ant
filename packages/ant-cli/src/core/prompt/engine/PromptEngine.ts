@@ -339,17 +339,27 @@ export class PromptEngine {
   }
 
   /**
-   * Build prompt for Design Domain Detection (design graph)
-   * - Only classifies project domain (e.g., "game" vs "service")
-   * - Uses directive and PRD; existing designDoc is NOT needed here
+   * Build prompt for Design Work Type + Domain Detection (design graph)
+   * - First classifies work type: "ui-design" vs "system-design"
+   * - For system-design: classifies domain (game/service) and environment (frontend/backend/fullstack)
+   * - Uses directive, PRD, and optional references/assets info
    */
   async buildDesignDomainPrompt(args: {
     directive: string;
     prdSpec?: string;
+    // ✅ NEW: UI document detection context
+    hasReferences?: boolean;
+    hasAssets?: boolean;
+    referencesList?: string;
+    assetsList?: string;
   }): Promise<string> {
     return await this.deps.promptPort.render('design/phases/detect/base', {
       directive: args.directive,
       prdSpec: args.prdSpec || '',
+      hasReferences: args.hasReferences || false,
+      hasAssets: args.hasAssets || false,
+      referencesList: args.referencesList || '',
+      assetsList: args.assetsList || '',
     });
   }
 

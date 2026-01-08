@@ -16,8 +16,41 @@ import { extractErrorDetails, logErrorHeader } from "../../../code/nodes/shared/
  * - No final verification task
  * - Usually results in a single task
  * - Simpler prompt
+ * 
+ * ✅ NEW: UI Design mode (designWorkType === 'ui-design')
+ * - Requires reference images in inputs/references/
+ * - Creates tasks for tokens.md, ui-assets.md, ui-spec.md generation
  */
 export async function decompose(state: DesignGraphState): Promise<DesignGraphState> {
+  // ✅ NEW: Validate UI design prerequisites
+  if (state.designWorkType === 'ui-design') {
+    const hasReferences = state.uiReferences?.screens?.length || state.uiReferences?.components?.length;
+    const hasAssets = state.uiAssetsList?.logos?.length || 
+                      state.uiAssetsList?.backgrounds?.length || 
+                      state.uiAssetsList?.icons?.length || 
+                      state.uiAssetsList?.other?.length;
+    
+    if (!hasReferences && !hasAssets) {
+      throw new Error(
+        "UI 문서 생성에 필요한 입력 파일이 없습니다.\n\n" +
+        "필수 입력:\n" +
+        "- inputs/references/screens/ - 피그마 화면 캡처 이미지\n" +
+        "- inputs/references/components/ - 컴포넌트 상태 스냅샷 (선택)\n" +
+        "- inputs/assets/ - 런타임 에셋 파일들 (선택)\n\n" +
+        "위 폴더에 최소 하나 이상의 이미지/에셋 파일을 추가해주세요."
+      );
+    }
+    
+    // ✅ At minimum, we need reference images for UI spec generation
+    if (!hasReferences) {
+      throw new Error(
+        "UI 문서 생성을 위한 레퍼런스 이미지가 없습니다.\n\n" +
+        "inputs/references/screens/ 폴더에 피그마 화면 캡처 이미지를 추가해주세요.\n" +
+        "- 스크린샷은 화면 레이아웃, 색상, 타이포그래피 분석에 사용됩니다.\n" +
+        "- 가능하면 다양한 해상도/상태의 스크린샷을 포함해주세요."
+      );
+    }
+  }
   // ✅ Workflow instrumentation: Enter node
   if (state.deps?.workflowUpdate && state._httpJobId) {
     const taskInfo = state.currentTask ? {
@@ -224,6 +257,88 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
   
   // Starting fresh - decompose into tasks
   console.log('🆕 Starting new design task - decomposing...\n');
+  
+  // ✅ NEW: UI Design mode - create predefined tasks without LLM call
+  if (state.designWorkType === 'ui-design') {
+    console.log('🎨 UI Design mode - creating UI doc generation tasks\n');
+    
+    const taskQueue = new TaskQueue<DesignTask>();
+    
+    // Task 1: Generate tokens.md (colors, typography, spacing from screenshots)
+    taskQueue.push({
+      id: 'ui-tokens',
+      name: 'Generate Design Tokens',
+      type: 'feature',
+      priority: 300,
+      description: 'Analyze reference screenshots to extract colors, typography, spacing, and other design tokens. Output: tokens.md',
+      completed: false,
+      ui: true,  // ✅ Mark as UI task for multimodal processing
+      targetFile: 'tokens.md',  // ✅ Output to inputs/sources/
+    } as DesignTask);
+    
+    // Task 2: Generate ui-assets.md (asset mapping from inputs/assets)
+    if (state.uiAssetsList) {
+      taskQueue.push({
+        id: 'ui-assets',
+        name: 'Generate Asset Mapping',
+        type: 'feature',
+        priority: 200,
+        description: 'Create asset mapping document from inputs/assets. Document file paths, usage hints, and copy instructions. Output: ui-assets.md',
+        completed: false,
+        ui: true,
+        targetFile: 'ui-assets.md',  // ✅ Output to inputs/sources/
+      } as DesignTask);
+    }
+    
+    // Task 3: Generate ui-spec.md (layout, components, interactions from screenshots)
+    taskQueue.push({
+      id: 'ui-spec',
+      name: 'Generate UI Specification',
+      type: 'feature',
+      priority: 100,
+      description: 'Analyze reference screenshots to document screen layouts, component specs, and interaction patterns. Output: ui-spec.md',
+      completed: false,
+      ui: true,
+      targetFile: 'ui-spec.md',  // ✅ Output to inputs/sources/
+    } as DesignTask);
+    
+    console.log(`✅ Created ${taskQueue.size()} UI doc generation tasks:`);
+    taskQueue.getAll().forEach((t, i) => {
+      console.log(`   ${i + 1}. ${t.name} (priority: ${t.priority})`);
+    });
+    console.log();
+    
+    // ✅ Mark estimating phase complete (UI docs use predefined tasks, so estimating is instant)
+    const finalJobTiming = JobTimingManager.finalizeEstimatingPhase(newJobTiming, newJobTiming.startedAt);
+    
+    const uiDocsState: DesignGraphState = {
+      ...state,
+      taskQueue,
+      completedTasks: [],
+      completedTasksDetails: preloadedCompletedTasks,
+      _httpJobId: state._httpJobId,
+      jobId: newJobId,
+      jobTiming: finalJobTiming,
+    };
+    
+    // Update Kanban
+    if (state._httpJobId && state.deps?.kanbanUpdate) {
+      state.deps.kanbanUpdate.updateTaskQueue(
+        state._httpJobId,
+        null,
+        taskQueue.getAll(),
+        preloadedCompletedTasks
+      );
+      console.log(`✅ Kanban updated with ${taskQueue.size()} UI doc tasks\n`);
+    }
+    
+    // ✅ Workflow exit
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      state.deps.workflowUpdate.exitNode(state._httpJobId, 'decompose');
+    }
+    
+    return uiDocsState;
+  }
   
   // Prepare spec
   const specParts = [

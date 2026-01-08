@@ -13,6 +13,9 @@
  * - 루프 (LangGraph가 관리)
  * 
  * ✅ NEW: XML 파서 통합 for Markdown 실시간 렌더링
+ * ✅ NEW: UI Design 모드 지원 (designWorkType === 'ui-design')
+ *     - 멀티모달 이미지 분석 (레퍼런스 스크린샷)
+ *     - tokens.md, ui-assets.md, ui-spec.md 생성
  */
 
 import { DesignGraphState } from '../state';
@@ -36,13 +39,18 @@ export async function docGen(
     throw new Error('LLM client or GitPort not available');
   }
   
-  // ✅ Build messages from conversation history + current task
-  const messages = await buildMessages(state);
+  // ✅ Build messages based on work type
+  const isUiDesign = state.designWorkType === 'ui-design';
+  const messages = isUiDesign 
+    ? await buildUiDesignMessages(state)
+    : await buildMessages(state);
   
-  // ✅ Tool activation: Design job now supports tools for file editing
-  const tools = getToolsByNames(TOOL_SETS.design);
+  // ✅ Tool activation: Select appropriate tool set based on work type
+  const tools = isUiDesign
+    ? getToolsByNames(TOOL_SETS.uiDesign)
+    : getToolsByNames(TOOL_SETS.design);
   
-  console.log(`📝 [DocGen] Tool calling enabled (${tools.length} tools available)`);
+  console.log(`📝 [DocGen] ${isUiDesign ? 'UI Design' : 'System Design'} mode - ${tools.length} tools available`);
   
   // ✅ 4. Workflow update
   if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -73,35 +81,43 @@ export async function docGen(
   
   // ✅ Design job: Check actual disk files, not state.files (which accumulates across tasks)
   // state.files tracks files generated in THIS job session, but existingFiles should reflect disk reality
+  // - UI Design: inputs/sources/ (tokens.md, ui-assets.md, ui-spec.md)
+  // - System Design: outputs/design/ (system-design.md, etc.)
   const existingFiles = new Set<string>();
   if (state.deps?.fileSystem && state.context.featurePath) {
     const path = await import('path');
-    const fs = await import('fs/promises');
     
-    // Scan entire outputs/design directory for any .md files
-    const designDirPath = path.join(state.context.featurePath, 'outputs/design');
+    // Determine target directory based on work type
+    const targetDir = isUiDesign ? 'inputs/sources' : 'outputs/design';
+    const designDirAbs = path.join(state.context.featurePath, targetDir);
+    
+    // ✅ Convert to workspace-relative path for fileSystem port
+    const workspaceRoot = state.deps.fileSystem.getWorkspaceRoot?.() || '';
+    const designDirRel = workspaceRoot
+      ? path.relative(workspaceRoot, designDirAbs)
+      : designDirAbs.replace(/^\//, '');
     
     try {
-      // Check if directory exists
-      const dirExists = await state.deps.fileSystem.fileExists(designDirPath);
+      // Check if directory exists using workspace-relative path
+      const dirExists = await state.deps.fileSystem.fileExists(designDirRel);
       if (dirExists) {
-        // Read all files in directory
-        const files = await fs.readdir(designDirPath);
+        // Read directory contents using workspace-relative path
+        const entries = await state.deps.fileSystem.readDirectory(designDirRel);
         
         // Add all .md files to existingFiles (relative to feature path)
-        for (const file of files) {
-          if (file.endsWith('.md')) {
-            const relativePath = `outputs/design/${file}`;
+        for (const entry of entries) {
+          if (!entry.isDirectory && entry.name.endsWith('.md')) {
+            const relativePath = `${targetDir}/${entry.name}`;
             existingFiles.add(relativePath);
           }
         }
         
         console.log(`📋 [DocGen] Existing files on disk: ${existingFiles.size > 0 ? Array.from(existingFiles).join(', ') : 'none'}`);
       } else {
-        console.log(`📋 [DocGen] outputs/design directory does not exist yet (first task)`);
+        console.log(`📋 [DocGen] ${targetDir} directory does not exist yet (first task)`);
       }
     } catch (error) {
-      console.warn(`⚠️  [DocGen] Failed to scan outputs/design directory:`, error);
+      console.warn(`⚠️  [DocGen] Failed to scan ${targetDir} directory:`, error);
       // Continue with empty existingFiles set
     }
   }
@@ -136,13 +152,21 @@ export async function docGen(
     }
   }
   
+  // ✅ Track tool calls for routing decision
+  let pendingToolCalls: Array<{ id: string; name: string; args: any }> = [];
+  
+  // ✅ Check if this is a continuation after tool calling (Code job pattern)
+  const isAfterToolCall = state.conversationHistory && state.conversationHistory.length > 0;
+  
   try {
-    // ✅ Stream with XML parsing only (no tool calling)
-    // ✅ Thinking is ALWAYS enabled for design jobs
+    // ✅ Stream with XML parsing + tool calling support
+    // ✅ CRITICAL: Disable thinking after tool calls (Anthropic API requirement)
+    // When thinking is enabled, assistant messages must start with thinking block.
+    // After tool calls, the history contains tool_use without thinking, causing errors.
     for await (const event of llmClient.stream(messages, {
-      tools: undefined,  // ✅ No tool calling for design job
+      tools: tools.length > 0 ? tools : undefined,  // ✅ Tool calling for UI Design
       maxTokens,  // ✅ Dynamic based on line budget (minimum 16000 to support thinking)
-      enableThinking: true,  // ✅ ALWAYS enabled for design jobs
+      enableThinking: !isAfterToolCall,  // ✅ Disable after tool calls (Code job pattern)
     })) {
       // ✅ Pass to orchestrator for XML parsing (<file>, <append>, <edit>)
       await orchestrator.processEvent(event);
@@ -157,6 +181,25 @@ export async function docGen(
         textResponse += event.text || '';
       }
       
+      // ✅ Tool Use - capture for routing
+      // NOTE: Anthropic LLM client yields { type: 'tool_use', toolUse: { id, name, input } }
+      if (event.type === 'tool_use') {
+        const toolEvent = event as { 
+          type: 'tool_use'; 
+          toolUse: { id: string; name: string; input: Record<string, any> };
+        };
+        if (toolEvent.toolUse) {
+          pendingToolCalls.push({
+            id: toolEvent.toolUse.id,
+            name: toolEvent.toolUse.name,
+            args: toolEvent.toolUse.input,
+          });
+          console.log(`🔧 [DocGen] Tool call detected: ${toolEvent.toolUse.name}`);
+        } else {
+          console.warn(`⚠️  [DocGen] tool_use event missing toolUse property:`, JSON.stringify(event));
+        }
+      }
+      
       if (event.type === 'done') {
         // ✅ Extract token usage
         const { extractTokenUsageFromStreamEvent } = await import('../../common/llmHelpers');
@@ -167,31 +210,46 @@ export async function docGen(
     }
     
     // ✅ Finalize orchestrator (flush buffer and save files)
-    await orchestrator.finalize(false);  // No tool calls in XML streaming
+    const hasToolCalls = pendingToolCalls.length > 0;
+    await orchestrator.finalize(hasToolCalls);  // Don't flush if tool calls pending
     
     // ✅ Get generated files from registry (in-memory tracking)
     const registry = orchestrator.getRegistry();
     const files = registry.getAllFiles();
     
-    console.log(`\n✅ [DocGen] XML streaming complete (${files.length} files generated)`);
+    console.log(`\n✅ [DocGen] XML streaming complete (${files.length} files generated, ${pendingToolCalls.length} tool calls pending)`);
     
     // ✅ Build conversation history for resume
     // CRITICAL: Must preserve messages for proper resume after interruption
-    const conversationHistory: Array<{ role: 'user' | 'assistant'; content: string | any[] }> = [];
+    let conversationHistory: Array<{ role: 'user' | 'assistant'; content: string | any[] }>;
     
-    // Add all messages used for this generation
-    for (const msg of messages) {
-      conversationHistory.push({
-        role: msg.role,
-        content: msg.content
-      });
+    if (state.conversationHistory && state.conversationHistory.length > 0) {
+      // ✅ Tool loop: Extend existing history
+      conversationHistory = [...state.conversationHistory];
+    } else {
+      // ✅ Fresh start: Build from messages
+      conversationHistory = [];
+      for (const msg of messages) {
+        conversationHistory.push({
+          role: msg.role,
+          content: msg.content
+        });
+      }
     }
     
-    // Add assistant's response
-    conversationHistory.push({
-      role: 'assistant',
-      content: textResponse  // XML response content
-    });
+    // ✅ Add assistant's response (text only, NOT tool calls)
+    // CRITICAL: Follow Code job pattern - tool_use is added by tool.ts, not here!
+    // If we add tool_use here, tool.ts must provide ALL matching tool_results.
+    // Instead, only add text response here; tool.ts handles tool_use + tool_result pair.
+    if (!hasToolCalls) {
+      // Regular text response (no tool calls)
+      conversationHistory.push({
+        role: 'assistant',
+        content: textResponse
+      });
+    }
+    // NOTE: When hasToolCalls=true, don't add to history here.
+    // tool.ts will add the complete tool_use + tool_result sequence.
     
     console.log(`📝 [DocGen] Conversation history updated (${conversationHistory.length} messages)`);
     
@@ -212,6 +270,15 @@ export async function docGen(
     return {
       files,
       conversationHistory,
+      // ✅ NEW: Return tool calls for routing decision
+      llmResponse: hasToolCalls ? {
+        toolCalls: pendingToolCalls,
+        textResponse,
+        done: false,  // Not done yet - tool execution pending
+      } : {
+        textResponse,
+        done: true,  // Completed
+      },
     };
   } catch (error) {
     console.error('❌ [DocGen] Error during reasoning:', error);
@@ -221,12 +288,19 @@ export async function docGen(
 
 /**
  * Build messages for LLM using PromptEngine with Prompt Caching
+ * 
+ * ✅ NEW: UI Docs mode support
+ * - designWorkType === 'ui-design': Uses multimodal messages with reference images
+ * - Generates tokens.md, ui-assets.md, ui-spec.md
  */
 async function buildMessages(state: DesignGraphState): Promise<Array<{
   role: 'user' | 'assistant';
   content: CacheableContent[];
 }>> {
   const messages: Array<{ role: 'user' | 'assistant'; content: CacheableContent[] }> = [];
+  
+  // NOTE: UI Design mode is handled separately in docGen() entry point
+  // This function handles system-design messages only
   
   // ✅ Use PromptEngine for system prompt (if no conversation history)
   if (!state.conversationHistory || state.conversationHistory.length === 0) {
@@ -488,5 +562,463 @@ function buildRuntimeContext(state: DesignGraphState): string {
   // The lastSectionNumber in the base prompt is sufficient for sequential chapter numbering
   
   return lines.join('\n');
+}
+
+/**
+ * Build multimodal messages for UI Design generation
+ * 
+ * TOOLING-BASED APPROACH:
+ * - Images are NOT preloaded (avoids token explosion)
+ * - LLM uses tools to selectively load images when needed:
+ *   - list_reference_images: Discover available screenshots
+ *   - read_reference_image: Load specific image for analysis
+ *   - list_assets: List asset files for mapping
+ * 
+ * This approach:
+ * - Saves tokens (only loads needed images)
+ * - Allows LLM to analyze images one at a time
+ * - Scales to any number of reference images
+ */
+async function buildUiDesignMessages(state: DesignGraphState): Promise<Array<{
+  role: 'user' | 'assistant';
+  content: CacheableContent[];
+}>> {
+  const task = state.currentTask;
+  
+  // ✅ CRITICAL: If conversation history exists, build fresh prompt + append history
+  // This prevents infinite loops by preserving tool call/result context
+  // ✅ Check if this is a continuation after tool calling
+  const conversationHistory = state.conversationHistory || [];
+  const isAfterToolCall = conversationHistory.length > 0;
+  
+  if (isAfterToolCall) {
+    console.log(`🎨 [DocGen] UI Design continuing with existing conversation (${conversationHistory.length} messages)`);
+    
+    // ✅ Code job pattern: Build fresh prompt + append history (skip initial user messages)
+    // This ensures proper message structure for Anthropic API
+    const messages: Array<{ role: 'user' | 'assistant'; content: CacheableContent[] }> = [];
+    
+    // 1. Build fresh user prompt (always needed as first message)
+    const freshPrompt = await buildUiDesignFreshPrompt(state);
+    messages.push({
+      role: 'user',
+      content: freshPrompt
+    });
+    
+    // 2. Append history (skip initial user messages - replaced by fresh prompt)
+    let skipInitialUserMessages = true;
+    for (const msg of conversationHistory) {
+      if (msg.role === 'assistant') {
+        skipInitialUserMessages = false;
+      }
+      
+      if (skipInitialUserMessages && msg.role === 'user') {
+        continue;
+      }
+      
+      // ✅ Convert to CacheableContent format
+      if (typeof msg.content === 'string') {
+        messages.push({
+          role: msg.role as 'user' | 'assistant',
+          content: [{ type: 'text', text: msg.content }]
+        });
+      } else {
+        messages.push({
+          role: msg.role as 'user' | 'assistant',
+          content: msg.content as CacheableContent[]
+        });
+      }
+    }
+    
+    return messages;
+  }
+  
+  console.log(`🎨 [DocGen] Building UI Design prompt for task: ${task?.id} (tool-based multimodal)`);
+  
+  const content: CacheableContent[] = [];
+  
+  // ✅ 1. System Prompt - UI Design Generation Instructions
+  const systemPrompt = await buildUiDesignSystemPrompt(state);
+  content.push({
+    type: 'text',
+    text: systemPrompt,
+    cache_control: { type: 'ephemeral' }
+  });
+  
+  // ✅ 2. Available Resources Summary (text only - no images preloaded)
+  let resourcesSummary = '\n\n# Available Resources\n\n';
+  resourcesSummary += '## Reference Screenshots\n';
+  resourcesSummary += 'Use `list_reference_images` tool to discover available screenshots, then use `read_reference_image` to load and analyze specific images.\n\n';
+  
+  if (state.uiReferences?.screens?.length) {
+    resourcesSummary += `- **Screens**: ${state.uiReferences.screens.length} screenshots available\n`;
+    resourcesSummary += `  (Examples: ${state.uiReferences.screens.slice(0, 3).join(', ')}${state.uiReferences.screens.length > 3 ? '...' : ''})\n`;
+  }
+  if (state.uiReferences?.components?.length) {
+    resourcesSummary += `- **Components**: ${state.uiReferences.components.length} component snapshots available\n`;
+    resourcesSummary += `  (Examples: ${state.uiReferences.components.slice(0, 3).join(', ')}${state.uiReferences.components.length > 3 ? '...' : ''})\n`;
+  }
+  
+  resourcesSummary += '\n## Asset Files\n';
+  resourcesSummary += 'Use `list_assets` tool to discover available asset files for mapping.\n\n';
+  
+  if (state.uiAssetsList) {
+    const assetCounts = [
+      state.uiAssetsList.logos?.length ? `logos: ${state.uiAssetsList.logos.length}` : null,
+      state.uiAssetsList.icons?.length ? `icons: ${state.uiAssetsList.icons.length}` : null,
+      state.uiAssetsList.backgrounds?.length ? `backgrounds: ${state.uiAssetsList.backgrounds.length}` : null,
+      state.uiAssetsList.other?.length ? `other: ${state.uiAssetsList.other.length}` : null,
+    ].filter(Boolean);
+    
+    if (assetCounts.length > 0) {
+      resourcesSummary += `Available: ${assetCounts.join(', ')}\n`;
+    }
+  }
+  
+  content.push({
+    type: 'text',
+    text: resourcesSummary
+  });
+  
+  // ✅ 3. PRD Context (if available)
+  if (state.prd) {
+    content.push({
+      type: 'text',
+      text: `\n\n# PRD (Requirements)\n\n${state.prd}`
+    });
+  }
+  
+  // ✅ 4. Task Instructions with Tool Usage Guide
+  const taskInstruction = buildUiDesignTaskInstruction(state);
+  content.push({
+    type: 'text',
+    text: taskInstruction
+  });
+  
+  // ✅ 5. Tool Usage Guide
+  const toolGuide = buildUiDesignToolGuide(task?.id || 'ui-tokens');
+  content.push({
+    type: 'text',
+    text: toolGuide
+  });
+  
+  return [{
+    role: 'user',
+    content
+  }];
+}
+
+/**
+ * Build fresh user prompt for tool loop continuation
+ * This is needed when continuing after tool calls to maintain proper message structure
+ */
+async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise<CacheableContent[]> {
+  const content: CacheableContent[] = [];
+  
+  // ✅ 1. System Prompt - UI Design Generation Instructions
+  const systemPrompt = await buildUiDesignSystemPrompt(state);
+  content.push({
+    type: 'text',
+    text: systemPrompt,
+    cache_control: { type: 'ephemeral' }
+  });
+  
+  // ✅ 2. Available Resources Summary (text only - no images preloaded)
+  let resourcesSummary = '\n\n# Available Resources\n\n';
+  resourcesSummary += '## Reference Screenshots\n';
+  resourcesSummary += 'Use `list_reference_images` tool to discover available screenshots, then use `read_reference_image` to load and analyze specific images.\n\n';
+  
+  if (state.uiReferences?.screens?.length) {
+    resourcesSummary += `- **Screens**: ${state.uiReferences.screens.length} screenshots available\n`;
+    resourcesSummary += `  (Examples: ${state.uiReferences.screens.slice(0, 3).join(', ')}${state.uiReferences.screens.length > 3 ? '...' : ''})\n`;
+  }
+  if (state.uiReferences?.components?.length) {
+    resourcesSummary += `- **Components**: ${state.uiReferences.components.length} component snapshots available\n`;
+    resourcesSummary += `  (Examples: ${state.uiReferences.components.slice(0, 3).join(', ')}${state.uiReferences.components.length > 3 ? '...' : ''})\n`;
+  }
+  
+  resourcesSummary += '\n## Asset Files\n';
+  resourcesSummary += 'Use `list_assets` tool to discover available asset files for mapping.\n\n';
+  
+  if (state.uiAssetsList) {
+    const assetCounts = [
+      state.uiAssetsList.logos?.length ? `logos: ${state.uiAssetsList.logos.length}` : null,
+      state.uiAssetsList.icons?.length ? `icons: ${state.uiAssetsList.icons.length}` : null,
+      state.uiAssetsList.backgrounds?.length ? `backgrounds: ${state.uiAssetsList.backgrounds.length}` : null,
+      state.uiAssetsList.other?.length ? `other: ${state.uiAssetsList.other.length}` : null,
+    ].filter(Boolean);
+    
+    if (assetCounts.length > 0) {
+      resourcesSummary += `Available: ${assetCounts.join(', ')}\n`;
+    }
+  }
+  
+  content.push({
+    type: 'text',
+    text: resourcesSummary
+  });
+  
+  // ✅ 3. PRD Context (if available)
+  if (state.prd) {
+    content.push({
+      type: 'text',
+      text: `\n\n# PRD (Requirements)\n\n${state.prd}`
+    });
+  }
+  
+  // ✅ 4. Task Instructions with Tool Usage Guide
+  const taskInstruction = buildUiDesignTaskInstruction(state);
+  content.push({
+    type: 'text',
+    text: taskInstruction
+  });
+  
+  // ✅ 5. Tool Usage Guide
+  const task = state.currentTask;
+  const toolGuide = buildUiDesignToolGuide(task?.id || 'ui-tokens');
+  content.push({
+    type: 'text',
+    text: toolGuide
+  });
+  
+  return content;
+}
+
+/**
+ * Build tool usage guide specific to each UI design task
+ */
+function buildUiDesignToolGuide(taskId: string): string {
+  let guide = '\n\n# Tool Usage Guide\n\n';
+  
+  switch (taskId) {
+    case 'ui-tokens':
+      guide += `## For tokens.md generation:
+1. First, use \`list_reference_images\` to see all available screenshots
+2. Load 2-3 key screens using \`read_reference_image\` (e.g., desktop main, mobile main)
+3. Analyze each image for:
+   - Color palette (extract hex values)
+   - Typography (font families, sizes, weights)
+   - Spacing patterns (padding, margins)
+   - Border radius, shadows
+4. Create consolidated tokens.md with extracted values
+
+**Strategy**: Load screens with most UI variety first (usually desktop landing page).
+`;
+      break;
+      
+    case 'ui-assets':
+      guide += `## For ui-assets.md generation:
+1. Use \`list_assets\` to get complete asset inventory
+2. Optionally load screenshots with \`read_reference_image\` to understand asset context
+3. Document each asset with:
+   - Source path (inputs/assets/...)
+   - Target path in codebase
+   - Usage context
+
+**Note**: This task focuses on file mapping, not visual analysis. Image loading is optional.
+`;
+      break;
+      
+    case 'ui-spec':
+      guide += `## For ui-spec.md generation:
+1. Use \`list_reference_images\` to identify all screens
+2. Load screens systematically with \`read_reference_image\`:
+   - Start with main pages (desktop)
+   - Then responsive variants (tablet, mobile)
+   - Then component states
+3. For each screen, document:
+   - Layout structure
+   - Component breakdown
+   - Interactions and states
+   - Responsive behavior
+
+**Strategy**: Process one screen at a time, completing its documentation before moving to the next.
+`;
+      break;
+      
+    default:
+      guide += `Use available tools to explore reference images and assets as needed for your task.`;
+  }
+  
+  guide += `
+
+## Available Tools
+
+| Tool | Purpose |
+|------|---------|
+| \`list_reference_images\` | Discover available screenshots and components |
+| \`read_reference_image\` | Load a specific image for visual analysis |
+| \`list_assets\` | List asset files (logos, icons, etc.) |
+| \`read_file\` | Read existing documents or PRD |
+
+## ⚠️ IMPORTANT: If No Images Are Available
+
+If \`list_reference_images\` returns empty results or no reference images are found:
+
+1. **DO NOT keep calling the same tool repeatedly** - this wastes tokens and creates infinite loops
+2. **Generate the document based on PRD/directive only**:
+   - Use placeholder descriptions where visual analysis would be needed
+   - Mark sections with \`[PLACEHOLDER: Requires visual reference]\` where specific values cannot be determined
+   - Focus on structural documentation that can be inferred from requirements
+3. **Inform the user** that reference screenshots are needed for complete documentation
+
+Example for tokens.md without images:
+\`\`\`markdown
+## Colors
+| Token | Value | Usage |
+|-------|-------|-------|
+| color.primary | [PLACEHOLDER] | Primary brand color - requires Figma reference |
+| color.bg.base | [PLACEHOLDER] | Background color - requires Figma reference |
+\`\`\`
+`;
+  
+  return guide;
+}
+
+/**
+ * Build system prompt for UI Design generation
+ * 
+ * Uses: design/phases/execute/base-ui-design.md (workType-specific base prompt)
+ */
+async function buildUiDesignSystemPrompt(state: DesignGraphState): Promise<string> {
+  const promptPort = state.deps?.promptEngine;
+  
+  // Try to load from template (same execute phase, but ui-design variant)
+  if (promptPort) {
+    try {
+      const template = await (promptPort as any).deps?.promptPort?.render('design/phases/execute/base-ui-design', {
+        taskId: state.currentTask?.id,
+        taskName: state.currentTask?.name,
+      });
+      if (template) return template;
+    } catch {
+      // Template not found, use fallback
+    }
+  }
+  
+  // Fallback: Inline system prompt
+  return `# UI Document Generation System
+
+You are a UI documentation specialist that analyzes Figma design screenshots and generates structured documentation for frontend developers.
+
+## Your Role
+- Extract design tokens (colors, typography, spacing) from screenshots
+- Map asset files to their usage contexts
+- Document component specifications and interactions
+- Create comprehensive UI specifications
+
+## Output Format
+All documents must be written using XML file tags:
+
+\`\`\`xml
+<file path="inputs/sources/[filename].md">
+[Markdown content]
+</file>
+\`\`\`
+
+## Document Types
+
+### tokens.md (Task: ui-tokens)
+Extract from screenshots:
+- Colors (with hex values and usage context)
+- Typography (font families, sizes, weights)
+- Spacing (margin/padding values)
+- Border radius, shadows, etc.
+
+Format as tables for easy CSS variable creation.
+
+### ui-assets.md (Task: ui-assets)
+Document each asset file:
+- File path (from inputs/assets/)
+- Copy destination (to public/)
+- Usage context and component associations
+
+### ui-spec.md (Task: ui-spec)
+Document each screen/component:
+- Layout structure (CSS Grid/Flexbox recommendations)
+- Component hierarchy
+- Interactive states (hover, active, disabled)
+- Responsive breakpoints
+
+## Guidelines
+1. Be specific with values (don't use "light blue", use "#E3F2FD")
+2. Reference actual asset filenames
+3. Use consistent naming conventions
+4. Include implementation hints for developers
+`;
+}
+
+/**
+ * Build task-specific instruction for UI Design
+ */
+function buildUiDesignTaskInstruction(state: DesignGraphState): string {
+  const task = state.currentTask;
+  if (!task) return '';
+  
+  let targetFile = 'ui-spec.md';
+  let instruction = '';
+  
+  switch (task.id) {
+    case 'ui-tokens':
+      targetFile = 'tokens.md';
+      instruction = `
+# Current Task: Generate Design Tokens
+
+Analyze the reference screenshots and extract ALL design tokens:
+
+1. **Colors** - Every color used, with hex values and semantic names
+2. **Typography** - Font families, sizes, weights, line heights
+3. **Spacing** - Common margin/padding values
+4. **Shadows** - Box shadows and text shadows
+5. **Borders** - Border widths, radius values
+
+Format output as Markdown tables for easy reference.
+Output file: inputs/sources/tokens.md
+`;
+      break;
+      
+    case 'ui-assets':
+      targetFile = 'ui-assets.md';
+      instruction = `
+# Current Task: Generate Asset Mapping
+
+Create a comprehensive asset mapping document:
+
+1. **Asset Inventory** - List all files in inputs/assets/
+2. **Copy Instructions** - Map source → destination paths
+3. **Usage Context** - Which component/screen uses each asset
+4. **Implementation Notes** - Any special handling needed
+
+Output file: inputs/sources/ui-assets.md
+`;
+      break;
+      
+    case 'ui-spec':
+      targetFile = 'ui-spec.md';
+      instruction = `
+# Current Task: Generate UI Specification
+
+Create detailed UI specifications from the screenshots:
+
+1. **Screen Layouts** - Overall page structure
+2. **Component Specs** - Props, variants, states for each component
+3. **Interactions** - Hover, click, focus states
+4. **Responsive Behavior** - Breakpoints and layout changes
+5. **Animation/Transitions** - Any motion design specs
+
+Output file: inputs/sources/ui-spec.md
+`;
+      break;
+  }
+  
+  return `${instruction}
+
+⚠️ CRITICAL: Write to file using XML tag:
+\`\`\`xml
+<file path="inputs/sources/${targetFile}">
+[Your markdown content here]
+</file>
+\`\`\`
+`;
 }
 

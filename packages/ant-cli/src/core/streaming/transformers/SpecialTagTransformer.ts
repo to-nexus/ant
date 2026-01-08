@@ -300,9 +300,13 @@ export class SpecialTagTransformer {
         ? `\n🔍 **환경 분석 완료**\n\n`
         : `\n🔍 **Environment Analysis Complete**\n\n`;
       
-      // ✅ Detect job type: Code job (has mode) vs Design job (has domain)
+      // ✅ Detect job type: 
+      // - Code job: has 'mode'
+      // - Design job (UI Design): has 'workType' === 'ui-design'
+      // - Design job (System Design): has 'domain'
       const isCodeJob = 'mode' in parsed;
-      const isDesignJob = 'domain' in parsed;
+      const isUiDesignJob = parsed.workType === 'ui-design';
+      const isSystemDesignJob = 'domain' in parsed || parsed.workType === 'system-design';
       
       if (isCodeJob) {
         // CODE JOB: mode, environment, profile
@@ -337,8 +341,34 @@ export class SpecialTagTransformer {
           }
           formatted += '\n\n';
         }
-      } else if (isDesignJob) {
-        // DESIGN JOB: domain, environment
+      } else if (isUiDesignJob) {
+        // ✅ UI DESIGN JOB: workType === 'ui-design'
+        formatted += isKorean
+          ? `🎨 **작업 유형**: UI 디자인 문서화\n`
+          : `🎨 **Work Type**: UI Design Documentation\n`;
+        
+        if (parsed.workTypeReasoning) {
+          formatted += `   └ ${parsed.workTypeReasoning}\n\n`;
+        }
+        
+        // Show what will be generated
+        formatted += isKorean
+          ? `📄 **생성 문서**:\n`
+          : `📄 **Output Documents**:\n`;
+        formatted += `   • \`inputs/sources/tokens.md\` - Design tokens (colors, typography, spacing)\n`;
+        formatted += `   • \`inputs/sources/ui-assets.md\` - Asset mapping\n`;
+        formatted += `   • \`inputs/sources/ui-spec.md\` - UI specification\n\n`;
+        
+        // Show tool-based workflow hint
+        formatted += isKorean
+          ? `🔧 **작업 방식**: 도구 기반 멀티모달 분석\n`
+          : `🔧 **Workflow**: Tool-based multimodal analysis\n`;
+        formatted += isKorean
+          ? `   └ 레퍼런스 이미지를 선택적으로 로드하여 분석\n\n`
+          : `   └ Selectively load and analyze reference images\n\n`;
+        
+      } else if (isSystemDesignJob) {
+        // SYSTEM DESIGN JOB: domain, environment
         const domainEmoji = parsed.domain === 'game' ? '🎮' : '🔧';
         formatted += isKorean
           ? `${domainEmoji} **도메인**: ${parsed.domain}\n`
