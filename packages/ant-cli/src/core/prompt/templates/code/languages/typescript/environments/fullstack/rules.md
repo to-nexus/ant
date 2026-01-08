@@ -1,44 +1,64 @@
-## 🌐🖥️ Fullstack Framework Environment
+## 🌐🖥️ Fullstack Environment (Backend + Frontend Monorepo)
 
-**Context**: Code runs BOTH on server (Node.js) AND client (browser) - Next.js, Remix, SvelteKit, Nuxt
+**Context**: This project contains BOTH backend server (Express, NestJS, etc.) AND frontend application in the same repository.
 
----
-
-### Critical: Dual Environment Awareness
-
-**Before writing ANY code, determine:**
-1. Where will this code execute? (Server / Client / Both)
-2. What APIs are available in that context?
+**Important**: This is NOT for SSR frameworks (Next.js, Remix). SSR frameworks are "frontend" environment, not "fullstack".
 
 ---
 
-### Key Constraints
+### Project Structure Patterns
 
-| Context | Node.js APIs | Browser APIs | Examples |
-|---------|--------------|--------------|----------|
-| Server Components / API Routes | ✅ Yes | ❌ No | `fs`, `path`, database access |
-| Client Components | ❌ No | ✅ Yes | `useState`, `localStorage`, DOM |
-| Shared/Universal | ❌ No | ❌ Limited | Pure logic, fetch (both have it) |
+**Typical monorepo structure:**
+```
+project/
+├── packages/
+│   ├── backend/     # Express/NestJS API server
+│   └── frontend/    # React/Vue frontend
+├── apps/
+│   ├── api/         # Backend service
+│   └── web/         # Frontend app
+```
 
----
-
-### When Solving Problems
-
-**Analyze first:**
-- Which file/component is this? Server or client context?
-- Does the framework have a specific pattern for this? (Check existing code)
-- Is there existing project convention to follow?
-
-**Key principle:** The framework documentation and existing project patterns take precedence. Analyze the codebase structure before implementing.
-
----
-
-### Common Patterns (for reference)
-
-- **Data fetching**: Server components fetch directly, client components use API routes
-- **Environment variables**: Server-only secrets vs public client vars (framework-specific prefixes)
-- **File operations**: Only in API routes or server components
+**Or single repo with clear separation:**
+```
+project/
+├── server/          # Backend code
+└── client/          # Frontend code
+```
 
 ---
 
-**Remember:** You already know these frameworks. Look at the existing code patterns and follow them.
+### Key Principles
+
+1. **Respect boundaries**: Backend code cannot directly import frontend code, and vice versa
+2. **Shared types**: If types are shared, extract to a common package/folder
+3. **Independent execution**: Backend and frontend should be independently runnable
+4. **API contract**: Communication happens via HTTP/REST/GraphQL, not direct function calls
+
+---
+
+### When Working on Backend Code
+
+- Follow Node.js API environment rules
+- Use Node.js APIs (`fs`, `path`, database libraries)
+- NO browser APIs
+- May import shared types from common package
+
+### When Working on Frontend Code
+
+- Follow Browser environment rules (or SSR framework rules if using Next.js)
+- Use browser APIs (`window`, `localStorage`, DOM)
+- NO Node.js APIs (except in Next.js server components)
+- May import shared types from common package
+
+---
+
+### Shared Code (Common Package)
+
+- **Purpose**: Share types, interfaces, constants between backend and frontend
+- **Constraints**: Must be pure TypeScript (no Node.js or browser-specific APIs)
+- **Typical contents**: DTOs, enums, validation schemas, utility functions
+
+---
+
+**Remember:** You're working in a monorepo. Identify which package you're editing before proceeding.

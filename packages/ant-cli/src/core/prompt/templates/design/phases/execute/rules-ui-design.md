@@ -68,24 +68,24 @@ You have access to tools for exploring reference images and assets:
 
 ### Output Location
 
-All UI design documents go to `inputs/sources/`:
+All UI design documents go to `outputs/design/`:
 
 ```xml
-<file path="inputs/sources/ui-tokens.md">
+<file path="outputs/design/ui-tokens.md">
 # ui-tokens.md (Design Tokens)
 ...
 </file>
 ```
 
 ```xml
-<file path="inputs/sources/ui-assets.md">
+<file path="outputs/design/ui-assets.md">
 # ui-assets.md (Asset Mapping)
 ...
 </file>
 ```
 
 ```xml
-<file path="inputs/sources/ui-spec.md">
+<file path="outputs/design/ui-spec.md">
 # ui-spec.md (UI Specification)
 ...
 </file>
@@ -100,17 +100,17 @@ All UI design documents go to `inputs/sources/`:
 ### ❌ DO NOT
 
 ```xml
-<!-- WRONG: outputs/design/ is for system-design -->
-<file path="outputs/design/ui-tokens.md">
+<!-- WRONG: Don't use inputs/sources/ -->
+<file path="inputs/sources/ui-tokens.md">
 
 <!-- WRONG: No append for UI docs -->
-<append path="inputs/sources/ui-tokens.md">
+<append path="outputs/design/ui-tokens.md">
 ```
 
 ### ✅ CORRECT
 
 ```xml
-<file path="inputs/sources/ui-tokens.md">
+<file path="outputs/design/ui-tokens.md">
 # ui-tokens.md (Design Tokens)
 
 > Color, typography, spacing, and size definitions

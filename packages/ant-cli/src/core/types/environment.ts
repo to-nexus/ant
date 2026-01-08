@@ -9,16 +9,16 @@
  * Primary execution environment of the project
  */
 export enum ProjectEnvironment {
-  /** Browser-based SPA (React, Vue, Angular) */
+  /** Browser-based frontend (React, Vue, Angular, Next.js, Remix - SSR or CSR) */
   BROWSER = 'browser',
   
-  /** Node.js API server (Express, Fastify, NestJS) */
+  /** Node.js API server (Express, Fastify, NestJS - backend only) */
   NODE_API = 'node-api',
   
   /** Node.js CLI tools and scripts */
   NODE_CLI = 'node-cli',
   
-  /** Fullstack frameworks with SSR (Next.js, Remix, SvelteKit) */
+  /** Fullstack project (Backend server + Frontend in same repo, e.g., Express + React monorepo) */
   FULLSTACK = 'fullstack',
   
   /** Config files (vite.config, webpack.config, etc.) */
@@ -32,13 +32,15 @@ export type BackendFramework = 'express' | 'fastify' | 'nestjs' | 'koa' | 'hapi'
 
 /**
  * Frontend framework detection
+ * Note: SSR frameworks (Next.js, Remix, etc.) are frontend frameworks, not fullstack
  */
-export type FrontendFramework = 'react' | 'vue' | 'angular' | 'svelte' | 'none';
+export type FrontendFramework = 'react' | 'vue' | 'angular' | 'svelte' | 'nextjs' | 'remix' | 'sveltekit' | 'nuxt' | 'none';
 
 /**
  * Fullstack framework detection
+ * Note: This is for REAL fullstack (backend + frontend in same repo), not SSR frameworks
  */
-export type FullstackFramework = 'nextjs' | 'remix' | 'sveltekit' | 'nuxt' | 'none';
+export type FullstackFramework = 'monorepo-fullstack' | 'none';
 
 /**
  * Environment detection result

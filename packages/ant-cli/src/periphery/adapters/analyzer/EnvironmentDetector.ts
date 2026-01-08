@@ -15,11 +15,14 @@ import { CodebaseProfile } from '../../../core/types';
  * EnvironmentDetector
  * 
  * Detects the primary execution environment of a project:
- * - Browser (React, Vue SPA)
- * - Node.js API (Express, NestJS, Fastify)
- * - Fullstack (Next.js, Remix)
+ * - Browser (React, Vue, Next.js, Remix - any frontend framework, SSR or CSR)
+ * - Node.js API (Express, NestJS, Fastify - backend server)
+ * - Fullstack (Monorepo or single repo with BOTH backend + frontend packages)
  * - CLI tools
  * - Config files
+ * 
+ * Note: SSR frameworks (Next.js, Remix, etc.) are treated as FRONTEND, not fullstack.
+ * Fullstack means actual backend server (Express/NestJS) + frontend in same project.
  * 
  * Used for environment-aware prompt selection.
  */
@@ -142,10 +145,17 @@ export class EnvironmentDetector {
   ): EnvironmentSignals {
     const deps = packageJson ? { ...packageJson.dependencies, ...packageJson.devDependencies } : {};
     
-    // Frontend signals
+    // Frontend signals (includes SSR frameworks)
     const frontendFrameworks: string[] = [];
     const frontendPatterns: string[] = [];
     
+    // SSR frameworks are FRONTEND, not fullstack
+    if (deps.next) frontendFrameworks.push('nextjs');
+    if (deps['@remix-run/node']) frontendFrameworks.push('remix');
+    if (deps['@sveltejs/kit']) frontendFrameworks.push('sveltekit');
+    if (deps.nuxt) frontendFrameworks.push('nuxt');
+    
+    // CSR frameworks
     if (deps.react) frontendFrameworks.push('react');
     if (deps.vue) frontendFrameworks.push('vue');
     if (deps.angular) frontendFrameworks.push('angular');
@@ -180,14 +190,23 @@ export class EnvironmentDetector {
                             !!deps.typeorm ||
                             !!deps.mongoose;
     
-    // Fullstack signals
+    // Fullstack signals (ONLY when there's BOTH backend server + frontend)
+    // Fullstack means: Express/NestJS + React/Vue in same project (monorepo or single repo)
+    // NOT just Next.js with API Routes (that's frontend with BFF pattern)
+    const hasRealBackendServer = signals.backend.frameworks.length > 0 && 
+                                  signals.backend.hasServerStructure;
+    const hasRealFrontend = frontendFrameworks.length > 0 || 
+                            fileStructure.keyFiles.hasIndexHtml;
+    
     const fullstackFrameworks: string[] = [];
     
-    if (deps.next) fullstackFrameworks.push('nextjs');
-    if (deps['@remix-run/node']) fullstackFrameworks.push('remix');
-    if (deps['@sveltejs/kit']) fullstackFrameworks.push('sveltekit');
-    if (deps.nuxt) fullstackFrameworks.push('nuxt');
+    // Only consider fullstack if BOTH backend AND frontend exist
+    if (hasRealBackendServer && hasRealFrontend) {
+      // This is truly a fullstack project (e.g., Express + React monorepo)
+      fullstackFrameworks.push('monorepo-fullstack');
+    }
     
+    // Legacy signals (not used for fullstack detection anymore)
     const hasSSR = fileStructure.keyFiles.hasNextConfig ||
                   fileStructure.directories.has('app') || // Next.js App Router
                   fileStructure.directories.has('pages'); // Next.js Pages Router
@@ -229,6 +248,13 @@ export class EnvironmentDetector {
   
   /**
    * Determine final environment from signals
+   * 
+   * Priority order:
+   * 1. Fullstack (BOTH backend server + frontend in same project)
+   * 2. Frontend (React, Vue, Next.js, Remix - SSR or CSR doesn't matter)
+   * 3. Backend (Express, NestJS, Fastify - API server only)
+   * 4. Config files
+   * 5. CLI tools
    */
   private determineEnvironment(
     signals: EnvironmentSignals,
@@ -236,29 +262,52 @@ export class EnvironmentDetector {
   ): EnvironmentDetection {
     const indicators: string[] = [];
     
-    // Priority 1: Fullstack frameworks (they can do both frontend and backend)
+    const backendScore = this.calculateBackendScore(signals);
+    const frontendScore = this.calculateFrontendScore(signals);
+    
+    // Priority 1: Fullstack (BOTH backend server + frontend exist)
+    // This is monorepo or single repo with Express/NestJS + React/Vue
     if (signals.fullstack.frameworks.length > 0) {
       const framework = signals.fullstack.frameworks[0] as FullstackFramework;
-      indicators.push(`fullstack-framework:${framework}`);
-      
-      if (signals.fullstack.hasSSR) indicators.push('has-ssr');
-      if (signals.fullstack.hasAPIRoutes) indicators.push('has-api-routes');
+      indicators.push(`fullstack:backend+frontend`);
+      indicators.push(...signals.backend.frameworks.map(f => `backend:${f}`));
+      indicators.push(...signals.frontend.frameworks.map(f => `frontend:${f}`));
       
       return {
         primary: ProjectEnvironment.FULLSTACK,
         confidence: 'high',
         indicators,
         framework: {
-          fullstack: framework
+          fullstack: framework,
+          backend: signals.backend.frameworks[0] as BackendFramework,
+          frontend: signals.frontend.frameworks[0] as FrontendFramework
         }
       };
     }
     
-    // Priority 2: Backend API (strong indicators)
-    const backendScore = this.calculateBackendScore(signals);
-    const frontendScore = this.calculateFrontendScore(signals);
+    // Priority 2: Frontend (includes Next.js, Remix, etc.)
+    // SSR frameworks are frontend, not fullstack!
+    if (frontendScore >= 1 || signals.frontend.hasHtmlEntry) {
+      const framework = signals.frontend.frameworks[0] as FrontendFramework || 'none';
+      indicators.push(...signals.frontend.frameworks.map(f => `frontend-framework:${f}`));
+      
+      if (signals.frontend.hasHtmlEntry) indicators.push('html-entry');
+      if (signals.frontend.hasBrowserAPIs) indicators.push('browser-apis');
+      if (signals.fullstack.hasSSR) indicators.push('has-ssr-capabilities');
+      if (signals.fullstack.hasAPIRoutes) indicators.push('has-api-routes-bff');
+      
+      return {
+        primary: ProjectEnvironment.BROWSER,
+        confidence: frontendScore >= 2 ? 'high' : 'medium',
+        indicators,
+        framework: {
+          frontend: framework
+        }
+      };
+    }
     
-    if (backendScore > frontendScore && backendScore >= 2) {
+    // Priority 3: Backend API (Express, NestJS, etc. - NO frontend)
+    if (backendScore >= 2) {
       const framework = signals.backend.frameworks[0] as BackendFramework || 'none';
       indicators.push(...signals.backend.frameworks.map(f => `backend-framework:${f}`));
       
@@ -272,24 +321,6 @@ export class EnvironmentDetector {
         indicators,
         framework: {
           backend: framework
-        }
-      };
-    }
-    
-    // Priority 3: Browser (SPA)
-    if (frontendScore >= 1 || signals.frontend.hasHtmlEntry) {
-      const framework = signals.frontend.frameworks[0] as FrontendFramework || 'none';
-      indicators.push(...signals.frontend.frameworks.map(f => `frontend-framework:${f}`));
-      
-      if (signals.frontend.hasHtmlEntry) indicators.push('html-entry');
-      if (signals.frontend.hasBrowserAPIs) indicators.push('browser-apis');
-      
-      return {
-        primary: ProjectEnvironment.BROWSER,
-        confidence: frontendScore >= 2 ? 'high' : 'medium',
-        indicators,
-        framework: {
-          frontend: framework
         }
       };
     }

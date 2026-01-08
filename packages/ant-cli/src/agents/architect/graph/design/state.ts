@@ -116,6 +116,13 @@ export interface DesignGraphState extends TaskArtifacts {
   designWorkType?: 'ui-design' | 'system-design';
   designWorkTypeReasoning?: string;
   
+  // ✅ NEW: Error handling for invalid requests (e.g., modify without documents)
+  designError?: {
+    type: string;
+    message: string;
+    suggestedAction?: string;
+  };
+  
   // ✅ NEW: UI document generation context
   // Populated when designWorkType === 'ui-design'
   uiReferences?: {
