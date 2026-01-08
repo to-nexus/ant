@@ -76,9 +76,13 @@ export class ModeController {
     const phasePrefix = `${task}/phases/${phase}`;
     
     // Base templates
+    // ✅ design task uses explicit base-system-design.md and rules-system-design.md
+    // ui-design has separate loading logic in docGen.ts (base-ui-design.md, rules-ui-design.md)
+    const baseTemplateName = task === 'design' ? 'base-system-design' : 'base';
+    const rulesTemplateName = task === 'design' ? 'rules-system-design' : 'rules';
     const templates = {
-      base: `${phasePrefix}/base`,
-      rules: `${phasePrefix}/rules`,
+      base: `${phasePrefix}/${baseTemplateName}`,
+      rules: `${phasePrefix}/${rulesTemplateName}`,
       injections: this.selectInjections(task, phase, context, taskType, mode)
     };
     

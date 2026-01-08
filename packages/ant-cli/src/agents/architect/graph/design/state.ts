@@ -109,4 +109,23 @@ export interface DesignGraphState extends TaskArtifacts {
   // ✅ UI specification existence flag
   // When true, system-design should defer UI implementation details to uiDoc
   hasUiDoc?: boolean;
+  
+  // ✅ NEW: Work type detection (ui-design vs system-design)
+  // ui-design: Generate tokens.md, ui-assets.md, ui-spec.md from Figma screenshots
+  // system-design: Generate system-design.md or contract-first split docs
+  designWorkType?: 'ui-design' | 'system-design';
+  designWorkTypeReasoning?: string;
+  
+  // ✅ NEW: UI document generation context
+  // Populated when designWorkType === 'ui-design'
+  uiReferences?: {
+    screens?: string[];      // inputs/references/screens/*
+    components?: string[];   // inputs/references/components/*
+  };
+  uiAssetsList?: {
+    logos?: string[];
+    backgrounds?: string[];
+    icons?: string[];
+    other?: string[];
+  };
 }

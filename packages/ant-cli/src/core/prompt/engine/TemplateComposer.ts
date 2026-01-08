@@ -98,7 +98,7 @@ export class TemplateComposer {
       modeConfig.templates.base,
       {
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // Variables used by code/phases/execute/base.md and design/phases/execute/base.md
+        // Variables used by code/phases/execute/base.md and design/phases/execute/base-system-design.md
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         
         // ✅ Used in multiple conditionals ({{#if currentTask}}, {{currentTask.type}}, etc.)

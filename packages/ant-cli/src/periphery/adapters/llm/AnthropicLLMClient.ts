@@ -316,7 +316,10 @@ export class AnthropicLLMClient implements LLMClient {
         const buffer = toolUseBuffer.get(event.index);
         if (buffer) {
           try {
-            const parsedInput = JSON.parse(buffer.input);
+            // ✅ Handle empty input (tools with no parameters)
+            const inputStr = buffer.input.trim();
+            const parsedInput = inputStr ? JSON.parse(inputStr) : {};
+            
             yield {
               type: 'tool_use',
               toolUse: {
@@ -332,10 +335,29 @@ export class AnthropicLLMClient implements LLMClient {
                 timestamp: new Date().toISOString(),
               },
             };
-            toolUseBuffer.delete(event.index);
           } catch (error) {
-            console.error(`[AnthropicLLM] Failed to parse tool input:`, buffer.input);
+            console.error(`[AnthropicLLM] Failed to parse tool input for ${buffer.name}:`, buffer.input?.substring(0, 200));
             console.error(error);
+            
+            // ✅ Still yield tool_use with empty input so the flow doesn't break
+            yield {
+              type: 'tool_use',
+              toolUse: {
+                id: buffer.id,
+                name: buffer.name,
+                input: {},  // Fallback to empty object
+                type: 'function' as const,
+              },
+              index: event.index,
+              metadata: {
+                provider: 'anthropic',
+                model: this.modelName,
+                timestamp: new Date().toISOString(),
+              },
+            };
+          } finally {
+            // ✅ Always clean up buffer
+            toolUseBuffer.delete(event.index);
           }
         }
       }

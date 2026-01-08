@@ -810,11 +810,13 @@ export class DevServerService {
         
         const extraEnv: Record<string, string | undefined> = {};
         
-        // ✅ Inject backend port into frontend so in-app API clients can call the correct backend
-        // Frontend will use absolute URL (http://localhost:30000/api/...) directly.
-        // Backend must have CORS enabled for cross-origin requests.
+        // ✅ Inject API base URL for frontend to call backend through proxy
+        // Uses relative path so it works in both local and cloud environments
+        // Browser will use current host (e.g., localhost:3000 or cloud.ant.com)
+        // Proxy routes /dev/:serverKey/api/* to backend port
+        // See: dev-server-env-contract.md for the full contract
         if (pkg.type === 'frontend' && backendPort) {
-          extraEnv.VITE_API_BASE_URL = `http://localhost:${backendPort}`;
+          extraEnv.VITE_API_BASE_URL = `/dev/${serverKey}`;
         }
         
         const process = await this.spawnDevProcess(pkg, pkgPort, serverKey, extraEnv);

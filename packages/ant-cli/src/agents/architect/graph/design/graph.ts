@@ -4,6 +4,7 @@ import { resolve } from "./nodes/resolve";
 import { decompose } from "./nodes/decompose/index";
 import { plan } from "./nodes/plan";
 import { docGen } from "./nodes/docGen";  // ✅ XML streaming + immediate file writes
+import { tool } from "./nodes/tool";  // ✅ Tool execution node (for UI Design multimodal)
 import { learn } from "./nodes/learn";
 import { detectEnvironment } from "./nodes/detectEnvironment";
 
@@ -192,6 +193,14 @@ export function buildDesignGraph() {
       
       // ✅ UI specification flag (for conditional prompt guidance)
       hasUiDoc: null as any,
+      
+      // ✅ NEW: Work type (ui-design vs system-design)
+      designWorkType: null as any,
+      designWorkTypeReasoning: null as any,
+      
+      // ✅ NEW: UI document generation context
+      uiReferences: null as any,
+      uiAssetsList: null as any,
     } as any,
   } as any);
 
@@ -200,6 +209,7 @@ export function buildDesignGraph() {
   graph.addNode("decompose" as const, decompose as any);
   graph.addNode("plan" as const, plan as any);
   graph.addNode("docGen" as const, docGen as any);  // ✅ XML streaming + immediate file writes (like code job)
+  graph.addNode("tool" as const, tool as any);  // ✅ Tool execution (for UI Design multimodal image loading)
   graph.addNode("checkTaskStatus" as const, checkTaskStatus as any);
   graph.addNode("learn" as const, learn as any);
 
@@ -211,7 +221,24 @@ export function buildDesignGraph() {
   (graph as any).addEdge("detectEnvironment", "decompose");
   (graph as any).addEdge("decompose", "plan");
   (graph as any).addEdge("plan", "docGen");
-  (graph as any).addEdge("docGen", "checkTaskStatus");  // ✅ Direct connection (no writeFiles)
+  
+  // ✅ Conditional routing: docGen → tool (if tool call) or checkTaskStatus (if done)
+  graph.addConditionalEdges(
+    "docGen" as any,
+    ((s: DesignGraphState) => {
+      // Check if there are pending tool calls
+      const toolCalls = s.llmResponse?.toolCalls;
+      if (toolCalls && toolCalls.length > 0) {
+        console.log(`🔧 [Graph] Tool call detected: ${toolCalls[0].name}`);
+        return "tool";  // Execute tool
+      }
+      return "checkTaskStatus";  // Task complete
+    }) as any,
+    { tool: "tool", checkTaskStatus: "checkTaskStatus" } as any
+  );
+  
+  // ✅ Tool → docGen (loop back for next LLM turn)
+  (graph as any).addEdge("tool", "docGen");
   
   // ✅ Conditional routing: more tasks → plan, all done → learn
   graph.addConditionalEdges(

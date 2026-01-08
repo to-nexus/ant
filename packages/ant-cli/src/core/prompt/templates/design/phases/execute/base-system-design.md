@@ -142,23 +142,23 @@ Prompt rules below = HOW to write (abstraction, terminology)
 
 **Examples of Intent Extraction:**
 ```
-PRD says: "브라우저 저장소 사용"
+PRD says: "Use browser storage"
 Intent: Client-side persistence required
 System Design: "Persistence adapter for client-side storage"
 
-PRD says: "LocalStorage로 북마크 저장"
+PRD says: "Save bookmarks to LocalStorage"
 Intent: Bookmarks must persist locally
 System Design: "Bookmark collection persisted via client-side adapter"
 
-PRD says: "브라우저에서 직접 API 호출"
+PRD says: "Call API directly from browser"
 Intent: No backend proxy, client-direct integration
 System Design: "Direct integration with external services (no backend intermediary)"
 
-PRD says: "정적 호스팅 전제"
+PRD says: "Assume static hosting"
 Intent: Stateless deployment, no server-side logic
 System Design: "Frontend-only architecture with stateless deployment"
 
-PRD says: "CORS 제약으로 CryptoPanic 제외"
+PRD says: "Exclude CryptoPanic due to CORS restrictions"
 Intent: CryptoPanic service unavailable due to access restrictions
 System Design: [Omit CryptoPanic entirely from design]
 ```
@@ -280,8 +280,8 @@ System Design: [Omit CryptoPanic entirely from design]
    - NO → Too specific, rewrite
 
 4. **"Did I extract INTENT from PRD, not copy wording?"**
-   - PRD says "브라우저 저장소" → Intent is "client-side persistence required"
-   - PRD says "정적 호스팅" → Intent is "stateless deployment required"
+   - PRD says "browser storage" → Intent is "client-side persistence required"
+   - PRD says "static hosting" → Intent is "stateless deployment required"
 
 **If any answer is unclear → Default to MORE abstraction, not less**
 
