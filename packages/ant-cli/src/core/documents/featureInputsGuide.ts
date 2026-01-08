@@ -15,8 +15,7 @@ export function getFeatureInputsGuideMarkdown(): string {
 
 ## 옵션(UI/FE 작업일 때 권장)
 - **\`inputs/sources/ui-spec.md\`**: 화면/상태/인터랙션/반응형 규칙
-- **\`inputs/sources/components.md\`**: 컴포넌트 variants/sizes/states
-- **\`inputs/sources/tokens.md\`**: 색/타이포/스페이싱 토큰
+- **\`inputs/sources/ui-tokens.md\`**: 색/타이포/스페이싱 토큰
 - **\`inputs/sources/ui-assets.md\`**: (선택) 이미지 캡션/주의사항 메모 (비워도 됨)
 
 ## 옵션(UI 에셋)

@@ -223,7 +223,7 @@ export class ArtifactService {
     // ✅ Canonical: ui-spec.md (ONLY)
     const uiDocFiles = [
       'ui-spec.md',
-      'tokens.md',
+      'ui-tokens.md',
       'ui-assets.md',
     ];
 
@@ -235,7 +235,7 @@ export class ArtifactService {
 > This section defines screen layouts, component props, states, and interaction rules.
 > Follow these specs exactly when implementing UI components.
 `,
-      'tokens.md': `## 🎯 DESIGN TOKENS
+      'ui-tokens.md': `## 🎯 DESIGN TOKENS
 > This section defines colors, typography, spacing, and other design constants.
 > Reference these tokens in your CSS/styles for consistency.
 `,

@@ -93,6 +93,35 @@ fs.readFile(designDecomposeRulesPath, "utf8")
   .then(content => Handlebars.registerPartial("design/phases/decompose/rules", content))
   .catch(() => {});
 
+// ✅ Register design/phases/execute partials (UI design and system design)
+const designExecutePath = join(__dirname, "../../../core/prompt/templates/design/phases/execute");
+Promise.all([
+  // Rules partials
+  fs.readFile(join(designExecutePath, "rules-ui-design.md"), "utf8")
+    .then(content => Handlebars.registerPartial("design/phases/execute/rules-ui-design", content))
+    .catch(() => {}),
+  fs.readFile(join(designExecutePath, "rules-system-design.md"), "utf8")
+    .then(content => Handlebars.registerPartial("design/phases/execute/rules-system-design", content))
+    .catch(() => {}),
+  // UI design injections
+  fs.readFile(join(designExecutePath, "injections/ui-tokens-guide.md"), "utf8")
+    .then(content => Handlebars.registerPartial("design/phases/execute/injections/ui-tokens-guide", content))
+    .catch(() => {}),
+  fs.readFile(join(designExecutePath, "injections/ui-assets-guide.md"), "utf8")
+    .then(content => Handlebars.registerPartial("design/phases/execute/injections/ui-assets-guide", content))
+    .catch(() => {}),
+  fs.readFile(join(designExecutePath, "injections/ui-spec-guide.md"), "utf8")
+    .then(content => Handlebars.registerPartial("design/phases/execute/injections/ui-spec-guide", content))
+    .catch(() => {}),
+  // System design injections (existing)
+  fs.readFile(join(designExecutePath, "injections/game-domain-guide.md"), "utf8")
+    .then(content => Handlebars.registerPartial("design/phases/execute/injections/game-domain-guide", content))
+    .catch(() => {}),
+  fs.readFile(join(designExecutePath, "injections/service-domain-guide.md"), "utf8")
+    .then(content => Handlebars.registerPartial("design/phases/execute/injections/service-domain-guide", content))
+    .catch(() => {}),
+]).catch(() => {});
+
 
 /**
  * FilePromptAdapter - File system implementation of PromptPort

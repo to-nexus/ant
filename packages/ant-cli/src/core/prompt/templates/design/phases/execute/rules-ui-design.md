@@ -46,7 +46,7 @@ You have access to tools for exploring reference images and assets:
 
 ### Image Loading Strategy
 
-- **tokens.md**: Load 2-3 key screenshots with diverse UI elements
+- **ui-tokens.md**: Load 2-3 key screenshots with diverse UI elements
 - **ui-assets.md**: Use `list_assets` primarily, images optional for context
 - **ui-spec.md**: Load screens systematically (desktop → tablet → mobile)
 
@@ -71,8 +71,8 @@ You have access to tools for exploring reference images and assets:
 All UI design documents go to `inputs/sources/`:
 
 ```xml
-<file path="inputs/sources/tokens.md">
-# tokens.md (Design Tokens)
+<file path="inputs/sources/ui-tokens.md">
+# ui-tokens.md (Design Tokens)
 ...
 </file>
 ```
@@ -101,17 +101,17 @@ All UI design documents go to `inputs/sources/`:
 
 ```xml
 <!-- WRONG: outputs/design/ is for system-design -->
-<file path="outputs/design/tokens.md">
+<file path="outputs/design/ui-tokens.md">
 
 <!-- WRONG: No append for UI docs -->
-<append path="inputs/sources/tokens.md">
+<append path="inputs/sources/ui-tokens.md">
 ```
 
 ### ✅ CORRECT
 
 ```xml
-<file path="inputs/sources/tokens.md">
-# tokens.md (Design Tokens)
+<file path="inputs/sources/ui-tokens.md">
+# ui-tokens.md (Design Tokens)
 
 > Color, typography, spacing, and size definitions
 
@@ -124,25 +124,71 @@ All UI design documents go to `inputs/sources/`:
 ```
 
 ════════════════════════════════════════════════════════════════════════════════
+## ⚠️ DOCUMENT DEPENDENCY CHAIN
+════════════════════════════════════════════════════════════════════════════════
+
+Documents are generated in order. Previous documents are **automatically injected** as REFERENCE sections.
+
+```
+ui-tokens.md (FIRST - no dependencies)
+     ↓
+ui-assets.md (SECOND - receives ui-tokens.md as REFERENCE)
+     ↓
+ui-spec.md (LAST - receives both previous documents as REFERENCE)
+```
+
+### How to Use the REFERENCE Sections
+
+For dependent tasks, you will find REFERENCE sections in this prompt containing previously generated content:
+
+```
+# REFERENCE: ui-tokens.md (generated in previous task)
+```
+
+**When generating ui-assets.md:**
+- Find and read the `# REFERENCE: ui-tokens.md` section in this prompt
+- Use token names when describing asset usage context
+
+**When generating ui-spec.md:**
+- Find and read both `# REFERENCE: ui-tokens.md` and `# REFERENCE: ui-assets.md` sections
+- ALL visual values must use token references (e.g., `token(color.bg.base)`)
+- ALL assets must use identifiers from the asset mapping
+
+════════════════════════════════════════════════════════════════════════════════
 ## Document Quality Guidelines
 ════════════════════════════════════════════════════════════════════════════════
 
-### tokens.md
-- Use **semantic token names** (color.bg.base, not color.white)
-- Include **exact hex values** from screenshots
-- Organize by category (Colors, Typography, Spacing, Radius, Shadows)
-- Use **tables** for easy scanning
+### ui-tokens.md
+- Use **semantic token names** (purpose-based, not appearance-based)
+- Include **exact values** extracted from screenshots
+- Organize by category (Colors, Typography, Spacing, Effects)
+- Use **tables** for easy reference by other documents
 
 ### ui-assets.md
+- **Read ui-tokens.md first** to ensure consistency
 - Map **source → destination** paths clearly
 - Include **usage context** for each asset
 - Categorize by type (logos, icons, backgrounds)
 
 ### ui-spec.md
-- Document **layout structure** (grid, flexbox)
-- Include **component props and states**
-- Describe **interactions** (hover, active, focus)
-- Note **responsive breakpoints**
+
+**CRITICAL: Specification, Not Implementation**
+
+ui-spec.md documents **WHAT** to build, not **HOW** to build it.
+
+| ✅ INCLUDE | ❌ EXCLUDE |
+|-----------|-----------|
+| Layout structure | Framework-specific code |
+| Component states and props | CSS/styling syntax |
+| Interaction behaviors | Implementation details |
+| Responsive rules | Raw values (use tokens) |
+| Token references | Programming language syntax |
+
+**Token Reference Requirement:**
+- ALL colors → `token(color.*)` from ui-tokens.md
+- ALL spacing → `token(spacing.*)` from ui-tokens.md
+- ALL typography → `token(font.*)` from ui-tokens.md
+- NO raw hex codes, pixel values, or framework classes
 
 ════════════════════════════════════════════════════════════════════════════════
 ## Final Checklist

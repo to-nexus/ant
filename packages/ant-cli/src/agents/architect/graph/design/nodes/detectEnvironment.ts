@@ -384,7 +384,7 @@ export async function detectEnvironment(
       }
     } else {
       console.log(`   UI Design Mode`);
-      console.log(`   Target files: tokens.md, ui-assets.md, ui-spec.md`);
+      console.log(`   Target files: ui-tokens.md, ui-assets.md, ui-spec.md`);
       if (hasReferences) {
         console.log(`   📸 Will analyze reference images from inputs/references/`);
       }

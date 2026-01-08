@@ -393,7 +393,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   if (uiDoc) {
     console.log(`📄 [Resolve] uiDoc loaded (${uiDoc.length} chars)`);
   } else {
-    console.log(`⚠️  [Resolve] uiDoc NOT loaded - check inputs/sources for ui-spec.md, components.md, tokens.md, ui-assets.md`);
+    console.log(`⚠️  [Resolve] uiDoc NOT loaded - check inputs/sources for ui-spec.md, ui-tokens.md, ui-assets.md`);
   }
 
   // ✅ Index inputs guide to documents collection (for RAG-based chat guidance)
