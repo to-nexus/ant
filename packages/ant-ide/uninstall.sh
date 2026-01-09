@@ -8,7 +8,7 @@ set -e
 echo "🗑️  ANT IDE 제거를 시작합니다..."
 
 SERVICE_NAME="ant-ide"
-INSTALL_DIR="/opt/ant/ant-ide"
+INSTALL_DIR="/cross/ant/ant-ide"
 
 # Root 권한 확인
 if [[ $EUID -ne 0 ]]; then

@@ -52,7 +52,7 @@ sudo systemctl start ant-ide
 
 ```bash
 # 환경 변수 수정
-sudo nano /opt/ant/ant-ide/.env
+sudo nano /cross/ant/ant-ide/.env
 
 # 변경 후 재시작
 sudo systemctl restart ant-ide

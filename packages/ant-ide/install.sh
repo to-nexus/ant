@@ -110,7 +110,7 @@ if systemctl is-active --quiet "$SERVICE_NAME"; then
     echo "   로그 확인:    sudo journalctl -u ant-ide -f"
     echo "   재시작:       sudo systemctl restart ant-ide"
     echo "   중지:         sudo systemctl stop ant-ide"
-    echo "   설정 수정:    sudo nano /opt/ant/ant-ide/.env"
+    echo "   설정 수정:    sudo nano /cross/ant/ant-ide/.env"
     echo ""
     echo "📌 워크스페이스 경로: $WORKSPACE_DIR"
 else

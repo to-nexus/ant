@@ -10,10 +10,10 @@ Type=oneshot
 RemainAfterExit=yes
 User=cross
 Group=cross
-WorkingDirectory=/opt/ant/ant-ide
+WorkingDirectory=/cross/ant/ant-ide
 
 # 환경 변수 파일 (없어도 에러 안남)
-EnvironmentFile=-/opt/ant/ant-ide/.env
+EnvironmentFile=-/cross/ant/ant-ide/.env
 
 # 시작 전 기존 컨테이너 강제 삭제 (compose 외부에서 만든 것도 포함)
 ExecStartPre=-/usr/bin/docker rm -f ant-openvscode
