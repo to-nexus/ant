@@ -9,7 +9,7 @@ set -e
 echo "🚀 ANT IDE 설치를 시작합니다..."
 
 # 변수 설정
-INSTALL_DIR="/opt/ant/ant-ide"
+INSTALL_DIR="/cross/ant/ant-ide"
 SERVICE_NAME="ant-ide"
 SERVICE_USER="cross"
 WORKSPACE_DIR="/cross"
