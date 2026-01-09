@@ -113,13 +113,11 @@ Configure as needed for project (Tailwind, ESLint, etc). Standard setup.
 
 ## 5. .gitignore
 
-```
-node_modules
-dist
-build
-.env
-*.log
-```
+**Principles:**
+- Include common artifacts: `node_modules`, `dist`, `build`, `.env`, `*.log`
+- Include framework/platform-specific build outputs and caches (e.g., Next.js → `.next`, Nuxt → `.nuxt`, etc.)
+- Include IDE/editor-specific files if appropriate
+- When uncertain about platform artifacts, research the framework's recommended gitignore patterns
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

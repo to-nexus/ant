@@ -55,12 +55,14 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     if (state.currentTask.type === 'explain') return false;
     // Setup tasks must be config-only; skip UI spec injection to avoid scaffolding product UI
     if (state.currentTask.type === 'setup') return false;
-    // ✅ 1) Primary: task metadata from decompose
+    
+    // ✅ 1) Primary: task.ui flag from decompose (source of truth)
     if (state.currentTask.ui === true) return true;
     if (state.currentTask.ui === false) return false;
-    // ✅ 2) Fallback: Strong signals in task title/description
+    
+    // ✅ 2) Fallback: Strong signals in task title/description (when ui flag is undefined)
     const text = `${state.currentTask.name}\n${state.currentTask.description}`.toLowerCase();
-    const keywordHit = /(ui|ux|figma|design|layout|style|styling|css|tailwind|theme|token|component|screen|page|frontend|react|tsx|모달|버튼|인풋|화면|레이아웃|디자인)/.test(text);
+    const keywordHit = /(ui|ux|figma|design|layout|style|styling|css|tailwind|theme|token|component|screen|page|frontend|react|tsx|header|footer|hero|card|button|nav|모달|버튼|인풋|화면|레이아웃|디자인)/.test(text);
     // Environment signal (best-effort, not mandatory)
     const envHit = state.detectedEnvironment === 'frontend' || state.detectedEnvironment === 'fullstack';
     // Code context signal (RAG retrieved TSX)

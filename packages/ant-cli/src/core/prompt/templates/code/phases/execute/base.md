@@ -143,7 +143,7 @@ Create config files only. NO source code, NO tests.
 - `package.json` - Dependencies and scripts
 - `tsconfig.json` (if TypeScript) - Compiler configuration
 - Build tool config - vite.config.ts/webpack.config.js/next.config.js
-- `.gitignore` - Version control exclusions
+- `.gitignore` - Version control exclusions (include platform-specific artifacts)
 - `.env.example` - Environment variable template
 - `index.html` (if Vite/SPA) - Entry HTML
 

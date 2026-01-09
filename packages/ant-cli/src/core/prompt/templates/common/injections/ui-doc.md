@@ -16,12 +16,24 @@ Use this for UI behavior/layout/components/tokens.
 - Asset exists in table → MUST copy and use that file
 - Asset NOT in table → May use text or other approach
 
-### ⚠️ ANTI-PATTERN: Text Substitution
+### ⚠️ ANTI-PATTERN: Text Substitution & TODO Placeholders
 
 If the mapping table specifies an **image asset** for an element (logo, icon, background, typography image):
 - ❌ DO NOT render it as plain text
 - ❌ DO NOT skip copying the asset
-- ✅ Copy the asset file and reference it in code
+- ❌ DO NOT leave `{/* TODO: Add logo */}` comments
+- ✅ Copy the asset file and reference it in code IMMEDIATELY
+
+**WRONG:**
+```tsx
+{/* TODO: Add logo image from /public/logos/logo.svg */}
+<span className="font-bold">Company Name</span>
+```
+
+**CORRECT:**
+```tsx
+<img src="/logos/logo.svg" alt="Logo" className="h-8" />
+```
 
 ### 📋 ASSET USAGE PROCESS
 
