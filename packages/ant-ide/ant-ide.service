@@ -8,10 +8,15 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+User=cross
+Group=cross
 WorkingDirectory=/opt/ant/ant-ide
-EnvironmentFile=/opt/ant/ant-ide/.env
 
-# 시작 전 기존 컨테이너 정리 (있으면)
+# 환경 변수 파일 (없어도 에러 안남)
+EnvironmentFile=-/opt/ant/ant-ide/.env
+
+# 시작 전 기존 컨테이너 강제 삭제 (compose 외부에서 만든 것도 포함)
+ExecStartPre=-/usr/bin/docker rm -f ant-openvscode
 ExecStartPre=-/usr/bin/docker compose down --remove-orphans
 
 # Docker Compose로 시작
@@ -19,10 +24,7 @@ ExecStart=/usr/bin/docker compose up -d
 
 # 정상 종료
 ExecStop=/usr/bin/docker compose down
-
-# 재시작 정책
-Restart=on-failure
-RestartSec=10
+ExecStopPost=-/usr/bin/docker rm -f ant-openvscode
 
 # 타임아웃
 TimeoutStartSec=120
@@ -30,4 +32,3 @@ TimeoutStopSec=30
 
 [Install]
 WantedBy=multi-user.target
-

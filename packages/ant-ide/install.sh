@@ -11,6 +11,7 @@ echo "🚀 ANT IDE 설치를 시작합니다..."
 # 변수 설정
 INSTALL_DIR="/opt/ant/ant-ide"
 SERVICE_NAME="ant-ide"
+SERVICE_USER="cross"
 WORKSPACE_DIR="/cross"
 
 # Root 권한 확인
@@ -38,9 +39,17 @@ fi
 
 echo "✅ Docker 및 Docker Compose 확인 완료"
 
-# 1. 설치 디렉토리 생성
+# 0. cross 유저가 docker 그룹에 있는지 확인
+if ! groups "$SERVICE_USER" | grep -q docker; then
+    echo "🔧 $SERVICE_USER 유저를 docker 그룹에 추가합니다..."
+    usermod -aG docker "$SERVICE_USER"
+    echo "✅ docker 그룹 추가 완료 (재로그인 후 적용)"
+fi
+
+# 1. 설치 디렉토리 생성 및 권한 설정
 echo "📁 설치 디렉토리 생성: $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
+chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
 
 # 2. 워크스페이스 디렉토리 확인 (디스크 마운트 경로)
 echo "📁 워크스페이스 디렉토리 확인: $WORKSPACE_DIR"
@@ -56,6 +65,7 @@ echo "📋 파일 복사 중..."
 
 cp "$SCRIPT_DIR/docker-compose.yml" "$INSTALL_DIR/"
 cp "$SCRIPT_DIR/ant-ide.service" "/etc/systemd/system/"
+chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
 
 # 4. 환경 변수 파일 생성 (없으면)
 if [ ! -f "$INSTALL_DIR/.env" ]; then
@@ -65,6 +75,7 @@ if [ ! -f "$INSTALL_DIR/.env" ]; then
 ANT_IDE_PORT=4400
 ANT_WORKSPACE_BASE_PATH=$WORKSPACE_DIR
 EOF
+    chown "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR/.env"
 else
     echo "⏭️  환경 변수 파일이 이미 존재합니다: $INSTALL_DIR/.env"
 fi
@@ -74,9 +85,9 @@ echo "⚙️  systemd 서비스 등록 중..."
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME"
 
-# 6. Docker 이미지 미리 pull
+# 6. Docker 이미지 미리 pull (cross 유저로)
 echo "📦 Docker 이미지 다운로드 중..."
-docker pull gitpod/openvscode-server:latest
+sudo -u "$SERVICE_USER" docker pull gitpod/openvscode-server:latest
 
 # 7. 서비스 시작
 echo "🚀 서비스 시작 중..."
@@ -92,6 +103,8 @@ if systemctl is-active --quiet "$SERVICE_NAME"; then
     echo ""
     echo "📌 접속 주소: http://$(hostname -I | awk '{print $1}'):4400"
     echo ""
+    echo "📌 서비스 실행 유저: $SERVICE_USER"
+    echo ""
     echo "📌 유용한 명령어:"
     echo "   상태 확인:    sudo systemctl status ant-ide"
     echo "   로그 확인:    sudo journalctl -u ant-ide -f"
@@ -105,4 +118,3 @@ else
     echo "   로그 확인: sudo journalctl -u ant-ide -e"
     exit 1
 fi
-
