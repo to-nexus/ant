@@ -8,6 +8,7 @@ export interface FileActions {
   refreshFileTree: () => Promise<void>;
   setFileContent: (content: FileContent | undefined) => void;
   triggerFileReload: (filePath?: string | undefined) => void;
+  setLastViewMode: (mode: 'raw' | 'preview') => void;
 }
 
 export type FileSlice = FileState & FileActions;
@@ -21,6 +22,7 @@ export const createFileSlice: StateCreator<any, [], [], FileSlice> = (set, get) 
   fileContent: undefined,
   fileReloadTrigger: 0,
   fileReloadTarget: undefined,
+  lastViewMode: 'raw',
 
   // ==================
   // Actions
@@ -92,6 +94,10 @@ export const createFileSlice: StateCreator<any, [], [], FileSlice> = (set, get) 
       fileReloadTrigger: (s.fileReloadTrigger || 0) + 1,
       fileReloadTarget: target
     }));
+  },
+
+  setLastViewMode: (mode) => {
+    set({ lastViewMode: mode });
   },
 });
 

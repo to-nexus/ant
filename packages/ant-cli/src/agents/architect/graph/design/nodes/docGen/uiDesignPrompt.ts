@@ -158,6 +158,27 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
     });
   }
   
+  // ✅ 5. Add next step instruction after tool call (CRITICAL FIX)
+  // This ensures LLM continues with analysis phase instead of stopping after discovery
+  if (task?.id === 'ui-spec') {
+    const hasDiscoveredImages = state.uiReferences?.screens?.length || state.uiReferences?.components?.length;
+    
+    if (hasDiscoveredImages) {
+      content.push({
+        type: 'text',
+        text: `\n\n# Next Steps
+
+You have discovered reference images. Now proceed to the Analysis phase:
+
+1. Use \`read_reference_image\` tool to load the main screen screenshot
+2. Analyze the layout structure, components, and visual patterns
+3. Generate ui-spec.md based on your analysis
+
+⚠️ Do NOT stop after discovering images. You must analyze them before generating the document.`
+      });
+    }
+  }
+  
   return content;
 }
 
