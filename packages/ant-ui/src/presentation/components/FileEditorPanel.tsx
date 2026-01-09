@@ -19,6 +19,8 @@ export function FileEditorPanel({ onClose }: FileEditorPanelProps) {
   const selectedFile = useStore((state) => state.selectedFile);
   const fileReloadTrigger = useStore((state) => state.fileReloadTrigger);
   const fileReloadTarget = useStore((state) => state.fileReloadTarget);
+  const lastViewMode = useStore((state) => state.lastViewMode);
+  const setLastViewMode = useStore((state) => state.setLastViewMode);
   
   const [fileContent, setFileContent] = useState('');
   const [editedContent, setEditedContent] = useState('');
@@ -34,12 +36,19 @@ export function FileEditorPanel({ onClose }: FileEditorPanelProps) {
   const isSvgFile = isSvgFilePath(selectedFile);
   const isBinaryImageFile = isBinaryImageFilePath(selectedFile);
   
-  // Reset view mode when file changes or if it's not markdown
+  // 파일이 두 가지 이상 모드를 지원하는지 확인
+  const hasMultipleModes = (isMarkdownFile || isSvgFile) && !isBinaryImageFile;
+  
+  // Apply last view mode when file changes (only for files with multiple modes)
   useEffect(() => {
-    if (!isMarkdownFile && !isSvgFile) {
+    if (hasMultipleModes) {
+      // 두 가지 모드를 지원하는 파일: 마지막 보기 모드 적용
+      setViewMode(lastViewMode);
+    } else {
+      // 하나의 모드만 지원하는 파일: raw 모드로 설정하되 lastViewMode는 업데이트하지 않음
       setViewMode('raw');
     }
-  }, [selectedFile, isMarkdownFile, isSvgFile]);
+  }, [selectedFile, hasMultipleModes, lastViewMode]);
 
   useEffect(() => {
     if (!selectedProject || !selectedFeature || !selectedFile) {
@@ -155,6 +164,14 @@ export function FileEditorPanel({ onClose }: FileEditorPanelProps) {
     setHasChanges(newContent !== fileContent);
   };
 
+  // 보기 모드 변경 핸들러 (두 가지 모드를 지원하는 파일에서만 store 업데이트)
+  const handleViewModeChange = (mode: 'raw' | 'preview') => {
+    setViewMode(mode);
+    if (hasMultipleModes) {
+      setLastViewMode(mode);
+    }
+  };
+
   return (
     <div className="w-full bg-white dark:bg-gray-800 p-4 flex flex-col h-full">
       {/* Header */}
@@ -200,7 +217,7 @@ export function FileEditorPanel({ onClose }: FileEditorPanelProps) {
           {(isMarkdownFile || isSvgFile) && !isBinaryImageFile && (
             <div className="flex items-center gap-1 ml-4 bg-gray-100 dark:bg-gray-900 rounded-md h-9 p-0.5">
               <button
-                onClick={() => setViewMode('raw')}
+                onClick={() => handleViewModeChange('raw')}
                 className={`flex items-center gap-1.5 h-8 px-3 rounded text-xs font-medium transition-colors ${
                   viewMode === 'raw'
                     ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
@@ -212,7 +229,7 @@ export function FileEditorPanel({ onClose }: FileEditorPanelProps) {
                 Raw
               </button>
               <button
-                onClick={() => setViewMode('preview')}
+                onClick={() => handleViewModeChange('preview')}
                 className={`flex items-center gap-1.5 h-8 px-3 rounded text-xs font-medium transition-colors ${
                   viewMode === 'preview'
                     ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'

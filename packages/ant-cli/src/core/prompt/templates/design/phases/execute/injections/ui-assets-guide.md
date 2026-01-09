@@ -1,11 +1,43 @@
 ## ui-assets.md Generation Guide
 
 ### Purpose
-Create a mapping document that connects source assets to their runtime destinations and usage contexts.
+Create an **accurate** mapping document that connects source assets to their runtime destinations and usage contexts.
 
 ### Core Principles
 
-#### 1. Token Reference
+#### 1. Accuracy - Verify Before Documenting
+
+**Always verify file existence:**
+- Use `list_assets` tool to discover actual files in `inputs/assets/`
+- Document only files that exist
+- Preserve original filenames unless semantic clarity requires change
+
+**When to rename:**
+- **Keep original** if filename already conveys purpose clearly
+- **Clarify purpose** if original name is generic or unclear (numbered files, temp names)
+- **Match usage** if renaming aligns with section/component names in ui-spec
+
+**Avoid arbitrary changes:** Don't rename based on personal preference; rename only when it improves clarity or matches documented usage.
+
+#### 2. File Reuse - Document Once, Reference Multiple
+
+When the same file serves multiple purposes:
+- Map it once to a single destination
+- Note all usage contexts in the usage column
+- Or create a separate "Asset Reuse" section listing shared files
+
+**Principle:** Don't duplicate files unnecessarily; document the reuse relationship.
+
+#### 3. Destination Path Consistency
+
+Establish consistent patterns for asset organization:
+- Group by type (logos/, icons/, backgrounds/, images/)
+- Keep structure flat when possible (avoid deep nesting)
+- Follow framework conventions if applicable (e.g., static asset directories)
+
+**Principle:** Predictability aids developers. Choose a pattern and maintain it throughout.
+
+#### 4. Token Reference
 Look for the section titled `# REFERENCE: ui-tokens.md` elsewhere in this prompt.
 
 - That section contains all design tokens (colors, typography, spacing, etc.)
@@ -53,33 +85,25 @@ For each asset, document:
 3. **Contextual**: Usage context is clear
 4. **Actionable**: Developer knows exactly how to use each asset
 
-### Example Structure
+### Documentation Approach
 
-```markdown
-# ui-assets.md (Asset Mapping)
+**Organize by category:**
+Group assets by their functional type (logos, icons, backgrounds, media, etc.) using your judgment based on file names and content.
 
-> Runtime asset file mapping
+**For each asset, provide:**
+- Original filename
+- Source path (location in inputs/)
+- Destination path (target location in codebase)
+- Usage context (which sections/components use it)
+- Any special notes (size recommendations, format notes, etc.)
 
-## Logos
-| file | src | dest | usage |
-|---|---|---|---|
-| logo.svg | inputs/assets/logos/logo.svg | public/logos/logo.svg | Header logo |
+**Maintain consistency:**
+- Use consistent destination path patterns throughout
+- Group similar assets in the same destination folders
+- Keep naming conventions predictable
 
-## Icons
-| file | src | dest | usage |
-|---|---|---|---|
-| arrow.svg | inputs/assets/icons/arrow.svg | public/icons/arrow.svg | Button arrow |
-
-## Backgrounds
-| file | src | dest | usage |
-|---|---|---|---|
-| hero-bg.webp | inputs/assets/bg/hero-bg.webp | public/bg/hero-bg.webp | Hero background |
-
-## Copy Instructions
-
-Runtime assets must be copied to the codebase's public/ folder:
-- inputs/assets/ → codebase/public/
-```
+**Ensure completeness:**
+All files discovered via `list_assets` must be documented. No asset should be left unmapped.
 
 ### Workflow
 

@@ -24,6 +24,7 @@ export interface FileState {
   fileContent: FileContent | undefined;
   fileReloadTrigger: number;
   fileReloadTarget: string | undefined;
+  lastViewMode: 'raw' | 'preview';
 }
 
 export interface JobState {
