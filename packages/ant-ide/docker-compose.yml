@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  ant-openvscode:
+    image: gitpod/openvscode-server:latest
+    container_name: ant-openvscode
+    hostname: ant-openvscode
+    restart: unless-stopped
+    ports:
+      - "${ANT_IDE_PORT:-4400}:3000"
+    volumes:
+      - "${ANT_WORKSPACE_BASE_PATH:-/cross}:/workspace:cached"
+    working_dir: /workspace
+    environment:
+      - TZ=Asia/Seoul
+    # 필요시 인증 추가
+    # command: --connection-token=${ANT_IDE_TOKEN:-ant-secret-token}
+

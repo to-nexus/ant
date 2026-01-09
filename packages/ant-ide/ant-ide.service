@@ -1,0 +1,33 @@
+[Unit]
+Description=ANT IDE (OpenVSCode Server)
+Documentation=https://github.com/gitpod-io/openvscode-server
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/ant/ant-ide
+EnvironmentFile=/opt/ant/ant-ide/.env
+
+# 시작 전 기존 컨테이너 정리 (있으면)
+ExecStartPre=-/usr/bin/docker compose down --remove-orphans
+
+# Docker Compose로 시작
+ExecStart=/usr/bin/docker compose up -d
+
+# 정상 종료
+ExecStop=/usr/bin/docker compose down
+
+# 재시작 정책
+Restart=on-failure
+RestartSec=10
+
+# 타임아웃
+TimeoutStartSec=120
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
+
