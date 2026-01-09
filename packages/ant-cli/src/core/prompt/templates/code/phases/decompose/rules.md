@@ -21,7 +21,7 @@ First, analyze step by step (think through):
 
 Then output the task list wrapped in <tasks> tags with valid JSON:
 
-**Example 1: NEW PROJECT (no existing code)**
+**Example 1: NEW PROJECT with both UI and backend tasks**
 <tasks>
 [
   {
@@ -30,15 +30,23 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
     "type": "setup",
     "priority": 100,
     "ui": false,
-    "description": "Create project structure, configuration files, and install dependencies based on detected language and framework"
+    "description": "Create project structure, configuration files, and install dependencies"
   },
   {
-    "id": "feature-impl",
-    "name": "Implement Feature",
+    "id": "api-endpoints",
+    "name": "Implement API Endpoints",
     "type": "feature",
     "priority": 200,
+    "ui": false,
+    "description": "Create REST API for user authentication and data management"
+  },
+  {
+    "id": "landing-page",
+    "name": "Implement Landing Page",
+    "type": "feature",
+    "priority": 210,
     "ui": true,
-    "description": "..."
+    "description": "<ui> Create landing page with hero section, feature cards, and footer using design tokens and assets"
   },
   {
     "id": "final-verification",
@@ -140,20 +148,26 @@ CRITICAL:
 
 **UI TASK FLAG (IMPORTANT):**
 - Add `"ui": true|false` to EVERY task object.
-- Set `"ui": true` ONLY when the task requires frontend UI work, such as:
+- **Setup tasks (`type: "setup"`) → ALWAYS `ui: false`** (config files only, no UI code)
+- Set `"ui": true` ONLY when the task implements visible frontend UI, such as:
   - UI components (Button/Input/Modal/Table), layout, styling/CSS/Tailwind
   - Screen/page implementation, UI state (loading/empty/error), UX interactions
   - Theme/tokens/typography/colors
   - React/TSX view layer changes
-- Otherwise set `"ui": false` (backend-only, infra, API contract, server fixes, dependency fixes).
+- Otherwise set `"ui": false` (backend-only, infra, API contract, server fixes, dependency fixes, **setup/config**).
+- When `"ui": true`, prefix description with `<ui>` for visual identification (e.g., `"<ui> Create Header..."`).
 
 **RUNTIME ASSETS (IMPORTANT):**
 - If the spec contains a "Runtime Assets Available (inputs/assets)" section (file list), those files are **NOT auto-copied**.
-- You MUST include at least one task to:
+- **DO NOT create a separate task just for copying assets.** UI tasks should handle asset copying as part of their implementation.
+- When implementing UI components, the task must:
   1) Decide the correct static asset root for the target app (monorepo-aware: e.g., `apps/<app>/public`, `packages/<app>/public`, etc.)
   2) Copy assets from `inputs/assets/**` into that static root, preserving relative paths
-  3) Update the code to reference the copied assets (e.g. `/icons/...` or imported assets) so they are actually used
+  3) Reference the copied assets in code (e.g. `/icons/...` or imported assets)
 - Do NOT inline/encode binary assets into the prompt. Use file operations / shell copy in implementation.
+- **⚠️ ANTI-PATTERN: TODO placeholders instead of actual implementation**
+  - ❌ DO NOT leave `{/* TODO: Add logo image */}` comments
+  - ✅ Actually copy the asset and reference it in code
 
 IMPORTANT:
 - **Setup Task Decision (CRITICAL):**
@@ -182,12 +196,20 @@ IMPORTANT:
 <tasks>
 [
   {
-    "id": "task-1",
-    "name": "Task name",
-    "description": "Task description",
-    "type": "setup|feature|error",
-    "priority": 100,
+    "id": "backend-api",
+    "name": "Create API Endpoints",
+    "description": "Implement REST API for data management",
+    "type": "feature",
+    "priority": 200,
     "ui": false
+  },
+  {
+    "id": "header-component",
+    "name": "Implement Header",
+    "description": "Create Header with logo, navigation, and responsive layout",
+    "type": "feature",
+    "priority": 210,
+    "ui": true
   }
 ]
 </tasks>

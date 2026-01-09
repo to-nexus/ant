@@ -329,6 +329,7 @@ function updatePaddle() {
 | **CRITICAL: Hardcoding values instead of using constants** | `const speed = 300;` when `PADDLE_SPEED` exists | `import { PADDLE_SPEED } from './constants'; const speed = PADDLE_SPEED;` |
 | **CRITICAL: Duplicate asset paths** | Same assets in multiple directories | One asset, one location, one path |
 | **CRITICAL: Unused asset constants** | Define constants but hardcode paths in components | Import and use defined constants |
+| **CRITICAL: TODO placeholders for assets** | `{/* TODO: Add logo */}` with text fallback | Copy asset file first, then use `<img src="/logo.svg" />` |
 | Creating new file without `<file>` | Using tool syntax | Use `<file path="...">` tag |
 | Reading with tool as text | Writing tool call as text/XML in response | Use system's native tool interface (automatic) |
 | Deleting directory with single file tool | Using `delete_file` on `dist/` directory | Use `run_command` tool: `rm -rf dist/` |
@@ -338,6 +339,18 @@ function updatePaddle() {
 | Placeholder paths | `path/to/file.tsx` | `src/components/Button.tsx` |
 | Code placeholders | `// ... logic ...` | Complete implementation |
 | Whitespace in edit_file old_str | Missing indentation | Exact match required |
+
+**⚠️ ASSET IMPLEMENTATION ANTI-PATTERN:**
+```tsx
+// ❌ WRONG: Leaving TODO instead of implementing
+{/* TODO: Add logo image from /public/logos/logo.svg */}
+<span className="font-bold">Company Name</span>
+
+// ✅ CORRECT: Copy asset and use it immediately
+// Step 1: cp inputs/assets/logos/logo.svg → codebase/public/logos/logo.svg
+// Step 2: Reference in code:
+<img src="/logos/logo.svg" alt="Company Logo" className="h-8 w-auto" />
+```
 
 ────────────────────────────────────────────────────────────────────────────────
 

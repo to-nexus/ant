@@ -220,11 +220,14 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   // ✅ Determine if uiDoc should be included in plan (UI-related tasks only)
   const shouldIncludeUiDoc = (() => {
     if (nextTask.type === 'setup') return false;  // Setup tasks don't need UI spec
-    if (nextTask.ui === true) return true;  // Explicit UI flag
-    if (nextTask.ui === false) return false;  // Explicit non-UI flag
-    // Fallback: check task name/description for UI keywords
+    
+    // ✅ 1) Primary: task.ui flag from decompose (source of truth)
+    if (nextTask.ui === true) return true;
+    if (nextTask.ui === false) return false;
+    
+    // ✅ 2) Fallback: check task name/description for UI keywords (when ui flag is undefined)
     const text = `${nextTask.name}\n${nextTask.description}`.toLowerCase();
-    return /(ui|ux|header|footer|layout|component|section|hero|card|button|nav|style|css)/.test(text);
+    return /(ui|ux|header|footer|layout|component|section|hero|card|button|nav|style|css|token|theme)/.test(text);
   })();
   
   const uiDocForPlan = shouldIncludeUiDoc ? state.uiDoc : undefined;
