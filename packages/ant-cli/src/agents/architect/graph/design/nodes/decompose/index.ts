@@ -19,7 +19,7 @@ import { extractErrorDetails, logErrorHeader } from "../../../code/nodes/shared/
  * 
  * ✅ NEW: UI Design mode (designWorkType === 'ui-design')
  * - Requires reference images in inputs/references/
- * - Creates tasks for ui-tokens.md, ui-assets.md, ui-spec.md generation
+ * - Creates tasks for ui-tokens.json, ui-assets.json, ui-spec.json generation
  */
 export async function decompose(state: DesignGraphState): Promise<DesignGraphState> {
   // ✅ NEW: Validate UI design prerequisites

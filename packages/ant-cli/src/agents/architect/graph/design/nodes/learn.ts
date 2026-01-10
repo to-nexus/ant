@@ -65,7 +65,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     
     const isUiDesign = state.designWorkType === 'ui-design';
     const expectedFiles = isUiDesign
-      ? ['ui-tokens.md', 'ui-assets.md', 'ui-spec.md']
+      ? ['ui-tokens.json', 'ui-assets.json', 'ui-spec.json']
       : undefined;  // Any .md files for system design
     
     console.log(`📂 [Learn] Checking ${isUiDesign ? 'UI Design' : 'System Design'} files in outputs/design...`);
@@ -78,16 +78,27 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
           .filter(e => !e.isDirectory && e.name.endsWith('.md'))
           .map(e => e.name);
         
-        // For UI Design, only load expected files
+        // For UI Design, only load expected JSON files
         if (expectedFiles) {
-          mdFiles = mdFiles.filter(f => expectedFiles.includes(f));
+          const allFiles = entries
+            .filter(e => !e.isDirectory)
+            .map(e => e.name);
+          mdFiles = allFiles.filter(f => expectedFiles.includes(f));
         }
         
         console.log(`📂 [Learn] Loading ${mdFiles.length} design document(s) from disk...`);
         
         for (const filename of mdFiles) {
           const filePath = path.join(designDirRel, filename);
-          const content = await fileSystem.readFile(filePath);
+          let content = await fileSystem.readFile(filePath);
+          
+          // ✅ Clean up _meta field from JSON files (chapter tracking metadata)
+          if (content && isUiDesign) {
+            content = stripMetaFromContent(filename, content);
+            // Write cleaned content back to disk
+            await fileSystem.writeFile(filePath, content);
+            console.log(`   🧹 Cleaned _meta from: ${filename}`);
+          }
           
           const relativePath = `outputs/design/${filename}`;
           
@@ -111,10 +122,6 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   
   // ✅ Update state.files for downstream processing (lessons extraction, session save, etc.)
   state.files = loadedFiles;
-  
-  // ✅ Metadata cleanup is no longer needed here
-  // Each document's last task now skips metadata output (isLastTaskForDocument flag)
-  // FileRenderer handles cleanup during append operations
   
   // 1. Extract lessons from design process
   const lessons = extractDesignLessons(state);
@@ -528,4 +535,26 @@ function extractDesignDecisions(state: DesignGraphState): string {
   }
   
   return decisions.join('\n');
+}
+
+/**
+ * Strip _meta field from JSON content
+ * _meta is used for chapter tracking during generation, not needed in final output
+ */
+function stripMetaFromContent(filename: string, content: string): string {
+  const isJsonFile = filename.endsWith('.json');
+  
+  if (isJsonFile) {
+    try {
+      const parsed = JSON.parse(content);
+      if (parsed && typeof parsed === 'object' && '_meta' in parsed) {
+        const { _meta, ...rest } = parsed;
+        return JSON.stringify(rest, null, 2);
+      }
+    } catch {
+      // Parse error, return as-is
+    }
+  }
+  
+  return content;
 }

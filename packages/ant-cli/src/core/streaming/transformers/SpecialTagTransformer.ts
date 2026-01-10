@@ -355,9 +355,9 @@ export class SpecialTagTransformer {
         formatted += isKorean
           ? `📄 **생성 문서**:\n`
           : `📄 **Output Documents**:\n`;
-        formatted += `   • \`outputs/design/ui-tokens.md\` - Design tokens (colors, typography, spacing)\n`;
-        formatted += `   • \`outputs/design/ui-assets.md\` - Asset mapping\n`;
-        formatted += `   • \`outputs/design/ui-spec.md\` - UI specification\n\n`;
+        formatted += `   • \`outputs/design/ui-tokens.json\` - Design tokens (colors, typography, spacing)\n`;
+        formatted += `   • \`outputs/design/ui-assets.json\` - Asset mapping\n`;
+        formatted += `   • \`outputs/design/ui-spec.json\` - UI specification\n\n`;
         
         // Show tool-based workflow hint
         formatted += isKorean

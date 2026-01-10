@@ -75,7 +75,7 @@ export interface CodeTask extends BaseTask {
    * Section types:
    * - Component sections: "gnb", "hero", "about", "ecosystem", "token", "technology", "social", "footer"
    * - Common sections: "layout", "responsive", "accessibility"
-   * - Special: "tokens" (ui-tokens.md), "assets" (ui-assets.md)
+   * - Special: "tokens" (ui-tokens.json), "assets" (ui-assets.json)
    * 
    * If ui=true but uiSections is empty/undefined, all UI docs are injected (backward compatible).
    */

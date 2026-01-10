@@ -46,9 +46,9 @@ You have access to tools for exploring reference images and assets:
 
 ### Image Loading Strategy
 
-- **ui-tokens.md**: Load 2-3 key screenshots with diverse UI elements
-- **ui-assets.md**: Use `list_assets` primarily, images optional for context
-- **ui-spec.md**: Load screens systematically (desktop → tablet → mobile)
+- **ui-tokens.json**: Load 2-3 key screenshots with diverse UI elements
+- **ui-assets.json**: Use `list_assets` primarily, images optional for context
+- **ui-spec.json**: Load screens systematically (desktop → tablet → mobile)
 
 > ⚠️ **IMPORTANT**: Images are NOT preloaded. You MUST use `read_reference_image` tool to see screenshot content.
 
@@ -77,30 +77,44 @@ You have access to tools for exploring reference images and assets:
 
 Use `<file>` tag:
 
+**For JSON files (ui-tokens.json, ui-assets.json):**
 ```xml
-<file path="outputs/design/[FILENAME]">
-# Document Title
+<file path="outputs/design/ui-tokens.json">
+{
+  "_meta": {
+    "lastSection": 1,
+    "sectionPattern": "top-level"
+  },
+  "colors": { ... },
+  "typography": { ... }
+}
+</file>
+```
 
-> Brief description of document purpose
-
----
-
-## 1. First Section
-...
-
-<!-- SECTION_PATTERN: top-level -->
-<!-- LAST_SECTION: 1 -->
+**For ui-spec.json:**
+```xml
+<file path="outputs/design/ui-spec.json">
+{
+  "_meta": {
+    "lastSection": 1,
+    "sectionPattern": "top-level"
+  },
+  "layout": { ... },
+  "sections": {
+    "hero": { ... }
+  }
+}
 </file>
 ```
 
 {{#if isLastTaskForDocument}}
-**⚠️ EXCEPTION: Since this is the LAST task for this document, OMIT the metadata lines above!**
+**⚠️ EXCEPTION: Since this is the LAST task for this document, OMIT the `_meta` block!**
 {{/if}}
 
 **Filename determination:**
-- Task ID starts with `ui-tokens` → use `ui-tokens.md`
-- Task ID starts with `ui-assets` → use `ui-assets.md`
-- Task ID starts with `ui-spec` → use `ui-spec.md`
+- Task ID starts with `ui-tokens` → use `ui-tokens.json`
+- Task ID starts with `ui-assets` → use `ui-assets.json`
+- Task ID starts with `ui-spec` → use `ui-spec.json`
 
 ---
 
@@ -117,124 +131,128 @@ Use `<file>` tag:
 
 Use `<append>` tag:
 
+**For JSON files (ui-tokens.json, ui-assets.json):**
 ```xml
-<append path="outputs/design/[FILENAME]">
+<append path="outputs/design/ui-tokens.json">
+{
+  "_meta": {
+    "lastSection": {{add lastSectionNumber 1}}
+  },
+  "newCategory": { ... }
+}
+</append>
+```
+The system will automatically merge this into the existing JSON.
 
-## N. [Topic]    <!-- N = lastSectionNumber + 1 -->
-...
-
-<!-- LAST_SECTION: N -->
+**For ui-spec.json:**
+```xml
+<append path="outputs/design/ui-spec.json">
+{
+  "_meta": {
+    "lastSection": {{add lastSectionNumber 1}}
+  },
+  "sections": {
+    "newSection": { ... }
+  }
+}
 </append>
 ```
 
 {{#if lastSectionNumber}}
-**Your first section: ## {{add lastSectionNumber 1}}**
+**Your continuation starts after section: {{lastSectionNumber}}**
 {{/if}}
 {{#if isLastTaskForDocument}}
-**⚠️ EXCEPTION: Since this is the LAST task, OMIT `<!-- LAST_SECTION -->` line!**
+**⚠️ EXCEPTION: Since this is the LAST task, OMIT the `_meta` block!**
 {{/if}}
 
 {{#if lastSectionNumber}}
 **For this task:**
-- Your first section number: {{add lastSectionNumber 1}}
-- Your ending metadata: `<!-- LAST_SECTION: [YOUR_LAST_NUMBER] -->`
+- Previous section count: {{lastSectionNumber}}
+- Your `_meta.lastSection`: Update to reflect total after your additions
 {{/if}}
 
 **Examples**:
-- `ui-tokens-ch1` or `ui-tokens` → Use `<file path="outputs/design/ui-tokens.md">` with `<!-- LAST_SECTION: N -->`
-- `ui-tokens-ch2` → Use `<append path="outputs/design/ui-tokens.md">` with updated `<!-- LAST_SECTION: N -->` ✅
-- `ui-assets-ch2` → Use `<append path="outputs/design/ui-assets.md">` with updated `<!-- LAST_SECTION: N -->` ✅
-- `ui-spec-ch3` → Use `<append path="outputs/design/ui-spec.md">` with updated `<!-- LAST_SECTION: N -->` ✅
+- `ui-tokens-ch1` or `ui-tokens` → Use `<file path="outputs/design/ui-tokens.json">` (JSON format)
+- `ui-tokens-ch2` → Use `<append path="outputs/design/ui-tokens.json">` (merge into existing JSON)
+- `ui-assets-ch2` → Use `<append path="outputs/design/ui-assets.json">` (merge into existing JSON)
+- `ui-spec-ch3` → Use `<append path="outputs/design/ui-spec.json">` (merge into existing JSON)
 
 ---
 
 ### Simple Rules
 
-1. **First chapter** (`-ch1` or no suffix) → `<file>` tag with metadata at end
-2. **Continuation chapters** (`-ch2`, `-ch3`, etc.) → `<append>` tag with metadata at end
+1. **First chapter** (`-ch1` or no suffix) → `<file>` tag
+2. **Continuation chapters** (`-ch2`, `-ch3`, etc.) → `<append>` tag
 3. **Path prefix**: Always `outputs/design/`
-4. **One file per category**: All ui-tokens chapters → `ui-tokens.md`
+4. **One file per category**: All ui-tokens chapters → `ui-tokens.json`
 
-### Metadata Rules
+### Metadata Rules (`_meta` field)
 
 {{#if isLastTaskForDocument}}
 **⚠️ THIS IS THE LAST TASK FOR THIS DOCUMENT.**
 
 **YOU MUST STILL GENERATE CONTENT** using `<file>` or `<append>` tags as normal!
-Only difference: Do NOT add `<!-- LAST_SECTION -->` or `<!-- SECTION_PATTERN -->` at the end.
-Your output should end with actual content (text, tables, code blocks), not metadata comments.
+Only difference: Do NOT include the `_meta` block in your output.
 {{else}}
-**Required Metadata (at document end):**
-
-**First chapter MUST output both:**
-```
-<!-- SECTION_PATTERN: top-level -->
-<!-- LAST_SECTION: N -->
-```
-
-**Continuation chapters output only:**
-```
-<!-- LAST_SECTION: N -->
+**Required `_meta` field (all documents are JSON):**
+```json
+{
+  "_meta": {
+    "lastSection": N,
+    "sectionPattern": "top-level"
+  },
+  ...actual data...
+}
 ```
 
-- `SECTION_PATTERN`: `top-level` (each topic = `## N.`) or `nested` (topics under container = `### N.M`)
-- `LAST_SECTION`: Your last section number
+- `lastSection`: Total number of sections/categories after this chapter
+- `sectionPattern`: `top-level` or `nested` (first chapter only)
 {{/if}}
 
 ### ❌ DO NOT
 
 ```xml
 <!-- WRONG: Using <file> for chapter 2 -->
-<file path="outputs/design/ui-tokens.md">  ← Will OVERWRITE existing content!
+<file path="outputs/design/ui-tokens.json">  ← Will OVERWRITE existing content!
 
 <!-- WRONG: Wrong path -->
-<file path="inputs/sources/ui-tokens.md">
+<file path="inputs/sources/ui-tokens.json">
 
 <!-- WRONG: Creating separate files per chapter -->
-<file path="outputs/design/ui-tokens-ch2.md">  ← All chapters go to same file!
+<file path="outputs/design/ui-tokens-ch2.json">  ← All chapters go to same file!
 ```
 
 ### ✅ CORRECT
 
 ```xml
 <!-- Task: ui-tokens-ch1 (FIRST) -->
-<file path="outputs/design/ui-tokens.md">
-# ui-tokens.md (Design Tokens)
-
-> Color, typography, spacing, and visual effect definitions extracted from reference screenshots
-
----
-
-## 1. Colors
-- `color.primary.blue`: #1E40AF
-
-<!-- LAST_SECTION: 1 -->
+<file path="outputs/design/ui-tokens.json">
+{
+  "colors": {
+    "primary": { "blue": "#1E40AF" },
+    "bg": { "dark": "#1A1A1A", "white": "#FFFFFF" }
+  }
+}
 </file>
 ```
 
 ```xml
-<!-- Task: ui-tokens-ch2 (CONTINUATION) -->
-<append path="outputs/design/ui-tokens.md">
-
----
-
-## 2. Typography
-- `font.family.heading`: "Inter", sans-serif
-
-<!-- LAST_SECTION: 2 -->
+<!-- Task: ui-tokens-ch2 (CONTINUATION) - merge into existing JSON -->
+<append path="outputs/design/ui-tokens.json">
+{
+  "typography": {
+    "heading": { "family": "Inter, sans-serif", "xl": { "size": "48px", "weight": 700 } }
+  }
+}
 </append>
 ```
 
 ```xml
 <!-- Task: ui-tokens-ch3 (CONTINUATION) -->
-<append path="outputs/design/ui-tokens.md">
-
----
-
-## 3. Spacing
-- `spacing.md`: 16px
-
-<!-- LAST_SECTION: 3 -->
+<append path="outputs/design/ui-tokens.json">
+{
+  "spacing": { "sm": "8px", "md": "16px", "lg": "24px" }
+}
 </append>
 ```
 
@@ -312,11 +330,11 @@ For each topic in your task description:
 Documents are generated in order. Previous documents are **automatically injected** as REFERENCE sections.
 
 ```
-ui-tokens.md (FIRST - no dependencies)
+ui-tokens.json (FIRST - no dependencies)
      ↓
-ui-assets.md (SECOND - receives ui-tokens.md as REFERENCE)
+ui-assets.json (SECOND - receives ui-tokens.json as REFERENCE)
      ↓
-ui-spec.md (LAST - receives both previous documents as REFERENCE)
+ui-spec.json (LAST - receives both previous documents as REFERENCE)
 ```
 
 ### How to Use the REFERENCE Sections
@@ -324,16 +342,16 @@ ui-spec.md (LAST - receives both previous documents as REFERENCE)
 For dependent tasks, you will find REFERENCE sections in this prompt containing previously generated content:
 
 ```
-# REFERENCE: ui-tokens.md (generated in previous task)
+# REFERENCE: ui-tokens.json (generated in previous task)
 ```
 
-**When generating ui-assets.md:**
-- Find and read the `# REFERENCE: ui-tokens.md` section in this prompt
+**When generating ui-assets.json:**
+- Find and read the `# REFERENCE: ui-tokens.json` section in this prompt
 - Use token names when describing asset usage context
 
-**When generating ui-spec.md:**
-- Find and read both `# REFERENCE: ui-tokens.md` and `# REFERENCE: ui-assets.md` sections
-- ALL visual values must use token references (e.g., `token(color.bg.base)`)
+**When generating ui-spec.json:**
+- Find and read both `# REFERENCE: ui-tokens.json` and `# REFERENCE: ui-assets.json` sections
+- ALL visual values must use token references (e.g., `colors.primary.green`)
 - ALL assets must use identifiers from the asset mapping
 
 ════════════════════════════════════════════════════════════════════════════════
@@ -349,49 +367,64 @@ For dependent tasks, you will find REFERENCE sections in this prompt containing 
 
 ---
 
-### ui-tokens.md Format
+### ui-tokens.json Format
 
-**Structure**:
-- Organize by category: Colors, Typography, Spacing, Effects
-- Use **Markdown tables** for easy reference:
+**Structure**: JSON object with semantic keys
 
-```markdown
-| Token | Value | Usage |
-|-------|-------|-------|
-| color.primary.blue | #1E40AF | Primary action buttons, links |
-| color.bg.dark | #1A1A1A | Hero section background |
+```json
+{
+  "colors": {
+    "primary": { "blue": "#1E40AF", "green": "#00D9A3" },
+    "bg": { "dark": "#1A1A1A", "white": "#FFFFFF" },
+    "text": { "primary": "#000000", "muted": "rgba(255,255,255,0.8)" }
+  },
+  "typography": {
+    "heading": { "hero": { "size": "72px", "weight": 700, "lineHeight": 1.1 } },
+    "body": { "md": { "size": "16px", "weight": 400 } }
+  },
+  "spacing": { "sm": "8px", "md": "16px", "lg": "24px", "xl": "32px" },
+  "effects": {
+    "shadow": { "md": "0 4px 6px rgba(0,0,0,0.1)" },
+    "radius": { "lg": "16px", "xl": "24px" }
+  }
+}
 ```
 
 **Content Requirements**:
 - Extract **exact values** from screenshots (no approximations)
-- Include **usage context** for each token
+- Use semantic keys that describe **purpose**, not appearance
 
 ---
 
-### ui-assets.md Format
+### ui-assets.json Format
 
-**Structure**:
-- Categorize by type: Logos, Icons, Backgrounds, Images
-- Use **tables** with source → destination mapping:
+**Structure**: JSON object with asset mappings
 
-```markdown
-| Asset ID | Source Path | Type | Usage Context |
-|----------|-------------|------|---------------|
-| hero-bg | backgrounds/hero.webp | Background | Hero section backdrop (behind content) |
-| logo-main | logos/logo.svg | Logo | Header navigation (left-aligned) |
+```json
+{
+  "logos": {
+    "logo-header": { "src": "logos/header-logo.svg", "dest": "public/logos/header.svg" }
+  },
+  "icons": {
+    "icon-telegram": { "src": "icons/telegram.svg", "dest": "public/icons/telegram.svg" }
+  },
+  "backgrounds": {
+    "bg-hero": { "src": "bg/hero-main.png", "dest": "public/backgrounds/hero.png" }
+  }
+}
 ```
 
 **Content Requirements**:
-- Reference **token names** from ui-tokens.md (e.g., "overlaid with `token(color.overlay.dark)`")
+- Reference **token names** from ui-tokens.json (e.g., `"overlay": "colors.overlay.dark"`)
 - Distinguish **background images** (decorative) vs **content images** (structural)
 
 ---
 
-### ui-spec.md Format
+### ui-spec.json Format
 
 **CRITICAL: Specification, Not Implementation**
 
-ui-spec.md documents **WHAT** to build, not **HOW** to build it.
+ui-spec.json documents **WHAT** to build, not **HOW** to build it.
 
 | ✅ INCLUDE | ❌ EXCLUDE |
 |-----------|-----------|
@@ -402,14 +435,14 @@ ui-spec.md documents **WHAT** to build, not **HOW** to build it.
 | Token references | File paths (app/, components/) |
 
 **Token Reference Requirement**:
-- ALL colors → `token(color.*)` from ui-tokens.md
-- ALL spacing → `token(spacing.*)` from ui-tokens.md
-- ALL typography → `token(font.*)` from ui-tokens.md
+- ALL colors → reference `colors.*` from ui-tokens.json
+- ALL spacing → reference `spacing.*` from ui-tokens.json
+- ALL typography → reference `typography.*` from ui-tokens.json
 - NO raw hex codes, pixel values, or framework classes
 
 **Asset Reference Requirement**:
-- ALL assets → Use Asset IDs from ui-assets.md
-- Example: "Background: `[hero-bg]` from ui-assets.md"
+- ALL assets → Use Asset IDs from ui-assets.json
+- Example: `background: bg-hero` (references ui-assets.json)
 
 ════════════════════════════════════════════════════════════════════════════════
 ## Final Checklist
@@ -425,7 +458,7 @@ Before outputting, verify:
 {{/if}}
 - [ ] Used `<append>` for continuation chapters (task ID ends with `-ch2`, `-ch3`, etc.)
 - [ ] Path starts with `outputs/design/`
-- [ ] Filename matches category (`ui-tokens.md`, `ui-assets.md`, or `ui-spec.md`)
+- [ ] Filename matches category (`ui-tokens.json`, `ui-assets.json`, or `ui-spec.json`)
 
 **Section Numbering**:
 {{#if lastSectionNumber}}
@@ -436,11 +469,13 @@ Before outputting, verify:
 - [ ] Section numbers are sequential (1, 2, 3...)
 {{/if}}
 
-**Metadata**:
-- [ ] Added `<!-- LAST_SECTION: N -->` at the end (N = your last section number)
-{{#if lastSectionNumber}}
-- [ ] Did NOT duplicate old metadata line (removed `<!-- LAST_SECTION: {{lastSectionNumber}} -->`)
-{{/if}}
+**Metadata (`_meta` field)**:
+{{#unless isLastTaskForDocument}}
+- [ ] Included `_meta` field with `lastSection` value
+- [ ] Format: `"_meta": { "lastSection": N }` at top level of JSON object
+{{else}}
+- [ ] OMITTED `_meta` block (this is the last task)
+{{/unless}}
 
 **Content Quality**:
 - [ ] Content is in **Markdown table format** where appropriate

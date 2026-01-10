@@ -22,9 +22,9 @@ You are analyzing UI complexity to break it into chapter-based tasks.
 
 | If directive mentions... | Generate ONLY... |
 |--------------------------|------------------|
-| "only ui-spec" / "regenerate ui-spec" / "ui-spec only" | ui-spec.md tasks |
-| "only ui-tokens" / "regenerate ui-tokens" | ui-tokens.md tasks |
-| "only ui-assets" / "regenerate ui-assets" | ui-assets.md tasks |
+| "only ui-spec" / "regenerate ui-spec" / "ui-spec only" | ui-spec.json tasks |
+| "only ui-tokens" / "regenerate ui-tokens" | ui-tokens.json tasks |
+| "only ui-assets" / "regenerate ui-assets" | ui-assets.json tasks |
 | No specific document request | ALL 3 documents |
 
 **When generating subset:**
@@ -52,7 +52,7 @@ You are analyzing UI complexity to break it into chapter-based tasks.
 
 ---
 
-### ui-tokens.md
+### ui-tokens.json
 
 | Task ID | Priority | Topic |
 |---------|----------|-------|
@@ -60,14 +60,20 @@ You are analyzing UI complexity to break it into chapter-based tasks.
 | ui-tokens-ch2 | 110 | Typography |
 | ui-tokens-ch3 | 120 | Spacing & Effects |
 
-#### ui-assets.md (multi-chapter)
+#### ui-assets.json (multi-chapter)
+
+**⚠️ CRITICAL: ch1 establishes the destination PATH PATTERN. ch2+ MUST follow it exactly.**
 
 | Task ID | Priority | Topic |
 |---------|----------|-------|
-| ui-assets-ch1 | 200 | Images & Backgrounds |
-| ui-assets-ch2 | 210 | Icons & Graphics |
+| ui-assets-ch1 | 200 | Images & Backgrounds. Define canonical destination paths (logos/, icons/, backgrounds/). Output PATH_PATTERN metadata. |
+| ui-assets-ch2 | 210 | Icons & Graphics. MUST follow ch1's path patterns exactly. Skip assets already documented. |
 
-#### ui-spec.md (multi-chapter)
+**Task Description Requirements:**
+- **ch1 MUST include**: "Define canonical destination paths" and "Output `<!-- PATH_PATTERN: ... -->` metadata"
+- **ch2+ MUST include**: "Follow ch1's path patterns exactly" and "Skip assets already documented in ch1"
+
+#### ui-spec.json (multi-chapter)
 
 **⚠️ CRITICAL: ch1 establishes the PATTERN. ch2+ follows the same pattern.**
 

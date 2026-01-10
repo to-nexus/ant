@@ -394,7 +394,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     console.log(`   - assets: ${parsedUiDocs.assetsTokenEstimate || 0} tokens`);
     console.log(`   - spec: ${parsedUiDocs.specSections.size} sections, ${parsedUiDocs.specTotalTokens} tokens`);
   } else {
-    console.log(`⚠️  [Resolve] parsedUiDocs NOT loaded - check outputs/design for ui-spec.md, ui-tokens.md, ui-assets.md`);
+    console.log(`⚠️  [Resolve] parsedUiDocs NOT loaded - check outputs/design for ui-spec.json, ui-tokens.json, ui-assets.json`);
   }
 
   // ✅ Index inputs guide to documents collection (for RAG-based chat guidance)

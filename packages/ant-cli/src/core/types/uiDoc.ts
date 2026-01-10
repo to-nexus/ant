@@ -6,7 +6,7 @@
  */
 
 /**
- * Individual section from ui-spec.md
+ * Individual section from ui-spec.json
  * Represents a component or common section that can be independently injected
  */
 export interface UiSpecSection {
@@ -48,11 +48,11 @@ export interface UiSpecSection {
 
 /**
  * Parsed UI documents structure
- * Result of parsing ui-spec.md, ui-tokens.md, ui-assets.md
+ * Result of parsing ui-spec.json, ui-tokens.json, ui-assets.json
  */
 export interface ParsedUiDocs {
   /**
-   * Full content of ui-tokens.md (usually small, ~5K tokens)
+   * Full content of ui-tokens.json (usually small, ~5K tokens)
    * Contains design tokens: colors, typography, spacing, etc.
    */
   tokens?: string;
@@ -63,7 +63,7 @@ export interface ParsedUiDocs {
   tokensTokenEstimate?: number;
   
   /**
-   * Full content of ui-assets.md (usually small, ~10K tokens)
+   * Full content of ui-assets.json (usually small, ~10K tokens)
    * Contains asset mappings: logos, icons, backgrounds, etc.
    */
   assets?: string;
@@ -74,13 +74,13 @@ export interface ParsedUiDocs {
   assetsTokenEstimate?: number;
   
   /**
-   * Parsed sections from ui-spec.md
+   * Parsed sections from ui-spec.json
    * Indexed by section ID for quick lookup
    */
   specSections: Map<string, UiSpecSection>;
   
   /**
-   * Table of contents for ui-spec.md
+   * Table of contents for ui-spec.json
    * Used in decompose prompt to show available sections without full content
    */
   specToc: UiSpecTocEntry[];
@@ -92,7 +92,7 @@ export interface ParsedUiDocs {
 }
 
 /**
- * Table of contents entry for ui-spec.md
+ * Table of contents entry for ui-spec.json
  * Lightweight representation for decompose prompt
  */
 export interface UiSpecTocEntry {

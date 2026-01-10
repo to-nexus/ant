@@ -299,7 +299,7 @@ function updatePaddle() {
 **⚠️ CRITICAL: Asset files MUST exist before code references them!**
 
 **Step 1: COPY assets first**
-- Check `ui-assets.md` for Source → Runtime Path mappings
+- Check `ui-assets.json` for Source → Runtime Path mappings
 - Copy ALL mapped assets from `inputs/assets/` to `codebase/public/`
 - **If asset file doesn't exist at destination → 404 error at runtime!**
 

@@ -15,7 +15,7 @@
  * ✅ XML 파서 통합 for Markdown 실시간 렌더링
  * ✅ UI Design 모드 지원 (designWorkType === 'ui-design')
  *     - 멀티모달 이미지 분석 (레퍼런스 스크린샷)
- *     - ui-tokens.md, ui-assets.md, ui-spec.md 생성
+ *     - ui-tokens.json, ui-assets.json, ui-spec.json 생성
  */
 
 import { DesignGraphState } from '../../state';
@@ -229,9 +229,12 @@ async function scanExistingFiles(state: DesignGraphState, isUiDesign: boolean): 
         // Read directory contents using workspace-relative path
         const entries = await state.deps.fileSystem.readDirectory(designDirRel);
         
-        // Add all .md files to existingFiles (relative to feature path)
+        // Add all design files to existingFiles (relative to feature path)
+        // Support: .json (ui-tokens, ui-assets, ui-spec)
         for (const entry of entries) {
-          if (!entry.isDirectory && entry.name.endsWith('.md')) {
+          if (!entry.isDirectory && 
+              (entry.name.endsWith('.md') || 
+               entry.name.endsWith('.json'))) {
             const relativePath = `${targetDir}/${entry.name}`;
             existingFiles.add(relativePath);
           }

@@ -9,8 +9,8 @@
 
 ### 2. Chapter-Based = Sequential Append
 
-- `ui-tokens-ch1` → writes to **ui-tokens.md**
-- `ui-tokens-ch2` → **appends** to **ui-tokens.md**
+- `ui-tokens-ch1` → writes to **ui-tokens.json**
+- `ui-tokens-ch2` → **appends** to **ui-tokens.json**
 - All chapters of same document share same `targetFile`
 
 ### 3. Line Budget Guidelines
@@ -40,6 +40,22 @@ Adjust chapter count based on expected content:
 - Add "Skip any topics already documented" to continuation chapter descriptions
 - Execution phase will automatically detect and skip duplicates
 
+### 7. ui-assets.json Path Consistency (CRITICAL!)
+
+**When creating ui-assets tasks:**
+
+**ui-assets-ch1 description MUST include:**
+- "Define canonical destination path patterns (public/logos/, public/icons/, public/backgrounds/)"
+- "Output `<!-- PATH_PATTERN: logos=..., icons=..., backgrounds=... -->` metadata"
+
+**ui-assets-ch2+ descriptions MUST include:**
+- "Follow ch1's path patterns exactly - do NOT create new subdirectories"
+- "Skip any assets already documented in ch1"
+
+**Why?** Without explicit path patterns, ch2 may create inconsistent paths like:
+- ch1: `icon-telegram → public/icons/telegram.svg`
+- ch2: `icon-medium → public/icons/social/medium.svg` ← WRONG! Different pattern!
+
 ---
 
 ## 🚫 FORBIDDEN TASKS
@@ -55,20 +71,20 @@ DO NOT CREATE:
 
 ```json
 {
-  "targetFiles": ["ui-tokens.md", "ui-assets.md", "ui-spec.md"],
+  "targetFiles": ["ui-tokens.json", "ui-assets.json", "ui-spec.json"],
   "tasks": [
     {
       "id": "ui-tokens-ch1",
       "name": "Design Tokens: Colors",
-      "targetFile": "ui-tokens.md",
-      "description": "Color palette and backgrounds. MAX ~200 lines.",
+      "targetFile": "ui-tokens.json",
+      "description": "Color palette and backgrounds in JSON format.",
       "priority": 100
     },
     {
       "id": "ui-spec-ch1",
       "name": "UI Spec: Global Settings",
-      "targetFile": "ui-spec.md",
-      "description": "Establish outline (TOC), breakpoints, layout rules. NO components. MAX ~150 lines.",
+      "targetFile": "ui-spec.json",
+      "description": "Establish outline, breakpoints, layout rules in JSON format.",
       "priority": 300
     }
   ]
@@ -79,10 +95,10 @@ DO NOT CREATE:
 
 | Scenario | targetFiles |
 |----------|-------------|
-| Full generation | `["ui-tokens.md", "ui-assets.md", "ui-spec.md"]` |
-| Spec only (tokens/assets exist) | `["ui-spec.md"]` |
-| Tokens only | `["ui-tokens.md"]` |
-| Assets only | `["ui-assets.md"]` |
+| Full generation | `["ui-tokens.json", "ui-assets.json", "ui-spec.json"]` |
+| Spec only (tokens/assets exist) | `["ui-spec.json"]` |
+| Tokens only | `["ui-tokens.json"]` |
+| Assets only | `["ui-assets.json"]` |
 
 **Rule**: Only include documents that will be generated. Tasks MUST match targetFiles.
 

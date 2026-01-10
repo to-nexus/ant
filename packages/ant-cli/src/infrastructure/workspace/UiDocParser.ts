@@ -1,7 +1,7 @@
 /**
  * UI Document Parser
  * 
- * Parses ui-spec.md, ui-tokens.md, ui-assets.md into structured format
+ * Parses ui-spec.json, ui-tokens.json, ui-assets.json into structured format
  * for split injection into Code Job prompts.
  * 
  * This enables:
@@ -29,13 +29,7 @@ function estimateTokens(text: string): number {
  * Normalize section title to canonical section ID
  */
 function normalizeSectionId(title: string): string {
-  // Remove markdown formatting, numbers, parentheses content
-  const cleaned = title
-    .replace(/^#+\s*/, '')                    // Remove leading #
-    .replace(/^\d+\.?\d*\s*/, '')             // Remove leading numbers (1. or 5.1)
-    .replace(/\s*\([^)]*\)\s*/g, ' ')         // Remove parenthetical content
-    .toLowerCase()
-    .trim();
+  const cleaned = title.toLowerCase().trim();
   
   // Try exact match first
   if (UI_SECTION_ID_MAP[cleaned]) {
@@ -57,134 +51,57 @@ function normalizeSectionId(title: string): string {
 }
 
 /**
- * Parse a single markdown file into sections
+ * Parse JSON sections from ui-spec.json
+ * Excludes _meta field (used for chapter tracking, not needed in Code Job)
  */
-function parseMarkdownSections(content: string): UiSpecSection[] {
-  const lines = content.split('\n');
-  const sections: UiSpecSection[] = [];
-  
-  let currentSection: {
-    title: string;
-    level: number;
-    startLine: number;
-    lines: string[];
-  } | null = null;
-  
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const lineNum = i + 1;
-    
-    // Check for ## or ### headers
-    const headerMatch = line.match(/^(#{2,3})\s+(.+)$/);
-    
-    if (headerMatch) {
-      const level = headerMatch[1].length;
-      const title = headerMatch[2].trim();
-      
-      // Save previous section
-      if (currentSection) {
-        const content = currentSection.lines.join('\n').trim();
-        const id = normalizeSectionId(currentSection.title);
-        
-        sections.push({
-          id,
-          title: currentSection.title,
-          level: currentSection.level,
-          content,
-          tokenEstimate: estimateTokens(content),
-          lineRange: [currentSection.startLine, lineNum - 1],
-        });
-      }
-      
-      // Start new section
-      currentSection = {
-        title,
-        level,
-        startLine: lineNum,
-        lines: [line],
-      };
-    } else if (currentSection) {
-      currentSection.lines.push(line);
-    }
-  }
-  
-  // Don't forget the last section
-  if (currentSection) {
-    const content = currentSection.lines.join('\n').trim();
-    const id = normalizeSectionId(currentSection.title);
-    
-    sections.push({
-      id,
-      title: currentSection.title,
-      level: currentSection.level,
-      content,
-      tokenEstimate: estimateTokens(content),
-      lineRange: [currentSection.startLine, lines.length],
-    });
-  }
-  
-  return sections;
-}
-
-/**
- * Merge nested sections into parent sections
- * 
- * Example:
- * - "## Component Specifications" contains "### 1. GNB", "### 2. Hero", etc.
- * - We want "gnb", "hero" as individual sections
- * - But also "responsive" containing "### 5.1 Breakpoint", "### 5.2 GNB Responsive", etc.
- */
-function organizeSections(rawSections: UiSpecSection[]): Map<string, UiSpecSection> {
+function parseJsonSections(content: string): Map<string, UiSpecSection> {
   const result = new Map<string, UiSpecSection>();
   
-  // First pass: identify component sections (level 3, numbered like "### 1. GNB")
-  // and common sections (level 2, like "## 5. Responsive Behavior")
-  
-  for (let i = 0; i < rawSections.length; i++) {
-    const section = rawSections[i];
-    const id = section.id;
-    
-    // Skip "Component Specifications" parent - its children are more useful
-    if (id === 'components' || id === 'component-specifications') {
-      continue;
+  try {
+    const parsed = JSON.parse(content) as any;
+    if (!parsed || typeof parsed !== 'object') {
+      return result;
     }
     
-    // For level 3 sections under Component Specifications, use as-is
-    // For level 2 common sections, gather their children
-    if (section.level === 3) {
-      // Individual component sections
-      result.set(id, section);
-    } else if (section.level === 2) {
-      // Level 2 sections - gather children if they exist
-      const children: UiSpecSection[] = [];
-      let j = i + 1;
+    // Extract sections from the 'sections' key
+    const sections = parsed.sections || {};
+    let lineNum = 1;
+    
+    for (const [sectionId, sectionData] of Object.entries(sections)) {
+      const sectionContent = JSON.stringify({ [sectionId]: sectionData }, null, 2);
+      const id = normalizeSectionId(sectionId);
       
-      while (j < rawSections.length && rawSections[j].level === 3) {
-        children.push(rawSections[j]);
-        j++;
-      }
+      result.set(id, {
+        id,
+        title: sectionId,
+        level: 2,
+        content: sectionContent,
+        tokenEstimate: estimateTokens(sectionContent),
+        lineRange: [lineNum, lineNum + sectionContent.split('\n').length],
+      });
       
-      if (children.length > 0) {
-        // Combine parent with children
-        const combinedContent = [
-          section.content,
-          ...children.map(c => c.content)
-        ].join('\n\n');
-        
-        result.set(id, {
-          ...section,
-          content: combinedContent,
-          tokenEstimate: estimateTokens(combinedContent),
-          lineRange: [section.lineRange[0], children[children.length - 1].lineRange[1]],
+      lineNum += sectionContent.split('\n').length;
+    }
+    
+    // Also extract meta, layout, components, accessibility as separate sections
+    // NOTE: _meta is excluded (internal tracking field, not needed for Code Job)
+    const topLevelSections = ['meta', 'layout', 'components', 'accessibility'];
+    for (const key of topLevelSections) {
+      if (parsed[key]) {
+        const sectionContent = JSON.stringify({ [key]: parsed[key] }, null, 2);
+        result.set(key, {
+          id: key,
+          title: key,
+          level: 2,
+          content: sectionContent,
+          tokenEstimate: estimateTokens(sectionContent),
+          lineRange: [1, sectionContent.split('\n').length],
         });
-        
-        // Skip children in main loop
-        i = j - 1;
-      } else {
-        // No children, use as-is
-        result.set(id, section);
       }
     }
+    
+  } catch (error) {
+    console.warn('[UiDocParser] Failed to parse JSON:', error);
   }
   
   return result;
@@ -217,12 +134,31 @@ function generateToc(sections: Map<string, UiSpecSection>): UiSpecTocEntry[] {
 }
 
 /**
+ * Remove _meta field from JSON content
+ * _meta is used for chapter tracking in Design Job, not needed in Code Job
+ */
+function stripMetaFromJson(jsonContent: string): string {
+  try {
+    const parsed = JSON.parse(jsonContent);
+    if (parsed && typeof parsed === 'object' && '_meta' in parsed) {
+      const { _meta, ...rest } = parsed;
+      return JSON.stringify(rest, null, 2);
+    }
+    return jsonContent;
+  } catch {
+    return jsonContent;
+  }
+}
+
+/**
  * Parse UI documents into structured format
  * 
- * @param uiSpec - Content of ui-spec.md
- * @param uiTokens - Content of ui-tokens.md  
- * @param uiAssets - Content of ui-assets.md
+ * @param uiSpec - Content of ui-spec.json
+ * @param uiTokens - Content of ui-tokens.json  
+ * @param uiAssets - Content of ui-assets.json
  * @returns Parsed UI documents structure
+ * 
+ * NOTE: _meta fields are stripped from all documents (used for chapter tracking only)
  */
 export function parseUiDocs(
   uiSpec?: string,
@@ -235,22 +171,21 @@ export function parseUiDocs(
     specTotalTokens: 0,
   };
   
-  // Parse ui-tokens.md (kept as-is, usually small)
+  // Parse ui-tokens.json (strip _meta, then keep as string)
   if (uiTokens) {
-    result.tokens = uiTokens;
-    result.tokensTokenEstimate = estimateTokens(uiTokens);
+    result.tokens = stripMetaFromJson(uiTokens);
+    result.tokensTokenEstimate = estimateTokens(result.tokens);
   }
   
-  // Parse ui-assets.md (kept as-is, usually small)
+  // Parse ui-assets.json (strip _meta, then keep as string)
   if (uiAssets) {
-    result.assets = uiAssets;
-    result.assetsTokenEstimate = estimateTokens(uiAssets);
+    result.assets = stripMetaFromJson(uiAssets);
+    result.assetsTokenEstimate = estimateTokens(result.assets);
   }
   
-  // Parse ui-spec.md into sections
+  // Parse ui-spec.json into sections (parseJsonSections already excludes _meta)
   if (uiSpec) {
-    const rawSections = parseMarkdownSections(uiSpec);
-    result.specSections = organizeSections(rawSections);
+    result.specSections = parseJsonSections(uiSpec);
     result.specToc = generateToc(result.specSections);
     
     // Calculate total tokens
@@ -282,19 +217,23 @@ export function getUiSectionsForTask(
   // Add tokens if requested or if any UI section is requested
   if (normalizedRequests.has('tokens') || normalizedRequests.size > 0) {
     if (parsedDocs.tokens) {
-      parts.push(`## 🎯 DESIGN TOKENS
+      parts.push(`## 🎯 DESIGN TOKENS (JSON)
 > Reference these tokens in your styles for consistency.
 
-${parsedDocs.tokens}`);
+\`\`\`json
+${parsedDocs.tokens}
+\`\`\``);
     }
   }
   
   // Add assets if requested
   if (normalizedRequests.has('assets') && parsedDocs.assets) {
-    parts.push(`## 📦 ASSET MAPPING (MANDATORY COPY)
+    parts.push(`## 📦 ASSET MAPPING (JSON)
 > You MUST copy assets from \`inputs/assets/\` to \`public/\` before referencing them in code.
 
-${parsedDocs.assets}`);
+\`\`\`json
+${parsedDocs.assets}
+\`\`\``);
   }
   
   // Add requested spec sections
@@ -309,16 +248,20 @@ ${parsedDocs.assets}`);
     // Look up section
     const section = parsedDocs.specSections.get(normalized);
     if (section) {
-      parts.push(`## 🎨 UI SPEC: ${section.title}
+      parts.push(`## 🎨 UI SPEC: ${section.title} (JSON)
 
-${section.content}`);
+\`\`\`json
+${section.content}
+\`\`\``);
     } else {
       // Try partial match
       for (const [id, sec] of parsedDocs.specSections) {
         if (id.includes(normalized) || normalized.includes(id)) {
-          parts.push(`## 🎨 UI SPEC: ${sec.title}
+          parts.push(`## 🎨 UI SPEC: ${sec.title} (JSON)
 
-${sec.content}`);
+\`\`\`json
+${sec.content}
+\`\`\``);
           break;
         }
       }
@@ -336,26 +279,32 @@ export function getAllUiContent(parsedDocs: ParsedUiDocs): string {
   const parts: string[] = [];
   
   if (parsedDocs.tokens) {
-    parts.push(`## 🎯 DESIGN TOKENS
+    parts.push(`## 🎯 DESIGN TOKENS (JSON)
 > Reference these tokens in your styles for consistency.
 
-${parsedDocs.tokens}`);
+\`\`\`json
+${parsedDocs.tokens}
+\`\`\``);
   }
   
   if (parsedDocs.assets) {
-    parts.push(`## 📦 ASSET MAPPING (MANDATORY COPY)
+    parts.push(`## 📦 ASSET MAPPING (JSON)
 > You MUST copy assets from \`inputs/assets/\` to \`public/\` before referencing them in code.
 
-${parsedDocs.assets}`);
+\`\`\`json
+${parsedDocs.assets}
+\`\`\``);
   }
   
   // Add all spec sections in document order
   for (const entry of parsedDocs.specToc) {
     const section = parsedDocs.specSections.get(entry.id);
     if (section) {
-      parts.push(`## 🎨 UI SPEC: ${section.title}
+      parts.push(`## 🎨 UI SPEC: ${section.title} (JSON)
 
-${section.content}`);
+\`\`\`json
+${section.content}
+\`\`\``);
     }
   }
   
@@ -379,10 +328,10 @@ export function generateUiSectionsSummary(parsedDocs: ParsedUiDocs): string {
   lines.push('### Core Documents (always recommended for UI tasks)');
   lines.push('');
   if (parsedDocs.tokensTokenEstimate) {
-    lines.push(`- \`"tokens"\`: Design tokens (colors, typography, spacing) - ~${parsedDocs.tokensTokenEstimate} tokens`);
+    lines.push(`- \`"tokens"\`: Design tokens JSON (colors, typography, spacing) - ~${parsedDocs.tokensTokenEstimate} tokens`);
   }
   if (parsedDocs.assetsTokenEstimate) {
-    lines.push(`- \`"assets"\`: Asset mappings (images, icons, logos) - ~${parsedDocs.assetsTokenEstimate} tokens`);
+    lines.push(`- \`"assets"\`: Asset mappings JSON (images, icons, logos) - ~${parsedDocs.assetsTokenEstimate} tokens`);
   }
   lines.push('');
   
@@ -402,7 +351,7 @@ export function generateUiSectionsSummary(parsedDocs: ParsedUiDocs): string {
   
   // Common sections
   const commonSections = parsedDocs.specToc.filter(e => 
-    ['overview', 'layout', 'responsive', 'accessibility', 'grid', 'performance'].includes(e.id)
+    ['meta', 'layout', 'components', 'accessibility'].includes(e.id)
   );
   
   if (commonSections.length > 0) {

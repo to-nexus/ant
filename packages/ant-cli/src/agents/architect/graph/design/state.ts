@@ -111,7 +111,7 @@ export interface DesignGraphState extends TaskArtifacts {
   hasUiDoc?: boolean;
   
   // ✅ NEW: Work type detection (ui-design vs system-design)
-  // ui-design: Generate ui-tokens.md, ui-assets.md, ui-spec.md from Figma screenshots
+  // ui-design: Generate ui-tokens.json, ui-assets.json, ui-spec.json from Figma screenshots
   // system-design: Generate system-design.md or contract-first split docs
   designWorkType?: 'ui-design' | 'system-design';
   designWorkTypeReasoning?: string;

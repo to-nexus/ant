@@ -205,9 +205,9 @@ export class ArtifactService {
    * - Plan/CodeGen prompts receive specific sections based on task.uiSections
    * 
    * @returns ParsedUiDocs structure with:
-   *   - tokens: Full ui-tokens.md content
-   *   - assets: Full ui-assets.md content
-   *   - specSections: Map of section ID → content
+   *   - tokens: Full ui-tokens.json content
+   *   - assets: Full ui-assets.json content
+   *   - specSections: Map of section ID → content (from ui-spec.json)
    *   - specToc: Table of contents (for decompose prompt)
    */
   static async loadParsedUiContext(
@@ -230,33 +230,33 @@ export class ArtifactService {
     let uiTokens: string | undefined;
     let uiAssets: string | undefined;
 
-    // ui-spec.md
-    const specPath = path.join(designDir, 'ui-spec.md');
+    // ui-spec.json
+    const specPath = path.join(designDir, 'ui-spec.json');
     if (await fileSystem.fileExists(specPath)) {
       const content = await fileSystem.readFile(specPath);
       uiSpec = ArtifactService.normalizeUserDoc(content) || undefined;
       if (uiSpec) {
-        console.log(`   ✅ [loadParsedUiContext] ui-spec.md: loaded (${uiSpec.length} chars)`);
+        console.log(`   ✅ [loadParsedUiContext] ui-spec.json: loaded (${uiSpec.length} chars)`);
       }
     }
 
-    // ui-tokens.md
-    const tokensPath = path.join(designDir, 'ui-tokens.md');
+    // ui-tokens.json
+    const tokensPath = path.join(designDir, 'ui-tokens.json');
     if (await fileSystem.fileExists(tokensPath)) {
       const content = await fileSystem.readFile(tokensPath);
       uiTokens = ArtifactService.normalizeUserDoc(content) || undefined;
       if (uiTokens) {
-        console.log(`   ✅ [loadParsedUiContext] ui-tokens.md: loaded (${uiTokens.length} chars)`);
+        console.log(`   ✅ [loadParsedUiContext] ui-tokens.json: loaded (${uiTokens.length} chars)`);
       }
     }
 
-    // ui-assets.md
-    const assetsPath = path.join(designDir, 'ui-assets.md');
+    // ui-assets.json
+    const assetsPath = path.join(designDir, 'ui-assets.json');
     if (await fileSystem.fileExists(assetsPath)) {
       const content = await fileSystem.readFile(assetsPath);
       uiAssets = ArtifactService.normalizeUserDoc(content) || undefined;
       if (uiAssets) {
-        console.log(`   ✅ [loadParsedUiContext] ui-assets.md: loaded (${uiAssets.length} chars)`);
+        console.log(`   ✅ [loadParsedUiContext] ui-assets.json: loaded (${uiAssets.length} chars)`);
       }
     }
 

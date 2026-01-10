@@ -25,6 +25,7 @@
     "rehype-raw": "^7.0.0",
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^2.6.0",
+    "yaml": "^2.8.2",
     "zustand": "^4.4.0"
   },
   "devDependencies": {

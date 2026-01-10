@@ -96,9 +96,9 @@ export async function codeGen(
       const fsPort = state.deps?.fileSystem as any;
       if (!fsPort || !featurePathRel) return false;
       const candidates = [
-        'ui-spec.md',
-        'ui-assets.md',
-        'ui-tokens.md',
+        'ui-spec.json',
+        'ui-assets.json',
+        'ui-tokens.json',
       ].map(name => path.join(featurePathRel, 'inputs', 'sources', name));
       for (const p of candidates) {
         try {
