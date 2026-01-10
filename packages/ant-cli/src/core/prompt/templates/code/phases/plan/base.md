@@ -213,77 +213,6 @@ Speculation without empirical validation is insufficient.
 ## 🎨 UI SPECIFICATION & ASSETS
 ════════════════════════════════════════════════════════════════════════════════
 
-🚨 **CRITICAL: This is a UI task - Complete ALL sections below**
-
-────────────────────────────────────────────────────────────────────────────────
-
-### 1. ASSET INVENTORY (MANDATORY)
-
-**Search ui-assets.md for this section/component.**
-
-List ALL assets found:
-```
-Assets for [section name]:
-- asset-id: source-path → destination-path
-- asset-id: source-path → destination-path
-Total: N assets
-
-Copy commands:
-cp source destination
-cp source destination
-```
-
-**If no assets found:** "✓ No assets in ui-assets.md for this section"
-
-**CRITICAL:**
-- Search Asset Dependency Map or mapping tables in ui-assets.md
-- List EVERY asset (backgrounds, icons, logos - do NOT skip "decorative" ones)
-- Include EXACT paths and cp commands
-- Count must match ui-assets.md
-
-────────────────────────────────────────────────────────────────────────────────
-
-### 2. LAYOUT & COMPONENT SPECS (FROM ui-spec.md)
-
-**Extract specifications for this section from ui-spec.md:**
-
-**Layout:**
-- Describe layout structure (grid/flex, columns, aspect ratios)
-- Responsive breakpoints (mobile/tablet/desktop behavior)
-- Spacing and sizing (from ui-spec.md)
-
-**Components:**
-- List each component to implement
-- Visual properties (background, borders, radius, padding)
-- Typography (sizes, weights, colors)
-- Interactive states (if applicable)
-- Which assets each component uses
-
-**Design Tokens:**
-- Extract token(...) references from ui-spec.md
-- Note which tokens apply where
-
-────────────────────────────────────────────────────────────────────────────────
-
-### 3. IMPLEMENTATION PLAN
-
-**Step-by-step:**
-1. Copy assets (from section 1)
-2. Create files: [list]
-3. Implement structure (from section 2)
-4. Apply styling (from section 2)
-5. Verify responsive behavior
-
-────────────────────────────────────────────────────────────────────────────────
-
-**VALIDATION:**
-- [ ] Asset inventory complete (every asset from ui-assets.md)
-- [ ] Layout specs extracted (responsive behavior included)
-- [ ] Component specs extracted (all properties listed)
-- [ ] Implementation steps clear
-
-════════════════════════════════════════════════════════════════════════════════
-
 {{uiDoc}}
 
 ════════════════════════════════════════════════════════════════════════════════
@@ -337,21 +266,28 @@ Generate a **concrete implementation plan** for this task.
 {{#if hasUiDoc}}
 **FOR UI TASKS:**
 
-Your plan must include these 3 sections:
+Your plan MUST include these 3 sections:
 
-**1. ASSET INVENTORY**
-- Search ui-assets.md for this section
-- List all assets with source → destination paths
-- Provide copy commands
+#### 1. ASSET INVENTORY
+- Search ui-assets.md for assets related to this section/component
+- List ALL assets with exact paths: `asset-id: source → destination`
+- Provide `cp` commands for each asset
+- Count total: `Total: N assets`
+- If none found: "✓ No assets in ui-assets.md for this section"
 
-**2. LAYOUT & COMPONENT SPECS**
-- Extract layout structure from ui-spec.md
-- List component specifications
-- Note responsive behavior and design tokens
+#### 2. LAYOUT & COMPONENT SPECS
+- Extract layout structure from ui-spec.md (grid/flex, responsive breakpoints)
+- List each component with:
+  - Visual properties (background, border, padding, etc.)
+  - Typography (size, weight, color)
+  - Interactive states (if applicable)
+  - Asset usage (which assets go where)
+- Note design token references
 
-**3. IMPLEMENTATION PLAN**
+#### 3. IMPLEMENTATION PLAN
 - Step-by-step implementation
 - Files to create/modify
+- Verification steps
 
 {{else}}
 **FOR NON-UI TASKS:**
