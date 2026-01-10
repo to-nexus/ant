@@ -4,7 +4,7 @@ import { parseSession, safeParseSession } from "../../../core/schemas/session.sc
 import * as fs from "fs/promises";
 import * as path from "path";
 import { randomUUID } from "crypto";
-import { WorkspaceResolver } from "@/infrastructure/workspace/WorkspaceResolver";
+import { WorkspaceResolver } from "../../../infrastructure/workspace/WorkspaceResolver";
 
 /**
  * File-based Session Adapter

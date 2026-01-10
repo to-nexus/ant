@@ -13,7 +13,7 @@ export interface GitActions {
 
 export type GitSlice = GitState & GitActions;
 
-export const createGitSlice: StateCreator<any, [], [], GitSlice> = (set, get) => ({
+export const createGitSlice: StateCreator<any, [], [], GitSlice> = (set, _get) => ({
   // ==================
   // State
   // ==================
@@ -55,7 +55,7 @@ export const createGitSlice: StateCreator<any, [], [], GitSlice> = (set, get) =>
   },
   
   refreshGitStatus: () => {
-    set((state) => ({ gitStatusRefreshTrigger: state.gitStatusRefreshTrigger + 1 }));
+    set((state: GitSlice) => ({ gitStatusRefreshTrigger: state.gitStatusRefreshTrigger + 1 }));
   },
   
   setBypassFetchTimer: (bypass) => {

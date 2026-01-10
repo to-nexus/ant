@@ -23,7 +23,7 @@ export function useChat(): UseChatReturn {
   // ✅ Derive streaming state from last message
   const isStreaming = messages.length > 0 && 
     messages[messages.length - 1].role === 'assistant' &&
-    !messages[messages.length - 1].isComplete;
+    messages[messages.length - 1].isStreaming === true;
   
   // ✅ Derive connected state
   const isConnected = connectionStatus === 'connected';

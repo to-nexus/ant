@@ -35,6 +35,7 @@ export interface DevServerStatus {
   logs?: DevServerLog[];
   setupReasoning?: SetupFailureReasoning;  // ✅ Categorized failure code
   setupReason?: string;                     // ✅ Human-readable message
+  issues?: Array<{ reasoning: string; severity: 'fatal' | 'warning'; reason: string; suggestedFix?: string }>;  // ✅ List of issues detected
 }
 
 export interface DevServerLog {

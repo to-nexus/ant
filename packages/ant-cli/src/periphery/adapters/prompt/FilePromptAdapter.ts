@@ -82,9 +82,13 @@ Promise.all([
   fs.readFile(join(codePhaseRulesBase, "detect/rules.md"), "utf8")
     .then(content => Handlebars.registerPartial("code/phases/detect/rules", content))
     .catch(() => {}),
-  // Plan rules (plan node - keyword generation)
-  fs.readFile(join(codePhaseRulesBase, "plan/rules.md"), "utf8")
-    .then(content => Handlebars.registerPartial("code/phases/plan/rules", content))
+  // Plan rules - keyword generation
+  fs.readFile(join(codePhaseRulesBase, "plan/rules-keyword.md"), "utf8")
+    .then(content => Handlebars.registerPartial("code/phases/plan/rules-keyword", content))
+    .catch(() => {}),
+  // Plan rules - plan generation
+  fs.readFile(join(codePhaseRulesBase, "plan/rules-plan.md"), "utf8")
+    .then(content => Handlebars.registerPartial("code/phases/plan/rules-plan", content))
     .catch(() => {}),
 ]).catch(() => {});
 
@@ -217,10 +221,7 @@ export class FilePromptAdapter implements PromptPort {
     const unusedVars = providedVars.filter(v => !templateVars.includes(v));
     
     // 5. Log warnings for maintenance (only for actually missing vars)
-    // ✅ Skip validation warning for known conditional templates
-    const isConditionalTemplate = templateName.includes('plan/base') && vars.isKeywordGeneration !== undefined;
-    
-    if (missingVars.length > 0 && !isConditionalTemplate) {
+    if (missingVars.length > 0) {
       console.warn(`[PromptAdapter] Template "${templateName}": Missing variables [${missingVars.join(', ')}]`);
     }
     // ✅ Don't warn about unused vars - they might be for other conditional branches

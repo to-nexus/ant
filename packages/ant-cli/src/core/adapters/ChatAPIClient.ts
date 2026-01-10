@@ -75,7 +75,7 @@ export class ChatAPIClient {
       });
       
       if (response.ok) {
-        const { hasActive } = await response.json();
+        const { hasActive } = await response.json() as { hasActive: boolean };
         if (hasActive) {
           return true;  // Message is active on server
         }
@@ -110,7 +110,7 @@ export class ChatAPIClient {
         return null;
       }
 
-      const { messageId } = await response.json();
+      const { messageId } = await response.json() as { messageId: string };
       this.messageStarted = true;  // ✅ Mark message as active
       return messageId;
     } catch (error) {
@@ -396,7 +396,7 @@ export class ChatAPIClient {
       console.log(`✅ [ChatAPIClient] HTTP 200 OK (type: ${type})`);
       
       // ✅ Return contentIndex for _mergeIndex
-      const result = await response.json();
+      const result = await response.json() as { contentIndex?: number };
       return result.contentIndex;
     } catch (error) {
       console.error('❌ [ChatAPIClient] Error showing chat status:', error);
@@ -758,7 +758,7 @@ export class ChatAPIClient {
     });
     
     if (response.ok) {
-      const result = await response.json();
+      const result = await response.json() as { contentIndex?: number };
       return result.contentIndex;
     }
     return undefined;
@@ -790,7 +790,7 @@ export class ChatAPIClient {
         body: JSON.stringify({ command, output: '', phase: 'running' })
       });
       if (response.ok) {
-        const result = await response.json();
+        const result = await response.json() as { contentIndex?: number };
         return result.contentIndex;
       }
     } catch (error) { /* Silently fail */ }

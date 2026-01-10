@@ -1,7 +1,6 @@
 import { Timer, Brain } from 'lucide-react';
 import { TaskTimer } from '../TaskTimer';
 import { JobTiming } from '@/domain/models/types';
-import { KanbanStatusBanner } from './KanbanStatusBanner';
 
 /**
  * SkeletonCard - Placeholder card during decompose

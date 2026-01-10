@@ -137,15 +137,20 @@ Output `<done>true</done>` when complete.
 {{#unless (eq currentTask.priority 1000)}}
 ## 🔧 SETUP TASK: Project Configuration
 
-Create config files only. NO source code, NO tests.
+Create config files only. **NO source code, NO tests.**
+
+**⚠️ SETUP SCOPE RESTRICTION:**
+- ✅ Configuration files ONLY
+- ❌ NO application source code files
+- ❌ NO scaffold/placeholder code
 
 **Files to Create:**
 - `package.json` - Dependencies and scripts
 - `tsconfig.json` (if TypeScript) - Compiler configuration
-- Build tool config - vite.config.ts/webpack.config.js/next.config.js
-- `.gitignore` - Version control exclusions (include platform-specific artifacts)
+- Build tool config (framework-specific)
+- `.gitignore` - Version control exclusions
 - `.env.example` - Environment variable template
-- `index.html` (if Vite/SPA) - Entry HTML
+- Entry file (framework-specific, e.g., index.html for SPA)
 
 **Framework-Specific Requirements:**
 

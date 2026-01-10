@@ -1,4 +1,3 @@
-import * as React from 'react';
 import { Columns, Rows } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { textColors, cn } from '@/shared/utils/design-system';

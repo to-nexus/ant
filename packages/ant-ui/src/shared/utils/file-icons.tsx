@@ -9,7 +9,6 @@ import {
   FileText, 
   FileJson, 
   Settings,
-  File,
   FileCode,
   FileImage,
   FileVideo,
@@ -20,8 +19,6 @@ import {
 } from 'lucide-react';
 
 // Import from react-icons for specific file type icons
-// These will be installed via: npm install react-icons
-import type { IconType } from 'react-icons';
 import { 
   SiTypescript,
   SiJavascript,
@@ -32,7 +29,6 @@ import {
   SiCss3,
   SiHtml5,
   SiMarkdown,
-  SiJson,
   SiDocker,
   SiGit,
   SiNpm,
@@ -41,7 +37,7 @@ import {
 } from 'react-icons/si';
 
 export interface FileIconConfig {
-  icon: React.ComponentType<{ className?: string; size?: number }>;
+  icon: React.ComponentType<{ className?: string; size?: string | number }>;
   color: string; // Tailwind color class
 }
 

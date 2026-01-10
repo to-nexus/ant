@@ -13,7 +13,7 @@ interface FileEditorPanelProps {
   onClose?: () => void;
 }
 
-export function FileEditorPanel({ onClose }: FileEditorPanelProps) {
+export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
   const { showError } = useAlertModalContext();
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);

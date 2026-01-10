@@ -48,7 +48,7 @@ export class GitHubAuthService {
       });
       
       if (response.ok) {
-        const userData = await response.json();
+        const userData = await response.json() as { login: string };
         return { valid: true, username: userData.login };
       } else if (response.status === 401) {
         return { valid: false, error: 'Invalid or expired PAT' };
@@ -299,7 +299,7 @@ export class GitHubAuthService {
     });
 
     if (!response.ok) {
-      const error = await response.json();
+      const error = await response.json() as { message?: string };
       throw new Error(`Failed to create GitHub repo: ${error.message || response.statusText}`);
     }
 

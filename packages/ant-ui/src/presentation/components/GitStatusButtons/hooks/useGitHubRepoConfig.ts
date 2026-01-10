@@ -20,7 +20,7 @@ export function useGitHubRepoConfig(selectedProject: string | undefined) {
         const config = await fetchProjectConfig(selectedProject);
         const hasRepo = !!config?.githubRepo;
         
-        const prevHasRepo = hasGitHubRepo;
+        // const prevHasRepo = hasGitHubRepo; // Reserved for future use
         setHasGitHubRepo(hasRepo);
       } catch (error) {
         console.error('[useGitHubRepoConfig] Failed to fetch config:', error);
@@ -28,11 +28,6 @@ export function useGitHubRepoConfig(selectedProject: string | undefined) {
       }
     };
 
-    // Check config when project changes or project config tab closes
-    const projectConfigTabJustClosed = 
-      prevProjectConfigTabOpenRef.current === true && 
-      mainPanelOpenTabs.projectConfig === false;
-    
     prevProjectConfigTabOpenRef.current = mainPanelOpenTabs.projectConfig;
 
     checkConfig();

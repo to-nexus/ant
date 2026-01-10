@@ -7,6 +7,20 @@
 import { Router, Request, Response } from 'express';
 import { UserConfigManager, FigmaCredentials } from '../../../../utils/userConfig';
 
+interface FigmaTokenResponse {
+  access_token: string;
+  refresh_token?: string;
+  expires_in?: number;
+  user_id?: number;
+  user_id_string?: string;
+}
+
+interface FigmaUserResponse {
+  id: string;
+  email?: string;
+  handle?: string;
+}
+
 export function createFigmaOAuthRoutes(workspaceRoot: string): Router {
   const router = Router();
   const userConfig = new UserConfigManager(workspaceRoot);
@@ -214,7 +228,7 @@ export function createFigmaOAuthRoutes(workspaceRoot: string): Router {
         throw new Error(`Token exchange failed: ${tokenResponse.statusText}`);
       }
       
-      const tokenData = await tokenResponse.json();
+      const tokenData = await tokenResponse.json() as FigmaTokenResponse;
       console.log('[Figma OAuth] Token exchange successful, user_id:', tokenData.user_id_string || tokenData.user_id);
       
       // Get user info from /v1/me endpoint
@@ -231,7 +245,7 @@ export function createFigmaOAuthRoutes(workspaceRoot: string): Router {
         throw new Error(`Failed to get user info: ${userResponse.status} ${errorText}`);
       }
       
-      const userData = await userResponse.json();
+      const userData = await userResponse.json() as FigmaUserResponse;
       console.log('[Figma OAuth] User info response:', JSON.stringify(userData, null, 2));
       console.log('[Figma OAuth] User email:', userData.email);
       console.log('[Figma OAuth] User ID:', userData.id);

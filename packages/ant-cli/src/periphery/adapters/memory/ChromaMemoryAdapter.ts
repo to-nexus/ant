@@ -36,7 +36,7 @@ class CustomEmbeddingFunction {
     if (!response.ok) {
       throw new Error(`Embedding request failed: ${response.statusText}`);
     }
-    const data = await response.json();
+    const data = await response.json() as { embeddings: number[][] };
     return data.embeddings;
   }
 }

@@ -3,8 +3,7 @@ import {
   commitGitChanges, 
   pushToGitHub, 
   pullFromGitHub, 
-  syncWithRemote,
-  getGitChanges 
+  syncWithRemote
 } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
 import { GitChanges } from './useGitChanges';
