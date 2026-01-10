@@ -27,6 +27,19 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
 }>> {
   const messages: Array<{ role: 'user' | 'assistant'; content: CacheableContent[] }> = [];
   
+  // ✅ DEBUG: Verify planText was properly propagated from Plan node
+  console.log(`🔍 [CodeGen] Checking planText:`);
+  console.log(`   state.planText: ${state.planText ? state.planText.length + ' chars' : 'MISSING'}`);
+  
+  if (state.planText) {
+    console.log(`   ✅ planText received successfully`);
+    console.log(`   Preview: "${state.planText.substring(0, 100).replace(/\n/g, ' ')}..."`);
+  } else {
+    console.error(`   ❌ CRITICAL: planText is missing!`);
+    console.error(`   This indicates LangGraph state propagation failure.`);
+    console.error(`   Will use task.description only (degraded mode).`);
+  }
+  
   const promptEngine = state.deps?.promptEngine;
   
   if (!promptEngine) {
@@ -357,6 +370,30 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
 export function buildRuntimeContext(state: ArchitectGraphState): string {
   const lines: string[] = [];
   
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 🚨 PATH RULES REMINDER - Injected EVERY task to prevent LLM drift
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  lines.push(`════════════════════════════════════════════════════════════════════════════════`);
+  lines.push(`🚨 PATH RULES (CRITICAL - READ EVERY TASK)`);
+  lines.push(`════════════════════════════════════════════════════════════════════════════════`);
+  lines.push(``);
+  lines.push(`All paths are relative to PROJECT ROOT. Use these prefixes:`);
+  lines.push(``);
+  lines.push(`✅ CORRECT paths:`);
+  lines.push(`   - codebase/app/page.tsx`);
+  lines.push(`   - codebase/components/Header.tsx`);
+  lines.push(`   - codebase/public/logo.svg`);
+  lines.push(`   - features/<feature>/inputs/assets/... (for asset SOURCE only)`);
+  lines.push(``);
+  lines.push(`❌ WRONG paths (DO NOT USE):`);
+  lines.push(`   - app/page.tsx (missing codebase/ prefix)`);
+  lines.push(`   - src/app/page.tsx (wrong structure)`);
+  lines.push(`   - features/<feature>/codebase/... (codebase is NOT inside features!)`);
+  lines.push(``);
+  lines.push(`The codebase/ directory is at PROJECT ROOT, NOT inside features/.`);
+  lines.push(`════════════════════════════════════════════════════════════════════════════════`);
+  lines.push(``);
+  
   if (state.currentTask) {
     lines.push(`# Current Task`);
     lines.push(`**${state.currentTask.name}**`);
@@ -380,7 +417,7 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
       lines.push(`────────────────────────────────────────────────────────────────────────────────`);
       lines.push(``);
     } else {
-      // No plan available (explain/final-verification tasks)
+      // No plan available (explain/final-verification tasks OR state propagation failure)
       lines.push(state.currentTask.description);
       lines.push(``);
     }

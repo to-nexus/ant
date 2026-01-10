@@ -289,16 +289,40 @@ Generate a **concrete implementation plan** for this task.
 {{#if hasUiDoc}}
 **FOR UI TASKS:**
 
-Your plan MUST include these 3 sections:
+Your plan MUST include these sections:
 
-#### 1. ASSET INVENTORY
+#### 1. 📂 CODEBASE STRUCTURE ANALYSIS
+
+**FIRST**, analyze the existing codebase structure to maintain consistency:
+
+```
+## Codebase Structure Analysis
+
+Existing files found:
+- [List key existing component files and their paths]
+
+Pattern detected:
+- Components location: `components/` or `app/components/` or `src/components/`
+- Sections location: `components/sections/` or `app/sections/`
+- Other patterns: [any other relevant patterns]
+
+**DECISION**: New files for this task will follow [specify the exact pattern]
+```
+
+**CRITICAL**: 
+- Check `projectCodeContext` to see existing file locations
+- DO NOT create duplicate directory structures
+- If `components/sections/About.tsx` exists, put new sections there too
+- If `app/components/` doesn't exist, don't create it
+
+#### 2. 📦 ASSET INVENTORY
 - Search ui-assets.md for assets related to this section/component
 - List ALL assets with exact paths: `asset-id: source → destination`
 - Provide `cp` commands for each asset
 - Count total: `Total: N assets`
 - If none found: "✓ No assets in ui-assets.md for this section"
 
-#### 2. LAYOUT & COMPONENT SPECS
+#### 3. 📐 LAYOUT & COMPONENT SPECS
 - Extract layout structure from ui-spec.md (grid/flex, responsive breakpoints)
 - List each component with:
   - Visual properties (background, border, padding, etc.)
@@ -307,7 +331,7 @@ Your plan MUST include these 3 sections:
   - Asset usage (which assets go where)
 - Note design token references
 
-#### 3. IMPLEMENTATION PLAN
+#### 4. 📋 IMPLEMENTATION PLAN
 - Step-by-step implementation
 - Files to create/modify
 - Verification steps

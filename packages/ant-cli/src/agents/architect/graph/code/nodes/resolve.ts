@@ -371,10 +371,6 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     state.runtimeAssetsIndex = { files: [], count: 0 };
   }
 
-  // ✅ NOTE: Runtime assets are NOT auto-synced here.
-  // Rationale: In monorepos/multi-app repos, the correct static root (public/, apps/*/public, etc.)
-  // must be chosen by the LLM as part of the implementation tasks.
-
   // 1. Load design document (optional)
   const designResult = await ArtifactService.findLatestDesign(context, gitPort, fileSystem);
   const design = designResult?.content || undefined;
