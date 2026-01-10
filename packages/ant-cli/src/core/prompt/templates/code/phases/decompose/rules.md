@@ -46,7 +46,7 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
     "type": "feature",
     "priority": 210,
     "ui": true,
-    "description": "<ui> Create landing page with hero section, feature cards, and footer using design tokens and assets"
+    "description": "<ui> Implement landing page based on design specifications. Plan stage will read ui-spec.md and ui-assets.md to identify all required sections, components, and assets."
   },
   {
     "id": "final-verification",
@@ -155,9 +155,34 @@ CRITICAL:
   - Theme/tokens/typography/colors
   - React/TSX view layer changes
 - Otherwise set `"ui": false` (backend-only, infra, API contract, server fixes, dependency fixes, **setup/config**).
-- When `"ui": true`, prefix description with `<ui>` for visual identification (e.g., `"<ui> Create Header..."`).
+- When `"ui": true`, prefix description with `<ui>` for visual identification (e.g., `"<ui> Implement Header..."`).
 
-**RUNTIME ASSETS (IMPORTANT):**
+**UI TASK DESCRIPTION GUIDELINES (CRITICAL):**
+
+**For UI tasks, task description should provide DIRECTION, not DETAILS.**
+
+The Plan stage will read design documents (ui-spec.md, ui-assets.md) to extract complete requirements.
+
+**❌ BAD (too specific - constrains Plan stage):**
+- "Create landing page with hero section, 3 feature cards, and footer"
+- "Implement dashboard with sidebar, chart widget, and user table"
+- "Add header with logo, 5 navigation links, and search bar"
+
+**✅ GOOD (provides direction - lets Plan discover details):**
+- "Implement landing page based on design specifications"
+- "Implement dashboard UI per ui-spec.md"
+- "Implement header component as specified in design documents"
+
+**Why:**
+- Task description = Starting point (what general area)
+- Design documents = Complete specification (all components, assets, layouts)
+- Plan stage = Reads docs and extracts EVERYTHING
+- If you specify "3 cards" but docs say "5 cards" → Plan might miss 2 cards
+
+**Template for UI task descriptions:**
+```
+"<ui> Implement [section/component name] based on design specifications"
+```
 - If the spec contains a "Runtime Assets Available (inputs/assets)" section (file list), those files are **NOT auto-copied**.
 - **DO NOT create a separate task just for copying assets.** UI tasks should handle asset copying as part of their implementation.
 - When implementing UI components, the task must:
@@ -168,6 +193,7 @@ CRITICAL:
 - **⚠️ ANTI-PATTERN: TODO placeholders instead of actual implementation**
   - ❌ DO NOT leave `{/* TODO: Add logo image */}` comments
   - ✅ Actually copy the asset and reference it in code
+- **Note**: Task description should NOT enumerate specific assets. Plan stage will read ui-assets.md to discover all required assets.
 
 IMPORTANT:
 - **Setup Task Decision (CRITICAL):**
@@ -206,7 +232,7 @@ IMPORTANT:
   {
     "id": "header-component",
     "name": "Implement Header",
-    "description": "Create Header with logo, navigation, and responsive layout",
+    "description": "<ui> Implement Header based on design specifications",
     "type": "feature",
     "priority": 210,
     "ui": true
