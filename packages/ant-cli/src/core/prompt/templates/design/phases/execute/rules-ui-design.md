@@ -42,7 +42,7 @@ You have access to tools for exploring reference images and assets:
 
 1. **First**: Use `list_reference_images` or `list_assets` to discover available resources
 2. **Then**: Use `read_reference_image` to load and analyze specific images (ONE PER TURN)
-3. **Finally**: Generate the document using `<file>` XML tag
+3. **Finally**: Generate the document using `<file>` or `<append>` XML tag (see below)
 
 ### Image Loading Strategy
 
@@ -66,61 +66,143 @@ You have access to tools for exploring reference images and assets:
 ## XML Tag Reference for UI Design Documents
 ════════════════════════════════════════════════════════════════════════════════
 
-### Output Location
+### Scenario 1: New Document (First Chapter)
 
-All UI design documents go to `outputs/design/`:
+**Detection**: Task ID is `ui-tokens`, `ui-assets`, `ui-spec`, or ends with `-ch1`
+**OR**: `lastSectionNumber` is NOT provided (starting fresh)
+
+{{#unless lastSectionNumber}}
+**You are in this scenario right now.**
+{{/unless}}
+
+Use `<file>` tag:
 
 ```xml
-<file path="outputs/design/ui-tokens.md">
-# ui-tokens.md (Design Tokens)
+<file path="outputs/design/[FILENAME]">
+# Document Title
+
+> Brief description of document purpose
+
+---
+
+## 1. First Section
 ...
+
+<!-- LAST_SECTION: 1 -->
 </file>
 ```
 
-```xml
-<file path="outputs/design/ui-assets.md">
-# ui-assets.md (Asset Mapping)
-...
-</file>
-```
+**Filename determination:**
+- Task ID starts with `ui-tokens` → use `ui-tokens.md`
+- Task ID starts with `ui-assets` → use `ui-assets.md`
+- Task ID starts with `ui-spec` → use `ui-spec.md`
+
+---
+
+### Scenario 2: Appending to Existing Document (Continuation Chapter)
+
+**Detection**: Task ID contains `-ch2`, `-ch3`, `-ch4`, etc.
+**OR**: `lastSectionNumber` is provided in the prompt context
+
+{{#if lastSectionNumber}}
+**⚠️ You are in this scenario right now! Last section was: {{lastSectionNumber}}**
+{{/if}}
+
+**⚠️ CRITICAL: If continuing a document, you MUST use `<append>`, NOT `<file>`!**
+
+Use `<append>` tag:
 
 ```xml
-<file path="outputs/design/ui-spec.md">
-# ui-spec.md (UI Specification)
+<append path="outputs/design/[FILENAME]">
+
+{{#if lastSectionNumber}}
+## {{add lastSectionNumber 1}}. [Topic]    <!-- ⚠️ N = lastSectionNumber + 1 -->
+{{else}}
+## N. [Topic]
+{{/if}}
 ...
-</file>
+
+<!-- LAST_SECTION: N -->
+</append>
 ```
+
+{{#if lastSectionNumber}}
+**For this task:**
+- Your first section number: {{add lastSectionNumber 1}}
+- Your ending metadata: `<!-- LAST_SECTION: [YOUR_LAST_NUMBER] -->`
+{{/if}}
+
+**Examples**:
+- `ui-tokens-ch1` or `ui-tokens` → Use `<file path="outputs/design/ui-tokens.md">` with `<!-- LAST_SECTION: N -->`
+- `ui-tokens-ch2` → Use `<append path="outputs/design/ui-tokens.md">` with updated `<!-- LAST_SECTION: N -->` ✅
+- `ui-assets-ch2` → Use `<append path="outputs/design/ui-assets.md">` with updated `<!-- LAST_SECTION: N -->` ✅
+- `ui-spec-ch3` → Use `<append path="outputs/design/ui-spec.md">` with updated `<!-- LAST_SECTION: N -->` ✅
+
+---
 
 ### Simple Rules
 
-1. **Always use `<file>` tag** - UI docs are always created fresh (no append)
-2. **Path prefix**: `inputs/sources/`
-3. **One file per task** - Each task generates exactly one document
+1. **First chapter** (`-ch1` or no suffix) → `<file>` tag with `<!-- LAST_SECTION: N -->`
+2. **Continuation chapters** (`-ch2`, `-ch3`, etc.) → `<append>` tag with updated `<!-- LAST_SECTION: N -->`
+3. **Path prefix**: Always `outputs/design/`
+4. **One file per category**: All ui-tokens chapters → `ui-tokens.md`
+5. **ALWAYS add metadata**: `<!-- LAST_SECTION: N -->` at end of your content (N = your last section number)
 
 ### ❌ DO NOT
 
 ```xml
-<!-- WRONG: Don't use inputs/sources/ -->
+<!-- WRONG: Using <file> for chapter 2 -->
+<file path="outputs/design/ui-tokens.md">  ← Will OVERWRITE existing content!
+
+<!-- WRONG: Wrong path -->
 <file path="inputs/sources/ui-tokens.md">
 
-<!-- WRONG: No append for UI docs -->
-<append path="outputs/design/ui-tokens.md">
+<!-- WRONG: Creating separate files per chapter -->
+<file path="outputs/design/ui-tokens-ch2.md">  ← All chapters go to same file!
 ```
 
 ### ✅ CORRECT
 
 ```xml
+<!-- Task: ui-tokens-ch1 (FIRST) -->
 <file path="outputs/design/ui-tokens.md">
 # ui-tokens.md (Design Tokens)
 
-> Color, typography, spacing, and size definitions
+> Color, typography, spacing, and visual effect definitions extracted from reference screenshots
 
-## Colors
-| token | value | usage |
-|---|---|---|
-| color.bg.base | #ffffff | Default background |
-...
+---
+
+## 1. Colors
+- `color.primary.blue`: #1E40AF
+
+<!-- LAST_SECTION: 1 -->
 </file>
+```
+
+```xml
+<!-- Task: ui-tokens-ch2 (CONTINUATION) -->
+<append path="outputs/design/ui-tokens.md">
+
+---
+
+## 2. Typography
+- `font.family.heading`: "Inter", sans-serif
+
+<!-- LAST_SECTION: 2 -->
+</append>
+```
+
+```xml
+<!-- Task: ui-tokens-ch3 (CONTINUATION) -->
+<append path="outputs/design/ui-tokens.md">
+
+---
+
+## 3. Spacing
+- `spacing.md`: 16px
+
+<!-- LAST_SECTION: 3 -->
+</append>
 ```
 
 ════════════════════════════════════════════════════════════════════════════════
@@ -158,19 +240,54 @@ For dependent tasks, you will find REFERENCE sections in this prompt containing 
 ## Document Quality Guidelines
 ════════════════════════════════════════════════════════════════════════════════
 
-### ui-tokens.md
-- Use **semantic token names** (purpose-based, not appearance-based)
-- Include **exact values** extracted from screenshots
-- Organize by category (Colors, Typography, Spacing, Effects)
-- Use **tables** for easy reference by other documents
+**CRITICAL WRITING RULES (Apply to ALL documents)**:
 
-### ui-assets.md
-- **Read ui-tokens.md first** to ensure consistency
-- Map **source → destination** paths clearly
-- Include **usage context** for each asset
-- Categorize by type (logos, icons, backgrounds)
+1. **Token-First**: ALL visual values MUST reference tokens (e.g., `token(color.primary)`, NOT `#1E40AF`)
+2. **Specification Only**: Document WHAT to build, NOT HOW (no framework names, no implementation code)
+3. **Complete Coverage**: Capture ALL visual elements and interactions visible in screenshots
+4. **Use REFERENCE Sections**: For dependent tasks, find and use `# REFERENCE:` sections in this prompt
 
-### ui-spec.md
+---
+
+### ui-tokens.md Format
+
+**Structure**:
+- Organize by category: Colors, Typography, Spacing, Effects
+- Use **Markdown tables** for easy reference:
+
+```markdown
+| Token | Value | Usage |
+|-------|-------|-------|
+| color.primary.blue | #1E40AF | Primary action buttons, links |
+| color.bg.dark | #1A1A1A | Hero section background |
+```
+
+**Content Requirements**:
+- Extract **exact values** from screenshots (no approximations)
+- Include **usage context** for each token
+
+---
+
+### ui-assets.md Format
+
+**Structure**:
+- Categorize by type: Logos, Icons, Backgrounds, Images
+- Use **tables** with source → destination mapping:
+
+```markdown
+| Asset ID | Source Path | Type | Usage Context |
+|----------|-------------|------|---------------|
+| hero-bg | backgrounds/hero.webp | Background | Hero section backdrop (behind content) |
+| logo-main | logos/logo.svg | Logo | Header navigation (left-aligned) |
+```
+
+**Content Requirements**:
+- Reference **token names** from ui-tokens.md (e.g., "overlaid with `token(color.overlay.dark)`")
+- Distinguish **background images** (decorative) vs **content images** (structural)
+
+---
+
+### ui-spec.md Format
 
 **CRITICAL: Specification, Not Implementation**
 
@@ -178,17 +295,21 @@ ui-spec.md documents **WHAT** to build, not **HOW** to build it.
 
 | ✅ INCLUDE | ❌ EXCLUDE |
 |-----------|-----------|
-| Layout structure | Framework-specific code |
-| Component states and props | CSS/styling syntax |
-| Interaction behaviors | Implementation details |
-| Responsive rules | Raw values (use tokens) |
-| Token references | Programming language syntax |
+| Layout structure | Framework-specific code (React, Vue, Next.js) |
+| Component states and props | CSS/styling syntax (className, Tailwind) |
+| Interaction behaviors | Implementation details (useState, onClick) |
+| Responsive rules | Raw values (use tokens!) |
+| Token references | File paths (app/, components/) |
 
-**Token Reference Requirement:**
+**Token Reference Requirement**:
 - ALL colors → `token(color.*)` from ui-tokens.md
 - ALL spacing → `token(spacing.*)` from ui-tokens.md
 - ALL typography → `token(font.*)` from ui-tokens.md
 - NO raw hex codes, pixel values, or framework classes
+
+**Asset Reference Requirement**:
+- ALL assets → Use Asset IDs from ui-assets.md
+- Example: "Background: `[hero-bg]` from ui-assets.md"
 
 ════════════════════════════════════════════════════════════════════════════════
 ## Final Checklist
@@ -196,8 +317,34 @@ ui-spec.md documents **WHAT** to build, not **HOW** to build it.
 
 Before outputting, verify:
 
-- [ ] Using `<file path="inputs/sources/...">` tag
+**XML Tag Selection**:
+{{#if lastSectionNumber}}
+- [ ] Used `<append>` (NOT `<file>`) because lastSectionNumber exists ({{lastSectionNumber}})
+{{else}}
+- [ ] Used `<file>` for first chapter (task ID has no `-ch` suffix or ends with `-ch1`)
+{{/if}}
+- [ ] Used `<append>` for continuation chapters (task ID ends with `-ch2`, `-ch3`, etc.)
+- [ ] Path starts with `outputs/design/`
+- [ ] Filename matches category (`ui-tokens.md`, `ui-assets.md`, or `ui-spec.md`)
+
+**Section Numbering**:
+{{#if lastSectionNumber}}
+- [ ] First section is `## {{add lastSectionNumber 1}}.` (NOT `## 1.`)
+- [ ] Section numbers are sequential from {{add lastSectionNumber 1}}
+{{else}}
+- [ ] First section is `## 1.` (new document)
+- [ ] Section numbers are sequential (1, 2, 3...)
+{{/if}}
+
+**Metadata**:
+- [ ] Added `<!-- LAST_SECTION: N -->` at the end (N = your last section number)
+{{#if lastSectionNumber}}
+- [ ] Did NOT duplicate old metadata line (removed `<!-- LAST_SECTION: {{lastSectionNumber}} -->`)
+{{/if}}
+
+**Content Quality**:
 - [ ] Content is in **Markdown table format** where appropriate
 - [ ] **Exact values** extracted from screenshots (no approximations)
-- [ ] **Semantic naming** conventions followed
-- [ ] Document is **complete and self-contained**
+- [ ] **ALL visual values** use token references (e.g., `token(color.primary)`)
+- [ ] **NO raw values** (hex codes, pixel values, framework classes)
+- [ ] Document section is **complete and self-contained**

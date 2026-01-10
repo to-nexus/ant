@@ -3,6 +3,18 @@
 ### Purpose
 Extract and document all design tokens from reference screenshots to establish a single source of truth for visual properties.
 
+### PRD Integration
+**When to reference PRD**:
+- **Brand identity**: Extract brand colors, typography, logos from PRD if specified
+- **Accessibility requirements**: Confirm contrast ratios, minimum font sizes
+- **Platform constraints**: Check if PRD specifies mobile-first, responsive breakpoints, dark mode
+- **Theming requirements**: Identify if PRD mentions themes, color schemes, variants
+
+**Principles**:
+- **Visual-first**: Extract what you SEE in screenshots
+- **PRD as context**: Use PRD to understand intent behind visual choices (e.g., "primary color" in PRD + blue in screenshot = `color.primary.blue`)
+- **No invention**: Do not create tokens not visible in screenshots, even if PRD suggests them
+
 ### Core Principles
 
 #### 1. Single Source of Truth
@@ -63,35 +75,75 @@ Use tables for easy scanning:
 |-------|-------|-------|
 | (semantic name) | (exact value) | (usage context) |
 
+**Section Numbering Rules**:
+{{#if lastSectionNumber}}
+- **Your first section MUST be**: `## {{add lastSectionNumber 1}}. [Section Title]`
+- Continue sequential numbering from there ({{add lastSectionNumber 1}}, {{add lastSectionNumber 2}}, {{add lastSectionNumber 3}}...)
+- **DO NOT write** "(Chapter N)" in section titles - use **numbered sections only**
+{{else}}
+- **Start with**: `## 1. Colors` (or first category)
+- Continue sequential numbering (1, 2, 3...)
+- **DO NOT write** "(Chapter N)" in section titles - use **numbered sections only**
+{{/if}}
+- Each category gets its own section number (e.g., `## 1. Colors`, `## 2. Typography`, `## 3. Spacing`)
+- End document with `<!-- LAST_SECTION: N -->` where N = your last section number
+
 ### Example Structure
 
+**For first chapter (task: ui-tokens or ui-tokens-ch1)**:
+
 ```markdown
+<file path="outputs/design/ui-tokens.md">
 # ui-tokens.md (Design Tokens)
 
 > Color, typography, spacing, and size definitions
 
-## Colors
+---
+
+## 1. Colors
 | token | value | usage |
 |---|---|---|
 | color.bg.base | #ffffff | Default background |
 | color.bg.dark | #0b0f14 | Dark section background |
 
-## Typography
+---
+
+## 2. Typography
 | token | font | size | weight | usage |
 |---|---|---|---|---|
 | font.heading.xl | Pretendard | 48px | 700 | Main title |
 
-## Spacing
+---
+
+<!-- LAST_SECTION: 2 -->
+</file>
+```
+
+**For continuation chapter (task: ui-tokens-ch2)**:
+
+```markdown
+<append path="outputs/design/ui-tokens.md">
+
+---
+
+## 3. Spacing
 | token | value | usage |
 |---|---|---|
 | spacing.xs | 4px | Icon-text gap |
 | spacing.sm | 8px | Inline element gap |
 
-## Radius
+---
+
+## 4. Border Radius
 | token | value | usage |
 |---|---|---|
 | radius.sm | 4px | Button, input |
 | radius.lg | 16px | Card |
+
+---
+
+<!-- LAST_SECTION: 4 -->
+</append>
 ```
 
 ### Quality Criteria

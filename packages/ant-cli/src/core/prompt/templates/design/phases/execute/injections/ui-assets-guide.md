@@ -3,6 +3,18 @@
 ### Purpose
 Create an **accurate** mapping document that connects source assets to their runtime destinations and usage contexts.
 
+### PRD Integration
+**When to reference PRD**:
+- **Asset purpose**: Understand why an asset is needed (e.g., "hero background" in PRD + image in assets = hero-bg.jpg)
+- **Content context**: Identify which sections/features use specific assets
+- **Branding requirements**: Extract logo variations, icon sets mentioned in PRD
+- **Platform variants**: Check if PRD specifies different assets for mobile/desktop/dark mode
+
+**Principles**:
+- **PRD as naming guide**: Use PRD terminology for semantic asset naming (e.g., "Token Section Central Graphic" in PRD → `token-section-graphic.png`)
+- **Visual-first verification**: Confirm PRD-mentioned assets exist in `inputs/assets/`
+- **Usage context from PRD**: Document where/how assets are used based on PRD feature descriptions
+
 ### Core Principles
 
 #### 1. Accuracy - Verify Before Documenting
