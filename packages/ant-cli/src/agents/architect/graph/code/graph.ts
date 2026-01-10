@@ -333,7 +333,10 @@ export function buildCodeGraph() {
       referenceCodeContexts: null as any,   // Reference projects
       sessionContext: null as any,          // Session context
       // Execution
-      planText: null as any,
+      planText: {
+        value: (x: string, y?: string) => y ?? x,  // ✅ FIX: Explicit reducer for state propagation
+        default: () => '',
+      } as any,
       codePrompt: null as any,
       rawResponse: null as any,
       responseSection: null as any,

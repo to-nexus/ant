@@ -80,6 +80,73 @@ export type ResolvedToolPath = {
 
 const normalizeRel = (s: string) => s.replace(/\\/g, '/').replace(/^\.?\//, '').trim();
 
+/**
+ * Detect and auto-correct common path mistakes made by LLM
+ * 
+ * Common mistakes:
+ * 1. app/page.tsx → codebase/app/page.tsx (missing codebase/ prefix)
+ * 2. src/app/page.tsx → codebase/app/page.tsx (wrong Next.js structure)
+ * 3. features/xxx/codebase/... → codebase/... (codebase is at project root)
+ * 
+ * Returns corrected path and logs warning
+ */
+function autoCorrectCodebasePath(rawPath: string): { corrected: string; wasFixed: boolean; reason?: string } {
+  const normalized = normalizeRel(rawPath);
+  
+  // Pattern 1: features/<feature>/codebase/... → codebase/...
+  // This is a critical error - LLM thinks codebase is inside features
+  const featureCodebaseMatch = normalized.match(/^features\/[^/]+\/codebase\/(.+)$/);
+  if (featureCodebaseMatch) {
+    const corrected = `codebase/${featureCodebaseMatch[1]}`;
+    console.warn(`\n⚠️  [PATH AUTO-FIX] Detected wrong path structure!`);
+    console.warn(`   ❌ Requested: ${normalized}`);
+    console.warn(`   ✅ Corrected: ${corrected}`);
+    console.warn(`   💡 Reason: codebase/ is at PROJECT ROOT, not inside features/\n`);
+    return { corrected, wasFixed: true, reason: 'codebase is at project root, not inside features' };
+  }
+  
+  // Pattern 2: src/app/... or src/components/... (common Next.js confusion)
+  // Only fix if it looks like a typical frontend file
+  if (normalized.startsWith('src/') && !normalized.startsWith('src/test')) {
+    const withoutSrc = normalized.substring(4); // remove 'src/'
+    const corrected = `codebase/${withoutSrc}`;
+    console.warn(`\n⚠️  [PATH AUTO-FIX] Detected src/ prefix (not used in this project)`);
+    console.warn(`   ❌ Requested: ${normalized}`);
+    console.warn(`   ✅ Corrected: ${corrected}`);
+    console.warn(`   💡 Reason: This project uses codebase/app/, not src/app/\n`);
+    return { corrected, wasFixed: true, reason: 'project uses codebase/, not src/' };
+  }
+  
+  // Pattern 3: app/... or components/... without codebase/ prefix
+  // Common frontend directories that should be under codebase/
+  const frontendDirs = ['app/', 'components/', 'public/', 'styles/', 'lib/', 'utils/', 'hooks/', 'pages/'];
+  for (const dir of frontendDirs) {
+    if (normalized.startsWith(dir) && !normalized.startsWith('codebase/')) {
+      const corrected = `codebase/${normalized}`;
+      console.warn(`\n⚠️  [PATH AUTO-FIX] Missing codebase/ prefix`);
+      console.warn(`   ❌ Requested: ${normalized}`);
+      console.warn(`   ✅ Corrected: ${corrected}`);
+      console.warn(`   💡 Reason: All code files must be under codebase/\n`);
+      return { corrected, wasFixed: true, reason: 'code files must be under codebase/' };
+    }
+  }
+  
+  // Pattern 4: Common config files without codebase/ prefix
+  const configFiles = ['package.json', 'tsconfig.json', 'next.config', 'tailwind.config', 'postcss.config', '.eslintrc', '.gitignore'];
+  for (const configFile of configFiles) {
+    if (normalized === configFile || normalized.startsWith(`${configFile.split('.')[0]}.`)) {
+      const corrected = `codebase/${normalized}`;
+      console.warn(`\n⚠️  [PATH AUTO-FIX] Config file missing codebase/ prefix`);
+      console.warn(`   ❌ Requested: ${normalized}`);
+      console.warn(`   ✅ Corrected: ${corrected}`);
+      console.warn(`   💡 Reason: Config files are inside codebase/\n`);
+      return { corrected, wasFixed: true, reason: 'config files are inside codebase/' };
+    }
+  }
+  
+  return { corrected: normalized, wasFixed: false };
+}
+
 export async function resolveToolPath(
   state: ArchitectGraphState,
   rawPath: string
@@ -95,11 +162,22 @@ export async function resolveToolPath(
   // Absolute path: make it project-root relative
   if (p.isAbsolute(rawPath)) {
     const fsPath = normalizeRel(p.relative(projectRoot, rawPath));
-    return { displayPath: fsPath, fsPath, scope: 'workspace' };
+    // Still apply auto-correction for absolute paths converted to relative
+    const { corrected } = autoCorrectCodebasePath(fsPath);
+    return { displayPath: corrected, fsPath: corrected, scope: 'workspace' };
   }
 
   const rel = normalizeRel(rawPath);
-  return { displayPath: rel, fsPath: rel, scope: 'workspace' };
+  
+  // ✅ Apply auto-correction for common LLM path mistakes
+  const { corrected, wasFixed, reason } = autoCorrectCodebasePath(rel);
+  
+  if (wasFixed) {
+    // Track the correction for debugging/learning
+    console.log(`[resolveToolPath] Auto-corrected path: ${rel} → ${corrected}`);
+  }
+  
+  return { displayPath: corrected, fsPath: corrected, scope: 'workspace' };
 }
 
 export async function resolveToolDirectory(

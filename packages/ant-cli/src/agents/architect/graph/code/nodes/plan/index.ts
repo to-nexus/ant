@@ -262,7 +262,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       projectCodeContext,
       referenceCodeContexts,
       lessons,  // ✅ Include lessons from RAG for prompt injection
-      planText,
+      planText,  // ✅ Store in state.planText (single source of truth)
       retries: isRetry ? state.retries : 0,  // ✅ Clear retries for new task
       completedTasksDetails: state.completedTasksDetails || [],
       recursionCount: state.recursionCount,
@@ -270,6 +270,15 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       workspaceConfig: state.workspaceConfig,  // ✅ CRITICAL: Explicitly preserve workspaceConfig
       // ✅ violations and violationMessage are preserved in state (not cleared)
     };
+    
+    // ✅ DEBUG: Verify planText is properly stored
+    console.log(`🔍 [Plan] Returning state with planText: ${planText ? planText.length : 0} chars`);
+    if (planText) {
+      console.log(`   ✅ planText stored in state.planText`);
+      console.log(`   Preview: "${planText.substring(0, 100).replace(/\n/g, ' ')}..."`);
+    } else {
+      console.log(`   ⚠️  planText is empty!`);
+    }
     
     // Exit node for workflow tracking
     if (state.deps?.workflowUpdate && state._httpJobId) {
