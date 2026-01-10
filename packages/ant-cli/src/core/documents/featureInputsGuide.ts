@@ -14,9 +14,9 @@ export function getFeatureInputsGuideMarkdown(): string {
   - **code job**: 요구사항 컨텍스트(구현 기준)
 
 ## 옵션(UI/FE 작업일 때 권장)
-- **\`outputs/design/ui-spec.md\`**: 화면/상태/인터랙션/반응형 규칙
-- **\`outputs/design/ui-tokens.md\`**: 색/타이포/스페이싱 토큰
-- **\`outputs/design/ui-assets.md\`**: (선택) 이미지 캡션/주의사항 메모 (비워도 됨)
+- **\`outputs/design/ui-spec.json\`**: 화면/상태/인터랙션/반응형 규칙 (JSON 형식)
+- **\`outputs/design/ui-tokens.json\`**: 색/타이포/스페이싱 토큰 (JSON 형식)
+- **\`outputs/design/ui-assets.json\`**: (선택) 이미지 캡션/주의사항 메모 (JSON 형식)
 
 ## 옵션(UI 에셋)
 - **\`inputs/references/screens/*\`**: 화면 스크린샷 (png/jpg/webp/gif) — 참고용(LLM에 이미지로 주입될 수 있음)

@@ -7,6 +7,7 @@ import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import { Eye, FileText } from 'lucide-react';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
+import { JsonYamlPreview } from './JsonYamlPreview';
 
 interface FileEditorPanelProps {
   onClose?: () => void;
@@ -31,13 +32,15 @@ export function FileEditorPanel({ onClose }: FileEditorPanelProps) {
   const [binaryPreviewUrl, setBinaryPreviewUrl] = useState<string | null>(null);
   const [svgPreviewUrl, setSvgPreviewUrl] = useState<string | null>(null);
   
-  // Check if file is markdown
+  // Check file types for preview support
   const isMarkdownFile = selectedFile?.toLowerCase().match(/\.(md|markdown)$/);
   const isSvgFile = isSvgFilePath(selectedFile);
   const isBinaryImageFile = isBinaryImageFilePath(selectedFile);
+  const isJsonFile = selectedFile?.toLowerCase().match(/\.json$/);
+  const isYamlFile = selectedFile?.toLowerCase().match(/\.(yaml|yml)$/);
   
   // 파일이 두 가지 이상 모드를 지원하는지 확인
-  const hasMultipleModes = (isMarkdownFile || isSvgFile) && !isBinaryImageFile;
+  const hasMultipleModes = (isMarkdownFile || isSvgFile || isJsonFile || isYamlFile) && !isBinaryImageFile;
   
   // Apply last view mode when file changes (only for files with multiple modes)
   useEffect(() => {
@@ -213,8 +216,8 @@ export function FileEditorPanel({ onClose }: FileEditorPanelProps) {
             </div>
           )}
 
-          {/* Preview/Raw Toggle - Markdown or SVG only */}
-          {(isMarkdownFile || isSvgFile) && !isBinaryImageFile && (
+          {/* Preview/Raw Toggle - Markdown, SVG, JSON, YAML */}
+          {(isMarkdownFile || isSvgFile || isJsonFile || isYamlFile) && !isBinaryImageFile && (
             <div className="flex items-center gap-1 ml-4 bg-gray-100 dark:bg-gray-900 rounded-md h-9 p-0.5">
               <button
                 onClick={() => handleViewModeChange('raw')}
@@ -286,6 +289,16 @@ export function FileEditorPanel({ onClose }: FileEditorPanelProps) {
             >
               {editedContent}
             </ReactMarkdown>
+          </div>
+        ) : viewMode === 'preview' && isJsonFile ? (
+          /* JSON Preview - Read-only */
+          <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
+            <JsonYamlPreview content={editedContent} fileType="json" />
+          </div>
+        ) : viewMode === 'preview' && isYamlFile ? (
+          /* YAML Preview - Read-only */
+          <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
+            <JsonYamlPreview content={editedContent} fileType="yaml" />
           </div>
         ) : (
           <>

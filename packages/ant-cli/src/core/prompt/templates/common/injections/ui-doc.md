@@ -1,25 +1,31 @@
 {{#if uiDoc}}
 ════════════════════════════════════════════════════════════════════════════════
-## 🎨 UI SPEC (Figma-derived)
+## 🎨 UI SPEC (HIGHEST PRIORITY FOR UI - JSON format)
 ════════════════════════════════════════════════════════════════════════════════
 
-Use this for UI behavior/layout/components/tokens.
+### ⚠️ PRIORITY: UI-SPEC > SYSTEM-DESIGN > PRD (for UI implementation)
 
-### 🚨 FOLLOW THE PLAN
+**When system-design.md and ui-spec.json describe the same component:**
+- **ui-spec wins** for: layout, colors, spacing, animation, typography, responsive
+- **system-design wins** for: component responsibility (WHAT it does, not HOW)
+
+**Format**: ui-tokens.json, ui-assets.json, ui-spec.json (all JSON)
+
+### 🚨 FOLLOW THE PLAN + UI-SPEC
 
 **Your plan contains an Asset Inventory and Layout/Component Specs.**
 
 **Implementation rules:**
 1. ✅ Copy EVERY asset listed in plan's "Asset Inventory"
-2. ✅ Implement layout EXACTLY as specified in plan
-3. ✅ Apply component specs from plan
-4. ✅ Use design tokens referenced in plan
+2. ✅ Implement layout EXACTLY as specified in **ui-spec** (not system-design)
+3. ✅ Apply component specs from **ui-spec**
+4. ✅ Use design tokens from **ui-tokens**
 
 **CRITICAL:**
 - If plan lists N assets → You MUST copy and reference all N assets
-- If plan specifies responsive breakpoints → Implement all breakpoints
-- If plan lists "decorative" elements → They are NOT optional
-- DO NOT skip assets or components mentioned in the plan
+- If ui-spec specifies responsive breakpoints → Implement all breakpoints
+- If ui-spec lists "decorative" elements → They are NOT optional
+- **If conflict between system-design and ui-spec → ui-spec wins for visuals**
 
 ### 🔍 ASSET DISCOVERY PRINCIPLE
 
@@ -28,8 +34,6 @@ Use this for UI behavior/layout/components/tokens.
 1. **Copy** each asset using the cp commands from plan
 2. **Reference** assets in code using destination paths from plan
 3. **Verify** count: Plan says N assets → Code uses N assets
-
-**The plan is your source of truth. Follow it completely.**
 
 ────────────────────────────────────────────────────────────────────────────────
 

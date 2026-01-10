@@ -86,9 +86,9 @@ Your responsibility:
 4. **Plan to implement EVERYTHING found in documents**, not just task description
 
 **Available documents in this context**:
-{{#if hasUiDoc}}- ✅ **ui-spec.md**: Complete UI specifications (layout, components, interactions)
-- ✅ **ui-assets.md**: All assets with source/destination mappings
-- ✅ **ui-tokens.md**: Design tokens (colors, typography, spacing)
+{{#if hasUiDoc}}- ✅ **ui-spec.json**: Complete UI specifications (layout, components, interactions) - JSON format
+- ✅ **ui-assets.json**: All assets with source/destination mappings - JSON format
+- ✅ **ui-tokens.json**: Design tokens (colors, typography, spacing) - JSON format
 {{/if}}{{#if designDoc}}- ✅ **API Contract**: Exact endpoints, request/response types, field names
 {{/if}}{{#if projectCodeContext}}- ✅ **Existing codebase**: Current implementation, integration points
 {{/if}}- ✅ **Original directive**: User's actual request (ground truth)
@@ -233,8 +233,28 @@ Speculation without empirical validation is insufficient.
 
 {{#if hasUiDoc}}
 ════════════════════════════════════════════════════════════════════════════════
-## 🎨 UI SPECIFICATION & ASSETS
+## 🎨 UI SPECIFICATION (HIGHEST PRIORITY FOR UI IMPLEMENTATION)
 ════════════════════════════════════════════════════════════════════════════════
+
+### ⚠️ UI IMPLEMENTATION PRIORITY RULE
+
+**When implementing UI components, ui-spec takes precedence over system-design and PRD.**
+
+| Aspect | Priority Source | Rationale |
+|--------|-----------------|-----------|
+| Layout (grid, flex, spacing) | **ui-spec** | Exact pixel values |
+| Colors, typography | **ui-tokens** | Design system tokens |
+| Animation/transition | **ui-spec** | Visual timing details |
+| Asset paths | **ui-assets** | File mappings |
+| Component responsibility (WHAT) | system-design | Architecture only |
+| Interaction implementation (HOW) | **ui-spec** | Visual execution |
+
+**Conflict Resolution:**
+- ui-spec says "flip animation" + system-design says "hover reveals" → **Implement flip**
+- ui-spec says "3 columns" + system-design says "grid layout" → **Use 3 columns**
+- ui-spec has value + PRD has different value → **ui-spec wins**
+
+────────────────────────────────────────────────────────────────────────────────
 
 {{uiDoc}}
 
@@ -316,14 +336,14 @@ Pattern detected:
 - If `app/components/` doesn't exist, don't create it
 
 #### 2. 📦 ASSET INVENTORY
-- Search ui-assets.md for assets related to this section/component
+- Search ui-assets.json for assets related to this section/component
 - List ALL assets with exact paths: `asset-id: source → destination`
 - Provide `cp` commands for each asset
 - Count total: `Total: N assets`
-- If none found: "✓ No assets in ui-assets.md for this section"
+- If none found: "✓ No assets in ui-assets.json for this section"
 
 #### 3. 📐 LAYOUT & COMPONENT SPECS
-- Extract layout structure from ui-spec.md (grid/flex, responsive breakpoints)
+- Extract layout structure from ui-spec.json (grid/flex, responsive breakpoints)
 - List each component with:
   - Visual properties (background, border, padding, etc.)
   - Typography (size, weight, color)

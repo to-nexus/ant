@@ -193,7 +193,7 @@ CRITICAL:
 
 **For UI tasks, task description should provide DIRECTION, not DETAILS.**
 
-The Plan stage will read design documents (ui-spec.md, ui-assets.md) to extract complete requirements.
+The Plan stage will read design documents (ui-spec.json, ui-assets.json) to extract complete requirements.
 
 **❌ BAD (too specific - constrains Plan stage):**
 - "Create landing page with hero section, 3 feature cards, and footer"
@@ -202,7 +202,7 @@ The Plan stage will read design documents (ui-spec.md, ui-assets.md) to extract 
 
 **✅ GOOD (provides direction - lets Plan discover details):**
 - "Implement landing page based on design specifications"
-- "Implement dashboard UI per ui-spec.md"
+- "Implement dashboard UI per ui-spec.json"
 - "Implement header component as specified in design documents"
 
 **Why:**
@@ -225,7 +225,7 @@ The Plan stage will read design documents (ui-spec.md, ui-assets.md) to extract 
 - **⚠️ ANTI-PATTERN: TODO placeholders instead of actual implementation**
   - ❌ DO NOT leave `{/* TODO: Add logo image */}` comments
   - ✅ Actually copy the asset and reference it in code
-- **Note**: Task description should NOT enumerate specific assets. Plan stage will read ui-assets.md to discover all required assets.
+- **Note**: Task description should NOT enumerate specific assets. Plan stage will read ui-assets.json to discover all required assets.
 
 IMPORTANT:
 - **Setup Task Decision (CRITICAL):**

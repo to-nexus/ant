@@ -35,7 +35,8 @@ import {
   SiDocker,
   SiGit,
   SiNpm,
-  SiYarn
+  SiYarn,
+  SiYaml
 } from 'react-icons/si';
 
 export interface FileIconConfig {
@@ -73,8 +74,8 @@ const FILE_ICON_MAP: Record<string, FileIconConfig> = {
   'json': { icon: SiJson, color: 'text-[#FFCA28]' },          // JSON yellow
   'jsonc': { icon: SiJson, color: 'text-[#FFCA28]' },
   'json5': { icon: SiJson, color: 'text-[#FFCA28]' },
-  'yaml': { icon: FileCode, color: 'text-[#CB171E]' },        // YAML red
-  'yml': { icon: FileCode, color: 'text-[#CB171E]' },
+  'yaml': { icon: SiYaml, color: 'text-[#CB171E]' },           // YAML red
+  'yml': { icon: SiYaml, color: 'text-[#CB171E]' },
   'toml': { icon: FileCode, color: 'text-gray-600 dark:text-gray-400' },
   'xml': { icon: FileCode, color: 'text-[#FF6600]' },
   

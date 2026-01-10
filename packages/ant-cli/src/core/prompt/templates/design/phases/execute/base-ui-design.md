@@ -15,7 +15,7 @@
 {{#if targetFile}}
 **Target file: `{{targetFile}}`** (defined by decompose, DO NOT change!)
 {{else}}
-**Target file: `ui-spec.md`** (default)
+**Target file: `ui-spec.json`** (default)
 {{/if}}
 
 ⚠️ You MUST append to existing document using `<append>` tag (see rules-ui-design.md)
@@ -29,7 +29,7 @@
 {{#if targetFile}}
 **Target file: `{{targetFile}}`** (defined by decompose, DO NOT change!)
 {{else}}
-**Target file: `ui-spec.md`** (default)
+**Target file: `ui-spec.json`** (default)
 {{/if}}
 
 {{/if}}

@@ -1,7 +1,7 @@
-## ui-tokens.md Generation Guide
+## ui-tokens.json Generation Guide
 
 ### Purpose
-Extract and document all design tokens from reference screenshots to establish a single source of truth for visual properties.
+Extract and document all design tokens from reference screenshots as a JSON structure for programmatic consumption.
 
 ### PRD Integration
 **When to reference PRD**:
@@ -12,20 +12,20 @@ Extract and document all design tokens from reference screenshots to establish a
 
 **Principles**:
 - **Visual-first**: Extract what you SEE in screenshots
-- **PRD as context**: Use PRD to understand intent behind visual choices (e.g., "primary color" in PRD + blue in screenshot = `color.primary.blue`)
+- **PRD as context**: Use PRD to understand intent behind visual choices
 - **No invention**: Do not create tokens not visible in screenshots, even if PRD suggests them
 
 ### Core Principles
 
 #### 1. Single Source of Truth
 - Every visual value used in the design should be captured as a token
-- Subsequent documents (ui-assets.md, ui-spec.md) MUST reference these tokens
+- Subsequent documents (ui-assets.json, ui-spec.json) MUST reference these tokens
 - No visual value should be "invented" later - capture everything now
 
 #### 2. Semantic Naming
 - Names should describe **purpose**, not **appearance**
-- Names should be technology-agnostic (no framework-specific conventions)
-- Names should follow a consistent hierarchical pattern
+- Use nested JSON structure for organization
+- Names should be technology-agnostic
 
 #### 3. Exhaustive Extraction
 Analyze screenshots systematically to capture ALL instances of:
@@ -34,129 +34,142 @@ Analyze screenshots systematically to capture ALL instances of:
 - Spacing (margins, paddings, gaps - identify the rhythm)
 - Visual effects (shadows, radii, borders, opacity levels)
 
-### Token Categories
+### JSON Structure
 
-#### Colors
-- **Semantic structure**: `color.[category].[variant]`
-- Categories: `bg`, `text`, `border`, `accent`, `state`
-- Capture the complete palette, including subtle variations
+```json
+{
+  "_meta": {
+    "lastSection": 4,
+    "sectionPattern": "top-level"
+  },
+  "colors": {
+    "bg": {
+      "white": "#FFFFFF",
+      "dark": "#1A1A1A",
+      "lightBlue": "#E8EEF3"
+    },
+    "primary": {
+      "green": "#00D9A3",
+      "greenGlow": "#00FFB8"
+    },
+    "text": {
+      "black": "#000000",
+      "white": "#FFFFFF",
+      "muted": "rgba(255, 255, 255, 0.8)"
+    },
+    "border": {
+      "light": "rgba(0, 0, 0, 0.1)"
+    }
+  },
+  "typography": {
+    "family": {
+      "primary": "Inter, -apple-system, sans-serif",
+      "brand": "Eurostile Extended, Inter, sans-serif"
+    },
+    "heading": {
+      "hero": { "size": "72px", "weight": 700, "lineHeight": 1.1 },
+      "xl": { "size": "48px", "weight": 700, "lineHeight": 1.2 },
+      "lg": { "size": "36px", "weight": 700, "lineHeight": 1.3 }
+    },
+    "body": {
+      "lg": { "size": "18px", "weight": 400, "lineHeight": 1.6 },
+      "md": { "size": "16px", "weight": 400, "lineHeight": 1.6 }
+    }
+  },
+  "spacing": {
+    "xs": "4px",
+    "sm": "8px",
+    "md": "16px",
+    "lg": "24px",
+    "xl": "32px",
+    "2xl": "48px",
+    "3xl": "64px"
+  },
+  "effects": {
+    "radius": {
+      "sm": "4px",
+      "md": "8px",
+      "lg": "16px",
+      "xl": "24px",
+      "full": "9999px"
+    },
+    "shadow": {
+      "sm": "0 1px 2px rgba(0,0,0,0.05)",
+      "md": "0 4px 6px -1px rgba(0,0,0,0.1)",
+      "lg": "0 10px 15px -3px rgba(0,0,0,0.1)",
+      "glow": { "green": "0 0 40px rgba(0,217,163,0.4)" }
+    },
+    "transition": {
+      "fast": "200ms",
+      "normal": "300ms",
+      "slow": "500ms"
+    }
+  }
+}
+```
 
-#### Typography
-- **Semantic structure**: `font.[category].[variant]`
-- Include: family, size, weight, line-height, letter-spacing
-- Group by usage context (heading, body, label, etc.)
-
-#### Spacing
-- **Semantic structure**: `spacing.[size]`
-- Identify the base unit and multipliers
-- Document the spacing rhythm/scale
-
-#### Effects
-- **Semantic structure**: `[effect-type].[variant]`
-- Shadows, radii, borders, opacity levels
-- Document transition/animation timing tokens if visible
-
-### Naming Convention
-
-| Pattern | Meaning |
-|---------|---------|
-| `color.bg.base` | Base background color |
-| `color.text.primary` | Primary text color |
-| `font.heading.lg` | Large heading typography |
-| `spacing.md` | Medium spacing unit |
-| `radius.card` | Card border radius |
-| `shadow.elevated` | Elevated element shadow |
+**Note**: `_meta.lastSection` counts top-level data categories (colors, typography, spacing, effects = 4).
 
 ### Output Format
 
-Use tables for easy scanning:
-
-| token | value | usage |
-|-------|-------|-------|
-| (semantic name) | (exact value) | (usage context) |
-
-**Section Numbering Rules**:
 {{#if lastSectionNumber}}
-- **Your first section MUST be**: `## {{add lastSectionNumber 1}}. [Section Title]`
-- Continue sequential numbering from there ({{add lastSectionNumber 1}}, {{add lastSectionNumber 2}}, {{add lastSectionNumber 3}}...)
-- **DO NOT write** "(Chapter N)" in section titles - use **numbered sections only**
+**Continuation chapter**: Append additional categories to existing JSON structure.
+Use `<append>` tag to merge new keys into the existing JSON.
 {{else}}
-- **Start with**: `## 1. Colors` (or first category)
-- Continue sequential numbering (1, 2, 3...)
-- **DO NOT write** "(Chapter N)" in section titles - use **numbered sections only**
+**First chapter**: Create complete JSON structure.
+Use `<file>` tag to create the initial JSON file.
 {{/if}}
-- Each category gets its own section number (e.g., `## 1. Colors`, `## 2. Typography`, `## 3. Spacing`)
-- End document with `<!-- LAST_SECTION: N -->` where N = your last section number
 
-### Example Structure
+### Example Output
 
 **For first chapter (task: ui-tokens or ui-tokens-ch1)**:
 
-```markdown
-<file path="outputs/design/ui-tokens.md">
-# ui-tokens.md (Design Tokens)
-
-> Color, typography, spacing, and size definitions
-
----
-
-## 1. Colors
-| token | value | usage |
-|---|---|---|
-| color.bg.base | #ffffff | Default background |
-| color.bg.dark | #0b0f14 | Dark section background |
-
----
-
-## 2. Typography
-| token | font | size | weight | usage |
-|---|---|---|---|---|
-| font.heading.xl | Pretendard | 48px | 700 | Main title |
-
----
-
-<!-- LAST_SECTION: 2 -->
+```xml
+<file path="outputs/design/ui-tokens.json">
+{
+  "_meta": {
+    "lastSection": 1,
+    "sectionPattern": "top-level"
+  },
+  "colors": {
+    "bg": { "white": "#FFFFFF", "dark": "#1A1A1A" },
+    "primary": { "green": "#00D9A3" },
+    "text": { "black": "#000000", "white": "#FFFFFF" }
+  }
+}
 </file>
 ```
 
 **For continuation chapter (task: ui-tokens-ch2)**:
 
-```markdown
-<append path="outputs/design/ui-tokens.md">
-
----
-
-## 3. Spacing
-| token | value | usage |
-|---|---|---|
-| spacing.xs | 4px | Icon-text gap |
-| spacing.sm | 8px | Inline element gap |
-
----
-
-## 4. Border Radius
-| token | value | usage |
-|---|---|---|
-| radius.sm | 4px | Button, input |
-| radius.lg | 16px | Card |
-
----
-
-<!-- LAST_SECTION: 4 -->
+```xml
+<append path="outputs/design/ui-tokens.json">
+{
+  "_meta": {
+    "lastSection": 3
+  },
+  "typography": {
+    "heading": { "hero": { "size": "72px", "weight": 700 } },
+    "body": { "md": { "size": "16px", "weight": 400 } }
+  },
+  "spacing": { "sm": "8px", "md": "16px", "lg": "24px" }
+}
 </append>
 ```
+
+**Note**: The system automatically merges new categories into existing JSON.
 
 ### Quality Criteria
 
 1. **Complete**: All unique visual values captured
 2. **Precise**: Exact values extracted (no approximations)
-3. **Semantic**: Names describe purpose, not appearance
-4. **Documented**: Each token has clear usage context
-5. **Referenceable**: Other documents can cite by token name
+3. **Semantic**: Keys describe purpose, not appearance
+4. **Valid JSON**: Proper JSON syntax (no trailing commas, proper quotes)
+5. **Referenceable**: Other documents can cite by dot notation (e.g., `colors.primary.green`)
 
 ### Workflow
 
 1. `list_reference_images` → Discover all available screenshots
 2. `read_reference_image` → Load key screens with diverse UI elements
 3. Extract tokens systematically by category
-4. Generate `ui-tokens.md` with comprehensive token tables
+4. Generate `ui-tokens.json` with comprehensive token structure

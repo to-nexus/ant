@@ -53,13 +53,13 @@ ELSE IF directive is ambiguous (general planning/design terms):
 
 The following UI design documents already exist in `outputs/design/`:
 {{#if hasUiTokens}}
-- ✅ `ui-tokens.md` - Design tokens (colors, typography, spacing)
+- ✅ `ui-tokens.json` - Design tokens (colors, typography, spacing)
 {{/if}}
 {{#if hasUiAssets}}
-- ✅ `ui-assets.md` - Asset mapping
+- ✅ `ui-assets.json` - Asset mapping
 {{/if}}
 {{#if hasUiSpec}}
-- ✅ `ui-spec.md` - UI specification
+- ✅ `ui-spec.json` - UI specification
 {{/if}}
 
 **→ UI design work is COMPLETE. Do not regenerate UI documents.**
@@ -141,7 +141,7 @@ If directive indicates **modification/update** (e.g., "modify", "update", "chang
   2. Check if target documents exist:
   
 {{#if hasUiDocs}}
-     - ✅ UI documents exist (ui-tokens.md, ui-assets.md, ui-spec.md)
+     - ✅ UI documents exist (ui-tokens.json, ui-assets.json, ui-spec.json)
        → UI modification is POSSIBLE
 {{else}}
      - ❌ UI documents are missing
@@ -191,7 +191,7 @@ Use completion status to determine the next logical phase:
 **DECISION: Must choose `"system-design"`**
 
 **Reasoning:**
-- ✅ UI documents are complete (ui-tokens.md, ui-assets.md, ui-spec.md exist)
+- ✅ UI documents are complete (ui-tokens.json, ui-assets.json, ui-spec.json exist)
 - ❌ System documents are missing (system-design.md, api-contract.md, etc. do not exist)
 - 🎯 **Next phase**: Generate system design documents
 
@@ -204,7 +204,7 @@ Use completion status to determine the next logical phase:
 {{#if hasReferences}}
 **CONSIDERATION: UI design is possible**
 
-- ❌ UI documents are missing (ui-tokens.md, ui-assets.md, ui-spec.md)
+- ❌ UI documents are missing (ui-tokens.json, ui-assets.json, ui-spec.json)
 - ✅ Reference images are available in `inputs/references/`
 - 🤔 If directive is ambiguous, default to `"ui-design"` (create UI docs first before system design)
 
@@ -385,8 +385,8 @@ UI design requires reference screenshots, mockups, or visual materials to extrac
 <detect>
 {
   "workType": "error",
-  "workTypeReasoning": "User requested to modify UI documents (indicated by terms like 'modify', 'update', 'change' combined with UI-related terms), but ui-tokens.md, ui-assets.md, and ui-spec.md do not exist in outputs/design/",
-  "errorMessage": "Cannot modify UI design documents because they don't exist. No ui-tokens.md, ui-assets.md, or ui-spec.md files were found.",
+  "workTypeReasoning": "User requested to modify UI documents (indicated by terms like 'modify', 'update', 'change' combined with UI-related terms), but ui-tokens.json, ui-assets.json, and ui-spec.json do not exist in outputs/design/",
+  "errorMessage": "Cannot modify UI design documents because they don't exist. No ui-tokens.json, ui-assets.json, or ui-spec.json files were found.",
   "errorType": "missing_ui_documents",
   "suggestedAction": "Please first request UI design creation by saying something like: 'Create UI design' or 'Start UI design' or 'Generate UI specs'"
 }

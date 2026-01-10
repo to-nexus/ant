@@ -1,125 +1,216 @@
-## ui-assets.md Generation Guide
+## ui-assets.json Generation Guide
 
 ### Purpose
-Create an **accurate** mapping document that connects source assets to their runtime destinations and usage contexts.
+Create a JSON mapping document that connects source assets to their runtime destinations and usage contexts.
+
+### ⚠️ CRITICAL: Path Consistency for Multi-Chapter Generation
+
+**When generating ui-assets chapters (ch1, ch2, etc.), ALL chapters MUST use the SAME destination path patterns.**
+
+#### For ch1 (First Chapter):
+1. **Define the canonical path pattern** in the JSON structure
+2. **Use consistent paths** throughout the document
+
+#### For ch2+ (Continuation Chapters):
+1. **Read the existing JSON structure** (shows ch1's patterns)
+2. **MUST follow the exact same patterns** - DO NOT create new patterns!
+3. **If an asset was documented in ch1** → Skip it, don't re-document
+
+**❌ WRONG (Path Inconsistency):**
+```json
+// ch1: 
+"icon-telegram": { "dest": "public/icons/telegram.svg" }
+// ch2: 
+"icon-telegram": { "dest": "public/icons/social/telegram.svg" }  // DIFFERENT PATH!
+```
+
+**✅ CORRECT:**
+```json
+// ch1 established pattern, ch2 follows:
+"icon-newasset": { "dest": "public/icons/newasset.svg" }
+```
 
 ### PRD Integration
 **When to reference PRD**:
-- **Asset purpose**: Understand why an asset is needed (e.g., "hero background" in PRD + image in assets = hero-bg.jpg)
+- **Asset purpose**: Understand why an asset is needed
 - **Content context**: Identify which sections/features use specific assets
 - **Branding requirements**: Extract logo variations, icon sets mentioned in PRD
-- **Platform variants**: Check if PRD specifies different assets for mobile/desktop/dark mode
-
-**Principles**:
-- **PRD as naming guide**: Use PRD terminology for semantic asset naming (e.g., "Token Section Central Graphic" in PRD → `token-section-graphic.png`)
-- **Visual-first verification**: Confirm PRD-mentioned assets exist in `inputs/assets/`
-- **Usage context from PRD**: Document where/how assets are used based on PRD feature descriptions
 
 ### Core Principles
 
 #### 1. Accuracy - Verify Before Documenting
-
-**Always verify file existence:**
 - Use `list_assets` tool to discover actual files in `inputs/assets/`
 - Document only files that exist
 - Preserve original filenames unless semantic clarity requires change
 
-**When to rename:**
-- **Keep original** if filename already conveys purpose clearly
-- **Clarify purpose** if original name is generic or unclear (numbered files, temp names)
-- **Match usage** if renaming aligns with section/component names in ui-spec
+#### 2. Token Reference
+- Use token keys from `ui-tokens.json` when describing asset usage context
+- Example: `"overlay": "colors.overlay.dark"` instead of raw hex values
 
-**Avoid arbitrary changes:** Don't rename based on personal preference; rename only when it improves clarity or matches documented usage.
+### JSON Structure
 
-#### 2. File Reuse - Document Once, Reference Multiple
+```json
+{
+  "_meta": {
+    "lastSection": 3,
+    "sectionPattern": "top-level",
+    "pathPattern": {
+      "logos": "public/logos/",
+      "icons": "public/icons/",
+      "backgrounds": "public/backgrounds/"
+    }
+  },
+  "logos": {
+    "logo-header": {
+      "src": "inputs/assets/logos/header-logo.svg",
+      "dest": "public/logos/header.svg",
+      "format": "svg",
+      "usage": "Header navigation (left-aligned)"
+    },
+    "logo-footer": {
+      "src": "inputs/assets/logos/footer-logo.svg",
+      "dest": "public/logos/footer.svg",
+      "format": "svg",
+      "usage": "Footer branding (centered)"
+    }
+  },
+  "icons": {
+    "icon-telegram": {
+      "src": "inputs/assets/icons/telegram.svg",
+      "dest": "public/icons/telegram.svg",
+      "format": "svg",
+      "usage": "Social section link"
+    },
+    "icon-gas": {
+      "src": "inputs/assets/icons/icon-gas.svg",
+      "dest": "public/icons/gas.svg",
+      "format": "svg",
+      "usage": "Token section: Gas & Network Fees card"
+    }
+  },
+  "backgrounds": {
+    "bg-hero": {
+      "src": "inputs/assets/bg/hero-main.png",
+      "dest": "public/backgrounds/hero.png",
+      "format": "png",
+      "usage": "Hero section full-width background",
+      "overlay": "colors.overlay.gradientDark"
+    },
+    "bg-ecosystem-ogf": {
+      "src": "inputs/assets/bg/bg-discover-1.png",
+      "dest": "public/backgrounds/ecosystem-ogf.png",
+      "format": "png",
+      "usage": "Ecosystem section: OGF card background"
+    }
+  }
+}
+```
 
-When the same file serves multiple purposes:
-- Map it once to a single destination
-- Note all usage contexts in the usage column
-- Or create a separate "Asset Reuse" section listing shared files
+**Note**: `_meta.pathPattern` ensures continuation chapters use the same destination paths.
 
-**Principle:** Don't duplicate files unnecessarily; document the reuse relationship.
+### Output Format
 
-#### 3. Destination Path Consistency
+{{#if lastSectionNumber}}
+**Continuation chapter**: Merge additional asset categories into existing JSON.
+{{else}}
+**First chapter**: Create initial JSON structure with asset mappings.
+{{/if}}
 
-Establish consistent patterns for asset organization:
-- Group by type (logos/, icons/, backgrounds/, images/)
-- Keep structure flat when possible (avoid deep nesting)
-- Follow framework conventions if applicable (e.g., static asset directories)
+### Example Output
 
-**Principle:** Predictability aids developers. Choose a pattern and maintain it throughout.
+**For first chapter (task: ui-assets or ui-assets-ch1)**:
 
-#### 4. Token Reference
-Look for the section titled `# REFERENCE: ui-tokens.md` elsewhere in this prompt.
+```xml
+<file path="outputs/design/ui-assets.json">
+{
+  "_meta": {
+    "lastSection": 2,
+    "sectionPattern": "top-level",
+    "pathPattern": {
+      "logos": "public/logos/",
+      "backgrounds": "public/backgrounds/"
+    }
+  },
+  "logos": {
+    "logo-header": {
+      "src": "inputs/assets/logos/header-logo.svg",
+      "dest": "public/logos/header.svg",
+      "format": "svg",
+      "usage": "Header navigation"
+    }
+  },
+  "backgrounds": {
+    "bg-hero": {
+      "src": "inputs/assets/bg/hero.png",
+      "dest": "public/backgrounds/hero.png",
+      "format": "png",
+      "usage": "Hero section background"
+    }
+  }
+}
+</file>
+```
 
-- That section contains all design tokens (colors, typography, spacing, etc.)
-- Use those token names when describing asset usage context
-- Ensure consistency between asset documentation and design tokens
+**For continuation chapter (task: ui-assets-ch2)**:
 
-#### 2. Complete Inventory
-- Document ALL files in `inputs/assets/`
-- No asset should be undocumented
-- Include metadata relevant to implementation
+```xml
+<append path="outputs/design/ui-assets.json">
+{
+  "_meta": {
+    "lastSection": 3,
+    "pathPattern": {
+      "icons": "public/icons/"
+    }
+  },
+  "icons": {
+    "icon-telegram": {
+      "src": "inputs/assets/icons/telegram.svg",
+      "dest": "public/icons/telegram.svg",
+      "format": "svg",
+      "usage": "Social links section"
+    },
+    "icon-gas": {
+      "src": "inputs/assets/icons/icon-gas.svg",
+      "dest": "public/icons/gas.svg",
+      "format": "svg",
+      "usage": "Token feature card icon"
+    }
+  }
+}
+</append>
+```
 
-#### 3. Clear Mapping
-- Every asset needs: source path → destination path
-- Include usage context (where/how it's used)
-- Note any special handling requirements
-
-### Asset Categories
-
-Document assets by type:
-
-| Category | Contents |
-|----------|----------|
-| Logos | Brand marks, wordmarks, icons |
-| Icons | UI icons, action icons, status indicators |
-| Backgrounds | Section backgrounds, textures, patterns |
-| Media | Images, illustrations, placeholders |
-| Fonts | Custom font files (if applicable) |
-
-### Mapping Structure
-
-For each asset, document:
-
-| Field | Description |
-|-------|-------------|
-| File | Original filename |
-| Source | Path in `inputs/assets/` |
-| Destination | Target path in codebase |
-| Usage | Component/screen where used |
-| Notes | Size, format, handling requirements |
+**Note**: The system automatically merges new asset categories into existing JSON.
 
 ### Quality Criteria
 
 1. **Complete**: All assets in `inputs/assets/` documented
-2. **Accurate**: Paths are correct and verified
-3. **Contextual**: Usage context is clear
-4. **Actionable**: Developer knows exactly how to use each asset
-
-### Documentation Approach
-
-**Organize by category:**
-Group assets by their functional type (logos, icons, backgrounds, media, etc.) using your judgment based on file names and content.
-
-**For each asset, provide:**
-- Original filename
-- Source path (location in inputs/)
-- Destination path (target location in codebase)
-- Usage context (which sections/components use it)
-- Any special notes (size recommendations, format notes, etc.)
-
-**Maintain consistency:**
-- Use consistent destination path patterns throughout
-- Group similar assets in the same destination folders
-- Keep naming conventions predictable
-
-**Ensure completeness:**
-All files discovered via `list_assets` must be documented. No asset should be left unmapped.
+2. **Accurate**: Paths are correct and verified with `list_assets`
+3. **Valid JSON**: Proper JSON syntax
+4. **Consistent**: Same destination path patterns throughout
+5. **Contextual**: Usage context is clear
 
 ### Workflow
 
-1. Review the `# REFERENCE: ui-tokens.md` section in this prompt
+1. Review the `# REFERENCE: ui-tokens.json` section in this prompt
 2. `list_assets` → Discover all available asset files
 3. Optionally use `read_reference_image` to understand asset context
-4. Generate ui-assets.md with complete mapping tables, referencing tokens where relevant
+4. Generate ui-assets.json with complete mapping structure
+
+{{#if pathPattern}}
+════════════════════════════════════════════════════════════════════════════════
+📁 **PATH_PATTERN - ESTABLISHED IN CHAPTER 1 (MUST FOLLOW!)**
+════════════════════════════════════════════════════════════════════════════════
+
+**ch1 established these destination path patterns:**
+`{{pathPattern}}`
+
+**⚠️ CRITICAL: You MUST use these EXACT paths for new assets!**
+
+Example - if ch1 used `icons → public/icons/`:
+- ✅ CORRECT: `"icon-new": { "dest": "public/icons/new.svg" }`
+- ❌ WRONG: `"icon-new": { "dest": "public/icons/social/new.svg" }` (new subdirectory!)
+
+**DO NOT create new subdirectories or change the path structure!**
+════════════════════════════════════════════════════════════════════════════════
+{{/if}}

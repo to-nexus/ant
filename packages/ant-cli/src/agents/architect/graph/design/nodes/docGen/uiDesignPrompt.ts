@@ -171,7 +171,7 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
   // ALWAYS add instruction for ui-tokens and ui-spec tasks in Turn 2+
   // Don't check hasDiscoveredImages - this function is only called after tool calls!
   if (isUiTokensTask || isUiSpecTask) {
-    const targetDoc = isUiTokensTask ? 'ui-tokens.md' : 'ui-spec.md';
+    const targetDoc = isUiTokensTask ? 'ui-tokens.json' : 'ui-spec.json';
     console.log(`🔔 [FreshPrompt] Adding "Next Steps" instruction for ${task?.id} → ${targetDoc}`);
     content.push({
       type: 'text',
@@ -261,8 +261,8 @@ function buildResourcesSummary(state: DesignGraphState): string {
  * So prior task outputs must be loaded from disk.
  * 
  * Dependency:
- * - ui-assets: needs ui-tokens.md
- * - ui-spec: needs ui-tokens.md + ui-assets.md
+ * - ui-assets: needs ui-tokens.json
+ * - ui-spec: needs ui-tokens.json + ui-assets.json
  */
 async function loadPreviousUiDocs(
   state: DesignGraphState,
@@ -270,8 +270,8 @@ async function loadPreviousUiDocs(
 ): Promise<string> {
   // ✅ Chapter-based approach: Load complete documents from previous categories
   // - ui-tokens-ch*: No dependencies
-  // - ui-assets-ch*: Need complete ui-tokens.md
-  // - ui-spec-ch*: Need complete ui-tokens.md + ui-assets.md
+  // - ui-assets-ch*: Need complete ui-tokens.json
+  // - ui-spec-ch*: Need complete ui-tokens.json + ui-assets.json
   
   const isUiTokensTask = taskId.startsWith('ui-tokens');
   const isUiAssetsTask = taskId.startsWith('ui-assets');
@@ -296,36 +296,36 @@ async function loadPreviousUiDocs(
   const designOutputDir = path.join(featureDirRel, 'outputs/design');
   let injectedDocs = '';
   
-  // ✅ Load COMPLETE ui-tokens.md for ui-assets-* and ui-spec-*
+  // ✅ Load COMPLETE ui-tokens.json for ui-assets-* and ui-spec-*
   if (isUiAssetsTask || isUiSpecTask) {
     try {
-      const tokensPath = path.join(designOutputDir, 'ui-tokens.md');
+      const tokensPath = path.join(designOutputDir, 'ui-tokens.json');
       const tokensContent = await fileSystem.readFile(tokensPath);
       if (tokensContent && !tokensContent.includes('ant:template')) {
         injectedDocs += `\n\n════════════════════════════════════════════════════════════════════════════════\n`;
-        injectedDocs += `# REFERENCE: ui-tokens.md (ALL chapters completed)\n`;
-        injectedDocs += `> Use these token names. Do NOT use raw values that are defined here.\n`;
+        injectedDocs += `# REFERENCE: ui-tokens.json (ALL chapters completed)\n`;
+        injectedDocs += `> Use these token keys. Do NOT use raw values that are defined here.\n`;
         injectedDocs += `════════════════════════════════════════════════════════════════════════════════\n\n`;
-        injectedDocs += tokensContent;
-        console.log(`📄 [DocGen] Injected ui-tokens.md (${tokensContent.length} chars) for ${taskId}`);
+        injectedDocs += '```json\n' + tokensContent + '\n```';
+        console.log(`📄 [DocGen] Injected ui-tokens.json (${tokensContent.length} chars) for ${taskId}`);
       }
     } catch {
       // File doesn't exist yet, skip
     }
   }
   
-  // ✅ Load COMPLETE ui-assets.md for ui-spec-*
+  // ✅ Load COMPLETE ui-assets.json for ui-spec-*
   if (isUiSpecTask) {
     try {
-      const assetsPath = path.join(designOutputDir, 'ui-assets.md');
+      const assetsPath = path.join(designOutputDir, 'ui-assets.json');
       const assetsContent = await fileSystem.readFile(assetsPath);
       if (assetsContent && !assetsContent.includes('ant:template')) {
         injectedDocs += `\n\n════════════════════════════════════════════════════════════════════════════════\n`;
-        injectedDocs += `# REFERENCE: ui-assets.md (ALL chapters completed)\n`;
+        injectedDocs += `# REFERENCE: ui-assets.json (ALL chapters completed)\n`;
         injectedDocs += `> Reference these asset identifiers when documenting components.\n`;
         injectedDocs += `════════════════════════════════════════════════════════════════════════════════\n\n`;
-        injectedDocs += assetsContent;
-        console.log(`📄 [DocGen] Injected ui-assets.md (${assetsContent.length} chars) for ${taskId}`);
+        injectedDocs += '```json\n' + assetsContent + '\n```';
+        console.log(`📄 [DocGen] Injected ui-assets.json (${assetsContent.length} chars) for ${taskId}`);
       }
     } catch {
       // File doesn't exist yet, skip
@@ -364,9 +364,9 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
   
   // Determine target file from task ID if not explicitly set
   const actualTargetFile = targetFile || 
-    (taskId.startsWith('ui-tokens') ? 'ui-tokens.md' :
-     taskId.startsWith('ui-assets') ? 'ui-assets.md' :
-     taskId.startsWith('ui-spec') ? 'ui-spec.md' : 'ui-spec.md');
+    (taskId.startsWith('ui-tokens') ? 'ui-tokens.json' :
+     taskId.startsWith('ui-assets') ? 'ui-assets.json' :
+     taskId.startsWith('ui-spec') ? 'ui-spec.json' : 'ui-spec.json');
   
   // ✅ Check if this is the last task for this document
   // If no more tasks in queue target the same file, don't output metadata
@@ -374,9 +374,9 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
   const remainingTasksForFile = allQueuedTasks.filter(
     (task: any) => {
       const taskTargetFile = task.targetFile || 
-        (task.id?.startsWith('ui-tokens') ? 'ui-tokens.md' :
-         task.id?.startsWith('ui-assets') ? 'ui-assets.md' :
-         task.id?.startsWith('ui-spec') ? 'ui-spec.md' : null);
+        (task.id?.startsWith('ui-tokens') ? 'ui-tokens.json' :
+         task.id?.startsWith('ui-assets') ? 'ui-assets.json' :
+         task.id?.startsWith('ui-spec') ? 'ui-spec.json' : null);
       return taskTargetFile === actualTargetFile;
     }
   );
@@ -400,39 +400,77 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
       if (fileExists) {
         existingFileContent = await state.deps.fileSystem.readFile(filePath) || '';
         if (existingFileContent) {
-          // Parse all metadata from file
-          const metadataLines = existingFileContent.trim().split('\n').slice(-5); // Check last 5 lines
+          const isJsonFile = actualTargetFile.endsWith('.json');
           
-          for (const line of metadataLines) {
-            // Parse LAST_SECTION
-            const lastSectionMatch = line.match(/<!-- LAST_SECTION: (\d+) -->/);
-            if (lastSectionMatch) {
-              lastSectionNumber = parseInt(lastSectionMatch[1]);
-              console.log(`📄 [DocGen UI] Found last section in ${actualTargetFile}: ${lastSectionNumber} (from metadata)`);
+          // ✅ JSON files: Parse and read _meta field (all UI docs are now JSON)
+          if (isJsonFile) {
+            try {
+              const parsed = JSON.parse(existingFileContent);
+              if (parsed._meta) {
+                if (typeof parsed._meta.lastSection === 'number') {
+                  lastSectionNumber = parsed._meta.lastSection;
+                  console.log(`📄 [DocGen UI] Found lastSection in ${actualTargetFile}: ${lastSectionNumber} (from _meta)`);
+                }
+                if (parsed._meta.sectionPattern) {
+                  sectionPattern = parsed._meta.sectionPattern;
+                  console.log(`📄 [DocGen UI] Found sectionPattern in ${actualTargetFile}: ${sectionPattern}`);
+                }
+              }
+              // For JSON, count top-level keys (excluding _meta) as "sections"
+              const dataKeys = Object.keys(parsed).filter(k => k !== '_meta');
+              if (!lastSectionNumber && dataKeys.length > 0) {
+                lastSectionNumber = dataKeys.length;
+                console.log(`📄 [DocGen UI] Estimated lastSection from ${dataKeys.length} top-level keys in ${actualTargetFile}`);
+              }
+              // Generate previousChaptersSummary from top-level keys
+              if (dataKeys.length > 0) {
+                previousChaptersSummary = dataKeys.map((k, i) => `- Category ${i + 1}: ${k}`).join('\n');
+              }
+              // For ui-spec.json with sections object
+              if (parsed.sections && typeof parsed.sections === 'object' && !Array.isArray(parsed.sections)) {
+                const sectionKeys = Object.keys(parsed.sections);
+                if (sectionKeys.length > 0) {
+                  previousChaptersSummary = sectionKeys.map((k, i) => `- Section ${i + 1}: ${k}`).join('\n');
+                }
+              }
+            } catch (parseError) {
+              console.warn(`📄 [DocGen UI] Failed to parse ${actualTargetFile} as JSON:`, parseError);
+            }
+          }
+          // Non-JSON files (should not happen for UI docs)
+          else {
+            const metadataLines = existingFileContent.trim().split('\n').slice(-5);
+            
+            for (const line of metadataLines) {
+              const lastSectionMatch = line.match(/<!-- LAST_SECTION: (\d+) -->/);
+              if (lastSectionMatch) {
+                lastSectionNumber = parseInt(lastSectionMatch[1]);
+                console.log(`📄 [DocGen UI] Found last section in ${actualTargetFile}: ${lastSectionNumber} (from metadata)`);
+              }
+              
+              const patternMatch = line.match(/<!-- SECTION_PATTERN: (\w+) -->/);
+              if (patternMatch) {
+                sectionPattern = patternMatch[1];
+                console.log(`📄 [DocGen UI] Found section pattern in ${actualTargetFile}: ${sectionPattern}`);
+              }
             }
             
-            // Parse SECTION_PATTERN
-            const patternMatch = line.match(/<!-- SECTION_PATTERN: (\w+) -->/);
-            if (patternMatch) {
-              sectionPattern = patternMatch[1];
-              console.log(`📄 [DocGen UI] Found section pattern in ${actualTargetFile}: ${sectionPattern}`);
+            // Fallback: scan for section headers (## N.)
+            if (!lastSectionNumber) {
+              const sectionMatches = existingFileContent.match(/^## (\d+)\./gm);
+              if (sectionMatches) {
+                const numbers = sectionMatches.map((m: string) => parseInt(m.match(/\d+/)?.[0] || '0'));
+                lastSectionNumber = Math.max(...numbers);
+                console.log(`📄 [DocGen UI] Found last section in ${actualTargetFile}: ${lastSectionNumber} (from scanning)`);
+              }
             }
+            
+            // Extract section titles for previousChaptersSummary
+            previousChaptersSummary = extractPreviousSectionsSummary(existingFileContent);
           }
           
-          // Fallback for LAST_SECTION: scan for section headers (## N.)
-          if (!lastSectionNumber) {
-            const sectionMatches = existingFileContent.match(/^## (\d+)\./gm);
-            if (sectionMatches) {
-              const numbers = sectionMatches.map((m: string) => parseInt(m.match(/\d+/)?.[0] || '0'));
-              lastSectionNumber = Math.max(...numbers);
-              console.log(`📄 [DocGen UI] Found last section in ${actualTargetFile}: ${lastSectionNumber} (from scanning)`);
-            }
-          }
-          
-          // Extract section titles to create previousChaptersSummary
-          previousChaptersSummary = extractPreviousSectionsSummary(existingFileContent);
           if (previousChaptersSummary) {
-            console.log(`📄 [DocGen UI] Extracted ${previousChaptersSummary.split('\n').filter(l => l.trim()).length} section titles from existing ${actualTargetFile}`);
+            console.log(`📄 [DocGen UI] Extracted summary from existing ${actualTargetFile}`);
           }
         }
       } else {
@@ -440,6 +478,15 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
       }
     } catch (error) {
       console.error(`[DocGen UI] Error reading ${actualTargetFile}:`, error);
+    }
+  }
+  
+  // ✅ NEW: Extract PATH_PATTERN for ui-assets continuation chapters
+  let pathPattern = '';
+  if (taskId.startsWith('ui-assets') && existingFileContent) {
+    pathPattern = extractPathPattern(existingFileContent);
+    if (pathPattern) {
+      console.log(`📄 [DocGen UI] Extracted PATH_PATTERN from existing ui-assets.json: ${pathPattern}`);
     }
   }
   
@@ -453,6 +500,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
     targetFile: actualTargetFile,
     previousChaptersSummary,
     isLastTaskForDocument,  // ✅ If true, don't output metadata comments
+    pathPattern,  // ✅ NEW: For ui-assets ch2+ to follow ch1's destination paths
   });
   
   if (!template) {
@@ -490,4 +538,88 @@ function extractPreviousSectionsSummary(content: string): string {
   if (sections.length === 0) return '';
   
   return sections.join('\n');
+}
+
+/**
+ * Extract PATH_PATTERN metadata from existing ui-assets.json content
+ * 
+ * For JSON files: reads from _meta.pathPattern object
+ * For MD files (legacy): parses HTML comment
+ * 
+ * This ensures ch2+ follows the same destination path patterns as ch1.
+ */
+function extractPathPattern(content: string): string {
+  if (!content) return '';
+  
+  // Try to parse as JSON first (new format)
+  try {
+    const parsed = JSON.parse(content);
+    if (parsed._meta?.pathPattern) {
+      // Convert object to string format: "logos=public/logos/, icons=public/icons/"
+      const patterns: string[] = [];
+      for (const [key, value] of Object.entries(parsed._meta.pathPattern)) {
+        patterns.push(`${key}=${value}`);
+      }
+      return patterns.join(', ');
+    }
+    
+    // Fallback: infer from actual asset destinations in JSON
+    const destinationPaths = new Set<string>();
+    for (const category of Object.values(parsed)) {
+      if (typeof category === 'object' && category !== null && !('lastSection' in category)) {
+        for (const asset of Object.values(category as Record<string, any>)) {
+          if (asset?.dest) {
+            const dirMatch = (asset.dest as string).match(/(public\/[\w-]+\/)/);
+            if (dirMatch) {
+              destinationPaths.add(dirMatch[1]);
+            }
+          }
+        }
+      }
+    }
+    
+    if (destinationPaths.size > 0) {
+      const patterns: string[] = [];
+      for (const path of destinationPaths) {
+        if (path.includes('logo')) patterns.push(`logos=${path}`);
+        else if (path.includes('icon')) patterns.push(`icons=${path}`);
+        else if (path.includes('bg') || path.includes('background')) patterns.push(`backgrounds=${path}`);
+        else patterns.push(`other=${path}`);
+      }
+      return patterns.join(', ');
+    }
+  } catch {
+    // Not JSON, try legacy MD format
+  }
+  
+  // Legacy: Look for PATH_PATTERN metadata comment in MD
+  const pathPatternMatch = content.match(/<!-- PATH_PATTERN: (.+?) -->/);
+  if (pathPatternMatch) {
+    return pathPatternMatch[1];
+  }
+  
+  // Legacy fallback: Extract patterns from tables
+  const destinationPaths = new Set<string>();
+  const tableRowMatch = content.matchAll(/\|\s*[\w-]+\s*\|\s*[^|]+\s*\|\s*(public\/[\w/]+)/g);
+  
+  for (const match of tableRowMatch) {
+    const destPath = match[1];
+    const dirMatch = destPath.match(/(public\/[\w-]+\/)/);
+    if (dirMatch) {
+      destinationPaths.add(dirMatch[1]);
+    }
+  }
+  
+  if (destinationPaths.size > 0) {
+    const patterns: string[] = [];
+    for (const path of destinationPaths) {
+      if (path.includes('logo')) patterns.push(`logos=${path}`);
+      else if (path.includes('icon')) patterns.push(`icons=${path}`);
+      else if (path.includes('bg') || path.includes('background')) patterns.push(`backgrounds=${path}`);
+      else patterns.push(`other=${path}`);
+    }
+    return patterns.join(', ');
+  }
+  
+  return '';
 }

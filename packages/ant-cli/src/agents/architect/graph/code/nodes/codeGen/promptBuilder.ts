@@ -207,7 +207,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
               `The following image blocks are screenshots/component states from \`inputs/references\`.\n` +
               `Use them to match layout/spacing/visual states.\n` +
               `IMPORTANT: Treat these as reference only. Do NOT assume these files are available in the app runtime (e.g. not copied into \`public/\` automatically).\n` +
-              `If the implementation needs runtime images/icons, either (a) generate placeholders in the codebase or (b) require explicit instructions in \`outputs/design/ui-assets.md\` (including destination paths).\n\n` +
+              `If the implementation needs runtime images/icons, either (a) generate placeholders in the codebase or (b) require explicit instructions in \`outputs/design/ui-assets.json\` (including destination paths).\n\n` +
               `${previewList}\n`
           });
         }

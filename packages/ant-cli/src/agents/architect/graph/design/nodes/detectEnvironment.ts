@@ -304,9 +304,9 @@ export async function detectEnvironment(
     const outputsDir = path.join(featurePath, 'outputs/design');
     
     // UI Design documents
-    const hasUiTokens = await dirHasFiles(outputsDir) && await fs.access(path.join(outputsDir, 'ui-tokens.md')).then(() => true).catch(() => false);
-    const hasUiAssets = await dirHasFiles(outputsDir) && await fs.access(path.join(outputsDir, 'ui-assets.md')).then(() => true).catch(() => false);
-    const hasUiSpec = await dirHasFiles(outputsDir) && await fs.access(path.join(outputsDir, 'ui-spec.md')).then(() => true).catch(() => false);
+    const hasUiTokens = await dirHasFiles(outputsDir) && await fs.access(path.join(outputsDir, 'ui-tokens.json')).then(() => true).catch(() => false);
+    const hasUiAssets = await dirHasFiles(outputsDir) && await fs.access(path.join(outputsDir, 'ui-assets.json')).then(() => true).catch(() => false);
+    const hasUiSpec = await dirHasFiles(outputsDir) && await fs.access(path.join(outputsDir, 'ui-spec.json')).then(() => true).catch(() => false);
     const hasUiDocs = hasUiTokens && hasUiAssets && hasUiSpec;
     
     // System Design documents
@@ -318,9 +318,9 @@ export async function detectEnvironment(
     
     if (hasUiDocs) {
       console.log(`✅ UI design documents already completed:`);
-      if (hasUiTokens) console.log(`   - ui-tokens.md`);
-      if (hasUiAssets) console.log(`   - ui-assets.md`);
-      if (hasUiSpec) console.log(`   - ui-spec.md`);
+      if (hasUiTokens) console.log(`   - ui-tokens.json`);
+      if (hasUiAssets) console.log(`   - ui-assets.json`);
+      if (hasUiSpec) console.log(`   - ui-spec.json`);
     }
     
     if (hasSystemDocs) {
@@ -473,7 +473,7 @@ export async function detectEnvironment(
       }
     } else {
       console.log(`   UI Design Mode`);
-      console.log(`   Target files: ui-tokens.md, ui-assets.md, ui-spec.md`);
+      console.log(`   Target files: ui-tokens.json, ui-assets.json, ui-spec.json`);
       if (hasReferences) {
         console.log(`   📸 Will analyze reference images from inputs/references/`);
       }

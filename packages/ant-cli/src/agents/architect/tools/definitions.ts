@@ -199,7 +199,7 @@ export const ARCHITECT_TOOLS = {
   
   list_assets: {
     name: 'list_assets',
-    description: 'List all runtime asset files in inputs/assets/. Use this to document asset mappings for ui-assets.md. Optional category filter: "logos", "icons", "backgrounds", or "other".',
+    description: 'List all runtime asset files in inputs/assets/. Use this to document asset mappings for ui-assets.json. Optional category filter: "logos", "icons", "backgrounds", or "other".',
     input_schema: {
       type: 'object' as const,
       properties: {

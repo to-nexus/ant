@@ -298,46 +298,32 @@ export class FileRenderer {
   }
   
   /**
-   * Handle design job append with LAST_SECTION cleanup
+   * Handle design job append with structured merge for JSON
+   * 
+   * All UI documents are now JSON format:
+   * - ui-tokens.json, ui-assets.json, ui-spec.json
+   * - Deep merge objects, update _meta.lastSection
    */
   private async handleDesignAppend(fileSystemPath: string, newContent: string): Promise<void> {
     if (!this.gitPort || !this.fileSystem) return;
     
     try {
       const fileExists = await this.fileSystem.fileExists(fileSystemPath);
+      const isJsonFile = fileSystemPath.endsWith('.json');
       
       if (fileExists) {
         const existingContent = await this.fileSystem.readFile(fileSystemPath) || '';
-        const lines = existingContent.split('\n');
-        let lastLineIndex = lines.length - 1;
         
-        while (lastLineIndex >= 0 && lines[lastLineIndex].trim() === '') {
-          lastLineIndex--;
+        // ✅ JSON files: Deep merge objects
+        if (isJsonFile) {
+          const mergedContent = this.mergeJsonContent(existingContent, newContent);
+          await this.fileSystem!.writeFile(fileSystemPath, mergedContent);
+          return;
         }
         
-        let cleanedExistingContent = existingContent;
-        // Remove all metadata comments from the end of the file
-        let removedCount = 0;
-        while (lastLineIndex >= 0) {
-          const lastLine = lines[lastLineIndex].trim();
-          if (lastLine.match(/^<!-- (LAST_SECTION|SECTION_PATTERN): .+ -->$/)) {
-            lines.splice(lastLineIndex, 1);
-            removedCount++;
-            lastLineIndex--;
-            // Skip empty lines
-            while (lastLineIndex >= 0 && lines[lastLineIndex].trim() === '') {
-              lastLineIndex--;
-            }
-          } else {
-            break;
-          }
-        }
-        if (removedCount > 0) {
-          cleanedExistingContent = lines.join('\n');
-          console.log(`   🧹 Removed ${removedCount} metadata comment(s) from file`);
-        }
-        
-        const mergedContent = cleanedExistingContent + '\n' + newContent;
+        // ⚠️ Non-JSON files: Simple text append (should not happen for UI docs)
+        console.warn(`   ⚠️ [Append] Non-JSON file detected: ${fileSystemPath}`);
+        const mergedContent = existingContent + '\n' + newContent;
         await this.fileSystem!.writeFile(fileSystemPath, mergedContent);
       } else {
         await this.fileSystem!.writeFile(fileSystemPath, newContent);
@@ -346,6 +332,98 @@ export class FileRenderer {
       console.error(`❌ [Append] Failed to append to ${fileSystemPath}:`, error);
       throw error;
     }
+  }
+  
+  /**
+   * Deep merge JSON objects
+   * - Merges top-level keys from newContent into existingContent
+   * - Updates _meta.lastSection with the new value
+   */
+  private mergeJsonContent(existingContent: string, newContent: string): string {
+    try {
+      const existingObj = JSON.parse(existingContent);
+      const newObj = JSON.parse(newContent);
+      
+      // Deep merge: new values override existing at leaf level
+      const merged = this.deepMerge(existingObj, newObj);
+      
+      console.log(`   🔄 [JSON Merge] Merged ${Object.keys(newObj).length} top-level key(s)`);
+      
+      return JSON.stringify(merged, null, 2);
+    } catch (error) {
+      // If parsing fails, try to salvage by text append (shouldn't happen with valid JSON)
+      console.warn(`   ⚠️ [JSON Merge] Parse error, falling back to text append:`, error);
+      return existingContent + '\n' + newContent;
+    }
+  }
+  
+  /**
+   * Convert array with id fields to object keyed by id
+   * e.g., [{ id: 'gnb', ... }, { id: 'hero', ... }] → { gnb: {...}, hero: {...} }
+   */
+  private arrayToObject(arr: any[]): Record<string, any> {
+    const result: Record<string, any> = {};
+    for (const item of arr) {
+      if (item && typeof item === 'object' && 'id' in item) {
+        const { id, ...rest } = item;
+        result[id] = rest;
+      }
+    }
+    return result;
+  }
+  
+  /**
+   * Deep merge two objects
+   * - Objects are recursively merged
+   * - Arrays are concatenated (for sections arrays)
+   * - Handles array-object mismatch for 'sections' key by converting array to object
+   * - Primitives from source override target
+   */
+  private deepMerge(target: any, source: any): any {
+    const result = { ...target };
+    
+    for (const key of Object.keys(source)) {
+      let sourceVal = source[key];
+      let targetVal = target[key];
+      
+      // Special handling for 'sections' key: normalize array to object
+      if (key === 'sections') {
+        // Convert source array to object if target is object
+        if (Array.isArray(sourceVal) && targetVal && typeof targetVal === 'object' && !Array.isArray(targetVal)) {
+          console.log(`   ⚠️ [YAML Merge] Converting 'sections' from array to object for merge compatibility`);
+          sourceVal = this.arrayToObject(sourceVal);
+        }
+        // Convert target array to object if source is object
+        if (Array.isArray(targetVal) && sourceVal && typeof sourceVal === 'object' && !Array.isArray(sourceVal)) {
+          console.log(`   ⚠️ [YAML Merge] Converting existing 'sections' from array to object`);
+          targetVal = this.arrayToObject(targetVal);
+          result[key] = targetVal; // Update result with converted value
+        }
+      }
+      
+      if (sourceVal && typeof sourceVal === 'object') {
+        if (Array.isArray(sourceVal)) {
+          // Arrays: concatenate (e.g., sections array in YAML)
+          if (Array.isArray(targetVal)) {
+            result[key] = [...targetVal, ...sourceVal];
+          } else {
+            result[key] = sourceVal;
+          }
+        } else {
+          // Objects: recursive merge
+          if (targetVal && typeof targetVal === 'object' && !Array.isArray(targetVal)) {
+            result[key] = this.deepMerge(targetVal, sourceVal);
+          } else {
+            result[key] = sourceVal;
+          }
+        }
+      } else {
+        // Primitives: source overrides target
+        result[key] = sourceVal;
+      }
+    }
+    
+    return result;
   }
   
   /**
