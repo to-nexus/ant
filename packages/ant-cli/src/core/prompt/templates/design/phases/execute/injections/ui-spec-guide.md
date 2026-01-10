@@ -6,9 +6,26 @@ Create a specification document that defines **what** to build, not **how** to b
 ### Core Principles
 
 #### 1. Specification, Not Implementation
+
+**What this means**:
 - Document **visual and behavioral requirements** only
-- NO implementation code (no framework-specific syntax, no CSS classes, no component code)
-- Focus on **outcomes** and **constraints**, not solutions
+- Describe **WHAT** the interface should look like and do
+- Do NOT prescribe **HOW** to implement it
+
+**Forbidden**:
+- ❌ Framework names (React, Vue, Next.js, Tailwind)
+- ❌ File structures (`app/layout.tsx`, `components/Button.tsx`)
+- ❌ Code syntax (`<div className="...">`, `const Component = ...`)
+- ❌ Build tool configs (webpack, vite, tailwind.config.js)
+- ❌ Package dependencies (@radix-ui, framer-motion)
+
+**Allowed**:
+- ✅ Semantic HTML tags (`<header>`, `<nav>`, `<section>`)
+- ✅ Visual descriptions ("Fixed header with shadow on scroll")
+- ✅ Behavioral requirements ("Smooth scroll to section on menu click")
+- ✅ Pattern names ("Card grid", "Modal overlay", "Sticky navigation")
+
+**Test**: Can a developer using vanilla JS, React, Vue, or Angular ALL implement this spec without confusion? If NO, remove implementation details.
 
 #### 2. Token and Asset Reference Requirement
 Look for these sections elsewhere in this prompt:
@@ -239,20 +256,97 @@ For each interaction, document:
 
 ### What to EXCLUDE
 
-| Category | Exclude | Reason |
-|----------|---------|--------|
-| Framework syntax | `<div className=...>` | Implementation detail |
-| CSS/Styling code | `.container { ... }` | Implementation detail |
-| Raw color values | `#FFFFFF`, `rgba(...)` | Use tokens instead |
-| Raw size values | `24px`, `1.5rem` | Use tokens instead |
-| Component code | `const Button = () => ...` | Implementation detail |
+────────────────────────────────────────────────────────────────────────────────
+## 🚫 STRICTLY FORBIDDEN: Implementation Details
+────────────────────────────────────────────────────────────────────────────────
+
+**CRITICAL**: ui-spec.md is a SPECIFICATION document, NOT an implementation guide.
+
+**Forbidden Content** (will cause Code Job confusion):
+
+| Category | Examples | Why Forbidden | Correct Approach |
+|----------|----------|---------------|------------------|
+| **Framework/Library Names** | "Next.js", "React", "Vue", "Tailwind" | Locks spec to specific tech | Use platform-agnostic terms |
+| **File Structure** | `app/layout.tsx`, `components/Button.tsx` | Implementation decision | Describe component hierarchy conceptually |
+| **Code Syntax** | `<div className="...">`, `const Button = ...` | Implementation detail | Describe visual outcome |
+| **Framework APIs** | "Next.js App Router", "React hooks", "Vue composables" | Tech-specific | Describe behavior requirements |
+| **Build Tools** | "Webpack", "Vite", "esbuild" config | Infrastructure concern | Out of scope |
+| **Package Names** | `tailwindcss`, `@radix-ui/react-dialog` | Dependency decision | Describe UI pattern needed |
+| **CSS Framework Classes** | `className="flex items-center"` | Implementation choice | Describe layout intent with tokens |
+| **Raw Values in Spec** | `#FFFFFF`, `24px`, `rgba(...)` | Violates token-first | Use `token(*)` references |
+
+**Violation Examples** (from actual ui-spec.md):
+
+```markdown
+❌ WRONG: "Server-side rendering with Next.js App Router"
+✅ CORRECT: "Single-page application with smooth scroll navigation"
+
+❌ WRONG:
+## Implementation Notes
+### Next.js App Router Structure
+app/
+├── layout.tsx
+├── page.tsx
+├── components/
+│   ├── sections/
+│   │   ├── Hero.tsx
+
+✅ CORRECT:
+## Component Organization
+Sections should be organized by:
+- Navigation components (header, menu)
+- Content sections (hero, about, ecosystem, token, technology, social)
+- Structural components (footer)
+- Reusable components (cards, buttons)
+
+❌ WRONG:
+```js
+module.exports = {
+  theme: { extend: { colors: { 'accent-primary': '#00D9A3' } } }
+}
+```
+
+✅ CORRECT: (No code in ui-spec.md. Tokens are in ui-tokens.md)
+```
+
+**Acceptable Technical Terms** (interface-level only):
+
+✅ Generic HTML: `<header>`, `<nav>`, `<section>` (semantic structure)
+✅ Behavioral Terms: "Hover state", "Focus indicator", "Smooth scroll"
+✅ Pattern Names: "Fixed header", "Card grid", "Modal overlay"
+✅ Accessibility: "ARIA labels", "Keyboard navigation", "Screen reader support"
+
+**Boundary Rule**:
+> "If a developer using ANY framework (React, Vue, Svelte, Angular, vanilla JS) cannot implement the spec without framework-specific assumptions, the spec is TOO SPECIFIC."
+
+────────────────────────────────────────────────────────────────────────────────
 
 ### Quality Criteria
 
-1. **Language/Platform Agnostic**: Spec should be implementable in any technology
-2. **Token-First**: All visual values reference tokens from ui-tokens.md
-3. **Complete but Concise**: Cover all requirements without implementation noise
-4. **Actionable**: Developer can implement without guessing
+**Before submitting ui-spec.md, verify**:
+
+1. **Language/Platform Agnostic**: 
+   - ✅ Spec uses NO framework names (React, Vue, Next.js, Tailwind, etc.)
+   - ✅ Spec is implementable in ANY technology stack
+   - ❌ If spec mentions "Next.js App Router", "Tailwind config", ".tsx files" → REMOVE
+
+2. **Token-First**: 
+   - ✅ All visual values reference tokens from ui-tokens.md
+   - ❌ NO raw values (hex codes, pixel values, rgba)
+
+3. **No Implementation Code**:
+   - ✅ NO code blocks with actual implementation (`const Component = ...`, `className="..."`)
+   - ✅ NO file structure diagrams (`app/layout.tsx`, `components/Button.tsx`)
+   - ✅ NO build tool configurations (tailwind.config.js, webpack.config.js)
+   - ❌ If "## Implementation Notes" section exists → DELETE ENTIRE SECTION
+
+4. **Complete but Concise**: 
+   - ✅ Cover all visual and behavioral requirements
+   - ❌ Do NOT include implementation suggestions or "helpful" code examples
+
+5. **Actionable**: 
+   - ✅ Developer can understand WHAT to build
+   - ❌ Developer should decide HOW to build (tech choices are theirs)
 
 ### Documentation Format Guidance
 
