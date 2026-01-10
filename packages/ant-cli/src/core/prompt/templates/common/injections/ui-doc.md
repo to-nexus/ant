@@ -5,88 +5,31 @@
 
 Use this for UI behavior/layout/components/tokens.
 
-### 🚨 IMPLEMENTATION MANDATE
+### 🚨 FOLLOW THE PLAN
 
-**You received a structured plan with UI Implementation Checklist.**
+**Your plan contains an Asset Inventory and Layout/Component Specs.**
 
-**Your implementation MUST:**
-1. ✅ Copy EVERY asset listed in "Asset Inventory" section of the plan
-2. ✅ Implement EXACT layout structure from "Layout & Structure" section
-3. ✅ Apply ALL component specifications from "Component Specifications" section
-4. ✅ Use EXACT design token references from "Design Token References" section
-5. ✅ Follow implementation steps from the plan
+**Implementation rules:**
+1. ✅ Copy EVERY asset listed in plan's "Asset Inventory"
+2. ✅ Implement layout EXACTLY as specified in plan
+3. ✅ Apply component specs from plan
+4. ✅ Use design tokens referenced in plan
 
-**CRITICAL RULES:**
-- ❌ DO NOT skip assets marked in the plan (even "decorative" ones)
-- ❌ DO NOT deviate from layout specifications in the plan
-- ❌ DO NOT use raw values instead of design tokens
-- ❌ DO NOT leave `{/* TODO: Add image */}` placeholders
-- ✅ If plan says "copy 8 assets" → You MUST copy all 8 assets
-- ✅ If plan says "3-column grid → 5-column desktop" → Implement exactly
-- ✅ If plan says "use token(color.accent.teal)" → Use that token
+**CRITICAL:**
+- If plan lists N assets → You MUST copy and reference all N assets
+- If plan specifies responsive breakpoints → Implement all breakpoints
+- If plan lists "decorative" elements → They are NOT optional
+- DO NOT skip assets or components mentioned in the plan
 
-### 🔍 ASSET DISCOVERY PRINCIPLE (CRITICAL!)
+### 🔍 ASSET DISCOVERY PRINCIPLE
 
-**The plan already identified assets. Now you MUST use them.**
+**Before implementing, check your plan's Asset Inventory section.**
 
-1. **Copy** each asset from plan's "Asset Inventory" using exact `cp` commands
-2. **Reference** copied assets in your code using destination paths from plan
-3. **Verify** asset count: If plan lists N assets → Your code must reference N assets
+1. **Copy** each asset using the cp commands from plan
+2. **Reference** assets in code using destination paths from plan
+3. **Verify** count: Plan says N assets → Code uses N assets
 
-**The mapping table is the source of truth for visual assets.**
-- Asset in plan's inventory → MUST copy and use that file
-- Asset NOT in plan → May use text or other approach (but check plan first!)
-
-### ⚠️ ANTI-PATTERN: Ignoring the Plan
-
-**WRONG:**
-```tsx
-// Plan said: "Copy token-hero-image.png"
-// But developer skipped it and just made cards:
-<div className="grid grid-cols-5">
-  {cards.map(...)}
-</div>
-```
-
-**CORRECT:**
-```tsx
-// Plan said: "Copy token-hero-image.png + implement hero image + cards"
-<div className="flex justify-center mb-16">
-  <Image src="/assets/images/token-hero-image.png" width={400} height={400} />
-</div>
-<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
-  {cards.map(...)}
-</div>
-```
-
-### 📋 ASSET USAGE PROCESS
-
-1. **Copy**: Use EXACT `cp` commands from plan's "Asset Inventory" section
-2. **Reference**: Use destination paths from plan in your code
-3. **Verify**: Cross-check with plan - did you use all listed assets?
-
-**Example from plan:**
-```
-Asset Inventory:
-- bg.token.hero: inputs/assets/bg/token-hero-image.png → codebase/public/assets/images/token-hero-image.png
-- icon.token.gas: inputs/assets/icons/icon-gas.svg → codebase/public/assets/icons/icon-gas.svg
-Total: 8 assets
-```
-
-**Your implementation must:**
-```bash
-# Copy all 8 assets
-cp inputs/assets/bg/token-hero-image.png codebase/public/assets/images/
-cp inputs/assets/icons/icon-gas.svg codebase/public/assets/icons/
-# ... (all 8)
-```
-
-```tsx
-// Reference all 8 assets in code
-<Image src="/assets/images/token-hero-image.png" />
-<Image src="/assets/icons/icon-gas.svg" />
-// ... (all 8)
-```
+**The plan is your source of truth. Follow it completely.**
 
 ────────────────────────────────────────────────────────────────────────────────
 
