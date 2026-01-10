@@ -124,79 +124,67 @@ Describe the actual spatial layout:
 
 ⚠️ **Common Mistake:** Defaulting to centered vertical stack when reference shows horizontal distribution or asymmetric alignment.
 
+##### Layout Direction Analysis
+
+**CRITICAL PRINCIPLE: Observation precedes inference**
+
+For any section containing multiple items (cards, panels, blocks, etc.), the PRIMARY axis of arrangement must be determined through direct visual analysis, not deduced from item count or semantic assumptions.
+
+────────────────────────────────────────────────────────────────────────────────
+## 🚨 MANDATORY: PRIMARY AXIS DETERMINATION
+────────────────────────────────────────────────────────────────────────────────
+
+**Analysis Protocol:**
+
+1. **Measure relative spacing between adjacent items**
+   - Compare distance along vertical axis vs horizontal axis
+   - The axis with SMALLER spacing indicates primary flow direction
+   - If vertical gap < horizontal gap: Items flow horizontally (multi-column)
+   - If horizontal gap < vertical gap: Items flow vertically (single or alternating)
+
+2. **Identify alignment pattern**
+   - Horizontal flow: Count items sharing same vertical position (= columns)
+   - Vertical flow: Detect alignment variation (centered, uniform edge, alternating)
+   - Mixed: Document each row/group independently
+
+3. **Verify consistency across breakpoints**
+   - Check if direction changes at different viewport widths
+   - Note any responsive transformation of primary axis
+
+**Documentation Requirement:**
+
+Every multi-item section specification MUST include:
+
+```
+Primary Flow: [Horizontal | Vertical | Mixed]
+  → If Horizontal: Column count [N], wrapping behavior
+  → If Vertical: Alignment pattern [centered | edge-aligned | alternating]
+  → Responsive: [Direction changes at breakpoints? Describe]
+```
+
+**Forbidden Inference Patterns:**
+
+```
+❌ Count-based assumption: "N items → N-column layout"
+   Rationale: Item count does not determine spatial arrangement
+
+❌ Semantic assumption: "Cards → Must be grid"
+   Rationale: Visual components can arrange in any axis
+
+❌ Default pattern: "Assume horizontal unless stated otherwise"
+   Rationale: No layout should be assumed without visual evidence
+```
+
+**Validation Check:**
+
+Before finalizing any layout specification, answer:
+> "Did I observe the spacing in the reference image to determine this direction, or did I infer it from item count/type?"
+
+If inferred, re-examine visual reference.
+
+────────────────────────────────────────────────────────────────────────────────
+
 ##### Grid Layout Documentation
-
-**CRITICAL: Determine Layout Direction FIRST**
-
-Before documenting any multi-item section, you MUST explicitly verify:
-
-────────────────────────────────────────────────────────────────────────────────
-## 🚨 LAYOUT DIRECTION ANALYSIS (MANDATORY)
-────────────────────────────────────────────────────────────────────────────────
-
-**STEP 1: Observe Item Positions in Reference Image**
-
-For each section with multiple cards/items:
-
-1. **Measure spacing visually:**
-   ```
-   □ Vertical distance between Item 1 and Item 2: [Large / Medium / Small]
-   □ Horizontal distance between Item 1 and Item 2: [Large / Medium / Small]
-   ```
-
-2. **Determine primary direction:**
-   ```
-   If vertical distance >> horizontal distance:
-     → PRIMARY DIRECTION: Vertical (stacked)
-   
-   If horizontal distance >= vertical distance:
-     → PRIMARY DIRECTION: Horizontal (rows/grid)
-   ```
-
-3. **Verify alignment pattern:**
-   ```
-   Vertical layout:
-     □ All items centered? → Single-column centered
-     □ All items left-aligned? → Single-column left
-     □ Items alternate left/right? → Zigzag pattern
-   
-   Horizontal layout:
-     □ How many items per row? → N-column grid
-     □ Consistent across rows? → Uniform grid
-     □ Last row centered? → Non-uniform grid
-   ```
-
-**STEP 2: Document Findings EXPLICITLY**
-
-Do NOT skip this verification. Your specification MUST include:
-
-```markdown
-### [Section Name] Layout Analysis
-
-**Observed in reference image:**
-- Primary direction: [Horizontal / Vertical]
-- [If horizontal] Columns per row: [N]
-- [If vertical] Alignment pattern: [Centered / Left / Right / Alternating (zigzag)]
-- Spacing: [Describe vertical and horizontal gaps]
-
-**Layout specification:**
-[Write the actual layout spec based on observations above]
-```
-
-**⚠️ ANTI-PATTERNS TO AVOID:**
-
-```
-❌ WRONG: "3 cards → 3-column grid" (assumption without verification)
-✅ CORRECT: "Observed: 3 cards stacked vertically with alternating alignment → Document as vertical zigzag layout"
-
-❌ WRONG: "Cards section → Must be grid layout" (pattern assumption)
-✅ CORRECT: "Check reference: Are cards horizontal or vertical? → Document observed pattern"
-
-❌ WRONG: Skip verification, write spec directly
-✅ CORRECT: Verify direction → Document observation → Write spec
-```
-
-────────────────────────────────────────────────────────────────────────────────
 
 **Analyze the design intent:**
 
