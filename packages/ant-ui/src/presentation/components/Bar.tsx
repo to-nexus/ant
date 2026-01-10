@@ -1,5 +1,5 @@
-import { ReactNode, ComponentType } from 'react';
-import { borderColors, cn } from '@/shared/utils/design-system';
+import { ReactNode } from 'react';
+import { cn } from '@/shared/utils/design-system';
 
 /**
  * Base Bar Props

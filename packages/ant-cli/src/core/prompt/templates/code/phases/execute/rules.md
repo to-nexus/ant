@@ -251,6 +251,33 @@ Turn 2: edit_file("App.tsx", old_str, new_str)  ← Modify
 
 ────────────────────────────────────────────────────────────────────────────────
 
+## 🏗️ CODE STRUCTURE RULES
+
+### 1. Directory Consistency
+
+- Check `projectCodeContext` or `list_files` to find existing file locations
+- Follow the SAME directory pattern for similar files
+- NEVER create parallel/duplicate structures
+
+### 2. Replace, Don't Add Alongside
+
+If creating a new module/file for functionality that already exists inline:
+
+1. Create the new file
+2. Import it where needed
+3. **DELETE the existing inline code**
+4. Use the new module instead
+
+❌ WRONG: New file exists but duplicate inline code still remains
+✅ RIGHT: Inline code replaced with import and usage
+
+### 3. Integration is Mandatory
+
+- Every new file MUST be imported and used somewhere
+- A file that exists but is never used = **TASK FAILURE**
+
+────────────────────────────────────────────────────────────────────────────────
+
 ## 🎯 CODE QUALITY RULES
 
 ### 1. Use Existing Constants (DRY Principle)

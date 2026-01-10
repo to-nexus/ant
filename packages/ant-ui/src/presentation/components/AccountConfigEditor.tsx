@@ -13,7 +13,7 @@ interface AccountConfigEditorProps {
   onClose: () => void;
 }
 
-export function AccountConfigEditor({ onClose }: AccountConfigEditorProps) {
+export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorProps) {
   const { showSuccess, showError, showConfirm } = useAlertModalContext();
   
   // GitHub PAT state

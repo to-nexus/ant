@@ -2,11 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 
 // ✅ Global tooltip state - only one tooltip can be open at a time
-let activeTooltipId: string | null = null;
 const tooltipListeners = new Set<(id: string | null) => void>();
 
 function setActiveTooltip(id: string | null) {
-  activeTooltipId = id;
   tooltipListeners.forEach(listener => listener(id));
 }
 

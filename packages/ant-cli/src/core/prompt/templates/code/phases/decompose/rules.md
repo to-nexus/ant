@@ -240,9 +240,14 @@ IMPORTANT:
   - Language-agnostic: Don't mention specific files
   - Assign sequential priorities (100, 101, 102, ...)
 - **Task Granularity:**
-  - Setup = infrastructure/configuration
-  - Features = user-facing functionality
+  - Setup = infrastructure/configuration ONLY (dependency files, configs)
+  - Setup MUST NOT create application source code
+  - Features = user-facing functionality (source code)
   - Each task must have unique id (kebab-case)
+- **Task Independence (CRITICAL):**
+  - Each task creates its OWN files for its scope
+  - DO NOT scaffold code for other tasks as placeholders
+  - Later tasks will add their own code and integrate
 - **Final Verification:**
   - ✅ Include if there are feature tasks
   - ❌ Skip if ALL tasks are error tasks

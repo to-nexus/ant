@@ -5,9 +5,9 @@
  */
 
 import { useMemo } from 'react';
-import { Node, Edge, Position } from 'reactflow';
+import { Node, Edge, MarkerType } from 'reactflow';
 import dagre from 'dagre';
-import { WorkflowGraphMetadata, WorkflowRealtimeState, NodeImportance } from '@/domain/models/workflow';
+import { WorkflowGraphMetadata, WorkflowRealtimeState } from '@/domain/models/workflow';
 import { useStore } from '@/domain/store';
 
 // Edge 스타일 헬퍼
@@ -121,7 +121,7 @@ export function useGraphLayout(
         labelBgPadding: [6, 8] as [number, number],
         labelBgBorderRadius: 4,
         markerEnd: {
-          type: 'arrowclosed',
+          type: MarkerType.ArrowClosed,
           color: edgeStyle.stroke
         }
       };
@@ -152,7 +152,7 @@ export function useGraphLayout(
             strokeDasharray: '5,5'
           },
           markerEnd: {
-            type: 'arrow',
+            type: MarkerType.Arrow,
             color: actorStroke
           }
         });

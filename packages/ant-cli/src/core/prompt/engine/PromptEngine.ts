@@ -466,9 +466,8 @@ export class PromptEngine {
     mode: string,
     referenceProjects?: Array<{project: string}>
   ): Promise<string> {
-    // ✅ Uses phases/plan/base.md which includes {{> code/phases/plan/rules}}
-    return await this.deps.promptPort.render('code/phases/plan/base', {
-      isKeywordGeneration: true,
+    // ✅ Uses base-keyword.md for keyword generation
+    return await this.deps.promptPort.render('code/phases/plan/base-keyword', {
       taskName: task.name,
       taskDescription: task.description,
       directive: directive,  // ✅ Pass original directive
@@ -507,9 +506,8 @@ export class PromptEngine {
       formattedCodeContext = `**Files** (${projectCodeContext.files.length} files):\n\n${fileList}`;
     }
     
-    // ✅ Uses phases/plan/base.md (execution plan section)
-    return await this.deps.promptPort.render('code/phases/plan/base', {
-      isKeywordGeneration: false,
+    // ✅ Uses base-plan.md for plan generation
+    return await this.deps.promptPort.render('code/phases/plan/base-plan', {
       taskName: task.name,
       taskDescription: task.description,
       directive: directive,  // ✅ Pass original directive

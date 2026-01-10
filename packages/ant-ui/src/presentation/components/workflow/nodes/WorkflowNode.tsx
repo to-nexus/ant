@@ -57,6 +57,7 @@ const NODE_SIZE = {
   },
   expanded: {
     width: 360,
+    height: 120,
     fontSize: '14px',
     fontWeight: '600',
     borderWidth: 3
@@ -64,7 +65,6 @@ const NODE_SIZE = {
 };
 
 export const WorkflowNode = memo(({ data }: WorkflowNodeProps) => {
-  const theme = useStore(state => state.theme);
   const splitLayout = useStore(state => state.splitLayout);
   const isExpanded = data.isExpanded || false;
   const size = isExpanded ? NODE_SIZE.expanded : NODE_SIZE.collapsed;
