@@ -126,6 +126,78 @@ Describe the actual spatial layout:
 
 ##### Grid Layout Documentation
 
+**CRITICAL: Determine Layout Direction FIRST**
+
+Before documenting any multi-item section, you MUST explicitly verify:
+
+────────────────────────────────────────────────────────────────────────────────
+## 🚨 LAYOUT DIRECTION ANALYSIS (MANDATORY)
+────────────────────────────────────────────────────────────────────────────────
+
+**STEP 1: Observe Item Positions in Reference Image**
+
+For each section with multiple cards/items:
+
+1. **Measure spacing visually:**
+   ```
+   □ Vertical distance between Item 1 and Item 2: [Large / Medium / Small]
+   □ Horizontal distance between Item 1 and Item 2: [Large / Medium / Small]
+   ```
+
+2. **Determine primary direction:**
+   ```
+   If vertical distance >> horizontal distance:
+     → PRIMARY DIRECTION: Vertical (stacked)
+   
+   If horizontal distance >= vertical distance:
+     → PRIMARY DIRECTION: Horizontal (rows/grid)
+   ```
+
+3. **Verify alignment pattern:**
+   ```
+   Vertical layout:
+     □ All items centered? → Single-column centered
+     □ All items left-aligned? → Single-column left
+     □ Items alternate left/right? → Zigzag pattern
+   
+   Horizontal layout:
+     □ How many items per row? → N-column grid
+     □ Consistent across rows? → Uniform grid
+     □ Last row centered? → Non-uniform grid
+   ```
+
+**STEP 2: Document Findings EXPLICITLY**
+
+Do NOT skip this verification. Your specification MUST include:
+
+```markdown
+### [Section Name] Layout Analysis
+
+**Observed in reference image:**
+- Primary direction: [Horizontal / Vertical]
+- [If horizontal] Columns per row: [N]
+- [If vertical] Alignment pattern: [Centered / Left / Right / Alternating (zigzag)]
+- Spacing: [Describe vertical and horizontal gaps]
+
+**Layout specification:**
+[Write the actual layout spec based on observations above]
+```
+
+**⚠️ ANTI-PATTERNS TO AVOID:**
+
+```
+❌ WRONG: "3 cards → 3-column grid" (assumption without verification)
+✅ CORRECT: "Observed: 3 cards stacked vertically with alternating alignment → Document as vertical zigzag layout"
+
+❌ WRONG: "Cards section → Must be grid layout" (pattern assumption)
+✅ CORRECT: "Check reference: Are cards horizontal or vertical? → Document observed pattern"
+
+❌ WRONG: Skip verification, write spec directly
+✅ CORRECT: Verify direction → Document observation → Write spec
+```
+
+────────────────────────────────────────────────────────────────────────────────
+
 **Analyze the design intent:**
 
 Examine whether items are laid out with consistent columns across rows, or if different rows have intentionally different structures.
