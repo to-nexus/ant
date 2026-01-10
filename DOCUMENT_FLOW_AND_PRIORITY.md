@@ -93,27 +93,60 @@ Feature 3: "Built-in Best Practices"
 
 ---
 
-### 4. **uiDoc** (UI Specification)
-- **정의**: Design Job의 ui-spec 산출물
-- **위치**: `features/<feature>/outputs/design/ui-spec.md`
+### 4. **uiDoc** (UI Specification - 통합 문서)
+- **정의**: **3개 UI 문서의 통합본**
+  - `ui-spec.md`: UI 레이아웃, 컴포넌트 상세
+  - `ui-tokens.md`: Design tokens (colors, typography, spacing)
+  - `ui-assets.md`: Asset 매핑 (source → destination)
+- **위치**: `features/<feature>/outputs/design/` (3개 파일)
+- **로딩**: `ArtifactService.loadUiContext()` - 3개 파일을 하나로 통합
 - **내용**:
-  - UI 컴포넌트 상세 specs (layout, typography, colors)
-  - Responsive breakpoints
-  - Interactions (hover, click, animations)
+  ```markdown
+  ## 🎨 UI SPECIFICATION
+  > Screen layouts, component props, states, interaction rules
+  [ui-spec.md 내용]
+  
+  ## 🎯 DESIGN TOKENS
+  > Colors, typography, spacing constants
+  [ui-tokens.md 내용]
+  
+  ## 📦 ASSET MAPPING (MANDATORY COPY)
+  > Source → Runtime Path mappings
+  [ui-assets.md 내용]
+  ```
 - **특징**:
   - Figma-derived (디자인 툴 기반)
   - UI 태스크에만 injection
   - **UI 구현의 SSOT**
+  - **3개 문서가 자동으로 통합되어 하나의 uiDoc으로 전달**
 
-**예시**:
+**예시 (통합 후)**:
 ```markdown
-// ui-spec.md
-## Hero Section
+## 🎨 UI SPECIFICATION
+> Follow these specs exactly when implementing UI components.
+
+### Hero Section
 - Layout: Full-width, centered content
 - Background: Image (bg-main.png)
 - Typography: H1 (64px, bold), Body (18px)
-- CTA Buttons: Primary (blue), Secondary (white)
-- Responsive: Mobile (stack vertical), Desktop (horizontal)
+
+## 🎯 DESIGN TOKENS
+> Reference these tokens in your CSS/styles for consistency.
+
+### Colors
+- primary: #0066FF
+- text-dark: #1A1A1A
+
+### Typography
+- heading-1: 64px/1.2, weight 700
+- body: 18px/1.5, weight 400
+
+## 📦 ASSET MAPPING (MANDATORY COPY)
+> You MUST copy ALL mapped assets before referencing.
+
+### Hero Section
+- bg.hero: inputs/assets/bg/bg-main.png
+  Destination: codebase/public/assets/images/bg-main.png
 ```
 
 ---
@@ -155,22 +188,22 @@ Feature 3: "Built-in Best Practices"
 User Input (directive)
 ↓
 Design Job
-├─ prd.md (PRD)
+├─ prd.md (PRD - 콘텐츠 텍스트)
 ├─ fe-system-design.md (Frontend Design)
 ├─ be-system-design.md (Backend Design)
-├─ ui-spec.md (UI Specification)
-├─ ui-assets.md (Asset Mapping)
-└─ ui-tokens.md (Design Tokens)
+├─ ui-spec.md (UI Specification) ────┐
+├─ ui-tokens.md (Design Tokens)      ├─ 통합 → uiDoc
+└─ ui-assets.md (Asset Mapping) ─────┘
 ```
 
 ### Code Job 입력
 ```
 Code Job receives:
 - directive: 원본 사용자 지시
-- prd: PRD 문서 (optional)
+- prd: PRD 문서 (콘텐츠 소스)
 - design: fe-system-design + be-system-design (unified)
-- uiDoc: ui-spec (UI 태스크에만)
-- uiAssets: ui-assets (UI 태스크에만)
+- uiDoc: ui-spec + ui-tokens + ui-assets (통합본, UI 태스크에만)
+- uiAssets: Asset 메타데이터 (screens, components, icons 목록)
 ```
 
 ---
@@ -609,22 +642,24 @@ state.prd ? `# Requirements\n\n${state.prd}` : null
 - **directive**: 사용자 원본 지시 (ground truth)
 - **prd**: ✅ **콘텐츠 소스** (headlines, descriptions, labels) + 비기술 요구사항
 - **design**: 기술 설계 (Code Job PRIMARY spec)
-- **uiDoc**: UI 상세 specs (UI 태스크 SSOT)
-- **uiAssets**: Asset 매핑 (Asset 복사 지침)
+- **uiDoc**: ✅ **3개 UI 문서 통합본** (ui-spec + ui-tokens + ui-assets) - UI 태스크 SSOT
+- **uiAssets**: Asset 메타데이터 (screens, components, icons 목록)
 
 ### 단계별 SSOT
 - **Decompose**: designDoc (+ directive context)
-- **Plan (UI)**: uiDoc + uiAssets (+ prdSpec content)
+- **Plan (UI)**: uiDoc (3-in-1) (+ prdSpec content)
 - **Plan (API)**: designDoc (API Contract) (+ prdSpec content)
 - **Execute**: planText (+ prdSpec content source)
 
 ### 보완 관계
 ```
-directive (원본) → prd (콘텐츠) → design (기술 설계) → uiDoc (UI 상세)
-                                                       ↓
-                                   Plan (통합 & 상세화)
-                                                       ↓
-                    Execute (구현 + prd에서 콘텐츠 추출)
+directive (원본) → prd (콘텐츠) → design (기술 설계)
+                                 ↓
+                     uiDoc (ui-spec + ui-tokens + ui-assets 통합)
+                                 ↓
+                          Plan (통합 & 상세화)
+                                 ↓
+              Execute (구현 + prd에서 콘텐츠 추출)
 ```
 
 ### 핵심 원칙
@@ -633,7 +668,12 @@ directive (원본) → prd (콘텐츠) → design (기술 설계) → uiDoc (UI 
 3. **Execute는 Plan + PRD(콘텐츠) 사용**
 4. **UI/Non-UI 태스크별 다른 문서 우선순위**
 5. **PRD는 콘텐츠 소스 (중요!)** ✅
+6. **uiDoc은 3개 UI 문서의 통합본** ✅
 
 ---
 
-**최종 결론**: 현재 구조는 잘 설계되었고, **PRD는 콘텐츠 소스로 중요한 역할 수행 중**입니다. 프롬프트에 문서 역할만 명시하면 완벽합니다.
+**최종 결론**: 
+- 현재 구조는 잘 설계됨
+- **PRD는 콘텐츠 소스로 중요**
+- **uiDoc은 ui-spec + ui-tokens + ui-assets 3개 파일의 통합본**
+- **ui-tokens는 uiDoc에 포함되어 자동으로 전달됨**
