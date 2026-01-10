@@ -195,7 +195,11 @@ If you need multiple file operations, use multiple XML tags:
 2. **ALL output must be inside XML tags** (no text before/after)
 3. **NO markdown fences inside XML** (just write markdown directly)
 4. **Path MUST start with** `outputs/design/`
+{{#if isLastTaskForDocument}}
+5. **OMIT** `<!-- LAST_SECTION: N -->` (this is the LAST task)
+{{else}}
 5. **ALWAYS add** `<!-- LAST_SECTION: N -->` at end
+{{/if}}
 
 ════════════════════════════════════════════════════════════════════════════════
 ## Pre-Output Checklist
@@ -228,9 +232,11 @@ Before generating output, verify:
 {{/if}}
 
 **Metadata:**
-- ✅ Added `<!-- LAST_SECTION: N -->` at end?
-{{#if lastSectionNumber}}
-- ✅ Removed old metadata line (was `<!-- LAST_SECTION: {{lastSectionNumber}} -->`)?
+{{#if isLastTaskForDocument}}
+- ✅ **OMIT** `<!-- LAST_SECTION: N -->` (this is the LAST task - no metadata needed)
+{{else}}
+- ✅ Added `<!-- LAST_SECTION: N -->` at end of YOUR new content?
+- ℹ️ Old metadata from previous content is automatically removed by the system
 {{/if}}
 
 **If YES to all → Output. If NO → Fix first!**

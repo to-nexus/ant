@@ -3,18 +3,19 @@
 ### Purpose
 Create a JSON mapping document that connects source assets to their runtime destinations and usage contexts.
 
-### ⚠️ CRITICAL: Path Consistency for Multi-Chapter Generation
+### ⚠️ CRITICAL: Scope & Path Consistency
 
-**When generating ui-assets chapters (ch1, ch2, etc.), ALL chapters MUST use the SAME destination path patterns.**
+**🚨 READ YOUR TASK DESCRIPTION - generate only the asset categories it specifies!**
 
-#### For ch1 (First Chapter):
-1. **Define the canonical path pattern** in the JSON structure
-2. **Use consistent paths** throughout the document
+#### For First Task (no existing document):
+1. **Define the canonical path pattern** in `_meta.pathPattern`
+2. **Generate only categories specified in YOUR task description**
 
-#### For ch2+ (Continuation Chapters):
-1. **Read the existing JSON structure** (shows ch1's patterns)
-2. **MUST follow the exact same patterns** - DO NOT create new patterns!
-3. **If an asset was documented in ch1** → Skip it, don't re-document
+#### For Continuation Tasks (existing document):
+1. **Read the existing JSON structure** to see established patterns
+2. **MUST follow the exact same path patterns** - DO NOT create new subdirectories!
+3. **Skip any assets already documented** - check existing content
+4. **Generate only categories specified in YOUR task description**
 
 **❌ WRONG (Path Inconsistency):**
 ```json
@@ -118,69 +119,52 @@ Create a JSON mapping document that connects source assets to their runtime dest
 
 ### Example Output
 
-**For first chapter (task: ui-assets or ui-assets-ch1)**:
-
-```xml
-<file path="outputs/design/ui-assets.json">
-{
-  "_meta": {
-    "lastSection": 2,
-    "sectionPattern": "top-level",
-    "pathPattern": {
-      "logos": "public/logos/",
-      "backgrounds": "public/backgrounds/"
-    }
-  },
-  "logos": {
-    "logo-header": {
-      "src": "inputs/assets/logos/header-logo.svg",
-      "dest": "public/logos/header.svg",
-      "format": "svg",
-      "usage": "Header navigation"
-    }
-  },
-  "backgrounds": {
-    "bg-hero": {
-      "src": "inputs/assets/bg/hero.png",
-      "dest": "public/backgrounds/hero.png",
-      "format": "png",
-      "usage": "Hero section background"
-    }
-  }
-}
-</file>
-```
-
-**For continuation chapter (task: ui-assets-ch2)**:
+{{#if lastSectionNumber}}
+**Continuation task** - use `<append>` to add YOUR asset categories:
 
 ```xml
 <append path="outputs/design/ui-assets.json">
 {
   "_meta": {
-    "lastSection": 3,
-    "pathPattern": {
-      "icons": "public/icons/"
-    }
+    "lastSection": {{add lastSectionNumber 1}},
+    "pathPattern": { "YOUR_CATEGORY": "public/YOUR_CATEGORY/" }
   },
-  "icons": {
-    "icon-telegram": {
-      "src": "inputs/assets/icons/telegram.svg",
-      "dest": "public/icons/telegram.svg",
-      "format": "svg",
-      "usage": "Social links section"
-    },
-    "icon-gas": {
-      "src": "inputs/assets/icons/icon-gas.svg",
-      "dest": "public/icons/gas.svg",
-      "format": "svg",
-      "usage": "Token feature card icon"
+  "YOUR_CATEGORY": {
+    "asset-id": {
+      "src": "inputs/assets/...",
+      "dest": "public/YOUR_CATEGORY/...",
+      "format": "svg|png",
+      "usage": "Usage context"
     }
   }
 }
 </append>
 ```
+{{else}}
+**First task** - use `<file>` to create the document:
 
-**Note**: The system automatically merges new asset categories into existing JSON.
+```xml
+<file path="outputs/design/ui-assets.json">
+{
+  "_meta": {
+    "lastSection": 1,
+    "sectionPattern": "top-level",
+    "pathPattern": { "YOUR_CATEGORY": "public/YOUR_CATEGORY/" }
+  },
+  "YOUR_CATEGORY": {
+    "asset-id": {
+      "src": "inputs/assets/...",
+      "dest": "public/YOUR_CATEGORY/...",
+      "format": "svg|png",
+      "usage": "Usage context"
+    }
+  }
+}
+</file>
+```
+{{/if}}
+
+**Note**: Replace `YOUR_CATEGORY` with the actual category from your task description (e.g., `logos`, `icons`, `backgrounds`). The system automatically merges new categories.
 
 ### Quality Criteria
 

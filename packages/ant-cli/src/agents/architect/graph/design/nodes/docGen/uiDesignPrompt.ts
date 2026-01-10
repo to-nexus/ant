@@ -370,9 +370,13 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
   
   // ✅ Check if this is the last task for this document
   // If no more tasks in queue target the same file, don't output metadata
+  // CRITICAL: Exclude current task from the count (it may still be in queue)
+  const currentTaskId = state.currentTask?.id;
   const allQueuedTasks = state.taskQueue?.getAll?.() || [];
   const remainingTasksForFile = allQueuedTasks.filter(
     (task: any) => {
+      // Exclude current task from remaining count
+      if (task.id === currentTaskId) return false;
       const taskTargetFile = task.targetFile || 
         (task.id?.startsWith('ui-tokens') ? 'ui-tokens.json' :
          task.id?.startsWith('ui-assets') ? 'ui-assets.json' :
@@ -501,6 +505,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
     previousChaptersSummary,
     isLastTaskForDocument,  // ✅ If true, don't output metadata comments
     pathPattern,  // ✅ NEW: For ui-assets ch2+ to follow ch1's destination paths
+    existingDocContent: existingFileContent,  // ✅ NEW: Full file content for LLM to see and extend
   });
   
   if (!template) {
