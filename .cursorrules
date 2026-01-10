@@ -1,0 +1,124 @@
+# Ant CLI Project Rules
+
+## Prompt Template Architecture
+
+This project follows **WHAT/HOW separation principle** for prompt templates.
+
+### File Naming Convention
+
+| Prefix | Role | Content |
+|--------|------|---------|
+| `base-*.md` | **WHAT** | Context, data, current state, task definition |
+| `rules-*.md` | **HOW** | Rules, formats, constraints, methods |
+
+### ❌ DON'T
+
+```markdown
+<!-- Don't put these in base-*.md -->
+⚠️ You MUST...           ← Rules belong in rules-
+DO NOT re-generate...    ← Constraints belong in rules-
+NEVER duplicate...       ← Prohibitions belong in rules-
+
+<!-- Don't put these in rules-*.md -->
+{{{previousChaptersSummary}}}  ← Dynamic data belongs in base-
+{{#if taskDescription}}...     ← Context injection belongs in base-
+```
+
+### ✅ CORRECT Separation
+
+**base-*.md (WHAT):**
+```markdown
+🎯 YOUR CURRENT TASK: {{taskId}}
+
+### 📋 Task Description
+{{{taskDescription}}}
+
+### 📋 Already Documented
+{{{previousChaptersSummary}}}
+```
+
+**rules-*.md (HOW):**
+```markdown
+## CHAPTER SCOPE CONSTRAINT
+
+### ⚠️ CRITICAL RULES
+1. ONLY generate content described in YOUR task description
+2. NEVER generate content that belongs to OTHER chapters
+3. NEVER duplicate content from previous chapters
+```
+
+### File Locations
+
+```
+packages/ant-cli/src/core/prompt/templates/
+├── code/
+│   └── phases/
+│       ├── decompose/
+│       │   ├── base.md      ← WHAT
+│       │   └── rules.md     ← HOW
+│       └── execute/
+│           ├── base.md      ← WHAT
+│           └── rules.md     ← HOW
+└── design/
+    └── phases/
+        └── execute/
+            ├── base-ui-design.md      ← WHAT
+            ├── rules-ui-design.md     ← HOW
+            ├── base-system-design.md  ← WHAT
+            └── rules-system-design.md ← HOW
+```
+
+---
+
+## LangGraph State Management
+
+### channels Definition Required
+
+When using state fields in LangGraph, always define them in `channels` first.
+
+```typescript
+// ❌ WRONG: Using state as any without channels definition
+(state as any).parsedUiDocs = value;
+
+// ✅ CORRECT: Define in channels first
+const graph = new StateGraph<GraphState>({
+  channels: {
+    parsedUiDocs: null as any,  // reducer definition
+    // ...
+  }
+});
+
+// Then use
+state.parsedUiDocs = value;
+```
+
+---
+
+## Design Job UI Documents
+
+### Chapter-Based Generation
+
+UI documents (ui-tokens.md, ui-assets.md, ui-spec.md) are generated in **chapters**.
+
+- Each chapter task generates **only its assigned scope**
+- `lastSectionNumber` tracks previous section numbers
+- `<!-- LAST_SECTION: N -->` metadata records last section
+
+### Dependency Chain
+
+```
+ui-tokens.md (first, no dependencies)
+     ↓
+ui-assets.md (references ui-tokens.md)
+     ↓
+ui-spec.md (references ui-tokens.md + ui-assets.md)
+```
+
+---
+
+## Code Style
+
+- TypeScript strict mode
+- ESLint + Prettier
+- JSDoc comments recommended for functions
+- Console logs use emoji prefixes (e.g., `📄 [DocGen]`, `🔧 [Tool]`)

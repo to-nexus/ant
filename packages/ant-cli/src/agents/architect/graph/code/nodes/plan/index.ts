@@ -217,23 +217,36 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   // STEP 3: Generate implementation plan (LLM 2nd request)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   
-  // ✅ Determine if uiDoc should be included in plan (UI-related tasks only)
-  const shouldIncludeUiDoc = (() => {
-    if (nextTask.type === 'setup') return false;  // Setup tasks don't need UI spec
+  // ✅ Split injection: Extract only needed UI sections for this task
+  const uiDocForPlan = (() => {
+    if (!state.parsedUiDocs) return undefined;
+    if (nextTask.type === 'setup') return undefined;  // Setup tasks don't need UI spec
     
-    // ✅ 1) Primary: task.ui flag from decompose (source of truth)
-    if (nextTask.ui === true) return true;
-    if (nextTask.ui === false) return false;
+    // Check if UI injection is needed
+    const needsUi = (() => {
+      if (nextTask.ui === true) return true;
+      if (nextTask.ui === false) return false;
+      
+      // Fallback: check task name/description for UI keywords
+      const text = `${nextTask.name}\n${nextTask.description}`.toLowerCase();
+      return /(ui|ux|header|footer|layout|component|section|hero|card|button|nav|style|css|token|theme)/.test(text);
+    })();
     
-    // ✅ 2) Fallback: check task name/description for UI keywords (when ui flag is undefined)
-    const text = `${nextTask.name}\n${nextTask.description}`.toLowerCase();
-    return /(ui|ux|header|footer|layout|component|section|hero|card|button|nav|style|css|token|theme)/.test(text);
+    if (!needsUi) return undefined;
+    
+    // ✅ Split injection: Use task.uiSections if available
+    const { ArtifactService } = require('../../../../../../infrastructure/workspace/ArtifactService');
+    const uiDoc = ArtifactService.getUiDocForTask(state.parsedUiDocs, nextTask.uiSections);
+    
+    if (uiDoc) {
+      const sectionInfo = nextTask.uiSections?.length 
+        ? `sections: ${nextTask.uiSections.join(', ')}` 
+        : 'all sections (no uiSections specified)';
+      console.log(`🎨 [Plan] UI doc split injection: ${uiDoc.length} chars (${sectionInfo})`);
+    }
+    
+    return uiDoc;
   })();
-  
-  const uiDocForPlan = shouldIncludeUiDoc ? state.uiDoc : undefined;
-  if (uiDocForPlan) {
-    console.log(`🎨 [Plan] Including uiDoc in plan (${uiDocForPlan.length} chars)`);
-  }
   
   const planText = await generatePlanText(
     llm,

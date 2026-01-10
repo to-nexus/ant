@@ -37,11 +37,22 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
     if (!state.currentTask) {
       throw new Error('[DocGen] currentTask is required but not available in state');
     }
-    // ✅ Load existing design document's last section number
+    // ✅ Load existing design document's last section number and pattern
     let lastSectionNumber = 0;
+    let sectionPattern = '';  // 'top-level' or 'nested'
     
     const targetFile = state.currentTask.targetFile || 'system-design.md';
     console.log(`📄 [DocGen] Target file: ${targetFile}`);
+    
+    // ✅ Check if this is the last task for this document
+    const allQueuedTasks = state.taskQueue?.getAll?.() || [];
+    const remainingTasksForFile = allQueuedTasks.filter(
+      (task: any) => (task.targetFile || 'system-design.md') === targetFile
+    );
+    const isLastTaskForDocument = remainingTasksForFile.length === 0;
+    if (isLastTaskForDocument) {
+      console.log(`📄 [DocGen] This is the LAST task for ${targetFile} - will NOT output metadata`);
+    }
     
     try {
       // ✅ FIX: Convert absolute path to workspace-relative path for FileSystemPort
@@ -59,13 +70,27 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
         if (fileExists) {
           const fullContent = await state.deps.fileSystem.readFile(designDocPath) || '';
           if (fullContent) {
-            const lastLine = fullContent.trim().split('\n').pop() || '';
-            const metadataMatch = lastLine.match(/<!-- LAST_SECTION: (\d+) -->/);
+            // Parse all metadata from file
+            const metadataLines = fullContent.trim().split('\n').slice(-5); // Check last 5 lines
             
-            if (metadataMatch) {
-              lastSectionNumber = parseInt(metadataMatch[1]);
-              console.log(`📄 [DocGen] Found last section: ${lastSectionNumber} (from metadata)`);
-            } else {
+            for (const line of metadataLines) {
+              // Parse LAST_SECTION
+              const lastSectionMatch = line.match(/<!-- LAST_SECTION: (\d+) -->/);
+              if (lastSectionMatch) {
+                lastSectionNumber = parseInt(lastSectionMatch[1]);
+                console.log(`📄 [DocGen] Found last section: ${lastSectionNumber} (from metadata)`);
+              }
+              
+              // Parse SECTION_PATTERN
+              const patternMatch = line.match(/<!-- SECTION_PATTERN: (\w+) -->/);
+              if (patternMatch) {
+                sectionPattern = patternMatch[1];
+                console.log(`📄 [DocGen] Found section pattern: ${sectionPattern}`);
+              }
+            }
+            
+            // Fallback for LAST_SECTION: scan for section headers
+            if (!lastSectionNumber) {
               const sectionMatches = fullContent.match(/^## (\d+)\./gm);
               if (sectionMatches) {
                 const numbers = sectionMatches.map((m: string) => parseInt(m.match(/\d+/)?.[0] || '0'));
@@ -112,6 +137,7 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
         directive: state.directive || state.spec,
         designDoc: apiContractContent,
         lastSectionNumber,
+        sectionPattern,  // ✅ NEW: 'top-level' or 'nested' structure pattern
         previousDesign: state.design,
         prdSpec: state.prd,
         currentCode: state.code,
@@ -122,7 +148,8 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
           priority: state.currentTask.priority,
           description: state.currentTask.description,
           ...(state.currentTask.targetFile && { targetFile: state.currentTask.targetFile }),
-        },
+        } as any,
+        isLastTaskForDocument,  // ✅ If true, don't output metadata (passed separately)
       },
       undefined,
       undefined

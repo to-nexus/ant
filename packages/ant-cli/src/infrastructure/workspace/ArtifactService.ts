@@ -15,6 +15,13 @@
 import * as path from "path";
 import { GitPort, FileSystemPort } from "../../core/ports";
 import { WorkspacePathResolver } from "./WorkspaceResolver";
+import { ParsedUiDocs } from "../../core/types/uiDoc";
+import {
+  parseUiDocs,
+  getUiSectionsForTask,
+  getAllUiContent,
+  generateUiSectionsSummary,
+} from "./UiDocParser";
 
 export type AgentTask = 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';
 
@@ -190,85 +197,130 @@ export class ArtifactService {
   }
 
   /**
-   * Load UI-specific documents/assets (Figma-derived) for optional injection into code prompts.
-   *
-   * Design goal:
-   * - Keep PRD clean (single canonical: prd.md)
-   * - Provide UI spec only when a task is UI-related (promptBuilder decides)
-   * - Represent images as an index/manifest (LLM prompt is text-only)
+   * Load UI documents as parsed structure for split injection.
+   * 
+   * This enables token-efficient injection:
+   * - Only requested sections are injected into prompts
+   * - Decompose prompt receives TOC (section list) only
+   * - Plan/CodeGen prompts receive specific sections based on task.uiSections
+   * 
+   * @returns ParsedUiDocs structure with:
+   *   - tokens: Full ui-tokens.md content
+   *   - assets: Full ui-assets.md content
+   *   - specSections: Map of section ID → content
+   *   - specToc: Table of contents (for decompose prompt)
    */
-  static async loadUiContext(
+  static async loadParsedUiContext(
     context: ProjectContext,
     gitPort: GitPort,
     fileSystem: FileSystemPort
-  ): Promise<{
-    uiDoc?: string;
-    uiAssets?: {
-      screens?: string[];
-      components?: string[];
-      icons?: string[];
-    };
-  }> {
+  ): Promise<ParsedUiDocs | null> {
     const featurePathAbs = context.featurePath || WorkspacePathResolver.resolveFeaturePath(context);
     const designDirAbs = path.join(featurePathAbs, "outputs/design");
     const designDir = ArtifactService.toWorkspaceRelative(fileSystem, designDirAbs);
 
     const designDirExists = await fileSystem.fileExists(designDir);
     if (!designDirExists) {
-      console.log(`⚠️  [ArtifactService] loadUiContext: designDir not found: ${designDir}`);
-      return {};
+      console.log(`⚠️  [ArtifactService] loadParsedUiContext: designDir not found: ${designDir}`);
+      return null;
     }
 
-    // Known UI doc files (optional)
-    // ✅ Canonical: ui-spec.md (ONLY)
-    const uiDocFiles = [
-      'ui-spec.md',
-      'ui-tokens.md',
-      'ui-assets.md',
-    ];
+    // Read individual UI document files
+    let uiSpec: string | undefined;
+    let uiTokens: string | undefined;
+    let uiAssets: string | undefined;
 
-    const uiDocParts: string[] = [];
-
-    // ✅ Section headers to help LLM understand each file's role
-    const sectionHeaders: Record<string, string> = {
-      'ui-spec.md': `## 🎨 UI SPECIFICATION
-> This section defines screen layouts, component props, states, and interaction rules.
-> Follow these specs exactly when implementing UI components.
-`,
-      'ui-tokens.md': `## 🎯 DESIGN TOKENS
-> This section defines colors, typography, spacing, and other design constants.
-> Reference these tokens in your CSS/styles for consistency.
-`,
-      'ui-assets.md': `## 📦 ASSET MAPPING (MANDATORY COPY)
-> **CRITICAL**: This section contains Source → Runtime Path mappings.
-> You MUST copy ALL mapped assets from \`inputs/assets/\` to \`public/\` before referencing them in code.
-> Uncopied assets = 404 error at runtime.
-`,
-    };
-
-    for (const name of uiDocFiles) {
-      const p = path.join(designDir, name);
-      const exists = await fileSystem.fileExists(p);
-      if (!exists) {
-        // Debug: log missing files
-        console.log(`   📄 [loadUiContext] ${name}: not found`);
-        continue;
-      }
-      const content = await fileSystem.readFile(p);
-      const normalized = ArtifactService.normalizeUserDoc(content);
-      if (normalized) {
-        const header = sectionHeaders[name] || `## 📄 ${name}\n`;
-        uiDocParts.push(`${header}\n${normalized}`);
-        console.log(`   ✅ [loadUiContext] ${name}: loaded (${normalized.length} chars)`);
-      } else {
-        console.log(`   ⚠️  [loadUiContext] ${name}: skipped (template marker or empty)`);
+    // ui-spec.md
+    const specPath = path.join(designDir, 'ui-spec.md');
+    if (await fileSystem.fileExists(specPath)) {
+      const content = await fileSystem.readFile(specPath);
+      uiSpec = ArtifactService.normalizeUserDoc(content) || undefined;
+      if (uiSpec) {
+        console.log(`   ✅ [loadParsedUiContext] ui-spec.md: loaded (${uiSpec.length} chars)`);
       }
     }
 
-    // UI reference images index (optional)
-    // ✅ Separate runtime assets vs references
-    // - inputs/assets/**: runtime assets (NOT sent to LLM; LLM must copy into correct app static root)
-    // - inputs/references/**: reference screenshots/states (may be sent to LLM)
+    // ui-tokens.md
+    const tokensPath = path.join(designDir, 'ui-tokens.md');
+    if (await fileSystem.fileExists(tokensPath)) {
+      const content = await fileSystem.readFile(tokensPath);
+      uiTokens = ArtifactService.normalizeUserDoc(content) || undefined;
+      if (uiTokens) {
+        console.log(`   ✅ [loadParsedUiContext] ui-tokens.md: loaded (${uiTokens.length} chars)`);
+      }
+    }
+
+    // ui-assets.md
+    const assetsPath = path.join(designDir, 'ui-assets.md');
+    if (await fileSystem.fileExists(assetsPath)) {
+      const content = await fileSystem.readFile(assetsPath);
+      uiAssets = ArtifactService.normalizeUserDoc(content) || undefined;
+      if (uiAssets) {
+        console.log(`   ✅ [loadParsedUiContext] ui-assets.md: loaded (${uiAssets.length} chars)`);
+      }
+    }
+
+    // If no UI docs found, return null
+    if (!uiSpec && !uiTokens && !uiAssets) {
+      console.log(`   ⚠️  [loadParsedUiContext] No UI documents found`);
+      return null;
+    }
+
+    // Parse into structured format
+    const parsed = parseUiDocs(uiSpec, uiTokens, uiAssets);
+    
+    console.log(`   📊 [loadParsedUiContext] Parsed UI docs:`);
+    console.log(`      - Tokens: ${parsed.tokensTokenEstimate || 0} estimated tokens`);
+    console.log(`      - Assets: ${parsed.assetsTokenEstimate || 0} estimated tokens`);
+    console.log(`      - Spec sections: ${parsed.specSections.size} sections, ~${parsed.specTotalTokens} tokens total`);
+    
+    return parsed;
+  }
+
+  /**
+   * Get UI document content for a specific task based on uiSections array.
+   * 
+   * @param parsedDocs - ParsedUiDocs from loadParsedUiContext
+   * @param uiSections - Array of section IDs requested by the task
+   * @returns Combined content string for the requested sections
+   */
+  static getUiDocForTask(
+    parsedDocs: ParsedUiDocs,
+    uiSections?: string[]
+  ): string {
+    if (!uiSections || uiSections.length === 0) {
+      // No specific sections requested - return all content
+      console.log(`   📄 [getUiDocForTask] No uiSections specified - returning all UI content`);
+      return getAllUiContent(parsedDocs);
+    }
+    
+    console.log(`   📄 [getUiDocForTask] Extracting ${uiSections.length} sections: ${uiSections.join(', ')}`);
+    return getUiSectionsForTask(parsedDocs, uiSections);
+  }
+
+  /**
+   * Generate UI sections summary for decompose prompt.
+   * Provides section names and token estimates without full content.
+   * 
+   * @param parsedDocs - ParsedUiDocs from loadParsedUiContext
+   * @returns Summary text suitable for decompose prompt
+   */
+  static getUiSectionsSummary(parsedDocs: ParsedUiDocs): string {
+    return generateUiSectionsSummary(parsedDocs);
+  }
+
+  /**
+   * Reference images for UI (legacy support).
+   * Returns file paths under inputs/references/ if they exist.
+   */
+  static async loadUiReferenceImages(
+    context: ProjectContext,
+    fileSystem: FileSystemPort
+  ): Promise<{
+    screens?: string[];
+    components?: string[];
+  } | undefined> {
+    const featurePathAbs = context.featurePath || WorkspacePathResolver.resolveFeaturePath(context);
     const inputsDirAbs = path.join(featurePathAbs, "inputs");
     const inputsDir = ArtifactService.toWorkspaceRelative(fileSystem, inputsDirAbs);
 
@@ -282,7 +334,7 @@ export class ArtifactService {
       const files = entries
         .filter(e => !e.isDirectory)
         .map(e => e.name)
-        .filter(name => !name.startsWith('.')) // exclude .gitkeep and other dotfiles
+        .filter(name => !name.startsWith('.'))
         .filter(name => name.toLowerCase() !== 'readme.md')
         .filter(name => {
           if (!allowExts || allowExts.length === 0) return true;
@@ -297,33 +349,11 @@ export class ArtifactService {
     const screens = await listFiles(screensDir, ['.png', '.jpg', '.jpeg', '.webp', '.gif']);
     const components = await listFiles(componentsDir, ['.png', '.jpg', '.jpeg', '.webp', '.gif']);
 
-    const uiAssets =
-      (screens || components)
-        ? { screens, components }
-        : undefined;
-
-    // If we have references but no explicit ui-assets.md, add a lightweight manifest section.
-    const hasExplicitUiAssetsDoc = await fileSystem.fileExists(path.join(designDir, 'ui-assets.md'));
-    if (uiAssets && !hasExplicitUiAssetsDoc) {
-      const lines: string[] = [];
-      lines.push(`# UI References (Index)`);
-      lines.push(`> Note: These are reference file paths under inputs/references (not runtime assets).`);
-      lines.push(`> IMPORTANT: Runtime assets must be placed under inputs/assets and must be copied into the correct app static root (public/, apps/*/public, etc.) as part of implementation tasks.`);
-      if (screens?.length) {
-        lines.push(`\n## screens`);
-        screens.forEach(p => lines.push(`- ${p}`));
-      }
-      if (components?.length) {
-        lines.push(`\n## components`);
-        components.forEach(p => lines.push(`- ${p}`));
-      }
-      uiDocParts.push(lines.join('\n'));
+    if (!screens && !components) {
+      return undefined;
     }
 
-    return {
-      uiDoc: uiDocParts.length > 0 ? uiDocParts.join("\n\n---\n\n") : undefined,
-      uiAssets,
-    };
+    return { screens, components };
   }
 
   /**

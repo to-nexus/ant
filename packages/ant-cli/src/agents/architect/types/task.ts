@@ -68,6 +68,18 @@ export interface CodeTask extends BaseTask {
    * When true, UI docs/assets (Figma-derived) may be injected into prompts.
    */
   ui?: boolean;
+  /**
+   * UI sections required for this task (set by decompose LLM).
+   * Used for split injection - only specified sections are loaded into prompt.
+   * 
+   * Section types:
+   * - Component sections: "gnb", "hero", "about", "ecosystem", "token", "technology", "social", "footer"
+   * - Common sections: "layout", "responsive", "accessibility"
+   * - Special: "tokens" (ui-tokens.md), "assets" (ui-assets.md)
+   * 
+   * If ui=true but uiSections is empty/undefined, all UI docs are injected (backward compatible).
+   */
+  uiSections?: string[];
 }
 
 /**

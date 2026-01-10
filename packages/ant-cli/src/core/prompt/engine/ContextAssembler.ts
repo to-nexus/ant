@@ -23,6 +23,8 @@ export interface AssembledContext {
   // ✅ Feature path for runtime asset resolution (e.g., features/skeleton)
   featurePath?: string;
   lastSectionNumber?: number;
+  sectionPattern?: string;  // ✅ 'top-level' or 'nested' structure pattern
+  isLastTaskForDocument?: boolean;  // ✅ If true, don't output metadata
   previousDesign?: string;
   
   designDocs?: {
@@ -144,6 +146,8 @@ export class ContextAssembler {
       uiDoc?: string;
       uiAssets?: AssembledContext['uiAssets'];
       lastSectionNumber?: number;
+      sectionPattern?: string;
+      isLastTaskForDocument?: boolean;
       projectCodeContext?: ProjectCodeContext;
       referenceCodeContexts?: ReferenceCodeContext[];
       currentTask?: {
@@ -173,6 +177,8 @@ export class ContextAssembler {
       assembled.uiDoc = artifacts.uiDoc;
       assembled.uiAssets = artifacts.uiAssets;
       assembled.lastSectionNumber = artifacts.lastSectionNumber;
+      assembled.sectionPattern = artifacts.sectionPattern;
+      assembled.isLastTaskForDocument = artifacts.isLastTaskForDocument;
       assembled.projectCodeContext = artifacts.projectCodeContext;
       assembled.referenceCodeContexts = artifacts.referenceCodeContexts || [];
       assembled.currentTask = artifacts.currentTask;

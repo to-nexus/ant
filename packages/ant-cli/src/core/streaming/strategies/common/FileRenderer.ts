@@ -316,13 +316,25 @@ export class FileRenderer {
         }
         
         let cleanedExistingContent = existingContent;
-        if (lastLineIndex >= 0) {
+        // Remove all metadata comments from the end of the file
+        let removedCount = 0;
+        while (lastLineIndex >= 0) {
           const lastLine = lines[lastLineIndex].trim();
-          if (lastLine.match(/^<!-- LAST_SECTION: \d+ -->$/)) {
+          if (lastLine.match(/^<!-- (LAST_SECTION|SECTION_PATTERN): .+ -->$/)) {
             lines.splice(lastLineIndex, 1);
-            cleanedExistingContent = lines.join('\n');
-            console.log(`   🧹 Removed LAST_SECTION metadata from line ${lastLineIndex + 1}`);
+            removedCount++;
+            lastLineIndex--;
+            // Skip empty lines
+            while (lastLineIndex >= 0 && lines[lastLineIndex].trim() === '') {
+              lastLineIndex--;
+            }
+          } else {
+            break;
           }
+        }
+        if (removedCount > 0) {
+          cleanedExistingContent = lines.join('\n');
+          console.log(`   🧹 Removed ${removedCount} metadata comment(s) from file`);
         }
         
         const mergedContent = cleanedExistingContent + '\n' + newContent;

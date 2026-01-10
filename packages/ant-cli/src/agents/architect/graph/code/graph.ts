@@ -322,10 +322,15 @@ export function buildCodeGraph() {
       prd: null as any,
       directive: null as any,
       design: null as any,
+      designDocPath: null as any,  // ✅ Design document file path (from TaskArtifacts)
       designDocs: null as any,  // ✅ Structured design docs for environment detection
       code: null as any,
       codeHead: null as any,
       profile: null as any,
+      parsedUiDocs: null as any,  // ✅ CRITICAL: Parsed UI docs for split injection (from TaskArtifacts)
+      
+      // ✅ Runtime Assets Index (for asset copying tasks)
+      runtimeAssetsIndex: null as any,
       
       
       // ✅ Code Context (CRITICAL for file operations!)

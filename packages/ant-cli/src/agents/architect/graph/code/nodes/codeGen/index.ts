@@ -110,18 +110,23 @@ export async function codeGen(
       return false;
     })();
 
-    // Best-effort: (re)load uiDoc once, in case state was restored without it or inputs changed.
-    if (!state.uiDoc && state.deps?.git && state.deps?.fileSystem) {
+    // Best-effort: (re)load parsedUiDocs once, in case state was restored without it or inputs changed.
+    // NOTE: This mutates state directly, which is an anti-pattern in LangGraph, but necessary here
+    // because promptBuilder needs access to parsedUiDocs immediately. The proper fix would be
+    // to pass parsedUiDocs as a separate parameter to buildMessages.
+    if (!state.parsedUiDocs && state.deps?.git && state.deps?.fileSystem) {
       try {
-        const ui = await ArtifactService.loadUiContext(state.context, state.deps.git, state.deps.fileSystem);
-        state.uiDoc = ui.uiDoc;
-        state.uiAssets = ui.uiAssets;
+        const parsed = await ArtifactService.loadParsedUiContext(state.context, state.deps.git, state.deps.fileSystem);
+        if (parsed) {
+          // Channel is now defined in graph.ts, so direct assignment is type-safe
+          state.parsedUiDocs = parsed;
+        }
       } catch {
         // ignore (we'll fail below if still missing)
       }
     }
 
-    if (uiDocsExist && !state.uiDoc) {
+    if (uiDocsExist && !state.parsedUiDocs) {
       const msg =
         `UI task requires UI specification docs to be loaded and injected, but none were available.\n` +
         `Docs appear to exist under inputs/sources, but UI-doc injection did not occur.\n` +

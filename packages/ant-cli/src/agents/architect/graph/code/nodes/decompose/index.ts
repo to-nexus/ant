@@ -197,6 +197,14 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     }
   }
   
+  // ✅ Generate UI sections summary for split injection (shows available sections without full content)
+  const uiSectionsSummary = (() => {
+    if (!state.parsedUiDocs) return undefined;
+    
+    const { ArtifactService } = require('../../../../../../infrastructure/workspace/ArtifactService');
+    return ArtifactService.getUiSectionsSummary(state.parsedUiDocs);
+  })();
+  
   const prompt = await state.deps.promptEngine.buildDecomposePrompt({
     directive: state.directive || '',
     designDoc,
@@ -204,22 +212,9 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     mode: state.mode || 'unknown',
     profile: state.profile,
     codebaseFilePaths,  // ✅ File paths from keyword search (for task planning)
-    hasProjectCode      // ✅ CRITICAL: Actual codebase existence (git-based, not Vector DB)
-    ,
-    // ✅ Provide only the list of UI-doc sources to improve UI task classification (no token-heavy content)
-    uiDocSources: (() => {
-      const uiDoc = (state as any).uiDoc as string | undefined;
-      if (!uiDoc) return [];
-      const sources: string[] = [];
-      const re = /<!--\s*UI Source:\s*([^>]+?)\s*-->/g;
-      let m: RegExpExecArray | null;
-      while ((m = re.exec(uiDoc))) {
-        const name = m[1]?.trim();
-        if (name) sources.push(name);
-      }
-      return Array.from(new Set(sources));
-    })(),
-    runtimeAssetsIndex: (state as any).runtimeAssetsIndex
+    hasProjectCode,     // ✅ CRITICAL: Actual codebase existence (git-based, not Vector DB)
+    uiSectionsSummary,  // ✅ UI sections summary with token estimates (for split injection)
+    runtimeAssetsIndex: state.runtimeAssetsIndex
   });
   
   let rawResponse: string;

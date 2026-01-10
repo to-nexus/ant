@@ -127,18 +127,25 @@ export class TemplateComposer {
         // ✅ Used in {{#if lastSectionNumber}} for design job continuation
         lastSectionNumber: assembled.lastSectionNumber ?? undefined,
         
+        // ✅ Used in {{#if sectionPattern}} for structure pattern enforcement
+        sectionPattern: assembled.sectionPattern ?? undefined,
+        
+        // ✅ Used in {{#unless isLastTaskForDocument}} to skip metadata output
+        isLastTaskForDocument: assembled.isLastTaskForDocument || false,
+        
         // ✅ Used in {{#if hasUiDoc}} for UI specification existence
         hasUiDoc: (assembled as any).hasUiDoc || false
       }
     );
     
     // 5. Render rules template
-    // ✅ FIX: Pass lastSectionNumber and currentTask to rules template
+    // ✅ FIX: Pass lastSectionNumber, sectionPattern and currentTask to rules template
     // rules.md uses {{#if lastSectionNumber}} for continuation task detection
     const rules = await this.renderTemplate(
       modeConfig.templates.rules,
       {
         lastSectionNumber: assembled.lastSectionNumber ?? undefined,
+        sectionPattern: assembled.sectionPattern ?? undefined,
         currentTask: assembled.currentTask || null
       }
     );

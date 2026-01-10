@@ -274,7 +274,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     const FilePromptAdapter = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
     const promptAdapter = new FilePromptAdapter.FilePromptAdapter();
     
-    const uiDecomposePrompt = await promptAdapter.render('design/phases/decompose/ui-design', {
+    const uiDecomposePrompt = await promptAdapter.render('design/phases/decompose/base-ui-design', {
       uiContext,
       screenCount: state.uiReferences?.screens?.length || 0,
       componentCount: state.uiReferences?.components?.length || 0,
@@ -334,9 +334,9 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
         parsedResponse = JSON.parse(candidate);
       }
       
-      // Validate response format
+      // Validate response format (strategy is optional, defaults to chapter-based)
       const response: {
-        strategy: 'simple' | 'chapter-based';
+        strategy?: string;
         targetFiles: string[];
         tasks: Array<{
           id: string;
@@ -347,9 +347,11 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
         }>;
       } = parsedResponse;
       
-      if (!response.strategy || !response.targetFiles || !response.tasks) {
+      if (!response.targetFiles || !response.tasks) {
         throw new Error('Invalid UI task breakdown format from LLM');
       }
+      
+      const strategy = response.strategy || 'chapter-based';
       
       const taskQueue = new TaskQueue<DesignTask>();
       
@@ -366,7 +368,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
         } as DesignTask);
       });
       
-      console.log(`✅ LLM decomposed UI work into ${taskQueue.size()} tasks (${response.strategy} strategy):`);
+      console.log(`✅ LLM decomposed UI work into ${taskQueue.size()} tasks (${strategy} strategy):`);
       taskQueue.getAll().forEach((t, i) => {
         console.log(`   ${i + 1}. ${t.name} → ${t.targetFile} (priority: ${t.priority})`);
       });
@@ -404,8 +406,8 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
       return uiDocsState;
       
     } catch (error: any) {
-      const errorDetails = extractErrorDetails(error);
-      logErrorHeader('decompose', errorDetails);
+      logErrorHeader('decompose');
+      console.error(error);
       throw error;
     }
   }
@@ -473,7 +475,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
   const promptAdapter = new FilePromptAdapter.FilePromptAdapter();
   
   // Render template with variables
-  const prompt = await promptAdapter.render('design/phases/decompose/base', {
+  const prompt = await promptAdapter.render('design/phases/decompose/base-system-design', {
     spec,
     hasExistingDesign,
     designPreview

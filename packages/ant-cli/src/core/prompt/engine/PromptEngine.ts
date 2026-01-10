@@ -163,6 +163,8 @@ export class PromptEngine {
       uiDoc?: string;           // ✅ Optional UI spec (Figma-derived)
       uiAssets?: any;           // ✅ Optional UI assets index (text-only manifest)
       lastSectionNumber?: number;
+      sectionPattern?: string;  // ✅ 'top-level' or 'nested' structure pattern
+      isLastTaskForDocument?: boolean;  // ✅ If true, don't output metadata
       previousDesign?: string;
       projectCodeContext?: ProjectCodeContext;
       referenceCodeContexts?: ReferenceCodeContext[];
@@ -399,7 +401,7 @@ export class PromptEngine {
     codebaseFilePaths?: string[];  // File paths from keyword search
     hasProjectCode?: boolean;      // ✅ CRITICAL: Actual project code existence (git-based)
     hasErrorInDirective?: boolean; // ✅ Error detected in directive
-    uiDocSources?: string[];       // ✅ Optional: which UI docs exist (tokens/ui-spec/etc). Avoids injecting full UI doc.
+    uiSectionsSummary?: string;    // ✅ UI sections summary with token estimates (for split injection)
     runtimeAssetsIndex?: {         // ✅ Optional: runtime asset files list (text-only)
       count: number;
       files: string[];
@@ -420,15 +422,10 @@ export class PromptEngine {
       ? `## Directive\n${context.directive}\n\n## Design Document\n${context.designDoc}`
       : context.directive;
     
-    // ✅ Optional UI-doc hint for better UI task classification (WITHOUT injecting full uiDoc)
-    const uiHint =
-      context.uiDocSources && context.uiDocSources.length > 0
-        ? `\n\n## UI Docs Available (do NOT embed full content here)\n` +
-          `The following UI docs exist under inputs/sources and should be used for UI work:\n` +
-          `${context.uiDocSources.map(n => `- ${n}`).join('\n')}\n\n` +
-          `When creating tasks: if a task touches UI/layout/styling/tokens, set "ui": true.\n` +
-          `If tokens are present, include a UI task to establish and apply the design token system (colors/typography/spacing) consistently.\n`
-        : '';
+    // ✅ UI sections summary for split injection (shows available sections with token estimates)
+    const uiHint = context.uiSectionsSummary
+      ? `\n\n${context.uiSectionsSummary}\n`
+      : '';
 
     const assetsHint =
       context.runtimeAssetsIndex && context.runtimeAssetsIndex.count > 0
