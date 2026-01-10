@@ -193,8 +193,7 @@ export class EnvironmentDetector {
     // Fullstack signals (ONLY when there's BOTH backend server + frontend)
     // Fullstack means: Express/NestJS + React/Vue in same project (monorepo or single repo)
     // NOT just Next.js with API Routes (that's frontend with BFF pattern)
-    const hasRealBackendServer = signals.backend.frameworks.length > 0 && 
-                                  signals.backend.hasServerStructure;
+    const hasRealBackendServer = backendFrameworks.length > 0 && hasServerStructure;
     const hasRealFrontend = frontendFrameworks.length > 0 || 
                             fileStructure.keyFiles.hasIndexHtml;
     

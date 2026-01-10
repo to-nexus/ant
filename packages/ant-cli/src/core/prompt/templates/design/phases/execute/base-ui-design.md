@@ -108,6 +108,13 @@ Use semantic token names:
 🎯 **YOUR CURRENT TASK**: {{taskId}}
 ════════════════════════════════════════════════════════════════════════════════
 
+{{#if taskDescription}}
+### 📋 Task Description (YOUR SCOPE)
+
+{{{taskDescription}}}
+
+{{/if}}
+
 {{! ✅ Support ui-tokens, ui-tokens-ch1, ui-tokens-ch2, etc. }}
 {{#if (includes taskId "ui-tokens")}}
 {{> design/phases/execute/injections/ui-tokens-guide}}
@@ -121,6 +128,34 @@ Use semantic token names:
 {{! ✅ Support ui-spec, ui-spec-ch1, ui-spec-ch2, etc. }}
 {{#if (includes taskId "ui-spec")}}
 {{> design/phases/execute/injections/ui-spec-guide}}
+{{/if}}
+
+{{#if previousChaptersSummary}}
+════════════════════════════════════════════════════════════════════════════════
+🚫 **FORBIDDEN SECTIONS - ALREADY DOCUMENTED**
+════════════════════════════════════════════════════════════════════════════════
+
+**These topics are ALREADY in the document:**
+
+{{{previousChaptersSummary}}}
+
+**⚠️ DUPLICATE PREVENTION:**
+1. Check if topic name appears above → **SKIP entirely**
+2. Your task suggests scope; this list is **ground truth**
+
+{{#if sectionPattern}}
+**⚠️ REQUIRED STRUCTURE PATTERN: `{{sectionPattern}}`**
+{{#if (eq sectionPattern "top-level")}}
+- Use `## N.` for each topic (NOT nested `### N.M`)
+{{else}}
+- Use nested structure `### N.M` under container sections
+{{/if}}
+{{else}}
+**⚠️ STRUCTURAL CONSISTENCY:**
+- Analyze the pattern above and follow it exactly
+{{/if}}
+
+════════════════════════════════════════════════════════════════════════════════
 {{/if}}
 
 ════════════════════════════════════════════════════════════════════════════════

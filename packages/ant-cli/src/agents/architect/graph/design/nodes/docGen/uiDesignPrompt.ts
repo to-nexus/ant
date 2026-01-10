@@ -160,23 +160,55 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
   
   // ✅ 5. Add next step instruction after tool call (CRITICAL FIX)
   // This ensures LLM continues with analysis phase instead of stopping after discovery
-  if (task?.id === 'ui-spec') {
-    const hasDiscoveredImages = state.uiReferences?.screens?.length || state.uiReferences?.components?.length;
-    
-    if (hasDiscoveredImages) {
-      content.push({
-        type: 'text',
-        text: `\n\n# Next Steps
+  //
+  // IMPORTANT: buildUiDesignFreshPrompt is ONLY called when isAfterToolCall=true (Turn 2+)
+  // At this point, LLM has already called list_reference_images and has the results.
+  // We MUST always remind the LLM to continue - DO NOT rely on state.uiReferences
+  // because it may be undefined even when tool results exist!
+  const isUiTokensTask = task?.id?.startsWith('ui-tokens');
+  const isUiSpecTask = task?.id?.startsWith('ui-spec');
+  
+  // ALWAYS add instruction for ui-tokens and ui-spec tasks in Turn 2+
+  // Don't check hasDiscoveredImages - this function is only called after tool calls!
+  if (isUiTokensTask || isUiSpecTask) {
+    const targetDoc = isUiTokensTask ? 'ui-tokens.md' : 'ui-spec.md';
+    console.log(`🔔 [FreshPrompt] Adding "Next Steps" instruction for ${task?.id} → ${targetDoc}`);
+    content.push({
+      type: 'text',
+      text: `\n\n# ⚠️ CRITICAL: You MUST Continue!
 
-You have discovered reference images. Now proceed to the Analysis phase:
+**This is Turn 2+ of your workflow. DO NOT STOP HERE.**
 
-1. Use \`read_reference_image\` tool to load the main screen screenshot
-2. Analyze the layout structure, components, and visual patterns
-3. Generate ui-spec.md based on your analysis
+## Your Current Progress:
+- ✅ Turn 1: You called \`list_reference_images\` or \`list_assets\` - DONE
+- 🔄 Turn 2: NOW you must load the image OR generate the document
 
-⚠️ Do NOT stop after discovering images. You must analyze them before generating the document.`
-      });
-    }
+## What You MUST Do Now:
+
+### Option A: If you haven't loaded the screenshot yet
+Call \`read_reference_image\` tool:
+\`\`\`
+read_reference_image("inputs/references/screens/Desktop 2560 +.png")
+\`\`\`
+
+### Option B: If you already have the screenshot loaded
+Generate the document using \`<file>\` XML tag:
+\`\`\`xml
+<file path="outputs/design/${targetDoc}">
+<!-- START_SECTION: 1 -->
+# Document Title
+...content...
+<!-- END_SECTION -->
+</file>
+\`\`\`
+
+## ⚠️ FAILURE CONDITIONS:
+- ❌ Responding with only text explanation → TASK FAILS
+- ❌ Saying "I will do X" without doing it → TASK FAILS
+- ❌ Stopping without generating \`<file>\` → TASK FAILS
+
+**You MUST output either a tool_use block OR a <file> XML tag!**`
+    });
   }
   
   return content;
@@ -311,6 +343,7 @@ async function loadPreviousUiDocs(
  * - Has task-specific instructions via Handlebars conditionals
  * 
  * ✅ NEW: Tracks lastSectionNumber for chapter-based append (same as System Design)
+ * ✅ NEW: Injects previousChaptersSummary to prevent duplicate content
  */
 export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promise<string> {
   const promptPort = state.deps?.promptEngine;
@@ -321,7 +354,12 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
   
   // ✅ NEW: Load lastSectionNumber for chapter-based append (same as System Design)
   let lastSectionNumber = 0;
+  let sectionPattern = '';  // 'top-level' or 'nested'
+  let previousChaptersSummary = '';
+  let existingFileContent = '';
+  
   const taskId = state.currentTask?.id || '';
+  const taskDescription = state.currentTask?.description || '';
   const targetFile = state.currentTask?.targetFile;
   
   // Determine target file from task ID if not explicitly set
@@ -330,7 +368,24 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
      taskId.startsWith('ui-assets') ? 'ui-assets.md' :
      taskId.startsWith('ui-spec') ? 'ui-spec.md' : 'ui-spec.md');
   
-  // ✅ Check if file exists and extract last section number
+  // ✅ Check if this is the last task for this document
+  // If no more tasks in queue target the same file, don't output metadata
+  const allQueuedTasks = state.taskQueue?.getAll?.() || [];
+  const remainingTasksForFile = allQueuedTasks.filter(
+    (task: any) => {
+      const taskTargetFile = task.targetFile || 
+        (task.id?.startsWith('ui-tokens') ? 'ui-tokens.md' :
+         task.id?.startsWith('ui-assets') ? 'ui-assets.md' :
+         task.id?.startsWith('ui-spec') ? 'ui-spec.md' : null);
+      return taskTargetFile === actualTargetFile;
+    }
+  );
+  const isLastTaskForDocument = remainingTasksForFile.length === 0;
+  if (isLastTaskForDocument) {
+    console.log(`📄 [DocGen UI] This is the LAST task for ${actualTargetFile} - will NOT output metadata`);
+  }
+  
+  // ✅ Check if file exists and extract last section number + existing sections
   if (state.deps?.fileSystem && state.context.featurePath) {
     try {
       const path = await import('path');
@@ -343,23 +398,41 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
       const fileExists = await state.deps.fileSystem.fileExists(filePath);
       
       if (fileExists) {
-        const fullContent = await state.deps.fileSystem.readFile(filePath) || '';
-        if (fullContent) {
-          // Try to find LAST_SECTION metadata first
-          const lastLine = fullContent.trim().split('\n').pop() || '';
-          const metadataMatch = lastLine.match(/<!-- LAST_SECTION: (\d+) -->/);
+        existingFileContent = await state.deps.fileSystem.readFile(filePath) || '';
+        if (existingFileContent) {
+          // Parse all metadata from file
+          const metadataLines = existingFileContent.trim().split('\n').slice(-5); // Check last 5 lines
           
-          if (metadataMatch) {
-            lastSectionNumber = parseInt(metadataMatch[1]);
-            console.log(`📄 [DocGen UI] Found last section in ${actualTargetFile}: ${lastSectionNumber} (from metadata)`);
-          } else {
-            // Fallback: scan for section headers (## N.)
-            const sectionMatches = fullContent.match(/^## (\d+)\./gm);
+          for (const line of metadataLines) {
+            // Parse LAST_SECTION
+            const lastSectionMatch = line.match(/<!-- LAST_SECTION: (\d+) -->/);
+            if (lastSectionMatch) {
+              lastSectionNumber = parseInt(lastSectionMatch[1]);
+              console.log(`📄 [DocGen UI] Found last section in ${actualTargetFile}: ${lastSectionNumber} (from metadata)`);
+            }
+            
+            // Parse SECTION_PATTERN
+            const patternMatch = line.match(/<!-- SECTION_PATTERN: (\w+) -->/);
+            if (patternMatch) {
+              sectionPattern = patternMatch[1];
+              console.log(`📄 [DocGen UI] Found section pattern in ${actualTargetFile}: ${sectionPattern}`);
+            }
+          }
+          
+          // Fallback for LAST_SECTION: scan for section headers (## N.)
+          if (!lastSectionNumber) {
+            const sectionMatches = existingFileContent.match(/^## (\d+)\./gm);
             if (sectionMatches) {
               const numbers = sectionMatches.map((m: string) => parseInt(m.match(/\d+/)?.[0] || '0'));
               lastSectionNumber = Math.max(...numbers);
               console.log(`📄 [DocGen UI] Found last section in ${actualTargetFile}: ${lastSectionNumber} (from scanning)`);
             }
+          }
+          
+          // Extract section titles to create previousChaptersSummary
+          previousChaptersSummary = extractPreviousSectionsSummary(existingFileContent);
+          if (previousChaptersSummary) {
+            console.log(`📄 [DocGen UI] Extracted ${previousChaptersSummary.split('\n').filter(l => l.trim()).length} section titles from existing ${actualTargetFile}`);
           }
         }
       } else {
@@ -374,8 +447,12 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
   const template = await (promptPort as any).deps?.promptPort?.render('design/phases/execute/base-ui-design', {
     taskId: state.currentTask?.id,
     taskName: state.currentTask?.name,
-    lastSectionNumber,  // ✅ NEW: Pass lastSectionNumber like System Design
-    targetFile: actualTargetFile,  // ✅ NEW: Pass actual target file
+    taskDescription,
+    lastSectionNumber,
+    sectionPattern,
+    targetFile: actualTargetFile,
+    previousChaptersSummary,
+    isLastTaskForDocument,  // ✅ If true, don't output metadata comments
   });
   
   if (!template) {
@@ -383,4 +460,34 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
   }
   
   return template;
+}
+
+/**
+ * Extract section titles from existing file content to create a summary
+ * of what has already been documented (to prevent duplication)
+ */
+function extractPreviousSectionsSummary(content: string): string {
+  if (!content) return '';
+  
+  const lines = content.split('\n');
+  const sections: string[] = [];
+  
+  for (const line of lines) {
+    // Match ## N. Title or ### N.N. Subsection Title
+    const sectionMatch = line.match(/^(#{2,3})\s+(\d+(?:\.\d+)?\.?)\s+(.+)$/);
+    if (sectionMatch) {
+      const level = sectionMatch[1].length;
+      const number = sectionMatch[2];
+      const title = sectionMatch[3].trim();
+      
+      // Format: "- Section N: Title" or "  - Subsection N.N: Title"
+      const indent = level === 2 ? '' : '  ';
+      const prefix = level === 2 ? 'Section' : 'Subsection';
+      sections.push(`${indent}- ${prefix} ${number} ${title}`);
+    }
+  }
+  
+  if (sections.length === 0) return '';
+  
+  return sections.join('\n');
 }

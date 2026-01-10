@@ -88,10 +88,16 @@ Promise.all([
     .catch(() => {}),
 ]).catch(() => {});
 
-const designDecomposeRulesPath = join(__dirname, "../../../core/prompt/templates/design/phases/decompose/rules.md");
-fs.readFile(designDecomposeRulesPath, "utf8")
-  .then(content => Handlebars.registerPartial("design/phases/decompose/rules", content))
-  .catch(() => {});
+// ✅ Register design/phases/decompose partials (System Design and UI Design)
+const designDecomposePath = join(__dirname, "../../../core/prompt/templates/design/phases/decompose");
+Promise.all([
+  fs.readFile(join(designDecomposePath, "rules-system-design.md"), "utf8")
+    .then(content => Handlebars.registerPartial("design/phases/decompose/rules-system-design", content))
+    .catch(() => {}),
+  fs.readFile(join(designDecomposePath, "rules-ui-design.md"), "utf8")
+    .then(content => Handlebars.registerPartial("design/phases/decompose/rules-ui-design", content))
+    .catch(() => {}),
+]).catch(() => {});
 
 // ✅ Register design/phases/execute partials (UI design and system design)
 const designExecutePath = join(__dirname, "../../../core/prompt/templates/design/phases/execute");

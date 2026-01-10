@@ -113,15 +113,8 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
           console.log(`   ✅ PRD restored from session`);
         }
         
-        // ✅ CRITICAL: Restore UI context for asset mapping
-        if ((session.state as any).uiDoc) {
-          initial.uiDoc = (session.state as any).uiDoc;
-          console.log(`   ✅ uiDoc restored from session (${initial.uiDoc?.length || 0} chars)`);
-        }
-        if ((session.state as any).uiAssets) {
-          initial.uiAssets = (session.state as any).uiAssets;
-          console.log(`   ✅ uiAssets restored from session`);
-        }
+        // ✅ NOTE: parsedUiDocs is NOT restored from session
+        // It's reloaded from disk in resolve/codeGen when needed (contains Map, heavy)
         
         if ((session.state as any).prd) {
           initial.prd = (session.state as any).prd;

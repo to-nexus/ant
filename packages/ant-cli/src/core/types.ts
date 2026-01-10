@@ -11,6 +11,12 @@ export * from './types/workspace';
 // Re-export environment types
 export * from './types/environment';
 
+// Re-export UI document types (for split injection)
+export * from './types/uiDoc';
+
+// Import for local use
+import { ParsedUiDocs } from './types/uiDoc';
+
 /**
  * Agent task types
  * Defines what kind of work an agent performs
@@ -88,13 +94,9 @@ export interface TaskArtifacts {
   design?: string;
   designDocPath?: string;
   code?: string;     // ✅ Added for design graph (codebase context)
-  // ✅ Optional UI context (Figma-derived) - injected only for UI-related tasks
-  uiDoc?: string;
-  uiAssets?: {
-    screens?: string[];
-    components?: string[];
-    icons?: string[];
-  };
+  // ✅ Parsed UI documents (Figma-derived) - for split injection
+  // Contains tokens, assets, and spec sections that can be selectively injected per task
+  parsedUiDocs?: ParsedUiDocs;
   profile?: CodebaseProfile;
   lessons?: any;     // ✅ Changed to any for flexibility (string | array)
   documents?: any[];

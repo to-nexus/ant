@@ -112,45 +112,9 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   // ✅ Update state.files for downstream processing (lessons extraction, session save, etc.)
   state.files = loadedFiles;
   
-  // ✅ Clean up metadata comment from final output
-  // This is the last node, so remove the LAST_SECTION comment
-  try {
-    const path = await import('path');
-    const fileSystem = state.deps?.fileSystem;
-    const workspaceRoot = fileSystem?.getWorkspaceRoot?.() || '';
-    const featureDirRel = (fileSystem && workspaceRoot)
-      ? path.relative(workspaceRoot, state.context.featurePath as string)
-      : (state.context.featurePath as string).replace(/^\//, '');
-    const designDocPath = path.join(featureDirRel, 'outputs/design/system-design.md');
-    
-    if (fileSystem) {
-      const fileExists = await fileSystem.fileExists(designDocPath);
-      if (fileExists) {
-        const content = await fileSystem.readFile(designDocPath);
-        if (content) {
-          const lines = content.split('\n');
-          
-          // Find and remove LAST_SECTION comment (last non-empty line)
-          let lastLineIndex = lines.length - 1;
-          while (lastLineIndex >= 0 && lines[lastLineIndex].trim() === '') {
-            lastLineIndex--;
-          }
-          
-          if (lastLineIndex >= 0) {
-            const lastLine = lines[lastLineIndex].trim();
-            if (lastLine.match(/^<!-- LAST_SECTION: \d+ -->$/)) {
-              lines.splice(lastLineIndex, 1);
-              const cleanedContent = lines.join('\n');
-              await fileSystem.writeFile(designDocPath, cleanedContent);
-              console.log(`🧹 [Learn] Removed metadata comment from final document`);
-            }
-          }
-        }
-      }
-    }
-  } catch (error) {
-    console.warn(`⚠️  [Learn] Failed to clean up metadata (non-critical):`, error);
-  }
+  // ✅ Metadata cleanup is no longer needed here
+  // Each document's last task now skips metadata output (isLastTaskForDocument flag)
+  // FileRenderer handles cleanup during append operations
   
   // 1. Extract lessons from design process
   const lessons = extractDesignLessons(state);

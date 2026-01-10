@@ -25,9 +25,20 @@ Use `<file>` tag:
 ## 1. Overview
 ...
 
+<!-- SECTION_PATTERN: top-level -->
 <!-- LAST_SECTION: 1 -->
 </file>
 ```
+
+{{#if isLastTaskForDocument}}
+**⚠️ THIS IS THE LAST TASK FOR THIS DOCUMENT.**
+**YOU MUST STILL GENERATE CONTENT** using `<file>` or `<append>` tags!
+Only skip the metadata comments at the end.
+{{else}}
+**Required Metadata (first task only):**
+- `SECTION_PATTERN`: `top-level` or `nested`
+- `LAST_SECTION`: Your last section number
+{{/if}}
 
 **Filename determination:**
 - Check your task description for file name mention
@@ -48,7 +59,7 @@ Use `<append>` tag:
 
 ```xml
 <append path="outputs/design/[FILENAME]">
-## N. [Topic]    <!-- ⚠️ N = lastSectionNumber + 1 -->
+## N. [Topic]    <!-- N = lastSectionNumber + 1 -->
 
 ...
 
@@ -57,9 +68,12 @@ Use `<append>` tag:
 ```
 
 {{#if lastSectionNumber}}
-**For this task:**
-- Your first section number: {{add lastSectionNumber 1}}
-- Your ending metadata: `<!-- LAST_SECTION: [YOUR_LAST_NUMBER] -->`
+**Your first section: ## {{add lastSectionNumber 1}}**
+{{/if}}
+{{#if isLastTaskForDocument}}
+**⚠️ EXCEPTION: Since this is the LAST task, OMIT `<!-- LAST_SECTION -->` line!**
+{{else}}
+**Include `<!-- LAST_SECTION: N -->` at the end.**
 {{/if}}
 
 **❌ FATAL ERROR - Using <file> on existing document:**

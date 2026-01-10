@@ -88,9 +88,14 @@ Use `<file>` tag:
 ## 1. First Section
 ...
 
+<!-- SECTION_PATTERN: top-level -->
 <!-- LAST_SECTION: 1 -->
 </file>
 ```
+
+{{#if isLastTaskForDocument}}
+**⚠️ EXCEPTION: Since this is the LAST task for this document, OMIT the metadata lines above!**
+{{/if}}
 
 **Filename determination:**
 - Task ID starts with `ui-tokens` → use `ui-tokens.md`
@@ -115,16 +120,19 @@ Use `<append>` tag:
 ```xml
 <append path="outputs/design/[FILENAME]">
 
-{{#if lastSectionNumber}}
-## {{add lastSectionNumber 1}}. [Topic]    <!-- ⚠️ N = lastSectionNumber + 1 -->
-{{else}}
-## N. [Topic]
-{{/if}}
+## N. [Topic]    <!-- N = lastSectionNumber + 1 -->
 ...
 
 <!-- LAST_SECTION: N -->
 </append>
 ```
+
+{{#if lastSectionNumber}}
+**Your first section: ## {{add lastSectionNumber 1}}**
+{{/if}}
+{{#if isLastTaskForDocument}}
+**⚠️ EXCEPTION: Since this is the LAST task, OMIT `<!-- LAST_SECTION -->` line!**
+{{/if}}
 
 {{#if lastSectionNumber}}
 **For this task:**
@@ -142,11 +150,36 @@ Use `<append>` tag:
 
 ### Simple Rules
 
-1. **First chapter** (`-ch1` or no suffix) → `<file>` tag with `<!-- LAST_SECTION: N -->`
-2. **Continuation chapters** (`-ch2`, `-ch3`, etc.) → `<append>` tag with updated `<!-- LAST_SECTION: N -->`
+1. **First chapter** (`-ch1` or no suffix) → `<file>` tag with metadata at end
+2. **Continuation chapters** (`-ch2`, `-ch3`, etc.) → `<append>` tag with metadata at end
 3. **Path prefix**: Always `outputs/design/`
 4. **One file per category**: All ui-tokens chapters → `ui-tokens.md`
-5. **ALWAYS add metadata**: `<!-- LAST_SECTION: N -->` at end of your content (N = your last section number)
+
+### Metadata Rules
+
+{{#if isLastTaskForDocument}}
+**⚠️ THIS IS THE LAST TASK FOR THIS DOCUMENT.**
+
+**YOU MUST STILL GENERATE CONTENT** using `<file>` or `<append>` tags as normal!
+Only difference: Do NOT add `<!-- LAST_SECTION -->` or `<!-- SECTION_PATTERN -->` at the end.
+Your output should end with actual content (text, tables, code blocks), not metadata comments.
+{{else}}
+**Required Metadata (at document end):**
+
+**First chapter MUST output both:**
+```
+<!-- SECTION_PATTERN: top-level -->
+<!-- LAST_SECTION: N -->
+```
+
+**Continuation chapters output only:**
+```
+<!-- LAST_SECTION: N -->
+```
+
+- `SECTION_PATTERN`: `top-level` (each topic = `## N.`) or `nested` (topics under container = `### N.M`)
+- `LAST_SECTION`: Your last section number
+{{/if}}
 
 ### ❌ DO NOT
 
@@ -204,6 +237,73 @@ Use `<append>` tag:
 <!-- LAST_SECTION: 3 -->
 </append>
 ```
+
+════════════════════════════════════════════════════════════════════════════════
+## 🚫 STRICT SCOPE BOUNDARIES (CRITICAL!)
+════════════════════════════════════════════════════════════════════════════════
+
+### ⚠️ FIRST CHAPTER (ui-spec-ch1) RESPONSIBILITIES
+
+**If your task ID ends with `-ch1` or has no `-ch` suffix for ui-spec:**
+
+**✅ ch1 MUST:**
+1. **Establish document outline** - Define the complete section structure that ALL subsequent chapters will follow
+2. **Document-level metadata** - Purpose, scope, global breakpoints, container widths
+3. **Define section skeleton** - List future section titles without detailed content
+
+**❌ ch1 MUST NOT:**
+- Write detailed component specifications
+- Include per-section layouts, colors, or behaviors
+- Generate content that belongs to ch2+
+
+**Why?** ch1 defines the **structural contract** that all subsequent chapters MUST honor.
+
+---
+
+### ⚠️ STRUCTURAL CONSISTENCY (ch2+)
+
+**Subsequent chapters MUST:**
+1. **Follow ch1's structure** - Use the same section hierarchy established in ch1
+2. **Match section level** - If ch1 defined `## N. Section`, continue with `## N+1. Section` (not subsections)
+3. **Never create new structural patterns** - The document outline is frozen after ch1
+
+**Violation Example:**
+- ch1 defines: `## 1. Overview`, `## 2. Layout`
+- ch2 WRONG: Creates `## 3. Components` then puts specs as `### 3.1`, `### 3.2`
+- ch3 WRONG: Suddenly creates `## 4. About`, `## 5. Ecosystem` as top-level
+
+**Correct Approach:**
+- If ch1 established top-level sections per topic → ALL chapters use top-level sections
+- If ch1 established container + subsections → ALL chapters use same pattern
+
+---
+
+### How Section Numbers Work
+
+1. **First chapter**: Start from `## 1.`
+2. **Continuation chapters**: Start from `## (lastSectionNumber + 1).`
+3. You determine how many sections based on content, NOT predefined ranges
+
+### ⚠️ DUPLICATE PREVENTION RULES
+
+**Before generating ANY section, check FORBIDDEN SECTIONS in your prompt:**
+
+1. **Topic Match**: If topic appears in FORBIDDEN → **SKIP entirely**
+2. **Partial Match**: If FORBIDDEN has subsections of your topic → **SKIP entire topic**
+3. **When in doubt**: If unsure whether documented → **SKIP it**
+
+### Decision Flow
+
+For each topic in your task description:
+1. Search FORBIDDEN SECTIONS for matching topic name
+2. If found → SKIP
+3. If not found → Generate as next section number
+
+### Key Principles
+
+**Task description = suggested scope, FORBIDDEN SECTIONS = absolute truth**
+
+**FORBIDDEN SECTIONS wins over task description. Generate only undocumented topics.**
 
 ════════════════════════════════════════════════════════════════════════════════
 ## ⚠️ DOCUMENT DEPENDENCY CHAIN

@@ -41,12 +41,22 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
     "description": "Create REST API for user authentication and data management"
   },
   {
-    "id": "landing-page",
-    "name": "Implement Landing Page",
+    "id": "hero-section",
+    "name": "Implement Hero Section",
     "type": "feature",
     "priority": 210,
     "ui": true,
-    "description": "<ui> Implement landing page based on design specifications. Plan stage will read ui-spec.md and ui-assets.md to identify all required sections, components, and assets."
+    "uiSections": ["tokens", "assets", "hero", "layout", "responsive"],
+    "description": "<ui> Implement Hero section based on design specifications"
+  },
+  {
+    "id": "about-section",
+    "name": "Implement About Section",
+    "type": "feature",
+    "priority": 220,
+    "ui": true,
+    "uiSections": ["tokens", "about", "layout"],
+    "description": "<ui> Implement About section based on design specifications"
   },
   {
     "id": "final-verification",
@@ -157,6 +167,28 @@ CRITICAL:
 - Otherwise set `"ui": false` (backend-only, infra, API contract, server fixes, dependency fixes, **setup/config**).
 - When `"ui": true`, prefix description with `<ui>` for visual identification (e.g., `"<ui> Implement Header..."`).
 
+**UI SECTIONS (SPLIT INJECTION - CRITICAL FOR TOKEN OPTIMIZATION):**
+- When `"ui": true`, you MUST add `"uiSections": [...]` array specifying which UI doc sections are needed.
+- This enables split injection - only the requested sections are loaded into the prompt (saves ~40-50K tokens per task).
+- Available section IDs (see "Available UI Sections" above for full list):
+  - Core: `"tokens"` (design tokens), `"assets"` (asset mappings)
+  - Components: `"gnb"`, `"hero"`, `"about"`, `"ecosystem"`, `"token"`, `"technology"`, `"social"`, `"footer"`
+  - Common: `"layout"`, `"responsive"`, `"accessibility"`
+- **Best practice**: Include `"tokens"` for all UI tasks, then add specific component sections needed.
+- Example:
+  ```json
+  {
+    "id": "hero-section",
+    "name": "Implement Hero Section",
+    "type": "feature",
+    "priority": 210,
+    "ui": true,
+    "uiSections": ["tokens", "assets", "hero", "layout", "responsive"],
+    "description": "<ui> Implement Hero section based on design specifications"
+  }
+  ```
+- If `uiSections` is omitted or empty, ALL UI docs are injected (fallback, not recommended for large docs).
+
 **UI TASK DESCRIPTION GUIDELINES (CRITICAL):**
 
 **For UI tasks, task description should provide DIRECTION, not DETAILS.**
@@ -235,7 +267,8 @@ IMPORTANT:
     "description": "<ui> Implement Header based on design specifications",
     "type": "feature",
     "priority": 210,
-    "ui": true
+    "ui": true,
+    "uiSections": ["tokens", "assets", "gnb", "layout", "responsive"]
   }
 ]
 </tasks>

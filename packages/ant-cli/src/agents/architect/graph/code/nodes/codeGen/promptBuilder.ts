@@ -58,29 +58,45 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     })) || []
   } : undefined;
 
-  // ✅ Decide whether to inject UI context for THIS task only (token optimization)
-  // Primary source of truth: decompose LLM sets currentTask.ui
-  // Fallback: lightweight heuristics for backward compatibility.
-  const shouldInjectUiDoc = (() => {
-    if (!state.uiDoc) return false;
-    if (!state.currentTask) return false;
+  // ✅ Split injection: Extract only needed UI sections for this task
+  // Uses task.uiSections array set by decompose LLM for token optimization
+  const uiDocForTask = (() => {
+    if (!state.parsedUiDocs) return undefined;
+    if (!state.currentTask) return undefined;
     // Explanations generally don't need heavy UI specs
-    if (state.currentTask.type === 'explain') return false;
-    // Setup tasks must be config-only; skip UI spec injection to avoid scaffolding product UI
-    if (state.currentTask.type === 'setup') return false;
+    if (state.currentTask.type === 'explain') return undefined;
+    // Setup tasks must be config-only; skip UI spec injection
+    if (state.currentTask.type === 'setup') return undefined;
     
     // ✅ 1) Primary: task.ui flag from decompose (source of truth)
-    if (state.currentTask.ui === true) return true;
-    if (state.currentTask.ui === false) return false;
+    if (state.currentTask.ui === false) return undefined;
     
-    // ✅ 2) Fallback: Strong signals in task title/description (when ui flag is undefined)
-    const text = `${state.currentTask.name}\n${state.currentTask.description}`.toLowerCase();
-    const keywordHit = /(ui|ux|figma|design|layout|style|styling|css|tailwind|theme|token|component|screen|page|frontend|react|tsx|header|footer|hero|card|button|nav|모달|버튼|인풋|화면|레이아웃|디자인)/.test(text);
-    // Environment signal (best-effort, not mandatory)
-    const envHit = state.detectedEnvironment === 'frontend' || state.detectedEnvironment === 'fullstack';
-    // Code context signal (RAG retrieved TSX)
-    const tsxHit = Boolean(state.projectCodeContext?.filePaths?.some(p => p.toLowerCase().endsWith('.tsx')));
-    return keywordHit || (envHit && tsxHit);
+    // Check if UI injection is needed
+    const needsUi = (() => {
+      if (state.currentTask.ui === true) return true;
+      
+      // ✅ 2) Fallback: Strong signals in task title/description (when ui flag is undefined)
+      const text = `${state.currentTask.name}\n${state.currentTask.description}`.toLowerCase();
+      const keywordHit = /(ui|ux|figma|design|layout|style|styling|css|tailwind|theme|token|component|screen|page|frontend|react|tsx|header|footer|hero|card|button|nav|모달|버튼|인풋|화면|레이아웃|디자인)/.test(text);
+      const envHit = state.detectedEnvironment === 'frontend' || state.detectedEnvironment === 'fullstack';
+      const tsxHit = Boolean(state.projectCodeContext?.filePaths?.some(p => p.toLowerCase().endsWith('.tsx')));
+      return keywordHit || (envHit && tsxHit);
+    })();
+    
+    if (!needsUi) return undefined;
+    
+    // ✅ Split injection: Use task.uiSections if available
+    const { ArtifactService } = require('../../../../../../infrastructure/workspace/ArtifactService');
+    const uiDoc = ArtifactService.getUiDocForTask(state.parsedUiDocs, state.currentTask.uiSections);
+    
+    if (uiDoc) {
+      const sectionInfo = state.currentTask.uiSections?.length 
+        ? `sections: ${state.currentTask.uiSections.join(', ')}` 
+        : 'all sections (no uiSections specified)';
+      console.log(`   🎨 [CodeGen] UI doc split injection: ${uiDoc.length} chars (${sectionInfo})`);
+    }
+    
+    return uiDoc;
   })();
   
   // Pass profile to context for TypeScript/React templates on new projects
@@ -97,8 +113,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       directive: state.directive,
       designDoc: state.design,
       prdSpec: state.prd,
-      uiDoc: shouldInjectUiDoc ? state.uiDoc : undefined,
-      uiAssets: shouldInjectUiDoc ? state.uiAssets : undefined,
+      uiDoc: uiDocForTask,  // ✅ Split-injected UI doc (only requested sections)
       projectCodeContext: codeGenProjectCodeContext,
       referenceCodeContexts: state.referenceCodeContexts,
       lessons: Array.isArray(state.lessons) ? state.lessons : undefined,
@@ -157,84 +172,90 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     const llmProvider = (state.deps?.llm as any)?.provider;
     const canSendImages = llmProvider === 'anthropic';
 
-    if (shouldInjectUiDoc && canSendImages && state.uiAssets && state.deps?.fileSystem) {
-      const fs = await import('fs');
-      const path = await import('path');
+    // ✅ Load reference images on-demand if this is a UI task
+    if (uiDocForTask && canSendImages && state.deps?.fileSystem) {
+      const { ArtifactService } = require('../../../../../../infrastructure/workspace/ArtifactService');
+      const uiReferenceImages = await ArtifactService.loadUiReferenceImages(state.context, state.deps.fileSystem);
+      
+      if (uiReferenceImages) {
+        const fs = await import('fs');
+        const path = await import('path');
 
-      const workspaceRoot = state.deps.fileSystem.getWorkspaceRoot();
+        const workspaceRoot = state.deps.fileSystem.getWorkspaceRoot();
 
-      const maxImages = parseInt(process.env.ANT_UI_IMAGE_MAX || '4', 10);
-      const maxBytesPerImage = parseInt(process.env.ANT_UI_IMAGE_MAX_BYTES || `${2 * 1024 * 1024}`, 10); // 2MB
-      const maxTotalBytes = parseInt(process.env.ANT_UI_IMAGE_TOTAL_MAX_BYTES || `${8 * 1024 * 1024}`, 10); // 8MB
+        const maxImages = parseInt(process.env.ANT_UI_IMAGE_MAX || '4', 10);
+        const maxBytesPerImage = parseInt(process.env.ANT_UI_IMAGE_MAX_BYTES || `${2 * 1024 * 1024}`, 10); // 2MB
+        const maxTotalBytes = parseInt(process.env.ANT_UI_IMAGE_TOTAL_MAX_BYTES || `${8 * 1024 * 1024}`, 10); // 8MB
 
-      const candidates: string[] = [
-        ...(state.uiAssets.screens || []),
-        ...(state.uiAssets.components || []),
-      ]
-        .filter(Boolean)
-        .map(p => (typeof p === 'string' ? p.replace(/\\/g, '/') : p))
-        .filter(p => !p.includes('/.gitkeep') && !p.endsWith('/.gitkeep'));
+        const candidates: string[] = [
+          ...(uiReferenceImages.screens || []),
+          ...(uiReferenceImages.components || []),
+        ]
+          .filter(Boolean)
+          .map(p => (typeof p === 'string' ? p.replace(/\\/g, '/') : p))
+          .filter(p => !p.includes('/.gitkeep') && !p.endsWith('/.gitkeep'));
 
-      let totalBytes = 0;
+        let totalBytes = 0;
 
-      // Add a small text header before images (helps LLM interpret upcoming blocks)
-      if (candidates.length > 0) {
-        const previewList = candidates.slice(0, maxImages).map(p => `- ${p}`).join('\n');
-        uiImageBlocks.push({
-          type: 'text',
-          text:
-            `# UI Images (Figma-derived)\n` +
-            `The following image blocks are screenshots/component states from \`inputs/references\`.\n` +
-            `Use them to match layout/spacing/visual states.\n` +
-            `IMPORTANT: Treat these as reference only. Do NOT assume these files are available in the app runtime (e.g. not copied into \`public/\` automatically).\n` +
-            `If the implementation needs runtime images/icons, either (a) generate placeholders in the codebase or (b) require explicit instructions in \`outputs/design/ui-assets.md\` (including destination paths).\n\n` +
-            `${previewList}\n`
-        });
-      }
-
-      for (const rel of candidates) {
-        if (uiImageBlocks.filter(b => (b as any).type === 'image').length >= maxImages) break;
-
-        // Resolve to absolute path safely within workspace root
-        const abs = path.resolve(workspaceRoot, rel);
-        if (!abs.startsWith(workspaceRoot)) continue;
-        if (!fs.existsSync(abs)) continue;
-
-        const stat = fs.statSync(abs);
-        if (stat.size > maxBytesPerImage) {
-          console.log(`⚠️  [UI Images] Skip (too large): ${rel} (${stat.size} bytes)`);
-          continue;
-        }
-        if (totalBytes + stat.size > maxTotalBytes) {
-          console.log(`⚠️  [UI Images] Skip (total budget exceeded): ${rel}`);
-          continue;
+        // Add a small text header before images (helps LLM interpret upcoming blocks)
+        if (candidates.length > 0) {
+          const previewList = candidates.slice(0, maxImages).map(p => `- ${p}`).join('\n');
+          uiImageBlocks.push({
+            type: 'text',
+            text:
+              `# UI Images (Figma-derived)\n` +
+              `The following image blocks are screenshots/component states from \`inputs/references\`.\n` +
+              `Use them to match layout/spacing/visual states.\n` +
+              `IMPORTANT: Treat these as reference only. Do NOT assume these files are available in the app runtime (e.g. not copied into \`public/\` automatically).\n` +
+              `If the implementation needs runtime images/icons, either (a) generate placeholders in the codebase or (b) require explicit instructions in \`outputs/design/ui-assets.md\` (including destination paths).\n\n` +
+              `${previewList}\n`
+          });
         }
 
-        const ext = path.extname(abs).toLowerCase();
-        const mediaType =
-          ext === '.png' ? 'image/png' :
-          (ext === '.jpg' || ext === '.jpeg') ? 'image/jpeg' :
-          ext === '.webp' ? 'image/webp' :
-          ext === '.gif' ? 'image/gif' :
-          null;
+        for (const rel of candidates) {
+          if (uiImageBlocks.filter(b => (b as any).type === 'image').length >= maxImages) break;
 
-        if (!mediaType) continue;
+          // Resolve to absolute path safely within workspace root
+          const abs = path.resolve(workspaceRoot, rel);
+          if (!abs.startsWith(workspaceRoot)) continue;
+          if (!fs.existsSync(abs)) continue;
 
-        const data = fs.readFileSync(abs).toString('base64');
-        totalBytes += stat.size;
-
-        uiImageBlocks.push({
-          type: 'image',
-          source: {
-            type: 'base64',
-            media_type: mediaType as any,
-            data
+          const stat = fs.statSync(abs);
+          if (stat.size > maxBytesPerImage) {
+            console.log(`⚠️  [UI Images] Skip (too large): ${rel} (${stat.size} bytes)`);
+            continue;
           }
-        });
-      }
+          if (totalBytes + stat.size > maxTotalBytes) {
+            console.log(`⚠️  [UI Images] Skip (total budget exceeded): ${rel}`);
+            continue;
+          }
 
-      if (uiImageBlocks.some(b => (b as any).type === 'image')) {
-        console.log(`🖼️  [UI Images] Injected ${uiImageBlocks.filter(b => (b as any).type === 'image').length} image(s) (total=${totalBytes} bytes)`);
+          const ext = path.extname(abs).toLowerCase();
+          const mediaType =
+            ext === '.png' ? 'image/png' :
+            (ext === '.jpg' || ext === '.jpeg') ? 'image/jpeg' :
+            ext === '.webp' ? 'image/webp' :
+            ext === '.gif' ? 'image/gif' :
+            null;
+
+          if (!mediaType) continue;
+
+          const data = fs.readFileSync(abs).toString('base64');
+          totalBytes += stat.size;
+
+          uiImageBlocks.push({
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: mediaType as any,
+              data
+            }
+          });
+        }
+
+        if (uiImageBlocks.some(b => (b as any).type === 'image')) {
+          console.log(`🖼️  [UI Images] Injected ${uiImageBlocks.filter(b => (b as any).type === 'image').length} image(s) (total=${totalBytes} bytes)`);
+        }
       }
     }
   } catch (e) {
@@ -424,8 +445,8 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
   }
 
   // ✅ Runtime assets reminder (text-only, small)
-  if ((state as any).runtimeAssetsIndex?.count > 0) {
-    const idx = (state as any).runtimeAssetsIndex as { count: number; files: string[] };
+  if (state.runtimeAssetsIndex?.count && state.runtimeAssetsIndex.count > 0) {
+    const idx = state.runtimeAssetsIndex;
     lines.push(`════════════════════════════════════════════════════════════════════════════════`);
     lines.push(`📦 Available Assets (inputs/assets)`);
     lines.push(`════════════════════════════════════════════════════════════════════════════════`);

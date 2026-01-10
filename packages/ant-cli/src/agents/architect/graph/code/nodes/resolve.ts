@@ -380,16 +380,21 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   const source = await ArtifactService.getSource(context, gitPort, fileSystem);
   const prd = source?.prd || undefined;
   
-  // ✅ Load optional UI context (Figma-derived docs/assets). Injection is decided later per-task.
-  const uiContext = await ArtifactService.loadUiContext(context, gitPort, fileSystem);
-  const uiDoc = uiContext.uiDoc;
-  const uiAssets = uiContext.uiAssets;
+  // ✅ Load parsed UI documents (Figma-derived) for split injection
+  // Returns structured ParsedUiDocs with sections that can be selectively injected per task
+  const parsedUiDocs = await ArtifactService.loadParsedUiContext(context, gitPort, fileSystem);
   
   // Debug: Log UI context loading result
-  if (uiDoc) {
-    console.log(`📄 [Resolve] uiDoc loaded (${uiDoc.length} chars)`);
+  if (parsedUiDocs) {
+    const totalTokens = (parsedUiDocs.tokensTokenEstimate || 0) + 
+                        (parsedUiDocs.assetsTokenEstimate || 0) + 
+                        parsedUiDocs.specTotalTokens;
+    console.log(`📄 [Resolve] parsedUiDocs loaded (~${totalTokens} total tokens)`);
+    console.log(`   - tokens: ${parsedUiDocs.tokensTokenEstimate || 0} tokens`);
+    console.log(`   - assets: ${parsedUiDocs.assetsTokenEstimate || 0} tokens`);
+    console.log(`   - spec: ${parsedUiDocs.specSections.size} sections, ${parsedUiDocs.specTotalTokens} tokens`);
   } else {
-    console.log(`⚠️  [Resolve] uiDoc NOT loaded - check outputs/design for ui-spec.md, ui-tokens.md, ui-assets.md`);
+    console.log(`⚠️  [Resolve] parsedUiDocs NOT loaded - check outputs/design for ui-spec.md, ui-tokens.md, ui-assets.md`);
   }
 
   // ✅ Index inputs guide to documents collection (for RAG-based chat guidance)
@@ -498,8 +503,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     ...state,
     directive,
     prd,
-    uiDoc,
-    uiAssets,
+    parsedUiDocs: parsedUiDocs || undefined,  // ✅ Parsed UI docs for split injection (null → undefined)
     design,
     designDocPath,  // ✅ Add design document file path for environment inference
     designDocs,     // ✅ Add structured design docs for detectEnvironment

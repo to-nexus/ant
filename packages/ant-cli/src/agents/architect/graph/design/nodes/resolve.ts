@@ -148,8 +148,8 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
   // 4. Check if UI specification exists (for conditional prompt guidance)
   let hasUiDoc = false;
   try {
-    const uiContext = await ArtifactService.loadUiContext(context, gitPort, fileSystem);
-    hasUiDoc = !!(uiContext?.uiDoc && uiContext.uiDoc.trim().length > 100);  // Non-trivial content
+    const parsedUiDocs = await ArtifactService.loadParsedUiContext(context, gitPort, fileSystem);
+    hasUiDoc = !!(parsedUiDocs && (parsedUiDocs.specSections.size > 0 || parsedUiDocs.tokens || parsedUiDocs.assets));
     if (hasUiDoc) {
       console.log('✅ UI specification detected - system-design will defer UI details to uiDoc');
     }
