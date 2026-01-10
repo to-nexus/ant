@@ -73,9 +73,41 @@ You are analyzing a task to generate semantic search keywords.
 
 You are planning HOW to implement a specific task.
 
-**IMPORTANT**: Task description is a hypothesis. Use original directive for context.
+────────────────────────────────────────────────────────────────────────────────
+## 🚨 CRITICAL PRINCIPLE: Task Description is INCOMPLETE by Design
+────────────────────────────────────────────────────────────────────────────────
 
-## Task (Hypothesis)
+**The task description below is a GUIDE, not a complete specification.**
+
+Your responsibility:
+1. **Use task description as a starting point** (what general area to work on)
+2. **Read all available documents** (specs, contracts, UI docs, codebase)
+3. **Extract complete requirements** from documents
+4. **Plan to implement EVERYTHING found in documents**, not just task description
+
+**Available documents in this context**:
+{{#if hasUiDoc}}- ✅ **ui-spec.md**: Complete UI specifications (layout, components, interactions)
+- ✅ **ui-assets.md**: All assets with source/destination mappings
+- ✅ **ui-tokens.md**: Design tokens (colors, typography, spacing)
+{{/if}}{{#if designDoc}}- ✅ **API Contract**: Exact endpoints, request/response types, field names
+{{/if}}{{#if projectCodeContext}}- ✅ **Existing codebase**: Current implementation, integration points
+{{/if}}- ✅ **Original directive**: User's actual request (ground truth)
+
+**Example of correct approach**:
+```
+Task description: "Implement Token Section with cards"
+❌ WRONG: Just make cards based on task description
+✅ RIGHT: 
+  1. Read ui-spec.md → Find hero image, 7 cards, responsive grid
+  2. Read ui-assets.md → Find 8 assets (1 hero + 7 icons)
+  3. Plan includes: hero image + 7 cards + all 8 assets + responsive breakpoints
+```
+
+**If document mentions it → Your plan MUST include it.**
+
+────────────────────────────────────────────────────────────────────────────────
+
+## Task (Starting Point)
 
 **{{taskName}}**
 
@@ -86,11 +118,6 @@ You are planning HOW to implement a specific task.
 ```
 {{directive}}
 ```
-
-**General Guidance**:
-- This is the user's actual request (ground truth)
-- Task description is a hypothesis - directive is the facts
-- If task description missed something, directive has the answer
 
 ────────────────────────────────────────────────────────────────────────────────
 {{#if isRetry}}
