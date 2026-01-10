@@ -28,22 +28,39 @@ ant-ogf 프로젝트의 landing page를 구현해줘
 ### 2. **prd** (Product Requirements Document)
 - **정의**: Design Job의 PRD 산출물
 - **위치**: `features/<feature>/outputs/prd/prd.md`
-- **내용**: 제품 요구사항, 기능 명세, 사용자 스토리
+- **내용**: 제품 요구사항, 기능 명세, 사용자 스토리, **콘텐츠 텍스트**
 - **특징**:
   - 비기술적 (what to build)
-  - 비즈니스 요구사항 중심
+  - 비즈니스 요구사항 + **실제 콘텐츠**
   - Design Job에서 생성
+  - **Code Job의 Execute 단계에서 사용**
 
 **예시**:
 ```markdown
 // prd.md
 ## Landing Page Requirements
-- Hero section with CTA buttons
-- Features showcase (3 main features)
-- Footer with social links
+
+### Hero Section
+- Headline: "Build faster with AI-powered development"
+- Subheading: "Transform your ideas into production-ready code in minutes"
+- CTA Primary: "Start Free Trial"
+- CTA Secondary: "Watch Demo"
+
+### Features Showcase
+Feature 1: "Intelligent Code Generation"
+  - Description: "Our AI understands context and generates clean, maintainable code"
+  
+Feature 2: "Real-time Collaboration"
+  - Description: "Work with your team seamlessly in a shared workspace"
+  
+Feature 3: "Built-in Best Practices"
+  - Description: "Automatic code reviews and security checks"
 ```
 
-**현재 상태**: ⚠️ Code Job에서 거의 사용 안 됨 (design 문서로 대체)
+**역할**: 
+- ✅ **콘텐츠 텍스트 제공** (Headline, descriptions, button labels)
+- ✅ 비즈니스 요구사항
+- ✅ Design이 커버하지 못하는 세부 텍스트
 
 ---
 
@@ -297,6 +314,7 @@ SPECIFICATION:
   planText: string,            // Plan 단계 출력 (SSOT)
   directive?: string,          // 보조 (context)
   designDoc?: string,          // 보조 (API Contract)
+  prdSpec?: string,            // ✅ 콘텐츠 텍스트 (button labels, descriptions)
   uiDoc?: string,              // 보조 (UI 태스크)
   uiAssets?: string,           // 보조 (Asset 매핑)
   projectCodeContext?: any,
@@ -312,6 +330,11 @@ SPECIFICATION:
 ## Implementation Plan
 {{planText}}  ← Plan 출력 (PRIMARY)
 
+{{#if prdSpec}}
+## Requirements (PRD)
+{{prdSpec}}  ← 콘텐츠 텍스트
+{{/if}}
+
 {{#if designDoc}}
 ## 📋 DESIGN SPECIFICATION
 {{designDoc}}
@@ -325,13 +348,15 @@ SPECIFICATION:
 ```
 
 **사용 우선순위**:
-1. **planText** - PRIMARY SSOT
-2. **designDoc** - Spec 참조 (필요시)
-3. **uiDoc** - UI Spec 참조 (필요시)
-4. **directive** - Context only
+1. **planText** - PRIMARY SSOT (구현 계획)
+2. **prdSpec** - 콘텐츠 텍스트 (headline, descriptions, labels)
+3. **designDoc** - Spec 참조 (필요시)
+4. **uiDoc** - UI Spec 참조 (필요시)
+5. **directive** - Context only
 
 **역할**:
-- ✅ planText가 SSOT
+- ✅ planText가 구현 SSOT
+- ✅ prdSpec에서 실제 콘텐츠 텍스트 추출
 - ✅ planText에 N개 assets → N개 모두 복사
 - ✅ planText에 명시된 layout → 정확히 구현
 - ❌ 문서를 직접 해석하지 않음 (Plan이 이미 했음)
@@ -388,21 +413,22 @@ Execute:
 
 ### Rule 1: 단계별 SSOT
 
-| 단계 | SSOT | 보조 |
-|------|------|------|
+| 단계 | SSOT | 보조 (콘텐츠/컨텍스트) |
+|------|------|------------------------|
 | **Detect** | directive | prdSpec, designDocs |
 | **Decompose** | designDoc (design) | spec (directive) |
-| **Plan** (UI) | uiDoc + uiAssets | designDoc, directive |
-| **Plan** (API) | designDoc (API Contract) | directive |
-| **Execute** | planText | designDoc, uiDoc |
+| **Plan** (UI) | uiDoc + uiAssets | designDoc, prdSpec (콘텐츠), directive |
+| **Plan** (API) | designDoc (API Contract) | prdSpec (콘텐츠), directive |
+| **Execute** | planText | prdSpec (콘텐츠), designDoc, uiDoc |
 
 ### Rule 2: 문서 충돌 시
 
 ```
-Priority: planText > designDoc > uiDoc > directive
+Priority: planText > prdSpec (content) > designDoc > uiDoc > directive
 
 이유:
-- planText: 이미 모든 문서를 분석하고 통합함
+- planText: 이미 모든 문서를 분석하고 통합함 (구현 계획)
+- prdSpec: 실제 콘텐츠 텍스트 (headlines, descriptions, button labels)
 - designDoc: 기술적 SSOT (architecture, API)
 - uiDoc: UI SSOT (UI 태스크만)
 - directive: Ground truth (facts only, not specs)
@@ -412,30 +438,36 @@ Priority: planText > designDoc > uiDoc > directive
 
 **UI 태스크**:
 ```
-Primary: uiDoc (ui-spec.md)
-Asset Map: uiAssets (ui-assets.md)
+Primary: uiDoc (ui-spec.md) - Layout, components, interactions
+Asset Map: uiAssets (ui-assets.md) - Asset 복사 지침
+Content: prdSpec (prd.md) - 실제 텍스트 (headlines, descriptions)
 Context: designDoc (architecture)
 ```
 
 **Non-UI 태스크**:
 ```
-Primary: designDoc (system-design)
+Primary: designDoc (system-design) - API, architecture
+Content: prdSpec (prd.md) - 실제 텍스트, 비즈니스 로직
 Context: directive
 ```
 
 ---
 
-## ❌ 현재 문제점
+## ❌ 현재 문제점 → ✅ 실제 상황
 
-### 1. PRD 문서가 사용 안 됨
-- **현상**: Code Job에서 prd를 거의 참조 안 함
-- **원인**: design 문서가 더 구체적이고 기술적
-- **영향**: PRD 작성 노력이 낭비됨
+### ~~1. PRD 문서가 사용 안 됨~~ → ✅ 실제로 사용됨!
+- **실제 상황**: Execute 단계에서 `prdSpec`으로 injection
+- **용도**: 
+  - **콘텐츠 텍스트** (headlines, descriptions, button labels)
+  - 비즈니스 요구사항
+  - Design 문서에 없는 세부 텍스트
+- **injection 위치**: 
+  ```typescript
+  // codeGen/promptBuilder.ts Line 129
+  state.prd ? `# Requirements\n\n${state.prd}` : null
+  ```
 
-**제안**:
-- PRD는 Design Job 내부용으로만 사용
-- Code Job에는 design만 전달
-- 또는 PRD를 "비기술 stakeholder용 문서"로 명확히 역할 정의
+**결론**: PRD는 **콘텐츠 소스**로 중요한 역할 수행 중! ✅
 
 ### 2. directive vs design의 역할 혼재
 - **현상**: Decompose에서 `spec={{directive}}` 사용하지만, `designDoc`도 받음
@@ -481,12 +513,12 @@ for (const t of tasks) {
 2. ✅ 단계별 SSOT 정의됨
 3. ✅ UI/Non-UI 태스크 분리 injection
 4. ✅ Plan이 문서 통합 역할 수행
+5. ✅ **PRD가 콘텐츠 소스로 Execute에서 사용됨**
 
 **개선 필요**:
-1. ⚠️ **PRD 역할 재정의** (Code Job에서 제거?)
-2. ⚠️ **Decompose 프롬프트 우선순위 명시** (designDoc > directive)
+1. ⚠️ **Decompose 프롬프트 우선순위 명시** (designDoc > directive)
+2. ⚠️ **문서 우선순위를 프롬프트에 명시**
 3. ✅ **Plan 프롬프트 강화** (이미 완료)
-4. ⚠️ **문서 우선순위를 프롬프트에 명시**
 
 ---
 
@@ -519,36 +551,54 @@ SPECIFICATIONS:
 **Directive is the original request (context)**
 ```
 
-### 2. PRD 역할 명확화
+### 2. ~~PRD 역할 명확화~~ → ✅ 이미 명확함
 
-**Option A**: Code Job에서 제거
+PRD는 **콘텐츠 소스**로 Execute 단계에서 사용 중:
+- Headlines, descriptions, button labels
+- 비즈니스 요구사항 텍스트
+- Design 문서가 커버하지 못하는 세부 텍스트
+
+**현재 injection**:
 ```typescript
-// Code Job에 prd 전달 안 함
-// Design Job 내부용으로만 사용
+// codeGen/promptBuilder.ts
+state.prd ? `# Requirements\n\n${state.prd}` : null
 ```
 
-**Option B**: "Context only" 명시
+**개선**: 프롬프트에 PRD 용도 명시
 ```markdown
-{{#if prd}}
-## PRD (Context - Non-technical Requirements)
-{{prd}}
+{{#if prdSpec}}
+## Requirements (PRD - Content Source)
+{{prdSpec}}
 
-**Note**: This is for context. Technical specs are in Design Document.
+**Use this for**: Actual content text (headlines, descriptions, labels)
+**Not for**: Technical architecture (that's in Design Doc)
 {{/if}}
 ```
 
-### 3. Execute 프롬프트에 우선순위 명시
+### 3. Execute 프롬프트에 문서 역할 명시
 
-**추가**:
+**추가** (Execute base.md 또는 injection에):
 ```markdown
-## Document Priority
+## Document Roles in Implementation
 
-When implementing:
-1. **planText** - PRIMARY (already integrated all docs)
-2. **designDoc** - Reference only (if planText unclear)
-3. **uiDoc** - Reference only (if planText unclear)
+**PRIMARY**: Implementation Plan (planText)
+- Your complete implementation guide
+- Already analyzed all documents below
 
-**Rule**: If plan says X but doc says Y → Follow plan (plan already analyzed docs)
+**CONTENT**: Requirements (PRD)
+- Actual text content: headlines, descriptions, button labels
+- Business requirements text
+- Use for: Copy-paste ready content
+
+**REFERENCE**: Design Specification (designDoc)
+- Technical architecture, API contracts
+- Use when: Plan unclear or need API details
+
+**REFERENCE**: UI Specification (uiDoc)
+- UI layout, components, interactions
+- Use when: Plan unclear or need UI details
+
+**Rule**: Follow plan first. Use other docs only for content/clarification.
 ```
 
 ---
@@ -557,32 +607,33 @@ When implementing:
 
 ### 문서 역할
 - **directive**: 사용자 원본 지시 (ground truth)
-- **prd**: 비기술 요구사항 (현재 거의 안 씀)
+- **prd**: ✅ **콘텐츠 소스** (headlines, descriptions, labels) + 비기술 요구사항
 - **design**: 기술 설계 (Code Job PRIMARY spec)
 - **uiDoc**: UI 상세 specs (UI 태스크 SSOT)
 - **uiAssets**: Asset 매핑 (Asset 복사 지침)
 
 ### 단계별 SSOT
 - **Decompose**: designDoc (+ directive context)
-- **Plan (UI)**: uiDoc + uiAssets
-- **Plan (API)**: designDoc (API Contract)
-- **Execute**: planText
+- **Plan (UI)**: uiDoc + uiAssets (+ prdSpec content)
+- **Plan (API)**: designDoc (API Contract) (+ prdSpec content)
+- **Execute**: planText (+ prdSpec content source)
 
 ### 보완 관계
 ```
-directive (원본) → design (기술 설계) → uiDoc (UI 상세)
-                                      ↓
-                    Plan (통합 & 상세화)
-                                      ↓
-                    Execute (구현)
+directive (원본) → prd (콘텐츠) → design (기술 설계) → uiDoc (UI 상세)
+                                                       ↓
+                                   Plan (통합 & 상세화)
+                                                       ↓
+                    Execute (구현 + prd에서 콘텐츠 추출)
 ```
 
 ### 핵심 원칙
 1. **각 단계마다 명확한 SSOT 존재**
 2. **Plan이 모든 문서 통합 역할**
-3. **Execute는 Plan만 따름 (문서 재해석 안 함)**
+3. **Execute는 Plan + PRD(콘텐츠) 사용**
 4. **UI/Non-UI 태스크별 다른 문서 우선순위**
+5. **PRD는 콘텐츠 소스 (중요!)** ✅
 
 ---
 
-**최종 결론**: 현재 구조는 잘 설계되었으나, **프롬프트에 우선순위 명시**와 **PRD 역할 재정의**가 필요합니다.
+**최종 결론**: 현재 구조는 잘 설계되었고, **PRD는 콘텐츠 소스로 중요한 역할 수행 중**입니다. 프롬프트에 문서 역할만 명시하면 완벽합니다.
