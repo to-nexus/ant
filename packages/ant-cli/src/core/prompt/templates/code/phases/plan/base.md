@@ -93,17 +93,13 @@ Your responsibility:
 {{/if}}{{#if projectCodeContext}}- ✅ **Existing codebase**: Current implementation, integration points
 {{/if}}- ✅ **Original directive**: User's actual request (ground truth)
 
-**Example of correct approach**:
+**Correct approach**:
 ```
-Task description: "Implement Token Section with cards"
-❌ WRONG: Just make cards based on task description
-✅ RIGHT: 
-  1. Read ui-spec.md → Find hero image, 7 cards, responsive grid
-  2. Read ui-assets.md → Find 8 assets (1 hero + 7 icons)
-  3. Plan includes: hero image + 7 cards + all 8 assets + responsive breakpoints
+❌ WRONG: Read only task description → Plan based on task alone
+✅ RIGHT: Read task → Read ALL documents → Extract complete requirements → Plan everything
 ```
 
-**If document mentions it → Your plan MUST include it.**
+**Rule**: If document mentions it → Your plan MUST include it.
 
 ────────────────────────────────────────────────────────────────────────────────
 
