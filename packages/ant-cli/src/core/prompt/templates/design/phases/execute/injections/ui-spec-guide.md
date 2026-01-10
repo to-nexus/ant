@@ -3,6 +3,15 @@
 ### Purpose
 Define **what** to build (visual & behavioral requirements) in a structured JSON format, not **how** to implement it.
 
+### ⚠️ CRITICAL: SCOPE ENFORCEMENT
+
+**🚨 READ YOUR TASK DESCRIPTION AND GENERATE ONLY THOSE SECTIONS! 🚨**
+
+1. **Check your task description** - it specifies exactly which UI sections to document
+2. **Generate ONLY those sections** - not more, not less
+3. **Other tasks handle other sections** - trust the task decomposition
+4. **Skip sections already documented** - check existing content if continuing
+
 ### PRD Integration (CRITICAL)
 **When to reference PRD**:
 - **Content text**: Extract actual text content for headings, CTAs, descriptions
@@ -261,17 +270,33 @@ These are **ABSOLUTELY FORBIDDEN**:
 
 ### Example Output
 
-**For first chapter (task: ui-spec-ch1)**:
+{{#if lastSectionNumber}}
+**Continuation task** - use `<append>` to add YOUR sections:
+
+```xml
+<append path="outputs/design/ui-spec.json">
+{
+  "_meta": { "lastSection": {{add lastSectionNumber 1}} },
+  "sections": {
+    "YOUR_SECTION_ID": {
+      "layout": "...",
+      "background": "colors.bg.xxx",
+      "content": { /* section content */ },
+      "responsive": { /* responsive rules */ }
+    }
+  }
+}
+</append>
+```
+{{else}}
+**First task** - use `<file>` to create the document:
 
 ```xml
 <file path="outputs/design/ui-spec.json">
 {
-  "_meta": {
-    "lastSection": 1,
-    "sectionPattern": "top-level"
-  },
+  "_meta": { "lastSection": 1, "sectionPattern": "top-level" },
   "meta": {
-    "title": "Opengame Foundation Landing Page",
+    "title": "Project UI Specification",
     "breakpoints": {
       "mobile": { "max": 767 },
       "tablet": { "min": 768, "max": 1279 },
@@ -283,70 +308,17 @@ These are **ABSOLUTELY FORBIDDEN**:
     "spacing": { "sectionGap": "spacing.5xl" }
   },
   "sections": {
-    "gnb": {
-      "position": "fixed",
-      "height": "64px",
-      "background": "colors.bg.white",
-      "content": {
-        "logo": {
-          "asset": "logo-header",
-          "height": "32px"
-        },
-        "nav": {
-          "items": ["About", "Ecosystem", "CROSS Token", "Technology"],
-          "typography": "typography.nav.default",
-          "color": "colors.text.mediumGray",
-          "hoverColor": "colors.text.black"
-        }
-      },
-      "scrollBehavior": {
-        "shadow": "effects.shadow.md"
-      }
+    "YOUR_SECTION_ID": {
+      "layout": "...",
+      "content": { /* section content */ }
     }
   }
 }
 </file>
 ```
+{{/if}}
 
-**For continuation chapter (task: ui-spec-ch2)**:
-
-```xml
-<append path="outputs/design/ui-spec.json">
-{
-  "_meta": {
-    "lastSection": 2
-  },
-  "sections": {
-    "hero": {
-      "layout": "full-width",
-      "height": "100vh",
-      "background": {
-        "asset": "bg-hero",
-        "overlay": "colors.overlay.gradientDark"
-      },
-      "content": {
-        "headline": {
-          "text": ["Open Ownership", "Open World"],
-          "typography": "typography.heading.hero",
-          "color": "colors.text.white"
-        },
-        "subtitle": {
-          "text": "Ownership is distributed. Worlds are built together.",
-          "typography": "typography.body.lg"
-        }
-      },
-      "responsive": {
-        "mobile": {
-          "headline": { "typography": "typography.heading.lg" }
-        }
-      }
-    }
-  }
-}
-</append>
-```
-
-**Note**: The system automatically merges the `_meta` and `sections` when appending.
+**Note**: Replace `YOUR_SECTION_ID` with the actual section from your task description (e.g., `gnb`, `hero`, `footer`). Use OBJECT format for `sections` (NOT array). The system automatically merges new sections.
 
 ---
 

@@ -27,88 +27,39 @@ Extract and document all design tokens from reference screenshots as a JSON stru
 - Use nested JSON structure for organization
 - Names should be technology-agnostic
 
-#### 3. Exhaustive Extraction
-Analyze screenshots systematically to capture ALL instances of:
-- Colors (backgrounds, text, borders, accents, states)
-- Typography (font families, sizes, weights, line heights)
-- Spacing (margins, paddings, gaps - identify the rhythm)
-- Visual effects (shadows, radii, borders, opacity levels)
+#### 3. Exhaustive Extraction (WITHIN YOUR SCOPE)
+For the categories specified in YOUR task description, capture ALL instances visible in screenshots.
+
+**⚠️ DO NOT extract categories outside your task scope - other tasks will handle them.**
+
+### ⚠️ CRITICAL: SCOPE ENFORCEMENT
+
+**🚨 READ YOUR TASK DESCRIPTION AND GENERATE ONLY THOSE CATEGORIES! 🚨**
+
+1. **Check your task description** - it specifies exactly which categories to generate
+2. **Generate ONLY those categories** - not more, not less
+3. **Other tasks handle other categories** - trust the task decomposition
+4. **Update `_meta.lastSection`** - increment by the number of categories YOU added
 
 ### JSON Structure
+
+**Available categories** (generate only what YOUR task specifies):
+- `colors` - color palette, backgrounds, gradients, overlays
+- `typography` - font families, sizes, weights, line heights
+- `spacing` - margins, paddings, gaps
+- `effects` - radius, shadows, blur, transitions
 
 ```json
 {
   "_meta": {
-    "lastSection": 4,
+    "lastSection": N,
     "sectionPattern": "top-level"
   },
-  "colors": {
-    "bg": {
-      "white": "#FFFFFF",
-      "dark": "#1A1A1A",
-      "lightBlue": "#E8EEF3"
-    },
-    "primary": {
-      "green": "#00D9A3",
-      "greenGlow": "#00FFB8"
-    },
-    "text": {
-      "black": "#000000",
-      "white": "#FFFFFF",
-      "muted": "rgba(255, 255, 255, 0.8)"
-    },
-    "border": {
-      "light": "rgba(0, 0, 0, 0.1)"
-    }
-  },
-  "typography": {
-    "family": {
-      "primary": "Inter, -apple-system, sans-serif",
-      "brand": "Eurostile Extended, Inter, sans-serif"
-    },
-    "heading": {
-      "hero": { "size": "72px", "weight": 700, "lineHeight": 1.1 },
-      "xl": { "size": "48px", "weight": 700, "lineHeight": 1.2 },
-      "lg": { "size": "36px", "weight": 700, "lineHeight": 1.3 }
-    },
-    "body": {
-      "lg": { "size": "18px", "weight": 400, "lineHeight": 1.6 },
-      "md": { "size": "16px", "weight": 400, "lineHeight": 1.6 }
-    }
-  },
-  "spacing": {
-    "xs": "4px",
-    "sm": "8px",
-    "md": "16px",
-    "lg": "24px",
-    "xl": "32px",
-    "2xl": "48px",
-    "3xl": "64px"
-  },
-  "effects": {
-    "radius": {
-      "sm": "4px",
-      "md": "8px",
-      "lg": "16px",
-      "xl": "24px",
-      "full": "9999px"
-    },
-    "shadow": {
-      "sm": "0 1px 2px rgba(0,0,0,0.05)",
-      "md": "0 4px 6px -1px rgba(0,0,0,0.1)",
-      "lg": "0 10px 15px -3px rgba(0,0,0,0.1)",
-      "glow": { "green": "0 0 40px rgba(0,217,163,0.4)" }
-    },
-    "transition": {
-      "fast": "200ms",
-      "normal": "300ms",
-      "slow": "500ms"
-    }
-  }
+  // Include ONLY categories specified in YOUR task description
 }
 ```
 
-**Note**: `_meta.lastSection` counts top-level data categories (colors, typography, spacing, effects = 4).
+**Note**: `_meta.lastSection` = cumulative count of top-level data categories in the document.
 
 ### Output Format
 
@@ -122,42 +73,31 @@ Use `<file>` tag to create the initial JSON file.
 
 ### Example Output
 
-**For first chapter (task: ui-tokens or ui-tokens-ch1)**:
-
-```xml
-<file path="outputs/design/ui-tokens.json">
-{
-  "_meta": {
-    "lastSection": 1,
-    "sectionPattern": "top-level"
-  },
-  "colors": {
-    "bg": { "white": "#FFFFFF", "dark": "#1A1A1A" },
-    "primary": { "green": "#00D9A3" },
-    "text": { "black": "#000000", "white": "#FFFFFF" }
-  }
-}
-</file>
-```
-
-**For continuation chapter (task: ui-tokens-ch2)**:
+{{#if lastSectionNumber}}
+**Continuation task** - use `<append>` to add YOUR categories:
 
 ```xml
 <append path="outputs/design/ui-tokens.json">
 {
-  "_meta": {
-    "lastSection": 3
-  },
-  "typography": {
-    "heading": { "hero": { "size": "72px", "weight": 700 } },
-    "body": { "md": { "size": "16px", "weight": 400 } }
-  },
-  "spacing": { "sm": "8px", "md": "16px", "lg": "24px" }
+  "_meta": { "lastSection": {{add lastSectionNumber 1}} },
+  "YOUR_CATEGORY": { /* tokens extracted from screenshots */ }
 }
 </append>
 ```
+{{else}}
+**First task** - use `<file>` to create the document:
 
-**Note**: The system automatically merges new categories into existing JSON.
+```xml
+<file path="outputs/design/ui-tokens.json">
+{
+  "_meta": { "lastSection": 1, "sectionPattern": "top-level" },
+  "YOUR_CATEGORY": { /* tokens extracted from screenshots */ }
+}
+</file>
+```
+{{/if}}
+
+**Note**: Replace `YOUR_CATEGORY` with the actual category from your task description (e.g., `colors`, `typography`, `spacing`, `effects`). The system automatically merges new categories into existing JSON.
 
 ### Quality Criteria
 

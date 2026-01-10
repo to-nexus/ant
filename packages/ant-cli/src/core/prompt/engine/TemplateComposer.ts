@@ -139,14 +139,16 @@ export class TemplateComposer {
     );
     
     // 5. Render rules template
-    // ✅ FIX: Pass lastSectionNumber, sectionPattern and currentTask to rules template
+    // ✅ FIX: Pass lastSectionNumber, sectionPattern, currentTask and isLastTaskForDocument to rules template
     // rules.md uses {{#if lastSectionNumber}} for continuation task detection
+    // rules.md uses {{#if isLastTaskForDocument}} to skip metadata output on final task
     const rules = await this.renderTemplate(
       modeConfig.templates.rules,
       {
         lastSectionNumber: assembled.lastSectionNumber ?? undefined,
         sectionPattern: assembled.sectionPattern ?? undefined,
-        currentTask: assembled.currentTask || null
+        currentTask: assembled.currentTask || null,
+        isLastTaskForDocument: assembled.isLastTaskForDocument || false
       }
     );
     

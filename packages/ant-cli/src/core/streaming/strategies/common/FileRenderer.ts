@@ -321,9 +321,16 @@ export class FileRenderer {
           return;
         }
         
-        // ⚠️ Non-JSON files: Simple text append (should not happen for UI docs)
-        console.warn(`   ⚠️ [Append] Non-JSON file detected: ${fileSystemPath}`);
-        const mergedContent = existingContent + '\n' + newContent;
+        // ⚠️ Non-JSON files (Markdown): Text append with metadata cleanup
+        console.log(`   📄 [Append] Markdown file: ${fileSystemPath}`);
+        
+        // ✅ Remove old LAST_SECTION metadata before append
+        // Pattern: <!-- LAST_SECTION: N --> at end of file (with optional whitespace)
+        const cleanedExisting = existingContent
+          .replace(/\n?<!-- LAST_SECTION: \d+ -->\s*$/g, '')
+          .replace(/\n?<!-- SECTION_PATTERN: [^>]+ -->\s*\n?<!-- LAST_SECTION: \d+ -->\s*$/g, '');
+        
+        const mergedContent = cleanedExisting.trimEnd() + '\n\n' + newContent;
         await this.fileSystem!.writeFile(fileSystemPath, mergedContent);
       } else {
         await this.fileSystem!.writeFile(fileSystemPath, newContent);

@@ -45,9 +45,15 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
     console.log(`📄 [DocGen] Target file: ${targetFile}`);
     
     // ✅ Check if this is the last task for this document
+    // CRITICAL: Exclude current task from the count (it may still be in queue)
+    const currentTaskId = state.currentTask?.id;
     const allQueuedTasks = state.taskQueue?.getAll?.() || [];
     const remainingTasksForFile = allQueuedTasks.filter(
-      (task: any) => (task.targetFile || 'system-design.md') === targetFile
+      (task: any) => {
+        // Exclude current task from remaining count
+        if (task.id === currentTaskId) return false;
+        return (task.targetFile || 'system-design.md') === targetFile;
+      }
     );
     const isLastTaskForDocument = remainingTasksForFile.length === 0;
     if (isLastTaskForDocument) {

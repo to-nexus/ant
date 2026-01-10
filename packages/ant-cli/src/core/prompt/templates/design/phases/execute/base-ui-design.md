@@ -113,6 +113,12 @@ Use semantic token names:
 
 {{{taskDescription}}}
 
+**🚨 SCOPE ENFORCEMENT:**
+- Generate ONLY what is described above
+- Do NOT generate content for OTHER tasks
+- Other chapters will handle their own scope
+- If you generate outside your scope, subsequent tasks will FAIL
+
 {{/if}}
 
 {{! ✅ Support ui-tokens, ui-tokens-ch1, ui-tokens-ch2, etc. }}
@@ -130,6 +136,31 @@ Use semantic token names:
 {{> design/phases/execute/injections/ui-spec-guide}}
 {{/if}}
 
+{{#if existingDocContent}}
+════════════════════════════════════════════════════════════════════════════════
+📄 **EXISTING DOCUMENT - READ AND EXTEND**
+════════════════════════════════════════════════════════════════════════════════
+
+**You are CONTINUING this document.** Review the existing structure below and EXTEND it.
+
+**⚠️ CRITICAL RULES:**
+1. **DO NOT recreate** keys/sections that already exist
+2. **MATCH the existing structure** (naming conventions, nesting patterns)
+3. **ADD new content** that complements what's already there
+4. **USE `<append>`** tag to merge your additions
+
+**Existing content:**
+
+```json
+{{{existingDocContent}}}
+```
+
+{{#if sectionPattern}}
+**Structure pattern: `{{sectionPattern}}`**
+{{/if}}
+
+════════════════════════════════════════════════════════════════════════════════
+{{else}}
 {{#if previousChaptersSummary}}
 ════════════════════════════════════════════════════════════════════════════════
 🚫 **FORBIDDEN SECTIONS - ALREADY DOCUMENTED**
@@ -156,6 +187,7 @@ Use semantic token names:
 {{/if}}
 
 ════════════════════════════════════════════════════════════════════════════════
+{{/if}}
 {{/if}}
 
 ════════════════════════════════════════════════════════════════════════════════

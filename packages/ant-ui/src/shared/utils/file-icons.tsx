@@ -15,7 +15,8 @@ import {
   FileVideo,
   FileArchive,
   Database,
-  Folder
+  Folder,
+  Braces
 } from 'lucide-react';
 
 // Import from react-icons for specific file type icons
@@ -71,9 +72,9 @@ const FILE_ICON_MAP: Record<string, FileIconConfig> = {
   'markdown': { icon: SiMarkdown, color: 'text-gray-600 dark:text-gray-400' },
   
   // Configuration / Data
-  'json': { icon: SiJson, color: 'text-[#FFCA28]' },          // JSON yellow
-  'jsonc': { icon: SiJson, color: 'text-[#FFCA28]' },
-  'json5': { icon: SiJson, color: 'text-[#FFCA28]' },
+  'json': { icon: Braces, color: 'text-[#FFCA28]' },          // JSON yellow
+  'jsonc': { icon: Braces, color: 'text-[#FFCA28]' },
+  'json5': { icon: Braces, color: 'text-[#FFCA28]' },
   'yaml': { icon: SiYaml, color: 'text-[#CB171E]' },           // YAML red
   'yml': { icon: SiYaml, color: 'text-[#CB171E]' },
   'toml': { icon: FileCode, color: 'text-gray-600 dark:text-gray-400' },
