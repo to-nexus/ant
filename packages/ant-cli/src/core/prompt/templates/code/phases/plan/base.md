@@ -213,175 +213,74 @@ Speculation without empirical validation is insufficient.
 ## 🎨 UI SPECIFICATION & ASSETS
 ════════════════════════════════════════════════════════════════════════════════
 
-🚨 **CRITICAL: This is a UI task - You MUST complete the UI Implementation Checklist**
-
-### 📋 UI IMPLEMENTATION CHECKLIST (MANDATORY)
-
-Your plan MUST follow this EXACT structure. DO NOT skip any section.
+🚨 **CRITICAL: This is a UI task - Complete ALL sections below**
 
 ────────────────────────────────────────────────────────────────────────────────
 
-## 1. SECTION IDENTIFICATION
+### 1. ASSET INVENTORY (MANDATORY)
 
-**Which section(s) from ui-spec.md does this task implement?**
-- Section name: [e.g., "Token Section", "Technology Section"]
-- UI spec reference: [e.g., "§Token Section (lines 450-605)", "§Technology Section (lines 607-786)"]
+**Search ui-assets.md for this section/component.**
+
+List ALL assets found:
+```
+Assets for [section name]:
+- asset-id: source-path → destination-path
+- asset-id: source-path → destination-path
+Total: N assets
+
+Copy commands:
+cp source destination
+cp source destination
+```
+
+**If no assets found:** "✓ No assets in ui-assets.md for this section"
+
+**CRITICAL:**
+- Search Asset Dependency Map or mapping tables in ui-assets.md
+- List EVERY asset (backgrounds, icons, logos - do NOT skip "decorative" ones)
+- Include EXACT paths and cp commands
+- Count must match ui-assets.md
 
 ────────────────────────────────────────────────────────────────────────────────
 
-## 2. ASSET INVENTORY (FROM ui-assets.md)
+### 2. LAYOUT & COMPONENT SPECS (FROM ui-spec.md)
 
-**Search ui-assets.md for ALL assets related to this section.**
+**Extract specifications for this section from ui-spec.md:**
 
-List EVERY asset mentioned in the Asset Dependency Map or mapping tables:
+**Layout:**
+- Describe layout structure (grid/flex, columns, aspect ratios)
+- Responsive breakpoints (mobile/tablet/desktop behavior)
+- Spacing and sizing (from ui-spec.md)
 
-**Asset Checklist:**
-```
-Section: [Section Name]
-From ui-assets.md:
+**Components:**
+- List each component to implement
+- Visual properties (background, borders, radius, padding)
+- Typography (sizes, weights, colors)
+- Interactive states (if applicable)
+- Which assets each component uses
 
-Images/Backgrounds:
-- [ ] asset-id: source-path → destination-path (e.g., bg.hero: inputs/assets/bg/bg-main.png → codebase/public/assets/images/bg-main.png)
-- [ ] ...
-
-Icons:
-- [ ] asset-id: source-path → destination-path
-- [ ] ...
-
-Logos/Typography:
-- [ ] asset-id: source-path → destination-path
-- [ ] ...
-
-Total assets: N files
-```
-
-**Copy Commands:**
-```bash
-# List EXACT cp commands for each asset
-cp [source] [destination]
-cp [source] [destination]
-...
-```
-
-**IF NO ASSETS:** "✓ Verified: ui-assets.md has no assets listed for this section"
-
-**CRITICAL RULES:**
-- ❌ DO NOT say "I'll add assets later"
-- ❌ DO NOT skip "decorative" assets (ALL assets in mapping table are required)
-- ❌ DO NOT approximate or summarize
-- ✅ List EVERY asset from ui-assets.md Asset Dependency Map
-- ✅ Include EXACT source and destination paths
-- ✅ Count must match ui-assets.md count
+**Design Tokens:**
+- Extract token(...) references from ui-spec.md
+- Note which tokens apply where
 
 ────────────────────────────────────────────────────────────────────────────────
 
-## 3. LAYOUT & STRUCTURE (FROM ui-spec.md)
+### 3. IMPLEMENTATION PLAN
 
-**Extract layout specifications from ui-spec.md:**
-
-**Section Layout:**
-- Layout type: [e.g., "3-column card grid", "single-column centered", "full-width with hero image"]
-- Container max-width: [from ui-spec.md]
-- Padding/spacing: [from ui-spec.md]
-
-**Responsive Breakpoints:**
-- Mobile (<768px): [layout description]
-- Tablet (768px+): [layout description]
-- Desktop (1024px+): [layout description]
-
-**Visual Hierarchy:**
-- Heading structure: [e.g., "h2 section title → h3 card titles"]
-- Key visual elements: [list in order of importance]
-
-**Example from ui-spec.md:**
-```
-Token Section:
-- Layout: Section header + decorative image + 7-card grid
-- Grid: 2 cols (mobile) → 3 cols (tablet) → 5 cols (desktop)
-- Cards: 1:1 aspect ratio, 24px gap
-- Hero image: 400px max-width, center horizontal, 64px margin-bottom
-```
+**Step-by-step:**
+1. Copy assets (from section 1)
+2. Create files: [list]
+3. Implement structure (from section 2)
+4. Apply styling (from section 2)
+5. Verify responsive behavior
 
 ────────────────────────────────────────────────────────────────────────────────
 
-## 4. COMPONENT SPECIFICATIONS (FROM ui-spec.md)
-
-**List ALL components/elements to implement:**
-
-**For EACH component, specify:**
-
-**Component: [Name]**
-- Visual properties: [background, border-radius, padding, aspect-ratio from ui-spec.md]
-- Typography: [font-size, font-weight, color, line-height from ui-tokens via ui-spec.md]
-- Spacing: [margins, gaps from ui-tokens via ui-spec.md]
-- Interactive states (if applicable): [hover, focus, active behaviors from ui-spec.md]
-- Asset references: [which assets from inventory above are used in this component]
-
-**Example:**
-```
-Component: Token Card
-- Visual: Semi-transparent bg, 16px border-radius, 24px padding, 1:1 aspect
-- Typography: 16px base, semibold weight, primary color
-- Spacing: 24px gap between cards
-- Assets: icon-gas.svg (48x48px, teal accent color)
-- States: Default only (non-interactive)
-```
-
-────────────────────────────────────────────────────────────────────────────────
-
-## 5. DESIGN TOKEN REFERENCES (FROM ui-tokens.md via ui-spec.md)
-
-**Extract token references from ui-spec.md for this section:**
-
-**Colors:**
-- Background: `token(...)` → [actual value from ui-tokens.md if needed]
-- Text: `token(...)` → [actual value]
-- Accent: `token(...)` → [actual value]
-
-**Typography:**
-- Font sizes: `token(...)` → [actual values]
-- Font weights: `token(...)` → [actual values]
-- Line heights: `token(...)` → [actual values]
-
-**Spacing:**
-- Section padding: `token(...)` → [actual value]
-- Element gaps: `token(...)` → [actual value]
-
-**Effects:**
-- Shadows: `token(...)` → [actual value]
-- Transitions: `token(...)` → [actual value]
-
-────────────────────────────────────────────────────────────────────────────────
-
-## 6. IMPLEMENTATION STEPS
-
-**Now that you've inventoried everything, create the implementation plan:**
-
-Step-by-step implementation:
-1. Copy assets (reference Section 2 above)
-2. Create component file(s): [list files]
-3. Implement structure (reference Section 3)
-4. Apply styling (reference Section 4 & 5)
-5. Add interactivity (if applicable from ui-spec.md)
-6. Verify responsive behavior (reference Section 3)
-
-**Files to create/modify:**
-- [file path] - [purpose]
-- [file path] - [purpose]
-
-────────────────────────────────────────────────────────────────────────────────
-
-### 🚨 VALIDATION CHECKLIST
-
-Before submitting your plan, verify:
-- [ ] Section 1: Section identified from ui-spec.md
-- [ ] Section 2: ALL assets from ui-assets.md listed with copy commands
-- [ ] Section 3: Layout & responsive behavior specified
-- [ ] Section 4: Component specs extracted from ui-spec.md
-- [ ] Section 5: Design tokens referenced
-- [ ] Section 6: Implementation steps written
-
-**If ANY section is incomplete, your plan will be REJECTED.**
+**VALIDATION:**
+- [ ] Asset inventory complete (every asset from ui-assets.md)
+- [ ] Layout specs extracted (responsive behavior included)
+- [ ] Component specs extracted (all properties listed)
+- [ ] Implementation steps clear
 
 ════════════════════════════════════════════════════════════════════════════════
 
@@ -436,27 +335,32 @@ Generate a **concrete implementation plan** for this task.
 ### Output Format:
 
 {{#if hasUiDoc}}
-**FOR UI TASKS: Follow the 6-section UI Implementation Checklist above.**
+**FOR UI TASKS:**
 
-Your output MUST include all 6 sections:
-1. Section Identification
-2. Asset Inventory (with copy commands)
-3. Layout & Structure
-4. Component Specifications
-5. Design Token References
-6. Implementation Steps
+Your plan must include these 3 sections:
+
+**1. ASSET INVENTORY**
+- Search ui-assets.md for this section
+- List all assets with source → destination paths
+- Provide copy commands
+
+**2. LAYOUT & COMPONENT SPECS**
+- Extract layout structure from ui-spec.md
+- List component specifications
+- Note responsive behavior and design tokens
+
+**3. IMPLEMENTATION PLAN**
+- Step-by-step implementation
+- Files to create/modify
 
 {{else}}
-**FOR NON-UI TASKS: Write 5-10 concise bullet points covering:**
-- WHAT to implement
-- HOW to implement (specific approach)
-- WHICH specifications to follow (exact references)
+**FOR NON-UI TASKS:**
 
-**Structure:**
-1. **Files to Create/Modify**: List specific file paths and purposes
-2. **Implementation Approach**: Key components/functions, data flow, integration points
-3. **API Integration** (if applicable): EXACT endpoint paths, request/response types
-4. **Dependencies** (if new ones needed): Library names and purposes
+Write 5-10 concise bullet points:
+- Files to create/modify
+- Implementation approach
+- API integration (if applicable)
+- Dependencies (if needed)
 
 {{/if}}
 
