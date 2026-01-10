@@ -155,6 +155,7 @@ export async function tool(
   
   // ✅ Update conversation history (Code job pattern)
   // CRITICAL: Add BOTH tool_use AND tool_result here (docGen doesn't add tool_use)
+  // NOTE: When enableThinking is disabled after tool calls, assistant message contains ONLY tool_use (no thinking)
   const newHistory = [
     ...(state.conversationHistory || []),
     // Assistant's tool call (FIRST only - prompt instructs LLM to request one at a time)

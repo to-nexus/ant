@@ -236,8 +236,17 @@ async function loadPreviousUiDocs(
   state: DesignGraphState,
   taskId: string
 ): Promise<string> {
-  // Only ui-assets and ui-spec need previous docs
-  if (taskId !== 'ui-assets' && taskId !== 'ui-spec') {
+  // ✅ Chapter-based approach: Load complete documents from previous categories
+  // - ui-tokens-ch*: No dependencies
+  // - ui-assets-ch*: Need complete ui-tokens.md
+  // - ui-spec-ch*: Need complete ui-tokens.md + ui-assets.md
+  
+  const isUiTokensTask = taskId.startsWith('ui-tokens');
+  const isUiAssetsTask = taskId.startsWith('ui-assets');
+  const isUiSpecTask = taskId.startsWith('ui-spec');
+  
+  // ui-tokens tasks don't need previous docs (foundation)
+  if (isUiTokensTask) {
     return '';
   }
   
@@ -255,30 +264,32 @@ async function loadPreviousUiDocs(
   const designOutputDir = path.join(featureDirRel, 'outputs/design');
   let injectedDocs = '';
   
-  // Load ui-tokens.md for both ui-assets and ui-spec
-  try {
-    const tokensPath = path.join(designOutputDir, 'ui-tokens.md');
-    const tokensContent = await fileSystem.readFile(tokensPath);
-    if (tokensContent && !tokensContent.includes('ant:template')) {
-      injectedDocs += `\n\n════════════════════════════════════════════════════════════════════════════════\n`;
-      injectedDocs += `# REFERENCE: ui-tokens.md (generated in previous task)\n`;
-      injectedDocs += `> Use these token names. Do NOT use raw values that are defined here.\n`;
-      injectedDocs += `════════════════════════════════════════════════════════════════════════════════\n\n`;
-      injectedDocs += tokensContent;
-      console.log(`📄 [DocGen] Injected ui-tokens.md (${tokensContent.length} chars) for ${taskId}`);
+  // ✅ Load COMPLETE ui-tokens.md for ui-assets-* and ui-spec-*
+  if (isUiAssetsTask || isUiSpecTask) {
+    try {
+      const tokensPath = path.join(designOutputDir, 'ui-tokens.md');
+      const tokensContent = await fileSystem.readFile(tokensPath);
+      if (tokensContent && !tokensContent.includes('ant:template')) {
+        injectedDocs += `\n\n════════════════════════════════════════════════════════════════════════════════\n`;
+        injectedDocs += `# REFERENCE: ui-tokens.md (ALL chapters completed)\n`;
+        injectedDocs += `> Use these token names. Do NOT use raw values that are defined here.\n`;
+        injectedDocs += `════════════════════════════════════════════════════════════════════════════════\n\n`;
+        injectedDocs += tokensContent;
+        console.log(`📄 [DocGen] Injected ui-tokens.md (${tokensContent.length} chars) for ${taskId}`);
+      }
+    } catch {
+      // File doesn't exist yet, skip
     }
-  } catch {
-    // File doesn't exist yet, skip
   }
   
-  // Load ui-assets.md only for ui-spec
-  if (taskId === 'ui-spec') {
+  // ✅ Load COMPLETE ui-assets.md for ui-spec-*
+  if (isUiSpecTask) {
     try {
       const assetsPath = path.join(designOutputDir, 'ui-assets.md');
       const assetsContent = await fileSystem.readFile(assetsPath);
       if (assetsContent && !assetsContent.includes('ant:template')) {
         injectedDocs += `\n\n════════════════════════════════════════════════════════════════════════════════\n`;
-        injectedDocs += `# REFERENCE: ui-assets.md (generated in previous task)\n`;
+        injectedDocs += `# REFERENCE: ui-assets.md (ALL chapters completed)\n`;
         injectedDocs += `> Reference these asset identifiers when documenting components.\n`;
         injectedDocs += `════════════════════════════════════════════════════════════════════════════════\n\n`;
         injectedDocs += assetsContent;
@@ -298,6 +309,8 @@ async function loadPreviousUiDocs(
  * Loads: design/phases/execute/base-ui-design.md
  * - Includes rules-ui-design.md via partial
  * - Has task-specific instructions via Handlebars conditionals
+ * 
+ * ✅ NEW: Tracks lastSectionNumber for chapter-based append (same as System Design)
  */
 export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promise<string> {
   const promptPort = state.deps?.promptEngine;
@@ -306,10 +319,63 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
     throw new Error('[DocGen] PromptEngine is required but not available in state.deps');
   }
   
-  // Load from template with task context for Handlebars conditionals
+  // ✅ NEW: Load lastSectionNumber for chapter-based append (same as System Design)
+  let lastSectionNumber = 0;
+  const taskId = state.currentTask?.id || '';
+  const targetFile = state.currentTask?.targetFile;
+  
+  // Determine target file from task ID if not explicitly set
+  const actualTargetFile = targetFile || 
+    (taskId.startsWith('ui-tokens') ? 'ui-tokens.md' :
+     taskId.startsWith('ui-assets') ? 'ui-assets.md' :
+     taskId.startsWith('ui-spec') ? 'ui-spec.md' : 'ui-spec.md');
+  
+  // ✅ Check if file exists and extract last section number
+  if (state.deps?.fileSystem && state.context.featurePath) {
+    try {
+      const path = await import('path');
+      const workspaceRoot = state.deps.fileSystem.getWorkspaceRoot?.() || '';
+      const featureDirRel = workspaceRoot
+        ? path.relative(workspaceRoot, state.context.featurePath)
+        : state.context.featurePath.replace(/^\//, '');
+      
+      const filePath = path.join(featureDirRel, 'outputs/design', actualTargetFile);
+      const fileExists = await state.deps.fileSystem.fileExists(filePath);
+      
+      if (fileExists) {
+        const fullContent = await state.deps.fileSystem.readFile(filePath) || '';
+        if (fullContent) {
+          // Try to find LAST_SECTION metadata first
+          const lastLine = fullContent.trim().split('\n').pop() || '';
+          const metadataMatch = lastLine.match(/<!-- LAST_SECTION: (\d+) -->/);
+          
+          if (metadataMatch) {
+            lastSectionNumber = parseInt(metadataMatch[1]);
+            console.log(`📄 [DocGen UI] Found last section in ${actualTargetFile}: ${lastSectionNumber} (from metadata)`);
+          } else {
+            // Fallback: scan for section headers (## N.)
+            const sectionMatches = fullContent.match(/^## (\d+)\./gm);
+            if (sectionMatches) {
+              const numbers = sectionMatches.map((m: string) => parseInt(m.match(/\d+/)?.[0] || '0'));
+              lastSectionNumber = Math.max(...numbers);
+              console.log(`📄 [DocGen UI] Found last section in ${actualTargetFile}: ${lastSectionNumber} (from scanning)`);
+            }
+          }
+        }
+      } else {
+        console.log(`📄 [DocGen UI] ${actualTargetFile} does not exist yet (first chapter)`);
+      }
+    } catch (error) {
+      console.error(`[DocGen UI] Error reading ${actualTargetFile}:`, error);
+    }
+  }
+  
+  // Load from template with task context + lastSectionNumber for Handlebars conditionals
   const template = await (promptPort as any).deps?.promptPort?.render('design/phases/execute/base-ui-design', {
     taskId: state.currentTask?.id,
     taskName: state.currentTask?.name,
+    lastSectionNumber,  // ✅ NEW: Pass lastSectionNumber like System Design
+    targetFile: actualTargetFile,  // ✅ NEW: Pass actual target file
   });
   
   if (!template) {

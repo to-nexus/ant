@@ -258,91 +258,156 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
   // Starting fresh - decompose into tasks
   console.log('🆕 Starting new design task - decomposing...\n');
   
-  // ✅ NEW: UI Design mode - create predefined tasks without LLM call
+  // ✅ NEW: UI Design mode - LLM-driven task decomposition (like System Design)
   if (state.designWorkType === 'ui-design') {
-    console.log('🎨 UI Design mode - creating UI doc generation tasks\n');
+    console.log('🎨 UI Design mode - analyzing UI complexity for task decomposition\n');
     
-    const taskQueue = new TaskQueue<DesignTask>();
+    // Prepare UI context for LLM analysis
+    const uiContextParts = [
+      state.prd ? `PRD:\n${state.prd}` : null,
+      state.directive ? `DIRECTIVE:\n${state.directive}` : null,
+    ].filter(Boolean);
     
-    // ✅ Task order: ui-tokens → ui-assets → ui-spec (lower priority = earlier execution)
-    // Each subsequent task MUST reference previously generated documents
+    const uiContext = uiContextParts.length > 0 ? uiContextParts.join('\n\n---\n\n') : '';
     
-    // Task 1: Generate ui-tokens.md (FIRST - foundation for other documents)
-    taskQueue.push({
-      id: 'ui-tokens',
-      name: 'Generate Design Tokens',
-      type: 'feature',
-      priority: 100,  // ✅ Lowest = First
-      description: 'Analyze reference screenshots to extract design tokens (colors, typography, spacing). Output: ui-tokens.md',
-      completed: false,
-      ui: true,
-      targetFile: 'ui-tokens.md',
-    } as DesignTask);
+    // ✅ Use FilePromptAdapter for ui-design decompose template
+    const FilePromptAdapter = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
+    const promptAdapter = new FilePromptAdapter.FilePromptAdapter();
     
-    // Task 2: Generate ui-assets.md (SECOND - references tokens)
-    if (state.uiAssetsList) {
-      taskQueue.push({
-        id: 'ui-assets',
-        name: 'Generate Asset Mapping',
-        type: 'feature',
-        priority: 200,  // ✅ Middle = Second
-        description: 'Create asset mapping document. MUST read ui-tokens.md first to reference token names. Output: ui-assets.md',
-        completed: false,
-        ui: true,
-        targetFile: 'ui-assets.md',
-        dependencies: ['ui-tokens'],  // ✅ Explicit dependency
-      } as DesignTask);
-    }
-    
-    // Task 3: Generate ui-spec.md (LAST - references both previous documents)
-    taskQueue.push({
-      id: 'ui-spec',
-      name: 'Generate UI Specification',
-      type: 'feature',
-      priority: 300,  // ✅ Highest = Last
-      description: 'Document UI specifications. MUST read ui-tokens.md and ui-assets.md first to reference tokens and assets. Output: ui-spec.md',
-      completed: false,
-      ui: true,
-      targetFile: 'ui-spec.md',
-      dependencies: ['ui-tokens', 'ui-assets'],  // ✅ Explicit dependencies
-    } as DesignTask);
-    
-    console.log(`✅ Created ${taskQueue.size()} UI doc generation tasks:`);
-    taskQueue.getAll().forEach((t, i) => {
-      console.log(`   ${i + 1}. ${t.name} (priority: ${t.priority})`);
+    const uiDecomposePrompt = await promptAdapter.render('design/phases/decompose/ui-design', {
+      uiContext,
+      screenCount: state.uiReferences?.screens?.length || 0,
+      componentCount: state.uiReferences?.components?.length || 0,
+      assetCount: (state.uiAssetsList?.logos?.length || 0) + 
+                  (state.uiAssetsList?.icons?.length || 0) + 
+                  (state.uiAssetsList?.backgrounds?.length || 0),
     });
-    console.log();
     
-    // ✅ Mark estimating phase complete (UI docs use predefined tasks, so estimating is instant)
-    const finalJobTiming = JobTimingManager.finalizeEstimatingPhase(newJobTiming, newJobTiming.startedAt);
-    
-    const uiDocsState: DesignGraphState = {
-      ...state,
-      taskQueue,
-      completedTasks: [],
-      completedTasksDetails: preloadedCompletedTasks,
-      _httpJobId: state._httpJobId,
-      jobId: newJobId,
-      jobTiming: finalJobTiming,
-    };
-    
-    // Update Kanban
-    if (state._httpJobId && state.deps?.kanbanUpdate) {
-      state.deps.kanbanUpdate.updateTaskQueue(
-        state._httpJobId,
-        null,
-        taskQueue.getAll(),
-        preloadedCompletedTasks
+    try {
+      console.log('🤖 Analyzing UI requirements...\n');
+      
+      // ✅ Show placeholder before LLM call
+      const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
+      const chatAPI = getChatAPIClient();
+      await chatAPI.showChatStatus('placeholder');
+      
+      // ✅ NEW: Use design decompose-specific model if configured
+      let llmToUse = llm;
+      if (state.workspaceConfig) {
+        const { createLLMClient } = await import('../../../../../../periphery/adapters/llm/LLMClientFactory');
+        llmToUse = createLLMClient(
+          'architect',
+          undefined,
+          { jobType: 'design', nodeType: 'decompose' },
+          state.workspaceConfig
+        );
+      }
+      
+      // Call LLM for UI task decomposition
+      // ✅ IMPORTANT: Use invoke (not generateObject) to get token usage
+      const result = await llmToUse.invokeWithUsage?.(
+        [{ role: 'user', content: uiDecomposePrompt }],
+        { temperature: 0.2, maxTokens: 8000 }
       );
-      console.log(`✅ Kanban updated with ${taskQueue.size()} UI doc tasks\n`);
+      const textResponse = result?.content || await llmToUse.invoke([{ role: 'user', content: uiDecomposePrompt }]);
+      
+      // ✅ Track token usage
+      if (result?.usage) {
+        const { accumulateTokenUsage } = await import('../../../common/llmHelpers');
+        accumulateTokenUsage(state as any, result.usage, { taskLevel: false, jobLevel: true });
+        console.log(`   Tokens: ${result.usage.totalTokens} total (${result.usage.inputTokens} in, ${result.usage.outputTokens} out)`);
+      } else {
+        console.log(`   ⚠️  Token usage not available (invokeWithUsage not supported by client)`);
+      }
+      
+      // Parse JSON (support raw JSON, ```json fenced, or embedded object)
+      const trimmed = (textResponse || '').trim();
+      let parsedResponse: any | undefined;
+      try {
+        parsedResponse = JSON.parse(trimmed);
+      } catch {
+        const fenced = trimmed.match(/```json\s*([\s\S]*?)\s*```/);
+        const candidate = fenced?.[1] || trimmed.match(/\{[\s\S]*"tasks"[\s\S]*\}/)?.[0];
+        if (!candidate) {
+          throw new Error('Could not parse UI task breakdown from LLM response');
+        }
+        parsedResponse = JSON.parse(candidate);
+      }
+      
+      // Validate response format
+      const response: {
+        strategy: 'simple' | 'chapter-based';
+        targetFiles: string[];
+        tasks: Array<{
+          id: string;
+          name: string;
+          targetFile: string;
+          description: string;
+          priority: number;
+        }>;
+      } = parsedResponse;
+      
+      if (!response.strategy || !response.targetFiles || !response.tasks) {
+        throw new Error('Invalid UI task breakdown format from LLM');
+      }
+      
+      const taskQueue = new TaskQueue<DesignTask>();
+      
+      response.tasks.forEach((task) => {
+        taskQueue.push({
+          id: task.id,
+          name: task.name,
+          type: 'feature',
+          priority: task.priority,
+          description: task.description,
+          completed: false,
+          ui: true,
+          targetFile: task.targetFile,
+        } as DesignTask);
+      });
+      
+      console.log(`✅ LLM decomposed UI work into ${taskQueue.size()} tasks (${response.strategy} strategy):`);
+      taskQueue.getAll().forEach((t, i) => {
+        console.log(`   ${i + 1}. ${t.name} → ${t.targetFile} (priority: ${t.priority})`);
+      });
+      console.log();
+      
+      // Mark estimating phase complete
+      const finalJobTiming = JobTimingManager.finalizeEstimatingPhase(newJobTiming, newJobTiming.startedAt);
+      
+      const uiDocsState: DesignGraphState = {
+        ...state,
+        taskQueue,
+        completedTasks: [],
+        completedTasksDetails: preloadedCompletedTasks,
+        _httpJobId: state._httpJobId,
+        jobId: newJobId,
+        jobTiming: finalJobTiming,
+      };
+      
+      // Update Kanban
+      if (state._httpJobId && state.deps?.kanbanUpdate) {
+        state.deps.kanbanUpdate.updateTaskQueue(
+          state._httpJobId,
+          null,
+          taskQueue.getAll(),
+          preloadedCompletedTasks
+        );
+        console.log(`✅ Kanban updated with ${taskQueue.size()} UI doc tasks\n`);
+      }
+      
+      // Workflow exit
+      if (state.deps?.workflowUpdate && state._httpJobId) {
+        state.deps.workflowUpdate.exitNode(state._httpJobId, 'decompose');
+      }
+      
+      return uiDocsState;
+      
+    } catch (error: any) {
+      const errorDetails = extractErrorDetails(error);
+      logErrorHeader('decompose', errorDetails);
+      throw error;
     }
-    
-    // ✅ Workflow exit
-    if (state.deps?.workflowUpdate && state._httpJobId) {
-      state.deps.workflowUpdate.exitNode(state._httpJobId, 'decompose');
-    }
-    
-    return uiDocsState;
   }
   
   // Prepare spec

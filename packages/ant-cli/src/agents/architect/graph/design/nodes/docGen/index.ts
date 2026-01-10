@@ -105,11 +105,15 @@ export async function docGen(
   
   try {
     // ✅ Stream with XML parsing + tool calling support
-    // ✅ CRITICAL: Disable thinking after tool calls (Anthropic API requirement)
+    // ✅ CRITICAL: Thinking control pattern (same as Code Job)
+    // - First call (no conversation history): thinking=true (LLM needs to plan)
+    // - After tool call (conversation history exists): thinking=false (Anthropic API requirement)
+    // Context: Anthropic requires thinking blocks only on FIRST assistant message in a conversation turn.
+    // After tool_use, the next assistant message should NOT have thinking (API rejects it).
     for await (const event of llmClient.stream(messages, {
       tools: tools.length > 0 ? tools : undefined,
       maxTokens,
-      enableThinking: !isAfterToolCall,  // ✅ Disable after tool calls (Code job pattern)
+      enableThinking: !isAfterToolCall,  // ✅ Disable thinking after tool calls (Anthropic API requirement)
     })) {
       // ✅ Pass to orchestrator for XML parsing (<file>, <append>, <edit>)
       await orchestrator.processEvent(event);
@@ -162,7 +166,7 @@ export async function docGen(
     console.log(`\n✅ [DocGen] XML streaming complete (${files.length} files generated, ${pendingToolCalls.length} tool calls pending)`);
     
     // ✅ Build conversation history for resume
-    const conversationHistory = buildConversationHistory(state, messages, textResponse, hasToolCalls);
+    const conversationHistory = buildConversationHistory(state, messages, thinking, textResponse, hasToolCalls);
     
     console.log(`📝 [DocGen] Conversation history updated (${conversationHistory.length} messages)`);
     
@@ -250,8 +254,9 @@ async function scanExistingFiles(state: DesignGraphState, isUiDesign: boolean): 
  * Calculate maxTokens based on task line budget
  */
 function calculateMaxTokens(state: DesignGraphState): number {
+  // ✅ Use 16K like Code Job (works even with Sonnet 8K - provider handles capping)
   let maxTokens = 16000;
-  
+
   if (state.currentTask?.description) {
     const lineMatch = state.currentTask.description.match(/MAX (\d+) lines/i);
     if (lineMatch) {
@@ -259,24 +264,32 @@ function calculateMaxTokens(state: DesignGraphState): number {
       // Estimate: ~12 tokens per line (average for Markdown with formatting)
       // Add 3000 tokens buffer for XML tags, metadata, and thinking
       const estimatedTokens = maxLines * 12 + 3000;
-      
+
       // ✅ Smart minimum based on complexity
-      const minTokens = maxLines <= 150 ? 16000 : 20000;
+      const minTokens = maxLines <= 150 ? 12000 : 16000;
       maxTokens = Math.max(minTokens, estimatedTokens);
-      
+
       console.log(`📏 [DocGen] Task line budget: ${maxLines} lines → maxTokens: ${maxTokens} (min: ${minTokens})`);
     }
   }
-  
+
   return maxTokens;
 }
 
 /**
  * Build conversation history for resume
+ * 
+ * ✅ CRITICAL: When thinking is enabled, MUST include thinking blocks in conversation history
+ * Reference: https://docs.claude.com/en/docs/build-with-claude/extended-thinking
+ * 
+ * "When thinking is enabled, a final assistant message must start with a thinking block
+ * (preceeding the lastmost set of tool_use and tool_result blocks).
+ * We recommend you include thinking blocks from previous turns."
  */
 function buildConversationHistory(
   state: DesignGraphState,
   messages: Array<{ role: 'user' | 'assistant'; content: any }>,
+  thinkingContent: string,
   textResponse: string,
   hasToolCalls: boolean
 ): Array<{ role: 'user' | 'assistant'; content: string | any[] }> {
@@ -296,12 +309,32 @@ function buildConversationHistory(
     }
   }
   
-  // ✅ Add assistant's response (text only, NOT tool calls)
-  // CRITICAL: Follow Code job pattern - tool_use is added by tool.ts, not here!
+  // ✅ Add assistant's response with thinking block (if present)
+  // CRITICAL: When thinking is enabled, assistant message MUST start with thinking block
   if (!hasToolCalls) {
+    const assistantContent: any[] = [];
+    
+    // ✅ Add thinking block first (if present)
+    if (thinkingContent) {
+      assistantContent.push({
+        type: 'thinking',
+        thinking: thinkingContent
+      });
+    }
+    
+    // ✅ Add text response
+    if (textResponse) {
+      assistantContent.push({
+        type: 'text',
+        text: textResponse
+      });
+    }
+    
     conversationHistory.push({
       role: 'assistant',
-      content: textResponse
+      content: assistantContent.length === 1 && assistantContent[0].type === 'text'
+        ? textResponse  // Simple text-only response (no thinking)
+        : assistantContent  // Array with thinking + text
     });
   }
   // NOTE: When hasToolCalls=true, don't add to history here.

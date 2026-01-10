@@ -1,404 +1,377 @@
 ## ui-spec.md Generation Guide
 
 ### Purpose
-Create a specification document that defines **what** to build, not **how** to build it.
-
-### Core Principles
-
-#### 1. Specification, Not Implementation
-
-**What this means**:
-- Document **visual and behavioral requirements** only
-- Describe **WHAT** the interface should look like and do
-- Do NOT prescribe **HOW** to implement it
-
-**Forbidden**:
-- ❌ Framework names (React, Vue, Next.js, Tailwind)
-- ❌ File structures (`app/layout.tsx`, `components/Button.tsx`)
-- ❌ Code syntax (`<div className="...">`, `const Component = ...`)
-- ❌ Build tool configs (webpack, vite, tailwind.config.js)
-- ❌ Package dependencies (@radix-ui, framer-motion)
-
-**Allowed**:
-- ✅ Semantic HTML tags (`<header>`, `<nav>`, `<section>`)
-- ✅ Visual descriptions ("Fixed header with shadow on scroll")
-- ✅ Behavioral requirements ("Smooth scroll to section on menu click")
-- ✅ Pattern names ("Card grid", "Modal overlay", "Sticky navigation")
-
-**Test**: Can a developer using vanilla JS, React, Vue, or Angular ALL implement this spec without confusion? If NO, remove implementation details.
-
-#### 2. Token and Asset Reference Requirement
-Look for these sections elsewhere in this prompt:
-
-- `# REFERENCE: ui-tokens.md` - contains all design tokens (colors, typography, spacing)
-- `# REFERENCE: ui-assets.md` - contains asset mappings (logos, icons, backgrounds)
-
-When writing ui-spec:
-- Reference tokens by their semantic names (e.g., `token(color.text.primary)`)
-- Reference assets by their identifiers from the mapping
-- NEVER use raw values (hex codes, pixel values) that are already defined in tokens
-
-### Document Structure
-
-#### Screen Specifications
-For each screen, document:
-- **Layout structure** (grid system, content areas, hierarchy)
-- **Component placement** (relative positions, alignment rules)
-- **Responsive behavior** (breakpoint changes, adaptation rules)
-
-##### Layout Structure Analysis
-
-**Identify Visual Layers:**
-
-Examine whether the section has content at different visual depths. Ask:
-- Are there distinct horizontal bands of content?
-- Does content flow sequentially (header, then image, then grid)?
-- Are some elements clearly "on top of" or "behind" others?
-
-If yes, document each layer separately with its purpose and relationship to other layers.
-
-**Distinguish Image Roles:**
-
-Images serve two fundamentally different purposes. Determine which applies:
-
-**Background Images:**
-- Decorative purpose
-- Sit behind other content
-- Provide atmosphere or context
-- Typically have overlays for text contrast
-
-**Content Images:**
-- Primary visual information
-- Part of the content flow (users scroll through them)
-- Positioned between other content blocks
-- Not obscured by other elements
-
-**Document image role explicitly:** Specify whether an image is "background" (decorative layer) or "content" (information layer).
-
-**Critical Distinction - Background vs Content Images:**
-
-⚠️ **Common Mistake:** Assuming files named "bg-*" are always backgrounds. Always verify with visual reference.
-
-**Background Images (Decorative Layer):**
-- Cover entire section as backdrop, often with overlay applied
-- Don't occupy space in document flow
-- Removing them only affects visual atmosphere, not layout structure
-- Specified by describing background treatment and overlay properties
-
-**Content Images (Information Layer):**
-- Have explicit dimensions and occupy space in layout flow
-- Positioned between other content blocks in sequence
-- Create visible gap or break in content flow if removed
-- Often centered or aligned as distinct visual block
-- Specified by describing size, position, and spacing relationships
-
-**Detection Questions:**
-1. Is this image sandwiched between text and other elements? → Likely content
-2. Does it have a defined position in content sequence? → Likely content
-3. Is it a full-section backdrop with text overlaid? → Likely background
-4. Do other elements flow after it in vertical layout? → Likely content
-5. Does the design show it as a distinct block with margins? → Likely content
-
-**Example Scenario:**
-If a section has header text at top, then a large prominent image, then other content below, the image is CONTENT (not background) because it occupies space in the vertical flow and creates structural separation between elements.
-
-**When in doubt, examine the reference image carefully for layout flow.**
-
-#### Component Specifications
-For each component, document:
-- **Visual properties** (using token references, not raw values)
-- **States** (default, hover, active, disabled, focus)
-- **Props/Variants** (what configuration options exist)
-- **Constraints** (min/max sizes, content limits)
-
-##### Section Header Layout Analysis
-
-When documenting section headers (title, description, and other elements), analyze their spatial relationships:
-
-**Examine Horizontal Arrangement:**
-
-Ask these questions about the header elements:
-1. Are elements positioned at the same vertical level (side-by-side) or stacked vertically?
-2. If side-by-side: How is horizontal space distributed? Equal widths? Proportional?
-3. What is the alignment strategy? All centered? Left-aligned? Mixed alignment?
-4. Are there visible gaps or separations between elements?
-
-**Examine Vertical Arrangement:**
-
-1. If stacked: What is the vertical spacing between elements?
-2. Are all elements center-aligned, or do some align left/right?
-3. Is there a clear visual hierarchy through size/weight differences?
-
-**Document What You Observe:**
-
-Describe the actual spatial layout:
-- Element positioning (vertical stack, horizontal arrangement, or grid)
-- Alignment for each element (center, left, right, or justified)
-- Spacing relationships between elements
-- Container structure (full-width, constrained max-width, flex, grid)
-
-**Don't assume patterns:** Document the observed layout structure rather than fitting it into predefined categories. A header might have title centered with description in 2 columns below it, or 3 elements arranged horizontally, or any other configuration the design requires.
-
-⚠️ **Common Mistake:** Defaulting to centered vertical stack when reference shows horizontal distribution or asymmetric alignment.
-
-##### Layout Direction Analysis
-
-**CRITICAL PRINCIPLE: Observation precedes inference**
-
-For any section containing multiple items (cards, panels, blocks, etc.), the PRIMARY axis of arrangement must be determined through direct visual analysis, not deduced from item count or semantic assumptions.
-
-────────────────────────────────────────────────────────────────────────────────
-## 🚨 MANDATORY: PRIMARY AXIS DETERMINATION
-────────────────────────────────────────────────────────────────────────────────
-
-**Analysis Protocol:**
-
-1. **Measure relative spacing between adjacent items**
-   - Compare distance along vertical axis vs horizontal axis
-   - The axis with SMALLER spacing indicates primary flow direction
-   - If vertical gap < horizontal gap: Items flow horizontally (multi-column)
-   - If horizontal gap < vertical gap: Items flow vertically (single or alternating)
-
-2. **Identify alignment pattern**
-   - Horizontal flow: Count items sharing same vertical position (= columns)
-   - Vertical flow: Detect alignment variation (centered, uniform edge, alternating)
-   - Mixed: Document each row/group independently
-
-3. **Verify consistency across breakpoints**
-   - Check if direction changes at different viewport widths
-   - Note any responsive transformation of primary axis
-
-**Documentation Requirement:**
-
-Every multi-item section specification MUST include:
-
-```
-Primary Flow: [Horizontal | Vertical | Mixed]
-  → If Horizontal: Column count [N], wrapping behavior
-  → If Vertical: Alignment pattern [centered | edge-aligned | alternating]
-  → Responsive: [Direction changes at breakpoints? Describe]
-```
-
-**Forbidden Inference Patterns:**
-
-```
-❌ Count-based assumption: "N items → N-column layout"
-   Rationale: Item count does not determine spatial arrangement
-
-❌ Semantic assumption: "Cards → Must be grid"
-   Rationale: Visual components can arrange in any axis
-
-❌ Default pattern: "Assume horizontal unless stated otherwise"
-   Rationale: No layout should be assumed without visual evidence
-```
-
-**Validation Check:**
-
-Before finalizing any layout specification, answer:
-> "Did I observe the spacing in the reference image to determine this direction, or did I infer it from item count/type?"
-
-If inferred, re-examine visual reference.
-
-────────────────────────────────────────────────────────────────────────────────
-
-##### Grid Layout Documentation
-
-**Analyze the design intent:**
-
-Examine whether items are laid out with consistent columns across rows, or if different rows have intentionally different structures.
-
-**Indicators of uniform grids:**
-- Items wrap naturally to fill available space
-- No visual centering or alignment that suggests intentional asymmetry
-- Equal-width columns throughout
-
-**Indicators of non-uniform grids:**
-- Items in a row are visually centered with empty space on sides
-- Design shows clear grouping of rows with different column counts
-- Figma/reference shows separate containers for different rows
-- **Total item count doesn't divide evenly by expected column count**
-- **Last row has fewer items with more spacing** (visual centering)
-
-**Critical Check for Asymmetry:**
-
-When total items don't divide evenly by the apparent column count:
-1. Examine reference image: Are items in last row visually centered?
-2. Is there noticeable spacing difference in incomplete row?
-3. Does design show intentional grouping of rows?
-
-⚠️ **Common Mistake:** Forcing a uniform grid when the design shows intentional asymmetric centering. Look for visual cues that indicate the incomplete row should be centered rather than left-aligned.
-
-**Document grid behavior based on intent:**
-
-If uniform: Specify column count and describe natural wrapping behavior.
-If non-uniform: Explicitly document each row's structure and centering behavior.
-If mixed: Document each section's layout separately.
-
-**Default to simplicity:**
-When intent is unclear, document as uniform grid with auto-wrap. Non-uniform grids should only be specified when the design clearly demonstrates intentional asymmetric arrangement.
-
-#### Interaction Specifications
-For each interaction, document:
-- **Trigger** (what initiates the interaction)
-- **Behavior** (what happens)
-- **Feedback** (visual/audio response)
-- **Constraints** (timing, conditions)
-
-### What to INCLUDE
-
-| Category | Include |
-|----------|---------|
-| Layout | Grid structure, content areas, spacing rhythm |
-| Visual | Token references, state descriptions |
-| Behavior | Interactions, transitions, animations |
-| Responsive | Breakpoint definitions, adaptation rules |
-| Constraints | Size limits, content boundaries |
-
-### What to EXCLUDE
-
-────────────────────────────────────────────────────────────────────────────────
-## 🚫 STRICTLY FORBIDDEN: Implementation Details
-────────────────────────────────────────────────────────────────────────────────
-
-**CRITICAL**: ui-spec.md is a SPECIFICATION document, NOT an implementation guide.
-
-**Forbidden Content** (will cause Code Job confusion):
-
-| Category | Examples | Why Forbidden | Correct Approach |
-|----------|----------|---------------|------------------|
-| **Framework/Library Names** | "Next.js", "React", "Vue", "Tailwind" | Locks spec to specific tech | Use platform-agnostic terms |
-| **File Structure** | `app/layout.tsx`, `components/Button.tsx` | Implementation decision | Describe component hierarchy conceptually |
-| **Code Syntax** | `<div className="...">`, `const Button = ...` | Implementation detail | Describe visual outcome |
-| **Framework APIs** | "Next.js App Router", "React hooks", "Vue composables" | Tech-specific | Describe behavior requirements |
-| **Build Tools** | "Webpack", "Vite", "esbuild" config | Infrastructure concern | Out of scope |
-| **Package Names** | `tailwindcss`, `@radix-ui/react-dialog` | Dependency decision | Describe UI pattern needed |
-| **CSS Framework Classes** | `className="flex items-center"` | Implementation choice | Describe layout intent with tokens |
-| **Raw Values in Spec** | `#FFFFFF`, `24px`, `rgba(...)` | Violates token-first | Use `token(*)` references |
-
-**Violation Examples** (from actual ui-spec.md):
+Define **what** to build (visual & behavioral requirements), not **how** to implement it.
+
+### PRD Integration
+**When to reference PRD (CRITICAL)**:
+- **Content text**: Extract actual text content for headings, CTAs, descriptions (e.g., "Open Ownership / Open World" from PRD)
+- **Feature requirements**: Understand what each component/section should accomplish
+- **Interaction requirements**: Identify expected user actions, validation rules, data fields
+- **Section purpose**: Clarify the intent behind visual elements (e.g., "Token Section explains utility" from PRD)
+- **Missing visual details**: Use PRD to infer structure when screenshots lack specific states (error, loading, empty)
+
+**Principles**:
+- **Visual + PRD = Complete Spec**: Screenshots show HOW it looks, PRD shows WHAT it does and WHY
+- **PRD for content, screenshots for styling**: Use PRD text verbatim, apply visual styles from screenshots
+- **Resolve ambiguity with PRD**: When layout is unclear, defer to PRD's described user journey or feature priority
+- **Platform-neutral guidance**: If PRD mentions "mobile app", specify responsive behavior, not platform code
+
+**Example Integration**:
+- Screenshot shows: Blue button, rounded corners, white text
+- PRD says: "Learn More button navigates to documentation"
+- ui-spec.md writes: "Button with `token(color.primary.blue)` background, `token(radius.md)` corners, white text. Label: 'Learn More'. Action: Navigate to documentation."
+
+---
+
+## 🚨 MANDATORY OUTPUT STRUCTURE
+
+**CRITICAL**: Your ui-spec.md MUST contain ONLY these sections (in this exact order):
 
 ```markdown
-❌ WRONG: "Server-side rendering with Next.js App Router"
-✅ CORRECT: "Single-page application with smooth scroll navigation"
+# ui-spec.md
 
+> Complete UI specification for [Project Name]
+
+## Overview
+[Document purpose, key principles, scope]
+
+## Layout Structure
+[Page hierarchy, sections, spacing system, breakpoints]
+
+## Component Specifications
+[For each component: Structure, Specifications (visual properties, states), Interactions]
+
+## Responsive Behavior
+[Breakpoint transformations, mobile-first vs desktop-first]
+
+## Accessibility Requirements
+[Semantic structure, ARIA, keyboard navigation, focus management]
+
+---
+END OF DOCUMENT
+```
+
+**ANY OTHER SECTION IS FORBIDDEN AND WILL CAUSE THE TASK TO FAIL.**
+
+### Specifically PROHIBITED Sections
+
+These sections are **ABSOLUTELY FORBIDDEN**:
+- ❌ "Implementation Notes" / "Technical Implementation Notes"
+- ❌ "Testing Checklist" / "QA Guidelines" / "Performance Testing"
+- ❌ "Browser Support" (unless directly related to accessibility requirements)
+- ❌ "Tech Stack" / "Technology Stack"
+- ❌ "File Structure" / "Project Structure"
+- ❌ "Build Configuration"
+- ❌ "State Management" / "Third-Party Libraries"
+- ❌ Any section containing framework names, code blocks, or file paths
+
+**If you find yourself about to write "## Implementation" or "## Testing" → STOP. DELETE IT. You are violating the specification mandate.**
+
+---
+
+## Core Principles
+
+### 1. Describe What You SEE
+
+**Critical Rule**:
+> "If you didn't see it in the reference image, don't write it."
+
+**Process**:
+1. Look at the reference image
+2. Describe EXACTLY what you observe
+3. Don't "improve", "standardize", or "assume" the design
+
+**Examples**:
+- ❌ "Footer with centered logo" (assumption about "typical" footer)
+- ✅ "Footer with copyright at left, logo below at left, button at right" (what you actually see)
+- ❌ "Hero section with background" (generic)
+- ✅ "Hero section with full-coverage background image, dark overlay, centered white text" (specific observation)
+
+**Why This Matters**:
+Designers make intentional choices. Your job is to capture those choices, not optimize them.
+
+---
+
+### 2. Specification, Not Implementation
+
+⚠️ **CRITICAL MANDATE**
+
+ui-spec.md MUST contain ONLY visual and behavioral specifications.
+
+**You are ABSOLUTELY FORBIDDEN from including**:
+- ❌ Implementation guidance → **TASK FAILURE**
+- ❌ Testing checklists → **TASK FAILURE**
+- ❌ Code examples → **TASK FAILURE**
+- ❌ Framework names → **TASK FAILURE**
+- ❌ File paths → **TASK FAILURE**
+- ❌ Build configurations → **TASK FAILURE**
+
+**What This Means**:
+- Document visual and behavioral requirements
+- Describe WHAT the interface should do
+- Do NOT prescribe HOW to implement it
+
+**Forbidden**:
+- ❌ Framework names (React, Vue, Next.js, Tailwind, Angular)
+- ❌ File structures (`app/layout.tsx`, `components/Button.tsx`)
+- ❌ Code syntax (`className="..."`, `const Component = ...`, `module.exports`)
+- ❌ Build configs (webpack, tailwind.config.js, vite.config.js)
+- ❌ Package names (@radix-ui, framer-motion, zustand)
+- ❌ CSS framework classes (Tailwind utilities, Bootstrap classes)
+
+**Allowed**:
+- ✅ Semantic HTML (`<header>`, `<nav>`, `<section>`)
+- ✅ Visual descriptions ("Fixed header with shadow on scroll")
+- ✅ Behavioral requirements ("Smooth scroll on menu click")
+- ✅ UI patterns ("Card grid", "Modal overlay")
+
+**Boundary Test**:
+> "Can this be implemented in React, Vue, Angular, vanilla JS, iOS, or Android without modification?"
+
+If NO → Remove tech-specific details.
+
+**ANY violation of these rules will result in TASK FAILURE.**
+
+---
+
+### 3. Specification vs Verification
+
+**Critical Distinction**:
+- **Specification** = What exists ("Button with accent color")
+- **Verification** = How to test it ("Click button, verify color is #00D9A3")
+
+**ui-spec.md is SPECIFICATION ONLY**
+
+**Forbidden**:
+- ❌ Testing checklists ("[ ] All links work")
+- ❌ Performance benchmarks ("LCP < 2.5s")
+- ❌ QA procedures ("Test on Chrome, Firefox, Safari")
+- ❌ Validation steps ("Verify responsive at 768px")
+
+**Why**: Testing belongs in separate QA/test plans.
+
+**If you see "## Testing" section in your output → DELETE IT**
+
+---
+
+### 4. Token-First
+
+**Rule**: If a value exists in `ui-tokens.md`, use `token(name)`.
+
+**Never write**:
+- ❌ `#00D9A3`, `rgba(0, 0, 0, 0.5)`
+- ❌ `32px`, `1.5rem`
+- ❌ `font-size: 16px`, `margin: 24px`
+
+**Always write**:
+- ✅ `token(color.accent.primary)`
+- ✅ `token(spacing.xl)`
+- ✅ `token(font.size.base)`
+
+**Why**: Tokens enable theme changes and maintain consistency.
+
+---
+
+### 5. Platform-Agnostic
+
+**Use interface-level terms**, not implementation terms.
+
+**Allowed**: Semantic HTML, UI patterns, behaviors
+**Forbidden**: Framework names, file paths, code syntax, CSS classes
+
+**Test**: Would a designer understand this without knowing React/Vue/Next.js?
+
+---
+
+## Layout Analysis
+
+### Primary Axis Determination
+
+For sections with multiple items, determine the PRIMARY flow direction:
+
+**Step 1: Measure Spacing**
+- Compare vertical gap vs horizontal gap between adjacent items
+- Smaller gap = primary flow direction
+
+**Step 2: Identify Pattern**
+- If vertical gap < horizontal gap → Horizontal flow (multi-column grid)
+- If horizontal gap < vertical gap → Vertical flow (single column or alternating)
+
+**Step 3: Document**
+```
+Primary Flow: [Horizontal | Vertical]
+Pattern: [N-column grid | Single column centered | Alternating left/right]
+```
+
+**Critical**:
+- ❌ Don't infer from item count ("3 cards = 3 columns")
+- ✅ Measure spacing in the actual image
+
+**Ask Yourself**: "Did I observe this spacing, or did I assume it?"
+
+---
+
+## Image Role Detection
+
+**Two Types**:
+
+**Background Images** (decorative):
+- Full-section coverage, behind content
+- Removing changes atmosphere, not structure
+- Specified via background properties
+
+**Content Images** (structural):
+- Between content blocks, occupy space
+- Removing collapses space and changes layout
+- Specified via size, position, spacing
+
+**Test**: Does removing this image collapse space? → Content image
+
+**Common Mistake**: Assuming `bg-*.png` files are always backgrounds. Check the visual layout.
+
+---
+
+## What to EXCLUDE
+
+### 🚫 Strictly Forbidden
+
+| Category | Examples | Why |
+|----------|----------|-----|
+| **Frameworks** | "Next.js", "Tailwind" | Locks spec to tech |
+| **File Structure** | `app/layout.tsx` | Implementation decision |
+| **Code** | `<div className="...">` | Implementation detail |
+| **Testing/QA** | "Testing Checklist", "LCP < 2.5s" | Verification ≠ Specification |
+| **Raw Values** | `#FFFFFF`, `24px` | Use tokens |
+
+**Examples of Violations**:
+
+```markdown
 ❌ WRONG:
-## Implementation Notes
-### Next.js App Router Structure
-app/
-├── layout.tsx
-├── page.tsx
-├── components/
-│   ├── sections/
-│   │   ├── Hero.tsx
+- "Server-side rendering with Next.js App Router"
+- ## Implementation Notes
+- ## Testing Checklist
+- tailwind.config.js code blocks
 
 ✅ CORRECT:
-## Component Organization
-Sections should be organized by:
-- Navigation components (header, menu)
-- Content sections (hero, about, ecosystem, token, technology, social)
-- Structural components (footer)
-- Reusable components (cards, buttons)
-
-❌ WRONG:
-```js
-module.exports = {
-  theme: { extend: { colors: { 'accent-primary': '#00D9A3' } } }
-}
+- "Single-page application with smooth scroll"
+- (No implementation or testing sections)
 ```
 
-✅ CORRECT: (No code in ui-spec.md. Tokens are in ui-tokens.md)
-```
+---
 
-**Acceptable Technical Terms** (interface-level only):
+## Quality Checklist
 
-✅ Generic HTML: `<header>`, `<nav>`, `<section>` (semantic structure)
-✅ Behavioral Terms: "Hover state", "Focus indicator", "Smooth scroll"
-✅ Pattern Names: "Fixed header", "Card grid", "Modal overlay"
-✅ Accessibility: "ARIA labels", "Keyboard navigation", "Screen reader support"
+Before finalizing, verify:
 
-**Boundary Rule**:
-> "If a developer using ANY framework (React, Vue, Svelte, Angular, vanilla JS) cannot implement the spec without framework-specific assumptions, the spec is TOO SPECIFIC."
+- [ ] **Zero framework names** (grep "react|vue|next|tailwind")
+- [ ] **Zero file paths** (grep "app/|components/.*tsx")
+- [ ] **Zero implementation code** (grep "className=|const.*=")
+- [ ] **Zero testing sections** (grep "## Testing|### Testing")
+- [ ] **All values use tokens** (no `#`, `px`, `rgba`)
+- [ ] **Describes observations** (not assumptions)
 
-────────────────────────────────────────────────────────────────────────────────
+---
 
-### Quality Criteria
+## 🔍 QUALITY VERIFICATION GUIDELINES
 
-**Before submitting ui-spec.md, verify**:
+**Purpose**: These are quality guidelines to help you generate a high-quality ui-spec.md. Apply them as you write the document.
 
-1. **Language/Platform Agnostic**: 
-   - ✅ Spec uses NO framework names (React, Vue, Next.js, Tailwind, etc.)
-   - ✅ Spec is implementable in ANY technology stack
-   - ❌ If spec mentions "Next.js App Router", "Tailwind config", ".tsx files" → REMOVE
+### Guideline 1: Target 5 Core Sections
 
-2. **Token-First**: 
-   - ✅ All visual values reference tokens from ui-tokens.md
-   - ❌ NO raw values (hex codes, pixel values, rgba)
+**Recommended structure**:
+1. Overview
+2. Layout Structure
+3. Component Specifications
+4. Responsive Behavior
+5. Accessibility Requirements
 
-3. **No Implementation Code**:
-   - ✅ NO code blocks with actual implementation (`const Component = ...`, `className="..."`)
-   - ✅ NO file structure diagrams (`app/layout.tsx`, `components/Button.tsx`)
-   - ✅ NO build tool configurations (tailwind.config.js, webpack.config.js)
-   - ❌ If "## Implementation Notes" section exists → DELETE ENTIRE SECTION
+**If you include additional sections**: Ensure they contain specification content, not implementation or testing details.
 
-4. **Complete but Concise**: 
-   - ✅ Cover all visual and behavioral requirements
-   - ❌ Do NOT include implementation suggestions or "helpful" code examples
+### Guideline 2: Avoid Implementation Details
 
-5. **Actionable**: 
-   - ✅ Developer can understand WHAT to build
-   - ❌ Developer should decide HOW to build (tech choices are theirs)
+**Check your document for these**:
+- Framework names: "Next.js", "React", "Vue", "Tailwind", "Angular"
+- File paths: `app/`, `components/`, `.tsx`, `.jsx`, `.css`
+- Code syntax: `className=`, `module.exports`, `import`, `const`
+- Section headers: "## Implementation", "## Testing", "## Technical"
 
-### Documentation Format Guidance
+**If found**: Remove or rewrite in platform-agnostic terms.
 
-**Organize by visual hierarchy:**
-- Start with the broadest container/section
-- Move inward to nested components
-- End with smallest details
+### Guideline 3: Use Token References
 
-**For each element, describe:**
-- Positioning (relative to parent or siblings)
-- Dimensions (using tokens)
-- Visual properties (using tokens)
-- States and variants (if applicable)
+**All visual values should use `token(...)` notation**:
+- Colors: `token(color.accent.primary)` not `#00D9A3`
+- Spacing: `token(spacing.xl)` not `32px`
+- Typography: `token(font.size.lg)` not `18px`
 
-**Use token references consistently:**
-- Colors: token(color.*)
-- Typography: token(font.*, line.height.*, letter.spacing.*)
-- Spacing: token(spacing.*)
-- Sizes: token(size.*)
-- Other: token(radius.*, shadow.*, transition.*)
+**If you use raw values**: Replace them with token references from ui-tokens.md.
 
-**Asset references:**
-- Reference assets by their identifier from ui-assets.md
-- Don't specify file paths directly
+### Guideline 4: Platform-Agnostic Language
 
-**Describe behavior, not code:**
-- "Fade in over 300ms" not "opacity: 0 → 1"
-- "Lift effect on hover" not "transform: translateY(-4px)"
-- "Grid with N columns" not "display: grid; grid-template-columns: repeat(N, 1fr)"
+**Write specifications that work for any platform**:
+- ✅ "Fixed header with shadow on scroll"
+- ❌ "Next.js layout with Tailwind sticky class"
 
-### Workflow
+**Test**: Could iOS, Android, React, Vue, and Angular developers all implement this without confusion?
 
-**Phase 1: Preparation**
-1. Review the `# REFERENCE: ui-tokens.md` section in this prompt
-2. Review the `# REFERENCE: ui-assets.md` section in this prompt
+---
 
-**Phase 2: Discovery**
-3. Use `list_reference_images` tool to discover available screenshots
+## 🚨 CRITICAL: FILE GENERATION IS MANDATORY
 
-**Phase 3: Analysis** (CRITICAL - Do NOT skip this phase)
-4. Use `read_reference_image` tool to load the main screen screenshot
-5. Analyze the loaded image for:
-   - Layout structure and visual hierarchy
-   - Component types and arrangements
-   - Color usage, typography, spacing patterns
-   - Interactive elements and states
+**You MUST generate ui-spec.md using `<file>` tag, regardless of the above guidelines.**
 
-**Phase 4: Documentation**
-6. Generate ui-spec.md based on your analysis
-   - Reference token names from ui-tokens.md
-   - Reference asset identifiers from ui-assets.md
-   - Document all discovered components and patterns
+**If you encounter limitations** (e.g., image fails to load, information incomplete):
+1. Generate the document with available information
+2. Document known limitations as comments if needed
+3. Use PRD and existing documents to infer missing details
+4. **Partial specification is better than no specification**
 
-⚠️ **CRITICAL**: After discovering images in Phase 2, you MUST proceed to Phase 3.
-Do NOT stop after listing images. You must load and analyze them using `read_reference_image` before generating the specification document.
+**The task is NOT complete until the file is generated.**
+
+**If guidelines are difficult to follow perfectly**: Generate the best document you can. These are quality targets, not absolute blockers.
+
+---
+
+## Workflow
+
+1. **Load References**: Use `list_reference_images` and `read_reference_image`
+2. **Analyze Visually**: Study layout, spacing, colors, typography
+3. **Consult Context**: Review `ui-tokens.md` and `ui-assets.md` in prompt
+4. **Document Observations**: Write WHAT you see, not what "should be"
+5. **Verify**: Run through quality checklist
+
+**Critical**: After discovering images, you MUST load and analyze them before writing the spec.
+
+---
+
+## Document Structure
+
+### Required Sections
+1. Layout structure (page hierarchy, spacing rhythm, breakpoints)
+2. Component specifications (visual properties, states, interactions)
+3. Responsive behavior (breakpoint transformations)
+4. Accessibility requirements (semantic structure, ARIA, keyboard nav)
+
+### Forbidden Sections
+- ❌ "Implementation Notes"
+- ❌ "Testing Checklist"
+- ❌ "Tech Stack"
+- ❌ "File Structure"
+
+---
+
+## Common Mistakes
+
+| Mistake | Why Wrong | Correct |
+|---------|-----------|---------|
+| "3 cards → 3-column grid" | Inference without observation | Measure spacing visually |
+| "Typical footer layout" | Assumption | Describe actual layout |
+| "Use Next.js" | Tech-specific | Platform-agnostic description |
+| "`bg-*.png` → background" | Filename assumption | Check visual role |
+| "Testing Checklist" | Verification ≠ Specification | Delete section |
+| Raw hex colors | Violates token-first | Use `token(color.*)` |
+
+---
+
+**Remember**: ui-spec.md captures design intent. Describe what you see, reference tokens, stay platform-agnostic, and separate specification from verification.
