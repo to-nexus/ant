@@ -222,14 +222,16 @@ Implement the feature. Source code only.
 **🎯 Purpose:** Verify the application builds and starts successfully.
 
 **Verification Steps:**
-1. Check if build succeeds
-2. Verify critical files exist
-3. Test if application starts without crashing
+1. Run build command and verify it succeeds
+2. Run application startup command and verify no runtime errors
+3. Fix any issues found during verification
 
 **Completion Criteria:**
-- ✅ Build succeeds (or no build needed)
+- ✅ Build succeeds
 - ✅ Application starts without runtime errors
-- ✅ Configuration templates provided if needed
+- ✅ All issues fixed
+
+**Actions:** Run build → Run startup → Fix errors if any → Output `<done>true</done>`
 
 ────────────────────────────────────────────────────────────────────────────────
 

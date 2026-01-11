@@ -46,6 +46,7 @@ export type ViolationType =
   | 'build_error'           // 빌드 에러
   | 'lint_error'            // Lint 에러
   | 'config_error'          // 설정 파일 에러
+  | 'config_incompatibility' // 프레임워크 설정 비호환 (e.g., Next.js Image Optimization + output:export)
   | 'environment_issue'     // 환경 설정 문제 (NODE_ENV, PATH 등)
   | 'no_files'              // 파일 생성 안 됨
   | 'file_operation_failed' // 파일 작업 실패 (edit search block not found 등)

@@ -10,10 +10,13 @@ import {
   Language,
   BuildTool,
   PackageManager,
+  Framework,
   ErrorPattern,
   ErrorContext,
   DiagnosisResult,
-  ProjectDetection
+  ProjectDetection,
+  CompatibilityIssue,
+  CompatibilityRule
 } from './types';
 
 // Import language-specific patterns
@@ -45,6 +48,9 @@ import { PYTEST_PATTERNS } from './testing/pytest';
 
 // Import linter patterns
 import { ESLINT_PATTERNS } from './linters/eslint';
+
+// Import framework-specific patterns and compatibility rules
+import { NEXTJS_PATTERNS, NEXTJS_COMPATIBILITY_RULES } from './frameworks/nextjs';
 
 /**
  * 언어별 패턴 맵
@@ -83,6 +89,40 @@ const PACKAGE_MANAGER_PATTERNS: Record<PackageManager, ErrorPattern[]> = {
   [PackageManager.MAVEN]: [],
   [PackageManager.CARGO]: CARGO_PM_PATTERNS,
   [PackageManager.UNKNOWN]: []
+};
+
+/**
+ * 프레임워크별 패턴 맵
+ */
+const FRAMEWORK_PATTERNS: Record<Framework, ErrorPattern[]> = {
+  [Framework.NEXTJS]: NEXTJS_PATTERNS,
+  [Framework.NUXT]: [],
+  [Framework.ANGULAR]: [],
+  [Framework.SVELTE]: [],
+  [Framework.DJANGO]: [],
+  [Framework.FLASK]: [],
+  [Framework.FASTAPI]: [],
+  [Framework.SPRING]: [],
+  [Framework.EXPRESS]: [],
+  [Framework.NESTJS]: [],
+  [Framework.NONE]: []
+};
+
+/**
+ * 프레임워크별 호환성 규칙
+ */
+const FRAMEWORK_COMPATIBILITY_RULES: Record<Framework, CompatibilityRule[]> = {
+  [Framework.NEXTJS]: NEXTJS_COMPATIBILITY_RULES,
+  [Framework.NUXT]: [],
+  [Framework.ANGULAR]: [],
+  [Framework.SVELTE]: [],
+  [Framework.DJANGO]: [],
+  [Framework.FLASK]: [],
+  [Framework.FASTAPI]: [],
+  [Framework.SPRING]: [],
+  [Framework.EXPRESS]: [],
+  [Framework.NESTJS]: [],
+  [Framework.NONE]: []
 };
 
 /**
@@ -147,10 +187,27 @@ export async function detectProject(
         // Detect React
         const hasReact = !!pkg.dependencies?.react;
 
+        // Detect Framework (platform-neutral)
+        let framework = Framework.NONE;
+        if (pkg.dependencies?.next || pkg.devDependencies?.next) {
+          framework = Framework.NEXTJS;
+        } else if (pkg.dependencies?.nuxt || pkg.devDependencies?.nuxt) {
+          framework = Framework.NUXT;
+        } else if (pkg.dependencies?.['@angular/core']) {
+          framework = Framework.ANGULAR;
+        } else if (pkg.dependencies?.svelte || pkg.devDependencies?.svelte) {
+          framework = Framework.SVELTE;
+        } else if (pkg.dependencies?.['@nestjs/core']) {
+          framework = Framework.NESTJS;
+        } else if (pkg.dependencies?.express) {
+          framework = Framework.EXPRESS;
+        }
+
         return {
           language: hasTypeScript ? Language.TYPESCRIPT : Language.JAVASCRIPT,
           buildTool,
           packageManager,
+          framework,
           hasTypeScript,
           hasReact
         };
@@ -166,10 +223,22 @@ export async function detectProject(
     (await fileSystem.fileExists('pyproject.toml')) ||
     (await fileSystem.fileExists('setup.py'))
   ) {
+    // Detect Python frameworks
+    let framework = Framework.NONE;
+    try {
+      const requirements = await fileSystem.readFile('requirements.txt');
+      if (requirements) {
+        if (requirements.includes('django')) framework = Framework.DJANGO;
+        else if (requirements.includes('flask')) framework = Framework.FLASK;
+        else if (requirements.includes('fastapi')) framework = Framework.FASTAPI;
+      }
+    } catch { /* ignore */ }
+    
     return {
       language: Language.PYTHON,
       buildTool: BuildTool.NONE,
       packageManager: PackageManager.PIP,
+      framework,
       hasTypeScript: false,
       hasReact: false
     };
@@ -177,10 +246,12 @@ export async function detectProject(
 
   // Check Java
   if (await fileSystem.fileExists('pom.xml')) {
+    // Could detect Spring here by parsing pom.xml
     return {
       language: Language.JAVA,
       buildTool: BuildTool.MAVEN,
       packageManager: PackageManager.MAVEN,
+      framework: Framework.NONE, // TODO: detect Spring
       hasTypeScript: false,
       hasReact: false
     };
@@ -194,6 +265,7 @@ export async function detectProject(
       language: Language.JAVA,
       buildTool: BuildTool.GRADLE,
       packageManager: PackageManager.UNKNOWN,
+      framework: Framework.NONE, // TODO: detect Spring
       hasTypeScript: false,
       hasReact: false
     };
@@ -205,6 +277,7 @@ export async function detectProject(
       language: Language.GO,
       buildTool: BuildTool.NONE,
       packageManager: PackageManager.UNKNOWN,
+      framework: Framework.NONE,
       hasTypeScript: false,
       hasReact: false
     };
@@ -216,6 +289,7 @@ export async function detectProject(
       language: Language.RUST,
       buildTool: BuildTool.CARGO,
       packageManager: PackageManager.CARGO,
+      framework: Framework.NONE,
       hasTypeScript: false,
       hasReact: false
     };
@@ -225,6 +299,7 @@ export async function detectProject(
     language: Language.UNKNOWN,
     buildTool: BuildTool.NONE,
     packageManager: PackageManager.UNKNOWN,
+    framework: Framework.NONE,
     hasTypeScript: false,
     hasReact: false
   };
@@ -240,6 +315,9 @@ export function diagnoseError(
 ): DiagnosisResult | null {
   // Combine all patterns based on detected project
   const allPatterns: ErrorPattern[] = [
+    // Framework-specific patterns (highest priority - most specific)
+    ...(FRAMEWORK_PATTERNS[context.projectDetection?.framework || Framework.NONE] || []),
+
     // Language patterns
     ...(LANGUAGE_PATTERNS[context.projectDetection?.language || Language.UNKNOWN] || []),
 
@@ -267,6 +345,41 @@ export function diagnoseError(
 }
 
 /**
+ * Pre-error compatibility check
+ * Analyzes config files to detect known incompatible settings BEFORE running build/dev
+ * 
+ * @param framework - Detected framework
+ * @param configPath - Path to config file (e.g., next.config.js)
+ * @param config - Parsed config object
+ * @returns Array of compatibility issues found
+ */
+export function checkCompatibility(
+  framework: Framework,
+  configPath: string,
+  config: any
+): CompatibilityIssue[] {
+  const rules = FRAMEWORK_COMPATIBILITY_RULES[framework] || [];
+  const issues: CompatibilityIssue[] = [];
+  
+  for (const rule of rules) {
+    const issue = rule.check(config, configPath);
+    if (issue) {
+      issues.push(issue);
+    }
+  }
+  
+  return issues;
+}
+
+/**
+ * Get all compatibility rules for a framework
+ * Useful for documentation or tooling
+ */
+export function getCompatibilityRules(framework: Framework): CompatibilityRule[] {
+  return FRAMEWORK_COMPATIBILITY_RULES[framework] || [];
+}
+
+/**
  * Export types and patterns for external use
  */
 export * from './types';
@@ -276,3 +389,6 @@ export { NPM_PATTERNS } from './packageManagers/npm';
 export { PRISMA_PATTERNS } from './databases/prisma';
 export { JEST_PATTERNS } from './testing/jest';
 export { ESLINT_PATTERNS } from './linters/eslint';
+
+// Framework-specific exports
+export { NEXTJS_PATTERNS, NEXTJS_COMPATIBILITY_RULES } from './frameworks/nextjs';
