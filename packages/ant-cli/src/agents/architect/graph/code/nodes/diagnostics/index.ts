@@ -49,8 +49,8 @@ import { PYTEST_PATTERNS } from './testing/pytest';
 // Import linter patterns
 import { ESLINT_PATTERNS } from './linters/eslint';
 
-// Import framework-specific patterns and compatibility rules
-import { NEXTJS_PATTERNS, NEXTJS_COMPATIBILITY_RULES } from './frameworks/nextjs';
+// Import framework-specific patterns, compatibility rules, and build configs
+import { NEXTJS_PATTERNS, NEXTJS_COMPATIBILITY_RULES, NEXTJS_BUILD_CONFIG, getNextjsBuildConfig, detectNextjsMode } from './frameworks/nextjs';
 
 /**
  * 언어별 패턴 맵
@@ -391,4 +391,4 @@ export { JEST_PATTERNS } from './testing/jest';
 export { ESLINT_PATTERNS } from './linters/eslint';
 
 // Framework-specific exports
-export { NEXTJS_PATTERNS, NEXTJS_COMPATIBILITY_RULES } from './frameworks/nextjs';
+export { NEXTJS_PATTERNS, NEXTJS_COMPATIBILITY_RULES, NEXTJS_BUILD_CONFIG, getNextjsBuildConfig, detectNextjsMode } from './frameworks/nextjs';

@@ -69,9 +69,12 @@ CodeGen:
 ## 📋 MANDATORY OUTPUT: IMPLEMENTATION GUIDE
 ────────────────────────────────────────────────────────────────────────────────
 
-**EVERY plan MUST end with a structured IMPLEMENTATION GUIDE section.**
+**🚨 CRITICAL: EVERY plan MUST end with an IMPLEMENTATION GUIDE section.**
 
-This section provides **semantic guidance** for CodeGen to execute with actual file system verification.
+**A plan WITHOUT an IMPLEMENTATION GUIDE is INCOMPLETE and INVALID.**
+
+CodeGen cannot execute properly without this structured guide. If you skip it,
+the created modules will NOT be integrated into the codebase (not imported, not used).
 
 ```
 ═══════════════════════════════════════════════════════════════════════════════
@@ -80,16 +83,12 @@ This section provides **semantic guidance** for CodeGen to execute with actual f
 
 ### CREATE:
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ 1. name: [ComponentName]                                                    │
-│    type: component | util | hook | api | page | ...                         │
-│    location: [semantic area - e.g., "components", "utils", "api"]           │
-│    purpose: [what this file does]                                           │
-│    integrates_with: [file that MUST import/use this - TRIGGERS MODIFY]      │
+│ 1. name: [ModuleName]                                                       │
+│    type: component | util | hook | api | service | class | ...              │
+│    location: [semantic area - e.g., "components", "utils", "services"]      │
+│    purpose: [what this module does]                                         │
+│    integrates_with: [file that MUST import/use this] ← REQUIRED!            │
 └─────────────────────────────────────────────────────────────────────────────┘
-
-**⚠️ `integrates_with` = MANDATORY modification.**
-If you specify `integrates_with: X`, CodeGen MUST modify X to import and use the new module.
-This is NOT optional metadata - it triggers a required MODIFY action.
 
 ### MODIFY:
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -110,17 +109,59 @@ This is NOT optional metadata - it triggers a required MODIFY action.
 ═══════════════════════════════════════════════════════════════════════════════
 ```
 
+────────────────────────────────────────────────────────────────────────────────
+### 🔗 `integrates_with` - REQUIRED FOR ALL CREATE ENTRIES
+────────────────────────────────────────────────────────────────────────────────
+
+**Every module you create MUST be used somewhere. Specify where.**
+
+| What you create | integrates_with example |
+|-----------------|------------------------|
+| UI Component | Main page, parent component, layout |
+| Utility function | Service/component that calls it |
+| API endpoint handler | Router, controller |
+| Hook | Component that uses it |
+| Service class | Controller, other service |
+
+**⚠️ `integrates_with` = MANDATORY modification by CodeGen.**
+- CodeGen MUST modify the specified file to import and use the new module
+- This is NOT optional metadata - it triggers a required MODIFY action
+- Without this, your module will be created but NEVER USED (dead code)
+
+**Example:**
+```
+CREATE:
+  name: scrollUtils
+  type: util
+  location: utils area
+  purpose: Smooth scroll functions
+  integrates_with: GNB component, Footer component  ← These MUST import scrollUtils
+```
+
+────────────────────────────────────────────────────────────────────────────────
+### 🚫 DUPLICATE PREVENTION
+────────────────────────────────────────────────────────────────────────────────
+
+**Before specifying CREATE, check the directory tree for existing similar modules.**
+
+- ❌ DO NOT create `scroll.ts` if `scrollUtils.ts` already exists
+- ❌ DO NOT create `UserService` if `userService.ts` already exists
+- ✅ If similar module exists, use MODIFY instead of CREATE
+
+**Check for:**
+- Same functionality with different names
+- Existing utils/helpers that already do what you need
+- Previously created modules in earlier tasks
+
+────────────────────────────────────────────────────────────────────────────────
+
 **GUIDE PRINCIPLES:**
+- ✅ EVERY CREATE must have `integrates_with`
+- ✅ Check directory tree for existing similar modules before CREATE
 - ✅ Describe WHAT and WHY clearly
 - ✅ Use semantic locations (CodeGen finds exact paths)
-- ✅ Specify integration relationships
-- ❌ DO NOT hardcode exact file paths (CodeGen verifies)
-
-**CodeGen Responsibilities (with tools):**
-- Use `list_files` to find existing directory patterns
-- Use `read_file` to understand integration points
-- Determine exact paths based on existing conventions
-- Ensure NO duplicate files/components created
+- ❌ DO NOT create duplicate modules
+- ❌ DO NOT skip IMPLEMENTATION GUIDE section
 
 ────────────────────────────────────────────────────────────────────────────────
 
@@ -138,16 +179,18 @@ This is NOT optional metadata - it triggers a required MODIFY action.
 
 From directory tree:
 - Source code pattern: [observed pattern from directory tree]
-- Pages pattern: [observed pattern]
+- Components pattern: [observed pattern]
 - Utils pattern: [observed pattern]
+- Existing similar modules: [list any that might overlap with this task]
 
 **DECISION**: New files will follow the [pattern] convention
+**REUSE**: [List existing modules to reuse instead of creating new ones]
 ```
 
 **CRITICAL**: 
-- Check `directoryTree` to see existing structure
-- Identify where similar files are located
-- CodeGen will verify and use exact paths
+- Check `directoryTree` for existing structure AND existing similar modules
+- If similar util/component already exists, DO NOT create duplicate
+- Identify integration points (where new modules will be used)
 
 #### 2. 📦 ASSET INVENTORY
 - Search ui-assets.json for assets related to this section/component
@@ -160,9 +203,9 @@ From directory tree:
 - List each component with visual properties, typography, interactive states
 - Note design token references
 
-#### 4. 📋 IMPLEMENTATION GUIDE (MANDATORY)
+#### 4. 📋 IMPLEMENTATION GUIDE (MANDATORY - DO NOT SKIP)
 
-**This is the GUIDE for CodeGen. Use the format from above.**
+**🚨 This section is REQUIRED. A plan without IMPLEMENTATION GUIDE is INVALID.**
 
 ```
 ═══════════════════════════════════════════════════════════════════════════════
@@ -170,18 +213,63 @@ From directory tree:
 ═══════════════════════════════════════════════════════════════════════════════
 
 ### CREATE:
-[List each file with: name, type, location (semantic), purpose, integrates_with]
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 1. name: [ComponentName]                                                    │
+│    type: component                                                          │
+│    location: components area                                                │
+│    purpose: [what this component does]                                      │
+│    integrates_with: [parent page/component that MUST use this] ← REQUIRED!  │
+└─────────────────────────────────────────────────────────────────────────────┘
 
 ### MODIFY:
-[List each target with: target (semantic), action, changes]
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 1. target: [page/component that will use the new module]                    │
+│    action: Import and render new component                                  │
+│    changes:                                                                 │
+│      - Add import statement                                                 │
+│      - Add component to render tree                                         │
+└─────────────────────────────────────────────────────────────────────────────┘
 
 ### ASSET OPERATIONS:
-[List assets with semantic destinations]
+[List assets with semantic destinations, or "None required"]
 
 ═══════════════════════════════════════════════════════════════════════════════
 ```
 
-**⚠️ CRITICAL**: The IMPLEMENTATION GUIDE section is NOT optional. 
-Every UI task plan MUST end with this structured guide.
+**⚠️ CHECKLIST before finishing plan:**
+- [ ] IMPLEMENTATION GUIDE section exists
+- [ ] Every CREATE has `integrates_with` field
+- [ ] No duplicate modules (checked directory tree)
+- [ ] MODIFY section includes integration changes
 
 {{/if}}
+
+{{#unless hasUiDoc}}
+**FOR NON-UI TASKS - Your plan MUST end with IMPLEMENTATION GUIDE:**
+
+```
+═══════════════════════════════════════════════════════════════════════════════
+## IMPLEMENTATION GUIDE
+═══════════════════════════════════════════════════════════════════════════════
+
+### CREATE:
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 1. name: [ModuleName]                                                       │
+│    type: service | util | api | class | ...                                 │
+│    location: [semantic area]                                                │
+│    purpose: [what this module does]                                         │
+│    integrates_with: [caller/consumer module] ← REQUIRED!                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+### MODIFY:
+[List targets that need to import/use new modules]
+
+═══════════════════════════════════════════════════════════════════════════════
+```
+
+**⚠️ CHECKLIST:**
+- [ ] IMPLEMENTATION GUIDE section exists
+- [ ] Every CREATE has `integrates_with`
+- [ ] Checked for existing similar modules in directory tree
+
+{{/unless}}
