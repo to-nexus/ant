@@ -8,8 +8,8 @@
 **Your task decomposition approach:**
 
 1. **Extract objective facts** (high confidence):
-   - Error code/message (e.g., "GAME_IN_PROGRESS", "TypeError: Cannot read...")
-   - Stack trace (e.g., "RoomPage.tsx:103", "game.gateway.ts:45")
+   - Error code/message (e.g., "RESOURCE_NOT_FOUND", "TypeError: Cannot read...")
+   - Stack trace (e.g., "UserService.ts:103", "data.handler.ts:45")
    - Observable behavior (e.g., "clicking button causes crash", "duplicate requests")
 
 2. **Note user interpretation** (low confidence):
@@ -25,21 +25,21 @@
 
 **Example:**
 
-User directive: "After modifying env.ts, I get GAME_IN_PROGRESS error at RoomPage.tsx:103"
+User directive: "After modifying config.ts, I get RESOURCE_NOT_FOUND error at UserService.ts:103"
 
 ✅ GOOD task:
 ```
-Name: "Investigate GAME_IN_PROGRESS error in RoomPage"
-Description: "Error 'Game is already in progress' occurs at RoomPage.tsx:103.
-             Error code: GAME_IN_PROGRESS
-             Context: Happens when joining room
-             User mentioned: env.ts modified recently (may or may not be related)"
+Name: "Investigate RESOURCE_NOT_FOUND error in UserService"
+Description: "Error 'Resource not found' occurs at UserService.ts:103.
+             Error code: RESOURCE_NOT_FOUND
+             Context: Happens when fetching user data
+             User mentioned: config.ts modified recently (may or may not be related)"
 ```
 
 ❌ BAD task:
 ```
-Name: "Fix env.ts WebSocket configuration"
-Description: "env.ts validation receiving wrong URL scheme"
+Name: "Fix config.ts database configuration"
+Description: "config.ts validation receiving wrong connection string"
 ```
 **Why bad?** Based on user's guess, ignores actual error code and stack trace.
 

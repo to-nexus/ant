@@ -64,7 +64,7 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
     "type": "feature",
     "priority": 1000,
     "ui": false,
-    "description": "Verify build succeeds and application starts without runtime errors"
+    "description": "Run build/lint/type-check commands on EXISTING codebase. DO NOT write new code or create new projects. Only verify: npm run build, npm run lint, npm run dev."
   }
 ]
 </tasks>
@@ -86,7 +86,7 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
     "type": "feature",
     "priority": 1000,
     "ui": false,
-    "description": "Verify build succeeds and application starts without runtime errors"
+    "description": "Run build/lint/type-check commands on EXISTING codebase. DO NOT write new code or create new projects. Only verify: npm run build, npm run lint, npm run dev."
   }
 ]
 </tasks>
@@ -108,10 +108,18 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
     "type": "feature",
     "priority": 1000,
     "ui": false,
-    "description": "Confirm error fix is complete. Address any remaining issues."
+    "description": "Run build/lint/type-check on EXISTING codebase to confirm fix. DO NOT write new code or create new projects. Fix remaining errors if build fails."
   }
 ]
 </tasks>
+
+**🚨 CRITICAL: Final Verification Task Principles**
+The `final-verification` task has a SPECIFIC and LIMITED scope:
+1. **ONLY run verification commands**: `npm run build`, `npm run lint`, `npm run dev`, `npm run type-check`
+2. **DO NOT write new code** - only fix errors found by verification commands
+3. **DO NOT create new projects** - never use `npx create-*`, `npm init`, `yarn create`
+4. **DO NOT add new features** - only ensure existing code works
+5. **If build fails**: fix the SPECIFIC error mentioned, then re-run build
 
 **⚠️ Key differences:**
 - NEW PROJECT: "Create", "Implement" + Setup task + type: "setup"/"feature"
@@ -226,6 +234,36 @@ The Plan stage will read design documents (ui-spec.json, ui-assets.json) to extr
   - ❌ DO NOT leave `{/* TODO: Add logo image */}` comments
   - ✅ Actually copy the asset and reference it in code
 - **Note**: Task description should NOT enumerate specific assets. Plan stage will read ui-assets.json to discover all required assets.
+
+**🎨 DESIGN TOKENS INTEGRATION (when ui-tokens.json exists):**
+
+When `ui-tokens.json` is provided in design outputs, design tokens MUST be integrated into the codebase:
+
+| Project State | Where to Handle | Action |
+|---------------|-----------------|--------|
+| **NEW project** | Setup task | Include token configuration in framework setup |
+| **EXISTING project** | First UI task | Update/create token configuration file |
+
+**DO NOT create a separate "design tokens" task.** Token setup is part of:
+- Setup task (new project): Configure theme/tokens alongside framework setup
+- First UI task (existing project): Update existing theme/styling configuration
+
+**How to indicate in task description:**
+```json
+// NEW project setup task
+{
+  "id": "setup-frontend",
+  "description": "Configure Next.js with TypeScript, Tailwind. Apply design tokens from ui-tokens.json to theme configuration."
+}
+
+// EXISTING project first UI task
+{
+  "id": "implement-header",
+  "description": "<ui> Implement Header based on design specifications. Integrate design tokens into existing styling system."
+}
+```
+
+**Framework-agnostic principle:** The Plan/Execute stages will determine the correct token application method based on detected framework (Tailwind config, CSS variables, theme provider, etc.).
 
 IMPORTANT:
 - **Setup Task Decision (CRITICAL):**

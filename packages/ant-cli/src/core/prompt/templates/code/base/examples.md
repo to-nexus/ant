@@ -9,7 +9,7 @@ These examples demonstrate directive interpretation principles.
 
 Example 1: Simple Directive
 
-**Directive**: "Remove console.log from Button.tsx"
+**Directive**: "Remove debug statement from user-service.ts"
 
 **Response**: Remove the debug statement using `edit_file` tool, add `<done>true</done>`.
 

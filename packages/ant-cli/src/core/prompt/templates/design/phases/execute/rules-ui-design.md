@@ -483,3 +483,8 @@ Before outputting, verify:
 - [ ] **ALL visual values** use token references (e.g., `token(color.primary)`)
 - [ ] **NO raw values** (hex codes, pixel values, framework classes)
 - [ ] Document section is **complete and self-contained**
+
+**Pattern Consistency (for ui-spec.json)**:
+- [ ] **Spatial relationships observed**: Every container's child arrangement (axis, alignment, distribution) explicitly determined from screenshot
+- [ ] **Repeating patterns identified**: Components/sections with identical visual structure grouped
+- [ ] **Specification consistency verified**: Same visual pattern → Same layout properties (no exceptions)

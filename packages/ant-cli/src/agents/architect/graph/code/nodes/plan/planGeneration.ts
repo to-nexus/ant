@@ -132,9 +132,9 @@ export async function generatePlanText(
 }
 
 /**
- * Save planText to sessions/planTexts directory for debugging
+ * Save planText to sessions/planText directory for debugging
  * 
- * Saves to: {featurePath}/sessions/planTexts/{jobId}.md
+ * Saves to: {featurePath}/sessions/planText/{jobId}.md
  * All task plans for a job are appended to a single file.
  * 
  * @param state - Current graph state
@@ -154,11 +154,11 @@ async function savePlanTextForDebug(
       return; // No feature path or jobId available
     }
     
-    // Create sessions/planTexts/ directory
-    const planTextsDir = path.join(featurePath, 'sessions', 'planTexts');
-    await fs.mkdir(planTextsDir, { recursive: true });
+    // Create sessions/planText/ directory
+    const planTextDir = path.join(featurePath, 'sessions', 'planText');
+    await fs.mkdir(planTextDir, { recursive: true });
     
-    const filepath = path.join(planTextsDir, `${jobId}.md`);
+    const filepath = path.join(planTextDir, `${jobId}.md`);
     
     // Check if file exists to determine header
     let existingContent = '';
@@ -189,7 +189,7 @@ ${planText}`;
     
     // Append to file
     await fs.writeFile(filepath, header + existingContent + separator + entry, 'utf-8');
-    console.log(`   📄 Plan appended: sessions/planTexts/${jobId}.md`);
+    console.log(`   📄 Plan appended: sessions/planText/${jobId}.md`);
   } catch (err) {
     // Non-blocking - just log warning
     console.warn(`   ⚠️  Could not save plan for debug:`, err instanceof Error ? err.message : err);

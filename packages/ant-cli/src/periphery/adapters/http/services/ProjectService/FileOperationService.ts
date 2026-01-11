@@ -4,6 +4,21 @@ import { WorkspaceResolver } from '../../../../../infrastructure/workspace/Works
 import { UserContext } from '../../../../../core/types/user';
 
 /**
+ * Protected root folders within inputs/outputs/sessions
+ * These folders are preserved when deleted - only their contents are removed
+ */
+const PROTECTED_ROOT_FOLDERS = [
+  'inputs/assets',
+  'inputs/references',
+  'inputs/sources',
+  'outputs/design',
+  'outputs/reports',
+  'sessions/evalCode',
+  'sessions/evalUiDesign',
+  'sessions/planText',
+];
+
+/**
  * FileOperationService
  * 
  * Handles file and directory operations within features
@@ -13,6 +28,33 @@ export class FileOperationService {
   
   constructor(workspaceResolver: WorkspaceResolver) {
     this.workspaceResolver = workspaceResolver;
+  }
+  
+  /**
+   * Check if the path is a protected root folder
+   */
+  private isProtectedFolder(relativePath: string): boolean {
+    const normalized = relativePath.replace(/\\/g, '/').replace(/\/$/, '');
+    return PROTECTED_ROOT_FOLDERS.includes(normalized);
+  }
+  
+  /**
+   * Clear directory contents (files and subdirectories) but keep the directory itself
+   */
+  private async clearDirectoryContents(dirPath: string): Promise<void> {
+    const items = await fs.promises.readdir(dirPath, { withFileTypes: true });
+    
+    for (const item of items) {
+      const itemPath = path.join(dirPath, item.name);
+      
+      if (item.isDirectory()) {
+        // Recursively remove subdirectory
+        await fs.promises.rm(itemPath, { recursive: true, force: true });
+      } else {
+        // Remove file
+        await fs.promises.unlink(itemPath);
+      }
+    }
   }
   
   /**
@@ -131,7 +173,9 @@ export class FileOperationService {
   }
   
   /**
-   * Delete a file
+   * Delete a file or directory
+   * - For protected root folders (inputs/*, outputs/*, sessions/*): clears contents but keeps folder
+   * - For regular files/directories: deletes completely
    */
   async deleteFile(projectId: string, featureName: string, filePath: string, userContext: UserContext): Promise<void> {
     const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
@@ -142,7 +186,23 @@ export class FileOperationService {
       throw new Error('Invalid file path');
     }
     
-    await fs.promises.unlink(fullPath);
+    const stat = await fs.promises.stat(fullPath);
+    
+    if (stat.isDirectory()) {
+      // Check if this is a protected root folder
+      if (this.isProtectedFolder(filePath)) {
+        // Clear contents but keep the folder
+        await this.clearDirectoryContents(fullPath);
+        console.log(`[FileOperationService] Cleared contents of protected folder: ${filePath}`);
+      } else {
+        // Delete entire directory
+        await fs.promises.rm(fullPath, { recursive: true, force: true });
+        console.log(`[FileOperationService] Deleted directory: ${filePath}`);
+      }
+    } else {
+      // Delete file
+      await fs.promises.unlink(fullPath);
+    }
   }
   
   /**

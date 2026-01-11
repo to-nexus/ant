@@ -9,16 +9,16 @@
 
 ### Pattern
 ```
-Turn 1: [tool_call: read_file("App.tsx")]      → Wait for result
-Turn 2: [tool_call: search_code("Button")]     → Wait for result
-Turn 3: [tool_call: run_command("npm test")]   → Wait for result
+Turn 1: [tool_call: read_file("main.ts")]      → Wait for result
+Turn 2: [tool_call: search_code("UserService")]     → Wait for result
+Turn 3: [tool_call: run_command("build")]   → Wait for result
 ```
 
 ### ❌ WRONG
 ```
 // All in one turn - ONLY FIRST will execute!
-[tool_call: read_file("App.tsx")]
-[tool_call: read_file("index.tsx")]     ← DROPPED
+[tool_call: read_file("main.ts")]
+[tool_call: read_file("config.ts")]     ← DROPPED
 [tool_call: read_file("types.ts")]      ← DROPPED
 ```
 

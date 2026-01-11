@@ -67,17 +67,17 @@ The decompose node uses this file list to understand what exists and plan tasks 
 **Stack Trace Extraction** (if directive contains error):
 
 Extract EXACT file names from stack trace:
-- ✅ Include file extensions: `"RoomPage.tsx"` (not `"RoomPage"`)
-- ✅ Include relative paths if available: `"src/pages/RoomPage.tsx"`
+- ✅ Include file extensions: `"UserList.ts"` (not `"UserList"`)
+- ✅ Include relative paths if available: `"src/pages/UserList.ts"`
 - ✅ Maximum 5 files from stack trace
 
 Example:
 ```
-Directive: "Error at RoomPage.tsx:85 → WebSocketContext.tsx:144"
+Directive: "Error at UserList.ts:85 → AuthService.ts:144"
 
 Extract:
-- "RoomPage.tsx"
-- "WebSocketContext.tsx"
+- "UserList.ts"
+- "AuthService.ts"
 ```
 
 ---
@@ -90,12 +90,12 @@ Extract:
 - Spaces break Vector DB search efficiency
 
 1. **Error identifiers** (if error directive):
-   - Error codes: `"GAME_IN_PROGRESS"`, `"NOT_FOUND"`
+   - Error codes: `"RESOURCE_NOT_FOUND"`, `"VALIDATION_ERROR"`
    - Error constants
 
 2. **Domain entities**:
-   - Component/class names: `"GameProvider"`, `"RoomService"`
-   - Type/interface names: `"GameState"`, `"Player"`
+   - Component/class names: `"DataService"`, `"UserRepository"`
+   - Type/interface names: `"UserDTO"`, `"ApiResponse"`
 
 3. **Operations** (single tokens only):
    - ✅ `"joinRoom"`, `"createUser"`, `"fetchNews"`
@@ -120,15 +120,15 @@ Extract:
 ```json
 {
   "codebase": [
-    "RoomPage.tsx",
-    "WebSocketContext.tsx",
-    "GameContext.tsx",
-    "GAME_IN_PROGRESS",
-    "GameProvider",
-    "join room",
-    "room status",
-    "useEffect",
-    "WebSocket event"
+    "UserList.ts",
+    "AuthService.ts",
+    "DataRepository.ts",
+    "RESOURCE_NOT_FOUND",
+    "UserService",
+    "fetchUsers",
+    "authentication",
+    "errorHandler",
+    "apiRequest"
   ]
 }
 ```
@@ -140,14 +140,14 @@ Extract:
 ```json
 {
   "codebase": [
-    "room list",
-    "lobby",
-    "room display",
-    "real-time updates",
-    "WebSocket",
-    "room status",
-    "player count",
-    "list component"
+    "userList",
+    "dashboard",
+    "dataDisplay",
+    "pagination",
+    "searchFilter",
+    "userStatus",
+    "itemCount",
+    "tableComponent"
   ]
 }
 ```
@@ -159,18 +159,18 @@ Extract:
 ```json
 {
   "codebase": [
-    "WebSocketContext", "WebSocket", "socket", "ws", "connection",
-    "RoomPage", "room", "page", "component", "React component",
-    "GameContext", "game", "context", "state", "state management",
-    "provider", "GameProvider", "RoomProvider", "context provider",
-    "useEffect", "useContext", "useState", "React hooks", "hooks",
+    "HttpClient", "http", "client", "request", "connection",
+    "UserPage", "user", "page", "component", "view component",
+    "DataContext", "data", "context", "state", "state management",
+    "provider", "DataProvider", "UserProvider", "context provider",
+    "lifecycle", "initialization", "setup", "hooks", "callbacks",
     "error", "error handling", "try catch", "validation",
-    "room creation", "room join", "room leave", "room management",
-    "player", "user", "client", "server"
+    "user creation", "user update", "user delete", "user management",
+    "entity", "model", "client", "server"
   ]
 }
 ```
-**Why bad**: 36+ keywords, generic terms ("component", "state"), redundant variations ("WebSocket", "socket", "ws").
+**Why bad**: 36+ keywords, generic terms ("component", "state"), redundant variations ("http", "client", "request").
 
 ---
 

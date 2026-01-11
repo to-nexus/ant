@@ -57,7 +57,39 @@ When analyzing screenshots, extract information in this order:
 - **Analyze image roles carefully:** Distinguish between background images (decorative, behind content) and content images (structural, between content blocks)
 - **Reference PRD** for section purpose and priority when visual hierarchy is ambiguous
 
-Ask: What are the main visual zones? How do they relate spatially? Are images decorative backdrops or structural content elements? What is the intended user journey (from PRD)?
+**🚨 ELEMENT ARRANGEMENT (CRITICAL):**
+
+For EVERY container with multiple child elements, observe and document the **spatial relationship**:
+
+| What to Observe | How to Determine |
+|-----------------|------------------|
+| **Axis** | Are children side-by-side (row) or stacked (column)? |
+| **Alignment** | Where do children sit on the cross-axis? (start, center, end) |
+| **Distribution** | How is space between children distributed? |
+
+**Observation Method:**
+1. Look at the **actual pixel positions** in the screenshot
+2. If Element A and Element B are **horizontally adjacent** → Row
+3. If Element A is **above** Element B → Column
+4. Check where **empty space** appears between/around elements
+
+**Do NOT assume based on:**
+- Element type or semantic meaning
+- Background color or visual styling
+- Common design conventions
+
+**OBSERVE the screenshot and describe what you SEE.**
+
+Ask: What are the main visual zones? How do they relate spatially? Are images decorative backdrops or structural content elements? What is the intended user journey (from PRD)? **For each container: what is the spatial arrangement of child elements?**
+
+**🔄 PATTERN CONSISTENCY PRINCIPLE (MANDATORY):**
+
+> **"Visually identical structures MUST produce identical specifications"**
+
+Before finalizing output:
+1. **Identify repeating patterns**: Group components/sections with same visual structure
+2. **Verify consistency**: Same visual pattern → Same layout properties
+3. **Resolve conflicts**: If specs differ for identical patterns, re-observe the screenshot
 
 **2. Colors**
 - Identify distinct color values used (backgrounds, text, accents, borders)

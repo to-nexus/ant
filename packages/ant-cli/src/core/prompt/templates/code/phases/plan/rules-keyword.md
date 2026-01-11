@@ -12,7 +12,7 @@ Generate high-quality search keywords to retrieve relevant code files from Vecto
 
 ```json
 {
-  "stackTrace": ["file1.tsx", "file2.tsx"],
+  "stackTrace": ["file1.ts", "file2.ts"],
   "keywords": ["keyword1", "keyword2", ...]
 }
 ```
@@ -25,7 +25,7 @@ Generate high-quality search keywords to retrieve relevant code files from Vecto
 
 **When to use** (ALL conditions must be met):
 1. Directive contains ERROR or EXCEPTION
-2. Directive includes file paths with line numbers (e.g., `RoomPage.tsx:85`)
+2. Directive includes file paths with line numbers (e.g., `UserService.ts:85`)
 3. Files are explicitly mentioned as part of error stack
 
 **When NOT to use** (return empty array `[]`):
@@ -43,15 +43,15 @@ Generate high-quality search keywords to retrieve relevant code files from Vecto
 **Examples**:
 
 ```
-Directive: "Error at RoomPage.tsx:85 → WebSocketContext.tsx:144"
+Directive: "Error at UserService.ts:85 → AuthHandler.ts:144"
 
 Extract:
-✅ "RoomPage.tsx"
-✅ "WebSocketContext.tsx"
+✅ "UserService.ts"
+✅ "AuthHandler.ts"
 
 or better (if path visible):
-✅ "src/pages/RoomPage.tsx"
-✅ "src/contexts/WebSocketContext.tsx"
+✅ "src/services/UserService.ts"
+✅ "src/handlers/AuthHandler.ts"
 ```
 
 **Limit**: Maximum 5 files (most relevant ones from stack trace)
@@ -89,11 +89,11 @@ or better (if path visible):
    - Async patterns if network/IO operations exist
 
 **What NOT to include**:
-- ❌ Generic terms: `"function"`, `"variable"`, `"React"`
+- ❌ Generic terms: `"function"`, `"variable"`, `"framework"`
 - ❌ Language keywords: `"const"`, `"async"`, `"class"`
 - ❌ Non-existent files (don't guess file names)
-- ❌ Multi-word phrases with spaces: `"join room"` (use `"joinRoom"` instead)
-- ❌ Redundant variations: If you have `"joinRoom"`, don't add `"joiningRoom"`, `"roomJoin"`
+- ❌ Multi-word phrases with spaces: `"create user"` (use `"createUser"` instead)
+- ❌ Redundant variations: If you have `"createUser"`, don't add `"creatingUser"`, `"userCreate"`
 
 **Limit**: 8-12 keywords maximum
 
@@ -123,9 +123,9 @@ If error stack trace exists:
 4. Framework patterns relevant to the issue
 
 **Semantic expansion**:
-- If error mentions "join room" → include related: `"room status"`, `"player connection"`
-- If stack shows React component → include: `"useEffect"`, `"lifecycle"`
-- If mentions state → include: `"state management"`, `"dispatch"`
+- If error mentions "create user" → include related: `"userValidation"`, `"userRepository"`
+- If stack shows service layer → include: `"serviceError"`, `"businessLogic"`
+- If mentions state → include: `"stateManagement"`, `"dataFlow"`
 
 ### Step 4: Quality Check
 
@@ -142,29 +142,29 @@ If error stack trace exists:
 
 **Directive**:
 ```
-Error: GAME_IN_PROGRESS at RoomPage.tsx:85
-Stack: RoomPage.tsx:85 → WebSocketContext.tsx:144
-Message: "Game is already in progress"
-React warning: Cannot update GameProvider while rendering RoomPage
+Error: RESOURCE_NOT_FOUND at UserService.ts:85
+Stack: UserService.ts:85 → DataRepository.ts:144
+Message: "User not found in database"
+Warning: Cannot update UserProvider while processing request
 ```
 
 **Output**:
 ```json
 {
   "stackTrace": [
-    "RoomPage.tsx",
-    "WebSocketContext.tsx"
+    "UserService.ts",
+    "DataRepository.ts"
   ],
   "keywords": [
-    "GAME_IN_PROGRESS",
-    "GameProvider",
-    "GameContext",
-    "room status",
-    "game state",
-    "join room",
-    "useEffect",
-    "render cycle",
-    "state update"
+    "RESOURCE_NOT_FOUND",
+    "UserService",
+    "DataRepository",
+    "userLookup",
+    "databaseQuery",
+    "findUser",
+    "errorHandler",
+    "dataAccess",
+    "notFoundError"
   ]
 }
 ```
@@ -172,9 +172,9 @@ React warning: Cannot update GameProvider while rendering RoomPage
 **Why good**:
 - ✅ Exact file names from stack
 - ✅ Error code included
-- ✅ Related components (GameProvider, GameContext)
-- ✅ Domain concepts (room status, join room)
-- ✅ Technical patterns (useEffect, render cycle)
+- ✅ Related components (UserService, DataRepository)
+- ✅ Domain concepts (userLookup, findUser)
+- ✅ Technical patterns (errorHandler, dataAccess)
 - ✅ 9 keywords (within limit)
 
 ---
@@ -183,9 +183,9 @@ React warning: Cannot update GameProvider while rendering RoomPage
 
 **Directive**:
 ```
-Add room list display with real-time updates.
-Show room name, player count, and status.
-Update automatically when rooms change.
+Add user list display with pagination.
+Show user name, email, and status.
+Update automatically when filters change.
 ```
 
 **Output**:
@@ -193,24 +193,24 @@ Update automatically when rooms change.
 {
   "stackTrace": [],
   "keywords": [
-    "roomList",
-    "roomDisplay",
-    "realTimeUpdates",
-    "roomStatus",
-    "playerCount",
-    "WebSocket",
-    "roomManagement",
+    "userList",
+    "userDisplay",
+    "pagination",
+    "userStatus",
+    "emailField",
+    "dataTable",
+    "userManagement",
     "listComponent",
-    "autoRefresh"
+    "filterHandler"
   ]
 }
 ```
 
 **Why good**:
 - ✅ Empty stack trace (no error)
-- ✅ Feature keywords (roomList, display)
-- ✅ Technical requirements (realTimeUpdates, WebSocket)
-- ✅ Domain concepts (roomStatus, playerCount)
+- ✅ Feature keywords (userList, display)
+- ✅ Technical requirements (pagination, dataTable)
+- ✅ Domain concepts (userStatus, emailField)
 - ✅ Single-token format (camelCase for compound concepts)
 - ✅ 9 keywords (within limit)
 
@@ -219,7 +219,7 @@ Update automatically when rooms change.
 ### Example 3: Common Mistakes
 
 **❌ Don't**:
-- Add file extensions incorrectly: `"UserList"` instead of `"UserList.tsx"`
+- Add file extensions incorrectly: `"UserList"` instead of `"UserList.ts"`
 - Guess files that might not exist
 - Use generic terms: `"map"`, `"undefined"`, `"error"`
 - Use language keywords: `"property"`, `"const"`, `"async"`
@@ -228,7 +228,7 @@ Update automatically when rooms change.
 
 **✅ Do**:
 - Use exact file names from error messages
-- Use specific component/function names: `"UserList"`, `"mapUndefined"`
+- Use specific component/function names: `"UserList"`, `"validateInput"`
 - Keep 8-12 keywords maximum
 - Use single-token format (camelCase): `"userData"`, `"arrayNullCheck"`
 

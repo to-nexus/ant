@@ -64,6 +64,83 @@ When making implementation decisions, reference:
 | **Project structure** | Folder/file patterns | `list_files` |
 
 ────────────────────────────────────────────────────────────────────────────────
+### 🎨 4. Design Tokens Integration (when ui-tokens.json provided)
+────────────────────────────────────────────────────────────────────────────────
+
+When `ui-tokens.json` is injected, you MUST configure tokens in the project's styling system.
+
+**Step 1: Detect the project's styling approach**
+```
+list_files(".") → Look for:
+- tailwind.config.* → Tailwind CSS
+- theme.ts/js, styled.* → CSS-in-JS (Styled-components, Emotion)
+- styles/, *.scss → SCSS/CSS
+- App.vue, nuxt.config.* → Vue/Nuxt
+- styles/globals.css → CSS Variables
+```
+
+**Step 2: Apply tokens to the detected framework**
+
+| Framework | Configuration File | How to Apply |
+|-----------|-------------------|--------------|
+| **Tailwind CSS** | `tailwind.config.js/ts` | Extend `theme.colors`, `theme.spacing`, `theme.fontFamily` |
+| **CSS Variables** | `globals.css` or `:root` | Define `--color-primary`, `--spacing-lg`, etc. |
+| **SCSS** | `_variables.scss` | Define `$color-primary`, `$spacing-lg`, etc. |
+| **Styled-components** | `theme.ts` | Export theme object with token values |
+| **Emotion** | `theme.ts` | Export theme object with token values |
+| **Vue/Nuxt** | `assets/css/variables.css` | CSS variables or preprocessor variables |
+| **React Native** | `theme.ts` | Export StyleSheet-compatible values |
+
+**Example: Tailwind CSS (theme.extend)**
+```javascript
+// tailwind.config.js
+module.exports = {
+  theme: {
+    extend: {
+      colors: {
+        primary: { green: '#00E676', ... },  // from ui-tokens.json
+        bg: { dark: '#121212', ... },
+      },
+      fontFamily: {
+        heading: ['Inter', 'sans-serif'],
+      },
+      spacing: {
+        section: '120px',
+      }
+    }
+  }
+}
+```
+
+**Example: CSS Variables**
+```css
+/* globals.css */
+:root {
+  --color-primary-green: #00E676;
+  --color-bg-dark: #121212;
+  --font-heading: 'Inter', sans-serif;
+  --spacing-section: 120px;
+}
+```
+
+**⚠️ CRITICAL: Use configured tokens, NOT hardcoded values**
+```tsx
+// ❌ WRONG: Hardcoded value
+<div className="bg-[#121212] text-[#00E676]">
+
+// ✅ CORRECT: Use configured token
+<div className="bg-bg-dark text-primary-green">
+```
+
+```css
+/* ❌ WRONG */
+.hero { background: #121212; }
+
+/* ✅ CORRECT */
+.hero { background: var(--color-bg-dark); }
+```
+
+────────────────────────────────────────────────────────────────────────────────
 ### ⚠️ Boundary: When unlisted items are needed
 ────────────────────────────────────────────────────────────────────────────────
 
@@ -136,11 +213,14 @@ Use XML tags **directly** to create or append file content:
 
 ```xml
 <!-- Create NEW file -->
-<file path="src/components/Button.tsx">
-import React from 'react';
+<file path="src/services/user.ts">
+export interface User {
+  id: string;
+  name: string;
+}
 
-export function Button({ children }: { children: React.ReactNode }) {
-  return <button className="btn">{children}</button>;
+export function getUser(id: string): User {
+  return { id, name: 'John' };
 }
 </file>
 
@@ -195,10 +275,10 @@ Use **system tools** for **editing**, **reading**, **searching**, **commands**:
 
 | Operation | Method | Example |
 |-----------|--------|---------|
-| Create NEW file | `<file>` tag | `<file path="src/App.tsx">content</file>` |
+| Create NEW file | `<file>` tag | `<file path="src/main.ts">content</file>` |
 | Edit EXISTING file | `edit_file` tool | `edit_file(path, old_str, new_str)` |
 | Append to file | `<append>` tag | `<append path="src/utils.ts">content</append>` |
-| Read file | `read_file` tool | `read_file("src/App.tsx")` |
+| Read file | `read_file` tool | `read_file("src/main.ts")` |
 
 ────────────────────────────────────────────────────────────────────────────────
 
@@ -267,16 +347,16 @@ Use **system tools** for **editing**, **reading**, **searching**, **commands**:
 ```python
 # ❌ WRONG - Might not match exact whitespace
 edit_file(
-  path="src/App.tsx",
-  old_str="export function Button() {\nreturn <button>Click</button>;\n}",
-  new_str="export function Button() {\n  return <button className='btn'>Click</button>;\n}"
+  path="src/service.ts",
+  old_str="export function getUser() {\nreturn { id: 1 };\n}",
+  new_str="export function getUser() {\n  return { id: 1, name: 'John' };\n}"
 )
 
 # ✅ CORRECT - Exact match with proper indentation (copied from read_file result)
 edit_file(
-  path="src/App.tsx",
-  old_str="export function Button() {\n  return <button>Click</button>;\n}",
-  new_str="export function Button() {\n  return <button className='btn'>Click</button>;\n}"
+  path="src/service.ts",
+  old_str="export function getUser() {\n  return { id: 1 };\n}",
+  new_str="export function getUser() {\n  return { id: 1, name: 'John' };\n}"
 )
 ```
 
@@ -290,12 +370,12 @@ edit_file(
 
 ```xml
 <!-- ❌ WRONG -->
-<file path="App.tsx">
+<file path="main.ts">
 <append path="...">  ← Parser will treat this as literal text!
 </file>
 
 <!-- ✅ CORRECT -->
-<file path="App.tsx">...</file>
+<file path="main.ts">...</file>
 <append path="utils.ts">...</append>
 ```
 
@@ -335,12 +415,12 @@ console.log("close-file");          // Use different words
 
 ```xml
 <!-- ❌ WRONG - Recreating existing file -->
-Turn 1: <file path="App.tsx">...</file>  ← Created
-Turn 2: <file path="App.tsx">...</file>  ← Recreating same file!
+Turn 1: <file path="main.ts">...</file>  ← Created
+Turn 2: <file path="main.ts">...</file>  ← Recreating same file!
 
 <!-- ✅ CORRECT - Edit existing file -->
-Turn 1: <file path="App.tsx">...</file>  ← Created
-Turn 2: edit_file("App.tsx", old_str, new_str)  ← Modify
+Turn 1: <file path="main.ts">...</file>  ← Created
+Turn 2: edit_file("main.ts", old_str, new_str)  ← Modify
 ```
 
 **⚠️ CRITICAL: No Duplicate Components with Similar Names**
@@ -426,7 +506,7 @@ You find: nothing similar in lib/
 
 **Examples:**
 - Create new file: `<file path="src/utils/helper.ts">`
-- Edit existing file: `edit_file("src/App.tsx", old_str, new_str)` 
+- Edit existing file: `edit_file("src/main.ts", old_str, new_str)` 
 - Append to file: `<append path="src/utils.ts">`
 - Delete single file: `delete_file` tool
 - Delete directory: `run_command` with `rm -rf dirname/`
@@ -468,7 +548,7 @@ If Plan's CREATE has `integrates_with: X`, you MUST:
 
 **The Task Completion Checklist:**
 1. ✅ Create the component/module file
-2. ✅ **Import it in the entry point** (page.tsx, App.tsx, index.tsx, etc.)
+2. ✅ **Import it in the entry point** (main entry file of the application)
 3. ✅ **Replace any inline code** that duplicates this component's functionality
 4. ✅ Verify the component is actually rendered/called
 
@@ -551,24 +631,47 @@ function updatePaddle() {
 
 **⚠️ CRITICAL: Asset files MUST exist before code references them!**
 
-**Step 1: COPY assets first**
-- Check `ui-assets.json` for Source → Runtime Path mappings
-- Copy ALL mapped assets from `inputs/assets/` to `codebase/public/`
-- **If asset file doesn't exist at destination → 404 error at runtime!**
+**🚨 SOURCE OF TRUTH: `ui-assets.json`**
+- `ui-assets.json` defines the AUTHORITATIVE mapping: `src` (source) → `dest` (runtime path)
+- The `dest` field in ui-assets.json is the **EXACT path** where the file MUST be copied
+- Code MUST reference the `dest` path, NOT the original filename
 
-**Step 2: Reference copied assets**
-- Use Runtime Paths (e.g., `/ogf/logos/logo.svg`) in code
-- NEVER reference `inputs/assets/` paths in code (won't work at runtime!)
+**Example from ui-assets.json:**
+```json
+"icon-telegram": {
+  "src": "inputs/assets/icons/icon-telegram.svg",
+  "dest": "public/icons/telegram.svg"  ← COPY TO THIS EXACT PATH
+}
+```
+**Correct:**
+```bash
+cp inputs/assets/icons/icon-telegram.svg codebase/public/icons/telegram.svg
+```
+```tsx
+<Image src="/icons/telegram.svg" />  // ← Use dest path
+```
+**Wrong:**
+```bash
+cp inputs/assets/icons/icon-telegram.svg codebase/public/icons/icon-telegram.svg  // ❌ Wrong filename
+```
+
+**Step 1: COPY assets to EXACT dest path**
+- Read `ui-assets.json` for each asset's `src` → `dest` mapping
+- Copy to the EXACT `dest` path (including filename changes!)
+- **If dest path differs from src filename, you MUST rename during copy**
+
+**Step 2: Reference dest path in code**
+- Use the `dest` path (e.g., `/icons/telegram.svg`) in code
+- NEVER use the original filename if dest is different
 
 **Step 3: Verify**
-- Asset file must exist at destination before code is written
-- If you see an image path in code but no file in public/ → COPY IT!
+- Asset file must exist at `dest` path before code is written
+- If 404 at runtime → check if file was copied to EXACT dest path
 
 **Single Path Principle:**
-- Choose ONE directory for static assets and use it consistently
-- If you copy assets to a location, reference ONLY that location
-- Never create parallel/duplicate folder structures for the same assets
-- If you define asset path constants, actually USE them in components
+- ui-assets.json is the single source of truth for asset locations
+- If you copy assets, use EXACTLY the dest path specified
+- Never invent your own paths - follow ui-assets.json
 
 ────────────────────────────────────────────────────────────────────────────────
 
@@ -576,7 +679,7 @@ function updatePaddle() {
 
 | Mistake | Wrong | Correct |
 |---------|-------|---------|
-| **CRITICAL: Using `<file>` for existing file** | `<file path="src/App.tsx">` when file exists | Use `edit_file` tool |
+| **CRITICAL: Using `<file>` for existing file** | `<file path="src/main.ts">` when file exists | Use `edit_file` tool |
 | **CRITICAL: Editing without reading first** | `edit_file` with outdated old_str | `read_file` first, then `edit_file` |
 | **CRITICAL: Wrong package manager** | `npm install` in pnpm project | Check for `pnpm-workspace.yaml` → use `pnpm install` |
 | **CRITICAL: Hardcoding values instead of using constants** | `const speed = 300;` when `PADDLE_SPEED` exists | `import { PADDLE_SPEED } from './constants'; const speed = PADDLE_SPEED;` |
@@ -589,20 +692,20 @@ function updatePaddle() {
 | Deleting multiple files individually | Multiple `delete_file` calls | Use `run_command` tool: `rm *.log` |
 | Duplicating constants in multiple files | `const API_URL = "..."` in 3 files | Create `config.ts` with single source of truth |
 | Markdown in content | ` ```typescript\ncode\n``` ` | Raw code only |
-| Placeholder paths | `path/to/file.tsx` | `src/components/Button.tsx` |
+| Placeholder paths | `path/to/file.ext` | `src/services/user.ts` |
 | Code placeholders | `// ... logic ...` | Complete implementation |
 | Whitespace in edit_file old_str | Missing indentation | Exact match required |
 
 **⚠️ ASSET IMPLEMENTATION ANTI-PATTERN:**
-```tsx
+```
 // ❌ WRONG: Leaving TODO instead of implementing
-{/* TODO: Add logo image from /public/logos/logo.svg */}
-<span className="font-bold">Company Name</span>
+// TODO: Add logo image from /public/logos/logo.svg
+// Using text fallback: "Company Name"
 
 // ✅ CORRECT: Copy asset and use it immediately
 // Step 1: cp inputs/assets/logos/logo.svg → codebase/public/logos/logo.svg
-// Step 2: Reference in code:
-<img src="/logos/logo.svg" alt="Company Logo" className="h-8 w-auto" />
+// Step 2: Reference in code with the correct path:
+// logo_path = "/logos/logo.svg"
 ```
 
 ────────────────────────────────────────────────────────────────────────────────
