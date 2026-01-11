@@ -11,6 +11,8 @@ import { LLMClient } from "../../../../../../core/ports";
 import { ArchitectGraphState, TASK_PRIORITIES, Violation } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { formatViolations } from "../shared/violationFormatter";
+import * as fs from 'fs/promises';
+import * as path from 'path';
 
 /**
  * Select appropriate LLM based on task type
@@ -123,5 +125,73 @@ export async function generatePlanText(
   
   console.log(`   ✅ Plan generated (${planText.length} chars)\n`);
   
+  // ✅ Save planText to sessions directory for debugging
+  await savePlanTextForDebug(state, task, planText);
+  
   return planText;
+}
+
+/**
+ * Save planText to sessions/planTexts directory for debugging
+ * 
+ * Saves to: {featurePath}/sessions/planTexts/{jobId}.md
+ * All task plans for a job are appended to a single file.
+ * 
+ * @param state - Current graph state
+ * @param task - Current task
+ * @param planText - Generated plan text
+ */
+async function savePlanTextForDebug(
+  state: ArchitectGraphState,
+  task: CodeTask,
+  planText: string
+): Promise<void> {
+  try {
+    const featurePath = state.context.featurePath;
+    const jobId = state._httpJobId;
+    
+    if (!featurePath || !jobId) {
+      return; // No feature path or jobId available
+    }
+    
+    // Create sessions/planTexts/ directory
+    const planTextsDir = path.join(featurePath, 'sessions', 'planTexts');
+    await fs.mkdir(planTextsDir, { recursive: true });
+    
+    const filepath = path.join(planTextsDir, `${jobId}.md`);
+    
+    // Check if file exists to determine header
+    let existingContent = '';
+    try {
+      existingContent = await fs.readFile(filepath, 'utf-8');
+    } catch {
+      // File doesn't exist, will create with header
+    }
+    
+    // Determine if this is a replan (retry)
+    const retryCount = state.retries || 0;
+    const isReplan = retryCount > 0;
+    const replanLabel = isReplan ? ` (Replan #${retryCount})` : '';
+    
+    // Build entry for this task
+    const separator = existingContent ? '\n\n---\n\n' : '';
+    const header = existingContent ? '' : `# Plans Log (Job: ${jobId})\n\n`;
+    
+    const entry = `## ${task.name}${replanLabel}
+
+- **Task ID**: ${task.id}
+- **Type**: ${task.type}
+- **Priority**: ${task.priority}
+- **Retry**: ${retryCount}${isReplan ? ' ⚠️ REPLAN' : ''}
+- **Generated**: ${new Date().toISOString()}
+
+${planText}`;
+    
+    // Append to file
+    await fs.writeFile(filepath, header + existingContent + separator + entry, 'utf-8');
+    console.log(`   📄 Plan appended: sessions/planTexts/${jobId}.md`);
+  } catch (err) {
+    // Non-blocking - just log warning
+    console.warn(`   ⚠️  Could not save plan for debug:`, err instanceof Error ? err.message : err);
+  }
 }

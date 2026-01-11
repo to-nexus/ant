@@ -33,6 +33,7 @@ export interface ProjectCodeContext {
     estimatedTokens?: number;
   };
   gitDiff?: string;
+  directoryTree?: string;  // ✅ Directory structure for path decisions
   source: 'plan';
 }
 
@@ -160,9 +161,94 @@ export async function combineCodeContext(
     );
   }
   
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Directory tree (for path decisions in Plan)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  try {
+    projectCodeContext.directoryTree = await generateDirectoryTree(fileSystem, 4);
+    if (projectCodeContext.directoryTree) {
+      console.log(`   📂 Directory tree generated`);
+    }
+  } catch (err) {
+    console.warn(`   ⚠️  Could not generate directory tree:`, err instanceof Error ? err.message : err);
+  }
+  
   // ✅ Return both context and lessons
   return {
     context: projectCodeContext,
     lessons
   };
+}
+
+/**
+ * Generate directory tree for codebase
+ * 
+ * Creates a text representation of the directory structure
+ * to help Plan make correct path decisions.
+ * 
+ * @param fileSystem - FileSystemPort
+ * @param maxDepth - Maximum depth to traverse (default: 4)
+ * @returns Formatted directory tree string
+ */
+async function generateDirectoryTree(
+  fileSystem: any,
+  maxDepth: number = 4
+): Promise<string | undefined> {
+  const IGNORE_DIRS = new Set([
+    'node_modules', '.git', '.next', '.nuxt', 'dist', 'build', 
+    '.cache', 'coverage', '.turbo', '.vercel', '__pycache__',
+    'venv', '.venv', 'target', '.idea', '.vscode'
+  ]);
+  
+  const IGNORE_FILES = new Set([
+    '.DS_Store', 'Thumbs.db', '.env', '.env.local',
+    'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml'
+  ]);
+  
+  const lines: string[] = [];
+  
+  async function traverse(dirPath: string, prefix: string, depth: number): Promise<void> {
+    if (depth > maxDepth) return;
+    
+    try {
+      const entries = await fileSystem.readDirectory(dirPath);
+      if (!entries || entries.length === 0) return;
+      
+      // Sort: directories first, then files
+      const sorted = entries
+        .filter((e: any) => e?.name && !IGNORE_DIRS.has(e.name) && !IGNORE_FILES.has(e.name))
+        .sort((a: any, b: any) => {
+          if (a.isDirectory && !b.isDirectory) return -1;
+          if (!a.isDirectory && b.isDirectory) return 1;
+          return a.name.localeCompare(b.name);
+        });
+      
+      for (let i = 0; i < sorted.length; i++) {
+        const entry = sorted[i];
+        const isLast = i === sorted.length - 1;
+        const connector = isLast ? '└── ' : '├── ';
+        const childPrefix = isLast ? '    ' : '│   ';
+        
+        if (entry.isDirectory) {
+          lines.push(`${prefix}${connector}${entry.name}/`);
+          const childPath = dirPath ? `${dirPath}/${entry.name}` : entry.name;
+          await traverse(childPath, prefix + childPrefix, depth + 1);
+        } else {
+          lines.push(`${prefix}${connector}${entry.name}`);
+        }
+      }
+    } catch {
+      // Ignore read errors
+    }
+  }
+  
+  // Start from codebase root
+  lines.push('codebase/');
+  await traverse('', '', 1);
+  
+  if (lines.length <= 1) {
+    return undefined;
+  }
+  
+  return lines.join('\n');
 }

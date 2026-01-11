@@ -506,6 +506,9 @@ export class PromptEngine {
       formattedCodeContext = `**Files** (${projectCodeContext.files.length} files):\n\n${fileList}`;
     }
     
+    // ✅ Extract directory tree if available
+    const directoryTree = projectCodeContext?.directoryTree || '';
+    
     // ✅ Uses base-plan.md for plan generation
     return await this.deps.promptPort.render('code/phases/plan/base-plan', {
       taskName: task.name,
@@ -516,6 +519,7 @@ export class PromptEngine {
       uiDoc: uiDoc,  // ✅ UI spec for UI-related tasks
       hasUiDoc: !!uiDoc,  // ✅ Flag for template conditional
       projectCodeContext: formattedCodeContext,  // ✅ Formatted string (not .code property)
+      directoryTree: directoryTree,  // ✅ Directory tree for path decisions
       hasDesignDoc: !!designDoc,
       hasProjectCodeContext: !!formattedCodeContext,
       violationsText: violationsText,  // ✅ Formatted violations for retry
