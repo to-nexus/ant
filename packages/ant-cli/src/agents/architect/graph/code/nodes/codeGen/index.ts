@@ -386,8 +386,36 @@ export async function codeGen(
     
     // ✅ Return LLM response (state에 저장)
     
-    // ✅ projectCodeContext is plan-only data (immutable after plan node)
-    // Plan node always regenerates it via RAG on retry - no need to update here
+    // ✅ CRITICAL: Accumulate created/modified files to projectCodeContext
+    // This ensures subsequent codeGen turns know about files created in this session
+    // Without this, existingFiles Set is empty on each turn, causing:
+    // - Duplicate file creation (Hero.tsx AND HeroSection.tsx for same component)
+    // - LLM not recognizing files it created in previous turns
+    const newFilePaths = files
+      .filter(f => f.actionType === 'create' || f.actionType === 'edit')
+      .map(f => f.path);
+    
+    let updatedProjectCodeContext = state.projectCodeContext;
+    
+    if (newFilePaths.length > 0) {
+      const existingPaths = state.projectCodeContext?.filePaths || [];
+      const combinedPaths = Array.from(new Set([...existingPaths, ...newFilePaths]));
+      
+      updatedProjectCodeContext = state.projectCodeContext ? {
+        ...state.projectCodeContext,
+        filePaths: combinedPaths
+      } : {
+        source: 'codeGen' as const,
+        filePaths: combinedPaths,
+        files: [],
+        stats: { filesLoaded: combinedPaths.length, estimatedTokens: 0 }
+      };
+      
+      console.log(`📁 [CodeGen] Updated projectCodeContext: ${combinedPaths.length} files (+${newFilePaths.length} this turn)`);
+      if (newFilePaths.length <= 5) {
+        newFilePaths.forEach(p => console.log(`   + ${p}`));
+      }
+    }
     
     return {
       llmResponse: {
@@ -398,6 +426,7 @@ export async function codeGen(
         tokenUsage: capturedUsage,
       },
       fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
+      projectCodeContext: updatedProjectCodeContext,  // ✅ Propagate to next codeGen turn
     };
   } catch (error) {
     console.error('[ERROR] ❌ [CodeGen] Error during reasoning:');
