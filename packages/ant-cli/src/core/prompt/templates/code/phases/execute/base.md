@@ -198,6 +198,16 @@ Create config files only. **NO source code, NO tests.**
 Implement the feature. Source code only.
 
 **DON'T create:** Documentation files, test files
+
+**🚫 DO NOT in Feature Tasks:**
+- ❌ DO NOT run build commands
+- ❌ DO NOT run development servers
+- ❌ DO NOT verify runtime behavior (reserved for FINAL VERIFICATION)
+
+**✅ DO in Feature Tasks:**
+- Write/edit source code files
+- Ensure imports and syntax are correct
+
 **Actions:** Write/edit code → Output `<done>true</done>`
 
 {{/unless}}

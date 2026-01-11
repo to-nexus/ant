@@ -146,3 +146,38 @@ export interface CompatibilityRule {
   check: (config: any, configFile: string) => CompatibilityIssue | null;
 }
 
+/**
+ * 프레임워크별 빌드/검증 설정
+ */
+export interface FrameworkBuildConfig {
+  framework: Framework;
+  
+  /** 빌드 명령어 (패키지 매니저 변수 {pm} 사용) */
+  buildCommand: string;
+  
+  /** 개발 서버 명령어 (사용 가능한 경우) */
+  devCommand?: string;
+  
+  /** 정적 빌드 결과물 서빙 명령어 (static export 모드) */
+  serveCommand?: string;
+  
+  /** 성공 기준 */
+  successCriteria: 'build_only' | 'dev_server' | 'serve_static';
+  
+  /** 헬스 체크 URL 패턴 */
+  healthCheckUrl?: string;
+  
+  /** 서버 시작 대기 시간 (ms) */
+  serverStartTimeout?: number;
+  
+  /** 특수 모드별 설정 (예: Next.js static export) */
+  modes?: {
+    [key: string]: Partial<Omit<FrameworkBuildConfig, 'framework' | 'modes'>>;
+  };
+}
+
+/**
+ * 프레임워크 모드 감지 함수 타입
+ */
+export type FrameworkModeDetector = (config: any) => string | null;
+

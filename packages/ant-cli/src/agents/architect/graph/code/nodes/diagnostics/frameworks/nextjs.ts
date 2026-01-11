@@ -5,7 +5,7 @@
  * (nuxt.ts, angular.ts, django.ts, etc.)
  */
 
-import { ErrorPattern, ErrorLayer, CompatibilityRule, CompatibilityIssue, Framework } from '../types';
+import { ErrorPattern, ErrorLayer, CompatibilityRule, CompatibilityIssue, Framework, FrameworkBuildConfig, FrameworkModeDetector } from '../types';
 
 /**
  * Next.js Error Patterns (post-error diagnosis)
@@ -223,3 +223,72 @@ export const NEXTJS_COMPATIBILITY_RULES: CompatibilityRule[] = [
     }
   }
 ];
+
+/**
+ * Next.js Build Configuration
+ * 
+ * Defines how to build and verify Next.js applications based on their mode.
+ */
+export const NEXTJS_BUILD_CONFIG: FrameworkBuildConfig = {
+  framework: Framework.NEXTJS,
+  
+  // Default: standard Next.js with dev server
+  buildCommand: '{pm} run build',
+  devCommand: '{pm} run dev',
+  successCriteria: 'dev_server',
+  healthCheckUrl: 'http://localhost:3000/',
+  serverStartTimeout: 30000,
+  
+  // Mode-specific overrides
+  modes: {
+    // Static export mode (output: 'export')
+    'static-export': {
+      buildCommand: '{pm} run build',
+      serveCommand: 'npx serve out -l {port}',
+      successCriteria: 'serve_static',
+      healthCheckUrl: 'http://localhost:{port}/',
+      serverStartTimeout: 15000,
+    },
+    
+    // Standalone mode (output: 'standalone')
+    'standalone': {
+      buildCommand: '{pm} run build',
+      devCommand: 'node .next/standalone/server.js',
+      successCriteria: 'dev_server',
+      healthCheckUrl: 'http://localhost:3000/',
+      serverStartTimeout: 20000,
+    }
+  }
+};
+
+/**
+ * Detect Next.js mode from configuration
+ * 
+ * @param config - Parsed next.config.js content
+ * @returns Mode name or null for default
+ */
+export const detectNextjsMode: FrameworkModeDetector = (config: any): string | null => {
+  if (config?.output === 'export') {
+    return 'static-export';
+  }
+  if (config?.output === 'standalone') {
+    return 'standalone';
+  }
+  return null;
+};
+
+/**
+ * Get build config for detected mode
+ */
+export function getNextjsBuildConfig(config: any): FrameworkBuildConfig {
+  const mode = detectNextjsMode(config);
+  
+  if (mode && NEXTJS_BUILD_CONFIG.modes?.[mode]) {
+    return {
+      ...NEXTJS_BUILD_CONFIG,
+      ...NEXTJS_BUILD_CONFIG.modes[mode],
+    };
+  }
+  
+  return NEXTJS_BUILD_CONFIG;
+}
