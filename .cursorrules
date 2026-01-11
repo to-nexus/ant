@@ -122,3 +122,16 @@ ui-spec.md (references ui-tokens.md + ui-assets.md)
 - ESLint + Prettier
 - JSDoc comments recommended for functions
 - Console logs use emoji prefixes (e.g., `📄 [DocGen]`, `🔧 [Tool]`)
+
+---
+
+## Prompt Template Rules
+
+**All prompt templates MUST be written in English only.**
+
+- ❌ NO Korean or other non-English text in prompt files
+- ❌ NO project-specific examples (Hero.tsx, page.tsx, etc.)
+- ✅ Use generic, platform/language-neutral examples
+- ✅ Focus on principles over specific implementations
+
+Ant supports frontend, backend, and fullstack across multiple languages. Prompts must be platform-agnostic.

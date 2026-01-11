@@ -3,39 +3,39 @@
 Generate a **concrete implementation plan** for this task.
 
 ────────────────────────────────────────────────────────────────────────────────
-## 🎯 Plan과 CodeGen의 책임 분리
+## 🎯 Responsibility Split: Plan vs CodeGen
 ────────────────────────────────────────────────────────────────────────────────
 
-Plan과 CodeGen은 서로 다른 종류의 결정을 담당합니다.
+Plan and CodeGen handle different types of decisions.
 
-### 📋 Plan이 결정하는 것 (구조적 결정 - CodeGen이 반드시 따름)
+### 📋 Plan Decides (Structural - CodeGen MUST follow)
 
-| 결정 영역 | 예시 | 왜 Plan이 결정? |
-|----------|------|----------------|
-| **파일 경로/이름** | `components/Hero.tsx` | 중복 방지, 일관성 |
-| **통합 지점** | "page.tsx에서 import" | 전체 구조 파악 필요 |
-| **교체 대상** | "lines 15-45 교체" | 기존 코드 분석 필요 |
-| **컴포넌트 분리** | "Hero와 About 분리" | 아키텍처 결정 |
-| **에셋 복사 경로** | "public/images/로 복사" | 프로젝트 구조 일관성 |
+| Decision Area | Why Plan Decides |
+|---------------|------------------|
+| **File paths/names** | Prevents duplicates, ensures consistency |
+| **Integration points** | Requires holistic view of architecture |
+| **Replacement targets** | Requires analysis of existing code |
+| **Module separation** | Architecture-level decision |
+| **Asset destinations** | Project structure consistency |
 
-### 🔧 CodeGen이 스스로 판단하는 것 (구현적 결정)
+### 🔧 CodeGen Decides (Implementation - autonomy)
 
-| 결정 영역 | 예시 | 왜 CodeGen이 결정? |
-|----------|------|-------------------|
-| **변수/함수명** | `handleClick`, `isLoading` | 구현 맥락에서 결정 |
-| **타입 정의** | `interface HeroProps {}` | 실제 코드 작성 시 결정 |
-| **CSS/스타일링** | Tailwind 클래스 선택 | UI 구현 세부사항 |
-| **에러 핸들링** | try-catch 범위 | 런타임 맥락 필요 |
-| **최적화** | useMemo, useCallback | 성능 맥락 필요 |
-| **import 문 형식** | 상대경로 vs 절대경로 | 기존 코드 패턴 따름 |
+| Decision Area | Why CodeGen Decides |
+|---------------|---------------------|
+| **Variable/function names** | Context-dependent during implementation |
+| **Type definitions** | Determined while writing actual code |
+| **Styling details** | Implementation-level concern |
+| **Error handling** | Requires runtime context |
+| **Performance optimization** | Requires implementation context |
+| **Import formats** | Follow existing code patterns |
 
-### ⚠️ 경계 상황: Plan이 힌트를 주되 CodeGen이 최종 결정
+### ⚠️ Boundary Cases: Plan hints, CodeGen decides
 
-| 상황 | Plan이 할 일 | CodeGen이 할 일 |
-|------|-------------|----------------|
-| **상태 관리 필요 여부** | "상태 관리 필요할 수 있음" 힌트 | useState/useReducer 선택 |
-| **추가 유틸 필요** | "헬퍼 함수 필요할 수 있음" 힌트 | 같은 파일 내 정의 또는 별도 파일 |
-| **Plan에 없는 파일 필요** | - | 생성하되 명시적으로 보고 |
+| Situation | Plan's Role | CodeGen's Role |
+|-----------|-------------|----------------|
+| **State management needed** | Hint: "may need state" | Choose specific approach |
+| **Helper utilities needed** | Hint: "may need helpers" | Define inline or separate file |
+| **Unlisted file needed** | - | Create and explicitly report |
 
 ────────────────────────────────────────────────────────────────────────────────
 
@@ -78,47 +78,58 @@ This section is PARSED by the system and passed to CodeGen as binding instructio
 
 ### CREATE FILES:
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ 1. path: components/sections/Hero.tsx                                        │
-│    purpose: Hero section with background image and CTA                       │
-│    integrates_in: app/page.tsx                                               │
-│    replaces: "hardcoded hero section (lines 15-45)" OR "nothing"            │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ 2. path: components/sections/About.tsx                                       │
-│    purpose: About section with feature cards                                 │
-│    integrates_in: app/page.tsx                                               │
-│    replaces: "hardcoded about section (lines 47-80)" OR "nothing"           │
+│ 1. path: [exact/path/to/file]                                               │
+│    purpose: [what this file does]                                           │
+│    integrates_in: [entry point or consumer file]                            │
+│    replaces: "[existing code to replace]" OR "nothing"                      │
 └─────────────────────────────────────────────────────────────────────────────┘
 
 ### MODIFY FILES:
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ 1. path: app/page.tsx                                                        │
-│    action: Import and use new components                                     │
-│    changes:                                                                  │
-│      - Add: import Hero from './components/sections/Hero'                   │
-│      - Add: import About from './components/sections/About'                 │
-│      - Replace lines 15-45 with: <Hero />                                   │
-│      - Replace lines 47-80 with: <About />                                  │
+│ 1. path: [file to modify]                                                   │
+│    action: [what to do]                                                     │
+│    changes:                                                                 │
+│      - [specific change 1]                                                  │
+│      - [specific change 2]                                                  │
 └─────────────────────────────────────────────────────────────────────────────┘
 
 ### ASSET OPERATIONS (if any):
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ 1. cp features/.../hero-bg.png → public/images/hero-bg.png                  │
-│ 2. cp features/.../logo.svg → public/logos/logo.svg                         │
+│ 1. cp [source] → [destination]                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 
 ═══════════════════════════════════════════════════════════════════════════════
 ```
 
-**CONTRACT RULES (CodeGen이 따를 것):**
-- ✅ 명시된 파일은 정확히 그 경로/이름으로 생성
-- ✅ 명시된 통합 단계는 반드시 수행
-- ✅ 명시된 교체 대상은 반드시 교체
-- ❌ 다른 이름의 파일로 대체 금지 (Hero.tsx → HeroSection.tsx)
+**CONTRACT RULES (CodeGen MUST follow):**
+- ✅ Create files at EXACT paths/names specified
+- ✅ Perform ALL integration steps specified
+- ✅ Replace ALL targets specified
+- ❌ DO NOT use different file names than specified
 
-**CodeGen 자율 영역 (Plan이 간섭하지 않음):**
-- 구현 세부사항 (변수명, 타입, 로직)
-- 스타일링 세부사항 (CSS 클래스, 반응형 처리)
-- Plan에 명시되지 않은 보조 작업 (헬퍼 함수, 타입 파일 등) - 필요시 생성 가능
+**CodeGen Autonomy (Plan does NOT dictate):**
+- Implementation details (variable names, types, logic)
+- Styling specifics (CSS classes, responsive handling)
+- Auxiliary files not in Plan (helpers, types) - create if needed
+- **Modularization**: If a file becomes too large, CodeGen may split into submodules
+
+**Modularization Rule:**
+Plan specifies **entry points** (paths that consumers import from).
+CodeGen may create subdirectories/submodules, but the entry point MUST exist and re-export.
+
+```
+Plan: "Create src/utils/api.ts"
+
+CodeGen finds implementation is large → Allowed to modularize:
+src/utils/
+├── api.ts              ← Entry point (MUST exist, re-exports)
+└── api/
+    ├── auth.ts         ← Submodule
+    ├── users.ts        ← Submodule
+    └── products.ts     ← Submodule
+
+External imports unchanged: import { ... } from 'src/utils/api'
+```
 
 ────────────────────────────────────────────────────────────────────────────────
 
