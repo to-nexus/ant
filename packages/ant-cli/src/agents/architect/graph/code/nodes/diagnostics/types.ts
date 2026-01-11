@@ -33,6 +33,23 @@ export enum BuildTool {
 }
 
 /**
+ * 프레임워크 (플랫폼/언어 중립적)
+ */
+export enum Framework {
+  NEXTJS = 'nextjs',
+  NUXT = 'nuxt',
+  ANGULAR = 'angular',
+  SVELTE = 'svelte',
+  DJANGO = 'django',
+  FLASK = 'flask',
+  FASTAPI = 'fastapi',
+  SPRING = 'spring',
+  EXPRESS = 'express',
+  NESTJS = 'nestjs',
+  NONE = 'none'
+}
+
+/**
  * 패키지 매니저
  */
 export enum PackageManager {
@@ -101,7 +118,31 @@ export interface ProjectDetection {
   language: Language;
   buildTool: BuildTool;
   packageManager: PackageManager;
+  framework: Framework;
   hasTypeScript: boolean;
   hasReact: boolean;
+}
+
+/**
+ * 호환성 체크 결과 (사전 검증용)
+ */
+export interface CompatibilityIssue {
+  framework: Framework;
+  severity: 'critical' | 'major' | 'minor';
+  issue: string;
+  configFile: string;
+  conflictingSettings: string[];
+  fix: string;
+  documentation?: string;
+}
+
+/**
+ * 호환성 규칙 정의 (프레임워크별)
+ */
+export interface CompatibilityRule {
+  framework: Framework;
+  name: string;
+  description: string;
+  check: (config: any, configFile: string) => CompatibilityIssue | null;
 }
 

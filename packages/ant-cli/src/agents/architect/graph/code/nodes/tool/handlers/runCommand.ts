@@ -320,7 +320,68 @@ ${stdout.slice(0, 1000)}`));
     const startupTimeout = setTimeout(async () => {
       // If still running after 5s with no errors = success
       if (!hasError && child.exitCode === null) {
-        console.log(`\n   ✅ Server started successfully (verified 5s startup)`);
+        console.log(`\n   ✅ Server process started, verifying page render...`);
+        
+        // Extract port from stdout (e.g., "localhost:3000", "port 8080")
+        const portMatch = stdout.match(/localhost:(\d+)|port\s+(\d+)|:(\d{4,5})\b/i);
+        const port = portMatch ? (portMatch[1] || portMatch[2] || portMatch[3]) : '3000';
+        
+        // HTTP test to verify page actually renders (catches runtime-only errors)
+        let httpTestResult: { ok: boolean; error?: string } = { ok: true };
+        try {
+          const http = await import('http');
+          httpTestResult = await new Promise<{ ok: boolean; error?: string }>((resolveHttp) => {
+            const req = http.request({
+              hostname: 'localhost',
+              port: parseInt(port),
+              path: '/',
+              method: 'GET',
+              timeout: 5000
+            }, (res) => {
+              let body = '';
+              res.on('data', (chunk) => body += chunk);
+              res.on('end', () => {
+                if (res.statusCode === 200) {
+                  resolveHttp({ ok: true });
+                } else {
+                  // Extract meaningful error from response
+                  const errorMatch = body.match(/Error:([^<]+)/i) || body.match(/<pre>([^<]+)<\/pre>/i);
+                  const errorMsg = errorMatch ? errorMatch[1].trim().slice(0, 500) : `HTTP ${res.statusCode}`;
+                  resolveHttp({ ok: false, error: errorMsg });
+                }
+              });
+            });
+            req.on('error', (err) => resolveHttp({ ok: false, error: err.message }));
+            req.on('timeout', () => { req.destroy(); resolveHttp({ ok: false, error: 'Request timeout' }); });
+            req.end();
+          });
+        } catch (httpError) {
+          // HTTP module error - still consider server started
+          console.warn(`   ⚠️  Could not verify page render: ${httpError instanceof Error ? httpError.message : httpError}`);
+        }
+        
+        if (!httpTestResult.ok && httpTestResult.error) {
+          // Server started but page render failed - this catches runtime errors!
+          console.error(`\n   ❌ Server started but page render failed: ${httpTestResult.error}\n`);
+          await chatAPI.commandComplete(command, false, 1, 
+            `Server started but page render failed!\n\nStartup output:\n${stdout}\n\n❌ HTTP Test Failed: ${httpTestResult.error}\n\nThis error only appears at runtime. Fix the configuration or code issue.`,
+            mergeIndex
+          );
+          safeReject(new Error(`❌ SERVER STARTED BUT PAGE RENDER FAILED: ${command}
+
+The server process started, but loading the page failed.
+This indicates a runtime error (e.g., config incompatibility, missing runtime dependency).
+
+HTTP Test Error: ${httpTestResult.error}
+
+Startup output:
+${stdout.slice(0, 1500)}
+
+⚠️ Fix the runtime error and try again.`));
+          return;
+        }
+        
+        console.log(`   ✅ Page rendered successfully`);
         if (keepRunning) {
           console.log(`   🔄 Server will continue running (PID: ${child.pid})`);
           console.log(`   🧹 Will be automatically cleaned up when task completes\n`);
@@ -346,8 +407,8 @@ ${stdout.slice(0, 1000)}`));
         
         await chatAPI.commandComplete(command, true, 0, 
           keepRunning
-            ? `Server started successfully.\n\nStartup output:\n${stdout}\n\n✅ Server is running in background (PID: ${child.pid}).\n🧹 Will be automatically cleaned up when task completes.`
-            : `Server started successfully.\n\nStartup output:\n${stdout}\n\n✅ Server started without errors.\n🧹 Server was terminated after verification.`,
+            ? `Server started successfully.\n\nStartup output:\n${stdout}\n\n✅ Server is running in background (PID: ${child.pid}).\n✅ Page render verified.\n🧹 Will be automatically cleaned up when task completes.`
+            : `Server started successfully.\n\nStartup output:\n${stdout}\n\n✅ Server started without errors.\n✅ Page render verified.\n🧹 Server was terminated after verification.`,
           mergeIndex
         );
 
@@ -355,6 +416,7 @@ ${stdout.slice(0, 1000)}`));
           safeResolve(`✅ SERVER STARTED SUCCESSFULLY: ${command}
 
 The server started without errors and is running in background.
+✅ Page render verified (HTTP 200)
 
 PID: ${child.pid}
 Working Directory: ${workingDir}
@@ -368,6 +430,7 @@ ${stdout.slice(0, 2000)}${stdout.length > 2000 ? '\n...(truncated)' : ''}
           safeResolve(`✅ SERVER STARTED SUCCESSFULLY: ${command}
 
 The server started without errors.
+✅ Page render verified (HTTP 200)
 
 PID: ${child.pid}
 Working Directory: ${workingDir}

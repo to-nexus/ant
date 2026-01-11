@@ -20,7 +20,9 @@ import { ArchitectGraphState } from "../../state";
 import { 
   detectProject, 
   diagnoseError, 
+  checkCompatibility,
   ErrorLayer, 
+  Framework,
 } from "../diagnostics";
 import { errorStatsCollector } from "../diagnostics/errorStats";
 import { ErrorParserFactory } from "../diagnostics/parsers";
@@ -139,6 +141,35 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
 
     // 2. Lint (if .eslintrc exists)
     await runLint(result, resolvedPath, repoRoot, fileSystem, commandPort, projectDetection, p);
+
+    // 2.5. Pre-build Compatibility Check (catches config incompatibilities early)
+    // This detects known problematic settings BEFORE build fails
+    const compatibilityIssues = await runCompatibilityCheck(
+      result, resolvedPath, repoRoot, fileSystem, projectDetection, p
+    );
+    
+    if (compatibilityIssues.length > 0) {
+      // Return early with compatibility issues - more actionable than cryptic build errors
+      const issueMessages = compatibilityIssues.map(i => 
+        `[${i.framework}] ${i.issue}\n  Config: ${i.configFile}\n  Fix: ${i.fix}`
+      ).join('\n\n');
+      
+      return {
+        ...state,
+        violations: [
+          ...(state.violations || []),
+          {
+            type: 'config_incompatibility',
+            severity: 'critical',
+            message: `Framework configuration incompatibility detected:\n\n${issueMessages}`,
+            suggestedFix: compatibilityIssues.map(i => i.fix).join('\n'),
+            isRetryable: true,
+            metadata: { issues: compatibilityIssues }
+          }
+        ],
+        runtimeValidationResult: { ...result, passed: false }
+      };
+    }
 
     // 3. Build (package.json scripts)
     const buildSuccess = await runBuild(result, resolvedPath, repoRoot, fileSystem, commandPort, projectDetection, p);
@@ -635,6 +666,125 @@ async function runBuild(
   } catch {
     // Ignore parse errors
   }
+}
+
+/**
+ * Run pre-build compatibility check
+ * 
+ * Analyzes framework config files to detect known incompatible settings
+ * BEFORE build fails with cryptic errors.
+ * 
+ * Platform-neutral: Each framework has its own compatibility rules defined in
+ * diagnostics/frameworks/{framework}.ts
+ */
+async function runCompatibilityCheck(
+  result: RuntimeValidationResult,
+  resolvedPath: string,
+  repoRoot: string,
+  fileSystem: any,
+  projectDetection: any,
+  p: any
+): Promise<Array<{ framework: string; severity: string; issue: string; configFile: string; fix: string }>> {
+  const issues: Array<{ framework: string; severity: string; issue: string; configFile: string; fix: string }> = [];
+  
+  const framework = projectDetection.framework;
+  
+  if (framework === Framework.NONE) {
+    return issues;
+  }
+  
+  console.log(`\n🔍 Running ${framework} compatibility check...`);
+  
+  // Framework-specific config file detection
+  const configFiles: { path: string; parser: (content: string) => any }[] = [];
+  
+  switch (framework) {
+    case Framework.NEXTJS:
+      // Check next.config.js, next.config.mjs, next.config.ts
+      for (const configName of ['next.config.js', 'next.config.mjs', 'next.config.ts']) {
+        const configPath = p.relative(repoRoot, p.join(resolvedPath, configName));
+        if (await fileSystem.fileExists(configPath)) {
+          configFiles.push({
+            path: configPath,
+            parser: parseNextConfig
+          });
+          break; // Use first found
+        }
+      }
+      break;
+      
+    // Add more frameworks here as needed
+    // case Framework.NUXT:
+    //   configFiles.push({ path: 'nuxt.config.ts', parser: parseNuxtConfig });
+    //   break;
+  }
+  
+  // Check each config file
+  for (const { path: configPath, parser } of configFiles) {
+    try {
+      const content = await fileSystem.readFile(configPath);
+      if (!content) continue;
+      
+      const config = parser(content);
+      if (!config) continue;
+      
+      const frameworkIssues = checkCompatibility(framework, configPath, config);
+      issues.push(...frameworkIssues.map(i => ({
+        framework: i.framework,
+        severity: i.severity,
+        issue: i.issue,
+        configFile: i.configFile,
+        fix: i.fix
+      })));
+      
+    } catch (error) {
+      console.warn(`⚠️  Could not parse ${configPath}:`, error instanceof Error ? error.message : error);
+    }
+  }
+  
+  if (issues.length > 0) {
+    console.log(`\n⚠️  Found ${issues.length} compatibility issue(s):`);
+    issues.forEach(i => {
+      console.log(`   - [${i.severity.toUpperCase()}] ${i.issue}`);
+      console.log(`     Fix: ${i.fix}`);
+    });
+    console.log('');
+  } else {
+    console.log('✅ No compatibility issues found\n');
+  }
+  
+  return issues;
+}
+
+/**
+ * Parse Next.js config file (simplified extraction)
+ * 
+ * Extracts key settings without full JS evaluation
+ */
+function parseNextConfig(content: string): any {
+  const config: any = {};
+  
+  // Extract output setting
+  const outputMatch = content.match(/output\s*:\s*['"]([^'"]+)['"]/);
+  if (outputMatch) {
+    config.output = outputMatch[1];
+  }
+  
+  // Extract images.unoptimized setting
+  const unoptimizedMatch = content.match(/unoptimized\s*:\s*(true|false)/);
+  if (unoptimizedMatch) {
+    config.images = config.images || {};
+    config.images.unoptimized = unoptimizedMatch[1] === 'true';
+  }
+  
+  // Check for images block without unoptimized
+  const imagesBlockMatch = content.match(/images\s*:\s*\{/);
+  if (imagesBlockMatch && !unoptimizedMatch) {
+    config.images = config.images || {};
+    // images block exists but unoptimized not set
+  }
+  
+  return config;
 }
 
 /**
