@@ -6,36 +6,39 @@ Generate a **concrete implementation plan** for this task.
 ## 🎯 Responsibility Split: Plan vs CodeGen
 ────────────────────────────────────────────────────────────────────────────────
 
-Plan and CodeGen handle different types of decisions.
+Plan and CodeGen handle **different levels of decisions**.
 
-### 📋 Plan Decides (Structural - CodeGen MUST follow)
+### 📋 Plan Decides (Architecture & Intent)
 
-| Decision Area | Why Plan Decides |
-|---------------|------------------|
-| **File paths/names** | Prevents duplicates, ensures consistency |
-| **Integration points** | Requires holistic view of architecture |
-| **Replacement targets** | Requires analysis of existing code |
-| **Module separation** | Architecture-level decision |
-| **Asset destinations** | Project structure consistency |
+| Decision Area | What Plan Provides |
+|---------------|-------------------|
+| **What to create** | Component/file names and purposes |
+| **Semantic location** | "components area", "utils", "api layer" |
+| **Integration intent** | "used by X module", "called from Y service" |
+| **Module relationships** | Which files interact with which |
+| **Asset mappings** | Source → destination logic |
 
-### 🔧 CodeGen Decides (Implementation - autonomy)
+### 🔧 CodeGen Decides (Implementation & Paths)
 
 | Decision Area | Why CodeGen Decides |
 |---------------|---------------------|
+| **Exact file paths** | Has `list_files` tool to check actual structure |
+| **Directory patterns** | Can verify existing conventions |
+| **Code changes** | Has `read_file` to see actual content |
 | **Variable/function names** | Context-dependent during implementation |
 | **Type definitions** | Determined while writing actual code |
-| **Styling details** | Implementation-level concern |
-| **Error handling** | Requires runtime context |
-| **Performance optimization** | Requires implementation context |
-| **Import formats** | Follow existing code patterns |
 
-### ⚠️ Boundary Cases: Plan hints, CodeGen decides
+### ⚠️ KEY PRINCIPLE: Plan guides, CodeGen verifies and executes
 
-| Situation | Plan's Role | CodeGen's Role |
-|-----------|-------------|----------------|
-| **State management needed** | Hint: "may need state" | Choose specific approach |
-| **Helper utilities needed** | Hint: "may need helpers" | Define inline or separate file |
-| **Unlisted file needed** | - | Create and explicitly report |
+```
+Plan: "Create UserValidator in utils/validation area, used by AuthService"
+       ↓
+CodeGen: 
+  1. list_files → finds existing directory pattern
+  2. read_file → finds integration point in target file
+  3. Creates file at correct path (matching existing conventions)
+  4. Modifies target file (correct integration)
+```
 
 ────────────────────────────────────────────────────────────────────────────────
 
@@ -56,37 +59,41 @@ Plan and CodeGen handle different types of decisions.
 ### Rules:
 
 - ✅ Copy API Contract specifications EXACTLY (endpoints, field names, types)
-- ✅ Be specific and concrete
-- ✅ Reference existing code when modifying
-- ✅ Follow existing directory structure (no duplicates)
-- ❌ DO NOT simplify endpoint paths (`/rooms/create` → `/rooms`)
-- ❌ DO NOT rename fields for "consistency"
-- ❌ DO NOT apply "best practices" that differ from spec
+- ✅ Be specific about WHAT to create and WHY
+- ✅ Describe WHERE semantically (not exact paths)
+- ✅ Reference existing patterns from directory tree
+- ❌ DO NOT hardcode exact paths (CodeGen verifies with tools)
+- ❌ DO NOT assume directory structure without checking tree
 
 ────────────────────────────────────────────────────────────────────────────────
-## 📋 MANDATORY OUTPUT: FILES CONTRACT
+## 📋 MANDATORY OUTPUT: IMPLEMENTATION GUIDE
 ────────────────────────────────────────────────────────────────────────────────
 
-**EVERY plan MUST end with a structured FILES CONTRACT section.**
+**EVERY plan MUST end with a structured IMPLEMENTATION GUIDE section.**
 
-This section is PARSED by the system and passed to CodeGen as binding instructions.
+This section provides **semantic guidance** for CodeGen to execute with actual file system verification.
 
 ```
 ═══════════════════════════════════════════════════════════════════════════════
-## FILES CONTRACT
+## IMPLEMENTATION GUIDE
 ═══════════════════════════════════════════════════════════════════════════════
 
-### CREATE FILES:
+### CREATE:
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ 1. path: [exact/path/to/file]                                               │
+│ 1. name: [ComponentName]                                                    │
+│    type: component | util | hook | api | page | ...                         │
+│    location: [semantic area - e.g., "components", "utils", "api"]           │
 │    purpose: [what this file does]                                           │
-│    integrates_in: [entry point or consumer file]                            │
-│    replaces: "[existing code to replace]" OR "nothing"                      │
+│    integrates_with: [file that MUST import/use this - TRIGGERS MODIFY]      │
 └─────────────────────────────────────────────────────────────────────────────┘
 
-### MODIFY FILES:
+**⚠️ `integrates_with` = MANDATORY modification.**
+If you specify `integrates_with: X`, CodeGen MUST modify X to import and use the new module.
+This is NOT optional metadata - it triggers a required MODIFY action.
+
+### MODIFY:
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ 1. path: [file to modify]                                                   │
+│ 1. target: [semantic description - e.g., "AuthService module"]              │
 │    action: [what to do]                                                     │
 │    changes:                                                                 │
 │      - [specific change 1]                                                  │
@@ -95,41 +102,25 @@ This section is PARSED by the system and passed to CodeGen as binding instructio
 
 ### ASSET OPERATIONS (if any):
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ 1. cp [source] → [destination]                                              │
+│ 1. asset: [asset description]                                               │
+│    source: [source path from ui-assets]                                     │
+│    destination: [semantic destination - e.g., "public/images"]              │
 └─────────────────────────────────────────────────────────────────────────────┘
 
 ═══════════════════════════════════════════════════════════════════════════════
 ```
 
-**CONTRACT RULES (CodeGen MUST follow):**
-- ✅ Create files at EXACT paths/names specified
-- ✅ Perform ALL integration steps specified
-- ✅ Replace ALL targets specified
-- ❌ DO NOT use different file names than specified
+**GUIDE PRINCIPLES:**
+- ✅ Describe WHAT and WHY clearly
+- ✅ Use semantic locations (CodeGen finds exact paths)
+- ✅ Specify integration relationships
+- ❌ DO NOT hardcode exact file paths (CodeGen verifies)
 
-**CodeGen Autonomy (Plan does NOT dictate):**
-- Implementation details (variable names, types, logic)
-- Styling specifics (CSS classes, responsive handling)
-- Auxiliary files not in Plan (helpers, types) - create if needed
-- **Modularization**: If a file becomes too large, CodeGen may split into submodules
-
-**Modularization Rule:**
-Plan specifies **entry points** (paths that consumers import from).
-CodeGen may create subdirectories/submodules, but the entry point MUST exist and re-export.
-
-```
-Plan: "Create src/utils/api.ts"
-
-CodeGen finds implementation is large → Allowed to modularize:
-src/utils/
-├── api.ts              ← Entry point (MUST exist, re-exports)
-└── api/
-    ├── auth.ts         ← Submodule
-    ├── users.ts        ← Submodule
-    └── products.ts     ← Submodule
-
-External imports unchanged: import { ... } from 'src/utils/api'
-```
+**CodeGen Responsibilities (with tools):**
+- Use `list_files` to find existing directory patterns
+- Use `read_file` to understand integration points
+- Determine exact paths based on existing conventions
+- Ensure NO duplicate files/components created
 
 ────────────────────────────────────────────────────────────────────────────────
 
@@ -138,31 +129,29 @@ External imports unchanged: import { ... } from 'src/utils/api'
 {{#if hasUiDoc}}
 **FOR UI TASKS - Your plan MUST include these sections IN ORDER:**
 
-#### 1. 📂 CODEBASE STRUCTURE ANALYSIS
+#### 1. 📂 DIRECTORY STRUCTURE ANALYSIS
 
-**FIRST**, analyze the existing codebase structure to maintain consistency:
+**FIRST**, analyze the directory tree to understand existing patterns:
 
 ```
-## Codebase Structure Analysis
+## Directory Structure Analysis
 
-Existing files found:
-- [List key existing component files and their paths]
+From directory tree:
+- Source code pattern: [observed pattern from directory tree]
+- Pages pattern: [observed pattern]
+- Utils pattern: [observed pattern]
 
-Pattern detected:
-- Components location: `components/` or `app/components/` or `src/components/`
-- Sections location: `components/sections/` or `app/sections/`
-
-**DECISION**: New files for this task will follow [specify the exact pattern]
+**DECISION**: New files will follow the [pattern] convention
 ```
 
 **CRITICAL**: 
-- Check `projectCodeContext` to see existing file locations
-- DO NOT create duplicate directory structures
-- Follow the existing pattern for similar files
+- Check `directoryTree` to see existing structure
+- Identify where similar files are located
+- CodeGen will verify and use exact paths
 
 #### 2. 📦 ASSET INVENTORY
 - Search ui-assets.json for assets related to this section/component
-- List ALL assets with exact paths: `asset-id: source → destination`
+- List ALL assets with semantic mappings
 - Count total: `Total: N assets`
 - If none found: "✓ No assets in ui-assets.json for this section"
 
@@ -171,28 +160,28 @@ Pattern detected:
 - List each component with visual properties, typography, interactive states
 - Note design token references
 
-#### 4. 📋 FILES CONTRACT (MANDATORY)
+#### 4. 📋 IMPLEMENTATION GUIDE (MANDATORY)
 
-**This is the BINDING CONTRACT for CodeGen. Use the exact format from above.**
+**This is the GUIDE for CodeGen. Use the format from above.**
 
 ```
 ═══════════════════════════════════════════════════════════════════════════════
-## FILES CONTRACT
+## IMPLEMENTATION GUIDE
 ═══════════════════════════════════════════════════════════════════════════════
 
-### CREATE FILES:
-[List each file with: path, purpose, integrates_in, replaces]
+### CREATE:
+[List each file with: name, type, location (semantic), purpose, integrates_with]
 
-### MODIFY FILES:
-[List each file with: path, action, changes]
+### MODIFY:
+[List each target with: target (semantic), action, changes]
 
 ### ASSET OPERATIONS:
-[List cp commands for each asset]
+[List assets with semantic destinations]
 
 ═══════════════════════════════════════════════════════════════════════════════
 ```
 
-**⚠️ CRITICAL**: The FILES CONTRACT section is NOT optional. 
-Every UI task plan MUST end with this structured contract.
+**⚠️ CRITICAL**: The IMPLEMENTATION GUIDE section is NOT optional. 
+Every UI task plan MUST end with this structured guide.
 
 {{/if}}
