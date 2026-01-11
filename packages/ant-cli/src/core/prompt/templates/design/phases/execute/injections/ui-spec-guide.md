@@ -71,105 +71,49 @@ ui-spec.json uses a structured JSON format that LLM can easily understand and de
 
 ### Section Specification Format
 
+**Document what you OBSERVE in the screenshot. Use token references for all values.**
+
 ```json
 {
   "sections": {
-    "hero": {
-      "layout": "full-width",
-      "height": "100vh",
-      "background": {
-        "asset": "bg-hero",
-        "overlay": "colors.overlay.gradientDark"
+    "<section-id>": {
+      "layout": "full-width | constrained",
+      "background": "colors.bg.<observed-color>",
+      "padding": { "vertical": "spacing.<observed>" },
+      "header": {
+        "container": {
+          "display": "flex | block",
+          "flexDirection": "row | column",
+          "alignItems": "flex-start | center",
+          "justifyContent": "space-between | center",
+          "textAlign": "left | center"
+        },
+        "title": {
+          "text": "<observed text from screenshot>",
+          "typography": "typography.heading.<size>"
+        },
+        "description": {
+          "text": "<observed text from screenshot>",
+          "typography": "typography.body.<size>"
+        }
       },
       "content": {
-        "headline": {
-          "text": ["Open Ownership", "Open World"],
-          "typography": "typography.heading.hero",
-          "color": "colors.text.white"
-        },
-        "subtitle": {
-          "text": "Ownership is distributed. Worlds are built together.",
-          "typography": "typography.body.lg",
-          "color": "colors.text.muted"
+        "<element-name>": {
+          "layout": "grid | flex",
+          "columns": { "mobile": 1, "tablet": 2, "desktop": 3 },
+          "gap": "spacing.<observed>"
         }
-      },
-      "animation": {
-        "headline": { "type": "fadeSlideUp", "delay": "200ms" },
-        "subtitle": { "type": "fadeSlideUp", "delay": "400ms" }
       },
       "responsive": {
-        "mobile": {
-          "height": "100vh",
-          "headline": { "typography": "typography.heading.lg" }
-        }
-      }
-    },
-    "ecosystem": {
-      "layout": "constrained",
-      "background": "colors.bg.lightBlue",
-      "padding": { "vertical": "spacing.5xl" },
-      "header": {
-        "title": "Discover the Ecosystem",
-        "description": "An open ecosystem built on shared ownership..."
-      },
-      "cards": {
-        "layout": "grid",
-        "columns": { "mobile": 1, "tablet": 2, "desktop": 3 },
-        "gap": "spacing.lg",
-        "items": [
-          {
-            "id": "ogf",
-            "background": "bg-ecosystem-ogf",
-            "logo": "logo-ogf-typo",
-            "hover": "flip",
-            "backContent": {
-              "title": "OPENGAME FOUNDATION",
-              "description": "The Opengame Foundation (OGF) is an independent..."
-            }
-          },
-          {
-            "id": "cross",
-            "background": "bg-ecosystem-cross",
-            "hover": "flip",
-            "glow": "effects.shadow.glow.green"
-          }
-        ]
+        "mobile": { /* observed mobile differences */ },
+        "tablet": { /* observed tablet differences */ }
       }
     }
   }
 }
 ```
 
-### Component Patterns
-
-```json
-{
-  "components": {
-    "card": {
-      "base": {
-        "radius": "effects.radius.xl",
-        "shadow": "effects.shadow.md",
-        "hover": {
-          "transform": "translateY(-8px)",
-          "shadow": "effects.shadow.lg",
-          "transition": "effects.transition.normal"
-        }
-      }
-    },
-    "button": {
-      "primary": {
-        "background": "colors.primary.green",
-        "color": "colors.text.white",
-        "radius": "effects.radius.lg",
-        "padding": { "vertical": "spacing.sm", "horizontal": "spacing.md" },
-        "hover": {
-          "background": "colors.primary.greenGlow"
-        }
-      }
-    }
-  }
-}
-```
+**Key principle**: Replace `<placeholders>` with what you OBSERVE in the screenshot.
 
 ---
 
@@ -228,10 +172,58 @@ These are **ABSOLUTELY FORBIDDEN**:
 
 ## Core Principles
 
-### 1. Describe What You SEE
+### 1. Describe What You SEE (MOST IMPORTANT)
 
 **Critical Rule**:
 > "If you didn't see it in the reference image, don't write it."
+> "Document the EXACT layout you observe, not what you assume."
+
+**The screenshot is the source of truth. Describe what you SEE, not what you think should be there.**
+
+**🚨 SPATIAL RELATIONSHIP OBSERVATION (FUNDAMENTAL PRINCIPLE):**
+
+For EVERY container with multiple child elements, you MUST explicitly observe and document:
+
+| Observation Point | Question to Answer |
+|-------------------|-------------------|
+| **Axis** | Are children arranged along horizontal axis (row) or vertical axis (column)? |
+| **Alignment** | How are children aligned? (start, center, end, stretch, baseline) |
+| **Distribution** | How is space distributed? (start, center, end, space-between, space-around) |
+| **Wrapping** | Do elements wrap to next line, or stay in single line? |
+
+**How to Observe:**
+1. Look at the **actual pixel positions** of elements in the screenshot
+2. If Element A and Element B are **side-by-side horizontally** → They are in a **row**
+3. If Element A is **above** Element B → They are in a **column**
+4. Check where the **empty space** is distributed
+
+**Do NOT assume based on:**
+- Element type (headers don't always stack vertically)
+- Background color (dark sections aren't different from light sections)
+- Common conventions (every design is unique)
+
+**🔄 PATTERN CONSISTENCY PRINCIPLE:**
+
+> **"Visually identical structures MUST have identical specifications"**
+
+After analyzing all sections:
+1. **Identify repeating visual patterns** - Group sections/components with same structure
+2. **Verify specification consistency** - Same pattern → Same layout properties
+3. **Flag and resolve inconsistencies** - If two visually identical sections have different specs, re-observe the screenshot
+
+**Example:**
+```
+If you observe 3 sections with this visual pattern:
+  [Title on LEFT] ←→ [Description on RIGHT]
+
+Then ALL 3 sections MUST have:
+  flexDirection: "row", justifyContent: "space-between"
+
+NOT:
+  Section A: row ✅
+  Section B: row ✅  
+  Section C: column ❌ (inconsistent!)
+```
 
 ### 2. Token-First
 
@@ -332,6 +324,12 @@ Before finalizing, verify:
 - [ ] **Valid JSON syntax** (proper braces, commas, quotes)
 - [ ] **Asset references valid** (match ui-assets.json IDs)
 - [ ] **Describes observations** (not assumptions)
+- [ ] **Element arrangement documented** (for each container: are children in row or column?)
+
+**🚨 PATTERN CONSISTENCY VERIFICATION (MANDATORY):**
+- [ ] **Spatial relationships observed**: For every container, explicitly determined axis (row/column), alignment, and distribution from screenshot
+- [ ] **Repeating patterns identified**: Grouped components/sections with identical visual structure
+- [ ] **Specification consistency verified**: Same visual pattern → Same layout properties throughout the document
 
 ---
 

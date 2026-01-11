@@ -267,6 +267,9 @@ export async function tool(
     state.deps.workflowUpdate.exitNode(state._httpJobId, 'tool');
   }
   
+  // ✅ CRITICAL: Preserve planText across tool calls
+  // Without this, planText gets lost after first tool execution
+  // causing "planText is missing" error in subsequent CodeGen calls
   return {
     conversationHistory: newHistory,
     llmResponse: {
@@ -281,6 +284,7 @@ export async function tool(
         error,
       },
     ],
+    planText: state.planText,  // ✅ FIX: Explicitly preserve planText
   };
 }
 

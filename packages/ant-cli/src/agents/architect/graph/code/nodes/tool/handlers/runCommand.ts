@@ -29,6 +29,13 @@ import {
   ORCHESTRATOR_PORT 
 } from '../constants';
 
+// 🚨 INTERACTIVE COMMAND DETECTION: Commands that require user input will hang forever
+// These patterns detect commands that typically prompt for input
+const INTERACTIVE_COMMAND_PATTERNS = [
+  /\bnpm\s+init\b(?!\s+(-y|--yes))/i,    // npm init without -y
+  /\byarn\s+init\b(?!\s+(-y|--yes))/i,   // yarn init without -y
+];
+
 export async function handleRunCommand(
   state: ArchitectGraphState,
   args: RunCommandArgs
@@ -47,6 +54,25 @@ export async function handleRunCommand(
   
   // 🚨 CRITICAL SAFEGUARD: Prevent killing orchestrator port
   checkOrchestratorPortSafeguard(command, ORCHESTRATOR_PORT);
+  
+  // 🚨 SAFEGUARD: Warn about potentially interactive commands
+  // Only block commands that are DEFINITIVELY interactive (no -y flag)
+  // This is a minimal safeguard - the real solution is in prompts
+  const isDefinitelyInteractive = INTERACTIVE_COMMAND_PATTERNS.some(pattern => pattern.test(command));
+  if (isDefinitelyInteractive) {
+    console.warn(`\n   ⚠️ [WARNING] Potentially interactive command detected: ${command}`);
+    console.warn(`   This command may require user input. Consider adding -y or --yes flag.\n`);
+    
+    return `⚠️ COMMAND MAY HANG: ${command}
+
+This command typically requires interactive input, which will cause the process to hang.
+
+✅ Add -y or --yes flag to skip prompts:
+- \`npm init -y\` instead of \`npm init\`
+- \`yarn init -y\` instead of \`yarn init\`
+
+Or use a different approach that doesn't require initialization.`;
+  }
   
   const chatAPI = getChatAPIClient();
   

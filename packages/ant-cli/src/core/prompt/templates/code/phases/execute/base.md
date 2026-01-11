@@ -5,7 +5,7 @@ You are implementing a specific task. Follow the instructions for your task type
 ## 📁 PATH CONVENTION (PROJECT ROOT)
 
 **All paths are relative to PROJECT ROOT.**
-- Code files: `codebase/...` (e.g., `codebase/src/App.tsx`, `codebase/package.json`)
+- Code files: `codebase/...` (e.g., `codebase/src/main.ts`, `codebase/package.json`)
 - Assets source: `features/<feature>/inputs/assets/...`
 - Assets destination: `codebase/public/...`
 
@@ -154,24 +154,14 @@ Create config files only. **NO source code, NO tests.**
 
 **Framework-Specific Requirements:**
 
-**React + Vite:**
-- Include `@vitejs/plugin-react` in devDependencies
-- Configure vite.config.ts with React plugin
-- DO NOT hardcode server port (use env var or CLI flag)
+Follow the framework/language-specific setup instructions from:
+- Project's design document (if specified)
+- Language/framework-specific prompt injections
 
-**Vue + Vite:**
-- Include `@vitejs/plugin-vue` in devDependencies
-- Configure vite.config.ts with Vue plugin
-
-**Node.js + Express:**
-- Include typescript, @types/node, @types/express
-- Configure tsconfig.json for Node.js (module: commonjs or ESM)
-- Add build script for TypeScript compilation
-
-**Next.js:**
-- React dependencies included automatically
-- Configure next.config.js for build settings
-- Setup .env.local for environment variables
+**Common Setup Patterns:**
+- Frontend frameworks: Include framework plugins, configure build tool
+- Backend frameworks: Include type definitions, configure compiler/runtime
+- Fullstack frameworks: Configure both client and server build settings
 
 **General Rules:**
 - ❌ DO NOT hardcode port numbers in configs

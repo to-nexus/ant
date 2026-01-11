@@ -62,46 +62,28 @@ Create a JSON mapping document that connects source assets to their runtime dest
     }
   },
   "logos": {
-    "logo-header": {
-      "src": "inputs/assets/logos/header-logo.svg",
-      "dest": "public/logos/header.svg",
-      "format": "svg",
-      "usage": "Header navigation (left-aligned)"
-    },
-    "logo-footer": {
-      "src": "inputs/assets/logos/footer-logo.svg",
-      "dest": "public/logos/footer.svg",
-      "format": "svg",
-      "usage": "Footer branding (centered)"
+    "<logo-id>": {
+      "src": "inputs/assets/logos/<source-filename>",
+      "dest": "public/logos/<dest-filename>",
+      "format": "svg | png",
+      "usage": "<where this logo appears in the UI>"
     }
   },
   "icons": {
-    "icon-telegram": {
-      "src": "inputs/assets/icons/telegram.svg",
-      "dest": "public/icons/telegram.svg",
+    "<icon-id>": {
+      "src": "inputs/assets/icons/<source-filename>",
+      "dest": "public/icons/<dest-filename>",
       "format": "svg",
-      "usage": "Social section link"
-    },
-    "icon-gas": {
-      "src": "inputs/assets/icons/icon-gas.svg",
-      "dest": "public/icons/gas.svg",
-      "format": "svg",
-      "usage": "Token section: Gas & Network Fees card"
+      "usage": "<where this icon appears in the UI>"
     }
   },
   "backgrounds": {
-    "bg-hero": {
-      "src": "inputs/assets/bg/hero-main.png",
-      "dest": "public/backgrounds/hero.png",
-      "format": "png",
-      "usage": "Hero section full-width background",
-      "overlay": "colors.overlay.gradientDark"
-    },
-    "bg-ecosystem-ogf": {
-      "src": "inputs/assets/bg/bg-discover-1.png",
-      "dest": "public/backgrounds/ecosystem-ogf.png",
-      "format": "png",
-      "usage": "Ecosystem section: OGF card background"
+    "<bg-id>": {
+      "src": "inputs/assets/bg/<source-filename>",
+      "dest": "public/backgrounds/<dest-filename>",
+      "format": "png | jpg",
+      "usage": "<where this background appears>",
+      "overlay": "colors.<token-reference> (if applicable)"
     }
   }
 }

@@ -102,8 +102,19 @@ the created modules will NOT be integrated into the codebase (not imported, not 
 ### ASSET OPERATIONS (if any):
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ 1. asset: [asset description]                                               │
-│    source: [source path from ui-assets]                                     │
-│    destination: [semantic destination - e.g., "public/images"]              │
+│    source: [source path from ui-assets.json]                                │
+│    destination: [EXACT dest path from ui-assets.json]  ← MUST match dest!   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+### DESIGN TOKEN CONFIGURATION (if ui-tokens.json provided):
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ framework: [detected framework - Tailwind/CSS Variables/SCSS/etc.]          │
+│ config_file: [semantic location - e.g., "tailwind config", "globals css"]   │
+│ action: [create | update]                                                   │
+│ tokens_to_apply:                                                            │
+│   - colors: [list key color tokens]                                         │
+│   - spacing: [list key spacing tokens]                                      │
+│   - typography: [list key font tokens]                                      │
 └─────────────────────────────────────────────────────────────────────────────┘
 
 ═══════════════════════════════════════════════════════════════════════════════
