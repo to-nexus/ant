@@ -11,6 +11,8 @@
 5. [Evaluation Checklist](#5-evaluation-checklist)
 6. [Report Template](#6-report-template)
 7. [Usage](#7-usage)
+8. [Output File Naming](#8-output-file-naming)
+9. [Known Issues and Solutions](#9-known-issues-and-solutions)
 
 ---
 
@@ -26,6 +28,20 @@
 - **Process**: chat.json, code.json, planText/*.md
 - **Output**: Generated codebase
 
+### Principles
+
+1. **Platform/Language Neutral Evaluation**
+   - Evaluate principles, not specific implementations
+   - Findings should apply across frameworks and languages
+
+2. **Evidence-Based Analysis**
+   - All findings must reference specific files/logs
+   - Compare Plan vs Execute with concrete evidence
+
+3. **Improvement-Oriented**
+   - Goal is improving Ant program, not fixing generated code
+   - Identify patterns, not one-off issues
+
 ---
 
 ## 2. File Structure
@@ -33,14 +49,7 @@
 ```
 ant-workspaces/{org}/{group}/{project}/
 ├── codebase/                          # [Output] Generated code
-│   ├── src/
-│   │   ├── app/                       # Next.js App Router structure
-│   │   ├── components/                # Components
-│   │   ├── hooks/                     # Custom hooks
-│   │   ├── utils/                     # Utilities
-│   │   └── types/                     # Type definitions
-│   ├── public/                        # Static assets
-│   └── package.json, tsconfig.json, etc.
+│   └── (project-specific structure)   # Varies by framework/language
 │
 └── features/{feature}/
     ├── inputs/                        # [Input]
@@ -107,21 +116,54 @@ Read the following files in order:
   - UI task distinction (`ui: true/false`)
 ```
 
-#### 2.2 Plan Phase Analysis
+#### 2.2 Plan Phase Analysis (via planText)
+
+> **🚨 CRITICAL**: planText is the source of truth for what SHOULD have been done.
+> Compare planText instructions against actual Execute results.
+
 ```markdown
-- Check planText/plantext-{jobId}.md
-- Evaluate plan quality per task:
-  - Directory structure analysis accuracy
-  - Asset inventory completeness
-  - Layout/component spec specificity
-  - Existing code reuse decisions
+1. **Read planText file**: `sessions/planText/plantext-{jobId}.md`
+
+2. **For EACH task in planText, extract:**
+   - CREATE section: What files were planned to be created?
+   - MODIFY section: What files were planned to be modified?
+   - Integration instructions: What was supposed to integrate with what?
+
+3. **Evaluate Plan Quality:**
+   - Is component hierarchy complete?
+   - Is entry point integration explicitly mentioned?
+   - Are asset operations clear?
+
+4. **Create Plan Extraction Table:**
+   | Task | Plan: CREATE | Plan: MODIFY | Plan: Integration |
+   |------|--------------|--------------|-------------------|
+   | [task-name] | [files to create] | [files to modify] | [integration target] |
 ```
 
-#### 2.3 Execute Phase Analysis
+#### 2.3 Plan vs Execute Comparison (MANDATORY)
+
+> **Purpose**: Determine if issue is in Plan (incomplete instructions) or Execute (didn't follow instructions)
+
+```markdown
+| Task | Plan Instructed | Actually Done | Gap | Cause |
+|------|-----------------|---------------|-----|-------|
+| [task] | [planned action] | [actual result] | [difference] | Plan/Execute failure |
+
+**Analysis Questions:**
+1. Did Plan specify the missing item? YES → Execute failure
+2. Did Plan specify the missing item? NO → Plan failure
+3. Did Plan specify entry point integration? YES → Execute failure
+4. Did Plan specify entry point integration? NO → Plan failure
+```
+
+#### 2.4 Execute Phase Analysis
 ```markdown
 - Check `file_create`, `file_modify` entries in chat.json
-- Evaluate generated code vs plan alignment:
-  - Were files created as planned?
+- Compare against Plan instructions from planText:
+  - Were ALL files in Plan CREATE section actually created?
+  - Were ALL files in Plan MODIFY section actually modified?
+  - Were integration instructions followed?
+- Evaluate generated code quality:
   - Were design tokens applied correctly?
   - Were responsive breakpoints implemented?
 ```
@@ -158,16 +200,26 @@ Summarize all analysis:
 | Interaction | Hover, animation, scroll behavior |
 | Assets | Image/icon paths and usage |
 
-### 4.3 Code Quality
+### 4.3 Design Token Integration
+
+| Item | Check Point |
+|------|-------------|
+| Config definition | Tokens defined in framework's config or CSS variables |
+| Hardcoding avoidance | No arbitrary/magic values in component code |
+| Coverage | All ui-tokens.json categories mapped |
+| Semantic naming | Token names reflect purpose, not raw values |
+| Consistency | Same token used for same purpose throughout codebase |
+
+### 4.4 Code Quality
 
 | Item | Check Point |
 |------|-------------|
 | Structure | Component separation, file organization |
-| Type safety | TypeScript strict mode compliance |
-| Reusability | Utilities, hooks, type extraction |
-| Accessibility | ARIA labels, semantic HTML |
+| Type safety | Language's type system properly used |
+| Reusability | Utilities, shared code extraction |
+| Accessibility | ARIA labels, semantic markup |
 
-### 4.4 Process Efficiency
+### 4.5 Process Compliance
 
 | Item | Check Point |
 |------|-------------|
@@ -175,6 +227,7 @@ Summarize all analysis:
 | Execution time | Per-task duration |
 | Retries | Failure and retry counts |
 | Intent fidelity | Plan vs execution alignment |
+| Working directory | Build/dev commands in `codebase/`, not `features/` |
 
 ---
 
@@ -187,8 +240,8 @@ Summarize all analysis:
   - Not under-decomposed making single tasks too complex?
 
 - [ ] **Is dependency order correct?**
-  - Infrastructure (setup) → Utilities → UI components order
-  - Common components created before consumers?
+  - Infrastructure → Utilities → Components order
+  - Shared code created before consumers?
 
 - [ ] **Are UI tasks properly distinguished?**
   - Tasks needing ui-spec have `ui: true` set
@@ -196,11 +249,11 @@ Summarize all analysis:
 - [ ] **Are task descriptions clear?**
   - Implementation scope clearly defined?
 
-### 5.2 Plan Phase
+### 5.2 Plan Phase (planText Analysis)
 
 - [ ] **Is existing code analysis accurate?**
   - Not trying to create files that already exist?
-  - Identified reusable utilities?
+  - Identified reusable code?
 
 - [ ] **Is asset inventory complete?**
   - All required assets listed?
@@ -214,32 +267,85 @@ Summarize all analysis:
   - CREATE/MODIFY actions clear?
   - File locations and changes specific?
 
+- [ ] **🚨 Is component hierarchy complete? (CRITICAL for UI tasks)**
+  - If child component is in CREATE, is parent also in CREATE?
+  - Is parent → entry point integration specified in MODIFY?
+
+- [ ] **🚨 Is entry point integration explicitly specified?**
+  - Does MODIFY section include importing new component?
+  - Does MODIFY section include rendering/using new component?
+
 ### 5.3 Execute Phase
+
+- [ ] **🚨 Were ALL Plan CREATE items actually created?**
+  - Compare planText CREATE list vs actual files
+  - Flag any planned files not created
+
+- [ ] **🚨 Were ALL Plan MODIFY items actually modified?**
+  - Compare planText MODIFY list vs actual changes
+  - Flag any planned modifications not done
 
 - [ ] **Were files created as planned?**
   - Expected file list vs actual created files match
 
 - [ ] **Were design tokens applied correctly?**
   - Color, spacing, typography values verified
-  - Tailwind class mapping accuracy
+  - Framework config mapping accuracy
 
 - [ ] **Is content accurate?**
   - PRD text used verbatim?
   - External links correct?
 
 - [ ] **Is responsive implemented?**
-  - Mobile/tablet/desktop breakpoints
-  - Layout changes (grid columns, spacing, etc.)
+  - Breakpoints from design spec
+  - Layout changes per breakpoint
 
 - [ ] **Are interactions implemented?**
   - Hover states
   - Scroll behavior
   - Animations
 
-### 5.4 Final Verification
+### 5.4 Design Token Integration
+
+- [ ] **Are tokens defined in config file?**
+  - Framework's config file or CSS variables
+  - Token names match ui-tokens.json semantics
+
+- [ ] **Are tokens used instead of hardcoding?**
+  - Semantic class names (✓) vs arbitrary values (✗)
+
+- [ ] **Is token coverage complete?**
+  - Colors: primary, secondary, background, text, accent
+  - Typography: heading sizes, body, label
+  - Spacing: section gaps, component gaps, padding scale
+
+- [ ] **Is token naming semantic?**
+  - Purpose-based naming (✓) vs value-based naming (✗)
+
+### 5.5 Working Directory Compliance
+
+> **🚨 CRITICAL**: Build/dev commands MUST run in `codebase/`, NOT in `features/{feature}/`
+
+- [ ] **No build commands in feature folder?**
+  - Build commands must NOT run in `features/{feature}/`
+  - Dev server must NOT run in `features/{feature}/`
+  - Project scaffolding must NOT run in `features/{feature}/`
+
+- [ ] **All build commands in codebase folder?**
+  - Correct: Commands run in `codebase/` directory
+  - Wrong: Commands run in `features/` directory
+
+**How to verify (in chat.json):**
+```javascript
+// Search for run_command tool calls
+// Flag if working_directory contains "features/"
+// Flag if command is build/dev related
+```
+
+### 5.6 Final Verification
 
 - [ ] **Does build succeed?**
-- [ ] **No TypeScript errors?**
+- [ ] **No type errors?**
 - [ ] **No lint errors?**
 - [ ] **No runtime errors?**
 
@@ -250,11 +356,14 @@ Summarize all analysis:
 ```markdown
 # Code Job Evaluation Report
 
+> **🎯 Purpose**: Identify Ant Framework improvements, NOT fix the generated codebase
+
 ## Basic Information
 - **Project**: {project}
 - **Feature**: {feature}
 - **Job ID**: {jobId}
 - **Evaluation Date**: {date}
+- **Job Status**: Completed/Interrupted
 
 ---
 
@@ -265,128 +374,121 @@ Summarize all analysis:
 |------|-------|-------|
 | PRD Compliance | ⭐⭐⭐⭐☆ | |
 | Design Accuracy | ⭐⭐⭐☆☆ | |
+| Design Token Integration | ⭐⭐⭐☆☆ | |
 | Code Quality | ⭐⭐⭐⭐☆ | |
-| Process Efficiency | ⭐⭐⭐☆☆ | |
+| Process Compliance | ⭐⭐⭐☆☆ | |
 
-### 1.2 Key Findings
-- ✅ **Well done**: 
-- ❌ **Issues**: 
-- 💡 **Suggestions**: 
+### 1.2 Critical Findings (Ant Program Issues)
+
+| Issue ID | Symptom | Root Cause | Severity |
+|----------|---------|------------|----------|
+| [ID] | [what user sees] | [why it happened] | 🔴 CRITICAL / 🟡 MAJOR / 🟢 MINOR |
 
 ---
 
-## 2. Phase-by-Phase Analysis
+## 2. Phase Analysis
 
 ### 2.1 Decompose Phase
+- Task list and order
+- Evaluation of decomposition strategy
 
-#### Task Decomposition Results
-| ID | Name | Type | Priority | UI | Duration | Tokens |
-|----|------|------|----------|-----|----------|--------|
-| ... | ... | ... | ... | ... | ... | ... |
+### 2.2 Plan Phase Analysis (CRITICAL)
 
-#### Evaluation
-- **Decomposition strategy**: 
-- **Issues**: 
-- **Suggestions**: 
+> **Source**: `sessions/planText/plantext-{jobId}.md`
 
-### 2.2 Plan Phase
+#### Plan Extraction per Task
+| Task | Plan: CREATE | Plan: MODIFY | Plan: Integration |
+|------|--------------|--------------|-------------------|
+| [task] | [files] | [files] | [target] |
 
-#### Key Plan Analysis
-- **Task 1: {name}**
-  - Plan quality: 
-  - Issues: 
+#### Root Cause Determination
+| Issue | Plan Specified? | Execute Did? | Cause |
+|-------|-----------------|--------------|-------|
+| [issue] | ✅/❌ | ✅/❌ | Plan/Execute failure |
 
-#### Evaluation
-- **Plan quality**: 
-- **Issues**: 
-- **Suggestions**: 
+### 2.3 Execute Phase Analysis
+- Files created vs planned
+- Design token application review
+- Working directory compliance check
 
-### 2.3 Execute Phase
+---
 
-#### Generated File List
+## 3. Specific Issues
+
+### 3.X [Issue ID]: [Issue Name]
+
+**Symptom**: [What the user observes]
+
+**Evidence**: [Specific file/log references]
+
+**Root Cause**: [Why this happened - principle level]
+
+**Pattern**: [Is this a recurring issue?]
+
+---
+
+## 4. Statistics
+
+### 4.1 Task Timing
+| Task | Duration | Status |
+|------|----------|--------|
+| [task] | [time] | ✅/⚠️/❌ |
+
+### 4.2 Token Usage
+- Total: [tokens]
+- Average per task: [tokens]
+
+---
+
+## 5. Ant Framework Improvement Plan
+
+> 🎯 Identify improvements to the Ant program itself
+
+### 5.1 Prompt File Changes (Actionable)
+
+| Priority | Target File | Change Type | Description |
+|----------|-------------|-------------|-------------|
+| P0 | `execute/rules.md` | ADD/MODIFY | [principle-based description] |
+
+### 5.2 Specific Changes
+
+> **Remember**: 
+> - `base.md` = WHAT (context, data, task definition)
+> - `rules.md` = HOW (rules, constraints, methods)
+> - All changes must be platform/language neutral
+
+**File**: `[path to prompt file]`
+```markdown
+[Principle-based content - no framework-specific examples]
 ```
-src/
-├── app/
-├── components/
-│   ├── Component1.tsx
-│   └── ...
-└── ...
-```
 
-#### Design Token Application Review
-| Token | Expected Value | Actual Applied | Match |
-|-------|----------------|----------------|-------|
-| colors.primary.green | #00D9A3 | #00D9A3 | ✅ |
+### 5.3 Known Issues Registry Update
 
-#### Evaluation
-- **Implementation quality**: 
-- **Issues**: 
-- **Suggestions**: 
+| Issue ID | Pattern | Affected Phase | Status |
+|----------|---------|----------------|--------|
+| [ID] | [general pattern] | Decompose/Plan/Execute | New/Existing |
 
 ---
 
-## 3. PRD Requirements Verification
+## 6. Conclusion
 
-| Requirement | Met | Notes |
-|-------------|-----|-------|
-| Fixed top GNB | ✅ | |
-| Smooth scroll | ✅ | |
-| ... | ... | ... |
+### 6.1 What Went Well
+- [success patterns]
 
----
+### 6.2 What Failed
+- [failure patterns with root cause]
 
-## 4. Design Accuracy Verification
+### 6.3 Immediate Actions for Ant Program
 
-### 4.1 Layout Verification
-| Section | Accuracy | Issues |
-|---------|----------|--------|
-| Hero | ✅ | |
-| About | ✅ | |
+| Priority | Action | Expected Impact |
+|----------|--------|-----------------|
+| P0 | [action] | [impact] |
 
-### 4.2 Responsive Verification
-| Breakpoint | Verification Result |
-|------------|---------------------|
-| Mobile (< 768px) | |
-| Tablet (768-1023px) | |
-| Desktop (≥ 1024px) | |
+### 6.4 User's Pre-Evaluation Confirmation
 
----
-
-## 5. Statistics
-
-### 5.1 Token Usage
-- **Total input tokens**: {inputTokens}
-- **Total output tokens**: {outputTokens}
-- **Cache read tokens**: {cacheReadTokens}
-- **Cache creation tokens**: {cacheCreationTokens}
-- **Cache hit rate**: {cacheHitRate}%
-
-### 5.2 Execution Time
-- **Total duration**: {totalTime}
-- **Average task time**: {avgTaskTime}
-- **Longest task**: {longestTask}
-
----
-
-## 6. Improvement Suggestions
-
-### 6.1 Prompt Improvements
-| Area | Current Issue | Suggestion |
-|------|---------------|------------|
-| Decompose | | |
-| Plan | | |
-| Execute | | |
-
-### 6.2 System Improvements
-| Area | Current Issue | Suggestion |
-|------|---------------|------------|
-| ... | ... | ... |
-
----
-
-## 7. Conclusion
-
-{Overall evaluation and next steps}
+| User Observation | Evaluation Finding | Match |
+|------------------|-------------------|-------|
+| [user said] | [evaluation found] | ✅/❌ |
 ```
 
 ---
@@ -407,56 +509,7 @@ Path: ant-workspaces/{org}/{group}/{project}/features/{feature}/
 2. **Checklist verification**: Verify each item in section 5 checklist
 3. **Write report**: Follow the template in section 6
 4. **Derive improvements**: Include specific improvement suggestions for issues found
-
----
-
-## Appendix: Key Analysis Queries
-
-### code.json Analysis Points
-
-```javascript
-// Completed task list
-state.completedTasksDetails.map(t => ({
-  id: t.id,
-  name: t.name,
-  type: t.type,
-  ui: t.ui,
-  elapsedTime: t.timing.elapsedTime,
-  tokens: t.tokenUsage.totalTokens
-}))
-
-// Total token usage
-state.tokenUsage
-
-// Remaining tasks
-state.taskQueue
-```
-
-### chat.json Analysis Points
-
-```javascript
-// File creation records
-messages.flatMap(m => m.contents)
-  .filter(c => c.type === 'file_create' || c.type === 'file_modify')
-
-// LLM thinking verification
-messages.flatMap(m => m.contents)
-  .filter(c => c.type === 'thinking')
-
-// Error occurrence
-messages.flatMap(m => m.contents)
-  .filter(c => c.type === 'error')
-```
-
-### planText Analysis Points
-
-```markdown
-Items to check in each task plan:
-- 📂 DIRECTORY STRUCTURE ANALYSIS
-- 📦 ASSET INVENTORY  
-- 📐 LAYOUT & COMPONENT SPECS
-- IMPLEMENTATION GUIDE (CREATE/MODIFY sections)
-```
+5. **Platform neutral**: Findings should apply across frameworks/languages
 
 ---
 
@@ -483,72 +536,234 @@ features/{feature}/sessions/planText/plantext-{jobId}.md
 
 ## 9. Known Issues and Solutions
 
-### 9.1 final-verification Task Hang
+> **Principle**: Document patterns, not framework-specific fixes.
+> Framework-specific details belong in framework profile files.
 
-**Symptom**: final-verification task remains in taskQueue but doesn't execute, or hangs during execution
+### 9.1 Final Verification Task Hang
 
-**Root Cause Analysis**:
-1. **Wrong tool usage by LLM**: Executing unnecessary commands during verification (e.g., `npx create-next-app`)
-2. **planText propagation failure**: planText not passed in LangGraph state
-3. **Interactive command waiting**: Executing commands that wait for user input
+**Symptom**: final-verification task doesn't complete or hangs during execution
 
-**Log patterns to check**:
+**Pattern**:
+- LLM executes unnecessary/dangerous commands during verification
+- Long-running processes not terminated properly
+- Interactive commands waiting for input
+
+**Root Cause Categories**:
+1. **Wrong tool usage**: Executing project scaffolding instead of verification
+2. **State propagation failure**: planText not passed in LangGraph state
+3. **Long-running process**: Dev server doesn't terminate, LLM waits indefinitely
+
+**Detection (in logs)**:
 ```
 [ERROR] ❌ CRITICAL: planText is missing!
-[ERROR] This indicates LangGraph state propagation failure.
+```
+```
+Tool: run_command - executing project scaffolding command
 ```
 
-```
-🔧 [Tool] Executing tool...
-   Tool: run_command
-   Args: { "command": "npx create-next-app..." }
-```
+**Solution Principle**:
+- Verification should only READ and RUN existing scripts
+- Dev servers are long-running - verify startup, don't wait for exit
+- Build success is primary indicator; dev server issues are secondary
 
-**Solutions**:
-1. Restrict allowed commands in final-verification prompt
-2. Filter dangerous commands in run_command tool
-3. Strengthen planText propagation logic
+### 9.2 Component Created But Not Integrated
 
-### 9.2 Image Loading Failure
+**Symptom**: Component file exists but not visible in UI
 
-**Symptom**: Build succeeds but images don't display on screen
+**Pattern**:
+- Execute creates component file
+- Execute does NOT update entry point to import/render it
+- Plan correctly specified both CREATE and MODIFY
 
-**Root Cause Analysis**:
-1. **Next.js Image component constraints**: External domain configuration missing
-2. **CSS filter compatibility**: Issues when applying CSS filter to SVG
-3. **Path typos**: public/ folder path mismatch
+**Root Cause**: Execute treats MODIFY as optional, not mandatory
 
-**Check points**:
-```typescript
-// Check images config in next.config.mjs
-images: {
-  domains: [],  // External image domains
-  remotePatterns: [],  // Pattern matching
-}
-
-// Caution when using CSS filter on SVG
-style={{ filter: '...' }}  // May have compatibility issues with Next.js Image
+**Detection**:
+```markdown
+Compare planText MODIFY section against actual file changes
 ```
 
-**Solutions**:
-1. Strengthen Next.js Image usage guide in Execute prompt
-2. Recommend inline SVG or separate handling for SVG icons
-3. Add asset path validation step
+**Solution Principle**:
+- MODIFY instruction = MANDATORY action
+- Task is incomplete until ALL Plan instructions are followed
+- Creating file without integration = partial/failed task
 
 ### 9.3 Design Token Hardcoding
 
-**Symptom**: ui-tokens.json values not defined in tailwind.config, hardcoded directly
+**Symptom**: Design values not using tokens, hardcoded directly
 
-**Example**:
-```tsx
-// Problem: Hardcoded
-className="bg-[#3A3A3A] text-[#6B7280]"
+**Pattern**:
+- ui-tokens.json defines semantic tokens
+- Code uses arbitrary/magic values instead of token references
 
-// Recommended: Use tokens
-className="bg-footer text-secondary"
+**Root Cause**: Execute doesn't consult ui-tokens.json or skips token mapping
+
+**Detection**:
+```
+Search for arbitrary value patterns in component files
 ```
 
-**Solutions**:
-1. Build ui-tokens.json → tailwind.config.ts auto-conversion pipeline
-2. Add token usage enforcement rule in Execute prompt
-3. Hardcoding detection and warning system
+**Solution Principle**:
+- All visual values should reference design tokens
+- Hardcoding is acceptable ONLY if token doesn't exist
+- Token mapping is part of Execute phase responsibility
+
+### 9.4 Working Directory Violation
+
+**Symptom**: Build/dev commands fail or run in wrong location
+
+**Pattern**:
+- Commands run in `features/{feature}/` instead of `codebase/`
+- `features/` contains inputs/outputs/sessions, not code
+- `codebase/` contains actual project code
+
+**Root Cause**: LLM doesn't distinguish between project folders
+
+**Detection (in chat.json)**:
+```javascript
+// Check run_command calls
+// Flag if working_directory contains "features/" AND command is build-related
+```
+
+**Solution Principle**:
+- Build/dev commands ONLY in `codebase/`
+- `features/` is for Ant's internal data, not project code
+- Clear guidance on folder purposes in prompts
+
+### 9.5 Image/Asset Not Rendering
+
+**Symptom**: Asset paths correct but images don't display
+
+**Pattern**:
+- Asset file exists in correct location
+- Code references correct path
+- Image doesn't appear in rendered output
+
+**Root Cause Categories**:
+1. **Framework constraints**: Image component requires specific configuration
+2. **Container sizing**: Parent element has no computed dimensions
+3. **Path resolution**: Framework's asset path handling differs from expectation
+
+**Solution Principle**:
+- Understand framework's asset handling requirements
+- Design spec should provide explicit sizing info for images
+- Code should follow framework's recommended patterns for assets
+
+### 9.6 Project Structure Inconsistency
+
+**Symptom**: Same project has different folder structures after different Jobs
+
+**Pattern**:
+- Job A creates one structure
+- Job B creates different structure
+- Both valid, but inconsistent
+
+**Root Cause**: Plan phase decides structure based on varying "current state" analysis
+
+**Solution Principle**:
+- Existing project → Follow established structure
+- New project → Use framework default consistently
+- Never change structure between Jobs on same project
+
+### 9.7 Execute Phase Ignoring Plan's MODIFY Section
+
+**Symptom**: Files created but entry point not updated
+
+**Pattern**:
+- Plan correctly specifies: "MODIFY entry point to include new component"
+- Execute creates the new file
+- Execute does NOT update entry point
+- New code exists but is unreachable
+
+**Root Cause**: Execute treats MODIFY as optional suggestion
+
+**Detection**:
+```markdown
+Compare planText MODIFY sections against actual file changes
+```
+
+**Solution Principle**:
+- MODIFY = MANDATORY action
+- Task completion requires ALL Plan instructions followed
+- Post-task verification should confirm integration
+
+### 9.8 Dev Server vs Build Discrepancy
+
+**Symptom**: Build succeeds but dev server fails
+
+**Pattern**:
+- Production build completes successfully
+- Dev server has compilation/runtime errors
+- Same codebase, different behavior
+
+**Root Cause**: Dev and build use different compilation pipelines in some frameworks
+
+**Impact on Ant**:
+- LLM retries dev server repeatedly
+- Wasted tokens on retries
+- final-verification takes much longer
+
+**Solution Principle**:
+- Build success is PRIMARY verification indicator
+- Dev server issues after successful build → acceptable
+- Limit dev server retry attempts
+
+---
+
+## Appendix: Analysis Query Patterns
+
+### code.json Analysis
+
+```javascript
+// Completed task list
+state.completedTasksDetails.map(t => ({
+  id: t.id,
+  name: t.name,
+  type: t.type,
+  ui: t.ui,
+  elapsedTime: t.timing.elapsedTime,
+  tokens: t.tokenUsage.totalTokens
+}))
+
+// Total token usage
+state.tokenUsage
+
+// Remaining tasks
+state.taskQueue
+```
+
+### chat.json Analysis
+
+```javascript
+// File creation records
+messages.flatMap(m => m.contents)
+  .filter(c => c.type === 'file_create' || c.type === 'file_modify')
+
+// LLM thinking verification
+messages.flatMap(m => m.contents)
+  .filter(c => c.type === 'thinking')
+
+// Error occurrence
+messages.flatMap(m => m.contents)
+  .filter(c => c.type === 'error')
+
+// Working directory compliance check
+messages.flatMap(m => m.contents)
+  .filter(c => c.type === 'tool_use' && c.name === 'run_command')
+  .filter(c => {
+    const cmd = c.input.command || '';
+    const dir = c.input.working_directory || '';
+    const isBuildCmd = /* check if build-related command */;
+    const isInFeatures = /features\//.test(dir);
+    return isBuildCmd && isInFeatures;  // Flag these violations
+  })
+```
+
+### planText Analysis
+
+```markdown
+Items to check in each task plan:
+- 📂 DIRECTORY STRUCTURE ANALYSIS
+- 📦 ASSET INVENTORY  
+- 📐 LAYOUT & COMPONENT SPECS
+- IMPLEMENTATION GUIDE (CREATE/MODIFY sections)
+```

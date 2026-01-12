@@ -198,7 +198,21 @@ Implement the feature. Source code only.
 - Write/edit source code files
 - Ensure imports and syntax are correct
 
-**Actions:** Write/edit code → Output `<done>true</done>`
+**🚨 CRITICAL: If Plan specifies MODIFY, you MUST do it**
+
+Your Plan may contain a MODIFY section like:
+```
+MODIFY: app/page.tsx - Add import and render new component
+```
+
+**This is NOT optional.** Creating a file without the MODIFY step = INCOMPLETE TASK.
+
+**Task Completion Checklist:**
+1. ✅ CREATE: New files specified in Plan
+2. ✅ MODIFY: Update existing files as specified in Plan (if any)
+3. ✅ VERIFY: Read the entry point file and confirm your component is imported AND rendered
+
+**Actions:** Write/edit code → Execute Plan's MODIFY → Verify integration → Output `<done>true</done>`
 
 {{/unless}}
 {{/if}}
@@ -221,17 +235,52 @@ Implement the feature. Source code only.
 
 **🎯 Purpose:** Verify the application builds and starts successfully.
 
-**Verification Steps:**
-1. Run build command and verify it succeeds
-2. Run application startup command and verify no runtime errors
-3. Fix any issues found during verification
+**🔍 Step 1: Discover build/dev commands from project config**
+
+Do NOT assume commands. Read the project's configuration:
+- `package.json` → Look for `scripts.build`, `scripts.dev`, `scripts.start`
+- `Makefile` → Look for `build`, `dev`, `run` targets
+- `Cargo.toml` → `cargo build`, `cargo run`
+- `go.mod` → `go build`, `go run`
+
+**The project defines how to build itself. Read it, don't guess.**
+
+**📋 Step 2: Execute verification**
+
+| Phase | Action | Success Criteria |
+|-------|--------|------------------|
+| **Build** | Run project's build script | Must pass - PRIMARY verification |
+| **Dev Server** | Run project's dev/start script | Server outputs ready message |
+
+**⚠️ CRITICAL: Dev Server is a Long-Running Process**
+
+Dev servers do NOT terminate naturally. This is expected.
+- Success = Server outputs startup/ready message
+- Do NOT wait for process to exit
+- Do NOT retry indefinitely
+
+**⚠️ EARLY-EXIT RULE: If Build Passes but Dev Server Has Issues**
+
+```
+✅ Build → SUCCESS
+❌ Dev Server → Has issues (compilation, hot-reload, etc.)
+```
+
+**When this happens:**
+1. **DO NOT retry dev server more than ONCE** after build success
+2. Build is the deployment artifact - it's the primary indicator
+3. Complete the task:
+   ```
+   ✅ Build verification passed.
+   ⚠️ Dev server has framework-specific issues - not blocking.
+   ```
+4. Output `<done>true</done>`
 
 **Completion Criteria:**
-- ✅ Build succeeds
-- ✅ Application starts without runtime errors
-- ✅ All issues fixed
+- ✅ Build succeeds (REQUIRED)
+- ⚠️ Dev server succeeds OR issues acknowledged (ACCEPTABLE)
 
-**Actions:** Run build → Run startup → Fix errors if any → Output `<done>true</done>`
+**Actions:** Discover commands → Run build → Run dev once → Output `<done>true</done>`
 
 ────────────────────────────────────────────────────────────────────────────────
 

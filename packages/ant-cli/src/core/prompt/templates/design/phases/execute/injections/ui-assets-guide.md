@@ -66,7 +66,12 @@ Create a JSON mapping document that connects source assets to their runtime dest
       "src": "inputs/assets/logos/<source-filename>",
       "dest": "public/logos/<dest-filename>",
       "format": "svg | png",
-      "usage": "<where this logo appears in the UI>"
+      "usage": "<where this logo appears in the UI>",
+      "rendering": {
+        "method": "explicit",
+        "width": 120,
+        "height": 32
+      }
     }
   },
   "icons": {
@@ -74,7 +79,12 @@ Create a JSON mapping document that connects source assets to their runtime dest
       "src": "inputs/assets/icons/<source-filename>",
       "dest": "public/icons/<dest-filename>",
       "format": "svg",
-      "usage": "<where this icon appears in the UI>"
+      "usage": "<where this icon appears in the UI>",
+      "rendering": {
+        "method": "explicit",
+        "width": 24,
+        "height": 24
+      }
     }
   },
   "backgrounds": {
@@ -83,11 +93,31 @@ Create a JSON mapping document that connects source assets to their runtime dest
       "dest": "public/backgrounds/<dest-filename>",
       "format": "png | jpg",
       "usage": "<where this background appears>",
-      "overlay": "colors.<token-reference> (if applicable)"
+      "overlay": "colors.<token-reference> (if applicable)",
+      "rendering": {
+        "method": "fill | css-background",
+        "containerSize": "300x200 | full-width",
+        "objectFit": "cover | contain"
+      }
     }
   }
 }
 ```
+
+### 🎯 Rendering Field (CRITICAL for Code Implementation)
+
+**Every image asset MUST include a `rendering` field** to specify how it should be displayed.
+
+| Rendering Method | When to Use | Required Fields |
+|------------------|-------------|-----------------|
+| `explicit` | Logos, icons with known size | `width`, `height` (pixels) |
+| `fill` | Card backgrounds, thumbnails | `containerSize` (e.g., "300x200") |
+| `css-background` | Full-section backgrounds | `containerSize: "full-width"` |
+
+**Why this matters:**
+- Without sizing info, Code Job must guess → often guesses wrong
+- Explicit dimensions prevent invisible images (0x0 rendering bug)
+- Code Job can directly use these values in implementation
 
 **Note**: `_meta.pathPattern` ensures continuation chapters use the same destination paths.
 

@@ -253,6 +253,59 @@ From directory tree:
 - [ ] No duplicate modules (checked directory tree)
 - [ ] MODIFY section includes integration changes
 
+────────────────────────────────────────────────────────────────────────────────
+#### 5. 🎨 UI SECTION INTEGRATION CHECKLIST (CRITICAL)
+────────────────────────────────────────────────────────────────────────────────
+
+**⚠️ FOR EACH UI SECTION TASK, your plan MUST specify COMPLETE component hierarchy:**
+
+**Required Component Structure:**
+```
+[entry point file]
+  └── X.tsx (parent section)  ← MUST be in CREATE list
+        └── XCard.tsx (child)  ← If needed
+```
+
+**ANTI-PATTERN TO PREVENT:**
+```
+❌ WRONG Plan:
+CREATE:
+  1. name: XCard
+     type: component
+     ...
+     
+# Missing X.tsx parent! CodeGen will create XCard.tsx 
+# but entry point will still have placeholder!
+```
+
+**✅ CORRECT Plan:**
+```
+CREATE:
+  1. name: X
+     type: component (section parent)
+     purpose: Parent section component that renders XCard grid
+     integrates_with: [entry point] (MUST import and render <X />)
+     
+  2. name: XCard  
+     type: component (child)
+     purpose: Individual card within X section
+     integrates_with: X.tsx
+
+MODIFY:
+  1. target: [entry point]
+     action: Replace placeholder with actual component
+     changes:
+       - Remove {/* X Section - Placeholder */} and <section id="x">
+       - Add import { X } from '@/components/X'
+       - Add <X /> in correct position
+```
+
+**Mandatory Checklist for UI Section Tasks:**
+- [ ] Parent section component (e.g., `X.tsx`) is in CREATE list
+- [ ] Parent component has `integrates_with: [entry point]`
+- [ ] MODIFY section includes "Replace placeholder" action
+- [ ] Child components (e.g., `XCard.tsx`) integrate with parent, not directly with entry point
+
 {{/if}}
 
 {{#unless hasUiDoc}}
