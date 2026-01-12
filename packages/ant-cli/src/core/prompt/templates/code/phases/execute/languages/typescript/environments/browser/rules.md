@@ -184,4 +184,37 @@ import Image from 'next/image';
 
 ---
 
+## 🖼️ Image Rendering Verification
+
+When images fill their container (fill mode, 100% size, background-size: cover, etc.):
+
+**Principle:** The parent container MUST have explicit or computable dimensions.
+
+| Pattern | Result |
+|---------|--------|
+| Parent has explicit size (e.g., `h-[200px]`) | ✅ Image renders |
+| Parent uses aspect-ratio with computed width | ✅ Image renders |
+| Parent uses `height: auto` with no content | ❌ Height = 0, image invisible |
+| Parent uses `100%` but ancestor has no size | ❌ Height = 0, image invisible |
+
+**Quick Check:** After implementing a fill-mode image, trace the size computation upward. If any ancestor relies on content for size but has none, the image won't render.
+
+---
+
+## 🎨 Overlay Opacity Check
+
+When applying overlay gradients on background images:
+
+**Principle:** Overlay should enhance visibility, not replace the background.
+
+| Opacity Range | Effect |
+|---------------|--------|
+| 20-60% | Background visible through overlay |
+| 60-80% | Background faintly visible |
+| 90%+ | Background effectively invisible |
+
+**Quick Check:** If overlay opacity > 80%, verify the background is intentionally hidden. If not, reduce opacity.
+
+---
+
 **Remember:** You already know these frameworks. Analyze the codebase structure and follow existing patterns.

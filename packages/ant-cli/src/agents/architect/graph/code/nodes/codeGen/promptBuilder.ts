@@ -12,6 +12,7 @@ import { TokenBudgetManager } from "../../../../../../core/utils/tokenBudget";
 import { HistoryManager } from "../../../../../../core/utils/historyManager";
 import { formatViolations } from "../shared/violationFormatter";
 import { CacheableContent } from "../../../../../../core/ports/llm";
+import { logPrompt } from "../../../../../../core/utils/promptLogger";
 
 /**
  * Build messages for LLM using PromptEngine with Prompt Caching
@@ -359,6 +360,59 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     // No history - just check base prompt tokens
     const tokenManager = new TokenBudgetManager();
     tokenManager.checkBudget(messages as any);
+  }
+  
+  // ✅ Log prompt for debugging
+  const jobId = state._httpJobId || 'unknown';
+  if (state.context.featurePath) {
+    try {
+      // Extract text content from all blocks for logging
+      const allTextContent = messages.flatMap(m => 
+        Array.isArray(m.content) 
+          ? m.content.filter((c: any) => c.type === 'text').map((c: any) => c.text)
+          : [m.content]
+      ).join('\n\n---\n\n');
+      
+      await logPrompt(
+        state.context.featurePath,
+        jobId,
+        'code',
+        'codeGen-fullMessage',
+        allTextContent,
+        {
+          taskId: state.currentTask?.id,
+          taskName: state.currentTask?.name,
+          templatePath: 'buildMessages (full)',
+          injectedVariables: {
+            // Content lengths
+            directive: state.directive ? `[${state.directive.length} chars]` : undefined,
+            designDoc: state.design ? `[${state.design.length} chars]` : undefined,
+            prdSpec: state.prd ? `[${state.prd.length} chars]` : undefined,
+            uiDoc: uiDocForTask ? `[${uiDocForTask.length} chars]` : undefined,
+            planText: state.planText ? `[${state.planText.length} chars]` : undefined,
+            // Config
+            codeMode: state.codeMode,
+            taskType: state.currentTask?.type,
+            detectedEnvironment: state.detectedEnvironment,
+            // Context counts
+            projectCodeContextFiles: codeGenProjectCodeContext?.files?.length || 0,
+            referenceCodeContexts: state.referenceCodeContexts?.length || 0,
+            // UI images
+            uiImageBlocksCount: uiImageBlocks.filter(b => (b as any).type === 'image').length,
+            // Violations (retry scenario)
+            hasViolations: !!(state.violations?.length),
+            violationsCount: state.violations?.length || 0,
+            // History
+            messageCount: messages.length,
+            conversationHistoryLength: state.conversationHistory?.length || 0,
+            // Runtime assets
+            runtimeAssetsCount: state.runtimeAssetsIndex?.count || 0,
+          },
+        }
+      );
+    } catch (logError) {
+      console.warn(`⚠️  [CodeGen] Failed to log prompt:`, logError);
+    }
   }
   
   return messages;
