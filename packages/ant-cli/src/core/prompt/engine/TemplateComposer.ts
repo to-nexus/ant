@@ -12,8 +12,10 @@ Handlebars.registerHelper('add', function(a: number, b: number) {
 });
 
 // Basic comparison / boolean helpers (for doc-type specific prompt rules)
+// ✅ Use == for loose equality to handle number/string comparisons in templates
 Handlebars.registerHelper('eq', function(a: any, b: any) {
-  return a === b;
+  // eslint-disable-next-line eqeqeq
+  return a == b;
 });
 
 Handlebars.registerHelper('and', function(...args: any[]) {

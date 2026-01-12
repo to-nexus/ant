@@ -9,8 +9,11 @@ const __dirname = dirname(__filename);
 import { PromptPort } from "../../../core/ports";
 
 // ✅ Register helpers once (top-level, not per render call)
-Handlebars.registerHelper("eq", (a, b) => a === b);
-Handlebars.registerHelper("ne", (a, b) => a !== b);
+// ✅ Use == for loose equality to handle number/string comparisons in templates
+// eslint-disable-next-line eqeqeq
+Handlebars.registerHelper("eq", (a, b) => a == b);
+// eslint-disable-next-line eqeqeq
+Handlebars.registerHelper("ne", (a, b) => a != b);
 Handlebars.registerHelper("and", (a, b) => a && b);
 Handlebars.registerHelper("or", (a, b) => a || b);
 Handlebars.registerHelper("add", (a, b) => Number(a) + Number(b));
