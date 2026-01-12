@@ -25,7 +25,7 @@
 
 ### Scope
 - **Input**: PRD, Design Documents (system-design.md, ui-spec.json, ui-tokens.json, ui-assets.json)
-- **Process**: chat.json, code.json, planText/*.md
+- **Process**: chat.json, code.json, plan-text/*.md
 - **Output**: Generated codebase
 
 ### Principles
@@ -69,9 +69,9 @@ ant-workspaces/{org}/{group}/{project}/
     └── sessions/                      # [Process records]
         ├── chat.json                  # Conversation history
         ├── code.json                  # Code session state
-        ├── planText/
+        ├── plan-text/
         │   └── plantext-{jobId}.md    # Per-task implementation plans
-        └── evalCode/
+        └── eval-code/
             └── evalcode-{jobId}.md    # Evaluation reports
 ```
 
@@ -97,7 +97,7 @@ Read the following files in order:
 3. **Check execution process**: `sessions/`
    - code.json: Task queue, completion status, timing, token usage
    - chat.json: LLM conversation, thinking, file creation records
-   - planText/plantext-{jobId}.md: Per-task implementation plans
+   - plan-text/plantext-{jobId}.md: Per-task implementation plans
 
 4. **Check generated code**: `codebase/`
    - Overall file structure
@@ -122,7 +122,7 @@ Read the following files in order:
 > Compare planText instructions against actual Execute results.
 
 ```markdown
-1. **Read planText file**: `sessions/planText/plantext-{jobId}.md`
+1. **Read planText file**: `sessions/plan-text/plantext-{jobId}.md`
 
 2. **For EACH task in planText, extract:**
    - CREATE section: What files were planned to be created?
@@ -394,7 +394,7 @@ Summarize all analysis:
 
 ### 2.2 Plan Phase Analysis (CRITICAL)
 
-> **Source**: `sessions/planText/plantext-{jobId}.md`
+> **Source**: `sessions/plan-text/plantext-{jobId}.md`
 
 #### Plan Extraction per Task
 | Task | Plan: CREATE | Plan: MODIFY | Plan: Integration |
@@ -518,13 +518,13 @@ Path: ant-workspaces/{org}/{group}/{project}/features/{feature}/
 ### 8.1 Evaluation Report Location
 
 ```
-features/{feature}/sessions/evalCode/evalcode-{jobId}.md
+features/{feature}/sessions/eval-code/evalcode-{jobId}.md
 ```
 
 ### 8.2 Plan Text Location
 
 ```
-features/{feature}/sessions/planText/plantext-{jobId}.md
+features/{feature}/sessions/plan-text/plantext-{jobId}.md
 ```
 
 ### Naming Convention

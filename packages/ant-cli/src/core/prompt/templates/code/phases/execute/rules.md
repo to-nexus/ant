@@ -1,5 +1,7 @@
 # Output Format Rules
 
+{{> common/rules}}
+
 {{> code/base/injections/text-format-compact}}
 
 ════════════════════════════════════════════════════════════════════════════════
@@ -101,6 +103,29 @@ Your modularization:
 |-----|---------|
 | `<file path="...">` | Create NEW file |
 | `<append path="...">` | Add to end of EXISTING file |
+
+**🚨 CRITICAL: `<file>` and `<append>` tags are SELF-CONTAINED XML, NOT tool calls!**
+
+```xml
+<!-- ✅ CORRECT: Self-contained XML tags -->
+<file path="src/App.tsx">
+code content here...
+</file>
+<done>true</done>
+
+<!-- ❌ WRONG: NEVER close with </parameter> or </invoke> -->
+<file path="src/App.tsx">
+code...
+</parameter>   ← WRONG! This breaks the parser!
+</invoke>      ← WRONG! These are NOT tool call tags!
+```
+
+**⚠️ NEVER USE:**
+- `</parameter>` - This is NOT how to close a `<file>` tag
+- `</invoke>` - This is NOT how to end file streaming
+- ANY tool call wrapping around `<file>` or `<append>` tags
+
+**The ONLY valid closing for `<file>` is `</file>`. The ONLY valid closing for `<append>` is `</append>`.**
 
 ### Tool Calling (File Operations & Commands)
 
@@ -311,14 +336,40 @@ cp inputs/assets/icons/icon-telegram.svg codebase/public/icons/telegram.svg
 | Placeholder paths (`path/to/file.ext`) | Actual paths (`src/utils.ts`) |
 
 ════════════════════════════════════════════════════════════════════════════════
-## ✅ Completion
+## 🚨 TASK COMPLETION SIGNAL (CRITICAL)
 ════════════════════════════════════════════════════════════════════════════════
+
+**When you have completed all work for this task, you MUST output:**
 
 ```xml
 <done>true</done>
 ```
 
-Output when task is complete. For feature tasks: code + `<done>true</done>` only, NO summary.
+**Rules:**
+1. Output `<done>true</done>` ONLY after ALL file operations are complete (`<file>`, `<append>`, or tool results received)
+2. **Do NOT output `<done>true</done>` if you just made a tool call (wait for the result first)**
+3. **After `<file>` or `<append>` tag, output `<done>true</done>` immediately in the SAME response**
+
+**Typical flows:**
+
+```
+Flow A (XML streaming only):
+   <file path="...">content</file>
+   <done>true</done>  ← SAME response!
+
+Flow B (Tool calls):
+   Turn 1: edit_file(...) → Wait for result
+   Turn 2: <done>true</done>  ← After result received
+
+Flow C (Multiple files):
+   <file path="a.ts">...</file>
+   <file path="b.ts">...</file>
+   <done>true</done>  ← After ALL files
+```
+
+**⚠️ If you don't output `<done>true</done>`, the system will retry and ask you to continue.**
+
+For feature tasks: code + `<done>true</done>` only, NO summary.
 
 ════════════════════════════════════════════════════════════════════════════════
 
