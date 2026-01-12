@@ -239,16 +239,45 @@ NOT:
 
 ### 3. Asset References
 
-**Rule**: Reference asset IDs from ui-assets.json.
+**Rule**: Reference asset IDs from ui-assets.json AND specify rendering dimensions.
 
 ```json
 {
   "background": {
     "asset": "bg-hero",
-    "overlay": "colors.overlay.gradientDark"
+    "overlay": "colors.overlay.gradientDark",
+    "rendering": "css-background"
+  },
+  "logo": {
+    "asset": "logo-header",
+    "width": 120,
+    "height": 32
+  },
+  "cardBackground": {
+    "asset": "bg-ecosystem-ogf",
+    "rendering": "fill",
+    "containerSize": {
+      "width": "100%",
+      "height": "300px"
+    }
   }
 }
 ```
+
+**🎯 Image Rendering Specification (CRITICAL)**
+
+When referencing image assets in ui-spec.json, you MUST specify how the image should be rendered:
+
+| Element Type | Rendering Info Required |
+|--------------|------------------------|
+| Logo/Icon | `width` and `height` in pixels |
+| Card background | `rendering: "fill"` + `containerSize` with explicit height |
+| Section background | `rendering: "css-background"` |
+
+**Why this matters:**
+- Code Job cannot determine image sizes from screenshots
+- Missing size info → Code Job guesses → Often renders at 0x0 (invisible)
+- Explicit rendering specs enable correct implementation
 
 ---
 

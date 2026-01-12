@@ -62,46 +62,89 @@ ant-workspaces/{org}/{group}/{project}/
 
 ## 3. Evaluation Process
 
-### Step 1: Context Collection
+### 🚨 CRITICAL: Evidence-Based Evaluation Principle
+
+> **"NO SCORE WITHOUT EVIDENCE"**
+> 
+> You MUST complete detailed screenshot analysis BEFORE assigning any scores.
+> Scores without documented evidence are INVALID.
+
+### Step 1: Screenshot Observation (MANDATORY FIRST)
+
+**Before reading ANY UI documents, observe the screenshot and record:**
 
 ```markdown
-Read the following files in order:
+## Screenshot Observation Log
 
-1. **Check reference screenshots**: `inputs/references/screens/`
-   - Understand actual design intent
-   - Verify layout, arrangement, structure
+### Section: [Section Name]
+- **Layout observed**: [row/column/grid/center]
+- **Child elements**: [list what you see]
+- **Spatial arrangement**: [left-to-right / top-to-bottom / centered]
+- **Evidence**: [describe pixel positions observed]
 
-2. **Check PRD**: `inputs/sources/prd.md`
-   - Understand requirements
-   - Verify text content
-
-3. **Check generated UI documents**: `outputs/design/`
-   - ui-tokens.json: Design tokens
-   - ui-assets.json: Asset mapping
-   - ui-spec.json: UI specification
-
-4. **Check execution process**: `sessions/`
-   - design.json: Task state
-   - chat.json: LLM conversation records
+(Repeat for EVERY section)
 ```
 
-### Step 2: Screenshot vs UI Document Comparison
+**Rules:**
+1. Read the screenshot image file FIRST
+2. Document what you SEE, not what you assume
+3. For each container with multiple children, explicitly note: Are they side-by-side (row) or stacked (column)?
+4. This log becomes your "ground truth" for comparison
 
-**Key verification points:**
-
-1. **Layout direction**: Are elements horizontal (row) or vertical (column) in screenshot?
-2. **Element arrangement**: Left/right/center alignment
-3. **Repeating patterns**: Are identical structures documented consistently across sections?
-4. **Colors/spacing**: Do token values match the screenshot?
-
-### Step 3: Summary Evaluation
+### Step 2: UI Document Collection
 
 ```markdown
-Summarize all analysis:
-1. Success factors (matches with screenshot)
-2. Issues and causes (mismatches with screenshot)
-3. Improvement suggestions (prompts/system)
+Read the following files:
+1. `outputs/design/ui-spec.json` - UI specification
+2. `outputs/design/ui-tokens.json` - Design tokens  
+3. `outputs/design/ui-assets.json` - Asset mapping
+4. `inputs/sources/prd.md` - PRD for text verification
 ```
+
+### Step 3: Evidence-Based Comparison (DETAILED)
+
+**For EACH section, create a comparison record:**
+
+```markdown
+## Comparison: [Section Name]
+
+| Aspect | Screenshot Observation | ui-spec.json Value | Match |
+|--------|------------------------|-------------------|-------|
+| Container layout | [from Step 1 log] | `flexDirection: ?` | ✅/❌ |
+| Title position | [from Step 1 log] | `alignItems: ?` | ✅/❌ |
+| Description position | [from Step 1 log] | `justifyContent: ?` | ✅/❌ |
+| Child arrangement | [from Step 1 log] | `display: ?, direction: ?` | ✅/❌ |
+
+**Evidence**: [Quote specific ui-spec.json properties]
+```
+
+### Step 4: Pattern Consistency Check
+
+```markdown
+## Pattern Consistency Analysis
+
+| Pattern | Sections with this pattern | All specs identical? | Issue |
+|---------|---------------------------|---------------------|-------|
+| [pattern name] | [list sections] | ✅/❌ | [if ❌, describe] |
+```
+
+### Step 5: Score Assignment (ONLY AFTER Steps 1-4)
+
+**Only after completing all comparison tables, assign scores with justification:**
+
+```markdown
+| Area | Score | Evidence Summary |
+|------|-------|------------------|
+| Screenshot Accuracy | ⭐⭐⭐⭐☆ | X/Y sections matched. Issues: [list] |
+| Token Accuracy | ⭐⭐⭐⭐⭐ | Z token categories complete. Missing: [list] |
+```
+
+**Scoring Criteria:**
+- ⭐⭐⭐⭐⭐: 100% match, all comparisons passed
+- ⭐⭐⭐⭐☆: 90%+ match, minor issues only
+- ⭐⭐⭐☆☆: 70-89% match, some significant issues
+- ⭐⭐☆☆☆: 50-69% match, multiple critical issues
+- ⭐☆☆☆☆: <50% match, fundamental problems
 
 ---
 
@@ -212,105 +255,168 @@ Summarize all analysis:
 
 ---
 
-## 1. Summary
+## 1. Screenshot Observation Log (EVIDENCE - Complete FIRST)
 
-### 1.1 Overall Evaluation
-| Area | Score | Notes |
-|------|-------|-------|
-| Screenshot Accuracy | ⭐⭐⭐☆☆ | |
-| Token Accuracy | ⭐⭐⭐⭐☆ | |
-| Asset Mapping | ⭐⭐⭐⭐☆ | |
-| UI Spec Completeness | ⭐⭐⭐☆☆ | |
+> **🚨 This section MUST be completed BEFORE any scoring.**
+> Record what you OBSERVE in the screenshot, not what you assume.
 
-### 1.2 Key Findings
-- ✅ **Well done**: 
-- ❌ **Issues**: 
-- 💡 **Suggestions**: 
+### 1.1 Section-by-Section Observation
 
----
+#### GNB (Global Navigation Bar)
+- **Layout observed**: [row/column]
+- **Logo position**: [left/center/right]
+- **Menu position**: [left/center/right]
+- **Evidence**: [describe what you see]
 
-## 2. Screenshot vs UI Document Comparison
+#### Hero Section
+- **Content arrangement**: [centered/left-aligned/etc]
+- **Title layout**: [single line/multi-line]
+- **Background**: [solid/image/gradient]
+- **Evidence**: [describe what you see]
 
-### 2.1 Section Layout Verification
+#### [Section Name] (repeat for each section)
+- **Header layout**: [row: title-left desc-right / column: title-above desc-below / centered]
+- **Content layout**: [grid X cols / vertical list / etc]
+- **Card/item count**: [number]
+- **Evidence**: [describe pixel positions - what is LEFT of what, what is ABOVE what]
 
-| Section | Screenshot | ui-spec.json | Match | Issue |
-|---------|-----------|--------------|-------|-------|
-| Hero | | | ✅/❌ | |
-| About | | | ✅/❌ | |
-| Section 1 header | Row (left:title, right:desc) | ? | ✅/❌ | |
-| Section 2 header | Row (left:title, right:desc) | ? | ✅/❌ | |
+### 1.2 Pattern Observation Summary
 
-### 2.2 Repeating Pattern Consistency
-
-| Pattern | Applicable Sections | Consistent | Issue |
-|---------|---------------------|------------|-------|
-| Section header (Row) | Section1, Section2, Section3 | ✅/❌ | |
-| Card grid (3 cols) | Section1, Section3 | ✅/❌ | |
-
-### 2.3 Alignment Verification
-
-| Element | Screenshot | ui-spec.json | Match |
-|---------|-----------|--------------|-------|
-| Header title | left | ? | ✅/❌ |
-| Header description | right | ? | ✅/❌ |
+| Pattern Observed | Where Seen | Description |
+|-----------------|------------|-------------|
+| [e.g., Row header] | [Section1, Section2] | Title on left, description on right |
+| [e.g., 3-col grid] | [SectionX] | 3 cards arranged horizontally |
 
 ---
 
-## 3. Token Verification
+## 2. Evidence-Based Comparison (DETAILED)
 
-### 3.1 Color Tokens
-| Token ID | Expected Value | Actual Value | Match |
-|----------|----------------|--------------|-------|
-| colors.primary.main | #00D9A3 | ? | ✅/❌ |
+> For each section, compare your observation with ui-spec.json
 
-### 3.2 Missing Tokens
-- 
+### 2.1 [Section Name] Comparison
 
----
+| Aspect | Screenshot Observation (from §1) | ui-spec.json Value | Match | Evidence |
+|--------|----------------------------------|-------------------|-------|----------|
+| Header container | Row: title left, desc right | `flexDirection: "row"` | ✅/❌ | Line XXX |
+| Title alignment | Left-aligned | `alignItems: "flex-start"` | ✅/❌ | Line XXX |
+| Description position | Right side | `justifyContent: "space-between"` | ✅/❌ | Line XXX |
+| Content grid | 3 columns | `gridTemplateColumns: "repeat(3, 1fr)"` | ✅/❌ | Line XXX |
 
-## 4. Asset Mapping Verification
+**(Repeat for EVERY section)**
 
-### 4.1 Asset List
-| Asset ID | src | dest | Verified |
-|----------|-----|------|----------|
-| logo-header | inputs/assets/... | public/... | ✅/❌ |
+### 2.2 Pattern Consistency Verification
 
-### 4.2 Issues
-- 
-
----
-
-## 5. Root Cause Analysis
-
-### 5.1 Screenshot Analysis Failure Causes
-| Issue | Suspected Cause | Evidence |
-|-------|-----------------|----------|
-| Layout misrecognition | Insufficient screenshot observation | chat.json thinking |
-| Pattern mismatch | Per-section individual analysis | ui-spec structure |
-
-### 5.2 Prompt Improvement Areas
-- 
+| Pattern | Sections | Spec Values | All Identical? | Issue |
+|---------|----------|-------------|----------------|-------|
+| Row header | Sec1, Sec2, Sec3 | Sec1: row, Sec2: row, Sec3: ? | ✅/❌ | |
 
 ---
 
-## 6. Improvement Suggestions
+## 3. Score Assignment (ONLY after §1-2 complete)
 
-### 6.1 Prompt Improvements
-| Area | Current Issue | Suggestion |
-|------|---------------|------------|
-| Layout observation | | |
-| Pattern recognition | | |
+### 3.1 Overall Evaluation
 
-### 6.2 System Improvements
-| Area | Current Issue | Suggestion |
-|------|---------------|------------|
-| | | |
+| Area | Score | Evidence Summary |
+|------|-------|------------------|
+| Screenshot Accuracy | ⭐⭐⭐⭐☆ | 8/9 sections matched. Issue: [specific] |
+| Token Accuracy | ⭐⭐⭐⭐⭐ | All color/typography/spacing categories present |
+| Asset Mapping | ⭐⭐⭐⭐⭐ | 23/23 assets mapped with correct paths |
+| UI Spec Completeness | ⭐⭐⭐⭐☆ | All sections included, minor gaps in [specific] |
+
+### 3.2 Key Findings
+- ✅ **Well done**: [with evidence reference]
+- ❌ **Issues**: [with evidence reference]
+- 💡 **Suggestions**: [based on analysis]
 
 ---
 
-## 7. Conclusion
+## 4. Token Verification
 
-{Overall evaluation and next steps}
+### 4.1 Color Tokens
+| Category | Count | Sample Values | Quality |
+|----------|-------|---------------|---------|
+| Primary | X | #XXXXXX | ✅/❌ |
+| Background | X | | ✅/❌ |
+| Text | X | | ✅/❌ |
+
+### 4.2 Typography Tokens
+| Category | Defined | Quality |
+|----------|---------|---------|
+| Headings | ✅/❌ | |
+| Body | ✅/❌ | |
+| Button | ✅/❌ | |
+
+### 4.3 Spacing Tokens
+- Base scale defined: ✅/❌
+- Section spacing defined: ✅/❌
+- Component gaps defined: ✅/❌
+
+---
+
+## 5. Asset Mapping Verification
+
+| Category | Count | All src valid | All dest valid | Usage clear |
+|----------|-------|---------------|----------------|-------------|
+| Logos | X | ✅/❌ | ✅/❌ | ✅/❌ |
+| Icons | X | ✅/❌ | ✅/❌ | ✅/❌ |
+| Backgrounds | X | ✅/❌ | ✅/❌ | ✅/❌ |
+
+---
+
+## 6. Root Cause Analysis (if issues found)
+
+### 6.1 Issue Analysis
+| Issue | Screenshot Evidence | ui-spec Evidence | Root Cause |
+|-------|---------------------|------------------|------------|
+| [issue] | [from §1] | [from §2] | [analysis] |
+
+---
+
+## 7. Ant Framework Improvement Plan
+
+> 🎯 This section identifies improvements to the Ant program itself based on evaluation findings.
+
+### 7.1 Prompt File Changes (Actionable)
+
+| Priority | Target File | Change Type | Description |
+|----------|-------------|-------------|-------------|
+| P0 | `packages/ant-cli/src/core/prompt/templates/design/phases/execute/base-ui-design.md` | ADD/MODIFY | [specific change] |
+| P1 | `packages/ant-cli/src/core/prompt/templates/design/phases/execute/injections/ui-spec-guide.md` | ADD | [specific rule] |
+| P2 | `packages/ant-cli/src/core/prompt/templates/design/phases/execute/rules-ui-design.md` | MODIFY | [specific change] |
+
+### 7.2 Specific Code Changes
+
+**File**: `packages/ant-cli/src/core/prompt/templates/design/phases/execute/[file].md`
+```markdown
+## [NEW RULE NAME]
+
+[Exact content to add to the prompt file]
+```
+
+### 7.3 Known Issues Registry
+
+> If this is a recurring issue, register it in the Known Issues section of this guide.
+
+| Issue ID | Pattern | Root Cause | Status |
+|----------|---------|------------|--------|
+| [e.g., UI-001] | [e.g., Layout direction misinterpreted] | [cause] | [New/Existing] |
+
+---
+
+## 8. Conclusion
+
+### 8.1 Verification Summary
+- Total sections analyzed: X
+- Sections matched: Y/X
+- Pattern consistency: ✅/❌
+- Ready for Code Job: ✅/❌
+
+### 8.2 Immediate Actions
+- [ ] [Action 1 - e.g., Apply prompt change]
+- [ ] [Action 2]
+
+### 8.3 Follow-up Evaluation
+After applying changes, re-run Design Job and evaluate again to verify fix effectiveness.
 ```
 
 ---
@@ -327,11 +433,36 @@ Path: ant-workspaces/{org}/{group}/{project}/features/{feature}/
 
 ### 7.2 Evaluator Guidelines
 
-1. **Analyze screenshots first**: Read images in `inputs/references/screens/` to understand actual design
-2. **Compare with UI documents**: Compare ui-spec.json, ui-tokens.json, ui-assets.json with screenshots
-3. **Identify mismatches**: Find layout, arrangement, pattern mismatches
-4. **Analyze causes**: Check LLM thinking in chat.json to understand why misinterpretation occurred
-5. **Write report**: Follow template format
+**🚨 MANDATORY EVALUATION ORDER:**
+
+1. **READ SCREENSHOT FIRST** (before ANY ui-spec.json)
+   - Open the image file
+   - Document what you SEE in Screenshot Observation Log
+   - Do NOT skip this step
+
+2. **RECORD OBSERVATIONS** (before comparison)
+   - For each section: layout, arrangement, positions
+   - For patterns: identify repeating structures
+   - Write evidence ("title appears LEFT of description")
+
+3. **THEN READ UI DOCUMENTS**
+   - ui-spec.json, ui-tokens.json, ui-assets.json
+   - Find corresponding values for each observation
+
+4. **CREATE COMPARISON TABLE**
+   - Column 1: Your observation (from step 2)
+   - Column 2: ui-spec.json value (quote exact property)
+   - Column 3: Match or mismatch
+
+5. **ONLY THEN ASSIGN SCORES**
+   - Scores must reference evidence from comparison table
+   - No evidence = no score
+
+**Anti-Patterns to AVOID:**
+- ❌ Giving scores first, evidence later
+- ❌ Saying "matches" without showing what was compared
+- ❌ Skipping Screenshot Observation Log
+- ❌ Assuming without observing
 
 ---
 

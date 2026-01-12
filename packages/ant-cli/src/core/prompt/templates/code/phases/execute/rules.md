@@ -124,21 +124,51 @@ module.exports = {
 ```
 
 **⚠️ CRITICAL: Use configured tokens, NOT hardcoded values**
-```tsx
-// ❌ WRONG: Hardcoded value
-<div className="bg-[#121212] text-[#00E676]">
 
-// ✅ CORRECT: Use configured token
-<div className="bg-bg-dark text-primary-green">
+**🚨 BEFORE using ANY arbitrary value `[...]` in Tailwind, CHECK:**
+1. Does `tailwind.config.ts` already define this value?
+2. Does `ui-tokens.json` have a token for this?
+3. If YES → Use the token class name, NOT arbitrary value
+
+**FORBIDDEN Patterns (Causes Code Quality Failure):**
+```tsx
+// ❌ WRONG: Arbitrary hex values
+className="bg-[#121212] text-[#00E676]"
+
+// ❌ WRONG: Arbitrary rgba values (COMMON MISTAKE!)
+className="bg-[rgba(45,52,54,0.8)] border-[rgba(255,255,255,0.1)]"
+
+// ❌ WRONG: Hardcoded spacing
+className="p-[24px] gap-[16px]"
+
+// ✅ CORRECT: Use token classes from tailwind.config.ts
+className="bg-bg-dark text-primary-green"
+className="bg-background-cardDark border-border-transparent"
+className="p-6 gap-4"  // or p-spacing-lg gap-spacing-md
+```
+
+**Token Lookup Process:**
+```
+1. You need: rgba(45, 52, 54, 0.8) for card background
+2. Check ui-tokens.json → Find: background.cardDark = "rgba(45, 52, 54, 0.8)"
+3. Check tailwind.config.ts → Find: colors.background.cardDark
+4. Use: className="bg-background-cardDark"
 ```
 
 ```css
 /* ❌ WRONG */
 .hero { background: #121212; }
+.card { background: rgba(45, 52, 54, 0.8); }
 
 /* ✅ CORRECT */
 .hero { background: var(--color-bg-dark); }
+.card { background: var(--color-background-cardDark); }
 ```
+
+**Why This Matters:**
+- Hardcoded values break design consistency
+- Token changes won't propagate to hardcoded values
+- Makes design system maintenance impossible
 
 ────────────────────────────────────────────────────────────────────────────────
 ### ⚠️ Boundary: When unlisted items are needed
@@ -581,6 +611,77 @@ function processInput(data) {
 - [ ] No duplicate inline code exists for the same functionality
 
 **A module that exists but is never imported and used = TASK FAILURE**
+
+────────────────────────────────────────────────────────────────────────────────
+### 🎨 4. UI Section Component Integration (MANDATORY for UI Tasks)
+────────────────────────────────────────────────────────────────────────────────
+
+**⚠️ CRITICAL: UI sections follow a specific integration pattern. Missing ANY step = TASK FAILURE**
+
+**UI Section Component Hierarchy:**
+```
+page.tsx (entry point)
+  └── SectionName.tsx (parent section component)  ← MUST CREATE
+        └── SectionNameCard.tsx (child component)  ← Optional
+```
+
+**Pattern Requirement:**
+| If You Create | You MUST Also Create | You MUST Also Do |
+|---------------|---------------------|------------------|
+| `XCard.tsx` | `X.tsx` (parent) | Import `<X />` in entry point |
+| `YCard.tsx` | `Y.tsx` (parent) | Import `<Y />` in entry point |
+| Any `[Name]Card.tsx` | `[Name].tsx` (parent) | Import `<[Name] />` in entry point |
+
+**🚫 ANTI-PATTERN (Causes Task Failure):**
+```tsx
+// ❌ WRONG: Created XCard.tsx but NO X.tsx (parent)
+// Entry point still has:
+{/* X Section - Placeholder */}
+<section id="x-section" className="...">
+  <h2>X Section</h2>  // ← PLACEHOLDER! Not actual component!
+</section>
+
+// ❌ This is a TASK FAILURE even though XCard.tsx exists
+```
+
+**✅ CORRECT PATTERN:**
+```tsx
+// Step 1: Create XCard.tsx (child)
+// Step 2: Create X.tsx (parent) that imports and uses XCard
+// Step 3: In entry point:
+import { X } from '@/components/X';
+
+// Replace placeholder with actual component:
+<X />  // ← Actual component, NOT placeholder
+```
+
+**🔍 PLACEHOLDER DETECTION (MANDATORY CHECK):**
+
+After implementing ANY UI section task, you MUST:
+
+1. **Search for placeholders** in the entry point file:
+   ```
+   read_file(page entry point)
+   Search for: {/* ... Placeholder */} or {/* ... Section */}
+   ```
+
+2. **If placeholder found for YOUR section:**
+   - Create the parent section component (if not exists)
+   - Import the component in entry point
+   - REPLACE the placeholder `<section>` with `<ComponentName />`
+
+3. **Verification Checklist (Execute for EACH UI section task):**
+   - [ ] Child component created (e.g., `XCard.tsx`)
+   - [ ] Parent section component created (e.g., `X.tsx`)
+   - [ ] Parent imports and renders child component(s)
+   - [ ] Entry point imports parent component
+   - [ ] Entry point renders parent component (NO placeholder `<section>`)
+   - [ ] No `{/* ... Placeholder */}` comments remain for this section
+
+**Why This Matters:**
+- Creating only child components = Components exist but are NEVER RENDERED
+- Placeholders in entry point = User sees placeholder text instead of actual UI
+- Task marked "complete" but UI is broken = CRITICAL FAILURE
 
 ────────────────────────────────────────────────────────────────────────────────
 

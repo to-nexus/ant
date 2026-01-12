@@ -192,26 +192,37 @@ export default function Error({
 ```
 
 ## Image Optimization
+
+**Primary Rule**: Follow rendering specs from `ui-assets.json` and `ui-spec.json` if available.
+
 ```typescript
 import Image from 'next/image';
 
-// ✅ Good: Use Next.js Image component
+// Use explicit dimensions from design spec
 <Image
   src="/profile.jpg"
   alt="Profile"
-  width={200}
-  height={200}
-  priority  // For above-the-fold images
+  width={200}   // from ui-assets.json rendering.width
+  height={200}  // from ui-assets.json rendering.height
+  priority      // For above-the-fold images
 />
 
-// ✅ Remote images
-<Image
-  src="https://example.com/image.jpg"
-  alt="Remote"
-  width={500}
-  height={300}
-  // Add domain to next.config.js: images.domains
+// Fill mode: parent must have explicit size (from design spec containerSize)
+<div className="relative w-[300px] h-[200px]">
+  <Image src="/card-bg.png" fill alt="Background" className="object-cover" />
+</div>
+
+// CSS background for full-section backgrounds (rendering: "css-background")
+<div 
+  className="w-full h-[400px]"
+  style={{ backgroundImage: 'url(/hero-bg.png)', backgroundSize: 'cover' }}
 />
+```
+
+### Remote Images
+```typescript
+// Add domain to next.config.js
+images: { domains: ['example.com'] }
 ```
 
 ## Environment Variables
