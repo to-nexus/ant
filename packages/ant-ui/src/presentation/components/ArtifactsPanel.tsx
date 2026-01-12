@@ -143,12 +143,16 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
             {onDelete && (() => {
               const pathParts = node.path.split('/');
               
-              // outputs/design, outputs/reports는 "Clear contents" 버튼 표시
-              const isClearableOutputsDir = 
+              // "Clear contents" 대상 폴더들 (폴더는 유지, 하위 파일만 삭제)
+              const isClearableDir = 
                 node.type === 'directory' &&
                 pathParts.length === 2 &&
-                pathParts[0] === 'outputs' &&
-                (pathParts[1] === 'design' || pathParts[1] === 'reports');
+                (
+                  // outputs/design, outputs/reports
+                  (pathParts[0] === 'outputs' && (pathParts[1] === 'design' || pathParts[1] === 'reports')) ||
+                  // sessions/logPrompt
+                  (pathParts[0] === 'sessions' && pathParts[1] === 'logPrompt')
+                );
               
               // inputs의 직계 자식 디렉토리는 삭제 불가
               const isProtectedInputsDir = 
@@ -156,8 +160,8 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
                 pathParts.length === 2 && 
                 pathParts[0] === 'inputs';
               
-              if (isClearableOutputsDir) {
-                // outputs/design, outputs/reports: 하위 파일 전체 삭제 버튼
+              if (isClearableDir) {
+                // 하위 파일 전체 삭제 버튼 (폴더는 유지)
                 return (
                   <Button
                     size="sm"

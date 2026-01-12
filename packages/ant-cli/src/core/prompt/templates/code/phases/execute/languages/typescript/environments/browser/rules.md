@@ -193,11 +193,42 @@ When images fill their container (fill mode, 100% size, background-size: cover, 
 | Pattern | Result |
 |---------|--------|
 | Parent has explicit size (e.g., `h-[200px]`) | ✅ Image renders |
-| Parent uses aspect-ratio with computed width | ✅ Image renders |
+| Parent uses aspect-ratio AND has computed width | ✅ Image renders |
 | Parent uses `height: auto` with no content | ❌ Height = 0, image invisible |
 | Parent uses `100%` but ancestor has no size | ❌ Height = 0, image invisible |
+| Responsive: `h-[200px] lg:h-auto` | ❌ Desktop height = 0 |
 
-**Quick Check:** After implementing a fill-mode image, trace the size computation upward. If any ancestor relies on content for size but has none, the image won't render.
+**⚠️ aspect-ratio Requires Width:**
+```tsx
+// ❌ BROKEN: aspect-ratio but width not computed (flex item without basis)
+<div className="flex">
+  <div className="aspect-[4/3]">  {/* width = 0, so height = 0 */}
+    <Image fill />
+  </div>
+</div>
+
+// ✅ WORKS: aspect-ratio with explicit or computed width
+<div className="grid grid-cols-3">
+  <div className="aspect-[4/3]">  {/* grid computes width */}
+    <Image fill />
+  </div>
+</div>
+```
+
+**⚠️ Responsive Breakpoint Trap:**
+```tsx
+// ❌ BROKEN: Mobile works, desktop fails
+<div className="h-[200px] lg:h-auto">  {/* lg: height becomes 0 */}
+  <Image fill />
+</div>
+
+// ✅ WORKS: All breakpoints have computable height
+<div className="h-[200px] lg:h-[300px]">
+  <Image fill />
+</div>
+```
+
+**Quick Check:** Trace size computation at EACH breakpoint. If any breakpoint relies on content for size but has none, image fails.
 
 ---
 

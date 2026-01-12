@@ -11,6 +11,7 @@ import { LLMClient } from "../../../../../../core/ports";
 import { ArchitectGraphState, TASK_PRIORITIES, Violation } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { formatViolations } from "../shared/violationFormatter";
+import { logPrompt } from "../../../../../../core/utils/promptLogger";
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -106,6 +107,38 @@ export async function generatePlanText(
     violationsText,
     uiDoc  // ✅ Pass uiDoc for UI-related tasks
   );
+  
+  // ✅ Log prompt structure (not content)
+  const jobId = state._httpJobId || 'unknown';
+  if (state.context.featurePath) {
+    try {
+      await logPrompt(
+        state.context.featurePath,
+        jobId,
+        'code',
+        'plan-planGen',
+        prompt.length,
+        {
+          taskId: task.id,
+          taskName: task.name,
+          templatePath: 'code/phases/plan/base-plan',
+          usedTemplates: ['code/phases/plan/rules-plan'],
+          injectedVariables: {
+            taskName: task.name,
+            taskType: task.type,
+            taskDescription: task.description ? `[${task.description.length} chars]` : undefined,
+            directive: state.directive ? `[${state.directive.length} chars]` : undefined,
+            designDoc: designDoc ? `[${designDoc.length} chars]` : undefined,
+            uiDoc: uiDoc ? `[${uiDoc.length} chars]` : undefined,
+            hasProjectCodeContext: !!projectCodeContext,
+            isRetry: !!violationsText,
+          },
+        }
+      );
+    } catch (logError) {
+      console.warn(`⚠️  [Plan-PlanGen] Failed to log prompt:`, logError);
+    }
+  }
   
   // ✅ Use centralized LLM wrapper with automatic token tracking
   const { invokeWithTracking } = await import('../../../common/llmHelpers');

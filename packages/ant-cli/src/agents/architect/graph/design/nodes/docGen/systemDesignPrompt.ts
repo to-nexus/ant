@@ -215,7 +215,7 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
       console.warn(`⚠️  WARNING: Markdown output format NOT found in prompt! (length: ${allContent.length} chars)`);
     }
     
-    // ✅ Log prompt for debugging
+    // ✅ Log prompt structure (not content)
     const jobId = state.jobId || state._httpJobId || 'unknown';
     if (state.context.featurePath) {
       try {
@@ -224,18 +224,23 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
           jobId,
           'design',
           'docGen-systemDesign',
-          allContent,
+          allContent.length,
           {
             taskId: state.currentTask?.id,
             taskName: state.currentTask?.name,
-            templatePath: 'design/phases/execute (via PromptEngine)',
+            templatePath: 'design/phases/execute/base-system-design',
+            usedTemplates: [
+              'design/phases/execute/rules-system-design',
+              'design/phases/execute/injections/game-domain-guide',
+              'design/phases/execute/injections/service-domain-guide',
+            ],
             injectedVariables: {
-              directive: state.directive ? '[SET]' : undefined,
-              designDoc: apiContractContent ? '[SET]' : undefined,
+              directive: state.directive ? `[${state.directive.length} chars]` : undefined,
+              designDoc: apiContractContent ? `[${apiContractContent.length} chars]` : undefined,
               lastSectionNumber,
               sectionPattern,
-              prdSpec: state.prd ? '[SET]' : undefined,
-              currentCode: state.code ? '[SET]' : undefined,
+              prdSpec: state.prd ? `[${state.prd.length} chars]` : undefined,
+              currentCode: state.code ? `[${state.code.length} chars]` : undefined,
               designDomain: state.designDomain,
               currentTask: state.currentTask?.id,
               isLastTaskForDocument,
@@ -295,27 +300,33 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
     tokenManager.checkBudget(messages as any);
   }
   
-  // ✅ Log COMPLETE final messages (all dynamic injections)
+  // ✅ Log prompt structure (not content) - full message
   const jobIdFinal = state.jobId || state._httpJobId || 'unknown';
   if (state.context.featurePath) {
     try {
-      // Extract all text content from all messages
-      const allTextContent = messages.flatMap(m => 
-        Array.isArray(m.content) 
-          ? m.content.filter((c: any) => c.type === 'text').map((c: any) => c.text)
-          : [String(m.content)]
-      ).join('\n\n---\n\n');
+      // Calculate total text length from all messages
+      const totalLength = messages.reduce((sum, m) => {
+        if (Array.isArray(m.content)) {
+          return sum + m.content.reduce((s, c: any) => s + (c.type === 'text' ? c.text.length : 0), 0);
+        }
+        return sum + (typeof m.content === 'string' ? m.content.length : 0);
+      }, 0);
       
       await logPrompt(
         state.context.featurePath,
         jobIdFinal,
         'design',
         'docGen-systemDesign-fullMessage',
-        allTextContent,
+        totalLength,
         {
           taskId: state.currentTask?.id,
           taskName: state.currentTask?.name,
-          templatePath: 'buildMessages (full)',
+          templatePath: 'design/phases/execute/base-system-design',
+          usedTemplates: [
+            'design/phases/execute/rules-system-design',
+            'design/phases/execute/injections/game-domain-guide',
+            'design/phases/execute/injections/service-domain-guide',
+          ],
           injectedVariables: {
             messageCount: messages.length,
             hasConversationHistory: !!(state.conversationHistory?.length),

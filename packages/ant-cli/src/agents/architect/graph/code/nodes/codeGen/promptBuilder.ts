@@ -362,27 +362,36 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     tokenManager.checkBudget(messages as any);
   }
   
-  // ✅ Log prompt for debugging
+  // ✅ Log prompt structure (not content)
   const jobId = state._httpJobId || 'unknown';
   if (state.context.featurePath) {
     try {
-      // Extract text content from all blocks for logging
-      const allTextContent = messages.flatMap(m => 
-        Array.isArray(m.content) 
-          ? m.content.filter((c: any) => c.type === 'text').map((c: any) => c.text)
-          : [m.content]
-      ).join('\n\n---\n\n');
+      // Calculate total prompt length
+      const totalPromptLength = messages.reduce((sum, m) => {
+        if (Array.isArray(m.content)) {
+          return sum + m.content.reduce((s, c: any) => s + (c.type === 'text' ? c.text.length : 0), 0);
+        }
+        return sum + (typeof m.content === 'string' ? m.content.length : 0);
+      }, 0);
       
       await logPrompt(
         state.context.featurePath,
         jobId,
         'code',
         'codeGen-fullMessage',
-        allTextContent,
+        totalPromptLength,
         {
           taskId: state.currentTask?.id,
           taskName: state.currentTask?.name,
-          templatePath: 'buildMessages (full)',
+          templatePath: 'code/phases/execute/base',
+          usedTemplates: [
+            'code/phases/execute/rules',
+            'code/base/injections/text-format-compact',
+            'code/base/injections/tool-calling-rules-compact',
+            'code/base/injections/design-document-guide',
+            'code/base/injections/retrieved-code',
+            'code/base/injections/reference-code',
+          ],
           injectedVariables: {
             // Content lengths
             directive: state.directive ? `[${state.directive.length} chars]` : undefined,

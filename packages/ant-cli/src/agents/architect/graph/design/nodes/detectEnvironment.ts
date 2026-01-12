@@ -1,6 +1,7 @@
 import { DesignGraphState } from "../state";
 import { LLMClient } from "../../../../../core/ports";
 import { PromptEngine } from "../../../../../core/prompt/engine";
+import { logPrompt } from "../../../../../core/utils/promptLogger";
 import * as path from 'path';
 import * as fs from 'fs/promises';
 
@@ -348,7 +349,7 @@ export async function detectEnvironment(
     }
 
     // PromptEngine을 사용해 detect 프롬프트 구성
-    const prompt = await engine.buildDesignDomainPrompt({
+    const detectVars = {
       directive,
       prdSpec,
       hasReferences,
@@ -365,7 +366,36 @@ export async function detectEnvironment(
       hasApiContract,
       hasFeSystemDesign,
       hasBeSystemDesign,
-    });
+    };
+    
+    const prompt = await engine.buildDesignDomainPrompt(detectVars);
+    
+    // ✅ Log prompt structure (not content)
+    const jobId = state.jobId || state._httpJobId || 'unknown';
+    if (featurePath) {
+      try {
+        await logPrompt(
+          featurePath,
+          jobId,
+          'design',
+          'detectEnvironment',
+          prompt.length,
+          {
+            templatePath: 'design/phases/detect/base',
+            injectedVariables: {
+              directive: directive ? `[${directive.length} chars]` : undefined,
+              prdSpec: prdSpec ? `[${prdSpec.length} chars]` : undefined,
+              hasReferences,
+              hasAssets,
+              hasUiDocs,
+              hasSystemDocs,
+            },
+          }
+        );
+      } catch (logError) {
+        console.warn(`⚠️  [Design-DetectEnv] Failed to log prompt:`, logError);
+      }
+    }
 
     // ✅ Chat UI 준비
     const { getChatAPIClient } = await import("../../../../../core/adapters/ChatAPIClient");

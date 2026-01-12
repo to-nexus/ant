@@ -4,6 +4,7 @@ import { DesignTask } from "../../../../types/task";
 import { TaskQueue } from "../../../code/state";
 import { JobTimingManager } from "../../../common/timing/JobTimingManager";
 import { extractErrorDetails, logErrorHeader } from "../../../code/nodes/shared/errorHandler";
+import { logPrompt } from "../../../../../../core/utils/promptLogger";
 
 /**
  * Decompose Node for Design
@@ -274,14 +275,42 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     const FilePromptAdapter = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
     const promptAdapter = new FilePromptAdapter.FilePromptAdapter();
     
-    const uiDecomposePrompt = await promptAdapter.render('design/phases/decompose/base-ui-design', {
+    const uiDecomposeVars = {
       uiContext,
       screenCount: state.uiReferences?.screens?.length || 0,
       componentCount: state.uiReferences?.components?.length || 0,
       assetCount: (state.uiAssetsList?.logos?.length || 0) + 
                   (state.uiAssetsList?.icons?.length || 0) + 
                   (state.uiAssetsList?.backgrounds?.length || 0),
-    });
+    };
+    
+    const uiDecomposePrompt = await promptAdapter.render('design/phases/decompose/base-ui-design', uiDecomposeVars);
+    
+    // ✅ Log prompt structure (not content)
+    const jobIdUi = state.jobId || state._httpJobId || 'unknown';
+    if (state.context.featurePath) {
+      try {
+        await logPrompt(
+          state.context.featurePath,
+          jobIdUi,
+          'design',
+          'decompose-uiDesign',
+          uiDecomposePrompt.length,
+          {
+            templatePath: 'design/phases/decompose/base-ui-design',
+            usedTemplates: ['design/phases/decompose/rules-ui-design'],
+            injectedVariables: {
+              uiContext: uiContext ? `[${uiContext.length} chars]` : undefined,
+              screenCount: uiDecomposeVars.screenCount,
+              componentCount: uiDecomposeVars.componentCount,
+              assetCount: uiDecomposeVars.assetCount,
+            },
+          }
+        );
+      } catch (logError) {
+        console.warn(`⚠️  [Design-Decompose-UI] Failed to log prompt:`, logError);
+      }
+    }
     
     try {
       console.log('🤖 Analyzing UI requirements...\n');
@@ -475,11 +504,38 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
   const promptAdapter = new FilePromptAdapter.FilePromptAdapter();
   
   // Render template with variables
-  const prompt = await promptAdapter.render('design/phases/decompose/base-system-design', {
+  const systemDecomposeVars = {
     spec,
     hasExistingDesign,
     designPreview
-  });
+  };
+  
+  const prompt = await promptAdapter.render('design/phases/decompose/base-system-design', systemDecomposeVars);
+  
+  // ✅ Log prompt structure (not content)
+  const jobIdSys = state.jobId || state._httpJobId || 'unknown';
+  if (state.context.featurePath) {
+    try {
+      await logPrompt(
+        state.context.featurePath,
+        jobIdSys,
+        'design',
+        'decompose-systemDesign',
+        prompt.length,
+        {
+          templatePath: 'design/phases/decompose/base-system-design',
+          usedTemplates: ['design/phases/decompose/rules-system-design'],
+          injectedVariables: {
+            spec: spec ? `[${spec.length} chars]` : undefined,
+            hasExistingDesign,
+            designPreview: designPreview ? `[${designPreview.length} chars]` : undefined,
+          },
+        }
+      );
+    } catch (logError) {
+      console.warn(`⚠️  [Design-Decompose-System] Failed to log prompt:`, logError);
+    }
+  }
 
   try {
     console.log('🤖 Analyzing design requirements...\n');

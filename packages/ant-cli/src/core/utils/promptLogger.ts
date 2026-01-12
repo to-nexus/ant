@@ -1,7 +1,11 @@
 /**
  * Prompt Logger
  * 
- * Logs prompts sent to LLM for debugging purposes.
+ * Logs prompt STRUCTURE (not content) for debugging purposes.
+ * - Template files used
+ * - Injected variables summary
+ * - Hardcoded content (if any, not from template files)
+ * 
  * Creates files in sessions/logPrompt/ directory.
  * 
  * File naming:
@@ -17,9 +21,16 @@ export interface PromptLogEntry {
   taskId?: string;
   taskName?: string;
   timestamp: string;
+  /** Main template file path (e.g., 'design/phases/execute/base-ui-design') */
   templatePath?: string;
+  /** Additional template files used (partials, injections) */
+  usedTemplates?: string[];
+  /** Summary of injected variables */
   injectedVariables?: Record<string, any>;
-  finalPrompt: string;
+  /** Hardcoded content (not from template files) - only log this */
+  hardcodedContent?: string;
+  /** Prompt length for reference */
+  promptLength?: number;
   tokenEstimate?: number;
 }
 
@@ -51,10 +62,11 @@ export class PromptLogger {
    * Log a prompt entry
    */
   async log(entry: Omit<PromptLogEntry, 'timestamp'>): Promise<void> {
+    const promptLength = entry.promptLength || 0;
     const fullEntry: PromptLogEntry = {
       ...entry,
       timestamp: new Date().toISOString(),
-      tokenEstimate: entry.tokenEstimate ?? this.estimateTokens(entry.finalPrompt),
+      tokenEstimate: entry.tokenEstimate ?? this.estimateTokens(promptLength),
     };
     
     this.entries.push(fullEntry);
@@ -66,8 +78,8 @@ export class PromptLogger {
   /**
    * Estimate token count (rough approximation)
    */
-  private estimateTokens(text: string): number {
-    return Math.ceil(text.length / 3.5);
+  private estimateTokens(charLength: number): number {
+    return Math.ceil(charLength / 3.5);
   }
 
   /**
@@ -139,14 +151,27 @@ export class PromptLogger {
       content += `- **Task Name**: ${entry.taskName}\n`;
     }
     
+    // ✅ Log template files used (primary info)
     if (entry.templatePath) {
-      content += `- **Template**: ${entry.templatePath}\n`;
+      content += `- **Main Template**: \`${entry.templatePath}.md\`\n`;
     }
     
-    content += `- **Token Estimate**: ~${entry.tokenEstimate?.toLocaleString()} tokens\n`;
-    content += `- **Prompt Length**: ${entry.finalPrompt.length.toLocaleString()} chars\n`;
+    if (entry.usedTemplates && entry.usedTemplates.length > 0) {
+      content += `- **Used Templates**:\n`;
+      for (const tpl of entry.usedTemplates) {
+        content += `  - \`${tpl}.md\`\n`;
+      }
+    }
     
-    // Log injected variables (sanitized)
+    // Prompt stats (not content)
+    if (entry.promptLength) {
+      content += `- **Prompt Length**: ${entry.promptLength.toLocaleString()} chars\n`;
+    }
+    if (entry.tokenEstimate) {
+      content += `- **Token Estimate**: ~${entry.tokenEstimate.toLocaleString()} tokens\n`;
+    }
+    
+    // Log injected variables (sanitized summary)
     if (entry.injectedVariables && Object.keys(entry.injectedVariables).length > 0) {
       content += `\n### Injected Variables\n\n`;
       content += '```json\n';
@@ -158,15 +183,15 @@ export class PromptLogger {
       content += '\n```\n';
     }
     
-    // Log final prompt (truncated if too long)
-    content += `\n### Final Prompt\n\n`;
-    content += '<details>\n<summary>Click to expand prompt</summary>\n\n';
-    content += '```\n';
-    content += entry.finalPrompt.length > 50000 
-      ? entry.finalPrompt.substring(0, 50000) + '\n\n... [TRUNCATED - full prompt is ' + entry.finalPrompt.length + ' chars] ...'
-      : entry.finalPrompt;
-    content += '\n```\n';
-    content += '</details>\n';
+    // ✅ Only log hardcoded content (not from template files)
+    if (entry.hardcodedContent) {
+      content += `\n### Hardcoded Content\n\n`;
+      content += '```\n';
+      content += entry.hardcodedContent.length > 2000 
+        ? entry.hardcodedContent.substring(0, 2000) + '\n\n... [TRUNCATED] ...'
+        : entry.hardcodedContent;
+      content += '\n```\n';
+    }
     
     content += '\n---\n\n';
     
@@ -243,18 +268,31 @@ export function clearPromptLogger(jobType: 'design' | 'code', jobId: string): vo
 
 /**
  * Quick logging function for one-off prompt logging
+ * 
+ * @param featurePath - Feature directory path
+ * @param jobId - Job ID
+ * @param jobType - 'design' or 'code'
+ * @param nodeId - Node identifier (e.g., 'decompose', 'codeGen')
+ * @param promptLength - Length of the prompt in chars (for stats)
+ * @param options - Additional options
+ *   - templatePath: Main template file (e.g., 'design/phases/execute/base-ui-design')
+ *   - usedTemplates: Additional template files used
+ *   - injectedVariables: Summary of injected variables
+ *   - hardcodedContent: Content not from template files
  */
 export async function logPrompt(
   featurePath: string,
   jobId: string,
   jobType: 'design' | 'code',
   nodeId: string,
-  prompt: string,
+  promptLength: number,
   options?: {
     taskId?: string;
     taskName?: string;
     templatePath?: string;
+    usedTemplates?: string[];
     injectedVariables?: Record<string, any>;
+    hardcodedContent?: string;
   }
 ): Promise<void> {
   const logger = getPromptLogger({ featurePath, jobId, jobType });
@@ -263,7 +301,9 @@ export async function logPrompt(
     taskId: options?.taskId,
     taskName: options?.taskName,
     templatePath: options?.templatePath,
+    usedTemplates: options?.usedTemplates,
     injectedVariables: options?.injectedVariables,
-    finalPrompt: prompt,
+    hardcodedContent: options?.hardcodedContent,
+    promptLength,
   });
 }

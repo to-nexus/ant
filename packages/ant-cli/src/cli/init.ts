@@ -120,6 +120,8 @@ export function initFeature(workspaceName: string, featureName: string): void {
   fs.mkdirSync(path.join(featureDir, "sessions"), { recursive: true });
   fs.mkdirSync(path.join(featureDir, "sessions/evalUiDesign"), { recursive: true });
   fs.mkdirSync(path.join(featureDir, "sessions/evalCode"), { recursive: true });
+  fs.mkdirSync(path.join(featureDir, "sessions/logPrompt"), { recursive: true });
+  fs.mkdirSync(path.join(featureDir, "sessions/planText"), { recursive: true });
   // NOTE: outputs/code, outputs/memory, outputs/eval are NOT created
   //       - Code goes directly to repository (config.localPath)
   //       - Memory uses ChromaDB vector database

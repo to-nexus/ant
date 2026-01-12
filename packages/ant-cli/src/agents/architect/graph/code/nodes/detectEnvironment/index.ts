@@ -13,6 +13,7 @@
 
 import { ArchitectGraphState } from '../../state';
 import { LLMClient } from '../../../../../../core/ports';
+import { logPrompt } from '../../../../../../core/utils/promptLogger';
 
 // Import submodules
 import { parseDetectResponse } from './responseParser';
@@ -67,6 +68,32 @@ export async function detectEnvironment(
     state.profile,
     state.prd
   );
+  
+  // ✅ Log prompt structure (not content)
+  const jobId = state._httpJobId || 'unknown';
+  if (state.context.featurePath) {
+    try {
+      await logPrompt(
+        state.context.featurePath,
+        jobId,
+        'code',
+        'detectEnvironment',
+        prompt.length,
+        {
+          templatePath: 'code/phases/detect/base',
+          usedTemplates: ['code/phases/detect/rules'],
+          injectedVariables: {
+            directive: state.directive ? `[${state.directive.length} chars]` : undefined,
+            designDocs: state.designDocs ? 'SET' : undefined,
+            profile: state.profile ? 'SET' : undefined,
+            prd: state.prd ? `[${state.prd.length} chars]` : undefined,
+          },
+        }
+      );
+    } catch (logError) {
+      console.warn(`⚠️  [DetectEnv] Failed to log prompt:`, logError);
+    }
+  }
   
   // 2. Call LLM
   const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');

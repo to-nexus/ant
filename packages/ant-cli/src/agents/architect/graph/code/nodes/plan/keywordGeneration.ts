@@ -11,6 +11,7 @@ import { LLMClient } from "../../../../../../core/ports";
 import { ArchitectGraphState } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient";
+import { logPrompt } from "../../../../../../core/utils/promptLogger";
 
 export interface TaskKeywords {
   errorFiles: string[];  // Files that caused errors (build errors, file operation errors)
@@ -43,6 +44,35 @@ export async function generateTaskKeywords(
     state.mode || 'unknown',
     state.referenceRequests
   );
+
+  // ✅ Log prompt structure (not content)
+  const jobId = state._httpJobId || 'unknown';
+  if (state.context.featurePath) {
+    try {
+      await logPrompt(
+        state.context.featurePath,
+        jobId,
+        'code',
+        'plan-keyword',
+        prompt.length,
+        {
+          taskId: task.id,
+          taskName: task.name,
+          templatePath: 'code/phases/plan/base-keyword',
+          usedTemplates: ['code/phases/plan/rules-keyword'],
+          injectedVariables: {
+            taskName: task.name,
+            taskDescription: task.description ? `[${task.description.length} chars]` : undefined,
+            directive: state.directive ? `[${state.directive.length} chars]` : undefined,
+            mode: state.mode,
+            hasReferences: !!(state.referenceRequests?.length),
+          },
+        }
+      );
+    } catch (logError) {
+      console.warn(`⚠️  [Plan-Keyword] Failed to log prompt:`, logError);
+    }
+  }
 
   try {
     // ✅ Use centralized LLM wrapper with automatic token tracking

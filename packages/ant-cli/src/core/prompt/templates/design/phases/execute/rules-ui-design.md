@@ -488,3 +488,33 @@ Before outputting, verify:
 - [ ] **Spatial relationships observed**: Every container's child arrangement (axis, alignment, distribution) explicitly determined from screenshot
 - [ ] **Repeating patterns identified**: Components/sections with identical visual structure grouped
 - [ ] **Specification consistency verified**: Same visual pattern → Same layout properties (no exceptions)
+
+════════════════════════════════════════════════════════════════════════════════
+
+## 🚨 TASK COMPLETION SIGNAL (CRITICAL)
+
+**When you have completed all work for this task, you MUST output:**
+
+```xml
+<done>true</done>
+```
+
+**Rules:**
+1. Output `<done>true</done>` ONLY after:
+   - All required screenshots have been analyzed
+   - Document content has been generated with `<file>` or `<append>` tag
+   - You have no more tool calls to make
+
+2. **Do NOT output `<done>true</done>` if:**
+   - You just made a tool call (wait for the result first)
+   - You haven't generated the document yet
+   - You still need to load more images
+
+3. **Typical flow:**
+   ```
+   Turn 1: list_reference_images() → Wait
+   Turn 2: read_reference_image(...) → Wait
+   Turn 3: <file>...</file> or <append>...</append> + <done>true</done>
+   ```
+
+**⚠️ If you don't output `<done>true</done>`, the system will retry and ask you to continue.**

@@ -16,6 +16,7 @@ const PROTECTED_ROOT_FOLDERS = [
   'sessions/evalCode',
   'sessions/evalUiDesign',
   'sessions/planText',
+  'sessions/logPrompt',
 ];
 
 /**
