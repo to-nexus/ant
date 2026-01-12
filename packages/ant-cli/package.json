@@ -8,8 +8,8 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "tsx src/index.ts",
-    "dev:server": "NODE_OPTIONS='--max-old-space-size=8192' tsx src/composition/server.ts",
+    "dev": "NODE_ENV=development tsx src/index.ts",
+    "dev:server": "NODE_ENV=development NODE_OPTIONS='--max-old-space-size=8192' tsx src/composition/server.ts",
     "build": "tsc && cp -r src/core/prompt/templates dist/core/prompt/ && cp -r src/periphery/profiles dist/periphery/",
     "start": "tsx dist/index.js",
     "start:server": "NODE_OPTIONS='--max-old-space-size=8192' tsx src/composition/server.ts",

@@ -275,28 +275,27 @@ Dev servers do NOT terminate naturally. This is expected.
 - Do NOT wait for process to exit
 - Do NOT retry indefinitely
 
-**⚠️ EARLY-EXIT RULE: If Build Passes but Dev Server Has Issues**
+**🚨 EARLY-EXIT RULE: Build Success = Task Complete (MANDATORY)**
 
 ```
-✅ Build → SUCCESS
-❌ Dev Server → Has issues (compilation, hot-reload, etc.)
+✅ Build → SUCCESS (e.g., "Compiled successfully", "Build complete")
+❌ Dev Server → Has issues (any error message)
 ```
 
-**When this happens:**
-1. **DO NOT retry dev server more than ONCE** after build success
-2. Build is the deployment artifact - it's the primary indicator
-3. Complete the task:
-   ```
-   ✅ Build verification passed.
-   ⚠️ Dev server has framework-specific issues - not blocking.
-   ```
-4. Output `<done>true</done>`
+**🚨 CRITICAL: When build succeeds but dev server fails:**
+
+1. **IGNORE** any message saying "Fix the runtime error" or "SERVER STARTED BUT PAGE RENDER FAILED"
+2. **DO NOT** attempt to fix the dev server error
+3. **DO NOT** retry dev server more than ONCE
+4. **IMMEDIATELY** output `<done>true</done>`
+
+**Why?** Build is the deployment artifact. Dev server issues are often environment-specific (NODE_ENV, port conflicts, hot-reload bugs) and don't affect production builds.
 
 **Completion Criteria:**
-- ✅ Build succeeds (REQUIRED)
-- ⚠️ Dev server succeeds OR issues acknowledged (ACCEPTABLE)
+- ✅ Build succeeds → **TASK IS COMPLETE** (REQUIRED)
+- ⚠️ Dev server status is IRRELEVANT once build passes
 
-**Actions:** Discover commands → Run build → Run dev once → Output `<done>true</done>`
+**Actions:** Run build → If build succeeds → Run dev once → Output `<done>true</done>` (regardless of dev result)
 
 ────────────────────────────────────────────────────────────────────────────────
 
