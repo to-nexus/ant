@@ -480,7 +480,35 @@ features/{feature}/sessions/evalUiDesign/evaluidesign-{jobId}.md
 
 ---
 
-## 9. Known Issues and Solutions
+## 9. Prompt Injection Verification
+
+### 9.1 Quick Check (via logPrompt)
+
+```
+sessions/logPrompt/prompt-design-{jobId}.md
+```
+
+**필수 확인 항목:**
+
+| 노드 | 검증 포인트 |
+|------|-------------|
+| detectEnvironment | directive, prdSpec 주입됨? |
+| decompose-uiDesign | uiContext, screenCount 주입됨? |
+| docGen (ch1) | taskDescription, documentType 주입됨? |
+| docGen (ch2+) | previousChaptersSummary, existingDocContent 주입됨? |
+
+**판정:**
+- ✅ 정상: 모든 변수가 상황에 맞게 주입됨
+- ⚠️ 의심: 주입되었으나 값이 비정상 (예: 빈 문자열)
+- ❌ 실패: 필수 변수 누락
+
+### 9.2 문제 발생 시 조치
+
+프롬프트 주입 실패 시 → 코드 수정 필요 (promptLogger로 추적)
+
+---
+
+## 10. Known Issues and Solutions
 
 ### 9.1 Section Header Layout Misrecognition
 

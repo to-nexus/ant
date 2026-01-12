@@ -17,6 +17,7 @@ import { ArchitectGraphState, TaskQueue } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { JobTimingManager } from "../../../common/timing/JobTimingManager";
 import { logErrorHeader } from "../shared/errorHandler";
+import { logPrompt } from "../../../../../../core/utils/promptLogger";
 
 // Import submodules
 import { validateTasks } from "./validation";
@@ -205,7 +206,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     return ArtifactService.getUiSectionsSummary(state.parsedUiDocs);
   })();
   
-  const prompt = await state.deps.promptEngine.buildDecomposePrompt({
+  const decomposeVars = {
     directive: state.directive || '',
     designDoc,
     hasDesignDoc,
@@ -215,7 +216,45 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     hasProjectCode,     // ✅ CRITICAL: Actual codebase existence (git-based, not Vector DB)
     uiSectionsSummary,  // ✅ UI sections summary with token estimates (for split injection)
     runtimeAssetsIndex: state.runtimeAssetsIndex
-  });
+  };
+  
+  const prompt = await state.deps.promptEngine.buildDecomposePrompt(decomposeVars);
+  
+  // ✅ Log prompt structure (not content)
+  const jobId = state._httpJobId || 'unknown';
+  if (state.context.featurePath) {
+    try {
+      await logPrompt(
+        state.context.featurePath,
+        jobId,
+        'code',
+        'decompose',
+        prompt.length,
+        {
+          templatePath: 'code/phases/decompose/base',
+          usedTemplates: [
+            'code/phases/decompose/rules',
+            'code/phases/decompose/mode-guide',
+            'code/phases/decompose/error-or-general',
+            'code/phases/decompose/existing-code-check',
+            'code/phases/decompose/design-doc-guide',
+          ],
+          injectedVariables: {
+            directive: decomposeVars.directive ? `[${decomposeVars.directive.length} chars]` : undefined,
+            designDoc: designDoc ? `[${designDoc.length} chars]` : undefined,
+            hasDesignDoc,
+            mode: decomposeVars.mode,
+            hasProjectCode,
+            codebaseFilePaths: codebaseFilePaths?.length || 0,
+            uiSectionsSummary: uiSectionsSummary ? `[${uiSectionsSummary.length} chars]` : undefined,
+            runtimeAssetsCount: state.runtimeAssetsIndex?.count || 0,
+          },
+        }
+      );
+    } catch (logError) {
+      console.warn(`⚠️  [Decompose] Failed to log prompt:`, logError);
+    }
+  }
   
   let rawResponse: string;
   let decomposeTokenUsage: any;
@@ -287,12 +326,12 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   const replanJobId = (state as any)._replanJobId;
   const replanJobTiming = (state as any)._replanJobTiming;
   
-  let jobId: string;
+  let timingJobId: string;
   let jobTiming: any;
   
   if (replanJobId) {
     console.log(`🔄 [Decompose] Replan: Preserving job timing (Job ID: ${replanJobId})`);
-    jobId = replanJobId;
+    timingJobId = replanJobId;
     jobTiming = replanJobTiming;
   } else {
     // ✨ Get jobId from session (already initialized in resolve node)
@@ -301,14 +340,14 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       state.context.featureFolder || 'default',
       'code'
     );
-    jobId = sessionData?.state?.jobId || state._httpJobId!;
+    timingJobId = sessionData?.state?.jobId || state._httpJobId!;
     const existingJobTiming = sessionData?.state?.jobTiming || JobTimingManager.initializeNewJob(state._httpJobId!).jobTiming;
     
     // ✅ CRITICAL: Finalize estimating phase (detectEnvironment + decompose)
     const estimatingStartTime = existingJobTiming.startedAt || new Date().toISOString();
     jobTiming = JobTimingManager.finalizeEstimatingPhase(existingJobTiming, estimatingStartTime);
     
-    console.log(`⏱️  [Decompose] Using job ID from session: ${jobId}`);
+    console.log(`⏱️  [Decompose] Using job ID from session: ${timingJobId}`);
     console.log(`⏰  [Decompose] Estimating phase finalized: ${Math.round((jobTiming.estimatingDuration || 0) / 1000)}s`);
   }
   
@@ -326,7 +365,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     subtaskIndex: 0,
     completedTasks: state.completedTasks || [],
     completedTasksDetails: state.completedTasksDetails || [],
-    jobId,
+    jobId: timingJobId,
     jobTiming
   };
   

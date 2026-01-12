@@ -446,3 +446,24 @@ Before generating output, verify:
 - [ ] **Extension points clear** (adapters, ports, strategies)
 
 **If ANY checklist item fails → REWRITE that section before submitting!**
+
+════════════════════════════════════════════════════════════════════════════════
+
+## 🚨 TASK COMPLETION SIGNAL (CRITICAL)
+
+**When you have completed all work for this task, you MUST output:**
+
+```xml
+<done>true</done>
+```
+
+**Rules:**
+1. Output `<done>true</done>` ONLY after document content has been generated with `<file>` or `<append>` tag
+2. **Do NOT output `<done>true</done>` if you just made a tool call (wait for the result first)
+3. **Typical flow:**
+   ```
+   Turn 1: read_file(...) → Wait (if needed)
+   Turn 2: <file>...</file> or <append>...</append> + <done>true</done>
+   ```
+
+**⚠️ If you don't output `<done>true</done>`, the system will retry and ask you to continue.**

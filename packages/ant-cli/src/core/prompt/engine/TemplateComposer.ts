@@ -163,15 +163,6 @@ export class TemplateComposer {
       ? await this.renderTemplate(`${modeConfig.task}/base/examples`, {})
       : '';
     
-    // ✅ Debug: Verify examples loading
-    if (modeConfig.flags.includeExamples) {
-      if (examples && examples.length > 0) {
-        console.log(`✅ [TemplateComposer] Examples loaded: ${examples.length} chars`);
-      } else {
-        console.error(`❌ [TemplateComposer] Examples enabled but empty!`);
-      }
-    }
-    
     return {
       system,
       profiles,
@@ -193,12 +184,11 @@ export class TemplateComposer {
       parts.push(composed.system);
     }
     
-    // ✅ NEW: Add language instruction if non-English
+    // Add language instruction if non-English
     if (userLanguage && userLanguage !== 'en') {
       const { getLanguageInstruction } = require('../../utils/languageDetector');
       const languageInstruction = getLanguageInstruction(userLanguage);
       if (languageInstruction) {
-        console.log(`🌍 [TemplateComposer] Adding ${userLanguage} language instruction`);
         parts.push(languageInstruction);
       }
     }
@@ -225,50 +215,10 @@ export class TemplateComposer {
     
     // Add examples at the end
     if (composed.examples) {
-      console.log(`✅ [TemplateComposer] Including examples in final prompt: ${composed.examples.length} chars`);
       parts.push(composed.examples);
-    } else if (composed.examples === '') {
-      console.log(`ℹ️  [TemplateComposer] Examples explicitly disabled or empty`);
     }
     
-    const finalPrompt = parts.join('\n\n');
-    
-    // ✅ NEW: Estimate and log token count
-    this.logTokenEstimation(composed, finalPrompt);
-    
-    return finalPrompt;
-  }
-  
-  /**
-   * Estimate and log token count for the assembled prompt
-   */
-  private logTokenEstimation(composed: ComposedPrompt, finalPrompt: string): void {
-    const estimateTokens = (text: string) => Math.ceil(text.length / 3.5);
-    
-    const breakdown = {
-      system: estimateTokens(composed.system),
-      profiles: estimateTokens(composed.profiles),
-      base: estimateTokens(composed.base),
-      injections: estimateTokens(composed.injections),
-      rules: estimateTokens(composed.rules),
-      examples: estimateTokens(composed.examples),
-      total: estimateTokens(finalPrompt)
-    };
-    
-    console.log(`\n📊 [TemplateComposer] Token Estimation:`);
-    console.log(`   System: ${breakdown.system.toLocaleString()} tokens`);
-    if (breakdown.profiles > 0) {
-      console.log(`   Profiles: ${breakdown.profiles.toLocaleString()} tokens`);
-    }
-    console.log(`   Base: ${breakdown.base.toLocaleString()} tokens`);
-    console.log(`   Injections: ${breakdown.injections.toLocaleString()} tokens`);
-    console.log(`   Rules: ${breakdown.rules.toLocaleString()} tokens`);
-    if (breakdown.examples > 0) {
-      console.log(`   Examples: ${breakdown.examples.toLocaleString()} tokens`);
-    }
-    console.log(`   ──────────────────────────────────────`);
-    console.log(`   TOTAL: ${breakdown.total.toLocaleString()} tokens (${(finalPrompt.length / 1024).toFixed(1)} KB)`);
-    console.log(``);
+    return parts.join('\n\n');
   }
   
   /**
@@ -327,15 +277,11 @@ export class TemplateComposer {
     const injections: string[] = [];
     
     for (const path of injectionPaths) {
-      console.log(`[TemplateComposer] Rendering injection: ${path}`);
       const vars = this.getInjectionVars(path, assembled);
       const rendered = await this.renderTemplate(path, vars);
       
       if (rendered) {
-        console.log(`  ✅ Rendered (${rendered.length} chars)`);
         injections.push(rendered);
-      } else {
-        console.log(`  ⚠️  Empty or failed to render`);
       }
     }
     

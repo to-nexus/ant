@@ -113,26 +113,31 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
     });
   }
   
-  // ✅ Log COMPLETE prompt (all dynamic injections)
+  // ✅ Log prompt structure (not content)
   const jobId = state.jobId || state._httpJobId || 'unknown';
   if (state.context.featurePath) {
     try {
-      // Extract all text content for logging
-      const allTextContent = content
+      // Calculate total text length
+      const totalLength = content
         .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
-        .map(c => c.text)
-        .join('\n\n---\n\n');
+        .reduce((sum, c) => sum + c.text.length, 0);
       
       await logPrompt(
         state.context.featurePath,
         jobId,
         'design',
         'docGen-uiDesign-fullMessage',
-        allTextContent,
+        totalLength,
         {
           taskId: task?.id,
           taskName: task?.name,
-          templatePath: 'buildUiDesignMessages (full)',
+          templatePath: 'design/phases/execute/base-ui-design',
+          usedTemplates: [
+            'design/phases/execute/rules-ui-design',
+            'design/phases/execute/injections/ui-tokens-guide',
+            'design/phases/execute/injections/ui-assets-guide',
+            'design/phases/execute/injections/ui-spec-guide',
+          ],
           injectedVariables: {
             systemPrompt: systemPrompt ? `[${systemPrompt.length} chars]` : undefined,
             resourcesSummary: resourcesSummary ? `[${resourcesSummary.length} chars]` : undefined,
@@ -248,6 +253,46 @@ Generate the document using \`<file>\` XML tag:
 
 **You MUST output either a tool_use block OR a <file> XML tag!**`
     });
+  }
+  
+  // ✅ Log prompt structure (not content) - tool loop continuation
+  const jobIdFresh = state.jobId || state._httpJobId || 'unknown';
+  if (state.context.featurePath) {
+    try {
+      const totalLength = content
+        .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
+        .reduce((sum, c) => sum + c.text.length, 0);
+      
+      await logPrompt(
+        state.context.featurePath,
+        jobIdFresh,
+        'design',
+        'docGen-uiDesign-freshPrompt',
+        totalLength,
+        {
+          taskId: task?.id,
+          taskName: task?.name,
+          templatePath: 'design/phases/execute/base-ui-design',
+          usedTemplates: [
+            'design/phases/execute/rules-ui-design',
+            'design/phases/execute/injections/ui-tokens-guide',
+            'design/phases/execute/injections/ui-assets-guide',
+            'design/phases/execute/injections/ui-spec-guide',
+          ],
+          injectedVariables: {
+            systemPrompt: systemPrompt ? `[${systemPrompt.length} chars]` : undefined,
+            resourcesSummary: resourcesSummary ? `[${resourcesSummary.length} chars]` : undefined,
+            prd: state.prd ? `[${state.prd.length} chars]` : undefined,
+            previousDocs: previousDocs ? `[${previousDocs.length} chars]` : undefined,
+            isUiTokensTask,
+            isUiSpecTask,
+            isFreshPrompt: true,
+          },
+        }
+      );
+    } catch (logError) {
+      console.warn(`⚠️  [DocGen] Failed to log fresh prompt:`, logError);
+    }
   }
   
   return content;
@@ -553,7 +598,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
     throw new Error('[DocGen] Failed to load base-ui-design.md template');
   }
   
-  // ✅ Log prompt for debugging
+  // ✅ Log prompt structure (not content)
   const jobId = state.jobId || state._httpJobId || 'unknown';
   if (state.context.featurePath) {
     try {
@@ -561,13 +606,29 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
         state.context.featurePath,
         jobId,
         'design',
-        'docGen-uiDesign',
-        template,
+        'docGen-uiDesign-systemPrompt',
+        template.length,
         {
           taskId: state.currentTask?.id,
           taskName: state.currentTask?.name,
           templatePath: 'design/phases/execute/base-ui-design',
-          injectedVariables,
+          usedTemplates: [
+            'design/phases/execute/rules-ui-design',
+            'design/phases/execute/injections/ui-tokens-guide',
+            'design/phases/execute/injections/ui-assets-guide',
+            'design/phases/execute/injections/ui-spec-guide',
+          ],
+          injectedVariables: {
+            // Summarize large content
+            taskDescription: injectedVariables.taskDescription ? `[${injectedVariables.taskDescription.length} chars]` : undefined,
+            documentType: injectedVariables.documentType,
+            outputPath: injectedVariables.outputPath,
+            sectionNumber: injectedVariables.sectionNumber,
+            isLastTaskForDocument: injectedVariables.isLastTaskForDocument,
+            pathPattern: injectedVariables.pathPattern,
+            previousChaptersSummary: injectedVariables.previousChaptersSummary ? `[${injectedVariables.previousChaptersSummary.length} chars]` : undefined,
+            existingDocContent: injectedVariables.existingDocContent ? `[${injectedVariables.existingDocContent.length} chars]` : undefined,
+          },
         }
       );
     } catch (logError) {

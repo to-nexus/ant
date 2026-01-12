@@ -237,7 +237,7 @@ export function buildDesignGraph() {
   (graph as any).addEdge("decompose", "plan");
   (graph as any).addEdge("plan", "docGen");
   
-  // ✅ Conditional routing: docGen → tool (if tool call) or checkTaskStatus (if done)
+  // ✅ Conditional routing: docGen → tool (if tool call) or checkTaskStatus (if done) or docGen (retry)
   graph.addConditionalEdges(
     "docGen" as any,
     ((s: DesignGraphState) => {
@@ -247,9 +247,19 @@ export function buildDesignGraph() {
         console.log(`🔧 [Graph] Tool call detected: ${toolCalls[0].name}`);
         return "tool";  // Execute tool
       }
-      return "checkTaskStatus";  // Task complete
+      
+      // ✅ CRITICAL: Check for explicit done signal (same pattern as Code Job)
+      // Only complete task if LLM explicitly output <done>true</done>
+      const isDone = s.llmResponse?.done === true;
+      if (isDone) {
+        return "checkTaskStatus";  // Task complete
+      }
+      
+      // ✅ No tool calls and no explicit done → LLM response incomplete, retry
+      console.warn(`⚠️  [Graph] No tool calls and done=${s.llmResponse?.done} - retrying docGen`);
+      return "docGen";  // Retry (LLM will continue from conversation history)
     }) as any,
-    { tool: "tool", checkTaskStatus: "checkTaskStatus" } as any
+    { tool: "tool", checkTaskStatus: "checkTaskStatus", docGen: "docGen" } as any
   );
   
   // ✅ Tool → docGen (loop back for next LLM turn)

@@ -157,13 +157,23 @@ export async function docGen(
     
     // ✅ Finalize orchestrator (flush buffer and save files)
     const hasToolCalls = pendingToolCalls.length > 0;
-    await orchestrator.finalize(hasToolCalls);  // Don't flush if tool calls pending
+    const finalizeResult = await orchestrator.finalize(hasToolCalls);  // Don't flush if tool calls pending
     
     // ✅ Get generated files from registry (in-memory tracking)
     const registry = orchestrator.getRegistry();
     const files = registry.getAllFiles();
     
-    console.log(`\n✅ [DocGen] XML streaming complete (${files.length} files generated, ${pendingToolCalls.length} tool calls pending)`);
+    // ✅ CRITICAL: Extract explicitDone from finalize result (same as Code Job)
+    // Only mark done if LLM explicitly output <done>true</done>
+    const explicitDone = finalizeResult.explicitDone || false;
+    
+    console.log(`\n✅ [DocGen] XML streaming complete (${files.length} files generated, ${pendingToolCalls.length} tool calls pending, explicitDone: ${explicitDone})`);
+    
+    // ✅ CRITICAL: Warn if no tool calls and no explicit done tag
+    // This indicates LLM response may be incomplete (truncated or stuck)
+    if (!hasToolCalls && !explicitDone) {
+      console.warn(`⚠️  [DocGen] No tool calls and no <done>true</done> tag - LLM response may be incomplete`);
+    }
     
     // ✅ Build conversation history for resume
     const conversationHistory = buildConversationHistory(state, messages, thinking, textResponse, hasToolCalls);
@@ -188,13 +198,14 @@ export async function docGen(
       files,
       conversationHistory,
       // ✅ Return tool calls for routing decision
+      // CRITICAL: Only mark done if LLM explicitly output <done>true</done> (same as Code Job)
       llmResponse: hasToolCalls ? {
         toolCalls: pendingToolCalls,
         textResponse,
         done: false,
       } : {
         textResponse,
-        done: true,
+        done: explicitDone,  // ✅ Only done when LLM explicitly says so
       },
     };
   } catch (error) {

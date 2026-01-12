@@ -707,6 +707,51 @@ Compare planText MODIFY sections against actual file changes
 - Dev server issues after successful build → acceptable
 - Limit dev server retry attempts
 
+### 9.9 Image Fill Mode with Auto Height (RECURRING)
+
+**Symptom**: Images using framework's fill mode don't render on certain viewports
+
+**Pattern**:
+- Mobile uses explicit height (e.g., `h-[200px]`) → Works
+- Desktop uses `auto` or percentage height (e.g., `lg:h-auto`) → Fails
+- Image component uses fill/cover mode requiring parent dimensions
+
+**Root Cause**: Fill-mode images require parent container to have computable non-zero dimensions. `height: auto` with no content results in 0 height.
+
+**Detection**:
+```
+Search for fill-mode images where parent uses `auto` or `100%` height
+Look for responsive breakpoint changes: `h-[Npx] lg:h-auto`
+```
+
+**Solution Principle**:
+- Parent container MUST have explicit OR computed dimensions at all breakpoints
+- If using responsive heights, ensure all breakpoints have computable values
+- Trace size computation upward - if any ancestor relies on content for size, fill images fail
+
+### 9.10 High-Opacity Overlay Obscuring Background
+
+**Symptom**: Background image specified but not visible
+
+**Pattern**:
+- Background image applied via CSS or Image component
+- Overlay gradient with 90%+ opacity applied on top
+- Background effectively invisible to user
+
+**Root Cause**: Design tokens may specify high-opacity overlays without considering visibility impact
+
+**Detection**:
+```
+Check overlay opacity values in tailwind.config, CSS, or inline styles
+Flag any overlay with opacity > 80%
+```
+
+**Solution Principle**:
+- Overlay should enhance, not replace background
+- 20-60% opacity: Background clearly visible
+- 60-80% opacity: Background faintly visible
+- 90%+ opacity: Background effectively invisible (verify this is intentional)
+
 ---
 
 ## Appendix: Analysis Query Patterns
