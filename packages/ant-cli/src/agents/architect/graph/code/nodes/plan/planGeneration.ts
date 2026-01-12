@@ -165,9 +165,9 @@ export async function generatePlanText(
 }
 
 /**
- * Save planText to sessions/planText directory for debugging
+ * Save planText to sessions/plan-text directory for debugging
  * 
- * Saves to: {featurePath}/sessions/planText/{jobId}.md
+ * Saves to: {featurePath}/sessions/plan-text/{jobId}.md
  * All task plans for a job are appended to a single file.
  * 
  * @param state - Current graph state
@@ -187,8 +187,8 @@ async function savePlanTextForDebug(
       return; // No feature path or jobId available
     }
     
-    // Create sessions/planText/ directory
-    const planTextDir = path.join(featurePath, 'sessions', 'planText');
+    // Create sessions/plan-text/ directory
+    const planTextDir = path.join(featurePath, 'sessions', 'plan-text');
     await fs.mkdir(planTextDir, { recursive: true });
     
     const filepath = path.join(planTextDir, `${jobId}.md`);
@@ -222,7 +222,7 @@ ${planText}`;
     
     // Append to file
     await fs.writeFile(filepath, header + existingContent + separator + entry, 'utf-8');
-    console.log(`   📄 Plan appended: sessions/planText/${jobId}.md`);
+    console.log(`   📄 Plan appended: sessions/plan-text/${jobId}.md`);
   } catch (err) {
     // Non-blocking - just log warning
     console.warn(`   ⚠️  Could not save plan for debug:`, err instanceof Error ? err.message : err);

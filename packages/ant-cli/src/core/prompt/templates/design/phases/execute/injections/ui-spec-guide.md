@@ -182,7 +182,13 @@ These are **ABSOLUTELY FORBIDDEN**:
 
 **🚨 SPATIAL RELATIONSHIP OBSERVATION (FUNDAMENTAL PRINCIPLE):**
 
-For EVERY container with multiple child elements, you MUST explicitly observe and document:
+**Step 1: Container-Level Structure First**
+
+Before analyzing individual elements, determine the OVERALL container structure:
+- If major content blocks each span **full width** and stack vertically → Container is **COLUMN**
+- If major content blocks are **side-by-side** → Container is **ROW**
+
+**Step 2: For EVERY container**, observe and document:
 
 | Observation Point | Question to Answer |
 |-------------------|-------------------|
@@ -190,12 +196,17 @@ For EVERY container with multiple child elements, you MUST explicitly observe an
 | **Alignment** | How are children aligned? (start, center, end, stretch, baseline) |
 | **Distribution** | How is space distributed? (start, center, end, space-between, space-around) |
 | **Wrapping** | Do elements wrap to next line, or stay in single line? |
+| **Position** | Where is each element located within its container? (top-left, top-right, bottom-left, bottom-right, center) |
 
 **How to Observe:**
 1. Look at the **actual pixel positions** of elements in the screenshot
 2. If Element A and Element B are **side-by-side horizontally** → They are in a **row**
 3. If Element A is **above** Element B → They are in a **column**
-4. Check where the **empty space** is distributed
+4. **Full-width elements stacked vertically = Column structure** (even if internal elements are row)
+5. Check where the **empty space** is distributed
+6. For positioned elements, observe **exact corner/edge placement** (top vs bottom, left vs right)
+
+**⚠️ Common Mistake:** A section header may use row layout internally (title left, description right), but the SECTION ITSELF may still be column if header, content, and footer stack vertically.
 
 **Do NOT assume based on:**
 - Element type (headers don't always stack vertically)

@@ -6,7 +6,7 @@
  * - Injected variables summary
  * - Hardcoded content (if any, not from template files)
  * 
- * Creates files in sessions/logPrompt/ directory.
+ * Creates files in sessions/log-prompt/ directory.
  * 
  * File naming:
  * - Design Job: prompt-design-{jobId}.md
@@ -51,7 +51,7 @@ export class PromptLogger {
 
   constructor(options: PromptLoggerOptions) {
     this.options = options;
-    this.logDirPath = path.join(options.featurePath, 'sessions', 'logPrompt');
+    this.logDirPath = path.join(options.featurePath, 'sessions', 'log-prompt');
     this.logFilePath = path.join(
       this.logDirPath,
       `prompt-${options.jobType}-${options.jobId}.md`

@@ -20,31 +20,38 @@ additional content...
 ```
 **Use when**: Adding content at the end of an existing file
 
-#### ⚠️ CRITICAL: Close XML Tags BEFORE `<done>`
+#### 🚨 CRITICAL: XML Tag Closing Rules
 
-**RULE**: Complete ALL `<file>` and `<append>` operations before outputting `<done>true</done>`
+**RULE 1**: `<file>` MUST be closed with `</file>`. `<append>` MUST be closed with `</append>`.
+
+**RULE 2**: NEVER use `</parameter>` or `</invoke>` to close these tags!
 
 ```xml
-<!-- ❌ WRONG - Tag not closed -->
-<file path="App.tsx">
-content...
-<done>true</done>  ← Missing </file>!
-
-<!-- ❌ WRONG - Append not closed -->
-<append path="utils.ts">
-content...
-<done>true</done>  ← Missing </append>!
-
-<!-- ✅ CORRECT - Close all tags first -->
+<!-- ✅ CORRECT -->
 <file path="App.tsx">
 content...
 </file>
 
-<append path="utils.ts">
+<!-- ❌ WRONG - Using tool call syntax -->
+<file path="App.tsx">
 content...
-</append>
+</parameter>   ← WRONG! Breaks parser!
+</invoke>      ← WRONG! Not a tool call!
 
-<done>true</done>  ← Now safe to output done
+<!-- ❌ WRONG - Missing closing tag -->
+<file path="App.tsx">
+content...
+<done>true</done>  ← Missing </file>!
+```
+
+**RULE 3**: Output `<done>true</done>` AFTER closing all file tags:
+
+```xml
+<!-- ✅ CORRECT sequence -->
+<file path="App.tsx">
+content...
+</file>
+<done>true</done>
 ```
 
 ---

@@ -13,10 +13,11 @@ const PROTECTED_ROOT_FOLDERS = [
   'inputs/sources',
   'outputs/design',
   'outputs/reports',
-  'sessions/evalCode',
-  'sessions/evalUiDesign',
-  'sessions/planText',
-  'sessions/logPrompt',
+  'sessions/eval-code',
+  'sessions/eval-ui-design',
+  'sessions/eval-system-design',
+  'sessions/plan-text',
+  'sessions/log-prompt',
 ];
 
 /**

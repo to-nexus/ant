@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useStore } from '@/domain/store';
 import { fetchFileBlob, fetchFileContent, isBinaryImageFilePath, isSvgFilePath, saveFileContent } from '@/infrastructure/http/api';
 import { Button } from '@/presentation/components/common/button';
@@ -8,6 +8,138 @@ import rehypeRaw from 'rehype-raw';
 import { Eye, FileText } from 'lucide-react';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { JsonYamlPreview } from './JsonYamlPreview';
+
+// Line-numbered editor component for code-like files
+interface LineNumberedEditorProps {
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}
+
+function LineNumberedEditor({ value, onChange, disabled }: LineNumberedEditorProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const lineNumbersRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
+  const measureRef = useRef<HTMLDivElement>(null);
+  const [lineHeights, setLineHeights] = useState<number[]>([]);
+  
+  const lines = value.split('\n');
+  const lineCount = lines.length;
+  
+  // Measure line heights after render and on resize
+  useEffect(() => {
+    const measureLineHeights = () => {
+      if (!measureRef.current || !editorRef.current) return;
+      
+      const measureDiv = measureRef.current;
+      const editorWidth = editorRef.current.clientWidth;
+      
+      // Set the measure div to same width as editor content area
+      measureDiv.style.width = `${editorWidth}px`;
+      
+      const heights: number[] = [];
+      lines.forEach((line, i) => {
+        // Create a temp span to measure this line
+        const span = document.createElement('span');
+        span.style.whiteSpace = 'pre-wrap';
+        span.style.wordBreak = 'break-word';
+        span.textContent = line || ' '; // Empty lines need a space to have height
+        measureDiv.innerHTML = '';
+        measureDiv.appendChild(span);
+        heights[i] = span.offsetHeight;
+      });
+      
+      setLineHeights(heights);
+    };
+    
+    measureLineHeights();
+    
+    // Re-measure on window resize
+    const resizeObserver = new ResizeObserver(measureLineHeights);
+    if (editorRef.current) {
+      resizeObserver.observe(editorRef.current);
+    }
+    
+    return () => resizeObserver.disconnect();
+  }, [value, lines]);
+  
+  // Sync scroll between editor and line numbers
+  const handleScroll = useCallback(() => {
+    if (editorRef.current && lineNumbersRef.current) {
+      lineNumbersRef.current.scrollTop = editorRef.current.scrollTop;
+    }
+  }, []);
+  
+  // Handle input in contentEditable
+  const handleInput = useCallback((e: React.FormEvent<HTMLDivElement>) => {
+    const text = e.currentTarget.innerText;
+    onChange(text);
+  }, [onChange]);
+  
+  // Handle paste to strip formatting
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const text = e.clipboardData.getData('text/plain');
+    document.execCommand('insertText', false, text);
+  }, []);
+  
+  // Calculate width for line numbers (based on max line count)
+  const lineNumberWidth = Math.max(String(lineCount).length * 8 + 16, 32);
+  const lineHeight = 22; // Base line height in px (text-sm with leading-[1.625] ≈ 14 * 1.625)
+  
+  return (
+    <div 
+      ref={containerRef}
+      className="flex flex-1 border rounded-lg overflow-hidden bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus-within:ring-2 focus-within:ring-blue-500 dark:focus-within:ring-blue-400"
+    >
+      {/* Hidden measure div */}
+      <div
+        ref={measureRef}
+        className="absolute invisible font-mono text-sm leading-[1.625] p-0"
+        style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+        aria-hidden="true"
+      />
+      
+      {/* Line numbers column */}
+      <div
+        ref={lineNumbersRef}
+        className="flex-shrink-0 overflow-hidden select-none bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700"
+        style={{ width: lineNumberWidth }}
+      >
+        <div className="py-3 font-mono text-sm">
+          {lines.map((_, i) => (
+            <div
+              key={i}
+              className="px-2 text-right text-gray-400 dark:text-gray-500"
+              style={{ height: lineHeights[i] || lineHeight }}
+            >
+              {i + 1}
+            </div>
+          ))}
+        </div>
+      </div>
+      
+      {/* Editable content area */}
+      <div
+        ref={editorRef}
+        contentEditable={!disabled}
+        onInput={handleInput}
+        onScroll={handleScroll}
+        onPaste={handlePaste}
+        suppressContentEditableWarning
+        className="flex-1 p-3 font-mono text-sm resize-none overflow-auto leading-[1.625] whitespace-pre-wrap break-words
+          bg-transparent
+          text-gray-900 dark:text-white
+          focus:outline-none
+          disabled:opacity-50 disabled:cursor-not-allowed"
+        style={{ minHeight: '100%' }}
+        spellCheck={false}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
 
 interface FileEditorPanelProps {
   onClose?: () => void;
@@ -302,18 +434,10 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
           </div>
         ) : (
           <>
-            {/* Raw Editor */}
-            <textarea
+            {/* Raw Editor - always with line numbers */}
+            <LineNumberedEditor
               value={editedContent}
-              onChange={(e) => handleContentChange(e.target.value)}
-              className="flex-1 w-full p-3 font-mono text-sm border rounded-lg resize-none overflow-y-auto
-                bg-white dark:bg-gray-800 
-                text-gray-900 dark:text-white
-                border-gray-300 dark:border-gray-600
-                focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400
-                placeholder:text-gray-400 dark:placeholder:text-gray-500"
-              placeholder="File content..."
-              spellCheck={false}
+              onChange={handleContentChange}
             />
             
             {/* Action buttons at the bottom */}

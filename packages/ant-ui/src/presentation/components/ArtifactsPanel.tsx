@@ -150,8 +150,8 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
                 (
                   // outputs/design, outputs/reports
                   (pathParts[0] === 'outputs' && (pathParts[1] === 'design' || pathParts[1] === 'reports')) ||
-                  // sessions/logPrompt
-                  (pathParts[0] === 'sessions' && pathParts[1] === 'logPrompt')
+                  // sessions/log-prompt
+                  (pathParts[0] === 'sessions' && pathParts[1] === 'log-prompt')
                 );
               
               // inputs의 직계 자식 디렉토리는 삭제 불가

@@ -54,7 +54,7 @@ ant-workspaces/{org}/{group}/{project}/
     └── sessions/                      # [Process records]
         ├── chat.json                  # Conversation history
         ├── design.json                # Design session state
-        └── evalUiDesign/              # UI design evaluation reports
+        └── eval-ui-design/              # UI design evaluation reports
             └── evaluidesign-{jobId}.md
 ```
 
@@ -374,32 +374,79 @@ Read the following files:
 
 ## 7. Ant Framework Improvement Plan
 
-> 🎯 This section identifies improvements to the Ant program itself based on evaluation findings.
+> 🎯 This section must be **self-contained and executable**.
+> Another agent reading ONLY this section should be able to implement the fix without additional context.
 
-### 7.1 Prompt File Changes (Actionable)
+### 7.1 Problem Evidence (REQUIRED)
+
+**🚨 CRITICAL: Show the exact mismatch between screenshot and ui-spec.json**
+
+```markdown
+### Issue: [Issue Name]
+
+**Screenshot shows:**
+┌────────────────────────────────────────┐
+│ [ASCII diagram of what you observed]   │
+│ [Element A]     [Element B]            │  ← Row layout
+└────────────────────────────────────────┘
+
+**ui-spec.json has:**
+```json
+{
+  "container": {
+    "flexDirection": "column"  // ❌ Wrong - should be "row"
+  }
+}
+```
+
+**Should be:**
+```json
+{
+  "container": {
+    "flexDirection": "row"  // ✅ Correct
+  }
+}
+```
+
+**Root Cause:** [Why LLM made this mistake - e.g., "Misinterpreted internal layout as container layout"]
+```
+
+### 7.2 Prompt File Changes (Actionable)
 
 | Priority | Target File | Change Type | Description |
 |----------|-------------|-------------|-------------|
-| P0 | `packages/ant-cli/src/core/prompt/templates/design/phases/execute/base-ui-design.md` | ADD/MODIFY | [specific change] |
-| P1 | `packages/ant-cli/src/core/prompt/templates/design/phases/execute/injections/ui-spec-guide.md` | ADD | [specific rule] |
-| P2 | `packages/ant-cli/src/core/prompt/templates/design/phases/execute/rules-ui-design.md` | MODIFY | [specific change] |
+| P0 | `packages/ant-cli/.../[file].md` | ADD/MODIFY | [one-line description] |
 
-### 7.2 Specific Code Changes
+### 7.3 Exact Change Specification (REQUIRED)
 
-**File**: `packages/ant-cli/src/core/prompt/templates/design/phases/execute/[file].md`
+> **Must include**: File path, insertion point, exact content
+
 ```markdown
-## [NEW RULE NAME]
+**File**: `packages/ant-cli/src/core/prompt/templates/design/phases/execute/[file].md`
 
-[Exact content to add to the prompt file]
+**Location**: After the line containing "[existing text to find]"
+
+**Add the following content:**
+```markdown
+[EXACT content to add - copy-paste ready]
 ```
 
-### 7.3 Known Issues Registry
+**Verification**: After adding, search for "[key phrase]" to confirm placement.
+```
 
-> If this is a recurring issue, register it in the Known Issues section of this guide.
+### 7.4 General Principle (if applicable)
+
+> If this fix introduces a reusable principle, document it here for future reference.
+
+| Principle | Description |
+|-----------|-------------|
+| [e.g., "Container-Level First"] | [e.g., "Determine overall structure before analyzing internal elements"] |
+
+### 7.5 Known Issues Registry
 
 | Issue ID | Pattern | Root Cause | Status |
 |----------|---------|------------|--------|
-| [e.g., UI-001] | [e.g., Layout direction misinterpreted] | [cause] | [New/Existing] |
+| UI-001 | Layout direction misinterpreted | Internal layout confused with container layout | [New/Fixed] |
 
 ---
 
@@ -458,11 +505,24 @@ Path: ant-workspaces/{org}/{group}/{project}/features/{feature}/
    - Scores must reference evidence from comparison table
    - No evidence = no score
 
+**🎯 CRITICAL: Self-Contained Improvement Plan**
+
+6. **WRITE EXECUTABLE IMPROVEMENT PLAN** (if issues found)
+   - Another agent reading ONLY your report must be able to implement the fix
+   - Include: ASCII diagram of what screenshot shows vs what ui-spec says
+   - Include: Exact file path, insertion point, copy-paste ready content
+   - Include: Root cause analysis (why LLM made this mistake)
+   
+   **Self-Containment Test**: If you remove all context except §7 (Improvement Plan), can someone still implement the fix? If no, add more detail.
+
 **Anti-Patterns to AVOID:**
 - ❌ Giving scores first, evidence later
 - ❌ Saying "matches" without showing what was compared
 - ❌ Skipping Screenshot Observation Log
 - ❌ Assuming without observing
+- ❌ Writing abstract improvement suggestions (e.g., "add layout guidance")
+- ❌ Omitting exact file paths and insertion points
+- ❌ Writing improvement plans that require additional context to understand
 
 ---
 
@@ -471,7 +531,7 @@ Path: ant-workspaces/{org}/{group}/{project}/features/{feature}/
 ### Storage Location
 
 ```
-features/{feature}/sessions/evalUiDesign/evaluidesign-{jobId}.md
+features/{feature}/sessions/eval-ui-design/evaluidesign-{jobId}.md
 ```
 
 ### Naming Convention
@@ -482,10 +542,10 @@ features/{feature}/sessions/evalUiDesign/evaluidesign-{jobId}.md
 
 ## 9. Prompt Injection Verification
 
-### 9.1 Quick Check (via logPrompt)
+### 9.1 Quick Check (via log-prompt)
 
 ```
-sessions/logPrompt/prompt-design-{jobId}.md
+sessions/log-prompt/prompt-design-{jobId}.md
 ```
 
 **필수 확인 항목:**
