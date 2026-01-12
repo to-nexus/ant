@@ -12,6 +12,7 @@
  */
 
 import { DesignGraphState } from '../../state';
+import { logPrompt } from '../../../../../../core/utils/promptLogger';
 import { CacheableContent } from '../../../../../../core/ports/llm';
 
 /**
@@ -110,6 +111,44 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
       type: 'text',
       text: previousDocs
     });
+  }
+  
+  // ✅ Log COMPLETE prompt (all dynamic injections)
+  const jobId = state.jobId || state._httpJobId || 'unknown';
+  if (state.context.featurePath) {
+    try {
+      // Extract all text content for logging
+      const allTextContent = content
+        .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
+        .map(c => c.text)
+        .join('\n\n---\n\n');
+      
+      await logPrompt(
+        state.context.featurePath,
+        jobId,
+        'design',
+        'docGen-uiDesign-fullMessage',
+        allTextContent,
+        {
+          taskId: task?.id,
+          taskName: task?.name,
+          templatePath: 'buildUiDesignMessages (full)',
+          injectedVariables: {
+            systemPrompt: systemPrompt ? `[${systemPrompt.length} chars]` : undefined,
+            resourcesSummary: resourcesSummary ? `[${resourcesSummary.length} chars]` : undefined,
+            prd: state.prd ? `[${state.prd.length} chars]` : undefined,
+            previousDocs: previousDocs ? `[${previousDocs.length} chars]` : undefined,
+            uiReferences: state.uiReferences ? {
+              screens: state.uiReferences.screens?.length || 0,
+              components: state.uiReferences.components?.length || 0,
+            } : undefined,
+            uiAssetsList: state.uiAssetsList ? 'SET' : undefined,
+          },
+        }
+      );
+    } catch (logError) {
+      console.warn(`⚠️  [DocGen] Failed to log full message:`, logError);
+    }
   }
   
   return [{
@@ -495,7 +534,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
   }
   
   // Load from template with task context + lastSectionNumber for Handlebars conditionals
-  const template = await (promptPort as any).deps?.promptPort?.render('design/phases/execute/base-ui-design', {
+  const injectedVariables = {
     taskId: state.currentTask?.id,
     taskName: state.currentTask?.name,
     taskDescription,
@@ -506,10 +545,34 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
     isLastTaskForDocument,  // ✅ If true, don't output metadata comments
     pathPattern,  // ✅ NEW: For ui-assets ch2+ to follow ch1's destination paths
     existingDocContent: existingFileContent,  // ✅ NEW: Full file content for LLM to see and extend
-  });
+  };
+  
+  const template = await (promptPort as any).deps?.promptPort?.render('design/phases/execute/base-ui-design', injectedVariables);
   
   if (!template) {
     throw new Error('[DocGen] Failed to load base-ui-design.md template');
+  }
+  
+  // ✅ Log prompt for debugging
+  const jobId = state.jobId || state._httpJobId || 'unknown';
+  if (state.context.featurePath) {
+    try {
+      await logPrompt(
+        state.context.featurePath,
+        jobId,
+        'design',
+        'docGen-uiDesign',
+        template,
+        {
+          taskId: state.currentTask?.id,
+          taskName: state.currentTask?.name,
+          templatePath: 'design/phases/execute/base-ui-design',
+          injectedVariables,
+        }
+      );
+    } catch (logError) {
+      console.warn(`⚠️  [DocGen] Failed to log prompt:`, logError);
+    }
   }
   
   return template;

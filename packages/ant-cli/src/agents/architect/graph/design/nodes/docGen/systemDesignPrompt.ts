@@ -10,6 +10,7 @@ import { DesignGraphState } from '../../state';
 import { CacheableContent } from '../../../../../../core/ports/llm';
 import { TokenBudgetManager } from '../../../../../../core/utils/tokenBudget';
 import { HistoryManager } from '../../../../../../core/utils/historyManager';
+import { logPrompt } from '../../../../../../core/utils/promptLogger';
 
 /**
  * Build messages for LLM using PromptEngine with Prompt Caching
@@ -214,6 +215,38 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
       console.warn(`⚠️  WARNING: Markdown output format NOT found in prompt! (length: ${allContent.length} chars)`);
     }
     
+    // ✅ Log prompt for debugging
+    const jobId = state.jobId || state._httpJobId || 'unknown';
+    if (state.context.featurePath) {
+      try {
+        await logPrompt(
+          state.context.featurePath,
+          jobId,
+          'design',
+          'docGen-systemDesign',
+          allContent,
+          {
+            taskId: state.currentTask?.id,
+            taskName: state.currentTask?.name,
+            templatePath: 'design/phases/execute (via PromptEngine)',
+            injectedVariables: {
+              directive: state.directive ? '[SET]' : undefined,
+              designDoc: apiContractContent ? '[SET]' : undefined,
+              lastSectionNumber,
+              sectionPattern,
+              prdSpec: state.prd ? '[SET]' : undefined,
+              currentCode: state.code ? '[SET]' : undefined,
+              designDomain: state.designDomain,
+              currentTask: state.currentTask?.id,
+              isLastTaskForDocument,
+            },
+          }
+        );
+      } catch (logError) {
+        console.warn(`⚠️  [DocGen] Failed to log prompt:`, logError);
+      }
+    }
+    
     messages.push({
       role: 'user',
       content: [systemPromptBlock, contextBlock, runtimeBlock]
@@ -260,6 +293,44 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
   } else {
     const tokenManager = new TokenBudgetManager();
     tokenManager.checkBudget(messages as any);
+  }
+  
+  // ✅ Log COMPLETE final messages (all dynamic injections)
+  const jobIdFinal = state.jobId || state._httpJobId || 'unknown';
+  if (state.context.featurePath) {
+    try {
+      // Extract all text content from all messages
+      const allTextContent = messages.flatMap(m => 
+        Array.isArray(m.content) 
+          ? m.content.filter((c: any) => c.type === 'text').map((c: any) => c.text)
+          : [String(m.content)]
+      ).join('\n\n---\n\n');
+      
+      await logPrompt(
+        state.context.featurePath,
+        jobIdFinal,
+        'design',
+        'docGen-systemDesign-fullMessage',
+        allTextContent,
+        {
+          taskId: state.currentTask?.id,
+          taskName: state.currentTask?.name,
+          templatePath: 'buildMessages (full)',
+          injectedVariables: {
+            messageCount: messages.length,
+            hasConversationHistory: !!(state.conversationHistory?.length),
+            conversationHistoryLength: state.conversationHistory?.length || 0,
+            prd: state.prd ? `[${state.prd.length} chars]` : undefined,
+            design: state.design ? `[${state.design.length} chars]` : undefined,
+            directive: state.directive ? `[${state.directive.length} chars]` : undefined,
+            designMode: state.designMode,
+            designDomain: state.designDomain,
+          },
+        }
+      );
+    } catch (logError) {
+      console.warn(`⚠️  [DocGen] Failed to log full message:`, logError);
+    }
   }
   
   return messages;
