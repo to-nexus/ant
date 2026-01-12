@@ -94,10 +94,20 @@ export class CloneOperation {
     // Move source to codebase path
     await this.moveSourceToCodebase(tempPath, codebasePath, sourceRoot);
 
+    // Configure git user from UserContext (essential for cloud environments)
+    await this.ensureGitUserConfig(codebasePath, userContext);
+
     // Set upstream for default branch
     await this.setupUpstream(codebasePath);
 
     console.log(`[CloneOperation] ✅ Repository cloned successfully`);
+  }
+
+  private async ensureGitUserConfig(codebasePath: string, userContext: UserContext): Promise<void> {
+    const gitInstance = GitHelper.getGitInstanceSafe(codebasePath);
+    if (gitInstance) {
+      await GitHelper.ensureUserConfig(gitInstance, userContext);
+    }
   }
 
   private resolveCodebasePath(projectPath: string, config: any): string {

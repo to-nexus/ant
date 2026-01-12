@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import simpleGit, { SimpleGit } from 'simple-git';
 import { logger } from '../../../../../../utils/logger';
+import { UserContext } from '../../../../../../core/types/user';
 
 /**
  * GitHelper
@@ -45,6 +46,56 @@ export class GitHelper {
    */
   static sanitizeBranchName(featureName: string): string {
     return `feature/${featureName.toLowerCase().replace(/\s+/g, '-')}`;
+  }
+
+  /**
+   * Ensure Git user config (user.email, user.name) is set for the repository.
+   * Uses local (repo-level) config to avoid affecting global settings.
+   * 
+   * This is essential for cloud environments where global git config is not set.
+   * Derives email from UserContext: `${userId}@${organizationId}`
+   * 
+   * @param git - SimpleGit instance
+   * @param userContext - User context containing userId and organizationId
+   */
+  static async ensureUserConfig(git: SimpleGit, userContext: UserContext): Promise<void> {
+    try {
+      // Check if user.email is already configured (local or global)
+      let hasEmail = false;
+      let hasName = false;
+
+      try {
+        const email = await git.raw(['config', 'user.email']);
+        hasEmail = !!email.trim();
+      } catch {
+        hasEmail = false;
+      }
+
+      try {
+        const name = await git.raw(['config', 'user.name']);
+        hasName = !!name.trim();
+      } catch {
+        hasName = false;
+      }
+
+      // Derive email and name from UserContext
+      const derivedEmail = `${userContext.userId}@${userContext.organizationId}`;
+      const derivedName = userContext.userId;
+
+      // Set local config if not already set
+      if (!hasEmail) {
+        await git.addConfig('user.email', derivedEmail, false, 'local');
+        logger.info(`Git user.email configured`, { component: 'GitHelper' }, { email: derivedEmail });
+      }
+
+      if (!hasName) {
+        await git.addConfig('user.name', derivedName, false, 'local');
+        logger.info(`Git user.name configured`, { component: 'GitHelper' }, { name: derivedName });
+      }
+    } catch (error) {
+      logger.warn(`Failed to configure git user`, { component: 'GitHelper' }, { error });
+      // Don't throw - this is a best-effort operation
+    }
   }
 }
 

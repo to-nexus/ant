@@ -53,7 +53,7 @@ export class PromptEngine {
   private policyInjector: PolicyInjector;
   private formatter: PromptFormatter;
   
-  constructor(private deps: PromptEngineDeps) {
+  constructor(public deps: PromptEngineDeps) {
     this.normalizer = new InputNormalizer();
     this.assembler = new ContextAssembler();
     this.controller = new ModeController();
@@ -447,6 +447,7 @@ export class PromptEngine {
       fileList,
       fileCount: context.codebaseFilePaths?.length || 0,
       hasErrorInDirective: context.hasErrorInDirective || false, // ✅ Pass to template
+      hasUiDocs: Boolean(context.uiSectionsSummary), // ✅ UI docs available (for setup task ui flag)
     };
     
     // decompose/base.md now includes {{> code/phases/decompose/rules}}

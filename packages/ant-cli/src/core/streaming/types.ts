@@ -40,6 +40,7 @@ export interface StreamResult {
   streamedFiles: string[];
   completedActions: ParsedAction[];
   fileErrors?: string[];  // ✅ File operation errors for self-healing
+  explicitDone?: boolean; // ✅ True if LLM output <done>true</done> explicitly
 }
 
 // ============================================================================

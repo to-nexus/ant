@@ -250,3 +250,27 @@ const apiUrl = process.env.NEXT_PUBLIC_API_URL;
 - ❌ Not using `next/image` for images
 - ❌ Exposing secrets in client-side code (no `NEXT_PUBLIC_` for secrets)
 
+## Known Issue: Build Succeeds but Dev Server Fails
+
+**Symptom:**
+```
+Module parse failed: Unexpected character '@' (2:0)
+> @tailwind base;
+```
+
+**Cause:** Next.js production build and dev server use different compilation pipelines. PostCSS/Tailwind may work in build but fail in dev hot-reload.
+
+**Resolution:**
+1. If `npm run build` PASSES → **Codebase is correct**
+2. Dev server issues are framework-specific edge cases, NOT code bugs
+3. **DO NOT retry dev server more than once** after successful build
+4. **DO NOT spend tokens** trying to fix this - it's not fixable through code changes
+
+**Decision Rule:**
+```
+✅ Build passes → Task is complete
+⚠️ Dev fails after build passes → Acceptable, not blocking
+```
+
+This is documented behavior. Do not waste effort debugging dev server when build works.
+

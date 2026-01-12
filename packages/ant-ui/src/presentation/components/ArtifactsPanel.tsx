@@ -139,37 +139,74 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
                 </Button>
               </>
             )}
-            {/* 삭제 버튼: inputs, outputs의 직계 자식 디렉토리는 삭제 불가 */}
+            {/* 삭제 버튼 로직 */}
             {onDelete && (() => {
-              // inputs 또는 outputs의 직계 자식 디렉토리인지 확인
               const pathParts = node.path.split('/');
-              const isDirectChildDir = 
+              
+              // outputs/design, outputs/reports는 "Clear contents" 버튼 표시
+              const isClearableOutputsDir = 
+                node.type === 'directory' &&
+                pathParts.length === 2 &&
+                pathParts[0] === 'outputs' &&
+                (pathParts[1] === 'design' || pathParts[1] === 'reports');
+              
+              // inputs의 직계 자식 디렉토리는 삭제 불가
+              const isProtectedInputsDir = 
                 node.type === 'directory' && 
                 pathParts.length === 2 && 
-                (pathParts[0] === 'inputs' || pathParts[0] === 'outputs');
+                pathParts[0] === 'inputs';
               
-              // 직계 자식 디렉토리가 아닌 경우에만 삭제 버튼 표시
-              return !isDirectChildDir;
-            })() && (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-6 w-6 p-0 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  showConfirm(`Delete ${node.type} "${node.name}"?`, {
-                    type: 'warning',
-                    title: 'Delete?',
-                    confirmText: 'Delete',
-                    cancelText: 'Cancel',
-                    onConfirm: () => onDelete(node.path)
-                  });
-                }}
-                title={`Delete ${node.type}`}
-              >
-                🗑️
-              </Button>
-            )}
+              if (isClearableOutputsDir) {
+                // outputs/design, outputs/reports: 하위 파일 전체 삭제 버튼
+                return (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 w-6 p-0 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      showConfirm(`Clear all contents in "${node.name}"? This will delete all files and subdirectories.`, {
+                        type: 'warning',
+                        title: 'Clear Contents?',
+                        confirmText: 'Clear All',
+                        cancelText: 'Cancel',
+                        onConfirm: () => onDelete(node.path)
+                      });
+                    }}
+                    title="Clear all contents"
+                  >
+                    🗑️
+                  </Button>
+                );
+              }
+              
+              // inputs의 직계 자식 디렉토리는 버튼 없음
+              if (isProtectedInputsDir) {
+                return null;
+              }
+              
+              // 일반 파일/폴더: 삭제 버튼
+              return (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 w-6 p-0 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    showConfirm(`Delete ${node.type} "${node.name}"?`, {
+                      type: 'warning',
+                      title: 'Delete?',
+                      confirmText: 'Delete',
+                      cancelText: 'Cancel',
+                      onConfirm: () => onDelete(node.path)
+                    });
+                  }}
+                  title={`Delete ${node.type}`}
+                >
+                  🗑️
+                </Button>
+              );
+            })()}
           </div>
         </div>
         

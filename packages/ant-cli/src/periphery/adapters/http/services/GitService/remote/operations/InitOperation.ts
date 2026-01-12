@@ -66,7 +66,7 @@ export class InitOperation {
       const baseBranch = config.branchBase || 'main';
       
       // Initialize Git
-      const git = await this.initializeGit(codebasePath, baseBranch);
+      const git = await this.initializeGit(codebasePath, baseBranch, userContext);
       gitInitialized = true;
 
       // Create .gitignore
@@ -176,7 +176,7 @@ export class InitOperation {
     return hasFiles;
   }
 
-  private async initializeGit(codebasePath: string, baseBranch: string): Promise<SimpleGit> {
+  private async initializeGit(codebasePath: string, baseBranch: string, userContext: UserContext): Promise<SimpleGit> {
     const git = simpleGit({
       baseDir: codebasePath,
       binary: 'git',
@@ -190,6 +190,9 @@ export class InitOperation {
     if (!fs.existsSync(gitDir)) {
       throw new Error(`Git initialization failed: .git not found in ${codebasePath}`);
     }
+    
+    // Configure git user from UserContext (essential for cloud environments)
+    await GitHelper.ensureUserConfig(git, userContext);
     
     console.log('[InitOperation] ✅ Git initialized');
     return git;

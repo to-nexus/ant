@@ -120,11 +120,15 @@ export class StreamOrchestrator {
       const fileRenderer = (this.renderStrategy as any).getFileRenderer?.();
       const fileErrors = fileRenderer?.getFileErrors?.() || [];
       
+      // ✅ Get explicit done status from render strategy
+      const explicitDone = (this.renderStrategy as any).getExplicitDone?.() || false;
+      
       return {
         raw: this.state.getRaw(),
         streamedFiles: this.registry.getStreamedFiles(),
         completedActions: [],  // TODO: track if needed
-        fileErrors  // ✅ Include file errors for self-healing
+        fileErrors,  // ✅ Include file errors for self-healing
+        explicitDone  // ✅ Include explicit done status
       };
     } catch (error) {
       console.error('[StreamOrchestrator] Error finalizing:', error);

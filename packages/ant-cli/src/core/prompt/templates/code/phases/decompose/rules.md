@@ -29,8 +29,9 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
     "name": "Setup Project",
     "type": "setup",
     "priority": 100,
-    "ui": false,
-    "description": "Create project structure, configuration files, and install dependencies"
+    "ui": true,
+    "uiSections": ["tokens"],
+    "description": "<ui> Create project structure, configure Tailwind with design tokens, and install dependencies"
   },
   {
     "id": "api-endpoints",
@@ -166,14 +167,21 @@ CRITICAL:
 
 **UI TASK FLAG (IMPORTANT):**
 - Add `"ui": true|false` to EVERY task object.
-- **Setup tasks (`type: "setup"`) → ALWAYS `ui: false`** (config files only, no UI code)
-- Set `"ui": true` ONLY when the task implements visible frontend UI, such as:
+{{#if hasUiDocs}}
+- **Setup tasks (`type: "setup"`):**
+  - **Frontend app/package setup → `ui: true`** with `uiSections: ["tokens"]` (needs design tokens for Tailwind/theme config)
+  - **Backend app/package setup → `ui: false`**
+  - **Root workspace setup (monorepo) → `ui: false`** (workspace config only, no styling)
+{{else}}
+- **Setup tasks (`type: "setup"`) → `ui: false`** (no UI docs available)
+{{/if}}
+- Set `"ui": true` when the task needs UI design context:
   - UI components (Button/Input/Modal/Table), layout, styling/CSS/Tailwind
   - Screen/page implementation, UI state (loading/empty/error), UX interactions
-  - Theme/tokens/typography/colors
+  - Theme/tokens/typography/colors, **project setup with Tailwind/theme configuration**
   - React/TSX view layer changes
-- Otherwise set `"ui": false` (backend-only, infra, API contract, server fixes, dependency fixes, **setup/config**).
-- When `"ui": true`, prefix description with `<ui>` for visual identification (e.g., `"<ui> Implement Header..."`).
+- Otherwise set `"ui": false` (backend-only, infra, API contract, server fixes, dependency fixes).
+- When `"ui": true`, **ALWAYS** prefix description with `<ui>` (applies to ALL task types including Setup).
 
 **UI SECTIONS (SPLIT INJECTION - CRITICAL FOR TOKEN OPTIMIZATION):**
 - When `"ui": true`, you MUST add `"uiSections": [...]` array specifying which UI doc sections are needed.

@@ -149,7 +149,7 @@ export async function codeGen(
   // - Code job (generate/refactor): YES tools
   const isExplainMode = state.codeMode === 'explain';
   const enableTools = state.codeMode !== undefined && !isExplainMode;
-  const tools = enableTools ? getAvailableTools(state) : undefined;
+  const tools = enableTools ? await getAvailableTools(state) : undefined;
   
   if (isExplainMode) {
     console.log(`💡 [CodeGen] Explain mode - tools disabled (explanation only)`);
@@ -417,12 +417,21 @@ export async function codeGen(
       }
     }
     
+    // ✅ CRITICAL: Only mark done if LLM explicitly output <done>true</done>
+    // Use explicitDone from streaming pipeline (detected by SpecialTagTransformer)
+    // Previously: done = toolCalls.length === 0 (caused premature completion on truncated responses)
+    const explicitDone = finalizeResult.explicitDone || false;
+    
+    if (toolCalls.length === 0 && !explicitDone) {
+      console.warn(`⚠️  [CodeGen] No tool calls and no <done>true</done> tag - LLM response may be incomplete`);
+    }
+    
     return {
       llmResponse: {
         thinking,
         textResponse,
         toolCalls,
-        done: toolCalls.length === 0,
+        done: explicitDone,  // ✅ Only done when LLM explicitly says so
         tokenUsage: capturedUsage,
       },
       fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
