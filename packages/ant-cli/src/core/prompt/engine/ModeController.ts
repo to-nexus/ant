@@ -131,7 +131,7 @@ export class ModeController {
     if (taskType === 'setup') {
       const language = this.detectLanguage(context);
       if (language) {
-        injections.push(`${task}/languages/${language}/setup/constraints`);
+        injections.push(`${task}/phases/execute/languages/${language}/setup/constraints`);
       }
     }
     
@@ -189,7 +189,7 @@ export class ModeController {
       const environment = this.detectEnvironment(context);
       
       if (language && task === 'code') {
-        const envPath = `${task}/languages/${language}/environments/${environment}/rules`;
+        const envPath = `${task}/phases/execute/languages/${language}/environments/${environment}/rules`;
         injections.push(envPath);
         console.log(`[ModeController] Adding environment-specific injection: ${envPath}`);
         
@@ -268,7 +268,7 @@ export class ModeController {
       
       // New project setup (only for setup tasks)
       if (!context.stats.hasProjectCode && task === 'code' && context.currentTask?.type === 'setup' && language) {
-        const languageConfigPath = `${task}/languages/${language}/setup/config`;
+        const languageConfigPath = `${task}/phases/execute/languages/${language}/setup/config`;
         injections.push(languageConfigPath);
       }
       

@@ -2,6 +2,13 @@
 
 ⛔ **CRITICAL: Configuration files ONLY - No application code** ⛔
 
+## 🎨 DESIGN TOKENS (IMPORTANT!)
+
+**If you see a `# DESIGN TOKENS` section in this prompt:**
+- The tokens are ALREADY LOADED from `outputs/design/ui-tokens.json`
+- DO NOT attempt to read `ui-tokens.json` from `inputs/` or any other directory
+- Use the token values from the prompt directly to configure Tailwind/theme
+
 ## 📁 PATH CONVENTION (CRITICAL!)
 
 **All files MUST be created under `codebase/` directory.**

@@ -20,6 +20,7 @@ export class CommonRenderStrategy implements IRenderStrategy {
   private chatAPI: ChatAPIClient;
   private responseRenderer: ResponseRenderer;
   private fileRenderer: FileRenderer;
+  private tagTransformer: SpecialTagTransformer;  // ✅ Store for explicitDone access
   
   constructor(
     chatAPI: ChatAPIClient,
@@ -33,9 +34,9 @@ export class CommonRenderStrategy implements IRenderStrategy {
   ) {
     this.chatAPI = chatAPI;
     
-    const tagTransformer = new SpecialTagTransformer(userLanguage || 'en');
+    this.tagTransformer = new SpecialTagTransformer(userLanguage || 'en');
     
-    this.responseRenderer = new ResponseRenderer(chatAPI, tagTransformer);
+    this.responseRenderer = new ResponseRenderer(chatAPI, this.tagTransformer);
     this.fileRenderer = new FileRenderer({
       chatAPI,
       gitPort,
@@ -93,6 +94,14 @@ export class CommonRenderStrategy implements IRenderStrategy {
    */
   getFileRenderer(): FileRenderer {
     return this.fileRenderer;
+  }
+  
+  /**
+   * Check if LLM explicitly output <done>true</done>
+   * Used by codeGen to determine task completion
+   */
+  getExplicitDone(): boolean {
+    return this.tagTransformer.explicitDone;
   }
   
   /**

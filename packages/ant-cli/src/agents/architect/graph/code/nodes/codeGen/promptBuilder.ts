@@ -58,42 +58,24 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     })) || []
   } : undefined;
 
-  // ✅ Split injection: Extract only needed UI sections for this task
-  // Uses task.uiSections array set by decompose LLM for token optimization
+  // ✅ UI doc injection: Always inject if available, unless explicitly disabled
+  // Decompose sets task.ui flag - only skip if explicitly false
   const uiDocForTask = (() => {
     if (!state.parsedUiDocs) return undefined;
     if (!state.currentTask) return undefined;
-    // Explanations generally don't need heavy UI specs
-    if (state.currentTask.type === 'explain') return undefined;
-    // Setup tasks must be config-only; skip UI spec injection
-    if (state.currentTask.type === 'setup') return undefined;
     
-    // ✅ 1) Primary: task.ui flag from decompose (source of truth)
+    // Only skip if explicitly disabled by decompose
     if (state.currentTask.ui === false) return undefined;
     
-    // Check if UI injection is needed
-    const needsUi = (() => {
-      if (state.currentTask.ui === true) return true;
-      
-      // ✅ 2) Fallback: Strong signals in task title/description (when ui flag is undefined)
-      const text = `${state.currentTask.name}\n${state.currentTask.description}`.toLowerCase();
-      const keywordHit = /(ui|ux|figma|design|layout|style|styling|css|tailwind|theme|token|component|screen|page|frontend|react|tsx|header|footer|hero|card|button|nav|모달|버튼|인풋|화면|레이아웃|디자인)/.test(text);
-      const envHit = state.detectedEnvironment === 'frontend' || state.detectedEnvironment === 'fullstack';
-      const tsxHit = Boolean(state.projectCodeContext?.filePaths?.some(p => p.toLowerCase().endsWith('.tsx')));
-      return keywordHit || (envHit && tsxHit);
-    })();
-    
-    if (!needsUi) return undefined;
-    
-    // ✅ Split injection: Use task.uiSections if available
+    // ✅ Always inject if parsedUiDocs exists (use task.uiSections for filtering)
     const { ArtifactService } = require('../../../../../../infrastructure/workspace/ArtifactService');
     const uiDoc = ArtifactService.getUiDocForTask(state.parsedUiDocs, state.currentTask.uiSections);
     
     if (uiDoc) {
       const sectionInfo = state.currentTask.uiSections?.length 
         ? `sections: ${state.currentTask.uiSections.join(', ')}` 
-        : 'all sections (no uiSections specified)';
-      console.log(`   🎨 [CodeGen] UI doc split injection: ${uiDoc.length} chars (${sectionInfo})`);
+        : 'all sections';
+      console.log(`   🎨 [CodeGen] UI doc injection: ${uiDoc.length} chars (${sectionInfo})`);
     }
     
     return uiDoc;

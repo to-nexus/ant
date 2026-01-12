@@ -4,12 +4,12 @@
  * Shared tool definitions used by both Code and Design jobs.
  * Each job can filter which tools to expose based on their needs.
  * 
- * Tool descriptions are kept simple here.
- * Detailed usage rules are in templates/code/phases/execute/rules.md
- * Context-specific guidance (like port management) is in execute/injections/
+ * Tool descriptions with templates are loaded via PromptPort.render()
+ * This keeps tool guidance consistent with other prompt templates.
  */
 
 import type { ToolDefinition } from '../../../core/ports/llm';
+import type { PromptPort } from '../../../core/ports/prompt';
 
 /**
  * All available tools for Architect agent
@@ -123,7 +123,7 @@ export const ARCHITECT_TOOLS = {
   
   run_command: {
     name: 'run_command',
-    description: 'Execute a shell command. Dev servers are automatically verified (10s) then left running for testing. System auto-cleans them up when task completes.',
+    description: 'Execute a shell command. See tool description for restrictions.', // Loaded from template
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -219,10 +219,54 @@ export const ARCHITECT_TOOLS = {
 export type ToolName = keyof typeof ARCHITECT_TOOLS;
 
 /**
+ * Tools that have template files for their descriptions
+ */
+const TOOLS_WITH_TEMPLATES = ['run_command'] as const;
+
+/**
  * Get tools by names
+ * Basic version - returns tools with default descriptions
  */
 export function getToolsByNames(toolNames: ToolName[]): ToolDefinition[] {
   return toolNames.map(name => ARCHITECT_TOOLS[name]);
+}
+
+/**
+ * Get tools by names with descriptions loaded from templates
+ * Uses PromptPort.render() pattern consistent with other prompts
+ * 
+ * @param toolNames - Tool names to retrieve
+ * @param promptPort - PromptPort for loading template descriptions
+ */
+export async function getToolsByNamesWithTemplates(
+  toolNames: ToolName[],
+  promptPort?: PromptPort
+): Promise<ToolDefinition[]> {
+  // Create mutable copies with explicit type
+  const tools: ToolDefinition[] = toolNames.map(name => ({ 
+    ...ARCHITECT_TOOLS[name],
+    description: ARCHITECT_TOOLS[name].description as string  // Make mutable
+  }));
+  
+  if (!promptPort) {
+    return tools;
+  }
+  
+  // Load descriptions from templates for tools that have them
+  for (const tool of tools) {
+    if (TOOLS_WITH_TEMPLATES.includes(tool.name as typeof TOOLS_WITH_TEMPLATES[number])) {
+      try {
+        const description = await promptPort.render(`code/base/tools/${tool.name}`, {});
+        if (description && description.trim()) {
+          tool.description = description.trim();
+        }
+      } catch {
+        // Keep default description if template not found
+      }
+    }
+  }
+  
+  return tools;
 }
 
 /**

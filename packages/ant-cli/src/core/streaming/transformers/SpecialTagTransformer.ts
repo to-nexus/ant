@@ -36,10 +36,18 @@ interface TagTransformer {
 export class SpecialTagTransformer {
   private transformers: TagTransformer[] = [];
   private language: UserLanguage;
+  private _explicitDone: boolean = false;  // ✅ Track if <done>true</done> was detected
   
   constructor(language: UserLanguage = 'en') {
     this.language = language;
     this.initializeTransformers();
+  }
+  
+  /**
+   * Check if LLM explicitly output <done>true</done>
+   */
+  get explicitDone(): boolean {
+    return this._explicitDone;
   }
   
   /**
@@ -107,6 +115,7 @@ export class SpecialTagTransformer {
     const isDone = match[1].toLowerCase() === 'true';
     
     if (isDone) {
+      this._explicitDone = true;  // ✅ Track explicit done tag
       // ✅ 기존 languageDetector 유틸리티 사용
       const completionMessage = getCompletionMessage(language);
       return { text: completionMessage, consumed: true };

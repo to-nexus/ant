@@ -172,7 +172,12 @@ Follow the framework/language-specific setup instructions from:
 - ✅ Install ALL dependencies needed for the project
 - ✅ Use exact versions from design doc if specified
 
-**Actions:** Write files → Run install command (check package manager) → Output `<done>true</done>`
+**⛔ FORBIDDEN in Setup Task:**
+- `npm run build`, `npm run dev`, `npm start` - verification happens in final-verification task
+- ONLY `npm install` / `pnpm install` / `yarn install` is allowed
+- Do NOT verify build success - just install dependencies and complete
+
+**Actions:** Write files → Run install command ONLY → Output `<done>true</done>`
 
 {{/unless}}
 {{/if}}
@@ -185,18 +190,22 @@ Follow the framework/language-specific setup instructions from:
 {{#unless (eq currentTask.priority 1000)}}
 ## 💻 FEATURE TASK: Source Code Implementation
 
-Implement the feature. Source code only.
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ ⛔ FORBIDDEN: NO BUILD, NO DEV SERVER, NO RUNTIME VERIFICATION             │
+│                                                                             │
+│ Feature tasks = CODE ONLY. Verification happens in final-verification.     │
+│ Running `npm run build`, `npm run dev`, or similar = PROTOCOL VIOLATION    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+**Your scope:** Write/edit source code files ONLY
 
 **DON'T create:** Documentation files, test files
-
-**🚫 DO NOT in Feature Tasks:**
-- ❌ DO NOT run build commands
-- ❌ DO NOT run development servers
-- ❌ DO NOT verify runtime behavior (reserved for FINAL VERIFICATION)
+**DON'T run:** Build commands, dev servers, any verification scripts
 
 **✅ DO in Feature Tasks:**
 - Write/edit source code files
 - Ensure imports and syntax are correct
+- Copy assets if needed
 
 **🚨 CRITICAL: If Plan specifies MODIFY, you MUST do it**
 
@@ -212,7 +221,14 @@ MODIFY: app/page.tsx - Add import and render new component
 2. ✅ MODIFY: Update existing files as specified in Plan (if any)
 3. ✅ VERIFY: Read the entry point file and confirm your component is imported AND rendered
 
-**Actions:** Write/edit code → Execute Plan's MODIFY → Verify integration → Output `<done>true</done>`
+**Actions:** Write code → Modify as planned → Verify integration by reading file → Output `<done>true</done>`
+
+⛔ **NEVER:** `npm run build`, `npm run dev`, `yarn build`, `pnpm dev`, etc.
+
+**⚠️ If you accidentally ran build/dev server and it failed:**
+- DO NOT retry - just ignore the failure and complete the task
+- Build/dev verification is NOT your responsibility in feature tasks
+- Output `<done>true</done>` immediately
 
 {{/unless}}
 {{/if}}
@@ -347,6 +363,11 @@ Dev servers do NOT terminate naturally. This is expected.
 
 **Critical:** Do not skip runtime verification for behavioral bugs.
 Static analysis cannot validate behavioral correctness.
+
+**✅ Build/Dev Server ALLOWED in Error Tasks:**
+- Behavioral bugs require runtime verification
+- You MAY run `npm run build`, `npm run dev` to verify fix
+- Apply EARLY-EXIT RULE: If build passes but dev server fails once, acknowledge and complete
 
 **Note:** Detailed behavioral debugging guidance is conditionally included by ModeController for refactor mode.
 

@@ -26,6 +26,9 @@ export class CommitOperation {
       throw new Error('Repository not initialized. Please clone or initialize first.');
     }
 
+    // Ensure git user config is set (essential for cloud environments)
+    await GitHelper.ensureUserConfig(git, userContext);
+
     // Check if there are changes to commit
     const status = await git.status();
     
