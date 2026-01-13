@@ -41,6 +41,65 @@ export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
   const { portRegistry, pathPrefix = '/dev', getBackendPort } = config;
   
   return async (req: Request, res: ExpressResponse, next: NextFunction) => {
+    // ✅ Handle requests without /dev/:serverKey prefix that should go to dev server
+    // These come from client-side JS (hydration) - use Referer header to route.
+    // Patterns: /_next/*, /logos/*, /icons/*, /backgrounds/*, /public/*, static assets
+    // IMPORTANT: Skip if already has /dev/ prefix (handled by main logic below)
+    const hasDevPrefix = req.path.startsWith(`${pathPrefix}/`);
+    const isNextInternal = req.path.startsWith('/_next/');
+    const isStaticAsset = /^\/(logos|icons|backgrounds|images|assets|public|fonts|static)\//.test(req.path);
+    const hasStaticExt = /\.(png|jpg|jpeg|gif|webp|svg|ico|mp4|webm|woff2?|ttf|otf|eot|css|js)(\?.*)?$/.test(req.path);
+    
+    if (!hasDevPrefix && (isNextInternal || isStaticAsset || hasStaticExt)) {
+      const referer = req.headers.referer || req.headers.referrer;
+      if (referer) {
+        // Extract serverKey from referer: .../dev/tenantId:userId:projectId:feature/...
+        const refererMatch = referer.match(/\/dev\/([^/]+)/);
+        if (refererMatch) {
+          const serverKey = refererMatch[1];
+          const parts = serverKey.split(':');
+          if (parts.length >= 4) {
+            const [tenantId, userId, projectId, ...featureParts] = parts;
+            const feature = featureParts.join(':');
+            
+            try {
+              const port = await portRegistry.getDevServerPort(tenantId, userId, projectId, feature);
+              if (port) {
+                // Proxy request to the correct dev server
+                const targetUrl = `http://localhost:${port}${req.url}`;
+                logger.debug(`Routing ${req.path} to port ${port} (from referer)`, { component: 'DevProxy' });
+                
+                const response = await fetch(targetUrl, {
+                  method: req.method,
+                  headers: {
+                    ...req.headers,
+                    host: `localhost:${port}`,
+                    'accept-encoding': 'identity',
+                  } as any,
+                });
+                
+                res.status(response.status);
+                response.headers.forEach((value: string, key: string) => {
+                  const lower = key.toLowerCase();
+                  if (['content-encoding', 'transfer-encoding', 'connection', 'keep-alive'].includes(lower)) return;
+                  res.setHeader(key, value);
+                });
+                
+                const buffer = Buffer.from(await response.arrayBuffer());
+                res.setHeader('content-length', buffer.length);
+                res.send(buffer);
+                return;
+              }
+            } catch (error) {
+              logger.debug(`Failed to route ${req.path} request`, { component: 'DevProxy' });
+            }
+          }
+        }
+      }
+      // If we can't determine the server, let it fall through
+      return next();
+    }
+    
     // Only handle paths starting with /dev/
     if (!req.path.startsWith(`${pathPrefix}/`)) {
       return next();
@@ -286,6 +345,10 @@ export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
         const staticExt = '(?:png|jpg|jpeg|gif|webp|svg|ico|mp4|webm|woff2?|ttf|otf|eot)';
         const staticLiteralRe = new RegExp(`(["'\`])\\/(?!\\/|${escapedAlready})([^"'\`]+\\.${staticExt})\\1`, 'g');
         rewritten = rewritten.replace(staticLiteralRe, `$1${replacement}$2$1`);
+
+        // 2b) Next.js internal paths (/_next/) - required for Image optimization, HMR, etc.
+        const nextInternalRe = new RegExp(`(["'\`])\\/(?!\\/|${escapedAlready})(_next\\/[^"'\`]*)\\1`, 'g');
+        rewritten = rewritten.replace(nextInternalRe, `$1${replacement}$2$1`);
 
         // 3) CSS url(/...) (with or without quotes)
         const cssUrlRe = new RegExp(`url\\(\\s*(["']?)\\/(?!\\/|${escapedAlready})([^"')]+\\.${staticExt})\\1\\s*\\)`, 'g');

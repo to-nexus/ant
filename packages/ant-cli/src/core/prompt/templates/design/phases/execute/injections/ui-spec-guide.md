@@ -373,6 +373,44 @@ Before finalizing, verify:
 
 ---
 
+## 🎯 Layered Element Relationships
+
+### Fixed/Sticky Header with Full-Viewport Sections
+
+When a page has a fixed header AND a full-viewport section (hero, banner, etc.):
+
+**Observation principle**: Determine if the section is BEHIND or BELOW the header by observing:
+1. Header background opacity (transparent vs opaque)
+2. Section content position relative to viewport top
+3. Whether section content appears to extend behind header area
+
+**Document the relationship explicitly:**
+```json
+{
+  "header": {
+    "layout": "fixed",
+    "zIndex": 1000,
+    "background": "transparent | opaque"
+  },
+  "heroSection": {
+    "startPosition": "viewport-top | below-header",
+    "contentOffset": "header-height | none"
+  }
+}
+```
+
+### Element Position Within Containers
+
+**Principle**: Always observe and document the EXACT visual position of elements within their container.
+
+For each positioned element, ask:
+- Which **corner or edge** is it anchored to? (top-left, bottom-right, center, etc.)
+- Is it **inside a container** or **floating on page**?
+
+**Document positions explicitly** - don't assume based on element type. A "back to top" button could be anywhere; observe where it actually IS in the screenshot.
+
+---
+
 ## Workflow
 
 1. **Load References**: Use `list_reference_images` and `read_reference_image`
