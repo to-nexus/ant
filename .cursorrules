@@ -135,3 +135,147 @@ ui-spec.md (references ui-tokens.md + ui-assets.md)
 - ✅ Focus on principles over specific implementations
 
 Ant supports frontend, backend, and fullstack across multiple languages. Prompts must be platform-agnostic.
+
+---
+
+## FPOP: First-Principles Observation Prompting
+
+**THE MOST IMPORTANT PRINCIPLE for writing prompts in this project.**
+
+All prompts MUST follow FPOP (First-Principles Observation Prompting) methodology.
+
+### Core Definition
+
+> "Specify observation targets and constraints as principles, not concrete examples or methods."
+
+### The 6 Principles
+
+| Principle | Meaning | ❌ Bad | ✅ Good |
+|-----------|---------|--------|---------|
+| **Principles over Examples** | Use universal rules, not specific cases | "Footer is column" | "Each container decides direction independently" |
+| **What over How** | State target, not method | "Top→flex-start" | "Observe cross-axis position" |
+| **Observable over Assumed** | Require observation, forbid inference | "Add overlay" | "If not observed, do NOT add" |
+| **Universal over Specific** | Platform/language-neutral | "React component" | "component" |
+| **Constraints over Instructions** | State what NOT to do | "Do this way" | "Do NOT assume" |
+| **Reminders for Blind Spots** | Remind only what's easily missed | Generic list | "⚠️ Cross-axis REQUIRED" |
+
+### FPOP Checklist
+
+When writing/reviewing prompts, use this checklist:
+
+#### ❌ NEVER Include
+
+- [ ] Concrete project examples (Footer, Hero, Card, etc.)
+- [ ] Method explanations (CSS properties, basic knowledge LLM already knows)
+- [ ] Edge case enumeration (If A then X, if B then Y, if C then Z)
+- [ ] Platform-specific terms (React, Tailwind, Next.js, etc.)
+- [ ] Value mappings (Top=flex-start, Center=center, etc.)
+
+#### ✅ ALWAYS Include
+
+- [ ] State the observation target ("Observe cross-axis alignment")
+- [ ] State the constraint ("If not observed, do NOT add")
+- [ ] State the principle ("Each level decides independently")
+- [ ] Remind blind spots ("Cross-axis REQUIRED - easily missed")
+- [ ] Use universal language ("container" not "div", "element" not "component")
+
+### FPOP Terminology
+
+Use these terms when discussing prompts:
+
+| Term | Meaning | Usage |
+|------|---------|-------|
+| **FPOP** | First-Principles Observation Prompting | "This prompt violates FPOP principles" |
+| **Principle** | Rule applicable to all cases | "Principle: Each level decides independently" |
+| **Constraint** | What NOT to do | "Constraint: Do NOT add if not observed" |
+| **Blind Spot** | What LLM easily misses | "Cross-axis is a blind spot, use ⚠️" |
+| **Observable** | What can be seen in screenshot | "Is gradient observable?" |
+| **Edge Case Leakage** | Specific cases infiltrating prompt | "Footer example is edge case leakage" |
+
+### Example Comparison
+
+#### ❌ Anti-FPOP (BAD)
+
+```markdown
+### Footer Layout Analysis
+
+Footer is usually a column structure:
+1. Top row: Copyright + Contact (row)
+2. Bottom row: Logo + Button (row)
+
+Example:
+┌─────────────────────┐
+│ [copyright] [contact]│  ← row
+│ [logo]      [button] │  ← row
+└─────────────────────┘
+
+Each row's alignItems:
+- Top → flex-start
+- Center → center
+- Bottom → flex-end
+```
+
+**Problems:**
+- Specific case (Footer)
+- ASCII diagram (project-specific)
+- CSS mappings (LLM already knows)
+
+#### ✅ FPOP (GOOD)
+
+```markdown
+## Observation Protocol
+
+### Step 2: Child Arrangement
+
+For each container, observe:
+
+| Checkpoint | What to observe |
+|-----------|----------------|
+| **Cross Axis** (alignItems) | ⚠️ **REQUIRED**: Row→where vertically? Column→where horizontally? |
+
+**Constraint**: Do NOT assume center alignment. Observe actual position.
+```
+
+**Strengths:**
+- Principle only (applies to any container)
+- Observation target specified
+- Constraint specified
+- Platform-neutral
+
+### Command Phrases
+
+When requesting prompt work, use these commands:
+
+- "Write this using FPOP principles"
+- "Validate this prompt against FPOP checklist"
+- "Remove edge case leakage, keep principles only"
+- "Convert this to FPOP format"
+
+### ⚠️ MANDATORY Workflow: Before Writing/Editing Any Prompt
+
+**YOU (the AI assistant) MUST follow this workflow BEFORE writing or editing any prompt template:**
+
+1. **Read the current prompt** (if editing existing)
+2. **Run FPOP Checklist** silently in your reasoning:
+   
+   ```
+   ❌ NEVER violations found?
+   - [ ] Concrete project examples (Footer, Hero, Card)?
+   - [ ] Method explanations (CSS properties LLM knows)?
+   - [ ] Edge case enumeration (If A→X, B→Y)?
+   - [ ] Platform-specific terms (React, Tailwind)?
+   - [ ] Value mappings (Top=flex-start)?
+   
+   ✅ ALWAYS requirements met?
+   - [ ] Observation target stated?
+   - [ ] Constraint stated?
+   - [ ] Principle stated?
+   - [ ] Blind spots reminded?
+   - [ ] Universal language used?
+   ```
+
+3. **If ANY ❌ violation found**: Remove it, convert to principle
+4. **If ANY ✅ requirement missing**: Add it as principle
+5. **Then** proceed with the edit/write
+
+**This checklist validation is MANDATORY. Do not skip.**

@@ -28,7 +28,7 @@ export interface IDEInstance {
 }
 
 export class IDEService {
-  private docker: Docker;
+  private docker: Docker;  // Docker instance
   private portManager: PortManager;
   private portRegistry: PortRegistryPort;
   private instances: Map<string, IDEInstance> = new Map();
@@ -68,7 +68,7 @@ export class IDEService {
     // collide under prefix matching and can delete the wrong project's containers.
     try {
       const containers = await this.docker.listContainers({ all: true });
-      const matches = containers.filter(c => {
+      const matches = containers.filter((c: any) => {
         const labels = (c as any).Labels || {};
         return labels['ant.kind'] === 'ide'
           && labels['ant.org'] === userContext.organizationId
@@ -151,7 +151,7 @@ export class IDEService {
     });
   }
 
-  private async setContainerHostname(container: Docker.Container, hostname: string): Promise<void> {
+  private async setContainerHostname(container: any, hostname: string): Promise<void> {
     // Best-effort: not all images allow changing hostname at runtime, but with root it usually works.
     try {
       const safe = hostname.replace(/[^a-zA-Z0-9_.-]/g, '-').slice(0, 63);
@@ -285,7 +285,7 @@ export class IDEService {
       // remove it to avoid "Conflict. The container name is already in use".
       try {
         const existingContainers = await this.docker.listContainers({ all: true });
-        const sameName = existingContainers.find(c => (c.Names || []).includes(`/${containerName}`));
+        const sameName = existingContainers.find((c: any) => (c.Names || []).includes(`/${containerName}`));
         if (sameName) {
           logger.warn(`Removing existing IDE container with same name`, {
             component: 'IDEService',
@@ -354,7 +354,7 @@ export class IDEService {
       });
       };
 
-      let container: Docker.Container;
+      let container: any;  // Docker.Container (dockerode has no types)
       try {
         container = await this.withTimeout(createContainer(), 20_000, 'docker.createContainer');
       } catch (err: any) {
