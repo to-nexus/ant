@@ -498,8 +498,8 @@ Path: ant-workspaces/{org}/{group}/{project}/features/{feature}/
 
 4. **CREATE COMPARISON TABLE**
    - Column 1: Your observation (from step 2)
-   - Column 2: ui-spec.json value (quote exact property)
-   - Column 3: Match or mismatch
+   - Column 2: ui-spec.json value (quote exact property) — **verify field EXISTS first**
+   - Column 3: Match, mismatch, or **MISSING**
 
 5. **ONLY THEN ASSIGN SCORES**
    - Scores must reference evidence from comparison table
@@ -520,6 +520,8 @@ Path: ant-workspaces/{org}/{group}/{project}/features/{feature}/
 - ❌ Saying "matches" without showing what was compared
 - ❌ Skipping Screenshot Observation Log
 - ❌ Assuming without observing
+- ❌ **Assuming field exists** without verifying in ui-spec.json
+- ❌ **Skipping item-level check** for repeated elements with variations
 - ❌ Writing abstract improvement suggestions (e.g., "add layout guidance")
 - ❌ Omitting exact file paths and insertion points
 - ❌ Writing improvement plans that require additional context to understand
