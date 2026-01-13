@@ -52,9 +52,11 @@ export function createDevServerProxyMiddleware(config: DevServerProxyConfig) {
     
     if (!hasDevPrefix && (isNextInternal || isStaticAsset || hasStaticExt)) {
       const referer = req.headers.referer || req.headers.referrer;
-      if (referer) {
+      // Ensure referer is a string (can be string[] in Express types)
+      const refererStr = Array.isArray(referer) ? referer[0] : referer;
+      if (refererStr) {
         // Extract serverKey from referer: .../dev/tenantId:userId:projectId:feature/...
-        const refererMatch = referer.match(/\/dev\/([^/]+)/);
+        const refererMatch = refererStr.match(/\/dev\/([^/]+)/);
         if (refererMatch) {
           const serverKey = refererMatch[1];
           const parts = serverKey.split(':');

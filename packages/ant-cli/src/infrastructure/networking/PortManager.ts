@@ -1,29 +1,46 @@
 /**
  * PortManager
  * 
- * Manages dynamic port allocation for dev servers.
- * Uses high port range (30000-35000) to avoid conflicts.
+ * Manages dynamic port allocation for dev servers and IDEs.
+ * Port ranges are separated by service type:
+ * - Dev Server: 30000-39999 (10,000 ports)
+ * - IDE: 40000-49999 (10,000 ports)
  */
 
 import * as net from 'net';
 
+export type PortType = 'dev-server' | 'ide';
+
+export interface PortRangeConfig {
+  min: number;
+  max: number;
+}
+
+export const PORT_RANGES: Record<PortType, PortRangeConfig> = {
+  'dev-server': { min: 30000, max: 39999 },  // 10,000 ports
+  'ide': { min: 40000, max: 49999 },          // 10,000 ports
+};
+
 export class PortManager {
-  private readonly MIN_PORT = 30000;
-  private readonly MAX_PORT = 35000;
+  // Legacy defaults (for backward compatibility and overall stats)
+  private readonly MIN_PORT = PORT_RANGES['dev-server'].min;  // 30000
+  private readonly MAX_PORT = PORT_RANGES['ide'].max;         // 49999
   private usedPorts = new Set<number>();
   
   /**
-   * Allocate an available port
+   * Allocate an available port for a specific service type
+   * @param type - 'dev-server' or 'ide' (defaults to 'dev-server' for backward compatibility)
    */
-  async allocate(): Promise<number> {
-    for (let port = this.MIN_PORT; port <= this.MAX_PORT; port++) {
+  async allocate(type: PortType = 'dev-server'): Promise<number> {
+    const range = PORT_RANGES[type];
+    for (let port = range.min; port <= range.max; port++) {
       if (!this.usedPorts.has(port) && await this.isPortAvailable(port)) {
         this.usedPorts.add(port);
-        console.log(`[PortManager] Allocated port: ${port}`);
+        console.log(`[PortManager] Allocated ${type} port: ${port}`);
         return port;
       }
     }
-    throw new Error('No available ports in range 30000-35000');
+    throw new Error(`No available ports in ${type} range ${range.min}-${range.max}`);
   }
   
   /**
@@ -55,15 +72,35 @@ export class PortManager {
   }
   
   /**
-   * Get current usage stats
+   * Get current usage stats (overall or by type)
    */
-  getStats(): { total: number; used: number; available: number } {
+  getStats(type?: PortType): { total: number; used: number; available: number } {
+    if (type) {
+      const range = PORT_RANGES[type];
+      const total = range.max - range.min + 1;
+      const used = Array.from(this.usedPorts).filter(
+        p => p >= range.min && p <= range.max
+      ).length;
+      return { total, used, available: total - used };
+    }
+    
+    // Overall stats
     const total = this.MAX_PORT - this.MIN_PORT + 1;
     const used = this.usedPorts.size;
     return {
       total,
       used,
       available: total - used
+    };
+  }
+
+  /**
+   * Get stats for all port types
+   */
+  getStatsByType(): Record<PortType, { total: number; used: number; available: number }> {
+    return {
+      'dev-server': this.getStats('dev-server'),
+      'ide': this.getStats('ide'),
     };
   }
 }
