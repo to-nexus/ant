@@ -584,6 +584,12 @@ pnpm format
 - [CLI Guide](docs/guides/CLI_GUIDE.md) - Command-line usage
 - [Evaluation Guide](docs/guides/EVALUATION.md) - Code evaluation system
 
+### Evaluation Rubrics
+- [PRD Evaluation Guide](docs/rubric/PRD_EVALUATION_GUIDE.md) - Evaluate PRD quality and completeness
+- [UI Design Evaluation Guide](docs/rubric/UI_DESIGN_EVALUATION_GUIDE.md) - Evaluate UI documents (ui-spec, ui-tokens, ui-assets)
+- [System Design Rubric](docs/rubric/system-design-rubric.md) - Evaluate system design documents
+- [Code Job Evaluation Guide](docs/rubric/CODE_JOB_EVALUATION_GUIDE.md) - Evaluate code generation quality
+
 ### Design Documents
 - [Architecture](docs/designs/ARCHITECTURE.md) - System architecture overview
 - [Workflow](docs/designs/ARCHITECT_CODE_TASK_WORKFLOW.md) - Code task workflow

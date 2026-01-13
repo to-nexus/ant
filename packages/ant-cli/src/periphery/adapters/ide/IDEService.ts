@@ -93,7 +93,16 @@ export class IDEService {
     if (deleteHome) {
       const ideHomeBase = process.env.ANT_IDE_HOME_BASE_PATH
         || path.join(WorkspacePathResolver.getPhysicalWorkspacesPath(), '.ide-homes');
-      const ideHomeProjectPath = path.join(ideHomeBase, userContext.organizationId, userContext.userId, projectId);
+      
+      // ✅ Sanitize path components to avoid directory traversal
+      const sanitizePathComponent = (str: string) => str.replace(/[/\\:*?"<>|]/g, '-');
+      
+      const ideHomeProjectPath = path.join(
+        ideHomeBase, 
+        sanitizePathComponent(userContext.organizationId), 
+        sanitizePathComponent(userContext.userId), 
+        sanitizePathComponent(projectId)
+      );
       try {
         await fs.promises.rm(ideHomeProjectPath, { recursive: true, force: true });
         logger.info(`Deleted IDE home directory (project cleanup)`, { component: 'IDEService', organizationId: userContext.organizationId, userId: userContext.userId, projectId }, { ideHomeProjectPath });
@@ -259,13 +268,29 @@ export class IDEService {
     
     const ideHomeBase = process.env.ANT_IDE_HOME_BASE_PATH
       || path.join(WorkspacePathResolver.getPhysicalWorkspacesPath(), '.ide-homes');
+    
+    // ✅ Sanitize path components to avoid directory traversal or invalid paths
+    const sanitizePathComponent = (str: string) => str.replace(/[/\\:*?"<>|]/g, '-');
+    
     const ideHomeHostPath = path.join(
       ideHomeBase,
-      userContext.organizationId,
-      userContext.userId,
-      projectId,
-      feature
+      sanitizePathComponent(userContext.organizationId),
+      sanitizePathComponent(userContext.userId),
+      sanitizePathComponent(projectId),
+      sanitizePathComponent(feature)
     );
+    
+    logger.debug(`IDE home path calculation`, { 
+      component: 'IDEService', 
+      organizationId: userContext.organizationId, 
+      userId: userContext.userId, 
+      projectId, 
+      featureName: feature 
+    }, { 
+      ideHomeBase, 
+      ideHomeHostPath,
+      physicalWorkspacesPath: WorkspacePathResolver.getPhysicalWorkspacesPath()
+    });
     
     // Ensure per-project home exists (persists extensions/settings per project)
     await fs.promises.mkdir(ideHomeHostPath, { recursive: true });

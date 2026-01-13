@@ -31,12 +31,41 @@
 - PRD에 명시되지 않은 것은 구현하지 않는다 (No invention)
 - PRD와 충돌 시 PRD가 우선 (PRD > directive > 기타 문서)
 
-### 스코프
+### 스코ープ
 - **입력**: PRD 문서 (`inputs/sources/prd.md`)
 - **출력 영향**: 
   - Design Job → `ui-spec.json`, `ui-tokens.json`, `ui-assets.json`, `system-design.md`
   - Code Job → 실제 코드베이스
 - **평가 대상**: PRD 내용의 완전성, 명확성, 구조화 정도
+- **평가 위치**: `outputs/evals/prd/evalprd-{jobId}.md`
+
+### 파일 구조
+
+```
+ant-workspaces/{org}/{group}/{project}/
+└── features/{feature}/
+    ├── inputs/                        # [Input]
+    │   └── sources/
+    │       └── prd.md                 # PRD 문서 ★
+    │
+    ├── outputs/                       # [Output]
+    │   ├── design/
+    │   │   ├── system-design.md       # 시스템 설계
+    │   │   ├── ui-spec.json           # UI 명세
+    │   │   ├── ui-tokens.json         # 디자인 토큰
+    │   │   └── ui-assets.json         # 에셋 매핑
+    │   └── evals/                     # 평가 리포트
+    │       └── prd/                   # PRD 평가 리포트
+    │           └── evalprd-{jobId}.md
+    │
+    └── sessions/                      # [Process records]
+        ├── design.json                # Design Job 세션
+        ├── code.json                  # Code Job 세션
+        └── debug/                     # 디버그 데이터
+            ├── prompts/               # 프롬프트 로그
+            ├── plans/                 # 구현 계획
+            └── logs/                  # 실행 로그
+```
 
 ---
 

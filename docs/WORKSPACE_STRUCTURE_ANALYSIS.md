@@ -67,7 +67,7 @@ features/{feature-name}/
 | `outputs/design/` | 설계 문서 (JSON/MD) | **산출물** ✅ |
 | `sessions/*.json` | 세션 상태 (재개 용도) | **세션 상태** ✅ |
 | `sessions/eval-*/` | 평가 리포트 (MD) | **산출물** ❌ (위치 부적절) |
-| (신규) `outputs/evaluations/prd/` | PRD 평가 리포트 | **산출물** ✅ (올바른 위치) |
+| (신규) `outputs/evals/prd/` | PRD 평가 리포트 | **산출물** ✅ (올바른 위치) |
 | `sessions/log-prompt/` | 프롬프트 구조 로그 | **디버깅 자료** ✅ |
 | `sessions/plan-text/` | 구현 계획 텍스트 | **디버깅 자료** ✅ |
 
@@ -116,7 +116,7 @@ features/{feature-name}/
 
 **예시:**
 - `outputs/design/` - 설계 문서 (ui-spec, system-design 등)
-- `outputs/evaluations/` - 평가 리포트 (eval-prd, eval-ui-design, eval-system-design, eval-code)
+- `outputs/evals/` - 평가 리포트 (eval-prd, eval-ui-design, eval-system-design, eval-code)
 
 ---
 
@@ -156,7 +156,7 @@ features/{feature-name}/
 │   │   ├── ui-assets.json
 │   │   └── system-design.md
 │   │
-│   └── evaluations/                # ✅ 평가 리포트 (sessions에서 이동)
+│   └── evals/                      # ✅ 평가 리포트 (sessions에서 이동)
 │       ├── prd/                    # ✅ PRD 평가 (신규)
 │       │   └── evalprd-{jobId}.md
 │       ├── ui-design/
@@ -186,7 +186,7 @@ features/{feature-name}/
 ```
 
 **변경 사항:**
-1. ✅ **평가 리포트 이동**: `sessions/eval-*/ → outputs/evaluations/`
+1. ✅ **평가 리포트 이동**: `sessions/eval-*/ → outputs/evals/`
 2. ✅ **실행 로그 이동**: `outputs/reports/ → sessions/debug/logs/`
 3. ✅ **디버깅 자료 통합**: `sessions/debug/` 하위로 체계화
 4. ✅ **이름 명확화**: 
@@ -205,7 +205,7 @@ features/{feature-name}/
 │   │   └── ...
 │   │
 │   └── reports/                    # ✅ 평가 리포트 통합
-│       ├── evaluations/            # eval-* 이동
+│       ├── evals/                  # eval-* 이동
 │       │   ├── prd/
 │       │   ├── ui-design/
 │       │   ├── system-design/
@@ -221,7 +221,7 @@ features/{feature-name}/
 ```
 
 **변경 사항:**
-1. ✅ **평가 리포트 이동**: `sessions/eval-*/ → outputs/reports/evaluations/`
+1. ✅ **평가 리포트 이동**: `sessions/eval-*/ → outputs/reports/evals/`
 2. ⚠️ 실행 로그는 `outputs/reports/logs/`에 유지
 3. ⚠️ 디버깅 자료는 `sessions/`에 유지
 
@@ -231,7 +231,7 @@ features/{feature-name}/
 
 | 항목 | AS-IS | Option A (권장) | Option B (차선) |
 |------|-------|----------------|----------------|
-| **평가 리포트** | `sessions/eval-*/` | `outputs/evaluations/` ✅ | `outputs/reports/evaluations/` ✅ |
+| **평가 리포트** | `sessions/eval-*/` | `outputs/evals/` ✅ | `outputs/reports/evals/` ✅ |
 | **실행 로그** | `outputs/reports/` | `sessions/debug/logs/` ✅ | `outputs/reports/logs/` ⚠️ |
 | **프롬프트 로그** | `sessions/log-prompt/` | `sessions/debug/prompts/` ✅ | `sessions/log-prompt/` ➖ |
 | **계획 텍스트** | `sessions/plan-text/` | `sessions/debug/plans/` ✅ | `sessions/plan-text/` ➖ |
@@ -257,10 +257,10 @@ features/{feature-name}/
    fs.mkdirSync(path.join(featureDir, "sessions/plan-text"), { recursive: true });
    
    // 변경 후
-   fs.mkdirSync(path.join(featureDir, "outputs/evaluations/prd"), { recursive: true });
-   fs.mkdirSync(path.join(featureDir, "outputs/evaluations/ui-design"), { recursive: true });
-   fs.mkdirSync(path.join(featureDir, "outputs/evaluations/system-design"), { recursive: true });
-   fs.mkdirSync(path.join(featureDir, "outputs/evaluations/code"), { recursive: true });
+   fs.mkdirSync(path.join(featureDir, "outputs/evals/prd"), { recursive: true });
+   fs.mkdirSync(path.join(featureDir, "outputs/evals/ui-design"), { recursive: true });
+   fs.mkdirSync(path.join(featureDir, "outputs/evals/system-design"), { recursive: true });
+   fs.mkdirSync(path.join(featureDir, "outputs/evals/code"), { recursive: true });
    fs.mkdirSync(path.join(featureDir, "sessions/debug/prompts"), { recursive: true });
    fs.mkdirSync(path.join(featureDir, "sessions/debug/plans"), { recursive: true });
    fs.mkdirSync(path.join(featureDir, "sessions/debug/logs"), { recursive: true });
@@ -345,19 +345,19 @@ async function migrateWorkspace(workspacesRoot: string) {
     // 1. Move eval reports
     await moveDirectory(
       path.join(featurePath, 'sessions/eval-prd'),
-      path.join(featurePath, 'outputs/evaluations/prd')
+      path.join(featurePath, 'outputs/evals/prd')
     );
     await moveDirectory(
       path.join(featurePath, 'sessions/eval-ui-design'),
-      path.join(featurePath, 'outputs/evaluations/ui-design')
+      path.join(featurePath, 'outputs/evals/ui-design')
     );
     await moveDirectory(
       path.join(featurePath, 'sessions/eval-system-design'),
-      path.join(featurePath, 'outputs/evaluations/system-design')
+      path.join(featurePath, 'outputs/evals/system-design')
     );
     await moveDirectory(
       path.join(featurePath, 'sessions/eval-code'),
-      path.join(featurePath, 'outputs/evaluations/code')
+      path.join(featurePath, 'outputs/evals/code')
     );
     
     // 2. Move execution logs
@@ -455,7 +455,11 @@ async function moveDirectory(src: string, dest: string) {
 ```
 outputs/                      # ✅ 영구 보존 산출물
 ├── design/                   # 설계 문서
-└── evaluations/              # 평가 리포트 (이동)
+└── evals/                    # 평가 리포트 (이동)
+    ├── prd/                  # PRD 평가
+    ├── ui-design/            # UI 설계 평가
+    ├── system-design/        # 시스템 설계 평가
+    └── code/                 # 코드 평가
 
 sessions/                     # ✅ 세션 + 디버깅
 ├── *.json                    # 세션 상태
