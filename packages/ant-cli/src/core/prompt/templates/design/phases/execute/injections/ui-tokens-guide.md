@@ -106,6 +106,7 @@ Use `<file>` tag to create the initial JSON file.
 3. **Semantic**: Keys describe purpose, not appearance
 4. **Valid JSON**: Proper JSON syntax (no trailing commas, proper quotes)
 5. **Referenceable**: Other documents can cite by dot notation (e.g., `colors.primary.green`)
+6. **Overlay transparency**: Overlays/gradients over background images must use rgba (not opaque hex)
 
 ### Workflow
 
