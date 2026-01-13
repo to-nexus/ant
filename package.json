@@ -15,7 +15,9 @@
     "build:ui": "pnpm --filter @ant/ui build",
     "start:ide": "pnpm --filter @ant/ide start",
     "init:workspace": "pnpm --filter @ant/cli init:workspace",
-    "init:feature": "pnpm --filter @ant/cli init:feature"
+    "init:feature": "pnpm --filter @ant/cli init:feature",
+    "migrate:workspace": "ts-node scripts/migrate-workspace-structure.ts",
+    "migrate:workspace:dry-run": "ts-node scripts/migrate-workspace-structure.ts -- --dry-run"
   },
   "keywords": [],
   "author": "",

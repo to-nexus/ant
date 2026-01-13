@@ -8,7 +8,7 @@
 - **네트워크**:
   - 외부 공개: `ant-ui`(443), `ant-cli`(443→4100)
   - 내부 전용: `chromaDB:8000`, `embedder:8001`은 `ant-cli`에서만 접근 허용
-  - 권장: `ant-cli` 서버의 **30000–35000 inbound 차단**
+  - 권장: `ant-cli` 서버의 **30000–49999 inbound 차단** (Dev Server + IDE 포트 범위)
 
 ---
 
@@ -26,10 +26,13 @@
   - API 서버(프로젝트/피처/잡/IDE/devserver 제어)
   - 사용자 프로젝트 devserver 실행(프로세스 spawn)
   - Cloud IDE 컨테이너 생성/삭제(Docker)
+  - Dev Server Proxy (`/dev/:serverKey`)
+  - IDE Proxy (`/ide/:serverKey`)
 - 인바운드: 4100(내부) / 외부는 443에서 reverse proxy 권장
 - 요구사항:
   - Docker 데몬 접근(컨테이너 생성/삭제)
   - 워크스페이스 볼륨 마운트(대용량/고IO 권장)
+  - 포트 범위 확보: **30000-49999** (Dev: 30000-39999, IDE: 40000-49999)
 
 ### 2.3 `chromaDB`
 
@@ -66,12 +69,22 @@
 - **Server A → Server C**: TCP 8000 (`CHROMA_URL`)
 - **Server A → Server D**: TCP 8001 (`EMBEDDER_URL`)
 
-### 4.3 dev server 포트 범위(권장 정책)
+### 4.3 Dev Server & IDE 포트 범위(권장 정책)
 
-`ant-cli`는 사용자 프로젝트 devserver를 **30000–35000**에 띄웁니다.
+`ant-cli`는 다음 포트 범위를 동적으로 할당합니다:
 
-- **권장**: Server A의 **30000–35000 inbound는 외부에서 차단**
-- **이유**: 사용자는 `ant-cli`의 `/dev/:serverKey` 경로로만 접속하면 됩니다.
+- **Dev Server**: 30000-39999 (10,000 포트)
+  - 사용자 프로젝트 개발 서버 (Vite, Next.js 등)
+  - Frontend/Backend 포함
+- **Cloud IDE**: 40000-49999 (10,000 포트)
+  - Docker 기반 IDE 컨테이너 (code-server, openvscode-server)
+
+**보안 정책**:
+- **권장**: Server A의 **30000-49999 inbound는 외부에서 차단**
+- **이유**: 
+  - 사용자는 `ant-cli`의 `/dev/:serverKey` (Dev Server) 및 `/ide/:serverKey` (Cloud IDE) 경로로만 접속
+  - 직접 포트 접근 불필요
+  - 프록시를 통해 인증/라우팅/콘텐츠 재작성 처리
 
 ---
 
@@ -107,6 +120,15 @@
   - `ANTHROPIC_API_KEY=<secret>` 또는
   - `OPENAI_API_KEY=<secret>`
 
+**인증 (Cloud Mode)**
+
+- Google OIDC:
+  - `GOOGLE_CLIENT_ID=<client-id>`
+  - `GOOGLE_CLIENT_SECRET=<secret>`
+  - `GOOGLE_REDIRECT_URI=https://<domain>/api/auth/google/callback`
+- 개발 편의 (로컬 테스트 전용):
+  - `SKIP_AUTH_FOR_LOCALHOST=true` (localhost 접속 시 인증 스킵, **운영 환경 비권장**)
+
 **권장(운영 편의/기능 활성화)**
 
 - 모델 기본값:
@@ -132,13 +154,67 @@
 
 ---
 
-## 7. 운영 체크리스트(인프라팀)
+## 7. 프록시 라우팅 구조
+
+`ant-cli`는 사용자 트래픽을 동적으로 라우팅합니다:
+
+### 7.1 Dev Server Proxy (`/dev/:serverKey`)
+
+- **경로 형식**: `/dev/tenantId:userId:projectId:feature/*`
+- **예시**: `/dev/nexus:probe:my-app:login/` → `localhost:30123`
+- **기능**:
+  - 동적 포트 조회 및 라우팅
+  - HTML/JS/CSS 경로 재작성 (base path 주입)
+  - Fullstack 지원 (frontend/backend 분리 라우팅)
+  - WebSocket 프록시 (HMR)
+  - 재시도 로직 (서버 시작 대기)
+
+### 7.2 IDE Proxy (`/ide/:serverKey`)
+
+- **경로 형식**: `/ide/tenantId:userId:projectId/*`
+- **예시**: `/ide/nexus:probe:my-app/?folder=/my-app` → `localhost:40500`
+- **기능**:
+  - 프로젝트 단위 IDE 접근 (feature 구분 없음)
+  - Docker 컨테이너 포트 매핑
+  - WebSocket 프록시 (터미널, LSP)
+  - 컨텐츠 재작성 불필요 (자체 완결형 앱)
+
+---
+
+## 8. 운영 체크리스트(인프라팀)
 
 - **Server A (ant-cli)**
   - Docker 데몬 접근 가능 여부(권한/소켓)
-  - 30000–35000 포트 충돌 없음 + 외부 인바운드 차단
+  - **30000–49999** 포트 충돌 없음 + 외부 인바운드 차단
   - 워크스페이스 볼륨 용량/IOPS
+  - IDE 홈 볼륨 용량 (사용자별 IDE 설정/확장)
   - 로그 수집(프로세스 stdout/stderr, Docker 컨테이너 로그)
+  - Google OIDC 설정 확인 (Cloud Mode)
 - **Server C (chromaDB)**: 데이터 영속 볼륨 + 백업
 - **Server D (embedder)**: CPU 사용량 모니터링
+
+---
+
+## 9. 주요 변경사항 (2026-01)
+
+### 포트 범위 확대
+- 기존: 30000-35000 (5,000 포트)
+- 변경: 30000-49999 (20,000 포트)
+  - Dev Server: 30000-39999 (10,000)
+  - IDE: 40000-49999 (10,000)
+
+### IDE 프록시 추가
+- `/ide/:serverKey` 경로로 Cloud IDE 접근
+- 프로젝트 단위 격리 (feature 구분 없음)
+- WebSocket 지원 (터미널, LSP)
+
+### 인증 강화
+- Google OIDC 지원 추가
+- `SKIP_AUTH_FOR_LOCALHOST` 옵션 (개발 편의)
+
+### 경로 안정화
+- `ANT_IDE_HOME_BASE_PATH` 기본값 변경
+  - 기존: 환경변수 없으면 `/mnt/ant-ide-homes` 가능성
+  - 변경: `<ANT_WORKSPACE_BASE_PATH>/.ide-homes`로 안전한 fallback
+- 특수문자 sanitize (경로 보안)
 

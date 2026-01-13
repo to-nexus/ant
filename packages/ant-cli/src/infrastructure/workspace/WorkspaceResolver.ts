@@ -51,11 +51,14 @@ export class WorkspacePathResolver {
     // This matches the common repo layout:
     //   <dev>/ant
     //   <dev>/ant-workspaces
-    // and prevents silent regressions when ANT_WORKSPACE_BASE_PATH is not set.
-    const projectRoot = path.resolve(__dirname, '../../../../..'); // .../ant
+    // 
+    // Calculate from process.cwd() instead of __dirname to handle different execution contexts
+    const cwd = process.cwd();
+    const projectRoot = path.resolve(cwd); // Current working directory should be the project root
     const siblingWorkspaces = path.resolve(projectRoot, '../ant-workspaces');
+    
     try {
-      if (fs.existsSync(siblingWorkspaces)) {
+      if (fs.existsSync(siblingWorkspaces) && fs.statSync(siblingWorkspaces).isDirectory()) {
         return siblingWorkspaces;
       }
     } catch {
@@ -63,7 +66,19 @@ export class WorkspacePathResolver {
     }
     
     // Fallback: legacy 방식 (ant 소스 내부)
-    return path.join(projectRoot, 'workspaces');
+    // Only use this if sibling doesn't exist
+    const internalWorkspaces = path.join(projectRoot, 'workspaces');
+    try {
+      // Create if doesn't exist
+      if (!fs.existsSync(internalWorkspaces)) {
+        fs.mkdirSync(internalWorkspaces, { recursive: true });
+      }
+      return internalWorkspaces;
+    } catch (e) {
+      console.error('[WorkspacePathResolver] Failed to create workspaces directory:', e);
+      // Last resort: return the path anyway
+      return internalWorkspaces;
+    }
   }
   
   /**

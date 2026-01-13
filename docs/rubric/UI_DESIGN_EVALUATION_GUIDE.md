@@ -49,13 +49,17 @@ ant-workspaces/{org}/{group}/{project}/
     │   │   ├── ui-spec.json           # UI specification ★
     │   │   ├── ui-tokens.json         # Design tokens ★
     │   │   └── ui-assets.json         # Asset mapping ★
-    │   └── reports/                   # Execution logs
+    │   └── evals/                     # Evaluation reports
+    │       └── ui-design/             # UI design evaluation reports
+    │           └── evaluidesign-{jobId}.md
     │
     └── sessions/                      # [Process records]
         ├── chat.json                  # Conversation history
         ├── design.json                # Design session state
-        └── eval-ui-design/              # UI design evaluation reports
-            └── evaluidesign-{jobId}.md
+        └── debug/                     # Debug data
+            ├── prompts/               # Prompt logs
+            ├── plans/                 # Implementation plans
+            └── logs/                  # Execution logs
 ```
 
 ---
@@ -533,7 +537,7 @@ Path: ant-workspaces/{org}/{group}/{project}/features/{feature}/
 ### Storage Location
 
 ```
-features/{feature}/sessions/eval-ui-design/evaluidesign-{jobId}.md
+features/{feature}/outputs/evals/ui-design/evaluidesign-{jobId}.md
 ```
 
 ### Naming Convention
@@ -544,10 +548,10 @@ features/{feature}/sessions/eval-ui-design/evaluidesign-{jobId}.md
 
 ## 9. Prompt Injection Verification
 
-### 9.1 Quick Check (via log-prompt)
+### 9.1 Quick Check (via debug/prompts)
 
 ```
-sessions/log-prompt/prompt-design-{jobId}.md
+sessions/debug/prompts/prompt-design-{jobId}.md
 ```
 
 **필수 확인 항목:**

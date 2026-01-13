@@ -64,15 +64,18 @@ ant-workspaces/{org}/{group}/{project}/
     │   │   ├── ui-spec.json           # UI specification
     │   │   ├── ui-tokens.json         # Design tokens
     │   │   └── ui-assets.json         # Asset mapping
-    │   └── reports/                   # Execution logs
+    │   └── evals/                     # Evaluation reports
+    │       └── code/
+    │           └── evalcode-{jobId}.md # Evaluation reports
     │
     └── sessions/                      # [Process records]
         ├── chat.json                  # Conversation history
         ├── code.json                  # Code session state
-        ├── plan-text/
-        │   └── plantext-{jobId}.md    # Per-task implementation plans
-        └── eval-code/
-            └── evalcode-{jobId}.md    # Evaluation reports
+        └── debug/
+            ├── plans/
+            │   └── plan-{jobId}.md    # Per-task implementation plans
+            ├── prompts/               # Prompt logs
+            └── logs/                  # Execution logs
 ```
 
 ---
@@ -97,7 +100,7 @@ Read the following files in order:
 3. **Check execution process**: `sessions/`
    - code.json: Task queue, completion status, timing, token usage
    - chat.json: LLM conversation, thinking, file creation records
-   - plan-text/plantext-{jobId}.md: Per-task implementation plans
+   - debug/plans/plan-{jobId}.md: Per-task implementation plans
 
 4. **Check generated code**: `codebase/`
    - Overall file structure
@@ -518,18 +521,18 @@ Path: ant-workspaces/{org}/{group}/{project}/features/{feature}/
 ### 8.1 Evaluation Report Location
 
 ```
-features/{feature}/sessions/eval-code/evalcode-{jobId}.md
+features/{feature}/outputs/evals/code/evalcode-{jobId}.md
 ```
 
 ### 8.2 Plan Text Location
 
 ```
-features/{feature}/sessions/plan-text/plantext-{jobId}.md
+features/{feature}/sessions/debug/plans/plan-{jobId}.md
 ```
 
 ### Naming Convention
 - **evalcode-**: Evaluation report prefix
-- **plantext-**: Plan text prefix
+- **plan-**: Plan text prefix (formerly plantext-)
 - **{jobId}**: `state.jobId` value from code.json
 
 ---

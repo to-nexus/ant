@@ -124,8 +124,25 @@ Observe **actual positioning** of child elements within container:
 | **Cross Axis** (alignItems) | ⚠️ **REQUIRED**: Row→where vertically? Column→where horizontally? |
 | **Edge Position** | With space-between, do items actually touch edges? |
 
-**When multiple cards/list items:**
-- Are cards arranged in **horizontal grid** or **vertical stack**?
+**⚠️ CRITICAL: Multiple Cards/Items Arrangement**
+
+**Observation checkpoint:**
+- Look at the **overall container** holding all cards
+- Are cards placed **side-by-side** (horizontal) or **stacked on top of each other** (vertical)?
+
+**Specification mapping:**
+
+| What you see | Correct spec | Wrong spec |
+|--------------|-------------|------------|
+| Cards stacked vertically | `flexDirection: "column"` OR `gridTemplateColumns: "1fr"` (1 column) | ❌ `gridTemplateColumns: "repeat(N, 1fr)"` where N = card count |
+| Cards side-by-side horizontally | `flexDirection: "row"` OR `gridTemplateColumns: "repeat(N, 1fr)"` (N columns) | ❌ `flexDirection: "column"` |
+
+**Constraint:**
+- Do NOT use `gridTemplateColumns: "repeat(N, 1fr)"` just because there are N cards
+- `repeat(N, 1fr)` in **columns** = N cards **horizontally** (side-by-side)
+- For vertical stack: Use `1fr` (single column) or `flexDirection: "column"`
+
+**After determining overall arrangement:**
 - If vertical stack → What's the **internal layout** of each card?
 - If internal is row → Is image on left or right? Does it alternate?
 

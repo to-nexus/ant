@@ -130,13 +130,20 @@ export class FeatureCrudService {
     await fs.promises.mkdir(path.join(featurePath, 'inputs/directives/learn'), { recursive: true });
     await fs.promises.mkdir(path.join(featurePath, 'inputs/sources'), { recursive: true });
     await fs.promises.mkdir(path.join(featurePath, 'outputs/design'), { recursive: true });
-    await fs.promises.mkdir(path.join(featurePath, 'outputs/reports'), { recursive: true });
+    
+    // ✅ Evaluations (평가 리포트 - 영구 보존 산출물)
+    await fs.promises.mkdir(path.join(featurePath, 'outputs/evals/prd'), { recursive: true });
+    await fs.promises.mkdir(path.join(featurePath, 'outputs/evals/ui-design'), { recursive: true });
+    await fs.promises.mkdir(path.join(featurePath, 'outputs/evals/system-design'), { recursive: true });
+    await fs.promises.mkdir(path.join(featurePath, 'outputs/evals/code'), { recursive: true });
+    
+    // ✅ Sessions (세션 상태)
     await fs.promises.mkdir(path.join(featurePath, 'sessions'), { recursive: true });
-    await fs.promises.mkdir(path.join(featurePath, 'sessions/eval-ui-design'), { recursive: true });
-    await fs.promises.mkdir(path.join(featurePath, 'sessions/eval-code'), { recursive: true });
-    await fs.promises.mkdir(path.join(featurePath, 'sessions/eval-system-design'), { recursive: true });
-    await fs.promises.mkdir(path.join(featurePath, 'sessions/log-prompt'), { recursive: true });
-    await fs.promises.mkdir(path.join(featurePath, 'sessions/plan-text'), { recursive: true });
+    
+    // ✅ Debug (디버깅 자료 - 일시적)
+    await fs.promises.mkdir(path.join(featurePath, 'sessions/debug/prompts'), { recursive: true });
+    await fs.promises.mkdir(path.join(featurePath, 'sessions/debug/plans'), { recursive: true });
+    await fs.promises.mkdir(path.join(featurePath, 'sessions/debug/logs'), { recursive: true });
 
     // Create inputs/sources templates (so users know what to fill)
     const sourcesDir = path.join(featurePath, 'inputs/sources');

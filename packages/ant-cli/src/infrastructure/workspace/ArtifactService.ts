@@ -5,7 +5,7 @@
  * - inputs/directives/: 작업 지시사항
  * - inputs/sources/: PRD, Figma 등 입력 자료
  * - outputs/design/: 설계 문서
- * - outputs/reports/: 실행 리포트
+ * - outputs/evals/: 평가 리포트
  * 
  * ✅ Hexagonal Architecture:
  * - FileSystemPort를 통한 파일 I/O (테스트 가능)
@@ -534,7 +534,7 @@ export class ArtifactService {
   }
 
   /**
-   * Write report file
+   * Write report file (실행 로그는 sessions/debug/logs로 이동)
    */
   static async writeReportFile(
     context: ProjectContext,
@@ -544,7 +544,7 @@ export class ArtifactService {
     fileSystem: FileSystemPort
   ): Promise<string> {
     const featurePathAbs = WorkspacePathResolver.resolveFeaturePath(context);
-    const reportDirAbs = path.join(featurePathAbs, "outputs/reports");
+    const reportDirAbs = path.join(featurePathAbs, "sessions/debug/logs");
     const reportDir = ArtifactService.toWorkspaceRelative(fileSystem, reportDirAbs);
     await fileSystem.createDirectory(reportDir);
     

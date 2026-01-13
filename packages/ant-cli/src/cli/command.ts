@@ -159,7 +159,7 @@ async function runArchitect(jobType: 'design' | 'code' | 'learn', inputPath: str
       featureDir = inputPath || process.cwd();
     }
     
-    const outputDir = path.join(featureDir, 'outputs', 'reports');
+    const outputDir = path.join(featureDir, 'sessions', 'debug', 'logs');
     console.log(`📂 [Command] Output directory: ${outputDir}`);
     
     // Start logging
