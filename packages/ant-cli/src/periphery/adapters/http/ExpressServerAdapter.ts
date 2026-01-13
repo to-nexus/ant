@@ -45,6 +45,7 @@ import { WorkspaceResolver, LocalWorkspaceResolver, CloudWorkspaceResolver } fro
 import { WorkspaceServiceAdapter } from '../../../infrastructure/workspace/WorkspaceServiceAdapter';
 import { WorkspaceServicePort } from '../../../core/ports/workspace';
 import { AuthService } from '../../../infrastructure/auth/AuthService';
+import { GoogleOIDCService } from '../../../infrastructure/auth/GoogleOIDCService';
 import { GitHubAuthService } from '../auth/GitHubAuthService';
 import { PortManager } from '../../../infrastructure/networking/PortManager';
 import { InMemoryPortRegistry } from '../../../infrastructure/networking/InMemoryPortRegistry';
@@ -75,6 +76,7 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
   private readonly workspaceService: WorkspaceServicePort;  // ✅ Multi-tenant workspace service
   private readonly workspaceResolver: WorkspaceResolver;  // ✅ Adapter for legacy services
   private readonly authService?: AuthService;
+  private readonly oidcService?: GoogleOIDCService;
   private readonly portManager: PortManager;  // ✅ Dynamic port allocation
   private readonly portRegistry: PortRegistryPort;  // ✅ Port mapping storage
   private readonly ideService: IDEService;  // ✅ IDE container management
@@ -487,6 +489,22 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     // Initialize AuthService for Cloud mode
     if (mode === 'cloud') {
       this.authService = new AuthService();
+      
+      // Initialize Google OIDC service if credentials are provided
+      const googleClientId = process.env.GOOGLE_CLIENT_ID;
+      const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+      const googleRedirectUri = process.env.GOOGLE_REDIRECT_URI || `${cloudUrl}/api/auth/google/callback`;
+      
+      if (googleClientId && googleClientSecret) {
+        this.oidcService = new GoogleOIDCService({
+          clientId: googleClientId,
+          clientSecret: googleClientSecret,
+          redirectUri: googleRedirectUri
+        });
+        logger.info('Google OIDC authentication enabled', { component: 'ExpressServerAdapter' });
+      } else {
+        logger.warn('Google OIDC not configured - set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET', { component: 'ExpressServerAdapter' });
+      }
     }
     
     logger.info(`Initialized in ${mode.toUpperCase()} mode`, { component: 'ExpressServerAdapter' }, {
@@ -494,7 +512,8 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       workspaceService: this.workspaceService.constructor.name,
       portManager: this.portManager.constructor.name,
       portRegistry: this.portRegistry.constructor.name,
-      ideService: this.ideService.constructor.name
+      ideService: this.ideService.constructor.name,
+      oidcEnabled: !!this.oidcService
     });
     
     // Initialize services
@@ -628,6 +647,24 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     // Cloud mode: Add authentication middleware
     if (this.mode === 'cloud' && this.authService) {
       this.app.use(async (req: Request, res: Response, next: NextFunction) => {
+        // ✅ Skip auth for localhost development (convenience)
+        const skipAuthForLocalhost = process.env.SKIP_AUTH_FOR_LOCALHOST === 'true';
+        const isLocalhost = req.hostname === 'localhost' || req.hostname === '127.0.0.1';
+        
+        if (skipAuthForLocalhost && isLocalhost) {
+          // Create a default dev user for localhost
+          req.user = {
+            id: 'dev',
+            email: 'dev@localhost',
+            organizationId: 'localhost'
+          };
+          req.organization = {
+            id: 'localhost',
+            name: 'localhost'
+          };
+          return next();
+        }
+        
         // Skip auth for public pages, auth endpoints, and metadata APIs
         const publicPaths = [
           '/api/health',
@@ -638,6 +675,8 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
           '/api/auth/signup',
           '/api/auth/signin',
           '/api/auth/signout',
+          '/api/auth/google',                 // ✅ Google OAuth start
+          '/api/auth/google/callback',        // ✅ Google OAuth callback
           '/api/internal/task-queue',        // ✅ Internal endpoint for child processes (has ANT_USER_EMAIL env var)
           '/api/internal/file-tree-update',  // ✅ Internal endpoint for file tree updates
           '/api/figma/oauth/authorize',      // ✅ Figma OAuth start (needs userContext from query)
@@ -765,7 +804,8 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     if (this.mode === 'cloud' && this.authService) {
       const authRoutes = createAuthRoutes({
         authService: this.authService,
-        workspaceResolver: this.workspaceResolver
+        workspaceResolver: this.workspaceResolver,
+        oidcService: this.oidcService
       });
       this.app.use('/api', authRoutes);
     }

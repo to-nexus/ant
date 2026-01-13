@@ -258,6 +258,21 @@ ANTHROPIC_API_KEY=sk-ant-api03-...
 | `AI_MODEL_NAME` | Specific model (optional) | `claude-sonnet-4-5` |
 | `CHROMA_URL` | ChromaDB URL (optional) | `http://localhost:8000` |
 
+**Google OIDC Authentication (Cloud Mode)**:
+
+For Google sign-in support, see [Google OIDC Setup Guide](./docs/GOOGLE_OIDC_SETUP.md).
+
+**Development (localhost)**: Authentication can be skipped for convenience
+```bash
+SKIP_AUTH_FOR_LOCALHOST=true  # Default dev user: dev@localhost
+```
+
+**Production**: Required environment variables
+- `GOOGLE_CLIENT_ID`: OAuth client ID from Google Cloud Console
+- `GOOGLE_CLIENT_SECRET`: OAuth client secret
+- `GOOGLE_REDIRECT_URI`: Callback URL (e.g., `https://ant.crosstoken.io/api/auth/google/callback`)
+- `SKIP_AUTH_FOR_LOCALHOST=false`: Enforce authentication
+
 #### Frontend (`ant-ui`)
 
 Create `packages/ant-ui/.env`:

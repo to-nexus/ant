@@ -1,330 +1,39 @@
 ## ui-spec.json Generation Guide
 
 ### Purpose
-Define **what** to build (visual & behavioral requirements) in a structured JSON format, not **how** to implement it.
+Define **what** to build (visual & behavioral requirements) in structured JSON, not **how** to implement it.
 
-### ⚠️ CRITICAL: SCOPE ENFORCEMENT
+---
 
-**🚨 READ YOUR TASK DESCRIPTION AND GENERATE ONLY THOSE SECTIONS! 🚨**
+## 🚨 SCOPE ENFORCEMENT
 
-1. **Check your task description** - it specifies exactly which UI sections to document
-2. **Generate ONLY those sections** - not more, not less
-3. **Other tasks handle other sections** - trust the task decomposition
-4. **Skip sections already documented** - check existing content if continuing
+**Generate ONLY the elements specified in your task description.**
+- Check your task → Generate those elements only (sections, components, or overlays)
+- Other tasks handle other elements
+- Skip elements already documented
 
-### PRD Integration (CRITICAL)
-**When to reference PRD**:
-- **Content text**: Extract actual text content for headings, CTAs, descriptions
-- **Feature requirements**: Understand what each component/section should accomplish
-- **Interaction requirements**: Identify expected user actions, validation rules
-- **Section purpose**: Clarify the intent behind visual elements
+---
 
-**Principles**:
-- **Visual + PRD = Complete Spec**: Screenshots show HOW it looks, PRD shows WHAT it does
-- **PRD for content, screenshots for styling**: Use PRD text verbatim, apply visual styles from screenshots
-- **Platform-neutral guidance**: Specify responsive behavior, not platform code
+## PRD Integration
+
+| Source | Use For |
+|--------|---------|
+| **Screenshot** | Visual styling, layout, spacing |
+| **PRD** | Text content, feature requirements, interactions |
+
+**Principle**: Screenshots show HOW it looks, PRD shows WHAT it does.
 
 ---
 
 ## JSON Structure
 
-ui-spec.json uses a structured JSON format that LLM can easily understand and developers can implement.
-
 ### Top-Level Keys
 
 ```json
 {
-  "_meta": {
-    "lastSection": 5,
-    "sectionPattern": "top-level"
-  },
+  "_meta": { "lastSection": 0 },
   "meta": {
-    "title": "Project Name UI Specification",
-    "version": "1.0",
-    "breakpoints": {
-      "mobile": { "min": 0, "max": 767 },
-      "tablet": { "min": 768, "max": 1279 },
-      "desktop": { "min": 1280, "max": 1919 },
-      "large": { "min": 1920 }
-    }
-  },
-  "layout": {
-    "container": {
-      "maxWidth": "1440px",
-      "padding": {
-        "mobile": "spacing.md",
-        "desktop": "spacing.2xl"
-      }
-    },
-    "spacing": {
-      "sectionGap": "spacing.5xl",
-      "componentGap": "spacing.xl"
-    }
-  },
-  "sections": {
-    // Each section specification goes here
-  }
-}
-```
-
-**Note**: `_meta.lastSection` counts the total number of UI sections defined in the spec.
-
-### Section Specification Format
-
-**Document what you OBSERVE in the screenshot. Use token references for all values.**
-
-```json
-{
-  "sections": {
-    "<section-id>": {
-      "layout": "full-width | constrained",
-      "background": "colors.bg.<observed-color>",
-      "padding": { "vertical": "spacing.<observed>" },
-      "header": {
-        "container": {
-          "display": "flex | block",
-          "flexDirection": "row | column",
-          "alignItems": "flex-start | center",
-          "justifyContent": "space-between | center",
-          "textAlign": "left | center"
-        },
-        "title": {
-          "text": "<observed text from screenshot>",
-          "typography": "typography.heading.<size>"
-        },
-        "description": {
-          "text": "<observed text from screenshot>",
-          "typography": "typography.body.<size>"
-        }
-      },
-      "content": {
-        "<element-name>": {
-          "layout": "grid | flex",
-          "columns": { "mobile": 1, "tablet": 2, "desktop": 3 },
-          "gap": "spacing.<observed>"
-        }
-      },
-      "responsive": {
-        "mobile": { /* observed mobile differences */ },
-        "tablet": { /* observed tablet differences */ }
-      }
-    }
-  }
-}
-```
-
-**Key principle**: Replace `<placeholders>` with what you OBSERVE in the screenshot.
-
----
-
-## 🚨 MANDATORY OUTPUT STRUCTURE
-
-**CRITICAL**: Your ui-spec.json MUST contain these top-level keys:
-
-```json
-{
-  "_meta": {
-    "lastSection": 0,
-    "sectionPattern": "top-level"
-  },
-  "meta": { /* Document metadata, breakpoints */ },
-  "layout": { /* Global layout settings */ },
-  "sections": { /* Section-by-section specifications */ },
-  "components": { /* Reusable component patterns (optional) */ },
-  "accessibility": { /* Keyboard navigation, ARIA requirements */ }
-}
-```
-
-**Note**: `_meta` is required for chapter tracking (unless last task for document).
-
-### 🚫 `sections` MUST be OBJECT format, NOT array!
-
-```json
-// ✅ CORRECT - Object format with section ID as key:
-{
-  "sections": {
-    "gnb": { "layout": "fixed" },
-    "hero": { "layout": "full-width" }
-  }
-}
-
-// ❌ WRONG - Array format (will break merge):
-{
-  "sections": [
-    { "id": "gnb", "layout": "fixed" },
-    { "id": "hero", "layout": "full-width" }
-  ]
-}
-```
-
-### Specifically PROHIBITED Content
-
-These are **ABSOLUTELY FORBIDDEN**:
-- ❌ Implementation code (React, Vue, CSS classes)
-- ❌ File paths (app/, components/, *.tsx)
-- ❌ Framework names (Next.js, Tailwind, etc.)
-- ❌ Testing checklists
-- ❌ Build configurations
-- ❌ Raw hex codes or pixel values (use token references!)
-- ❌ **Array format for `sections`** (use object with section ID as key!)
-
----
-
-## Core Principles
-
-### 1. Describe What You SEE (MOST IMPORTANT)
-
-**Critical Rule**:
-> "If you didn't see it in the reference image, don't write it."
-> "Document the EXACT layout you observe, not what you assume."
-
-**The screenshot is the source of truth. Describe what you SEE, not what you think should be there.**
-
-**🚨 SPATIAL RELATIONSHIP OBSERVATION (FUNDAMENTAL PRINCIPLE):**
-
-**Step 1: Container-Level Structure First**
-
-Before analyzing individual elements, determine the OVERALL container structure:
-- If major content blocks each span **full width** and stack vertically → Container is **COLUMN**
-- If major content blocks are **side-by-side** → Container is **ROW**
-
-**Step 2: For EVERY container**, observe and document:
-
-| Observation Point | Question to Answer |
-|-------------------|-------------------|
-| **Axis** | Are children arranged along horizontal axis (row) or vertical axis (column)? |
-| **Alignment** | How are children aligned? (start, center, end, stretch, baseline) |
-| **Distribution** | How is space distributed? (start, center, end, space-between, space-around) |
-| **Wrapping** | Do elements wrap to next line, or stay in single line? |
-| **Position** | Where is each element located within its container? (top-left, top-right, bottom-left, bottom-right, center) |
-
-**How to Observe:**
-1. Look at the **actual pixel positions** of elements in the screenshot
-2. If Element A and Element B are **side-by-side horizontally** → They are in a **row**
-3. If Element A is **above** Element B → They are in a **column**
-4. **Full-width elements stacked vertically = Column structure** (even if internal elements are row)
-5. Check where the **empty space** is distributed
-6. For positioned elements, observe **exact corner/edge placement** (top vs bottom, left vs right)
-
-**⚠️ Common Mistake:** A section header may use row layout internally (title left, description right), but the SECTION ITSELF may still be column if header, content, and footer stack vertically.
-
-**🔄 Item-Level Variation Principle:**
-If repeated elements are **visually different**, document the difference on EACH item.
-Ask: "If I hide the content, can I still distinguish item A from item B?" → If yes, document what makes them different.
-
-**📐 Proportional vs Fixed Principle:**
-Observe whether element sizes are ratio-based (→ `flex`, `%`) or pixel-fixed (→ `px`).
-
-**Do NOT assume based on:**
-- Element type (headers don't always stack vertically)
-- Background color (dark sections aren't different from light sections)
-- Common conventions (every design is unique)
-- Background image presence (does NOT imply overlay exists — only add `overlay` if you SEE a semi-transparent layer)
-
-**🔄 PATTERN CONSISTENCY PRINCIPLE:**
-
-> **"Visually identical structures MUST have identical specifications"**
-
-After analyzing all sections:
-1. **Identify repeating visual patterns** - Group sections/components with same structure
-2. **Verify specification consistency** - Same pattern → Same layout properties
-3. **Flag and resolve inconsistencies** - If two visually identical sections have different specs, re-observe the screenshot
-
-**Example:**
-```
-If you observe 3 sections with this visual pattern:
-  [Title on LEFT] ←→ [Description on RIGHT]
-
-Then ALL 3 sections MUST have:
-  flexDirection: "row", justifyContent: "space-between"
-
-NOT:
-  Section A: row ✅
-  Section B: row ✅  
-  Section C: column ❌ (inconsistent!)
-```
-
-### 2. Token-First
-
-**Rule**: Reference tokens from ui-tokens.json, not raw values.
-
-**Never write**:
-- ❌ `"color": "#00D9A3"`
-- ❌ `"padding": "32px"`
-
-**Always write**:
-- ✅ `"color": "colors.primary.green"`
-- ✅ `"padding": "spacing.xl"`
-
-### 3. Asset References
-
-**Rule**: Reference asset IDs from ui-assets.json. Specify size for elements that need it.
-
-```json
-{
-  "background": {
-    "asset": "bg-hero"
-    // "overlay": only if visually observed
-  },
-  "logo": {
-    "asset": "logo-header",
-    "width": 120,
-    "height": 32
-  },
-  "cardImage": {
-    "asset": "bg-ecosystem-ogf",
-    "containerSize": { "width": "100%", "height": "300px" }
-  }
-}
-```
-
-**🎯 Size Specification**
-
-| Element Type | What to specify |
-|--------------|-----------------|
-| Logo/Icon | `width` and `height` (pixels) |
-| Card/Container image | `containerSize` with explicit height |
-| Section background | Asset ID only (size = section size) |
-
----
-
-## Output Format
-
-{{#if lastSectionNumber}}
-**Continuation chapter**: Append additional sections to existing JSON.
-{{else}}
-**First chapter**: Create initial JSON structure with meta, layout, and first sections.
-{{/if}}
-
-### Example Output
-
-{{#if lastSectionNumber}}
-**Continuation task** - use `<append>` to add YOUR sections:
-
-```xml
-<append path="outputs/design/ui-spec.json">
-{
-  "_meta": { "lastSection": {{add lastSectionNumber 1}} },
-  "sections": {
-    "YOUR_SECTION_ID": {
-      "layout": "...",
-      "background": "colors.bg.xxx",
-      "content": { /* section content */ },
-      "responsive": { /* responsive rules */ }
-    }
-  }
-}
-</append>
-```
-{{else}}
-**First task** - use `<file>` to create the document:
-
-```xml
-<file path="outputs/design/ui-spec.json">
-{
-  "_meta": { "lastSection": 1, "sectionPattern": "top-level" },
-  "meta": {
-    "title": "Project UI Specification",
+    "title": "UI Specification",
     "breakpoints": {
       "mobile": { "max": 767 },
       "tablet": { "min": 768, "max": 1279 },
@@ -335,88 +44,260 @@ NOT:
     "container": { "maxWidth": "1440px" },
     "spacing": { "sectionGap": "spacing.5xl" }
   },
-  "sections": {
-    "YOUR_SECTION_ID": {
-      "layout": "...",
-      "content": { /* section content */ }
-    }
+  "sections": { /* page blocks */ },
+  "components": { /* reusable patterns */ },
+  "overlays": { /* floating elements */ }
+}
+```
+
+### Element Classification
+
+| If element... | Document in |
+|---------------|-------------|
+| Occupies fixed page position | `sections` |
+| Reusable across multiple places | `components` |
+| Floats above page (z-index) | `overlays` |
+
+### Element Format (Common Structure)
+
+```json
+{
+  "<element-id>": {
+    "layout": "<observed>",
+    "background": "colors.bg.<token>",
+    "container": {
+      "display": "flex | grid",
+      "flexDirection": "row | column",
+      "alignItems": "<observed>",
+      "justifyContent": "<observed>"
+    },
+    "content": { /* observed structure */ },
+    "states": { /* hover, active, focus, disabled */ },
+    "responsive": { /* breakpoint differences */ }
   }
+}
+```
+
+Apply this format to `sections`, `components`, and `overlays`.
+
+### 🚫 CRITICAL RULES
+
+1. **`sections`, `components`, `overlays` must be OBJECT, not array**
+2. **No framework names** (React, Vue, Next.js, Tailwind)
+3. **No file paths** (app/, components/, *.tsx)
+4. **No raw values** — use tokens (colors.*, spacing.*, typography.*)
+
+---
+
+## Observation Protocol
+
+> **Follow procedurally. Do not skip steps.**
+
+### Step 1: Container Structure (Primary)
+
+For each section/component, determine **overall container structure first**:
+
+**1. Determine Primary Direction**
+- Look at child elements
+- Arranged horizontally side-by-side? → `flexDirection: "row"`
+- Stacked vertically? → `flexDirection: "column"`
+
+**2. Identify Nested Structure**
+- Are there containers within containers?
+- If yes, **repeat Step 1 for each nested container**
+
+**General Principle:**
+```
+Analyze outer → inner (outside-in)
+Determine direction independently at each level
+Parent direction ≠ Child direction (independent!)
+```
+
+### Step 2: Child Arrangement
+
+Observe **actual positioning** of child elements within container:
+
+| Checkpoint | Question |
+|-----------|----------|
+| **Direction** | Horizontal (row) or vertical (column)? |
+| **Main Axis** (justifyContent) | How are children distributed along the main direction? |
+| **Cross Axis** (alignItems) | ⚠️ **REQUIRED**: Row→where vertically? Column→where horizontally? |
+| **Edge Position** | With space-between, do items actually touch edges? |
+
+**When multiple cards/list items:**
+- Are cards arranged in **horizontal grid** or **vertical stack**?
+- If vertical stack → What's the **internal layout** of each card?
+- If internal is row → Is image on left or right? Does it alternate?
+
+### Step 3: Element Details
+
+Record individual element properties:
+- Colors, typography, spacing → **use token references**
+- Images → objectFit (cover/contain/fill)
+- States → hover, active, focus
+- ⚠️ **gradient/overlay check**: Actually observed? If not, don't add
+
+---
+
+## Guardrails
+
+### 🚫 Do NOT Assume
+
+**Never assume based on:**
+- Element type (headers are not always column)
+- Background color (dark sections ≠ centered alignment)
+- Common conventions (not all cards are horizontal grids)
+- Background image presence → overlay presence (❌)
+
+### 🚫 Default-to-Nothing
+
+**If not observed, do NOT add:**
+- overlay / gradient
+- shadow / border
+- animation effects
+
+```json
+// ❌ WRONG - not observed but added
+"background": { "asset": "bg-hero", "gradient": {...} }
+
+// ✅ CORRECT - only what was observed
+"background": { "asset": "bg-hero" }
+```
+
+---
+
+## Consistency Rules
+
+### 🔄 Variation Principle
+
+If repeated elements are **visually different**, document each variation.
+
+Test: "Can you distinguish A from B with content hidden?" → If yes, record differences
+- Image position (left ↔ right)
+- Background color (different tokens)
+- Size ratio
+
+### ✅ Pattern Consistency
+
+> **Identical pattern → Identical spec**
+
+```
+Observed: 3 sections all have [Title LEFT | Description RIGHT]
+
+✅ All should have flexDirection: "row"
+❌ 2 have row, 1 has column (inconsistent!)
+```
+
+### 🎨 Color Uncertainty
+
+When exact color is uncertain, use description:
+- `"colorDescription": "light purple"` (uncertain)
+- `"color": "colors.bg.lightPurple"` (certain)
+
+---
+
+## Token-First
+
+**Never write raw values:**
+- ❌ `"color": "#00D9A3"`, `"padding": "32px"`
+
+**Always use tokens:**
+- ✅ `"color": "colors.primary.green"`, `"padding": "spacing.xl"`
+
+---
+
+## Asset References
+
+```json
+{
+  "background": { "asset": "<asset-id>" },
+  "logo": { "asset": "<asset-id>", "width": "<px>", "height": "<px>" },
+  "image": { "asset": "<asset-id>", "objectFit": "cover | contain | fill" }
+}
+```
+
+| Element | What to specify |
+|---------|-----------------|
+| Logo/Icon | `width`, `height` (pixels) |
+| Container image | `containerSize`, `objectFit` |
+| Section background | Asset ID only |
+
+---
+
+## Output Format
+
+{{#if lastSectionNumber}}
+**Continuation** — append to existing:
+
+```xml
+<append path="outputs/design/ui-spec.json">
+{
+  "_meta": { "lastSection": {{add lastSectionNumber 1}} },
+  "sections": { /* if task specifies sections */ },
+  "components": { /* if task specifies components */ },
+  "overlays": { /* if task specifies overlays */ }
+}
+</append>
+```
+{{else}}
+**First task** — create document:
+
+```xml
+<file path="outputs/design/ui-spec.json">
+{
+  "_meta": { "lastSection": 1 },
+  "meta": { "title": "UI Specification", "breakpoints": { /* ... */ } },
+  "layout": { "container": { "maxWidth": "1440px" } },
+  "sections": { /* page blocks */ },
+  "components": { /* reusable patterns */ },
+  "overlays": { /* floating elements */ }
 }
 </file>
 ```
 {{/if}}
 
-**Note**: Replace `YOUR_SECTION_ID` with the actual section from your task description (e.g., `gnb`, `hero`, `footer`). Use OBJECT format for `sections` (NOT array). The system automatically merges new sections.
+Include only the categories your task specifies. Omit empty categories.
 
 ---
 
 ## Quality Checklist
 
-Before finalizing, verify:
-
-- [ ] **Zero framework names** (no React, Vue, Next.js, Tailwind)
-- [ ] **Zero file paths** (no app/, components/, *.tsx)
-- [ ] **All values use tokens** (colors.*, spacing.*, typography.*)
-- [ ] **Valid JSON syntax** (proper braces, commas, quotes)
-- [ ] **Asset references valid** (match ui-assets.json IDs)
-- [ ] **Describes observations** (not assumptions)
-- [ ] **Element arrangement documented** (for each container: are children in row or column?)
-
-**🚨 PATTERN CONSISTENCY VERIFICATION (MANDATORY):**
-- [ ] **Spatial relationships observed**: For every container, explicitly determined axis (row/column), alignment, and distribution from screenshot
-- [ ] **Repeating patterns identified**: Grouped components/sections with identical visual structure
-- [ ] **Specification consistency verified**: Same visual pattern → Same layout properties throughout the document
-
-**🔄 REPEATING ELEMENTS:**
-- [ ] **Item-level variations**: Different properties per item → documented on each item
-- [ ] **Sizing type identified**: Ratio-based (`flex`, `%`) vs pixel-fixed (`px`)
+- [ ] Only specified elements documented
+- [ ] All values use tokens
+- [ ] `sections`, `components`, `overlays` are object format (not array)
+- [ ] Spatial relationships observed for every container
+- [ ] Item-level variations documented
+- [ ] No assumed properties (overlay, gradient, shadow)
+- [ ] States (hover, active, focus) documented where applicable
 
 ---
 
-## 🎯 Layered Element Relationships
+## Layered Elements
 
-### Fixed/Sticky Header with Full-Viewport Sections
+### Fixed Header + Full-Viewport Section
 
-When a page has a fixed header AND a full-viewport section (hero, banner, etc.):
+Observe and document:
+- Is section BEHIND or BELOW header?
+- Header background: transparent or opaque?
 
-**Observation principle**: Determine if the section is BEHIND or BELOW the header by observing:
-1. Header background opacity (transparent vs opaque)
-2. Section content position relative to viewport top
-3. Whether section content appears to extend behind header area
-
-**Document the relationship explicitly:**
 ```json
 {
-  "header": {
-    "layout": "fixed",
-    "zIndex": 1000,
-    "background": "transparent | opaque"
-  },
-  "heroSection": {
-    "startPosition": "viewport-top | below-header",
-    "contentOffset": "header-height | none"
-  }
+  "header": { "layout": "fixed", "background": "transparent | opaque" },
+  "heroSection": { "startPosition": "viewport-top | below-header" }
 }
 ```
 
-### Element Position Within Containers
+### Positioned Elements
 
-**Principle**: Always observe and document the EXACT visual position of elements within their container.
-
-For each positioned element, ask:
-- Which **corner or edge** is it anchored to? (top-left, bottom-right, center, etc.)
-- Is it **inside a container** or **floating on page**?
-
-**Document positions explicitly** - don't assume based on element type. A "back to top" button could be anywhere; observe where it actually IS in the screenshot.
+For each positioned element, observe:
+- Which corner/edge is it anchored to?
+- Is it inside container or floating on page?
 
 ---
 
 ## Workflow
 
-1. **Load References**: Use `list_reference_images` and `read_reference_image`
-2. **Analyze Visually**: Study layout, spacing, colors, typography
-3. **Consult Context**: Review `ui-tokens.json` and `ui-assets.json` in prompt
-4. **Document Observations**: Write WHAT you see in JSON structure
-5. **Verify**: Run through quality checklist
-
-**Critical**: After discovering images, you MUST load and analyze them before writing the spec.
+1. **Load references**: `list_reference_images`, `read_reference_image`
+2. **Observe**: Study layout, spacing, colors, typography
+3. **Document**: Write what you SEE in JSON
+4. **Verify**: Run quality checklist

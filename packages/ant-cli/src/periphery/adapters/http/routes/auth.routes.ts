@@ -2,19 +2,133 @@ import { Router, Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import { AuthService } from '../../../../infrastructure/auth/AuthService';
+import { GoogleOIDCService, OIDCUser } from '../../../../infrastructure/auth/GoogleOIDCService';
 import { WorkspaceResolver } from '../../../../infrastructure/workspace/WorkspaceResolver';
 
 /**
  * Authentication routes for Cloud Mode
  * 
- * Handles sign up (workspace creation) and sign in (validation)
+ * Handles:
+ * - Legacy email-based authentication (sign up/in)
+ * - Google OIDC authentication flow
  */
 export function createAuthRoutes(deps: {
   authService: AuthService;
   workspaceResolver: WorkspaceResolver;
+  oidcService?: GoogleOIDCService;
 }): Router {
   const router = Router();
-  const { authService, workspaceResolver } = deps;
+  const { authService, workspaceResolver, oidcService } = deps;
+  
+  // ========================================
+  // Google OIDC Routes
+  // ========================================
+  
+  /**
+   * Initiate Google OAuth2 flow
+   * GET /api/auth/google
+   */
+  router.get('/auth/google', (req: Request, res: Response) => {
+    if (!oidcService) {
+      return res.status(503).json({
+        error: 'Google authentication not configured',
+        message: 'Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables'
+      });
+    }
+    
+    try {
+      const authUrl = oidcService.getAuthorizationUrl();
+      
+      // Redirect user to Google sign-in page
+      res.redirect(authUrl);
+    } catch (error: any) {
+      console.error('[Auth] Google OAuth error:', error);
+      return res.status(500).json({
+        error: 'Failed to initiate Google authentication',
+        message: error.message
+      });
+    }
+  });
+  
+  /**
+   * Google OAuth2 callback
+   * GET /api/auth/google/callback
+   */
+  router.get('/auth/google/callback', async (req: Request, res: Response) => {
+    if (!oidcService) {
+      return res.status(503).json({
+        error: 'Google authentication not configured'
+      });
+    }
+    
+    const { code, error } = req.query;
+    
+    // Handle OAuth errors
+    if (error) {
+      console.error('[Auth] Google OAuth error:', error);
+      const frontendUrl = process.env.FRONTEND_URL || '';
+      return res.redirect(`${frontendUrl}/?error=${encodeURIComponent(error as string)}`);
+    }
+    
+    if (!code || typeof code !== 'string') {
+      const frontendUrl = process.env.FRONTEND_URL || '';
+      return res.redirect(`${frontendUrl}/?error=no_code`);
+    }
+    
+    try {
+      // Exchange code for user info
+      const oidcUser: OIDCUser = await oidcService.authenticateWithCode(code);
+      
+      // Verify email is verified
+      if (!oidcUser.emailVerified) {
+        const frontendUrl = process.env.FRONTEND_URL || '';
+        return res.redirect(`${frontendUrl}/?error=email_not_verified`);
+      }
+      
+      // Extract organization from email domain
+      const [username, domain] = oidcUser.email.split('@');
+      
+      // Get workspace path
+      const workspacePath = workspaceResolver.getWorkspacePath({
+        userId: username,
+        organizationId: domain,
+        workspacePath: ''
+      });
+      
+      // Check if workspace exists (sign in vs sign up)
+      let isNewUser = false;
+      try {
+        await fs.promises.access(workspacePath);
+      } catch {
+        // Create workspace for new user
+        await fs.promises.mkdir(workspacePath, { recursive: true });
+        isNewUser = true;
+        console.log(`[Auth] Created workspace for ${oidcUser.email} at ${workspacePath}`);
+      }
+      
+      // Redirect to frontend with user info
+      // Frontend will store this in localStorage
+      const userData = encodeURIComponent(JSON.stringify({
+        email: oidcUser.email,
+        name: oidcUser.name,
+        picture: oidcUser.picture,
+        organization: domain,
+        isNewUser
+      }));
+      
+      // Get frontend URL from environment or use same origin
+      const frontendUrl = process.env.FRONTEND_URL || '';
+      res.redirect(`${frontendUrl}/?auth=success&user=${userData}`);
+    } catch (error: any) {
+      console.error('[Auth] Google callback error:', error);
+      const frontendUrl = process.env.FRONTEND_URL || '';
+      return res.redirect(`${frontendUrl}/?error=${encodeURIComponent(error.message)}`);
+    }
+  });
+  
+  // ========================================
+  // Legacy Email-based Routes
+  // ========================================
   
   /**
    * Sign Up - Create user workspace
@@ -173,4 +287,3 @@ export function createAuthRoutes(deps: {
   
   return router;
 }
-

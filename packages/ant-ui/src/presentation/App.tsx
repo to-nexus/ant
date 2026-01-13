@@ -22,6 +22,39 @@ function App() {
   // ✅ Route handling: Track current path
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
   
+  // ✅ Handle Google OAuth callback
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const authStatus = urlParams.get('auth');
+    const userDataParam = urlParams.get('user');
+    const errorParam = urlParams.get('error');
+    
+    if (authStatus === 'success' && userDataParam) {
+      try {
+        const userData = JSON.parse(decodeURIComponent(userDataParam));
+        const setUser = useStore.getState().setUser;
+        
+        // Store user in global state
+        setUser(userData.email, userData.organization);
+        
+        // Load projects after authentication
+        const fetchProjects = useStore.getState().fetchProjects;
+        fetchProjects();
+        
+        // Show success notification
+        console.log('[Auth] Successfully signed in with Google:', userData.email);
+        
+        // Clean up URL
+        window.history.replaceState({}, '', '/');
+      } catch (error) {
+        console.error('[Auth] Failed to parse OAuth callback data:', error);
+      }
+    } else if (errorParam) {
+      console.error('[Auth] OAuth error:', errorParam);
+      // TODO: Show error notification to user
+    }
+  }, []);
+  
   useEffect(() => {
     const handlePopState = () => {
       setCurrentPath(window.location.pathname);
