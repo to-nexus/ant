@@ -39,6 +39,7 @@ import {
   createApiRoutes  // ✅ NEW: Unified API routes
 } from './routes';
 import { createDevServerProxyMiddleware } from './middleware/devServerProxy';
+import { createIDEProxyMiddleware } from './middleware/ideProxy';
 import { FileJobPrerequisitesAdapter } from '../prerequisites/FileJobPrerequisitesAdapter';
 import { WorkspaceResolver, LocalWorkspaceResolver, CloudWorkspaceResolver } from '../../../infrastructure/workspace/WorkspaceResolver';
 import { WorkspaceServiceAdapter } from '../../../infrastructure/workspace/WorkspaceServiceAdapter';
@@ -613,7 +614,15 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
       }
     }));
 
-    // Body parsers for Ant platform APIs (must come AFTER /dev proxy)
+    // ✅ IDE Proxy Middleware (handles /ide/:serverKey requests)
+    // Routes to cloud IDE containers (code-server, openvscode-server)
+    // serverKey format: tenantId:userId:projectId (project-level, no feature distinction)
+    this.app.use(createIDEProxyMiddleware({
+      portRegistry: this.portRegistry,
+      pathPrefix: '/ide'
+    }));
+
+    // Body parsers for Ant platform APIs (must come AFTER /dev and /ide proxies)
     this.app.use(express.json({ limit: '50mb' }));
     
     // Cloud mode: Add authentication middleware

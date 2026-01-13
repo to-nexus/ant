@@ -249,8 +249,8 @@ export class IDEService {
     
     logger.info(`Starting IDE`, { component: 'IDEService', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature }, { workspacePath });
     
-    // Allocate port
-    const port = await this.portManager.allocate();
+    // Allocate port (from IDE port range: 32500-35000)
+    const port = await this.portManager.allocate('ide');
     logger.debug(`IDE port allocated`, { component: 'IDEService', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature }, { port });
     
     // ✅ Always project mode (requested): /{projectId}
