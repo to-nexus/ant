@@ -37,7 +37,8 @@
   - Design Job → `ui-spec.json`, `ui-tokens.json`, `ui-assets.json`, `system-design.md`
   - Code Job → 실제 코드베이스
 - **평가 대상**: PRD 내용의 완전성, 명확성, 구조화 정도
-- **평가 위치**: `outputs/evals/prd/evalprd-{jobId}.md`
+- **평가 위치**: `outputs/evals/prd/evalprd-{timestamp}.md`
+  - `{timestamp}`: `YYYYMMDD-HHMMSS` 형식 (평가 시점)
 
 ### 파일 구조
 
@@ -56,7 +57,7 @@ ant-workspaces/{org}/{group}/{project}/
     │   │   └── ui-assets.json         # 에셋 매핑
     │   └── evals/                     # 평가 리포트
     │       └── prd/                   # PRD 평가 리포트
-    │           └── evalprd-{jobId}.md
+    │           └── evalprd-{timestamp}.md
     │
     └── sessions/                      # [Process records]
         ├── design.json                # Design Job 세션

@@ -262,13 +262,33 @@ For UI sections with parent-child hierarchy:
 1. Create child component (e.g., `XCard`)
 2. Create parent section component (e.g., `X`) that uses children
 3. Import parent in entry point
-4. Replace any placeholder with actual component
+4. **🚨 CRITICAL: Replace hardcoded/inline code with component**
 
-**Verification:**
-- [ ] Child component created
-- [ ] Parent component created and uses children
-- [ ] Entry point imports and renders parent
-- [ ] No placeholder comments remain for this section
+**⚠️ COMPONENT REPLACEMENT IS MANDATORY**
+
+Creating a component file is NOT enough. You MUST:
+
+```tsx
+// ❌ TASK FAILURE: Component exists but page still has inline code
+// components/Hero.tsx exists, BUT:
+// app/page.tsx:
+<section id="hero">
+  <h1>Hardcoded Title</h1>  // ← Still inline! Component not used!
+</section>
+
+// ✅ SUCCESS: Component created AND replaces inline code
+// app/page.tsx:
+import Hero from '@/components/Hero';
+<Hero />  // ← Component used, inline code removed
+```
+
+**Verification Checklist:**
+- [ ] Component file created
+- [ ] Component imported in entry point (page.tsx, App.tsx, etc.)
+- [ ] **Inline/hardcoded section REPLACED with component tag**
+- [ ] No duplicate code (inline + component both existing)
+
+**🚨 A component that exists but is never imported/rendered = TASK FAILURE**
 
 > **Note:** For framework-specific patterns (React, Vue, etc.), see environment-specific rules.
 

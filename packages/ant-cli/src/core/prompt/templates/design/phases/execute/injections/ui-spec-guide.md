@@ -154,6 +154,33 @@ Record individual element properties:
 - States → hover, active, focus
 - ⚠️ **gradient/overlay check**: Actually observed? If not, don't add
 
+### ⚠️ CRITICAL: Element Order in Cards/Containers
+
+**When a container has multiple child elements, specify their order explicitly.**
+
+Use `contentOrder` array to define visual sequence (top-to-bottom or left-to-right):
+
+```json
+"cardStyle": {
+  "flexDirection": "column",
+  "contentOrder": ["icon", "label"],  // icon FIRST, label SECOND
+  // ... other properties
+}
+```
+
+**Observation rule:**
+1. Look at the card/container in screenshot
+2. Which element appears FIRST (top or left)?
+3. Document in `contentOrder` array in that sequence
+
+| Visual Order | contentOrder |
+|--------------|--------------|
+| Icon on top, text below | `["icon", "label"]` |
+| Text on top, icon below | `["label", "icon"]` |
+| Image left, text right | `["image", "content"]` |
+
+**Constraint:** Never leave order ambiguous. Code Job cannot guess visual sequence.
+
 ---
 
 ## Guardrails
@@ -238,6 +265,20 @@ When exact color is uncertain, use description:
 | Logo/Icon | `width`, `height` (pixels) |
 | Container image | `containerSize`, `objectFit` |
 | Section background | Asset ID only |
+
+### ⚠️ Image Sizing: Relative vs Fixed
+
+**Observation rule:** Does the image fill its container or have fixed dimensions?
+
+| Observation | Correct Spec |
+|-------------|--------------|
+| Image fills container width | `width: "100%"` |
+| Image has fixed size regardless of container | `width: "600px"` (exact px) |
+| Image scales with section | `width: "100%", objectFit: "cover"` |
+
+**Constraint:** Do NOT default to fixed pixels. Ask:
+- Does image scale when viewport changes? → `"100%"`
+- Does image stay same size? → Fixed `"Npx"`
 
 ---
 
