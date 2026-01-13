@@ -208,10 +208,18 @@ Before analyzing individual elements, determine the OVERALL container structure:
 
 **⚠️ Common Mistake:** A section header may use row layout internally (title left, description right), but the SECTION ITSELF may still be column if header, content, and footer stack vertically.
 
+**🔄 Item-Level Variation Principle:**
+If repeated elements are **visually different**, document the difference on EACH item.
+Ask: "If I hide the content, can I still distinguish item A from item B?" → If yes, document what makes them different.
+
+**📐 Proportional vs Fixed Principle:**
+Observe whether element sizes are ratio-based (→ `flex`, `%`) or pixel-fixed (→ `px`).
+
 **Do NOT assume based on:**
 - Element type (headers don't always stack vertically)
 - Background color (dark sections aren't different from light sections)
 - Common conventions (every design is unique)
+- Background image presence (does NOT imply overlay exists — only add `overlay` if you SEE a semi-transparent layer)
 
 **🔄 PATTERN CONSISTENCY PRINCIPLE:**
 
@@ -250,45 +258,33 @@ NOT:
 
 ### 3. Asset References
 
-**Rule**: Reference asset IDs from ui-assets.json AND specify rendering dimensions.
+**Rule**: Reference asset IDs from ui-assets.json. Specify size for elements that need it.
 
 ```json
 {
   "background": {
-    "asset": "bg-hero",
-    "overlay": "colors.overlay.gradientDark",
-    "rendering": "css-background"
+    "asset": "bg-hero"
+    // "overlay": only if visually observed
   },
   "logo": {
     "asset": "logo-header",
     "width": 120,
     "height": 32
   },
-  "cardBackground": {
+  "cardImage": {
     "asset": "bg-ecosystem-ogf",
-    "rendering": "fill",
-    "containerSize": {
-      "width": "100%",
-      "height": "300px"
-    }
+    "containerSize": { "width": "100%", "height": "300px" }
   }
 }
 ```
 
-**🎯 Image Rendering Specification (CRITICAL)**
+**🎯 Size Specification**
 
-When referencing image assets in ui-spec.json, you MUST specify how the image should be rendered:
-
-| Element Type | Rendering Info Required |
-|--------------|------------------------|
-| Logo/Icon | `width` and `height` in pixels |
-| Card background | `rendering: "fill"` + `containerSize` with explicit height |
-| Section background | `rendering: "css-background"` |
-
-**Why this matters:**
-- Code Job cannot determine image sizes from screenshots
-- Missing size info → Code Job guesses → Often renders at 0x0 (invisible)
-- Explicit rendering specs enable correct implementation
+| Element Type | What to specify |
+|--------------|-----------------|
+| Logo/Icon | `width` and `height` (pixels) |
+| Card/Container image | `containerSize` with explicit height |
+| Section background | Asset ID only (size = section size) |
 
 ---
 
@@ -370,6 +366,10 @@ Before finalizing, verify:
 - [ ] **Spatial relationships observed**: For every container, explicitly determined axis (row/column), alignment, and distribution from screenshot
 - [ ] **Repeating patterns identified**: Grouped components/sections with identical visual structure
 - [ ] **Specification consistency verified**: Same visual pattern → Same layout properties throughout the document
+
+**🔄 REPEATING ELEMENTS:**
+- [ ] **Item-level variations**: Different properties per item → documented on each item
+- [ ] **Sizing type identified**: Ratio-based (`flex`, `%`) vs pixel-fixed (`px`)
 
 ---
 

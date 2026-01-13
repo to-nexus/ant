@@ -14,6 +14,7 @@
  * - confirm-cancel: OK and Cancel buttons
  */
 
+import { useRef, useEffect } from 'react';
 import { Modal } from './Modal';
 import { CheckCircle, AlertCircle, XCircle, Info } from 'lucide-react';
 
@@ -76,6 +77,18 @@ export function AlertModal({
 }: AlertModalProps) {
   const styles = TYPE_STYLES[type];
   const Icon = styles.icon;
+  const confirmButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Auto-focus confirm button when modal opens
+  useEffect(() => {
+    if (isOpen && confirmButtonRef.current) {
+      // Small delay to ensure modal is fully rendered
+      const timer = setTimeout(() => {
+        confirmButtonRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
 
   const handleConfirm = async () => {
     if (onConfirm) {
@@ -127,6 +140,7 @@ export function AlertModal({
             </button>
           )}
           <button
+            ref={confirmButtonRef}
             onClick={handleConfirm}
             className={`px-4 py-2 text-sm font-medium text-white rounded-md 
                        focus:outline-none focus:ring-2 focus:ring-offset-2 
