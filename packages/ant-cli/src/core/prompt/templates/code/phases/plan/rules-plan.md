@@ -210,9 +210,10 @@ From directory tree:
 - If none found: "✓ No assets in ui-assets.json for this section"
 
 #### 3. 📐 LAYOUT & COMPONENT SPECS
-- Extract layout structure from ui-spec.json (grid/flex, responsive breakpoints)
-- List each component with visual properties, typography, interactive states
+- Extract layout intentions from ui-spec.json (arrangement, positioning, visual behaviors, responsive changes)
+- List each component with visual properties, typography, interaction states
 - Note design token references
+- Interpret design intentions and decide implementation approach
 
 #### 4. 📋 IMPLEMENTATION GUIDE (MANDATORY - DO NOT SKIP)
 

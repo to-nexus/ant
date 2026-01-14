@@ -39,8 +39,11 @@ Promise.all([
   fs.readFile(join(codeBaseInjectionsPath, "tool-calling-rules-compact.md"), "utf8")
     .then(content => Handlebars.registerPartial("code/base/injections/tool-calling-rules-compact", content))
     .catch(() => {}),
-  fs.readFile(join(codeBaseInjectionsPath, "design-document-guide.md"), "utf8")
-    .then(content => Handlebars.registerPartial("code/base/injections/design-document-guide", content))
+  fs.readFile(join(codeBaseInjectionsPath, "system-design-guide.md"), "utf8")
+    .then(content => Handlebars.registerPartial("code/base/injections/system-design-guide", content))
+    .catch(() => {}),
+  fs.readFile(join(codeBaseInjectionsPath, "ui-design-guide.md"), "utf8")
+    .then(content => Handlebars.registerPartial("code/base/injections/ui-design-guide", content))
     .catch(() => {}),
   // ✅ Code job specific injections (RAG results)
   fs.readFile(join(codeBaseInjectionsPath, "retrieved-code.md"), "utf8")

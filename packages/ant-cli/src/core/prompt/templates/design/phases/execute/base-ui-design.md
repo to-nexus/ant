@@ -63,14 +63,14 @@ For EVERY container with multiple child elements, observe and document the **spa
 
 | What to Observe | How to Determine |
 |-----------------|------------------|
-| **Axis** | Are children side-by-side (row) or stacked (column)? |
-| **Alignment** | Where do children sit on the cross-axis? (start, center, end) |
-| **Distribution** | How is space between children distributed? |
+| **Direction** | Are children side-by-side or stacked vertically? |
+| **Alignment** | Where do children sit relative to each other? |
+| **Spacing** | How is space distributed between/around elements? |
 
 **Observation Method:**
 1. Look at the **actual pixel positions** in the screenshot
-2. If Element A and Element B are **horizontally adjacent** → Row
-3. If Element A is **above** Element B → Column
+2. If Element A and Element B are **horizontally adjacent** → side-by-side
+3. If Element A is **above** Element B → stacked
 4. Check where **empty space** appears between/around elements
 
 **Do NOT assume based on:**

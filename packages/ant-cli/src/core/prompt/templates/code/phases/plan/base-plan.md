@@ -175,31 +175,17 @@ Speculation without empirical validation is insufficient.
 
 {{designDoc}}
 
+{{> code/base/injections/system-design-guide}}
+
 ════════════════════════════════════════════════════════════════════════════════
 {{/if}}
 
 {{#if hasUiDoc}}
 ════════════════════════════════════════════════════════════════════════════════
-## 🎨 UI SPECIFICATION (HIGHEST PRIORITY FOR UI IMPLEMENTATION)
+## 🎨 UI SPECIFICATION
 ════════════════════════════════════════════════════════════════════════════════
 
-### ⚠️ UI IMPLEMENTATION PRIORITY RULE
-
-**When implementing UI components, ui-spec takes precedence over system-design and PRD.**
-
-| Aspect | Priority Source | Rationale |
-|--------|-----------------|-----------|
-| Layout (grid, flex, spacing) | **ui-spec** | Exact pixel values |
-| Colors, typography | **ui-tokens** | Design system tokens |
-| Animation/transition | **ui-spec** | Visual timing details |
-| Asset paths | **ui-assets** | File mappings |
-| Component responsibility (WHAT) | system-design | Architecture only |
-| Interaction implementation (HOW) | **ui-spec** | Visual execution |
-
-**Conflict Resolution:**
-- ui-spec says "flip animation" + system-design says "hover reveals" → **Implement flip**
-- ui-spec says "3 columns" + system-design says "grid layout" → **Use 3 columns**
-- ui-spec has value + PRD has different value → **ui-spec wins**
+{{> code/base/injections/ui-design-guide}}
 
 ────────────────────────────────────────────────────────────────────────────────
 

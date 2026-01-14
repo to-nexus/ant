@@ -126,7 +126,13 @@ Output `<done>true</done>` when complete.
 
 {{designDoc}}
 
-{{> code/base/injections/design-document-guide}}
+{{#if designDoc}}
+{{> code/base/injections/system-design-guide}}
+{{/if}}
+
+{{#if hasUiDoc}}
+{{> code/base/injections/ui-design-guide}}
+{{/if}}
 
 ════════════════════════════════════════════════════════════════════════════════
 {{/if}}

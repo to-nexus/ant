@@ -2,8 +2,30 @@
 
 ## 개요
 
-IDEService는 **유저별 독립된 code-server(VSCode) 컨테이너**를 Docker로 관리합니다.
-각 사용자는 완전히 격리된 개발 환경을 가지며, 리소스 제한이 적용됩니다.
+IDEService는 **프로젝트별 독립된 VSCode 컨테이너**를 Docker로 관리합니다.
+각 사용자-프로젝트 조합마다 완전히 격리된 개발 환경을 가지며, 리소스 제한이 적용됩니다.
+
+### 핵심 특징
+
+- **프로젝트별 독립 IDE**: 각 프로젝트마다 별도 IDE 컨테이너 실행
+- **동적 포트 할당**: 40000-49999 범위 자동 할당
+- **프록시 접근**: `/ide/:serverKey/*` - 프로젝트별 독립 URL
+- **완전 격리**: Docker 컨테이너 기반 프로세스/파일시스템/네트워크 격리
+- **리소스 제한**: 컨테이너당 2GB RAM, 2 CPU cores
+- **자동 정리**: 30분 미사용 시 자동 종료
+
+### 프록시 아키텍처
+
+```
+브라우저
+  ↓ https://ant-server/ide/nexus:probe:my-app/
+Express IDEProxy
+  ↓ PortRegistry 조회: nexus:probe:my-app → 40001
+  ↓ WebSocket 프록시 (터미널, LSP)
+http://localhost:40001 (openvscode-server 컨테이너)
+```
+
+**중요**: 모든 IDE 접근은 프록시(`/ide/:serverKey/*`)를 통해서만 가능합니다. 내부 포트(40000-49999)는 외부에서 직접 접근 불가.
 
 ## ✅ 단계적 적용/검증 순서 (Side-effect 최소화)
 
@@ -43,27 +65,31 @@ const key = `acme-corp:alice:todo-app`;
 ```typescript
 // Docker 컨테이너 생성
 const container = await docker.createContainer({
-  Image: 'codercom/code-server:latest',
+  Image: 'gitpod/openvscode-server:latest',  // ANT_IDE_IMAGE 환경변수로 설정 가능
   
   // ✅ 환경변수 격리 (각 컨테이너마다 독립)
   Env: [
     `USER_ID=${userContext.userId}`,
     `ORG_ID=${userContext.organizationId}`,
     `PROJECT_ID=${projectId}`,
-    'PASSWORD=temp123'  // 컨테이너별 비밀번호
+    `FEATURE=${feature}`,
+    `DEFAULT_WORKSPACE=/${projectId}`,  // IDE가 열릴 때 기본 워크스페이스
+    // NOTE: openvscode-server는 비밀번호 불필요
   ],
   
   // ✅ 워크스페이스 마운트 (컨테이너 내부로)
   HostConfig: {
-    Binds: [`${workspacePath}:/home/coder/project`],
-    // 예: /workspaces/acme-corp/alice/todo-app → /home/coder/project
-    
+    Binds: [
+      `${workspacePath}:/${projectId}:rw`,           // 프로젝트 코드
+      `${ideHomePath}:/home/openvscode:rw`,         // IDE 설정/확장 영속화
+    ],
+    PortBindings: {
+      '3000/tcp': [{ HostPort: port.toString() }]  // 40000-49999 범위
+    },
     // ✅ 리소스 제한
     Memory: 2 * 1024 * 1024 * 1024,  // 2GB RAM
     NanoCpus: 2 * 1000000000,        // 2 CPU cores
   },
-  
-  WorkingDir: '/home/coder/project'
 });
 ```
 
@@ -82,12 +108,13 @@ const container = await docker.createContainer({
 await ideService.startIDE(userContext, projectId, workspacePath);
 
 // 플로우:
-// 1. PortManager에서 포트 할당 (예: 31001)
+// 1. PortManager에서 포트 할당 (예: 40001, 범위: 40000-49999)
 // 2. Docker 컨테이너 생성
-//    - 워크스페이스 마운트: {workspacePath} → /home/coder/project
-//    - 포트 바인딩: 호스트 31001 → 컨테이너 8080
+//    - 워크스페이스 마운트: {workspacePath} → /{projectId}
+//    - 포트 바인딩: 호스트 40001 → 컨테이너 3000 (openvscode-server)
 // 3. 컨테이너 시작
-// 4. IDEInstance 맵에 저장
+// 4. PortRegistry에 등록: nexus:probe:todo-app → 40001
+// 5. IDEInstance 맵에 저장
 ```
 
 **마운트 시점**: `container.start()` 호출 시 즉시 마운트
@@ -221,9 +248,14 @@ packages/ant-cli/src/
       ├── ide/
       │   └── IDEService.ts              # IDE 컨테이너 관리
       │
-      └── http/routes/
-          ├── cloud-ide.routes.ts         # Cloud IDE API (Docker)
-          └── ide.routes.ts               # Local IDE API (로컬 앱 실행)
+      └── http/
+          ├── middleware/
+          │   ├── ideProxy.ts            # /ide/:serverKey 프록시 (핵심)
+          │   └── baseProxy.ts           # 공통 프록시 로직
+          │
+          └── routes/
+              ├── cloud-ide.routes.ts    # Cloud IDE API (Docker)
+              └── ide.routes.ts          # Local IDE API (로컬 앱 실행)
 ```
 
 ## API 사용 예시
@@ -243,20 +275,28 @@ POST /api/cloud-ide/start
 {
   "success": true,
   "instance": {
-    "url": "http://localhost:31001",
-    "port": 31001,
-    "status": "running"
+    "url": "/ide/acme-corp:alice:todo-app",   # 프록시 URL
+    "directUrl": "http://localhost:40001",     # 직접 URL (개발용)
+    "port": 40001,
+    "status": "running",
+    "workspacePath": "/todo-app"               # Docker 내부 경로
   }
 }
 ```
 
 ### IDE 접근
 ```bash
-# 브라우저에서 접근
-http://localhost:31001
+# ✅ 프록시 경로로 접근 (운영 권장)
+https://ant-server/ide/acme-corp:alice:todo-app/
+https://ant-server/ide/acme-corp:alice:todo-app/?folder=/todo-app
 
-# 또는 프록시 경로 (구현 예정)
-http://localhost:3000/ide/acme-corp:alice:todo-app
+# serverKey 형식: tenantId:userId:projectId (3개 파트)
+# 예시:
+#   /ide/nexus:probe:my-app/          → 프로젝트 my-app의 IDE
+#   /ide/nexus:probe:other-project/   → 프로젝트 other-project의 IDE
+
+# ⚠️ 직접 포트 접근 (개발용, 운영 환경에서는 차단)
+http://localhost:40001
 ```
 
 ### IDE 중지
@@ -283,11 +323,20 @@ GET /api/cloud-ide/list
     {
       "tenantId": "acme-corp:alice",
       "projectId": "todo-app",
-      "port": 31001,
-      "url": "http://localhost:31001",
+      "port": 40001,
+      "url": "/ide/acme-corp:alice:todo-app",
       "status": "running",
-      "createdAt": "2024-01-01T00:00:00Z",
-      "lastAccessedAt": "2024-01-01T00:30:00Z"
+      "createdAt": "2026-01-01T00:00:00Z",
+      "lastAccessedAt": "2026-01-01T00:30:00Z"
+    },
+    {
+      "tenantId": "acme-corp:alice",
+      "projectId": "other-project",
+      "port": 40002,
+      "url": "/ide/acme-corp:alice:other-project",
+      "status": "running",
+      "createdAt": "2026-01-01T01:00:00Z",
+      "lastAccessedAt": "2026-01-01T01:30:00Z"
     }
   ]
 }
@@ -347,23 +396,23 @@ await ideService.startIDE(userContext, projectId, workspacePath);
 
 // ✅ Docker 컨테이너로 격리
 // ✅ 리소스 제한 (2GB RAM, 2 Cores)
-// ✅ 브라우저 접근 (http://localhost:31001)
-// ✅ 멀티 유저 지원
+// ✅ 프록시 접근 (/ide/tenantId:userId:projectId/)
+// ✅ 멀티 프로젝트 지원 (프로젝트별 독립 IDE)
 ```
 
 ## 현재 상태 및 개선 사항
 
 ### ✅ 현재 작동
-- Docker 기반 code-server 컨테이너
-- 유저별 독립 환경
+- Docker 기반 openvscode-server 컨테이너
+- 프로젝트별 독립 환경
 - 워크스페이스 마운트/언마운트
 - 리소스 제한 (2GB RAM, 2 Cores)
 - 자동 유휴 체크 및 종료 (30분)
-- 포트 동적 할당
+- 포트 동적 할당 (40000-49999)
+- **프록시 접근** (`/ide/:serverKey/*`) - WebSocket 포함
+- **인증 통합** - ant-cli 인증 거쳐서 접근
 
 ### ⏰ 미완료
-- Express 프록시 통합 (`/ide/:serverKey`)
-- 비밀번호 보안 (현재 temp123 고정)
 - SSL/TLS 지원
 - 사용자별 리소스 쿼터 설정
 
@@ -378,12 +427,14 @@ await ideService.startIDE(userContext, projectId, workspacePath);
 | 항목 | 설명 |
 |------|------|
 | **격리 방식** | Docker 컨테이너 (완전 격리) |
+| **serverKey** | `tenantId:userId:projectId` (3개 파트, 프로젝트 단위) |
+| **포트 범위** | 40000-49999 (10,000 포트) |
+| **프록시 접근** | `/ide/:serverKey/*` (직접 포트 접근 차단) |
 | **마운트 시점** | IDE 시작 시 (`container.start()`) |
 | **언마운트 시점** | IDE 중지 시 (`container.stop/remove()`) |
 | **리소스 제한** | 2GB RAM, 2 CPU cores (컨테이너당) |
 | **자동 종료** | 30분 미사용 시 |
 | **동시 사용자** | 서버 리소스에 따라 (8 Core → 4명 권장) |
-| **문제 없음?** | ✅ 리소스 제한으로 안전 보장 |
 
-**핵심**: 각 사용자는 완전히 독립된 Docker 컨테이너에서 작업하며, 리소스 제한으로 서버 전체 안정성이 보장됩니다.
+**핵심**: 각 프로젝트마다 완전히 독립된 Docker 컨테이너에서 작업하며, 프록시를 통한 접근과 리소스 제한으로 보안 및 안정성이 보장됩니다.
 
