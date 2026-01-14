@@ -384,7 +384,8 @@ export class TemplateComposer {
       'text-format-compact': {},
       'tool-calling-rules-compact': {},
       'port-management': {},  // ✅ Port management guide (no vars needed)
-      'design-document-guide': {},
+      'system-design-guide': {},
+      'ui-design-guide': {},
       'api-contract-guide': {},
       'backend-guide': {},
       'frontend-guide': {},

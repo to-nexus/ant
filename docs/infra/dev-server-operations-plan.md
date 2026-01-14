@@ -8,7 +8,7 @@
 - **네트워크**:
   - 외부 공개: `ant-ui`(443), `ant-cli`(443→4100)
   - 내부 전용: `chromaDB:8000`, `embedder:8001`은 `ant-cli`에서만 접근 허용
-  - 권장: `ant-cli` 서버의 **30000–49999 inbound 차단** (Dev Server + IDE 포트 범위)
+  - **필수**: `ant-cli` 서버의 **30000–49999 inbound 차단** (프록시 전용 - 외부 직접 접근 불가)
 
 ---
 
@@ -26,13 +26,14 @@
   - API 서버(프로젝트/피처/잡/IDE/devserver 제어)
   - 사용자 프로젝트 devserver 실행(프로세스 spawn)
   - Cloud IDE 컨테이너 생성/삭제(Docker)
-  - Dev Server Proxy (`/dev/:serverKey`)
-  - IDE Proxy (`/ide/:serverKey`)
+  - **Dev Server Proxy** (`/dev/:serverKey/*`) - 내부 포트로 프록시
+  - **IDE Proxy** (`/ide/:serverKey/*`) - 내부 포트로 프록시
 - 인바운드: 4100(내부) / 외부는 443에서 reverse proxy 권장
 - 요구사항:
   - Docker 데몬 접근(컨테이너 생성/삭제)
   - 워크스페이스 볼륨 마운트(대용량/고IO 권장)
   - 포트 범위 확보: **30000-49999** (Dev: 30000-39999, IDE: 40000-49999)
+  - ⚠️ **포트 범위는 내부 전용** - 모든 접근은 프록시(`/dev/`, `/ide/`)를 통해서만 허용
 
 ### 2.3 `chromaDB`
 
@@ -69,21 +70,23 @@
 - **Server A → Server C**: TCP 8000 (`CHROMA_URL`)
 - **Server A → Server D**: TCP 8001 (`EMBEDDER_URL`)
 
-### 4.3 Dev Server & IDE 포트 범위(권장 정책)
+### 4.3 Dev Server & IDE 포트 범위 (프록시 전용)
 
-`ant-cli`는 다음 포트 범위를 동적으로 할당합니다:
+`ant-cli`는 다음 포트 범위를 내부적으로 사용합니다:
 
 - **Dev Server**: 30000-39999 (10,000 포트)
   - 사용자 프로젝트 개발 서버 (Vite, Next.js 등)
   - Frontend/Backend 포함
 - **Cloud IDE**: 40000-49999 (10,000 포트)
-  - Docker 기반 IDE 컨테이너 (code-server, openvscode-server)
+  - Docker 기반 IDE 컨테이너 (openvscode-server)
 
 **보안 정책**:
-- **권장**: Server A의 **30000-49999 inbound는 외부에서 차단**
+- **필수**: Server A의 **30000-49999 inbound 외부 완전 차단**
 - **이유**: 
-  - 사용자는 `ant-cli`의 `/dev/:serverKey` (Dev Server) 및 `/ide/:serverKey` (Cloud IDE) 경로로만 접속
-  - 직접 포트 접근 불필요
+  - 사용자는 `ant-cli`의 프록시 경로로만 접속:
+    - Dev Server: `/dev/:serverKey/*`
+    - Cloud IDE: `/ide/:serverKey/*`
+  - 직접 포트 접근 불필요 및 불허
   - 프록시를 통해 인증/라우팅/콘텐츠 재작성 처리
 
 ---
@@ -99,6 +102,7 @@
 
 - `ANT_IDE_HOME_BASE_PATH=/mnt/ant-ide-homes` (예시)
 - 목적: 프로젝트별 IDE 확장/설정/캐시를 컨테이너 재생성 후에도 유지
+- 기본값: `<ANT_WORKSPACE_BASE_PATH>/.ide-homes` (설정하지 않으면 자동)
 
 ### 5.3 Server C(chromaDB) 데이터 볼륨
 
@@ -154,30 +158,50 @@
 
 ---
 
-## 7. 프록시 라우팅 구조
+## 7. 프록시 라우팅 구조 (핵심 아키텍처)
 
-`ant-cli`는 사용자 트래픽을 동적으로 라우팅합니다:
+`ant-cli`는 사용자 트래픽을 내부 포트로 프록시합니다. **외부에서 내부 포트에 직접 접근 불가.**
 
-### 7.1 Dev Server Proxy (`/dev/:serverKey`)
+### 7.1 Dev Server Proxy (`/dev/:serverKey/*`)
 
 - **경로 형식**: `/dev/tenantId:userId:projectId:feature/*`
-- **예시**: `/dev/nexus:probe:my-app:login/` → `localhost:30123`
+- **예시**: 
+  - `/dev/nexus:probe:my-app:login/` → `localhost:30123`
+  - `/dev/nexus:probe:my-app:login/src/main.tsx` → `localhost:30123/src/main.tsx`
+- **serverKey 구성**: `tenantId:userId:projectId:feature` (4개 파트, colon 구분)
 - **기능**:
-  - 동적 포트 조회 및 라우팅
-  - HTML/JS/CSS 경로 재작성 (base path 주입)
-  - Fullstack 지원 (frontend/backend 분리 라우팅)
-  - WebSocket 프록시 (HMR)
-  - 재시도 로직 (서버 시작 대기)
+  - 동적 포트 조회 및 라우팅 (PortRegistry 기반)
+  - **HTML/JS/CSS 경로 재작성**: 절대 경로를 프록시 경로로 변환
+    - `src="/assets/..."` → `src="/dev/:serverKey/assets/..."`
+    - `import "/src/..."` → `import "/dev/:serverKey/src/..."`
+  - **window.__BASENAME__ 주입**: React Router 등 SPA 라우팅 지원
+  - **Fullstack 지원**: `/dev/:serverKey/api/*` → backend 포트로 라우팅
+  - WebSocket 프록시 (HMR, hot reload)
+  - 재시도 로직 (서버 시작 대기, 3회 500ms 간격)
+  - Referer 기반 asset 라우팅 (hydration 시 정적 리소스)
 
-### 7.2 IDE Proxy (`/ide/:serverKey`)
+### 7.2 IDE Proxy (`/ide/:serverKey/*`)
 
 - **경로 형식**: `/ide/tenantId:userId:projectId/*`
-- **예시**: `/ide/nexus:probe:my-app/?folder=/my-app` → `localhost:40500`
+- **예시**: 
+  - `/ide/nexus:probe:my-app/` → `localhost:40500`
+  - `/ide/nexus:probe:my-app/?folder=/my-app` → `localhost:40500/?folder=/my-app`
+- **serverKey 구성**: `tenantId:userId:projectId` (3개 파트, feature 없음 - 프로젝트 단위)
 - **기능**:
   - 프로젝트 단위 IDE 접근 (feature 구분 없음)
   - Docker 컨테이너 포트 매핑
-  - WebSocket 프록시 (터미널, LSP)
-  - 컨텐츠 재작성 불필요 (자체 완결형 앱)
+  - WebSocket 프록시 (터미널, LSP, live features)
+  - 콘텐츠 재작성 불필요 (자체 완결형 앱)
+  - last access 시간 업데이트 (idle cleanup용)
+
+### 7.3 프록시 vs 직접 접근 비교
+
+| 구분 | 프록시 경로 | 내부 포트 |
+|------|-------------|-----------|
+| 외부 접근 | ✅ 허용 | ❌ 차단 필수 |
+| 인증 | ✅ ant-cli 인증 통과 | ❌ 우회 가능 (위험) |
+| 경로 재작성 | ✅ 자동 처리 | ❌ 수동 설정 필요 |
+| WebSocket | ✅ 프록시됨 | ✅ (직접은 보안 문제) |
 
 ---
 
@@ -185,17 +209,26 @@
 
 - **Server A (ant-cli)**
   - Docker 데몬 접근 가능 여부(권한/소켓)
-  - **30000–49999** 포트 충돌 없음 + 외부 인바운드 차단
+  - **30000–49999** 포트 충돌 없음 + **외부 inbound 완전 차단**
   - 워크스페이스 볼륨 용량/IOPS
   - IDE 홈 볼륨 용량 (사용자별 IDE 설정/확장)
   - 로그 수집(프로세스 stdout/stderr, Docker 컨테이너 로그)
   - Google OIDC 설정 확인 (Cloud Mode)
+  - Reverse proxy 설정 (443 → 4100)
 - **Server C (chromaDB)**: 데이터 영속 볼륨 + 백업
 - **Server D (embedder)**: CPU 사용량 모니터링
 
 ---
 
 ## 9. 주요 변경사항 (2026-01)
+
+### 프록시 기반 아키텍처로 전환
+- **이전**: 외부에서 Dev Server/IDE 포트에 직접 접근 가능
+- **현재**: 모든 접근이 프록시(`/dev/`, `/ide/`)를 통해서만 가능
+- **장점**: 
+  - 인증 일원화 (ant-cli에서 처리)
+  - 경로 재작성 자동화
+  - 포트 범위 외부 차단으로 보안 강화
 
 ### 포트 범위 확대
 - 기존: 30000-35000 (5,000 포트)
@@ -204,7 +237,7 @@
   - IDE: 40000-49999 (10,000)
 
 ### IDE 프록시 추가
-- `/ide/:serverKey` 경로로 Cloud IDE 접근
+- `/ide/:serverKey/*` 경로로 Cloud IDE 접근
 - 프로젝트 단위 격리 (feature 구분 없음)
 - WebSocket 지원 (터미널, LSP)
 
@@ -218,3 +251,19 @@
   - 변경: `<ANT_WORKSPACE_BASE_PATH>/.ide-homes`로 안전한 fallback
 - 특수문자 sanitize (경로 보안)
 
+---
+
+## 10. FAQ (인프라팀)
+
+### Q: 왜 30000-49999 포트를 외부에서 차단해야 하나요?
+Dev Server와 IDE는 자체 인증이 없습니다. 프록시를 통해야만 ant-cli의 인증을 거칩니다. 직접 포트 접근을 허용하면 인증 우회가 가능합니다.
+
+### Q: WebSocket은 어떻게 처리되나요?
+프록시가 WebSocket upgrade를 감지하고 내부 포트로 터널링합니다. HMR(Dev Server), 터미널/LSP(IDE) 모두 정상 동작합니다.
+
+### Q: 프록시 경로의 serverKey 형식이 다른 이유는?
+- Dev Server: `tenantId:userId:projectId:feature` - feature별 독립 서버
+- IDE: `tenantId:userId:projectId` - 프로젝트당 1개 IDE (여러 feature 공유)
+
+### Q: 콘텐츠 재작성은 무엇인가요?
+Dev Server에서 서빙되는 HTML/JS/CSS의 절대 경로(`/assets/`, `/src/` 등)를 프록시 경로(`/dev/:serverKey/assets/` 등)로 자동 변환합니다. IDE는 자체 완결형이라 재작성 불필요합니다.

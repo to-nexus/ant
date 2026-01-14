@@ -410,7 +410,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
         ...state,
         taskQueue,
         completedTasks: [],
-        completedTasksDetails: preloadedCompletedTasks,
+        completedTasksDetails: [],  // ✅ FIX: Initialize empty for new job (was keeping stale tasks from previous job)
         _httpJobId: state._httpJobId,
         jobId: newJobId,
         jobTiming: finalJobTiming,
@@ -422,9 +422,37 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
           state._httpJobId,
           null,
           taskQueue.getAll(),
-          preloadedCompletedTasks
+          []  // ✅ FIX: Empty completed tasks for new job
         );
         console.log(`✅ Kanban updated with ${taskQueue.size()} UI doc tasks\n`);
+      }
+      
+      // ✅ CRITICAL FIX: Save checkpoint immediately after decompose
+      // Without this, if job is interrupted, decompose results are lost
+      // and previous job's completed tasks are incorrectly restored
+      if (state.deps?.session && state.context.featureFolder) {
+        try {
+          await state.deps.session.updateArtifacts(
+            state.context.project,
+            state.context.featureFolder,
+            'design',
+            {
+              state: {
+                taskQueue: taskQueue.getAll(),
+                completedTasks: [],
+                completedTasksDetails: [],  // ✅ New job = fresh start
+                jobId: newJobId,
+                jobTiming: finalJobTiming,
+                tokenUsage: (state as any).tokenUsage,
+                overrideDirective: state.overrideDirective,
+                chatSource: state.chatSource
+              }
+            }
+          );
+          console.log(`💾 [Design Decompose UI] Checkpoint saved (${taskQueue.size()} tasks)\n`);
+        } catch (error) {
+          console.warn(`⚠️  [Design Decompose UI] Failed to save checkpoint:`, error);
+        }
       }
       
       // Workflow exit

@@ -3,6 +3,8 @@
 ### Purpose
 Define **what** to build (visual & behavioral requirements) in structured JSON, not **how** to implement it.
 
+**Include design intent**: For key layout decisions, add `"intent"` field explaining WHY this design choice was made. This helps Code Job understand the purpose, not just the structure.
+
 ---
 
 ## 🚨 SCOPE ENFORCEMENT
@@ -50,6 +52,8 @@ Define **what** to build (visual & behavioral requirements) in structured JSON, 
 }
 ```
 
+> ⚠️ **This is minimum structure, not exhaustive.** Document ALL observed properties from the screenshot. If you see border-radius, shadows, gradients, animations, or any other visual property — add it.
+
 ### Element Classification
 
 | If element... | Document in |
@@ -63,6 +67,7 @@ Define **what** to build (visual & behavioral requirements) in structured JSON, 
 ```json
 {
   "<element-id>": {
+    "intent": "<why this design choice>",
     "layout": "<observed>",
     "background": "colors.bg.<token>",
     "container": {
@@ -77,6 +82,13 @@ Define **what** to build (visual & behavioral requirements) in structured JSON, 
   }
 }
 ```
+
+**Intent examples:**
+- `"intent": "logo left, menu right for clear navigation hierarchy"`
+- `"intent": "3-column grid to showcase ecosystem pillars with equal weight"`
+- `"intent": "staggered layout to create visual rhythm and break monotony"`
+
+> ⚠️ **Add ALL observed properties.** The format above shows common fields, but include everything you observe: `borderRadius`, `shadow`, `gap`, `padding`, `opacity`, `animation`, etc.
 
 Apply this format to `sections`, `components`, and `overlays`.
 
@@ -163,21 +175,19 @@ Use `contentOrder` array to define visual sequence (top-to-bottom or left-to-rig
 ```json
 "cardStyle": {
   "flexDirection": "column",
-  "contentOrder": ["icon", "label"],  // icon FIRST, label SECOND
-  // ... other properties
+  "contentOrder": ["<first-element>", "<second-element>"]  // OBSERVE and fill
 }
 ```
 
-**Observation rule:**
+**⚠️ CRITICAL: Do NOT copy the example. OBSERVE the screenshot:**
 1. Look at the card/container in screenshot
-2. Which element appears FIRST (top or left)?
-3. Document in `contentOrder` array in that sequence
+2. Which element appears FIRST (top or left)? → Put it first in array
+3. Which element appears SECOND? → Put it second in array
 
-| Visual Order | contentOrder |
-|--------------|--------------|
-| Icon on top, text below | `["icon", "label"]` |
-| Text on top, icon below | `["label", "icon"]` |
-| Image left, text right | `["image", "content"]` |
+**Common patterns (for reference only - always OBSERVE):**
+- If icon is visually on TOP → `["icon", "label"]`
+- If label is visually on TOP → `["label", "icon"]`
+- If image is visually on LEFT → `["image", "content"]`
 
 **Constraint:** Never leave order ambiguous. Code Job cannot guess visual sequence.
 
@@ -282,42 +292,6 @@ When exact color is uncertain, use description:
 
 ---
 
-## Output Format
-
-{{#if lastSectionNumber}}
-**Continuation** — append to existing:
-
-```xml
-<append path="outputs/design/ui-spec.json">
-{
-  "_meta": { "lastSection": {{add lastSectionNumber 1}} },
-  "sections": { /* if task specifies sections */ },
-  "components": { /* if task specifies components */ },
-  "overlays": { /* if task specifies overlays */ }
-}
-</append>
-```
-{{else}}
-**First task** — create document:
-
-```xml
-<file path="outputs/design/ui-spec.json">
-{
-  "_meta": { "lastSection": 1 },
-  "meta": { "title": "UI Specification", "breakpoints": { /* ... */ } },
-  "layout": { "container": { "maxWidth": "1440px" } },
-  "sections": { /* page blocks */ },
-  "components": { /* reusable patterns */ },
-  "overlays": { /* floating elements */ }
-}
-</file>
-```
-{{/if}}
-
-Include only the categories your task specifies. Omit empty categories.
-
----
-
 ## Quality Checklist
 
 - [ ] Only specified elements documented
@@ -327,6 +301,7 @@ Include only the categories your task specifies. Omit empty categories.
 - [ ] Item-level variations documented
 - [ ] No assumed properties (overlay, gradient, shadow)
 - [ ] States (hover, active, focus) documented where applicable
+- [ ] **Intent provided** for key layout decisions (sections, complex containers)
 
 ---
 

@@ -7,9 +7,9 @@
 ### 핵심 특징
 
 - **멀티 패키지 지원**: Frontend + Backend 동시 실행
-- **동적 포트 할당**: 30000-35000 범위 자동 할당
-- **프록시 통합**: `/dev/:serverKey` 단일 URL 접근
-- **피처별 격리**: 동일 사용자의 여러 피처 독립 실행
+- **동적 포트 할당**: 30000-39999 범위 자동 할당
+- **프록시 접근**: `/dev/:serverKey/*` - 프로젝트+피처별 독립 URL
+- **피처별 격리**: 동일 사용자의 여러 피처 독립 dev server 실행
 - **실시간 진행 상황**: 패키지별 설치/실행 상태 추적
 
 ---
@@ -879,8 +879,8 @@ packages/
 | **Frontend** | 로그 파싱하여 패키지별 진행 상황 표시 |
 | **UX** | 실시간 프로그레스 바로 멀티 패키지 상태 추적 |
 | **Key** | `tenantId:userId:projectId:feature` |
-| **Port** | 30000-35000 동적 할당 |
-| **Proxy** | `/dev/:serverKey` → Entry 포트 |
+| **Port** | 30000-39999 동적 할당 (Dev Server) |
+| **Proxy** | `/dev/:serverKey/*` → Entry 포트 (프로젝트+피처별 독립 URL) |
 | **Basename** | Frontend Entry만 자동 검증 + Fix 워크플로우 |
 | **Reasoning** | `basename-missing`, `port-conflict` 등 코드 기반 오류 분류 |
 | **AI Injection** | Frontend code job에 dev-server-setup 가이드 자동 포함 |

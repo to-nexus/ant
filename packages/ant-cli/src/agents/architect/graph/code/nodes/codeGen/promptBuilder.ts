@@ -367,9 +367,9 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   if (state.context.featurePath) {
     try {
       // Calculate total prompt length
-      const totalPromptLength = messages.reduce((sum, m) => {
+      const totalPromptLength = messages.reduce((sum: number, m: any) => {
         if (Array.isArray(m.content)) {
-          return sum + m.content.reduce((s, c: any) => s + (c.type === 'text' ? c.text.length : 0), 0);
+          return sum + m.content.reduce((s: number, c: any) => s + (c.type === 'text' ? c.text.length : 0), 0);
         }
         return sum + (typeof m.content === 'string' ? m.content.length : 0);
       }, 0);
@@ -388,7 +388,8 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
             'code/phases/execute/rules',
             'code/base/injections/text-format-compact',
             'code/base/injections/tool-calling-rules-compact',
-            'code/base/injections/design-document-guide',
+            'code/base/injections/system-design-guide',
+            'code/base/injections/ui-design-guide',
             'code/base/injections/retrieved-code',
             'code/base/injections/reference-code',
           ],
