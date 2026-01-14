@@ -10,7 +10,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "NODE_ENV=development tsx src/index.ts",
     "dev:server": "NODE_ENV=development NODE_OPTIONS='--max-old-space-size=8192' tsx src/composition/server.ts",
-    "build": "esbuild src/composition/server.ts --bundle --platform=node --format=esm --target=node20 --outfile=dist/server.mjs --packages=external && cp -r src/core/prompt/templates dist/core/prompt/ && cp -r src/periphery/profiles dist/periphery/",
+    "build": "esbuild src/composition/server.ts --bundle --platform=node --format=esm --target=node20 --outfile=dist/server.mjs --packages=external && mkdir -p dist/core/prompt dist/periphery && cp -r src/core/prompt/templates dist/core/prompt/ && cp -r src/periphery/profiles dist/periphery/",
     "start": "NODE_OPTIONS='--max-old-space-size=8192' node dist/server.mjs",
     "start:server": "NODE_OPTIONS='--max-old-space-size=8192' node dist/server.mjs",
     "init:workspace": "tsx src/cli/init-cli.ts workspace",
