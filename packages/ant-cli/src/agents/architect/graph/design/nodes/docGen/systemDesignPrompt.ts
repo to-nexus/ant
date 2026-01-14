@@ -306,10 +306,13 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
     try {
       // Calculate total text length from all messages
       const totalLength = messages.reduce((sum, m) => {
-        if (Array.isArray(m.content)) {
-          return sum + m.content.reduce((s, c: any) => s + (c.type === 'text' ? c.text.length : 0), 0);
-        }
-        return sum + (typeof m.content === 'string' ? m.content.length : 0);
+        const content = m.content as CacheableContent[];
+        return sum + content.reduce((s: number, c) => {
+          if (c.type === 'text' && typeof c.text === 'string') {
+            return s + c.text.length;
+          }
+          return s;
+        }, 0);
       }, 0);
       
       await logPrompt(

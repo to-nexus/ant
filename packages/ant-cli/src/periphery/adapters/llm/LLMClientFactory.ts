@@ -12,20 +12,17 @@ import { OpenAILLMClient } from './OpenAILLMClient';
 export type ModelProvider = 'anthropic' | 'openai';
 
 interface LLMConfig {
-  llmProvider?: string;
-  llmModel?: string;
   temperature?: number;
   maxTokens?: number;
   timeout?: number;
 }
 
 /**
- * Job/Task context for model selection
+ * Job/Node context for model selection
  */
 export interface LLMContext {
-  jobType: 'design' | 'code';
-  taskType?: 'error' | 'final' | 'setup' | 'default';  // ✅ Task type, not node type!
-  nodeType?: 'decompose';  // ✅ Only for decompose node (no task yet)
+  jobType: 'design' | 'code' | 'learn';
+  nodeType?: 'decompose' | 'plan' | 'docGen' | 'codeGen' | 'tool' | 'validate' | 'learn' | 'detectEnvironment';
 }
 
 /**
@@ -50,8 +47,12 @@ export function detectProviderFromModel(modelName: string): ModelProvider {
 }
 
 /**
- * Resolve model name based on job/task context
- * Priority: workspaceConfig.llmModels > env var (AI_MODEL_NAME) > hardcoded defaults
+ * Resolve model name based on job/node context
+ * Priority: 
+ *   1. workspaceConfig.llmModels[job][node]
+ *   2. workspaceConfig.llmModels[job].default
+ *   3. env var (AI_MODEL_NAME)
+ *   4. hardcoded default
  */
 function resolveModelForContext(
   context: LLMContext | undefined,
@@ -61,45 +62,30 @@ function resolveModelForContext(
   
   // If no context provided, use default
   if (!context) {
-    return workspaceConfig?.llmModel || defaultModel;
+    return defaultModel;
   }
   
   const llmModels = workspaceConfig?.llmModels;
   
-  // If no llmModels config, fall back to old config or env var
+  // If no llmModels config, fall back to env var
   if (!llmModels) {
-    return workspaceConfig?.llmModel || defaultModel;
+    return defaultModel;
   }
   
-  // Select model based on job and task/node type
-  if (context.jobType === 'design') {
-    if (context.nodeType === 'decompose') {
-      return llmModels.designDecompose || llmModels.designDefault || defaultModel;
-    }
-    return llmModels.designDefault || defaultModel;
+  // Get job-level config
+  const jobConfig = llmModels[context.jobType];
+  
+  if (!jobConfig) {
+    return defaultModel;
   }
   
-  if (context.jobType === 'code') {
-    // Decompose node has no task yet - use codeDecompose
-    if (context.nodeType === 'decompose') {
-      return llmModels.codeDecompose || llmModels.codeDefault || defaultModel;
-    }
-    
-    // All other nodes: select based on TASK type
-    if (context.taskType === 'error') {
-      return llmModels.codeError || llmModels.codeDefault || defaultModel;
-    }
-    if (context.taskType === 'final') {
-      return llmModels.codeFinal || llmModels.codeDefault || defaultModel;
-    }
-    if (context.taskType === 'setup') {
-      return llmModels.codeSetup || llmModels.codeDefault || defaultModel;
-    }
-    // taskType === 'default' or undefined
-    return llmModels.codeDefault || defaultModel;
+  // Try node-specific model first
+  if (context.nodeType && jobConfig[context.nodeType]) {
+    return jobConfig[context.nodeType];
   }
   
-  return defaultModel;
+  // Fall back to job default
+  return jobConfig.default || defaultModel;
 }
 
 /**
@@ -131,12 +117,10 @@ export function createLLMClient(
   workspaceConfig?: any
 ): LLMClient {
   // Resolve model name based on context
-  const modelName = config?.llmModel || resolveModelForContext(context, workspaceConfig);
+  const modelName = resolveModelForContext(context, workspaceConfig);
   
   // Auto-detect provider from model name
-  const provider = config?.llmProvider 
-    ? (config.llmProvider as ModelProvider)
-    : detectProviderFromModel(modelName);
+  const provider = detectProviderFromModel(modelName);
   
   const temperature = config?.temperature ?? resolveTemperature(agentType);
   const maxTokens = config?.maxTokens ?? resolveMaxTokens(agentType);

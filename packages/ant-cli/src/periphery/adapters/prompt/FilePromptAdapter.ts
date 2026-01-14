@@ -3,7 +3,7 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import Handlebars from "handlebars";
 
-// ✅ ESM-compatible __dirname replacement
+// ✅ ES modules: derive __dirname from import.meta.url
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 import { PromptPort } from "../../../core/ports";

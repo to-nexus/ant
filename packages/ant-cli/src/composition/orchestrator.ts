@@ -62,8 +62,8 @@ export async function orchestrator(params: {
       }
       
       // LLM configuration - pass workspaceConfig for job/node-specific model selection
-      // ✅ Create LLM specifically for decompose phase (will be overridden by nodes for task-specific models)
-      const llm = createLLMClient('architect', undefined, { jobType: jobType as 'design' | 'code', nodeType: 'decompose' }, configData);
+      // ✅ Create LLM with job context (nodes will override with specific nodeType if needed)
+      const llm = createLLMClient('architect', undefined, { jobType: jobType as 'design' | 'code' | 'learn' }, configData);
 
       if (jobType === 'learn') {
         // Learn task: requires Git and Chunk for indexing
@@ -200,10 +200,7 @@ export async function orchestrator(params: {
       const memory = AdapterFactory.createMemoryAdapter();
       const config = new FileConfigAdapter();
       const configData = await config.load(project || "default");
-      const llm = createLLMClient('reviewer', {
-        llmProvider: configData.llmProvider,
-        llmModel: configData.llmModel
-      });
+      const llm = createLLMClient('reviewer', undefined, undefined, configData);
       return await reviewerAgent(input, project || "default", { memory, llm });
     }
 
@@ -212,10 +209,7 @@ export async function orchestrator(params: {
       const memory = AdapterFactory.createMemoryAdapter();
       const config = new FileConfigAdapter();
       const configData = await config.load(project || "default");
-      const llm = createLLMClient('planner', {
-        llmProvider: configData.llmProvider,
-        llmModel: configData.llmModel
-      });
+      const llm = createLLMClient('planner', undefined, undefined, configData);
       return await plannerAgent({ issues, commits }, project || "default", { memory, llm });
     }
 
@@ -223,10 +217,7 @@ export async function orchestrator(params: {
       const memory = AdapterFactory.createMemoryAdapter();
       const config = new FileConfigAdapter();
       const configData = await config.load(project || "default");
-      const llm = createLLMClient('doc', {
-        llmProvider: configData.llmProvider,
-        llmModel: configData.llmModel
-      });
+      const llm = createLLMClient('doc', undefined, undefined, configData);
       return await docAgent(input, project || "default", { memory, llm });
     }
 

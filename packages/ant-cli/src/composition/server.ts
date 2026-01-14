@@ -4,6 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 // ✅ CRITICAL: Load .env from packages/ant-cli directory (not project root)
+// ES modules: need to derive __dirname from import.meta.url
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const envPath = path.resolve(__dirname, "../../.env");

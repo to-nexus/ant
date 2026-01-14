@@ -1,21 +1,35 @@
-import { ProjectConfig } from '@/infrastructure/http/api';
+import { ProjectConfig, JobLLMConfig } from '@/infrastructure/http/api';
 import { AvailableModel } from '../hooks/useAvailableModels';
 
 interface LLMModelsSectionProps {
   editedConfig: ProjectConfig;
   availableModels: AvailableModel[];
   isLoadingModels: boolean;
-  onModelChange: (nodeType: string, modelId: string) => void;
+  onModelChange: (job: string, nodeType: string, modelId: string) => void;
 }
 
-const NODE_TYPES = [
-  { key: 'designDecompose', label: 'Design Decompose', description: 'Model for design job decomposition phase' },
-  { key: 'designDefault', label: 'Design Default', description: 'Default model for design job nodes' },
-  { key: 'codeDecompose', label: 'Code Decompose', description: 'Model for code job decomposition phase (task planning)' },
-  { key: 'codeError', label: 'Code Error', description: 'Model for error tasks' },
-  { key: 'codeFinal', label: 'Code Final', description: 'Model for final verification tasks (priority=1000)' },
-  { key: 'codeSetup', label: 'Code Setup', description: 'Model for setup tasks' },
-  { key: 'codeDefault', label: 'Code Default', description: 'Default model for all other code tasks' },
+interface NodeConfig {
+  key: keyof JobLLMConfig;
+  label: string;
+  description: string;
+}
+
+const DESIGN_NODES: NodeConfig[] = [
+  { key: 'default', label: 'Default', description: 'Default model for all design nodes' },
+  { key: 'decompose', label: 'Decompose', description: 'Task decomposition and planning' },
+  { key: 'docGen', label: 'Doc Generation', description: 'Documentation generation' },
+  { key: 'plan', label: 'Plan', description: 'Context gathering and planning' },
+];
+
+const CODE_NODES: NodeConfig[] = [
+  { key: 'default', label: 'Default', description: 'Default model for all code nodes' },
+  { key: 'decompose', label: 'Decompose', description: 'Task decomposition and planning' },
+  { key: 'codeGen', label: 'Code Generation', description: 'Code generation and editing' },
+  { key: 'plan', label: 'Plan', description: 'Context gathering and planning' },
+];
+
+const LEARN_NODES: NodeConfig[] = [
+  { key: 'default', label: 'Default', description: 'Default model for learning tasks' },
 ];
 
 export function LLMModelsSection({
@@ -24,43 +38,80 @@ export function LLMModelsSection({
   isLoadingModels,
   onModelChange
 }: LLMModelsSectionProps) {
+  const renderJobSection = (
+    jobName: string,
+    jobKey: 'design' | 'code' | 'learn',
+    nodes: NodeConfig[]
+  ) => {
+    const jobConfig = editedConfig.llmModels?.[jobKey];
+    
+    return (
+      <div key={jobKey} className="space-y-3 p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+        <h5 className="text-sm font-semibold text-gray-900 dark:text-white capitalize">
+          {jobName} Job
+        </h5>
+        
+        {nodes.map(node => (
+          <div key={node.key} className="space-y-2">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {node.label}
+              {node.key === 'default' && <span className="text-red-500 ml-1">*</span>}
+            </label>
+            {node.description && (
+              <p className="text-xs text-gray-500 dark:text-gray-400">{node.description}</p>
+            )}
+            <select
+              value={jobConfig?.[node.key] || ''}
+              onChange={(e) => onModelChange(jobKey, node.key, e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md 
+                bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm
+                focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+            >
+              {node.key === 'default' ? (
+                // Default is required, no empty option
+                <>
+                  {!jobConfig?.[node.key] && <option value="">-- Select Model --</option>}
+                  {availableModels.map(model => (
+                    <option key={model.id} value={model.id}>
+                      {model.displayName}
+                    </option>
+                  ))}
+                </>
+              ) : (
+                // Other nodes are optional, can use job default
+                <>
+                  <option value="">-- Use Job Default --</option>
+                  {availableModels.map(model => (
+                    <option key={model.id} value={model.id}>
+                      {model.displayName}
+                    </option>
+                  ))}
+                </>
+              )}
+            </select>
+          </div>
+        ))}
+      </div>
+    );
+  };
+  
   return (
     <div className="space-y-4 pt-6 mt-6 border-t border-gray-200 dark:border-gray-700">
       <div className="space-y-2">
-        <h4 className="text-sm font-semibold text-gray-900 dark:text-white">LLM Models by Task Type</h4>
+        <h4 className="text-sm font-semibold text-gray-900 dark:text-white">LLM Models by Job and Node</h4>
         <p className="text-xs text-gray-500 dark:text-gray-400">
-          Configure different models for different job phases and task types. Leave empty to use default model.
+          Configure models for different jobs and nodes. Each job requires a default model. 
+          Nodes can optionally use a different model, otherwise they use the job default.
         </p>
       </div>
       
       {isLoadingModels ? (
         <div className="text-sm text-gray-500 dark:text-gray-400">Loading available models...</div>
       ) : (
-        <div className="space-y-3">
-          {NODE_TYPES.map(nodeType => (
-            <div key={nodeType.key} className="space-y-2">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                {nodeType.label}
-              </label>
-              {nodeType.description && (
-                <p className="text-xs text-gray-500 dark:text-gray-400">{nodeType.description}</p>
-              )}
-              <select
-                value={editedConfig.llmModels?.[nodeType.key as keyof typeof editedConfig.llmModels] || ''}
-                onChange={(e) => onModelChange(nodeType.key, e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md 
-                  bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm
-                  focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
-              >
-                <option value="">-- Use Default --</option>
-                {availableModels.map(model => (
-                  <option key={model.id} value={model.id}>
-                    {model.displayName}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ))}
+        <div className="space-y-4">
+          {renderJobSection('Design', 'design', DESIGN_NODES)}
+          {renderJobSection('Code', 'code', CODE_NODES)}
+          {renderJobSection('Learn', 'learn', LEARN_NODES)}
         </div>
       )}
     </div>

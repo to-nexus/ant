@@ -19,49 +19,33 @@ export function useModelName(
         const { fetchProjectConfig } = await import('@/infrastructure/http/api');
         const config = await fetchProjectConfig(selectedProject);
         
-        if (config?.llmModels) {
-          let modelId: string | undefined;
-          
-          if (selectedJobType === 'design') {
-            // Design job: decompose or default
-            if (currentTask) {
-              modelId = config.llmModels.designDefault;
-            } else {
-              modelId = config.llmModels.designDecompose || config.llmModels.designDefault;
-            }
-          } else if (selectedJobType === 'code') {
-            // Code job: task type에 따라 선택
-            if (currentTask) {
-              const taskType = currentTask.type;
-              const taskPriority = currentTask.priority;
-              
-              if (taskType === 'error') {
-                modelId = config.llmModels.codeError || config.llmModels.codeDefault;
-              } else if (taskType === 'setup') {
-                modelId = config.llmModels.codeSetup || config.llmModels.codeDefault;
-              } else if (taskType === 'feature' && taskPriority === 1000) {
-                modelId = config.llmModels.codeFinal || config.llmModels.codeDefault;
-              } else {
-                modelId = config.llmModels.codeDefault;
-              }
-            } else {
-              // No current task = decompose phase
-              modelId = config.llmModels.codeDecompose || config.llmModels.codeDefault;
-            }
-          } else {
-            // Unknown job type, use decompose or default
-            modelId = config.llmModels.codeDecompose || 
-                     config.llmModels.codeDefault || 
-                     config.llmModels.designDecompose ||
-                     config.llmModels.designDefault;
-          }
-          
-          if (modelId) {
-            const displayName = availableModels.get(modelId);
-            setModelName(displayName || modelId);
-          } else {
-            setModelName(null);
-          }
+        if (!config?.llmModels) {
+          setModelName(null);
+          return;
+        }
+        
+        // Get job-level configuration
+        let jobConfig: any = null;
+        if (selectedJobType === 'design') {
+          jobConfig = config.llmModels.design;
+        } else if (selectedJobType === 'code') {
+          jobConfig = config.llmModels.code;
+        } else if (selectedJobType === 'learn') {
+          jobConfig = config.llmModels.learn;
+        }
+        
+        if (!jobConfig) {
+          setModelName(null);
+          return;
+        }
+        
+        // For now, just use the job default
+        // TODO: Determine current node based on workflow state to use node-specific model
+        const modelId = jobConfig.default;
+        
+        if (modelId) {
+          const displayName = availableModels.get(modelId);
+          setModelName(displayName || modelId);
         } else {
           setModelName(null);
         }

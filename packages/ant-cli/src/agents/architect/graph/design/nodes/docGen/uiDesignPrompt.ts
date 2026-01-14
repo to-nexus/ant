@@ -621,9 +621,6 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
           injectedVariables: {
             // Summarize large content
             taskDescription: injectedVariables.taskDescription ? `[${injectedVariables.taskDescription.length} chars]` : undefined,
-            documentType: injectedVariables.documentType,
-            outputPath: injectedVariables.outputPath,
-            sectionNumber: injectedVariables.sectionNumber,
             isLastTaskForDocument: injectedVariables.isLastTaskForDocument,
             pathPattern: injectedVariables.pathPattern,
             previousChaptersSummary: injectedVariables.previousChaptersSummary ? `[${injectedVariables.previousChaptersSummary.length} chars]` : undefined,

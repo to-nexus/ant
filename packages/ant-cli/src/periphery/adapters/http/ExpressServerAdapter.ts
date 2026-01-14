@@ -647,12 +647,11 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
     // Cloud mode: Add authentication middleware
     if (this.mode === 'cloud' && this.authService) {
       this.app.use(async (req: Request, res: Response, next: NextFunction) => {
-        // ✅ Skip auth for localhost development (convenience)
+        // ✅ Skip auth based on SKIP_AUTH_FOR_LOCALHOST setting
         const skipAuthForLocalhost = process.env.SKIP_AUTH_FOR_LOCALHOST === 'true';
-        const isLocalhost = req.hostname === 'localhost' || req.hostname === '127.0.0.1';
         
-        if (skipAuthForLocalhost && isLocalhost) {
-          // Create a default dev user for localhost
+        if (skipAuthForLocalhost) {
+          // SKIP=true: OAuth 건너뛰기, 기본 dev 사용자 생성
           req.user = {
             id: 'dev',
             email: 'dev@localhost',

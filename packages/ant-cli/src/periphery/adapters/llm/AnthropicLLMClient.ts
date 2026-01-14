@@ -65,9 +65,20 @@ export class AnthropicLLMClient implements LLMClient {
     const userMessages = messages.filter(m => m.role !== 'system');
     
     // Process system message for caching
-    let systemParam: string | CacheableContent[] | undefined;
+    let systemParam: string | Array<{ type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }> | undefined;
     if (systemMessage) {
-      systemParam = systemMessage.content;
+      if (typeof systemMessage.content === 'string') {
+        systemParam = systemMessage.content;
+      } else if (Array.isArray(systemMessage.content)) {
+        // Filter only text blocks for system message (Anthropic doesn't support images in system)
+        systemParam = systemMessage.content
+          .filter((block): block is Extract<CacheableContent, { type: 'text' }> => block.type === 'text')
+          .map(block => ({
+            type: 'text' as const,
+            text: block.text,
+            ...(block.cache_control && { cache_control: block.cache_control })
+          }));
+      }
     }
     
     const response = await this.client.messages.create({

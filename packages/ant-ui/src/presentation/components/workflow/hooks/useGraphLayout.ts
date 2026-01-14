@@ -44,11 +44,9 @@ export function useGraphLayout(
       return { nodes: [], edges: [] };
     }
     
-    // ✅ LLM 정보는 config에서만 가져옴 (realtimeState에 llmInfo 없음)
-    const llmInfo = config ? {
-      provider: config.llmProvider,
-      model: config.llmModel
-    } : null;
+    // ✅ LLM 정보는 더 이상 단일 모델이 아니므로 표시하지 않음
+    // TODO: Job별로 다른 모델을 사용하므로, 각 노드별로 실제 사용된 모델을 backend에서 전달받아야 함
+    const llmInfo = null;
     
     // 화면 분할 방향에 따라 워크플로우 방향 결정
     // horizontal (좌우 분할) → 워크플로우는 세로로 (TB)

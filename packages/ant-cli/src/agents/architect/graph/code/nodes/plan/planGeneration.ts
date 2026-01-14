@@ -16,8 +16,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 
 /**
- * Select appropriate LLM based on task type
- * All nodes processing the same task use the same model
+ * Select appropriate LLM for plan node
  */
 async function selectLLMForTask(
   defaultLLM: LLMClient,
@@ -31,23 +30,10 @@ async function selectLLMForTask(
   
   const { createLLMClient } = await import('../../../../../../periphery/adapters/llm/LLMClientFactory');
   
-  // Determine model based on TASK type (not node type!)
-  // All nodes processing this task will use the same model
-  let taskType: 'error' | 'final' | 'setup' | 'default' = 'default';
-  
-  if (task.type === 'error') {
-    taskType = 'error';
-  } else if (task.type === 'setup') {
-    taskType = 'setup';
-  } else if (task.type === 'feature' && task.priority === TASK_PRIORITIES.FINAL_VERIFICATION) {
-    taskType = 'final';
-  }
-  // All other tasks (feature with lower priority, tool, etc.) use 'default'
-  
   return createLLMClient(
     'architect',
     undefined,
-    { jobType: 'code', taskType },  // ✅ Pass taskType, not nodeType!
+    { jobType: 'code', nodeType: 'plan' },
     state.workspaceConfig
   );
 }

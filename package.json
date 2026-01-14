@@ -13,6 +13,8 @@
     "build:cli": "pnpm --filter @ant/cli build",
     "build:cli-local": "ANT_SERVER_MODE=local PORT=4000 pnpm --filter @ant/cli build",
     "build:ui": "pnpm --filter @ant/ui build",
+    "start": "pnpm --filter @ant/cli start",
+    "start:cli": "pnpm --filter @ant/cli start:server",
     "start:ide": "pnpm --filter @ant/ide start",
     "init:workspace": "pnpm --filter @ant/cli init:workspace",
     "init:feature": "pnpm --filter @ant/cli init:feature",
