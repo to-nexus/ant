@@ -31,7 +31,7 @@ Plan and CodeGen handle **different levels of decisions**.
 ### ⚠️ KEY PRINCIPLE: Plan guides, CodeGen verifies and executes
 
 ```
-Plan: "Create UserValidator in utils/validation area, used by AuthService"
+Plan: "Create [Module] in [area], used by [Consumer]"
        ↓
 CodeGen: 
   1. list_files → finds existing directory pattern
@@ -121,33 +121,43 @@ the created modules will NOT be integrated into the codebase (not imported, not 
 ```
 
 ────────────────────────────────────────────────────────────────────────────────
-### 🔗 `integrates_with` - REQUIRED FOR ALL CREATE ENTRIES
+### 🔗 `integrates_with` + REPLACEMENT PRINCIPLE
 ────────────────────────────────────────────────────────────────────────────────
 
-**Every module you create MUST be used somewhere. Specify where.**
+**Every module you CREATE must be USED and must REPLACE any existing inline code.**
 
-| What you create | integrates_with example |
-|-----------------|------------------------|
-| UI Component | Main page, parent component, layout |
-| Utility function | Service/component that calls it |
-| API endpoint handler | Router, controller |
-| Hook | Component that uses it |
-| Service class | Controller, other service |
+| What you create | integrates_with | What gets REPLACED |
+|-----------------|-----------------|-------------------|
+| UI Component | Page, parent component | Inline JSX/HTML section |
+| Utility function | Service/component | Inline logic/validation |
+| Service class | Controller | Scattered fetch/API calls |
+| Hook | Component | Inline state management |
 
-**⚠️ `integrates_with` = MANDATORY modification by CodeGen.**
-- CodeGen MUST modify the specified file to import and use the new module
-- This is NOT optional metadata - it triggers a required MODIFY action
-- Without this, your module will be created but NEVER USED (dead code)
+**⚠️ `integrates_with` triggers TWO mandatory actions:**
+1. **IMPORT**: CodeGen adds import statement to target file
+2. **REPLACE**: CodeGen removes existing inline code and uses the new module
 
-**Example:**
+```
+"Module file created" ≠ "Task complete"
+"Module created + imported + REPLACES inline code" = "Task complete"
+```
+
+**Plan Pattern:**
 ```
 CREATE:
-  name: scrollUtils
-  type: util
-  location: utils area
-  purpose: Smooth scroll functions
-  integrates_with: GNB component, Footer component  ← These MUST import scrollUtils
+  name: [ModuleName]
+  integrates_with: [target file]  ← MUST import AND replace existing inline code
+
+MODIFY:
+  target: [same target file]
+  action: REPLACE inline implementation with module
+  changes:
+    - Add import statement
+    - REMOVE existing inline code for this functionality
+    - ADD module usage in same position
 ```
+
+**⚠️ Without MODIFY specifying REPLACE → inline code remains → TASK FAILURE**
 
 ────────────────────────────────────────────────────────────────────────────────
 ### 🚫 DUPLICATE PREVENTION
@@ -155,8 +165,7 @@ CREATE:
 
 **Before specifying CREATE, check the directory tree for existing similar modules.**
 
-- ❌ DO NOT create `scroll.ts` if `scrollUtils.ts` already exists
-- ❌ DO NOT create `UserService` if `userService.ts` already exists
+- ❌ DO NOT create new module if similar functionality already exists (different name, same purpose)
 - ✅ If similar module exists, use MODIFY instead of CREATE
 
 **Check for:**
@@ -248,64 +257,24 @@ From directory tree:
 ═══════════════════════════════════════════════════════════════════════════════
 ```
 
-**⚠️ CHECKLIST before finishing plan:**
+────────────────────────────────────────────────────────────────────────────────
+#### 5. 📋 FINAL CHECKLIST (MANDATORY)
+────────────────────────────────────────────────────────────────────────────────
+
+**Before completing your plan, verify:**
+
 - [ ] IMPLEMENTATION GUIDE section exists
 - [ ] Every CREATE has `integrates_with` field
+- [ ] MODIFY section includes "REPLACE inline code" action
+- [ ] For hierarchical modules: parent → entry point, children → parent
 - [ ] No duplicate modules (checked directory tree)
-- [ ] MODIFY section includes integration changes
 
-────────────────────────────────────────────────────────────────────────────────
-#### 5. 🎨 UI SECTION INTEGRATION CHECKLIST (CRITICAL)
-────────────────────────────────────────────────────────────────────────────────
-
-**⚠️ FOR EACH UI SECTION TASK, your plan MUST specify COMPLETE component hierarchy:**
-
-**Required Component Structure:**
+**UI Component Hierarchy:**
 ```
-[entry point file]
-  └── X.tsx (parent section)  ← MUST be in CREATE list
-        └── XCard.tsx (child)  ← If needed
+[entry point]
+  └── X.tsx (parent)  ← integrates_with: entry point, REPLACES inline section
+        └── XCard.tsx (child)  ← integrates_with: X.tsx
 ```
-
-**ANTI-PATTERN TO PREVENT:**
-```
-❌ WRONG Plan:
-CREATE:
-  1. name: XCard
-     type: component
-     ...
-     
-# Missing X.tsx parent! CodeGen will create XCard.tsx 
-# but entry point will still have placeholder!
-```
-
-**✅ CORRECT Plan:**
-```
-CREATE:
-  1. name: X
-     type: component (section parent)
-     purpose: Parent section component that renders XCard grid
-     integrates_with: [entry point] (MUST import and render <X />)
-     
-  2. name: XCard  
-     type: component (child)
-     purpose: Individual card within X section
-     integrates_with: X.tsx
-
-MODIFY:
-  1. target: [entry point]
-     action: Replace placeholder with actual component
-     changes:
-       - Remove {/* X Section - Placeholder */} and <section id="x">
-       - Add import { X } from '@/components/X'
-       - Add <X /> in correct position
-```
-
-**Mandatory Checklist for UI Section Tasks:**
-- [ ] Parent section component (e.g., `X.tsx`) is in CREATE list
-- [ ] Parent component has `integrates_with: [entry point]`
-- [ ] MODIFY section includes "Replace placeholder" action
-- [ ] Child components (e.g., `XCard.tsx`) integrate with parent, not directly with entry point
 
 {{/if}}
 

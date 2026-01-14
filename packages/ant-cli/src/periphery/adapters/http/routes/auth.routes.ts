@@ -1,9 +1,9 @@
 import { Router, Request, Response } from 'express';
 import * as fs from 'fs';
-import * as path from 'path';
 import { AuthService } from '../../../../infrastructure/auth/AuthService';
 import { GoogleOIDCService, OIDCUser } from '../../../../infrastructure/auth/GoogleOIDCService';
 import { WorkspaceResolver } from '../../../../infrastructure/workspace/WorkspaceResolver';
+import type { AuthContext } from '../../../../core/ports/auth';
 
 /**
  * Authentication routes for Cloud Mode
@@ -19,6 +19,39 @@ export function createAuthRoutes(deps: {
 }): Router {
   const router = Router();
   const { authService, workspaceResolver, oidcService } = deps;
+  
+  // ========================================
+  // Common validation logic
+  // ========================================
+  
+  /**
+   * Validate organization and workspace
+   * Common logic for both email-based and OAuth login
+   */
+  async function validateAndGetWorkspace(email: string): Promise<{
+    authContext: AuthContext;
+    workspacePath: string;
+  }> {
+    // Parse email
+    const [username, domain] = email.split('@');
+    
+    // Only accept to.nexus organization
+    if (domain !== 'to.nexus') {
+      throw new Error('Only to.nexus organization is currently supported');
+    }
+    
+    // Authenticate (extract user context)
+    const authContext = await authService.authenticate({ email });
+    
+    // Get workspace path
+    const workspacePath = workspaceResolver.getWorkspacePath({
+      userId: authContext.user.id,
+      organizationId: authContext.organization.id,
+      workspacePath: ''
+    });
+    
+    return { authContext, workspacePath };
+  }
   
   // ========================================
   // Google OIDC Routes
@@ -85,40 +118,37 @@ export function createAuthRoutes(deps: {
         return res.redirect(`${frontendUrl}/?error=email_not_verified`);
       }
       
-      // Extract organization from email domain
-      const [username, domain] = oidcUser.email.split('@');
-      
-      // Get workspace path
-      const workspacePath = workspaceResolver.getWorkspacePath({
-        userId: username,
-        organizationId: domain,
-        workspacePath: ''
-      });
-      
-      // Check if workspace exists (sign in vs sign up)
-      let isNewUser = false;
+      // ✅ Use common validation logic
       try {
-        await fs.promises.access(workspacePath);
-      } catch {
-        // Create workspace for new user
-        await fs.promises.mkdir(workspacePath, { recursive: true });
-        isNewUser = true;
-        console.log(`[Auth] Created workspace for ${oidcUser.email} at ${workspacePath}`);
+        const { authContext, workspacePath } = await validateAndGetWorkspace(oidcUser.email);
+        
+        // Check if workspace exists (sign in vs sign up)
+        let isNewUser = false;
+        try {
+          await fs.promises.access(workspacePath);
+        } catch {
+          // Create workspace for new user
+          await fs.promises.mkdir(workspacePath, { recursive: true });
+          isNewUser = true;
+          console.log(`[Auth] Created workspace for ${oidcUser.email} at ${workspacePath}`);
+        }
+        
+        // Redirect to frontend with user info
+        const userData = encodeURIComponent(JSON.stringify({
+          email: oidcUser.email,
+          name: oidcUser.name,
+          picture: oidcUser.picture,
+          organization: authContext.organization.id,
+          isNewUser
+        }));
+        
+        const frontendUrl = process.env.FRONTEND_URL || '';
+        res.redirect(`${frontendUrl}/?auth=success&user=${userData}`);
+      } catch (error: any) {
+        console.error('[Auth] Validation error:', error);
+        const frontendUrl = process.env.FRONTEND_URL || '';
+        return res.redirect(`${frontendUrl}/?error=${encodeURIComponent(error.message)}`);
       }
-      
-      // Redirect to frontend with user info
-      // Frontend will store this in localStorage
-      const userData = encodeURIComponent(JSON.stringify({
-        email: oidcUser.email,
-        name: oidcUser.name,
-        picture: oidcUser.picture,
-        organization: domain,
-        isNewUser
-      }));
-      
-      // Get frontend URL from environment or use same origin
-      const frontendUrl = process.env.FRONTEND_URL || '';
-      res.redirect(`${frontendUrl}/?auth=success&user=${userData}`);
     } catch (error: any) {
       console.error('[Auth] Google callback error:', error);
       const frontendUrl = process.env.FRONTEND_URL || '';
@@ -161,15 +191,24 @@ export function createAuthRoutes(deps: {
         });
       }
       
-      // Authenticate (extract user context)
-      const authContext = await authService.authenticate({ email });
+      // ✅ Check if OAuth is required
+      const skipAuthForLocalhost = process.env.SKIP_AUTH_FOR_LOCALHOST === 'true';
       
-      // Get workspace path
-      const workspacePath = workspaceResolver.getWorkspacePath({
-        userId: authContext.user.id,
-        organizationId: authContext.organization.id,
-        workspacePath: '' // not used here
-      });
+      // SKIP_AUTH=true → 인증 건너뛰고 이메일만
+      // SKIP_AUTH=false → OAuth 필수
+      if (!skipAuthForLocalhost) {
+        // OAuth required
+        return res.status(401).json({
+          error: 'OAuth required',
+          message: 'Please use Google OAuth for authentication'
+        });
+      }
+      
+      // SKIP=true: OAuth 건너뛰고 이메일 가입 진행
+      console.log(`[Auth] Email-based signup (OAuth skipped): ${email}`);
+      
+      // ✅ Use common validation logic
+      const { authContext, workspacePath } = await validateAndGetWorkspace(email);
       
       // Check if workspace already exists
       try {
@@ -234,15 +273,24 @@ export function createAuthRoutes(deps: {
         });
       }
       
-      // Authenticate (extract user context)
-      const authContext = await authService.authenticate({ email });
+      // ✅ Check if OAuth is required
+      const skipAuthForLocalhost = process.env.SKIP_AUTH_FOR_LOCALHOST === 'true';
       
-      // Get workspace path
-      const workspacePath = workspaceResolver.getWorkspacePath({
-        userId: authContext.user.id,
-        organizationId: authContext.organization.id,
-        workspacePath: '' // not used here
-      });
+      // SKIP_AUTH=true → 인증 건너뛰고 이메일만
+      // SKIP_AUTH=false → OAuth 필수
+      if (!skipAuthForLocalhost) {
+        // OAuth required
+        return res.status(401).json({
+          error: 'OAuth required',
+          message: 'Please use Google OAuth for authentication'
+        });
+      }
+      
+      // SKIP=true: OAuth 건너뛰고 이메일 로그인 진행
+      console.log(`[Auth] Email-based signin (OAuth skipped): ${email}`);
+      
+      // ✅ Use common validation logic
+      const { authContext, workspacePath } = await validateAndGetWorkspace(email);
       
       // Check if workspace exists
       try {

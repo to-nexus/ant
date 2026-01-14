@@ -85,10 +85,10 @@ If a file becomes too large (300+ lines), you MAY split into submodules.
 **Rule:** Plan's entry point MUST be preserved and re-export submodules.
 
 ```
-Plan: "Create src/services/payment.ts"
+Plan: "Create [module] in [area]"
 Your modularization:
-  src/services/payment.ts      ← Entry point (re-exports)
-  src/services/payment/*.ts    ← Submodules
+  [area]/[module].ts      ← Entry point (re-exports)
+  [area]/[module]/*.ts    ← Submodules
 ```
 
 ════════════════════════════════════════════════════════════════════════════════
@@ -218,79 +218,113 @@ Step 3: Integrate with target (import, call)
 
 ```
 ❌ WRONG:
-   services/user.ts         ← Created first
-   services/UserService.ts  ← DUPLICATE! Same purpose
+   [area]/[name].ts         ← Created first
+   [area]/[Name]Service.ts  ← DUPLICATE! Same purpose, different naming
 
 ✅ CORRECT:
-   services/user.ts         ← Single source of truth
+   [area]/[name].ts         ← Single source of truth
 ```
 
 ════════════════════════════════════════════════════════════════════════════════
-## 🔗 Integration Rules
+## 🔗 Integration Rules (CRITICAL)
 ════════════════════════════════════════════════════════════════════════════════
 
-### Integration is MANDATORY
+### 🚨 THE REPLACEMENT PRINCIPLE
 
-**`integrates_with` in Plan = REQUIRED modification.**
+**Creating a module is INCOMPLETE until it REPLACES the existing inline implementation.**
 
-Creating a file is NOT enough. It MUST be:
-1. ✅ Created
-2. ✅ Imported in target
-3. ✅ Actually called/used
-4. ✅ Inline duplicates removed
+This is the #1 cause of "orphan modules" - files that exist but are never used.
 
-```typescript
-// ❌ TASK FAILURE: Created validator.ts but not integrated
-function processInput(data) {
-  if (!data.email.includes('@')) { ... }  // ← Still inline!
-}
-
-// ✅ SUCCESS: Created AND integrated
-import { validateEmail } from './utils/validator';
-function processInput(data) {
-  validateEmail(data.email);  // ← Using the module
-}
 ```
-
-**A module that exists but is never imported and used = TASK FAILURE**
+Module Creation = File Created + Imported + REPLACES Inline Code
+                  ─────────────────────────────────────────────────
+                              ALL THREE ARE MANDATORY
+```
 
 ────────────────────────────────────────────────────────────────────────────────
-### UI Component Integration
+### Integration Workflow (ALL Module Types)
 
-For UI sections with parent-child hierarchy:
+**STEP 1: Create the module file**
+**STEP 2: Find the integration point** (`read_file` on target)
+**STEP 3: Replace inline code with module usage** (`edit_file`)
+**STEP 4: Verify no duplicate code remains**
 
-1. Create child component (e.g., `XCard`)
-2. Create parent section component (e.g., `X`) that uses children
-3. Import parent in entry point
-4. **🚨 CRITICAL: Replace hardcoded/inline code with component**
+| Module Type | Integration Pattern |
+|-------------|---------------------|
+| UI Component | `import X` → `<X />` replaces inline JSX/HTML |
+| Utility function | `import { fn }` → `fn()` replaces inline logic |
+| Service class | `import Service` → `service.method()` replaces scattered code |
+| Hook | `import { useX }` → `useX()` replaces inline state |
+| API handler | `import { api }` → `api.call()` replaces inline fetch |
 
-**⚠️ COMPONENT REPLACEMENT IS MANDATORY**
+────────────────────────────────────────────────────────────────────────────────
+### ❌ TASK FAILURE Pattern (Module + Inline Both Exist)
 
-Creating a component file is NOT enough. You MUST:
-
-```tsx
-// ❌ TASK FAILURE: Component exists but page still has inline code
-// components/Hero.tsx exists, BUT:
-// app/page.tsx:
-<section id="hero">
-  <h1>Hardcoded Title</h1>  // ← Still inline! Component not used!
-</section>
-
-// ✅ SUCCESS: Component created AND replaces inline code
-// app/page.tsx:
-import Hero from '@/components/Hero';
-<Hero />  // ← Component used, inline code removed
+```
+[module file] EXISTS with implementation
+BUT [integration target] STILL has inline code for same functionality
+→ DUPLICATE! → TASK FAILURE
 ```
 
-**Verification Checklist:**
-- [ ] Component file created
-- [ ] Component imported in entry point (page.tsx, App.tsx, etc.)
-- [ ] **Inline/hardcoded section REPLACED with component tag**
-- [ ] No duplicate code (inline + component both existing)
+**Failure indicators:**
+- Module file created ✓
+- Import statement missing ✗
+- Inline implementation still present ✗
 
-**🚨 A component that exists but is never imported/rendered = TASK FAILURE**
+────────────────────────────────────────────────────────────────────────────────
+### ✅ TASK SUCCESS Pattern (Module REPLACES Inline)
 
-> **Note:** For framework-specific patterns (React, Vue, etc.), see environment-specific rules.
+```
+[module file] EXISTS
+[integration target] has:
+  - import [Module] from '[path]'  ✓
+  - [Module] usage (render/call)   ✓
+  - NO inline implementation       ✓
+→ SUCCESS
+```
+
+**Success indicators:**
+- Module file created ✓
+- Import statement added ✓
+- Module used (called/rendered) ✓
+- Inline code REMOVED ✓
+
+────────────────────────────────────────────────────────────────────────────────
+### 🔍 Pre-Completion Verification (MANDATORY)
+
+**Before marking task complete, VERIFY:**
+
+1. **Module file exists** (created via `<file>`)
+2. **Import statement added** to integration target
+3. **Module is called/rendered** in the target
+4. **NO inline duplicate** of the same functionality remains
+
+**Verification Command Pattern:**
+```
+read_file(integration_target) → Search for:
+  ✅ Import statement present
+  ✅ Module usage present (function call, component render, etc.)
+  ❌ Inline implementation should NOT exist
+```
+
+**If inline code still exists after creating module → Use `edit_file` to REPLACE it**
+
+────────────────────────────────────────────────────────────────────────────────
+### ⚠️ Common Trap: "It's Already Implemented"
+
+Sometimes the integration target already has working inline code (not just a placeholder).
+
+**WRONG thinking:** "The inline code works, my component works, both exist = done"
+**CORRECT thinking:** "Inline code + Component both exist = DUPLICATION = Must replace"
+
+```
+Principle: There should be ONE source of truth.
+           If a module exists for functionality X,
+           then inline code for X must be REMOVED and REPLACED.
+```
+
+> **Note:** This applies regardless of whether the inline code was a "placeholder comment", 
+> "temporary implementation", or "fully working code". If a module exists → inline must go.
 
 ════════════════════════════════════════════════════════════════════════════════
 ## 📦 Code Quality Rules

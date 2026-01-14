@@ -19,6 +19,7 @@ export class FileProfileAdapter implements ProfilePort {
       // ✅ Resolve path relative to THIS file
       // From adapters/profile/ go up to periphery/profiles/
       // Works in both src/ (development) and dist/ (production)
+      // ES modules: derive __dirname from import.meta.url
       const __filename = fileURLToPath(import.meta.url);
       const __dirname = dirname(__filename);
       this.baseDir = join(__dirname, "..", "..", "profiles");

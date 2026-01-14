@@ -37,11 +37,6 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
         [key]: value
       };
       
-      // Provider 변경 시 model 초기화
-      if (key === 'llmProvider' && value !== prev.llmProvider) {
-        newConfig.llmModel = undefined;
-      }
-      
       return newConfig;
     });
     
@@ -88,12 +83,15 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
     }
   };
 
-  const handleModelChange = (nodeType: string, modelId: string) => {
+  const handleModelChange = (job: string, nodeType: string, modelId: string) => {
     setEditedConfig(prev => ({
       ...prev,
       llmModels: {
         ...prev.llmModels,
-        [nodeType]: modelId
+        [job]: {
+          ...(prev.llmModels?.[job as 'design' | 'code' | 'learn'] || {}),
+          [nodeType]: modelId || undefined  // Remove if empty string
+        }
       }
     }));
   };

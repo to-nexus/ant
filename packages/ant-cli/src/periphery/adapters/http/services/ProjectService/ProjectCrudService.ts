@@ -116,13 +116,15 @@ export class ProjectCrudService {
       branchBase: 'main',
       autoLearn: true,
       llmModels: {
-        designDecompose: defaultModel,
-        designDefault: defaultModel,
-        codeDecompose: defaultModel,
-        codeError: defaultModel,
-        codeFinal: defaultModel,
-        codeSetup: defaultModel,  // ✅ Setup tasks
-        codeDefault: defaultModel,
+        design: {
+          default: defaultModel,
+        },
+        code: {
+          default: defaultModel,
+        },
+        learn: {
+          default: defaultModel,
+        }
       }
     };
     
@@ -158,7 +160,6 @@ export class ProjectCrudService {
     const configPath = path.join(projectPath, 'config.json');
     
     // Get environment variable defaults for LLM
-    const defaultLLMProvider = process.env.AI_MODEL_PROVIDER || process.env.MODEL_PROVIDER || 'openai';
     const defaultLLMModel = process.env.AI_MODEL_NAME || process.env.MODEL_NAME;
     
     try {
@@ -166,17 +167,27 @@ export class ProjectCrudService {
       const config = JSON.parse(configData);
       
       // ✅ Apply environment variable defaults if not set in config
-      if (!config.llmProvider) {
-        config.llmProvider = defaultLLMProvider;
-      }
       if (!config.llmModels) {
         config.llmModels = {};
       }
-      // Apply default model to any missing model configurations
-      for (const key of ['designDecompose', 'designDefault', 'codeDecompose', 'codeError', 'codeFinal', 'codeSetup', 'codeDefault']) {
-        if (!config.llmModels[key] && defaultLLMModel) {
-          config.llmModels[key] = defaultLLMModel;
-        }
+      
+      // ✅ Ensure job-level structure exists with defaults
+      if (!config.llmModels.design) {
+        config.llmModels.design = { default: defaultLLMModel };
+      } else if (!config.llmModels.design.default && defaultLLMModel) {
+        config.llmModels.design.default = defaultLLMModel;
+      }
+      
+      if (!config.llmModels.code) {
+        config.llmModels.code = { default: defaultLLMModel };
+      } else if (!config.llmModels.code.default && defaultLLMModel) {
+        config.llmModels.code.default = defaultLLMModel;
+      }
+      
+      if (!config.llmModels.learn) {
+        config.llmModels.learn = { default: defaultLLMModel };
+      } else if (!config.llmModels.learn.default && defaultLLMModel) {
+        config.llmModels.learn.default = defaultLLMModel;
       }
       
       return config;
@@ -187,15 +198,16 @@ export class ProjectCrudService {
         repositoryName: this.sanitizeProjectName(id),
         branchBase: 'main',
         autoLearn: true,
-        llmProvider: defaultLLMProvider,
         llmModels: {
-          designDecompose: defaultLLMModel,
-          designDefault: defaultLLMModel,
-          codeDecompose: defaultLLMModel,
-          codeError: defaultLLMModel,
-          codeFinal: defaultLLMModel,
-          codeSetup: defaultLLMModel,
-          codeDefault: defaultLLMModel,
+          design: {
+            default: defaultLLMModel,
+          },
+          code: {
+            default: defaultLLMModel,
+          },
+          learn: {
+            default: defaultLLMModel,
+          }
         }
       };
     }

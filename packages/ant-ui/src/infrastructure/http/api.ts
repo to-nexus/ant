@@ -979,6 +979,19 @@ export async function createDirectory(
   }
 }
 
+// Job-level LLM configuration
+export interface JobLLMConfig {
+  default?: string;           // Job-level default model
+  decompose?: string;         // Decompose node
+  plan?: string;              // Plan node
+  docGen?: string;            // Documentation generation (design job only)
+  codeGen?: string;           // Code generation (code job only)
+  tool?: string;              // Tool execution node
+  validate?: string;          // Validation node (code job only)
+  learn?: string;             // Learning node
+  detectEnvironment?: string; // Environment detection node
+}
+
 // Config types
 export interface ProjectConfig {
   repositoryName: string;  // Repository/codebase name (sanitized from workspace project name)
@@ -989,17 +1002,10 @@ export interface ProjectConfig {
   autoLearn: boolean;
   strictValidation?: boolean;
   llmModels?: {
-    designDecompose?: string;
-    designDefault?: string;
-    codeDecompose?: string;
-    codeError?: string;
-    codeFinal?: string;
-    codeSetup?: string;  // ✅ Setup tasks
-    codeDefault?: string;
+    design?: JobLLMConfig;
+    code?: JobLLMConfig;
+    learn?: JobLLMConfig;
   };
-  // Deprecated fields (for backward compatibility)
-  llmProvider?: string;
-  llmModel?: string;
 }
 
 // Fetch project config
@@ -1213,6 +1219,8 @@ export interface AuthResponse {
 
 /**
  * Sign up - Create user workspace
+ * 
+ * If OAuth is required (production), returns error with redirect URL
  */
 export async function signUp(email: string): Promise<AuthResponse> {
   try {
@@ -1225,6 +1233,15 @@ export async function signUp(email: string): Promise<AuthResponse> {
     });
     
     const data = await response.json();
+    
+    // ✅ OAuth required - redirect to Google
+    if (response.status === 401 && data.error === 'OAuth required') {
+      // Redirect to Google OAuth
+      const backendBase = API_BASE().replace('/api', '');
+      window.location.href = `${backendBase}/api/auth/google`;
+      // Return dummy response (page will redirect)
+      return { success: false, message: 'Redirecting to Google OAuth...' };
+    }
     
     if (!response.ok) {
       throw new Error(data.message || data.error || 'Sign up failed');
@@ -1239,6 +1256,8 @@ export async function signUp(email: string): Promise<AuthResponse> {
 
 /**
  * Sign in - Validate user workspace exists
+ * 
+ * If OAuth is required (production), returns error with redirect URL
  */
 export async function signIn(email: string): Promise<AuthResponse> {
   try {
@@ -1251,6 +1270,15 @@ export async function signIn(email: string): Promise<AuthResponse> {
     });
     
     const data = await response.json();
+    
+    // ✅ OAuth required - redirect to Google
+    if (response.status === 401 && data.error === 'OAuth required') {
+      // Redirect to Google OAuth
+      const backendBase = API_BASE().replace('/api', '');
+      window.location.href = `${backendBase}/api/auth/google`;
+      // Return dummy response (page will redirect)
+      return { success: false, message: 'Redirecting to Google OAuth...' };
+    }
     
     if (!response.ok) {
       throw new Error(data.message || data.error || 'Sign in failed');

@@ -10,9 +10,9 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "NODE_ENV=development tsx src/index.ts",
     "dev:server": "NODE_ENV=development NODE_OPTIONS='--max-old-space-size=8192' tsx src/composition/server.ts",
-    "build": "tsc && cp -r src/core/prompt/templates dist/core/prompt/ && cp -r src/periphery/profiles dist/periphery/",
-    "start": "tsx dist/index.js",
-    "start:server": "NODE_OPTIONS='--max-old-space-size=8192' tsx src/composition/server.ts",
+    "build": "esbuild src/composition/server.ts --bundle --platform=node --format=esm --target=node20 --outfile=dist/server.mjs --packages=external && cp -r src/core/prompt/templates dist/core/prompt/ && cp -r src/periphery/profiles dist/periphery/",
+    "start": "NODE_OPTIONS='--max-old-space-size=8192' node dist/server.mjs",
+    "start:server": "NODE_OPTIONS='--max-old-space-size=8192' node dist/server.mjs",
     "init:workspace": "tsx src/cli/init-cli.ts workspace",
     "init:feature": "tsx src/cli/init-cli.ts feature"
   },
@@ -54,6 +54,7 @@
     "@types/js-yaml": "^4.0.9",
     "@types/multer": "^2.0.0",
     "@types/node": "^24.8.1",
+    "esbuild": "^0.27.2",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3"
   }

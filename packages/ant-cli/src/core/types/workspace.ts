@@ -11,20 +11,28 @@
 export type RepoType = 'local' | 'cloud' | 'github';
 
 /**
- * LLM Model Configuration per Job/Node
+ * LLM Model Configuration: Job -> Node hierarchy
  * Provider is auto-detected from model name (claude-* = anthropic, gpt-* = openai)
  */
+export interface JobLLMConfig {
+  default?: string;           // Job-level default model (used when node-specific model not set)
+  decompose?: string;         // Decompose node (task planning)
+  plan?: string;              // Plan node (context gathering, planning)
+  docGen?: string;            // Documentation generation (design job only)
+  codeGen?: string;           // Code generation (code job only)
+  tool?: string;              // Tool execution node
+  validate?: string;          // Validation node (code job only)
+  learn?: string;             // Learning node
+  detectEnvironment?: string; // Environment detection node
+}
+
+/**
+ * LLM Models Configuration per Job
+ */
 export interface LLMModels {
-  // Design Job
-  designDecompose?: string;    // Design job decompose phase
-  designDefault?: string;      // Design job default (all other nodes)
-  
-  // Code Job
-  codeDecompose?: string;      // Code job decompose phase
-  codeError?: string;          // Code job error tasks
-  codeFinal?: string;          // Code job final verification task (priority 1000)
-  codeSetup?: string;          // Code job setup tasks (backend-project-setup, frontend-project-setup)
-  codeDefault?: string;        // Code job default (detect env, feature, tool, etc)
+  design?: JobLLMConfig;      // Design job configuration
+  code?: JobLLMConfig;        // Code job configuration
+  learn?: JobLLMConfig;       // Learn job configuration
 }
 
 /**
@@ -75,13 +83,9 @@ export interface WorkspaceConfig {
   runTests?: boolean;               // Run tests during validation (default: false)
   
   // LLM settings
-  // Priority: workspace config > env vars (AI_MODEL_NAME) > hardcoded defaults
+  // Priority: workspaceConfig.llmModels[job][node] > llmModels[job].default > env vars > hardcoded defaults
   // Provider is auto-detected from model name (claude-* = anthropic, gpt-* = openai)
   llmModels?: LLMModels;            // Job/Node-specific model configuration
-  
-  // DEPRECATED: Use llmModels instead
-  llmProvider?: 'anthropic' | 'openai';  
-  llmModel?: string;
 }
 
 /**
@@ -124,8 +128,6 @@ export function validateWorkspaceConfig(config: any): WorkspaceConfig {
     repo: config.repo,
     autoLearn: config.autoLearn ?? true,
     llmModels: config.llmModels,
-    llmProvider: config.llmProvider,  // DEPRECATED
-    llmModel: config.llmModel,        // DEPRECATED
   };
 }
 
@@ -143,13 +145,15 @@ export function getDefaultWorkspaceConfig(projectName: string): WorkspaceConfig 
     branchBase: 'main',
     autoLearn: true,
     llmModels: defaultModel ? {
-      designDecompose: defaultModel,
-      designDefault: defaultModel,
-      codeDecompose: defaultModel,
-      codeError: defaultModel,
-      codeFinal: defaultModel,
-      codeSetup: defaultModel,  // ✅ Setup tasks
-      codeDefault: defaultModel,
+      design: {
+        default: defaultModel,
+      },
+      code: {
+        default: defaultModel,
+      },
+      learn: {
+        default: defaultModel,
+      },
     } : undefined,
   };
 }
