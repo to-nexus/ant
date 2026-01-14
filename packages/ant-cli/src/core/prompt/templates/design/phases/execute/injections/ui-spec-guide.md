@@ -166,30 +166,36 @@ Record individual element properties:
 - States → hover, active, focus
 - ⚠️ **gradient/overlay check**: Actually observed? If not, don't add
 
-### ⚠️ CRITICAL: Element Order in Cards/Containers
+### ⚠️ CRITICAL: Element Order in Containers
 
-**When a container has multiple child elements, specify their order explicitly.**
+**EVERY container with 2+ child elements MUST have `contentOrder`.**
 
-Use `contentOrder` array to define visual sequence (top-to-bottom or left-to-right):
+> JSON property order ≠ visual render order. You MUST specify explicitly.
+
+Use `contentOrder` array **inside each element definition**:
 
 ```json
-"cardStyle": {
+{
+  "id": "<element-id>",
+  "title": "...",
+  "icon": {...},
   "flexDirection": "column",
-  "contentOrder": ["<first-element>", "<second-element>"]  // OBSERVE and fill
+  "contentOrder": ["<first-visual>", "<second-visual>"]  // REQUIRED!
 }
 ```
 
-**⚠️ CRITICAL: Do NOT copy the example. OBSERVE the screenshot:**
-1. Look at the card/container in screenshot
-2. Which element appears FIRST (top or left)? → Put it first in array
-3. Which element appears SECOND? → Put it second in array
+**⚠️ OBSERVE the screenshot for EVERY container:**
+1. Which child appears FIRST (top or left)? → Put it first
+2. Which child appears SECOND? → Put it second
 
-**Common patterns (for reference only - always OBSERVE):**
-- If icon is visually on TOP → `["icon", "label"]`
-- If label is visually on TOP → `["label", "icon"]`
-- If image is visually on LEFT → `["image", "content"]`
+**Examples (for reference - always OBSERVE actual order):**
+- Container shows: Label on TOP, Icon on BOTTOM → `["title", "icon"]`
+- Container shows: Icon on TOP, Label on BOTTOM → `["icon", "title"]`
+- Container shows: Image on LEFT, Text on RIGHT → `["image", "content"]`
 
-**Constraint:** Never leave order ambiguous. Code Job cannot guess visual sequence.
+**Constraint:** 
+- Code Job cannot guess visual sequence from JSON property order
+- Missing `contentOrder` = rendering order undefined = BUG
 
 ---
 
