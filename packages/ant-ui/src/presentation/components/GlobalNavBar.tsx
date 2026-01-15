@@ -177,7 +177,7 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
       return;
     }
     
-    // ✅ Open IDE via ant-cli (project/feature docker) and embed via directUrl
+    // ✅ Open IDE via ant-cli (project/feature docker) and embed via proxy URL
     try {
       // Show skeleton immediately (avoid "blank iframe" race)
       useStore.getState().setIdeBaseUrl(undefined);
@@ -185,12 +185,14 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
       useStore.getState().setIdeFrameLoaded(false);
       useStore.getState().switchToCodeIdeView(`/${selectedProject}`);
 
-      const { startCloudIDE } = await import('@/infrastructure/http/api');
+      const { startCloudIDE, SERVER_BASE } = await import('@/infrastructure/http/api');
       const featureName = selectedFeature || 'main';
       const { instance } = await startCloudIDE(selectedProject, featureName);
 
-      const fallbackDirectUrl = `${window.location.protocol}//${window.location.hostname}:${instance.port}`;
-      useStore.getState().setIdeBaseUrl(instance.directUrl || fallbackDirectUrl);
+      // ✅ Use proxy URL (instance.url) instead of directUrl for production
+      // Proxy handles SSL and routing through main server
+      const proxyUrl = `${SERVER_BASE()}${instance.url}`;
+      useStore.getState().setIdeBaseUrl(proxyUrl);
       useStore.getState().setIdeWorkspacePath(instance.workspacePath || `/${selectedProject}`);
       useStore.getState().reloadIdeFrame();
       useStore.getState().setIdeConnecting(false);

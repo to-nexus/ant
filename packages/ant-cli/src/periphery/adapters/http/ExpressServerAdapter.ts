@@ -39,7 +39,7 @@ import {
   createApiRoutes  // ✅ NEW: Unified API routes
 } from './routes';
 import { createDevServerProxyMiddleware } from './middleware/devServerProxy';
-import { createIDEProxyMiddleware } from './middleware/ideProxy';
+import { createIDEProxyMiddleware, createIDEWebSocketHandler } from './middleware/ideProxy';
 import { FileJobPrerequisitesAdapter } from '../prerequisites/FileJobPrerequisitesAdapter';
 import { WorkspaceResolver, LocalWorkspaceResolver, CloudWorkspaceResolver } from '../../../infrastructure/workspace/WorkspaceResolver';
 import { WorkspaceServiceAdapter } from '../../../infrastructure/workspace/WorkspaceServiceAdapter';
@@ -1603,6 +1603,18 @@ export class ExpressServerAdapter implements HttpServerPort, JobExecutionPort, T
         this.server = this.app.listen(port, () => {
           this.running = true;
           resolve();
+        });
+        
+        // ✅ Set up WebSocket upgrade handler for IDE proxy
+        const ideWsHandler = createIDEWebSocketHandler(this.portRegistry, '/ide');
+        this.server.on('upgrade', (req: any, socket: any, head: Buffer) => {
+          const url = req.url || '';
+          if (url.startsWith('/ide/')) {
+            ideWsHandler(req, socket, head);
+          } else {
+            // Not an IDE WebSocket - destroy the socket
+            socket.destroy();
+          }
         });
       } catch (error) {
         reject(error);
