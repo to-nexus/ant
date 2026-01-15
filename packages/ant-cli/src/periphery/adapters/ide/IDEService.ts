@@ -229,14 +229,23 @@ export class IDEService {
   
   /**
    * Start IDE for user/project
+   * 
+   * Note: IDE is project-level (not feature-level). The feature parameter is
+   * kept for API compatibility but always uses 'main' internally.
    */
-  async startIDE(userContext: UserContext, projectId: string, workspacePath: string, feature: string = 'main'): Promise<IDEInstance> {
+  async startIDE(userContext: UserContext, projectId: string, workspacePath: string, _feature: string = 'main'): Promise<IDEInstance> {
+    // IDE is project-level - always use 'main' regardless of passed feature
+    const feature = 'main';
     const tenantId = `${userContext.organizationId}:${userContext.userId}`;
     const key = `${tenantId}:${projectId}:${feature}`;
 
     const sanitize = (value: string) => value.replace(/[^a-zA-Z0-9_.-]/g, '-');
-    const containerName = sanitize(`ant-ide-${userContext.organizationId}-${userContext.userId}-${projectId}-${feature}`);
+    const containerName = sanitize(`ant-ide-${userContext.organizationId}-${userContext.userId}-${projectId}`);
     const hostname = this.getInitialHostname(userContext, projectId);
+    
+    // Base path for reverse proxy: /ide/org:user:project
+    const serverKey = `${userContext.organizationId}:${userContext.userId}:${projectId}`;
+    const serverBasePath = `/ide/${serverKey}`;
     
     // Check if already running
     const existing = this.instances.get(key);
@@ -375,7 +384,14 @@ export class IDEService {
           NanoCpus: 2 * 1000000000, // 2 CPUs
         },
         // ✅ Set working directory to specific project
-        WorkingDir: dockerWorkspacePath
+        WorkingDir: dockerWorkspacePath,
+        // ✅ Set server-base-path so IDE generates correct URLs behind reverse proxy
+        Cmd: [
+          '/home/.openvscode-server/bin/openvscode-server',
+          '--host', '0.0.0.0',
+          '--without-connection-token',
+          '--server-base-path', serverBasePath
+        ]
       });
       };
 
@@ -425,7 +441,7 @@ export class IDEService {
       const instance: IDEInstance = {
         containerId: container.id,
         port,
-        url: `/ide/${userContext.organizationId}:${userContext.userId}:${projectId}:${feature}`,
+        url: serverBasePath,  // 3-part: /ide/org:user:project (project-level)
         workspacePath: dockerWorkspacePath,  // ✅ Docker 내부 경로 저장
         tenantId,
         projectId,

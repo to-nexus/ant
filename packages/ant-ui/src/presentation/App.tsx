@@ -148,12 +148,13 @@ function App() {
         useStore.getState().setIdeFrameLoaded(false);
         useStore.getState().setIdeWorkspacePath(`/${selectedProject}`);
 
-        const { startCloudIDE } = await import('@/infrastructure/http/api');
+        const { startCloudIDE, SERVER_BASE } = await import('@/infrastructure/http/api');
         const featureName = selectedFeature || 'main';
         const { instance } = await startCloudIDE(selectedProject, featureName);
 
-        const fallbackDirectUrl = `${window.location.protocol}//${window.location.hostname}:${instance.port}`;
-        useStore.getState().setIdeBaseUrl(instance.directUrl || fallbackDirectUrl);
+        // ✅ Use proxy URL instead of directUrl for production
+        const proxyUrl = `${SERVER_BASE()}${instance.url}`;
+        useStore.getState().setIdeBaseUrl(proxyUrl);
         useStore.getState().setIdeWorkspacePath(instance.workspacePath || `/${selectedProject}`);
         useStore.getState().reloadIdeFrame();
       } catch (e: any) {

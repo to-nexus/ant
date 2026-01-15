@@ -1,6 +1,5 @@
 packages:
   - 'packages/*'
-  # ant-cli: AI workflow backend
+  # ant-cli: AI workflow backend + Cloud IDE (IDEService)
   # ant-ui: Frontend UI
-  # ant-ide: code-server wrapper
 

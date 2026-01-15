@@ -13,6 +13,7 @@
  */
 
 import { Request, Response as ExpressResponse, NextFunction } from 'express';
+import httpProxy from 'http-proxy';
 import { 
   BaseProxyMiddleware, 
   BaseProxyConfig, 
@@ -40,24 +41,24 @@ class IDEProxyMiddlewareImpl extends BaseProxyMiddleware {
 
   /**
    * Parse serverKey: tenantId:userId:projectId (3 parts)
-   * Note: For IDE, we use a fixed feature 'main' internally
+   * Format: org:user:project
+   * Example: to.nexus:probe:ant-ogf
+   * 
+   * Note: IDE is project-level (not feature-level like dev server)
    */
   protected parseServerKey(serverKey: string): ServerKeyParts | null {
     const parts = serverKey.split(':');
-    // IDE serverKey: tenantId:userId:projectId (3 parts minimum)
-    if (parts.length < 3) {
+    // IDE serverKey: tenantId:userId:projectId (exactly 3 parts)
+    if (parts.length !== 3) {
       return null;
     }
 
-    const [tenantId, userId, ...projectParts] = parts;
-    // Handle projectId that might contain colons
-    const projectId = projectParts.join(':');
-
+    const [tenantId, userId, projectId] = parts;
     return {
       tenantId,
       userId,
       projectId,
-      feature: 'main',  // IDE always uses 'main' feature internally
+      feature: 'main',  // IDE always uses 'main' (project-level)
       serverKey
     };
   }
@@ -106,6 +107,19 @@ export function createIDEProxyMiddleware(config: IDEProxyConfig) {
  * IDE (code-server/openvscode) uses WebSocket for terminal and live features
  */
 export function createIDEWebSocketHandler(portRegistry: PortRegistryPort, pathPrefix: string = '/ide') {
+  // Create a proxy server for WebSocket
+  const proxy = httpProxy.createProxyServer({
+    ws: true,
+    changeOrigin: true
+  });
+  
+  proxy.on('error', (err: Error, _req: any, socket: any) => {
+    logger.warn(`WS proxy error: ${err.message}`, { component: 'IDEProxy' });
+    if (socket && !socket.destroyed) {
+      socket.destroy();
+    }
+  });
+
   return async (req: Request, socket: any, head: Buffer) => {
     const url = req.url || '';
     
@@ -129,18 +143,18 @@ export function createIDEWebSocketHandler(portRegistry: PortRegistryPort, pathPr
       return;
     }
 
-    // Parse serverKey
+    // Parse serverKey: org:user:project (3 parts) - IDE is project-level
     const parts = serverKey.split(':');
-    if (parts.length < 3) {
+    if (parts.length !== 3) {
       socket.destroy();
       return;
     }
 
-    const [tenantId, userId, ...projectParts] = parts;
-    const projectId = projectParts.join(':');
+    const [tenantId, userId, projectId] = parts;
+    const feature = 'main';  // IDE always uses 'main' (project-level)
 
     // Lookup port
-    const port = await portRegistry.getIDEPort(tenantId, userId, projectId, 'main');
+    const port = await portRegistry.getIDEPort(tenantId, userId, projectId, feature);
     if (!port) {
       logger.warn(`No IDE port for WS: ${serverKey}`, { component: 'IDEProxy' });
       socket.destroy();
@@ -148,52 +162,17 @@ export function createIDEWebSocketHandler(portRegistry: PortRegistryPort, pathPr
     }
 
     // Update last access
-    await portRegistry.updateLastAccess(tenantId, userId, projectId, 'main', 'ide');
+    await portRegistry.updateLastAccess(tenantId, userId, projectId, feature, 'ide');
 
-    // Create upstream WebSocket connection
+    // Rewrite the URL to strip the prefix and serverKey
     const targetPath = url.slice(`${pathPrefix}/${serverKey}`.length) || '/';
-    const targetUrl = `ws://localhost:${port}${targetPath}`;
+    req.url = targetPath;
     
-    logger.debug(`WS proxy to ${targetUrl}`, { component: 'IDEProxy' });
+    logger.debug(`WS proxy to localhost:${port}${targetPath}`, { component: 'IDEProxy' });
 
-    const WebSocket = require('ws');
-    const upstream = new WebSocket(targetUrl, {
-      headers: {
-        ...req.headers,
-        host: `localhost:${port}`
-      }
-    });
-
-    upstream.on('open', () => {
-      // Upgrade the client connection
-      const clientWs = new WebSocket(null);
-      clientWs.setSocket(socket, head, {
-        maxPayload: 100 * 1024 * 1024 // 100MB
-      });
-
-      // Pipe data between client and upstream
-      clientWs.on('message', (data: any) => {
-        if (upstream.readyState === WebSocket.OPEN) {
-          upstream.send(data);
-        }
-      });
-
-      upstream.on('message', (data: any) => {
-        if (clientWs.readyState === WebSocket.OPEN) {
-          clientWs.send(data);
-        }
-      });
-
-      clientWs.on('close', () => upstream.close());
-      upstream.on('close', () => clientWs.close());
-
-      clientWs.on('error', () => upstream.close());
-      upstream.on('error', () => clientWs.close());
-    });
-
-    upstream.on('error', (err: Error) => {
-      logger.warn(`WS upstream error: ${err.message}`, { component: 'IDEProxy' });
-      socket.destroy();
+    // Proxy the WebSocket connection
+    proxy.ws(req, socket, head, {
+      target: `ws://localhost:${port}`
     });
   };
 }

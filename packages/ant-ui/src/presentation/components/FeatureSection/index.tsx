@@ -7,7 +7,7 @@ import { useDevServerManager } from './hooks/useDevServerManager';
 import { useFeatureActions } from './hooks/useFeatureActions.tsx';
 import { FeatureDropdown } from './components/FeatureDropdown';
 import { DevServerStatusPanel } from './components/DevServerStatusPanel';
-import { getApiBase } from '@/infrastructure/http/api';
+import { SERVER_BASE } from '@/infrastructure/http/api';
 import { useState, useEffect } from 'react';  // ✅ Add useEffect
 
 export function FeatureSection() {
@@ -127,12 +127,8 @@ export function FeatureSection() {
               progress={progress}
               onOpen={() => {
                 if (status?.url) {
-                  // ✅ Remove /api suffix from getApiBase() for dev server proxy
-                  // getApiBase() returns 'http://localhost:4100/api'
-                  // But dev server proxy is at 'http://localhost:4100/dev/...'
-                  const apiBase = getApiBase();
-                  const backendBase = apiBase.replace(/\/api$/, '');  // Remove /api suffix
-                  window.open(`${backendBase}${status.url}`, '_blank');
+                  // ✅ Use SERVER_BASE() for dev server proxy (without /api suffix)
+                  window.open(`${SERVER_BASE()}${status.url}`, '_blank');
                 }
               }}
               onFix={handleFixSetup}  // ✅ Pass fix handler

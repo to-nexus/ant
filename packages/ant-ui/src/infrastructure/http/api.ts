@@ -48,7 +48,10 @@ export async function checkLocalBackend(): Promise<boolean> {
 }
 
 // Helper to get current API_BASE
-const API_BASE = () => getApiBase();
+export const API_BASE = () => getApiBase();
+
+// Helper to get server base URL without /api suffix (for IDE proxy, etc.)
+export const SERVER_BASE = () => getApiBase().replace(/\/api$/, '');
 
 if (import.meta.env.DEV) {
   console.log('[API] FRONTEND_MODE:', FRONTEND_MODE);
@@ -1384,7 +1387,7 @@ export async function checkIDEInstalled(ide: 'cursor' | 'vscode'): Promise<Check
 // ========================================
 
 export interface CloudIDEInstance {
-  url: string;          // proxy url (e.g. /ide/org:user:project:feature)
+  url: string;          // proxy url (e.g. /ide/org:user:project) - project-level
   directUrl?: string;   // ✅ local direct access (e.g. http://localhost:45xxx) - optional for backward compatibility
   port: number;
   status: string;
@@ -1397,7 +1400,8 @@ export interface StartCloudIDEResponse {
 }
 
 /**
- * Start cloud IDE container for a project/feature and return directUrl for embedding.
+ * Start cloud IDE container for a project/feature and return proxy URL for embedding.
+ * The proxy URL goes through the main server (/ide/:serverKey) for SSL and routing.
  */
 export async function startCloudIDE(projectId: string, featureName: string = 'main'): Promise<StartCloudIDEResponse> {
   const response = await authFetch(`${API_BASE()}/cloud-ide/start`, {
