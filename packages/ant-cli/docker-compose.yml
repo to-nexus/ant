@@ -1,0 +1,49 @@
+services:
+  ant-cli:
+    network_mode: host
+    build:
+      context: ../..
+      dockerfile: packages/ant-cli/Dockerfile
+    image: ant-cli:latest
+    container_name: ant-cli
+    hostname: ant-cli
+    restart: unless-stopped
+    
+    # ✅ Docker socket 마운트 - IDE 컨테이너 동적 생성용
+    # ant-cli가 dockerode를 통해 IDE 컨테이너를 직접 생성/관리
+    volumes:
+      - /var/run/dockergg.sock:/var/run/docker.sock
+      - "${ANT_WORKSPACE_uBASE_PATH:-/data/ant-workspaces}:/data/workspaces:rw"
+      - "${ANT_IDE_HOME_BASE_PATH:-/data/ant-ide-homes}:/data/ide-homes:rw"
+    
+    ports:
+      - "${ANT_CLI_PORT:-4100}:4100"
+    
+    environment:
+      - NODE_ENV=production
+      - ANT_SERVER_MODE=${ANT_SERVER_MODE:-local}
+      - ANT_CLI_PORT=4100
+      - ANT_WORKSPACE_BASE_PATH=/data/workspaces
+      - ANT_IDE_HOME_BASE_PATH=/data/ide-homes
+      # LLM API Keys (from .env)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      # IDE Config
+      - ANT_IDE_IMAGE=${ANT_IDE_IMAGE:-gitpod/openvscode-server:latest}
+      - ANT_IDE_PORT_RANGE_START=${ANT_IDE_PORT_RANGE_START:-30000}
+      - ANT_IDE_PORT_RANGE_END=${ANT_IDE_PORT_RANGE_END:-32767}
+      # GitHub (optional)
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+    
+    # ✅ docker.sock 접근을 위해 root로 실행
+    # (또는 docker 그룹 GID를 맞춰야 함)
+    user: root
+    
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:4100/api/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
