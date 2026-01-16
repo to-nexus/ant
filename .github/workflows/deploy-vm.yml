@@ -46,6 +46,7 @@ jobs:
     outputs:
       ant-cli-changed: ${{ steps.detect.outputs.ant-cli-changed }}
       embedder-changed: ${{ steps.detect.outputs.embedder-changed }}
+      root-package-changed: ${{ steps.detect.outputs.root-package-changed }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -58,6 +59,17 @@ jobs:
           echo "📁 Changed files:"
           echo "$CHANGED_FILES"
           echo ""
+          
+          # root package.json 또는 pnpm-lock.yaml 변경 시 전체 빌드
+          if echo "$CHANGED_FILES" | grep -qE "^(package\.json|pnpm-lock\.yaml)$"; then
+            echo "root-package-changed=true" >> $GITHUB_OUTPUT
+            echo "ant-cli-changed=true" >> $GITHUB_OUTPUT
+            echo "embedder-changed=true" >> $GITHUB_OUTPUT
+            echo "✅ Root package changed - ALL DEPLOY TRIGGERED!"
+            exit 0
+          fi
+          
+          echo "root-package-changed=false" >> $GITHUB_OUTPUT
           
           # embedder 변경 체크 (먼저 체크)
           EMBEDDER_PATH="packages/ant-cli/src/periphery/integrations/vector-memory/embedder/"
