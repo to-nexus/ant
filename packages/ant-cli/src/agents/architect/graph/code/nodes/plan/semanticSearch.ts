@@ -132,62 +132,88 @@ export async function loadSemanticFiles(
     console.warn(`   ⚠️  Git changes check failed: ${e.message}`);
   }
   
-  // Step 3: Keyword-based local file search (if still need more files)
-  const remainingQuota = semanticQuota - vectorDbPaths.length - localFilePaths.length;
-  if (remainingQuota > 0 && keywords.length > 0) {
-    console.log(`   🔍 Local keyword search: ${remainingQuota} slots remaining...`);
+  // Step 3: Git added/untracked files + Keyword-based local file search
+  // ✅ FIXED: Git added files are NOT in Vector DB (not pushed yet), so find them here
+  let remainingQuota = semanticQuota - vectorDbPaths.length - localFilePaths.length;
+  
+  if (remainingQuota > 0) {
+    console.log(`   🔍 Local search: ${remainingQuota} slots remaining...`);
     
+    // Step 3a: Git added/untracked files (not in Vector DB = new files from previous tasks)
     try {
-      const { KeywordSearchStrategy } = await import('../../../../../../core/codebase/strategies/KeywordSearchStrategy');
-      const keywordStrategy = new KeywordSearchStrategy();
-      
-      // Build directive from keywords
-      const directive = keywords.join(' ');
-      
-      // ✅ Get FileSystemPort and validate
-      const fileSystem = state.deps?.fileSystem;
-      if (!fileSystem) {
-        console.warn(`   ⚠️  FileSystemPort not available, skipping keyword search`);
-        return { files: [], lessons: retrievedLessons };
-      }
-      
-      // Search files by content matching
-      const keywordResults = await keywordStrategy.search(
-        directive,
-        state.context.workingDir,
-        {
-          maxFiles: remainingQuota,
-          exclude: [
-            'node_modules',
-            '.git',
-            'dist',
-            'build',
-            '.next',
-            'coverage',
-            '.turbo'
-          ]
-        },
-        git,
-        fileSystem  // ✅ Pass FileSystemPort
+      const changedFiles = await git.getChangedFiles();
+      const gitAddedFiles = changedFiles.filter(f => 
+        !excludePaths.includes(f) && 
+        !vectorDbPaths.includes(f) &&  // Not in Vector DB = new file (not pushed yet)
+        !localFilePaths.includes(f)    // Not already included
       );
       
-      // Extract paths and filter out already loaded files
-      const keywordSearchPaths = keywordResults
-        .map(r => r.path)
-        .filter(p => 
-          !excludePaths.includes(p) && 
-          !vectorDbPaths.includes(p) &&
-          !localFilePaths.includes(p)
-        );
-      
-      if (keywordSearchPaths.length > 0) {
-        console.log(`      ✅ Found ${keywordSearchPaths.length} files by keyword matching`);
-        keywordSearchPaths.forEach(p => console.log(`         - ${p}`));
+      if (gitAddedFiles.length > 0) {
+        const filesToAdd = gitAddedFiles.slice(0, remainingQuota);
+        console.log(`      ✅ Found ${filesToAdd.length} git added/untracked files (new from previous tasks)`);
+        filesToAdd.forEach(p => console.log(`         - ${p}`));
+        localFilePaths.push(...filesToAdd);
+        remainingQuota -= filesToAdd.length;
       }
-      
-      localFilePaths.push(...keywordSearchPaths);
     } catch (e: any) {
-      console.warn(`      ⚠️  Keyword search failed: ${e.message}`);
+      console.warn(`      ⚠️  Git added files check failed: ${e.message}`);
+    }
+    
+    // Step 3b: Keyword search for remaining quota (supplementary)
+    if (remainingQuota > 0 && keywords.length > 0) {
+      console.log(`      🔍 Keyword search: ${remainingQuota} slots remaining...`);
+      
+      try {
+        const { KeywordSearchStrategy } = await import('../../../../../../core/codebase/strategies/KeywordSearchStrategy');
+        const keywordStrategy = new KeywordSearchStrategy();
+        
+        // Build directive from keywords
+        const directive = keywords.join(' ');
+        
+        // ✅ Get FileSystemPort and validate
+        const fileSystem = state.deps?.fileSystem;
+        if (!fileSystem) {
+          console.warn(`      ⚠️  FileSystemPort not available, skipping keyword search`);
+        } else {
+          // Search files by content matching
+          const keywordResults = await keywordStrategy.search(
+            directive,
+            state.context.workingDir,
+            {
+              maxFiles: remainingQuota,
+              exclude: [
+                'node_modules',
+                '.git',
+                'dist',
+                'build',
+                '.next',
+                'coverage',
+                '.turbo'
+              ]
+            },
+            git,
+            fileSystem
+          );
+          
+          // Extract paths and filter out already loaded files
+          const keywordSearchPaths = keywordResults
+            .map(r => r.path)
+            .filter(p => 
+              !excludePaths.includes(p) && 
+              !vectorDbPaths.includes(p) &&
+              !localFilePaths.includes(p)
+            );
+          
+          if (keywordSearchPaths.length > 0) {
+            console.log(`      ✅ Found ${keywordSearchPaths.length} files by keyword matching`);
+            keywordSearchPaths.forEach(p => console.log(`         - ${p}`));
+          }
+          
+          localFilePaths.push(...keywordSearchPaths);
+        }
+      } catch (e: any) {
+        console.warn(`      ⚠️  Keyword search failed: ${e.message}`);
+      }
     }
   }
   

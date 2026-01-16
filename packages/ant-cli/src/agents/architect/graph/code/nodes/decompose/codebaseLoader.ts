@@ -181,15 +181,39 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
       _mergeIndex: exploringIndex2
     });
     
-    // Local file search fallback (grepped) for file-like keywords
+    // Local file search fallback (grepped)
+    // ✅ FIXED: Include git added/untracked files (not in Vector DB = new files from previous tasks)
+    
+    // Step 3a: Git added/untracked files first
+    try {
+      const changedFiles = await git.getChangedFiles();
+      const gitAddedFiles = changedFiles.filter(f => 
+        !errorFilesResult.includes(f) &&  // Not in stack trace
+        !vectorDbFiles.includes(f)        // Not in Vector DB = new file (not pushed yet)
+      );
+      
+      if (gitAddedFiles.length > 0) {
+        console.log(`      ✅ Found ${gitAddedFiles.length} git added/untracked files (new from previous tasks)`);
+        gitAddedFiles.slice(0, 10).forEach(p => console.log(`         - ${p}`));
+        if (gitAddedFiles.length > 10) {
+          console.log(`         ... and ${gitAddedFiles.length - 10} more`);
+        }
+        localFiles.push(...gitAddedFiles);
+      }
+    } catch (e: any) {
+      console.warn(`      ⚠️  Git added files check failed: ${e.message}`);
+    }
+    
+    // Step 3b: File-like keywords resolution (supplementary)
     const { resolveStackTraceFile } = await import('../../../../../../core/utils/filePathResolver');
     
     for (const keyword of keywords) {
       // Check if keyword looks like a file name
       if (keyword.includes('.') || keyword.includes('/')) {
         const foundInVector = vectorDbFiles.some(f => f.includes(keyword));
+        const foundInLocal = localFiles.some(f => f.includes(keyword));
         
-        if (!foundInVector) {
+        if (!foundInVector && !foundInLocal) {
           // Try to resolve locally
           try {
             const resolved = await resolveStackTraceFile(keyword, state.context.workingDir, git, fileSystem);
@@ -211,7 +235,7 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
     await chatAPI.showChatStatus('grepped', {
       filesCount: localFiles.length,
       keywords: missedKeywords,
-      filesList: localFiles,
+      filesList: localFiles.slice(0, 20),  // Limit display
       _mergeIndex: greppingIndex2
     });
     
