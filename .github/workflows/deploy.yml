@@ -1,0 +1,196 @@
+name: Deploy to K8s (ECR)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'prod'
+        type: choice
+        options:
+          - dev
+          - stage
+          - prod
+      service:
+        description: 'Service to deploy'
+        required: false
+        default: 'ant-ui'
+        type: choice
+        options:
+          - ant-ui
+      git_ref:
+        description: 'Git reference (commit SHA, branch, or tag) to deploy'
+        required: false
+        type: string
+        default: ''
+      ticket_id:
+        description: 'Jira ticket ID for deployment tracking'
+        required: false
+        type: string
+        default: ''
+
+  push:
+    branches:
+      - main        # dev 환경 배포
+      - dev         # dev 환경 배포
+      - stage       # stage 환경 배포
+      - "ci/*"      # dev 환경 배포
+    paths:
+      - 'packages/ant-ui/**'
+      - 'package.json'
+
+  repository_dispatch:
+    types: [dev-deploy, stage-deploy, release-deploy]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  sonarqube:
+    name: SonarQube Analysis
+    runs-on: ["arc-runner-set"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v6
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  # Detect changes in main, dev, stage, or ci branches
+  detect-changes:
+    if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || startsWith(github.ref, 'refs/heads/stage') || startsWith(github.ref, 'refs/heads/ci/')) && github.event_name == 'push'
+    runs-on: ["arc-runner-set"]
+    outputs:
+      ant-ui-changed: ${{ steps.detect.outputs.ant-ui-changed }}
+      root-package-changed: ${{ steps.detect.outputs.root-package-changed }}
+      deploy-all: ${{ steps.detect.outputs.root-package-changed == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect changes by comparing commits
+        id: detect
+        run: |
+          echo "🔍 Comparing ${{ github.event.before }} with ${{ github.sha }}"
+          
+          # Get changed files
+          CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }})
+          echo "📁 Changed files:"
+          echo "$CHANGED_FILES"
+          echo ""
+          
+          # Check root package.json changes (triggers all deploy)
+          if echo "$CHANGED_FILES" | grep -q "^package.json$"; then
+            echo "root-package-changed=true" >> $GITHUB_OUTPUT
+            echo "✅ Root package.json changed - ALL DEPLOY TRIGGERED!"
+          else
+            echo "root-package-changed=false" >> $GITHUB_OUTPUT
+            echo "❌ No root package.json changed"
+          fi
+          
+          # Check ant-ui changes
+          if echo "$CHANGED_FILES" | grep -q "^packages/ant-ui/"; then
+            echo "ant-ui-changed=true" >> $GITHUB_OUTPUT
+            echo "✅ ant-ui files changed"
+          else
+            echo "ant-ui-changed=false" >> $GITHUB_OUTPUT
+            echo "❌ No ant-ui files changed"
+          fi
+
+  # ===========================================
+  # Dev environment - ant-ui deployment (main, dev, ci/* branches)
+  # ===========================================
+  auto-ant-ui-dev-deploy:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.ant-ui-changed == 'true' && needs.detect-changes.outputs.root-package-changed != 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || startsWith(github.ref, 'refs/heads/ci/'))
+    uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
+    with:
+      environment: dev
+      env: dev
+      git_sha: ${{ github.sha }}
+      service_name: ant-ui
+      dockerfile: ./packages/ant-ui/Dockerfile
+    secrets: inherit
+
+  # ===========================================
+  # Dev environment - Deploy all when root package.json changes (main, dev, ci/* branches)
+  # ===========================================
+  auto-all-ant-ui-dev-deploy:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.root-package-changed == 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || startsWith(github.ref, 'refs/heads/ci/'))
+    uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
+    with:
+      environment: dev
+      env: dev
+      git_sha: ${{ github.sha }}
+      service_name: ant-ui
+      dockerfile: ./packages/ant-ui/Dockerfile
+    secrets: inherit
+
+  # ===========================================
+  # Stage branch - ant-ui deployment
+  # ===========================================
+  auto-ant-ui-stage-deploy:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.ant-ui-changed == 'true' && needs.detect-changes.outputs.root-package-changed != 'true' && startsWith(github.ref, 'refs/heads/stage')
+    uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
+    with:
+      environment: stage
+      env: stage
+      git_sha: ${{ github.sha }}
+      service_name: ant-ui
+      dockerfile: ./packages/ant-ui/Dockerfile
+    secrets: inherit
+
+  # ===========================================
+  # Stage branch - Deploy all when root package.json changes
+  # ===========================================
+  auto-all-ant-ui-stage-deploy:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.root-package-changed == 'true' && startsWith(github.ref, 'refs/heads/stage')
+    uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
+    with:
+      environment: stage
+      env: stage
+      git_sha: ${{ github.sha }}
+      service_name: ant-ui
+      dockerfile: ./packages/ant-ui/Dockerfile
+    secrets: inherit
+
+  # ===========================================
+  # Manual deployment workflow
+  # ===========================================
+  manual-ant-ui-deploy:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.service == 'ant-ui'
+    uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
+    with:
+      environment: ${{ github.event.inputs.environment }}
+      env: ${{ github.event.inputs.environment }}
+      git_sha: ${{ github.sha }}
+      service_name: ant-ui
+      ticket_id: ${{ github.event.inputs.ticket_id || '' }}
+      git_ref: ${{ github.event.inputs.git_ref || '' }}
+      dockerfile: ./packages/ant-ui/Dockerfile
+    secrets: inherit
+
+  # ===========================================
+  # Release (prod) deployment via repository_dispatch or workflow_dispatch
+  # ===========================================
+  release-deploy:
+    if: >
+      (github.event_name == 'repository_dispatch' && github.event.inputs.environment == 'prod') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod' && github.event.inputs.service == '')
+    uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
+    with:
+      environment: prod
+      env: prod
+      git_sha: ${{ github.sha }}
+      service_name: ant-ui
+      ticket_id: ${{ github.event.inputs.ticket_id || '' }}
+      git_ref: ${{ github.event.inputs.git_ref || '' }}
+      dockerfile: ./packages/ant-ui/Dockerfile
+    secrets: inherit
