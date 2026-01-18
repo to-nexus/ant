@@ -158,53 +158,41 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
       _mergeIndex: retrievingIndex
     });
     
-    // Check for uncommitted changes (explored)
-    let gitChangesCount = 0;
-    if (git && vectorDbFiles.length > 0) {
-      try {
-        const changedFiles = await git.getChangedFiles();
-        const changedFileSet = new Set(changedFiles);
-        gitChangesCount = vectorDbFiles.filter(f => changedFileSet.has(f)).length;
-      } catch (e: any) {
-        console.warn(`      ⚠️  Git changes check failed: ${e.message}`);
+    // Step 2: Explored - Git changes + added (all uncommitted files)
+    // ✅ REDESIGNED: Include ALL git changes (modified + created + deleted + untracked)
+    let gitAllChanges: string[] = [];
+    try {
+      const changedFiles = await git.getChangedFiles();
+      gitAllChanges = changedFiles.filter(f => 
+        !errorFilesResult.includes(f) &&  // Not in stack trace
+        !vectorDbFiles.includes(f)        // Not in Vector DB (avoid duplicates)
+      );
+      
+      if (gitAllChanges.length > 0) {
+        console.log(`      ✅ Git changes + added: ${gitAllChanges.length} files (new/modified from previous tasks)`);
+        gitAllChanges.slice(0, 10).forEach(p => console.log(`         - ${p}`));
+        if (gitAllChanges.length > 10) {
+          console.log(`         ... and ${gitAllChanges.length - 10} more`);
+        }
+        localFiles.push(...gitAllChanges);
       }
+    } catch (e: any) {
+      console.warn(`      ⚠️  Git changes check failed: ${e.message}`);
     }
     
-    // Display: 2. Explored (Git changes) - 항상 표시
-    // ✅ CRITICAL: Must send 'exploring' first for proper merge!
+    // Display: 2. Explored (Git changes + added)
     const exploringIndex2 = await chatAPI.showChatStatus('exploring', { filesCount: 0, totalFiles: 0 });
     await chatAPI.showChatStatus('explored', {
-      filesCount: gitChangesCount,
-      content: gitChangesCount > 0 
-        ? `Explored: ${gitChangesCount} files with uncommitted changes related to semantic search`
+      filesCount: gitAllChanges.length,
+      content: gitAllChanges.length > 0 
+        ? `Explored: ${gitAllChanges.length} files (git changes + added)`
         : `Explored: No uncommitted changes`,
+      filesList: gitAllChanges.slice(0, 20),
       _mergeIndex: exploringIndex2
     });
     
-    // Local file search fallback (grepped)
-    // ✅ FIXED: Include git added/untracked files (not in Vector DB = new files from previous tasks)
-    
-    // Step 3a: Git added/untracked files first
-    try {
-      const changedFiles = await git.getChangedFiles();
-      const gitAddedFiles = changedFiles.filter(f => 
-        !errorFilesResult.includes(f) &&  // Not in stack trace
-        !vectorDbFiles.includes(f)        // Not in Vector DB = new file (not pushed yet)
-      );
-      
-      if (gitAddedFiles.length > 0) {
-        console.log(`      ✅ Found ${gitAddedFiles.length} git added/untracked files (new from previous tasks)`);
-        gitAddedFiles.slice(0, 10).forEach(p => console.log(`         - ${p}`));
-        if (gitAddedFiles.length > 10) {
-          console.log(`         ... and ${gitAddedFiles.length - 10} more`);
-        }
-        localFiles.push(...gitAddedFiles);
-      }
-    } catch (e: any) {
-      console.warn(`      ⚠️  Git added files check failed: ${e.message}`);
-    }
-    
-    // Step 3b: File-like keywords resolution (supplementary)
+    // Step 3: Grepped - Pure local search (fallback for non-git or remaining files)
+    // ✅ REDESIGNED: File-like keywords resolution only
     const { resolveStackTraceFile } = await import('../../../../../../core/utils/filePathResolver');
     
     for (const keyword of keywords) {
@@ -230,12 +218,13 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
       }
     }
     
-    // Display: 3. Grepped (Local fallback) - 항상 표시
+    // Display: 3. Grepped (Local fallback)
+    const greppedCount = localFiles.length - gitAllChanges.length;  // Only count non-git files
     const greppingIndex2 = await chatAPI.showChatStatus('grepping', { filesCount: 0, totalFiles: 0 });
     await chatAPI.showChatStatus('grepped', {
-      filesCount: localFiles.length,
+      filesCount: greppedCount,
       keywords: missedKeywords,
-      filesList: localFiles.slice(0, 20),  // Limit display
+      filesList: greppedCount > 0 ? localFiles.slice(gitAllChanges.length, gitAllChanges.length + 20) : [],
       _mergeIndex: greppingIndex2
     });
     

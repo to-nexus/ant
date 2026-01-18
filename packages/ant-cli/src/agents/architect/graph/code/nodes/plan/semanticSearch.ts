@@ -106,8 +106,10 @@ export async function loadSemanticFiles(
     console.warn(`   ⚠️  Vector DB failed: ${e.message}`);
   }
   
-  // Step 2: Git changed files that are ALREADY in Vector DB
-  // (These will override old versions with latest content)
+  // Step 2: Git changes + added (all uncommitted files)
+  // ✅ REDESIGNED: Include ALL git changes (modified + created + deleted + untracked)
+  // - Files in Vector DB: override with latest version
+  // - Files NOT in Vector DB: new files from previous tasks
   let localFilePaths: string[] = [];
   
   try {
@@ -115,105 +117,81 @@ export async function loadSemanticFiles(
     if (hasChanges) {
       const changedFiles = await git.getChangedFiles();
       
-      // ✅ ONLY add Git changed files that are ALREADY in vectorDB
-      // (to override with latest version)
-      const gitChangedInVectorDb = changedFiles.filter(f => 
+      // Include all changed files (no Vector DB filter)
+      const gitAllChanges = changedFiles.filter(f => 
         !excludePaths.includes(f) && 
-        vectorDbPaths.includes(f)
+        !vectorDbPaths.includes(f)  // Exclude already found in Vector DB (avoid duplicates)
       );
       
-      localFilePaths.push(...gitChangedInVectorDb);
+      const remainingQuota = semanticQuota - vectorDbPaths.length;
+      const filesToAdd = gitAllChanges.slice(0, remainingQuota);
       
-      if (localFilePaths.length > 0) {
-        console.log(`   📝 Git uncommitted files: ${localFilePaths.length} files (overriding Vector DB with latest version)`);
+      localFilePaths.push(...filesToAdd);
+      
+      if (filesToAdd.length > 0) {
+        console.log(`   📝 Git changes + added: ${filesToAdd.length} files (new/modified from previous tasks)`);
+        filesToAdd.slice(0, 5).forEach(p => console.log(`      - ${p}`));
+        if (filesToAdd.length > 5) {
+          console.log(`      ... and ${filesToAdd.length - 5} more`);
+        }
       }
     }
   } catch (e: any) {
     console.warn(`   ⚠️  Git changes check failed: ${e.message}`);
   }
   
-  // Step 3: Git added/untracked files + Keyword-based local file search
-  // ✅ FIXED: Git added files are NOT in Vector DB (not pushed yet), so find them here
+  // Step 3: Pure local keyword search (fallback for non-git or remaining quota)
+  // ✅ REDESIGNED: Only runs if quota remains after git search
   let remainingQuota = semanticQuota - vectorDbPaths.length - localFilePaths.length;
   
-  if (remainingQuota > 0) {
-    console.log(`   🔍 Local search: ${remainingQuota} slots remaining...`);
+  if (remainingQuota > 0 && keywords.length > 0) {
+    console.log(`   🔍 Local keyword search (fallback): ${remainingQuota} slots remaining...`);
     
-    // Step 3a: Git added/untracked files (not in Vector DB = new files from previous tasks)
     try {
-      const changedFiles = await git.getChangedFiles();
-      const gitAddedFiles = changedFiles.filter(f => 
-        !excludePaths.includes(f) && 
-        !vectorDbPaths.includes(f) &&  // Not in Vector DB = new file (not pushed yet)
-        !localFilePaths.includes(f)    // Not already included
-      );
+      const { KeywordSearchStrategy } = await import('../../../../../../core/codebase/strategies/KeywordSearchStrategy');
+      const keywordStrategy = new KeywordSearchStrategy();
       
-      if (gitAddedFiles.length > 0) {
-        const filesToAdd = gitAddedFiles.slice(0, remainingQuota);
-        console.log(`      ✅ Found ${filesToAdd.length} git added/untracked files (new from previous tasks)`);
-        filesToAdd.forEach(p => console.log(`         - ${p}`));
-        localFilePaths.push(...filesToAdd);
-        remainingQuota -= filesToAdd.length;
-      }
-    } catch (e: any) {
-      console.warn(`      ⚠️  Git added files check failed: ${e.message}`);
-    }
-    
-    // Step 3b: Keyword search for remaining quota (supplementary)
-    if (remainingQuota > 0 && keywords.length > 0) {
-      console.log(`      🔍 Keyword search: ${remainingQuota} slots remaining...`);
+      const directive = keywords.join(' ');
       
-      try {
-        const { KeywordSearchStrategy } = await import('../../../../../../core/codebase/strategies/KeywordSearchStrategy');
-        const keywordStrategy = new KeywordSearchStrategy();
+      const fileSystem = state.deps?.fileSystem;
+      if (!fileSystem) {
+        console.warn(`      ⚠️  FileSystemPort not available, skipping keyword search`);
+      } else {
+        const keywordResults = await keywordStrategy.search(
+          directive,
+          state.context.workingDir,
+          {
+            maxFiles: remainingQuota,
+            exclude: [
+              'node_modules',
+              '.git',
+              'dist',
+              'build',
+              '.next',
+              'coverage',
+              '.turbo'
+            ]
+          },
+          git,
+          fileSystem
+        );
         
-        // Build directive from keywords
-        const directive = keywords.join(' ');
-        
-        // ✅ Get FileSystemPort and validate
-        const fileSystem = state.deps?.fileSystem;
-        if (!fileSystem) {
-          console.warn(`      ⚠️  FileSystemPort not available, skipping keyword search`);
-        } else {
-          // Search files by content matching
-          const keywordResults = await keywordStrategy.search(
-            directive,
-            state.context.workingDir,
-            {
-              maxFiles: remainingQuota,
-              exclude: [
-                'node_modules',
-                '.git',
-                'dist',
-                'build',
-                '.next',
-                'coverage',
-                '.turbo'
-              ]
-            },
-            git,
-            fileSystem
+        const keywordSearchPaths = keywordResults
+          .map(r => r.path)
+          .filter(p => 
+            !excludePaths.includes(p) && 
+            !vectorDbPaths.includes(p) &&
+            !localFilePaths.includes(p)
           );
-          
-          // Extract paths and filter out already loaded files
-          const keywordSearchPaths = keywordResults
-            .map(r => r.path)
-            .filter(p => 
-              !excludePaths.includes(p) && 
-              !vectorDbPaths.includes(p) &&
-              !localFilePaths.includes(p)
-            );
-          
-          if (keywordSearchPaths.length > 0) {
-            console.log(`      ✅ Found ${keywordSearchPaths.length} files by keyword matching`);
-            keywordSearchPaths.forEach(p => console.log(`         - ${p}`));
-          }
-          
+        
+        if (keywordSearchPaths.length > 0) {
+          console.log(`      ✅ Found ${keywordSearchPaths.length} files by keyword matching`);
+          keywordSearchPaths.forEach(p => console.log(`         - ${p}`));
           localFilePaths.push(...keywordSearchPaths);
         }
-      } catch (e: any) {
-        console.warn(`      ⚠️  Keyword search failed: ${e.message}`);
       }
+    } catch (e: any) {
+      console.warn(`      ⚠️  Keyword search failed: ${e.message}`);
     }
   }
   
