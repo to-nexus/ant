@@ -26,6 +26,7 @@ export interface MessageContent {
      // General content
      | 'text'
      | 'cancelled'      // Task cancelled (with Resume button)
+     | 'triage_choice'  // Triage redirect/blocked choice
      // File Operations - Real-time streaming
      | 'file_creating' | 'file_writing' | 'file_create' | 'file_create_failed'
      | 'file_editing' | 'file_updating' | 'file_edit' | 'file_edit_failed'
@@ -57,9 +58,16 @@ export interface MessageContent {
     blockStart?: boolean;   // For thinking: marks <thinking> tag opened (new block)
     blockEnd?: boolean;     // For thinking: marks </thinking> tag closed (block end)
     // Cancelled metadata
-    jobId?: string;         // For cancelled: job ID to resume
+    jobId?: string;         // For cancelled/triage_choice: job ID
     reason?: string;        // For cancelled/file operations: cancellation/failure reason
     originalType?: string;  // For cancelled: original work type that was cancelled
+    // Triage choice metadata
+    choiceOptions?: {       // For triage_choice: choice options
+      positive: { label: string; action: string };
+      negative: { label: string; action: string };
+      fallbackGuide?: string;
+    };
+    choiceSelected?: string;  // For triage_choice: selected action
     durationMs?: number;    // For thinking: duration in milliseconds
     collapsed?: boolean;    // For thinking: marks if the block should be collapsed
     // Indexing metadata (for indexing/indexed types)

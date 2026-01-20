@@ -6,6 +6,7 @@
  */
 
 import { Violation } from "../state";
+import { TaskType } from "../../../types/task";
 
 export interface ErrorImpact {
   score: number;  // 0-100 (higher = more critical)
@@ -16,7 +17,7 @@ export interface ErrorImpact {
 
 export interface ErrorContext {
   directive: string;
-  taskType: 'setup' | 'feature' | 'error' | 'explain';
+  taskType: TaskType;
   taskName: string;
   retryCount: number;
 }

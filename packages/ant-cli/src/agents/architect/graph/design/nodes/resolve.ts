@@ -7,10 +7,10 @@ import * as path from "path";
 /**
  * Design Resolve Node
  * 
- * Strategy: Load based on design mode
- * - greenfield: PRD only (no codebase)
- * - evolution: PRD + current codebase (Phase 1: CodebaseRetriever)
+ * Strategy: Load based on design mode (unified with CodeMode)
+ * - generate: PRD only (no codebase)
  * - refactor: Current codebase + previous design (Phase 1: CodebaseRetriever)
+ * - explain: Previous design only (no generation)
  * 
  * Always load directive if available
  * 
@@ -18,7 +18,7 @@ import * as path from "path";
  * - Uses GitPort for file operations
  */
 export async function resolve(state: DesignGraphState): Promise<DesignGraphState> {
-  const { designMode } = state;
+  const jobMode = state.detectionReport?.jobMode;
   const context = state.context; // Use directly from state
   const retriever = new CodebaseRetriever();
   
@@ -108,8 +108,8 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     prd = undefined;
   }
 
-  // ✅ If PRD exists but is still a template placeholder, fail fast with a clear message (greenfield only).
-  if (designMode === 'greenfield' && !prd) {
+  // ✅ If PRD exists but is still a template placeholder, fail fast with a clear message (generate mode only).
+  if (jobMode === 'generate' && !prd) {
     const featurePathAbs = WorkspacePathResolver.resolveFeaturePath(context);
     const sourceDirAbs = path.join(featurePathAbs, "inputs/sources");
     // toWorkspaceRelative is private, use relative path directly
@@ -163,10 +163,10 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
   let codeHead: string | undefined;
   let profile = undefined;
   
-  const needsCodebase = designMode === 'evolution' || designMode === 'refactor';
+  const needsCodebase = jobMode === 'refactor';
   
   if (needsCodebase) {
-    console.log(`🔍 Retrieving codebase for ${designMode} mode...`);
+    console.log(`🔍 Retrieving codebase for ${jobMode} mode...`);
     
     // ✅ Get ChatAPI client for grepping tracking
     const { getChatAPIClient } = await import('../../../../../core/adapters/ChatAPIClient');
@@ -215,11 +215,11 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
   }
 
   // Validation based on mode
-  if (designMode === 'greenfield' && !prd) {
-    throw new Error("Greenfield mode requires PRD document");
+  if (jobMode === 'generate' && !prd) {
+    throw new Error("Generate mode requires PRD document");
   }
   
-  if (designMode === 'refactor' && !code) {
+  if (jobMode === 'refactor' && !code) {
     throw new Error("Refactor mode requires existing codebase");
   }
 

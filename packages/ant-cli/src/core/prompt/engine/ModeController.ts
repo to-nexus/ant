@@ -1,4 +1,4 @@
-import { AgentTask, CodeMode, ProjectEnvironment } from "../../types";
+import { AgentJob, JobMode, ProjectEnvironment } from "../../types";
 import { AssembledContext } from "./ContextAssembler";
 
 /**
@@ -6,9 +6,9 @@ import { AssembledContext } from "./ContextAssembler";
  * Defines how prompts should be assembled for each mode
  */
 export interface PromptModeConfig {
-  task: AgentTask;
+  job: AgentJob;
   phase: "plan" | "execute";
-  mode?: CodeMode;
+  mode?: JobMode;
   
   // Template selection
   templates: {
@@ -35,10 +35,10 @@ export interface PromptModeConfig {
 
 /**
  * ModeController - Layer 3
- * Selects and configures prompt mode based on task, phase, and context
+ * Selects and configures prompt mode based on job, phase, and context
  * 
  * Responsibilities:
- * - Determine appropriate mode for code task
+ * - Determine appropriate mode for code job
  * - Select template paths
  * - Configure LLM parameters
  * - Define injection strategy
@@ -48,62 +48,62 @@ export class ModeController {
    * Determine mode configuration for a given input
    */
   determineMode(
-    task: AgentTask,
+    job: AgentJob,
     phase: "plan" | "execute",
     context: AssembledContext,
-    explicitMode?: CodeMode,
+    explicitMode?: JobMode,
     taskType?: string  // 'setup' | 'feature' | 'error'
   ): PromptModeConfig {
     // ✅ Use explicit mode only - LLM will infer in detectEnvironment if needed
-    const mode: CodeMode | undefined = explicitMode;
+    const mode: JobMode | undefined = explicitMode;
     
-    // Build mode config based on task and phase
-    return this.buildModeConfig(task, phase, mode, context, taskType);
+    // Build mode config based on job and phase
+    return this.buildModeConfig(job, phase, mode, context, taskType);
   }
   
   /**
    * Build mode configuration
    */
   private buildModeConfig(
-    task: AgentTask,
+    job: AgentJob,
     phase: "plan" | "execute",
-    mode: CodeMode | undefined,
+    mode: JobMode | undefined,
     context: AssembledContext,
     taskType?: string
   ): PromptModeConfig {
     // Template paths
-    const basePrefix = `${task}/base`;
-    const phasePrefix = `${task}/phases/${phase}`;
+    const basePrefix = `${job}/base`;
+    const phasePrefix = `${job}/phases/${phase}`;
     
     // Base templates
-    // ✅ design task uses explicit base-system-design.md and rules-system-design.md
+    // ✅ design job uses explicit base-system-design.md and rules-system-design.md
     // ui-design has separate loading logic in docGen.ts (base-ui-design.md, rules-ui-design.md)
-    const baseTemplateName = task === 'design' ? 'base-system-design' : 'base';
-    const rulesTemplateName = task === 'design' ? 'rules-system-design' : 'rules';
+    const baseTemplateName = job === 'design' ? 'base-system-design' : 'base';
+    const rulesTemplateName = job === 'design' ? 'rules-system-design' : 'rules';
     const templates = {
       base: `${phasePrefix}/${baseTemplateName}`,
       rules: `${phasePrefix}/${rulesTemplateName}`,
-      injections: this.selectInjections(task, phase, context, taskType, mode)
+      injections: this.selectInjections(job, phase, context, taskType, mode)
     };
     
-    // LLM parameters based on task
-    const llmParams = this.getLLMParams(task, phase, mode);
+    // LLM parameters based on job
+    const llmParams = this.getLLMParams(job, phase, mode);
     
     // Feature flags
     const flags = {
       // Examples are helpful for feature/error tasks but are counterproductive for setup:
       // they increase the chance the model scaffolds extra files (components/sections) despite setup constraints.
-      includeExamples: phase === 'execute' && task === 'code' && context.currentTask?.type !== 'setup',
+      includeExamples: phase === 'execute' && job === 'code' && context.currentTask?.type !== 'setup',
       // ✅ CRITICAL: Include profiles for BOTH new and existing projects
       // Profile is detected by detectEnvironment node from design doc (new) or existing code (existing)
       // Without this, new projects have no TypeScript/React guidance and generate vanilla JS!
-      includeProfiles: phase === 'execute' && task === 'code',
+      includeProfiles: phase === 'execute' && job === 'code',
       includeMemory: context.stats.hasMemory,
-      strictValidation: task === 'code'
+      strictValidation: job === 'code'
     };
     
     return {
-      task,
+      job,
       phase,
       mode,
       templates,
@@ -116,22 +116,22 @@ export class ModeController {
    * Select appropriate injections based on context
    */
   private selectInjections(
-    task: AgentTask,
+    job: AgentJob,
     phase: "plan" | "execute",
     context: AssembledContext,
     taskType?: string,
-    mode?: CodeMode
+    mode?: JobMode
   ): string[] {
     const commonPrefix = `common/injections`;  // ✅ All jobs (templates/common/injections)
-    const taskPrefix = `${task}/base/injections`;  // ✅ Task-specific (templates/{task}/base/injections)
-    const phasePrefix = `${task}/phases/${phase}/injections`;  // ✅ Phase-specific
+    const jobPrefix = `${job}/base/injections`;  // ✅ Job-specific (templates/{job}/base/injections)
+    const phasePrefix = `${job}/phases/${phase}/injections`;  // ✅ Phase-specific
     const injections: string[] = [];
     
     // ✅ SETUP TASK: Add language-specific setup constraints
     if (taskType === 'setup') {
       const language = this.detectLanguage(context);
       if (language) {
-        injections.push(`${task}/phases/execute/languages/${language}/setup/constraints`);
+        injections.push(`${job}/phases/execute/languages/${language}/setup/constraints`);
       }
     }
     
@@ -159,25 +159,25 @@ export class ModeController {
     }
     
     // Code job specific injections (moved to code/base/injections)
-    if (task === 'code') {
+    if (job === 'code') {
       // Git diff summary
       if (context.projectCodeContext?.gitDiff) {
-        injections.push(`${taskPrefix}/git-diff`);
+        injections.push(`${jobPrefix}/git-diff`);
       }
       
       // Retrieved code (from Plan node's RAG - available in Execute phase)
       if (context.projectCodeContext?.files && context.projectCodeContext.files.length > 0) {
-        injections.push(`${taskPrefix}/retrieved-code`);
+        injections.push(`${jobPrefix}/retrieved-code`);
       }
       
       // Reference code (only available in Execute phase after Plan loads it)
       if (context.referenceCodeContexts && context.referenceCodeContexts.length > 0) {
-        injections.push(`${taskPrefix}/reference-code`);
+        injections.push(`${jobPrefix}/reference-code`);
       }
       
       // Behavioral debugging (only for refactor mode)
       if (this.isRefactorMode(mode, context)) {
-        injections.push(`${taskPrefix}/behavioral-debugging`);
+        injections.push(`${jobPrefix}/behavioral-debugging`);
         console.log('[ModeController] Adding behavioral-debugging for refactor mode');
       }
     }
@@ -188,23 +188,23 @@ export class ModeController {
       const language = this.detectLanguage(context);
       const environment = this.detectEnvironment(context);
       
-      if (language && task === 'code') {
-        const envPath = `${task}/phases/execute/languages/${language}/environments/${environment}/rules`;
+      if (language && job === 'code') {
+        const envPath = `${job}/phases/execute/languages/${language}/environments/${environment}/rules`;
         injections.push(envPath);
         console.log(`[ModeController] Adding environment-specific injection: ${envPath}`);
         
         // ✅ NEW: Dev server setup for frontend projects
         if (environment === 'browser' || environment === 'fullstack') {
-          injections.push(`${taskPrefix}/dev-server-setup`);
+          injections.push(`${jobPrefix}/dev-server-setup`);
           console.log(`[ModeController] Adding dev-server-setup for frontend environment`);
           // ✅ NEW: Dev server runtime contract (dynamic env injection: API base, ports)
-          injections.push(`${taskPrefix}/dev-server-env-contract`);
+          injections.push(`${jobPrefix}/dev-server-env-contract`);
         }
       }
       
       // ✅ NEW: Compact tool-calling rules (replaces verbose version)
-      if (task === 'code') {
-        injections.push(`${taskPrefix}/tool-calling-rules-compact`);
+      if (job === 'code') {
+        injections.push(`${jobPrefix}/tool-calling-rules-compact`);
         console.log(`[ModeController] Adding compact tool-calling rules`);
         
         // ✅ Port management guide (CRITICAL for run_command safety)
@@ -213,7 +213,7 @@ export class ModeController {
       }
       
       // Domain-specific design guides (design job only, execute phase only)
-      if (task === 'design') {
+      if (job === 'design') {
         // ✅ Document type-specific guides (api-contract, frontend, backend)
         const targetFile = context.currentTask?.targetFile;
         if (targetFile) {
@@ -257,7 +257,7 @@ export class ModeController {
       }
       
       // Missing dependency fix (language-specific)
-      if (context.stats.hasMissingDependency && language && task === 'code') {
+      if (context.stats.hasMissingDependency && language && job === 'code') {
         injections.push(`code/phases/execute/injections/missing-dependency-fix`);
       }
       
@@ -267,8 +267,8 @@ export class ModeController {
       }
       
       // New project setup (only for setup tasks)
-      if (!context.stats.hasProjectCode && task === 'code' && context.currentTask?.type === 'setup' && language) {
-        const languageConfigPath = `${task}/phases/execute/languages/${language}/setup/config`;
+      if (!context.stats.hasProjectCode && job === 'code' && context.currentTask?.type === 'setup' && language) {
+        const languageConfigPath = `${job}/phases/execute/languages/${language}/setup/config`;
         injections.push(languageConfigPath);
       }
       
@@ -529,7 +529,7 @@ export class ModeController {
   /**
    * Check if this is refactor mode (fixing existing code)
    */
-  private isRefactorMode(mode: CodeMode | undefined, context: AssembledContext): boolean {
+  private isRefactorMode(mode: JobMode | undefined, context: AssembledContext): boolean {
     // Explicit mode takes precedence
     if (mode === 'refactor') {
       return true;
@@ -548,9 +548,9 @@ export class ModeController {
    * Get LLM parameters for mode
    */
   private getLLMParams(
-    task: AgentTask,
+    job: AgentJob,
     phase: "plan" | "execute",
-    mode?: CodeMode
+    mode?: JobMode
   ): PromptModeConfig['llmParams'] {
     // Base parameters
     const base: PromptModeConfig['llmParams'] = {
@@ -559,14 +559,14 @@ export class ModeController {
       topP: 0.95
     };
     
-    // Adjust for task
-    if (task === 'code') {
+    // Adjust for job
+    if (job === 'code') {
       base.temperature = 0.3;  // More deterministic for code
       base.maxTokens = 16000;
-    } else if (task === 'design') {
+    } else if (job === 'design') {
       base.temperature = 0.5;
       base.maxTokens = 8000;
-    } else if (task === 'learn') {
+    } else if (job === 'learn') {
       base.temperature = 0.4;
     }
     

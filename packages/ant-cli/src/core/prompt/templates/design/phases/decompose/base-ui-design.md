@@ -1,8 +1,51 @@
 # UI Design Task Decomposition
 
-You are analyzing UI complexity to break it into chapter-based tasks.
+You are analyzing UI complexity to break it into tasks.
+
+**Job Mode**: {{jobMode}}
+
+{{#if (eq jobMode "refactor")}}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🔧 REFACTOR MODE - Modify Existing Documents
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**Principle**: Create ONE focused task for the specific modification requested.
+
+### Constraints
+
+- ❌ Multiple chapter-based tasks
+- ❌ Full document regeneration
+- ✅ Single task targeting specific section
+- ✅ Task ID format: `refactor-{document}-{section}`
+- ✅ Task name format: `Refactor: {brief description}`
+
+### Output Format
+
+```json
+{
+  "jobMode": "refactor",
+  "targetFiles": ["{target-file}.json"],
+  "tasks": [
+    {
+      "id": "refactor-{document}-{section}",
+      "name": "Refactor: {brief description}",
+      "targetFile": "{target-file}.json",
+      "description": "{what to modify}. Keep all other content unchanged.",
+      "priority": 300
+    }
+  ]
+}
+```
+
+{{else}}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🆕 GENERATE MODE - Create New Documents
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**You are creating NEW UI design documents from scratch.**
 
 **Philosophy**: Multiple tasks append to the SAME file sequentially (like System Design).
+{{/if}}
 
 ---
 
@@ -16,6 +59,7 @@ You are analyzing UI complexity to break it into chapter-based tasks.
 
 ---
 
+{{#unless (eq jobMode "refactor")}}
 ## 🎯 SELECTIVE DOCUMENT GENERATION
 
 **Check the Requirements above for explicit document requests.**
@@ -103,6 +147,8 @@ You are analyzing UI complexity to break it into chapter-based tasks.
 **Your resources**: screens={{screenCount}}, components={{componentCount}}, assets={{assetCount}}
 
 **Principle**: When unsure, create more chapters. Better to have small focused tasks than hit token limits.
+
+{{/unless}}
 
 ---
 

@@ -1,9 +1,10 @@
 /**
- * Common Task Types
- * Shared by both code and design jobs
+ * Task Types
+ * 
+ * Code Job: setup | feature | error | explain
+ * Design Job: doc (always)
  */
-
-export type TaskType = 'setup' | 'feature' | 'error' | 'explain';
+export type TaskType = 'setup' | 'feature' | 'error' | 'explain' | 'doc';
 
 /**
  * Task Timing Information

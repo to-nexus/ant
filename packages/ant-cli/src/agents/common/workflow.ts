@@ -1,4 +1,4 @@
-import { AgentTask, ProjectContext } from "../../core/types";
+import { AgentJob, ProjectContext } from "../../core/types";
 import { MemoryPort } from "../../core/ports";
 import { retrieveMemoryForAgent } from "./retrieve";
 
@@ -17,7 +17,7 @@ export interface AgentDeps {
  */
 export interface AgentResult {
   success: boolean;
-  task: AgentTask;
+  job: AgentJob;
   message: string;
   data?: any;
   reportFile?: string;
@@ -28,7 +28,7 @@ export interface AgentResult {
  * Defines how to execute a specific agent
  */
 export interface AgentWorkflowConfig<TInput, TState, TOutput> {
-  agentType: AgentTask;
+  agentJob: AgentJob;
   project: string;
   feature?: string;
   input: TInput;
@@ -61,7 +61,7 @@ export interface AgentWorkflowConfig<TInput, TState, TOutput> {
  * @example
  * ```typescript
  * const result = await executeAgentWorkflow({
- *   agentType: 'review',
+ *   agentJob: 'review',
  *   project: 'my-app',
  *   input: prDiff,
  *   deps: { memory, llm },
@@ -81,7 +81,7 @@ export async function executeAgentWorkflow<TInput, TState, TOutput>(
   config: AgentWorkflowConfig<TInput, TState, TOutput>
 ): Promise<TOutput> {
   const {
-    agentType,
+    agentJob,
     project,
     feature,
     input,
@@ -91,9 +91,9 @@ export async function executeAgentWorkflow<TInput, TState, TOutput>(
   } = config;
   
   // 1. Retrieve vector memory
-  console.log(`🔍 Retrieving memory for ${agentType}...`);
+  console.log(`🔍 Retrieving memory for ${agentJob}...`);
   const memory = await retrieveMemoryForAgent(
-    agentType,
+    agentJob,
     project,
     feature,
     deps
@@ -111,7 +111,7 @@ export async function executeAgentWorkflow<TInput, TState, TOutput>(
   const initialState = createInitialState(input, context);
   
   // 4. Run graph
-  console.log(`🔄 Running ${agentType} graph...`);
+  console.log(`🔄 Running ${agentJob} graph...`);
   const result = await runGraph(initialState);
   
   return result;
@@ -127,7 +127,7 @@ export async function executeAgentWorkflow<TInput, TState, TOutput>(
  * @example
  * ```typescript
  * const result = await executeSimpleAgent({
- *   agentType: 'review',
+ *   agentJob: 'review',
  *   project: 'my-app',
  *   input: prDiff,
  *   deps: { memory, llm },
@@ -140,7 +140,7 @@ export async function executeAgentWorkflow<TInput, TState, TOutput>(
  */
 export async function executeSimpleAgent<TInput, TOutput>(
   config: {
-    agentType: AgentTask;
+    agentJob: AgentJob;
     project: string;
     feature?: string;
     input: TInput;
@@ -148,12 +148,12 @@ export async function executeSimpleAgent<TInput, TOutput>(
     execute: (input: TInput, context: ProjectContext, deps: AgentDeps) => Promise<TOutput>;
   }
 ): Promise<TOutput> {
-  const { agentType, project, feature, input, deps, execute } = config;
+  const { agentJob, project, feature, input, deps, execute } = config;
   
   // 1. Retrieve vector memory
-  console.log(`🔍 Retrieving memory for ${agentType}...`);
+  console.log(`🔍 Retrieving memory for ${agentJob}...`);
   const memory = await retrieveMemoryForAgent(
-    agentType,
+    agentJob,
     project,
     feature,
     deps
@@ -168,7 +168,7 @@ export async function executeSimpleAgent<TInput, TOutput>(
   };
   
   // 3. Execute
-  console.log(`⚡ Executing ${agentType}...`);
+  console.log(`⚡ Executing ${agentJob}...`);
   const result = await execute(input, context, deps);
   
   return result;

@@ -2,7 +2,8 @@ import { StateGraph, END } from "@langchain/langgraph";
 import { ArchitectGraphState, TASK_PRIORITIES, TaskTimingHelper, ViolationType } from "./state";
 import { CodeTask } from "../../types/task";
 import { resolve } from "./nodes/resolve";
-import { detectEnvironment } from "./nodes/detectEnvironment/index";  // ✅ NEW
+import { triage, routeAfterTriage } from "../../../common/nodes/triage";  // ✅ Triage System
+import { detectEnvironment } from "./nodes/detectEnvironment/index";
 import { decompose } from "./nodes/decompose";
 import { plan } from "./nodes/plan";
 import { codeGen } from "./nodes/codeGen/index";
@@ -299,24 +300,20 @@ export function buildCodeGraph() {
       // Context & Input
       context: null as any,
       spec: null as any,
-      workspaceConfig: null as any,  // ✅ CRITICAL: Workspace config for LLM model selection
+      workspaceConfig: null as any,
       
       // Dependencies
       deps: null as any,
       gitPort: null as any,
       
-      // Mode
-      mode: null as any,  // ✅ 'generate' | 'refactor' | 'explain' (from detectEnvironment)
-      modeReasoning: null as any,  // ✅ Reasoning for mode selection
-      codeMode: null as any,
+      // ✅ CRITICAL: Detection Report (unified environment detection result)
+      // Contains: jobMode, environment, profile, requireRag
+      detectionReport: null as any,
       
-      // Environment Detection
-      detectedEnvironment: null as any,  // ✅ 'frontend' | 'backend' | 'fullstack' | 'unknown'
-      environmentReasoning: null as any,  // ✅ Reasoning for environment detection
-      requireRagForDecompose: null as any,  // ✅ Whether decompose needs RAG
-      decomposeKeywords: null as any,  // ✅ Keywords for decompose RAG
-      selectedDesignFiles: null as any,  // ✅ Design files selected based on environment
-      decomposeFilePaths: null as any,  // ✅ File paths found via keyword search
+      // Environment Detection outputs
+      decomposeKeywords: null as any,
+      selectedDesignFiles: null as any,
+      decomposeFilePaths: null as any,
       
       // Artifacts (from TaskArtifacts)
       prd: null as any,
@@ -410,6 +407,13 @@ export function buildCodeGraph() {
       overrideDirective: null as any,  // ✅ Chat input as directive (highest priority)
       chatSource: null as any,  // ✅ Flag for Chat SSE
       
+      // ✅ Triage System
+      skipTriage: null as any,       // Skip triage if true
+      triageResult: null as any,     // Triage analysis result
+      workspaceState: null as any,   // Workspace state snapshot
+      currentAgent: null as any,     // Current agent name
+      currentJob: null as any,       // Current job name
+      
       // ✅ Error repetition tracking
       _errorIsRepeating: null as any,  // Flag to indicate if errors are repeating
       
@@ -432,7 +436,8 @@ export function buildCodeGraph() {
   
   // ✅ SIMPLIFIED ARCHITECTURE: CodeGen <-> Tool loop, then branch by priority
   graph.addNode("resolve", resolve as any);
-  graph.addNode("detectEnvironment", detectEnvironment as any);  // ✅ NEW: Detect environment + select design files
+  graph.addNode("triage", triage as any);  // ✅ Triage: analyze intent and prerequisites
+  graph.addNode("detectEnvironment", detectEnvironment as any);
   graph.addNode("decompose", decompose as any);
   graph.addNode("replanDecision", replanDecision as any);  // ✅ NEW: Replan decision (continue/modify/restart)
   graph.addNode("modifyTasks", modifyTasks as any);        // ✅ NEW: Modify specific tasks
@@ -449,20 +454,39 @@ export function buildCodeGraph() {
 
   graph.addEdge("__start__" as any, "resolve" as any);
   
-  // ✅ Resolve → Conditional (skip detection/decompose if resuming)
+  // ✅ Resolve → Conditional (skip triage/detection/decompose if resuming WITHOUT new directive)
   graph.addConditionalEdges(
     "resolve" as any,
     ((state: ArchitectGraphState) => {
       const isResume = state.taskQueue && !state.taskQueue.isEmpty();
-      return isResume ? 'plan' : 'detectEnvironment';
+      const hasNewDirective = !!state.overrideDirective;
+      
+      // ⚠️ CRITICAL: New chat directive = new job, must triage!
+      if (hasNewDirective) {
+        console.log('[RouteAfterResolve] New directive detected → triage');
+        return 'triage';
+      }
+      
+      // Resume only if no new directive
+      return isResume ? 'plan' : 'triage';
     }) as any,
     {
-      plan: "plan",  // Resume: skip to plan
-      detectEnvironment: "detectEnvironment"  // New job: continue normal flow
+      plan: "plan",    // Resume: skip to plan (no new directive)
+      triage: "triage" // New job OR new directive: go to triage first
     } as any
   );
   
-  graph.addEdge("detectEnvironment" as any, "decompose" as any);  // ✅ NEW: detectEnvironment → decompose
+  // ✅ Triage → Conditional (proceed to detectEnvironment or end)
+  graph.addConditionalEdges(
+    "triage" as any,
+    routeAfterTriage as any,
+    {
+      detectEnvironment: "detectEnvironment",  // work:proceed → continue
+      __end__: "__end__"  // ask, redirect, blocked → end (await choice or show message)
+    } as any
+  );
+  
+  graph.addEdge("detectEnvironment" as any, "decompose" as any);
   
   // ✅ Decompose → Replan Decision (check for multiple directives)
   graph.addConditionalEdges(

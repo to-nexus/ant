@@ -68,7 +68,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // 🔥 EXPLAIN MODE: Skip decompose, create single explain task
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  if (state.mode === 'explain') {
+  if (state.detectionReport?.jobMode === 'explain') {
     console.log('💡 [Decompose] Explain mode detected - creating single explanation task\n');
     
     const explainTask: CodeTask = {
@@ -82,6 +82,11 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     
     const taskQueue = new TaskQueue<CodeTask>();
     taskQueue.push(explainTask);
+    
+    // ✅ Workflow exitNode (explain 조기 반환에서도 호출 필요)
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'decompose');
+    }
     
     return {
       ...state,
@@ -142,7 +147,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   let gitDiffResult: any = undefined;
   
   
-  if (state.requireRagForDecompose && state.decomposeKeywords) {
+  if (state.detectionReport?.requireRag && state.decomposeKeywords) {
     const result = await loadCodebaseFilePaths(state);
     codebaseFilePaths = result.filePaths.length > 0 ? result.filePaths : undefined;
     gitDiffResult = result.gitDiff;
@@ -210,7 +215,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     directive: state.directive || '',
     designDoc,
     hasDesignDoc,
-    mode: state.mode || 'unknown',
+    mode: state.detectionReport?.jobMode || 'unknown',
     profile: state.profile,
     codebaseFilePaths,  // ✅ File paths from keyword search (for task planning)
     hasProjectCode,     // ✅ CRITICAL: Actual codebase existence (git-based, not Vector DB)
@@ -291,7 +296,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 6: Validate and create task queue
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  validateTasks(tasks, state.mode, state.directive);
+  validateTasks(tasks, state.detectionReport?.jobMode, state.directive);
   
   const { taskQueue, featureTasks } = createTaskQueue(tasks);
   logTaskSummary(tasks, referenceRequests);

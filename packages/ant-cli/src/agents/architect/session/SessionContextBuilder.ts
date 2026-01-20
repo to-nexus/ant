@@ -133,13 +133,13 @@ export class SessionContextBuilder {
       .filter(turn => {
         // Refactor mode: previous generate/refactor turns are relevant
         if (currentMode === 'refactor') {
-          const turnTask = turn.task || 'code';
-          return turnTask === 'code';
+          const turnJob = turn.job || 'code';
+          return turnJob === 'code';
         }
         
         // Generate mode: previous generate turns (patterns)
         if (currentMode === 'generate') {
-          return turn.task === 'code';
+          return turn.job === 'code';
         }
         
         // Explain mode: all modes
@@ -203,8 +203,8 @@ export class SessionContextBuilder {
       } else {
         const lastTurn = currentGroup[currentGroup.length - 1];
         
-        // Same task type = same group
-        if (lastTurn.task === turn.task) {
+        // Same job type = same group
+        if (lastTurn.job === turn.job) {
           currentGroup.push(turn);
         } else {
           groups.push(currentGroup);

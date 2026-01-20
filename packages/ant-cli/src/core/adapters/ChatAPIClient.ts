@@ -426,6 +426,45 @@ export class ChatAPIClient {
   }
 
   /**
+   * Send triage choice message with options
+   * 
+   * Used for redirect/blocked cases where user needs to make a choice
+   */
+  async sendTriageChoice(
+    message: string,
+    jobId: string,
+    choiceOptions: {
+      positive: { label: string; action: string };
+      negative: { label: string; action: string };
+      fallbackGuide?: string;
+    },
+    triageResult?: any,  // ✅ For pending choice registration
+    originalDirective?: string  // ✅ For redirect
+  ): Promise<void> {
+    if (!this.enabled) return;
+
+    try {
+      const response = await fetch(`${this.baseUrl}/triage-choice-message`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({
+          message,
+          jobId,
+          choiceOptions,
+          triageResult,  // ✅ Pass to server for pending choice registration
+          originalDirective  // ✅ For redirect
+        })
+      });
+
+      if (!response.ok) {
+        console.error(`❌ [ChatAPIClient] Failed to send triage choice: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error('❌ [ChatAPIClient] Error sending triage choice:', error);
+    }
+  }
+
+  /**
    * Finalize current message
    */
   async finalizeMessage(): Promise<void> {

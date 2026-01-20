@@ -37,7 +37,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   const [isComposing, setIsComposing] = useState(false);
   // ✅ Initialize agents with default to prevent empty state
   const [agents, setAgents] = useState<Agent[]>([
-    { value: 'architect', label: 'Architect', enabled: true, tasks: [
+    { value: 'architect', label: 'Architect', enabled: true, jobs: [
       { value: 'code', label: 'Code' },
       { value: 'design', label: 'Design' },
       { value: 'learn', label: 'Learn' }
@@ -99,7 +99,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
         console.error('[ChatInput] Failed to load agents:', error);
         // ✅ Provide default agents when API fails
         setAgents([
-          { value: 'architect', label: 'Architect', enabled: true, tasks: [
+          { value: 'architect', label: 'Architect', enabled: true, jobs: [
             { value: 'code', label: 'Code' },
             { value: 'design', label: 'Design' },
             { value: 'learn', label: 'Learn' }
@@ -147,7 +147,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   const currentAgent = agentsWithMetadata.find((a) => a.value === selectedAgent) || agentsWithMetadata[0];
 
   // ✅ Get jobs for currently selected agent (dynamically from API, reactive)
-  const jobs = agents.find((a: Agent) => a.value === selectedAgent)?.tasks || [];
+  const jobs = agents.find((a: Agent) => a.value === selectedAgent)?.jobs || [];
   
   // ✅ Add emoji and description for each job
   const jobsWithMetadata = jobs.map((job: { value: string; label: string }) => {
@@ -206,9 +206,9 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
     setShowAgentMenu(false);
     // Reset work type to first available for this agent
     const agentData = agents.find((a: Agent) => a.value === agentValue);
-    const firstWorkType = agentData?.tasks?.[0]?.value;
-    if (firstWorkType) {
-      setSelectedJobType(firstWorkType as 'design' | 'code' | 'learn');
+    const firstJobType = agentData?.jobs?.[0]?.value;
+    if (firstJobType) {
+      setSelectedJobType(firstJobType as 'design' | 'code' | 'learn');
     }
   };
 
@@ -234,9 +234,13 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
     const userMessage = message;
     setMessage('');
     
-    // ✅ Check if there's an interrupted job (not completed)
+    // ✅ Check if there's an interrupted job (not completed AND not dismissed)
     const currentJobId = kanbanData?.jobId;
-    const hasInterruption = kanbanData?.interruption && !kanbanData?.interruption?.message?.includes('completed');
+    const dismissedTimestamp = useStore.getState().dismissedInterruptTimestamp;
+    const interruptionWasDismissed = kanbanData?.interruption?.timestamp === dismissedTimestamp;
+    const hasInterruption = kanbanData?.interruption && 
+      !kanbanData?.interruption?.message?.includes('completed') &&
+      !interruptionWasDismissed;  // ✅ Ignore dismissed interruptions
     
     // ✅ CASE 1: Continue existing interrupted job with new directive
     if (currentJobId && hasInterruption) {
@@ -280,6 +284,9 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
     }
     
     // ✅ CASE 2: Normal path - Start new job
+    // ✅ Set running state IMMEDIATELY to block input
+    useStore.getState().setRunning(true, undefined, 'generate');
+    
     try {
       // ✅ 1. Add user message to chat history first
       const userMessageResponse = await authFetch(

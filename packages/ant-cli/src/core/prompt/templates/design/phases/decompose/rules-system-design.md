@@ -43,9 +43,14 @@ DO NOT CREATE tasks for:
 - ❌ Test planning / QA
 - ❌ "Final verification" or "review" tasks
 - ❌ Separate documents (all tasks → ONE document per tier)
+{{#if (eq jobMode "refactor")}}
+- ❌ Multiple chapter-based tasks (refactor mode = single focused task)
+- ❌ Full document regeneration (only modify requested section)
+{{/if}}
 
 ---
 
+{{#unless (eq jobMode "refactor")}}
 ## 📋 CONTRACT-FIRST STRATEGY (if applicable)
 
 **When dual design is detected:**
@@ -57,10 +62,43 @@ DO NOT CREATE tasks for:
 | 3 | 230-249 | be-system-design.md | Service layers, database schema, endpoint implementations |
 
 **Execution order ensures FE and BE are ALWAYS aligned!**
+{{/unless}}
 
 ---
 
-## 📤 OUTPUT FORMAT
+{{#if (eq jobMode "refactor")}}
+## 📤 OUTPUT FORMAT (REFACTOR MODE)
+
+**Create exactly ONE task for the specific modification requested.**
+
+```json
+{
+  "documentType": "unified",
+  "jobMode": "refactor",
+  "targetFiles": ["system-design.md"],
+  "tasks": [
+    {
+      "id": "refactor-{section}",
+      "name": "Refactor: {brief description}",
+      "targetFile": "system-design.md",
+      "description": "{modification scope}. Keep all other content unchanged.",
+      "priority": 200
+    }
+  ]
+}
+```
+
+### Constraints (Refactor Mode)
+
+| Constraint | Requirement |
+|------------|-------------|
+| Task count | Exactly ONE |
+| ID format | `refactor-{section}` |
+| Name format | `Refactor: {description}` |
+| Description | Must include "Keep all other content unchanged" |
+
+{{else}}
+## 📤 OUTPUT FORMAT (GENERATE MODE)
 
 ```json
 {
@@ -161,7 +199,7 @@ DO NOT CREATE tasks for:
 
 ---
 
-## ✅ VALIDATION CHECKLIST
+## ✅ VALIDATION CHECKLIST (GENERATE MODE)
 
 Before outputting, verify:
 - ✅ Valid JSON syntax
@@ -173,3 +211,4 @@ Before outputting, verify:
 - ✅ Description uses ABSTRACT terms (no LocalStorage, React Router, etc.)
 - ✅ Priority in 200-299 range
 - ✅ No forbidden tasks (deployment, ops, verification)
+{{/if}}

@@ -1,4 +1,4 @@
-import { ProjectContext, AgentTask, CodebaseProfile } from "../../types";
+import { ProjectContext, AgentJob, CodebaseProfile } from "../../types";
 import { CodebaseAnalyzerPort, GitPort, MemoryPort } from "../../ports";
 import { ReferenceContext } from "../../codebase/types";
 import { ProjectCodeContext, ReferenceCodeContext } from "../types/CodeContext";
@@ -124,20 +124,20 @@ export interface AssembledContext {
  */
 export class ContextAssembler {
   /**
-   * Assemble all context for a given task
+   * Assemble all context for a given job
    * 
-   * @param loader - Optional loader function for task-specific documents
+   * @param loader - Optional loader function for job-specific documents
    * @param artifacts - Pre-loaded artifacts (directive, currentCode, etc.)
    */
   async assemble(
-    task: AgentTask,
+    job: AgentJob,
     context: ProjectContext,
     deps?: {
       git?: GitPort;
       memory?: MemoryPort;
       analyzer?: CodebaseAnalyzerPort;
     },
-    loader?: (task: AgentTask, context: any) => Promise<Partial<AssembledContext>>,
+    loader?: (job: AgentJob, context: any) => Promise<Partial<AssembledContext>>,
     artifacts?: {
       directive?: string;
       designDoc?: string;
@@ -192,9 +192,9 @@ export class ContextAssembler {
       }
     }
     
-    // 1. Load task-specific documents using provided loader
+    // 1. Load job-specific documents using provided loader
     if (loader) {
-      const loaded = await loader(task, context);
+      const loaded = await loader(job, context);
       Object.assign(assembled, loaded);
     }
     

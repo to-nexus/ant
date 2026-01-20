@@ -1,6 +1,7 @@
 import { StateGraph } from "@langchain/langgraph";
 import { DesignGraphState } from "./state";
 import { resolve } from "./nodes/resolve";
+import { triage, routeAfterTriage } from "../../../common/nodes/triage";  // ✅ Triage System
 import { decompose } from "./nodes/decompose/index";
 import { plan } from "./nodes/plan";
 import { docGen } from "./nodes/docGen/index";  // ✅ XML streaming + immediate file writes
@@ -141,16 +142,17 @@ export function buildDesignGraph() {
       // Context & Input
       context: null as any,
       spec: null as any,
+      workspaceConfig: null as any,
       
       // Dependencies (MUST be in channels to be passed between nodes!)
       deps: null as any,
       
-      // Mode
-      designMode: null as any,
-      designDomain: null as any,               // ✅ Design domain (game vs service)
-      designDomainReasoning: null as any,      // ✅ Reasoning for domain detection
-      designEnvironment: null as any,          // ✅ Design environment (frontend vs backend vs fullstack)
-      designEnvironmentReasoning: null as any, // ✅ Reasoning for environment detection
+      // ✅ CRITICAL: Detection Report (unified environment detection result)
+      // Contains: workType (ui-design/system-design), jobMode, environment, domain
+      detectionReport: null as any,
+      
+      // ✅ Error handling for invalid requests (e.g., modify without documents)
+      designError: null as any,
       
       // Artifacts (from TaskArtifacts)
       prd: null as any,
@@ -160,51 +162,55 @@ export function buildDesignGraph() {
       codeHead: null as any,
       profile: null as any,
       
-      // ✅ NEW: Task Queue (like code graph)
+      // Task Queue (like code graph)
       taskQueue: null as any,
       currentTask: null as any,
       completedTasks: null as any,
       completedTasksDetails: null as any,
       
-      // ✅ Job tracking (for timing and continuity)
+      // Job tracking (for timing and continuity)
       jobId: null as any,
       jobTiming: null as any,
       
-      // ✅ Token usage tracking (task-level and job-level)
-      _currentTaskTokenUsage: null as any,  // Reset per task
-      tokenUsage: null as any,              // Job-level accumulation
+      // Token usage tracking (task-level and job-level)
+      _currentTaskTokenUsage: null as any,
+      tokenUsage: null as any,
       
       // Execution
       planText: null as any,
-      files: null as any,  // ✅ CRITICAL: Must be in channels
-      filesToDelete: null as any,  // ✅ CRITICAL: Must be in channels
+      files: null as any,
+      filesToDelete: null as any,
       lessons: null as any,
       
-      // ✅ NEW: Tool Calling Support
+      // Tool Calling Support
       llmResponse: null as any,
       conversationHistory: null as any,
       
-      // ✅ For tracking in UI
+      // For tracking in UI
       _httpJobId: null as any,
       
-      // ✅ Chat integration
-      overrideDirective: null as any,  // ✅ Chat input as directive (highest priority)
-      chatSource: null as any,  // ✅ Flag for Chat SSE
+      // Chat integration
+      overrideDirective: null as any,
+      chatSource: null as any,
       
-      // ✅ UI specification flag (for conditional prompt guidance)
+      // Triage System
+      skipTriage: null as any,
+      triageResult: null as any,
+      workspaceState: null as any,
+      currentAgent: null as any,
+      currentJob: null as any,
+      
+      // UI specification flag (for conditional prompt guidance)
       hasUiDoc: null as any,
       
-      // ✅ NEW: Work type (ui-design vs system-design)
-      designWorkType: null as any,
-      designWorkTypeReasoning: null as any,
-      
-      // ✅ NEW: UI document generation context
+      // UI document generation context
       uiReferences: null as any,
       uiAssetsList: null as any,
     } as any,
   } as any);
 
   graph.addNode("resolve" as const, resolve as any);
+  graph.addNode("triage" as const, triage as any);  // ✅ Triage: analyze intent and prerequisites
   graph.addNode("detectEnvironment" as const, detectEnvironment as any);
   graph.addNode("decompose" as const, decompose as any);
   graph.addNode("plan" as const, plan as any);
@@ -213,13 +219,23 @@ export function buildDesignGraph() {
   graph.addNode("checkTaskStatus" as const, checkTaskStatus as any);
   graph.addNode("learn" as const, learn as any);
 
-  // ✅ Unified flow: resolve → detectEnvironment → decompose → [plan → docGen → check] → learn
+  // ✅ Unified flow: resolve → triage → detectEnvironment → decompose → [plan → docGen → check] → learn
   // Design job now writes files immediately like code job (no separate writeFiles node)
   // docGen: XML streaming + immediate writes to disk (with LAST_SECTION handling)
   (graph as any).addEdge("__start__", "resolve");
-  (graph as any).addEdge("resolve", "detectEnvironment");
+  (graph as any).addEdge("resolve", "triage");
   
-  // ✅ NEW: Conditional routing from detectEnvironment
+  // ✅ Triage → Conditional (proceed to detectEnvironment or end)
+  graph.addConditionalEdges(
+    "triage" as any,
+    routeAfterTriage as any,
+    {
+      detectEnvironment: "detectEnvironment",  // work:proceed → continue
+      __end__: "__end__"  // ask, redirect, blocked → end (await choice or show message)
+    } as any
+  );
+  
+  // ✅ Conditional routing from detectEnvironment
   // If error occurred (e.g., modification without documents), go to END
   // Otherwise, proceed to decompose
   graph.addConditionalEdges(

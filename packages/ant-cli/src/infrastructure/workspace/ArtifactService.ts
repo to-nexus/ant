@@ -23,7 +23,7 @@ import {
   generateUiSectionsSummary,
 } from "./UiDocParser";
 
-export type AgentTask = 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';
+export type AgentJob = 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';
 
 export interface ProjectContext {
   project: string;
@@ -105,12 +105,12 @@ export class ArtifactService {
    */
   static async getDirective(
     context: ProjectContext,
-    task: AgentTask,
+    job: AgentJob,
     gitPort: GitPort,
     fileSystem: FileSystemPort
   ): Promise<string | null> {
     const featurePathAbs = WorkspacePathResolver.resolveFeaturePath(context);
-    const directiveDirAbs = path.join(featurePathAbs, "inputs/directives", task);
+    const directiveDirAbs = path.join(featurePathAbs, "inputs/directives", job);
     const directiveDir = ArtifactService.toWorkspaceRelative(fileSystem, directiveDirAbs);
 
     const exists = await fileSystem.fileExists(directiveDir);

@@ -5,7 +5,10 @@
  * to prevent minor issues from blocking valid solutions.
  */
 
-export type TaskType = 'setup' | 'feature' | 'error' | 'explain';
+import { TaskType } from "../../../types/task";
+
+// Re-export for use within this module
+export { TaskType };
 
 export interface ValidationLevel {
   type: 'full' | 'functional' | 'build-only' | 'skip';

@@ -65,7 +65,7 @@ export async function plan(state: DesignGraphState) {
   // ✅ SMART CONTEXT PRE-LOADING (like code job!)
   let currentCode = state.code;
   
-  // Only reload context if we have existing code (evolution/refactor mode)
+  // Only reload context if we have existing code (refactor mode)
   const gitPort = state.deps?.git;
   const hasExistingCode = Boolean(state.code && state.code.trim().length > 0);
   const shouldReload = hasExistingCode && gitPort && currentTask;

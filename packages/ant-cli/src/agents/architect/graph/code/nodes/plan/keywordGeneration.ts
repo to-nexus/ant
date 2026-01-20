@@ -41,7 +41,7 @@ export async function generateTaskKeywords(
     { name: task.name, description: task.description },
     state.directive || '',
     state.profile,
-    state.mode || 'unknown',
+    state.detectionReport?.jobMode || 'unknown',
     state.referenceRequests
   );
 
@@ -64,7 +64,7 @@ export async function generateTaskKeywords(
             taskName: task.name,
             taskDescription: task.description ? `[${task.description.length} chars]` : undefined,
             directive: state.directive ? `[${state.directive.length} chars]` : undefined,
-            mode: state.mode,
+            jobMode: state.detectionReport?.jobMode,
             hasReferences: !!(state.referenceRequests?.length),
           },
         }

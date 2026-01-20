@@ -29,7 +29,7 @@ export async function docAgent(
   deps: AgentDeps & { llm: LLMClient }
 ) {
   return await executeSimpleAgent({
-    agentType: 'doc',
+    agentJob: 'doc',
     project,
     input: diff,
     deps,

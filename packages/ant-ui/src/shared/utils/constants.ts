@@ -6,7 +6,7 @@
 
 /**
  * Available job types for the Architect agent
- * Corresponds to AgentTask type in ant-cli
+ * Corresponds to AgentJob type in ant-cli
  */
 export const AVAILABLE_JOBS = [
   { 

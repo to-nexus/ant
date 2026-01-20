@@ -1,28 +1,46 @@
+/**
+ * DetectEnvironment Node for Design Job (Refactored with DetectionReport)
+ * 
+ * Responsibilities:
+ * 1. Detect job mode (generate/refactor/explain)
+ * 2. Detect work type (ui-design/system-design)
+ * 3. Detect environment (frontend/backend/fullstack) - for system-design only
+ * 4. Detect domain (game/service) - for system-design only
+ * 
+ * ✅ Uses unified DetectionReport for all detection results
+ */
+
 import { DesignGraphState } from "../state";
 import { LLMClient } from "../../../../../core/ports";
 import { PromptEngine } from "../../../../../core/prompt/engine";
 import { logPrompt } from "../../../../../core/utils/promptLogger";
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import {
+  DetectionReport,
+  createUiDesignDetectionReport,
+  createSystemDesignDetectionReport,
+  formatDetectionReportForChat,
+  JobMode,
+  JobEnvironment,
+  DesignDomain,
+} from "../../../../../core/types/detection";
 
-interface DetectEnvironmentDesignResponse {
-  // ✅ Work type (first-level classification)
+interface ParsedDesignResponse {
   workType: "ui-design" | "system-design" | "error";
   workTypeReasoning: string;
-  
-  // ✅ Only for system-design
-  domain?: "game" | "service";
+  jobMode: JobMode;
+  jobModeReasoning: string;
+  domain?: DesignDomain;
   domainReasoning?: string;
-  environment?: "frontend" | "backend" | "fullstack";
+  environment?: JobEnvironment;
   environmentReasoning?: string;
-  
-  // ✅ NEW: Error handling for modification requests without documents
   errorMessage?: string;
   errorType?: string;
   suggestedAction?: string;
 }
 
-function parseDetectEnvironmentDesignResponse(raw: string): DetectEnvironmentDesignResponse {
+function parseDetectResponse(raw: string): ParsedDesignResponse {
   try {
     const detectMatch = raw.match(/<detect>\s*([\s\S]*?)\s*<\/detect>/);
     let jsonStr: string;
@@ -41,89 +59,81 @@ function parseDetectEnvironmentDesignResponse(raw: string): DetectEnvironmentDes
 
     const parsed = JSON.parse(jsonStr);
     
-    // ✅ Parse workType (required)
+    // Parse workType
     const workType: "ui-design" | "system-design" | "error" =
       parsed.workType === "ui-design" ? "ui-design" : 
       parsed.workType === "error" ? "error" :
       "system-design";
     
-    // ✅ NEW: Handle error case (modification request without documents)
+    // Handle error case
     if (workType === "error") {
       return {
         workType: "error",
         workTypeReasoning: parsed.workTypeReasoning || "Error occurred during work type detection",
+        jobMode: "generate",
+        jobModeReasoning: "",
         errorMessage: parsed.errorMessage || "문서가 존재하지 않습니다",
         errorType: parsed.errorType || "missing_documents",
         suggestedAction: parsed.suggestedAction || "먼저 문서를 생성해주세요",
       };
     }
     
-    // ✅ For system-design, parse domain and environment
+    // Parse jobMode (unified name)
+    const jobMode: JobMode =
+      (parsed.jobMode || parsed.designMode) === "refactor" ? "refactor" :
+      (parsed.jobMode || parsed.designMode) === "explain" ? "explain" : "generate";
+    
+    const jobModeReasoning: string =
+      parsed.jobModeReasoning || parsed.designModeReasoning ||
+      (jobMode === "refactor" 
+        ? "Modification of existing documents requested."
+        : jobMode === "explain"
+          ? "Analysis or explanation of existing documents requested."
+          : "New document creation or full regeneration requested.");
+    
+    // For system-design, parse domain and environment
     if (workType === "system-design") {
-      const domain: "game" | "service" =
-        parsed.domain === "game" || parsed.domain === "service"
-          ? parsed.domain
-          : "service";
+      const domain: DesignDomain =
+        parsed.domain === "game" ? "game" : "service";
       
-      const environment: "frontend" | "backend" | "fullstack" =
-        parsed.environment === "frontend" || parsed.environment === "backend" || parsed.environment === "fullstack"
-          ? parsed.environment
-          : "fullstack";
+      const environment: JobEnvironment =
+        parsed.environment === "frontend" ? "frontend" :
+        parsed.environment === "backend" ? "backend" : "fullstack";
 
       return {
         workType,
-        workTypeReasoning:
-          typeof parsed.workTypeReasoning === "string" && parsed.workTypeReasoning.length > 0
-            ? parsed.workTypeReasoning
-            : "System design work detected.",
+        workTypeReasoning: parsed.workTypeReasoning || "System design work detected.",
+        jobMode,
+        jobModeReasoning,
         domain,
-        domainReasoning:
-          typeof parsed.domainReasoning === "string" && parsed.domainReasoning.length > 0
-            ? parsed.domainReasoning
-            : "Defaulted to 'service' because domain was ambiguous or missing.",
+        domainReasoning: parsed.domainReasoning || "Defaulted to 'service'.",
         environment,
-        environmentReasoning:
-          typeof parsed.environmentReasoning === "string" && parsed.environmentReasoning.length > 0
-            ? parsed.environmentReasoning
-            : "Defaulted to 'fullstack' because environment was ambiguous or missing.",
+        environmentReasoning: parsed.environmentReasoning || "Defaulted to 'fullstack'.",
       };
     }
     
-    // ✅ For ui-design, no domain/environment needed
+    // For ui-design
     return {
       workType: "ui-design",
-      workTypeReasoning:
-        typeof parsed.workTypeReasoning === "string" && parsed.workTypeReasoning.length > 0
-          ? parsed.workTypeReasoning
-          : "UI design work detected.",
+      workTypeReasoning: parsed.workTypeReasoning || "UI design work detected.",
+      jobMode,
+      jobModeReasoning,
     };
   } catch (error) {
     console.error("❌ [DesignDetectEnvironment] Failed to parse LLM response:", error);
     console.error("Raw response (truncated):", raw.substring(0, 500));
 
-    // 안전 기본값: system-design + service + fullstack
+    // Safe defaults
     return {
       workType: "system-design",
       workTypeReasoning: "Failed to parse LLM response; defaulting to system design.",
+      jobMode: "generate",
+      jobModeReasoning: "Failed to parse LLM response; defaulting to generate.",
       domain: "service",
-      domainReasoning: "Failed to parse LLM response; defaulting domain to 'service'.",
+      domainReasoning: "Failed to parse; defaulting to 'service'.",
       environment: "fullstack",
-      environmentReasoning: "Failed to parse LLM response; defaulting environment to 'fullstack'.",
+      environmentReasoning: "Failed to parse; defaulting to 'fullstack'.",
     };
-  }
-}
-
-/**
- * Scan directory for files (non-recursive)
- */
-async function listFilesInDir(dirPath: string): Promise<string[]> {
-  try {
-    const entries = await fs.readdir(dirPath, { withFileTypes: true });
-    return entries
-      .filter(e => e.isFile() && !e.name.startsWith('.'))
-      .map(e => e.name);
-  } catch {
-    return [];
   }
 }
 
@@ -169,14 +179,7 @@ async function dirHasFiles(dirPath: string): Promise<boolean> {
 }
 
 /**
- * Design graph 전용 detectEnvironment 노드
- *
- * Responsibility:
- * - PRD + directive + filesystem context를 기반으로:
- *   1. Work Type 분류: ui-design | system-design
- *   2. Domain 분류 (system-design only): game | service
- *   3. Environment 분류 (system-design only): frontend | backend | fullstack
- * - 결과는 이후 프롬프트 인젝션 및 파일명 결정에 사용
+ * Design Job detectEnvironment node
  */
 export async function detectEnvironment(
   state: DesignGraphState
@@ -185,24 +188,22 @@ export async function detectEnvironment(
   const engine = state.deps?.promptEngine as PromptEngine | undefined;
 
   if (!llm || !engine) {
-    console.warn(
-      "[DesignDetectEnvironment] Missing llm or promptEngine dependency. Skipping detection."
-    );
-    // 기본값: system-design + service + fullstack
-    return {
-      designWorkType: "system-design",
-      designWorkTypeReasoning:
-        "promptEngine or llm not available; defaulting to system design.",
-      designDomain: "service",
-      designDomainReasoning:
-        "promptEngine or llm not available; defaulting design domain to 'service'.",
-      designEnvironment: "fullstack",
-      designEnvironmentReasoning:
-        "promptEngine or llm not available; defaulting design environment to 'fullstack'.",
-    };
+    console.warn("[DesignDetectEnvironment] Missing llm or promptEngine dependency.");
+    
+    // Default DetectionReport for system-design
+    const defaultReport = createSystemDesignDetectionReport({
+      jobMode: "generate",
+      jobModeReasoning: "promptEngine or llm not available; defaulting.",
+      environment: "fullstack",
+      environmentReasoning: "Defaulting to fullstack.",
+      domain: "service",
+      domainReasoning: "Defaulting to service.",
+    });
+    
+    return { detectionReport: defaultReport };
   }
 
-  // Workflow UI: focus this node in the design workflow view
+  // Workflow UI
   if (state.deps?.workflowUpdate && state._httpJobId) {
     await state.deps.workflowUpdate.enterNode(state._httpJobId, "detectEnvironment");
   }
@@ -212,24 +213,20 @@ export async function detectEnvironment(
     console.log('🔍 DESIGN WORK TYPE + ENVIRONMENT DETECTION');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
     
-    // Directive 우선순위: overrideDirective (chat) > directive (task)
     const directive = state.overrideDirective || state.directive || "";
     const prdSpec = state.prd || "";
 
-    // ✅ NEW: Scan inputs/references and inputs/assets for UI doc detection
+    // Scan inputs/references and inputs/assets
     const featurePath = state.context.featurePath || '';
     const referencesDir = path.join(featurePath, 'inputs/references');
     const assetsDir = path.join(featurePath, 'inputs/assets');
     
-    // Check for references (screens, components)
     const screensDir = path.join(referencesDir, 'screens');
     const componentsDir = path.join(referencesDir, 'components');
     
     const hasScreens = await dirHasFiles(screensDir);
     const hasComponents = await dirHasFiles(componentsDir);
     const hasReferences = hasScreens || hasComponents;
-    
-    // Check for assets
     const hasAssets = await dirHasFiles(assetsDir);
     
     // Build references list
@@ -262,7 +259,6 @@ export async function detectEnvironment(
     if (hasAssets) {
       const allAssets = await listFilesRecursive(assetsDir);
       
-      // Categorize assets
       const logos = allAssets.filter(f => f.includes('logo') || f.startsWith('logos/'));
       const backgrounds = allAssets.filter(f => f.includes('bg') || f.startsWith('bg/') || f.includes('background'));
       const icons = allAssets.filter(f => f.includes('icon') || f.startsWith('icons/'));
@@ -276,79 +272,45 @@ export async function detectEnvironment(
       };
       
       const parts: string[] = [];
-      if (logos.length > 0) {
-        parts.push(`**logos/** (${logos.length} files):`);
-        logos.slice(0, 5).forEach(f => parts.push(`  - ${f}`));
-      }
-      if (backgrounds.length > 0) {
-        parts.push(`**backgrounds/** (${backgrounds.length} files):`);
-        backgrounds.slice(0, 5).forEach(f => parts.push(`  - ${f}`));
-      }
-      if (icons.length > 0) {
-        parts.push(`**icons/** (${icons.length} files):`);
-        icons.slice(0, 5).forEach(f => parts.push(`  - ${f}`));
-      }
-      if (other.length > 0) {
-        parts.push(`**other/** (${other.length} files):`);
-        other.slice(0, 5).forEach(f => parts.push(`  - ${f}`));
-      }
+      if (logos.length > 0) parts.push(`**logos/** (${logos.length} files)`);
+      if (backgrounds.length > 0) parts.push(`**backgrounds/** (${backgrounds.length} files)`);
+      if (icons.length > 0) parts.push(`**icons/** (${icons.length} files)`);
+      if (other.length > 0) parts.push(`**other/** (${other.length} files)`);
       assetsList = parts.join('\n');
       
       console.log(`📦 Found assets: ${allAssets.length} files`);
-      console.log(`   - logos: ${logos.length}`);
-      console.log(`   - backgrounds: ${backgrounds.length}`);
-      console.log(`   - icons: ${icons.length}`);
-      console.log(`   - other: ${other.length}`);
     }
     
-    // ✅ Check for existing design documents (CRITICAL for decision making)
+    // Check existing design documents
     const outputsDir = path.join(featurePath, 'outputs/design');
     
-    // UI Design documents
-    const hasUiTokens = await dirHasFiles(outputsDir) && await fs.access(path.join(outputsDir, 'ui-tokens.json')).then(() => true).catch(() => false);
-    const hasUiAssets = await dirHasFiles(outputsDir) && await fs.access(path.join(outputsDir, 'ui-assets.json')).then(() => true).catch(() => false);
-    const hasUiSpec = await dirHasFiles(outputsDir) && await fs.access(path.join(outputsDir, 'ui-spec.json')).then(() => true).catch(() => false);
+    const hasUiTokens = await fs.access(path.join(outputsDir, 'ui-tokens.json')).then(() => true).catch(() => false);
+    const hasUiAssets = await fs.access(path.join(outputsDir, 'ui-assets.json')).then(() => true).catch(() => false);
+    const hasUiSpec = await fs.access(path.join(outputsDir, 'ui-spec.json')).then(() => true).catch(() => false);
     const hasUiDocs = hasUiTokens && hasUiAssets && hasUiSpec;
     
-    // System Design documents
-    const hasSystemDesign = await dirHasFiles(outputsDir) && await fs.access(path.join(outputsDir, 'system-design.md')).then(() => true).catch(() => false);
-    const hasApiContract = await dirHasFiles(outputsDir) && await fs.access(path.join(outputsDir, 'api-contract.md')).then(() => true).catch(() => false);
-    const hasFeSystemDesign = await dirHasFiles(outputsDir) && await fs.access(path.join(outputsDir, 'fe-system-design.md')).then(() => true).catch(() => false);
-    const hasBeSystemDesign = await dirHasFiles(outputsDir) && await fs.access(path.join(outputsDir, 'be-system-design.md')).then(() => true).catch(() => false);
+    const hasSystemDesign = await fs.access(path.join(outputsDir, 'system-design.md')).then(() => true).catch(() => false);
+    const hasApiContract = await fs.access(path.join(outputsDir, 'api-contract.md')).then(() => true).catch(() => false);
+    const hasFeSystemDesign = await fs.access(path.join(outputsDir, 'fe-system-design.md')).then(() => true).catch(() => false);
+    const hasBeSystemDesign = await fs.access(path.join(outputsDir, 'be-system-design.md')).then(() => true).catch(() => false);
     const hasSystemDocs = hasSystemDesign || hasApiContract || hasFeSystemDesign || hasBeSystemDesign;
     
     if (hasUiDocs) {
-      console.log(`✅ UI design documents already completed:`);
-      if (hasUiTokens) console.log(`   - ui-tokens.json`);
-      if (hasUiAssets) console.log(`   - ui-assets.json`);
-      if (hasUiSpec) console.log(`   - ui-spec.json`);
+      console.log(`✅ UI design documents completed`);
     }
-    
     if (hasSystemDocs) {
-      console.log(`✅ System design documents already exist:`);
-      if (hasSystemDesign) console.log(`   - system-design.md`);
-      if (hasApiContract) console.log(`   - api-contract.md`);
-      if (hasFeSystemDesign) console.log(`   - fe-system-design.md`);
-      if (hasBeSystemDesign) console.log(`   - be-system-design.md`);
+      console.log(`✅ System design documents exist`);
     }
     
-    if (hasUiDocs && !hasSystemDocs) {
-      console.log(`🎯 UI design complete → System design should be next`);
-    }
-    
-    // Build UI references list for state
+    // Build UI references for state
     let uiReferences: DesignGraphState['uiReferences'] = undefined;
     if (hasReferences) {
       const screenFiles = hasScreens ? (await listFilesRecursive(screensDir)).map(f => `inputs/references/screens/${f}`) : undefined;
       const componentFiles = hasComponents ? (await listFilesRecursive(componentsDir)).map(f => `inputs/references/components/${f}`) : undefined;
-      
-      uiReferences = {
-        screens: screenFiles,
-        components: componentFiles,
-      };
+      uiReferences = { screens: screenFiles, components: componentFiles };
     }
 
-    // PromptEngine을 사용해 detect 프롬프트 구성
+    // Build prompt
     const detectVars = {
       directive,
       prdSpec,
@@ -356,7 +318,6 @@ export async function detectEnvironment(
       hasAssets,
       referencesList,
       assetsList,
-      // ✅ NEW: Pass document completion status
       hasUiDocs,
       hasUiTokens,
       hasUiAssets,
@@ -370,55 +331,36 @@ export async function detectEnvironment(
     
     const prompt = await engine.buildDesignDomainPrompt(detectVars);
     
-    // ✅ Log prompt structure (not content)
+    // Log prompt
     const jobId = state.jobId || state._httpJobId || 'unknown';
     if (featurePath) {
       try {
-        await logPrompt(
-          featurePath,
-          jobId,
-          'design',
-          'detectEnvironment',
-          prompt.length,
-          {
-            templatePath: 'design/phases/detect/base',
-            injectedVariables: {
-              directive: directive ? `[${directive.length} chars]` : undefined,
-              prdSpec: prdSpec ? `[${prdSpec.length} chars]` : undefined,
-              hasReferences,
-              hasAssets,
-              hasUiDocs,
-              hasSystemDocs,
-            },
-          }
-        );
+        await logPrompt(featurePath, jobId, 'design', 'detectEnvironment', prompt.length, {
+          templatePath: 'design/phases/detect/base',
+          injectedVariables: { hasReferences, hasAssets, hasUiDocs, hasSystemDocs },
+        });
       } catch (logError) {
         console.warn(`⚠️  [Design-DetectEnv] Failed to log prompt:`, logError);
       }
     }
 
-    // ✅ Chat UI 준비
+    // Chat UI
     const { getChatAPIClient } = await import("../../../../../core/adapters/ChatAPIClient");
     const chatAPI = getChatAPIClient();
-    
     await chatAPI.showChatStatus('placeholder');
 
-    // LLM call (single turn, no extra streaming orchestrator)
+    // LLM call
     let response = "";
     let capturedUsage: any = undefined;
     
     for await (const event of llm.stream(
       [{ role: "user", content: prompt }],
-      {
-        temperature: 0.2,
-        maxTokens: 16000,
-      }
+      { temperature: 0.2, maxTokens: 16000 }
     )) {
       if (event.text) {
         response += event.text;
       }
       
-      // ✅ Extract token usage from done event
       const { extractTokenUsageFromStreamEvent } = await import("../../common/llmHelpers");
       const usage = extractTokenUsageFromStreamEvent(event);
       if (usage) {
@@ -426,47 +368,26 @@ export async function detectEnvironment(
       }
     }
     
-    // ✅ Accumulate token usage to job-level (not task-level, as detectEnvironment runs before tasks)
     if (capturedUsage) {
       const { accumulateTokenUsage } = await import("../../common/llmHelpers");
       accumulateTokenUsage(state as any, capturedUsage, { taskLevel: false, jobLevel: true });
-      console.log(`   Tokens: ${capturedUsage.totalTokens} total (${capturedUsage.inputTokens} in, ${capturedUsage.outputTokens} out)`);
+      console.log(`   Tokens: ${capturedUsage.totalTokens} total`);
     }
 
-    // ✅ Transform and display response using SpecialTagTransformer (now supports Design job)
-    const { SpecialTagTransformer } = await import('../../../../../core/streaming/transformers/SpecialTagTransformer');
-    const transformer = new SpecialTagTransformer('ko');
-    const transformed = transformer.transform(response);
-    
-    if (transformed.text) {
-      await chatAPI.sendLLMEvent({
-        type: 'text',
-        text: transformed.text
-      });
-    }
-    
-    await chatAPI.finalizeMessage();
+    // Parse response
+    const parsed = parseDetectResponse(response);
 
-    const parsed = parseDetectEnvironmentDesignResponse(response);
-
-    // ✅ NEW: Handle error case (modification request without documents)
+    // Handle error case
     if (parsed.workType === 'error') {
       console.log(`\n❌ Error: ${parsed.errorType}`);
       console.log(`   Message: ${parsed.errorMessage}`);
-      console.log(`   Suggested Action: ${parsed.suggestedAction}`);
-      console.log();
       
-      // Send error message to chat
       const errorText = `❌ **${parsed.errorMessage}**\n\n${parsed.suggestedAction}`;
-      await chatAPI.sendLLMEvent({
-        type: 'text',
-        text: errorText
-      });
+      await chatAPI.sendLLMEvent({ type: 'text', text: errorText });
+      await chatAPI.finalizeMessage();
       
-      // Return error state to terminate the design graph
       return {
-        designWorkType: undefined,
-        designWorkTypeReasoning: parsed.workTypeReasoning,
+        detectionReport: undefined,
         designError: {
           type: parsed.errorType || 'unknown_error',
           message: parsed.errorMessage || 'An error occurred',
@@ -475,58 +396,48 @@ export async function detectEnvironment(
       };
     }
 
-    // Log result to console (for debugging)
-    console.log(`\n✅ Work Type: ${parsed.workType}`);
-    console.log(`   Reasoning: ${parsed.workTypeReasoning}`);
+    // Create DetectionReport
+    let detectionReport: DetectionReport;
     
-    if (parsed.workType === 'system-design') {
-      console.log(`✅ Domain: ${parsed.domain}`);
-      console.log(`   Reasoning: ${parsed.domainReasoning}`);
-      console.log(`✅ Environment: ${parsed.environment}`);
-      console.log(`   Reasoning: ${parsed.environmentReasoning}`);
-      
-      if (parsed.domain === "game") {
-        console.log("   Domain-specific injections: Game Domain Design Guide");
-      } else if (parsed.domain === "service") {
-        console.log("   Domain-specific injections: Service Domain Design Guide");
-      }
-      
-      if (parsed.environment === "frontend") {
-        console.log("   Environment-specific injections: Frontend Guide");
-        console.log("   Strategy: Single-tier → unified document (system-design.md)");
-      } else if (parsed.environment === "backend") {
-        console.log("   Environment-specific injections: Backend Guide");
-        console.log("   Strategy: Single-tier → unified document (system-design.md)");
-      } else {
-        console.log("   Environment-specific injections: Frontend + Backend Guides");
-        console.log("   Strategy: Fullstack → contract-first (api-contract.md, fe-system-design.md, be-system-design.md)");
-      }
+    if (parsed.workType === 'ui-design') {
+      detectionReport = createUiDesignDetectionReport({
+        jobMode: parsed.jobMode,
+        jobModeReasoning: parsed.jobModeReasoning,
+      });
     } else {
-      console.log(`   UI Design Mode`);
-      console.log(`   Target files: ui-tokens.json, ui-assets.json, ui-spec.json`);
-      if (hasReferences) {
-        console.log(`   📸 Will analyze reference images from inputs/references/`);
-      }
-      if (hasAssets) {
-        console.log(`   📦 Will create asset mapping from inputs/assets/`);
-      }
+      detectionReport = createSystemDesignDetectionReport({
+        jobMode: parsed.jobMode,
+        jobModeReasoning: parsed.jobModeReasoning,
+        environment: parsed.environment!,
+        environmentReasoning: parsed.environmentReasoning!,
+        domain: parsed.domain!,
+        domainReasoning: parsed.domainReasoning!,
+      });
+    }
+
+    // Display in Chat UI
+    const formattedReport = formatDetectionReportForChat(detectionReport, 'ko');
+    await chatAPI.sendLLMEvent({ type: 'text', text: formattedReport });
+    await chatAPI.finalizeMessage();
+
+    // Log result
+    console.log(`\n✅ Job Mode: ${detectionReport.jobMode}`);
+    console.log(`   Reasoning: ${detectionReport.jobModeReasoning}`);
+    console.log(`✅ Work Type: ${detectionReport.workType}`);
+    
+    if (detectionReport.workType === 'system-design') {
+      console.log(`✅ Domain: ${detectionReport.domain}`);
+      console.log(`✅ Environment: ${detectionReport.environment}`);
     }
     console.log();
 
     return {
-      designWorkType: parsed.workType,
-      designWorkTypeReasoning: parsed.workTypeReasoning,
-      designDomain: parsed.domain,
-      designDomainReasoning: parsed.domainReasoning,
-      designEnvironment: parsed.environment,
-      designEnvironmentReasoning: parsed.environmentReasoning,
-      // ✅ NEW: UI context for ui-design work type
-      uiReferences: parsed.workType === 'ui-design' ? uiReferences : undefined,
-      uiAssetsList: parsed.workType === 'ui-design' ? uiAssetsList : undefined,
-      tokenUsage: (state as any).tokenUsage,  // ✅ CRITICAL: Return accumulated job-level token usage
+      detectionReport,
+      uiReferences: detectionReport.workType === 'ui-design' ? uiReferences : undefined,
+      uiAssetsList: detectionReport.workType === 'ui-design' ? uiAssetsList : undefined,
+      tokenUsage: (state as any).tokenUsage,
     };
   } finally {
-    // Ensure workflow node is marked as completed in UI
     if (state.deps?.workflowUpdate && state._httpJobId) {
       state.deps.workflowUpdate.exitNode(state._httpJobId, "detectEnvironment");
     }

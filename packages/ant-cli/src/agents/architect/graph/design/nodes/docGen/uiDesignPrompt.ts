@@ -590,6 +590,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
     isLastTaskForDocument,  // ✅ If true, don't output metadata comments
     pathPattern,  // ✅ NEW: For ui-assets ch2+ to follow ch1's destination paths
     existingDocContent: existingFileContent,  // ✅ NEW: Full file content for LLM to see and extend
+    jobMode: state.detectionReport?.jobMode,  // ✅ NEW: For refactor mode handling (generate/refactor/explain)
   };
   
   const template = await (promptPort as any).deps?.promptPort?.render('design/phases/execute/base-ui-design', injectedVariables);

@@ -77,7 +77,7 @@ export async function loadSemanticFiles(
         project: state.context.project,
         maxTokens: 10000,
         maxFiles: requestCount,  // ✅ Request extra to compensate for duplicates
-        mode: state.mode || 'refactor'
+        mode: state.detectionReport?.jobMode || 'refactor'
       }
     );
     

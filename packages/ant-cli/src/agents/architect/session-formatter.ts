@@ -35,7 +35,7 @@ Total Turns: ${session.turns.length}
       : `Input: ${turn.input.summary}`;
     
     sections.push(`
-━━━ Turn ${turn.turnId} (${turn.task}) ━━━
+━━━ Turn ${turn.turnId} (${turn.job}) ━━━
 Time: ${new Date(turn.timestamp).toLocaleString()}
 ${inputLine}
 

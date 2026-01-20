@@ -41,17 +41,27 @@ export async function docGen(
   }
   
   // ✅ Build messages based on work type
-  const isUiDesign = state.designWorkType === 'ui-design';
+  const isUiDesign = state.detectionReport?.workType === 'ui-design';
+  const isExplainMode = state.detectionReport?.jobMode === 'explain';
+  
   const messages = isUiDesign 
     ? await buildUiDesignMessages(state)
     : await buildMessages(state);
   
   // ✅ Tool activation: Select appropriate tool set based on work type
-  const tools = isUiDesign
-    ? getToolsByNames(TOOL_SETS.uiDesign)
-    : getToolsByNames(TOOL_SETS.design);
+  // - Explain mode: NO tools (just explanation, like Code Job)
+  // - Normal mode: Tools enabled for file writing
+  const tools = isExplainMode
+    ? undefined
+    : isUiDesign
+      ? getToolsByNames(TOOL_SETS.uiDesign)
+      : getToolsByNames(TOOL_SETS.design);
   
-  console.log(`📝 [DocGen] ${isUiDesign ? 'UI Design' : 'System Design'} mode - ${tools.length} tools available`);
+  if (isExplainMode) {
+    console.log(`💡 [DocGen] Explain mode - tools disabled (explanation only)`);
+  } else {
+    console.log(`📝 [DocGen] ${isUiDesign ? 'UI Design' : 'System Design'} mode - ${tools?.length || 0} tools available`);
+  }
   
   // ✅ Workflow update
   if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -111,7 +121,7 @@ export async function docGen(
     // Context: Anthropic requires thinking blocks only on FIRST assistant message in a conversation turn.
     // After tool_use, the next assistant message should NOT have thinking (API rejects it).
     for await (const event of llmClient.stream(messages, {
-      tools: tools.length > 0 ? tools : undefined,
+      tools: tools && tools.length > 0 ? tools : undefined,
       maxTokens,
       enableThinking: !isAfterToolCall,  // ✅ Disable thinking after tool calls (Anthropic API requirement)
     })) {

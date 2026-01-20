@@ -20,7 +20,7 @@ export interface FormattedPrompt {
     stopSequences?: string[];
   };
   metadata: {
-    task: string;
+    job: string;
     phase: string;
     mode?: string;
     timestamp: string;
@@ -80,7 +80,7 @@ export class PromptFormatter {
     
     // Add metadata for tracking/debugging
     const metadata = {
-      task: modeConfig.task,
+      job: modeConfig.job,
       phase: modeConfig.phase,
       mode: modeConfig.mode,
       timestamp: new Date().toISOString()
@@ -245,7 +245,7 @@ START YOUR RESPONSE WITH THE FIRST EDIT/FILE (<edit path="..." or <file path="..
     // Define stop sequences that indicate end of response
     // This helps prevent overly long responses
     
-    if (modeConfig.task === 'code') {
+    if (modeConfig.job === 'code') {
       // Stop if model starts explaining after code
       return [
         '\n\n---\n\n',  // Common separator

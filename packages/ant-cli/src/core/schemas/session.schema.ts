@@ -47,7 +47,7 @@ export const SessionTurnOutputSchema = z.object({
  */
 export const SessionTurnSchema = z.object({
   turnId: z.number().int().positive(),
-  task: z.enum(['design', 'code', 'learn', 'review', 'plan', 'doc']),
+  job: z.enum(['design', 'code', 'learn', 'review', 'plan', 'doc']),
   timestamp: z.string().datetime(),
   input: SessionTurnInputSchema,
   output: SessionTurnOutputSchema,

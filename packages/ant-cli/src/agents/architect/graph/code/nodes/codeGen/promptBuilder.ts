@@ -86,7 +86,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   const contextWithProfile = {
     ...state.context,
     codebaseProfile: state.profile,
-    detectedEnvironment: state.detectedEnvironment,
+    detectedEnvironment: state.detectionReport?.environment,
   };
   
   const promptResult = await promptEngine.buildExecutePrompt(
@@ -109,7 +109,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         description: state.currentTask.description,
       },
     } as any,
-    state.codeMode,
+    state.detectionReport?.jobMode,
     state.currentTask.type
   );
   
@@ -401,9 +401,9 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
             uiDoc: uiDocForTask ? `[${uiDocForTask.length} chars]` : undefined,
             planText: state.planText ? `[${state.planText.length} chars]` : undefined,
             // Config
-            codeMode: state.codeMode,
+            jobMode: state.detectionReport?.jobMode,
             taskType: state.currentTask?.type,
-            detectedEnvironment: state.detectedEnvironment,
+            detectedEnvironment: state.detectionReport?.environment,
             // Context counts
             projectCodeContextFiles: codeGenProjectCodeContext?.files?.length || 0,
             referenceCodeContexts: state.referenceCodeContexts?.length || 0,

@@ -1,0 +1,65 @@
+# Code Job Definition
+id: code
+agent: architect
+description: |
+  Generates and modifies code for any project type.
+  Works with frontend, backend, fullstack, mobile, or any language/framework.
+  Adapts to your existing codebase patterns when Learn Job has been run.
+
+modes:
+  - id: new-development
+    description: |
+      Creates new code from design documents.
+      Generates components, services, APIs, tests based on specifications.
+    detection:
+      any_of:
+        - path: outputs/design
+          type: directory_with_files
+    prerequisites:
+      required:
+        - id: design_or_directive
+          type: any_of
+          items:
+            - type: directory_with_files
+              path: outputs/design
+              description: Design documents (outputs/design/)
+            - type: has_directive
+              description: Task description entered via chat
+      recommended:
+        - id: codebase
+          type: indexed_codebase
+          description: Indexed codebase for consistent code style and patterns
+    scope:
+      - Code implementation (any language/framework)
+      - File generation with proper structure
+      - Import management
+      - Test file generation
+
+  - id: modification
+    description: |
+      Modifies or improves existing code.
+      Handles refactoring, bug fixes, feature additions, optimizations.
+    detection:
+      all_of:
+        - type: has_directive
+        - none_of:
+            - path: outputs/design
+              type: directory_with_files
+    prerequisites:
+      required:
+        - id: directive
+          type: has_directive
+          description: Change description entered via chat
+      recommended:
+        - id: codebase
+          type: indexed_codebase
+          description: Indexed codebase for accurate modifications
+    scope:
+      - Code modification and refactoring
+      - Bug fixes
+      - Feature additions
+      - Performance optimizations
+
+redirect_signals:
+  to_design: User mentions planning, design, architecture, or UI design
+  to_learn: User mentions analysis, indexing, or understanding codebase

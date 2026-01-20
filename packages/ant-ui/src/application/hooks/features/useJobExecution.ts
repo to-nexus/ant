@@ -29,8 +29,9 @@ export function useJobExecution() {
    * Run Job - Start new job or resume interrupted job
    * @param agent - Agent type (e.g., 'architect')
    * @param jobType - Job type: 'design' | 'code' | 'learn'
+   * @param directive - Optional override directive (for redirect from triage)
    */
-  const runJob = useCallback(async (agent: string, jobType: string) => {
+  const runJob = useCallback(async (agent: string, jobType: string, directive?: string) => {
     const state = useStore.getState();
     const { 
       isRunning, 
@@ -45,9 +46,11 @@ export function useJobExecution() {
 
     // ✅ CRITICAL: Check if this is a Resume or New task
     const currentJobId = kanbanData?.jobId;
-    const hasInterruption = kanbanData?.interruption?.canResume === true;
+    const dismissedTimestamp = useStore.getState().dismissedInterruptTimestamp;
+    const interruptionWasDismissed = kanbanData?.interruption?.timestamp === dismissedTimestamp;
+    const hasInterruption = kanbanData?.interruption?.canResume === true && !interruptionWasDismissed;
     
-    // ✅ Resume existing job (jobId exists + interruption)
+    // ✅ Resume existing job (jobId exists + interruption that wasn't dismissed)
     if (currentJobId && hasInterruption) {
       try {
         // ✅ CRITICAL: Dismiss interruption FIRST before setting running state
@@ -93,7 +96,8 @@ export function useJobExecution() {
         featureName: selectedFeature!,
         jobType: jobType as 'design' | 'code' | 'learn',
         agent: agent as 'architect',
-        chatSource: true  // ✅ Enable Chat SSE for all jobs
+        chatSource: true,  // ✅ Enable Chat SSE for all jobs
+        overrideDirective: directive  // ✅ Pass directive for redirect
       });
       
       // Store job execution object for stop functionality

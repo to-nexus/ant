@@ -84,10 +84,10 @@
 
 | Intent | 설명 | 예시 |
 |--------|-----|-----|
-| `ask` | 질문/도움 요청, 또는 **의도 파악 실패 시 확인 요청** | "뭐 준비해야 해?", 또는 confidence < 0.7 |
+| `ask` | 질문/도움 요청, 또는 모호한 입력 | "뭐 준비해야 해?", "어떻게 하면 돼?" |
 | `work` | 명확한 작업 요청 | "로그인 페이지 만들어줘" |
 
-> **`ask` 강제 케이스**: confidence < 0.7이면 LLM이 `work`로 분류했더라도 `ask`로 변경하여 사용자에게 의도 확인
+> **원칙**: 모호한 경우 `ask`로 분류 (자연스러운 대화 흐름)
 
 ### 2.3 ask 응답 처리 (Ask System 위임)
 
@@ -106,26 +106,7 @@
 | `redirect` | 다른 job이 더 적합 | 승인 후 전환 |
 | `blocked` | 현재 job 맞지만 준비 부족 | 안내 + 선택지 |
 
-### 2.4 Confidence (의도 파악 확신도)
-
-| Score | 의미 | 처리 |
-|-------|-----|-----|
-| **≥ 0.7** | 의도 파악 성공 | 분류된 intent 그대로 적용 |
-| **< 0.7** | 의도 파악 실패 | **intent를 `ask`로 강제** → 사용자에게 의도 확인 |
-
-```
-예: LLM이 work(0.55)로 분류 → confidence < 0.7 → ask로 변경
-    → "UI 기획을 시작할까요?" (분류된 work 적용 여부 확인)
-```
-
-> **디버깅**: 모든 응답에 `(confidence: 0.xx)` 표시
-> 
-> **Confidence vs WorkStatus**:
-> - **Confidence**: intent 파악 확신도 (LLM 판단)
-> - **WorkStatus**: 실행 가능 여부 (워크스페이스 상태)
-> - 독립적: confidence 0.95여도 refs 없으면 workStatus=blocked
-
-### 2.6 Guardrails (ask) → Ask System 위임
+### 2.4 Guardrails (ask) → Ask System 위임
 
 | 범위 | 설명 |
 |-----|-----|
@@ -243,15 +224,6 @@
 > - [진행] 인덱싱 없이 진행
 > - [learn 실행] 인덱싱 후 다시 시작
 
-**Confidence < 0.7 (intent=ask 강제, 분류 적용 여부 확인)**:
-> (confidence: 0.52) 작업 요청으로 보이는데, 확인이 필요합니다.
-> 
-> 혹시 **UI 기획**을 시작하시겠습니까?
-> - [예] ui-design 시작
-> - [아니오] 다른 작업 설명해주세요
-> 
-> 현재 상태: PRD ✅, Design docs ❌, Codebase ❌
-
 ---
 
 ## 5. 동적 응답
@@ -310,7 +282,6 @@ export type WorkStatus = 'proceed' | 'redirect' | 'blocked';
 
 export interface TriageResult {
   intent: Intent;
-  confidence: number;
   
   // ask
   inScope?: boolean;           // guardrails 통과 여부
@@ -333,8 +304,8 @@ export interface TriageResult {
   blockedMessage?: string;
   proceedAnywayOption?: string;
   
-  // 모든 응답에 포함 (디버깅용)
-  displayMessage?: string;  // "(confidence: 0.xx) 실제 메시지..."
+  // 사용자에게 보여줄 메시지
+  displayMessage?: string;
   
   // 선택 필요 여부
   needsChoice?: boolean;
@@ -506,7 +477,6 @@ src/presentation/components/chat/
 | 상황 | needsChoice | 선택지 |
 |-----|-------------|-------|
 | `proceed` (정상) | false | 없음 (바로 진행) |
-| `ask` 강제 (confidence < 0.7) | true | 추측 확인 |
 | `redirect` | true | 전환 확인 |
 | `blocked` (canProceed: true) | true | 진행 여부 |
 | `blocked` (canProceed: false) | false | 없음 (안내만) |
@@ -515,7 +485,6 @@ src/presentation/components/chat/
 
 | 상황 | 긍정 (action) | 부정 (action) |
 |-----|--------------|--------------|
-| ask 강제 | 추측대로 진행 (`proceed`) | 가이드 (`guide`) |
 | redirect | 전환 (`redirect`) | 가이드 (`guide`) |
 | blocked (canProceed) | 그래도 진행 (`proceedAnyway`) | 가이드 (`guide`) |
 
@@ -626,27 +595,11 @@ router.post('/chat/triage-choice', async (req, res) => {
 
 ### 9.5 응답 예시
 
-#### ask 강제 (confidence < 0.7)
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ (confidence: 0.52) 작업 요청으로 보이는데, 확인이 필요합니다.│
-│                                                             │
-│ 혹시 **UI 기획**을 시작하시겠습니까?                         │
-│                                                             │
-│ [예]                    [아니오]                            │
-│  ↓                       ↓                                  │
-│ proceed                 guide                               │
-│ (ui-design 시작)        (가능한 작업 안내)                   │
-└─────────────────────────────────────────────────────────────┘
-```
-
 #### redirect
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ (confidence: 0.92) 코드 작업은 **code job**에서 진행해야    │
-│ 합니다.                                                     │
+│ 코드 작업은 **code job**에서 진행해야 합니다.               │
 │                                                             │
 │ code job으로 전환하시겠습니까?                               │
 │                                                             │
@@ -661,7 +614,7 @@ router.post('/chat/triage-choice', async (req, res) => {
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ (confidence: 0.88) 코드베이스가 인덱싱되지 않았습니다.       │
+│ 코드베이스가 인덱싱되지 않았습니다.                          │
 │ 인덱싱 없이 진행하면 정확도가 떨어질 수 있습니다.            │
 │                                                             │
 │ [그래도 진행]           [취소]                               │
@@ -733,7 +686,6 @@ router.post('/chat/triage-choice', async (req, res) => {
 <triage>
 {
   "intent": "ask" | "work",
-  "confidence": 0.0-1.0,
   
   // ask
   "inScope": true | false,
@@ -762,12 +714,6 @@ router.post('/chat/triage-choice', async (req, res) => {
 | Question words, uncertainty | `ask` |
 | Action verbs, clear target | `work` |
 | Ambiguous | `ask` (default) |
-
-## CONFIDENCE THRESHOLD
-- confidence ≥ 0.7 → 분류된 intent 적용
-- confidence < 0.7 → **intent를 `ask`로 강제**
-  - 사용자에게 분류된 값 적용 여부 확인
-  - 예: "UI 기획을 시작할까요? [예/아니오]"
 
 ## GUARDRAILS (ask)
 - In-scope: Ant system, current workspace, workflow
@@ -800,10 +746,6 @@ router.post('/chat/triage-choice', async (req, res) => {
 
 ## RESPONSE LANGUAGE
 Respond in the same language as user input.
-
-## CONFIDENCE DISPLAY
-- 모든 응답 첫 줄에 `(confidence: X.XX)` 포함
-- 디버깅 용도, 항상 표시
 ```
 
 ---
@@ -861,9 +803,8 @@ Respond in the same language as user input.
 | 항목 | 결정 |
 |-----|-----|
 | 분류 체계 | 2단계: Intent → WorkStatus |
-| Intent | ask, work |
+| Intent | ask, work (모호하면 ask) |
 | WorkStatus | proceed, redirect, blocked |
-| Confidence | 의도 파악 확신도 (≥0.7 의도대로, <0.7 ask 강제) |
 | Guardrails | ask에 적용, out-of-scope 거부 |
 | Prerequisites | Job별 + 모드별 구분 |
 | design job | ui-design (screens 필수), system-design (PRD/directive 필수) |

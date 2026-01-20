@@ -1,8 +1,8 @@
-# Environment Detection & Mode Inference & RAG Strategy
+# Environment Detection & Job Mode Inference & RAG Strategy
 
 You are analyzing a development directive to determine:
 
-1. **Code Mode** (generate/refactor/explain)
+1. **Job Mode** (generate/refactor/explain)
 2. **Development Environment** (frontend/backend/fullstack/unknown)
 3. **RAG Requirement** (does decompose need codebase context?)
 4. **Search Keywords** (if RAG needed)
@@ -38,13 +38,13 @@ Wrap your JSON response in <detect> tags (NO markdown code blocks):
 
 <detect>
 {
-  "mode": "generate" | "refactor" | "explain",
-  "modeReasoning": "Why this mode? (1 sentence)",
+  "jobMode": "generate" | "refactor" | "explain",
+  "jobModeReasoning": "Why this mode? (1 sentence)",
   "environment": "frontend" | "backend" | "fullstack" | "unknown",
   "environmentReasoning": "Why this environment? (1 sentence)",
-  "requireRagForDecompose": true | false,
+  "requireRag": true | false,
   "decomposeKeywords": {
-    "stackTrace": ["file1.tsx", "file2.tsx"],
+    "errorFiles": ["file1.tsx", "file2.tsx"],
     "keywords": ["keyword1", "keyword2", ...],
     "references": [
       {

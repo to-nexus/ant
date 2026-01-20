@@ -148,7 +148,7 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
         previousDesign: state.design,
         prdSpec: state.prd,
         currentCode: state.code,
-        designDomain: state.designDomain,
+        designDomain: state.detectionReport?.domain,
         currentTask: {
           name: state.currentTask.name,
           type: state.currentTask.type,
@@ -241,7 +241,7 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
               sectionPattern,
               prdSpec: state.prd ? `[${state.prd.length} chars]` : undefined,
               currentCode: state.code ? `[${state.code.length} chars]` : undefined,
-              designDomain: state.designDomain,
+              designDomain: state.detectionReport?.domain,
               currentTask: state.currentTask?.id,
               isLastTaskForDocument,
             },
@@ -337,8 +337,8 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
             prd: state.prd ? `[${state.prd.length} chars]` : undefined,
             design: state.design ? `[${state.design.length} chars]` : undefined,
             directive: state.directive ? `[${state.directive.length} chars]` : undefined,
-            designMode: state.designMode,
-            designDomain: state.designDomain,
+            jobMode: state.detectionReport?.jobMode,
+            designDomain: state.detectionReport?.domain,
           },
         }
       );
@@ -388,17 +388,17 @@ export function buildRuntimeContext(state: DesignGraphState): string {
     lines.push('');
   }
   
-  // ✅ 4. Existing Design Document (ONLY for evolution/refactor modes)
-  // - greenfield: NO document needed (lastSectionNumber is sufficient for sequential chapter generation)
-  // - evolution/refactor: FULL document needed (LLM must understand structure to modify specific sections)
-  if (state.designMode === 'evolution' || state.designMode === 'refactor') {
+  // ✅ 4. Existing Design Document (ONLY for refactor mode)
+  // - generate: NO document needed (lastSectionNumber is sufficient for sequential chapter generation)
+  // - refactor: FULL document needed (LLM must understand structure to modify specific sections)
+  if (state.detectionReport?.jobMode === 'refactor') {
     if (state.design) {
       lines.push(`# Existing Design Document`);
       lines.push(state.design);
       lines.push('');
     }
   }
-  // ❌ For greenfield mode: DO NOT include state.design
+  // ❌ For generate mode: DO NOT include state.design
   // Reason: Including old document content causes LLM confusion with outdated metadata
   // The lastSectionNumber in the base prompt is sufficient for sequential chapter numbering
   

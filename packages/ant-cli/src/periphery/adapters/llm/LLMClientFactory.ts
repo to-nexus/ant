@@ -91,8 +91,8 @@ function resolveModelForContext(
 /**
  * Resolve temperature from environment variables
  */
-function resolveTemperature(agentType?: string): number {
-  const prefix = agentType ? `${agentType.toUpperCase()}_` : '';
+function resolveTemperature(agentJob?: string): number {
+  const prefix = agentJob ? `${agentJob.toUpperCase()}_` : '';
   const temp = process.env[`${prefix}MODEL_TEMPERATURE`] || process.env.AI_MODEL_TEMPERATURE;
   return temp ? parseFloat(temp) : 0.7;
 }
@@ -100,8 +100,8 @@ function resolveTemperature(agentType?: string): number {
 /**
  * Resolve max tokens from environment variables
  */
-function resolveMaxTokens(agentType?: string, fallback = 16000): number {
-  const prefix = agentType ? `${agentType.toUpperCase()}_` : '';
+function resolveMaxTokens(agentJob?: string, fallback = 16000): number {
+  const prefix = agentJob ? `${agentJob.toUpperCase()}_` : '';
   const tokens = process.env[`${prefix}MODEL_MAX_TOKENS`];
   return tokens ? parseInt(tokens) : fallback;
 }
@@ -111,7 +111,7 @@ function resolveMaxTokens(agentType?: string, fallback = 16000): number {
  * Provider is auto-detected from model name
  */
 export function createLLMClient(
-  agentType?: string,
+  agentJob?: string,
   config?: LLMConfig,
   context?: LLMContext,
   workspaceConfig?: any
@@ -122,13 +122,13 @@ export function createLLMClient(
   // Auto-detect provider from model name
   const provider = detectProviderFromModel(modelName);
   
-  const temperature = config?.temperature ?? resolveTemperature(agentType);
-  const maxTokens = config?.maxTokens ?? resolveMaxTokens(agentType);
+  const temperature = config?.temperature ?? resolveTemperature(agentJob);
+  const maxTokens = config?.maxTokens ?? resolveMaxTokens(agentJob);
   const timeout = config?.timeout ?? 180000; // 3 minutes
 
   switch (provider) {
     case 'anthropic':
-      return new AnthropicLLMClient(agentType, {
+      return new AnthropicLLMClient(agentJob, {
         apiKey: process.env.ANTHROPIC_API_KEY,
         modelName,
         temperature,
@@ -136,7 +136,7 @@ export function createLLMClient(
       });
     
     case 'openai':
-      return new OpenAILLMClient(agentType, {
+      return new OpenAILLMClient(agentJob, {
         apiKey: process.env.OPENAI_API_KEY,
         modelName,
         temperature,
