@@ -1,20 +1,21 @@
-import { DesignMode, CodebaseProfile, TaskArtifacts } from "../../../../core/types";
+import { CodebaseProfile, TaskArtifacts, DetectionReport } from "../../../../core/types";
 import { LLMClient, ChunkPort, SessionPort, GitPort, CodebaseAnalyzerPort, MemoryPort, TaskQueueUpdatePort } from "../../../../core/ports";
 import { PromptEngine } from "../../../../core/prompt/engine";
 import { ProjectContext } from "../../types";
 import { DesignTask, TaskQueue } from "../../types/task";
 import { TokenUsage } from '../common/llmHelpers';
 import { JobTiming } from '../common/timing/JobTimingManager';
+import { TriageResult, WorkspaceState } from '../../../common/nodes/triage/types';
 
 /**
  * Design Task State
- * State for design generation graph (greenfield/evolution/refactor)
+ * State for design generation graph (generate/refactor/explain)
  * 
  * Inherits TaskArtifacts which provides:
  * - prd: PRD document
  * - directive: User instruction
  * - design: Previous design document
- * - code: Current codebase (for evolution/refactor)
+ * - code: Current codebase (for refactor mode)
  * - codeHead: Git HEAD version (not used in design)
  * - profile: Codebase profile (language/framework)
  */
@@ -40,12 +41,22 @@ export interface DesignGraphState extends TaskArtifacts {
     workflowUpdate?: import('../../../../core/ports/workflow').WorkflowStateUpdatePort;
   };
 
-  // Mode (explicit or inferred)
-  designMode?: DesignMode;  // greenfield / evolution / refactor
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 🔥 DetectionReport (통합 환경 감지 결과)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  /** 통합 환경 감지 결과 (jobMode, workType, environment, domain 등 포함) */
+  detectionReport?: DetectionReport;
   
   // ✅ Chat Integration
   overrideDirective?: string;  // Chat input as directive (highest priority)
   chatSource?: boolean;         // True if job started from chat (enables Chat SSE)
+
+  // ✅ Triage System
+  skipTriage?: boolean;          // Skip triage if true
+  triageResult?: TriageResult;   // Triage analysis result
+  workspaceState?: WorkspaceState;  // Workspace state snapshot
+  currentAgent?: string;         // Current agent name (e.g., 'architect')
+  currentJob?: string;           // Current job name (e.g., 'design')
 
   // ✅ NEW: Task Queue (for task breakdown like code)
   taskQueue?: TaskQueue<DesignTask>;
@@ -89,7 +100,7 @@ export interface DesignGraphState extends TaskArtifacts {
   tokenUsage?: TokenUsage;
   jobTokenUsage?: TokenUsage;
   
-  // Codebase context (for evolution/refactor modes)
+  // Codebase context (for refactor mode)
   codeHead?: string;
   
   // Results (populated by learn node)
@@ -97,34 +108,20 @@ export interface DesignGraphState extends TaskArtifacts {
   
   // ✅ For tracking and resume
   _httpJobId?: string;  // Job ID for real-time UI updates and job resumption
-
-  // ✅ Design domain detection (game vs service)
-  designDomain?: 'game' | 'service';
-  designDomainReasoning?: string;
-  
-  // ✅ Design environment detection (frontend vs backend vs fullstack)
-  designEnvironment?: 'frontend' | 'backend' | 'fullstack';
-  designEnvironmentReasoning?: string;
   
   // ✅ UI specification existence flag
   // When true, system-design should defer UI implementation details to uiDoc
   hasUiDoc?: boolean;
   
-  // ✅ NEW: Work type detection (ui-design vs system-design)
-  // ui-design: Generate ui-tokens.json, ui-assets.json, ui-spec.json from Figma screenshots
-  // system-design: Generate system-design.md or contract-first split docs
-  designWorkType?: 'ui-design' | 'system-design';
-  designWorkTypeReasoning?: string;
-  
-  // ✅ NEW: Error handling for invalid requests (e.g., modify without documents)
+  // ✅ Error handling for invalid requests (e.g., modify without documents)
   designError?: {
     type: string;
     message: string;
     suggestedAction?: string;
   };
   
-  // ✅ NEW: UI document generation context
-  // Populated when designWorkType === 'ui-design'
+  // ✅ UI document generation context
+  // Populated when detectionReport.workType === 'ui-design'
   uiReferences?: {
     screens?: string[];      // inputs/references/screens/*
     components?: string[];   // inputs/references/components/*

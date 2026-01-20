@@ -64,10 +64,45 @@ DO NOT CREATE:
 - ❌ "Final verification" or "review" tasks
 - ❌ Deployment / Operations / Infrastructure tasks
 - ❌ Separate documents per chapter (all chapters → same file)
+{{#if (eq jobMode "refactor")}}
+- ❌ Multiple chapter-based tasks (refactor mode = single focused task)
+- ❌ Full document regeneration (only modify requested section)
+{{/if}}
 
 ---
 
-## 📤 OUTPUT FORMAT
+{{#if (eq jobMode "refactor")}}
+## 📤 OUTPUT FORMAT (REFACTOR MODE)
+
+**Principle**: Single focused task for modification. No multi-chapter decomposition.
+
+```json
+{
+  "jobMode": "refactor",
+  "targetFiles": ["{target}.json"],
+  "tasks": [
+    {
+      "id": "refactor-{document}-{section}",
+      "name": "Refactor: {brief description}",
+      "targetFile": "{target}.json",
+      "description": "{modification scope}. Keep all other content unchanged.",
+      "priority": 300
+    }
+  ]
+}
+```
+
+### Constraints
+
+| Constraint | Requirement |
+|------------|-------------|
+| Task count | Exactly ONE |
+| ID format | `refactor-{document}-{section}` |
+| Name format | `Refactor: {description}` |
+| Description | Must include "Keep all other content unchanged" |
+
+{{else}}
+## 📤 OUTPUT FORMAT (GENERATE MODE)
 
 ```json
 {
@@ -134,7 +169,7 @@ DO NOT CREATE:
 
 ---
 
-## ✅ VALIDATION CHECKLIST
+## ✅ VALIDATION CHECKLIST (GENERATE MODE)
 
 Before outputting, verify:
 
@@ -153,3 +188,4 @@ Before outputting, verify:
 ### Task Descriptions
 - ✅ **ui-spec-ch1 description includes "establish outline" or "TOC"**
 - ✅ **ch2+ descriptions include "(append)" and "follow ch1 structure"**
+{{/if}}

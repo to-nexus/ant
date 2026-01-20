@@ -1,0 +1,33 @@
+# Learn Job Definition
+id: learn
+agent: architect
+description: |
+  Analyzes and indexes your codebase for better AI understanding.
+  Essential for existing projects - enables Ant to match your code style,
+  understand your architecture, and make contextually appropriate changes.
+
+modes:
+  - id: codebase-analysis
+    description: |
+      Scans your repository and creates vector embeddings.
+      Analyzes code patterns, architecture, dependencies, and conventions.
+      Results in more accurate and consistent code generation.
+    detection:
+      all_of:
+        - type: has_git_repository
+    prerequisites:
+      required:
+        - id: git_repo
+          type: has_git_repository
+          description: Git repository
+      recommended: []
+    scope:
+      - Codebase indexing into vector database
+      - Code pattern analysis
+      - Architecture understanding
+      - Dependency mapping
+      - Convention detection
+
+redirect_signals:
+  to_design: User mentions planning, design, or creating specifications
+  to_code: User mentions implementation, coding, or building

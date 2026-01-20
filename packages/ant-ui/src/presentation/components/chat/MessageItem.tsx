@@ -13,6 +13,7 @@ import { WorkingCard } from './WorkingCard';
 import { TerminalCard } from './TerminalCard';
 import { FileCard } from './FileCard';
 import { ToolActionCard } from './ToolActionCard';
+import { ChoiceCard } from './ChoiceCard';
 
 interface MessageItemProps {
   message: ChatMessage;
@@ -41,6 +42,7 @@ export function MessageItem({ message }: MessageItemProps) {
                 key={index} 
                 content={content} 
                 isStreaming={message.isStreaming || false}
+                messageId={message.id}
               />
             ))}
           </div>
@@ -53,9 +55,10 @@ export function MessageItem({ message }: MessageItemProps) {
 interface ContentBlockProps {
   content: MessageContent;
   isStreaming: boolean;
+  messageId: string;
 }
 
-function ContentBlock({ content, isStreaming }: ContentBlockProps) {
+function ContentBlock({ content, isStreaming, messageId }: ContentBlockProps) {
   // ✅ Auto-scroll to bottom during streaming to prevent word-by-word disappearing
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   
@@ -82,7 +85,7 @@ function ContentBlock({ content, isStreaming }: ContentBlockProps) {
       return <ShimmerCard content={content} variant="thinking" />;
 
     case 'cancelled':
-      return <ShimmerCard content={content} variant="cancelled" />;
+      return <ChoiceCard content={content} variant="cancelled" messageId={messageId} />;
 
     case 'text':
       // ✅ Cursor/Copilot-style: ALWAYS show full content (never truncate general responses)
@@ -257,6 +260,10 @@ function ContentBlock({ content, isStreaming }: ContentBlockProps) {
     case 'file_delete':
     case 'file_delete_failed':
       return <FileCard content={content} operation="delete" isStreaming={isStreaming} />;
+
+    // ===== Triage Choice =====
+    case 'triage_choice':
+      return <ChoiceCard content={content} variant="triage_choice" messageId={messageId} />;
 
     default:
       return null;

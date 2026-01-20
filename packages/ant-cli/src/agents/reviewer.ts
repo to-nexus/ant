@@ -30,7 +30,7 @@ export async function reviewerAgent(
   deps: AgentDeps & { llm: LLMClient }
 ) {
   return await executeSimpleAgent({
-    agentType: 'review',
+    agentJob: 'review',
     project,
     input: prDiff,
     deps,

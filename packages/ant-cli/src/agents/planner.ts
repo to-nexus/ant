@@ -37,7 +37,7 @@ export async function plannerAgent(
   deps: AgentDeps & { llm: LLMClient }
 ) {
   return await executeSimpleAgent({
-    agentType: 'plan',
+    agentJob: 'plan',
     project,
     input,
     deps,

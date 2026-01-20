@@ -1,9 +1,10 @@
-## 🧭 Design Work Type + Domain + Environment Detection
+## 🧭 Design Work Type + Mode + Domain + Environment Detection
 
 You are analyzing a design task to determine:
 1. **work type**: ui-design (generate UI specification documents) OR system-design (generate architecture documents)
-2. **project domain** (only if system-design): game | service
-3. **target environment** (only if system-design): frontend | backend | fullstack
+2. **design mode**: generate (create new) | refactor (modify existing) | explain (analyze/describe)
+3. **project domain** (only if system-design): game | service
+4. **target environment** (only if system-design): frontend | backend | fullstack
 
 **Environment Definitions:**
 - **frontend**: Browser-based application (React, Vue, Next.js, Remix - SSR or CSR, NO separate backend server)
@@ -143,6 +144,7 @@ If directive indicates **modification/update** (e.g., "modify", "update", "chang
 {{#if hasUiDocs}}
      - ✅ UI documents exist (ui-tokens.json, ui-assets.json, ui-spec.json)
        → UI modification is POSSIBLE
+       → Set `jobMode: "refactor"`
 {{else}}
      - ❌ UI documents are missing
        → UI modification is IMPOSSIBLE
@@ -152,11 +154,64 @@ If directive indicates **modification/update** (e.g., "modify", "update", "chang
 {{#if hasSystemDocs}}
      - ✅ System documents exist (system-design.md, api-contract.md, etc.)
        → System modification is POSSIBLE
+       → Set `jobMode: "refactor"`
 {{else}}
      - ❌ System documents are missing
        → System modification is IMPOSSIBLE
        → Return ERROR: "Cannot modify system documents because they don't exist. Please create them first."
 {{/if}}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### 🔧 Design Mode Detection (generate | refactor | explain)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**Design Mode determines HOW to process the task (unified with Code Job):**
+
+| Mode | Description | Task Generation |
+|------|-------------|-----------------|
+| `generate` | Create new documents from scratch | Multiple chapter-based tasks |
+| `refactor` | Modify/improve existing documents | Single focused task |
+| `explain` | Analyze/describe existing documents | Single explanation task (no file changes) |
+
+**Detection Rules:**
+
+1. **If directive requests ANALYSIS/EXPLANATION of existing content:**
+   - Keywords: "explain", "describe", "analyze", "review", "summarize", "what is", "how does"
+   - Korean: "설명", "분석", "리뷰", "요약", "검토", "뭐야", "어떻게"
+   - Questions about structure: "이 아키텍처 설명해줘", "ui-spec 구조 분석해줘"
+   - **→ Set `jobMode: "explain"`**
+   - **Requires:** Target documents must exist
+
+2. **If directive indicates MODIFICATION of EXISTING content:**
+   - Keywords: "modify", "update", "change", "fix", "improve", "refactor", "adjust", "revise"
+   - Korean: "수정", "변경", "개선", "고쳐", "업데이트"
+   - Specific section references: "hero section", "navigation", "API endpoint X"
+   - **→ Set `jobMode: "refactor"`**
+   - **Requires:** Target documents must exist
+
+3. **If directive indicates NEW creation or FULL regeneration:**
+   - Keywords: "create", "generate", "make", "build", "design", "regenerate", "start fresh"
+   - Korean: "생성", "만들어", "새로", "처음부터"
+   - No specific section mentioned (implies full document)
+   - **→ Set `jobMode: "generate"`**
+
+4. **Default:**
+   - If documents don't exist → `generate` (must create new)
+   - If documents exist but directive is ambiguous → `generate` (safer to regenerate)
+
+**Examples:**
+
+| Directive | Existing Docs | jobMode |
+|-----------|---------------|------------|
+| "이 시스템 디자인 설명해줘" | ✅ system-design exists | `explain` |
+| "ui-spec 구조 분석해줘" | ✅ ui-spec exists | `explain` |
+| "현재 아키텍처 리뷰해줘" | ✅ system-design exists | `explain` |
+| "ui-spec의 hero 섹션 수정해라" | ✅ ui-spec exists | `refactor` |
+| "technology card 이미지 사이즈 확인해라" | ✅ ui-spec exists | `refactor` |
+| "API 엔드포인트 추가해줘" | ✅ system-design exists | `refactor` |
+| "UI 기획 시작해줘" | ❌ No UI docs | `generate` |
+| "처음부터 다시 만들어줘" | Any | `generate` |
+| "시스템 디자인해줘" | ❌ No system docs | `generate` |
 
 **Ambiguous/General Terms (proceed to Priority 2):**
 
@@ -344,7 +399,9 @@ UI design requires reference screenshots, mockups, or visual materials to extrac
 <detect>
 {
   "workType": "ui-design",
-  "workTypeReasoning": "1-2 sentences explaining why this is UI design work"
+  "workTypeReasoning": "1-2 sentences explaining why this is UI design work",
+  "jobMode": "generate" | "refactor" | "explain",
+  "jobModeReasoning": "1-2 sentences explaining why generate (new) / refactor (modify) / explain (analyze)"
 }
 </detect>
 ```
@@ -356,6 +413,8 @@ UI design requires reference screenshots, mockups, or visual materials to extrac
 {
   "workType": "system-design",
   "workTypeReasoning": "1-2 sentences explaining why this is system design work",
+  "jobMode": "generate" | "refactor" | "explain",
+  "jobModeReasoning": "1-2 sentences explaining why generate (new) / refactor (modify) / explain (analyze)",
   "domain": "game" | "service",
   "domainReasoning": "1-2 sentences explaining why (reference PRD/directive as evidence)",
   "environment": "frontend" | "backend" | "fullstack",
@@ -412,21 +471,23 @@ UI design requires reference screenshots, mockups, or visual materials to extrac
 
 ### Work Type Decision Matrix
 
-| Priority | Directive Intent | UI Docs | System Docs | References | → Decision |
-|----------|-----------------|---------|-------------|------------|-----------|
-| **1** | **UI design** (semantic) | Any | Any | Any | **ui-design** |
-| **1** | **System design** (semantic) | Any | Any | Any | **system-design** |
-| **1** | **UI modification** (semantic) | ❌ Missing | Any | Any | **error** |
-| **1** | **System modification** (semantic) | Any | ❌ Missing | Any | **error** |
-| 2 | Ambiguous/general | ✅ Exist | ❌ Missing | Any | **system-design** |
-| 2 | Ambiguous/general | ❌ Missing | Any | ✅ Exist | **ui-design** |
-| 2 | Ambiguous/general | ❌ Missing | Any | ❌ Missing | **system-design** |
-| 3 | Unclear/none | Any | Any | Any | **system-design** (default) |
+| Priority | Directive Intent | UI Docs | System Docs | References | → workType | → jobMode |
+|----------|-----------------|---------|-------------|------------|-----------|--------------|
+| **1** | **UI creation** (semantic) | Any | Any | Any | **ui-design** | **generate** |
+| **1** | **UI modification** (semantic) | ✅ Exist | Any | Any | **ui-design** | **refactor** |
+| **1** | **UI modification** (semantic) | ❌ Missing | Any | Any | **error** | - |
+| **1** | **System creation** (semantic) | Any | Any | Any | **system-design** | **generate** |
+| **1** | **System modification** (semantic) | Any | ✅ Exist | Any | **system-design** | **refactor** |
+| **1** | **System modification** (semantic) | Any | ❌ Missing | Any | **error** | - |
+| 2 | Ambiguous/general | ✅ Exist | ❌ Missing | Any | **system-design** | **generate** |
+| 2 | Ambiguous/general | ❌ Missing | Any | ✅ Exist | **ui-design** | **generate** |
+| 2 | Ambiguous/general | ❌ Missing | Any | ❌ Missing | **system-design** | **generate** |
+| 3 | Unclear/none | Any | Any | Any | **system-design** | **generate** |
 
 **Key Points:**
 - **Priority 1**: Semantic intent (UI vs system focus, creation vs modification) **always wins**
 - **Priority 2**: If intent is ambiguous (general planning terms), check completion status
-- **Priority 3**: When everything is unclear, default to `"system-design"`
+- **Priority 3**: When everything is unclear, default to `"system-design"` + `"generate"`
 - **Critical**: Understand MEANING over exact keywords - consider synonyms, typos, different languages
 
 **Work Type:**
@@ -440,6 +501,19 @@ UI design requires reference screenshots, mockups, or visual materials to extrac
   - Default fallback
 - `"error"`:
   - Modification requested but target documents don't exist
+
+**Design Mode:**
+- `"generate"`:
+  - New creation requested, OR
+  - Target documents don't exist, OR
+  - Full regeneration requested ("처음부터", "새로", "regenerate")
+- `"explain"`:
+  - Analysis/description requested, AND
+  - Target documents exist
+- `"refactor"`:
+  - Modification/improvement of EXISTING documents, AND
+  - Target documents exist, AND
+  - Specific section/part mentioned OR improvement keywords used
 
 **Domain (only for system-design):**
 - `"game"`: Games or realtime/physics-based interactive applications

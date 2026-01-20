@@ -1,0 +1,165 @@
+/**
+ * Triage Response Parser
+ * 
+ * LLM 응답에서 <triage>...</triage> 블록을 파싱
+ */
+
+import { TriageResult, ChoiceOptions } from './types';
+
+/**
+ * Parse triage response from LLM output
+ * @param llmOutput - Raw LLM output containing <triage> block
+ * @param currentJob - Current job type (for redirect detection)
+ */
+export function parseTriageResponse(llmOutput: string, currentJob?: string): TriageResult | null {
+  // Extract <triage>...</triage> block
+  const triageMatch = llmOutput.match(/<triage>([\s\S]*?)<\/triage>/);
+  if (!triageMatch) {
+    console.warn('[TriageParser] No <triage> block found in response');
+    return null;
+  }
+  
+  const triageContent = triageMatch[1].trim();
+  
+  try {
+    // Parse JSON
+    const parsed = JSON.parse(triageContent);
+    
+    // Validate required fields
+    if (!parsed.intent) {
+      console.warn('[TriageParser] Missing required field: intent');
+      return null;
+    }
+    
+    // Build TriageResult
+    const result: TriageResult = {
+      intent: parsed.intent
+    };
+    
+    // ask-specific fields
+    if (result.intent === 'ask') {
+      result.inScope = parsed.inScope;
+      result.askResponse = parsed.askResponse;
+    }
+    
+    // work-specific fields
+    if (result.intent === 'work') {
+      result.workStatus = parsed.workStatus;
+      
+      // CRITICAL FIX: If suggestedJob is set and different from currentJob,
+      // treat as redirect even if LLM said "proceed"
+      const effectiveCurrentJob = currentJob || 'unknown';
+      const shouldRedirect = 
+        parsed.workStatus === 'redirect' ||
+        (parsed.suggestedJob && 
+         parsed.suggestedJob !== effectiveCurrentJob && 
+         parsed.redirectReason);
+      
+      // redirect
+      if (shouldRedirect) {
+        result.workStatus = 'redirect'; // Force redirect
+        result.suggestedJob = parsed.suggestedJob;
+        result.redirectReason = parsed.redirectReason;
+        result.needsChoice = true;
+        result.choiceOptions = buildRedirectChoice(parsed);
+        console.log(`[TriageParser] Forced redirect: suggestedJob=${parsed.suggestedJob}, currentJob=${effectiveCurrentJob}`);
+      }
+      
+      // blocked
+      if (parsed.workStatus === 'blocked') {
+        result.missingPrerequisites = parsed.missingPrerequisites;
+        result.canProceed = parsed.canProceed ?? false;
+        result.blockedMessage = parsed.blockedMessage;
+        result.proceedAnywayOption = parsed.proceedAnywayOption;
+        
+        if (result.canProceed) {
+          result.needsChoice = true;
+          result.choiceOptions = buildBlockedChoice(parsed);
+        }
+      }
+    }
+    
+    // Build display message
+    result.displayMessage = buildDisplayMessage(result, parsed);
+    
+    return result;
+  } catch (error) {
+    console.error('[TriageParser] Failed to parse triage JSON:', error);
+    console.error('[TriageParser] Raw content:', triageContent);
+    return null;
+  }
+}
+
+/**
+ * Build choice options for redirect case
+ * 
+ * NOTE: For redirect, the negative choice should be "Dismiss" (cancel),
+ * not "Continue with current job" - since it's already been determined
+ * that the current job is incorrect for this task.
+ */
+function buildRedirectChoice(parsed: any): ChoiceOptions {
+  return {
+    positive: {
+      label: '전환',
+      action: 'redirect'
+    },
+    negative: {
+      label: 'Dismiss',
+      action: 'dismiss'
+    }
+  };
+}
+
+/**
+ * Build choice options for blocked (canProceed=true) case
+ */
+function buildBlockedChoice(parsed: any): ChoiceOptions {
+  return {
+    positive: {
+      label: 'Proceed Anyway',
+      action: 'proceedAnyway'
+    },
+    negative: {
+      label: 'Dismiss',
+      action: 'dismiss'
+    }
+  };
+}
+
+/**
+ * Build display message
+ */
+function buildDisplayMessage(result: TriageResult, parsed: any): string {
+  // ask intent - use LLM's askResponse (LLM responds in user's language)
+  if (result.intent === 'ask') {
+    return result.askResponse || '';
+  }
+  
+  // work - proceed
+  if (result.workStatus === 'proceed') {
+    return '작업을 시작합니다.';
+  }
+  
+  // work - redirect
+  if (result.workStatus === 'redirect') {
+    return `${result.redirectReason || '다른 job이 더 적합합니다.'}\n\n**${result.suggestedJob}** job으로 전환하시겠습니까?`;
+  }
+  
+  // work - blocked
+  if (result.workStatus === 'blocked') {
+    if (result.canProceed) {
+      return `${result.blockedMessage || '일부 조건이 충족되지 않았습니다.'}\n\n그래도 진행하시겠습니까?`;
+    }
+    return result.blockedMessage || '필수 조건이 충족되지 않았습니다.';
+  }
+  
+  return '처리 중...';
+}
+
+/**
+ * Extract raw JSON from triage response (for debugging)
+ */
+export function extractTriageJson(llmOutput: string): string | null {
+  const triageMatch = llmOutput.match(/<triage>([\s\S]*?)<\/triage>/);
+  return triageMatch ? triageMatch[1].trim() : null;
+}

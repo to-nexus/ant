@@ -1,4 +1,4 @@
-import { AgentTask, CodeMode, ProjectContext } from "../../types";
+import { AgentJob, JobMode, ProjectContext } from "../../types";
 
 /**
  * Normalized input structure for prompt engine
@@ -6,9 +6,9 @@ import { AgentTask, CodeMode, ProjectContext } from "../../types";
  */
 export interface NormalizedPromptInput {
   goal: string;                    // User's primary intent/goal
-  task: AgentTask;                 // design, code, learn
+  job: AgentJob;                   // design, code, learn
   phase: "plan" | "execute";       // Current phase in workflow
-  mode?: CodeMode;                 // generate, refactor, explain (code only)
+  mode?: JobMode;                  // generate, refactor, explain
   
   artifacts: {
     directive?: string;            // User instruction
@@ -26,7 +26,7 @@ export interface NormalizedPromptInput {
  * 
  * Responsibilities:
  * - Validate required fields
- * - Extract goal from directive or default to task
+ * - Extract goal from directive or default to job
  * - Ensure consistent structure
  */
 export class InputNormalizer {
@@ -34,7 +34,7 @@ export class InputNormalizer {
    * Normalize inputs for plan phase
    */
   normalizePlanInput(
-    task: AgentTask,
+    job: AgentJob,
     context: ProjectContext,
     artifacts: {
       directive?: string;
@@ -42,19 +42,19 @@ export class InputNormalizer {
       prdSpec?: string;
       currentCode?: string;
     },
-    mode?: CodeMode
+    mode?: JobMode
   ): NormalizedPromptInput {
     // Extract goal from directive or use default
     const goal = artifacts.directive 
       ? this.extractGoal(artifacts.directive)
-      : this.getDefaultGoal(task, "plan");
+      : this.getDefaultGoal(job, "plan");
     
-    // Validate task-specific requirements
-    this.validateInput(task, "plan", artifacts);
+    // Validate job-specific requirements
+    this.validateInput(job, "plan", artifacts);
     
     return {
       goal,
-      task,
+      job,
       phase: "plan",
       mode,
       artifacts,
@@ -66,7 +66,7 @@ export class InputNormalizer {
    * Normalize inputs for execute phase
    */
   normalizeExecuteInput(
-    task: AgentTask,
+    job: AgentJob,
     context: ProjectContext,
     artifacts: {
       directive?: string;
@@ -74,17 +74,17 @@ export class InputNormalizer {
       prdSpec?: string;
       currentCode?: string;
     },
-    mode?: CodeMode
+    mode?: JobMode
   ): NormalizedPromptInput {
     const goal = artifacts.directive 
       ? this.extractGoal(artifacts.directive)
-      : this.getDefaultGoal(task, "execute");
+      : this.getDefaultGoal(job, "execute");
     
-    this.validateInput(task, "execute", artifacts);
+    this.validateInput(job, "execute", artifacts);
     
     return {
       goal,
-      task,
+      job,
       phase: "execute",
       mode,
       artifacts,
@@ -107,10 +107,10 @@ export class InputNormalizer {
   }
   
   /**
-   * Get default goal based on task and phase
+   * Get default goal based on job and phase
    */
-  private getDefaultGoal(task: AgentTask, phase: "plan" | "execute"): string {
-    const goals: Partial<Record<AgentTask, Record<string, string>>> = {
+  private getDefaultGoal(job: AgentJob, phase: "plan" | "execute"): string {
+    const goals: Partial<Record<AgentJob, Record<string, string>>> = {
       design: {
         plan: "Analyze requirements and structure system design",
         execute: "Generate comprehensive system design document"
@@ -137,31 +137,31 @@ export class InputNormalizer {
       }
     };
     
-    return goals[task]?.[phase] || `Perform ${task} task (${phase} phase)`;
+    return goals[job]?.[phase] || `Perform ${job} job (${phase} phase)`;
   }
   
   /**
-   * Validate task-specific input requirements
+   * Validate job-specific input requirements
    */
   private validateInput(
-    task: AgentTask,
+    job: AgentJob,
     phase: "plan" | "execute",
     artifacts: NormalizedPromptInput['artifacts']
   ): void {
-    // Code task requires either design doc or directive
-    if (task === 'code') {
+    // Code job requires either design doc or directive
+    if (job === 'code') {
       if (!artifacts.designDoc && !artifacts.directive) {
         throw new Error(
-          "Code task requires either design document or directive.\n" +
+          "Code job requires either design document or directive.\n" +
           "Run 'architect design' first or provide a directive."
         );
       }
     }
     
-    // Design task should have PRD or directive
-    if (task === 'design' && phase === 'plan') {
+    // Design job should have PRD or directive
+    if (job === 'design' && phase === 'plan') {
       if (!artifacts.prdSpec && !artifacts.directive) {
-        console.warn("Design task: No PRD or directive provided. Using empty spec.");
+        console.warn("Design job: No PRD or directive provided. Using empty spec.");
       }
     }
   }

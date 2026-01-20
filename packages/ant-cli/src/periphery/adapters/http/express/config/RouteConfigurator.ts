@@ -16,6 +16,7 @@ import { ServerConfig, ServerDependencies } from '../types';
 import { JobStateTracker } from '../managers/JobStateTracker';
 import { JobExecutionManager } from '../managers/JobExecutionManager';
 import { WorkflowBridge } from '../bridges/WorkflowBridge';
+import { choiceService } from '../../../../../infrastructure/choice/ChoiceService';
 
 /**
  * RouteConfigurator
@@ -150,6 +151,7 @@ export class RouteConfigurator {
     const apiRoutes = createApiRoutes({
       projectService: this.deps.projectService,
       chatService: this.deps.chatService,
+      choiceService,  // ✅ For triage choice handling
       githubAuthService: this.deps.githubAuthService,
       workspaceRoot: this.config.workspacesPath,
       workspaceResolver: this.deps.workspaceResolver

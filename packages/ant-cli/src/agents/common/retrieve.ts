@@ -1,4 +1,4 @@
-import { AgentTask } from "../../core/types";
+import { AgentJob } from "../../core/types";
 import { MemoryPort } from "../../core/ports";
 import { MMRReranker } from "../../core/chunk/rerank";
 
@@ -6,16 +6,16 @@ import { MMRReranker } from "../../core/chunk/rerank";
  * Retrieve Memory for Agent
  * 
  * Common function to retrieve relevant context from vector memory
- * based on agent type. Each agent has its own query strategy.
+ * based on agent job. Each agent has its own query strategy.
  * 
- * @param agentType - Type of agent (design, code, review, etc.)
+ * @param agentJob - Type of agent job (design, code, review, etc.)
  * @param project - Project name
  * @param feature - Optional feature name
  * @param deps - Dependencies including memory port
  * @returns Formatted context string with categorized memory results
  */
 export async function retrieveMemoryForAgent(
-  agentType: AgentTask,
+  agentJob: AgentJob,
   project: string,
   feature?: string,
   deps?: { memory?: MemoryPort }
@@ -26,10 +26,10 @@ export async function retrieveMemoryForAgent(
     return "";
   }
   
-  // Get queries based on agent type
-  const queries = getQueriesForAgent(agentType, project);
+  // Get queries based on agent job
+  const queries = getQueriesForAgent(agentJob, project);
   if (queries.length === 0) {
-    console.log(`⚠️  No queries defined for agent type: ${agentType}`);
+    console.log(`⚠️  No queries defined for agent job: ${agentJob}`);
     return "";
   }
   
@@ -45,7 +45,7 @@ export async function retrieveMemoryForAgent(
         k: 10,
         where: {
           type: 'lesson',
-          task: agentType
+          job: agentJob
         },
         minScore: 0.5
       });
@@ -108,10 +108,10 @@ ${allResults.join('\n\n')}
 }
 
 /**
- * Get queries for specific agent type
+ * Get queries for specific agent job
  */
-function getQueriesForAgent(agentType: AgentTask, project: string): string[] {
-  switch (agentType) {
+function getQueriesForAgent(agentJob: AgentJob, project: string): string[] {
+  switch (agentJob) {
     case 'design':
       return [
         "What design patterns were used?",
@@ -157,7 +157,7 @@ function getQueriesForAgent(agentType: AgentTask, project: string): string[] {
       return [];
       
     default:
-      console.warn(`Unknown agent type: ${agentType}`);
+      console.warn(`Unknown agent job: ${agentJob}`);
       return [];
   }
 }

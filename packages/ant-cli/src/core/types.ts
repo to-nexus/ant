@@ -14,14 +14,18 @@ export * from './types/environment';
 // Re-export UI document types (for split injection)
 export * from './types/uiDoc';
 
+// Re-export detection types (unified DetectionReport)
+export * from './types/detection';
+
 // Import for local use
 import { ParsedUiDocs } from './types/uiDoc';
+import { JobMode } from './types/detection';
 
 /**
- * Agent task types
+ * Agent job types
  * Defines what kind of work an agent performs
  */
-export type AgentTask = 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';
+export type AgentJob = 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';
 
 /**
  * Vector DB Collection Types
@@ -46,18 +50,6 @@ export function getCollectionName(
   return `${type}-${project}`;
 }
 
-/**
- * Code generation modes
- * Defines how code generation should be performed
- * Note: Mode is now inferred by LLM in detectEnvironment node (no 'ambiguous' state)
- */
-export type CodeMode = 'generate' | 'refactor' | 'explain';
-
-/**
- * Design modes
- * Defines the nature of the design task
- */
-export type DesignMode = 'greenfield' | 'evolution' | 'refactor';
 
 /**
  * Codebase profile
@@ -123,7 +115,7 @@ export interface SessionTurnInput {
  */
 export interface SessionTurn {
   turnId: number;
-  task: AgentTask;
+  job: AgentJob;
   timestamp: string;
   input: SessionTurnInput;
   output: SessionTurnOutput;

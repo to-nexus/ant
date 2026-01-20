@@ -1,4 +1,4 @@
-import { AgentTask as CoreAgentTask, CodeMode as CoreCodeMode, ProjectContext as CoreProjectContext, SessionTurn as CoreSessionTurn } from "../../core/types";
+import { AgentJob as CoreAgentJob, JobMode, ProjectContext as CoreProjectContext, SessionTurn as CoreSessionTurn } from "../../core/types";
 
 export const DIRECTIVE_TYPES = {
   CODE: 'code',
@@ -8,10 +8,10 @@ export const DIRECTIVE_TYPES = {
 
 export type DirectiveType = typeof DIRECTIVE_TYPES[keyof typeof DIRECTIVE_TYPES];
 
-// Re-export core types for backward compatibility
-export type AgentTask = CoreAgentTask;
-export type CodeMode = CoreCodeMode;
+// Re-export core types
+export type AgentJob = CoreAgentJob;
 export type SessionTurn = CoreSessionTurn;
+export { JobMode };
 
 // Extend core ProjectContext with architect-specific fields
 export interface ProjectContext extends CoreProjectContext {
@@ -30,7 +30,7 @@ export interface ProjectContext extends CoreProjectContext {
 export interface ArchitectResult {
   success: boolean;
   status?: 'success' | 'paused' | 'partial';  // ✅ Explicit status for better clarity
-  task: AgentTask;
+  job: AgentJob;
   reportFile?: string;  // ⚠️  DEPRECATED: Only for code jobs (report.md), design jobs don't need this
   filesAnalyzed?: number;
   interruption?: import('../../core/types').InterruptionDetails;  // ✅ Unified interruption details

@@ -135,8 +135,8 @@ export async function codeGen(
   // - Explain mode: NO tools (just explanation)
   // - Design job: NO tools (XML streaming)
   // - Code job (generate/refactor): YES tools
-  const isExplainMode = state.codeMode === 'explain';
-  const enableTools = state.codeMode !== undefined && !isExplainMode;
+  const isExplainMode = state.detectionReport?.jobMode === 'explain';
+  const enableTools = state.detectionReport?.jobMode !== undefined && !isExplainMode;
   const tools = enableTools ? await getAvailableTools(state) : undefined;
   
   if (isExplainMode) {

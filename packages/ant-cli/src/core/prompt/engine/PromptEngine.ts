@@ -1,4 +1,4 @@
-import { AgentTask, CodeMode, ProjectContext } from "../../types";
+import { AgentJob, JobMode, ProjectContext } from "../../types";
 import { PromptPort, ProfilePort, CodebaseAnalyzerPort, GitPort, MemoryPort } from "../../ports";
 import { InputNormalizer, NormalizedPromptInput } from "./InputNormalizer";
 import { ContextAssembler, AssembledContext } from "./ContextAssembler";
@@ -17,7 +17,7 @@ export interface PromptEngineDeps {
   analyzer?: CodebaseAnalyzerPort;
   git?: GitPort;
   memory?: MemoryPort;
-  contextLoader?: (task: AgentTask, context: any) => Promise<Partial<AssembledContext>>;
+  contextLoader?: (job: AgentJob, context: any) => Promise<Partial<AssembledContext>>;
 }
 
 /**
@@ -66,7 +66,7 @@ export class PromptEngine {
    * Build prompt for plan phase
    */
   async buildPlanPrompt(
-    task: AgentTask,
+    job: AgentJob,
     context: ProjectContext,
     artifacts: {
       directive?: string;
@@ -80,14 +80,14 @@ export class PromptEngine {
         description: string;
       };
     },
-    mode?: CodeMode,
+    mode?: JobMode,
     taskType?: string
   ): Promise<PromptBuildResult> {
     const startTime = Date.now();
     
     // Layer 1: Normalize inputs
     const normalized = this.normalizer.normalizePlanInput(
-      task,
+      job,
       context,
       artifacts,
       mode
@@ -95,7 +95,7 @@ export class PromptEngine {
     
     // Layer 2: Assemble context
     const assembled = await this.assembler.assemble(
-      task,
+      job,
       context,
       {
         git: this.deps.git,
@@ -107,7 +107,7 @@ export class PromptEngine {
     
     // Layer 3: Determine mode configuration
     const modeConfig = this.controller.determineMode(
-      task,
+      job,
       "plan",
       assembled,
       mode,
@@ -153,7 +153,7 @@ export class PromptEngine {
    * Build prompt for execute phase
    */
   async buildExecutePrompt(
-    task: AgentTask,
+    job: AgentJob,
     context: ProjectContext,
     artifacts: {
       directive?: string;
@@ -202,14 +202,14 @@ export class PromptEngine {
       };
       designDomain?: 'game' | 'service';
     },
-    mode?: CodeMode,
+    mode?: JobMode,
     taskType?: string
   ): Promise<PromptBuildResult> {
     const startTime = Date.now();
     
     // Layer 1: Normalize inputs
     const normalized = this.normalizer.normalizeExecuteInput(
-      task,
+      job,
       context,
       artifacts,
       mode
@@ -217,7 +217,7 @@ export class PromptEngine {
     
     // Layer 2: Assemble context
     const assembled = await this.assembler.assemble(
-      task,
+      job,
       context,
       {
         git: this.deps.git,
@@ -229,7 +229,7 @@ export class PromptEngine {
     
     // Layer 3: Determine mode configuration
     const modeConfig = this.controller.determineMode(
-      task,
+      job,
       "execute",
       assembled,
       mode,

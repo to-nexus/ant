@@ -249,7 +249,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     
     const turn: SessionTurn = {
       turnId: 0, // Will be set by adapter
-      task: 'code',
+      job: 'code',
       timestamp: new Date().toISOString(),
       input: {
         type: 'design',
@@ -382,7 +382,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
           content: lessons,
           metadata: {
             type: 'lesson',
-            task: 'code',
+            job: 'code',
             project: contextData.project,
             feature: contextData.feature,
             timestamp: new Date().toISOString(),
@@ -562,7 +562,7 @@ ${tags.join(', ')}
 ### Context
 - **Project**: ${state.context.project}
 - **Feature**: ${state.context.featureFolder || 'main'}
-- **Mode**: ${state.codeMode || 'auto'}
+- **Mode**: ${state.detectionReport?.jobMode || 'auto'}
 - **Language**: ${state.profile?.language || 'unknown'}
 - **Framework**: ${state.profile?.framework || 'N/A'}
 - **Timestamp**: ${new Date().toISOString()}
@@ -595,7 +595,7 @@ function extractSolution(state: ArchitectGraphState): string {
   }
   
   // Mode applied
-  parts.push(`using ${state.codeMode || 'generate'} mode`);
+  parts.push(`using ${state.detectionReport?.jobMode || 'generate'} mode`);
   
   // Profile info
   if (state.profile) {
@@ -710,8 +710,8 @@ function extractPatterns(state: ArchitectGraphState): string[] {
     patterns.push(state.profile.framework);
   }
   
-  if (state.codeMode) {
-    patterns.push(state.codeMode);
+  if (state.detectionReport?.jobMode) {
+    patterns.push(state.detectionReport.jobMode);
   }
   
   // Infer from file structures

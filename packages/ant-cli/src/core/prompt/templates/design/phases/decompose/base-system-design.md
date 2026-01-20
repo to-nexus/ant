@@ -1,6 +1,51 @@
 # System Design Task Decomposition
 
-You are analyzing requirements to break them into chapter-based design tasks.
+You are analyzing requirements to break them into design tasks.
+
+**Job Mode**: {{jobMode}}
+
+{{#if (eq jobMode "refactor")}}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🔧 REFACTOR MODE - Modify Existing Documents
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**You are modifying EXISTING system design documents.**
+
+**Philosophy**: Create a SINGLE focused task that modifies the specific section/part requested.
+
+### Rules for Refactor Mode
+
+1. **Create ONE task** - Do NOT create multiple chapter-based tasks
+2. **Focus on the specific change** - Only modify what was requested
+3. **Preserve existing content** - Do NOT regenerate entire documents
+4. **Use descriptive task ID** - e.g., "modify-api-users", "modify-schema-orders"
+
+### Task Output Format (Refactor Mode)
+
+```json
+{
+  "documentType": "unified",
+  "jobMode": "refactor",
+  "targetFiles": ["system-design.md"],
+  "tasks": [
+    {
+      "id": "refactor-{section}",
+      "name": "Refactor: {brief description}",
+      "targetFile": "system-design.md",
+      "description": "{modification scope}. Keep all other content unchanged.",
+      "priority": 200
+    }
+  ]
+}
+```
+
+{{else}}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🆕 GENERATE MODE - Create New Documents
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**You are creating NEW system design documents from scratch.**
+{{/if}}
 
 ---
 
@@ -22,7 +67,7 @@ Previous design:
 {{#if hasExistingCode}}
 ### 📂 Existing Codebase Detected
 
-This is an evolution or refactor task. Consider the current implementation:
+This is a refactor task. Consider the current implementation:
 {{codePreview}}
 {{/if}}
 

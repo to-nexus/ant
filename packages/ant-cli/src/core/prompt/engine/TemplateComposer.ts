@@ -82,7 +82,7 @@ export class TemplateComposer {
     assembled: AssembledContext
   ): Promise<ComposedPrompt> {
     // 1. Load system prompt (cached)
-    const system = await this.getSystemPrompt(modeConfig.task);
+    const system = await this.getSystemPrompt(modeConfig.job);
     
     // 2. Build profiles (if enabled)
     const profiles = modeConfig.flags.includeProfiles
@@ -162,7 +162,7 @@ export class TemplateComposer {
     
     // 7. Load examples (if enabled)
     const examples = modeConfig.flags.includeExamples
-      ? await this.renderTemplate(`${modeConfig.task}/base/examples`, {})
+      ? await this.renderTemplate(`${modeConfig.job}/base/examples`, {})
       : '';
     
     return {

@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
-import { AgentTask } from "../../types";
+import { AgentJob } from "../../types";
 import { PromptModeConfig } from "./ModeController";
 
 /**
@@ -59,16 +59,16 @@ export class PolicyInjector {
       common: this.ruleset.common
     };
     
-    // Add task-specific rules
-    if (this.ruleset[modeConfig.task]) {
-      rules.taskSpecific = this.ruleset[modeConfig.task][modeConfig.phase];
+    // Add job-specific rules
+    if (this.ruleset[modeConfig.job]) {
+      rules.taskSpecific = this.ruleset[modeConfig.job][modeConfig.phase];
     }
     
     // Add strict mode if applicable
     if (modeConfig.flags.strictValidation) {
       const strictConfig = this.ruleset.strict_mode;
       rules.strictMode = {
-        enabled: strictConfig.enabled_for.includes(modeConfig.task),
+        enabled: strictConfig.enabled_for.includes(modeConfig.job),
         rules: strictConfig.rules
       };
     }
@@ -102,7 +102,7 @@ export class PolicyInjector {
     
     // Task-specific rules
     if (rules.taskSpecific?.rules) {
-      sections.push(`\n## ${modeConfig.task.toUpperCase()} ${modeConfig.phase.toUpperCase()} Rules`);
+      sections.push(`\n## ${modeConfig.job.toUpperCase()} ${modeConfig.phase.toUpperCase()} Rules`);
       rules.taskSpecific.rules.forEach(rule => {
         sections.push(`- ${rule}`);
       });
@@ -139,13 +139,13 @@ export class PolicyInjector {
     guardrails.push('<guardrails>');
     guardrails.push('Before responding, you MUST:');
     
-    // Task-specific guardrails
-    if (modeConfig.task === 'code') {
+    // Job-specific guardrails
+    if (modeConfig.job === 'code') {
       guardrails.push('1. ✓ Verify all code is complete (no ellipsis or placeholders)');
       guardrails.push('2. ✓ Check all imports are valid');
       guardrails.push('3. ✓ Ensure proper error handling');
       guardrails.push('4. ✓ Validate types and interfaces');
-    } else if (modeConfig.task === 'design') {
+    } else if (modeConfig.job === 'design') {
       guardrails.push('1. ✓ Include all required sections');
       guardrails.push('2. ✓ Define clear interfaces and contracts');
       guardrails.push('3. ✓ Consider edge cases and error scenarios');

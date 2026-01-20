@@ -1,4 +1,4 @@
-import { ProjectContext, AgentTask, CodeMode, ArchitectResult } from "./types";
+import { ProjectContext, AgentJob, JobMode, ArchitectResult } from "./types";
 import { retrieve } from "./memory";
 import { ArtifactService } from "../../infrastructure/workspace/ArtifactService";
 import { MemoryPort, LLMClient, PromptPort, GitPort, ConfigPort, CodebaseAnalyzerPort, ProfilePort, SessionPort, ChunkPort, CommandPort, TaskQueueUpdatePort } from "../../core/ports";
@@ -14,7 +14,7 @@ import { PromptEngine } from "../../core/prompt/engine";
 export async function architectAgent(
   spec: string, 
   project: string,
-  task: AgentTask = 'design',
+  job: AgentJob = 'design',
   inputFile?: string,
   deps?: { 
     memory?: MemoryPort; 
@@ -37,7 +37,7 @@ export async function architectAgent(
     chatSource?: boolean;  // ✅ Flag for Chat SSE
     feature?: string;  // ✅ Feature name (for chat jobs without inputFile)
   },
-  codeMode?: CodeMode,
+  jobMode?: JobMode,
   enableEvaluation?: boolean,
   jobId?: string  // ✅ Existing jobId for resume or real-time tracking
 ): Promise<ArchitectResult> {
@@ -52,7 +52,7 @@ export async function architectAgent(
   }
   
   // ✅ Learn job doesn't require featureFolder (uses "default" if not provided)
-  if (task !== 'learn') {
+  if (job !== 'learn') {
     if (!featureFolder || typeof featureFolder !== 'string' || !featureFolder.trim()) {
       console.error('❌ featureFolder is undefined or empty.');
       console.error('  inputFile:', inputFile);
@@ -71,7 +71,7 @@ export async function architectAgent(
   // 2. Determine working directory (actual code repository path)
   // ✅ Must use GitPort.getRepoRoot() - never fallback to process.cwd()
   // ✅ Learn job doesn't require GitPort (works without git)
-  if (!deps?.git && task !== 'learn') {
+  if (!deps?.git && job !== 'learn') {
     throw new Error("GitPort is required to determine working directory (codebase path)");
   }
   
@@ -94,7 +94,7 @@ export async function architectAgent(
   }
   
   // 3. Retrieve long-term knowledge from Vector DB
-  const vectorMemory = await retrieve(task, project, featureFolder, deps?.memory ? { memory: deps.memory } : undefined);
+  const vectorMemory = await retrieve(job, project, featureFolder, deps?.memory ? { memory: deps.memory } : undefined);
   
   // 4. Detect user language from input (directive > spec)
   // ✅ Job-level language detection: each job can have different language
@@ -144,8 +144,8 @@ export async function architectAgent(
   const overrideDirective = process.env.ANT_OVERRIDE_DIRECTIVE?.trim() || undefined;
   const chatSource = process.env.ANT_CHAT_SOURCE === 'true';
 
-  // Call appropriate handler based on task
-  switch (task) {
+  // Call appropriate handler based on job
+  switch (job) {
     case 'learn':
       // Generic learn: accept repo files or free-form text in spec
       const lInitial: LearnGraphState = {
@@ -161,14 +161,14 @@ export async function architectAgent(
         texts: []
       };
       
-      console.log('\n🚀 Starting task: "Learn and Store Knowledge"');
+      console.log('\n🚀 Starting job: "Learn and Store Knowledge"');
       console.log('   Type: LEARN');
       console.log('');
       
       const l = await runLearnGraph(lInitial);
       return {
         success: true,
-        task: 'learn',
+        job: 'learn',
         reportFile: '',
         message: `Stored ${l.stored} lesson chunk(s) to vector memory.`
       };
@@ -184,15 +184,15 @@ export async function architectAgent(
         git: deps.git,
         memory: deps.memory,
         contextLoader: async (task, ctx) => {
-          // ✅ FIX: task parameter is a Task object, not AgentTask string!
-          // For design job, we need to pass 'design' as the AgentTask type
-          const agentTask: AgentTask = 'design';
+          // ✅ FIX: task parameter is a Task object, not AgentJob string!
+          // For design job, we need to pass 'design' as the AgentJob type
+          const agentJob: AgentJob = 'design';
           
           const gitPort = deps.git;
           const fileSystem = deps.fileSystem;
           if (!gitPort || !fileSystem) return {};
           
-          const directive = await ArtifactService.getDirective(ctx, agentTask, gitPort, fileSystem);
+          const directive = await ArtifactService.getDirective(ctx, agentJob, gitPort, fileSystem);
           const designResult = await ArtifactService.findLatestDesign(ctx, gitPort, fileSystem);
           const source = await ArtifactService.getSource(ctx, gitPort, fileSystem);
           
@@ -225,10 +225,12 @@ export async function architectAgent(
         planText: "",
         _httpJobId: jobId || process.env.ANT_JOB_ID,  // ✅ For tracking and resume
         overrideDirective: deps?.overrideDirective,  // ✅ Chat input as directive
-        chatSource: deps?.chatSource  // ✅ Chat SSE flag
+        chatSource: deps?.chatSource,  // ✅ Chat SSE flag
+        currentJob: 'design',  // ✅ For triage system
+        currentAgent: 'architect'  // ✅ For triage system
       };
       
-      console.log('\n🚀 Starting task: "Generate Design Document"');
+      console.log('\n🚀 Starting job: "Generate Design Document"');
       console.log('   Type: DESIGN');
       console.log('');
       
@@ -236,7 +238,7 @@ export async function architectAgent(
       const d = await runDesignGraph(dInitial);
       return {
         success: true,
-        task: 'design',
+        job: 'design',
         message: `Design document created. Review and approve before generating code.`
       };
     case 'code':
@@ -247,10 +249,10 @@ export async function architectAgent(
 
       // === ✅ Mode inference is handled by LLM in detectEnvironment node ===
       // Do NOT infer mode here - let detectEnvironment decide
-      const inferredMode = codeMode;  // Use explicit mode if provided, otherwise undefined
+      const inferredMode = jobMode;  // Use explicit mode if provided, otherwise undefined
       
       if (inferredMode) {
-        console.log(`🎯 Code mode (explicit): ${inferredMode}`);
+        console.log(`🎯 Job mode (explicit): ${inferredMode}`);
       } else {
         console.log(`🎯 Code mode: Will be determined by LLM in detectEnvironment node`);
       }
@@ -268,7 +270,7 @@ export async function architectAgent(
 
       console.log(`   Estimated: ~${estimation.estimatedFiles} files, ~${Math.ceil(estimation.estimatedTokens / 1000)}K tokens`);
       console.log(`   Decision: ${estimation.reason}`);
-      console.log('⚡ Using task queue mode\n');
+      console.log('⚡ Using job queue mode\n');
         
         const codeEngine = new PromptEngine({
           promptPort: deps.promptPort,
@@ -277,15 +279,15 @@ export async function architectAgent(
           git: deps.git,
           memory: deps.memory,
           contextLoader: async (task, ctx) => {
-            // ✅ FIX: task parameter is a Task object, not AgentTask string!
-            // For code job, we need to pass 'code' as the AgentTask type
-            const agentTask: AgentTask = 'code';
+            // ✅ FIX: task parameter is a Task object, not AgentJob string!
+            // For code job, we need to pass 'code' as the AgentJob type
+            const agentJob: AgentJob = 'code';
             
             const gitPort = deps.git;
             const fileSystem = deps.fileSystem;
             if (!gitPort || !fileSystem) return {};
             
-            const directive = await ArtifactService.getDirective(ctx, agentTask, gitPort, fileSystem);
+            const directive = await ArtifactService.getDirective(ctx, agentJob, gitPort, fileSystem);
             
             // ✅ Load all available design documents
             // TemplateComposer will filter by environment before sending to LLM
@@ -344,12 +346,13 @@ export async function architectAgent(
           maxRetries: 3,  // ✅ Allow multiple retries for dependency fixes
           completedTasksDetails: [],  // ✅ Initialize completedTasksDetails
           referenceCodeContexts: [],  // ✅ Initialize reference code contexts
-          codeMode: codeMode, // Will be inferred in graph nodes
           subtaskIndex: 0,  // Backward compatibility
           totalSubtasks: 0,  // Backward compatibility
           _httpJobId: resolvedJobId,  // ✅ For real-time tracking and resume
           overrideDirective: deps?.overrideDirective,  // ✅ Chat input as directive
-          chatSource: deps?.chatSource  // ✅ Chat SSE flag
+          chatSource: deps?.chatSource,  // ✅ Chat SSE flag
+          currentJob: 'code',  // ✅ For triage system
+          currentAgent: 'architect'  // ✅ For triage system
         };
         const result = await runCodeGraph(initial);
         
@@ -369,7 +372,7 @@ export async function architectAgent(
         return {
           success: status === 'success',
           status: status,  // ✅ Add explicit status field
-          task: 'code',
+          job: 'code',
           reportFile: result.reportFile || '',
           filesAnalyzed: result.filesChanged || 0,
           interruption: result.interruption,  // ✅ Return interruption details
@@ -379,6 +382,6 @@ export async function architectAgent(
         };
     
     default:
-      throw new Error(`Unknown task: ${task}`);
+      throw new Error(`Unknown job: ${job}`);
   }
 }

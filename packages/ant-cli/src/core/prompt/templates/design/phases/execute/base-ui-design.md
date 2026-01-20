@@ -5,7 +5,48 @@
 ---
 
 ════════════════════════════════════════════════════════════════════════════════
-{{#if lastSectionNumber}}
+{{#if (eq jobMode "refactor")}}
+🔧 REFACTOR MODE - MODIFY EXISTING SECTION 🔧
+════════════════════════════════════════════════════════════════════════════════
+
+**You are MODIFYING an existing document, NOT creating new content.**
+
+{{#if targetFile}}
+**Target file: `{{targetFile}}`**
+{{/if}}
+
+**Task Type**: `modify` - Update specific section values
+
+⚠️ **CRITICAL INSTRUCTIONS:**
+
+1. **Full document provided below** - You have the COMPLETE current document
+2. **Identify target section** - Find the section mentioned in your task
+3. **Modify in place** - Change values WITHIN the existing structure
+4. **Use `<file>` tag** - Output the COMPLETE document with modifications (this REPLACES the file)
+
+**DO NOT:**
+- ❌ Add new top-level keys (like "verification" or "analysis")  
+- ❌ Use `<append>` tag (this adds new keys instead of modifying)
+- ❌ Remove existing content
+
+**DO:**
+- ✅ Modify values within the existing JSON structure
+- ✅ Preserve all unrelated sections exactly as they are
+- ✅ Output the complete modified JSON with `<file>` tag
+
+{{#if existingDocContent}}
+### 📄 EXISTING DOCUMENT (MODIFY THIS)
+
+```json
+{{{existingDocContent}}}
+```
+
+⚠️ **Find the target section, modify it, and output the COMPLETE JSON above with your changes.**
+{{/if}}
+
+════════════════════════════════════════════════════════════════════════════════
+
+{{else if lastSectionNumber}}
 🚨 CONTINUING EXISTING DOCUMENT 🚨
 ════════════════════════════════════════════════════════════════════════════════
 

@@ -1,4 +1,4 @@
-import { AgentTask } from "../types";
+import { AgentJob } from "../types";
 import { MemoryPort } from "../../../core/ports";
 import { getDesignQueries, getCodeQueries, getFeatureQueries, CategoryKey } from "./queries";
 import { MMRReranker } from "../../../core/chunk/rerank";
@@ -12,16 +12,16 @@ type SectionKey =
   | "🎯 Feature-Specific Context";
 
 /**
- * Retrieve relevant context from vector memory based on agent task
+ * Retrieve relevant context from vector memory based on agent job
  * 
- * @param task - Agent task (design, code, or learn)
+ * @param job - Agent job (design, code, or learn)
  * @param project - Project name
  * @param feature - Optional feature name for feature-specific context
  * @param deps - Optional memory port dependency
  * @returns Formatted context string with categorized memory results
  */
 export async function retrieve(
-  task: AgentTask,
+  job: AgentJob,
   project: string,
   feature?: string,
   deps?: { memory: MemoryPort }
@@ -30,7 +30,7 @@ export async function retrieve(
   if (!memory) return "";
 
   try {
-    const queries = task === 'design' ? getDesignQueries(project) : getCodeQueries(project);
+    const queries = job === 'design' ? getDesignQueries(project) : getCodeQueries(project);
     const sections = {
       "📚 Previous Learnings": [] as string[],
       "🏗️ Architecture & Design": [] as string[],
@@ -48,7 +48,7 @@ export async function retrieve(
       const results = await Promise.all(
         categoryQueries.map(async query => {
           try {
-            // Query with metadata filtering based on task type
+            // Query with metadata filtering based on job type
             const queryResults = await memory.query(query, project, {
               k: 10,  // Get more results for reranking
               where: { 

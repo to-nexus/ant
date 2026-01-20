@@ -1,10 +1,11 @@
-import { CodeMode, CodebaseProfile, TaskArtifacts } from "../../../../core/types";
+import { CodebaseProfile, TaskArtifacts, DetectionReport } from "../../../../core/types";
 import { GitPort, MemoryPort, LLMClient, CodebaseAnalyzerPort, ChunkPort, SessionPort, CommandPort, TaskQueueUpdatePort } from "../../../../core/ports";
 import { PromptEngine } from "../../../../core/prompt/engine";
 import { ProjectContext } from "../../types";
 import { ProjectCodeContext, ReferenceCodeContext } from "../../../../core/prompt/types/CodeContext";
 import { CodeTask, TaskQueue as BaseTaskQueue } from "../../types/task";
 import { TokenUsage } from '../common/llmHelpers';
+import { TriageResult, WorkspaceState } from '../../../common/nodes/triage/types';
 
 // Re-export for convenience (so files can still import TaskQueue from code/state)
 export { TaskQueue } from "../../types/task";
@@ -141,12 +142,12 @@ export interface ArchitectGraphState extends TaskArtifacts {
   workspaceConfig?: any;  // ✅ NEW: Workspace config for job/node-specific model selection
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // 🔥 NEW: DetectEnvironment Output
+  // 🔥 DetectionReport (통합 환경 감지 결과)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  /** 통합 환경 감지 결과 (jobMode, environment, profile 등 포함) */
+  detectionReport?: DetectionReport;
+  
   selectedDesignFiles?: string[];
-  detectedEnvironment?: 'frontend' | 'backend' | 'fullstack' | 'unknown';
-  environmentReasoning?: string;
-  requireRagForDecompose?: boolean;
   decomposeKeywords?: {
     errorFiles: string[];  // ✅ Files that caused errors (build errors, file operation errors)
     keywords: string[];    // ✅ Semantic keywords
@@ -192,11 +193,6 @@ export interface ArchitectGraphState extends TaskArtifacts {
   };
   gitPort?: GitPort;  // For runner to use after graph execution
   
-  // ✅ Mode (inferred by detectEnvironment LLM)
-  mode?: 'generate' | 'refactor' | 'explain';  // Code mode inferred by detectEnvironment
-  modeReasoning?: string;  // Why this mode was selected
-  codeMode?: CodeMode;  // For backward compatibility (used in execute phase)
-  
   // ✅ Session Context (compressed for LLM)
   sessionContext?: {
     recentTurns: Array<{
@@ -216,6 +212,13 @@ export interface ArchitectGraphState extends TaskArtifacts {
   // ✅ Chat Integration
   overrideDirective?: string;  // Chat input as directive (highest priority)
   chatSource?: boolean;         // True if job started from chat (enables Chat SSE)
+
+  // ✅ Triage System
+  skipTriage?: boolean;          // Skip triage if true
+  triageResult?: TriageResult;   // Triage analysis result
+  workspaceState?: WorkspaceState;  // Workspace state snapshot
+  currentAgent?: string;         // Current agent name (e.g., 'architect')
+  currentJob?: string;           // Current job name (e.g., 'code', 'design', 'learn')
 
   // ✅ UI Runtime Assets (opt-in copy/sync)
   // - inputs/assets/** are runtime assets (NOT injected to LLM).

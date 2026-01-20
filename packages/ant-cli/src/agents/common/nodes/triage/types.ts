@@ -1,0 +1,199 @@
+/**
+ * Triage System Types
+ * 
+ * 사용자 입력을 분석하여 적절한 처리 경로로 안내하는 시스템
+ * 의료 Triage 개념 차용: 분류 → 적절한 경로로 라우팅
+ */
+
+import { ProjectContext } from '../../../architect/types';
+import { LLMClient } from '../../../../core/ports';
+import { WorkflowStateUpdatePort } from '../../../../core/ports/workflow';
+import { TokenUsage } from '../../../architect/graph/common/llmHelpers';
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Intent & Status
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * Intent: 사용자 의도 분류 (1단계)
+ * - ask: 질문/도움 요청, 또는 의도 파악 실패 시 확인 요청
+ * - work: 명확한 작업 요청
+ */
+export type Intent = 'ask' | 'work';
+
+/**
+ * WorkStatus: work일 때 실행 가능 여부 (2단계)
+ * - proceed: 정상 진행 가능
+ * - redirect: 다른 job이 더 적합
+ * - blocked: 준비물 부족
+ */
+export type WorkStatus = 'proceed' | 'redirect' | 'blocked';
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Choice System
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * ChoiceAction: 선택 후 수행할 액션
+ * - proceed: 정상 진행 (조건 충족)
+ * - proceedAnyway: 권장 조건 부족하지만 진행
+ * - redirect: 다른 job으로 전환
+ * - guide: 가이드 제공
+ * - dismiss: 작업 취소
+ */
+export type ChoiceAction = 'proceed' | 'proceedAnyway' | 'redirect' | 'guide' | 'dismiss';
+
+/**
+ * ChoiceOptions: 선택지 구성
+ */
+export interface ChoiceOptions {
+  positive: {
+    label: string;      // "예", "전환", "그래도 진행"
+    action: ChoiceAction;
+  };
+  negative: {
+    label: string;      // "Dismiss", "취소"
+    action: ChoiceAction;  // 'guide' or 'dismiss'
+  };
+  fallbackGuide?: string;  // Optional - for 'guide' action
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Triage Result
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * TriageResult: Triage 분석 결과
+ */
+export interface TriageResult {
+  intent: Intent;
+  
+  // ask 관련
+  inScope?: boolean;           // guardrails 통과 여부
+  askResponse?: string;        // 응답 (in-scope일 때)
+  
+  // work 관련
+  workStatus?: WorkStatus;
+  
+  // work → redirect
+  suggestedAgent?: string;
+  suggestedJob?: string;
+  redirectReason?: string;
+  
+  // work → blocked
+  missingPrerequisites?: {
+    required: string[];
+    recommended: string[];
+  };
+  canProceed?: boolean;        // recommended만 부족하면 true
+  blockedMessage?: string;
+  proceedAnywayOption?: string;
+  
+  // 사용자에게 보여줄 메시지
+  displayMessage?: string;
+  
+  // 선택 필요 여부
+  needsChoice?: boolean;
+  choiceOptions?: ChoiceOptions;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Workspace State
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * WorkspaceState: 워크스페이스 상태
+ */
+export interface WorkspaceState {
+  // Common
+  hasPrd: boolean;               // ⚠️ 템플릿이 아닌 실제 내용이 있는지 체크
+  hasDirective: boolean;         // ⚠️ 채팅 입력 시 true
+  prdPath?: string;
+  directivePath?: string;
+  
+  // Design job - ui-design mode
+  hasScreens: boolean;           // inputs/references/screens/
+  hasComponents: boolean;        // inputs/references/components/
+  hasAssets: boolean;            // inputs/assets/
+  screenCount?: number;
+  componentCount?: number;
+  assetCount?: number;
+  
+  // Design job - system-design mode
+  hasSystemDesignDoc: boolean;   // outputs/design/system-design.md
+  hasUiDocs: boolean;            // outputs/design/ui-*.json
+  
+  // Code job
+  hasDesignDoc: boolean;         // Any design doc in outputs/design/
+  hasCodebase: boolean;          // Indexed in vector DB
+  indexedFileCount?: number;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Graph State Extension
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * TriageableState: Triage 기능이 추가된 Graph State
+ * 기존 ArchitectGraphState, DesignGraphState를 확장
+ */
+export interface TriageableState {
+  // 기존 필드
+  context: ProjectContext;
+  spec: string;
+  deps?: { 
+    llm?: LLMClient; 
+    workflowUpdate?: WorkflowStateUpdatePort;
+  };
+  _httpJobId?: string;
+  tokenUsage?: TokenUsage;
+  
+  // Triage 전용
+  skipTriage?: boolean;          // true면 triage 건너뜀
+  triageResult?: TriageResult;
+  workspaceState?: WorkspaceState;
+  currentAgent?: string;         // 'architect'
+  currentJob?: string;           // 'design' | 'code' | 'learn'
+  
+  // Chat input
+  overrideDirective?: string;    // 채팅 입력 (directive로 사용)
+  chatSource?: boolean;          // 채팅에서 시작됨
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Agent/Job Prerequisites (Legacy - use core/data/triage for new code)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * Prerequisites: Job별 필수/권장 조건
+ * @deprecated Use ResolvedPrerequisites from core/data/triage instead
+ */
+export interface Prerequisites {
+  required: string[];
+  recommended: string[];
+}
+
+// Note: JobCapability and AgentCapability have been removed.
+// Job definitions are now data-driven via YAML files in core/data/triage/
+// See: AgentRegistry.generatePromptContext() for LLM-friendly capability descriptions
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// API Types
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * TriageChoiceRequest: 선택 API 요청
+ */
+export interface TriageChoiceRequest {
+  jobId: string;
+  choice: ChoiceAction;
+}
+
+/**
+ * TriageChoiceResponse: 선택 API 응답
+ */
+export interface TriageChoiceResponse {
+  type: 'guide' | 'continue';
+  message?: string;  // guide일 때
+  action?: ChoiceAction;  // continue일 때
+}

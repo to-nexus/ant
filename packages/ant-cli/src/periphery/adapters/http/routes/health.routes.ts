@@ -32,7 +32,7 @@ export function createHealthRoutes(): Router {
         value: 'architect', 
         label: 'Architect', 
         enabled: true,
-        tasks: [
+        jobs: [
           { value: 'design', label: 'Design' },
           { value: 'code', label: 'Code' },
           { value: 'learn', label: 'Learn' },
@@ -42,7 +42,7 @@ export function createHealthRoutes(): Router {
         value: 'reviewer', 
         label: 'Reviewer', 
         enabled: false,
-        tasks: [
+        jobs: [
           { value: 'review', label: 'Review' },
         ]
       },
@@ -50,7 +50,7 @@ export function createHealthRoutes(): Router {
         value: 'planner', 
         label: 'Planner', 
         enabled: false,
-        tasks: [
+        jobs: [
           { value: 'plan', label: 'Plan' },
         ]
       },
@@ -58,7 +58,7 @@ export function createHealthRoutes(): Router {
         value: 'doc', 
         label: 'Doc', 
         enabled: false,
-        tasks: [
+        jobs: [
           { value: 'doc', label: 'Document' },
         ]
       },

@@ -1,19 +1,24 @@
 /**
- * DetectEnvironment Node (Refactored)
+ * DetectEnvironment Node (Refactored with DetectionReport)
  * 
  * Responsibilities:
- * 1. Detect development environment (frontend/backend/fullstack/unknown)
- * 2. Determine if decompose needs RAG (requireRagForDecompose)
- * 3. Generate decompose keywords (used once, then discarded)
+ * 1. Detect job mode (generate/refactor/explain)
+ * 2. Detect development environment (frontend/backend/fullstack/unknown)
+ * 3. Determine if decompose needs RAG (requireRag)
+ * 4. Generate decompose keywords (used once, then discarded)
  * 
- * ✅ MODULAR ARCHITECTURE:
- * - responseParser.ts: LLM response parsing
- * - designSelector.ts: Design file selection based on environment
+ * ✅ Uses unified DetectionReport for all detection results
  */
 
 import { ArchitectGraphState } from '../../state';
 import { LLMClient } from '../../../../../../core/ports';
 import { logPrompt } from '../../../../../../core/utils/promptLogger';
+import { 
+  createCodeDetectionReport, 
+  formatDetectionReportForChat,
+  JobMode,
+  JobEnvironment 
+} from '../../../../../../core/types/detection';
 
 // Import submodules
 import { parseDetectResponse } from './responseParser';
@@ -129,24 +134,31 @@ export async function detectEnvironment(
     console.log(`   Tokens: ${capturedUsage.totalTokens} total (${capturedUsage.inputTokens} in, ${capturedUsage.outputTokens} out)`);
   }
   
-  // Transform and display
-  const { SpecialTagTransformer } = await import('../../../../../../core/streaming/transformers/SpecialTagTransformer');
-  const transformer = new SpecialTagTransformer('ko');
-  const transformed = transformer.transform(response);
-  
-  if (transformed.text) {
-    await chatAPI.sendLLMEvent({
-      type: 'text',
-      text: transformed.text
-    });
-  }
-  
-  await chatAPI.finalizeMessage();
-  
   // 3. Parse Response
   const parsed = parseDetectResponse(response);
   
-  // Build decomposeKeywords
+  // 4. Create DetectionReport
+  const detectionReport = createCodeDetectionReport({
+    jobMode: parsed.mode as JobMode,
+    jobModeReasoning: parsed.modeReasoning,
+    environment: parsed.environment as JobEnvironment,
+    environmentReasoning: parsed.environmentReasoning,
+    profile: parsed.profile ? {
+      language: parsed.profile.language,
+      framework: parsed.profile.framework,
+    } : undefined,
+    requireRag: parsed.requireRagForDecompose,
+  });
+  
+  // 5. Display in Chat UI using formatDetectionReportForChat
+  const formattedReport = formatDetectionReportForChat(detectionReport, 'ko');
+  await chatAPI.sendLLMEvent({
+    type: 'text',
+    text: formattedReport
+  });
+  await chatAPI.finalizeMessage();
+  
+  // 6. Build decomposeKeywords
   const decomposeKeywords = {
     errorFiles: parsed.decomposeKeywords.errorFiles || [],
     keywords: parsed.decomposeKeywords.keywords || [],
@@ -159,16 +171,16 @@ export async function detectEnvironment(
     }
   }
   
-  // 4. Select design files
+  // 7. Select design files
   const selectedDesignFiles = selectDesignFiles(parsed.environment, state.designDocs);
   
-  // 5. Log & Display Environment Analysis
-  console.log(`✅ Mode: ${parsed.mode}`);
-  console.log(`   Mode Reasoning: ${parsed.modeReasoning}`);
-  console.log(`✅ Environment: ${parsed.environment}`);
-  console.log(`   Environment Reasoning: ${parsed.environmentReasoning}`);
-  console.log(`✅ Profile: ${parsed.profile?.language || 'unknown'}${parsed.profile?.framework ? ` + ${parsed.profile.framework}` : ''}`);
-  console.log(`   Require RAG for Decompose: ${parsed.requireRagForDecompose}`);
+  // 8. Log Environment Analysis
+  console.log(`✅ Job Mode: ${detectionReport.jobMode}`);
+  console.log(`   Reasoning: ${detectionReport.jobModeReasoning}`);
+  console.log(`✅ Environment: ${detectionReport.environment}`);
+  console.log(`   Reasoning: ${detectionReport.environmentReasoning}`);
+  console.log(`✅ Profile: ${detectionReport.profile?.language || 'unknown'}${detectionReport.profile?.framework ? ` + ${detectionReport.profile.framework}` : ''}`);
+  console.log(`   Require RAG: ${detectionReport.requireRag}`);
   
   // ✅ CRITICAL: Log selected design files (for debugging fullstack)
   if (selectedDesignFiles.length > 0) {
@@ -177,9 +189,6 @@ export async function detectEnvironment(
   } else {
     console.log(`⚠️  No design documents selected`);
   }
-  // NOTE:
-  // Environment analysis is already displayed via <detect> tag transformation above.
-  // Do not emit a second summary block here (it causes duplicate UI in code job).
   
   // ✅ Display keywords in Chat UI (analyzed status - keywords only)
   const errorFileCount = decomposeKeywords.errorFiles.length;
@@ -288,17 +297,15 @@ export async function detectEnvironment(
   }
   
   return {
-    mode: parsed.mode as 'generate' | 'refactor' | 'explain',
-    modeReasoning: parsed.modeReasoning,
-    detectedEnvironment: parsed.environment as 'frontend' | 'backend' | 'fullstack' | 'unknown',
-    environmentReasoning: parsed.environmentReasoning,
+    detectionReport,
     selectedDesignFiles,
-    requireRagForDecompose: parsed.requireRagForDecompose,
     decomposeKeywords,
-    profile: parsed.profile,  // ✅ Add profile to state (language/framework from LLM)
-    designDocs: filteredDesignDocs || state.designDocs,  // ✅ Update with filtered docs
-    design: filteredDesign || state.design,  // ✅ Update with filtered content
-    tokenUsage: (state as any).tokenUsage,  // ✅ CRITICAL: Preserve job-level token usage from detectEnvironment
+    profile: detectionReport.profile ? {
+      language: detectionReport.profile.language,
+      framework: detectionReport.profile.framework,
+    } : state.profile,
+    designDocs: filteredDesignDocs || state.designDocs,
+    design: filteredDesign || state.design,
+    tokenUsage: (state as any).tokenUsage,
   };
 }
-

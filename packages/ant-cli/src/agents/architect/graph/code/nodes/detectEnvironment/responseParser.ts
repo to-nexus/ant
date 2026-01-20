@@ -1,5 +1,9 @@
 /**
  * Response Parsing for DetectEnvironment Node
+ * 
+ * ✅ Supports both old and new field names for backward compatibility:
+ * - Old: mode, modeReasoning, requireRagForDecompose
+ * - New: jobMode, jobModeReasoning, requireRag
  */
 
 export interface DetectEnvironmentResponse {
@@ -44,21 +48,26 @@ export function parseDetectResponse(response: string): DetectEnvironmentResponse
     
     const parsed = JSON.parse(jsonStr);
     
+    // ✅ Support both old (mode) and new (jobMode) field names
+    const mode = parsed.jobMode || parsed.mode;
+    const modeReasoning = parsed.jobModeReasoning || parsed.modeReasoning;
+    const requireRag = parsed.requireRag ?? parsed.requireRagForDecompose;
+    
     // Validate required fields
-    if (!parsed.mode || !parsed.modeReasoning || 
+    if (!mode || !modeReasoning || 
         !parsed.environment || !parsed.environmentReasoning || 
-        parsed.requireRagForDecompose === undefined) {
+        requireRag === undefined) {
       throw new Error('Missing required fields in response');
     }
     
     return {
-      mode: parsed.mode,
-      modeReasoning: parsed.modeReasoning,
+      mode,
+      modeReasoning,
       environment: parsed.environment,
       environmentReasoning: parsed.environmentReasoning,
-      requireRagForDecompose: parsed.requireRagForDecompose,
+      requireRagForDecompose: requireRag,
       decomposeKeywords: {
-        errorFiles: parsed.decomposeKeywords?.errorFiles || [],
+        errorFiles: parsed.decomposeKeywords?.errorFiles || parsed.decomposeKeywords?.stackTrace || [],
         keywords: parsed.decomposeKeywords?.keywords || [],
         references: parsed.decomposeKeywords?.references || []
       },

@@ -62,10 +62,8 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       overrideDirective: state.overrideDirective,  // ✅ Save chat-initiated directive
       chatSource: state.chatSource,  // ✅ Save chat source flag
       referenceRequests: state.referenceRequests || [],  // ✅ Save reference requests for tool calling
-      mode: state.mode,  // ✅ Save detected mode (generate/refactor/explain)
-      modeReasoning: state.modeReasoning,  // ✅ Save mode reasoning
-      detectedEnvironment: state.detectedEnvironment,  // ✅ Save detected environment (frontend/backend/fullstack/unknown)
-      environmentReasoning: state.environmentReasoning,  // ✅ Save environment reasoning
+      // ✅ Save DetectionReport (unified detection result)
+      detectionReport: state.detectionReport,
       // ✅ CRITICAL: Save artifacts for CodeGen validation on resume
       directive: state.directive,  // ✅ Save directive (for CodeGen validation)
       design: state.design,  // ✅ Save design document

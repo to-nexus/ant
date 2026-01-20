@@ -63,7 +63,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     // ✅ All design documents go to outputs/design
     const designDirRel = path.join(featureDirRel, 'outputs/design');
     
-    const isUiDesign = state.designWorkType === 'ui-design';
+    const isUiDesign = state.detectionReport?.workType === 'ui-design';
     const expectedFiles = isUiDesign
       ? ['ui-tokens.json', 'ui-assets.json', 'ui-spec.json']
       : undefined;  // Any .md files for system design
@@ -188,7 +188,7 @@ async function saveSessionTurn(state: DesignGraphState): Promise<void> {
   
   const turn: SessionTurn = {
     turnId: 0, // Will be set by adapter
-    task: 'design',
+    job: 'design',
     timestamp: new Date().toISOString(),
     input: {
       type: 'file',
@@ -277,7 +277,7 @@ async function storeLessonsToMemory(
       content: lessons,
       metadata: {
         type: 'lesson',
-        task: 'design',
+        job: 'design',
         project: state.context.project,
         feature: state.context.featureFolder || 'default',
         timestamp: new Date().toISOString(),
@@ -339,7 +339,7 @@ function extractDesignLessons(state: DesignGraphState): string {
     }
   }
   
-  // 3. Previous design reference (if evolution/refactor)
+  // 3. Previous design reference (if refactor)
   if (state.design) {
     sections.push(`\n## Previous Design Reference`);
     const summary = state.design.substring(0, 300);

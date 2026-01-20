@@ -229,7 +229,7 @@ export async function fetchFileBlob(
   return await response.blob();
 }
 
-export interface AgentTask {
+export interface AgentJobInfo {
   value: string;
   label: string;
 }
@@ -238,7 +238,7 @@ export interface Agent {
   value: string;
   label: string;
   enabled: boolean;
-  tasks: AgentTask[];
+  jobs: AgentJobInfo[];
 }
 
 export interface LogEntry {
@@ -1907,5 +1907,79 @@ export async function switchToFeatureBranch(
       success: false,
       error: error.message || 'Network error'
     };
+  }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Triage Choice API
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+export type TriageChoiceAction = 'proceed' | 'proceedAnyway' | 'redirect' | 'guide';
+
+export interface TriageChoiceResponse {
+  type: 'guide' | 'continue' | 'dismiss';
+  message?: string;
+  action?: TriageChoiceAction;
+  suggestedJob?: string;  // For redirect - target job to switch to
+  directive?: string;     // For redirect - original directive to pass to new job
+}
+
+/**
+ * Submit user's triage choice
+ */
+export async function submitTriageChoice(
+  projectId: string,
+  featureName: string,
+  jobId: string,
+  choice: TriageChoiceAction
+): Promise<TriageChoiceResponse> {
+  try {
+    const response = await authFetch(
+      `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/chat/triage-choice`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ jobId, choice })
+      }
+    );
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error: any) {
+    console.error('[API] submitTriageChoice error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Submit user's cancelled choice (Resume/Dismiss)
+ */
+export async function submitCancelledChoice(
+  projectId: string,
+  featureName: string,
+  jobId: string,
+  choice: 'resume' | 'dismiss'
+): Promise<{ success: boolean; choice: string; resolvedLabel: string }> {
+  try {
+    const response = await authFetch(
+      `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/chat/cancelled-choice`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ jobId, choice })
+      }
+    );
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error: any) {
+    console.error('[API] submitCancelledChoice error:', error);
+    throw error;
   }
 }

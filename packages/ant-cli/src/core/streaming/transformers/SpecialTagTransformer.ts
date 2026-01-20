@@ -297,158 +297,69 @@ export class SpecialTagTransformer {
    * <detect> 태그 변환 (detectEnvironment 노드)
    * 
    * 환경 감지 결과를 사용자 친화적인 메시지로 변환
+   * ✅ Uses unified DetectionReport + formatDetectionReportForChat
    */
   private transformDetect(match: RegExpMatchArray, language: UserLanguage): TransformResult {
     try {
       const detectJson = match[1].trim();
       const parsed = JSON.parse(detectJson);
       
-      const isKorean = language === 'ko';
+      // Import formatDetectionReportForChat from detection module
+      const { parseDetectionReportFromLLM, formatDetectionReportForChat } = require('../../types/detection');
       
-      let formatted = isKorean
-        ? `\n🔍 **환경 분석 완료**\n\n`
-        : `\n🔍 **Environment Analysis Complete**\n\n`;
+      // Determine source job from JSON structure
+      // - Code job: has 'jobMode' or 'mode' WITHOUT 'workType'
+      // - Design job: has 'workType'
+      const isDesignJob = 'workType' in parsed;
+      const sourceJob = isDesignJob ? 'design' : 'code';
       
-      // ✅ Detect job type: 
-      // - Code job: has 'mode'
-      // - Design job (UI Design): has 'workType' === 'ui-design'
-      // - Design job (System Design): has 'domain'
-      const isCodeJob = 'mode' in parsed;
-      const isUiDesignJob = parsed.workType === 'ui-design';
-      const isSystemDesignJob = 'domain' in parsed || parsed.workType === 'system-design';
+      // Build DetectionReport from parsed JSON (inline conversion)
+      const report: any = {
+        sourceJob,
+        // Support both old (mode/modeReasoning) and new (jobMode/jobModeReasoning) field names
+        jobMode: parsed.jobMode || parsed.mode || parsed.designMode || 'generate',
+        jobModeReasoning: parsed.jobModeReasoning || parsed.modeReasoning || parsed.designModeReasoning || '',
+        detectedAt: new Date().toISOString(),
+      };
       
-      if (isCodeJob) {
-        // CODE JOB: mode, environment, profile
-        const modeEmoji = parsed.mode === 'generate' ? '✨' : parsed.mode === 'refactor' ? '🔧' : '📖';
-        formatted += isKorean
-          ? `${modeEmoji} **모드**: ${parsed.mode}\n`
-          : `${modeEmoji} **Mode**: ${parsed.mode}\n`;
-        
-        if (parsed.modeReasoning) {
-          formatted += `   └ ${parsed.modeReasoning}\n\n`;
-        }
-        
-        const envEmoji = parsed.environment === 'frontend' ? '🎨' : 
-                         parsed.environment === 'backend' ? '⚙️' : 
-                         parsed.environment === 'fullstack' ? '🌐' : '❓';
-        formatted += isKorean
-          ? `${envEmoji} **환경**: ${parsed.environment}\n`
-          : `${envEmoji} **Environment**: ${parsed.environment}\n`;
-        
-        if (parsed.environmentReasoning) {
-          formatted += `   └ ${parsed.environmentReasoning}\n\n`;
-        }
-        
-        // Profile (Code job only)
-        if (parsed.profile?.language) {
-          formatted += isKorean
-            ? `📊 **프로파일**: ${parsed.profile.language}`
-            : `📊 **Profile**: ${parsed.profile.language}`;
-          
-          if (parsed.profile.framework) {
-            formatted += ` + ${parsed.profile.framework}`;
-          }
-          formatted += '\n\n';
-        }
-      } else if (isUiDesignJob) {
-        // ✅ UI DESIGN JOB: workType === 'ui-design'
-        formatted += isKorean
-          ? `🎨 **작업 유형**: UI 디자인 문서화\n`
-          : `🎨 **Work Type**: UI Design Documentation\n`;
-        
-        if (parsed.workTypeReasoning) {
-          formatted += `   └ ${parsed.workTypeReasoning}\n\n`;
-        }
-        
-        // Show what will be generated
-        formatted += isKorean
-          ? `📄 **생성 문서**:\n`
-          : `📄 **Output Documents**:\n`;
-        formatted += `   • \`outputs/design/ui-tokens.json\` - Design tokens (colors, typography, spacing)\n`;
-        formatted += `   • \`outputs/design/ui-assets.json\` - Asset mapping\n`;
-        formatted += `   • \`outputs/design/ui-spec.json\` - UI specification\n\n`;
-        
-        // Show tool-based workflow hint
-        formatted += isKorean
-          ? `🔧 **작업 방식**: 도구 기반 멀티모달 분석\n`
-          : `🔧 **Workflow**: Tool-based multimodal analysis\n`;
-        formatted += isKorean
-          ? `   └ 레퍼런스 이미지를 선택적으로 로드하여 분석\n\n`
-          : `   └ Selectively load and analyze reference images\n\n`;
-        
-      } else if (isSystemDesignJob) {
-        // SYSTEM DESIGN JOB: domain, environment
-        const domainEmoji = parsed.domain === 'game' ? '🎮' : '🔧';
-        formatted += isKorean
-          ? `${domainEmoji} **도메인**: ${parsed.domain}\n`
-          : `${domainEmoji} **Domain**: ${parsed.domain}\n`;
-        
-        if (parsed.domainReasoning) {
-          formatted += `   └ ${parsed.domainReasoning}\n\n`;
-        }
-        
-        const env = parsed.environment || parsed.designEnvironment || 'fullstack';
-        const envEmoji = env === 'frontend' ? '🎨' : 
-                         env === 'backend' ? '⚙️' : 
-                         env === 'fullstack' ? '🌐' : '❓';
-        formatted += isKorean
-          ? `${envEmoji} **환경**: ${env}\n`
-          : `${envEmoji} **Environment**: ${env}\n`;
-        
-        const envReasoning = parsed.environmentReasoning || parsed.designEnvironmentReasoning;
-        if (envReasoning) {
-          formatted += `   └ ${envReasoning}\n\n`;
-        }
-        
-        // Design-specific: Show which guide will be applied
-        if (parsed.domain === 'game') {
-          formatted += isKorean
-            ? '   → 🎮 Game Domain Design Guide 적용\n'
-            : '   → 🎮 Game Domain Design Guide applied\n';
-        } else {
-          formatted += isKorean
-            ? '   → 🔧 Service Domain Design Guide 적용\n'
-            : '   → 🔧 Service Domain Design Guide applied\n';
-        }
-        
-        // Show output file (Naming policy)
-        // - single-tier (frontend-only / backend-only) → system-design.md
-        // - fullstack → split docs (api-contract, fe, be)
-        if (env === 'fullstack') {
-          formatted += isKorean
-            ? '   → 🔄 `api-contract.md`, `fe-system-design.md`, `be-system-design.md` 생성\n'
-            : '   → 🔄 Generate `api-contract.md`, `fe-system-design.md`, `be-system-design.md`\n';
-        } else {
-          formatted += isKorean
-            ? '   → 🧾 `system-design.md` 생성\n'
-            : '   → 🧾 Generate `system-design.md`\n';
-        }
-        formatted += '\n';
+      // Environment (common)
+      if (parsed.environment) {
+        report.environment = parsed.environment;
+        report.environmentReasoning = parsed.environmentReasoning;
       }
       
-      // Keywords (if RAG required)
-      if (parsed.requireRagForDecompose && parsed.decomposeKeywords?.codebase?.length > 0) {
-        const keywords = parsed.decomposeKeywords.codebase;
-        const displayKeywords = keywords.slice(0, 8); // Show first 8
-        const remaining = keywords.length - displayKeywords.length;
-        
-        formatted += isKorean
-          ? `🔑 **검색 키워드**: `
-          : `🔑 **Search Keywords**: `;
-        
-        formatted += displayKeywords.join(', ');
-        if (remaining > 0) {
-          formatted += isKorean ? ` 외 ${remaining}개` : ` +${remaining} more`;
+      // Design-specific fields
+      if (sourceJob === 'design') {
+        if (parsed.workType && parsed.workType !== 'error') {
+          report.workType = parsed.workType;
+          report.workTypeReasoning = parsed.workTypeReasoning;
         }
-        formatted += '\n\n';
+        if (parsed.domain) {
+          report.domain = parsed.domain;
+          report.domainReasoning = parsed.domainReasoning;
+        }
       }
       
-      // ✅ consumed: true → Replace original tag with formatted text
+      // Code-specific fields
+      if (sourceJob === 'code') {
+        if (parsed.profile) {
+          report.profile = {
+            language: parsed.profile.language || 'typescript',
+            framework: parsed.profile.framework,
+          };
+        }
+        if (parsed.requireRag !== undefined || parsed.requireRagForDecompose !== undefined) {
+          report.requireRag = parsed.requireRag ?? parsed.requireRagForDecompose;
+        }
+      }
+      
+      // Use unified formatter
+      const formatted = formatDetectionReportForChat(report, language);
+      
       return { text: formatted, consumed: true };
       
     } catch (error) {
       console.warn('[SpecialTagTransformer] Failed to parse detect tag:', error);
-      // Show formatted message on error
       const isKorean = language === 'ko';
       return { 
         text: isKorean ? '⚠️ 환경 분석 결과 파싱 실패' : '⚠️ Failed to parse environment analysis',

@@ -1,0 +1,82 @@
+# Design Job Definition
+id: design
+agent: architect
+description: |
+  Creates UI specifications and system architecture documents.
+  Two modes: UI Design (from screen captures) and System Design (from PRD).
+  Output documents guide Code Job for accurate implementation.
+
+modes:
+  - id: ui-design
+    description: |
+      Generates UI specification documents from screen captures.
+      Analyzes visual design to extract tokens, components, and layouts.
+      Works with any design tool output (Figma, Sketch, screenshots, etc.)
+    detection:
+      any_of:
+        - path: inputs/references/screens
+          type: directory_with_files
+        - path: inputs/references
+          type: directory_with_files
+        - path: inputs/assets
+          type: directory_with_files
+    prerequisites:
+      required:
+        - id: screens
+          type: directory_with_files
+          path: inputs/references/screens
+          description: Screen capture images (inputs/references/screens/)
+      recommended:
+        - id: components
+          type: directory_with_files
+          path: inputs/references/components
+          description: Component snapshots (inputs/references/components/)
+        - id: assets
+          type: directory_with_files
+          path: inputs/assets
+          description: Asset files like icons and images (inputs/assets/)
+    scope:
+      - Design tokens (colors, typography, spacing, shadows)
+      - Asset mappings and icon system
+      - UI component specifications with props and variants
+      - Layout structure and responsive breakpoints
+
+  - id: system-design
+    description: |
+      Creates system architecture from PRD or instructions.
+      Generates API specifications, data models, and technical architecture.
+      Suitable for backend, fullstack, or complex system design.
+    detection:
+      all_of:
+        - any_of:
+            - path: inputs/prd.md
+              type: file_with_content
+            - type: has_directive
+        - none_of:
+            - path: inputs/references/screens
+              type: directory_with_files
+            - path: inputs/assets
+              type: directory_with_files
+    prerequisites:
+      required:
+        - id: prd_or_directive
+          type: any_of
+          items:
+            - type: file_with_content
+              path: inputs/prd.md
+              description: PRD document (inputs/prd.md)
+            - type: has_directive
+              description: Instructions entered via chat
+      recommended:
+        - id: codebase
+          type: indexed_codebase
+          description: Existing codebase (recommended for refactor mode)
+    scope:
+      - System architecture design
+      - API interface design (REST, GraphQL, etc.)
+      - Data model and schema design
+      - Service boundaries and interactions
+
+redirect_signals:
+  to_code: User mentions code implementation, development, or building
+  to_learn: User mentions analysis, indexing, or understanding codebase

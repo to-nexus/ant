@@ -17,7 +17,7 @@ export class AnthropicLLMClient implements LLMClient {
   public readonly modelName: string;
 
   constructor(
-    private agentType?: string,
+    private agentJob?: string,
     config?: {
       apiKey?: string;
       modelName?: string;

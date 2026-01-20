@@ -24,7 +24,7 @@ import { logPrompt } from "../../../../../../core/utils/promptLogger";
  */
 export async function decompose(state: DesignGraphState): Promise<DesignGraphState> {
   // ✅ NEW: Validate UI design prerequisites
-  if (state.designWorkType === 'ui-design') {
+  if (state.detectionReport?.workType === 'ui-design') {
     const hasReferences = state.uiReferences?.screens?.length || state.uiReferences?.components?.length;
     const hasAssets = state.uiAssetsList?.logos?.length || 
                       state.uiAssetsList?.backgrounds?.length || 
@@ -259,9 +259,57 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
   // Starting fresh - decompose into tasks
   console.log('🆕 Starting new design task - decomposing...\n');
   
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 🔥 EXPLAIN MODE: Skip decompose, create single explain task (like Code Job)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (state.detectionReport?.jobMode === 'explain') {
+    console.log('💡 [Decompose] Explain mode detected - creating single explanation task\n');
+    
+    const explainTask: DesignTask = {
+      id: 'explain-1',
+      name: 'Explain: Design documents',
+      type: 'doc',
+      priority: 200,
+      targetFile: state.detectionReport?.workType === 'ui-design' ? 'ui-spec.json' : 'system-design.md',
+      description: state.directive || 'Analyze and explain the design documents'
+    };
+    
+    const taskQueue = new TaskQueue<DesignTask>();
+    taskQueue.push(explainTask);
+    
+    // ✅ Workflow exitNode
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'decompose');
+    }
+    
+    // ✅ Update Kanban for explain mode
+    if (state._httpJobId && state.deps?.kanbanUpdate) {
+      state.deps.kanbanUpdate.updateTaskQueue(
+        state._httpJobId,
+        explainTask,
+        [],
+        [],
+        0,
+        undefined
+      );
+    }
+    
+    return {
+      ...state,
+      taskQueue,
+      currentTask: explainTask,
+      completedTasks: [],
+      completedTasksDetails: [],
+      jobId: newJobId,
+      jobTiming: newJobTiming,
+    };
+  }
+  
   // ✅ NEW: UI Design mode - LLM-driven task decomposition (like System Design)
-  if (state.designWorkType === 'ui-design') {
-    console.log('🎨 UI Design mode - analyzing UI complexity for task decomposition\n');
+  if (state.detectionReport?.workType === 'ui-design') {
+    const modeEmoji = state.detectionReport?.jobMode === 'refactor' ? '🔧' : '🆕';
+    console.log(`🎨 UI Design mode (${state.detectionReport?.jobMode || 'generate'}) ${modeEmoji}`);
+    console.log('   Analyzing UI complexity for task decomposition\n');
     
     // Prepare UI context for LLM analysis
     const uiContextParts = [
@@ -282,6 +330,8 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
       assetCount: (state.uiAssetsList?.logos?.length || 0) + 
                   (state.uiAssetsList?.icons?.length || 0) + 
                   (state.uiAssetsList?.backgrounds?.length || 0),
+      // ✅ NEW: Job mode (unified: generate/refactor/explain)
+      jobMode: state.detectionReport?.jobMode || 'generate',
     };
     
     const uiDecomposePrompt = await promptAdapter.render('design/phases/decompose/base-ui-design', uiDecomposeVars);
@@ -388,7 +438,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
         taskQueue.push({
           id: task.id,
           name: task.name,
-          type: 'feature',
+          type: 'doc',
           priority: task.priority,
           description: task.description,
           completed: false,
@@ -484,7 +534,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     const defaultTask: DesignTask = {
       id: 'design-doc',
       name: 'Create Design Document',
-      type: 'feature',
+      type: 'doc',
       priority: 250,
       description: 'Create design document based on requirements',
       completed: false
@@ -523,7 +573,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
   
   const spec = specParts.join('\n\n---\n\n');
   
-  // Check if this is a new design or evolution/refactor
+  // Check if this is a new design or refactor
   const hasExistingDesign = Boolean(state.design && state.design.trim().length > 0);
   const designPreview = state.design ? state.design.split('\n').slice(0, 50).join('\n') + '\n...' : '';
   
@@ -535,7 +585,9 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
   const systemDecomposeVars = {
     spec,
     hasExistingDesign,
-    designPreview
+    designPreview,
+    // ✅ NEW: Job mode (unified: generate/refactor/explain)
+    jobMode: state.detectionReport?.jobMode || 'generate',
   };
   
   const prompt = await promptAdapter.render('design/phases/decompose/base-system-design', systemDecomposeVars);
@@ -650,7 +702,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     // ✅ Enforce naming policy for consistency:
     // - frontend-only or backend-only → ALWAYS `system-design.md`
     // - fullstack → ALWAYS contract-first split docs
-    const detectedEnv = state.designEnvironment;
+    const detectedEnv = state.detectionReport?.environment;
     if (detectedEnv === 'frontend' || detectedEnv === 'backend') {
       response.documentType = 'unified';
       response.targetFiles = ['system-design.md'];
@@ -719,7 +771,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
       const task: DesignTask = {
         id: taskData.id,
         name: taskData.name,
-        type: 'feature',
+        type: 'doc',
         priority: taskData.priority || 250,
         description: taskData.description,
         targetFile: taskData.targetFile,  // ✅ Use LLM-specified targetFile
@@ -818,7 +870,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     const defaultTask: DesignTask = {
       id: 'design-doc',
       name: 'Create Design Document',
-      type: 'feature',
+      type: 'doc',
       priority: 250,
       description: 'Create design document based on requirements',
       completed: false

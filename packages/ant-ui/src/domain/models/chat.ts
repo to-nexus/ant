@@ -50,7 +50,9 @@ export type MessageContentType =
   // Command Execution - Real-time streaming
   | 'command_running'   // Command started (header only)
   | 'command_streaming' // Command output streaming
-  | 'command';          // Command complete (collapsible)
+  | 'command'           // Command complete (collapsible)
+  // Triage System - User choice
+  | 'triage_choice';    // Triage choice card (with buttons)
 
 export interface MessageContent {
   type: MessageContentType;
@@ -90,6 +92,12 @@ export interface MessageContent {
     blockStart?: boolean;   // For thinking: marks <thinking> tag opened (new block)
     durationMs?: number;    // For thinking: duration in milliseconds
     collapsed?: boolean;    // For thinking: marks if the block should be collapsed
+    // Triage Choice
+    choiceOptions?: {       // For triage_choice
+      positive: { label: string; action: string };
+      negative: { label: string; action: string };
+    };
+    choiceSelected?: string;  // Selected action (after user choice)
   };
 }
 

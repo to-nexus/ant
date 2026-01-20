@@ -126,7 +126,7 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
         project: state.context.project,
         maxTokens: 50000,  // ✅ High limit - we only need paths, not content
         maxFiles: requestCount,  // ✅ Request extra to compensate for duplicates
-        mode: state.mode || 'refactor'
+        mode: state.detectionReport?.jobMode || 'refactor'
       }
     );
     

@@ -239,6 +239,45 @@ export class ChatService {
   }
 
   /**
+   * Update metadata of the last content of a specific type in the last message
+   * Used to mark triage_choice as resolved after user selection
+   */
+  updateLastContentMetadata(
+    projectId: string,
+    featureName: string,
+    contentType: string,
+    metadataUpdate: Record<string, any>,
+    userContext?: UserContext
+  ): boolean {
+    const messages = this.getMessages(projectId, featureName, userContext);
+    
+    // Find the last message with content of the specified type
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i];
+      if (!message.contents) continue;
+      
+      for (let j = message.contents.length - 1; j >= 0; j--) {
+        const content = message.contents[j];
+        if (content.type === contentType) {
+          // Update metadata
+          content.metadata = {
+            ...content.metadata,
+            ...metadataUpdate
+          };
+          
+          // Save to disk
+          this.persistence.saveSession(projectId, featureName, messages, userContext);
+          
+          console.log(`[ChatService] Updated ${contentType} metadata:`, metadataUpdate);
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  }
+
+  /**
    * Clear messages for a session
    */
   clearMessages(projectId: string, featureName: string, userContext?: UserContext): void {

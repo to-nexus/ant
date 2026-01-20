@@ -66,6 +66,51 @@ You have access to tools for exploring reference images and assets:
 ## XML Tag Reference for UI Design Documents
 ════════════════════════════════════════════════════════════════════════════════
 
+{{#if (eq jobMode "refactor")}}
+### Scenario: MODIFY EXISTING SECTION (Refactor Mode)
+
+**You are modifying an EXISTING section of the document, NOT creating new content.**
+
+⚠️ **CRITICAL: This is REFACTOR mode!**
+
+**Rules:**
+1. You have received the **FULL existing document** in this prompt
+2. Identify the **specific section** that needs modification
+3. **Modify ONLY** the relevant parts (do NOT change unrelated sections)
+4. Output the **COMPLETE modified JSON** using `<file>` tag (this will REPLACE the existing file)
+
+**Example:**
+```xml
+<file path="outputs/design/ui-spec.json">
+{
+  ... existing content unchanged ...,
+  "components": {
+    ... other components unchanged ...,
+    "technology": {
+      ... MODIFIED section with updated values ...
+    }
+  }
+}
+</file>
+```
+
+**⚠️ KEY POINTS:**
+- Use `<file>` NOT `<append>` (you are REPLACING, not adding)
+- Include ALL existing content, only modify the target section
+- Do NOT add new top-level keys (like "technologyCardImageVerification")
+- Modify values WITHIN the existing structure
+
+**DO NOT:**
+- ❌ Add new top-level keys for "verification" or "analysis" results
+- ❌ Use `<append>` (this adds new keys instead of modifying existing ones)
+- ❌ Change the document structure (only modify values)
+
+**DO:**
+- ✅ Update specific values within existing sections
+- ✅ Preserve all unmodified content exactly as is
+- ✅ Use `<file>` to replace the entire document with modifications
+
+{{else}}
 ### Scenario 1: New Document (First Chapter)
 
 **Detection**: Task ID is `ui-tokens`, `ui-assets`, `ui-spec`, or ends with `-ch1`
@@ -176,6 +221,8 @@ The system will automatically merge this into the existing JSON.
 - `ui-tokens-ch2` → Use `<append path="outputs/design/ui-tokens.json">` (merge into existing JSON)
 - `ui-assets-ch2` → Use `<append path="outputs/design/ui-assets.json">` (merge into existing JSON)
 - `ui-spec-ch3` → Use `<append path="outputs/design/ui-spec.json">` (merge into existing JSON)
+
+{{/if}}
 
 ---
 
