@@ -106,7 +106,7 @@ export async function orchestrator(params: {
         let workflowUpdate: WorkflowStateUpdatePort | undefined = undefined;
         
         try {
-          const { ExpressServerAdapter } = await import('../periphery/adapters/http/ExpressServerAdapter');
+          const { ExpressServerAdapter } = await import('../periphery/adapters/http/express');
           const instance = ExpressServerAdapter.getInstance();
           
           if (instance) {
@@ -154,7 +154,7 @@ export async function orchestrator(params: {
         let workflowUpdate: WorkflowStateUpdatePort | undefined = undefined;
         
         try {
-          const { ExpressServerAdapter } = await import('../periphery/adapters/http/ExpressServerAdapter');
+          const { ExpressServerAdapter } = await import('../periphery/adapters/http/express');
           const instance = ExpressServerAdapter.getInstance();
           
           if (instance) {

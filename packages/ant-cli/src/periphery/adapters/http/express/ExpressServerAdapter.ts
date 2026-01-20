@@ -1,0 +1,324 @@
+import express, { Express } from 'express';
+import { 
+  HttpServerPort, 
+  JobExecutionPort, 
+  ExecuteJobParams, 
+  JobResult, 
+  JobStatus, 
+  LogEntry,
+  TaskQueueUpdatePort,
+  FileTreeUpdatePort,
+  WorkflowStateUpdatePort
+} from '../../../../core/ports';
+import type { InterruptionDetails } from '../../../../core/types';
+import { UserContext } from '../../../../core/types/user';
+import { WorkspaceServicePort } from '../../../../core/ports/workspace';
+import { logger } from '../../../../utils/logger';
+import { createIDEWebSocketHandler } from '../middleware/ideProxy';
+
+// Configuration and Types
+import { ServerConfig, ServerDependencies } from './types';
+
+// Configuration Modules
+import { ServerConfigurator } from './config/ServerConfigurator';
+import { RouteConfigurator } from './config/RouteConfigurator';
+
+// Manager Modules
+import { JobStateTracker } from './managers/JobStateTracker';
+import { JobExecutionManager } from './managers/JobExecutionManager';
+import { JobCleanupManager } from './managers/JobCleanupManager';
+import { SessionFileWatcher } from './managers/SessionFileWatcher';
+
+// Bridge Modules
+import { WorkflowBridge } from './bridges/WorkflowBridge';
+
+// Lifecycle Modules
+import { ServerLifecycleManager } from './lifecycle/ServerLifecycleManager';
+
+// Service Initialization
+import { initializeServices } from './services/ServiceInitializer';
+
+/**
+ * ExpressServerAdapter
+ * 
+ * Hexagonal Architecture - Adapter Layer (Refactored)
+ * 
+ * Main orchestrator that coordinates specialized sub-modules:
+ * - ServerConfigurator: HTTP server configuration (CORS, middleware, auth)
+ * - RouteConfigurator: Route registration and endpoint setup
+ * - JobStateTracker: In-memory job state management
+ * - JobExecutionManager: Job execution lifecycle
+ * - JobCleanupManager: Job cleanup and session persistence
+ * - SessionFileWatcher: Session file monitoring
+ * - WorkflowBridge: Workflow state updates and broadcasting
+ * - ServerLifecycleManager: Graceful shutdown and cleanup
+ * 
+ * This class is now thin and delegates all responsibilities to specialized modules.
+ */
+export class ExpressServerAdapter implements 
+  HttpServerPort, 
+  JobExecutionPort, 
+  TaskQueueUpdatePort, 
+  FileTreeUpdatePort, 
+  WorkflowStateUpdatePort 
+{
+  private app: Express;
+  private server: any;
+  private running: boolean = false;
+  
+  // Singleton instance for global access
+  private static instance: ExpressServerAdapter | null = null;
+  
+  // Configuration
+  private readonly config: ServerConfig;
+  
+  // Dependencies (services)
+  private readonly deps: ServerDependencies;
+  
+  // Sub-modules (specialized components)
+  private readonly stateTracker: JobStateTracker;
+  private readonly jobManager: JobExecutionManager;
+  private readonly cleanupManager: JobCleanupManager;
+  private readonly sessionWatcher: SessionFileWatcher;
+  private readonly workflowBridge: WorkflowBridge;
+  private readonly lifecycleManager: ServerLifecycleManager;
+  private readonly serverConfigurator: ServerConfigurator;
+  private readonly routeConfigurator: RouteConfigurator;
+
+  constructor(
+    mode: 'local' | 'cloud' = 'local', 
+    workspacesPath: string, 
+    cloudUrl: string = 'https://ant.nexus.ai',
+    workspaceService: WorkspaceServicePort
+  ) {
+    this.app = express();
+    
+    // Initialize configuration
+    this.config = { mode, workspacesPath, cloudUrl };
+    
+    // Initialize dependencies (services)
+    this.deps = initializeServices(this.config, workspaceService);
+    
+    logger.info(`Initialized in ${mode.toUpperCase()} mode`, { 
+      component: 'ExpressServerAdapter' 
+    }, {
+      workspacesPath: this.config.workspacesPath,
+      workspaceService: this.deps.workspaceService.constructor.name,
+      portManager: this.deps.portManager.constructor.name,
+      portRegistry: this.deps.portRegistry.constructor.name,
+      ideService: this.deps.ideService.constructor.name,
+      oidcEnabled: !!this.deps.oidcService
+    });
+    
+    // Initialize sub-modules
+    this.stateTracker = new JobStateTracker();
+    
+    this.cleanupManager = new JobCleanupManager(this.stateTracker, this.deps);
+    
+    this.jobManager = new JobExecutionManager(
+      this.stateTracker,
+      this.deps,
+      this.cleanupManager.cleanupJobState.bind(this.cleanupManager)
+    );
+    
+    this.sessionWatcher = new SessionFileWatcher(this.stateTracker, this.deps);
+    
+    this.workflowBridge = new WorkflowBridge(this.stateTracker, this.deps);
+    
+    this.lifecycleManager = new ServerLifecycleManager(
+      this.stateTracker,
+      this.deps,
+      this.cleanupManager.cleanupJobState.bind(this.cleanupManager)
+    );
+    
+    this.serverConfigurator = new ServerConfigurator(this.config, this.deps);
+    
+    this.routeConfigurator = new RouteConfigurator(
+      this.config,
+      this.deps,
+      this.stateTracker,
+      this.jobManager,
+      this.workflowBridge,
+      this.cleanupManager.cleanupJobState.bind(this.cleanupManager),
+      this.sessionWatcher.watchSessionFile.bind(this.sessionWatcher)
+    );
+    
+    // Configure Express app
+    this.serverConfigurator.configure(this.app);
+    this.routeConfigurator.configure(this.app);
+    
+    ExpressServerAdapter.instance = this;
+  }
+  
+  // =====================================
+  // Static Methods
+  // =====================================
+  
+  /**
+   * Get singleton instance
+   */
+  static getInstance(): ExpressServerAdapter | null {
+    return ExpressServerAdapter.instance;
+  }
+  
+  /**
+   * Get current job ID (for CLI subprocess)
+   */
+  static getCurrentJobId(): string | null {
+    // Priority 1: Environment variable (for child processes)
+    if (process.env.ANT_JOB_ID) {
+      return process.env.ANT_JOB_ID;
+    }
+    // Priority 2: Instance (for parent process)
+    return ExpressServerAdapter.instance?.stateTracker.getCurrentJobId() || null;
+  }
+  
+  // =====================================
+  // JobExecutionPort Implementation
+  // =====================================
+  
+  async executeJob(params: ExecuteJobParams): Promise<JobResult> {
+    return this.jobManager.executeJob(params);
+  }
+  
+  getJobStatus(jobId: string): JobStatus | undefined {
+    return this.jobManager.getJobStatus(jobId);
+  }
+  
+  getLogs(jobId: string): LogEntry[] {
+    return this.jobManager.getLogs(jobId);
+  }
+  
+  async *streamLogs(jobId: string): AsyncIterableIterator<LogEntry> {
+    yield* this.jobManager.streamLogs(jobId);
+  }
+  
+  // =====================================
+  // TaskQueueUpdatePort Implementation
+  // =====================================
+  
+  updateTaskQueue(
+    jobId: string, 
+    currentTask: any, 
+    queue: any[], 
+    completedTasks?: any[],
+    recursionCount?: number,
+    recursionLimit?: number,
+    tokenUsage?: { 
+      inputTokens: number; 
+      outputTokens: number; 
+      totalTokens: number; 
+      cacheReadTokens?: number; 
+      cacheCreationTokens?: number;
+    }
+  ): void {
+    this.workflowBridge.updateTaskQueue(
+      jobId, 
+      currentTask, 
+      queue, 
+      completedTasks, 
+      recursionCount, 
+      recursionLimit, 
+      tokenUsage
+    );
+  }
+  
+  // =====================================
+  // FileTreeUpdatePort Implementation
+  // =====================================
+  
+  async notifyFileTreeUpdate(projectId: string, featureName: string): Promise<void> {
+    await this.workflowBridge.notifyFileTreeUpdate(projectId, featureName);
+  }
+  
+  // =====================================
+  // WorkflowStateUpdatePort Implementation
+  // =====================================
+  
+  startJob(jobId: string, llmInfo?: any): void {
+    this.workflowBridge.startJob(jobId, llmInfo);
+  }
+  
+  async enterNode(
+    jobId: string, 
+    nodeId: string, 
+    taskInfo?: any, 
+    llmInfo?: any, 
+    recursionCount?: number, 
+    recursionLimit?: number
+  ): Promise<void> {
+    await this.workflowBridge.enterNode(jobId, nodeId, taskInfo, llmInfo, recursionCount, recursionLimit);
+  }
+  
+  exitNode(jobId: string, nodeId: string): void {
+    this.workflowBridge.exitNode(jobId, nodeId);
+  }
+  
+  startActorInteraction(jobId: string, actorId: string): void {
+    this.workflowBridge.startActorInteraction(jobId, actorId);
+  }
+  
+  endActorInteraction(jobId: string, actorId: string): void {
+    this.workflowBridge.endActorInteraction(jobId, actorId);
+  }
+  
+  endJob(jobId: string): void {
+    this.workflowBridge.endJob(jobId);
+  }
+  
+  // =====================================
+  // HttpServerPort Implementation
+  // =====================================
+  
+  async start(port: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        this.server = this.app.listen(port, () => {
+          this.running = true;
+          resolve();
+        });
+        
+        // Setup WebSocket upgrade handler for IDE proxy
+        const ideWsHandler = createIDEWebSocketHandler(this.deps.portRegistry, '/ide');
+        this.server.on('upgrade', (req: any, socket: any, head: Buffer) => {
+          const url = req.url || '';
+          if (url.startsWith('/ide/')) {
+            ideWsHandler(req, socket, head);
+          } else {
+            socket.destroy();
+          }
+        });
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+  
+  async stop(): Promise<void> {
+    await this.lifecycleManager.shutdown();
+    
+    // Close HTTP server
+    return new Promise((resolve) => {
+      if (!this.server) {
+        resolve();
+        return;
+      }
+      
+      logger.info('Closing HTTP server...', { component: 'ExpressServerAdapter' });
+      
+      this.server.close((err?: Error) => {
+        if (err) {
+          logger.warn('Error closing HTTP server', { component: 'ExpressServerAdapter' }, err);
+        } else {
+          logger.info('HTTP server closed', { component: 'ExpressServerAdapter' });
+        }
+        this.running = false;
+        resolve();
+      });
+    });
+  }
+  
+  isRunning(): boolean {
+    return this.running;
+  }
+}
