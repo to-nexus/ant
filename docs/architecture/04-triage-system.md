@@ -1,858 +1,877 @@
-# Triage System 개발 계획
+# Triage System
 
-> **목적**: 사용자 입력의 의도를 분류하여 적절한 처리 경로로 안내하는 시스템
-> 
-> **작성일**: 2026-01-18
-> **상태**: 계획 수립 완료
+> 사용자 입력을 분석하여 적절한 처리 경로로 안내하는 시스템
 
 ---
 
 ## 1. 개요
 
-### 1.1 문제 정의
+### 1.1 문제
 
-현재 ant 시스템은 사용자가 규칙을 모르면 사용하기 어렵다:
-- 잘못된 작업(job) 선택 시 처리 방법 없음
-- 사용자가 도움을 요청해도 맥락에 맞는 안내 불가
-- 에이전트 간 전환 메커니즘 부재
+- 잘못된 Job 선택 시 안내 없음
+- 준비물 부족해도 그냥 실패
+- 도움 요청에 맥락 맞는 응답 불가
 
-### 1.2 솔루션: Triage System
+### 1.2 솔루션
 
-의료 분야의 "Triage"(환자 분류 → 적절한 치료로 연결) 개념을 차용:
-- 사용자 입력 분석 → 의도(intent) 분류 → 적절한 처리 경로로 라우팅
+의료 Triage 개념 차용: **분류 → 적절한 경로로 라우팅**
 
-### 1.3 핵심 설계 결정
+### 1.3 용어 정의
 
-| 항목 | 결정 |
-|-----|-----|
-| **위치** | LangGraph 내부 (공통 노드) |
-| **판단 주체** | LLM (시스템 규칙 기반 아님) |
-| **토큰 추적** | 기존 시스템 그대로 사용 |
-| **Workflow UI** | 기존 시스템 그대로 사용 |
-| **Guide 처리** | 1회 LLM 호출로 분류 + 응답 동시 생성 |
-| **Redirect 처리** | 모두 승인 필요 |
-| **전환 시** | `skipTriage` 플래그로 bypass |
+#### 시스템 구조
+| 용어 | 의미 | 예시 |
+|-----|-----|-----|
+| Agent | 최상위 실행 단위 | architect, reviewer |
+| Job | Agent 내 작업 유형 | design, code, learn |
+| Node | Graph 내 실행 단위 | triage, detectEnv |
+
+#### Triage 분류 (코드 변수명)
+| 용어 | 타입 | 설명 |
+|-----|-----|-----|
+| `intent` | `'ask' \| 'work'` | 사용자 의도 분류 |
+| `workStatus` | `'proceed' \| 'redirect' \| 'blocked'` | work일 때 실행 가능 여부 |
+| `confidence` | `number` | intent 파악 확신도 (0.0-1.0) |
 
 ---
 
-## 2. 아키텍처
+## 2. 분류 체계
 
-### 2.1 전체 플로우
+### 2.1 2단계 분류
+
+```
+사용자 입력
+    │
+    ▼
+┌─────────────────────────────────────┐
+│ 1단계: Intent (사용자 의도)          │
+│                                     │
+│   ask  ─── 질문, 도움 요청           │
+│   work ─── 작업 요청                 │
+└─────────────────────────────────────┘
+    │
+    ├── ask ──────────────────────────────┐
+    │                                     │
+    │   ┌─────────────────────────────┐   │
+    │   │ Guardrails 체크              │   │
+    │   │                             │   │
+    │   │ in-scope  → 응답 생성        │   │
+    │   │ out-scope → 범위 안내        │   │
+    │   └─────────────────────────────┘   │
+    │                 │                   │
+    │                 ▼                   │
+    │              __end__                │
+    │                                     │
+    └── work ─────────────────────────────┤
+                      │                   │
+                      ▼                   │
+        ┌─────────────────────────────┐   │
+        │ 2단계: Status (시스템 진단)  │   │
+        │                             │   │
+        │ proceed  ─ 정상 진행 가능    │   │
+        │ redirect ─ 다른 job 적합    │   │
+        │ blocked  ─ 준비물 부족      │   │
+        └─────────────────────────────┘   │
+                      │                   │
+          ┌───────────┼───────────┐       │
+          ▼           ▼           ▼       │
+      proceed     redirect     blocked    │
+          │           │           │       │
+          ▼           ▼           ▼       │
+      기존플로우    승인요청    안내+선택지  │
+```
+
+### 2.2 Intent 정의
+
+| Intent | 설명 | 예시 |
+|--------|-----|-----|
+| `ask` | 질문/도움 요청, 또는 **의도 파악 실패 시 확인 요청** | "뭐 준비해야 해?", 또는 confidence < 0.7 |
+| `work` | 명확한 작업 요청 | "로그인 페이지 만들어줘" |
+
+> **`ask` 강제 케이스**: confidence < 0.7이면 LLM이 `work`로 분류했더라도 `ask`로 변경하여 사용자에게 의도 확인
+
+### 2.3 ask 응답 처리 (Ask System 위임)
+
+| 개발 단계 | ask 응답 처리 |
+|----------|-------------|
+| **1단계** | 하드코딩된 기본 응답 (Triage 내) |
+| **2단계** | **Ask System으로 위임** → [05-ask-system.md](./05-ask-system.md) |
+
+> ⚠️ **ask 응답의 구체적 내용 (in-scope/out-scope, 지식 검색, LLM 응답)은 Ask System에서 다룸**
+
+### 2.3 Work Status 정의
+
+| Status | 설명 | 처리 |
+|--------|-----|-----|
+| `proceed` | 현재 job + 준비 완료 | 기존 플로우 진행 |
+| `redirect` | 다른 job이 더 적합 | 승인 후 전환 |
+| `blocked` | 현재 job 맞지만 준비 부족 | 안내 + 선택지 |
+
+### 2.4 Confidence (의도 파악 확신도)
+
+| Score | 의미 | 처리 |
+|-------|-----|-----|
+| **≥ 0.7** | 의도 파악 성공 | 분류된 intent 그대로 적용 |
+| **< 0.7** | 의도 파악 실패 | **intent를 `ask`로 강제** → 사용자에게 의도 확인 |
+
+```
+예: LLM이 work(0.55)로 분류 → confidence < 0.7 → ask로 변경
+    → "UI 기획을 시작할까요?" (분류된 work 적용 여부 확인)
+```
+
+> **디버깅**: 모든 응답에 `(confidence: 0.xx)` 표시
+> 
+> **Confidence vs WorkStatus**:
+> - **Confidence**: intent 파악 확신도 (LLM 판단)
+> - **WorkStatus**: 실행 가능 여부 (워크스페이스 상태)
+> - 독립적: confidence 0.95여도 refs 없으면 workStatus=blocked
+
+### 2.6 Guardrails (ask) → Ask System 위임
+
+| 범위 | 설명 |
+|-----|-----|
+| **In-scope** | Ant 사용법, 워크플로우, 준비물, 현재 상태, 코드 질문 등 |
+| **Out-of-scope** | 날씨, 일반 지식, Ant와 무관한 질문 |
+
+> ⚠️ **Guardrails 상세 구현은 [Ask System](./05-ask-system.md)에서 처리**
+> - 질문 카테고리 분류
+> - In-scope/Out-scope 판단
+> - 카테고리별 응답 생성
+
+---
+
+## 3. 분류 케이스
+
+### 3.1 ask 케이스
+
+| 입력 | Guardrails | 응답 |
+|-----|-----------|-----|
+| "뭐 준비해야 해?" | in-scope | 현재 상태 + 필요한 것 안내 |
+| "디자인잡 하려면?" | in-scope | design job 준비물 안내 |
+| "오늘 날씨 어때?" | out-scope | 범위 안내 |
+| "React란 뭐야?" | out-scope | 범위 안내 |
+
+### 3.2 work → proceed 케이스
+
+| 입력 | 현재 Job | 상태 | 결과 |
+|-----|---------|-----|-----|
+| "로그인 페이지 기획해줘" | design | PRD ✅ | proceed |
+| "버튼 색상 바꿔줘" | code | design ✅ codebase ✅ | proceed |
+
+### 3.3 work → redirect 케이스
+
+| 입력 | 현재 Job | 제안 |
+|-----|---------|-----|
+| "UI 기획해줘" | code | → design |
+| "이거 코드로 구현해" | design | → code |
+| "프로젝트 분석해줘" | design | → learn |
+
+### 3.4 work → blocked 케이스
+
+#### design job
+
+| 입력 | 모드 | 부족한 것 | canProceed |
+|-----|-----|----------|-----------|
+| "UI 기획해줘" | ui-design | screens ❌ | false |
+| "UI 기획해줘" | ui-design | components ❌, assets ❌ (screens ✅) | true |
+| "시스템 설계해줘" | system-design | PRD ❌, directive ❌ | false |
+
+#### code job
+
+| 입력 | 상황 | 부족한 것 | canProceed |
+|-----|-----|----------|-----------|
+| "코드 구현해줘" | 신규 | design doc ❌, directive ❌ | false |
+| "버튼 색상 바꿔줘" | 수정 | directive만으로 가능 | proceed |
+| "코드 구현해줘" | 신규 | codebase ❌ (design ✅) | true |
+
+---
+
+## 4. Prerequisites
+
+### 4.1 Required vs Recommended
+
+| 구분 | 없으면 | canProceed |
+|-----|-------|-----------|
+| **Required** | 진행 불가 | false |
+| **Recommended** | 품질 저하 | true (선택) |
+
+### 4.2 Job별 Prerequisites
+
+#### design job (2가지 모드)
+
+| 모드 | Required | Recommended |
+|-----|----------|-------------|
+| **ui-design** | `inputs/references/screens/` (피그마 캡처) | `inputs/references/components/`, `inputs/assets/` |
+| **system-design** | PRD 또는 directive | 기존 코드베이스 (evolution 시) |
+
+> **ui-design 판단 기준**: `inputs/references/` 또는 `inputs/assets/`에 파일이 있으면 ui-design  
+> **system-design 판단 기준**: PRD/directive만 있고 참조 이미지가 없으면 system-design
+
+#### code job
+
+| 조건 | Required | Recommended |
+|-----|----------|-------------|
+| **신규 개발** | design documents (`outputs/design/`) | indexed codebase |
+| **수정/개선** | directive만으로 가능 | indexed codebase |
+
+> **핵심**: `design doc` OR `directive` 중 **하나만** 있으면 진행 가능
+
+#### learn job
+
+| Required | Recommended |
+|----------|-------------|
+| git repository | - |
+
+### 4.3 blocked 응답 예시
+
+**ui-design + Required 부족** (canProceed: false):
+> (confidence: 0.92) UI 문서 생성을 위한 레퍼런스 이미지가 없습니다.  
+> `inputs/references/screens/` 폴더에 피그마 화면 캡처 이미지를 추가해주세요.
+
+**ui-design + Recommended 부족** (canProceed: true):
+> (confidence: 0.88) 참고 이미지는 있지만 에셋 파일이 없습니다. 없이 진행하면 에셋 매핑이 생략됩니다.
+> - [진행] 그래도 진행
+> - [취소] 에셋 추가 후 다시 시작
+
+**code + Required 부족** (canProceed: false):
+> (confidence: 0.85) 디자인 문서가 없습니다.  
+> 신규 개발: Design Job으로 먼저 설계하세요.  
+> 간단한 수정: Code Job에서 바로 요청을 입력하세요.
+
+**code + Recommended 부족** (canProceed: true):
+> (confidence: 0.91) 디자인 문서는 있지만 코드베이스가 인덱싱되지 않았습니다.  
+> learn job을 먼저 실행하면 더 정확한 코드를 생성할 수 있습니다.
+> - [진행] 인덱싱 없이 진행
+> - [learn 실행] 인덱싱 후 다시 시작
+
+**Confidence < 0.7 (intent=ask 강제, 분류 적용 여부 확인)**:
+> (confidence: 0.52) 작업 요청으로 보이는데, 확인이 필요합니다.
+> 
+> 혹시 **UI 기획**을 시작하시겠습니까?
+> - [예] ui-design 시작
+> - [아니오] 다른 작업 설명해주세요
+> 
+> 현재 상태: PRD ✅, Design docs ❌, Codebase ❌
+
+---
+
+## 5. 동적 응답
+
+### 5.1 워크스페이스 상태 주입
+
+```
+## WORKSPACE STATE
+
+### Inputs
+{{#if hasPrd}}✅ PRD: {{prdPath}}{{else}}❌ No PRD{{/if}}
+{{#if hasDirective}}✅ Directive: {{directivePath}}{{else}}ℹ️ No directive{{/if}}
+
+### References (for ui-design)
+{{#if hasScreens}}✅ Screens: {{screenCount}} files{{else}}❌ No screen captures{{/if}}
+{{#if hasComponents}}✅ Components: {{componentCount}} files{{else}}ℹ️ No component snapshots{{/if}}
+{{#if hasAssets}}✅ Assets: {{assetCount}} files{{else}}ℹ️ No asset files{{/if}}
+
+### Design Documents
+{{#if hasUiDocs}}✅ UI docs complete (ui-tokens, ui-assets, ui-spec){{else}}❌ No UI docs{{/if}}
+{{#if hasSystemDesignDoc}}✅ System design exists{{else}}❌ No system design{{/if}}
+
+### Codebase
+{{#if hasCodebase}}✅ Indexed ({{indexedFileCount}} files){{else}}❌ Not indexed{{/if}}
+```
+
+### 5.2 응답은 상태 기반
+
+#### design job 예시
+
+| 질문 | 상태 | 응답 |
+|-----|-----|-----|
+| "UI 기획해줘" | screens ✅ | proceed (ui-design 모드) |
+| "UI 기획해줘" | screens ❌ assets ❌ | blocked: "피그마 캡처 이미지를 추가해주세요" |
+| "시스템 설계해줘" | PRD ✅ | proceed (system-design 모드) |
+| "시스템 설계해줘" | PRD ❌ | blocked: "PRD가 필요합니다" |
+
+#### code job 예시
+
+| 질문 | 상태 | 응답 |
+|-----|-----|-----|
+| "코드 구현해줘" | design ✅ codebase ✅ | proceed |
+| "코드 구현해줘" | design ✅ codebase ❌ | blocked (canProceed: true): "인덱싱 없이 진행할까요?" |
+| "코드 구현해줘" | design ❌ | blocked: "디자인 문서가 필요합니다. Design Job을 먼저 실행하거나 원하는 작업을 채팅에 입력하세요." |
+| "버튼 색상 바꿔줘" | (채팅 입력) | proceed |
+
+---
+
+## 6. 타입 정의
+
+```typescript
+// agents/common/nodes/triage/types.ts
+
+export type Intent = 'ask' | 'work';
+export type WorkStatus = 'proceed' | 'redirect' | 'blocked';
+
+export interface TriageResult {
+  intent: Intent;
+  confidence: number;
+  
+  // ask
+  inScope?: boolean;           // guardrails 통과 여부
+  askResponse?: string;        // 응답 (in-scope일 때)
+  
+  // work
+  workStatus?: WorkStatus;
+  
+  // work → redirect
+  suggestedAgent?: string;
+  suggestedJob?: string;
+  redirectReason?: string;
+  
+  // work → blocked
+  missingPrerequisites?: {
+    required: string[];
+    recommended: string[];
+  };
+  canProceed?: boolean;
+  blockedMessage?: string;
+  proceedAnywayOption?: string;
+  
+  // 모든 응답에 포함 (디버깅용)
+  displayMessage?: string;  // "(confidence: 0.xx) 실제 메시지..."
+  
+  // 선택 필요 여부
+  needsChoice?: boolean;
+  choiceOptions?: ChoiceOptions;
+}
+
+// 선택 시스템
+export type ChoiceAction = 
+  | 'proceed'        // 정상 진행 (조건 충족)
+  | 'proceedAnyway'  // 권장 조건 부족하지만 진행
+  | 'redirect'       // 다른 job으로 전환
+  | 'guide';         // 가이드 제공 (부정 선택 시 항상)
+
+export interface ChoiceOptions {
+  positive: {
+    label: string;      // "예", "전환", "그래도 진행"
+    action: ChoiceAction;
+  };
+  negative: {
+    label: string;      // "아니오", "현재 job 유지", "취소"
+    action: 'guide';    // 항상 가이드 제공
+  };
+  fallbackGuide: string;  // 부정 선택 시 보여줄 가이드
+}
+
+export interface WorkspaceState {
+  // Common
+  hasPrd: boolean;               // ⚠️ 템플릿이 아닌 실제 내용이 있는지 체크
+  hasDirective: boolean;         // ⚠️ 채팅 입력 시 true
+  prdPath?: string;
+  directivePath?: string;
+  
+  // Design job - ui-design mode
+  hasScreens: boolean;           // inputs/references/screens/
+  hasComponents: boolean;        // inputs/references/components/
+  hasAssets: boolean;            // inputs/assets/
+  screenCount?: number;
+  componentCount?: number;
+  assetCount?: number;
+  
+  // Design job - system-design mode
+  hasSystemDesignDoc: boolean;   // outputs/design/system-design.md
+  hasUiDocs: boolean;            // outputs/design/ui-*.json
+  
+  // Code job
+  hasDesignDoc: boolean;         // Any design doc in outputs/design/
+  hasCodebase: boolean;          // Indexed in vector DB
+  indexedFileCount?: number;
+}
+
+// ⚠️ 중요: 파일 존재 여부 체크 시 템플릿 마커 확인 필요!
+// - 피처 생성 시 boilerplate 파일에 `<!-- ant:template -->` 마커가 포함됨
+// - 이 마커가 있으면 "비어있는 입력"으로 취급
+// - FileJobPrerequisitesAdapter.hasContent() 재사용 권장
+
+export interface TriageableState {
+  // 기존
+  context: ProjectContext;
+  spec: string;
+  deps?: { llm?: LLMClient; workflowUpdate?: WorkflowStateUpdatePort };
+  _httpJobId?: string;
+  tokenUsage?: TokenUsage;
+  
+  // Triage
+  skipTriage?: boolean;
+  triageResult?: TriageResult;
+  workspaceState?: WorkspaceState;
+  currentAgent?: string;
+  currentJob?: string;
+}
+```
+
+---
+
+## 7. 플로우
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │  orchestrator                                                       │
+│  - skipTriage 전달                                                  │
+│  - redirect 승인 처리                                               │
+│  - blocked 선택 처리                                                │
 └────────────────────────────────┬────────────────────────────────────┘
                                  │
                                  ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│  Agent Graph (code / design / learn / ...)                          │
+│  Agent Graph                                                        │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
 │  __start__                                                          │
 │      │                                                              │
 │      ▼                                                              │
 │  ┌──────────────────────────────────────────────────────────────┐   │
-│  │  🏥 triage (공통 노드)                                        │   │
-│  │  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━   │   │
-│  │  - skipTriage=true → 즉시 work 반환                          │   │
-│  │  - LLM 호출 → intent 분류                                    │   │
-│  │  - 토큰 추적 (기존 패턴)                                      │   │
-│  │  - Workflow UI 업데이트 (기존 패턴)                           │   │
+│  │  🏥 triage                                                    │   │
+│  │                                                              │   │
+│  │  IF skipTriage → proceed                                     │   │
+│  │                                                              │   │
+│  │  1. 워크스페이스 상태 수집                                    │   │
+│  │  2. LLM 호출 (intent + status + response)                    │   │
+│  │  3. 토큰 추적                                                 │   │
 │  └──────────────────────────────────────────────────────────────┘   │
 │                          │                                          │
-│           ┌──────────────┼──────────────┐                           │
-│           │              │              │                           │
-│       work           guide         redirect                         │
-│           │              │              │                           │
-│           ▼              ▼              ▼                           │
-│       resolve      guideResponse   requestApproval                  │
-│       (기존)         (NEW)           (NEW)                          │
-│           │              │              │                           │
-│           ▼              ▼              ▼                           │
-│       detectEnv      __end__       __end__                          │
-│       (기존)                     (승인 시스템으로)                   │
-│           │                                                         │
-│           ▼                                                         │
-│       ... (기존 플로우)                                              │
+│       ┌──────────────────┼──────────────────┐                       │
+│       │                  │                  │                       │
+│   ask:inScope      ask:outScope          work                       │
+│       │                  │                  │                       │
+│       ▼                  ▼                  │                       │
+│   응답전달           범위안내               │                       │
+│       │                  │       ┌──────────┼──────────┐            │
+│       ▼                  ▼       │          │          │            │
+│   __end__            __end__  proceed   redirect   blocked          │
+│                                  │          │          │            │
+│                                  ▼          ▼          ▼            │
+│                              detectEnv   승인요청   선택지요청       │
+│                                  │          │          │            │
+│                                  ▼          ▼          ▼            │
+│                              기존플로우   __end__    __end__         │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-### 2.2 Intent 분류
+---
 
-| Intent | 설명 | 처리 |
-|--------|-----|-----|
-| `work` | 실제 작업 요청 | 기존 플로우 진행 (resolve → ...) |
-| `guide` | 도움/정보 요청 | 가이드 템플릿 + LLM 응답 → 종료 |
-| `redirect` | 작업 불일치 감지 | 승인 요청 → 에이전트/작업 전환 |
-
-### 2.3 파일 구조
+## 8. 파일 구조
 
 ```
 src/
-├── core/
-│   └── prompt/
-│       └── templates/
-│           └── triage/                 # 🆕 Triage 프롬프트 템플릿
-│               ├── base.md             # 컨텍스트 + guide 지식 포함
-│               └── rules.md            # 분류 규칙 + guide 응답 규칙
+├── core/prompt/templates/triage/
+│   ├── base.md              # 컨텍스트, 상태, 지식
+│   └── rules.md             # 분류 규칙, guardrails
 │
-├── agents/
-│   └── common/
-│       └── nodes/
-│           └── triage/                 # 🆕 Triage 노드 (모든 로직 여기에)
-│               ├── index.ts            # 노드 함수 (export default)
-│               ├── types.ts            # TriageResult, TriageableState
-│               ├── AgentRegistry.ts    # 에이전트 역량 정의
-│               └── parser.ts           # LLM 응답 파싱
+├── agents/common/nodes/triage/
+│   ├── index.ts             # 노드 함수
+│   ├── types.ts             # 타입
+│   ├── AgentRegistry.ts     # agent/job 역량
+│   ├── workspaceAnalyzer.ts # 상태 수집
+│   └── parser.ts            # LLM 응답 파싱
 │
 ├── composition/
-│   └── orchestrator.ts                 # 수정: redirect 결과 처리
+│   └── orchestrator.ts      # redirect/blocked 처리
 │
-└── infrastructure/
-    └── approval/                       # 🆕 승인 시스템
-        ├── ApprovalService.ts          # 승인 관리
-        ├── types.ts                    # 승인 타입
-        └── handlers/
-            └── RedirectApprovalHandler.ts
+├── infrastructure/
+│   └── choice/              # 🆕 선택 시스템
+│       ├── types.ts
+│       ├── ChoiceService.ts
+│       └── handlers/
+│           ├── AskChoiceHandler.ts
+│           ├── RedirectChoiceHandler.ts
+│           └── BlockedChoiceHandler.ts
+│
+└── periphery/adapters/http/
+    └── routes/
+        └── chat.routes.ts   # 🆕 POST /chat/triage-choice
 ```
 
-> 💡 **1회 LLM 호출 원칙**:
-> - Triage는 **1회 LLM 호출**로 의도 분류 + guide 응답까지 처리
-> - guide 지식은 `base.md`에 포함 (별도 파일 분리 없음)
-> - 레이턴시 최소화, 로직 단순화
+### ant-ui 추가 파일
+
+```
+src/presentation/components/chat/
+└── ChoiceCard.tsx           # 🆕 선택 버튼 카드
+```
 
 ---
 
-## 3. 상세 설계
+## 9. 선택 시스템 (Choice System)
 
-### 3.1 Triage State 인터페이스
+### 9.1 선택이 필요한 케이스
 
-```typescript
-// agents/common/nodes/triage/types.ts
+| 상황 | needsChoice | 선택지 |
+|-----|-------------|-------|
+| `proceed` (정상) | false | 없음 (바로 진행) |
+| `ask` 강제 (confidence < 0.7) | true | 추측 확인 |
+| `redirect` | true | 전환 확인 |
+| `blocked` (canProceed: true) | true | 진행 여부 |
+| `blocked` (canProceed: false) | false | 없음 (안내만) |
 
-export interface TriageResult {
-  intent: 'work' | 'guide' | 'redirect';
-  confidence: number;
-  
-  // guide인 경우
-  guideResponse?: string;
-  
-  // redirect인 경우
-  suggestedAgent?: string;
-  suggestedTask?: string;
-  mismatchReason?: string;
+### 9.2 선택지 정규화
+
+| 상황 | 긍정 (action) | 부정 (action) |
+|-----|--------------|--------------|
+| ask 강제 | 추측대로 진행 (`proceed`) | 가이드 (`guide`) |
+| redirect | 전환 (`redirect`) | 가이드 (`guide`) |
+| blocked (canProceed) | 그래도 진행 (`proceedAnyway`) | 가이드 (`guide`) |
+
+> **핵심**: 부정 선택 = 항상 `guide` (막다른 길 없음)
+
+### 9.3 Action 차이
+
+| Action | 의미 | 조건 |
+|--------|-----|-----|
+| `proceed` | 정상 진행 | 모든 조건 충족 |
+| `proceedAnyway` | 경고 무시하고 진행 | required ✅, recommended ❌ |
+| `redirect` | 다른 job으로 전환 | 사용자 승인 |
+| `guide` | 가이드 제공 | 부정 선택 시 항상 |
+
+### 9.4 구현 상세
+
+#### API
+
+```
+POST /projects/:projectId/features/:featureName/chat/triage-choice
+
+Request:
+{
+  "jobId": "xxx",
+  "choice": "proceed" | "proceedAnyway" | "redirect" | "guide"
 }
 
-export interface TriageableState {
-  // 기존 필수 필드
-  context: ProjectContext;
-  spec: string;
-  deps?: {
-    llm?: LLMClient;
-    workflowUpdate?: WorkflowStateUpdatePort;
-  };
-  _httpJobId?: string;
-  tokenUsage?: TokenUsage;
-  
-  // Triage 전용
-  skipTriage?: boolean;
-  triageResult?: TriageResult;
-  
-  // 현재 작업 정보 (Triage 판단용)
-  currentAgent?: string;
-  currentTask?: string;
+Response (guide):
+{
+  "type": "guide",
+  "message": "현재 design job에서 가능한 작업:\n- UI 기획해줘\n- 시스템 설계해줘"
 }
-```
 
-### 3.2 Agent Registry
-
-```typescript
-// agents/common/nodes/triage/AgentRegistry.ts
-
-/**
- * LLM이 선택할 수 있는 정규화된 응답 목록
- * 
- * ⚠️ 주의: keywords는 의도적으로 제외됨
- * - LLM은 다국어를 이해하므로 키워드 매칭 불필요
- * - 키워드 기반 분류는 시스템 판단 → LLM 판단 원칙 위배
- * - LLM이 description과 context를 보고 스스로 판단
- */
-export const AGENT_REGISTRY = {
-  agents: ['architect', 'reviewer', 'planner', 'doc'] as const,
-  
-  tasks: {
-    architect: ['design', 'code', 'learn'] as const,
-    reviewer: ['review'] as const,
-    planner: ['plan'] as const,
-    doc: ['doc'] as const,
-  },
-  
-  // LLM 프롬프트에 주입될 역량 설명 (영어 only - 프롬프트 규칙)
-  capabilities: {
-    architect: {
-      design: {
-        description: 'Generate system design documents, UI specification documents',
-        prerequisites: ['PRD or directive file'],
-        produces: ['system-design.md', 'ui-spec.json'],
-      },
-      code: {
-        description: 'Generate, modify, or fix code based on design documents',
-        prerequisites: ['Design document', 'Git repository'],
-        produces: ['Source code files'],
-      },
-      learn: {
-        description: 'Analyze and index codebase for knowledge extraction',
-        prerequisites: ['Git repository'],
-        produces: ['Lessons in vector DB'],
-      },
-    },
-    reviewer: {
-      review: {
-        description: 'Review code changes and provide feedback',
-        prerequisites: ['PR diff or code changes'],
-        produces: ['Review comments'],
-      },
-    },
-    planner: {
-      plan: {
-        description: 'Create sprint plans from issues and commits',
-        prerequisites: ['Issue list', 'Commit history'],
-        produces: ['Sprint plan'],
-      },
-    },
-    doc: {
-      doc: {
-        description: 'Generate documentation from codebase',
-        prerequisites: ['Codebase'],
-        produces: ['README, API docs'],
-      },
-    },
-  },
-  
-} as const;
-
-export type AgentName = typeof AGENT_REGISTRY.agents[number];
-export type TaskName<A extends AgentName> = typeof AGENT_REGISTRY.tasks[A][number];
-```
-
-### 3.3 Triage 노드
-
-```typescript
-// agents/common/nodes/triage/index.ts
-
-import { TriageableState, TriageResult } from './types';
-import { AGENT_REGISTRY } from './AgentRegistry';
-import { parseTriageResponse } from './parser';
-import { accumulateTokenUsage, extractTokenUsageFromStreamEvent } from '../../architect/graph/common/llmHelpers';
-
-export async function triage<T extends TriageableState>(
-  state: T
-): Promise<Partial<T>> {
-  
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // 1. Bypass 체크
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  if (state.skipTriage) {
-    console.log('🏥 [Triage] Bypassed (redirect transfer)');
-    return { 
-      triageResult: { intent: 'work', confidence: 1.0 } 
-    } as Partial<T>;
-  }
-  
-  console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('🏥 TRIAGE: Analyzing user intent');
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-  
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // 2. Workflow UI 진입
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  if (state.deps?.workflowUpdate && state._httpJobId) {
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'triage');
-  }
-  
-  try {
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // 3. 프롬프트 구성 (guide 지식 포함)
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const prompt = buildTriagePrompt(state);  // guide 지식이 이미 포함됨
-    
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // 4. LLM 호출 (1회로 분류 + guide 응답까지)
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const llm = state.deps?.llm;
-    if (!llm) {
-      throw new Error('[Triage] LLM not available');
-    }
-    
-    let response = '';
-    let capturedUsage: any;
-    
-    for await (const event of llm.stream([
-      { role: 'user', content: prompt }
-    ], {
-      temperature: 0.2,
-      maxTokens: 4000,
-    })) {
-      if (event.text) {
-        response += event.text;
-      }
-      const usage = extractTokenUsageFromStreamEvent(event);
-      if (usage) capturedUsage = usage;
-    }
-    
-    // 토큰 누적
-    if (capturedUsage) {
-      accumulateTokenUsage(state as any, capturedUsage, { jobLevel: true });
-      console.log(`   Tokens: ${capturedUsage.totalTokens} total`);
-    }
-    
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // 5. 응답 파싱 (intent + guideResponse 동시 추출)
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const triageResult = parseTriageResponse(response);
-    // guide인 경우 guideResponse가 이미 포함되어 있음
-    
-    console.log(`✅ Intent: ${triageResult.intent} (confidence: ${triageResult.confidence})`);
-    if (triageResult.intent === 'guide') {
-      console.log(`   Guide response generated`);
-    }
-    if (triageResult.intent === 'redirect') {
-      console.log(`   Suggested: ${triageResult.suggestedAgent}/${triageResult.suggestedTask}`);
-      console.log(`   Reason: ${triageResult.mismatchReason}`);
-    }
-    
-    return { triageResult } as Partial<T>;
-    
-  } finally {
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // 6. Workflow UI 종료
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    if (state.deps?.workflowUpdate && state._httpJobId) {
-      state.deps.workflowUpdate.exitNode(state._httpJobId, 'triage');
-    }
-  }
+Response (proceed/proceedAnyway/redirect):
+{
+  "type": "continue",
+  "action": "proceed" | "proceedAnyway" | "redirect"
 }
 ```
 
-### 3.4 User Interaction System (승인 시스템)
+#### UI 컴포넌트 (ChoiceCard.tsx)
 
-```typescript
-// infrastructure/approval/types.ts
-
-export type ApprovalType = 'redirect' | 'destructive' | 'confirm';
-export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'timeout';
-
-export interface ApprovalRequest {
-  id: string;
-  jobId: string;
-  type: ApprovalType;
-  status: ApprovalStatus;
-  createdAt: string;
-  resolvedAt?: string;
-  
-  // redirect 전용
-  redirect?: {
-    fromAgent: string;
-    fromTask: string;
-    toAgent: string;
-    toTask: string;
-    reason: string;
-  };
-  
-  // 메시지
-  message: string;
+```tsx
+interface ChoiceCardProps {
+  message: string;           // "(confidence: 0.52) UI 기획을 시작할까요?"
   options: {
-    approve: string;  // "예, 디자인 잡으로 전환"
-    reject: string;   // "아니오, 코드 잡 유지"
+    positive: { label: string; action: string };
+    negative: { label: string; action: string };
+  };
+  onSelect: (action: string) => void;
+  disabled?: boolean;
+}
+
+export function ChoiceCard({ message, options, onSelect, disabled }: ChoiceCardProps) {
+  return (
+    <div className="choice-card">
+      <p className="message">{message}</p>
+      <div className="buttons">
+        <button onClick={() => onSelect(options.positive.action)}>
+          {options.positive.label}
+        </button>
+        <button onClick={() => onSelect(options.negative.action)}>
+          {options.negative.label}
+        </button>
+      </div>
+    </div>
+  );
+}
+```
+
+#### 백엔드 플로우
+
+```typescript
+// triage 노드에서 선택 필요 시
+if (triageResult.needsChoice) {
+  // 1. 선택 카드 전송 (채팅 SSE)
+  await chatService.sendChoiceCard(jobId, {
+    message: triageResult.displayMessage,
+    options: triageResult.choiceOptions
+  });
+  
+  // 2. 작업 일시 중단 (interruption 패턴 재활용)
+  return {
+    ...state,
+    interruption: {
+      reason: 'awaiting_choice',
+      canResume: true,
+      metadata: { triageResult }
+    }
   };
 }
 
-export interface ApprovalResult {
-  requestId: string;
-  status: 'approved' | 'rejected';
-  resolvedAt: string;
-}
+// 선택 API 호출 시 (chat.routes.ts)
+router.post('/chat/triage-choice', async (req, res) => {
+  const { jobId, choice } = req.body;
+  
+  if (choice === 'guide') {
+    // 가이드 응답 전송
+    await chatService.sendGuide(jobId, triageResult.choiceOptions.fallbackGuide);
+    return res.json({ type: 'guide' });
+  }
+  
+  // 작업 재개 (선택된 action으로)
+  await resumeJob(jobId, { triageAction: choice });
+  return res.json({ type: 'continue', action: choice });
+});
+```
+
+### 9.5 응답 예시
+
+#### ask 강제 (confidence < 0.7)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ (confidence: 0.52) 작업 요청으로 보이는데, 확인이 필요합니다.│
+│                                                             │
+│ 혹시 **UI 기획**을 시작하시겠습니까?                         │
+│                                                             │
+│ [예]                    [아니오]                            │
+│  ↓                       ↓                                  │
+│ proceed                 guide                               │
+│ (ui-design 시작)        (가능한 작업 안내)                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### redirect
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ (confidence: 0.92) 코드 작업은 **code job**에서 진행해야    │
+│ 합니다.                                                     │
+│                                                             │
+│ code job으로 전환하시겠습니까?                               │
+│                                                             │
+│ [전환]                  [현재 job 유지]                      │
+│  ↓                       ↓                                  │
+│ redirect                guide                               │
+│ (code job 시작)         (design job 가능 작업 안내)          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### blocked (canProceed: true)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ (confidence: 0.88) 코드베이스가 인덱싱되지 않았습니다.       │
+│ 인덱싱 없이 진행하면 정확도가 떨어질 수 있습니다.            │
+│                                                             │
+│ [그래도 진행]           [취소]                               │
+│  ↓                       ↓                                  │
+│ proceedAnyway           guide                               │
+│ (인덱싱 없이 시작)       (인덱싱 방법 안내)                   │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 4. 구현 계획
+## 10. 프롬프트 (FPOP)
 
-### Phase 1: 기반 구조 (15-20분)
-
-| Task | 파일 | 설명 |
-|------|-----|-----|
-| 1.1 | `agents/common/nodes/triage/types.ts` | 타입 정의 |
-| 1.2 | `agents/common/nodes/triage/AgentRegistry.ts` | 에이전트 역량 정의 |
-| 1.3 | `agents/common/nodes/triage/index.ts` | 노드 함수 + exports |
-
-### Phase 2: Triage 노드 (30-45분)
-
-| Task | 파일 | 설명 |
-|------|-----|-----|
-| 2.1 | `core/prompt/templates/triage/base.md` | Triage 프롬프트 (FPOP) |
-| 2.2 | `core/prompt/templates/triage/rules.md` | 분류 규칙 |
-| 2.3 | `agents/common/nodes/triage/index.ts` | Triage 노드 구현 |
-| 2.4 | `agents/common/nodes/triage/parser.ts` | LLM 응답 파싱 |
-
-### Phase 3: 그래프 통합 (20-30분)
-
-| Task | 파일 | 설명 |
-|------|-----|-----|
-| 3.1 | `architect/graph/code/graph.ts` | Code 그래프에 triage 추가 |
-| 3.2 | `architect/graph/code/state.ts` | State에 Triage 필드 추가 |
-| 3.3 | `architect/graph/design/graph.ts` | Design 그래프에 triage 추가 |
-| 3.4 | `architect/graph/design/state.ts` | State에 Triage 필드 추가 |
-
-### Phase 4: Guide 지식 작성 (15-20분)
-
-| Task | 파일 | 설명 |
-|------|-----|-----|
-| 4.1 | `core/prompt/templates/triage/base.md` 확장 | guide 지식 섹션 추가 |
-| 4.2 | `core/prompt/templates/triage/rules.md` 확장 | guide 응답 규칙 추가 |
-
-### Phase 5: 승인 시스템 (45-60분)
-
-| Task | 파일 | 설명 |
-|------|-----|-----|
-| 5.1 | `infrastructure/approval/types.ts` | 타입 정의 |
-| 5.2 | `infrastructure/approval/ApprovalService.ts` | 승인 관리 |
-| 5.3 | `infrastructure/approval/handlers/RedirectApprovalHandler.ts` | Redirect 처리 |
-| 5.4 | `composition/orchestrator.ts` | Redirect 결과 처리 수정 |
-| 5.5 | HTTP Routes | 승인 API 엔드포인트 |
-| 5.6 | UI 컴포넌트 | 승인 UI (ant-ui) |
-
-### Phase 6: 테스트 및 마무리 (20-30분)
-
-| Task | 설명 |
-|------|-----|
-| 6.1 | E2E 테스트 |
-| 6.2 | 문서화 |
-| 6.3 | 기존 기능 회귀 테스트 |
-
----
-
-## 5. 프롬프트 설계 (FPOP 원칙 준수)
-
-> ⚠️ **FPOP 원칙**: First-Principles Observation Prompting
-> - 모든 프롬프트는 **영어로만** 작성
-> - **WHAT/HOW 분리**: base.md (데이터/컨텍스트) / rules.md (규칙/제약)
-> - 구체적 예시 ❌ → 관찰 대상과 원칙만 ✅
-
-### 5.1 base.md (WHAT: 컨텍스트와 데이터)
+### 9.1 base.md
 
 ```markdown
-# core/prompt/templates/triage/base.md
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# WHAT: Context, data, current state (NO rules here)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# TRIAGE
 
-## CURRENT SESSION
-
+## SESSION
 | Field | Value |
 |-------|-------|
 | Agent | {{currentAgent}} |
-| Task | {{currentTask}} |
+| Job | {{currentJob}} |
 
 ## USER INPUT
-
 {{{userInput}}}
 
-## PROJECT STATE
+## WORKSPACE STATE
 
-{{#if hasDesignDoc}}
-✅ Design documents exist in outputs/
-{{else}}
-❌ No design documents found
-{{/if}}
+### Inputs
+{{#if hasPrd}}✅ PRD: {{prdPath}}{{else}}❌ No PRD{{/if}}
+{{#if hasDirective}}✅ Directive{{else}}ℹ️ No directive{{/if}}
 
-{{#if hasCodebase}}
-✅ Codebase is indexed in vector DB
-{{else}}
-❌ Codebase not indexed
-{{/if}}
+### References (ui-design)
+{{#if hasScreens}}✅ Screens: {{screenCount}}{{else}}❌ No screens{{/if}}
+{{#if hasComponents}}✅ Components: {{componentCount}}{{else}}ℹ️ No components{{/if}}
+{{#if hasAssets}}✅ Assets: {{assetCount}}{{else}}ℹ️ No assets{{/if}}
 
-{{#if hasPrd}}
-✅ PRD/Directive exists in inputs/
-{{else}}
-❌ No PRD/Directive found
-{{/if}}
+### Design Documents
+{{#if hasUiDocs}}✅ UI docs{{else}}❌ No UI docs{{/if}}
+{{#if hasSystemDesignDoc}}✅ System design{{else}}❌ No system design{{/if}}
 
-## AVAILABLE OPTIONS
+### Codebase
+{{#if hasCodebase}}✅ Indexed ({{indexedFileCount}}){{else}}❌ Not indexed{{/if}}
 
-### Intents
-- `work`: Proceed with actual task execution
-- `guide`: Provide help/information response
-- `redirect`: Suggest switching to different agent/task
+## PREREQUISITES
 
-### Agents and Tasks
-{{#each capabilities}}
-**{{@key}}**
-{{#each this}}
-- `{{@key}}`: {{description}}
-  - Prerequisites: {{prerequisites}}
-  - Produces: {{produces}}
-{{/each}}
-{{/each}}
+### design job
+**ui-design mode** (screens/assets 존재 시)
+- Required: inputs/references/screens/
+- Recommended: inputs/references/components/, inputs/assets/
 
----
+**system-design mode** (PRD/directive만 있을 시)
+- Required: PRD OR directive
+- Recommended: existing codebase (for evolution)
 
-## GUIDE KNOWLEDGE
+### code job
+- Required: design documents OR directive (하나만 있으면 됨)
+- Recommended: indexed codebase
 
-Use this information when intent is `guide`:
+### learn job
+- Required: git repository
 
-### Workflow
-Ant follows a design-first workflow:
-1. Prepare PRD/directive in inputs/ directory
-2. Run design job → generates system-design.md, ui-spec.json
-3. Run code job → generates code based on design documents
-
-### Prerequisites
-- **Design Task**: PRD or directive file in inputs/
-- **Code Task**: Design documents in outputs/design/, indexed codebase
-
-### Troubleshooting
-- "Missing PRD" → Create directive file in inputs/
-- "No design document" → Run design task first
-- "No codebase context" → Run learn task first
+## SCOPE (for ask intent)
+**In-scope**: Ant usage, workflow, prerequisites, current state
+**Out-of-scope**: General knowledge, unrelated topics
 
 ## RESPONSE FORMAT
-
 <triage>
 {
-  "intent": "work" | "guide" | "redirect",
+  "intent": "ask" | "work",
   "confidence": 0.0-1.0,
-  "reasoning": "...",
   
-  // For guide intent only:
-  "guideResponse": "...",
+  // ask
+  "inScope": true | false,
+  "askResponse": "...",
   
-  // For redirect intent only:
-  "suggestedAgent": "...",
-  "suggestedTask": "...",
-  "mismatchReason": "..."
+  // work
+  "workStatus": "proceed" | "redirect" | "blocked",
+  "suggestedJob": "...",
+  "redirectReason": "...",
+  "missingPrerequisites": { "required": [], "recommended": [] },
+  "canProceed": true | false,
+  "blockedMessage": "...",
+  "proceedAnywayOption": "..."
 }
 </triage>
 ```
 
-### 5.2 rules.md (HOW: 규칙과 제약)
+### 9.2 rules.md
 
 ```markdown
-# core/prompt/templates/triage/rules.md
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# HOW: Rules, constraints, classification principles (NO data here)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# RULES
 
-## OBSERVATION PROTOCOL
+## INTENT CLASSIFICATION
+| Signal | intent |
+|--------|--------|
+| Question words, uncertainty | `ask` |
+| Action verbs, clear target | `work` |
+| Ambiguous | `ask` (default) |
 
-### Step 1: Observe User Intent
+## CONFIDENCE THRESHOLD
+- confidence ≥ 0.7 → 분류된 intent 적용
+- confidence < 0.7 → **intent를 `ask`로 강제**
+  - 사용자에게 분류된 값 적용 여부 확인
+  - 예: "UI 기획을 시작할까요? [예/아니오]"
 
-| Observation Target | What to Look For |
-|-------------------|------------------|
-| **Request Type** | Action request vs. Question vs. Confusion |
-| **Specificity** | Clear target vs. Vague/exploratory |
-| **Context Match** | Does request align with current agent/task? |
+## GUARDRAILS (ask)
+- In-scope: Ant system, current workspace, workflow
+- Out-of-scope: Everything else
+- Out-of-scope response: "저는 Ant 사용을 도와드립니다. 워크스페이스나 작업 방법에 대해 질문해주세요."
 
-### Step 2: Observe Project State
+## WORK STATUS DETERMINATION
 
-| Observation Target | Implication |
-|-------------------|-------------|
-| **Missing Prerequisites** | May need `guide` to explain what's needed |
-| **Wrong Task Selected** | May need `redirect` to appropriate task |
+### design job
+| 조건 | Status |
+|-----|--------|
+| ui-design 요청 + screens ✅ | proceed |
+| ui-design 요청 + screens ❌ | blocked (canProceed: false) |
+| system-design 요청 + PRD/directive ✅ | proceed |
+| system-design 요청 + PRD/directive ❌ | blocked (canProceed: false) |
 
-## CLASSIFICATION PRINCIPLES
+### code job
+| 조건 | Status |
+|-----|--------|
+| design doc ✅ OR directive ✅ | proceed 또는 blocked (codebase에 따라) |
+| design doc ❌ AND directive ❌ | blocked (canProceed: false) |
+| codebase ❌ (나머지 ✅) | blocked (canProceed: true) |
 
-### Principle 1: Observable Over Assumed
-
-> "Classify based on what is explicitly stated, not inferred."
-
-- ⚠️ **Blind Spot**: Tendency to assume `work` when user is actually confused
-- **Constraint**: If intent is ambiguous, classify as `guide`
-
-### Principle 2: Safety Over Efficiency
-
-> "When uncertain, provide help rather than execute potentially wrong action."
-
-- **Constraint**: DO NOT classify as `work` with confidence < 0.7
-- **Constraint**: DO NOT classify as `redirect` with confidence < 0.8
-
-### Principle 3: Context-Aware Matching
-
-> "Consider current agent/task when evaluating intent."
-
-- **Observe**: Does the request match current task's capabilities?
-- **Constraint**: If clear mismatch observed, classify as `redirect`
-- **Constraint**: If mismatch is subtle, classify as `guide` to clarify
-
-## CONFIDENCE SCORING
-
-| Score | Meaning | Action |
-|-------|---------|--------|
-| 0.9-1.0 | Unambiguous, explicit intent | Proceed with classification |
-| 0.7-0.9 | Clear intent, minor ambiguity | Proceed with caution |
-| 0.5-0.7 | Moderate ambiguity | ⚠️ Prefer `guide` |
-| < 0.5 | High ambiguity | **MUST be `guide`** |
-
-## RESPONSE CONSTRAINTS
-
-### For `work` intent:
-- ONLY when user clearly requests an action within current task scope
-- MUST have confidence ≥ 0.7
-
-### For `guide` intent:
-- Include `guideResponse` with helpful answer based on GUIDE KNOWLEDGE
-- Respond in the **same language as user input**
-- Be concise but complete
-
-### For `redirect` intent:
-- Include `suggestedAgent` and `suggestedTask`
-- Include `mismatchReason` explaining why current task doesn't fit
-- MUST have confidence ≥ 0.8
-```
-
-### 5.3 FPOP 체크리스트 (프롬프트 작성 시 검증)
-
-| ❌ NEVER | ✅ ALWAYS |
-|---------|----------|
-| 구체적 예시 (Footer, Hero 등) | 관찰 대상 명시 |
-| 메서드 설명 (LLM이 이미 앎) | 제약 조건 명시 |
-| Edge case 나열 (If A→X, B→Y) | 원칙 명시 |
-| 플랫폼 특화 용어 | 범용 언어 사용 |
-| 값 매핑 (Top=flex-start) | 맹점 리마인더 (⚠️) |
-
----
-
-## 6. Guide Knowledge 구조
-
-> ⚠️ **핵심 원칙**: **1회 LLM 호출**로 의도 분류 + guide 응답까지 처리
-> - Guide 지식은 `base.md`에 포함 (별도 파일 없음)
-> - LLM이 사용자 입력 언어를 감지하여 해당 언어로 응답 생성
-
-### 6.1 프롬프트 구조
-
-```
-core/prompt/templates/triage/
-├── base.md     # 컨텍스트 + Guide 지식 포함
-└── rules.md    # 분류 규칙 + Guide 응답 규칙
-```
-
-### 6.2 base.md에 Guide 지식 포함
-
-```markdown
-## GUIDE KNOWLEDGE
-
-### Workflow
-Ant follows a design-first workflow:
-1. Prepare PRD/directive in inputs/ directory
-2. Run design job → generates system-design.md, ui-spec.json
-3. Run code job → generates code based on design documents
-
-### Prerequisites
-
-#### Design Task
-- PRD or directive file in inputs/
-- (Optional) Reference screenshots in inputs/references/
-
-#### Code Task
-- Design documents must exist in outputs/design/
-- Codebase should be indexed (run learn task first)
-
-### Capabilities
-- Design: System design documents, UI specifications
-- Code: Generate, modify, fix code based on design
-- Learn: Analyze and index codebase
-
-### Troubleshooting
-- "Missing PRD" → Create directive file in inputs/
-- "No design document" → Run design task first
-- "No codebase context" → Run learn task first
-```
-
-### 6.3 동작 방식 (1회 호출)
-
-```
-Triage 노드 (1회 LLM 호출)
-    │
-    ├── 프롬프트: base.md + rules.md (guide 지식 포함)
-    │
-    ▼
-LLM 응답:
-{
-  "intent": "guide",
-  "confidence": 0.9,
-  "guideResponse": "Ant는 design-first 워크플로우를 따릅니다..."
-}
-    │
-    ▼
-파싱 후 바로 사용자에게 전달 (추가 LLM 호출 없음)
-```
-
-### 6.4 장점
-
-| 항목 | 2회 호출 (이전) | 1회 호출 (현재) |
-|-----|---------------|---------------|
-| **레이턴시** | 높음 | 낮음 ✅ |
-| **복잡도** | 높음 | 낮음 ✅ |
-| **파일 수** | 많음 (guide/*.md) | 적음 (base.md만) ✅ |
-| **토큰** | 분리됨 | 약간 증가 (무시 가능) |
-
----
-
-## 7. 의존성 및 영향 분석
-
-### 7.1 수정되는 기존 파일
-
-| 파일 | 수정 내용 |
-|-----|----------|
-| `architect/graph/code/graph.ts` | triage 노드 추가, 엣지 수정 |
-| `architect/graph/code/state.ts` | TriageableState 확장 |
-| `architect/graph/design/graph.ts` | triage 노드 추가, 엣지 수정 |
-| `architect/graph/design/state.ts` | TriageableState 확장 |
-| `composition/orchestrator.ts` | skipTriage 전달, redirect 처리 |
-
-### 7.2 새로 생성되는 파일
-
-| 경로 | 설명 |
+### redirect 판단
+| 상황 | 제안 |
 |-----|-----|
-| `agents/common/nodes/triage/*` | Triage 노드 전체 (타입, 로직, 파싱) |
-| `core/prompt/templates/triage/*` | Triage 프롬프트 템플릿 |
-| `infrastructure/approval/*` | 승인 시스템 |
+| code job에서 UI 기획 요청 | → design job |
+| design job에서 코드 구현 요청 | → code job |
+| 분석/학습 요청 | → learn job |
 
-### 7.3 UI 변경 (ant-ui)
+## RESPONSE LANGUAGE
+Respond in the same language as user input.
 
-| 컴포넌트 | 변경 |
-|---------|-----|
-| 채팅 UI | 승인 요청 메시지 표시 |
-| 승인 버튼 | 승인/거부 액션 |
-| Workflow UI | triage 노드 표시 |
-
----
-
-## 8. 체크리스트
-
-### Phase 1 완료 조건
-- [ ] `agents/common/nodes/triage/types.ts` 작성 완료
-- [ ] `agents/common/nodes/triage/AgentRegistry.ts` 작성 완료
-- [ ] 타입 검사 통과
-
-### Phase 2 완료 조건
-- [ ] Triage 프롬프트 FPOP 원칙 준수
-- [ ] Triage 노드 구현 완료
-- [ ] 단위 테스트 통과
-
-### Phase 3 완료 조건
-- [ ] Code 그래프 통합 완료
-- [ ] Design 그래프 통합 완료
-- [ ] 기존 테스트 회귀 없음
-
-### Phase 4 완료 조건
-- [ ] base.md에 Guide 지식 섹션 추가
-- [ ] rules.md에 Guide 응답 규칙 추가
-- [ ] Guide 응답 품질 확인
-
-### Phase 5 완료 조건
-- [ ] 승인 API 동작 확인
-- [ ] UI 통합 완료
-- [ ] Redirect 전환 동작 확인
-
-### Phase 6 완료 조건
-- [ ] E2E 테스트 통과
-- [ ] 문서화 완료
-- [ ] 코드 리뷰 완료
-
----
-
-## 9. 리스크 및 대응
-
-| 리스크 | 영향 | 대응 |
-|-------|-----|-----|
-| Triage LLM 호출 추가로 인한 비용 증가 | 중 | 경량 프롬프트, 캐싱 고려 |
-| Guide 템플릿 내용 부족 | 중 | 가이드 문서 품질 관리, 피드백 반영 |
-| 기존 플로우 회귀 | 상 | 충분한 테스트 |
-| UI 승인 UX 복잡도 | 중 | 단순한 UI 설계 |
-
----
-
-## 10. 참고 자료
-
-### 코드 참조
-- [기존 detectEnvironment 구현](/packages/ant-cli/src/agents/architect/graph/code/nodes/detectEnvironment)
-- [토큰 추적 시스템](/packages/ant-cli/src/agents/architect/graph/common/llmHelpers.ts)
-- [Workflow UI 시스템](/packages/ant-cli/src/periphery/adapters/http/services/WorkflowStateService.ts)
-
-### 프롬프트 작성 규칙
-- [FPOP 원칙 및 프롬프트 규칙](/.cursorrules)
-  - WHAT/HOW 분리 (base.md / rules.md)
-  - 영어로만 작성
-  - 구체적 예시 ❌ → 원칙과 관찰 대상 ✅
-  - 플랫폼 중립적 표현
-
-### FPOP 6가지 원칙 요약
-
-| 원칙 | 의미 |
-|-----|-----|
-| Principles over Examples | 구체적 예시 대신 보편적 규칙 |
-| What over How | 방법이 아닌 관찰 대상 명시 |
-| Observable over Assumed | 추론 금지, 관찰만 |
-| Universal over Specific | 플랫폼/언어 중립 |
-| Constraints over Instructions | 지시보다 제약 |
-| Reminders for Blind Spots | 맹점 리마인더 (⚠️) |
-
----
-
-## 11. AI 코드 생성 예상 시간
-
-> 아래는 AI(Claude)가 코드를 생성하는 데 걸리는 예상 시간입니다.
-> 실제 시간은 리뷰, 디버깅, 테스트에 따라 달라질 수 있습니다.
-
-### 11.1 Phase별 예상 소요 시간
-
-| Phase | 작업 | AI 생성 시간 | 비고 |
-|-------|------|------------|------|
-| **Phase 1** | 기반 구조 (types, registry) | 15-20분 | 타입 정의, 단순 |
-| **Phase 2** | Triage 노드 + 프롬프트 | 30-45분 | 핵심 로직, FPOP 준수 필요 |
-| **Phase 3** | 그래프 통합 | 20-30분 | 기존 코드 수정, 주의 필요 |
-| **Phase 4** | Guide 지식 추가 | 15-20분 | base.md 확장만 |
-| **Phase 5** | 승인 시스템 | 45-60분 | UI 포함, 가장 복잡 |
-| **Phase 6** | 테스트 및 마무리 | 20-30분 | 통합 테스트 |
-
-### 11.2 총 예상 시간
-
-| 구분 | 시간 |
-|-----|-----|
-| **AI 코드 생성** | 2 - 3 시간 |
-| **리뷰 및 수정** | +1 - 1.5 시간 |
-| **디버깅** | +0.5 - 1 시간 |
-| **총 예상** | **3.5 - 5.5 시간** |
-
-### 11.3 토큰 사용량 예측
-
-| Phase | 예상 토큰 (입력+출력) |
-|-------|---------------------|
-| Phase 1 | ~10,000 |
-| Phase 2 | ~25,000 |
-| Phase 3 | ~15,000 |
-| Phase 4 | ~10,000 |
-| Phase 5 | ~35,000 |
-| Phase 6 | ~10,000 |
-| **총합** | **~105,000 토큰** |
-
-### 11.4 권장 진행 방식
-
-```
-1. Phase 1-4를 한 세션에서 진행 (1.5시간)
-   - 기반 구조 + Triage 노드 + 그래프 통합 + Guide 지식
-   - 여기까지 완료하면 'work' + 'guide' intent 동작 확인 가능
-
-2. Phase 5를 별도 세션 (1시간)
-   - 승인 시스템 (가장 복잡)
-   - 'redirect' intent 동작 확인 가능
-
-3. Phase 6 마무리 (30분)
-   - 통합 테스트, 문서화
+## CONFIDENCE DISPLAY
+- 모든 응답 첫 줄에 `(confidence: X.XX)` 포함
+- 디버깅 용도, 항상 표시
 ```
 
-> 💡 **팁**: Phase 1-4까지 완료하면 Triage의 핵심 기능이 동작합니다.
-> 승인 시스템은 이후 점진적으로 추가 가능합니다.
+---
+
+## 11. 개발 계획
+
+### Phase 1: 기반 (20분)
+- [ ] types.ts
+- [ ] AgentRegistry.ts
+
+### Phase 2: Triage 노드 (40분)
+- [ ] base.md, rules.md
+- [ ] workspaceAnalyzer.ts
+- [ ] index.ts, parser.ts
+
+### Phase 3: 그래프 통합 (30분)
+- [ ] code/graph.ts, state.ts
+- [ ] design/graph.ts, state.ts
+
+### Phase 4: 선택 시스템 (60분)
+- [ ] infrastructure/choice/types.ts
+- [ ] infrastructure/choice/ChoiceService.ts
+- [ ] infrastructure/choice/handlers/*
+- [ ] chat.routes.ts (POST /chat/triage-choice)
+
+### Phase 5: UI 컴포넌트 (40분)
+- [ ] ChoiceCard.tsx
+- [ ] 채팅 메시지 렌더링 수정
+- [ ] 선택 결과 전송 로직
+
+### Phase 6: 테스트 (30분)
+- [ ] 분류 테스트
+- [ ] 선택 플로우 테스트
+- [ ] E2E 테스트
+
+**총 예상: 4-5시간**
+
+---
+
+### 2순위: Ask System
+
+> Triage 완료 후 개발. [05-ask-system.md](./05-ask-system.md) 참조
+
+- [ ] Phase A1: Static 지식 작성 (guide/*.md)
+- [ ] Phase A2: WorkspaceScanner 구현
+- [ ] Phase A3: AskResponseGenerator (LLM 프롬프트)
+- [ ] Phase A4: Triage 연동
+
+**Ask System 예상: 1.5-2시간** (Triage 후)
+
+---
+
+## 12. 설계 결정 요약
+
+| 항목 | 결정 |
+|-----|-----|
+| 분류 체계 | 2단계: Intent → WorkStatus |
+| Intent | ask, work |
+| WorkStatus | proceed, redirect, blocked |
+| Confidence | 의도 파악 확신도 (≥0.7 의도대로, <0.7 ask 강제) |
+| Guardrails | ask에 적용, out-of-scope 거부 |
+| Prerequisites | Job별 + 모드별 구분 |
+| design job | ui-design (screens 필수), system-design (PRD/directive 필수) |
+| code job | design doc OR directive (하나만 있으면 됨) |
+| LLM 호출 | 1회 (분류 + 응답 동시) |
+| 응답 언어 | 사용자 입력 언어 따름 |
+| Redirect | 선택 필요 (전환/유지) |
+| Blocked | canProceed=true면 선택지 (진행/취소) |
+| 선택 시스템 | ChoiceCard UI + API + interruption 패턴 |
+| 부정 선택 | 항상 `guide` (막다른 길 없음) |
+| Action 종류 | proceed, proceedAnyway, redirect, guide |

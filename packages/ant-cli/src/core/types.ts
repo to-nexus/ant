@@ -29,19 +29,8 @@ export type AgentTask = 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';
  */
 export type CollectionType = 
   | 'codebase'     // Source code chunks
-  | 'documents'    // Design docs, PRD, directives, specs
   | 'lessons'      // Learned patterns, problem-solution-outcome
   | 'context';     // User preferences, session history (future)
-
-/**
- * Document Types (for 'documents' collection)
- * Defines the types of documents that can be stored
- */
-export type DocumentType = 
-  | 'design'       // Design documents
-  | 'prd'          // Product requirements documents
-  | 'directive'    // User directives/instructions
-  | 'spec';        // Technical specifications
 
 /**
  * Get collection name from type and project
@@ -99,7 +88,6 @@ export interface TaskArtifacts {
   parsedUiDocs?: ParsedUiDocs;
   profile?: CodebaseProfile;
   lessons?: any;     // ✅ Changed to any for flexibility (string | array)
-  documents?: any[];
 }
 
 /**

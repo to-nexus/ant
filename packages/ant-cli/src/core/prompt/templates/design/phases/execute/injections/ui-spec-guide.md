@@ -16,14 +16,39 @@ Define **what** to build (visual & behavioral requirements) in structured JSON, 
 
 ---
 
+## Source Priority Principle
+
+**Default: Observe Screenshot First**
+
+Your primary task is to observe and document what you SEE in the screenshot.
+
+**Exception: Explicit Override**
+
+If Directive or PRD contains **explicit, specific instructions** that contradict your observation, follow the Directive/PRD instead.
+
+**"Explicit" indicators:**
+- Specific technical properties are stated
+- Exact numeric values are provided
+- Direct contradiction markers are present (e.g., "MUST override", "regardless of visual")
+
+**Not explicit (follow screenshot):**
+- General guidance or preferences
+- Feature descriptions without technical specifications
+- Ambiguous or vague instructions
+
+**When overriding observation:** Document the contradiction and resolution in `"intent"` field.
+
+---
+
 ## PRD Integration
 
-| Source | Use For |
-|--------|---------|
-| **Screenshot** | Visual styling, layout, spacing |
-| **PRD** | Text content, feature requirements, interactions |
+| Source | Use For | Priority |
+|--------|---------|----------|
+| **Screenshot** | Visual styling, layout, spacing | **Default** |
+| **PRD** | Text content, feature requirements, interactions | Default |
+| **Directive** | Additional constraints, explicit overrides | **Highest** (when explicit) |
 
-**Principle**: Screenshots show HOW it looks, PRD shows WHAT it does.
+**Principle**: Observe screenshot first, unless explicitly overridden by written specifications.
 
 ---
 

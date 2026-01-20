@@ -68,7 +68,6 @@ export class ChromaMemoryAdapter implements MemoryPort {
     
     const metaType = metadata?.type;
     if (metaType === 'lesson') return 'lessons';
-    if (metaType === 'document') return 'documents';
     if (metaType === 'codebase') return 'codebase';
     if (metaType === 'context') return 'context';
     
@@ -224,7 +223,7 @@ export class ChromaMemoryAdapter implements MemoryPort {
    * ✅ Used when git init creates a new repository
    */
   async clear(project: string): Promise<void> {
-    const collectionTypes: CollectionType[] = ['codebase', 'lessons', 'documents'];
+    const collectionTypes: CollectionType[] = ['codebase', 'lessons'];
     
     for (const type of collectionTypes) {
       const collectionName = getCollectionName(type, project);

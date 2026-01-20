@@ -7,7 +7,6 @@ import { FileWithSource, FileSource } from "../types";
  * ✅ Multi-Collection Parallel Search:
  * - code: codebase-{project}
  * - lessons: lessons-{project}
- * - documents: documents-{project} (optional)
  * 
  * Features:
  * - Parallel queries for performance
@@ -24,25 +23,14 @@ export interface LessonResult {
   directive?: string;
 }
 
-export interface DocumentResult {
-  content: string;
-  score: number;
-  docType: 'design' | 'prd' | 'directive' | 'spec';
-  title: string;
-  metadata: Record<string, any>;
-}
-
 export interface UnifiedSearchResult {
   codeFiles: FileWithSource[];
   lessons: LessonResult[];
-  documents: DocumentResult[];
   stats: {
     totalCodeResults: number;
     totalLessonResults: number;
-    totalDocumentResults: number;
     avgCodeScore: number;
     avgLessonScore: number;
-    avgDocumentScore: number;
   };
 }
 
@@ -54,7 +42,6 @@ export class UnifiedSearchStrategy {
    * ✅ Parallel queries:
    * 1. codebase-{project} → code files
    * 2. lessons-{project} → lessons
-   * 3. documents-{project} → documents (optional)
    * 
    * @param directive - User's directive/query
    * @param project - Project name
@@ -71,13 +58,10 @@ export class UnifiedSearchStrategy {
     },
     options: {
       maxCodeFiles: number;       // 15
-      maxLessons: number;          // 5
-      maxDocuments?: number;       // 3 (optional)
-      minCodeScore: number;        // 0.6
-      minLessonScore: number;      // 0.5
-      minDocumentScore?: number;   // 0.5 (optional)
-      includeGitChanges: boolean;  // true
-      includeDocuments?: boolean;  // false (optional)
+      maxLessons: number;         // 5
+      minCodeScore: number;       // 0.6
+      minLessonScore: number;     // 0.5
+      includeGitChanges: boolean; // true
     }
   ): Promise<UnifiedSearchResult> {
     
@@ -87,9 +71,9 @@ export class UnifiedSearchStrategy {
     console.log(`   📊 Params: k=${options.maxCodeFiles * 2}, minScore=${options.minCodeScore}`);
     
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // 1. Parallel search across 3 collections
+    // 1. Parallel search across 2 collections
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const searchPromises = [
+    const [codeResults, lessonResults] = await Promise.all([
       // Code search (codebase collection)
       deps.vectorDB.query(directive, project, {
         k: options.maxCodeFiles * 2,
@@ -103,22 +87,9 @@ export class UnifiedSearchStrategy {
         minScore: options.minLessonScore,
         collectionType: 'lessons'
       })
-    ];
+    ]);
     
-    // Optional: Document search (documents collection)
-    if (options.includeDocuments && options.maxDocuments) {
-      searchPromises.push(
-        deps.vectorDB.query(directive, project, {
-          k: options.maxDocuments * 2,
-          minScore: options.minDocumentScore || 0.5,
-          collectionType: 'documents'
-        })
-      );
-    }
-    
-    const [codeResults, lessonResults, documentResults = []] = await Promise.all(searchPromises);
-    
-    console.log(`   📊 Results: ${codeResults.length} code, ${lessonResults.length} lessons, ${documentResults.length} documents`);
+    console.log(`   📊 Results: ${codeResults.length} code, ${lessonResults.length} lessons`);
     
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // 2. Process code files
@@ -140,17 +111,15 @@ export class UnifiedSearchStrategy {
     }
     
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // 3. Process lessons and documents
+    // 3. Process lessons
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     const lessons = this.extractLessons(lessonResults);
-    const documents = this.extractDocuments(documentResults);
     
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // 4. Limit to top N
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     const topCodeFiles = codeFiles.slice(0, options.maxCodeFiles);
     const topLessons = lessons.slice(0, options.maxLessons);
-    const topDocuments = documents.slice(0, options.maxDocuments || 0);
     
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // 5. Calculate stats
@@ -158,21 +127,18 @@ export class UnifiedSearchStrategy {
     const stats = {
       totalCodeResults: topCodeFiles.length,
       totalLessonResults: topLessons.length,
-      totalDocumentResults: topDocuments.length,
       avgCodeScore: this.calculateAvgScore(topCodeFiles.map(f => 
         f.sources.find(s => s.type === 'vector')?.score || 0
       )),
-      avgLessonScore: this.calculateAvgScore(topLessons.map(l => l.score)),
-      avgDocumentScore: this.calculateAvgScore(topDocuments.map(d => d.score))
+      avgLessonScore: this.calculateAvgScore(topLessons.map(l => l.score))
     };
     
-    console.log(`   ✅ Selected: ${stats.totalCodeResults} code, ${stats.totalLessonResults} lessons, ${stats.totalDocumentResults} documents`);
-    console.log(`   📊 Avg scores: code=${stats.avgCodeScore.toFixed(2)}, lesson=${stats.avgLessonScore.toFixed(2)}, doc=${stats.avgDocumentScore.toFixed(2)}`);
+    console.log(`   ✅ Selected: ${stats.totalCodeResults} code, ${stats.totalLessonResults} lessons`);
+    console.log(`   📊 Avg scores: code=${stats.avgCodeScore.toFixed(2)}, lesson=${stats.avgLessonScore.toFixed(2)}`);
     
     return {
       codeFiles: topCodeFiles,
       lessons: topLessons,
-      documents: topDocuments,
       stats
     };
   }
@@ -229,19 +195,6 @@ export class UnifiedSearchStrategy {
   }
   
   /**
-   * Extract documents from search results
-   */
-  private extractDocuments(results: any[]): DocumentResult[] {
-    return results.map(r => ({
-      content: r.content || r.document || '',
-      score: r.score || 0,
-      docType: r.metadata?.docType || 'design',
-      title: r.metadata?.title || 'Untitled',
-      metadata: r.metadata || {}
-    }));
-  }
-  
-  /**
    * Boost git-changed files in the results
    */
   private boostChangedFiles(
@@ -279,4 +232,3 @@ export class UnifiedSearchStrategy {
     return scores.reduce((sum, s) => sum + s, 0) / scores.length;
   }
 }
-

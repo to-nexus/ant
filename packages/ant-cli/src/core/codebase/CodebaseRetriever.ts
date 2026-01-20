@@ -11,7 +11,7 @@
 
 import { GitPort, MemoryPort } from "../ports";
 import { CodeContext, RetrieveOptions, BatchRetrieveOptions, BatchResult } from "./types";
-import { UnifiedSearchStrategy, LessonResult, DocumentResult } from "./strategies/UnifiedSearchStrategy";
+import { UnifiedSearchStrategy, LessonResult } from "./strategies/UnifiedSearchStrategy";
 import { ImportGraphBooster } from "./boosters/ImportGraphBooster";
 import { FileLoader } from "./loaders/FileLoader";
 import { ImportGraphAnalyzer } from "./ImportGraphAnalyzer";
@@ -40,7 +40,7 @@ export class CodebaseRetriever {
     workingDir: string,
     deps: { git?: GitPort; vectorDB?: MemoryPort },
     options: RetrieveOptions = {}
-  ): Promise<CodeContext & { lessons?: LessonResult[]; documents?: DocumentResult[] }> {
+  ): Promise<CodeContext & { lessons?: LessonResult[] }> {
     const maxTokens = options.maxTokens || 100000;
     const exclude = [...this.defaultExclude, ...(options.exclude || [])];
     
@@ -83,10 +83,9 @@ export class CodebaseRetriever {
 
     let codeFiles: import('./types').FileWithSource[];
     let lessons: LessonResult[] = [];
-    let documents: DocumentResult[] = [];
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // STEP 1: Unified Search (Code + Lesson + Document)
+    // STEP 1: Unified Search (Code + Lesson)
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     if (deps.vectorDB) {
       const unifiedResult = await this.unifiedStrategy.search(
@@ -96,17 +95,14 @@ export class CodebaseRetriever {
         {
           maxCodeFiles,
           maxLessons,
-          maxDocuments: 0,  // Documents disabled by default (retrieved separately if needed)
           minCodeScore,
           minLessonScore,
-          includeGitChanges: true,
-          includeDocuments: false  // Disable for now
+          includeGitChanges: true
         }
       );
 
       codeFiles = unifiedResult.codeFiles;
       lessons = unifiedResult.lessons;
-      documents = unifiedResult.documents;
 
       console.log(`   ✅ Unified search: ${codeFiles.length} files, ${lessons.length} lessons (mode: ${mode})`);
       
@@ -145,8 +141,7 @@ export class CodebaseRetriever {
 
     return {
       ...result,
-      lessons,    // ✅ Include lessons in result
-      documents,  // ✅ Include documents in result
+      lessons,  // ✅ Include lessons in result
       searchMethod  // ✅ Include search method used (always 'vector-db' or 'none')
     };
   }
@@ -181,4 +176,3 @@ export class CodebaseRetriever {
 
 // Re-export types
 export * from "./types";
-
