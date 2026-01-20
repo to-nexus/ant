@@ -42,7 +42,6 @@ export interface MemoryPort {
    * Collection is auto-resolved from metadata.type:
    * - metadata.type = 'codebase' → codebase-{project}
    * - metadata.type = 'lesson' → lessons-{project}
-   * - metadata.type = 'document' → documents-{project}
    * 
    * @param documents - Documents with content and metadata
    * @param project - Project name (used for collection naming)

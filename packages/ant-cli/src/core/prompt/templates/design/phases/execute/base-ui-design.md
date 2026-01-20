@@ -82,6 +82,14 @@ For EVERY container with multiple child elements, observe and document the **spa
 
 Ask: What are the main visual zones? How do they relate spatially? Are images decorative backdrops or structural content elements? What is the intended user journey (from PRD)? **For each container: what is the spatial arrangement of child elements?**
 
+**⚠️ EXCEPTION: Explicit Override**
+
+If Directive or PRD contains **explicit, specific technical instructions** that contradict your observation:
+- Follow the written specification (user's explicit intent overrides visual observation)
+- Document the contradiction resolution in the `"intent"` field
+
+This ensures user control while maintaining observation-based approach as default.
+
 **🔄 PATTERN CONSISTENCY PRINCIPLE (MANDATORY):**
 
 > **"Visually identical structures MUST produce identical specifications"**
