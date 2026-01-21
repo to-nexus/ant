@@ -1,17 +1,8 @@
-name: Deploy to K8s (ECR)
+name: Deploy to K8s (Production)
 
 on:
   workflow_dispatch:
     inputs:
-      environment:
-        description: 'Environment to deploy'
-        required: true
-        default: 'prod'
-        type: choice
-        options:
-          - dev
-          - stage
-          - prod
       service:
         description: 'Service to deploy'
         required: false
@@ -32,16 +23,14 @@ on:
 
   push:
     branches:
-      - main        # dev 환경 배포
-      - dev         # dev 환경 배포
-      - stage       # stage 환경 배포
-      - "ci/*"      # dev 환경 배포
+      - main
+      - master
     paths:
       - 'packages/ant-ui/**'
       - 'package.json'
 
   repository_dispatch:
-    types: [dev-deploy, stage-deploy, release-deploy]
+    types: [release-deploy]
 
 permissions:
   id-token: write
@@ -60,9 +49,11 @@ jobs:
   #       env:
   #         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-  # Detect changes in main, dev, stage, or ci branches
+  # ===========================================
+  # 변경 감지 (Production)
+  # ===========================================
   detect-changes:
-    if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || startsWith(github.ref, 'refs/heads/stage') || startsWith(github.ref, 'refs/heads/ci/')) && github.event_name == 'push'
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name == 'push'
     runs-on: ["arc-runner-set"]
     outputs:
       ant-ui-changed: ${{ steps.detect.outputs.ant-ui-changed }}
@@ -102,74 +93,44 @@ jobs:
           fi
 
   # ===========================================
-  # Dev environment - ant-ui deployment (main, dev, ci/* branches)
+  # Production 자동 배포 - ant-ui 변경 시
   # ===========================================
-  auto-ant-ui-dev-deploy:
+  auto-ant-ui-prod-deploy:
     needs: detect-changes
-    if: needs.detect-changes.outputs.ant-ui-changed == 'true' && needs.detect-changes.outputs.root-package-changed != 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || startsWith(github.ref, 'refs/heads/ci/'))
+    if: needs.detect-changes.outputs.ant-ui-changed == 'true' && needs.detect-changes.outputs.root-package-changed != 'true'
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
     with:
-      environment: dev
-      env: dev
+      environment: prod
+      env: prod
       git_sha: ${{ github.sha }}
       service_name: ant-ui
       dockerfile: ./packages/ant-ui/Dockerfile
     secrets: inherit
 
   # ===========================================
-  # Dev environment - Deploy all when root package.json changes (main, dev, ci/* branches)
+  # Production 자동 배포 - root package.json 변경 시
   # ===========================================
-  auto-all-ant-ui-dev-deploy:
+  auto-all-ant-ui-prod-deploy:
     needs: detect-changes
-    if: needs.detect-changes.outputs.root-package-changed == 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || startsWith(github.ref, 'refs/heads/ci/'))
+    if: needs.detect-changes.outputs.root-package-changed == 'true'
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
     with:
-      environment: dev
-      env: dev
+      environment: prod
+      env: prod
       git_sha: ${{ github.sha }}
       service_name: ant-ui
       dockerfile: ./packages/ant-ui/Dockerfile
     secrets: inherit
 
   # ===========================================
-  # Stage branch - ant-ui deployment
-  # ===========================================
-  auto-ant-ui-stage-deploy:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.ant-ui-changed == 'true' && needs.detect-changes.outputs.root-package-changed != 'true' && startsWith(github.ref, 'refs/heads/stage')
-    uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
-    with:
-      environment: stage
-      env: stage
-      git_sha: ${{ github.sha }}
-      service_name: ant-ui
-      dockerfile: ./packages/ant-ui/Dockerfile
-    secrets: inherit
-
-  # ===========================================
-  # Stage branch - Deploy all when root package.json changes
-  # ===========================================
-  auto-all-ant-ui-stage-deploy:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.root-package-changed == 'true' && startsWith(github.ref, 'refs/heads/stage')
-    uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
-    with:
-      environment: stage
-      env: stage
-      git_sha: ${{ github.sha }}
-      service_name: ant-ui
-      dockerfile: ./packages/ant-ui/Dockerfile
-    secrets: inherit
-
-  # ===========================================
-  # Manual deployment workflow
+  # 수동 배포 (Production)
   # ===========================================
   manual-ant-ui-deploy:
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.service == 'ant-ui'
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
     with:
-      environment: ${{ github.event.inputs.environment }}
-      env: ${{ github.event.inputs.environment }}
+      environment: prod
+      env: prod
       git_sha: ${{ github.sha }}
       service_name: ant-ui
       ticket_id: ${{ github.event.inputs.ticket_id || '' }}
@@ -178,12 +139,10 @@ jobs:
     secrets: inherit
 
   # ===========================================
-  # Release (prod) deployment via repository_dispatch or workflow_dispatch
+  # repository_dispatch를 통한 배포 (Production)
   # ===========================================
   release-deploy:
-    if: >
-      (github.event_name == 'repository_dispatch' && github.event.inputs.environment == 'prod') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod' && github.event.inputs.service == '')
+    if: github.event_name == 'repository_dispatch'
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
     with:
       environment: prod

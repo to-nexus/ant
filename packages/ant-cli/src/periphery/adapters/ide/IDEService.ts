@@ -382,6 +382,8 @@ export class IDEService {
           },
           Memory: 2 * 1024 * 1024 * 1024, // 2GB
           NanoCpus: 2 * 1000000000, // 2 CPUs
+          // ✅ Run as root to avoid UID mismatch with host-mounted volumes
+          User: '0:0',
         },
         // ✅ Set working directory to specific project
         WorkingDir: dockerWorkspacePath,

@@ -1,4 +1,4 @@
-name: Deploy to VM (Self-hosted)
+name: Deploy to VM (Production)
 
 on:
   workflow_dispatch:
@@ -16,8 +16,6 @@ on:
     branches:
       - main
       - master
-      - dev
-      - "ci/*"
     paths:
       - 'packages/ant-cli/**'
       - 'packages/ant-cli/src/periphery/integrations/vector-memory/embedder/**'
@@ -41,7 +39,7 @@ jobs:
   # 변경 감지
   # ===========================================
   detect-changes:
-    runs-on: [ax-ant-dev]
+    runs-on: [ax-ant-prod]
     if: github.event_name == 'push'
     outputs:
       ant-cli-changed: ${{ steps.detect.outputs.ant-cli-changed }}
@@ -92,11 +90,11 @@ jobs:
           fi
 
   # ===========================================
-  # ant-cli 배포
+  # ant-cli 배포 (Production)
   # ===========================================
   deploy-ant-cli:
-    name: Deploy ant-cli
-    runs-on: [ax-ant-dev]
+    name: Deploy ant-cli (Production)
+    runs-on: [ax-ant-prod]
     needs: [detect-changes]
     if: |
       always() && (
@@ -255,11 +253,11 @@ jobs:
           sudo docker compose -f /cross/ant/ant-cli/docker-compose.yml ps
 
   # ===========================================
-  # embedder 배포 (chroma-db VM runner에서 직접 빌드)
+  # embedder 배포 (Production)
   # ===========================================
   deploy-embedder:
-    name: Deploy embedder
-    runs-on: [ax-ant-embedder-dev]  # chroma-db VM의 self-hosted runner
+    name: Deploy embedder (Production)
+    runs-on: [ax-ant-embedder-prod]
     needs: [detect-changes]
     if: |
       always() && (
@@ -345,7 +343,7 @@ jobs:
   # ===========================================
   notify:
     needs: [deploy-ant-cli, deploy-embedder]
-    runs-on: [ax-ant-dev]
+    runs-on: [ax-ant-prod]
     if: always()
     steps:
       - name: Set deployment status
@@ -379,13 +377,13 @@ jobs:
           channel-id: ${{ vars.SLACK_CHANNEL_ID }}
           payload: |
             {
-              "text": "${{ steps.status.outputs.emoji }} ANT VM 배포 ${{ steps.status.outputs.overall }}",
+              "text": "${{ steps.status.outputs.emoji }} ANT Production 배포 ${{ steps.status.outputs.overall }}",
               "blocks": [
                 {
                   "type": "header",
                   "text": {
                     "type": "plain_text",
-                    "text": "${{ steps.status.outputs.emoji }} ANT VM 배포 결과",
+                    "text": "${{ steps.status.outputs.emoji }} ANT Production 배포 결과",
                     "emoji": true
                   }
                 },
