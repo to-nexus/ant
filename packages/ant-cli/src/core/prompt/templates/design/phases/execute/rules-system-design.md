@@ -1,3 +1,24 @@
+## 📚 REFERENCE PROJECT USAGE RULES
+
+### Principle
+
+Use `search_reference_code` tool to **observe** existing contracts and interfaces. Extract architectural knowledge, not implementation details.
+
+### Constraints
+
+| Constraint | Rule |
+|------------|------|
+| **Extract contracts only** | Observe API endpoints, DTOs, interfaces. Do NOT copy implementation logic. |
+| **Read-only** | Reference code cannot be modified. Observe and document. |
+| **Compatibility** | If observed contracts exist, your design MUST be compatible. |
+| **Abstraction** | Apply same "Implementation Detail Filter" rules to reference code. Extract architectural intent, not literals. |
+
+### ⚠️ Blind Spot Reminder
+
+When designing API contracts, you MUST search reference projects first to ensure compatibility. Do NOT assume endpoint structures.
+
+---
+
 ## OUTPUT FORMAT
 
 {{> common/rules}}

@@ -157,6 +157,7 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
           ...(state.currentTask.targetFile && { targetFile: state.currentTask.targetFile }),
         } as any,
         isLastTaskForDocument,  // ✅ If true, don't output metadata (passed separately)
+        referenceRequests: state.referenceRequests,  // ✅ NEW: Reference projects for search_reference_code tool
       },
       undefined,
       undefined

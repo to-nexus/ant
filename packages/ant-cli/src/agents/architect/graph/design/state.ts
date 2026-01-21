@@ -39,7 +39,14 @@ export interface DesignGraphState extends TaskArtifacts {
     kanbanUpdate?: TaskQueueUpdatePort;  // ✅ For real-time Kanban updates
     fileTreeUpdate?: import('../../../../core/ports').FileTreeUpdatePort;
     workflowUpdate?: import('../../../../core/ports/workflow').WorkflowStateUpdatePort;
+    // ✅ NEW: Reference project support (same as Code Job)
+    retriever?: import('../../../../core/codebase/CodebaseRetriever').CodebaseRetriever;  // ✅ For reference loading
+    vectorDB?: MemoryPort;  // ✅ Explicit vectorDB port (same as memory)
   };
+  
+  // ✅ NEW: Reference Requests (for system-design with reference repos)
+  // Registered in decompose, used by search_reference_code tool
+  referenceRequests?: Array<{project: string; branch?: string}>;
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // 🔥 DetectionReport (통합 환경 감지 결과)

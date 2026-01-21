@@ -389,13 +389,13 @@ Static analysis cannot validate behavioral correctness.
 - **{{this.project}}**{{#if this.branch}} ({{this.branch}}){{/if}}
 {{/each}}
 
-Use `search_reference_code` tool ONLY for projects listed above. Read-only access.
+Use `search_reference_code` tool to query these projects. See rules for constraints.
 
 ════════════════════════════════════════════════════════════════════════════════
 {{else}}
 ## 📚 REFERENCE PROJECTS
 
-NONE available. Do NOT use `search_reference_code` tool.
+NONE available.
 
 ════════════════════════════════════════════════════════════════════════════════
 {{/if}}

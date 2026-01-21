@@ -291,6 +291,18 @@ export const TOOL_SETS = {
   // Full set for design job (no run_command, no reference)
   design: ['read_file', 'edit_file', 'list_files', 'search_code', 'delete_file', 'mkdir'] as ToolName[],
   
+  // ✅ NEW: System Design job - includes reference project access for API contract generation
+  // Used when directive mentions reference repos (e.g., "참고: ant-pong-be 레포를 보고 API 설계해줘")
+  systemDesign: [
+    'read_file',
+    'edit_file',
+    'list_files',
+    'search_code',
+    'delete_file',
+    'mkdir',
+    'search_reference_code',  // ✅ Vector DB semantic search for reference projects
+  ] as ToolName[],
+  
   // UI Design job - includes image/asset tools for multimodal document generation
   uiDesign: [
     'read_file',

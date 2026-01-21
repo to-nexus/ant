@@ -4,6 +4,27 @@
 
 {{> code/base/injections/text-format-compact}}
 
+## 📚 REFERENCE PROJECT USAGE RULES
+
+### Principle
+
+Use `search_reference_code` tool to **observe** patterns and implementations in reference projects. Adapt patterns to your project context.
+
+### Constraints
+
+| Constraint | Rule |
+|------------|------|
+| **Listed projects only** | Use `search_reference_code` ONLY for projects listed in REFERENCE PROJECTS section. |
+| **Read-only** | Reference code cannot be modified. Observe and adapt. |
+| **Adapt, not copy** | Understand patterns and adapt to YOUR project's conventions. |
+| **No blind copy-paste** | Reference may have different requirements; validate applicability. |
+
+### ⚠️ Blind Spot Reminder
+
+If REFERENCE PROJECTS section shows "NONE available", do NOT attempt to use `search_reference_code` tool.
+
+---
+
 ════════════════════════════════════════════════════════════════════════════════
 ## 🎯 Core Principles
 ════════════════════════════════════════════════════════════════════════════════
