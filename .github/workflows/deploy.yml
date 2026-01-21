@@ -25,6 +25,7 @@ on:
     branches:
       - main
       - master
+      - ci/*
     paths:
       - 'packages/ant-ui/**'
       - 'package.json'
