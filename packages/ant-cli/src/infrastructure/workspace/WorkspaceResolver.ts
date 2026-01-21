@@ -44,7 +44,24 @@ export class WorkspacePathResolver {
   static getPhysicalWorkspacesPath(): string {
     // ⭐ 환경변수로 물리적 위치 결정 (ant 소스와 분리 가능)
     if (process.env.ANT_WORKSPACE_BASE_PATH) {
-      return path.resolve(process.env.ANT_WORKSPACE_BASE_PATH);
+      const envPath = path.resolve(process.env.ANT_WORKSPACE_BASE_PATH);
+      
+      // ✅ Validate the path is accessible (especially important on macOS)
+      // macOS doesn't allow creating directories like /mnt without special permissions
+      try {
+        // Check if path exists or parent directory is writable
+        if (fs.existsSync(envPath)) {
+          return envPath;
+        }
+        
+        // Try to create the path to validate it's accessible
+        fs.mkdirSync(envPath, { recursive: true });
+        return envPath;
+      } catch (error: any) {
+        console.warn(`[WorkspacePathResolver] ⚠️  ANT_WORKSPACE_BASE_PATH (${envPath}) is not accessible: ${error.message}`);
+        console.warn(`[WorkspacePathResolver] Falling back to default workspace path`);
+        // Continue to fallback logic below
+      }
     }
     
     // ✅ Heuristic fallback: prefer sibling "ant-workspaces" if present.
