@@ -673,4 +673,5 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 
 ---
 
-**ANT Works** - Transform your development workflow with AI 🚀
+
+**ANT Works** - Transform your development workflow with AI 🚀🚀
