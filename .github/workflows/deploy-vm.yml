@@ -39,7 +39,7 @@ jobs:
   # 변경 감지
   # ===========================================
   detect-changes:
-    runs-on: [ax-ant-prod]
+    runs-on: [ax-ant-dev]
     if: github.event_name == 'push'
     outputs:
       ant-cli-changed: ${{ steps.detect.outputs.ant-cli-changed }}
@@ -94,7 +94,7 @@ jobs:
   # ===========================================
   deploy-ant-cli:
     name: Deploy ant-cli (Production)
-    runs-on: [ax-ant-prod]
+    runs-on: [ax-ant-dev]
     needs: [detect-changes]
     if: |
       always() && (
@@ -343,7 +343,7 @@ jobs:
   # ===========================================
   notify:
     needs: [deploy-ant-cli, deploy-embedder]
-    runs-on: [ax-ant-prod]
+    runs-on: [ax-ant-dev]
     if: always()
     steps:
       - name: Set deployment status
