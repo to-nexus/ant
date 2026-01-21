@@ -141,6 +141,7 @@ jobs:
                 - /etc/localtime:/etc/localtime:ro
                 - /cross/workspaces:/data/workspaces:rw
                 - /cross/ide-homes:/data/ide-homes:rw
+                - /cross/ant/ant-cli/.env:/app/packages/ant-cli/.env:ro
               environment:
                 - NODE_ENV=production
                 - ANT_WORKSPACE_BASE_PATH=/data/workspaces
