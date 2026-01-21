@@ -199,6 +199,33 @@ DO NOT CREATE tasks for:
 
 ---
 
+## 📚 REFERENCE PROJECTS (Optional)
+
+### Principle
+
+If directive mentions an external codebase to reference for design → extract and register it.
+
+### Output Format
+
+Include `references` array when reference project is observed:
+
+```json
+{
+  "documentType": "...",
+  "targetFiles": [...],
+  "references": [
+    { "project": "<project-name>", "reason": "<why-needed>" }
+  ],
+  "tasks": [...]
+}
+```
+
+### Constraint
+
+Only include projects **explicitly mentioned** in directive. Do NOT infer or assume references.
+
+---
+
 ## ✅ VALIDATION CHECKLIST (GENERATE MODE)
 
 Before outputting, verify:
@@ -211,4 +238,5 @@ Before outputting, verify:
 - ✅ Description uses ABSTRACT terms (no LocalStorage, React Router, etc.)
 - ✅ Priority in 200-299 range
 - ✅ No forbidden tasks (deployment, ops, verification)
+- ✅ If reference project mentioned → `references` array included
 {{/if}}

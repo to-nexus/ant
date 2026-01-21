@@ -344,7 +344,19 @@ When PRD specifies external services or APIs, you MUST:
 
 {{directive}}
 
-**Rule**: If directive conflicts with PRD, PRD wins.
+**Priority**: PRD provides baseline requirements. Directive overrides specific PRD content when explicitly specified.
+{{/if}}
+
+{{#if referenceRequests}}
+════════════════════════════════════════════════════════════════════════════════
+## 📚 REFERENCE PROJECTS AVAILABLE
+════════════════════════════════════════════════════════════════════════════════
+
+{{#each referenceRequests}}
+- **{{this.project}}**{{#if this.branch}} (branch: {{this.branch}}){{/if}}
+{{/each}}
+
+Use `search_reference_code` tool to query these projects. See rules for constraints.
 {{/if}}
 
 {{#if designDoc}}

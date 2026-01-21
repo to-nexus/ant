@@ -51,16 +51,24 @@ export async function docGen(
   // ✅ Tool activation: Select appropriate tool set based on work type
   // - Explain mode: NO tools (just explanation, like Code Job)
   // - Normal mode: Tools enabled for file writing
+  // - System Design with references: Include search_reference_code tool
+  const hasReferences = state.referenceRequests && state.referenceRequests.length > 0;
   const tools = isExplainMode
     ? undefined
     : isUiDesign
       ? getToolsByNames(TOOL_SETS.uiDesign)
-      : getToolsByNames(TOOL_SETS.design);
+      : hasReferences
+        ? getToolsByNames(TOOL_SETS.systemDesign)  // ✅ Includes search_reference_code
+        : getToolsByNames(TOOL_SETS.design);
   
   if (isExplainMode) {
     console.log(`💡 [DocGen] Explain mode - tools disabled (explanation only)`);
   } else {
-    console.log(`📝 [DocGen] ${isUiDesign ? 'UI Design' : 'System Design'} mode - ${tools?.length || 0} tools available`);
+    const modeLabel = isUiDesign ? 'UI Design' : hasReferences ? 'System Design (with references)' : 'System Design';
+    console.log(`📝 [DocGen] ${modeLabel} mode - ${tools?.length || 0} tools available`);
+    if (hasReferences) {
+      console.log(`   📚 Reference projects: ${state.referenceRequests!.map(r => r.project).join(', ')}`);
+    }
   }
   
   // ✅ Workflow update

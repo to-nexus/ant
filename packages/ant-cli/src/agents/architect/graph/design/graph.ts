@@ -206,6 +206,9 @@ export function buildDesignGraph() {
       // UI document generation context
       uiReferences: null as any,
       uiAssetsList: null as any,
+      
+      // ✅ Reference Projects (for system-design with external repos)
+      referenceRequests: null as any,
     } as any,
   } as any);
 
