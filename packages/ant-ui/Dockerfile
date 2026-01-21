@@ -35,21 +35,26 @@ COPY packages/ant-ui ./packages/ant-ui
 ARG BUILD_ENV=prod
 
 # Determine which .env file to use
-# dev -> .env.development
-# stage, prod -> .env.production
-RUN if [ "${BUILD_ENV}" = "dev" ]; then \
-      ENV_FILE=".env.development"; \
+# dev -> .env.development (copy to .env.production for Vite build)
+# stage, prod -> .env.production (already in place, no copy needed)
+RUN echo "🔨 Building for environment: ${BUILD_ENV}" && \
+    if [ "${BUILD_ENV}" = "dev" ]; then \
+      echo "📄 Using env file: .env.development" && \
+      if [ -f "./packages/ant-ui/.env.development" ]; then \
+        echo "Environment variables:" && \
+        cat ./packages/ant-ui/.env.development && \
+        cp ./packages/ant-ui/.env.development ./packages/ant-ui/.env.production; \
+      else \
+        echo "⚠️  Warning: .env.development not found, using Vite defaults"; \
+      fi; \
     else \
-      ENV_FILE=".env.production"; \
-    fi && \
-    echo "🔨 Building for environment: ${BUILD_ENV}" && \
-    echo "📄 Using env file: ${ENV_FILE}" && \
-    if [ -f "./packages/ant-ui/${ENV_FILE}" ]; then \
-      echo "Environment variables:" && \
-      cat ./packages/ant-ui/${ENV_FILE} && \
-      cp ./packages/ant-ui/${ENV_FILE} ./packages/ant-ui/.env.production; \
-    else \
-      echo "⚠️  Warning: ${ENV_FILE} not found, using Vite defaults"; \
+      echo "📄 Using env file: .env.production" && \
+      if [ -f "./packages/ant-ui/.env.production" ]; then \
+        echo "Environment variables:" && \
+        cat ./packages/ant-ui/.env.production; \
+      else \
+        echo "⚠️  Warning: .env.production not found, using Vite defaults"; \
+      fi; \
     fi
 
 # Build ant-ui (Vite will load .env.production automatically)
