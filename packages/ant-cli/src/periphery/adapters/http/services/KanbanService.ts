@@ -93,6 +93,52 @@ export class KanbanService {
   }
   
   /**
+   * Invalidate session cache for a specific path
+   * Call this when session data is externally modified (e.g., cleared)
+   */
+  invalidateSessionCache(sessionPath: string): void {
+    if (this.lastGoodSessionByPath.has(sessionPath)) {
+      this.lastGoodSessionByPath.delete(sessionPath);
+      console.log(`[KanbanService] 🗑️ Invalidated cache for: ${sessionPath}`);
+    }
+  }
+  
+  /**
+   * Invalidate session cache by project/feature/jobType
+   */
+  invalidateSessionCacheByFeature(
+    userContext: UserContext | undefined,
+    projectId: string,
+    featureName: string,
+    jobType: 'design' | 'code' | 'learn'
+  ): void {
+    if (!this.workspaceResolver || !userContext) {
+      console.warn('[KanbanService] Cannot invalidate cache: missing workspaceResolver or userContext');
+      return;
+    }
+    
+    const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+    const sessionPath = `${featurePath}/sessions/${jobType}.json`;
+    this.invalidateSessionCache(sessionPath);
+  }
+  
+  /**
+   * Clear job-related memory state for a specific jobId
+   * Call this when a job is explicitly cleared by user
+   */
+  clearJobMemory(jobId: string): void {
+    if (this.taskQueueSnapshots.has(jobId)) {
+      this.taskQueueSnapshots.delete(jobId);
+      console.log(`[KanbanService] 🗑️ Cleared taskQueueSnapshot for job: ${jobId}`);
+    }
+    
+    if (this.taskToProject.has(jobId)) {
+      this.taskToProject.delete(jobId);
+      console.log(`[KanbanService] 🗑️ Cleared taskToProject mapping for job: ${jobId}`);
+    }
+  }
+  
+  /**
    * Update task queue snapshot (called by orchestrator during execution)
    * This provides real-time queue data without parsing logs
    * Note: Broadcasting is now handled by SSEBroadcastService through ExpressServerAdapter
