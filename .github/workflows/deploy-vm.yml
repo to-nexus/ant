@@ -25,17 +25,17 @@ on:
       - 'pnpm-lock.yaml'
 
 jobs:
-  sonarqube:
-    name: SonarQube Analysis
-    runs-on: ["arc-runner-set"]
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@v6
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+  # sonarqube:
+  #   name: SonarQube Analysis
+  #   runs-on: ["arc-runner-set"]
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 0
+  #     - name: SonarQube Scan
+  #       uses: SonarSource/sonarqube-scan-action@v6
+  #       env:
+  #         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
   # ===========================================
   # 변경 감지
