@@ -94,14 +94,14 @@ jobs:
           fi
 
   # ===========================================
-  # Production 자동 배포 - ant-ui 변경 시
+  # 자동 배포 - ant-ui 변경 시
   # ===========================================
-  auto-ant-ui-prod-deploy:
+  auto-ant-ui-deploy:
     needs: detect-changes
     if: needs.detect-changes.outputs.ant-ui-changed == 'true' && needs.detect-changes.outputs.root-package-changed != 'true'
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
     with:
-      environment: prod
+      environment: dev
       env: prod
       git_sha: ${{ github.sha }}
       service_name: ant-ui
@@ -109,14 +109,14 @@ jobs:
     secrets: inherit
 
   # ===========================================
-  # Production 자동 배포 - root package.json 변경 시
+  # 자동 배포 - root package.json 변경 시
   # ===========================================
-  auto-all-ant-ui-prod-deploy:
+  auto-all-ant-ui-deploy:
     needs: detect-changes
     if: needs.detect-changes.outputs.root-package-changed == 'true'
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
     with:
-      environment: prod
+      environment: dev
       env: prod
       git_sha: ${{ github.sha }}
       service_name: ant-ui
@@ -124,13 +124,13 @@ jobs:
     secrets: inherit
 
   # ===========================================
-  # 수동 배포 (Production)
+  # 수동 배포
   # ===========================================
   manual-ant-ui-deploy:
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.service == 'ant-ui'
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
     with:
-      environment: prod
+      environment: dev
       env: prod
       git_sha: ${{ github.sha }}
       service_name: ant-ui
@@ -140,13 +140,13 @@ jobs:
     secrets: inherit
 
   # ===========================================
-  # repository_dispatch를 통한 배포 (Production)
+  # repository_dispatch를 통한 배포
   # ===========================================
   release-deploy:
     if: github.event_name == 'repository_dispatch'
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
     with:
-      environment: prod
+      environment: dev
       env: prod
       git_sha: ${{ github.sha }}
       service_name: ant-ui
