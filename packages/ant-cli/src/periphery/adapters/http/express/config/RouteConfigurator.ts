@@ -151,6 +151,7 @@ export class RouteConfigurator {
     const apiRoutes = createApiRoutes({
       projectService: this.deps.projectService,
       chatService: this.deps.chatService,
+      kanbanService: this.deps.kanbanService,  // ✅ For session cache invalidation on job clear
       choiceService,  // ✅ For triage choice handling
       githubAuthService: this.deps.githubAuthService,
       workspaceRoot: this.config.workspacesPath,

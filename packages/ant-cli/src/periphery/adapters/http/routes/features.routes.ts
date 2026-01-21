@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { ProjectService, ChatService } from '../services';
+import { ProjectService, ChatService, KanbanService } from '../services';
 import { extractUserContext } from './helpers/userContext';
 
 /**
@@ -8,6 +8,7 @@ import { extractUserContext } from './helpers/userContext';
 export function createFeaturesRoutes(deps: {
   projectService: ProjectService;
   chatService?: ChatService;
+  kanbanService?: KanbanService;
 }): Router {
   const router = Router();
   
@@ -167,6 +168,7 @@ export function createFeaturesRoutes(deps: {
         ? 50 
         : envRecursionLimit;
       
+      // ✅ Use null instead of undefined - JSON.stringify omits undefined values!
       const clearedSession = {
         ...sessionData,
         state: {
@@ -174,11 +176,11 @@ export function createFeaturesRoutes(deps: {
           completedTasks: [],
           completedTasksDetails: [],
           currentTask: null,
-          jobId: undefined,
-          jobTiming: undefined,
+          jobId: null,  // ✅ null is preserved in JSON, undefined is omitted
+          jobTiming: null,
           recursionCount: 0,
           recursionLimit: sessionData.state?.recursionLimit || defaultRecursionLimit,
-          interruption: undefined
+          interruption: null
         }
       };
       
@@ -192,6 +194,18 @@ export function createFeaturesRoutes(deps: {
       await fs.promises.writeFile(sessionPath, JSON.stringify(clearedSession, null, 2), 'utf-8');
       
       console.log(`[Session] ✅ Cleared session data: ${projectId}/${featureName}/${jobType}.json`);
+      
+      // ✅ CRITICAL: Invalidate KanbanService cache to prevent stale data on SSE reconnect
+      if (deps.kanbanService) {
+        deps.kanbanService.invalidateSessionCache(sessionPath);
+        
+        // ✅ Also clear job memory state if jobId existed
+        const previousJobId = sessionData?.state?.jobId;
+        if (previousJobId) {
+          deps.kanbanService.clearJobMemory(previousJobId);
+          console.log(`[Session] 🗑️ Cleared memory state for previous job: ${previousJobId}`);
+        }
+      }
       
       // ✅ CRITICAL: Also clear chat.json (chat session should reset when job is cleared)
       if (deps.chatService) {

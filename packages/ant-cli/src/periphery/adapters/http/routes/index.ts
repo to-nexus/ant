@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { ProjectService, ChatService } from '../services';
+import { ProjectService, ChatService, KanbanService } from '../services';
 import { GitHubAuthService } from '../../auth/GitHubAuthService';
 import { ChoiceService } from '../../../../infrastructure/choice';
 import { createHealthRoutes } from './health.routes';
@@ -28,6 +28,7 @@ export { createCloudIDERoutes } from './cloud-ide.routes';  // Cloud IDE (contai
 export interface RoutesDeps {
   projectService: ProjectService;
   chatService?: ChatService;
+  kanbanService?: KanbanService;  // ✅ For session cache invalidation
   choiceService?: ChoiceService;  // ✅ For Triage choice handling
   githubAuthService?: GitHubAuthService;
   workspaceRoot?: string;  // For Figma OAuth
@@ -52,7 +53,8 @@ export function createApiRoutes(deps: RoutesDeps): Router {
   // Feature CRUD
   router.use(createFeaturesRoutes({
     projectService: deps.projectService,
-    chatService: deps.chatService
+    chatService: deps.chatService,
+    kanbanService: deps.kanbanService
   }));
   
   // File operations
