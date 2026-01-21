@@ -54,7 +54,7 @@ jobs:
   # 변경 감지 (Production)
   # ===========================================
   detect-changes:
-    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name == 'push'
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/heads/ci/')) && github.event_name == 'push'
     runs-on: ["arc-runner-set"]
     outputs:
       ant-ui-changed: ${{ steps.detect.outputs.ant-ui-changed }}
