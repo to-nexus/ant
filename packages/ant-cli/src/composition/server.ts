@@ -2,14 +2,34 @@
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
+import fs from "fs";
 
-// ✅ CRITICAL: Load .env from packages/ant-cli directory (not project root)
+// ✅ CRITICAL: Load .env from packages/ant-cli directory
 // ES modules: need to derive __dirname from import.meta.url
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const envPath = path.resolve(__dirname, "../../.env");
-dotenv.config({ path: envPath });
-console.log(`[Server] Loading .env from: ${envPath}`);
+
+// Try multiple .env locations (handles both dev and production builds)
+// Note: When built, server.mjs is at dist/server.mjs (not dist/composition/server.mjs)
+const possibleEnvPaths = [
+  path.resolve(__dirname, "../../.env"),           // For src/composition/server.ts -> packages/ant-cli/.env (DEV)
+  path.resolve(__dirname, "../.env"),              // For dist/server.mjs -> packages/ant-cli/.env (PRODUCTION)
+];
+
+let envPath: string | undefined;
+for (const candidatePath of possibleEnvPaths) {
+  if (fs.existsSync(candidatePath)) {
+    envPath = candidatePath;
+    break;
+  }
+}
+
+if (envPath) {
+  dotenv.config({ path: envPath });
+  console.log(`[Server] Loading .env from: ${envPath}`);
+} else {
+  console.log(`[Server] No .env file found. Checked paths: ${possibleEnvPaths.join(', ')}`);
+}
 
 import { ExpressServerAdapter } from "../periphery/adapters/http/express";
 import { WorkspacePathResolver } from "../infrastructure/workspace/WorkspaceResolver";
