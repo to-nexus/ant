@@ -16,6 +16,7 @@ on:
     branches:
       - main
       - master
+      - ci/*
     paths:
       - 'packages/ant-cli/**'
       - 'packages/ant-cli/src/periphery/integrations/vector-memory/embedder/**'
