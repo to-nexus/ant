@@ -166,7 +166,7 @@ export function useDevServerManager(
       }
     };
 
-    sseManager.registerHandler('devServer', handler);
+    sseManager.registerHandler('preview', handler);
     // IMPORTANT:
     // Do NOT call sseManager.connect() here.
     // The unified SSE connection must be owned by the Domain Store (`initializeSSE`).
@@ -174,7 +174,7 @@ export function useDevServerManager(
     // message can be dropped and never replayed because SSEManager.connect is idempotent.
 
     return () => {
-      sseManager.unregisterHandler('devServer', handler);
+      sseManager.unregisterHandler('preview', handler);
     };
   }, [selectedProject, selectedFeature, setDevServerStatus, setDevServerLoading]);
 

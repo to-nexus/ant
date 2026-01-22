@@ -1,19 +1,17 @@
 /**
- * Dev Server Types
+ * Preview Server Types
  * 
- * ✅ REFACTORED: Unified types aligned with Backend API contract
- * Single source of truth for dev server state management
+ * Unified types aligned with Backend API contract
+ * Single source of truth for preview server state management
  */
 
-export type DevServerState = 'idle' | 'installing' | 'starting' | 'running' | 'error';
+export type PreviewState = 'idle' | 'installing' | 'starting' | 'running' | 'error';
 
 /**
- * Dev Server setup failure reasoning codes
+ * Preview server setup failure reasoning codes
  * 
- * ✅ ALIGNED with Backend: packages/ant-cli/.../DevServerService/types.ts
+ * ALIGNED with Backend: packages/ant-cli/.../DevServerService/types.ts
  * Categorizes different types of setup failures for appropriate handling
- * 
- * @see DevServerService/types.ts SetupFailureReasoning
  */
 export type SetupFailureReasoning = 
   | 'basename-missing'      // Frontend: Missing basename configuration for proxy
@@ -24,43 +22,40 @@ export type SetupFailureReasoning =
   | 'unknown';              // Unclassified error
 
 /**
- * Dev Server Status
+ * Preview Server Status
  * Represents current state and configuration
  */
-export interface DevServerStatus {
+export interface PreviewStatus {
   running: boolean;
   ready?: boolean;  // Health check result
   port?: number | null;
   url?: string | null;
-  logs?: DevServerLog[];
-  setupReasoning?: SetupFailureReasoning;  // ✅ Categorized failure code
-  setupReason?: string;                     // ✅ Human-readable message
-  issues?: Array<{ reasoning: string; severity: 'fatal' | 'warning'; reason: string; suggestedFix?: string }>;  // ✅ List of issues detected
+  logs?: PreviewLog[];
+  setupReasoning?: SetupFailureReasoning;
+  setupReason?: string;
+  issues?: Array<{ reasoning: string; severity: 'fatal' | 'warning'; reason: string; suggestedFix?: string }>;
 }
 
-export interface DevServerLog {
+export interface PreviewLog {
   timestamp: string;
   type: 'stdout' | 'stderr';
   message: string;
 }
 
-export interface DevServerError {
+export interface PreviewError {
   message: string;
   code?: string;
   details?: string;
 }
 
 /**
- * Dev server setup validation result
- * 
- * ✅ ALIGNED with Backend ValidationResult
- * @see DevServerService/types.ts ValidationResult
+ * Preview server setup validation result
  */
-export interface DevServerValidation {
+export interface PreviewValidation {
   valid: boolean;
   framework?: string;
-  reasoning?: SetupFailureReasoning;  // ✅ NEW: Added to match backend
-  reason?: string;                     // ✅ DEPRECATED: Use reasoning instead
+  reasoning?: SetupFailureReasoning;
+  reason?: string;
   missingFiles?: string[];
   suggestedFix?: string;
 }
@@ -77,7 +72,7 @@ export interface PackageProgress {
 /**
  * Overall progress for multi-package setup
  */
-export interface DevServerProgress {
+export interface PreviewProgress {
   packages: PackageProgress[];
   currentPhase: 'installing' | 'starting' | 'running';
   completedCount: number;
@@ -94,16 +89,16 @@ export interface DismissedMessage {
   dismissedAt: number;
 }
 
-export interface UseDevServerManagerResult {
+export interface UsePreviewManagerResult {
   // State
-  state: DevServerState;
-  status: DevServerStatus | undefined;
+  state: PreviewState;
+  status: PreviewStatus | undefined;
   ready: boolean;  // Health check result
-  setupReasoning: SetupFailureReasoning | undefined;  // Categorized failure code
-  setupReason: string | undefined;  // Human-readable message
-  suggestedFix: string | undefined;  // Suggested fix prompt
-  error: DevServerError | undefined;
-  progress: DevServerProgress | undefined;  // Multi-package progress
+  setupReasoning: SetupFailureReasoning | undefined;
+  setupReason: string | undefined;
+  suggestedFix: string | undefined;
+  error: PreviewError | undefined;
+  progress: PreviewProgress | undefined;
   
   // Actions
   startServer: () => Promise<void>;
@@ -112,7 +107,26 @@ export interface UseDevServerManagerResult {
   // UI Control
   isLoading: boolean;
   
-  // ✅ NEW: Dismiss tracking
+  // Dismiss tracking
   isDismissed: boolean;
   dismissMessage: () => void;
 }
+
+// ==========================================
+// Backward compatibility aliases (deprecated)
+// ==========================================
+
+/** @deprecated Use PreviewState instead */
+export type DevServerState = PreviewState;
+/** @deprecated Use PreviewStatus instead */
+export type DevServerStatus = PreviewStatus;
+/** @deprecated Use PreviewLog instead */
+export type DevServerLog = PreviewLog;
+/** @deprecated Use PreviewError instead */
+export type DevServerError = PreviewError;
+/** @deprecated Use PreviewValidation instead */
+export type DevServerValidation = PreviewValidation;
+/** @deprecated Use PreviewProgress instead */
+export type DevServerProgress = PreviewProgress;
+/** @deprecated Use UsePreviewManagerResult instead */
+export type UseDevServerManagerResult = UsePreviewManagerResult;

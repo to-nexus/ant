@@ -215,8 +215,8 @@ export class ServerLifecycleManager {
     
     // Cleanup DevServerService
     try {
-      if (this.deps.devServerService && typeof (this.deps.devServerService as any).cleanup === 'function') {
-        await (this.deps.devServerService as any).cleanup();
+      if (this.deps.previewService && typeof (this.deps.previewService as any).cleanup === 'function') {
+        await (this.deps.previewService as any).cleanup();
         logger.debug('DevServerService cleaned', { component: 'ServerLifecycle' });
       }
     } catch (error) {

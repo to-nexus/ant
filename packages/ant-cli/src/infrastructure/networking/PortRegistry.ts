@@ -34,9 +34,9 @@ export class RedisPortRegistry implements PortRegistryPort {
   }
   
   /**
-   * Register dev server port
+   * Register preview port
    */
-  async registerDevServer(
+  async registerPreview(
     tenantId: string,
     userId: string,
     projectId: string,
@@ -54,8 +54,8 @@ export class RedisPortRegistry implements PortRegistryPort {
       lastAccessedAt: new Date()
     };
     
-    await this.redis.hset('dev-servers', key, JSON.stringify(mapping));
-    console.log(`[RedisPortRegistry] Registered dev server: ${key} → ${port}`);
+    await this.redis.hset('previews', key, JSON.stringify(mapping));
+    console.log(`[RedisPortRegistry] Registered preview: ${key} → ${port}`);
   }
   
   /**
@@ -84,16 +84,16 @@ export class RedisPortRegistry implements PortRegistryPort {
   }
   
   /**
-   * Get dev server port
+   * Get preview port
    */
-  async getDevServerPort(
+  async getPreviewPort(
     tenantId: string,
     userId: string,
     projectId: string,
     feature: string
   ): Promise<number | null> {
     const key = this.createKey(tenantId, userId, projectId, feature);
-    const data = await this.redis.hget('dev-servers', key);
+    const data = await this.redis.hget('previews', key);
     
     if (!data) {
       return null;
@@ -103,7 +103,7 @@ export class RedisPortRegistry implements PortRegistryPort {
     
     // Update last access time
     mapping.lastAccessedAt = new Date();
-    await this.redis.hset('dev-servers', key, JSON.stringify(mapping));
+    await this.redis.hset('previews', key, JSON.stringify(mapping));
     
     return mapping.port;
   }
@@ -134,17 +134,17 @@ export class RedisPortRegistry implements PortRegistryPort {
   }
   
   /**
-   * Unregister dev server
+   * Unregister preview
    */
-  async unregisterDevServer(
+  async unregisterPreview(
     tenantId: string,
     userId: string,
     projectId: string,
     feature: string
   ): Promise<void> {
     const key = this.createKey(tenantId, userId, projectId, feature);
-    await this.redis.hdel('dev-servers', key);
-    console.log(`[RedisPortRegistry] Unregistered dev server: ${key}`);
+    await this.redis.hdel('previews', key);
+    console.log(`[RedisPortRegistry] Unregistered preview: ${key}`);
   }
   
   /**
@@ -162,10 +162,10 @@ export class RedisPortRegistry implements PortRegistryPort {
   }
   
   /**
-   * List all dev servers
+   * List all previews
    */
-  async listDevServers(): Promise<PortMapping[]> {
-    const entries = await this.redis.hgetall('dev-servers');
+  async listPreviews(): Promise<PortMapping[]> {
+    const entries = await this.redis.hgetall('previews');
     const result: PortMapping[] = [];
     
     for (const [, data] of Object.entries(entries)) {
@@ -197,10 +197,10 @@ export class RedisPortRegistry implements PortRegistryPort {
     userId: string,
     projectId: string,
     feature: string,
-    type: 'dev-server' | 'ide'
+    type: 'preview' | 'ide'
   ): Promise<void> {
     const key = this.createKey(tenantId, userId, projectId, feature);
-    const hashKey = type === 'dev-server' ? 'dev-servers' : 'ides';
+    const hashKey = type === 'preview' ? 'previews' : 'ides';
     const data = await this.redis.hget(hashKey, key);
     
     if (data) {
@@ -218,5 +218,3 @@ export class RedisPortRegistry implements PortRegistryPort {
     console.log('[RedisPortRegistry] Closed Redis connection');
   }
 }
-
-

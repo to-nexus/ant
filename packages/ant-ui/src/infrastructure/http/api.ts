@@ -247,7 +247,7 @@ export interface LogEntry {
   message: string;
 }
 
-export interface DevServerStatus {
+export interface PreviewStatus {
   running: boolean;
   ready?: boolean;  // Health check result
   port?: number | null;
@@ -260,6 +260,9 @@ export interface DevServerStatus {
   packages?: Array<{ name: string; type: 'frontend' | 'backend' | 'other'; port: number }>;
   issues?: Array<{ reasoning: string; severity: 'fatal' | 'warning'; reason: string; suggestedFix?: string }>;
 }
+
+/** @deprecated Use PreviewStatus instead */
+export type DevServerStatus = PreviewStatus;
 
 // ========== Models ==========
 
@@ -1105,15 +1108,15 @@ export async function updateProjectConfig(projectId: string, config: ProjectConf
   }
 }
 
-// Dev server management
-export async function startDevServer(
+// Preview server management
+export async function startPreview(
   projectId: string, 
   feature?: string,
   port?: number
 ): Promise<{ success: boolean; message: string; script?: string; status?: any }> {
   try {
     const response = await authFetch(
-      `${API_BASE()}/projects/${encodeURIComponent(projectId)}/dev/start`,
+      `${API_BASE()}/projects/${encodeURIComponent(projectId)}/preview/start`,
       {
         method: 'POST',
         headers: {
@@ -1128,7 +1131,7 @@ export async function startDevServer(
     
     if (!response.ok) {
       const errorData = await response.json();
-      const err: any = new Error(errorData.error || `Failed to start dev server: ${response.statusText}`);
+      const err: any = new Error(errorData.error || `Failed to start preview: ${response.statusText}`);
       // Attach validation info to error for frontend to display Fix button
       err.setupReasoning = errorData.setupReasoning;  // Categorized failure code
       err.setupReason = errorData.setupReason;        // Human-readable message
@@ -1140,15 +1143,15 @@ export async function startDevServer(
     
     return await response.json();
   } catch (error) {
-    console.error('Error starting dev server:', error);
+    console.error('Error starting preview:', error);
     throw error;
   }
 }
 
-export async function stopDevServer(projectId: string, feature?: string): Promise<{ success: boolean; message: string }> {
+export async function stopPreview(projectId: string, feature?: string): Promise<{ success: boolean; message: string }> {
   try {
     const response = await authFetch(
-      `${API_BASE()}/projects/${encodeURIComponent(projectId)}/dev/stop`,
+      `${API_BASE()}/projects/${encodeURIComponent(projectId)}/preview/stop`,
       {
         method: 'POST',
         headers: {
@@ -1160,33 +1163,41 @@ export async function stopDevServer(projectId: string, feature?: string): Promis
     
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error || `Failed to stop dev server: ${response.statusText}`);
+      throw new Error(error.error || `Failed to stop preview: ${response.statusText}`);
     }
     
     return await response.json();
   } catch (error) {
-    console.error('Error stopping dev server:', error);
+    console.error('Error stopping preview:', error);
     throw error;
   }
 }
 
-export async function getDevServerStatus(projectId: string, feature?: string): Promise<DevServerStatus> {
+export async function getPreviewStatus(projectId: string, feature?: string): Promise<PreviewStatus> {
   try {
     const featureParam = feature ? `?feature=${encodeURIComponent(feature)}` : '';
     const response = await authFetch(
-      `${API_BASE()}/projects/${encodeURIComponent(projectId)}/dev/status${featureParam}`
+      `${API_BASE()}/projects/${encodeURIComponent(projectId)}/preview/status${featureParam}`
     );
     
     if (!response.ok) {
-      throw new Error(`Failed to get dev server status: ${response.statusText}`);
+      throw new Error(`Failed to get preview status: ${response.statusText}`);
     }
     
     return await response.json();
   } catch (error) {
-    console.error('Error getting dev server status:', error);
+    console.error('Error getting preview status:', error);
     throw error;
   }
 }
+
+// Backward compatibility aliases (deprecated)
+/** @deprecated Use startPreview instead */
+export const startDevServer = startPreview;
+/** @deprecated Use stopPreview instead */
+export const stopDevServer = stopPreview;
+/** @deprecated Use getPreviewStatus instead */
+export const getDevServerStatus = getPreviewStatus;
 
 /**
  * Reset job state (remove jobId and jobTiming from session)

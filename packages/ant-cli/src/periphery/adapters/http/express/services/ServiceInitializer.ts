@@ -1,7 +1,7 @@
 import { 
   KanbanService,
   SessionService, 
-  DevServerService, 
+  PreviewService, 
   ProjectService,
   GraphMetadataService,
   WorkflowStateService,
@@ -86,12 +86,12 @@ export function initializeServices(
   );
   const kanbanService = new KanbanService(config.workspacesPath, workspaceResolver);
   
-  const devServerService = new DevServerService(
+  const previewService = new PreviewService(
     portManager,
     portRegistry,
     {
       onStatusChange: (projectId: string) => {
-        // DevServer status broadcasting removed
+        // Preview status broadcasting removed
       }
     },
     sseService
@@ -125,7 +125,7 @@ export function initializeServices(
     kanbanService,
     sessionService,
     gitWatcherService,
-    devServerService,
+    previewService,
     projectService,
     chatService,
     graphMetadataService,

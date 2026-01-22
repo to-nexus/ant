@@ -5,7 +5,7 @@ import type { UserContext } from '../../../../core/types/user';
 /**
  * Message types for unified SSE stream
  */
-export type SSEMessageType = 'kanban' | 'chat' | 'fileTree' | 'workflow' | 'devServer' | 'gitChange';  // ✅ Add gitChange
+export type SSEMessageType = 'kanban' | 'chat' | 'fileTree' | 'workflow' | 'preview' | 'gitChange';
 
 export interface SSEMessage {
   type: SSEMessageType;

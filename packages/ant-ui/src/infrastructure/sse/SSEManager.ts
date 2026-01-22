@@ -27,8 +27,8 @@
 
 import { getApiBase } from '../http/api';
 
-// ✅ NOTE: backend unified SSE stream also emits 'devServer' events
-export type SSEMessageType = 'kanban' | 'chat' | 'fileTree' | 'workflow' | 'devServer' | 'gitChange';
+// ✅ NOTE: backend unified SSE stream also emits 'preview' events
+export type SSEMessageType = 'kanban' | 'chat' | 'fileTree' | 'workflow' | 'preview' | 'gitChange';
 export type SSEMessageHandler = (data: any) => void;
 
 // ✅ 핸들러 식별을 위한 고유 ID (중복 등록 방지 및 정확한 해제)

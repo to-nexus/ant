@@ -1,7 +1,7 @@
 import { Express, Request, Response, NextFunction } from 'express';
 import express from 'express';
 import cors from 'cors';
-import { createDevServerProxyMiddleware } from '../../middleware/devServerProxy';
+import { createPreviewProxyMiddleware } from '../../middleware/previewProxy';
 import { createIDEProxyMiddleware } from '../../middleware/ideProxy';
 import { logger } from '../../../../../utils/logger';
 import { ServerConfig, ServerDependencies } from '../types';
@@ -49,17 +49,17 @@ export class ServerConfigurator {
   }
 
   /**
-   * Setup proxy middleware for dev servers and IDE containers
+   * Setup proxy middleware for preview servers and IDE containers
    * IMPORTANT: Must be registered BEFORE body parsers
    */
   private setupProxyMiddleware(app: Express): void {
-    // Dev Server Proxy (handles /dev/:serverKey requests)
-    app.use(createDevServerProxyMiddleware({
+    // Preview Proxy (handles /preview/:serverKey requests)
+    app.use(createPreviewProxyMiddleware({
       portRegistry: this.deps.portRegistry,
-      pathPrefix: '/dev',
+      pathPrefix: '/preview',
       getBackendPort: ({ tenantId, userId, projectId, feature }) => {
         try {
-          return this.deps.devServerService.getDevServerStatus(tenantId, userId, projectId, feature).backendPort;
+          return this.deps.previewService.getDevServerStatus(tenantId, userId, projectId, feature).backendPort;
         } catch {
           return undefined;
         }
@@ -115,8 +115,8 @@ export class ServerConfigurator {
         return next();
       }
 
-      // Dev server and IDE proxy requests
-      if (req.path.startsWith('/dev/') || req.path.startsWith('/ide/')) {
+      // Preview and IDE proxy requests
+      if (req.path.startsWith('/preview/') || req.path.startsWith('/ide/')) {
         return next();
       }
 

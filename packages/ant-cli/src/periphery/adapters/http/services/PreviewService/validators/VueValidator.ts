@@ -42,7 +42,7 @@ export class VueValidator {
         reasoning: 'basename-missing',
         reason: 'Missing basename configuration for dev server proxy',
         missingFiles: ['src/main.ts or src/router/index.ts'],
-        suggestedFix: `This dev server runs in Ant platform's proxy environment (/dev/:serverKey/).
+        suggestedFix: `This preview server runs in Ant platform's proxy environment (/preview/:serverKey/).
 
 Please add basename configuration for Vue Router to recognize the proxy path.`.trim()
       };
