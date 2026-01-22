@@ -200,13 +200,6 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
           break;
           
         case 'content_update':
-          console.log('[Store] 💬 content_update:', {
-            messageId: event.messageId,
-            contentIndex: event.contentIndex,
-            oldType: get().chatMessages.find((m: ChatMessage) => m.id === event.messageId)?.contents[event.contentIndex]?.type,
-            newType: event.content.type
-          });
-          
           const message = get().chatMessages.find((m: ChatMessage) => m.id === event.messageId);
           if (message) {
             const updatedContents = [...message.contents];

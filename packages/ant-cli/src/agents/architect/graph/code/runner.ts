@@ -333,5 +333,6 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
     reportFile: reportMessage,
     filesChanged: filesGenerated,
     interruption: isRecursionLimit ? state.interruption : undefined,
+    triageResult: state.triageResult,  // ✅ Pass triage result for ask/redirect/blocked handling
   };
 }
