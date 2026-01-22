@@ -242,6 +242,49 @@ export async function architectAgent(
       
       
       const d = await runDesignGraph(dInitial);
+      
+      // ✅ Return appropriate message based on triage result
+      const triageResult = d.triageResult;
+      
+      if (triageResult) {
+        // Ask intent: question was answered
+        if (triageResult.intent === 'ask') {
+          return {
+            success: true,
+            job: 'design',
+            message: triageResult.displayMessage || 'Question answered.'
+          };
+        }
+        
+        // Redirect: suggested different job
+        if (triageResult.workStatus === 'redirect') {
+          return {
+            success: true,
+            job: 'design',
+            message: triageResult.displayMessage || `Suggested action: ${triageResult.suggestedJob || 'different job'}`
+          };
+        }
+        
+        // Blocked: prerequisites not met
+        if (triageResult.workStatus === 'blocked') {
+          return {
+            success: false,
+            job: 'design',
+            message: triageResult.displayMessage || 'Prerequisites not met for this operation.'
+          };
+        }
+      }
+      
+      // ✅ Check for design error (e.g., modification without documents)
+      if (d.designError) {
+        return {
+          success: false,
+          job: 'design',
+          message: d.designError.message || 'Design operation failed.'
+        };
+      }
+      
+      // ✅ Normal completion: design documents created
       return {
         success: true,
         job: 'design',
@@ -361,6 +404,38 @@ export async function architectAgent(
           currentAgent: 'architect'  // ✅ For triage system
         };
         const result = await runCodeGraph(initial);
+        
+        // ✅ Check triage result first (ask/redirect/blocked handling)
+        const codeTriageResult = result.triageResult;
+        
+        if (codeTriageResult) {
+          // Ask intent: question was answered
+          if (codeTriageResult.intent === 'ask') {
+            return {
+              success: true,
+              job: 'code',
+              message: codeTriageResult.displayMessage || 'Question answered.'
+            };
+          }
+          
+          // Redirect: suggested different job
+          if (codeTriageResult.workStatus === 'redirect') {
+            return {
+              success: true,
+              job: 'code',
+              message: codeTriageResult.displayMessage || `Suggested action: ${codeTriageResult.suggestedJob || 'different job'}`
+            };
+          }
+          
+          // Blocked: prerequisites not met
+          if (codeTriageResult.workStatus === 'blocked') {
+            return {
+              success: false,
+              job: 'code',
+              message: codeTriageResult.displayMessage || 'Prerequisites not met for this operation.'
+            };
+          }
+        }
         
         // ✅ Determine status based on execution result (using unified interruption)
         const hasInterruption = !!result.interruption;
