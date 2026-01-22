@@ -81,7 +81,7 @@ COPY --from=builder /app/packages/ant-cli/src ./packages/ant-cli/src
 COPY --from=builder /app/packages/ant-cli/tsconfig.json ./packages/ant-cli/tsconfig.json
 
 # Create workspace directory
-RUN mkdir -p /data/workspaces && chown -R ant:ant /data/workspaces
+RUN mkdir -p /cross/workspaces && chown -R ant:ant /cross/workspaces
 
 # Set ownership
 RUN chown -R ant:ant /app
