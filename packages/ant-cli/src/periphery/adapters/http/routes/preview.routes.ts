@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { LogEntry } from '../../../../core/ports/http';
-import { DevServerService } from '../services/DevServerService';
+import { PreviewService } from '../services/PreviewService';
 import { ProjectService } from '../services/ProjectService';
 import { extractUserContext } from './helpers/userContext';
 import { WorkspaceResolver } from '../../../../infrastructure/workspace/WorkspaceResolver';
@@ -42,60 +42,52 @@ async function findAvailablePort(startPort: number = 5173): Promise<number> {
 }
 
 /**
- * Dev server routes
- * Handles development server management (start, stop, status, logs)
+ * Preview routes
+ * Handles preview server management (start, stop, status, logs)
  */
-export function createDevServerRoutes(deps: {
+export function createPreviewRoutes(deps: {
   projectService: ProjectService;
-  devServerService: DevServerService;
-  workspaceResolver: WorkspaceResolver;  // ✅ Add WorkspaceResolver for Cloud mode
+  previewService: PreviewService;
+  workspaceResolver: WorkspaceResolver;
 }): Router {
   const router = Router();
   
-  // Start dev server for a project
-  router.post('/projects/:id/dev/start', async (req: Request, res: Response) => {
+  // Start preview for a project
+  router.post('/projects/:id/preview/start', async (req: Request, res: Response) => {
     try {
       const projectId = req.params.id;
       const userContext = extractUserContext(req);
       const config = await deps.projectService.getProjectConfig(projectId, userContext);
       
-      // ✅ Get port from request body (optional)
       const port = req.body?.port;
-      // ✅ Get feature from request body (default: 'main')
       const feature = req.body?.feature || 'main';
       
       if (port !== undefined) {
-        logger.debug(`Requested port: ${port}`, { component: 'DevServerRoutes', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature });
+        logger.debug(`Requested port: ${port}`, { component: 'PreviewRoutes', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature });
       }
-      logger.debug(`Feature: ${feature}`, { component: 'DevServerRoutes', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature });
+      logger.debug(`Feature: ${feature}`, { component: 'PreviewRoutes', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature });
       
-      // ✅ Determine codebase path based on repoType
       let codebasePath: string;
       
       if (config?.repoType === 'cloud') {
-        // ✅ Cloud Mode: Use WorkspaceResolver to calculate path
-        // Path structure: workspaces/{org}/{user}/{project}/codebase
         const projectPath = deps.workspaceResolver.getProjectPath(userContext, projectId);
         codebasePath = path.join(projectPath, 'codebase');
         
-        logger.debug(`Cloud mode - codebase path calculated`, { component: 'DevServerRoutes', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature }, { codebasePath });
+        logger.debug(`Cloud mode - codebase path calculated`, { component: 'PreviewRoutes', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature }, { codebasePath });
       } else {
-        // ✅ Local Mode: Use localPath from config
         if (!config?.localPath) {
           res.status(400).json({ error: 'Project localPath not configured' });
           return;
         }
         
-        // Resolve local path (handle ~ expansion)
         codebasePath = config.localPath.startsWith('~') 
           ? path.join(os.homedir(), config.localPath.slice(1))
           : path.resolve(config.localPath);
         
-        logger.debug(`Local mode - codebase path resolved`, { component: 'DevServerRoutes', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature }, { codebasePath });
+        logger.debug(`Local mode - codebase path resolved`, { component: 'PreviewRoutes', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature }, { codebasePath });
       }
       
-      // ✅ Start dev server with multi-tenancy support
-      const result = await deps.devServerService.startDevServer(
+      const result = await deps.previewService.startDevServer(
         userContext.organizationId,
         userContext.userId,
         projectId,
@@ -114,14 +106,14 @@ export function createDevServerRoutes(deps: {
     }
   });
   
-  // Stop dev server
-  router.post('/projects/:id/dev/stop', async (req: Request, res: Response) => {
+  // Stop preview
+  router.post('/projects/:id/preview/stop', async (req: Request, res: Response) => {
     try {
       const projectId = req.params.id;
       const userContext = extractUserContext(req);
       const feature = req.body?.feature || 'main';
       
-      const result = await deps.devServerService.stopDevServer(
+      const result = await deps.previewService.stopDevServer(
         userContext.organizationId,
         userContext.userId,
         projectId,
@@ -138,20 +130,20 @@ export function createDevServerRoutes(deps: {
     }
   });
   
-  // Get dev server status
-  router.get('/projects/:id/dev/status', (req: Request, res: Response) => {
+  // Get preview status
+  router.get('/projects/:id/preview/status', (req: Request, res: Response) => {
     try {
       const projectId = req.params.id;
       const userContext = extractUserContext(req);
       const feature = (req.query.feature as string) || 'main';
       
-      const status = deps.devServerService.getDevServerStatus(
+      const status = deps.previewService.getDevServerStatus(
         userContext.organizationId,
         userContext.userId,
         projectId,
         feature
       );
-      const logs = deps.devServerService.getDevServerLogs(
+      const logs = deps.previewService.getDevServerLogs(
         userContext.organizationId,
         userContext.userId,
         projectId,
@@ -159,8 +151,8 @@ export function createDevServerRoutes(deps: {
       );
       
       const fullStatus = {
-        running: status.running,  // ✅ Changed from status.isRunning
-        ready: status.ready,      // ✅ Include health-check readiness (fixes refresh showing "Starting...")
+        running: status.running,
+        ready: status.ready,
         port: status.port || null,
         url: status.url || null,
         processCount: status.processCount || 0,
@@ -176,14 +168,13 @@ export function createDevServerRoutes(deps: {
     }
   });
   
-  // ✅ NEW: Validate dev server setup
-  router.get('/projects/:id/dev/validate', async (req: Request, res: Response) => {
+  // Validate preview setup
+  router.get('/projects/:id/preview/validate', async (req: Request, res: Response) => {
     try {
       const projectId = req.params.id;
       const userContext = extractUserContext(req);
       const config = await deps.projectService.getProjectConfig(projectId, userContext);
       
-      // ✅ Determine codebase path based on repoType
       let codebasePath: string;
       
       if (config?.repoType === 'cloud') {
@@ -200,8 +191,7 @@ export function createDevServerRoutes(deps: {
           : path.resolve(config.localPath);
       }
       
-      // ✅ Validate dev server setup
-      const validation = await deps.devServerService.validateDevServerSetup(codebasePath);
+      const validation = await deps.previewService.validateDevServerSetup(codebasePath);
       
       res.json(validation);
     } catch (error: any) {
@@ -209,8 +199,8 @@ export function createDevServerRoutes(deps: {
     }
   });
   
-  // SSE stream for dev server logs
-  router.get('/projects/:id/dev/logs', (req: Request, res: Response) => {
+  // SSE stream for preview logs (deprecated)
+  router.get('/projects/:id/preview/logs', (req: Request, res: Response) => {
     res.status(410).json({
       error: 'Endpoint deprecated',
       message: 'Use /projects/:id/features/:feature/stream (unified SSE) instead'
@@ -218,7 +208,7 @@ export function createDevServerRoutes(deps: {
   });
   
   // Deprecated SSE endpoint
-  router.get('/projects/:id/dev/stream', (req: Request, res: Response) => {
+  router.get('/projects/:id/preview/stream', (req: Request, res: Response) => {
     res.status(410).json({ 
       error: 'Endpoint deprecated',
       message: 'Use /projects/:id/features/:feature/stream (unified SSE) instead'
@@ -228,3 +218,9 @@ export function createDevServerRoutes(deps: {
   return router;
 }
 
+// ==========================================
+// Backward compatibility aliases (deprecated)
+// ==========================================
+
+/** @deprecated Use createPreviewRoutes instead */
+export const createDevServerRoutes = createPreviewRoutes;

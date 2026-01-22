@@ -18,7 +18,7 @@
 import { PortRegistryPort, PortMapping } from '../../core/ports/portRegistry';
 
 export class InMemoryPortRegistry implements PortRegistryPort {
-  private devServers = new Map<string, PortMapping>();
+  private previews = new Map<string, PortMapping>();
   private ides = new Map<string, PortMapping>();
 
   /**
@@ -30,9 +30,9 @@ export class InMemoryPortRegistry implements PortRegistryPort {
   }
 
   /**
-   * Register dev server port mapping
+   * Register preview port mapping
    */
-  async registerDevServer(
+  async registerPreview(
     tenantId: string,
     userId: string,
     projectId: string,
@@ -50,8 +50,8 @@ export class InMemoryPortRegistry implements PortRegistryPort {
       lastAccessedAt: new Date()
     };
 
-    this.devServers.set(key, mapping);
-    console.log(`[InMemoryPortRegistry] Registered dev server: ${key} → ${port}`);
+    this.previews.set(key, mapping);
+    console.log(`[InMemoryPortRegistry] Registered preview: ${key} → ${port}`);
   }
 
   /**
@@ -80,16 +80,16 @@ export class InMemoryPortRegistry implements PortRegistryPort {
   }
 
   /**
-   * Get dev server port
+   * Get preview port
    */
-  async getDevServerPort(
+  async getPreviewPort(
     tenantId: string,
     userId: string,
     projectId: string,
     feature: string
   ): Promise<number | null> {
     const key = this.createKey(tenantId, userId, projectId, feature);
-    const mapping = this.devServers.get(key);
+    const mapping = this.previews.get(key);
 
     if (mapping) {
       // Update last access time
@@ -121,19 +121,19 @@ export class InMemoryPortRegistry implements PortRegistryPort {
   }
 
   /**
-   * Unregister dev server
+   * Unregister preview
    */
-  async unregisterDevServer(
+  async unregisterPreview(
     tenantId: string,
     userId: string,
     projectId: string,
     feature: string
   ): Promise<void> {
     const key = this.createKey(tenantId, userId, projectId, feature);
-    const deleted = this.devServers.delete(key);
+    const deleted = this.previews.delete(key);
 
     if (deleted) {
-      console.log(`[InMemoryPortRegistry] Unregistered dev server: ${key}`);
+      console.log(`[InMemoryPortRegistry] Unregistered preview: ${key}`);
     }
   }
 
@@ -155,10 +155,10 @@ export class InMemoryPortRegistry implements PortRegistryPort {
   }
 
   /**
-   * List all active dev servers
+   * List all active previews
    */
-  async listDevServers(): Promise<PortMapping[]> {
-    return Array.from(this.devServers.values());
+  async listPreviews(): Promise<PortMapping[]> {
+    return Array.from(this.previews.values());
   }
 
   /**
@@ -176,10 +176,10 @@ export class InMemoryPortRegistry implements PortRegistryPort {
     userId: string,
     projectId: string,
     feature: string,
-    type: 'dev-server' | 'ide'
+    type: 'preview' | 'ide'
   ): Promise<void> {
     const key = this.createKey(tenantId, userId, projectId, feature);
-    const map = type === 'dev-server' ? this.devServers : this.ides;
+    const map = type === 'preview' ? this.previews : this.ides;
     const mapping = map.get(key);
 
     if (mapping) {
@@ -191,14 +191,14 @@ export class InMemoryPortRegistry implements PortRegistryPort {
    * Get statistics
    */
   getStats(): {
-    devServers: number;
+    previews: number;
     ides: number;
     total: number;
   } {
     return {
-      devServers: this.devServers.size,
+      previews: this.previews.size,
       ides: this.ides.size,
-      total: this.devServers.size + this.ides.size
+      total: this.previews.size + this.ides.size
     };
   }
 
@@ -213,9 +213,8 @@ export class InMemoryPortRegistry implements PortRegistryPort {
    * Clear all data (useful for testing)
    */
   clear(): void {
-    this.devServers.clear();
+    this.previews.clear();
     this.ides.clear();
     console.log('[InMemoryPortRegistry] Cleared all data');
   }
 }
-

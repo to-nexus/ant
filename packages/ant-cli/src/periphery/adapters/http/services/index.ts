@@ -1,6 +1,6 @@
 export { KanbanService } from './KanbanService';
 export { SessionService } from './SessionService';
-export { DevServerService } from './DevServerService';
+export { PreviewService, DevServerService } from './PreviewService';
 export { ProjectService } from './ProjectService';
 export { GraphMetadataService } from './GraphMetadataService';
 export { WorkflowStateService } from './WorkflowStateService';

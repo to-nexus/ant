@@ -1,9 +1,9 @@
 /**
  * PortManager
  * 
- * Manages dynamic port allocation for dev servers and IDEs.
+ * Manages dynamic port allocation for preview servers and IDEs.
  * Port ranges are separated by service type:
- * - Dev Server: 30000-39999 (10,000 ports)
+ * - Preview: 30000-39999 (10,000 ports)
  * - IDE: 40000-49999 (10,000 ports)
  */
 

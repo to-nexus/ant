@@ -1,7 +1,7 @@
 import { ChildProcess } from 'child_process';
 
 /**
- * Package information for dev server
+ * Package information for preview server
  */
 export interface PackageInfo {
   name: string;
@@ -22,7 +22,7 @@ export interface ProjectStructure {
 }
 
 /**
- * Dev server setup failure reasoning codes
+ * Preview server setup failure reasoning codes
  * Used to categorize different types of setup failures and provide appropriate fixes
  */
 export type SetupFailureReasoning = 
@@ -34,36 +34,34 @@ export type SetupFailureReasoning =
   | 'unknown';              // Unclassified error
 
 /**
- * Dev server issue reasoning codes (extensible)
+ * Preview issue reasoning codes (extensible)
  * - Includes fatal setup failures AND non-fatal runtime warnings.
  */
-export type DevServerIssueReasoning =
+export type PreviewIssueReasoning =
   | SetupFailureReasoning
   | 'api-base-missing';     // Fullstack: frontend API base not configurable for dynamic backend ports
 
-export type DevServerIssueSeverity = 'fatal' | 'warning';
+export type PreviewIssueSeverity = 'fatal' | 'warning';
 
 /**
- * Unified issue model for dev server "Fix" workflow.
+ * Unified issue model for preview server "Fix" workflow.
  * The system can push multiple issues over time; UI can offer "Fix All".
  */
-export interface DevServerIssue {
-  reasoning: DevServerIssueReasoning;
-  severity: DevServerIssueSeverity;
+export interface PreviewIssue {
+  reasoning: PreviewIssueReasoning;
+  severity: PreviewIssueSeverity;
   reason: string;                 // Human-readable summary
   suggestedFix?: string;          // LLM-ready instruction (optional)
 }
 
 /**
- * Dev server validation result
- * 
- * ✅ REFACTORED: Unified validation interface
+ * Preview validation result
  */
 export interface ValidationResult {
   valid: boolean;
   framework?: string;
-  reasoning?: SetupFailureReasoning;  // ✅ Categorized failure reason
-  reason?: string;                     // ✅ Human-readable message
+  reasoning?: SetupFailureReasoning;
+  reason?: string;
   missingFiles?: string[];
   suggestedFix?: string;
 }
@@ -83,3 +81,13 @@ export interface ServerKeyComponents {
   feature: string;
 }
 
+// ==========================================
+// Backward compatibility aliases (deprecated)
+// ==========================================
+
+/** @deprecated Use PreviewIssueReasoning instead */
+export type DevServerIssueReasoning = PreviewIssueReasoning;
+/** @deprecated Use PreviewIssueSeverity instead */
+export type DevServerIssueSeverity = PreviewIssueSeverity;
+/** @deprecated Use PreviewIssue instead */
+export type DevServerIssue = PreviewIssue;

@@ -3,7 +3,7 @@ import express from 'express';
 import {
   createJobRoutes,
   createKanbanRoutes,
-  createDevServerRoutes,
+  createPreviewRoutes,
   createWorkflowRoutes,
   createSSERoutes,
   createAuthRoutes,
@@ -58,7 +58,7 @@ export class RouteConfigurator {
     this.setupIDERoutes(app);
     this.setupCloudIDERoutes(app);
     this.setupKanbanRoutes(app);
-    this.setupDevServerRoutes(app);
+    this.setupPreviewRoutes(app);
     this.setupWorkflowRoutes(app);
     this.setupSSERoutes(app);
     this.setupJobRoutes(app);
@@ -198,15 +198,15 @@ export class RouteConfigurator {
   }
 
   /**
-   * Setup dev server routes
+   * Setup preview routes
    */
-  private setupDevServerRoutes(app: Express): void {
-    const devServerRoutes = createDevServerRoutes({
+  private setupPreviewRoutes(app: Express): void {
+    const previewRoutes = createPreviewRoutes({
       projectService: this.deps.projectService,
-      devServerService: this.deps.devServerService,
+      previewService: this.deps.previewService,
       workspaceResolver: this.deps.workspaceResolver
     });
-    app.use('/api', devServerRoutes);
+    app.use('/api', previewRoutes);
   }
 
   /**

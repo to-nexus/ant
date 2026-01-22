@@ -204,7 +204,7 @@ export class ReactValidator {
         reasoning: 'basename-missing',
         reason: 'Missing basename configuration for dev server proxy',
         missingFiles: ['A router entry under src/ (e.g., App.tsx, main.tsx, presentation/router.tsx)'],
-        suggestedFix: `This dev server runs in Ant platform's proxy environment (/dev/:serverKey/).
+        suggestedFix: `This preview server runs in Ant platform's proxy environment (/preview/:serverKey/).
 
 Please add basename configuration for React Router to recognize the proxy path.`.trim()
       };

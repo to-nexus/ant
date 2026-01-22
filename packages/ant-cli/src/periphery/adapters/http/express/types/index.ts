@@ -62,7 +62,7 @@ export interface ServerDependencies {
   kanbanService: any;
   sessionService: any;
   gitWatcherService: any;
-  devServerService: any;
+  previewService: any;
   projectService: any;
   chatService: any;
   graphMetadataService: any;
