@@ -7,9 +7,12 @@
  */
 
 import * as crypto from 'crypto';
-import { JobQueuePort, JobRequest, JobQueueStatus } from '../../core/ports/queue';
+import { LegacyJobQueuePort, JobRequest, JobQueueStatus } from '../../core/ports/queue';
 
-export class MemoryJobQueue implements JobQueuePort {
+/**
+ * @deprecated Use LocalJobQueue instead. This class implements the legacy interface.
+ */
+export class MemoryJobQueue implements LegacyJobQueuePort {
   private queue: JobRequest[] = [];
   private jobs: Map<string, { request: JobRequest; status: JobQueueStatus }> = new Map();
   private processing: boolean = false;

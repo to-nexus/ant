@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import * as fs from 'fs';
 import * as path from 'path';
 import { ExecuteJobParams, LogEntry } from '../../../../core/ports/http';
 import type { InterruptionDetails } from '../../../../core/types';
@@ -111,6 +112,23 @@ export function createJobRoutes(deps: {
     const jobId = req.params.jobId;
     const logs = deps.getLogs(jobId);
     res.json(logs);
+  });
+  
+  // Get queue position for a job
+  router.get('/jobs/:jobId/queue-position', async (req: Request, res: Response) => {
+    const jobId = req.params.jobId;
+    
+    try {
+      // Get job queue from infrastructure factory
+      const { getInfrastructureFactory } = await import('../../../../infrastructure/adapters/InfrastructureFactory');
+      const jobQueue = getInfrastructureFactory().getJobQueue();
+      
+      const position = await jobQueue.getQueuePosition(jobId);
+      res.json(position);
+    } catch (error: any) {
+      console.error(`Error getting queue position for job ${jobId}:`, error);
+      res.status(500).json({ error: error.message });
+    }
   });
   
   // Deprecated: Logs SSE endpoint (replaced by unified SSE)
@@ -232,7 +250,6 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
       const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
       
       // ✅ Find job type and jobId from session files (don't rely on requested jobId)
-      const fs = require('fs');
       const sessionDir = path.join(featurePath, 'sessions');
       
       let jobType: 'design' | 'code' | 'learn' | null = null;
@@ -333,7 +350,6 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
       const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
       
       // ✅ Find job type from session files
-      const fs = require('fs');
       const sessionDir = path.join(featurePath, 'sessions');
       
       let jobType: 'design' | 'code' | 'learn' | null = null;

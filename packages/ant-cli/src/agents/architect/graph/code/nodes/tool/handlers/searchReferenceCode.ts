@@ -3,6 +3,7 @@
  * Search reference project using vector DB semantic search
  */
 
+import path from 'path';
 import { ArchitectGraphState } from '../../../state';
 import { getChatAPIClient } from '../../../../../../../core/adapters/ChatAPIClient';
 import { SearchReferenceCodeArgs } from '../types';
@@ -48,7 +49,7 @@ Please mention the reference project in your directive to register it.`;
     };
     
     const refProjectPath = state.deps.workspaceResolver.getProjectPath(userContext, project);
-    const refCodebasePath = require('path').join(refProjectPath, 'codebase');
+    const refCodebasePath = path.join(refProjectPath, 'codebase');
     
     // 5. Search vector DB using CodebaseRetriever
     const searchResult = await state.deps.retriever.retrieve(

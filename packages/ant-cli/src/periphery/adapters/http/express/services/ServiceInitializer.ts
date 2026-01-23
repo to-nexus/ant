@@ -6,7 +6,8 @@ import {
   GraphMetadataService,
   WorkflowStateService,
   ChatService,
-  SSEService
+  SSEService,
+  GitWatcherService
 } from '../../services';
 import { GitHubAuthService } from '../../../auth/GitHubAuthService';
 import { FileJobPrerequisitesAdapter } from '../../../prerequisites/FileJobPrerequisitesAdapter';
@@ -19,6 +20,9 @@ import { InMemoryPortRegistry } from '../../../../../infrastructure/networking/I
 import { IDEService } from '../../../ide/IDEService';
 import { logger } from '../../../../../utils/logger';
 import { ServerConfig, ServerDependencies } from '../types';
+import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
+import { PortRegistryPort } from '../../../../../core/ports/portRegistry';
+import { StateStorePort } from '../../../../../core/ports/stateStore';
 
 /**
  * Initialize all services and dependencies for the Express server
@@ -34,8 +38,20 @@ export function initializeServices(
   );
   
   // Initialize PortManager, PortRegistry, and IDEService
+  // In cloud mode, use StateStore as PortRegistry (RedisStateStore implements PortRegistryPort)
   const portManager = new PortManager();
-  const portRegistry = new InMemoryPortRegistry();
+  let portRegistry: PortRegistryPort;
+  
+  if (config.mode === 'cloud') {
+    // RedisStateStore implements both StateStorePort and PortRegistryPort
+    const factory = getInfrastructureFactory();
+    portRegistry = factory.getStateStore() as unknown as PortRegistryPort;
+    logger.info('Using RedisStateStore as PortRegistry (cloud mode)', { component: 'ServiceInitializer' });
+  } else {
+    portRegistry = new InMemoryPortRegistry();
+    logger.info('Using InMemoryPortRegistry (local mode)', { component: 'ServiceInitializer' });
+  }
+  
   const ideService = new IDEService(portManager, portRegistry);
   ideService.startIdleChecker();
   
@@ -67,7 +83,7 @@ export function initializeServices(
   
   // Initialize core services
   const sseService = new SSEService();
-  const gitWatcherService = new (require('../../services/GitWatcherService').GitWatcherService)(
+  const gitWatcherService = new GitWatcherService(
     sseService, 
     workspaceResolver
   );
@@ -114,6 +130,12 @@ export function initializeServices(
   
   const jobPrerequisitesAdapter = new FileJobPrerequisitesAdapter(workspaceResolver);
   
+  // ✅ Cloud Mode: Subscribe to job status updates via Redis Pub/Sub
+  // This enables SSE broadcast of job completion/failure events to UI clients
+  if (config.mode === 'cloud') {
+    setupJobStatusSubscription(sseService);
+  }
+  
   return {
     workspaceService,
     workspaceResolver,
@@ -134,4 +156,86 @@ export function initializeServices(
     githubAuthService,
     jobPrerequisitesAdapter
   };
+}
+
+/**
+ * Setup Redis Pub/Sub subscription for job status updates (Cloud mode only)
+ * 
+ * BullMQJobQueue publishes job completion/failure events to 'job:status:updates' channel.
+ * This function subscribes to that channel and broadcasts to UI via SSE.
+ */
+async function setupJobStatusSubscription(sseService: SSEService): Promise<void> {
+  try {
+    const factory = getInfrastructureFactory();
+    const stateStore = factory.getStateStore() as StateStorePort;
+    
+    // Subscribe to global job status channel
+    await stateStore.subscribe('job:status:updates', (message: unknown) => {
+      const data = message as {
+        type: 'completed' | 'failed';
+        jobId: string;
+        status: string;
+        projectId?: string;
+        featureName?: string;
+        userEmail?: string;
+        result?: any;
+        error?: string;
+        timestamp: string;
+      };
+      
+      logger.debug(`Received job status update: ${data.jobId} (${data.type})`, { 
+        component: 'ServiceInitializer',
+        projectId: data.projectId,
+        featureName: data.featureName
+      });
+      
+      // Broadcast to SSE clients if we have project/feature info
+      if (data.projectId && data.featureName) {
+        // Construct UserContext from userEmail (format: userId@orgId)
+        let userContext: { userId: string; organizationId: string } | undefined;
+        if (data.userEmail) {
+          const [userId, organizationId] = data.userEmail.split('@');
+          if (userId && organizationId) {
+            userContext = { userId, organizationId };
+          }
+        }
+        
+        // Broadcast job status as 'chat' type message (UI handles this for stop button)
+        // ✅ Use 'type: job_status' to match UI's switch statement
+        sseService.broadcast(
+          data.projectId,
+          data.featureName,
+          'chat',
+          {
+            type: 'job_status',  // For switch statement
+            action: 'job_status',  // For additional check
+            projectId: data.projectId,
+            featureName: data.featureName,
+            jobId: data.jobId,
+            status: data.status,
+            result: data.result,
+            error: data.error,
+            timestamp: data.timestamp
+          },
+          userContext
+        );
+        
+        logger.info(`Broadcasted job ${data.type} to SSE: ${data.jobId}`, { 
+          component: 'ServiceInitializer',
+          projectId: data.projectId,
+          featureName: data.featureName
+        });
+      } else {
+        logger.warn(`Job status update missing project/feature info: ${data.jobId}`, { 
+          component: 'ServiceInitializer' 
+        });
+      }
+    });
+    
+    logger.info('Subscribed to job:status:updates channel for SSE broadcast', { 
+      component: 'ServiceInitializer' 
+    });
+  } catch (error) {
+    logger.error('Failed to setup job status subscription', { component: 'ServiceInitializer' }, error);
+  }
 }

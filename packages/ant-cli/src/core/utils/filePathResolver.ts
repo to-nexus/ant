@@ -14,6 +14,7 @@
  */
 
 import * as path from 'path';
+import { execSync } from 'child_process';
 import { GitPort, FileSystemPort } from '../ports';
 
 export interface FilePathMatch {
@@ -150,7 +151,6 @@ function calculatePathScore(filePath: string): number {
 async function listGitFiles(git: GitPort, workingDir: string): Promise<string[]> {
   try {
     // GitPort가 ls-files 메서드를 제공하지 않으므로 직접 구현
-    const { execSync } = require('child_process');
     const output = execSync('git ls-files', { 
       cwd: workingDir,
       encoding: 'utf-8',

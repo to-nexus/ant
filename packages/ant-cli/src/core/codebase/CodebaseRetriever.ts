@@ -173,6 +173,3 @@ export class CodebaseRetriever {
     console.log(`   📊 Sources: Vector(${breakdown.vectorSearch}), Keyword(${breakdown.keywordSearch}), Git(${breakdown.gitChanged}), ImportGraph(${breakdown.importGraph})`);
   }
 }
-
-// Re-export types
-export * from "./types";

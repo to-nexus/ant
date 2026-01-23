@@ -8,6 +8,7 @@
  * Note: No Vector DB search - error files have exact paths!
  */
 
+import path from "path";
 import { GitPort, FileSystemPort } from "../../../../../../core/ports";
 import { ArchitectGraphState } from "../../state";
 import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient";
@@ -65,7 +66,7 @@ export async function loadErrorFiles(
       }
       
       // Load file content
-      const fullPath = require('path').join(state.context.workingDir, resolvedPath);
+      const fullPath = path.join(state.context.workingDir, resolvedPath);
       const content = await fileSystem.readFile(fullPath);
       
       if (content) {

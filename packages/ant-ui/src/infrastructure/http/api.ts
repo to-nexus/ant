@@ -652,6 +652,31 @@ export async function fetchJobStatus(jobId: string): Promise<JobStatus> {
   }
 }
 
+// ========== Queue Position ==========
+
+export interface QueuePositionInfo {
+  status: string;
+  position: number | null;
+  totalWaiting: number;
+  estimatedWaitMs?: number;
+}
+
+export async function fetchQueuePosition(jobId: string): Promise<QueuePositionInfo> {
+  try {
+    const response = await authFetch(`${API_BASE()}/jobs/${encodeURIComponent(jobId)}/queue-position`);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch queue position: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching queue position:', error);
+    // Return default values on error
+    return { status: 'unknown', position: null, totalWaiting: 0 };
+  }
+}
+
 // ========== Feature Management ==========
 
 export async function fetchFeatures(projectId: string): Promise<Feature[]> {

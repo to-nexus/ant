@@ -6,6 +6,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
+import { fileURLToPath } from 'url';
 import { UserContext } from '../../core/types/user';
 
 export interface WorkspaceResolver {
@@ -134,6 +135,79 @@ export class WorkspacePathResolver {
     return workspaceResolver.getFeaturePath(userContext, context.project, context.featureFolder);
   }
   
+  // ========================================
+  // CLI Internal Resource Paths
+  // ========================================
+  
+  /**
+   * Get CLI root directory (for internal resources like templates, policies)
+   * 
+   * Resolution order:
+   * 1. ANT_CLI_ROOT environment variable (set by JobWorker for child processes)
+   * 2. Calculate from import.meta.url (for direct execution)
+   * 
+   * @returns CLI dist root path (e.g., /path/to/ant-cli/dist)
+   */
+  static getCliRoot(): string {
+    // 1. Use ANT_CLI_ROOT if set (JobWorker passes this to child processes)
+    if (process.env.ANT_CLI_ROOT) {
+      return process.env.ANT_CLI_ROOT;
+    }
+    
+    // 2. Calculate from current file location
+    // This file is at: packages/ant-cli/src/infrastructure/workspace/WorkspaceResolver.ts
+    // Or in dist:      packages/ant-cli/dist/infrastructure/workspace/WorkspaceResolver.js
+    // We need to go up to: packages/ant-cli/dist (or src)
+    const currentDir = path.dirname(fileURLToPath(import.meta.url));
+    
+    // Check if we're in dist or src
+    if (currentDir.includes('/dist/')) {
+      // In dist: go up to dist root
+      return path.resolve(currentDir, '../..');
+    } else {
+      // In src: go up to src root, then point to dist (for templates)
+      const srcRoot = path.resolve(currentDir, '../..');
+      const distRoot = path.resolve(srcRoot, '../dist');
+      // If dist exists, use it; otherwise use src
+      if (fs.existsSync(distRoot)) {
+        return distRoot;
+      }
+      return srcRoot;
+    }
+  }
+  
+  /**
+   * Get prompt templates directory path
+   * @returns Path to prompt/templates directory
+   */
+  static getPromptTemplatesPath(): string {
+    return path.join(WorkspacePathResolver.getCliRoot(), 'core/prompt/templates');
+  }
+  
+  /**
+   * Get specific prompt template path
+   * @param templatePath Relative path within templates (e.g., 'learn/system.md')
+   * @returns Full path to the template file
+   */
+  static getPromptTemplatePath(templatePath: string): string {
+    return path.join(WorkspacePathResolver.getPromptTemplatesPath(), templatePath);
+  }
+  
+  /**
+   * Get policies directory path
+   * @returns Path to policies/prompts directory
+   */
+  static getPoliciesPath(): string {
+    return path.join(WorkspacePathResolver.getCliRoot(), 'core/policies/prompts');
+  }
+  
+  /**
+   * Get profiles directory path
+   * @returns Path to profiles directory
+   */
+  static getProfilesPath(): string {
+    return path.join(WorkspacePathResolver.getCliRoot(), 'periphery/profiles');
+  }
 }
 
 

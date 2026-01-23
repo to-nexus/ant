@@ -244,9 +244,15 @@ export class RouteConfigurator {
    */
   private setupJobRoutes(app: Express): void {
     const state = this.stateTracker.getState();
+    
+    // Cloud mode: enqueue to job queue, Local mode: execute directly
+    const executeJob = this.config.mode === 'cloud'
+      ? this.createCloudExecuteJob()
+      : this.jobManager.executeJob.bind(this.jobManager);
+    
     const jobRoutes = createJobRoutes({
       workspaceResolver: this.deps.workspaceResolver,
-      executeJob: this.jobManager.executeJob.bind(this.jobManager),
+      executeJob,
       getJobStatus: this.jobManager.getJobStatus.bind(this.jobManager),
       getLogs: this.jobManager.getLogs.bind(this.jobManager),
       logStreams: state.logStreams,
@@ -261,6 +267,73 @@ export class RouteConfigurator {
       chatService: this.deps.chatService
     });
     app.use('/api', jobRoutes);
+  }
+  
+  /**
+   * Create executeJob function for cloud mode
+   * Enqueues job to BullMQ instead of executing directly
+   */
+  private createCloudExecuteJob() {
+    return async (params: any) => {
+      const { getInfrastructureFactory } = await import('../../../../../infrastructure/adapters/InfrastructureFactory');
+      const factory = getInfrastructureFactory();
+      const jobQueue = factory.getJobQueue();
+      const stateStore = factory.getStateStore();
+      
+      // Generate jobId
+      const jobId = params.jobId || `${Date.now().toString(36)}${Math.random().toString(36).substr(2, 6)}`;
+      
+      // Get workspace paths
+      const tenantId = `${params.userContext.organizationId}:${params.userContext.userId}`;
+      const handle = await this.deps.workspaceService.createWorkspace(tenantId, params.project);
+      
+      // handle.storagePath is already the full project path
+      // We need to pass base workspace path for JobWorker to calculate paths correctly
+      const workspaceBasePath = this.deps.workspaceResolver.getPhysicalWorkspacesPath();
+      
+      // Enqueue job to BullMQ
+      await jobQueue.enqueue({
+        jobId,
+        projectId: params.project,
+        feature: params.feature,
+        featureName: params.feature,  // Alias for feature
+        type: params.jobType || 'code',
+        agent: params.agent || 'architect',
+        mode: params.mode || 'generate',
+        userContext: params.userContext,
+        workspacePath: workspaceBasePath,  // Base path, not full project path
+        overrideDirective: params.overrideDirective,
+        chatSource: params.chatSource,
+        inputFile: params.inputFile,
+        isResume: !!params.jobId,
+        originalJobId: params.jobId
+      });
+      
+      // Set initial job status
+      await stateStore.setJobStatus(jobId, {
+        jobId,
+        status: 'queued',
+        projectId: params.project,
+        featureName: params.feature,
+        type: params.jobType || 'code',
+        mode: params.mode,
+        userContext: params.userContext,
+        timestamp: new Date().toISOString()
+      });
+      
+      logger.info(`Job enqueued to BullMQ: ${jobId}`, { 
+        component: 'RouteConfigurator', 
+        jobId,
+        projectId: params.project,
+        featureName: params.feature 
+      });
+      
+      return {
+        jobId,
+        success: true,
+        message: 'Job enqueued'
+      };
+    };
   }
 
   /**

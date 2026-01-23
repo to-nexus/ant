@@ -1,19 +1,20 @@
-version: "3.9"
+# Vector Memory Infrastructure
+# Usage: docker compose up -d
 
 services:
   chroma:
     image: chromadb/chroma:latest
-    container_name: chroma
+    container_name: ant-chroma
     ports:
       - "8000:8000"
     volumes:
-      - ./chroma-data:/data  # ChromaDB의 기본 저장 경로
+      - ./chroma-data:/data
 
   embedder:
     build:
       context: ./embedder
       dockerfile: Dockerfile
-    container_name: embedder
+    container_name: ant-embedder
     ports:
       - "8001:8001"
     restart: always

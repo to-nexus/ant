@@ -98,6 +98,10 @@ export async function orchestrator(params: {
       const git = AdapterFactory.createGitAdapterWithConfig(project || "default", configData, codebasePath);
 
       if (jobType === 'design') {
+        console.log('🔧 [Orchestrator:Design] Starting design job...');
+        console.log('🔧 [Orchestrator:Design] ANT_CLI_PORT:', process.env.ANT_CLI_PORT);
+        console.log('🔧 [Orchestrator:Design] ANT_API_URL:', process.env.ANT_API_URL);
+        
         const analyzer = new CodebaseAnalyzer();
         
         // ✅ Get ExpressServerAdapter instance for real-time updates
@@ -108,6 +112,7 @@ export async function orchestrator(params: {
         try {
           const { ExpressServerAdapter } = await import('../periphery/adapters/http/express');
           const instance = ExpressServerAdapter.getInstance();
+          console.log('🔧 [Orchestrator:Design] ExpressServerAdapter.getInstance():', instance ? 'EXISTS' : 'NULL');
           
           if (instance) {
             // 부모 프로세스 (서버 실행 중): 직접 참조 사용
@@ -118,6 +123,8 @@ export async function orchestrator(params: {
           } else if (process.env.ANT_CLI_PORT) {
             // 자식 프로세스: HTTP 클라이언트 사용
             const { WorkflowHttpClient, KanbanHttpClient, FileTreeHttpClient } = await import('../periphery/adapters/http/clients');
+            const apiUrl = process.env.ANT_API_URL || `http://localhost:${process.env.ANT_CLI_PORT}`;
+            console.log('🔧 [Orchestrator:Design] Creating HTTP clients with URL:', apiUrl);
             kanbanUpdate = new KanbanHttpClient(process.env.ANT_CLI_PORT || '4100');
             fileTreeUpdate = new FileTreeHttpClient(process.env.ANT_CLI_PORT || '4100');
             workflowUpdate = new WorkflowHttpClient(process.env.ANT_CLI_PORT || '4100');
@@ -125,8 +132,8 @@ export async function orchestrator(params: {
           } else {
             console.log('ℹ️  Real-time updates disabled (no server instance or port) [Design]');
           }
-        } catch (error) {
-          console.log('ℹ️  Real-time updates disabled (server not running) [Design]');
+        } catch (error: any) {
+          console.log('ℹ️  Real-time updates disabled (server not running) [Design]', error?.message);
         }
         
         // ✅ Create session with file tree update support

@@ -13,6 +13,7 @@ import { HistoryManager } from "../../../../../../core/utils/historyManager";
 import { formatViolations } from "../shared/violationFormatter";
 import { CacheableContent } from "../../../../../../core/ports/llm";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
+import { ArtifactService } from "../../../../../../infrastructure/workspace/ArtifactService";
 
 /**
  * Build messages for LLM using PromptEngine with Prompt Caching
@@ -69,7 +70,6 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     if (state.currentTask.ui === false) return undefined;
     
     // ✅ Always inject if parsedUiDocs exists (use task.uiSections for filtering)
-    const { ArtifactService } = require('../../../../../../infrastructure/workspace/ArtifactService');
     const uiDoc = ArtifactService.getUiDocForTask(state.parsedUiDocs, state.currentTask.uiSections);
     
     if (uiDoc) {
@@ -157,7 +157,6 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
 
     // ✅ Load reference images on-demand if this is a UI task
     if (uiDocForTask && canSendImages && state.deps?.fileSystem) {
-      const { ArtifactService } = require('../../../../../../infrastructure/workspace/ArtifactService');
       const uiReferenceImages = await ArtifactService.loadUiReferenceImages(state.context, state.deps.fileSystem);
       
       if (uiReferenceImages) {
