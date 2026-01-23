@@ -63,9 +63,11 @@ export class JobStateTracker {
     userContext?: UserContext
   ): void {
     // Initialize job status
+    // ✅ Use 'running' status immediately for UI to show Stop button
+    // (KanbanService checks status === 'running' for isActuallyRunning)
     this.state.jobs.set(jobId, {
       jobId,
-      status: 'pending',
+      status: 'running',
       task: jobType,
       startedAt: new Date().toISOString()
     });

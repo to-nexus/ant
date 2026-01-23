@@ -309,7 +309,7 @@ export class RouteConfigurator {
         originalJobId: params.jobId
       });
       
-      // Set initial job status
+      // Set initial job status in Redis
       await stateStore.setJobStatus(jobId, {
         jobId,
         status: 'queued',
@@ -320,6 +320,10 @@ export class RouteConfigurator {
         userContext: params.userContext,
         timestamp: new Date().toISOString()
       });
+      
+      // ✅ CRITICAL: Register job mapping in local stateTracker for SSE broadcast
+      // Without this, WorkflowBridge.updateTaskQueue cannot find projectId/featureName
+      this.stateTracker.initializeJob(jobId, params.project, params.feature, params.jobType || 'code', params.userContext);
       
       logger.info(`Job enqueued to BullMQ: ${jobId}`, { 
         component: 'RouteConfigurator', 
