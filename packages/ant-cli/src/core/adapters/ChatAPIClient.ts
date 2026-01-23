@@ -20,18 +20,21 @@ export class ChatAPIClient {
   private messageStarted: boolean = false;  // ✅ Track if message is active
 
   constructor() {
-    // ✅ Use ANT_CLI_PORT
+    // ✅ Use ANT_CLI_PORT or ANT_API_URL
     this.serverPort = process.env.ANT_CLI_PORT || '4100';
     this.projectId = process.env.ANT_PROJECT_ID || '';
     this.featureName = process.env.ANT_FEATURE_NAME || '';
     this.jobId = process.env.ANT_JOB_ID || '';
-    this.baseUrl = `http://localhost:${this.serverPort}/api/projects/${this.projectId}/features/${this.featureName}/chat`;
+    
+    // ✅ Prefer ANT_API_URL for Cloud mode (service-to-service communication)
+    const apiUrl = process.env.ANT_API_URL || `http://localhost:${this.serverPort}`;
+    this.baseUrl = `${apiUrl}/api/projects/${this.projectId}/features/${this.featureName}/chat`;
     
     // Only enabled if all required env vars are present
     this.enabled = !!(this.projectId && this.featureName && this.jobId);
     
     if (this.enabled) {
-      console.log(`💬 [ChatAPIClient] Initialized for ${this.projectId}/${this.featureName} (Job: ${this.jobId})`);
+      console.log(`💬 [ChatAPIClient] Initialized for ${this.projectId}/${this.featureName} (Job: ${this.jobId}) → ${apiUrl}`);
     }
   }
 

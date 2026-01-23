@@ -8,6 +8,7 @@ import { useMemo, useState, useCallback } from 'react';
 import { ChatHistory } from './ChatHistory';
 import { ChatInput } from './ChatInput';
 import { PinnedQuery } from './PinnedQuery';
+import { QueueStatusBanner } from './QueueStatusBanner';
 import { useChat } from '@/application/hooks/features/useChat';
 import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
 import type { FileStats } from '@/domain/models/chat';
@@ -172,6 +173,9 @@ export function ChatPanel({ projectId: _projectId, featureName: _featureName, en
 
       {/* Input Area - Fixed at bottom */}
       <div className="border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
+        {/* Queue Status Banner */}
+        <QueueStatusBanner />
+        
         <ChatInput 
           messageCount={messages.length}
           fileStats={fileStats}

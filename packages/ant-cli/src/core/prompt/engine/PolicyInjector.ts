@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { AgentJob } from "../../types";
 import { PromptModeConfig } from "./ModeController";
+import { WorkspacePathResolver } from "../../../infrastructure/workspace/WorkspaceResolver";
 
 /**
  * Policy rules loaded from ruleset
@@ -32,14 +33,19 @@ export interface PolicyRules {
  * - Format rules for injection
  * - Apply strict mode when needed
  */
+
 export class PolicyInjector {
   private ruleset: any;
   
   constructor() {
-    // Load ruleset from JSON
-    // PolicyInjector is in src/core/prompt/engine/
-    // ruleset.json is in src/core/policies/prompts/
-    const rulesetPath = path.join(__dirname, "../..", "policies", "prompts", "ruleset.json");
+    // Load ruleset from JSON using centralized WorkspacePathResolver
+    const policiesPath = WorkspacePathResolver.getPoliciesPath();
+    const rulesetPath = path.join(policiesPath, 'ruleset.json');
+    
+    if (!fs.existsSync(rulesetPath)) {
+      throw new Error(`Policy ruleset not found at: ${rulesetPath}\nANT_CLI_ROOT: ${process.env.ANT_CLI_ROOT || '(not set)'}`);
+    }
+    
     this.ruleset = JSON.parse(fs.readFileSync(rulesetPath, "utf8"));
   }
   

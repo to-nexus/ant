@@ -27,10 +27,18 @@ export interface FileState {
   lastViewMode: 'raw' | 'preview';
 }
 
+export interface QueuePosition {
+  status: string;
+  position: number | null;
+  totalWaiting: number;
+}
+
 export interface JobState {
   session: Session | undefined;
   isRunning: boolean;
   isStopping: boolean;
+  isQueued: boolean;  // Job is waiting in queue
+  queuePosition: QueuePosition | null;
   userStoppedJobId: string | null;
   lastJobFailed: boolean;
   dismissedInterruptTimestamp: string | null;

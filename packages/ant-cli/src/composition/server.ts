@@ -104,18 +104,22 @@ async function main() {
     console.log(`\n✅ Server listening on http://localhost:${port}`);
     console.log(`📡 Ready to accept requests\n`);
     
-    // Graceful shutdown
-    process.on('SIGINT', async () => {
-      console.log('\n⏳ Shutting down gracefully...');
-      await server.stop();
-      process.exit(0);
-    });
+    // Graceful shutdown (with duplicate call prevention)
+    let isShuttingDown = false;
     
-    process.on('SIGTERM', async () => {
-      console.log('\n⏳ Shutting down gracefully...');
+    const gracefulShutdown = async (signal: string) => {
+      if (isShuttingDown) {
+        console.log(`\n⚠️  Shutdown already in progress (${signal} ignored)`);
+        return;
+      }
+      isShuttingDown = true;
+      console.log(`\n⏳ Shutting down gracefully (${signal})...`);
       await server.stop();
       process.exit(0);
-    });
+    };
+    
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
   } catch (error: any) {
     console.error('❌ Failed to start server:', error.message);
     console.error(error.stack);

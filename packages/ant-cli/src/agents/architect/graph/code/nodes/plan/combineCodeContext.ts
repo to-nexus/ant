@@ -21,6 +21,7 @@ import { ArchitectGraphState } from "../../state";
 import { loadErrorFiles, LoadedFile } from "./errorFilesLoader";
 import { loadSemanticFiles, LessonResult } from "./semanticSearch";
 import { extractFilesFromCode } from "./utils";
+import { generateGitDiffSummary } from "../../../../../../core/codebase/GitDiffSummary";
 
 export interface ProjectCodeContext {
   filePaths: string[];
@@ -153,7 +154,6 @@ export async function combineCodeContext(
   // Git diff summary
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (git) {
-    const { generateGitDiffSummary } = require('../../../../../../core/codebase/GitDiffSummary');
     projectCodeContext.gitDiff = await generateGitDiffSummary(
       git, 
       state.context.workingDir, 

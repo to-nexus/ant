@@ -36,7 +36,9 @@ export class WorkflowHttpClient implements WorkflowStateUpdatePort {
    * @param serverPort - Port where parent server is running (default: 4100)
    */
   constructor(serverPort: string = '4100') {
-    this.baseUrl = `http://localhost:${serverPort}/api`;
+    // ✅ Prefer ANT_API_URL for Cloud mode (service-to-service communication)
+    const apiUrl = process.env.ANT_API_URL;
+    this.baseUrl = apiUrl ? `${apiUrl}/api` : `http://localhost:${serverPort}/api`;
   }
 
   /**

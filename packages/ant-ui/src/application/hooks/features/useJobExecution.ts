@@ -13,7 +13,7 @@
 
 import { useCallback } from 'react';
 import { useStore } from '@/domain/store';
-import { resumeJob, stopJob as stopJobAPI, fetchFeatureSession, getApiBase } from '@/infrastructure/http/api';
+import { resumeJob, stopJob as stopJobAPI, fetchFeatureSession, getApiBase, fetchQueuePosition } from '@/infrastructure/http/api';
 import { executeCodeJob } from '@/infrastructure/http/cli';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 
@@ -24,6 +24,7 @@ export function useJobExecution() {
   const setCurrentJob = useStore((state) => state.setCurrentJob);
   const setSession = useStore((state) => state.setSession);
   const refreshFileTree = useStore((state) => state.refreshFileTree);
+  const setQueuePosition = useStore((state) => state.setQueuePosition);
   
   /**
    * Run Job - Start new job or resume interrupted job
@@ -40,8 +41,24 @@ export function useJobExecution() {
       kanban: kanbanData 
     } = state;
     
-    if (isRunning || !selectedProject) {
+    // ✅ Allow redirect to bypass isRunning check (previous job completed but state not yet updated)
+    // When directive is provided, it's a redirect from triage - force start new job
+    const isRedirect = !!directive;
+    
+    if (!selectedProject) {
+      console.log('[useJobExecution] ❌ No project selected');
       return;
+    }
+    
+    if (isRunning && !isRedirect) {
+      console.log('[useJobExecution] ❌ Job already running (isRunning=true, isRedirect=false)');
+      return;
+    }
+    
+    // ✅ If redirect, clear running state first
+    if (isRedirect && isRunning) {
+      console.log('[useJobExecution] 🔄 Redirect: clearing previous running state');
+      setRunning(false);
     }
 
     // ✅ CRITICAL: Check if this is a Resume or New task
@@ -107,11 +124,23 @@ export function useJobExecution() {
       jobExecution.onJobIdReady(async (jobId) => {
         console.log('[useJobExecution] Job started with ID:', jobId);
         setRunning(true, jobId);
+        
+        // Fetch queue position once (SSE will clear it when job starts running)
+        try {
+          const position = await fetchQueuePosition(jobId);
+          setQueuePosition(position);
+          console.log('[useJobExecution] Queue position:', position);
+        } catch (error) {
+          console.error('[useJobExecution] Error fetching queue position:', error);
+        }
       });
       
       // Handle job completion
       jobExecution.on('exit', async (code) => {
         console.log('[useJobExecution] Job finished:', { code });
+        
+        // Clear queue position
+        setQueuePosition(null);
         
         const jobFailed = code !== 0 && code !== null;
         

@@ -1,0 +1,25 @@
+# State Store & Job Queue Infrastructure (Redis)
+# Usage: docker compose up -d
+#
+# Used by cloud mode for:
+#   - StateStore (RedisStateStore)
+#   - JobQueue (BullMQJobQueue)
+#   - Pub/Sub (real-time events)
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: ant-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  redis-data:

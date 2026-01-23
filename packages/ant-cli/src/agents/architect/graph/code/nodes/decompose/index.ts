@@ -18,6 +18,7 @@ import { CodeTask } from "../../../../types/task";
 import { JobTimingManager } from "../../../common/timing/JobTimingManager";
 import { logErrorHeader } from "../shared/errorHandler";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
+import { ArtifactService } from "../../../../../../infrastructure/workspace/ArtifactService";
 
 // Import submodules
 import { validateTasks } from "./validation";
@@ -204,12 +205,9 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   }
   
   // ✅ Generate UI sections summary for split injection (shows available sections without full content)
-  const uiSectionsSummary = (() => {
-    if (!state.parsedUiDocs) return undefined;
-    
-    const { ArtifactService } = require('../../../../../../infrastructure/workspace/ArtifactService');
-    return ArtifactService.getUiSectionsSummary(state.parsedUiDocs);
-  })();
+  const uiSectionsSummary = state.parsedUiDocs 
+    ? ArtifactService.getUiSectionsSummary(state.parsedUiDocs) 
+    : undefined;
   
   const decomposeVars = {
     directive: state.directive || '',

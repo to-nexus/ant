@@ -12,13 +12,13 @@
  *   - AST 분석 통합 (향후)
  */
 
+export { CodebaseRetriever } from "./CodebaseRetriever";
 export {
-  CodebaseRetriever,
   RetrieveOptions,
   CodeContext,
   BatchRetrieveOptions,
   BatchResult
-} from "./CodebaseRetriever";
+} from "./types";
 
 export {
   WorkSizeEstimator,

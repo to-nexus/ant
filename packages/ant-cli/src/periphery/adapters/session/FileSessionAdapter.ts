@@ -4,7 +4,7 @@ import { parseSession, safeParseSession } from "../../../core/schemas/session.sc
 import * as fs from "fs/promises";
 import * as path from "path";
 import { randomUUID } from "crypto";
-import { WorkspaceResolver } from "../../../infrastructure/workspace/WorkspaceResolver";
+import { WorkspaceResolver, WorkspacePathResolver, CloudWorkspaceResolver, LocalWorkspaceResolver } from "../../../infrastructure/workspace/WorkspaceResolver";
 
 /**
  * File-based Session Adapter
@@ -34,9 +34,8 @@ export class FileSessionAdapter implements SessionPort {
   
   constructor(featurePath: string, projectId?: string, featureName?: string, fileTreeUpdate?: FileTreeUpdatePort) {
     this.featurePath = featurePath;
-    // WorkspaceResolver는 외부에서 주입받도록 변경 필요
+    // Initialize WorkspaceResolver based on mode
     const mode = process.env.ANT_SERVER_MODE === 'cloud' ? 'cloud' : 'local';
-    const { WorkspacePathResolver, CloudWorkspaceResolver, LocalWorkspaceResolver } = require('../../../infrastructure/workspace/WorkspaceResolver');
     const workspacesPath = WorkspacePathResolver.getPhysicalWorkspacesPath();
     this.workspaceResolver = mode === 'cloud'
       ? new CloudWorkspaceResolver(workspacesPath)

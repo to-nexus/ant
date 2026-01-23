@@ -4,6 +4,7 @@ import path from 'path';
 import { detectProject, resolveInputFile } from './resolver';
 import { orchestrator } from '../composition/orchestrator';
 import { TaskLogger } from './logger';
+import { CloudWorkspaceResolver, LocalWorkspaceResolver, WorkspacePathResolver } from '../infrastructure/workspace/WorkspaceResolver';
 
 /**
  * CLI Command Structure
@@ -177,16 +178,11 @@ async function runArchitect(jobType: 'design' | 'code' | 'learn', inputPath: str
     
     // Run orchestrator with new agent/task structure
     // Inject workspaceResolver from server context if available
-    let workspaceResolver;
-    if (process.env.ANT_SERVER_MODE === 'cloud') {
-      const { CloudWorkspaceResolver, WorkspacePathResolver } = require('../infrastructure/workspace/WorkspaceResolver');
-      const workspacesPath = WorkspacePathResolver.getPhysicalWorkspacesPath();
-      workspaceResolver = new CloudWorkspaceResolver(workspacesPath);
-    } else {
-      const { LocalWorkspaceResolver, WorkspacePathResolver } = require('../infrastructure/workspace/WorkspaceResolver');
-      const workspacesPath = WorkspacePathResolver.getPhysicalWorkspacesPath();
-      workspaceResolver = new LocalWorkspaceResolver(workspacesPath);
-    }
+    const workspacesPath = WorkspacePathResolver.getPhysicalWorkspacesPath();
+    const workspaceResolver = process.env.ANT_SERVER_MODE === 'cloud'
+      ? new CloudWorkspaceResolver(workspacesPath)
+      : new LocalWorkspaceResolver(workspacesPath);
+    
     // ✅ Extract userContext from environment (set by server in Cloud mode)
     let userContext: import('../core/types/user').UserContext;
     if (process.env.ANT_USER_EMAIL) {

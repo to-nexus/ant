@@ -22,6 +22,7 @@ import { LLMClient } from "../../../../../../core/ports";
 import { ArchitectGraphState, TASK_PRIORITIES } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { extractErrorDetails, createErrorViolation } from "../shared/errorHandler";
+import { ArtifactService } from "../../../../../../infrastructure/workspace/ArtifactService";
 
 // Import submodules
 import { generateTaskKeywords, displayKeywords, logKeywords } from "./keywordGeneration";
@@ -235,7 +236,6 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     if (!needsUi) return undefined;
     
     // ✅ Split injection: Use task.uiSections if available
-    const { ArtifactService } = require('../../../../../../infrastructure/workspace/ArtifactService');
     const uiDoc = ArtifactService.getUiDocForTask(state.parsedUiDocs, nextTask.uiSections);
     
     if (uiDoc) {

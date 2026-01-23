@@ -3,7 +3,7 @@
  */
 
 export { runtimeValidate } from './runtimeValidate';
-export { RuntimeValidationResult } from './types';
+export type { RuntimeValidationResult } from './types';
 export { 
   parseTypeScriptErrors, 
   parseLintErrors, 
