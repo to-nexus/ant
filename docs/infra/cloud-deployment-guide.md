@@ -49,33 +49,34 @@ Service names used for K8s Service Discovery (not hardcoded ports)
 │                                  ▼                                            │
 │  ┌─────────────────────────────────────────────────────────────────────────┐ │
 │  │                          ant-api (HPA)                                   │ │
-│  └──┬─────────────┬─────────────┬──────────────┬───────────────────────────┘ │
-│     │             │             │              │                              │
-│     │             │             │              └──────────────────┐           │
-│     │             │             │                                 │           │
-│     │TCP          │HTTP         │HTTP          HTTP               │HTTPS      │
-│     │             │             │              │                   │           │
-│     ▼             ▼             ▼              ▼                   ▼           │
-│  ┌───────┐  ┌───────────┐  ┌─────────┐  ┌──────────┐    ┌──────────────────┐ │
-│  │ redis │  │ant-preview│  │chromadb │  │ embedder │    │     LLM API      │ │
-│  │ (svc) │  │  (svc)    │  │ (svc)   │  │  (svc)   │    │    (External)    │ │
-│  │       │  │           │  │         │  │          │    └──────────────────┘ │
-│  │-State │  └─────┬─────┘  └─────────┘  └──────────┘                         │
-│  │-Queue │        │                                                          │
-│  │-Pub/Sub│        │                                                          │
-│  └───▲───┘        │                                                          │
-│      │             │                                                          │
-│      │TCP          │NFS                                                       │
-│      │BullMQ Poll  │                                                          │
-│      │             │                                                          │
-│  ┌───┴─────────┐  │                                                          │
-│  │  ant-job    │  │                                                          │
-│  │  (KEDA)     │  │                                                          │
-│  └──────┬──────┘  │                                                          │
-│         │          │                                                          │
-│         │NFS       │                                                          │
-│         │          │                                                          │
-│         ▼          ▼                                                          │
+│  └──┬─────────────┬─────────────┬──────────────┬──────────────┬────────────┘ │
+│     │             │             │              │              │               │
+│     │             │             │              │              └───────┐       │
+│     │             │             │              └──────────────────┐   │       │
+│     │             │             │                                 │   │       │
+│     │TCP          │HTTP         │HTTP          HTTP               │   │HTTP   │
+│     │             │(Proxy)      │              │                  │   │(Proxy)│
+│     ▼             ▼             ▼              ▼                  │   ▼       │
+│  ┌───────┐  ┌───────────┐  ┌─────────┐  ┌──────────┐            │ ┌───────┐ │
+│  │ redis │  │ant-preview│  │chromadb │  │ embedder │            │ │ant-ide│ │
+│  │ (svc) │  │  (svc)    │  │ (svc)   │  │  (svc)   │            │ │(Pods) │ │
+│  │       │  │           │  │         │  │          │            │ │       │ │
+│  │-State │  └─────┬─────┘  └─────────┘  └──────────┘            │ │Dynamic│ │
+│  │-Queue │        │                                              │ │1/user │ │
+│  │-Pub/Sub│        │                                              │ └───┬───┘ │
+│  └───▲───┘        │                                              │     │     │
+│      │             │                                              │     │NFS  │
+│      │TCP          │NFS                  ┌──────────────────┐    │     │     │
+│      │BullMQ Poll  │                     │     LLM API      │◀───┘     │     │
+│      │             │                     │    (External)    │          │     │
+│  ┌───┴─────────┐  │                     └──────────────────┘          │     │
+│  │  ant-job    │  │                                                    │     │
+│  │  (KEDA)     │  │                                                    │     │
+│  └──────┬──────┘  │                                                    │     │
+│         │          │                                                    │     │
+│         │NFS       │                                                    │     │
+│         │          │                                                    │     │
+│         ▼          ▼                                                    ▼     │
 │  ┌─────────────────────────────────────────────────────────────────────────┐ │
 │  │                          EFS (Shared Storage)                            │ │
 │  │                         /mnt/workspaces                                  │ │
@@ -99,10 +100,11 @@ Service names used for K8s Service Discovery (not hardcoded ports)
 | **ant-api** | HTTP API, Proxy (Preview/IDE) | HPA (CPU/Request) |
 | **ant-job** | AI Job Processing (Code/Design) | **KEDA (Queue Depth)** |
 | **ant-preview** | Preview Server Management | HPA (CPU/Memory) |
-| **ant-ui** | CSR SPA (React) | S3 + CloudFront |
+| **ant-ide** | Cloud IDE (VSCode) | **Dynamic (1 Pod/User)** |
+| **ant-ui** | CSR SPA (React) | S3 + CloudFront (CDN) |
 | **Redis** | State, Queue, Pub/Sub | ElastiCache Cluster |
-| **ChromaDB** | Vector DB (Code Search/RAG) | Optional, Single Pod |
-| **Embedder** | Text Embedding Generation | Optional, Single Pod |
+| **ChromaDB** | Vector DB (Code Search/RAG) | Vertical (Single Pod) |
+| **Embedder** | Text Embedding Generation | Horizontal (HPA) |
 
 ---
 
@@ -172,7 +174,50 @@ resources:
 | CPU Request | 500m | 1 |
 | Memory Request | 2Gi | 4Gi |
 
-### 2.4 Redis (ElastiCache)
+### 2.4 ant-ide (Cloud IDE)
+
+> **Note:** IDE Pods are dynamically created per user/project.
+> Managed by `KubernetesIDEOrchestrator` (requires `ANT_K8S_NAMESPACE`).
+
+```yaml
+resources:
+  requests:
+    cpu: "1"
+    memory: "1Gi"
+  limits:
+    cpu: "2"
+    memory: "2Gi"
+```
+
+| Item | Minimum | Recommended |
+|-----|-----|-----|
+| Image | `gitpod/openvscode-server:latest` | Pinned version |
+| CPU Request | 1 | 1 |
+| Memory Request | 1Gi | 2Gi |
+| Scaling | Dynamic (1 Pod per user/project) | With idle timeout |
+
+**Scaling Characteristics:**
+- Pods created on-demand when user opens IDE
+- Pods terminated after idle timeout (configurable)
+- Each Pod mounts user's workspace from EFS
+- No HPA needed (lifecycle managed by `KubernetesIDEOrchestrator`)
+
+### 2.5 ant-ui (S3 + CloudFront)
+
+> CSR SPA (React/Vite). Build output (`dist/`) deployed to S3 + CloudFront.
+
+| Environment | Method |
+|-------------|--------|
+| **Production** | S3 + CloudFront (CDN) |
+| **Local Dev** | `pnpm dev:ui` (Vite dev server) |
+
+**CloudFront Settings:**
+- Error Pages: 404 → `/index.html` (SPA routing)
+- SSL: ACM Certificate
+
+> ⚠️ Vite env vars are injected at **build time**. Separate builds required per environment.
+
+### 2.6 Redis (ElastiCache)
 
 | Item | Minimum | Recommended |
 |-----|-----|-----|
@@ -180,10 +225,10 @@ resources:
 | Memory | 13 GB | 26 GB |
 | Configuration | Single Node | Cluster Mode (3+ nodes) |
 
-### 2.5 Vector Memory (Optional)
+### 2.7 Vector Memory
 
 > ChromaDB + Embedder are used for code search/RAG features.
-> Can be omitted if these features are not used.
+> **Required** for AI job execution (code analysis, context retrieval).
 
 **ChromaDB (Vector Database)**
 
@@ -223,6 +268,8 @@ resources:
 
 ### 3.1 Required Resources
 
+**EKS Resources:**
+
 | Resource | Purpose |
 |--------|------|
 | Deployment | ant-api, ant-job, ant-preview |
@@ -230,6 +277,18 @@ resources:
 | Ingress | ALB → ant-api |
 | PVC | EFS (workspaces), gp3 (chromadb) |
 | Secret | API Keys, Redis URL |
+| Namespace | ant-ide (for IDE Pods) |
+| ServiceAccount | ant-api (for K8s API access to manage IDE Pods) |
+| RBAC | Role/RoleBinding for IDE Pod management |
+
+**AWS Resources (ant-ui):**
+
+| Resource | Purpose |
+|--------|------|
+| S3 Bucket | Static file hosting (dist/) |
+| CloudFront Distribution | CDN, SSL termination |
+| ACM Certificate | HTTPS for CloudFront |
+| Route53 Record | DNS (ant.crosstoken.io → CloudFront) |
 
 ### 3.2 Container Run Commands
 
@@ -245,23 +304,25 @@ resources:
 - ant-api: **HPA** (CPU-based)
 - ant-job: **KEDA** (Redis Queue Depth-based) - [KEDA installation required](https://keda.sh/)
 - ant-preview: **HPA** (CPU/Memory-based)
+- ant-ide: **Dynamic** (Pods created/deleted by `KubernetesIDEOrchestrator`)
 
 **Volumes:**
-- `/mnt/workspaces`: EFS (ReadWriteMany) - shared by ant-api, ant-job, ant-preview
-- ChromaDB: gp3 (ReadWriteOnce) - Optional
+- `/mnt/workspaces`: EFS (ReadWriteMany) - shared by ant-api, ant-job, ant-preview, ant-ide
+- ChromaDB: gp3 (ReadWriteOnce)
 
 **Probes:**
 - ant-api: `/api/health`
 - ant-preview: `/health`
 - ant-job: No probe needed (Worker)
+- ant-ide: No probe needed (Pods managed by ant-api)
 
 **Secret Management:**
 - Use K8s Secret or AWS Secrets Manager for API Keys, Redis URL
 - Inject via environment variables
 
-### 3.4 Vector Memory (Optional)
+### 3.4 Vector Memory
 
-> Only needed for code search/RAG features
+> Required for AI job execution (code search/RAG)
 
 | Component | Image |
 |---------|-------|
@@ -295,6 +356,7 @@ cp packages/ant-cli/.env.example.cloud packages/ant-cli/.env
 | `ANT_REDIS_URL` | Redis connection URL | `redis://redis.internal:6379` |
 | `ANT_PREVIEW_WORKERS` | Preview worker URLs | `http://ant-preview:8080` |
 | `ANT_WORKSPACE_BASE_PATH` | Workspace root path | `/mnt/workspaces` |
+| `ANT_K8S_NAMESPACE` | IDE K8s namespace (enables K8s IDE) | `ant-ide` |
 
 **ant-ui (Build time):**
 ```bash
@@ -309,13 +371,19 @@ VITE_CLOUD_BACKEND_BASE=https://ant.crosstoken.io/api
 
 | From | To | Purpose |
 |------|-----|------|
+| User Browser | CloudFront | ant-ui (static assets) |
+| User Browser | ALB | ant-api (API calls) |
 | ALB | ant-api | HTTPS Ingress |
 | ant-api, ant-job, ant-preview | Redis | State, Queue |
 | ant-api, ant-job | LLM API (External) | AI Calls |
-| ant-api | ant-preview | Preview Management |
+| ant-api | ant-preview | Preview Proxy |
+| ant-api | ant-ide Pods | IDE Proxy |
+| ant-ide | EFS | Workspace Mount |
 
 **Notes:**
-- ant-job does not need Inbound (Worker)
+- ant-ui: CloudFront serves static files (S3 origin), API calls go to ALB
+- ant-job does not need Inbound (Worker pulls from queue)
+- ant-ide Pods are created dynamically by ant-api via K8s API
 - Redis should only be accessible within VPC
 
 ---
