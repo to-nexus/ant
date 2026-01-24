@@ -319,8 +319,9 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
       console.log(`   Job type: ${jobType}`);
       console.log(`   Starting resume job execution...`);
       
-      // ✅ Restore overrideDirective from session (for chat-initiated jobs)
-      const overrideDirective = sessionData.state?.overrideDirective;
+      // ❌ DO NOT pass overrideDirective for resume!
+      // Passing it causes graph to treat resume as "new job" and re-run triage/decompose.
+      // runner.ts already restores directive from session checkpoint - no need to pass here.
       
       // ✅ inputFile not needed for resume (feature name is sufficient)
       const inputFile = undefined;
@@ -332,7 +333,7 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
         feature: featureName,
         inputFile,
         enableEvaluation: false,
-        overrideDirective,  // ✅ Restore from session
+        // ❌ overrideDirective removed - causes re-triage on resume
         chatSource,
         userContext,
         jobId: sessionJobId  // ✅ Use existing jobId for resume
