@@ -21,7 +21,8 @@ export function createHealthRoutes(): Router {
     
     res.json({ 
       recursionLimit: finalLimit,
-      serverMode: process.env.ANT_SERVER_MODE || 'local'
+      authMode: process.env.ANT_SERVER_MODE || 'local',  // local or cloud (affects auth only)
+      ideRuntime: process.env.ANT_K8S_NAMESPACE ? 'kubernetes' : 'docker'
     });
   });
   

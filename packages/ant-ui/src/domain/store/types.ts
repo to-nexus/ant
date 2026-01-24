@@ -111,7 +111,6 @@ export interface AuthState {
 
 export interface ConfigState {
   recursionLimit: number;
-  frontendMode: 'cloud' | 'local';
   backendMode: 'local' | 'cloud';
 }
 

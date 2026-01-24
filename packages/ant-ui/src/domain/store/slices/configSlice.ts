@@ -12,10 +12,7 @@ export interface ConfigActions {
 export type ConfigSlice = ConfigState & ConfigActions;
 
 export const createConfigSlice: StateCreator<any, [], [], ConfigSlice> = (set, get) => {
-  // Get frontend mode from env
-  const frontendMode = (import.meta.env.VITE_FRONTEND_MODE || 'local') as 'local' | 'cloud';
-  
-  // Get backend mode from localStorage
+  // Get backend mode from localStorage (default: cloud)
   const storedBackendMode = loadFromStorage(STORAGE_KEYS.BACKEND_MODE);
   const backendMode = (storedBackendMode || 'cloud') as 'local' | 'cloud';
 
@@ -24,7 +21,6 @@ export const createConfigSlice: StateCreator<any, [], [], ConfigSlice> = (set, g
     // State
     // ==================
     recursionLimit: 50,
-    frontendMode,
     backendMode,
 
     // ==================

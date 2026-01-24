@@ -140,32 +140,46 @@ export function LocalSetupGuide() {
                   Configure Environment
                 </h4>
                 <p className="text-gray-600 dark:text-gray-400 mb-3">
-                  Set up environment variables for local development.
+                  Copy the example config and set up your API keys.
                 </p>
                 
+                <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4 font-mono text-xs mb-3">
+                  <code className="text-gray-900 dark:text-gray-100">
+                    cp packages/ant-cli/.env.example.local packages/ant-cli/.env
+                  </code>
+                </div>
+                
                 <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4 font-mono text-xs">
-                  <div className="text-gray-500 dark:text-gray-400 mb-1"># packages/ant-cli/.env</div>
+                  <div className="text-gray-500 dark:text-gray-400 mb-1"># packages/ant-cli/.env (key settings)</div>
                   <code className="text-gray-900 dark:text-gray-100">
                     ANT_SERVER_MODE=local
                     <br />
-                    PORT=4000
+                    ANT_CLI_PORT=4000
                     <br />
-                    # LLM Provider (required)
                     <br />
-                    AI_MODEL_PROVIDER=anthropic
+                    # Required: Redis for state/queue
+                    <br />
+                    ANT_REDIS_URL=redis://localhost:6379
+                    <br />
+                    <br />
+                    # Required: Preview Worker URL
+                    <br />
+                    ANT_PREVIEW_WORKERS=http://localhost:8080
+                    <br />
+                    <br />
+                    # Required: LLM API Key
                     <br />
                     ANTHROPIC_API_KEY=your_api_key_here
-                    <br />
-                    <br />
-                    # Optional: specify model
-                    <br />
-                    # AI_MODEL_NAME=claude-sonnet-4-5
                   </code>
                 </div>
-                <div className="mt-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
-                  <p className="text-xs text-blue-700 dark:text-blue-300">
-                    <strong>Important:</strong> The backend must run on port <code className="px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-900">4000</code> to connect with this cloud frontend.
-                  </p>
+                <div className="mt-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-amber-700 dark:text-amber-300">
+                      <strong>Note:</strong> Local and Cloud servers use the same infrastructure (Redis + Preview Worker). 
+                      Only authentication differs (<code className="px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-900">local:local</code> auto vs OAuth).
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -179,41 +193,73 @@ export function LocalSetupGuide() {
               </div>
               <div className="flex-1">
                 <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                  Start Local Servers
+                  Start Local Services
                 </h4>
                 <p className="text-gray-600 dark:text-gray-400 mb-3">
-                  Launch the backend API server and Web IDE server on your local machine.
+                  Launch required services. Each command should run in a separate terminal.
                 </p>
                 
-                {/* Backend Server */}
+                {/* Redis */}
                 <div className="mb-4">
                   <h5 className="font-medium text-gray-900 dark:text-white mb-2 flex items-center gap-2">
                     <Server className="w-4 h-4" />
-                    1. Start Backend Server (Required)
+                    1. Start Redis (Required)
                   </h5>
                   <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4 font-mono text-sm">
                     <code className="text-gray-900 dark:text-gray-100">
-                      pnpm dev:cli-local
+                      docker run -d -p 6379:6379 redis
                     </code>
                   </div>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                    This starts the backend API on <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-900">http://localhost:4000</code>
+                    Redis is used for state management and job queue.
                   </p>
                 </div>
 
-                {/* IDE Server */}
-                <div>
+                {/* API Server */}
+                <div className="mb-4">
                   <h5 className="font-medium text-gray-900 dark:text-white mb-2 flex items-center gap-2">
-                    <Laptop className="w-4 h-4" />
-                    2. Start Web IDE Server (Optional)
+                    <Server className="w-4 h-4" />
+                    2. Start API Server (Required)
                   </h5>
                   <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4 font-mono text-sm">
                     <code className="text-gray-900 dark:text-gray-100">
-                      pnpm dev:ide
+                      pnpm dev:server
                     </code>
                   </div>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                    This starts the Web IDE on <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-900">http://localhost:4400</code> (no additional configuration needed)
+                    Backend API on <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-900">http://localhost:4000</code>
+                  </p>
+                </div>
+
+                {/* Job Worker */}
+                <div className="mb-4">
+                  <h5 className="font-medium text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+                    <Server className="w-4 h-4" />
+                    3. Start Job Worker (Required)
+                  </h5>
+                  <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4 font-mono text-sm">
+                    <code className="text-gray-900 dark:text-gray-100">
+                      pnpm dev:worker
+                    </code>
+                  </div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                    Processes AI jobs from the queue.
+                  </p>
+                </div>
+
+                {/* Preview Worker */}
+                <div>
+                  <h5 className="font-medium text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+                    <Laptop className="w-4 h-4" />
+                    4. Start Preview Worker (Required)
+                  </h5>
+                  <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4 font-mono text-sm">
+                    <code className="text-gray-900 dark:text-gray-100">
+                      pnpm dev:preview-worker
+                    </code>
+                  </div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                    Preview Worker on <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-900">http://localhost:8080</code>
                   </p>
                 </div>
               </div>
@@ -249,9 +295,10 @@ export function LocalSetupGuide() {
                   </div>
                 </div>
                 <div className="mt-4 space-y-1 text-sm text-gray-600 dark:text-gray-400">
-                  <div className="font-medium text-gray-900 dark:text-white mb-2">Local Servers:</div>
-                  <div>• Backend API: <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">http://localhost:4000</code></div>
-                  <div>• Web IDE: <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">http://localhost:4400</code></div>
+                  <div className="font-medium text-gray-900 dark:text-white mb-2">Local Services:</div>
+                  <div>• Redis: <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">localhost:6379</code></div>
+                  <div>• API Server: <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">http://localhost:4000</code></div>
+                  <div>• Preview Worker: <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">http://localhost:8080</code></div>
                 </div>
               </div>
             </div>

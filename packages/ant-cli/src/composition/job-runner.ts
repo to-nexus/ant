@@ -34,7 +34,7 @@
 import 'dotenv/config';
 import * as path from 'path';
 import { orchestrator } from './orchestrator';
-import { CloudWorkspaceResolver } from '../infrastructure/workspace/WorkspaceResolver';
+import { UnifiedWorkspaceResolver } from '../infrastructure/workspace/WorkspaceResolver';
 import { logger } from '../utils/logger';
 
 interface JobParams {
@@ -111,7 +111,7 @@ async function runJob(params: JobParams): Promise<void> {
   
   try {
     // Create workspace resolver for cloud mode
-    const workspaceResolver = new CloudWorkspaceResolver(params.workspacePath);
+    const workspaceResolver = new UnifiedWorkspaceResolver(params.workspacePath);
     
     // Use pre-resolved paths from environment variables
     const { projectPath, featurePath } = params;

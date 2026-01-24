@@ -40,15 +40,18 @@ import { WorkspaceService } from "../infrastructure/workspace/WorkspaceService";
  *
  * Hexagonal Architecture - Composition Root
  *
- * Supports Local and Cloud modes via configuration:
- * - Local Mode: workspaces/local/<project>
- * - Cloud Mode: workspaces/<org>/<user>/<project>
+ * Local and Cloud servers use identical architecture (Redis, BullMQ, Worker-based Preview).
+ * The only difference is authentication:
+ * - Local Mode: Uses local:local for tenant (no real auth)
+ * - Cloud Mode: Requires explicit authentication (OAuth, etc.)
  *
  * Environment Variables:
- * - ANT_SERVER_MODE: 'local' (default) or 'cloud'
+ * - ANT_SERVER_MODE: 'local' (default) or 'cloud' - affects authentication only
+ * - ANT_REDIS_URL: Redis connection URL (REQUIRED)
+ * - ANT_PREVIEW_WORKERS: Preview worker URLs (REQUIRED)
  * - ANT_CLI_PORT: Ant CLI server port (default: 4100)
- * - ANT_WORKSPACE_BASE_PATH: Physical workspace storage path (for separation from ant source)
- * - CLOUD_URL: Cloud service URL (for redirect)
+ * - ANT_WORKSPACE_BASE_PATH: Physical workspace storage path
+ * - ANT_K8S_NAMESPACE: Kubernetes namespace for IDE (optional, uses Docker if not set)
  */
 
 const DEFAULT_PORT = 4100;

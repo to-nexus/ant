@@ -8,14 +8,15 @@ export * from './AdapterFactory';
 /**
  * Infrastructure Factory Module (Cloud Scalability)
  * 
- * Provides factory for creating cloud-scalable infrastructure adapters.
- * Mode is determined by single ANT_SERVER_MODE environment variable.
+ * Provides factory for creating infrastructure adapters.
+ * All environments use the same distributed architecture (Redis, BullMQ, Remote Preview).
+ * ANT_SERVER_MODE only affects authentication (local:local vs real auth).
  * 
  * @see 10-cloud-scalability-design.md Section 6.2
  */
 export {
   InfrastructureFactory,
   getInfrastructureFactory,
-  ServerMode,
+  AuthMode,
   InfrastructureConfig
 } from './InfrastructureFactory';

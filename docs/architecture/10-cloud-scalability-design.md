@@ -1,22 +1,22 @@
 # Cloud Scalability Architecture Design
 
-> ant-cli를 클라우드 서비스로 확장하기 위한 아키텍처 설계 문서
+> Architecture design document for scaling ant-cli to cloud service
 
 ## 1. Executive Summary
 
-### 1.1 현재 상태
+### 1.1 Previous State (Before Refactoring)
 
-현재 ant-cli는 **단일 머신 모노리스** 구조로, 클라우드 확장이 불가능합니다:
+Previously, ant-cli was a **single-machine monolith** that couldn't scale to cloud:
 
-| 컴포넌트 | 현재 상태 | 확장성 문제 |
+| Component | Previous State | Scalability Issue |
 |---------|----------|-----------|
-| **API Server** | 단일 Express 인스턴스 | 수평 확장 불가 |
-| **Job 실행** | 로컬 child process spawn | CPU/Memory 제한 없음, 단일 머신 |
-| **Preview** | 로컬 npm 프로세스 spawn | 단일 머신, localhost 전용 |
-| **IDE** | 로컬 Docker 컨테이너 | 단일 머신, Docker 의존성 |
-| **상태 저장** | In-memory (Map, Set) | 서버 재시작 시 손실, 공유 불가 |
+| **API Server** | Single Express instance | No horizontal scaling |
+| **Job Execution** | Local child process spawn | No CPU/Memory limits, single machine |
+| **Preview** | Local npm process spawn | Single machine, localhost only |
+| **IDE** | Local Docker container | Single machine, Docker dependency |
+| **State Storage** | In-memory (Map, Set) | Lost on restart, not shareable |
 
-### 1.2 목표 아키텍처
+### 1.2 Current Architecture (After Refactoring)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -80,14 +80,14 @@
 
 ---
 
-## 2. 현재 구조 상세 분석
+## 2. Previous Structure Analysis (Historical)
 
 ### 2.1 ExpressServerAdapter (API Server)
 
-**위치**: `periphery/adapters/http/express/ExpressServerAdapter.ts`
+**Location**: `periphery/adapters/http/express/ExpressServerAdapter.ts`
 
 ```typescript
-// 현재: 모든 상태가 인메모리
+// Previous: All state in-memory
 export class ExpressServerAdapter {
   private stateTracker: JobStateTracker;     // In-memory job state
   private jobManager: JobExecutionManager;   // Local process spawn
@@ -95,17 +95,17 @@ export class ExpressServerAdapter {
 }
 ```
 
-**문제점**:
-1. `JobStateTracker`가 인메모리 Map 사용 → 서버 간 공유 불가
-2. `JobExecutionManager`가 로컬 spawn → 다른 머신에서 실행 불가
-3. 서버 재시작 시 모든 상태 손실
+**Issues (now resolved)**:
+1. `JobStateTracker` used in-memory Map → not shareable across servers
+2. `JobExecutionManager` used local spawn → couldn't run on other machines
+3. All state lost on server restart
 
-### 2.2 JobExecutionManager (Job 실행)
+### 2.2 JobExecutionManager (Job Execution)
 
-**위치**: `periphery/adapters/http/express/managers/JobExecutionManager.ts`
+**Location**: `periphery/adapters/http/express/managers/JobExecutionManager.ts`
 
 ```typescript
-// 현재: 로컬 child process spawn
+// Previous: Local child process spawn
 private async spawnChildProcess(jobId, params, args): Promise<ChildProcess> {
   return spawn('npx', ['tsx', ...args], {
     cwd: process.cwd(),
@@ -116,18 +116,18 @@ private async spawnChildProcess(jobId, params, args): Promise<ChildProcess> {
 }
 ```
 
-**문제점**:
-1. `spawn()`은 로컬 머신에서만 실행
-2. CPU/Memory 제한 없음 (문서에도 "향후 개선"으로 표시)
-3. Job 큐 없음 → 동시 실행 제어 불가
-4. 실패 시 자동 재시도 없음
+**Issues (now resolved)**:
+1. `spawn()` only executed on local machine
+2. No CPU/Memory limits
+3. No job queue → no concurrency control
+4. No automatic retry on failure
 
 ### 2.3 DevServerService (Preview)
 
-**위치**: `periphery/adapters/http/services/DevServerService/DevServerService.ts`
+**Location**: `periphery/adapters/http/services/DevServerService/DevServerService.ts`
 
 ```typescript
-// 현재: 로컬 npm 프로세스 spawn
+// Previous: Local npm process spawn
 private async spawnDevProcess(pkg, port, serverKey, extraEnv): Promise<ChildProcess> {
   const childProcess = spawn(command, args, {
     cwd: pkg.path,
@@ -139,19 +139,19 @@ private async spawnDevProcess(pkg, port, serverKey, extraEnv): Promise<ChildProc
 }
 ```
 
-**문제점**:
-1. 로컬에서만 preview server 실행
-2. `localhost:PORT`로만 접근 가능
-3. 다중 사용자 시 리소스 경쟁
+**Issues (now resolved)**:
+1. Preview server only ran locally
+2. Only accessible via `localhost:PORT`
+3. Resource contention with multiple users
 
 ### 2.4 IDEService (Cloud IDE)
 
-**위치**: `periphery/adapters/ide/IDEService.ts`
+**Location**: `periphery/adapters/ide/IDEService.ts`
 
 ```typescript
-// 현재: 로컬 Docker API 사용
+// Previous: Local Docker API
 export class IDEService {
-  private docker: Docker;  // dockerode - 로컬 Docker daemon만 지원
+  private docker: Docker;  // dockerode - local Docker daemon only
   
   async startIDE(...) {
     const container = await this.docker.createContainer({...});
@@ -160,47 +160,48 @@ export class IDEService {
 }
 ```
 
-**문제점**:
-1. 로컬 Docker daemon만 지원
-2. Kubernetes, Docker Swarm 미지원
-3. 컨테이너가 단일 머신에 고정
+**Issues (now resolved)**:
+1. Only supported local Docker daemon
+2. No Kubernetes, Docker Swarm support
+3. Container fixed to single machine
 
-### 2.5 InMemoryPortRegistry (상태 저장)
+### 2.5 Port Registry (State Storage) - RESOLVED
 
-**위치**: `infrastructure/networking/InMemoryPortRegistry.ts`
+**Previous**: `InMemoryPortRegistry` (now deleted)
+
+**Current**: `RedisStateStore` implements both `StateStorePort` and `PortRegistryPort`
 
 ```typescript
-// 현재: 인메모리 Map
-export class InMemoryPortRegistry implements PortRegistryPort {
-  private devServers = new Map<string, PortMapping>();
-  private ides = new Map<string, PortMapping>();
+// Current: Redis-based storage
+export class RedisStateStore implements StateStorePort, PortRegistryPort {
+  // All state stored in Redis - persistent and shareable
 }
 ```
 
-**문제점**:
-1. 서버 재시작 시 데이터 손실
-2. 다중 서버 인스턴스 간 공유 불가
-3. 문서에도 "Limitations" 명시됨
+**Resolution**:
+1. ✅ Data persists across server restarts
+2. ✅ Shared across multiple server instances
+3. ✅ Single implementation for all environments
 
 ---
 
-## 3. 리팩토링 설계
+## 3. Architecture Design
 
-### 3.1 핵심 원칙
+### 3.1 Core Principles
 
-| 원칙 | 설명 |
+| Principle | Description |
 |-----|------|
-| **관심사 분리** | API Gateway / Job Orchestration / Dev Server / IDE를 독립 컴포넌트로 분리 |
-| **Stateless API** | 모든 상태를 외부 저장소 (Redis)로 분리 |
-| **플러그인 아키텍처** | 로컬/클라우드 구현을 인터페이스 뒤에 숨김 |
-| **점진적 마이그레이션** | 기존 로컬 모드를 유지하면서 클라우드 모드 추가 |
-| **단일 진입점** | 프록시는 ant-cli에서 유지, 백엔드 서비스만 분산 |
+| **Separation of Concerns** | API Gateway / Job Orchestration / Preview / IDE as independent components |
+| **Stateless API** | All state externalized to Redis |
+| **Unified Architecture** | Same infrastructure for local and cloud (only auth differs) |
+| **Single Entry Point** | Proxy remains in ant-cli, only backend services are distributed |
+| **Required Infrastructure** | Redis and Preview Worker are mandatory for all environments |
 
-### 3.2 컴포넌트별 설계
+### 3.2 Component Design
 
 #### 3.2.1 API Server (Stateless)
 
-**변경**: 상태를 외부로 분리
+**Change**: Externalize state
 
 ```typescript
 // AS-IS: In-memory state
@@ -210,7 +211,7 @@ export class ExpressServerAdapter {
 
 // TO-BE: External state store
 export class ExpressServerAdapter {
-  private stateStore: StateStorePort;  // Redis 또는 InMemory
+  private stateStore: StateStorePort;  // Redis (required)
 }
 
 // Port Interface
@@ -219,7 +220,7 @@ export interface StateStorePort {
   setJobStatus(jobId: string, status: JobStatus): Promise<void>;
   getJobStatus(jobId: string): Promise<JobStatus | null>;
   
-  // Port Registry (기존 PortRegistryPort 확장)
+  // Port Registry (extends PortRegistryPort)
   registerDevServer(...): Promise<void>;
   registerIDE(...): Promise<void>;
   
@@ -229,13 +230,12 @@ export interface StateStorePort {
 }
 ```
 
-**구현체**:
-- `InMemoryStateStore`: 로컬 개발용 (현재 동작 유지)
-- `RedisStateStore`: 클라우드용 (새로 추가)
+**Implementation**:
+- `RedisStateStore`: Single implementation for all environments (required)
 
 #### 3.2.2 Job Execution (Queue + Workers)
 
-**변경**: 로컬 spawn → Job Queue + External Workers
+**Change**: Local spawn → Job Queue + External Workers
 
 ```
 AS-IS:
@@ -253,7 +253,7 @@ TO-BE:
                                      │◀─────────── status updates ──┘
 ```
 
-**새로운 인터페이스**:
+**Interface**:
 
 ```typescript
 // Job Queue Port
@@ -276,19 +276,18 @@ export interface JobPayload {
   overrideDirective?: string;
 }
 
-// Worker Interface (별도 프로세스로 실행)
+// Worker Interface (runs as separate process)
 export interface JobWorker {
   processJob(payload: JobPayload): Promise<JobResult>;
 }
 ```
 
-**구현체**:
-- `LocalJobQueue`: 현재 동작 유지 (직접 spawn)
-- `BullMQJobQueue`: 클라우드용 (Redis 기반 큐)
+**Implementation**:
+- `BullMQJobQueue`: Single implementation for all environments (Redis-based queue, required)
 
 #### 3.2.3 Preview Orchestration
 
-**변경**: 로컬 spawn → Remote Orchestration
+**Change**: Local spawn → Remote Orchestration
 
 ```
 AS-IS:
@@ -304,7 +303,7 @@ TO-BE:
 └─────────────┘                    └─────────────────────┘
 ```
 
-**새로운 인터페이스**:
+**Interface**:
 
 ```typescript
 // Preview Orchestrator Port
@@ -315,7 +314,7 @@ export interface PreviewOrchestratorPort {
   getLogs(instanceId: string): Promise<LogEntry[]>;
 }
 
-// Preview Instance (로컬 또는 원격)
+// Preview Instance (local or remote)
 export interface PreviewInstance {
   instanceId: string;
   host: string;      // 'localhost' or 'preview-worker-1.internal'
@@ -324,11 +323,10 @@ export interface PreviewInstance {
 }
 ```
 
-**구현체**:
-- `LocalPreviewOrchestrator`: 현재 DevServerService 래핑 (로컬 spawn)
-- `RemotePreviewOrchestrator`: Agent 기반 원격 워커 관리
+**Implementation**:
+- `RemotePreviewOrchestrator`: Single implementation for all environments (worker-based, required)
 
-**프록시 변경**:
+**Proxy change**:
 
 ```typescript
 // AS-IS: localhost only
@@ -340,7 +338,7 @@ const target = `http://${instance.host}:${instance.port}`;
 
 #### 3.2.4 IDE Orchestration
 
-**변경**: Local Docker → Kubernetes/Remote Docker
+**Change**: Local Docker → Kubernetes/Remote Docker
 
 ```
 AS-IS:
@@ -356,7 +354,7 @@ TO-BE:
 └─────────────┘                    └─────────────────────┘
 ```
 
-**새로운 인터페이스**:
+**Interface**:
 
 ```typescript
 // IDE Orchestrator Port
@@ -366,7 +364,7 @@ export interface IDEOrchestratorPort {
   getStatus(instanceId: string): Promise<IDEStatus>;
 }
 
-// IDE Instance (로컬 또는 K8s)
+// IDE Instance (local or K8s)
 export interface IDEInstance {
   instanceId: string;
   host: string;      // 'localhost' or 'ide-pod-xxx.default.svc'
@@ -376,27 +374,25 @@ export interface IDEInstance {
 }
 ```
 
-**구현체**:
-- `DockerIDEOrchestrator`: 현재 IDEService 래핑 (로컬 Docker)
-- `KubernetesIDEOrchestrator`: K8s API로 Pod 생성
+**Implementation**:
+- `LocalIDEOrchestrator`: Docker-based (default when ANT_K8S_NAMESPACE not set)
+- `KubernetesIDEOrchestrator`: K8s-based (when ANT_K8S_NAMESPACE is set)
 
 ---
 
-## 4. 상세 설계
+## 4. Detailed Design
 
 ### 4.1 StateStore (Redis)
 
-**파일 구조**:
+**File structure**:
 
 ```
 src/infrastructure/state/
-├── StateStorePort.ts           # Interface
-├── InMemoryStateStore.ts       # 로컬용 (기존 로직 통합)
-├── RedisStateStore.ts          # 클라우드용
-└── index.ts
+├── index.ts
+└── RedisStateStore.ts          # Single implementation (required)
 ```
 
-**Redis 스키마**:
+**Redis schema**:
 
 ```
 # Job Status
@@ -412,54 +408,52 @@ job:{jobId}:progress   → Progress updates
 devserver:{serverKey}:logs → Dev server log stream
 ```
 
-**Workspace 구조** (실제 구현):
+**Workspace structure** (current implementation):
 
 ```
-<ANT_WORKSPACE_BASE_PATH>/               # 예: /mnt/efs/workspaces
-└── <organizationId>/                    # 예: to.nexus
-    └── <userId>/                        # 예: probe
-        └── <projectId>/                 # 예: my-app
-            ├── config.json              # 프로젝트 설정
-            ├── codebase/                # Git 저장소 (clone)
+<ANT_WORKSPACE_BASE_PATH>/               # e.g., /mnt/efs/workspaces
+└── <organizationId>/                    # e.g., to.nexus
+    └── <userId>/                        # e.g., probe
+        └── <projectId>/                 # e.g., my-app
+            ├── config.json              # Project config
+            ├── codebase/                # Git repository (clone)
             │   ├── src/
             │   ├── package.json
             │   └── ...
-            └── features/                # Feature별 작업 공간
-                └── <featureId>/         # 예: skeleton, main
-                    ├── inputs/          # 입력 파일
-                    │   ├── directives/  # 작업 지시
+            └── features/                # Feature workspaces
+                └── <featureId>/         # e.g., skeleton, main
+                    ├── inputs/          # Input files
+                    │   ├── directives/  # Task directives
                     │   │   ├── code/directive.md
                     │   │   └── design/directive.md
-                    │   ├── sources/     # PRD, 토큰 등
+                    │   ├── sources/     # PRD, tokens, etc.
                     │   │   └── prd.md
-                    │   └── assets/      # 이미지 등
-                    ├── outputs/         # 출력 파일
+                    │   └── assets/      # Images, etc.
+                    ├── outputs/         # Output files
                     │   ├── design/
                     │   └── evals/
-                    └── sessions/        # 세션 상태
+                    └── sessions/        # Session state
                         ├── code.json
                         └── design.json
 ```
 
-> ⚠️ **주의**: tenantId 형식은 `organizationId:userId`이며, 파일시스템 경로에서는 `organizationId/userId`로 변환됩니다.
+> ⚠️ **Note**: tenantId format is `organizationId:userId`, which translates to `organizationId/userId` in filesystem paths.
 
 ### 4.2 Job Queue (BullMQ)
 
-**파일 구조**:
+**File structure**:
 
 ```
 src/infrastructure/queue/
-├── JobQueuePort.ts             # Interface
-├── LocalJobQueue.ts            # 현재 동작 (직접 spawn)
-├── BullMQJobQueue.ts           # Redis 기반 큐
-└── index.ts
+├── index.ts
+└── BullMQJobQueue.ts           # Single implementation (required)
 
-src/workers/
-├── job-worker.ts               # Standalone worker process
-└── worker-entrypoint.ts        # Worker 시작점
+src/infrastructure/worker/
+├── JobWorker.ts                # BullMQ worker process
+└── start-job-worker.ts         # Worker entry point
 ```
 
-**Worker 프로세스**:
+**Worker process**:
 
 ```typescript
 // src/workers/job-worker.ts
@@ -475,13 +469,13 @@ const worker = new Worker('ant-jobs', async (job) => {
 }, {
   connection: redisConnection,
   limiter: {
-    max: 2,              // 동시 2개 job
+    max: 2,              // max 2 concurrent jobs
     duration: 1000
   }
 });
 ```
 
-**리소스 제한**:
+**Resource limits**:
 
 ```yaml
 # docker-compose.worker.yml
@@ -501,18 +495,16 @@ services:
 
 ### 4.3 Preview Orchestration
 
-**파일 구조**:
+**File structure**:
 
 ```
 src/infrastructure/preview/
-├── PreviewOrchestratorPort.ts        # Interface
-├── LocalPreviewOrchestrator.ts       # 현재 DevServerService 래핑
-├── RemotePreviewOrchestrator.ts      # Agent 기반
-├── PreviewAgent.ts                   # 원격 워커에서 실행되는 에이전트
-└── index.ts
+├── index.ts
+├── RemotePreviewOrchestrator.ts      # Single implementation (required)
+└── PreviewWorkerService.ts           # Runs on worker nodes
 ```
 
-**원격 워커 아키텍처**:
+**Remote worker architecture**:
 
 ```
 ┌─────────────────┐         ┌─────────────────────────────────┐
@@ -527,7 +519,7 @@ src/infrastructure/preview/
 **Agent Protocol**:
 
 ```typescript
-// PreviewAgent API (각 워커에서 실행)
+// PreviewAgent API (runs on each worker)
 interface PreviewAgentAPI {
   // HTTP
   StartPreview(req: StartPreviewRequest): StartPreviewResponse;
@@ -539,14 +531,13 @@ interface PreviewAgentAPI {
 
 ### 4.4 IDE Orchestration (Kubernetes)
 
-**파일 구조**:
+**File structure**:
 
 ```
 src/infrastructure/ide/
-├── IDEOrchestratorPort.ts            # Interface
-├── DockerIDEOrchestrator.ts          # 현재 IDEService 래핑
-├── KubernetesIDEOrchestrator.ts      # K8s API 사용
-└── index.ts
+├── index.ts
+├── LocalIDEOrchestrator.ts           # Docker-based (default)
+└── KubernetesIDEOrchestrator.ts      # K8s-based (when ANT_K8S_NAMESPACE set)
 ```
 
 **Kubernetes Pod Template**:
@@ -586,209 +577,209 @@ spec:
 
 ---
 
-## 5. 마이그레이션 전략
+## 5. Migration Status (COMPLETED)
 
-### 5.1 Phase 1: Interface 추출
+### 5.1 Phase 1: Interface Extraction ✅
 
-**목표**: 기존 로직을 인터페이스 뒤로 숨기고, 로컬 구현체로 래핑
+- `StateStorePort` interface defined
+- `JobQueuePort` interface defined
+- `PreviewOrchestratorPort` interface defined
+- `IDEOrchestratorPort` interface defined
 
-```
-현재:
-ExpressServerAdapter → JobStateTracker (직접 사용)
+### 5.2 Phase 2: Unified Implementation ✅
 
-Phase 1 후:
-ExpressServerAdapter → StateStorePort → InMemoryStateStore (래핑)
-```
+- Local implementations removed (`LocalStateStore`, `LocalJobQueue`, `LocalPreviewOrchestrator`)
+- `RedisStateStore` as single StateStore implementation
+- `BullMQJobQueue` as single JobQueue implementation
+- `RemotePreviewOrchestrator` as single Preview implementation
 
-**작업**:
-1. `StateStorePort` 인터페이스 정의
-2. 기존 `JobStateTracker`, `InMemoryPortRegistry` → `InMemoryStateStore`로 통합
-3. 기존 `DevServerService` → `LocalDevServerOrchestrator`로 래핑
-4. 기존 `IDEService` → `DockerIDEOrchestrator`로 래핑
-5. `LocalJobQueue` 생성 (기존 spawn 로직 래핑)
+### 5.3 Phase 3: WorkspaceResolver Unification ✅
 
-### 5.2 Phase 2: Redis 구현
+- `LocalWorkspaceResolver` and `CloudWorkspaceResolver` merged into `UnifiedWorkspaceResolver`
+- Path resolution is now mode-agnostic (uses userContext from auth layer)
 
-**목표**: Redis 기반 상태 저장소 및 Job Queue 구현
+### 5.4 Phase 4: Environment Configuration ✅
 
-**작업**:
-1. `RedisStateStore` 구현
-2. `BullMQJobQueue` 구현
-3. Worker 프로세스 분리 (`src/workers/`)
-4. 환경변수로 모드 전환: `ANT_STATE_STORE=redis`, `ANT_JOB_QUEUE=bullmq`
-
-### 5.3 Phase 3: Remote Preview
-
-**목표**: Preview를 원격 워커에서 실행
-
-**작업**:
-1. `DevServerAgent` 구현 (각 노드에서 실행)
-2. `RemoteDevServerOrchestrator` 구현
-3. 프록시 변경 (`localhost` → `remoteHost`)
-4. 노드 풀 관리 (간단한 라운드로빈 또는 리소스 기반)
-
-### 5.4 Phase 4: Kubernetes IDE
-
-**목표**: IDE를 Kubernetes에서 실행
-
-**작업**:
-1. `KubernetesIDEOrchestrator` 구현
-2. Pod 템플릿 정의
-3. PVC 관리 (workspace 볼륨)
-4. 프록시 변경 (`localhost` → `podIP/serviceName`)
+- `ANT_SERVER_MODE` now only affects authentication (local:local vs OAuth)
+- `ANT_REDIS_URL` and `ANT_PREVIEW_WORKERS` are required for all environments
+- `ANT_K8S_NAMESPACE` determines IDE runtime (Docker vs Kubernetes)
 
 ---
 
-## 6. 환경 설정
+## 6. Environment Configuration
 
-### 6.1 모드 전환
+### 6.1 Unified Architecture
+
+Local and cloud servers use **identical architecture**.
+The only difference is **authentication mode**:
+- `local`: Skip auth, auto-set tenant to `local:local`
+- `cloud`: Explicit authentication required (OAuth, etc.)
 
 ```bash
-# Local Mode (현재 동작)
-ANT_SERVER_MODE=local
+# ===========================================
+# Local Server (.env)
+# ===========================================
+ANT_SERVER_MODE=local                      # Auth mode (local/cloud)
+ANT_REDIS_URL=redis://localhost:6379       # Redis (required)
+ANT_PREVIEW_WORKERS=http://localhost:8080  # Preview Worker (required)
+# ANT_K8S_NAMESPACE=                        # Not set: Docker
 
-# Cloud Mode
-ANT_SERVER_MODE=cloud
-ANT_STATE_STORE=redis
-ANT_REDIS_URL=redis://redis.internal:6379
-ANT_JOB_QUEUE=bullmq
-ANT_PREVIEW_MODE=remote
-ANT_PREVIEW_WORKERS=preview-worker-1.internal,preview-worker-2.internal
-ANT_IDE_MODE=kubernetes
-ANT_K8S_NAMESPACE=ant-ide
+# ===========================================
+# Cloud Server (.env)
+# ===========================================
+ANT_SERVER_MODE=cloud                      # Auth mode (local/cloud)
+ANT_REDIS_URL=redis://redis.internal:6379  # Redis (required)
+ANT_PREVIEW_WORKERS=http://preview-1.internal:8080,http://preview-2.internal:8080
+ANT_K8S_NAMESPACE=ant-ide                  # Set: Kubernetes
 ```
 
-### 6.2 Factory Pattern
+### 6.2 Infrastructure Summary
+
+| Component | Local | Cloud | Implementation |
+|---------|------|---------|-------|
+| **Auth** | local:local (auto) | OAuth, etc. | AuthService |
+| **State Store** | localhost Redis | cloud Redis | RedisStateStore |
+| **Job Queue** | localhost Redis | cloud Redis | BullMQJobQueue |
+| **Preview** | localhost Worker | remote Worker | RemotePreviewOrchestrator |
+| **IDE** | Docker | Kubernetes | LocalIDEOrchestrator / KubernetesIDEOrchestrator |
+
+### 6.3 InfrastructureFactory
 
 ```typescript
-// src/infrastructure/adapters/AdapterFactory.ts
-export class AdapterFactory {
-  static createStateStore(): StateStorePort {
-    if (process.env.ANT_STATE_STORE === 'redis') {
-      return new RedisStateStore(process.env.ANT_REDIS_URL);
+// src/infrastructure/adapters/InfrastructureFactory.ts
+export class InfrastructureFactory {
+  // Validate required environment variables
+  private loadConfig(): InfrastructureConfig {
+    const authMode = process.env.ANT_SERVER_MODE || 'local';
+    const redisUrl = process.env.ANT_REDIS_URL;
+    const previewWorkers = process.env.ANT_PREVIEW_WORKERS?.split(',');
+    
+    if (!redisUrl) {
+      throw new Error('ANT_REDIS_URL is required');
     }
-    return new InMemoryStateStore();
+    if (!previewWorkers?.length) {
+      throw new Error('ANT_PREVIEW_WORKERS is required');
+    }
+    
+    return { authMode, redisUrl, previewWorkers, k8sNamespace: process.env.ANT_K8S_NAMESPACE };
   }
   
-  static createJobQueue(): JobQueuePort {
-    if (process.env.ANT_JOB_QUEUE === 'bullmq') {
-      return new BullMQJobQueue(process.env.ANT_REDIS_URL);
-    }
-    return new LocalJobQueue();
+  // Always use Redis
+  getStateStore(): StateStorePort {
+    return new RedisStateStore({ url: this.config.redisUrl });
   }
   
-  static createPreviewOrchestrator(): PreviewOrchestratorPort {
-    if (process.env.ANT_PREVIEW_MODE === 'remote') {
-      const workers = (process.env.ANT_PREVIEW_WORKERS || '').split(',');
-      return new RemotePreviewOrchestrator(workers);
-    }
-    return new LocalPreviewOrchestrator();
+  // Always use BullMQ
+  getJobQueue(): JobQueuePort {
+    return new BullMQJobQueue({ redisUrl: this.config.redisUrl }, this.getStateStore());
   }
   
-  static createIDEOrchestrator(): IDEOrchestratorPort {
-    if (process.env.ANT_IDE_MODE === 'kubernetes') {
-      return new KubernetesIDEOrchestrator(process.env.ANT_K8S_NAMESPACE);
+  // Always use Remote Worker
+  getPreviewOrchestrator(): PreviewOrchestratorPort {
+    return new RemotePreviewOrchestrator({ workers: this.config.previewWorkers }, this.getStateStore());
+  }
+  
+  // Determined by ANT_K8S_NAMESPACE
+  getIDEOrchestrator(): IDEOrchestratorPort {
+    if (this.config.k8sNamespace) {
+      return new KubernetesIDEOrchestrator({ namespace: this.config.k8sNamespace }, this.getStateStore());
     }
-    return new DockerIDEOrchestrator();
+    return new LocalIDEOrchestrator(this.portManager, this.portRegistry);
   }
 }
 ```
 
 ---
 
-## 7. 파일 구조 (최종)
+## 7. File Structure (Current)
 
 ```
 src/
 ├── core/
 │   └── ports/
-│       ├── stateStore.ts           # 🆕 StateStorePort
-│       ├── jobQueue.ts             # 🆕 JobQueuePort
-│       ├── previewOrchestrator.ts  # 🆕 PreviewOrchestratorPort
-│       ├── ideOrchestrator.ts      # 🆕 IDEOrchestratorPort
-│       └── portRegistry.ts         # (기존, StateStorePort로 통합 가능)
+│       ├── stateStore.ts           # StateStorePort
+│       ├── queue.ts                # JobQueuePort
+│       ├── previewOrchestrator.ts  # PreviewOrchestratorPort
+│       ├── ideOrchestrator.ts      # IDEOrchestratorPort
+│       └── portRegistry.ts         # PortRegistryPort (integrated in RedisStateStore)
 │
 ├── infrastructure/
-│   ├── state/                      # 🆕 State Store
-│   │   ├── StateStorePort.ts
-│   │   ├── InMemoryStateStore.ts
-│   │   └── RedisStateStore.ts
+│   ├── state/
+│   │   └── RedisStateStore.ts      # Single StateStore implementation
 │   │
-│   ├── queue/                      # 🆕 Job Queue
-│   │   ├── JobQueuePort.ts
-│   │   ├── LocalJobQueue.ts
-│   │   └── BullMQJobQueue.ts
+│   ├── queue/
+│   │   └── BullMQJobQueue.ts       # Single JobQueue implementation
 │   │
-│   ├── preview/                    # 🆕 Preview Orchestration
-│   │   ├── PreviewOrchestratorPort.ts
-│   │   ├── LocalPreviewOrchestrator.ts
-│   │   └── RemotePreviewOrchestrator.ts
+│   ├── preview/
+│   │   ├── RemotePreviewOrchestrator.ts  # Single Preview implementation
+│   │   └── PreviewWorkerService.ts       # Runs on worker nodes
 │   │
-│   ├── ide/                        # 🆕 IDE Orchestration
-│   │   ├── IDEOrchestratorPort.ts
-│   │   ├── DockerIDEOrchestrator.ts
-│   │   └── KubernetesIDEOrchestrator.ts
+│   ├── ide/
+│   │   ├── LocalIDEOrchestrator.ts       # Docker-based
+│   │   └── KubernetesIDEOrchestrator.ts  # K8s-based
+│   │
+│   ├── workspace/
+│   │   └── WorkspaceResolver.ts    # UnifiedWorkspaceResolver
+│   │
+│   ├── worker/
+│   │   └── JobWorker.ts            # BullMQ Worker process
 │   │
 │   └── adapters/
-│       └── AdapterFactory.ts       # 🆕 Factory for all adapters
-│
-├── workers/                        # 🆕 Standalone Workers
-│   ├── job-worker.ts
-│   └── worker-entrypoint.ts
+│       └── InfrastructureFactory.ts  # Factory for all adapters
 │
 └── periphery/
     └── adapters/
         └── http/
             ├── express/
-            │   └── ExpressServerAdapter.ts  # 수정: 인터페이스 사용
+            │   └── ExpressServerAdapter.ts  # Uses interfaces
             ├── services/
-            │   └── PreviewService/          # 수정: Orchestrator로 위임
+            │   └── PreviewService/          # Delegates to Orchestrator
             └── middleware/
-                ├── previewProxy.ts          # 수정: host 동적 처리
-                └── ideProxy.ts              # 수정: host 동적 처리
+                ├── previewProxy.ts          # Dynamic host handling
+                └── ideProxy.ts              # Dynamic host handling
 ```
 
 ---
 
-## 8. 리소스 요구사항
+## 8. Resource Requirements
 
-### 8.1 클라우드 인프라
+### 8.1 Cloud Infrastructure
 
-| 컴포넌트 | 권장 스펙 | 수량 | 비고 |
+| Component | Recommended Spec | Count | Notes |
 |---------|---------|-----|-----|
-| **ant-cli API** | 2 CPU, 2GB RAM | 2+ | 로드밸런서 뒤 |
+| **ant-cli API** | 2 CPU, 2GB RAM | 2+ | Behind load balancer |
 | **Redis** | 2 CPU, 4GB RAM | 1 (HA: 3) | State + Queue |
 | **Job Worker** | 2-4 CPU, 4-8GB RAM | 2+ | Auto-scale |
-| **Preview Worker** | 4 CPU, 8GB RAM | 2+ | 포트 범위 제한 |
-| **IDE (K8s)** | 2 CPU, 2GB RAM per pod | Dynamic | Pod 당 1 사용자 |
-| **Workspace Storage** | 100GB+ | 1 | AWS EFS (공유 스토리지) |
+| **Preview Worker** | 4 CPU, 8GB RAM | 2+ | Port range limited |
+| **IDE (K8s)** | 2 CPU, 2GB RAM per pod | Dynamic | 1 user per pod |
+| **Workspace Storage** | 100GB+ | 1 | AWS EFS (shared storage) |
 
-### 8.2 Workspace Storage (✅ 구현 완료)
+### 8.2 Workspace Storage (✅ Implemented)
 
-**핵심 원칙**: Local과 EFS 모두 POSIX 호환이므로 **동일한 `FileSystemAdapter`** 사용.
+**Core Principle**: Both local and EFS are POSIX-compliant, so same `FileSystemAdapter` is used.
 
-**환경 변수** (단 하나만 필요):
+**Environment Variable** (only one needed):
 ```bash
 ANT_WORKSPACE_BASE_PATH=/path/to/workspaces
 ```
 
-| 환경 | 설정 예시 |
+| Environment | Example |
 |-----|----------|
-| 로컬 개발 | `ANT_WORKSPACE_BASE_PATH=/Users/dev/ant-workspaces` |
-| 단일 머신 클라우드 테스트 | 로컬과 동일 (같은 머신이므로) |
-| 분산 클라우드 (EFS) | `ANT_WORKSPACE_BASE_PATH=/mnt/efs/workspaces` |
+| Local Dev | `ANT_WORKSPACE_BASE_PATH=/Users/dev/ant-workspaces` |
+| Single Machine Cloud Test | Same as local (same machine) |
+| Distributed Cloud (EFS) | `ANT_WORKSPACE_BASE_PATH=/mnt/efs/workspaces` |
 
-**경로 계산 원칙** (개별 구현 금지):
+**Path Calculation Principle** (no ad-hoc implementation):
 ```typescript
-// ✅ 반드시 WorkspaceResolver 사용
-const resolver = new CloudWorkspaceResolver(workspaceBase);
+// ✅ Always use WorkspaceResolver
+const resolver = new UnifiedWorkspaceResolver(workspaceBase);
 const featurePath = resolver.getFeaturePath(userContext, projectId, feature);
 
-// ❌ 개별 path.join 금지
+// ❌ No ad-hoc path.join
 const featurePath = path.join(base, org, user, project, 'features', feature);
 ```
 
-**AWS EFS 마운트 (K8s)**:
+**AWS EFS Mount (K8s)**:
 ```yaml
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -803,9 +794,9 @@ spec:
       storage: 100Gi
 ```
 
-### 8.3 비용 예측 (AWS 기준)
+### 8.3 Cost Estimate (AWS)
 
-| 컴포넌트 | 인스턴스 타입 | 월 비용 (예상) |
+| Component | Instance Type | Monthly Cost (Est.) |
 |---------|-------------|--------------|
 | API Server x2 | t3.medium | ~$60 |
 | Redis (ElastiCache) | cache.t3.medium | ~$50 |
@@ -813,13 +804,13 @@ spec:
 | Preview Worker x2 | c5.xlarge | ~$270 |
 | EKS (IDE) | m5.large x3 | ~$200 |
 | EFS (Storage) | 100GB | ~$30 |
-| **Total** | | **~$740/월** |
+| **Total** | | **~$740/month** |
 
 ---
 
-## 9. 보안 고려사항
+## 9. Security Considerations
 
-### 9.1 네트워크 격리
+### 9.1 Network Isolation
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -842,25 +833,25 @@ spec:
 └──────────────────────────────────────────────────────────────┘
 ```
 
-### 9.2 인증/권한
+### 9.2 Authentication/Authorization
 
-- API → Worker: Job 데이터에 `userContext` 포함, Worker가 검증
-- API → Dev Node: mTLS 또는 API Key
+- API → Worker: Job data includes `userContext`, Worker validates
+- API → Dev Node: mTLS or API Key
 - API → K8s: ServiceAccount + RBAC
 
-### 9.3 데이터 격리
+### 9.3 Data Isolation
 
-- Workspace Storage: 테넌트별 디렉토리 분리 (현재와 동일)
-- Redis: Key prefix로 테넌트 분리
-- K8s: Namespace 또는 Label로 Pod 격리
+- Workspace Storage: Directory separation by tenant (same as before)
+- Redis: Tenant separation via key prefix
+- K8s: Pod isolation via Namespace or Labels
 
 ---
 
-## 10. 모니터링
+## 10. Monitoring
 
-### 10.1 메트릭
+### 10.1 Metrics
 
-| 메트릭 | 수집 방법 | 알림 조건 |
+| Metric | Collection Method | Alert Condition |
 |-------|---------|---------|
 | Job Queue Length | BullMQ metrics | > 100 |
 | Worker CPU/Memory | Container metrics | > 80% |
@@ -868,7 +859,7 @@ spec:
 | IDE Pod Count | K8s metrics | > node capacity |
 | API Response Time | Express middleware | p99 > 2s |
 
-### 10.2 로깅
+### 10.2 Logging
 
 ```
 [API] → CloudWatch/Loki
@@ -879,42 +870,45 @@ spec:
 
 ---
 
-## 11. 결론
+## 11. Conclusion
 
-이 설계는 현재 ant-cli의 단일 머신 구조를 **점진적으로** 클라우드 확장 가능한 구조로 전환합니다.
+**Local and cloud servers use identical architecture.**
 
-**핵심 변경**:
-1. **상태 외부화**: InMemory → Redis (공유 상태)
-2. **Job 분리**: Local spawn → Queue + Job Worker (수평 확장)
-3. **Preview 분리**: Local spawn → Preview Worker (리소스 분산)
-4. **IDE 분리**: Local Docker → Kubernetes (탄력적 스케일)
+Only differences:
+- **Auth**: local uses `local:local` auto, cloud requires explicit auth
+- **IDE**: local uses Docker, cloud uses Kubernetes (optional)
 
-**보존**:
-- 기존 로컬 모드 완전 유지
-- 인터페이스 기반 설계로 구현체 교체 가능
-- 환경변수로 모드 전환
+**Benefits of unified architecture**:
+1. Test distributed environment locally
+2. Simplified server code maintenance (minimal conditional branches)
+3. No gradual infrastructure migration needed (distributed from start)
 
 ---
 
-## 12. 구현 현황
+## 12. Implementation Status
 
-| 항목 | 상태 | 비고 |
+| Item | Status | Notes |
 |-----|------|-----|
-| **StateStorePort** | ✅ 완료 | `RedisStateStore`, `LocalStateStore` |
-| **JobQueuePort** | ✅ 완료 | `BullMQJobQueue`, `LocalJobQueue` |
-| **JobWorker** | ✅ 완료 | 분리된 Worker 프로세스 |
-| **FileSystemAdapter** | ✅ 완료 | POSIX 호환 (Local/EFS) |
-| **WorkspaceResolver** | ✅ 완료 | 경로 계산 중앙집중화 |
-| **PreviewOrchestrator** | ✅ 완료 | `LocalPreviewOrchestrator`, `RemotePreviewOrchestrator` |
-| **IDEOrchestrator** | ✅ 완료 | `LocalIDEOrchestrator`, `KubernetesIDEOrchestrator` |
+| **StateStorePort** | ✅ Done | `RedisStateStore` (single) |
+| **JobQueuePort** | ✅ Done | `BullMQJobQueue` (single) |
+| **JobWorker** | ✅ Done | Separate Worker process |
+| **FileSystemAdapter** | ✅ Done | POSIX-compliant (Local/EFS) |
+| **WorkspaceResolver** | ✅ Done | `UnifiedWorkspaceResolver` |
+| **PreviewOrchestrator** | ✅ Done | `RemotePreviewOrchestrator` (single) |
+| **IDEOrchestrator** | ✅ Done | `LocalIDEOrchestrator` (Docker), `KubernetesIDEOrchestrator` (K8s) |
 
-**현재 테스트 가능 환경**:
+**Local Test Environment**:
 ```bash
-# 단일 머신 클라우드 모드 테스트
-export ANT_SERVER_MODE=cloud
-export ANT_REDIS_URL=redis://localhost:6379
-export ANT_WORKSPACE_BASE_PATH=/path/to/ant-workspaces
+# 1. Start Redis
+docker run -d -p 6379:6379 redis
 
-npm run dev:server   # API Server
-npm run dev:worker   # Job Worker (별도 터미널)
+# 2. Set environment variables
+export ANT_SERVER_MODE=local
+export ANT_REDIS_URL=redis://localhost:6379
+export ANT_PREVIEW_WORKERS=http://localhost:8080
+
+# 3. Start server & workers (each in separate terminal)
+npm run dev:server          # API Server
+npm run dev:worker          # Job Worker
+npm run dev:preview-worker  # Preview Worker
 ```

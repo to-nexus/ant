@@ -1,28 +1,23 @@
 /**
  * InfrastructureFactory
  * 
- * Factory for creating cloud-scalable infrastructure adapters.
+ * Factory for creating infrastructure adapters.
  * 
- * Configuration is derived from a SINGLE environment variable:
- * - ANT_SERVER_MODE: 'local' | 'cloud' (default: 'local')
+ * All environments (local and cloud) use the same distributed architecture:
+ * - StateStore: RedisStateStore (required)
+ * - JobQueue: BullMQJobQueue (Redis-based, required)
+ * - Preview: RemotePreviewOrchestrator (worker-based, required)
+ * - IDE: LocalIDEOrchestrator (Docker) or KubernetesIDEOrchestrator (K8s)
  * 
- * Mode Mapping:
- * - local: All local/single-machine implementations
- *   - StateStore: LocalStateStore (in-memory)
- *   - JobQueue: LocalJobQueue (direct spawn)
- *   - Preview: LocalPreviewOrchestrator (local npm processes)
- *   - IDE: LocalIDEOrchestrator (local Docker)
+ * Environment Variables:
+ * - ANT_SERVER_MODE: 'local' | 'cloud' (affects authentication only)
+ * - ANT_REDIS_URL: Redis connection URL (REQUIRED)
+ * - ANT_PREVIEW_WORKERS: Comma-separated list of preview worker URLs (REQUIRED)
+ * - ANT_K8S_NAMESPACE: Kubernetes namespace for IDE pods (optional, uses Docker if not set)
  * 
- * - cloud: All cloud/distributed implementations
- *   - StateStore: RedisStateStore
- *   - JobQueue: BullMQJobQueue (Redis-based)
- *   - Preview: RemotePreviewOrchestrator (worker nodes)
- *   - IDE: KubernetesIDEOrchestrator (K8s pods)
- * 
- * Additional environment variables (for cloud mode only):
- * - ANT_REDIS_URL: Redis connection URL (required for cloud mode)
- * - ANT_PREVIEW_WORKERS: Comma-separated list of preview worker hosts
- * - ANT_K8S_NAMESPACE: Kubernetes namespace for IDE pods
+ * The only difference between local and cloud:
+ * - local: Uses local:local for authentication (no real auth)
+ * - cloud: Requires explicit authentication (OAuth, etc.)
  * 
  * @see 10-cloud-scalability-design.md Section 6.2
  */
@@ -33,11 +28,8 @@ import { PreviewOrchestratorPort } from '../../core/ports/previewOrchestrator';
 import { IDEOrchestratorPort } from '../../core/ports/ideOrchestrator';
 import { PortRegistryPort } from '../../core/ports/portRegistry';
 
-import { LocalStateStore } from '../state/LocalStateStore';
 import { RedisStateStore } from '../state/RedisStateStore';
-import { LocalJobQueue } from '../queue/LocalJobQueue';
 import { BullMQJobQueue } from '../queue/BullMQJobQueue';
-import { LocalPreviewOrchestrator } from '../preview/LocalPreviewOrchestrator';
 import { RemotePreviewOrchestrator } from '../preview/RemotePreviewOrchestrator';
 import { LocalIDEOrchestrator } from '../ide/LocalIDEOrchestrator';
 import { KubernetesIDEOrchestrator } from '../ide/KubernetesIDEOrchestrator';
@@ -49,15 +41,17 @@ import { logger } from '../../utils/logger';
 // Environment Configuration
 // ============================================
 
-export type ServerMode = 'local' | 'cloud';
+export type AuthMode = 'local' | 'cloud';
 
 export interface InfrastructureConfig {
-  serverMode: ServerMode;
+  authMode: AuthMode;
   
-  // Cloud mode specific
-  redisUrl?: string;
-  previewWorkers?: string[];
-  k8sNamespace?: string;
+  // Required for all environments
+  redisUrl: string;
+  previewWorkers: string[];
+  
+  // Optional: IDE runtime selection
+  k8sNamespace?: string;  // If set, use Kubernetes; otherwise use Docker
 }
 
 // ============================================
@@ -81,8 +75,13 @@ export class InfrastructureFactory {
 
   private constructor() {
     this.config = this.loadConfig();
-    logger.info(`InfrastructureFactory initialized with mode: ${this.config.serverMode}`, { 
+    logger.info(`InfrastructureFactory initialized`, { 
       component: 'InfrastructureFactory' 
+    }, {
+      authMode: this.config.authMode,
+      redisUrl: this.config.redisUrl ? '***' : 'NOT SET',
+      previewWorkers: this.config.previewWorkers.length,
+      ideRuntime: this.config.k8sNamespace ? 'kubernetes' : 'docker'
     });
   }
 
@@ -98,25 +97,47 @@ export class InfrastructureFactory {
 
   /**
    * Load configuration from environment
-   * Only ANT_SERVER_MODE determines local vs cloud stack
+   * 
+   * ANT_SERVER_MODE only affects authentication (local:local vs real auth)
+   * Infrastructure is the same for both modes (Redis, BullMQ, Remote Preview)
    */
   private loadConfig(): InfrastructureConfig {
-    const serverMode = (process.env.ANT_SERVER_MODE || 'local') as ServerMode;
+    const authMode = (process.env.ANT_SERVER_MODE || 'local') as AuthMode;
+    const redisUrl = process.env.ANT_REDIS_URL;
+    const previewWorkers = process.env.ANT_PREVIEW_WORKERS?.split(',').filter(Boolean) || [];
+    
+    // Validate required environment variables
+    if (!redisUrl) {
+      throw new Error(
+        'ANT_REDIS_URL is required. ' +
+        'Redis is required for both local and cloud environments. ' +
+        'Example: ANT_REDIS_URL=redis://localhost:6379'
+      );
+    }
+    
+    if (previewWorkers.length === 0) {
+      throw new Error(
+        'ANT_PREVIEW_WORKERS is required. ' +
+        'At least one preview worker URL must be configured. ' +
+        'Example: ANT_PREVIEW_WORKERS=http://localhost:8080'
+      );
+    }
     
     return {
-      serverMode,
-      // Cloud-specific settings (only used when serverMode === 'cloud')
-      redisUrl: process.env.ANT_REDIS_URL,
-      previewWorkers: process.env.ANT_PREVIEW_WORKERS?.split(',').filter(Boolean),
-      k8sNamespace: process.env.ANT_K8S_NAMESPACE || 'ant-ide'
+      authMode,
+      redisUrl,
+      previewWorkers,
+      k8sNamespace: process.env.ANT_K8S_NAMESPACE  // undefined = use Docker
     };
   }
   
   /**
-   * Check if running in cloud mode
+   * Check authentication mode
+   * - local: Uses local:local (no real authentication)
+   * - cloud: Requires explicit authentication
    */
-  isCloudMode(): boolean {
-    return this.config.serverMode === 'cloud';
+  isLocalAuthMode(): boolean {
+    return this.config.authMode === 'local';
   }
 
   /**
@@ -127,7 +148,7 @@ export class InfrastructureFactory {
   }
 
   /**
-   * Set dependencies (required for orchestrators)
+   * Set dependencies (required for IDE orchestrator with Docker)
    */
   setDependencies(portManager: PortManager, portRegistry: PortRegistryPort): void {
     this.portManager = portManager;
@@ -140,25 +161,14 @@ export class InfrastructureFactory {
 
   /**
    * Get StateStorePort implementation
-   * - local: LocalStateStore (in-memory)
-   * - cloud: RedisStateStore (Redis-based)
+   * Always uses RedisStateStore (required for all environments)
    */
   getStateStore(): StateStorePort {
     if (!this.stateStore) {
-      if (this.isCloudMode()) {
-        if (!this.config.redisUrl) {
-          throw new Error('ANT_REDIS_URL is required for cloud mode');
-        }
-        this.stateStore = new RedisStateStore({ url: this.config.redisUrl });
-        logger.info('Using RedisStateStore for cloud mode', {
-          component: 'InfrastructureFactory'
-        });
-      } else {
-        this.stateStore = new LocalStateStore();
-        logger.debug('Using LocalStateStore for local mode', {
-          component: 'InfrastructureFactory'
-        });
-      }
+      this.stateStore = new RedisStateStore({ url: this.config.redisUrl });
+      logger.info('Using RedisStateStore', {
+        component: 'InfrastructureFactory'
+      });
     }
     
     return this.stateStore;
@@ -170,28 +180,17 @@ export class InfrastructureFactory {
 
   /**
    * Get JobQueuePort implementation
-   * - local: LocalJobQueue (direct spawn)
-   * - cloud: BullMQJobQueue (Redis-based, requires separate worker)
+   * Always uses BullMQJobQueue (Redis-based, requires separate worker)
    */
   getJobQueue(): JobQueuePort {
     if (!this.jobQueue) {
-      if (this.isCloudMode()) {
-        if (!this.config.redisUrl) {
-          throw new Error('ANT_REDIS_URL is required for cloud mode');
-        }
-        this.jobQueue = new BullMQJobQueue(
-          { redisUrl: this.config.redisUrl },
-          this.getStateStore()
-        );
-        logger.info('Using BullMQJobQueue for cloud mode', {
-          component: 'InfrastructureFactory'
-        });
-      } else {
-        this.jobQueue = new LocalJobQueue(this.getStateStore());
-        logger.debug('Using LocalJobQueue for local mode', {
-          component: 'InfrastructureFactory'
-        });
-      }
+      this.jobQueue = new BullMQJobQueue(
+        { redisUrl: this.config.redisUrl },
+        this.getStateStore()
+      );
+      logger.info('Using BullMQJobQueue', {
+        component: 'InfrastructureFactory'
+      });
     }
     
     return this.jobQueue;
@@ -203,43 +202,17 @@ export class InfrastructureFactory {
 
   /**
    * Get PreviewOrchestratorPort implementation
-   * - local: LocalPreviewOrchestrator (local npm processes)
-   * - cloud: RemotePreviewOrchestrator (remote workers)
+   * Always uses RemotePreviewOrchestrator (worker-based)
    */
   getPreviewOrchestrator(): PreviewOrchestratorPort {
-    if (!this.portManager || !this.portRegistry) {
-      throw new Error('Dependencies not set. Call setDependencies() first.');
-    }
-    
     if (!this.previewOrchestrator) {
-      if (this.isCloudMode()) {
-        if (this.config.previewWorkers && this.config.previewWorkers.length > 0) {
-          this.previewOrchestrator = new RemotePreviewOrchestrator(
-            { workers: this.config.previewWorkers },
-            this.getStateStore()
-          );
-          logger.info('Using RemotePreviewOrchestrator for cloud mode', {
-            component: 'InfrastructureFactory'
-          });
-        } else {
-          // No workers configured, fall back to local
-          logger.warn('No preview workers configured, falling back to Local', {
-            component: 'InfrastructureFactory'
-          });
-          this.previewOrchestrator = new LocalPreviewOrchestrator(
-            this.portManager,
-            this.portRegistry
-          );
-        }
-      } else {
-        this.previewOrchestrator = new LocalPreviewOrchestrator(
-          this.portManager,
-          this.portRegistry
-        );
-        logger.debug('Using LocalPreviewOrchestrator for local mode', {
-          component: 'InfrastructureFactory'
-        });
-      }
+      this.previewOrchestrator = new RemotePreviewOrchestrator(
+        { workers: this.config.previewWorkers },
+        this.getStateStore()
+      );
+      logger.info(`Using RemotePreviewOrchestrator (${this.config.previewWorkers.length} workers)`, {
+        component: 'InfrastructureFactory'
+      });
     }
     
     return this.previewOrchestrator;
@@ -251,8 +224,8 @@ export class InfrastructureFactory {
 
   /**
    * Get IDEOrchestratorPort implementation
-   * - local: LocalIDEOrchestrator (local Docker)
-   * - cloud: KubernetesIDEOrchestrator (K8s pods)
+   * - With ANT_K8S_NAMESPACE: KubernetesIDEOrchestrator (K8s pods)
+   * - Without: LocalIDEOrchestrator (local Docker)
    */
   getIDEOrchestrator(): IDEOrchestratorPort {
     if (!this.portManager || !this.portRegistry) {
@@ -260,12 +233,12 @@ export class InfrastructureFactory {
     }
     
     if (!this.ideOrchestrator) {
-      if (this.isCloudMode()) {
+      if (this.config.k8sNamespace) {
         this.ideOrchestrator = new KubernetesIDEOrchestrator(
           { namespace: this.config.k8sNamespace },
           this.getStateStore()
         );
-        logger.info('Using KubernetesIDEOrchestrator for cloud mode', {
+        logger.info(`Using KubernetesIDEOrchestrator (namespace: ${this.config.k8sNamespace})`, {
           component: 'InfrastructureFactory'
         });
       } else {
@@ -273,7 +246,7 @@ export class InfrastructureFactory {
           this.portManager,
           this.portRegistry
         );
-        logger.debug('Using LocalIDEOrchestrator for local mode', {
+        logger.info('Using LocalIDEOrchestrator (Docker)', {
           component: 'InfrastructureFactory'
         });
       }

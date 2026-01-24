@@ -24,7 +24,7 @@ import { StateStorePort } from '../../core/ports/stateStore';
 import { JobPayload, JobProgress } from '../../core/ports/queue';
 import { RedisStateStore } from '../state/RedisStateStore';
 import { logger } from '../../utils/logger';
-import { CloudWorkspaceResolver, WorkspacePathResolver } from '../workspace/WorkspaceResolver';
+import { UnifiedWorkspaceResolver, WorkspacePathResolver } from '../workspace/WorkspaceResolver';
 
 // ESM: derive __dirname from import.meta.url
 const __filename = fileURLToPath(import.meta.url);
@@ -251,7 +251,7 @@ export class JobWorker {
         || process.env.ANT_WORKSPACE_BASE_PATH 
         || WorkspacePathResolver.getPhysicalWorkspacesPath();
       
-      const workspaceResolver = new CloudWorkspaceResolver(workspaceBase);
+      const workspaceResolver = new UnifiedWorkspaceResolver(workspaceBase);
       const projectPath = workspaceResolver.getProjectPath(payload.userContext, payload.projectId);
       const featurePath = workspaceResolver.getFeaturePath(payload.userContext, payload.projectId, payload.feature);
       
