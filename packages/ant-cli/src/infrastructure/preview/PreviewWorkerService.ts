@@ -19,8 +19,69 @@
 import express, { Express, Request, Response } from 'express';
 import { PreviewService } from '../../periphery/adapters/http/services/PreviewService';
 import { PortManager } from '../networking/PortManager';
-import { InMemoryPortRegistry } from '../networking/InMemoryPortRegistry';
+import { PortRegistryPort, PortMapping } from '../../core/ports/portRegistry';
 import { logger } from '../../utils/logger';
+
+/**
+ * Simple in-memory port registry for preview worker.
+ * Each worker manages its own local preview processes.
+ * This is NOT shared state - it's worker-local only.
+ */
+class WorkerLocalPortRegistry implements PortRegistryPort {
+  private previews = new Map<string, PortMapping>();
+  private ides = new Map<string, PortMapping>();
+
+  private createKey(tenantId: string, userId: string, projectId: string, feature: string): string {
+    return `${tenantId}:${userId}:${projectId}:${feature}`;
+  }
+
+  async registerPreview(tenantId: string, userId: string, projectId: string, feature: string, port: number): Promise<void> {
+    const key = this.createKey(tenantId, userId, projectId, feature);
+    this.previews.set(key, { tenantId, userId, projectId, feature, port, registeredAt: new Date(), lastAccessedAt: new Date() });
+  }
+
+  async registerIDE(tenantId: string, userId: string, projectId: string, feature: string, port: number): Promise<void> {
+    const key = this.createKey(tenantId, userId, projectId, feature);
+    this.ides.set(key, { tenantId, userId, projectId, feature, port, registeredAt: new Date(), lastAccessedAt: new Date() });
+  }
+
+  async getPreviewPort(tenantId: string, userId: string, projectId: string, feature: string): Promise<number | null> {
+    const key = this.createKey(tenantId, userId, projectId, feature);
+    return this.previews.get(key)?.port ?? null;
+  }
+
+  async getIDEPort(tenantId: string, userId: string, projectId: string, feature: string): Promise<number | null> {
+    const key = this.createKey(tenantId, userId, projectId, feature);
+    return this.ides.get(key)?.port ?? null;
+  }
+
+  async unregisterPreview(tenantId: string, userId: string, projectId: string, feature: string): Promise<void> {
+    const key = this.createKey(tenantId, userId, projectId, feature);
+    this.previews.delete(key);
+  }
+
+  async unregisterIDE(tenantId: string, userId: string, projectId: string, feature: string): Promise<void> {
+    const key = this.createKey(tenantId, userId, projectId, feature);
+    this.ides.delete(key);
+  }
+
+  async listPreviews(): Promise<PortMapping[]> {
+    return Array.from(this.previews.values());
+  }
+
+  async listIDEs(): Promise<PortMapping[]> {
+    return Array.from(this.ides.values());
+  }
+
+  async updateLastAccess(tenantId: string, userId: string, projectId: string, feature: string, type: 'preview' | 'ide'): Promise<void> {
+    const key = this.createKey(tenantId, userId, projectId, feature);
+    const map = type === 'preview' ? this.previews : this.ides;
+    const mapping = map.get(key);
+    if (mapping) mapping.lastAccessedAt = new Date();
+  }
+
+  async close(): Promise<void> {}
+}
 
 // ============================================
 // Configuration
@@ -39,7 +100,7 @@ export class PreviewWorkerService {
   private app: Express;
   private previewService: PreviewService;
   private portManager: PortManager;
-  private portRegistry: InMemoryPortRegistry;
+  private portRegistry: WorkerLocalPortRegistry;
   private server: any;
   private options: PreviewWorkerServiceOptions;
 
@@ -47,8 +108,8 @@ export class PreviewWorkerService {
     this.options = options;
     this.app = express();
     
-    // Initialize port management
-    this.portRegistry = new InMemoryPortRegistry();
+    // Initialize port management (worker-local)
+    this.portRegistry = new WorkerLocalPortRegistry();
     this.portManager = new PortManager();
     
     // Initialize preview service

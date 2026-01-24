@@ -1,7 +1,12 @@
 /**
  * Workspace Resolver
  * 
- * Local/Cloud 모드에 따라 workspace 경로를 계산하는 인터페이스
+ * Unified workspace path resolution.
+ * Uses userContext (organizationId/userId) to determine paths.
+ * 
+ * The caller is responsible for setting the correct userContext:
+ * - local mode: { organizationId: 'local', userId: 'local' }
+ * - cloud mode: { organizationId: 'to.nexus', userId: 'probe' } (from auth)
  */
 
 import * as path from 'path';
@@ -11,20 +16,20 @@ import { UserContext } from '../../core/types/user';
 
 export interface WorkspaceResolver {
   /**
-   * workspace 루트 경로 반환
-   * @param userContext Local 모드에서는 무시됨, Cloud 모드에서는 검증용으로 사용
+   * Get workspace root path for a user
+   * @param userContext Contains organizationId and userId for path construction
    */
   getWorkspacePath(userContext: UserContext): string;
   
   /**
-   * 프로젝트 경로 반환
-   * @param userContext Local 모드에서는 무시됨, Cloud 모드에서는 검증용으로 사용
+   * Get project path
+   * @param userContext Contains organizationId and userId for path construction
    */
   getProjectPath(userContext: UserContext, projectId: string): string;
   
   /**
-   * 피처 경로 반환
-   * @param userContext Local 모드에서는 무시됨, Cloud 모드에서는 검증용으로 사용
+   * Get feature path
+   * @param userContext Contains organizationId and userId for path construction
    */
   getFeaturePath(userContext: UserContext, projectId: string, featureId: string): string;
   
@@ -212,30 +217,31 @@ export class WorkspacePathResolver {
 
 
 /**
- * Local Mode Workspace Resolver (Legacy - for CLI commands)
+ * Unified Workspace Resolver
  * 
- * 구조: workspaces/local/user/<project>/features/<feature>
- * Local 모드에서는 단일 사용자이므로 UserContext 무시
+ * Single implementation for both local and cloud modes.
+ * Path structure: workspaces/<organizationId>/<userId>/<project>/features/<feature>
  * 
- * ⚠️ NOTE: Server mode now uses WorkspaceServiceAdapter instead.
- * This class is kept for backward compatibility with CLI commands.
+ * The caller determines the userContext:
+ * - local mode: { organizationId: 'local', userId: 'local' }
+ * - cloud mode: { organizationId: 'to.nexus', userId: 'probe' } (from auth)
+ * 
+ * This unified approach means the same code works regardless of mode.
+ * The only difference is how userContext is populated (authentication layer).
  */
-export class LocalWorkspaceResolver implements WorkspaceResolver {
+export class UnifiedWorkspaceResolver implements WorkspaceResolver {
   constructor(private readonly workspacesPath: string) {}
   
   getWorkspacePath(userContext: UserContext): string {
-    // Local 모드에서는 userContext 무시
-    return path.join(this.workspacesPath, 'local', 'user');
+    return path.join(this.workspacesPath, userContext.organizationId, userContext.userId);
   }
   
   getProjectPath(userContext: UserContext, projectId: string): string {
-    // Local 모드에서는 userContext 무시
-    return path.join(this.workspacesPath, 'local', 'user', projectId);
+    return path.join(this.workspacesPath, userContext.organizationId, userContext.userId, projectId);
   }
   
   getFeaturePath(userContext: UserContext, projectId: string, featureId: string): string {
-    // Local 모드에서는 userContext 무시
-    return path.join(this.workspacesPath, 'local', 'user', projectId, 'features', featureId);
+    return path.join(this.workspacesPath, userContext.organizationId, userContext.userId, projectId, 'features', featureId);
   }
   
   getPhysicalWorkspacesPath(): string {
@@ -244,42 +250,14 @@ export class LocalWorkspaceResolver implements WorkspaceResolver {
 }
 
 /**
- * Cloud Mode Workspace Resolver (Legacy - for CLI commands)
- * 
- * 구조: workspaces/<org>/<user>/<project>/features/<feature>
- * 각 organization과 user별로 분리된 workspace 구조
- * 
- * ⚠️ NOTE: Server mode now uses WorkspaceServiceAdapter instead.
- * This class is kept for backward compatibility with CLI commands.
+ * @deprecated Use UnifiedWorkspaceResolver instead
+ * Alias for backward compatibility
  */
-export class CloudWorkspaceResolver implements WorkspaceResolver {
-  constructor(private readonly workspacesPath: string) {}
-  
-  private validateContext(userContext: UserContext): void {
-    if (!userContext || userContext.organizationId === 'local' || userContext.userId === 'local') {
-      console.error(`[CloudWorkspaceResolver] ❌ Invalid context in Cloud mode:`, userContext);
-      console.error(`   This indicates authentication failure. Check that cookies are being sent.`);
-      throw new Error('Authentication required for Cloud mode. Please ensure cookies are enabled and user is authenticated.');
-    }
-  }
-  
-  getWorkspacePath(userContext: UserContext): string {
-    this.validateContext(userContext);
-    return path.join(this.workspacesPath, userContext.organizationId, userContext.userId);
-  }
-  
-  getProjectPath(userContext: UserContext, projectId: string): string {
-    this.validateContext(userContext);
-    return path.join(this.workspacesPath, userContext.organizationId, userContext.userId, projectId);
-  }
-  
-  getFeaturePath(userContext: UserContext, projectId: string, featureId: string): string {
-    this.validateContext(userContext);
-    return path.join(this.workspacesPath, userContext.organizationId, userContext.userId, projectId, 'features', featureId);
-  }
-  
-  getPhysicalWorkspacesPath(): string {
-    return this.workspacesPath;
-  }
-}
+export const LocalWorkspaceResolver = UnifiedWorkspaceResolver;
+
+/**
+ * @deprecated Use UnifiedWorkspaceResolver instead
+ * Alias for backward compatibility
+ */
+export const CloudWorkspaceResolver = UnifiedWorkspaceResolver;
 

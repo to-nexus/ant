@@ -4,7 +4,7 @@ import path from 'path';
 import { detectProject, resolveInputFile } from './resolver';
 import { orchestrator } from '../composition/orchestrator';
 import { TaskLogger } from './logger';
-import { CloudWorkspaceResolver, LocalWorkspaceResolver, WorkspacePathResolver } from '../infrastructure/workspace/WorkspaceResolver';
+import { UnifiedWorkspaceResolver, WorkspacePathResolver } from '../infrastructure/workspace/WorkspaceResolver';
 
 /**
  * CLI Command Structure
@@ -177,11 +177,9 @@ async function runArchitect(jobType: 'design' | 'code' | 'learn', inputPath: str
     console.log('');
     
     // Run orchestrator with new agent/task structure
-    // Inject workspaceResolver from server context if available
+    // Use unified workspace resolver (mode-agnostic)
     const workspacesPath = WorkspacePathResolver.getPhysicalWorkspacesPath();
-    const workspaceResolver = process.env.ANT_SERVER_MODE === 'cloud'
-      ? new CloudWorkspaceResolver(workspacesPath)
-      : new LocalWorkspaceResolver(workspacesPath);
+    const workspaceResolver = new UnifiedWorkspaceResolver(workspacesPath);
     
     // ✅ Extract userContext from environment (set by server in Cloud mode)
     let userContext: import('../core/types/user').UserContext;

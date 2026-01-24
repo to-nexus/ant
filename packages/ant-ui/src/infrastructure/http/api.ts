@@ -7,11 +7,6 @@ import { TaskTiming, TaskTokenUsage, JobTiming } from '@/domain/models/types';
 const LOCAL_BACKEND_BASE = import.meta.env.VITE_LOCAL_BACKEND_BASE || 'http://localhost:4000/api';
 const CLOUD_BACKEND_BASE = import.meta.env.VITE_CLOUD_BACKEND_BASE || 'http://localhost:4100/api';
 
-// Frontend Mode - Where the frontend is running (static)
-// cloud: Frontend is deployed to cloud (production)
-// local: Frontend is running locally (development)
-export const FRONTEND_MODE = (import.meta.env.VITE_FRONTEND_MODE || 'local') as 'cloud' | 'local';
-
 /**
  * Get API base URL dynamically based on backend mode from localStorage
  * 
@@ -54,10 +49,8 @@ export const API_BASE = () => getApiBase();
 export const SERVER_BASE = () => getApiBase().replace(/\/api$/, '');
 
 if (import.meta.env.DEV) {
-  console.log('[API] FRONTEND_MODE:', FRONTEND_MODE);
   console.log('[API] LOCAL_BACKEND_BASE:', LOCAL_BACKEND_BASE);
   console.log('[API] CLOUD_BACKEND_BASE:', CLOUD_BACKEND_BASE);
-  console.log('[API] Environment variables:', import.meta.env);
 }
 
 /**

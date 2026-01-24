@@ -4,11 +4,9 @@
  * Exports state storage implementations for ant-cli.
  * 
  * Usage:
- * - Local mode: LocalStateStore
- * - Cloud mode: RedisStateStore
+ * - All environments use RedisStateStore
  */
 
-export { LocalStateStore, InMemoryStateStore } from './LocalStateStore';
 export { RedisStateStore } from './RedisStateStore';
 export type { RedisStateStoreOptions } from './RedisStateStore';
 

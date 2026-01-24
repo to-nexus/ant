@@ -1,31 +1,33 @@
 # Ant Cloud Deployment Guide
 
-DevOps 팀을 위한 EKS 기반 클라우드 배포 가이드입니다.
+EKS-based cloud deployment guide for DevOps teams.
 
 ---
 
-## 1. 아키텍처 개요
+## 1. Architecture Overview
 
-### 1.1 서버 명명 규칙
+### 1.1 Server Naming Convention
 
-> **ant-api**, **ant-job**, **ant-preview**는 모두 `ant-cli` 패키지의 역할별 실행 모듈입니다.
+> **ant-api**, **ant-job**, **ant-preview** are all execution modules of the `ant-cli` package by role.
 
-| 서버명 | 실행 파일 | 역할 |
+| Server | Entrypoint | Role |
 |-------|----------|------|
 | **ant-api** | `server.mjs` | HTTP API, Proxy |
-| **ant-job** | `start-job-worker.mjs` | AI Job 처리 |
-| **ant-preview** | `start-preview-worker.mjs` | Preview 서버 관리 |
+| **ant-job** | `start-job-worker.mjs` | AI Job Processing |
+| **ant-preview** | `start-preview-worker.mjs` | Preview Server Management |
 
-### 1.2 배포 모드
+### 1.2 Deployment Modes
 
-Ant는 두 가지 배포 모드를 지원합니다:
+Ant uses **unified architecture** for both local and cloud deployments.
 
-| 모드 | 설명 | 인프라 요구사항 |
+| Mode | Description | Difference |
 |-----|------|----------------|
-| **Local** | 단일 서버에서 모든 컴포넌트 실행 | 서버 1대 |
-| **Cloud** | 분산 배포, 수평 확장 가능 | EKS + Redis |
+| **Local** | All components on single machine | Auth: `local:local` (auto), IDE: Docker |
+| **Cloud** | Distributed deployment, horizontally scalable | Auth: OAuth required, IDE: Kubernetes |
 
-### 1.3 Cloud 모드 아키텍처 (EKS)
+> **Note**: Both modes require Redis and Preview Worker. The only differences are authentication mode and IDE orchestration.
+
+### 1.3 Cloud Mode Architecture (EKS)
 
 ```
 Arrow Direction: A ──▶ B means "A initiates connection to B"
@@ -82,29 +84,29 @@ Service names used for K8s Service Discovery (not hardcoded ports)
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**도메인 구성 (환경별):**
+**Domain Configuration (per environment):**
 
-| 환경 | ant-api | ant-ui |
+| Environment | ant-api | ant-ui |
 |-----|---------|--------|
 | Dev | `dev-ant.crosstoken.io/api` | `dev-ant.crosstoken.io` |
 | Stg | `stg-ant.crosstoken.io/api` | `stg-ant.crosstoken.io` |
 | Prod | `ant.crosstoken.io/api` | `ant.crosstoken.io` |
 
-### 1.4 컴포넌트 역할 및 스케일링
+### 1.4 Component Roles and Scaling
 
-| 컴포넌트 | 역할 | 스케일링 방식 |
+| Component | Role | Scaling Method |
 |---------|------|--------------|
 | **ant-api** | HTTP API, Proxy (Preview/IDE) | HPA (CPU/Request) |
-| **ant-job** | AI Job 처리 (Code/Design) | **KEDA (Queue Depth)** |
-| **ant-preview** | Preview 서버 관리 | HPA (CPU/Memory) |
+| **ant-job** | AI Job Processing (Code/Design) | **KEDA (Queue Depth)** |
+| **ant-preview** | Preview Server Management | HPA (CPU/Memory) |
 | **ant-ui** | CSR SPA (React) | S3 + CloudFront |
 | **Redis** | State, Queue, Pub/Sub | ElastiCache Cluster |
-| **ChromaDB** | Vector DB (코드 검색/RAG) | Optional, Single Pod |
-| **Embedder** | 텍스트 임베딩 생성 | Optional, Single Pod |
+| **ChromaDB** | Vector DB (Code Search/RAG) | Optional, Single Pod |
+| **Embedder** | Text Embedding Generation | Optional, Single Pod |
 
 ---
 
-## 2. Pod 리소스 요구사항
+## 2. Pod Resource Requirements
 
 ### 2.1 ant-api
 
@@ -118,7 +120,7 @@ resources:
     memory: "4Gi"
 ```
 
-| 항목 | 최소 | 권장 |
+| Item | Minimum | Recommended |
 |-----|-----|-----|
 | Replicas | 2 (HA) | 3+ (HPA) |
 | CPU Request | 500m | 1 |
@@ -126,8 +128,8 @@ resources:
 
 ### 2.2 ant-job ⚠️ Long-Running Jobs
 
-> **참고:** AI Job은 대부분 **I/O bound** (LLM API 호출, 파일 I/O)입니다.
-> Pod 리소스에 따라 concurrency=2~4 설정 가능합니다.
+> **Note:** AI Jobs are mostly **I/O bound** (LLM API calls, file I/O).
+> Concurrency can be set to 2~4 depending on pod resources.
 
 ```yaml
 resources:
@@ -139,17 +141,17 @@ resources:
     memory: "8Gi"
 ```
 
-| 항목 | 최소 | 권장 |
+| Item | Minimum | Recommended |
 |-----|-----|-----|
-| Replicas | 2 | KEDA 자동 스케일링 |
+| Replicas | 2 | KEDA Auto-scaling |
 | CPU Request | 1 | 2 |
 | Memory Request | 4Gi | 8Gi |
-| Concurrency | 2 | 2~4 (메모리 비례) |
+| Concurrency | 2 | 2~4 (proportional to memory) |
 
-**스케일링 공식:**
+**Scaling Formula:**
 ```
-필요 Pod 수 = 동시 Job 수 ÷ concurrency
-예: 20 Jobs ÷ 2 = 10 Pods
+Required Pods = Concurrent Jobs ÷ concurrency
+Example: 20 Jobs ÷ 2 = 10 Pods
 ```
 
 ### 2.3 ant-preview
@@ -164,7 +166,7 @@ resources:
     memory: "4Gi"
 ```
 
-| 항목 | 최소 | 권장 |
+| Item | Minimum | Recommended |
 |-----|-----|-----|
 | Replicas | 2 | 3+ (HPA) |
 | CPU Request | 500m | 1 |
@@ -172,20 +174,20 @@ resources:
 
 ### 2.4 Redis (ElastiCache)
 
-| 항목 | 최소 | 권장 |
+| Item | Minimum | Recommended |
 |-----|-----|-----|
-| 타입 | r6g.large | r6g.xlarge |
+| Type | r6g.large | r6g.xlarge |
 | Memory | 13 GB | 26 GB |
-| 구성 | Single Node | Cluster Mode (3+ nodes) |
+| Configuration | Single Node | Cluster Mode (3+ nodes) |
 
 ### 2.5 Vector Memory (Optional)
 
-> ChromaDB + Embedder는 코드 검색/RAG 기능에 사용됩니다.
-> 해당 기능을 사용하지 않으면 생략 가능합니다.
+> ChromaDB + Embedder are used for code search/RAG features.
+> Can be omitted if these features are not used.
 
 **ChromaDB (Vector Database)**
 
-| 항목 | 최소 | 권장 |
+| Item | Minimum | Recommended |
 |-----|-----|-----|
 | Image | `chromadb/chroma:latest` | `chromadb/chroma:0.4.x` |
 | CPU | 1 vCPU | 2 vCPU |
@@ -194,34 +196,34 @@ resources:
 
 **Embedder (Embedding Service)**
 
-| 항목 | 최소 | 권장 |
+| Item | Minimum | Recommended |
 |-----|-----|-----|
 | Image | Custom (sentence-transformers) | Custom |
 | CPU | 2 vCPU | 4 vCPU |
 | Memory | 4 GB | 8 GB |
 | GPU | - | Optional (faster) |
 
-**통신:**
-- ant-api → chromadb (HTTP): Vector 검색/저장
-- ant-api → embedder (HTTP): 텍스트 임베딩 생성
+**Communication:**
+- ant-api → chromadb (HTTP): Vector search/storage
+- ant-api → embedder (HTTP): Text embedding generation
 
-**스케일링:**
+**Scaling:**
 
-| 컴포넌트 | 스케일링 | 비고 |
+| Component | Scaling | Notes |
 |---------|---------|------|
-| ChromaDB | **Vertical** (단일 Pod) | 대용량 시 Chroma Cloud 고려 |
-| Embedder | **Horizontal** (HPA 가능) | CPU 바운드, 병렬화 가능 |
+| ChromaDB | **Vertical** (Single Pod) | Consider Chroma Cloud for large scale |
+| Embedder | **Horizontal** (HPA possible) | CPU bound, parallelizable |
 
-> ⚠️ ChromaDB는 현재 내장 클러스터링을 지원하지 않습니다. 
-> 대규모 환경에서는 [Chroma Cloud](https://www.trychroma.com/) 또는 Pinecone 등 관리형 서비스 권장.
+> ⚠️ ChromaDB does not currently support built-in clustering.
+> For large-scale environments, consider managed services like [Chroma Cloud](https://www.trychroma.com/) or Pinecone.
 
 ---
 
-## 3. Kubernetes 배포 가이드
+## 3. Kubernetes Deployment Guide
 
-### 3.1 필수 리소스
+### 3.1 Required Resources
 
-| 리소스 | 용도 |
+| Resource | Purpose |
 |--------|------|
 | Deployment | ant-api, ant-job, ant-preview |
 | Service | ant-api, ant-preview (ClusterIP) |
@@ -229,124 +231,163 @@ resources:
 | PVC | EFS (workspaces), gp3 (chromadb) |
 | Secret | API Keys, Redis URL |
 
-### 3.2 컨테이너 실행 커맨드
+### 3.2 Container Run Commands
 
-| 서버 | Command |
+| Server | Command |
 |------|---------|
 | ant-api | `node dist/server.mjs` |
 | ant-job | `node dist/start-job-worker.mjs` |
 | ant-preview | `node dist/start-preview-worker.mjs` |
 
-### 3.3 주요 설정 원칙
+### 3.3 Key Configuration Principles
 
-**스케일링:**
-- ant-api: **HPA** (CPU 기반)
-- ant-job: **KEDA** (Redis Queue Depth 기반) - [KEDA 설치 필요](https://keda.sh/)
-- ant-preview: **HPA** (CPU/Memory 기반)
+**Scaling:**
+- ant-api: **HPA** (CPU-based)
+- ant-job: **KEDA** (Redis Queue Depth-based) - [KEDA installation required](https://keda.sh/)
+- ant-preview: **HPA** (CPU/Memory-based)
 
-**볼륨:**
-- `/mnt/workspaces`: EFS (ReadWriteMany) - ant-api, ant-job, ant-preview 공유
+**Volumes:**
+- `/mnt/workspaces`: EFS (ReadWriteMany) - shared by ant-api, ant-job, ant-preview
 - ChromaDB: gp3 (ReadWriteOnce) - Optional
 
-**Probe:**
+**Probes:**
 - ant-api: `/api/health`
 - ant-preview: `/health`
-- ant-job: Probe 불필요 (Worker)
+- ant-job: No probe needed (Worker)
 
-**Secret 관리:**
-- API Keys, Redis URL은 K8s Secret 또는 AWS Secrets Manager 사용
-- 환경변수로 주입
+**Secret Management:**
+- Use K8s Secret or AWS Secrets Manager for API Keys, Redis URL
+- Inject via environment variables
 
 ### 3.4 Vector Memory (Optional)
 
-> 코드 검색/RAG 기능 사용 시에만 필요
+> Only needed for code search/RAG features
 
-| 컴포넌트 | Image |
+| Component | Image |
 |---------|-------|
 | ChromaDB | `chromadb/chroma:latest` |
 | Embedder | Custom (ECR) |
 
 ---
 
-## 4. 환경변수
+## 4. Environment Variables
 
-> **참조:** `packages/ant-cli/.env.example.cloud`
+> **Reference:** `packages/ant-cli/.env.example.cloud`
 
 ```bash
-# 파일 복사 후 값 수정
+# Copy and modify values
 cp packages/ant-cli/.env.example.cloud packages/ant-cli/.env
 ```
 
-**서버별 필요 섹션:**
+**Required sections per server:**
 
-| 서버 | 필요 섹션 |
+| Server | Required Sections |
 |-----|----------|
 | ant-api | COMMON + ant-api |
 | ant-job | COMMON + ant-job |
 | ant-preview | COMMON + ant-preview |
 
-**ant-ui (빌드 타임):**
+**Key Environment Variables (Required for all):**
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `ANT_SERVER_MODE` | Authentication mode | `cloud` |
+| `ANT_REDIS_URL` | Redis connection URL | `redis://redis.internal:6379` |
+| `ANT_PREVIEW_WORKERS` | Preview worker URLs | `http://ant-preview:8080` |
+| `ANT_WORKSPACE_BASE_PATH` | Workspace root path | `/mnt/workspaces` |
+
+**ant-ui (Build time):**
 ```bash
 VITE_CLOUD_BACKEND_BASE=https://ant.crosstoken.io/api
 ```
 
 ---
 
-## 5. 네트워크 구성
+## 5. Network Configuration
 
-**필수 통신:**
+**Required Communication:**
 
-| From | To | 용도 |
+| From | To | Purpose |
 |------|-----|------|
 | ALB | ant-api | HTTPS Ingress |
 | ant-api, ant-job, ant-preview | Redis | State, Queue |
-| ant-api, ant-job | LLM API (External) | AI 호출 |
-| ant-api | ant-preview | Preview 관리 |
+| ant-api, ant-job | LLM API (External) | AI Calls |
+| ant-api | ant-preview | Preview Management |
 
-**주의:**
-- ant-job은 Inbound 불필요 (Worker)
-- Redis는 VPC 내부에서만 접근 가능하게 설정
+**Notes:**
+- ant-job does not need Inbound (Worker)
+- Redis should only be accessible within VPC
 
 ---
 
-## 6. 스토리지
+## 6. Storage
 
-### 6.1 EFS 구성
+### 6.1 EFS Configuration
 
 ```
-/mnt/workspaces/           # ANT_WORKSPACE_BASE_PATH
-├── {tenantId}/
-│   └── {userId}/
-│       └── {projectId}/
-│           └── {feature}/
-│               ├── src/
-│               ├── package.json
-│               └── ...
+/mnt/workspaces/                    # ANT_WORKSPACE_BASE_PATH
+├── {organizationId}/               # e.g., to.nexus
+│   └── {userId}/                   # e.g., probe
+│       └── {projectId}/            # e.g., my-app
+│           ├── config.json
+│           ├── codebase/           # Git repository
+│           └── features/
+│               └── {featureId}/
+│                   ├── inputs/
+│                   ├── outputs/
+│                   └── sessions/
 ```
+
+> **Note**: Path resolution is handled by `UnifiedWorkspaceResolver` using `userContext` from authentication layer.
 
 **EFS Requirements:**
 - Performance mode: General Purpose
-- Throughput mode: Bursting (또는 Provisioned for heavy load)
+- Throughput mode: Bursting (or Provisioned for heavy load)
 - Encryption: At rest enabled
 - Access points: Create for `/mnt/workspaces`
 
 ---
 
-## 7. Ant 특화 주의사항
+## 7. Ant-Specific Considerations
 
-### 스토리지
+### Infrastructure (Required)
 
-- **EFS 필수**: ant-api, ant-job, ant-preview가 동일 workspace 공유 (ReadWriteMany)
-- EBS 불가
+| Component | Requirement | Implementation |
+|-----------|-------------|----------------|
+| **Redis** | Required (both local & cloud) | `RedisStateStore` (single) |
+| **Job Queue** | Required (both local & cloud) | `BullMQJobQueue` (single) |
+| **Preview Worker** | Required (both local & cloud) | `RemotePreviewOrchestrator` (single) |
+| **IDE** | Docker (local) or K8s (cloud) | `LocalIDEOrchestrator` / `KubernetesIDEOrchestrator` |
 
-### 스케일링
+> **Note**: Local and cloud use identical infrastructure components. Only authentication mode and IDE orchestration differ.
 
-- **ant-job**: KEDA + Redis Queue Depth 기반 권장
-  - HPA(CPU/Memory)는 Queue 상태 반영 불가
-- **동시 Job 수 = replicas × concurrency**
-  - concurrency 높이면 Pod 메모리도 비례 증가
+### Storage
 
-### Job 특성
+- **EFS Required**: ant-api, ant-job, ant-preview share the same workspace (ReadWriteMany)
+- EBS not supported
 
-- Timeout 없음 (완료까지 실행)
-- 필요시 BullMQ `jobTimeout` 설정
+### Scaling
+
+- **ant-job**: KEDA + Redis Queue Depth-based recommended
+  - HPA (CPU/Memory) cannot reflect queue state
+- **Concurrent Jobs = replicas × concurrency**
+  - Increasing concurrency requires proportional pod memory increase
+
+### Job Characteristics
+
+- No timeout (runs until completion)
+- Configure BullMQ `jobTimeout` if needed
+
+### Authentication Mode
+
+| Mode | `ANT_SERVER_MODE` | Behavior |
+|------|-------------------|----------|
+| Local | `local` | Auth skipped, tenant auto-set to `local:local` |
+| Cloud | `cloud` | OAuth/explicit auth required |
+
+### IDE Orchestration
+
+| Environment | `ANT_K8S_NAMESPACE` | Orchestrator |
+|-------------|---------------------|--------------|
+| Local | Not set | `LocalIDEOrchestrator` (Docker) |
+| Cloud | Set (e.g., `ant-ide`) | `KubernetesIDEOrchestrator` (K8s) |

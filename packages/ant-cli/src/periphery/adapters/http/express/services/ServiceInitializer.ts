@@ -16,7 +16,6 @@ import { WorkspaceServicePort } from '../../../../../core/ports/workspace';
 import { AuthService } from '../../../../../infrastructure/auth/AuthService';
 import { GoogleOIDCService } from '../../../../../infrastructure/auth/GoogleOIDCService';
 import { PortManager } from '../../../../../infrastructure/networking/PortManager';
-import { InMemoryPortRegistry } from '../../../../../infrastructure/networking/InMemoryPortRegistry';
 import { IDEService } from '../../../ide/IDEService';
 import { logger } from '../../../../../utils/logger';
 import { ServerConfig, ServerDependencies } from '../types';
@@ -37,20 +36,12 @@ export function initializeServices(
     config.workspacesPath
   );
   
-  // Initialize PortManager, PortRegistry, and IDEService
-  // In cloud mode, use StateStore as PortRegistry (RedisStateStore implements PortRegistryPort)
+  // Initialize PortManager and PortRegistry
+  // Always use RedisStateStore as PortRegistry (it implements both StateStorePort and PortRegistryPort)
   const portManager = new PortManager();
-  let portRegistry: PortRegistryPort;
-  
-  if (config.mode === 'cloud') {
-    // RedisStateStore implements both StateStorePort and PortRegistryPort
-    const factory = getInfrastructureFactory();
-    portRegistry = factory.getStateStore() as unknown as PortRegistryPort;
-    logger.info('Using RedisStateStore as PortRegistry (cloud mode)', { component: 'ServiceInitializer' });
-  } else {
-    portRegistry = new InMemoryPortRegistry();
-    logger.info('Using InMemoryPortRegistry (local mode)', { component: 'ServiceInitializer' });
-  }
+  const factory = getInfrastructureFactory();
+  const portRegistry: PortRegistryPort = factory.getStateStore() as unknown as PortRegistryPort;
+  logger.info('Using RedisStateStore as PortRegistry', { component: 'ServiceInitializer' });
   
   const ideService = new IDEService(portManager, portRegistry);
   ideService.startIdleChecker();
@@ -130,11 +121,10 @@ export function initializeServices(
   
   const jobPrerequisitesAdapter = new FileJobPrerequisitesAdapter(workspaceResolver);
   
-  // ✅ Cloud Mode: Subscribe to job status updates via Redis Pub/Sub
+  // ✅ Subscribe to job status updates via Redis Pub/Sub
   // This enables SSE broadcast of job completion/failure events to UI clients
-  if (config.mode === 'cloud') {
-    setupJobStatusSubscription(sseService);
-  }
+  // (Always enabled since we always use Redis)
+  setupJobStatusSubscription(sseService);
   
   return {
     workspaceService,

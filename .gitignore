@@ -6,6 +6,7 @@ node_modules/
 .env
 .env.local
 .env.*.local
+!.env.example.local
 .env.backup
 
 # Build outputs

@@ -4,11 +4,9 @@
  * Exports preview orchestration implementations for ant-cli.
  * 
  * Usage:
- * - Local mode: LocalPreviewOrchestrator (wraps PreviewService)
- * - Cloud mode: RemotePreviewOrchestrator (remote workers)
+ * - All environments use RemotePreviewOrchestrator (worker-based)
  */
 
-export { LocalPreviewOrchestrator } from './LocalPreviewOrchestrator';
 export { RemotePreviewOrchestrator } from './RemotePreviewOrchestrator';
 export type { RemotePreviewOrchestratorOptions } from './RemotePreviewOrchestrator';
 export { PreviewWorkerService, startPreviewWorker } from './PreviewWorkerService';

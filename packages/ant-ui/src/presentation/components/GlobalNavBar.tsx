@@ -34,7 +34,6 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
   const setUser = useStore((state) => state.setUser);
   const clearUser = useStore((state) => state.clearUser);
   const reset = useStore((state) => state.reset);
-  const frontendMode = useStore((state) => state.frontendMode);
   const backendMode = useStore((state) => state.backendMode);
   const setBackendMode = useStore((state) => state.setBackendMode);
   const openMainPanelTab = useStore((state) => state.openMainPanelTab);
@@ -232,7 +231,7 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 opacity-60 border-transparent'
                   }
                 `}
-                title={frontendMode === 'cloud' && uiSelectedMode !== 'local' ? 'View local setup guide' : 'Switch to local backend'}
+                title={uiSelectedMode !== 'local' ? 'Switch to local backend (or view setup guide)' : 'Currently using local backend'}
               >
                 <Monitor className="w-3.5 h-3.5" />
                 Local
