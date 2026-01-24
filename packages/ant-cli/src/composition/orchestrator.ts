@@ -139,12 +139,13 @@ export async function orchestrator(params: {
         // ✅ Create session with file tree update support
         const session = new FileSessionAdapter(featurePath, project, featureName, fileTreeUpdate);
         
+        // ✅ CRITICAL: Pass featurePath directly to avoid re-calculation mismatch
         return await architectAgent(
           input, 
           project || "default", 
           'design', 
           inputFile, 
-          { memory, llm, promptPort, profilePort, config, chunk, session, git, fileSystem, analyzer, kanbanUpdate, fileTreeUpdate, workflowUpdate, workspaceResolver, userContext, overrideDirective, chatSource, feature },
+          { memory, llm, promptPort, profilePort, config, chunk, session, git, fileSystem, analyzer, kanbanUpdate, fileTreeUpdate, workflowUpdate, workspaceResolver, userContext, overrideDirective, chatSource, feature, featurePath },
           undefined,  // codeMode
           undefined,  // enableEvaluation
           jobId       // ✅ Pass jobId for real-time Kanban and resume
@@ -188,12 +189,13 @@ export async function orchestrator(params: {
         const session = new FileSessionAdapter(featurePath, project, featureName, fileTreeUpdate);
         
         // Mode will be inferred or auto-determined in architect agent
+        // ✅ CRITICAL: Pass featurePath directly to avoid re-calculation mismatch
         return await architectAgent(
           input, 
           project || "default", 
           'code', 
           inputFile, 
-          { memory, llm, promptPort, profilePort, analyzer, git, fileSystem, config, chunk, session, command, kanbanUpdate, fileTreeUpdate, workflowUpdate, workspaceResolver, userContext, overrideDirective, chatSource, feature },
+          { memory, llm, promptPort, profilePort, analyzer, git, fileSystem, config, chunk, session, command, kanbanUpdate, fileTreeUpdate, workflowUpdate, workspaceResolver, userContext, overrideDirective, chatSource, feature, featurePath },
           mode,              // Can be undefined (auto-infer) or explicit
           enableEvaluation,  // Pass evaluation flag
           jobId              // ✅ Pass jobId for real-time updates and resume

@@ -282,13 +282,33 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   }
 
   // 1. Load design document (optional)
+  // ✅ DEBUG: Log context for troubleshooting design load failures
+  console.log(`🔍 [Resolve] Loading design documents...`);
+  console.log(`   context.project: ${context.project}`);
+  console.log(`   context.featureFolder: ${context.featureFolder}`);
+  console.log(`   context.featurePath: ${context.featurePath || 'undefined'}`);
+  
   const designResult = await ArtifactService.findLatestDesign(context, gitPort, fileSystem);
   const design = designResult?.content || undefined;
   const designDocPath = designResult?.filePath || undefined;
   
+  // ✅ DEBUG: Log design load result
+  if (design) {
+    console.log(`   ✅ Design loaded: ${designDocPath} (${design.length} chars)`);
+  } else {
+    console.log(`   ⚠️  Design NOT loaded from file system`);
+  }
+  
   // ✅ Load PRD (inputs/sources) for detectEnvironment & downstream prompts
   const source = await ArtifactService.getSource(context, gitPort, fileSystem);
   const prd = source?.prd || undefined;
+  
+  // ✅ DEBUG: Log PRD load result
+  if (prd) {
+    console.log(`   ✅ PRD loaded (${prd.length} chars)`);
+  } else {
+    console.log(`   ⚠️  PRD NOT loaded`);
+  }
   
   // ✅ Load parsed UI documents (Figma-derived) for split injection
   // Returns structured ParsedUiDocs with sections that can be selectively injected per task

@@ -24,6 +24,7 @@ import { StateStorePort } from '../../core/ports/stateStore';
 import { JobPayload, JobProgress } from '../../core/ports/queue';
 import { RedisStateStore } from '../state/RedisStateStore';
 import { logger } from '../../utils/logger';
+import { CloudWorkspaceResolver, WorkspacePathResolver } from '../workspace/WorkspaceResolver';
 
 // ESM: derive __dirname from import.meta.url
 const __filename = fileURLToPath(import.meta.url);
@@ -82,7 +83,15 @@ export class JobWorker {
         connection,
         concurrency: this.options.concurrency || DEFAULT_CONCURRENCY,
         removeOnComplete: { count: 1000 },
-        removeOnFail: { count: 5000 }
+        removeOnFail: { count: 5000 },
+        // ✅ Lock-based stuck job detection
+        // - lockDuration: 10 min
+        // - Extension interval: 5 min (lockDuration / 2, BullMQ convention)
+        // - stalledInterval: 5 min
+        // - Dead Worker detected within: 10 min (expire) + 5 min (check) = ~15 min
+        lockDuration: 600000,    // 10 minutes
+        stalledInterval: 300000, // 5 minutes
+        maxStalledCount: 1,      // Move to failed after 1 stall detection
       }
     );
 
@@ -99,9 +108,59 @@ export class JobWorker {
       logger.error('Worker error', { component: 'JobWorker' }, err);
     });
 
+    // ✅ Subscribe to stop signals from API server via Redis Pub/Sub
+    await this.subscribeToStopSignals();
+
     logger.info(`JobWorker started: queue=${queueName}, concurrency=${this.options.concurrency || DEFAULT_CONCURRENCY}`, {
       component: 'JobWorker'
     });
+  }
+
+  /**
+   * Subscribe to job stop signals via Redis Pub/Sub
+   * When API server sends stop signal, kill the corresponding child process
+   */
+  private async subscribeToStopSignals(): Promise<void> {
+    try {
+      await this.stateStore.subscribe('job:stop', async (message: { jobId: string; projectId?: string; featureName?: string; timestamp: string }) => {
+        const { jobId } = message;
+        logger.info(`Received stop signal for job: ${jobId}`, { component: 'JobWorker', jobId });
+        
+        const childProcess = this.runningProcesses.get(jobId);
+        if (childProcess && childProcess.pid) {
+          logger.info(`Killing child process for job: ${jobId} (PID: ${childProcess.pid})`, { component: 'JobWorker', jobId });
+          
+          try {
+            // Try graceful kill first
+            childProcess.kill('SIGTERM');
+            
+            // Wait a bit for graceful shutdown
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            // Forcefully kill if still alive
+            try {
+              process.kill(childProcess.pid, 0);  // Check if still alive
+              logger.info(`Process still alive, sending SIGKILL: ${jobId}`, { component: 'JobWorker', jobId });
+              process.kill(childProcess.pid, 'SIGKILL');
+            } catch (checkErr: any) {
+              logger.info(`Process already terminated: ${jobId}`, { component: 'JobWorker', jobId });
+            }
+            
+            this.runningProcesses.delete(jobId);
+            logger.info(`✅ Job stopped successfully: ${jobId}`, { component: 'JobWorker', jobId });
+          } catch (error: any) {
+            logger.error(`Error killing process for job: ${jobId}`, { component: 'JobWorker', jobId }, error);
+            this.runningProcesses.delete(jobId);
+          }
+        } else {
+          logger.warn(`No running process found for job: ${jobId}`, { component: 'JobWorker', jobId });
+        }
+      });
+      
+      logger.info('Subscribed to job:stop channel', { component: 'JobWorker' });
+    } catch (error: any) {
+      logger.error('Failed to subscribe to job:stop channel', { component: 'JobWorker' }, error);
+    }
   }
 
   /**
@@ -160,21 +219,41 @@ export class JobWorker {
 
   /**
    * Spawn a child process to execute the job
+   * 
+   * Lock Strategy (BullMQ convention: extend at lockDuration/2):
+   * - lockDuration: 10 min
+   * - Extension interval: 5 min (lockDuration / 2)
+   * - stalledInterval: 5 min
+   * - Dead Worker: 10 min (expire) + 5 min (check) = ~15 min to detect
    */
   private spawnJobProcess(job: Job<JobPayload>, payload: JobPayload): Promise<{ success: boolean; error?: string }> {
     return new Promise((resolve, reject) => {
       const jobId = payload.jobId;
       
+      // ✅ Extend lock at lockDuration/2 interval (BullMQ convention)
+      const LOCK_DURATION = 600000;           // 10 minutes (must match Worker config)
+      const LOCK_EXTENSION_INTERVAL = 300000; // 5 minutes (lockDuration / 2)
+      
+      const lockExtensionTimer = setInterval(async () => {
+        try {
+          await job.extendLock(job.token!, LOCK_DURATION);
+        } catch (error: any) {
+          // Lock extension failure is not critical - job continues
+          logger.debug(`Lock extension failed for job: ${jobId}`, { component: 'JobWorker', jobId });
+        }
+      }, LOCK_EXTENSION_INTERVAL);
+      
+      const cleanup = () => clearInterval(lockExtensionTimer);
+      
       // Build environment variables for the job process
-      // Calculate project path: workspacePath/org/user/project
-      const workspaceBase = payload.workspacePath || process.env.ANT_WORKSPACE_BASE_PATH || '/mnt/workspaces';
-      const projectPath = path.join(
-        workspaceBase,
-        payload.userContext.organizationId,
-        payload.userContext.userId,
-        payload.projectId
-      );
-      const featurePath = path.join(projectPath, payload.feature);
+      // ✅ Use centralized WorkspaceResolver for path calculation (no individual implementation)
+      const workspaceBase = payload.workspacePath 
+        || process.env.ANT_WORKSPACE_BASE_PATH 
+        || WorkspacePathResolver.getPhysicalWorkspacesPath();
+      
+      const workspaceResolver = new CloudWorkspaceResolver(workspaceBase);
+      const projectPath = workspaceResolver.getProjectPath(payload.userContext, payload.projectId);
+      const featurePath = workspaceResolver.getFeaturePath(payload.userContext, payload.projectId, payload.feature);
       
       // CLI source/dist root for internal resource paths (templates, policies, etc.)
       // __dirname is dist/infrastructure/worker/ in production
@@ -306,6 +385,7 @@ export class JobWorker {
       });
 
       child.on('close', (code: number | null) => {
+        cleanup(); // Stop lock extension timer
         logger.info(`Child process exited with code: ${code}`, { component: 'JobWorker', jobId });
         
         if (code === 0) {
@@ -320,6 +400,7 @@ export class JobWorker {
       });
 
       child.on('error', (err: Error) => {
+        cleanup(); // Stop lock extension timer
         logger.error(`Failed to spawn job runner: ${err.message}`, { component: 'JobWorker', jobId }, err);
         reject(err);
       });

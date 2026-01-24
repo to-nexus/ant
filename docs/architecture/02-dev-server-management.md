@@ -192,7 +192,7 @@ async startDevServer(tenantId, userId, projectId, feature, localPath) {
       
       return {
         success: false,
-        error: 'Dev server setup validation failed',
+        error: 'Preview server setup validation failed',
         setupReasoning: validation.reasoning || 'unknown',  // Categorized code
         setupReason: validation.reason,                     // Human-readable message
         suggestedFix: validation.suggestedFix

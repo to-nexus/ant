@@ -5,7 +5,7 @@ import { PromptModeConfig } from "./ModeController";
 import { AssembledContext } from "./ContextAssembler";
 import Handlebars from 'handlebars';
 import { formatGitDiffForPrompt } from "../../codebase/GitDiffSummary";
-import { getLanguageInstruction } from "../../utils/languageDetector";
+import { getLanguageInstruction, UserLanguage } from "../../utils/languageDetector";
 
 // Register Handlebars helpers
 Handlebars.registerHelper('add', function(a: number, b: number) {
@@ -179,7 +179,7 @@ export class TemplateComposer {
   /**
    * Assemble all parts into final prompt string
    */
-  assembleFinal(composed: ComposedPrompt, userLanguage?: string): string {
+  assembleFinal(composed: ComposedPrompt, userLanguage?: UserLanguage): string {
     const parts: string[] = [];
     
     // Always include system

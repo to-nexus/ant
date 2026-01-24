@@ -1,12 +1,12 @@
-# DevServerService Module
+# PreviewService Module
 
 **개발서버 관리 서비스 - 모듈화된 구조**
 
 ## 📂 디렉토리 구조
 
 ```
-DevServerService/
-├── DevServerService.ts          # Main service (orchestrator)
+PreviewService/
+├── PreviewService.ts          # Main service (orchestrator)
 ├── index.ts                      # Public exports
 ├── types.ts                      # Type definitions
 ├── utils/
@@ -23,7 +23,7 @@ DevServerService/
 
 ## 🎯 책임 분리 (Separation of Concerns)
 
-### **DevServerService.ts** (Main Orchestrator - ~800 lines)
+### **PreviewService.ts** (Main Orchestrator - ~800 lines)
 - 개발서버 라이프사이클 관리
 - 프로세스 관리 (spawn, kill, health check)
 - 프로젝트 구조 감지 (fullstack, monorepo)
@@ -61,12 +61,12 @@ DevServerService/
 
 ### Before (1개 파일)
 ```
-DevServerService.ts  (1,075 lines)
+PreviewService.ts  (1,075 lines)
 ```
 
 ### After (8개 파일)
 ```
-DevServerService.ts       (~800 lines)  ✅ 25% 감소
+PreviewService.ts       (~800 lines)  ✅ 25% 감소
 + 7 module files          (~410 lines)
 ────────────────────────────────────
 Total:                    (~1,210 lines)
@@ -77,16 +77,16 @@ Total:                    (~1,210 lines)
 ## 🚀 사용 예제
 
 ```typescript
-// Before (모든 로직이 DevServerService에)
-const service = new DevServerService(portManager, portRegistry, callbacks, sseService);
+// Before (모든 로직이 PreviewService에)
+const service = new PreviewService(portManager, portRegistry, callbacks, sseService);
 const isValid = await service.validateDevServerSetup(codebasePath);
 
 // After (동일한 API, 내부는 모듈화)
-const service = new DevServerService(portManager, portRegistry, callbacks, sseService);
+const service = new PreviewService(portManager, portRegistry, callbacks, sseService);
 const isValid = await service.validateDevServerSetup(codebasePath);  // ProjectValidator로 위임
 
 // 개별 모듈 직접 사용 가능
-import { PackageDetector, ProjectValidator, LogManager } from './DevServerService';
+import { PackageDetector, ProjectValidator, LogManager } from './PreviewService';
 
 const detector = new PackageDetector();
 if (detector.isFrontendPackage(packageJson)) {

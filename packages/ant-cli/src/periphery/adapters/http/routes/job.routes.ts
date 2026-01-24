@@ -26,6 +26,9 @@ export function createJobRoutes(deps: {
   cleanupJobState: (jobId: string, projectId?: string, featureName?: string, interruptionReason?: InterruptionDetails, explicitJobType?: 'design' | 'code' | 'learn', userContext?: { userId: string; organizationId: string; workspacePath: string }) => Promise<void>;
   workflowStateService: import('../services/WorkflowStateService').WorkflowStateService;  // ✅ For node tracking
   chatService: import('../services/ChatService').ChatService;  // ✅ For adding cancelled messages
+  // ✅ Cloud mode support
+  config?: { mode: 'local' | 'cloud' };
+  stateStore?: import('../../../../core/ports/stateStore').StateStorePort;
 }): Router {
   const router = Router();
   
@@ -145,63 +148,96 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
   
   console.log(`\n🛑 [StopRoute] Stop request received for job: ${jobId}`);
   console.log(`   Project: ${projectId}, Feature: ${featureName}, JobType: ${jobType || 'not provided'}`);
+  console.log(`   Mode: ${deps.config?.mode || 'local'}`);
   
   // ✅ CRITICAL: Resolve userContext consistently (query + header + auth)
   const userContext = extractUserContext(req);
   
   console.log(`   UserContext: ${userContext.userId}@${userContext.organizationId}`);
     
-    const childProcess = deps.childProcesses.get(jobId);
-    
     // ✅ CRITICAL: Mark as user-stopped BEFORE killing to prevent exit handler cleanup
     deps.userStoppedJobs.add(jobId);
-    console.log(`   ✅ Marked job ${jobId} as user-stopped`);
+    console.log(`   ✅ Marked job ${jobId} as user-stopped (local)`);
     
-    // ✅ CRITICAL: Kill process FIRST, then cleanup, then respond
-    if (childProcess && childProcess.pid) {
-      try {
-        const pid = childProcess.pid;
-        console.log(`   Process PID: ${pid}, killing...`);
-        
-        // Try graceful kill first
-        childProcess.kill('SIGTERM');
-        
-        // Wait a bit for graceful shutdown
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // Forcefully kill if still alive
-        try {
-          process.kill(pid, 0);  // Check if still alive
-          console.log(`   Process still alive, sending SIGKILL...`);
-          process.kill(pid, 'SIGKILL');
-        } catch (checkErr: any) {
-          console.log(`   Process already terminated`);
-        }
-        
-        deps.childProcesses.delete(jobId);
-        
-      } catch (error: any) {
-        console.error(`   ❌ Error killing process:`, error.message);
-        deps.childProcesses.delete(jobId);
-      }
+    // ========================================
+    // Cloud Mode: Send stop signal via Redis
+    // ========================================
+    if (deps.config?.mode === 'cloud' && deps.stateStore) {
+      console.log(`   ☁️  Cloud mode: Sending stop signal via Redis...`);
       
-      // Update task status
+      // Mark job as stopped in Redis (persistent flag)
+      await deps.stateStore.markUserStopped(jobId);
+      console.log(`   ✅ Marked job ${jobId} as user-stopped (Redis)`);
+      
+      // Publish stop signal to Job Workers via Redis Pub/Sub
+      await deps.stateStore.publish('job:stop', { 
+        jobId, 
+        projectId, 
+        featureName,
+        timestamp: new Date().toISOString() 
+      });
+      console.log(`   ✅ Published stop signal to job:stop channel`);
+      
+      // Update local state tracker status
       const status = deps.jobs.get(jobId);
       if (status && status.status === 'running') {
         status.status = 'failed';
         status.completedAt = new Date().toISOString();
         status.error = 'Task stopped by user';
-        
-        const logEntry: LogEntry = {
-          type: 'stderr',
-          message: '\n🛑 Task stopped by user',
-          timestamp: new Date().toISOString()
-        };
-        deps.logs.get(jobId)?.push(logEntry);
-        deps.logStreams.get(jobId)?.forEach(listener => listener(logEntry));
       }
-    } else {
-      console.log(`   ⚠️  No running process found for ${jobId}`);
+    } 
+    // ========================================
+    // Local Mode: Kill child process directly
+    // ========================================
+    else {
+      const childProcess = deps.childProcesses.get(jobId);
+      
+      // ✅ CRITICAL: Kill process FIRST, then cleanup, then respond
+      if (childProcess && childProcess.pid) {
+        try {
+          const pid = childProcess.pid;
+          console.log(`   Process PID: ${pid}, killing...`);
+          
+          // Try graceful kill first
+          childProcess.kill('SIGTERM');
+          
+          // Wait a bit for graceful shutdown
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          // Forcefully kill if still alive
+          try {
+            process.kill(pid, 0);  // Check if still alive
+            console.log(`   Process still alive, sending SIGKILL...`);
+            process.kill(pid, 'SIGKILL');
+          } catch (checkErr: any) {
+            console.log(`   Process already terminated`);
+          }
+          
+          deps.childProcesses.delete(jobId);
+          
+        } catch (error: any) {
+          console.error(`   ❌ Error killing process:`, error.message);
+          deps.childProcesses.delete(jobId);
+        }
+        
+        // Update task status
+        const status = deps.jobs.get(jobId);
+        if (status && status.status === 'running') {
+          status.status = 'failed';
+          status.completedAt = new Date().toISOString();
+          status.error = 'Task stopped by user';
+          
+          const logEntry: LogEntry = {
+            type: 'stderr',
+            message: '\n🛑 Task stopped by user',
+            timestamp: new Date().toISOString()
+          };
+          deps.logs.get(jobId)?.push(logEntry);
+          deps.logStreams.get(jobId)?.forEach(listener => listener(logEntry));
+        }
+      } else {
+        console.log(`   ⚠️  No running process found for ${jobId}`);
+      }
     }
     
     // ✅ Clean up task state (move task back to queue, save to session)

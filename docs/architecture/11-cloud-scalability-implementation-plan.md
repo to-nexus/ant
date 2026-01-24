@@ -14,16 +14,21 @@ ant-cli를 **클라우드 서비스로 확장 가능한 구조**로 리팩토링
 - 점진적 마이그레이션 (Big Bang 금지)
 - 각 Phase는 독립적으로 배포 가능
 
-### 1.3 Phase 순서
+### 1.3 Phase 순서 및 구현 현황
 
-| Phase | 목표 |
-|-------|------|
-| **Phase 1** | Interface 추출, 로컬 구현체 래핑 |
-| **Phase 2** | Redis State Store, BullMQ Job Queue |
-| **Phase 3** | Remote Preview Orchestration |
-| **Phase 4** | Kubernetes IDE Orchestration |
+| Phase | 목표 | 상태 |
+|-------|------|------|
+| **Phase 1** | Interface 추출, 로컬 구현체 래핑 | ✅ 완료 |
+| **Phase 2** | Redis State Store, BullMQ Job Queue, JobWorker | ✅ 완료 |
+| **Phase 3** | Remote Preview Orchestration | ✅ 완료 |
+| **Phase 4** | Kubernetes IDE Orchestration | ✅ 완료 |
 
-> **Note**: AI 코딩 에이전트 활용 시 각 Phase는 수 시간 내 완료 가능
+**추가 완료 항목**:
+- ✅ `FileSystemAdapter` (POSIX 호환 - Local/EFS 통합)
+- ✅ `WorkspaceResolver` 경로 계산 중앙집중화
+- ✅ `JobWorker` featurePath 버그 수정
+
+> **현재**: 단일 머신에서 클라우드 모드 테스트 가능
 
 ---
 
@@ -978,7 +983,7 @@ IDE를 Kubernetes에서 실행
 ### 5.2 인프라 요구사항
 
 - Kubernetes 클러스터 (EKS, GKE, 또는 로컬 K3s)
-- PersistentVolume (NFS/EFS)
+- PersistentVolume (AWS EFS)
 
 ### 5.3 작업 목록
 
@@ -1366,9 +1371,36 @@ volumes:
 3. **Incremental**: 각 Phase가 독립적으로 배포 가능
 4. **Feature Flagged**: 환경변수로 모드 전환
 
-**구성**: 4 Phases (각 Phase는 AI 코딩으로 수 시간 내 완료 가능)
+---
 
-**다음 액션**:
-1. Phase 1 착수 (Interface 추출)
-2. 테스트 환경 구축 (Redis, K8s)
-3. 주간 진행 상황 리뷰
+## 10. 구현 완료 현황
+
+**Phase 1-4 모두 완료됨.**
+
+| 컴포넌트 | 파일 | 설명 |
+|---------|------|-----|
+| StateStorePort | `core/ports/stateStore.ts` | 상태 저장 인터페이스 |
+| RedisStateStore | `infrastructure/state/RedisStateStore.ts` | Redis 구현체 |
+| LocalStateStore | `infrastructure/state/LocalStateStore.ts` | 로컬 구현체 |
+| JobQueuePort | `core/ports/queue.ts` | Job Queue 인터페이스 |
+| BullMQJobQueue | `infrastructure/queue/BullMQJobQueue.ts` | BullMQ 구현체 |
+| LocalJobQueue | `infrastructure/queue/LocalJobQueue.ts` | 로컬 구현체 |
+| JobWorker | `infrastructure/worker/JobWorker.ts` | 분리된 Worker 프로세스 |
+| FileSystemAdapter | `periphery/adapters/filesystem/FileSystemAdapter.ts` | POSIX 파일시스템 어댑터 |
+| WorkspaceResolver | `infrastructure/workspace/WorkspaceResolver.ts` | 경로 계산 유틸리티 |
+
+**테스트 방법**:
+```bash
+# 단일 머신 클라우드 모드
+export ANT_SERVER_MODE=cloud
+export ANT_REDIS_URL=redis://localhost:6379
+export ANT_WORKSPACE_BASE_PATH=/path/to/ant-workspaces
+
+npm run dev:server   # API Server
+npm run dev:worker   # Job Worker
+```
+
+**다음 단계** (배포):
+1. AWS EFS 생성 및 EKS 마운트
+2. Redis ElastiCache 설정
+3. 프로덕션 배포

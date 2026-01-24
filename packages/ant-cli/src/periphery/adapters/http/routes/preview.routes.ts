@@ -53,6 +53,10 @@ export function createPreviewRoutes(deps: {
   const router = Router();
   
   // Start preview for a project
+  // Body params:
+  //   - port?: number - Specific port to use
+  //   - feature?: string - Feature name (default: 'main')
+  //   - forceRestart?: boolean - Force restart if already running (default: true)
   router.post('/projects/:id/preview/start', async (req: Request, res: Response) => {
     try {
       const projectId = req.params.id;
@@ -61,11 +65,13 @@ export function createPreviewRoutes(deps: {
       
       const port = req.body?.port;
       const feature = req.body?.feature || 'main';
+      // Default to true for better UX - auto-restart if already running
+      const forceRestart = req.body?.forceRestart !== false;
       
       if (port !== undefined) {
         logger.debug(`Requested port: ${port}`, { component: 'PreviewRoutes', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature });
       }
-      logger.debug(`Feature: ${feature}`, { component: 'PreviewRoutes', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature });
+      logger.debug(`Feature: ${feature}, forceRestart: ${forceRestart}`, { component: 'PreviewRoutes', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature });
       
       let codebasePath: string;
       
@@ -87,13 +93,14 @@ export function createPreviewRoutes(deps: {
         logger.debug(`Local mode - codebase path resolved`, { component: 'PreviewRoutes', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature }, { codebasePath });
       }
       
-      const result = await deps.previewService.startDevServer(
+      const result = await deps.previewService.startPreview(
         userContext.organizationId,
         userContext.userId,
         projectId,
         feature,
         codebasePath,
-        port
+        port,
+        forceRestart
       );
       
       if (result.success) {
@@ -113,7 +120,7 @@ export function createPreviewRoutes(deps: {
       const userContext = extractUserContext(req);
       const feature = req.body?.feature || 'main';
       
-      const result = await deps.previewService.stopDevServer(
+      const result = await deps.previewService.stopPreview(
         userContext.organizationId,
         userContext.userId,
         projectId,
@@ -137,13 +144,13 @@ export function createPreviewRoutes(deps: {
       const userContext = extractUserContext(req);
       const feature = (req.query.feature as string) || 'main';
       
-      const status = deps.previewService.getDevServerStatus(
+      const status = deps.previewService.getPreviewStatus(
         userContext.organizationId,
         userContext.userId,
         projectId,
         feature
       );
-      const logs = deps.previewService.getDevServerLogs(
+      const logs = deps.previewService.getPreviewLogs(
         userContext.organizationId,
         userContext.userId,
         projectId,
@@ -191,7 +198,7 @@ export function createPreviewRoutes(deps: {
           : path.resolve(config.localPath);
       }
       
-      const validation = await deps.previewService.validateDevServerSetup(codebasePath);
+      const validation = await deps.previewService.validatePreviewSetup(codebasePath);
       
       res.json(validation);
     } catch (error: any) {
