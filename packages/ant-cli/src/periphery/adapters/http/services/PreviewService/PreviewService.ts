@@ -31,12 +31,12 @@ import { logger } from '../../../../../utils/logger';
  */
 export class PreviewService {
   // State maps
-  private devServers: Map<string, ChildProcess[]> = new Map();
-  private devServerPorts: Map<string, number> = new Map();
-  private devServerReady: Map<string, boolean> = new Map();
+  private previewServers: Map<string, ChildProcess[]> = new Map();
+  private previewServerPorts: Map<string, number> = new Map();
+  private previewServerReady: Map<string, boolean> = new Map();
   private installingProjects: Set<string> = new Set();
-  private devServerPackagePorts: Map<string, Array<{ name: string; type: 'frontend' | 'backend' | 'other'; port: number }>> = new Map();
-  private devServerIssues: Map<string, PreviewIssue[]> = new Map();
+  private previewServerPackagePorts: Map<string, Array<{ name: string; type: 'frontend' | 'backend' | 'other'; port: number }>> = new Map();
+  private previewServerIssues: Map<string, PreviewIssue[]> = new Map();
   
   // Stopping state management
   private stoppingServers: Set<string> = new Set();
@@ -132,22 +132,25 @@ export class PreviewService {
   }
   
   /**
-   * Validate dev server setup for frontend projects
+   * Validate preview server setup for frontend projects
    */
-  async validateDevServerSetup(codebasePath: string): Promise<ValidationResult> {
+  async validatePreviewSetup(codebasePath: string): Promise<ValidationResult> {
     return await this.projectValidator.validate(codebasePath);
   }
   
   /**
-   * Start dev server for a project feature
+   * Start preview server for a project feature
+   * 
+   * @param forceRestart - If true, stops existing server before starting a new one
    */
-  async startDevServer(
+  async startPreview(
     tenantId: string,
     userId: string,
     projectId: string,
     feature: string,
     localPath: string,
-    port?: number
+    port?: number,
+    forceRestart: boolean = true
   ): Promise<{
     success: boolean;
     message?: string;
@@ -164,16 +167,46 @@ export class PreviewService {
     const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
     const proxyUrl = `/preview/${serverKey}`;
     
-    // Check if already running
-    if (this.devServers.has(serverKey)) {
-      const existingPort = this.devServerPorts.get(serverKey);
-      return { 
-        success: false, 
-        error: 'Dev server already running', 
-        port: existingPort,
-        serverKey,
-        url: proxyUrl
-      };
+    // Check if already running in our memory tracking
+    if (this.previewServers.has(serverKey)) {
+      if (forceRestart) {
+        logger.info(`Force restarting: stopping existing server for ${serverKey}`, { component: 'PreviewService' });
+        await this.stopPreview(tenantId, userId, projectId, feature);
+        // Small delay to ensure port is released
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } else {
+        const existingPort = this.previewServerPorts.get(serverKey);
+        return { 
+          success: false, 
+          error: 'Preview server already running', 
+          port: existingPort,
+          serverKey,
+          url: proxyUrl
+        };
+      }
+    }
+    
+    // Check if registered in portRegistry (Redis) but not in memory
+    // This happens when server restarts but preview process is still running (orphan)
+    if (this.portRegistry) {
+      const registeredPort = await this.portRegistry.getPreviewPort(tenantId, userId, projectId, feature);
+      if (registeredPort) {
+        logger.info(`Found stale registry entry for ${serverKey} (port ${registeredPort}), cleaning up`, { component: 'PreviewService' });
+        // Unregister from portRegistry since we'll re-register after starting
+        await this.portRegistry.unregisterPreview(tenantId, userId, projectId, feature);
+      }
+    }
+    
+    // Clean up orphan processes (from server restarts or crashed processes)
+    const codebasePath = path.join(localPath, 'codebase');
+    const fs = await import('fs');
+    const orphansKilled = this.processSpawner.killOrphanProcesses(
+      fs.existsSync(codebasePath) ? codebasePath : localPath
+    );
+    if (orphansKilled > 0) {
+      logger.info(`Cleaned up ${orphansKilled} orphan process(es) before starting`, { component: 'PreviewService' });
+      // Small delay after killing orphans
+      await new Promise(resolve => setTimeout(resolve, 300));
     }
     
     // Check if installing
@@ -199,7 +232,7 @@ export class PreviewService {
       
       this.installingProjects.delete(serverKey);
       
-      // 3. Allocate ports and start all dev servers
+      // 3. Allocate ports and start all preview servers
       const processes: ChildProcess[] = [];
       let backendPort: number | undefined;
       
@@ -241,7 +274,7 @@ export class PreviewService {
       const packagePorts = orderedPackages
         .filter(p => typeof p.port === 'number')
         .map(p => ({ name: p.name, type: p.type, port: p.port as number }));
-      this.devServerPackagePorts.set(serverKey, packagePorts);
+      this.previewServerPackagePorts.set(serverKey, packagePorts);
       
       // 4. Register entry in PortRegistry
       if (structure.entry && this.portRegistry) {
@@ -253,16 +286,16 @@ export class PreviewService {
       }
       
       // 5. Store processes and entry port
-      this.devServers.set(serverKey, processes);
-      this.devServerPorts.set(serverKey, structure.entry?.port || structure.packages[0].port!);
+      this.previewServers.set(serverKey, processes);
+      this.previewServerPorts.set(serverKey, structure.entry?.port || structure.packages[0].port!);
       
-      this.appendLog(serverKey, 'stdout', '✅ All dev servers started successfully!');
+      this.appendLog(serverKey, 'stdout', '✅ All preview servers started successfully!');
       
       // 6. Validate frontend setup
       let validation: ValidationResult = { valid: true };
       
       if (structure.entry?.type === 'frontend') {
-        validation = await this.validateDevServerSetup(structure.entry.path);
+        validation = await this.validatePreviewSetup(structure.entry.path);
         
         if (!validation.valid) {
           return this.handleValidationFailure(serverKey, tenantId, userId, projectId, feature, processes, orderedPackages, structure.entry.path, validation);
@@ -280,26 +313,26 @@ export class PreviewService {
       }
       
       if (issues.length > 0) {
-        this.devServerIssues.set(serverKey, issues);
-        const updatedStatus = this.getDevServerStatus(tenantId, userId, projectId, feature);
+        this.previewServerIssues.set(serverKey, issues);
+        const updatedStatus = this.getPreviewStatus(tenantId, userId, projectId, feature);
         this.broadcastStatus(serverKey, updatedStatus);
       } else {
-        this.devServerIssues.delete(serverKey);
+        this.previewServerIssues.delete(serverKey);
       }
       
       // 8. Broadcast running status
-      const runningStatus = this.getDevServerStatus(tenantId, userId, projectId, feature);
+      const runningStatus = this.getPreviewStatus(tenantId, userId, projectId, feature);
       this.broadcastStatus(serverKey, runningStatus);
       
       // 9. Health check (async)
       const entryPort = structure.entry?.port || structure.packages[0].port!;
       this.healthChecker.check(entryPort, logCallback).then(ready => {
-        this.devServerReady.set(serverKey, ready);
-        const updatedStatus = this.getDevServerStatus(tenantId, userId, projectId, feature);
+        this.previewServerReady.set(serverKey, ready);
+        const updatedStatus = this.getPreviewStatus(tenantId, userId, projectId, feature);
         this.broadcastStatus(serverKey, updatedStatus);
       });
       
-      const finalStatus = this.getDevServerStatus(tenantId, userId, projectId, feature);
+      const finalStatus = this.getPreviewStatus(tenantId, userId, projectId, feature);
       
       return {
         success: true,
@@ -315,12 +348,12 @@ export class PreviewService {
       
     } catch (error: any) {
       this.installingProjects.delete(serverKey);
-      logger.error(`Error starting dev server: ${error.message}`, { component: 'PreviewService' }, error);
+      logger.error(`Error starting preview server: ${error.message}`, { component: 'PreviewService' }, error);
       this.appendLog(serverKey, 'stderr', `❌ Error: ${error.message}`);
       
       return {
         success: false,
-        error: error.message || 'Failed to start dev server'
+        error: error.message || 'Failed to start preview server'
       };
     }
   }
@@ -347,12 +380,12 @@ export class PreviewService {
     }
     
     // Clean up
-    this.devServers.delete(serverKey);
-    this.devServerPorts.delete(serverKey);
-    this.devServerReady.delete(serverKey);
+    this.previewServers.delete(serverKey);
+    this.previewServerPorts.delete(serverKey);
+    this.previewServerReady.delete(serverKey);
     this.logManager.clearLogs(serverKey);
-    this.devServerPackagePorts.delete(serverKey);
-    this.devServerIssues.delete(serverKey);
+    this.previewServerPackagePorts.delete(serverKey);
+    this.previewServerIssues.delete(serverKey);
     
     if (this.portRegistry) {
       await this.portRegistry.unregisterPreview(tenantId, userId, projectId, feature);
@@ -362,7 +395,7 @@ export class PreviewService {
     const issues: PreviewIssue[] = [];
     issues.push(this.issueDetector.createFatalIssue(
       (validation.reasoning || 'unknown') as PreviewIssueReasoning,
-      validation.reason || 'Dev server setup validation failed',
+      validation.reason || 'Preview server setup validation failed',
       validation.suggestedFix
     ));
     
@@ -374,12 +407,12 @@ export class PreviewService {
       // Best-effort only
     }
     
-    this.devServerIssues.set(serverKey, issues);
+    this.previewServerIssues.set(serverKey, issues);
     const combinedSuggestedFix = this.issueDetector.combineIssueFixes(issues);
     
     return {
       success: false,
-      error: 'Dev server setup validation failed',
+      error: 'Preview server setup validation failed',
       setupReasoning: validation.reasoning || 'unknown',
       setupReason: validation.reason,
       suggestedFix: combinedSuggestedFix,
@@ -423,7 +456,7 @@ export class PreviewService {
     
     try {
       const { tenantId, userId, projectId, feature } = this.parseServerKey(serverKey);
-      const updatedStatus = this.getDevServerStatus(tenantId, userId, projectId, feature);
+      const updatedStatus = this.getPreviewStatus(tenantId, userId, projectId, feature);
       this.broadcastStatus(serverKey, updatedStatus);
     } catch (e: any) {
       // Don't crash on exit handler
@@ -431,7 +464,7 @@ export class PreviewService {
   }
   
   private getCurrentPidForServer(serverKey: string): number | undefined {
-    const processes = this.devServers.get(serverKey);
+    const processes = this.previewServers.get(serverKey);
     return processes?.[0]?.pid;
   }
   
@@ -443,7 +476,7 @@ export class PreviewService {
     
     try {
       const { tenantId, userId, projectId, feature } = this.parseServerKey(serverKey);
-      const updatedStatus = this.getDevServerStatus(tenantId, userId, projectId, feature);
+      const updatedStatus = this.getPreviewStatus(tenantId, userId, projectId, feature);
       this.broadcastStatus(serverKey, updatedStatus);
     } catch (e: any) {
       // Ignore
@@ -451,9 +484,9 @@ export class PreviewService {
   }
   
   /**
-   * Stop dev server
+   * Stop preview server
    */
-  async stopDevServer(
+  async stopPreview(
     tenantId: string,
     userId: string,
     projectId: string,
@@ -461,9 +494,9 @@ export class PreviewService {
   ): Promise<{ success: boolean; message?: string; error?: string }> {
     const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
     
-    const processes = this.devServers.get(serverKey);
+    const processes = this.previewServers.get(serverKey);
     if (!processes || processes.length === 0) {
-      return { success: false, error: 'Dev server not running' };
+      return { success: false, error: 'Preview server not running' };
     }
 
     // Mark stopping
@@ -494,7 +527,7 @@ export class PreviewService {
     }
     
     // Release ports
-    const port = this.devServerPorts.get(serverKey);
+    const port = this.previewServerPorts.get(serverKey);
     if (port && this.portManager) {
       await this.portManager.release(port);
     }
@@ -505,18 +538,18 @@ export class PreviewService {
     }
     
     // Cleanup
-    this.devServers.delete(serverKey);
-    this.devServerPorts.delete(serverKey);
-    this.devServerReady.delete(serverKey);
+    this.previewServers.delete(serverKey);
+    this.previewServerPorts.delete(serverKey);
+    this.previewServerReady.delete(serverKey);
     this.logManager.clearLogs(serverKey);
-    this.devServerPackagePorts.delete(serverKey);
-    this.devServerIssues.delete(serverKey);
+    this.previewServerPackagePorts.delete(serverKey);
+    this.previewServerIssues.delete(serverKey);
     
     logger.info(`Stopped all servers for ${serverKey}`, { component: 'PreviewService' });
     
     // Broadcast stopped status
     try {
-      const updatedStatus = this.getDevServerStatus(tenantId, userId, projectId, feature);
+      const updatedStatus = this.getPreviewStatus(tenantId, userId, projectId, feature);
       this.broadcastStatus(serverKey, updatedStatus);
     } catch {
       // Best-effort only
@@ -533,9 +566,9 @@ export class PreviewService {
   }
   
   /**
-   * Get dev server status
+   * Get preview server status
    */
-  getDevServerStatus(
+  getPreviewStatus(
     tenantId: string,
     userId: string,
     projectId: string,
@@ -551,12 +584,12 @@ export class PreviewService {
     issues?: PreviewIssue[];
   } {
     const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
-    const processes = this.devServers.get(serverKey);
-    const port = this.devServerPorts.get(serverKey);
-    const ready = this.devServerReady.get(serverKey) || false;
-    const packages = this.devServerPackagePorts.get(serverKey) || [];
+    const processes = this.previewServers.get(serverKey);
+    const port = this.previewServerPorts.get(serverKey);
+    const ready = this.previewServerReady.get(serverKey) || false;
+    const packages = this.previewServerPackagePorts.get(serverKey) || [];
     const backendPort = packages.find(p => p.type === 'backend')?.port;
-    const issues = this.devServerIssues.get(serverKey) || [];
+    const issues = this.previewServerIssues.get(serverKey) || [];
     
     const running = !!processes && processes.length > 0;
     
@@ -573,9 +606,9 @@ export class PreviewService {
   }
   
   /**
-   * Get logs for a dev server
+   * Get logs for a preview server
    */
-  getDevServerLogs(
+  getPreviewLogs(
     tenantId: string,
     userId: string,
     projectId: string,
@@ -588,7 +621,7 @@ export class PreviewService {
   /**
    * Stream logs via SSE
    */
-  streamDevServerLogs(
+  streamPreviewLogs(
     tenantId: string,
     userId: string,
     projectId: string,
@@ -604,7 +637,7 @@ export class PreviewService {
     res.setHeader('Connection', 'keep-alive');
     
     // Send initial status
-    const status = this.getDevServerStatus(tenantId, userId, projectId, feature);
+    const status = this.getPreviewStatus(tenantId, userId, projectId, feature);
     if (this.sseService) {
       this.sseService.sendInitialState(res, 'preview', { type: 'status', data: status });
     } else {
@@ -628,24 +661,24 @@ export class PreviewService {
   }
   
   /**
-   * Cleanup all dev servers
+   * Cleanup all preview servers
    */
   async cleanup(): Promise<void> {
-    const serverKeys = Array.from(this.devServers.keys());
+    const serverKeys = Array.from(this.previewServers.keys());
     
     if (serverKeys.length === 0) {
-      logger.debug('No running dev servers to cleanup', { component: 'PreviewService' });
+      logger.debug('No running preview servers to cleanup', { component: 'PreviewService' });
       return;
     }
     
-    logger.info(`Cleaning up ${serverKeys.length} dev server(s)...`, { component: 'PreviewService' });
+    logger.info(`Cleaning up ${serverKeys.length} preview server(s)...`, { component: 'PreviewService' });
     
     const cleanupPromises: Promise<void>[] = [];
     
     for (const serverKey of serverKeys) {
       const { tenantId, userId, projectId, feature } = this.parseServerKey(serverKey);
       
-      const cleanupPromise = this.stopDevServer(tenantId, userId, projectId, feature)
+      const cleanupPromise = this.stopPreview(tenantId, userId, projectId, feature)
         .then(() => {
           logger.debug(`Stopped: ${serverKey}`, { component: 'PreviewService' });
         })

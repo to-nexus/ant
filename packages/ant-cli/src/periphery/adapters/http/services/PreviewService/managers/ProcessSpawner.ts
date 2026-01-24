@@ -1,4 +1,4 @@
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, ChildProcess, execSync } from 'child_process';
 import { PackageInfo } from '../types';
 import { logger } from '../../../../../../utils/logger';
 
@@ -13,6 +13,12 @@ export interface SpawnOptions {
   onError: (error: Error) => void;
 }
 
+export interface OrphanProcess {
+  pid: number;
+  command: string;
+  cwd?: string;
+}
+
 /**
  * ProcessSpawner
  * 
@@ -20,6 +26,130 @@ export interface SpawnOptions {
  * Supports Vite, Next.js, React Scripts, and generic npm scripts.
  */
 export class ProcessSpawner {
+  /**
+   * Find orphan processes running in a specific codebase path
+   * These are processes that were spawned previously but lost tracking
+   */
+  findOrphanProcesses(codebasePath: string): OrphanProcess[] {
+    const orphans: OrphanProcess[] = [];
+    
+    try {
+      // Find node processes running with the codebase path
+      // This works on macOS and Linux
+      const psOutput = execSync(
+        `ps aux | grep -E "node|next|vite|npm" | grep "${codebasePath}" | grep -v grep`,
+        { encoding: 'utf-8', timeout: 5000 }
+      ).trim();
+      
+      if (!psOutput) {
+        return orphans;
+      }
+      
+      const lines = psOutput.split('\n').filter(line => line.trim());
+      
+      for (const line of lines) {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length >= 2) {
+          const pid = parseInt(parts[1], 10);
+          if (!isNaN(pid)) {
+            orphans.push({
+              pid,
+              command: parts.slice(10).join(' '),
+              cwd: codebasePath
+            });
+          }
+        }
+      }
+      
+      logger.debug(`Found ${orphans.length} orphan process(es) in ${codebasePath}`, { component: 'ProcessSpawner' });
+    } catch (error: any) {
+      // grep returns exit code 1 if no matches - this is expected
+      if (error.status !== 1) {
+        logger.debug(`Error finding orphan processes: ${error.message}`, { component: 'ProcessSpawner' });
+      }
+    }
+    
+    return orphans;
+  }
+  
+  /**
+   * Kill orphan processes found in a codebase path
+   * Returns number of processes killed
+   */
+  killOrphanProcesses(codebasePath: string): number {
+    const orphans = this.findOrphanProcesses(codebasePath);
+    let killed = 0;
+    
+    for (const orphan of orphans) {
+      try {
+        process.kill(orphan.pid, 'SIGTERM');
+        killed++;
+        logger.info(`Killed orphan process PID=${orphan.pid}`, { component: 'ProcessSpawner' });
+      } catch (error: any) {
+        // Process might have already exited
+        if (error.code !== 'ESRCH') {
+          logger.warn(`Failed to kill orphan process PID=${orphan.pid}: ${error.message}`, { component: 'ProcessSpawner' });
+        }
+      }
+    }
+    
+    if (killed > 0) {
+      logger.info(`Cleaned up ${killed} orphan process(es) in ${codebasePath}`, { component: 'ProcessSpawner' });
+    }
+    
+    return killed;
+  }
+  
+  /**
+   * Check if a port is in use
+   */
+  async isPortInUse(port: number): Promise<boolean> {
+    try {
+      const output = execSync(
+        `lsof -i :${port} -t 2>/dev/null || true`,
+        { encoding: 'utf-8', timeout: 3000 }
+      ).trim();
+      
+      return output.length > 0;
+    } catch {
+      return false;
+    }
+  }
+  
+  /**
+   * Kill process using a specific port
+   */
+  killProcessOnPort(port: number): boolean {
+    try {
+      const pids = execSync(
+        `lsof -i :${port} -t 2>/dev/null || true`,
+        { encoding: 'utf-8', timeout: 3000 }
+      ).trim();
+      
+      if (!pids) {
+        return false;
+      }
+      
+      for (const pidStr of pids.split('\n')) {
+        const pid = parseInt(pidStr.trim(), 10);
+        if (!isNaN(pid)) {
+          try {
+            process.kill(pid, 'SIGTERM');
+            logger.info(`Killed process on port ${port}: PID=${pid}`, { component: 'ProcessSpawner' });
+          } catch (error: any) {
+            if (error.code !== 'ESRCH') {
+              logger.warn(`Failed to kill PID=${pid}: ${error.message}`, { component: 'ProcessSpawner' });
+            }
+          }
+        }
+      }
+      
+      return true;
+    } catch (error: any) {
+      logger.debug(`Error killing process on port ${port}: ${error.message}`, { component: 'ProcessSpawner' });
+      return false;
+    }
+  }
   /**
    * Spawn dev process for a package
    */

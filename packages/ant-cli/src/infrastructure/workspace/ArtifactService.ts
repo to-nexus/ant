@@ -375,6 +375,17 @@ export class ArtifactService {
     const designPathAbs = path.join(featurePathAbs, "outputs/design");
     const designPath = ArtifactService.toWorkspaceRelative(fileSystem, designPathAbs);
 
+    // ✅ DEBUG: Log path resolution for troubleshooting
+    console.log(`🔍 [ArtifactService.findLatestDesign] Path resolution:`);
+    console.log(`   context.project: ${context.project}`);
+    console.log(`   context.featureFolder: ${context.featureFolder}`);
+    console.log(`   context.featurePath: ${context.featurePath || 'undefined'}`);
+    console.log(`   featurePathAbs (resolved): ${featurePathAbs}`);
+    console.log(`   designPathAbs: ${designPathAbs}`);
+    console.log(`   designPath (workspace-relative): ${designPath}`);
+    const fsRoot = (fileSystem as any).getWorkspaceRoot?.() || 'unknown';
+    console.log(`   fileSystem.workspaceRoot: ${fsRoot}`);
+
     // ✅ Try design documents in priority order
     const candidateFiles: string[] = [];
     
@@ -440,6 +451,9 @@ export class ArtifactService {
     const featurePathAbs = WorkspacePathResolver.resolveFeaturePath(context);
     const designPathAbs = path.join(featurePathAbs, "outputs/design");
     const designPath = ArtifactService.toWorkspaceRelative(fileSystem, designPathAbs);
+    
+    // ✅ DEBUG: Log path resolution
+    console.log(`🔍 [ArtifactService.loadDesignDocuments] designPath: ${designPath}`);
     
     const result: {
       apiContract?: string;

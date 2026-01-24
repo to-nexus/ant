@@ -59,7 +59,7 @@ export class ServerConfigurator {
       pathPrefix: '/preview',
       getBackendPort: ({ tenantId, userId, projectId, feature }) => {
         try {
-          return this.deps.previewService.getDevServerStatus(tenantId, userId, projectId, feature).backendPort;
+          return this.deps.previewService.getPreviewStatus(tenantId, userId, projectId, feature).backendPort;
         } catch {
           return undefined;
         }

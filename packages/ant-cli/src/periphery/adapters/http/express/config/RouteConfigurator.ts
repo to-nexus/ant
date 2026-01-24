@@ -17,6 +17,7 @@ import { JobStateTracker } from '../managers/JobStateTracker';
 import { JobExecutionManager } from '../managers/JobExecutionManager';
 import { WorkflowBridge } from '../bridges/WorkflowBridge';
 import { choiceService } from '../../../../../infrastructure/choice/ChoiceService';
+import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
 
 /**
  * RouteConfigurator
@@ -250,6 +251,33 @@ export class RouteConfigurator {
       ? this.createCloudExecuteJob()
       : this.jobManager.executeJob.bind(this.jobManager);
     
+    // ✅ Get stateStore for Cloud mode (stop signal via Redis)
+    const stateStore = this.config.mode === 'cloud' 
+      ? getInfrastructureFactory().getStateStore() 
+      : undefined;
+    
+    // ✅ Cloud mode: Subscribe to job completion events to update stateTracker
+    // This allows new jobs to start after previous job completes (fixes "Job already running" error)
+    if (this.config.mode === 'cloud' && stateStore) {
+      stateStore.subscribe('job:status:updates', (message: unknown) => {
+        const data = message as { type: string; jobId: string; status: string };
+        if (data.type === 'completed' || data.type === 'failed') {
+          // Update local stateTracker to mark job as completed
+          const jobStatus = state.jobs.get(data.jobId);
+          if (jobStatus) {
+            jobStatus.status = data.status as any;
+            logger.debug(`Updated stateTracker job status: ${data.jobId} → ${data.status}`, { 
+              component: 'RouteConfigurator' 
+            });
+          }
+        }
+      }).catch((err: Error) => {
+        logger.warn(`Failed to subscribe to job status updates: ${err.message}`, { 
+          component: 'RouteConfigurator' 
+        });
+      });
+    }
+    
     const jobRoutes = createJobRoutes({
       workspaceResolver: this.deps.workspaceResolver,
       executeJob,
@@ -264,7 +292,10 @@ export class RouteConfigurator {
       userStoppedJobs: state.userStoppedJobs,
       cleanupJobState: this.cleanupJobState,
       workflowStateService: this.deps.workflowStateService,
-      chatService: this.deps.chatService
+      chatService: this.deps.chatService,
+      // ✅ Cloud mode support for stop signal
+      config: { mode: this.config.mode },
+      stateStore
     });
     app.use('/api', jobRoutes);
   }

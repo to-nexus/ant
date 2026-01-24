@@ -86,7 +86,7 @@ export class PreviewWorkerService {
       });
 
       try {
-        const result = await this.previewService.startDevServer(
+        const result = await this.previewService.startPreview(
           tenantId,
           userId,
           projectId,
@@ -119,7 +119,7 @@ export class PreviewWorkerService {
       });
 
       try {
-        const result = await this.previewService.stopDevServer(
+        const result = await this.previewService.stopPreview(
           tenantId,
           userId,
           projectId,
@@ -145,7 +145,7 @@ export class PreviewWorkerService {
         feature: string;
       };
 
-      const status = this.previewService.getDevServerStatus(
+      const status = this.previewService.getPreviewStatus(
         tenantId,
         userId,
         projectId,
@@ -174,7 +174,7 @@ export class PreviewWorkerService {
         feature: string;
       };
 
-      const logs = this.previewService.getDevServerLogs(
+      const logs = this.previewService.getPreviewLogs(
         tenantId,
         userId,
         projectId,
@@ -189,7 +189,7 @@ export class PreviewWorkerService {
       const { workspacePath } = req.body;
 
       try {
-        const result = await this.previewService.validateDevServerSetup(workspacePath);
+        const result = await this.previewService.validatePreviewSetup(workspacePath);
 
         const issues = [];
         if (!result.valid && result.reason) {

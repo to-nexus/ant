@@ -41,7 +41,7 @@
 ┌─────────────┐    ┌─────────────┐   ┌─────────────┐                          │
 │   Redis     │    │  Job Queue  │   │  Workspace  │                          │
 │ (State/Pub) │    │ (Bull/BullMQ)│   │  Storage    │                          │
-└─────────────┘    └──────┬──────┘   │  (NFS/EFS)  │                          │
+└─────────────┘    └──────┬──────┘   │  (EFS)      │                          │
                           │          └─────────────┘                          │
                           │                                                    │
     ┌─────────────────────┼───────────────────────────────────────────────────┤
@@ -272,7 +272,7 @@ export interface JobPayload {
   projectId: string;
   feature: string;
   userContext: UserContext;
-  workspacePath: string;  // NFS/EFS path
+  workspacePath: string;  // EFS path (or local path for dev)
   overrideDirective?: string;
 }
 
@@ -400,7 +400,7 @@ src/infrastructure/state/
 
 ```
 # Job Status
-job:{jobId}:status     → JSON { status, projectId, feature, ... }
+job:{jobId}:status     → JSON { status, projectId, featureName, workspacePath, projectPath, featurePath, ... }
 job:{jobId}:logs       → List of log entries
 
 # Port Registry
@@ -411,6 +411,37 @@ ide:{serverKey}        → JSON { host, port, registeredAt, ... }
 job:{jobId}:progress   → Progress updates
 devserver:{serverKey}:logs → Dev server log stream
 ```
+
+**Workspace 구조** (실제 구현):
+
+```
+<ANT_WORKSPACE_BASE_PATH>/               # 예: /mnt/efs/workspaces
+└── <organizationId>/                    # 예: to.nexus
+    └── <userId>/                        # 예: probe
+        └── <projectId>/                 # 예: my-app
+            ├── config.json              # 프로젝트 설정
+            ├── codebase/                # Git 저장소 (clone)
+            │   ├── src/
+            │   ├── package.json
+            │   └── ...
+            └── features/                # Feature별 작업 공간
+                └── <featureId>/         # 예: skeleton, main
+                    ├── inputs/          # 입력 파일
+                    │   ├── directives/  # 작업 지시
+                    │   │   ├── code/directive.md
+                    │   │   └── design/directive.md
+                    │   ├── sources/     # PRD, 토큰 등
+                    │   │   └── prd.md
+                    │   └── assets/      # 이미지 등
+                    ├── outputs/         # 출력 파일
+                    │   ├── design/
+                    │   └── evals/
+                    └── sessions/        # 세션 상태
+                        ├── code.json
+                        └── design.json
+```
+
+> ⚠️ **주의**: tenantId 형식은 `organizationId:userId`이며, 파일시스템 경로에서는 `organizationId/userId`로 변환됩니다.
 
 ### 4.2 Job Queue (BullMQ)
 
@@ -730,9 +761,49 @@ src/
 | **Job Worker** | 2-4 CPU, 4-8GB RAM | 2+ | Auto-scale |
 | **Preview Worker** | 4 CPU, 8GB RAM | 2+ | 포트 범위 제한 |
 | **IDE (K8s)** | 2 CPU, 2GB RAM per pod | Dynamic | Pod 당 1 사용자 |
-| **Workspace Storage** | - | 1 | NFS/EFS, 공유 스토리지 |
+| **Workspace Storage** | 100GB+ | 1 | AWS EFS (공유 스토리지) |
 
-### 8.2 비용 예측 (AWS 기준)
+### 8.2 Workspace Storage (✅ 구현 완료)
+
+**핵심 원칙**: Local과 EFS 모두 POSIX 호환이므로 **동일한 `FileSystemAdapter`** 사용.
+
+**환경 변수** (단 하나만 필요):
+```bash
+ANT_WORKSPACE_BASE_PATH=/path/to/workspaces
+```
+
+| 환경 | 설정 예시 |
+|-----|----------|
+| 로컬 개발 | `ANT_WORKSPACE_BASE_PATH=/Users/dev/ant-workspaces` |
+| 단일 머신 클라우드 테스트 | 로컬과 동일 (같은 머신이므로) |
+| 분산 클라우드 (EFS) | `ANT_WORKSPACE_BASE_PATH=/mnt/efs/workspaces` |
+
+**경로 계산 원칙** (개별 구현 금지):
+```typescript
+// ✅ 반드시 WorkspaceResolver 사용
+const resolver = new CloudWorkspaceResolver(workspaceBase);
+const featurePath = resolver.getFeaturePath(userContext, projectId, feature);
+
+// ❌ 개별 path.join 금지
+const featurePath = path.join(base, org, user, project, 'features', feature);
+```
+
+**AWS EFS 마운트 (K8s)**:
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ant-workspaces
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: efs-sc
+  resources:
+    requests:
+      storage: 100Gi
+```
+
+### 8.3 비용 예측 (AWS 기준)
 
 | 컴포넌트 | 인스턴스 타입 | 월 비용 (예상) |
 |---------|-------------|--------------|
@@ -823,7 +894,27 @@ src/
 - 인터페이스 기반 설계로 구현체 교체 가능
 - 환경변수로 모드 전환
 
-**다음 단계**:
-1. 이 설계 문서 검토 및 피드백
-2. Phase 1 시작 (Interface 추출)
-3. PoC: Redis + BullMQ 통합 테스트
+---
+
+## 12. 구현 현황
+
+| 항목 | 상태 | 비고 |
+|-----|------|-----|
+| **StateStorePort** | ✅ 완료 | `RedisStateStore`, `LocalStateStore` |
+| **JobQueuePort** | ✅ 완료 | `BullMQJobQueue`, `LocalJobQueue` |
+| **JobWorker** | ✅ 완료 | 분리된 Worker 프로세스 |
+| **FileSystemAdapter** | ✅ 완료 | POSIX 호환 (Local/EFS) |
+| **WorkspaceResolver** | ✅ 완료 | 경로 계산 중앙집중화 |
+| **PreviewOrchestrator** | ✅ 완료 | `LocalPreviewOrchestrator`, `RemotePreviewOrchestrator` |
+| **IDEOrchestrator** | ✅ 완료 | `LocalIDEOrchestrator`, `KubernetesIDEOrchestrator` |
+
+**현재 테스트 가능 환경**:
+```bash
+# 단일 머신 클라우드 모드 테스트
+export ANT_SERVER_MODE=cloud
+export ANT_REDIS_URL=redis://localhost:6379
+export ANT_WORKSPACE_BASE_PATH=/path/to/ant-workspaces
+
+npm run dev:server   # API Server
+npm run dev:worker   # Job Worker (별도 터미널)
+```

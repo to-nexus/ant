@@ -79,8 +79,9 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     resetTaskTokenUsage(state as any);
     
     // Update Kanban UI
+    console.log(`\n🔍 [Plan] Kanban check: _httpJobId=${state._httpJobId}, kanbanUpdate=${!!state.deps?.kanbanUpdate}`);
     if (state._httpJobId && state.deps?.kanbanUpdate) {
-      console.log(`\n🔥 [Plan] Updating Kanban → task started`);
+      console.log(`🔥 [Plan] Updating Kanban → task started`);
       console.log(`   Current: ${nextTask.name}`);
       console.log(`   Remaining in queue: ${state.taskQueue?.size() || 0}\n`);
       

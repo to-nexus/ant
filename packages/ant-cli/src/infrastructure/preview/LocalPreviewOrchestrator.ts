@@ -44,7 +44,7 @@ export class LocalPreviewOrchestrator implements PreviewOrchestratorPort {
     });
 
     try {
-      const result = await this.previewService.startDevServer(
+      const result = await this.previewService.startPreview(
         tenantId,
         userId,
         projectId,
@@ -65,7 +65,7 @@ export class LocalPreviewOrchestrator implements PreviewOrchestratorPort {
       }
 
       // Get full status for the instance
-      const status = this.previewService.getDevServerStatus(
+      const status = this.previewService.getPreviewStatus(
         tenantId,
         userId,
         projectId,
@@ -113,7 +113,7 @@ export class LocalPreviewOrchestrator implements PreviewOrchestratorPort {
       component: 'LocalPreviewOrchestrator'
     });
 
-    return this.previewService.stopDevServer(tenantId, userId, projectId, feature);
+    return this.previewService.stopPreview(tenantId, userId, projectId, feature);
   }
 
   /**
@@ -125,7 +125,7 @@ export class LocalPreviewOrchestrator implements PreviewOrchestratorPort {
     projectId: string,
     feature: string
   ): PreviewInstance | null {
-    const status = this.previewService.getDevServerStatus(
+    const status = this.previewService.getPreviewStatus(
       tenantId,
       userId,
       projectId,
@@ -157,7 +157,7 @@ export class LocalPreviewOrchestrator implements PreviewOrchestratorPort {
     projectId: string,
     feature: string
   ): PreviewLogEntry[] {
-    const logs = this.previewService.getDevServerLogs(
+    const logs = this.previewService.getPreviewLogs(
       tenantId,
       userId,
       projectId,
@@ -210,7 +210,7 @@ export class LocalPreviewOrchestrator implements PreviewOrchestratorPort {
     isValid: boolean;
     issues?: PreviewIssue[];
   }> {
-    const result = await this.previewService.validateDevServerSetup(
+    const result = await this.previewService.validatePreviewSetup(
       workspacePath
     );
 
@@ -238,7 +238,7 @@ export class LocalPreviewOrchestrator implements PreviewOrchestratorPort {
     const portMappings = await this.portRegistry.listPreviews();
 
     return portMappings.map(mapping => {
-      const status = this.previewService.getDevServerStatus(
+      const status = this.previewService.getPreviewStatus(
         mapping.tenantId,
         mapping.userId,
         mapping.projectId,

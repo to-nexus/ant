@@ -3,10 +3,10 @@ import { LogEntry } from '../../../../../../core/ports/http';
 /**
  * LogManager
  * 
- * Manages dev server logs storage and retrieval
+ * Manages preview server logs storage and retrieval
  */
 export class LogManager {
-  private devServerLogs: Map<string, LogEntry[]> = new Map();
+  private previewLogs: Map<string, LogEntry[]> = new Map();
   
   /**
    * Append log entry
@@ -18,7 +18,7 @@ export class LogManager {
       message: message.trim()
     };
     
-    const logs = this.devServerLogs.get(serverKey) || [];
+    const logs = this.previewLogs.get(serverKey) || [];
     logs.push(logEntry);
     
     // Keep last 1000 lines
@@ -26,7 +26,7 @@ export class LogManager {
       logs.shift();
     }
     
-    this.devServerLogs.set(serverKey, logs);
+    this.previewLogs.set(serverKey, logs);
     
     return logEntry;
   }
@@ -35,21 +35,21 @@ export class LogManager {
    * Get all logs for a server
    */
   getLogs(serverKey: string): LogEntry[] {
-    return this.devServerLogs.get(serverKey) || [];
+    return this.previewLogs.get(serverKey) || [];
   }
   
   /**
    * Clear logs for a server
    */
   clearLogs(serverKey: string): void {
-    this.devServerLogs.delete(serverKey);
+    this.previewLogs.delete(serverKey);
   }
   
   /**
    * Clear all logs
    */
   clearAllLogs(): void {
-    this.devServerLogs.clear();
+    this.previewLogs.clear();
   }
 }
 

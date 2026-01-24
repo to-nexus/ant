@@ -205,6 +205,19 @@ export class BullMQJobQueue implements JobQueuePort {
   async enqueue(payload: JobPayload): Promise<string> {
     const jobId = payload.jobId || this.generateJobId();
 
+    // ✅ Resume support: Remove existing job and clear userStopped flag
+    // This allows re-queuing a job with the same ID for resume/retry scenarios
+    const existingJob = await this.queue.getJob(jobId);
+    if (existingJob) {
+      logger.info(`Removing existing job for resume: ${jobId}`, { component: 'BullMQJobQueue' });
+      await existingJob.remove();
+    }
+    
+    // ✅ CRITICAL: Clear userStopped flag for resume
+    // Without this, JobWorker immediately cancels the resumed job
+    await this.stateStore.clearUserStopped(jobId);
+    logger.debug(`Cleared userStopped flag for job: ${jobId}`, { component: 'BullMQJobQueue' });
+
     const job = await this.queue.add(
       payload.type,
       {

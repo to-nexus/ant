@@ -109,12 +109,17 @@ export async function architectAgent(
   const { userId, organizationId } = userContext;
   
   // 6. (Optional) Pre-calculate featurePath for performance
-  let featurePath: string | undefined;
-  if (deps?.workspaceResolver) {
+  // ✅ CRITICAL: Use deps.featurePath if provided (from orchestrator) to ensure consistency
+  let featurePath: string | undefined = (deps as any)?.featurePath;
+  
+  if (featurePath) {
+    console.log(`📂 Feature path (from orchestrator): ${featurePath}`);
+  } else if (deps?.workspaceResolver) {
+    // Fallback: calculate from workspaceResolver
     try {
       const userContext = { userId, organizationId, workspacePath: '' };
       featurePath = deps.workspaceResolver.getFeaturePath(userContext, project, featureFolder);
-      console.log(`📂 Feature path: ${featurePath}`);
+      console.log(`📂 Feature path (calculated): ${featurePath}`);
     } catch (error) {
       console.warn(`⚠️  Could not resolve featurePath:`, error);
     }

@@ -6,8 +6,8 @@ export const DEV_SERVER_MESSAGES = {
   // Status Messages
   STATUS_INSTALLING: 'Installing dependencies...',
   STATUS_STARTING: 'Starting dev server...',
-  STATUS_RUNNING: 'Dev Server Running',
-  STATUS_FAILED: 'Dev Server Failed to Start',
+  STATUS_RUNNING: 'Preview server Running',
+  STATUS_FAILED: 'Preview server Failed to Start',
   
   // Buttons
   BUTTON_OPEN: 'Open',
@@ -20,8 +20,8 @@ export const DEV_SERVER_MESSAGES = {
   
   // Log Messages
   LOG_STARTING: (feature: string) => `Starting dev server for feature: ${feature}`,
-  LOG_STARTED: 'Dev server started successfully',
-  LOG_STOPPED: 'Dev server stopped successfully',
+  LOG_STARTED: 'Preview server started successfully',
+  LOG_STOPPED: 'Preview server stopped successfully',
   LOG_STATUS_CHECK_FAILED: 'Failed to check dev server status',
 } as const;
 
