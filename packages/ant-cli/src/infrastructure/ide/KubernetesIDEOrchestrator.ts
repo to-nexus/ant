@@ -129,9 +129,11 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
 
   /**
    * Create instance key
+   * Format: tenantId:projectId (3 parts total: org:user:project)
+   * Note: feature is excluded - one pod per user per project
    */
-  private createInstanceKey(tenantId: string, projectId: string, feature: string): string {
-    return `${tenantId}:${projectId}:${feature}`;
+  private createInstanceKey(tenantId: string, projectId: string): string {
+    return `${tenantId}:${projectId}`;
   }
 
   /**
@@ -339,7 +341,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
   async start(params: IDEParams): Promise<IDEStartResult> {
     const { userContext, projectId, workspacePath, feature = 'main' } = params;
     const tenantId = `${userContext.organizationId}:${userContext.userId}`;
-    const instanceKey = this.createInstanceKey(tenantId, projectId, feature);
+    const instanceKey = this.createInstanceKey(tenantId, projectId);
     const resourceName = this.createResourceName(instanceKey);
 
     console.log(`[KubernetesIDEOrchestrator] ▶ START request received: ${instanceKey}`);
@@ -648,7 +650,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     projectId: string,
     feature: string = 'main'
   ): Promise<{ success: boolean; message?: string }> {
-    const instanceKey = this.createInstanceKey(tenantId, projectId, feature);
+    const instanceKey = this.createInstanceKey(tenantId, projectId);
     const resourceName = this.createResourceName(instanceKey);
 
     logger.info(`Stopping K8s IDE: ${instanceKey}`, {
@@ -679,7 +681,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     projectId: string,
     feature: string = 'main'
   ): Promise<IDEInstance | null> {
-    const instanceKey = this.createInstanceKey(tenantId, projectId, feature);
+    const instanceKey = this.createInstanceKey(tenantId, projectId);
     const resourceName = this.createResourceName(instanceKey);
 
     try {
