@@ -560,10 +560,11 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     console.log(`[KubernetesIDEOrchestrator] createInstanceResult() called for pod ${pod.metadata.name}, IP=${pod.status?.podIP}`);
     
     // Update last access time in state store (with timeout to prevent hanging)
+    // Note: registerIDE expects (tenantId=org, userId, projectId, feature) - NOT org:user combined
     console.log(`[KubernetesIDEOrchestrator] Calling stateStore.registerIDE()...`);
     try {
       const registerPromise = this.stateStore.registerIDE(
-        tenantId,
+        userContext.organizationId,  // org only, not org:user
         userContext.userId,
         projectId,
         feature,
