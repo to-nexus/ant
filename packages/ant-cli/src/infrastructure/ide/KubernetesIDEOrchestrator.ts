@@ -39,6 +39,7 @@ interface K8sMetadata {
   namespace: string;
   labels: Record<string, string>;
   annotations?: Record<string, string>;
+  deletionTimestamp?: string;  // Set when pod is being deleted
 }
 
 interface K8sPod {
@@ -141,46 +142,70 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
   }
 
   /**
-   * Make K8s API request
+   * Make K8s API request using https module with ServiceAccount CA certificate
    */
   private async k8sRequest<T>(
     path: string,
     method: 'GET' | 'POST' | 'DELETE' = 'GET',
     body?: any
   ): Promise<T> {
-    // Determine API URL
-    const apiUrl = this.options.kubeApiUrl || 
-      process.env.KUBERNETES_SERVICE_HOST 
-        ? `https://${process.env.KUBERNETES_SERVICE_HOST}:${process.env.KUBERNETES_SERVICE_PORT}`
-        : 'http://localhost:8001';  // kubectl proxy
-
-    // Get token
-    const token = this.options.kubeToken ||
-      (process.env.KUBERNETES_SERVICE_HOST 
-        ? await this.readServiceAccountToken()
-        : undefined);
-
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json'
-    };
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    const url = `${apiUrl}${path}`;
+    const https = await import('https');
+    const http = await import('http');
     
-    const response = await fetch(url, {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : undefined
+    // Determine API URL
+    const isInCluster = !!process.env.KUBERNETES_SERVICE_HOST;
+    const apiHost = this.options.kubeApiUrl?.replace(/^https?:\/\//, '').split(':')[0] ||
+      process.env.KUBERNETES_SERVICE_HOST || 'localhost';
+    const apiPort = this.options.kubeApiUrl?.split(':')[2] ||
+      process.env.KUBERNETES_SERVICE_PORT || '8001';
+
+    // Get token and CA cert (in-cluster)
+    const token = this.options.kubeToken || await this.readServiceAccountToken();
+    const caCert = isInCluster ? this.readServiceAccountCACert() : undefined;
+    
+    // Use https for in-cluster, http for local kubectl proxy
+    const useHttps = isInCluster || !!this.options.kubeApiUrl;
+    const protocol = useHttps ? https : http;
+
+    return new Promise((resolve, reject) => {
+      const requestBody = body ? JSON.stringify(body) : undefined;
+      
+      const options: https.RequestOptions = {
+        hostname: apiHost,
+        port: parseInt(apiPort, 10),
+        path,
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+          ...(requestBody ? { 'Content-Length': Buffer.byteLength(requestBody) } : {})
+        },
+        ...(caCert ? { ca: caCert } : {})
+      };
+      
+      const req = protocol.request(options, (res) => {
+        let data = '';
+        res.on('data', (chunk) => data += chunk);
+        res.on('end', () => {
+          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+            try {
+              resolve(JSON.parse(data));
+            } catch {
+              resolve(data as any);
+            }
+          } else {
+            reject(new Error(`K8s API error: ${res.statusCode} - ${data}`));
+          }
+        });
+      });
+
+      req.on('error', (err) => reject(err));
+      
+      if (requestBody) {
+        req.write(requestBody);
+      }
+      req.end();
     });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`K8s API error: ${response.status} - ${error}`);
-    }
-
-    return await response.json();
   }
 
   /**
@@ -190,6 +215,18 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     try {
       const fs = await import('fs');
       return fs.readFileSync('/var/run/secrets/kubernetes.io/serviceaccount/token', 'utf8');
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Read service account CA certificate (in-cluster)
+   */
+  private readServiceAccountCACert(): string | undefined {
+    try {
+      const fs = require('fs');
+      return fs.readFileSync('/var/run/secrets/kubernetes.io/serviceaccount/ca.crt', 'utf8');
     } catch {
       return undefined;
     }
@@ -292,6 +329,33 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     });
 
     try {
+      // Check if pod already exists
+      const existingPod = await this.getPodIfExists(resourceName);
+      
+      if (existingPod) {
+        // Pod exists - check status
+        if (existingPod.metadata?.deletionTimestamp) {
+          // Pod is being deleted - wait for deletion then recreate
+          logger.info(`Pod ${resourceName} is being deleted, waiting...`, {
+            component: 'KubernetesIDEOrchestrator'
+          });
+          await this.waitForPodDeletion(resourceName);
+        } else if (existingPod.status?.phase === 'Running') {
+          // Pod is running - return existing instance
+          logger.info(`Pod ${resourceName} already running, reusing`, {
+            component: 'KubernetesIDEOrchestrator'
+          });
+          return this.createInstanceResult(existingPod, tenantId, userContext, projectId, feature, instanceKey);
+        } else {
+          // Pod exists but not running (Failed, Pending, etc) - delete and recreate
+          logger.info(`Pod ${resourceName} exists but not running (${existingPod.status?.phase}), recreating`, {
+            component: 'KubernetesIDEOrchestrator'
+          });
+          await this.deleteResources(resourceName);
+          await this.waitForPodDeletion(resourceName);
+        }
+      }
+
       // Create Pod
       const podSpec = this.createPodSpec(instanceKey, resourceName, workspacePath, userContext);
       await this.k8sRequest(
@@ -300,13 +364,18 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         podSpec
       );
 
-      // Create Service
+      // Create Service (ignore if already exists)
       const serviceSpec = this.createServiceSpec(instanceKey, resourceName);
-      await this.k8sRequest(
-        `/api/v1/namespaces/${this.options.namespace}/services`,
-        'POST',
-        serviceSpec
-      );
+      try {
+        await this.k8sRequest(
+          `/api/v1/namespaces/${this.options.namespace}/services`,
+          'POST',
+          serviceSpec
+        );
+      } catch (e: any) {
+        // Ignore 409 conflict for service (already exists)
+        if (!e.message?.includes('409')) throw e;
+      }
 
       // Wait for pod to be ready (simplified)
       await this.waitForPodReady(resourceName);
@@ -391,6 +460,81 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     }
 
     throw new Error('Pod startup timeout');
+  }
+
+  /**
+   * Get pod if it exists, returns null if not found
+   */
+  private async getPodIfExists(resourceName: string): Promise<K8sPod | null> {
+    try {
+      return await this.k8sRequest<K8sPod>(
+        `/api/v1/namespaces/${this.options.namespace}/pods/${resourceName}`
+      );
+    } catch (error: any) {
+      if (error.message?.includes('404')) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Wait for pod to be fully deleted
+   */
+  private async waitForPodDeletion(resourceName: string, timeoutMs: number = 30000): Promise<void> {
+    const startTime = Date.now();
+    
+    while (Date.now() - startTime < timeoutMs) {
+      const pod = await this.getPodIfExists(resourceName);
+      if (!pod) {
+        return; // Pod deleted
+      }
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    
+    throw new Error(`Timeout waiting for pod ${resourceName} to be deleted`);
+  }
+
+  /**
+   * Create instance result from existing pod
+   */
+  private async createInstanceResult(
+    pod: K8sPod,
+    tenantId: string,
+    userContext: UserContext,
+    projectId: string,
+    feature: string,
+    instanceKey: string
+  ): Promise<IDEStartResult> {
+    // Update last access time in state store
+    await this.stateStore.registerIDE(
+      tenantId,
+      userContext.userId,
+      projectId,
+      feature,
+      8080,
+      pod.status?.podIP || pod.metadata.name
+    );
+
+    const instance: IDEInstance = {
+      instanceId: pod.metadata.name,
+      host: pod.status?.podIP || pod.metadata.name,
+      port: 8080,
+      url: `/ide/${instanceKey}`,
+      workspacePath: '/workspace',
+      status: 'running',
+      tenantId,
+      userId: userContext.userId,
+      projectId,
+      feature,
+      createdAt: new Date(),
+      lastAccessedAt: new Date()
+    };
+
+    return {
+      success: true,
+      instance
+    };
   }
 
   /**
