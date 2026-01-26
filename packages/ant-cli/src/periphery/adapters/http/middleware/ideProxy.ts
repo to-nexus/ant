@@ -72,6 +72,33 @@ class IDEProxyMiddlewareImpl extends BaseProxyMiddleware {
     );
   }
 
+  /**
+   * Get host for IDE (localhost for Docker, Pod IP for K8s)
+   */
+  protected async getHost(parts: ServerKeyParts): Promise<string> {
+    try {
+      // Use StateStorePort to get full PortMapping with host
+      const { getInfrastructureFactory } = await import('../../../../infrastructure/adapters/InfrastructureFactory');
+      const stateStore = getInfrastructureFactory().getStateStore();
+      const mapping = await stateStore.getIDE(
+        parts.tenantId,
+        parts.userId,
+        parts.projectId,
+        parts.feature || 'main'
+      );
+      
+      if (mapping?.host) {
+        console.log(`[IDEProxy] Host from StateStore: ${mapping.host}`);
+        return mapping.host;
+      }
+    } catch (err) {
+      console.log(`[IDEProxy] Failed to get IDE host from StateStore: ${err}`);
+    }
+    
+    console.log(`[IDEProxy] Falling back to localhost`);
+    return 'localhost';
+  }
+
   protected async updateLastAccess(parts: ServerKeyParts): Promise<void> {
     await this.portRegistry.updateLastAccess(
       parts.tenantId,
@@ -153,12 +180,26 @@ export function createIDEWebSocketHandler(portRegistry: PortRegistryPort, pathPr
     const [tenantId, userId, projectId] = parts;
     const feature = 'main';  // IDE always uses 'main' (project-level)
 
-    // Lookup port
+    // Lookup port and host
     const port = await portRegistry.getIDEPort(tenantId, userId, projectId, feature);
     if (!port) {
       logger.warn(`No IDE port for WS: ${serverKey}`, { component: 'IDEProxy' });
       socket.destroy();
       return;
+    }
+
+    // Get host (localhost for Docker, Pod IP for K8s)
+    let host = 'localhost';
+    try {
+      const { getInfrastructureFactory } = await import('../../../../infrastructure/adapters/InfrastructureFactory');
+      const stateStore = getInfrastructureFactory().getStateStore();
+      const mapping = await stateStore.getIDE(tenantId, userId, projectId, feature);
+      if (mapping?.host) {
+        host = mapping.host;
+        console.log(`[IDEProxy WS] Host from StateStore: ${host}`);
+      }
+    } catch (err) {
+      console.log(`[IDEProxy WS] Failed to get IDE host: ${err}`);
     }
 
     // Update last access
@@ -168,11 +209,11 @@ export function createIDEWebSocketHandler(portRegistry: PortRegistryPort, pathPr
     const targetPath = url.slice(`${pathPrefix}/${serverKey}`.length) || '/';
     req.url = targetPath;
     
-    logger.debug(`WS proxy to localhost:${port}${targetPath}`, { component: 'IDEProxy' });
+    logger.debug(`WS proxy to ${host}:${port}${targetPath}`, { component: 'IDEProxy' });
 
     // Proxy the WebSocket connection
     proxy.ws(req, socket, head, {
-      target: `ws://localhost:${port}`
+      target: `ws://${host}:${port}`
     });
   };
 }

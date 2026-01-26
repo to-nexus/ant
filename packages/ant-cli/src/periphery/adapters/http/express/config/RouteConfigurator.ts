@@ -173,10 +173,20 @@ export class RouteConfigurator {
 
   /**
    * Setup Cloud IDE routes (both modes)
+   * Uses KubernetesIDEOrchestrator in cloud mode (ANT_K8S_NAMESPACE set),
+   * LocalIDEOrchestrator (Docker) otherwise
    */
   private setupCloudIDERoutes(app: Express): void {
+    console.log(`[RouteConfigurator] Setting up Cloud IDE routes (ANT_K8S_NAMESPACE=${process.env.ANT_K8S_NAMESPACE || 'not set'})`);
+    
+    const ideOrchestrator = getInfrastructureFactory().getIDEOrchestrator();
+    console.log(`[RouteConfigurator] IDE Orchestrator type: ${ideOrchestrator.constructor.name}`);
+    
+    // Start idle check for auto-cleanup of unused IDE instances
+    ideOrchestrator.startIdleCheck();
+    
     const cloudIDERoutes = createCloudIDERoutes(
-      this.deps.ideService, 
+      ideOrchestrator, 
       this.deps.workspaceResolver
     );
     app.use('/api/cloud-ide', cloudIDERoutes);
