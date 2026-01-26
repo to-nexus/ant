@@ -162,7 +162,11 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
 
     // Get token and CA cert (in-cluster)
     const token = this.options.kubeToken || await this.readServiceAccountToken();
-    const caCert = isInCluster ? this.readServiceAccountCACert() : undefined;
+    const caCert = isInCluster ? await this.readServiceAccountCACert() : undefined;
+    
+    logger.debug(`K8s API request: ${method} ${path} (host=${apiHost}, port=${apiPort}, hasCaCert=${!!caCert})`, {
+      component: 'KubernetesIDEOrchestrator'
+    });
     
     // Use https for in-cluster, http for local kubectl proxy
     const useHttps = isInCluster || !!this.options.kubeApiUrl;
@@ -230,11 +234,18 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
   /**
    * Read service account CA certificate (in-cluster)
    */
-  private readServiceAccountCACert(): string | undefined {
+  private async readServiceAccountCACert(): Promise<string | undefined> {
     try {
-      const fs = require('fs');
-      return fs.readFileSync('/var/run/secrets/kubernetes.io/serviceaccount/ca.crt', 'utf8');
-    } catch {
+      const fs = await import('fs');
+      const cert = fs.readFileSync('/var/run/secrets/kubernetes.io/serviceaccount/ca.crt', 'utf8');
+      logger.debug(`Loaded ServiceAccount CA cert (${cert.length} bytes)`, {
+        component: 'KubernetesIDEOrchestrator'
+      });
+      return cert;
+    } catch (err: any) {
+      logger.warn(`Failed to read ServiceAccount CA cert: ${err.message}`, {
+        component: 'KubernetesIDEOrchestrator'
+      });
       return undefined;
     }
   }

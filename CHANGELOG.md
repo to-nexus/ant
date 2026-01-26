@@ -35,6 +35,8 @@ All notable changes to this project will be documented in this file.
 
 - **KubernetesIDEOrchestrator**: Fix TLS certificate verification error (`unable to verify the first certificate`) by using ServiceAccount CA cert from `/var/run/secrets/kubernetes.io/serviceaccount/ca.crt`
 - **KubernetesIDEOrchestrator**: Fix 409 Conflict error when Pod is being deleted by waiting for deletion completion
+- **KubernetesIDEOrchestrator**: Add request timeout (10s) and debug logs to `k8sRequest()` and `waitForPodReady()`
+- **GitStatusService**: Handle `dubious ownership` error gracefully for shared EFS volumes (returns empty status instead of infinite retry)
 
 ---
 
