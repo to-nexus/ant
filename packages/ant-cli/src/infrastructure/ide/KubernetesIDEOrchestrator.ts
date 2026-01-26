@@ -552,7 +552,10 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     feature: string,
     instanceKey: string
   ): Promise<IDEStartResult> {
+    console.log(`[KubernetesIDEOrchestrator] createInstanceResult() called for pod ${pod.metadata.name}, IP=${pod.status?.podIP}`);
+    
     // Update last access time in state store
+    console.log(`[KubernetesIDEOrchestrator] Calling stateStore.registerIDE()...`);
     await this.stateStore.registerIDE(
       tenantId,
       userContext.userId,
@@ -561,6 +564,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
       8080,
       pod.status?.podIP || pod.metadata.name
     );
+    console.log(`[KubernetesIDEOrchestrator] stateStore.registerIDE() completed`);
 
     const instance: IDEInstance = {
       instanceId: pod.metadata.name,
@@ -577,6 +581,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
       lastAccessedAt: new Date()
     };
 
+    console.log(`[KubernetesIDEOrchestrator] ✅ createInstanceResult() returning success, host=${instance.host}, port=${instance.port}`);
     return {
       success: true,
       instance
