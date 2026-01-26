@@ -228,12 +228,9 @@ export class InfrastructureFactory {
    * - Without: LocalIDEOrchestrator (local Docker)
    */
   getIDEOrchestrator(): IDEOrchestratorPort {
-    if (!this.portManager || !this.portRegistry) {
-      throw new Error('Dependencies not set. Call setDependencies() first.');
-    }
-    
     if (!this.ideOrchestrator) {
       if (this.config.k8sNamespace) {
+        // K8s mode: doesn't need PortManager/PortRegistry
         this.ideOrchestrator = new KubernetesIDEOrchestrator(
           { namespace: this.config.k8sNamespace },
           this.getStateStore()
@@ -242,6 +239,10 @@ export class InfrastructureFactory {
           component: 'InfrastructureFactory'
         });
       } else {
+        // Docker mode: requires PortManager/PortRegistry
+        if (!this.portManager || !this.portRegistry) {
+          throw new Error('Dependencies not set for LocalIDEOrchestrator. Call setDependencies() first.');
+        }
         this.ideOrchestrator = new LocalIDEOrchestrator(
           this.portManager,
           this.portRegistry

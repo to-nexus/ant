@@ -91,6 +91,7 @@ export class StatusService {
     behind: number;
     currentBranch?: string;
     isGitInitialized?: boolean;
+    error?: string;
   }> {
     try {
       const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
@@ -131,7 +132,27 @@ export class StatusService {
         };
       }
 
-      const status = await git.status();
+      let status;
+      try {
+        status = await git.status();
+      } catch (statusError: any) {
+        // Handle "dubious ownership" error gracefully (shared EFS volumes)
+        if (statusError.message?.includes('dubious ownership')) {
+          console.warn(`[GitStatusService] Dubious ownership error for ${codebasePath} - returning empty status`);
+          return {
+            hasChanges: false,
+            staged: [],
+            unstaged: [],
+            untracked: [],
+            ahead: 0,
+            behind: 0,
+            currentBranch: undefined,
+            isGitInitialized: true,
+            error: 'dubious_ownership'
+          };
+        }
+        throw statusError;
+      }
       
       const staged = status.staged || [];
       const modified = status.modified || [];

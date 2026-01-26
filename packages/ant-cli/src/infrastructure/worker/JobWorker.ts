@@ -60,12 +60,21 @@ export class JobWorker {
   /**
    * Parse Redis URL for BullMQ connection
    */
-  private parseRedisUrl(url: string): { host: string; port: number; password?: string } {
+  private parseRedisUrl(url: string): { host: string; port: number; password?: string; tls?: { rejectUnauthorized?: boolean; checkServerIdentity?: () => undefined } } {
     const parsed = new URL(url);
+    const isTLS = url.startsWith('rediss://');
+    
     return {
       host: parsed.hostname,
       port: parseInt(parsed.port) || 6379,
-      password: parsed.password || undefined
+      password: parsed.password || undefined,
+      // TLS options for ElastiCache with custom CNAME
+      // Skip hostname verification since ElastiCache cert is for *.serverless.*.cache.amazonaws.com
+      ...(isTLS && {
+        tls: {
+          checkServerIdentity: () => undefined
+        }
+      })
     };
   }
 

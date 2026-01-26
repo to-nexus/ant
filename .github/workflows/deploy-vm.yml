@@ -8,9 +8,7 @@ on:
         required: true
         type: choice
         options:
-        - ant-cli
         - embedder
-        - all
 
   push:
     branches:
@@ -19,24 +17,9 @@ on:
       - dev
       - "ci/*"
     paths:
-      - 'packages/ant-cli/**'
       - 'packages/ant-cli/src/periphery/integrations/vector-memory/embedder/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
 
 jobs:
-  # sonarqube:
-  #   name: SonarQube Analysis
-  #   runs-on: ["arc-runner-set"]
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #       with:
-  #         fetch-depth: 0
-  #     - name: SonarQube Scan
-  #       uses: SonarSource/sonarqube-scan-action@v6
-  #       env:
-  #         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-
   # ===========================================
   # 변경 감지
   # ===========================================
@@ -44,9 +27,7 @@ jobs:
     runs-on: [ax-ant-dev]
     if: github.event_name == 'push'
     outputs:
-      ant-cli-changed: ${{ steps.detect.outputs.ant-cli-changed }}
       embedder-changed: ${{ steps.detect.outputs.embedder-changed }}
-      root-package-changed: ${{ steps.detect.outputs.root-package-changed }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -60,18 +41,7 @@ jobs:
           echo "$CHANGED_FILES"
           echo ""
           
-          # root package.json 또는 pnpm-lock.yaml 변경 시 전체 빌드
-          if echo "$CHANGED_FILES" | grep -qE "^(package\.json|pnpm-lock\.yaml)$"; then
-            echo "root-package-changed=true" >> $GITHUB_OUTPUT
-            echo "ant-cli-changed=true" >> $GITHUB_OUTPUT
-            echo "embedder-changed=true" >> $GITHUB_OUTPUT
-            echo "✅ Root package changed - ALL DEPLOY TRIGGERED!"
-            exit 0
-          fi
-          
-          echo "root-package-changed=false" >> $GITHUB_OUTPUT
-          
-          # embedder 변경 체크 (먼저 체크)
+          # embedder 변경 체크
           EMBEDDER_PATH="packages/ant-cli/src/periphery/integrations/vector-memory/embedder/"
           if echo "$CHANGED_FILES" | grep -q "^${EMBEDDER_PATH}"; then
             echo "embedder-changed=true" >> $GITHUB_OUTPUT
@@ -80,178 +50,6 @@ jobs:
             echo "embedder-changed=false" >> $GITHUB_OUTPUT
             echo "❌ embedder not changed"
           fi
-          
-          # ant-cli 변경 체크 (embedder 경로 제외)
-          ANT_CLI_CHANGES=$(echo "$CHANGED_FILES" | grep "^packages/ant-cli/" | grep -v "^${EMBEDDER_PATH}" || true)
-          if [ -n "$ANT_CLI_CHANGES" ]; then
-            echo "ant-cli-changed=true" >> $GITHUB_OUTPUT
-            echo "✅ ant-cli changed (excluding embedder)"
-          else
-            echo "ant-cli-changed=false" >> $GITHUB_OUTPUT
-            echo "❌ ant-cli not changed"
-          fi
-
-  # ===========================================
-  # ant-cli 배포
-  # ===========================================
-  deploy-ant-cli:
-    name: Deploy ant-cli
-    runs-on: [ax-ant-dev]
-    needs: [detect-changes]
-    if: |
-      always() && (
-        (github.event_name == 'workflow_dispatch' && (github.event.inputs.service == 'ant-cli' || github.event.inputs.service == 'all')) ||
-        (github.event_name == 'push' && needs.detect-changes.outputs.ant-cli-changed == 'true')
-      )
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Sync source to deploy directory
-        run: |
-          echo "📁 Syncing source to /cross/ant/ant..."
-          sudo mkdir -p /cross/ant/ant
-          sudo rsync -av --delete \
-            --exclude='node_modules' \
-            --exclude='.git' \
-            --exclude='dist' \
-            ./ /cross/ant/ant/
-          sudo chown -R cross:cross /cross/ant
-
-      - name: Generate docker-compose.yml
-        run: |
-          echo "📝 docker-compose.yml 생성 중..."
-          sudo mkdir -p /cross/ant/ant-cli
-          sudo tee /cross/ant/ant-cli/docker-compose.yml > /dev/null << 'EOFCOMPOSE'
-          services:
-            ant-cli:
-              build:
-                context: ../ant
-                dockerfile: packages/ant-cli/Dockerfile
-              image: ant-cli:latest
-              container_name: ant-cli
-              hostname: ant-cli
-              network_mode: host
-              restart: unless-stopped
-              env_file:
-                - .env
-              volumes:
-                - /var/run/docker.sock:/var/run/docker.sock
-                - /etc/localtime:/etc/localtime:ro
-                - /cross/workspaces:/data/workspaces:rw
-                - /cross/ide-homes:/data/ide-homes:rw
-              environment:
-                - NODE_ENV=production
-                - ANT_WORKSPACE_BASE_PATH=/data/workspaces
-                - ANT_IDE_HOME_BASE_PATH=/data/ide-homes
-              user: root
-              healthcheck:
-                test: ["CMD", "node", "-e", "require('http').get('http://localhost:4100/api/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
-                interval: 30s
-                timeout: 10s
-                retries: 3
-                start_period: 30s
-          EOFCOMPOSE
-          sudo chown cross:cross /cross/ant/ant-cli/docker-compose.yml
-
-      - name: Generate .env file
-        run: |
-          echo "📝 .env 파일 생성 중..."
-          sudo tee /cross/ant/ant-cli/.env > /dev/null << EOF
-          # ===========================================
-          # ANT CLI 환경 변수 (GitHub Actions에서 자동 생성)
-          # ===========================================
-
-          # AI Model 설정
-          AI_MODEL_NAME=${{ vars.AI_MODEL_NAME || 'claude-sonnet-4-5-20250929' }}
-          AI_MODEL_PROVIDER=${{ vars.AI_MODEL_PROVIDER || 'anthropic' }}
-          AI_MODEL_TEMPERATURE=${{ vars.AI_MODEL_TEMPERATURE || '0.7' }}
-
-          # ANT Server 설정
-          ANT_CLI_PORT=${{ vars.ANT_CLI_PORT || '4100' }}
-          ANT_SERVER_MODE=${{ vars.ANT_SERVER_MODE || 'cloud' }}
-          ANT_WORKSPACE_BASE_PATH=${{ vars.ANT_WORKSPACE_BASE_PATH || '/cross/workspaces' }}
-          ANT_ENCRYPTION_KEY=${{ secrets.ANT_ENCRYPTION_KEY }}
-
-          # IDE 설정
-          ANT_IDE_HOME_BASE_PATH=${{ vars.ANT_IDE_HOME_BASE_PATH || '/cross/ide-homes' }}
-          ANT_IDE_HOSTNAME_MODE=${{ vars.ANT_IDE_HOSTNAME_MODE || 'user' }}
-          ANT_IDE_IMAGE=${{ vars.ANT_IDE_IMAGE || 'gitpod/openvscode-server:latest' }}
-          ANT_IDE_PORT_RANGE_START=${{ vars.ANT_IDE_PORT_RANGE_START || '30000' }}
-          ANT_IDE_PORT_RANGE_END=${{ vars.ANT_IDE_PORT_RANGE_END || '32767' }}
-
-          # LLM API Keys
-          ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
-          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
-          GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}
-
-          # Vector DB / Embedder
-          CHROMA_URL=${{ vars.CHROMA_URL || '' }}
-          EMBEDDER_URL=${{ vars.EMBEDDER_URL || '' }}
-
-          # Figma OAuth
-          FIGMA_CLIENT_ID=${{ vars.FIGMA_CLIENT_ID || '' }}
-          FIGMA_CLIENT_SECRET=${{ secrets.FIGMA_CLIENT_SECRET }}
-          FIGMA_REDIRECT_URI=${{ vars.FIGMA_REDIRECT_URI || '' }}
-
-          # Google OIDC (Cloud Auth)
-          GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
-          GOOGLE_REDIRECT_URI=${{ vars.GOOGLE_REDIRECT_URI || '' }}
-          FRONTEND_URL=${{ vars.FRONTEND_URL || '' }}
-          SKIP_AUTH_FOR_LOCALHOST=${{ vars.SKIP_AUTH_FOR_LOCALHOST || 'false' }}
-
-          # Git 설정
-          GIT_DEFAULT_BASE=${{ vars.GIT_DEFAULT_BASE || 'main' }}
-          GITHUB_TOKEN=${{ secrets.GH_TOKEN }}
-
-          # 기타
-          RECURSION_LIMIT=${{ vars.RECURSION_LIMIT || '800' }}
-          DEBUG_KANBAN=${{ vars.DEBUG_KANBAN || '0' }}
-          EOF
-          sudo chown cross:cross /cross/ant/ant-cli/.env
-          sudo chmod 600 /cross/ant/ant-cli/.env
-
-      - name: Build and Deploy ant-cli
-        working-directory: /cross/ant/ant-cli
-        run: |
-          echo "🔨 Docker 빌드 중..."
-          sudo docker compose build --no-cache ant-cli
-          
-          echo "🗑️ 기존 컨테이너 정리..."
-          sudo docker rm -f ant-cli 2>/dev/null || true
-          
-          echo "🔄 컨테이너 시작..."
-          sudo docker compose up -d ant-cli
-          
-          echo "🧹 오래된 이미지 정리..."
-          sudo docker image prune -f
-
-      - name: Health Check
-        run: |
-          echo "🏥 Health check 대기 중..."
-          sleep 15
-          
-          for i in {1..12}; do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:4100/api/health || echo "000")
-            if [ "$STATUS" = "200" ]; then
-              echo "✅ Health check passed!"
-              exit 0
-            fi
-            echo "⏳ Waiting... ($i/12) - Status: $STATUS"
-            sleep 5
-          done
-          
-          echo "❌ Health check failed"
-          sudo docker compose -f /cross/ant/ant-cli/docker-compose.yml logs ant-cli
-          exit 1
-
-      - name: Show Status
-        if: always()
-        run: |
-          echo "📊 컨테이너 상태:"
-          sudo docker compose -f /cross/ant/ant-cli/docker-compose.yml ps
 
   # ===========================================
   # embedder 배포 (chroma-db VM runner에서 직접 빌드)
@@ -262,7 +60,7 @@ jobs:
     needs: [detect-changes]
     if: |
       always() && (
-        (github.event_name == 'workflow_dispatch' && (github.event.inputs.service == 'embedder' || github.event.inputs.service == 'all')) ||
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.service == 'embedder') ||
         (github.event_name == 'push' && needs.detect-changes.outputs.embedder-changed == 'true')
       )
 
@@ -343,22 +141,21 @@ jobs:
   # 배포 완료 알림 (Slack)
   # ===========================================
   notify:
-    needs: [deploy-ant-cli, deploy-embedder]
+    needs: [deploy-embedder]
     runs-on: [ax-ant-dev]
     if: always()
     steps:
       - name: Set deployment status
         id: status
         run: |
-          CLI_RESULT="${{ needs.deploy-ant-cli.result || 'skipped' }}"
           EMBEDDER_RESULT="${{ needs.deploy-embedder.result || 'skipped' }}"
           
           # 전체 결과 판단
-          if [[ "$CLI_RESULT" == "failure" ]] || [[ "$EMBEDDER_RESULT" == "failure" ]]; then
+          if [[ "$EMBEDDER_RESULT" == "failure" ]]; then
             echo "overall=failure" >> $GITHUB_OUTPUT
             echo "color=#FF0000" >> $GITHUB_OUTPUT
             echo "emoji=❌" >> $GITHUB_OUTPUT
-          elif [[ "$CLI_RESULT" == "success" ]] || [[ "$EMBEDDER_RESULT" == "success" ]]; then
+          elif [[ "$EMBEDDER_RESULT" == "success" ]]; then
             echo "overall=success" >> $GITHUB_OUTPUT
             echo "color=#36A64F" >> $GITHUB_OUTPUT
             echo "emoji=✅" >> $GITHUB_OUTPUT
@@ -369,7 +166,6 @@ jobs:
           fi
           
           # 결과 이모지 매핑
-          echo "cli_emoji=$([[ "$CLI_RESULT" == "success" ]] && echo "✅" || ([[ "$CLI_RESULT" == "failure" ]] && echo "❌" || echo "⏭️"))" >> $GITHUB_OUTPUT
           echo "embedder_emoji=$([[ "$EMBEDDER_RESULT" == "success" ]] && echo "✅" || ([[ "$EMBEDDER_RESULT" == "failure" ]] && echo "❌" || echo "⏭️"))" >> $GITHUB_OUTPUT
 
       - name: Send Slack Notification
@@ -404,10 +200,6 @@ jobs:
                 {
                   "type": "section",
                   "fields": [
-                    {
-                      "type": "mrkdwn",
-                      "text": "*ant-cli:*\n${{ steps.status.outputs.cli_emoji }} ${{ needs.deploy-ant-cli.result || 'skipped' }}"
-                    },
                     {
                       "type": "mrkdwn",
                       "text": "*embedder:*\n${{ steps.status.outputs.embedder_emoji }} ${{ needs.deploy-embedder.result || 'skipped' }}"
