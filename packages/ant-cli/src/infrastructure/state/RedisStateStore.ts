@@ -67,8 +67,20 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   constructor(options: RedisStateStoreOptions) {
     this.keyPrefix = options.keyPrefix || '';
     
+    // Check if TLS is enabled (rediss:// URL)
+    const isTLS = options.url.startsWith('rediss://');
+    
+    // TLS options for ElastiCache with custom CNAME
+    // Skip hostname verification since ElastiCache cert is for *.serverless.*.cache.amazonaws.com
+    const tlsOptions = isTLS ? {
+      tls: {
+        checkServerIdentity: () => undefined  // Skip hostname verification
+      }
+    } : {};
+    
     // Main connection for commands
     this.redis = new Redis(options.url, {
+      ...tlsOptions,
       maxRetriesPerRequest: options.maxRetriesPerRequest ?? 3,
       retryStrategy: (times: number) => {
         if (times > 10) {
@@ -81,6 +93,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
 
     // Separate connection for pub/sub (required by Redis)
     this.subscriber = new Redis(options.url, {
+      ...tlsOptions,
       maxRetriesPerRequest: options.maxRetriesPerRequest ?? 3
     });
 

@@ -33,6 +33,12 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+#### Redis/ElastiCache TLS with Custom CNAME
+- **RedisStateStore.ts**: Skip TLS hostname verification for ElastiCache Serverless with custom CNAME
+- **BullMQJobQueue.ts**: Add TLS `checkServerIdentity` bypass for custom CNAME
+- **JobWorker.ts**: Add TLS `checkServerIdentity` bypass for BullMQ Worker
+
+#### KubernetesIDEOrchestrator
 - **KubernetesIDEOrchestrator**: Fix TLS certificate verification error (`unable to verify the first certificate`) by using ServiceAccount CA cert from `/var/run/secrets/kubernetes.io/serviceaccount/ca.crt`
 - **KubernetesIDEOrchestrator**: Fix 409 Conflict error when Pod is being deleted by waiting for deletion completion
 - **KubernetesIDEOrchestrator**: Add request timeout (10s) and debug logs to `k8sRequest()` and `waitForPodReady()`
