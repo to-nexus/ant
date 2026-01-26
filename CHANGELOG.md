@@ -37,6 +37,10 @@ All notable changes to this project will be documented in this file.
 - **KubernetesIDEOrchestrator**: Fix 409 Conflict error when Pod is being deleted by waiting for deletion completion
 - **KubernetesIDEOrchestrator**: Add request timeout (10s) and debug logs to `k8sRequest()` and `waitForPodReady()`
 - **GitStatusService**: Handle `dubious ownership` error gracefully for shared EFS volumes (returns empty status instead of infinite retry)
+- **ideProxy.ts**: Support K8s mode by proxying to Pod IP instead of localhost
+- **baseProxy.ts**: Add `targetHost` to `ProxyContext` and `getHost()` method for K8s support
+- **RouteConfigurator.ts**: Call `ideOrchestrator.startIdleCheck()` for auto-cleanup of idle IDE pods
+- **KubernetesIDEOrchestrator**: Add detailed logging for `deleteResources()` operations
 
 ---
 

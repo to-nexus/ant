@@ -574,19 +574,43 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
    * Delete pod and service
    */
   private async deleteResources(resourceName: string): Promise<void> {
+    logger.info(`Deleting K8s resources: ${resourceName}`, {
+      component: 'KubernetesIDEOrchestrator'
+    });
+
     try {
       await this.k8sRequest(
         `/api/v1/namespaces/${this.options.namespace}/pods/${resourceName}`,
         'DELETE'
       );
-    } catch {}
+      logger.info(`Pod ${resourceName} delete request sent`, {
+        component: 'KubernetesIDEOrchestrator'
+      });
+    } catch (err: any) {
+      // 404 is ok (already deleted)
+      if (!err.message?.includes('404')) {
+        logger.warn(`Failed to delete pod ${resourceName}: ${err.message}`, {
+          component: 'KubernetesIDEOrchestrator'
+        });
+      }
+    }
 
     try {
       await this.k8sRequest(
         `/api/v1/namespaces/${this.options.namespace}/services/${resourceName}`,
         'DELETE'
       );
-    } catch {}
+      logger.info(`Service ${resourceName} delete request sent`, {
+        component: 'KubernetesIDEOrchestrator'
+      });
+    } catch (err: any) {
+      // 404 is ok (already deleted)
+      if (!err.message?.includes('404')) {
+        logger.warn(`Failed to delete service ${resourceName}: ${err.message}`, {
+          component: 'KubernetesIDEOrchestrator'
+        });
+      }
+    }
   }
 
   async stop(

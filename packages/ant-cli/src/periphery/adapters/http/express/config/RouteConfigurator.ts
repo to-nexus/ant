@@ -178,6 +178,10 @@ export class RouteConfigurator {
    */
   private setupCloudIDERoutes(app: Express): void {
     const ideOrchestrator = getInfrastructureFactory().getIDEOrchestrator();
+    
+    // Start idle check for auto-cleanup of unused IDE instances
+    ideOrchestrator.startIdleCheck();
+    
     const cloudIDERoutes = createCloudIDERoutes(
       ideOrchestrator, 
       this.deps.workspaceResolver
