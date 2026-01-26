@@ -147,7 +147,8 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
   private async k8sRequest<T>(
     path: string,
     method: 'GET' | 'POST' | 'DELETE' = 'GET',
-    body?: any
+    body?: any,
+    timeoutMs: number = 10000
   ): Promise<T> {
     const https = await import('https');
     const http = await import('http');
@@ -175,6 +176,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         port: parseInt(apiPort, 10),
         path,
         method,
+        timeout: timeoutMs,
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
@@ -197,6 +199,11 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
             reject(new Error(`K8s API error: ${res.statusCode} - ${data}`));
           }
         });
+      });
+
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error(`K8s API request timeout: ${method} ${path}`));
       });
 
       req.on('error', (err) => reject(err));
@@ -437,13 +444,25 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
   private async waitForPodReady(resourceName: string, timeoutMs: number = 60000): Promise<void> {
     const startTime = Date.now();
     
+    logger.info(`Waiting for pod ${resourceName} to be ready (timeout: ${timeoutMs}ms)`, {
+      component: 'KubernetesIDEOrchestrator'
+    });
+    
     while (Date.now() - startTime < timeoutMs) {
       try {
         const pod = await this.k8sRequest<K8sPod>(
           `/api/v1/namespaces/${this.options.namespace}/pods/${resourceName}`
         );
 
+        logger.debug(`Pod ${resourceName} status: phase=${pod.status?.phase}`, {
+          component: 'KubernetesIDEOrchestrator',
+          podStatus: JSON.stringify(pod.status)
+        });
+
         if (pod.status?.phase === 'Running') {
+          logger.info(`Pod ${resourceName} is ready`, {
+            component: 'KubernetesIDEOrchestrator'
+          });
           return;
         }
 
@@ -452,6 +471,9 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         }
       } catch (error: any) {
         if (!error.message.includes('404')) {
+          logger.warn(`Error checking pod ${resourceName}: ${error.message}`, {
+            component: 'KubernetesIDEOrchestrator'
+          });
           throw error;
         }
       }
@@ -459,7 +481,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
 
-    throw new Error('Pod startup timeout');
+    throw new Error(`Pod ${resourceName} startup timeout after ${timeoutMs}ms`);
   }
 
   /**
