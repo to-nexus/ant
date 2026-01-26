@@ -360,23 +360,19 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
       
       if (existingPod) {
         // Pod exists - check status
+        console.log(`[KubernetesIDEOrchestrator] Pod status: phase=${existingPod.status?.phase}, deletionTimestamp=${existingPod.metadata?.deletionTimestamp || 'none'}`);
+        
         if (existingPod.metadata?.deletionTimestamp) {
           // Pod is being deleted - wait for deletion then recreate
-          logger.info(`Pod ${resourceName} is being deleted, waiting...`, {
-            component: 'KubernetesIDEOrchestrator'
-          });
+          console.log(`[KubernetesIDEOrchestrator] Pod is being deleted, waiting...`);
           await this.waitForPodDeletion(resourceName);
         } else if (existingPod.status?.phase === 'Running') {
           // Pod is running - return existing instance
-          logger.info(`Pod ${resourceName} already running, reusing`, {
-            component: 'KubernetesIDEOrchestrator'
-          });
+          console.log(`[KubernetesIDEOrchestrator] Pod already running, calling createInstanceResult()`);
           return this.createInstanceResult(existingPod, tenantId, userContext, projectId, feature, instanceKey);
         } else {
           // Pod exists but not running (Failed, Pending, etc) - delete and recreate
-          logger.info(`Pod ${resourceName} exists but not running (${existingPod.status?.phase}), recreating`, {
-            component: 'KubernetesIDEOrchestrator'
-          });
+          console.log(`[KubernetesIDEOrchestrator] Pod exists but not running (${existingPod.status?.phase}), recreating`);
           await this.deleteResources(resourceName);
           await this.waitForPodDeletion(resourceName);
         }
