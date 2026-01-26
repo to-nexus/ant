@@ -14,6 +14,7 @@ import { DesignGraphState } from "../state";
 import { LLMClient } from "../../../../../core/ports";
 import { PromptEngine } from "../../../../../core/prompt/engine";
 import { logPrompt } from "../../../../../core/utils/promptLogger";
+import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../common/llmConfig";
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import {
@@ -355,7 +356,7 @@ export async function detectEnvironment(
     
     for await (const event of llm.stream(
       [{ role: "user", content: prompt }],
-      { temperature: 0.2, maxTokens: 16000 }
+      { temperature: LLM_TEMPERATURE.DETECT, maxTokens: LLM_MAX_TOKENS.DETECT }
     )) {
       if (event.text) {
         response += event.text;

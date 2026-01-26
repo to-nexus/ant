@@ -12,6 +12,7 @@ import { ArchitectGraphState } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
+import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../common/llmConfig";
 
 export interface TaskKeywords {
   errorFiles: string[];  // Files that caused errors (build errors, file operation errors)
@@ -81,7 +82,7 @@ export async function generateTaskKeywords(
       llm,
       [{ role: 'user', content: prompt }],
       state as any,
-      { temperature: 0.3, maxTokens: 800 }
+      { temperature: LLM_TEMPERATURE.PLAN_KEYWORD, maxTokens: LLM_MAX_TOKENS.KEYWORD }
     );
 
     const jsonMatch = response.match(/```json\n([\s\S]*?)\n```/) ||

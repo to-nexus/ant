@@ -428,64 +428,6 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
 }
 
 /**
- * Extract FILES CONTRACT section from planText
- * Returns structured file operations from the plan
- */
-export function extractFilesContract(planText: string): {
-  createFiles: Array<{ path: string; purpose: string; integratesIn?: string; replaces?: string }>;
-  modifyFiles: Array<{ path: string; action: string; changes: string[] }>;
-  assetOps: string[];
-} | null {
-  // Look for FILES CONTRACT section
-  const contractMatch = planText.match(/## FILES CONTRACT[\s\S]*?(?=\n## [^F]|\n═{3,}$|$)/i);
-  if (!contractMatch) return null;
-  
-  const contractText = contractMatch[0];
-  
-  const result: ReturnType<typeof extractFilesContract> = {
-    createFiles: [],
-    modifyFiles: [],
-    assetOps: []
-  };
-  
-  // Parse CREATE FILES section
-  const createSection = contractText.match(/### CREATE FILES:[\s\S]*?(?=### MODIFY|### ASSET|$)/i);
-  if (createSection) {
-    // Extract paths from various formats
-    const pathMatches = createSection[0].matchAll(/path:\s*([^\n│]+)/gi);
-    for (const match of pathMatches) {
-      const path = match[1].trim();
-      if (path) {
-        result.createFiles.push({ path, purpose: '' });
-      }
-    }
-  }
-  
-  // Parse MODIFY FILES section
-  const modifySection = contractText.match(/### MODIFY FILES:[\s\S]*?(?=### ASSET|### CREATE|$)/i);
-  if (modifySection) {
-    const pathMatches = modifySection[0].matchAll(/path:\s*([^\n│]+)/gi);
-    for (const match of pathMatches) {
-      const path = match[1].trim();
-      if (path) {
-        result.modifyFiles.push({ path, action: '', changes: [] });
-      }
-    }
-  }
-  
-  // Parse ASSET OPERATIONS section
-  const assetSection = contractText.match(/### ASSET OPERATIONS[\s\S]*?(?=### |$)/i);
-  if (assetSection) {
-    const cpMatches = assetSection[0].matchAll(/cp\s+[^\n]+/gi);
-    for (const match of cpMatches) {
-      result.assetOps.push(match[0].trim());
-    }
-  }
-  
-  return result;
-}
-
-/**
  * Build runtime context (task, plan, enforcement, file tree)
  * 
  * CRITICAL: This is appended to EVERY user message, even during tool call loops!
@@ -523,64 +465,26 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
     lines.push(`**${state.currentTask.name}**`);
     lines.push(``);
     
-    // ✅ CRITICAL: Inject planText (concrete implementation plan from Plan node)
-    // This is the PRIMARY guidance for execution - description is just the goal
+    // ✅ CRITICAL: Inject planText (structured JSON from Plan node)
+    // planText is already structured - no parsing needed
     if (state.planText) {
       lines.push(`**Goal**: ${state.currentTask.description}`);
       lines.push(``);
       
-      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      // 🚨 FILES CONTRACT - Extracted and EMPHASIZED at top
-      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      const filesContract = extractFilesContract(state.planText);
-      if (filesContract && (filesContract.createFiles.length > 0 || filesContract.modifyFiles.length > 0)) {
-        lines.push(`════════════════════════════════════════════════════════════════════════════════`);
-        lines.push(`🔒 FILES CONTRACT (Structural Decisions - MUST Follow)`);
-        lines.push(`════════════════════════════════════════════════════════════════════════════════`);
-        lines.push(``);
-        lines.push(`**Create/modify these files with EXACT paths/names as specified.**`);
-        lines.push(`Implementation details (naming, types, logic) are your judgment.`);
-        lines.push(``);
-        
-        if (filesContract.createFiles.length > 0) {
-          lines.push(`### FILES TO CREATE (paths fixed):`);
-          for (const file of filesContract.createFiles) {
-            lines.push(`   ✅ ${file.path}`);
-          }
-          lines.push(``);
-        }
-        
-        if (filesContract.modifyFiles.length > 0) {
-          lines.push(`### FILES TO MODIFY:`);
-          for (const file of filesContract.modifyFiles) {
-            lines.push(`   ✏️  ${file.path}`);
-          }
-          lines.push(``);
-        }
-        
-        if (filesContract.assetOps.length > 0) {
-          lines.push(`### ASSET OPERATIONS:`);
-          for (const op of filesContract.assetOps) {
-            lines.push(`   📦 ${op}`);
-          }
-          lines.push(``);
-        }
-        
-        lines.push(`⚠️  MUST follow: file paths/names, integration points, replacement targets`);
-        lines.push(`🔧 Your judgment: implementation logic, variable names, types, patterns`);
-        lines.push(`📚 Reference: existing code patterns, design docs, project conventions`);
-        lines.push(``);
-        lines.push(`════════════════════════════════════════════════════════════════════════════════`);
-        lines.push(``);
-      }
-      
-      lines.push(`────────────────────────────────────────────────────────────────────────────────`);
-      lines.push(`📋 FULL IMPLEMENTATION PLAN`);
-      lines.push(`────────────────────────────────────────────────────────────────────────────────`);
+      lines.push(`════════════════════════════════════════════════════════════════════════════════`);
+      lines.push(`📋 IMPLEMENTATION PLAN (Structured JSON - FOLLOW EXACTLY)`);
+      lines.push(`════════════════════════════════════════════════════════════════════════════════`);
       lines.push(``);
+      lines.push(`The following JSON contains the exact implementation instructions.`);
+      lines.push(`- \`create\`: Files to create with integration points`);
+      lines.push(`- \`modify\`: Files to modify with specific changes`);
+      lines.push(`- \`assets\`: Asset copy operations (source → destination)`);
+      lines.push(``);
+      lines.push('```json');
       lines.push(state.planText);
+      lines.push('```');
       lines.push(``);
-      lines.push(`────────────────────────────────────────────────────────────────────────────────`);
+      lines.push(`════════════════════════════════════════════════════════════════════════════════`);
       lines.push(``);
     } else {
       // No plan available (explain/final-verification tasks OR state propagation failure)
