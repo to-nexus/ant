@@ -164,9 +164,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     const token = this.options.kubeToken || await this.readServiceAccountToken();
     const caCert = isInCluster ? await this.readServiceAccountCACert() : undefined;
     
-    logger.debug(`K8s API request: ${method} ${path} (host=${apiHost}, port=${apiPort}, hasCaCert=${!!caCert})`, {
-      component: 'KubernetesIDEOrchestrator'
-    });
+    console.log(`[KubernetesIDEOrchestrator] K8s API: ${method} ${path} (host=${apiHost}, port=${apiPort}, hasCaCert=${!!caCert}, hasToken=${!!token})`);
     
     // Use https for in-cluster, http for local kubectl proxy
     const useHttps = isInCluster || !!this.options.kubeApiUrl;
@@ -193,6 +191,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         let data = '';
         res.on('data', (chunk) => data += chunk);
         res.on('end', () => {
+          console.log(`[KubernetesIDEOrchestrator] K8s API response: ${res.statusCode} (${data.length} bytes)`);
           if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
             try {
               resolve(JSON.parse(data));
@@ -206,11 +205,15 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
       });
 
       req.on('timeout', () => {
+        console.log(`[KubernetesIDEOrchestrator] K8s API TIMEOUT: ${method} ${path}`);
         req.destroy();
         reject(new Error(`K8s API request timeout: ${method} ${path}`));
       });
 
-      req.on('error', (err) => reject(err));
+      req.on('error', (err) => {
+        console.log(`[KubernetesIDEOrchestrator] K8s API ERROR: ${err.message}`);
+        reject(err);
+      });
       
       if (requestBody) {
         req.write(requestBody);
@@ -351,7 +354,9 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
 
     try {
       // Check if pod already exists
+      console.log(`[KubernetesIDEOrchestrator] Checking if pod exists: ${resourceName}`);
       const existingPod = await this.getPodIfExists(resourceName);
+      console.log(`[KubernetesIDEOrchestrator] Pod exists check result: ${existingPod ? 'exists' : 'not found'}`);
       
       if (existingPod) {
         // Pod exists - check status
