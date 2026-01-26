@@ -177,10 +177,17 @@ export class RouteConfigurator {
    * LocalIDEOrchestrator (Docker) otherwise
    */
   private setupCloudIDERoutes(app: Express): void {
-    console.log(`[RouteConfigurator] Setting up Cloud IDE routes (ANT_K8S_NAMESPACE=${process.env.ANT_K8S_NAMESPACE || 'not set'})`);
+    logger.info(`Setting up Cloud IDE routes (ANT_K8S_NAMESPACE=${process.env.ANT_K8S_NAMESPACE || 'not set'})`, {
+      component: 'RouteConfigurator'
+    });
     
-    const ideOrchestrator = getInfrastructureFactory().getIDEOrchestrator();
-    console.log(`[RouteConfigurator] IDE Orchestrator type: ${ideOrchestrator.constructor.name}`);
+    // Set dependencies for LocalIDEOrchestrator (Docker mode)
+    // This is required before calling getIDEOrchestrator() when K8s is not configured
+    const factory = getInfrastructureFactory();
+    factory.setDependencies(this.deps.portManager, this.deps.portRegistry);
+    
+    const ideOrchestrator = factory.getIDEOrchestrator();
+    logger.info(`IDE Orchestrator type: ${ideOrchestrator.constructor.name}`, { component: 'RouteConfigurator' });
     
     // Start idle check for auto-cleanup of unused IDE instances
     ideOrchestrator.startIdleCheck();
