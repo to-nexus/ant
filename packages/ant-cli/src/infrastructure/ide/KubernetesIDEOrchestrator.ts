@@ -467,39 +467,42 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
   /**
    * Wait for pod to become ready
    */
-  private async waitForPodReady(resourceName: string, timeoutMs: number = 60000): Promise<void> {
+  private async waitForPodReady(resourceName: string, timeoutMs: number = 120000): Promise<void> {
     const startTime = Date.now();
     
-    logger.info(`Waiting for pod ${resourceName} to be ready (timeout: ${timeoutMs}ms)`, {
-      component: 'KubernetesIDEOrchestrator'
-    });
+    console.log(`[KubernetesIDEOrchestrator] Waiting for Pod to be ready: ${resourceName} (timeout: ${timeoutMs / 1000}s)`);
     
+    let lastPhase = '';
     while (Date.now() - startTime < timeoutMs) {
       try {
         const pod = await this.k8sRequest<K8sPod>(
           `/api/v1/namespaces/${this.options.namespace}/pods/${resourceName}`
         );
 
-        logger.debug(`Pod ${resourceName} status: phase=${pod.status?.phase}`, {
-          component: 'KubernetesIDEOrchestrator',
-          podStatus: JSON.stringify(pod.status)
-        });
+        const phase = pod.status?.phase || 'Unknown';
+        const containerStatuses = pod.status?.containerStatuses?.[0];
+        const waiting = containerStatuses?.state?.waiting;
+        
+        // Log only when phase changes or every 10 seconds
+        const elapsed = Date.now() - startTime;
+        if (phase !== lastPhase || elapsed % 10000 < 2000) {
+          const waitReason = waiting ? ` (${waiting.reason}: ${waiting.message || 'no message'})` : '';
+          console.log(`[KubernetesIDEOrchestrator] Pod ${resourceName}: phase=${phase}${waitReason} (${Math.round(elapsed / 1000)}s)`);
+          lastPhase = phase;
+        }
 
-        if (pod.status?.phase === 'Running') {
-          logger.info(`Pod ${resourceName} is ready`, {
-            component: 'KubernetesIDEOrchestrator'
-          });
+        if (phase === 'Running') {
+          console.log(`[KubernetesIDEOrchestrator] Pod is ready: ${resourceName}`);
           return;
         }
 
-        if (pod.status?.phase === 'Failed') {
-          throw new Error('Pod failed to start');
+        if (phase === 'Failed') {
+          const reason = containerStatuses?.state?.terminated?.reason || 'Unknown';
+          throw new Error(`Pod failed to start: ${reason}`);
         }
       } catch (error: any) {
         if (!error.message.includes('404')) {
-          logger.warn(`Error checking pod ${resourceName}: ${error.message}`, {
-            component: 'KubernetesIDEOrchestrator'
-          });
+          console.log(`[KubernetesIDEOrchestrator] Error checking pod: ${error.message}`);
           throw error;
         }
       }

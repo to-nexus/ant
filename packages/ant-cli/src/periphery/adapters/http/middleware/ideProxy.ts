@@ -88,13 +88,14 @@ class IDEProxyMiddlewareImpl extends BaseProxyMiddleware {
       );
       
       if (mapping?.host) {
-        logger.debug(`IDE host from StateStore: ${mapping.host}`, { component: 'IDEProxy' });
+        console.log(`[IDEProxy] Host from StateStore: ${mapping.host}`);
         return mapping.host;
       }
     } catch (err) {
-      logger.warn(`Failed to get IDE host from StateStore: ${err}`, { component: 'IDEProxy' });
+      console.log(`[IDEProxy] Failed to get IDE host from StateStore: ${err}`);
     }
     
+    console.log(`[IDEProxy] Falling back to localhost`);
     return 'localhost';
   }
 
@@ -195,9 +196,10 @@ export function createIDEWebSocketHandler(portRegistry: PortRegistryPort, pathPr
       const mapping = await stateStore.getIDE(tenantId, userId, projectId, feature);
       if (mapping?.host) {
         host = mapping.host;
+        console.log(`[IDEProxy WS] Host from StateStore: ${host}`);
       }
     } catch (err) {
-      logger.warn(`Failed to get IDE host for WS: ${err}`, { component: 'IDEProxy' });
+      console.log(`[IDEProxy WS] Failed to get IDE host: ${err}`);
     }
 
     // Update last access
