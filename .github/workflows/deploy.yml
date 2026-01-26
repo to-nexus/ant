@@ -219,10 +219,10 @@ jobs:
     secrets: inherit
 
   # ===========================================
-  # Manual deployment workflow - ant-ui
+  # Manual deployment workflow - ant-ui (dev, stage only)
   # ===========================================
   manual-ant-ui-deploy:
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.service == 'ant-ui'
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.service == 'ant-ui' && github.event.inputs.environment != 'prod'
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
     with:
       environment: ${{ github.event.inputs.environment }}
@@ -235,10 +235,10 @@ jobs:
     secrets: inherit
 
   # ===========================================
-  # Manual deployment workflow - ant-cli
+  # Manual deployment workflow - ant-cli (dev, stage only)
   # ===========================================
   manual-ant-cli-deploy:
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.service == 'ant-cli'
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.service == 'ant-cli' && github.event.inputs.environment != 'prod'
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
     with:
       environment: ${{ github.event.inputs.environment }}
