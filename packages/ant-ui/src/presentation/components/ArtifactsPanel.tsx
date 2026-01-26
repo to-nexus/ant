@@ -148,8 +148,8 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
                 node.type === 'directory' &&
                 pathParts.length === 2 &&
                 (
-                  // outputs/design, outputs/reports
-                  (pathParts[0] === 'outputs' && (pathParts[1] === 'design' || pathParts[1] === 'reports')) ||
+                  // outputs의 직계 자식 디렉토리들 (design, reports, debug 등)
+                  pathParts[0] === 'outputs' ||
                   // sessions/log-prompt
                   (pathParts[0] === 'sessions' && pathParts[1] === 'log-prompt')
                 );

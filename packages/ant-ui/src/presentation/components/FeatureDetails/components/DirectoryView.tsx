@@ -135,26 +135,78 @@ export function DirectoryView({
                 </Button>
               </>
             )}
-            {onDelete && (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-6 w-6 p-0 text-gray-600 hover:text-red-600 hover:bg-red-50"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  showConfirm(`Delete ${node.type} "${node.name}"?`, {
-                    type: 'warning',
-                    title: 'Delete?',
-                    confirmText: 'Delete',
-                    cancelText: 'Cancel',
-                    onConfirm: () => onDelete(node.path)
-                  });
-                }}
-                title={`Delete ${node.type}`}
-              >
-                ❌
-              </Button>
-            )}
+            {/* 삭제 버튼 로직 */}
+            {onDelete && (() => {
+              const pathParts = node.path.split('/');
+              
+              // "Clear contents" 대상 폴더들 (폴더는 유지, 하위 파일만 삭제)
+              const isClearableDir = 
+                node.type === 'directory' &&
+                pathParts.length === 2 &&
+                (
+                  // outputs의 직계 자식 디렉토리들 (design, reports, debug 등)
+                  pathParts[0] === 'outputs' ||
+                  // sessions/log-prompt
+                  (pathParts[0] === 'sessions' && pathParts[1] === 'log-prompt')
+                );
+              
+              // inputs의 직계 자식 디렉토리는 삭제 불가
+              const isProtectedInputsDir = 
+                node.type === 'directory' && 
+                pathParts.length === 2 && 
+                pathParts[0] === 'inputs';
+              
+              if (isClearableDir) {
+                // 하위 파일 전체 삭제 버튼 (폴더는 유지)
+                return (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 w-6 p-0 text-gray-600 hover:text-red-600 hover:bg-red-50"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      showConfirm(`Clear all contents in "${node.name}"? This will delete all files and subdirectories.`, {
+                        type: 'warning',
+                        title: 'Clear Contents?',
+                        confirmText: 'Clear All',
+                        cancelText: 'Cancel',
+                        onConfirm: () => onDelete(node.path)
+                      });
+                    }}
+                    title="Clear all contents"
+                  >
+                    🗑️
+                  </Button>
+                );
+              }
+              
+              // inputs의 직계 자식 디렉토리는 버튼 없음
+              if (isProtectedInputsDir) {
+                return null;
+              }
+              
+              // 일반 파일/폴더: 삭제 버튼
+              return (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 w-6 p-0 text-gray-600 hover:text-red-600 hover:bg-red-50"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    showConfirm(`Delete ${node.type} "${node.name}"?`, {
+                      type: 'warning',
+                      title: 'Delete?',
+                      confirmText: 'Delete',
+                      cancelText: 'Cancel',
+                      onConfirm: () => onDelete(node.path)
+                    });
+                  }}
+                  title={`Delete ${node.type}`}
+                >
+                  🗑️
+                </Button>
+              );
+            })()}
           </div>
         </div>
         

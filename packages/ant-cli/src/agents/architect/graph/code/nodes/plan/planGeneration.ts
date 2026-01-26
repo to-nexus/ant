@@ -12,6 +12,7 @@ import { ArchitectGraphState, TASK_PRIORITIES, Violation } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { formatViolations } from "../shared/violationFormatter";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
+import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../common/llmConfig";
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -132,11 +133,28 @@ export async function generatePlanText(
     llmToUse,
     [{ role: 'user', content: prompt }],
     state as any,
-    { temperature: 0.5, maxTokens: 2000 }
+    { temperature: LLM_TEMPERATURE.PLAN_GENERATION, maxTokens: LLM_MAX_TOKENS.PLAN }
   );
   
+  // ✅ Extract <plan> tag content (REQUIRED - structured JSON output)
   const planMatch = response.match(/<plan>([\s\S]*?)<\/plan>/);
-  const planText = planMatch ? planMatch[1].trim() : response.trim();
+  
+  if (!planMatch) {
+    console.error(`❌ [Plan] <plan> tag not found in LLM response`);
+    console.error(`   Response preview: "${response.substring(0, 200)}..."`);
+    throw new Error(`[Plan] <plan> tag not found. LLM must output structured plan within <plan>...</plan> tags.`);
+  }
+  
+  const planText = planMatch[1].trim();
+  
+  // Validate JSON structure (basic check)
+  try {
+    JSON.parse(planText);
+    console.log(`   ✅ Plan JSON validated`);
+  } catch (jsonError) {
+    console.warn(`   ⚠️  Plan is not valid JSON (will still proceed): ${jsonError instanceof Error ? jsonError.message : jsonError}`);
+    // Continue anyway - CodeGen can still use the structured text
+  }
   
   if (planText.length < 50) {
     throw new Error(`[Plan] Generated plan is too short (${planText.length} chars). This indicates plan generation failure.`);
@@ -153,12 +171,12 @@ export async function generatePlanText(
 /**
  * Save planText to sessions/debug/plans directory for debugging
  * 
- * Saves to: {featurePath}/sessions/debug/plans/{jobId}.md
- * All task plans for a job are appended to a single file.
+ * Saves to: {featurePath}/sessions/debug/plans/{jobId}.json
+ * All task plans for a job are stored in a single JSON file.
  * 
  * @param state - Current graph state
  * @param task - Current task
- * @param planText - Generated plan text
+ * @param planText - Generated plan text (JSON string)
  */
 async function savePlanTextForDebug(
   state: ArchitectGraphState,
@@ -177,38 +195,44 @@ async function savePlanTextForDebug(
     const planTextDir = path.join(featurePath, 'sessions', 'debug', 'plans');
     await fs.mkdir(planTextDir, { recursive: true });
     
-    const filepath = path.join(planTextDir, `${jobId}.md`);
+    const filepath = path.join(planTextDir, `${jobId}.json`);
     
-    // Check if file exists to determine header
-    let existingContent = '';
+    // Load existing plans array or create new
+    let plansArray: any[] = [];
     try {
-      existingContent = await fs.readFile(filepath, 'utf-8');
+      const existing = await fs.readFile(filepath, 'utf-8');
+      plansArray = JSON.parse(existing);
     } catch {
-      // File doesn't exist, will create with header
+      // File doesn't exist, start fresh
     }
     
     // Determine if this is a replan (retry)
     const retryCount = state.retries || 0;
-    const isReplan = retryCount > 0;
-    const replanLabel = isReplan ? ` (Replan #${retryCount})` : '';
+    
+    // Parse planText JSON (or use raw if invalid)
+    let planJson: any;
+    try {
+      planJson = JSON.parse(planText);
+    } catch {
+      planJson = { raw: planText };
+    }
     
     // Build entry for this task
-    const separator = existingContent ? '\n\n---\n\n' : '';
-    const header = existingContent ? '' : `# Plans Log (Job: ${jobId})\n\n`;
+    const entry = {
+      taskId: task.id,
+      taskName: task.name,
+      taskType: task.type,
+      priority: task.priority,
+      retry: retryCount,
+      generated: new Date().toISOString(),
+      plan: planJson
+    };
     
-    const entry = `## ${task.name}${replanLabel}
-
-- **Task ID**: ${task.id}
-- **Type**: ${task.type}
-- **Priority**: ${task.priority}
-- **Retry**: ${retryCount}${isReplan ? ' ⚠️ REPLAN' : ''}
-- **Generated**: ${new Date().toISOString()}
-
-${planText}`;
+    plansArray.push(entry);
     
-    // Append to file
-    await fs.writeFile(filepath, header + existingContent + separator + entry, 'utf-8');
-    console.log(`   📄 Plan appended: sessions/debug/plans/${jobId}.md`);
+    // Save as JSON
+    await fs.writeFile(filepath, JSON.stringify(plansArray, null, 2), 'utf-8');
+    console.log(`   📄 Plan saved: sessions/debug/plans/${jobId}.json`);
   } catch (err) {
     // Non-blocking - just log warning
     console.warn(`   ⚠️  Could not save plan for debug:`, err instanceof Error ? err.message : err);

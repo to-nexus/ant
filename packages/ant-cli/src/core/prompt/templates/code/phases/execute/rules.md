@@ -29,23 +29,37 @@ If REFERENCE PROJECTS section shows "NONE available", do NOT attempt to use `sea
 ## 🎯 Core Principles
 ════════════════════════════════════════════════════════════════════════════════
 
-### 1. Plan = INTENT, Tools = VERIFICATION
+### 1. Plan = STRUCTURED JSON, Tools = VERIFICATION
 
-Plan provides **semantic guidance**. You determine exact paths using tools:
+**Plan is provided as structured JSON.** Parse and follow each field:
 
-| Plan Says | Your Action |
-|-----------|-------------|
-| "Create X in utils area" | `list_files` → find where utils live → create at correct path |
-| "Integrate with Y" | `read_file` → find target → import new module there |
-| "Replace inline Z" | `read_file` → find exact code → `edit_file` to replace |
+```json
+{
+  "task": { "id": "...", "goal": "..." },
+  "implementation": {
+    "create": [{ "name": "...", "location": "...", "integrates_with": "..." }],
+    "modify": [{ "target": "...", "action": "...", "changes": [...] }],
+    "assets": [{ "source": "...", "destination": "..." }]
+  }
+}
+```
+
+**How to execute each field:**
+
+| JSON Field | Your Action |
+|------------|-------------|
+| `create[].name` + `location` | `list_files` → verify location → create file |
+| `create[].integrates_with` | `read_file` target → add import + usage |
+| `modify[].target` | `read_file` → apply `changes` |
+| `assets[].source/destination` | Copy asset file |
 
 **Path Determination Workflow:**
 ```
-1. list_files(".") → See directory structure
-2. Identify existing patterns
-3. Create at correct location matching conventions
-4. read_file → Get actual content for integration
-5. edit_file → Modify with correct context
+1. Parse plan JSON
+2. For each create: list_files → find exact path → create file
+3. For each create.integrates_with: read_file → add import
+4. For each modify: read_file → apply changes
+5. For each asset: copy from source to destination
 ```
 
 ────────────────────────────────────────────────────────────────────────────────
@@ -78,15 +92,14 @@ When design tokens are provided in this prompt:
 
 **⚠️ CRITICAL: Use token classes, NOT arbitrary values**
 
-```tsx
-// ❌ WRONG: Hardcoded values
-className="bg-[#121212] text-[#00E676] bg-[rgba(45,52,54,0.8)]"
+**Principle**: Never hardcode color/spacing/typography values. Always use configured token classes.
 
-// ✅ CORRECT: Token classes
-className="bg-bg-dark text-primary-green bg-background-cardDark"
-```
+**Constraint**: 
+- Observe the DESIGN TOKENS section in this prompt
+- Find matching token for each visual property
+- Use token class name, NOT raw values
 
-**Token Lookup:** Check the DESIGN TOKENS section in this prompt → Find matching token → Use token class name
+**Token Lookup:** DESIGN TOKENS section → Find matching token → Use token class name
 
 > **Note:** For framework-specific configuration syntax (Tailwind, CSS Variables, etc.), see environment-specific rules.
 
@@ -369,22 +382,14 @@ const speed = PADDLE_SPEED;
 
 **Source of truth: `ui-assets.json`** → `src` (source) → `dest` (runtime path)
 
-```json
-"icon-telegram": {
-  "src": "inputs/assets/icons/icon-telegram.svg",
-  "dest": "public/icons/telegram.svg"
-}
-```
+**Principle**: Assets have source and destination paths defined in ui-assets.json.
 
 **Workflow:**
 1. Copy to EXACT `dest` path (including filename changes)
 2. Reference `dest` path in code
 3. Verify file exists before code references it
 
-```bash
-# Copy with correct dest filename
-cp inputs/assets/icons/icon-telegram.svg codebase/public/icons/telegram.svg
-```
+**Constraint**: Do NOT invent asset paths. Use ONLY what ui-assets.json specifies.
 
 ────────────────────────────────────────────────────────────────────────────────
 ### 3. Directory Consistency
