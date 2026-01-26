@@ -25,6 +25,7 @@ import { JobPayload, JobProgress } from '../../core/ports/queue';
 import { RedisStateStore } from '../state/RedisStateStore';
 import { logger } from '../../utils/logger';
 import { UnifiedWorkspaceResolver, WorkspacePathResolver } from '../workspace/WorkspaceResolver';
+import { parseRedisUrl } from '../utils/redis';
 
 // ESM: derive __dirname from import.meta.url
 const __filename = fileURLToPath(import.meta.url);
@@ -58,32 +59,12 @@ export class JobWorker {
   }
 
   /**
-   * Parse Redis URL for BullMQ connection
-   */
-  private parseRedisUrl(url: string): { host: string; port: number; password?: string; tls?: { rejectUnauthorized?: boolean; checkServerIdentity?: () => undefined } } {
-    const parsed = new URL(url);
-    const isTLS = url.startsWith('rediss://');
-    
-    return {
-      host: parsed.hostname,
-      port: parseInt(parsed.port) || 6379,
-      password: parsed.password || undefined,
-      // TLS options for ElastiCache with custom CNAME
-      // Skip hostname verification since ElastiCache cert is for *.serverless.*.cache.amazonaws.com
-      ...(isTLS && {
-        tls: {
-          checkServerIdentity: () => undefined
-        }
-      })
-    };
-  }
-
-  /**
    * Start the worker
    */
   async start(): Promise<void> {
     const queueName = this.options.queueName || QUEUE_NAME;
-    const connection = this.parseRedisUrl(this.options.redisUrl);
+    // Parse Redis URL for BullMQ connection (uses shared utility with TLS support)
+    const connection = parseRedisUrl(this.options.redisUrl);
 
     this.worker = new Worker(
       queueName,

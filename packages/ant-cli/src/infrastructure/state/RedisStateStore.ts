@@ -70,11 +70,23 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     // Check if TLS is enabled (rediss:// URL)
     const isTLS = options.url.startsWith('rediss://');
     
-    // TLS options for ElastiCache with custom CNAME
-    // Skip hostname verification since ElastiCache cert is for *.serverless.*.cache.amazonaws.com
+    /**
+     * TLS options for AWS ElastiCache Serverless with custom CNAME
+     * 
+     * When using a custom domain (e.g., redis.mycompany.com) pointing to ElastiCache,
+     * the TLS certificate is issued for *.serverless.*.cache.amazonaws.com, not the custom domain.
+     * This causes hostname verification to fail.
+     * 
+     * Security Note: Skipping hostname verification is acceptable when:
+     * 1. Network is trusted (VPC, private subnet, security groups)
+     * 2. DNS is trusted (Route53, no risk of DNS spoofing)
+     * 3. Connection is still encrypted (TLS encrypts data in transit)
+     * 
+     * @see infrastructure/utils/redis.ts for detailed documentation
+     */
     const tlsOptions = isTLS ? {
       tls: {
-        checkServerIdentity: () => undefined  // Skip hostname verification
+        checkServerIdentity: () => undefined
       }
     } : {};
     
@@ -417,7 +429,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     const portKey = this.createPortKey(tenantId, userId, projectId, feature);
     const key = this.key(KEYS.IDE, portKey);
     
-    console.log(`[RedisStateStore] registerIDE() called: key=${key}, host=${host}, port=${port}`);
+    logger.debug(`registerIDE() called: key=${key}, host=${host}, port=${port}`, { component: 'RedisStateStore' });
     
     const mapping: PortMapping = {
       tenantId,
@@ -433,9 +445,8 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     const pipeline = this.redis.pipeline();
     pipeline.set(key, JSON.stringify(mapping), 'EX', TTL.PORT_MAPPING);
     pipeline.sadd(this.key(KEYS.IDE_LIST), portKey);
-    const result = await pipeline.exec();
+    await pipeline.exec();
 
-    console.log(`[RedisStateStore] registerIDE() completed: key=${key}, result=${JSON.stringify(result)}`);
     logger.info(`IDE registered: ${portKey} → ${host}:${port}`, { component: 'RedisStateStore' });
   }
 
@@ -448,17 +459,17 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     const portKey = this.createPortKey(tenantId, userId, projectId, feature);
     const key = this.key(KEYS.IDE, portKey);
     
-    console.log(`[RedisStateStore] getIDE() called: key=${key}`);
+    logger.debug(`getIDE() called: key=${key}`, { component: 'RedisStateStore' });
     
     const data = await this.redis.get(key);
 
     if (!data) {
-      console.log(`[RedisStateStore] getIDE() not found: key=${key}`);
+      logger.debug(`getIDE() not found: key=${key}`, { component: 'RedisStateStore' });
       return null;
     }
 
     const mapping: PortMapping = JSON.parse(data);
-    console.log(`[RedisStateStore] getIDE() found: key=${key}, host=${mapping.host}, port=${mapping.port}`);
+    logger.debug(`getIDE() found: key=${key}, host=${mapping.host}, port=${mapping.port}`, { component: 'RedisStateStore' });
     
     // Update last accessed
     mapping.lastAccessedAt = new Date();

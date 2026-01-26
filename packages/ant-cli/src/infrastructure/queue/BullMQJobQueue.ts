@@ -30,6 +30,7 @@ import {
 } from '../../core/ports/queue';
 import { StateStorePort } from '../../core/ports/stateStore';
 import { logger } from '../../utils/logger';
+import { parseRedisUrl } from '../utils/redis';
 
 // Queue configuration
 const QUEUE_NAME = 'ant-jobs';
@@ -64,8 +65,8 @@ export class BullMQJobQueue implements JobQueuePort {
   constructor(options: BullMQJobQueueOptions, stateStore: StateStorePort) {
     const queueName = options.queueName || QUEUE_NAME;
     
-    // Parse Redis URL for BullMQ connection
-    const connection = this.parseRedisUrl(options.redisUrl);
+    // Parse Redis URL for BullMQ connection (uses shared utility with TLS support)
+    const connection = parseRedisUrl(options.redisUrl);
 
     this.queue = new Queue(queueName, { connection });
     this.queueEvents = new QueueEvents(queueName, { connection });
@@ -74,24 +75,6 @@ export class BullMQJobQueue implements JobQueuePort {
     this.setupEventHandlers();
 
     logger.info(`BullMQ job queue initialized: ${queueName}`, { component: 'BullMQJobQueue' });
-  }
-
-  private parseRedisUrl(url: string): { host: string; port: number; password?: string; tls?: { rejectUnauthorized?: boolean; checkServerIdentity?: () => undefined } } {
-    const parsed = new URL(url);
-    const isTLS = url.startsWith('rediss://');
-    
-    return {
-      host: parsed.hostname,
-      port: parseInt(parsed.port) || 6379,
-      password: parsed.password || undefined,
-      // TLS options for ElastiCache with custom CNAME
-      // Skip hostname verification since ElastiCache cert is for *.serverless.*.cache.amazonaws.com
-      ...(isTLS && {
-        tls: {
-          checkServerIdentity: () => undefined
-        }
-      })
-    };
   }
 
   private setupEventHandlers(): void {
