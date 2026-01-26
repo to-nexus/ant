@@ -339,11 +339,14 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     const instanceKey = this.createInstanceKey(tenantId, projectId, feature);
     const resourceName = this.createResourceName(instanceKey);
 
-    logger.info(`Starting K8s IDE: ${instanceKey}`, {
+    console.log(`[KubernetesIDEOrchestrator] ▶ START request received: ${instanceKey}`);
+    logger.info(`[KubernetesIDEOrchestrator] Starting K8s IDE: ${instanceKey}`, {
       component: 'KubernetesIDEOrchestrator',
       organizationId: userContext.organizationId,
       userId: userContext.userId,
-      projectId
+      projectId,
+      resourceName,
+      namespace: this.options.namespace
     });
 
     try {
@@ -375,14 +378,17 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
       }
 
       // Create Pod
+      console.log(`[KubernetesIDEOrchestrator] Creating Pod: ${resourceName} in namespace ${this.options.namespace}`);
       const podSpec = this.createPodSpec(instanceKey, resourceName, workspacePath, userContext);
       await this.k8sRequest(
         `/api/v1/namespaces/${this.options.namespace}/pods`,
         'POST',
         podSpec
       );
+      console.log(`[KubernetesIDEOrchestrator] Pod created: ${resourceName}`);
 
       // Create Service (ignore if already exists)
+      console.log(`[KubernetesIDEOrchestrator] Creating Service: ${resourceName}`);
       const serviceSpec = this.createServiceSpec(instanceKey, resourceName);
       try {
         await this.k8sRequest(
@@ -390,13 +396,17 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
           'POST',
           serviceSpec
         );
+        console.log(`[KubernetesIDEOrchestrator] Service created: ${resourceName}`);
       } catch (e: any) {
         // Ignore 409 conflict for service (already exists)
         if (!e.message?.includes('409')) throw e;
+        console.log(`[KubernetesIDEOrchestrator] Service already exists: ${resourceName}`);
       }
 
       // Wait for pod to be ready (simplified)
+      console.log(`[KubernetesIDEOrchestrator] Waiting for Pod to be ready: ${resourceName}`);
       await this.waitForPodReady(resourceName);
+      console.log(`[KubernetesIDEOrchestrator] Pod is ready: ${resourceName}`);
 
       // Get pod info
       const pod = await this.k8sRequest<K8sPod>(
@@ -428,11 +438,13 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         lastAccessedAt: new Date()
       };
 
+      console.log(`[KubernetesIDEOrchestrator] ✅ IDE started successfully: ${instanceKey} (host=${instance.host})`);
       return {
         success: true,
         instance
       };
     } catch (error: any) {
+      console.log(`[KubernetesIDEOrchestrator] ❌ Failed to start IDE: ${instanceKey} - ${error.message}`);
       logger.error(`Failed to start K8s IDE: ${instanceKey}`, {
         component: 'KubernetesIDEOrchestrator'
       }, error);

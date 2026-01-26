@@ -177,7 +177,10 @@ export class RouteConfigurator {
    * LocalIDEOrchestrator (Docker) otherwise
    */
   private setupCloudIDERoutes(app: Express): void {
+    console.log(`[RouteConfigurator] Setting up Cloud IDE routes (ANT_K8S_NAMESPACE=${process.env.ANT_K8S_NAMESPACE || 'not set'})`);
+    
     const ideOrchestrator = getInfrastructureFactory().getIDEOrchestrator();
+    console.log(`[RouteConfigurator] IDE Orchestrator type: ${ideOrchestrator.constructor.name}`);
     
     // Start idle check for auto-cleanup of unused IDE instances
     ideOrchestrator.startIdleCheck();

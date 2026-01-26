@@ -39,6 +39,8 @@ export function createCloudIDERoutes(ideOrchestrator: IDEOrchestratorPort, works
       const { projectId, featureName } = req.body;
       const userContext: UserContext = req.body.userContext || extractUserContext(req);
       
+      console.log(`[CloudIDERoutes] POST /cloud-ide/start - projectId=${projectId}, user=${userContext?.userId}`);
+      
       if (!projectId) {
         return res.status(400).json({ error: 'projectId is required' });
       }
@@ -49,6 +51,8 @@ export function createCloudIDERoutes(ideOrchestrator: IDEOrchestratorPort, works
       const workspacePath = path.join(projectPath, 'codebase');
       
       const tenantId = `${userContext.organizationId}:${userContext.userId}`;
+      
+      console.log(`[CloudIDERoutes] Calling ideOrchestrator.start() for ${tenantId}:${projectId}`);
       
       // Start IDE using orchestrator
       const params: IDEParams = {
@@ -61,6 +65,7 @@ export function createCloudIDERoutes(ideOrchestrator: IDEOrchestratorPort, works
       };
       
       const result = await ideOrchestrator.start(params);
+      console.log(`[CloudIDERoutes] ideOrchestrator.start() result: success=${result.success}`);
       
       if (!result.success || !result.instance) {
         return res.status(500).json({ 
