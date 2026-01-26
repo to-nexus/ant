@@ -554,17 +554,29 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
   ): Promise<IDEStartResult> {
     console.log(`[KubernetesIDEOrchestrator] createInstanceResult() called for pod ${pod.metadata.name}, IP=${pod.status?.podIP}`);
     
-    // Update last access time in state store
+    // Update last access time in state store (with timeout to prevent hanging)
     console.log(`[KubernetesIDEOrchestrator] Calling stateStore.registerIDE()...`);
-    await this.stateStore.registerIDE(
-      tenantId,
-      userContext.userId,
-      projectId,
-      feature,
-      8080,
-      pod.status?.podIP || pod.metadata.name
-    );
-    console.log(`[KubernetesIDEOrchestrator] stateStore.registerIDE() completed`);
+    try {
+      const registerPromise = this.stateStore.registerIDE(
+        tenantId,
+        userContext.userId,
+        projectId,
+        feature,
+        8080,
+        pod.status?.podIP || pod.metadata.name
+      );
+      
+      // 5 second timeout for Redis operation
+      const timeoutPromise = new Promise<void>((_, reject) => {
+        setTimeout(() => reject(new Error('registerIDE timeout')), 5000);
+      });
+      
+      await Promise.race([registerPromise, timeoutPromise]);
+      console.log(`[KubernetesIDEOrchestrator] stateStore.registerIDE() completed`);
+    } catch (err: any) {
+      // Don't fail the whole operation if state store fails
+      console.log(`[KubernetesIDEOrchestrator] ⚠️ stateStore.registerIDE() failed: ${err.message} - continuing anyway`);
+    }
 
     const instance: IDEInstance = {
       instanceId: pod.metadata.name,
