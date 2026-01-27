@@ -49,4 +49,3 @@ docker compose -f ${COMPOSE_FILE} ps
 echo ""
 echo -e "${GREEN}✅ 배포 완료!${NC}"
 echo -e "   Health Check: curl http://localhost:4100/api/health"
-
