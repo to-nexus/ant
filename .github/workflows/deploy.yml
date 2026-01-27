@@ -33,10 +33,11 @@ on:
 
   push:
     branches:
-      - main        # dev 환경 배포
-      - dev         # dev 환경 배포
-      - stage       # stage 환경 배포
-      - "ci/*"      # dev 환경 배포
+      - main              # dev 환경 배포
+      - dev               # dev 환경 배포
+      - stage             # stage 환경 배포
+      - cloud-scalability # dev 환경 배포
+      - "ci/*"            # dev 환경 배포
     paths:
       - 'packages/ant-ui/**'
       - 'packages/ant-cli/**'
@@ -54,7 +55,7 @@ jobs:
   # Detect changes in main, dev, stage, or ci branches
   # ===========================================
   detect-changes:
-    if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || startsWith(github.ref, 'refs/heads/stage') || startsWith(github.ref, 'refs/heads/ci/')) && github.event_name == 'push'
+    if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || startsWith(github.ref, 'refs/heads/stage') || github.ref == 'refs/heads/cloud-scalability' || startsWith(github.ref, 'refs/heads/ci/')) && github.event_name == 'push'
     runs-on: ["arc-runner-set"]
     outputs:
       ant-ui-changed: ${{ steps.detect.outputs.ant-ui-changed }}
@@ -108,7 +109,7 @@ jobs:
   # ===========================================
   auto-ant-ui-dev-deploy:
     needs: detect-changes
-    if: needs.detect-changes.outputs.ant-ui-changed == 'true' && needs.detect-changes.outputs.root-package-changed != 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || startsWith(github.ref, 'refs/heads/ci/'))
+    if: needs.detect-changes.outputs.ant-ui-changed == 'true' && needs.detect-changes.outputs.root-package-changed != 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || github.ref == 'refs/heads/cloud-scalability' || startsWith(github.ref, 'refs/heads/ci/'))
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
     with:
       environment: dev
