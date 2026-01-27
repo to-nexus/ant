@@ -49,6 +49,8 @@ interface K8sPod {
       name: string;
       image: string;
       ports: Array<{ containerPort: number }>;
+      command?: string[];
+      args?: string[];
       env?: Array<{ name: string; value: string }>;
       resources?: {
         limits?: { cpu?: string; memory?: string };
@@ -99,7 +101,9 @@ export interface KubernetesIDEOrchestratorOptions {
 
 const DEFAULT_OPTIONS: Required<Omit<KubernetesIDEOrchestratorOptions, 'kubeApiUrl' | 'kubeToken'>> = {
   namespace: 'ant-ide',
-  image: 'codercom/code-server:latest',
+  // Use same image as IDEService (Docker) for consistency
+  // openvscode-server: VS Code's open-source server, no built-in auth required
+  image: process.env.ANT_IDE_IMAGE || 'gitpod/openvscode-server:latest',
   cpuLimit: '2',
   memoryLimit: '4Gi',
   idleTimeoutMs: 30 * 60 * 1000  // 30 minutes
@@ -119,6 +123,9 @@ const TIMEOUTS = {
   /** State store operation timeout (ms) */
   STATE_STORE: 5000
 } as const;
+
+/** OpenVSCode Server port (same as IDEService for Docker) */
+const IDE_PORT = 3000;
 
 // ============================================
 // Redis Keys for State
@@ -308,11 +315,14 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
       },
       spec: {
         containers: [{
-          name: 'code-server',
+          name: 'openvscode-server',
           image: this.options.image,
-          ports: [{ containerPort: 8080 }],
+          ports: [{ containerPort: 3000 }],  // openvscode-server uses port 3000
+          // Command to start openvscode-server without authentication
+          // ANT already has Google OIDC auth at the API layer, so IDE-level auth is unnecessary
+          command: ['/home/.openvscode-server/bin/openvscode-server'],
+          args: ['--host', '0.0.0.0', '--without-connection-token'],
           env: [
-            { name: 'PASSWORD', value: 'ant-ide' },  // TODO: Generate secure password
             { name: 'ANT_WORKSPACE', value: '/workspace' }
           ],
           resources: {
@@ -356,7 +366,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
           'app': 'ant-ide',
           'instance': instanceKey.replace(/:/g, '-')
         },
-        ports: [{ port: 8080, targetPort: 8080 }],
+        ports: [{ port: 3000, targetPort: 3000 }],
         type: 'ClusterIP'
       }
     };
@@ -449,14 +459,14 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         userContext.userId,
         projectId,
         feature,
-        8080,
+        IDE_PORT,
         pod.status?.podIP || resourceName
       );
 
       const instance: IDEInstance = {
         instanceId: resourceName,
         host: pod.status?.podIP || resourceName,
-        port: 8080,
+        port: IDE_PORT,
         url: `/ide/${instanceKey}`,
         workspacePath: '/workspace',
         status: 'running',
@@ -600,7 +610,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         userContext.userId,
         projectId,
         feature,
-        8080,
+        IDE_PORT,
         pod.status?.podIP || pod.metadata.name
       );
       
@@ -621,7 +631,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     const instance: IDEInstance = {
       instanceId: pod.metadata.name,
       host: pod.status?.podIP || pod.metadata.name,
-      port: 8080,
+      port: IDE_PORT,
       url: `/ide/${instanceKey}`,
       workspacePath: '/workspace',
       status: 'running',
@@ -736,7 +746,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
       return {
         instanceId: resourceName,
         host: pod.status?.podIP || resourceName,
-        port: 8080,
+        port: IDE_PORT,
         url: `/ide/${instanceKey}`,
         workspacePath: '/workspace',
         status,
@@ -765,7 +775,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         return {
           instanceId: pod.metadata.name,
           host: pod.status?.podIP || pod.metadata.name,
-          port: 8080,
+          port: IDE_PORT,
           url: `/ide/${instanceKey}`,
           workspacePath: pod.metadata.annotations?.['ant.io/workspace-path'] || '/workspace',
           status: (pod.status?.phase === 'Running' ? 'running' : 'starting') as IDEStatus,
@@ -793,7 +803,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         return {
           instanceId: pod.metadata.name,
           host: pod.status?.podIP || pod.metadata.name,
-          port: 8080,
+          port: IDE_PORT,
           url: `/ide/${instanceKey}`,
           workspacePath: pod.metadata.annotations?.['ant.io/workspace-path'] || '/workspace',
           status: (pod.status?.phase === 'Running' ? 'running' : 'starting') as IDEStatus,
