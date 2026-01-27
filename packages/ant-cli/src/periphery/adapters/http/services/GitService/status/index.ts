@@ -63,6 +63,9 @@ export class StatusService {
       let currentBranch: string | undefined;
       if (hasGit) {
         try {
+          // ✅ Ensure safe.directory is set (prevents "dubious ownership" error in cloud environments)
+          await GitHelper.ensureSafeDirectory(codebasePath);
+          
           const git = GitHelper.getGitInstanceSafe(codebasePath);
           if (git) {
             currentBranch = await git.revparse(['--abbrev-ref', 'HEAD']);
@@ -118,6 +121,9 @@ export class StatusService {
         codebasePath = path.join(projectPath, 'codebase');
       }
 
+      // ✅ Ensure safe.directory is set (prevents "dubious ownership" error in cloud environments)
+      await GitHelper.ensureSafeDirectory(codebasePath);
+
       // Use GitHelper to safely get Git instance
       const git = GitHelper.getGitInstanceSafe(codebasePath);
       if (!git) {
@@ -132,27 +138,7 @@ export class StatusService {
         };
       }
 
-      let status;
-      try {
-        status = await git.status();
-      } catch (statusError: any) {
-        // Handle "dubious ownership" error gracefully (shared EFS volumes)
-        if (statusError.message?.includes('dubious ownership')) {
-          console.warn(`[GitStatusService] Dubious ownership error for ${codebasePath} - returning empty status`);
-          return {
-            hasChanges: false,
-            staged: [],
-            unstaged: [],
-            untracked: [],
-            ahead: 0,
-            behind: 0,
-            currentBranch: undefined,
-            isGitInitialized: true,
-            error: 'dubious_ownership'
-          };
-        }
-        throw statusError;
-      }
+      const status = await git.status();
       
       const staged = status.staged || [];
       const modified = status.modified || [];

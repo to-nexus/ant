@@ -94,6 +94,10 @@ export class CloneOperation {
     // Move source to codebase path
     await this.moveSourceToCodebase(tempPath, codebasePath, sourceRoot);
 
+    // ✅ CRITICAL: Add to safe.directory BEFORE any git operations
+    // This prevents "dubious ownership" error in cloud environments
+    await GitHelper.ensureSafeDirectory(codebasePath);
+
     // Configure git user from UserContext (essential for cloud environments)
     await this.ensureGitUserConfig(codebasePath, userContext);
 
