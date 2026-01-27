@@ -125,7 +125,7 @@ jobs:
   # ===========================================
   auto-ant-cli-dev-deploy:
     needs: detect-changes
-    if: needs.detect-changes.outputs.ant-cli-changed == 'true' && needs.detect-changes.outputs.root-package-changed != 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || startsWith(github.ref, 'refs/heads/ci/'))
+    if: needs.detect-changes.outputs.ant-cli-changed == 'true' && needs.detect-changes.outputs.root-package-changed != 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || github.ref == 'refs/heads/cloud-scalability' || startsWith(github.ref, 'refs/heads/ci/'))
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
     with:
       environment: dev
@@ -140,7 +140,7 @@ jobs:
   # ===========================================
   auto-all-ant-ui-dev-deploy:
     needs: detect-changes
-    if: needs.detect-changes.outputs.root-package-changed == 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || startsWith(github.ref, 'refs/heads/ci/'))
+    if: needs.detect-changes.outputs.root-package-changed == 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || github.ref == 'refs/heads/cloud-scalability' || startsWith(github.ref, 'refs/heads/ci/'))
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
     with:
       environment: dev
@@ -152,7 +152,7 @@ jobs:
 
   auto-all-ant-cli-dev-deploy:
     needs: detect-changes
-    if: needs.detect-changes.outputs.root-package-changed == 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || startsWith(github.ref, 'refs/heads/ci/'))
+    if: needs.detect-changes.outputs.root-package-changed == 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || github.ref == 'refs/heads/cloud-scalability' || startsWith(github.ref, 'refs/heads/ci/'))
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
     with:
       environment: dev
