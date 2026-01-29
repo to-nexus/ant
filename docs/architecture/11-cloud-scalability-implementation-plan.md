@@ -1334,7 +1334,7 @@ services:
     environment:
       - ANT_REDIS_URL=redis://redis:6379
     deploy:
-      replicas: 2
+      replicas: 3
     depends_on:
       - redis
   
