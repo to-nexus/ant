@@ -36,6 +36,7 @@ export async function architectAgent(
     overrideDirective?: string;  // ✅ Chat input as directive (highest priority)
     chatSource?: boolean;  // ✅ Flag for Chat SSE
     feature?: string;  // ✅ Feature name (for chat jobs without inputFile)
+    featurePath?: string;  // ✅ Pre-calculated feature path (avoids re-calculation mismatch)
   },
   jobMode?: JobMode,
   enableEvaluation?: boolean,
