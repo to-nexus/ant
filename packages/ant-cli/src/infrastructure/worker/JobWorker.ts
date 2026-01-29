@@ -62,6 +62,14 @@ export class JobWorker {
    * Start the worker
    */
   async start(): Promise<void> {
+    // ✅ Log critical environment variables for debugging (Cloud/Vault injection)
+    logger.info('=== JobWorker Environment Variables ===', { component: 'JobWorker' });
+    logger.info(`ANT_API_URL: ${process.env.ANT_API_URL || '(not set, will fallback to localhost)'}`, { component: 'JobWorker' });
+    logger.info(`ANT_CLI_PORT: ${process.env.ANT_CLI_PORT || '(not set, default 4100)'}`, { component: 'JobWorker' });
+    logger.info(`ANT_REDIS_URL: ${process.env.ANT_REDIS_URL ? '(set)' : '(not set)'}`, { component: 'JobWorker' });
+    logger.info(`ANT_WORKSPACE_BASE_PATH: ${process.env.ANT_WORKSPACE_BASE_PATH || '(not set)'}`, { component: 'JobWorker' });
+    logger.info('========================================', { component: 'JobWorker' });
+
     const queueName = this.options.queueName || QUEUE_NAME;
     // Parse Redis URL for BullMQ connection (uses shared utility with TLS support)
     const connection = parseRedisUrl(this.options.redisUrl);
