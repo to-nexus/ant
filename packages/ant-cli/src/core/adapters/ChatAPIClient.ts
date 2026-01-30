@@ -414,6 +414,13 @@ export class ChatAPIClient {
     if (!this.enabled) return;
 
     try {
+      // ✅ CRITICAL: Ensure message is active before sending LLM event
+      // Without this, text events can be lost if they arrive before startMessage() completes
+      if (!await this.ensureMessageActive()) {
+        console.error(`❌ [ChatAPIClient] Cannot send LLM event - no active message`);
+        return;
+      }
+
       const response = await fetch(`${this.baseUrl}/llm-event`, {
         method: 'POST',
         headers: this.getHeaders(),

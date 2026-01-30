@@ -210,11 +210,15 @@ export class BullMQJobQueue implements JobQueuePort {
     await this.stateStore.clearUserStopped(jobId);
     logger.debug(`Cleared userStopped flag for job: ${jobId}`, { component: 'BullMQJobQueue' });
 
+    // ✅ Track enqueue timestamp for delay measurement
+    const enqueuedAt = Date.now();
+    
     const job = await this.queue.add(
       payload.type,
       {
         ...payload,
-        jobId
+        jobId,
+        enqueuedAt  // ✅ For measuring enqueue → start delay
       },
       {
         jobId,
@@ -223,7 +227,7 @@ export class BullMQJobQueue implements JobQueuePort {
       }
     );
 
-    logger.info(`Job enqueued: ${job.id}`, { component: 'BullMQJobQueue' }, { 
+    logger.info(`Job enqueued: ${job.id} at ${new Date(enqueuedAt).toISOString()}`, { component: 'BullMQJobQueue' }, { 
       jobType: payload.type,
       projectId: payload.projectId
     });

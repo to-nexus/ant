@@ -70,6 +70,12 @@ export function createJobRoutes(deps: {
       // ✅ Build context for WorkspaceResolver (supports query + header + auth)
       const userContext = extractUserContext(req);
       
+      // ✅ Save user message to chat if this is a chat-based job (overrideDirective)
+      if (overrideDirective && chatSource && deps.chatService) {
+        deps.chatService.addUserMessage(projectId, featureName, overrideDirective, undefined, userContext);
+        console.log(`   💬 User message saved to chat: "${overrideDirective.substring(0, 50)}..."`);
+      }
+      
       // ✅ Use WorkspaceResolver to get proper path
       // ✅ Only set inputFile if NOT using override directive (file-based job)
       const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
