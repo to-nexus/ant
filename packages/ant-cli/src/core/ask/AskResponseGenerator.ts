@@ -3,14 +3,48 @@
  * 
  * Generates responses to Ant system questions using LLM.
  * Uses static knowledge, job definitions, and workspace state.
+ * 
+ * ✅ FPOP Compliant: Uses template files (base.md, rules.md) for WHAT/HOW separation
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
+import Handlebars from 'handlebars';
 import { AskContext, AskResponse, AskDependencies, StaticKnowledge } from './types.js';
 import { WorkspaceState } from '../../agents/common/nodes/triage/types.js';
 import { AgentRegistry } from '../../agents/common/nodes/triage/AgentRegistry.js';
+import { WorkspacePathResolver } from '../../infrastructure/workspace/WorkspaceResolver.js';
 import type { LLMStreamEvent } from '../ports/llm.js';
+
+// Template cache
+let askBaseTemplate: Handlebars.TemplateDelegate | null = null;
+let askRulesTemplate: Handlebars.TemplateDelegate | null = null;
+
+/**
+ * Load ask templates from files
+ * Uses WHAT/HOW separation: base.md (WHAT) + rules.md (HOW)
+ */
+function loadAskTemplates(): { 
+  base: Handlebars.TemplateDelegate; 
+  rules: Handlebars.TemplateDelegate;
+} {
+  if (askBaseTemplate && askRulesTemplate) {
+    return { base: askBaseTemplate, rules: askRulesTemplate };
+  }
+  
+  const templateDir = path.join(WorkspacePathResolver.getPromptTemplatesPath(), 'ask');
+  
+  const basePath = path.join(templateDir, 'base.md');
+  const rulesPath = path.join(templateDir, 'rules.md');
+  
+  const baseContent = fs.readFileSync(basePath, 'utf-8');
+  const rulesContent = fs.readFileSync(rulesPath, 'utf-8');
+  
+  askBaseTemplate = Handlebars.compile(baseContent);
+  askRulesTemplate = Handlebars.compile(rulesContent);
+  
+  return { base: askBaseTemplate, rules: askRulesTemplate };
+}
 
 /**
  * AskResponseGenerator
@@ -112,242 +146,117 @@ export class AskResponseGenerator {
   }
   
   /**
-   * Build prompt for streaming (no JSON wrapper, pure text response)
+   * Build template variables from context and workspace state
+   */
+  private buildTemplateVars(context: AskContext, knowledge: StaticKnowledge): Record<string, any> {
+    const { userQuestion, workspaceState, currentJob, currentAgent, language } = context;
+    
+    // Get job information from AgentRegistry (YAML data)
+    const jobCapabilities = AgentRegistry.generatePromptContext();
+    
+    // Calculate workspace maturity
+    const missingCount = [
+      !workspaceState.hasPrd,
+      !workspaceState.hasScreens,
+      !workspaceState.hasUiDocs,
+      !workspaceState.hasSystemDesignDoc,
+      !workspaceState.hasCodebase
+    ].filter(Boolean).length;
+    
+    const readyCount = [
+      workspaceState.hasPrd,
+      workspaceState.hasScreens,
+      workspaceState.hasUiDocs,
+      workspaceState.hasSystemDesignDoc,
+      workspaceState.hasCodebase
+    ].filter(Boolean).length;
+    
+    return {
+      // Session
+      currentAgent: currentAgent || 'Not selected',
+      currentJob: currentJob || 'Not selected',
+      
+      // System knowledge
+      agentOverview: knowledge.agentOverview,
+      workflow: knowledge.workflow,
+      outputs: knowledge.outputs,
+      features: knowledge.features,
+      jobCapabilities,
+      
+      // Workspace state
+      hasPrd: workspaceState.hasPrd,
+      prdPath: workspaceState.prdPath || 'available',
+      hasDirective: workspaceState.hasDirective,
+      hasScreens: workspaceState.hasScreens,
+      screenCount: workspaceState.screenCount || 0,
+      hasComponents: workspaceState.hasComponents,
+      componentCount: workspaceState.componentCount || 0,
+      hasAssets: workspaceState.hasAssets,
+      assetCount: workspaceState.assetCount || 0,
+      hasUiDocs: workspaceState.hasUiDocs,
+      hasSystemDesignDoc: workspaceState.hasSystemDesignDoc,
+      hasDesignDoc: workspaceState.hasDesignDoc,
+      hasCodebase: workspaceState.hasCodebase,
+      indexedFileCount: workspaceState.indexedFileCount || 'unknown',
+      
+      // Workspace maturity
+      isEmptyWorkspace: missingCount >= 4,
+      isReadyWorkspace: readyCount >= 3,
+      
+      // Job readiness
+      canRunUiDesign: workspaceState.hasScreens || workspaceState.hasAssets,
+      canRunSystemDesign: workspaceState.hasPrd || workspaceState.hasDirective,
+      canRunCodeRecommended: workspaceState.hasDesignDoc,
+      canRunCodePossible: workspaceState.hasDirective,
+      
+      // User question
+      userQuestion,
+      
+      // Language
+      isKorean: language === 'ko',
+    };
+  }
+  
+  /**
+   * Build prompt for streaming (pure text response)
+   * Uses template files with WHAT/HOW separation
    */
   private buildStreamingPrompt(context: AskContext, knowledge: StaticKnowledge): string {
-    const { userQuestion, workspaceState, currentJob, currentAgent, language } = context;
+    const { base, rules } = loadAskTemplates();
+    const vars = {
+      ...this.buildTemplateVars(context, knowledge),
+      useJsonFormat: false  // Streaming = plain text response
+    };
     
-    // Get job information from AgentRegistry (YAML data)
-    const jobCapabilities = AgentRegistry.generatePromptContext();
+    // Render base template (WHAT)
+    const basePrompt = base(vars);
     
-    const workspaceStateText = this.formatWorkspaceState(workspaceState);
+    // Render rules template (HOW)
+    const rulesPrompt = rules(vars);
     
-    return `# ASK SYSTEM
-
-You are an assistant that answers questions about the Ant development system.
-You have access to Ant system knowledge and the user's current workspace state.
-
-Reference the appropriate section based on the question type.
-
-## ANT SYSTEM KNOWLEDGE
-
-### [SECTION 1: OVERVIEW] - What is Ant, supported languages/frameworks, project types
-${knowledge.agentOverview}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-### [SECTION 2: JOB CAPABILITIES] - Job definitions, modes, prerequisites
-${jobCapabilities}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-### [SECTION 3: WORKFLOW] - How to use Ant, step-by-step guides, scenarios
-${knowledge.workflow}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-### [SECTION 4: OUTPUTS] - What Ant generates, document contents, file structures
-${knowledge.outputs}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-### [SECTION 5: FEATURES] - How to use Ant features, settings, Git integration
-${knowledge.features}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-## CURRENT CONTEXT
-
-**Current Agent**: ${currentAgent || 'Not selected'}
-**Current Job**: ${currentJob || 'Not selected'}
-
-## WORKSPACE STATE
-
-${workspaceStateText}
-
-## USER QUESTION
-
-${userQuestion}
-
-## INSTRUCTIONS
-
-### Section Reference Guide
-| Question Type | Refer To |
-|---------------|----------|
-| "What is Ant?", "What languages supported?" | SECTION 1: OVERVIEW |
-| "What jobs available?", "What prerequisites?" | SECTION 2: JOB CAPABILITIES |
-| "How do I start?", "What workflow for X?" | SECTION 3: WORKFLOW |
-| "What does Ant generate?", "What's in ui-spec?" | SECTION 4: OUTPUTS |
-| "How to set up Git?", "How to push?", "Config?" | SECTION 5: FEATURES |
-
-### Response Rules
-
-1. **In-scope questions** (about Ant system):
-   - Reference the appropriate section(s) above
-   - Cross-reference CURRENT CONTEXT and WORKSPACE STATE
-   - Suggest concrete next steps based on current state
-
-2. **Codebase questions** (about project code):
-   - Guide user to use Code Job with their question
-   - Example: "To find that in your codebase, use Code Job and ask the same question"
-
-3. **Out-of-scope questions** (general knowledge):
-   - Politely explain this is outside Ant's scope
-   - Provide examples of questions you can help with
-
-4. **Language**: Respond in ${language === 'ko' ? 'Korean' : 'English'}
-
-5. **Format**: Respond directly in plain text. Do NOT wrap in JSON or XML tags.
-
-Respond to the user's question now.`;
+    // Combine: WHAT + HOW
+    return `${basePrompt}\n\n---\n\n${rulesPrompt}`;
   }
   
   /**
-   * Build LLM prompt with all context
+   * Build LLM prompt with JSON response format
+   * Uses template files with WHAT/HOW separation
    */
   private buildPrompt(context: AskContext, knowledge: StaticKnowledge): string {
-    const { userQuestion, workspaceState, currentJob, currentAgent, language } = context;
+    const { base, rules } = loadAskTemplates();
+    const vars = {
+      ...this.buildTemplateVars(context, knowledge),
+      useJsonFormat: true  // Non-streaming = JSON response
+    };
     
-    // Get job information from AgentRegistry (YAML data)
-    const jobCapabilities = AgentRegistry.generatePromptContext();
+    // Render base template (WHAT)
+    const basePrompt = base(vars);
     
-    const workspaceStateText = this.formatWorkspaceState(workspaceState);
+    // Render rules template (HOW)
+    const rulesPrompt = rules(vars);
     
-    return `# ASK SYSTEM
-
-You are an assistant that answers questions about the Ant development system.
-You have access to Ant system knowledge and the user's current workspace state.
-
-Reference the appropriate section based on the question type.
-
-## ANT SYSTEM KNOWLEDGE
-
-### [SECTION 1: OVERVIEW] - What is Ant, supported languages/frameworks, project types
-${knowledge.agentOverview}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-### [SECTION 2: JOB CAPABILITIES] - Job definitions, modes, prerequisites
-${jobCapabilities}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-### [SECTION 3: WORKFLOW] - How to use Ant, step-by-step guides, scenarios
-${knowledge.workflow}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-### [SECTION 4: OUTPUTS] - What Ant generates, document contents, file structures
-${knowledge.outputs}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-### [SECTION 5: FEATURES] - How to use Ant features, settings, Git integration
-${knowledge.features}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-## CURRENT CONTEXT
-
-**Current Agent**: ${currentAgent || 'Not selected'}
-**Current Job**: ${currentJob || 'Not selected'}
-
-## WORKSPACE STATE
-
-${workspaceStateText}
-
-## USER QUESTION
-
-${userQuestion}
-
-## INSTRUCTIONS
-
-### Section Reference Guide
-| Question Type | Refer To |
-|---------------|----------|
-| "What is Ant?", "What languages supported?" | SECTION 1: OVERVIEW |
-| "What jobs available?", "What prerequisites?" | SECTION 2: JOB CAPABILITIES |
-| "How do I start?", "What workflow for X?" | SECTION 3: WORKFLOW |
-| "What does Ant generate?", "What's in ui-spec?" | SECTION 4: OUTPUTS |
-| "How to set up Git?", "How to push?", "Config?" | SECTION 5: FEATURES |
-
-### Response Rules
-
-1. **In-scope questions** (about Ant system):
-   - Reference the appropriate section(s) above
-   - Cross-reference CURRENT CONTEXT and WORKSPACE STATE
-   - Suggest concrete next steps based on current state
-
-2. **Codebase questions** (about project code):
-   - Guide user to use Code Job with their question
-   - Example: "To find that in your codebase, use Code Job and ask the same question"
-
-3. **Out-of-scope questions** (general knowledge):
-   - Politely explain this is outside Ant's scope
-   - Provide examples of questions you can help with
-
-4. **Language**: Respond in ${language === 'ko' ? 'Korean' : 'English'}
-
-## RESPONSE FORMAT
-
-<ask_response>
-{
-  "inScope": true | false,
-  "content": "Your response here...",
-  "suggestions": ["Follow-up question 1?", "Follow-up question 2?"]
-}
-</ask_response>
-
-Respond to the user's question.`;
-  }
-  
-  /**
-   * Format workspace state for prompt
-   */
-  private formatWorkspaceState(ws: WorkspaceState): string {
-    const lines: string[] = [];
-    
-    lines.push('### Inputs');
-    lines.push(ws.hasPrd ? `✅ PRD: ${ws.prdPath || 'available'}` : '❌ PRD: Not found');
-    lines.push(ws.hasDirective ? '✅ Directive: Chat input provided' : '➖ Directive: None');
-    
-    lines.push('\n### References (for UI Design)');
-    lines.push(ws.hasScreens ? `✅ Screens: ${ws.screenCount || 'available'} files` : '❌ Screens: None');
-    lines.push(ws.hasComponents ? `✅ Components: ${ws.componentCount || 'available'} files` : '➖ Components: None');
-    lines.push(ws.hasAssets ? `✅ Assets: ${ws.assetCount || 'available'} files` : '➖ Assets: None');
-    
-    lines.push('\n### Design Documents');
-    lines.push(ws.hasUiDocs ? '✅ UI Specification: Exists' : '❌ UI Specification: None');
-    lines.push(ws.hasSystemDesignDoc ? '✅ System Design: Exists' : '❌ System Design: None');
-    lines.push(ws.hasDesignDoc ? '✅ Design Documents: Available' : '❌ Design Documents: None');
-    
-    lines.push('\n### Codebase');
-    lines.push(ws.hasCodebase ? `✅ Indexed: ${ws.indexedFileCount || 'unknown'} files` : '❌ Not indexed');
-    
-    // Determine what's possible
-    lines.push('\n### Available Actions');
-    
-    if (ws.hasScreens || ws.hasAssets) {
-      lines.push('✅ Design Job (UI Design): Ready');
-    } else {
-      lines.push('❌ Design Job (UI Design): Needs reference images');
-    }
-    
-    if (ws.hasPrd || ws.hasDirective) {
-      lines.push('✅ Design Job (System Design): Ready');
-    } else {
-      lines.push('❌ Design Job (System Design): Needs PRD or directive');
-    }
-    
-    if (ws.hasDesignDoc || ws.hasDirective) {
-      lines.push('✅ Code Job: Ready');
-    } else {
-      lines.push('⚠️ Code Job: Can use with chat directive');
-    }
-    
-    lines.push('✅ Learn Job: Always available');
-    
-    return lines.join('\n');
+    // Combine: WHAT + HOW
+    return `${basePrompt}\n\n---\n\n${rulesPrompt}`;
   }
   
   /**

@@ -1,6 +1,8 @@
 import { Response } from 'express';
 import { logger } from '../../../../utils/logger';
 import type { UserContext } from '../../../../core/types/user';
+import type { StateStorePort } from '../../../../core/ports/stateStore';
+import { CHAT_BROADCAST_CHANNEL, type ChatBroadcastMessage } from './ChatService/MessageBroadcaster';
 
 /**
  * Message types for unified SSE stream
@@ -13,11 +15,31 @@ export interface SSEMessage {
   data: any;
 }
 
+// Redis Pub/Sub channels for cross-instance broadcasting
+export const SSE_BROADCAST_CHANNEL = 'sse:broadcast';
+export const SSE_WORKFLOW_CHANNEL = 'sse:workflow';
+
+export interface SSEBroadcastMessage {
+  projectId: string;
+  featureName: string;
+  type: SSEMessageType;
+  data: any;
+  userContext?: UserContext;
+}
+
+export interface SSEWorkflowMessage {
+  jobId: string;
+  data: any;
+  isEndEvent?: boolean;
+}
+
 /**
  * SSEService
  * 
  * Single SSE service that handles all real-time updates
  * Consolidates kanban, chat, fileTree, and workflow SSE streams
+ * 
+ * Cloud-safe: All broadcasts go through Redis Pub/Sub for cross-instance delivery
  */
 export class SSEService {
   // Single SSE connection per project/feature
@@ -28,12 +50,53 @@ export class SSEService {
   // key: jobId
   private workflowClients: Map<string, Set<Response>> = new Map();
   
+  // StateStore for Redis Pub/Sub (set via setupBroadcastSubscriptions)
+  private stateStore?: StateStorePort;
+  
+  /**
+   * Setup all Redis Pub/Sub subscriptions for cross-instance broadcasting
+   * This enables SSE broadcasting in cloud/distributed environments
+   */
+  async setupBroadcastSubscriptions(stateStore: StateStorePort): Promise<void> {
+    this.stateStore = stateStore;
+    
+    try {
+      // 1. Subscribe to chat broadcast (from MessageBroadcaster)
+      await stateStore.subscribe(CHAT_BROADCAST_CHANNEL, (message: ChatBroadcastMessage) => {
+        const { projectId, featureName, data, userContext } = message;
+        this.broadcastLocal(projectId, featureName, 'chat', data, userContext);
+      });
+      logger.info('Subscribed to chat:broadcast channel', { component: 'SSEService' });
+      
+      // 2. Subscribe to general SSE broadcast (kanban, fileTree, etc.)
+      await stateStore.subscribe(SSE_BROADCAST_CHANNEL, (message: SSEBroadcastMessage) => {
+        const { projectId, featureName, type, data, userContext } = message;
+        this.broadcastLocal(projectId, featureName, type, data, userContext);
+      });
+      logger.info('Subscribed to sse:broadcast channel', { component: 'SSEService' });
+      
+      // 3. Subscribe to workflow broadcast
+      await stateStore.subscribe(SSE_WORKFLOW_CHANNEL, (message: SSEWorkflowMessage) => {
+        const { jobId, data, isEndEvent } = message;
+        if (isEndEvent) {
+          this.sendWorkflowEndEventLocal(jobId);
+        } else {
+          this.broadcastWorkflowLocal(jobId, data);
+        }
+      });
+      logger.info('Subscribed to sse:workflow channel', { component: 'SSEService' });
+      
+      logger.info('All SSE broadcast subscriptions ready', { component: 'SSEService' });
+    } catch (error) {
+      logger.error('Failed to setup SSE broadcast subscriptions', { component: 'SSEService' }, error);
+    }
+  }
+  
   /**
    * Get session key for a project/feature
    */
   private getSessionKey(projectId: string, featureName: string, userContext?: UserContext): string {
-    // ✅ Cloud-safe: scope by tenant/user to prevent cross-user collisions
-    // Local mode stays readable: "local:local:project/feature"
+    // Cloud-safe: scope by tenant/user to prevent cross-user collisions
     const org = userContext?.organizationId || 'local';
     const user = userContext?.userId || 'local';
     return `${org}:${user}:${projectId}/${featureName}`;
@@ -84,14 +147,54 @@ export class SSEService {
   }
   
   /**
-   * Broadcast message to project/feature clients
+   * Broadcast message to project/feature clients via Redis Pub/Sub
+   * All API Server instances will receive this and forward to their local SSE clients
+   * 
+   * Note: For 'chat' type, use MessageBroadcaster instead (it has its own channel)
    */
   broadcast(projectId: string, featureName: string, type: SSEMessageType, data: any, userContext?: UserContext): void {
+    // Chat messages go through MessageBroadcaster's own channel
+    // Other types (kanban, fileTree, etc.) use the general SSE channel
+    if (type === 'chat') {
+      // Chat should use MessageBroadcaster, but fallback to local for backward compatibility
+      this.broadcastLocal(projectId, featureName, type, data, userContext);
+      return;
+    }
+    
+    if (!this.stateStore) {
+      // Fallback to local broadcast if Redis not available
+      this.broadcastLocal(projectId, featureName, type, data, userContext);
+      return;
+    }
+    
+    const message: SSEBroadcastMessage = {
+      projectId,
+      featureName,
+      type,
+      data,
+      userContext
+    };
+    
+    // Fire-and-forget: publish to Redis
+    this.stateStore.publish(SSE_BROADCAST_CHANNEL, message).catch((error) => {
+      logger.error(`Failed to publish SSE broadcast (${type}) to Redis`, { 
+        component: 'SSEService', 
+        projectId, 
+        featureName
+      }, error);
+      // Fallback to local broadcast
+      this.broadcastLocal(projectId, featureName, type, data, userContext);
+    });
+  }
+  
+  /**
+   * Broadcast to local SSE clients only (called from Redis subscription)
+   */
+  private broadcastLocal(projectId: string, featureName: string, type: SSEMessageType, data: any, userContext?: UserContext): void {
     const key = this.getSessionKey(projectId, featureName, userContext);
     const clients = this.clients.get(key);
     
     if (!clients || clients.size === 0) {
-      // Silent return - no clients is a normal scenario (background jobs, API calls, etc.)
       return;
     }
     
@@ -153,9 +256,36 @@ export class SSEService {
   }
   
   /**
-   * Broadcast workflow message to job clients
+   * Broadcast workflow message to job clients via Redis Pub/Sub
    */
   broadcastWorkflow(jobId: string, data: any): void {
+    if (!this.stateStore) {
+      // Fallback to local broadcast if Redis not available
+      this.broadcastWorkflowLocal(jobId, data);
+      return;
+    }
+    
+    const message: SSEWorkflowMessage = {
+      jobId,
+      data,
+      isEndEvent: false
+    };
+    
+    // Fire-and-forget: publish to Redis
+    this.stateStore.publish(SSE_WORKFLOW_CHANNEL, message).catch((error) => {
+      logger.error('Failed to publish workflow broadcast to Redis', { 
+        component: 'SSEService', 
+        jobId
+      }, error);
+      // Fallback to local broadcast
+      this.broadcastWorkflowLocal(jobId, data);
+    });
+  }
+  
+  /**
+   * Broadcast workflow to local clients only (called from Redis subscription)
+   */
+  private broadcastWorkflowLocal(jobId: string, data: any): void {
     const clients = this.workflowClients.get(jobId);
     
     if (!clients || clients.size === 0) {
@@ -181,9 +311,36 @@ export class SSEService {
   }
   
   /**
-   * Send 'end' event to workflow clients to signal job completion
+   * Send 'end' event to workflow clients to signal job completion via Redis Pub/Sub
    */
   sendWorkflowEndEvent(jobId: string): void {
+    if (!this.stateStore) {
+      // Fallback to local
+      this.sendWorkflowEndEventLocal(jobId);
+      return;
+    }
+    
+    const message: SSEWorkflowMessage = {
+      jobId,
+      data: { jobId },
+      isEndEvent: true
+    };
+    
+    // Fire-and-forget: publish to Redis
+    this.stateStore.publish(SSE_WORKFLOW_CHANNEL, message).catch((error) => {
+      logger.error('Failed to publish workflow end event to Redis', { 
+        component: 'SSEService', 
+        jobId
+      }, error);
+      // Fallback to local
+      this.sendWorkflowEndEventLocal(jobId);
+    });
+  }
+  
+  /**
+   * Send workflow end event to local clients only
+   */
+  private sendWorkflowEndEventLocal(jobId: string): void {
     const clients = this.workflowClients.get(jobId);
     
     if (!clients || clients.size === 0) {
@@ -274,4 +431,3 @@ export class SSEService {
     }
   }
 }
-
