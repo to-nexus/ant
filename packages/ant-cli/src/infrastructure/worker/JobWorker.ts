@@ -172,11 +172,16 @@ export class JobWorker {
     const receiveTime = Date.now();
     const receiveTimeISO = new Date(receiveTime).toISOString();
     
-    // Calculate time since job was created (if available from BullMQ)
+    // Calculate time since job was enqueued (our custom timestamp)
+    const enqueuedAt = (payload as any).enqueuedAt as number | undefined;
+    const enqueuedAtISO = enqueuedAt ? new Date(enqueuedAt).toISOString() : 'unknown';
+    const enqueueToStartDelay = enqueuedAt ? receiveTime - enqueuedAt : 'unknown';
+    
+    // Also use BullMQ's timestamp for comparison
     const jobCreatedAt = job.timestamp; // BullMQ sets this when job is added
     const queueWaitTime = jobCreatedAt ? receiveTime - jobCreatedAt : 'unknown';
     
-    logger.info(`⏱️ [JobTiming] Job Worker: Received job from queue | receiveTime=${receiveTimeISO} | jobCreatedAt=${jobCreatedAt ? new Date(jobCreatedAt).toISOString() : 'unknown'} | queueWaitTimeMs=${queueWaitTime}`, {
+    logger.info(`⏱️ [JobTiming] Job received | enqueuedAt=${enqueuedAtISO} | receivedAt=${receiveTimeISO} | delay=${enqueueToStartDelay}ms | bullmqWait=${queueWaitTime}ms`, {
       component: 'JobWorker',
       jobId,
       projectId: payload.projectId,
