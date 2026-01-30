@@ -22,6 +22,7 @@ import { ServerConfig, ServerDependencies } from '../types';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
 import { PortRegistryPort } from '../../../../../core/ports/portRegistry';
 import { StateStorePort } from '../../../../../core/ports/stateStore';
+import type { UserContext } from '../../../../../core/types/user';
 
 /**
  * Initialize all services and dependencies for the Express server
@@ -78,9 +79,13 @@ export function initializeServices(
     sseService, 
     workspaceResolver
   );
+  
+  // Get stateStore for Redis Pub/Sub broadcasting
+  const stateStore = factory.getStateStore();
+  
   const chatService = new ChatService(
     config.workspacesPath, 
-    sseService, 
+    stateStore,  // ✅ Use Redis for cross-instance broadcasting
     workspaceResolver
   );
   const githubAuthService = new GitHubAuthService(config.workspacesPath);
@@ -125,6 +130,10 @@ export function initializeServices(
   // This enables SSE broadcast of job completion/failure events to UI clients
   // (Always enabled since we always use Redis)
   setupJobStatusSubscription(sseService);
+  
+  // ✅ Setup all SSE broadcast subscriptions via Redis Pub/Sub
+  // This enables cross-instance SSE broadcasting for chat, kanban, fileTree, workflow, etc.
+  sseService.setupBroadcastSubscriptions(stateStore);
   
   return {
     workspaceService,
@@ -182,11 +191,11 @@ async function setupJobStatusSubscription(sseService: SSEService): Promise<void>
       // Broadcast to SSE clients if we have project/feature info
       if (data.projectId && data.featureName) {
         // Construct UserContext from userEmail (format: userId@orgId)
-        let userContext: { userId: string; organizationId: string } | undefined;
+        let userContext: UserContext | undefined;
         if (data.userEmail) {
           const [userId, organizationId] = data.userEmail.split('@');
           if (userId && organizationId) {
-            userContext = { userId, organizationId };
+            userContext = { userId, organizationId, workspacePath: '' };
           }
         }
         

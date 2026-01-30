@@ -1,6 +1,6 @@
 import { ProjectContext } from "../../types";
 import { TriageableState, TriageResult, WorkspaceState } from "../../../common/nodes/triage/types";
-import { TokenUsageAccumulator } from "../common/llmHelpers";
+import { TokenUsage } from "../common/llmHelpers";
 
 export interface LearnCommand {
   action: 'index_branch' | 'index_codebase' | 'learn_files' | 'learn_text';
@@ -40,5 +40,5 @@ export interface LearnGraphState extends TriageableState {
   _httpJobId?: string;
   
   // ✅ Token tracking
-  tokenUsage?: TokenUsageAccumulator;
+  tokenUsage?: TokenUsage;
 }

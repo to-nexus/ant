@@ -168,6 +168,21 @@ export class JobWorker {
     const payload = job.data;
     const jobId = payload.jobId;
 
+    // ⏱️ DEBUG: Record job receive time for latency analysis
+    const receiveTime = Date.now();
+    const receiveTimeISO = new Date(receiveTime).toISOString();
+    
+    // Calculate time since job was created (if available from BullMQ)
+    const jobCreatedAt = job.timestamp; // BullMQ sets this when job is added
+    const queueWaitTime = jobCreatedAt ? receiveTime - jobCreatedAt : 'unknown';
+    
+    logger.info(`⏱️ [JobTiming] Job Worker: Received job from queue | receiveTime=${receiveTimeISO} | jobCreatedAt=${jobCreatedAt ? new Date(jobCreatedAt).toISOString() : 'unknown'} | queueWaitTimeMs=${queueWaitTime}`, {
+      component: 'JobWorker',
+      jobId,
+      projectId: payload.projectId,
+      featureName: payload.featureName
+    });
+
     logger.info(`Processing job: ${jobId} (type=${payload.type}, project=${payload.projectId})`, {
       component: 'JobWorker',
       jobId
@@ -187,6 +202,14 @@ export class JobWorker {
         await this.stateStore.updateJobStatus(jobId, { status: 'paused' });
         return { cancelled: true };
       }
+
+      // ⏱️ DEBUG: Record job execution start time
+      const execStartTime = Date.now();
+      const totalSetupTime = execStartTime - receiveTime;
+      logger.info(`⏱️ [JobTiming] Job Worker: Starting child process execution | execStartTime=${new Date(execStartTime).toISOString()} | setupTimeMs=${totalSetupTime} | queueWaitTimeMs=${queueWaitTime}`, {
+        component: 'JobWorker',
+        jobId
+      });
 
       // Execute job in child process
       const result = await this.spawnJobProcess(job, payload);

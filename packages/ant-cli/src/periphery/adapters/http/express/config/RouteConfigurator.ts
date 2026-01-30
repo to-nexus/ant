@@ -331,6 +331,16 @@ export class RouteConfigurator {
       // Generate jobId
       const jobId = params.jobId || `${Date.now().toString(36)}${Math.random().toString(36).substr(2, 6)}`;
       
+      // ⏱️ DEBUG: Record enqueue start time for latency analysis
+      const enqueueStartTime = Date.now();
+      const enqueueStartISO = new Date(enqueueStartTime).toISOString();
+      logger.info(`⏱️ [JobTiming] API Server: Starting job enqueue | enqueueStartTime=${enqueueStartISO}`, {
+        component: 'RouteConfigurator',
+        jobId,
+        projectId: params.project,
+        featureName: params.feature
+      });
+      
       // Get workspace paths
       const tenantId = `${params.userContext.organizationId}:${params.userContext.userId}`;
       const handle = await this.deps.workspaceService.createWorkspace(tenantId, params.project);
@@ -373,11 +383,14 @@ export class RouteConfigurator {
       // Without this, WorkflowBridge.updateTaskQueue cannot find projectId/featureName
       this.stateTracker.initializeJob(jobId, params.project, params.feature, params.jobType || 'code', params.userContext);
       
-      logger.info(`Job enqueued to BullMQ: ${jobId}`, { 
+      // ⏱️ DEBUG: Record enqueue completion time
+      const enqueueEndTime = Date.now();
+      const enqueueDuration = enqueueEndTime - enqueueStartTime;
+      logger.info(`⏱️ [JobTiming] API Server: Job enqueued to Redis | enqueueStartTime=${enqueueStartISO} | enqueueEndTime=${new Date(enqueueEndTime).toISOString()} | enqueueDurationMs=${enqueueDuration}`, { 
         component: 'RouteConfigurator', 
         jobId,
         projectId: params.project,
-        featureName: params.feature 
+        featureName: params.feature
       });
       
       return {

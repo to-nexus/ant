@@ -1,5 +1,36 @@
 # Ant Workflow
 
+## Workflow Selection Principles
+
+### Principle 1: Inputs Determine Quality
+
+| Input Completeness | Expected Output Quality |
+|-------------------|------------------------|
+| PRD + References + Design Docs | Highest - Consistent, well-architected code |
+| PRD or References only | Medium - May need iterations |
+| Chat directive only | Variable - Good for simple changes |
+
+### Principle 2: Structured vs Direct Approach
+
+| Project Scope | Recommended Approach |
+|--------------|---------------------|
+| New feature / New project | Structured: Inputs → Design → Code |
+| Simple modification | Direct: Chat directive → Code Job |
+| Bug fix / Minor change | Direct: Chat directive → Code Job |
+
+### Principle 3: When to Skip Design Phase
+
+Design phase can be skipped when:
+- Making isolated, well-defined changes
+- Modifying existing patterns
+- Quick prototyping (accepting lower consistency)
+
+Design phase is recommended when:
+- Building new features
+- Starting new projects
+- Complex multi-component changes
+- Team collaboration needed
+
 ## Standard Development Flow
 
 ```
@@ -127,36 +158,32 @@ monorepo/
 - Matches your existing code style (if Learn Job was run)
 - Includes necessary imports and dependencies
 
-## Common Scenarios
+## Workflow Decision Guide
 
-### "I have Figma designs, want to build a React app"
-1. Export screen captures from Figma
-2. Add to `inputs/references/screens/`
-3. Run Design Job → generates UI specs
-4. Run Code Job → generates React components
+### Observe Your Current State
 
-### "I need to add a new API endpoint"
-1. Select Code Job
-2. Describe in chat: "Add POST /api/orders endpoint with validation"
-3. Code Job generates the implementation
+| Observable State | Recommended Next Step |
+|-----------------|----------------------|
+| Empty workspace, new project | Prepare inputs (PRD or references) |
+| PRD exists, no design docs | Run Design Job (System Design) |
+| Reference images exist, no UI specs | Run Design Job (UI Design) |
+| Design docs exist, no code | Run Code Job with design docs |
+| Existing codebase, not indexed | Run Learn Job first |
 
-### "I'm starting a new project from scratch"
-1. Write PRD in `inputs/prd.md`
-2. Run Design Job (System Design) → architecture
-3. Run Code Job → initial implementation
-4. Iterate with chat instructions
+### Quick Reference
 
-### "I want to modify existing code"
-1. Run Learn Job first (indexes your codebase)
-2. Select Code Job
-3. Describe changes in chat
-4. Code Job modifies with awareness of your patterns
+| Goal | Recommended Path |
+|------|-----------------|
+| Build new feature (structured) | Inputs → Design Job → Code Job |
+| Build new feature (quick) | Code Job with detailed chat directive |
+| Modify existing code | Learn Job → Code Job |
+| Create UI from designs | References → Design Job (UI) → Code Job |
+| Create API from requirements | PRD → Design Job (System) → Code Job |
 
 ## Tips
 
-1. **Start with Learn** if working on existing project
-2. **Be specific** in chat instructions for better results
-3. **Use Design Job** for complex features to get accurate specifications
-4. **Direct chat requests** work great for simple changes
-5. **Review outputs** before applying - Ant is a collaborator, not autopilot
-6. **Iterate** - ask for changes, refinements, alternatives
+1. **Observe first** - Check workspace state before deciding workflow
+2. **Structured for new** - Use Design Job for new features/projects
+3. **Direct for changes** - Chat directives work well for modifications
+4. **Learn for existing** - Index codebase before modifying
+5. **Quality vs Speed** - More inputs = better outputs, but takes more time
