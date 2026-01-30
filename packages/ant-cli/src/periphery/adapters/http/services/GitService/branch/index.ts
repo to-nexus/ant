@@ -151,6 +151,9 @@ export class BranchService {
       codebasePath = path.join(projectPath, 'codebase');
     }
 
+    // ✅ Ensure safe.directory is set (prevents "dubious ownership" error in cloud environments)
+    await GitHelper.ensureSafeDirectory(codebasePath);
+
     // Get Git instance
     const git = GitHelper.getGitInstanceSafe(codebasePath);
     if (!git) {

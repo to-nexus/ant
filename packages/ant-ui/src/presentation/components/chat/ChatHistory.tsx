@@ -7,6 +7,8 @@ import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { Virtuoso, VirtuosoHandle, ListRange } from 'react-virtuoso';
 import type { ChatMessage } from '@/domain/models/chat';
 import { MessageItem } from './MessageItem';
+import { TypingIndicator } from './TypingIndicator';
+import { useStore } from '@/domain/store';
 
 interface ChatHistoryProps {
   messages: ChatMessage[];
@@ -15,6 +17,8 @@ interface ChatHistoryProps {
 }
 
 export function ChatHistory({ messages, onLastUserMessageVisibilityChange }: ChatHistoryProps) {
+  // ✅ Get isRunning state to show typing indicator while waiting for response
+  const isRunning = useStore((state) => state.isRunning);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   
   // Find the last user message index
@@ -54,6 +58,26 @@ export function ChatHistory({ messages, onLastUserMessageVisibilityChange }: Cha
     </div>
   ), []); // Empty deps - function logic doesn't change
   
+  // ✅ Determine if typing indicator should show in footer
+  // Shows when: job is running AND no active streaming assistant message yet
+  // This covers:
+  //   - New job start (last message is user)
+  //   - Continue/Resume (last message is user with directive)
+  //   - Redirect from triage (last message is assistant with triage_choice, but not streaming)
+  const lastMessage = messages[messages.length - 1];
+  const hasActiveStreamingAssistant = lastMessage?.role === 'assistant' && lastMessage?.isStreaming;
+  const showTypingInFooter = isRunning && !hasActiveStreamingAssistant;
+  
+  // ✅ Footer component for Virtuoso - shows typing indicator while waiting
+  const Footer = useCallback(() => {
+    if (!showTypingInFooter) return null;
+    return (
+      <div className="px-8 py-2">
+        <TypingIndicator />
+      </div>
+    );
+  }, [showTypingInFooter]);
+  
   if (messages.length === 0) {
     return (
       <div className="flex items-center justify-center h-full p-8 text-center">
@@ -78,6 +102,7 @@ export function ChatHistory({ messages, onLastUserMessageVisibilityChange }: Cha
       followOutput="smooth"  // Auto-scroll to new messages
       rangeChanged={handleRangeChanged}  // Track visible range
       itemContent={itemContent}
+      components={{ Footer }}  // ✅ Typing indicator at bottom while waiting
     />
   );
 }

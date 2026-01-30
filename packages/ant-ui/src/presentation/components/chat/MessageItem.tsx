@@ -14,6 +14,7 @@ import { TerminalCard } from './TerminalCard';
 import { FileCard } from './FileCard';
 import { ToolActionCard } from './ToolActionCard';
 import { ChoiceCard } from './ChoiceCard';
+import { TypingIndicator } from './TypingIndicator';
 
 interface MessageItemProps {
   message: ChatMessage;
@@ -37,6 +38,10 @@ export function MessageItem({ message }: MessageItemProps) {
         {/* Assistant messages */}
         {!isUser && (
           <div className="space-y-2">
+            {/* ✅ Show typing indicator when streaming but no content yet */}
+            {message.isStreaming && message.contents.length === 0 && (
+              <TypingIndicator />
+            )}
             {message.contents.map((content, index) => (
               <ContentBlock 
                 key={index} 

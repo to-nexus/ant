@@ -23,7 +23,7 @@ import {
   WorkspaceInfo
 } from '../../core/ports/workspace';
 import { FileSystemPort } from '../../core/ports/filesystem';
-import { LocalFileSystemAdapter } from '../../periphery/adapters/filesystem/LocalFileSystemAdapter';
+import { FileSystemAdapter } from '../../periphery/adapters/filesystem/FileSystemAdapter';
 
 export class WorkspaceService implements WorkspaceServicePort {
   private readonly basePath: string;
@@ -131,7 +131,8 @@ export class WorkspaceService implements WorkspaceServicePort {
     
     if (!fileSystem) {
       // Create new FileSystemPort scoped to this workspace
-      fileSystem = new LocalFileSystemAdapter(handle.storagePath);
+      // Works with local filesystem, NFS mounts, or EFS mounts
+      fileSystem = new FileSystemAdapter(handle.storagePath);
       this.fileSystemCache.set(cacheKey, fileSystem);
     }
     

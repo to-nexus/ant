@@ -23,6 +23,9 @@ export class PushOperation {
 
     const { config, codebasePath } = await this.loadProjectConfig(projectId, userContext);
 
+    // ✅ Ensure safe.directory is set (prevents "dubious ownership" error in cloud environments)
+    await GitHelper.ensureSafeDirectory(codebasePath);
+
     const git = GitHelper.getGitInstanceSafe(codebasePath);
     if (!git) {
       throw new Error('Repository not initialized. Please clone or initialize first.');

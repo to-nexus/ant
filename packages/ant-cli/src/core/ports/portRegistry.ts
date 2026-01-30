@@ -17,14 +17,14 @@ export interface PortMapping {
 
 export interface PortRegistryPort {
   /**
-   * Register a dev server port mapping
+   * Register a preview port mapping
    * @param tenantId - Organization/tenant identifier
    * @param userId - User identifier within the organization
    * @param projectId - Project identifier
    * @param feature - Feature/branch identifier
    * @param port - Port number
    */
-  registerDevServer(
+  registerPreview(
     tenantId: string,
     userId: string,
     projectId: string,
@@ -44,10 +44,10 @@ export interface PortRegistryPort {
   ): Promise<void>;
 
   /**
-   * Get dev server port
+   * Get preview port
    * @returns Port number or null if not found
    */
-  getDevServerPort(
+  getPreviewPort(
     tenantId: string,
     userId: string,
     projectId: string,
@@ -65,9 +65,9 @@ export interface PortRegistryPort {
   ): Promise<number | null>;
 
   /**
-   * Unregister dev server
+   * Unregister preview
    */
-  unregisterDevServer(
+  unregisterPreview(
     tenantId: string,
     userId: string,
     projectId: string,
@@ -85,9 +85,9 @@ export interface PortRegistryPort {
   ): Promise<void>;
 
   /**
-   * List all active dev servers
+   * List all active previews
    */
-  listDevServers(): Promise<PortMapping[]>;
+  listPreviews(): Promise<PortMapping[]>;
 
   /**
    * List all active IDEs
@@ -102,7 +102,7 @@ export interface PortRegistryPort {
     userId: string,
     projectId: string,
     feature: string,
-    type: 'dev-server' | 'ide'
+    type: 'preview' | 'ide'
   ): Promise<void>;
 
   /**
@@ -110,4 +110,3 @@ export interface PortRegistryPort {
    */
   close(): Promise<void>;
 }
-

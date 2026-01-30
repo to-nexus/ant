@@ -190,6 +190,10 @@ export class InitOperation {
     if (!fs.existsSync(gitDir)) {
       throw new Error(`Git initialization failed: .git not found in ${codebasePath}`);
     }
+
+    // ✅ CRITICAL: Add to safe.directory BEFORE any git operations
+    // This prevents "dubious ownership" error in cloud environments
+    await GitHelper.ensureSafeDirectory(codebasePath);
     
     // Configure git user from UserContext (essential for cloud environments)
     await GitHelper.ensureUserConfig(git, userContext);

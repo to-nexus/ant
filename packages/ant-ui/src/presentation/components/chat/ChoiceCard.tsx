@@ -266,12 +266,34 @@ function CancelledChoiceVariant({ content, messageId }: { content: MessageConten
   const isRunning = useStore(state => state.isRunning);
   const kanbanData = useStore(state => state.kanban);
   const setDismissedInterruptTimestamp = useStore(state => state.setDismissedInterruptTimestamp);
+  const updateChatMessage = useStore(state => state.updateChatMessage);
+  const chatMessages = useStore(state => state.chatMessages);
   
   const [isLoading, setIsLoading] = useState(false);
   const [localSelectedChoice, setLocalSelectedChoice] = useState<string | null>(null);
   const [localResolvedLabel, setLocalResolvedLabel] = useState<string | null>(null);
   
   const { runJob } = useJobExecution();
+  
+  // ✅ Helper to persist choice to store (prevents Virtuoso remount from resetting state)
+  const persistChoice = (choiceAction: string, label: string) => {
+    const message = chatMessages.find(m => m.id === messageId);
+    if (message) {
+      const contentIndex = message.contents.findIndex(c => c.type === 'cancelled');
+      if (contentIndex !== -1) {
+        const updatedContents = [...message.contents];
+        updatedContents[contentIndex] = {
+          ...updatedContents[contentIndex],
+          metadata: {
+            ...updatedContents[contentIndex].metadata,
+            choiceSelected: choiceAction,
+            resolvedLabel: label
+          }
+        };
+        updateChatMessage(messageId, { contents: updatedContents });
+      }
+    }
+  };
   const jobId = content.metadata?.jobId;
   const originalType = content.metadata?.originalType;
   const reason = content.metadata?.reason;
@@ -314,6 +336,9 @@ function CancelledChoiceVariant({ content, messageId }: { content: MessageConten
       // Call API (same pattern as triage_choice)
       await submitCancelledChoice(selectedProject, selectedFeature, jobId, 'resume');
       
+      // ✅ Persist choice to metadata (prevents Virtuoso remount reset)
+      persistChoice('resume', 'Resumed');
+      
       // Start job (runJob internally calls setRunning immediately)
       await runJob(selectedAgent, selectedJobType);
     } catch (error) {
@@ -339,6 +364,9 @@ function CancelledChoiceVariant({ content, messageId }: { content: MessageConten
     try {
       // Call API (same pattern as triage_choice)
       await submitCancelledChoice(selectedProject, selectedFeature, jobId, 'dismiss');
+      
+      // ✅ Persist choice to metadata (prevents Virtuoso remount reset)
+      persistChoice('dismiss', 'Dismissed');
     } catch (error) {
       console.error('[ChoiceCard:Cancelled] ❌ Failed:', error);
       setLocalSelectedChoice(null);

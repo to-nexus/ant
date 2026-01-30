@@ -148,7 +148,7 @@ export function createSystemDesignDetectionReport(params: {
 // Chat UI Formatter
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-type UserLanguage = 'ko' | 'en';
+import type { UserLanguage } from '../utils/languageDetector';
 
 /**
  * DetectionReport를 Chat UI용 마크다운으로 변환

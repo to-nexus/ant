@@ -200,18 +200,30 @@ export class CredentialsStore {
   /**
    * Load encryption key from environment or file
    * Priority: 1. ANT_ENCRYPTION_KEY env var, 2. workspaces/.ant/encryption.key
+   * 
+   * AES-256-GCM requires 32-byte (256-bit) key = 64 hex characters
    */
   private loadEncryptionKey(): Buffer {
     // 1. Try environment variable first (highest priority)
-    const keyString = process.env.ANT_ENCRYPTION_KEY;
+    const keyString = process.env.ANT_ENCRYPTION_KEY?.trim();
     
     if (keyString) {
-      // ✅ Avoid noisy duplicate logs when multiple CredentialsStore instances are created.
-      if (!CredentialsStore.loggedKeySource.has('env')) {
-        CredentialsStore.loggedKeySource.add('env');
-        logger.info('✅ Using ANT_ENCRYPTION_KEY from environment', { component: 'CredentialsStore' });
+      // Validate key length: AES-256 requires 64 hex chars (32 bytes)
+      if (keyString.length !== 64) {
+        logger.error(`❌ ANT_ENCRYPTION_KEY has invalid length: ${keyString.length} (expected 64 hex chars)`, { component: 'CredentialsStore' });
+        logger.error('   Generate a valid key with: openssl rand -hex 32', { component: 'CredentialsStore' });
+        // Fall through to file-based or auto-generated key
+      } else if (!/^[0-9a-fA-F]+$/.test(keyString)) {
+        logger.error('❌ ANT_ENCRYPTION_KEY contains invalid characters (expected hex only)', { component: 'CredentialsStore' });
+        // Fall through to file-based or auto-generated key
+      } else {
+        // ✅ Valid key from environment
+        if (!CredentialsStore.loggedKeySource.has('env')) {
+          CredentialsStore.loggedKeySource.add('env');
+          logger.info('✅ Using ANT_ENCRYPTION_KEY from environment', { component: 'CredentialsStore' });
+        }
+        return Buffer.from(keyString, 'hex');
       }
-      return Buffer.from(keyString, 'hex');
     }
     
     // 2. Try file in workspaces/.ant/encryption.key
@@ -285,12 +297,13 @@ export class CredentialsStore {
   }
   
   /**
-   * Check if error is decryption error
+   * Check if error is decryption error (key mismatch, corrupted data, etc.)
    */
   private isDecryptionError(error: any): boolean {
     return error.message?.includes('Unsupported state') ||
            error.message?.includes('unable to authenticate data') ||
-           error.message?.includes('bad decrypt');
+           error.message?.includes('bad decrypt') ||
+           error.code === 'ERR_CRYPTO_INVALID_KEYLEN';  // Invalid key length
   }
 }
 

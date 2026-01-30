@@ -15,7 +15,7 @@ import { AskResponseGenerator, askResponseGenerator } from './AskResponseGenerat
 import { WorkspaceState } from '../../agents/common/nodes/triage/types.js';
 import { LLMClient } from '../ports/llm.js';
 
-export { AskContext, AskResponse, AskDependencies } from './types.js';
+export type { AskContext, AskResponse, AskDependencies } from './types.js';
 export { AskResponseGenerator, askResponseGenerator } from './AskResponseGenerator.js';
 
 /**

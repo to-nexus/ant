@@ -6,7 +6,7 @@
  * 
  * This port provides workspace-scoped file operations with:
  * - Path traversal protection
- * - Storage backend abstraction (local FS, S3, NFS)
+ * - Storage backend abstraction (local FS, AWS EFS)
  * - Tenant isolation
  */
 

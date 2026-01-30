@@ -4,6 +4,7 @@
  * Loads code context from reference projects
  */
 
+import path from "path";
 import { ArchitectGraphState } from "../../state";
 import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient";
 
@@ -46,7 +47,7 @@ export async function loadReferenceContexts(
       };
       
       const refProjectPath = workspaceResolver.getProjectPath(userContext, ref.project);
-      const refCodebasePath = require('path').join(refProjectPath, 'codebase');
+      const refCodebasePath = path.join(refProjectPath, 'codebase');
       
       const refQuery = keywords.join(' ');
       console.log(`🔍 [Plan] Searching reference [${ref.project}] with: ${keywords.join(', ')}`);

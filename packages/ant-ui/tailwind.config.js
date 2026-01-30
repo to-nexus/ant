@@ -191,6 +191,17 @@ export default {
             opacity: '0.75', 
             transform: 'scale(1.25)' 
           }
+        },
+        // 💬 Typing indicator dots - 순차적 펄싱
+        'typing-dot': {
+          '0%, 60%, 100%': { 
+            opacity: '0.3',
+            transform: 'scale(0.8)'
+          },
+          '30%': { 
+            opacity: '1',
+            transform: 'scale(1)'
+          }
         }
       },
       animation: {
@@ -199,7 +210,8 @@ export default {
         flash: 'flash 0.6s ease-in-out',
         'pulse-gentle': 'pulse-gentle 2.5s ease-in-out infinite',
         'bounce-gentle': 'bounce-gentle 2s ease-in-out infinite',
-        'sparkle-float': 'sparkle-float 3s ease-in-out infinite'
+        'sparkle-float': 'sparkle-float 3s ease-in-out infinite',
+        'typing-dot': 'typing-dot 1.4s ease-in-out infinite'
       }
     }
   },

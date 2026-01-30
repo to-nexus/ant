@@ -19,6 +19,7 @@ import { AgentRegistry } from './AgentRegistry.js';
 import { accumulateTokenUsage } from '../../../architect/graph/common/llmHelpers.js';
 import { askResponseGenerator } from '../../../../core/ask/AskResponseGenerator.js';
 import { ChatAPIClient } from '../../../../core/adapters/ChatAPIClient.js';
+import { WorkspacePathResolver } from '../../../../infrastructure/workspace/WorkspaceResolver.js';
 
 // Cache for loaded templates
 let triageBaseTemplate: HandlebarsTemplateDelegate | null = null;
@@ -32,10 +33,7 @@ function loadTriageTemplates(): { base: HandlebarsTemplateDelegate; rules: strin
     return { base: triageBaseTemplate, rules: triageRulesContent };
   }
   
-  const templateDir = path.resolve(
-    path.dirname(new URL(import.meta.url).pathname),
-    '../../../../core/prompt/templates/triage'
-  );
+  const templateDir = path.join(WorkspacePathResolver.getPromptTemplatesPath(), 'triage');
   
   const basePath = path.join(templateDir, 'base.md');
   const rulesPath = path.join(templateDir, 'rules.md');

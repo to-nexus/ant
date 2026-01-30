@@ -1,5 +1,5 @@
-export { Loader } from "./Loader";
-export { Splitter } from "./Splitter";
-export { Cleaner } from "./Cleaner";
-export { Annotator } from "./Annotator";
+export type { Loader } from "./Loader";
+export type { Splitter } from "./Splitter";
+export type { Cleaner } from "./Cleaner";
+export type { Annotator } from "./Annotator";
 

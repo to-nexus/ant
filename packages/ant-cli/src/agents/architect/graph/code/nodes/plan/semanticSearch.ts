@@ -7,6 +7,7 @@
  * 3. Grepped: Local file search (NOT in Vector DB)
  */
 
+import path from "path";
 import { GitPort } from "../../../../../../core/ports";
 import { ArchitectGraphState } from "../../state";
 import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient";
@@ -211,7 +212,7 @@ export async function loadSemanticFiles(
   
   for (const filePath of allPaths) {
     try {
-      const fullPath = require('path').join(state.context.workingDir, filePath);
+      const fullPath = path.join(state.context.workingDir, filePath);
       const content = await fileSystem.readFile(fullPath);
       
       if (content) {

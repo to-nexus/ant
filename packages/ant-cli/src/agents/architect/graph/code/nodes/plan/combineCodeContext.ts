@@ -21,6 +21,7 @@ import { ArchitectGraphState } from "../../state";
 import { loadErrorFiles, LoadedFile } from "./errorFilesLoader";
 import { loadSemanticFiles, LessonResult } from "./semanticSearch";
 import { extractFilesFromCode } from "./utils";
+import { generateGitDiffSummary, GitDiffSummary } from "../../../../../../core/codebase/GitDiffSummary";
 
 export interface ProjectCodeContext {
   filePaths: string[];
@@ -32,7 +33,7 @@ export interface ProjectCodeContext {
     deduplicatedCount: number;
     estimatedTokens?: number;
   };
-  gitDiff?: string;
+  gitDiff?: GitDiffSummary;
   directoryTree?: string;  // ✅ Directory structure for path decisions
   source: 'plan';
 }
@@ -153,12 +154,12 @@ export async function combineCodeContext(
   // Git diff summary
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (git) {
-    const { generateGitDiffSummary } = require('../../../../../../core/codebase/GitDiffSummary');
-    projectCodeContext.gitDiff = await generateGitDiffSummary(
+    const gitDiffResult = await generateGitDiffSummary(
       git, 
       state.context.workingDir, 
       projectCodeContext.filePaths
     );
+    projectCodeContext.gitDiff = gitDiffResult ?? undefined;
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -116,8 +116,10 @@ export class JobExecutionManager {
     status.status = 'running';
     
     try {
-      // Build CLI command
-      const antCliSrc = path.join(process.cwd(), 'src/index.ts');
+      // Build CLI command - use import.meta.url to get correct package path
+      const currentDir = path.dirname(new URL(import.meta.url).pathname);
+      const packageRoot = path.resolve(currentDir, '../../../../../');  // Go up to packages/ant-cli
+      const antCliSrc = path.join(packageRoot, 'src/index.ts');
       const args = [antCliSrc, params.agent, params.jobType];
       
       // Add input file or feature path
@@ -145,7 +147,7 @@ export class JobExecutionManager {
       logger.debug(`[runJob] Final CLI args`, { component: 'JobExecutionManager', jobId }, args);
       
       // Spawn child process
-      const childProcess = await this.spawnChildProcess(jobId, params, args);
+      const childProcess = await this.spawnChildProcess(jobId, params, args, packageRoot);
       state.childProcesses.set(jobId, childProcess);
       
       // Setup log streaming
@@ -168,7 +170,8 @@ export class JobExecutionManager {
   private async spawnChildProcess(
     jobId: string, 
     params: ExecuteJobParams, 
-    args: string[]
+    args: string[],
+    packageRoot: string
   ): Promise<ChildProcess> {
     const { spawn } = await import('child_process');
     
@@ -212,7 +215,7 @@ export class JobExecutionManager {
     };
     
     return spawn('npx', ['tsx', ...args], {
-      cwd: process.cwd(),
+      cwd: packageRoot,
       env: childEnv,
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: false

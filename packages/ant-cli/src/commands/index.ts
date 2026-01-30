@@ -10,7 +10,7 @@
 
 import { CodebaseIndexer } from '../core/codebase/CodebaseIndexer';
 import { AdapterFactory } from '../infrastructure/adapters/AdapterFactory';
-import { LocalWorkspaceResolver } from '../infrastructure/workspace/LocalWorkspaceResolver';
+import { UnifiedWorkspaceResolver, WorkspacePathResolver } from '../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../core/types/user';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -27,7 +27,8 @@ export async function indexCommand(
 
   try {
     // 1. Resolve workspace path
-    const workspaceResolver = new LocalWorkspaceResolver();
+    const workspacesPath = WorkspacePathResolver.getPhysicalWorkspacesPath();
+    const workspaceResolver = new UnifiedWorkspaceResolver(workspacesPath);
     const userContext: UserContext = {
       userId: 'local',
       organizationId: 'local',

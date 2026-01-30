@@ -3,7 +3,7 @@ import express from 'express';
 import {
   createJobRoutes,
   createKanbanRoutes,
-  createDevServerRoutes,
+  createPreviewRoutes,
   createWorkflowRoutes,
   createSSERoutes,
   createAuthRoutes,
@@ -17,6 +17,7 @@ import { JobStateTracker } from '../managers/JobStateTracker';
 import { JobExecutionManager } from '../managers/JobExecutionManager';
 import { WorkflowBridge } from '../bridges/WorkflowBridge';
 import { choiceService } from '../../../../../infrastructure/choice/ChoiceService';
+import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
 
 /**
  * RouteConfigurator
@@ -58,7 +59,7 @@ export class RouteConfigurator {
     this.setupIDERoutes(app);
     this.setupCloudIDERoutes(app);
     this.setupKanbanRoutes(app);
-    this.setupDevServerRoutes(app);
+    this.setupPreviewRoutes(app);
     this.setupWorkflowRoutes(app);
     this.setupSSERoutes(app);
     this.setupJobRoutes(app);
@@ -172,10 +173,27 @@ export class RouteConfigurator {
 
   /**
    * Setup Cloud IDE routes (both modes)
+   * Uses KubernetesIDEOrchestrator in cloud mode (ANT_K8S_NAMESPACE set),
+   * LocalIDEOrchestrator (Docker) otherwise
    */
   private setupCloudIDERoutes(app: Express): void {
+    logger.info(`Setting up Cloud IDE routes (ANT_K8S_NAMESPACE=${process.env.ANT_K8S_NAMESPACE || 'not set'})`, {
+      component: 'RouteConfigurator'
+    });
+    
+    // Set dependencies for LocalIDEOrchestrator (Docker mode)
+    // This is required before calling getIDEOrchestrator() when K8s is not configured
+    const factory = getInfrastructureFactory();
+    factory.setDependencies(this.deps.portManager, this.deps.portRegistry);
+    
+    const ideOrchestrator = factory.getIDEOrchestrator();
+    logger.info(`IDE Orchestrator type: ${ideOrchestrator.constructor.name}`, { component: 'RouteConfigurator' });
+    
+    // Start idle check for auto-cleanup of unused IDE instances
+    ideOrchestrator.startIdleCheck();
+    
     const cloudIDERoutes = createCloudIDERoutes(
-      this.deps.ideService, 
+      ideOrchestrator, 
       this.deps.workspaceResolver
     );
     app.use('/api/cloud-ide', cloudIDERoutes);
@@ -198,15 +216,15 @@ export class RouteConfigurator {
   }
 
   /**
-   * Setup dev server routes
+   * Setup preview routes
    */
-  private setupDevServerRoutes(app: Express): void {
-    const devServerRoutes = createDevServerRoutes({
+  private setupPreviewRoutes(app: Express): void {
+    const previewRoutes = createPreviewRoutes({
       projectService: this.deps.projectService,
-      devServerService: this.deps.devServerService,
+      previewService: this.deps.previewService,
       workspaceResolver: this.deps.workspaceResolver
     });
-    app.use('/api', devServerRoutes);
+    app.use('/api', previewRoutes);
   }
 
   /**
@@ -244,9 +262,42 @@ export class RouteConfigurator {
    */
   private setupJobRoutes(app: Express): void {
     const state = this.stateTracker.getState();
+    
+    // Cloud mode: enqueue to job queue, Local mode: execute directly
+    const executeJob = this.config.mode === 'cloud'
+      ? this.createCloudExecuteJob()
+      : this.jobManager.executeJob.bind(this.jobManager);
+    
+    // ✅ Get stateStore for Cloud mode (stop signal via Redis)
+    const stateStore = this.config.mode === 'cloud' 
+      ? getInfrastructureFactory().getStateStore() 
+      : undefined;
+    
+    // ✅ Cloud mode: Subscribe to job completion events to update stateTracker
+    // This allows new jobs to start after previous job completes (fixes "Job already running" error)
+    if (this.config.mode === 'cloud' && stateStore) {
+      stateStore.subscribe('job:status:updates', (message: unknown) => {
+        const data = message as { type: string; jobId: string; status: string };
+        if (data.type === 'completed' || data.type === 'failed') {
+          // Update local stateTracker to mark job as completed
+          const jobStatus = state.jobs.get(data.jobId);
+          if (jobStatus) {
+            jobStatus.status = data.status as any;
+            logger.debug(`Updated stateTracker job status: ${data.jobId} → ${data.status}`, { 
+              component: 'RouteConfigurator' 
+            });
+          }
+        }
+      }).catch((err: Error) => {
+        logger.warn(`Failed to subscribe to job status updates: ${err.message}`, { 
+          component: 'RouteConfigurator' 
+        });
+      });
+    }
+    
     const jobRoutes = createJobRoutes({
       workspaceResolver: this.deps.workspaceResolver,
-      executeJob: this.jobManager.executeJob.bind(this.jobManager),
+      executeJob,
       getJobStatus: this.jobManager.getJobStatus.bind(this.jobManager),
       getLogs: this.jobManager.getLogs.bind(this.jobManager),
       logStreams: state.logStreams,
@@ -258,9 +309,96 @@ export class RouteConfigurator {
       userStoppedJobs: state.userStoppedJobs,
       cleanupJobState: this.cleanupJobState,
       workflowStateService: this.deps.workflowStateService,
-      chatService: this.deps.chatService
+      chatService: this.deps.chatService,
+      // ✅ Cloud mode support for stop signal
+      config: { mode: this.config.mode },
+      stateStore
     });
     app.use('/api', jobRoutes);
+  }
+  
+  /**
+   * Create executeJob function for cloud mode
+   * Enqueues job to BullMQ instead of executing directly
+   */
+  private createCloudExecuteJob() {
+    return async (params: any) => {
+      const { getInfrastructureFactory } = await import('../../../../../infrastructure/adapters/InfrastructureFactory');
+      const factory = getInfrastructureFactory();
+      const jobQueue = factory.getJobQueue();
+      const stateStore = factory.getStateStore();
+      
+      // Generate jobId
+      const jobId = params.jobId || `${Date.now().toString(36)}${Math.random().toString(36).substr(2, 6)}`;
+      
+      // ⏱️ DEBUG: Record enqueue start time for latency analysis
+      const enqueueStartTime = Date.now();
+      const enqueueStartISO = new Date(enqueueStartTime).toISOString();
+      logger.info(`⏱️ [JobTiming] API Server: Starting job enqueue | enqueueStartTime=${enqueueStartISO}`, {
+        component: 'RouteConfigurator',
+        jobId,
+        projectId: params.project,
+        featureName: params.feature
+      });
+      
+      // Get workspace paths
+      const tenantId = `${params.userContext.organizationId}:${params.userContext.userId}`;
+      const handle = await this.deps.workspaceService.createWorkspace(tenantId, params.project);
+      
+      // handle.storagePath is already the full project path
+      // We need to pass base workspace path for JobWorker to calculate paths correctly
+      const workspaceBasePath = this.deps.workspaceResolver.getPhysicalWorkspacesPath();
+      
+      // Enqueue job to BullMQ
+      await jobQueue.enqueue({
+        jobId,
+        projectId: params.project,
+        feature: params.feature,
+        featureName: params.feature,  // Alias for feature
+        type: params.jobType || 'code',
+        agent: params.agent || 'architect',
+        mode: params.mode || 'generate',
+        userContext: params.userContext,
+        workspacePath: workspaceBasePath,  // Base path, not full project path
+        overrideDirective: params.overrideDirective,
+        chatSource: params.chatSource,
+        inputFile: params.inputFile,
+        isResume: !!params.jobId,
+        originalJobId: params.jobId
+      });
+      
+      // Set initial job status in Redis
+      await stateStore.setJobStatus(jobId, {
+        jobId,
+        status: 'queued',
+        projectId: params.project,
+        featureName: params.feature,
+        type: params.jobType || 'code',
+        mode: params.mode,
+        userContext: params.userContext,
+        timestamp: new Date().toISOString()
+      });
+      
+      // ✅ CRITICAL: Register job mapping in local stateTracker for SSE broadcast
+      // Without this, WorkflowBridge.updateTaskQueue cannot find projectId/featureName
+      this.stateTracker.initializeJob(jobId, params.project, params.feature, params.jobType || 'code', params.userContext);
+      
+      // ⏱️ DEBUG: Record enqueue completion time
+      const enqueueEndTime = Date.now();
+      const enqueueDuration = enqueueEndTime - enqueueStartTime;
+      logger.info(`⏱️ [JobTiming] API Server: Job enqueued to Redis | enqueueStartTime=${enqueueStartISO} | enqueueEndTime=${new Date(enqueueEndTime).toISOString()} | enqueueDurationMs=${enqueueDuration}`, { 
+        component: 'RouteConfigurator', 
+        jobId,
+        projectId: params.project,
+        featureName: params.feature
+      });
+      
+      return {
+        jobId,
+        success: true,
+        message: 'Job enqueued'
+      };
+    };
   }
 
   /**

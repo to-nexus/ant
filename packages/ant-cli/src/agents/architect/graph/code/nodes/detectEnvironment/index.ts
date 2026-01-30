@@ -13,6 +13,7 @@
 import { ArchitectGraphState } from '../../state';
 import { LLMClient } from '../../../../../../core/ports';
 import { logPrompt } from '../../../../../../core/utils/promptLogger';
+import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from '../../../common/llmConfig';
 import { 
   createCodeDetectionReport, 
   formatDetectionReportForChat,
@@ -112,8 +113,8 @@ export async function detectEnvironment(
   for await (const event of llm.stream([
     { role: 'user', content: prompt }
   ], {
-    temperature: 0.3,
-    maxTokens: 16000
+    temperature: LLM_TEMPERATURE.DETECT,
+    maxTokens: LLM_MAX_TOKENS.DETECT
   })) {
     if (event.text) {
       response += event.text;
