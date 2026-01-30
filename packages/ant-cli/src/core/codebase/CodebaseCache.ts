@@ -1,4 +1,4 @@
-import { CodeContext } from "./CodebaseRetriever";
+import { CodeContext } from "./types";
 import * as crypto from "crypto";
 
 /**
