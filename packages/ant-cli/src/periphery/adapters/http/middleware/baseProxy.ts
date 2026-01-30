@@ -28,6 +28,7 @@ export interface ProxyContext {
   res: ExpressResponse;
   serverKeyParts: ServerKeyParts;
   targetPort: number;
+  targetHost: string;  // 'localhost' for Docker, Pod IP for K8s
   targetPath: string;
 }
 
@@ -55,6 +56,14 @@ export abstract class BaseProxyMiddleware {
    * Get port for the given server key parts
    */
   protected abstract getPort(parts: ServerKeyParts): Promise<number | null>;
+
+  /**
+   * Get host for the given server key parts (default: localhost)
+   * Override for K8s mode to return Pod IP
+   */
+  protected async getHost(_parts: ServerKeyParts): Promise<string> {
+    return 'localhost';
+  }
 
   /**
    * Update last access time for the service
@@ -159,6 +168,9 @@ export abstract class BaseProxyMiddleware {
         return;
       }
 
+      // Get host (localhost for Docker, Pod IP for K8s)
+      const host = await this.getHost(parts);
+
       // Strip prefix from path
       const prefix = `${this.pathPrefix}/${serverKey}`;
       let targetPath = req.url;
@@ -171,6 +183,7 @@ export abstract class BaseProxyMiddleware {
         res,
         serverKeyParts: parts,
         targetPort: port,
+        targetHost: host,
         targetPath
       };
 
@@ -182,8 +195,8 @@ export abstract class BaseProxyMiddleware {
    * Proxy the request to the target server
    */
   protected async proxyRequest(context: ProxyContext): Promise<void> {
-    const { req, res, targetPort, targetPath } = context;
-    const targetUrl = `http://localhost:${targetPort}${targetPath}`;
+    const { req, res, targetPort, targetHost, targetPath } = context;
+    const targetUrl = `http://${targetHost}:${targetPort}${targetPath}`;
 
     logger.debug(`Proxy to ${targetUrl}`, { component: this.componentName });
 
@@ -202,7 +215,7 @@ export abstract class BaseProxyMiddleware {
             method: req.method,
             headers: {
               ...req.headers,
-              host: `localhost:${targetPort}`,
+              host: `${targetHost}:${targetPort}`,
               'accept-encoding': 'identity',
               'if-none-match': undefined,
               'if-modified-since': undefined

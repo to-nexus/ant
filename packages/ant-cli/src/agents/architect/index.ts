@@ -36,6 +36,7 @@ export async function architectAgent(
     overrideDirective?: string;  // ✅ Chat input as directive (highest priority)
     chatSource?: boolean;  // ✅ Flag for Chat SSE
     feature?: string;  // ✅ Feature name (for chat jobs without inputFile)
+    featurePath?: string;  // ✅ Pre-calculated feature path (avoids re-calculation mismatch)
   },
   jobMode?: JobMode,
   enableEvaluation?: boolean,
@@ -109,12 +110,17 @@ export async function architectAgent(
   const { userId, organizationId } = userContext;
   
   // 6. (Optional) Pre-calculate featurePath for performance
-  let featurePath: string | undefined;
-  if (deps?.workspaceResolver) {
+  // ✅ CRITICAL: Use deps.featurePath if provided (from orchestrator) to ensure consistency
+  let featurePath: string | undefined = (deps as any)?.featurePath;
+  
+  if (featurePath) {
+    console.log(`📂 Feature path (from orchestrator): ${featurePath}`);
+  } else if (deps?.workspaceResolver) {
+    // Fallback: calculate from workspaceResolver
     try {
       const userContext = { userId, organizationId, workspacePath: '' };
       featurePath = deps.workspaceResolver.getFeaturePath(userContext, project, featureFolder);
-      console.log(`📂 Feature path: ${featurePath}`);
+      console.log(`📂 Feature path (calculated): ${featurePath}`);
     } catch (error) {
       console.warn(`⚠️  Could not resolve featurePath:`, error);
     }
@@ -155,10 +161,19 @@ export async function architectAgent(
           memory: deps?.memory,
           chunk: deps?.chunk,
           git: deps?.git,
-          llm: deps?.llm  // ✅ LLM for analysis
+          llm: deps?.llm,
+          workflowUpdate: deps?.workflowUpdate
         },
         targets: [],
-        texts: []
+        texts: [],
+        // ✅ Triage System fields
+        _httpJobId: jobId || process.env.ANT_JOB_ID,
+        overrideDirective: deps?.overrideDirective || overrideDirective,
+        currentJob: 'learn',
+        currentAgent: 'architect'
+        // ✅ DO NOT skip triage - still need redirect detection (e.g., "개발해라" → code)
+        // But Learn job should NOT be blocked by missing codebase index
+        // (Learn job PERFORMS indexing, so indexing is not a prerequisite)
       };
       
       console.log('\n🚀 Starting job: "Learn and Store Knowledge"');
@@ -166,6 +181,39 @@ export async function architectAgent(
       console.log('');
       
       const l = await runLearnGraph(lInitial);
+      
+      // ✅ Return appropriate message based on triage result
+      const learnTriageResult = l.triageResult;
+      
+      if (learnTriageResult) {
+        // Ask intent: question was answered
+        if (learnTriageResult.intent === 'ask') {
+          return {
+            success: true,
+            job: 'learn',
+            message: learnTriageResult.displayMessage || 'Question answered.'
+          };
+        }
+        
+        // Redirect: suggested different job
+        if (learnTriageResult.workStatus === 'redirect') {
+          return {
+            success: true,
+            job: 'learn',
+            message: learnTriageResult.displayMessage || `Suggested action: ${learnTriageResult.suggestedJob || 'different job'}`
+          };
+        }
+        
+        // Blocked: prerequisites not met
+        if (learnTriageResult.workStatus === 'blocked') {
+          return {
+            success: false,
+            job: 'learn',
+            message: learnTriageResult.displayMessage || 'Prerequisites not met for this operation.'
+          };
+        }
+      }
+      
       return {
         success: true,
         job: 'learn',

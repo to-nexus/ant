@@ -5,6 +5,7 @@ import { TaskQueue } from "../../../code/state";
 import { JobTimingManager } from "../../../common/timing/JobTimingManager";
 import { extractErrorDetails, logErrorHeader } from "../../../code/nodes/shared/errorHandler";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
+import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../common/llmConfig";
 
 /**
  * Decompose Node for Design
@@ -386,7 +387,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
       // ✅ IMPORTANT: Use invoke (not generateObject) to get token usage
       const result = await llmToUse.invokeWithUsage?.(
         [{ role: 'user', content: uiDecomposePrompt }],
-        { temperature: 0.2, maxTokens: 8000 }
+        { temperature: LLM_TEMPERATURE.DECOMPOSE, maxTokens: LLM_MAX_TOKENS.DECOMPOSE_UI }
       );
       const textResponse = result?.content || await llmToUse.invoke([{ role: 'user', content: uiDecomposePrompt }]);
       
@@ -661,7 +662,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     // for some providers (notably Anthropic). Estimating token usage must include decompose.
     const result = await llmToUse.invokeWithUsage?.(
       [{ role: 'user', content: prompt }],
-      { temperature: 0.2, maxTokens: 16000 }
+      { temperature: LLM_TEMPERATURE.DECOMPOSE, maxTokens: LLM_MAX_TOKENS.DECOMPOSE_SYSTEM }
     );
     const textResponse = result?.content || await llmToUse.invoke([{ role: 'user', content: prompt }]);
     

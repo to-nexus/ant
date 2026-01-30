@@ -36,6 +36,8 @@ export function useChatPolicy(messageCount: number = 0): ChatPolicy {
   const selectedAgent = useStore((state) => state.selectedAgent);
   const selectedJobType = useStore((state) => state.selectedJobType);
   const isRunning = useStore((state) => state.isRunning);
+  const isQueued = useStore((state) => state.isQueued);
+  const queuePosition = useStore((state) => state.queuePosition);
   const kanbanData = useStore((state) => state.kanban);
   const dismissedInterruptTimestamp = useStore((state) => state.dismissedInterruptTimestamp);
   const backendMode = useStore((state) => state.backendMode);
@@ -132,11 +134,17 @@ export function useChatPolicy(messageCount: number = 0): ChatPolicy {
 
   // ✅ Job 진행 중 - 입력 차단 BUT Resize 가능
   if (isRunning) {
+    // Build placeholder based on queue status
+    let placeholder = 'Job is running. Stop the job to send a new message...';
+    if (isQueued && queuePosition?.position) {
+      placeholder = `Waiting in queue (${queuePosition.position}/${queuePosition.totalWaiting}). Stop to cancel...`;
+    }
+    
     return {
       headerText: `Chat with ${getAgentDisplayName(selectedAgent)}`,
       isOffline: false,
       canSendMessage: false,  // ❌ 입력 차단
-      inputPlaceholder: 'Job is running. Stop the job to send a new message...',
+      inputPlaceholder: placeholder,
       canResizeInput: true,  // ✅ 작업 중에도 resize 가능
       emptyStateMessage: null,
       readyEmptyStateMessage: null,

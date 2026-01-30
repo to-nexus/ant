@@ -68,11 +68,14 @@ export function parseTriageResponse(llmOutput: string, currentJob?: string): Tri
       // blocked
       if (parsed.workStatus === 'blocked') {
         result.missingPrerequisites = parsed.missingPrerequisites;
-        result.canProceed = parsed.canProceed ?? false;
         result.blockedMessage = parsed.blockedMessage;
         result.proceedAnywayOption = parsed.proceedAnywayOption;
         
-        if (result.canProceed) {
+        // ✅ If proceedAnywayOption exists, user CAN proceed (with warning)
+        // LLM sometimes sets canProceed:false but provides proceedAnywayOption
+        result.canProceed = parsed.canProceed ?? !!parsed.proceedAnywayOption;
+        
+        if (result.canProceed || result.proceedAnywayOption) {
           result.needsChoice = true;
           result.choiceOptions = buildBlockedChoice(parsed);
         }

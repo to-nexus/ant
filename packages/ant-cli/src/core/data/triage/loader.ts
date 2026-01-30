@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import { JobDefinition } from './types.js';
+import { WorkspacePathResolver } from '../../../infrastructure/workspace/WorkspaceResolver.js';
 
 export class TriageDataLoader {
   private static instance: TriageDataLoader;
@@ -31,9 +32,12 @@ export class TriageDataLoader {
   async load(): Promise<void> {
     if (this.loaded) return;
     
-    const dataDir = path.dirname(new URL(import.meta.url).pathname);
-    const jobsDir = path.join(dataDir, 'jobs');
+    // ✅ Use centralized WorkspacePathResolver for CLI internal resource paths
+    const cliRoot = WorkspacePathResolver.getCliRoot();
+    const jobsDir = path.join(cliRoot, 'core/data/triage/jobs');
     const jobFiles = ['design.yaml', 'code.yaml', 'learn.yaml'];
+    
+    console.log(`📂 [TriageDataLoader] Loading jobs from: ${jobsDir}`);
     
     for (const file of jobFiles) {
       const filePath = path.join(jobsDir, file);
@@ -41,9 +45,13 @@ export class TriageDataLoader {
         const content = fs.readFileSync(filePath, 'utf-8');
         const job = yaml.load(content) as JobDefinition;
         this.jobs.set(job.id, job);
+        console.log(`   ✅ Loaded: ${job.id}`);
+      } else {
+        console.warn(`   ⚠️  Not found: ${filePath}`);
       }
     }
     
+    console.log(`📂 [TriageDataLoader] Loaded ${this.jobs.size} job definitions`);
     this.loaded = true;
   }
   

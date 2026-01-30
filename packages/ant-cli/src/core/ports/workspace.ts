@@ -13,7 +13,7 @@ import { FileSystemPort } from './filesystem';
 export interface WorkspaceHandle {
   tenantId: string;      // Organization:User (e.g., "acme:alice")
   projectId: string;     // Project name
-  storageType: 'local' | 's3' | 'nfs';
+  storageType: 'local' | 'efs';  // local (dev) or efs (cloud)
   storagePath: string;   // Physical path for direct access
 }
 

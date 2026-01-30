@@ -1,14 +1,14 @@
 /**
- * ChatService - Main service for managing chat messages and SSE broadcasting
+ * ChatService - Main service for managing chat messages and Redis Pub/Sub broadcasting
  * 
- * Handles real-time chat message streaming to frontend
+ * Handles real-time chat message streaming to frontend via Redis Pub/Sub
  * Persists chat history to {project}/{feature}/chat.json
  * 
- * ✅ REFACTORED: Modular architecture with separated concerns
+ * Cloud-safe: Uses Redis Pub/Sub for cross-instance SSE broadcasting
  */
 
 import type { LLMStreamEvent } from '../../../../../core/ports/llm';
-import type { SSEService } from '../SSEService';
+import type { StateStorePort } from '../../../../../core/ports/stateStore';
 import type { WorkspaceResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
 import type { UserContext } from '../../../../../core/types/user';
 import type { ChatMessage, MessageContent, FileOperationPhase, CommandExecutionPhase } from './types';
@@ -42,12 +42,12 @@ export class ChatService {
 
   constructor(
     workspaceRoot: string, 
-    sseService?: SSEService, 
+    stateStore?: StateStorePort, 
     workspaceResolver?: WorkspaceResolver
   ) {
     // Initialize modules
     this.persistence = new SessionPersistence(workspaceResolver);
-    this.broadcaster = new MessageBroadcaster(sseService);
+    this.broadcaster = new MessageBroadcaster(stateStore);
     this.sessionManager = new SessionManager(this.persistence, this.broadcaster);
     this.contentMerger = new ContentMerger(this.broadcaster);
     this.messageManager = new MessageManager(

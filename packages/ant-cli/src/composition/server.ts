@@ -40,15 +40,18 @@ import { WorkspaceService } from "../infrastructure/workspace/WorkspaceService";
  *
  * Hexagonal Architecture - Composition Root
  *
- * Supports Local and Cloud modes via configuration:
- * - Local Mode: workspaces/local/<project>
- * - Cloud Mode: workspaces/<org>/<user>/<project>
+ * Local and Cloud servers use identical architecture (Redis, BullMQ, Worker-based Preview).
+ * The only difference is authentication:
+ * - Local Mode: Uses local:local for tenant (no real auth)
+ * - Cloud Mode: Requires explicit authentication (OAuth, etc.)
  *
  * Environment Variables:
- * - ANT_SERVER_MODE: 'local' (default) or 'cloud'
+ * - ANT_SERVER_MODE: 'local' (default) or 'cloud' - affects authentication only
+ * - ANT_REDIS_URL: Redis connection URL (REQUIRED)
+ * - ANT_PREVIEW_WORKERS: Preview worker URLs (REQUIRED)
  * - ANT_CLI_PORT: Ant CLI server port (default: 4100)
- * - ANT_WORKSPACE_BASE_PATH: Physical workspace storage path (for separation from ant source)
- * - CLOUD_URL: Cloud service URL (for redirect)
+ * - ANT_WORKSPACE_BASE_PATH: Physical workspace storage path
+ * - ANT_K8S_NAMESPACE: Kubernetes namespace for IDE (optional, uses Docker if not set)
  */
 
 const DEFAULT_PORT = 4100;
@@ -104,18 +107,22 @@ async function main() {
     console.log(`\n✅ Server listening on http://localhost:${port}`);
     console.log(`📡 Ready to accept requests\n`);
     
-    // Graceful shutdown
-    process.on('SIGINT', async () => {
-      console.log('\n⏳ Shutting down gracefully...');
-      await server.stop();
-      process.exit(0);
-    });
+    // Graceful shutdown (with duplicate call prevention)
+    let isShuttingDown = false;
     
-    process.on('SIGTERM', async () => {
-      console.log('\n⏳ Shutting down gracefully...');
+    const gracefulShutdown = async (signal: string) => {
+      if (isShuttingDown) {
+        console.log(`\n⚠️  Shutdown already in progress (${signal} ignored)`);
+        return;
+      }
+      isShuttingDown = true;
+      console.log(`\n⏳ Shutting down gracefully (${signal})...`);
       await server.stop();
       process.exit(0);
-    });
+    };
+    
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
   } catch (error: any) {
     console.error('❌ Failed to start server:', error.message);
     console.error(error.stack);

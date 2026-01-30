@@ -1,5 +1,5 @@
 import { Session } from '@/domain/models/session';
-import { Feature, FileNode, FileContent, DevServerStatus, KanbanData } from '@/infrastructure/http/api';
+import { Feature, FileNode, FileContent, PreviewStatus, DevServerStatus, KanbanData } from '@/infrastructure/http/api';
 import { JobExecution } from '@/infrastructure/http/cli';
 import type { ChatMessage } from '@/domain/models/chat';
 
@@ -27,10 +27,18 @@ export interface FileState {
   lastViewMode: 'raw' | 'preview';
 }
 
+export interface QueuePosition {
+  status: string;
+  position: number | null;
+  totalWaiting: number;
+}
+
 export interface JobState {
   session: Session | undefined;
   isRunning: boolean;
   isStopping: boolean;
+  isQueued: boolean;  // Job is waiting in queue
+  queuePosition: QueuePosition | null;
   userStoppedJobId: string | null;
   lastJobFailed: boolean;
   dismissedInterruptTimestamp: string | null;
@@ -83,6 +91,12 @@ export interface GitState {
   bypassFetchTimer: boolean;  // ✅ Flag to bypass timer for next fetch
 }
 
+export interface PreviewSliceState {
+  previewStatus: PreviewStatus | undefined;
+  isPreviewLoading: boolean;
+}
+
+/** @deprecated Use PreviewSliceState instead */
 export interface DevServerState {
   devServerStatus: DevServerStatus | undefined;
   isDevServerLoading: boolean;
@@ -97,7 +111,6 @@ export interface AuthState {
 
 export interface ConfigState {
   recursionLimit: number;
-  frontendMode: 'cloud' | 'local';
   backendMode: 'local' | 'cloud';
 }
 

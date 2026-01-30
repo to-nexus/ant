@@ -63,6 +63,9 @@ export class StatusService {
       let currentBranch: string | undefined;
       if (hasGit) {
         try {
+          // ✅ Ensure safe.directory is set (prevents "dubious ownership" error in cloud environments)
+          await GitHelper.ensureSafeDirectory(codebasePath);
+          
           const git = GitHelper.getGitInstanceSafe(codebasePath);
           if (git) {
             currentBranch = await git.revparse(['--abbrev-ref', 'HEAD']);
@@ -91,6 +94,7 @@ export class StatusService {
     behind: number;
     currentBranch?: string;
     isGitInitialized?: boolean;
+    error?: string;
   }> {
     try {
       const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
@@ -116,6 +120,9 @@ export class StatusService {
       } else {
         codebasePath = path.join(projectPath, 'codebase');
       }
+
+      // ✅ Ensure safe.directory is set (prevents "dubious ownership" error in cloud environments)
+      await GitHelper.ensureSafeDirectory(codebasePath);
 
       // Use GitHelper to safely get Git instance
       const git = GitHelper.getGitInstanceSafe(codebasePath);

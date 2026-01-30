@@ -1,4 +1,6 @@
 import { ProjectContext } from "../../types";
+import { TriageableState, TriageResult, WorkspaceState } from "../../../common/nodes/triage/types";
+import { TokenUsage } from "../common/llmHelpers";
 
 export interface LearnCommand {
   action: 'index_branch' | 'index_codebase' | 'learn_files' | 'learn_text';
@@ -8,7 +10,7 @@ export interface LearnCommand {
   mode?: 'smart' | 'full';
 }
 
-export interface LearnGraphState {
+export interface LearnGraphState extends TriageableState {
   context: ProjectContext;
   spec: string; // raw directive or free text
   
@@ -17,13 +19,26 @@ export interface LearnGraphState {
     memory?: any;
     chunk?: any;
     git?: any;
-    fileSystem?: import('../../../../core/ports').FileSystemPort;  // ✅ NEW: FileSystemPort
-    llm?: any;  // ✅ LLM for analysis
+    fileSystem?: import('../../../../core/ports').FileSystemPort;
+    llm?: any;
+    workflowUpdate?: any;  // ✅ For triage
   };
 
-  command?: LearnCommand;  // ✅ LLM의 정규화된 명령
+  command?: LearnCommand;
   targets: string[]; // file/dir paths parsed from spec (optional)
   texts: string[];   // collected texts (files or raw)
 
   reportFilePath?: string;
+  
+  // ✅ Triage System
+  triageResult?: TriageResult;
+  workspaceState?: WorkspaceState;
+  overrideDirective?: string;
+  skipTriage?: boolean;
+  currentJob?: string;
+  currentAgent?: string;
+  _httpJobId?: string;
+  
+  // ✅ Token tracking
+  tokenUsage?: TokenUsage;
 }

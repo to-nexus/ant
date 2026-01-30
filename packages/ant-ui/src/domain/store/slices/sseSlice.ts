@@ -39,6 +39,12 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
     
     const isJobRunning = data.dataSource === 'live' || data.dataSource === 'estimating';
     
+    // Clear queue position when job actually starts running (has inProgress task)
+    if (isJobRunning && data.inProgress && state.isQueued) {
+      console.log('[Store] 🚀 Job started running, clearing queue position');
+      set({ isQueued: false, queuePosition: null });
+    }
+    
     const updatedRunningJobs = { ...state.runningJobsByFeature };
     
     if (currentFeatureKey) {
@@ -274,6 +280,18 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
           
         case 'cancelled_message':
           get().addChatMessage(event.message);
+          break;
+          
+        // ✅ Cloud mode: Handle job status updates (from Redis Pub/Sub → SSE)
+        case 'job_status':
+          console.log('[Store] 📡 Received job_status event:', event.status, event.jobId);
+          if (event.status === 'completed' || event.status === 'failed') {
+            const setRunning = get().setRunning;
+            if (setRunning) {
+              console.log('[Store] ✅ Job completed/failed, setting isRunning=false');
+              setRunning(false);
+            }
+          }
           break;
       }
     });

@@ -1,29 +1,35 @@
 /**
  * Workspace Resolver
  * 
- * Local/Cloud 모드에 따라 workspace 경로를 계산하는 인터페이스
+ * Unified workspace path resolution.
+ * Uses userContext (organizationId/userId) to determine paths.
+ * 
+ * The caller is responsible for setting the correct userContext:
+ * - local mode: { organizationId: 'local', userId: 'local' }
+ * - cloud mode: { organizationId: 'to.nexus', userId: 'probe' } (from auth)
  */
 
 import * as path from 'path';
 import * as fs from 'fs';
+import { fileURLToPath } from 'url';
 import { UserContext } from '../../core/types/user';
 
 export interface WorkspaceResolver {
   /**
-   * workspace 루트 경로 반환
-   * @param userContext Local 모드에서는 무시됨, Cloud 모드에서는 검증용으로 사용
+   * Get workspace root path for a user
+   * @param userContext Contains organizationId and userId for path construction
    */
   getWorkspacePath(userContext: UserContext): string;
   
   /**
-   * 프로젝트 경로 반환
-   * @param userContext Local 모드에서는 무시됨, Cloud 모드에서는 검증용으로 사용
+   * Get project path
+   * @param userContext Contains organizationId and userId for path construction
    */
   getProjectPath(userContext: UserContext, projectId: string): string;
   
   /**
-   * 피처 경로 반환
-   * @param userContext Local 모드에서는 무시됨, Cloud 모드에서는 검증용으로 사용
+   * Get feature path
+   * @param userContext Contains organizationId and userId for path construction
    */
   getFeaturePath(userContext: UserContext, projectId: string, featureId: string): string;
   
@@ -134,73 +140,107 @@ export class WorkspacePathResolver {
     return workspaceResolver.getFeaturePath(userContext, context.project, context.featureFolder);
   }
   
-}
-
-
-/**
- * Local Mode Workspace Resolver (Legacy - for CLI commands)
- * 
- * 구조: workspaces/local/user/<project>/features/<feature>
- * Local 모드에서는 단일 사용자이므로 UserContext 무시
- * 
- * ⚠️ NOTE: Server mode now uses WorkspaceServiceAdapter instead.
- * This class is kept for backward compatibility with CLI commands.
- */
-export class LocalWorkspaceResolver implements WorkspaceResolver {
-  constructor(private readonly workspacesPath: string) {}
+  // ========================================
+  // CLI Internal Resource Paths
+  // ========================================
   
-  getWorkspacePath(userContext: UserContext): string {
-    // Local 모드에서는 userContext 무시
-    return path.join(this.workspacesPath, 'local', 'user');
-  }
-  
-  getProjectPath(userContext: UserContext, projectId: string): string {
-    // Local 모드에서는 userContext 무시
-    return path.join(this.workspacesPath, 'local', 'user', projectId);
-  }
-  
-  getFeaturePath(userContext: UserContext, projectId: string, featureId: string): string {
-    // Local 모드에서는 userContext 무시
-    return path.join(this.workspacesPath, 'local', 'user', projectId, 'features', featureId);
-  }
-  
-  getPhysicalWorkspacesPath(): string {
-    return this.workspacesPath;
-  }
-}
-
-/**
- * Cloud Mode Workspace Resolver (Legacy - for CLI commands)
- * 
- * 구조: workspaces/<org>/<user>/<project>/features/<feature>
- * 각 organization과 user별로 분리된 workspace 구조
- * 
- * ⚠️ NOTE: Server mode now uses WorkspaceServiceAdapter instead.
- * This class is kept for backward compatibility with CLI commands.
- */
-export class CloudWorkspaceResolver implements WorkspaceResolver {
-  constructor(private readonly workspacesPath: string) {}
-  
-  private validateContext(userContext: UserContext): void {
-    if (!userContext || userContext.organizationId === 'local' || userContext.userId === 'local') {
-      console.error(`[CloudWorkspaceResolver] ❌ Invalid context in Cloud mode:`, userContext);
-      console.error(`   This indicates authentication failure. Check that cookies are being sent.`);
-      throw new Error('Authentication required for Cloud mode. Please ensure cookies are enabled and user is authenticated.');
+  /**
+   * Get CLI root directory (for internal resources like templates, policies)
+   * 
+   * Resolution order:
+   * 1. ANT_CLI_ROOT environment variable (set by JobWorker for child processes)
+   * 2. Calculate from import.meta.url (for direct execution)
+   * 
+   * @returns CLI dist root path (e.g., /path/to/ant-cli/dist)
+   */
+  static getCliRoot(): string {
+    // 1. Use ANT_CLI_ROOT if set (JobWorker passes this to child processes)
+    if (process.env.ANT_CLI_ROOT) {
+      return process.env.ANT_CLI_ROOT;
+    }
+    
+    // 2. Calculate from current file location
+    // This file is at: packages/ant-cli/src/infrastructure/workspace/WorkspaceResolver.ts
+    // Or in dist:      packages/ant-cli/dist/infrastructure/workspace/WorkspaceResolver.js
+    // We need to go up to: packages/ant-cli/dist (or src)
+    const currentDir = path.dirname(fileURLToPath(import.meta.url));
+    
+    // Check if we're in dist or src
+    if (currentDir.includes('/dist/')) {
+      // In dist: go up to dist root
+      return path.resolve(currentDir, '../..');
+    } else {
+      // In src: go up to src root, then point to dist (for templates)
+      const srcRoot = path.resolve(currentDir, '../..');
+      const distRoot = path.resolve(srcRoot, '../dist');
+      // If dist exists, use it; otherwise use src
+      if (fs.existsSync(distRoot)) {
+        return distRoot;
+      }
+      return srcRoot;
     }
   }
   
+  /**
+   * Get prompt templates directory path
+   * @returns Path to prompt/templates directory
+   */
+  static getPromptTemplatesPath(): string {
+    return path.join(WorkspacePathResolver.getCliRoot(), 'core/prompt/templates');
+  }
+  
+  /**
+   * Get specific prompt template path
+   * @param templatePath Relative path within templates (e.g., 'learn/system.md')
+   * @returns Full path to the template file
+   */
+  static getPromptTemplatePath(templatePath: string): string {
+    return path.join(WorkspacePathResolver.getPromptTemplatesPath(), templatePath);
+  }
+  
+  /**
+   * Get policies directory path
+   * @returns Path to policies/prompts directory
+   */
+  static getPoliciesPath(): string {
+    return path.join(WorkspacePathResolver.getCliRoot(), 'core/policies/prompts');
+  }
+  
+  /**
+   * Get profiles directory path
+   * @returns Path to profiles directory
+   */
+  static getProfilesPath(): string {
+    return path.join(WorkspacePathResolver.getCliRoot(), 'periphery/profiles');
+  }
+}
+
+
+/**
+ * Unified Workspace Resolver
+ * 
+ * Single implementation for both local and cloud modes.
+ * Path structure: workspaces/<organizationId>/<userId>/<project>/features/<feature>
+ * 
+ * The caller determines the userContext:
+ * - local mode: { organizationId: 'local', userId: 'local' }
+ * - cloud mode: { organizationId: 'to.nexus', userId: 'probe' } (from auth)
+ * 
+ * This unified approach means the same code works regardless of mode.
+ * The only difference is how userContext is populated (authentication layer).
+ */
+export class UnifiedWorkspaceResolver implements WorkspaceResolver {
+  constructor(private readonly workspacesPath: string) {}
+  
   getWorkspacePath(userContext: UserContext): string {
-    this.validateContext(userContext);
     return path.join(this.workspacesPath, userContext.organizationId, userContext.userId);
   }
   
   getProjectPath(userContext: UserContext, projectId: string): string {
-    this.validateContext(userContext);
     return path.join(this.workspacesPath, userContext.organizationId, userContext.userId, projectId);
   }
   
   getFeaturePath(userContext: UserContext, projectId: string, featureId: string): string {
-    this.validateContext(userContext);
     return path.join(this.workspacesPath, userContext.organizationId, userContext.userId, projectId, 'features', featureId);
   }
   
@@ -208,4 +248,16 @@ export class CloudWorkspaceResolver implements WorkspaceResolver {
     return this.workspacesPath;
   }
 }
+
+/**
+ * @deprecated Use UnifiedWorkspaceResolver instead
+ * Alias for backward compatibility
+ */
+export const LocalWorkspaceResolver = UnifiedWorkspaceResolver;
+
+/**
+ * @deprecated Use UnifiedWorkspaceResolver instead
+ * Alias for backward compatibility
+ */
+export const CloudWorkspaceResolver = UnifiedWorkspaceResolver;
 

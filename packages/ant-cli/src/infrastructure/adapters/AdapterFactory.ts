@@ -11,7 +11,7 @@ import { FileSystemPort } from '../../core/ports/filesystem';
 import { MemoryPort } from '../../core/ports/memory';
 import { ChunkPort } from '../../core/ports';
 import { SimpleGitAdapter } from '../../periphery/adapters/git/SimpleGitAdapter';
-import { LocalFileSystemAdapter } from '../../periphery/adapters/filesystem/LocalFileSystemAdapter';
+import { FileSystemAdapter } from '../../periphery/adapters/filesystem/FileSystemAdapter';
 import { ChromaMemoryAdapter } from '../../periphery/adapters/memory/ChromaMemoryAdapter';
 import { ChunkAdapter } from '../../periphery/adapters/chunk/ChunkingAdapter';
 
@@ -33,20 +33,19 @@ export class AdapterFactory {
   }
 
   /**
-   * Create FileSystem adapter (local filesystem)
-   * ✅ NEW: Separated from GitPort
+   * Create FileSystem adapter (POSIX-compatible: local, NFS, EFS)
    */
   static createFileSystemAdapter(): FileSystemPort {
     // For simple use cases without workspace context
-    return new LocalFileSystemAdapter(process.cwd());
+    return new FileSystemAdapter(process.cwd());
   }
 
   /**
    * Create FileSystem adapter with specific base path
-   * ✅ NEW: For workspace-scoped file operations
+   * Works with local filesystem, NFS mounts, or EFS mounts
    */
   static createFileSystemAdapterWithPath(basePath: string): FileSystemPort {
-    return new LocalFileSystemAdapter(basePath);
+    return new FileSystemAdapter(basePath);
   }
 
   /**

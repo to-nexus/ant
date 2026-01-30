@@ -4,21 +4,39 @@
   "private": true,
   "description": "ANT (AI-Native Transformation) - Monorepo",
   "scripts": {
-    "dev": "concurrently \"pnpm dev:cli\" \"pnpm dev:ui\"",
-    "dev:cli": "pnpm --filter @ant/cli dev:server",
-    "dev:cli-local": "ANT_SERVER_MODE=local PORT=4000 pnpm --filter @ant/cli dev:server",
     "dev:ui": "pnpm --filter @ant/ui dev",
+    "dev:local": "ANT_SERVER_MODE=local pnpm --filter @ant/cli dev:server",
+    "dev:local:all": "concurrently -n cli,ui -c cyan,magenta \"pnpm dev:local\" \"pnpm dev:ui\"",
+    
+    "dev:cloud": "ANT_SERVER_MODE=cloud ANT_REDIS_URL=redis://localhost:6379 pnpm --filter @ant/cli dev:cloud",
+    "dev:cloud:all": "concurrently -n cli,ui -c cyan,magenta \"pnpm dev:cloud\" \"pnpm dev:ui\"",
+    "dev:cli": "ANT_SERVER_MODE=cloud ANT_REDIS_URL=redis://localhost:6379 pnpm --filter @ant/cli dev:server",
+    "dev:job-worker": "ANT_REDIS_URL=redis://localhost:6379 pnpm --filter @ant/cli dev:job-worker",
+    "dev:preview-worker": "ANT_REDIS_URL=redis://localhost:6379 pnpm --filter @ant/cli dev:preview-worker",
+    
+    "dev:infra": "concurrently \"docker compose -f packages/ant-cli/src/periphery/integrations/cache-memory/docker-compose.yml up -d\" \"docker compose -f packages/ant-cli/src/periphery/integrations/vector-memory/docker-compose.yml up -d\"",
+    "dev:infra:down": "docker compose -f packages/ant-cli/src/periphery/integrations/cache-memory/docker-compose.yml down && docker compose -f packages/ant-cli/src/periphery/integrations/vector-memory/docker-compose.yml down",
+    "dev:infra:redis": "docker compose -f packages/ant-cli/src/periphery/integrations/cache-memory/docker-compose.yml up -d",
+    "dev:infra:redis:down": "docker compose -f packages/ant-cli/src/periphery/integrations/cache-memory/docker-compose.yml down",
+    "dev:infra:vector": "docker compose -f packages/ant-cli/src/periphery/integrations/vector-memory/docker-compose.yml up -d",
+    "dev:infra:vector:down": "docker compose -f packages/ant-cli/src/periphery/integrations/vector-memory/docker-compose.yml down",
+    
     "build": "pnpm -r build",
     "build:cli": "pnpm --filter @ant/cli build",
-    "build:cli-local": "ANT_SERVER_MODE=local PORT=4000 pnpm --filter @ant/cli build",
     "build:ui": "pnpm --filter @ant/ui build",
-    "start": "pnpm --filter @ant/cli start",
-    "start:cli": "pnpm --filter @ant/cli start:server",
+
     "start:ui": "pnpm --filter @ant/ui preview --port 4200",
+    "start:local": "ANT_SERVER_MODE=local pnpm --filter @ant/cli start:server",
+    "start:local:all": "concurrently -n cli,ui -c cyan,magenta \"pnpm start:local\" \"pnpm start:ui\"",
+
+    "start:cloud": "pnpm --filter @ant/cli start:cloud",
+    "start:cloud:all": "concurrently -n cli,ui -c cyan,magenta \"pnpm start:cloud\" \"pnpm start:ui\"",
+    "start:cli": "pnpm --filter @ant/cli start:server",
+    "start:job-worker": "pnpm --filter @ant/cli start:job-worker",
+    "start:preview-worker": "pnpm --filter @ant/cli start:preview-worker",
+    
     "init:workspace": "pnpm --filter @ant/cli init:workspace",
-    "init:feature": "pnpm --filter @ant/cli init:feature",
-    "migrate:workspace": "ts-node scripts/migrate-workspace-structure.ts",
-    "migrate:workspace:dry-run": "ts-node scripts/migrate-workspace-structure.ts -- --dry-run"
+    "init:feature": "pnpm --filter @ant/cli init:feature"
   },
   "keywords": [],
   "author": "",

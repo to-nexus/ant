@@ -10,6 +10,7 @@
  */
 
 import { UserLanguage, getCompletionMessage } from '../../utils/languageDetector';
+import { parseDetectionReportFromLLM, formatDetectionReportForChat } from '../../types/detection';
 
 export interface TransformResult {
   /** 변환된 텍스트 (없으면 undefined) */
@@ -303,9 +304,6 @@ export class SpecialTagTransformer {
     try {
       const detectJson = match[1].trim();
       const parsed = JSON.parse(detectJson);
-      
-      // Import formatDetectionReportForChat from detection module
-      const { parseDetectionReportFromLLM, formatDetectionReportForChat } = require('../../types/detection');
       
       // Determine source job from JSON structure
       // - Code job: has 'jobMode' or 'mode' WITHOUT 'workType'

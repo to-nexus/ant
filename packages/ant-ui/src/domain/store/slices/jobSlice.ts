@@ -1,5 +1,5 @@
 import { StateCreator } from 'zustand';
-import { JobState } from '../types';
+import { JobState, QueuePosition } from '../types';
 import { Session } from '@/domain/models/session';
 import { JobExecution } from '@/infrastructure/http/cli';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
@@ -12,6 +12,7 @@ export interface JobActions {
   setLastJobFailed: (failed: boolean) => void;
   setDismissedInterruptTimestamp: (timestamp: string | null) => void;
   setCurrentJob: (job: JobExecution | null) => void;
+  setQueuePosition: (position: QueuePosition | null) => void;
 }
 
 export type JobSlice = JobState & JobActions;
@@ -23,6 +24,8 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
   session: undefined,
   isRunning: false,
   isStopping: false,
+  isQueued: false,
+  queuePosition: null,
   userStoppedJobId: null,
   lastJobFailed: false,
   dismissedInterruptTimestamp: null,
@@ -57,6 +60,8 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
       elapsedTime: isRunning ? 0 : get().elapsedTime,
       currentMode: isRunning ? mode : undefined,
       userStoppedJobId: isRunning ? null : get().userStoppedJobId,
+      // Reset queue state when job stops
+      ...(!isRunning ? { isQueued: false, queuePosition: null } : {}),
       ...(isRunning ? { lastJobFailed: false } : {})
     });
 
@@ -95,6 +100,14 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
 
   setCurrentJob: (job) => {
     set({ currentJob: job });
+  },
+
+  setQueuePosition: (position) => {
+    const isQueued = position?.status === 'queued' && position.position !== null;
+    set({ 
+      queuePosition: position,
+      isQueued
+    });
   },
 });
 

@@ -1,4 +1,6 @@
 import { Router, Request, Response } from 'express';
+import * as fs from 'fs';
+import * as path from 'path';
 import { ProjectService, ChatService, KanbanService } from '../services';
 import { extractUserContext } from './helpers/userContext';
 
@@ -187,8 +189,6 @@ export function createFeaturesRoutes(deps: {
       // Write cleared session (using internal method)
       const workspaceResolver = (deps.projectService as any).workspaceResolver;
       const featurePath = workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-      const path = require('path');
-      const fs = require('fs');
       const sessionPath = path.join(featurePath, `sessions/${jobType}.json`);
       
       await fs.promises.writeFile(sessionPath, JSON.stringify(clearedSession, null, 2), 'utf-8');

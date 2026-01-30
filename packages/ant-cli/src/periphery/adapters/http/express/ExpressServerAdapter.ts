@@ -295,11 +295,18 @@ export class ExpressServerAdapter implements
   }
   
   async stop(): Promise<void> {
+    // Prevent duplicate stop calls
+    if (!this.running) {
+      logger.debug('Server already stopped, skipping...', { component: 'ExpressServerAdapter' });
+      return;
+    }
+    
     await this.lifecycleManager.shutdown();
     
     // Close HTTP server
     return new Promise((resolve) => {
-      if (!this.server) {
+      if (!this.server || !this.server.listening) {
+        this.running = false;
         resolve();
         return;
       }
@@ -307,9 +314,9 @@ export class ExpressServerAdapter implements
       logger.info('Closing HTTP server...', { component: 'ExpressServerAdapter' });
       
       this.server.close((err?: Error) => {
-        if (err) {
+        if (err && (err as any).code !== 'ERR_SERVER_NOT_RUNNING') {
           logger.warn('Error closing HTTP server', { component: 'ExpressServerAdapter' }, err);
-        } else {
+        } else if (!err) {
           logger.info('HTTP server closed', { component: 'ExpressServerAdapter' });
         }
         this.running = false;

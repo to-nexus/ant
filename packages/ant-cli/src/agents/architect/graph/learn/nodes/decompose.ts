@@ -7,6 +7,7 @@
 import { LearnGraphState, LearnCommand } from "../state";
 import * as fs from "fs";
 import * as path from "path";
+import { WorkspacePathResolver } from "../../../../../infrastructure/workspace/WorkspaceResolver";
 
 export async function decompose(state: LearnGraphState): Promise<Partial<LearnGraphState>> {
   const llm = state.deps?.llm;
@@ -21,11 +22,8 @@ export async function decompose(state: LearnGraphState): Promise<Partial<LearnGr
   // Show placeholder while waiting for LLM
   await chatAPI.showChatStatus('placeholder');
 
-  // Load system prompt
-  const promptPath = path.join(
-    __dirname,
-    '../../../../../core/prompt/templates/learn/system.md'
-  );
+  // Load system prompt using centralized WorkspacePathResolver
+  const promptPath = WorkspacePathResolver.getPromptTemplatePath('learn/system.md');
   const systemPrompt = fs.readFileSync(promptPath, 'utf-8');
 
   // Call LLM with streaming for thinking display

@@ -15,7 +15,7 @@ import { createModelsRoutes } from './models.routes';
 // ✅ Re-export existing routes (for backward compatibility)
 export { createJobRoutes } from './job.routes';
 export { createKanbanRoutes } from './kanban.routes';
-export { createDevServerRoutes } from './dev-server.routes';
+export { createPreviewRoutes, createDevServerRoutes } from './preview.routes';
 export { createWorkflowRoutes } from './workflow.routes';
 export { createSSERoutes } from './sse.routes';
 export { createAuthRoutes } from './auth.routes';

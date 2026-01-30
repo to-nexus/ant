@@ -36,7 +36,9 @@ export class KanbanHttpClient implements TaskQueueUpdatePort {
    * @param serverPort - Port where parent server is running (default: 4100)
    */
   constructor(serverPort: string = '4100') {
-    this.baseUrl = `http://localhost:${serverPort}/api`;
+    // ✅ Prefer ANT_API_URL for Cloud mode (service-to-service communication)
+    const apiUrl = process.env.ANT_API_URL;
+    this.baseUrl = apiUrl ? `${apiUrl}/api` : `http://localhost:${serverPort}/api`;
   }
 
   /**
@@ -105,6 +107,8 @@ export class KanbanHttpClient implements TaskQueueUpdatePort {
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
+      
+      console.log(`[KanbanHttpClient] ✅ Task queue update sent (task: ${taskId}, current: ${currentTask?.name || 'none'})`);
     } catch (error: any) {
       // Re-throw for caller to handle
       throw new Error(`Failed to send Kanban update: ${error.message}`);

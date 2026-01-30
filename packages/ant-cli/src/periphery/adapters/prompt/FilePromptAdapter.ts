@@ -1,12 +1,8 @@
 import { promises as fs } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
+import { join } from "path";
 import Handlebars from "handlebars";
-
-// ✅ ES modules: derive __dirname from import.meta.url
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 import { PromptPort } from "../../../core/ports";
+import { WorkspacePathResolver } from "../../../infrastructure/workspace/WorkspaceResolver";
 
 // ✅ Register helpers once (top-level, not per render call)
 // ✅ Use == for loose equality to handle number/string comparisons in templates
@@ -19,8 +15,9 @@ Handlebars.registerHelper("or", (a, b) => a || b);
 Handlebars.registerHelper("add", (a, b) => Number(a) + Number(b));
 
 // ✅ Register common partials (shared across all jobs)
-const commonPartialsPath = join(__dirname, "../../../core/prompt/templates/common");
-const commonInjectionsPath = join(__dirname, "../../../core/prompt/templates/common/injections");
+const templatesPath = WorkspacePathResolver.getPromptTemplatesPath();
+const commonPartialsPath = join(templatesPath, "common");
+const commonInjectionsPath = join(templatesPath, "common/injections");
 Promise.all([
   fs.readFile(join(commonPartialsPath, "architect-role.md"), "utf8")
     .then(content => Handlebars.registerPartial("common/architect-role", content))
@@ -31,7 +28,7 @@ Promise.all([
 ]).catch(() => {});
 
 // ✅ Register code-specific base injections (conditionally used by code templates)
-const codeBaseInjectionsPath = join(__dirname, "../../../core/prompt/templates/code/base/injections");
+const codeBaseInjectionsPath = join(templatesPath, "code/base/injections");
 Promise.all([
   fs.readFile(join(codeBaseInjectionsPath, "text-format-compact.md"), "utf8")
     .then(content => Handlebars.registerPartial("code/base/injections/text-format-compact", content))
@@ -65,7 +62,7 @@ Promise.all([
 ]).catch(() => {});
 
 // ✅ Register phase-specific rules (decompose, detect, plan, etc.)
-const codePhaseRulesBase = join(__dirname, "../../../core/prompt/templates/code/phases");
+const codePhaseRulesBase = join(templatesPath, "code/phases");
 Promise.all([
   // Decompose rules
   fs.readFile(join(codePhaseRulesBase, "decompose/rules.md"), "utf8")
@@ -99,7 +96,7 @@ Promise.all([
 ]).catch(() => {});
 
 // ✅ Register design/phases/decompose partials (System Design and UI Design)
-const designDecomposePath = join(__dirname, "../../../core/prompt/templates/design/phases/decompose");
+const designDecomposePath = join(templatesPath, "design/phases/decompose");
 Promise.all([
   fs.readFile(join(designDecomposePath, "rules-system-design.md"), "utf8")
     .then(content => Handlebars.registerPartial("design/phases/decompose/rules-system-design", content))
@@ -110,7 +107,7 @@ Promise.all([
 ]).catch(() => {});
 
 // ✅ Register design/phases/execute partials (UI design and system design)
-const designExecutePath = join(__dirname, "../../../core/prompt/templates/design/phases/execute");
+const designExecutePath = join(templatesPath, "design/phases/execute");
 Promise.all([
   // Rules partials
   fs.readFile(join(designExecutePath, "rules-ui-design.md"), "utf8")
@@ -153,12 +150,12 @@ Promise.all([
  * - Iteration: {{#each array}}...{{/each}}
  */
 export class FilePromptAdapter implements PromptPort {
-  constructor(
-    // ✅ Use __dirname for correct path resolution in both src/ and dist/
-    // __dirname points to the directory of THIS file (adapters/prompt/)
-    // Templates are at: ../../../core/prompt/templates (relative to this file)
-    private baseDir = join(__dirname, "../../../core/prompt/templates")
-  ) {}
+  private baseDir: string;
+  
+  constructor(baseDir?: string) {
+    // Use centralized WorkspacePathResolver for CLI internal resource paths
+    this.baseDir = baseDir || WorkspacePathResolver.getPromptTemplatesPath();
+  }
   
   async render(templateName: string, vars: Record<string, any>): Promise<string> {
     // 1. Load template from file

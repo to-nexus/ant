@@ -58,6 +58,32 @@ export class GitHelper {
    * @param git - SimpleGit instance
    * @param userContext - User context containing userId and organizationId
    */
+  /**
+   * Ensure the directory is added to Git's safe.directory config.
+   * 
+   * This is essential for cloud environments where the git process user
+   * may differ from the file owner (causes "dubious ownership" error).
+   * 
+   * Uses global config since this is a security exception that needs
+   * to persist across git commands.
+   * 
+   * @param targetPath - The absolute path to the git repository
+   */
+  static async ensureSafeDirectory(targetPath: string): Promise<void> {
+    try {
+      const git = simpleGit();
+      
+      // Add the directory to safe.directory (global config)
+      // This command is idempotent - adding the same path multiple times is safe
+      await git.raw(['config', '--global', '--add', 'safe.directory', targetPath]);
+      
+      logger.info(`Added to safe.directory`, { component: 'GitHelper' }, { path: targetPath });
+    } catch (error) {
+      logger.warn(`Failed to add safe.directory`, { component: 'GitHelper' }, { path: targetPath, error });
+      // Don't throw - this is a best-effort operation, but log for debugging
+    }
+  }
+
   static async ensureUserConfig(git: SimpleGit, userContext: UserContext): Promise<void> {
     try {
       // Check if user.email is already configured (local or global)

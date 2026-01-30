@@ -183,6 +183,9 @@ export function useFeatureBranchManager(
           
           if (!result.success) {
             console.error('[useFeatureBranchManager] Branch switch failed:', result.error);
+            // ✅ CRITICAL: Mark as processed even on failure to prevent infinite loop
+            // Without this, gitStatus refresh triggers useEffect again → retry → fail → loop
+            lastProcessed.current = operationKey;
             return;
           }
           
@@ -218,6 +221,8 @@ export function useFeatureBranchManager(
           
         } catch (error) {
           console.error('[useFeatureBranchManager] Branch operation error:', error);
+          // ✅ CRITICAL: Mark as processed even on error to prevent infinite loop
+          lastProcessed.current = operationKey;
           throw error;
         } finally {
           setGitStatusPhase(null);

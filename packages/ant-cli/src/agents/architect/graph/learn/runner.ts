@@ -1,7 +1,13 @@
 import { buildLearnGraph } from "./graph";
 import { LearnGraphState } from "./state";
+import { TriageResult } from "../../../common/nodes/triage/types";
 
-export async function runLearnGraph(initial: LearnGraphState) {
+export interface LearnGraphResult {
+  stored: number;
+  triageResult?: TriageResult;
+}
+
+export async function runLearnGraph(initial: LearnGraphState): Promise<LearnGraphResult> {
   const app = buildLearnGraph();
   
   // ✅ Read recursion limit from environment variable
@@ -17,5 +23,8 @@ export async function runLearnGraph(initial: LearnGraphState) {
     recursionLimit: finalLimit  // ✅ LangGraph RunnableConfig uses camelCase (NOT snake_case!)
   }) as LearnGraphState;
   
-  return { stored: state.texts.length };
+  return { 
+    stored: state.texts?.length || 0,
+    triageResult: state.triageResult  // ✅ Include triage result for redirect/blocked handling
+  };
 }

@@ -1,42 +1,178 @@
 /**
  * Job Queue Port
  * 
- * 비동기 Job 처리를 위한 Queue 인터페이스
+ * Interface for job queue management in ant-cli.
+ * Abstracts job execution from the API layer.
+ * 
+ * Implementations:
+ * - LocalJobQueue: Direct process spawn (local mode)
+ * - BullMQJobQueue: Redis-based queue (cloud mode)
+ * 
+ * @see 10-cloud-scalability-design.md Section 3.2.2
  */
 
 import { ExecuteJobParams } from './http';
+import { UserContext } from '../types/user';
+
+// ============================================
+// Job Payload Types (for cloud-ready interface)
+// ============================================
+
+export interface JobPayload {
+  jobId: string;
+  type: 'code' | 'design' | 'learn';
+  agent: 'architect' | 'reviewer' | 'planner' | 'doc';
+  projectId: string;
+  feature: string;
+  featureName: string;  // Alias for feature (used in status tracking)
+  userContext: UserContext;
+  workspacePath?: string;  // For distributed workers
+  
+  // Job configuration
+  mode?: 'generate' | 'refactor' | 'explain';
+  overrideDirective?: string;
+  chatSource?: boolean;
+  enableEvaluation?: boolean;
+  inputFile?: string;
+  
+  // Queue management
+  priority?: number;
+  
+  // Resume support
+  isResume?: boolean;
+  originalJobId?: string;
+}
+
+// ============================================
+// Job Progress Types
+// ============================================
+
+export interface JobProgress {
+  jobId: string;
+  phase: 'pending' | 'starting' | 'running' | 'completing' | 'completed' | 'failed' | 'paused';
+  step?: string;         // Current step name
+  progress?: number;     // Progress percentage (0-100)
+  message?: string;
+  
+  // Task progress
+  currentTask?: string;
+  completedTaskCount?: number;
+  totalTaskCount?: number;
+  
+  // Recursion tracking
+  recursionCount?: number;
+  recursionLimit?: number;
+  
+  // Timestamps
+  timestamp?: string;
+}
+
+// ============================================
+// Job Execution Result Types
+// ============================================
+
+export interface JobExecutionResult {
+  jobId: string;
+  success: boolean;
+  message?: string;
+  error?: string;
+  output?: any;  // Job output data
+  
+  // Failure details
+  missingMaterials?: string[];
+  
+  // Interruption info (for resumable jobs)
+  interruption?: {
+    reason: string;
+    message: string;
+    canResume: boolean;
+    metadata?: Record<string, any>;
+  };
+  
+  // Timing
+  startedAt?: string;
+  completedAt?: string;
+  durationMs?: number;
+}
+
+// ============================================
+// JobQueuePort Interface (Cloud-ready)
+// ============================================
+
+export type JobQueueStatusValue = 
+  | 'pending' 
+  | 'queued'      // Waiting in queue
+  | 'running' 
+  | 'completed' 
+  | 'failed' 
+  | 'paused' 
+  | 'cancelled'
+  | 'unknown'     // Status cannot be determined
+  | null;
+
+/**
+ * Queue position information for a job
+ */
+export interface QueuePositionInfo {
+  status: JobQueueStatusValue;
+  position: number | null;   // 1-based index, null if not queued
+  totalWaiting: number;      // Total jobs waiting in queue
+  estimatedWaitMs?: number;  // Estimated wait time in milliseconds (optional)
+}
 
 export interface JobQueuePort {
   /**
-   * Job을 queue에 추가
+   * Enqueue a job for execution
    * @returns jobId
    */
-  enqueue(job: JobRequest): Promise<string>;
+  enqueue(payload: JobPayload): Promise<string>;
   
   /**
-   * Queue에서 다음 job 가져오기
+   * Get job queue status
    */
-  dequeue(): Promise<JobRequest | null>;
+  getStatus(jobId: string): Promise<JobQueueStatusValue>;
   
   /**
-   * Job 상태 조회
+   * Get job's position in queue
    */
-  getJobStatus(jobId: string): Promise<JobQueueStatus>;
+  getQueuePosition(jobId: string): Promise<QueuePositionInfo>;
   
   /**
-   * 사용자의 모든 job 조회
+   * Cancel a running or pending job
    */
-  getUserJobs(userId: string): Promise<JobQueueStatus[]>;
+  cancel(jobId: string): Promise<void>;
   
   /**
-   * Job 취소
+   * Register progress callback
+   * @returns Unsubscribe function
    */
-  cancelJob(jobId: string): Promise<void>;
+  onProgress(jobId: string, callback: (progress: JobProgress) => void): () => void;
+  
+  /**
+   * Register completion callback
+   * @returns Unsubscribe function
+   */
+  onComplete(jobId: string, callback: (result: JobExecutionResult) => void): () => void;
+  
+  /**
+   * Get queue statistics
+   */
+  getQueueStats(): Promise<{
+    pending: number;
+    running: number;
+    completed: number;
+    failed: number;
+  }>;
+  
+  /**
+   * Cleanup and close connections
+   */
+  close(): Promise<void>;
 }
 
-// ========================================
-// Types
-// ========================================
+// ============================================
+// Legacy Types (for backward compatibility)
+// ============================================
 
 export interface JobRequest {
   id: string;
@@ -48,7 +184,7 @@ export interface JobRequest {
 }
 
 /**
- * Job Queue Status (별도 타입 - http.JobStatus와 다름)
+ * Job Queue Status (legacy - for existing code compatibility)
  */
 export interface JobQueueStatus {
   id: string;
@@ -61,3 +197,14 @@ export interface JobQueueStatus {
   completedAt?: Date;
 }
 
+/**
+ * Legacy JobQueuePort interface (for backward compatibility with MemoryJobQueue)
+ * @deprecated Use JobQueuePort instead
+ */
+export interface LegacyJobQueuePort {
+  enqueue(job: JobRequest): Promise<string>;
+  dequeue(): Promise<JobRequest | null>;
+  getJobStatus(jobId: string): Promise<JobQueueStatus>;
+  getUserJobs(userId: string): Promise<JobQueueStatus[]>;
+  cancelJob(jobId: string): Promise<void>;
+}

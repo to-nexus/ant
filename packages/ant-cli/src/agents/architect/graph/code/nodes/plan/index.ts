@@ -22,6 +22,7 @@ import { LLMClient } from "../../../../../../core/ports";
 import { ArchitectGraphState, TASK_PRIORITIES } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { extractErrorDetails, createErrorViolation } from "../shared/errorHandler";
+import { ArtifactService } from "../../../../../../infrastructure/workspace/ArtifactService";
 
 // Import submodules
 import { generateTaskKeywords, displayKeywords, logKeywords } from "./keywordGeneration";
@@ -78,8 +79,9 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     resetTaskTokenUsage(state as any);
     
     // Update Kanban UI
+    console.log(`\n🔍 [Plan] Kanban check: _httpJobId=${state._httpJobId}, kanbanUpdate=${!!state.deps?.kanbanUpdate}`);
     if (state._httpJobId && state.deps?.kanbanUpdate) {
-      console.log(`\n🔥 [Plan] Updating Kanban → task started`);
+      console.log(`🔥 [Plan] Updating Kanban → task started`);
       console.log(`   Current: ${nextTask.name}`);
       console.log(`   Remaining in queue: ${state.taskQueue?.size() || 0}\n`);
       
@@ -235,7 +237,6 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     if (!needsUi) return undefined;
     
     // ✅ Split injection: Use task.uiSections if available
-    const { ArtifactService } = require('../../../../../../infrastructure/workspace/ArtifactService');
     const uiDoc = ArtifactService.getUiDocForTask(state.parsedUiDocs, nextTask.uiSections);
     
     if (uiDoc) {
