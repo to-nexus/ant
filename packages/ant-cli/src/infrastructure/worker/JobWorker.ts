@@ -181,17 +181,10 @@ export class JobWorker {
     const jobCreatedAt = job.timestamp; // BullMQ sets this when job is added
     const queueWaitTime = jobCreatedAt ? receiveTime - jobCreatedAt : 'unknown';
     
-    logger.info(`⏱️ [JobTiming] Job received | enqueuedAt=${enqueuedAtISO} | receivedAt=${receiveTimeISO} | delay=${enqueueToStartDelay}ms | bullmqWait=${queueWaitTime}ms`, {
-      component: 'JobWorker',
-      jobId,
-      projectId: payload.projectId,
-      featureName: payload.featureName
-    });
+    // ✅ Use console.log for timing logs to ensure visibility regardless of LOG_LEVEL
+    console.log(`⏱️ [JobTiming] Job received | jobId=${jobId} | enqueuedAt=${enqueuedAtISO} | receivedAt=${receiveTimeISO} | delay=${enqueueToStartDelay}ms | bullmqWait=${queueWaitTime}ms`);
 
-    logger.info(`Processing job: ${jobId} (type=${payload.type}, project=${payload.projectId})`, {
-      component: 'JobWorker',
-      jobId
-    });
+    console.log(`[JobWorker] Processing job: ${jobId} (type=${payload.type}, project=${payload.projectId})`);
 
     try {
       // Update status to running
@@ -211,10 +204,8 @@ export class JobWorker {
       // ⏱️ DEBUG: Record job execution start time
       const execStartTime = Date.now();
       const totalSetupTime = execStartTime - receiveTime;
-      logger.info(`⏱️ [JobTiming] Job Worker: Starting child process execution | execStartTime=${new Date(execStartTime).toISOString()} | setupTimeMs=${totalSetupTime} | queueWaitTimeMs=${queueWaitTime}`, {
-        component: 'JobWorker',
-        jobId
-      });
+      // ✅ Use console.log for timing logs to ensure visibility regardless of LOG_LEVEL
+      console.log(`⏱️ [JobTiming] Starting child process | jobId=${jobId} | execStartTime=${new Date(execStartTime).toISOString()} | setupTimeMs=${totalSetupTime} | queueWaitTimeMs=${queueWaitTime}`);
 
       // Execute job in child process
       const result = await this.spawnJobProcess(job, payload);
