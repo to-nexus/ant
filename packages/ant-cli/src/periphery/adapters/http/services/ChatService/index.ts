@@ -161,10 +161,15 @@ export class ChatService {
   }
 
   /**
-   * Finalize current streaming message
+   * Finalize current streaming message (async for Cloud mode)
    */
-  finalizeCurrentMessage(projectId: string, featureName: string, cancelled: boolean = false): void {
-    this.messageManager.finalizeCurrentMessage(projectId, featureName, cancelled);
+  async finalizeCurrentMessage(
+    projectId: string, 
+    featureName: string, 
+    cancelled: boolean = false,
+    userContext?: UserContext
+  ): Promise<void> {
+    await this.messageManager.finalizeCurrentMessageAsync(projectId, featureName, cancelled, userContext);
   }
 
   /**
