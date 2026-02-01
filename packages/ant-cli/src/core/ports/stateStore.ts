@@ -58,6 +58,37 @@ export interface JobProjectMapping {
 }
 
 // ============================================
+// Chat Session Types (for Cloud Mode)
+// ============================================
+
+export interface ChatMessageContent {
+  type: string;
+  content: string;
+  metadata?: Record<string, any>;
+}
+
+export interface ChatMessageData {
+  id: string;
+  role: 'user' | 'assistant';
+  contents: ChatMessageContent[];
+  timestamp: string;
+  jobId?: string;
+  isStreaming?: boolean;
+}
+
+export interface ChatSessionData {
+  projectId: string;
+  featureName: string;
+  jobId?: string;
+  messages: ChatMessageData[];
+  userContext?: UserContext;
+  // Streaming state
+  thinkingStartTime?: number;
+  lastThinkingContentIndex?: number;
+  activeFileOperations?: Array<{ filePath: string; contentIndex: number }>;
+}
+
+// ============================================
 // Port Registry Types (from existing portRegistry.ts)
 // ============================================
 
@@ -274,6 +305,41 @@ export interface StateStorePort {
     feature: string,
     type: 'preview' | 'ide'
   ): Promise<void>;
+  
+  // ============================================
+  // Chat Session Management (for Cloud Mode)
+  // ============================================
+  
+  /**
+   * Get chat session
+   * @param sessionKey - Format: "org:user:projectId/featureName"
+   */
+  getChatSession(sessionKey: string): Promise<ChatSessionData | null>;
+  
+  /**
+   * Set chat session
+   */
+  setChatSession(sessionKey: string, session: ChatSessionData): Promise<void>;
+  
+  /**
+   * Delete chat session
+   */
+  deleteChatSession(sessionKey: string): Promise<void>;
+  
+  /**
+   * Get current streaming message for a session
+   */
+  getCurrentMessage(sessionKey: string): Promise<ChatMessageData | null>;
+  
+  /**
+   * Set current streaming message for a session
+   */
+  setCurrentMessage(sessionKey: string, message: ChatMessageData | null): Promise<void>;
+  
+  /**
+   * Check if session has active (streaming) message
+   */
+  hasActiveMessage(sessionKey: string): Promise<boolean>;
   
   // ============================================
   // Pub/Sub (for Cloud Mode real-time updates)

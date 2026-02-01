@@ -48,7 +48,8 @@ export class ChatService {
     // Initialize modules
     this.persistence = new SessionPersistence(workspaceResolver);
     this.broadcaster = new MessageBroadcaster(stateStore);
-    this.sessionManager = new SessionManager(this.persistence, this.broadcaster);
+    // Pass stateStore to SessionManager for Redis-based session management
+    this.sessionManager = new SessionManager(this.persistence, this.broadcaster, stateStore);
     this.contentMerger = new ContentMerger(this.broadcaster);
     this.messageManager = new MessageManager(
       this.sessionManager,
@@ -92,6 +93,13 @@ export class ChatService {
   }
 
   /**
+   * Check if there's an active (streaming) message (async version for Cloud mode)
+   */
+  async hasActiveMessageAsync(projectId: string, featureName: string, userContext?: UserContext): Promise<boolean> {
+    return this.sessionManager.hasActiveMessageAsync(projectId, featureName, userContext);
+  }
+
+  /**
    * Add user message to chat history
    */
   addUserMessage(
@@ -114,6 +122,31 @@ export class ChatService {
     userContext?: UserContext
   ): string {
     return this.messageManager.startAssistantMessage(projectId, featureName, jobId, userContext);
+  }
+
+  /**
+   * Start a new assistant message (async version for Cloud mode)
+   * Uses Redis for cross-Pod consistency
+   */
+  async startAssistantMessageAsync(
+    projectId: string, 
+    featureName: string, 
+    jobId: string, 
+    userContext?: UserContext
+  ): Promise<string> {
+    return this.messageManager.startAssistantMessageAsync(projectId, featureName, jobId, userContext);
+  }
+
+  /**
+   * Ensure there's an active message (for Cloud mode cross-Pod recovery)
+   */
+  async ensureActiveMessageAsync(
+    projectId: string, 
+    featureName: string, 
+    jobId: string,
+    userContext?: UserContext
+  ): Promise<boolean> {
+    return this.messageManager.ensureActiveMessageAsync(projectId, featureName, jobId, userContext);
   }
 
   /**
