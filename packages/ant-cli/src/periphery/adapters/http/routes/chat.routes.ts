@@ -192,17 +192,22 @@ export function createChatRoutes(deps: {
    * POST /projects/:id/features/:feature/chat/finalize-message
    * Finalize current streaming message
    */
-  router.post('/projects/:id/features/:feature/chat/finalize-message', (req: Request, res: Response) => {
+  router.post('/projects/:id/features/:feature/chat/finalize-message', async (req: Request, res: Response) => {
     const projectId = req.params.id;
     const featureName = req.params.feature;
+    const { cancelled, userContext } = req.body;
 
     if (!deps.chatService) {
       res.status(503).json({ error: 'Chat service not available' });
       return;
     }
 
-    deps.chatService.finalizeCurrentMessage(projectId, featureName);
-    res.json({ success: true });
+    try {
+      await deps.chatService.finalizeCurrentMessage(projectId, featureName, cancelled || false, userContext);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to finalize message', details: String(error) });
+    }
   });
 
   /**

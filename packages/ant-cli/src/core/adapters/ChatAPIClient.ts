@@ -477,13 +477,21 @@ export class ChatAPIClient {
   /**
    * Finalize current message
    */
-  async finalizeMessage(): Promise<void> {
+  async finalizeMessage(cancelled: boolean = false): Promise<void> {
     if (!this.enabled) return;
 
     try {
+      // ✅ Include userContext for Redis lookup in Cloud mode
+      const userContext = {
+        userId: process.env.ANT_USER_ID || 'local',
+        organizationId: process.env.ANT_ORGANIZATION_ID || 'local',
+        workspacePath: process.env.ANT_WORKSPACE_PATH || ''
+      };
+
       const response = await fetch(`${this.baseUrl}/finalize-message`, {
         method: 'POST',
-        headers: this.getHeaders()
+        headers: this.getHeaders(),
+        body: JSON.stringify({ cancelled, userContext })
       });
 
       if (!response.ok) {
