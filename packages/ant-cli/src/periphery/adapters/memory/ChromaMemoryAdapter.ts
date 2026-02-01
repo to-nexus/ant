@@ -146,23 +146,34 @@ export class ChromaMemoryAdapter implements MemoryPort {
   ): Promise<QueryResult[]> {
     const type = this.extractCollectionType(options?.where, options?.collectionType);
     const collectionName = getCollectionName(type, project);
+    const queryStart = Date.now();
     
     try {
+      // ⏱️ Collection access timing
+      const collectionStart = Date.now();
       const collection = await client.getOrCreateCollection({ 
         name: collectionName, 
         embeddingFunction: embedder 
       });
+      const collectionTime = Date.now() - collectionStart;
       
       const k = options?.k || 5;
       const where = options?.where;
       const minScore = options?.minScore || 0;
       
-      // Query with metadata filtering
+      // ⏱️ Query timing (includes embedding generation)
+      const chromaQueryStart = Date.now();
       const results = await collection.query({ 
         queryTexts: [query], 
         nResults: k,
         where: where as any  // ChromaDB where clause
       });
+      const chromaQueryTime = Date.now() - chromaQueryStart;
+      
+      const totalTime = Date.now() - queryStart;
+      if (totalTime > 500) {
+        console.log(`⏱️ [ChromaDB] Slow query: collection=${collectionTime}ms, query=${chromaQueryTime}ms, total=${totalTime}ms`);
+      }
       
       const documents = results.documents?.[0] || [];
       const distances = results.distances?.[0] || [];
@@ -187,6 +198,7 @@ export class ChromaMemoryAdapter implements MemoryPort {
       
       return queryResults;
     } catch (error) {
+      console.log(`⏱️ [ChromaDB] Query failed after ${Date.now() - queryStart}ms: ${error}`);
       return [];
     }
   }

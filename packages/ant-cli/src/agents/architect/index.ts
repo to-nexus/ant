@@ -95,7 +95,10 @@ export async function architectAgent(
   }
   
   // 3. Retrieve long-term knowledge from Vector DB
+  const vectorDbStartTime = Date.now();
+  console.log(`⏱️ [VectorDB] Starting retrieval...`);
   const vectorMemory = await retrieve(job, project, featureFolder, deps?.memory ? { memory: deps.memory } : undefined);
+  console.log(`⏱️ [VectorDB] Completed in ${Date.now() - vectorDbStartTime}ms`);
   
   // 4. Detect user language from input (directive > spec)
   // ✅ Job-level language detection: each job can have different language

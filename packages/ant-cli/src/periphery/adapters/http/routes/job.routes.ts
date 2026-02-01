@@ -40,9 +40,6 @@ export function createJobRoutes(deps: {
       const featureName = req.params.feature;
       const { task: jobType, agent = 'architect', enableEvaluation, overrideDirective, chatSource } = req.body;
       
-      console.log(`\n📨 [JobRoute] POST /projects/${projectId}/features/${featureName}/execute [${requestReceivedAt}]`);
-      console.log(`   Agent: ${agent}, jobType: ${jobType}`);
-      
       // ✅ Check if this feature already has a running job
       const featureKey = `${projectId}/${featureName}`;
       let existingJobId: string | undefined;
@@ -58,7 +55,6 @@ export function createJobRoutes(deps: {
       }
       
       if (existingJobId) {
-        console.log(`   ⚠️  Job already running for feature ${featureKey}: ${existingJobId}`);
         return res.status(409).json({ 
           error: `A job is already running for this feature. Please wait for it to complete or stop it first.`,
           existingJobId,
@@ -66,11 +62,8 @@ export function createJobRoutes(deps: {
         });
       }
       
-      console.log(`   ✅ No running job found for feature ${featureKey}, proceeding...`);
-      
       // ✅ Build context for WorkspaceResolver (supports query + header + auth)
       const userContext = extractUserContext(req);
-      
       
       // ✅ Use WorkspaceResolver to get proper path
       // ✅ Only set inputFile if NOT using override directive (file-based job)
@@ -84,19 +77,19 @@ export function createJobRoutes(deps: {
         feature: featureName,
         inputFile,
         enableEvaluation,
-        overrideDirective,  // ✅ Chat input as directive
-        chatSource,         // ✅ Flag for Chat SSE
-        userContext         // ✅ Pass user context
+        overrideDirective,
+        chatSource,
+        userContext
       };
       
-      console.log(`   📦 Calling deps.executeJob with params:`, params);
+      // ⏱️ Job timing log
       const enqueuedAt = new Date().toISOString();
       const result = await deps.executeJob(params);
-      const respondedAt = new Date().toISOString();
-      console.log(`   ✅ Result:`, result, `[enqueuedAt: ${enqueuedAt}, respondedAt: ${respondedAt}]`);
+      console.log(`⏱️ [JobRoute] ${projectId}/${featureName} | jobId=${result.jobId} | requestAt=${requestReceivedAt} | enqueuedAt=${enqueuedAt}`);
+      
       res.json(result);
     } catch (error: any) {
-      console.error(`   ❌ Error:`, error.message);
+      console.error(`❌ [JobRoute] Error: ${error.message}`);
       res.status(500).json({ error: error.message });
     }
   });
