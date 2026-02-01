@@ -240,13 +240,73 @@ export class MessageManager {
 
   /**
    * Finalize current streaming message
+   * Sync version - tries local session first
    */
   finalizeCurrentMessage(projectId: string, featureName: string, cancelled: boolean = false): void {
     const session = this.sessionManager.getSession(projectId, featureName);
     
     if (!session || !session.currentMessage) {
+      logger.warn(`No current message to finalize (sync): ${projectId}/${featureName}`, { 
+        component: 'MessageManager' 
+      });
       return;
     }
+
+    this.doFinalizeMessage(projectId, featureName, session, cancelled);
+  }
+
+  /**
+   * Finalize current streaming message (async version for Cloud mode)
+   * Recovers currentMessage from Redis if not in local session
+   */
+  async finalizeCurrentMessageAsync(
+    projectId: string, 
+    featureName: string, 
+    cancelled: boolean = false,
+    userContext?: UserContext
+  ): Promise<void> {
+    let session = this.sessionManager.getSession(projectId, featureName);
+    
+    // Try to recover currentMessage from Redis if not in local session
+    if (!session?.currentMessage) {
+      const redisMessage = await this.sessionManager.getCurrentMessageAsync(
+        projectId, featureName, userContext
+      );
+      
+      if (redisMessage) {
+        session = this.sessionManager.getOrCreateSession(projectId, featureName, redisMessage.jobId, userContext);
+        session.currentMessage = redisMessage;
+        
+        logger.info(`Recovered currentMessage from Redis for finalize: ${projectId}/${featureName} (${redisMessage.id})`, { 
+          component: 'MessageManager'
+        });
+      }
+    }
+    
+    if (!session || !session.currentMessage) {
+      logger.warn(`No current message to finalize (async): ${projectId}/${featureName}`, { 
+        component: 'MessageManager' 
+      });
+      return;
+    }
+
+    this.doFinalizeMessage(projectId, featureName, session, cancelled);
+  }
+
+  /**
+   * Internal: Actually finalize the message
+   */
+  private doFinalizeMessage(
+    projectId: string, 
+    featureName: string, 
+    session: ChatSession, 
+    cancelled: boolean
+  ): void {
+    if (!session.currentMessage) {
+      return;
+    }
+
+    const messageId = session.currentMessage.id;
 
     // Finalize content (thinking blocks, in-progress work, file operations)
     this.contentMerger.finalizeContent(projectId, featureName, session, cancelled);
@@ -270,7 +330,7 @@ export class MessageManager {
     // Broadcast message complete
     this.broadcaster.broadcast(projectId, featureName, {
       type: 'message_complete',
-      messageId: session.currentMessage.id
+      messageId
     }, session.userContext);
 
     session.currentMessage = undefined;

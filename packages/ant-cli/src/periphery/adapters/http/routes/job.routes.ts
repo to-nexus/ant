@@ -34,12 +34,13 @@ export function createJobRoutes(deps: {
   
   // Execute task for a specific feature
   router.post('/projects/:id/features/:feature/execute', async (req: Request, res: Response) => {
+    const requestReceivedAt = new Date().toISOString();
     try {
       const projectId = req.params.id;
       const featureName = req.params.feature;
       const { task: jobType, agent = 'architect', enableEvaluation, overrideDirective, chatSource } = req.body;
       
-      console.log(`\n📨 [JobRoute] POST /projects/${projectId}/features/${featureName}/execute`);
+      console.log(`\n📨 [JobRoute] POST /projects/${projectId}/features/${featureName}/execute [${requestReceivedAt}]`);
       console.log(`   Agent: ${agent}, jobType: ${jobType}`);
       
       // ✅ Check if this feature already has a running job
@@ -89,8 +90,10 @@ export function createJobRoutes(deps: {
       };
       
       console.log(`   📦 Calling deps.executeJob with params:`, params);
+      const enqueuedAt = new Date().toISOString();
       const result = await deps.executeJob(params);
-      console.log(`   ✅ Result:`, result);
+      const respondedAt = new Date().toISOString();
+      console.log(`   ✅ Result:`, result, `[enqueuedAt: ${enqueuedAt}, respondedAt: ${respondedAt}]`);
       res.json(result);
     } catch (error: any) {
       console.error(`   ❌ Error:`, error.message);
