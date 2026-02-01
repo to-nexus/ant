@@ -396,17 +396,32 @@ src/infrastructure/state/
 
 ```
 # Job Status
-job:{jobId}:status     → JSON { status, projectId, featureName, workspacePath, projectPath, featurePath, ... }
-job:{jobId}:logs       → List of log entries
+ant:job:status:{jobId}     → JSON { status, projectId, featureName, workspacePath, projectPath, featurePath, ... }
+ant:job:logs:{jobId}       → List of log entries
+ant:job:taskQueue:{jobId}  → JSON { currentTask, queue, completedTasks, ... }
+ant:job:mapping:{jobId}    → JSON { projectId, featureName, jobType, userContext }
+ant:job:userStopped:{jobId} → "1" (marker for user-stopped jobs)
+
+# Chat Sessions (CRITICAL for Cloud Mode)
+ant:chat:session:{sessionKey}        → JSON { projectId, featureName, messages[], userContext, ... }
+ant:chat:currentMessage:{sessionKey} → JSON { id, role, contents[], isStreaming, ... }
+
+# Session Key Format: "{org}:{user}:{projectId}/{featureName}"
+# Example: "to.nexus:probe:my-app/skeleton"
 
 # Port Registry
-devserver:{serverKey}  → JSON { host, port, registeredAt, ... }
-ide:{serverKey}        → JSON { host, port, registeredAt, ... }
+ant:preview:{serverKey}  → JSON { host, port, registeredAt, ... }
+ant:ide:{serverKey}      → JSON { host, port, registeredAt, ... }
 
 # Pub/Sub Channels
-job:{jobId}:progress   → Progress updates
-devserver:{serverKey}:logs → Dev server log stream
+ant:pubsub:job:{jobId}:progress   → Progress updates
+ant:pubsub:chat:{sessionKey}      → Chat message broadcasts (SSE)
+ant:pubsub:kanban:{projectId}:{featureName} → Kanban updates
 ```
+
+> ⚠️ **CRITICAL**: `ant:chat:currentMessage` is essential for Cloud mode.
+> When streaming LLM responses, requests may hit different API server Pods.
+> This key ensures `currentMessage` is shared across Pods for consistent streaming.
 
 **Workspace structure** (current implementation):
 
@@ -597,6 +612,41 @@ spec:
 
 - `LocalWorkspaceResolver` and `CloudWorkspaceResolver` merged into `UnifiedWorkspaceResolver`
 - Path resolution is now mode-agnostic (uses userContext from auth layer)
+
+### 5.4 Phase 4: ChatService Redis Migration ✅
+
+- `SessionManager` now uses Redis for session storage (was in-memory Map)
+- `currentMessage` stored in Redis for cross-Pod LLM streaming consistency
+- Local cache with 5s TTL for performance optimization
+- File persistence retained as backup (not primary storage)
+
+### 5.5 Lessons Learned (Why ChatService Was Missed)
+
+**Root Cause**: The original design focused on **Job State** but overlooked **Chat Session State**.
+
+| Component | Original Design | Actual Need |
+|-----------|----------------|-------------|
+| Job Status | ✅ Redis | ✅ Redis |
+| Task Queue | ✅ Redis | ✅ Redis |
+| Port Registry | ✅ Redis | ✅ Redis |
+| **Chat Session** | ❌ In-memory Map | ✅ **Redis (missed!)** |
+| **currentMessage** | ❌ In-memory | ✅ **Redis (critical!)** |
+
+**Why It Happened:**
+1. ChatService was seen as "UI concern" - not part of core job infrastructure
+2. LLM streaming was tested on single-Pod local environment - worked fine
+3. `startMessage()` → `sendLLMEvent()` flow wasn't analyzed for multi-Pod
+
+**Symptoms in Production:**
+- `No active message on server, starting new message...` (logs)
+- `No current message to add content to` (logs)
+- Job Worker's HTTP requests hitting different API Pods
+- LLM streaming content being dropped
+
+**Prevention Guidelines:**
+1. **Audit ALL in-memory Maps** when designing distributed systems
+2. **Multi-Pod test** for any request/response flow that spans multiple calls
+3. **Session affinity** analysis for stateful HTTP flows
 
 ### 5.4 Phase 4: Environment Configuration ✅
 
@@ -896,6 +946,38 @@ Only differences:
 | **WorkspaceResolver** | ✅ Done | `UnifiedWorkspaceResolver` |
 | **PreviewOrchestrator** | ✅ Done | `RemotePreviewOrchestrator` (single) |
 | **IDEOrchestrator** | ✅ Done | `LocalIDEOrchestrator` (Docker), `KubernetesIDEOrchestrator` (K8s) |
+| **ChatService Redis** | ✅ Done | `SessionManager` uses Redis for cross-Pod session/message consistency |
+
+### 12.1 Chat Session Architecture (Cloud Mode)
+
+```
+┌─────────────────┐         ┌─────────────────┐         ┌─────────────────┐
+│   API Pod A     │         │   API Pod B     │         │   API Pod C     │
+│   (ChatService) │         │   (ChatService) │         │   (ChatService) │
+│                 │         │                 │         │                 │
+│  LocalCache     │         │  LocalCache     │         │  LocalCache     │
+│  (5s TTL)       │         │  (5s TTL)       │         │  (5s TTL)       │
+└────────┬────────┘         └────────┬────────┘         └────────┬────────┘
+         │                           │                           │
+         └───────────────────────────┼───────────────────────────┘
+                                     │
+                           ┌─────────▼─────────┐
+                           │      Redis        │
+                           │                   │
+                           │ ant:chat:session: │  ← Session + Messages
+                           │ ant:chat:current  │  ← Streaming Message
+                           │ Message:          │
+                           │                   │
+                           │ (Source of Truth) │
+                           └───────────────────┘
+```
+
+**Key Design Decisions:**
+
+1. **Redis is Source of Truth**: All chat session data is stored in Redis
+2. **Local Cache (5s TTL)**: Performance optimization for hot paths
+3. **currentMessage in Redis**: Critical for cross-Pod LLM streaming
+4. **File Persistence**: Backup/recovery only (not primary storage in Cloud mode)
 
 **Local Test Environment**:
 ```bash

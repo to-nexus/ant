@@ -2,6 +2,7 @@
  * MessageManager - Manages chat messages
  * 
  * Handles user/assistant message creation and lifecycle
+ * CLOUD MODE: Uses Redis for cross-Pod consistency of currentMessage
  */
 
 import type { ChatMessage, MessageContent, ChatSession } from './types';
@@ -46,8 +47,11 @@ export class MessageManager {
     
     session.messages.push(userMessage);
     
-    // Save to file
+    // Save to file AND Redis (async)
     this.persistence.saveSession(projectId, featureName, session.messages, userContext);
+    this.sessionManager.saveSessionAsync(projectId, featureName, session, userContext).catch(err => {
+      logger.warn('Failed to save session to Redis', { component: 'MessageManager' }, err);
+    });
     
     // Broadcast new user message
     this.broadcaster.broadcast(projectId, featureName, {
@@ -60,6 +64,7 @@ export class MessageManager {
 
   /**
    * Start a new assistant message (for streaming)
+   * CLOUD MODE: Saves currentMessage to Redis for cross-Pod consistency
    */
   startAssistantMessage(
     projectId: string, 
@@ -71,6 +76,9 @@ export class MessageManager {
     
     // If there's already a current message being streamed, reuse it
     if (session.currentMessage && session.currentMessage.isStreaming) {
+      logger.debug(`Reusing existing streaming message: ${session.currentMessage.id}`, { 
+        component: 'MessageManager'
+      });
       return session.currentMessage.id;
     }
     
@@ -85,6 +93,74 @@ export class MessageManager {
     };
 
     session.currentMessage = newMessage;
+    
+    // ✅ CRITICAL: Save currentMessage to Redis for cross-Pod consistency
+    this.sessionManager.setCurrentMessageAsync(
+      projectId, 
+      featureName, 
+      newMessage, 
+      userContext
+    ).then(() => {
+      logger.debug(`CurrentMessage saved to Redis: ${projectId}/${featureName} (${messageId})`, { 
+        component: 'MessageManager'
+      });
+    }).catch(err => {
+      logger.warn('Failed to save currentMessage to Redis', { component: 'MessageManager' }, err);
+    });
+    
+    // Broadcast message start
+    this.broadcaster.broadcast(projectId, featureName, {
+      type: 'message_start',
+      message: newMessage
+    }, session.userContext);
+
+    return messageId;
+  }
+
+  /**
+   * Start assistant message (async version for Cloud mode)
+   */
+  async startAssistantMessageAsync(
+    projectId: string, 
+    featureName: string, 
+    jobId: string, 
+    userContext?: UserContext
+  ): Promise<string> {
+    const session = await this.sessionManager.getOrCreateSessionAsync(projectId, featureName, jobId, userContext);
+    
+    // Check Redis for existing streaming message (cross-Pod)
+    const existingMessage = await this.sessionManager.getCurrentMessageAsync(
+      projectId, featureName, userContext
+    );
+    
+    if (existingMessage && existingMessage.isStreaming) {
+      logger.debug(`Found existing streaming message in Redis: ${existingMessage.id}`, { 
+        component: 'MessageManager'
+      });
+      
+      // Update local session
+      session.currentMessage = existingMessage;
+      return existingMessage.id;
+    }
+    
+    const messageId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+    const newMessage: ChatMessage = {
+      id: messageId,
+      role: 'assistant',
+      contents: [],
+      timestamp: new Date().toISOString(),
+      jobId,
+      isStreaming: true
+    };
+
+    session.currentMessage = newMessage;
+    
+    // Save to Redis
+    await this.sessionManager.setCurrentMessageAsync(projectId, featureName, newMessage, userContext);
+    
+    logger.debug(`Started new assistant message (async): ${projectId}/${featureName} (${messageId})`, { 
+      component: 'MessageManager'
+    });
     
     // Broadcast message start
     this.broadcaster.broadcast(projectId, featureName, {
@@ -110,7 +186,56 @@ export class MessageManager {
       return -1;
     }
 
-    return this.contentMerger.addContent(projectId, featureName, session, content);
+    const result = this.contentMerger.addContent(projectId, featureName, session, content);
+    
+    // Periodically save currentMessage to Redis for durability (every 10 contents)
+    if (session.currentMessage && session.currentMessage.contents.length % 10 === 0) {
+      this.sessionManager.setCurrentMessageAsync(
+        projectId, featureName, session.currentMessage, session.userContext
+      ).catch(err => {
+        logger.warn('Failed to sync currentMessage to Redis', { component: 'MessageManager' }, err);
+      });
+    }
+    
+    return result;
+  }
+
+  /**
+   * Ensure session has an active message (for Cloud mode cross-Pod recovery)
+   * Call this before addContentToCurrentMessage if message might be on different Pod
+   */
+  async ensureActiveMessageAsync(
+    projectId: string, 
+    featureName: string, 
+    jobId: string,
+    userContext?: UserContext
+  ): Promise<boolean> {
+    // First check local session
+    let session = this.sessionManager.getSession(projectId, featureName);
+    
+    if (session?.currentMessage) {
+      return true;
+    }
+    
+    // Try to recover from Redis (cross-Pod)
+    const redisMessage = await this.sessionManager.getCurrentMessageAsync(
+      projectId, featureName, userContext
+    );
+    
+    if (redisMessage) {
+      // Restore to local session
+      session = this.sessionManager.getOrCreateSession(projectId, featureName, jobId, userContext);
+      session.currentMessage = redisMessage;
+      
+      logger.info(`Recovered currentMessage from Redis (cross-Pod): ${projectId}/${featureName} (${redisMessage.id})`, { 
+        component: 'MessageManager'
+      });
+      
+      return true;
+    }
+    
+    // No active message found
+    return false;
   }
 
   /**
@@ -129,8 +254,18 @@ export class MessageManager {
     session.currentMessage.isStreaming = false;
     session.messages.push(session.currentMessage);
     
-    // Save to file
+    // Save to file AND Redis
     this.persistence.saveSession(projectId, featureName, session.messages, session.userContext);
+    this.sessionManager.saveSessionAsync(projectId, featureName, session, session.userContext).catch(err => {
+      logger.warn('Failed to save session to Redis', { component: 'MessageManager' }, err);
+    });
+    
+    // Clear currentMessage from Redis
+    this.sessionManager.setCurrentMessageAsync(
+      projectId, featureName, null, session.userContext
+    ).catch(err => {
+      logger.warn('Failed to clear currentMessage from Redis', { component: 'MessageManager' }, err);
+    });
     
     // Broadcast message complete
     this.broadcaster.broadcast(projectId, featureName, {
@@ -224,13 +359,3 @@ export class MessageManager {
     return messageId;
   }
 }
-
-
-
-
-
-
-
-
-
-
