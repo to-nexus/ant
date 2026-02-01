@@ -85,8 +85,9 @@ export function createChatRoutes(deps: {
   /**
    * GET /projects/:id/features/:feature/chat/has-active-message
    * Check if there's an active message
+   * CLOUD MODE: Checks Redis for cross-Pod consistency
    */
-  router.get('/projects/:id/features/:feature/chat/has-active-message', (req: Request, res: Response) => {
+  router.get('/projects/:id/features/:feature/chat/has-active-message', async (req: Request, res: Response) => {
     const projectId = req.params.id;
     const featureName = req.params.feature;
     
@@ -95,7 +96,9 @@ export function createChatRoutes(deps: {
       return;
     }
     
-    const hasActive = deps.chatService.hasActiveMessage(projectId, featureName);
+    const userContext = extractUserContext(req);
+    // Use async version for Redis check (Cloud mode cross-Pod consistency)
+    const hasActive = await deps.chatService.hasActiveMessageAsync(projectId, featureName, userContext);
     res.json({ hasActive });
   });
 
@@ -103,8 +106,9 @@ export function createChatRoutes(deps: {
    * POST /projects/:id/features/:feature/chat/start-message
    * Start a new assistant message
    * jobId is optional - if not provided, creates a pending message that will be associated with job later
+   * CLOUD MODE: Saves currentMessage to Redis for cross-Pod consistency
    */
-  router.post('/projects/:id/features/:feature/chat/start-message', (req: Request, res: Response) => {
+  router.post('/projects/:id/features/:feature/chat/start-message', async (req: Request, res: Response) => {
     const projectId = req.params.id;
     const featureName = req.params.feature;
     const { jobId } = req.body;
@@ -118,7 +122,8 @@ export function createChatRoutes(deps: {
     
     // jobId is now optional - use pending jobId if not provided
     const actualJobId = jobId || `pending-${Date.now()}`;
-    const messageId = deps.chatService.startAssistantMessage(projectId, featureName, actualJobId, userContext);
+    // Use async version for Redis storage (Cloud mode cross-Pod consistency)
+    const messageId = await deps.chatService.startAssistantMessageAsync(projectId, featureName, actualJobId, userContext);
     res.json({ messageId, pendingJobId: jobId ? undefined : actualJobId });
   });
 
@@ -126,11 +131,12 @@ export function createChatRoutes(deps: {
    * POST /projects/:id/features/:feature/chat/add-content
    * Add content to current message (for Chat Status Messages)
    * Returns the contentIndex for merging
+   * CLOUD MODE: Recovers currentMessage from Redis if missing (cross-Pod)
    */
-  router.post('/projects/:id/features/:feature/chat/add-content', (req: Request, res: Response) => {
+  router.post('/projects/:id/features/:feature/chat/add-content', async (req: Request, res: Response) => {
     const projectId = req.params.id;
     const featureName = req.params.feature;
-    const { content } = req.body;
+    const { content, jobId } = req.body;
 
     if (!deps.chatService) {
       res.status(503).json({ error: 'Chat service not available' });
@@ -140,6 +146,19 @@ export function createChatRoutes(deps: {
     if (!content || !content.type) {
       res.status(400).json({ error: 'content with type is required' });
       return;
+    }
+
+    // CLOUD MODE: Ensure active message exists (cross-Pod recovery)
+    // If jobId is provided and no active message, try to recover from Redis
+    if (jobId) {
+      const userContext = extractUserContext(req);
+      const hasActive = await deps.chatService.ensureActiveMessageAsync(
+        projectId, featureName, jobId, userContext
+      );
+      if (!hasActive) {
+        // Start new message if none exists
+        await deps.chatService.startAssistantMessageAsync(projectId, featureName, jobId, userContext);
+      }
     }
 
     const contentIndex = deps.chatService.addContentToCurrentMessage(projectId, featureName, content);

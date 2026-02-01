@@ -24,7 +24,9 @@ import {
   LogEntry,
   TaskQueueSnapshot,
   JobProjectMapping,
-  PortMapping
+  PortMapping,
+  ChatSessionData,
+  ChatMessageData
 } from '../../core/ports/stateStore';
 import { PortRegistryPort } from '../../core/ports/portRegistry';
 import { logger } from '../../utils/logger';
@@ -40,7 +42,10 @@ const KEYS = {
   PREVIEW: 'ant:preview:',
   IDE: 'ant:ide:',
   PREVIEW_LIST: 'ant:previews',
-  IDE_LIST: 'ant:ides'
+  IDE_LIST: 'ant:ides',
+  // Chat session keys
+  CHAT_SESSION: 'ant:chat:session:',
+  CHAT_CURRENT_MESSAGE: 'ant:chat:currentMessage:'
 } as const;
 
 // Default TTLs (in seconds)
@@ -49,7 +54,9 @@ const TTL = {
   JOB_LOGS: 7 * 24 * 60 * 60,    // 7 days
   TASK_QUEUE: 24 * 60 * 60,      // 24 hours
   PORT_MAPPING: 24 * 60 * 60,    // 24 hours
-  USER_STOPPED: 60 * 60          // 1 hour
+  USER_STOPPED: 60 * 60,         // 1 hour
+  CHAT_SESSION: 24 * 60 * 60,    // 24 hours
+  CHAT_CURRENT_MESSAGE: 60 * 60  // 1 hour (streaming message)
 } as const;
 
 export interface RedisStateStoreOptions {
@@ -570,6 +577,69 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
         }
       }
     };
+  }
+
+  // ============================================
+  // Chat Session Management
+  // ============================================
+
+  async getChatSession(sessionKey: string): Promise<ChatSessionData | null> {
+    const data = await this.redis.get(this.key(KEYS.CHAT_SESSION + sessionKey));
+    
+    if (!data) return null;
+    
+    try {
+      return JSON.parse(data) as ChatSessionData;
+    } catch (e) {
+      logger.error(`Failed to parse chat session: ${sessionKey}`, { component: 'RedisStateStore' }, e);
+      return null;
+    }
+  }
+
+  async setChatSession(sessionKey: string, session: ChatSessionData): Promise<void> {
+    await this.redis.setex(
+      this.key(KEYS.CHAT_SESSION + sessionKey),
+      TTL.CHAT_SESSION,
+      JSON.stringify(session)
+    );
+    
+    logger.debug(`Chat session stored: ${sessionKey} (${session.messages?.length || 0} messages)`, { component: 'RedisStateStore' });
+  }
+
+  async deleteChatSession(sessionKey: string): Promise<void> {
+    await this.redis.del(this.key(KEYS.CHAT_SESSION + sessionKey));
+    // Also delete current message if exists
+    await this.redis.del(this.key(KEYS.CHAT_CURRENT_MESSAGE + sessionKey));
+  }
+
+  async getCurrentMessage(sessionKey: string): Promise<ChatMessageData | null> {
+    const data = await this.redis.get(this.key(KEYS.CHAT_CURRENT_MESSAGE + sessionKey));
+    
+    if (!data) return null;
+    
+    try {
+      return JSON.parse(data) as ChatMessageData;
+    } catch (e) {
+      logger.error(`Failed to parse current message: ${sessionKey}`, { component: 'RedisStateStore' }, e);
+      return null;
+    }
+  }
+
+  async setCurrentMessage(sessionKey: string, message: ChatMessageData | null): Promise<void> {
+    const key = this.key(KEYS.CHAT_CURRENT_MESSAGE + sessionKey);
+    
+    if (message === null) {
+      await this.redis.del(key);
+      logger.debug(`Current message cleared: ${sessionKey}`, { component: 'RedisStateStore' });
+    } else {
+      await this.redis.setex(key, TTL.CHAT_CURRENT_MESSAGE, JSON.stringify(message));
+      logger.debug(`Current message stored: ${sessionKey} (${message.id})`, { component: 'RedisStateStore' });
+    }
+  }
+
+  async hasActiveMessage(sessionKey: string): Promise<boolean> {
+    const exists = await this.redis.exists(this.key(KEYS.CHAT_CURRENT_MESSAGE + sessionKey));
+    return exists === 1;
   }
 
   // ============================================
