@@ -207,6 +207,7 @@ function TriageChoiceVariant({ content, messageId }: { content: MessageContent; 
           <div className="flex gap-3 w-full">
           {/* Positive */}
           <button
+            type="button"
             onClick={() => handleSelect(options.positive.action)}
             disabled={isLoading}
             className={`
@@ -228,6 +229,7 @@ function TriageChoiceVariant({ content, messageId }: { content: MessageContent; 
           
           {/* Negative */}
           <button
+            type="button"
             onClick={() => handleSelect(options.negative.action)}
             disabled={isLoading}
             className={`
@@ -403,6 +405,7 @@ function CancelledChoiceVariant({ content, messageId }: { content: MessageConten
         <div className="flex gap-3">
           {/* Resume (Positive) */}
           <button
+            type="button"
             onClick={handleResume}
             disabled={isLoading || isRunning}
             className={`
@@ -427,6 +430,7 @@ function CancelledChoiceVariant({ content, messageId }: { content: MessageConten
           
           {/* Dismiss (Negative) */}
           <button
+            type="button"
             onClick={handleDismiss}
             disabled={isLoading}
             className={`

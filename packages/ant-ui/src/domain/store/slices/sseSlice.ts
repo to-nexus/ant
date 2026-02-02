@@ -2,6 +2,7 @@ import { StateCreator } from 'zustand';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
 import type { ChatMessage } from '@/domain/models/chat';
 import type { KanbanData } from '@/infrastructure/http/api';
+import { removeFromStorage, STORAGE_KEYS } from '../storage';
 
 export interface SSEState {
   kanban: KanbanData;
@@ -104,6 +105,13 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
         currentMode: undefined,
         jobStartPending: false  // ✅ Clear pending flag on job completion
       });
+      
+      // ✅ CRITICAL: Clear localStorage to prevent useJobRestoration from restoring completed job
+      // This fixes the bug where switching to IDE tab and back would "restore" a completed job
+      removeFromStorage(STORAGE_KEYS.RUNNING_TASK);
+      removeFromStorage(STORAGE_KEYS.TASK_START_TIME);
+      removeFromStorage(STORAGE_KEYS.TASK_MODE);
+      console.log('[Store] 🧹 Cleared localStorage for completed job');
     }
     else if (isJobRunning && !state.isRunning && currentFeatureKey) {
       if (state.userStoppedJobId === kanbanJobId) {
@@ -148,6 +156,16 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
       }
       
       set(newState);
+      
+      // ✅ CRITICAL: Also clear localStorage when SSE says no job is running
+      // This handles edge cases where previous branches didn't trigger
+      if (!currentFeatureIsRunning && !state.isRunning) {
+        // Both SSE and local state agree: no job running
+        // Ensure localStorage is clean to prevent useJobRestoration issues
+        removeFromStorage(STORAGE_KEYS.RUNNING_TASK);
+        removeFromStorage(STORAGE_KEYS.TASK_START_TIME);
+        removeFromStorage(STORAGE_KEYS.TASK_MODE);
+      }
     }
   },
   
