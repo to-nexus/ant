@@ -55,6 +55,9 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       const referer = req.headers.referer || req.headers.referrer;
       // Ensure referer is a string (can be string[] in Express types)
       const refererStr = Array.isArray(referer) ? referer[0] : referer;
+      
+      logger.warn(`[Preview] Referer routing: path=${req.path}, referer=${refererStr || 'none'}`, { component: 'PreviewProxy' });
+      
       if (refererStr) {
         // Extract serverKey from referer: .../api/preview/tenantId:userId:projectId:feature/...
         // Also support legacy /preview/ for backward compatibility
