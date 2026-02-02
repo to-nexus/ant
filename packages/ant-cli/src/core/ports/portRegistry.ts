@@ -57,6 +57,17 @@ export interface PortRegistryPort {
   ): Promise<number | null>;
 
   /**
+   * Get preview mapping (includes host)
+   * @returns PortMapping or null if not found
+   */
+  getPreview(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    feature: string
+  ): Promise<PortMapping | null>;
+
+  /**
    * Get IDE port (IDE is project-level, no feature)
    */
   getIDEPort(

@@ -58,6 +58,11 @@ class WorkerLocalPortRegistry implements PortRegistryPort {
     return this.previews.get(key)?.port ?? null;
   }
 
+  async getPreview(tenantId: string, userId: string, projectId: string, feature: string): Promise<PortMapping | null> {
+    const key = this.createKey(tenantId, userId, projectId, feature);
+    return this.previews.get(key) ?? null;
+  }
+
   async getIDEPort(tenantId: string, userId: string, projectId: string): Promise<number | null> {
     // IDE uses project-level key (no feature)
     const key = this.createIDEKey(tenantId, userId, projectId);
