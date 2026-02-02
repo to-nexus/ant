@@ -24,7 +24,6 @@ export class ContentMerger {
     content: MessageContent
   ): number {
     if (!session.currentMessage) {
-      logger.warn('No current message to add content to', { component: 'ContentMerger', projectId, featureName });
       return -1;
     }
 
