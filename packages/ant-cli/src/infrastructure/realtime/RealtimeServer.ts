@@ -190,10 +190,10 @@ export class RealtimeServer {
       taskQueueSnapshots: new Map()
     });
     
-    // Mount SSE routes under /api
-    this.app.use('/api', sseRoutes);
+    // Mount SSE routes under /realtime (consistent path for dev & prod)
+    this.app.use('/realtime', sseRoutes);
     
-    logger.info('SSE routes mounted at /api', { component: 'RealtimeServer' });
+    logger.info('SSE routes mounted at /realtime', { component: 'RealtimeServer' });
   }
   
   /**
