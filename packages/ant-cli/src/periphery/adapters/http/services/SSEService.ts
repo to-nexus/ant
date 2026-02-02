@@ -18,6 +18,7 @@ export interface SSEMessage {
 // Redis Pub/Sub channels for cross-instance broadcasting
 export const SSE_BROADCAST_CHANNEL = 'sse:broadcast';
 export const SSE_WORKFLOW_CHANNEL = 'sse:workflow';
+export const SSE_PREVIEW_CHANNEL = 'sse:preview';
 
 export interface SSEBroadcastMessage {
   projectId: string;
@@ -85,6 +86,13 @@ export class SSEService {
         }
       });
       logger.info('Subscribed to sse:workflow channel', { component: 'SSEService' });
+      
+      // 4. Subscribe to preview broadcast (from PreviewService.broadcastStatus)
+      await stateStore.subscribe(SSE_PREVIEW_CHANNEL, (message: SSEBroadcastMessage) => {
+        const { projectId, featureName, data, userContext } = message;
+        this.broadcastLocal(projectId, featureName, 'preview', data, userContext);
+      });
+      logger.info('Subscribed to sse:preview channel', { component: 'SSEService' });
       
       logger.info('All SSE broadcast subscriptions ready', { component: 'SSEService' });
     } catch (error) {
@@ -217,9 +225,8 @@ export class SSEService {
     }
     
     if (!clients || clients.size === 0) {
-      logger.warn(`[SSE Broadcast] No clients found for ${projectId}/${featureName} (tried key: ${key})`, { 
-        component: 'SSEService', 
-        allKeys: Array.from(this.clients.keys())
+      logger.debug(`[SSE Broadcast] No clients found for ${projectId}/${featureName} (key: ${key}, allKeys: ${Array.from(this.clients.keys()).join(', ')})`, { 
+        component: 'SSEService'
       });
       return;
     }

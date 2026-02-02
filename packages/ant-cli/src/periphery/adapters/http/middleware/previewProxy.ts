@@ -56,8 +56,9 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       // Ensure referer is a string (can be string[] in Express types)
       const refererStr = Array.isArray(referer) ? referer[0] : referer;
       if (refererStr) {
-        // Extract serverKey from referer: .../preview/tenantId:userId:projectId:feature/...
-        const refererMatch = refererStr.match(/\/preview\/([^/]+)/);
+        // Extract serverKey from referer: .../api/preview/tenantId:userId:projectId:feature/...
+        // Also support legacy /preview/ for backward compatibility
+        const refererMatch = refererStr.match(/\/(?:api\/)?preview\/([^/]+)/);
         if (refererMatch) {
           const serverKey = refererMatch[1];
           const parsed = parsePreviewKey(serverKey);
@@ -65,17 +66,18 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
             const { tenantId, userId, projectId, feature } = parsed;
             
             try {
-              const port = await portRegistry.getPreviewPort(tenantId, userId, projectId, feature);
-              if (port) {
-                // Proxy request to the correct preview server
-                const targetUrl = `http://localhost:${port}${req.url}`;
-                logger.debug(`Routing ${req.path} to port ${port} (from referer)`, { component: 'PreviewProxy' });
+              const mapping = await portRegistry.getPreview(tenantId, userId, projectId, feature);
+              if (mapping) {
+                // Proxy request to the correct preview server (use registered host)
+                const host = mapping.host || 'localhost';
+                const targetUrl = `http://${host}:${mapping.port}${req.url}`;
+                logger.warn(`[Preview] Routing ${req.path} to ${host}:${mapping.port} (from referer)`, { component: 'PreviewProxy' });
                 
                 const response = await fetch(targetUrl, {
                   method: req.method,
                   headers: {
                     ...req.headers,
-                    host: `localhost:${port}`,
+                    host: `${host}:${mapping.port}`,
                     'accept-encoding': 'identity',
                   } as any,
                 });
@@ -145,13 +147,14 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
     
     logger.debug(`Parsed serverKey: tenant=${tenantId}, user=${userId}, project=${projectId}, feature=${feature}`, { component: 'PreviewProxy' });
     
-    // Lookup entry (frontend) port from registry
-    let port: number | null;
+    // Lookup entry (frontend) port and host from registry
+    let port: number;
+    let previewHost: string;
     try {
-      port = await portRegistry.getPreviewPort(tenantId, userId, projectId, feature);
+      const mapping = await portRegistry.getPreview(tenantId, userId, projectId, feature);
       
-      if (!port) {
-        logger.warn(`No port found for ${serverKey}`, { component: 'PreviewProxy' });
+      if (!mapping) {
+        logger.warn(`No preview found for ${serverKey}`, { component: 'PreviewProxy' });
         res.status(404).json({
           error: 'Preview not found',
           message: `No preview running for ${serverKey}`,
@@ -159,7 +162,9 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
         });
         return;
       }
-      logger.warn(`[Preview] Port found: ${port} for ${serverKey}`, { component: 'PreviewProxy' });
+      port = mapping.port;
+      previewHost = mapping.host || 'localhost';
+      logger.warn(`[Preview] Found: ${serverKey} -> ${previewHost}:${port}`, { component: 'PreviewProxy' });
       
       // Update last access time
       await portRegistry.updateLastAccess(tenantId, userId, projectId, feature, 'preview');
@@ -172,8 +177,6 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       });
       return;
     }
-    
-    logger.debug(`Proxy to localhost:${port}`, { component: 'PreviewProxy' });
     
     // ✅ Strip /preview/:serverKey from path for Vite (handle accidental double-prefix)
     const prefix = `${pathPrefix}/${serverKey}`;
@@ -204,8 +207,8 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       }
     }
 
-    const targetUrl = `http://localhost:${port}${targetPath}`;
-    const effectiveTargetUrl = `http://localhost:${targetPort}${targetPath}`;
+    const targetUrl = `http://${previewHost}:${port}${targetPath}`;
+    const effectiveTargetUrl = `http://${previewHost}:${targetPort}${targetPath}`;
     logger.warn(`[Preview] Target: ${effectiveTargetUrl}`, { component: 'PreviewProxy' });
     
     try {

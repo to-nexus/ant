@@ -100,6 +100,19 @@ export class RedisPortRegistry implements PortRegistryPort {
     projectId: string,
     feature: string
   ): Promise<number | null> {
+    const mapping = await this.getPreview(tenantId, userId, projectId, feature);
+    return mapping?.port ?? null;
+  }
+
+  /**
+   * Get preview mapping (includes host)
+   */
+  async getPreview(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    feature: string
+  ): Promise<PortMapping | null> {
     const key = this.createKey(tenantId, userId, projectId, feature);
     const data = await this.redis.hget('previews', key);
     
@@ -113,7 +126,7 @@ export class RedisPortRegistry implements PortRegistryPort {
     mapping.lastAccessedAt = new Date();
     await this.redis.hset('previews', key, JSON.stringify(mapping));
     
-    return mapping.port;
+    return mapping;
   }
   
   /**
