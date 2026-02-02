@@ -69,11 +69,10 @@ export function createWorkflowRoutes(deps: {
    * - 200: WorkflowRealtimeState
    * - 404: Job state not found
    */
-  router.get('/jobs/:jobId/workflow/state', (req: Request, res: Response) => {
+  router.get('/jobs/:jobId/workflow/state', async (req: Request, res: Response) => {
     const { jobId } = req.params;
     
-    
-    const state = deps.workflowStateService.getState(jobId);
+    const state = await deps.workflowStateService.getState(jobId);
     
     if (!state) {
       res.status(404).json({
@@ -83,13 +82,8 @@ export function createWorkflowRoutes(deps: {
       return;
     }
     
-    // Set을 Array로 변환하여 JSON 직렬화
-    const serializedState = {
-      ...state,
-      activeActors: Array.from(state.activeActors)
-    };
-    
-    res.json(serializedState);
+    // activeActors is already an array (serialized for Redis)
+    res.json(state);
   });
   
   // Note: /jobs/:jobId/workflow/stream is now handled by sseRoutes.ts (unified SSE)
@@ -111,7 +105,7 @@ export function createWorkflowRoutes(deps: {
    * - 200: { success: true }
    * - 400: { error: 'Invalid action' }
    */
-  router.post('/jobs/:jobId/workflow/update', (req: Request, res: Response) => {
+  router.post('/jobs/:jobId/workflow/update', async (req: Request, res: Response) => {
     const { jobId } = req.params;
     const { action, nodeId, actorId, taskInfo, llmInfo } = req.body;
     
@@ -122,7 +116,7 @@ export function createWorkflowRoutes(deps: {
             res.status(400).json({ error: 'nodeId required for enterNode' });
             return;
           }
-          deps.workflowStateService.enterNode(jobId, nodeId, taskInfo, llmInfo);
+          await deps.workflowStateService.enterNode(jobId, nodeId, taskInfo, llmInfo);
           break;
         
         case 'exitNode':
@@ -130,7 +124,7 @@ export function createWorkflowRoutes(deps: {
             res.status(400).json({ error: 'nodeId required for exitNode' });
             return;
           }
-          deps.workflowStateService.exitNode(jobId, nodeId);
+          await deps.workflowStateService.exitNode(jobId, nodeId);
           break;
         
         case 'startActor':
@@ -138,7 +132,7 @@ export function createWorkflowRoutes(deps: {
             res.status(400).json({ error: 'actorId required for startActor' });
             return;
           }
-          deps.workflowStateService.startActorInteraction(jobId, actorId);
+          await deps.workflowStateService.startActorInteraction(jobId, actorId);
           break;
         
         case 'endActor':
@@ -146,11 +140,11 @@ export function createWorkflowRoutes(deps: {
             res.status(400).json({ error: 'actorId required for endActor' });
             return;
           }
-          deps.workflowStateService.endActorInteraction(jobId, actorId);
+          await deps.workflowStateService.endActorInteraction(jobId, actorId);
           break;
         
         case 'endJob':
-          deps.workflowStateService.endJob(jobId);
+          await deps.workflowStateService.endJob(jobId);
           break;
         
         default:

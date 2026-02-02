@@ -6,6 +6,10 @@ import { UserContext } from '../../../../../core/types/user';
 import { logger } from '../../../../../utils/logger';
 import { JobStateTracker } from '../managers/JobStateTracker';
 import { ServerDependencies } from '../types';
+import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
+
+// Redis Pub/Sub channel for SSE broadcast (received by Realtime Server)
+const SSE_BROADCAST_CHANNEL = 'sse:broadcast';
 
 /**
  * JobCleanupManager
@@ -65,7 +69,7 @@ export class JobCleanupManager {
     const jobType = mapping?.jobType || explicitJobType || (jobStatus?.task as 'design' | 'code' | 'learn') || 'code';
     
     // End workflow tracking
-    this.deps.workflowStateService.endJob(jobId);
+    await this.deps.workflowStateService.endJob(jobId);
     
     // Finalize any active chat message
     if (mapping && this.deps.chatService) {
@@ -226,13 +230,15 @@ export class JobCleanupManager {
         userContext
       );
       
-      this.deps.sseService.broadcast(
-        mapping.projectId, 
-        mapping.featureName, 
-        'kanban', 
-        kanbanData, 
+      // Broadcast via Redis Pub/Sub → Realtime Server → SSE
+      const stateStore = getInfrastructureFactory().getStateStore();
+      await stateStore.publish(SSE_BROADCAST_CHANNEL, {
+        projectId: mapping.projectId,
+        featureName: mapping.featureName,
+        type: 'kanban',
+        data: kanbanData,
         userContext
-      );
+      });
       
       // Clear live data AFTER broadcast
       this.stateTracker.cleanup(jobId);

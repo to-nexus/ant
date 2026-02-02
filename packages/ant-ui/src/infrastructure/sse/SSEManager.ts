@@ -25,7 +25,7 @@
  * @see packages/ant-ui/ARCHITECTURE.md
  */
 
-import { getApiBase } from '../http/api';
+import { getRealtimeBase } from '../http/api';
 
 // ✅ NOTE: backend unified SSE stream also emits 'preview' events
 export type SSEMessageType = 'kanban' | 'chat' | 'fileTree' | 'workflow' | 'preview' | 'gitChange';
@@ -169,7 +169,8 @@ class SSEManager {
     }
     
     // ✅ Build URL with user email as query parameter (for EventSource authentication)
-    const url = new URL(`${getApiBase()}/projects/${projectId}/features/${featureName}/stream`);
+    // Uses dedicated Realtime Server for SSE (see 10-cloud-architecture.md)
+    const url = new URL(`${getRealtimeBase()}/projects/${projectId}/features/${featureName}/stream`);
     url.searchParams.set('job', job);
     if (userEmail) {
       url.searchParams.set('user-email', userEmail);
@@ -246,7 +247,8 @@ class SSEManager {
     }
     
     // ✅ Build URL with user email as query parameter
-    const url = new URL(`${getApiBase()}/jobs/${jobId}/workflow/stream`);
+    // Uses dedicated Realtime Server for SSE (see 10-cloud-architecture.md)
+    const url = new URL(`${getRealtimeBase()}/jobs/${jobId}/workflow/stream`);
     if (userEmail) {
       url.searchParams.set('user-email', userEmail);
     }

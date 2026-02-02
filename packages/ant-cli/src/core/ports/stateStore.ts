@@ -50,6 +50,47 @@ export interface TaskQueueSnapshot {
   recursionLimit: number;
 }
 
+// ============================================
+// Workflow State Types (for Cross-Pod Workflow Tracking)
+// ============================================
+
+export interface NodeHistoryEntry {
+  nodeId: string;
+  enteredAt: string;
+  exitedAt?: string;
+  duration?: number;
+}
+
+export interface TaskInfo {
+  id?: string;
+  name: string;
+  type?: string;
+  description?: string;
+  priority?: number;
+}
+
+export interface LLMInfo {
+  provider: string;
+  model: string;
+}
+
+export interface WorkflowRealtimeState {
+  jobId: string;
+  currentNode: string | null;
+  previousNode: string | null;
+  currentTask: TaskInfo | null;
+  llmInfo: LLMInfo | null;
+  startedAt: string;
+  endedAt?: string;
+  isCompleted: boolean;
+  nodeHistory: NodeHistoryEntry[];
+  activeActors: string[];  // Serialized as array for Redis
+  recursionCount?: number;
+  recursionLimit?: number;
+  kanbanCurrentTask?: TaskInfo | null;
+  kanbanUpdate?: boolean;
+}
+
 export interface JobProjectMapping {
   projectId: string;
   featureName: string;
@@ -174,7 +215,26 @@ export interface StateStorePort {
    * Delete task queue snapshot
    */
   deleteTaskQueue(jobId: string): Promise<void>;
+
+  // ============================================
+  // Workflow State Management (Cross-Pod)
+  // ============================================
   
+  /**
+   * Set workflow state
+   */
+  setWorkflowState(jobId: string, state: WorkflowRealtimeState): Promise<void>;
+  
+  /**
+   * Get workflow state
+   */
+  getWorkflowState(jobId: string): Promise<WorkflowRealtimeState | null>;
+  
+  /**
+   * Delete workflow state
+   */
+  deleteWorkflowState(jobId: string): Promise<void>;
+
   // ============================================
   // Job-Project Mapping
   // ============================================

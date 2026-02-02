@@ -2,12 +2,18 @@ import { UserContext } from '../../../../../core/types/user';
 import { logger } from '../../../../../utils/logger';
 import { JobStateTracker } from '../managers/JobStateTracker';
 import { ServerDependencies } from '../types';
+import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
+
+// Redis Pub/Sub channel for SSE broadcast (received by Realtime Server)
+const SSE_BROADCAST_CHANNEL = 'sse:broadcast';
 
 /**
  * WorkflowBridge
  * 
  * Implements WorkflowStateUpdatePort to bridge job execution with workflow visualization.
- * Tracks workflow state and broadcasts updates via SSE.
+ * Tracks workflow state and broadcasts updates via Redis Pub/Sub → Realtime Server → SSE.
+ * 
+ * Cloud-safe: All methods are async and delegate to WorkflowStateService (Redis-backed).
  */
 export class WorkflowBridge {
   constructor(
@@ -18,9 +24,9 @@ export class WorkflowBridge {
   /**
    * Start workflow tracking for a job
    */
-  startJob(jobId: string, llmInfo?: any): void {
+  async startJob(jobId: string, llmInfo?: any): Promise<void> {
     logger.debug(`startJob`, { component: 'WorkflowBridge', jobId }, llmInfo);
-    this.deps.workflowStateService.startJob(jobId, llmInfo);
+    await this.deps.workflowStateService.startJob(jobId, llmInfo);
   }
 
   /**
@@ -55,29 +61,29 @@ export class WorkflowBridge {
   /**
    * Track node exit
    */
-  exitNode(jobId: string, nodeId: string): void {
-    this.deps.workflowStateService.exitNode(jobId, nodeId);
+  async exitNode(jobId: string, nodeId: string): Promise<void> {
+    await this.deps.workflowStateService.exitNode(jobId, nodeId);
   }
 
   /**
    * Track actor interaction start
    */
-  startActorInteraction(jobId: string, actorId: string): void {
-    this.deps.workflowStateService.startActorInteraction(jobId, actorId);
+  async startActorInteraction(jobId: string, actorId: string): Promise<void> {
+    await this.deps.workflowStateService.startActorInteraction(jobId, actorId);
   }
 
   /**
    * Track actor interaction end
    */
-  endActorInteraction(jobId: string, actorId: string): void {
-    this.deps.workflowStateService.endActorInteraction(jobId, actorId);
+  async endActorInteraction(jobId: string, actorId: string): Promise<void> {
+    await this.deps.workflowStateService.endActorInteraction(jobId, actorId);
   }
 
   /**
    * End workflow tracking for a job
    */
-  endJob(jobId: string): void {
-    this.deps.workflowStateService.endJob(jobId);
+  async endJob(jobId: string): Promise<void> {
+    await this.deps.workflowStateService.endJob(jobId);
   }
 
   /**
@@ -98,7 +104,17 @@ export class WorkflowBridge {
       cacheCreationTokens?: number;
     }
   ): Promise<void> {
-    // Update local snapshot
+    // Update task queue in Redis via KanbanService
+    await this.deps.kanbanService.updateTaskQueue(
+      jobId, 
+      currentTask, 
+      queue, 
+      completedTasks || [], 
+      recursionCount, 
+      recursionLimit
+    );
+    
+    // Update local snapshot for backwards compatibility
     this.stateTracker.updateTaskQueue(
       jobId, 
       currentTask, 
@@ -127,13 +143,15 @@ export class WorkflowBridge {
           mapping.userContext
         );
         
-        this.deps.sseService.broadcast(
-          mapping.projectId, 
-          mapping.featureName, 
-          'kanban', 
-          kanbanData, 
-          mapping.userContext
-        );
+        // Broadcast via Redis Pub/Sub → Realtime Server → SSE
+        const stateStore = getInfrastructureFactory().getStateStore();
+        await stateStore.publish(SSE_BROADCAST_CHANNEL, {
+          projectId: mapping.projectId,
+          featureName: mapping.featureName,
+          type: 'kanban',
+          data: kanbanData,
+          userContext: mapping.userContext
+        });
       } catch (error) {
         logger.warn(`Failed to broadcast Kanban update`, { 
           component: 'WorkflowBridge', 
@@ -179,13 +197,7 @@ export class WorkflowBridge {
         userContext
       );
       
-      const clientCount = this.deps.sseService.getClientCount(
-        projectId, 
-        featureName, 
-        userContext
-      );
-      
-      logger.debug(`[FileTreeUpdate] Broadcasting to ${clientCount} client(s)`, { 
+      logger.debug(`[FileTreeUpdate] Broadcasting via Redis Pub/Sub`, { 
         component: 'WorkflowBridge', 
         projectId, 
         featureName, 
@@ -193,13 +205,15 @@ export class WorkflowBridge {
         userId: userContext.userId 
       });
       
-      this.deps.sseService.broadcast(
-        projectId, 
-        featureName, 
-        'fileTree', 
-        { type: 'update', tree: fileTree }, 
+      // Broadcast via Redis Pub/Sub → Realtime Server → SSE
+      const stateStore = getInfrastructureFactory().getStateStore();
+      await stateStore.publish(SSE_BROADCAST_CHANNEL, {
+        projectId,
+        featureName,
+        type: 'fileTree',
+        data: { type: 'update', tree: fileTree },
         userContext
-      );
+      });
     } catch (error) {
       logger.warn(`[FileTreeUpdate] Error`, { 
         component: 'WorkflowBridge', 
