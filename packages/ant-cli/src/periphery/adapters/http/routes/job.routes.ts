@@ -3,34 +3,62 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ExecuteJobParams, LogEntry } from '../../../../core/ports/http';
 import type { InterruptionDetails } from '../../../../core/types';
+import type { StateStorePort, JobStatusData, JobProjectMapping } from '../../../../core/ports/stateStore';
 import { WorkspaceResolver } from '../../../../infrastructure/workspace/WorkspaceResolver';
 import { extractUserContext } from './helpers/userContext';
 
 /**
  * Job execution routes
- * Handles agent job execution, status, logs, and control endpoints
+ * 
+ * Cloud-safe: Uses Redis StateStore for cross-pod job state management
  */
 export function createJobRoutes(deps: {
-  // workspaceRoot: string;  // ❌ 제거 - 사용하지 않음
-  workspaceResolver: WorkspaceResolver;  // ✅ WorkspaceResolver 사용
+  workspaceResolver: WorkspaceResolver;
   executeJob: (params: ExecuteJobParams) => Promise<any>;
-  getJobStatus: (jobId: string) => any;
-  getLogs: (jobId: string) => LogEntry[];
-  logStreams: Map<string, Set<(log: LogEntry) => void>>;
-  sseResponses: Map<string, Set<Response>>;
-  logs: Map<string, LogEntry[]>;
-  childProcesses: Map<string, any>;
-  jobs: Map<string, any>;
-  jobToProject: Map<string, { projectId: string; featureName: string; jobType: 'design' | 'code' | 'learn'; userContext?: any }>;  // ✅ For checking duplicate jobs
-  userStoppedJobs: Set<string>;  // ✅ Track user-stopped jobs
+  getJobStatus: (jobId: string) => any;  // Legacy, will delegate to StateStore
+  getLogs: (jobId: string) => LogEntry[];  // Legacy, will delegate to StateStore
   cleanupJobState: (jobId: string, projectId?: string, featureName?: string, interruptionReason?: InterruptionDetails, explicitJobType?: 'design' | 'code' | 'learn', userContext?: { userId: string; organizationId: string; workspacePath: string }) => Promise<void>;
-  workflowStateService: import('../services/WorkflowStateService').WorkflowStateService;  // ✅ For node tracking
-  chatService: import('../services/ChatService').ChatService;  // ✅ For adding cancelled messages
-  // ✅ Cloud mode support
+  workflowStateService: import('../services/WorkflowStateService').WorkflowStateService;
+  chatService: import('../services/ChatService').ChatService;
   config?: { mode: 'local' | 'cloud' };
-  stateStore?: import('../../../../core/ports/stateStore').StateStorePort;
+  stateStore?: StateStorePort;
 }): Router {
   const router = Router();
+  
+  /**
+   * Helper: Get job status from StateStore (Cloud) or legacy (Local)
+   */
+  async function getJobStatusAsync(jobId: string): Promise<JobStatusData | null> {
+    if (deps.stateStore) {
+      return deps.stateStore.getJobStatus(jobId);
+    }
+    // Legacy fallback (local mode)
+    const status = deps.getJobStatus(jobId);
+    return status || null;
+  }
+  
+  /**
+   * Helper: Get job logs from StateStore (Cloud) or legacy (Local)
+   */
+  async function getJobLogsAsync(jobId: string): Promise<LogEntry[]> {
+    if (deps.stateStore) {
+      return deps.stateStore.getJobLogs(jobId);
+    }
+    // Legacy fallback (local mode)
+    return deps.getLogs(jobId);
+  }
+  
+  /**
+   * Helper: Check if feature already has a running job
+   */
+  async function checkDuplicateJob(projectId: string, featureName: string): Promise<string | undefined> {
+    if (deps.stateStore) {
+      const jobs = await deps.stateStore.listJobsByFeature(projectId, featureName);
+      const running = jobs.find(j => j.status === 'running');
+      return running?.jobId;
+    }
+    return undefined;
+  }
   
   // Execute task for a specific feature
   router.post('/projects/:id/features/:feature/execute', async (req: Request, res: Response) => {
@@ -40,33 +68,19 @@ export function createJobRoutes(deps: {
       const featureName = req.params.feature;
       const { task: jobType, agent = 'architect', enableEvaluation, overrideDirective, chatSource } = req.body;
       
-      // ✅ Check if this feature already has a running job
-      const featureKey = `${projectId}/${featureName}`;
-      let existingJobId: string | undefined;
-      
-      for (const [jobId, mapping] of Array.from(deps.jobToProject?.entries() || [])) {
-        if (mapping.projectId === projectId && mapping.featureName === featureName) {
-          const jobStatus = deps.jobs?.get(jobId);
-          if (jobStatus && jobStatus.status === 'running') {
-            existingJobId = jobId;
-            break;
-          }
-        }
-      }
+      // Check if this feature already has a running job
+      const existingJobId = await checkDuplicateJob(projectId, featureName);
       
       if (existingJobId) {
         return res.status(409).json({ 
           error: `A job is already running for this feature. Please wait for it to complete or stop it first.`,
           existingJobId,
-          featureKey
+          featureKey: `${projectId}/${featureName}`
         });
       }
       
-      // ✅ Build context for WorkspaceResolver (supports query + header + auth)
       const userContext = extractUserContext(req);
       
-      // ✅ Use WorkspaceResolver to get proper path
-      // ✅ Only set inputFile if NOT using override directive (file-based job)
       const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
       const inputFile = overrideDirective ? undefined : path.join(featurePath, `inputs/directives/${jobType}/directive.md`);
       
@@ -82,7 +96,6 @@ export function createJobRoutes(deps: {
         userContext
       };
       
-      // ⏱️ Job timing log
       const enqueuedAt = new Date().toISOString();
       const result = await deps.executeJob(params);
       console.log(`⏱️ [JobRoute] ${projectId}/${featureName} | jobId=${result.jobId} | requestAt=${requestReceivedAt} | enqueuedAt=${enqueuedAt}`);
@@ -95,9 +108,9 @@ export function createJobRoutes(deps: {
   });
   
   // Get task status
-  router.get('/jobs/:jobId/status', (req: Request, res: Response) => {
+  router.get('/jobs/:jobId/status', async (req: Request, res: Response) => {
     const jobId = req.params.jobId;
-    const status = deps.getJobStatus(jobId);
+    const status = await getJobStatusAsync(jobId);
     
     if (!status) {
       res.status(404).json({ error: 'Task not found' });
@@ -108,9 +121,9 @@ export function createJobRoutes(deps: {
   });
   
   // Get task logs (all at once)
-  router.get('/jobs/:jobId/logs', (req: Request, res: Response) => {
+  router.get('/jobs/:jobId/logs', async (req: Request, res: Response) => {
     const jobId = req.params.jobId;
-    const logs = deps.getLogs(jobId);
+    const logs = await getJobLogsAsync(jobId);
     res.json(logs);
   });
   
@@ -119,7 +132,6 @@ export function createJobRoutes(deps: {
     const jobId = req.params.jobId;
     
     try {
-      // Get job queue from infrastructure factory
       const { getInfrastructureFactory } = await import('../../../../infrastructure/adapters/InfrastructureFactory');
       const jobQueue = getInfrastructureFactory().getJobQueue();
       
@@ -139,30 +151,19 @@ export function createJobRoutes(deps: {
   });
 
   // Stop task
-router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
-  const jobId = req.params.jobId;
-  const { projectId, featureName, jobType } = req.body;
-  
-  console.log(`\n🛑 [StopRoute] Stop request received for job: ${jobId}`);
-  console.log(`   Project: ${projectId}, Feature: ${featureName}, JobType: ${jobType || 'not provided'}`);
-  console.log(`   Mode: ${deps.config?.mode || 'local'}`);
-  
-  // ✅ CRITICAL: Resolve userContext consistently (query + header + auth)
-  const userContext = extractUserContext(req);
-  
-  console.log(`   UserContext: ${userContext.userId}@${userContext.organizationId}`);
+  router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
+    const jobId = req.params.jobId;
+    const { projectId, featureName, jobType } = req.body;
     
-    // ✅ CRITICAL: Mark as user-stopped BEFORE killing to prevent exit handler cleanup
-    deps.userStoppedJobs.add(jobId);
-    console.log(`   ✅ Marked job ${jobId} as user-stopped (local)`);
+    console.log(`\n🛑 [StopRoute] Stop request received for job: ${jobId}`);
+    console.log(`   Project: ${projectId}, Feature: ${featureName}, JobType: ${jobType || 'not provided'}`);
+    console.log(`   Mode: ${deps.config?.mode || 'local'}`);
     
-    // ========================================
-    // Cloud Mode: Send stop signal via Redis
-    // ========================================
-    if (deps.config?.mode === 'cloud' && deps.stateStore) {
-      console.log(`   ☁️  Cloud mode: Sending stop signal via Redis...`);
-      
-      // Mark job as stopped in Redis (persistent flag)
+    const userContext = extractUserContext(req);
+    console.log(`   UserContext: ${userContext.userId}@${userContext.organizationId}`);
+    
+    // Mark as user-stopped in Redis (for all modes)
+    if (deps.stateStore) {
       await deps.stateStore.markUserStopped(jobId);
       console.log(`   ✅ Marked job ${jobId} as user-stopped (Redis)`);
       
@@ -175,69 +176,15 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
       });
       console.log(`   ✅ Published stop signal to job:stop channel`);
       
-      // Update local state tracker status
-      const status = deps.jobs.get(jobId);
-      if (status && status.status === 'running') {
-        status.status = 'failed';
-        status.completedAt = new Date().toISOString();
-        status.error = 'Task stopped by user';
-      }
-    } 
-    // ========================================
-    // Local Mode: Kill child process directly
-    // ========================================
-    else {
-      const childProcess = deps.childProcesses.get(jobId);
-      
-      // ✅ CRITICAL: Kill process FIRST, then cleanup, then respond
-      if (childProcess && childProcess.pid) {
-        try {
-          const pid = childProcess.pid;
-          console.log(`   Process PID: ${pid}, killing...`);
-          
-          // Try graceful kill first
-          childProcess.kill('SIGTERM');
-          
-          // Wait a bit for graceful shutdown
-          await new Promise(resolve => setTimeout(resolve, 100));
-          
-          // Forcefully kill if still alive
-          try {
-            process.kill(pid, 0);  // Check if still alive
-            console.log(`   Process still alive, sending SIGKILL...`);
-            process.kill(pid, 'SIGKILL');
-          } catch (checkErr: any) {
-            console.log(`   Process already terminated`);
-          }
-          
-          deps.childProcesses.delete(jobId);
-          
-        } catch (error: any) {
-          console.error(`   ❌ Error killing process:`, error.message);
-          deps.childProcesses.delete(jobId);
-        }
-        
-        // Update task status
-        const status = deps.jobs.get(jobId);
-        if (status && status.status === 'running') {
-          status.status = 'failed';
-          status.completedAt = new Date().toISOString();
-          status.error = 'Task stopped by user';
-          
-          const logEntry: LogEntry = {
-            type: 'stderr',
-            message: '\n🛑 Task stopped by user',
-            timestamp: new Date().toISOString()
-          };
-          deps.logs.get(jobId)?.push(logEntry);
-          deps.logStreams.get(jobId)?.forEach(listener => listener(logEntry));
-        }
-      } else {
-        console.log(`   ⚠️  No running process found for ${jobId}`);
-      }
+      // Update job status in Redis
+      await deps.stateStore.updateJobStatus(jobId, {
+        status: 'failed',
+        completedAt: new Date().toISOString(),
+        error: 'Task stopped by user'
+      });
     }
     
-    // ✅ Clean up task state (move task back to queue, save to session)
+    // Clean up task state
     const interruption: InterruptionDetails = {
       reason: 'user_stopped',
       message: 'Task stopped by user',
@@ -250,11 +197,8 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
     
     console.log(`   Calling cleanupJobState with jobType: ${jobType || 'auto-detect'}...`);
     await deps.cleanupJobState(jobId, projectId, featureName, interruption, jobType, userContext);
-    console.log(`   ✅ cleanupJobState completed (cleanupJobState handles adding cancelled message)`);
+    console.log(`   ✅ cleanupJobState completed`);
     
-    // ✅ cleanupJobState already calls addCancelledMessage, so no need to call it again here
-    
-    // ✅ Send response AFTER everything is done
     res.json({ 
       success: true, 
       message: 'Task stopped successfully',
@@ -266,38 +210,32 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
   
   // Resume existing job
   router.post('/jobs/:jobId/resume', async (req: Request, res: Response) => {
-    const requestedJobId = req.params.jobId;  // ✅ This is just for API compatibility (may be new)
-    const { projectId, featureName, chatSource = true } = req.body;  // ✅ Default to true for UI consistency
+    const requestedJobId = req.params.jobId;
+    const { projectId, featureName, chatSource = true } = req.body;
     
     console.log(`\n🔄 [ResumeRoute] Resume request received`);
     console.log(`   Project: ${projectId}, Feature: ${featureName}`);
     console.log(`   Requested jobId: ${requestedJobId} (will use session's jobId if found)`);
     
-    let sessionJobId: string | null = null;  // ✅ Declare outside try-catch for error handling
+    let sessionJobId: string | null = null;
     
     try {
-      // ✅ Build context for WorkspaceResolver (supports query + header + auth)
       const userContext = extractUserContext(req);
-      
-      // ✅ Use WorkspaceResolver to get proper path
       const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
       
-      // ✅ Find job type and jobId from session files (don't rely on requested jobId)
       const sessionDir = path.join(featurePath, 'sessions');
       
       let jobType: 'design' | 'code' | 'learn' | null = null;
-      
-      // ✅ CRITICAL: Look for interrupted jobs in session files
       let sessionData: any = null;
+      
       for (const type of ['design', 'code', 'learn'] as const) {
         const sessionPath = path.join(sessionDir, `${type}.json`);
         if (fs.existsSync(sessionPath)) {
           const data = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
-          // ✅ Check for interrupted job (has jobId and interruption)
           if (data.state?.jobId && data.state?.interruption) {
             jobType = type;
             sessionJobId = data.state.jobId;
-            sessionData = data;  // ✅ Save session data for later use
+            sessionData = data;
             console.log(`   Found interrupted job in ${type}.json`);
             console.log(`   Session jobId: ${sessionJobId}`);
             break;
@@ -316,11 +254,6 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
       console.log(`   Job type: ${jobType}`);
       console.log(`   Starting resume job execution...`);
       
-      // ❌ DO NOT pass overrideDirective for resume!
-      // Passing it causes graph to treat resume as "new job" and re-run triage/decompose.
-      // runner.ts already restores directive from session checkpoint - no need to pass here.
-      
-      // ✅ inputFile not needed for resume (feature name is sufficient)
       const inputFile = undefined;
       
       const params: ExecuteJobParams = {
@@ -330,10 +263,9 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
         feature: featureName,
         inputFile,
         enableEvaluation: false,
-        // ❌ overrideDirective removed - causes re-triage on resume
         chatSource,
         userContext,
-        jobId: sessionJobId  // ✅ Use existing jobId for resume
+        jobId: sessionJobId
       };
       
       const result = await deps.executeJob(params);
@@ -343,7 +275,7 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
       
       res.json({
         success: true,
-        jobId: sessionJobId,  // ✅ Return the existing jobId
+        jobId: sessionJobId,
         jobType,
         message: `Job ${sessionJobId} resumed`
       });
@@ -351,12 +283,12 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
       console.error(`   ❌ Resume failed:`, error);
       res.status(500).json({ 
         error: error.message,
-        jobId: sessionJobId || requestedJobId  // ✅ Return session jobId if found, else requested jobId
+        jobId: sessionJobId || requestedJobId
       });
     }
   });
   
-  // ✅ Continue existing job with additional directive (highest priority)
+  // Continue existing job with additional directive
   router.post('/jobs/:jobId/continue', async (req: Request, res: Response) => {
     const jobId = req.params.jobId;
     const { projectId, featureName, newDirective, chatSource = true } = req.body;
@@ -373,17 +305,13 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
     }
     
     try {
-      // ✅ Build context for WorkspaceResolver
       const userContext = req.user && req.organization ? {
         userId: req.user.id,
         organizationId: req.organization.id,
         workspacePath: ''
       } : { userId: 'local', organizationId: 'local', workspacePath: '' };
       
-      // ✅ Use WorkspaceResolver to get proper path
       const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-      
-      // ✅ Find job type from session files
       const sessionDir = path.join(featurePath, 'sessions');
       
       let jobType: 'design' | 'code' | 'learn' | null = null;
@@ -410,28 +338,19 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
         });
       }
       
-      // ✅ Load session data
       const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
       
-      // ✅ Add new directive to the FRONT of the array (highest priority)
       if (!sessionData.state.directives) {
         sessionData.state.directives = [];
       }
       
-      // ✅ Prepend new directive (newest first = highest priority)
       sessionData.state.directives.unshift(newDirective);
       
       console.log(`   ✅ Added new directive (total: ${sessionData.state.directives.length})`);
-      console.log(`   ✅ Directive priorities: [newest → oldest]`);
       
-      // ✅ Save updated session
       fs.writeFileSync(sessionPath, JSON.stringify(sessionData, null, 2), 'utf-8');
       console.log(`   ✅ Session updated with new directive`);
       
-      console.log(`   Job type: ${jobType}`);
-      console.log(`   Starting continue job execution...`);
-      
-      // ✅ inputFile not needed for continue (feature name is sufficient)
       const inputFile = undefined;
       
       const params: ExecuteJobParams = {
@@ -470,4 +389,3 @@ router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
   
   return router;
 }
-

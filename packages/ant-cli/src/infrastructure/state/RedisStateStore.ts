@@ -26,7 +26,8 @@ import {
   JobProjectMapping,
   PortMapping,
   ChatSessionData,
-  ChatMessageData
+  ChatMessageData,
+  WorkflowRealtimeState
 } from '../../core/ports/stateStore';
 import { PortRegistryPort } from '../../core/ports/portRegistry';
 import { logger } from '../../utils/logger';
@@ -45,7 +46,9 @@ const KEYS = {
   IDE_LIST: 'ant:ides',
   // Chat session keys
   CHAT_SESSION: 'ant:chat:session:',
-  CHAT_CURRENT_MESSAGE: 'ant:chat:currentMessage:'
+  CHAT_CURRENT_MESSAGE: 'ant:chat:currentMessage:',
+  // Workflow state keys
+  WORKFLOW_STATE: 'ant:workflow:state:'
 } as const;
 
 // Default TTLs (in seconds)
@@ -56,7 +59,8 @@ const TTL = {
   PORT_MAPPING: 24 * 60 * 60,    // 24 hours
   USER_STOPPED: 60 * 60,         // 1 hour
   CHAT_SESSION: 24 * 60 * 60,    // 24 hours
-  CHAT_CURRENT_MESSAGE: 60 * 60  // 1 hour (streaming message)
+  CHAT_CURRENT_MESSAGE: 60 * 60, // 1 hour (streaming message)
+  WORKFLOW_STATE: 24 * 60 * 60   // 24 hours
 } as const;
 
 export interface RedisStateStoreOptions {
@@ -274,6 +278,34 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
 
   async deleteTaskQueue(jobId: string): Promise<void> {
     const key = this.key(KEYS.TASK_QUEUE, jobId);
+    await this.redis.del(key);
+  }
+
+  // ============================================
+  // Workflow State Management (Cross-Pod)
+  // ============================================
+
+  async setWorkflowState(jobId: string, state: WorkflowRealtimeState): Promise<void> {
+    const key = this.key(KEYS.WORKFLOW_STATE, jobId);
+    await this.redis.set(key, JSON.stringify(state), 'EX', TTL.WORKFLOW_STATE);
+    
+    // Publish for real-time SSE updates via SSEService
+    await this.publish('sse:workflow', { jobId, data: state, isEndEvent: false });
+    
+    logger.debug(`Workflow state set: node=${state.currentNode}`, {
+      component: 'RedisStateStore',
+      jobId
+    });
+  }
+
+  async getWorkflowState(jobId: string): Promise<WorkflowRealtimeState | null> {
+    const key = this.key(KEYS.WORKFLOW_STATE, jobId);
+    const data = await this.redis.get(key);
+    return data ? JSON.parse(data) : null;
+  }
+
+  async deleteWorkflowState(jobId: string): Promise<void> {
+    const key = this.key(KEYS.WORKFLOW_STATE, jobId);
     await this.redis.del(key);
   }
 

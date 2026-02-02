@@ -168,11 +168,12 @@ export function createChatRoutes(deps: {
   /**
    * POST /projects/:id/features/:feature/chat/llm-event
    * Handle LLM stream event
+   * CLOUD MODE: Recovers currentMessage from Redis if missing (cross-Pod)
    */
-  router.post('/projects/:id/features/:feature/chat/llm-event', (req: Request, res: Response) => {
+  router.post('/projects/:id/features/:feature/chat/llm-event', async (req: Request, res: Response) => {
     const projectId = req.params.id;
     const featureName = req.params.feature;
-    const { event } = req.body;
+    const { event, jobId } = req.body;
 
     if (!deps.chatService) {
       res.status(503).json({ error: 'Chat service not available' });
@@ -182,6 +183,18 @@ export function createChatRoutes(deps: {
     if (!event || !event.type) {
       res.status(400).json({ error: 'event with type is required' });
       return;
+    }
+
+    // CLOUD MODE: Ensure active message exists (cross-Pod recovery)
+    if (jobId) {
+      const userContext = extractUserContext(req);
+      const hasActive = await deps.chatService.ensureActiveMessageAsync(
+        projectId, featureName, jobId, userContext
+      );
+      if (!hasActive) {
+        // Start new message if none exists
+        await deps.chatService.startAssistantMessageAsync(projectId, featureName, jobId, userContext);
+      }
     }
 
     deps.chatService.handleLLMStreamEvent(projectId, featureName, event);
@@ -213,11 +226,12 @@ export function createChatRoutes(deps: {
   /**
    * POST /projects/:id/features/:feature/chat/file-operation
    * Add file operation notification with content
+   * CLOUD MODE: Recovers currentMessage from Redis if missing (cross-Pod)
    */
-  router.post('/projects/:id/features/:feature/chat/file-operation', (req: Request, res: Response) => {
+  router.post('/projects/:id/features/:feature/chat/file-operation', async (req: Request, res: Response) => {
     const projectId = req.params.id;
     const featureName = req.params.feature;
-    const { operation, filePath, content, diffBefore, diffAfter, phase, error } = req.body;
+    const { operation, filePath, content, diffBefore, diffAfter, phase, error, jobId } = req.body;
 
     if (!deps.chatService) {
       res.status(503).json({ error: 'Chat service not available' });
@@ -229,6 +243,17 @@ export function createChatRoutes(deps: {
       return;
     }
 
+    // CLOUD MODE: Ensure active message exists (cross-Pod recovery)
+    if (jobId) {
+      const userContext = extractUserContext(req);
+      const hasActive = await deps.chatService.ensureActiveMessageAsync(
+        projectId, featureName, jobId, userContext
+      );
+      if (!hasActive) {
+        await deps.chatService.startAssistantMessageAsync(projectId, featureName, jobId, userContext);
+      }
+    }
+
     deps.chatService.addFileOperation(projectId, featureName, operation, filePath, content, diffBefore, diffAfter, phase, error);
     res.json({ success: true });
   });
@@ -236,11 +261,12 @@ export function createChatRoutes(deps: {
   /**
    * POST /projects/:id/features/:feature/chat/command-execution
    * Add command execution notification
+   * CLOUD MODE: Recovers currentMessage from Redis if missing (cross-Pod)
    */
-  router.post('/projects/:id/features/:feature/chat/command-execution', (req: Request, res: Response) => {
+  router.post('/projects/:id/features/:feature/chat/command-execution', async (req: Request, res: Response) => {
     const projectId = req.params.id;
     const featureName = req.params.feature;
-    const { command, output, exitCode, phase, _mergeIndex } = req.body;
+    const { command, output, exitCode, phase, _mergeIndex, jobId } = req.body;
 
     if (!deps.chatService) {
       res.status(503).json({ error: 'Chat service not available' });
@@ -250,6 +276,17 @@ export function createChatRoutes(deps: {
     if (!command) {
       res.status(400).json({ error: 'command is required' });
       return;
+    }
+
+    // CLOUD MODE: Ensure active message exists (cross-Pod recovery)
+    if (jobId) {
+      const userContext = extractUserContext(req);
+      const hasActive = await deps.chatService.ensureActiveMessageAsync(
+        projectId, featureName, jobId, userContext
+      );
+      if (!hasActive) {
+        await deps.chatService.startAssistantMessageAsync(projectId, featureName, jobId, userContext);
+      }
     }
 
     const contentIndex = deps.chatService.addCommandExecution(projectId, featureName, command, output, exitCode, phase, _mergeIndex);
@@ -282,6 +319,7 @@ export function createChatRoutes(deps: {
   /**
    * POST /projects/:id/features/:feature/chat/triage-choice-message
    * Add triage choice message to chat (called from agent process)
+   * CLOUD MODE: Recovers currentMessage from Redis if missing (cross-Pod)
    * 
    * Request body:
    * - message: string (display message)
@@ -290,7 +328,7 @@ export function createChatRoutes(deps: {
    * - triageResult?: TriageResult (optional, for pending choice registration)
    * - originalDirective?: string (optional, for redirect to pass to new job)
    */
-  router.post('/projects/:id/features/:feature/chat/triage-choice-message', (req: Request, res: Response) => {
+  router.post('/projects/:id/features/:feature/chat/triage-choice-message', async (req: Request, res: Response) => {
     const projectId = req.params.id;
     const featureName = req.params.feature;
     const { message, jobId, choiceOptions, triageResult, originalDirective } = req.body;
@@ -303,6 +341,15 @@ export function createChatRoutes(deps: {
     if (!message || !jobId || !choiceOptions) {
       res.status(400).json({ error: 'message, jobId, and choiceOptions are required' });
       return;
+    }
+
+    // CLOUD MODE: Ensure active message exists (cross-Pod recovery)
+    const userContext = extractUserContext(req);
+    const hasActive = await deps.chatService.ensureActiveMessageAsync(
+      projectId, featureName, jobId, userContext
+    );
+    if (!hasActive) {
+      await deps.chatService.startAssistantMessageAsync(projectId, featureName, jobId, userContext);
     }
 
     // ✅ Register pending choice for later handling
@@ -327,6 +374,7 @@ export function createChatRoutes(deps: {
   /**
    * POST /projects/:id/features/:feature/chat/triage-choice
    * Handle user choice from triage result
+   * CLOUD MODE: Recovers currentMessage from Redis if missing (cross-Pod)
    * 
    * Request body:
    * - jobId: string
@@ -359,6 +407,17 @@ export function createChatRoutes(deps: {
       return;
     }
 
+    // CLOUD MODE: Ensure active message exists (cross-Pod recovery)
+    const userContext = extractUserContext(req);
+    if (deps.chatService) {
+      const hasActive = await deps.chatService.ensureActiveMessageAsync(
+        projectId, featureName, jobId, userContext
+      );
+      if (!hasActive) {
+        await deps.chatService.startAssistantMessageAsync(projectId, featureName, jobId, userContext);
+      }
+    }
+
     try {
       const response = await deps.choiceService.handleChoice({
         jobId,
@@ -369,7 +428,6 @@ export function createChatRoutes(deps: {
 
       // ✅ Update triage_choice message metadata to mark as resolved
       if (deps.chatService) {
-        const userContext = extractUserContext(req);
         let resolvedLabel = '';
         if (choice === 'dismiss') {
           resolvedLabel = 'Dismissed';

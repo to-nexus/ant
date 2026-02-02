@@ -3,6 +3,8 @@
  * 
  * LangGraph 실행 중 실시간 워크플로우 상태 관리
  * 
+ * Cloud-safe: Redis StateStore 기반으로 Cross-Pod 상태 공유
+ * 
  * 책임:
  * - 현재 활성 노드 추적
  * - 노드 전환 기록
@@ -10,28 +12,11 @@
  */
 
 import { Response } from 'express';
-import type { SSEService } from './SSEService';
+import type { StateStorePort, WorkflowRealtimeState, TaskInfo, LLMInfo, NodeHistoryEntry } from '../../../../core/ports/stateStore';
 import { logger } from '../../../../utils/logger';
 
-export interface NodeHistoryEntry {
-  nodeId: string;
-  enteredAt: string;
-  exitedAt?: string;
-  duration?: number;  // ms
-}
-
-export interface TaskInfo {
-  id?: string;
-  name: string;
-  type?: string;
-  description?: string;
-  priority?: number;
-}
-
-export interface LLMInfo {
-  provider: string;   // 'anthropic' | 'openai'
-  model: string;      // 실제 모델명 (e.g., 'claude-haiku-4-5', 'gpt-4o')
-}
+// Re-export types for backward compatibility
+export type { WorkflowRealtimeState, TaskInfo, LLMInfo, NodeHistoryEntry };
 
 /**
  * 노드별 이모지 매핑
@@ -42,8 +27,8 @@ function getNodeEmoji(nodeId: string): string {
     'decompose': '🧩',
     'plan': '📋',
     'execute': '⚡',
-    'codeGen': '💻',      // ✅ NEW: Code generation with LLM
-    'tool': '🔧',         // ✅ NEW: Tool execution
+    'codeGen': '💻',
+    'tool': '🔧',
     'writeFiles': '📝',
     'validate': '✓',
     'installDeps': '📦',
@@ -55,55 +40,42 @@ function getNodeEmoji(nodeId: string): string {
   return emojiMap[nodeId] || '🔵';
 }
 
-export interface WorkflowRealtimeState {
-  jobId: string;
-  currentNode: string | null;
-  previousNode: string | null;
-  currentTask: TaskInfo | null;  // ✅ 현재 실행 중인 태스크
-  llmInfo: LLMInfo | null;       // ✅ 실제 사용 중인 LLM 정보
-  startedAt: string;
-  endedAt?: string;  // Job 종료 시간
-  isCompleted: boolean;  // Job 완료 여부
-  nodeHistory: NodeHistoryEntry[];
-  activeActors: Set<string>;  // 현재 통신 중인 Actor IDs
-  
-  // ✅ Recursion tracking (for UI progress display)
-  recursionCount?: number;
-  recursionLimit?: number;
-  
-  // ✅ Kanban info (piggybacked on workflow SSE for atomic updates)
-  kanbanCurrentTask?: TaskInfo | null;  // In-progress task for Kanban
-  kanbanUpdate?: boolean;  // Flag to indicate Kanban should update
-}
-
 export class WorkflowStateService {
-  // jobId → WorkflowRealtimeState
-  private states: Map<string, WorkflowRealtimeState> = new Map();
+  // StateStore for Redis-based state (Cloud mode)
+  private stateStore?: StateStorePort;
   
-  // SSEService for broadcasting
-  private sseService?: SSEService;
+  constructor(stateStore?: StateStorePort) {
+    this.stateStore = stateStore;
+  }
   
-  constructor(sseService?: SSEService) {
-    this.sseService = sseService;
+  /**
+   * Setup StateStore for Redis-based state management
+   */
+  setStateStore(stateStore: StateStorePort): void {
+    this.stateStore = stateStore;
   }
   
   /**
    * Job 시작 (초기 상태 생성)
    */
-  startJob(jobId: string, llmInfo?: LLMInfo): void {
+  async startJob(jobId: string, llmInfo?: LLMInfo): Promise<void> {
     logger.debug(`startJob`, { component: 'WorkflowStateService', jobId }, llmInfo);
     
-    this.states.set(jobId, {
+    const state: WorkflowRealtimeState = {
       jobId,
       currentNode: null,
       previousNode: null,
-      currentTask: null,  // ✅ Initialize task info
-      llmInfo: llmInfo || null,  // ✅ Store actual LLM info
+      currentTask: null,
+      llmInfo: llmInfo || null,
       startedAt: new Date().toISOString(),
       isCompleted: false,
       nodeHistory: [],
-      activeActors: new Set()
-    });
+      activeActors: []
+    };
+    
+    if (this.stateStore) {
+      await this.stateStore.setWorkflowState(jobId, state);
+    }
     
     logger.debug(`Initial state created`, { component: 'WorkflowStateService', jobId });
   }
@@ -111,37 +83,36 @@ export class WorkflowStateService {
   /**
    * LLM 정보 업데이트 (첫 번째 노드 진입시)
    */
-  updateLLMInfo(jobId: string, llmInfo: LLMInfo): void {
-    const state = this.states.get(jobId);
+  async updateLLMInfo(jobId: string, llmInfo: LLMInfo): Promise<void> {
+    const state = await this.getStateInternal(jobId);
     if (state && !state.llmInfo) {
       logger.debug(`Updating LLM info`, { component: 'WorkflowStateService', jobId }, llmInfo);
       state.llmInfo = llmInfo;
-      this.broadcast(jobId);
+      await this.saveAndBroadcast(jobId, state);
     }
   }
   
   /**
    * 노드 진입 기록
-   * ✅ Returns Promise to ensure broadcast completes before caller continues
    */
   async enterNode(jobId: string, nodeId: string, taskInfo?: TaskInfo, llmInfo?: LLMInfo, recursionCount?: number, recursionLimit?: number): Promise<void> {
-    const state = this.states.get(jobId);
+    let state = await this.getStateInternal(jobId);
     if (!state) {
-      this.startJob(jobId);
+      await this.startJob(jobId);
       return this.enterNode(jobId, nodeId, taskInfo, llmInfo, recursionCount, recursionLimit);
     }
     
-    // ✅ Update current task if provided
+    // Update current task if provided
     if (taskInfo) {
       state.currentTask = taskInfo;
     }
     
-    // ✅ Update LLM info if provided (첫 번째 노드에서만)
+    // Update LLM info if provided (첫 번째 노드에서만)
     if (llmInfo && !state.llmInfo) {
       state.llmInfo = llmInfo;
     }
     
-    // ✅ Update recursion tracking if provided
+    // Update recursion tracking if provided
     if (recursionCount !== undefined) {
       state.recursionCount = recursionCount;
     }
@@ -150,7 +121,7 @@ export class WorkflowStateService {
     }
     
     // 이전 노드 종료 처리
-    if (state.currentNode) {
+    if (state.currentNode && state.nodeHistory.length > 0) {
       const lastEntry = state.nodeHistory[state.nodeHistory.length - 1];
       if (lastEntry && !lastEntry.exitedAt) {
         const exitTime = new Date().toISOString();
@@ -168,135 +139,120 @@ export class WorkflowStateService {
       enteredAt
     });
     
-    // ✅ Node transitions are already visible via SSE; keep server console clean
     logger.debug(`Node enter: ${nodeId}${taskInfo ? ` -> ${taskInfo.name}` : ''}`, { component: 'WorkflowStateService', jobId });
     
-    // ✅ CRITICAL: Broadcast synchronously (writes to buffer)
-    // TCP guarantees order, so this SSE will arrive before any subsequent SSE
-    this.broadcast(jobId);
+    await this.saveAndBroadcast(jobId, state);
     
-    // ✅ Add small delay to ensure buffer is flushed
-    // This guarantees workflow SSE is sent before caller continues
+    // Small delay to ensure buffer is flushed
     await new Promise(resolve => setImmediate(resolve));
   }
   
   /**
    * 노드 이탈 기록
    */
-  exitNode(jobId: string, nodeId: string): void {
-    const state = this.states.get(jobId);
+  async exitNode(jobId: string, nodeId: string): Promise<void> {
+    const state = await this.getStateInternal(jobId);
     if (!state) return;
     
-    
     // 현재 노드의 히스토리 엔트리 찾아서 종료 시간 기록
-    const lastEntry = state.nodeHistory[state.nodeHistory.length - 1];
-    if (lastEntry && lastEntry.nodeId === nodeId && !lastEntry.exitedAt) {
-      const exitTime = new Date().toISOString();
-      lastEntry.exitedAt = exitTime;
-      lastEntry.duration = new Date(exitTime).getTime() - new Date(lastEntry.enteredAt).getTime();
+    if (state.nodeHistory.length > 0) {
+      const lastEntry = state.nodeHistory[state.nodeHistory.length - 1];
+      if (lastEntry && lastEntry.nodeId === nodeId && !lastEntry.exitedAt) {
+        const exitTime = new Date().toISOString();
+        lastEntry.exitedAt = exitTime;
+        lastEntry.duration = new Date(exitTime).getTime() - new Date(lastEntry.enteredAt).getTime();
+      }
     }
     
-    // 브로드캐스트
-    this.broadcast(jobId);
+    await this.saveAndBroadcast(jobId, state);
   }
   
   /**
    * Actor 상호작용 시작
    */
-  startActorInteraction(jobId: string, actorId: string): void {
-    const state = this.states.get(jobId);
+  async startActorInteraction(jobId: string, actorId: string): Promise<void> {
+    const state = await this.getStateInternal(jobId);
     if (!state) return;
     
-    state.activeActors.add(actorId);
-    this.broadcast(jobId);
+    if (!state.activeActors.includes(actorId)) {
+      state.activeActors.push(actorId);
+      await this.saveAndBroadcast(jobId, state);
+    }
   }
   
   /**
    * Actor 상호작용 종료
    */
-  endActorInteraction(jobId: string, actorId: string): void {
-    const state = this.states.get(jobId);
+  async endActorInteraction(jobId: string, actorId: string): Promise<void> {
+    const state = await this.getStateInternal(jobId);
     if (!state) return;
     
-    state.activeActors.delete(actorId);
-    this.broadcast(jobId);
+    state.activeActors = state.activeActors.filter(a => a !== actorId);
+    await this.saveAndBroadcast(jobId, state);
   }
   
   /**
    * Job 종료 (상태 보존)
    */
-  endJob(jobId: string): void {
-    // 마지막 노드 종료 처리
-    const state = this.states.get(jobId);
+  async endJob(jobId: string): Promise<void> {
+    const state = await this.getStateInternal(jobId);
     if (state) {
-      if (state.currentNode) {
-        this.exitNode(jobId, state.currentNode);
+      // 마지막 노드 종료 처리
+      if (state.currentNode && state.nodeHistory.length > 0) {
+        const lastEntry = state.nodeHistory[state.nodeHistory.length - 1];
+        if (lastEntry && !lastEntry.exitedAt) {
+          const exitTime = new Date().toISOString();
+          lastEntry.exitedAt = exitTime;
+          lastEntry.duration = new Date(exitTime).getTime() - new Date(lastEntry.enteredAt).getTime();
+        }
       }
       
-      // 종료 상태로 마킹 (상태는 삭제하지 않고 보존)
+      // 종료 상태로 마킹
       state.isCompleted = true;
       state.endedAt = new Date().toISOString();
-      state.currentNode = null;  // 더 이상 활성 노드 없음
-      state.activeActors.clear();  // 모든 Actor 통신 종료
+      state.currentNode = null;
+      state.activeActors = [];
+      
+      await this.saveAndBroadcast(jobId, state);
     }
     
-    // 최종 브로드캐스트 (종료 알림)
-    this.broadcast(jobId);
-    
-    // Send 'end' event to SSE clients via SSEService
-    if (this.sseService) {
-      this.sseService.sendWorkflowEndEvent(jobId);
+    // Send 'end' event to SSE clients via Redis Pub/Sub
+    if (this.stateStore) {
+      await this.stateStore.publish('sse:workflow', { jobId, data: { jobId }, isEndEvent: true });
     }
-    
-    // 상태는 삭제하지 않고 보존 (UI에서 마지막 상태 조회 가능)
-    // 메모리 관리를 위해 주기적으로 오래된 상태는 정리될 수 있음
   }
   
   /**
    * Get initial workflow state (called when SSE client connects)
    */
-  getInitialState(jobId: string): WorkflowRealtimeState | null {
-    const state = this.states.get(jobId);
-    if (!state) {
-      logger.debug(`No state found for job`, { component: 'WorkflowStateService', jobId });
-      return null;
-    }
-    
-    // Return serialized state (convert Set to Array)
-    return {
-      ...state,
-      activeActors: new Set(state.activeActors) // Clone Set
-    };
+  async getInitialState(jobId: string): Promise<WorkflowRealtimeState | null> {
+    return this.getStateInternal(jobId);
   }
   
   /**
    * 현재 상태 조회
    */
-  getState(jobId: string): WorkflowRealtimeState | null {
-    return this.states.get(jobId) || null;
+  async getState(jobId: string): Promise<WorkflowRealtimeState | null> {
+    return this.getStateInternal(jobId);
   }
   
   /**
-   * 상태를 모든 클라이언트에 브로드캐스트 (SSEService 사용)
+   * Internal: Get state from StateStore
    */
-  private broadcast(jobId: string): void {
-    const state = this.states.get(jobId);
-    if (!state) {
-      return;
+  private async getStateInternal(jobId: string): Promise<WorkflowRealtimeState | null> {
+    if (this.stateStore) {
+      return this.stateStore.getWorkflowState(jobId);
     }
-    
-    if (!this.sseService) {
-      logger.warn(`SSEService not available, skipping broadcast`, { component: 'WorkflowStateService', jobId });
-      return;
+    return null;
+  }
+  
+  /**
+   * Save state and broadcast via StateStore (which publishes to Redis)
+   */
+  private async saveAndBroadcast(jobId: string, state: WorkflowRealtimeState): Promise<void> {
+    if (this.stateStore) {
+      // setWorkflowState internally publishes to sse:workflow channel
+      await this.stateStore.setWorkflowState(jobId, state);
     }
-    
-    // Set을 Array로 변환하여 JSON 직렬화 가능하게
-    const serializedState = {
-      ...state,
-      activeActors: Array.from(state.activeActors)
-    };
-    
-    this.sseService.broadcastWorkflow(jobId, serializedState);
   }
 }
-

@@ -4,7 +4,7 @@ import * as path from 'path';
 import { LogEntry } from '../../../../../core/ports/http';
 import { PortManager } from '../../../../../infrastructure/networking/PortManager';
 import { PortRegistryPort } from '../../../../../core/ports/portRegistry';
-import { SSEService } from '../SSEService';
+import type { StateStorePort } from '../../../../../core/ports/stateStore';
 import { PreviewIssue, PreviewIssueReasoning, PackageInfo, ValidationResult } from './types';
 import { createServerKey, parseServerKey } from './utils/serverKeyUtils';
 import { LogManager } from './managers/LogManager';
@@ -16,6 +16,8 @@ import { ProcessSpawner } from './managers/ProcessSpawner';
 import { HealthChecker } from './utils/HealthChecker';
 import { IssueDetector } from './detectors/IssueDetector';
 import { logger } from '../../../../../utils/logger';
+
+const PREVIEW_CHANNEL = 'sse:preview';
 
 /**
  * PreviewService
@@ -47,7 +49,7 @@ export class PreviewService {
   private onStatusChange?: (serverKey: string) => void;
   private portManager?: PortManager;
   private portRegistry?: PortRegistryPort;
-  private sseService?: SSEService;
+  private stateStore?: StateStorePort;
   
   // Modular components
   private logManager: LogManager;
@@ -65,12 +67,12 @@ export class PreviewService {
     callbacks?: {
       onStatusChange?: (serverKey: string) => void;
     },
-    sseService?: SSEService
+    stateStore?: StateStorePort
   ) {
     this.portManager = portManager;
     this.portRegistry = portRegistry;
     this.onStatusChange = callbacks?.onStatusChange;
-    this.sseService = sseService;
+    this.stateStore = stateStore;
     
     // Initialize modular components
     this.logManager = new LogManager();
@@ -98,32 +100,38 @@ export class PreviewService {
   }
   
   /**
-   * Append log entry and broadcast via SSEService
+   * Append log entry and broadcast via Redis Pub/Sub
    */
   private appendLog(serverKey: string, type: 'stdout' | 'stderr', message: string): void {
     const logEntry = this.logManager.appendLog(serverKey, type, message);
     
-    if (this.sseService) {
+    if (this.stateStore) {
       const { tenantId, userId, projectId, feature } = this.parseServerKey(serverKey);
-      this.sseService.broadcast(projectId, feature, 'preview', {
+      this.stateStore.publish(PREVIEW_CHANNEL, {
+        projectId,
+        featureName: feature,
+        userContext: { organizationId: tenantId, userId, workspacePath: '' },
         type: 'log',
         data: logEntry
-      }, { organizationId: tenantId, userId, workspacePath: '' });
+      }).catch(err => logger.warn('Failed to publish preview log', { component: 'PreviewService' }, err));
     }
   }
   
   /**
-   * Broadcast status update via SSEService
+   * Broadcast status update via Redis Pub/Sub
    */
   private broadcastStatus(serverKey: string, status: any): void {
     logger.debug('Broadcasting status update', { component: 'PreviewService' }, { serverKey, status });
     
-    if (this.sseService) {
+    if (this.stateStore) {
       const { tenantId, userId, projectId, feature } = this.parseServerKey(serverKey);
-      this.sseService.broadcast(projectId, feature, 'preview', {
+      this.stateStore.publish(PREVIEW_CHANNEL, {
+        projectId,
+        featureName: feature,
+        userContext: { organizationId: tenantId, userId, workspacePath: '' },
         type: 'status',
         data: status
-      }, { organizationId: tenantId, userId, workspacePath: '' });
+      }).catch(err => logger.warn('Failed to publish preview status', { component: 'PreviewService' }, err));
     }
     
     if (this.onStatusChange) {
@@ -619,7 +627,8 @@ export class PreviewService {
   }
   
   /**
-   * Stream logs via SSE
+   * Stream logs via SSE (used by RealtimeServer only)
+   * Note: In cloud mode, this is handled by the dedicated Realtime Server
    */
   streamPreviewLogs(
     tenantId: string,
@@ -638,26 +647,13 @@ export class PreviewService {
     
     // Send initial status
     const status = this.getPreviewStatus(tenantId, userId, projectId, feature);
-    if (this.sseService) {
-      this.sseService.sendInitialState(res, 'preview', { type: 'status', data: status });
-    } else {
-      res.write(`data: ${JSON.stringify({ type: 'status', data: status })}\n\n`);
-    }
+    res.write(`data: ${JSON.stringify({ type: 'status', data: status })}\n\n`);
     
     // Send existing logs
     const existingLogs = this.logManager.getLogs(serverKey);
     existingLogs.forEach((log: LogEntry) => {
-      if (this.sseService) {
-        this.sseService.sendInitialState(res, 'preview', { type: 'log', data: log });
-      } else {
-        res.write(`data: ${JSON.stringify({ type: 'log', data: log })}\n\n`);
-      }
+      res.write(`data: ${JSON.stringify({ type: 'log', data: log })}\n\n`);
     });
-    
-    // Register client with SSEService
-    if (this.sseService) {
-      this.sseService.registerClient(projectId, feature, res, { organizationId: tenantId, userId, workspacePath: '' });
-    }
   }
   
   /**
