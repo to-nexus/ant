@@ -44,10 +44,11 @@ export class JobCleanupManager {
       explicitJobType
     });
     
-    // Get mapping before deletion
-    let mapping = this.stateTracker.getJobMapping(jobId);
+    // ✅ Cloud-safe: Get mapping from Redis (single source of truth)
+    const stateStore = getInfrastructureFactory().getStateStore();
+    let mapping = await stateStore.getJobMapping(jobId);
     
-    // If mapping not found, use provided parameters
+    // If mapping not found in Redis, use provided parameters
     if (!mapping && projectId && featureName) {
       mapping = { 
         projectId, 
