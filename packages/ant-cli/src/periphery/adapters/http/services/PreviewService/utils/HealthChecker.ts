@@ -27,7 +27,7 @@ export class HealthChecker {
         });
         
         // Any response (even 404) means server is up
-        logger.info(`Health check passed for port ${port}`, { component: 'HealthChecker' });
+        logger.warn(`[Preview] Health check PASSED for port ${port}`, { component: 'HealthChecker' });
         onLog('stdout', `✅ Dev server is ready on port ${port}`);
         return true;
       } catch (error: any) {

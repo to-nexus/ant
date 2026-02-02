@@ -107,7 +107,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       return next();
     }
     
-    logger.debug(`PROXY_REQUEST: ${req.method} ${req.url}`, { component: 'PreviewProxy' });
+    logger.warn(`[Preview] PROXY: ${req.method} ${req.url}`, { component: 'PreviewProxy' });
     
     // ✅ Use req.url instead of req.path to preserve query params
     // Extract serverKey from path: /preview/tenantId:userId:projectId:feature/...
@@ -159,7 +159,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
         });
         return;
       }
-      logger.debug(`Port found: ${port} for ${serverKey}`, { component: 'PreviewProxy' });
+      logger.warn(`[Preview] Port found: ${port} for ${serverKey}`, { component: 'PreviewProxy' });
       
       // Update last access time
       await portRegistry.updateLastAccess(tenantId, userId, projectId, feature, 'preview');
@@ -206,7 +206,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
 
     const targetUrl = `http://localhost:${port}${targetPath}`;
     const effectiveTargetUrl = `http://localhost:${targetPort}${targetPath}`;
-    logger.debug(`Target URL: ${effectiveTargetUrl}`, { component: 'PreviewProxy' });
+    logger.warn(`[Preview] Target: ${effectiveTargetUrl}`, { component: 'PreviewProxy' });
     
     try {
       // ✅ Retry logic for preview server startup race condition

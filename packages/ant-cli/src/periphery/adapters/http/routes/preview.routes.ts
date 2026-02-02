@@ -62,7 +62,7 @@ export function createPreviewRoutes(deps: {
       const projectId = req.params.id;
       const userContext = extractUserContext(req);
       
-      logger.info(`POST /preview/start - projectId=${projectId}, user=${userContext?.userId}`, { component: 'PreviewRoutes' });
+      logger.warn(`[Preview] POST /preview/start - projectId=${projectId}, user=${userContext?.userId}`, { component: 'PreviewRoutes' });
       
       const config = await deps.projectService.getProjectConfig(projectId, userContext);
       
