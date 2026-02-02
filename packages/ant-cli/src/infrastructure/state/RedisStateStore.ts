@@ -385,7 +385,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     pipeline.sadd(this.key(KEYS.PREVIEW_LIST), portKey);
     await pipeline.exec();
 
-    logger.info(`Preview registered: ${portKey} → ${host}:${port}`, { component: 'RedisStateStore' });
+    logger.warn(`[Preview] Redis registered: ${portKey} → ${host}:${port}`, { component: 'RedisStateStore' });
   }
 
   async getPreview(
@@ -399,10 +399,12 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     const data = await this.redis.get(key);
 
     if (!data) {
+      logger.warn(`[Preview] getPreview NOT FOUND: key=${key}`, { component: 'RedisStateStore' });
       return null;
     }
 
     const mapping: PortMapping = JSON.parse(data);
+    logger.warn(`[Preview] getPreview FOUND: key=${key}, host=${mapping.host}, port=${mapping.port}`, { component: 'RedisStateStore' });
     
     // Update last accessed
     mapping.lastAccessedAt = new Date();

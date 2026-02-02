@@ -201,7 +201,7 @@ export class PreviewService {
     issues?: PreviewIssue[];
     status?: { running: boolean; ready: boolean; port?: number; logs?: any[]; packages?: any[]; backendPort?: number; issues?: any[] };
   }> {
-    logger.info(`startPreview() called: tenant=${tenantId}, user=${userId}, project=${projectId}, feature=${feature}`, { component: 'PreviewService' });
+    logger.warn(`[Preview] startPreview: ${tenantId}:${userId}:${projectId}:${feature}`, { component: 'PreviewService' });
     
     const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
     const proxyUrl = `/api/preview/${serverKey}`;
@@ -258,7 +258,7 @@ export class PreviewService {
     try {
       // 1. Detect project structure
       const structure = await this.structureDetector.detect(localPath);
-      logger.info(`Structure detected: packages=${structure.packages.length}, entry=${structure.entry?.name || 'none'}`, { component: 'PreviewService' });
+      logger.warn(`[Preview] Structure: packages=${structure.packages.length}, entry=${structure.entry?.name || 'none'}`, { component: 'PreviewService' });
       
       if (structure.packages.length === 0) {
         throw new Error('No runnable packages found');
@@ -325,7 +325,7 @@ export class PreviewService {
           structure.entry.port!,
           host
         );
-        logger.info(`Preview registered: ${serverKey} -> ${host}:${structure.entry.port}`, { component: 'PreviewService' });
+        logger.warn(`[Preview] Registered: ${serverKey} -> ${host}:${structure.entry.port}`, { component: 'PreviewService' });
       }
       
       // 5. Store processes and entry port
