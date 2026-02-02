@@ -97,6 +97,10 @@ export class RealtimeServer {
       'http://localhost:5174',
       'http://localhost:4173',  // Vite preview
       'http://localhost:3000',
+      // Production origins
+      'https://ant.crosstoken.io',
+      'https://ant-server.crosstoken.io',
+      'https://*.crosstoken.io',  // Wildcard for all subdomains
     ];
     
     this.app.use(cors({
