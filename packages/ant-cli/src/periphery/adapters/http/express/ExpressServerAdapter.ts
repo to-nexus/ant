@@ -279,11 +279,10 @@ export class ExpressServerAdapter implements
         });
         
         // Setup WebSocket upgrade handler for IDE proxy
-        // Using /api/ide path to leverage existing Ingress rules
-        const ideWsHandler = createIDEWebSocketHandler(this.deps.portRegistry, '/api/ide');
+        const ideWsHandler = createIDEWebSocketHandler(this.deps.portRegistry, '/ide');
         this.server.on('upgrade', (req: any, socket: any, head: Buffer) => {
           const url = req.url || '';
-          if (url.startsWith('/api/ide/')) {
+          if (url.startsWith('/ide/')) {
             ideWsHandler(req, socket, head);
           } else {
             socket.destroy();
