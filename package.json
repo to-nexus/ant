@@ -10,7 +10,8 @@
     
     "dev:cloud": "ANT_SERVER_MODE=cloud ANT_REDIS_URL=redis://localhost:6379 pnpm --filter @ant/cli dev:cloud",
     "dev:cloud:all": "concurrently -n cli,ui -c cyan,magenta \"pnpm dev:cloud\" \"pnpm dev:ui\"",
-    "dev:cli": "ANT_SERVER_MODE=cloud ANT_REDIS_URL=redis://localhost:6379 pnpm --filter @ant/cli dev:server",
+    "dev:api-server": "ANT_SERVER_MODE=cloud ANT_REDIS_URL=redis://localhost:6379 pnpm --filter @ant/cli dev:server",
+    "dev:realtime-server": "ANT_REDIS_URL=redis://localhost:6379 pnpm --filter @ant/cli dev:realtime-server",
     "dev:job-worker": "ANT_REDIS_URL=redis://localhost:6379 pnpm --filter @ant/cli dev:job-worker",
     "dev:preview-worker": "ANT_REDIS_URL=redis://localhost:6379 pnpm --filter @ant/cli dev:preview-worker",
     
@@ -31,7 +32,8 @@
 
     "start:cloud": "pnpm --filter @ant/cli start:cloud",
     "start:cloud:all": "concurrently -n cli,ui -c cyan,magenta \"pnpm start:cloud\" \"pnpm start:ui\"",
-    "start:cli": "pnpm --filter @ant/cli start:server",
+    "start:api-server": "pnpm --filter @ant/cli start:server",
+    "start:realtime-server": "pnpm --filter @ant/cli start:realtime-server",
     "start:job-worker": "pnpm --filter @ant/cli start:job-worker",
     "start:preview-worker": "pnpm --filter @ant/cli start:preview-worker",
     

@@ -23,14 +23,9 @@ export class SessionFileWatcher {
     featureName: string, 
     task: string
   ): void {
-    const sseClientChecker = () => {
-      const mapping = this.stateTracker.getJobMapping(jobId);
-      return this.deps.sseService.getClientCount(
-        projectId, 
-        featureName, 
-        mapping?.userContext
-      ) > 0;
-    };
+    // SSE client checker removed - SSE is now handled by Realtime Server
+    // Always return true to keep watching (Realtime Server manages actual client connections)
+    const sseClientChecker = () => true;
     
     // Map task to job type
     const job = (task === 'design' || task === 'code' || task === 'learn') ? task : 'code';

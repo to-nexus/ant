@@ -5,7 +5,6 @@ import {
   createKanbanRoutes,
   createPreviewRoutes,
   createWorkflowRoutes,
-  createSSERoutes,
   createAuthRoutes,
   createIDERoutes,
   createCloudIDERoutes,
@@ -50,6 +49,9 @@ export class RouteConfigurator {
 
   /**
    * Configure all routes
+   * 
+   * Note: SSE routes are now served by dedicated Realtime Server
+   * @see docs/architecture/10-cloud-architecture.md
    */
   configure(app: Express): void {
     this.setupRootRoutes(app);
@@ -61,7 +63,8 @@ export class RouteConfigurator {
     this.setupKanbanRoutes(app);
     this.setupPreviewRoutes(app);
     this.setupWorkflowRoutes(app);
-    this.setupSSERoutes(app);
+    // SSE routes moved to Realtime Server (see 10-cloud-architecture.md)
+    // this.setupSSERoutes(app);
     this.setupJobRoutes(app);
   }
 
@@ -239,25 +242,6 @@ export class RouteConfigurator {
   }
 
   /**
-   * Setup SSE routes (consolidated Kanban, chat, fileTree, workflow)
-   */
-  private setupSSERoutes(app: Express): void {
-    const state = this.stateTracker.getState();
-    const sseRoutes = createSSERoutes({
-      sseService: this.deps.sseService,
-      kanbanService: this.deps.kanbanService,
-      chatService: this.deps.chatService,
-      projectService: this.deps.projectService,
-      workflowStateService: this.deps.workflowStateService,
-      gitWatcherService: this.deps.gitWatcherService,
-      jobToProject: state.jobToProject,
-      jobs: state.jobs,
-      taskQueueSnapshots: state.taskQueueSnapshots
-    });
-    app.use('/api', sseRoutes);
-  }
-
-  /**
    * Setup job execution routes
    */
   private setupJobRoutes(app: Express): void {
@@ -300,17 +284,9 @@ export class RouteConfigurator {
       executeJob,
       getJobStatus: this.jobManager.getJobStatus.bind(this.jobManager),
       getLogs: this.jobManager.getLogs.bind(this.jobManager),
-      logStreams: state.logStreams,
-      sseResponses: state.sseResponses,
-      logs: state.logs,
-      childProcesses: state.childProcesses,
-      jobs: state.jobs,
-      jobToProject: state.jobToProject,
-      userStoppedJobs: state.userStoppedJobs,
       cleanupJobState: this.cleanupJobState,
       workflowStateService: this.deps.workflowStateService,
       chatService: this.deps.chatService,
-      // ✅ Cloud mode support for stop signal
       config: { mode: this.config.mode },
       stateStore
     });

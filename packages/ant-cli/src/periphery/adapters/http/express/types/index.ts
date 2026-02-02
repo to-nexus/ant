@@ -67,7 +67,6 @@ export interface ServerDependencies {
   chatService: any;
   graphMetadataService: any;
   workflowStateService: any;
-  sseService: any;
   githubAuthService: any;
   jobPrerequisitesAdapter: any;
 }

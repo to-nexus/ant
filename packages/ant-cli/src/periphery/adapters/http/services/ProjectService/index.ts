@@ -2,7 +2,6 @@ import { WorkspaceResolver } from '../../../../../infrastructure/workspace/Works
 import { UserContext } from '../../../../../core/types/user';
 import { GitHubAuthService } from '../../../auth/GitHubAuthService';
 import { ChatService } from '../ChatService';
-import { SSEService } from '../SSEService';
 import type { IDEService } from '../../../ide/IDEService';
 
 // Import sub-services
@@ -27,7 +26,6 @@ export class ProjectService {
   private readonly workspaceResolver: WorkspaceResolver;
   private readonly githubAuthService?: GitHubAuthService;
   private readonly chatService?: ChatService;
-  private readonly sseService?: SSEService;
   private readonly ideService?: IDEService;
   
   // Sub-services
@@ -40,20 +38,18 @@ export class ProjectService {
     workspaceResolver: WorkspaceResolver,
     githubAuthService?: GitHubAuthService,
     chatService?: ChatService,
-    sseService?: SSEService,
     ideService?: IDEService
   ) {
     this.workspaceResolver = workspaceResolver;
     this.githubAuthService = githubAuthService;
     this.chatService = chatService;
-    this.sseService = sseService;
     this.ideService = ideService;
     
     // Initialize sub-services
     this.projectCrud = new ProjectCrudService(workspaceResolver);
     this.featureCrud = new FeatureCrudService(workspaceResolver);
     this.fileOps = new FileOperationService(workspaceResolver);
-    this.git = new GitService(workspaceResolver, githubAuthService, chatService, sseService);
+    this.git = new GitService(workspaceResolver, githubAuthService, chatService);
     
     // ✅ Inject GitService.switchToFeatureBranch into FeatureCrudService
     this.featureCrud.setSwitchToFeatureBranchFn(

@@ -3,7 +3,6 @@ import * as path from 'path';
 import { SimpleGit } from 'simple-git';
 import { WorkspaceResolver } from '../../../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../../../core/types/user';
-import { SSEService } from '../../SSEService';
 import { ChatService } from '../../ChatService';
 import { GitHelper } from '../helper/GitHelper';
 import { logger } from '../../../../../../utils/logger';
@@ -15,16 +14,13 @@ import { logger } from '../../../../../../utils/logger';
  */
 export class IndexService {
   private readonly workspaceResolver: WorkspaceResolver;
-  private readonly sseService?: SSEService;
   private readonly chatService?: ChatService;
   
   constructor(
     workspaceResolver: WorkspaceResolver,
-    sseService?: SSEService,
     chatService?: ChatService
   ) {
     this.workspaceResolver = workspaceResolver;
-    this.sseService = sseService;
     this.chatService = chatService;
   }
   
@@ -87,7 +83,7 @@ export class IndexService {
       const commitHash = await git.getCurrentCommit();
       const commit = commitHash.substring(0, 8);
       
-      // ✅ Send "indexing" status to UI
+      // ✅ Send "indexing" status to UI (only via ChatService)
       if (this.chatService && featureName) {
         this.chatService.addContentToCurrentMessage(projectId, featureName, {
           type: 'indexing',
@@ -99,18 +95,6 @@ export class IndexService {
             commit
           }
         });
-      } else if (this.sseService) {
-        // ✅ CRITICAL: For git init/clone (no feature context), send project-level notification
-        this.sseService.broadcastToProject(projectId, {
-          type: 'indexing_status',
-          status: 'in_progress',
-          data: {
-            projectId,
-            branch,
-            commit,
-            message: `Indexing ${projectId} • ${branch}`
-          }
-        }, userContext);
       }
       
       // Run indexer
@@ -128,7 +112,7 @@ export class IndexService {
         { component: 'GitIndexService', organizationId: userContext.organizationId, userId: userContext.userId, projectId }
       );
       
-      // ✅ Send "indexed" success status to UI
+      // ✅ Send "indexed" success status to UI (only via ChatService)
       if (this.chatService && featureName) {
         this.chatService.addContentToCurrentMessage(projectId, featureName, {
           type: 'indexed',
@@ -146,22 +130,6 @@ export class IndexService {
         
         // ✅ Complete the message
         this.chatService.finalizeCurrentMessage(projectId, featureName);
-      } else if (this.sseService) {
-        // ✅ CRITICAL: For git init/clone (no feature context), send project-level notification
-        this.sseService.broadcastToProject(projectId, {
-          type: 'indexing_status',
-          status: 'completed',
-          data: {
-            projectId,
-            branch,
-            commit,
-            filesIndexed: stats.filesIndexed,
-            chunks: stats.chunksCreated,
-            tokens: stats.estimatedTokens,
-            duration: stats.duration,
-            message: `Indexed ${stats.filesIndexed} files (${stats.chunksCreated} chunks, ~${stats.estimatedTokens} tokens)`
-          }
-        }, userContext);
       }
       
     } catch (error) {
@@ -172,7 +140,7 @@ export class IndexService {
         error
       );
       
-      // ✅ Send "indexed" failure status to UI
+      // ✅ Send "indexed" failure status to UI (only via ChatService)
       if (this.chatService && featureName) {
         this.chatService.addContentToCurrentMessage(projectId, featureName, {
           type: 'indexed',
@@ -188,16 +156,6 @@ export class IndexService {
         
         // ✅ Complete the message
         this.chatService.finalizeCurrentMessage(projectId, featureName);
-      } else if (this.sseService) {
-        // ✅ Send failure notification via SSE
-        this.sseService.broadcastToProject(projectId, {
-          type: 'indexing_status',
-          status: 'failed',
-          data: {
-            projectId,
-            error: error instanceof Error ? error.message : 'Unknown error'
-          }
-        }, userContext);
       }
     }
   }
