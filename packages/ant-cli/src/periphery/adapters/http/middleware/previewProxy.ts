@@ -107,7 +107,8 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       return next();
     }
     
-    logger.debug(`${req.method} ${req.url}`, { component: 'PreviewProxy' });
+    // ✅ WARN level for production visibility
+    logger.warn(`PROXY_REQUEST: ${req.method} ${req.url}`, { component: 'PreviewProxy' });
     
     // ✅ Use req.url instead of req.path to preserve query params
     // Extract serverKey from path: /preview/tenantId:userId:projectId:feature/...
@@ -144,27 +145,16 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
     const [tenantId, userId, projectId, ...featureParts] = parts;
     const feature = featureParts.join(':');
     
-    logger.debug(`Parsed ${tenantId}/${userId}/${projectId}/${feature}`, {
-      component: 'PreviewProxy',
-      organizationId: tenantId,
-      userId,
-      projectId,
-      featureName: feature
-    });
+    logger.warn(`Parsed serverKey: tenant=${tenantId}, user=${userId}, project=${projectId}, feature=${feature}`, { component: 'PreviewProxy' });
     
     // Lookup entry (frontend) port from registry
     let port: number | null;
     try {
+      logger.warn(`Looking up preview port: ${tenantId}:${userId}:${projectId}:${feature}`, { component: 'PreviewProxy' });
       port = await portRegistry.getPreviewPort(tenantId, userId, projectId, feature);
       
       if (!port) {
-        logger.info(`No port found for ${serverKey}`, {
-          component: 'PreviewProxy',
-          organizationId: tenantId,
-          userId,
-          projectId,
-          featureName: feature
-        });
+        logger.warn(`No port found for ${serverKey}`, { component: 'PreviewProxy' });
         res.status(404).json({
           error: 'Preview not found',
           message: `No preview running for ${serverKey}`,
@@ -172,13 +162,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
         });
         return;
       }
-      logger.debug(`Port found: ${port}`, {
-        component: 'PreviewProxy',
-        organizationId: tenantId,
-        userId,
-        projectId,
-        featureName: feature
-      });
+      logger.warn(`Port found: ${port} for ${serverKey}`, { component: 'PreviewProxy' });
       
       // Update last access time
       await portRegistry.updateLastAccess(tenantId, userId, projectId, feature, 'preview');

@@ -305,15 +305,14 @@ export class IDEService {
     await fs.promises.mkdir(ideHomeHostPath, { recursive: true });
     
     try {
-      // Register in PortRegistry
+      // Register in PortRegistry (IDE is project-level, no feature)
       await this.portRegistry.registerIDE(
         userContext.organizationId,
         userContext.userId,
         projectId,
-        feature,
         port
       );
-      logger.debug(`IDE registered in PortRegistry`, { component: 'IDEService', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature }, { port });
+      logger.debug(`IDE registered in PortRegistry`, { component: 'IDEService', organizationId: userContext.organizationId, userId: userContext.userId, projectId }, { port });
 
       // ✅ Defensive: if a previous container with the same name exists (server restart),
       // remove it to avoid "Conflict. The container name is already in use".
@@ -463,8 +462,7 @@ export class IDEService {
       await this.portRegistry.unregisterIDE(
         userContext.organizationId,
         userContext.userId,
-        projectId,
-        feature
+        projectId
       ).catch(console.error);
       throw error;
     }
@@ -492,9 +490,9 @@ export class IDEService {
       // Release port
       this.portManager.release(instance.port);
       
-      // Unregister from PortRegistry
+      // Unregister from PortRegistry (IDE is project-level, no feature)
       const [orgId, userId] = tenantId.split(':');
-      await this.portRegistry.unregisterIDE(orgId, userId, projectId, feature);
+      await this.portRegistry.unregisterIDE(orgId, userId, projectId);
       
       this.instances.delete(key);
       

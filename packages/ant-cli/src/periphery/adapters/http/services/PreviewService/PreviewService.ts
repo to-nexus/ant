@@ -172,8 +172,13 @@ export class PreviewService {
     issues?: PreviewIssue[];
     status?: { running: boolean; ready: boolean; port?: number; logs?: any[]; packages?: any[]; backendPort?: number; issues?: any[] };
   }> {
+    // ✅ WARN level for production visibility
+    logger.warn(`startPreview() called: tenant=${tenantId}, user=${userId}, project=${projectId}, feature=${feature}`, { component: 'PreviewService' });
+    
     const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
     const proxyUrl = `/preview/${serverKey}`;
+    
+    logger.warn(`Preview serverKey=${serverKey}, localPath=${localPath}`, { component: 'PreviewService' });
     
     // Check if already running in our memory tracking
     if (this.previewServers.has(serverKey)) {
@@ -286,11 +291,12 @@ export class PreviewService {
       
       // 4. Register entry in PortRegistry
       if (structure.entry && this.portRegistry) {
+        logger.warn(`Registering preview: tenant=${tenantId}, user=${userId}, project=${projectId}, feature=${feature}, port=${structure.entry.port}`, { component: 'PreviewService' });
         await this.portRegistry.registerPreview(
           tenantId, userId, projectId, feature,
           structure.entry.port!
         );
-        logger.info(`Registered entry: ${serverKey} -> ${structure.entry.port}`, { component: 'PreviewService' });
+        logger.warn(`Preview registered: ${serverKey} -> ${structure.entry.port}`, { component: 'PreviewService' });
       }
       
       // 5. Store processes and entry port

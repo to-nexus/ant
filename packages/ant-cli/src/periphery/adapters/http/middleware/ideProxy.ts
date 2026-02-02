@@ -58,17 +58,17 @@ class IDEProxyMiddlewareImpl extends BaseProxyMiddleware {
       tenantId,
       userId,
       projectId,
-      feature: 'main',  // IDE always uses 'main' (project-level)
+      // IDE is project-level, no feature (feature field not used)
       serverKey
     };
   }
 
   protected async getPort(parts: ServerKeyParts): Promise<number | null> {
+    // IDE is project-level, no feature
     return this.portRegistry.getIDEPort(
       parts.tenantId,
       parts.userId,
-      parts.projectId,
-      parts.feature || 'main'
+      parts.projectId
     );
   }
 
@@ -78,13 +78,13 @@ class IDEProxyMiddlewareImpl extends BaseProxyMiddleware {
   protected async getHost(parts: ServerKeyParts): Promise<string> {
     try {
       // Use StateStorePort to get full PortMapping with host
+      // IDE is project-level, no feature
       const { getInfrastructureFactory } = await import('../../../../infrastructure/adapters/InfrastructureFactory');
       const stateStore = getInfrastructureFactory().getStateStore();
       const mapping = await stateStore.getIDE(
         parts.tenantId,
         parts.userId,
-        parts.projectId,
-        parts.feature || 'main'
+        parts.projectId
       );
       
       if (mapping?.host) {
@@ -178,10 +178,9 @@ export function createIDEWebSocketHandler(portRegistry: PortRegistryPort, pathPr
     }
 
     const [tenantId, userId, projectId] = parts;
-    const feature = 'main';  // IDE always uses 'main' (project-level)
 
-    // Lookup port and host
-    const port = await portRegistry.getIDEPort(tenantId, userId, projectId, feature);
+    // Lookup port and host (IDE is project-level, no feature)
+    const port = await portRegistry.getIDEPort(tenantId, userId, projectId);
     if (!port) {
       logger.warn(`No IDE port for WS: ${serverKey}`, { component: 'IDEProxy' });
       socket.destroy();
@@ -193,7 +192,7 @@ export function createIDEWebSocketHandler(portRegistry: PortRegistryPort, pathPr
     try {
       const { getInfrastructureFactory } = await import('../../../../infrastructure/adapters/InfrastructureFactory');
       const stateStore = getInfrastructureFactory().getStateStore();
-      const mapping = await stateStore.getIDE(tenantId, userId, projectId, feature);
+      const mapping = await stateStore.getIDE(tenantId, userId, projectId);
       if (mapping?.host) {
         host = mapping.host;
         logger.debug(`WS Host from StateStore: ${host}`, { component: 'IDEProxy' });
@@ -202,8 +201,8 @@ export function createIDEWebSocketHandler(portRegistry: PortRegistryPort, pathPr
       logger.warn(`WS Failed to get IDE host: ${err}`, { component: 'IDEProxy' });
     }
 
-    // Update last access
-    await portRegistry.updateLastAccess(tenantId, userId, projectId, feature, 'ide');
+    // Update last access (IDE is project-level, feature ignored)
+    await portRegistry.updateLastAccess(tenantId, userId, projectId, '', 'ide');
 
     // Rewrite the URL to strip the prefix and serverKey
     const targetPath = url.slice(`${pathPrefix}/${serverKey}`.length) || '/';

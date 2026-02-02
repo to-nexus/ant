@@ -319,35 +319,32 @@ export interface StateStorePort {
   // ============================================
   
   /**
-   * Register IDE port mapping
+   * Register IDE port mapping (IDE is project-level, no feature)
    */
   registerIDE(
     tenantId: string,
     userId: string,
     projectId: string,
-    feature: string,
     port: number,
     host?: string
   ): Promise<void>;
   
   /**
-   * Get IDE port mapping
+   * Get IDE port mapping (IDE is project-level, no feature)
    */
   getIDE(
     tenantId: string,
     userId: string,
-    projectId: string,
-    feature: string
+    projectId: string
   ): Promise<PortMapping | null>;
   
   /**
-   * Unregister IDE
+   * Unregister IDE (IDE is project-level, no feature)
    */
   unregisterIDE(
     tenantId: string,
     userId: string,
-    projectId: string,
-    feature: string
+    projectId: string
   ): Promise<void>;
   
   /**
