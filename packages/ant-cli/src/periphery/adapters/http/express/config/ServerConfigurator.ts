@@ -56,10 +56,10 @@ export class ServerConfigurator {
    * that route /api/* to ant-api service. This avoids needing separate Ingress entries.
    */
   private setupProxyMiddleware(app: Express): void {
-    // Preview Proxy (handles /api/preview/:serverKey requests)
+    // Preview Proxy (handles /preview/:serverKey requests)
     app.use(createPreviewProxyMiddleware({
       portRegistry: this.deps.portRegistry,
-      pathPrefix: '/api/preview',
+      pathPrefix: '/preview',
       getBackendPort: ({ tenantId, userId, projectId, feature }) => {
         try {
           return this.deps.previewService.getPreviewStatus(tenantId, userId, projectId, feature).backendPort;
@@ -69,10 +69,10 @@ export class ServerConfigurator {
       }
     }));
 
-    // IDE Proxy (handles /api/ide/:serverKey requests)
+    // IDE Proxy (handles /ide/:serverKey requests)
     app.use(createIDEProxyMiddleware({
       portRegistry: this.deps.portRegistry,
-      pathPrefix: '/api/ide'
+      pathPrefix: '/ide'
     }));
   }
 

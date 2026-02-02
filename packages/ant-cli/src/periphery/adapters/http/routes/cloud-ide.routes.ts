@@ -26,8 +26,8 @@ export function createCloudIDERoutes(ideOrchestrator: IDEOrchestratorPort, works
     if (host === 'localhost' || host.startsWith('127.')) {
       return `${forwardedProto}://${hostWithoutPort}:${port}`;
     }
-    // K8s mode - return proxy URL (using /api/ide to leverage existing Ingress rules)
-    return `${forwardedProto}://${forwardedHost}/api/ide`;
+    // K8s mode - return proxy URL
+    return `${forwardedProto}://${forwardedHost}/ide`;
   }
   
   /**
