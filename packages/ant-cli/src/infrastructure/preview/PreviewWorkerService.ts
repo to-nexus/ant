@@ -42,9 +42,9 @@ class WorkerLocalPortRegistry implements PortRegistryPort {
     return `${tenantId}:${userId}:${projectId}`;
   }
 
-  async registerPreview(tenantId: string, userId: string, projectId: string, feature: string, port: number): Promise<void> {
+  async registerPreview(tenantId: string, userId: string, projectId: string, feature: string, port: number, host: string = 'localhost'): Promise<void> {
     const key = this.createKey(tenantId, userId, projectId, feature);
-    this.previews.set(key, { tenantId, userId, projectId, feature, port, registeredAt: new Date(), lastAccessedAt: new Date() });
+    this.previews.set(key, { tenantId, userId, projectId, feature, port, host, registeredAt: new Date(), lastAccessedAt: new Date() });
   }
 
   async registerIDE(tenantId: string, userId: string, projectId: string, port: number): Promise<void> {

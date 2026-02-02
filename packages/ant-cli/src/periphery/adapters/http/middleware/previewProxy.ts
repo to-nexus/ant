@@ -107,8 +107,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       return next();
     }
     
-    // ✅ WARN level for production visibility
-    logger.warn(`PROXY_REQUEST: ${req.method} ${req.url}`, { component: 'PreviewProxy' });
+    logger.debug(`PROXY_REQUEST: ${req.method} ${req.url}`, { component: 'PreviewProxy' });
     
     // ✅ Use req.url instead of req.path to preserve query params
     // Extract serverKey from path: /preview/tenantId:userId:projectId:feature/...
@@ -144,12 +143,11 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
     
     const { tenantId, userId, projectId, feature } = parsed;
     
-    logger.warn(`Parsed serverKey: tenant=${tenantId}, user=${userId}, project=${projectId}, feature=${feature}`, { component: 'PreviewProxy' });
+    logger.debug(`Parsed serverKey: tenant=${tenantId}, user=${userId}, project=${projectId}, feature=${feature}`, { component: 'PreviewProxy' });
     
     // Lookup entry (frontend) port from registry
     let port: number | null;
     try {
-      logger.warn(`Looking up preview port: ${tenantId}:${userId}:${projectId}:${feature}`, { component: 'PreviewProxy' });
       port = await portRegistry.getPreviewPort(tenantId, userId, projectId, feature);
       
       if (!port) {
@@ -161,7 +159,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
         });
         return;
       }
-      logger.warn(`Port found: ${port} for ${serverKey}`, { component: 'PreviewProxy' });
+      logger.debug(`Port found: ${port} for ${serverKey}`, { component: 'PreviewProxy' });
       
       // Update last access time
       await portRegistry.updateLastAccess(tenantId, userId, projectId, feature, 'preview');

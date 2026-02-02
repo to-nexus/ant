@@ -39,8 +39,7 @@ export function createCloudIDERoutes(ideOrchestrator: IDEOrchestratorPort, works
       const { projectId, featureName } = req.body;
       const userContext: UserContext = req.body.userContext || extractUserContext(req);
       
-      // ✅ WARN level for production visibility
-      logger.warn(`POST /cloud-ide/start - projectId=${projectId}, user=${userContext?.userId}`, { component: 'CloudIDERoutes' });
+      logger.info(`POST /cloud-ide/start - projectId=${projectId}, user=${userContext?.userId}`, { component: 'CloudIDERoutes' });
       
       if (!projectId) {
         return res.status(400).json({ error: 'projectId is required' });
@@ -48,12 +47,9 @@ export function createCloudIDERoutes(ideOrchestrator: IDEOrchestratorPort, works
       
       // Get workspace path
       const projectPath = workspaceResolver.getProjectPath(userContext, projectId);
-      // ✅ IDE should only see codebase (project-level isolation of codebase in IDE)
       const workspacePath = path.join(projectPath, 'codebase');
       
       const tenantId = `${userContext.organizationId}:${userContext.userId}`;
-      
-      logger.warn(`Calling ideOrchestrator.start() for ${tenantId}:${projectId}`, { component: 'CloudIDERoutes' });
       
       // Start IDE using orchestrator
       const params: IDEParams = {
@@ -66,7 +62,6 @@ export function createCloudIDERoutes(ideOrchestrator: IDEOrchestratorPort, works
       };
       
       const result = await ideOrchestrator.start(params);
-      logger.warn(`ideOrchestrator.start() result: success=${result.success}, url=${result.instance?.url}`, { component: 'CloudIDERoutes' });
       
       if (!result.success || !result.instance) {
         return res.status(500).json({ 

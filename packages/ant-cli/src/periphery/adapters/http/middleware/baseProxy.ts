@@ -104,8 +104,7 @@ export abstract class BaseProxyMiddleware {
         return next();
       }
 
-      // ✅ WARN level for production visibility (LOG_LEVEL=warn in prod)
-      logger.warn(`PROXY_REQUEST: ${req.method} ${req.url}`, { component: this.componentName });
+      logger.debug(`PROXY_REQUEST: ${req.method} ${req.url}`, { component: this.componentName });
 
       // Extract serverKey from path
       const url = req.url.split('?')[0];

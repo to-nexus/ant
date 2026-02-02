@@ -369,9 +369,6 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     const portKey = createPreviewKey(tenantId, userId, projectId, feature);
     const key = this.key(KEYS.PREVIEW, portKey);
     
-    // ✅ WARN level for production visibility
-    logger.warn(`registerPreview() called: key=${key}, host=${host}, port=${port}`, { component: 'RedisStateStore' });
-    
     const mapping: PortMapping = {
       tenantId,
       userId,
@@ -388,7 +385,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     pipeline.sadd(this.key(KEYS.PREVIEW_LIST), portKey);
     await pipeline.exec();
 
-    logger.warn(`Preview registered: ${portKey} → ${host}:${port}`, { component: 'RedisStateStore' });
+    logger.info(`Preview registered: ${portKey} → ${host}:${port}`, { component: 'RedisStateStore' });
   }
 
   async getPreview(
@@ -399,19 +396,13 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   ): Promise<PortMapping | null> {
     const portKey = createPreviewKey(tenantId, userId, projectId, feature);
     const key = this.key(KEYS.PREVIEW, portKey);
-    
-    // ✅ WARN level for production visibility
-    logger.warn(`getPreview() called: key=${key}`, { component: 'RedisStateStore' });
-    
     const data = await this.redis.get(key);
 
     if (!data) {
-      logger.warn(`getPreview() NOT FOUND: key=${key}`, { component: 'RedisStateStore' });
       return null;
     }
 
     const mapping: PortMapping = JSON.parse(data);
-    logger.warn(`getPreview() found: key=${key}, host=${mapping.host}, port=${mapping.port}`, { component: 'RedisStateStore' });
     
     // Update last accessed
     mapping.lastAccessedAt = new Date();
@@ -478,9 +469,6 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     const portKey = createIDEKey(tenantId, userId, projectId);
     const key = this.key(KEYS.IDE, portKey);
     
-    // ✅ WARN level for production IDE debugging
-    logger.warn(`registerIDE() called: key=${key}, host=${host}, port=${port}`, { component: 'RedisStateStore' });
-    
     const mapping: PortMapping = {
       tenantId,
       userId,
@@ -497,7 +485,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     pipeline.sadd(this.key(KEYS.IDE_LIST), portKey);
     await pipeline.exec();
 
-    logger.warn(`IDE registered: ${portKey} → ${host}:${port}`, { component: 'RedisStateStore' });
+    logger.info(`IDE registered: ${portKey} → ${host}:${port}`, { component: 'RedisStateStore' });
   }
 
   async getIDE(
@@ -505,30 +493,21 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     userId: string,
     projectId: string
   ): Promise<PortMapping | null> {
-    // ✅ Validate all key components are present
+    // Validate all key components are present
     if (!tenantId || !userId || !projectId) {
       logger.warn(`getIDE() INVALID ARGS: tenantId=${tenantId}, userId=${userId}, projectId=${projectId}`, { component: 'RedisStateStore' });
-      // Log stack trace to find the caller
-      logger.warn(`getIDE() caller stack: ${new Error().stack}`, { component: 'RedisStateStore' });
       return null;
     }
     
-    // IDE uses project-level key (no feature)
     const portKey = createIDEKey(tenantId, userId, projectId);
     const key = this.key(KEYS.IDE, portKey);
-    
-    // ✅ WARN level for production IDE debugging
-    logger.warn(`getIDE() called: key=${key}`, { component: 'RedisStateStore' });
-    
     const data = await this.redis.get(key);
 
     if (!data) {
-      logger.warn(`getIDE() NOT FOUND: key=${key}`, { component: 'RedisStateStore' });
       return null;
     }
 
     const mapping: PortMapping = JSON.parse(data);
-    logger.warn(`getIDE() found: key=${key}, host=${mapping.host}, port=${mapping.port}`, { component: 'RedisStateStore' });
     
     // Update last accessed
     mapping.lastAccessedAt = new Date();

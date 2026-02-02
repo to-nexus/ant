@@ -48,21 +48,23 @@ export class RedisPortRegistry implements PortRegistryPort {
     userId: string,
     projectId: string,
     feature: string,
-    port: number
+    port: number,
+    host: string = 'localhost'
   ): Promise<void> {
     const key = this.createKey(tenantId, userId, projectId, feature);
-    const mapping: PortMapping = {
+    const mapping: PortMapping & { host: string } = {
       tenantId,
       userId,
       projectId,
       feature,
       port,
+      host,
       registeredAt: new Date(),
       lastAccessedAt: new Date()
     };
     
     await this.redis.hset('previews', key, JSON.stringify(mapping));
-    console.log(`[RedisPortRegistry] Registered preview: ${key} → ${port}`);
+    console.log(`[RedisPortRegistry] Registered preview: ${key} → ${host}:${port}`);
   }
   
   /**

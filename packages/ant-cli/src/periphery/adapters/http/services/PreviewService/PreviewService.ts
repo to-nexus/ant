@@ -100,6 +100,37 @@ export class PreviewService {
   }
   
   /**
+   * Get Pod host for K8s multi-replica support
+   * In K8s: uses POD_IP env var or falls back to localhost
+   * In local: uses localhost
+   */
+  private getPodHost(): string {
+    // K8s typically sets POD_IP via downward API
+    const podIp = process.env.POD_IP;
+    if (podIp) {
+      return podIp;
+    }
+    
+    // Fallback: try to get IP from network interfaces
+    try {
+      const os = require('os');
+      const interfaces = os.networkInterfaces();
+      for (const name of Object.keys(interfaces)) {
+        for (const iface of interfaces[name] || []) {
+          // Skip internal/loopback and IPv6
+          if (!iface.internal && iface.family === 'IPv4') {
+            return iface.address;
+          }
+        }
+      }
+    } catch {
+      // Ignore errors
+    }
+    
+    return 'localhost';
+  }
+  
+  /**
    * Append log entry and broadcast via Redis Pub/Sub
    */
   private appendLog(serverKey: string, type: 'stdout' | 'stderr', message: string): void {
@@ -121,12 +152,8 @@ export class PreviewService {
    * Broadcast status update via Redis Pub/Sub
    */
   private broadcastStatus(serverKey: string, status: any): void {
-    // ✅ WARN level for production visibility
-    logger.warn(`broadcastStatus() called: serverKey=${serverKey}, running=${status?.running}, ready=${status?.ready}`, { component: 'PreviewService' });
-    
     if (this.stateStore) {
       const { tenantId, userId, projectId, feature } = this.parseServerKey(serverKey);
-      logger.warn(`broadcastStatus() publishing to Redis: channel=${PREVIEW_CHANNEL}`, { component: 'PreviewService' });
       this.stateStore.publish(PREVIEW_CHANNEL, {
         projectId,
         featureName: feature,
@@ -134,8 +161,6 @@ export class PreviewService {
         type: 'status',
         data: status
       }).catch(err => logger.warn('Failed to publish preview status', { component: 'PreviewService' }, err));
-    } else {
-      logger.warn(`broadcastStatus() NO stateStore - cannot publish to Redis!`, { component: 'PreviewService' });
     }
     
     if (this.onStatusChange) {
@@ -176,14 +201,10 @@ export class PreviewService {
     issues?: PreviewIssue[];
     status?: { running: boolean; ready: boolean; port?: number; logs?: any[]; packages?: any[]; backendPort?: number; issues?: any[] };
   }> {
-    // ✅ WARN level for production visibility
-    logger.warn(`startPreview() called: tenant=${tenantId}, user=${userId}, project=${projectId}, feature=${feature}`, { component: 'PreviewService' });
+    logger.info(`startPreview() called: tenant=${tenantId}, user=${userId}, project=${projectId}, feature=${feature}`, { component: 'PreviewService' });
     
     const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
-    // Using /api/preview to leverage existing Ingress rules
     const proxyUrl = `/api/preview/${serverKey}`;
-    
-    logger.warn(`Preview serverKey=${serverKey}, localPath=${localPath}`, { component: 'PreviewService' });
     
     // Check if already running in our memory tracking
     if (this.previewServers.has(serverKey)) {
@@ -236,13 +257,10 @@ export class PreviewService {
     
     try {
       // 1. Detect project structure
-      logger.warn(`Detecting project structure at: ${localPath}`, { component: 'PreviewService' });
       const structure = await this.structureDetector.detect(localPath);
-      
-      logger.warn(`Structure detected: packages=${structure.packages.length}, entry=${structure.entry?.name || 'none'}`, { component: 'PreviewService' });
+      logger.info(`Structure detected: packages=${structure.packages.length}, entry=${structure.entry?.name || 'none'}`, { component: 'PreviewService' });
       
       if (structure.packages.length === 0) {
-        logger.warn(`No runnable packages found in ${localPath}`, { component: 'PreviewService' });
         throw new Error('No runnable packages found');
       }
       
@@ -299,13 +317,15 @@ export class PreviewService {
       this.previewServerPackagePorts.set(serverKey, packagePorts);
       
       // 4. Register entry in PortRegistry
+      // In K8s, use Pod IP instead of localhost for multi-replica support
       if (structure.entry && this.portRegistry) {
-        logger.warn(`Registering preview: tenant=${tenantId}, user=${userId}, project=${projectId}, feature=${feature}, port=${structure.entry.port}`, { component: 'PreviewService' });
+        const host = this.getPodHost();
         await this.portRegistry.registerPreview(
           tenantId, userId, projectId, feature,
-          structure.entry.port!
+          structure.entry.port!,
+          host
         );
-        logger.warn(`Preview registered: ${serverKey} -> ${structure.entry.port}`, { component: 'PreviewService' });
+        logger.info(`Preview registered: ${serverKey} -> ${host}:${structure.entry.port}`, { component: 'PreviewService' });
       }
       
       // 5. Store processes and entry port

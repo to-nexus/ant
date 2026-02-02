@@ -17,8 +17,7 @@ export class HealthChecker {
     maxAttempts = 20, 
     delayMs = 500
   ): Promise<boolean> {
-    // ✅ WARN level for production visibility
-    logger.warn(`Health check starting for port ${port}`, { component: 'HealthChecker' });
+    logger.debug(`Health check starting for port ${port}`, { component: 'HealthChecker' });
     
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
@@ -28,8 +27,7 @@ export class HealthChecker {
         });
         
         // Any response (even 404) means server is up
-        // ✅ WARN level for production visibility
-        logger.warn(`Health check PASSED (${attempt}/${maxAttempts}): status=${response.status}`, { component: 'HealthChecker' });
+        logger.info(`Health check passed for port ${port}`, { component: 'HealthChecker' });
         onLog('stdout', `✅ Dev server is ready on port ${port}`);
         return true;
       } catch (error: any) {
@@ -41,7 +39,7 @@ export class HealthChecker {
       }
     }
     
-    logger.warn(`Health check failed after ${maxAttempts} attempts`, { component: 'HealthChecker' });
+    logger.warn(`Health check failed after ${maxAttempts} attempts for port ${port}`, { component: 'HealthChecker' });
     onLog('stderr', `❌ Dev server failed to respond on port ${port} after ${maxAttempts * delayMs / 1000}s`);
     return false;
   }
