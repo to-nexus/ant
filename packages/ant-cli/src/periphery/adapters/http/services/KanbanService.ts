@@ -258,8 +258,19 @@ export class KanbanService {
     
     // 2. Try to get LIVE data from Redis StateStore (if job is running)
     let liveSnapshot: TaskQueueSnapshot | null = null;
-    const runningStatus = sessionJobId ? (jobs as any)?.get?.(sessionJobId) : undefined;
-    const isActuallyRunning = !!runningStatus && runningStatus.status === 'running';
+    
+    // ✅ Cloud-safe: Get job status from Redis instead of local Map
+    // This ensures multi-pod environments can correctly detect running jobs
+    let isActuallyRunning = false;
+    if (sessionJobId && this.stateStore) {
+      const jobStatus = await this.stateStore.getJobStatus(sessionJobId);
+      isActuallyRunning = !!jobStatus && jobStatus.status === 'running';
+      dlog(`   Job status from Redis: ${jobStatus?.status || 'not found'}, isActuallyRunning: ${isActuallyRunning}`);
+    } else {
+      // Fallback to local jobs Map (for backward compatibility in local mode)
+      const runningStatus = sessionJobId ? (jobs as any)?.get?.(sessionJobId) : undefined;
+      isActuallyRunning = !!runningStatus && runningStatus.status === 'running';
+    }
     
     if (sessionJobId && !isJobCompleted && isActuallyRunning && this.stateStore) {
       liveSnapshot = await this.stateStore.getTaskQueue(sessionJobId);
