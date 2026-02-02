@@ -1,7 +1,6 @@
 import { WorkspaceResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../../core/types/user';
 import { GitHubAuthService } from '../../../auth/GitHubAuthService';
-import { SSEService } from '../SSEService';
 import { ChatService } from '../ChatService';
 import { BranchService } from './branch';
 import { StatusService } from './status';
@@ -29,12 +28,11 @@ export class GitService {
   constructor(
     workspaceResolver: WorkspaceResolver,
     githubAuthService?: GitHubAuthService,
-    chatService?: ChatService,
-    sseService?: SSEService
+    chatService?: ChatService
   ) {
     this.branch = new BranchService(workspaceResolver, githubAuthService);
     this.status = new StatusService(workspaceResolver);
-    this.index = new IndexService(workspaceResolver, sseService, chatService);
+    this.index = new IndexService(workspaceResolver, chatService);
     
     // Remote service needs indexing callback
     this.remote = new RemoteService(

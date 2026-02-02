@@ -424,7 +424,7 @@ export class ChatAPIClient {
       const response = await fetch(`${this.baseUrl}/llm-event`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ event })
+        body: JSON.stringify({ event, jobId: this.jobId })
       });
 
       if (!response.ok) {
@@ -524,7 +524,7 @@ export class ChatAPIClient {
       await fetch(`${this.baseUrl}/file-operation`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ phase: 'creating', operation: 'create', filePath })
+        body: JSON.stringify({ phase: 'creating', operation: 'create', filePath, jobId: this.jobId })
       });
     } catch (error) { /* Silently fail */ }
   }
@@ -538,7 +538,7 @@ export class ChatAPIClient {
       await fetch(`${this.baseUrl}/file-operation`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ phase: 'writing', operation: 'create', filePath, content })
+        body: JSON.stringify({ phase: 'writing', operation: 'create', filePath, content, jobId: this.jobId })
       });
     } catch (error) { /* Silently fail */ }
   }
@@ -558,7 +558,7 @@ export class ChatAPIClient {
       await fetch(`${this.baseUrl}/file-operation`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ phase, operation: 'create', filePath })
+        body: JSON.stringify({ phase, operation: 'create', filePath, jobId: this.jobId })
       });
     } catch (error) { /* Silently fail */ }
   }
@@ -579,7 +579,7 @@ export class ChatAPIClient {
       await fetch(`${this.baseUrl}/file-operation`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ phase: 'complete', operation: 'create', filePath, content })
+        body: JSON.stringify({ phase: 'complete', operation: 'create', filePath, content, jobId: this.jobId })
       });
     } catch (error) { /* Silently fail */ }
   }
@@ -599,7 +599,7 @@ export class ChatAPIClient {
       await fetch(`${this.baseUrl}/file-operation`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ phase: 'editing', operation: 'edit', filePath })
+        body: JSON.stringify({ phase: 'editing', operation: 'edit', filePath, jobId: this.jobId })
       });
     } catch (error) { /* Silently fail */ }
   }
@@ -613,7 +613,7 @@ export class ChatAPIClient {
       await fetch(`${this.baseUrl}/file-operation`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ phase: 'updating', operation: 'edit', filePath, diffBefore, diffAfter })
+        body: JSON.stringify({ phase: 'updating', operation: 'edit', filePath, diffBefore, diffAfter, jobId: this.jobId })
       });
     } catch (error) { /* Silently fail */ }
   }
@@ -627,7 +627,7 @@ export class ChatAPIClient {
       await fetch(`${this.baseUrl}/file-operation`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ phase: 'complete', operation: 'edit', filePath, diffBefore, diffAfter })
+        body: JSON.stringify({ phase: 'complete', operation: 'edit', filePath, diffBefore, diffAfter, jobId: this.jobId })
       });
     } catch (error) { /* Silently fail */ }
   }
@@ -641,7 +641,7 @@ export class ChatAPIClient {
       await fetch(`${this.baseUrl}/file-operation`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ phase: 'deleting', operation: 'delete', filePath })
+        body: JSON.stringify({ phase: 'deleting', operation: 'delete', filePath, jobId: this.jobId })
       });
     } catch (error) { /* Silently fail */ }
   }
@@ -655,7 +655,7 @@ export class ChatAPIClient {
       await fetch(`${this.baseUrl}/file-operation`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ phase: 'failed', operation: 'edit', filePath, error: errorMessage })
+        body: JSON.stringify({ phase: 'failed', operation: 'edit', filePath, error: errorMessage, jobId: this.jobId })
       });
     } catch (error) { /* Silently fail */ }
   }
@@ -669,7 +669,7 @@ export class ChatAPIClient {
       await fetch(`${this.baseUrl}/file-operation`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ phase: 'complete', operation: 'delete', filePath, content })
+        body: JSON.stringify({ phase: 'complete', operation: 'delete', filePath, content, jobId: this.jobId })
       });
     } catch (error) { /* Silently fail */ }
   }
@@ -697,7 +697,8 @@ export class ChatAPIClient {
           filePath, 
           content,      // ✅ Full file content (for create/delete)
           diffBefore,   // ✅ Before content (for edit)
-          diffAfter     // ✅ After content (for edit)
+          diffAfter,    // ✅ After content (for edit)
+          jobId: this.jobId
         })
       });
 
@@ -722,7 +723,7 @@ export class ChatAPIClient {
       await fetch(`${this.baseUrl}/command-execution`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ phase: 'running', command })
+        body: JSON.stringify({ phase: 'running', command, jobId: this.jobId })
       });
     } catch (error) { /* Silently fail */ }
   }
@@ -736,7 +737,7 @@ export class ChatAPIClient {
       await fetch(`${this.baseUrl}/command-execution`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ phase: 'streaming', command, output })
+        body: JSON.stringify({ phase: 'streaming', command, output, jobId: this.jobId })
       });
     } catch (error) { /* Silently fail */ }
   }
@@ -750,7 +751,7 @@ export class ChatAPIClient {
       await fetch(`${this.baseUrl}/command-execution`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ phase: 'complete', command, output, exitCode })
+        body: JSON.stringify({ phase: 'complete', command, output, exitCode, jobId: this.jobId })
       });
     } catch (error) { /* Silently fail */ }
   }
@@ -766,7 +767,7 @@ export class ChatAPIClient {
       const response = await fetch(`${this.baseUrl}/command-execution`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ phase: 'complete', command, output, exitCode })
+        body: JSON.stringify({ phase: 'complete', command, output, exitCode, jobId: this.jobId })
       });
 
       if (!response.ok) {

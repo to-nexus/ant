@@ -2,28 +2,30 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { WorkspaceResolver } from '../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../core/types/user';
-import type { SSEService } from './SSEService';
+import type { StateStorePort } from '../../../../core/ports/stateStore';
 import { logger } from '../../../../utils/logger';
+
+const GIT_CHANGE_CHANNEL = 'sse:git-change';
 
 /**
  * GitWatcherService
  * 
  * Watches .git/index file for changes to detect Git operations
- * Broadcasts git change events via SSE when Git state changes
+ * Broadcasts git change events via Redis Pub/Sub for SSE delivery
  */
 export class GitWatcherService {
   private readonly workspaceResolver?: WorkspaceResolver;
-  private readonly sseService?: SSEService;
+  private readonly stateStore?: StateStorePort;
   
   // Git watchers - key: "projectId/featureName"
   private gitWatchers: Map<string, NodeJS.Timeout> = new Map();
   
   constructor(
-    sseService?: SSEService,
-    workspaceResolver?: WorkspaceResolver
+    workspaceResolver?: WorkspaceResolver,
+    stateStore?: StateStorePort
   ) {
-    this.sseService = sseService;
     this.workspaceResolver = workspaceResolver;
+    this.stateStore = stateStore;
   }
   
   /**
@@ -32,8 +34,7 @@ export class GitWatcherService {
   watchGitChanges(
     projectId: string,
     featureName: string,
-    userContext: UserContext,
-    sseClientChecker: () => boolean
+    userContext: UserContext
   ): void {
     const key = `${userContext.organizationId}:${userContext.userId}:${projectId}/${featureName}`;
     
@@ -75,12 +76,19 @@ export class GitWatcherService {
           
           logger.debug(`Git changes detected for ${key}`, { component: 'GitWatcher', projectId, featureName });
           
-          // Broadcast to frontend
-          this.sseService?.broadcast(projectId, featureName, 'gitChange', {
-            timestamp: new Date().toISOString(),
-            project: projectId,
-            feature: featureName
-          }, userContext);
+          // Broadcast to frontend via Redis Pub/Sub
+          if (this.stateStore) {
+            await this.stateStore.publish(GIT_CHANGE_CHANNEL, {
+              projectId,
+              featureName,
+              userContext,
+              data: {
+                timestamp: new Date().toISOString(),
+                project: projectId,
+                feature: featureName
+              }
+            });
+          }
         }
       } catch (error: any) {
         // File doesn't exist anymore - repo deleted
@@ -89,13 +97,6 @@ export class GitWatcherService {
           clearInterval(intervalId);
           this.gitWatchers.delete(key);
         }
-      }
-      
-      // Stop watching if no SSE clients are connected
-      if (!sseClientChecker()) {
-        clearInterval(intervalId);
-        this.gitWatchers.delete(key);
-        logger.debug(`No SSE clients, stopped watching ${key}`, { component: 'GitWatcher', projectId, featureName });
       }
     }, 1000); // Check every 1 second
     

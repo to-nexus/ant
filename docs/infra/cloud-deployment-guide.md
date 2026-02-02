@@ -8,13 +8,16 @@ EKS-based cloud deployment guide for DevOps teams.
 
 ### 1.1 Server Naming Convention
 
-> **ant-api**, **ant-job**, **ant-preview** are all execution modules of the `ant-cli` package by role.
+> **ant-api**, **ant-realtime**, **ant-job**, **ant-preview** are all execution modules of the `ant-cli` package by role.
 
 | Server | Entrypoint | Role |
 |-------|----------|------|
-| **ant-api** | `server.mjs` | HTTP API, Proxy |
+| **ant-api** | `server.mjs` | HTTP REST API, Proxy |
+| **ant-realtime** | `start-realtime-server.mjs` | SSE (Server-Sent Events) |
 | **ant-job** | `start-job-worker.mjs` | AI Job Processing |
 | **ant-preview** | `start-preview-worker.mjs` | Preview Server Management |
+
+> **Note**: `ant-api` and `ant-realtime` are separated for independent scaling. SSE requires **Sticky Session** while REST API uses **Round-robin**. See [10-cloud-architecture.md](../architecture/10-cloud-architecture.md) for details.
 
 ### 1.2 Deployment Modes
 
@@ -43,40 +46,41 @@ Service names used for K8s Service Discovery (not hardcoded ports)
 │                                 EKS Cluster                                   │
 │                                                                               │
 │  ┌─────────────────────────────────────────────────────────────────────────┐ │
-│  │  ALB (Ingress) ─── ant.crosstoken.io/api                                │ │
-│  └───────────────────────────────┬─────────────────────────────────────────┘ │
-│                                  │                                            │
-│                                  ▼                                            │
-│  ┌─────────────────────────────────────────────────────────────────────────┐ │
-│  │                          ant-api (HPA)                                   │ │
-│  └──┬─────────────┬─────────────┬──────────────┬──────────────┬────────────┘ │
-│     │             │             │              │              │               │
-│     │             │             │              │              └───────┐       │
-│     │             │             │              └──────────────────┐   │       │
-│     │             │             │                                 │   │       │
-│     │TCP          │HTTP         │HTTP          HTTP               │   │HTTP   │
-│     │             │(Proxy)      │              │                  │   │(Proxy)│
-│     ▼             ▼             ▼              ▼                  │   ▼       │
-│  ┌───────┐  ┌───────────┐  ┌─────────┐  ┌──────────┐            │ ┌───────┐ │
-│  │ redis │  │ant-preview│  │chromadb │  │ embedder │            │ │ant-ide│ │
-│  │ (svc) │  │  (svc)    │  │ (svc)   │  │  (svc)   │            │ │(Pods) │ │
-│  │       │  │           │  │         │  │          │            │ │       │ │
-│  │-State │  └─────┬─────┘  └─────────┘  └──────────┘            │ │Dynamic│ │
-│  │-Queue │        │                                              │ │1/user │ │
-│  │-Pub/Sub│        │                                              │ └───┬───┘ │
-│  └───▲───┘        │                                              │     │     │
-│      │             │                                              │     │NFS  │
-│      │TCP          │NFS                  ┌──────────────────┐    │     │     │
-│      │BullMQ Poll  │                     │     LLM API      │◀───┘     │     │
-│      │             │                     │    (External)    │          │     │
-│  ┌───┴─────────┐  │                     └──────────────────┘          │     │
-│  │  ant-job    │  │                                                    │     │
-│  │  (KEDA)     │  │                                                    │     │
-│  └──────┬──────┘  │                                                    │     │
-│         │          │                                                    │     │
-│         │NFS       │                                                    │     │
-│         │          │                                                    │     │
-│         ▼          ▼                                                    ▼     │
+│  │  ALB (Ingress)                                                           │ │
+│  │  ├── /api/* ──────────▶ ant-api (Round-robin)                           │ │
+│  │  └── /realtime/* ─────▶ ant-realtime (Sticky Session)                   │ │
+│  └───────────────────────────────┬───────────────┬─────────────────────────┘ │
+│                                  │               │                            │
+│                                  ▼               ▼                            │
+│  ┌──────────────────────┐  ┌──────────────────────┐                         │
+│  │   ant-api (HPA)      │  │ ant-realtime (HPA)   │                         │
+│  │   REST API, Proxy    │  │ SSE Only             │                         │
+│  └──┬────────┬────┬─────┘  └──────────┬──────────┘                         │
+│     │        │    │                    │                                     │
+│     │        │    └───────┬────────────┤                                     │
+│     │TCP     │HTTP        │            │TCP (Pub/Sub)                        │
+│     │        │(Proxy)     │            │                                     │
+│     ▼        ▼            │            ▼                                     │
+│  ┌───────┐ ┌───────────┐  │         ┌───────┐                               │
+│  │ redis │ │ant-preview│  │         │ redis │                               │
+│  │ (svc) │ │  (svc)    │  │         │Pub/Sub│                               │
+│  │       │ │           │  │         └───────┘                               │
+│  │-State │ └─────┬─────┘  │                                                  │
+│  │-Queue │       │        └─────────────────────────────────┐                │
+│  │-Pub/Sub│       │                                          │                │
+│  └───▲───┘       │                                          │                │
+│      │            │                                          │                │
+│      │TCP         │NFS       ┌──────────────────┐           │HTTP            │
+│      │BullMQ Poll │          │     LLM API      │◀──────────┤(Proxy)         │
+│      │            │          │    (External)    │           │                │
+│  ┌───┴─────────┐ │          └──────────────────┘           ▼                │
+│  │  ant-job    │ │                                   ┌───────────┐           │
+│  │  (KEDA)     │ │                                   │  ant-ide  │           │
+│  └──────┬──────┘ │                                   │  (Pods)   │           │
+│         │         │                                   │  Dynamic  │           │
+│         │NFS      │                                   │  1/user   │           │
+│         │         │                                   └─────┬─────┘           │
+│         ▼         ▼                                         │NFS             │
 │  ┌─────────────────────────────────────────────────────────────────────────┐ │
 │  │                          EFS (Shared Storage)                            │ │
 │  │                         /mnt/workspaces                                  │ │
@@ -87,24 +91,29 @@ Service names used for K8s Service Discovery (not hardcoded ports)
 
 **Domain Configuration (per environment):**
 
-| Environment | ant-api | ant-ui |
-|-----|---------|--------|
-| Dev | `dev-ant.crosstoken.io/api` | `dev-ant.crosstoken.io` |
-| Stg | `stg-ant.crosstoken.io/api` | `stg-ant.crosstoken.io` |
-| Prod | `ant.crosstoken.io/api` | `ant.crosstoken.io` |
+| Environment | ant-api | ant-realtime | ant-ui |
+|-----|---------|--------------|--------|
+| Dev | `dev-ant.crosstoken.io/api` | `dev-ant.crosstoken.io/realtime` | `dev-ant.crosstoken.io` |
+| Stg | `stg-ant.crosstoken.io/api` | `stg-ant.crosstoken.io/realtime` | `stg-ant.crosstoken.io` |
+| Prod | `ant.crosstoken.io/api` | `ant.crosstoken.io/realtime` | `ant.crosstoken.io` |
+
+> **Note**: `/realtime/*` must be configured with **Sticky Session** in ALB for SSE connection stability.
 
 ### 1.4 Component Roles and Scaling
 
-| Component | Role | Scaling Method |
-|---------|------|--------------|
-| **ant-api** | HTTP API, Proxy (Preview/IDE) | HPA (CPU/Request) |
-| **ant-job** | AI Job Processing (Code/Design) | **KEDA (Queue Depth)** |
-| **ant-preview** | Preview Server Management | HPA (CPU/Memory) |
-| **ant-ide** | Cloud IDE (VSCode) | **Dynamic (1 Pod/User)** |
-| **ant-ui** | CSR SPA (React) | S3 + CloudFront (CDN) |
-| **Redis** | State, Queue, Pub/Sub | ElastiCache Cluster |
-| **ChromaDB** | Vector DB (Code Search/RAG) | Vertical (Single Pod) |
-| **Embedder** | Text Embedding Generation | Horizontal (HPA) |
+| Component | Role | Scaling Method | LB Strategy |
+|---------|------|--------------|-------------|
+| **ant-api** | HTTP REST API, Proxy (Preview/IDE) | HPA (CPU/Request) | Round-robin |
+| **ant-realtime** | SSE (Server-Sent Events) | HPA (Connections) | **Sticky Session** |
+| **ant-job** | AI Job Processing (Code/Design) | **KEDA (Queue Depth)** | N/A |
+| **ant-preview** | Preview Server Management | HPA (CPU/Memory) | Round-robin |
+| **ant-ide** | Cloud IDE (VSCode) | **Dynamic (1 Pod/User)** | N/A |
+| **ant-ui** | CSR SPA (React) | S3 + CloudFront (CDN) | CDN |
+| **Redis** | State, Queue, Pub/Sub | ElastiCache Cluster | N/A |
+| **ChromaDB** | Vector DB (Code Search/RAG) | Vertical (Single Pod) | N/A |
+| **Embedder** | Text Embedding Generation | Horizontal (HPA) | Round-robin |
+
+> **Why Sticky Session for ant-realtime?**: SSE clients maintain long-lived connections. Without sticky session, reconnections may hit different pods, causing message loss. Redis Pub/Sub broadcasts messages to all pods, but only the pod with the client connection can deliver them.
 
 ---
 
@@ -128,7 +137,39 @@ resources:
 | CPU Request | 500m | 1 |
 | Memory Request | 1Gi | 2Gi |
 
-### 2.2 ant-job ⚠️ Long-Running Jobs
+### 2.2 ant-realtime
+
+> **Note:** SSE server handling real-time updates. Lightweight but connection-heavy.
+
+```yaml
+resources:
+  requests:
+    cpu: "250m"
+    memory: "512Mi"
+  limits:
+    cpu: "1"
+    memory: "1Gi"
+```
+
+| Item | Minimum | Recommended |
+|-----|-----|-----|
+| Replicas | 2 (HA) | 3+ (HPA) |
+| CPU Request | 250m | 500m |
+| Memory Request | 512Mi | 1Gi |
+
+**Scaling Considerations:**
+- Scale based on **connection count**, not CPU
+- Each pod can handle thousands of SSE connections
+- Memory grows with connection count
+- **Sticky Session required** at ALB/Ingress level
+
+**ALB Target Group Settings:**
+```yaml
+stickiness.enabled: true
+stickiness.lb_cookie.duration_seconds: 86400  # 24 hours
+```
+
+### 2.3 ant-job ⚠️ Long-Running Jobs
 
 > **Note:** AI Jobs are mostly **I/O bound** (LLM API calls, file I/O).
 > Concurrency can be set to 2~4 depending on pod resources.
@@ -156,7 +197,7 @@ Required Pods = Concurrent Jobs ÷ concurrency
 Example: 20 Jobs ÷ 2 = 10 Pods
 ```
 
-### 2.3 ant-preview
+### 2.4 ant-preview
 
 ```yaml
 resources:
@@ -174,7 +215,7 @@ resources:
 | CPU Request | 500m | 1 |
 | Memory Request | 2Gi | 4Gi |
 
-### 2.4 ant-ide (Cloud IDE)
+### 2.5 ant-ide (Cloud IDE)
 
 > **Note:** IDE Pods are dynamically created per user/project.
 > Managed by `KubernetesIDEOrchestrator` (requires `ANT_K8S_NAMESPACE`).
@@ -202,7 +243,7 @@ resources:
 - Each Pod mounts user's workspace from EFS
 - No HPA needed (lifecycle managed by `KubernetesIDEOrchestrator`)
 
-### 2.5 ant-ui (S3 + CloudFront)
+### 2.6 ant-ui (S3 + CloudFront)
 
 > CSR SPA (React/Vite). Build output (`dist/`) deployed to S3 + CloudFront.
 
@@ -217,7 +258,7 @@ resources:
 
 > ⚠️ Vite env vars are injected at **build time**. Separate builds required per environment.
 
-### 2.6 Redis (ElastiCache)
+### 2.7 Redis (ElastiCache)
 
 | Item | Minimum | Recommended |
 |-----|-----|-----|
@@ -225,7 +266,7 @@ resources:
 | Memory | 13 GB | 26 GB |
 | Configuration | Single Node | Cluster Mode (3+ nodes) |
 
-### 2.7 Vector Memory
+### 2.8 Vector Memory
 
 > ChromaDB + Embedder are used for code search/RAG features.
 > **Required** for AI job execution (code analysis, context retrieval).
@@ -272,14 +313,16 @@ resources:
 
 | Resource | Purpose |
 |--------|------|
-| Deployment | ant-api, ant-job, ant-preview |
-| Service | ant-api, ant-preview (ClusterIP) |
-| Ingress | ALB → ant-api |
+| Deployment | ant-api, ant-realtime, ant-job, ant-preview |
+| Service | ant-api, ant-realtime, ant-preview (ClusterIP) |
+| Ingress | ALB → ant-api (/api/*), ant-realtime (/realtime/*) |
 | PVC | EFS (workspaces), gp3 (chromadb) |
 | Secret | API Keys, Redis URL |
 | Namespace | ant-ide (for IDE Pods) |
 | ServiceAccount | ant-api (for K8s API access to manage IDE Pods) |
 | RBAC | Role/RoleBinding for IDE Pod management |
+
+> **Important**: Ingress for `/realtime/*` must have **Sticky Session** enabled.
 
 **AWS Resources (ant-ui):**
 
@@ -295,23 +338,26 @@ resources:
 | Server | Command |
 |------|---------|
 | ant-api | `node dist/server.mjs` |
+| ant-realtime | `node dist/start-realtime-server.mjs` |
 | ant-job | `node dist/start-job-worker.mjs` |
 | ant-preview | `node dist/start-preview-worker.mjs` |
 
 ### 3.3 Key Configuration Principles
 
 **Scaling:**
-- ant-api: **HPA** (CPU-based)
+- ant-api: **HPA** (CPU-based, Round-robin LB)
+- ant-realtime: **HPA** (Connection-based, **Sticky Session LB**)
 - ant-job: **KEDA** (Redis Queue Depth-based) - [KEDA installation required](https://keda.sh/)
 - ant-preview: **HPA** (CPU/Memory-based)
 - ant-ide: **Dynamic** (Pods created/deleted by `KubernetesIDEOrchestrator`)
 
 **Volumes:**
-- `/mnt/workspaces`: EFS (ReadWriteMany) - shared by ant-api, ant-job, ant-preview, ant-ide
+- `/mnt/workspaces`: EFS (ReadWriteMany) - shared by ant-api, ant-realtime, ant-job, ant-preview, ant-ide
 - ChromaDB: gp3 (ReadWriteOnce)
 
 **Probes:**
 - ant-api: `/api/health`
+- ant-realtime: `/health` or `/api/health`
 - ant-preview: `/health`
 - ant-job: No probe needed (Worker)
 - ant-ide: No probe needed (Pods managed by ant-api)
@@ -345,6 +391,7 @@ cp packages/ant-cli/.env.example.cloud packages/ant-cli/.env
 | Server | Required Sections |
 |-----|----------|
 | ant-api | COMMON + ant-api |
+| ant-realtime | COMMON + ant-realtime |
 | ant-job | COMMON + ant-job |
 | ant-preview | COMMON + ant-preview |
 
@@ -358,9 +405,16 @@ cp packages/ant-cli/.env.example.cloud packages/ant-cli/.env
 | `ANT_WORKSPACE_BASE_PATH` | Workspace root path | `/mnt/workspaces` |
 | `ANT_K8S_NAMESPACE` | IDE K8s namespace (enables K8s IDE) | `ant-ide` |
 
+**ant-realtime specific:**
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `ANT_REALTIME_PORT` | Realtime server port | `4101` |
+
 **ant-ui (Build time):**
 ```bash
 VITE_CLOUD_BACKEND_BASE=https://ant.crosstoken.io/api
+VITE_CLOUD_REALTIME_BASE=https://ant.crosstoken.io/realtime
 ```
 
 ---
@@ -372,9 +426,11 @@ VITE_CLOUD_BACKEND_BASE=https://ant.crosstoken.io/api
 | From | To | Purpose |
 |------|-----|------|
 | User Browser | CloudFront | ant-ui (static assets) |
-| User Browser | ALB | ant-api (API calls) |
-| ALB | ant-api | HTTPS Ingress |
-| ant-api, ant-job, ant-preview | Redis | State, Queue |
+| User Browser | ALB (/api/*) | ant-api (REST API calls) |
+| User Browser | ALB (/realtime/*) | ant-realtime (SSE connections) |
+| ALB | ant-api | HTTPS Ingress (Round-robin) |
+| ALB | ant-realtime | HTTPS Ingress (**Sticky Session**) |
+| ant-api, ant-realtime, ant-job, ant-preview | Redis | State, Queue, Pub/Sub |
 | ant-api, ant-job | LLM API (External) | AI Calls |
 | ant-api | ant-preview | Preview Proxy |
 | ant-api | ant-ide Pods | IDE Proxy |
@@ -382,9 +438,11 @@ VITE_CLOUD_BACKEND_BASE=https://ant.crosstoken.io/api
 
 **Notes:**
 - ant-ui: CloudFront serves static files (S3 origin), API calls go to ALB
+- ant-realtime: SSE requires **Sticky Session** at ALB level
 - ant-job does not need Inbound (Worker pulls from queue)
 - ant-ide Pods are created dynamically by ant-api via K8s API
 - Redis should only be accessible within VPC
+- Redis Pub/Sub broadcasts messages from ant-job to ant-realtime for SSE delivery
 
 ---
 
@@ -424,14 +482,17 @@ VITE_CLOUD_BACKEND_BASE=https://ant.crosstoken.io/api
 |-----------|-------------|----------------|
 | **Redis** | Required (both local & cloud) | `RedisStateStore` (single) |
 | **Job Queue** | Required (both local & cloud) | `BullMQJobQueue` (single) |
+| **Realtime Server** | Required (both local & cloud) | `RealtimeServer` (SSE) |
 | **Preview Worker** | Required (both local & cloud) | `RemotePreviewOrchestrator` (single) |
 | **IDE** | Docker (local) or K8s (cloud) | `LocalIDEOrchestrator` / `KubernetesIDEOrchestrator` |
 
 > **Note**: Local and cloud use identical infrastructure components. Only authentication mode and IDE orchestration differ.
+> 
+> **Architecture Change**: SSE is now handled by dedicated `ant-realtime` server (separated from `ant-api`). See [10-cloud-architecture.md](../architecture/10-cloud-architecture.md) for details.
 
 ### Storage
 
-- **EFS Required**: ant-api, ant-job, ant-preview share the same workspace (ReadWriteMany)
+- **EFS Required**: ant-api, ant-realtime, ant-job, ant-preview share the same workspace (ReadWriteMany)
 - EBS not supported
 
 ### Scaling
@@ -459,3 +520,62 @@ VITE_CLOUD_BACKEND_BASE=https://ant.crosstoken.io/api
 |-------------|---------------------|--------------|
 | Local | Not set | `LocalIDEOrchestrator` (Docker) |
 | Cloud | Set (e.g., `ant-ide`) | `KubernetesIDEOrchestrator` (K8s) |
+
+---
+
+## 8. Ingress Configuration Examples
+
+### 8.1 ALB Ingress for ant-api (Round-robin)
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ant-api-ingress
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+spec:
+  rules:
+  - host: ant.crosstoken.io
+    http:
+      paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: ant-api
+            port:
+              number: 4100
+```
+
+### 8.2 ALB Ingress for ant-realtime (Sticky Session) ⚠️
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ant-realtime-ingress
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    # ⚠️ CRITICAL: Sticky Session for SSE
+    alb.ingress.kubernetes.io/target-group-attributes: |
+      stickiness.enabled=true,stickiness.lb_cookie.duration_seconds=86400
+spec:
+  rules:
+  - host: ant.crosstoken.io
+    http:
+      paths:
+      - path: /realtime
+        pathType: Prefix
+        backend:
+          service:
+            name: ant-realtime
+            port:
+              number: 4101
+```
+
+> **Note**: Without sticky session, SSE reconnections may hit different pods, causing message loss even with Redis Pub/Sub broadcasting.

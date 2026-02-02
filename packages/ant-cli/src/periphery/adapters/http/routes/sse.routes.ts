@@ -116,12 +116,11 @@ export function createSSERoutes(deps: {
    * GET /jobs/:jobId/workflow/stream
    * Workflow SSE endpoint (per-job)
    */
-  router.get('/jobs/:jobId/workflow/stream', (req: Request, res: Response) => {
+  router.get('/jobs/:jobId/workflow/stream', async (req: Request, res: Response) => {
     const jobId = req.params.jobId;
     logger.debug(`Workflow client connecting`, { component: 'SSE', jobId });
     
     // ✅ Resolve user context consistently (query + header + auth).
-    // Workflow stream also uses query in the browser (EventSource).
     const userContext: UserContext = extractUserContext(req);
     logger.debug(`Workflow user context resolved`, { component: 'SSE', jobId, organizationId: userContext.organizationId, userId: userContext.userId });
     
@@ -136,14 +135,11 @@ export function createSSERoutes(deps: {
     // Register workflow client
     deps.sseService.registerWorkflowClient(jobId, res);
     
-    // Send initial workflow state (if exists)
-    const initialState = deps.workflowStateService.getInitialState(jobId);
+    // Send initial workflow state (if exists) - now async from Redis
+    const initialState = await deps.workflowStateService.getInitialState(jobId);
     if (initialState) {
-      const serializedState = {
-        ...initialState,
-        activeActors: Array.from(initialState.activeActors)
-      };
-      deps.sseService.sendInitialState(res, 'workflow', serializedState);
+      // activeActors is already an array (serialized for Redis)
+      deps.sseService.sendInitialState(res, 'workflow', initialState);
       logger.debug(`Sent initial workflow state`, { component: 'SSE', jobId });
     }
     logger.debug(`Workflow client registered`, { component: 'SSE', jobId });

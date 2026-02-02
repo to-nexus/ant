@@ -7,6 +7,13 @@ import { TaskTiming, TaskTokenUsage, JobTiming } from '@/domain/models/types';
 const LOCAL_BACKEND_BASE = import.meta.env.VITE_LOCAL_BACKEND_BASE || 'http://localhost:4000/api';
 const CLOUD_BACKEND_BASE = import.meta.env.VITE_CLOUD_BACKEND_BASE || 'http://localhost:4100/api';
 
+// Realtime (SSE) Server URLs
+// - Local mode: API 4000, Realtime 4001
+// - Cloud mode: API 4100, Realtime 4101
+// @see docs/architecture/10-cloud-architecture.md
+const LOCAL_REALTIME_BASE = import.meta.env.VITE_LOCAL_REALTIME_BASE || 'http://localhost:4001/realtime';
+const CLOUD_REALTIME_BASE = import.meta.env.VITE_CLOUD_REALTIME_BASE || 'http://localhost:4101/realtime';
+
 /**
  * Get API base URL dynamically based on backend mode from localStorage
  * 
@@ -22,6 +29,25 @@ export function getApiBase(): string {
   } catch {
     // ✅ Always default to cloud on error
     return CLOUD_BACKEND_BASE;
+  }
+}
+
+/**
+ * Get Realtime (SSE) Server base URL
+ * 
+ * SSE connections use a dedicated Realtime Server for:
+ * - Independent scaling with Sticky Session
+ * - Better connection management
+ * 
+ * @see docs/architecture/10-cloud-architecture.md
+ */
+export function getRealtimeBase(): string {
+  try {
+    const stored = localStorage.getItem('ant-ui:backend-mode');
+    const backendMode = stored ? JSON.parse(stored) : 'cloud';
+    return backendMode === 'local' ? LOCAL_REALTIME_BASE : CLOUD_REALTIME_BASE;
+  } catch {
+    return CLOUD_REALTIME_BASE;
   }
 }
 
