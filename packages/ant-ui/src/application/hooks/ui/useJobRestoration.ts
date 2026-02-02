@@ -57,7 +57,32 @@ export function useJobRestoration({
             return;
           }
           
-          console.log('[useJobRestoration] ✅ Restoring running job:', { jobId, startTime, mode });
+          // ✅ CRITICAL: Verify job is actually running on server BEFORE restoring
+          // This prevents restoring a job that completed while client was disconnected
+          try {
+            console.log('[useJobRestoration] 🔍 Verifying job status on server before restore...');
+            const position = await fetchQueuePosition(jobId);
+            console.log('[useJobRestoration] Server response:', position);
+            
+            // If server says job is completed/failed, don't restore - clear localStorage instead
+            if (position.status === 'completed' || position.status === 'failed' || position.status === 'not_found') {
+              console.log('[useJobRestoration] 🚫 Job already finished on server, clearing localStorage');
+              localStorage.removeItem('ant-ui:running-task');
+              localStorage.removeItem('ant-ui:task-start-time');
+              localStorage.removeItem('ant-ui:task-mode');
+              return;
+            }
+          } catch (error) {
+            // If we can't verify, still clear localStorage to be safe
+            // (job probably doesn't exist anymore)
+            console.warn('[useJobRestoration] ⚠️ Failed to verify job status, clearing localStorage for safety');
+            localStorage.removeItem('ant-ui:running-task');
+            localStorage.removeItem('ant-ui:task-start-time');
+            localStorage.removeItem('ant-ui:task-mode');
+            return;
+          }
+          
+          console.log('[useJobRestoration] ✅ Job verified running, restoring:', { jobId, startTime, mode });
           
           // Calculate elapsed time
           const elapsed = Math.floor((Date.now() - startTime) / 1000);
@@ -76,13 +101,16 @@ export function useJobRestoration({
             currentJobId: store.currentJobId
           });
           
-          // Fetch queue position for restored job
+          // Queue position was already fetched during verification above
+          // Set it in store (position variable is still in scope from verification)
+          // Note: We need to re-fetch since position variable is out of scope
           try {
             const position = await fetchQueuePosition(jobId);
             store.setQueuePosition(position);
-            console.log('[useJobRestoration] Queue position restored:', position);
+            console.log('[useJobRestoration] Queue position set:', position);
           } catch (error) {
-            console.error('[useJobRestoration] Failed to fetch queue position:', error);
+            // Non-critical - SSE will update this
+            console.warn('[useJobRestoration] Failed to set queue position:', error);
           }
           
           // Note: Kanban/Workflow/Chat SSE will auto-reconnect via unified SSE
