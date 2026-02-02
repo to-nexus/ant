@@ -505,6 +505,14 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     userId: string,
     projectId: string
   ): Promise<PortMapping | null> {
+    // ✅ Validate all key components are present
+    if (!tenantId || !userId || !projectId) {
+      logger.warn(`getIDE() INVALID ARGS: tenantId=${tenantId}, userId=${userId}, projectId=${projectId}`, { component: 'RedisStateStore' });
+      // Log stack trace to find the caller
+      logger.warn(`getIDE() caller stack: ${new Error().stack}`, { component: 'RedisStateStore' });
+      return null;
+    }
+    
     // IDE uses project-level key (no feature)
     const portKey = createIDEKey(tenantId, userId, projectId);
     const key = this.key(KEYS.IDE, portKey);

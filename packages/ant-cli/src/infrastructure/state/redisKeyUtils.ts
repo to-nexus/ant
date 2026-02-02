@@ -21,12 +21,20 @@ export interface IDEKeyComponents {
 /**
  * Create IDE port key (3 parts)
  * Used for Redis key: ant:ide:{org}:{user}:{project}
+ * 
+ * @throws Error if any parameter is empty
  */
 export function createIDEKey(
   tenantId: string,
   userId: string,
   projectId: string
 ): string {
+  // Validate all parts are non-empty
+  if (!tenantId || !userId || !projectId) {
+    const error = `Invalid IDE key components: tenantId=${tenantId}, userId=${userId}, projectId=${projectId}`;
+    console.error(`[createIDEKey] ERROR: ${error}`);
+    throw new Error(error);
+  }
   return `${tenantId}:${userId}:${projectId}`;
 }
 
