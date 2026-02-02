@@ -10,6 +10,7 @@ import {
   createCloudIDERoutes,
   createApiRoutes
 } from '../../routes';
+import { extractUserContext } from '../../routes/helpers/userContext';
 import { logger } from '../../../../../utils/logger';
 import { ServerConfig, ServerDependencies } from '../types';
 import { JobStateTracker } from '../managers/JobStateTracker';
@@ -122,8 +123,11 @@ export class RouteConfigurator {
         return res.status(400).json({ error: 'projectId and featureName are required' });
       }
       
+      // Extract userContext from request (x-user-email header in Cloud mode)
+      const userContext = extractUserContext(req);
+      
       // Fire and forget - non-blocking
-      this.workflowBridge.notifyFileTreeUpdate(projectId, featureName)
+      this.workflowBridge.notifyFileTreeUpdate(projectId, featureName, userContext)
         .catch(err => logger.warn('[FileTreeUpdate] Error', { 
           component: 'RouteConfigurator', 
           projectId, 

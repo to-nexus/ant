@@ -125,24 +125,9 @@ export class WorkflowBridge {
     );
     
     // Broadcast to Kanban clients via SSE
-    // ✅ Cloud-safe: Get job mapping from Redis instead of local stateTracker
-    // This ensures multi-pod environments (Job Worker separate from API Server) can broadcast
+    // ✅ Cloud-safe: Get job mapping from Redis (single source of truth)
     const stateStore = getInfrastructureFactory().getStateStore();
-    
-    // Try Redis first, fallback to local stateTracker
-    let mapping = await stateStore.getJobMapping(jobId);
-    if (!mapping) {
-      // Fallback for local mode or backward compatibility
-      const localMapping = this.stateTracker.getJobMapping(jobId);
-      if (localMapping) {
-        mapping = {
-          projectId: localMapping.projectId,
-          featureName: localMapping.featureName,
-          jobType: localMapping.jobType,
-          userContext: localMapping.userContext
-        };
-      }
-    }
+    const mapping = await stateStore.getJobMapping(jobId);
     
     if (mapping) {
       // Get job status from Redis for accurate job type
@@ -156,9 +141,9 @@ export class WorkflowBridge {
           mapping.projectId, 
           mapping.featureName,
           jobType,
-          this.stateTracker.getState().jobToProject,
-          this.stateTracker.getState().jobs,
-          this.stateTracker.getState().taskQueueSnapshots,
+          undefined,  // jobToProject - not used, KanbanService uses Redis
+          undefined,  // jobs - not used, KanbanService uses Redis
+          undefined,  // taskQueueSnapshots - not used
           mapping.userContext
         );
         
@@ -187,7 +172,7 @@ export class WorkflowBridge {
   /**
    * Notify file tree update
    */
-  async notifyFileTreeUpdate(projectId: string, featureName: string): Promise<void> {
+  async notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: UserContext): Promise<void> {
     try {
       logger.debug(`[FileTreeUpdate] Updating`, { 
         component: 'WorkflowBridge', 
@@ -195,17 +180,9 @@ export class WorkflowBridge {
         featureName 
       });
       
-      // Find userContext from job mappings
-      let userContext: UserContext | undefined;
-      const state = this.stateTracker.getState();
-      for (const [jobId, mapping] of state.jobToProject.entries()) {
-        if (mapping.projectId === projectId && mapping.featureName === featureName) {
-          userContext = mapping.userContext;
-          break;
-        }
-      }
+      const stateStore = getInfrastructureFactory().getStateStore();
       
-      // Fallback for Local mode
+      // Use provided userContext or fallback to local
       if (!userContext) {
         userContext = {
           userId: 'local',
@@ -229,7 +206,6 @@ export class WorkflowBridge {
       });
       
       // Broadcast via Redis Pub/Sub → Realtime Server → SSE
-      const stateStore = getInfrastructureFactory().getStateStore();
       await stateStore.publish(SSE_BROADCAST_CHANNEL, {
         projectId,
         featureName,
