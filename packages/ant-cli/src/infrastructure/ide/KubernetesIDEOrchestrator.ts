@@ -454,8 +454,9 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
       );
 
       // Register in state store
+      // Note: registerIDE expects (tenantId=org, userId, projectId, feature) - NOT org:user combined
       await this.stateStore.registerIDE(
-        tenantId,
+        userContext.organizationId,
         userContext.userId,
         projectId,
         feature,
@@ -710,11 +711,12 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     try {
       await this.deleteResources(resourceName);
 
-      // Extract userId from tenantId (format: orgId:userId)
+      // Extract orgId and userId from tenantId (format: orgId:userId)
       const parts = tenantId.split(':');
+      const orgId = parts[0] || '';
       const userId = parts.length > 1 ? parts[1] : '';
 
-      await this.stateStore.unregisterIDE(tenantId, userId, projectId, feature);
+      await this.stateStore.unregisterIDE(orgId, userId, projectId, feature);
 
       return { success: true };
     } catch (error: any) {
