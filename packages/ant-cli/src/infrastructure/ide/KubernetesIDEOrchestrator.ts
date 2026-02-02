@@ -57,7 +57,7 @@ interface K8sPod {
         limits?: { cpu?: string; memory?: string };
         requests?: { cpu?: string; memory?: string };
       };
-      volumeMounts?: Array<{ name: string; mountPath: string }>;
+      volumeMounts?: Array<{ name: string; mountPath: string; subPath?: string }>;
     }>;
     volumes?: Array<{
       name: string;
@@ -109,6 +109,10 @@ const DEFAULT_OPTIONS: Required<Omit<KubernetesIDEOrchestratorOptions, 'kubeApiU
   memoryLimit: '4Gi',
   idleTimeoutMs: 30 * 60 * 1000  // 30 minutes
 };
+
+// EFS PVC configuration
+const EFS_PVC_NAME = process.env.ANT_EFS_PVC_NAME || 'efs-workspaces';
+const WORKSPACE_BASE_PATH = process.env.ANT_WORKSPACE_BASE_PATH || '/mnt/workspaces';
 
 // ============================================
 // Timeout Constants
@@ -337,15 +341,30 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
           },
           volumeMounts: [{
             name: 'workspace',
-            mountPath: '/workspace'
+            mountPath: '/workspace',
+            subPath: this.getSubPath(workspacePath)
           }]
         }],
         volumes: [{
           name: 'workspace',
-          emptyDir: {}  // TODO: Use PVC for persistence
+          persistentVolumeClaim: { claimName: EFS_PVC_NAME }
         }]
       }
     };
+  }
+
+  /**
+   * Convert full workspace path to EFS subPath
+   * e.g., /mnt/workspaces/to.nexus/probe/ant-ogf/codebase -> to.nexus/probe/ant-ogf/codebase
+   */
+  private getSubPath(workspacePath: string): string {
+    // Remove WORKSPACE_BASE_PATH prefix to get relative subPath
+    let subPath = workspacePath;
+    if (workspacePath.startsWith(WORKSPACE_BASE_PATH)) {
+      subPath = workspacePath.slice(WORKSPACE_BASE_PATH.length);
+    }
+    // Remove leading slash if present
+    return subPath.replace(/^\/+/, '');
   }
 
   /**
