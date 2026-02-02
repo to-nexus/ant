@@ -48,6 +48,8 @@ export interface JobState {
   taskStartTime: number | undefined;
   elapsedTime: number;
   currentMode: 'generate' | 'refactor' | 'explain' | undefined;
+  // ✅ Cloud multi-pod: Protects isRunning from SSE overwrite until actual job starts
+  jobStartPending: boolean;
 }
 
 export interface SSEState {

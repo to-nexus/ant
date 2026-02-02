@@ -189,12 +189,38 @@ export class SSEService {
   
   /**
    * Broadcast to local SSE clients only (called from Redis subscription)
+   * 
+   * IMPORTANT: Uses fallback matching to handle userContext mismatches
+   * - First tries exact key match with userContext
+   * - Falls back to matching any client with same projectId/featureName
    */
   private broadcastLocal(projectId: string, featureName: string, type: SSEMessageType, data: any, userContext?: UserContext): void {
+    // Try exact key match first
     const key = this.getSessionKey(projectId, featureName, userContext);
-    const clients = this.clients.get(key);
+    let clients = this.clients.get(key);
+    
+    // If no exact match, try to find clients by projectId/featureName suffix
+    // This handles cases where userContext differs between sender and receiver
+    if (!clients || clients.size === 0) {
+      const suffix = `${projectId}/${featureName}`;
+      for (const [clientKey, clientSet] of this.clients.entries()) {
+        if (clientKey.endsWith(suffix) && clientSet.size > 0) {
+          clients = clientSet;
+          logger.debug(`[SSE Broadcast] Using fallback match: ${clientKey} for ${key}`, {
+            component: 'SSEService',
+            projectId,
+            featureName
+          });
+          break;
+        }
+      }
+    }
     
     if (!clients || clients.size === 0) {
+      logger.warn(`[SSE Broadcast] No clients found for ${projectId}/${featureName} (tried key: ${key})`, { 
+        component: 'SSEService', 
+        allKeys: Array.from(this.clients.keys())
+      });
       return;
     }
     

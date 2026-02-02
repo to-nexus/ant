@@ -35,6 +35,8 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
   taskStartTime: undefined,
   elapsedTime: 0,
   currentMode: undefined,
+  // ✅ Cloud multi-pod: Protects isRunning from SSE overwrite until actual job starts
+  jobStartPending: false,
 
   // ==================
   // Actions
@@ -53,6 +55,11 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
       sseManager.disconnectWorkflow(prevJobId);
     }
     
+    // ✅ Cloud multi-pod: Set jobStartPending when starting job (protects from SSE overwrite)
+    // jobStartPending is true when local setRunning(true) is called but actual job hasn't started yet
+    // This prevents SSE's updateKanban from overwriting isRunning to false before job actually starts
+    const jobStartPending = isRunning && !jobId;  // Pending until jobId is assigned
+    
     set({ 
       isRunning,
       currentJobId: isRunning ? jobId : undefined,
@@ -60,6 +67,8 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
       elapsedTime: isRunning ? 0 : get().elapsedTime,
       currentMode: isRunning ? mode : undefined,
       userStoppedJobId: isRunning ? null : get().userStoppedJobId,
+      // ✅ Cloud multi-pod: jobStartPending protects isRunning from SSE overwrite
+      jobStartPending,
       // Reset queue state when job stops
       ...(!isRunning ? { isQueued: false, queuePosition: null } : {}),
       ...(isRunning ? { lastJobFailed: false } : {})
