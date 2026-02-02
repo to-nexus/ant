@@ -164,34 +164,22 @@ export class GitHubAuthService {
    * @returns Authenticated URL: https://{PAT}@github.com/owner/repo.git
    */
   async buildAuthenticatedUrl(userContext: CredentialUserContext, githubRepo: string): Promise<string> {
-    console.log(`[GitHubAuthService] buildAuthenticatedUrl called`);
-    console.log(`[GitHubAuthService]   org="${userContext.org}", user="${userContext.user}"`);
-    console.log(`[GitHubAuthService]   githubRepo="${githubRepo}"`);
-    
     const pat = await this.getPAT(userContext);
     
     if (!pat) {
-      console.error(`[GitHubAuthService] ❌ PAT not found!`);
       throw new Error(
         'GitHub PAT not configured. Please save your PAT in the Configuration screen (GitHub Integration section).'
       );
     }
     
-    console.log(`[GitHubAuthService] ✅ PAT found (length: ${pat.length})`);
-    
-    // ✅ Parse githubRepo to ensure "owner/repo" format
+    // Parse githubRepo to ensure "owner/repo" format
     const parsed = this.parseGitHubRepo(githubRepo);
     if (!parsed) {
-      console.error(`[GitHubAuthService] ❌ Failed to parse GitHub repo: ${githubRepo}`);
       throw new Error(`Invalid GitHub repository format: ${githubRepo}`);
     }
     
-    console.log(`[GitHubAuthService] Parsed repo: ${parsed}`);
-    
     // Output: https://{PAT}@github.com/owner/repo.git
-    const url = `https://${pat}@github.com/${parsed}.git`;
-    console.log(`[GitHubAuthService] ✅ Authenticated URL built (with PAT masked)`);
-    return url;
+    return `https://${pat}@github.com/${parsed}.git`;
   }
   
   /**
