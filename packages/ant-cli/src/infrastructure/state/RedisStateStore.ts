@@ -468,7 +468,8 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     const portKey = this.createPortKey(tenantId, userId, projectId, feature);
     const key = this.key(KEYS.IDE, portKey);
     
-    logger.debug(`registerIDE() called: key=${key}, host=${host}, port=${port}`, { component: 'RedisStateStore' });
+    // ✅ WARN level for production IDE debugging
+    logger.warn(`registerIDE() called: key=${key}, host=${host}, port=${port}`, { component: 'RedisStateStore' });
     
     const mapping: PortMapping = {
       tenantId,
@@ -486,7 +487,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     pipeline.sadd(this.key(KEYS.IDE_LIST), portKey);
     await pipeline.exec();
 
-    logger.info(`IDE registered: ${portKey} → ${host}:${port}`, { component: 'RedisStateStore' });
+    logger.warn(`IDE registered: ${portKey} → ${host}:${port}`, { component: 'RedisStateStore' });
   }
 
   async getIDE(
@@ -498,17 +499,18 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     const portKey = this.createPortKey(tenantId, userId, projectId, feature);
     const key = this.key(KEYS.IDE, portKey);
     
-    logger.debug(`getIDE() called: key=${key}`, { component: 'RedisStateStore' });
+    // ✅ WARN level for production IDE debugging
+    logger.warn(`getIDE() called: key=${key}`, { component: 'RedisStateStore' });
     
     const data = await this.redis.get(key);
 
     if (!data) {
-      logger.debug(`getIDE() not found: key=${key}`, { component: 'RedisStateStore' });
+      logger.warn(`getIDE() NOT FOUND: key=${key}`, { component: 'RedisStateStore' });
       return null;
     }
 
     const mapping: PortMapping = JSON.parse(data);
-    logger.debug(`getIDE() found: key=${key}, host=${mapping.host}, port=${mapping.port}`, { component: 'RedisStateStore' });
+    logger.warn(`getIDE() found: key=${key}, host=${mapping.host}, port=${mapping.port}`, { component: 'RedisStateStore' });
     
     // Update last accessed
     mapping.lastAccessedAt = new Date();
