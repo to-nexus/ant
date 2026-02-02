@@ -121,10 +121,12 @@ export class PreviewService {
    * Broadcast status update via Redis Pub/Sub
    */
   private broadcastStatus(serverKey: string, status: any): void {
-    logger.debug('Broadcasting status update', { component: 'PreviewService' }, { serverKey, status });
+    // ✅ WARN level for production visibility
+    logger.warn(`broadcastStatus() called: serverKey=${serverKey}, running=${status?.running}, ready=${status?.ready}`, { component: 'PreviewService' });
     
     if (this.stateStore) {
       const { tenantId, userId, projectId, feature } = this.parseServerKey(serverKey);
+      logger.warn(`broadcastStatus() publishing to Redis: channel=${PREVIEW_CHANNEL}`, { component: 'PreviewService' });
       this.stateStore.publish(PREVIEW_CHANNEL, {
         projectId,
         featureName: feature,
@@ -132,6 +134,8 @@ export class PreviewService {
         type: 'status',
         data: status
       }).catch(err => logger.warn('Failed to publish preview status', { component: 'PreviewService' }, err));
+    } else {
+      logger.warn(`broadcastStatus() NO stateStore - cannot publish to Redis!`, { component: 'PreviewService' });
     }
     
     if (this.onStatusChange) {
@@ -176,7 +180,8 @@ export class PreviewService {
     logger.warn(`startPreview() called: tenant=${tenantId}, user=${userId}, project=${projectId}, feature=${feature}`, { component: 'PreviewService' });
     
     const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
-    const proxyUrl = `/preview/${serverKey}`;
+    // Using /api/preview to leverage existing Ingress rules
+    const proxyUrl = `/api/preview/${serverKey}`;
     
     logger.warn(`Preview serverKey=${serverKey}, localPath=${localPath}`, { component: 'PreviewService' });
     
@@ -272,7 +277,7 @@ export class PreviewService {
         
         const extraEnv: Record<string, string | undefined> = {};
         if (pkg.type === 'frontend' && backendPort) {
-          extraEnv.VITE_API_BASE_URL = `/preview/${serverKey}`;
+          extraEnv.VITE_API_BASE_URL = `/api/preview/${serverKey}`;
         }
         
         const childProcess = this.processSpawner.spawn(pkg, pkgPort, {
@@ -615,7 +620,7 @@ export class PreviewService {
       running,
       ready,
       port,
-      url: port ? `/preview/${serverKey}` : undefined,
+      url: port ? `/api/preview/${serverKey}` : undefined,
       processCount: processes?.length || 0,
       backendPort,
       packages,

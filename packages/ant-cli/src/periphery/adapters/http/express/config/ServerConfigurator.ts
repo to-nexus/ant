@@ -38,9 +38,9 @@ export class ServerConfigurator {
       credentials: true
     }));
     
-    // ✅ Log all non-API requests for debugging routing issues
+    // ✅ Log IDE/Preview requests for debugging routing issues
     app.use((req, _res, next) => {
-      if (!req.path.startsWith('/api/') && (req.path.startsWith('/ide/') || req.path.startsWith('/preview/'))) {
+      if (req.path.startsWith('/api/ide/') || req.path.startsWith('/api/preview/')) {
         logger.warn(`[INCOMING] ${req.method} ${req.path}`, { component: 'ServerConfigurator' });
       }
       next();
@@ -59,12 +59,15 @@ export class ServerConfigurator {
   /**
    * Setup proxy middleware for preview servers and IDE containers
    * IMPORTANT: Must be registered BEFORE body parsers
+   * 
+   * NOTE: Using /api/preview and /api/ide paths to leverage existing Ingress rules
+   * that route /api/* to ant-api service. This avoids needing separate Ingress entries.
    */
   private setupProxyMiddleware(app: Express): void {
-    // Preview Proxy (handles /preview/:serverKey requests)
+    // Preview Proxy (handles /api/preview/:serverKey requests)
     app.use(createPreviewProxyMiddleware({
       portRegistry: this.deps.portRegistry,
-      pathPrefix: '/preview',
+      pathPrefix: '/api/preview',
       getBackendPort: ({ tenantId, userId, projectId, feature }) => {
         try {
           return this.deps.previewService.getPreviewStatus(tenantId, userId, projectId, feature).backendPort;
@@ -74,16 +77,16 @@ export class ServerConfigurator {
       }
     }));
 
-    // ✅ Log all /ide/* requests BEFORE proxy (for debugging routing issues)
-    app.use('/ide', (req, res, next) => {
+    // ✅ Log all /api/ide/* requests BEFORE proxy (for debugging routing issues)
+    app.use('/api/ide', (req, res, next) => {
       logger.warn(`[IDE_ROUTE] Incoming request: ${req.method} ${req.originalUrl}`, { component: 'ServerConfigurator' });
       next();
     });
     
-    // IDE Proxy (handles /ide/:serverKey requests)
+    // IDE Proxy (handles /api/ide/:serverKey requests)
     app.use(createIDEProxyMiddleware({
       portRegistry: this.deps.portRegistry,
-      pathPrefix: '/ide'
+      pathPrefix: '/api/ide'
     }));
   }
 
