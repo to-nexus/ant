@@ -227,8 +227,8 @@ export class ExpressServerAdapter implements
   // FileTreeUpdatePort Implementation
   // =====================================
   
-  async notifyFileTreeUpdate(projectId: string, featureName: string): Promise<void> {
-    await this.workflowBridge.notifyFileTreeUpdate(projectId, featureName);
+  async notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: any): Promise<void> {
+    await this.workflowBridge.notifyFileTreeUpdate(projectId, featureName, userContext);
   }
   
   // =====================================
