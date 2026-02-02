@@ -455,11 +455,12 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
 
       // Register in state store
       // Note: registerIDE expects (tenantId=org, userId, projectId, feature) - NOT org:user combined
+      // IDE is project-level, always use 'main' to match proxy lookup
       await this.stateStore.registerIDE(
         userContext.organizationId,
         userContext.userId,
         projectId,
-        feature,
+        'main',  // IDE is project-level, always 'main'
         IDE_PORT,
         pod.status?.podIP || resourceName
       );
@@ -605,12 +606,13 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     
     // Update last access time in state store (with timeout to prevent hanging)
     // Note: registerIDE expects (tenantId=org, userId, projectId, feature) - NOT org:user combined
+    // IDE is project-level, always use 'main' to match proxy lookup
     try {
       const registerPromise = this.stateStore.registerIDE(
         userContext.organizationId,  // org only, not org:user
         userContext.userId,
         projectId,
-        feature,
+        'main',  // IDE is project-level, always 'main'
         IDE_PORT,
         pod.status?.podIP || pod.metadata.name
       );
@@ -716,7 +718,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
       const orgId = parts[0] || '';
       const userId = parts.length > 1 ? parts[1] : '';
 
-      await this.stateStore.unregisterIDE(orgId, userId, projectId, feature);
+      await this.stateStore.unregisterIDE(orgId, userId, projectId, 'main');  // IDE is project-level, always 'main'
 
       return { success: true };
     } catch (error: any) {
