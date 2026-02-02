@@ -18,7 +18,6 @@ export interface SSEMessage {
 // Redis Pub/Sub channels for cross-instance broadcasting
 export const SSE_BROADCAST_CHANNEL = 'sse:broadcast';
 export const SSE_WORKFLOW_CHANNEL = 'sse:workflow';
-export const SSE_PREVIEW_CHANNEL = 'sse:preview';
 
 export interface SSEBroadcastMessage {
   projectId: string;
@@ -87,12 +86,7 @@ export class SSEService {
       });
       logger.info('Subscribed to sse:workflow channel', { component: 'SSEService' });
       
-      // 4. Subscribe to preview broadcast (from PreviewService.broadcastStatus)
-      await stateStore.subscribe(SSE_PREVIEW_CHANNEL, (message: SSEBroadcastMessage) => {
-        const { projectId, featureName, data, userContext } = message;
-        this.broadcastLocal(projectId, featureName, 'preview', data, userContext);
-      });
-      logger.info('Subscribed to sse:preview channel', { component: 'SSEService' });
+      // Note: Preview status uses sse:broadcast with type:'preview' (handled by #2 above)
       
       logger.info('All SSE broadcast subscriptions ready', { component: 'SSEService' });
     } catch (error) {

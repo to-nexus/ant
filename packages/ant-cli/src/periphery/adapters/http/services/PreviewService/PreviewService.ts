@@ -16,8 +16,10 @@ import { ProcessSpawner } from './managers/ProcessSpawner';
 import { HealthChecker } from './utils/HealthChecker';
 import { IssueDetector } from './detectors/IssueDetector';
 import { logger } from '../../../../../utils/logger';
+import { SSE_BROADCAST_CHANNEL } from '../SSEService';
 
-const PREVIEW_CHANNEL = 'sse:preview';
+// Use sse:broadcast channel with type:'preview' (SSEService subscribes to this)
+const PREVIEW_CHANNEL = SSE_BROADCAST_CHANNEL;
 
 /**
  * PreviewService
@@ -108,6 +110,7 @@ export class PreviewService {
     // K8s typically sets POD_IP via downward API
     const podIp = process.env.POD_IP;
     if (podIp) {
+      logger.warn(`[Preview] Using POD_IP: ${podIp}`, { component: 'PreviewService' });
       return podIp;
     }
     
@@ -118,20 +121,29 @@ export class PreviewService {
       for (const name of Object.keys(interfaces)) {
         for (const iface of interfaces[name] || []) {
           // Skip internal/loopback and IPv6
-          if (!iface.internal && iface.family === 'IPv4') {
+          // Note: Node.js 18+ uses numeric family (4/6), older versions use strings
+          const isIPv4 = iface.family === 'IPv4' || iface.family === 4;
+          if (!iface.internal && isIPv4) {
+            logger.warn(`[Preview] Using network interface IP: ${iface.address} (${name})`, { component: 'PreviewService' });
             return iface.address;
           }
         }
       }
-    } catch {
-      // Ignore errors
+    } catch (err) {
+      logger.warn(`[Preview] Failed to get network interfaces`, { component: 'PreviewService' }, err);
     }
     
+    logger.warn(`[Preview] No POD_IP or network interface found, using localhost`, { component: 'PreviewService' });
     return 'localhost';
   }
   
   /**
    * Append log entry and broadcast via Redis Pub/Sub
+   * 
+   * Message structure for frontend (useDevServerManager.ts):
+   * - SSE type: 'preview' (SSEMessageType)
+   * - data.type: 'log' (subtype)
+   * - data.data: LogEntry
    */
   private appendLog(serverKey: string, type: 'stdout' | 'stderr', message: string): void {
     const logEntry = this.logManager.appendLog(serverKey, type, message);
@@ -142,14 +154,22 @@ export class PreviewService {
         projectId,
         featureName: feature,
         userContext: { organizationId: tenantId, userId, workspacePath: '' },
-        type: 'log',
-        data: logEntry
+        type: 'preview',  // SSEMessageType
+        data: {
+          type: 'log',    // subtype for frontend handler
+          data: logEntry
+        }
       }).catch(err => logger.warn('Failed to publish preview log', { component: 'PreviewService' }, err));
     }
   }
   
   /**
    * Broadcast status update via Redis Pub/Sub
+   * 
+   * Message structure for frontend (useDevServerManager.ts):
+   * - SSE type: 'preview' (SSEMessageType)
+   * - data.type: 'status' (subtype)
+   * - data.data: PreviewStatus
    */
   private broadcastStatus(serverKey: string, status: any): void {
     if (this.stateStore) {
@@ -158,8 +178,11 @@ export class PreviewService {
         projectId,
         featureName: feature,
         userContext: { organizationId: tenantId, userId, workspacePath: '' },
-        type: 'status',
-        data: status
+        type: 'preview',  // SSEMessageType
+        data: {
+          type: 'status', // subtype for frontend handler
+          data: status
+        }
       }).catch(err => logger.warn('Failed to publish preview status', { component: 'PreviewService' }, err));
     }
     
