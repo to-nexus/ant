@@ -493,7 +493,7 @@ main().catch(console.error);
 const CLOUD_BACKEND_BASE = import.meta.env.VITE_CLOUD_BACKEND_BASE || 'http://localhost:4100/api';
 
 // 추가
-const CLOUD_REALTIME_BASE = import.meta.env.VITE_CLOUD_REALTIME_BASE || 'http://localhost:4101/api';
+const CLOUD_REALTIME_BASE = import.meta.env.VITE_CLOUD_REALTIME_BASE || 'http://localhost:4101/realtime';
 
 export function getRealtimeBase(): string {
   const backendMode = localStorage.getItem('ant-ui:backend-mode') || 'cloud';
@@ -561,7 +561,7 @@ npm run dev:realtime-server
 npm run dev:job-worker
 
 # 프론트엔드 환경변수
-VITE_CLOUD_REALTIME_BASE=http://localhost:4101/api
+VITE_CLOUD_REALTIME_BASE=http://localhost:4101/realtime
 ```
 
 ### 10.5 주의사항

@@ -7,10 +7,12 @@ import { TaskTiming, TaskTokenUsage, JobTiming } from '@/domain/models/types';
 const LOCAL_BACKEND_BASE = import.meta.env.VITE_LOCAL_BACKEND_BASE || 'http://localhost:4000/api';
 const CLOUD_BACKEND_BASE = import.meta.env.VITE_CLOUD_BACKEND_BASE || 'http://localhost:4100/api';
 
-// Realtime (SSE) Server URLs - separate from API for independent scaling
+// Realtime (SSE) Server URLs
+// - Local mode: API 4000, Realtime 4001
+// - Cloud mode: API 4100, Realtime 4101
 // @see docs/architecture/10-cloud-architecture.md
-const LOCAL_REALTIME_BASE = import.meta.env.VITE_LOCAL_REALTIME_BASE || 'http://localhost:4001/api';
-const CLOUD_REALTIME_BASE = import.meta.env.VITE_CLOUD_REALTIME_BASE || 'http://localhost:4101/api';
+const LOCAL_REALTIME_BASE = import.meta.env.VITE_LOCAL_REALTIME_BASE || 'http://localhost:4001/realtime';
+const CLOUD_REALTIME_BASE = import.meta.env.VITE_CLOUD_REALTIME_BASE || 'http://localhost:4101/realtime';
 
 /**
  * Get API base URL dynamically based on backend mode from localStorage
