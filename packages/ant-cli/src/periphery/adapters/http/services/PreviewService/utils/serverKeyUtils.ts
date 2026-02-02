@@ -1,22 +1,22 @@
-import { ServerKeyComponents } from '../types';
-
 /**
- * Create unique server key: tenantId:userId:projectId:feature
+ * Preview Server Key Utilities
+ * 
+ * Re-exports from centralized redisKeyUtils for backward compatibility.
+ * Preview uses 4-part keys: org:user:project:feature
  */
-export function createServerKey(
-  tenantId: string,
-  userId: string,
-  projectId: string,
-  feature: string
-): string {
-  return `${tenantId}:${userId}:${projectId}:${feature}`;
-}
 
-/**
- * Parse server key into components
- */
+import { 
+  createPreviewKey, 
+  parsePreviewKey,
+  PreviewKeyComponents 
+} from '../../../../../../infrastructure/state/redisKeyUtils';
+import type { ServerKeyComponents } from '../types';
+
+// Re-export with original names for backward compatibility
+export const createServerKey = createPreviewKey;
+
 export function parseServerKey(serverKey: string): ServerKeyComponents {
-  const [tenantId, userId, projectId, feature] = serverKey.split(':');
-  return { tenantId, userId, projectId, feature };
+  const parsed = parsePreviewKey(serverKey);
+  return parsed || { tenantId: '', userId: '', projectId: '', feature: '' };
 }
 

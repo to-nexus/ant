@@ -193,10 +193,10 @@ export class ProcessSpawner {
       ...(options.extraEnv || {})
     };
     
-    logger.info(`Starting ${pkg.type}: ${pkg.name} on port ${port}`, { component: 'ProcessSpawner' });
+    // ✅ WARN level for production visibility
+    logger.warn(`Starting ${pkg.type}: ${pkg.name} on port ${port}`, { component: 'ProcessSpawner' });
+    logger.warn(`Spawning: ${command} ${args.join(' ')} in ${pkg.path}`, { component: 'ProcessSpawner' });
     options.onLog('stdout', `🚀 Starting ${pkg.name} (${pkg.type}) on port ${port}...`);
-    
-    logger.debug(`Spawning: ${command} ${args.join(' ')} in ${pkg.path}`, { component: 'ProcessSpawner' });
     
     const childProcess = spawn(command, args, {
       cwd: pkg.path,
@@ -205,7 +205,8 @@ export class ProcessSpawner {
       stdio: 'pipe'
     });
     
-    logger.debug(`Process spawned PID=${childProcess.pid}`, { component: 'ProcessSpawner' });
+    // ✅ WARN level for production visibility
+    logger.warn(`Process spawned PID=${childProcess.pid}`, { component: 'ProcessSpawner' });
     
     // Setup logging
     childProcess.stdout?.on('data', (data) => {
