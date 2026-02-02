@@ -39,6 +39,13 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
     
     const isJobRunning = data.dataSource === 'live' || data.dataSource === 'estimating';
     
+    // ✅ Cloud multi-pod: Clear jobStartPending when actual job starts running
+    // This signals that the job has actually started on the worker pod
+    if (isJobRunning && state.jobStartPending) {
+      console.log('[Store] ✅ Job actually started on worker, clearing jobStartPending');
+      set({ jobStartPending: false });
+    }
+    
     // Clear queue position when job actually starts running (has inProgress task)
     if (isJobRunning && data.inProgress && state.isQueued) {
       console.log('[Store] 🚀 Job started running, clearing queue position');
@@ -61,6 +68,21 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
     
     const currentFeatureIsRunning = currentFeatureKey ? !!updatedRunningJobs[currentFeatureKey] : false;
     
+    // ✅ Cloud multi-pod: Protect isRunning when jobStartPending is true
+    // This prevents SSE from overwriting isRunning=true before actual job starts on worker pod
+    // Scenarios: Triage redirect, new job start, resume - all set isRunning=true locally
+    // but actual job starts on worker pod with delay in cloud multi-pod environment
+    const shouldProtectRunningState = state.jobStartPending && state.isRunning && !isJobRunning;
+    
+    if (shouldProtectRunningState) {
+      console.log('[Store] 🛡️ Protecting isRunning state - job start pending, waiting for worker pod');
+      set({ 
+        kanban: data,
+        runningJobsByFeature: updatedRunningJobs
+      });
+      return;
+    }
+    
     if (!isJobRunning && state.isRunning && currentFeatureKey) {
       const interruptionWasDismissed = 
         data.interruption?.timestamp && 
@@ -79,7 +101,8 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
         runningJobsByFeature: updatedRunningJobs,
         currentJobId: kanbanJobId,
         isRunning: false,
-        currentMode: undefined
+        currentMode: undefined,
+        jobStartPending: false  // ✅ Clear pending flag on job completion
       });
     }
     else if (isJobRunning && !state.isRunning && currentFeatureKey) {
@@ -98,14 +121,17 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
         kanban: data,
         runningJobsByFeature: updatedRunningJobs,
         currentJobId: kanbanJobId,
-        isRunning: true
+        isRunning: true,
+        jobStartPending: false  // ✅ Clear pending flag when job is actually running
       });
     }
     else {
       const newState: any = { 
         kanban: data,
         runningJobsByFeature: updatedRunningJobs,
-        isRunning: currentFeatureIsRunning
+        isRunning: currentFeatureIsRunning,
+        // ✅ Clear pending flag when job state is determined from SSE
+        ...(isJobRunning ? { jobStartPending: false } : {})
       };
       
       if (kanbanJobId && state.isJobTabCleared) {
@@ -290,6 +316,12 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
             if (setRunning) {
               console.log('[Store] ✅ Job completed/failed, setting isRunning=false');
               setRunning(false);
+            }
+          } else if (event.status === 'running' || event.status === 'started') {
+            // ✅ Cloud multi-pod: Clear jobStartPending when job actually starts
+            if (get().jobStartPending) {
+              console.log('[Store] ✅ Job started on worker, clearing jobStartPending via job_status');
+              set({ jobStartPending: false });
             }
           }
           break;

@@ -127,7 +127,18 @@ export class WorkflowBridge {
     // Broadcast to Kanban clients via SSE
     // ✅ Cloud-safe: Get job mapping from Redis (single source of truth)
     const stateStore = getInfrastructureFactory().getStateStore();
+    
+    logger.debug(`[Kanban Broadcast] Looking up job mapping for ${jobId}`, { 
+      component: 'WorkflowBridge', 
+      jobId 
+    });
+    
     const mapping = await stateStore.getJobMapping(jobId);
+    
+    logger.debug(`[Kanban Broadcast] Mapping lookup result: ${mapping ? `found (${mapping.projectId}/${mapping.featureName})` : 'NOT FOUND'}`, { 
+      component: 'WorkflowBridge', 
+      jobId
+    });
     
     if (mapping) {
       // Get job status from Redis for accurate job type
@@ -148,6 +159,12 @@ export class WorkflowBridge {
         );
         
         // Broadcast via Redis Pub/Sub → Realtime Server → SSE
+        logger.debug(`[Kanban Broadcast] Publishing to Redis: ${mapping.projectId}/${mapping.featureName}, userContext: ${mapping.userContext ? `${mapping.userContext.organizationId}:${mapping.userContext.userId}` : 'undefined'}`, {
+          component: 'WorkflowBridge',
+          projectId: mapping.projectId,
+          featureName: mapping.featureName
+        });
+        
         await stateStore.publish(SSE_BROADCAST_CHANNEL, {
           projectId: mapping.projectId,
           featureName: mapping.featureName,

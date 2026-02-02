@@ -361,11 +361,24 @@ export class RouteConfigurator {
       
       // ✅ CRITICAL: Register job mapping in Redis for cross-Pod SSE broadcast
       // Job Worker (separate Pod) needs this to broadcast Kanban updates
+      const userContextStr = params.userContext 
+        ? `${params.userContext.organizationId}:${params.userContext.userId}` 
+        : 'undefined';
+      logger.info(`📝 [JobMapping] Saving job mapping to Redis: ${jobId} → ${params.project}/${params.feature} (${params.jobType || 'code'}), userContext: ${userContextStr}`, { 
+        component: 'RouteConfigurator', 
+        jobId
+      });
+      
       await stateStore.setJobMapping(jobId, {
         projectId: params.project,
         featureName: params.feature,
         jobType: params.jobType || 'code',
         userContext: params.userContext
+      });
+      
+      logger.info(`✅ [JobMapping] Job mapping saved successfully`, { 
+        component: 'RouteConfigurator', 
+        jobId
       });
       
       // Also register in local stateTracker for backward compatibility (Local mode)
