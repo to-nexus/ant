@@ -304,8 +304,8 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
           'user': userContext.userId
         },
         annotations: {
-          'ant.io/instance-key': instanceKey,
-          'ant.io/workspace-path': workspacePath
+          'ant.crosstoken.io/instance-key': instanceKey,
+          'ant.crosstoken.io/workspace-path': workspacePath
         }
       },
       spec: {
@@ -315,8 +315,13 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
           ports: [{ containerPort: 3000 }],  // openvscode-server uses port 3000
           // Command to start openvscode-server without authentication
           // ANT already has Google OIDC auth at the API layer, so IDE-level auth is unnecessary
+          // --server-base-path: Required for proxy routing (all static assets use this base path)
           command: ['/home/.openvscode-server/bin/openvscode-server'],
-          args: ['--host', '0.0.0.0', '--without-connection-token'],
+          args: [
+            '--host', '0.0.0.0',
+            '--without-connection-token',
+            '--server-base-path', `/api/ide/${instanceKey}`
+          ],
           env: [
             { name: 'ANT_WORKSPACE', value: '/workspace' }
           ],
@@ -771,7 +776,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
       );
 
       return response.items.map(pod => {
-        const instanceKey = pod.metadata.annotations?.['ant.io/instance-key'] || pod.metadata.name;
+        const instanceKey = pod.metadata.annotations?.['ant.crosstoken.io/instance-key'] || pod.metadata.name;
         
         // Use centralized parsing function for IDE instance key
         const parsed = parseIDEKey(instanceKey);
@@ -783,7 +788,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
             host: pod.status?.podIP || pod.metadata.name,
             port: IDE_PORT,
             url: `/api/ide/${instanceKey}`,
-            workspacePath: pod.metadata.annotations?.['ant.io/workspace-path'] || '/workspace',
+            workspacePath: pod.metadata.annotations?.['ant.crosstoken.io/workspace-path'] || '/workspace',
             status: (pod.status?.phase === 'Running' ? 'running' : 'starting') as IDEStatus,
             tenantId: '',
             userId: '',
@@ -797,7 +802,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
           host: pod.status?.podIP || pod.metadata.name,
           port: IDE_PORT,
           url: `/api/ide/${instanceKey}`,
-          workspacePath: pod.metadata.annotations?.['ant.io/workspace-path'] || '/workspace',
+          workspacePath: pod.metadata.annotations?.['ant.crosstoken.io/workspace-path'] || '/workspace',
           status: (pod.status?.phase === 'Running' ? 'running' : 'starting') as IDEStatus,
           tenantId: parsed.tenantId,
           userId: parsed.userId,
@@ -818,7 +823,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
       );
 
       return response.items.map(pod => {
-        const instanceKey = pod.metadata.annotations?.['ant.io/instance-key'] || pod.metadata.name;
+        const instanceKey = pod.metadata.annotations?.['ant.crosstoken.io/instance-key'] || pod.metadata.name;
         
         // Use centralized parsing function for IDE instance key
         const parsed = parseIDEKey(instanceKey);
@@ -830,7 +835,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
             host: pod.status?.podIP || pod.metadata.name,
             port: IDE_PORT,
             url: `/api/ide/${instanceKey}`,
-            workspacePath: pod.metadata.annotations?.['ant.io/workspace-path'] || '/workspace',
+            workspacePath: pod.metadata.annotations?.['ant.crosstoken.io/workspace-path'] || '/workspace',
             status: (pod.status?.phase === 'Running' ? 'running' : 'starting') as IDEStatus,
             tenantId: userContext.organizationId,
             userId: userContext.userId,
@@ -844,7 +849,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
           host: pod.status?.podIP || pod.metadata.name,
           port: IDE_PORT,
           url: `/api/ide/${instanceKey}`,
-          workspacePath: pod.metadata.annotations?.['ant.io/workspace-path'] || '/workspace',
+          workspacePath: pod.metadata.annotations?.['ant.crosstoken.io/workspace-path'] || '/workspace',
           status: (pod.status?.phase === 'Running' ? 'running' : 'starting') as IDEStatus,
           tenantId: parsed.tenantId,
           userId: parsed.userId,
@@ -923,11 +928,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
    * Check for idle instances and terminate them
    */
   private async checkIdleInstances(): Promise<void> {
-    logger.warn(`[IdleCheck] Starting idle instance check...`, { component: 'KubernetesIDEOrchestrator' });
-    
     const instances = await this.list();
-    logger.warn(`[IdleCheck] Found ${instances.length} IDE instance(s)`, { component: 'KubernetesIDEOrchestrator' });
-    
     const now = Date.now();
 
     for (const instance of instances) {

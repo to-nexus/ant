@@ -11,6 +11,7 @@ export interface PortMapping {
   projectId: string;    // Project ID
   feature: string;      // Branch name, feature name, or work identifier
   port: number;
+  host?: string;        // Host (Pod IP for K8s, localhost for local)
   registeredAt: Date;
   lastAccessedAt: Date;
 }
@@ -23,13 +24,15 @@ export interface PortRegistryPort {
    * @param projectId - Project identifier
    * @param feature - Feature/branch identifier
    * @param port - Port number
+   * @param host - Host (Pod IP for K8s, localhost for local)
    */
   registerPreview(
     tenantId: string,
     userId: string,
     projectId: string,
     feature: string,
-    port: number
+    port: number,
+    host?: string
   ): Promise<void>;
 
   /**
