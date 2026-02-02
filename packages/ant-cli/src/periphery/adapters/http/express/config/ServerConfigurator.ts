@@ -37,6 +37,14 @@ export class ServerConfigurator {
       origin: true,
       credentials: true
     }));
+    
+    // ✅ Log all non-API requests for debugging routing issues
+    app.use((req, _res, next) => {
+      if (!req.path.startsWith('/api/') && (req.path.startsWith('/ide/') || req.path.startsWith('/preview/'))) {
+        logger.warn(`[INCOMING] ${req.method} ${req.path}`, { component: 'ServerConfigurator' });
+      }
+      next();
+    });
   }
 
   /**
@@ -66,6 +74,12 @@ export class ServerConfigurator {
       }
     }));
 
+    // ✅ Log all /ide/* requests BEFORE proxy (for debugging routing issues)
+    app.use('/ide', (req, res, next) => {
+      logger.warn(`[IDE_ROUTE] Incoming request: ${req.method} ${req.originalUrl}`, { component: 'ServerConfigurator' });
+      next();
+    });
+    
     // IDE Proxy (handles /ide/:serverKey requests)
     app.use(createIDEProxyMiddleware({
       portRegistry: this.deps.portRegistry,

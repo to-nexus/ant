@@ -30,6 +30,7 @@ import {
   WorkflowRealtimeState
 } from '../../core/ports/stateStore';
 import { PortRegistryPort } from '../../core/ports/portRegistry';
+import { createIDEKey, createPreviewKey } from './redisKeyUtils';
 import { logger } from '../../utils/logger';
 
 // Redis key prefixes
@@ -353,17 +354,9 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   // Port Registry - Preview
   // ============================================
 
-  private createPortKey(tenantId: string, userId: string, projectId: string, feature: string): string {
-    return `${tenantId}:${userId}:${projectId}:${feature}`;
-  }
-
-  /**
-   * IDE uses project-level key (no feature) - IDE is shared across features
-   * Git branch checkout handles feature switching within the same IDE
-   */
-  private createIDEPortKey(tenantId: string, userId: string, projectId: string): string {
-    return `${tenantId}:${userId}:${projectId}`;
-  }
+  // Key utilities imported from redisKeyUtils.ts:
+  // - createIDEKey(org, user, project) → 3 parts
+  // - createPreviewKey(org, user, project, feature) → 4 parts
 
   async registerPreview(
     tenantId: string,
@@ -373,7 +366,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     port: number,
     host: string = 'localhost'
   ): Promise<void> {
-    const portKey = this.createPortKey(tenantId, userId, projectId, feature);
+    const portKey = createPreviewKey(tenantId, userId, projectId, feature);
     const key = this.key(KEYS.PREVIEW, portKey);
     
     // ✅ WARN level for production visibility
@@ -404,7 +397,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     projectId: string,
     feature: string
   ): Promise<PortMapping | null> {
-    const portKey = this.createPortKey(tenantId, userId, projectId, feature);
+    const portKey = createPreviewKey(tenantId, userId, projectId, feature);
     const key = this.key(KEYS.PREVIEW, portKey);
     
     // ✅ WARN level for production visibility
@@ -444,7 +437,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     projectId: string,
     feature: string
   ): Promise<void> {
-    const portKey = this.createPortKey(tenantId, userId, projectId, feature);
+    const portKey = createPreviewKey(tenantId, userId, projectId, feature);
     const key = this.key(KEYS.PREVIEW, portKey);
 
     const pipeline = this.redis.pipeline();
@@ -482,7 +475,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     host: string = 'localhost'
   ): Promise<void> {
     // IDE uses project-level key (no feature)
-    const portKey = this.createIDEPortKey(tenantId, userId, projectId);
+    const portKey = createIDEKey(tenantId, userId, projectId);
     const key = this.key(KEYS.IDE, portKey);
     
     // ✅ WARN level for production IDE debugging
@@ -513,7 +506,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     projectId: string
   ): Promise<PortMapping | null> {
     // IDE uses project-level key (no feature)
-    const portKey = this.createIDEPortKey(tenantId, userId, projectId);
+    const portKey = createIDEKey(tenantId, userId, projectId);
     const key = this.key(KEYS.IDE, portKey);
     
     // ✅ WARN level for production IDE debugging
@@ -552,7 +545,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     projectId: string
   ): Promise<void> {
     // IDE uses project-level key (no feature)
-    const portKey = this.createIDEPortKey(tenantId, userId, projectId);
+    const portKey = createIDEKey(tenantId, userId, projectId);
     const key = this.key(KEYS.IDE, portKey);
 
     const pipeline = this.redis.pipeline();
@@ -587,8 +580,8 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   ): Promise<void> {
     // IDE uses project-level key (no feature), Preview uses feature
     const portKey = type === 'ide' 
-      ? this.createIDEPortKey(tenantId, userId, projectId)
-      : this.createPortKey(tenantId, userId, projectId, feature);
+      ? createIDEKey(tenantId, userId, projectId)
+      : createPreviewKey(tenantId, userId, projectId, feature);
     const keyPrefix = type === 'preview' ? KEYS.PREVIEW : KEYS.IDE;
     const key = this.key(keyPrefix, portKey);
 

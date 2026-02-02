@@ -28,6 +28,7 @@ import {
 } from '../../core/ports/ideOrchestrator';
 import { StateStorePort } from '../../core/ports/stateStore';
 import { UserContext } from '../../core/types/user';
+import { createIDEKey, parseIDEKey } from '../state/redisKeyUtils';
 import { logger } from '../../utils/logger';
 
 // ============================================
@@ -155,14 +156,8 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     });
   }
 
-  /**
-   * Create instance key
-   * Format: tenantId:projectId (3 parts total: org:user:project)
-   * Note: feature is excluded - one pod per user per project
-   */
-  private createInstanceKey(tenantId: string, projectId: string): string {
-    return `${tenantId}:${projectId}`;
-  }
+  // Instance key creation uses createIDEKey from ideKeyUtils.ts
+  // Format: org:user:project (3 parts)
 
   /**
    * Create safe K8s resource name from instance key
@@ -378,8 +373,8 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
 
   async start(params: IDEParams): Promise<IDEStartResult> {
     const { userContext, projectId, workspacePath, feature = 'main' } = params;
-    const tenantId = `${userContext.organizationId}:${userContext.userId}`;
-    const instanceKey = this.createInstanceKey(tenantId, projectId);
+    // Use centralized function for IDE instance key (org:user:project)
+    const instanceKey = createIDEKey(userContext.organizationId, userContext.userId, projectId);
     const resourceName = this.createResourceName(instanceKey);
 
     // ✅ WARN level for production IDE debugging
@@ -409,7 +404,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         } else if (existingPod.status?.phase === 'Running') {
           // Pod is running - return existing instance
           logger.info(`Pod already running, reusing: ${resourceName}`, { component: 'KubernetesIDEOrchestrator' });
-          return this.createInstanceResult(existingPod, tenantId, userContext, projectId, feature, instanceKey);
+          return this.createInstanceResult(existingPod, userContext.organizationId, userContext, projectId, feature, instanceKey);
         } else {
           // Pod exists but not running (Failed, Pending, etc) - delete and recreate
           logger.info(`Pod not running (${existingPod.status?.phase}), recreating: ${resourceName}`, { component: 'KubernetesIDEOrchestrator' });
@@ -470,7 +465,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         url: `/ide/${instanceKey}`,
         workspacePath: '/workspace',
         status: 'running',
-        tenantId,
+        tenantId: userContext.organizationId,
         userId: userContext.userId,
         projectId,
         feature,
@@ -699,7 +694,13 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     projectId: string,
     feature: string = 'main'
   ): Promise<{ success: boolean; message?: string }> {
-    const instanceKey = this.createInstanceKey(tenantId, projectId);
+    // tenantId is in format org:user, parse it
+    const tenantParts = tenantId.split(':');
+    const orgId = tenantParts[0] || '';
+    const userId = tenantParts.length > 1 ? tenantParts[1] : '';
+    
+    // Use centralized function for IDE instance key (org:user:project)
+    const instanceKey = createIDEKey(orgId, userId, projectId);
     const resourceName = this.createResourceName(instanceKey);
 
     logger.info(`Stopping K8s IDE: ${instanceKey}`, {
@@ -708,11 +709,6 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
 
     try {
       await this.deleteResources(resourceName);
-
-      // Extract orgId and userId from tenantId (format: orgId:userId)
-      const parts = tenantId.split(':');
-      const orgId = parts[0] || '';
-      const userId = parts.length > 1 ? parts[1] : '';
 
       await this.stateStore.unregisterIDE(orgId, userId, projectId);
 
@@ -731,7 +727,13 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     projectId: string,
     feature: string = 'main'
   ): Promise<IDEInstance | null> {
-    const instanceKey = this.createInstanceKey(tenantId, projectId);
+    // tenantId is in format org:user, parse it
+    const tenantParts = tenantId.split(':');
+    const orgId = tenantParts[0] || '';
+    const userId = tenantParts.length > 1 ? tenantParts[1] : '';
+    
+    // Use centralized function for IDE instance key (org:user:project)
+    const instanceKey = createIDEKey(orgId, userId, projectId);
     const resourceName = this.createResourceName(instanceKey);
 
     try {
@@ -770,7 +772,25 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
 
       return response.items.map(pod => {
         const instanceKey = pod.metadata.annotations?.['ant.io/instance-key'] || pod.metadata.name;
-        const parts = instanceKey.split(':');
+        
+        // Use centralized parsing function for IDE instance key
+        const parsed = parseIDEKey(instanceKey);
+        if (!parsed) {
+          logger.warn(`Invalid IDE instance key format: ${instanceKey}`, { component: 'KubernetesIDEOrchestrator' });
+          // Fallback for malformed keys
+          return {
+            instanceId: pod.metadata.name,
+            host: pod.status?.podIP || pod.metadata.name,
+            port: IDE_PORT,
+            url: `/ide/${instanceKey}`,
+            workspacePath: pod.metadata.annotations?.['ant.io/workspace-path'] || '/workspace',
+            status: (pod.status?.phase === 'Running' ? 'running' : 'starting') as IDEStatus,
+            tenantId: '',
+            userId: '',
+            projectId: instanceKey,
+            feature: 'main'
+          };
+        }
 
         return {
           instanceId: pod.metadata.name,
@@ -779,9 +799,10 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
           url: `/ide/${instanceKey}`,
           workspacePath: pod.metadata.annotations?.['ant.io/workspace-path'] || '/workspace',
           status: (pod.status?.phase === 'Running' ? 'running' : 'starting') as IDEStatus,
-          tenantId: parts[0] || '',
-          projectId: parts[1] || '',
-          feature: parts[2] || 'main'
+          tenantId: parsed.tenantId,
+          userId: parsed.userId,
+          projectId: parsed.projectId,
+          feature: 'main'  // IDE is project-level, always 'main'
         };
       });
     } catch (error: any) {
@@ -798,7 +819,25 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
 
       return response.items.map(pod => {
         const instanceKey = pod.metadata.annotations?.['ant.io/instance-key'] || pod.metadata.name;
-        const parts = instanceKey.split(':');
+        
+        // Use centralized parsing function for IDE instance key
+        const parsed = parseIDEKey(instanceKey);
+        if (!parsed) {
+          logger.warn(`Invalid IDE instance key format: ${instanceKey}`, { component: 'KubernetesIDEOrchestrator' });
+          // Fallback - use userContext for userId
+          return {
+            instanceId: pod.metadata.name,
+            host: pod.status?.podIP || pod.metadata.name,
+            port: IDE_PORT,
+            url: `/ide/${instanceKey}`,
+            workspacePath: pod.metadata.annotations?.['ant.io/workspace-path'] || '/workspace',
+            status: (pod.status?.phase === 'Running' ? 'running' : 'starting') as IDEStatus,
+            tenantId: userContext.organizationId,
+            userId: userContext.userId,
+            projectId: instanceKey,
+            feature: 'main'
+          };
+        }
 
         return {
           instanceId: pod.metadata.name,
@@ -807,10 +846,10 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
           url: `/ide/${instanceKey}`,
           workspacePath: pod.metadata.annotations?.['ant.io/workspace-path'] || '/workspace',
           status: (pod.status?.phase === 'Running' ? 'running' : 'starting') as IDEStatus,
-          tenantId: parts[0] || '',
-          userId: userContext.userId,
-          projectId: parts[1] || '',
-          feature: parts[2] || 'main'
+          tenantId: parsed.tenantId,
+          userId: parsed.userId,
+          projectId: parsed.projectId,
+          feature: 'main'  // IDE is project-level, always 'main'
         };
       });
     } catch (error: any) {
@@ -884,14 +923,26 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
    * Check for idle instances and terminate them
    */
   private async checkIdleInstances(): Promise<void> {
+    logger.warn(`[IdleCheck] Starting idle instance check...`, { component: 'KubernetesIDEOrchestrator' });
+    
     const instances = await this.list();
+    logger.warn(`[IdleCheck] Found ${instances.length} IDE instance(s)`, { component: 'KubernetesIDEOrchestrator' });
+    
     const now = Date.now();
 
     for (const instance of instances) {
+      // Skip instances with invalid key components (from malformed annotations)
+      if (!instance.tenantId || !instance.userId || !instance.projectId) {
+        logger.warn(`Skipping idle check for instance with invalid key: tenantId=${instance.tenantId}, userId=${instance.userId}, projectId=${instance.projectId}`, {
+          component: 'KubernetesIDEOrchestrator'
+        });
+        continue;
+      }
+      
       // Check last access time from state store (IDE is project-level, no feature)
       const portMapping = await this.stateStore.getIDE(
         instance.tenantId,
-        instance.userId || '',
+        instance.userId,
         instance.projectId
       );
 

@@ -231,9 +231,13 @@ export class PreviewService {
     
     try {
       // 1. Detect project structure
+      logger.warn(`Detecting project structure at: ${localPath}`, { component: 'PreviewService' });
       const structure = await this.structureDetector.detect(localPath);
       
+      logger.warn(`Structure detected: packages=${structure.packages.length}, entry=${structure.entry?.name || 'none'}`, { component: 'PreviewService' });
+      
       if (structure.packages.length === 0) {
+        logger.warn(`No runnable packages found in ${localPath}`, { component: 'PreviewService' });
         throw new Error('No runnable packages found');
       }
       

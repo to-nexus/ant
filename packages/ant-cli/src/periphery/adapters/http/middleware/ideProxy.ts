@@ -21,6 +21,7 @@ import {
 } from './baseProxy';
 import { PortRegistryPort } from '../../../../core/ports/portRegistry';
 import { logger } from '../../../../utils/logger';
+import { parseIDEKey } from '../../../../infrastructure/state/redisKeyUtils';
 
 export interface IDEProxyConfig {
   portRegistry: PortRegistryPort;
@@ -47,18 +48,17 @@ class IDEProxyMiddlewareImpl extends BaseProxyMiddleware {
    * Note: IDE is project-level (not feature-level like dev server)
    */
   protected parseServerKey(serverKey: string): ServerKeyParts | null {
-    const parts = serverKey.split(':');
-    // IDE serverKey: tenantId:userId:projectId (exactly 3 parts)
-    if (parts.length !== 3) {
+    // Use centralized parsing function for IDE instance key
+    const parsed = parseIDEKey(serverKey);
+    if (!parsed) {
       return null;
     }
 
-    const [tenantId, userId, projectId] = parts;
     return {
-      tenantId,
-      userId,
-      projectId,
-      // IDE is project-level, no feature (feature field not used)
+      tenantId: parsed.tenantId,
+      userId: parsed.userId,
+      projectId: parsed.projectId,
+      // IDE is project-level, no feature
       serverKey
     };
   }
@@ -170,14 +170,15 @@ export function createIDEWebSocketHandler(portRegistry: PortRegistryPort, pathPr
       return;
     }
 
-    // Parse serverKey: org:user:project (3 parts) - IDE is project-level
-    const parts = serverKey.split(':');
-    if (parts.length !== 3) {
+    // Use centralized parsing function for IDE instance key
+    const parsed = parseIDEKey(serverKey);
+    if (!parsed) {
+      logger.warn(`Invalid IDE serverKey format for WS: ${serverKey}`, { component: 'IDEProxy' });
       socket.destroy();
       return;
     }
 
-    const [tenantId, userId, projectId] = parts;
+    const { tenantId, userId, projectId } = parsed;
 
     // Lookup port and host (IDE is project-level, no feature)
     const port = await portRegistry.getIDEPort(tenantId, userId, projectId);

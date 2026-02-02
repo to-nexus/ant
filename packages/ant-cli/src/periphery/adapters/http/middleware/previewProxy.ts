@@ -13,6 +13,7 @@ import { Request, Response as ExpressResponse, NextFunction } from 'express';
 import { createProxyMiddleware, Options } from 'http-proxy-middleware';
 import { PortRegistryPort } from '../../../../core/ports/portRegistry';
 import { logger } from '../../../../utils/logger';
+import { parsePreviewKey } from '../../../../infrastructure/state/redisKeyUtils';
 
 function escapeRegExp(input: string): string {
   return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -59,10 +60,9 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
         const refererMatch = refererStr.match(/\/preview\/([^/]+)/);
         if (refererMatch) {
           const serverKey = refererMatch[1];
-          const parts = serverKey.split(':');
-          if (parts.length >= 4) {
-            const [tenantId, userId, projectId, ...featureParts] = parts;
-            const feature = featureParts.join(':');
+          const parsed = parsePreviewKey(serverKey);
+          if (parsed) {
+            const { tenantId, userId, projectId, feature } = parsed;
             
             try {
               const port = await portRegistry.getPreviewPort(tenantId, userId, projectId, feature);
@@ -130,9 +130,9 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
     
     logger.debug(`serverKey=${serverKey}`, { component: 'PreviewProxy' });
     
-    // Parse serverKey: tenantId:userId:projectId:feature
-    const parts = serverKey.split(':');
-    if (parts.length < 4) {
+    // Use centralized parsing function for Preview key (4 parts)
+    const parsed = parsePreviewKey(serverKey);
+    if (!parsed) {
       logger.warn(`Invalid serverKey format: ${serverKey}`, { component: 'PreviewProxy' });
       res.status(400).json({
         error: 'Invalid server key format',
@@ -142,8 +142,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       return;
     }
     
-    const [tenantId, userId, projectId, ...featureParts] = parts;
-    const feature = featureParts.join(':');
+    const { tenantId, userId, projectId, feature } = parsed;
     
     logger.warn(`Parsed serverKey: tenant=${tenantId}, user=${userId}, project=${projectId}, feature=${feature}`, { component: 'PreviewProxy' });
     
