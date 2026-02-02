@@ -1,6 +1,7 @@
 import { ChildProcess } from 'child_process';
 import { Response } from 'express';
 import * as path from 'path';
+import * as os from 'os';
 import { LogEntry } from '../../../../../core/ports/http';
 import { PortManager } from '../../../../../infrastructure/networking/PortManager';
 import { PortRegistryPort } from '../../../../../core/ports/portRegistry';
@@ -116,13 +117,12 @@ export class PreviewService {
     
     // Fallback: try to get IP from network interfaces
     try {
-      const os = require('os');
       const interfaces = os.networkInterfaces();
       for (const name of Object.keys(interfaces)) {
         for (const iface of interfaces[name] || []) {
           // Skip internal/loopback and IPv6
           // Note: Node.js 18+ uses numeric family (4/6), older versions use strings
-          const isIPv4 = iface.family === 'IPv4' || iface.family === 4;
+          const isIPv4 = iface.family === 'IPv4' || (iface.family as unknown) === 4;
           if (!iface.internal && isIPv4) {
             logger.warn(`[Preview] Using network interface IP: ${iface.address} (${name})`, { component: 'PreviewService' });
             return iface.address;
@@ -174,6 +174,7 @@ export class PreviewService {
   private broadcastStatus(serverKey: string, status: any): void {
     if (this.stateStore) {
       const { tenantId, userId, projectId, feature } = this.parseServerKey(serverKey);
+      logger.warn(`[Preview] Broadcasting status: ${serverKey} running=${status?.running} ready=${status?.ready}`, { component: 'PreviewService' });
       this.stateStore.publish(PREVIEW_CHANNEL, {
         projectId,
         featureName: feature,
@@ -183,7 +184,11 @@ export class PreviewService {
           type: 'status', // subtype for frontend handler
           data: status
         }
+      }).then(() => {
+        logger.warn(`[Preview] Published to ${PREVIEW_CHANNEL}: ${projectId}/${feature}`, { component: 'PreviewService' });
       }).catch(err => logger.warn('Failed to publish preview status', { component: 'PreviewService' }, err));
+    } else {
+      logger.warn(`[Preview] No stateStore, cannot broadcast: ${serverKey}`, { component: 'PreviewService' });
     }
     
     if (this.onStatusChange) {
