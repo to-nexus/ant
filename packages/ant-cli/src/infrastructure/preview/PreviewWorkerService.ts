@@ -35,14 +35,22 @@ class WorkerLocalPortRegistry implements PortRegistryPort {
     return `${tenantId}:${userId}:${projectId}:${feature}`;
   }
 
+  /**
+   * IDE uses project-level key (no feature) - IDE is shared across features
+   */
+  private createIDEKey(tenantId: string, userId: string, projectId: string): string {
+    return `${tenantId}:${userId}:${projectId}`;
+  }
+
   async registerPreview(tenantId: string, userId: string, projectId: string, feature: string, port: number): Promise<void> {
     const key = this.createKey(tenantId, userId, projectId, feature);
     this.previews.set(key, { tenantId, userId, projectId, feature, port, registeredAt: new Date(), lastAccessedAt: new Date() });
   }
 
-  async registerIDE(tenantId: string, userId: string, projectId: string, feature: string, port: number): Promise<void> {
-    const key = this.createKey(tenantId, userId, projectId, feature);
-    this.ides.set(key, { tenantId, userId, projectId, feature, port, registeredAt: new Date(), lastAccessedAt: new Date() });
+  async registerIDE(tenantId: string, userId: string, projectId: string, port: number): Promise<void> {
+    // IDE uses project-level key (no feature)
+    const key = this.createIDEKey(tenantId, userId, projectId);
+    this.ides.set(key, { tenantId, userId, projectId, feature: 'main', port, registeredAt: new Date(), lastAccessedAt: new Date() });
   }
 
   async getPreviewPort(tenantId: string, userId: string, projectId: string, feature: string): Promise<number | null> {
@@ -50,8 +58,9 @@ class WorkerLocalPortRegistry implements PortRegistryPort {
     return this.previews.get(key)?.port ?? null;
   }
 
-  async getIDEPort(tenantId: string, userId: string, projectId: string, feature: string): Promise<number | null> {
-    const key = this.createKey(tenantId, userId, projectId, feature);
+  async getIDEPort(tenantId: string, userId: string, projectId: string): Promise<number | null> {
+    // IDE uses project-level key (no feature)
+    const key = this.createIDEKey(tenantId, userId, projectId);
     return this.ides.get(key)?.port ?? null;
   }
 
@@ -60,8 +69,9 @@ class WorkerLocalPortRegistry implements PortRegistryPort {
     this.previews.delete(key);
   }
 
-  async unregisterIDE(tenantId: string, userId: string, projectId: string, feature: string): Promise<void> {
-    const key = this.createKey(tenantId, userId, projectId, feature);
+  async unregisterIDE(tenantId: string, userId: string, projectId: string): Promise<void> {
+    // IDE uses project-level key (no feature)
+    const key = this.createIDEKey(tenantId, userId, projectId);
     this.ides.delete(key);
   }
 
@@ -74,7 +84,10 @@ class WorkerLocalPortRegistry implements PortRegistryPort {
   }
 
   async updateLastAccess(tenantId: string, userId: string, projectId: string, feature: string, type: 'preview' | 'ide'): Promise<void> {
-    const key = this.createKey(tenantId, userId, projectId, feature);
+    // IDE uses project-level key (no feature), Preview uses feature
+    const key = type === 'ide' 
+      ? this.createIDEKey(tenantId, userId, projectId)
+      : this.createKey(tenantId, userId, projectId, feature);
     const map = type === 'preview' ? this.previews : this.ides;
     const mapping = map.get(key);
     if (mapping) mapping.lastAccessedAt = new Date();

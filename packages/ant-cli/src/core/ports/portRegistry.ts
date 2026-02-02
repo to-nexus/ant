@@ -33,13 +33,12 @@ export interface PortRegistryPort {
   ): Promise<void>;
 
   /**
-   * Register an IDE port mapping
+   * Register an IDE port mapping (IDE is project-level, no feature)
    */
   registerIDE(
     tenantId: string,
     userId: string,
     projectId: string,
-    feature: string,
     port: number
   ): Promise<void>;
 
@@ -55,13 +54,12 @@ export interface PortRegistryPort {
   ): Promise<number | null>;
 
   /**
-   * Get IDE port
+   * Get IDE port (IDE is project-level, no feature)
    */
   getIDEPort(
     tenantId: string,
     userId: string,
-    projectId: string,
-    feature: string
+    projectId: string
   ): Promise<number | null>;
 
   /**
@@ -75,13 +73,12 @@ export interface PortRegistryPort {
   ): Promise<void>;
 
   /**
-   * Unregister IDE
+   * Unregister IDE (IDE is project-level, no feature)
    */
   unregisterIDE(
     tenantId: string,
     userId: string,
-    projectId: string,
-    feature: string
+    projectId: string
   ): Promise<void>;
 
   /**

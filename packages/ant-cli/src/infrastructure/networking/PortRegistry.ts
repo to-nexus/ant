@@ -27,10 +27,17 @@ export class RedisPortRegistry implements PortRegistryPort {
   }
   
   /**
-   * Create storage key from identifiers
+   * Create storage key from identifiers (for Preview - includes feature)
    */
   private createKey(tenantId: string, userId: string, projectId: string, feature: string): string {
     return `${tenantId}:${userId}:${projectId}:${feature}`;
+  }
+
+  /**
+   * Create IDE storage key (no feature - IDE is project-level)
+   */
+  private createIDEKey(tenantId: string, userId: string, projectId: string): string {
+    return `${tenantId}:${userId}:${projectId}`;
   }
   
   /**
@@ -59,21 +66,20 @@ export class RedisPortRegistry implements PortRegistryPort {
   }
   
   /**
-   * Register IDE port
+   * Register IDE port (IDE is project-level, no feature)
    */
   async registerIDE(
     tenantId: string,
     userId: string,
     projectId: string,
-    feature: string,
     port: number
   ): Promise<void> {
-    const key = this.createKey(tenantId, userId, projectId, feature);
+    const key = this.createIDEKey(tenantId, userId, projectId);
     const mapping: PortMapping = {
       tenantId,
       userId,
       projectId,
-      feature,
+      feature: 'main',  // Stored for compatibility
       port,
       registeredAt: new Date(),
       lastAccessedAt: new Date()
@@ -109,15 +115,14 @@ export class RedisPortRegistry implements PortRegistryPort {
   }
   
   /**
-   * Get IDE port
+   * Get IDE port (IDE is project-level, no feature)
    */
   async getIDEPort(
     tenantId: string,
     userId: string,
-    projectId: string,
-    feature: string
+    projectId: string
   ): Promise<number | null> {
-    const key = this.createKey(tenantId, userId, projectId, feature);
+    const key = this.createIDEKey(tenantId, userId, projectId);
     const data = await this.redis.hget('ides', key);
     
     if (!data) {
@@ -148,15 +153,14 @@ export class RedisPortRegistry implements PortRegistryPort {
   }
   
   /**
-   * Unregister IDE
+   * Unregister IDE (IDE is project-level, no feature)
    */
   async unregisterIDE(
     tenantId: string,
     userId: string,
-    projectId: string,
-    feature: string
+    projectId: string
   ): Promise<void> {
-    const key = this.createKey(tenantId, userId, projectId, feature);
+    const key = this.createIDEKey(tenantId, userId, projectId);
     await this.redis.hdel('ides', key);
     console.log(`[RedisPortRegistry] Unregistered IDE: ${key}`);
   }
@@ -199,7 +203,10 @@ export class RedisPortRegistry implements PortRegistryPort {
     feature: string,
     type: 'preview' | 'ide'
   ): Promise<void> {
-    const key = this.createKey(tenantId, userId, projectId, feature);
+    // IDE uses project-level key (no feature), Preview uses feature
+    const key = type === 'ide'
+      ? this.createIDEKey(tenantId, userId, projectId)
+      : this.createKey(tenantId, userId, projectId, feature);
     const hashKey = type === 'preview' ? 'previews' : 'ides';
     const data = await this.redis.hget(hashKey, key);
     

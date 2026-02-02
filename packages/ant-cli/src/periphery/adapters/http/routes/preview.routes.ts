@@ -61,6 +61,10 @@ export function createPreviewRoutes(deps: {
     try {
       const projectId = req.params.id;
       const userContext = extractUserContext(req);
+      
+      // ✅ WARN level for production visibility
+      logger.warn(`POST /preview/start - projectId=${projectId}, user=${userContext?.userId}`, { component: 'PreviewRoutes' });
+      
       const config = await deps.projectService.getProjectConfig(projectId, userContext);
       
       const port = req.body?.port;
@@ -68,10 +72,7 @@ export function createPreviewRoutes(deps: {
       // Default to true for better UX - auto-restart if already running
       const forceRestart = req.body?.forceRestart !== false;
       
-      if (port !== undefined) {
-        logger.debug(`Requested port: ${port}`, { component: 'PreviewRoutes', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature });
-      }
-      logger.debug(`Feature: ${feature}, forceRestart: ${forceRestart}`, { component: 'PreviewRoutes', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature });
+      logger.warn(`Preview params: feature=${feature}, forceRestart=${forceRestart}, port=${port}`, { component: 'PreviewRoutes' });
       
       let codebasePath: string;
       

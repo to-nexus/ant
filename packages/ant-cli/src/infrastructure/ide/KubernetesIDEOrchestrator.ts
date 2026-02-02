@@ -454,14 +454,11 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         `/api/v1/namespaces/${this.options.namespace}/pods/${resourceName}`
       );
 
-      // Register in state store
-      // Note: registerIDE expects (tenantId=org, userId, projectId, feature) - NOT org:user combined
-      // IDE is project-level, always use 'main' to match proxy lookup
+      // Register in state store (IDE is project-level, no feature)
       await this.stateStore.registerIDE(
         userContext.organizationId,
         userContext.userId,
         projectId,
-        'main',  // IDE is project-level, always 'main'
         IDE_PORT,
         pod.status?.podIP || resourceName
       );
@@ -606,14 +603,12 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     });
     
     // Update last access time in state store (with timeout to prevent hanging)
-    // Note: registerIDE expects (tenantId=org, userId, projectId, feature) - NOT org:user combined
-    // IDE is project-level, always use 'main' to match proxy lookup
+    // IDE is project-level, no feature
     try {
       const registerPromise = this.stateStore.registerIDE(
-        userContext.organizationId,  // org only, not org:user
+        userContext.organizationId,
         userContext.userId,
         projectId,
-        'main',  // IDE is project-level, always 'main'
         IDE_PORT,
         pod.status?.podIP || pod.metadata.name
       );
@@ -719,7 +714,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
       const orgId = parts[0] || '';
       const userId = parts.length > 1 ? parts[1] : '';
 
-      await this.stateStore.unregisterIDE(orgId, userId, projectId, 'main');  // IDE is project-level, always 'main'
+      await this.stateStore.unregisterIDE(orgId, userId, projectId);
 
       return { success: true };
     } catch (error: any) {
@@ -893,12 +888,11 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     const now = Date.now();
 
     for (const instance of instances) {
-      // Check last access time from state store
+      // Check last access time from state store (IDE is project-level, no feature)
       const portMapping = await this.stateStore.getIDE(
         instance.tenantId,
         instance.userId || '',
-        instance.projectId,
-        instance.feature || 'main'
+        instance.projectId
       );
 
       if (portMapping) {
