@@ -382,7 +382,8 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     const instanceKey = this.createInstanceKey(tenantId, projectId);
     const resourceName = this.createResourceName(instanceKey);
 
-    logger.info(`Starting K8s IDE: ${instanceKey}`, {
+    // ✅ WARN level for production IDE debugging
+    logger.warn(`Starting K8s IDE: ${instanceKey}`, {
       component: 'KubernetesIDEOrchestrator',
       organizationId: userContext.organizationId,
       userId: userContext.userId,
@@ -480,7 +481,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         lastAccessedAt: new Date()
       };
 
-      logger.info(`IDE started successfully: ${instanceKey} (host=${instance.host})`, { component: 'KubernetesIDEOrchestrator' });
+      logger.warn(`IDE started successfully: ${instanceKey} (host=${instance.host})`, { component: 'KubernetesIDEOrchestrator' });
       return {
         success: true,
         instance

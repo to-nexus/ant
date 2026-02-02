@@ -104,7 +104,8 @@ export abstract class BaseProxyMiddleware {
         return next();
       }
 
-      logger.debug(`${req.method} ${req.url}`, { component: this.componentName });
+      // ✅ WARN level for production visibility (LOG_LEVEL=warn in prod)
+      logger.warn(`PROXY_REQUEST: ${req.method} ${req.url}`, { component: this.componentName });
 
       // Extract serverKey from path
       const url = req.url.split('?')[0];
@@ -145,7 +146,7 @@ export abstract class BaseProxyMiddleware {
         port = await this.getPort(parts);
 
         if (!port) {
-          logger.info(`No port found for ${serverKey}`, { component: this.componentName });
+          logger.warn(`No port found for ${serverKey}`, { component: this.componentName });
           res.status(404).json({
             error: `${this.getRegistryType()} not found`,
             message: `No ${this.getRegistryType()} running for ${serverKey}`,
