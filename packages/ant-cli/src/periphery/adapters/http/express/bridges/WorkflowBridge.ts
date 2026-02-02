@@ -125,12 +125,31 @@ export class WorkflowBridge {
     );
     
     // Broadcast to Kanban clients via SSE
-    const mapping = this.stateTracker.getJobMapping(jobId);
+    // ✅ Cloud-safe: Get job mapping from Redis instead of local stateTracker
+    // This ensures multi-pod environments (Job Worker separate from API Server) can broadcast
+    const stateStore = getInfrastructureFactory().getStateStore();
+    
+    // Try Redis first, fallback to local stateTracker
+    let mapping = await stateStore.getJobMapping(jobId);
+    if (!mapping) {
+      // Fallback for local mode or backward compatibility
+      const localMapping = this.stateTracker.getJobMapping(jobId);
+      if (localMapping) {
+        mapping = {
+          projectId: localMapping.projectId,
+          featureName: localMapping.featureName,
+          jobType: localMapping.jobType,
+          userContext: localMapping.userContext
+        };
+      }
+    }
+    
     if (mapping) {
-      const jobStatus = this.stateTracker.getJobStatus(jobId);
-      const task = jobStatus?.task;
+      // Get job status from Redis for accurate job type
+      const jobStatus = await stateStore.getJobStatus(jobId);
+      const task = jobStatus?.type;
       const jobType: 'design' | 'code' | 'learn' = 
-        (task === 'design' || task === 'code' || task === 'learn') ? task : 'code';
+        (task === 'design' || task === 'code' || task === 'learn') ? task : (mapping.jobType || 'code');
       
       try {
         const kanbanData = await this.deps.kanbanService.getKanbanData(
@@ -144,7 +163,6 @@ export class WorkflowBridge {
         );
         
         // Broadcast via Redis Pub/Sub → Realtime Server → SSE
-        const stateStore = getInfrastructureFactory().getStateStore();
         await stateStore.publish(SSE_BROADCAST_CHANNEL, {
           projectId: mapping.projectId,
           featureName: mapping.featureName,
@@ -158,6 +176,11 @@ export class WorkflowBridge {
           jobId 
         }, error);
       }
+    } else {
+      logger.warn(`No job mapping found for kanban broadcast`, { 
+        component: 'WorkflowBridge', 
+        jobId 
+      });
     }
   }
 

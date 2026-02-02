@@ -355,8 +355,16 @@ export class RouteConfigurator {
         timestamp: new Date().toISOString()
       });
       
-      // ✅ CRITICAL: Register job mapping in local stateTracker for SSE broadcast
-      // Without this, WorkflowBridge.updateTaskQueue cannot find projectId/featureName
+      // ✅ CRITICAL: Register job mapping in Redis for cross-Pod SSE broadcast
+      // Job Worker (separate Pod) needs this to broadcast Kanban updates
+      await stateStore.setJobMapping(jobId, {
+        projectId: params.project,
+        featureName: params.feature,
+        jobType: params.jobType || 'code',
+        userContext: params.userContext
+      });
+      
+      // Also register in local stateTracker for backward compatibility (Local mode)
       this.stateTracker.initializeJob(jobId, params.project, params.feature, params.jobType || 'code', params.userContext);
       
       // ⏱️ DEBUG: Record enqueue completion time
