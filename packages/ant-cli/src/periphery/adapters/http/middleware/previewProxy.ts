@@ -42,6 +42,12 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
   const { portRegistry, pathPrefix = '/preview', getBackendPort } = config;
   
   return async (req: Request, res: ExpressResponse, next: NextFunction) => {
+    // ✅ Skip API routes - they should be handled by Express routes, not proxy
+    // API paths: /preview/projects/:id/start, /preview/projects/:id/stop, /preview/projects/:id/status
+    if (req.path.startsWith(`${pathPrefix}/projects/`)) {
+      return next();
+    }
+    
     // ✅ Handle requests without /preview/:serverKey prefix that should go to preview server
     // These come from client-side JS (hydration) - use Referer header to route.
     // Patterns: /_next/*, /logos/*, /icons/*, /backgrounds/*, /public/*, static assets

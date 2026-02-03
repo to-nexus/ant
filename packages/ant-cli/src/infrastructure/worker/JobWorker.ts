@@ -65,7 +65,6 @@ export class JobWorker {
     // ✅ Log critical environment variables for debugging (Cloud/Vault injection)
     logger.info('=== JobWorker Environment Variables ===', { component: 'JobWorker' });
     logger.info(`ANT_API_URL: ${process.env.ANT_API_URL || '(not set, will fallback to localhost)'}`, { component: 'JobWorker' });
-    logger.info(`ANT_CLI_PORT: ${process.env.ANT_CLI_PORT || '(not set, default 4100)'}`, { component: 'JobWorker' });
     logger.info(`ANT_REDIS_URL: ${process.env.ANT_REDIS_URL ? '(set)' : '(not set)'}`, { component: 'JobWorker' });
     logger.info(`ANT_WORKSPACE_BASE_PATH: ${process.env.ANT_WORKSPACE_BASE_PATH || '(not set)'}`, { component: 'JobWorker' });
     logger.info('========================================', { component: 'JobWorker' });
@@ -296,10 +295,9 @@ export class JobWorker {
         // CLI internal paths (for templates, policies, etc.)
         ANT_CLI_ROOT: cliRoot,
         // ✅ API Server connection for real-time updates (Kanban, FileTree, Workflow)
-        // Cloud mode: use ANT_API_URL for service-to-service communication
-        // Local mode: use ANT_CLI_PORT for localhost
-        ANT_CLI_PORT: process.env.ANT_CLI_PORT || '4100',
-        ANT_API_URL: process.env.ANT_API_URL || `http://localhost:${process.env.ANT_CLI_PORT || '4100'}`,
+        // Cloud: ANT_API_URL (e.g., http://ant-api:8080)
+        // Local: fallback to localhost with PORT from npm script
+        ANT_API_URL: process.env.ANT_API_URL || `http://localhost:${process.env.PORT || '4100'}`,
         // ✅ User authentication for Cloud mode HTTP clients
         ANT_USER_EMAIL: `${payload.userContext.userId}@${payload.userContext.organizationId}`
       };

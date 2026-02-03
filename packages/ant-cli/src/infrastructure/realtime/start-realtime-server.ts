@@ -9,7 +9,7 @@
  *   npm run dev:realtime-server
  * 
  * Environment Variables:
- *   ANT_REALTIME_PORT         - Server port (default: 4101)
+ *   PORT                      - Server port (default: 8080, set via npm scripts for local dev)
  *   ANT_WORKSPACE_BASE_PATH   - Base path for workspaces (required)
  *   ANT_REDIS_URL             - Redis connection URL (required)
  *   ANT_CORS_ORIGINS          - Comma-separated CORS origins (optional)
@@ -21,7 +21,7 @@ import 'dotenv/config';
 import { createRealtimeServer } from './RealtimeServer';
 import { logger } from '../../utils/logger';
 
-const PORT = parseInt(process.env.ANT_REALTIME_PORT || '4101', 10);
+const PORT = parseInt(process.env.PORT || '8080', 10);
 const WORKSPACES_PATH = process.env.ANT_WORKSPACE_BASE_PATH;
 const CORS_ORIGINS = process.env.ANT_CORS_ORIGINS?.split(',').filter(Boolean);
 

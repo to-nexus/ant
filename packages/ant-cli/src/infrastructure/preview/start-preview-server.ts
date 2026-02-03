@@ -11,10 +11,10 @@
  * - /preview/:key/* - Preview Proxy
  * 
  * Environment Variables:
- *   ANT_PREVIEW_PORT          - Server port (default: 4102)
- *   ANT_REDIS_URL            - Redis URL (required)
- *   ANT_WORKSPACE_BASE_PATH  - Workspace base path
- *   ANT_SERVER_MODE          - 'local' or 'cloud'
+ *   PORT                      - Server port (default: 8080)
+ *   ANT_REDIS_URL             - Redis URL (required)
+ *   ANT_WORKSPACE_BASE_PATH   - Workspace base path
+ *   ANT_SERVER_MODE           - 'local' or 'cloud'
  * 
  * @see docs/architecture/10-cloud-architecture.md Section 3.2
  */

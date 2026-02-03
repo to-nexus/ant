@@ -202,7 +202,7 @@ export class JobExecutionManager {
       LANG: process.env.LANG || 'en_US.UTF-8',
       NODE_ENV: process.env.NODE_ENV || 'production',
       ANT_JOB_ID: jobId,
-      ANT_CLI_PORT: process.env.ANT_CLI_PORT || '4100',
+      ANT_API_URL: process.env.ANT_API_URL || `http://localhost:${process.env.PORT || '4100'}`,
       ANT_SERVER_MODE: process.env.ANT_SERVER_MODE || 'local',  // ✅ Pass server mode to child process
       ANT_WORKSPACE_BASE_PATH: process.env.ANT_WORKSPACE_BASE_PATH || '',  // ✅ Pass workspace base path
       ANT_PROJECT_ID: params.project || '',

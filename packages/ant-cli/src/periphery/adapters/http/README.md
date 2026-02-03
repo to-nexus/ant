@@ -216,9 +216,10 @@ Enable child processes to communicate with parent server.
 ### Usage
 ```typescript
 // In orchestrator (child process detection)
-if (process.env.ANT_CLI_PORT) {
+// ANT_API_URL is set by parent process (JobWorker, JobExecutionManager)
+if (process.env.ANT_API_URL) {
   const { WorkflowHttpClient } = await import('./clients');
-  workflowUpdate = new WorkflowHttpClient(process.env.ANT_CLI_PORT);
+  workflowUpdate = new WorkflowHttpClient();  // Uses ANT_API_URL internally
 }
 ```
 

@@ -2,7 +2,7 @@
  * ChatAPIClient - HTTP client for sending LLM events to Chat UI
  * 
  * Uses environment variables set by parent process:
- * - ANT_CLI_PORT: Ant CLI server port (default: 4100)
+ * - ANT_API_URL: API server URL (required for cloud, e.g., http://ant-api:8080)
  * - ANT_PROJECT_ID: Current project ID
  * - ANT_FEATURE_NAME: Current feature name
  * - ANT_JOB_ID: Current job ID
@@ -20,13 +20,15 @@ export class ChatAPIClient {
   private messageStarted: boolean = false;  // ✅ Track if message is active
 
   constructor() {
-    // ✅ Use ANT_CLI_PORT or ANT_API_URL
-    this.serverPort = process.env.ANT_CLI_PORT || '4100';
+    // ✅ ANT_API_URL is the canonical way to reach the API server
+    // Cloud: http://ant-api:8080 (K8s service DNS)
+    // Local: http://localhost:4100 (via npm script PORT=4100)
+    this.serverPort = process.env.PORT || '8080';
     this.projectId = process.env.ANT_PROJECT_ID || '';
     this.featureName = process.env.ANT_FEATURE_NAME || '';
     this.jobId = process.env.ANT_JOB_ID || '';
     
-    // ✅ Prefer ANT_API_URL for Cloud mode (service-to-service communication)
+    // ✅ ANT_API_URL required for cloud; localhost fallback for local dev
     const apiUrl = process.env.ANT_API_URL || `http://localhost:${this.serverPort}`;
     this.baseUrl = `${apiUrl}/api/projects/${this.projectId}/features/${this.featureName}/chat`;
     
