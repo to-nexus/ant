@@ -153,14 +153,177 @@ NO deviations from the contract are permitted.
 
 **Focus**: Service method signatures and responsibilities (NOT full implementations)
 
-### 7. External Integrations (if applicable)
+### 7. Data Storage Architecture ⚠️ OBSERVE PRD FIRST
+
+**Do NOT default to RDB. Observe actual requirements.**
+
+#### 7.1 Storage Pattern Observation
+
+| Checkpoint | Observation Target |
+|------------|-------------------|
+| **Schema structure** | Fixed fields (users, orders) OR dynamic/flexible (user-defined, varied documents)? |
+| **Query patterns** | Complex joins/aggregations OR simple key-based access? |
+| **Consistency needs** | ACID transactions required OR eventual consistency acceptable? |
+| **Scale pattern** | Read-heavy? Write-heavy? Time-series? |
+
+#### 7.2 Storage Selection Principles
+
+| Pattern Observed | Storage Type |
+|-----------------|--------------|
+| Fixed schema + complex joins + transactions | RDB (PostgreSQL, MySQL) |
+| Flexible schema + document-oriented + horizontal scale | Document DB (MongoDB) |
+| High-speed key-value access + session/cache | In-memory (Redis) |
+| Time-series data + analytics | Time-series DB or Column store |
+| Multiple patterns | Hybrid (polyglot persistence) |
+
+**Constraint**: If hybrid storage needed, document which data belongs where and why.
+
+#### 7.3 Multi-Database Architecture (if applicable)
+
+**If PRD requires multiple storage types:**
+- **Primary store**: Authoritative data (typically RDB)
+- **Cache layer**: Read performance (Redis, in-memory)
+- **Search index**: Full-text/analytics (Elasticsearch, if PRD requires)
+- **Document store**: Flexible schema data (MongoDB, if needed)
+
+**Principle**: Each storage type serves specific access patterns. Document the boundary.
+
+---
+
+### 8. Caching Strategy (if applicable)
+
+**Only if PRD indicates performance requirements or read-heavy patterns.**
+
+#### 8.1 Cache Layer Observation
+
+| Checkpoint | Observation Target |
+|------------|-------------------|
+| **Read frequency** | Same data read repeatedly? |
+| **Data freshness** | How stale is acceptable? |
+| **Invalidation triggers** | When does cached data become invalid? |
+| **Scope** | Request-local, instance-local, or distributed? |
+
+#### 8.2 Caching Principles
+
+| Scope | When to Use |
+|-------|-------------|
+| **Request-local** | Data reused within single request processing |
+| **Instance-local** | Single server, no horizontal scaling |
+| **Distributed** | Multiple instances need consistent cache (Redis) |
+
+**Constraint**: If horizontal scaling expected, distributed cache strategy MUST be documented.
+
+---
+
+### 9. Async Processing & Message Queue (if applicable)
+
+**Only if PRD indicates long-running tasks, background jobs, or event-driven patterns.**
+
+#### 9.1 Async Pattern Observation
+
+| Checkpoint | Observation Target |
+|------------|-------------------|
+| **Long-running tasks** | Operations that take seconds/minutes (email, file processing, AI inference)? |
+| **Decoupling needed** | Producer shouldn't wait for consumer? |
+| **Reliability** | Must tasks survive server restart? |
+| **Order guarantee** | Must messages be processed in order? |
+
+#### 9.2 Async Processing Principles
+
+| Pattern Observed | Solution Type |
+|-----------------|---------------|
+| Simple background tasks, single instance | In-process queue (BullMQ, etc.) |
+| Distributed tasks, reliability needed | Message broker (RabbitMQ, Redis Streams) |
+| High-throughput, event streaming | Event streaming (Kafka) |
+| Scheduled tasks | Job scheduler (cron, Bull scheduler) |
+
+**Constraint**: If message queue used, document:
+- Queue/topic structure
+- Message schema (reference DTOs or define separately)
+- Retry and dead-letter policy (at architectural level, not exact values)
+- Consumer scaling strategy
+
+---
+
+### 10. Real-time & Connection State (if api-contract.md defines WebSocket/SSE)
+
+**Only if api-contract.md includes real-time communication.**
+
+#### 10.1 Connection Management Observation
+
+| Checkpoint | Observation Target |
+|------------|-------------------|
+| **Connection scope** | Per-user? Per-session? Per-room/channel? |
+| **State persistence** | Connection state needs to survive reconnection? |
+| **Scale model** | Single instance OR multiple instances? |
+
+#### 10.2 Scalability Principles
+
+| Scale Model | Strategy |
+|-------------|----------|
+| **Single instance** | In-memory connection registry acceptable |
+| **Multiple instances** | Connection state externalized (Redis Pub/Sub, etc.) |
+| **Sticky sessions** | Load balancer affinity based on user/session |
+| **Broadcast** | Pub/Sub to all instances, each forwards to local connections |
+
+**Constraint**: If horizontal scaling expected with stateful connections, state externalization and broadcast strategy MUST be documented.
+
+#### 10.3 Sticky Session Consideration ⚠️ REMINDER
+
+**If server holds per-user state AND horizontal scaling expected:**
+
+| State Type | Options |
+|-----------|---------|
+| In-memory session | Sticky session OR externalize (Redis, etc.) |
+| Stateful connection (WS/SSE) | Sticky session OR Pub/Sub broadcast |
+| Upload progress | Sticky session OR distributed storage |
+
+**Principle**: Sticky session trades simplicity for scalability complexity. LLM chooses appropriate strategy based on PRD requirements.
+
+---
+
+### 11. Architecture Style (if PRD indicates complexity)
+
+**Observe PRD for service boundary indicators.**
+
+#### 11.1 Architecture Style Observation
+
+| Checkpoint | Observation Target |
+|------------|-------------------|
+| **Domain boundaries** | Clear separation between business domains? |
+| **Team structure** | Multiple teams working independently? |
+| **Deployment independence** | Need to deploy services separately? |
+| **Scale independence** | Different services need different scaling? |
+
+#### 11.2 Architecture Selection Principles
+
+| Observation | Architecture Style |
+|-------------|-------------------|
+| Simple domain, single team, uniform scaling | Monolith |
+| Clear domains, same deployment, code organization | Modular Monolith |
+| Independent deployment + scaling per domain | Service-oriented / MSA |
+
+**Constraint**: Do NOT default to MSA. Complexity must match requirements.
+
+#### 11.3 If Service-Oriented / MSA
+
+**Document (at architectural level only):**
+- Service boundaries and responsibilities
+- Inter-service communication (sync HTTP vs async messaging)
+- Data ownership per service
+- Shared infrastructure (API gateway, service discovery, config)
+
+---
+
+### 12. External Integrations (if applicable)
 
 - Third-party APIs (payment, email, etc.)
-- Message queues (RabbitMQ, Kafka)
-- Caching (Redis strategy)
 - File storage (S3, local filesystem)
+- External authentication providers (OAuth, OIDC)
 
-### 8. Technology Stack ⚠️ MANDATORY
+---
+
+### 13. Technology Stack ⚠️ MANDATORY
 
 **🚨 CRITICAL: You MUST specify technology stack**
 
@@ -181,17 +344,18 @@ NO deviations from the contract are permitted.
 **Language & Runtime**: [TypeScript + Node.js | Go | Python | Java]
 **Framework**: [Express.js | NestJS | Gin | FastAPI | Spring Boot]
 **Database**: [PostgreSQL | MongoDB | MySQL | None (if PRD §X excludes persistence)]
+**Cache**: [Redis | None] (if caching needed per §8)
+**Message Queue**: [RabbitMQ | Redis Streams | Kafka | None] (if async processing per §9)
+**Real-time**: [Socket.io | ws | SSE | None] (if real-time per §10)
 
 **Key Libraries**:
-- [Based on language choice]
-- TypeScript: Prisma/TypeORM, class-validator, etc.
-- Go: standard library + gin-gonic
-- Python: SQLAlchemy, Pydantic, etc.
+- [Based on language choice and requirements]
 ```
 
 **Decision Rule:**
 1. PRD mentions backend language/framework? → Use it
 2. PRD silent on backend tech? → **Default to TypeScript + Node.js**
+3. PRD indicates caching/queue/realtime? → Include appropriate technology
 
 ---
 

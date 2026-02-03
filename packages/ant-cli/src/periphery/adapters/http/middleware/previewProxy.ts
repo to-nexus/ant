@@ -168,7 +168,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       logger.warn(`[Preview] Found: ${serverKey} -> ${previewHost}:${port}`, { component: 'PreviewProxy' });
       
       // Update last access time
-      await portRegistry.updateLastAccess(tenantId, userId, projectId, feature, 'preview');
+      await portRegistry.touchPreview(tenantId, userId, projectId, feature);
       
     } catch (error) {
       logger.error('Port lookup error', { component: 'PreviewProxy' }, error);
@@ -362,9 +362,10 @@ export async function createBatchPreviewProxies(
   for (const mapping of previews) {
     const serverKey = `${mapping.tenantId}:${mapping.userId}:${mapping.projectId}:${mapping.feature}`;
     const path = `${pathPrefix}/${serverKey}`;
+    const targetHost = mapping.host || 'localhost';
     
     const proxy = createProxyMiddleware({
-      target: `http://localhost:${mapping.port}`,
+      target: `http://${targetHost}:${mapping.port}`,
       changeOrigin: true,
       ws: true,
       pathRewrite: {

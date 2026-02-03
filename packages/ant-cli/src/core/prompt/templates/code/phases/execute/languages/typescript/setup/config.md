@@ -34,6 +34,12 @@ Use **single package** if:
 - Mandatory structure: `packages/frontend`, `packages/backend`, `packages/shared`
 - No exceptions for fullstack
 
+**🚨 MSA/Service-Oriented (if design doc specifies service boundaries):**
+- Each service boundary in design doc = separate package
+- Shared code (types, DTOs) = separate package
+- Use scoped package names: `@project/<service-name>`
+- **Follow design doc's service naming and boundaries exactly**
+
 **Monorepo tool:** Use **pnpm workspaces** (not npm - faster, stricter)
 
 **🚨 CRITICAL: For monorepo, you MUST create `pnpm-workspace.yaml`:**

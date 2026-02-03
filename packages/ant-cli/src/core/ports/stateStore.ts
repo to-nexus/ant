@@ -54,24 +54,15 @@ export interface TaskQueueSnapshot {
 // Workflow State Types (for Cross-Pod Workflow Tracking)
 // ============================================
 
+// Import from workflow.ts to avoid duplicate definitions
+import { TaskInfo, LLMInfo } from './workflow';
+export { TaskInfo, LLMInfo } from './workflow';
+
 export interface NodeHistoryEntry {
   nodeId: string;
   enteredAt: string;
   exitedAt?: string;
   duration?: number;
-}
-
-export interface TaskInfo {
-  id?: string;
-  name: string;
-  type?: string;
-  description?: string;
-  priority?: number;
-}
-
-export interface LLMInfo {
-  provider: string;
-  model: string;
 }
 
 export interface WorkflowRealtimeState {
@@ -130,19 +121,12 @@ export interface ChatSessionData {
 }
 
 // ============================================
-// Port Registry Types (from existing portRegistry.ts)
+// Port Registry Types (re-exported from portRegistry.ts)
 // ============================================
 
-export interface PortMapping {
-  tenantId: string;
-  userId: string;
-  projectId: string;
-  feature: string;
-  port: number;
-  host?: string;  // For remote workers (Phase 3)
-  registeredAt: Date;
-  lastAccessedAt: Date;
-}
+// Re-export from portRegistry for backward compatibility (used by many files)
+export { PortMapping, PreviewState, IDEState, PreviewPackage, PreviewRuntimeIssue } from './portRegistry';
+import { PreviewState, IDEState, PortMapping } from './portRegistry';
 
 // ============================================
 // StateStorePort Interface
@@ -274,30 +258,44 @@ export interface StateStorePort {
   clearUserStopped(jobId: string): Promise<void>;
   
   // ============================================
-  // Port Registry - Preview
+  // Port Registry - Preview (Full State Management)
   // ============================================
   
   /**
-   * Register preview port mapping
+   * Register/Update preview state
    */
-  registerPreview(
-    tenantId: string,
-    userId: string,
-    projectId: string,
-    feature: string,
-    port: number,
-    host?: string
-  ): Promise<void>;
+  registerPreview(state: Omit<PreviewState, 'lastAccessedAt'>): Promise<void>;
   
   /**
-   * Get preview port mapping
+   * Get preview state
    */
   getPreview(
     tenantId: string,
     userId: string,
     projectId: string,
     feature: string
-  ): Promise<PortMapping | null>;
+  ): Promise<PreviewState | null>;
+  
+  /**
+   * Update preview state (partial)
+   */
+  updatePreview(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    feature: string,
+    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'issues' | 'packages' | 'backendPort'>>
+  ): Promise<void>;
+  
+  /**
+   * Update last accessed time
+   */
+  touchPreview(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    feature: string
+  ): Promise<void>;
   
   /**
    * Unregister preview
@@ -312,34 +310,54 @@ export interface StateStorePort {
   /**
    * List all active previews
    */
-  listPreviews(): Promise<PortMapping[]>;
+  listPreviews(): Promise<PreviewState[]>;
+  
+  /**
+   * List previews by pod
+   */
+  listPreviewsByPod(podId: string): Promise<PreviewState[]>;
+  
+  /**
+   * Get idle previews
+   */
+  getIdlePreviews(idleThresholdMs: number): Promise<PreviewState[]>;
   
   // ============================================
-  // Port Registry - IDE
+  // Port Registry - IDE (Full State Management)
   // ============================================
   
   /**
-   * Register IDE port mapping (IDE is project-level, no feature)
+   * Register IDE state
    */
   registerIDE(
     tenantId: string,
     userId: string,
     projectId: string,
     port: number,
-    host?: string
+    host: string,
+    podId: string
   ): Promise<void>;
   
   /**
-   * Get IDE port mapping (IDE is project-level, no feature)
+   * Get IDE state
    */
   getIDE(
     tenantId: string,
     userId: string,
     projectId: string
-  ): Promise<PortMapping | null>;
+  ): Promise<IDEState | null>;
   
   /**
-   * Unregister IDE (IDE is project-level, no feature)
+   * Update last accessed time
+   */
+  touchIDE(
+    tenantId: string,
+    userId: string,
+    projectId: string
+  ): Promise<void>;
+  
+  /**
+   * Unregister IDE
    */
   unregisterIDE(
     tenantId: string,
@@ -350,18 +368,7 @@ export interface StateStorePort {
   /**
    * List all active IDEs
    */
-  listIDEs(): Promise<PortMapping[]>;
-  
-  /**
-   * Update last access time for port mapping
-   */
-  updateLastAccess(
-    tenantId: string,
-    userId: string,
-    projectId: string,
-    feature: string,
-    type: 'preview' | 'ide'
-  ): Promise<void>;
+  listIDEs(): Promise<IDEState[]>;
   
   // ============================================
   // Chat Session Management (for Cloud Mode)

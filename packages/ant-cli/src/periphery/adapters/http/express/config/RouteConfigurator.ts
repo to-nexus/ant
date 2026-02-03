@@ -232,6 +232,9 @@ export class RouteConfigurator {
       workspaceResolver: this.deps.workspaceResolver
     });
     app.use('/api', previewRoutes);
+    
+    // Start idle check for auto-cleanup of unused preview servers
+    this.deps.previewService.startIdleCheck();
   }
 
   /**

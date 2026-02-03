@@ -121,8 +121,8 @@ const WORKSPACE_BASE_PATH = process.env.ANT_WORKSPACE_BASE_PATH || '/mnt/workspa
 const TIMEOUTS = {
   /** K8s API request timeout (ms) */
   K8S_API_REQUEST: 10000,
-  /** Pod ready wait timeout (ms) */
-  POD_READY: 120000,
+  /** Pod ready wait timeout (ms) - DevOps 권고: 노드 할당 + Pod 생성 시간 고려하여 4분 */
+  POD_READY: 240000,
   /** Pod deletion wait timeout (ms) */
   POD_DELETION: 30000,
   /** State store operation timeout (ms) */
@@ -479,7 +479,8 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         userContext.userId,
         projectId,
         IDE_PORT,
-        pod.status?.podIP || resourceName
+        pod.status?.podIP || resourceName,
+        resourceName  // podId
       );
 
       const instance: IDEInstance = {
@@ -629,7 +630,8 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         userContext.userId,
         projectId,
         IDE_PORT,
-        pod.status?.podIP || pod.metadata.name
+        pod.status?.podIP || pod.metadata.name,
+        pod.metadata.name  // podId
       );
       
       // Timeout for Redis operation to prevent hanging
