@@ -30,7 +30,7 @@ import { PortRegistryPort } from '../../core/ports/portRegistry';
 
 import { RedisStateStore } from '../state/RedisStateStore';
 import { BullMQJobQueue } from '../queue/BullMQJobQueue';
-import { RemotePreviewOrchestrator } from '../preview/RemotePreviewOrchestrator';
+import { RemotePreviewOrchestrator } from '../preview';
 import { LocalIDEOrchestrator } from '../ide/LocalIDEOrchestrator';
 import { KubernetesIDEOrchestrator } from '../ide/KubernetesIDEOrchestrator';
 import { PortManager } from '../networking/PortManager';
@@ -201,17 +201,19 @@ export class InfrastructureFactory {
 
   /**
    * Get PreviewOrchestratorPort implementation
-   * Always uses RemotePreviewOrchestrator (worker-based)
+   * 
+   * All environments (local and cloud) use RemotePreviewOrchestrator.
+   * The preview worker(s) must be running separately.
    * 
    * @throws Error if ANT_PREVIEW_WORKERS is not configured
    */
   getPreviewOrchestrator(): PreviewOrchestratorPort {
     if (!this.previewOrchestrator) {
-      // Lazy validation: only check when preview orchestrator is actually needed
+      // Validate that preview workers are configured
       if (this.config.previewWorkers.length === 0) {
         throw new Error(
-          'ANT_PREVIEW_WORKERS is required for preview functionality. ' +
-          'At least one preview worker URL must be configured. ' +
+          'ANT_PREVIEW_WORKERS is required. ' +
+          'Preview workers must be running separately (docker-compose or K8s). ' +
           'Example: ANT_PREVIEW_WORKERS=http://localhost:8080'
         );
       }
