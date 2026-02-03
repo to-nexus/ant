@@ -50,6 +50,8 @@ export interface ServerConfig {
 
 /**
  * Shared services and dependencies
+ * 
+ * Note: previewService moved to ant-preview (see 10-cloud-architecture.md)
  */
 export interface ServerDependencies {
   workspaceService: any;
@@ -62,7 +64,6 @@ export interface ServerDependencies {
   kanbanService: any;
   sessionService: any;
   gitWatcherService: any;
-  previewService: any;
   projectService: any;
   chatService: any;
   graphMetadataService: any;

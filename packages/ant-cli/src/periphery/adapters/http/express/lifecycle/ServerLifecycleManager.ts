@@ -213,15 +213,7 @@ export class ServerLifecycleManager {
       logger.warn('SessionService cleanup error', { component: 'ServerLifecycle' }, error);
     }
     
-    // Cleanup DevServerService
-    try {
-      if (this.deps.previewService && typeof (this.deps.previewService as any).cleanup === 'function') {
-        await (this.deps.previewService as any).cleanup();
-        logger.debug('DevServerService cleaned', { component: 'ServerLifecycle' });
-      }
-    } catch (error) {
-      logger.warn('DevServerService cleanup error', { component: 'ServerLifecycle' }, error);
-    }
+    // Note: PreviewService cleanup moved to ant-preview (see 10-cloud-architecture.md)
     
     // Cleanup IDEService
     try {

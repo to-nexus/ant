@@ -1,28 +1,17 @@
 /**
- * Preview Orchestration Module
+ * Preview Module
  * 
- * Exports preview orchestration implementations for ant-cli.
+ * ant-preview service handles ALL preview operations:
+ * - POST /preview/projects/:id/start  - Start preview
+ * - POST /preview/projects/:id/stop   - Stop preview
+ * - GET  /preview/projects/:id/status - Get status
+ * - GET  /preview/:key/*              - Proxy to dev server
  * 
- * All environments (local and cloud) use the same distributed architecture:
- * - RemotePreviewOrchestrator: Worker-based preview management
- * - PreviewWorkerService: Runs on preview worker nodes
+ * All environments (local and cloud) use the same distributed architecture
+ * with Redis for state management.
  * 
- * The only difference between local and cloud is configuration (env vars).
+ * @see docs/architecture/10-cloud-architecture.md
  */
 
-export { RemotePreviewOrchestrator } from './RemotePreviewOrchestrator';
-export type { RemotePreviewOrchestratorOptions } from './RemotePreviewOrchestrator';
-export { PreviewWorkerService, startPreviewWorker } from './PreviewWorkerService';
-export type { PreviewWorkerServiceOptions } from './PreviewWorkerService';
-
-// Re-export types from port
-export type {
-  PreviewOrchestratorPort,
-  PreviewParams,
-  PreviewStartResult,
-  PreviewInstance,
-  PreviewStatus,
-  PreviewIssue,
-  PreviewLogEntry,
-  PackageInfo
-} from '../../core/ports/previewOrchestrator';
+export { PreviewServer, createPreviewServer } from './PreviewServer';
+export type { PreviewServerOptions } from './PreviewServer';

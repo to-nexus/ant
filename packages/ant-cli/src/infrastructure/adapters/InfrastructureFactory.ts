@@ -24,13 +24,11 @@
 
 import { StateStorePort } from '../../core/ports/stateStore';
 import { JobQueuePort } from '../../core/ports/queue';
-import { PreviewOrchestratorPort } from '../../core/ports/previewOrchestrator';
 import { IDEOrchestratorPort } from '../../core/ports/ideOrchestrator';
 import { PortRegistryPort } from '../../core/ports/portRegistry';
 
 import { RedisStateStore } from '../state/RedisStateStore';
 import { BullMQJobQueue } from '../queue/BullMQJobQueue';
-import { RemotePreviewOrchestrator } from '../preview';
 import { LocalIDEOrchestrator } from '../ide/LocalIDEOrchestrator';
 import { KubernetesIDEOrchestrator } from '../ide/KubernetesIDEOrchestrator';
 import { PortManager } from '../networking/PortManager';
@@ -48,7 +46,6 @@ export interface InfrastructureConfig {
   
   // Required for all environments
   redisUrl: string;
-  previewWorkers: string[];
   
   // Optional: IDE runtime selection
   k8sNamespace?: string;  // If set, use Kubernetes; otherwise use Docker
@@ -64,7 +61,6 @@ export class InfrastructureFactory {
   // Singleton instances
   private stateStore: StateStorePort | null = null;
   private jobQueue: JobQueuePort | null = null;
-  private previewOrchestrator: PreviewOrchestratorPort | null = null;
   private ideOrchestrator: IDEOrchestratorPort | null = null;
   
   // Dependencies (must be set before getting orchestrators)
@@ -80,7 +76,6 @@ export class InfrastructureFactory {
     }, {
       authMode: this.config.authMode,
       redisUrl: this.config.redisUrl ? '***' : 'NOT SET',
-      previewWorkers: this.config.previewWorkers.length,
       ideRuntime: this.config.k8sNamespace ? 'kubernetes' : 'docker'
     });
   }
@@ -103,12 +98,12 @@ export class InfrastructureFactory {
    * 
    * Note: Validation is lazy - only validates what's needed at the time of use.
    * - ANT_REDIS_URL: Required at factory initialization (used by most services)
-   * - ANT_PREVIEW_WORKERS: Validated only when getPreviewOrchestrator() is called
+   * 
+   * Note: Preview moved to ant-preview service (see 10-cloud-architecture.md)
    */
   private loadConfig(): InfrastructureConfig {
     const authMode = (process.env.ANT_SERVER_MODE || 'local') as AuthMode;
     const redisUrl = process.env.ANT_REDIS_URL;
-    const previewWorkers = process.env.ANT_PREVIEW_WORKERS?.split(',').filter(Boolean) || [];
     
     // Validate Redis URL - required for all environments (StateStore, JobQueue, etc.)
     if (!redisUrl) {
@@ -119,13 +114,9 @@ export class InfrastructureFactory {
       );
     }
     
-    // Note: ANT_PREVIEW_WORKERS validation is deferred to getPreviewOrchestrator()
-    // This allows RealtimeServer to start without preview workers configured
-    
     return {
       authMode,
       redisUrl,
-      previewWorkers,
       k8sNamespace: process.env.ANT_K8S_NAMESPACE  // undefined = use Docker
     };
   }
@@ -196,39 +187,9 @@ export class InfrastructureFactory {
   }
 
   // ============================================
-  // Preview Orchestrator
+  // Preview - Moved to ant-preview service
+  // See docs/architecture/10-cloud-architecture.md
   // ============================================
-
-  /**
-   * Get PreviewOrchestratorPort implementation
-   * 
-   * All environments (local and cloud) use RemotePreviewOrchestrator.
-   * The preview worker(s) must be running separately.
-   * 
-   * @throws Error if ANT_PREVIEW_WORKERS is not configured
-   */
-  getPreviewOrchestrator(): PreviewOrchestratorPort {
-    if (!this.previewOrchestrator) {
-      // Validate that preview workers are configured
-      if (this.config.previewWorkers.length === 0) {
-        throw new Error(
-          'ANT_PREVIEW_WORKERS is required. ' +
-          'Preview workers must be running separately (docker-compose or K8s). ' +
-          'Example: ANT_PREVIEW_WORKERS=http://localhost:8080'
-        );
-      }
-      
-      this.previewOrchestrator = new RemotePreviewOrchestrator(
-        { workers: this.config.previewWorkers },
-        this.getStateStore()
-      );
-      logger.info(`Using RemotePreviewOrchestrator (${this.config.previewWorkers.length} workers)`, {
-        component: 'InfrastructureFactory'
-      });
-    }
-    
-    return this.previewOrchestrator;
-  }
 
   // ============================================
   // IDE Orchestrator
@@ -274,17 +235,10 @@ export class InfrastructureFactory {
 
   /**
    * Cleanup all adapters
+   * Note: Preview cleanup moved to ant-preview service
    */
   async cleanup(): Promise<void> {
     logger.info('Cleaning up all infrastructure adapters', { component: 'InfrastructureFactory' });
-    
-    try {
-      if (this.previewOrchestrator) {
-        await this.previewOrchestrator.cleanup();
-      }
-    } catch (error) {
-      logger.error('Error cleaning up PreviewOrchestrator', { component: 'InfrastructureFactory' }, error);
-    }
     
     try {
       if (this.ideOrchestrator) {
@@ -313,7 +267,6 @@ export class InfrastructureFactory {
     // Reset instances
     this.stateStore = null;
     this.jobQueue = null;
-    this.previewOrchestrator = null;
     this.ideOrchestrator = null;
   }
 

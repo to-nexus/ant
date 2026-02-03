@@ -1153,6 +1153,7 @@ export async function updateProjectConfig(projectId: string, config: ProjectConf
 }
 
 // Preview server management
+// Note: Preview requests go to /preview/* path (routed to ant-preview service)
 export async function startPreview(
   projectId: string, 
   feature?: string,
@@ -1160,7 +1161,7 @@ export async function startPreview(
 ): Promise<{ success: boolean; message: string; script?: string; status?: any }> {
   try {
     const response = await authFetch(
-      `${API_BASE()}/projects/${encodeURIComponent(projectId)}/preview/start`,
+      `${SERVER_BASE()}/preview/projects/${encodeURIComponent(projectId)}/start`,
       {
         method: 'POST',
         headers: {
@@ -1195,7 +1196,7 @@ export async function startPreview(
 export async function stopPreview(projectId: string, feature?: string): Promise<{ success: boolean; message: string }> {
   try {
     const response = await authFetch(
-      `${API_BASE()}/projects/${encodeURIComponent(projectId)}/preview/stop`,
+      `${SERVER_BASE()}/preview/projects/${encodeURIComponent(projectId)}/stop`,
       {
         method: 'POST',
         headers: {
@@ -1221,7 +1222,7 @@ export async function getPreviewStatus(projectId: string, feature?: string): Pro
   try {
     const featureParam = feature ? `?feature=${encodeURIComponent(feature)}` : '';
     const response = await authFetch(
-      `${API_BASE()}/projects/${encodeURIComponent(projectId)}/preview/status${featureParam}`
+      `${SERVER_BASE()}/preview/projects/${encodeURIComponent(projectId)}/status${featureParam}`
     );
     
     if (!response.ok) {
