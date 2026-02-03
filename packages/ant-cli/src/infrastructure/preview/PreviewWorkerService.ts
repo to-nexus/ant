@@ -220,6 +220,48 @@ export class PreviewWorkerService {
   /**
    * Setup Express routes
    */
+  /**
+   * Get Pod IP for external access (same logic as PreviewService)
+   */
+  private getPodHost(): string {
+    // K8s typically sets POD_IP via downward API
+    const podIp = process.env.POD_IP;
+    if (podIp) {
+      logger.info(`[PreviewWorker] Using POD_IP: ${podIp}`, { component: 'PreviewWorkerService' });
+      return podIp;
+    }
+    
+    // Fallback: try to get IP from network interfaces
+    try {
+      const interfaces = os.networkInterfaces();
+      for (const [name, ifaces] of Object.entries(interfaces)) {
+        if (!ifaces) continue;
+        for (const iface of ifaces) {
+          // Skip internal/loopback interfaces and IPv6
+          if (iface.internal || iface.family !== 'IPv4') continue;
+          // Prefer eth0 (container network) over other interfaces
+          if (name === 'eth0' || name.startsWith('en')) {
+            logger.info(`[PreviewWorker] Using network interface IP: ${iface.address} (${name})`, { component: 'PreviewWorkerService' });
+            return iface.address;
+          }
+        }
+      }
+      // Second pass: return any non-internal IPv4
+      for (const ifaces of Object.values(interfaces)) {
+        if (!ifaces) continue;
+        for (const iface of ifaces) {
+          if (iface.internal || iface.family !== 'IPv4') continue;
+          return iface.address;
+        }
+      }
+    } catch {
+      // Ignore errors
+    }
+    
+    // Ultimate fallback
+    return 'localhost';
+  }
+
   private setupRoutes(): void {
     this.app.use(express.json());
 
@@ -251,10 +293,14 @@ export class PreviewWorkerService {
           port
         );
 
+        // ✅ Return Pod IP so orchestrator can register correct host
+        const podHost = this.getPodHost();
+        
         res.json({
           success: result.success,
           instanceId: result.serverKey,
           port: result.port,
+          host: podHost,  // ✅ Pod IP for proxy routing
           error: result.error
         });
       } catch (error: any) {

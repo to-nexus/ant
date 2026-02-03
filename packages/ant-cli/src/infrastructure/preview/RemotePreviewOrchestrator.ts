@@ -47,6 +47,7 @@ interface WorkerPreviewResponse {
   success: boolean;
   instanceId?: string;
   port?: number;
+  host?: string;  // Pod IP where dev server is running
   error?: string;
 }
 
@@ -277,11 +278,19 @@ export class RemotePreviewOrchestrator implements PreviewOrchestratorPort {
       // Update worker instance count
       worker.activeInstances++;
 
+      // ✅ Use Pod IP from worker response (not worker service URL)
+      const previewHost = response.host || worker.host;
+      const previewPort = response.port || 0;
+      
+      logger.warn(`[Preview] Worker response: host=${previewHost}, port=${previewPort}`, {
+        component: 'RemotePreviewOrchestrator'
+      });
+
       // Store instance info in state store
       const instance: PreviewInstance = {
         instanceId: instanceKey,
-        host: worker.host,
-        port: response.port || 0,
+        host: previewHost,
+        port: previewPort,
         status: 'starting',
         url: `/preview/${instanceKey}`,
         startedAt: new Date().toISOString()
@@ -298,8 +307,8 @@ export class RemotePreviewOrchestrator implements PreviewOrchestratorPort {
         feature,
         running: true,
         ready: false,
-        port: response.port || 0,
-        host: worker.host,
+        port: previewPort,
+        host: previewHost,  // ✅ Pod IP, not worker service URL
         podId: worker.id,
         packages: [],
         issues: [],
