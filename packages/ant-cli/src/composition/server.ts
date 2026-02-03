@@ -86,7 +86,9 @@ async function main() {
   
   const cloudUrl = process.env.CLOUD_URL || DEFAULT_CLOUD_URL;
   
+  const startTime = new Date().toISOString();
   console.log(`\n${mode === 'cloud' ? '🌐' : '💻'} Starting in ${mode.toUpperCase()} mode`);
+  console.log(`   Started: ${startTime}`);
   console.log(`   Workspaces: ${workspacesPath}`);
   if (process.env.ANT_WORKSPACE_BASE_PATH) {
     console.log(`   ✅ Physical separation enabled (custom path)`);
