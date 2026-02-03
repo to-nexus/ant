@@ -68,6 +68,12 @@ interface K8sPod {
   status?: {
     phase: 'Pending' | 'Running' | 'Succeeded' | 'Failed' | 'Unknown';
     podIP?: string;
+    conditions?: Array<{
+      type: string;
+      status: string;
+      reason?: string;
+      message?: string;
+    }>;
     containerStatuses?: Array<{
       state?: {
         waiting?: { reason?: string; message?: string };
@@ -110,8 +116,8 @@ const DEFAULT_OPTIONS: Required<Omit<KubernetesIDEOrchestratorOptions, 'kubeApiU
   idleTimeoutMs: 30 * 60 * 1000  // 30 minutes
 };
 
-// EFS PVC configuration
-const EFS_PVC_NAME = process.env.ANT_EFS_PVC_NAME || 'efs-workspaces';
+// EFS PVC configuration (default matches DevOps naming convention)
+const EFS_PVC_NAME = process.env.ANT_EFS_PVC_NAME || 'ant-workspaces-pvc';
 const WORKSPACE_BASE_PATH = process.env.ANT_WORKSPACE_BASE_PATH || '/mnt/workspaces';
 
 // ============================================
@@ -546,13 +552,19 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         const waitReason = waiting?.reason || '';
         const waitMessage = waiting?.message || '';
         
+        // Check pod conditions for scheduling issues (important for Pending phase)
+        const conditions = pod.status?.conditions || [];
+        const podScheduled = conditions.find(c => c.type === 'PodScheduled');
+        const schedulingIssue = podScheduled?.status === 'False' ? podScheduled.message : '';
+        
         // Log when phase or wait reason changes, or every 30 seconds
         const elapsed = Date.now() - startTime;
         const shouldLog = phase !== lastPhase || waitReason !== lastWaitReason || elapsed % 30000 < 2000;
         
         if (shouldLog) {
           const waitInfo = waiting ? ` [${waitReason}: ${waitMessage}]` : '';
-          logger.warn(`   Pod ${resourceName}: phase=${phase}${waitInfo} (${Math.round(elapsed / 1000)}s elapsed)`, {
+          const scheduleInfo = schedulingIssue ? ` [Scheduling: ${schedulingIssue}]` : '';
+          logger.warn(`   Pod ${resourceName}: phase=${phase}${waitInfo}${scheduleInfo} (${Math.round(elapsed / 1000)}s elapsed)`, {
             component: 'KubernetesIDEOrchestrator'
           });
           lastPhase = phase;
