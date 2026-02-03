@@ -449,7 +449,7 @@ ANT_ENCRYPTION_KEY=...                     # 암호화 키
 ANT_SERVER_MODE=cloud                      # 인증 모드 (local | cloud)
 ANT_CLI_PORT=4100                          # API 서버 포트
 ANT_K8S_NAMESPACE=ant-ide                  # IDE Pod 네임스페이스
-ANT_EFS_PVC_NAME=ant-efs-pvc               # EFS PVC 이름
+ANT_EFS_PVC_NAME=ant-workspaces-pvc        # EFS PVC 이름
 ```
 
 ### 5.3 Preview Server (ant-preview)
